@@ -286,14 +286,11 @@ export function LayerStyleTool(gui) {
     runStyleCommand(styles);
   }
 
-  function runStyleCommand(styles, opts) {
+  function runStyleCommand(styles) {
     var parts = ['-style'];
     syncTargetLayer();
     var ids = getTargetIds();
     if (!gui.console || !targetLayer || ids.length === 0) return;
-    if (!opts || !opts.preservePreset) {
-      presetControl.clearSelection();
-    }
     styles.forEach(function(style) {
       parts.push(style[0] + '=' + quoteCommandValue(style[1]));
     });
@@ -322,7 +319,6 @@ export function LayerStyleTool(gui) {
     if (getActiveLayer() != targetLayer) {
       cmd += ' target=' + internal.formatOptionValue(internal.getLayerTargetId(gui.model, targetLayer));
     }
-    presetControl.clearSelection();
     runCommand(cmd, 'Random fill colors');
   }
 
@@ -341,7 +337,7 @@ export function LayerStyleTool(gui) {
       }
     });
     if (styles.length > 0) {
-      runStyleCommand(styles, {preservePreset: true});
+      runStyleCommand(styles);
     }
   }
 
@@ -383,7 +379,6 @@ export function LayerStyleTool(gui) {
     var parts = ['-style clear'];
     syncTargetLayer();
     if (!gui.console || !targetLayer) return;
-    presetControl.clearSelection();
     addTargetOption(parts);
     runCommand(parts.join(' '), 'Clear style');
   }

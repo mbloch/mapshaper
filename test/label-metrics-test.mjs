@@ -21,10 +21,16 @@ function fakeMeasurer(calls) {
 
 describe('label text metrics', function () {
 
-  afterEach(function () {
+  // The measure function is module state, so it outlives the file that set it:
+  // these tests start from nothing measurable whatever ran before them, and
+  // leave that state behind for whatever runs next.
+  beforeEach(measuringNothing);
+  afterEach(measuringNothing);
+
+  function measuringNothing() {
     setTextMeasureFunction(null);
     clearTextWidthCache();
-  });
+  }
 
   it('has no width with nothing to measure with, which is the CLI\'s normal state', function () {
     assert.strictEqual(getMeasuredTextWidth({'label-text': 'Reno'}), null);

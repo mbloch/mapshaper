@@ -2172,6 +2172,18 @@ body.pan.panning .map-layers:not(.drawing) {
 	vector-effect: non-scaling-stroke;
 }
 
+/* The line between an anchor and the text being dragged away from it, drawn
+   only while that drag is on. Dashed, and a shade lighter than the box: it is
+   the relationship being edited rather than a part of either end. */
+.label-cue-tether {
+	fill: none;
+	stroke: #3a7ddc;
+	stroke-width: 1px;
+	stroke-dasharray: 2 2;
+	opacity: 0.7;
+	vector-effect: non-scaling-stroke;
+}
+
 /* A copy of the baseline the label's text runs along. Unfilled: stroking an
    open curve must not paint the area it encloses. */
 .label-cue-curve {
@@ -2348,6 +2360,16 @@ body.pan.panning .map-layers:not(.drawing) {
 }
 
 .label-style-panel {
+	/* The shape of a field in either panel. Defined here rather than on the
+	   text panel that set them, because the saved styles row is shared. */
+	--label-field-height: 22px;
+	--label-field-radius: 4px;
+	--label-field-border: #bbb;
+	/* Same glyph on native <select>s and the saved-style menu. The custom menu
+	   used a CSS triangle; the font menus used the OS arrow. A drawn stroke
+	   rather than a filled triangle: it is lighter than the text beside it,
+	   which is what a menu's arrow should be. */
+	--label-menu-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath fill='none' stroke='%23666' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round' d='M1 1.5l4 4 4-4'/%3E%3C/svg%3E");
 	position: absolute;
 	z-index: 21;
 	top: 6px;
@@ -2372,8 +2394,18 @@ body.pan.panning .map-layers:not(.drawing) {
 }
 
 
+.label-style-panel select,
+.label-saved-style-btn {
+	background-image: var(--label-menu-chevron);
+	background-repeat: no-repeat;
+	background-position: right 6px center;
+	background-size: 10px 7px;
+}
+
 .label-style-panel select {
-	padding: 1px 0;
+	-webkit-appearance: none;
+	appearance: none;
+	padding: 1px 20px 1px 4px;
 }
 
 /* The size the app's dialogs title themselves at (.info-box h3), so that a
@@ -2459,20 +2491,164 @@ body.pan.panning .map-layers:not(.drawing) {
 	color: #555;
 }
 
-.label-saved-style-row select {
-	width: 100%;
-	margin-bottom: 4px;
-}
-
-.label-saved-style-row {
-	margin-top: 10px;
-	padding-top: 8px;
-	border-top: 1px solid #ccc;
-}
-
-.label-saved-style-row button,
 .label-style-row button {
 	margin-right: 5px;
+}
+
+/* Saved styles: a menu that applies one and a button that saves the current
+   one, under a heading. The menu is built from divs rather than being a
+   <select>, because each row carries its own delete button -- see
+   gui-style-preset-control.mjs.
+
+   A section of the panel like Text and Icon, so the spacing above it is the
+   whitespace those sections are separated by, in the panel that has them, and
+   this margin in the layer panel, which does not. */
+.label-saved-style-row {
+	margin-top: 11px;
+}
+
+/* Side by side where there is room, and stacked where there is not: both
+   labels fit on one line in the label panel and neither would in the layer
+   panel, which is 30px narrower, so the menu's flex-basis is what decides
+   between them rather than a width written per panel. */
+.label-saved-style-controls {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 6px;
+	margin-top: 4px;
+}
+
+/* The menu takes the width that is left over after Save current, which is as
+   wide as its words: the names inside it can be long, and they are what the
+   user is reading. min-width:0 lets it shrink below the widest of them. */
+.label-saved-style-menu {
+	position: relative;
+	/* Asks for the width its own label needs, which is what makes the row
+	   wrap exactly when the two labels will not fit beside each other. */
+	flex: 1 1 max-content;
+	min-width: 0;
+}
+
+/* Sized and bordered like the panel's fields rather than like its 19px icon
+   buttons, because that is what these two are: a menu the width of a field,
+   and a button beside it. */
+.label-saved-style-button {
+	box-sizing: border-box;
+	display: flex;
+	align-items: center;
+	height: var(--label-field-height);
+	padding: 0 6px;
+	border: 1px solid var(--label-field-border);
+	border-radius: var(--label-field-radius);
+	background-color: white;
+	color: var(--normal-text);
+	cursor: pointer;
+	user-select: none;
+}
+
+/* The panel's own disabled look: live colours, faded as a whole. */
+.label-saved-style-button.disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.label-saved-style-button:hover:not(.disabled),
+.label-saved-style-button.open {
+	background-color: #f0f0f0;
+}
+
+.label-saved-style-btn {
+	padding-right: 20px;
+}
+
+/* The label gives way to the chevron rather than running under it. */
+.label-saved-style-btn span {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+/* Above the panel's own rows, and free to hang past its bottom edge -- the
+   panel does not clip, and this row is the last thing in it. */
+.label-saved-style-list {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	/* At least as wide as the menu, and wider if the names need it: the button
+	   is only as wide as the space left over beside Save current, and a style
+	   name is what the user is trying to read. It can hang over the map --
+	   nothing clips it -- but not indefinitely; past that, names ellipsize. */
+	min-width: 100%;
+	width: max-content;
+	max-width: 240px;
+	z-index: 30;
+	margin-top: 2px;
+	padding: 3px 2px;
+	max-height: 40vh;
+	overflow-y: auto;
+	background: white;
+	border: 1px solid #bbb;
+	border-radius: var(--label-field-radius);
+	box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+}
+
+.label-saved-style-list.drop-up {
+	top: auto;
+	bottom: 100%;
+	margin: 0 0 2px 0;
+}
+
+.label-saved-style-item {
+	display: flex;
+	align-items: center;
+}
+
+/* The name is the target for applying, and the highlight stops where it does,
+   so that the row reads as two things to click rather than one with a hazard
+   at the end of it. */
+.label-saved-style-name {
+	flex: 1;
+	min-width: 0;
+	padding: 3px 4px 3px 8px;
+	border-radius: 3px;
+	color: var(--normal-text);
+	cursor: pointer;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.label-saved-style-name:hover {
+	background: var(--lt-theme-col);
+}
+
+/* Hidden by visibility rather than left out, so that a name is the same width
+   whether or not the pointer is on it. */
+.label-saved-style-delete {
+	flex: none;
+	width: 16px;
+	padding: 2px 4px 2px 0;
+	text-align: center;
+	line-height: 1;
+	color: #999;
+	cursor: pointer;
+	visibility: hidden;
+}
+
+.label-saved-style-item:hover .label-saved-style-delete {
+	visibility: visible;
+}
+
+.label-saved-style-delete:hover {
+	color: #c00;
+}
+
+.label-saved-style-empty {
+	padding: 3px 8px;
+	color: #999;
+	cursor: default;
 }
 
 /* Two controls on one line: a font style and its size, a colour and its
@@ -2566,9 +2742,6 @@ body.pan.panning .map-layers:not(.drawing) {
    caption, and "Letter spacing" was clipped. */
 .text-style-panel {
 	width: 216px;
-	--label-field-height: 22px;
-	--label-field-radius: 4px;
-	--label-field-border: #bbb;
 	/* the narrow column of a split row, wide enough for the longest caption
 	   over it -- "Letter spacing", which measures 71px -- and the same in
 	   every row */
@@ -2586,7 +2759,7 @@ body.pan.panning .map-layers:not(.drawing) {
 }
 
 .text-style-panel select {
-	padding: 0 2px;
+	padding: 0 20px 0 6px;
 }
 
 /* One disabled look for the whole panel. Left to themselves the controls each
@@ -2719,7 +2892,11 @@ body.pan.panning .map-layers:not(.drawing) {
 	border-left: 1px solid #e0e0e0;
 }
 
-.text-style-panel .label-btn-group .label-panel-btn:hover:not(.disabled) {
+/* Hover leaves the selected button alone. Every hover fill in the panel is
+   lighter than the selection it would sit on, so pointing at the chosen answer
+   made it look less chosen than its neighbours -- and there is nothing to
+   preview anyway, since clicking it changes nothing. */
+.text-style-panel .label-btn-group .label-panel-btn:hover:not(.disabled):not(.selected) {
 	background: #f0f0f0;
 }
 
@@ -3231,12 +3408,40 @@ body.dragging-color-picker * {
 	background: #dcdcdc;
 }
 
-.text-style-panel .label-position-grid .label-panel-btn:hover:not(.disabled) {
+.text-style-panel .label-position-grid .label-panel-btn:hover:not(.disabled):not(.selected) {
 	background: #c4c4c4;
 }
 
 .text-style-panel .label-position-grid .label-panel-btn.selected {
 	background: black;
+}
+
+/* The position a dragged label is nearest, which is where it roughly belongs
+   and the cell that puts it back. Between the unlit grey and the lit black,
+   because it is saying something weaker than either: not "here" but "about
+   here, and not exactly". */
+.text-style-panel .label-position-grid .label-panel-btn.nearest:not(.selected) {
+	background: #a0a0a0;
+}
+
+/* The grid and the Fixed/Draggable toggle share the position row, the toggle
+   against the right edge so that it lines up with the fields in the rows
+   above. */
+.text-style-panel .label-position-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+/* Words rather than glyphs, so these segments size to their text instead of
+   splitting the group evenly, and sit in a group narrow enough to read as one
+   control beside the grid. */
+.text-style-panel .label-drag-mode-buttons .label-panel-btn {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	padding: 0 7px;
+	font-size: 12px;
 }
 
 .label-panel-btn.selected {

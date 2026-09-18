@@ -72,6 +72,41 @@ export function clearNewLabelStyle(gui) {
   gui.state.new_label_style = null;
 }
 
+// What a drag on a label's glyphs means: 'fixed' moves the label, anchor and
+// text together, and 'draggable' leaves the anchor where it is and offsets the
+// text from it.
+//
+// A question that has to be answered somewhere, and answering it with a mode
+// rather than by hit priority is what keeps a centred label -- whose text sits
+// on top of its own anchor -- grabbable at all.
+//
+// It belongs to the tool and not to the label. Which segment is lit cannot be
+// derived from a record: a label with label-pos=ne can be dragged or not, and
+// one that has been dragged stays dragged when the toggle goes back to Fixed.
+// A per-label "locked" flag would be a field nothing else reads and one more
+// column in -o out.csv.
+//
+// Fixed on entry, so that a stray drag cannot displace text in a session that
+// never asked for it, and remembered while the tool stays on.
+export var LABEL_POSITION_MODES = ['fixed', 'draggable'];
+
+export function getLabelPositionMode(gui) {
+  return gui.state.label_position_mode || 'fixed';
+}
+
+export function setLabelPositionMode(gui, mode) {
+  gui.state.label_position_mode =
+    LABEL_POSITION_MODES.indexOf(mode) > -1 ? mode : 'fixed';
+  // The panel's toggle and the tool's drag both read this, and neither owns the
+  // other; the panel also has to relight the grid, whose cells mean something
+  // different in each mode.
+  gui.dispatchEvent('label_position_mode_change');
+}
+
+export function labelTextIsDraggable(gui) {
+  return getLabelPositionMode(gui) == 'draggable';
+}
+
 // The label currently open for text editing, or null: {id, refocus}.
 //
 // Two modules need it and neither owns the other. The editor needs to say

@@ -11,10 +11,11 @@ import { internal } from './gui-core';
 //
 // Two shapes, because a label is one of two things:
 //
-// - An anchored label is a block of text: a box around it, plus a marker on the
-//   anchor point itself when nothing else is drawn there. The anchor is worth
-//   showing because it is what the text is positioned against, and label-pos
-//   can put it well outside the box.
+// - An anchored label is a block of text: a box around it, plus a marker on
+//   the anchor point when the anchor is neither drawn by the label nor covered
+//   by the box. The anchor is worth showing there because it is what the text
+//   is positioned against, and a position or a drag can put it well outside
+//   the box -- see appendAnchoredCue().
 // - A path label is a line of text on a curve: its own curve, stroked. A box
 //   round a curve is mostly empty air and says very little about what is
 //   selected. The curve already exists as a path in the layer's <defs> -- it is
@@ -44,6 +45,7 @@ export function LabelSelection(gui, ext, hit, getEditingId) {
   var groups = []; // one <g> per drawn cue, in the layer's markup
   var drawn = null; // what those cues represent, so hover does not redraw them
   var on = false;
+  var tetherId = -1; // the label whose text is being dragged off its anchor
 
   self.turnOn = function() {
     on = true;
@@ -52,7 +54,17 @@ export function LabelSelection(gui, ext, hit, getEditingId) {
 
   self.turnOff = function() {
     on = false;
+    tetherId = -1;
     clearAll();
+  };
+
+  // Draws a hairline from @id's anchor to its text while its offset is being
+  // dragged, or nothing when given -1. The offset is what is being edited, and
+  // on a label with no symbol the anchor is otherwise not drawn at all.
+  self.setTether = function(id) {
+    if (tetherId === id) return;
+    tetherId = id;
+    if (on) self.refresh(true);
   };
 
   // Redraws the cues against the current DOM. Called when the hit state changes
@@ -62,7 +74,7 @@ export function LabelSelection(gui, ext, hit, getEditingId) {
     var target = hit.getHitTarget();
     var ids = on ? getDrawableIds() : [];
     var hoverId = on ? getHoverId(ids) : -1;
-    var key = ids.join(',') + '/' + hoverId;
+    var key = ids.join(',') + '/' + hoverId + '/' + tetherId;
     // Hover fires on every pointer move, and most of them change nothing here.
     if (!force && drawn === key) return;
     clearAll();
@@ -104,14 +116,37 @@ export function LabelSelection(gui, ext, hit, getEditingId) {
       g.appendChild(curve(nodes.pathId));
       if (withHandles) appendKnotHandles(g, target, id);
     } else {
-      appendBox(g, nodes.content);
-      // An icon already marks the anchor; a second marker on top of it would
-      // only obscure what the label actually looks like. The marker doubles as
-      // the anchor's drag handle, so a label wearing an icon is grabbed by the
-      // icon itself.
-      if (!rec.icon) g.appendChild(anchorMarker());
+      appendAnchoredCue(g, nodes, rec, id);
     }
     groups.push(g);
+  }
+
+  // A box around the text, the anchor it is positioned against, and while the
+  // two are being pulled apart, a line between them.
+  //
+  // The anchor is only marked when there is something to say: nothing else is
+  // drawn there, and the text is somewhere other than on top of it. A label
+  // that draws a symbol has the symbol, and a marker on top of it would
+  // obscure what the label actually looks like; a label whose text sits over
+  // its own anchor has the box, which says where it is more precisely than a
+  // ring inside it would. What is left -- offset text with nothing at its
+  // anchor -- is the case where the ring is the only thing that says what the
+  // text hangs off.
+  function appendAnchoredCue(g, nodes, rec, id) {
+    var box = measure(nodes.content);
+    if (!box) return;
+    if (box.width || box.height) g.appendChild(rect(box, BOX_PADDING));
+    if (id === tetherId) g.appendChild(tether(box));
+    if (!internal.featureHasSvgSymbol(rec) && !boxHoldsOrigin(box)) {
+      g.appendChild(anchorMarker());
+    }
+  }
+
+  // Whether the label's anchor point is inside the box drawn around its text.
+  // The group's own origin is the anchor, so this is a question about zero.
+  function boxHoldsOrigin(box) {
+    return box.x <= 0 && box.x + box.width >= 0 &&
+      box.y <= 0 && box.y + box.height >= 0;
   }
 
   // A dot on each knot of a selected curve, so that what can be grabbed is
@@ -129,12 +164,6 @@ export function LabelSelection(gui, ext, hit, getEditingId) {
     for (i = 0; i < coords.length; i++) {
       g.appendChild(knotHandle(coords[i]));
     }
-  }
-
-  function appendBox(g, content) {
-    var box = measure(content);
-    if (!box || !box.width && !box.height) return;
-    g.appendChild(rect(box, BOX_PADDING));
   }
 
   function findNodes(target, id) {
@@ -205,6 +234,23 @@ export function LabelSelection(gui, ext, hit, getEditingId) {
     el.setAttribute('r', ANCHOR_RADIUS);
     el.setAttribute('class', 'label-cue-anchor');
     return el;
+  }
+
+  // The line from the anchor to the text, drawn to the nearest corner or edge
+  // of its box rather than to the middle of it: a line to the middle would run
+  // underneath the glyphs it is pointing at.
+  function tether(box) {
+    var el = document.createElementNS(SVG_NS, 'line');
+    el.setAttribute('x1', 0);
+    el.setAttribute('y1', 0);
+    el.setAttribute('x2', clamp(0, box.x - BOX_PADDING, box.x + box.width + BOX_PADDING));
+    el.setAttribute('y2', clamp(0, box.y - BOX_PADDING, box.y + box.height + BOX_PADDING));
+    el.setAttribute('class', 'label-cue-tether');
+    return el;
+  }
+
+  function clamp(val, min, max) {
+    return val < min ? min : val > max ? max : val;
   }
 
   function knotHandle(p) {

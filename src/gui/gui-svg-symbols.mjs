@@ -13,6 +13,14 @@ export function getSymbolNodeId(node) {
   return parseInt(node.getAttribute('data-id'));
 }
 
+// The <defs> path a label's text is laid along, or null. The attribute naming
+// it is this module's, so looking one up is too -- the label tool previews a
+// flip by rewriting this path, and updateLabelPath() below rewrites it on zoom.
+export function getLabelPathNode(container, id) {
+  return container ? container.querySelector(
+    'path[' + LABEL_PATH_ATTR + '="' + id + '"]') : null;
+}
+
 export function getSvgSymbolTransform(xy, ext) {
   var scale = ext.getSymbolScale();
   var p = ext.translateCoords(xy[0], xy[1]);

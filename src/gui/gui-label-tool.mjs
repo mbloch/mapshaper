@@ -8,8 +8,10 @@ import { internal } from './gui-core';
 import { runGuiEditCommand } from './gui-edit-command';
 import { quoteCommandValue } from './gui-command-utils';
 import {
-  getNewLabelStyle, updateNewLabelStyle, getLabelTextSession
+  getNewLabelStyle, updateNewLabelStyle, getLabelTextSession,
+  getLabelPositionMode, setLabelPositionMode
 } from './gui-label-style-state';
+import { getTextCentreOffset, getNearestPosition } from './gui-label-offset';
 
 var fontField = 'font-family';
 var fontSizeField = 'font-size';
@@ -59,6 +61,22 @@ var savedStyleFields = [
   iconOpacityField
 ];
 var labelPositions = ['nw', 'n', 'ne', 'w', 'c', 'e', 'sw', 's', 'se'];
+// The position an icon moves a centred label to when it is switched on: upper
+// right, the conventional first choice for a point label and the one a
+// cartographer would have to undo least often.
+var labelPositionBesideIcon = 'ne';
+// What a drag on a label's glyphs means. This belongs to the tool rather than
+// to the label -- nothing here is written to a record, and it is left out of
+// the saved styles for that reason. See getLabelPositionMode().
+var labelDragModes = [{
+  name: 'fixed',
+  label: 'Fixed',
+  title: 'Dragging a label moves it, text and anchor together'
+}, {
+  name: 'draggable',
+  label: 'Draggable',
+  title: 'Dragging a label\'s text offsets it from its anchor'
+}];
 // No "none" among the shapes: whether a label has a symbol at all is what the
 // section's toggle says, which leaves these four to answer only which one.
 var iconTypes = [{
@@ -116,7 +134,7 @@ export function LabelTool(gui) {
   // label-style-panel carries the styling the point and layer panels share; the
   // second class is this panel's own, as theirs are
   var panel = El('div').addClass('label-style-panel text-style-panel rollover').appendTo(parent).hide();
-  var presetControl, fontSelect, fontStyleSelect, fontSizeInput, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, iconToggle, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, editingStatus, clearLink, closeBtn, hit;
+  var presetControl, fontSelect, fontStyleSelect, fontSizeInput, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, dragModeBtns, iconToggle, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, editingStatus, clearLink, closeBtn, hit;
   var fontOptionsRendered = false;
   // The shape the toggle turns back on, so that switching a symbol off and on
   // again does not silently change a star into a circle.
@@ -144,6 +162,11 @@ export function LabelTool(gui) {
   gui.on('label_text_session_change', function() {
     // a label opened for typing becomes what the controls act on
     if (panel.visible()) updateControls();
+  });
+  gui.on('label_position_mode_change', function() {
+    // The tool sets the mode back to Fixed when it opens, and the toggle is
+    // the only thing on screen that says which of the two is on.
+    if (panel.visible()) updateDragModeButtons();
   });
   gui.on('interaction_mode_change', function(e) {
     if (gui.getMode() == labelStylePanelMode && e.mode != labelStyleMode) {
@@ -372,7 +395,7 @@ export function LabelTool(gui) {
 
     var positionSection = addSection('Label position', {minor: true});
 
-    var posRow = El('div').addClass('label-style-row').appendTo(positionSection);
+    var posRow = El('div').addClass('label-style-row label-position-row').appendTo(positionSection);
     var grid = El('div').addClass('label-position-grid').appendTo(posRow);
     posBtns = {};
     labelPositions.forEach(function(pos) {
@@ -381,6 +404,20 @@ export function LabelTool(gui) {
         })
         .attr('data-position', pos)
         .attr('title', pos);
+    });
+
+    // Beside the grid rather than under it, because the two work together: the
+    // grid puts a label in one of nine places around its anchor, this says
+    // whether a drag may then take it somewhere else, and clicking a cell is
+    // the way back from having done so.
+    var dragModeGroup = El('div').addClass('label-btn-group label-drag-mode-buttons').appendTo(posRow);
+    dragModeBtns = {};
+    labelDragModes.forEach(function(item) {
+      dragModeBtns[item.name] = makePanelButton(dragModeGroup, item.label, function() {
+          setLabelPositionMode(gui, item.name);
+        })
+        .attr('data-drag-mode', item.name)
+        .attr('title', item.title);
     });
 
     presetControl = new StylePresetControl(panel, {
@@ -744,17 +781,120 @@ export function LabelTool(gui) {
     // to take. The commands ignore a position given for one, and a disabled
     // button says so where a console warning would not.
     var disabled = !controlsEnabled() || everyLabelIsOnAPath(ids);
+    var locked = !disabled && gridIsLockedToCentre(ids);
+    // Faintly, and only when no cell is lit: a label carrying offsets is not
+    // at any of the nine, but one of them is roughly where it is and clicking
+    // it is the way back.
+    var nearest = !disabled && !pos ? getNearestPositionCell(ids) : '';
     labelPositions.forEach(function(name) {
-      posBtns[name].classed('selected', name == pos);
-      setPanelButtonDisabled(posBtns[name], disabled);
+      posBtns[name].classed('selected', !disabled && name == pos);
+      posBtns[name].classed('nearest', name == nearest);
+      setPanelButtonDisabled(posBtns[name], disabled || locked && name != 'c');
+    });
+    updateDragModeButtons();
+  }
+
+  // The nine positions place text around something, so with nothing drawn at
+  // the anchor the grid is locked to the centre cell: there is no answer to
+  // "north-east of what?", and the centre is what -add-label gives a new label
+  // anyway. The cell stays clickable, because text over its own symbol is a
+  // real thing to ask for.
+  //
+  // The test is whether the label draws a symbol, not whether it has an icon:
+  // a styled dots layer given label text by the point panel's "Create labels"
+  // keeps its r and fill, and keying this on icon= alone would lock the
+  // commonest labels in the app to the middle of their own dots.
+  //
+  // A default and a guard rather than an invariant. A label that arrives
+  // positioned with nothing at its anchor -- from the CLI, from an expression,
+  // from the legacy positioning mode -- is shown as it is, with the grid live:
+  // refusing to display what is in the record is worse than letting an odd
+  // state be edited. Dragging is not gated on a symbol either, since a labels
+  // layer whose dots live in a different layer still needs its text placed.
+  function gridIsLockedToCentre(ids) {
+    var table = getActiveTable();
+    if (!everyTargetLacksASymbol(ids)) return false;
+    if (ids.length === 0) return !labelIsPlaced(getNewLabelStyle(gui));
+    return ids.every(function(id) {
+      return !labelIsPlaced(table && table.getRecordAt(id));
+    });
+  }
+
+  // Whether a label has been put somewhere other than on top of its anchor: a
+  // position of its own other than the centre one, or offsets from a drag.
+  function labelIsPlaced(rec) {
+    if (!rec) return false;
+    if (rec['label-pos']) return rec['label-pos'] != 'c';
+    return internal.hasStyleValue(rec, 'dx') ||
+      internal.hasStyleValue(rec, 'dy');
+  }
+
+  function everyTargetLacksASymbol(ids) {
+    var table = getActiveTable();
+    if (ids.length === 0) {
+      return !internal.featureHasSvgSymbol(getNewLabelStyle(gui));
+    }
+    return ids.every(function(id) {
+      return !internal.featureHasSvgSymbol(table && table.getRecordAt(id));
+    });
+  }
+
+  // Which of the nine positions a dragged label is nearest, or ''.
+  //
+  // Only for a single label: the cell is a hint about where one label sits,
+  // and the nearest position to several of them at once is not a hint about
+  // anything. Offsets are compared through the middle of the text rather than
+  // through dx, which means different things at different justifications.
+  function getNearestPositionCell(ids) {
+    var table = getActiveTable();
+    var rec = ids.length == 1 && table ? table.getRecordAt(ids[0]) : null;
+    var width, drawn;
+    if (!rec || !labelIsPlaced(rec)) return '';
+    drawn = internal.svg.getDrawnLabelOffset(rec);
+    width = internal.svg.getMeasuredTextWidth(rec) || 0;
+    return getNearestPosition({
+      x: getTextCentreOffset(drawn.dx, drawn['text-anchor'], width),
+      y: drawn.dy
+    }, labelPositions.map(function(name) {
+      // The position on its own, without the record's own offsets, which win
+      // over a position and would make every candidate the same point.
+      var o = internal.svg.getDrawnLabelOffset({
+        'label-pos': name,
+        'font-size': rec['font-size']
+      });
+      return {
+        name: name,
+        x: getTextCentreOffset(o.dx, o['text-anchor'], width),
+        y: o.dy
+      };
+    }));
+  }
+
+  // The toggle is the tool's state and not the selection's, so nothing here
+  // reads a record. It is inert outside the label tool, where there is no drag
+  // on a label for it to describe.
+  function updateDragModeButtons() {
+    var mode = getLabelPositionMode(gui);
+    var disabled = !labelModeIsOn();
+    labelDragModes.forEach(function(item) {
+      dragModeBtns[item.name].classed('selected', !disabled && item.name == mode);
+      setPanelButtonDisabled(dragModeBtns[item.name], disabled);
     });
   }
 
   function everyLabelIsOnAPath(ids) {
+    return someLabelIsOnAPath(ids, 'every');
+  }
+
+  function anyLabelIsOnAPath(ids) {
+    return someLabelIsOnAPath(ids, 'some');
+  }
+
+  function someLabelIsOnAPath(ids, method) {
     var lyr = getActiveLayer();
     var table = lyr && lyr.data;
     if (!ids || ids.length === 0 || !lyr || !lyr.shapes) return false;
-    return ids.every(function(id) {
+    return ids[method](function(id) {
       return internal.svg.shapeIsPathLabel(lyr.shapes[id],
         table ? table.getRecordAt(id) : null);
     });
@@ -1073,7 +1213,7 @@ export function LabelTool(gui) {
         styles.push([field, style[field]]);
       }
     });
-    applyStyleValues(styles, {preservePreset: true});
+    applyStyleValues(styles);
   }
 
   function parseFontStyleVariant(value) {
@@ -1090,9 +1230,10 @@ export function LabelTool(gui) {
   }
 
   function applyIcon(iconName) {
+    var ids = getTargetIds();
     var styles = [[iconField, iconName || '']];
     if (iconName) {
-      styles.push([iconSizeField, getNumericSize(getTargetIds(), iconSizeField, defaultIconSize)]);
+      styles.push([iconSizeField, getNumericSize(ids, iconSizeField, defaultIconSize)]);
       // The symbol's own opacity goes on with it, because the label's opacity
       // is applied to both elements: without this, text set to 50% would give
       // a half-faded symbol while the Icon section showed it at 100%.
@@ -1100,7 +1241,39 @@ export function LabelTool(gui) {
     } else {
       styles.push([iconSizeField, 0]);
     }
+    addIconPositionChange(styles, ids, !!iconName);
     applyStyleValues(styles);
+  }
+
+  // Switching a symbol on or off changes which positions are legal, so the
+  // position moves with it -- in the same command, which makes the pair one
+  // undo step.
+  //
+  // On: the centre cell stops being the default and a label sitting there
+  // moves out from under its new symbol. Off: the grid locks back to the
+  // centre, so the position goes and the offsets go with it -- label-pos=c
+  // clears dx, dy and text-anchor by itself. That makes switching a symbol off
+  // destructive, since a hand-placed label loses its placement; being one
+  // undoable command is what makes that acceptable.
+  //
+  // Not for path labels, whose text runs along a curve: the commands ignore a
+  // position given for one and warn about it, and a warning from switching a
+  // symbol on would be about something the user did not ask for.
+  function addIconPositionChange(styles, ids, iconOn) {
+    if (anyLabelIsOnAPath(ids)) return;
+    if (!iconOn) {
+      styles.push(['label-pos', 'c']);
+    } else if (everyTargetIsCentred(ids)) {
+      styles.push(['label-pos', labelPositionBesideIcon]);
+    }
+  }
+
+  function everyTargetIsCentred(ids) {
+    var table = getActiveTable();
+    if (ids.length === 0) return !labelIsPlaced(getNewLabelStyle(gui));
+    return ids.every(function(id) {
+      return !labelIsPlaced(table && table.getRecordAt(id));
+    });
   }
 
   function applyIconSize(value) {
@@ -1201,7 +1374,7 @@ export function LabelTool(gui) {
     session.refocus();
   }
 
-  function applyStyleValues(styles, opts) {
+  function applyStyleValues(styles) {
     if (styles.length === 0) return;
     restoreTextFocus();
     // What the panel is set to is always what the next label gets, whether or
@@ -1215,13 +1388,10 @@ export function LabelTool(gui) {
       refreshPendingLabel();
     }
     if (getTargetIds().length > 0) {
-      applyStyleCommand(styles, opts);
+      applyStyleCommand(styles);
       return;
     }
     if (!labelModeIsOn()) return;
-    if (!opts || !opts.preservePreset) {
-      presetControl.clearSelection();
-    }
     updateControls();
   }
 
@@ -1230,14 +1400,11 @@ export function LabelTool(gui) {
     if (session && session.id == -1 && session.refresh) session.refresh();
   }
 
-  function applyStyleCommand(styles, opts) {
+  function applyStyleCommand(styles) {
     var lyr = getActiveLayer();
     var ids = getTargetIds();
     var parts = ['-style'];
     if (!gui.console || !lyr) return;
-    if (!opts || !opts.preservePreset) {
-      presetControl.clearSelection();
-    }
     styles.forEach(function(style) {
       parts.push(style[0] + '=' + quoteCommandValue(style[1]));
     });

@@ -98,6 +98,33 @@ function applyAlignmentShift(rec) {
   return roundShift(px + shift);
 }
 
+// Everything a record says about where its text sits relative to its anchor,
+// resolved into numbers: the offsets the text is drawn at in px, and the
+// justification it is drawn with.
+//
+// This is what dragging a label starts from. A drag materializes the position
+// the label was in and adds its own delta to it, and the numbers it starts
+// from have to be the ones the label is actually drawn with -- otherwise the
+// text jumps on the first pixel of movement. Hence resolving it here, through
+// the same functions as the renderer above, rather than in the GUI against a
+// second copy of the rules.
+//
+// An offset in units this cannot convert -- pt, %, anything but px and em --
+// resolves to 0. The alternative is refusing the drag over a value that
+// reaches a label only from an expression or a data file, and a drag that puts
+// the text where the pointer is says more about where it went than a gesture
+// that does nothing.
+export function getDrawnLabelOffset(recArg) {
+  var rec = resolveLabelPosition(recArg);
+  var dx = toPixels(applyAlignmentShift(rec), rec['font-size']);
+  var dy = toPixels(rec.dy || 0, rec['font-size']);
+  return {
+    dx: dx === null ? 0 : dx,
+    dy: dy === null ? 0 : dy,
+    'text-anchor': rec['text-anchor'] || ''
+  };
+}
+
 // A measure in px, or null if it cannot be known.
 //
 // An em value needs the font size it is relative to. Most labels do not carry

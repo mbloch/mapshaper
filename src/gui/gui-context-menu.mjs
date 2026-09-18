@@ -184,7 +184,8 @@ export function ContextMenu(parentArg) {
     }
 
     if (lyr && lyr.gui.geographic) {
-      if (e.deleteVertex || e.deletePoint || copyable || e.deleteFeature) {
+      if (e.deleteVertex || e.deletePoint || copyable || e.deleteFeature ||
+          e.flipLabel) {
 
         addMenuLabel('selection');
         if (e.deleteVertex) {
@@ -195,6 +196,9 @@ export function ContextMenu(parentArg) {
         }
         if (e.ids?.length) {
           addCopyItem('copy as GeoJSON', getSelectionGeoJSON);
+        }
+        if (e.flipLabel) {
+          addMenuItem('flip to other side of path', e.flipLabel);
         }
         if (e.deleteFeature) {
           addMenuItem(getDeleteLabel(), e.deleteFeature);

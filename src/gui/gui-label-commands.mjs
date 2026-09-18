@@ -107,6 +107,59 @@ export function getUpdateLabelCommand(coords, id, target) {
   return parts.join(' ');
 }
 
+// The command that places a path label's text on its curve, run once when a
+// drag on the glyphs is released.
+//
+// Sliding writes one property. Flipping writes three things that have to agree
+// -- the reversed knots, the offset measured from the other end, and the
+// swapped text-anchor -- so they go in one command string: the console runs it
+// as a single transaction, which makes a flip one undo step and one line of
+// session history rather than two of each, and leaves no state in which the
+// knots have turned around but the text has not.
+//
+//   offset: the value for label-start-offset, e.g. '42%'
+//   anchor: the value for text-anchor, or '' to leave it alone
+//   coords: the label's knots after a flip, in CRS coordinates, or null when
+//     the text only slid
+//   id:     feature id of the label
+//   target: layer name, or null to use the current target
+export function getLabelPlacementCommand(opts) {
+  var parts = ['-style', 'label-start-offset=' + opts.offset];
+  if (opts.anchor) {
+    parts.push('text-anchor=' + opts.anchor);
+  }
+  parts.push('ids=' + opts.id);
+  if (opts.target) parts.push('target=' + quoteCommandValue(opts.target));
+  if (opts.coords) {
+    parts.push(getUpdateLabelCommand(opts.coords, opts.id, opts.target));
+  }
+  return parts.join(' ');
+}
+
+// The command that offsets a label's text from its anchor, run once when a
+// drag on the glyphs is released in Draggable mode.
+//
+// All three properties, not a delta: a value on the record wins over the
+// position per property, so the drag materializes what the label was drawn
+// with and the position goes -- "stop taking a position, carry these offsets
+// instead", which is one command because it is one edit.
+//
+// label-pos= is always written, even by a label that has none. -style reads an
+// empty value as "remove this", and removing a property no record carries adds
+// nothing to the layer, so there is nothing to be gained by asking first.
+//
+//   dx, dy: the offsets, in px
+//   anchor: the value for text-anchor
+//   id:     feature id of the label
+//   target: layer name, or null to use the current target
+export function getLabelOffsetCommand(opts) {
+  var parts = ['-style', 'dx=' + opts.dx, 'dy=' + opts.dy,
+    'text-anchor=' + opts.anchor, 'label-pos='];
+  parts.push('ids=' + opts.id);
+  if (opts.target) parts.push('target=' + quoteCommandValue(opts.target));
+  return parts.join(' ');
+}
+
 // The command that saves edited text, run once when an editing session ends so
 // that a session is one undo step rather than one per keystroke.
 //

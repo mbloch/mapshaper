@@ -6,12 +6,21 @@ import { runGuiEditCommand } from './gui-edit-command';
 import { FloatingToolbar } from './gui-floating-toolbar';
 import {
   getLabelTarget, getAddLabelCommand, getUpdateLabelCommand,
-  getLabelDeleteCommand
+  getLabelDeleteCommand, getLabelPlacementCommand, getLabelOffsetCommand
 } from './gui-label-commands';
+import {
+  projectOntoPolyline, getDragPlacement, getPlacementValues,
+  getStartOffsetPct, getDefaultOffsetPct
+} from './gui-label-path-drag';
+import { getOffsetDragValues } from './gui-label-offset';
+import { setMultilineAttribute } from './gui-svg-labels';
+import { getLabelPathNode } from './gui-svg-symbols';
 import { findNearestKnot, knotMoveIsValid } from './gui-label-knots';
 import { LabelEditor } from './gui-label-editor';
 import { LabelSelection } from './gui-label-selection';
-import { getNewLabelStyle } from './gui-label-style-state';
+import {
+  getNewLabelStyle, labelTextIsDraggable, setLabelPositionMode
+} from './gui-label-style-state';
 import {
   setPendingLabelPath,
   clearPendingLabelPath,
@@ -34,6 +43,11 @@ import {
 //
 // See docs/development/label-tool-design.md.
 
+// How closely the flattened curve has to follow the real one for a drag to be
+// projected onto it, in pixels. Half a pixel is finer than the gesture can
+// resolve and still leaves a short polyline to walk per mouse move.
+var FLATTEN_PX = 0.5;
+
 export function initLabelTool(gui, ext, hit) {
   // which kind of label a click creates: null, 'anchor' or 'path'
   var armed = null;
@@ -45,9 +59,19 @@ export function initLabelTool(gui, ext, hit) {
   var previewPoint = null;
   // The knot being dragged, or null while nothing is being dragged.
   var drag = null;
+  // The label whose text is being dragged, or null: a path label's along its
+  // curve, or an anchored one's away from its anchor.
+  var textDrag = null;
   // The handle under the pointer, or null. Found on hover rather than at
   // dragstart -- see updateHoverHandle().
   var hoverHandle = null;
+  // The selected label whose glyphs are under the pointer, or -1. Tracked for
+  // the same reason as hoverHandle.
+  var hoverTextId = -1;
+  // Where the pointer was when it was last hovering the map, in display
+  // coordinates. A drag on a label's text starts from here rather than from
+  // the dragstart event -- see beginTextDrag().
+  var hoverPoint = null;
   var editor = new LabelEditor(gui, ext);
   var selection = new LabelSelection(gui, ext, hit, function() {
     return editor.isOpen() ? editor.getFeatureId() : -1;
@@ -89,6 +113,11 @@ export function initLabelTool(gui, ext, hit) {
 
   function turnOn() {
     getToolbar().show();
+    // Fixed every time the tool opens, so that a stray drag cannot displace
+    // text in a session that never asked for it. It is remembered for as long
+    // as the tool stays on, which is what makes placing several labels by hand
+    // one decision rather than one per label.
+    setLabelPositionMode(gui, 'fixed');
     setArmed(getInitialTool());
     updateButtons();
     selection.turnOn();
@@ -118,7 +147,10 @@ export function initLabelTool(gui, ext, hit) {
     updateButtons();
     hideInstructions();
     drag = null;
+    textDrag = null;
     hoverHandle = null;
+    hoverTextId = -1;
+    hoverPoint = null;
     // setArmed() would skip this when nothing was armed, and the cursor has to
     // go back whether or not it was a crosshair.
     gui.container.findChild('.map-layers').classed('label-tool', false);
@@ -180,7 +212,9 @@ export function initLabelTool(gui, ext, hit) {
   // wrong even with a tool armed.
   function updateCursor() {
     var el = gui.container.findChild('.map-layers');
-    var onHandle = active() && !!hoverHandle;
+    // A selected path label's glyphs are a handle as much as its knots are: a
+    // drag there slides the text along its curve.
+    var onHandle = active() && (!!hoverHandle || hoverTextId > -1);
     var placing = active() && !!armed && hit.getHitId() == -1 && !onHandle;
     el.classed('label-tool', placing);
     el.classed('label-handle', onHandle);
@@ -260,6 +294,13 @@ export function initLabelTool(gui, ext, hit) {
     id = getRightClickedLabel(e);
     if (target && id > -1) {
       e.deleteFeature = getDeleteAction(target, id);
+      // Nobody guesses that text is dragged across its own curve, and there is
+      // no bracket drawn to suggest it, so the gesture has a second way in.
+      // Not on a label being typed into: its text is in the editor rather than
+      // in the feature, and the command would rebuild the layer underneath it.
+      if (isPathLabel(target, id) && !editorIsOn(id)) {
+        e.flipLabel = getFlipAction(target, id);
+      }
     }
     gui.contextMenu.open(e, target);
   });
@@ -292,6 +333,33 @@ export function initLabelTool(gui, ext, hit) {
         title: 'Delete label'
       });
     };
+  }
+
+  // Flips a label from the context menu, which is the same edit as dragging
+  // its text across its curve and writes the same command.
+  function getFlipAction(target, id) {
+    return function() {
+      var rec = getRecord(target, id);
+      var anchor = rec['text-anchor'] || '';
+      // With no pointer to fall back on, an offset this tool cannot read is
+      // turned around as though the label were where its text-anchor says.
+      var placement = {
+        offset: getStartOffsetPct(rec['label-start-offset'], anchor,
+          getDefaultOffsetPct(anchor)),
+        flipped: true
+      };
+      runPlacementCommand(target, id, getPlacementValues(placement, anchor),
+        anchor, getDisplayShapes(target)[id]);
+    };
+  }
+
+  function isPathLabel(target, id) {
+    return internal.svg.shapeIsPathLabel(getDisplayShapes(target)[id],
+      getRecord(target, id));
+  }
+
+  function editorIsOn(id) {
+    return editor.isOpen() && editor.getFeatureId() == id;
   }
 
   // Acts on a click that landed on feature @id: opens the label's text if it
@@ -420,6 +488,10 @@ export function initLabelTool(gui, ext, hit) {
   hit.on('change', function(e) {
     if (!active() || e.mode != 'label') return;
     selection.refresh();
+    // The hit id is one event behind on 'hover' -- the control dispatches the
+    // event and then tests the new position -- so the label under the pointer
+    // is settled here rather than there.
+    updateHoverText();
     updateCursor();
   });
 
@@ -430,6 +502,9 @@ export function initLabelTool(gui, ext, hit) {
   hit.on('hover', function(e) {
     var p;
     if (!active()) return;
+    if (!drag && !textDrag) {
+      hoverPoint = e.overMap ? pixToMapCoords(e.x, e.y) : null;
+    }
     updateHoverHandle(e);
     if (armed != 'path' || !drawingCurve()) return;
     p = e.overMap ? pixToMapCoords(e.x, e.y) : null;
@@ -443,7 +518,6 @@ export function initLabelTool(gui, ext, hit) {
   // takes a drag -- everything else over a label is left alone so that the map
   // still pans, which is why these handlers stop the event themselves.
   hit.on('dragstart', function(e) {
-    var target, handle, shapes;
     if (!active() || drawingCurve() || editor.isOpen()) return;
     // The handle comes from the last hover, not from testing the pointer here.
     // dragstart arrives with the pointer already moved off the handle -- by the
@@ -451,10 +525,22 @@ export function initLabelTool(gui, ext, hit) {
     // than the handle's own radius. Testing at this point missed handles the
     // user had grabbed squarely. The line tools track their vertices on hover
     // for the same reason.
-    handle = hoverHandle;
-    if (!handle) return;
-    target = hit.getHitTarget();
-    shapes = getDisplayShapes(target);
+    // The glyphs first: hoverTextId is only set when a drag there means
+    // something the handle underneath does not -- see updateHoverText().
+    if (hoverTextId > -1) {
+      if (beginTextDrag(e)) consumeDrag(e);
+      return;
+    }
+    if (!hoverHandle) return;
+    beginKnotDrag(hoverHandle);
+    consumeDrag(e);
+  });
+
+  // handle: {id, index, point, pointer} from findHandle(), or the same shape
+  //   made up for a drag that grabbed a label somewhere other than its knot
+  function beginKnotDrag(handle) {
+    var target = hit.getHitTarget();
+    var shapes = getDisplayShapes(target);
     drag = {
       id: handle.id,
       index: handle.index,
@@ -471,11 +557,15 @@ export function initLabelTool(gui, ext, hit) {
       offset: getGrabOffset(handle.point, handle.pointer)
     };
     shapes[handle.id] = cloneKnots(drag.startKnots);
-    consumeDrag(e);
-  });
+  }
 
   hit.on('drag', function(e) {
     var shp, p;
+    if (textDrag) {
+      consumeDrag(e);
+      updateTextDrag(e);
+      return;
+    }
     if (!drag) return;
     consumeDrag(e);
     shp = getDisplayShapes(drag.target)[drag.id];
@@ -495,6 +585,16 @@ export function initLabelTool(gui, ext, hit) {
 
   hit.on('dragend', function(e) {
     var o = drag;
+    if (textDrag) {
+      o = textDrag;
+      textDrag = null;
+      consumeDrag(e);
+      selection.setTether(-1);
+      // A press that never moved is a click, which the click handler has
+      // already dealt with; nothing was previewed, so nothing is undone.
+      if (o.moved) commitTextDrag(o);
+      return;
+    }
     if (!o) return;
     consumeDrag(e);
     drag = null;
@@ -529,6 +629,333 @@ export function initLabelTool(gui, ext, hit) {
     });
   }
 
+  // What a drag on a selected label's glyphs means, which depends on the kind
+  // of label and -- for an anchored one -- on the tool's position mode.
+  //
+  // In Fixed mode the text is fixed to its anchor, so dragging it is dragging
+  // the label: the same edit as moving the anchor, and so the same drag. In
+  // Draggable mode the text comes off its anchor and the drag writes an offset.
+  function beginTextDrag(e) {
+    var id = hoverTextId;
+    var target = hit.getHitTarget();
+    var shp = id > -1 ? getDisplayShapes(target)[id] : null;
+    if (id < 0 || !shp) return false;
+    if (isPathLabel(target, id)) return beginPathTextDrag(e, target, id);
+    if (labelTextIsDraggable(gui)) return beginOffsetDrag(e, target, id);
+    beginKnotDrag({
+      id: id,
+      index: 0,
+      point: shp[0],
+      // From where the pointer was hovering rather than from where it has got
+      // to, as with a handle's grab offset: dragstart arrives after the first
+      // move, and starting from here would slide the label by that much.
+      pointer: hoverPoint || pixToMapCoords(e.x, e.y)
+    });
+    return true;
+  }
+
+  // Dragging a selected path label's glyphs places its text on its curve:
+  // along the curve it sets label-start-offset, across the curve it flips the
+  // label to the other side. The two are one gesture, because the pointer
+  // answers both questions at once -- where it falls on the curve, and which
+  // side of it the pointer is on. See gui-label-path-drag.mjs for the math.
+  function beginPathTextDrag(e, target, id) {
+    var rec = getRecord(target, id);
+    var shp = getDisplayShapes(target)[id];
+    var nodes = rec ? findLabelNodes(target, id) : null;
+    var points, proj, anchor, offset;
+    if (!nodes || !nodes.textPath) return false;
+    // Flattened once, here: the curve does not change while its text is being
+    // dragged along it, and this is consulted on every mouse move.
+    points = internal.fitCurveThroughKnots(shp, scaleThreshold(FLATTEN_PX));
+    // From where the pointer was hovering rather than from where it has got
+    // to, as with a knot's grab offset -- and here it decides the side as well
+    // as the offset. dragstart arrives after the first move, which on a drag
+    // away from the glyphs has already crossed the curve: a flip was then
+    // measured from the far side and could never happen.
+    proj = projectOntoPolyline(points, hoverPoint || pixToMapCoords(e.x, e.y));
+    if (!proj) return false;
+    anchor = rec['text-anchor'] || '';
+    offset = getStartOffsetPct(rec['label-start-offset'], anchor, proj.t * 100);
+    textDrag = {
+      kind: 'path',
+      id: id,
+      target: target,
+      knots: shp,
+      points: points,
+      anchor: anchor,
+      start: {offset: offset, t: proj.t, side: proj.side},
+      placement: {offset: offset, flipped: false},
+      // What the attributes said before the preview wrote over them, so that
+      // the command is what changes the label rather than the drag.
+      before: {
+        offset: nodes.textPath.getAttribute('startOffset'),
+        anchor: nodes.text.getAttribute('text-anchor'),
+        d: nodes.path ? nodes.path.getAttribute('d') : null
+      },
+      moved: false
+    };
+    return true;
+  }
+
+  function updateTextDrag(e) {
+    if (textDrag.kind == 'offset') {
+      updateOffsetDrag(e);
+    } else {
+      updatePathTextDrag(e);
+    }
+  }
+
+  function updatePathTextDrag(e) {
+    var o = textDrag;
+    var proj = projectOntoPolyline(o.points, pixToMapCoords(e.x, e.y));
+    if (!proj) return;
+    // A drag that began on the curve itself has no side to have left yet, so
+    // the first side the pointer declares is the one it started from.
+    if (!o.start.side) o.start.side = proj.side;
+    o.placement = getDragPlacement(o.start, proj);
+    o.moved = true;
+    previewTextPlacement(o);
+  }
+
+  // Shows the placement by writing the three attributes that carry it, rather
+  // than by rebuilding the layer's markup as a knot drag does. A knot drag
+  // changes the baseline and so has to; this one leaves the curve exactly where
+  // it is and changes only where the text sits on it and which way it runs --
+  // which the browser re-lays out from the attributes alone.
+  function previewTextPlacement(o) {
+    var values = getPlacementValues(o.placement, o.anchor);
+    var nodes = findLabelNodes(o.target, o.id);
+    if (!nodes) return;
+    nodes.textPath.setAttribute('startOffset', values.offset);
+    if (values.anchor) nodes.text.setAttribute('text-anchor', values.anchor);
+    if (nodes.path && o.shownFlipped !== values.reversed) {
+      o.shownFlipped = values.reversed;
+      nodes.path.setAttribute('d', getPreviewPathData(o, values.reversed));
+    }
+  }
+
+  // The label's baseline, drawn backwards for a flip.
+  //
+  // The coordinates are reversed rather than the knots, so that the path keeps
+  // the origin its symbol group is translated to -- the first knot. The
+  // committed version stores the knots the other way round and translates to
+  // the other end, and renders the same.
+  function getPreviewPathData(o, reversed) {
+    var coords = internal.svg.getLabelPathCoords(o.knots, ext.getTransform(),
+      ext.getSymbolScale());
+    return internal.svg.getLabelPathData(reversed ? coords.reverse() : coords);
+  }
+
+  function restoreTextPlacement(o) {
+    var nodes = findLabelNodes(o.target, o.id);
+    if (!nodes) return;
+    setOrRemove(nodes.textPath, 'startOffset', o.before.offset);
+    setOrRemove(nodes.text, 'text-anchor', o.before.anchor);
+    if (nodes.path) setOrRemove(nodes.path, 'd', o.before.d);
+  }
+
+  function setOrRemove(node, name, value) {
+    if (value === null) node.removeAttribute(name);
+    else node.setAttribute(name, value);
+  }
+
+  // Dragging a selected anchored label's glyphs in Draggable mode takes its
+  // text off its position: the drag materializes the offsets the label is
+  // drawn with, adds its own movement to them and drops label-pos. The
+  // arithmetic, including what text-anchor does about it, is in
+  // gui-label-offset.mjs.
+  function beginOffsetDrag(e, target, id) {
+    var rec = getRecord(target, id);
+    var nodes = rec ? findLabelNodes(target, id) : null;
+    var box, drawn;
+    if (!nodes || nodes.textPath) return false;
+    drawn = internal.svg.getDrawnLabelOffset(rec);
+    box = measureNode(nodes.text);
+    textDrag = {
+      kind: 'offset',
+      id: id,
+      target: target,
+      // dx and dy are in the space inside the label's symbol group, so pointer
+      // movement is divided by the scale that group wears.
+      scale: ext.getSymbolScale() || 1,
+      // From where the pointer was hovering rather than from where it has got
+      // to, as with a handle's grab offset: dragstart arrives after the first
+      // move, and measuring from here would leave the text trailing that much
+      // behind the pointer for the rest of the drag.
+      from: getPointerPixels(e),
+      start: {
+        dx: drawn.dx,
+        dy: drawn.dy,
+        anchor: drawn['text-anchor'],
+        // The box is the block of text, so this is the widest line of a
+        // multi-line label -- which is the width its justification is
+        // measured against.
+        width: box ? box.width : 0,
+        aligned: !!internal.svg.getAlignmentAnchor(rec['label-align'])
+      },
+      // What the attributes said before the preview wrote over them, so that
+      // the command is what changes the label rather than the drag.
+      before: {
+        x: nodes.text.getAttribute('x'),
+        y: nodes.text.getAttribute('y'),
+        anchor: nodes.text.getAttribute('text-anchor')
+      },
+      moved: false
+    };
+    // The hairline to the anchor, which is what the drag is measured from and
+    // often the only thing on screen that says so.
+    selection.setTether(id);
+    return true;
+  }
+
+  function updateOffsetDrag(e) {
+    var o = textDrag;
+    o.values = getOffsetDragValues(o.start, {
+      dx: (e.x - o.from[0]) / o.scale,
+      dy: (e.y - o.from[1]) / o.scale
+    });
+    o.moved = true;
+    previewOffset(o);
+  }
+
+  // Shows the offset by writing it onto the rendered text, as the path drag
+  // writes a placement: the glyphs themselves do not change, only where they
+  // sit and how they are justified, which the browser re-lays out from the
+  // attributes alone.
+  function previewOffset(o) {
+    var nodes = findLabelNodes(o.target, o.id);
+    if (!nodes) return;
+    // The tspans of a multi-line label carry x as well, which is how the
+    // renderer writes it: a tspan without one starts where the last line
+    // ended.
+    setMultilineAttribute(nodes.text, 'x', o.values.x);
+    nodes.text.setAttribute('y', o.values.dy);
+    nodes.text.setAttribute('text-anchor', o.values['text-anchor']);
+    // The cue is drawn around the text rather than moved with it, so it has to
+    // be rebuilt to follow -- one getBBox on one label per mouse move.
+    selection.refresh(true);
+  }
+
+  function restoreOffset(o) {
+    var nodes = findLabelNodes(o.target, o.id);
+    if (!nodes) return;
+    // The renderer always writes x and y on an anchored label, so the removal
+    // case is for markup this tool did not draw.
+    if (o.before.x === null) nodes.text.removeAttribute('x');
+    else setMultilineAttribute(nodes.text, 'x', o.before.x);
+    setOrRemove(nodes.text, 'y', o.before.y);
+    setOrRemove(nodes.text, 'text-anchor', o.before.anchor);
+    selection.refresh(true);
+  }
+
+  // Turns the previewed offset into one -style.
+  //
+  // Only the label under the pointer moves, even with several selected: -style
+  // writes one value to every id it is given, so a group drag would set them
+  // all to the same absolute offset rather than nudging each by its own delta.
+  function commitOffsetDrag(o) {
+    var ids = hit.getSelectionIds();
+    runGuiEditCommand(gui, getLabelOffsetCommand({
+      dx: o.values.dx,
+      dy: o.values.dy,
+      anchor: o.values['text-anchor'],
+      id: o.id,
+      target: o.target.name
+    }), {
+      title: 'Offset label text',
+      // The label stays selected, so it can be nudged again. Re-running the
+      // command rebuilds the layer, which drops the selection.
+      onSuccess: function() { hit.setSelectionIds(ids); },
+      // As with a path label's placement, the preview is taken back only if
+      // the command fails: it wrote attributes rather than data, so the
+      // command's own redraw replaces it, and rolling back first showed the
+      // text at its old offset for the frame before that redraw arrived.
+      onError: function() { restoreOffset(o); }
+    });
+  }
+
+  // The pointer's position in pixels: from the last hover if there is one, so
+  // that a drag is measured from where the gesture started.
+  function getPointerPixels(e) {
+    var p = hoverPoint ? ext.translateCoords(hoverPoint[0], hoverPoint[1]) : null;
+    return p || [e.x, e.y];
+  }
+
+  function measureNode(node) {
+    try {
+      return node.getBBox();
+    } catch (err) {
+      return null; // an unrendered node has no box to report
+    }
+  }
+
+  // The nodes a label's placement is written on: its <text>, and for a path
+  // label the <textPath> inside it and the <defs> path its text is laid along.
+  // Both are null for an anchored label, which is how the two kinds tell
+  // themselves apart in the DOM.
+  function findLabelNodes(target, id) {
+    var container = target && target.gui && target.gui.svg_container;
+    var symbol = container && container.querySelector(
+      '.mapshaper-svg-symbol[data-id="' + id + '"]');
+    var text = !symbol ? null :
+      symbol.tagName == 'text' ? symbol : symbol.querySelector('text');
+    if (!text) return null;
+    return {
+      text: text,
+      textPath: text.querySelector('textPath'),
+      path: getLabelPathNode(container, id)
+    };
+  }
+
+  // Turns the previewed placement into one command.
+  //
+  // Unlike a knot drag, the preview is *not* rolled back on the way in. A knot
+  // drag has to roll back because it previews by swapping a copy of the knots
+  // into the display shapes, which the data layer can share -- the command
+  // must be what changes the data, or undo gets a step that undoes nothing.
+  // This preview only writes attributes on the rendered markup and leaves the
+  // data alone, so there is nothing to take back; rolling it back anyway drew
+  // the label at its old offset for the frame or two before the command's
+  // redraw arrived, which read as a flash of the text somewhere else on the
+  // curve. The rollback is kept for the command failing, which is the one case
+  // where no redraw comes to replace the preview.
+  function commitTextDrag(o) {
+    if (o.kind == 'offset') {
+      commitOffsetDrag(o);
+    } else {
+      runPlacementCommand(o.target, o.id, getPlacementValues(o.placement, o.anchor),
+        o.anchor, o.knots, function() { restoreTextPlacement(o); });
+    }
+  }
+
+  // values:  from getPlacementValues()
+  // anchor:  the label's text-anchor before the edit
+  // knots:   its knots, in display coordinates
+  // onError: (optional) called if the command fails
+  function runPlacementCommand(target, id, values, anchor, knots, onError) {
+    var ids = hit.getSelectionIds();
+    var coords = !values.reversed ? null : knots.slice().reverse().map(function(p) {
+      return translateDisplayPoint(target, p);
+    });
+    runGuiEditCommand(gui, getLabelPlacementCommand({
+      offset: values.offset,
+      // Only when the flip actually moved it: a centred label's anchor is its
+      // own opposite, and writing text-anchor on a label that never had one
+      // adds a column to the layer for nothing.
+      anchor: values.anchor == anchor ? '' : values.anchor,
+      coords: coords,
+      id: id,
+      target: target.name
+    }), {
+      title: values.reversed ? 'Flip label' : 'Move label text',
+      // The label stays selected, so it can be nudged again. Re-running the
+      // command rebuilds the layer, which drops the selection.
+      onSuccess: function() { hit.setSelectionIds(ids); },
+      onError: onError
+    });
+  }
+
   // Keeps track of the handle the pointer is over, which is what a drag starts
   // from and what the cursor reflects. A drag holds its own copy, so this stays
   // as it is until the drag ends.
@@ -536,9 +963,49 @@ export function initLabelTool(gui, ext, hit) {
     var found = drawingCurve() || editor.isOpen() || !e.overMap ? null :
       findHandle(hit.getHitTarget(), e);
     var changed = !!found != !!hoverHandle;
-    if (drag) return;
+    if (drag || textDrag) return;
     hoverHandle = found;
-    if (changed) updateCursor();
+    if (changed) {
+      updateHoverText(); // a knot handle takes the glyphs' turn away
+      updateCursor();
+    }
+  }
+
+  // Keeps track of the selected label under the pointer whose glyphs a drag
+  // would act on, which is also what decides between the glyphs and a knot
+  // handle: a drag starts from whichever of the two this leaves set.
+  //
+  // A handle normally outranks the glyphs, because both are grabbable and the
+  // handle is the smaller target. The exception is an anchored label in
+  // Draggable mode, where the glyphs are the point of the mode and the handle
+  // under them is its anchor: a centred label's anchor sits beneath its own
+  // text, and letting the handle win there would leave the text ungrabbable.
+  function updateHoverText() {
+    var id = findDraggableText();
+    if (drag || textDrag) return;
+    hoverTextId = id > -1 && (!hoverHandle || glyphsOutrankHandle(id)) ? id : -1;
+  }
+
+  function glyphsOutrankHandle(id) {
+    return hoverHandle.id == id && labelTextIsDraggable(gui) &&
+      !isPathLabel(hit.getHitTarget(), id);
+  }
+
+  // The label a drag on the glyphs would act on, or -1. Only a selected label
+  // qualifies: an unselected one is left alone so that the map still pans
+  // under the pointer.
+  function findDraggableText() {
+    var target = hit.getHitTarget();
+    var id = hit.getHitId();
+    if (!active() || drawingCurve() || editor.isOpen()) return -1;
+    if (id < 0 || !target) return -1;
+    if (hit.getSelectionIds().indexOf(id) == -1) return -1;
+    return isLabel(target, id) ? id : -1;
+  }
+
+  function getRecord(target, id) {
+    var records = target && target.data ? target.data.getRecords() : null;
+    return records ? records[id] : null;
   }
 
   // The handle under the pointer, or null. Only a selected label's handles are

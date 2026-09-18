@@ -206,6 +206,28 @@ describe('mapshaper-curve-fit', function () {
     });
   });
 
+  describe('reversal', function () {
+    // The label tool flips text to the other side of its path by reversing the
+    // knots, which only puts the text on the same curve if the fit is
+    // symmetric -- Hobby's curl conditions are the same at both ends, so it is.
+    it('reversing the knots draws the same curve backwards', function () {
+      [
+        [[0, 0], [10, 8], [25, -4], [40, 6], [55, 0]],
+        [[0, 0], [30, 30], [60, 0]],
+        [[0, 0], [1, 1], [2, 0], [40, 0]]
+      ].forEach(function (knots) {
+        var out = fitCurveThroughKnots(knots, 0.001);
+        var back = fitCurveThroughKnots(knots.concat().reverse(), 0.001).reverse();
+        assert.equal(back.length, out.length);
+        out.forEach(function (p, i) {
+          assert.ok(Math.abs(p[0] - back[i][0]) < 1e-9 &&
+            Math.abs(p[1] - back[i][1]) < 1e-9,
+            'point ' + i + ': ' + p + ' vs ' + back[i]);
+        });
+      });
+    });
+  });
+
   describe('densification', function () {
     it('the flattened path stays within the tolerance of the true curve', function () {
       var knots = [[0, 0], [50, 40], [100, 0]];

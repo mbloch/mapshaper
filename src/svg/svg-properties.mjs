@@ -290,10 +290,18 @@ export function getPropertyAccessor(val, typeHint, lyr, name) {
   stop('Unexpected value for', name + ':', strVal);
 }
 
+// Whether @strVal works as an expression, and the function if it does.
+//
+// This is a guess being checked, so the failures are expected and have to be
+// silent: quiet keeps the expression compiler from reporting them, which in
+// the GUI means an alert over a style change that went on to work perfectly
+// well -- a label typed as "Saint-Denis" or an offset of "59.77%" is not an
+// expression, and neither is an error.
 function parseStyleExpression(strVal, lyr) {
   var func;
   try {
-    func = compileFeatureExpression(strVal, lyr, null, {no_warn: true});
+    func = compileFeatureExpression(strVal, lyr, null,
+      {no_warn: true, quiet: true});
     func(0); // check for runtime errors (e.g. undefined variables)
   } catch(e) {
     func = null;

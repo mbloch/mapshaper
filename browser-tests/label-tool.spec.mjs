@@ -782,6 +782,7 @@ test('an aligned label keeps its place while its lines re-justify', async functi
   await writeLabel(page, 'Dakota');
   await disarmTool(page);
   await clickLabel(page, 0);
+  await turnIconOn(page);
   await setLabelPosition(page, 'n');
   await page.waitForTimeout(150);
   var before = await getLabelBox(page, 0);
@@ -815,6 +816,7 @@ test('the block stays put in every one of the nine positions', async function({p
   await writeLabel(page, 'Dakota');
   await disarmTool(page);
   await clickLabel(page, 0);
+  await turnIconOn(page);
 
   var positions = ['nw', 'n', 'ne', 'w', 'c', 'e', 'sw', 's', 'se'];
   for (var i = 0; i < positions.length; i++) {
@@ -851,6 +853,7 @@ test('an aligned label is re-measured when its text or font changes', async func
   await writeLabel(page, 'Dakota');
   await disarmTool(page);
   await clickLabel(page, 0);
+  await turnIconOn(page);
   await setLabelPosition(page, 'n');
   await page.locator('.text-style-panel .label-align-buttons [data-align="left"]').click();
   await page.waitForTimeout(200);
@@ -922,16 +925,17 @@ test('measurements stay out of the data', async function({page}) {
   await writeLabel(page, 'Dakota');
   await disarmTool(page);
   await clickLabel(page, 0);
-  await setLabelPosition(page, 'ne');
   await page.locator('.text-style-panel .label-align-buttons [data-align="center"]').click();
   await page.waitForTimeout(150);
   await setFieldValue(page.locator('.text-style-panel .label-size-row input'), '18');
   await page.waitForTimeout(250);
 
+  // label-pos is there because the tool centres every label it creates, not
+  // because anything here set one
   var layer = await getLabelLayer(page);
-  expect(layer.fields.sort()).toEqual(['font-size', 'label-align', 'label-pos', 'label-text']);
-  expect(Object.keys(layer.records[0]).sort())
-    .toEqual(['font-size', 'label-align', 'label-pos', 'label-text']);
+  var fields = ['font-size', 'label-align', 'label-pos', 'label-text'];
+  expect(layer.fields.sort()).toEqual(fields);
+  expect(Object.keys(layer.records[0]).sort()).toEqual(fields);
 
   // and the command history is the edits themselves, with no measurement
   // commands chained onto them
@@ -1161,37 +1165,260 @@ test('a selected curve shows a handle on each knot, and dragging one moves it',
     expect(errors).toEqual([]);
   });
 
-// The anchor is one knot rather than several, so it runs through the same
-// machinery; it is here because the grab is measured from the pointer's hover
-// position, and getting that from the dragstart position instead left the
-// anchor unreachable.
-test('an anchored label is moved by dragging its anchor marker',
+// In Fixed mode the text is fixed to its anchor, so dragging the glyphs is
+// dragging the label: the anchor moves and the text goes with it. It runs
+// through the same machinery as a knot drag, because the anchor is one knot;
+// it is here because the grab is measured from the pointer's hover position,
+// and getting that from the dragstart position instead left the label
+// trailing the first move's distance behind the pointer.
+test('an anchored label is moved by dragging its text', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+
+  // the anchor tool is armed on entry to a layer with no labels
+  await clickMap(page, 0.4, 0.45);
+  await page.keyboard.type('Reno');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(120);
+  await disarmTool(page);
+  await clickLabel(page, 0);
+  expect(await getDragMode(page)).toBe('Fixed');
+
+  var before = (await getLabelLayer(page)).shapes[0];
+  await dragBy(page, await getGlyphPoint(page, 0, 0.5), 70, 45);
+  var lyr = await getLabelLayer(page);
+
+  expect(lyr.shapes[0]).not.toEqual(before);
+  expect(lyr.shapes[0].length).toBe(1);
+  // the label moved, rather than its text moving away from it
+  expect(lyr.records[0].dx).toBeUndefined();
+  expect(lyr.records[0]['label-pos']).toBe('c');
+  expect(JSON.stringify(await getSessionHistory(page))).toContain('-update-label');
+  expect(errors).toEqual([]);
+});
+
+test('in Draggable mode the same drag offsets the text from its anchor',
   async function({page}) {
     var errors = collectPageErrors(page);
     await loadFixture(page, FIXTURE);
 
-    // the anchor tool is armed on entry to a layer with no labels
     await clickMap(page, 0.4, 0.45);
-    await page.keyboard.type('Reno');
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(120);
+    await writeLabel(page, 'Reno');
+    await disarmTool(page);
+    await clickLabel(page, 0);
+    await setDragMode(page, 'draggable');
+    var before = (await getLabelLayer(page)).shapes[0];
+
+    await dragBy(page, await getGlyphPoint(page, 0, 0.5), -60, -40);
+
+    var rec = (await getLabelLayer(page)).records[0];
+    // the anchor stayed where it was and the text came off it
+    expect((await getLabelLayer(page)).shapes[0]).toEqual(before);
+    expect(rec.dx).toBeLessThan(0);
+    expect(rec.dy).toBeLessThan(0);
+    // all three properties, not a delta, and the position it replaces is gone
+    expect(rec['text-anchor']).toBe('end');
+    expect(rec['label-pos']).toBeUndefined();
+
+    // one -style, so one undo step and one line of session history
+    expect(await getSessionHistory(page)).toMatch(/-style dx=/);
+    await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
+    await page.waitForTimeout(200);
+    expect((await getLabelLayer(page)).records[0].dx).toBeFalsy();
+    expect(errors).toEqual([]);
+  });
+
+test('the justification follows the text across its anchor', async function({page}) {
+  // Text dragged to the left of its anchor is right-justified, so that a
+  // longer name or a bigger font extends it away from the point it labels
+  // rather than back across it -- which is also what keeps a label off its
+  // symbol when the export font is not the browser's.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+
+  await clickMap(page, 0.45, 0.45);
+  await writeLabel(page, 'Winnemucca');
+  await disarmTool(page);
+  await clickLabel(page, 0);
+  await setDragMode(page, 'draggable');
+
+  await dragBy(page, await getGlyphPoint(page, 0, 0.5), 80, 0);
+  expect((await getLabelLayer(page)).records[0]['text-anchor']).toBe('start');
+  var box = await getLabelBox(page, 0);
+
+  // dragged back across the anchor, and the text is where the pointer left it
+  // rather than half its own width away: changing the anchor moves the block,
+  // so dx is re-expressed against the new one in the same command
+  //
+  // The pointer goes away and comes back first. What a drag takes hold of is
+  // found on hover, and the command's redraw left the pointer sitting on the
+  // label it had just moved without a mousemove to re-test it.
+  await hoverNothing(page);
+  await dragBy(page, await getGlyphPoint(page, 0, 0.5), -160, 0);
+  expect((await getLabelLayer(page)).records[0]['text-anchor']).toBe('end');
+  var after = await getLabelBox(page, 0);
+  expect(Math.abs(after.x - (box.x - 160))).toBeLessThan(2);
+  expect(errors).toEqual([]);
+});
+
+test('the drag mode is the tool\'s and not the label\'s', async function({page}) {
+  // Nothing in the record says which segment is lit: a label with a position
+  // can be dragged or not, and one that has been dragged stays dragged when
+  // the toggle goes back to Fixed. A per-label flag would be a column in the
+  // user's table that nothing else reads.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+
+  await clickMap(page, 0.4, 0.45);
+  await writeLabel(page, 'Reno');
+  await disarmTool(page);
+  await clickLabel(page, 0);
+  await setDragMode(page, 'draggable');
+  await dragBy(page, await getGlyphPoint(page, 0, 0.5), 50, 30);
+  var offset = (await getLabelLayer(page)).records[0];
+  expect(offset.dx).toBeGreaterThan(0);
+
+  // back to Fixed: the label keeps the offset it was dragged to, and the drag
+  // moves the label again
+  await setDragMode(page, 'fixed');
+  var anchor = (await getLabelLayer(page)).shapes[0];
+  await dragBy(page, await getGlyphPoint(page, 0, 0.5), -40, 0);
+  var lyr = await getLabelLayer(page);
+  expect(lyr.shapes[0]).not.toEqual(anchor);
+  expect(lyr.records[0].dx).toBe(offset.dx);
+  expect(lyr.records[0].dy).toBe(offset.dy);
+
+  // and nothing about the mode is written to the layer or to a new label
+  expect(lyr.fields).not.toContain('label-position-mode');
+  expect(await getNewLabelStyle(page)).not.toHaveProperty('label-position-mode');
+  expect(errors).toEqual([]);
+});
+
+test('the position grid is locked to the centre with nothing at the anchor',
+  async function({page}) {
+    // The nine positions place text around something, and there is no answer
+    // to "north-east of what?" on a label that draws nothing at its anchor.
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+
+    await clickMap(page, 0.4, 0.45);
+    await writeLabel(page, 'Reno');
     await disarmTool(page);
     await clickLabel(page, 0);
 
-    var marker = await page.evaluate(function() {
-      var node = document.querySelector('.label-cue-selected .label-cue-anchor');
-      var r = node.getBoundingClientRect();
-      return {x: r.x + r.width / 2, y: r.y + r.height / 2};
-    });
-    var before = (await getLabelLayer(page)).shapes[0];
-    await dragBy(page, marker, 70, 45);
-    var after = (await getLabelLayer(page)).shapes[0];
+    expect(await getDisabledCells(page)).toEqual(
+      ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se']);
+    // the centre stays clickable: text over its own symbol is a real thing to
+    // ask for, and it is where the label already is
+    await setLabelPosition(page, 'c');
+    expect((await getLabelLayer(page)).records[0]['label-pos']).toBe('c');
 
-    expect(after).not.toEqual(before);
-    expect(after.length).toBe(1);
-    expect(JSON.stringify(await getSessionHistory(page))).toContain('-update-label');
+    // a symbol answers the question, and the label moves out from under it
+    await turnIconOn(page);
+    expect(await getDisabledCells(page)).toEqual([]);
+    expect((await getLabelLayer(page)).records[0]['label-pos']).toBe('ne');
+
+    // the icon and the position move together, in one command and so in one
+    // undo step
+    expect(await getSessionHistory(page)).toMatch(/-style icon=.*label-pos='ne'/);
+    await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
+    await page.waitForTimeout(200);
+    var rec = (await getLabelLayer(page)).records[0];
+    expect(rec.icon).toBeFalsy();
+    expect(rec['label-pos']).toBe('c');
     expect(errors).toEqual([]);
   });
+
+test('switching the symbol off takes the placement with it', async function({page}) {
+  // The grid locks back to the centre with nothing at the anchor, so the
+  // position and the offsets go with the symbol. That makes the switch
+  // destructive; being one undoable command is what makes it acceptable.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+
+  await clickMap(page, 0.4, 0.45);
+  await writeLabel(page, 'Reno');
+  await disarmTool(page);
+  await clickLabel(page, 0);
+  await turnIconOn(page);
+  await setLabelPosition(page, 'se');
+  expect((await getLabelLayer(page)).records[0]['label-pos']).toBe('se');
+
+  await page.locator('.text-style-panel .label-toggle').click();
+  await page.waitForTimeout(250);
+  var rec = (await getLabelLayer(page)).records[0];
+  expect(rec.icon).toBeFalsy();
+  expect(rec['label-pos']).toBe('c');
+
+  await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
+  await page.waitForTimeout(200);
+  expect((await getLabelLayer(page)).records[0]['label-pos']).toBe('se');
+  expect(errors).toEqual([]);
+});
+
+test('a dragged label is tethered to its anchor while it moves',
+  async function({page}) {
+    // The offset is what is being edited, and on a label that draws nothing at
+    // its anchor the ring and the line to it are the only things that say what
+    // the text hangs off.
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+
+    await clickMap(page, 0.4, 0.45);
+    await writeLabel(page, 'Reno');
+    await disarmTool(page);
+    await clickLabel(page, 0);
+    // centred, so the box holds the anchor and a ring inside it would say
+    // nothing the box does not
+    expect(await page.locator('.label-cue-anchor').count()).toBe(0);
+    await setDragMode(page, 'draggable');
+
+    var p = await getGlyphPoint(page, 0, 0.5);
+    await page.mouse.move(p.x, p.y);
+    await page.waitForTimeout(80);
+    await page.mouse.down();
+    await page.mouse.move(p.x + 70, p.y - 50, {steps: 8});
+    await page.waitForTimeout(100);
+    expect(await page.locator('.label-cue-tether').count()).toBe(1);
+    expect(await page.locator('.label-cue-anchor').count()).toBe(1);
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+
+    // the line goes when the drag does; the ring stays, because the anchor is
+    // now outside the box and nothing else marks it
+    expect(await page.locator('.label-cue-tether').count()).toBe(0);
+    expect(await page.locator('.label-cue-anchor').count()).toBe(1);
+
+    // and the grid marks where the label roughly belongs, since no cell is lit
+    expect(await getNearestCell(page)).toBe('ne');
+    expect(errors).toEqual([]);
+  });
+
+test('a drag on a label that is not selected pans the map', async function({page}) {
+  // Only a selected label is held; anywhere else a drag over a label has to
+  // stay available for panning, in either mode.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+
+  await clickMap(page, 0.4, 0.45);
+  await writeLabel(page, 'Reno');
+  await disarmTool(page);
+  await clickLabel(page, 0);
+  await setDragMode(page, 'draggable');
+  await page.keyboard.press('Escape'); // gives up the selection
+  await page.waitForTimeout(120);
+  await hoverNothing(page);
+  var before = (await getLabelLayer(page)).shapes[0];
+  var view = await getViewBounds(page);
+
+  await dragBy(page, await getGlyphPoint(page, 0, 0.5), 70, 0);
+
+  var lyr = await getLabelLayer(page);
+  expect(lyr.records[0].dx).toBeUndefined();
+  expect(lyr.shapes[0]).toEqual(before);
+  expect(await getViewBounds(page)).not.toEqual(view);
+  expect(errors).toEqual([]);
+});
 
 test('a knot drag is one undo step', async function({page}) {
   var errors = collectPageErrors(page);
@@ -1218,6 +1445,113 @@ test('a knot drag is one undo step', async function({page}) {
   expect((await getLabelLayer(page)).shapes[0]).toEqual(before);
   expect(errors).toEqual([]);
 });
+
+test('dragging a selected path label slides its text along its curve',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+    await drawPathLabel(page, [[0.15, 0.6], [0.45, 0.55], [0.75, 0.6]], 'SIERRA');
+    await disarmTool(page);
+    await clickGlyph(page, 0, 0.5);
+    var view = await getViewBounds(page);
+    var knots = (await getLabelLayer(page)).shapes[0];
+
+    await dragBy(page, await getGlyphPoint(page, 0, 0.5), 70, 0);
+
+    // the offset is a percentage of the curve, so that editing the curve or
+    // the font afterwards cannot push the text off the end
+    var lyr = await getLabelLayer(page);
+    expect(lyr.records[0]['label-start-offset']).toMatch(/^\d+(\.\d+)?%$/);
+    expect(parseFloat(lyr.records[0]['label-start-offset'])).toBeGreaterThan(50);
+    // the text moved and nothing else did: the curve is where it was, and the
+    // drag did not pan the map out from under it
+    expect(lyr.shapes[0]).toEqual(knots);
+    expect(await getViewBounds(page)).toEqual(view);
+
+    // one command, and so one undo step and one line of history
+    expect(await getSessionHistory(page)).toContain('label-start-offset');
+    await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
+    await page.waitForTimeout(150);
+    expect((await getLabelLayer(page)).records[0]['label-start-offset'])
+      .toBeUndefined();
+    expect(errors).toEqual([]);
+  });
+
+test('dragging a path label across its curve flips it', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  await drawPathLabel(page, [[0.15, 0.6], [0.45, 0.55], [0.75, 0.6]], 'SIERRA');
+  await disarmTool(page);
+  await clickGlyph(page, 0, 0.5);
+  var before = (await getLabelLayer(page)).shapes[0];
+
+  // across the curve rather than along it: the side the pointer is on is the
+  // side the text goes
+  await dragBy(page, await getGlyphPoint(page, 0, 0.5), 0, 60);
+
+  // flipped by reversing the knots, because textPath's own side attribute is
+  // not usable in a browser
+  var after = (await getLabelLayer(page)).shapes[0];
+  expect(after).toEqual(before.concat().reverse());
+  // and no label-side written to go with it
+  expect((await getLabelLayer(page)).records[0]['label-side']).toBeUndefined();
+
+  // one undo step covers the whole flip, knots and placement together
+  await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
+  await page.waitForTimeout(150);
+  expect((await getLabelLayer(page)).shapes[0]).toEqual(before);
+  expect(errors).toEqual([]);
+});
+
+test('a drag on a path label that is not selected pans the map',
+  async function({page}) {
+    // Only a selected label is held; anywhere else a drag over a label has to
+    // stay available for panning.
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+    await drawPathLabel(page, [[0.15, 0.6], [0.45, 0.55], [0.75, 0.6]], 'SIERRA');
+    await disarmTool(page);
+    await hoverNothing(page);
+    var before = (await getLabelLayer(page)).shapes[0];
+    var view = await getViewBounds(page);
+
+    await dragBy(page, await getGlyphPoint(page, 0, 0.5), 70, 0);
+
+    expect((await getLabelLayer(page)).records[0]['label-start-offset'])
+      .toBeUndefined();
+    expect((await getLabelLayer(page)).shapes[0]).toEqual(before);
+    expect(await getViewBounds(page)).not.toEqual(view);
+    expect(errors).toEqual([]);
+  });
+
+test('the context menu flips a path label and carries its placement',
+  async function({page}) {
+    // The drag is undiscoverable on its own -- nothing on screen suggests that
+    // text can be dragged across its own curve -- so the menu offers it too.
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+    await drawPathLabel(page, [[0.15, 0.6], [0.45, 0.55], [0.75, 0.6]], 'SIERRA');
+    await disarmTool(page);
+    await page.evaluate(function() {
+      return window.mapshaper.undoTest.runCommand(
+        '-style text-anchor=start label-start-offset=20% ids=0 target=labels');
+    });
+    await page.waitForTimeout(250);
+    var before = (await getLabelLayer(page)).shapes[0];
+
+    await rightClickGlyph(page, 0, 0.5);
+    await page.locator('.contextmenu-item')
+      .filter({hasText: 'flip to other side of path'}).click();
+    await page.waitForTimeout(250);
+
+    var lyr = await getLabelLayer(page);
+    expect(lyr.shapes[0]).toEqual(before.concat().reverse());
+    // the placement goes round with the path, or the text jumps to the far end
+    // of the curve as it flips
+    expect(lyr.records[0]['label-start-offset']).toBe('80%');
+    expect(lyr.records[0]['text-anchor']).toBe('end');
+    expect(errors).toEqual([]);
+  });
 
 function collectPageErrors(page) {
   var errors = [];
@@ -1303,6 +1637,44 @@ async function getLabelCentre(page, id) {
 async function setLabelPosition(page, pos) {
   await page.locator('.text-style-panel .label-position-grid [data-position="' + pos + '"]').click();
   await page.waitForTimeout(150);
+}
+
+// The positions the grid is refusing, which is all but the centre on a label
+// that draws nothing at its anchor.
+async function getDisabledCells(page) {
+  return page.locator('.text-style-panel .label-position-grid .label-panel-btn.disabled')
+    .evaluateAll(function(nodes) {
+      return nodes.map(function(node) { return node.getAttribute('data-position'); });
+    });
+}
+
+// The cell the grid marks faintly, which is where a dragged label roughly
+// belongs, or null.
+async function getNearestCell(page) {
+  var cells = await page.locator('.text-style-panel .label-position-grid .nearest')
+    .evaluateAll(function(nodes) {
+      return nodes.map(function(node) { return node.getAttribute('data-position'); });
+    });
+  return cells.length == 1 ? cells[0] : null;
+}
+
+// Which of Fixed | Draggable is lit.
+async function getDragMode(page) {
+  return page.locator('.text-style-panel .label-drag-mode-buttons .selected')
+    .textContent();
+}
+
+async function setDragMode(page, mode) {
+  await page.locator('.text-style-panel .label-drag-mode-buttons [data-drag-mode="' +
+    mode + '"]').click();
+  await page.waitForTimeout(150);
+}
+
+// Switches the symbol on, which is also what unlocks the position grid: the
+// nine positions place text around something.
+async function turnIconOn(page) {
+  await page.locator('.text-style-panel .label-toggle').click();
+  await page.waitForTimeout(250);
 }
 
 // What the style panel says its controls will act on.
@@ -1485,7 +1857,8 @@ async function hoverGlyph(page, id, frac) {
   var p = await page.evaluate(function(args) {
     var node = document.querySelector(
       '.mapshaper-svg-symbol[data-id="' + args.id + '"]');
-    var content = node.querySelector('textPath') || node;
+    var content = node.querySelector('textPath') ||
+      (node.tagName == 'text' ? node : node.querySelector('text'));
     var n = content.getNumberOfChars();
     var box = content.getExtentOfChar(Math.min(Math.floor(n * args.frac), n - 1));
     var pt = node.ownerSVGElement.createSVGPoint();
@@ -1547,8 +1920,57 @@ async function getKnotHandles(page) {
   });
 }
 
+// Places a path label and types its text. knots: [[fx, fy], ...] as fractions
+// of the map, the way clickMap() takes them.
+async function drawPathLabel(page, knots, text) {
+  await armTool(page, 'path');
+  for (var i = 0; i < knots.length; i++) {
+    await clickMap(page, knots[i][0], knots[i][1]);
+  }
+  await finishCurve(page);
+  await writeLabel(page, text);
+}
+
+// A point on a label's glyphs, in screen coordinates. The middle of a curved
+// label's bounding box is usually off the text altogether, and only the glyphs
+// are a hit target, so pointing at one of them is how a path label is reached.
+async function getGlyphPoint(page, id, frac) {
+  return page.evaluate(function(args) {
+    var node = document.querySelector(
+      '.mapshaper-svg-symbol[data-id="' + args.id + '"]');
+    // a label with a symbol is a group, so the text is a child of it
+    var content = node.querySelector('textPath') ||
+      (node.tagName == 'text' ? node : node.querySelector('text'));
+    var n = content.getNumberOfChars();
+    var box = content.getExtentOfChar(Math.min(Math.floor(n * args.frac), n - 1));
+    var pt = node.ownerSVGElement.createSVGPoint();
+    pt.x = box.x + box.width / 2;
+    pt.y = box.y + box.height / 2;
+    pt = pt.matrixTransform(node.getScreenCTM());
+    return {x: pt.x, y: pt.y};
+  }, {id: id, frac: frac});
+}
+
+async function clickGlyph(page, id, frac) {
+  var p = await getGlyphPoint(page, id, frac);
+  await page.mouse.click(p.x, p.y);
+  await page.waitForTimeout(150);
+}
+
+// Moves the pointer onto the glyph first: the context menu reads the hit state
+// the pointer left behind rather than testing where the click landed.
+async function rightClickGlyph(page, id, frac) {
+  var p = await getGlyphPoint(page, id, frac);
+  await page.mouse.move(p.x, p.y);
+  await page.waitForTimeout(100);
+  await page.mouse.click(p.x, p.y, {button: 'right'});
+  await page.waitForTimeout(150);
+}
+
 async function dragBy(page, from, dx, dy) {
   await page.mouse.move(from.x, from.y);
+  // a moment on the spot, because what a drag takes hold of is found on hover
+  await page.waitForTimeout(80);
   await page.mouse.down();
   // several steps, so the drag registers as a drag rather than a click
   await page.mouse.move(from.x + dx, from.y + dy, {steps: 8});

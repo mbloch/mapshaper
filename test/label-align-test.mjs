@@ -1,5 +1,5 @@
 import api from '../mapshaper.js';
-import { renderLabel } from '../src/svg/svg-labels.mjs';
+import { renderLabel, getDrawnLabelOffset } from '../src/svg/svg-labels.mjs';
 import { parseLabelAlign, getAlignmentAnchor, getAlignmentShift,
   getMeasuredTextWidth } from '../src/svg/svg-label-align.mjs';
 import { setTextMeasureFunction,
@@ -247,6 +247,53 @@ describe('label-align', function () {
       var str = await svg(LABEL + '-style label-pos=n label-align=left ' +
         'font-size=12');
       assert.ok(!/label-align/.test(str), str);
+    });
+  });
+
+  // What the GUI's Draggable mode starts a drag from: the same numbers the
+  // renderer above draws with, which is why it lives beside it rather than in
+  // the tool.
+  describe('getDrawnLabelOffset()', function () {
+    beforeEach(measuringWhateverTheTestSaid);
+    afterEach(measuringNothing);
+
+    it('resolves a position into px against the label\'s font size', function () {
+      var o = getDrawnLabelOffset({'label-pos': 'e', 'font-size': 20});
+      assert.equal(o.dx, 9); // 0.45em
+      // unrounded: a resolved measurement, which the drag rounds when it
+      // writes one
+      assert.ok(Math.abs(o.dy - 4.6) < 1e-9, o.dy); // 0.23em
+      assert.equal(o['text-anchor'], 'start');
+    });
+
+    it('resolves em offsets against the default size when there is none', function () {
+      assert.equal(getDrawnLabelOffset({'label-pos': 'e'}).dx, 0.45 * 12);
+    });
+
+    it('takes the offsets a label carries over the ones its position implies', function () {
+      var o = getDrawnLabelOffset({'label-pos': 'e', dx: 3, dy: 0});
+      assert.equal(o.dx, 3);
+      assert.equal(o.dy, 0);
+      assert.equal(o['text-anchor'], 'start');
+    });
+
+    it('reports the offset and justification the label is drawn with', function () {
+      // the alignment's correction is part of where the text is, so a drag
+      // that started from dx alone would move it
+      var rec = measured({'label-pos': 'n', 'label-align': 'left'});
+      assert.equal(getDrawnLabelOffset(rec).dx, -40);
+      assert.equal(getDrawnLabelOffset(rec)['text-anchor'], 'start');
+    });
+
+    it('reads an offset in units it cannot convert as zero', function () {
+      assert.equal(getDrawnLabelOffset({dx: '50%'}).dx, 0);
+    });
+
+    it('reports nothing for a label with no offsets at all', function () {
+      var o = getDrawnLabelOffset({'label-text': 'Reno'});
+      assert.equal(o.dx, 0);
+      assert.equal(o.dy, 0);
+      assert.equal(o['text-anchor'], '');
     });
   });
 });

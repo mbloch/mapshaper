@@ -2365,9 +2365,9 @@ layer, wherever the menu is opened from.
 Emptying a label's text still removes it too, which is what `commit()` does
 when a session ends with no glyphs left.
 
-`labels` ("position labels") stays: it drags a label against a fixed anchor to
-set `dx`/`dy`, which the label tool has no gesture for. See "Proposed: the tool
-takes over positioning" below.
+`labels` ("position labels") has nothing left that the label tool cannot do —
+its drag against a fixed anchor is the Draggable mode below — so it can go
+whenever its removal is worth the churn. See "The tool takes over positioning".
 
 Two places still branch on the mode to hold that line: `selectStyleFeature()`
 gives label mode its own plain-click rule, and the yellow halo is applied only
@@ -2377,12 +2377,12 @@ outside label mode. Both branches go away with `labels`.
 `eventIsEnabled()`) need explicit entries for the new mode; it needs both drag
 (moving anchors and knots) and click (selecting and entering edit).
 
-### Proposed: the tool takes over positioning
+### The tool takes over positioning
 
-*Designed, not built.* The one thing `labels` still does that the label tool
-cannot is offset a label's text from a **fixed** anchor. The tool's drags move
-the anchor itself and the nine-position grid reaches nine places around it, so
-there is no way to nudge a name clear of the river it collides with.
+*Built.* The one thing `labels` did that the label tool could not was offset a
+label's text from a **fixed** anchor. The tool's drags moved the anchor itself
+and the nine-position grid reached nine places around it, so there was no way to
+nudge a name clear of the river it collided with.
 
 This lands alongside a reorganization of the panel into **Text**, **Icon**,
 **Label position** and **Saved styles** sections; only the position part is
@@ -2395,7 +2395,7 @@ selection".
 
 #### Fixed and Draggable
 
-**The Position row gains a two-segment toggle, `Fixed | Draggable`, and the
+**The Position row has a two-segment toggle, `Fixed | Draggable`, and the
 nine-position grid stays live in both.** The names say what a drag on a label
 does:
 
@@ -2566,15 +2566,44 @@ already in effect look like a change that did nothing.
   them all to the same absolute offset instead of nudging each by its own delta;
   a relative group nudge needs `-each` and is out of scope.
 - A hairline from the anchor to the text box while dragging, in the selection
-  colour. The offset is what is being edited, and the legacy mode drew nothing
-  to show it.
+  colour — `LabelSelection.setTether()`, clamped to the edge of the box so that
+  it stops at the text rather than crossing it. The offset is what is being
+  edited, and the legacy mode drew nothing to show it.
 
 The panel shows **no `x`/`y` values** for a dragged label: the map is the
 readout. What that costs is precise and keyboard-reachable adjustment, which an
 arrow-key nudge on a selected label recovers — outside a typing session, where
 the arrows move the caret. And the grid, which has no cell lit once a label has
 been dragged, draws the **nearest position faintly**: it says roughly where the
-label belongs, and marks the cell that puts it back.
+label belongs, and marks the cell that puts it back. Nearest is measured
+between text centres rather than between offsets, because `dx=-5` is on
+opposite sides of the anchor depending on the justification it is paired with —
+`getTextCentreOffset()` is what makes two offsets comparable.
+
+Three pieces carry it, and the arithmetic is in the two that have unit tests:
+
+- `getDrawnLabelOffset()` in `svg-labels.mjs` materializes the offsets, in px,
+  through the renderer's own `resolveLabelPosition()`. Reimplementing the
+  fallbacks in the GUI is what would make the text jump on the first pixel of a
+  drag the moment the two drifted apart.
+- `gui-label-offset.mjs` holds the drag math: `getOffsetDragValues()`,
+  `getAnchorForCentre()`, `getTextCentreOffset()` and `getNearestPosition()`,
+  with no DOM or model in sight.
+- `getLabelOffsetCommand()` in `gui-label-commands.mjs` writes the one `-style`
+  on release. In between, `previewOffset()` moves the `x`, `y` and
+  `text-anchor` attributes of the drawn label directly, the same way a path
+  label's slide previews itself.
+
+**A label that carries a `label-align` keeps it, and the drag writes
+`text-anchor=start`.** The alignment has already answered the justification
+question — the renderer honours it over any `text-anchor` and corrects `x` by
+the block's width to hold the text still while its lines re-justify — so
+`start` is both the anchor whose `dx` is the left edge itself and the value that
+would leave the label where it is if the alignment were later removed.
+
+A drag works in the label's own coordinate space, inside its symbol group,
+which is what `dx` and `dy` are measured in: pointer movement is divided by the
+symbol scale on the way in, or a drag would overshoot at any scale but 1.
 
 #### `-style` learns to unset a property
 
@@ -2626,8 +2655,10 @@ both are one undo step.
   hand-placed label loses its placement. That makes the icon toggle
   destructive; being one undoable command is what makes it acceptable.
 
-Landing all of this retires the `labels` mode, and with it the two branches
-above: `selectStyleFeature()`'s label-mode click rule and the halo condition.
+This is what `labels` was still needed for, so retiring that mode is now only a
+removal: the two branches above go with it — `selectStyleFeature()`'s
+label-mode click rule and the halo condition — along with
+`prepareRecordForDrag()`, which mutates a record instead of running a command.
 
 ### Sliding and flipping are drags, not controls
 
@@ -2636,23 +2667,44 @@ text starts along the curve, and which side of the curve it sits on. Both are
 **drags on the text** rather than panel controls — the Illustrator model, where
 the brackets on type-on-a-path are dragged along and across it.
 
-The gesture is free to take. Only a selected label draws handles and only a
-handle takes a drag, with everything else over a label falling through so that
-the map still pans, so dragging a path label's glyphs does nothing today. The
-Fixed/Draggable toggle and `label-pos` do not apply to a curve either, so
-branching drag-on-glyphs by label kind follows the split `getStyleFields()` and
-`shapeIsPathLabel()` already make: on a selected anchored label the drag is the
-Fixed/Draggable gesture, on a selected path label it slides and flips. Keeping
-it to *selected* labels is what leaves the map pannable with the pointer over a
-curved label the user has not picked up.
+The gesture was free to take. Only a selected label draws handles and only a
+handle took a drag, with everything else over a label falling through so that
+the map still pans. The glyphs of a *selected* path label are now a handle as
+well — `findDraggableText()` in `gui-label-tool2.mjs`, which answers with a
+feature id only when the label under the pointer is in the selection and has
+more than one knot. Keeping it to selected labels is what leaves the map
+pannable with the pointer over a curved label the user has not picked up, and
+keeping it to path labels leaves the anchored ones to the Fixed/Draggable
+gesture, the same split `getStyleFields()` and `shapeIsPathLabel()` already
+make. A knot handle under the pointer outranks the glyphs: both are grabbable,
+and the knot is the smaller target.
 
-**Along the curve → `label-start-offset`.** Project the pointer onto the
-densified curve, take the arc-length fraction and write it as a percentage.
-`getCurveLength()` and the densification are already there, and `startOffset` is
-supported everywhere, so the drag previews live. A percentage rather than a
-length so that editing the curve or the font afterwards cannot push the text off
-the end, and clamped to 0–100% — an offset in range is still no guarantee that
-the text *fits*, which is what the fit states report.
+Like the knot handles, what the drag takes hold of is found **on hover** rather
+than at `dragstart`. For a knot that is because the pointer has already moved
+off the handle by the time the drag begins; here it decides the *side* as well,
+and the first mouse move of a drag away from the glyphs has usually crossed the
+curve already. Measured from there, the pointer would begin the drag on the far
+side and a flip could never happen — which is exactly what it did until
+`beginTextDrag()` started projecting the last hovered position instead.
+
+**Along the curve → `label-start-offset`.** The pointer is projected onto the
+curve, flattened once at the start of the drag (`projectOntoPolyline()` in
+`gui-label-path-drag.mjs`), and the arc-length fraction is written as a
+percentage. A percentage rather than a length so that editing the curve or the
+font afterwards cannot push the text off the end, and clamped to 0–100% — an
+offset in range is still no guarantee that the text *fits*, which is what the
+fit states report.
+
+The offset moves **with** the pointer rather than to it: the drag records where
+the label's offset was and how far along the curve the pointer was, and adds
+the difference. Grabbing a label by its last word would otherwise jerk its
+anchor under the pointer on the first move. That needs a starting offset, and
+the label usually has none to give — a label this tool placed is where its
+`text-anchor` puts it and carries no offset at all — so `getStartOffsetPct()`
+falls back to the same default the renderer uses. A value that is *there* but
+not a percentage is the third case: a length cannot be turned into a fraction
+without knowing the curve's length in the units it is written in, so the
+pointer's own position stands in and the first move picks the text up.
 
 This is also why an alignment control is not made redundant by the drag.
 `getDefaultStartOffset()` derives `0%`, `50%` or `100%` from `text-anchor`, so
@@ -2675,16 +2727,78 @@ end of the curve as it flips:
 
 The two are one gesture, not two: the pointer's projection onto the curve gives
 the offset, and the sign of the cross product of the curve tangent with the
-pointer's offset from it gives the side. Crossing the curve mid-drag flips the
-preview, and the release commits whatever is showing — one `-style` for the
-offset, plus one `-update-label` if the side changed.
+pointer's offset from it gives the side. Which sign means which side does not
+matter, because the only question asked of it is whether the pointer is still
+on the side it started from. Crossing the curve mid-drag flips the preview, and
+the release commits whatever is showing.
+
+Both commands go in **one command string**, which the console runs as a single
+transaction: `-style label-start-offset=… [text-anchor=…] ids=N` for the
+placement, followed by `-update-label ids=N coordinates=…` when the knots have
+turned around. That makes a flip one undo step and one line of session history,
+and leaves no state in which the knots have reversed but the text has not. A
+slide is the `-style` alone. `text-anchor` is written only when the flip
+actually changes it, so a centred label — whose anchor is its own opposite —
+does not gain a column for a property it never had.
+
+**The preview is three attributes, not a redraw.** A knot drag rebuilds the
+symbol layer on every mouse move because it changes the baseline; this one
+leaves the curve exactly where it is and changes only where the text sits on it
+and which way it runs. So `previewTextPlacement()` writes `startOffset` on the
+`<textPath>`, `text-anchor` on the `<text>`, and — for a flip — the reversed
+`d` on the `<defs>` path the label shares with its selection cue, and the
+browser re-lays the glyphs out from those alone. The data is not touched at
+all, which is a second difference from the knot drag: that one previews by
+swapping a copy of the knots into the display shapes, which the data layer can
+share, so it has to roll that back before the command runs or undo gets a step
+that undoes nothing.
+
+**This preview is not rolled back on release**, and that is a correction: it
+was, at first, by symmetry with the knot drag. But the knot drag's rollback is
+invisible — swapping the knots back does not ask for a redraw, so nothing
+changes on screen until the command's own redraw arrives — whereas here the
+preview *is* the rendered markup, and putting the old attributes back drew the
+label at its old offset for the frame or two before the command landed. That
+read as the text flashing somewhere else along the curve on every release.
+Sampling `startOffset` per animation frame across a release showed it exactly:
+two frames at the pre-drag value between the drag and the redraw. Since the
+preview never touched the data there is nothing to take back, so the rollback
+is now reached only from the command's error path — the one case where no
+redraw comes to replace what the drag drew.
+
+The reversed path is built by reversing the **coordinates** rather than the
+knots, so that it keeps the origin its symbol group is translated to — the
+first knot. The committed version stores the knots the other way round and
+translates to the other end, and renders identically. That it renders
+identically at all is a property of the fit: Hobby's curl conditions are the
+same at both ends of a run, so reversing the knots draws the same curve
+backwards (`test/curve-fit-test.mjs`, 'reversal').
 
 **Discoverability is what this costs.** Nobody guesses that text is dragged
-across its own curve, and there are no brackets drawn to suggest it. Two
-mitigations, neither of which needs panel space: the flipped baseline is ghosted
-as the pointer crosses the curve, in the treatment "Ghosting the curve" already
-defines, so the gesture explains itself once begun; and **flip to other side of
-path** goes in the right-click menu, where "delete label" already lives.
+across its own curve, and there are no brackets drawn to suggest it. So **flip
+to other side of path** is in the right-click menu too, where "delete label"
+already lives; `getFlipAction()` builds the same command the drag does, from
+the label's stored placement rather than from a pointer. It is offered on a
+path label that is not being typed into — during a text session the text is in
+the editor rather than in the feature, and the command would rebuild the layer
+underneath it.
+
+The other mitigation this section proposed, ghosting the flipped baseline as
+the pointer crosses, turned out to be unnecessary: a selected label already has
+its curve stroked by the selection cue, and the text itself previews the flip,
+so the gesture explains itself from the first move without a second curve being
+drawn.
+
+**A note on why the offset had to stop being reported as an error.** A style
+value with no type rule is guessed at: if it looks like it might be an
+expression it is compiled, and a compile or runtime failure means it was a
+literal after all. The guess was being *reported* — `stop()` prints in the CLI
+and opens an alert in the GUI — so a dragged offset of `59.77%` put an error
+popup on screen over a placement that had in fact been applied. (Any style
+value containing a `.` or a `-` did: a label typed as "Saint-Denis" too.)
+`parseStyleExpression()` now compiles with `quiet`, which makes the expression
+compiler throw instead of reporting, since the answer to a question is not an
+error.
 
 ### Curvature tool state machine
 
@@ -2849,7 +2963,7 @@ The panel is wider than the other style panels (216px against 185px) because of
 those pairs: at 185px the narrow column is narrower than its own caption, and
 "Letter spacing" was clipped. It covers more of the map, which is what broke
 three browser tests — they clicked "empty map" at a point the panel had grown
-over, and the click landed on *Save preset*, whose prompt then swallowed
+over, and the click landed on *Save*, whose prompt then swallowed
 everything the test did next. `clickMap()` now refuses a point inside the
 panel's box and says so, rather than failing thirty seconds later somewhere
 else.
@@ -3263,57 +3377,90 @@ have abandoned. Both properties go in the `-add-label` declaration and in
 
 #### Saved styles is an apply menu, not a selection
 
-The Presets row becomes **Saved styles**, with two controls: a menu that applies
-a style and a button that saves the current one. The menu shows what it is for
-rather than what was last chosen — "Apply saved style", before and after it
-closes.
+The Presets row is now **Saved styles**, a section of the panel headed like
+Text and Icon, holding two controls: a menu that applies a style and a button
+that saves the current one. The menu shows what it is for rather than what was
+last chosen — "Apply style", before and after it closes.
 
-That simplifies behaviour and not just appearance. `StylePresetControl` applies
-a style on `change` but goes on displaying the one applied, so the display has
-to be walked back whenever a style is then edited by hand:
-`presetControl.clearSelection()` is called from five places across the label and
-layer panels, each behind a `preservePreset` flag, so that picking a font does
-not leave the menu claiming a preset the labels no longer match. With nothing
-displayed there is no claim to keep honest, and the five calls, the flag and
-`clearSelection()` itself all go.
+The wording is split between the three of them rather than repeated in each.
+The heading says what these are, so the menu does not have to: "Apply saved
+style" said "saved" twice in two inches, and the shorter label leaves the menu
+narrower, which is where the style names go. The button is "Save current"
+rather than "Save", which left the reader to work out what was being saved —
+in a panel over a map, above a *Save current* that might plausibly have meant
+the file.
 
-**Deleting moves into the menu, one small button per row**, since a Delete
-button outside it would refer to nothing on screen. This is the part that costs
-something: an `<option>` holds text and nothing else, so a per-row button means
-the native `<select>` becomes a menu of divs.
+The two sit side by side where they fit and stack where they do not, which is
+the difference between the two panels: the label panel is 216px and the layer
+panel 185px, and both labels fit on one line only in the first. The menu's
+`flex-basis` is `max-content`, so it asks for the width its own label needs and
+the row wraps exactly when the pair will not fit — rather than a width written
+once per panel, which would have to be revisited every time either label
+changed.
 
-That buys one thing. It **drops the panel's focus exception for this control**:
-a native menu is drawn by the OS and closes the instant its element is blurred,
+That simplified behaviour and not just appearance. The old control applied a
+style on `change` and then went on displaying it, so the display had to be
+walked back whenever a style was edited by hand: `clearSelection()` was called
+from five places across the label and layer panels, each behind a
+`preservePreset` flag that told a style command whether it came from the menu or
+from a font being picked. With nothing displayed there is no claim to keep
+honest, and the five calls, the flag and `clearSelection()` itself are gone.
+
+**Deleting moved into the menu, one small button per row**, since a Delete
+button outside it would refer to nothing on screen. That is what cost the
+native `<select>`: an `<option>` holds text and nothing else, so a per-row
+button means a menu of divs (`gui-style-preset-control.mjs`).
+
+The gain is that it **drops the panel's focus exception for this control**: a
+native menu is drawn by the OS and closes the instant its element is blurred,
 which is why the caret must not be handed back on the click that opens one (see
-"Keeping the caret while the panel is used"). A div menu refuses focus like the
-position grid, so the ordinary rule covers it. The font selects stay native, so
-the exception stays for them.
+"Keeping the caret while the panel is used"). The div menu never takes the caret
+in the first place, so the ordinary rule covers it. The font menus stay native,
+so the exception stays for them.
 
-It costs two:
+What it costs is that the states a `<select>` expressed in markup have to be
+drawn and closed by hand:
 
-- **Keyboard behaviour, which was free.** Up, Down, Enter, Escape and type-ahead
-  have to be written. Delete and Backspace on the highlighted row are the
-  keyboard route to that row's button, which would otherwise be reachable only
-  with a pointer.
-- **Empty and disabled states have to be drawn** rather than expressed as a
-  disabled `<option>`: "No saved styles" as an inert row, and a menu that will
-  not open while the panel's controls are off.
+- **"No saved styles" is an inert row** rather than a disabled `<option>`, so
+  that an empty menu still says why it is empty, and the menu does not open at
+  all while the panel's controls are off.
+- **Escape and a click outside close it**, from two document listeners in the
+  module rather than one per control. Escape is captured at the document, ahead
+  of the GUI's own keydown listener, and stops there — in label mode the same
+  key ends the editing session, and closing a menu should not also do that.
 
-The delete button appears on hover or keyboard focus of its row, right-aligned,
-with the row highlight stopping short of it so that applying and deleting read
-as two targets. Hiding it is the opposite of what the size fields do with their
-steppers, and the trade differs in both directions: those buttons are the
-primary affordance of a frequently used control and compete for space with the
-number being read, while this is a rare destructive action at the empty end of a
-row, in a menu that exists only while it is open — and a destructive action is
-better for waiting until intent is shown.
+Keyboard navigation is not among the costs, because there is none to write: the
+interface is pointer-only, and no custom control carries a tabindex (see the
+focus note in `page.css`).
+
+The delete button appears on hover of its row, right-aligned, with the row
+highlight stopping short of it so that applying and deleting read as two
+targets. It is hidden by `visibility` rather than left out of the layout, so a
+name is the same width whether or not the pointer is on it. Hiding it at all is
+the opposite of what the size fields do with their steppers, and the trade
+differs in both directions: those buttons are the primary affordance of a
+frequently used control and compete for space with the number being read, while
+this is a rare destructive action at the empty end of a row, in a menu that
+exists only while it is open — and a destructive action is better for waiting
+until intent is shown.
 
 **The confirmation stays.** Saved styles live in `localStorage` through
 `GUI.getSavedValue()`, outside the command pipeline, so deleting one cannot be
 undone and `showPrompt()` is all there is between a misclick and a lost style.
+The menu closes before the prompt opens, rather than sitting behind a dialog
+that is about one of its rows.
+
+The menu list is at least as wide as the button and wider if the names need it,
+up to a limit. The button is only as wide as the space left beside *Save
+current*, and a style's name is the thing being read; nothing clips a menu
+hanging over the map.
 
 `StylePresetControl` is shared with the layer style panel, which gets the same
-two-control row.
+two-control row. The field measurements it styles itself from
+(`--label-field-height` and friends) moved from `.text-style-panel` up to
+`.label-style-panel` for that reason, and the menu's arrow is the one the
+native `<select>`s use — `--label-menu-chevron`, a drawn stroke rather than a
+filled triangle, which is lighter than the text beside it.
 
 ### Why the panel can take focus
 
@@ -3377,6 +3524,9 @@ one undo step reverses one label's text rather than one keystroke.
 | In-place editor (session, DOM, events) | `src/gui/gui-label-editor.mjs` (new) |
 | Caret and selection geometry (pure) | `src/gui/gui-label-caret.mjs` (new) |
 | Knot handle hit-testing (pure) | `src/gui/gui-label-knots.mjs` (new) |
+| Sliding and flipping a path label (pure) | `src/gui/gui-label-path-drag.mjs` (new) |
+| Finding a label's baseline in the markup | `getLabelPathNode()` in `src/gui/gui-svg-symbols.mjs` |
+| "flip to other side of path" menu item | `src/gui/gui-context-menu.mjs` (`e.flipLabel`) |
 | Label text forms and caret indexes (pure) | `src/gui/gui-label-text.mjs` (new) |
 | "Is a label" vs "has label text" | `src/svg/svg-feature-utils.mjs` |
 | Typing focus detection | `src/gui/gui-lib.mjs` (`GUI.getInputElement`) |
@@ -3773,6 +3923,18 @@ And in `browser-tests/label-editing.spec.mjs`:
 - A path label typed along its curve with a leaning caret, Enter committing
   instead of adding a line, and a click just off the glyphs reaching the label
   through the thickened baseline instead of starting a new curve.
+- Dragging a selected path label's glyphs along its curve: `label-start-offset`
+  stored as a percentage, the curve and the view both left where they were, and
+  one history entry and one undo for the gesture. That the same drag on a label
+  that is **not** selected pans the map instead, writing nothing.
+- Dragging across the curve: the knots reversed, no `label-side` written, and
+  one undo step covering the whole flip. The placement it carries across is
+  asserted through the menu item rather than the drag, where the values are
+  exact: `20%` and `start` become `80%` and `end`.
+- The arithmetic under both, in `test/gui-label-path-drag-test.mjs`: projection
+  onto a polyline, the offset following the pointer, what a flip does to an
+  offset and an anchor, and the fallbacks for a label with no offset or one
+  written in units this tool cannot read.
 
 Still to write:
 
@@ -3788,18 +3950,13 @@ Still to write:
   than hidden, and stays selectable.
 - Run the editing assertions against WebKit as well as Chromium, since WebKit
   is the engine whose char-count behavior differs.
-- Dragging a selected path label's glyphs along its curve: `label-start-offset`
-  stored as a percentage, the text drawn at the new offset, and one history
-  entry and one undo for the whole gesture. That the same drag on a label that
-  is **not** selected pans the map instead.
-- Dragging across the curve: the knot order reversed, `label-start-offset`
-  replaced by its complement and `text-anchor`'s ends swapped, so the text keeps
-  its place along the curve while changing sides. That no `label-side` is
-  written, and — the reason for that — that the flip is visible in Chromium.
+- That a flip is visible in the browser — the reason for reversing the knots
+  rather than writing `label-side`. The current tests assert the data and the
+  markup; the rendering was checked by eye.
 - Icon opacity: turning the icon on writes `icon-opacity`, so setting the text
   to 50% leaves the icon at the opacity the panel shows for it. That a `ring`
   fades too, which a `fill-opacity` would not have done.
-- Saved styles: the menu applies a style and still reads "Apply saved style"
+- Saved styles: the menu applies a style and still reads "Apply style"
   afterwards; a row's delete button removes that style and only that style, and
   the confirmation can be declined; editing a style by hand leaves the menu
   alone, since there is no longer anything to walk back; and the menu leaves the
