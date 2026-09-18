@@ -49,11 +49,11 @@ export function updateLabel(targetLayers, dataset, opts) {
   // knots and would otherwise keep a handle on the layer's own arrays.
   lyr.shapes[id] = coords.map(function(p) { return [p[0], p[1]]; });
   markLayerChanged(lyr, {operation: OPERATION, unit: 'shapes'});
-  // label-text-width is deliberately left alone. It measures the *text*, and
-  // moving a knot changes the length of the path instead; the fit check
-  // compares the two at render time, measuring the curve as it then stands. So
-  // a move can turn a fitting label into an overflowing one without the
-  // stored measurement going stale.
+  // Nothing about the label's text is touched, and nothing needs to be: a text
+  // measurement describes the *text*, and moving a knot changes the length of
+  // the *path*. The fit check compares the two at render time, against the
+  // curve as it then stands, so a move can turn a fitting label into an
+  // overflowing one with no measurement going out of date.
 }
 
 // Which feature to move. One coordinate list can only describe one label, so

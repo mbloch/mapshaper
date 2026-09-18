@@ -60,15 +60,11 @@ describe('mapshaper-update-label.mjs', function () {
       assert.deepEqual(features[1].geometry.coordinates, [9, 9]);
     });
 
-    it('properties are untouched, including a stored text measurement', async function () {
+    it('properties are untouched', async function () {
       var out = await run('-add-label coordinates=0,0,10,8,20,0 text=Ridge ' +
-        'font-size=14 text-width=40 -update-label ids=0 coordinates=0,0,10,9,20,0');
+        'font-size=14 fill=red -update-label ids=0 coordinates=0,0,10,9,20,0');
       var d = feature(out).properties;
-      assert.equal(d['label-text'], 'Ridge');
-      assert.equal(d['font-size'], 14);
-      // the measurement describes the text, which a move does not change; the
-      // fit check re-measures the path instead
-      assert.equal(d['label-text-width'], 40);
+      assert.deepStrictEqual(d, {'label-text': 'Ridge', 'font-size': '14', fill: 'red'});
     });
 
     // Shapes are rewritten in place rather than re-imported, so this guards

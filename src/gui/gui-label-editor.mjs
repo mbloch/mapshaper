@@ -342,8 +342,9 @@ export function LabelEditor(gui, ext) {
   function getPendingRecord(o) {
     var rec = Object.assign({}, o.pending.getStyle());
     rec['label-text'] = encodeLabelText(o.text);
-    // No need to expand label-pos here: the renderer resolves it, so a pending
-    // label is positioned by the same lookup as a committed one.
+    // No need to expand label-pos here, or to measure its text: the renderer
+    // resolves the position and asks for the width it needs, so a pending
+    // label is laid out by exactly the same code as a committed one.
     return rec;
   }
 

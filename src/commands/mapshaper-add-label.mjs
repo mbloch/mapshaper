@@ -11,7 +11,6 @@ import {
 import {
   isSupportedSvgStyleProperty, parseLabelPosition, parseStyleLiteral
 } from '../svg/svg-properties';
-import { getLabelTextHash } from '../svg/svg-label-fit';
 
 cmd.addLabel = addLabel;
 
@@ -27,8 +26,7 @@ var RESERVED_OPTIONS = {
   no_replace: true,
   properties: true,
   target: true,
-  text: true,
-  text_width: true
+  text: true
 };
 
 export function addLabel(targetLayers, targetDataset, opts) {
@@ -178,17 +176,6 @@ function getLabelProperties(opts, knotCount) {
     warn('Ignoring label-pos on a label with', knotCount, 'points.',
       'Use label-start-offset= and text-anchor= to place text along a path.');
     delete d['label-pos'];
-  }
-
-  if (opts.text_width !== undefined) {
-    if (opts.text_width >= 0 === false) {
-      stop('Invalid text-width parameter:', opts.text_width);
-    }
-    d['label-text-width'] = opts.text_width;
-    // Fingerprint the values the width describes, so that a later
-    // -style label-text= or -style font-size= invalidates it and export falls
-    // back to drawing the label rather than dropping it on a stale number.
-    d['label-text-hash'] = getLabelTextHash(d);
   }
   return d;
 }

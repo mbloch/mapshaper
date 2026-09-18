@@ -320,37 +320,12 @@ describe('mapshaper-add-label.mjs', function () {
     });
   });
 
-  describe('text-width=', function () {
-    it('is stored as label-text-width', async function () {
-      var out = await run("-add-label coordinates=0,0,9,9 text=x text-width=88.5");
-      assert.equal(geojson(out).features[0].properties['label-text-width'], 88.5);
-    });
-
-    it('rejects a negative width', async function () {
-      await assert.rejects(
-        () => run("-add-label coordinates=0,0 text=x text-width=-5"),
-        /Invalid text-width/);
-    });
-
-    it('is fingerprinted, so a later text change invalidates it', async function () {
-      var a = await run("-add-label coordinates=0,0,9,9 text=x text-width=88.5");
-      var b = await run("-add-label coordinates=0,0,9,9 text=y text-width=88.5");
-      var hashA = geojson(a).features[0].properties['label-text-hash'];
-      assert.ok(hashA, 'a hash is written alongside the width');
-      assert.notEqual(hashA, geojson(b).features[0].properties['label-text-hash']);
-    });
-
-    it('the fingerprint also covers the font properties', async function () {
-      var a = await run("-add-label coordinates=0,0,9,9 text=x text-width=88.5");
-      var b = await run("-add-label coordinates=0,0,9,9 text=x text-width=88.5 font-size=20");
-      assert.notEqual(geojson(a).features[0].properties['label-text-hash'],
-        geojson(b).features[0].properties['label-text-hash']);
-    });
-
-    it('no width means no fingerprint', async function () {
-      var out = await run("-add-label coordinates=0,0,9,9 text=x");
-      assert.equal(geojson(out).features[0].properties['label-text-hash'], undefined);
-    });
+  it('rejects text-width=, which is no longer a thing a label carries', async function () {
+    // a text measurement is the app's, not the user's: it lives in a cache
+    // keyed by the text and the font (svg-label-metrics.mjs)
+    await assert.rejects(
+      () => run("-add-label coordinates=0,0,9,9 text=x text-width=88.5"),
+      /unexpected parameters: text-width/);
   });
 
   describe('coordinate validation', function () {
@@ -469,14 +444,6 @@ describe('mapshaper-add-label.mjs', function () {
   // the GUI edits labels by emitting -style, so the new properties have to be
   // settable that way too
   describe('-style can set the new properties', function () {
-    it('label-text-width and label-text-hash', async function () {
-      var out = await run("-add-label coordinates=0,0,5,5 text=x " +
-        "-style label-text-width=120 label-text-hash=abc123");
-      var p = geojson(out).features[0].properties;
-      assert.equal(p['label-text-width'], 120);
-      assert.equal(p['label-text-hash'], 'abc123');
-    });
-
     it('dominant-baseline, which was previously unsettable', async function () {
       var out = await run("-add-label coordinates=0,0 text=x " +
         "-style dominant-baseline=central");

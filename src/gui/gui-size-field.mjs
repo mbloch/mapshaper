@@ -1,7 +1,7 @@
 import { El } from './gui-el';
 
 // A number field with a stepper attached to its right edge: type a size, click
-// − or +, or use the arrow keys while the field has focus. Each covers a
+// the stepper's arrows, or use the arrow keys while the field has focus. Each covers a
 // different way a size is really chosen -- typed when it is known, stepped when
 // it is being judged against the map, keyboard when the hand is already in the
 // field. The panel's sizes were display-only spans with a −/+ pair, so the only
@@ -25,9 +25,9 @@ export function SizeField(parent, opts) {
   var box = El('div').addClass('size-field').appendTo(parent);
   var input = El('input').attr('type', 'text').addClass('size-field-input').appendTo(box);
   var stepper = El('div').addClass('size-field-stepper').appendTo(box);
-  // + above −, the way a stepper is read
-  var plusBtn = makeStepButton(stepper, '+', 'size-field-up');
-  var minusBtn = makeStepButton(stepper, '−', 'size-field-down');
+  // Up above down, the way a stepper is read
+  var plusBtn = makeStepButton(stepper, 1, 'size-field-up');
+  var minusBtn = makeStepButton(stepper, -1, 'size-field-down');
   var shown = ''; // what the field was last told to display
   var dirty = false; // holds typing that has not been committed
   var disabled = false;
@@ -70,13 +70,17 @@ export function SizeField(parent, opts) {
     e.preventDefault();
   });
 
-  function makeStepButton(parent, label, className) {
+  // Triangles rather than + and −, which read as arithmetic on the value:
+  // these step to the next size, and one of them is at the end of its range as
+  // often as not.
+  function makeStepButton(parent, dir, className) {
+    var arrow = dir > 0 ? 'M4.5 1.1L7.5 4.9H1.5z' : 'M4.5 4.9L1.5 1.1h6z';
     return El('div')
       .addClass('label-panel-btn size-field-btn')
       .addClass(className)
       .attr('role', 'button')
       .appendTo(parent)
-      .text(label);
+      .html('<svg class="size-field-arrow" viewBox="0 0 9 6"><path d="' + arrow + '"></path></svg>');
   }
 
   function step(delta) {

@@ -13,7 +13,8 @@
 // so the list is checked rather than assumed.
 export var NEW_LABEL_STYLE_FIELDS = [
   'font-family', 'font-size', 'font-style', 'font-weight', 'font-stretch',
-  'letter-spacing', 'line-height', 'text-anchor', 'dominant-baseline',
+  'letter-spacing', 'line-height', 'text-anchor', 'label-align',
+  'dominant-baseline',
   'label-pos', 'label-side', 'label-start-offset', 'dx', 'dy',
   'fill', 'opacity', 'css', 'class',
   'icon', 'icon-size', 'icon-color', 'icon-opacity'

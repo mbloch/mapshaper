@@ -12,11 +12,14 @@ import * as SvgLabels from './svg/svg-labels';
 import * as SvgSymbols from './svg/svg-symbols';
 import * as SvgLabelPaths from './svg/svg-label-paths';
 import * as SvgLabelFit from './svg/svg-label-fit';
+import * as SvgLabelAlign from './svg/svg-label-align';
+import * as SvgLabelMetrics from './svg/svg-label-metrics';
 import * as SvgFeatureUtils from './svg/svg-feature-utils';
 
 internal.svg = Object.assign({}, SvgStringify, SvgPathUtils, GeojsonToSvg,
   SvgFeatureUtils,
-  SvgLabels, SvgSymbols, SvgLabelPaths, SvgLabelFit);
+  SvgLabels, SvgSymbols, SvgLabelPaths, SvgLabelFit, SvgLabelAlign,
+  SvgLabelMetrics);
 
 import Dbf from './shapefile/dbf-writer';
 import DbfReader from './shapefile/dbf-reader';

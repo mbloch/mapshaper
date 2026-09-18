@@ -4,6 +4,7 @@ import { ClickText2 } from './gui-elements';
 import { internal } from './gui-core';
 import { runGuiEditCommand } from './gui-edit-command';
 import { quoteCommandValue } from './gui-command-utils';
+import { parseOpacityValue, formatOpacityPct } from './gui-style-values';
 
 var defaultCircleRadius = 0;
 var defaultCreatedCircleRadius = 3;
@@ -585,21 +586,10 @@ export function PointStyleTool(gui) {
     control.chit.css('background-color', isHexColor(color) ? color : 'transparent');
   }
 
-  function parseOpacityValue(str) {
-    var pct = Number(String(str).replace('%', '').trim());
-    if (!isFinite(pct)) return null;
-    return Math.max(0, Math.min(100, pct)) / 100;
-  }
-
   function parsePositiveNumber(str) {
     if (String(str).trim() === '') return null;
     var val = Number(String(str).trim());
     return isFinite(val) && val >= 0 ? val : null;
-  }
-
-  function formatOpacityPct(val) {
-    val = Number(val);
-    return isFinite(val) ? Math.round(Math.max(0, Math.min(1, val)) * 100) + '%' : '';
   }
 
   function formatNumberValue(val) {

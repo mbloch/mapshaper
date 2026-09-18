@@ -11,6 +11,7 @@ import { convertPropertiesToDefinitions } from '../svg/svg-definitions';
 import { getOutputFileBase } from '../utils/mapshaper-filename-utils';
 import { importGeoJSONFeatures } from '../svg/geojson-to-svg';
 import { initPathLabelReport, reportPathLabels } from '../svg/svg-label-paths';
+import { DEFAULT_LABEL_FONT_SIZE } from '../svg/svg-labels';
 import { layerIsRectangle, getLayerDataTable, copyLayer, layerHasRaster } from '../dataset/mapshaper-layer-utils';
 import { Bounds } from '../geom/mapshaper-bounds';
 import { getDatasetCRS, getDatasetCrsInfo, crsToProj4, parseAuthorityCodeString, parseAuthorityCodeFromWkt } from '../crs/mapshaper-projections';
@@ -557,7 +558,7 @@ export function getEmptyLayerForSVG(lyr, opts) {
 export function getLabelTextDefaults() {
   return {
     'font-family': 'sans-serif',
-    'font-size': '12',
+    'font-size': String(DEFAULT_LABEL_FONT_SIZE),
     'text-anchor': 'middle'
   };
 }

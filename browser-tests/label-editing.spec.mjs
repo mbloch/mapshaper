@@ -83,7 +83,7 @@ test('clicking away creates the label in one command', async function({page}) {
 
   // disarm, so the click that ends the session does not place another label
   await disarmTool(page);
-  await clickMap(page, 0.8, 0.8);
+  await clickMap(page, 0.15, 0.85);
   await page.waitForTimeout(250);
 
   expect(await getLabelText(page, 0)).toBe('Reno');
@@ -103,7 +103,7 @@ test('undo reverses a whole session, not a keystroke', async function({page}) {
   await clickMap(page, 0.4, 0.45);
   await page.keyboard.type('Reno');
   await disarmTool(page);
-  await clickMap(page, 0.8, 0.8);
+  await clickMap(page, 0.15, 0.85);
   await page.waitForTimeout(250);
   expect(await getLabelText(page, 0)).toBe('Reno');
 
@@ -157,13 +157,13 @@ test('clicking away finishes the label without placing another', async function(
   await clickMap(page, 0.4, 0.45);
   await page.keyboard.type('Reno');
 
-  await clickMap(page, 0.8, 0.8); // ends the session, and nothing more
+  await clickMap(page, 0.15, 0.85); // ends the session, and nothing more
   await page.waitForTimeout(250);
   expect((await getEditorState(page)).caretCount).toBe(0);
   expect((await getLabelLayer(page)).records.length).toBe(1);
 
   // the next click places the next label, which exists once it has been typed
-  await clickMap(page, 0.8, 0.8);
+  await clickMap(page, 0.15, 0.85);
   await page.keyboard.type('Elko');
   await page.keyboard.press('Escape');
   await page.waitForTimeout(250);
@@ -177,7 +177,7 @@ test('a label takes two clicks to open for editing', async function({page}) {
   await clickMap(page, 0.4, 0.45);
   await page.keyboard.type('Reno');
   await disarmTool(page);
-  await clickMap(page, 0.8, 0.8);
+  await clickMap(page, 0.15, 0.85);
   expect((await getEditorState(page)).caretCount).toBe(0);
 
   // the first click selects the label for styling
@@ -193,7 +193,7 @@ test('a label takes two clicks to open for editing', async function({page}) {
   await page.keyboard.press('End');
   await page.keyboard.type('!');
   await armTool(page, 'anchor');
-  await clickMap(page, 0.8, 0.8);
+  await clickMap(page, 0.15, 0.85);
   expect(await getLabelText(page, 0)).toBe('Reno!');
   expect(errors).toEqual([]);
 });
@@ -215,7 +215,7 @@ test('shift-enter adds a line to an anchored label', async function({page}) {
   expect(editor.rendered).toBe('North\u200bDakota');
 
   await disarmTool(page);
-  await clickMap(page, 0.8, 0.8);
+  await clickMap(page, 0.15, 0.85);
   // stored with the escape, because a real newline cannot travel through a
   // mapshaper command
   expect(await getLabelText(page, 0)).toBe('North\\nDakota');
@@ -700,7 +700,18 @@ async function disarmTool(page) {
 
 async function clickMap(page, fx, fy) {
   var box = await page.locator('.mshp-main-map').boundingBox();
-  await page.mouse.click(box.x + box.width * fx, box.y + box.height * fy);
+  var x = box.x + box.width * fx;
+  var y = box.y + box.height * fy;
+  // The style panel is pinned over the top right of the map, so a point meant
+  // as empty map can land on a control instead -- which fails slowly and
+  // strangely, several steps later, rather than here.
+  var panel = await page.locator('.text-style-panel').boundingBox();
+  if (panel && x >= panel.x && y >= panel.y && x <= panel.x + panel.width &&
+      y <= panel.y + panel.height) {
+    throw new Error('clickMap(' + fx + ', ' + fy + ') lands on the style panel, ' +
+      'not the map: pick a point to the left of it.');
+  }
+  await page.mouse.click(x, y);
   await page.waitForTimeout(80);
 }
 

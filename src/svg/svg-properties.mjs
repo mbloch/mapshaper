@@ -3,6 +3,7 @@ import { splitListItems } from '../cli/mapshaper-option-parsing-utils';
 import utils from '../utils/mapshaper-utils';
 import { stop } from '../utils/mapshaper-logging';
 import { parsePattern } from '../svg/svg-hatch';
+import { parseLabelAlign, getAlignmentAnchor } from '../svg/svg-label-align';
 
 // parsing hints for -style command cli options
 // null values indicate the lack of a function for parsing/identifying this property
@@ -29,17 +30,15 @@ var stylePropertyTypes = {
   // elements its record produces -- see getIconStyleData().
   'icon-opacity': 'number',
   'icon-size': 'number',
+  // how the lines of a multi-line label line up with each other, as against
+  // text-anchor, which also decides where the block of them sits -- see
+  // svg-label-align.mjs
+  'label-align': 'labelalign',
   'label-pos': 'labelposition',
   // which side of its path a label's text sits on
   'label-side': null,
   // where the text starts along its path; a length or a percentage
   'label-start-offset': null,
-  // width of the rendered text in px at its native font size, measured in the
-  // GUI so that export can tell whether the text fits its path
-  'label-text-width': 'number',
-  // fingerprint of the values label-text-width was measured from, so that a
-  // stale measurement can be detected and ignored
-  'label-text-hash': null,
   'label-text': null,  // leaving this null
   'letter-spacing': 'measure',
   'line-height': 'measure',
@@ -324,6 +323,8 @@ function parseSvgLiteralValue(strVal, type) {
     val = strVal; // TODO: validate
   } else if (type == 'labelposition') {
     val = parseLabelPosition(strVal);
+  } else if (type == 'labelalign') {
+    val = parseLabelAlign(strVal);
   }
   //  else {
   //   // unknown type -- assume literal value
@@ -388,14 +389,37 @@ export function resolveLabelPosition(rec) {
   // An unusable position renders as if it were unset. The commands that set it
   // reject one, so reaching here means it was written by an expression or came
   // from a data file, where stopping the render is the wrong response.
-  if (!style) return rec;
-  for (i = 0; i < labelPositionDerivedFields.length; i++) {
-    field = labelPositionDerivedFields[i];
-    if (hasStyleValue(rec, field)) continue;
-    if (!out) out = Object.assign({}, rec);
-    out[field] = style[field];
+  if (style) {
+    for (i = 0; i < labelPositionDerivedFields.length; i++) {
+      field = labelPositionDerivedFields[i];
+      if (hasStyleValue(rec, field)) continue;
+      if (!out) out = Object.assign({}, rec);
+      out[field] = style[field];
+    }
   }
+  out = resolveLabelAlignment(out || rec) || out;
   return out || rec;
+}
+
+// label-align wins over both the position's justification and a text-anchor of
+// the record's own, because it is the only one of the three that is asking
+// about justification alone. Where the block ends up is then the renderer's to
+// correct -- see getAlignmentShift().
+function resolveLabelAlignment(rec) {
+  var anchor = getAlignmentAnchor(rec['label-align']);
+  var out;
+  if (!anchor || rec['text-anchor'] === anchor) return null;
+  out = Object.assign({}, rec);
+  out['text-anchor'] = anchor;
+  return out;
+}
+
+// The anchor a label's position implies, which is where its block of text is
+// drawn whatever the lines inside it do. 'start' is both the SVG default and
+// what an unpositioned label is drawn with.
+export function getLabelPositionAnchor(rec) {
+  var style = rec && rec['label-pos'] ? getLabelPositionStyle(rec['label-pos']) : null;
+  return style && style['text-anchor'] || 'start';
 }
 
 // Presence, not truthiness. `dy=0` is how a label cancels the vertical offset

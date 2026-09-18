@@ -12,10 +12,16 @@ import { isSupportedSvgStyleProperty, emptyValueUnsetsProperty } from '../svg/sv
 import { combineFilters, getIdFilter } from './mapshaper-filter';
 import { iconNames, isSupportedIconName } from '../svg/svg-icons';
 import { stop, warn } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 
 cmd.svgStyle = function(lyr, dataset, opts) {
-  var filterFn, table, fields, hasNewFields, optFields, clearedByPosition;
+  var filterFn, table, fields, hasNewFields, optFields, clearedByPosition, fieldsBefore;
+
+  function hadField(field) {
+    return field in fieldsBefore;
+  }
+
   if (getFeatureCount(lyr) === 0) {
     return;
   }
@@ -47,6 +53,10 @@ cmd.svgStyle = function(lyr, dataset, opts) {
   hasNewFields = fields.some(function(field) {
     return !table.fieldExists(field);
   });
+  // The table's columns as this command found them. Taken once, because the
+  // command adds to them as it runs, and a blanked property must be judged
+  // against what was there before rather than against what it has just made.
+  fieldsBefore = utils.arrayToIndex(table.getFields());
   if (fields.length > 0) {
     if (hasNewFields) {
       table.captureSchemaBefore({operation: 'style', fields: fields});
@@ -56,7 +66,7 @@ cmd.svgStyle = function(lyr, dataset, opts) {
   }
   Object.keys(opts).forEach(function(optName) {
     // undo cli parser name conversion; the regex must be global, or a
-    // property with more than one hyphen (e.g. label-text-width) is silently
+    // property with more than one hyphen (e.g. label-start-offset) is silently
     // skipped rather than applied
     var svgName = optName.replace(/_/g, '-');
     if (!isSupportedSvgStyleProperty(svgName)) {
@@ -76,9 +86,19 @@ cmd.svgStyle = function(lyr, dataset, opts) {
     table.getRecords().forEach(function(rec, i) {
       if (filterFn && !filterFn(i)) {
         // make sure field exists if record is excluded by filter
-        setUndefinedFields(rec, svgName == 'label-pos' ? labelPositionFields : [svgName]);
+        setUndefinedFields(rec, [svgName]);
+        if (svgName == 'label-pos') {
+          // ...but a field the position would only have cleared is one this
+          // command is not writing anywhere, so an excluded record has nothing
+          // to stay consistent with
+          setUndefinedFields(rec, labelPositionDerivedFields, {has: hadField});
+        }
+      } else if (unset) {
+        // Nothing to remove, and so nothing to create: removing a property no
+        // record has would otherwise add an empty column for it.
+        if (hadField(svgName) || svgName in rec) rec[svgName] = undefined;
       } else {
-        rec[svgName] = unset ? undefined : accessor(i);
+        rec[svgName] = accessor(i);
         if (badIcons) {
           addUnsupportedIconName(badIcons, rec.icon);
         }
@@ -95,7 +115,7 @@ cmd.svgStyle = function(lyr, dataset, opts) {
             posOnPaths.push(i);
             rec['label-pos'] = undefined;
           } else {
-            setUndefinedFields(rec, clearedByPosition, {overwrite: true});
+            setUndefinedFields(rec, clearedByPosition, {overwrite: true, has: hadField});
           }
         }
       }
@@ -178,9 +198,18 @@ function formatUnsupportedIconMessage(names) {
 // still has the same schema as the ones it kept. With overwrite, also blanks a
 // value already there -- which is how setting a position takes back the offsets
 // a label was carrying.
+//
+// @has: optional test for whether the layer carries a field at all. A field
+// nobody has is not created in order to be blanked: -style label-pos=n clears
+// dx, dy and text-anchor because a value on the record wins over the position,
+// and there is nothing to win with when the column does not exist. Without
+// this, clicking a position in the style panel put three empty columns in the
+// user's table, and three empty columns in their CSV.
 function setUndefinedFields(rec, fields, opts) {
   var overwrite = !!(opts && opts.overwrite);
+  var has = opts && opts.has;
   fields.forEach(function(field) {
+    if (has && !has(field) && field in rec === false) return;
     if (overwrite || field in rec === false) {
       rec[field] = undefined;
     }

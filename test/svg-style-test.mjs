@@ -376,10 +376,36 @@ describe('mapshaper-svg-style.js', function () {
         var input = pos.toUpperCase();
         var lyr = {data: new api.internal.DataTable([{}])};
         api.cmd.svgStyle(lyr, {}, {label_pos: input});
-        assert.deepStrictEqual(lyr.data.getRecords(),
-          [{'label-pos': input, dx: undefined, dy: undefined,
-            'text-anchor': undefined}]);
+        // and not so much as an empty column for the three it overrides: a
+        // position clears an offset a label was carrying, but there is nothing
+        // to clear on a label that never had one
+        assert.deepStrictEqual(lyr.data.getRecords(), [{'label-pos': input}]);
       });
+    })
+
+    it('a position clears an offset that is really there', function() {
+      // and only the ones that are: dy is not in this table, so the position
+      // has nothing to take back in it
+      var lyr = {data: new api.internal.DataTable([{dx: 4, 'text-anchor': 'end'}])};
+      api.cmd.svgStyle(lyr, {}, {label_pos: 'n'});
+      assert.deepStrictEqual(lyr.data.getRecords(),
+        [{'label-pos': 'n', dx: undefined, 'text-anchor': undefined}]);
+    })
+
+    it('a position clears an offset on every record, not just the ones with one', function() {
+      // the column exists, so it is cleared for the whole layer rather than
+      // for the records that happened to be carrying a value
+      var lyr = {data: new api.internal.DataTable([{dx: 4}, {}])};
+      api.cmd.svgStyle(lyr, {}, {label_pos: 's'});
+      assert.deepStrictEqual(lyr.data.getRecords(),
+        [{'label-pos': 's', dx: undefined}, {'label-pos': 's', dx: undefined}]);
+    })
+
+    it('a position given to some records does not blank the rest', function() {
+      var lyr = {data: new api.internal.DataTable([{}, {}])};
+      api.cmd.svgStyle(lyr, {}, {label_pos: 'n', ids: [1]});
+      assert.deepStrictEqual(lyr.data.getRecords(),
+        [{'label-pos': undefined}, {'label-pos': 'n'}]);
     })
 
     it('label-pos resolves to the offsets that draw it', function() {
@@ -451,8 +477,7 @@ describe('mapshaper-svg-style.js', function () {
     it('an offset given with label-pos survives it', function() {
       var lyr = {data: new api.internal.DataTable([{}])};
       api.cmd.svgStyle(lyr, {}, {label_pos: 'n', dx: '3'});
-      assert.deepStrictEqual(lyr.data.getRecords(),
-        [{'label-pos': 'n', dx: 3, dy: undefined, 'text-anchor': undefined}]);
+      assert.deepStrictEqual(lyr.data.getRecords(), [{'label-pos': 'n', dx: 3}]);
     })
 
     it('an empty value removes a typed property', function() {
@@ -548,13 +573,13 @@ describe('mapshaper-svg-style.js', function () {
         data: new api.internal.DataTable(records)
       };
       var opts = {
-        label_text_width: '120',
-        label_start_offset: '50%'
+        label_start_offset: '50%',
+        letter_spacing: '2'
       };
       api.cmd.svgStyle(lyr, {}, opts);
       assert.deepEqual(lyr.data.getRecords(), [{
-        'label-text-width': 120,
-        'label-start-offset': '50%'
+        'label-start-offset': '50%',
+        'letter-spacing': '2'
       }]);
     });
 

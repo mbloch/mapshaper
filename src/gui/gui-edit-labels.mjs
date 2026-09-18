@@ -52,16 +52,27 @@ export function initLabelDragging(gui, ext, hit) {
   // dy to 0. An explicit 0 is no longer nothing -- a value on the record wins
   // over the position -- so priming the table that way would have moved every
   // label in the layer to its anchor.
+  // An alignment is given up in the same way and for the same reason. This
+  // mode moves a label by changing its text-anchor and compensating with dx
+  // (autoUpdateTextAnchor), which is the job label-align was added to take
+  // over -- leaving both on the record would have the two of them answering
+  // for the same pixel. So the alignment is materialized into the text-anchor
+  // it renders as, which justifies the lines exactly as it did, and the
+  // correction it was drawn with is folded into dx so that grabbing the label
+  // does not move it.
   function prepareRecordForDrag(rec) {
-    var resolved;
+    var resolved, shift;
     if (!rec) return;
     resolved = internal.resolveLabelPosition(rec);
-    rec.dx = toDragOffset(resolved.dx);
+    shift = internal.svg.getAlignmentShift(rec,
+      internal.getLabelPositionAnchor(rec));
+    rec.dx = toDragOffset(resolved.dx) + shift;
     rec.dy = toDragOffset(resolved.dy);
-    if (!rec['text-anchor']) {
+    if (!rec['text-anchor'] || rec['label-align']) {
       rec['text-anchor'] = resolved['text-anchor'] || '';
     }
     if (rec['label-pos']) rec['label-pos'] = undefined;
+    if (rec['label-align']) rec['label-align'] = undefined;
   }
 
   // This mode drags in pixels and cannot carry an em offset, so a label

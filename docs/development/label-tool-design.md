@@ -315,9 +315,20 @@ single point has always had.
 |---|---|---|
 | `label-start-offset` | measure | Position of text along the path |
 | `label-side` | `left`\|`right` | Which side of the path the text sits on |
-| `label-text-width` | number | Measured text width in px at native font-size |
-| `label-text-hash` | string | Fingerprint of the values that width was measured from |
 | `icon-opacity` | number | Opacity of the anchor symbol, 0–1, independent of the text's |
+| `label-align` | `left`\|`center`\|`right` | How the lines of a multi-line label line up with each other |
+
+`label-align` is there because `text-anchor` justifies the lines of a label
+*and* places the block of them, and the panel's alignment control is asking
+only the first question; see "Justification is not `text-anchor`". It is also
+the second thing that needs a text measurement, which until now only the
+path-fit check did.
+
+**Two fields that were in this table are not any more.** `label-text-width` and
+`label-text-hash` held a text measurement and a fingerprint of the values it
+described. Both are gone: a measurement is the app's own working-out, not
+something the user set, and it now lives in a cache keyed by that fingerprint
+instead of in two columns of everybody's data. See "A measurement is not data".
 
 `icon-opacity` is there because every existing opacity property applies to a
 label's symbol *and* its text; see "The icon's opacity is its own property".
@@ -338,11 +349,11 @@ rejects any option a command has not declared. Note that `dominant-baseline` was
 in the label render filter (`propertiesBySymbolType.label`) but in neither of
 those places, so it could not be set from the CLI; fixed in the same pass.
 
-Two of the new fields are the first style properties whose names contain two
+Some of the new fields are the first style properties whose names contain two
 hyphens, which exposed a bug in `-style`: it restored the property name from the
 parser's underscore form with `replace('_', '-')`, a non-global replacement that
 converted only the first underscore. The resulting name matched no known
-property, so `label-text-width=` was silently ignored rather than applied or
+property, so `label-start-offset=` was silently ignored rather than applied or
 reported. Both occurrences now use `replace(/_/g, '-')`, matching what
 `getSymbolDataAccessor()` already did.
 
@@ -487,7 +498,6 @@ they differ only in how many points they have:
 ```
 -add-label coordinates=<x,y[,x,y,...]>  anchor, or knots, in the target's CRS
            text=<string>                label text
-           [text-width=<px>]            measured text width, for the fit check
            [<style options>]            any -style label property
            [name=<layer>]
            [target=<layer>]
@@ -553,11 +563,11 @@ wrong feature.
 
 Two details are worth recording:
 
-- **`label-text-width` is deliberately left alone.** It measures the text, and
-  a move changes the length of the *path*; the fit check compares the two at
-  render time against the curve as it then stands. So a move can turn a fitting
-  label into an overflowing one without the stored measurement going stale, and
-  re-fingerprinting it would be wrong.
+- **Nothing about the label's text is touched, and nothing needs to be.** A
+  text measurement describes the text, and a move changes the length of the
+  *path*; the fit check compares the two at render time against the curve as it
+  then stands. So a move can turn a fitting label into an overflowing one with
+  no measurement going out of date.
 - **The edit is declared to the undo system.** `noteLayerWillChange()` before
   and `markLayerChanged()` after, because `lyr.shapes` keeps its identity across
   an in-place write and a transaction has no way to notice it otherwise. An
@@ -1207,10 +1217,14 @@ The existing property vocabulary maps onto `<textPath>` better than expected:
 | Intent | Anchored | Path-aligned |
 |---|---|---|
 | Along-path alignment | `text-anchor` | `text-anchor` + `label-start-offset` |
+| Justification of lines | `label-align` | `text-anchor` |
 | Cross-axis offset | `dy` | `dy` (baseline shift from the path) |
 | Which side | n/a | `label-side` |
 
-So the alignment half of the toolbar is mostly existing properties.
+So the alignment half of the toolbar is mostly existing properties. The one
+addition is `label-align`, which exists because `text-anchor` answers the
+justification question and the block-placement question with the same value —
+see "Justification is not `text-anchor`".
 
 `label-side` maps to the SVG 2 `side` attribute, and that mapping is why the
 GUI does not use it. Support is Firefox-only — Firefox 61 and up, not Chrome,
@@ -1339,6 +1353,214 @@ it is a change to already-made maps rather than to new ones. A map that needs
 the guarantee can have it by setting `dx`/`dy` explicitly, which is what the
 precedence rule is for.
 
+### Justification is not `text-anchor`
+
+**A new property, `label-align`, says how the lines of a label line up with
+each other. The renderer turns it into a `text-anchor` and an offset that holds
+the block of text where its position put it.**
+
+`text-anchor` answers two questions with one value: how the lines of a
+multi-line label are justified, and where the block of them sits relative to
+`x`. For a single-line label the two are the same question. For a label with
+two lines they are not, and the panel's alignment control is asking only the
+first.
+
+That was the bug. A label positioned `n` is centred on its anchor because that
+is what "north" means, and `text-anchor=middle` is how it gets there. Clicking
+"align left" wrote `text-anchor=start`, which left-aligned the lines *and*
+moved the whole block half its own width to the right — off the point it
+labels. The control was unusable for the case it exists for: left-aligned text
+in a label sitting north or south of its anchor.
+
+Holding the block still means moving `x` the other way by the same amount:
+
+```
+x = dx + (offset(alignment) - offset(position)) × W
+```
+
+where `offset` is how far left of `x` the text sits for each anchor (`start` 0,
+`middle` 0.5, `end` 1) and `W` is the width of the block — the widest of its
+lines. `getAlignmentShift()` in `svg-label-align.mjs` is that expression;
+`renderLabel()` adds it to `dx`.
+
+`W` is a font metric, which is the whole difficulty. See "Where the width comes
+from" below.
+
+#### Why a new property rather than changing what `text-anchor` does
+
+Correcting the offset whenever `text-anchor` disagrees with `label-pos` would
+have needed no new property, and it would have silently changed the meaning of
+every existing script and file that sets the two together. Someone writing
+`label-pos=n text-anchor=start` today gets a block that hangs to the right of
+the anchor, and may well be relying on it — `text-anchor` is SVG's, and this
+project does not get to redefine it.
+
+So `text-anchor` keeps its SVG meaning and `label-align` is the property that
+means justification alone. The panel writes `label-align` and blanks
+`text-anchor` when it does, because a record carrying both would be saying two
+things about the same question and the winner would be a rule rather than the
+last thing the user asked for. `resolveLabelPosition()` resolves `label-align`
+into the `text-anchor` it renders as, so it wins over both the position's
+justification and an explicit `text-anchor`.
+
+The comparison in the correction is against the anchor the *position* implies
+(`getLabelPositionAnchor()`), not against a `text-anchor` on the record: that
+value is the one `label-align` replaces, so treating it as where the block
+belongs would hold a label in a place it was never drawn.
+
+Path labels are not corrected. A path label's text follows its curve from a
+start offset, so its alignment picks which part of the text sits at that point;
+there is no block beside an anchor to hold still, and its `dx` is an offset
+from the path rather than from a point. `label-align` still sets its
+`text-anchor`, which is what alignment means there.
+
+#### Where the width comes from
+
+`W` cannot be computed from the data. It takes a renderer with the font in
+hand, which the GUI has and export does not — the same asymmetry the path-fit
+check runs into, and so the same source: `svg-label-metrics.mjs`, which the
+next section is about.
+
+`gui-label-measure.mjs` does the measuring, and it measures a *record* rather
+than a label on the map. The width is usually wanted for a label as it is about
+to be — text being typed, a font just chosen — and a label that is off screen,
+or on a layer that is not displayed, still has to export correctly. So the
+record is rendered by the same code the map uses — `renderStyledLabel()` inside
+the text defaults a label inherits from its layer's group — into an offscreen
+`<svg>`, and `getBBox()` measures it there. `getBBox()` is in user units and so
+is `font-size`, which is what makes the number independent of the map's zoom.
+
+Alignment is dropped from the record before the sample is rendered. It cannot
+change how wide the text is — it moves the lines, it does not set them — and
+rendering it would have the renderer ask for the very measurement being taken.
+A re-entrancy flag in `svg-label-metrics.mjs` is the backstop.
+
+### A measurement is not data
+
+The first implementation of this stored the width, because the path-fit check
+already had a field for it and the width is the same number. `label-text-width`
+and `label-text-hash` went into the record, carried by the command that made
+them necessary: `-add-label text-width=` at creation, the session's
+`-style label-text=` after a text edit, and a second `-style` chained onto the
+panel's own for a font change — one per group of labels sharing a measurement,
+since `-style` writes one value to every id it is given.
+
+It worked, and it was wrong. Two columns of font metrics appeared in the table
+of every label the panel had touched, and went out in everybody's GeoJSON and
+CSV. Every edit to the text or the font became a two-part edit that had to stay
+consistent, including under undo. And the plumbing was in four places at once,
+one of which — the pending label, which has no record yet — had to measure on
+every render to keep the preview from jumping.
+
+**The width is derived from the data, so it belongs in a cache and not in the
+table.** It is a pure function of the text and six font properties, which is
+exactly what `label-text-hash` already fingerprinted. Key a memo by that
+fingerprint and every one of those problems goes away at once:
+
+- Nothing is written to the user's table, so nothing is exported and nothing
+  has to be stripped on the way out.
+- Nothing can go stale. Change the text or the font and the fingerprint changes
+  with it, so the old entry is not found rather than found and wrong. There is
+  no invalidation step to forget.
+- Nothing has to ride along with an edit, so an edit is one command again, and
+  undo has one thing to take back.
+- A feature can be copied, merged, filtered or renumbered without its
+  measurement following it around, because the measurement was never attached
+  to the feature.
+
+`getMeasuredTextWidth(rec)` in `svg-label-metrics.mjs` is the one reader, for
+both `label-align` and the fit check. On a miss it *asks for* a measurement: the
+GUI installs a measure function at startup (`setTextMeasureFunction()`), and a
+reader that can ask needs no hooks anywhere else. The alternative was measuring
+ahead of every reader — before each render, before each export, after each edit
+— which is three things to keep in step and a fourth for the console, where
+`-o out.svg` never goes near the export dialog. In Node nothing installs a
+measure function and every reader falls back exactly as it did before any of
+this existed.
+
+The memo is capped at 20,000 entries — a dozen bytes of key and a number each,
+one per distinct text and font, which typing a label adds one of per keystroke.
+Failures to measure are remembered too, so an unmeasurable label is not
+measured over and over; *not having a measure function* is not, because
+remembering that would let whatever rendered before the GUI installed one decide
+the width of that text for the rest of the session.
+
+#### Nor is it a parameter
+
+The first cut of this kept `label-text-width=` and `label-text-hash=` as style
+properties, and `-add-label text-width=` alongside them, on the grounds that a
+script with real font metrics could state its own width and opt into the drop
+rule. They are gone too, and the reasoning is the same one applied to storage:
+these are not values a user sets, so they should not be in the interface either.
+
+What that opt-in asked of the person using it was font metrics mapshaper cannot
+compute — measured in another tool, kept in step with every subsequent restyle
+by hand, and written back per feature. What it cost to offer was a second source
+of widths in the reader, a `stale` state for the case where the hand-written
+number stopped describing the text, a warning path in the export report to
+explain it, a fingerprint written by `-add-label` so the opt-in could guard
+itself, and four rows of documentation for the whole arrangement.
+
+So `getLabelFitState()` has three states rather than four, `getMeasuredTextWidth()`
+has one source rather than two, and nothing anywhere checks a measurement for
+staleness — the fingerprint is a cache key now, which is the same guard turned
+inside out and made free.
+
+A file that already contains those columns is not a problem: they are ordinary
+data fields to mapshaper now, ignored by the renderer and exported as they were
+imported, like the `label-corners` property that the curve model left behind.
+
+#### The fit check now works in the GUI
+
+A consequence worth stating on its own. Nothing had ever measured a path label,
+so `getLabelFitState()` could only ever answer `unmeasured`: the editor's orange
+overflow halo and export's drop rule were both fully built and both inert, and
+the only way to see either was to hand-write a width into the data. They switch
+on together with the measure function — a path label whose text is longer than
+its curve is marked in the editor, and dropped from an SVG exported out of the
+GUI, which is what "The editor keeps a non-fitting label visible" was for.
+
+#### Failing open
+
+A label with no usable width is still justified the way it was asked to be, and
+its block still moves. That is the old behaviour, and what is left of it is the
+label no GUI has seen: `-style label-align=left` in a script, rendered by an
+export that cannot measure text. A label that reads the way it was asked to
+read in the wrong place is closer to the request than one that ignores it.
+
+A `dx` in units the shift cannot be added to falls back the same way — `pt`,
+`%`, anything but `px` and `em` — because correcting it would mean choosing a
+pixel size for a unit whose whole point is that something else decides.
+
+Ems are not one of those cases, and getting that wrong was the first bug in
+this code. Six of the nine positions hold text clear of its anchor with an
+offset in ems (`e` is `0.45em`), and adding a pixel shift to one means knowing
+what an em is worth — while a label usually carries no `font-size` of its own,
+because it inherits one from its layer's group. Treating a missing size as
+unknowable left exactly those six positions uncorrected, so `n`, `s` and `c`
+held their blocks and the rest still slid. A missing size resolves against
+`DEFAULT_LABEL_FONT_SIZE`, which is the constant `getLabelTextDefaults()`
+supplies to the group — one number, not two, since a correction computed
+against a different size than the label is drawn at is a correction to nowhere.
+
+CLI-authored labels are the remaining gap: `-style label-align=left` in a
+script gets the fallback, because nothing in Node can measure text. Closing it
+means font metrics in Node, which is a following pass — a dependency-free sfnt
+advance-width reader and a best-effort lookup of installed fonts. That is also
+the only thing that would make the path-fit rule apply to a scripted map.
+
+#### The old drag mode
+
+`prepareRecordForDrag()` gives up the alignment along with the position, and
+bakes the corrected offset in rather than the position's raw one.
+
+That mode moves a label by changing its `text-anchor` and compensating with
+`dx` (`autoUpdateTextAnchor()`) — which is the job `label-align` exists to take
+over, so leaving both on the record would have the two of them answering for
+the same pixel. Materializing the alignment into the `text-anchor` it renders
+as justifies the lines exactly as before, and folding the correction into `dx`
+means grabbing the label does not move it.
+
 ### Fitting text to a path
 
 **A path label whose text does not fit its path is not drawn, and is dropped
@@ -1387,10 +1609,10 @@ only text measurement anywhere in the codebase is canvas `measureText()` in
 `src/gui/gui-label-fonts.mjs`, used for font detection. The CLI cannot know how
 wide a string will render.
 
-### Bake the measurement, not the verdict
+### Keep the measurement, not the verdict
 
-The way out is for the GUI to measure once and store the result, with the
-exporter supplying the half it can compute. What gets stored must be the
+The way out is for the GUI to measure once and keep the result, with the
+exporter supplying the half it can compute. What gets kept must be the
 **measured width**, not a fits/doesn't-fit verdict:
 
 - A verdict depends on output size. Text is emitted at native scale, so a
@@ -1402,74 +1624,65 @@ exporter supplying the half it can compute. What gets stored must be the
   A width measured once stays valid forever, while path length is recomputed
   per export.
 
-So `label-text-width` holds the width in pixels at the label's native
-font-size, measured off-path on a hidden plain `<text>` — never on the
-`textPath` element, which saturates at the path length in Firefox and WebKit
-and so cannot report how much room would be needed. Export then drops the
-label when `label-text-width` exceeds the path length in output pixels.
+So the width is in pixels at the label's native font-size, measured off-path on
+a hidden plain `<text>` — never on the `textPath` element, which saturates at
+the path length in Firefox and WebKit and so cannot report how much room would
+be needed. Export then drops the label when that width exceeds the path length
+in output pixels.
 
 This invariant is a direct dividend of exporting at native scale. Had export
-scaled `font-size` with the frame, the stored width would need scaling too.
+scaled `font-size` with the frame, the kept width would need scaling too.
+
+Where it is kept is a memo keyed by a fingerprint of the text and the font, not
+a column in the user's table; see "A measurement is not data".
 
 ### Staleness, and failing open
 
-A stored measurement can go stale: `-style label-text='...'` or
-`-style font-size=18` from the CLI changes the inputs without updating the
-width, and the exporter has no way to notice. So `label-text-hash` stores a
-fingerprint of the values the measurement depended on — the text plus
-`font-family`, `font-size`, `font-weight`, `font-style`, `font-stretch` and
-`letter-spacing`. (`font-stretch` is in the list because it changes glyph
-widths. `css` and `class` are not, and cannot be: either can change the rendered
-font through a stylesheet mapshaper never sees.)
+A measurement can stop describing the label it was taken for: `-style
+label-text='...'` or `-style font-size=18` changes the inputs from under it. So
+the key it is filed under, `getTextWidthKey()`, is a fingerprint of the values
+it described — the text plus `font-family`, `font-size`, `font-weight`,
+`font-style`, `font-stretch` and `letter-spacing`. (`font-stretch` is in the
+list because it changes glyph widths. `css` and `class` are not, and cannot be:
+either can change the rendered font through a stylesheet mapshaper never sees.)
 
-`getLabelFitState()` in `src/svg/svg-label-fit.mjs` returns one of four states,
-and export draws the label in three of them:
+The same fingerprint is the memo's key, which is why a measured width has no
+staleness state: an edit makes the old entry unfindable instead of wrong.
+
+`getLabelFitState()` in `src/svg/svg-label-fit.mjs` returns one of three states,
+and export draws the label in two of them:
 
 | State | Condition | Behavior |
 |---|---|---|
 | `fits` | width ≤ path length | Draw |
 | `overflow` | width > path length | **Drop**, and report |
-| `unmeasured` | no width stored | Draw, silently |
-| `stale` | width stored, fingerprint does not match | Draw, and warn |
+| `unmeasured` | nothing could measure the text | Draw, silently |
 
-Two refinements to this emerged while implementing it.
+An earlier version had a fourth, `stale`, for a width in the data whose
+fingerprint no longer matched it, drawn with a warning. Nothing writes a width
+into the data any more, so the state has nothing to describe; see "Nor is it a
+parameter".
 
-**A missing fingerprint means no guard was requested, not a failed guard.** A
-width with no hash is trusted rather than treated as stale, because that is what
-an explicit `-add-label ... text-width=` is: a script opting into the drop rule
-with metrics it computed itself. Treating it as stale would make the opt-in
-impossible.
-
-**`unmeasured` does not warn.** The doc originally grouped "hash absent" with
-"stale" under draw-and-warn, but a path label with no measurement is the normal
-result of authoring in the CLI, which the fit rule explicitly does not apply to.
-Warning there would fire on every export of every CLI-authored label — noise
-that would train people to ignore the message that matters. `stale` is the
-actionable case, because something changed a measurement that once existed.
-
-To keep the trusted-width case self-guarding anyway, `-add-label` writes a
-fingerprint whenever it is given a `text-width=`. So a pipeline that adds a
-label with its own metrics and then restyles the text still fails open, and only
-a width written by hand into a CSV is trusted unconditionally.
+**`unmeasured` does not warn.** A path label with no measurement is the normal
+result of authoring in the CLI, which the fit rule cannot apply to, so a warning
+would fire on every export of every CLI-authored label — noise that would train
+people to ignore the message that matters.
 
 **Failing open is the important half.** Silently deleting a label from a map is
 a worse outcome than drawing one that overflows: the overflow is visible and
-fixable, the deletion is neither. A stale fingerprint is also more likely to
-mean "edited outside the GUI" than "genuinely too long".
+fixable, the deletion is neither.
 
 Two consequences worth stating plainly:
 
-- **A path label authored entirely in the CLI is never dropped**, because it
-  has no measurement. `-add-label` therefore accepts an explicit
-  `text-width=` for scripted use, so a pipeline that knows its own metrics can
-  opt into the rule.
+- **A path label exported by the CLI is never dropped**, because nothing there
+  can measure text. The rule bites where the measurement can be taken, which is
+  a GUI session and an export driven from one — see "A measurement is not data".
 - **Dropping must be reported.** Export emits a `message()` with the count and
   the feature ids of dropped labels. A silent drop would be indistinguishable
   from a bug. `reportPathLabels()` emits one message per layer per condition,
   naming up to ten feature ids and summarizing the rest:
 
   ```
-  $ mapshaper -add-label coordinates=0,0,50,40,100,0 text=Sierra text-width=5000 -o out.svg
   [o] Dropped 1 path label from layer "labels" because the text is longer than the path: feature 0.
   ```
 
@@ -2303,12 +2516,31 @@ setting alignment by hand overrides the position's justification — leaving
 `label-pos=e` with `text-anchor=end`, text running back across the icon it was
 placed beside.
 
-**Alignment is enabled only where it is independent of position**: multi-line
-labels, where it is how the lines line up with each other, and path labels,
-where it pairs with `label-start-offset`. For a single-line anchored label,
-"which side of the dot" is the position's question and the grid answers it —
-and under the symbol gate such a label is centred anyway, so `text-anchor` is
-`middle` and there is nothing to choose.
+**Alignment stays live whatever is selected, including nothing.** It was
+gated at first — enabled only where it is independent of position, meaning
+multi-line labels, where it is how the lines line up with each other, and path
+labels, where it pairs with `label-start-offset` — on the grounds that for a
+single-line anchored label "which side of the dot" is the position's question
+and the grid answers it.
+
+That reserved the control for labels that already have a second line, and a
+style is normally chosen *before* the text is typed: with the gate on, nothing
+selected meant nothing to align, so left-aligned could not be chosen and then
+written into. Choosing an alignment and then typing two lines has to work, and
+the same goes for setting it ahead of a path label.
+
+What the gate protected against remains true and is now the user's to make:
+setting alignment by hand overrides the position's justification, and
+`label-pos=e` with `text-anchor=end` runs the text back across the icon it was
+placed beside. It is visible on the map as soon as it happens, and picking a
+position clears it again.
+
+The buttons show the alignment the labels are **drawn** with, not the one they
+carry: with no `text-anchor` of their own they take the one their position
+implies, and with no position either they take the SVG default, `start`. A
+control with nothing selected would be saying "no alignment" about text that is
+plainly aligned one way or another — and it made the first click on the button
+already in effect look like a change that did nothing.
 
 #### What a drag writes
 
@@ -2586,6 +2818,163 @@ text sits at the point the label was slid to. The two properties that place a
 label on its curve are not in the panel at all — see "Sliding and flipping are
 drags, not controls".
 
+**Implemented** as three headed sections in place of the flat stack, in this
+order:
+
+| Section | Rows |
+|---|---|
+| Text | Font; Font style + Size; Color + Opacity; *(empty)* + Letter spacing; Alignment + Line height; Inline CSS |
+| Icon | Shape + Size; Color + Opacity |
+| Label position | the 3×3 grid |
+
+Text and Icon are deliberately the same shape — a size on one line, a colour
+and its opacity on the next — so that the second reads as a variation on the
+first rather than as a different kind of control. Letter spacing and line
+height stack in the right column, which groups the two spacing values and
+leaves the left of the second row to the alignment buttons; the cell beside
+letter spacing is empty.
+
+**Every split row has the same two columns**: a wide one and a narrow one, the
+widths fixed for the panel (`1fr var(--label-split-b-width)`) rather than each
+row sizing its right column to whatever it happens to hold. The panel is a
+stack of these pairs, and sizing them a row at a time leaves every field edge
+in a slightly different place. Each control then fills its column instead of
+keeping a width of its own, and the cells are bottom-aligned, so a caption over
+one control cannot push it out of line with the control beside it — the icon
+size has "Size" above it and the shape buttons next to it have nothing, and the
+two still have to be level. Everything in a row is the same height, which means
+`box-sizing: border-box` on the bordered boxes as well as the fields.
+
+The panel is wider than the other style panels (216px against 185px) because of
+those pairs: at 185px the narrow column is narrower than its own caption, and
+"Letter spacing" was clipped. It covers more of the map, which is what broke
+three browser tests — they clicked "empty map" at a point the panel had grown
+over, and the click landed on *Save preset*, whose prompt then swallowed
+everything the test did next. `clickMap()` now refuses a point inside the
+panel's box and says so, rather than failing thirty seconds later somewhere
+else.
+
+**Most of the Text section carries no label.** A font name, a hex colour, a
+percentage and a size beside a font style each say what they are, and a column
+of captions above controls that do not need them is the panel's noisiest
+feature. The fields that would otherwise be bare numbers — letter spacing, line
+height, the icon's size — keep theirs, and every unlabelled control has a
+`title` for the case where the contents are not enough.
+
+The two selects say what they are through their first entry rather than a
+caption: "Default font" and "Default style" are also the honest description of
+the usual state, since a label carries no `font-family` until one is chosen.
+Chrome leaves a select showing nothing when the value assigned to it matches no
+option, which is what an unset style does — the variants listed are the faces
+of the chosen font, and there is no chosen font — so the panel falls back to
+`selectedIndex = 0` rather than leaving the box blank.
+
+Behaviours in it that are not visible in the markup:
+
+- **Full opacity is stored as no opacity at all.** The control writes
+  `opacity=` — the unset — at 100%, rather than `opacity=1`. The property is
+  what makes a label translucent, and a column of 1s on every label the panel
+  has touched is noise in the user's table. The icon's opacity is the exception
+  and is always written, for the reason in "The icon's opacity is its own
+  property".
+- **Blanking a spacing field removes the property**, which is the only way back
+  to the renderer's own spacing once a value has been chosen. Line height shows
+  `auto` as a placeholder rather than a value, so a label carries no
+  `line-height` until one is asked for.
+
+##### Whether a label has a symbol is a switch
+
+The Icon heading carries a two-state switch, and the four shapes below it are
+just the four shapes. The heading line also carries the caption over the size
+field in the row beneath it, in that field's column: the shapes beside the
+field have no caption of their own, and a caption over one control of a pair
+pushes it out of line with the other. "None" was a fifth button in the row at first, which put
+two questions in one control: whether the label has a symbol, and which symbol
+it is. The switch answers the first, and its state is read from the data — a
+symbol is on when the target has one — so it follows an undo without being told
+to.
+
+Everything under the switch is inert while it is off: an `icon-size` or
+`icon-color` on a label with no `icon` draws nothing, so there is nothing for
+those controls to do until a symbol exists. They keep *showing* their values
+greyed rather than blanking, because what they show is what the symbol comes
+back as. Two rules make switching off and on again non-destructive: the shape
+that was chosen is the shape that returns (`lastIconShape`), and an
+`icon-opacity` still stored on the label is taken back rather than reset to
+full.
+
+A selection where only *some* labels have a symbol counts as on. Off would be
+the one state from which nothing in the section can be reached, and with the
+switch on, turning it off removes every symbol in the selection and a shape
+applies to all of them — both well-defined. This replaces an earlier rule where
+styling a symbol that did not exist quietly created one: with the controls
+gated, the switch is the only way to ask for a symbol, and it asks plainly.
+
+##### How the controls are drawn
+
+The panel's fields share one height, corner radius and border colour, set as
+custom properties on `.text-style-panel` so that a select, a colour field, a
+size field and a button group on the same row line up. Only the label panel
+takes them; the point and layer panels keep the older, flatter look until they
+are redrawn.
+
+Three shapes carry most of it:
+
+- **A colour field**: the swatch and its hex value inside one border
+  (`.label-color-field`), because they are one answer to one question. The
+  swatch keeps a light outline of its own so that white does not disappear into
+  the field.
+- **A button group**: buttons that answer one question share a border and sit
+  flush (`.label-btn-group`), dividing the width of their cell — the four
+  shapes, the three alignments. The selected one takes a grey fill rather than
+  the inverse the panel's other buttons use: the glyph is what identifies the
+  choice, and reversing it out makes the selected shape the hardest to read.
+- **A stepper** inset inside the size field's right edge, a pair of triangles
+  rather than `+` and `−`. What the buttons do is step to the next size, and
+  arithmetic signs on a value that is often already at the end of its range
+  read as a promise the control does not keep.
+
+The position grid's nine cells are filled squares with the chosen one dark,
+where they were bordered white boxes: a border on each would double the number
+of lines in a control that is nothing but lines. Sections are separated by
+whitespace and their headings alone — the rules that used to divide them were a
+third answer to a question already settled twice.
+
+Type follows the app's dialogs rather than being chosen for the panel: the
+title is 17px like an `.info-box h3`, and the Text and Icon headings 15.5px
+like an `h4` under one. A panel pinned over the map is read alongside the
+menus, so it should be headed like them.
+
+**One disabled look, applied to whole controls.** Left to themselves these
+fade four different ways — a `<select>` takes the browser's grey, an input with
+`-webkit-appearance: none` takes no styling at all, a widget built from divs
+takes whatever it was given, and a group of buttons faded button by button
+keeps the border they share at full strength around dead buttons. Every
+control instead keeps its live colours and is faded as a whole, which fades its
+border with it.
+
+Nothing inside an already-faded control fades again. The parts still take their
+own disabled state, because a disabled input cannot be typed into and a
+disabled button cannot be pressed, but two 0.45s over each other is 0.2: the
+size and colour fields are a wrapper around an input and were coming out half
+the weight of the plain opacity input beside them. Every disabled control in
+the panel now measures the same — `#333` text, `#bbb` border, faded once.
+
+**Captions are two sizes down from the values they name.** They are read once,
+when the panel is first met, and the narrow column of a split row is only as
+wide as the longest of them. "Letter spacing" is what set that width: at 12px
+it measures 71px, so the column is 74px and the panel 216px wide.
+
+Two traps, both found by looking at the panel rather than reading it:
+
+- **A grid track is at least as wide as its contents**, and a text input's
+  contents are twenty characters whatever width it is given. Without
+  `min-width: 0` on `.label-split-cell` the colour field pushed the opacity
+  field beside it off the panel.
+- **`-webkit-appearance: none` takes the browser's disabled styling with it**,
+  so a disabled field looked exactly like a live one. The panel fades them by
+  the same amount as its other inert widgets.
+
 #### Visibility is derived, not toggled
 
 The panel now has two callers: the old `label_style` entry point, which opens it
@@ -2819,7 +3208,12 @@ colour and its opacity on one line.
 The opacity control shows a percentage and stores a fraction, which
 `parseOpacityValue()` in `gui-point-style-tool.mjs` already does for the point
 panel (`"50%"` → `0.5`, clamped); it moves somewhere shared rather than being
-written a third time.
+written a third time — `gui-style-values.mjs`, with `formatOpacityPct()` for
+the other direction.
+
+It is a plain field, not a swatch or a slider: a swatch beside a colour reads
+as a second colour, and a slider gives up the exact value for a drag gesture
+over a zoomable map.
 
 **The panel writes `icon-opacity` whenever the icon is on**, the way it writes
 `icon-size`, rather than only when the control is touched. Text opacity is
@@ -3073,12 +3467,13 @@ The editor added 2.6 KB, again matching its own source and inlining nothing.
   with output size while the text does not. Reducing `-o width=` may therefore
   silently remove labels that were fine at nominal size; the export warning is
   the only signal.
-- **Stored measurements depend on the authoring browser's fonts.** The same
-  string measured 888.8 px in Chromium and 567.6 px in Firefox, because of font
-  fallback. So `label-text-width` reflects the metrics of whichever engine
-  authored it, and a project moved between machines can disagree about whether
-  a label fits. Widths should be rounded when stored so that reopening a
-  project does not produce gratuitous diffs.
+- **Measurements depend on the measuring browser's fonts.** The same string
+  measured 888.8 px in Chromium and 567.6 px in Firefox, because of font
+  fallback. So whether a label fits, and how far an aligned block is held over,
+  are answers from whichever engine is running the GUI. Since the measurement
+  is now cached rather than stored (see "A measurement is not data"), it is
+  taken fresh in each session and cannot arrive from another machine — which
+  also means it cannot produce diffs when a project is reopened.
 - **CLI-authored path labels are never dropped**, since they carry no
   measurement and export fails open.
 - **Unprojected label paths are distorted.** A curve fitted in degree space
@@ -3126,14 +3521,14 @@ layer determines where new labels go.
 
 Still open, in descending order of how much they block implementation:
 
-1. **Should the CLI get an approximate text-width estimator?** Without one, the
-   drop rule only applies to labels measured in the GUI or given an explicit
-   `text-width=`, so a purely scripted map never drops anything. A crude
-   estimate — an average advance width per font-size — would make the rule
-   universal, at the risk of dropping labels that would actually have fitted,
-   which is the failure mode the fail-open design exists to avoid. The
-   recommendation is not to add one, and to treat `text-width=` as the
-   scripted escape hatch.
+1. **Should the CLI get an approximate text-width estimator?** Without one the
+   drop rule only applies to labels measured in the GUI, so a purely scripted
+   map never drops anything. A crude estimate — an average advance width per
+   font-size — would make the rule universal, at the risk of dropping labels
+   that would actually have fitted, which is the failure mode the fail-open
+   design exists to avoid. The recommendation is not to add one. Real metrics in
+   Node would settle it properly; an escape hatch for a script to state its own
+   width was tried and removed, for the reasons in "Nor is it a parameter".
 2. **What command edits the knots of an existing label?** Dragging, adding or
    deleting a knot changes a feature's geometry, and neither `-add-shape` nor
    `-add-label` can express that. Options are a general geometry-editing
@@ -3161,8 +3556,8 @@ Unit tests, which is where most of the value is. Done so far:
   `getCurveLength()` cross-checked against a finely flattened version of the
   same curve.
 - `test/add-label-test.mjs` — one coordinate pair creates a single-point label
-  and several create a multipoint one; `text-width=` and its
-  fingerprint, field creation, style option pass-through, layer creation via
+  and several create a multipoint one; field creation, style option
+  pass-through, layer creation via
   `name=`, the target-layer rules, the unprojected-input warning, and transform
   survival through `-proj`, `-affine`, `-simplify` and a TopoJSON round trip —
   the property that motivated geometry storage, asserted directly. Also that
@@ -3383,9 +3778,12 @@ Still to write:
 
 - Zoom a framed label layer and assert the path `d` is not recomputed, and that
   text and path scale together.
-- Overflow: a label whose `label-text-width` exceeds its path length is absent
-  from exported SVG and reported in the export message; one whose
-  `label-text-hash` is stale is **present** in the output, with a warning.
+- Overflow: a label whose text is wider than its path is absent from an SVG
+  exported out of the GUI, and reported in the export message. (The marking half
+  of this is covered — "a path label too long for its path is marked as
+  overflowing" in `browser-tests/label-tool.spec.mjs` — and the drop rule is
+  covered against a stand-in measure function in
+  `test/label-path-export-test.mjs`, so what is left is a real browser export.)
 - Zoom an unframed label layer and assert an overflowing label is marked rather
   than hidden, and stays selectable.
 - Run the editing assertions against WebKit as well as Chromium, since WebKit

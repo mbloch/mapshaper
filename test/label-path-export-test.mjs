@@ -1,5 +1,7 @@
 import api from '../mapshaper.js';
-import { getLabelTextHash, getLabelFitState } from '../src/svg/svg-label-fit';
+import { getLabelFitState } from '../src/svg/svg-label-fit';
+import { getTextWidthKey, setTextMeasureFunction,
+  clearTextWidthCache } from '../src/svg/svg-label-metrics';
 import { getLabelPathData, featureIsPathLabel, shapeIsPathLabel,
   getLabelPathCoords } from '../src/svg/svg-label-paths';
 import { Transform } from '../src/geom/mapshaper-transform';
@@ -19,6 +21,23 @@ function defPaths(str) {
 }
 
 var CURVE = '-add-label coordinates=0,0,50,40,100,0';
+
+// Stands in for the GUI, which is the only thing that can really measure text.
+// A width per character at 12px, scaled by font-size, so a test can predict
+// what a string will be judged to be worth.
+function fakeMeasurer(pxPerChar) {
+  return function(rec) {
+    var size = Number(rec['font-size']) || 12;
+    return String(rec['label-text'] || '').length * pxPerChar * size / 12;
+  };
+}
+
+// Installs one on the module the *bundle* uses, which is not the one this file
+// imports from src/: mapshaper.js is a separate copy of every module in it.
+function measureInExport(pxPerChar) {
+  api.internal.svg.setTextMeasureFunction(pxPerChar ? fakeMeasurer(pxPerChar) : null);
+  api.internal.svg.clearTextWidthCache();
+}
 
 describe('label path export', function () {
 
@@ -141,68 +160,64 @@ describe('label path export', function () {
     });
   });
 
-  describe('getLabelTextHash()', function () {
+  describe('getTextWidthKey()', function () {
     it('depends on the text', function () {
-      assert.notEqual(getLabelTextHash({'label-text': 'a'}),
-        getLabelTextHash({'label-text': 'b'}));
+      assert.notEqual(getTextWidthKey({'label-text': 'a'}),
+        getTextWidthKey({'label-text': 'b'}));
     });
 
-    it('depends on each property the width was measured from', function () {
+    it('depends on each property the width is measured from', function () {
       var base = {'label-text': 'Reno'};
       ['font-family', 'font-size', 'font-weight', 'font-style', 'font-stretch',
         'letter-spacing'].forEach(function (field) {
         var rec = Object.assign({}, base);
         rec[field] = '99';
-        assert.notEqual(getLabelTextHash(rec), getLabelTextHash(base),
-          field + ' should change the hash');
+        assert.notEqual(getTextWidthKey(rec), getTextWidthKey(base),
+          field + ' should change the key');
       });
     });
 
     it('ignores properties that cannot change the width', function () {
       var a = {'label-text': 'Reno'};
       var b = {'label-text': 'Reno', fill: 'red', 'label-side': 'right',
-        'label-start-offset': '20%', 'label-text-width': 40};
-      assert.equal(getLabelTextHash(a), getLabelTextHash(b));
+        'label-start-offset': '20%', 'label-align': 'left'};
+      assert.equal(getTextWidthKey(a), getTextWidthKey(b));
     });
 
     it('treats a missing property and an empty one alike', function () {
-      assert.equal(getLabelTextHash({'label-text': 'a'}),
-        getLabelTextHash({'label-text': 'a', 'font-size': undefined}));
+      assert.equal(getTextWidthKey({'label-text': 'a'}),
+        getTextWidthKey({'label-text': 'a', 'font-size': undefined}));
     });
 
     it('does not confuse field boundaries', function () {
       // a value containing the separator must not be able to impersonate the
       // next field
-      assert.notEqual(getLabelTextHash({'label-text': 'a', 'font-family': 'b'}),
-        getLabelTextHash({'label-text': 'a\nb'}));
+      assert.notEqual(getTextWidthKey({'label-text': 'a', 'font-family': 'b'}),
+        getTextWidthKey({'label-text': 'a\nb'}));
     });
   });
 
   describe('getLabelFitState()', function () {
-    it('is unmeasured with no stored width', function () {
-      assert.equal(getLabelFitState({'label-text': 'a'}, 100), 'unmeasured');
-      assert.equal(getLabelFitState({'label-text': 'a', 'label-text-width': 0}, 100),
-        'unmeasured');
+    afterEach(function () {
+      setTextMeasureFunction(null);
+      clearTextWidthCache();
     });
 
-    it('compares the stored width against the path length', function () {
-      var rec = {'label-text': 'a', 'label-text-width': 50};
+    it('is unmeasured where nothing can measure the text, which is the CLI', function () {
+      assert.equal(getLabelFitState({'label-text': 'a'}, 100), 'unmeasured');
+    });
+
+    it('compares the measured width against the path length', function () {
+      var rec = {'label-text': 'abcde'};
+      setTextMeasureFunction(fakeMeasurer(10)); // 50px of text
       assert.equal(getLabelFitState(rec, 100), 'fits');
       assert.equal(getLabelFitState(rec, 50), 'fits'); // exactly fits
       assert.equal(getLabelFitState(rec, 49), 'overflow');
     });
 
-    it('trusts a width with no fingerprint, which is a deliberate opt-in', function () {
-      assert.equal(getLabelFitState({'label-text': 'a', 'label-text-width': 50}, 10),
-        'overflow');
-    });
-
-    it('is stale when the fingerprint no longer matches', function () {
-      var rec = {'label-text': 'a', 'label-text-width': 50};
-      rec['label-text-hash'] = getLabelTextHash(rec);
-      assert.equal(getLabelFitState(rec, 10), 'overflow');
-      rec['label-text'] = 'a much longer string';
-      assert.equal(getLabelFitState(rec, 10), 'stale');
+    it('is unmeasured when the measurement comes back empty', function () {
+      setTextMeasureFunction(function() { return null; });
+      assert.equal(getLabelFitState({'label-text': 'a'}, 100), 'unmeasured');
     });
   });
 
@@ -266,9 +281,8 @@ describe('label path export', function () {
     });
 
     it('path-only properties are kept out of the SVG attributes', async function () {
-      var str = await svg(CURVE + ' text=Sierra text-width=10');
-      assert.ok(!str.includes('label-text-width'), str);
-      assert.ok(!str.includes('label-text-hash'), str);
+      var str = await svg(CURVE + ' text=Sierra label-start-offset=25%');
+      assert.ok(!str.includes('label-start-offset'), str);
       assert.ok(!str.includes('label-path-d'), str);
     });
 
@@ -313,41 +327,62 @@ describe('label path export', function () {
   });
 
   describe('the fit rule', function () {
-    it('draws a label with no measurement', async function () {
+    // Export cannot measure text, so the rule only bites where something has
+    // been installed that can -- the GUI, or these tests standing in for it.
+    afterEach(function () {
+      measureInExport(null);
+    });
+
+    it('draws every label where nothing can measure the text', async function () {
       assert.equal(textPaths(await svg(CURVE + ' text=Sierra')).length, 1);
+      assert.equal(textPaths(await svg(CURVE +
+        ' text=AnAbsurdlyLongNameForSuchAShortCurve')).length, 1);
     });
 
     it('draws a label whose measured text fits', async function () {
-      assert.equal(textPaths(await svg(CURVE + ' text=Sierra text-width=40')).length, 1);
+      measureInExport(5); // 'Sierra' is 30px of text on a path some 150px long
+      assert.equal(textPaths(await svg(CURVE + ' text=Sierra')).length, 1);
     });
 
     it('drops a label whose measured text does not fit', async function () {
-      var str = await svg(CURVE + ' text=Sierra text-width=5000');
+      measureInExport(500);
+      var str = await svg(CURVE + ' text=Sierra');
       assert.equal(textPaths(str).length, 0);
       assert.equal(defPaths(str).length, 0, 'the unused path is not emitted either');
     });
 
-    it('draws a label whose measurement went stale', async function () {
-      // -add-label fingerprints the width it is given, so changing the text
-      // afterwards invalidates it and export falls back to drawing the label
-      var str = await svg(CURVE + ' text=Sierra text-width=5000 -style label-text=Z');
+    it('follows the text: a label shortened afterwards is drawn again', async function () {
+      // nothing has to notice that an edit invalidated a measurement, because
+      // the measurement is found by what it describes
+      measureInExport(500);
+      var str = await svg(CURVE + ' text=Sierra -style label-text=Z');
       assert.equal(textPaths(str).length, 1);
     });
 
-    it('still drops a label whose measurement is untouched by a restyle', async function () {
-      var str = await svg(CURVE + ' text=Sierra text-width=5000 -style fill=red');
+    it('follows the font: a label enlarged afterwards is dropped', async function () {
+      measureInExport(15); // 90px of text at 12px, ten times that at 120px
+      assert.equal(textPaths(await svg(CURVE + ' text=Sierra')).length, 1);
+      var str = await svg(CURVE + ' text=Sierra -style font-size=120');
+      assert.equal(textPaths(str).length, 0);
+    });
+
+    it('a restyle that cannot change the width leaves the verdict alone', async function () {
+      measureInExport(500);
+      var str = await svg(CURVE + ' text=Sierra -style fill=red');
       assert.equal(textPaths(str).length, 0);
     });
 
     it('only the non-fitting label is dropped', async function () {
-      var str = await svg(CURVE + ' text=A text-width=5000 ' + CURVE + ' text=B text-width=10');
+      measureInExport(200); // 'AAAAA' overflows, 'B' does not
+      var str = await svg(CURVE + ' text=AAAAA ' + CURVE + ' text=B');
       assert.equal(textPaths(str).length, 1);
       assert.ok(str.includes('>B<'), str);
     });
 
     it('keeps records aligned after a drop, so svg-data stays correct', async function () {
+      measureInExport(200);
       var out = await api.applyCommands(
-        CURVE + ' text=A text-width=5000 name=lab ' +
+        CURVE + ' text=AAAAA name=lab ' +
         CURVE + ' text=B target=lab ' +
         '-each "tag=this.id" target=lab -o out.svg width=400 svg-data=tag');
       var str = String(out['out.svg']);
@@ -358,7 +393,8 @@ describe('label path export', function () {
     it('a shorter output size can drop a label that fit at nominal size', async function () {
       // the path shrinks with output size but the text does not, because
       // font-size is exported at native scale
-      var cmd = CURVE + ' text=Sierra text-width=180';
+      measureInExport(30); // 'Sierra' is 180px of text
+      var cmd = CURVE + ' text=Sierra';
       assert.equal(textPaths(String((await api.applyCommands(cmd + ' -o big.svg width=400'))['big.svg'])).length, 1);
       assert.equal(textPaths(String((await api.applyCommands(cmd + ' -o small.svg width=100'))['small.svg'])).length, 0);
     });

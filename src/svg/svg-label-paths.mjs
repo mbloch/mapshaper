@@ -19,7 +19,7 @@ import utils from '../utils/mapshaper-utils';
 //
 // See docs/development/label-tool-design.md.
 
-// Number of dropped/stale ids to name in a report before summarizing the rest.
+// Number of dropped/joined ids to name in a report before summarizing the rest.
 var MAX_REPORTED_IDS = 10;
 
 // Property that carries a label's path data until a consumer moves it into a
@@ -70,7 +70,7 @@ export function getLabelPathData(knots) {
 }
 
 export function initPathLabelReport() {
-  return {dropped: [], stale: [], joined: []};
+  return {dropped: [], joined: []};
 }
 
 // Returns an SVG object, or null if the label is not rendered.
@@ -94,9 +94,6 @@ export function renderPathLabel(rec, knots, opts) {
       return null;
     }
     cls = LABEL_OVERFLOW_CLASS;
-  }
-  if (state == 'stale') {
-    addToReport(report, 'stale', id);
   }
   text = toLabelString(rec['label-text']);
   if (labelNewlineRxp.test(text)) {
@@ -188,13 +185,6 @@ export function reportPathLabels(report, lyr) {
     message(utils.format('Dropped %,d path label%s from layer "%s" because the text is longer than the path: %s.',
       report.dropped.length, utils.pluralSuffix(report.dropped.length), name,
       formatIds(report.dropped)));
-  }
-  if (report.stale.length > 0) {
-    warn(utils.format('%,d path label%s in layer "%s" %s a text measurement that no longer matches the text or font, so %s drawn without checking the fit: %s.',
-      report.stale.length, utils.pluralSuffix(report.stale.length), name,
-      report.stale.length == 1 ? 'has' : 'have',
-      report.stale.length == 1 ? 'it was' : 'they were',
-      formatIds(report.stale)));
   }
   if (report.joined.length > 0) {
     warn(utils.format('%,d path label%s in layer "%s" contain%s a line break; multi-line text on a path is not supported, so the lines were joined: %s.',

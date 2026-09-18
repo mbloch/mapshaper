@@ -39,6 +39,14 @@ function curvedLabel(text, extra) {
 
 var CURVE = [[0, 0], [50, 40], [100, 0]];
 
+// The fit check needs a text measurement, which only the GUI can take -- and
+// the GUI renderer reaches the label code through internal, so that is the copy
+// of the module to install one on. Undone after each test by the hook below.
+function measureAsWiderThanAnyPath() {
+  api.internal.svg.setTextMeasureFunction(function() { return 9999; });
+  api.internal.svg.clearTextWidthCache();
+}
+
 function defs(str) {
   return str.match(/<path [^>]*\/>/g) || [];
 }
@@ -67,6 +75,11 @@ function fakeContainer(children) {
 }
 
 describe('gui label path rendering', function() {
+
+  afterEach(function() {
+    api.internal.svg.setTextMeasureFunction(null);
+    api.internal.svg.clearTextWidthCache();
+  });
 
   describe('renderSymbols()', function() {
     it('renders a curved label once, referencing a path in <defs>', function() {
@@ -150,7 +163,8 @@ describe('gui label path rendering', function() {
 
     it('keeps a label that does not fit, and marks it', function() {
       // export drops these; hiding one in the editor would make it unfindable
-      var lyr = makeLayer([CURVE], [curvedLabel('Sierra', {'label-text-width': 9999})]);
+      var lyr = makeLayer([CURVE], [curvedLabel('Sierra')]);
+      measureAsWiderThanAnyPath();
       var str = renderSymbols(lyr, makeExt(1, 1), 'L1');
       assert.ok(/<textPath[^>]*>Sierra<\/textPath>/.test(str), str);
       assert.ok(/class="[^"]*label-overflow[^"]*"/.test(str), str);
@@ -159,7 +173,8 @@ describe('gui label path rendering', function() {
     it('keeps the symbol class alongside a state class', function() {
       // repositionSymbols finds elements by .mapshaper-svg-symbol, so the
       // overflow class must be added to it rather than replace it
-      var lyr = makeLayer([CURVE], [curvedLabel('Sierra', {'label-text-width': 9999})]);
+      var lyr = makeLayer([CURVE], [curvedLabel('Sierra')]);
+      measureAsWiderThanAnyPath();
       var cls = renderSymbols(lyr, makeExt(1, 1), 'L1').match(/<text class="([^"]*)"/)[1];
       assert.ok(cls.split(' ').indexOf('mapshaper-svg-symbol') > -1, cls);
       assert.ok(cls.split(' ').indexOf('label-overflow') > -1, cls);

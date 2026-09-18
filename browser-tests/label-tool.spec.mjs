@@ -407,10 +407,10 @@ test('an existing label emptied of its text is removed by a command', async func
   await armTool(page, 'anchor');
   await clickMap(page, 0.3, 0.4);
   await page.keyboard.type('A');
-  await clickMap(page, 0.8, 0.8); // finishes label A
+  await clickMap(page, 0.15, 0.85); // finishes label A
   await clickMap(page, 0.55, 0.6);
   await page.keyboard.type('B');
-  await clickMap(page, 0.85, 0.85); // finishes label B
+  await clickMap(page, 0.15, 0.85); // finishes label B
   await disarmTool(page);
   await page.waitForTimeout(200);
 
@@ -460,7 +460,7 @@ test('the tool starts idle on a layer that already has labels', async function({
   await clickMap(page, 0.4, 0.45);
   await page.keyboard.type('Reno');
   await disarmTool(page);
-  await clickMap(page, 0.85, 0.85); // finishes the label
+  await clickMap(page, 0.15, 0.85); // finishes the label
 
   // leave the mode and come back, now that the layer has a label on it
   await page.evaluate(function() {
@@ -632,6 +632,313 @@ test('a size can be typed, stepped and nudged from the keyboard', async function
   expect(errors).toEqual([]);
 });
 
+test('the symbol is faded and coloured apart from the text', async function({page}) {
+  // A label's opacity is applied to both of the elements its record produces,
+  // so the Icon section needs its own opacity or setting the text to 50% would
+  // half-fade a symbol the panel showed at 100%.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.4, 0.45);
+  await writeLabel(page, 'Reno');
+  await disarmTool(page);
+  await clickLabel(page, 0);
+
+  var panel = page.locator('.text-style-panel');
+  await panel.locator('.label-toggle').click();
+  await page.waitForTimeout(120);
+  await panel.locator('.label-icon-buttons [data-icon="circle"]').click();
+  await page.waitForTimeout(120);
+  await setFieldValue(panel.locator('.label-text-opacity-row input'), '40%');
+  await setFieldValue(panel.locator('.label-icon-color-row .label-color-field input'), '#cc0000');
+  await setFieldValue(panel.locator('.label-icon-opacity-row input'), '80%');
+
+  expect((await getLabelLayer(page)).records[0]).toMatchObject({
+    icon: 'circle',
+    opacity: 0.4,
+    'icon-color': '#cc0000',
+    'icon-opacity': 0.8
+  });
+
+  // full opacity is stored as no opacity at all: the property is what makes a
+  // label translucent, and a column of 1s is noise in the user's table
+  await setFieldValue(panel.locator('.label-text-opacity-row input'), '100%');
+  expect((await getLabelLayer(page)).records[0].opacity).toBeUndefined();
+  expect(errors).toEqual([]);
+});
+
+test('the switch is what gives a label a symbol and takes it away', async function({page}) {
+  // Whether a label has a symbol is one question and which shape it is another,
+  // so the first is a switch and the four shapes answer only the second. The
+  // shape, size and colour controls are inert until there is a symbol to style:
+  // an icon-size or icon-color on a label with no icon draws nothing.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.4, 0.45);
+  await writeLabel(page, 'Reno');
+  await disarmTool(page);
+  await clickLabel(page, 0);
+
+  var panel = page.locator('.text-style-panel');
+  var toggle = panel.locator('.label-toggle');
+  var starBtn = panel.locator('.label-icon-buttons [data-icon="star"]');
+  var iconColor = panel.locator('.label-icon-color-row .label-color-field input');
+
+  await expect(toggle).not.toHaveClass(/on/);
+  await expect(starBtn).toHaveClass(/disabled/);
+  await expect(iconColor).toBeDisabled();
+
+  await toggle.click();
+  await page.waitForTimeout(150);
+  await expect(toggle).toHaveClass(/on/);
+  await expect(starBtn).not.toHaveClass(/disabled/);
+  expect((await getLabelLayer(page)).records[0]).toMatchObject({
+    icon: 'circle',
+    'icon-size': 5,
+    'icon-opacity': 1
+  });
+
+  // the shape chosen is the shape the switch brings back, rather than the
+  // default quietly replacing it
+  await starBtn.click();
+  await page.waitForTimeout(150);
+  await setFieldValue(iconColor, '#cc0000');
+  expect((await getLabelLayer(page)).records[0]).toMatchObject({
+    icon: 'star',
+    'icon-color': '#cc0000'
+  });
+
+  await toggle.click();
+  await page.waitForTimeout(150);
+  expect((await getLabelLayer(page)).records[0].icon).toBe('');
+  await expect(starBtn).toHaveClass(/disabled/);
+  await expect(iconColor).toBeDisabled();
+
+  await toggle.click();
+  await page.waitForTimeout(150);
+  expect((await getLabelLayer(page)).records[0].icon).toBe('star');
+  expect(errors).toEqual([]);
+});
+
+test('alignment can be chosen before there is anything to align', async function({page}) {
+  // Alignment means how the lines of a label line up with each other, so it
+  // was disabled for anything but a label that already had a second line. That
+  // is the wrong way round: a style is usually set before the text is typed,
+  // and choosing left-aligned and then writing two lines has to work.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  var alignBtn = page.locator('.text-style-panel .label-align-buttons [data-align="left"]');
+
+  // nothing on the layer, nothing selected: still live, and showing the
+  // alignment a new label would be drawn with rather than nothing at all --
+  // centred, which is what its position implies
+  await expect(alignBtn).not.toHaveClass(/disabled/);
+  await expect(page.locator('.text-style-panel .label-align-buttons [data-align="center"]'))
+    .toHaveClass(/selected/);
+  await alignBtn.click();
+  await page.waitForTimeout(120);
+  await expect(alignBtn).toHaveClass(/selected/);
+  expect(await getNewLabelStyle(page)).toMatchObject({'label-align': 'left'});
+
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.35, 0.4);
+  await page.keyboard.type('North');
+  await page.keyboard.press('Shift+Enter');
+  await writeLabel(page, 'Dakota');
+  await disarmTool(page);
+  var created = (await getLabelLayer(page)).records[0];
+  expect(created['label-align']).toBe('left');
+
+  // and on a single-line label, where it competes with the position grid over
+  // where the text sits, it is still the user's to set
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.6, 0.65);
+  await writeLabel(page, 'Reno');
+  await disarmTool(page);
+  await clickLabel(page, 1);
+  await expect(alignBtn).not.toHaveClass(/disabled/);
+  await page.locator('.text-style-panel .label-align-buttons [data-align="right"]').click();
+  await page.waitForTimeout(150);
+
+  var records = (await getLabelLayer(page)).records;
+  expect(records[1]['label-align']).toBe('right');
+  expect(records[0]['label-align']).toBe('left');
+  expect(errors).toEqual([]);
+});
+
+test('an aligned label keeps its place while its lines re-justify', async function({page}) {
+  // text-anchor justifies the lines AND decides where the block of them sits,
+  // so left-aligning a label centred on its anchor used to slide it half its
+  // own width to the right. label-align asks only the first question, and the
+  // measured width of the text is what pays for the second.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.5, 0.45);
+  await page.keyboard.type('North');
+  await page.keyboard.press('Shift+Enter');
+  await writeLabel(page, 'Dakota');
+  await disarmTool(page);
+  await clickLabel(page, 0);
+  await setLabelPosition(page, 'n');
+  await page.waitForTimeout(150);
+  var before = await getLabelBox(page, 0);
+
+  await page.locator('.text-style-panel .label-align-buttons [data-align="left"]').click();
+  await page.waitForTimeout(200);
+  var rec = (await getLabelLayer(page)).records[0];
+  var after = await getLabelBox(page, 0);
+
+  expect(rec['label-align']).toBe('left');
+  // the lines are left-aligned now, so the box is no wider than it was...
+  expect(Math.abs(after.width - before.width)).toBeLessThan(1);
+  // ...and it did not move: half a width to the right is what this is about,
+  // and the label is some tens of pixels wide
+  expect(Math.abs(after.x - before.x)).toBeLessThan(1);
+  expect(errors).toEqual([]);
+});
+
+test('the block stays put in every one of the nine positions', async function({page}) {
+  // Six of the nine hold text clear of the anchor with an offset in ems, and
+  // an em needs a font size to become a distance. A label usually has none of
+  // its own -- it inherits one from its layer -- so those six went uncorrected
+  // while n, s and c, whose offset is plain 0, looked fine.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.5, 0.45);
+  await page.keyboard.type('North');
+  await page.keyboard.press('Shift+Enter');
+  await writeLabel(page, 'Dakota');
+  await disarmTool(page);
+  await clickLabel(page, 0);
+
+  var positions = ['nw', 'n', 'ne', 'w', 'c', 'e', 'sw', 's', 'se'];
+  for (var i = 0; i < positions.length; i++) {
+    var pos = positions[i];
+    await setLabelPosition(page, pos);
+    await page.locator('.text-style-panel .label-align-buttons [data-align="center"]').click();
+    await page.waitForTimeout(200);
+    var centered = await getLabelBox(page, 0);
+    for (var align of ['left', 'right']) {
+      await page.locator('.text-style-panel .label-align-buttons [data-align="' + align + '"]').click();
+      await page.waitForTimeout(200);
+      var box = await getLabelBox(page, 0);
+      expect(Math.abs(box.x - centered.x),
+        pos + ' ' + align + ' moved the block').toBeLessThan(1.5);
+    }
+  }
+  expect(errors).toEqual([]);
+});
+
+test('an aligned label is re-measured when its text or font changes', async function({page}) {
+  // Nothing tells the renderer that a measurement is out of date, because
+  // nothing has to: a width is found by a fingerprint of the text and the font
+  // it describes, so an edit makes the old one unfindable and the new one is
+  // measured on demand. What that buys is this: a label centred on its anchor
+  // stays centred on it through a font change and through a text edit, whatever
+  // its lines are aligned to.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.5, 0.45);
+  await page.keyboard.type('North');
+  await page.keyboard.press('Shift+Enter');
+  await writeLabel(page, 'Dakota');
+  await disarmTool(page);
+  await clickLabel(page, 0);
+  await setLabelPosition(page, 'n');
+  await page.locator('.text-style-panel .label-align-buttons [data-align="left"]').click();
+  await page.waitForTimeout(200);
+  var centre = await getLabelCentre(page, 0);
+  var width = (await getLabelBox(page, 0)).width;
+
+  // a bigger font is wider text, so a block held by a width measured at 12px
+  // would sit visibly off its anchor
+  await setFieldValue(page.locator('.text-style-panel .label-size-row input'), '24');
+  await page.waitForTimeout(250);
+  expect((await getLabelBox(page, 0)).width).toBeGreaterThan(width * 1.5);
+  expect(Math.abs(await getLabelCentre(page, 0) - centre)).toBeLessThan(1.5);
+
+  // and typing into it is the other way a measurement goes out of date: one
+  // click selects, a second reaches into the text
+  await clickLabel(page, 0);
+  await clickLabel(page, 0);
+  await page.keyboard.press('End');
+  await page.keyboard.type(' Northerly');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(250);
+  var rec = (await getLabelLayer(page)).records[0];
+  expect(rec['label-text']).toMatch(/Northerly/);
+  expect(Math.abs(await getLabelCentre(page, 0) - centre)).toBeLessThan(1.5);
+  expect(errors).toEqual([]);
+});
+
+test('a path label too long for its path is marked as overflowing', async function({page}) {
+  // The fit check is the other reader of a text measurement, and until the GUI
+  // had a measure function it could only answer 'unmeasured': a label the
+  // editor should have flagged, and export should have dropped, went through
+  // both untouched. One measurement switches both on.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+
+  await armTool(page, 'path');
+  await clickMap(page, 0.3, 0.5);
+  await clickMap(page, 0.36, 0.5);
+  await finishCurve(page);
+  await writeLabel(page, 'A NAME FAR TOO LONG FOR THIS LITTLE CURVE');
+  await page.waitForTimeout(200);
+  // drawn, because a label nobody can see is a label nobody can fix, and
+  // marked, because it will not survive export
+  expect(await getLabelClass(page, 0)).toMatch(/label-overflow/);
+
+  // and a curve with room for its text is not marked
+  await armTool(page, 'path');
+  await clickMap(page, 0.15, 0.8);
+  await clickMap(page, 0.75, 0.8);
+  await finishCurve(page);
+  await writeLabel(page, 'ROOM');
+  await page.waitForTimeout(200);
+  expect(await getLabelClass(page, 1)).not.toMatch(/label-overflow/);
+  expect(errors).toEqual([]);
+});
+
+test('measurements stay out of the data', async function({page}) {
+  // A text measurement is derived from the text and the font, so it lives in a
+  // cache keyed by those (svg-label-metrics.mjs) and never in the user's
+  // table: a label edited in the panel carries the properties the user set and
+  // nothing the app needed along the way.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.5, 0.45);
+  await page.keyboard.type('North');
+  await page.keyboard.press('Shift+Enter');
+  await writeLabel(page, 'Dakota');
+  await disarmTool(page);
+  await clickLabel(page, 0);
+  await setLabelPosition(page, 'ne');
+  await page.locator('.text-style-panel .label-align-buttons [data-align="center"]').click();
+  await page.waitForTimeout(150);
+  await setFieldValue(page.locator('.text-style-panel .label-size-row input'), '18');
+  await page.waitForTimeout(250);
+
+  var layer = await getLabelLayer(page);
+  expect(layer.fields.sort()).toEqual(['font-size', 'label-align', 'label-pos', 'label-text']);
+  expect(Object.keys(layer.records[0]).sort())
+    .toEqual(['font-size', 'label-align', 'label-pos', 'label-text']);
+
+  // and the command history is the edits themselves, with no measurement
+  // commands chained onto them
+  expect(await getSessionHistory(page)).not.toMatch(/label-text-width|label-text-hash/);
+  expect(errors).toEqual([]);
+});
+
 test('styling a selected label restyles it rather than the whole layer', async function({page}) {
   // Selecting is what points the panel at one label. With nothing selected it
   // holds a default for the next label instead of restyling every label on the
@@ -645,7 +952,7 @@ test('styling a selected label restyles it rather than the whole layer', async f
   await clickMap(page, 0.6, 0.7); // finishes label A, and nothing more
   await clickMap(page, 0.65, 0.6); // places label B
   await page.keyboard.type('B');
-  await clickMap(page, 0.85, 0.85); // finishes label B
+  await clickMap(page, 0.15, 0.85); // finishes label B
   await disarmTool(page); // so a click makes nothing
   await page.waitForTimeout(200);
 
@@ -670,10 +977,10 @@ test('shift-click adds a label to the selection, and takes it back out', async f
   await armTool(page, 'anchor');
   await clickMap(page, 0.3, 0.35);
   await page.keyboard.type('A');
-  await clickMap(page, 0.8, 0.8);
+  await clickMap(page, 0.15, 0.85);
   await clickMap(page, 0.55, 0.6);
   await page.keyboard.type('B');
-  await clickMap(page, 0.8, 0.85);
+  await clickMap(page, 0.2, 0.85);
   await disarmTool(page);
   await page.waitForTimeout(150);
 
@@ -706,7 +1013,7 @@ test('escape gives up the selection before the armed tool', async function({page
   await armTool(page, 'anchor');
   await clickMap(page, 0.3, 0.35);
   await page.keyboard.type('A');
-  await clickMap(page, 0.8, 0.8);
+  await clickMap(page, 0.15, 0.85);
   await disarmTool(page);
   await clickLabel(page, 0);
   expect(await getSelectionCueCount(page)).toBe(1);
@@ -961,6 +1268,43 @@ async function clickLabel(page, id) {
   await page.waitForTimeout(120);
 }
 
+// Where a label's text is on screen, which is the thing an alignment change
+// must not move. The text node's own box, not the symbol group's: an icon
+// beside it would hide the shift this is watching for.
+async function getLabelBox(page, id) {
+  return page.evaluate(function(args) {
+    var symbol = document.querySelector(
+      '.mapshaper-symbol-layer .mapshaper-svg-symbol[data-id="' + args.id + '"]');
+    var node = symbol && (symbol.tagName == 'text' ? symbol : symbol.querySelector('text'));
+    var r = node.getBoundingClientRect();
+    return {x: r.x, y: r.y, width: r.width, height: r.height};
+  }, {id: id});
+}
+
+// The class attribute of a label's <text>, which is where the renderer records
+// what it thinks of the label -- overflowing its path, for one.
+async function getLabelClass(page, id) {
+  return page.evaluate(function(args) {
+    var symbol = document.querySelector(
+      '.mapshaper-symbol-layer .mapshaper-svg-symbol[data-id="' + args.id + '"]');
+    var node = symbol && (symbol.tagName == 'text' ? symbol : symbol.querySelector('text'));
+    return node ? node.getAttribute('class') || '' : null;
+  }, {id: id});
+}
+
+// The horizontal middle of a label's text, which is where its anchor is for a
+// label positioned n, s or c -- and so the thing that must not move when the
+// text or the font changes under an alignment.
+async function getLabelCentre(page, id) {
+  var box = await getLabelBox(page, id);
+  return box.x + box.width / 2;
+}
+
+async function setLabelPosition(page, pos) {
+  await page.locator('.text-style-panel .label-position-grid [data-position="' + pos + '"]').click();
+  await page.waitForTimeout(150);
+}
+
 // What the style panel says its controls will act on.
 async function getEditingStatus(page) {
   return page.locator('.text-style-panel .label-editing-status').textContent();
@@ -1012,8 +1356,22 @@ async function disarmTool(page) {
 // depend on the viewport size.
 async function clickMap(page, fx, fy) {
   var box = await page.locator('.mshp-main-map').boundingBox();
-  await page.mouse.click(box.x + box.width * fx, box.y + box.height * fy);
+  var x = box.x + box.width * fx;
+  var y = box.y + box.height * fy;
+  await refuseToClickThroughThePanel(page, x, y);
+  await page.mouse.click(x, y);
   await page.waitForTimeout(60); // let the click be processed and drawn
+}
+
+// The style panel is pinned over the top right of the map, so a point meant as
+// empty map can land on a control instead -- which fails slowly and strangely:
+// the click that was meant to finish a label saves a style preset, and the
+// prompt it opens then swallows everything the test does next.
+async function refuseToClickThroughThePanel(page, x, y) {
+  var box = await page.locator('.text-style-panel').boundingBox();
+  if (!box || x < box.x || y < box.y || x > box.x + box.width || y > box.y + box.height) return;
+  throw new Error('clickMap(' + x + ', ' + y + ') lands on the style panel, ' +
+    'not the map: pick a point to the left of it.');
 }
 
 async function dblclickMap(page, fx, fy) {
@@ -1034,6 +1392,14 @@ async function writeLabel(page, text) {
   await page.keyboard.type(text || 'Label');
   await page.keyboard.press('Escape');
   await page.waitForTimeout(250);
+}
+
+// Types a value into a panel text field and commits it, which is what a user
+// leaving the field does: the panel's fields apply their value on 'change'.
+async function setFieldValue(locator, value) {
+  await locator.fill(value);
+  await locator.press('Enter');
+  await locator.page().waitForTimeout(200);
 }
 
 // Right-clicks the middle of a label's rendered text. Moves the pointer onto

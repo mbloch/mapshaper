@@ -33,6 +33,7 @@ export function getOptionParser() {
         'letter-spacing': {describe: 'extra space between letters'},
         'line-height': {describe: 'spacing between lines of a multi-line label'},
         'text-anchor': {describe: 'start, middle or end'},
+        'label-align': {describe: 'how the lines of a multi-line label align: left, center or right'},
         'dominant-baseline': {describe: 'vertical alignment, e.g. central'},
         'label-pos': {describe: 'position relative to the anchor: n s e w ne se nw sw c'},
         'label-side': {describe: 'which side of its path the text sits on: left or right'},
@@ -2061,6 +2062,9 @@ export function getOptionParser() {
     .option('text-anchor', {
       describe: 'label alignment; one of: start, end, middle (default)'
     })
+    .option('label-align', {
+      describe: 'alignment of the lines of multi-line labels; left, center or right'
+    })
     .option('dx', {
       describe: 'x offset of labels (default is 0)'
     })
@@ -2096,12 +2100,6 @@ export function getOptionParser() {
     })
     .option('label-start-offset', {
       describe: 'where label text starts along its path, e.g. 50%'
-    })
-    .option('label-text-width', {
-      describe: 'rendered width of label text in px at its native font size'
-    })
-    .option('label-text-hash', {
-      describe: 'fingerprint of the values label-text-width was measured from'
     })
    .option('target', targetOpt);
 
@@ -2347,10 +2345,6 @@ export function getOptionParser() {
     })
     .option('text', {
       describe: 'label text'
-    })
-    .option('text-width', {
-      describe: 'rendered text width in px, for checking that text fits a path',
-      type: 'number'
     })
     // label style properties, so that creating and styling a label is one
     // command; anything not listed here can be set with a following -style

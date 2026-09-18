@@ -2376,10 +2376,12 @@ body.pan.panning .map-layers:not(.drawing) {
 	padding: 1px 0;
 }
 
+/* The size the app's dialogs title themselves at (.info-box h3), so that a
+   panel pinned over the map is headed like the menus beside it. */
 .label-style-panel-title {
 	position: relative;
 	font-weight: 600;
-	font-size: 16px;
+	font-size: 17px;
 }
 
 .label-style-close {
@@ -2473,11 +2475,21 @@ body.pan.panning .map-layers:not(.drawing) {
 	margin-right: 5px;
 }
 
+/* Two controls on one line: a font style and its size, a colour and its
+   opacity, the icon shapes and the icon's size. Both columns are the same
+   width in every row, rather than each row's right column being sized to
+   whatever it happens to hold -- the panel is a stack of these pairs, and
+   sizing them one row at a time leaves every field edge in a slightly
+   different place.
+
+   Bottom-aligned, so that a caption above one control cannot push it out of
+   line with the control beside it: the icon size has a "Size" over it and the
+   shape buttons beside it have nothing, and the two still have to be level. */
 .label-split-row {
 	display: grid;
-	grid-template-columns: 105px 1fr;
-	column-gap: 8px;
-	align-items: start;
+	grid-template-columns: 1fr var(--label-split-b-width);
+	column-gap: 10px;
+	align-items: end;
 }
 
 .label-split-cell > span,
@@ -2487,10 +2499,292 @@ body.pan.panning .map-layers:not(.drawing) {
 	color: #555;
 }
 
-.label-split-row .label-size-row,
-.label-split-row .label-icon-size-row {
-	justify-self: end;
+/* Captions a couple of sizes down from the values they name. They are read
+   once, when the panel is first met, and the narrow column of a split row is
+   only as wide as the longest of them -- "Letter spacing" is what set it --
+   so quieter captions are also a narrower panel. Direct children only: the
+   colour picker's H/S/B captions are spans in a row too. */
+.text-style-panel .label-style-row > span,
+.text-style-panel .label-split-cell > span,
+.text-style-panel .label-style-row > .label-style-row-label,
+.text-style-panel .label-split-cell > .label-style-row-label,
+.text-style-panel .label-icon-size-caption {
+	font-size: 12px;
+}
+
+.label-split-row .label-split-cell + .label-split-cell {
 	white-space: nowrap;
+}
+
+/* Each column's control fills its column: the widths are the grid's to decide
+   now, and a control keeping a width of its own would sit inside its cell
+   rather than lining up with the one above it. */
+.label-split-cell > select,
+.label-split-cell > .size-field,
+.label-split-cell > input[type="text"] {
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.label-split-cell > .size-field {
+	display: flex;
+}
+
+.text-style-panel .size-field input.size-field-input {
+	flex: 1;
+	width: auto;
+}
+
+/* A grid track is at least as wide as its contents unless told otherwise, and
+   a text input's contents are twenty characters whatever width it is given --
+   without this the colour field pushes the opacity beside it off the panel. */
+.label-split-row .label-split-cell {
+	min-width: 0;
+}
+
+.label-font-style-row select {
+	width: 100%;
+	box-sizing: border-box;
+}
+
+/* Both take their width from the split row's narrow column; a value reads from
+   the left edge of the field, where the caption above it starts. */
+.label-style-panel .label-opacity-input,
+.label-style-panel .label-measure-input {
+	height: 19px;
+	box-sizing: border-box;
+	padding: 0 3px;
+	vertical-align: top;
+}
+
+/* The label panel's own field metrics, kept in one place because a row is only
+   legible when the select, the colour field, the size field and the stepper
+   beside them are all the same height. The other style panels keep the older,
+   flatter look until they are redrawn. */
+/* Wider than the other style panels, because this one is mostly pairs of
+   controls: at 185px the narrow column of a pair is too narrow for its own
+   caption, and "Letter spacing" was clipped. */
+.text-style-panel {
+	width: 216px;
+	--label-field-height: 22px;
+	--label-field-radius: 4px;
+	--label-field-border: #bbb;
+	/* the narrow column of a split row, wide enough for the longest caption
+	   over it -- "Letter spacing", which measures 71px -- and the same in
+	   every row */
+	--label-split-b-width: 74px;
+}
+
+.text-style-panel select,
+.text-style-panel input[type="text"],
+.text-style-panel .label-opacity-input,
+.text-style-panel .label-measure-input {
+	height: var(--label-field-height);
+	box-sizing: border-box;
+	border-radius: var(--label-field-radius);
+	border-color: var(--label-field-border);
+}
+
+.text-style-panel select {
+	padding: 0 2px;
+}
+
+/* One disabled look for the whole panel. Left to themselves the controls each
+   fade differently -- a select takes the browser's grey, an input with
+   -webkit-appearance: none takes no styling at all, and a widget built from
+   divs takes whatever it was given -- so an inert row ends up in three or four
+   shades. Each control keeps its live colours and the whole thing is faded by
+   the same amount, which also fades its border. */
+.text-style-panel select:disabled,
+.text-style-panel input[type="text"]:disabled,
+.text-style-panel .size-field.disabled,
+.text-style-panel .label-color-field.disabled,
+.text-style-panel .label-btn-group.disabled {
+	opacity: 0.45;
+	color: var(--normal-text);
+	-webkit-text-fill-color: var(--normal-text);
+	background-color: white;
+	border-color: var(--label-field-border);
+}
+
+/* Nothing inside an already-faded control fades again: two 0.45s over each
+   other is 0.2, and a widget made of a wrapper and an input -- the size and
+   colour fields -- was coming out half the weight of the plain input beside
+   it. The parts still take their own disabled state, because a disabled input
+   cannot be typed into and a disabled button cannot be pressed; it is only the
+   fading that belongs to the whole. */
+.text-style-panel .label-btn-group.disabled .label-panel-btn.disabled,
+.text-style-panel .size-field.disabled .label-panel-btn.disabled,
+.text-style-panel .size-field.disabled input:disabled,
+.text-style-panel .label-color-field.disabled input:disabled,
+.text-style-panel .label-color-field.disabled .label-color-chit.disabled {
+	opacity: 1;
+	color: inherit;
+}
+
+/* Whitespace and a bold heading separate the sections; a rule as well would be
+   a third answer to a question already settled twice. */
+.text-style-panel .label-style-section + .label-style-section {
+	margin-top: 12px;
+	padding-top: 0;
+	border-top: 0;
+}
+
+/* Baselines, not boxes: the heading and the caption beside it are set at
+   different sizes, and centring their boxes leaves the smaller one's baseline
+   a pixel or two high. The switch has no baseline to share, so it centres on
+   the line itself. */
+.text-style-panel .label-style-section-title {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+}
+
+.text-style-panel .label-style-section-title .label-toggle {
+	align-self: center;
+}
+
+/* 15.5px is what the dialogs subhead at (.info-box h4); the weight is the
+   sketch's, which wants these read as headings rather than as captions. */
+.text-style-panel .label-style-section-name {
+	font-size: 15.5px;
+	color: #222;
+}
+
+.text-style-panel .label-style-section-minor .label-style-section-name {
+	font-size: inherit;
+	font-weight: normal;
+	color: #555;
+}
+
+/* Where label text is measured (gui-label-measure.mjs). Off the page rather
+   than display:none, which would give it no layout and its text no box. */
+.label-measure-svg {
+	position: absolute;
+	left: -10000px;
+	top: -10000px;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+}
+
+/* Closer to the heading above it than a row usually is, because that heading
+   line carries this row's "Size" caption: the gap between a caption and the
+   field it names is 2px everywhere else in the panel. */
+.text-style-panel .label-icon-shapes-row {
+	margin-top: 2px;
+}
+
+/* Pushed to the right and given the width of a split row's narrow column, so
+   that it sits over the size field a row below it. */
+.text-style-panel .label-icon-size-caption {
+	width: var(--label-split-b-width);
+	margin-left: auto;
+	font-weight: normal;
+	color: #555;
+}
+
+/* Darker than the app's default placeholder. These fields show the value the
+   renderer will use when the property is absent -- 0 and auto are true of the
+   label, they are just not stored on it -- so at #aaa they read as a control
+   that is switched off rather than as an answer. */
+.text-style-panel ::placeholder {
+	color: #777;
+}
+
+/* Buttons that answer one question share a border and sit flush, the way the
+   size field and its stepper do: four shapes are four answers to "which
+   symbol", not four separate controls. They divide the width of their cell so
+   that the group lines up with the field above or below it. */
+.text-style-panel .label-btn-group {
+	display: flex;
+	box-sizing: border-box;
+	height: var(--label-field-height);
+	border: 1px solid var(--label-field-border);
+	border-radius: var(--label-field-radius);
+	background: white;
+	overflow: hidden;
+}
+
+.text-style-panel .label-btn-group .label-panel-btn {
+	flex: 1;
+	width: auto;
+	height: auto;
+	border: none;
+	border-radius: 0;
+	background: white;
+}
+
+.text-style-panel .label-btn-group .label-panel-btn + .label-panel-btn {
+	border-left: 1px solid #e0e0e0;
+}
+
+.text-style-panel .label-btn-group .label-panel-btn:hover:not(.disabled) {
+	background: #f0f0f0;
+}
+
+/* A grey fill, not the inverse the panel's other buttons use: the glyph is
+   what identifies the choice, and reversing it out makes the selected shape
+   the hardest one to read. */
+.text-style-panel .label-btn-group .label-panel-btn.selected {
+	background: #dcdcdc;
+	color: black;
+}
+
+/* A switch, because whether the label has a symbol at all is a yes/no that the
+   four shapes below it then qualify. Off is a pale track with the knob left,
+   on a dark one with the knob right. */
+.label-toggle {
+	position: relative;
+	flex: none;
+	width: 26px;
+	height: 15px;
+	border-radius: 8px;
+	background: #ccc;
+	cursor: pointer;
+	user-select: none;
+	transition: background-color 0.12s;
+}
+
+.label-toggle-knob {
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 11px;
+	height: 11px;
+	border-radius: 50%;
+	background: white;
+	box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+	transition: left 0.12s;
+}
+
+.label-toggle.on {
+	background: #333;
+}
+
+.label-toggle.on .label-toggle-knob {
+	left: 13px;
+}
+
+.label-toggle.disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.label-style-section + .label-style-section {
+	margin-top: 11px;
+	padding-top: 7px;
+	border-top: 1px solid #ddd;
+}
+
+.label-style-section-title {
+	margin-top: 8px;
+	font-weight: 600;
+	color: #333;
+}
+
+.label-style-section + .label-style-section .label-style-section-title {
+	margin-top: 0;
 }
 
 .label-color-row {
@@ -2533,6 +2827,55 @@ body.pan.panning .map-layers:not(.drawing) {
 	padding-bottom: 0;
 	box-sizing: border-box;
 	vertical-align: top;
+}
+
+/* A swatch and its hex value inside one border: the pair is one answer to one
+   question, and a separate button beside a text box reads as two. The swatch
+   keeps its own outline so that white does not disappear into the field. */
+.text-style-panel .label-color-field {
+	display: flex;
+	align-items: center;
+	box-sizing: border-box;
+	height: var(--label-field-height);
+	padding: 0 3px;
+	border: 1px solid var(--label-field-border);
+	border-radius: var(--label-field-radius);
+	background: white;
+}
+
+.text-style-panel .label-color-field:focus-within {
+	border-color: #d3aa00;
+}
+
+.text-style-panel .label-color-field .label-color-chit {
+	flex: none;
+	width: 13px;
+	height: 13px;
+	margin-right: 6px;
+	border: 1px solid #bbb;
+	border-radius: 2px;
+}
+
+.text-style-panel .label-color-field input[type="text"] {
+	flex: 1;
+	width: auto;
+	min-width: 0;
+	height: auto;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+}
+
+.text-style-panel .label-color-field input[type="text"]:focus {
+	border: none;
+	box-shadow: none;
+	outline: none;
+}
+
+.text-style-panel .label-color-field.disabled {
+	opacity: 0.45;
 }
 
 .label-color-row .label-color-picker {
@@ -2873,15 +3216,33 @@ body.dragging-color-picker * {
 	background: white;
 }
 
+/* Nine plain squares: a border on each would double the lines in a shape that
+   is nothing but lines, so the cells are filled and the chosen one is dark. */
+.text-style-panel .label-position-grid {
+	grid-template-columns: repeat(3, 12px);
+	gap: 3px;
+}
+
+.text-style-panel .label-position-grid .label-panel-btn {
+	width: 12px;
+	height: 12px;
+	border: none;
+	border-radius: 1px;
+	background: #dcdcdc;
+}
+
+.text-style-panel .label-position-grid .label-panel-btn:hover:not(.disabled) {
+	background: #c4c4c4;
+}
+
+.text-style-panel .label-position-grid .label-panel-btn.selected {
+	background: black;
+}
+
 .label-panel-btn.selected {
 	background-color: black;
 	border-color: black;
 	color: white;
-}
-
-.label-icon-buttons {
-	display: flex;
-	gap: 2px;
 }
 
 .label-icon-buttons .label-panel-btn {
@@ -2898,7 +3259,6 @@ body.dragging-color-picker * {
 	stroke: none;
 }
 
-.label-icon-buttons .label-panel-btn[data-icon="none"] .label-icon-symbol,
 .label-icon-buttons .label-panel-btn[data-icon="ring"] .label-icon-symbol {
 	fill: none;
 	stroke: currentColor;
@@ -2911,6 +3271,22 @@ body.dragging-color-picker * {
 	transform: scale(1.4);
 }
 
+.label-align-buttons .label-panel-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.label-align-symbol {
+	display: block;
+	width: 13px;
+	height: 13px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.5;
+	stroke-linecap: round;
+}
+
 /* A size field and its stepper share a border and sit flush, so that the three
    elements read as one control rather than three. The buttons are always
    visible: they are the primary affordance of the panel's most-used numbers,
@@ -2919,9 +3295,10 @@ body.dragging-color-picker * {
 .size-field {
 	display: inline-flex;
 	align-items: stretch;
-	height: 19px;
-	border: 1px solid #999;
-	border-radius: 3px;
+	box-sizing: border-box;
+	height: var(--label-field-height, 19px);
+	border: 1px solid var(--label-field-border, #999);
+	border-radius: var(--label-field-radius, 3px);
 	background: #fff;
 	overflow: hidden;
 	vertical-align: top;
@@ -2944,7 +3321,6 @@ body.dragging-color-picker * {
 	border-radius: 0;
 	box-shadow: none;
 	background: transparent;
-	text-align: right;
 	color: black;
 }
 
@@ -2960,10 +3336,17 @@ body.dragging-color-picker * {
 	border-color: #d3aa00;
 }
 
+/* The stepper is inset from the field's border rather than dividing it: the
+   value is the field's content and the arrows are a control within it, which
+   is also how the native spinner reads. */
 .size-field .size-field-stepper {
 	display: flex;
 	flex-direction: column;
-	border-left: 1px solid #999;
+	margin: 2px 2px 2px 0;
+	border: 1px solid #d6d6d6;
+	border-radius: 2px;
+	background: #f7f7f7;
+	overflow: hidden;
 }
 
 /* Half-height buttons, so the pair occupies the width of one: the panel's rows
@@ -2972,24 +3355,23 @@ body.dragging-color-picker * {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 15px;
-	height: 9px;
+	width: 13px;
+	height: 8px;
 	border: none;
 	border-radius: 0;
-	font-size: 11px;
-	line-height: 9px;
+	background: transparent;
 }
 
-.size-field .size-field-up {
-	border-bottom: 1px solid #bbb;
+.size-field .size-field-arrow {
+	display: block;
+	width: 7px;
+	height: 5px;
+	fill: #444;
+	stroke: none;
 }
 
-.size-field .size-field-btn:hover {
-	background: #ddd;
-}
-
-.size-field .size-field-btn.disabled:hover {
-	background: #eee;
+.size-field .size-field-btn:hover:not(.disabled) {
+	background: #e2e2e2;
 }
 
 .nav-menu-item,
