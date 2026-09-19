@@ -2414,7 +2414,8 @@ The GUI has two parallel mode systems and a new tool must register with both:
 The existing `labels` interaction mode ("position labels", drag to set
 `dx`/`dy`) and `label_style` mode were **kept** while the new tool was
 incomplete, so that there was a working fallback and so that the new mode could
-be checked against the old ones' unchanged behavior.
+be checked against the old ones' unchanged behavior. Both are now gone; what
+each of them did, and what replaced it, is below.
 
 **`label_style` is now retired for label layers.** It was never in a mode menu
 under its own name: it was reached by asking for point styling on a layer whose
@@ -2464,13 +2465,24 @@ layer, wherever the menu is opened from.
 Emptying a label's text still removes it too, which is what `commit()` does
 when a session ends with no glyphs left.
 
-`labels` ("position labels") has nothing left that the label tool cannot do —
-its drag against a fixed anchor is the Draggable mode below — so it can go
-whenever its removal is worth the churn. See "The tool takes over positioning".
+**`labels` ("position labels") is retired too.** Its drag against a fixed
+anchor is the Draggable mode below, which was the last thing it did that the
+tool could not — see "The tool takes over positioning" — so the mode is gone
+along with `gui-edit-labels.mjs`, its `label_dragstart`/`label_dragend` undo
+pair, its entries in `modeUsesHitDetection`, `modeUsesPopup`,
+`modeSupportsUndo` and `HitControl.draggable()`, and the `.active-label`
+highlight it drew. `gui-svg-labels.mjs` kept only `setMultilineAttribute()`,
+which the new tool uses; `autoUpdateTextAnchor()` and the delta helpers went
+with the drag they served.
 
-Two places still branch on the mode to hold that line: `selectStyleFeature()`
-gives label mode its own plain-click rule, and the yellow halo is applied only
-outside label mode. Both branches go away with `labels`.
+A label layer's menu is now `info`, `selection`, `box`, `label` and `ruler` —
+the standard menu, with the label tool answering for everything label-shaped.
+
+What the retirement does *not* remove is the pair of branches that distinguish
+`label` from the remaining style modes: `selectStyleFeature()` gives label mode
+its own plain-click rule, and the canvas halo is suppressed in label mode in
+favour of the tool's own cues. Both still do work, because `point_style`,
+`line_style` and `polygon_style` are still reachable on other layer types.
 
 `HitControl`'s mode gates (`selectable()`, `draggable()`, `clickable()`,
 `eventIsEnabled()`) need explicit entries for the new mode; it needs both drag

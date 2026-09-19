@@ -14,12 +14,11 @@ export function InteractionMode(gui) {
     lines: ['info', 'selection', 'box', 'line_style', 'label', 'edit_lines', 'snip_lines', 'ruler'],
     table: ['info', 'selection'],
     raster: ['label', 'ruler', 'box'],
-    // A label layer has no entry for styling labels or for adding and dragging
-    // points: the label tool does both, along with creating and retyping
-    // labels, so those two offered a subset of what sits next to them in the
-    // menu. 'labels' stays because positioning a label relative to its anchor
-    // is not something the label tool does.
-    labels: ['info', 'selection', 'box', 'label', 'labels', 'ruler'],
+    // A label layer has no entry for styling labels, for adding and dragging
+    // points, or for positioning labels: the label tool does all three, along
+    // with creating and retyping labels, so each of them offered a subset of
+    // what sat next to it in the menu.
+    labels: ['info', 'selection', 'box', 'label', 'ruler'],
     points: ['info', 'selection', 'box', 'point_style', 'label', 'edit_points', 'ruler'] // , 'add-points'
   };
 
@@ -39,7 +38,6 @@ export function InteractionMode(gui) {
     point_style: 'style points',
     line_style: 'style lines',
     polygon_style: 'style polygons',
-    labels: 'position labels',
     edit_points: 'add/drag points',
     edit_lines: 'draw/edit lines',
     edit_polygons: 'draw/edit polygons',
@@ -113,15 +111,15 @@ export function InteractionMode(gui) {
   };
 
   this.modeUsesHitDetection = function(mode) {
-    return ['info', 'selection', 'data', 'label', 'label_style', 'point_style', 'line_style', 'polygon_style', 'labels', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons', 'snip_lines'].includes(mode);
+    return ['info', 'selection', 'data', 'label', 'label_style', 'point_style', 'line_style', 'polygon_style', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons', 'snip_lines'].includes(mode);
   };
 
   this.modeUsesPopup = function(mode) {
-    return ['info', 'selection', 'data', 'box', 'labels', 'edit_points', 'rectangles'].includes(mode);
+    return ['info', 'selection', 'data', 'box', 'edit_points', 'rectangles'].includes(mode);
   };
 
   this.modeSupportsUndo = function(mode) {
-    return ['data', 'label', 'label_style', 'point_style', 'line_style', 'polygon_style', 'labels', 'edit_points', 'edit_lines', 'edit_polygons', 'snip_lines', 'vertices', 'rectangles'].includes(mode);
+    return ['data', 'label', 'label_style', 'point_style', 'line_style', 'polygon_style', 'edit_points', 'edit_lines', 'edit_polygons', 'snip_lines', 'vertices', 'rectangles'].includes(mode);
   };
 
   this.getMode = getInteractionMode;

@@ -116,17 +116,6 @@ export function Undo(gui) {
     addHistoryState(undo, redo);
   });
 
-  // undo/redo label dragging
-  //
-  gui.on('label_dragstart', function(e) {
-    stashedUndo = makeDataSetter(e.FID);
-  });
-
-  gui.on('label_dragend', function(e) {
-    var redo = makeDataSetter(e.FID);
-    addHistoryState(stashedUndo, redo);
-  });
-
   // undo/redo data editing
   // TODO: consider setting selected feature to the undo/redo target feature
   //
@@ -450,7 +439,9 @@ export function Undo(gui) {
   function captureEditTarget(tx, target, mode) {
     var layer = target.layer;
     var dataset = target.dataset;
-    if (mode == 'data' || mode == 'labels') {
+    // Attribute editing changes the table and nothing else, so that is all
+    // there is to capture.
+    if (mode == 'data') {
       if (layer.data) {
         tx.captureTableBefore(layer.data, {operation: 'edit-session', mode: mode});
       }
@@ -469,7 +460,7 @@ export function Undo(gui) {
     if (gui.interaction && gui.interaction.modeSupportsUndo) {
       return gui.interaction.modeSupportsUndo(mode);
     }
-    return ['data', 'labels', 'edit_points', 'edit_lines', 'edit_polygons', 'vertices', 'rectangles'].includes(mode);
+    return ['data', 'edit_points', 'edit_lines', 'edit_polygons', 'vertices', 'rectangles'].includes(mode);
   }
 
   function getUndoTransactionConstructor() {

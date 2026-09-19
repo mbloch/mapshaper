@@ -96,9 +96,10 @@ test('the first label in an empty project leaves the view alone', async function
 
 test('a label layer is offered the label tool and not the tools it replaces',
   async function({page}) {
-    // 'style labels' and 'add/drag points' both did less than the label tool
-    // beside them in the menu, which styles labels and creates, moves and
-    // retypes them as well.
+    // 'style labels', 'add/drag points' and 'position labels' each did less
+    // than the label tool beside them in the menu, which styles labels,
+    // positions them against their anchors, and creates, moves and retypes
+    // them as well.
     var errors = collectPageErrors(page);
     await loadFixture(page, FIXTURE);
     await armTool(page, 'anchor');
@@ -116,8 +117,7 @@ test('a label layer is offered the label tool and not the tools it replaces',
     expect(modes).toContain('add/edit labels');
     expect(modes).not.toContain('style labels');
     expect(modes).not.toContain('add/drag points');
-    // positioning a label against its anchor is still the old mode's job
-    expect(modes).toContain('position labels');
+    expect(modes).not.toContain('position labels');
     expect(errors).toEqual([]);
   });
 

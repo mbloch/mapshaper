@@ -105,7 +105,7 @@ export function HitControl(gui, ext, mouse) {
   function draggable() {
     var mode = interactionMode();
     return mode == 'vertices' || mode == 'edit_points' || mode == 'label' ||
-      mode == 'labels' || mode == 'edit_lines' || mode == 'edit_polygons';
+      mode == 'edit_lines' || mode == 'edit_polygons';
   }
 
   function clickable() {

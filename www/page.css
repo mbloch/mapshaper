@@ -2080,14 +2080,6 @@ body.pan.panning .map-layers:not(.drawing) {
 	cursor: pointer;
 }
 
-.map-layers > svg text.active-label {
-	stroke: #fac0ff; /* #efacf4; */
-	paint-order: stroke fill;
-	stroke-width: 4px;
-	stroke-linecap: round;
-	stroke-linejoin: round;
-}
-
 .map-layers > svg text.label-style-selected {
 	stroke: #fce300;
 	stroke-opacity: 0.25;
