@@ -13,6 +13,8 @@ import { getLabelTarget, getAddLabelCommand } from '../src/gui/gui-label-command
 import { getOptionParser } from '../src/cli/mapshaper-options';
 import { parseSizeValue, getSizeFieldKeyAction } from '../src/gui/gui-size-field';
 import { quoteCommandValue } from '../src/gui/gui-command-utils';
+import { chooseNewLabelFont, getNearestVariant,
+  variantIsRegular } from '../src/gui/gui-label-fonts';
 
 var layerHasLabels = api.internal.layerHasLabels;
 
@@ -535,6 +537,82 @@ describe('gui label tool state', function() {
       var gui = fakeGui();
       updateNewLabelStyle(gui, [['label-pos', 'ne']]);
       assert.deepEqual(getNewLabelStyle(gui), {'label-pos': 'ne'});
+    });
+  });
+
+  describe('getNearestVariant()', function() {
+    function variants(list) {
+      return list.map(function(pair) {
+        return {style: pair[0], weight: String(pair[1]), value: pair[0] + '|' + pair[1]};
+      });
+    }
+
+    var fullFamily = variants([['normal', 300], ['normal', 400], ['normal', 700],
+      ['italic', 400], ['italic', 700]]);
+
+    it('an exact match is the nearest', function() {
+      var v = getNearestVariant(fullFamily, 'italic', '700');
+      assert.equal(v.value, 'italic|700');
+    });
+
+    it('a label with no face of its own is Regular', function() {
+      // What the panel shows for a label carrying no font-style or
+      // font-weight, which is how most labels are.
+      assert.equal(getNearestVariant(fullFamily, '', '').value, 'normal|400');
+    });
+
+    it('slant is kept ahead of weight', function() {
+      // Light Italic in a font with no Light: Italic reads more like the
+      // request than Light upright does.
+      var v = getNearestVariant(fullFamily, 'italic', '300');
+      assert.equal(v.value, 'italic|400');
+    });
+
+    it('slant is given up when the font has none', function() {
+      var uprightOnly = variants([['normal', 400], ['normal', 700]]);
+      assert.equal(getNearestVariant(uprightOnly, 'italic', '700').value, 'normal|700');
+    });
+
+    it('a font with one face answers everything with it', function() {
+      var oneFace = variants([['normal', 700]]);
+      assert.equal(getNearestVariant(oneFace, 'italic', '300').value, 'normal|700');
+    });
+
+    it('a tie between two weights goes to the heavier', function() {
+      var gap = variants([['normal', 300], ['normal', 700]]);
+      assert.equal(getNearestVariant(gap, 'normal', '500').value, 'normal|700');
+    });
+
+    it('a font with no faces has no nearest', function() {
+      assert.equal(getNearestVariant([], 'normal', '400'), null);
+    });
+  });
+
+  describe('chooseNewLabelFont()', function() {
+    it('prefers the tool\'s font when the machine has it', function() {
+      assert.equal(chooseNewLabelFont('NYTFranklin',
+        ['Arial', 'Georgia', 'NYTFranklin'], 'Helvetica'), 'NYTFranklin');
+    });
+
+    it('falls back to the font unfonted text is drawn in', function() {
+      assert.equal(chooseNewLabelFont('NYTFranklin',
+        ['Arial', 'Georgia'], 'Helvetica'), 'Helvetica');
+    });
+
+    it('has nothing to give when neither is available', function() {
+      // A browser that could not be measured: the panel then behaves as it did
+      // before any of this, with no font named.
+      assert.equal(chooseNewLabelFont('NYTFranklin', [], ''), '');
+      assert.equal(chooseNewLabelFont('NYTFranklin', [], null), '');
+    });
+  });
+
+  describe('variantIsRegular()', function() {
+    it('normal 400 is what an unset face renders as', function() {
+      assert.ok(variantIsRegular({style: 'normal', weight: '400'}));
+      assert.ok(!variantIsRegular({style: 'italic', weight: '400'}));
+      assert.ok(!variantIsRegular({style: 'normal', weight: '700'}));
+      assert.ok(!variantIsRegular(null));
     });
   });
 

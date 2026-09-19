@@ -1,4 +1,6 @@
-import { getFontStyleVariants, getInstalledFonts } from './gui-label-fonts';
+import { getDefaultFontName, getFontStyleVariants, getInstalledFonts,
+  getNearestFontStyleVariant, getNewLabelFontName,
+  variantIsRegular } from './gui-label-fonts';
 import { ColorPicker, isHexColor } from './gui-color-picker';
 import { StylePresetControl } from './gui-style-preset-control';
 import { SizeField } from './gui-size-field';
@@ -602,10 +604,9 @@ export function LabelTool(gui) {
     if (fontOptionsRendered) return;
     fontOptionsRendered = true;
     fontSelect.empty();
-    // Named rather than blank, because with the row's label gone the select's
-    // own contents are what say which control it is -- and because a label
-    // carries no font-family until one is chosen, which is the usual state.
-    El('option').attr('value', '').appendTo(fontSelect).text('Default font');
+    // No "Default font" entry: it named a font the user could not see and
+    // mapshaper could not measure. A label with no font-family of its own is
+    // shown in the font the browser draws it in, under that font's own name.
     getInstalledFonts().forEach(function(group) {
       var optgroup = El('optgroup').attr('label', group.name).appendTo(fontSelect);
       group.fonts.forEach(function(fontName) {
@@ -681,7 +682,11 @@ export function LabelTool(gui) {
     var ids = getTargetIds();
     var manualIds = getSelectionIds();
     var showValues = controlsEnabled();
-    var fontVal = getCommonValue(ids, fontField);
+    // With nothing selected the menu shows the font the next label will be
+    // made in; with labels selected it shows the font they are drawn in, which
+    // for a label carrying none is whatever sans-serif resolves to here.
+    var fontVal = getCommonValue(ids, fontField,
+      {useDefault: true, defaultValue: getFontNameForTarget(ids)});
     var fontSizeVal = getCommonValue(ids, fontSizeField, {useDefault: true, defaultValue: defaultFontSize});
     var fontStyleVal = getCommonValue(ids, fontStyleField, {useDefault: true, defaultValue: defaultFontStyle});
     var fontWeightVal = getCommonValue(ids, fontWeightField, {useDefault: true, defaultValue: defaultFontWeight});
@@ -699,7 +704,7 @@ export function LabelTool(gui) {
     updateEditingStatus(manualIds.length, !!getLabelTextSession(gui));
     updateSavedStyleControls();
     fontSelect.node().disabled = !showValues;
-    fontSelect.node().value = fontVal;
+    updateFontControl(fontVal);
     updateFontStyleControls(fontVal, fontStyleVal, fontWeightVal);
     updateFontSizeControls(showValues ? fontSizeVal : '');
     updateColorControls(showValues ? fillVal : '');
@@ -888,25 +893,57 @@ export function LabelTool(gui) {
     fontSizeInput.setDisabled(!controlsEnabled());
   }
 
+  function getFontNameForTarget(ids) {
+    return ids.length === 0 ? getNewLabelFontName() : getDefaultFontName();
+  }
+
+  // A font the menu does not list still has to show, or the label would look
+  // as though it had no font: a file can name a font that is not installed
+  // here, and a project moves between machines. It is added to the menu as
+  // itself rather than replaced by an installed font, since the name is the
+  // user's data and choosing something else for them would restyle the label.
+  function updateFontControl(fontVal) {
+    fontSelect.node().value = fontVal || '';
+    if (fontVal && fontSelect.node().selectedIndex < 0) {
+      El('option').attr('value', fontVal).text(fontVal).appendTo(fontSelect);
+      fontSelect.node().value = fontVal;
+    }
+    // Nothing selected, rather than the first font in the list, for a
+    // selection whose labels are in different fonts.
+    if (!fontVal) fontSelect.node().selectedIndex = -1;
+  }
+
+  // The faces the chosen font is installed with, and no entry for "whatever
+  // the font is set in by default": that is Regular, which is one of the faces
+  // and is named as one. With no font chosen the menu is empty and dead --
+  // there are no faces to list, and a face belongs to a font.
   function updateFontStyleControls(fontName, fontStyleVal, fontWeightVal) {
     var disabled = !controlsEnabled() || !fontName;
+    // Empty means the selection disagrees, here as everywhere in the panel;
+    // an unset style reads as Regular, because that is what it renders as.
+    var mixed = !!fontName && !(fontStyleVal && fontWeightVal);
+    var shown = mixed ? null :
+      getShownVariant(fontName, fontStyleVal, fontWeightVal);
     fontStyleSelect.empty();
-    El('option').attr('value', '').appendTo(fontStyleSelect).text('Default style');
     if (fontName) {
       getFontStyleVariants(fontName).forEach(function(variant) {
         El('option').attr('value', variant.value).appendTo(fontStyleSelect).text(variant.label);
       });
     }
     fontStyleSelect.node().disabled = disabled;
-    fontStyleSelect.node().value = fontStyleVal && fontWeightVal ?
-      fontStyleVal + '|' + fontWeightVal : '';
-    // A style with no font to belong to matches none of the options -- the list
-    // is the faces the chosen font is installed with, and there is no chosen
-    // font -- and an unmatched value leaves the box blank rather than on its
-    // first entry, which is what an unset style is.
-    if (fontStyleSelect.node().selectedIndex < 0) {
-      fontStyleSelect.node().selectedIndex = 0;
-    }
+    fontStyleSelect.node().value = shown ? shown.value : '';
+    // Nothing selected rather than the first face, for a selection that does
+    // not agree on one: the list is still live, so picking a face is how the
+    // selection is brought into line.
+    if (!shown) fontStyleSelect.node().selectedIndex = -1;
+  }
+
+  // The face the panel shows for a label in @fontName. A font-style and
+  // font-weight the font has no face for still has to show as something, and
+  // the nearest face is what the browser is rendering it as anyway.
+  function getShownVariant(fontName, fontStyleVal, fontWeightVal) {
+    if (!fontName) return null;
+    return getNearestFontStyleVariant(fontName, fontStyleVal, fontWeightVal);
   }
 
   function updateColorControls(colorVal) {
@@ -1046,8 +1083,20 @@ export function LabelTool(gui) {
     return opts && opts.useDefault ? opts.defaultValue : '';
   }
 
+  // Changing the font carries the face across with it: a label in Bold Italic
+  // stays in Bold Italic, or in the nearest thing the new font is installed
+  // with. Both go in one command, so the change is one undo step and the label
+  // is never briefly in a face the font does not have.
   function applyFont(fontName) {
-    applyStyleValues([[fontField, fontName]]);
+    var ids = getTargetIds();
+    var style = getCommonValue(ids, fontStyleField, {useDefault: true, defaultValue: defaultFontStyle});
+    var weight = getCommonValue(ids, fontWeightField, {useDefault: true, defaultValue: defaultFontWeight});
+    var values = [[fontField, fontName]];
+    var variant = getNearestFontStyleVariant(fontName, style, weight);
+    if (variant && !(variant.style == style && variant.weight == weight)) {
+      values = values.concat(getFontStyleValues(variant));
+    }
+    applyStyleValues(values);
   }
 
   function nudgeFontSize(delta) {
@@ -1058,10 +1107,35 @@ export function LabelTool(gui) {
     applyStyleValues([[fontSizeField, size]]);
   }
 
+  // A face belongs to a font, so a label given one names the font it is a face
+  // of. Labels made before the tool started naming fonts, and labels made by
+  // the CLI, carry none: this is where the font they are already drawn in
+  // stops being a guess about the machine they are opened on.
+  //
+  // The font named is the one they are drawn in, not the tool's preferred
+  // font: choosing Bold is not a request to change the typeface. A label that
+  // does not exist yet is left alone here and given its font when it is made.
   function applyFontStyleVariant(value) {
     var variant = parseFontStyleVariant(value);
+    var ids = getTargetIds();
+    var values;
     if (!variant) return;
-    applyStyleValues([[fontStyleField, variant.style], [fontWeightField, variant.weight]]);
+    values = getFontStyleValues(variant);
+    if (ids.length > 0 && !getCommonValue(ids, fontField) && getDefaultFontName()) {
+      values.unshift([fontField, getDefaultFontName()]);
+    }
+    applyStyleValues(values);
+  }
+
+  // Regular is stored as no face at all, for the same reason full opacity is
+  // stored as no opacity: normal 400 is what a font renders as when nothing
+  // says otherwise, and a column of them on every label the panel has touched
+  // is noise in the user's table.
+  function getFontStyleValues(variant) {
+    if (variantIsRegular(variant)) {
+      return [[fontStyleField, ''], [fontWeightField, '']];
+    }
+    return [[fontStyleField, variant.style], [fontWeightField, variant.weight]];
   }
 
   function applyLabelColor(color) {

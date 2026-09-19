@@ -13,6 +13,7 @@ import {
   getStartOffsetPct, getDefaultOffsetPct
 } from './gui-label-path-drag';
 import { getOffsetDragValues } from './gui-label-offset';
+import { getNewLabelFontName } from './gui-label-fonts';
 import { setMultilineAttribute } from './gui-svg-labels';
 import { getLabelPathNode } from './gui-svg-symbols';
 import { findNearestKnot, knotMoveIsValid } from './gui-label-knots';
@@ -1159,7 +1160,9 @@ export function initLabelTool(gui, ext, hit) {
       coords: displayCoords,
       // Read on every render rather than snapshotted, so that choosing a font
       // or a position while the caret is sitting there is visible immediately.
-      getStyle: function() { return getNewLabelStyle(gui); },
+      // The same style the label will be created with, down to the font it is
+      // named in, so that committing it changes nothing on screen.
+      getStyle: getStyleForNewLabel,
       create: function(text) { createLabel(displayCoords, text); }
     });
   }
@@ -1177,8 +1180,24 @@ export function initLabelTool(gui, ext, hit) {
       text: text,
       // whatever the style panel was set to while nothing was selected, so that
       // a font can be chosen before the first label exists
-      style: getNewLabelStyle(gui)
+      style: getStyleForNewLabel()
     }), {title: 'Add label'});
+  }
+
+  // The style for a label being created, which names its font even when the
+  // user never chose one: the tool's preferred font where the machine has it,
+  // and otherwise whatever the browser resolves sans-serif to, which differs
+  // by machine and is nothing mapshaper can measure outside this one. See
+  // getNewLabelFontName().
+  //
+  // Written here rather than kept in the tool's default style, so that it is
+  // the font at the moment the label is made and cannot be cleared away with
+  // the styles the user did choose.
+  function getStyleForNewLabel() {
+    var style = getNewLabelStyle(gui);
+    var font = getNewLabelFontName();
+    if (style['font-family'] || !font) return style;
+    return Object.assign({'font-family': font}, style);
   }
 
   // Display coordinates: the space the map is drawn in, and the space the path

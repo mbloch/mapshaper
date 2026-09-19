@@ -497,6 +497,25 @@ describe('mapshaper-svg-style.js', function () {
       assert.deepStrictEqual(lyr.data.getRecords(), [{css: ''}]);
     })
 
+    it('an empty value removes a property with no type rule either', function() {
+      // A font weight is a literal string to -style, with no rule to parse it
+      // by, but there is no such thing as an empty one: the label panel takes
+      // a face back off a label by writing nothing to it.
+      var lyr = {data: new api.internal.DataTable([
+        {'font-family': 'Georgia', 'font-weight': '700', 'font-style': 'italic'}])};
+      api.cmd.svgStyle(lyr, {}, {font_weight: '', font_style: ''});
+      assert.deepStrictEqual(lyr.data.getRecords(),
+        [{'font-family': 'Georgia', 'font-weight': undefined, 'font-style': undefined}]);
+    })
+
+    it('an empty label-text is text, not an absence', function() {
+      // A label being typed into is empty for as long as it takes to type the
+      // first character, so the empty string has to survive as a value.
+      var lyr = {data: new api.internal.DataTable([{'label-text': 'Reno'}])};
+      api.cmd.svgStyle(lyr, {}, {label_text: ''});
+      assert.deepStrictEqual(lyr.data.getRecords(), [{'label-text': ''}]);
+    })
+
     it('an empty value removes an offset', function() {
       // How a label goes back to taking a standard position: the offsets it
       // was dragged to have to come off, or they would win over the position.

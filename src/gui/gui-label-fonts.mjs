@@ -302,8 +302,23 @@ var fontCategories = [{
   fonts: mono
 }];
 
+var DEFAULT_FONT_WEIGHT = 400;
+
+// The font the tool reaches for first when it makes a label, where the machine
+// has it. See getNewLabelFontName().
+var PREFERRED_FONT = 'NYTFranklin';
+
+// Which installed family the browser's own sans-serif is likely to be, tried
+// ahead of the rest so that the name written is the platform's own rather than
+// one that merely measures the same. Arial and Helvetica are metric-compatible
+// by design, so a signature match alone cannot tell a Mac's Helvetica from the
+// Arial beside it.
+var defaultFontCandidates = ['Helvetica', 'Arial', 'Segoe UI', 'Liberation Sans',
+  'DejaVu Sans', 'Roboto'];
+
 var cachedFonts = null;
 var cachedFontStyles = {};
+var cachedDefaultFont;
 var fontWeights = [100, 200, 300, 400, 500, 600, 700, 800, 900];
 var fontStyles = ['normal', 'italic'];
 var preferredWeights = [400, 700, 900, 500, 300, 600, 800, 200, 100];
@@ -334,6 +349,128 @@ export function getFontStyleVariants(fontName) {
     cachedFontStyles[fontName] = detectFontStyleVariants(fontName);
   }
   return cachedFontStyles[fontName];
+}
+
+// The installed font the browser draws unfonted text in, or '' if it cannot
+// be worked out.
+//
+// A label with no font-family is drawn in whatever this browser resolves
+// sans-serif to -- Helvetica on a Mac, Arial on Windows -- and neither the
+// user nor mapshaper can see which. That is fine until the data leaves: Node
+// has no family to find metrics for, and an exported SVG saying sans-serif is
+// opened somewhere that resolves it to a different face. Naming it is what
+// lets a label be measured anywhere, so the tool writes this onto the labels
+// it creates.
+//
+// Found by measuring, not by guessing from the platform: the name is written
+// onto the user's labels, so a wrong one would change how they are drawn.
+// Nothing is returned unless an installed font measures identically to the
+// generic, in which case naming it cannot change anything.
+export function getDefaultFontName() {
+  if (cachedDefaultFont === undefined) {
+    cachedDefaultFont = detectDefaultFont();
+  }
+  return cachedDefaultFont;
+}
+
+function detectDefaultFont() {
+  var ctx = getCanvasContext();
+  var generic, names;
+  if (!ctx) return '';
+  generic = measureFamilyVariant(ctx, 'sans-serif', DEFAULT_FONT_WEIGHT, 'normal');
+  names = getDefaultFontSearchOrder();
+  for (var i = 0; i < names.length; i++) {
+    if (measureFontVariant(ctx, names[i], DEFAULT_FONT_WEIGHT, 'normal') == generic) {
+      return names[i];
+    }
+  }
+  return '';
+}
+
+// The font the tool gives a label it creates: the preferred font where the
+// machine has it, and otherwise the font unfonted text is already drawn in.
+//
+// A tool default like label-pos=c, and a different question from
+// getDefaultFontName(): that one identifies what is already on screen and must
+// not be a preference, because it is also what an unfonted label is *named*
+// as, and naming a label something it is not drawn in would restyle it. This
+// one only ever applies to a label that does not exist yet, so it is free to
+// prefer a font that changes how the label looks.
+export function getNewLabelFontName() {
+  return chooseNewLabelFont(PREFERRED_FONT, getInstalledFontNames(),
+    getDefaultFontName());
+}
+
+// Separated from the detection around it so that the rule can be tested
+// without a browser to install fonts in.
+export function chooseNewLabelFont(preferred, installed, drawnFont) {
+  if (preferred && (installed || []).indexOf(preferred) > -1) return preferred;
+  return drawnFont || '';
+}
+
+function getInstalledFontNames() {
+  var names = [];
+  getInstalledFonts().forEach(function(group) {
+    names = names.concat(group.fonts);
+  });
+  return names;
+}
+
+function getDefaultFontSearchOrder() {
+  var installed = getInstalledFontNames();
+  return defaultFontCandidates.filter(function(name) {
+    return installed.indexOf(name) > -1;
+  }).concat(installed.filter(function(name) {
+    return defaultFontCandidates.indexOf(name) == -1;
+  }));
+}
+
+// The face of @fontName to show for a label set in (@style, @weight), which is
+// how a font that is being changed keeps the face it was in: Bold Italic in
+// one font is Bold Italic in the next, and the nearest thing to it in a font
+// that has no such face.
+export function getNearestFontStyleVariant(fontName, style, weight) {
+  return getNearestVariant(getFontStyleVariants(fontName), style, weight);
+}
+
+// Upright before oblique, then the nearest weight. Slant is the more visible
+// of the two, and the one a user chose on purpose: a Light Italic asked for in
+// a font with no italic is better answered by Light than by Bold Italic. A tie
+// between two weights goes to the heavier, which is the direction a display
+// face is usually missing weights in.
+export function getNearestVariant(variants, style, weight) {
+  var wanted = isFinite(Number(weight)) && Number(weight) > 0 ?
+    Number(weight) : DEFAULT_FONT_WEIGHT;
+  var wantedStyle = style == 'italic' ? 'italic' : 'normal';
+  var best = null;
+  var bestScore;
+  (variants || []).forEach(function(variant) {
+    var score = [
+      variant.style == wantedStyle ? 0 : 1,
+      Math.abs(Number(variant.weight) - wanted),
+      Number(variant.weight) < wanted ? 1 : 0
+    ];
+    if (!best || compareScores(score, bestScore) < 0) {
+      best = variant;
+      bestScore = score;
+    }
+  });
+  return best;
+}
+
+// Whether a variant is the one a label carries no font-style or font-weight
+// for. Regular is what a font is set in unless something says otherwise, so
+// the panel shows it selected and writes nothing for it.
+export function variantIsRegular(variant) {
+  return !!variant && variant.style == 'normal' &&
+    Number(variant.weight) == DEFAULT_FONT_WEIGHT;
+}
+
+function compareScores(a, b) {
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return a[i] - b[i];
+  }
+  return 0;
 }
 
 function detectInstalledFonts() {
@@ -372,11 +509,16 @@ function sortNames(a, b) {
     a.toLowerCase() > b.toLowerCase() ? 1 : 0;
 }
 
-function getCanvasFontDetector() {
-  var canvas, ctx, baselines;
+function getCanvasContext() {
+  var canvas;
   if (typeof document == 'undefined') return null;
   canvas = document.createElement('canvas');
-  ctx = canvas && canvas.getContext && canvas.getContext('2d');
+  return canvas && canvas.getContext && canvas.getContext('2d') || null;
+}
+
+function getCanvasFontDetector() {
+  var ctx = getCanvasContext();
+  var baselines;
   if (!ctx) return null;
   baselines = getBaselineWidths(ctx);
   return function(fontName) {
@@ -408,10 +550,8 @@ function quoteFontName(name) {
 }
 
 function detectFontStyleVariants(fontName) {
-  var canvas, ctx, groups;
-  if (typeof document == 'undefined') return getDefaultFontStyleVariants();
-  canvas = document.createElement('canvas');
-  ctx = canvas && canvas.getContext && canvas.getContext('2d');
+  var ctx = getCanvasContext();
+  var groups;
   if (!ctx) return getDefaultFontStyleVariants();
   groups = {};
   fontStyles.forEach(function(style) {
@@ -472,16 +612,23 @@ function getFontStyleLabel(weight, style) {
 }
 
 function measureFontVariant(ctx, fontName, weight, style) {
+  return measureFamilyVariant(ctx, quoteFontName(fontName) + ',sans-serif',
+    weight, style);
+}
+
+// @family is a CSS font-family list, so that a generic can be measured as
+// itself rather than as a family of that name.
+function measureFamilyVariant(ctx, family, weight, style) {
   return [
-    measureFontSample(ctx, fontName, weight, style, 'Hamburgefonts 0123456789'),
-    measureFontSample(ctx, fontName, weight, style, 'mmmmmmmmmmlliMW@#'),
-    measureFontSample(ctx, fontName, weight, style, 'Quick brown fox')
+    measureFontSample(ctx, family, weight, style, 'Hamburgefonts 0123456789'),
+    measureFontSample(ctx, family, weight, style, 'mmmmmmmmmmlliMW@#'),
+    measureFontSample(ctx, family, weight, style, 'Quick brown fox')
   ].join('|');
 }
 
-function measureFontSample(ctx, fontName, weight, style, text) {
+function measureFontSample(ctx, family, weight, style, text) {
   var metrics;
-  ctx.font = style + ' ' + weight + ' 72px ' + quoteFontName(fontName) + ',sans-serif';
+  ctx.font = style + ' ' + weight + ' 72px ' + family;
   metrics = ctx.measureText(text);
   return [
     metrics.width,

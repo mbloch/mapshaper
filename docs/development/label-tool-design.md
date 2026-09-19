@@ -2992,13 +2992,120 @@ feature. The fields that would otherwise be bare numbers — letter spacing, lin
 height, the icon's size — keep theirs, and every unlabelled control has a
 `title` for the case where the contents are not enough.
 
-The two selects say what they are through their first entry rather than a
-caption: "Default font" and "Default style" are also the honest description of
-the usual state, since a label carries no `font-family` until one is chosen.
-Chrome leaves a select showing nothing when the value assigned to it matches no
-option, which is what an unset style does — the variants listed are the faces
-of the chosen font, and there is no chosen font — so the panel falls back to
-`selectedIndex = 0` rather than leaving the box blank.
+The font select says what it is through its contents rather than a caption: a
+font name is self-describing, and the menu always shows one — see "The default
+font is not a font" below.
+
+##### The style menu is the font's own faces
+
+The style select had a "Default style" entry of its own beside the faces, and
+showed it for a label carrying no `font-style` or `font-weight` — which is most
+labels. It named a face the user could not see and mapshaper could not measure,
+and it sat in the list as if it were a fifth face of a four-face font.
+
+The faces are what the menu holds now, and nothing else:
+
+- **No font, no menu.** A face belongs to a font, so with no `font-family` to
+  list the faces of, the select is empty and disabled.
+- **A font is always set in something**, so a font that is chosen always shows
+  a face. Regular is that face: `normal 400` is what a font renders as when
+  nothing says otherwise, and every font the detector finds more than one
+  weight in has it. A font with no Regular shows the nearest face it does have.
+- **Regular is stored as no face at all**, the same way full opacity is stored
+  as no opacity: writing `font-style=normal font-weight=400` onto every label
+  the panel has touched would be a column of defaults in the user's table.
+- **A change of font carries the face across.** A label in Bold Italic is in
+  Bold Italic after the font changes, or in the nearest face the new font is
+  installed with. Both properties go in one command, so the change is one undo
+  step and the label is never briefly in a face the font does not have.
+- **A selection that disagrees shows nothing selected**, rather than the first
+  face, which is how the rest of the panel reads an empty common value. The
+  list stays live, so picking a face is how the selection is brought into line.
+
+`getNearestVariant()` in `gui-label-fonts.mjs` does the matching, over the
+variant list the detector builds: upright before oblique, then the nearest
+weight, and a tie to the heavier. Slant is the more visible of the two and the
+one a user chose on purpose, so a Light Italic asked for in a font with no
+italic is better answered by Light than by Bold Italic.
+
+Storing Regular as nothing needed `emptyValueUnsetsProperty()` widened. It was
+true only for a property whose *type rule* has no empty value — a number, a
+colour — and `font-weight` has no type rule at all, so `-style font-weight=`
+stored an empty string. The rule is now the other way round: an empty value
+unsets unless the empty string is a value, which it is for `css`, `class` and
+`label-text` (empty for as long as it takes to type the first character) and
+for nothing else. `-style icon=` stops leaving an empty name behind too.
+
+##### The default font is not a font
+
+"Default font" was what the font select showed for a label with no
+`font-family`, and it named nothing. The map draws that label in whatever the
+browser resolves `sans-serif` to — Helvetica on a Mac, Arial on Windows, DejaVu
+Sans on most Linux — because `getLabelTextDefaults()` puts `font-family:
+sans-serif` on the layer's `<g>` and the record overrides nothing.
+
+Inside the GUI that is self-consistent: `measureLabelWidth()` renders into an
+offscreen SVG under the same defaults, so the width behind `label-align` and
+the path-fit check is a measurement of the face actually on screen. It stops
+being self-consistent the moment the data leaves. In Node there is no
+measurement at all and nothing to fix it with — a metrics reader needs a family
+to find a file for, and `sans-serif` is not one — so `-style label-align=left`
+from the command line re-justifies the lines and leaves the block where it was.
+And an exported SVG that says `sans-serif` is opened somewhere that resolves it
+differently, with every alignment shift and fit decision in it computed for a
+face the viewer is not using.
+
+**Decided: the tool names the font.** `getDefaultFontName()` works out which
+installed family this browser's `sans-serif` actually is, the menu shows it by
+name, and `-add-label` writes it onto every label the tool creates. The data
+then says what it means, and any reader with the font can measure it.
+
+**A new label gets the preferred font where the machine has it.**
+`getNewLabelFontName()` answers `NYTFranklin` if it is installed and falls back
+to `getDefaultFontName()` otherwise. The two are deliberately different
+questions, and conflating them would be a bug:
+
+- *What is this label drawn in?* — `getDefaultFontName()`. It has to be the
+  truth about what is on screen, because it is also the name an unfonted label
+  is given when it is styled. A preference here would rename a label to
+  something it is not drawn in, which is a restyle by another route.
+- *What should the next label be in?* — `getNewLabelFontName()`. A tool default
+  like `label-pos=c`, applying only to a label that does not exist yet, so it
+  is free to prefer a font that changes how the label looks.
+
+The panel shows the first for a selection and the second for "new labels",
+which is `getFontNameForTarget()` in `gui-label-tool.mjs`; choosing a face for
+an existing unfonted label writes the first, since asking for Bold is not
+asking for a different typeface.
+
+- **Found by measuring, not by guessing from the platform.** The name is
+  written onto the user's labels, so a wrong one would restyle them. Nothing
+  is returned unless an installed family measures identically to the generic —
+  same signature `detectFontStyleVariants()` uses, at normal 400 — in which
+  case naming it cannot change how anything is drawn. If nothing matches, the
+  function returns `''` and the panel behaves as it did before.
+- **Metric-compatible families are tried in a fixed order**, Helvetica before
+  Arial before Segoe UI, because the two were designed to measure the same and
+  a signature match alone cannot tell a Mac's Helvetica from the Arial beside
+  it. (Chromium on macOS does distinguish them through the bounding boxes, but
+  the order is what makes that not matter.)
+- **The pending label is drawn from the same style**, so committing it changes
+  nothing on screen. `getStyleForNewLabel()` in `gui-label-tool2.mjs` is what
+  both the preview and the `-add-label` command read.
+- **The font is written at creation, not held in the tool's default style**,
+  so that clearing the styles the user chose cannot also clear it.
+- **A label that arrived without a font** — from the CLI, or from a file — is
+  shown under the name of the font it is being drawn in, and is given that
+  name when a face is chosen for it. A face belongs to a font, so that is the
+  point at which the font stops being a guess about the machine it is opened
+  on. Nothing is written just for selecting a label, and the name written is
+  the font it is drawn in rather than the preferred font.
+- **A font the menu does not list is added to it** rather than being replaced
+  by an installed one: a project moves between machines, and the name is the
+  user's data.
+
+Labels made by the CLI still carry no font, and `getLabelTextDefaults()` still
+says `sans-serif`: this is what the tool writes, not a new meaning for absence.
 
 Behaviours in it that are not visible in the markup:
 

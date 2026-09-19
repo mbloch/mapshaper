@@ -31,6 +31,7 @@ test('the tool works in a session that has imported nothing', async function({pa
     window.mapshaper.undoTest.setInteractionMode('label');
   });
   await page.locator('.floating-toolbar.label-toolbar').waitFor();
+  var defaultFont = await getDefaultFont(page);
 
   // entering the mode makes the layer the tool needs, named for what it holds
   var lyr = await getLabelLayer(page);
@@ -45,7 +46,8 @@ test('the tool works in a session that has imported nothing', async function({pa
   // and the label goes into that layer rather than beside it, and the layer
   // still answers to its name afterwards
   expect(lyr.shapeCount).toBe(1);
-  expect(lyr.records).toEqual([{'label-text': 'Reno', 'label-pos': 'c'}]);
+  expect(lyr.records).toEqual([{'label-text': 'Reno', 'label-pos': 'c',
+    'font-family': defaultFont}]);
   expect(errors).toEqual([]);
 });
 
@@ -384,8 +386,10 @@ test('placing labels needs no undo history to stay clean', async function({page}
   await writeLabel(page, 'Reno');
   // label-pos is the tool's default for a new label: 'c' centres the text on
   // the anchor, where no position at all would sit it on the anchor's baseline.
+  // font-family is the other: every label the tool makes names its font.
   expect((await getLabelLayer(page)).records)
-    .toEqual([{'label-text': 'Reno', 'label-pos': 'c'}]);
+    .toEqual([{'label-text': 'Reno', 'label-pos': 'c',
+      'font-family': await getDefaultFont(page)}]);
 
   await disarmTool(page);
   await clickLabel(page, 0);
@@ -424,7 +428,8 @@ test('an existing label emptied of its text is removed by a command', async func
   // B is all that is left, and it keeps its own geometry rather than inheriting
   // A's -- the record and the point go together
   var lyr = await getLabelLayer(page);
-  expect(lyr.records).toEqual([{'label-text': 'B', 'label-pos': 'c'}]);
+  expect(lyr.records).toEqual([{'label-text': 'B', 'label-pos': 'c',
+    'font-family': await getDefaultFont(page)}]);
   expect(await getSessionHistory(page)).toContain('-filter');
   expect(errors).toEqual([]);
 });
@@ -721,9 +726,11 @@ test('the switch is what gives a label a symbol and takes it away', async functi
     'icon-color': '#cc0000'
   });
 
+  // the switch off takes the symbol off the record rather than leaving an
+  // empty name where one was
   await toggle.click();
   await page.waitForTimeout(150);
-  expect((await getLabelLayer(page)).records[0].icon).toBe('');
+  expect((await getLabelLayer(page)).records[0].icon).toBeUndefined();
 
   await toggle.click();
   await page.waitForTimeout(150);
@@ -933,10 +940,11 @@ test('measurements stay out of the data', async function({page}) {
   await setFieldValue(page.locator('.text-style-panel .label-size-row input'), '18');
   await page.waitForTimeout(250);
 
-  // label-pos is there because the tool centres every label it creates, not
-  // because anything here set one
+  // label-pos and font-family are there because the tool centres every label
+  // it creates and names the font it draws it in, not because anything here
+  // set them
   var layer = await getLabelLayer(page);
-  var fields = ['font-size', 'label-align', 'label-pos', 'label-text'];
+  var fields = ['font-family', 'font-size', 'label-align', 'label-pos', 'label-text'];
   expect(layer.fields.sort()).toEqual(fields);
   expect(Object.keys(layer.records[0]).sort()).toEqual(fields);
 
@@ -953,6 +961,7 @@ test('styling a selected label restyles it rather than the whole layer', async f
   // being placed.
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
+  var defaultFont = await getDefaultFont(page);
   await armTool(page, 'anchor');
   await clickMap(page, 0.35, 0.4);
   await page.keyboard.type('A');
@@ -971,7 +980,179 @@ test('styling a selected label restyles it rather than the whole layer', async f
   var records = (await getLabelLayer(page)).records;
   expect(records.length).toBe(2);
   expect(records[0]['font-family']).toBe('Georgia');
-  expect(records[1]['font-family']).toBeUndefined();
+  // B keeps the font it was created in rather than following A
+  expect(records[1]['font-family']).toBe(defaultFont);
+  expect(errors).toEqual([]);
+});
+
+test('a new label names the font it is drawn in', async function({page}) {
+  // "Default font" named nothing: an unfonted label is drawn in whatever this
+  // browser resolves sans-serif to, which is a different face on the next
+  // machine and is not a family Node can find metrics for. The menu shows the
+  // font by name and the label is created carrying it.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  var panel = page.locator('.text-style-panel');
+  var fontSelect = panel.locator('select').first();
+
+  expect(await fontSelect.locator('option').allTextContents())
+    .not.toContain('Default font');
+  var shown = await fontSelect.inputValue();
+  expect(shown).not.toBe(''); // the detector found which font that is
+
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.4, 0.45);
+  await writeLabel(page, 'Reno');
+
+  // the label is created in the font the menu was showing, so what the panel
+  // said before there was a label is what the label turns out to be
+  expect((await getLabelLayer(page)).records[0]['font-family']).toBe(shown);
+  expect(errors).toEqual([]);
+});
+
+test('the tool reaches for its preferred font before the browser default', async function({page}) {
+  // NYTFranklin where the machine has it, and whatever sans-serif resolves to
+  // where it does not. The font a label is made in is a tool default like its
+  // position, so it can be a preference; the font an existing label is *named*
+  // as cannot, because it has to be the one the label is drawn in.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  var fonts = await page.locator('.text-style-panel select').first()
+    .locator('option').allTextContents();
+  test.skip(fonts.indexOf('NYTFranklin') == -1, 'NYTFranklin is not installed here');
+
+  expect(await getDefaultFont(page)).toBe('NYTFranklin');
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.4, 0.45);
+  await writeLabel(page, 'Reno');
+  expect((await getLabelLayer(page)).records[0]['font-family']).toBe('NYTFranklin');
+
+  // a label that arrived with no font is drawn in the browser's default, not
+  // in the tool's preference, so that is what the panel says it is in
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand(
+      '-add-label coordinates=2,3 text=Vegas target=labels');
+  });
+  await disarmTool(page);
+  await page.waitForTimeout(200);
+  await clickLabel(page, 1);
+  expect(await page.locator('.text-style-panel select').first().inputValue())
+    .not.toBe('NYTFranklin');
+  expect(errors).toEqual([]);
+});
+
+test('a label that arrived without a font is given one when it is styled', async function({page}) {
+  // Labels made by the CLI carry no font-family, and the panel cannot show
+  // one without saying which. Choosing a face is the point at which the font
+  // it is a face of stops being a guess about the machine it is opened on.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand(
+      '-add-label coordinates=2,3 text=Reno no-replace name=labels');
+  });
+  await disarmTool(page);
+  await page.waitForTimeout(200);
+  await clickLabel(page, 0);
+
+  var panel = page.locator('.text-style-panel');
+  var shown = await panel.locator('select').first().inputValue();
+  expect(shown).not.toBe('');
+  expect((await getLabelLayer(page)).records[0]['font-family']).toBeUndefined();
+
+  await panel.locator('.label-font-style-row select').selectOption('normal|700');
+  await page.waitForTimeout(150);
+  expect((await getLabelLayer(page)).records[0])
+    .toMatchObject({'font-family': shown, 'font-weight': '700'});
+  expect(errors).toEqual([]);
+});
+
+test('the style menu offers the faces of the chosen font, and nothing else', async function({page}) {
+  // "Default style" was an entry of its own, which named a face the user could
+  // not see and mapshaper could not measure. Regular is that face, it is one of
+  // the font's own, and it is in the list under its own name.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  var panel = page.locator('.text-style-panel');
+  var styleSelect = panel.locator('.label-font-style-row select');
+
+  await panel.locator('select').first().selectOption('Georgia');
+  await page.waitForTimeout(100);
+
+  var options = await styleSelect.locator('option').allTextContents();
+  expect(options).not.toContain('Default style');
+  expect(options).toContain('Regular');
+  expect(await styleSelect.isDisabled()).toBe(false);
+  // a font is always set in something, and it is Regular unless it is not
+  expect(await styleSelect.inputValue()).toBe('normal|400');
+  expect(errors).toEqual([]);
+});
+
+test('a selection in two fonts has no face to show', async function({page}) {
+  // A face belongs to a font, so a selection that does not agree on a font
+  // has nothing to list: the faces of one of them would be a menu that lies
+  // about the other.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand(
+      '-add-label coordinates=2,3 text=A no-replace name=labels ' +
+      '-add-label coordinates=4,3 text=B target=labels ' +
+      "-style font-family='Georgia' ids=0 target=labels");
+  });
+  await disarmTool(page);
+  await page.waitForTimeout(200);
+
+  await clickLabel(page, 0);
+  var styleSelect = page.locator('.text-style-panel .label-font-style-row select');
+  expect(await styleSelect.isDisabled()).toBe(false);
+
+  await page.keyboard.down('Shift');
+  await clickLabel(page, 1);
+  await page.keyboard.up('Shift');
+  await page.waitForTimeout(150);
+
+  expect(await styleSelect.locator('option').count()).toBe(0);
+  expect(await styleSelect.isDisabled()).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('a face carries across a change of font, and Regular is stored as none', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.35, 0.4);
+  await page.keyboard.type('A');
+  await clickMap(page, 0.15, 0.85);
+  await disarmTool(page);
+  await page.waitForTimeout(150);
+  await clickLabel(page, 0);
+
+  var panel = page.locator('.text-style-panel');
+  var fontSelect = panel.locator('select').first();
+  var styleSelect = panel.locator('.label-font-style-row select');
+  await fontSelect.selectOption('Georgia');
+  await styleSelect.selectOption('italic|700');
+  await page.waitForTimeout(150);
+  expect((await getLabelLayer(page)).records[0])
+    .toMatchObject({'font-style': 'italic', 'font-weight': '700'});
+
+  // the label was in Bold Italic before the font changed and is in Bold Italic
+  // after it: the face is the user's choice, not a property of the old font
+  await fontSelect.selectOption('Verdana');
+  await page.waitForTimeout(150);
+  expect((await getLabelLayer(page)).records[0])
+    .toMatchObject({'font-family': 'Verdana', 'font-style': 'italic', 'font-weight': '700'});
+  expect(await styleSelect.inputValue()).toBe('italic|700');
+
+  // and going back to Regular takes the face off the record rather than
+  // writing the values a label with no face renders in anyway
+  await styleSelect.selectOption('normal|400');
+  await page.waitForTimeout(150);
+  var rec = (await getLabelLayer(page)).records[0];
+  expect(rec['font-family']).toBe('Verdana');
+  expect(rec['font-style']).toBeUndefined();
+  expect(rec['font-weight']).toBeUndefined();
   expect(errors).toEqual([]);
 });
 
@@ -1807,6 +1988,14 @@ async function getLabelLayer(page) {
   return page.evaluate(function() {
     return window.mapshaper.undoTest.getLayerInfo('labels');
   });
+}
+
+// The font the tool names a new label in: whatever this browser resolves
+// sans-serif to, which is Helvetica on a Mac and Arial on Windows. Read from
+// the panel rather than written into the test, and read with nothing selected,
+// where the menu shows the default rather than a label's own font.
+async function getDefaultFont(page) {
+  return page.locator('.text-style-panel select').first().inputValue();
 }
 
 // Hover helpers. Hover highlighting is drawn to canvas, so they assert on the
