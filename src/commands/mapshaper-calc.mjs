@@ -115,8 +115,10 @@ export function compileCalcExpression(lyr, arcs, exp) {
     ctx2.height = function() {return getLayerBounds(lyr, arcs).height();};
   }
 
-  calc1 = compileFeatureExpression(exp, lyr, arcs, {context: ctx1,
-      no_assign: true, no_warn: true, no_return: true});
+  // Replace && / || with commas so phase 1 evaluates every operand. Otherwise
+  // short-circuit skips later capture calls (e.g. sum(a)>1 && sum(b)>1).
+  calc1 = compileFeatureExpression(exp.replace(/&&|\|\|/g, ','), lyr, arcs, {
+      context: ctx1, no_assign: true, no_warn: true, no_return: true});
   // changed data-only layer to full layer to expose layer geometry, etc
   // (why not do this originally?)
   // calc2 = compileFeatureExpression(exp, {data: lyr.data}, null,

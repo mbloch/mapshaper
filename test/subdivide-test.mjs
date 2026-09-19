@@ -48,6 +48,34 @@ describe('mapshaper-subdivide.js', function () {
       assert.deepEqual(layers[2].shapes, [[[3]]])
     })
 
+    it('divide on two sums combined with &&', function() {
+      var lyr = {
+        geometry_type: "polygon",
+        shapes: [[[0]], [[1]], [[2]], [[3]]],
+        data: new api.internal.DataTable([
+          {foo: 10, bar: 10}, {foo: 10, bar: 10},
+          {foo: 10, bar: 10}, {foo: 10, bar: 10}
+        ])
+      }
+
+      var layers = api.cmd.subdivideLayer(lyr, nullArcs, "sum(foo) > 15 && sum(bar) > 15");
+      assert.equal(layers.length, 4);
+    })
+
+    it('&& is required: first sum alone would keep dividing', function() {
+      var lyr = {
+        geometry_type: "polygon",
+        shapes: [[[0]], [[1]], [[2]], [[3]]],
+        data: new api.internal.DataTable([
+          {foo: 10, bar: 1}, {foo: 10, bar: 1},
+          {foo: 10, bar: 1}, {foo: 10, bar: 1}
+        ])
+      }
+
+      var layers = api.cmd.subdivideLayer(lyr, nullArcs, "sum(foo) > 15 && sum(bar) > 15");
+      assert.equal(layers.length, 1);
+    })
+
     it('divide on a sum, field name not quoted', function() {
       var lyr = {
         geometry_type: "polygon",

@@ -174,6 +174,36 @@ describe('mapshaper-calc.js', function () {
     });
 
 
+    it ('&& does not skip later aggregation functions', function() {
+      var lyr = {
+        data: new DataTable([{foo: 1, bar: 10}, {foo: 2, bar: 20}, {foo: 3, bar: 30}])
+      };
+      assert.strictEqual(evalCalcExpression(lyr, null, 'sum(foo) > 5 && sum(bar) > 50'), true);
+      assert.strictEqual(evalCalcExpression(lyr, null, 'sum(foo) > 5 && sum(bar) > 100'), false);
+      assert.strictEqual(evalCalcExpression(lyr, null, 'sum(foo) > 100 && sum(bar) > 50'), false);
+    })
+
+    it ('|| does not skip later aggregation functions', function() {
+      var lyr = {
+        data: new DataTable([{foo: 1, bar: 10}, {foo: 2, bar: 20}])
+      };
+      assert.strictEqual(evalCalcExpression(lyr, null, 'sum(foo) > 100 || sum(bar) > 25'), true);
+      assert.strictEqual(evalCalcExpression(lyr, null, 'sum(foo) > 100 || sum(bar) > 100'), false);
+    })
+
+    it ('three-way && matches the issue 704 expression shape', function() {
+      var lyr = {
+        data: new DataTable([
+          {pop: 10, la: 2, n: 1},
+          {pop: 20, la: 3, n: 1},
+          {pop: 30, la: 4, n: 2}
+        ])
+      };
+      var exp = 'sum(pop)>50 && sum(la)>5 && sum(n)>3';
+      assert.strictEqual(evalCalcExpression(lyr, null, exp), true);
+      assert.strictEqual(evalCalcExpression(lyr, null, 'sum(pop)>50 && sum(la)>5 && sum(n)>10'), false);
+    })
+
     it ('where= expression excludes a record', function() {
       var data2 = [
           {foo: -1, bar: true},
