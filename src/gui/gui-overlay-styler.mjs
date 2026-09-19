@@ -1,5 +1,9 @@
 import { filterLayerByIds } from './gui-layer-utils';
 import { utils } from './gui-core';
+import {
+  getLabelPathGuideLayers,
+  getPendingLabelPath
+} from './gui-label-path-guide';
 
 var selectionFill = "rgba(237, 214, 0, 0.12)",
     // hoverFill = "rgba(255, 120, 255, 0.12)",
@@ -103,7 +107,7 @@ var selectionFill = "rgba(237, 214, 0, 0.12)",
 export function getOverlayLayers(activeLyr, hitData, styleOpts) {
   if (activeLyr?.hidden || !activeLyr?.gui?.style) return [];
   var displayLyr = activeLyr.gui.displayLayer;
-  var layers, lyr, outlineStyle, ids;
+  var layers, lyr, outlineStyle, ids, pending;
   if (styleOpts.interactionMode == 'vertices') {
     // special overlay: vertex editing mode
     lyr = getOverlayLayer(activeLyr, hitData.ids);
@@ -122,6 +126,25 @@ export function getOverlayLayers(activeLyr, hitData, styleOpts) {
     return [lyr];
   }
   layers = [];
+  if (styleOpts.interactionMode == 'label') {
+    // The label tool draws its own hover and selection cues in SVG, shaped to
+    // the label rather than to the point it hangs from (gui-label-selection.mjs).
+    // The canvas overlay would otherwise highlight the anchor -- or, on a layer
+    // with no labels on it yet, the polygons the tool is only using as a
+    // backdrop, which offers a hover effect for something that cannot be hit.
+    //
+    // The curve being placed is the exception, and is drawn only while the tool
+    // is on: a curve is a guide for placing text, not map content.
+    //
+    // Only that curve is guided. A curve that is already a label draws its own
+    // path and knot handles in the selection cue, and drawing both put two
+    // rings on every knot -- the guide's showing as a violet fringe around the
+    // cue's, the two being almost but not quite the same size. The cue is the
+    // one to keep: its knots are the ones that can be grabbed, and it is in the
+    // selection's colour rather than the tool's.
+    pending = getPendingLabelPath();
+    return getLabelPathGuideLayers(activeLyr, pending ? [pending] : []);
+  }
   if (styleOpts.interactionMode == 'line_style' || styleOpts.interactionMode == 'polygon_style' ||
     styleOpts.interactionMode == 'point_style') {
     ids = hitData.ids || [];

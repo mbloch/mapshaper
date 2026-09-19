@@ -577,6 +577,19 @@ textarea:focus {
 	box-shadow: 0 0 0 2px rgba(212, 168, 0, 0.4);
 }
 
+/* The interface is pointer-only. No custom control carries a tabindex, because
+   partial keyboard support was worse than none: tabbing reached a few buttons
+   and skipped most, and the menus a tab stop could open could not then be
+   navigated or dismissed from the keyboard.
+
+   This is the backstop for what is still focusable of necessity -- a span made
+   contenteditable for renaming, an element focused by script -- so that a UA
+   focus ring cannot appear over the interface. Text fields are excluded: they
+   have to show where the caret is, and the rule above is how they show it. */
+:focus:not(input):not(textarea):not(select) {
+	outline: none;
+}
+
 ::placeholder {
 	color: #aaa;
 	opacity: 1;
@@ -1972,6 +1985,7 @@ div.basemap-style-btn.active {
 
 .map-layers.add-points,
 .map-layers.draw-tool,
+.map-layers.label-tool,
 .map-layers.snip-tool,
 .map-layers.ruler-tool {
 	cursor: crosshair;
@@ -1979,6 +1993,12 @@ div.basemap-style-btn.active {
 
 .map-layers.snip-tool.no-snip {
 	cursor: default;
+}
+
+/* Over a label's knot or anchor handle, where a drag moves the handle rather
+   than placing a label or panning the map. */
+.map-layers.label-handle {
+	cursor: move;
 }
 
 .map-layers.ruler-dragging {
@@ -2060,14 +2080,6 @@ body.pan.panning .map-layers:not(.drawing) {
 	cursor: pointer;
 }
 
-.map-layers > svg text.active-label {
-	stroke: #fac0ff; /* #efacf4; */
-	paint-order: stroke fill;
-	stroke-width: 4px;
-	stroke-linecap: round;
-	stroke-linejoin: round;
-}
-
 .map-layers > svg text.label-style-selected {
 	stroke: #fce300;
 	stroke-opacity: 0.25;
@@ -2075,6 +2087,172 @@ body.pan.panning .map-layers:not(.drawing) {
 	stroke-width: 4px;
 	stroke-linecap: round;
 	stroke-linejoin: round;
+}
+
+/* A path label whose text is longer than its path. Export drops these; the
+   editor keeps them visible and marked, because a hidden label can't be
+   found and so can't be fixed. Same halo convention as the states above. */
+.map-layers > svg text.label-overflow {
+	stroke: #ff7f2a;
+	stroke-opacity: 0.45;
+	paint-order: stroke fill;
+	stroke-width: 4px;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+/* ---  IN-PLACE LABEL EDITING --- */
+
+/* The textarea is the model of record for an editing session: it holds focus so
+   that keyboard handling, selection, clipboard and IME all come from the
+   browser. It is invisible but must stay focusable, so it cannot be hidden with
+   display:none or visibility:hidden. */
+.label-edit-input {
+	position: absolute;
+	z-index: -1;
+	opacity: 0;
+	width: 1px;
+	height: 1em;
+	padding: 0;
+	border: none;
+	resize: none;
+	overflow: hidden;
+	white-space: pre;
+	pointer-events: none;
+}
+
+.label-edit-overlay {
+	pointer-events: none;
+}
+
+/* Label tool cues: an outline around the object rather than a halo over the
+   glyphs, so that it reads as something you have hold of. A solid line, to
+   distinguish it from the dashed box of a label being typed into -- the two
+   states look different because they behave differently.
+
+   Hover and selection draw the same shapes, because they mean the same thing
+   about the same object; hover is simply lighter. The alternative, highlighting
+   the anchor point on hover and the label on selection, made the two look like
+   different objects. */
+.label-cue {
+	pointer-events: none;
+}
+
+.label-cue-hovered {
+	opacity: 0.4;
+}
+
+/* Hairline, like every other reference shape the tool draws: the box says where
+   the label is, and a heavier outline reads as an object in its own right
+   rather than as a mark on one. */
+.label-cue-box {
+	fill: none;
+	stroke: #3a7ddc;
+	stroke-width: 1px;
+	vector-effect: non-scaling-stroke;
+}
+
+/* The anchor is what the text is positioned against, and label-pos can put it
+   well outside the box, so it is worth marking on its own.
+   Drawn as a ring rather than a dot, and beneath the glyphs: a centered label
+   sits right on top of its anchor, and a filled marker would blot out a letter.
+   Same treatment as the path guide's knots, since both are handles. */
+.label-cue-anchor {
+	fill: #fff;
+	stroke: #3a7ddc;
+	stroke-width: 1.5px;
+	vector-effect: non-scaling-stroke;
+}
+
+/* The line between an anchor and the text being dragged away from it, drawn
+   only while that drag is on. Dashed, and a shade lighter than the box: it is
+   the relationship being edited rather than a part of either end. */
+.label-cue-tether {
+	fill: none;
+	stroke: #3a7ddc;
+	stroke-width: 1px;
+	stroke-dasharray: 2 2;
+	opacity: 0.7;
+	vector-effect: non-scaling-stroke;
+}
+
+/* A copy of the baseline the label's text runs along. Unfilled: stroking an
+   open curve must not paint the area it encloses. */
+.label-cue-curve {
+	fill: none;
+	stroke: #3a7ddc;
+	stroke-width: 1px;
+	stroke-opacity: 0.8;
+	vector-effect: non-scaling-stroke;
+}
+
+/* The grab handles on a selected curve, one per knot. Same ring treatment as
+   the anchor marker and the path guide's knots, because all three are handles
+   and a knot is an anchor on a curve.
+   A corner knot is drawn as a square by the renderer; both shapes share this
+   rule, so a corner differs in outline and not in colour. */
+.label-cue-knot {
+	fill: #fff;
+	stroke: #3a7ddc;
+	stroke-width: 1.5px;
+	vector-effect: non-scaling-stroke;
+}
+
+/* Transparent rather than fill:none / stroke:none, because an unpainted shape
+   is not hit-testable. */
+.label-edit-hit-area {
+	fill: transparent;
+	stroke: none;
+	pointer-events: all;
+}
+
+/* The thickened baseline follows the curve, so only its stroke should catch
+   clicks -- filling an open curve would claim the whole area it encloses. */
+.label-edit-hit-baseline {
+	fill: none;
+	stroke: transparent;
+	pointer-events: stroke;
+}
+
+/* The curve a label's text is set along, ghosted while the label is open for
+   editing. Fainter than the guide drawn while the path is being placed, and in
+   the same violet, because it is the same curve at a later stage. */
+.label-edit-path {
+	fill: none;
+	stroke: #cc6acc;
+	stroke-width: 1.2px;
+	stroke-opacity: 0.4;
+	vector-effect: non-scaling-stroke;
+}
+
+/* Shows where an anchored label is even when it has no text -- the state a
+   label is in between being created and being typed into. A path label shows
+   its ghosted curve instead.
+   Solid, not dashed: at the size of an empty label the dashes were most of the
+   outline, which made the box look tentative rather than like a place to type. */
+.label-edit-box {
+	fill: none;
+	stroke: #cc6acc;
+	stroke-width: 1px;
+	vector-effect: non-scaling-stroke;
+}
+
+.label-edit-selection {
+	fill: #cc6acc;
+	fill-opacity: 0.3;
+	stroke: none;
+}
+
+.label-edit-caret {
+	stroke: #000;
+	stroke-width: 1.5px;
+	vector-effect: non-scaling-stroke;
+	animation: label-caret-blink 1.1s steps(1) infinite;
+}
+
+@keyframes label-caret-blink {
+	0%, 50% { stroke-opacity: 1; }
+	50.01%, 100% { stroke-opacity: 0; }
 }
 
 /* ---  MAP BUTTONS --- */
@@ -2174,11 +2352,31 @@ body.pan.panning .map-layers:not(.drawing) {
 }
 
 .label-style-panel {
+	/* The shape of a field in every style panel: the label panel set them,
+	   and the line, polygon and circle panels are drawn from the same parts.
+	   A row is only legible when the select, the colour field, the size field
+	   and the button beside them are all the same height. */
+	--label-field-height: 22px;
+	--label-field-radius: 4px;
+	--label-field-border: #bbb;
+	/* The narrow column of a split row, wide enough for the longest caption
+	   over it -- "Letter spacing", which measures 71px -- and the same in
+	   every row of every panel, so that the field edges line up down the
+	   whole stack. */
+	--label-split-b-width: 74px;
+	/* Same glyph on native <select>s and the saved-style menu. The custom menu
+	   used a CSS triangle; the font menus used the OS arrow. A drawn stroke
+	   rather than a filled triangle: it is lighter than the text beside it,
+	   which is what a menu's arrow should be. */
+	--label-menu-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath fill='none' stroke='%23666' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round' d='M1 1.5l4 4 4-4'/%3E%3C/svg%3E");
 	position: absolute;
 	z-index: 21;
 	top: 6px;
 	right: 36px;
-	width: 185px;
+	/* Wide enough for a pair of controls side by side, which is what these
+	   panels are mostly made of: at 185px the narrow column of a pair was too
+	   narrow for its own caption, and "Letter spacing" was clipped. */
+	width: 216px;
 	padding: 8px 12px 12px;
 	text-align: left;
 	background-color: white;
@@ -2190,7 +2388,7 @@ body.pan.panning .map-layers:not(.drawing) {
 .label-style-panel button,
 .label-style-panel select,
 .label-style-panel input {
-	font-size: 12.5px;
+	font-size: 12px;
 }
 
 .label-style-panel button.label-style-close {
@@ -2198,14 +2396,26 @@ body.pan.panning .map-layers:not(.drawing) {
 }
 
 
-.label-style-panel select {
-	padding: 1px 0;
+.label-style-panel select,
+.label-saved-style-btn {
+	background-image: var(--label-menu-chevron);
+	background-repeat: no-repeat;
+	background-position: right 6px center;
+	background-size: 10px 7px;
 }
 
+.label-style-panel select {
+	-webkit-appearance: none;
+	appearance: none;
+	padding: 0 20px 0 6px;
+}
+
+/* The size the app's dialogs title themselves at (.info-box h3), so that a
+   panel pinned over the map is headed like the menus beside it. */
 .label-style-panel-title {
 	position: relative;
 	font-weight: 600;
-	font-size: 16px;
+	font-size: 17px;
 }
 
 .label-style-close {
@@ -2235,9 +2445,13 @@ body.pan.panning .map-layers:not(.drawing) {
 	box-sizing: border-box;
 }
 
-.label-style-panel select {
+.label-style-panel select,
+.label-style-panel input[type="text"] {
+	box-sizing: border-box;
+	height: var(--label-field-height);
 	background-color: white;
-	border: 1px solid #999;
+	border: 1px solid var(--label-field-border);
+	border-radius: var(--label-field-radius);
 	box-shadow: none;
 }
 
@@ -2250,10 +2464,6 @@ body.pan.panning .map-layers:not(.drawing) {
 .label-style-panel input[type="text"] {
 	-webkit-appearance: none;
 	appearance: none;
-	background: white;
-	border: 1px solid #999;
-	border-radius: 0;
-	box-shadow: none;
 }
 
 .label-style-panel input[type="text"]:focus {
@@ -2283,27 +2493,191 @@ body.pan.panning .map-layers:not(.drawing) {
 	color: #555;
 }
 
-.label-saved-style-row select {
-	width: 100%;
-	margin-bottom: 4px;
-}
-
-.label-saved-style-row {
-	margin-top: 10px;
-	padding-top: 8px;
-	border-top: 1px solid #ccc;
-}
-
-.label-saved-style-row button,
 .label-style-row button {
 	margin-right: 5px;
 }
 
+/* Saved styles: a menu that applies one and a button that saves the current
+   one, under a heading. The menu is built from divs rather than being a
+   <select>, because each row carries its own delete button -- see
+   gui-style-preset-control.mjs.
+
+   A section of the panel like Text and Icon, so the spacing above it is the
+   whitespace those sections are separated by, in the panel that has them, and
+   this margin in the layer panel, which does not. */
+.label-saved-style-row {
+	margin-top: 11px;
+}
+
+/* The two controls sit in the panel's A and B columns, on the same grid as a
+   split row: Apply style lines up with the fields and menus above it, and
+   Save current with the narrow column beside them. Every style panel is the
+   same width, so one grid does for all three. */
+.label-saved-style-controls {
+	display: grid;
+	grid-template-columns: 1fr var(--label-split-b-width);
+	column-gap: 10px;
+	margin-top: 4px;
+}
+
+/* min-width:0 lets the menu shrink to its column: a grid track is otherwise
+   at least as wide as its contents, and the names in the list can be long. */
+.label-saved-style-menu {
+	position: relative;
+	min-width: 0;
+}
+
+/* Sized, bordered and lettered like the panel's fields rather than like its
+   19px icon buttons, because that is what these two are: a menu the width of
+   a field, and a button beside it. The type is the fields' own -- these are
+   divs, so the panel's rule for button, select and input does not reach them
+   and they were left at the app's 14px. */
+.label-saved-style-button {
+	box-sizing: border-box;
+	display: flex;
+	align-items: center;
+	height: var(--label-field-height);
+	padding: 0 6px;
+	border: 1px solid var(--label-field-border);
+	border-radius: var(--label-field-radius);
+	background-color: white;
+	font-size: 12px;
+	color: #000;
+	cursor: pointer;
+	user-select: none;
+}
+
+/* "Save current" is 63px of SourceSans3 and 68px of the Arial it falls back
+   to, in a column of 74: too near its edges to read as inset from them, so
+   the label is centred and the padding is only what keeps the widest of the
+   two fonts off the border. */
+.label-saved-style-save {
+	justify-content: center;
+	padding: 0 2px;
+}
+
+/* The panel's own disabled look: live colours, faded as a whole. */
+.label-saved-style-button.disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.label-saved-style-button:hover:not(.disabled),
+.label-saved-style-button.open {
+	background-color: #f0f0f0;
+}
+
+.label-saved-style-btn {
+	padding-right: 20px;
+}
+
+/* The label gives way to the chevron rather than running under it. */
+.label-saved-style-btn span {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+/* Above the panel's own rows, and free to hang past its bottom edge -- the
+   panel does not clip, and this row is the last thing in it. */
+.label-saved-style-list {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	/* At least as wide as the menu, and wider if the names need it: the button
+	   is only as wide as the space left over beside Save current, and a style
+	   name is what the user is trying to read. It can hang over the map --
+	   nothing clips it -- but not indefinitely; past that, names ellipsize. */
+	min-width: 100%;
+	width: max-content;
+	max-width: 240px;
+	z-index: 30;
+	margin-top: 2px;
+	padding: 3px 2px;
+	max-height: 40vh;
+	overflow-y: auto;
+	background: white;
+	/* The size of the button it drops from, which is the size of a field. */
+	font-size: 12px;
+	border: 1px solid #bbb;
+	border-radius: var(--label-field-radius);
+	box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+}
+
+.label-saved-style-list.drop-up {
+	top: auto;
+	bottom: 100%;
+	margin: 0 0 2px 0;
+}
+
+.label-saved-style-item {
+	display: flex;
+	align-items: center;
+}
+
+/* The name is the target for applying, and the highlight stops where it does,
+   so that the row reads as two things to click rather than one with a hazard
+   at the end of it. */
+.label-saved-style-name {
+	flex: 1;
+	min-width: 0;
+	padding: 3px 4px 3px 8px;
+	border-radius: 3px;
+	color: var(--normal-text);
+	cursor: pointer;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.label-saved-style-name:hover {
+	background: var(--lt-theme-col);
+}
+
+/* Hidden by visibility rather than left out, so that a name is the same width
+   whether or not the pointer is on it. */
+.label-saved-style-delete {
+	flex: none;
+	width: 16px;
+	padding: 2px 4px 2px 0;
+	text-align: center;
+	line-height: 1;
+	color: #999;
+	cursor: pointer;
+	visibility: hidden;
+}
+
+.label-saved-style-item:hover .label-saved-style-delete {
+	visibility: visible;
+}
+
+.label-saved-style-delete:hover {
+	color: #c00;
+}
+
+.label-saved-style-empty {
+	padding: 3px 8px;
+	color: #999;
+	cursor: default;
+}
+
+/* Two controls on one line: a font style and its size, a colour and its
+   opacity, the icon shapes and the icon's size. Both columns are the same
+   width in every row, rather than each row's right column being sized to
+   whatever it happens to hold -- the panel is a stack of these pairs, and
+   sizing them one row at a time leaves every field edge in a slightly
+   different place.
+
+   Bottom-aligned, so that a caption above one control cannot push it out of
+   line with the control beside it: the icon size has a "Size" over it and the
+   shape buttons beside it have nothing, and the two still have to be level. */
 .label-split-row {
 	display: grid;
-	grid-template-columns: 105px 1fr;
-	column-gap: 8px;
-	align-items: start;
+	grid-template-columns: 1fr var(--label-split-b-width);
+	column-gap: 10px;
+	align-items: end;
 }
 
 .label-split-cell > span,
@@ -2313,12 +2687,273 @@ body.pan.panning .map-layers:not(.drawing) {
 	color: #555;
 }
 
-.label-split-row .label-size-row,
-.label-split-row .label-icon-size-row {
-	justify-self: end;
+/* Captions a couple of sizes down from the values they name. They are read
+   once, when the panel is first met, and the narrow column of a split row is
+   only as wide as the longest of them -- "Letter spacing" is what set it --
+   so quieter captions are also a narrower panel. Direct children only: the
+   colour picker's H/S/B captions are spans in a row too. */
+.label-style-panel .label-style-row > span,
+.label-style-panel .label-style-selection-row > span,
+.label-style-panel .label-split-cell > span,
+.label-style-panel .label-style-row > .label-style-row-label,
+.label-style-panel .label-split-cell > .label-style-row-label,
+.label-style-panel .label-icon-size-caption,
+.label-style-panel .point-style-note {
+	font-size: 12px;
+}
+
+.label-split-row .label-split-cell + .label-split-cell {
 	white-space: nowrap;
 }
 
+/* Each column's control fills its column: the widths are the grid's to decide
+   now, and a control keeping a width of its own would sit inside its cell
+   rather than lining up with the one above it. */
+.label-split-cell > select,
+.label-split-cell > .size-field,
+.label-split-cell > input[type="text"] {
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.label-split-cell > .size-field {
+	display: flex;
+}
+
+.label-style-panel .size-field input.size-field-input {
+	flex: 1;
+	width: auto;
+}
+
+/* A grid track is at least as wide as its contents unless told otherwise, and
+   a text input's contents are twenty characters whatever width it is given --
+   without this the colour field pushes the opacity beside it off the panel. */
+.label-split-row .label-split-cell {
+	min-width: 0;
+}
+
+.label-font-style-row select {
+	width: 100%;
+	box-sizing: border-box;
+}
+
+/* Both take their width from the split row's narrow column; a value reads from
+   the left edge of the field, where the caption above it starts. */
+.label-style-panel .label-opacity-input,
+.label-style-panel .label-measure-input {
+	padding: 0 4px;
+	vertical-align: top;
+}
+
+/* One disabled look for the whole panel. Left to themselves the controls each
+   fade differently -- a select takes the browser's grey, an input with
+   -webkit-appearance: none takes no styling at all, and a widget built from
+   divs takes whatever it was given -- so an inert row ends up in three or four
+   shades. Each control keeps its live colours and the whole thing is faded by
+   the same amount, which also fades its border. */
+.label-style-panel select:disabled,
+.label-style-panel input[type="text"]:disabled,
+.label-style-panel .size-field.disabled,
+.label-style-panel .label-color-field.disabled,
+.label-style-panel .label-panel-action-btn.disabled,
+.label-style-panel .label-btn-group.disabled {
+	opacity: 0.45;
+	color: var(--normal-text);
+	-webkit-text-fill-color: var(--normal-text);
+	background-color: white;
+	border-color: var(--label-field-border);
+}
+
+/* Nothing inside an already-faded control fades again: two 0.45s over each
+   other is 0.2, and a widget made of a wrapper and an input -- the size and
+   colour fields -- was coming out half the weight of the plain input beside
+   it. The parts still take their own disabled state, because a disabled input
+   cannot be typed into and a disabled button cannot be pressed; it is only the
+   fading that belongs to the whole. */
+.label-style-panel .label-btn-group.disabled .label-panel-btn.disabled,
+.label-style-panel .size-field.disabled .label-panel-btn.disabled,
+.label-style-panel .size-field.disabled input:disabled,
+.label-style-panel .label-color-field.disabled input:disabled,
+.label-style-panel .label-color-field.disabled .label-color-chit.disabled {
+	opacity: 1;
+	color: inherit;
+}
+
+/* Whitespace and a bold heading separate the sections; a rule as well would be
+   a third answer to a question already settled twice. */
+.label-style-panel .label-style-section + .label-style-section {
+	margin-top: 12px;
+	padding-top: 0;
+	border-top: 0;
+}
+
+/* Baselines, not boxes: the heading and the caption beside it are set at
+   different sizes, and centring their boxes leaves the smaller one's baseline
+   a pixel or two high. The switch has no baseline to share, so it centres on
+   the line itself. */
+.label-style-panel .label-style-section-title {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+}
+
+.label-style-panel .label-style-section-title .label-toggle {
+	align-self: center;
+}
+
+/* .hidden is one class and the rule above is two, so a heading told to hide
+   would go on being laid out. The circle panel hides its Circles heading once
+   the points are circles: the panel's title says so, and the section is the
+   only thing left in it. */
+.label-style-panel .label-style-section-title.hidden {
+	display: none;
+}
+
+/* 15.5px is what the dialogs subhead at (.info-box h4); the weight is the
+   sketch's, which wants these read as headings rather than as captions. */
+.label-style-panel .label-style-section-name {
+	font-size: 15.5px;
+	color: #222;
+}
+
+.label-style-panel .label-style-section-minor .label-style-section-name {
+	font-size: 12px;
+	font-weight: normal;
+	line-height: 1;
+	color: #555;
+}
+
+/* Where label text is measured (gui-label-measure.mjs). Off the page rather
+   than display:none, which would give it no layout and its text no box. */
+.label-measure-svg {
+	position: absolute;
+	left: -10000px;
+	top: -10000px;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+}
+
+/* Closer to the heading above it than a row usually is, because that heading
+   line carries this row's "Size" caption: the gap between a caption and the
+   field it names is 2px everywhere else in the panel. */
+.text-style-panel .label-icon-shapes-row {
+	margin-top: 2px;
+}
+
+/* Pushed to the right and given the width of a split row's narrow column, so
+   that it sits over the size field a row below it. */
+.text-style-panel .label-icon-size-caption {
+	width: var(--label-split-b-width);
+	margin-left: auto;
+	font-weight: normal;
+	color: #555;
+}
+
+/* Darker than the app's default placeholder. These fields show the value the
+   renderer will use when the property is absent -- 0 and auto are true of the
+   label, they are just not stored on it -- so at #aaa they read as a control
+   that is switched off rather than as an answer. */
+.label-style-panel ::placeholder {
+	color: #777;
+}
+
+/* Buttons that answer one question share a border and sit flush, the way the
+   size field and its stepper do: four shapes are four answers to "which
+   symbol", not four separate controls. They divide the width of their cell so
+   that the group lines up with the field above or below it. */
+.label-style-panel .label-btn-group {
+	display: flex;
+	box-sizing: border-box;
+	height: var(--label-field-height);
+	border: 1px solid var(--label-field-border);
+	border-radius: var(--label-field-radius);
+	background: white;
+	overflow: hidden;
+}
+
+.label-style-panel .label-btn-group .label-panel-btn {
+	flex: 1;
+	width: auto;
+	height: auto;
+	border: none;
+	border-radius: 0;
+	background: white;
+}
+
+.label-style-panel .label-btn-group .label-panel-btn + .label-panel-btn {
+	border-left: 1px solid #e0e0e0;
+}
+
+/* Hover leaves the selected button alone. Every hover fill in the panel is
+   lighter than the selection it would sit on, so pointing at the chosen answer
+   made it look less chosen than its neighbours -- and there is nothing to
+   preview anyway, since clicking it changes nothing. */
+.label-style-panel .label-btn-group .label-panel-btn:hover:not(.disabled):not(.selected) {
+	background: #f0f0f0;
+}
+
+/* A grey fill, not the inverse the panel's other buttons use: the glyph is
+   what identifies the choice, and reversing it out makes the selected shape
+   the hardest one to read. */
+.label-style-panel .label-btn-group .label-panel-btn.selected {
+	background: #dcdcdc;
+	color: black;
+}
+
+/* A switch, because whether the label has a symbol at all is a yes/no that the
+   four shapes below it then qualify. Off is a pale track with the knob left,
+   on a dark one with the knob right. */
+.label-toggle {
+	position: relative;
+	flex: none;
+	width: 26px;
+	height: 15px;
+	border-radius: 8px;
+	background: #ccc;
+	cursor: pointer;
+	user-select: none;
+	transition: background-color 0.12s;
+}
+
+.label-toggle-knob {
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 11px;
+	height: 11px;
+	border-radius: 50%;
+	background: white;
+	box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+	transition: left 0.12s;
+}
+
+.label-toggle.on {
+	background: #333;
+}
+
+.label-toggle.on .label-toggle-knob {
+	left: 13px;
+}
+
+.label-toggle.disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.label-style-section-title {
+	margin-top: 11px;
+	font-weight: 600;
+	color: #333;
+}
+
+.label-style-section + .label-style-section .label-style-section-title {
+	margin-top: 0;
+}
+
+/* The cell a colour field sits in, which is also what its picker hangs from:
+   the picker is wider than the panel, so it opens over the map, and anchoring
+   it to the cell keeps it on the same side of the panel as its field. */
 .label-color-row {
 	position: relative;
 }
@@ -2341,24 +2976,87 @@ body.pan.panning .map-layers:not(.drawing) {
 	opacity: 0.45;
 }
 
-.label-color-row .label-color-chit {
-	display: inline-block;
-	width: 19px;
-	height: 19px;
-	margin-right: 5px;
-	padding: 0;
-	vertical-align: top;
-	border: 1px solid #888;
+/* A button with a word on it: Clear style, Random fills, Create. The same
+   shape as Save current in the saved styles row, which is the same kind of
+   thing -- a named action, as wide as its name -- and the same height as the
+   fields above it. */
+.label-panel-action-btn {
+	box-sizing: border-box;
+	display: inline-flex;
+	align-items: center;
+	height: var(--label-field-height);
+	padding: 0 8px;
+	border: 1px solid var(--label-field-border);
+	border-radius: var(--label-field-radius);
+	background-color: white;
+	color: var(--normal-text);
 	cursor: pointer;
+	user-select: none;
 }
 
-.label-color-row input[type="text"] {
-	width: 79px;
-	height: 19px;
-	padding-top: 0;
-	padding-bottom: 0;
+.label-panel-action-btn:hover:not(.disabled) {
+	background-color: #f0f0f0;
+}
+
+.label-panel-action-btn.disabled {
+	cursor: default;
+}
+
+/* Buttons wrap rather than run off the panel: two of them fit on one line in
+   the polygon panel and would not if either name grew. */
+.label-panel-button-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 6px;
+}
+
+/* A swatch and its hex value inside one border: the pair is one answer to one
+   question, and a separate button beside a text box reads as two. The swatch
+   keeps its own outline so that white does not disappear into the field. */
+.label-style-panel .label-color-field {
+	display: flex;
+	align-items: center;
 	box-sizing: border-box;
-	vertical-align: top;
+	height: var(--label-field-height);
+	padding: 0 3px;
+	border: 1px solid var(--label-field-border);
+	border-radius: var(--label-field-radius);
+	background: white;
+}
+
+.label-style-panel .label-color-field:focus-within {
+	border-color: #d3aa00;
+}
+
+.label-style-panel .label-color-field .label-color-chit {
+	flex: none;
+	width: 13px;
+	height: 13px;
+	margin-right: 6px;
+	border: 1px solid #bbb;
+	border-radius: 2px;
+}
+
+.label-style-panel .label-color-field input[type="text"] {
+	flex: 1;
+	width: auto;
+	min-width: 0;
+	height: auto;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+}
+
+.label-style-panel .label-color-field input[type="text"]:focus {
+	border: none;
+	box-shadow: none;
+	outline: none;
+}
+
+.label-style-panel .label-color-field.disabled {
+	opacity: 0.45;
 }
 
 .label-color-row .label-color-picker {
@@ -2375,25 +3073,13 @@ body.pan.panning .map-layers:not(.drawing) {
 	box-sizing: border-box;
 }
 
-.layer-style-panel .layer-color-row {
-	position: relative;
-}
-
-.point-style-section + .point-style-section {
-	margin-top: 10px;
-	padding-top: 8px;
-	border-top: 1px solid #ccc;
-}
-
-.point-style-section.point-style-first-visible {
-	margin-top: 7px;
-	padding-top: 0;
-	border-top: 0;
-}
-
+/* What a section of this panel says when there is nothing in it to set: the
+   layer is drawn some way this panel cannot edit, or the thing the section is
+   for has to be made in the console. Set like a caption, not like a field's
+   value. */
 .point-style-note {
 	color: #555;
-	line-height: 1.25;
+	line-height: 1.3;
 }
 
 .point-create-labels-row {
@@ -2402,156 +3088,19 @@ body.pan.panning .map-layers:not(.drawing) {
 	gap: 10px;
 }
 
-.point-create-circles-row {
-	display: flex;
-	align-items: baseline;
-	gap: 2px;
-	color: #555;
-}
-
-.point-create-circles-row span {
-	display: inline;
-	margin: 0;
-	color: #555;
-}
-
 .point-create-copy-label {
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
 	margin: 0;
 	color: #555;
+	font-size: 12px;
 }
 
 .point-create-copy-label span {
 	display: inline;
 	margin: 0;
 	color: #555;
-}
-
-.point-symbol-row {
-	display: flex;
-	align-items: flex-start;
-	gap: 12px;
-}
-
-.point-symbol-size-row {
-	display: flex;
-	align-items: flex-start;
-	gap: 12px;
-}
-
-.point-symbol-stepper-control {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-}
-
-.point-symbol-stepper-control:last-child {
-	margin-left: auto;
-	align-items: flex-end;
-}
-
-.point-symbol-color-cell {
-	position: relative;
-	white-space: nowrap;
-	flex: 1;
-}
-
-.point-symbol-row .layer-number-control input[type="text"],
-.point-symbol-width-row input[type="text"] {
-	width: 45px;
-	height: 19px;
-	padding-top: 0;
-	padding-bottom: 0;
-	box-sizing: border-box;
-}
-
-.point-symbol-width-row input[type="text"] {
-	width: 55px;
-}
-
-.layer-style-control-line {
-	display: flex;
-	align-items: flex-start;
-	gap: 12px;
-}
-
-.layer-color-cell {
-	position: relative;
-	white-space: nowrap;
-}
-
-.layer-style-panel .layer-color-row input[type="text"] {
-	width: 79px;
-	height: 19px;
-	padding-top: 0;
-	padding-bottom: 0;
-	box-sizing: border-box;
-	vertical-align: top;
-}
-
-.layer-row-controls {
-	display: flex;
-	gap: 6px;
-	align-items: flex-start;
-	justify-content: flex-start;
-}
-
-.layer-number-control {
-	display: block;
-	margin: 0;
-}
-
-.layer-number-control > span,
-.label-color-row > span,
-.layer-color-cell > span {
-	display: block;
-	margin-bottom: 3px;
-	color: #555;
-}
-
-.layer-style-panel .layer-number-control input[type="text"] {
-	width: 45px;
-	height: 19px;
-	padding-top: 0;
-	padding-bottom: 0;
-	box-sizing: border-box;
-}
-
-.layer-stepper-control {
-	display: flex;
-	align-items: center;
-	gap: 2px;
-}
-
-.layer-stepper-control .label-panel-btn {
-	text-align: center;
-	line-height: 18px;
-}
-
-.layer-stroke-width-value {
-	display: inline-block;
-	width: 30px;
-	min-height: 17px;
-	line-height: 17px;
-	text-align: center;
-	border: 1px solid #999;
-	background: white;
-	cursor: pointer;
-	box-sizing: border-box;
-}
-
-.layer-stroke-width-value.editing {
-	cursor: text;
-}
-
-.layer-stroke-width-row .layer-number-control {
-	display: block;
-}
-
-.layer-style-panel .layer-color-row .label-color-picker input[type="text"] {
-	width: 45px;
 }
 
 .label-color-picker {
@@ -2657,6 +3206,10 @@ body.dragging-color-picker * {
 	margin-left: auto;
 }
 
+.label-style-selection-row {
+	line-height: 1;
+}
+
 .label-style-selection-row button {
 	margin-right: 5px;
 }
@@ -2699,15 +3252,64 @@ body.dragging-color-picker * {
 	background: white;
 }
 
+/* Nine plain squares: a border on each would double the lines in a shape that
+   is nothing but lines, so the cells are filled and the chosen one is dark. */
+.text-style-panel .label-position-grid {
+	grid-template-columns: repeat(3, 10px);
+	gap: 3px;
+	margin-top: -13px;
+	margin-bottom: 3px;
+}
+
+.text-style-panel .label-position-grid .label-panel-btn {
+	width: 10px;
+	height: 10px;
+	border: none;
+	border-radius: 1px;
+	background: #dcdcdc;
+}
+
+.text-style-panel .label-position-grid .label-panel-btn:hover:not(.disabled):not(.selected) {
+	background: #c4c4c4;
+}
+
+.text-style-panel .label-position-grid .label-panel-btn.selected {
+	background: black;
+}
+
+/* The position a dragged label is nearest, which is where it roughly belongs
+   and the cell that puts it back. Between the unlit grey and the lit black,
+   because it is saying something weaker than either: not "here" but "about
+   here, and not exactly". */
+.text-style-panel .label-position-grid .label-panel-btn.nearest:not(.selected) {
+	background: #a0a0a0;
+}
+
+/* The grid and the Fixed/Draggable toggle share the position row, the toggle
+   against the right edge so that it lines up with the fields in the rows
+   above. */
+.text-style-panel .label-position-row {
+	margin-top: 3px;
+	display: flex;
+	/* align-items: center; */
+	justify-content: space-between;
+}
+
+/* Words rather than glyphs, so these segments size to their text instead of
+   splitting the group evenly, and sit in a group narrow enough to read as one
+   control beside the grid. */
+.text-style-panel .label-drag-mode-buttons .label-panel-btn {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	padding: 0 7px;
+	font-size: 12px;
+}
+
 .label-panel-btn.selected {
 	background-color: black;
 	border-color: black;
 	color: white;
-}
-
-.label-icon-buttons {
-	display: flex;
-	gap: 2px;
 }
 
 .label-icon-buttons .label-panel-btn {
@@ -2724,7 +3326,6 @@ body.dragging-color-picker * {
 	stroke: none;
 }
 
-.label-icon-buttons .label-panel-btn[data-icon="none"] .label-icon-symbol,
 .label-icon-buttons .label-panel-btn[data-icon="ring"] .label-icon-symbol {
 	fill: none;
 	stroke: currentColor;
@@ -2737,41 +3338,113 @@ body.dragging-color-picker * {
 	transform: scale(1.4);
 }
 
-.label-size-row .label-panel-btn,
-.label-icon-size-row .label-panel-btn {
-	display: inline-block;
-	text-align: center;
-	line-height: 18px;
+.label-align-buttons .label-panel-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
 }
 
-.label-size-row .label-panel-btn,
-.label-icon-size-row .label-panel-btn {
-	margin-right: 4px;
+/* Drawn larger than the icon symbols above, which share its viewBox but not
+   its proportions: three rules across the middle are ink over less than half
+   of the box, where a circle or a square fills most of its own, so at the same
+   13px both the glyph and its weight read smaller than the shapes beside it.
+   16px also puts the 16-unit viewBox at one unit per pixel, so the half-pixel
+   baselines the rules are drawn on land where they were meant to. */
+.label-align-symbol {
+	display: block;
+	width: 16px;
+	height: 16px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.5;
+	stroke-linecap: round;
 }
 
-.label-split-row .label-size-row .label-panel-btn,
-.label-split-row .label-icon-size-row .label-panel-btn {
-	margin-right: 2px;
+/* A size field and its stepper share a border and sit flush, so that the three
+   elements read as one control rather than three. The buttons are always
+   visible: they are the primary affordance of the panel's most-used numbers,
+   and revealing them on hover would either reserve their space anyway or
+   overlap the value being adjusted. */
+.size-field {
+	display: inline-flex;
+	align-items: stretch;
+	box-sizing: border-box;
+	height: var(--label-field-height, 19px);
+	border: 1px solid var(--label-field-border, #999);
+	border-radius: var(--label-field-radius, 3px);
+	background: #fff;
+	overflow: hidden;
+	vertical-align: top;
 }
 
-.label-split-row .label-size-row .label-panel-btn:last-child,
-.label-split-row .label-icon-size-row .label-panel-btn:last-child {
-	margin-right: 0;
+.size-field.disabled {
+	opacity: 0.45;
 }
 
-.label-size-row .label-size-value,
-.label-icon-size-row .label-icon-size-value {
-	display: inline-block;
-	width: 28px;
-	margin: 0 3px 0 0;
-	text-align: center;
+/* input.size-field-input, not .size-field-input: the panels give their text
+   inputs a border through an attribute selector, and the field's own border is
+   the one that has to show. */
+.size-field input.size-field-input {
+	width: 40px;
+	min-width: 0;
+	height: auto;
+	margin: 0;
+	padding: 0 3px;
+	border: none;
+	border-radius: 0;
+	box-shadow: none;
+	background: transparent;
 	color: black;
 }
 
-.label-split-row .label-size-value,
-.label-split-row .label-icon-size-value {
-	width: 24px;
-	margin-right: 2px;
+/* The field shows focus on its outer border, so that the ring cannot be drawn
+   between the input and the stepper it shares an edge with. */
+.size-field input.size-field-input:focus {
+	outline: none;
+	border: none;
+	box-shadow: none;
+}
+
+.size-field:focus-within {
+	border-color: #d3aa00;
+}
+
+/* The stepper is inset from the field's border rather than dividing it: the
+   value is the field's content and the arrows are a control within it, which
+   is also how the native spinner reads. */
+.size-field .size-field-stepper {
+	display: flex;
+	flex-direction: column;
+	margin: 2px 2px 2px 0;
+	border: 1px solid #d6d6d6;
+	border-radius: 2px;
+	background: #f7f7f7;
+	overflow: hidden;
+}
+
+/* Half-height buttons, so the pair occupies the width of one: the panel's rows
+   are tight and a size field shares its row with a label. */
+.size-field .size-field-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 13px;
+	height: 8px;
+	border: none;
+	border-radius: 0;
+	background: transparent;
+}
+
+.size-field .size-field-arrow {
+	display: block;
+	width: 7px;
+	height: 5px;
+	fill: #444;
+	stroke: none;
+}
+
+.size-field .size-field-btn:hover:not(.disabled) {
+	background: #e2e2e2;
 }
 
 .nav-menu-item,
@@ -2937,6 +3610,14 @@ body.dragging-color-picker * {
 	transform: translateY(0);
 }
 
+/* The toolbar being hovered comes forward, so that a tooltip drawn above a
+   button is not painted behind the toolbar stacked over it. The tooltip's own
+   z-index cannot do this: each toolbar is transformed, which makes it a
+   stacking context its descendants cannot escape. */
+.floating-toolbar:hover {
+	z-index: 1;
+}
+
 .floating-toolbar-content {
 	display: flex;
 	align-items: center;
@@ -2982,6 +3663,15 @@ body.dragging-color-picker * {
 
 .floating-toolbar-btn:active:not(.disabled) {
 	background-color: #cdebf9;
+}
+
+/* A toggle button that is currently armed */
+.floating-toolbar-btn.selected {
+	background-color: #cdebf9;
+}
+
+.floating-toolbar-btn.selected svg * {
+	fill: #166689;
 }
 
 .floating-toolbar-btn.disabled {

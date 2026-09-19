@@ -118,11 +118,14 @@ export function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
         // use small threshold when adding points
         hitThreshold = interactionMode == 'edit_points' ? 12 : 25,
         toPx = ext.getTransform().mx,
+        skip = getPathLabelKnotTest(),
         hits = [];
 
     // inlining forEachPoint() does not not appreciably speed this up
     internal.forEachPoint(layer.gui.displayLayer.shapes, function(p, id) {
-      var dist = geom.distance2D(x, y, p[0], p[1]) * toPx;
+      var dist;
+      if (skip && skip(id)) return;
+      dist = geom.distance2D(x, y, p[0], p[1]) * toPx;
       if (dist > hitThreshold) return;
       if (dist < hitThreshold && hitThreshold > bullseyeDist) {
         hits = [];
@@ -133,6 +136,31 @@ export function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
     // TODO: add info on what part of a shape gets hit?
     return {
       ids: utils.uniq(hits) // multipoint features can register multiple hits
+    };
+  }
+
+  // Which features' points are not hit targets, or null if all of them are.
+  //
+  // The knots of a path-aligned label are construction points, not the thing
+  // the user is pointing at: they sit off the glyphs, often nowhere near them,
+  // so proximity to a knot reads as a hit on empty map. The label is reached by
+  // hovering the text it draws, which the SVG hit test resolves to the same
+  // feature (see gui-svg-hit.mjs).
+  //
+  // A label with no text is the exception, and has to be: it draws nothing to
+  // hover, so without its knots there would be no way to reach it at all.
+  //
+  // Returns null for any layer that has no labels, which keeps the per-point
+  // work out of the hot loop for ordinary point layers.
+  function getPathLabelKnotTest() {
+    var lyr = layer.gui.displayLayer;
+    var records = lyr.data ? lyr.data.getRecords() : null;
+    var svg = internal.svg;
+    if (!records || !internal.layerHasLabels(lyr)) return null;
+    return function(id) {
+      var rec = records[id];
+      return !!rec && svg.featureHasLabel(rec) &&
+        svg.shapeIsPathLabel(lyr.shapes[id], rec);
     };
   }
 

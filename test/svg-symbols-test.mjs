@@ -95,6 +95,45 @@ describe('svg-symbols.js', function () {
       assert.deepEqual(output, target);
     });
 
+    it('lets icon-opacity override the label opacity on the symbol', function() {
+      var output = renderPoint({icon: 'circle', 'icon-size': 8, fill: 'red', opacity: 0.2, 'icon-opacity': 0.9});
+      var target = {
+        tag: 'circle',
+        properties: {cx: 0, cy: 0, r: 3.5, fill: 'red', opacity: 0.9}
+      };
+      assert.deepEqual(output, target);
+    });
+
+    it('applies an icon-opacity of zero', function() {
+      var output = renderPoint({icon: 'circle', 'icon-size': 8, 'icon-opacity': 0});
+      assert.equal(output.properties.opacity, 0);
+    });
+
+    it('leaves the symbol opacity alone if icon-opacity is not a number', function() {
+      var output = renderPoint({icon: 'circle', 'icon-size': 8, opacity: 0.2, 'icon-opacity': undefined});
+      assert.equal(output.properties.opacity, 0.2);
+    });
+
+    it('applies icon-opacity to a ring, which has no fill to fade', function() {
+      var output = renderPoint({icon: 'ring', 'icon-size': 8, fill: 'red', 'icon-opacity': 0.5});
+      var target = {
+        tag: 'circle',
+        properties: {cx: 0, cy: 0, r: 3.5, fill: 'none', stroke: 'red', 'stroke-width': 1, opacity: 0.5}
+      };
+      assert.deepEqual(output, target);
+    });
+
+    it('fades the symbol without fading the text', function() {
+      var output = renderPoint({
+        'label-text': 'Paris', icon: 'circle', 'icon-size': 8,
+        opacity: 0.8, 'icon-opacity': 0.3
+      });
+      assert.equal(output.tag, 'g');
+      assert.equal(output.children[0].properties.opacity, 0.3);
+      assert.equal(output.children[1].properties.opacity, 0.8);
+      assert.equal('icon-opacity' in output.children[1].properties, false);
+    });
+
     it('applies icon-color to r circles', function() {
       var output = renderPoint({r: 4, 'icon-color': 'blue'});
       var target = {

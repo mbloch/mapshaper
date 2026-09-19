@@ -43,10 +43,12 @@ export function MapExtent(_position) {
   // @xpct, @ypct: optional focus, [0-1]...
   this.zoomToExtent = function(w, xpct, ypct) {
     if (!ready()) return;
-    if (arguments.length < 3) {
-      xpct = 0.5;
-      ypct = 0.5;
-    }
+    // Tested for undefined rather than by arguments.length, because a caller
+    // that forwards optional arguments it did not receive passes undefined
+    // explicitly -- and the arithmetic below then puts NaN into the view centre,
+    // from which the map cannot recover.
+    if (xpct === undefined) xpct = 0.5;
+    if (ypct === undefined) ypct = 0.5;
     var b = this.getBounds(),
         scale = limitScale(b.width() / w * _scale),
         fx = b.xmin + xpct * b.width(),

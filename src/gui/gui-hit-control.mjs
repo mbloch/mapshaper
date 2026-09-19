@@ -93,7 +93,7 @@ export function HitControl(gui, ext, mouse) {
 
   function selectable() {
     var mode = interactionMode();
-    return mode == 'selection' || mode == 'label_style' ||
+    return mode == 'selection' || mode == 'label' || mode == 'label_style' ||
       mode == 'point_style' || mode == 'line_style' || mode == 'polygon_style';
   }
 
@@ -104,15 +104,16 @@ export function HitControl(gui, ext, mouse) {
 
   function draggable() {
     var mode = interactionMode();
-    return mode == 'vertices' || mode == 'edit_points' ||
-      mode == 'labels' || mode == 'edit_lines' || mode == 'edit_polygons';
+    return mode == 'vertices' || mode == 'edit_points' || mode == 'label' ||
+      mode == 'edit_lines' || mode == 'edit_polygons';
   }
 
   function clickable() {
     var mode = interactionMode();
     // click used to pin popup and select features
     return mode == 'data' || mode == 'info' || mode == 'selection' ||
-    mode == 'label_style' || mode == 'point_style' || mode == 'line_style' || mode == 'polygon_style' ||
+    mode == 'label' || mode == 'label_style' || mode == 'point_style' ||
+    mode == 'line_style' || mode == 'polygon_style' ||
     mode == 'rectangles' || mode == 'edit_points';
   }
 
@@ -138,6 +139,14 @@ export function HitControl(gui, ext, mouse) {
     selectionIds = utils.uniq(selectionIds.concat(ids));
     ids = utils.uniq(storedData.ids.concat(ids));
     updateSelectionState({ids: ids});
+  };
+
+  // Replaces the selection outright, for a mode that decides what is selected
+  // itself rather than letting a click decide -- the label tool putting a label
+  // back in the selection when its text editing session ends.
+  self.setSelectionIds = function(ids) {
+    selectionIds = utils.uniq(ids || []);
+    updateSelectionState({ids: selectionIds.concat(), id: -1, pinned: false});
   };
 
   self.setPinning = function(val) {
@@ -277,13 +286,16 @@ export function HitControl(gui, ext, mouse) {
 
   mouse.on('click', function(e) {
     var pinned = storedData.pinned;
+    var hitData, clickInfo;
     if (!hitTest || !active) return;
     if (!eventIsEnabled('click')) return;
     e.stopPropagation();
 
     // TODO: move pinning to inspection control?
     if (clickable()) {
-      updateSelectionState(convertClickDataToSelectionData(hitTest(e), e));
+      hitData = hitTest(e);
+      clickInfo = describeClickedSelection(hitData, e);
+      updateSelectionState(convertClickDataToSelectionData(hitData, e));
     }
 
     if (pinned && interactionMode() == 'edit_points') {
@@ -291,8 +303,26 @@ export function HitControl(gui, ext, mouse) {
       // a new point doesn't get made
       return;
     }
-    triggerPointerEvent('click', e);
+    triggerPointerEvent('click', e, clickInfo);
   }, null, priority);
+
+  // What the click found in the selection as it stood before the click, which
+  // the click itself is about to replace. The label tool reads this to tell a
+  // click that selects a label from a click on the label that was already the
+  // whole selection -- its gesture for editing that label's text.
+  //
+  // An additive click never qualifies: shift-click means toggle, and it would
+  // otherwise open a text session on the label it was removing.
+  //
+  // Reported on the click event rather than stored, because it describes one
+  // gesture and would be wrong by the next one.
+  function describeClickedSelection(hitData, e) {
+    var id = hitData.ids.length > 0 ? hitData.ids[0] : -1;
+    return {
+      clicked_only_selection: id > -1 && !eventUsesAdditiveSelection(e) &&
+        selectionIds.length == 1 && selectionIds[0] === id
+    };
+  }
 
   // Hits are re-detected on 'hover' (if hit detection is active)
   mouse.on('hover', function(e) {
@@ -353,17 +383,27 @@ export function HitControl(gui, ext, mouse) {
 
   function styleSelectionMode() {
     var mode = interactionMode();
-    return mode == 'label_style' || mode == 'point_style' ||
+    return mode == 'label' || mode == 'label_style' || mode == 'point_style' ||
       mode == 'line_style' || mode == 'polygon_style';
   }
 
   function selectStyleFeature(id, e) {
+    if (eventUsesAdditiveSelection(e)) {
+      return toggleId(id, selectionIds);
+    }
+    // In label mode a plain click always narrows the selection to the feature
+    // clicked, whatever was selected before. It cannot also mean "deselect",
+    // because the label tool needs a click on the one selected label to mean
+    // "edit this label's text"; shift-click is what removes one. The other
+    // style modes keep the older rule, where a plain click on a selected
+    // feature deselects it.
+    if (interactionMode() == 'label') {
+      return [id];
+    }
     if (selectionIds.includes(id)) {
       return utils.difference(selectionIds, [id]);
     }
-    return eventUsesAdditiveSelection(e) ?
-      toggleId(id, selectionIds) :
-      [id];
+    return [id];
   }
 
   function eventUsesAdditiveSelection(e) {
@@ -454,6 +494,19 @@ export function HitControl(gui, ext, mouse) {
     if (type == 'click' && mode == 'edit_points') {
       return true;
     }
+    if (mode == 'label' && (type == 'click' || type == 'dblclick' ||
+        type == 'hover' || isDragEvent(type))) {
+      // placing a label or a knot happens on empty map as often as on a
+      // feature, and a double-click finishes a curve wherever it lands.
+      // Hover is how the label tool runs the far end of a curve it is drawing
+      // along with the pointer, so it is needed over empty map too.
+      //
+      // Drags cannot wait for a hit either. A curve's knots are deliberately
+      // not hit targets -- hovering a path label triggers on its glyphs -- so
+      // the pointer on a knot handle out along the curve is over nothing at
+      // all, and a drag that needed a hit first could never start there.
+      return true;
+    }
     if ((mode == 'edit_lines' || mode == 'edit_polygons') &&
         (type == 'hover' || type == 'dblclick')) {
       return true; // special case -- using hover for line drawing animation
@@ -469,10 +522,14 @@ export function HitControl(gui, ext, mouse) {
     var hitId = self.getHitId();
     if (hitId == -1) return false;
 
-    if ((type == 'drag' || type == 'dragstart' || type == 'dragend') && !draggable()) {
+    if (isDragEvent(type) && !draggable()) {
       return false;
     }
     return true;
+  }
+
+  function isDragEvent(type) {
+    return type == 'drag' || type == 'dragstart' || type == 'dragend';
   }
 
   function isOverMap(e) {
@@ -483,6 +540,17 @@ export function HitControl(gui, ext, mouse) {
     var mode = interactionMode();
     if (mode == 'edit_lines' || mode == 'edit_polygons' || mode == 'snip_lines') {
       // handled conditionally in the control
+      return;
+    }
+    if (mode == 'label' && (e.type == 'hover' || isDragEvent(e.type))) {
+      // Hover: the label tool only watches the pointer in this mode;
+      // swallowing the event would take hover away from everything downstream.
+      //
+      // Drags: a drag over a label means something only on one of its knot or
+      // anchor handles, and the tool is what knows where those are. Anywhere
+      // else over the label the drag has to stay available for panning, so the
+      // tool stops propagation itself once it has taken the drag -- the same
+      // arrangement the line tools use.
       return;
     }
     e.stopPropagation();
@@ -500,7 +568,8 @@ export function HitControl(gui, ext, mouse) {
   }
 
   // evt: event data (may be a pointer event object, an ordinary object or null)
-  function triggerPointerEvent(type, evt) {
+  // extra: (optional) fields describing this one gesture, which are not stored
+  function triggerPointerEvent(type, evt, extra) {
     var eventData = getHitState();
     if (evt) {
       // data coordinates
@@ -515,6 +584,7 @@ export function HitControl(gui, ext, mouse) {
       eventData.overMap = isOverMap(evt);
       utils.defaults(eventData, evt.data);
     }
+    if (extra) utils.extend(eventData, extra);
     // utils.defaults(eventData, evt && evt.data || {}, storedData);
     self.dispatchEvent(type, eventData);
   }

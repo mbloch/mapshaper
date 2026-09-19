@@ -52,11 +52,48 @@ export function HistoryMenu(gui) {
   });
 
   toggleCheckbox.on('change', function(e) {
+    var enabled = !!toggleCheckbox.node().checked;
     e.stopPropagation();
     if (appUndoForcedByUrl()) return;
-    setAppUndoEnabled(!!toggleCheckbox.node().checked);
+    setAppUndoEnabled(enabled);
+    if (!enabled) discardUndoHistory();
     updateMenuState();
+    // The setting lives in localStorage, which nothing can observe, so
+    // controls whose appearance depends on it (the floating undo toolbar) have
+    // to be told that it changed.
+    gui.dispatchEvent('app_undo_setting_change', {enabled: enabled});
   });
+
+  // Everything recorded before undo was switched off has to go, because from
+  // here on edits are not all recorded and a state captured earlier restores
+  // the data as it stood before them. Undoing one would take back work the
+  // user never asked to take back, and leave a redo stack describing a version
+  // of the layer that never existed.
+  //
+  // Emptying the history is also what takes the floating toolbar away: it
+  // shows itself for any history it can see, whether or not the setting is on,
+  // because interaction undo does not depend on the setting.
+  function discardUndoHistory() {
+    var hadHistory = gui.undo.canUndo() || gui.undo.canRedo();
+    gui.undo.clear();
+    // The restore payloads go too. Disposing the history items releases the
+    // ones they own, so this is for anything left over -- and it is what makes
+    // the menu's "restore data stored on-disk" figure honest.
+    clearUndoPayloadStore().then(updateMenuState).catch(function(err) {
+      console.error(err);
+    });
+    if (!hadHistory) return;
+    // Worth a word: the undo the user could have reached a moment ago is gone,
+    // and the menu's own on-disk figure is about to drop to zero.
+    if (gui.notify) {
+      gui.notify({
+        severity: 'info',
+        title: 'Undo history discarded',
+        body: 'Turning off undo clears what was already recorded, because later edits are not.',
+        dedupKey: 'undo:history-discarded'
+      });
+    }
+  }
 
   clearBtn.on('click', function(e) {
     e.stopPropagation();
@@ -83,7 +120,6 @@ export function HistoryMenu(gui) {
   document.addEventListener('keydown', function(e) {
     if (gui.getMode() == 'history_menu' && e.key == 'Escape') {
       gui.clearMode();
-      btn.node().focus();
     }
   });
 

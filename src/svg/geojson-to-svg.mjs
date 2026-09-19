@@ -1,6 +1,7 @@
 import GeoJSON from '../geojson/geojson-common';
 import { renderPoint, getTransform } from './svg-symbols';
 import { applyStyleAttributes } from '../svg/svg-properties';
+import { featureIsPathLabel, renderPathLabel } from '../svg/svg-label-paths';
 import {
   importLineString, importMultiLineString, importPolygon,
   importMultiPolygon, flattenMultiPolygonCoords
@@ -24,13 +25,18 @@ var geojsonImporters = {
 
 export function importGeoJSONFeatures(features, opts) {
   opts = opts || {};
-  return features.map(function(obj) {
+  return features.map(function(obj, featureId) {
     var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
     var geomType = geom && geom.type;
     var msType = GeoJSON.translateGeoJSONType(geomType);
     var d = obj.properties || {};
     var svgObj = null;
-    if (geomType && geom.coordinates) {
+    if (featureIsPathLabel(geom, d)) {
+      // a label's knots are its geometry, so this is one label along a curve
+      // rather than several labels at several points
+      svgObj = renderPathLabel(d, geom.coordinates,
+        {report: opts.path_label_report, id: featureId});
+    } else if (geomType && geom.coordinates) {
       svgObj = geojsonImporters[geomType](geom.coordinates, d);
     }
     if (!svgObj) {

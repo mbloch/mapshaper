@@ -7,6 +7,7 @@ import { KeyboardEvents } from './gui-keyboard';
 import { InteractionMode } from './gui-interaction-mode-control';
 import { EditToolbar } from './gui-edit-toolbar';
 import { LabelTool } from './gui-label-tool';
+import { initLabelMeasurement } from './gui-label-measure';
 import { LayerStyleTool } from './gui-layer-style-tool';
 import { PointStyleTool } from './gui-point-style-tool';
 import { SessionSnapshots } from './gui-session-snapshot-control';
@@ -67,6 +68,10 @@ export function GuiInstance(container, opts) {
   var clearMsg;
 
   initModeRules(gui);
+  // Before anything can render or export a label: the core asks the GUI for
+  // text widths (svg-label-metrics.mjs), and a label layer already on screen
+  // at startup must not be drawn or exported unmeasured.
+  initLabelMeasurement();
   startRasterSourceStoreLifecycle();
   cleanupStaleUndoPayloads(gui).catch(function() {});
   gui.map.init();

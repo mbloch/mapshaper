@@ -424,6 +424,7 @@ function renderPage(page) {
   if (page.transform === 'command-reference') {
     contentHtml = applyCommandReferenceTransform(contentHtml);
   }
+  contentHtml = addInlineCodeWrapPoints(contentHtml);
   const tocHtml = renderToc(headings);
 
   // Determine title: frontmatter > first H1 in source > page label
@@ -483,6 +484,37 @@ function renderCodeBlock(text, lang) {
   }
   const cls = language ? ` class="language-${escapeHtml(language)}"` : '';
   return `<pre><code${cls}>${escapeHtml(text)}\n</code></pre>\n`;
+}
+
+// --- inline code wrapping --------------------------------------------
+
+// Inline code is styled `white-space: nowrap` so that short bits of syntax
+// like `-o format=csv` never break across lines. Spans longer than this
+// overflow the article instead, so they are allowed to wrap.
+const WRAPPABLE_CODE_LENGTH = 40;
+
+// Mark long inline code spans as wrappable and add break opportunities after
+// `|` and `,` separators, which read better than the arbitrary mid-word
+// breaks the browser would otherwise choose for a long option list such as
+// `format=shapefile|geojson|...`. <wbr> contributes no characters to the
+// text, so copying a span still yields exactly what is written in the
+// markdown source.
+function addInlineCodeWrapPoints(html) {
+  // <pre> blocks scroll horizontally rather than wrap, and highlighted ones
+  // contain markup that this transform must not disturb.
+  return html.split(/(<pre[\s\S]*?<\/pre>)/).map((part, i) => {
+    if (i % 2 === 1) return part;
+    return part.replace(/<code>([^<]*)<\/code>/g, (full, inner) => {
+      if (visibleLength(inner) <= WRAPPABLE_CODE_LENGTH) return full;
+      const wrappable = inner.replace(/([|,])(?=\S)/g, '$1<wbr>');
+      return `<code class="is-wrappable">${wrappable}</code>`;
+    });
+  }).join('');
+}
+
+// Character count of escaped HTML text as the reader sees it.
+function visibleLength(escaped) {
+  return escaped.replace(/&(?:#\d+|[a-zA-Z]+);/g, ' ').length;
 }
 
 // --- per-page transforms ---------------------------------------------

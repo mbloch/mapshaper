@@ -1,4 +1,4 @@
-import { repositionSymbols, renderSymbols } from './gui-svg-symbols';
+import { repositionSymbols, renderSymbols, updateLabelPaths, markLabelPathScale } from './gui-svg-symbols';
 import { renderFurniture, repositionFurniture } from './gui-svg-furniture';
 import { El } from './gui-el';
 import { utils } from './gui-core';
@@ -19,6 +19,16 @@ export function SvgDisplayLayer(gui, ext, mouse) {
     reposition(lyr, type, ext);
   };
 
+  // Sizes the <svg> to the map without drawing anything into it.
+  //
+  // Needed because an <svg> with no size falls back to 300x150, which clips
+  // everything outside it and takes no pointer events there. Drawing a layer
+  // sizes it, so any content that does not come from a layer -- the label being
+  // typed into before it has been created -- has to ask for the size itself.
+  el.ensureSize = function() {
+    resize(ext);
+  };
+
   el.drawLayer = function(lyr, type) {
     var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     var html = '';
@@ -31,11 +41,14 @@ export function SvgDisplayLayer(gui, ext, mouse) {
     lyr.gui.svg_container = g;
     resize(ext);
     if (type == 'label' || type == 'symbol') {
-      html = renderSymbols(lyr.gui.displayLayer, ext);
+      html = renderSymbols(lyr.gui.displayLayer, ext, id);
     } else if (type == 'furniture') {
       html = renderFurniture(lyr.gui.displayLayer, ext);
     }
     g.innerHTML = html;
+    if (type == 'label' || type == 'symbol') {
+      markLabelPathScale(g, ext);
+    }
     svg.append(g);
 
     // prevent svg hit detection on inactive layers
@@ -54,6 +67,9 @@ export function SvgDisplayLayer(gui, ext, mouse) {
     if (type == 'symbol') {
       elements = El.findAll('.mapshaper-svg-symbol', container.node());
       repositionSymbols(elements, lyr.gui.displayLayer, ext);
+      // a symbol group's transform absorbs panning, and zooming too when a
+      // frame is defined; anything it can't absorb needs the baselines rebuilt
+      updateLabelPaths(container.node(), lyr.gui.displayLayer, ext);
     } else if (type == 'furniture') {
       repositionFurniture(container.node(), lyr.gui.displayLayer, ext);
     } else {

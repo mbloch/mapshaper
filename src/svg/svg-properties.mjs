@@ -3,6 +3,7 @@ import { splitListItems } from '../cli/mapshaper-option-parsing-utils';
 import utils from '../utils/mapshaper-utils';
 import { stop } from '../utils/mapshaper-logging';
 import { parsePattern } from '../svg/svg-hatch';
+import { parseLabelAlign, getAlignmentAnchor } from '../svg/svg-label-align';
 
 // parsing hints for -style command cli options
 // null values indicate the lack of a function for parsing/identifying this property
@@ -11,6 +12,7 @@ var stylePropertyTypes = {
   // css: null,
   css: 'inlinecss',
   class: 'classname',
+  'dominant-baseline': null,
   dx: 'measure',
   dy: 'measure',
   fill: 'color',
@@ -23,8 +25,20 @@ var stylePropertyTypes = {
   'font-weight': null,
   icon: null,
   'icon-color': 'color',
+  // opacity of the symbol at a label's anchor, apart from the text's. Needed
+  // because a label's own opacity properties are applied to both of the
+  // elements its record produces -- see getIconStyleData().
+  'icon-opacity': 'number',
   'icon-size': 'number',
+  // how the lines of a multi-line label line up with each other, as against
+  // text-anchor, which also decides where the block of them sits -- see
+  // svg-label-align.mjs
+  'label-align': 'labelalign',
   'label-pos': 'labelposition',
+  // which side of its path a label's text sits on
+  'label-side': null,
+  // where the text starts along its path; a length or a percentage
+  'label-start-offset': null,
   'label-text': null,  // leaving this null
   'letter-spacing': 'measure',
   'line-height': 'measure',
@@ -38,6 +52,15 @@ var stylePropertyTypes = {
   'fill-opacity': 'number',
   'vector-effect': null,
   'text-anchor': null
+};
+
+// Properties an empty string is a value for rather than the absence of one:
+// the text of a label, which is empty while it is being typed, and the two
+// that take any string at all. See emptyValueUnsetsProperty().
+var propertiesTakingEmptyValues = {
+  'label-text': true,
+  css: true,
+  class: true
 };
 
 // The -symbols command accepts some options that are not supported by -style
@@ -91,18 +114,25 @@ var propertiesBySymbolType = {
     'fill,font-family,font-size,text-anchor,font-weight,font-style,font-stretch,letter-spacing,dominant-baseline'.split(',')))
 };
 
-export var labelPositionFields = ['label-pos', 'dx', 'dy', 'text-anchor'];
+// The properties a label position stands for, and the shorthand itself.
+export var labelPositionDerivedFields = ['dx', 'dy', 'text-anchor'];
+export var labelPositionFields = ['label-pos'].concat(labelPositionDerivedFields);
 
+// dx is '0' and not 0 in the centred positions, so that every position in the
+// table has the same type. These values are normally resolved for rendering and
+// never stored, but dragging a label materializes them into its record, and a
+// column holding 0 from one position and '0.45em' from another is one
+// -merge-layers refuses.
 var labelPositionStyles = {
-  n: {dx: 0, dy: '-0.5em', 'text-anchor': 'middle'},
-  s: {dx: 0, dy: '1.1em', 'text-anchor': 'middle'},
+  n: {dx: '0', dy: '-0.5em', 'text-anchor': 'middle'},
+  s: {dx: '0', dy: '1.1em', 'text-anchor': 'middle'},
   e: {dx: '0.45em', dy: '0.23em', 'text-anchor': 'start'},
   w: {dx: '-0.45em', dy: '0.23em', 'text-anchor': 'end'},
   ne: {dx: '0.4em', dy: '-0.15em', 'text-anchor': 'start'},
   se: {dx: '0.4em', dy: '0.7em', 'text-anchor': 'start'},
   nw: {dx: '-0.4em', dy: '-0.15em', 'text-anchor': 'end'},
   sw: {dx: '-0.4em', dy: '0.7em', 'text-anchor': 'end'},
-  c: {dx: 0, dy: '0.25em', 'text-anchor': 'middle'}
+  c: {dx: '0', dy: '0.25em', 'text-anchor': 'middle'}
 };
 
 // symType: point, polygon, polyline, label
@@ -129,6 +159,46 @@ function setAttribute(obj, k, v) {
 
 export function isSupportedSvgStyleProperty(name) {
   return name in stylePropertyTypes;
+}
+
+// Whether an empty value removes this property rather than being stored in it.
+//
+// True for a property with no empty value to store, like a number, a color or a
+// font weight: -style fill= takes the fill back off a feature, where it used to
+// be an error. It is the only per-property unset there is -- -style clear
+// removes every style property at once -- and the panel needs one, since a
+// control returning to its default has to be able to say so.
+//
+// False where the empty string is itself a value: inline css, a class name, and
+// the text of a label, which is empty while it is being typed. Everything else
+// with no type rule -- a font family, a text-anchor, an icon name -- has no
+// meaning for an empty string either, so storing one there would leave a column
+// of nothing behind and an attribute the renderer has to ignore.
+export function emptyValueUnsetsProperty(name) {
+  if (!(name in stylePropertyTypes) || name in propertiesTakingEmptyValues) {
+    return false;
+  }
+  var type = stylePropertyTypes[name];
+  return !type || parseSvgLiteralValue('', type) === null;
+}
+
+// Converts a style value to the type that property is stored in -- the same
+// conversion -style applies to a literal. Returns undefined if the value is not
+// usable for the property, and the value unchanged for a property with no type
+// rule, where any string is a literal.
+//
+// -style resolves a value three ways: as a literal, as the name of a data field
+// or as an expression over the feature. A command that sets properties on a
+// single feature it is creating has no feature to read a field from, so it
+// wants the first of those on its own -- but it has to agree with -style about
+// the result, or the same value given to the two commands ends up stored as two
+// different types in one column.
+export function parseStyleLiteral(name, val) {
+  var type = stylePropertyTypes[name];
+  var parsed;
+  if (!type) return val; // no rule for this property: the value is the value
+  parsed = parseSvgLiteralValue(String(val).trim(), type);
+  return parsed === null ? undefined : parsed;
 }
 
 function isSupportedSvgSymbolProperty(name) {
@@ -234,10 +304,18 @@ export function getPropertyAccessor(val, typeHint, lyr, name) {
   stop('Unexpected value for', name + ':', strVal);
 }
 
+// Whether @strVal works as an expression, and the function if it does.
+//
+// This is a guess being checked, so the failures are expected and have to be
+// silent: quiet keeps the expression compiler from reporting them, which in
+// the GUI means an alert over a style change that went on to work perfectly
+// well -- a label typed as "Saint-Denis" or an offset of "59.77%" is not an
+// expression, and neither is an error.
 function parseStyleExpression(strVal, lyr) {
   var func;
   try {
-    func = compileFeatureExpression(strVal, lyr, null, {no_warn: true});
+    func = compileFeatureExpression(strVal, lyr, null,
+      {no_warn: true, quiet: true});
     func(0); // check for runtime errors (e.g. undefined variables)
   } catch(e) {
     func = null;
@@ -267,6 +345,8 @@ function parseSvgLiteralValue(strVal, type) {
     val = strVal; // TODO: validate
   } else if (type == 'labelposition') {
     val = parseLabelPosition(strVal);
+  } else if (type == 'labelalign') {
+    val = parseLabelAlign(strVal);
   }
   //  else {
   //   // unknown type -- assume literal value
@@ -309,13 +389,67 @@ export function getLabelPositionStyle(pos) {
   return Object.assign({'label-pos': pos}, labelPositionStyles[pos.toLowerCase()]);
 }
 
-export function setLabelPositionStyle(rec, pos) {
-  var style = getLabelPositionStyle(pos);
-  if (!style) return false;
-  labelPositionFields.forEach(function(field) {
-    rec[field] = style[field];
-  });
-  return true;
+// Fills in the offsets and justification a label's position stands for, for
+// rendering. Returns @rec itself when there is nothing to add, and a copy when
+// there is: a renderer must not write into the record it was handed.
+//
+// label-pos is the only one of the four that is stored. The other three used to
+// be written alongside it, which made the table below a code generator rather
+// than a lookup: four columns in the user's data where one was meant, and the
+// table's own values -- '0' next to '0.45em' -- became the types of a column
+// that -merge-layers then had to agree about.
+//
+// A value on the record wins over the position, per property, so that
+// `label-pos=n dx=3` reads as "north, nudged 3px right" rather than losing the
+// north. That is also what makes this change invisible to files written before
+// it: they carry all three alongside label-pos, with exactly the values this
+// would supply.
+export function resolveLabelPosition(rec) {
+  var style = rec && rec['label-pos'] ? getLabelPositionStyle(rec['label-pos']) : null;
+  var out = null;
+  var field, i;
+  // An unusable position renders as if it were unset. The commands that set it
+  // reject one, so reaching here means it was written by an expression or came
+  // from a data file, where stopping the render is the wrong response.
+  if (style) {
+    for (i = 0; i < labelPositionDerivedFields.length; i++) {
+      field = labelPositionDerivedFields[i];
+      if (hasStyleValue(rec, field)) continue;
+      if (!out) out = Object.assign({}, rec);
+      out[field] = style[field];
+    }
+  }
+  out = resolveLabelAlignment(out || rec) || out;
+  return out || rec;
+}
+
+// label-align wins over both the position's justification and a text-anchor of
+// the record's own, because it is the only one of the three that is asking
+// about justification alone. Where the block ends up is then the renderer's to
+// correct -- see getAlignmentShift().
+function resolveLabelAlignment(rec) {
+  var anchor = getAlignmentAnchor(rec['label-align']);
+  var out;
+  if (!anchor || rec['text-anchor'] === anchor) return null;
+  out = Object.assign({}, rec);
+  out['text-anchor'] = anchor;
+  return out;
+}
+
+// The anchor a label's position implies, which is where its block of text is
+// drawn whatever the lines inside it do. 'start' is both the SVG default and
+// what an unpositioned label is drawn with.
+export function getLabelPositionAnchor(rec) {
+  var style = rec && rec['label-pos'] ? getLabelPositionStyle(rec['label-pos']) : null;
+  return style && style['text-anchor'] || 'start';
+}
+
+// Presence, not truthiness. `dy=0` is how a label cancels the vertical offset
+// its position carries, and the `rec.dy || 0` idiom used by the renderers would
+// read that as absent and hand back the offset it was written to remove.
+export function hasStyleValue(rec, field) {
+  var val = rec[field];
+  return field in rec && val !== undefined && val !== null && val !== '';
 }
 
 export function isSvgMeasure(o) {

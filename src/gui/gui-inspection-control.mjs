@@ -24,8 +24,11 @@ export function InspectionControl2(gui, hit) {
   });
 
   hit.on('contextmenu', function(e) {
+    // The editing modes open this menu themselves, adding the items that only
+    // they can act on -- and the label tool deletes through a command, so it
+    // must not be given the direct deletion below.
     if (!e.overMap || e.mode == 'edit_lines' || e.mode == 'edit_polygons' ||
-      e.mode == 'edit_points' || e.mode == 'snip_lines') {
+      e.mode == 'edit_points' || e.mode == 'snip_lines' || e.mode == 'label') {
       return;
     }
     var target = hit.getHitTarget();

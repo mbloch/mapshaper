@@ -10,8 +10,25 @@ import * as SvgPathUtils from './svg/svg-path-utils';
 import * as SvgStringify from './svg/svg-stringify';
 import * as SvgLabels from './svg/svg-labels';
 import * as SvgSymbols from './svg/svg-symbols';
+import * as SvgLabelPaths from './svg/svg-label-paths';
+import * as SvgLabelFit from './svg/svg-label-fit';
+import * as SvgLabelAlign from './svg/svg-label-align';
+import * as SvgLabelMetrics from './svg/svg-label-metrics';
+import * as SvgFeatureUtils from './svg/svg-feature-utils';
 
-internal.svg = Object.assign({}, SvgStringify, SvgPathUtils, GeojsonToSvg, SvgLabels, SvgSymbols);
+internal.svg = Object.assign({}, SvgStringify, SvgPathUtils, GeojsonToSvg,
+  SvgFeatureUtils,
+  SvgLabels, SvgSymbols, SvgLabelPaths, SvgLabelFit, SvgLabelAlign,
+  SvgLabelMetrics);
+
+import * as FontLookup from './fonts/mapshaper-font-lookup';
+import * as TextMeasure from './fonts/mapshaper-text-measure';
+
+// Reached through the bundle rather than imported from source, unlike most of
+// what tests use, because these modules load fs and fontkit through the
+// require shim -- which resolves to a stub outside the bundle, there being no
+// require() in an ES module.
+internal.fonts = Object.assign({}, FontLookup, TextMeasure);
 
 import Dbf from './shapefile/dbf-writer';
 import DbfReader from './shapefile/dbf-reader';
@@ -206,6 +223,7 @@ import * as Topology from './topology/mapshaper-topology';
 import * as UndoTransaction from './undo/mapshaper-undo-transaction';
 import * as UndoTracking from './undo/mapshaper-undo-tracking';
 import * as Units from './geom/mapshaper-units';
+import * as CurveFit from './curves/mapshaper-curve-fit';
 import * as SvgHatch from './svg/svg-hatch';
 import * as SvgEffect from './svg/svg-effect';
 import * as VertexUtils from './paths/mapshaper-vertex-utils';
@@ -223,6 +241,7 @@ Object.assign(internal,
   // BufferCommon,
   Calc,
   CalcUtils,
+  CurveFit,
   Catalog,
   ClipErase,
   ClipPoints,

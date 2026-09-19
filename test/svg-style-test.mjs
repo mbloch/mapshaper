@@ -366,27 +366,188 @@ describe('mapshaper-svg-style.js', function () {
       assert.deepEqual(lyr.data.getRecords(), target);
     })
 
-    it('label-pos literal is case-insensitive and sets offsets', function() {
+    it('label-pos is stored alone, and is case-insensitive', function() {
+      // The offsets and justification a position stands for are resolved when
+      // the label is drawn, so they are not in the record. They used to be
+      // written alongside it: four columns in the user's table where one was
+      // meant, and the table of offsets acting as a code generator rather than
+      // a lookup.
+      'n s e w ne se nw sw c'.split(' ').forEach(function(pos) {
+        var input = pos.toUpperCase();
+        var lyr = {data: new api.internal.DataTable([{}])};
+        api.cmd.svgStyle(lyr, {}, {label_pos: input});
+        // and not so much as an empty column for the three it overrides: a
+        // position clears an offset a label was carrying, but there is nothing
+        // to clear on a label that never had one
+        assert.deepStrictEqual(lyr.data.getRecords(), [{'label-pos': input}]);
+      });
+    })
+
+    it('a position clears an offset that is really there', function() {
+      // and only the ones that are: dy is not in this table, so the position
+      // has nothing to take back in it
+      var lyr = {data: new api.internal.DataTable([{dx: 4, 'text-anchor': 'end'}])};
+      api.cmd.svgStyle(lyr, {}, {label_pos: 'n'});
+      assert.deepStrictEqual(lyr.data.getRecords(),
+        [{'label-pos': 'n', dx: undefined, 'text-anchor': undefined}]);
+    })
+
+    it('a position clears an offset on every record, not just the ones with one', function() {
+      // the column exists, so it is cleared for the whole layer rather than
+      // for the records that happened to be carrying a value
+      var lyr = {data: new api.internal.DataTable([{dx: 4}, {}])};
+      api.cmd.svgStyle(lyr, {}, {label_pos: 's'});
+      assert.deepStrictEqual(lyr.data.getRecords(),
+        [{'label-pos': 's', dx: undefined}, {'label-pos': 's', dx: undefined}]);
+    })
+
+    it('a position given to some records does not blank the rest', function() {
+      var lyr = {data: new api.internal.DataTable([{}, {}])};
+      api.cmd.svgStyle(lyr, {}, {label_pos: 'n', ids: [1]});
+      assert.deepStrictEqual(lyr.data.getRecords(),
+        [{'label-pos': undefined}, {'label-pos': 'n'}]);
+    })
+
+    it('label-pos resolves to the offsets that draw it', function() {
       var cases = {
-        n: {dx: 0, dy: '-0.5em', 'text-anchor': 'middle'},
-        s: {dx: 0, dy: '1.1em', 'text-anchor': 'middle'},
+        n: {dx: '0', dy: '-0.5em', 'text-anchor': 'middle'},
+        s: {dx: '0', dy: '1.1em', 'text-anchor': 'middle'},
         e: {dx: '0.45em', dy: '0.23em', 'text-anchor': 'start'},
         w: {dx: '-0.45em', dy: '0.23em', 'text-anchor': 'end'},
         ne: {dx: '0.4em', dy: '-0.15em', 'text-anchor': 'start'},
         se: {dx: '0.4em', dy: '0.7em', 'text-anchor': 'start'},
         nw: {dx: '-0.4em', dy: '-0.15em', 'text-anchor': 'end'},
         sw: {dx: '-0.4em', dy: '0.7em', 'text-anchor': 'end'},
-        c: {dx: 0, dy: '0.25em', 'text-anchor': 'middle'}
+        c: {dx: '0', dy: '0.25em', 'text-anchor': 'middle'}
       };
       Object.keys(cases).forEach(function(pos) {
-        var input = pos.toUpperCase();
-        var lyr = {
-          data: new api.internal.DataTable([{}])
-        };
-        var target = Object.assign({'label-pos': input}, cases[pos]);
-        api.cmd.svgStyle(lyr, {}, {label_pos: input});
-        assert.deepEqual(lyr.data.getRecords(), [target]);
+        var out = api.internal.resolveLabelPosition({'label-pos': pos.toUpperCase()});
+        // strict, because dx has to be a string in every position: a drag
+        // materializes these values into the record, and a column holding 0
+        // from one position and '0.45em' from another cannot be merged
+        assert.deepStrictEqual(out, Object.assign({'label-pos': pos.toUpperCase()},
+          cases[pos]));
       });
+    })
+
+    it('a value on the record wins over the position, per property', function() {
+      // So that `label-pos=n dx=3` reads as "north, nudged 3px right" instead
+      // of losing the north.
+      var out = api.internal.resolveLabelPosition({'label-pos': 'n', dx: 3});
+      assert.strictEqual(out.dx, 3);
+      assert.strictEqual(out.dy, '-0.5em');
+      assert.strictEqual(out['text-anchor'], 'middle');
+    })
+
+    it('an explicit zero cancels an offset rather than falling back', function() {
+      // Presence, not truthiness: the `rec.dy || 0` idiom the renderers use
+      // would read this as absent and restore the offset it was written to
+      // remove.
+      var out = api.internal.resolveLabelPosition({'label-pos': 'n', dy: 0});
+      assert.strictEqual(out.dy, 0);
+    })
+
+    it('a blank or missing value falls back to the position', function() {
+      var out = api.internal.resolveLabelPosition({'label-pos': 'e', dx: '', dy: undefined});
+      assert.strictEqual(out.dx, '0.45em');
+      assert.strictEqual(out.dy, '0.23em');
+    })
+
+    it('a record with no position is returned untouched', function() {
+      var rec = {'label-text': 'x', dx: 4};
+      assert.strictEqual(api.internal.resolveLabelPosition(rec), rec);
+    })
+
+    it('an unusable position renders as if it were unset', function() {
+      // Reaching the renderer with one means it came from an expression or a
+      // data file, where refusing to draw the map is the wrong response.
+      var rec = {'label-pos': 'nope'};
+      assert.strictEqual(api.internal.resolveLabelPosition(rec), rec);
+    })
+
+    it('setting label-pos takes back the offsets a label was carrying', function() {
+      // A value on the record wins, so without this a position chosen for a
+      // label that had been dragged would appear to do nothing.
+      var lyr = {data: new api.internal.DataTable([{dx: 12, dy: -30, 'text-anchor': 'start'}])};
+      api.cmd.svgStyle(lyr, {}, {label_pos: 'n'});
+      assert.deepStrictEqual(lyr.data.getRecords(),
+        [{'label-pos': 'n', dx: undefined, dy: undefined, 'text-anchor': undefined}]);
+    })
+
+    it('an offset given with label-pos survives it', function() {
+      var lyr = {data: new api.internal.DataTable([{}])};
+      api.cmd.svgStyle(lyr, {}, {label_pos: 'n', dx: '3'});
+      assert.deepStrictEqual(lyr.data.getRecords(), [{'label-pos': 'n', dx: 3}]);
+    })
+
+    it('an empty value removes a typed property', function() {
+      // There is otherwise no way to take a single property back off a
+      // feature: -style clear removes all of them, and an empty value used to
+      // be rejected as unparseable.
+      var lyr = {data: new api.internal.DataTable([{fill: 'red', 'font-size': 12}])};
+      api.cmd.svgStyle(lyr, {}, {fill: ''});
+      assert.deepStrictEqual(lyr.data.getRecords(), [{fill: undefined, 'font-size': 12}]);
+    })
+
+    it('an empty value is a value for a property whose type accepts one', function() {
+      // Inline css takes any string as a literal, and the empty one is a
+      // string: the unset rule is for a type with no empty value to store.
+      var lyr = {data: new api.internal.DataTable([{css: 'fill:red'}])};
+      api.cmd.svgStyle(lyr, {}, {css: ''});
+      assert.deepStrictEqual(lyr.data.getRecords(), [{css: ''}]);
+    })
+
+    it('an empty value removes a property with no type rule either', function() {
+      // A font weight is a literal string to -style, with no rule to parse it
+      // by, but there is no such thing as an empty one: the label panel takes
+      // a face back off a label by writing nothing to it.
+      var lyr = {data: new api.internal.DataTable([
+        {'font-family': 'Georgia', 'font-weight': '700', 'font-style': 'italic'}])};
+      api.cmd.svgStyle(lyr, {}, {font_weight: '', font_style: ''});
+      assert.deepStrictEqual(lyr.data.getRecords(),
+        [{'font-family': 'Georgia', 'font-weight': undefined, 'font-style': undefined}]);
+    })
+
+    it('an empty label-text is text, not an absence', function() {
+      // A label being typed into is empty for as long as it takes to type the
+      // first character, so the empty string has to survive as a value.
+      var lyr = {data: new api.internal.DataTable([{'label-text': 'Reno'}])};
+      api.cmd.svgStyle(lyr, {}, {label_text: ''});
+      assert.deepStrictEqual(lyr.data.getRecords(), [{'label-text': ''}]);
+    })
+
+    it('an empty value removes an offset', function() {
+      // How a label goes back to taking a standard position: the offsets it
+      // was dragged to have to come off, or they would win over the position.
+      var lyr = {data: new api.internal.DataTable([{dx: 12, dy: -4}])};
+      api.cmd.svgStyle(lyr, {}, {dx: '', dy: ''});
+      assert.deepStrictEqual(lyr.data.getRecords(), [{dx: undefined, dy: undefined}]);
+    })
+
+    it('removing label-pos leaves the offsets given with it', function() {
+      // The shape of the command a drag produces: the label stops taking a
+      // standard position and starts carrying the offsets it was dragged to.
+      var lyr = {data: new api.internal.DataTable([{'label-pos': 'n'}])};
+      api.cmd.svgStyle(lyr, {}, {label_pos: '', dx: '12', dy: '-4', text_anchor: 'start'});
+      assert.deepStrictEqual(lyr.data.getRecords(),
+        [{'label-pos': undefined, dx: 12, dy: -4, 'text-anchor': 'start'}]);
+    })
+
+    it('removing label-pos on its own leaves the offsets alone', function() {
+      // Setting a position clears them; removing one is not setting one.
+      var lyr = {data: new api.internal.DataTable([{'label-pos': 'n', dx: 12}])};
+      api.cmd.svgStyle(lyr, {}, {label_pos: ''});
+      assert.deepStrictEqual(lyr.data.getRecords(), [{'label-pos': undefined, dx: 12}]);
+    })
+
+    it('removing label-pos from a path label is not an unusable position', function() {
+      // The path-label check reads the value being set, and there is none.
+      var lyr = {
+        shapes: [[[0, 0], [1, 1]]],
+        data: new api.internal.DataTable([{'label-text': 'x'}])
+      };
+      api.cmd.svgStyle(lyr, {}, {label_pos: ''});
+      assert.strictEqual(lyr.data.getRecords()[0]['label-pos'], undefined);
     })
 
     it('literals 3', function() {
@@ -419,6 +580,26 @@ describe('mapshaper-svg-style.js', function () {
       }];
       api.cmd.svgStyle(lyr, {}, opts);
       assert.deepEqual(lyr.data.getRecords(), target);
+    });
+
+    // The cli parser converts hyphens to underscores, so the property name has
+    // to be restored with a global replacement. Replacing only the first
+    // underscore left properties with more than one hyphen unsupported, and
+    // silently skipped rather than reported.
+    it('a property name containing two hyphens is applied', function() {
+      var records = [{}];
+      var lyr = {
+        data: new api.internal.DataTable(records)
+      };
+      var opts = {
+        label_start_offset: '50%',
+        letter_spacing: '2'
+      };
+      api.cmd.svgStyle(lyr, {}, opts);
+      assert.deepEqual(lyr.data.getRecords(), [{
+        'label-start-offset': '50%',
+        'letter-spacing': '2'
+      }]);
     });
 
   })

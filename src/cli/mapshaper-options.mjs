@@ -21,6 +21,30 @@ export function getOptionParser() {
       nameOpt2 = { // for -calc and -info
         describe: 'name the output layer'
       },
+      // label style properties accepted by -add-label, so that a label can be
+      // created and styled in one command. These are a subset of the
+      // properties -style accepts -- the ones that apply to text.
+      labelStyleOpts = {
+        'font-family': {describe: 'label font, e.g. Georgia'},
+        'font-size': {describe: 'label font size, e.g. 14'},
+        'font-style': {describe: 'normal or italic'},
+        'font-weight': {describe: 'normal, bold or a numeric weight'},
+        'font-stretch': {describe: 'e.g. condensed'},
+        'letter-spacing': {describe: 'extra space between letters'},
+        'line-height': {describe: 'spacing between lines of a multi-line label'},
+        'text-anchor': {describe: 'start, middle or end'},
+        'label-align': {describe: 'how the lines of a multi-line label align: left, center or right'},
+        'dominant-baseline': {describe: 'vertical alignment, e.g. central'},
+        'label-pos': {describe: 'position relative to the anchor: n s e w ne se nw sw c'},
+        'label-side': {describe: 'which side of its path the text sits on: left or right'},
+        'label-start-offset': {describe: 'where text starts along its path, e.g. 50%'},
+        dx: {describe: 'horizontal offset from the anchor'},
+        dy: {describe: 'vertical offset from the anchor'},
+        fill: {describe: 'text color'},
+        opacity: {describe: 'text opacity'},
+        css: {describe: 'inline css style'},
+        class: {describe: 'name of CSS class or classes (space-separated)'}
+      },
       noReplaceOpt2 = { // for -calc and -info
         alias: '+',
         type: 'flag',
@@ -2030,6 +2054,9 @@ export function getOptionParser() {
     .option('icon-color', {
       describe: 'point icon color (defaults to fill color, then black)'
     })
+    .option('icon-opacity', {
+      describe: 'point icon opacity, 0-1 (defaults to the label\'s opacity)'
+    })
     .option('label-text', {
       describe: 'label text (set this to export points as labels)'
     })
@@ -2038,6 +2065,9 @@ export function getOptionParser() {
     })
     .option('text-anchor', {
       describe: 'label alignment; one of: start, end, middle (default)'
+    })
+    .option('label-align', {
+      describe: 'alignment of the lines of multi-line labels; left, center or right'
     })
     .option('dx', {
       describe: 'x offset of labels (default is 0)'
@@ -2065,6 +2095,15 @@ export function getOptionParser() {
     })
      .option('line-height', {
       describe: 'line spacing of multi-line labels (default is 1.1em)'
+    })
+    .option('dominant-baseline', {
+      describe: 'vertical alignment of labels (e.g. central)'
+    })
+    .option('label-side', {
+      describe: 'which side of its path a label sits on: left or right'
+    })
+    .option('label-start-offset', {
+      describe: 'where label text starts along its path, e.g. 50%'
     })
    .option('target', targetOpt);
 
@@ -2302,6 +2341,49 @@ export function getOptionParser() {
     .option('name', nameOpt)
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
+
+  parser.command('add-label')
+    .describe('add a map label to a point layer')
+    .option('coordinates', {
+      describe: 'x,y of the label anchor, or x,y,x,y,... of a curve\'s knots'
+    })
+    .option('text', {
+      describe: 'label text'
+    })
+    // label style properties, so that creating and styling a label is one
+    // command; anything not listed here can be set with a following -style
+    .options(labelStyleOpts)
+    // a label can carry a symbol at its anchor, so these come along too even
+    // though they are not text properties
+    .option('icon', {
+      describe: 'symbol drawn at the label anchor: circle, square, ring, star'
+    })
+    .option('icon-size', {
+      describe: 'size of the anchor symbol in px'
+    })
+    .option('icon-color', {
+      describe: 'color of the anchor symbol (defaults to the text color)'
+    })
+    .option('icon-opacity', {
+      describe: 'opacity of the anchor symbol, 0-1'
+    })
+    .option('properties', {
+      describe: 'other attributes, as a JSON object'
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
+
+  parser.command('update-label')
+    .describe('move the anchor or curve knots of an existing label')
+    .option('ids', {
+      describe: 'feature id of the label to update',
+      type: 'numbers'
+    })
+    .option('coordinates', {
+      describe: 'x,y of the label anchor, or x,y,x,y,... of a curve\'s knots'
+    })
+    .option('target', targetOpt);
 
   parser.command('alpha-shapes')
     // .describe('convert points to alpha shapes (aka concave hulls)')

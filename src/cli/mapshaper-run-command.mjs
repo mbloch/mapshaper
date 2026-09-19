@@ -19,6 +19,8 @@ import {
   markDatasetChanged,
   noteDatasetWillChange
 } from '../undo/mapshaper-undo-tracking';
+import '../commands/mapshaper-add-label';
+import '../commands/mapshaper-update-label';
 import '../commands/mapshaper-add-shape';
 import '../commands/mapshaper-affine';
 import '../commands/mapshaper-alpha-shapes';
@@ -136,6 +138,7 @@ function commandAcceptsEmptyTarget(name) {
     name == 'require' || name == 'run' || name == 'define' ||
     name == 'include' || name == 'print' || name == 'comment' || name == 'if' || name == 'elif' ||
     name == 'else' || name == 'endif' || name == 'stop' || name == 'add-shape' ||
+    name == 'add-label' ||
     name == 'scalebar' || name == 'vars' || name == 'defaults';
 }
 
@@ -247,6 +250,18 @@ export async function runCommand(command, job) {
         job.catalog.addDataset(targetDataset);
       }
       outputLayers = cmd.addShape(targetLayers, targetDataset, opts);
+
+    } else if (name == 'add-label') {
+      if (!targetDataset) {
+        targetDataset = {info: {}, layers: []};
+        targetLayers = targetDataset.layers;
+        job.catalog.addDataset(targetDataset);
+      }
+      outputLayers = cmd.addLabel(targetLayers, targetDataset, opts);
+
+    } else if (name == 'update-label') {
+      cmd.updateLabel(targetLayers, targetDataset, opts);
+
     } else if (name == 'affine') {
       cmd.affine(targetLayers, targetDataset, opts);
 

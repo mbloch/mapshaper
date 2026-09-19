@@ -44,7 +44,6 @@ export function HeaderMenu() {
   document.addEventListener('keydown', function(e) {
     if (open && e.key === 'Escape') {
       setOpen(false);
-      btn.node().focus();
     }
   });
 }

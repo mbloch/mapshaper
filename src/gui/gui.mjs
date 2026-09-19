@@ -15,6 +15,7 @@ import { onload } from './dom-utils';
 import { GUI } from './gui-lib';
 import { El } from './gui-el';
 import { createUndoTestApi, isUndoTestApiEnabled } from './gui-undo-test-api';
+import { internal } from './gui-core';
 
 // Refresh detection for mapshaper-gui: if the previous incarnation of this
 // tab set the 'navigating away' marker on pagehide, then this page load is a
@@ -95,6 +96,15 @@ var startEditing = function() {
   HistoryMenu(gui);
   window.mapshaper.getRuntimeStateContext = gui.getRuntimeStateContext;
   window.mapshaper.stringifyRuntimeStateContext = gui.stringifyRuntimeStateContext;
+  // Temporary knob for judging how flat a label path should leave its end
+  // knots: run mapshaper.setLabelCurveCurl(0.4) in the browser console and the
+  // paths redraw. 0 leaves the ends straight, 1 makes them circular. Expected
+  // to go away once a default is settled on.
+  window.mapshaper.setLabelCurveCurl = function(val) {
+    var curl = internal.setCurveCurl(val);
+    gui.dispatchEvent('map-needs-refresh');
+    return curl;
+  };
   if (isUndoTestApiEnabled()) {
     window.mapshaper.undoTest = createUndoTestApi(gui);
   }

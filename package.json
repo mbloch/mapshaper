@@ -61,6 +61,7 @@
     "fflate": "0.8.2",
     "flatbush": "^4.6.0",
     "flatgeobuf": "^4.3.4",
+    "fontkit": "^2.0.4",
     "geographiclib-geodesic": "^2.2.0",
     "geotiff": "^3.0.5",
     "geotiff-geokeys-to-proj4": "^2024.4.13",

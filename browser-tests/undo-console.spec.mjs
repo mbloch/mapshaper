@@ -1033,6 +1033,57 @@ test('history menu toggles persisted app undo and reports restore data', async f
   expect((await getUndoState(page)).undo.canUndo).toBe(true);
 });
 
+test('turning undo off mid-session throws away what was recorded', async function({page}) {
+  // Whatever is in the history was captured while edits were being recorded.
+  // From the moment the setting goes off they are not, so undoing one of those
+  // states would restore the data as it stood before the untracked edits and
+  // take them back without saying so.
+  // the setting has to come from the menu, not the URL, which pins the toggle
+  await loadFixture(page, POINT_FIXTURE, {undo: null});
+  await page.evaluate(function() {
+    window.localStorage.removeItem('mapshaper.undo');
+  });
+  await runConsoleCommand(page, '-each \'foo = "bar"\'');
+  expect((await getUndoState(page)).undo.canUndo).toBe(true);
+
+  await page.locator('.history-btn').click();
+  await expect(page.locator('.history-undo-checkbox')).toBeChecked();
+  await page.locator('.history-toggle-btn').click();
+
+  expect((await getUndoState(page)).undo.canUndo).toBe(false);
+  await expect(page.locator('.history-menu-note')).toContainText('Turn on undo before');
+  await expect.poll(async function() {
+    return (await getUndoState(page)).payloadStore.ownBytes;
+  }).toBe(0);
+  await page.keyboard.press('Escape');
+
+  // and the toolbar goes with it: it shows itself for any history it can see,
+  // whether or not the setting is on
+  await expect(page.locator('.floating-toolbar.edit-toolbar')).toBeHidden();
+});
+
+test('a command that is not recorded clears interaction undo history', async function({page}) {
+  // Interaction undo records itself whether or not the setting is on, so with
+  // undo off a drag, a command and another drag would leave a history that
+  // quietly spans the command -- and undoing back across it would revert the
+  // command's edits too.
+  await loadFixture(page, POINT_FIXTURE, {undo: 'off'});
+  expect(await page.evaluate(function() {
+    return window.mapshaper.undoTest.appUndoIsEnabled();
+  })).toBe(false);
+
+  await page.evaluate(function() {
+    window.mapshaper.undoTest.addPointToActiveLayer([1, 1]);
+  });
+  await expect.poll(async function() {
+    return (await getUndoState(page)).undo.canUndo;
+  }).toBe(true);
+
+  await runConsoleCommand(page, '-each \'foo = "bar"\'', {waitForUndo: false});
+
+  expect((await getUndoState(page)).undo.canUndo).toBe(false);
+});
+
 test('history menu stays open and updates restore data after clearing undo history', async function({page}) {
   await loadFixture(page);
 

@@ -251,6 +251,42 @@ When adding a new GUI action, decide whether it is a baseline operation or a
 model edit. Baseline operations should clear or leave undo history empty.
 User-visible edits should create a granular undo entry.
 
+### Two kinds of undo, and one rule that binds them
+
+The History menu's "enable undo" checkbox governs **command** undo only. Its
+purpose is storage: a session working with data too large to hold restore
+payloads for can opt out, which is why the menu's own note reads "Turn on undo
+before running commands you may want to undo."
+
+Interaction undo is separate and always on. The drag and attribute-edit handlers
+in `gui-undo.mjs` call `addHistoryState()` with in-memory closures — no payload
+store, no setting to check — so vertex, point and rectangle drags stay undoable,
+and `Ctrl-Z` keeps working, with the checkbox off. The floating toolbar shows
+itself for any history it can see, for the same reason.
+
+The two coexist under one rule: **the history must never span an edit that was
+not recorded.** A state restores the data as it stood when it was captured, so
+applying one across an unrecorded edit silently takes that edit back and leaves
+a redo stack describing a version of the layer that never existed. That is
+corruption, not a missing feature, and it is the reason for both of these:
+
+- **Turning the checkbox off empties the history** and the payload store
+  (`discardUndoHistory()` in `gui-history-menu.mjs`), and tells the user it did.
+  Everything recorded up to that moment was captured while edits were being
+  recorded; from the next edit on they are not.
+- **A command that runs unrecorded empties it too**
+  (`discardHistoryAfterUnrecordedCommand()` in `gui-console.mjs`). Without this
+  the hole reopens the first time someone drags a vertex, runs a command and
+  drags again with the checkbox off. Any unrecorded command clears the history,
+  including one that changed nothing: knowing what a command touched is exactly
+  what the transaction that was not captured would have told us.
+
+A transaction is captured at the start of an edit and added at the end, and the
+checkbox can be flipped in between — a simplify session or an import easily
+straddles the moment. `addUndoTransactionToHistory()` and
+`addCommandUndoHistory()` therefore re-check the setting when they add, so a
+straggler cannot refill a history that was just emptied on purpose.
+
 ### Session Baselines
 
 The following actions establish or replace a session baseline and should not be

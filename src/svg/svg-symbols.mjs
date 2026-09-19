@@ -4,7 +4,7 @@ import { importLineString, importMultiLineString, importPolygon } from '../svg/s
 import { featureHasSvgSymbol, featureHasLabel } from '../svg/svg-feature-utils';
 import { renderStyledLabel } from './svg-labels';
 import utils from '../utils/mapshaper-utils';
-import { applyStyleAttributes } from '../svg/svg-properties';
+import { applyStyleAttributes, isSvgNumber } from '../svg/svg-properties';
 import { message } from '../utils/mapshaper-logging';
 import { roundToTenths } from '../geom/mapshaper-rounding';
 
@@ -90,10 +90,20 @@ function getIconRadius(d, type) {
   return size / 2;
 }
 
+// A label with a symbol renders two elements from one record, and every opacity
+// property in commonProperties is applied to both, so the text's opacity fades
+// the symbol with it. icon-color and icon-opacity are how a symbol is styled
+// apart from the text: each overrides its counterpart here.
+//
+// icon-opacity maps to opacity rather than fill-opacity because a ring is drawn
+// as a stroked circle with no fill, which a fill opacity would leave alone.
 function getIconStyleData(d, r) {
   var o = utils.extend({}, d);
   o.r = r;
   o.fill = d['icon-color'] || d.fill || 'black';
+  if (isSvgNumber(d['icon-opacity'])) {
+    o.opacity = Number(d['icon-opacity']);
+  }
   return o;
 }
 

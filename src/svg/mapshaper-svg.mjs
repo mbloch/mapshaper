@@ -10,6 +10,8 @@ import { stringify } from '../svg/svg-stringify';
 import { convertPropertiesToDefinitions } from '../svg/svg-definitions';
 import { getOutputFileBase } from '../utils/mapshaper-filename-utils';
 import { importGeoJSONFeatures } from '../svg/geojson-to-svg';
+import { initPathLabelReport, reportPathLabels } from '../svg/svg-label-paths';
+import { DEFAULT_LABEL_FONT_SIZE } from '../svg/svg-labels';
 import { layerIsRectangle, getLayerDataTable, copyLayer, layerHasRaster } from '../dataset/mapshaper-layer-utils';
 import { Bounds } from '../geom/mapshaper-bounds';
 import { getDatasetCRS, getDatasetCrsInfo, crsToProj4, parseAuthorityCodeString, parseAuthorityCodeFromWkt } from '../crs/mapshaper-projections';
@@ -361,7 +363,12 @@ function exportSymbolsForSVG(lyr, dataset, opts) {
   var geojson = exportDatasetAsGeoJSON(d, opts);
   var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
   warnIfIllustratorPathLimitExceeded(lyr, features);
-  var children = importGeoJSONFeatures(features, opts);
+  // path labels that don't fit their path render as nothing, and are reported
+  // rather than dropped silently
+  var pathLabelReport = initPathLabelReport();
+  var children = importGeoJSONFeatures(features,
+    utils.defaults({path_label_report: pathLabelReport}, opts));
+  reportPathLabels(pathLabelReport, lyr);
   // Drop empty placeholder <g/> elements (features whose geometry was null in the
   // source data, collapsed during simplification, or otherwise produced no
   // visible output). Keep the layer's records in lockstep so that data-*
@@ -537,12 +544,23 @@ export function getEmptyLayerForSVG(lyr, opts) {
 
   // add default text properties to layers with labels
   if (layerHasLabels(lyr) || layerHasSvgSymbols(lyr) || layerHasFurniture(lyr)) {
-    layerObj.properties['font-family'] = 'sans-serif';
-    layerObj.properties['font-size'] = '12';
-    layerObj.properties['text-anchor'] = 'middle';
+    utils.extend(layerObj.properties, getLabelTextDefaults());
   }
 
   return layerObj;
+}
+
+// The text properties a label layer's container carries, which its labels
+// inherit instead of each holding a copy. Exported because a label rendered
+// outside any container -- the one the GUI draws while it is being typed, which
+// belongs to no layer until it is created -- has to be given the same ones, or
+// it changes size and alignment at the moment it becomes a feature.
+export function getLabelTextDefaults() {
+  return {
+    'font-family': 'sans-serif',
+    'font-size': String(DEFAULT_LABEL_FONT_SIZE),
+    'text-anchor': 'middle'
+  };
 }
 
 // Re-exported from svg-feature-utils.mjs for back-compat.

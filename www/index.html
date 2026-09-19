@@ -47,8 +47,14 @@
 	</g>
 	</svg>
 
-<svg id="text-tool-icon" xmlns="http://www.w3.org/2000/svg" width="15" height="22" viewBox="0 0 15 22">
+<svg id="text-tool-icon" xmlns="http://www.w3.org/2000/svg" width="15" height="22" viewBox="0 2.8 15 22">
   <path d="M13.4125,6.1758c-.0735,0-.1704.0087-.3023.0225-.35.0418-1.1581.0841-1.6018.0841H3.4416c-.4199,0-1.2035-.0418-1.5848-.0845-.1272-.0133-.2242-.022-.2977-.022-.5733,0-.5733.5104-.5733.678v3.8421h.9614c.8167,0,1.1245-.4428,1.2361-.7083.43-1.0372.9151-1.2196,1.775-1.2196h.6348v9.7486c0,.3918-.0528.4281-.463.7111l-.0919.0634c-.4874.3427-.6362.5765-.6362,1.0014v1.1346h6.1463v-1.1346c0-.4222-.1617-.6753-.6992-1.0441-.435-.3023-.4708-.3266-.4708-.7318v-9.7486h.6353c.8439,0,1.3253.1833,1.7754,1.2205.1851.4428.6307.7074,1.1925.7074h1.0042v-3.8421c0-.1677,0-.678-.5733-.678Z"/>
+</svg>
+
+<!-- a "T" over a curve: the path-aligned label tool. -->
+<svg id="curved-text-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="-1.5 -2.325 27 27">
+  <path d="M6.5,2 H17.5 V4.6 H13.4 V12 H10.6 V4.6 H6.5 Z"/>
+  <path d="M2,20.4 C7,14.6 17,14.6 22,20.4 L22,22.6 C17,17.2 7,17.2 2,22.6 Z"/>
 </svg>
 
 	<!-- adjusted height -->
@@ -72,7 +78,7 @@
 <div class="page-header">
 	<div class="mapshaper-logo">map<span class="logo-highlight">shaper</span></div>
 
-	<div class="layer-control-btn"><span class="active-layer-label btn" role="button" tabindex="0" aria-label="Open layers panel"></span></div>
+	<div class="layer-control-btn"><span class="active-layer-label btn" role="button" aria-label="Open layers panel"></span></div>
 
 	<div class="simplify-control-wrapper"><div class="simplify-control"><div class="header-btn btn simplify-settings-btn">Settings</div>
 		<div class="slider">
@@ -84,7 +90,7 @@
 	</div></div>
 	<div id="mode-buttons" class="page-header-buttons">
 		<!-- <span class="project-btn header-btn btn">Project</span><span class="separator"> -->
-		<span class="messages-btn header-btn btn" role="button" aria-label="Messages" aria-haspopup="true" aria-expanded="false" title="Messages"><svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="14"><path d="M2 3 h12 a1 1 0 0 1 1 1 v7 a1 1 0 0 1 -1 1 H8 l-5 4 v-4 H2 a1 1 0 0 1 -1 -1 V4 a1 1 0 0 1 1 -1 z"/></svg><span class="messages-badge hidden" aria-hidden="true">0</span></span><span class="display-btn header-btn btn">Display</span><span class="separator"></span><span class="history-btn header-btn btn" role="button" aria-haspopup="true" aria-expanded="false" tabindex="0">History</span><span class="separator"></span><span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span class="export-btn header-btn btn">Export</span><span class="separator"></span><span id="header-menu-btn" class="header-btn btn" role="button" aria-label="More links" aria-haspopup="true" aria-expanded="false" tabindex="0"><svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="14"><rect x="1" y="3" width="14" height="2"/><rect x="1" y="7" width="14" height="2"/><rect x="1" y="11" width="14" height="2"/></svg></span>
+		<span class="messages-btn header-btn btn" role="button" aria-label="Messages" aria-haspopup="true" aria-expanded="false" title="Messages"><svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="14"><path d="M2 3 h12 a1 1 0 0 1 1 1 v7 a1 1 0 0 1 -1 1 H8 l-5 4 v-4 H2 a1 1 0 0 1 -1 -1 V4 a1 1 0 0 1 1 -1 z"/></svg><span class="messages-badge hidden" aria-hidden="true">0</span></span><span class="display-btn header-btn btn">Display</span><span class="separator"></span><span class="history-btn header-btn btn" role="button" aria-haspopup="true" aria-expanded="false">History</span><span class="separator"></span><span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span class="export-btn header-btn btn">Export</span><span class="separator"></span><span id="header-menu-btn" class="header-btn btn" role="button" aria-label="More links" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="14"><rect x="1" y="3" width="14" height="2"/><rect x="1" y="7" width="14" height="2"/><rect x="1" y="11" width="14" height="2"/></svg></span>
 		<div id="header-menu-dropdown" class="hidden" role="menu" aria-labelledby="header-menu-btn">
 			<a class="header-menu-item" href="/docs/" target="_blank" rel="noopener" role="menuitem">Docs</a>
 			<a class="header-menu-item" href="https://github.com/mbloch/mapshaper" target="_blank" rel="noopener" role="menuitem">GitHub</a>
@@ -376,8 +382,8 @@ encoding=big5</span>. Click to see all options.</div></div></div>
 	</div>
 	<div class="sidebar-resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize sidebar"></div>
 	<div class="sidebar-tabs">
-		<div class="sidebar-tab layer-tab" role="button" tabindex="0" aria-label="Toggle layers panel" aria-expanded="false">Layers</div>
-		<div class="sidebar-tab console-tab console-btn" role="button" tabindex="0" aria-label="Toggle console" aria-expanded="false">Console</div>
+		<div class="sidebar-tab layer-tab" role="button" aria-label="Toggle layers panel" aria-expanded="false">Layers</div>
+		<div class="sidebar-tab console-tab console-btn" role="button" aria-label="Toggle console" aria-expanded="false">Console</div>
 	</div>
 	<div class="mshp-main-map main-area map-area">
 		<div class="intersection-display">

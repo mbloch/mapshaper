@@ -30,10 +30,22 @@ export function getSvgHitTest(displayLayer) {
   }
 
   // TODO: switch to attribute detection
+  //
+  // textPath is what the pointer lands on over the glyphs of a path-aligned
+  // label, and its omission made those glyphs unhoverable: the walk stopped at
+  // the first unlisted tag, one step short of the <text> that carries the id.
+  //
+  // use is how a shape that must not drift from another one is drawn: the text
+  // editor's hit region along a curved label's baseline is a thickened copy of
+  // the <defs> path the text is set along. Leaving it out stopped the walk on
+  // the band of the label nearest the curve, so a click there reached no
+  // feature and the caret stayed where it was -- the lower half of a curved
+  // label was unclickable while its text was open for editing.
   function nodeHasSymbolTagType(node) {
     var tag = node.tagName;
     return tag == 'g' || tag == 'tspan' || tag == 'text' || tag == 'image' ||
-      tag == 'path' || tag == 'circle' || tag == 'rect' || tag == 'line';
+      tag == 'textPath' || tag == 'path' || tag == 'circle' || tag == 'rect' ||
+      tag == 'line' || tag == 'use';
   }
 
   function isSymbolNode(node) {

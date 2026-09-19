@@ -42,6 +42,7 @@ export function getExpressionFunction(exp, ctxArg, optsArg) {
     try {
       val = func.call(thisVal, rec, ctx);
     } catch(e) {
+      if (opts.quiet) throw e;
       stop(e.name, "in expression [" + exp + "]:", e.message);
     }
     return val;
@@ -63,7 +64,10 @@ export function compileExpressionToFunction(exp, opts) {
   try {
     return new Function('$$record,$$env',  functionBody);
   } catch(e) {
-    // if (opts.quiet) throw e;
+    // A caller that is only asking whether this string is an expression wants
+    // the answer, not a report: stop() prints in the CLI and opens an alert in
+    // the GUI, both of which are wrong for a question whose answer is "no".
+    if (opts.quiet) throw e;
     stop(e.name, 'in expression [' + exp + ']');
   }
 }

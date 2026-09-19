@@ -1,4 +1,6 @@
 import { snipPath } from './gui-snipping-utils';
+import { getNewLabelStyle } from './gui-label-style-state';
+import { appUndoIsEnabled } from './gui-app-undo';
 
 export function createUndoTestApi(gui) {
   return {
@@ -26,6 +28,11 @@ export function createUndoTestApi(gui) {
     clearUndoHistory: function() {
       if (gui.undo) gui.undo.clear();
     },
+    // Whether app-level undo is on, which a test asserting that something works
+    // without it needs to be able to confirm rather than assume.
+    appUndoIsEnabled: function() {
+      return appUndoIsEnabled(gui);
+    },
     setPanelMode: function(mode) {
       if (mode) {
         gui.enterMode(mode);
@@ -41,6 +48,77 @@ export function createUndoTestApi(gui) {
     },
     setInteractionMode: function(mode) {
       if (gui.interaction) gui.interaction.setMode(mode);
+    },
+    // Which tool has the map, for a test asking what an action did rather than
+    // what it drew: a panel coming up is how a mode change shows, not what it
+    // is.
+    getInteractionMode: function() {
+      return gui.interaction ? gui.interaction.getMode() : null;
+    },
+    // Shape-level detail about a layer by name, or null if there is no such
+    // layer. getModelChecksum() reports counts but not geometry types, which is
+    // what distinguishes an anchored label from a path-aligned one.
+    getLayerInfo: function(name) {
+      var lyr = gui.model.getLayers().map(function(o) { return o.layer; })
+        .filter(function(lyr) { return getLayerName(lyr) === name; })[0];
+      if (!lyr) return null;
+      return {
+        name: getLayerName(lyr),
+        geometry_type: lyr.geometry_type || null,
+        shapeCount: lyr.shapes ? lyr.shapes.length : 0,
+        fields: lyr.data ? lyr.data.getFields() : [],
+        records: lyr.data ? lyr.data.getRecords() : [],
+        geometryTypes: (lyr.shapes || []).map(function(shp) {
+          if (!shp) return null;
+          return shp.length > 1 ? 'MultiPoint' : 'Point';
+        }),
+        pointCounts: (lyr.shapes || []).map(function(shp) {
+          return shp ? shp.length : 0;
+        }),
+        // Copied rather than handed over, so that a test holding onto the
+        // result still sees the geometry as it was when it asked.
+        shapes: (lyr.shapes || []).map(function(shp) {
+          return shp ? shp.map(function(p) { return [p[0], p[1]]; }) : null;
+        })
+      };
+    },
+    // What the label path guide drew, as last rendered.
+    getLabelPathGuideInfo: function() {
+      return getLabelPathGuideLayers(gui).map(function(lyr) {
+        return {
+          name: getLayerName(lyr),
+          geometryType: lyr.geometry_type,
+          shapeCount: lyr.shapes ? lyr.shapes.length : 0
+        };
+      });
+    },
+    // Knot handle positions, in display coordinates.
+    getLabelPathKnotCoords: function() {
+      var lyr = getLabelPathGuideLayers(gui).filter(function(lyr) {
+        return getLayerName(lyr) == 'label-path-knots';
+      })[0];
+      // each handle is a single-point shape
+      return (lyr ? lyr.shapes : []).map(function(shp) { return shp[0]; });
+    },
+    // Which feature the pointer is over, as the hit control resolved it. Hover
+    // highlighting is drawn to canvas, so there is no DOM state to assert on.
+    getHitId: function() {
+      var hit = gui.map.getHitControl && gui.map.getHitControl();
+      return hit ? hit.getHitId() : -1;
+    },
+    // The style the label tool will give its next label, set through the style
+    // panel with nothing selected. Held in GUI state rather than in a layer, so
+    // there is no model to read it back from.
+    getNewLabelStyle: function() {
+      return getNewLabelStyle(gui);
+    },
+    zoomByPct: function(pct) {
+      gui.map.getExtent().zoomByPct(pct);
+    },
+    // The map's current view, in display CRS coordinates, for a test that an
+    // edit leaves the view where the user put it.
+    getViewBounds: function() {
+      return gui.map.getExtent().getBounds().toArray();
     },
     addPointToActiveLayer: function(coords) {
       var target = gui.model.getActiveLayer();
@@ -193,6 +271,18 @@ function getArcsSignature(arcs) {
 
 function getLayerName(lyr) {
   return lyr.name || null;
+}
+
+// The label tool's guide layers, out of everything the overlay last drew.
+function getLabelPathGuideLayers(gui) {
+  var layers = gui.map && gui.map.getOverlayLayers ?
+    gui.map.getOverlayLayers() : [];
+  return layers.map(function(lyr) {
+    return lyr.gui.displayLayer;
+  }).filter(function(lyr) {
+    return getLayerName(lyr) == 'label-path-guide' ||
+      getLayerName(lyr) == 'label-path-knots';
+  });
 }
 
 function hashValue(val) {

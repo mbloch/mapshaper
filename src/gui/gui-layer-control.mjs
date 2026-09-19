@@ -248,7 +248,7 @@ export function LayerControl(gui) {
     html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
     html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + formatLayerNameForDisplay(lyr.name) + '</span>', 'row1');
     html += rowHTML('contents', describeLyr(lyr, dataset));
-    html += '<span class="more-btn layer-btn" role="button" tabindex="0" aria-label="More layer options"></span>';
+    html += '<span class="more-btn layer-btn" role="button" aria-label="More layer options"></span>';
     if (opts.pinnable) {
       html += '<img class="eye-btn black-eye layer-btn" draggable="false" src="images/eye.png">';
       html += '<img class="eye-btn green-eye layer-btn" draggable="false" src="images/eye2.png">';
@@ -372,7 +372,16 @@ export function LayerControl(gui) {
     function styleLayer() {
       var target = findLayerById(id);
       if (!target) return;
-      if (target.layer.geometry_type == 'point' && gui.pointStyleTool) {
+      if (internal.layerHasLabels(target.layer)) {
+        // The point style panel can only restyle a label layer; the label tool
+        // styles labels and creates, moves and retypes them as well, so a
+        // label layer goes there instead. The menu item is named for it.
+        if (!map.isActiveLayer(target.layer)) {
+          target.layer.hidden = false;
+          model.selectLayer(target.layer, target.dataset);
+        }
+        gui.interaction.setMode('label');
+      } else if (target.layer.geometry_type == 'point' && gui.pointStyleTool) {
         gui.pointStyleTool.open(target.layer, target.dataset);
       } else if (gui.layerStyleTool) {
         gui.layerStyleTool.open(target.layer, target.dataset);
@@ -395,6 +404,9 @@ export function LayerControl(gui) {
       menuEvent.showLayerInfo = showLayerInfo;
       if (target && layerCanBeStyled(target.layer)) {
         menuEvent.styleLayer = styleLayer;
+        if (internal.layerHasLabels(target.layer)) {
+          menuEvent.styleLayerName = 'edit labels';
+        }
       }
       menuEvent.contextMenuId = 'layer-' + id;
       openContextMenu(menuEvent, null, null);

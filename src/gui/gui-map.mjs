@@ -53,6 +53,12 @@ export function MshpMap(gui) {
       _renderer, _dynamicCRS,
       _resizeRedrawTimer = null;
 
+  // Whether the full bounds the view is working from describe nothing that is
+  // on the map: a project with no content gets the placeholder box assigned in
+  // getContentLayerBounds() instead. Recorded because the difference matters
+  // when deciding whether an update should reset the view.
+  var _boundsArePlaceholder = false;
+
   var RESIZE_REDRAW_DELAY = 200;
 
   _mouse.disable(); // wait for gui.focus() to activate mouse events
@@ -70,8 +76,11 @@ export function MshpMap(gui) {
     _mouse.disable();
   });
 
-  gui.on('map-needs-refresh', function() {
-    drawLayers();
+  // e.action: optional draw action, for a caller that knows only the overlay
+  // has changed -- the label tool previewing a curve against the pointer, which
+  // would otherwise force a full redraw on every mouse move.
+  gui.on('map-needs-refresh', function(e) {
+    drawLayers(e && e.action);
   });
 
   model.on('update', onUpdate);
@@ -168,8 +177,13 @@ export function MshpMap(gui) {
 
   this.getExtent = function() {return _ext;};
   this.getMouse = function() {return _mouse;};
+  // The display-only layers drawn over the content, as last built. Exposed for
+  // tests: overlays are never in the catalog, so there is no other way to
+  // assert on what a tool drew.
+  this.getOverlayLayers = function() {return _overlayLayers || [];};
   this.isActiveLayer = isActiveLayer;
   this.isVisibleLayer = isVisibleLayer;
+  this.getSvgRoot = function() { return _renderer ? _renderer.getSvgRoot() : null; };
   this.getActiveLayer = function() { return _activeLyr; };
   this.getHitControl = function() { return _hit; };
   // this.getViewData = function() {
@@ -283,6 +297,9 @@ export function MshpMap(gui) {
   function onUpdate(e) {
     var updated = model.getActiveLayer();
     var prevLyr = _activeLyr || null;
+    // read before calcFullBounds() below, which describes the map as it is
+    // after this update
+    var prevBoundsWerePlaceholder = _boundsArePlaceholder;
     var fullBounds;
     var needReset;
 
@@ -340,6 +357,16 @@ export function MshpMap(gui) {
       needReset = false;
     } else if (!prevLyr) {
       needReset = true;
+    } else if (prevBoundsWerePlaceholder) {
+      // The bounds being compared against are the placeholder given to a
+      // project with nothing in it, so mapNeedsReset() has nothing real to
+      // compare: the placeholder covers a continent while the first feature
+      // placed by hand covers almost nothing, and that difference alone trips
+      // its area-change rule. Resetting is the wrong answer here anyway --
+      // this is a feature the user has just put at a spot they chose on
+      // screen, so the view they chose it in is the one to keep, unless what
+      // arrived is not in it.
+      needReset = !fullBounds.intersects(_ext.getBounds());
     } else {
       needReset = mapNeedsReset(fullBounds, _ext.getFullBounds(), _ext.getBounds(), e.flags);
     }
@@ -391,7 +418,8 @@ export function MshpMap(gui) {
       b.mergeBounds(lyr.gui.bounds);
     });
 
-    if (!b.hasBounds()) {
+    _boundsArePlaceholder = !b.hasBounds();
+    if (_boundsArePlaceholder) {
       // assign bounds to empty layers, to prevent rendering errors downstream
       // b.setBounds(0,0,0,0);
       b.setBounds(projectLatLonBBox([11.28,33.43,32.26,46.04], _dynamicCRS));
@@ -403,8 +431,9 @@ export function MshpMap(gui) {
     var b;
     if (isPreviewView()) {
       b = new Bounds(getFrameLayerData().bbox);
+      _boundsArePlaceholder = false; // a frame is real content
     } else {
-      b = getContentLayerBounds();
+      b = getContentLayerBounds(); // sets _boundsArePlaceholder
     }
 
     // add margin
@@ -601,7 +630,10 @@ export function MshpMap(gui) {
 
     // TODO: draw furniture
     // _renderer.drawFurnitureLayers(furnitureLayers, action);
-    gui.dispatchEvent('map_rendered');
+    // The action says how much was redrawn, which a listener rebuilding its own
+    // DOM overlays needs: a 'hover' draw leaves the SVG markup and its
+    // transforms alone, so anything anchored to them is still good.
+    gui.dispatchEvent('map_rendered', {action: action});
   }
 }
 
