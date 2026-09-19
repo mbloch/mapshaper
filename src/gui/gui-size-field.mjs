@@ -19,6 +19,9 @@ import { El } from './gui-el';
 //   onSet(value)  a size was typed into the field
 //   onStep(delta) a step was asked for. The caller resolves what to step from,
 //                 because the field may be blank while the labels are not.
+//   onDone()      the user finished with the field, by pressing Enter or
+//                 Escape. Whether that means giving up the keyboard is the
+//                 caller's question: the field cannot know what else wants it.
 //   title         tooltip for the field
 export function SizeField(parent, opts) {
   var o = Object.assign({min: 1, max: 999, step: 1, bigStep: 10}, opts || {});
@@ -49,8 +52,10 @@ export function SizeField(parent, opts) {
       step(action.delta);
     } else if (action.type == 'commit') {
       commit();
+      done();
     } else if (action.type == 'revert') {
       setDisplay(shown);
+      done();
     }
   });
 
@@ -105,6 +110,10 @@ export function SizeField(parent, opts) {
   function setDisplay(str) {
     input.node().value = str;
     dirty = false;
+  }
+
+  function done() {
+    if (o.onDone) o.onDone();
   }
 
   minusBtn.on('click', function() { step(-o.step); });

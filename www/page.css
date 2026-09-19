@@ -2681,6 +2681,7 @@ body.pan.panning .map-layers:not(.drawing) {
    so quieter captions are also a narrower panel. Direct children only: the
    colour picker's H/S/B captions are spans in a row too. */
 .text-style-panel .label-style-row > span,
+.text-style-panel .label-style-selection-row > span,
 .text-style-panel .label-split-cell > span,
 .text-style-panel .label-style-row > .label-style-row-label,
 .text-style-panel .label-split-cell > .label-style-row-label,

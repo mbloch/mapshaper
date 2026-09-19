@@ -1,6 +1,9 @@
 import { ColorPicker, isHexColor, layerColorPresetRows } from './gui-color-picker';
 import { El } from './gui-el';
 import { ClickText2 } from './gui-elements';
+import {
+  claimFieldKeys, isTextInput, releasePanelFocus
+} from './gui-panel-focus';
 import { StylePresetControl } from './gui-style-preset-control';
 import { runGuiEditCommand } from './gui-edit-command';
 import { internal } from './gui-core';
@@ -70,6 +73,23 @@ export function LayerStyleTool(gui) {
   }
 
   function initPanel() {
+    // The same rules as the label panel's fields, minus the label being typed
+    // into: there is nothing here for the keyboard to go back to, so a field
+    // that is finished with gives it up altogether.
+    claimFieldKeys(panel.node(), {
+      revert: updateControls,
+      release: releaseFocus
+    });
+
+    // For the controls that take focus and then set no style -- the colour
+    // picker's Close button, and the panel's own buttons in the browsers that
+    // focus a button on click. Left alone while the user is typing into a
+    // field, which a click elsewhere in the panel ends on its own.
+    panel.node().addEventListener('click', function() {
+      if (isTextInput(document.activeElement)) return;
+      releaseFocus();
+    });
+
     var header = El('div').addClass('label-style-panel-title').appendTo(panel);
     title = El('span').appendTo(header);
     El('button').addClass('label-style-close').appendTo(header).text('×').on('click', closePanel);
@@ -189,6 +209,10 @@ export function LayerStyleTool(gui) {
       });
   }
 
+  function releaseFocus() {
+    releasePanelFocus(panel.node());
+  }
+
   // Not focusable: see the note on the same helper in gui-label-tool.mjs.
   function makePanelButton(parent, label, action) {
     return El('div')
@@ -288,6 +312,7 @@ export function LayerStyleTool(gui) {
 
   function runStyleCommand(styles) {
     var parts = ['-style'];
+    releaseFocus();
     syncTargetLayer();
     var ids = getTargetIds();
     if (!gui.console || !targetLayer || ids.length === 0) return;

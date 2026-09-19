@@ -2256,6 +2256,22 @@ The shapes must be painted `transparent` rather than `none`, since an unpainted
 shape is not hit-testable; the baseline uses `pointer-events: stroke` so that it
 follows the curve instead of claiming the area the curve encloses.
 
+Because the region is wider than the glyphs, a click arriving from it can land
+on no character at all: past the end of the text, or in the empty air a bowed
+label's box encloses. **The caret goes to the nearer end of the text** rather
+than staying where it was, which is the answer a click that is plainly pointing
+at one end of a label wants. The end of the text is the end of the last
+character the engine laid out, not the last character there is, so an
+overflowing path label sends the caret to the end of what is visible.
+
+The walk up from the event target has to pass through the region's tags, and
+`getSymbolNode()` stops at the first tag not in its list. `<use>` was not in it,
+so the thickened baseline — the half of the region that lies along the curve —
+swallowed clicks and resolved them to no feature: the caret stayed where it was
+anywhere near the curve, while a click higher up the glyphs landed on the
+region's rectangle and worked. Being one of two shapes covering the same label
+is what made it look like a geometry bug rather than a missing tag.
+
 ### Ghosting the curve
 
 A path label open for editing also shows **a faint copy of the curve its text
@@ -3142,6 +3158,11 @@ together:
 - **The panel hands focus back.** After a control sets a style, and after any
   click on the panel that is not in something the user is typing into, focus
   returns to the textarea, so "pick a font, keep typing" works.
+- **With no session, it hands focus to nothing at all** — `releaseFocus()`
+  blurs the control instead. A field that keeps focus keeps the keyboard, so
+  the next Escape means "revert this field" when the user meant "deselect", and
+  a gold focus ring sits over a value that was applied some time ago, which
+  reads as a value still being edited.
 - **A click on a `<select>` is the exception, and must leave focus alone.** A
   native menu is drawn by the OS and closes the instant its element is blurred,
   so handing the caret back on the click that *opened* the menu made the font
@@ -3151,6 +3172,26 @@ together:
   with itself as the click target. A menu dismissed with Escape and nothing else
   keeps the focus until the next panel click or click on the label, which is how
   a focused menu behaves anywhere.
+
+While the caret is in one of the panel's fields **the keyboard belongs to that
+field**, which the size fields did for themselves and the rest of the panel now
+does in one handler. Without it a Backspace typed into a measure field takes
+back the last knot of a curve being drawn, and an Escape disarms the tool
+rather than leaving the field — silently, since the tool consumes the key
+before the panel sees it. The cost is that a browser shortcut in a field, such
+as undo, is the field's rather than the application's, which is what those
+shortcuts mean in a text field anywhere else.
+
+Enter and Escape are what finish with a field: Enter keeps what was typed, and
+the field's own `change` handler applies it as focus leaves; Escape puts back
+what the panel was showing, which is also what stops that handler from firing
+on the way out. Both then release focus.
+
+The rules that are not about the label being typed into live in
+`gui-panel-focus.mjs` — `claimFieldKeys()` and `releasePanelFocus()` — because
+the layer style panel has the same shape of controls and the same two
+problems. It has nothing to hand the keyboard back to, so a field finished
+with there gives it up altogether.
 
 The session is published through `gui.state.label_text_session`
 (`gui-label-style-state.mjs`): `{id, refocus, refresh}`, set when a session opens

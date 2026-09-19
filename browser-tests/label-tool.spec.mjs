@@ -632,6 +632,62 @@ test('a size can be typed, stepped and nudged from the keyboard', async function
   expect(errors).toEqual([]);
 });
 
+test('a field gives the keyboard back when it is finished with', async function({page}) {
+  // A control that keeps focus keeps the keyboard, so the next Escape or Enter
+  // goes to the field rather than to the map -- and it goes on showing its
+  // focus ring over a value that has already been applied, which reads as a
+  // value still being edited.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  var size = page.locator('.text-style-panel .label-size-row .size-field-input');
+
+  await size.fill('24');
+  await size.press('Enter');
+  expect(await getFocusedElement(page)).toBe('BODY');
+  expect(await getNewLabelStyle(page)).toMatchObject({'font-size': 24});
+
+  // Escape puts back what the field was showing and lets go of it too
+  await size.fill('40');
+  await size.press('Escape');
+  await expect(size).toHaveValue('24');
+  expect(await getFocusedElement(page)).toBe('BODY');
+  expect(await getNewLabelStyle(page)).toMatchObject({'font-size': 24});
+
+  // a menu hands it back as soon as something is chosen from it
+  await page.locator('.text-style-panel select').first().selectOption('Georgia');
+  await page.waitForTimeout(150);
+  expect(await getFocusedElement(page)).toBe('BODY');
+
+  // and so does a field that commits on Enter through its change handler
+  var spacing = page.locator('.text-style-panel .label-measure-input').first();
+  await spacing.fill('2');
+  await spacing.press('Enter');
+  expect(await getFocusedElement(page)).toBe('BODY');
+  expect(await getNewLabelStyle(page)).toMatchObject({'letter-spacing': '2'});
+  expect(errors).toEqual([]);
+});
+
+test('a key typed into a field is the field\'s, not the tool\'s', async function({page}) {
+  // Escape disarmed the tool from inside a field, and silently: the tool
+  // consumes the key before anything in the panel can see it, so the field
+  // showed no sign of having been left.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  await armTool(page, 'path');
+  var css = page.locator('.text-style-panel .label-css-row input');
+
+  await css.fill('text-shadow: 1px 1px #eee');
+  await css.press('Escape');
+
+  await expect(css).toHaveValue('');
+  expect(await getFocusedElement(page)).toBe('BODY');
+  expect(await getNewLabelStyle(page)).not.toHaveProperty('css');
+  // the curve tool is still armed: the key never reached it
+  await expect(page.locator('.floating-toolbar.label-toolbar .floating-toolbar-btn').nth(1))
+    .toHaveClass(/selected/);
+  expect(errors).toEqual([]);
+});
+
 test('the symbol is faded and coloured apart from the text', async function({page}) {
   // A label's opacity is applied to both of the elements its record produces,
   // so the Icon section needs its own opacity or setting the text to 50% would
@@ -1768,6 +1824,14 @@ async function writeLabel(page, text) {
 
 // Types a value into a panel text field and commits it, which is what a user
 // leaving the field does: the panel's fields apply their value on 'change'.
+// What has the keyboard: a tag name, or 'BODY' for nothing in particular.
+async function getFocusedElement(page) {
+  return page.evaluate(function() {
+    var el = document.activeElement;
+    return el ? el.nodeName : 'none';
+  });
+}
+
 async function setFieldValue(locator, value) {
   await locator.fill(value);
   await locator.press('Enter');

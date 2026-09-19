@@ -54,7 +54,10 @@ function fakeText(text, opts) {
       return {x: i * W, y: BASELINE - 16, width: W, height: 20};
     },
     charAtPoint: function(p) {
+      // the real API answers with the character whose cell contains the point,
+      // so a point beside the text rather than on it is a miss
       var i = Math.floor(p.x / W);
+      if (p.y < BASELINE - 16 || p.y > BASELINE + 4) return -1;
       return i >= 0 && i < rendered ? i : -1;
     },
     renderedCount: function() {
@@ -282,8 +285,34 @@ describe('gui label caret and text', function() {
       assert.equal(getCaretIndexAtPoint(fakeText('hello'), {x: 48, y: 100}, 5), 5);
     });
 
-    it('reports nothing for a click that misses the text', function() {
-      assert.equal(getCaretIndexAtPoint(fakeText('hello'), {x: 900, y: 100}, 5), -1);
+    // A click can arrive from anywhere in the hit region, which is wider than
+    // the glyphs: past the end of the text, and inside the empty air a curved
+    // label's box encloses. It goes to the end of the text it is nearer to.
+    it('goes to the end of the text for a click past it', function() {
+      assert.equal(getCaretIndexAtPoint(fakeText('hello'), {x: 900, y: 100}, 5), 5);
+    });
+
+    it('goes to the start for a click off the front of it', function() {
+      assert.equal(getCaretIndexAtPoint(fakeText('hello'), {x: -40, y: 100}, 5), 0);
+    });
+
+    it('measures the miss from both ends, not from the pointer\'s side', function() {
+      // above the middle of the text, so neither end is the obvious answer:
+      // 'hello' runs from x=0 to x=50, and this is nearer the start
+      assert.equal(getCaretIndexAtPoint(fakeText('hello'), {x: 20, y: 40}, 5), 0);
+      assert.equal(getCaretIndexAtPoint(fakeText('hello'), {x: 40, y: 40}, 5), 5);
+    });
+
+    it('takes the end of the text from the last character drawn', function() {
+      // an overflowing path label: the engine laid out three of five, so the
+      // end of the text is where the third one ends
+      var lyr = fakeText('hello', {rendered: 3, engine: 'webkit'});
+      assert.equal(getCaretIndexAtPoint(lyr, {x: 34, y: 300}, 5), 5);
+      assert.equal(getCaretIndexAtPoint(lyr, {x: 4, y: 300}, 5), 0);
+    });
+
+    it('reports nothing when there is no text to go to either end of', function() {
+      assert.equal(getCaretIndexAtPoint(fakeText(''), {x: 900, y: 100}, 0), -1);
     });
   });
 

@@ -2,6 +2,9 @@ import { getFontStyleVariants, getInstalledFonts } from './gui-label-fonts';
 import { ColorPicker, isHexColor } from './gui-color-picker';
 import { StylePresetControl } from './gui-style-preset-control';
 import { SizeField } from './gui-size-field';
+import {
+  claimFieldKeys, isTextInput, releasePanelFocus
+} from './gui-panel-focus';
 import { parseOpacityValue, formatOpacityPct } from './gui-style-values';
 import { El } from './gui-el';
 import { internal } from './gui-core';
@@ -206,7 +209,7 @@ export function LabelTool(gui) {
     // mousedown without wanting it, and the editing session ends when the
     // textarea is blurred. Refusing the focus change is what lets the user set
     // a font and carry on typing; the real form elements below are allowed to
-    // take focus and hand it back (see restoreTextFocus).
+    // take focus and hand it back (see releaseFocus).
     panel.node().addEventListener('mousedown', function(e) {
       if (!isFormElement(e.target) && getLabelTextSession(gui)) {
         e.preventDefault();
@@ -227,7 +230,14 @@ export function LabelTool(gui) {
     // either sets a style or reaches this handler with itself as the target.
     panel.node().addEventListener('click', function(e) {
       if (isTextInput(document.activeElement) || opensAMenu(e.target)) return;
-      restoreTextFocus();
+      releaseFocus();
+    });
+
+    // The size fields already kept the keyboard to themselves, for the reasons
+    // in gui-panel-focus.mjs; this is the rest of the panel's fields.
+    claimFieldKeys(panel.node(), {
+      revert: updateControls,
+      release: releaseFocus
     });
 
     var header = El('div').addClass('label-style-panel-title').appendTo(panel).text('Label styles');
@@ -235,7 +245,7 @@ export function LabelTool(gui) {
       gui.clearMode();
     });
 
-    var selectRow = El('div').addClass('label-style-row label-style-selection-row').appendTo(panel);
+    var selectRow = El('div').addClass('label-style-selection-row').appendTo(panel);
     editingStatus = El('span').addClass('label-editing-status').appendTo(selectRow);
     clearLink = El('span').addClass('label-editing-clear colored-text').appendTo(selectRow).text('deselect').on('click', clearSelection);
 
@@ -270,7 +280,8 @@ export function LabelTool(gui) {
       onSet: function(value) {
         applyStyleValues([[fontSizeField, value]]);
       },
-      onStep: nudgeFontSize
+      onStep: nudgeFontSize,
+      onDone: releaseFocus
     });
 
     var colorRow = El('div').addClass('label-style-row label-split-row').appendTo(textSection);
@@ -367,7 +378,8 @@ export function LabelTool(gui) {
       onSet: function(value) {
         applyIconSize(value);
       },
-      onStep: nudgeIconSize
+      onStep: nudgeIconSize,
+      onDone: releaseFocus
     });
 
     var iconColorRow = El('div').addClass('label-style-row label-split-row').appendTo(iconSection);
@@ -1349,13 +1361,6 @@ export function LabelTool(gui) {
     return !!node && /^(INPUT|SELECT|TEXTAREA|BUTTON|OPTION)$/.test(node.nodeName);
   }
 
-  function isTextInput(node) {
-    if (!node) return false;
-    if (node.nodeName == 'TEXTAREA') return true;
-    return node.nodeName == 'INPUT' &&
-      !/^(button|checkbox|radio|submit)$/.test(node.type);
-  }
-
   // Whether clicking this node puts a native menu on screen, which must then be
   // left holding the focus. OPTION counts because a browser that reports the
   // chosen option as the click target is reporting a menu interaction either
@@ -1364,19 +1369,20 @@ export function LabelTool(gui) {
     return !!node && /^(SELECT|OPTION)$/.test(node.nodeName);
   }
 
-  // Returns the caret to a label being typed into, after a control that took
-  // focus to do its job. Only pulls focus out of this panel, so that clicking
-  // somewhere else while a menu is open still means what it says.
-  function restoreTextFocus() {
+  // Hands the keyboard back after a control has done its job: to the label
+  // being typed into if there is one, and to nothing at all otherwise.
+  function releaseFocus() {
     var session = getLabelTextSession(gui);
-    if (!session) return;
-    if (!panel.node().contains(document.activeElement)) return;
-    session.refocus();
+    if (!session) {
+      releasePanelFocus(panel.node());
+    } else if (panel.node().contains(document.activeElement)) {
+      session.refocus();
+    }
   }
 
   function applyStyleValues(styles) {
     if (styles.length === 0) return;
-    restoreTextFocus();
+    releaseFocus();
     // What the panel is set to is always what the next label gets, whether or
     // not these values also went to a label that already exists. -add-label
     // writes them when that label is created, which is why this needs no

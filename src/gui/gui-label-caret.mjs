@@ -118,13 +118,41 @@ export function getLabelBox(provider, measured, textLength, padding) {
 // The engine reports the character the point is over; whether the caret goes
 // before or after it depends on which half was hit, so that clicking the right
 // half of the last character puts the caret at the end of the text.
+//
+// A click that lands on no character at all falls back to the nearer end of
+// the text. The region a click can arrive from is wider than the glyphs -- it
+// has to be, or a curved label would be dismissed by a near miss -- so the gap
+// past the end of the text, and the empty air inside a bowed label's box, are
+// places the user can click while plainly pointing at one end or the other.
 export function getCaretIndexAtPoint(provider, p, textLength) {
   var i = tryCharAtPoint(provider, p);
   var box;
-  if (i < 0 || i >= textLength) return -1;
+  if (i < 0 || i >= textLength) return getNearestEnd(provider, p, textLength);
   box = tryExtent(provider, i);
   if (box && p.x > box.x + box.width / 2) return i + 1;
   return i;
+}
+
+// 0 or @textLength, whichever end of the text is nearer to @p, or -1 if
+// neither can be measured.
+function getNearestEnd(provider, p, textLength) {
+  var last = textLength - 1;
+  var start, end;
+  if (!p || !isFinite(p.x) || !isFinite(p.y) || textLength < 1) return -1;
+  // The end of the text is the end of the last character the engine laid out,
+  // which on an overflowing path label is not the last character there is.
+  while (last >= 0 && !charIsRendered(provider, last)) last--;
+  start = tryPoint(provider, 'startOfChar', 0);
+  end = last < 0 ? null : tryPoint(provider, 'endOfChar', last);
+  if (!start) return end ? textLength : -1;
+  if (!end) return 0;
+  return distanceSq(p, start) <= distanceSq(p, end) ? 0 : textLength;
+}
+
+function distanceSq(a, b) {
+  var dx = a.x - b.x;
+  var dy = a.y - b.y;
+  return dx * dx + dy * dy;
 }
 
 // Grows @box to cover @caret.
