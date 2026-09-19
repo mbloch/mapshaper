@@ -392,6 +392,13 @@ describe('gui label tool state', function() {
 
       it('rounds to a tenth, so stepping cannot accumulate float noise', function() {
         assert.strictEqual(parseSizeValue('12.34', 1, 999), 12.3);
+    });
+
+    it('keeps more of a value when the field asks for it', function() {
+      // stroke widths, whose useful hairlines are quarters of a pixel
+      assert.strictEqual(parseSizeValue('0.25', 0, 999, 2), 0.25);
+      assert.strictEqual(parseSizeValue('0.256', 0, 999, 2), 0.26);
+      assert.strictEqual(parseSizeValue('0.25', 0, 999), 0.3);
       });
 
       it('has no value for a field holding nothing usable', function() {

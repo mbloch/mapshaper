@@ -5,6 +5,10 @@ import { SizeField } from './gui-size-field';
 import {
   claimFieldKeys, isTextInput, releasePanelFocus
 } from './gui-panel-focus';
+import {
+  makeColorField, makeOpacityInput, makePanelButton, makePanelSection,
+  setPanelButtonDisabled
+} from './gui-panel-controls';
 import { parseOpacityValue, formatOpacityPct } from './gui-style-values';
 import { El } from './gui-el';
 import { internal } from './gui-core';
@@ -305,7 +309,7 @@ export function LabelTool(gui) {
     colorPicker = initColorPicker(textColorCell, colorChit, colorInput, applyLabelColor);
 
     var opacityCell = El('div').addClass('label-split-cell label-opacity-row label-text-opacity-row').appendTo(colorRow);
-    opacityInput = makeOpacityInput(opacityCell, applyLabelOpacity);
+    opacityInput = addOpacityInput(opacityCell, applyLabelOpacity);
 
     // Letter spacing takes the right-hand column on its own, above line
     // height: the two spacing values read as a pair there, and the left of the
@@ -403,7 +407,7 @@ export function LabelTool(gui) {
     iconColorPicker = initColorPicker(iconColorCell, iconColorChit, iconColorInput, applyIconColor);
 
     var iconOpacityCell = El('div').addClass('label-split-cell label-opacity-row label-icon-opacity-row').appendTo(iconColorRow);
-    iconOpacityInput = makeOpacityInput(iconOpacityCell, applyIconOpacity);
+    iconOpacityInput = addOpacityInput(iconOpacityCell, applyIconOpacity);
 
     var positionSection = addSection('Label position', {minor: true});
 
@@ -463,15 +467,7 @@ export function LabelTool(gui) {
   // bold of Text and Icon. Label position gets one: it is a single control, and
   // giving it the weight of those two would overstate it.
   function addSection(title, opts) {
-    var section = El('div').addClass('label-style-section').appendTo(panel);
-    // The heading's type is on the name rather than on the row, because the
-    // row also holds things that are not headings -- the icon switch, and the
-    // caption over the size field in the row below.
-    var row = El('div').addClass('label-style-section-title')
-      .classed('label-style-section-minor', !!(opts && opts.minor))
-      .appendTo(section);
-    El('span').addClass('label-style-section-name').appendTo(row).text(title);
-    return section;
+    return makePanelSection(panel, title, opts);
   }
 
   // A two-state switch: a track with a knob that sits left when off and right
@@ -503,32 +499,11 @@ export function LabelTool(gui) {
     };
   }
 
-  // A colour swatch and its hex value inside one border, so that the pair reads
-  // as one field rather than as a button beside a text box.
-  function makeColorField(parent, chit, input) {
-    var box = El('div').addClass('label-color-field').appendTo(parent);
-    chit.appendTo(box);
-    input.appendTo(box);
-    return box;
-  }
-
-  // Opacity is shown as a percentage and stored as a fraction. It is a plain
-  // field rather than a swatch or a slider: a swatch beside a colour reads as a
-  // second colour, and a slider gives up the exact value for a drag that a
-  // zoomable map makes risky.
-  function makeOpacityInput(parent, action) {
-    var input = El('input').attr('type', 'text').addClass('label-opacity-input')
-      .attr('title', 'Opacity, 0-100%')
-      .appendTo(parent)
-      .on('change', function() {
-        var val = parseOpacityValue(input.node().value);
-        if (val === null) {
-          updateControls(); // puts back what the field was showing
-          return;
-        }
-        action(val);
-      });
-    return input;
+  function addOpacityInput(parent, action) {
+    return makeOpacityInput(parent, {
+      onSet: action,
+      revert: updateControls
+    });
   }
 
   // A field for an SVG length: 2, 2px, 0.1em. Blank means the property is not
@@ -542,26 +517,6 @@ export function LabelTool(gui) {
         applyStyleValues([[field, input.node().value.trim()]]);
       });
     return input;
-  }
-
-  // Deliberately not focusable: the GUI is pointer-only, so a tab stop here
-  // would lead into a control the keyboard cannot then operate. See the focus
-  // note in page.css.
-  function makePanelButton(parent, label, action) {
-    return El('div')
-      .addClass('label-panel-btn')
-      .attr('role', 'button')
-      .appendTo(parent)
-      .text(label)
-      .on('click', function(e) {
-        if (this.classList.contains('disabled')) return;
-        action(e);
-      });
-  }
-
-  function setPanelButtonDisabled(el, disabled) {
-    el.classed('disabled', !!disabled)
-      .attr('aria-disabled', disabled ? 'true' : 'false');
   }
 
   function turnOn() {

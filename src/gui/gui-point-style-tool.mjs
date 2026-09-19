@@ -1,6 +1,11 @@
-import { ColorPicker, isHexColor, layerColorPresetRows } from './gui-color-picker';
 import { El } from './gui-el';
-import { ClickText2 } from './gui-elements';
+import {
+  claimFieldKeys, isTextInput, releasePanelFocus
+} from './gui-panel-focus';
+import {
+  makeColorRow, makePanelActionButton, makePanelSection, setPanelButtonDisabled
+} from './gui-panel-controls';
+import { SizeField } from './gui-size-field';
 import { internal } from './gui-core';
 import { runGuiEditCommand } from './gui-edit-command';
 import { quoteCommandValue } from './gui-command-utils';
@@ -14,14 +19,14 @@ export function PointStyleTool(gui) {
   var parent = gui.container.findChild('.mshp-main-map');
   var panel = El('div').addClass('label-style-panel point-style-panel rollover').appendTo(parent).hide();
   var title, noteSection, labelsSection, circlesSection, symbolsSection, labelNoteSection;
-  var circleSectionLabel;
+  var circleSectionTitle;
   var symbolNote;
   var createFieldSelect, createExprInput, createCopyCheckbox, createLabelsBtn;
   var editingRow, editingStatus, clearLink;
   var createCirclesRow;
   var circleControlRows = [];
-  var circleRadiusClickText, circleFillControl, circleStrokeControl;
-  var circleFillOpacityInput, circleStrokeOpacityInput, circleStrokeWidthClickText;
+  var circleRadiusField, circleStrokeWidthField;
+  var circleFillControl, circleStrokeControl;
   var targetLayer = null;
   var hit = null;
 
@@ -61,6 +66,17 @@ export function PointStyleTool(gui) {
   }
 
   function initPanel() {
+    // The panel's fields keep the keyboard while the caret is in them, and
+    // give it up when they are finished with; see gui-panel-focus.mjs.
+    claimFieldKeys(panel.node(), {
+      revert: updateControls,
+      release: releaseFocus
+    });
+    panel.node().addEventListener('click', function() {
+      if (isTextInput(document.activeElement)) return;
+      releaseFocus();
+    });
+
     var header = El('div').addClass('label-style-panel-title').appendTo(panel);
     title = El('span').appendTo(header).text('Point symbols');
     El('button').addClass('label-style-close').appendTo(header).text('×').on('click', closePanel);
@@ -72,17 +88,16 @@ export function PointStyleTool(gui) {
   }
 
   function initNoteSections() {
-    noteSection = El('div').addClass('point-style-section point-style-note-section').appendTo(panel);
+    noteSection = El('div').addClass('label-style-section').appendTo(panel);
     El('div').addClass('point-style-note').appendTo(noteSection).text('This layer contains unstyled points.');
 
-    labelNoteSection = El('div').addClass('point-style-section point-label-note-section').appendTo(panel);
+    labelNoteSection = El('div').addClass('label-style-section').appendTo(panel);
     El('div').addClass('point-style-note').appendTo(labelNoteSection)
       .text('This layer is rendered as labels. Use the label tool to edit them.');
   }
 
   function initCreateLabelsSection() {
-    labelsSection = El('div').addClass('point-style-section').appendTo(panel);
-    El('div').addClass('label-style-row-label').appendTo(labelsSection).text('Labels');
+    labelsSection = makePanelSection(panel, 'Labels');
 
     var fieldRow = El('label').addClass('label-style-row').appendTo(labelsSection);
     El('span').appendTo(fieldRow).text('Label field');
@@ -103,145 +118,91 @@ export function PointStyleTool(gui) {
       .on('change', updateCreateLabelsButton);
 
     var btnRow = El('div').addClass('label-style-row point-create-labels-row').appendTo(labelsSection);
-    createLabelsBtn = El('button').appendTo(btnRow).text('Create').on('click', createLabels);
+    createLabelsBtn = makePanelActionButton(btnRow, 'Create', createLabels);
     var copyLabel = El('label').addClass('point-create-copy-label').appendTo(btnRow);
     createCopyCheckbox = El('input').attr('type', 'checkbox').appendTo(copyLabel);
     El('span').appendTo(copyLabel).text('as new layer');
   }
 
   function initCreateCirclesSection() {
-    circlesSection = El('div').addClass('point-style-section point-circle-section').appendTo(panel);
-    circleSectionLabel = El('div').addClass('label-style-row-label').appendTo(circlesSection).text('Circles');
+    circlesSection = makePanelSection(panel, 'Circles');
+    // Hidden once the points are circles: the panel's own title says so then,
+    // and the section is the only thing left in the panel.
+    circleSectionTitle = circlesSection.findChild('.label-style-section-title');
     El('div').addClass('point-style-note point-circle-note').appendTo(circlesSection)
       .text('Use the -style command in the console to create proportional circles.');
 
-    createCirclesRow = El('div').addClass('label-style-row point-create-circles-row').appendTo(circlesSection);
-    El('button').appendTo(createCirclesRow).text('Create').on('click', createSimpleCircles);
-    El('span').appendTo(createCirclesRow).text('simple circles');
+    createCirclesRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(circlesSection);
+    makePanelActionButton(createCirclesRow, 'Create simple circles', createSimpleCircles);
 
-    editingRow = El('div').addClass('label-style-row label-style-selection-row point-style-selection-row').appendTo(circlesSection);
+    editingRow = El('div').addClass('label-style-row label-style-selection-row').appendTo(circlesSection);
     editingStatus = El('span').addClass('label-editing-status').appendTo(editingRow);
     clearLink = El('span').addClass('label-editing-clear colored-text').appendTo(editingRow).text('deselect').on('click', clearSelection);
 
-    var fillRow = El('div').addClass('label-style-row point-symbol-row').appendTo(circlesSection);
-    circleFillControl = addCircleColorControl(fillRow, 'Fill');
-    circleFillOpacityInput = addCircleNumberControl(fillRow, 'Opacity', '100%');
-    circleControlRows.push(fillRow);
+    circleFillControl = addCircleColorControl('Fill', 'fill');
+    circleStrokeControl = addCircleColorControl('Stroke', 'stroke');
+    circleControlRows.push(circleFillControl.row, circleStrokeControl.row);
 
-    var strokeRow = El('div').addClass('label-style-row point-symbol-row').appendTo(circlesSection);
-    circleStrokeControl = addCircleColorControl(strokeRow, 'Stroke');
-    circleStrokeOpacityInput = addCircleNumberControl(strokeRow, 'Opacity', '100%');
-    circleControlRows.push(strokeRow);
-
-    var sizeRow = El('div').addClass('label-style-row point-symbol-size-row').appendTo(circlesSection);
-    addCircleStepperControl(sizeRow, 'Stroke width', function() {
-      return getCircleStrokeWidth();
-    }, function(direction) {
-      setCircleStrokeWidth(getNextStrokeWidth(getCircleStrokeWidth(), direction));
-      applyCircleStyles();
-    }, function(value) {
-      setCircleStrokeWidth(value);
-      applyCircleStyles();
-    }, function(clickText) {
-      circleStrokeWidthClickText = clickText;
+    // The two sizes of a circle side by side, in the shape the panel uses for
+    // every other pair.
+    var sizeRow = El('div').addClass('label-style-row label-split-row').appendTo(circlesSection);
+    var widthCell = El('div').addClass('label-split-cell').appendTo(sizeRow);
+    var radiusCell = El('div').addClass('label-split-cell').appendTo(sizeRow);
+    El('span').appendTo(widthCell).text('Stroke width');
+    circleStrokeWidthField = new SizeField(widthCell, {
+      min: 0,
+      decimals: 2, // quarter-pixel hairlines, which the ladder below steps through
+      title: 'Stroke width in px',
+      onSet: function(value) {
+        setCircleStrokeWidth(value);
+        applyCircleStyles();
+      },
+      // Up a ladder of widths rather than by a fixed amount: the useful ones
+      // are close together at the hairline end and far apart above 2px.
+      onStep: function(delta) {
+        setCircleStrokeWidth(getNextStrokeWidth(getCircleStrokeWidth(), delta > 0 ? 1 : -1));
+        applyCircleStyles();
+      },
+      onDone: releaseFocus
     });
-
-    addCircleStepperControl(sizeRow, 'Radius', function() {
-      return getCircleRadiusForNudge();
-    }, function(direction) {
-      setCircleRadius(getNextCircleRadius(getCircleRadiusForNudge(), direction));
-      applyCircleStyles();
-    }, function(value) {
-      setCircleRadius(value);
-      applyCircleStyles();
-    }, function(clickText, text) {
-      circleRadiusClickText = clickText;
-      text.addClass('label-icon-size-value');
+    El('span').appendTo(radiusCell).text('Radius');
+    circleRadiusField = new SizeField(radiusCell, {
+      min: 0,
+      title: 'Circle radius in px',
+      onSet: function(value) {
+        setCircleRadius(value);
+        applyCircleStyles();
+      },
+      onStep: function(delta) {
+        setCircleRadius(getNextCircleRadius(getCircleRadiusForNudge(), delta > 0 ? 1 : -1));
+        applyCircleStyles();
+      },
+      onDone: releaseFocus
     });
     circleControlRows.push(sizeRow);
   }
 
   function initSymbolsSection() {
-    symbolsSection = El('div').addClass('point-style-section point-symbol-info-section').appendTo(panel);
-    El('div').addClass('label-style-row-label').appendTo(symbolsSection).text('Symbols');
+    symbolsSection = makePanelSection(panel, 'Symbols');
     symbolNote = El('div').addClass('point-style-note').appendTo(symbolsSection)
       .text('Use the -symbols command in the console to create arrows and other symbols.');
   }
 
-  function addCircleColorControl(row, label) {
-    var colorCell = El('div').addClass('point-symbol-color-cell label-color-row').appendTo(row);
-    var control = {};
-    El('span').appendTo(colorCell).text(label);
-    control.chit = makePanelButton(colorCell, '', function() {
-      control.picker.toggle();
-    }).addClass('label-color-chit');
-    control.input = El('input').attr('type', 'text').appendTo(colorCell).on('change', function() {
-      var color = control.input.node().value.trim();
-      if (isHexColor(color)) {
-        control.picker.setColor(color);
-      }
-      applyCircleStyles();
+  function addCircleColorControl(label, field) {
+    var control = makeColorRow(circlesSection, {
+      label: label,
+      // Every circle property is applied together, from what the controls are
+      // showing: the fields are one style, not five.
+      onColor: applyCircleStyles,
+      onOpacity: applyCircleStyles,
+      revert: updateControls
     });
-    control.picker = new ColorPicker(colorCell, {
-      presetRows: layerColorPresetRows,
-      onPreview: function(hex) {
-        setCircleColor(control, hex);
-      },
-      onChange: function(hex) {
-        setCircleColor(control, hex);
-        applyCircleStyles();
-      }
-    });
-    setCircleColor(control, '');
+    control.field = field;
     return control;
   }
 
-  function addCircleStepperControl(row, label, getValue, nudgeValue, setValue, capture) {
-    var control;
-    var buttonRow;
-    var text;
-    var clickText;
-    control = El('div').addClass('point-symbol-stepper-control').appendTo(row);
-    El('span').appendTo(control).text(label);
-    buttonRow = El('div').addClass('layer-stepper-control').appendTo(control);
-    makePanelButton(buttonRow, '−', function() {
-      nudgeValue(-1);
-    });
-    text = El('span').addClass('layer-stroke-width-value').appendTo(buttonRow);
-    clickText = new ClickText2(text);
-    clickText.on('change', function() {
-      var value = parsePositiveNumber(clickText.value());
-      if (value === null) {
-        clickText.value(formatNumberValue(getValue()));
-        return;
-      }
-      setValue(value);
-    });
-    makePanelButton(buttonRow, '+', function() {
-      nudgeValue(1);
-    });
-    capture(clickText, text);
-  }
-
-  function addCircleNumberControl(row, label, value) {
-    var control = El('label').addClass('layer-number-control').appendTo(row);
-    var input;
-    El('span').appendTo(control).text(label);
-    input = El('input').attr('type', 'text').appendTo(control).on('change', applyCircleStyles);
-    input.node().value = value;
-    return input;
-  }
-
-  // Not focusable: see the note on the same helper in gui-label-tool.mjs.
-  function makePanelButton(parent, label, action) {
-    return El('div')
-      .addClass('label-panel-btn')
-      .attr('role', 'button')
-      .appendTo(parent)
-      .text(label)
-      .on('click', function(e) {
-        action(e);
-      });
+  function releaseFocus() {
+    releasePanelFocus(panel.node());
   }
 
   function turnOn() {
@@ -276,7 +237,6 @@ export function PointStyleTool(gui) {
     toggleSection(circlesSection, representation == 'unstyled' || representation == 'circle');
     toggleSection(symbolsSection, representation == 'unstyled' || representation == 'svg-symbol');
     toggleSection(labelNoteSection, representation == 'label');
-    updateSectionBorders([noteSection, labelNoteSection, labelsSection, circlesSection, symbolsSection]);
     symbolNote.text(representation == 'svg-symbol' ?
       'This layer uses SVG symbols. Use the -symbols command in the console to create arrows and other symbols.' :
       'Use the -symbols command in the console to create arrows and other symbols.');
@@ -292,18 +252,9 @@ export function PointStyleTool(gui) {
     }
   }
 
-  function updateSectionBorders(sections) {
-    var foundFirst = false;
-    sections.forEach(function(section) {
-      var visible = section.visible();
-      section.classed('point-style-first-visible', visible && !foundFirst);
-      if (visible) foundFirst = true;
-    });
-  }
-
   function updateCircleSection(representation) {
     var showCreate = representation == 'unstyled';
-    circleSectionLabel.classed('hidden', !showCreate);
+    circleSectionTitle.classed('hidden', !showCreate);
     createCirclesRow.classed('hidden', !showCreate);
     editingRow.classed('hidden', representation != 'circle');
     circlesSection.findChild('.point-circle-note').classed('hidden', !showCreate);
@@ -322,17 +273,21 @@ export function PointStyleTool(gui) {
     setCircleRadius(radius);
     setCircleColor(circleFillControl, fill);
     setCircleColor(circleStrokeControl, stroke);
-    circleFillOpacityInput.node().value = formatOpacityPct(fillOpacity === '' ? 1 : fillOpacity);
-    circleStrokeOpacityInput.node().value = formatOpacityPct(strokeOpacity === '' ? 1 : strokeOpacity);
+    setCircleOpacity(circleFillControl, fillOpacity);
+    setCircleOpacity(circleStrokeControl, strokeOpacity);
     setCircleStrokeWidth(strokeWidth === '' ? 0 : strokeWidth);
     if (representation != 'circle' && representation != 'unstyled') {
       setCircleRadius(defaultCircleRadius);
       setCircleColor(circleFillControl, '');
       setCircleColor(circleStrokeControl, '');
-      circleFillOpacityInput.node().value = '100%';
-      circleStrokeOpacityInput.node().value = '100%';
+      setCircleOpacity(circleFillControl, '');
+      setCircleOpacity(circleStrokeControl, '');
       setCircleStrokeWidth(0);
     }
+  }
+
+  function setCircleOpacity(control, value) {
+    control.opacity.node().value = formatOpacityPct(value === '' ? 1 : value);
   }
 
   function renderCreateFields() {
@@ -352,7 +307,7 @@ export function PointStyleTool(gui) {
   }
 
   function updateCreateLabelsButton() {
-    createLabelsBtn.node().disabled = createExprInput.node().value.trim() === '';
+    setPanelButtonDisabled(createLabelsBtn, createExprInput.node().value.trim() === '');
   }
 
   function createLabels() {
@@ -390,9 +345,9 @@ export function PointStyleTool(gui) {
     var representation = getPointRepresentation();
     var radius = getCircleRadius();
     var fill = circleFillControl.input.node().value.trim();
-    var fillOpacity = parseOpacityValue(circleFillOpacityInput.node().value);
+    var fillOpacity = parseOpacityValue(circleFillControl.opacity.node().value);
     var stroke = circleStrokeControl.input.node().value.trim();
-    var strokeOpacity = parseOpacityValue(circleStrokeOpacityInput.node().value);
+    var strokeOpacity = parseOpacityValue(circleStrokeControl.opacity.node().value);
     var strokeWidth = getCircleStrokeWidth();
     var args;
     if (!gui.console || !(representation == 'unstyled' || representation == 'circle') ||
@@ -431,11 +386,11 @@ export function PointStyleTool(gui) {
     });
   }
 
+  // null for a field showing nothing, which is what a selection whose circles
+  // do not agree on a radius shows: there is no radius to apply then, and the
+  // style command leaves the property alone.
   function getCircleRadius() {
-    var str = String(circleRadiusClickText.value()).trim();
-    var radius = Number(str);
-    if (str === '') return null;
-    return isFinite(radius) && radius >= 0 ? radius : defaultCircleRadius;
+    return circleRadiusField.getValue();
   }
 
   function getCircleRadiusForNudge() {
@@ -444,16 +399,16 @@ export function PointStyleTool(gui) {
   }
 
   function setCircleRadius(value) {
-    circleRadiusClickText.value(value === '' ? '' : formatNumberValue(value));
+    circleRadiusField.setValue(value === '' ? '' : formatNumberValue(value));
   }
 
   function getCircleStrokeWidth() {
-    var width = Number(circleStrokeWidthClickText.value());
-    return isFinite(width) && width >= 0 ? width : 0;
+    var width = circleStrokeWidthField.getValue();
+    return width === null ? 0 : width;
   }
 
   function setCircleStrokeWidth(value) {
-    circleStrokeWidthClickText.value(formatNumberValue(value));
+    circleStrokeWidthField.setValue(formatNumberValue(value));
   }
 
   function getNextStrokeWidth(value, direction) {
@@ -582,14 +537,7 @@ export function PointStyleTool(gui) {
   }
 
   function setCircleColor(control, color) {
-    control.input.node().value = color;
-    control.chit.css('background-color', isHexColor(color) ? color : 'transparent');
-  }
-
-  function parsePositiveNumber(str) {
-    if (String(str).trim() === '') return null;
-    var val = Number(String(str).trim());
-    return isFinite(val) && val >= 0 ? val : null;
+    control.setColor(color);
   }
 
   function formatNumberValue(val) {

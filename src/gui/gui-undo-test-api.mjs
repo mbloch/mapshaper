@@ -49,6 +49,12 @@ export function createUndoTestApi(gui) {
     setInteractionMode: function(mode) {
       if (gui.interaction) gui.interaction.setMode(mode);
     },
+    // Which tool has the map, for a test asking what an action did rather than
+    // what it drew: a panel coming up is how a mode change shows, not what it
+    // is.
+    getInteractionMode: function() {
+      return gui.interaction ? gui.interaction.getMode() : null;
+    },
     // Shape-level detail about a layer by name, or null if there is no such
     // layer. getModelChecksum() reports counts but not geometry types, which is
     // what distinguishes an anchored label from a path-aligned one.

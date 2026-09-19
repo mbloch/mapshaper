@@ -1,9 +1,11 @@
-import { ColorPicker, isHexColor, layerColorPresetRows } from './gui-color-picker';
+import { isHexColor } from './gui-color-picker';
 import { El } from './gui-el';
-import { ClickText2 } from './gui-elements';
 import {
   claimFieldKeys, isTextInput, releasePanelFocus
 } from './gui-panel-focus';
+import { makeColorRow, makePanelActionButton } from './gui-panel-controls';
+import { SizeField } from './gui-size-field';
+import { parseOpacityValue, formatOpacityPct } from './gui-style-values';
 import { StylePresetControl } from './gui-style-preset-control';
 import { runGuiEditCommand } from './gui-edit-command';
 import { internal } from './gui-core';
@@ -15,7 +17,7 @@ var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'fill', 'fill-opa
 export function LayerStyleTool(gui) {
   var parent = gui.container.findChild('.mshp-main-map');
   var panel = El('div').addClass('label-style-panel layer-style-panel rollover').appendTo(parent).hide();
-  var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthText, strokeWidthClickText, strokeOpacityInput, fillOpacityInput, randomFillBtn, presetControl, hit;
+  var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, randomFillBtn, presetControl, hit;
   var targetLayer = null;
 
   initPanel();
@@ -99,22 +101,12 @@ export function LayerStyleTool(gui) {
     clearLink = El('span').addClass('label-editing-clear colored-text').appendTo(editRow).text('deselect').on('click', clearSelection);
 
     fillControl = addColorControl(panel, 'Fill', 'fill', '');
-    fillOpacityInput = addStyleNumberControl(fillControl, 'Opacity', 'fill-opacity', {
-      defaultValue: 1,
-      parser: parseOpacityValue,
-      formatter: formatOpacityPct
-    });
     strokeControl = addColorControl(panel, 'Stroke', 'stroke', '#000000');
-    strokeOpacityInput = addStyleNumberControl(strokeControl, 'Opacity', 'stroke-opacity', {
-      defaultValue: 1,
-      parser: parseOpacityValue,
-      formatter: formatOpacityPct
-    });
-    strokeWidthText = addStrokeWidthControl(panel);
+    strokeWidthField = addStrokeWidthControl(panel);
 
-    var buttonRow = El('div').addClass('label-style-row').appendTo(panel);
-    randomFillBtn = El('button').appendTo(buttonRow).text('Random fills').on('click', applyRandomFillColors);
-    El('button').appendTo(buttonRow).text('Clear style').on('click', clearLayerStyle);
+    var buttonRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(panel);
+    randomFillBtn = makePanelActionButton(buttonRow, 'Random fills', applyRandomFillColors);
+    makePanelActionButton(buttonRow, 'Clear style', clearLayerStyle);
 
     presetControl = new StylePresetControl(panel, {
       storageKey: savedStylesKey,
@@ -134,95 +126,48 @@ export function LayerStyleTool(gui) {
   }
 
   function addColorControl(parent, label, field, defaultColor) {
-    var row = El('div').addClass('label-style-row label-color-row layer-color-row').appendTo(parent);
-    var control = {
-      field: field,
-      defaultColor: defaultColor,
-      row: row,
-      chit: null,
-      input: null,
-      controls: null,
-      picker: null
-    };
-    var controlLine = El('div').addClass('layer-style-control-line').appendTo(row);
-    var colorCell = El('div').addClass('layer-color-cell').appendTo(controlLine);
-    control.controls = El('div').addClass('layer-row-controls').appendTo(controlLine);
-    El('span').appendTo(colorCell).text(label);
-    control.chit = makePanelButton(colorCell, '', function() {
-      control.picker.toggle();
-    }).addClass('label-color-chit');
-    control.input = El('input').attr('type', 'text').appendTo(colorCell).on('change', function() {
-      var color = control.input.node().value.trim();
-      if (!color) return;
-      if (isHexColor(color)) {
-        control.picker.setColor(color);
-      }
-      applyColorControlStyle(control, color);
-    });
-    control.picker = new ColorPicker(row, {
-      presetRows: layerColorPresetRows,
-      onPreview: function(hex) {
-        setColorControlValue(control, hex);
+    var control = makeColorRow(parent, {
+      label: label,
+      onColor: function(color) {
+        // Blanking the field is not a way to unset a colour: -style reads an
+        // empty value as "remove this", and a field left empty by a mistyped
+        // hex would then clear the layer rather than say nothing.
+        if (color) applyColorControlStyle(control, color);
       },
-      onChange: function(hex) {
-        applyColorControlStyle(control, hex);
-      }
+      onOpacity: function(value) {
+        applyLayerStyle(field + '-opacity', value);
+      },
+      revert: updateControls
     });
+    control.field = field;
+    control.defaultColor = defaultColor;
     return control;
   }
 
+  // In the wide column, under the stroke colour it belongs to. Stepping runs
+  // up a ladder of widths rather than by a fixed amount, because the useful
+  // ones are close together at the hairline end and far apart above 2px.
   function addStrokeWidthControl(parent) {
-    var row = El('div').addClass('label-style-row layer-stroke-width-row').appendTo(parent);
-    var control = El('div').addClass('layer-number-control layer-stroke-width-control').appendTo(row);
-    var buttonRow;
-    El('span').appendTo(control).text('Stroke width');
-    buttonRow = El('div').addClass('layer-stepper-control').appendTo(control);
-    makePanelButton(buttonRow, '−', function() {
-      nudgeStrokeWidth(-1);
+    var row = El('div').addClass('label-style-row label-split-row').appendTo(parent);
+    var cell = El('div').addClass('label-split-cell').appendTo(row);
+    El('div').addClass('label-split-cell').appendTo(row);
+    El('span').appendTo(cell).text('Stroke width');
+    return new SizeField(cell, {
+      min: 0,
+      // Quarter-pixel widths are the useful hairlines, and the ladder below
+      // steps through them.
+      decimals: 2,
+      title: 'Stroke width in px',
+      onSet: applyStrokeWidthStyle,
+      onStep: function(delta) {
+        nudgeStrokeWidth(delta > 0 ? 1 : -1);
+      },
+      onDone: releaseFocus
     });
-    var text = El('span').addClass('layer-stroke-width-value').appendTo(buttonRow);
-    strokeWidthClickText = new ClickText2(text);
-    strokeWidthClickText.on('change', function() {
-      var value = parsePositiveNumber(strokeWidthClickText.value());
-      if (value === null) {
-        updateStrokeWidthControl();
-        return;
-      }
-      applyStrokeWidthStyle(value);
-    });
-    makePanelButton(buttonRow, '+', function() {
-      nudgeStrokeWidth(1);
-    });
-    return text;
-  }
-
-  function addStyleNumberControl(colorControl, label, field, opts) {
-    var control = El('label').addClass('layer-number-control').appendTo(colorControl.controls);
-    El('span').appendTo(control).text(label);
-    return El('input')
-      .attr('type', 'text')
-      .appendTo(control)
-      .on('change', function() {
-        var value = opts.parser(this.value);
-        if (value === null) return;
-        applyLayerStyle(field, value);
-      });
   }
 
   function releaseFocus() {
     releasePanelFocus(panel.node());
-  }
-
-  // Not focusable: see the note on the same helper in gui-label-tool.mjs.
-  function makePanelButton(parent, label, action) {
-    return El('div')
-      .addClass('label-panel-btn')
-      .attr('role', 'button')
-      .appendTo(parent)
-      .text(label)
-      .on('click', function(e) {
-        action(e);
-      });
   }
 
   function updateControls() {
@@ -237,8 +182,6 @@ export function LayerStyleTool(gui) {
     updateColorControl(strokeControl);
     updateColorControl(fillControl);
     updateStrokeWidthControl();
-    updateNumberControl(strokeOpacityInput, 'stroke-opacity', 1, formatOpacityPct);
-    updateNumberControl(fillOpacityInput, 'fill-opacity', 1, formatOpacityPct);
     randomFillBtn.classed('hidden', geom != 'polygon');
     presetControl.render();
     updateSavedStyleControls();
@@ -247,6 +190,7 @@ export function LayerStyleTool(gui) {
   function updateColorControl(control) {
     var value = getCommonStyleValue(control.field);
     setColorControlValue(control, value);
+    updateOpacityControl(control);
     if (isHexColor(value)) {
       control.picker.setColor(value);
     } else {
@@ -254,19 +198,21 @@ export function LayerStyleTool(gui) {
     }
   }
 
-  function setColorControlValue(control, value) {
-    control.input.node().value = value || '';
-    control.chit.css('background-color', isHexColor(value) ? value : 'transparent');
+  function updateOpacityControl(control) {
+    var value = getCommonStyleValue(control.field + '-opacity');
+    control.opacity.node().value =
+      formatOpacityPct(value === '' || value === undefined || value === null ? 1 : value);
   }
 
-  function updateNumberControl(input, field, defaultValue, formatter) {
-    var value = getCommonStyleValue(field);
-    input.node().value = formatter(value === '' || value === undefined || value === null ? defaultValue : value);
+  function setColorControlValue(control, value) {
+    control.setColor(value);
   }
 
   function updateStrokeWidthControl() {
     var value = getCommonStyleValue('stroke-width');
-    strokeWidthClickText.value(formatNumberValue(value === '' || value === undefined || value === null ? getDefaultStrokeWidth() : value));
+    strokeWidthField.setValue(
+      formatNumberValue(value === '' || value === undefined || value === null ?
+        getDefaultStrokeWidth() : value));
   }
 
   function nudgeStrokeWidth(direction) {
@@ -369,11 +315,11 @@ export function LayerStyleTool(gui) {
   function getCurrentStyle() {
     var style = {};
     addStyleValue(style, 'stroke', getControlValue(strokeControl.input));
-    addStyleValue(style, 'stroke-width', parsePositiveNumber(strokeWidthClickText.value()));
-    addStyleValue(style, 'stroke-opacity', parseOpacityValue(strokeOpacityInput.node().value));
+    addStyleValue(style, 'stroke-width', strokeWidthField.getValue());
+    addStyleValue(style, 'stroke-opacity', parseOpacityValue(strokeControl.opacity.node().value));
     if (targetLayer && targetLayer.geometry_type == 'polygon') {
       addStyleValue(style, 'fill', getControlValue(fillControl.input));
-      addStyleValue(style, 'fill-opacity', parseOpacityValue(fillOpacityInput.node().value));
+      addStyleValue(style, 'fill-opacity', parseOpacityValue(fillControl.opacity.node().value));
     }
     return style;
   }
@@ -518,22 +464,6 @@ export function LayerStyleTool(gui) {
   function modelSelectLayer(lyr, dataset) {
     if (lyr) lyr.hidden = false;
     gui.model.selectLayer(lyr, dataset);
-  }
-
-  function parseOpacityValue(str) {
-    var pct = Number(String(str).replace('%', '').trim());
-    if (!isFinite(pct)) return null;
-    return Math.max(0, Math.min(100, pct)) / 100;
-  }
-
-  function parsePositiveNumber(str) {
-    var val = Number(String(str).trim());
-    return isFinite(val) && val >= 0 ? val : null;
-  }
-
-  function formatOpacityPct(val) {
-    val = val === '' || val === undefined || val === null ? 1 : Number(val);
-    return isFinite(val) ? Math.round(Math.max(0, Math.min(1, val)) * 100) + '%' : '';
   }
 
   function formatNumberValue(val) {

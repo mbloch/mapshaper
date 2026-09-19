@@ -22,6 +22,7 @@ import { El } from './gui-el';
 //   onDone()      the user finished with the field, by pressing Enter or
 //                 Escape. Whether that means giving up the keyboard is the
 //                 caller's question: the field cannot know what else wants it.
+//   decimals      how finely a typed size is kept (default 1)
 //   title         tooltip for the field
 export function SizeField(parent, opts) {
   var o = Object.assign({min: 1, max: 999, step: 1, bigStep: 10}, opts || {});
@@ -94,7 +95,7 @@ export function SizeField(parent, opts) {
   }
 
   function commit() {
-    var val = parseSizeValue(input.node().value, o.min, o.max);
+    var val = parseSizeValue(input.node().value, o.min, o.max, o.decimals);
     if (disabled) return;
     if (val === null) {
       // Nothing usable typed, including nothing at all: put back what the
@@ -141,7 +142,7 @@ export function SizeField(parent, opts) {
 
   // The size the field is showing, or null if it is not showing one.
   this.getValue = function() {
-    return parseSizeValue(input.node().value, o.min, o.max);
+    return parseSizeValue(input.node().value, o.min, o.max, o.decimals);
   };
 
   this.node = function() {
@@ -168,12 +169,14 @@ export function getSizeFieldKeyAction(key, shiftKey, opts) {
 //
 // Trailing units are accepted because the panel displays plain numbers but
 // users paste values from CSS: "14px" is a size, and refusing it would be
-// pedantry. Rounded to a tenth, so that a stepped value cannot accumulate
-// float noise into the data.
-export function parseSizeValue(str, min, max) {
+// pedantry. Rounded, so that a stepped value cannot accumulate float noise
+// into the data -- to a tenth unless the caller asks for more, which a stroke
+// width does: the useful hairlines are quarters of a pixel.
+export function parseSizeValue(str, min, max, decimals) {
+  var scale = Math.pow(10, decimals >= 1 ? decimals : 1);
   var val = parseFloat(str === null || str === undefined ? '' : String(str).trim());
   if (!isFinite(val)) return null;
-  val = Math.round(val * 10) / 10;
+  val = Math.round(val * scale) / scale;
   if (isFinite(min) && val < min) val = min;
   if (isFinite(max) && val > max) val = max;
   return val;

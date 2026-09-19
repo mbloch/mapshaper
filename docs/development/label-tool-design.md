@@ -2975,9 +2975,10 @@ size has "Size" above it and the shape buttons next to it have nothing, and the
 two still have to be level. Everything in a row is the same height, which means
 `box-sizing: border-box` on the bordered boxes as well as the fields.
 
-The panel is wider than the other style panels (216px against 185px) because of
-those pairs: at 185px the narrow column is narrower than its own caption, and
-"Letter spacing" was clipped. It covers more of the map, which is what broke
+The panel went from 185px to 216px because of those pairs: at 185px the narrow
+column is narrower than its own caption, and "Letter spacing" was clipped. The
+other style panels are stacks of pairs too, and took the same width when they
+were redrawn. It covers more of the map, which is what broke
 three browser tests — they clicked "empty map" at a point the panel had grown
 over, and the click landed on *Save*, whose prompt then swallowed
 everything the test did next. `clickMap()` now refuses a point inside the
@@ -3043,10 +3044,10 @@ gated, the switch is the only way to ask for a symbol, and it asks plainly.
 ##### How the controls are drawn
 
 The panel's fields share one height, corner radius and border colour, set as
-custom properties on `.text-style-panel` so that a select, a colour field, a
-size field and a button group on the same row line up. Only the label panel
-takes them; the point and layer panels keep the older, flatter look until they
-are redrawn.
+custom properties on `.label-style-panel` so that a select, a colour field, a
+size field and a button group on the same row line up. Every style panel
+carries that class, so the line, polygon and circle panels are drawn from the
+same parts — see "The other style panels" below.
 
 Three shapes carry most of it:
 
@@ -3104,6 +3105,43 @@ Two traps, both found by looking at the panel rather than reading it:
 - **`-webkit-appearance: none` takes the browser's disabled styling with it**,
   so a disabled field looked exactly like a live one. The panel fades them by
   the same amount as its other inert widgets.
+
+##### The other style panels
+
+The line, polygon and circle panels are drawn from the same parts. They were
+drawing the same controls three different ways, which is how three panels over
+the same map came to look like three programs: a colour was a swatch inside a
+field here and a button beside a text box there, a size was a field with a
+stepper here and a value between a `−` and a `+` there, and a field was 22px
+and round-cornered here and 19px and square there.
+
+What they share is in `gui-panel-controls.mjs` — a section, a colour-and-its-
+opacity row, an action button, a panel button — and in the CSS that is now
+keyed on `.label-style-panel`, which every style panel carries. The label
+panel keeps its own assembly of the colour field, because its two colours are
+gated by the icon switch and drawn without captions, but the metrics, the
+disabled look, the caption sizes and the split-row grid are one set of rules
+for all four.
+
+The layout follows from the pairs the other panels turn out to be made of:
+Fill and its opacity, Stroke and its opacity, and for a circle, Stroke width
+beside Radius. Every panel is 216px wide now, since every panel is a stack of
+those pairs.
+
+Two things worth knowing:
+
+- **Stroke width is a `SizeField` stepping a ladder**, not the widget's own
+  fixed increment: the useful widths are quarters of a pixel at the hairline
+  end and whole pixels above 2. The ladder was already there behind the old
+  `−`/`+`; what it needed was a field that could also be typed into. It also
+  needs `decimals: 2`, because the field re-reads its own contents and the
+  default rounding to a tenth turned an 0.25 hairline into 0.3 the next time
+  anything on the circle was set.
+- **`.hidden` is one class and the panel's rules are two.** A heading told to
+  hide went on being laid out, because `.label-style-panel
+  .label-style-section-title` sets `display: flex` and outranks it. The circle
+  panel hides its Circles heading once the points are circles — the title says
+  so, and the section is all that is left in the panel.
 
 #### Visibility is derived, not toggled
 
@@ -3432,12 +3470,11 @@ in a panel over a map, above a *Save current* that might plausibly have meant
 the file.
 
 The two sit side by side where they fit and stack where they do not, which is
-the difference between the two panels: the label panel is 216px and the layer
-panel 185px, and both labels fit on one line only in the first. The menu's
-`flex-basis` is `max-content`, so it asks for the width its own label needs and
-the row wraps exactly when the pair will not fit — rather than a width written
-once per panel, which would have to be revisited every time either label
-changed.
+what separated the panels while the layer panel was still 185px and the label
+panel 216px. The menu's `flex-basis` is `max-content`, so it asks for the width
+its own label needs and the row wraps exactly when the pair will not fit —
+rather than a width written once per panel, which would have to be revisited
+every time either label changed, or a panel was rewidened.
 
 That simplified behaviour and not just appearance. The old control applied a
 style on `change` and then went on displaying it, so the display had to be

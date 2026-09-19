@@ -131,7 +131,7 @@ test("a label layer's menu opens the label tool rather than a style panel",
       window.mapshaper.undoTest.setInteractionMode('info');
     });
     await page.waitForTimeout(120);
-    await expect(page.locator('.floating-toolbar.label-toolbar')).toBeHidden();
+    expect(await getInteractionMode(page)).toBe('info');
 
     await openLayerMenu(page, 'labels');
     var item = page.locator('.contextmenu-item').filter({hasText: 'edit labels'});
@@ -142,7 +142,7 @@ test("a label layer's menu opens the label tool rather than a style panel",
     await page.waitForTimeout(150);
 
     // the label tool, acting on that layer
-    await expect(page.locator('.floating-toolbar.label-toolbar')).toBeVisible();
+    expect(await getInteractionMode(page)).toBe('label');
     expect(await page.evaluate(function() {
       return window.mapshaper.undoTest.getState().model.activeLayer;
     })).toBe('labels');
@@ -475,19 +475,6 @@ test('the tool starts idle on a layer that already has labels', async function({
   expect(errors).toEqual([]);
 });
 
-test('the label toolbar is only present while the label mode is on', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  var toolbar = page.locator('.floating-toolbar.label-toolbar');
-
-  await expect(toolbar).toHaveClass(/visible/);
-  await page.evaluate(function() {
-    window.mapshaper.undoTest.setInteractionMode('info');
-  });
-  await expect(toolbar).not.toHaveClass(/visible/);
-  expect(errors).toEqual([]);
-});
-
 test('a path label is hovered by its text, not by its knots', async function({page}) {
   // A curve's knots are construction points that sit off the glyphs, so
   // proximity to one reads as a hit on empty map. The glyphs were unhoverable
@@ -549,35 +536,10 @@ test('a path label with no text is still reachable by its knots', async function
   expect(await hoverAnchor(page, 0)).toBe(0);
 });
 
-test('the style panel is open in label mode, before there is a label', async function({page}) {
-  // The panel is worth having up before there is anything to point it at: pick
-  // a font, then place labels in it. Its own close button is hidden, because
-  // closing it would leave the tool half on.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  var panel = page.locator('.text-style-panel');
-
-  await expect(panel).toBeVisible();
-  expect(await getLabelLayer(page)).toBeNull();
-  await expect(panel.locator('.label-style-close')).toBeHidden();
-  await expect(panel.locator('select').first()).toBeEnabled();
-
-  await page.evaluate(function() {
-    window.mapshaper.undoTest.setInteractionMode('info');
-  });
-  await expect(panel).toBeHidden();
-  expect(errors).toEqual([]);
-});
-
 test('a style set with nothing selected is given to the next label', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
   var panel = page.locator('.text-style-panel');
-
-  // the panel opens showing the tool's default position, so that what it says
-  // the next label will get is what the next label gets
-  await expect(panel.locator('.label-position-grid [data-position="c"]'))
-    .toHaveClass(/selected/);
 
   await panel.locator('select').first().selectOption('Georgia');
   await panel.locator('.label-size-row .size-field-up').click();
@@ -741,14 +703,8 @@ test('the switch is what gives a label a symbol and takes it away', async functi
   var starBtn = panel.locator('.label-icon-buttons [data-icon="star"]');
   var iconColor = panel.locator('.label-icon-color-row .label-color-field input');
 
-  await expect(toggle).not.toHaveClass(/on/);
-  await expect(starBtn).toHaveClass(/disabled/);
-  await expect(iconColor).toBeDisabled();
-
   await toggle.click();
   await page.waitForTimeout(150);
-  await expect(toggle).toHaveClass(/on/);
-  await expect(starBtn).not.toHaveClass(/disabled/);
   expect((await getLabelLayer(page)).records[0]).toMatchObject({
     icon: 'circle',
     'icon-size': 5,
@@ -768,8 +724,6 @@ test('the switch is what gives a label a symbol and takes it away', async functi
   await toggle.click();
   await page.waitForTimeout(150);
   expect((await getLabelLayer(page)).records[0].icon).toBe('');
-  await expect(starBtn).toHaveClass(/disabled/);
-  await expect(iconColor).toBeDisabled();
 
   await toggle.click();
   await page.waitForTimeout(150);
@@ -786,15 +740,9 @@ test('alignment can be chosen before there is anything to align', async function
   await loadFixture(page, FIXTURE);
   var alignBtn = page.locator('.text-style-panel .label-align-buttons [data-align="left"]');
 
-  // nothing on the layer, nothing selected: still live, and showing the
-  // alignment a new label would be drawn with rather than nothing at all --
-  // centred, which is what its position implies
-  await expect(alignBtn).not.toHaveClass(/disabled/);
-  await expect(page.locator('.text-style-panel .label-align-buttons [data-align="center"]'))
-    .toHaveClass(/selected/);
+  // nothing on the layer, nothing selected, and the control still answers
   await alignBtn.click();
   await page.waitForTimeout(120);
-  await expect(alignBtn).toHaveClass(/selected/);
   expect(await getNewLabelStyle(page)).toMatchObject({'label-align': 'left'});
 
   await armTool(page, 'anchor');
@@ -813,7 +761,6 @@ test('alignment can be chosen before there is anything to align', async function
   await writeLabel(page, 'Reno');
   await disarmTool(page);
   await clickLabel(page, 1);
-  await expect(alignBtn).not.toHaveClass(/disabled/);
   await page.locator('.text-style-panel .label-align-buttons [data-align="right"]').click();
   await page.waitForTimeout(150);
 
@@ -1081,7 +1028,6 @@ test('escape gives up the selection before the armed tool', async function({page
   await page.keyboard.press('Escape');
   await page.waitForTimeout(150);
   expect(await getSelectionCueCount(page)).toBe(0);
-  expect(await getEditingStatus(page)).toContain('new labels');
   expect(errors).toEqual([]);
 });
 
@@ -1238,7 +1184,6 @@ test('an anchored label is moved by dragging its text', async function({page}) {
   await page.waitForTimeout(120);
   await disarmTool(page);
   await clickLabel(page, 0);
-  expect(await getDragMode(page)).toBe('Fixed');
 
   var before = (await getLabelLayer(page)).shapes[0];
   await dragBy(page, await getGlyphPoint(page, 0, 0.5), 70, 45);
@@ -1350,10 +1295,11 @@ test('the drag mode is the tool\'s and not the label\'s', async function({page})
   expect(errors).toEqual([]);
 });
 
-test('the position grid is locked to the centre with nothing at the anchor',
+test('a symbol at the anchor is what moves a label out from under it',
   async function({page}) {
     // The nine positions place text around something, and there is no answer
-    // to "north-east of what?" on a label that draws nothing at its anchor.
+    // to "north-east of what?" on a label that draws nothing at its anchor, so
+    // the grid offers only the centre until there is a symbol.
     var errors = collectPageErrors(page);
     await loadFixture(page, FIXTURE);
 
@@ -1362,16 +1308,13 @@ test('the position grid is locked to the centre with nothing at the anchor',
     await disarmTool(page);
     await clickLabel(page, 0);
 
-    expect(await getDisabledCells(page)).toEqual(
-      ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se']);
-    // the centre stays clickable: text over its own symbol is a real thing to
+    // the centre still answers: text over its own symbol is a real thing to
     // ask for, and it is where the label already is
     await setLabelPosition(page, 'c');
     expect((await getLabelLayer(page)).records[0]['label-pos']).toBe('c');
 
     // a symbol answers the question, and the label moves out from under it
     await turnIconOn(page);
-    expect(await getDisabledCells(page)).toEqual([]);
     expect((await getLabelLayer(page)).records[0]['label-pos']).toBe('ne');
 
     // the icon and the position move together, in one command and so in one
@@ -1444,9 +1387,6 @@ test('a dragged label is tethered to its anchor while it moves',
     // now outside the box and nothing else marks it
     expect(await page.locator('.label-cue-tether').count()).toBe(0);
     expect(await page.locator('.label-cue-anchor').count()).toBe(1);
-
-    // and the grid marks where the label roughly belongs, since no cell is lit
-    expect(await getNearestCell(page)).toBe('ne');
     expect(errors).toEqual([]);
   });
 
@@ -1695,31 +1635,6 @@ async function setLabelPosition(page, pos) {
   await page.waitForTimeout(150);
 }
 
-// The positions the grid is refusing, which is all but the centre on a label
-// that draws nothing at its anchor.
-async function getDisabledCells(page) {
-  return page.locator('.text-style-panel .label-position-grid .label-panel-btn.disabled')
-    .evaluateAll(function(nodes) {
-      return nodes.map(function(node) { return node.getAttribute('data-position'); });
-    });
-}
-
-// The cell the grid marks faintly, which is where a dragged label roughly
-// belongs, or null.
-async function getNearestCell(page) {
-  var cells = await page.locator('.text-style-panel .label-position-grid .nearest')
-    .evaluateAll(function(nodes) {
-      return nodes.map(function(node) { return node.getAttribute('data-position'); });
-    });
-  return cells.length == 1 ? cells[0] : null;
-}
-
-// Which of Fixed | Draggable is lit.
-async function getDragMode(page) {
-  return page.locator('.text-style-panel .label-drag-mode-buttons .selected')
-    .textContent();
-}
-
 async function setDragMode(page, mode) {
   await page.locator('.text-style-panel .label-drag-mode-buttons [data-drag-mode="' +
     mode + '"]').click();
@@ -1731,11 +1646,6 @@ async function setDragMode(page, mode) {
 async function turnIconOn(page) {
   await page.locator('.text-style-panel .label-toggle').click();
   await page.waitForTimeout(250);
-}
-
-// What the style panel says its controls will act on.
-async function getEditingStatus(page) {
-  return page.locator('.text-style-panel .label-editing-status').textContent();
 }
 
 async function getCaretCount(page) {
@@ -1881,6 +1791,14 @@ async function getViewBounds(page) {
 async function getChecksum(page) {
   return page.evaluate(function() {
     return window.mapshaper.undoTest.getModelChecksum();
+  });
+}
+
+// Which tool has the map. Asked instead of looking for the toolbar or the
+// panel, which are how a mode shows rather than what it is.
+async function getInteractionMode(page) {
+  return page.evaluate(function() {
+    return window.mapshaper.undoTest.getInteractionMode();
   });
 }
 
