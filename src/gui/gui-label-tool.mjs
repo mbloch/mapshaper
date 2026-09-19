@@ -347,6 +347,9 @@ export function LabelTool(gui) {
       applyInlineCss(cssInput.node().value.trim());
     });
 
+    var positionRow = El('label').addClass('label-style-row').appendTo(textSection);
+    El('span').appendTo(positionRow).text('Position');
+
     // Whether the label has a symbol is one question and which symbol it has is
     // another, so the first is a switch on the section's heading rather than a
     // fifth shape button reading "none". Everything below it is inert while it
@@ -411,9 +414,15 @@ export function LabelTool(gui) {
     var iconOpacityCell = El('div').addClass('label-split-cell label-opacity-row label-icon-opacity-row').appendTo(iconColorRow);
     iconOpacityInput = addOpacityInput(iconOpacityCell, applyIconOpacity);
 
-    var positionSection = addSection('Label position', {minor: true});
+    var posRow = El('div').addClass('label-style-row label-position-row').appendTo(textSection);
 
-    var posRow = El('div').addClass('label-style-row label-position-row').appendTo(positionSection);
+
+    // Beside the grid rather than under it, because the two work together: the
+    // grid puts a label in one of nine places around its anchor, this says
+    // whether a drag may then take it somewhere else, and clicking a cell is
+    // the way back from having done so.
+    var dragModeGroup = El('div').addClass('label-btn-group label-drag-mode-buttons').appendTo(posRow);
+
     var grid = El('div').addClass('label-position-grid').appendTo(posRow);
     posBtns = {};
     labelPositions.forEach(function(pos) {
@@ -424,11 +433,7 @@ export function LabelTool(gui) {
         .attr('title', pos);
     });
 
-    // Beside the grid rather than under it, because the two work together: the
-    // grid puts a label in one of nine places around its anchor, this says
-    // whether a drag may then take it somewhere else, and clicking a cell is
-    // the way back from having done so.
-    var dragModeGroup = El('div').addClass('label-btn-group label-drag-mode-buttons').appendTo(posRow);
+
     dragModeBtns = {};
     labelDragModes.forEach(function(item) {
       dragModeBtns[item.name] = makePanelButton(dragModeGroup, item.label, function() {

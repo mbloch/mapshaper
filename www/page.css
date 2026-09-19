@@ -2388,7 +2388,7 @@ body.pan.panning .map-layers:not(.drawing) {
 .label-style-panel button,
 .label-style-panel select,
 .label-style-panel input {
-	font-size: 12.5px;
+	font-size: 12px;
 }
 
 .label-style-panel button.label-style-close {
@@ -2509,31 +2509,29 @@ body.pan.panning .map-layers:not(.drawing) {
 	margin-top: 11px;
 }
 
-/* Side by side where there is room, and stacked where there is not: both
-   labels fit on one line in the label panel and neither would in the layer
-   panel, which is 30px narrower, so the menu's flex-basis is what decides
-   between them rather than a width written per panel. */
+/* The two controls sit in the panel's A and B columns, on the same grid as a
+   split row: Apply style lines up with the fields and menus above it, and
+   Save current with the narrow column beside them. Every style panel is the
+   same width, so one grid does for all three. */
 .label-saved-style-controls {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 4px 6px;
+	display: grid;
+	grid-template-columns: 1fr var(--label-split-b-width);
+	column-gap: 10px;
 	margin-top: 4px;
 }
 
-/* The menu takes the width that is left over after Save current, which is as
-   wide as its words: the names inside it can be long, and they are what the
-   user is reading. min-width:0 lets it shrink below the widest of them. */
+/* min-width:0 lets the menu shrink to its column: a grid track is otherwise
+   at least as wide as its contents, and the names in the list can be long. */
 .label-saved-style-menu {
 	position: relative;
-	/* Asks for the width its own label needs, which is what makes the row
-	   wrap exactly when the two labels will not fit beside each other. */
-	flex: 1 1 max-content;
 	min-width: 0;
 }
 
-/* Sized and bordered like the panel's fields rather than like its 19px icon
-   buttons, because that is what these two are: a menu the width of a field,
-   and a button beside it. */
+/* Sized, bordered and lettered like the panel's fields rather than like its
+   19px icon buttons, because that is what these two are: a menu the width of
+   a field, and a button beside it. The type is the fields' own -- these are
+   divs, so the panel's rule for button, select and input does not reach them
+   and they were left at the app's 14px. */
 .label-saved-style-button {
 	box-sizing: border-box;
 	display: flex;
@@ -2543,9 +2541,19 @@ body.pan.panning .map-layers:not(.drawing) {
 	border: 1px solid var(--label-field-border);
 	border-radius: var(--label-field-radius);
 	background-color: white;
-	color: var(--normal-text);
+	font-size: 12px;
+	color: #000;
 	cursor: pointer;
 	user-select: none;
+}
+
+/* "Save current" is 63px of SourceSans3 and 68px of the Arial it falls back
+   to, in a column of 74: too near its edges to read as inset from them, so
+   the label is centred and the padding is only what keeps the widest of the
+   two fonts off the border. */
+.label-saved-style-save {
+	justify-content: center;
+	padding: 0 2px;
 }
 
 /* The panel's own disabled look: live colours, faded as a whole. */
@@ -2591,6 +2599,8 @@ body.pan.panning .map-layers:not(.drawing) {
 	max-height: 40vh;
 	overflow-y: auto;
 	background: white;
+	/* The size of the button it drops from, which is the size of a field. */
+	font-size: 12px;
 	border: 1px solid #bbb;
 	border-radius: var(--label-field-radius);
 	box-shadow: 0 2px 8px rgba(0,0,0,0.18);
@@ -2807,8 +2817,9 @@ body.pan.panning .map-layers:not(.drawing) {
 }
 
 .label-style-panel .label-style-section-minor .label-style-section-name {
-	font-size: inherit;
+	font-size: 12px;
 	font-weight: normal;
+	line-height: 1;
 	color: #555;
 }
 
@@ -2931,7 +2942,7 @@ body.pan.panning .map-layers:not(.drawing) {
 }
 
 .label-style-section-title {
-	margin-top: 8px;
+	margin-top: 11px;
 	font-weight: 600;
 	color: #333;
 }
@@ -3195,6 +3206,10 @@ body.dragging-color-picker * {
 	margin-left: auto;
 }
 
+.label-style-selection-row {
+	line-height: 1;
+}
+
 .label-style-selection-row button {
 	margin-right: 5px;
 }
@@ -3240,13 +3255,15 @@ body.dragging-color-picker * {
 /* Nine plain squares: a border on each would double the lines in a shape that
    is nothing but lines, so the cells are filled and the chosen one is dark. */
 .text-style-panel .label-position-grid {
-	grid-template-columns: repeat(3, 12px);
+	grid-template-columns: repeat(3, 10px);
 	gap: 3px;
+	margin-top: -13px;
+	margin-bottom: 3px;
 }
 
 .text-style-panel .label-position-grid .label-panel-btn {
-	width: 12px;
-	height: 12px;
+	width: 10px;
+	height: 10px;
 	border: none;
 	border-radius: 1px;
 	background: #dcdcdc;
@@ -3272,8 +3289,9 @@ body.dragging-color-picker * {
    against the right edge so that it lines up with the fields in the rows
    above. */
 .text-style-panel .label-position-row {
+	margin-top: 3px;
 	display: flex;
-	align-items: center;
+	/* align-items: center; */
 	justify-content: space-between;
 }
 
@@ -3326,10 +3344,16 @@ body.dragging-color-picker * {
 	justify-content: center;
 }
 
+/* Drawn larger than the icon symbols above, which share its viewBox but not
+   its proportions: three rules across the middle are ink over less than half
+   of the box, where a circle or a square fills most of its own, so at the same
+   13px both the glyph and its weight read smaller than the shapes beside it.
+   16px also puts the 16-unit viewBox at one unit per pixel, so the half-pixel
+   baselines the rules are drawn on land where they were meant to. */
 .label-align-symbol {
 	display: block;
-	width: 13px;
-	height: 13px;
+	width: 16px;
+	height: 16px;
 	fill: none;
 	stroke: currentColor;
 	stroke-width: 1.5;
