@@ -6,9 +6,10 @@ import { sha1 } from '../utils/mapshaper-sha1';
 // Two features need it: `label-align`, which holds a block of text still while
 // the lines inside it re-justify (svg-label-align.mjs), and the path-fit check,
 // which drops a path label whose text is longer than its path
-// (svg-label-fit.mjs). Both need font metrics, which mapshaper has only in a
-// browser, so the GUI installs a measure function here and the answers are
-// memoized.
+// (svg-label-fit.mjs). Both need font metrics, which reach this module from
+// whichever of two places can supply them -- the GUI measures by rendering,
+// and Node reads the installed font files (mapshaper-text-measure.mjs) -- and
+// the answers are memoized here.
 //
 // **A measurement is not the user's data.** It is derived from values the user
 // did set -- the text and six font properties -- and it lives in this cache
@@ -44,15 +45,17 @@ var cache = new Map();
 var measureFn = null;
 var measuring = false;
 
-// Installed by the GUI at startup: (rec) -> width in px, or null.
+// Installed at startup, by the GUI in a browser and by mapshaper-api.mjs
+// outside one: (rec) -> width in px, or null.
 //
 // An inversion, and a deliberate one. The alternative was for the GUI to
 // measure ahead of every reader -- before each render, before each export,
 // after each edit -- which is three hooks to keep in step and a fourth for the
 // console, where a user can type -o svg without going near the export dialog.
-// A reader that can ask for a measurement needs no hooks at all, and in Node,
-// where nothing installs one, every reader falls back exactly as it did before
-// this existed.
+// A reader that can ask for a measurement needs no hooks at all, and where
+// nothing can be measured -- a font this machine has not got, a browser too
+// old to measure in -- every reader falls back exactly as it did before this
+// existed.
 export function setTextMeasureFunction(fn) {
   measureFn = fn || null;
 }
@@ -66,10 +69,9 @@ export function getMeasuredTextWidth(rec) {
   hash = getTextWidthKey(rec);
   if (cache.has(hash)) return cache.get(hash) || null;
   // Nothing to measure with is not an answer about this text, so it is not
-  // remembered as one. Caching it would mean that whatever rendered before the
-  // GUI installed its measure function -- or during any window in which none
-  // is installed -- decided the width of that text for the rest of the
-  // session.
+  // remembered as one. Caching it would mean that whatever rendered before a
+  // measure function was installed -- or during any window in which none is --
+  // decided the width of that text for the rest of the session.
   if (!measureFn) return null;
   width = measure(rec);
   if (cache.size >= CACHE_LIMIT) cache.clear();

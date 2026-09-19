@@ -3,9 +3,9 @@ import { getMeasuredTextWidth } from './svg-label-metrics';
 // Decides whether a path-aligned label's text fits its path.
 //
 // The decision compares two numbers, and only one of them is geometry. Path
-// length export computes; text width takes font metrics, which mapshaper has
-// only in a browser -- so the width comes from svg-label-metrics.mjs, which
-// measures in the GUI and memoizes.
+// length export computes; text width takes font metrics, which come from
+// svg-label-metrics.mjs -- measured by rendering in the GUI, and read from the
+// installed font files in Node.
 //
 // What that module holds is the measured width, not a fits/doesn't-fit verdict,
 // because a verdict would depend on output size and a width does not: text is
@@ -21,8 +21,8 @@ import { getMeasuredTextWidth } from './svg-label-metrics';
 //
 // 'unmeasured' renders, because silently deleting a label from a map is a worse
 // outcome than drawing one that overflows: an overflow is visible and fixable,
-// a deletion is neither. It is also the normal state outside the GUI, where
-// nothing can measure text.
+// a deletion is neither. It is what a machine without the label's font gets,
+// and what every reader got outside the GUI before Node could measure.
 export function getLabelFitState(rec, pathLength) {
   var width = getMeasuredTextWidth(rec);
   if (!width) return 'unmeasured';

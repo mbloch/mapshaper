@@ -1,4 +1,5 @@
 import api from '../mapshaper.js';
+import { createRequire } from 'module';
 
 // The GUI modules expect a browser: src/gui/gui-core.mjs reads window.mapshaper
 // as its first statement, so importing any of them under Node throws unless a
@@ -9,6 +10,7 @@ import api from '../mapshaper.js';
 // contrast, run only in the main process), so the stand-ins are in place before
 // any test file is loaded.
 installBrowserGlobals();
+loadFontkit();
 
 export const mochaHooks = {
   beforeEach: function() {
@@ -18,6 +20,21 @@ export const mochaHooks = {
     resetMapshaperLogging();
   }
 };
+
+// Loaded before the tests rather than by the first test that measures a label,
+// because fontkit pulls in a UMD build of tslib, which writes its helpers
+// (__extends, __awaiter, and thirty more) to the global object as it loads.
+// Mocha counts the globals it starts with and reports anything added since as a
+// leak, and those are a leak -- just not one from mapshaper, and not one any
+// test can help. Loading it here puts them in the count it starts from, and
+// leaves --check-leaks strict about everything else.
+function loadFontkit() {
+  try {
+    createRequire(import.meta.url)('fontkit');
+  } catch (e) {
+    // Only the label metrics need it, and they report it themselves.
+  }
+}
 
 function installBrowserGlobals() {
   // No document property on the window stand-in: runningInBrowser() tests for

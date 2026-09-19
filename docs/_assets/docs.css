@@ -331,6 +331,13 @@ code, pre, .mono {
   overflow-wrap: anywhere;
 }
 
+/* Long inline code spans (tagged by build-docs.mjs) wrap instead of
+ * overflowing the article, preferring the <wbr> points after `|` and `,`. */
+.docs-article code.is-wrappable {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
 .docs-article pre {
   background-color: #1e2a30;
   color: #e9eef1;

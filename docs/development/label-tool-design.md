@@ -1416,10 +1416,11 @@ from the path rather than from a point. `label-align` still sets its
 
 #### Where the width comes from
 
-`W` cannot be computed from the data. It takes a renderer with the font in
-hand, which the GUI has and export does not — the same asymmetry the path-fit
-check runs into, and so the same source: `svg-label-metrics.mjs`, which the
-next section is about.
+`W` cannot be computed from the data. It takes something with the font in hand
+— a renderer in the GUI, the font file itself in Node — the same asymmetry the
+path-fit check runs into, and so the same source: `svg-label-metrics.mjs`,
+which the next section is about. Below is how the GUI answers it; "Font metrics
+outside the browser" is how Node does.
 
 `gui-label-measure.mjs` does the measuring, and it measures a *record* rather
 than a label on the map. The width is usually wanted for a label as it is about
@@ -1469,20 +1470,21 @@ fingerprint and every one of those problems goes away at once:
   to the feature.
 
 `getMeasuredTextWidth(rec)` in `svg-label-metrics.mjs` is the one reader, for
-both `label-align` and the fit check. On a miss it *asks for* a measurement: the
-GUI installs a measure function at startup (`setTextMeasureFunction()`), and a
-reader that can ask needs no hooks anywhere else. The alternative was measuring
-ahead of every reader — before each render, before each export, after each edit
-— which is three things to keep in step and a fourth for the console, where
-`-o out.svg` never goes near the export dialog. In Node nothing installs a
-measure function and every reader falls back exactly as it did before any of
-this existed.
+both `label-align` and the fit check. On a miss it *asks for* a measurement: a
+measure function is installed at startup (`setTextMeasureFunction()`) — by the
+GUI in a browser, by `mapshaper-api.mjs` outside one — and a reader that can
+ask needs no hooks anywhere else. The alternative was measuring ahead of every
+reader — before each render, before each export, after each edit — which is
+three things to keep in step and a fourth for the console, where `-o out.svg`
+never goes near the export dialog. Where a width cannot be had at all — a font
+this machine has not got — every reader falls back exactly as it did before any
+of this existed.
 
 The memo is capped at 20,000 entries — a dozen bytes of key and a number each,
 one per distinct text and font, which typing a label adds one of per keystroke.
 Failures to measure are remembered too, so an unmeasurable label is not
 measured over and over; *not having a measure function* is not, because
-remembering that would let whatever rendered before the GUI installed one decide
+remembering that would let whatever rendered before one was installed decide
 the width of that text for the rest of the session.
 
 #### Nor is it a parameter
@@ -1524,8 +1526,8 @@ GUI, which is what "The editor keeps a non-fitting label visible" was for.
 
 A label with no usable width is still justified the way it was asked to be, and
 its block still moves. That is the old behaviour, and what is left of it is the
-label no GUI has seen: `-style label-align=left` in a script, rendered by an
-export that cannot measure text. A label that reads the way it was asked to
+label whose font cannot be found: `-style label-align=left` rendered on a
+machine that has not got the family. A label that reads the way it was asked to
 read in the wrong place is closer to the request than one that ignores it.
 
 A `dx` in units the shift cannot be added to falls back the same way — `pt`,
@@ -1543,11 +1545,10 @@ held their blocks and the rest still slid. A missing size resolves against
 supplies to the group — one number, not two, since a correction computed
 against a different size than the label is drawn at is a correction to nowhere.
 
-CLI-authored labels are the remaining gap: `-style label-align=left` in a
-script gets the fallback, because nothing in Node can measure text. Closing it
-means font metrics in Node, which is a following pass — a dependency-free sfnt
-advance-width reader and a best-effort lookup of installed fonts. That is also
-the only thing that would make the path-fit rule apply to a scripted map.
+CLI-authored labels were the remaining gap: `-style label-align=left` in a
+script got the fallback, because nothing in Node could measure text. That is
+closed — see "Font metrics outside the browser" — and it is what makes the
+path-fit rule apply to a scripted map as well.
 
 #### The old drag mode
 
@@ -1604,10 +1605,13 @@ in `src/geom/mapshaper-path-geom.mjs`, and by the time labels are rendered
 `fitDatasetToFrame()` has transformed the geometry into output pixels, so the
 path's length in output pixels is a direct call on existing code.
 
-**Text width is not.** Mapshaper has no font metrics outside the browser: the
-only text measurement anywhere in the codebase is canvas `measureText()` in
-`src/gui/gui-label-fonts.mjs`, used for font detection. The CLI cannot know how
-wide a string will render.
+**Text width is not.** Mapshaper had no font metrics outside the browser when
+this was written: the only text measurement anywhere in the codebase was canvas
+`measureText()` in `src/gui/gui-label-fonts.mjs`, used for font detection. The
+CLI could not know how wide a string would render. The design below follows
+from that, and still holds — export asks for a width rather than computing one
+— but the answer is no longer only the GUI's; see "Font metrics outside the
+browser".
 
 ### Keep the measurement, not the verdict
 
@@ -1663,10 +1667,11 @@ fingerprint no longer matched it, drawn with a warning. Nothing writes a width
 into the data any more, so the state has nothing to describe; see "Nor is it a
 parameter".
 
-**`unmeasured` does not warn.** A path label with no measurement is the normal
-result of authoring in the CLI, which the fit rule cannot apply to, so a warning
-would fire on every export of every CLI-authored label — noise that would train
-people to ignore the message that matters.
+**`unmeasured` does not warn.** It was the normal result of authoring in the
+CLI, so a warning would have fired on every export of every CLI-authored label
+— noise that would train people to ignore the message that matters. It is now
+the unusual case, and the one thing that produces it, a font this machine has
+not got, warns once by name where it happens.
 
 **Failing open is the important half.** Silently deleting a label from a map is
 a worse outcome than drawing one that overflows: the overflow is visible and
@@ -1674,9 +1679,10 @@ fixable, the deletion is neither.
 
 Two consequences worth stating plainly:
 
-- **A path label exported by the CLI is never dropped**, because nothing there
-  can measure text. The rule bites where the measurement can be taken, which is
-  a GUI session and an export driven from one — see "A measurement is not data".
+- **A path label exported by the CLI is never dropped** — as written. It is now,
+  because Node can measure text; the rule bites wherever the measurement can be
+  taken, which is everywhere the label's font is installed. See "Font metrics
+  outside the browser".
 - **Dropping must be reported.** Export emits a `message()` with the count and
   the feature ids of dropped labels. A silent drop would be indistinguishable
   from a bug. `reportPathLabels()` emits one message per layer per condition,
@@ -1846,11 +1852,88 @@ commitment to `<textPath>` exists, so this should not be planned around either.
 Until then the handoff is Illustrator, which imports the existing output as
 real editable text-on-path.
 
-The constraint that makes per-glyph output awkward is the same one behind
+The constraint that made per-glyph output awkward is the one behind
 [What export can and cannot compute](#what-export-can-and-cannot-compute):
-glyph advances need font metrics, so only the GUI can place glyphs. A
-`-o format=svg` option for it would work in the GUI and fall back to
-`<textPath>` in the CLI, mirroring the `unmeasured` fit state.
+glyph advances need font metrics, which used to mean only the GUI could place
+glyphs. Node reads them now (below), and fontkit's `layout()` returns the
+per-glyph positions such an exporter would need, so the option is no longer
+split between the GUI and the CLI — it is unbuilt, not impossible.
+
+### Font metrics outside the browser
+
+Node measures label text from the font files installed on the machine.
+`src/fonts/mapshaper-text-measure.mjs` installs itself through the same
+`setTextMeasureFunction()` hook the GUI uses, from `mapshaper-api.mjs`, so the
+CLI, the Node API and a script that only exports all get it without a hook of
+their own.
+
+What changes for a scripted map: `-style label-align=left` now holds the block
+where its position put it instead of letting it slide, and the path-fit rule
+applies — a path label longer than its curve is dropped from CLI output, the
+way it already was from the GUI's. Measured against Chrome on the same fonts,
+the two agree to a hundredth of a pixel, which is what makes a map styled in
+the GUI and exported from a Makefile come out the same.
+
+**fontkit, rather than the sfnt reader this document once planned.** Reading
+`hmtx` advances is a day's work, and it is wrong by up to 5% on text like
+"AVATAR Toledo": the `GPOS` pair positioning that closes that gap is most of a
+layout engine, and so are `.ttc` collections, variable fonts and the shaping
+that makes Arabic or Devanagari widths mean anything. fontkit does all four,
+costs 10 MB installed and nothing in the bundle — it is loaded through the
+`require` shim, and only when a label is actually measured — and it is the same
+library that would subset fonts for PDF output later.
+
+**Finding the file a family names** is `mapshaper-font-lookup.mjs`, and it is
+the part with no standard to follow:
+
+- **The typographic family is what a stylesheet means.** Every weight of
+  NYTFranklin is its own name-table family — "NYTFranklin Light", "NYTFranklin
+  Medium" — and they are one family only under name ID 16. Both are indexed, in
+  a comparison that ignores case, spaces and punctuation, because a family
+  called "NYT Franklin" in one file is "NYTFranklin" in the next.
+- **Two passes.** Parsing every font on the machine takes the best part of a
+  second, and a family's file is usually named after it, so files whose name
+  begins with the family's are parsed first — 50 ms in the common case. The
+  full index is built only if none of them answers, which is the price of
+  asking for a font that is not there.
+- **Face matching follows CSS**: width, then slant, then the nearest weight,
+  with a tie going to the heavier face — the same last rule the style menu uses
+  to carry a face across a change of font. A face that does not exist is
+  answered with the nearest one rather than refused, because that is the face
+  the browser would synthesize the missing one from.
+- **A variable font is set to the weight asked for**, clamped to its axis. One
+  file covers the range, and measuring its default instance would report
+  Regular widths for Bold.
+- **A generic family is resolved by candidate list** — `sans-serif` is
+  Helvetica, then Arial, then Liberation Sans, and so on — which is a guess, but
+  the same guess the browser on that platform makes. It only arises for a label
+  carrying no font at all; the tool names the font on every label it creates,
+  which is what "The default font is not a font" is about.
+- **`MAPSHAPER_FONT_PATH` replaces the platform's font directories**, for a
+  container with its fonts somewhere of its own, a build that has to produce
+  the same SVG wherever it runs, or a test that needs to know there is nothing
+  to find.
+
+**Nothing is paid for until a label is measured**: no directory is listed, no
+font is opened, and fontkit is not loaded. After that, widths come from the
+memo in `svg-label-metrics.mjs` and opened faces are held for the process.
+
+**A font that cannot be found gives no width, not a wrong one.** The label
+renders unmeasured, exactly as it did before any of this, with one warning per
+missing family — the alignment is the thing that will be off, and it is worth
+knowing why.
+
+What it does not do: synthesize a bold or an oblique the family has not got (it
+measures the nearest real face, as the bullet above says); see a font that a
+`css` or `class` property pulls in through a stylesheet, which is why neither
+is in the measurement fingerprint; or measure in a browser, where the GUI's own
+measurer is what is installed.
+
+One test-harness note, since it looks unrelated to fonts: fontkit pulls in a
+UMD build of tslib, which writes three dozen helpers to the global object as it
+loads, and mocha's `--check-leaks` counts those as leaked globals. The mocha
+hooks load fontkit up front so that they are in the count it starts from, which
+keeps leak checking strict everywhere else.
 
 ## In-Place Editing
 
@@ -3047,11 +3130,10 @@ sans-serif` on the layer's `<g>` and the record overrides nothing.
 Inside the GUI that is self-consistent: `measureLabelWidth()` renders into an
 offscreen SVG under the same defaults, so the width behind `label-align` and
 the path-fit check is a measurement of the face actually on screen. It stops
-being self-consistent the moment the data leaves. In Node there is no
-measurement at all and nothing to fix it with — a metrics reader needs a family
-to find a file for, and `sans-serif` is not one — so `-style label-align=left`
-from the command line re-justifies the lines and leaves the block where it was.
-And an exported SVG that says `sans-serif` is opened somewhere that resolves it
+being self-consistent the moment the data leaves. A metrics reader needs a
+family to find a file for, and `sans-serif` is not one: Node can only fall back
+to guessing which installed family the platform would have resolved it to. And
+an exported SVG that says `sans-serif` is opened somewhere that resolves it
 differently, with every alignment shift and fit decision in it computed for a
 face the viewer is not using.
 
