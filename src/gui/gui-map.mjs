@@ -186,6 +186,23 @@ export function MshpMap(gui) {
   this.getSvgRoot = function() { return _renderer ? _renderer.getSvgRoot() : null; };
   this.getActiveLayer = function() { return _activeLyr; };
   this.getHitControl = function() { return _hit; };
+  this.getPreviewFrameData = getFrameLayerData;
+  this.isPreviewView = isPreviewView;
+  this.setPreviewMode = function(on, fitPage) {
+    var hasFrame = !!internal.getActiveFrame(model);
+    var next = !!on && hasFrame;
+    var changed = gui.state.preview_mode != next;
+    gui.state.preview_mode = next;
+    _ext.setFrameData(isPreviewView() ? getFrameLayerData() : null);
+    updateFullBounds();
+    if (fitPage !== false) {
+      _ext.home();
+    }
+    drawLayers();
+    if (changed) {
+      gui.dispatchEvent('preview_mode_change', {enabled: next});
+    }
+  };
   // this.getViewData = function() {
   //   return {
   //     isPreview: isPreviewView(),
@@ -217,6 +234,13 @@ export function MshpMap(gui) {
     getContentLayers().concat(_intersectionLyr || []).concat(_compareLyr || []).forEach(function(lyr) {
       projectLayerForDisplay(lyr, newCRS);
     });
+    var frameTarget = internal.getActiveFrame(model);
+    if (frameTarget) {
+      if (!frameTarget.layer.gui) {
+        enhanceLayerForDisplay(frameTarget.layer, frameTarget.dataset, getDisplayOptions());
+      }
+      projectLayerForDisplay(frameTarget.layer, newCRS);
+    }
 
     // Update map extent (also triggers redraw)
     projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), calcFullBounds());
@@ -345,7 +369,8 @@ export function MshpMap(gui) {
     } else if (_hit) {
       _hit.clearSelection();
     }
-    _hit.setLayer(_activeLyr); // need this every time, to support dynamic reprojection
+    _hit.setLayer(isFrameMapLayer(_activeLyr) ? null : _activeLyr);
+    // need this every time, to support dynamic reprojection
 
     updateVisibleMapLayers();
     fullBounds = calcFullBounds();
@@ -467,22 +492,26 @@ export function MshpMap(gui) {
   function findFrameLayer() {
     var target = internal.getActiveFrame(model);
     if (!target) return null;
-    // Preview remains visibility-gated until the explicit preview mode lands.
-    return getVisibleMapLayers().find(function(lyr) {
-      return lyr == target.layer;
-    }) || null;
+    if (!target.layer.gui) {
+      enhanceLayerForDisplay(target.layer, target.dataset, getDisplayOptions());
+    }
+    return target.layer;
   }
 
   // Preview view: symbols are scaled based on display size of frame layer
   function isPreviewView() {
-    return !isTableView() && !!getFrameLayerData();
+    return !isTableView() && !!gui.state.preview_mode && !!getFrameLayerData();
   }
 
   function getFrameLayerData() {
     var lyr = findFrameLayer();
     var crs = lyr && (lyr.gui.dynamic_crs ||
       internal.getDatasetCRS(lyr.gui.source.dataset));
-    return lyr && internal.getFrameLayerData(lyr, lyr.gui.displayArcs, crs) || null;
+    return lyr && internal.getFrameLayerData(
+      lyr.gui.displayLayer,
+      lyr.gui.displayArcs,
+      crs
+    ) || null;
   }
 
   function clearAllDisplayArcs() {
@@ -524,8 +553,13 @@ export function MshpMap(gui) {
       return findActiveLayer(layers);
     }
     return layers.filter(function(o) {
-      return !!o.gui.geographic;
+      return !!o.gui.geographic && !isFrameMapLayer(o);
     });
+  }
+
+  function isFrameMapLayer(lyr) {
+    var dataset = lyr && lyr.gui && lyr.gui.source && lyr.gui.source.dataset;
+    return !!dataset && internal.isFrameLayer(lyr, dataset.arcs);
   }
 
   function getDrawableContentLayers() {
@@ -597,9 +631,9 @@ export function MshpMap(gui) {
       console.error("Collapsed map container, unable to draw.");
       return;
     }
+    _ext.setFrameData(isPreviewView() ? getFrameLayerData() : null);
     if (layersMayHaveChanged) {
       // kludge to handle layer visibility toggling
-      _ext.setFrameData(isPreviewView() ? getFrameLayerData() : null);
       updateFullBounds();
       updateLayerStyles(contentLayers);
       updateLayerStackOrder(model.getLayers());// update menu_order property of all layers

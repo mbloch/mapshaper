@@ -1284,6 +1284,20 @@ body.simplify .layer-control-btn {
 	cursor: pointer;
 }
 
+.map-frame-section {
+	border-top: 1px solid #ddd;
+	margin-top: 8px;
+	padding-top: 7px;
+}
+
+.map-frame-heading h3 {
+	margin: 0 0 1px 0;
+}
+
+.map-frame-list .layer-item {
+	cursor: pointer;
+}
+
 .pin-all img,
 .layer-item img
 {
@@ -2046,6 +2060,26 @@ body.pan.panning .map-layers:not(.drawing) {
 	overflow: visible;
 }
 
+.map-layers > svg.preview-overlay {
+	top: 0;
+	left: 0;
+	z-index: 15;
+	pointer-events: none;
+	overflow: hidden;
+}
+
+.preview-outside-mask {
+	fill: rgba(24, 28, 32, 0.38);
+	fill-rule: evenodd;
+}
+
+.preview-page-border {
+	fill: none;
+	stroke: rgba(30, 30, 30, 0.9);
+	stroke-width: 1.5px;
+	vector-effect: non-scaling-stroke;
+}
+
 .ruler-line {
 	fill: none;
 	stroke: #cc35a5;
@@ -2355,6 +2389,84 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .nav-btn.menu-btn.selected:not(.disabled) svg * {
 	fill: white;
+}
+
+.preview-toggle {
+	align-items: center;
+	box-sizing: border-box;
+	display: flex;
+	height: 23px;
+	justify-content: center;
+	padding-bottom: 0;
+	padding-top: 0;
+}
+
+.preview-toggle svg {
+	display: block;
+	height: 14px;
+	transform: translateY(-1.5px);
+	width: 14px;
+}
+
+.preview-readout {
+	position: absolute;
+	z-index: 20;
+	top: 6px;
+	left: 50%;
+	transform: translateX(-50%);
+	background: rgba(255, 255, 255, 0.96);
+	border: 1px solid #ddd;
+	border-radius: 5px;
+	box-shadow: 0 1px 5px rgba(0,0,0,0.12);
+	color: #333;
+	cursor: pointer;
+	font-size: 12px;
+	line-height: 15px;
+	padding: 3px 7px;
+	white-space: nowrap;
+}
+
+.preview-readout-arrow {
+	color: #777;
+	font-size: 16px;
+	font-weight: bold;
+	line-height: 9px;
+	margin-left: 6px;
+	position: relative;
+	top: -1px;
+}
+
+.preview-scale-menu {
+	position: absolute;
+	z-index: 1;
+	display: none;
+	pointer-events: none;
+	padding: 5px 0;
+	background-color: white;
+	top: calc(100% + 4px);
+	right: 0;
+	text-align: right;
+	white-space: nowrap;
+	border-radius: 6px;
+	border: 1px solid #ddd;
+	box-shadow: 0 1px 7px rgba(0,0,0,0.12);
+}
+
+.preview-readout.open .preview-scale-menu {
+	display: block;
+	pointer-events: inherit;
+}
+
+.preview-scale-menu-item {
+	color: #555;
+	padding: 5px 9px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.preview-scale-menu-item:hover {
+	color: black;
+	background: var(--lt-theme-col);
 }
 
 .label-style-panel {

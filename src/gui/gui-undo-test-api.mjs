@@ -82,6 +82,13 @@ export function createUndoTestApi(gui) {
         })
       };
     },
+    selectLayer: function(name) {
+      var target = gui.model.getLayers().filter(function(o) {
+        return getLayerName(o.layer) === name;
+      })[0];
+      if (!target) throw new Error('Missing layer: ' + name);
+      gui.model.selectLayer(target.layer, target.dataset);
+    },
     // What the label path guide drew, as last rendered.
     getLabelPathGuideInfo: function() {
       return getLabelPathGuideLayers(gui).map(function(lyr) {
@@ -114,6 +121,21 @@ export function createUndoTestApi(gui) {
     },
     zoomByPct: function(pct) {
       gui.map.getExtent().zoomByPct(pct);
+    },
+    setPreviewMode: function(on) {
+      if (gui.previewMode) gui.previewMode.setOn(on);
+    },
+    getPreviewMode: function() {
+      return gui.previewMode ? gui.previewMode.isOn() : false;
+    },
+    getPreviewReadout: function() {
+      return gui.previewMode ? gui.previewMode.getReadoutText() : '';
+    },
+    getSymbolScale: function() {
+      return gui.map.getExtent().getSymbolScale();
+    },
+    zoomToFrameMagnification: function(scale) {
+      gui.map.getExtent().zoomToFrameMagnification(scale);
     },
     // The map's current view, in display CRS coordinates, for a test that an
     // edit leaves the view where the user put it.

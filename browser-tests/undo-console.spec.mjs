@@ -810,8 +810,26 @@ test('undoing initial rectangle creation clears the map display', async function
   await assertInitialRectangleUndoClearsDisplay(page, "-rectangle + bbox='-80,30,-70,40'");
 });
 
-test('undoing initial frame creation clears the map display', async function({page}) {
-  await assertInitialRectangleUndoClearsDisplay(page, "-rectangle + name=frame bbox='-80,30,-70,40' width='600px'");
+test('undoing initial frame creation clears the preview controls', async function({page}) {
+  await loadBlankSession(page);
+
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand(
+      "-rectangle + name=frame bbox='-80,30,-70,40' width='600px'"
+    );
+  });
+  await expect.poll(async function() {
+    return (await getUndoState(page)).model.layerCount;
+  }).toBe(1);
+  await expect(page.locator('.preview-toggle')).not.toHaveClass(/disabled/);
+
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.undo();
+  });
+  await expect.poll(async function() {
+    return (await getUndoState(page)).model.layerCount;
+  }).toBe(0);
+  await expect(page.locator('.preview-toggle')).toHaveClass(/disabled/);
 });
 
 async function assertInitialRectangleUndoClearsDisplay(page, command) {

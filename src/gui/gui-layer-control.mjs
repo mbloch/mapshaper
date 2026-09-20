@@ -109,7 +109,7 @@ export function LayerControl(gui) {
   function testAllLayersPinned() {
     var allPinned = true;
     model.forEachLayer(function(lyr, dataset) {
-      if (isPinnable(lyr) && !lyr.pinned) {
+      if (isPinnable(lyr, dataset) && !lyr.pinned) {
         allPinned = false;
       }
     });
@@ -192,10 +192,14 @@ export function LayerControl(gui) {
 
   function renderLayerList() {
     var list = el.findChild('.layer-list');
+    var frameSection = el.findChild('.map-frame-section');
+    var frameList = el.findChild('.map-frame-list');
     var uniqIds = {};
     var pinnableCount = 0;
     var layerCount = 0;
+    var frameCount = 0;
     list.empty();
+    frameList.empty();
     model.forEachLayer(function(lyr, dataset) {
       // Assign a unique id to each layer, so html strings
       // can be used as unique identifiers for caching rendered HTML, and as
@@ -204,7 +208,7 @@ export function LayerControl(gui) {
         lyr.menu_id = utils.getUniqueName();
       }
       uniqIds[lyr.menu_id] = true;
-      if (isPinnable(lyr)) pinnableCount++;
+      if (isPinnable(lyr, dataset)) pinnableCount++;
       layerCount++;
     });
 
@@ -217,9 +221,10 @@ export function LayerControl(gui) {
 
     sortLayersForMenuDisplay(model.getLayers()).forEach(function(o) {
       var lyr = o.layer;
+      var isFrame = internal.isFrameLayer(lyr, o.dataset.arcs);
       var opts = {
         show_source: layerCount < 5,
-        pinnable: pinnableCount > 0 && isPinnable(lyr)
+        pinnable: pinnableCount > 0 && isPinnable(lyr, o.dataset)
       };
       var html, element;
       html = renderLayer(lyr, o.dataset, opts);
@@ -230,8 +235,14 @@ export function LayerControl(gui) {
         initMouseEvents(element, lyr.menu_id, opts.pinnable);
         cache.add(html, element);
       }
-      list.appendChild(element);
+      if (isFrame) {
+        frameList.appendChild(element);
+        frameCount++;
+      } else {
+        list.appendChild(element);
+      }
     });
+    frameSection.classed('hidden', frameCount === 0);
   }
 
   cache.cleanup();
@@ -362,14 +373,21 @@ export function LayerControl(gui) {
 
     function showLayerInfo() {
       var target = findLayerById(id);
-      var popup, content;
+      var popup, content, isFrame;
       if (!target) return;
-      popup = showPopupAlert('', 'Layer info');
+      isFrame = internal.isFrameLayer(target.layer, target.dataset.arcs);
+      popup = showPopupAlert('', isFrame ? 'Frame info' : 'Layer info');
       content = popup.container().addClass('layer-info-popup');
       content.node().appendChild(renderLayerInfo(
         internal.getLayerInfo(target.layer, target.dataset),
-        internal.isFrameLayer(target.layer, target.dataset.arcs)
+        isFrame,
+        isFrame ? internal.getFrameLayerData(target.layer, target.dataset.arcs) : null
       ));
+    }
+
+    function toggleFramePreview() {
+      if (!gui.previewMode) return;
+      gui.previewMode.setOn(!gui.previewMode.isOn());
     }
 
     function styleLayer() {
@@ -402,10 +420,20 @@ export function LayerControl(gui) {
           pageY: rect.top + rect.height / 2
         };
       }
-      menuEvent.deleteLayer = deleteLayer;
-      menuEvent.duplicateLayer = duplicateLayer;
-      menuEvent.showLayerInfo = showLayerInfo;
-      if (target && layerCanBeStyled(target.layer)) {
+      var isFrame = target &&
+        internal.isFrameLayer(target.layer, target.dataset.arcs);
+      if (isFrame) {
+        menuEvent.toggleFramePreview = toggleFramePreview;
+        menuEvent.framePreviewName = gui.previewMode?.isOn() ?
+          'exit preview mode' : 'enter preview mode';
+        menuEvent.deleteFrame = deleteLayer;
+        menuEvent.showFrameInfo = showLayerInfo;
+      } else {
+        menuEvent.deleteLayer = deleteLayer;
+        menuEvent.duplicateLayer = duplicateLayer;
+        menuEvent.showLayerInfo = showLayerInfo;
+      }
+      if (!isFrame && target && layerCanBeStyled(target.layer)) {
         menuEvent.styleLayer = styleLayer;
         if (internal.layerHasLabels(target.layer)) {
           menuEvent.styleLayerName = 'edit labels';
@@ -498,16 +526,24 @@ export function LayerControl(gui) {
     return str;
   }
 
-  function renderLayerInfo(info, isFrame) {
+  function renderLayerInfo(info, isFrame, frame) {
     var container = document.createElement('div');
     var title = document.createElement('div');
     container.className = 'console-info';
+    if (isFrame) {
+      container.appendChild(renderKeyValueTable([
+        ['Output size', internal.formatFrameSizeForDisplay(frame)],
+        ['Bounds', info.bbox.join(',')],
+        ['CRS', info.proj4]
+      ], 'console-info-table'));
+      return container;
+    }
     title.className = 'console-info-title';
     title.textContent = 'Layer: ' + (info.layer_name || '[unnamed layer]');
     container.appendChild(title);
     container.appendChild(renderKeyValueTable(getInfoRows(info), 'console-info-table'));
     if (!info.raster_type) {
-      container.appendChild(renderAttributeInfoTable(info.attribute_data, isFrame));
+      container.appendChild(renderAttributeInfoTable(info.attribute_data));
     }
     return container;
   }
@@ -533,18 +569,13 @@ export function LayerControl(gui) {
     return rows;
   }
 
-  function renderAttributeInfoTable(fields, isFrame) {
+  function renderAttributeInfoTable(fields) {
     var wrapper = document.createElement('div');
     var title = document.createElement('div');
     wrapper.className = 'console-attribute-info';
     title.className = 'console-info-subtitle';
     title.textContent = 'Attribute data';
     wrapper.appendChild(title);
-    if (isFrame && fields) {
-      fields = fields.filter(function(o) {
-        return !internal.isFrameReservedField(o.field);
-      });
-    }
     if (!fields || fields.length === 0) {
       var none = document.createElement('div');
       none.className = 'console-info-empty';
@@ -621,7 +652,8 @@ export function LayerControl(gui) {
     }
   }
 
-  function isPinnable(lyr) {
+  function isPinnable(lyr, dataset) {
+    if (dataset && internal.isFrameLayer(lyr, dataset.arcs)) return false;
     return internal.layerIsGeometric(lyr) || internal.layerHasRaster(lyr) || internal.layerHasFurniture(lyr);
   }
 

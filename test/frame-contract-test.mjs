@@ -67,6 +67,19 @@ describe('map frame contract', function() {
     assert.equal(api.internal.isFrameReservedField('frame_units'), true);
     assert.equal(api.internal.isFrameReservedField('notes'), false);
   });
+
+  it('formats nominal dimensions in authored units', function() {
+    assert.equal(api.internal.formatFrameSizeForDisplay({
+      width: 432,
+      height: 216,
+      units: 'in'
+    }), '6 × 3 in');
+    assert.equal(api.internal.formatFrameSizeForDisplay({
+      width: 600,
+      height: 300,
+      units: 'px'
+    }), '600 × 300 px');
+  });
 });
 
 function importRectangle(bbox, properties) {

@@ -150,6 +150,18 @@ export function MapExtent(_position) {
     return bounds2.width() / _frame.width;
   };
 
+  this.zoomToFrameMagnification = function(targetScale) {
+    if (!_frame || !(targetScale > 0)) return;
+    var currentScale = this.getSymbolScale();
+    var frameBounds = new Bounds(_frame.bbox);
+    var p = this.translateCoords(frameBounds.centerX(), frameBounds.centerY());
+    this.zoomByPct(
+      targetScale / currentScale,
+      p[0] / this.width(),
+      p[1] / this.height()
+    );
+  };
+
   // convert pixel coords (0,0 is top left corner of map) to display CRS coords
   this.pixCoordsToMapCoords = function(x, y) {
     return this.getTransform().invert().transform(x, y);

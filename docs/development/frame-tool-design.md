@@ -749,9 +749,10 @@ numeric controls or an explicit "Frame this view" action.
    frame's extent — rather than as a layer. It does not scroll out of the
    layer list, cannot be accidentally styled, and cannot be exported.
 2. **Everything outside the page is masked**, at partial opacity. This is one
-   composited rectangle fill using the even-odd rule over the whole viewport,
-   drawn once per render into the existing overlay canvas. No per-shape work
-   and no per-shape allocation, per the renderer guardrail.
+   SVG path using the even-odd rule over the whole viewport, drawn once per
+   render in a pointer-transparent overlay. The inner ring uses opposite
+   winding as a fallback if a browser drops the even-odd style. No per-shape
+   work and no per-shape allocation, per the renderer guardrail.
 3. **The full-extent bounds become the frame's extent**, which
    `calcFullBounds()` already does. The 3.5–4.5% margin it adds stays: some
    space around the page is what makes it read as a page.
@@ -761,7 +762,9 @@ numeric controls or an explicit "Frame this view" action.
 
 ### The magnification readout
 
-A small persistent readout near the nav buttons:
+A small persistent readout is centered at the top of the map window, directly
+under the application bar, so it does not change the dimensions of the
+right-side navigation controls:
 
 ```
 600 × 300 px  ·  74%
@@ -769,9 +772,10 @@ A small persistent readout near the nav buttons:
 
 The percentage is `Math.round(ext.getSymbolScale() * 100)`, updated on
 `MapExtent`'s existing `change` event. The nominal size is shown in the frame's
-authored units. Clicking the readout opens a short menu: **100%** (snap to
-nominal — the "this is exactly your export" view), **50%**, **200%**, **Fit
-page**.
+authored units. Clicking the readout opens a compact fly-out menu, following
+the arrow-menu interaction without sharing its layout container: **100%**
+(snap to nominal — the "this is exactly your export" view), **50%**, **200%**,
+**Fit page**.
 
 100% deserves emphasis in the UI. It is the authoring scale: the size a label
 is designed at, and the one magnification at which the GUI and the SVG agree.
@@ -970,12 +974,16 @@ and rebuilds rectangle geometry through the topology-safe replacement path.
 CLI tests cover each option, invalid combinations and a frame sharing topology
 with another polygon layer.
 
-**4. Preview mode.** Read-only: toggle, mask, page boundary, magnification
-readout, snap-to-100%. This surfaces behaviour that already exists and is the
-milestone most likely to change how the rest feels, so it lands before the
-editing tool rather than after. This milestone also moves the backing frame
-into its non-pinnable layer-panel section so preview no longer depends on
-ordinary layer visibility.
+**4. Preview mode — implemented.** Preview is now an explicit display state,
+independent of layer visibility. Its nav toggle enables frame-constrained
+bounds and symbol scaling; an SVG overlay draws the page boundary and a
+single even-odd outside mask without adding work to per-shape render loops.
+The readout reports nominal size and live magnification and offers 50%, 100%,
+200% and Fit page actions. Table view suspends preview rendering without
+clearing the toggle. The backing frame is excluded from map content and moved
+to a separate non-pinnable Map frame section in the layer panel. Focused
+browser tests cover no-frame, toggle, overlay, readout, 100% snapping and
+table-view behavior.
 
 **5. The frame tool.** Mode, handles, the three gestures, the three creation
 paths, the panel and the separate layer-panel entry, all command-backed.

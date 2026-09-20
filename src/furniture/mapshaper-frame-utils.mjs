@@ -139,6 +139,19 @@ export function parseFrameSize(arg) {
   return {valuePx: parseSizeParam(arg), units: units};
 }
 
+export function formatFrameSizeForDisplay(frame) {
+  var units = frame.units || 'px';
+  var k = units == 'in' ? 72 :
+    units == 'cm' ? 28.3465 : 1;
+  return formatFrameDimension(frame.width / k) + ' × ' +
+    formatFrameDimension(frame.height / k) + ' ' + units;
+}
+
+function formatFrameDimension(value) {
+  var rounded = Math.round(value * 100) / 100;
+  return String(rounded);
+}
+
 export function isFrameReservedField(name) {
   return frameReservedFields.includes(name);
 }
