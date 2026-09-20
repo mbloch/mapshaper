@@ -100,6 +100,49 @@ describe('mapshaper-frame.js', function () {
       assert(svg.includes('stroke="red"'));
     });
 
+    it('exports frame fill below content and neatline above content', async function() {
+      var out = await api.applyCommands(
+        '-rectangle bbox=0,0,2,1 name=content -style fill=blue ' +
+        '-frame bbox=0,0,2,1 width=800 name=frame ' +
+        '-style fill=beige stroke=red stroke-width=2 ' +
+        '-o target=content,frame out.svg'
+      );
+      var svg = String(out['out.svg']);
+      var background = svg.indexOf('id="frame-background"');
+      var content = svg.indexOf('id="content"');
+      var neatline = svg.indexOf('id="frame-neatline"');
+      assert(background > -1);
+      assert(content > background);
+      assert(neatline > content);
+    });
+
+    it('applies explicit GUI frame context without a frame layer', function() {
+      var dataset = api.internal.importGeoJSON({
+        type: 'Feature',
+        properties: {fill: 'blue'},
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[0, 0], [2, 0], [2, 1], [0, 1], [0, 0]]]
+        }
+      });
+      dataset.layers[0].name = 'content';
+      var files = api.internal.exportSVG(dataset, {
+        gui_frame: {
+          data: {bbox: [0, 0, 2, 1], width: 800, height: 400, units: 'px'},
+          name: 'frame',
+          style: {fill: 'beige', stroke: 'red', 'stroke-width': 2}
+        }
+      });
+      var svg = String(files[0].content);
+      var background = svg.indexOf('id="frame-background"');
+      var content = svg.indexOf('id="content"');
+      var neatline = svg.indexOf('id="frame-neatline"');
+      assert(svg.includes('width="800" height="400"'));
+      assert(background > -1);
+      assert(content > background);
+      assert(neatline > content);
+    });
+
     it('rejects a second frame', async function() {
       await assert.rejects(
         api.applyCommands('-frame bbox=0,0,2,1 width=800 -frame bbox=0,0,1,1 width=400'),

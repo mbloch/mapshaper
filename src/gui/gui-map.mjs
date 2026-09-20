@@ -186,6 +186,7 @@ export function MshpMap(gui) {
   this.getSvgRoot = function() { return _renderer ? _renderer.getSvgRoot() : null; };
   this.getActiveLayer = function() { return _activeLyr; };
   this.getHitControl = function() { return _hit; };
+  this.getCompositionLayers = function() { return getContentLayers().slice(); };
   this.getPreviewFrameData = getFrameLayerData;
   this.isPreviewView = isPreviewView;
   this.setPreviewMode = function(on, fitPage) {
@@ -342,6 +343,13 @@ export function MshpMap(gui) {
       // TODO: preserve simplification pct (need to record pct before change)
       if (e.flags.proj && updated.dataset.arcs) {
         updated.dataset.arcs.setRetainedPct(1);
+      }
+    }
+    if (e.flags['update-frame']) {
+      var frameTarget = internal.getActiveFrame(model);
+      if (frameTarget) {
+        delete frameTarget.layer.gui;
+        delete frameTarget.dataset.gui;
       }
     }
 

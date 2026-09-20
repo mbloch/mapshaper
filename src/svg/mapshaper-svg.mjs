@@ -26,7 +26,8 @@ var ILLUSTRATOR_PATH_VERTEX_LIMIT = 32000;
 export function exportSVG(dataset, opts) {
   var namespace = 'xmlns="http://www.w3.org/2000/svg"';
   var defs = [];
-  var frame, svg, layers, metadataJSON, files, svgFile;
+  var frame, frameLyr, frameBackground, frameNeatline;
+  var svg, layers, metadataJSON, files, svgFile;
   var style = '';
 
   // kludge for map keys
@@ -63,6 +64,21 @@ export function exportSVG(dataset, opts) {
   if (opts.scalebar) {
     layers.push(getScalebarLayer({})); // default options
   }
+  frameLyr = layers.find(function(lyr) {
+    return isFrameLayer(lyr, dataset.arcs);
+  });
+  if (frameLyr) {
+    frameBackground = exportFrameStylePhase(frameLyr, dataset, opts, 'background');
+    frameNeatline = exportFrameStylePhase(frameLyr, dataset, opts, 'neatline');
+    layers = layers.filter(function(lyr) { return lyr != frameLyr; });
+  } else if (opts.gui_frame?.style) {
+    frameBackground = exportExplicitFrameStyle(
+      frame, opts.gui_frame, 'background'
+    );
+    frameNeatline = exportExplicitFrameStyle(
+      frame, opts.gui_frame, 'neatline'
+    );
+  }
   svg = layers.map(function(lyr) {
     var obj;
     if (layerHasFurniture(lyr)) {
@@ -75,6 +91,8 @@ export function exportSVG(dataset, opts) {
     convertPropertiesToDefinitions(obj, defs);
     return stringify(obj);
   }).join('\n');
+  if (frameBackground) svg = frameBackground + '\n' + svg;
+  if (frameNeatline) svg += '\n' + frameNeatline;
 
   if (metadataJSON) {
     svg = getMetadataBlock(metadataJSON, [0, 0, frame.width, frame.height]) + svg;
@@ -107,6 +125,65 @@ ${svg}
   };
   files = [svgFile].concat(opts.svg_image_files);
   return files;
+}
+
+function exportFrameStylePhase(lyr, dataset, opts, phase) {
+  var copy = copyLayer(lyr);
+  var rec = copy.data && copy.data.getRecords()[0];
+  var obj;
+  if (!rec) return '';
+  if (phase == 'background') {
+    if (!rec.fill || rec.fill == 'none') return '';
+    removeStylePrefix(rec, 'stroke');
+    copy.name = (lyr.name || 'frame') + '-background';
+  } else {
+    if (!rec.stroke || rec.stroke == 'none' ||
+        Number(rec['stroke-width']) <= 0) return '';
+    removeStylePrefix(rec, 'fill');
+    rec.fill = 'none';
+    copy.name = (lyr.name || 'frame') + '-neatline';
+  }
+  obj = exportLayerForSVG(copy, dataset, opts);
+  return stringify(obj);
+}
+
+function removeStylePrefix(rec, prefix) {
+  Object.keys(rec).forEach(function(key) {
+    if (key == prefix || key.indexOf(prefix + '-') === 0) {
+      delete rec[key];
+    }
+  });
+}
+
+function exportExplicitFrameStyle(frame, context, phase) {
+  var style = context.style || {};
+  var properties = {
+    id: (context.name || 'frame') + '-' + phase,
+    x: 0,
+    y: 0,
+    width: frame.width,
+    height: frame.height
+  };
+  if (phase == 'background') {
+    if (!style.fill || style.fill == 'none') return '';
+    copyProperties(properties, style,
+      ['fill', 'fill-opacity', 'fill-rule', 'opacity']);
+  } else {
+    if (!style.stroke || style.stroke == 'none' ||
+        Number(style['stroke-width']) <= 0) return '';
+    properties.fill = 'none';
+    copyProperties(properties, style, [
+      'stroke', 'stroke-width', 'stroke-opacity', 'stroke-linecap',
+      'stroke-linejoin', 'stroke-dasharray', 'opacity'
+    ]);
+  }
+  return stringify({tag: 'rect', properties: properties});
+}
+
+function copyProperties(dest, src, names) {
+  names.forEach(function(name) {
+    if (src[name] !== undefined) dest[name] = src[name];
+  });
 }
 
 function getSvgFileBase(dataset, opts) {

@@ -16,6 +16,7 @@ import { GUI } from './gui-lib';
 //
 // API:
 //   toolbar.addButton(iconRef, opts) -> ToolbarButton
+//   toolbar.addTextButton(label, opts) -> ToolbarButton
 //   toolbar.addSeparator()
 //   toolbar.show()
 //   toolbar.hide()
@@ -45,6 +46,12 @@ export function FloatingToolbar(gui, opts) {
 
   this.addButton = function(iconRef, btnOpts) {
     return new ToolbarButton(content, iconRef, btnOpts || {});
+  };
+
+  this.addTextButton = function(label, btnOpts) {
+    var button = new ToolbarButton(content, null, btnOpts || {});
+    button.setText(label);
+    return button;
   };
 
   this.addSeparator = function() {
@@ -152,6 +159,11 @@ function ToolbarButton(parent, iconRef, opts) {
   };
 
   this.setTooltip = setTooltip;
+
+  this.setText = function(text) {
+    btn.addClass('text-btn').text(text);
+    return this;
+  };
 
   this.node = function() {
     return btn.node();

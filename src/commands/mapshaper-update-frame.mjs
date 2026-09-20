@@ -102,7 +102,7 @@ export function updateFrame(targetLayers, dataset, opts) {
   height = Math.round(width / effectiveAspect);
 
   noteLayerWillChange(lyr, {operation: OPERATION, unit: 'shapes'});
-  noteLayerWillChange(lyr, {operation: OPERATION, unit: 'data'});
+  lyr.data.captureTableBefore({operation: OPERATION});
   rec.width = width;
   rec.height = height;
   rec.frame_units = units;
@@ -111,7 +111,7 @@ export function updateFrame(targetLayers, dataset, opts) {
   } else {
     delete rec.frame_aspect_ratio;
   }
-  markLayerChanged(lyr, {operation: OPERATION, unit: 'data'});
+  lyr.data.markChanged({operation: OPERATION});
   rebuildFrameLayerGeometry(lyr, dataset, new Bounds(bbox));
   markLayerChanged(lyr, {operation: OPERATION, unit: 'shapes'});
 }

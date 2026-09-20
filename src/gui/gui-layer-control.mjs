@@ -26,6 +26,18 @@ export function LayerControl(gui) {
   var isOpen = false;
   var cache = new DomCache();
   var pinAll = el.findChild('.pin-all'); // button for toggling layer visibility
+  var frameEmpty = el.findChild('.map-frame-empty')
+    .on('click', openFrameCreateDialog)
+    .on('keydown', function(e) {
+      if (e.key == 'Enter' || e.key == ' ') {
+        e.preventDefault();
+        openFrameCreateDialog();
+      }
+    });
+
+  function openFrameCreateDialog() {
+    if (gui.frameTool) gui.frameTool.openCreateDialog();
+  }
 
   // layer repositioning
   var dragTargetId = null;
@@ -242,13 +254,15 @@ export function LayerControl(gui) {
         list.appendChild(element);
       }
     });
-    frameSection.classed('hidden', frameCount === 0);
+    frameSection.classed('hidden', layerCount === 0);
+    frameEmpty.classed('hidden', frameCount > 0);
   }
 
   cache.cleanup();
 
   function renderLayer(lyr, dataset, opts) {
     var classes = 'layer-item';
+    var isFrame = internal.isFrameLayer(lyr, dataset.arcs);
     var entry, html;
 
     if (opts.pinnable) classes += ' pinnable';
@@ -258,7 +272,7 @@ export function LayerControl(gui) {
 
     html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
     html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + formatLayerNameForDisplay(lyr.name) + '</span>', 'row1');
-    html += rowHTML('contents', describeLyr(lyr, dataset));
+    html += rowHTML(isFrame ? 'size' : 'contents', describeLyr(lyr, dataset));
     html += '<span class="more-btn layer-btn" role="button" aria-label="More layer options"></span>';
     if (opts.pinnable) {
       html += '<img class="eye-btn black-eye layer-btn" draggable="false" src="images/eye.png">';
@@ -373,21 +387,22 @@ export function LayerControl(gui) {
 
     function showLayerInfo() {
       var target = findLayerById(id);
-      var popup, content, isFrame;
+      var popup, content;
       if (!target) return;
-      isFrame = internal.isFrameLayer(target.layer, target.dataset.arcs);
-      popup = showPopupAlert('', isFrame ? 'Frame info' : 'Layer info');
+      popup = showPopupAlert('', 'Layer info');
       content = popup.container().addClass('layer-info-popup');
       content.node().appendChild(renderLayerInfo(
-        internal.getLayerInfo(target.layer, target.dataset),
-        isFrame,
-        isFrame ? internal.getFrameLayerData(target.layer, target.dataset.arcs) : null
+        internal.getLayerInfo(target.layer, target.dataset)
       ));
     }
 
-    function toggleFramePreview() {
-      if (!gui.previewMode) return;
-      gui.previewMode.setOn(!gui.previewMode.isOn());
+    function openFrameProperties() {
+      var target = findLayerById(id);
+      if (target && gui.frameProperties) gui.frameProperties.open(target);
+    }
+
+    function resizeFrame() {
+      if (gui.frameTool) gui.frameTool.open();
     }
 
     function styleLayer() {
@@ -423,11 +438,9 @@ export function LayerControl(gui) {
       var isFrame = target &&
         internal.isFrameLayer(target.layer, target.dataset.arcs);
       if (isFrame) {
-        menuEvent.toggleFramePreview = toggleFramePreview;
-        menuEvent.framePreviewName = gui.previewMode?.isOn() ?
-          'exit preview mode' : 'enter preview mode';
+        menuEvent.frameProperties = openFrameProperties;
+        menuEvent.resizeFrame = resizeFrame;
         menuEvent.deleteFrame = deleteLayer;
-        menuEvent.showFrameInfo = showLayerInfo;
       } else {
         menuEvent.deleteLayer = deleteLayer;
         menuEvent.duplicateLayer = duplicateLayer;
@@ -498,7 +511,13 @@ export function LayerControl(gui) {
 
     // init click-to-select
     GUI.onClick(entry, function() {
-      selectLayer();
+      var target = findLayerById(id);
+      if (target && internal.isFrameLayer(target.layer, target.dataset.arcs) &&
+          gui.frameProperties) {
+        gui.frameProperties.open(target);
+      } else {
+        selectLayer();
+      }
     });
 
   }
@@ -515,7 +534,9 @@ export function LayerControl(gui) {
       type = 'raster layer';
     }
     if (isFrame) {
-      str = 'map frame';
+      str = internal.formatFrameSizeForDisplay(
+        internal.getFrameLayerData(lyr, dataset.arcs)
+      );
     } else if (internal.layerHasRaster(lyr)) {
       str = utils.format('%,d x %,d %s', internal.getRasterWidth(lyr.raster), internal.getRasterHeight(lyr.raster), type);
     } else if (type) {
@@ -526,18 +547,10 @@ export function LayerControl(gui) {
     return str;
   }
 
-  function renderLayerInfo(info, isFrame, frame) {
+  function renderLayerInfo(info) {
     var container = document.createElement('div');
     var title = document.createElement('div');
     container.className = 'console-info';
-    if (isFrame) {
-      container.appendChild(renderKeyValueTable([
-        ['Output size', internal.formatFrameSizeForDisplay(frame)],
-        ['Bounds', info.bbox.join(',')],
-        ['CRS', info.proj4]
-      ], 'console-info-table'));
-      return container;
-    }
     title.className = 'console-info-title';
     title.textContent = 'Layer: ' + (info.layer_name || '[unnamed layer]');
     container.appendChild(title);

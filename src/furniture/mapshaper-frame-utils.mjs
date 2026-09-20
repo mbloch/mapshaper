@@ -6,7 +6,6 @@ import { error, stop, warn } from '../utils/mapshaper-logging';
 import { layerIsRectangle, getLayerBounds } from '../dataset/mapshaper-layer-utils';
 import { transformPoints } from '../dataset/mapshaper-dataset-utils';
 import { parseSizeParam } from '../geom/mapshaper-units';
-import { noteLayerWillChange, markLayerChanged } from '../undo/mapshaper-undo-tracking';
 import utils from '../utils/mapshaper-utils';
 /*
 {
@@ -22,7 +21,14 @@ export function getFrameData(dataset, exportOpts) {
   var frameTarget = resolveExportFrame({targetDataset: dataset, mode: 'cli'});
   var frameLyr = frameTarget && frameTarget.layer;
   var data;
-  if (frameLyr) {
+  if (exportOpts.gui_frame?.data) {
+    data = Object.assign({}, exportOpts.gui_frame.data, {
+      bbox: exportOpts.gui_frame.data.bbox.slice()
+    });
+    if (exportOpts.width > 0 || exportOpts.height > 0) {
+      data = resizeFrameForExport(data, exportOpts);
+    }
+  } else if (frameLyr) {
     data = getFrameLayerData(frameLyr, dataset.arcs, getDatasetCRS(dataset));
     if (exportOpts.width > 0 || exportOpts.height > 0) {
       data = resizeFrameForExport(data, exportOpts);
@@ -160,11 +166,11 @@ export function demoteFrameLayer(lyr, operation) {
   var rec = lyr.data && lyr.data.getRecords()[0];
   if (!rec) return;
   operation = operation || 'frame';
-  noteLayerWillChange(lyr, {operation: operation, unit: 'data'});
+  lyr.data.captureTableBefore({operation: operation});
   frameReservedFields.forEach(function(field) {
     delete rec[field];
   });
-  markLayerChanged(lyr, {operation: operation, unit: 'data'});
+  lyr.data.markChanged({operation: operation});
 }
 
 export function getSingleFrameRecord(lyr) {

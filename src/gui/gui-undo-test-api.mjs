@@ -1,6 +1,7 @@
 import { snipPath } from './gui-snipping-utils';
 import { getNewLabelStyle } from './gui-label-style-state';
 import { appUndoIsEnabled } from './gui-app-undo';
+import { internal } from './gui-core';
 
 export function createUndoTestApi(gui) {
   return {
@@ -136,6 +137,19 @@ export function createUndoTestApi(gui) {
     },
     zoomToFrameMagnification: function(scale) {
       gui.map.getExtent().zoomToFrameMagnification(scale);
+    },
+    openFrameTool: function() {
+      if (gui.frameTool) gui.frameTool.open();
+    },
+    getFrameInfo: function() {
+      var target = internal.getActiveFrame(gui.model);
+      if (!target) return null;
+      return Object.assign({
+        name: target.layer.name || ''
+      }, internal.getFrameLayerData(target.layer, target.dataset.arcs));
+    },
+    setFrameLockSize: function(on) {
+      if (gui.frameTool) gui.frameTool.setLockSize(on);
     },
     // The map's current view, in display CRS coordinates, for a test that an
     // edit leaves the view where the user put it.

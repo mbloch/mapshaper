@@ -3,13 +3,34 @@ import { expect, test } from '@playwright/test';
 var POINT_FIXTURE = 'test/data/geojson/three_points.geojson';
 var TABLE_FIXTURE = 'test/data/features/join/key_target.csv';
 
-test('preview controls are disabled without a frame', async function({page}) {
+test('frame button opens frame creation when no frame exists', async function({page}) {
   await loadFixture(page, POINT_FIXTURE);
 
-  await expect(page.locator('.preview-toggle')).toHaveClass(/disabled/);
+  await expect(page.locator('.preview-toggle')).not.toHaveClass(/disabled/);
+  await expect(page.locator('.frame-tool-toggle')).toHaveCount(0);
+  expect(await page.locator('.nav-buttons > .nav-btn:last-child')
+    .evaluate(function(el) {
+      return el.classList.contains('preview-toggle');
+    })).toBe(true);
   await expect(page.locator('.preview-readout')).toBeHidden();
   await expect(page.locator('.preview-overlay')).toBeHidden();
   expect(await getSymbolScale(page)).toBe(1);
+  await page.locator('.preview-toggle').click();
+  await expect(page.locator('.frame-create-popup')).toBeVisible();
+});
+
+test('frame button explains that layers are required', async function({page}) {
+  await page.goto('/?undo=on&undo-test=on');
+  await page.waitForFunction(function() {
+    return window.mapshaper && window.mapshaper.undoTest;
+  });
+  await page.locator('.preview-toggle').evaluate(function(el) {
+    el.click();
+  });
+  await expect(page.locator('.alert-wrapper')).toContainText(
+    'Add one or more layers before creating a map frame.'
+  );
+  await expect(page.locator('.frame-create-popup')).toHaveCount(0);
 });
 
 test('preview toggle shows the page mask, boundary and readout', async function({page}) {
@@ -59,6 +80,7 @@ test('preview magnification snaps to 100 percent', async function({page}) {
 
 test('table view suspends preview without clearing its state', async function({page}) {
   await loadPreviewSession(page, POINT_FIXTURE + ',' + TABLE_FIXTURE);
+  await selectLayer(page, 'three_points');
   await setPreviewMode(page, true);
   await expect(page.locator('.preview-overlay')).toBeVisible();
 
@@ -81,16 +103,29 @@ test('the map frame row has frame-specific menu actions', async function({page})
 
   await expect(page.locator('.contextmenu')).toBeVisible();
   expect(await page.locator('.contextmenu-item').allInnerTexts()).toEqual([
-    'enter preview mode',
+    'frame properties',
+    'resize frame',
     'delete frame',
-    'show frame info'
   ]);
 
-  await page.locator('.contextmenu-item').filter({hasText: 'show frame info'}).click();
-  await expect(page.locator('.layer-info-popup')).toContainText('600 × 600 px');
-  await expect(page.locator('.layer-info-popup')).toContainText('-80,30,-70,40');
-  await expect(page.locator('.layer-info-popup')).not.toContainText('Records');
-  await expect(page.locator('.layer-info-popup')).not.toContainText('Attribute data');
+  await page.locator('.contextmenu-item').filter({hasText: 'frame properties'}).click();
+  await expect(page.locator('.frame-properties-popup')).toBeVisible();
+  await expect(page.locator('.frame-width-input')).toHaveValue('600');
+  await page.locator('.alert-wrapper .close2-btn').click();
+
+  await page.locator('.map-frame-list .more-btn').click();
+  await page.locator('.contextmenu-item').filter({hasText: 'resize frame'}).click();
+  expect(await page.evaluate(function() {
+    return window.mapshaper.undoTest.getInteractionMode();
+  })).toBe('frame');
+  await expect(page.locator('.frame-toolbar')).toBeVisible();
+  await expect(page.locator('.frame-toolbar')).toContainText(
+    'CropFit viewFit layersDone'
+  );
+  await page.locator('.frame-toolbar .text-btn').filter({hasText: 'Done'}).click();
+  expect(await page.evaluate(function() {
+    return window.mapshaper.undoTest.getInteractionMode();
+  })).toBe('off');
 });
 
 async function loadPreviewSession(page, files) {

@@ -32,9 +32,10 @@
 	</g>
 	</svg>
 
-	<svg version="1.1" id="preview-icon" xmlns="http://www.w3.org/2000/svg"
-		 width="14px" height="14px" viewBox="0 0 14 14">
-		<path d="M1 1h12v12H1zM4 4v6h6V4z" fill-rule="evenodd"/>
+	<svg version="1.1" id="frame-tool-icon" xmlns="http://www.w3.org/2000/svg"
+		 width="16px" height="19px" viewBox="0 0 16 16">
+		<path d="M2 2h12v12H2zM4 4v8h8V4z" fill-rule="evenodd"/>
+		<path d="M0 0h4v1H1v3H0zm12 0h4v4h-1V1h-3zM0 12h1v3h3v1H0zm15 0h1v4h-4v-1h3z"/>
 	</svg>
 
 	<svg version="1.1" id="zoom-in-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px"
@@ -63,7 +64,7 @@
 </svg>
 
 	<!-- adjusted height -->
-	<svg id="pointer-icon" version="1.1" xmlns="http://www.w3.org/2000/svg" width="15" height="22" viewBox="0 0 15 20"><rect x="7.4126" y="11.0354" width="3.9102" height="7.9841" transform="translate(-5.8889 6.0377) rotate(-27.5536)" fill="#30d4ef"/><polygon points="2.57 2.086 2.718 16.056 13.944 10.198 2.57 2.086" fill="#30d4ef"/></svg>
+	<svg id="pointer-icon" version="1.1" xmlns="http://www.w3.org/2000/svg" width="15" height="22" viewBox="0 0 15 20"><rect x="7.4126" y="11.0354" width="3.9102" height="10" transform="translate(-5.8889 6.0377) rotate(-27.5536)" fill="#30d4ef"/><polygon points="2.57 2.086 2.718 16.056 13.944 10.198 2.57 2.086" fill="#30d4ef"/></svg>
 
 	<!-- adjusted height -->
 	<svg id="ribbon-icon" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" width="15" height="25" viewBox="0 1 15 20">
@@ -164,6 +165,7 @@
 			<h4 class="menu-title">Layers</h4>
 			<div class="export-layer-list option-menu"></div>
 		</div>
+		<div class="export-frame-info"></div>
 		<div class="export-zip-option option-menu">
 
 		<div style="height:6px"></div>
@@ -378,6 +380,7 @@ encoding=big5</span>. Click to see all options.</div></div></div>
 					<div class="map-frame-section hidden">
 						<div class="map-frame-heading"><h3>Map frame</h3></div>
 						<div class="map-frame-list"></div>
+						<div class="map-frame-empty colored-text" role="button" tabindex="0">add map frame</div>
 					</div>
 					<div class="no-layer-note">No data has been added</div>
 				</div>

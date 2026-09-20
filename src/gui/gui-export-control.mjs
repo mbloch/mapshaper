@@ -22,6 +22,8 @@ export var ExportControl = function(gui) {
   var toggleBtn = null; // checkbox <input> for toggling layer selection
   var exportBtn = gui.container.findChild('.export-btn').addClass('disabled');
   var ofileName = gui.container.findChild('#ofile-name');
+  var frameInfo = menu.findChild('.export-frame-info').hide();
+  menu.findChild('.advanced-options').on('input', updateFrameInfo);
   new SimpleButton(menu.findChild('.close2-btn')).on('click', gui.clearMode);
 
   if (!GUI.exportIsSupported()) {
@@ -90,6 +92,7 @@ export var ExportControl = function(gui) {
     formatPickedByUser = false;
     // initZipOption();
     initFormatMenu();
+    updateFrameInfo();
     updateExportCheckboxes();
     menu.show();
   }
@@ -171,6 +174,10 @@ export var ExportControl = function(gui) {
       var snapshot = gui.session.getHistorySnapshot();
       snapshot.savedAtIndex = snapshot.commands.length;
       opts.history = snapshot;
+      targets = addFrameTarget(targets);
+    }
+    if (opts.format == 'svg' || opts.format == 'topojson') {
+      opts.gui_frame = getGuiFrameContext();
     }
     try {
       var files = await internal.exportTargetLayers(model, targets, opts);
@@ -236,7 +243,9 @@ export var ExportControl = function(gui) {
 
   function initLayerMenu() {
     var list = menu.findChild('.export-layer-list').empty();
-    var layers = model.getLayers();
+    var layers = model.getLayers().filter(function(o) {
+      return !internal.isFrameLayer(o.layer, o.dataset.arcs);
+    });
     sortLayersForMenuDisplay(layers);
 
     if (layers.length > 2) {
@@ -355,11 +364,13 @@ export var ExportControl = function(gui) {
     // changes afterwards.
     formatPickedByUser = true;
     updateExportCheckboxes();
+    updateFrameInfo();
   }
 
   function setSelectedFormat(fmt) {
     var el = menu.findChild('.export-formats input[value="' + fmt + '"]');
     if (el) el.node().checked = true;
+    updateFrameInfo();
   }
 
   // Which formats apply depends on what is checked for export, so unchecking
@@ -401,6 +412,62 @@ export var ExportControl = function(gui) {
       if (o.checkbox.checked) memo.push(o.checkbox.value);
       return memo;
     }, []);
+  }
+
+  function getGuiFrameContext() {
+    var target = internal.getActiveFrame(model);
+    var rec, style;
+    if (!target) return null;
+    rec = target.layer.data.getReadOnlyRecordAt(0) || {};
+    style = {};
+    ['fill', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-opacity',
+      'stroke-linecap', 'stroke-linejoin', 'stroke-dasharray', 'opacity'
+    ].forEach(function(field) {
+      if (rec[field] !== undefined && rec[field] !== null && rec[field] !== '') {
+        style[field] = rec[field];
+      }
+    });
+    return {
+      data: internal.getFrameLayerData(
+        target.layer,
+        target.dataset.arcs,
+        internal.getDatasetCRS(target.dataset)
+      ),
+      name: target.layer.name || 'frame',
+      style: style
+    };
+  }
+
+  function addFrameTarget(targets) {
+    var frame = internal.getActiveFrame(model);
+    var group;
+    if (!frame) return targets;
+    targets = targets.map(function(target) {
+      return Object.assign({}, target, {layers: target.layers.slice()});
+    });
+    group = targets.find(function(target) {
+      return target.dataset == frame.dataset;
+    });
+    if (group) {
+      if (!group.layers.includes(frame.layer)) group.layers.push(frame.layer);
+    } else {
+      targets.push({dataset: frame.dataset, layers: [frame.layer]});
+    }
+    return targets;
+  }
+
+  function updateFrameInfo() {
+    if (!frameInfo) return;
+    var context = getGuiFrameContext();
+    var format = getSelectedFormat();
+    var topoUsesPixels = format == 'topojson' &&
+      /\b(?:width|height)\s*=/.test(getExportOptsAsString());
+    if (context && (format == 'svg' || topoUsesPixels)) {
+      frameInfo.text('Map frame: ' +
+        internal.formatFrameSizeForDisplay(context.data)).show();
+    } else {
+      frameInfo.hide();
+    }
   }
 
 };

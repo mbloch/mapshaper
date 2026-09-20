@@ -168,14 +168,14 @@ export function ContextMenu(parentArg) {
     }
     openMenu = this;
 
-    if (e.toggleFramePreview) {
-      addMenuItem(e.framePreviewName || 'enter preview mode', e.toggleFramePreview, '');
+    if (e.frameProperties) {
+      addMenuItem('frame properties', e.frameProperties, '');
+    }
+    if (e.resizeFrame) {
+      addMenuItem('resize frame', e.resizeFrame, '');
     }
     if (e.deleteFrame) {
       addMenuItem('delete frame', e.deleteFrame, '');
-    }
-    if (e.showFrameInfo) {
-      addMenuItem('show frame info', e.showFrameInfo, '');
     }
     if (e.deleteLayer) {
      addMenuItem('delete layer', e.deleteLayer, '');

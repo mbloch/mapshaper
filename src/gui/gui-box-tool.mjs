@@ -119,11 +119,12 @@ export function BoxTool(gui, ext, nav) {
     return !_on && gui.getMode() != 'selection_tool';
   }
 
-  function runCommand(cmd) {
+  function runCommand(cmd, onSuccess) {
     if (gui.console) {
       gui.console.runMapshaperCommands(cmd, function(err) {
         reset();
         gui.clearMode();
+        if (!err && onSuccess) onSuccess();
       });
     }
     // reset(); // TODO: exit interactive mode
@@ -191,9 +192,7 @@ export function BoxTool(gui, ext, nav) {
     var popup = showPopupAlert('', 'Add a map frame');
     var el = popup.container();
     el.addClass('option-menu');
-    var html = `<p>Enter a width in px, cm or inches to create a frame layer
-for setting the size of the map for symbol scaling in the
-GUI and setting the size and crop of SVG output.</p><div><input type="text" class="frame-width text-input" placeholder="examples: 600px 5in"></div>
+    var html = `<p>Enter an output width in px, cm or inches.</p><div><input type="text" class="frame-width text-input" placeholder="examples: 600px 5in"></div>
     <div class="btn dialog-btn">Create</div></span>`;
     el.html(html);
     var input = el.findChild('.frame-width');
@@ -205,8 +204,10 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         input.node().value = '';
         return;
       }
-      var cmd = `-rectangle + name=frame bbox='${bbox.join(',')}' width='${widthStr}'`;
-      runCommand(cmd);
+      var cmd = `-frame name=frame bbox='${bbox.join(',')}' width='${widthStr}'`;
+      runCommand(cmd, function() {
+        if (gui.frameTool) gui.frameTool.open();
+      });
       popup.close();
     });
   }

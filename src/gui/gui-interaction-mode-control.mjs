@@ -57,6 +57,8 @@ export function InteractionMode(gui) {
     vertices: 'edit vertices',
     selection: 'selection tool',
     ruler: 'measure distance',
+    frame: 'edit map frame',
+    frame_draw: 'draw map frame',
     'add-points': 'add points',
     rectangles: 'drag-to-resize',
     off: 'turn off'
@@ -131,7 +133,7 @@ export function InteractionMode(gui) {
   };
 
   this.modeSupportsUndo = function(mode) {
-    return ['data', 'label', 'label_style', 'point_style', 'line_style', 'polygon_style', 'edit_points', 'edit_lines', 'edit_polygons', 'snip_lines', 'vertices', 'rectangles'].includes(mode);
+    return ['data', 'frame', 'label', 'label_style', 'point_style', 'line_style', 'polygon_style', 'edit_points', 'edit_lines', 'edit_polygons', 'snip_lines', 'vertices', 'rectangles'].includes(mode);
   };
 
   this.getMode = getInteractionMode;
@@ -158,7 +160,8 @@ export function InteractionMode(gui) {
   // A mode with a panel of its own: hovering the button must not open the mode
   // menu over the panel.
   function stylePanelIsActive() {
-    return _editMode == 'label' || _editMode == 'label_style' ||
+    return _editMode == 'frame' || _editMode == 'frame_draw' ||
+      _editMode == 'label' || _editMode == 'label_style' ||
       _editMode == 'point_style' || _editMode == 'line_style' ||
       _editMode == 'polygon_style';
   }
@@ -225,9 +228,13 @@ export function InteractionMode(gui) {
   // if current editing mode is not available, turn off the tool
   function updateCurrentMode() {
     var modes = getAvailableModes();
-    if (modes.indexOf(_editMode) == -1 && !labelModeIsAvailable() && !labelStyleModeIsAvailable() && !layerStyleModeIsAvailable() && !pointStyleModeIsAvailable()) {
+    if (modes.indexOf(_editMode) == -1 && !frameModeIsAvailable() && !labelModeIsAvailable() && !labelStyleModeIsAvailable() && !layerStyleModeIsAvailable() && !pointStyleModeIsAvailable()) {
       setMode('off');
     }
+  }
+
+  function frameModeIsAvailable() {
+    return _editMode == 'frame' || _editMode == 'frame_draw';
   }
 
   // Whether a label made now would join the active layer rather than starting a
@@ -316,7 +323,7 @@ export function InteractionMode(gui) {
     }
     btn.classed('hover', _menuOpen);
     // btn.classed('selected', active() && !_menuOpen);
-    btn.classed('selected', active());
+    btn.classed('selected', active() && _editMode != 'frame_draw');
   }
 
   function updateSelectionHighlight() {

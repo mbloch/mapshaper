@@ -810,7 +810,7 @@ test('undoing initial rectangle creation clears the map display', async function
   await assertInitialRectangleUndoClearsDisplay(page, "-rectangle + bbox='-80,30,-70,40'");
 });
 
-test('undoing initial frame creation clears the preview controls', async function({page}) {
+test('undoing initial frame creation clears preview without disabling frame creation', async function({page}) {
   await loadBlankSession(page);
 
   await page.evaluate(function() {
@@ -829,7 +829,8 @@ test('undoing initial frame creation clears the preview controls', async functio
   await expect.poll(async function() {
     return (await getUndoState(page)).model.layerCount;
   }).toBe(0);
-  await expect(page.locator('.preview-toggle')).toHaveClass(/disabled/);
+  await expect(page.locator('.preview-toggle')).not.toHaveClass(/disabled/);
+  await expect(page.locator('.preview-readout')).toBeHidden();
 });
 
 async function assertInitialRectangleUndoClearsDisplay(page, command) {

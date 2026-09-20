@@ -11,7 +11,7 @@ export function HighlightBox(gui, optsArg) {
         persistent: false,
         draggable: false  // does dragging the map draw a box
       }, optsArg),
-      clickToStart = opts.name == 'box-tool', // other versions use shift-drag
+      clickToStart = opts.clickToStart || opts.name == 'box-tool',
       box = new EventDispatcher(),
       stroke = 2,
       activeHandle = null,
@@ -110,18 +110,25 @@ export function HighlightBox(gui, optsArg) {
       }
       prevXY = xy;
       redraw();
-      box.dispatchEvent('handle_drag');
+      box.dispatchEvent('handle_drag', {
+        handle: copyHandle(activeHandle),
+        map_bbox: boxCoords.slice()
+      });
     });
 
     gui.map.getMouse().on('mouseup', function(e) {
       if (activeHandle && _on) {
+        var handle = copyHandle(activeHandle);
         activeHandle.el.css('background', null);
         activeHandle = null;
         prevXY = null;
-        box.dispatchEvent('handle_up');
         // reset box if it has been inverted (by dragging)
         fixBounds(boxCoords);
         redraw();
+        box.dispatchEvent('handle_up', {
+          handle: handle,
+          map_bbox: boxCoords.slice()
+        });
       }
     });
   }
@@ -199,6 +206,12 @@ export function HighlightBox(gui, optsArg) {
     var dataBox = lyr ? translateCoordsToLayerCRS(boxCoords, lyr) : translateCoordsToLatLon(boxCoords);
     fixBounds(dataBox);
     return dataBox;
+  };
+
+  // Coordinates in the map's display CRS. This avoids routing frame-tool
+  // coordinates through the currently active content layer.
+  box.getDisplayCoords = function() {
+    return boxCoords ? boxCoords.slice() : null;
   };
 
   box.turnOn = function() {
@@ -297,6 +310,14 @@ export function HighlightBox(gui, optsArg) {
   }
 
   return box;
+}
+
+function copyHandle(handle) {
+  return handle ? {
+    type: handle.type,
+    col: handle.col,
+    row: handle.row
+  } : null;
 }
 
 function coordsToPix(bbox, ext) {

@@ -38,7 +38,8 @@ In scope:
 - A strict, centralized frame-recognition and configuration API
 - Frame-aware reprojection, so `-proj` no longer destroys a frame
 - An `-update-frame` command, so every frame edit is a replayable command
-- A `frame` GUI interaction mode with on-map handles and a numeric panel
+- A `frame` GUI interaction mode with on-map handles, a compact resize toolbar
+  and a separate properties dialog
 - A preview mode that shows the page boundary, masks the area outside it, and
   reports the current magnification as a percentage
 - Creation from the current view, the visible-layer bounds, or a drawn box
@@ -423,7 +424,7 @@ that ratio, and the extent is padded — not cropped — to that shape using the
 existing `fillOutBbox()` logic.
 
 This lets a composer say "600 × 400" without allowing `height`, geometry and
-width to drift apart. The panel may expose width and height as paired controls,
+width to drift apart. The properties dialog may expose width and height as paired controls,
 but committing height changes the optional aspect ratio; height itself remains
 a derived compatibility field refreshed by frame commands, not an independent
 source of truth. Clearing the fixed-aspect control removes
@@ -434,7 +435,7 @@ an older frame record remains non-authoritative, preserving current output.
 
 Width is always stored in px, as `parseSizeParam()` already produces. The
 authored unit is remembered in `frame_units` so a frame created as `6in` reads
-back as `6in` in the panel rather than `432px`:
+back as `6in` in the properties dialog rather than `432px`:
 
 ```js
 {type: 'frame', width: 432, frame_aspect_ratio: 1.5, frame_units: 'in'}
@@ -444,7 +445,7 @@ back as `6in` in the panel rather than `432px`:
 
 Add a frame-specific parser that returns `{valuePx, units}` instead of losing
 the authored unit as `parseSizeParam()` does. Bare numbers mean px during
-creation and the frame's current authored unit during panel editing. Width and
+creation and the frame's current authored unit during property editing. Width and
 height entered with different units are normalized to px before computing an
 aspect ratio.
 
@@ -456,7 +457,7 @@ carry geometry and record 0 together. Delimited text can carry the settings
 but cannot round-trip a frame because it has no rectangle geometry.
 
 For a recognized frame, the GUI hides reserved configuration fields from the
-ordinary attribute inspector and directs edits to the frame panel. The CLI
+ordinary attribute inspector and directs edits to Frame properties. The CLI
 does not make the fields immutable: explicitly targeting the frame with
 `-each`, `-filter-fields` or `-rename-fields` may change or remove its role,
 just as editing its geometry may. `-update-frame remove` is the documented way
@@ -682,17 +683,19 @@ Export size precedence is explicit:
 Emit the native-symbol warning whenever the resulting dimensions differ from
 the nominal frame size, whether the override came from width, height or both.
 
-### Decided: a frame is never drawn into GUI composition output
+### Decided: frame appearance uses composition passes, not a content layer
 
-A frame layer emits no geometry unless it carries explicit style properties
-(`fill`, `stroke`, ...), in which case the user has asked for a border and
-gets one. This removes the empty `<path fill="none">` from existing output,
-which is a cosmetic change no consumer can depend on, and removes the black
-trapezoid from the broken-projection case, which is a bug fix.
+An unstyled frame emits no geometry. A styled frame has composition semantics:
+its fill is the map background below all content, and its stroke is a neatline
+above all content. The two passes are derived from the normalized frame, so
+they continue to match after the frame is edited or reprojected. The GUI does
+not expose or create ordinary rectangle layers for either purpose.
 
-The styled-frame exception applies when a CLI/data export explicitly targets
-the backing frame layer. GUI composition export never renders backing frame
-geometry; border and background controls are deferred.
+CLI SVG export applies the same ordering when a styled frame is among the
+targets. GUI preview renders the background as a dedicated underlay and the
+neatline as a dedicated overlay. Milestone 6 passes these properties with the
+explicit GUI layout context, without adding backing frame geometry to the
+layer checklist.
 
 ### Decided: the GUI export dialog treats the frame as output settings
 
@@ -730,7 +733,10 @@ Preview does not capture the pointer, so it composes with every other tool:
 you can be labelling, styling or drawing while in preview. That makes it a
 display option rather than an entry in the interaction-mode menu. It is a
 toggle button in the nav button strip (`gui.buttons.addButton()`, alongside
-home and zoom in `gui-map-nav.mjs`), enabled only when a frame exists.
+home and zoom in `gui-map-nav.mjs`). It always remains clickable: with a frame
+it toggles preview, and without one it opens the same creation dialog as
+**add map frame**. If the session has no geographic layers, it explains that
+one or more layers must be added first.
 
 Today the state is entered implicitly by making the frame layer visible
 (`isPreviewView()` keys off `findFrameLayer()` over the pinned layers). That
@@ -785,9 +791,9 @@ inch.
 
 ### Interaction with table view and no-frame sessions
 
-`isPreviewView()` already excludes table view. With no frame, the toggle is
-disabled and the readout is hidden; `getSymbolScale()` returns 1 and nothing
-else changes, which is today's behaviour for unframed sessions.
+`isPreviewView()` already excludes table view. With no frame, clicking the
+frame button starts frame creation, while the readout remains hidden;
+`getSymbolScale()` returns 1 and nothing else changes.
 
 ## GUI: The Frame Tool
 
@@ -796,10 +802,12 @@ else changes, which is today's behaviour for unframed sessions.
 A `frame` interaction mode, registered in `gui-interaction-mode-control.mjs`
 with the label "edit map frame". Unlike the other modes, its availability does
 not depend on the active layer's geometry type — a frame is a property of the
-map, not of the layer you happen to have selected — so it is offered as its
-own button rather than repeated in each geometry-specific menu. The mode must
-not close when the user selects a different layer, which is the same problem
-the label tool solved with `labelModeIsAvailable()`.
+map, not of the layer you happen to have selected. It is entered from
+**Resize frame** in the frame row's context menu, not from a second nav button.
+The one frame-related nav button is the preview toggle and stays at the bottom
+of the nav stack. The mode must not close when the user selects a different
+layer, which is the same problem the label tool solved with
+`labelModeIsAvailable()`.
 
 Entering the mode turns on preview if it is not already on.
 
@@ -816,11 +824,17 @@ Three entry points, all running `-frame`:
   visible/pinned content stack and applies an optional margin. This makes the
   existing composition state useful without pretending it is a persistent
   frame-to-layer association.
-- **By drawing.** The existing box tool path, retargeted from `-rectangle` to
-  `-frame`, with the width prompt it already has.
+- **By drawing.** A frame-specific use of `HighlightBox` takes two corner
+  clicks, supports draggable handles, and shows only **Done** and **Cancel**.
+  It does not open the general rectangle-tool menu. The rectangle tool's
+  existing Frame action remains an additional creation path. A transient
+  non-blocking popup explains the two-click gesture and disappears after the
+  second corner is placed. This drawing state does not highlight the pointer
+  tool's arrow button.
 
-When no frame exists, the frame tool shows the first option prominently rather
-than an empty panel.
+When no frame exists, the Map frame section remains visible and shows an
+**add map frame** entry. It opens a compact creation dialog with all three
+paths; the existing rectangle-tool path remains available.
 
 ### The three gestures, one at a time
 
@@ -838,8 +852,9 @@ toggle rather than a hidden modifier.**
 | Drag edge or corner handle, with **Lock size** on | **Change scale** | Extent changes; nominal size fixed; scale changes. You fit more or less map onto the same page. |
 | Drag the frame interior (center handle) | **Move** | Extent shifts; size and scale constant. |
 
-The lock is a two-state control in the frame panel and in the mode's floating
-toolbar, so the current meaning of a drag is always on screen. `HighlightBox`'s
+The lock is a two-state control in the mode's floating toolbar, so the current
+meaning of a drag is always on screen. A Done button exits resize mode.
+`HighlightBox`'s
 shift modifiers (symmetric, square) keep their existing meanings and compose
 with either mode.
 
@@ -858,10 +873,9 @@ During a drag, the readout updates live so the consequence is visible:
 cropping shows the page size changing, changing scale shows the percentage
 changing.
 
-### The panel
+### Properties and resize controls
 
-A floating panel (`FloatingToolbar` plus a control panel, following the label
-and style tools) with:
+The frame row opens a compact **Frame properties** dialog with:
 
 - An editable **Name**, committed through the existing rename command path
 - **Width** and **Height** numeric fields with a unit selector (px/pt/in/cm)
@@ -870,21 +884,35 @@ and style tools) with:
   the lock on stores a fixed aspect ratio, not a separate authoritative height.
 - Common aspect presets plus a custom ratio; choosing a preset fixes the
   aspect and pads the extent
-- The **extent** as four editable coordinates, and a **Fit to layer** picker
-  that sets the extent from a chosen layer's bounds, plus **Fit visible
-  layers**
+- Read-only extent and CRS details
 - The current ground resolution as read-only context when the CRS supports a
   reliable value. Editable print scale is deferred; it would be misleading
   without an explicit physical-output contract.
-- **Frame this view** and **Zoom to frame** buttons
-- The **Lock size** toggle described above
-- **Remove frame**
+- **Background** fill and **Neatline** stroke controls. These style the frame
+  directly but render in separate bottom and top composition passes.
 
 The layer panel gets a separate, non-pinnable **Map frame** section whose row
-opens this panel. The frame remains discoverable and targetable by name, but
-it is no longer mixed into the content visibility stack. No frame-membership
-checkboxes are added in this version; ordinary layer visibility remains the
-composition control.
+opens this dialog. Its second line is **Size** followed by the output size,
+not generic layer contents. Its context menu contains **Frame properties**,
+**Resize frame**, and **Delete frame**. The frame remains discoverable and
+targetable by name, but it is no longer mixed into the content visibility
+stack. No frame-membership checkboxes are added in this version; ordinary
+layer visibility remains the composition control.
+
+The GUI model also excludes recognized frames from active/default targets
+whenever content layers exist. Creating or editing a frame therefore preserves
+the active data layer, does not change its unpinned visibility, and does not
+redirect the next implicit console command to the frame. Explicit commands
+such as `-update-frame target=frame` still resolve and mutate the frame without
+selecting it. This is a GUI rule only: CLI command-pipeline targeting remains
+unchanged, preserving scripts that style or export a newly created frame
+without an intervening `-target`.
+
+**Resize frame** turns on preview, displays the handle overlay and opens only
+a compact floating toolbar. Crop/change-scale state, Fit view, Fit layers and
+Done live there;
+numeric and appearance controls do not compete with the map in a large
+persistent panel.
 
 ### Command-backed edits, and drag granularity
 
@@ -903,9 +931,9 @@ that an undone `-update-frame` refreshes the preview overlay and the readout,
 which means the frame tool must listen for model updates rather than assuming
 it is the only thing that changes the frame.
 
-Each completed command refreshes the normalized frame, map bounds, panel
+Each completed command refreshes the normalized frame, map bounds, property
 controls, magnification readout, frame handles, hit/selection state and overlay
-rendering from model state. The panel follows the style-tool lifecycle:
+rendering from model state. The resize mode follows the style-tool lifecycle:
 `interaction_mode_change`, `model.update`, `undo_redo_post` and
 `map-needs-refresh`. No direct GUI mutation is allowed to become a second
 source of frame state.
@@ -926,14 +954,14 @@ source of frame state.
 | `src/io/mapshaper-export.mjs` | accept explicit GUI frame context; message when a CLI frame exists outside the target set |
 | `src/mapshaper-internal.mjs` | export the frame resolver and `isFrameLayer` for the GUI |
 | `src/gui/gui-preview-mode.mjs` | **new** — toggle, mask, page boundary, readout |
-| `src/gui/gui-frame-tool.mjs` | **new** — interaction mode, handles, gestures |
-| `src/gui/gui-frame-panel.mjs` | **new** — numeric controls |
+| `src/gui/gui-frame-resize-tool.mjs` | **new** — interaction mode, creation dialog, handles and resize toolbar |
+| `src/gui/gui-frame-properties.mjs` | **new** — editable frame properties dialog |
 | `src/gui/gui-map.mjs` | `isPreviewView()` reads the explicit flag; display-CRS frame fix |
 | `src/gui/gui-display-layer.mjs`, `gui-dynamic-crs.mjs` | isolated rectangular display frame using the dynamic display transform |
 | `src/gui/gui-map-extent.mjs` | unchanged, but `getSymbolScale()` becomes user-visible |
 | `src/gui/gui-box-tool.mjs` | frame button runs `-frame` |
 | `src/gui/gui-layer-control.mjs` | frame is not ordinary pinnable content |
-| `src/gui/gui-popup.mjs` | recognized frame records open the frame panel instead of generic attribute editing |
+| `src/gui/gui-layer-control.mjs` | recognized frame rows open Frame properties instead of generic attribute editing |
 | `src/gui/gui-export-control.mjs` | frame out of the checklist, output size line in |
 | `src/gui/gui-interaction-mode-control.mjs` | register the `frame` mode |
 
@@ -962,9 +990,9 @@ width. Frame data is normalized through `getFrameLayerData()`;
 target-dataset resolver. Catalog additions and layer-producing command updates
 reject a second frame before integration, including multi-dataset import and
 layer duplication. `-frame replace` demotes the previous frame, and frame
-writers preserve authored units and fixed aspect ratios. Until the frame panel
-arrives in milestone 5, the attribute popup and layer-info dialog hide reserved
-frame fields and show ordinary custom fields only.
+writers preserve authored units and fixed aspect ratios. Frame properties now
+owns these controls; generic attribute and layer-info surfaces do not expose
+the backing record.
 
 **3. `-update-frame` — implemented.** The command updates extent, offsets,
 aspect mode and nominal size in the documented order, or demotes the frame
@@ -985,11 +1013,27 @@ to a separate non-pinnable Map frame section in the layer panel. Focused
 browser tests cover no-frame, toggle, overlay, readout, 100% snapping and
 table-view behavior.
 
-**5. The frame tool.** Mode, handles, the three gestures, the three creation
-paths, the panel and the separate layer-panel entry, all command-backed.
+**5. The frame tool — implemented.** The nav contains one frame-related
+button: the preview toggle, using the frame icon at the bottom of the stack.
+The separate Map frame section stays visible when empty and opens a compact
+three-path creation dialog. A frame row opens editable Frame properties for
+name, authored size and units, aspect, ground-resolution context, background
+and neatline. Its context menu also starts a dedicated resize mode with
+handles and a compact crop/change-scale and Done toolbar. Handle drags move
+the frame, crop at constant scale by default, or change scale with page size
+locked; one command is committed per gesture and undo restores both geometry
+and frame data. Preview and SVG output render background and neatline in
+separate bottom and top composition passes. Focused browser tests cover
+creation, properties, layer-row entry, gesture semantics, undo and style
+ordering.
 
-**6. Export dialog.** Frame out of the layer checklist, output size reported,
-and normalized frame data passed explicitly as GUI layout context.
+**6. Export dialog — implemented.** The frame is omitted from the layer
+checklist and reported as output settings for SVG and pixel-sized TopoJSON.
+The GUI passes normalized frame data and appearance explicitly to the export
+pipeline, so selected content is fitted without adding backing frame geometry.
+SVG export emits the background before content and the neatline after it.
+Project-package export includes the frame automatically even though it is not
+a selectable content layer.
 
 Multi-frame support is explicitly not a milestone here. Milestone 2's resolver
 is the seam it would be built on.
@@ -1016,11 +1060,12 @@ is the seam it would be built on.
 ## Resolved Product Choices
 
 1. **The frame remains discoverable in the layer panel**, in a separate
-   non-pinnable Map frame section. Its row opens the frame panel; it is not a
+   non-pinnable Map frame section. Its row opens Frame properties; it is not a
    content visibility control.
 2. **A frame is never created implicitly.** Mapshaper remains useful for
-   one-layer data editing without introducing page state. The empty frame panel
-   makes creation easy when composition is intended.
+   one-layer data editing without introducing page state. An add-map-frame
+   entry in the empty Map frame section makes creation easy when composition
+   is intended.
 3. **Editable print scale is deferred.** The first panel may show reliable
    ground resolution as read-only context, but the primary live number is
    magnification relative to nominal authoring size.
@@ -1092,11 +1137,11 @@ Browser tests (`browser-tests/`) for milestones 4–5:
 - Change-scale drag with size locked: page size constant, percentage changes;
   fixed-aspect drag anchoring is preserved.
 - Undo after a frame drag restores the extent, the overlay and the readout.
-- Create, remove, rename and numeric edits produce correct undo and replayable
+- Create, delete, rename and numeric edits produce correct undo and replayable
   session history.
 - Opening a recognized frame does not expose reserved fields in the generic
   attribute editor.
-- Selecting a different layer with the frame tool open does not close it.
+- Selecting a different layer while resize mode is open does not close it.
 - Fit visible layers uses the current pinned/visible stack but creates no
   persistent membership metadata.
 - Entering table view suspends preview and returning restores it.
