@@ -2389,6 +2389,41 @@ export function getOptionParser() {
     .option('target', targetOpt);
 
   // used by GUI
+  parser.command('update-frame')
+    .describe('update an existing map frame layer')
+    .option('bbox', {
+      describe: 'frame coordinates (xmin,ymin,xmax,ymax)',
+      type: 'bbox'
+    })
+    .option('width', {
+      describe: 'nominal frame width (e.g. 5in, 10cm, 600px)'
+    })
+    .option('height', {
+      describe: 'nominal frame height'
+    })
+    .option('aspect-ratio', {
+      describe: 'fixed page aspect ratio',
+      type: 'number'
+    })
+    .option('auto-aspect', {
+      describe: 'derive page height from the frame extent',
+      type: 'flag'
+    })
+    .option('offset', {
+      describe: 'padding in display units or pct of width, e.g. 5cm 20px 5%',
+      type: 'strings'
+    })
+    .option('offsets', {
+      describe: 'separate offsets for each side, in l,b,r,t order',
+      type: 'strings'
+    })
+    .option('remove', {
+      describe: 'demote the frame to an ordinary rectangle layer',
+      type: 'flag'
+    })
+    .option('target', targetOpt);
+
+  // used by GUI
   parser.command('update-label')
     // .describe('move the anchor or curve knots of an existing label')
     .option('ids', {
@@ -2508,6 +2543,10 @@ export function getOptionParser() {
       type: 'strings'
     })
     .option('name', nameOpt)
+    .option('replace', {
+      describe: 'replace the existing map frame',
+      type: 'flag'
+    })
     .option('target', targetOpt);
 
     // .option('height', {

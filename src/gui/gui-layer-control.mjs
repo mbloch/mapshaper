@@ -366,7 +366,10 @@ export function LayerControl(gui) {
       if (!target) return;
       popup = showPopupAlert('', 'Layer info');
       content = popup.container().addClass('layer-info-popup');
-      content.node().appendChild(renderLayerInfo(internal.getLayerInfo(target.layer, target.dataset)));
+      content.node().appendChild(renderLayerInfo(
+        internal.getLayerInfo(target.layer, target.dataset),
+        internal.isFrameLayer(target.layer, target.dataset.arcs)
+      ));
     }
 
     function styleLayer() {
@@ -495,7 +498,7 @@ export function LayerControl(gui) {
     return str;
   }
 
-  function renderLayerInfo(info) {
+  function renderLayerInfo(info, isFrame) {
     var container = document.createElement('div');
     var title = document.createElement('div');
     container.className = 'console-info';
@@ -504,7 +507,7 @@ export function LayerControl(gui) {
     container.appendChild(title);
     container.appendChild(renderKeyValueTable(getInfoRows(info), 'console-info-table'));
     if (!info.raster_type) {
-      container.appendChild(renderAttributeInfoTable(info.attribute_data));
+      container.appendChild(renderAttributeInfoTable(info.attribute_data, isFrame));
     }
     return container;
   }
@@ -530,14 +533,19 @@ export function LayerControl(gui) {
     return rows;
   }
 
-  function renderAttributeInfoTable(fields) {
+  function renderAttributeInfoTable(fields, isFrame) {
     var wrapper = document.createElement('div');
     var title = document.createElement('div');
     wrapper.className = 'console-attribute-info';
     title.className = 'console-info-subtitle';
     title.textContent = 'Attribute data';
     wrapper.appendChild(title);
-    if (!fields) {
+    if (isFrame && fields) {
+      fields = fields.filter(function(o) {
+        return !internal.isFrameReservedField(o.field);
+      });
+    }
+    if (!fields || fields.length === 0) {
       var none = document.createElement('div');
       none.className = 'console-info-empty';
       none.textContent = '[none]';

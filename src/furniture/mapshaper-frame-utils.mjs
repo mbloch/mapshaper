@@ -1,10 +1,12 @@
 import { Bounds } from '../geom/mapshaper-bounds';
 import { getDatasetCRS, getScaleFactorAtXY} from '../crs/mapshaper-projections';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
-import { getFurnitureLayerType, getFurnitureLayerData } from '../furniture/mapshaper-furniture-utils';
-import { error, warn } from '../utils/mapshaper-logging';
+import { getFurnitureLayerData } from '../furniture/mapshaper-furniture-utils';
+import { error, stop, warn } from '../utils/mapshaper-logging';
 import { layerIsRectangle, getLayerBounds } from '../dataset/mapshaper-layer-utils';
 import { transformPoints } from '../dataset/mapshaper-dataset-utils';
+import { parseSizeParam } from '../geom/mapshaper-units';
+import { noteLayerWillChange, markLayerChanged } from '../undo/mapshaper-undo-tracking';
 import utils from '../utils/mapshaper-utils';
 /*
 {
@@ -17,10 +19,11 @@ import utils from '../utils/mapshaper-utils';
 
 
 export function getFrameData(dataset, exportOpts) {
-  var frameLyr = findFrameLayerInDataset(dataset);
+  var frameTarget = resolveExportFrame({targetDataset: dataset, mode: 'cli'});
+  var frameLyr = frameTarget && frameTarget.layer;
   var data;
   if (frameLyr) {
-    data = getFrameLayerData(frameLyr, dataset.arcs);
+    data = getFrameLayerData(frameLyr, dataset.arcs, getDatasetCRS(dataset));
     if (exportOpts.width > 0 || exportOpts.height > 0) {
       data = resizeFrameForExport(data, exportOpts);
     }
@@ -64,18 +67,29 @@ export function fitDatasetToFrame(dataset, frame) {
   });
 }
 
-export function getFrameLayerData(lyr, arcs) {
+export function getFrameLayerData(lyr, arcs, crs) {
+  if (!isFrameLayer(lyr, arcs)) {
+    error('Invalid map frame layer');
+  }
   var bounds = getLayerBounds(lyr, arcs);
-  var d = lyr.data.getReadOnlyRecordAt(0);
-  var w = d.width || 800;
+  var d = getSingleFrameRecord(lyr);
+  var w = d.width;
+  var hasFixedAspect = utils.isFiniteNumber(d.frame_aspect_ratio) &&
+    d.frame_aspect_ratio > 0;
+  var aspectRatio = hasFixedAspect ? d.frame_aspect_ratio :
+    bounds.width() / bounds.height();
   // prevent rounding errors (like 1000.0000000002)
-  var h = Math.round(w * bounds.height() / bounds.width());
-  return {
+  var h = Math.round(w / aspectRatio);
+  var data = {
     type: 'frame',
     width: w,
     height: h,
-    bbox: bounds.toArray()
+    bbox: bounds.toArray(),
+    aspect_ratio: hasFixedAspect ? d.frame_aspect_ratio : null,
+    units: d.frame_units || 'px'
   };
+  if (crs) data.crs = crs;
+  return data;
 }
 
 
@@ -112,9 +126,50 @@ export function getFrameSize(bounds, opts) {
 }
 
 
+export var frameReservedFields =
+  ['type', 'width', 'height', 'frame_aspect_ratio', 'frame_units'];
+
+export function parseFrameSize(arg) {
+  var str = String(arg).toLowerCase();
+  var units = /px|pix/.test(str) && 'px' ||
+    /pt|point/.test(str) && 'pt' ||
+    /in/.test(str) && 'in' ||
+    /cm/.test(str) && 'cm' ||
+    'px';
+  return {valuePx: parseSizeParam(arg), units: units};
+}
+
+export function isFrameReservedField(name) {
+  return frameReservedFields.includes(name);
+}
+
+export function demoteFrameLayer(lyr, operation) {
+  var rec = lyr.data && lyr.data.getRecords()[0];
+  if (!rec) return;
+  operation = operation || 'frame';
+  noteLayerWillChange(lyr, {operation: operation, unit: 'data'});
+  frameReservedFields.forEach(function(field) {
+    delete rec[field];
+  });
+  markLayerChanged(lyr, {operation: operation, unit: 'data'});
+}
+
+export function getSingleFrameRecord(lyr) {
+  if (!lyr || !lyr.data || !lyr.shapes ||
+      lyr.shapes.length != 1 || lyr.data.size() != 1) {
+    return null;
+  }
+  return lyr.data.getReadOnlyRecordAt(0) || null;
+}
+
 // @lyr dataset layer
 export function isFrameLayer(lyr, arcs) {
-  return getFurnitureLayerType(lyr) == 'frame' &&
+  var rec = getSingleFrameRecord(lyr);
+  return !!rec &&
+    lyr.geometry_type == 'polygon' &&
+    rec.type == 'frame' &&
+    utils.isFiniteNumber(rec.width) &&
+    rec.width > 0 &&
     layerIsRectangle(lyr, arcs);
 }
 
@@ -124,21 +179,77 @@ export function findFrameLayerInDataset(dataset) {
   });
 }
 
-// TODO: handle multiple frames in catalog
+export function findFrames(catalog) {
+  return catalog.getLayers().filter(function(o) {
+    return isFrameLayer(o.layer, o.dataset.arcs);
+  });
+}
+
+export function getActiveFrame(catalog) {
+  var frames = findFrames(catalog);
+  if (frames.length > 1) {
+    stop('Multiple map frames are not supported:', frames.map(getFrameName).join(', '));
+  }
+  return frames[0] || null;
+}
+
 export function findFrameDataset(catalog) {
-  var target = findFrame(catalog);
+  var target = getActiveFrame(catalog);
   return target && target.dataset || null;
 }
 
 export function findFrameLayer(catalog) {
-  var target = findFrame(catalog);
+  var target = getActiveFrame(catalog);
   return target && target.layer || null;
 }
 
 export function findFrame(catalog) {
-  return utils.find(catalog.getLayers(), function(o) {
-    return isFrameLayer(o.layer, o.dataset.arcs);
+  return getActiveFrame(catalog);
+}
+
+export function resolveExportFrame(opts) {
+  if (opts.explicitFrame) return opts.explicitFrame;
+  if (opts.targetDataset) {
+    var lyr = findFrameLayerInDataset(opts.targetDataset);
+    return lyr ? {layer: lyr, dataset: opts.targetDataset} : null;
+  }
+  return opts.mode == 'gui' && opts.catalog ? getActiveFrame(opts.catalog) : null;
+}
+
+export function assertSingleFrameUpdate(catalog, additions, removals) {
+  var removed = removals || [];
+  var frames = catalog.getLayers().filter(function(o) {
+    return !removed.includes(o.layer) && isFrameLayer(o.layer, o.dataset.arcs);
   });
+  (additions || []).forEach(function(o) {
+    if (!removed.includes(o.layer) && isFrameLayer(o.layer, o.dataset.arcs)) {
+      frames.push(o);
+    }
+  });
+  frames = frames.filter(function(o, i) {
+    return frames.findIndex(function(o2) {
+      return o2.layer == o.layer;
+    }) == i;
+  });
+  if (frames.length > 1) {
+    stop('Multiple map frames are not supported:', frames.map(getFrameName).join(', '));
+  }
+}
+
+export function assertCatalogCanAddDatasets(catalog, datasets, removals) {
+  var existingDatasets = catalog.getDatasets();
+  var additions = [];
+  datasets.forEach(function(dataset) {
+    if (existingDatasets.includes(dataset)) return;
+    dataset.layers.forEach(function(lyr) {
+      additions.push({layer: lyr, dataset: dataset});
+    });
+  });
+  assertSingleFrameUpdate(catalog, additions, removals);
+}
+
+function getFrameName(o) {
+  return o.layer.name || '[unnamed frame]';
 }
 
 export function getFrameLayerBounds(lyr) {

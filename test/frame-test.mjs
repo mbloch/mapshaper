@@ -99,6 +99,36 @@ describe('mapshaper-frame.js', function () {
       assert(svg.includes('<path'));
       assert(svg.includes('stroke="red"'));
     });
+
+    it('rejects a second frame', async function() {
+      await assert.rejects(
+        api.applyCommands('-frame bbox=0,0,2,1 width=800 -frame bbox=0,0,1,1 width=400'),
+        /A map frame already exists/
+      );
+    });
+
+    it('-frame replace demotes the old frame', async function() {
+      var out = await api.applyCommands(
+        '-frame bbox=0,0,2,1 width=800 -frame bbox=0,0,1,1 width=200 replace -o out.svg'
+      );
+      assert(String(out['out.svg']).includes('width="200" height="200"'));
+    });
+
+    it('rejects duplicating a frame layer', async function() {
+      await assert.rejects(
+        api.applyCommands('-frame bbox=0,0,2,1 width=800 -filter true +'),
+        /Multiple map frames are not supported/
+      );
+    });
+
+    it('writes canonical frame units and aspect ratio fields', async function() {
+      var out = await api.applyCommands(
+        '-frame bbox=0,0,2,1 width=5in height=2.5in -o out.json format=geojson'
+      );
+      var properties = JSON.parse(out['out.json']).features[0].properties;
+      assert.equal(properties.frame_units, 'in');
+      assert.equal(properties.frame_aspect_ratio, 2);
+    });
   });
 
   describe('getAspectRatioArg()', function() {

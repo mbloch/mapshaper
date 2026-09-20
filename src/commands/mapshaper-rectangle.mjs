@@ -1,5 +1,6 @@
 import cmd from '../mapshaper-cmd';
-import { convertFourSides, parseSizeParam } from '../geom/mapshaper-units';
+import { convertFourSides } from '../geom/mapshaper-units';
+import { parseFrameSize } from '../furniture/mapshaper-frame-utils';
 import { setDatasetCrsInfo, getDatasetCrsInfo, getCrsInfo } from '../crs/mapshaper-projections';
 import {
   getLayerBounds,
@@ -144,8 +145,10 @@ function applyFrameProperties(lyr, opts) {
   if (!opts.width) return;
   if (!lyr.data) initDataTable(lyr);
   var d = lyr.data.getRecords()[0] || {};
-  d.width = parseSizeParam(opts.width);
+  var size = parseFrameSize(opts.width);
+  d.width = size.valuePx;
   d.type = 'frame';
+  d.frame_units = size.units;
 }
 
 function applyRectangleOptions(bounds, crs, opts) {

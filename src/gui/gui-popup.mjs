@@ -86,7 +86,11 @@ export function Popup(gui, toNext, toPrev) {
     var recIds = id >= 0 ? [id] : ids;
     var el = content;
     var table = lyr.data; // table can be null (e.g. if layer has no attribute data)
-    var tableEl = table ? renderTable(recIds, table, editable) : null;
+    var isFrame = layerIsFrame(lyr);
+    var hasCustomFrameFields = isFrame && table && table.getFields().some(function(field) {
+      return !internal.isFrameReservedField(field);
+    });
+    var tableEl = table ? renderTable(recIds, table, editable, isFrame) : null;
     el.empty(); // clean up if panel is already open
     if (tableEl) {
       tableEl.appendTo(el);
@@ -100,6 +104,8 @@ export function Popup(gui, toNext, toPrev) {
           e.preventDefault(); // don't copy original string with tabs
         }
       });
+    } else if (isFrame) {
+      el.html('<div class="note">Map frame settings are edited separately from attribute data.</div>');
     } else {
       // Some individual features can have undefined values for some or all of
       // their data properties (properties are set to undefined when an input JSON file
@@ -109,13 +115,13 @@ export function Popup(gui, toNext, toPrev) {
     }
 
     var footer = El('div').appendTo(el);
-    if (editable) {
+    if (editable && !isFrame) {
       // render "add field" button
       El('span').addClass('add-field-btn').appendTo(footer).on('click', async function(e) {
         // show "add field" dialog
         openAddFieldPopup(gui, recIds, lyr);
       }).text('+ add field');
-    } else if (pinned) {
+    } else if (pinned && (!isFrame || hasCustomFrameFields)) {
       // render "Click to edit" button
       El('span').addClass('edit-data-btn').appendTo(footer).on('click', async function(e) {
         self.show(id, ids, lyr, true, true);
@@ -123,7 +129,7 @@ export function Popup(gui, toNext, toPrev) {
     }
   }
 
-  function renderTable(recIds, table, editable) {
+  function renderTable(recIds, table, editable, isFrame) {
     var tableEl = El('table').addClass('selectable');
     var rows = 0;
     var rec;
@@ -138,6 +144,7 @@ export function Popup(gui, toNext, toPrev) {
     utils.forEachProperty(rec, function(v, k) {
       // missing GeoJSON fields are set to undefined on import; skip these
       if (v === undefined) return;
+      if (isFrame && internal.isFrameReservedField(k)) return;
       var rowEl = renderRow(k, v, recIds, table, editable);
       if (rowEl) {
         rowEl.appendTo(tableEl);
@@ -145,6 +152,11 @@ export function Popup(gui, toNext, toPrev) {
       }
     });
     return rows > 0 ? tableEl : null;
+  }
+
+  function layerIsFrame(lyr) {
+    var dataset = lyr.gui && lyr.gui.source && lyr.gui.source.dataset;
+    return !!dataset && internal.isFrameLayer(lyr, dataset.arcs);
   }
 
   function getMultiRecord(recIds, table) {

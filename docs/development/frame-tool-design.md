@@ -951,13 +951,24 @@ output. This does not depend on milestone 2: rebuilding the frame's geometry
 as a rectangle on its projected bounds preserves the existing
 record-and-rectangle contract.
 
-**2. Encapsulated frame contract.** Strict recognition, normalized frame data,
-all frame writers, catalog uniqueness, reserved-field GUI handling,
-`getActiveFrame()` as the single session resolver, and the explicit export
-resolver.
+**2. Encapsulated frame contract — implemented.** Recognition now requires one
+rectangular polygon, one record, `type: "frame"` and a finite positive numeric
+width. Frame data is normalized through `getFrameLayerData()`;
+`getActiveFrame()` is the single session resolver and exports use an explicit
+target-dataset resolver. Catalog additions and layer-producing command updates
+reject a second frame before integration, including multi-dataset import and
+layer duplication. `-frame replace` demotes the previous frame, and frame
+writers preserve authored units and fixed aspect ratios. Until the frame panel
+arrives in milestone 5, the attribute popup and layer-info dialog hide reserved
+frame fields and show ordinary custom fields only.
 
-**3. `-update-frame`.** The command and its options, tested at the CLI, before
-anything in the GUI depends on it.
+**3. `-update-frame` — implemented.** The command updates extent, offsets,
+aspect mode and nominal size in the documented order, or demotes the frame
+with `remove`. It validates a single recognized frame target, rejects
+contradictory dimensions and aspect options, preserves custom record fields,
+and rebuilds rectangle geometry through the topology-safe replacement path.
+CLI tests cover each option, invalid combinations and a frame sharing topology
+with another polygon layer.
 
 **4. Preview mode.** Read-only: toggle, mask, page boundary, magnification
 readout, snap-to-100%. This surfaces behaviour that already exists and is the

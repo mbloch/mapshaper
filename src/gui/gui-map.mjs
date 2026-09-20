@@ -465,9 +465,12 @@ export function MshpMap(gui) {
   }
 
   function findFrameLayer() {
+    var target = internal.getActiveFrame(model);
+    if (!target) return null;
+    // Preview remains visibility-gated until the explicit preview mode lands.
     return getVisibleMapLayers().find(function(lyr) {
-      return internal.isFrameLayer(lyr.gui.displayLayer, lyr.gui.displayArcs);
-    });
+      return lyr == target.layer;
+    }) || null;
   }
 
   // Preview view: symbols are scaled based on display size of frame layer
@@ -477,7 +480,9 @@ export function MshpMap(gui) {
 
   function getFrameLayerData() {
     var lyr = findFrameLayer();
-    return lyr && internal.getFrameLayerData(lyr, lyr.gui.displayArcs) || null;
+    var crs = lyr && (lyr.gui.dynamic_crs ||
+      internal.getDatasetCRS(lyr.gui.source.dataset));
+    return lyr && internal.getFrameLayerData(lyr, lyr.gui.displayArcs, crs) || null;
   }
 
   function clearAllDisplayArcs() {

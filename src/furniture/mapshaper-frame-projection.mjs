@@ -48,8 +48,13 @@ export function getFrameProjectionSnapshots(dataset) {
 // path. This is safe when the frame shares an ArcCollection with other layers.
 export function rebuildProjectedFrameLayer(snapshot, dataset, project) {
   var bounds = getProjectedFrameBounds(snapshot.bbox, project);
-  var frameDataset = createFrameRectangleDataset(snapshot.layer, bounds);
-  replaceLayerContents(snapshot.layer, dataset, frameDataset);
+  rebuildFrameLayerGeometry(snapshot.layer, dataset, bounds);
+}
+
+export function rebuildFrameLayerGeometry(lyr, dataset, bounds) {
+  bounds = bounds instanceof Bounds ? bounds : new Bounds(bounds);
+  var frameDataset = createFrameRectangleDataset(lyr, bounds);
+  replaceLayerContents(lyr, dataset, frameDataset);
 }
 
 // Return an isolated rectangular display layer. Dynamic display projection

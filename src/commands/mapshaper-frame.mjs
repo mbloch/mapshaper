@@ -1,4 +1,9 @@
-import { getFrameSize } from '../furniture/mapshaper-frame-utils';
+import {
+  demoteFrameLayer,
+  getActiveFrame,
+  getFrameSize,
+  parseFrameSize
+} from '../furniture/mapshaper-frame-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { message, stop } from '../utils/mapshaper-logging';
 import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
@@ -19,14 +24,15 @@ import { parsePercent } from '../cli/mapshaper-option-parsing-utils';
 
 cmd.frame = function(catalog, targets, opts) {
   var widthPx, heightPx, aspectRatio, scale, bbox;
+  var existingFrame = getActiveFrame(catalog);
   if (opts.width) {
-    widthPx = parseSizeParam(opts.width);
+    widthPx = parseFrameSize(opts.width).valuePx;
     if (widthPx > 0 === false) {
       stop('Invalid width parameter:', opts.width);
     }
   }
   if (opts.height) {
-    heightPx = parseSizeParam(opts.height);
+    heightPx = parseFrameSize(opts.height).valuePx;
     if (heightPx > 0 === false) {
       stop('Invalid height parameter:', opts.height);
     }
@@ -75,7 +81,7 @@ cmd.frame = function(catalog, targets, opts) {
 
   var feature = {
     type: 'Feature',
-    properties: {type: 'frame', width: widthPx, height: heightPx},
+    properties: getFrameProperties(widthPx, heightPx, opts),
     geometry: bboxToPolygon(bbox)
   };
   var frameDataset = importGeoJSON(feature);
@@ -87,10 +93,30 @@ cmd.frame = function(catalog, targets, opts) {
     setDatasetCrsInfo(frameDataset, crsInfo);
   }
   frameDataset.layers[0].name = opts.name || 'frame';
+  if (existingFrame) {
+    if (!opts.replace) {
+      stop('A map frame already exists:', existingFrame.layer.name || '[unnamed frame]');
+    }
+    demoteFrameLayer(existingFrame.layer);
+  }
   catalog.addDataset(frameDataset);
 };
 
-function fillOutBbox(bbox, widthPx, heightPx) {
+function getFrameProperties(width, height, opts) {
+  var properties = {
+    type: 'frame',
+    width: width,
+    height: height,
+    frame_units: opts.width || opts.height ?
+      parseFrameSize(opts.width || opts.height).units : 'px'
+  };
+  if (opts.aspect_ratio > 0 || opts.width && opts.height) {
+    properties.frame_aspect_ratio = width / height;
+  }
+  return properties;
+}
+
+export function fillOutBbox(bbox, widthPx, heightPx) {
   var hpad = 0, vpad = 0;
   var w = bbox[2] - bbox[0];
   var h = bbox[3] - bbox[1];
@@ -105,7 +131,7 @@ function fillOutBbox(bbox, widthPx, heightPx) {
   bbox[3] += vpad / 2;
 }
 
-function applyPercentageOffsets(bbox, arg) {
+export function applyPercentageOffsets(bbox, arg) {
   var sides = getPctOffsets(arg);
   var l = sides[0],
     b = sides[1],
@@ -119,7 +145,7 @@ function applyPercentageOffsets(bbox, arg) {
   bbox[3] += t * h2;
 }
 
-function applyPixelOffsets(bbox, widthPx, heightPx, arg) {
+export function applyPixelOffsets(bbox, widthPx, heightPx, arg) {
   var sides = getPixelOffsets(arg);
   var l = sides[0],
     b = sides[1],

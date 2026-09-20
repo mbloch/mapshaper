@@ -10,7 +10,7 @@ import {
 } from '../points/mapshaper-symbol-containment';
 import { getSymbolPropertyAccessor, getPropertyAccessor } from '../svg/svg-properties';
 import { getSymbolBoundingRadius } from '../symbols/mapshaper-symbol-utils';
-import { findFrameLayerInDataset, findFrame, getFrameLayerData } from '../furniture/mapshaper-frame-utils';
+import { findFrameLayerInDataset, getActiveFrame, getFrameLayerData } from '../furniture/mapshaper-frame-utils';
 import { noteLayerWillChange, markLayerChanged } from '../undo/mapshaper-undo-tracking';
 import {
   resolveSymbolCollisions,
@@ -288,7 +288,7 @@ function findRepelFrame(dataset, catalog) {
   if (lyr) return getFrameLayerData(lyr, dataset.arcs);
   // -frame adds the frame it creates to the catalog as a separate dataset, so a
   // catalog-wide search is needed to find it (-scalebar does the same).
-  target = catalog ? findFrame(catalog) : null;
+  target = catalog ? getActiveFrame(catalog) : null;
   return target ? getFrameLayerData(target.layer, target.dataset.arcs) : null;
 }
 

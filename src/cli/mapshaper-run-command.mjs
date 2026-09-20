@@ -15,12 +15,14 @@ import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 import { stashVar, clearStash } from '../mapshaper-stash';
 import { applyCommandToEachLayer, applyCommandToEachTarget } from '../cli/mapshaper-command-utils';
+import { assertSingleFrameUpdate } from '../furniture/mapshaper-frame-utils';
 import {
   markDatasetChanged,
   noteDatasetWillChange
 } from '../undo/mapshaper-undo-tracking';
 import '../commands/mapshaper-add-label';
 import '../commands/mapshaper-add-layer';
+import '../commands/mapshaper-update-frame';
 import '../commands/mapshaper-update-label';
 import '../commands/mapshaper-add-shape';
 import '../commands/mapshaper-affine';
@@ -268,6 +270,9 @@ export async function runCommand(command, job) {
       // CLI, where nothing is listening.
       job.catalog.captureCatalogBefore({operation: 'addLayer'});
       job.catalog.addDataset(cmd.addLayer(targetDataset, opts));
+
+    } else if (name == 'update-frame') {
+      cmd.updateFrame(targetLayers, targetDataset, opts);
 
     } else if (name == 'update-label') {
       cmd.updateLabel(targetLayers, targetDataset, opts);
@@ -598,7 +603,15 @@ export async function runCommand(command, job) {
     }
 
     if (outputDataset) {
-      job.catalog.addDataset(outputDataset); // also sets default target
+      var removedLayers = targetLayers && !opts.no_replace ? targetLayers : [];
+      assertSingleFrameUpdate(
+        job.catalog,
+        outputDataset.layers.map(function(lyr) {
+          return {layer: lyr, dataset: outputDataset};
+        }),
+        removedLayers
+      );
+      job.catalog.addDataset(outputDataset, {removeLayers: removedLayers}); // also sets default target
       outputLayers = outputDataset.layers;
       if (targetLayers && !opts.no_replace) {
         // remove target layers from target dataset
@@ -608,6 +621,13 @@ export async function runCommand(command, job) {
       }
     } else if (outputLayers && targetDataset && outputLayers != targetDataset.layers) {
       // integrate output layers into the target dataset
+      assertSingleFrameUpdate(
+        job.catalog,
+        outputLayers.map(function(lyr) {
+          return {layer: lyr, dataset: targetDataset};
+        }),
+        opts.no_replace ? [] : targetLayers
+      );
       if (opts.no_replace) {
         // make sure commands do not return input layers with 'no_replace' option
         if (!outputLayersAreDifferent(outputLayers, targetLayers || [])) {

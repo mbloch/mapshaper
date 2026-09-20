@@ -1,6 +1,7 @@
 
 import { findCommandTargets, findMatchingLayers } from '../dataset/mapshaper-target-utils';
 import { stop } from '../utils/mapshaper-logging';
+import { assertCatalogCanAddDatasets } from '../furniture/mapshaper-frame-utils';
 import {
   getUndoId,
   getUndoRevision,
@@ -118,12 +119,13 @@ export function Catalog() {
     return layers;
   };
 
-  this.addDataset = function(dataset) {
-    this.setDefaultTarget(dataset.layers, dataset);
+  this.addDataset = function(dataset, opts) {
+    this.setDefaultTarget(dataset.layers, dataset, opts);
     return this;
   };
 
   this.addDatasets = function(datasets) {
+    assertCatalogCanAddDatasets(this, datasets);
     datasets.forEach(function(dataset) {
       this.addDataset(dataset);
     }, this);
@@ -152,7 +154,7 @@ export function Catalog() {
     return defaultTargets;
   };
 
-  this.setDefaultTarget = function(layers, dataset) {
+  this.setDefaultTarget = function(layers, dataset, opts) {
     this.setDefaultTargets([{
       // Copy layers array, in case layers is a reference to dataset.layers.
       // This prevents layers that are added to the dataset inside a command from
@@ -160,12 +162,19 @@ export function Catalog() {
       //  by '-join unmatched unjoined'.
       layers: layers.concat(),
       dataset: dataset
-    }]);
+    }], opts);
   };
 
   // arr: array of target objects {layers:[], dataset:{}}
-  this.setDefaultTargets = function(arr) {
+  this.setDefaultTargets = function(arr, opts) {
     if (targetsAreSame(defaultTargets, arr)) return;
+    var newDatasets = arr.reduce(function(memo, target) {
+      if (!datasets.includes(target.dataset) && !memo.includes(target.dataset)) {
+        memo.push(target.dataset);
+      }
+      return memo;
+    }, []);
+    assertCatalogCanAddDatasets(this, newDatasets, opts && opts.removeLayers);
     this.captureCatalogBefore({operation: 'setDefaultTargets'});
     arr.forEach(function(target) {
       if (datasets.indexOf(target.dataset) == -1) {
