@@ -225,9 +225,9 @@ export function initLabelTool(gui, ext, hit) {
     hideInstructions();
     if (!armed) return;
     alert = showPopupAlert(armed == 'anchor' ?
-      'Instructions: click on the map to place a label.' :
-      'Instructions: click to place points along the path. Double-click, ' +
-      'Enter or Escape to finish. Backspace removes the last point.',
+      'Click on the map to place a label.' :
+      'Click to draw a curved path. Type Esc or double-click ' +
+      'to finish. Backspace removes the last point.',
       null, {non_blocking: true, max_width: '330px'});
   }
 

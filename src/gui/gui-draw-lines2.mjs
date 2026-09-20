@@ -138,7 +138,7 @@ export function initLineEditing(gui, ext, hit) {
   function showInstructions() {
     var isMac = navigator.userAgent.includes('Mac');
     var undoKey = isMac ? '⌘' : '^';
-    var msg = `Instructions: click to start a path, click or drag to keep drawing. Drag vertices to reshape a path.`;
+    var msg = `Click to add points to a path or click and drag to draw continuously. Drag vertices to reshape a path.`;
       alert = showPopupAlert(msg, null, {
         non_blocking: true, max_width: '350px'});
   }

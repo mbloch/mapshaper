@@ -28,7 +28,7 @@ export function initPointEditing(gui, ext, hit) {
   function showInstructions() {
     var isMac = navigator.userAgent.includes('Mac');
     var symbol = isMac ? '⌘' : '^';
-    var msg = `Instructions: click on the map to add points. Move points by dragging.`;
+    var msg = `Click on the map to add points.<br>Move points by dragging.`;
     alert = showPopupAlert(msg, null, { non_blocking: true, max_width: '290px'});
   }
 

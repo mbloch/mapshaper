@@ -53,7 +53,7 @@ export function initSnipTool(gui, ext, hit) {
   }
 
   function showInstructions() {
-    var msg = 'Instructions: click a line to snip it apart. Snipping a ring ' +
+    var msg = 'Click a line to snip it apart. Snipping a ring ' +
       'takes two clicks -- the ring divides at the second one.';
     alert = showPopupAlert(msg, null, {non_blocking: true, max_width: '350px'});
   }

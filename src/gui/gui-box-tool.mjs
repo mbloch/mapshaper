@@ -105,7 +105,7 @@ export function BoxTool(gui, ext, nav) {
   function showInstructions() {
     var isMac = navigator.userAgent.includes('Mac');
     var symbol = isMac ? '⌘' : '^';
-    var msg = `Instructions: Click to start a rectangle. Drag handles to resize. Press shift key to resize symmetrically.`;
+    var msg = `Click to start a rectangle. Drag handles to resize. Press shift key to resize symmetrically.`;
     alert = showPopupAlert(msg, null, { non_blocking: true, max_width: '360px'});
   }
 
