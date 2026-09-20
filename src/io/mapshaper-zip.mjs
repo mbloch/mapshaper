@@ -86,7 +86,8 @@ export function isImportableZipPath(name) {
 
 // input: input file path or a Buffer containing .zip file bytes
 function unzipSyncNode(input) {
-  var zip = new require('adm-zip')(input);
+  var AdmZip = require('adm-zip');
+  var zip = new AdmZip(input);
   var index = {};
   zip.getEntries().forEach(function(entry) {
     // entry.entryName // path, including filename
@@ -100,7 +101,8 @@ function unzipSyncNode(input) {
 }
 
 function zipSyncNode(files) {
-  var zip = new require('adm-zip')();
+  var AdmZip = require('adm-zip');
+  var zip = new AdmZip();
   files.forEach(function(o) {
     var buf = o.content;
     if (buf instanceof ArrayBuffer) {
