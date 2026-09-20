@@ -104,7 +104,7 @@
 <h3 id="preserve-leading-zeros-from-a-csv">Preserve leading zeros from a CSV</h3>
 <pre><code class="hljs language-text">string-fields=FIPS,STATEFIPS
 </code></pre>
-<p>By default Mapshaper parses any numeric-looking CSV column as a number, which silently drops leading zeros from FIPS, ZIP and similar identifier columns. In the web app, enter <code>string-fields=FIPS,STATEFIPS</code> in the <strong>Advanced options</strong> field when importing the CSV. In the CLI, pass it with <code>-i</code>: <code>mapshaper -i counties.csv string-fields=FIPS,STATEFIPS</code>.</p>
+<p>By default Mapshaper parses any numeric-looking CSV column as a number, which silently drops leading zeros from FIPS, ZIP and similar identifier columns. In the web app, enter <code>string-fields=FIPS,STATEFIPS</code> in the <strong>Advanced options</strong> field when importing the CSV. In the CLI, pass it with <code>-i</code>: <code class="is-wrappable">mapshaper -i counties.csv string-fields=FIPS,<wbr>STATEFIPS</code>.</p>
 <h2 id="joining-data">Joining data</h2>
 <h3 id="join-a-csv-to-a-shapefile-by-key">Join a CSV to a Shapefile by key</h3>
 <pre><code class="hljs language-text">-join demographics keys=STATE_FIPS,FIPS

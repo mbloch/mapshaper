@@ -69,7 +69,7 @@
 </code></pre>
 <h2 id="styling-data-layers-with-the--classify-command">Styling data layers with the <code>-classify</code> command</h2>
 <h3 id="classed-and-unclassed-color-gradients">Classed and unclassed color gradients</h3>
-<p><code>-classify</code> can assign colors or other values based on a data field. For numeric data, mapshaper can automatically classify a data field using <code>method=quantile|equal-interval|nice|hybrid</code>.</p>
+<p><code>-classify</code> can assign colors or other values based on a data field. For numeric data, mapshaper can automatically classify a data field using <code class="is-wrappable">method=quantile|<wbr>equal-interval|<wbr>nice|<wbr>hybrid</code>.</p>
 <p>This example applies a six-class orange color ramp to a <code>RATE</code> field. By default, the colors are assigned to the <code>fill</code> field (the <code>save-as=</code> option changes this).</p>
 <pre><code class="hljs language-text">-classify RATE method=quantile classes=6 color-scheme=Oranges
 </code></pre>

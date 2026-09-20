@@ -62,7 +62,7 @@
 <p>An alternative to embedding a long series of Mapshaper commands on the command line is to put them in a <code>.txt</code> file and pass the file to <code>mapshaper</code>. See <a href="/docs/essentials/command-line.html#command-files">command files</a> and <a href="/docs/essentials/command-line.html#variable-interpolation">variable interpolation</a> in the reference.</p>
 <h2 id="the-nodejs-api">The Node.js API</h2>
 <p>Mapshaper exposes three top-level functions for running editing commands programmatically. All three accept the same command-line string format as the <code>mapshaper</code> CLI.</p>
-<h3 id="runcommandscommands-input-callback"><code>runCommands(commands[, input][, callback])</code></h3>
+<h3 id="runcommandscommands-input-callback"><code class="is-wrappable">runCommands(commands[, input][, callback])</code></h3>
 <p>Runs a command line against files on disk (or in-memory). The <code>-o</code> command(s) write their output to disk.</p>
 <ul>
 <li><code>commands</code> &mdash; a command-line string.</li>
@@ -73,7 +73,7 @@
 
 <span class="hljs-keyword">await</span> mapshaper.<span class="hljs-title function_">runCommands</span>(<span class="hljs-string">&#x27;-i shapefiles/*.shp -o geojson/ format=geojson&#x27;</span>);
 </code></pre>
-<h3 id="applycommandscommands-input-callback"><code>applyCommands(commands[, input][, callback])</code></h3>
+<h3 id="applycommandscommands-input-callback"><code class="is-wrappable">applyCommands(commands[, input][, callback])</code></h3>
 <p>Same signature as <code>runCommands</code>, but instead of writing files to disk, the contents produced by <code>-o</code> are returned to the caller as a <code>{ filename: Buffer }</code> object. Useful for processing data without touching the filesystem.</p>
 <pre><code class="hljs language-javascript"><span class="hljs-keyword">import</span> mapshaper <span class="hljs-keyword">from</span> <span class="hljs-string">&#x27;mapshaper&#x27;</span>;
 
@@ -83,7 +83,7 @@
 <span class="hljs-keyword">const</span> output = <span class="hljs-keyword">await</span> mapshaper.<span class="hljs-title function_">applyCommands</span>(cmd, input);
 <span class="hljs-comment">// output[&#x27;output.geojson&#x27;] is a Buffer containing GeoJSON</span>
 </code></pre>
-<h3 id="runcommandsxlcommands-options-callback"><code>runCommandsXL(commands[, options][, callback])</code></h3>
+<h3 id="runcommandsxlcommands-options-callback"><code class="is-wrappable">runCommandsXL(commands[, options][, callback])</code></h3>
 <p>Like <code>runCommands</code>, but the work runs in a child Node process configured with a larger maximum heap (8 GB by default). Equivalent to running <code>mapshaper-xl</code> from the command line. Override the heap size with the <code>xl</code> option:</p>
 <pre><code class="hljs language-javascript"><span class="hljs-keyword">await</span> mapshaper.<span class="hljs-title function_">runCommandsXL</span>(commands, { <span class="hljs-attr">xl</span>: <span class="hljs-string">&#x27;16gb&#x27;</span> });
 </code></pre>

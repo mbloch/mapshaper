@@ -96,7 +96,7 @@
   }
 
   // Similar to isFinite() but does not coerce strings or other types
-  function isFiniteNumber$1(val) {
+  function isFiniteNumber$2(val) {
     return isValidNumber(val) && val !== Infinity && val !== -Infinity;
   }
 
@@ -1106,7 +1106,7 @@
     getSortedIds, getUniqueName, groupBy,
     htmlEscape,
     indexOf, indexOn, inherit, initializeArray, intersection,
-    isArray, isArrayLike, isBoolean, isDate, isEven, isFiniteNumber: isFiniteNumber$1, isFunction,
+    isArray, isArrayLike, isBoolean, isDate, isEven, isFiniteNumber: isFiniteNumber$2, isFunction,
     isInteger, isNonNegNumber, isNumber, isObject, isOdd: isOdd$1, isPromise, isString,
     isValidNumber,
     lpad, ltrim,
@@ -5882,13 +5882,13 @@
     return msg;
   }
 
-  function requirePointLayer(lyr, msg) {
+  function requirePointLayer$1(lyr, msg) {
     if (!lyr || lyr.geometry_type !== 'point')
       stop$1(layerTypeMessage(lyr, "Expected a point layer", msg));
   }
 
   function requireSinglePointLayer(lyr, msg) {
-    requirePointLayer(lyr);
+    requirePointLayer$1(lyr);
     if (countMultiPartFeatures(lyr.shapes) > 0) {
       stop$1(msg || 'This command requires single points; layer contains multi-point features.');
     }
@@ -6128,7 +6128,7 @@
     requireDataFields: requireDataFields,
     requireNotRasterLayer: requireNotRasterLayer,
     requirePathLayer: requirePathLayer,
-    requirePointLayer: requirePointLayer,
+    requirePointLayer: requirePointLayer$1,
     requirePolygonLayer: requirePolygonLayer,
     requirePolylineLayer: requirePolylineLayer,
     requireSinglePointLayer: requireSinglePointLayer,
@@ -15025,7 +15025,8 @@
 
   // input: input file path or a Buffer containing .zip file bytes
   function unzipSyncNode(input) {
-    var zip = new require('adm-zip')(input);
+    var AdmZip = require('adm-zip');
+    var zip = new AdmZip(input);
     var index = {};
     zip.getEntries().forEach(function(entry) {
       // entry.entryName // path, including filename
@@ -15039,7 +15040,8 @@
   }
 
   function zipSyncNode(files) {
-    var zip = new require('adm-zip')();
+    var AdmZip = require('adm-zip');
+    var zip = new AdmZip();
     files.forEach(function(o) {
       var buf = o.content;
       if (buf instanceof ArrayBuffer) {
@@ -18751,10 +18753,10 @@
     return d;
   }
 
-  var cache = {};
+  var cache$1 = {};
 
   function getParseRxp(fmt) {
-    if (fmt in cache) return cache[fmt];
+    if (fmt in cache$1) return cache$1[fmt];
     var rxp = fmt;
     rxp = rxp.replace('[-]', '(?<prefix>-)?'); // optional -
     rxp = rxp.replace(/\[[NSEW, +-]{2,}\]/, '(?<prefix>$&)');
@@ -18778,11 +18780,11 @@
     rxp = '^' + rxp + '$';
     try {
       // TODO: make sure all DMS codes have been matched
-      cache[fmt] = new RegExp(rxp);
+      cache$1[fmt] = new RegExp(rxp);
     } catch(e) {
       stop$1('Invalid DMS format string:', fmt);
     }
-    return cache[fmt];
+    return cache$1[fmt];
   }
 
   function formatNumber(val, integers, decimals) {
@@ -20357,6 +20359,7 @@
       try {
         val = func.call(thisVal, rec, ctx);
       } catch(e) {
+        if (opts.quiet) throw e;
         stop$1(e.name, "in expression [" + exp + "]:", e.message);
       }
       return val;
@@ -20378,7 +20381,10 @@
     try {
       return new Function('$$record,$$env',  functionBody);
     } catch(e) {
-      // if (opts.quiet) throw e;
+      // A caller that is only asking whether this string is an expression wants
+      // the answer, not a report: stop() prints in the CLI and opens an alert in
+      // the GUI, both of which are wrong for a question whose answer is "no".
+      if (opts.quiet) throw e;
       stop$1(e.name, 'in expression [' + exp + ']');
     }
   }
@@ -20891,8 +20897,10 @@
       ctx2.height = function() {return getLayerBounds(lyr, arcs).height();};
     }
 
-    calc1 = compileFeatureExpression(exp, lyr, arcs, {context: ctx1,
-        no_assign: true, no_warn: true, no_return: true});
+    // Replace && / || with commas so phase 1 evaluates every operand. Otherwise
+    // short-circuit skips later capture calls (e.g. sum(a)>1 && sum(b)>1).
+    calc1 = compileFeatureExpression(exp.replace(/&&|\|\|/g, ','), lyr, arcs, {
+        context: ctx1, no_assign: true, no_warn: true, no_return: true});
     // changed data-only layer to full layer to expose layer geometry, etc
     // (why not do this originally?)
     // calc2 = compileFeatureExpression(exp, {data: lyr.data}, null,
@@ -25761,6 +25769,24 @@
     return text || text === 0; // accept numerical 0 as label text
   }
 
+  // Whether a feature is a label at all, including one whose text is still empty.
+  //
+  // The GUI needs this and export does not. A label is a label from the moment it
+  // is created, before anything has been typed into it, and the editor has to
+  // render a node for it: with no node there is nothing to see, nothing to click
+  // and nowhere to put a caret, so a label the user just made would be invisible
+  // and unrecoverable. Export has no editor and drops the empty ones.
+  function featureIsLabel(d) {
+    return !!d && 'label-text' in d;
+  }
+
+  var SvgFeatureUtils = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    featureHasLabel: featureHasLabel,
+    featureHasSvgSymbol: featureHasSvgSymbol,
+    featureIsLabel: featureIsLabel
+  });
+
   var assignmentRxp = /^([a-z0-9_+-]+)=(?!=)(.*)$/i; // exclude ==
 
   function splitShellTokens(str) {
@@ -26176,6 +26202,244 @@
     parsePattern: parsePattern
   });
 
+  // public domain implementation
+  // source: https://github.com/jbt/js-crypto
+  function sha1(str1){
+    for (
+      var blockstart = 0,
+        i = 0,
+        W = [],
+        A, B, C, D, F, G,
+        H = [A=0x67452301, B=0xEFCDAB89, ~A, ~B, 0xC3D2E1F0],
+        word_array = [],
+        temp2,
+        s = unescape(encodeURI(str1)),
+        str_len = s.length;
+
+      i <= str_len;
+    ){
+      word_array[i >> 2] |= (s.charCodeAt(i)||128) << (8 * (3 - i++ % 4));
+    }
+    word_array[temp2 = ((str_len + 8) >> 2) | 15] = str_len << 3;
+
+    for (; blockstart <= temp2; blockstart += 16) {
+      A = H; i = 0;
+
+      for (; i < 80;
+        A = [[
+          (G = ((s = A[0]) << 5 | s >>> 27) + A[4] + (W[i] = (i<16) ? ~~word_array[blockstart + i] : G << 1 | G >>> 31) + 1518500249) + ((B = A[1]) & (C = A[2]) | ~B & (D = A[3])),
+          F = G + (B ^ C ^ D) + 341275144,
+          G + (B & C | B & D | C & D) + 882459459,
+          F + 1535694389
+        ][0|((i++) / 20)] | 0, s, B << 30 | B >>> 2, C, D]
+      ) {
+        G = W[i - 3] ^ W[i - 8] ^ W[i - 14] ^ W[i - 16];
+      }
+
+      for(i = 5; i; ) H[--i] = H[i] + A[i] | 0;
+    }
+
+    for(str1 = ''; i < 40; )str1 += (H[i >> 3] >> (7 - i++ % 8) * 4 & 15).toString(16);
+    return str1;
+  }
+
+  // How wide a label's text renders, which is the one thing about a label that
+  // cannot be worked out from the data.
+  //
+  // Two features need it: `label-align`, which holds a block of text still while
+  // the lines inside it re-justify (svg-label-align.mjs), and the path-fit check,
+  // which drops a path label whose text is longer than its path
+  // (svg-label-fit.mjs). Both need font metrics, which reach this module from
+  // whichever of two places can supply them -- the GUI measures by rendering,
+  // and Node reads the installed font files (mapshaper-text-measure.mjs) -- and
+  // the answers are memoized here.
+  //
+  // **A measurement is not the user's data.** It is derived from values the user
+  // did set -- the text and six font properties -- and it lives in this cache
+  // alone: no column in the table, nothing exported, nothing for an edit to keep
+  // in step with. See docs/development/label-tool-design.md.
+  //
+  // The cache is keyed by a fingerprint of exactly the values the width depends
+  // on, which is what makes that safe: a width is a pure function of its inputs,
+  // so a cache entry cannot go stale -- change the text or the font and the
+  // fingerprint changes with it, and the lookup simply misses. Nothing has to be
+  // invalidated, and a feature can be copied, merged, filtered or renumbered
+  // without its measurement following it around, because the measurement was
+  // never attached to the feature in the first place.
+
+  // Properties the width depends on. A change to any of them gives a different
+  // fingerprint, so a measurement is never read for text it does not describe.
+  //
+  // Note that 'css' and 'class' are deliberately absent: both can change the
+  // rendered font through a stylesheet mapshaper cannot see, so no fingerprint
+  // over record values could detect it.
+  var MEASURED_PROPERTIES = ['font-family', 'font-size', 'font-weight',
+    'font-style', 'font-stretch', 'letter-spacing'];
+
+  var HASH_LENGTH = 12;
+
+  // Entries are a dozen bytes of key and a number, and one per distinct text and
+  // font -- typing a label adds one per keystroke, since each prefix is its own
+  // string. The cap is generous enough never to be reached in an editing session
+  // and small enough to bound a session that runs for days.
+  var CACHE_LIMIT = 20000;
+
+  var cache = new Map();
+  var measureFn = null;
+  var measuring = false;
+
+  // Installed at startup, by the GUI in a browser and by mapshaper-api.mjs
+  // outside one: (rec) -> width in px, or null.
+  //
+  // An inversion, and a deliberate one. The alternative was for the GUI to
+  // measure ahead of every reader -- before each render, before each export,
+  // after each edit -- which is three hooks to keep in step and a fourth for the
+  // console, where a user can type -o svg without going near the export dialog.
+  // A reader that can ask for a measurement needs no hooks at all, and where
+  // nothing can be measured -- a font this machine has not got, a browser too
+  // old to measure in -- every reader falls back exactly as it did before this
+  // existed.
+  function setTextMeasureFunction(fn) {
+    measureFn = fn || null;
+  }
+
+  // The width of @rec's text in px at its own font size, or null if it cannot be
+  // known. Measures on demand and remembers the answer, including a failure to
+  // measure, so a label that cannot be measured is not measured repeatedly.
+  function getMeasuredTextWidth(rec) {
+    var hash, width;
+    if (!rec || !rec['label-text']) return null;
+    hash = getTextWidthKey(rec);
+    if (cache.has(hash)) return cache.get(hash) || null;
+    // Nothing to measure with is not an answer about this text, so it is not
+    // remembered as one. Caching it would mean that whatever rendered before a
+    // measure function was installed -- or during any window in which none is --
+    // decided the width of that text for the rest of the session.
+    if (!measureFn) return null;
+    width = measure(rec);
+    if (cache.size >= CACHE_LIMIT) cache.clear();
+    cache.set(hash, width || 0);
+    return width;
+  }
+
+  // A measurement is itself a render, so it must not ask for one: rendering an
+  // aligned label reads a width, and a measurement taken in the middle of that
+  // would be measuring in order to measure. The GUI's measure function drops
+  // label-align for this reason; the flag is the backstop.
+  function measure(rec) {
+    var width;
+    if (measuring) return null;
+    measuring = true;
+    try {
+      width = measureFn(rec);
+    } catch (e) {
+      width = null;
+    }
+    measuring = false;
+    return width > 0 ? width : null;
+  }
+
+  // Fingerprint of the values a width depends on, and so the key it is kept
+  // under.
+  function getTextWidthKey(rec) {
+    var parts = [toHashInput(rec && rec['label-text'])];
+    for (var i = 0; i < MEASURED_PROPERTIES.length; i++) {
+      parts.push(toHashInput(rec && rec[MEASURED_PROPERTIES[i]]));
+    }
+    // \n is safe as a separator: label-text may contain newlines, but it is the
+    // only multi-line field and it is always first
+    return sha1(parts.join('\n')).substr(0, HASH_LENGTH);
+  }
+
+  function toHashInput(val) {
+    return val === null || val === undefined ? '' : String(val);
+  }
+
+  // For tests, and for a session that wants to measure again from scratch.
+  function clearTextWidthCache() {
+    cache.clear();
+  }
+
+  function getTextWidthCacheSize() {
+    return cache.size;
+  }
+
+  var SvgLabelMetrics = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    clearTextWidthCache: clearTextWidthCache,
+    getMeasuredTextWidth: getMeasuredTextWidth,
+    getTextWidthCacheSize: getTextWidthCacheSize,
+    getTextWidthKey: getTextWidthKey,
+    setTextMeasureFunction: setTextMeasureFunction
+  });
+
+  // Line justification, as a property of its own because SVG has no such thing.
+  //
+  // text-anchor does two jobs at once: it justifies the lines of a label, and it
+  // decides where the block of them sits relative to x. A label pinned north of
+  // its anchor is centred on x because that is what its position means, so a user
+  // who asks for left-aligned lines and gets text-anchor=start has answered the
+  // first question and silently changed the answer to the second: the block
+  // slides half its own width to the right, off the point it labels.
+  //
+  // label-align asks only the first question. Holding the block still while the
+  // lines re-justify means moving x the other way by the same amount, and the
+  // amount is half or all of the block's width -- a font metric, which is why
+  // this needs a measurement rather than arithmetic. The width comes from
+  // svg-label-metrics.mjs, which measures in the GUI and remembers.
+  //
+  // With no usable measurement the lines are still re-justified and the block
+  // still moves. A label that reads the way it was asked to read, in the wrong
+  // place, is closer to the request than one that ignores it -- and the block was
+  // moving before this property existed.
+  //
+  // See docs/development/label-tool-design.md.
+
+  // How far to the left of x the text sits, as a fraction of its own width
+  var anchorOffsets = {start: 0, middle: 0.5, end: 1};
+
+  var alignAnchors = {left: 'start', center: 'middle', right: 'end'};
+
+  function parseLabelAlign(str) {
+    var align = String(str).trim().toLowerCase();
+    return align in alignAnchors ? align : null;
+  }
+
+  // The text-anchor an alignment is rendered as, or null if there isn't one --
+  // an unset property, or a value that reached the record from an expression or
+  // a data file rather than through the commands, which reject one.
+  function getAlignmentAnchor(align) {
+    var parsed = align ? parseLabelAlign(align) : null;
+    return parsed ? alignAnchors[parsed] : null;
+  }
+
+  // How far x has to move to leave the block where it was, in px. Zero unless
+  // the record carries an alignment that disagrees with the anchor its position
+  // implies and a measurement to work from.
+  //
+  // @positionAnchor is supplied by the caller rather than read from the record,
+  // partly to keep this module out of a cycle with the position table in
+  // svg-properties.mjs, and partly because the comparison is against the anchor
+  // the *position* implies: an explicit text-anchor is the thing label-align
+  // replaces, so treating it as where the block belongs would hold the label in
+  // a place it was never drawn.
+  function getAlignmentShift(rec, positionAnchor) {
+    var anchor = getAlignmentAnchor(rec && rec['label-align']);
+    var width;
+    if (!anchor || anchor == positionAnchor) return 0;
+    width = getMeasuredTextWidth(rec);
+    if (!width) return 0;
+    return (anchorOffsets[anchor] - anchorOffsets[positionAnchor]) * width;
+  }
+
+  var SvgLabelAlign = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getAlignmentAnchor: getAlignmentAnchor,
+    getAlignmentShift: getAlignmentShift,
+    getMeasuredTextWidth: getMeasuredTextWidth,
+    parseLabelAlign: parseLabelAlign
+  });
+
   // parsing hints for -style command cli options
   // null values indicate the lack of a function for parsing/identifying this property
   // (in which case a heuristic is used for distinguishing a string literal from an expression)
@@ -26183,6 +26447,7 @@
     // css: null,
     css: 'inlinecss',
     class: 'classname',
+    'dominant-baseline': null,
     dx: 'measure',
     dy: 'measure',
     fill: 'color',
@@ -26195,8 +26460,20 @@
     'font-weight': null,
     icon: null,
     'icon-color': 'color',
+    // opacity of the symbol at a label's anchor, apart from the text's. Needed
+    // because a label's own opacity properties are applied to both of the
+    // elements its record produces -- see getIconStyleData().
+    'icon-opacity': 'number',
     'icon-size': 'number',
+    // how the lines of a multi-line label line up with each other, as against
+    // text-anchor, which also decides where the block of them sits -- see
+    // svg-label-align.mjs
+    'label-align': 'labelalign',
     'label-pos': 'labelposition',
+    // which side of its path a label's text sits on
+    'label-side': null,
+    // where the text starts along its path; a length or a percentage
+    'label-start-offset': null,
     'label-text': null,  // leaving this null
     'letter-spacing': 'measure',
     'line-height': 'measure',
@@ -26210,6 +26487,15 @@
     'fill-opacity': 'number',
     'vector-effect': null,
     'text-anchor': null
+  };
+
+  // Properties an empty string is a value for rather than the absence of one:
+  // the text of a label, which is empty while it is being typed, and the two
+  // that take any string at all. See emptyValueUnsetsProperty().
+  var propertiesTakingEmptyValues = {
+    'label-text': true,
+    css: true,
+    class: true
   };
 
   // The -symbols command accepts some options that are not supported by -style
@@ -26263,18 +26549,25 @@
       'fill,font-family,font-size,text-anchor,font-weight,font-style,font-stretch,letter-spacing,dominant-baseline'.split(',')))
   };
 
-  var labelPositionFields = ['label-pos', 'dx', 'dy', 'text-anchor'];
+  // The properties a label position stands for, and the shorthand itself.
+  var labelPositionDerivedFields = ['dx', 'dy', 'text-anchor'];
+  var labelPositionFields = ['label-pos'].concat(labelPositionDerivedFields);
 
+  // dx is '0' and not 0 in the centred positions, so that every position in the
+  // table has the same type. These values are normally resolved for rendering and
+  // never stored, but dragging a label materializes them into its record, and a
+  // column holding 0 from one position and '0.45em' from another is one
+  // -merge-layers refuses.
   var labelPositionStyles = {
-    n: {dx: 0, dy: '-0.5em', 'text-anchor': 'middle'},
-    s: {dx: 0, dy: '1.1em', 'text-anchor': 'middle'},
+    n: {dx: '0', dy: '-0.5em', 'text-anchor': 'middle'},
+    s: {dx: '0', dy: '1.1em', 'text-anchor': 'middle'},
     e: {dx: '0.45em', dy: '0.23em', 'text-anchor': 'start'},
     w: {dx: '-0.45em', dy: '0.23em', 'text-anchor': 'end'},
     ne: {dx: '0.4em', dy: '-0.15em', 'text-anchor': 'start'},
     se: {dx: '0.4em', dy: '0.7em', 'text-anchor': 'start'},
     nw: {dx: '-0.4em', dy: '-0.15em', 'text-anchor': 'end'},
     sw: {dx: '-0.4em', dy: '0.7em', 'text-anchor': 'end'},
-    c: {dx: 0, dy: '0.25em', 'text-anchor': 'middle'}
+    c: {dx: '0', dy: '0.25em', 'text-anchor': 'middle'}
   };
 
   // symType: point, polygon, polyline, label
@@ -26301,6 +26594,46 @@
 
   function isSupportedSvgStyleProperty(name) {
     return name in stylePropertyTypes;
+  }
+
+  // Whether an empty value removes this property rather than being stored in it.
+  //
+  // True for a property with no empty value to store, like a number, a color or a
+  // font weight: -style fill= takes the fill back off a feature, where it used to
+  // be an error. It is the only per-property unset there is -- -style clear
+  // removes every style property at once -- and the panel needs one, since a
+  // control returning to its default has to be able to say so.
+  //
+  // False where the empty string is itself a value: inline css, a class name, and
+  // the text of a label, which is empty while it is being typed. Everything else
+  // with no type rule -- a font family, a text-anchor, an icon name -- has no
+  // meaning for an empty string either, so storing one there would leave a column
+  // of nothing behind and an attribute the renderer has to ignore.
+  function emptyValueUnsetsProperty(name) {
+    if (!(name in stylePropertyTypes) || name in propertiesTakingEmptyValues) {
+      return false;
+    }
+    var type = stylePropertyTypes[name];
+    return !type || parseSvgLiteralValue('', type) === null;
+  }
+
+  // Converts a style value to the type that property is stored in -- the same
+  // conversion -style applies to a literal. Returns undefined if the value is not
+  // usable for the property, and the value unchanged for a property with no type
+  // rule, where any string is a literal.
+  //
+  // -style resolves a value three ways: as a literal, as the name of a data field
+  // or as an expression over the feature. A command that sets properties on a
+  // single feature it is creating has no feature to read a field from, so it
+  // wants the first of those on its own -- but it has to agree with -style about
+  // the result, or the same value given to the two commands ends up stored as two
+  // different types in one column.
+  function parseStyleLiteral(name, val) {
+    var type = stylePropertyTypes[name];
+    var parsed;
+    if (!type) return val; // no rule for this property: the value is the value
+    parsed = parseSvgLiteralValue(String(val).trim(), type);
+    return parsed === null ? undefined : parsed;
   }
 
   function isSupportedSvgSymbolProperty(name) {
@@ -26406,10 +26739,18 @@
     stop$1('Unexpected value for', name + ':', strVal);
   }
 
+  // Whether @strVal works as an expression, and the function if it does.
+  //
+  // This is a guess being checked, so the failures are expected and have to be
+  // silent: quiet keeps the expression compiler from reporting them, which in
+  // the GUI means an alert over a style change that went on to work perfectly
+  // well -- a label typed as "Saint-Denis" or an offset of "59.77%" is not an
+  // expression, and neither is an error.
   function parseStyleExpression(strVal, lyr) {
     var func;
     try {
-      func = compileFeatureExpression(strVal, lyr, null, {no_warn: true});
+      func = compileFeatureExpression(strVal, lyr, null,
+        {no_warn: true, quiet: true});
       func(0); // check for runtime errors (e.g. undefined variables)
     } catch(e) {
       func = null;
@@ -26439,6 +26780,8 @@
       val = strVal; // TODO: validate
     } else if (type == 'labelposition') {
       val = parseLabelPosition(strVal);
+    } else if (type == 'labelalign') {
+      val = parseLabelAlign(strVal);
     }
     //  else {
     //   // unknown type -- assume literal value
@@ -26481,13 +26824,67 @@
     return Object.assign({'label-pos': pos}, labelPositionStyles[pos.toLowerCase()]);
   }
 
-  function setLabelPositionStyle(rec, pos) {
-    var style = getLabelPositionStyle(pos);
-    if (!style) return false;
-    labelPositionFields.forEach(function(field) {
-      rec[field] = style[field];
-    });
-    return true;
+  // Fills in the offsets and justification a label's position stands for, for
+  // rendering. Returns @rec itself when there is nothing to add, and a copy when
+  // there is: a renderer must not write into the record it was handed.
+  //
+  // label-pos is the only one of the four that is stored. The other three used to
+  // be written alongside it, which made the table below a code generator rather
+  // than a lookup: four columns in the user's data where one was meant, and the
+  // table's own values -- '0' next to '0.45em' -- became the types of a column
+  // that -merge-layers then had to agree about.
+  //
+  // A value on the record wins over the position, per property, so that
+  // `label-pos=n dx=3` reads as "north, nudged 3px right" rather than losing the
+  // north. That is also what makes this change invisible to files written before
+  // it: they carry all three alongside label-pos, with exactly the values this
+  // would supply.
+  function resolveLabelPosition(rec) {
+    var style = rec && rec['label-pos'] ? getLabelPositionStyle(rec['label-pos']) : null;
+    var out = null;
+    var field, i;
+    // An unusable position renders as if it were unset. The commands that set it
+    // reject one, so reaching here means it was written by an expression or came
+    // from a data file, where stopping the render is the wrong response.
+    if (style) {
+      for (i = 0; i < labelPositionDerivedFields.length; i++) {
+        field = labelPositionDerivedFields[i];
+        if (hasStyleValue(rec, field)) continue;
+        if (!out) out = Object.assign({}, rec);
+        out[field] = style[field];
+      }
+    }
+    out = resolveLabelAlignment(out || rec) || out;
+    return out || rec;
+  }
+
+  // label-align wins over both the position's justification and a text-anchor of
+  // the record's own, because it is the only one of the three that is asking
+  // about justification alone. Where the block ends up is then the renderer's to
+  // correct -- see getAlignmentShift().
+  function resolveLabelAlignment(rec) {
+    var anchor = getAlignmentAnchor(rec['label-align']);
+    var out;
+    if (!anchor || rec['text-anchor'] === anchor) return null;
+    out = Object.assign({}, rec);
+    out['text-anchor'] = anchor;
+    return out;
+  }
+
+  // The anchor a label's position implies, which is where its block of text is
+  // drawn whatever the lines inside it do. 'start' is both the SVG default and
+  // what an unpositioned label is drawn with.
+  function getLabelPositionAnchor(rec) {
+    var style = rec && rec['label-pos'] ? getLabelPositionStyle(rec['label-pos']) : null;
+    return style && style['text-anchor'] || 'start';
+  }
+
+  // Presence, not truthiness. `dy=0` is how a label cancels the vertical offset
+  // its position carries, and the `rec.dy || 0` idiom used by the renderers would
+  // read that as absent and hand back the offset it was written to remove.
+  function hasStyleValue(rec, field) {
+    var val = rec[field];
+    return field in rec && val !== undefined && val !== null && val !== '';
   }
 
   function isSvgMeasure(o) {
@@ -26507,24 +26904,41 @@
   var SvgProperties = /*#__PURE__*/Object.freeze({
     __proto__: null,
     applyStyleAttributes: applyStyleAttributes,
+    emptyValueUnsetsProperty: emptyValueUnsetsProperty,
     findStylePropertiesBySymbolGeom: findStylePropertiesBySymbolGeom,
+    getLabelPositionAnchor: getLabelPositionAnchor,
     getLabelPositionStyle: getLabelPositionStyle,
     getPropertyAccessor: getPropertyAccessor,
     getSymbolDataAccessor: getSymbolDataAccessor,
     getSymbolListAccessor: getSymbolListAccessor,
     getSymbolPropertyAccessor: getSymbolPropertyAccessor,
+    hasStyleValue: hasStyleValue,
     isSupportedSvgStyleProperty: isSupportedSvgStyleProperty,
     isSvgClassName: isSvgClassName,
     isSvgColor: isSvgColor,
     isSvgMeasure: isSvgMeasure,
     isSvgNumber: isSvgNumber,
+    labelPositionDerivedFields: labelPositionDerivedFields,
     labelPositionFields: labelPositionFields,
     mightBeExpression: mightBeExpression,
     parseBoolean: parseBoolean,
     parseLabelPosition: parseLabelPosition,
+    parseStyleLiteral: parseStyleLiteral,
     parseSvgMeasure: parseSvgMeasure,
-    setLabelPositionStyle: setLabelPositionStyle
+    resolveLabelPosition: resolveLabelPosition
   });
+
+  // Accepting \n (two chars) as an alternative to the newline character
+  // (sometimes, '\n' is not converted to newline, e.g. in a Makefile)
+  // Also accepting <br>
+  var labelNewlineRxp = /\n|\\n|<br>/i;
+
+  // The size a label is drawn at when it carries none of its own, which is the
+  // size its layer's group supplies (see getLabelTextDefaults()). Shared with
+  // that function rather than written twice: the em offsets the label positions
+  // use are resolved against this number, and a correction computed against a
+  // different one would put the label somewhere it is not drawn.
+  var DEFAULT_LABEL_FONT_SIZE = 12;
 
   function toLabelString(val) {
     if (val || val === 0 || val === false) return String(val);
@@ -26533,20 +26947,25 @@
 
   // Kludge for applying fill and other styles to a <text> element
   // (for rendering labels in the GUI with the dot in Canvas, not SVG)
-  function renderStyledLabel(rec) {
+  function renderStyledLabel(recArg) {
+    // Resolved once and used for both, so that the offsets a position implies and
+    // the justification it implies cannot come from different places: text-anchor
+    // is written by applyStyleAttributes() and dx/dy by renderLabel().
+    var rec = resolveLabelPosition(recArg);
     var o = renderLabel$1(rec);
     applyStyleAttributes(o, 'label', rec);
     return o;
   }
 
-  function renderLabel$1(rec) {
+  function renderLabel$1(recArg) {
+    // Idempotent, and free on a record that has no position to resolve or has
+    // already been through it, so calling it here as well costs nothing and means
+    // every way into the renderer draws a label in the position it is stored in.
+    var rec = resolveLabelPosition(recArg);
     var line = toLabelString(rec['label-text']);
     var morelines, obj;
-    // Accepting \n (two chars) as an alternative to the newline character
-    // (sometimes, '\n' is not converted to newline, e.g. in a Makefile)
-    // Also accepting <br>
-    var newline = /\n|\\n|<br>/i;
-    var dx = rec.dx || 0;
+    var newline = labelNewlineRxp;
+    var dx = applyAlignmentShift(rec);
     var dy = rec.dy || 0;
     var properties = {
       // using x, y instead of dx, dy for shift, because Illustrator doesn't apply
@@ -26581,10 +27000,96 @@
     return obj;
   }
 
+  // The label's dx, moved to leave its block of text where its position put it
+  // when label-align re-justifies the lines inside it. Returns dx untouched when
+  // there is nothing to correct, so a label without an alignment keeps the value
+  // it was stored with, in the units it was stored in.
+  //
+  // Only anchored labels are corrected. A path label's text follows its curve
+  // from a start offset, so its alignment picks which part of the text sits at
+  // that point -- there is no block beside an anchor to hold still, and its dx
+  // means an offset from the path rather than from a point.
+  function applyAlignmentShift(rec) {
+    var dx = rec.dx || 0;
+    var shift = getAlignmentShift(rec, getLabelPositionAnchor(rec));
+    var px;
+    if (!shift) return dx;
+    px = toPixels(dx, rec['font-size']);
+    // A dx in units the shift cannot be added to -- pt, %, anything but px and
+    // em -- keeps its value, and the block moves as it did before. Correcting it
+    // would mean choosing a pixel size for a unit whose whole point is that
+    // something else decides.
+    if (px === null) return dx;
+    return roundShift(px + shift);
+  }
+
+  // Everything a record says about where its text sits relative to its anchor,
+  // resolved into numbers: the offsets the text is drawn at in px, and the
+  // justification it is drawn with.
+  //
+  // This is what dragging a label starts from. A drag materializes the position
+  // the label was in and adds its own delta to it, and the numbers it starts
+  // from have to be the ones the label is actually drawn with -- otherwise the
+  // text jumps on the first pixel of movement. Hence resolving it here, through
+  // the same functions as the renderer above, rather than in the GUI against a
+  // second copy of the rules.
+  //
+  // An offset in units this cannot convert -- pt, %, anything but px and em --
+  // resolves to 0. The alternative is refusing the drag over a value that
+  // reaches a label only from an expression or a data file, and a drag that puts
+  // the text where the pointer is says more about where it went than a gesture
+  // that does nothing.
+  function getDrawnLabelOffset(recArg) {
+    var rec = resolveLabelPosition(recArg);
+    var dx = toPixels(applyAlignmentShift(rec), rec['font-size']);
+    var dy = toPixels(rec.dy || 0, rec['font-size']);
+    return {
+      dx: dx === null ? 0 : dx,
+      dy: dy === null ? 0 : dy,
+      'text-anchor': rec['text-anchor'] || ''
+    };
+  }
+
+  // A measure in px, or null if it cannot be known.
+  //
+  // An em value needs the font size it is relative to. Most labels do not carry
+  // one: the six positions that hold text clear of its anchor offset it in ems,
+  // and font-size is usually inherited from the layer's group rather than set on
+  // the label -- so a missing size is the normal case here and not a reason to
+  // give up. It resolves against the same default the renderer applies, which is
+  // why that default is one constant and not two.
+  //
+  // What is left is a size that is neither a number nor absent, or a measure in
+  // units the correction cannot be expressed in -- pt, %, anything but px and
+  // em. Those keep their value, because correcting them would mean choosing a
+  // pixel size for a unit whose whole point is that something else decides.
+  function toPixels(measure, fontSizeArg) {
+    var val = parseSvgMeasure(measure);
+    var fontSize = fontSizeArg === undefined || fontSizeArg === null ||
+      fontSizeArg === '' ? DEFAULT_LABEL_FONT_SIZE : Number(fontSizeArg);
+    var em;
+    if (utils.isFiniteNumber(val)) return val;
+    em = /^(-?[.0-9]+)em$/.exec(String(val));
+    if (!em) return null;
+    if (fontSize > 0 === false) return null;
+    return Number(em[1]) * fontSize;
+  }
+
+  // Tenths of a pixel. The serializer prints what it is given, and a correction
+  // is a product of two measurements -- left alone it arrives as
+  // 4.800000000000001.
+  function roundShift(px) {
+    return Math.round(px * 10) / 10;
+  }
+
   var SvgLabels = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    DEFAULT_LABEL_FONT_SIZE: DEFAULT_LABEL_FONT_SIZE,
+    getDrawnLabelOffset: getDrawnLabelOffset,
+    labelNewlineRxp: labelNewlineRxp,
     renderLabel: renderLabel$1,
-    renderStyledLabel: renderStyledLabel
+    renderStyledLabel: renderStyledLabel,
+    toLabelString: toLabelString
   });
 
   // convert data records (properties like svg-symbol, label-text, fill, r) to svg symbols
@@ -26672,10 +27177,20 @@
     return size / 2;
   }
 
+  // A label with a symbol renders two elements from one record, and every opacity
+  // property in commonProperties is applied to both, so the text's opacity fades
+  // the symbol with it. icon-color and icon-opacity are how a symbol is styled
+  // apart from the text: each overrides its counterpart here.
+  //
+  // icon-opacity maps to opacity rather than fill-opacity because a ring is drawn
+  // as a stroked circle with no fill, which a fill opacity would leave alone.
   function getIconStyleData(d, r) {
     var o = utils.extend({}, d);
     o.r = r;
     o.fill = d['icon-color'] || d.fill || 'black';
+    if (isSvgNumber(d['icon-opacity'])) {
+      o.opacity = Number(d['icon-opacity']);
+    }
     return o;
   }
 
@@ -27179,16 +27694,19 @@
     renderFurnitureLayer: renderFurnitureLayer
   });
 
+  // Tags whose content is rendered text, where whitespace added for legibility
+  // would show up in the output.
+  var textTags = {text: true, tspan: true, textPath: true};
+
   function stringify(obj) {
     var svg, joinStr;
     if (!obj || !obj.tag) return '';
     svg = '<' + obj.tag;
-    // w.s. is significant in text elements
     if (obj.properties) {
       svg += stringifyProperties(obj.properties);
     }
     if (obj.children || obj.value) {
-      joinStr = obj.tag == 'text' || obj.tag == 'tspan' ? '' : '\n';
+      joinStr = obj.tag in textTags ? '' : '\n';
       svg += '>' + joinStr;
       if (obj.value) {
         svg += stringEscape(obj.value);
@@ -27247,46 +27765,617 @@
     stringifyProperties: stringifyProperties
   });
 
-  // public domain implementation
-  // source: https://github.com/jbt/js-crypto
-  function sha1(str1){
-    for (
-      var blockstart = 0,
-        i = 0,
-        W = [],
-        A, B, C, D, F, G,
-        H = [A=0x67452301, B=0xEFCDAB89, ~A, ~B, 0xC3D2E1F0],
-        word_array = [],
-        temp2,
-        s = unescape(encodeURI(str1)),
-        str_len = s.length;
+  // Fits an interpolating spline through a sequence of knots and flattens it to
+  // a polyline. Used to derive a label path from the knots stored as a label's
+  // multipoint geometry (see docs/development/label-tool-design.md).
+  //
+  // The curve passes through every knot -- knots are not Bezier handles. This is
+  // the behavior of Illustrator's Curvature tool, and it is what lets a curve be
+  // re-edited by moving the points the user originally clicked.
+  //
+  // The fit is Hobby's algorithm: John Hobby, "Smooth, Easy to Compute
+  // Interpolating Splines", Stanford CS-TR-85-1047 (1985) / Discrete &
+  // Computational Geometry 1 (1986). It is the spline Metafont, MetaPost and
+  // TikZ draw, chosen here because it was designed for the aesthetics of the
+  // result rather than for analytic tidiness.
+  //
+  // Hobby picks a tangent direction at each knot such that "mock curvature" -- a
+  // first-order approximation of curvature that keeps the system linear -- is
+  // equal on both sides of the knot. The curve is therefore near enough to
+  // curvature-continuous to look it, where an earlier centripetal Catmull-Rom
+  // fit here was only tangent-continuous and visibly kinked at every knot: its
+  // curvature jumped by 55% to 220% of the curve's mean curvature at each one.
+  //
+  // Two properties of the method matter to the label tool. The solve is a single
+  // tridiagonal system rather than an iteration, so the fit is deterministic and
+  // the GUI preview and the CLI export cannot drift apart. And the curves are
+  // invariant under translation, rotation and scaling (Hobby 1986), which is
+  // what lets the tool fit in display coordinates while storing knots in map
+  // coordinates.
 
-      i <= str_len;
-    ){
-      word_array[i >> 2] |= (s.charCodeAt(i)||128) << (8 * (3 - i++ % 4));
-    }
-    word_array[temp2 = ((str_len + 8) >> 2) | 15] = str_len << 3;
+  // Curl controls how the curve behaves at the two ends of a run. At 0 it
+  // approaches a straight line there; at 1 (Metafont's default) it approaches a
+  // circular arc, which on a path that turns hard near its end throws the curve
+  // into a wide loop beyond the last knot. Label paths are short enough that the
+  // end segments are most of the curve, so they want a much flatter end than
+  // Metafont does.
+  var DEFAULT_CURL = 0.15;
+  var curl = DEFAULT_CURL;
 
-    for (; blockstart <= temp2; blockstart += 16) {
-      A = H; i = 0;
-
-      for (; i < 80;
-        A = [[
-          (G = ((s = A[0]) << 5 | s >>> 27) + A[4] + (W[i] = (i<16) ? ~~word_array[blockstart + i] : G << 1 | G >>> 31) + 1518500249) + ((B = A[1]) & (C = A[2]) | ~B & (D = A[3])),
-          F = G + (B ^ C ^ D) + 341275144,
-          G + (B & C | B & D | C & D) + 882459459,
-          F + 1535694389
-        ][0|((i++) / 20)] | 0, s, B << 30 | B >>> 2, C, D]
-      ) {
-        G = W[i - 3] ^ W[i - 8] ^ W[i - 14] ^ W[i - 16];
-      }
-
-      for(i = 5; i; ) H[--i] = H[i] + A[i] | 0;
-    }
-
-    for(str1 = ''; i < 40; )str1 += (H[i >> 3] >> (7 - i++ % 8) * 4 & 15).toString(16);
-    return str1;
+  // Temporary knob for judging the end behavior by eye; see
+  // window.mapshaper.setLabelCurveCurl() in the GUI. Expected to be retired once
+  // a default is settled on.
+  function setCurveCurl(val) {
+    curl = val >= 0 ? +val : DEFAULT_CURL;
+    return curl;
   }
+
+  function getCurveCurl() {
+    return curl;
+  }
+
+  // Cap on subdivision levels per curve segment, bounding output at 2^8 = 256
+  // vertices per segment if a pathological input (e.g. knots far enough apart to
+  // exhaust float precision) never satisfies the flatness test.
+  var MAX_SUBDIVIDE_DEPTH = 8;
+
+  // Relative accuracy of the arc-length estimate, and a matching depth cap. The
+  // bracket between a cubic's chord and its control polygon narrows by roughly a
+  // factor of four per subdivision, so this converges in well under ten levels.
+  var LENGTH_TOLERANCE = 1e-5;
+  var MAX_LENGTH_DEPTH = 16;
+
+  // knots: array of [x, y] in a single coordinate space
+  // tolerance: max deviation of the output polyline from the true curve, in the
+  //   same units as the knots
+  // Returns an array of [x, y] starting at the first knot, ending at the last,
+  //   and passing through every knot in between.
+  function fitCurveThroughKnots(knots, tolerance) {
+    var pts = dedupeKnots(knots || []),
+        segments, out, i;
+    if (pts.length < 2) return pts;
+    if (tolerance > 0 === false) {
+      // with no usable tolerance there is nothing to flatten against; the knots
+      // are the curve at its coarsest
+      return pts;
+    }
+    segments = fitRun(pts);
+    out = [pts[0].slice()];
+    for (i = 0; i < segments.length; i++) {
+      flattenCubic(segments[i].p0, segments[i].c1, segments[i].c2,
+        segments[i].p3, tolerance, 0, out);
+      out.push([segments[i].p3[0], segments[i].p3[1]]);
+    }
+    return out;
+  }
+
+  // Returns the curve's control points as cubic Bezier segments, without
+  // flattening. Kept separate from the flattening so that SVG export can emit
+  // true curves rather than a densified polyline.
+  // Returns [{p0, c1, c2, p3}, ...], one per knot interval.
+  function getCurveSegments(knots) {
+    var pts = dedupeKnots(knots || []);
+    if (pts.length < 2) return [];
+    return fitRun(pts);
+  }
+
+  // Arc length of the fitted curve, in the same units as the knots. Export uses
+  // this to decide whether a label's text fits its path, so it is measured on the
+  // true curve rather than on a flattened approximation of it -- a flattening
+  // tolerance tight enough to be accurate in output pixels would be meaningless
+  // if the knots were in degrees or metres, and this estimate is scale-free.
+  function getCurveLength(knots) {
+    var segments = getCurveSegments(knots);
+    var len = 0, i;
+    for (i = 0; i < segments.length; i++) {
+      len += getCubicLength(segments[i], 0);
+    }
+    return len;
+  }
+
+  // Hobby's velocity function constants (Hobby 1986, eq. 11), the approximation
+  // Metafont uses in place of the transcendental form.
+  var VEL_A = Math.SQRT2,
+      VEL_B = 1 / 16,
+      VEL_C = (3 - Math.sqrt(5)) / 2;
+
+  // Fits a run of knots, returning a cubic per interval.
+  function fitRun(pts) {
+    var n = pts.length - 1, // segment count
+        dd = [], om = [], psi = [], segments = [],
+        theta, phi, i;
+    if (n < 1) return [];
+    // two knots have no interior knot to bend around
+    if (n === 1) return [straightSegment(pts[0], pts[1])];
+    for (i = 0; i < n; i++) {
+      dd.push(distance2D$1(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]));
+      om.push(Math.atan2(pts[i + 1][1] - pts[i][1], pts[i + 1][0] - pts[i][0]));
+    }
+    // psi[i] is how far the polyline turns at knot i
+    psi.push(0);
+    for (i = 1; i < n; i++) psi.push(wrapAngle(om[i] - om[i - 1]));
+
+    theta = solveDepartureAngles(dd, psi, n);
+    phi = getArrivalAngles(theta, psi, n);
+
+    for (i = 0; i < n; i++) {
+      segments.push(buildSegment(pts[i], pts[i + 1], dd[i], om[i],
+        theta[i], phi[i + 1]));
+    }
+    return segments;
+  }
+
+  // The tridiagonal system of Hobby's mock-curvature conditions, in the
+  // departure angle at each knot measured from the chord leaving it. Written for
+  // unit tension throughout; the general form carries a tension per knot, which
+  // the label tool has no use for.
+  //
+  // The interior rows come from equalizing mock curvature across knot i; the
+  // first and last rows are the curl conditions that close the system at the
+  // ends of an open run.
+  function solveDepartureAngles(dd, psi, n) {
+    var lo = [], di = [], up = [], r = [], i;
+    lo.push(0);
+    di.push(2 + curl);
+    up.push(1 + 2 * curl);
+    r.push(-(1 + 2 * curl) * psi[1]);
+    for (i = 1; i < n - 1; i++) {
+      lo.push(dd[i]);
+      di.push(2 * (dd[i] + dd[i - 1]));
+      up.push(dd[i - 1]);
+      r.push(-2 * dd[i] * psi[i] - dd[i - 1] * psi[i + 1]);
+    }
+    if (n > 1) {
+      lo.push(dd[n - 1]);
+      di.push(2 * (dd[n - 1] + dd[n - 2]) -
+        dd[n - 2] * (1 + 2 * curl) / (2 + curl));
+      up.push(0);
+      r.push(-2 * dd[n - 1] * psi[n - 1]);
+    }
+    return solveTridiagonal(lo, di, up, r);
+  }
+
+  // The angle at which the curve arrives at each knot, again measured from the
+  // chord. At an interior knot the departure and arrival angles have to account
+  // between them for the whole turn in the polyline; at the far end of the run
+  // the curl condition fixes it.
+  function getArrivalAngles(theta, psi, n) {
+    var phi = [0], i;
+    for (i = 1; i < n; i++) phi.push(-psi[i] - theta[i]);
+    phi.push((1 + 2 * curl) * theta[n - 1] / (2 + curl));
+    return phi;
+  }
+
+  // Turns a pair of angles into a cubic, by way of Hobby's velocity functions --
+  // how far along each tangent the control point sits, as a multiple of a third
+  // of the chord.
+  function buildSegment(p0, p1, d, om, theta, phi) {
+    var alpha = VEL_A * (Math.sin(theta) - VEL_B * Math.sin(phi)) *
+          (Math.sin(phi) - VEL_B * Math.sin(theta)) *
+          (Math.cos(theta) - Math.cos(phi)),
+        rho = (2 + alpha) /
+          (1 + (1 - VEL_C) * Math.cos(theta) + VEL_C * Math.cos(phi)),
+        sigma = (2 - alpha) /
+          (1 + (1 - VEL_C) * Math.cos(phi) + VEL_C * Math.cos(theta));
+    return {
+      p0: p0,
+      c1: [p0[0] + d * rho / 3 * Math.cos(theta + om),
+           p0[1] + d * rho / 3 * Math.sin(theta + om)],
+      c2: [p1[0] - d * sigma / 3 * Math.cos(om - phi),
+           p1[1] - d * sigma / 3 * Math.sin(om - phi)],
+      p3: p1
+    };
+  }
+
+  // A cubic that is exactly its chord, with the control points at the thirds --
+  // the degenerate case of the above when both angles are zero.
+  function straightSegment(a, b) {
+    return {
+      p0: a,
+      c1: [a[0] + (b[0] - a[0]) / 3, a[1] + (b[1] - a[1]) / 3],
+      c2: [a[0] + 2 * (b[0] - a[0]) / 3, a[1] + 2 * (b[1] - a[1]) / 3],
+      p3: b
+    };
+  }
+
+  // Thomas algorithm. Hobby shows the system is diagonally dominant, so this
+  // needs no pivoting.
+  function solveTridiagonal(lo, di, up, r) {
+    var n = di.length,
+        cp = [], dp = [], x = new Array(n), i, m;
+    cp.push(up[0] / di[0]);
+    dp.push(r[0] / di[0]);
+    for (i = 1; i < n; i++) {
+      m = di[i] - lo[i] * cp[i - 1];
+      cp.push(up[i] / m);
+      dp.push((r[i] - lo[i] * dp[i - 1]) / m);
+    }
+    x[n - 1] = dp[n - 1];
+    for (i = n - 2; i >= 0; i--) {
+      x[i] = dp[i] - cp[i] * x[i + 1];
+    }
+    return x;
+  }
+
+  // Into (-PI, PI], so that a turn is measured the short way round.
+  function wrapAngle(a) {
+    while (a > Math.PI) a -= 2 * Math.PI;
+    while (a <= -Math.PI) a += 2 * Math.PI;
+    return a;
+  }
+
+  // A cubic's arc length is bracketed below by its chord and above by its control
+  // polygon. Subdividing narrows the bracket; the midpoint of a narrow one is the
+  // length. (Gravesen's method.)
+  function getCubicLength(seg, depth) {
+    var chord = distance2D$1(seg.p0[0], seg.p0[1], seg.p3[0], seg.p3[1]);
+    var poly = distance2D$1(seg.p0[0], seg.p0[1], seg.c1[0], seg.c1[1]) +
+        distance2D$1(seg.c1[0], seg.c1[1], seg.c2[0], seg.c2[1]) +
+        distance2D$1(seg.c2[0], seg.c2[1], seg.p3[0], seg.p3[1]);
+    var halves;
+    if (poly === 0 || depth >= MAX_LENGTH_DEPTH ||
+        poly - chord <= LENGTH_TOLERANCE * poly) {
+      return (chord + poly) / 2;
+    }
+    halves = subdivideCubic(seg.p0, seg.c1, seg.c2, seg.p3);
+    return getCubicLength(halves.left, depth + 1) +
+      getCubicLength(halves.right, depth + 1);
+  }
+
+  // Removes non-finite and consecutively duplicated knots. A duplicate spans a
+  // zero-length chord, which would leave the direction of the polyline there
+  // undefined -- and double-clicking to finish a path is an easy way to make one.
+  function dedupeKnots(knots) {
+    var points = [], i, p, prev;
+    for (i = 0; i < knots.length; i++) {
+      p = knots[i];
+      if (!p || p.length < 2 || !isFiniteNumber$1(p[0]) || !isFiniteNumber$1(p[1])) continue;
+      if (prev && p[0] === prev[0] && p[1] === prev[1]) continue;
+      points.push([p[0], p[1]]);
+      prev = p;
+    }
+    return points;
+  }
+
+  // Recursively subdivides a cubic until its control points lie within
+  // @tolerance of its chord, emitting only the vertices strictly inside the
+  // curve -- the caller adds the endpoint.
+  //
+  // Testing the control points is conservative: a cubic's greatest deviation
+  // from its chord is at most 3/4 of the greater control point distance, so the
+  // flattened path stays within 0.75 * tolerance of the true curve.
+  function flattenCubic(p0, c1, c2, p3, tolerance, depth, out) {
+    var tolSq = tolerance * tolerance;
+    var halves;
+    if (depth >= MAX_SUBDIVIDE_DEPTH) return;
+    if (pointSegDistSq2(c1[0], c1[1], p0[0], p0[1], p3[0], p3[1]) <= tolSq &&
+        pointSegDistSq2(c2[0], c2[1], p0[0], p0[1], p3[0], p3[1]) <= tolSq) {
+      return; // flat enough -- the chord stands in for the curve
+    }
+    halves = subdivideCubic(p0, c1, c2, p3);
+    flattenCubic(halves.left.p0, halves.left.c1, halves.left.c2, halves.left.p3,
+      tolerance, depth + 1, out);
+    out.push([halves.left.p3[0], halves.left.p3[1]]); // curve midpoint
+    flattenCubic(halves.right.p0, halves.right.c1, halves.right.c2, halves.right.p3,
+      tolerance, depth + 1, out);
+  }
+
+  // de Casteljau split at t = 0.5
+  function subdivideCubic(p0, c1, c2, p3) {
+    var a = mid(p0, c1),
+        b = mid(c1, c2),
+        c = mid(c2, p3),
+        d = mid(a, b),
+        e = mid(b, c),
+        m = mid(d, e);
+    return {
+      left: {p0: p0, c1: a, c2: d, p3: m},
+      right: {p0: m, c1: e, c2: c, p3: p3}
+    };
+  }
+
+  function mid(a, b) {
+    return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  }
+
+  function isFiniteNumber$1(n) {
+    return typeof n == 'number' && isFinite(n);
+  }
+
+  var CurveFit = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    fitCurveThroughKnots: fitCurveThroughKnots,
+    getCurveCurl: getCurveCurl,
+    getCurveLength: getCurveLength,
+    getCurveSegments: getCurveSegments,
+    setCurveCurl: setCurveCurl
+  });
+
+  var roundCoord$2 = getRoundingFunction(0.01);
+
+  function stringifyVertex(p) {
+    return ' ' + roundCoord$2(p[0]) + ' ' + roundCoord$2(p[1]);
+  }
+
+  function isCubicCtrl(p) {
+    return p.length > 2 && p[2] == 'C';
+  }
+
+  function stringifyPolygonCoords(coords) {
+    var parts = [];
+    for (var i=0; i<coords.length; i++) {
+      parts.push(stringifyLineStringCoords(coords[i]) + ' Z');
+    }
+    return parts.length > 0 ? parts.join(' ') : '';
+  }
+
+  function stringifyLineStringCoords(coords) {
+    if (coords.length === 0) return '';
+    var d = 'M';
+    var fromCurve = false;
+    var p, i, n;
+    for (i=0, n=coords.length; i<n; i++) {
+      p = coords[i];
+      if (isCubicCtrl(p)) {
+        // TODO: add defensive check
+        d += ' C' + stringifyVertex(p) + stringifyVertex(coords[++i]) + stringifyVertex(coords[++i]);
+        fromCurve = true;
+      } else if (fromCurve) {
+        d += ' L' + stringifyVertex(p);
+        fromCurve = false;
+      } else {
+        d += stringifyVertex(p);
+      }
+    }
+    return d;
+  }
+
+  var SvgPathUtils = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    stringifyLineStringCoords: stringifyLineStringCoords,
+    stringifyPolygonCoords: stringifyPolygonCoords
+  });
+
+  // Decides whether a path-aligned label's text fits its path.
+  //
+  // The decision compares two numbers, and only one of them is geometry. Path
+  // length export computes; text width takes font metrics, which come from
+  // svg-label-metrics.mjs -- measured by rendering in the GUI, and read from the
+  // installed font files in Node.
+  //
+  // What that module holds is the measured width, not a fits/doesn't-fit verdict,
+  // because a verdict would depend on output size and a width does not: text is
+  // exported at its native font-size, so its rendered width in output pixels is
+  // the same at every output size, while the path shrinks and grows.
+  //
+  // See docs/development/label-tool-design.md.
+
+  // One of:
+  //   'fits'       the text is known to fit
+  //   'overflow'   the text is known not to fit; export drops the label
+  //   'unmeasured' no width is available, so fit is unknown
+  //
+  // 'unmeasured' renders, because silently deleting a label from a map is a worse
+  // outcome than drawing one that overflows: an overflow is visible and fixable,
+  // a deletion is neither. It is what a machine without the label's font gets,
+  // and what every reader got outside the GUI before Node could measure.
+  function getLabelFitState(rec, pathLength) {
+    var width = getMeasuredTextWidth(rec);
+    if (!width) return 'unmeasured';
+    return width <= pathLength ? 'fits' : 'overflow';
+  }
+
+  var SvgLabelFit = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getLabelFitState: getLabelFitState
+  });
+
+  // Renders a path-aligned label as <text><textPath>, with the path itself
+  // hoisted into <defs> by svg-definitions.mjs.
+  //
+  // A label's knots are its geometry, so a point label is an anchored label and a
+  // multipoint label is a path-aligned one. Note that this changes what a
+  // multipoint feature carrying label-text used to export as: previously the same
+  // label was drawn once at every point. Nothing depended on that -- the
+  // duplicate rendering was a known wart, flagged by a commented-out warning in
+  // layerHasLabels().
+  //
+  // See docs/development/label-tool-design.md.
+
+  // Number of dropped/joined ids to name in a report before summarizing the rest.
+  var MAX_REPORTED_IDS = 10;
+
+  // Property that carries a label's path data until a consumer moves it into a
+  // <defs> entry and replaces it with a reference. Export and the GUI both do
+  // this but assign ids differently -- export derives them from the path data so
+  // that output is byte-stable and identical paths share a definition, while the
+  // GUI namespaces them per rendered layer.
+  var LABEL_PATH_PROPERTY = 'label-path-d';
+
+  // Class marking a label whose text is too long for its path. Only the GUI sets
+  // it, via keepOverflow; export drops such labels instead.
+  var LABEL_OVERFLOW_CLASS = 'label-overflow';
+
+  function featureIsPathLabel(geom, rec) {
+    return !!(geom && geom.type == 'MultiPoint' && geom.coordinates &&
+      geom.coordinates.length > 1 && featureHasLabel(rec));
+  }
+
+  // featureIsPathLabel() against a point layer's shape -- an array of coordinate
+  // pairs. Separate so that the GUI's render loop does not have to build a
+  // geometry object per shape just to ask the question.
+  //
+  // It is the GUI's test, and so it accepts a label whose text is still empty
+  // where the export test does not: a path label is one being typed into before
+  // it has any text, and it has to keep its curve while that is true.
+  function shapeIsPathLabel(shp, rec) {
+    return !!(shp && shp.length > 1 && featureIsLabel(rec));
+  }
+
+  // The 'd' attribute of a label's path, as true cubic curves rather than a
+  // densified polyline -- worth it here because an exported label path is
+  // re-editable in Illustrator, and because a smooth baseline is what the text
+  // is positioned against.
+  function getLabelPathData(knots) {
+    var segments = getCurveSegments(knots);
+    var coords, seg, i;
+    if (segments.length === 0) return null; // knots collapsed to a single point
+    coords = [[segments[0].p0[0], segments[0].p0[1]]];
+    for (i = 0; i < segments.length; i++) {
+      seg = segments[i];
+      // the 'C' tag marks a control point for the path writer, which then
+      // consumes the following two coordinates as the second control point and
+      // the segment's endpoint
+      coords.push([seg.c1[0], seg.c1[1], 'C'], [seg.c2[0], seg.c2[1]],
+        [seg.p3[0], seg.p3[1]]);
+    }
+    return stringifyLineStringCoords(coords);
+  }
+
+  function initPathLabelReport() {
+    return {dropped: [], joined: []};
+  }
+
+  // Returns an SVG object, or null if the label is not rendered.
+  // knots: the feature's coordinates, in the units the label is drawn in
+  // opts:
+  //   report: optional collector, see initPathLabelReport()
+  //   id: feature id, used only in reports
+  //   keepOverflow: render a label that doesn't fit, marked with
+  //     LABEL_OVERFLOW_CLASS, instead of dropping it. The editor sets this,
+  //     because hiding a broken label makes it unfindable and so unfixable.
+  function renderPathLabel(rec, knots, opts) {
+    var d = getLabelPathData(knots);
+    var report = opts && opts.report;
+    var id = opts && opts.id;
+    var state, text, textPath, o, cls;
+    if (!d) return null;
+    state = getLabelFitState(rec, getCurveLength(knots));
+    if (state == 'overflow') {
+      if (!(opts && opts.keepOverflow)) {
+        addToReport(report, 'dropped', id);
+        return null;
+      }
+      cls = LABEL_OVERFLOW_CLASS;
+    }
+    text = toLabelString(rec['label-text']);
+    if (labelNewlineRxp.test(text)) {
+      // a <tspan> inside a <textPath> advances along the path instead of
+      // stacking below it, so the lines are joined rather than dropping
+      // everything after the first one
+      text = text.split(labelNewlineRxp).join(' ');
+      addToReport(report, 'joined', id);
+    }
+    textPath = {
+      tag: 'textPath',
+      value: text,
+      properties: {
+        startOffset: rec['label-start-offset'] || getDefaultStartOffset(rec)
+      }
+    };
+    // the caller replaces this with a reference to a <defs> entry
+    textPath.properties[LABEL_PATH_PROPERTY] = d;
+    if (rec['label-side']) {
+      textPath.properties.side = rec['label-side'];
+    }
+    // dx and dy shift the text along and across the path respectively. They go
+    // on the <textPath>, not the <text>: x and y on a <text> are ignored once it
+    // has a <textPath> child, so renderLabel()'s trick of using x/y for offsets
+    // does not carry over.
+    if (rec.dx) textPath.properties.dx = rec.dx;
+    if (rec.dy) textPath.properties.dy = rec.dy;
+    o = {tag: 'text', properties: {}, children: [textPath]};
+    applyStyleAttributes(o, 'label', rec);
+    if (cls) {
+      o.properties.class = o.properties.class ? o.properties.class + ' ' + cls : cls;
+    }
+    return o;
+  }
+
+  // Maps a label's knots into the coordinate space *inside* its rendered symbol
+  // group, which is translated to the label's first knot and scaled by
+  // @symbolScale. @transform maps CRS coordinates to screen pixels.
+  //
+  // The result depends only on the ratio between the two scales, which is what
+  // makes the framed case cheap: with a frame defined, zooming multiplies the
+  // view scale and the symbol scale by the same factor, so these coordinates --
+  // and the path built from them -- do not change. Panning cancels too, because
+  // the coordinates are relative to the first knot. With no frame the symbol
+  // scale is fixed at 1, so zooming does change them and the path has to be
+  // rebuilt.
+  function getLabelPathCoords(knots, transform, symbolScale) {
+    var origin = transform.transform(knots[0][0], knots[0][1]);
+    var coords = [];
+    var p, i;
+    for (i = 0; i < knots.length; i++) {
+      p = transform.transform(knots[i][0], knots[i][1]);
+      coords.push([(p[0] - origin[0]) / symbolScale, (p[1] - origin[1]) / symbolScale]);
+    }
+    return coords;
+  }
+
+  // Replaces a rendered path label's marker property with a reference to a
+  // definition, and returns the path data the caller now has to define. Kept next
+  // to the renderer so that the element's shape is only assumed in one place.
+  function referenceLabelPath(el, pathId) {
+    var props = el.children[0].properties;
+    var d = props[LABEL_PATH_PROPERTY];
+    delete props[LABEL_PATH_PROPERTY];
+    props.href = '#' + pathId;
+    return d;
+  }
+
+  // startOffset positions the text's anchor along the path, so the default that
+  // leaves text where the anchor implies depends on text-anchor. 'middle' is the
+  // layer-level default set by getEmptyLayerForSVG().
+  function getDefaultStartOffset(rec) {
+    var anchor = rec['text-anchor'] || 'middle';
+    if (anchor == 'start') return '0%';
+    if (anchor == 'end') return '100%';
+    return '50%';
+  }
+
+  function addToReport(report, key, id) {
+    if (report && report[key]) report[key].push(id);
+  }
+
+  function reportPathLabels(report, lyr) {
+    var name = lyr && lyr.name || '[unnamed]';
+    if (!report) return;
+    if (report.dropped.length > 0) {
+      // A drop is reported rather than silent: an absent label is otherwise
+      // indistinguishable from a bug.
+      message(utils.format('Dropped %,d path label%s from layer "%s" because the text is longer than the path: %s.',
+        report.dropped.length, utils.pluralSuffix(report.dropped.length), name,
+        formatIds(report.dropped)));
+    }
+    if (report.joined.length > 0) {
+      warn(utils.format('%,d path label%s in layer "%s" contain%s a line break; multi-line text on a path is not supported, so the lines were joined: %s.',
+        report.joined.length, utils.pluralSuffix(report.joined.length), name,
+        report.joined.length == 1 ? 's' : '', formatIds(report.joined)));
+    }
+  }
+
+  function formatIds(ids) {
+    var extra = ids.length - MAX_REPORTED_IDS;
+    var listed = extra > 0 ? ids.slice(0, MAX_REPORTED_IDS) : ids;
+    var str = (listed.length == 1 ? 'feature ' : 'features ') + listed.join(', ');
+    return extra > 0 ? str + ' and ' + extra + ' more' : str;
+  }
+
+  var SvgLabelPaths = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    LABEL_OVERFLOW_CLASS: LABEL_OVERFLOW_CLASS,
+    LABEL_PATH_PROPERTY: LABEL_PATH_PROPERTY,
+    featureIsPathLabel: featureIsPathLabel,
+    getLabelPathCoords: getLabelPathCoords,
+    getLabelPathData: getLabelPathData,
+    initPathLabelReport: initPathLabelReport,
+    referenceLabelPath: referenceLabelPath,
+    renderPathLabel: renderPathLabel,
+    reportPathLabels: reportPathLabels,
+    shapeIsPathLabel: shapeIsPathLabel
+  });
 
   function getSphereEffectParams() {
     return {
@@ -27334,6 +28423,9 @@
     procNode(obj);
 
     function procNode(obj) {
+      if (obj.tag == 'textPath' && obj.properties && obj.properties[LABEL_PATH_PROPERTY]) {
+        convertLabelPath(obj.properties, defs);
+      }
       if (obj.tag == 'path' && obj.properties['fill-pattern']) {
         convertFillPattern(obj.properties, defs);
       }
@@ -27348,6 +28440,28 @@
         obj.children.forEach(procNode);
       }
     }
+  }
+
+  // Moves a label's baseline into <defs>, where it is referenced but never
+  // painted. It must not be left in the document body: a <path> with no stroke or
+  // fill of its own picks up SVG's defaults -- no stroke and *black fill* -- and
+  // renders as a filled blob instead of a line.
+  //
+  // The id is derived from the path data, so identical paths share one
+  // definition and repeated exports of the same map produce identical output.
+  function convertLabelPath(properties, defs) {
+    var d = properties[LABEL_PATH_PROPERTY];
+    var item = utils.find(defs, function(item) {return item.labelPath === d;});
+    delete properties[LABEL_PATH_PROPERTY];
+    if (!item) {
+      item = {
+        labelPath: d,
+        id: 'label-path-' + sha1(d).substr(0, 12)
+      };
+      item.svg = '<path id="' + item.id + '" d="' + d + '"/>\n';
+      defs.push(item);
+    }
+    properties.href = '#' + item.id;
   }
 
   function convertSvgImage(obj, defs) {
@@ -27445,13 +28559,18 @@
 
   function importGeoJSONFeatures(features, opts) {
     opts = opts || {};
-    return features.map(function(obj) {
+    return features.map(function(obj, featureId) {
       var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
       var geomType = geom && geom.type;
       var msType = GeoJSON.translateGeoJSONType(geomType);
       var d = obj.properties || {};
       var svgObj = null;
-      if (geomType && geom.coordinates) {
+      if (featureIsPathLabel(geom, d)) {
+        // a label's knots are its geometry, so this is one label along a curve
+        // rather than several labels at several points
+        svgObj = renderPathLabel(d, geom.coordinates,
+          {report: opts.path_label_report, id: featureId});
+      } else if (geomType && geom.coordinates) {
         svgObj = geojsonImporters[geomType](geom.coordinates, d);
       }
       if (!svgObj) {
@@ -27868,7 +28987,12 @@ ${svg}
     var geojson = exportDatasetAsGeoJSON(d, opts);
     var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
     warnIfIllustratorPathLimitExceeded(lyr, features);
-    var children = importGeoJSONFeatures(features, opts);
+    // path labels that don't fit their path render as nothing, and are reported
+    // rather than dropped silently
+    var pathLabelReport = initPathLabelReport();
+    var children = importGeoJSONFeatures(features,
+      utils.defaults({path_label_report: pathLabelReport}, opts));
+    reportPathLabels(pathLabelReport, lyr);
     // Drop empty placeholder <g/> elements (features whose geometry was null in the
     // source data, collapsed during simplification, or otherwise produced no
     // visible output). Keep the layer's records in lockstep so that data-*
@@ -28044,12 +29168,23 @@ ${svg}
 
     // add default text properties to layers with labels
     if (layerHasLabels(lyr) || layerHasSvgSymbols(lyr) || layerHasFurniture(lyr)) {
-      layerObj.properties['font-family'] = 'sans-serif';
-      layerObj.properties['font-size'] = '12';
-      layerObj.properties['text-anchor'] = 'middle';
+      utils.extend(layerObj.properties, getLabelTextDefaults());
     }
 
     return layerObj;
+  }
+
+  // The text properties a label layer's container carries, which its labels
+  // inherit instead of each holding a copy. Exported because a label rendered
+  // outside any container -- the one the GUI draws while it is being typed, which
+  // belongs to no layer until it is created -- has to be given the same ones, or
+  // it changes size and alignment at the moment it becomes a feature.
+  function getLabelTextDefaults() {
+    return {
+      'font-family': 'sans-serif',
+      'font-size': String(DEFAULT_LABEL_FONT_SIZE),
+      'text-anchor': 'middle'
+    };
   }
 
   function layerHasSvgSymbols(lyr) {
@@ -28083,6 +29218,7 @@ ${svg}
     featureHasLabel: featureHasLabel,
     featureHasSvgSymbol: featureHasSvgSymbol,
     getEmptyLayerForSVG: getEmptyLayerForSVG,
+    getLabelTextDefaults: getLabelTextDefaults,
     layerHasLabels: layerHasLabels,
     layerHasSvgSymbols: layerHasSvgSymbols,
     validateSvgDataFields: validateSvgDataFields
@@ -39079,6 +40215,30 @@ ${svg}
         nameOpt2 = { // for -calc and -info
           describe: 'name the output layer'
         },
+        // label style properties accepted by -add-label, so that a label can be
+        // created and styled in one command. These are a subset of the
+        // properties -style accepts -- the ones that apply to text.
+        labelStyleOpts = {
+          'font-family': {describe: 'label font, e.g. Georgia'},
+          'font-size': {describe: 'label font size, e.g. 14'},
+          'font-style': {describe: 'normal or italic'},
+          'font-weight': {describe: 'normal, bold or a numeric weight'},
+          'font-stretch': {describe: 'e.g. condensed'},
+          'letter-spacing': {describe: 'extra space between letters'},
+          'line-height': {describe: 'spacing between lines of a multi-line label'},
+          'text-anchor': {describe: 'start, middle or end'},
+          'label-align': {describe: 'how the lines of a multi-line label align: left, center or right'},
+          'dominant-baseline': {describe: 'vertical alignment, e.g. central'},
+          'label-pos': {describe: 'position relative to the anchor: n s e w ne se nw sw c'},
+          'label-side': {describe: 'which side of its path the text sits on: left or right'},
+          'label-start-offset': {describe: 'where text starts along its path, e.g. 50%'},
+          dx: {describe: 'horizontal offset from the anchor'},
+          dy: {describe: 'vertical offset from the anchor'},
+          fill: {describe: 'text color'},
+          opacity: {describe: 'text opacity'},
+          css: {describe: 'inline css style'},
+          class: {describe: 'name of CSS class or classes (space-separated)'}
+        },
         noReplaceOpt2 = { // for -calc and -info
           alias: '+',
           type: 'flag',
@@ -40352,6 +41512,10 @@ ${svg}
         describe: 'size of grid cells in degrees (default is 10)',
         type: 'number'
       })
+      .option('base', {
+        describe: 'longitude to align meridians to (default is 0)',
+        type: 'number'
+      })
       .option('polygon', {
         describe: 'create a polygon to match the outline of the graticule',
         type: 'flag'
@@ -41084,6 +42248,9 @@ ${svg}
       .option('icon-color', {
         describe: 'point icon color (defaults to fill color, then black)'
       })
+      .option('icon-opacity', {
+        describe: 'point icon opacity, 0-1 (defaults to the label\'s opacity)'
+      })
       .option('label-text', {
         describe: 'label text (set this to export points as labels)'
       })
@@ -41092,6 +42259,9 @@ ${svg}
       })
       .option('text-anchor', {
         describe: 'label alignment; one of: start, end, middle (default)'
+      })
+      .option('label-align', {
+        describe: 'alignment of the lines of multi-line labels; left, center or right'
       })
       .option('dx', {
         describe: 'x offset of labels (default is 0)'
@@ -41119,6 +42289,15 @@ ${svg}
       })
        .option('line-height', {
         describe: 'line spacing of multi-line labels (default is 1.1em)'
+      })
+      .option('dominant-baseline', {
+        describe: 'vertical alignment of labels (e.g. central)'
+      })
+      .option('label-side', {
+        describe: 'which side of its path a label sits on: left or right'
+      })
+      .option('label-start-offset', {
+        describe: 'where label text starts along its path, e.g. 50%'
       })
      .option('target', targetOpt);
 
@@ -41356,6 +42535,64 @@ ${svg}
       .option('name', nameOpt)
       .option('target', targetOpt)
       .option('no-replace', noReplaceOpt);
+
+    // used by GUI
+    parser.command('add-label')
+      // .describe('add a map label to a point layer')
+      .option('coordinates', {
+        describe: 'x,y of the label anchor, or x,y,x,y,... of a curve\'s knots'
+      })
+      .option('text', {
+        describe: 'label text'
+      })
+      // label style properties, so that creating and styling a label is one
+      // command; anything not listed here can be set with a following -style
+      .options(labelStyleOpts)
+      // a label can carry a symbol at its anchor, so these come along too even
+      // though they are not text properties
+      .option('icon', {
+        describe: 'symbol drawn at the label anchor: circle, square, ring, star'
+      })
+      .option('icon-size', {
+        describe: 'size of the anchor symbol in px'
+      })
+      .option('icon-color', {
+        describe: 'color of the anchor symbol (defaults to the text color)'
+      })
+      .option('icon-opacity', {
+        describe: 'opacity of the anchor symbol, 0-1'
+      })
+      .option('properties', {
+        describe: 'other attributes, as a JSON object'
+      })
+      .option('name', nameOpt)
+      .option('target', targetOpt)
+      .option('no-replace', noReplaceOpt);
+
+    // used by GUI
+    parser.command('add-layer')
+      // .describe('create an empty layer, to add shapes or labels to')
+      .option('geometry-type', {
+        describe: 'point, polygon or polyline'
+      })
+      .option('name', {
+        describe: 'name of the new layer'
+      })
+      // only the CRS is taken from the target, so that a shape drawn at a
+      // projected coordinate is not read as lat-long
+      .option('target', targetOpt);
+
+    // used by GUI
+    parser.command('update-label')
+      // .describe('move the anchor or curve knots of an existing label')
+      .option('ids', {
+        describe: 'feature id of the label to update',
+        type: 'numbers'
+      })
+      .option('coordinates', {
+        describe: 'x,y of the label anchor, or x,y,x,y,... of a curve\'s knots'
+      })
+      .option('target', targetOpt);
 
     parser.command('alpha-shapes')
       // .describe('convert points to alpha shapes (aka concave hulls)')
@@ -48301,6 +49538,377 @@ ${svg}
     });
   }
 
+  // Geometry concerns shared by the commands that write a label's knots,
+  // -add-label and -update-label. A label's knots are its geometry, so both
+  // commands accept coordinates in the same forms and answer the same questions
+  // about them. See docs/development/label-tool-design.md.
+
+  // Accepts "x,y,x,y,..." or a JSON array, either flat or as an array of pairs.
+  function parseLabelCoords(arg) {
+    var arr, coords;
+    if (arg === undefined || arg === null || arg === '') {
+      stop$1('Missing required coordinates parameter');
+    }
+    arr = utils.isString(arg) ? parseCoordString(arg) : arg;
+    if (!Array.isArray(arr) || arr.length === 0) {
+      stop$1('Unable to parse coordinates:', arg);
+    }
+    coords = Array.isArray(arr[0]) ? arr : transposeCoords$1(arr, arg);
+    coords.forEach(function(p) {
+      if (!Array.isArray(p) || p.length != 2 ||
+          !utils.isFiniteNumber(p[0]) || !utils.isFiniteNumber(p[1])) {
+        stop$1('Invalid coordinate pair:', JSON.stringify(p));
+      }
+    });
+    return coords;
+  }
+
+  function parseJsonArg(arg, name) {
+    if (!utils.isString(arg)) return arg;
+    try {
+      return JSON.parse(arg);
+    } catch(e) {
+      stop$1('Unable to parse', name + ':', arg);
+    }
+  }
+
+  // A curve is fitted in the coordinate space it is stored in, so a fit done in
+  // degrees bows incorrectly away from the equator. A modest curve in a small
+  // area is unaffected, so this warns rather than failing.
+  function warnIfCurveIsUnprojected(dataset, knotCount) {
+    var crs;
+    if (knotCount < 2) return; // no curve to distort
+    if (!dataset) return;
+    crs = getDatasetCRS(dataset);
+    if (crs && crs.is_latlong) {
+      warn('Fitting a label curve to unprojected coordinates. Consider using -proj first.');
+    }
+  }
+
+  function parseCoordString(str) {
+    var s = String(str).trim();
+    if (s.startsWith('[')) return parseJsonArg(s, 'coordinates');
+    return s.split(/[,\s]+/).map(function(part) {
+      var n = Number(part);
+      if (part === '' || isNaN(n)) {
+        stop$1('Unable to parse coordinates:', str);
+      }
+      return n;
+    });
+  }
+
+  function transposeCoords$1(arr, srcArg) {
+    var coords = [], i;
+    if (arr.length % 2 !== 0) {
+      stop$1('Expected an even number of coordinates; received', arr.length,
+        'in:', srcArg);
+    }
+    for (i = 0; i < arr.length; i += 2) {
+      coords.push([arr[i], arr[i + 1]]);
+    }
+    return coords;
+  }
+
+  cmd.addLabel = addLabel;
+
+  // Adds a map label to a point layer. One coordinate pair makes an anchored
+  // label; several make a path-aligned label whose points are the knots its
+  // curve is fitted through. See docs/development/label-tool-design.md.
+  //
+  // Options consumed directly by this command, rather than passed through as
+  // label properties.
+  var RESERVED_OPTIONS = {
+    coordinates: true,
+    name: true,
+    no_replace: true,
+    properties: true,
+    target: true,
+    text: true
+  };
+
+  function addLabel(targetLayers, targetDataset, opts) {
+    var targetLyr, coords, feature, dataset, outputLyr, merged;
+    if (targetLayers.length > 1) {
+      stop$1('Command expects a single target layer');
+    }
+    targetLyr = targetLayers[0]; // may be undefined
+    if (targetLyr && !opts.no_replace) {
+      requirePointTarget(targetLyr);
+    }
+    coords = parseLabelCoords(opts.coordinates);
+    feature = toLabelFeature(opts, coords);
+    matchTargetFieldTypes(feature.properties, targetLyr);
+    warnIfCurveIsUnprojected(targetDataset, coords.length);
+    dataset = importGeoJSON(feature);
+    outputLyr = mergeDatasetsIntoDataset(targetDataset, [dataset])[0];
+    if (opts.no_replace || !targetLyr) {
+      setOutputLayerName(outputLyr, targetLyr && targetLyr.name, 'labels', opts);
+      return [outputLyr];
+    }
+    // verbose: false silences "Fields [...] are missing from one or more layers".
+    // Labels differ in which style properties they carry -- one has an icon, the
+    // next a css rule -- so a one-label layer almost never has the same fields as
+    // the layer it is joining.
+    //
+    // force stays on for the same reason.
+    merged = cmd.mergeLayers([targetLyr, outputLyr], {force: true, verbose: false});
+    // The target's name is restored because mergeLayers() drops empty layers
+    // before merging: adding the first label to an empty layer hands back the
+    // one-label layer on its own, which has no name because the name was on the
+    // layer that was dropped. A layer called 'labels' would lose that name on
+    // its first label, and the label tool creates exactly such a layer when it
+    // opens with nothing loaded.
+    merged[0].name = targetLyr.name;
+    return merged;
+  }
+
+  // Makes the new label's values match the types the target layer already holds,
+  // so that adding a label cannot be the thing that breaks a layer's schema.
+  //
+  // Only string and number are worth reconciling. Anything else in a style field
+  // is odd enough that quietly rewriting it would hide a real problem.
+  function matchTargetFieldTypes(d, targetLyr) {
+    var records = targetLyr && targetLyr.data ? targetLyr.data.getRecords() : null;
+    if (!records || records.length === 0) return;
+    Object.keys(d).forEach(function(key) {
+      var type = getColumnType(key, records);
+      var val = d[key];
+      if (!type || type === typeof val) return;
+      if (type == 'string' && utils.isNumber(val)) {
+        d[key] = String(val);
+      } else if (type == 'number' && utils.isString(val)) {
+        if (isFiniteString(val)) {
+          d[key] = Number(val);
+        } else {
+          stringifyColumn(key, records);
+        }
+      }
+    });
+  }
+
+  // Widens a column of numbers to strings, for a value that cannot be a number:
+  // '0.45em' is a length with units, which is what a label position east of its
+  // anchor expands to.
+  //
+  // Every number has a faithful string form, and these values are written out as
+  // SVG attributes, so restating 0 as '0' changes nothing that is drawn or
+  // exported. Narrowing the other way is what is not always possible, which is
+  // why this is the direction the column moves.
+  //
+  // Reached by a layer whose dx column holds numbers -- written before label
+  // positions stored dx as a string -- which would otherwise refuse every label
+  // offered an em offset.
+  function stringifyColumn(key, records) {
+    for (var i = 0; i < records.length; i++) {
+      if (records[i] && utils.isNumber(records[i][key])) {
+        records[i][key] = String(records[i][key]);
+      }
+    }
+  }
+
+  function isFiniteString(str) {
+    return str.trim() !== '' && utils.isFiniteNumber(Number(str));
+  }
+
+  // Both kinds of label are point features, so a non-point target can never
+  // receive one. Refusing is better than silently making a new layer, because
+  // the CLI user named a target explicitly.
+  function requirePointTarget(lyr) {
+    if (lyr.geometry_type && lyr.geometry_type != 'point') {
+      stop$1('Labels can only be added to a point layer; target "' +
+        (lyr.name || '[unnamed]') + '" contains ' + lyr.geometry_type + 's. ' +
+        'Use no-replace to add labels as a new layer.');
+    }
+  }
+
+  function toLabelFeature(opts, coords) {
+    return {
+      type: 'Feature',
+      properties: getLabelProperties(opts, coords.length),
+      geometry: coords.length == 1 ?
+        {type: 'Point', coordinates: coords[0]} :
+        {type: 'MultiPoint', coordinates: coords}
+    };
+  }
+
+  function getLabelProperties(opts, knotCount) {
+    var d = {};
+    if (opts.properties) {
+      utils.extend(d, parseJsonArg(opts.properties, 'properties'));
+    }
+    // an explicit empty string is meaningful: it creates a label that the user
+    // is about to type into, which is how the GUI starts an editing session
+    d['label-text'] = 'text' in opts ? String(opts.text) : '';
+
+    // any option matching a -style property becomes a label property, so that
+    // creating and styling a label is one command and one history entry
+    Object.keys(opts).forEach(function(key) {
+      var name = key.replace(/_/g, '-');
+      var val;
+      if (key in RESERVED_OPTIONS) return;
+      if (!isSupportedSvgStyleProperty(name)) return;
+      // Stored as the type -style would store it in. Copying the option string
+      // through instead left icon-size=20 as "20" here and 20 from -style, so a
+      // layer holding both kinds of label had a column with two types in it --
+      // which the merge below then refused, making the next label impossible to
+      // add.
+      val = parseStyleLiteral(name, opts[key]);
+      if (val === undefined) {
+        stop$1('Unexpected value for', name + ':', opts[key]);
+      }
+      d[name] = val;
+      // label-pos is the only one of the four position properties stored: the
+      // offsets and justification it stands for are resolved when the label is
+      // drawn. A dx= or dy= given as well is kept and wins there, so the two can
+      // be combined to nudge a label off a standard position.
+      if (name == 'label-pos' && !parseLabelPosition(val)) {
+        stop$1('Unexpected value for label-pos:', opts[key]);
+      }
+    });
+
+    if (d['label-pos'] && knotCount > 1) {
+      // A path label's text runs along its curve from a start offset, so it has
+      // no position around an anchor to take. Warned about rather than rejected,
+      // so that a script can style a mixed layer in one pass.
+      warn('Ignoring label-pos on a label with', knotCount, 'points.',
+        'Use label-start-offset= and text-anchor= to place text along a path.');
+      delete d['label-pos'];
+    }
+    return d;
+  }
+
+  cmd.addLayer = addLayer;
+
+  var GEOMETRY_TYPES = ['point', 'polygon', 'polyline'];
+
+  // Creates an empty layer, for features that are about to be added to it: by the
+  // GUI's drawing and label tools, or by -add-shape and -add-label in a script.
+  //
+  // The layer goes into a dataset of its own rather than joining the target's, so
+  // that shapes drawn into it have their own topology and editing them cannot
+  // disturb the arcs of the layer it was created beside. What it does take from
+  // the target is the CRS, without which a shape drawn at a projected coordinate
+  // would be read as lat-long.
+  //
+  // targetDataset: the current target, or undefined if there is none
+  // opts:
+  //   geometry_type: 'point', 'polygon' or 'polyline'
+  //   name: name for the new layer
+  // Returns a new dataset, for the caller to add to the catalog.
+  function addLayer(targetDataset, opts) {
+    var type = opts.geometry_type;
+    var dataset;
+    if (!type) {
+      stop$1('Missing required geometry-type parameter:', GEOMETRY_TYPES.join('|'));
+    }
+    if (!GEOMETRY_TYPES.includes(type)) {
+      stop$1('Unsupported geometry type:', type + '.', 'Expected',
+        GEOMETRY_TYPES.join('|'));
+    }
+    dataset = {
+      layers: [{
+        name: opts.name || undefined,
+        geometry_type: type,
+        shapes: []
+      }],
+      info: {}
+    };
+    // A path layer needs somewhere to put its arcs. A point layer holds
+    // coordinates in its shapes and never has an ArcCollection.
+    if (type != 'point') {
+      dataset.arcs = new ArcCollection();
+    }
+    if (targetDataset) {
+      setDatasetCrsInfo(dataset, getDatasetCrsInfo(targetDataset));
+    }
+    return dataset;
+  }
+
+  var OPERATION = 'update-label';
+
+  cmd.updateLabel = updateLabel;
+
+  // Rewrites the knots of a label that already exists.
+  //
+  // -add-label creates and -style sets properties, so neither can move a label:
+  // a label's knots are its geometry, not an attribute. This is the command the
+  // GUI emits when a knot or an anchor is dragged, so that an interactive move is
+  // an ordinary command with undo and session history rather than a direct
+  // mutation with hand-rolled undo.
+  //
+  // See docs/development/label-tool-design.md.
+  function updateLabel(targetLayers, dataset, opts) {
+    var lyr, id, coords, rec;
+    if (targetLayers.length > 1) {
+      // One coordinate list describes one label, so there is no sensible reading
+      // of this across layers.
+      stop$1('Command expects a single target layer');
+    }
+    lyr = targetLayers[0];
+    id = getTargetId(lyr, opts);
+    coords = parseLabelCoords(opts.coordinates);
+    rec = getLayerDataTable(lyr).getRecords()[id];
+    if (!featureIsLabel(rec)) {
+      // Moving an arbitrary point through a command named -update-label would be
+      // a surprising way to succeed, and in the GUI it would mean the hit test
+      // handed over the wrong feature.
+      stop$1('Feature', id, 'in layer "' + layerName(lyr) + '" is not a label ' +
+        '(it has no label-text property)');
+    }
+    warnIfCurveIsUnprojected(dataset, coords.length);
+    // Undo works from what a command declares it is about to change, so an edit
+    // that does not say so is an edit that cannot be undone -- the shapes array
+    // keeps its identity here, leaving nothing for the transaction to notice
+    // afterwards.
+    noteLayerWillChange(lyr, {operation: OPERATION, unit: 'shapes'});
+    // Point shapes hold their coordinates directly, so this is the whole edit.
+    // The pairs are copied rather than aliased: the GUI drags a live copy of the
+    // knots and would otherwise keep a handle on the layer's own arrays.
+    lyr.shapes[id] = coords.map(function(p) { return [p[0], p[1]]; });
+    markLayerChanged(lyr, {operation: OPERATION, unit: 'shapes'});
+    // Nothing about the label's text is touched, and nothing needs to be: a text
+    // measurement describes the *text*, and moving a knot changes the length of
+    // the *path*. The fit check compares the two at render time, against the
+    // curve as it then stands, so a move can turn a fitting label into an
+    // overflowing one with no measurement going out of date.
+  }
+
+  // Which feature to move. One coordinate list can only describe one label, so
+  // this takes a single id rather than the ids= list that -style accepts.
+  function getTargetId(lyr, opts) {
+    var ids = opts.ids;
+    var id;
+    requirePointLayer(lyr);
+    if (!ids || ids.length === 0) {
+      stop$1('Missing required ids parameter (the feature id of the label to update)');
+    }
+    if (ids.length > 1) {
+      stop$1('Command expects a single feature id; received', ids.join(','));
+    }
+    id = ids[0];
+    if (id >= 0 === false || id >= getFeatureCount(lyr)) {
+      stop$1('Layer "' + layerName(lyr) + '" has no feature with id', id);
+    }
+    if (!lyr.shapes || !lyr.shapes[id]) {
+      stop$1('Feature', id, 'in layer "' + layerName(lyr) + '" has no geometry');
+    }
+    return id;
+  }
+
+  function requirePointLayer(lyr) {
+    if (!lyr || getFeatureCount(lyr) === 0) {
+      stop$1('Missing a target layer containing labels');
+    }
+    if (lyr.geometry_type != 'point') {
+      stop$1('Labels can only be updated in a point layer; target "' +
+        layerName(lyr) + '" contains ' + (lyr.geometry_type || 'no geometry'));
+    }
+  }
+
+  function layerName(lyr) {
+    return lyr && lyr.name || '[unnamed]';
+  }
+
   cmd.addShape = addShape;
 
   function addShape(targetLayers, targetDataset, opts) {
@@ -49340,7 +50948,7 @@ ${svg}
   }
 
   cmd.alphaShapes = function(pointLyr, targetDataset, opts) {
-    requirePointLayer(pointLyr);
+    requirePointLayer$1(pointLyr);
     if (opts.interval > 0 === false) {
       stop$1('Expected a non-negative interval parameter');
     }
@@ -60725,7 +62333,7 @@ ${svg}
   cmd.lines = function(lyr, dataset, opts) {
     opts = opts || {};
     if (opts.callouts) {
-      requirePointLayer(lyr);
+      requirePointLayer$1(lyr);
       return pointsToCallouts(lyr, dataset, opts);
     } else if (lyr.geometry_type == 'point') {
       return pointsToLines(lyr, dataset, opts);
@@ -72614,17 +74222,19 @@ ${svg}
   //
   function createGraticule(P, outlined, opts) {
     var interval = opts.interval || 10;
+    var base = opts.base || 0;
     if (Math.round(interval) != interval || interval > 0 === false) {
       stop$1('Invalid interval:', interval);
     }
+    if (!utils.isFiniteNumber(base)) {
+      stop$1('Invalid base:', opts.base);
+    }
     P.lam0 * 180 / Math.PI;
     var precision = interval > 10 ? 1 : 0.5; // degrees between each vertex
-    var xstep = interval;
     var ystep = interval;
     var xstepMajor = 90;
-    var xn = Math.round(360 / xstep);
     var yn = Math.round(180 / ystep) + 1;
-    var xx = utils.range(xn, -180 + xstep, xstep);
+    var xx = getGraticuleMeridianLongitudes(interval, base);
     var yy = utils.range(yn, -90, ystep);
     var meridians = [];
     var parallels = [];
@@ -72674,7 +74284,7 @@ ${svg}
 
     function createMeridianPart(x, ymin, ymax) {
       var coords = densifyPathByInterval([[x, ymin], [x, ymax]], precision);
-      meridians.push(graticuleFeature(coords, {type: 'meridian', value: roundCoord$2(x)}));
+      meridians.push(graticuleFeature(coords, {type: 'meridian', value: roundCoord$1(x)}));
     }
 
     function createParallel(y) {
@@ -72690,8 +74300,25 @@ ${svg}
     }
   }
 
+  // Longitudes of meridians at interval spacing, aligned so that base (mod
+  // interval) is included. Values are wrapped to (-180, 180].
+  function getGraticuleMeridianLongitudes(interval, base) {
+    var offset = ((base % interval) + interval) % interval;
+    var n = Math.round(360 / interval);
+    var longitudes = [];
+    for (var i = 0; i < n; i++) {
+      longitudes.push(wrapMeridianLongitude(offset + i * interval));
+    }
+    return longitudes;
+  }
+
+  function wrapMeridianLongitude(lon) {
+    lon -= Math.floor((lon + 180) / 360) * 360; // [-180, 180)
+    return lon === -180 ? 180 : lon;
+  }
+
   // remove tiny offsets
-  function roundCoord$2(x) {
+  function roundCoord$1(x) {
     return +x.toFixed(3) || 0;
   }
 
@@ -75330,7 +76957,7 @@ ${svg}
   }
 
   cmd.pointToGrid = function(targetLayers, targetDataset, opts) {
-    targetLayers.forEach(requirePointLayer);
+    targetLayers.forEach(requirePointLayer$1);
     if (opts.interval > 0 === false) {
       stop$1('Expected a non-negative interval parameter');
     }
@@ -75731,7 +77358,7 @@ ${svg}
     };
   }
 
-  var roundCoord$1 = getRoundingFunction(0.01);
+  var roundCoord = getRoundingFunction(0.01);
 
   function getSymbolFillColor(d) {
     return d.fill || 'magenta';
@@ -75870,8 +77497,8 @@ ${svg}
 
   function roundCoordsForSVG(coords) {
     forEachSymbolCoord(coords, function(p) {
-      p[0] = roundCoord$1(p[0]);
-      p[1] = roundCoord$1(p[1]);
+      p[0] = roundCoord(p[0]);
+      p[1] = roundCoord(p[1]);
     });
   }
 
@@ -78280,7 +79907,12 @@ ${svg}
   }
 
   cmd.svgStyle = function(lyr, dataset, opts) {
-    var filterFn, table, fields, hasNewFields;
+    var filterFn, table, fields, hasNewFields, optFields, clearedByPosition, fieldsBefore;
+
+    function hadField(field) {
+      return field in fieldsBefore;
+    }
+
     if (getFeatureCount(lyr) === 0) {
       return;
     }
@@ -78297,10 +79929,25 @@ ${svg}
       lyr.data.getFields().filter(isSupportedSvgStyleProperty).forEach(lyr.data.deleteField, lyr.data);
     }
     table = getLayerDataTable(lyr);
-    fields = getStyleFields(opts);
+    optFields = getOptionFields(opts);
+    fields = getStyleFields(optFields);
+    // Which of dx/dy/text-anchor a label-pos in this command clears: not the ones
+    // the same command also sets, so that `label-pos=n dx=3` keeps the nudge it
+    // was given instead of clearing it a moment later.
+    //
+    // Clearing at all is what keeps the shorthand usable, since a value on the
+    // record wins over the position: without it, setting a position on a label
+    // that had been dragged would appear to do nothing.
+    clearedByPosition = labelPositionDerivedFields.filter(function(field) {
+      return optFields.indexOf(field) == -1;
+    });
     hasNewFields = fields.some(function(field) {
       return !table.fieldExists(field);
     });
+    // The table's columns as this command found them. Taken once, because the
+    // command adds to them as it runs, and a blanked property must be judged
+    // against what was there before rather than against what it has just made.
+    fieldsBefore = utils.arrayToIndex(table.getFields());
     if (fields.length > 0) {
       if (hasNewFields) {
         table.captureSchemaBefore({operation: 'style', fields: fields});
@@ -78309,31 +79956,66 @@ ${svg}
       }
     }
     Object.keys(opts).forEach(function(optName) {
-      var svgName = optName.replace('_', '-'); // undo cli parser name conversion
+      // undo cli parser name conversion; the regex must be global, or a
+      // property with more than one hyphen (e.g. label-start-offset) is silently
+      // skipped rather than applied
+      var svgName = optName.replace(/_/g, '-');
       if (!isSupportedSvgStyleProperty(svgName)) {
         return;
       }
       var strVal = opts[optName].trim();
-      var accessor = getSymbolPropertyAccessor(strVal, svgName, lyr);
+      // An empty value removes the property, rather than being rejected as an
+      // unparseable one. This is how a control gives a property back: a label
+      // dragged off its position clears label-pos, and there is otherwise no
+      // per-property unset -- only -style clear, which clears all of them.
+      var unset = strVal === '' && emptyValueUnsetsProperty(svgName);
+      var accessor = unset ? null : getSymbolPropertyAccessor(strVal, svgName, lyr);
       var badIcons = svgName == 'icon' ? [] : null;
+      // Removing a position is not setting one, so it neither validates the
+      // value nor clears the offsets the position would have stood for.
+      var posOnPaths = svgName == 'label-pos' && !unset ? [] : null;
       table.getRecords().forEach(function(rec, i) {
         if (filterFn && !filterFn(i)) {
           // make sure field exists if record is excluded by filter
-          setUndefinedFields(rec, svgName == 'label-pos' ? labelPositionFields : [svgName]);
+          setUndefinedFields(rec, [svgName]);
+          if (svgName == 'label-pos') {
+            // ...but a field the position would only have cleared is one this
+            // command is not writing anywhere, so an excluded record has nothing
+            // to stay consistent with
+            setUndefinedFields(rec, labelPositionDerivedFields, {has: hadField});
+          }
+        } else if (unset) {
+          // Nothing to remove, and so nothing to create: removing a property no
+          // record has would otherwise add an empty column for it.
+          if (hadField(svgName) || svgName in rec) rec[svgName] = undefined;
         } else {
           rec[svgName] = accessor(i);
           if (badIcons) {
             addUnsupportedIconName(badIcons, rec.icon);
           }
-          if (svgName == 'label-pos') {
-            if (!setLabelPositionStyle(rec, rec['label-pos'])) {
+          if (posOnPaths) {
+            if (!parseLabelPosition(rec['label-pos'])) {
               stop$1('Unexpected value for label-pos:', rec['label-pos']);
+            }
+            if (shapeIsPathLabel(lyr.shapes && lyr.shapes[i], rec)) {
+              // Not stored, so that ignoring it means ignoring it: a stored
+              // position would show up in the style panel and would start
+              // applying if the label ever lost all but one of its knots. Its
+              // text-anchor is left alone too -- that one does place text along a
+              // path, so a position that had no effect must not clear it.
+              posOnPaths.push(i);
+              rec['label-pos'] = undefined;
+            } else {
+              setUndefinedFields(rec, clearedByPosition, {overwrite: true, has: hadField});
             }
           }
         }
       });
       if (badIcons && badIcons.length > 0) {
         warn(formatUnsupportedIconMessage(badIcons));
+      }
+      if (posOnPaths && posOnPaths.length > 0) {
+        warn(formatPositionOnPathMessage(posOnPaths));
       }
     });
     if (fields.length > 0) {
@@ -78345,11 +80027,22 @@ ${svg}
     }
   };
 
-  function getStyleFields(opts) {
+  // The style properties this command was given, in SVG spelling.
+  function getOptionFields(opts) {
     var fields = [];
     Object.keys(opts).forEach(function(optName) {
-      var svgName = optName.replace('_', '-');
-      if (!isSupportedSvgStyleProperty(svgName)) return;
+      var svgName = optName.replace(/_/g, '-');
+      if (isSupportedSvgStyleProperty(svgName)) addField(fields, svgName);
+    });
+    return fields;
+  }
+
+  // The fields the command will write, which is what the undo capture covers.
+  // label-pos reaches dx/dy/text-anchor as well -- it no longer stores values in
+  // them, but it does clear them.
+  function getStyleFields(optFields) {
+    var fields = [];
+    optFields.forEach(function(svgName) {
       addField(fields, svgName);
       if (svgName == 'label-pos') {
         labelPositionFields.forEach(function(field) {
@@ -78392,13 +80085,42 @@ ${svg}
     return str + '. Expected one of: ' + iconNames.join(', ');
   }
 
-  function setUndefinedFields(rec, fields) {
+  // Adds @fields to @rec with no value, so that a record the filter excluded
+  // still has the same schema as the ones it kept. With overwrite, also blanks a
+  // value already there -- which is how setting a position takes back the offsets
+  // a label was carrying.
+  //
+  // @has: optional test for whether the layer carries a field at all. A field
+  // nobody has is not created in order to be blanked: -style label-pos=n clears
+  // dx, dy and text-anchor because a value on the record wins over the position,
+  // and there is nothing to win with when the column does not exist. Without
+  // this, clicking a position in the style panel put three empty columns in the
+  // user's table, and three empty columns in their CSV.
+  function setUndefinedFields(rec, fields, opts) {
+    var overwrite = !!(opts && opts.overwrite);
+    var has = opts && opts.has;
     fields.forEach(function(field) {
-      if (field in rec === false) {
+      if (has && !has(field) && field in rec === false) return;
+      if (overwrite || field in rec === false) {
         rec[field] = undefined;
       }
     });
   }
+
+  // label-pos places text around an anchor point, which a label strung along a
+  // path does not have: its text runs from a start offset in the direction the
+  // path goes. A warning rather than an error, because a layer can hold both
+  // kinds of label and styling all of it at once is reasonable.
+  function formatPositionOnPathMessage(ids) {
+    var extra = ids.length - maxReportedIds;
+    var listed = (extra > 0 ? ids.slice(0, maxReportedIds) : ids).join(', ');
+    return 'Ignoring label-pos on ' + ids.length + ' path ' +
+      (ids.length > 1 ? 'labels' : 'label') + ' (' + listed +
+      (extra > 0 ? ' and ' + extra + ' more' : '') + '). ' +
+      'Use label-start-offset= and text-anchor= to place text along a path.';
+  }
+
+  var maxReportedIds = 4;
 
   function getStickArrowCoords(d) {
     return getArrowCoords(d, 'stick');
@@ -78931,7 +80653,7 @@ ${svg}
 
   // TODO: refactor to remove duplication in mapshaper-svg-style.js
   cmd.symbols = function(inputLyr, dataset, opts) {
-    requirePointLayer(inputLyr);
+    requirePointLayer$1(inputLyr);
     var lyr = opts.no_replace ? copyLayer(inputLyr) : inputLyr;
     var shapeMode = !!opts.geographic;
     var metersPerPx;
@@ -79552,6 +81274,7 @@ ${svg}
       name == 'require' || name == 'run' || name == 'define' ||
       name == 'include' || name == 'print' || name == 'comment' || name == 'if' || name == 'elif' ||
       name == 'else' || name == 'endif' || name == 'stop' || name == 'add-shape' ||
+      name == 'add-label' || name == 'add-layer' ||
       name == 'scalebar' || name == 'vars' || name == 'defaults';
   }
 
@@ -79663,6 +81386,27 @@ ${svg}
           job.catalog.addDataset(targetDataset);
         }
         outputLayers = cmd.addShape(targetLayers, targetDataset, opts);
+
+      } else if (name == 'add-label') {
+        if (!targetDataset) {
+          targetDataset = {info: {}, layers: []};
+          targetLayers = targetDataset.layers;
+          job.catalog.addDataset(targetDataset);
+        }
+        outputLayers = cmd.addLabel(targetLayers, targetDataset, opts);
+
+      } else if (name == 'add-layer') {
+        // The new layer arrives in a dataset of its own, so it is added to the
+        // catalog here rather than integrated into the target below.
+        // captureCatalogBefore() gives an undo transaction the state before the
+        // change; addDataset() marks the change itself. Both are no-ops in the
+        // CLI, where nothing is listening.
+        job.catalog.captureCatalogBefore({operation: 'addLayer'});
+        job.catalog.addDataset(cmd.addLayer(targetDataset, opts));
+
+      } else if (name == 'update-label') {
+        cmd.updateLabel(targetLayers, targetDataset, opts);
+
       } else if (name == 'affine') {
         cmd.affine(targetLayers, targetDataset, opts);
 
@@ -80211,7 +81955,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.61";
+  var version = "0.7.62";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -80602,49 +82346,597 @@ ${svg}
     testCommands: testCommands
   });
 
-  var roundCoord = getRoundingFunction(0.01);
+  // Finding the font file a label's font-family names, among the fonts installed
+  // on this computer.
+  //
+  // The browser does this for us in the GUI; in Node there is nothing between
+  // mapshaper and the filesystem, so a family name has to be matched against the
+  // name tables of the files themselves. Names cannot be inferred from
+  // filenames: NYTFranklinLight.otf calls itself "NYTFranklin Light", and a
+  // label asking for NYTFranklin at weight 300 has to reach it.
+  //
+  // See docs/development/label-tool-design.md.
 
-  function stringifyVertex(p) {
-    return ' ' + roundCoord(p[0]) + ' ' + roundCoord(p[1]);
-  }
+  // Collections (.ttc/.otc) hold several faces in one file and are how macOS
+  // ships Helvetica, Menlo and Avenir, so a lookup that skipped them would miss
+  // the font mapshaper's own tool writes by default there.
+  var FONT_FILE_RXP = /\.(ttf|otf|ttc|otc)$/i;
 
-  function isCubicCtrl(p) {
-    return p.length > 2 && p[2] == 'C';
-  }
+  // What a generic family means when there is no browser to resolve it. A guess,
+  // but an ordered one: the first of these that is installed is what a browser
+  // on this platform would almost certainly have picked.
+  var GENERIC_FAMILIES = {
+    'sans-serif': ['Helvetica', 'Arial', 'Liberation Sans', 'DejaVu Sans', 'Roboto', 'Segoe UI'],
+    serif: ['Times New Roman', 'Times', 'Liberation Serif', 'DejaVu Serif', 'Georgia'],
+    monospace: ['Menlo', 'Courier New', 'Liberation Mono', 'DejaVu Sans Mono', 'Consolas'],
+    'system-ui': ['Helvetica Neue', 'Segoe UI', 'Cantarell', 'Roboto'],
+    cursive: [],
+    fantasy: []
+  };
 
-  function stringifyPolygonCoords(coords) {
-    var parts = [];
-    for (var i=0; i<coords.length; i++) {
-      parts.push(stringifyLineStringCoords(coords[i]) + ' Z');
+  var faceCache = {};
+  var familyCache = {};
+  var fullIndex = null;
+  var fileList = null;
+
+  // Width classes, as OS/2 numbers them 1 to 9. A font-stretch is one of these
+  // keywords or a percentage of normal width.
+  var STRETCH_NAMES = {
+    'ultra-condensed': 1, 'extra-condensed': 2, condensed: 3,
+    'semi-condensed': 4, normal: 5, 'semi-expanded': 6, expanded: 7,
+    'extra-expanded': 8, 'ultra-expanded': 9
+  };
+  var STRETCH_PERCENTS = [50, 62.5, 75, 87.5, 100, 112.5, 125, 150, 200];
+
+  // The face to open for @family in (@weight, @italic, @stretch), or null if this
+  // computer has no such font: {path, postscriptName}.
+  //
+  // postscriptName is how a face inside a collection is named to fontkit, and is
+  // null for a file holding one face.
+  function findFontFace(family, weight, italic, stretch) {
+    var key = [family, weight, italic ? 'i' : 'n', stretch || ''].join('|');
+    if (!(key in faceCache)) {
+      faceCache[key] = lookupFace(family, weight, italic, stretch);
     }
-    return parts.length > 0 ? parts.join(' ') : '';
+    return faceCache[key];
   }
 
-  function stringifyLineStringCoords(coords) {
-    if (coords.length === 0) return '';
-    var d = 'M';
-    var fromCurve = false;
-    var p, i, n;
-    for (i=0, n=coords.length; i<n; i++) {
-      p = coords[i];
-      if (isCubicCtrl(p)) {
-        // TODO: add defensive check
-        d += ' C' + stringifyVertex(p) + stringifyVertex(coords[++i]) + stringifyVertex(coords[++i]);
-        fromCurve = true;
-      } else if (fromCurve) {
-        d += ' L' + stringifyVertex(p);
-        fromCurve = false;
+  // Which of a family's faces answers a request for (@weight, @italic,
+  // @stretch).
+  //
+  // Width first, then upright before oblique, then the nearest weight, then the
+  // heavier of two equally near. The first three are the order CSS matches fonts
+  // in, and the last is the rule the style menu uses to carry a face across a
+  // change of font (getNearestVariant() in gui-label-fonts.mjs), applied here to
+  // faces read from files rather than measured in a browser.
+  //
+  // A missing face is answered with a near one rather than refused: the browser
+  // would synthesize the missing weight or slant from exactly this face, so its
+  // widths are much closer to what is drawn than no measurement at all.
+  function pickFace(faces, weight, italic, stretch) {
+    var wanted = weight > 0 ? weight : 400;
+    var wantedWidth = parseFontStretch(stretch);
+    var best = null;
+    var bestScore = null;
+    (faces || []).forEach(function(face) {
+      var score = [
+        Math.abs((face.width || 5) - wantedWidth),
+        !!face.italic === !!italic ? 0 : 1,
+        Math.abs(face.weight - wanted),
+        face.weight < wanted ? 1 : 0
+      ];
+      if (!best || compareScores(score, bestScore) < 0) {
+        best = face;
+        bestScore = score;
+      }
+    });
+    return best;
+  }
+
+  // A font-stretch as the width class it names, or normal width for anything
+  // unreadable. A percentage is taken to the nearest class, the way CSS defines
+  // the keywords.
+  function parseFontStretch(stretch) {
+    var str = String(stretch === null || stretch === undefined ? '' : stretch).trim().toLowerCase();
+    var pct = /^([.0-9]+)%$/.exec(str);
+    var best = 5;
+    if (STRETCH_NAMES[str]) return STRETCH_NAMES[str];
+    if (!pct) return 5;
+    STRETCH_PERCENTS.forEach(function(val, i) {
+      if (Math.abs(val - Number(pct[1])) <
+          Math.abs(STRETCH_PERCENTS[best - 1] - Number(pct[1]))) {
+        best = i + 1;
+      }
+    });
+    return best;
+  }
+
+  // Family names are compared without spaces, punctuation or case, so that
+  // "NYTFranklin" finds "NYT Franklin" and "Helvetica Neue" finds
+  // "HelveticaNeue". Font vendors are not consistent about any of the three.
+  function normalizeFamilyName(name) {
+    return String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
+  // The families a face answers to. The typographic family (name ID 16) is the
+  // one a stylesheet means: every weight of NYTFranklin has its own ID 1 family
+  // ("NYTFranklin Light", "NYTFranklin Medium") and they are one family only
+  // under ID 16. Both are indexed, because plenty of fonts have no ID 16.
+  function getFaceFamilies(font) {
+    var records = font && font.name && font.name.records || {};
+    return [pickName(records.preferredFamily), pickName(records.fontFamily),
+      font && font.familyName].filter(Boolean);
+  }
+
+  function clearFontCache() {
+    faceCache = {};
+    familyCache = {};
+    fullIndex = null;
+    fileList = null;
+  }
+
+  function lookupFace(family, weight, italic, stretch) {
+    var names = resolveFamilyNames(family);
+    var face = findBestFace(names, weight, italic, stretch);
+    // The filename guess can find a family and still miss one of its faces:
+    // Segoe UI Semibold lives in seguisb.ttf, which does not begin with the
+    // family's name. Anything other than the face that was asked for is worth
+    // the full index -- once per session -- to be sure it is the nearest this
+    // machine has.
+    if (!fullIndex && !faceAnswersRequest(face, weight, italic, stretch)) {
+      fullIndex = readFaces(getFontFiles());
+      face = findBestFace(names, weight, italic, stretch) || face;
+    }
+    return face;
+  }
+
+  function findBestFace(names, weight, italic, stretch) {
+    for (var i = 0; i < names.length; i++) {
+      var faces = findFamilyFaces(names[i]);
+      if (faces && faces.length > 0) return pickFace(faces, weight, italic, stretch);
+    }
+    return null;
+  }
+
+  function faceAnswersRequest(face, weight, italic, stretch) {
+    return !!face && face.weight == (weight > 0 ? weight : 400) &&
+      !!face.italic === !!italic && (face.width || 5) == parseFontStretch(stretch);
+  }
+
+  // A font-family is a list, and may end in a generic: each name is tried in
+  // turn, exactly as a browser would, and a generic stands for the first of its
+  // candidates that is installed.
+  function resolveFamilyNames(family) {
+    var out = [];
+    splitFamilyList(family).forEach(function(name) {
+      var generic = GENERIC_FAMILIES[name.toLowerCase()];
+      if (generic) {
+        out = out.concat(generic);
       } else {
-        d += stringifyVertex(p);
+        out.push(name);
+      }
+    });
+    return out;
+  }
+
+  function splitFamilyList(family) {
+    return String(family || '').split(',').map(function(name) {
+      return name.trim().replace(/^['"]|['"]$/g, '');
+    }).filter(Boolean);
+  }
+
+  // Two passes, because parsing every font on the computer costs the best part
+  // of a second and most lookups do not need it: the file holding a family is
+  // usually named after it, so files whose name begins with the family's are
+  // parsed first. Whether that was good enough is lookupFace()'s decision.
+  function findFamilyFaces(family) {
+    var key = normalizeFamilyName(family);
+    if (!key) return null;
+    if (fullIndex) return fullIndex[key] || null;
+    if (!(key in familyCache)) {
+      familyCache[key] = readFaces(getLikelyFiles(key))[key] || null;
+    }
+    return familyCache[key];
+  }
+
+  function getLikelyFiles(key) {
+    return getFontFiles().filter(function(file) {
+      return normalizeFamilyName(basename(file)).indexOf(key) === 0;
+    });
+  }
+
+  // Faces by normalized family name. A file that cannot be parsed is skipped
+  // rather than reported: a font directory can hold anything, and a broken font
+  // is not an error in the user's data.
+  function readFaces(files) {
+    var index = {};
+    files.forEach(function(file) {
+      getFileFaces(file).forEach(function(face) {
+        face.families.forEach(function(name) {
+          var key = normalizeFamilyName(name);
+          if (!key) return;
+          if (!index[key]) index[key] = [];
+          index[key].push(face);
+        });
+      });
+    });
+    return index;
+  }
+
+  function getFileFaces(file) {
+    var fontkit = getFontkit();
+    var font, fonts;
+    if (!fontkit) return [];
+    try {
+      font = fontkit.openSync(file);
+      // A collection reports its members in .fonts; a single font is its own.
+      fonts = font && font.fonts || [font];
+      return fonts.filter(Boolean).map(function(one) {
+        return {
+          path: file,
+          // Named rather than numbered because fontkit takes a name, and because
+          // a name survives a font being reinstalled in a different order.
+          postscriptName: font.fonts ? one.postscriptName : null,
+          families: getFaceFamilies(one),
+          weight: getFaceWeight(one),
+          width: getFaceWidth(one),
+          italic: isItalicFace(one)
+        };
+      }).filter(function(face) {
+        return face.families.length > 0;
+      });
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function getFaceWeight(font) {
+    var os2 = font['OS/2'];
+    var weight = os2 && os2.usWeightClass;
+    return weight > 0 ? weight : 400;
+  }
+
+  function getFaceWidth(font) {
+    var os2 = font['OS/2'];
+    var width = os2 && os2.usWidthClass;
+    return width >= 1 && width <= 9 ? width : 5;
+  }
+
+  function isItalicFace(font) {
+    var os2 = font['OS/2'];
+    if (os2 && os2.fsSelection && typeof os2.fsSelection.italic == 'boolean') {
+      return os2.fsSelection.italic;
+    }
+    return !!font.italicAngle;
+  }
+
+  // A name record is a string, or an object of translations to pick English out
+  // of, depending on the font and the version of fontkit.
+  function pickName(rec) {
+    if (!rec) return '';
+    if (typeof rec == 'string') return rec;
+    return rec.en || Object.keys(rec).map(function(k) { return rec[k]; })[0] || '';
+  }
+
+  function compareScores(a, b) {
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return a[i] - b[i];
+    }
+    return 0;
+  }
+
+  // Every font file on this computer, listed once. Listing is cheap -- a few
+  // hundred directory entries -- next to parsing them, so this is not the part
+  // worth avoiding.
+  function getFontFiles() {
+    var fs = getFs();
+    var files = [];
+    if (fileList) return fileList;
+    if (!fs) return [];
+    getFontDirs().forEach(function(dir) {
+      var entries;
+      try {
+        entries = fs.readdirSync(dir, {recursive: true});
+      } catch (e) {
+        return; // a directory this platform does not have
+      }
+      entries.forEach(function(entry) {
+        var file = dir + '/' + String(entry).split('\\').join('/');
+        if (FONT_FILE_RXP.test(file)) files.push(file);
+      });
+    });
+    fileList = files;
+    return files;
+  }
+
+  // Where each platform keeps fonts, or MAPSHAPER_FONT_PATH if it is set.
+  //
+  // It replaces the platform's directories rather than adding to them, which is
+  // what makes a machine's font situation something a caller can state: a
+  // container with its fonts somewhere of its own, a build that has to produce
+  // the same SVG wherever it runs, a test that needs to know there is nothing to
+  // find. Several directories are separated by : or ;.
+  function getFontDirs() {
+    var home = getHomeDir();
+    var platform = typeof process == 'object' && process.platform || '';
+    var dirs = getEnvDirs();
+    if (dirs.length > 0) return dirs;
+    if (platform == 'darwin') {
+      dirs = ['/System/Library/Fonts', '/Library/Fonts',
+        '/Network/Library/Fonts'];
+      if (home) dirs.push(home + '/Library/Fonts');
+    } else if (platform == 'win32') {
+      dirs = [(getEnv('WINDIR') || 'C:\\Windows') + '/Fonts'];
+      if (home) dirs.push(home + '/AppData/Local/Microsoft/Windows/Fonts');
+    } else {
+      dirs = ['/usr/share/fonts', '/usr/local/share/fonts', '/run/host/fonts'];
+      if (home) {
+        dirs.push(home + '/.fonts', home + '/.local/share/fonts');
       }
     }
-    return d;
+    return dirs;
   }
 
-  var SvgPathUtils = /*#__PURE__*/Object.freeze({
+  function getEnvDirs() {
+    var val = getEnv('MAPSHAPER_FONT_PATH');
+    if (!val) return [];
+    return val.split(/[:;]/).filter(Boolean);
+  }
+
+  function getEnv(name) {
+    return typeof process == 'object' && process.env && process.env[name] || '';
+  }
+
+  function getHomeDir() {
+    var os = safeRequire('os');
+    try {
+      return os && os.homedir() || '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function basename(file) {
+    var parts = file.split('/');
+    return parts[parts.length - 1].replace(FONT_FILE_RXP, '');
+  }
+
+  function getFs() {
+    return safeRequire('fs');
+  }
+
+  // Loaded through the require shim and only when a label actually needs
+  // measuring, so that the browser bundle -- which is this same file -- never
+  // reaches for a module it does not have, and a CLI run that touches no labels
+  // never pays for loading it.
+  function getFontkit() {
+    return safeRequire('fontkit');
+  }
+
+  function safeRequire(name) {
+    if (runningInBrowser()) return null;
+    try {
+      return require$1(name) || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  var FontLookup = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    stringifyLineStringCoords: stringifyLineStringCoords,
-    stringifyPolygonCoords: stringifyPolygonCoords
+    clearFontCache: clearFontCache,
+    findFontFace: findFontFace,
+    getFaceFamilies: getFaceFamilies,
+    normalizeFamilyName: normalizeFamilyName,
+    parseFontStretch: parseFontStretch,
+    pickFace: pickFace
+  });
+
+  // Measuring a label's text outside a browser, from the font files installed on
+  // this computer.
+  //
+  // The GUI measures by rendering (gui-label-measure.mjs) and the core asks it
+  // for widths through svg-label-metrics.mjs. Nothing answered that question in
+  // Node, so `-style label-align=left` from the command line re-justified a
+  // label's lines and left the block where it was, and the path-fit check could
+  // not tell whether a label was longer than its curve.
+  //
+  // Advance widths plus kerning, which is what a browser lays out with: summing
+  // hmtx advances alone is exact for most text but out by up to 5% on strings
+  // like "AVATAR Toledo", and the pair positioning that closes that gap is what
+  // fontkit's layout() applies. Measured against Chrome on the same fonts, this
+  // agrees to a hundredth of a pixel.
+  //
+  // See docs/development/label-tool-design.md.
+
+  // Weight keywords. Anything else is a number, or 400 if it is not.
+  var WEIGHT_NAMES = {normal: 400, bold: 700, lighter: 300, bolder: 700};
+
+  var fontCache = {};
+
+  // Installed for every Node use of mapshaper -- the CLI, the API and a script
+  // that only exports -- rather than at one entry point, because a width is read
+  // during rendering and export, which both of those reach without going near a
+  // command of their own. Costs nothing until a label is measured: no font is
+  // read, and fontkit is not even loaded, until then.
+  function initNodeTextMeasurement() {
+    if (runningInBrowser()) return false;
+    setTextMeasureFunction(measureLabelText);
+    return true;
+  }
+
+  // The width of @rec's text in px, or null if it cannot be known -- an unusable
+  // record, a font this computer does not have, or a font file that will not
+  // parse. Null is what every reader already falls back from.
+  function measureLabelText(rec) {
+    var text = toLabelString(rec && rec['label-text']);
+    var font, fontSize, spacing, width;
+    if (!text) return null;
+    font = getFontForRecord(rec);
+    if (!font) return null;
+    fontSize = getFontSizeInPx(rec);
+    spacing = getLetterSpacingInPx(rec, fontSize);
+    if (!(fontSize > 0)) return null;
+    // The widest line, which is what the block of a multi-line label is as wide
+    // as, and what the browser's getBBox() reports for the same text.
+    width = text.split(labelNewlineRxp).reduce(function(max, line) {
+      var w = measureLine(font, line, fontSize, spacing);
+      return w > max ? w : max;
+    }, 0);
+    return width > 0 ? width : null;
+  }
+
+  // Font units scaled to the size the label is drawn at, plus letter-spacing.
+  //
+  // Spacing is added after every character including the last, which is what the
+  // browser does -- letter-spacing=2 on a four-character label widens it by 8px,
+  // not 6.
+  function measureLine(font, line, fontSize, spacing) {
+    var chars = Array.from(line).length;
+    var advance;
+    if (!line) return 0;
+    try {
+      advance = font.layout(line).advanceWidth;
+    } catch (e) {
+      return 0;
+    }
+    return advance / font.unitsPerEm * fontSize + chars * spacing;
+  }
+
+  // The font a record is drawn in, opened and remembered. A record with no
+  // font-family is drawn in the layer group's default, the same one the GUI
+  // measures against -- see getLabelTextDefaults().
+  function getFontForRecord(rec) {
+    var family = rec['font-family'] || 'sans-serif';
+    var weight = getFontWeight(rec);
+    var italic = isItalic(rec);
+    var stretch = rec['font-stretch'] || '';
+    var key = [family, weight, italic ? 'i' : 'n', stretch].join('|');
+    if (!(key in fontCache)) {
+      fontCache[key] = openFace(findFontFace(family, weight, italic, stretch),
+        family, weight);
+    }
+    return fontCache[key];
+  }
+
+  function openFace(face, family, weight) {
+    var fontkit = loadFontkit();
+    var font;
+    if (!face || !fontkit) {
+      // Once per font, and only for a font the user named: a label falling back
+      // to the layer default is the ordinary case and not worth a warning, but a
+      // label asking for a font this computer has not got is worth knowing
+      // about, because its alignment is the thing that will be wrong.
+      if (!face && family != 'sans-serif') {
+        warnOnce('[label] Unable to measure text in font "' + family +
+          '" (not installed?); alignment may be off.');
+      }
+      return null;
+    }
+    try {
+      font = fontkit.openSync(face.path, face.postscriptName || undefined);
+      return font ? applyVariation(font, weight) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // A variable font set to the weight asked for. One file covers a range of
+  // weights, and its glyphs are wider at the heavy end: measuring at the file's
+  // default instance would report Light widths for Bold text. Only the weight
+  // axis is applied, because that is the one a label can ask for -- slant and
+  // width usually arrive as separate faces, which the lookup has already chosen
+  // between.
+  function applyVariation(font, weight) {
+    var settings = getVariationSettings(font.variationAxes, weight);
+    if (!settings) return font;
+    try {
+      return font.getVariation(settings) || font;
+    } catch (e) {
+      return font;
+    }
+  }
+
+  // The variation to set, or null for a font that is not variable or is already
+  // at the weight wanted. A weight outside the axis is clamped to it, the way a
+  // browser does.
+  function getVariationSettings(axes, weight) {
+    var axis = axes && axes.wght;
+    var val;
+    if (!axis) return null;
+    val = Math.max(axis.min, Math.min(axis.max, weight));
+    return val == axis.default ? null : {wght: val};
+  }
+
+  // px, for a font-size that may be a number, a px value, an em value relative
+  // to the layer default, or a pt value. Anything else takes the default rather
+  // than failing the measurement: a size mapshaper cannot read is one the
+  // renderer is also reading its own way, and a width from the default size is
+  // closer than no width at all.
+  function getFontSizeInPx(rec) {
+    var val = rec && rec['font-size'];
+    var px = toPixelMeasure(val, DEFAULT_LABEL_FONT_SIZE);
+    return px === null ? DEFAULT_LABEL_FONT_SIZE : px;
+  }
+
+  // px, for a letter-spacing relative to the label's own size rather than to the
+  // layer default: 0.1em on 24px text is 2.4px.
+  function getLetterSpacingInPx(rec, fontSize) {
+    var px = toPixelMeasure(rec && rec['letter-spacing'], fontSize);
+    return px === null ? 0 : px;
+  }
+
+  function getFontWeight(rec) {
+    var val = rec && rec['font-weight'];
+    var named = WEIGHT_NAMES[String(val).toLowerCase()];
+    if (named) return named;
+    return Number(val) > 0 ? Number(val) : 400;
+  }
+
+  function isItalic(rec) {
+    var val = String(rec && rec['font-style'] || '').toLowerCase();
+    return val == 'italic' || val == 'oblique';
+  }
+
+  function toPixelMeasure(val, emBasis) {
+    var measure, match;
+    // An absent value is not a zero: a label with no font-size of its own is
+    // drawn at the layer's size, and one with no letter-spacing is not spaced.
+    if (val === null || val === undefined || val === '') return null;
+    measure = parseSvgMeasure(val);
+    if (typeof measure == 'number' && !isNaN(measure)) return measure;
+    match = /^(-?[.0-9]+)(em|px|pt)$/.exec(String(measure));
+    if (!match) return null;
+    if (match[2] == 'em') return Number(match[1]) * emBasis;
+    if (match[2] == 'pt') return Number(match[1]) * 4 / 3;
+    return Number(match[1]);
+  }
+
+  function loadFontkit() {
+    if (runningInBrowser()) return null;
+    try {
+      return require$1('fontkit') || null;
+    } catch (e) {
+      warnOnce('[label] fontkit is not available; labels cannot be measured.');
+      return null;
+    }
+  }
+
+  // For tests, and for a session that has installed a font since it started.
+  function clearMeasuredFontCache() {
+    fontCache = {};
+  }
+
+  var TextMeasure = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    clearMeasuredFontCache: clearMeasuredFontCache,
+    getFontSizeInPx: getFontSizeInPx,
+    getFontWeight: getFontWeight,
+    getLetterSpacingInPx: getLetterSpacingInPx,
+    getVariationSettings: getVariationSettings,
+    initNodeTextMeasurement: initNodeTextMeasurement,
+    isItalic: isItalic,
+    measureLabelText: measureLabelText
   });
 
   // Return an array containing points from a path iterator, clipped to a bounding box
@@ -82262,7 +84554,16 @@ ${svg}
   //       export only functions called by the GUI.
   var internal = {};
 
-  internal.svg = Object.assign({}, SvgStringify, SvgPathUtils, GeojsonToSvg, SvgLabels, SvgSymbols);
+  internal.svg = Object.assign({}, SvgStringify, SvgPathUtils, GeojsonToSvg,
+    SvgFeatureUtils,
+    SvgLabels, SvgSymbols, SvgLabelPaths, SvgLabelFit, SvgLabelAlign,
+    SvgLabelMetrics);
+
+  // Reached through the bundle rather than imported from source, unlike most of
+  // what tests use, because these modules load fs and fontkit through the
+  // require shim -- which resolves to a stub outside the bundle, there being no
+  // require() in an ES module.
+  internal.fonts = Object.assign({}, FontLookup, TextMeasure);
 
   // Assign functions and objects exported from modules to the 'internal' namespace
   // to maintain compatibility with tests and to expose (some of) them to the GUI.
@@ -82307,6 +84608,7 @@ ${svg}
     // BufferCommon,
     Calc,
     CalcUtils,
+    CurveFit,
     Catalog$1,
     ClipErase,
     ClipPoints,
@@ -82439,6 +84741,13 @@ ${svg}
     VertexUtils,
     Zip
   );
+
+  // Outside a browser, label text is measured from the installed font files --
+  // see mapshaper-text-measure.mjs. Installed here rather than in the CLI's
+  // entry point because a width is read while rendering and exporting, which the
+  // API reaches without a command line, and it costs nothing until a label
+  // actually needs measuring.
+  initNodeTextMeasurement();
 
   // the mapshaper public api only has 4 functions
   var api = {

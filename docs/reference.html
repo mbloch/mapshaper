@@ -214,7 +214,7 @@ mapshaper countries_wgs84.shp encoding=latin1 -info
 <p>Save content of the target layer(s) to a file or files.</p>
 <p><strong>Options</strong></p>
 <p><code>&lt;file&gt;|&lt;directory&gt;|-</code>  Name of output file or directory. Use <code>-</code> to export text-based formats to <code>/dev/stdout</code>.</p>
-<p><code>format=shapefile|geojson|topojson|flatgeobuf|geopackage|geoparquet|geotiff|json|dbf|csv|tsv|svg</code> Specify output format. If the <code>format=</code> option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper exports to the same format as the input format. The <code>json</code> format is an array of objects containing data properties for each feature. The <code>geotiff</code> format takes raster layers only; every other format takes vector or table layers only, apart from <code>svg</code> and <code>msx</code>, which accept both.</p>
+<p><code class="is-wrappable">format=shapefile|<wbr>geojson|<wbr>topojson|<wbr>flatgeobuf|<wbr>geopackage|<wbr>geoparquet|<wbr>geotiff|<wbr>json|<wbr>dbf|<wbr>csv|<wbr>tsv|<wbr>svg</code> Specify output format. If the <code>format=</code> option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper exports to the same format as the input format. The <code>json</code> format is an array of objects containing data properties for each feature. The <code>geotiff</code> format takes raster layers only; every other format takes vector or table layers only, apart from <code>svg</code> and <code>msx</code>, which accept both.</p>
 <p><code>target=</code> Specify layer(s) to export (comma-separated list). The default target is the output layer(s) of the previous command. Use <code>target=*</code> to select all layers.</p>
 <p><code>force</code>  Allow output files to overwrite input files (without this option, overwriting input files is not allowed).</p>
 <p><code>gzip</code>  Apply gzip compression to output files.</p>
@@ -525,7 +525,7 @@ layer&#39;s coordinate space.</p>
 <p>For polygon layers, <code>-dissolve</code> repairs topology before dissolving, so it produces correct results on inputs that contain overlaps, gaps or other topology errors. The <code>no-repair</code> option skips this step for a faster (but less robust) dissolve.</p>
 <p><code>&lt;fields&gt;</code> or <code>fields=</code> (optional) Name of a data field or fields to dissolve on. Accepts a comma-separated list of field names.</p>
 <p><code>group-points</code>   [points] Group the points from each dissolved group of features into a multi-point feature instead of converting multiple points into a single-point centroid feature.</p>
-<p><code>weight=</code>  [points] Name of a field or a JS expression for generating weighted centroids. For example, the following command estimates the &quot;center of mass&quot; of the U.S. population: <code> mapshaper census_tracts.shp -points -dissolve weight=POPULATION -o out.shp</code></p>
+<p><code>weight=</code>  [points] Name of a field or a JS expression for generating weighted centroids. For example, the following command estimates the &quot;center of mass&quot; of the U.S. population: <code class="is-wrappable"> mapshaper census_tracts.shp -points -dissolve weight=POPULATION -o out.shp</code></p>
 <p><code>planar</code>   [points] Treat decimal degree coordinates as planar cartesian coordinates when calculating dissolve centroids. (By default, mapshaper calculates the centroids of lat-long point data in 3D space.)</p>
 <p><code>gap-width=</code>  [polygons] Fill gaps narrower than this width (e.g. <code>2m</code>, <code>0</code>). Each gap’s width is estimated from its area and perimeter (roughly, how wide a long thin shape would be if straightened out), so slender cracks are filled while more compact holes of similar area, such as small lakes, are more likely to be kept. When gap filling is enabled, the default is an automatic width based on the geometry of the layer.</p>
 <p><code>gap-fill-area=</code>  [polygons, deprecated] Use <code>gap-width=</code> instead. Gaps smaller than this area will be filled; larger gaps will be retained as holes in the polygon mosaic. Example values: 2km2 500m2 0.</p>
@@ -704,11 +704,12 @@ mapshaper states.shp -filter-fields FID,NAME -o out.shp
 <p><code>offsets=</code>  Comma-sep. list of offsets for each side of the map frame, in l,b,r,t order</p>
 <p>Other options: <code>name=</code> <code>target=</code></p>
 </section>
-<section class="cmd-section" data-id="-graticule" data-name="-graticule" data-options="polygon outline interval"><h3 id="-graticule">-graticule</h3>
+<section class="cmd-section" data-id="-graticule" data-name="-graticule" data-options="polygon outline interval base"><h3 id="-graticule">-graticule</h3>
 <p>Create a graticule layer appropriate for the target dataset&#39;s projection. Bounded and interrupted projections include matching outline paths.</p>
 <p><code>polygon</code> Create a polygon enclosing the entire area of the graticule. Useful for creating background or outline shapes for bounded and interrupted projections.</p>
 <p><code>outline</code> Create the same boundary as the <code>polygon</code> option, as a polyline layer.</p>
 <p><code>interval=</code> Specify the spacing of graticule lines (in degrees). Common options are: 5, 10, 15, 30, 45. Default is 10.</p>
+<p><code>base=</code> Longitude to align meridians to (the default is 0). For example <code>interval=10 base=5</code> places meridians at 5, 15, 25 and so on, instead of 0, 10, 20.</p>
 </section>
 <section class="cmd-section" data-id="-grid" data-name="-grid" data-options="type square square2 hex hex2 rhombus rhombus2 triangle triangle2 cairo interval cols rows cells cell-scale rotate name target"><h3 id="-grid">-grid</h3>
 <p>Create a continuous grid of square, hexagonal, rhombus, triangle or cairo polygons.</p>
@@ -1181,7 +1182,7 @@ mapshaper tracts.shp
   -o tract_groups.shp
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-style" data-name="-style" data-options="where clear class css style fill pink fill-pattern ortho npers stroke stroke-width stroke-dasharray opacity icon icon-size icon-color label-text text-anchor dx dy font-size font-family font-weight font-style font-stretch letter-spacing line-height target"><h3 id="-style">-style</h3>
+<section class="cmd-section" data-id="-style" data-name="-style" data-options="where clear class css style fill pink fill-pattern ortho npers stroke stroke-width stroke-dasharray opacity icon icon-size icon-color label-text text-anchor label-align left center right dx dy font-size font-family font-weight font-style font-stretch letter-spacing line-height target"><h3 id="-style">-style</h3>
 <p>Add common SVG attributes for SVG export and display in the web UI. Attribute values take either a literal value or a JS expression. See <a href="/docs/guides/expressions.html">JavaScript expressions</a> for the available context. This command was named <code>-svg-style</code> in earlier versions of mapshaper.</p>
 <p><code>where=</code>           Boolean JS expression for targetting a subset of features.</p>
 <p><code>clear</code> Remove all style properties from a layer.</p>
@@ -1206,7 +1207,8 @@ mapshaper tracts.shp
 <p><code>icon-size=</code>       Point icon size in pixels. If <code>icon=</code> is missing, <code>icon-size=</code> creates circle icons.</p>
 <p><code>icon-color=</code>      Point icon color. If missing, icons use the <code>fill=</code> color, or black if <code>fill=</code> is also missing. Ring icons use this color for the stroke.</p>
 <p><code>label-text=</code>      Label text (set this to export points as labels). To create multiline labels, insert line delimiters into the label text. There are three possible line delimiters: the newline character, <code>\n</code> (backslash + &quot;n&quot;), and <code>&lt;br&gt;</code>. (When importing JSON data, <code>\n</code> in a JSON string is parsed as a newline and <code>\\n</code> is parsed as backslash + &quot;n&quot;). Note that Mapshaper doesn&#39;t accept multiline strings as input on the command line.</p>
-<p><code>text-anchor=</code>     Horizontal justification of label text. Possible values are: start, end or middle (the default).</p>
+<p><code>text-anchor=</code>     Horizontal justification of label text. Possible values are: start, end or middle (the default). Note that <code>text-anchor</code> also decides where a block of text sits relative to its anchor point, so changing it moves a multiline label as well as justifying it; use <code>label-align=</code> to justify the lines without moving the label.</p>
+<p><code>label-align=</code>     How the lines of a multiline label line up with each other: <code>left</code>, <code>center</code> or <code>right</code>. Unlike <code>text-anchor=</code>, this leaves the label where its position put it, so lines can be left-aligned in a label that is centred on its anchor. Holding the label still requires the width of its text, which only the web UI can measure; a label styled on the command line is justified as asked but moves as <code>text-anchor=</code> would move it.</p>
 <p><code>dx=</code>              X offset of labels (default is 0)</p>
 <p><code>dy=</code>              Y offset of labels (default is baseline-aligned)</p>
 <p><code>font-size=</code>       Size of label text (default is 12)</p>
@@ -1300,7 +1302,7 @@ mapshaper polygons.shp \
 <p><strong>Functions of <code>this</code></strong></p>
 <ul>
 <li><code>this.field_exists(&lt;name&gt;)</code>  Tests if a data field exists in the target layer.</li>
-<li><code>this.field_type(&lt;name&gt;)</code>    Returns the data type of a field, or <code>null</code> if a field is empty or missing. Types include: <code>&quot;string&quot; &quot;number&quot; &quot;boolean&quot; &quot;date&quot; &quot;object&quot;</code>. If a field includes multiple data types (which may occur in GeoJSON), the type of the first non-empty data value is returned.</li>
+<li><code>this.field_type(&lt;name&gt;)</code>    Returns the data type of a field, or <code>null</code> if a field is empty or missing. Types include: <code class="is-wrappable">&quot;string&quot; &quot;number&quot; &quot;boolean&quot; &quot;date&quot; &quot;object&quot;</code>. If a field includes multiple data types (which may occur in GeoJSON), the type of the first non-empty data value is returned.</li>
 <li><code>this.field_includes(&lt;value&gt;)</code>  Tests if a given value occurs at least once in a data field.</li>
 <li><code>this.file_exists(&lt;filename&gt;)</code>  Tests if a file exists.</li>
 </ul>

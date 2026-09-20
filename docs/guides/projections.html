@@ -135,7 +135,7 @@ mapshaper region.geojson -proj tmerc -o region_tmerc.geojson
 <span class="hljs-comment"># Equivalent — Mapshaper fills in zone and hemisphere</span>
 mapshaper region.geojson -proj utm -o region_utm.geojson
 </code></pre>
-<p>When Mapshaper auto-fits parameters, it prints the expanded PROJ string so you can see exactly what was applied. An example message: <code>Converted &quot;lcc&quot; to &quot;+proj=lcc +lon_0=-95.5 +lat_1=30.17 +lat_2=44.83&quot;</code>. You can copy this PROJ string and use it explicitly if you need reproducible output.</p>
+<p>When Mapshaper auto-fits parameters, it prints the expanded PROJ string so you can see exactly what was applied. An example message: <code class="is-wrappable">Converted &quot;lcc&quot; to &quot;+proj=lcc +lon_0=-95.5 +lat_1=30.17 +lat_2=44.83&quot;</code>. You can copy this PROJ string and use it explicitly if you need reproducible output.</p>
 <h2 id="albersusa">albersusa</h2>
 <p><code>albersusa</code> is a Mapshaper-specific composite projection for maps of the United States. It applies Albers Equal Area Conic to the contiguous 48 states, then places Alaska (scaled down) and Hawaii as insets in the lower-left corner of the map.</p>
 <p><img src="/docs/images/albersusa-projection.jpg" alt="United States in the albersusa composite projection, with Alaska and Hawaii as insets below the southwestern states"></p>

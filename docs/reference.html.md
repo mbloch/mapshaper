@@ -1005,6 +1005,8 @@ Create a graticule layer appropriate for the target dataset's projection. Bounde
 
 `interval=` Specify the spacing of graticule lines (in degrees). Common options are: 5, 10, 15, 30, 45. Default is 10.
 
+`base=` Longitude to align meridians to (the default is 0). For example `interval=10 base=5` places meridians at 5, 15, 25 and so on, instead of 0, 10, 20.
+
 ### -grid
 
 Create a continuous grid of square, hexagonal, rhombus, triangle or cairo polygons.
@@ -1751,7 +1753,9 @@ Example: `hatches 45deg 2px red 2px grey`
 
 `label-text=`      Label text (set this to export points as labels). To create multiline labels, insert line delimiters into the label text. There are three possible line delimiters: the newline character, `\n` (backslash + "n"), and `<br>`. (When importing JSON data, `\n` in a JSON string is parsed as a newline and `\\n` is parsed as backslash + "n"). Note that Mapshaper doesn't accept multiline strings as input on the command line.
   
-`text-anchor=`     Horizontal justification of label text. Possible values are: start, end or middle (the default).
+`text-anchor=`     Horizontal justification of label text. Possible values are: start, end or middle (the default). Note that `text-anchor` also decides where a block of text sits relative to its anchor point, so changing it moves a multiline label as well as justifying it; use `label-align=` to justify the lines without moving the label.
+
+`label-align=`     How the lines of a multiline label line up with each other: `left`, `center` or `right`. Unlike `text-anchor=`, this leaves the label where its position put it, so lines can be left-aligned in a label that is centred on its anchor. Holding the label still requires the width of its text, which only the web UI can measure; a label styled on the command line is justified as asked but moves as `text-anchor=` would move it.
 
 `dx=`              X offset of labels (default is 0)
 

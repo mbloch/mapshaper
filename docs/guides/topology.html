@@ -79,7 +79,7 @@
 <p>A few patterns to watch out for:</p>
 <ul>
 <li><strong><code>.shp</code> files exported from older GIS tools.</strong> Some pipelines round coordinates inconsistently between adjacent features, producing systematic misalignments. Running <code>-clean</code> (or importing with <code>snap</code> if the misalignments are small and consistent) usually resolves these.</li>
-<li><strong>Older versions of ArcGIS&#39;s dissolve tool</strong> have been observed to produce topology errors when dissolving a Shapefile that hasn&#39;t first been added to a Geodatabase. If you&#39;re starting from such output, run it through <code>mapshaper input.shp -clean -o cleaned.shp</code> to repair before further processing.</li>
+<li><strong>Older versions of ArcGIS&#39;s dissolve tool</strong> have been observed to produce topology errors when dissolving a Shapefile that hasn&#39;t first been added to a Geodatabase. If you&#39;re starting from such output, run it through <code class="is-wrappable">mapshaper input.shp -clean -o cleaned.shp</code> to repair before further processing.</li>
 </ul>
 
       <div class="edit-link">
