@@ -20,6 +20,7 @@ import {
   noteDatasetWillChange
 } from '../undo/mapshaper-undo-tracking';
 import '../commands/mapshaper-add-label';
+import '../commands/mapshaper-add-layer';
 import '../commands/mapshaper-update-label';
 import '../commands/mapshaper-add-shape';
 import '../commands/mapshaper-affine';
@@ -138,7 +139,7 @@ function commandAcceptsEmptyTarget(name) {
     name == 'require' || name == 'run' || name == 'define' ||
     name == 'include' || name == 'print' || name == 'comment' || name == 'if' || name == 'elif' ||
     name == 'else' || name == 'endif' || name == 'stop' || name == 'add-shape' ||
-    name == 'add-label' ||
+    name == 'add-label' || name == 'add-layer' ||
     name == 'scalebar' || name == 'vars' || name == 'defaults';
 }
 
@@ -258,6 +259,15 @@ export async function runCommand(command, job) {
         job.catalog.addDataset(targetDataset);
       }
       outputLayers = cmd.addLabel(targetLayers, targetDataset, opts);
+
+    } else if (name == 'add-layer') {
+      // The new layer arrives in a dataset of its own, so it is added to the
+      // catalog here rather than integrated into the target below.
+      // captureCatalogBefore() gives an undo transaction the state before the
+      // change; addDataset() marks the change itself. Both are no-ops in the
+      // CLI, where nothing is listening.
+      job.catalog.captureCatalogBefore({operation: 'addLayer'});
+      job.catalog.addDataset(cmd.addLayer(targetDataset, opts));
 
     } else if (name == 'update-label') {
       cmd.updateLabel(targetLayers, targetDataset, opts);

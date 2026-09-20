@@ -2342,8 +2342,9 @@ export function getOptionParser() {
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
 
+  // used by GUI
   parser.command('add-label')
-    .describe('add a map label to a point layer')
+    // .describe('add a map label to a point layer')
     .option('coordinates', {
       describe: 'x,y of the label anchor, or x,y,x,y,... of a curve\'s knots'
     })
@@ -2374,8 +2375,22 @@ export function getOptionParser() {
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
 
+  // used by GUI
+  parser.command('add-layer')
+    // .describe('create an empty layer, to add shapes or labels to')
+    .option('geometry-type', {
+      describe: 'point, polygon or polyline'
+    })
+    .option('name', {
+      describe: 'name of the new layer'
+    })
+    // only the CRS is taken from the target, so that a shape drawn at a
+    // projected coordinate is not read as lat-long
+    .option('target', targetOpt);
+
+  // used by GUI
   parser.command('update-label')
-    .describe('move the anchor or curve knots of an existing label')
+    // .describe('move the anchor or curve knots of an existing label')
     .option('ids', {
       describe: 'feature id of the label to update',
       type: 'numbers'

@@ -18,7 +18,7 @@ import {
   } from './gui-drawing-utils';
 import { translateDisplayPoint } from './gui-display-utils';
 import { showPopupAlert } from './gui-alert';
-import { addEmptyLayer } from './gui-add-layer-popup';
+import { addEmptyLayer } from './gui-add-layer';
 
 // pixel distance threshold for hovering near a vertex or segment midpoint
 var HOVER_THRESHOLD = 10;

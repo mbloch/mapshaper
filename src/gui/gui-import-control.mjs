@@ -5,7 +5,6 @@ import { SimpleButton } from './gui-elements';
 import { GUI } from './gui-lib';
 import { setLayerPinning } from './gui-layer-utils';
 import { importSessionData } from './gui-session-snapshot-control';
-import { openAddLayerPopup } from './gui-add-layer-popup';
 import { considerReprojecting, loadGeopackageLib, getGeoPackageFeatureTables, loadGeoParquetLib, loadGeoTIFFLib } from './gui-import-utils';
 import { persistRasterSourceForDataset } from './gui-raster-source-store';
 import {
@@ -178,10 +177,6 @@ export function ImportControl(gui, opts) {
   new DropControl(gui, 'body', receiveDroppedItems);
   new FileChooser('#import-options .add-btn', receiveFilesWithOption);
   new FileChooser('#add-file-btn', receiveFiles);
-  new SimpleButton('#add-empty-btn').on('click', function() {
-    gui.clearMode(); // close import dialog
-    openAddLayerPopup(gui);
-  });
   // initDropArea('#import-quick-drop', true);
   // initDropArea('#import-drop');
   gui.keyboard.onMenuSubmit(El('#import-options'), importQueuedFiles);

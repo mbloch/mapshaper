@@ -2,7 +2,7 @@
 // (the storage-backed undo flow used by console commands and a few GUI actions).
 //
 // The five GUI controls that grew their own copies of these helpers in the
-// initial undo/redo commit (gui-add-layer-popup, gui-import-control,
+// initial undo/redo commit (gui-add-layer, gui-import-control,
 // gui-layer-control, gui-simplify-control, gui-undo) should import from here
 // instead.
 

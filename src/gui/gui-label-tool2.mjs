@@ -1,6 +1,6 @@
 import { internal } from './gui-core';
 import { translateDisplayPoint } from './gui-display-utils';
-import { addEmptyLayer } from './gui-add-layer-popup';
+import { addEmptyLayer } from './gui-add-layer';
 import { showPopupAlert } from './gui-alert';
 import { runGuiEditCommand } from './gui-edit-command';
 import { FloatingToolbar } from './gui-floating-toolbar';

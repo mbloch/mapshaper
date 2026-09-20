@@ -5,7 +5,7 @@ import {
   appendNewPoint,
   deleteFeature } from './gui-drawing-utils';
 import { translateDisplayPoint } from './gui-display-utils';
-import { addEmptyLayer } from './gui-add-layer-popup';
+import { addEmptyLayer } from './gui-add-layer';
 import { showPopupAlert } from './gui-alert';
 
 export function initPointEditing(gui, ext, hit) {

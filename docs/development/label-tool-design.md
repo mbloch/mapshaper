@@ -231,10 +231,17 @@ armed, the cursor became a crosshair, and clicking the map did nothing at all.
 
 Creating it on entry rather than on the first click is what the point and line
 tools already do (`addEmptyLayer()` in `gui-edit-points.mjs` and
-`gui-draw-lines2.mjs`), and `menus.empty` in `gui-interaction-mode-control.mjs`
-lists `label` alongside them, so the mode was always meant to be reachable
-here. It does mean that opening the tool and changing your mind leaves an empty
-layer and an undo entry, which is a cost the other two tools already pay.
+`gui-draw-lines2.mjs`). It does mean that opening the tool and changing your mind
+leaves an empty layer and an undo entry, which is a cost the other two tools
+already pay.
+
+The mode is now reached here from the layer panel's "Draw: labels" link
+rather than from `menus.empty`, which no longer lists `label` (see "Mode
+registration"). That link creates the layer with `-add-layer` before entering the
+mode, so `addTargetLayerIfMissing()` finds one and does nothing. It stays as the
+tool's own guarantee, for any other way into the mode with nothing loaded — a
+`gui.interaction.setMode('label')` from elsewhere in the GUI, or from the undo
+test API.
 
 The layer is **named** `labels`, unlike the unnamed ones those tools create. It
 is the layer `getLabelTarget()` would have created for a label anyway, and
@@ -2403,10 +2410,15 @@ The GUI has two parallel mode systems and a new tool must register with both:
 
 - **Interaction mode** `label` in `gui-interaction-mode-control.mjs`: add to the
   `labels` label lookup and the constraint helpers `modeUsesHitDetection`,
-  `modeUsesPopup`, `modeSupportsUndo` and `modeWorksWithConsole`. Because the
-  tool can act on any target — creating a point layer when the target is a
-  polygon, polyline or non-label point layer — the mode must appear in **every**
-  per-geometry menu array, not just `labels`.
+  `modeUsesPopup`, `modeSupportsUndo` and `modeWorksWithConsole`. The mode
+  appears in the `labels` and `emptyPoints` menu arrays — the layers a label
+  would join, which is what `labelWouldJoin()` asks `getLabelTarget()`. It was
+  once in **every** menu array, because the tool can act on any target; the
+  layer panel's "Draw: labels" link is what creates a label layer beside a
+  polygon layer now (`gui-add-layer-links.mjs`), in one click, so on any other
+  layer the menu entry was offering to edit a layer that did not exist yet.
+  `labelModeIsAvailable()` is what keeps the tool open when the target changes
+  under it, since it can still act on anything.
 - **GUI mode** `label_tool` via `gui.addMode()`, entered from an
   `interaction_mode_change` listener, following `drawing_tool` in
   `gui-draw-lines2.mjs`.

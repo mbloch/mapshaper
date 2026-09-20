@@ -613,14 +613,14 @@ test('empty layer creation is undoable before edit-session content', async funct
 
   var initialState = await getUndoState(page);
 
-  await addEmptyPointLayer(page, 'empty');
+  await addEmptyPointLayer(page);
   await expect.poll(async function() {
     return (await getUndoState(page)).model.layerCount;
   }).toBe(initialState.model.layerCount + 1);
 
   var emptyLayerState = await getUndoState(page);
   expect(emptyLayerState.undo.canUndo).toBe(true);
-  expect(getLayerSummary(emptyLayerState.model, 'empty').shapeCount).toBe(0);
+  expect(getLayerSummary(emptyLayerState.model, 'points').shapeCount).toBe(0);
 
   await page.evaluate(function() {
     window.mapshaper.undoTest.setInteractionMode('edit_points');
@@ -629,7 +629,7 @@ test('empty layer creation is undoable before edit-session content', async funct
   });
 
   var editedLayerState = await getUndoState(page);
-  expect(getLayerSummary(editedLayerState.model, 'empty').shapeCount).toBe(1);
+  expect(getLayerSummary(editedLayerState.model, 'points').shapeCount).toBe(1);
 
   await page.evaluate(function() {
     return window.mapshaper.undoTest.undo();
@@ -1195,12 +1195,13 @@ async function getMainCanvasPixelCount(page) {
   });
 }
 
-async function addEmptyPointLayer(page, name) {
+// Makes an empty point layer the way the layer panel does, with the "Draw:
+// points" link. The layer is named for the link that made it.
+async function addEmptyPointLayer(page) {
   await page.locator('.layer-control-btn').click();
-  await page.locator('#add-empty-btn').click();
-  await page.locator('.layer-name.text-input').fill(name);
-  await page.locator('.radio[value="point"]').check();
-  await page.locator('.dialog-btn').filter({hasText: 'Create'}).click();
+  await page.locator('.new-layer-links .layer-menu-link[data-kind="points"]')
+    .click();
+  await page.waitForTimeout(250);
 }
 
 async function deleteFirstLayerFromLayerMenu(page) {

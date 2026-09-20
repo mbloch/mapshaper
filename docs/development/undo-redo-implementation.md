@@ -238,7 +238,12 @@ Current GUI conventions:
 - **Layer menu rename**: metadata-only change; undo captures
   `layer-metadata`, not shapes or attributes.
 - **Add empty layer**: catalog-level change; undo removes the newly added empty
-  dataset/layer.
+  dataset/layer. The layer panel's "Draw" links create the layer with
+  `-add-layer` instead (`gui-add-layer-links.mjs`), so those are ordinary
+  command transactions and appear in the session history. The direct
+  path is still what a tool uses to provision the layer it needs as it opens
+  (`addEmptyLayer()`), because a command does not take effect before the call
+  returns.
 - **Subsequent GUI imports**: catalog-level change; undo removes imported
   datasets/layers as one import-group entry. The initial GUI import is not
   undoable because it establishes the session baseline.

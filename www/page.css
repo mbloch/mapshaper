@@ -1237,8 +1237,9 @@ body.simplify .layer-control-btn {
 }
 
 .layer-control .no-layer-note {
-	color: #999;
+	color: #777;
 	margin: 0 0 5px 0;
+	font-size: 13px;
 }
 
 .layer-add-links {
@@ -1259,6 +1260,11 @@ body.simplify .layer-control-btn {
 .layer-menu-link-separator {
 	color: #777;
 	font-weight: bold;
+}
+
+/* "Draw:", which labels the links that follow it rather than being one */
+.new-layer-label {
+	color: #777;
 }
 
 .layer-menu .layer-list {

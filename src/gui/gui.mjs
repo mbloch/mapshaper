@@ -8,6 +8,7 @@ import { IntersectionControl } from './gui-intersection-control';
 import { CompareControl } from './gui-compare-control';
 import { ExportControl } from './gui-export-control';
 import { LayerControl } from './gui-layer-control';
+import { AddLayerLinks } from './gui-add-layer-links';
 import { HeaderMenu } from './gui-header-menu';
 import { HistoryMenu } from './gui-history-menu';
 import { GuiInstance } from './gui-instance';
@@ -90,6 +91,7 @@ var startEditing = function() {
   new ImportControl(gui, importOpts);
   new ExportControl(gui);
   new LayerControl(gui);
+  new AddLayerLinks(gui);
   HeaderMenu();
   gui.console = new Console(gui);
   new CompareControl(gui);

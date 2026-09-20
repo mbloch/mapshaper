@@ -1,25 +1,37 @@
 import { El } from './gui-el';
 import { internal } from './gui-core';
+import { getLabelTarget } from './gui-label-commands';
 
 export function InteractionMode(gui) {
 
-  // The label tool appears in every menu except 'table', because it can act on
-  // any target: it adds to a label layer and creates one beside a target that
-  // cannot hold a label. A table has no map to click on, so it is the exception.
+  // Each menu holds the tools that suit the active layer, so the label tool
+  // appears only where the layer is one labels go into: 'labels' and
+  // 'emptyPoints'. On any other layer it would be an entry for editing a layer
+  // that does not exist yet -- making one is the business of the "Draw"
+  // links in the layer panel (gui-add-layer-links.mjs), which create the layer
+  // and open this tool on it in one click.
+  //
+  // The tool still acts on any target once it is open: see
+  // labelModeIsAvailable().
   var menus = {
-    standard: ['info', 'selection', 'box', 'label', 'ruler'],
-    empty: ['edit_polygons', 'edit_lines', 'edit_points', 'label', 'box', 'ruler'],
-    polygons: ['info', 'selection', 'box', 'polygon_style', 'label', 'edit_polygons', 'ruler'],
-    rectangles: ['info', 'selection', 'box', 'polygon_style', 'label', 'rectangles', 'edit_polygons', 'ruler'],
-    lines: ['info', 'selection', 'box', 'line_style', 'label', 'edit_lines', 'snip_lines', 'ruler'],
+    standard: ['info', 'selection', 'box', 'ruler'],
+    empty: ['edit_polygons', 'edit_lines', 'edit_points', 'box', 'ruler'],
+    polygons: ['info', 'selection', 'box', 'polygon_style', 'edit_polygons', 'ruler'],
+    rectangles: ['info', 'selection', 'box', 'polygon_style', 'rectangles', 'edit_polygons', 'ruler'],
+    lines: ['info', 'selection', 'box', 'line_style', 'edit_lines', 'snip_lines', 'ruler'],
     table: ['info', 'selection'],
-    raster: ['label', 'ruler', 'box'],
+    raster: ['ruler', 'box'],
     // A label layer has no entry for styling labels, for adding and dragging
     // points, or for positioning labels: the label tool does all three, along
     // with creating and retyping labels, so each of them offered a subset of
     // what sat next to it in the menu.
     labels: ['info', 'selection', 'box', 'label', 'ruler'],
-    points: ['info', 'selection', 'box', 'point_style', 'label', 'edit_points', 'ruler'] // , 'add-points'
+    points: ['info', 'selection', 'box', 'point_style', 'edit_points', 'ruler'], // , 'add-points'
+    // An empty point layer is the layer the "Draw: labels" link creates,
+    // and a label goes into it rather than beside it (see labelWouldJoin), so
+    // the label tool belongs in its menu as well as the point tools: it is the
+    // way back into a labels layer that has no label in it yet.
+    emptyPoints: ['info', 'selection', 'box', 'point_style', 'label', 'edit_points', 'ruler']
   };
 
   var prompts = {
@@ -166,7 +178,7 @@ export function InteractionMode(gui) {
       return menus.labels;
     }
     if (o.layer.geometry_type == 'point') {
-      return menus.points;
+      return labelWouldJoin(o.layer) ? menus.emptyPoints : menus.points;
     }
     if (o.layer.geometry_type == 'polyline') {
       return menus.lines;
@@ -213,9 +225,29 @@ export function InteractionMode(gui) {
   // if current editing mode is not available, turn off the tool
   function updateCurrentMode() {
     var modes = getAvailableModes();
-    if (modes.indexOf(_editMode) == -1 && !labelStyleModeIsAvailable() && !layerStyleModeIsAvailable() && !pointStyleModeIsAvailable()) {
+    if (modes.indexOf(_editMode) == -1 && !labelModeIsAvailable() && !labelStyleModeIsAvailable() && !layerStyleModeIsAvailable() && !pointStyleModeIsAvailable()) {
       setMode('off');
     }
+  }
+
+  // Whether a label made now would join the active layer rather than starting a
+  // layer of its own, which is the label tool's own rule for what a label layer
+  // is: one with a label-text field, or an empty point layer.
+  function labelWouldJoin(lyr) {
+    return getLabelTarget(lyr, internal.layerHasLabels).mode == 'existing';
+  }
+
+  // The label tool is offered where a label would join the active layer (see
+  // menus above), but it can act on any target once it is open: a label goes
+  // into a label layer created beside a layer that cannot hold one. So
+  // selecting a polygon layer while the tool is open must not close it -- the
+  // next label will start a label layer of its own.
+  function labelModeIsAvailable() {
+    var o = gui.model.getActiveLayer();
+    if (_editMode != 'label') return false;
+    if (!o || !o.layer) return true; // the tool creates the layer it needs
+    // A table is the one target with no map to click on.
+    return internal.layerHasRaster(o.layer) || !!o.layer.geometry_type;
   }
 
   function labelStyleModeIsAvailable() {

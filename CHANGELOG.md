@@ -1,5 +1,8 @@
 v0.7.62 (unreleased)
 * Added `-graticule base=` to align meridians to a longitude other than 0 (same idea as `-contours base=`).
+* Added `-add-layer` command, which creates an empty layer to add shapes or labels to (e.g. `-add-layer geometry-type=polygon name=outlines`).
+* [web] The layers panel now offers "Draw: labels · points · lines · polygons". Each one creates a layer and opens the tool that draws into it, replacing "Add empty layer", which created a layer you then had to find a tool for. Clicking a link again draws in the layer the last click made, if nothing has been drawn in it yet. Layers can be renamed by clicking their name in the layer list.
+* [web] "add/edit labels" now appears in the arrow menu only for a layer that labels would go into (a label layer, or an empty point layer). Use "Draw: labels" to start a label layer beside any other kind of layer.
 
 v0.7.60
 * `-clean`’s default `gap-width=auto` is now equivalent to the former `gap-fill-area=auto` + `sliver-control=1` test, restoring the more effective cleanup from before v0.7.53.
