@@ -64,6 +64,24 @@ export function projectArcsForDisplay(arcs, src, dest) {
   return copy;
 }
 
+// Return the point transform used to calculate dynamic-display frame bounds.
+// This mirrors the WGS84 pivot and Web Mercator latitude clamping used above.
+export function getDisplayProjectionTransform(src, dest) {
+  var wgs84 = internal.parseCrsString('wgs84');
+  var toWGS84 = internal.isWGS84(src) ? null :
+    internal.getProjTransform2(src, wgs84);
+  var fromWGS84 = internal.getProjTransform2(wgs84, dest);
+  var clampLat = internal.isWebMercator(dest);
+  return function(x, y) {
+    var p = toWGS84 ? toWGS84(x, y) : [x, y];
+    if (!p) return null;
+    if (clampLat) {
+      p = [p[0], Math.max(-89.9, Math.min(89.9, p[1]))];
+    }
+    return fromWGS84(p[0], p[1]);
+  };
+}
+
 function clampY(arcs) {
   var max = 89.9,
       min = -89.9,

@@ -1,6 +1,11 @@
 import { enhanceArcCollectionForDisplay } from './gui-display-arcs';
 import { getDisplayLayerForTable } from './gui-table';
-import { needReprojectionForDisplay, projectArcsForDisplay, projectPointsForDisplay } from './gui-dynamic-crs';
+import {
+  getDisplayProjectionTransform,
+  needReprojectionForDisplay,
+  projectArcsForDisplay,
+  projectPointsForDisplay
+} from './gui-dynamic-crs';
 import { filterLayerByIds } from './gui-layer-utils';
 import { internal, Bounds, utils } from './gui-core';
 import { getDatasetCrsInfo } from './gui-display-utils';
@@ -112,10 +117,20 @@ export function enhanceLayerForDisplay(layer, dataset, opts) {
     if (internal.layerHasPoints(layer)) {
       gui.displayLayer = projectPointsForDisplay(layer, sourceCRS, displayCRS);
     } else if (internal.layerHasPaths(layer)) {
-      emptyArcs = findEmptyArcs(displayArcs);
-      if (emptyArcs.length > 0) {
-        // Don't try to draw paths containing coordinates that failed to project
-        gui.displayLayer = internal.filterPathLayerByArcIds(gui.displayLayer, emptyArcs);
+      if (internal.isFrameLayer(layer, dataset.arcs)) {
+        var projectedFrame = internal.getProjectedFrameDisplayLayer(
+          layer,
+          dataset.arcs,
+          getDisplayProjectionTransform(sourceCRS, displayCRS)
+        );
+        gui.displayLayer = projectedFrame.layer;
+        gui.displayArcs = projectedFrame.arcs;
+      } else {
+        emptyArcs = findEmptyArcs(displayArcs);
+        if (emptyArcs.length > 0) {
+          // Don't try to draw paths containing coordinates that failed to project
+          gui.displayLayer = internal.filterPathLayerByArcIds(gui.displayLayer, emptyArcs);
+        }
       }
     } else if (internal.layerHasRaster(layer)) {
       gui.bounds = getProjectedRasterDisplayBounds(layer, sourceCRS, displayCRS);

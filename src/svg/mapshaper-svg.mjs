@@ -1,6 +1,6 @@
 import { exportDatasetAsGeoJSON } from '../geojson/geojson-export';
 import { getFurnitureLayerData, layerHasFurniture, renderFurnitureLayer } from '../furniture/mapshaper-furniture';
-import { getFrameData, fitDatasetToFrame } from '../furniture/mapshaper-frame-utils';
+import { getFrameData, fitDatasetToFrame, isFrameLayer } from '../furniture/mapshaper-frame-utils';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
 import { getScalebarLayer } from '../commands/mapshaper-scalebar';
 import { copyDataset } from '../dataset/mapshaper-dataset-utils';
@@ -18,6 +18,7 @@ import { getDatasetCRS, getDatasetCrsInfo, crsToProj4, parseAuthorityCodeString,
 import { runningInBrowser } from '../mapshaper-env';
 import require from '../mapshaper-require';
 import { getRasterBBox, intersectBboxes, renderRasterExportPreview } from '../rasters/mapshaper-raster-utils';
+import { findStylePropertiesBySymbolGeom } from './svg-properties';
 
 var ILLUSTRATOR_PATH_VERTEX_LIMIT = 32000;
 
@@ -183,12 +184,24 @@ function adjustRectangleStyle(lyr) {
 
 export function exportLayerForSVG(lyr, dataset, opts) {
   var layerObj = getEmptyLayerForSVG(lyr, opts);
+  if (isFrameLayer(lyr, dataset.arcs) && !frameHasExportStyle(lyr)) {
+    layerObj.children = [];
+    return layerObj;
+  }
   if (layerIsRectangle(lyr, dataset.arcs)) {
     lyr = copyLayer(lyr);
     adjustRectangleStyle(lyr);
   }
   layerObj.children = exportSymbolsForSVG(lyr, dataset, opts);
   return layerObj;
+}
+
+function frameHasExportStyle(lyr) {
+  var rec = lyr.data && lyr.data.getReadOnlyRecordAt(0);
+  var fields = findStylePropertiesBySymbolGeom(Object.keys(rec || {}), 'polygon');
+  return fields.some(function(name) {
+    return rec[name] !== null && rec[name] !== undefined && rec[name] !== '';
+  });
 }
 
 export function exportRasterLayerForSVG(lyr, frame, opts) {

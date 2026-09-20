@@ -2,7 +2,7 @@ import { Bounds } from '../geom/mapshaper-bounds';
 import { getDatasetCRS, getScaleFactorAtXY} from '../crs/mapshaper-projections';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { getFurnitureLayerType, getFurnitureLayerData } from '../furniture/mapshaper-furniture-utils';
-import { error } from '../utils/mapshaper-logging';
+import { error, warn } from '../utils/mapshaper-logging';
 import { layerIsRectangle, getLayerBounds } from '../dataset/mapshaper-layer-utils';
 import { transformPoints } from '../dataset/mapshaper-dataset-utils';
 import utils from '../utils/mapshaper-utils';
@@ -21,11 +21,36 @@ export function getFrameData(dataset, exportOpts) {
   var data;
   if (frameLyr) {
     data = getFrameLayerData(frameLyr, dataset.arcs);
+    if (exportOpts.width > 0 || exportOpts.height > 0) {
+      data = resizeFrameForExport(data, exportOpts);
+    }
   } else {
     data = calcFrameData(dataset, exportOpts);
   }
   data.invert_y = !!exportOpts.invert_y;
   data.crs = getDatasetCRS(dataset);
+  return data;
+}
+
+function resizeFrameForExport(frame, opts) {
+  var bounds = new Bounds(frame.bbox);
+  // A stored frame is an exact geographic crop. The SVG exporter's default
+  // 1px content margin applies only to frameless output.
+  var outputOpts = Object.assign({}, opts, {margin: 0});
+  var outputBounds = calcOutputBounds(bounds, outputOpts);
+  var data = {
+    type: 'frame',
+    bbox: bounds.toArray(),
+    bbox2: outputBounds.toArray(),
+    width: Math.round(outputBounds.width()),
+    height: Math.round(outputBounds.height()) || 1
+  };
+  if (data.width != frame.width || data.height != frame.height) {
+    warn(
+      `Output size ${data.width}×${data.height}px overrides the map frame's ` +
+      `nominal size ${frame.width}×${frame.height}px; symbol and label sizes are not rescaled.`
+    );
+  }
   return data;
 }
 

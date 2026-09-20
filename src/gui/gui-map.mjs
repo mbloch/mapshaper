@@ -204,7 +204,6 @@ export function MshpMap(gui) {
   // Set or clear a CRS to use for display, without reprojecting the underlying dataset(s).
   // crs: a CRS object or string, or null to clear the current setting
   this.setDisplayCRS = function(crs) {
-    // TODO: update bounds of frame layer, if there is a frame layer
     var oldCRS = this.getDisplayCRS();
     var newCRS = utils.isString(crs) ? internal.parseCrsString(crs) : crs;
     // TODO: handle case that old and new CRS are the same

@@ -127,6 +127,7 @@ import * as FileFormats from './io/mapshaper-dataset-formats';
 import * as FileTypes from './io/mapshaper-file-types';
 import * as FilterGeom from './commands/mapshaper-filter-geom';
 import * as Frame from './commands/mapshaper-frame';
+import * as FrameProjection from './furniture/mapshaper-frame-projection';
 import * as FrameUtils from './furniture/mapshaper-frame-utils';
 import * as Furniture from './furniture/mapshaper-furniture';
 import * as Geodesic from './geom/mapshaper-geodesic';
@@ -272,6 +273,7 @@ Object.assign(internal,
   FileTypes,
   FilterGeom,
   Frame,
+  FrameProjection,
   FrameUtils,
   Furniture,
   Geodesic,

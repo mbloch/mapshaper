@@ -40,6 +40,10 @@ import geom from '../geom/mapshaper-geom';
 import { isInterruptedProjection } from '../crs/mapshaper-projection-topology';
 import { splitPolygonFrameChords } from '../crs/mapshaper-projection-frame-cuts';
 import { getHighPrecisionSnapInterval, snapCoordsByInterval } from '../paths/mapshaper-snapping';
+import {
+  getFrameProjectionSnapshots,
+  rebuildProjectedFrameLayer
+} from '../furniture/mapshaper-frame-projection';
 
 cmd.proj = function(dataset, catalog, opts, targetLayers) {
   var srcInfo, destInfo, destStr;
@@ -187,6 +191,7 @@ export function projectDataset(dataset, src, dest, opts) {
     stop('Unable to project from a coordinate system that has no inverse transform');
   }
   var proj = getProjTransform2(src, dest); // v2 returns null points instead of throwing an error
+  var frameSnapshots = getFrameProjectionSnapshots(dataset);
   var badArcs = 0;
   var badPoints = 0;
   var healAntimeridian = isLatLngCRS(src) &&
@@ -219,6 +224,10 @@ export function projectDataset(dataset, src, dest, opts) {
     // (probably only needed when clipped area crosses the antimeridian or includes a pole)
     cleanProjectedPathLayers(dataset, {heal_antimeridian: healAntimeridian});
   }
+
+  frameSnapshots.forEach(function(snapshot) {
+    rebuildProjectedFrameLayer(snapshot, dataset, proj);
+  });
 
   if (badArcs > 0 && !opts.quiet) {
     message(`Removed ${badArcs} ${badArcs == 1 ? 'path' : 'paths'} containing unprojectable vertices.`);
