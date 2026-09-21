@@ -17,6 +17,8 @@ import { GUI } from './gui-lib';
 // API:
 //   toolbar.addButton(iconRef, opts) -> ToolbarButton
 //   toolbar.addTextButton(label, opts) -> ToolbarButton
+//   toolbar.addSegmentedControl(caption, items, opts) -> ToolbarSegmentedControl
+//   toolbar.addTextField(caption, opts) -> ToolbarTextField
 //   toolbar.addSeparator()
 //   toolbar.show()
 //   toolbar.hide()
@@ -52,6 +54,19 @@ export function FloatingToolbar(gui, opts) {
     var button = new ToolbarButton(content, null, btnOpts || {});
     button.setText(label);
     return button;
+  };
+
+  // A choice between modes with every label visible and the active one lit.
+  // Preferred over a button that rewrites its own label, which leaves no way
+  // to tell the mode you are in from the mode a click would put you in.
+  // items: [{value, label, tooltip}]
+  this.addSegmentedControl = function(caption, items, ctrlOpts) {
+    return new ToolbarSegmentedControl(content, caption, items, ctrlOpts || {});
+  };
+
+  // A short typed value, committed on Enter or on leaving the field.
+  this.addTextField = function(caption, fieldOpts) {
+    return new ToolbarTextField(content, caption, fieldOpts || {});
   };
 
   this.addSeparator = function() {
@@ -100,6 +115,111 @@ export function FloatingToolbar(gui, opts) {
       }, transitionMs);
     }
   }
+}
+
+function ToolbarSegmentedControl(parent, caption, items, opts) {
+  var el = El('div').addClass('floating-toolbar-group').appendTo(parent);
+  var changeHandlers = [];
+  var value = null;
+  var segments;
+  if (caption) {
+    El('span').addClass('floating-toolbar-caption').appendTo(el).text(caption);
+  }
+  if (opts.classname) el.addClass(opts.classname);
+  var group = El('div').addClass('floating-toolbar-segments').appendTo(el);
+  segments = items.map(function(item) {
+    var button = new ToolbarButton(group, null, {tooltip: item.tooltip});
+    button.setText(item.label);
+    button.on('click', function() {
+      if (value === item.value) return;
+      setValue(item.value);
+      changeHandlers.forEach(function(fn) { fn(value); });
+    });
+    return {value: item.value, button: button};
+  });
+
+  function setValue(val) {
+    value = val;
+    segments.forEach(function(o) {
+      o.button.setSelected(o.value === val);
+    });
+  }
+
+  // Sets the lit segment without firing 'change', for syncing to outside state.
+  this.setValue = function(val) {
+    setValue(val);
+    return this;
+  };
+
+  this.getValue = function() {
+    return value;
+  };
+
+  this.on = function(event, fn) {
+    if (event == 'change') changeHandlers.push(fn);
+    return this;
+  };
+
+  this.node = function() {
+    return el.node();
+  };
+}
+
+function ToolbarTextField(parent, caption, opts) {
+  var el = El('label').addClass('floating-toolbar-group')
+    .addClass('floating-toolbar-field').appendTo(parent);
+  var changeHandlers = [];
+  var committed = '';
+  var input;
+  if (caption) {
+    El('span').addClass('floating-toolbar-caption').appendTo(el).text(caption);
+  }
+  input = El('input').attr('type', 'text').appendTo(el);
+  if (opts.classname) input.addClass(opts.classname);
+  if (opts.placeholder) input.attr('placeholder', opts.placeholder);
+  if (opts.width) input.css('width', opts.width);
+  if (opts.tooltip) el.attr('data-tooltip', opts.tooltip);
+
+  // Keyboard events reach gui.keyboard through the document, so map shortcuts
+  // would fire while the field has focus. Enter commits, Escape abandons the
+  // edit and leaves the field rather than closing the tool around it.
+  input.on('keydown', function(e) {
+    e.stopPropagation();
+    if (e.keyCode == 13) {
+      input.node().blur();
+    } else if (e.keyCode == 27) {
+      input.node().value = committed;
+      input.node().blur();
+    }
+  });
+
+  // Native change fires on Enter and on leaving an edited field, and not when
+  // Escape has put the original value back.
+  input.on('change', function() {
+    var value = input.node().value.trim();
+    committed = value;
+    changeHandlers.forEach(function(fn) { fn(value); });
+  });
+
+  // Sets the displayed value without firing 'change'.
+  this.setValue = function(value) {
+    committed = value == null ? '' : String(value);
+    input.node().value = committed;
+    return this;
+  };
+
+  this.getValue = function() {
+    return input.node().value.trim();
+  };
+
+  this.on = function(event, fn) {
+    if (event == 'change') changeHandlers.push(fn);
+    return this;
+  };
+
+  this.node = function() {
+    return input.node();
+  };
 }
 
 function ToolbarButton(parent, iconRef, opts) {

@@ -103,6 +103,57 @@ describe('map frame projection (frame in its own dataset)', function() {
     assert(Math.abs(swept[0][0]) > 1000);
   });
 
+  async function getFrameRecord(cmd) {
+    var out = await api.applyCommands(cmd + ' -o out.json target=frame', files);
+    return JSON.parse(out['out.json']).features[0].properties;
+  }
+
+  function getAspect(coords) {
+    var xx = coords.map(function(p) {return p[0];});
+    var yy = coords.map(function(p) {return p[1];});
+    return (Math.max.apply(null, xx) - Math.min.apply(null, xx)) /
+      (Math.max.apply(null, yy) - Math.min.apply(null, yy));
+  }
+
+  it('pads a frame with a fixed aspect ratio back out to it', async function() {
+    // Projecting a rectangle's boundary and taking its bounds reshapes it, so
+    // the declared ratio has to be restored or the page won't match the extent.
+    var coords = await getFrameCoords(
+      '-i a.json -frame width=600 height=300 target=a -target a -proj robin');
+    assert(Math.abs(getAspect(coords) - 2) < 1e-9);
+    var rec = await getFrameRecord(
+      '-i a.json -frame width=600 height=300 target=a -target a -proj robin');
+    assert.equal(rec.frame_aspect_ratio, 2);
+    assert.equal(rec.height, 300);
+  });
+
+  it('projects a frame padded past the pole instead of failing', async function() {
+    // Fitting a near-global extent to a fixed ratio can pad the frame beyond
+    // 90 degrees, which has no projected equivalent.
+    var world = JSON.stringify({
+      type: 'Feature', properties: {n: 'w'},
+      geometry: {type: 'Polygon', coordinates:
+        [[[-170, -50], [170, -50], [170, 70], [-170, 70], [-170, -50]]]}
+    });
+    var out = await api.applyCommands(
+      '-i w.json -frame width=800 height=400 target=w -target w -proj robin ' +
+      '-o out.json target=frame', {'w.json': world});
+    var coords = JSON.parse(out['out.json']).features[0].geometry.coordinates[0];
+    assert(Math.abs(getAspect(coords) - 2) < 1e-9);
+    assert(coords.every(function(p) {
+      return isFinite(p[0]) && isFinite(p[1]);
+    }));
+  });
+
+  it('refreshes the derived height of a frame with no fixed ratio', async function() {
+    var rec = await getFrameRecord(
+      '-i a.json -frame width=600 target=a -target a -proj robin');
+    var coords = await getFrameCoords(
+      '-i a.json -frame width=600 target=a -target a -proj robin');
+    assert(!('frame_aspect_ratio' in rec));
+    assert.equal(rec.height, Math.round(600 / getAspect(coords)));
+  });
+
   it('reports that the frame was projected', async function() {
     var captured = await captureLogCallsAsync(function() {
       return api.applyCommands(

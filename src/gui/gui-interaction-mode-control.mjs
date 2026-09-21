@@ -228,12 +228,15 @@ export function InteractionMode(gui) {
   // if current editing mode is not available, turn off the tool
   function updateCurrentMode() {
     var modes = getAvailableModes();
-    if (modes.indexOf(_editMode) == -1 && !frameModeIsAvailable() && !labelModeIsAvailable() && !labelStyleModeIsAvailable() && !layerStyleModeIsAvailable() && !pointStyleModeIsAvailable()) {
+    if (modes.indexOf(_editMode) == -1 && !inFrameMode() && !labelModeIsAvailable() && !labelStyleModeIsAvailable() && !layerStyleModeIsAvailable() && !pointStyleModeIsAvailable()) {
       setMode('off');
     }
   }
 
-  function frameModeIsAvailable() {
+  // The frame modes are reached from the layer panel and the frame menu, never
+  // from this button's menu, so they neither belong to the active layer's tool
+  // list nor light the button up.
+  function inFrameMode() {
     return _editMode == 'frame' || _editMode == 'frame_draw';
   }
 
@@ -323,7 +326,7 @@ export function InteractionMode(gui) {
     }
     btn.classed('hover', _menuOpen);
     // btn.classed('selected', active() && !_menuOpen);
-    btn.classed('selected', active() && _editMode != 'frame_draw');
+    btn.classed('selected', active() && !inFrameMode());
   }
 
   function updateSelectionHighlight() {

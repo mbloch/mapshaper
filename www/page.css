@@ -2536,7 +2536,7 @@ body.pan.panning .map-layers:not(.drawing) {
 }
 
 .frame-properties-popup {
-	width: 340px;
+	width: 264px;
 }
 
 .frame-properties-form.label-style-panel,
@@ -2553,11 +2553,22 @@ body.pan.panning .map-layers:not(.drawing) {
 	width: 100%;
 }
 
+/* Three columns on the appearance rows: the neatline's width sits with the
+   colour and opacity it applies to, and the background row leaves the last
+   column empty rather than pushing a lone field onto a line of its own. */
+.frame-properties-form .label-split-row {
+	column-gap: 8px;
+	grid-template-columns: 1fr 54px 54px;
+}
+
+/* Wide enough for "Aspect ratio", and fixed rather than auto so that the ratio
+   at the top of the panel lines up with the details at the bottom, which are a
+   separate grid. */
 .frame-property-detail-row {
 	display: grid;
 	font-size: 12px;
-	gap: 8px;
-	grid-template-columns: 96px 1fr;
+	gap: 6px;
+	grid-template-columns: 66px 1fr;
 	margin-top: 6px;
 }
 
@@ -3953,6 +3964,10 @@ body.dragging-color-picker * {
 	font-size: 12px;
 	padding: 0 7px;
 	width: auto;
+	/* The toolbar is a flex row, which would otherwise squeeze a two-word
+	   label onto two lines and leave the button taller than its neighbours. */
+	flex: none;
+	white-space: nowrap;
 }
 
 .floating-toolbar-btn svg * {
@@ -3981,6 +3996,21 @@ body.dragging-color-picker * {
 	fill: #166689;
 }
 
+/* An icon button's blue wash goes with its themed icon, but a text button is
+   grey and takes the grey the panels' action buttons use. A selected button
+   keeps its own background while hovered rather than flashing back to grey. */
+.floating-toolbar-btn.text-btn:hover:not(.disabled):not(.selected) {
+	background-color: #f0f0f0;
+}
+
+.floating-toolbar-btn.text-btn:active:not(.disabled):not(.selected) {
+	background-color: #e5e5e5;
+}
+
+.floating-toolbar-btn.text-btn.selected {
+	background-color: #e5e5e5;
+}
+
 .floating-toolbar-btn.disabled {
 	cursor: default;
 }
@@ -3989,8 +4019,83 @@ body.dragging-color-picker * {
 	fill: #b8c4ca;
 }
 
-/* Tooltip shown above the button on hover */
-.floating-toolbar-btn[data-tooltip]:hover:not(.disabled)::after {
+/* A captioned control: a segmented mode switch or a short typed value. The
+   caption is what lets the control be read at a glance, so it is always shown
+   rather than hidden behind a tooltip. */
+.floating-toolbar-group {
+	position: relative;
+	display: flex;
+	align-items: center;
+	flex: none;
+	gap: 5px;
+	margin: 0 4px;
+}
+
+.floating-toolbar-caption {
+	font-size: 12px;
+	color: #808080;
+	white-space: nowrap;
+	user-select: none;
+}
+
+/* Both modes stay visible inside a single outlined well, so the lit one reads
+   as the current state rather than as the result of clicking. */
+.floating-toolbar-segments {
+	display: flex;
+	align-items: center;
+	background-color: #f0f0f0;
+	border-radius: 6px;
+	padding: 2px;
+	gap: 2px;
+}
+
+.floating-toolbar-segments .floating-toolbar-btn {
+	height: 22px;
+	border-radius: 4px;
+}
+
+/* A segment sits on the well rather than on the toolbar, so its hover has to
+   darken past the well's own grey to register. */
+.floating-toolbar-segments .floating-toolbar-btn:hover:not(.disabled):not(.selected) {
+	background-color: #e4e4e4;
+}
+
+.floating-toolbar-segments .floating-toolbar-btn.selected {
+	background-color: #fff;
+	color: #166689;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.floating-toolbar-field {
+	cursor: default;
+}
+
+.floating-toolbar-field input[type=text] {
+	width: 48px;
+	height: 22px;
+	box-sizing: border-box;
+	font-size: 12px;
+	padding: 0 5px;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+	background-color: #fff;
+	color: var(--dark-text-col);
+	-webkit-appearance: none;
+	appearance: none;
+	outline: none;
+}
+
+/* The same flat focus as the panels: the border turns gold and the global
+   input rule's glow is suppressed. */
+.floating-toolbar-field input[type=text]:focus {
+	border-color: #d3aa00;
+	box-shadow: none;
+	outline: none;
+}
+
+/* Tooltip shown above the button (or captioned control) on hover */
+.floating-toolbar-btn[data-tooltip]:hover:not(.disabled)::after,
+.floating-toolbar-group[data-tooltip]:hover::after {
 	content: attr(data-tooltip);
 	position: absolute;
 	bottom: calc(100% + 8px);

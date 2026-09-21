@@ -39,6 +39,9 @@ export function updateFrame(targetLayers, dataset, opts) {
   if (opts.aspect_ratio !== undefined && opts.auto_aspect) {
     stop('aspect-ratio= and auto-aspect are mutually exclusive');
   }
+  if (opts.fix_scale && (opts.width !== undefined || opts.height !== undefined)) {
+    stop('fix-scale cannot be combined with width= or height=');
+  }
 
   var rec = lyr.data.getRecords()[0];
   var frame = getFrameLayerData(lyr, dataset.arcs);
@@ -49,14 +52,8 @@ export function updateFrame(targetLayers, dataset, opts) {
   var units = rec.frame_units || 'px';
   var widthSize, heightSize, height, effectiveAspect;
 
-  // 1. Extent
-  if (offsetArg) {
-    applyPercentageOffsets(bbox, offsetArg);
-    applyPixelOffsets(bbox, frame.width, frame.height, offsetArg);
-  }
-  requireValidBbox(bbox);
-
-  // 2. Aspect mode
+  // 1. Aspect mode, resolved first because whether the page shape is fixed
+  // decides whether it may constrain the extent while offsets are applied.
   if (opts.auto_aspect) {
     fixedAspect = null;
   } else if (opts.aspect_ratio !== undefined) {
@@ -65,6 +62,17 @@ export function updateFrame(targetLayers, dataset, opts) {
     }
     fixedAspect = opts.aspect_ratio;
   }
+
+  // 2. Extent
+  if (offsetArg) {
+    applyPercentageOffsets(bbox, offsetArg);
+    // Pass a page height only when the shape is fixed. A derived height
+    // follows the extent, so letting it pad the bbox here would hold a
+    // re-fitted frame to its old shape instead of its new bounds.
+    applyPixelOffsets(bbox, frame.width,
+      fixedAspect ? frame.width / fixedAspect : null, offsetArg);
+  }
+  requireValidBbox(bbox);
   if (fixedAspect) {
     fillOutBbox(bbox, fixedAspect, 1);
   }
@@ -95,6 +103,11 @@ export function updateFrame(targetLayers, dataset, opts) {
     effectiveAspect = fixedAspect || getBboxAspect(bbox);
     width = heightSize.valuePx * effectiveAspect;
     units = heightSize.units;
+  } else if (opts.fix_scale) {
+    // Hold ground units per output pixel, so the page grows and shrinks with
+    // the extent instead of the scale changing to fit the extent on it.
+    width = frame.width * getBboxWidth(bbox) / getBboxWidth(frame.bbox);
+    requirePositiveSize(width, 'fix-scale', width);
   }
 
   requireValidBbox(bbox);
@@ -122,8 +135,13 @@ function hasUpdateOptions(opts) {
     opts.height !== undefined ||
     opts.aspect_ratio !== undefined ||
     opts.auto_aspect ||
+    opts.fix_scale ||
     opts.offset !== undefined ||
     opts.offsets !== undefined;
+}
+
+function getBboxWidth(bbox) {
+  return bbox[2] - bbox[0];
 }
 
 function getFixedAspect(rec) {

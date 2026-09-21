@@ -7,7 +7,7 @@ import { translateDisplayPoint } from './gui-display-utils';
 import { HighlightBox } from './gui-highlight-box';
 import { FloatingToolbar } from './gui-floating-toolbar';
 import { makePanelSection } from './gui-panel-controls';
-import { parseFrameAspectRatio } from './gui-frame-aspect';
+import { parseFrameAspectRatio, formatFrameAspectRatio } from './gui-frame-aspect';
 
 export function FrameResizeTool(gui) {
   var ext = gui.map.getExtent();
@@ -35,13 +35,35 @@ export function FrameResizeTool(gui) {
     draggable: true
   });
   var toolbar = new FloatingToolbar(gui, {name: 'frame-toolbar'});
-  var lockButton = toolbar.addTextButton('Crop', {
-    tooltip: 'Switch between crop and change-scale resizing'
-  }).on('click', function() {
-    setLockSize(!lockSize);
+  // Named by what stays put, not by the action: changing the extent -- by
+  // dragging a handle or by fitting -- is the same gesture either way, and all
+  // that differs is which quantity absorbs it. Both labels stay visible so the
+  // lit one reads as the current mode rather than as the result of a click.
+  var sizeModeControl = toolbar.addSegmentedControl(null, [
+    {value: 'scale', label: 'Fix scale',
+      tooltip: 'Keep the map scale; the output gets bigger or smaller'},
+    {value: 'output', label: 'Fix output',
+      tooltip: 'Keep the output size; the map scale changes'}
+  ], {classname: 'frame-size-mode'}).on('change', function(value) {
+    setLockSize(value == 'output');
   });
-  toolbar.addTextButton('Fit view').on('click', fitCurrentView);
-  toolbar.addTextButton('Fit layers').on('click', fitVisibleLayers);
+  var aspectField = toolbar.addTextField('Ratio', {
+    classname: 'frame-toolbar-aspect-input',
+    placeholder: 'free',
+    tooltip: 'Hold the frame to a shape: 16:9, 1.5, or blank for none'
+  }).on('change', commitAspectRatio);
+  toolbar.addSeparator();
+  toolbar.addTextButton('Fit', {
+    tooltip: 'Fit the frame to the visible layers'
+  }).on('click', fitVisibleLayers);
+  // Padding is spent on the fit rather than stored on the frame, so it sits
+  // beside the button it modifies, as it does in the creation dialog.
+  var marginField = toolbar.addTextField('Margin', {
+    classname: 'frame-toolbar-margin-input',
+    placeholder: '0',
+    tooltip: 'Padding added when fitting: 20px, 1cm, ' +
+      "or a percentage of the frame's width and height"
+  });
   toolbar.addSeparator();
   toolbar.addTextButton('Done', {
     tooltip: 'Finish resizing'
@@ -57,6 +79,7 @@ export function FrameResizeTool(gui) {
   });
 
   gui.frameTool = this;
+  setLockSize(lockSize); // light the default segment
 
   this.open = function() {
     if (getFrameTarget()) {
@@ -82,13 +105,32 @@ export function FrameResizeTool(gui) {
     else turnOff();
   });
 
+  // Resizing is a preview-mode gesture: the handles sit on the page boundary
+  // that preview draws, so turning preview off leaves nothing to resize and
+  // the tool has to close with it rather than stranding its toolbar and
+  // handles over an ordinary map view.
+  gui.on('preview_mode_change', function(e) {
+    if (on && !e.enabled) gui.interaction.turnOff();
+  });
+
   gui.model.on('update', function() {
-    if (on) syncFrameOverlay();
+    if (on) refreshOrClose();
   });
 
   gui.on('undo_redo_post', function() {
-    if (on) syncFrameOverlay();
+    if (on) refreshOrClose();
   });
+
+  // Deleting the frame takes the tool's subject away. Preview mode drops
+  // itself on the same event, but the order of model listeners is not a
+  // contract worth relying on, so the tool checks for itself.
+  function refreshOrClose() {
+    if (!getFrameTarget()) {
+      gui.interaction.turnOff();
+    } else {
+      syncFrameOverlay();
+    }
+  }
 
   gui.keyboard.on('keydown', function(e) {
     if ((on || drawing) && e.keyName == 'esc') {
@@ -131,6 +173,7 @@ export function FrameResizeTool(gui) {
     if (drawing) {
       drawing = false;
       drawBox.turnOff();
+      drawBox.setAspectRatio(null);
       drawToolbar.hide();
       hideFrameDrawingInstructions();
       drawSource = null;
@@ -139,14 +182,20 @@ export function FrameResizeTool(gui) {
 
   function setLockSize(value) {
     lockSize = !!value;
-    lockButton.setSelected(lockSize);
-    lockButton.setText(lockSize ? 'Change scale' : 'Crop');
+    sizeModeControl.setValue(lockSize ? 'output' : 'scale');
   }
 
   function syncFrameOverlay() {
     var frame = gui.map.isPreviewView() && gui.map.getPreviewFrameData();
-    if (frame) frameBox.setDataCoords(frame.bbox.slice());
-    else frameBox.hide();
+    if (frame) {
+      frameBox.setDataCoords(frame.bbox.slice());
+      // Only a frame with a fixed ratio constrains; otherwise the shape is
+      // whatever the extent gives and the handles are free.
+      frameBox.setAspectRatio(frame.aspect_ratio || null);
+    } else {
+      frameBox.hide();
+    }
+    syncAspectField();
   }
 
   function previewFrameDrag(e) {
@@ -211,26 +260,76 @@ export function FrameResizeTool(gui) {
     });
   }
 
-  function fitCurrentView() {
+  // Blank clears the fixed ratio and returns the frame to its extent's shape.
+  // Anything that is not a ratio is refused and the field snaps back, rather
+  // than quietly reshaping the frame to NaN.
+  function commitAspectRatio(text) {
     var target = getFrameTarget();
+    var value;
     if (!target) return;
-    updateFrameBounds(
-      target,
-      getDisplayBoundsInLayerCRS(target.layer, ext.getBounds().toArray()),
-      null
-    );
+    if (!text) {
+      runAspectUpdate(target, 'auto-aspect');
+      return;
+    }
+    value = parseFrameAspectRatio(text);
+    if (!(value > 0)) {
+      syncAspectField();
+      return;
+    }
+    runAspectUpdate(target, 'aspect-ratio=' + value);
   }
 
+  function runAspectUpdate(target, option) {
+    runGuiEditCommand(gui, ['-update-frame', option, getTargetOption(target)]
+      .join(' '), {
+      title: 'Set frame aspect ratio',
+      onError: syncAspectField
+    });
+  }
+
+  // Shows the ratio the frame actually has, so a ratio typed as 3:2 reads back
+  // as 3:2 and one the frame never took does not linger in the field.
+  function syncAspectField() {
+    var frame = gui.map.getPreviewFrameData();
+    var aspect = frame && frame.aspect_ratio;
+    aspectField.setValue(aspect > 0 ? formatFrameAspectRatio(aspect) : '');
+  }
+
+  // Fitting obeys the same mode as a handle drag: holding the scale grows the
+  // output to cover the new extent, holding the output rescales onto it. The
+  // command works out both the padding and the held-scale width, so the
+  // margin's unit handling lives in one place.
   function fitVisibleLayers() {
     var target = getFrameTarget();
     var entries = getCompositionEntries();
+    var margin = getMargin();
+    var parts, bounds;
     if (!target || !entries.length) return;
-    var bounds = entries.reduce(function(memo, o) {
+    bounds = entries.reduce(function(memo, o) {
       return memo.mergeBounds(
         internal.getLayerBounds(o.layer, o.dataset.arcs)
       );
     }, new internal.Bounds());
-    updateFrameBounds(target, bounds.toArray(), null);
+    parts = [
+      '-update-frame',
+      'bbox=' + quoteCommandValue(bounds.toArray().join(','))
+    ];
+    if (margin) parts.push('offset=' + quoteCommandValue(margin));
+    if (!lockSize) parts.push('fix-scale');
+    parts.push(getTargetOption(target));
+    runGuiEditCommand(gui, parts.join(' '), {
+      title: 'Fit map frame',
+      onError: syncFrameOverlay
+    });
+  }
+
+  // Anything that is not a positive length is dropped, and the field is
+  // cleared so the fit that just ran matches what the toolbar shows.
+  function getMargin() {
+    var value = marginField.getValue();
+    if (parseFloat(value) > 0) return value;
+    if (value) marginField.setValue('');
+    return '';
   }
 
   function openCreateDialog() {
@@ -281,8 +380,9 @@ export function FrameResizeTool(gui) {
     var marginInput = El('input').attr('type', 'text').appendTo(marginCell);
     marginInput.node().value = '2%';
     makeFieldTip(fitRow,
-      'Padding around the layers, in percent of\n' +
-      'width or in display units: 2%, 20px, 1cm.');
+      'Padding around the layers: 2%, 20px, 1cm.\n' +
+      "A percentage is of the frame's width at the\n" +
+      'sides, its height above and below.');
 
     var drawRow = El('div').addClass('frame-create-option-row').appendTo(section);
     addButton(drawRow, 'Draw on the map', function() {
@@ -341,17 +441,22 @@ export function FrameResizeTool(gui) {
     }
     drawWidth = width;
     drawAspect = aspect || '';
+    // Without this the box is drawn freehand and -frame silently pads it out to
+    // the ratio, so the frame that appears is bigger than the one drawn.
+    drawBox.setAspectRatio(drawAspect ? Number(drawAspect) : null);
     drawingRequested = true;
     gui.interaction.setMode('frame_draw');
   }
 
   function showFrameDrawingInstructions() {
-    drawInstructions = showPopupAlert(
-      'Click to place the first corner, then click the opposite corner. ' +
-      'Drag the handles to resize the frame.',
-      null,
-      {non_blocking: true, max_width: '380px'}
-    );
+    var text = 'Click to place the first corner, then click the opposite ' +
+      'corner. Drag the handles to resize the frame.';
+    if (drawAspect) {
+      text += ' The box is held to ' +
+        formatFrameAspectRatio(Number(drawAspect)) + '.';
+    }
+    drawInstructions = showPopupAlert(text, null,
+      {non_blocking: true, max_width: '380px'});
   }
 
   function hideFrameDrawingInstructions(action) {

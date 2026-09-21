@@ -789,7 +789,7 @@ Frame identity remains resolvable while preview is off, but frame-constrained
 full bounds and GUI symbol scaling are active only while preview is on in map
 view. Export never depends on preview state. Normal map pan and zoom change
 only the editor viewport; frame extent changes only through the frame tool,
-numeric controls or the resize toolbar's explicit Fit view action.
+numeric controls or the resize toolbar's explicit Fit action.
 
 ### What turns on
 
@@ -878,8 +878,7 @@ paths; the existing rectangle-tool path remains available.
 There is deliberately no "frame this view" button. It was the most natural
 gesture for a viewport object, but once the dialog also sets an aspect ratio
 and a margin it became the one option whose result would not match its name:
-both settings silently alter the extent you just chose by eye. The gesture
-survives as **Fit view** in the resize toolbar, one step later. For the same
+both settings silently alter the extent you just chose by eye. For the same
 reason the margin applies only to Fit visible layers — a drawn box is already
 the extent the user meant — while the aspect ratio applies to both, since it
 describes the page rather than the area.
@@ -887,9 +886,40 @@ describes the page rather than the area.
 The dialog's settings are Output width, Aspect ratio and Margin, each with the
 app's hoverable `?` beside it saying what the field will accept. Aspect ratio
 is a free text field taking either a number or a `w:h` ratio, and blank — the
-default — means the frame area gives the shape. Both it and the Frame
-properties panel's Custom field parse through `gui-frame-aspect.mjs`, so a
-ratio accepted in one panel is accepted in the other.
+default — means the frame area gives the shape. It parses through
+`gui-frame-aspect.mjs`, which is also what the Frame properties panel formats
+its read-only ratio with, so a ratio entered as `3:2` reads back as `3:2`.
+
+A ratio set here holds the box drawn by **Draw on the map** while it is
+dragged, and the drawing instructions name the ratio being held. This is not
+cosmetic. `-frame aspect-ratio=` reaches the shape by way of `fillOutBbox()`,
+which only ever pads, so an unconstrained box is silently grown to the ratio on
+Done — draw a tall box with `16:9` set and the frame that appears is several
+times wider than the one drawn. Constraining the drag makes that padding
+approximately zero, so what is drawn is what is created.
+
+The constraint lives on `HighlightBox` as `setAspectRatio()` and covers both
+the rubber band and the handles, since the draw box offers handles in the same
+gesture. Its two pure helpers sit in `gui-frame-aspect.mjs` with the parsing,
+under direct unit test: `getCornerForRatio()` places the pointer-side corner
+while the band is dragged, and `applyAspectRatio()` reshapes a box a handle
+drag has pulled off ratio. Both grow the short side rather than trimming the
+long one, so the box never shrinks away from the pointer. Shift-to-square
+became the `ratio = 1` case of the same helper rather than a second code path,
+and an explicit ratio takes precedence over shift.
+
+The resize overlay takes the same treatment from the other end: `syncFrameOverlay()`
+passes the frame's `aspect_ratio` to the box, so the handles of a frame with a
+fixed shape are constrained and those of an extent-shaped frame stay free. The
+flaw was identical — `-update-frame` pads to the fixed ratio the same way — and
+this is the wiring a ratio control in the resize toolbar would drive.
+
+Because the band is constrained in screen pixels, the guarantee is exact only
+where the display CRS is a uniform scaling of the layer CRS — the usual case.
+Under dynamic reprojection `getDisplayBoundsInLayerCRS()` can return a bbox
+whose ratio differs slightly, and `fillOutBbox()` still trues it up; the frame
+is always exactly the requested shape, and only the preview can be marginally
+off.
 
 The two extent buttons sit under a **Frame area** heading: two equally weighted
 buttons with no caption read as a list of actions rather than as a choice
@@ -935,9 +965,9 @@ the new nominal width from the old CRS-units-per-display-unit ratio and the
 normalized extent width. Numeric bbox edits instead pad symmetrically to the
 fixed ratio unless a future anchor option says otherwise.
 
-During a drag, the readout updates live so the consequence is visible:
-cropping shows the page size changing, changing scale shows the percentage
-changing.
+During a drag, the readout updates live so the consequence is visible: with the
+scale fixed the output size changes, with the output fixed the percentage
+changes.
 
 ### Properties and resize controls
 
@@ -948,6 +978,15 @@ The frame row opens a compact **Frame properties** dialog with:
   sent one at a time on purpose: `-update-frame` reads a lone `width=` or
   `height=` as a rescale and derives the other from the extent, but reads the
   two together as a new page shape and stretches the extent to fit it.
+The panel is 264px wide, the same as the creation dialog. Getting there was
+mostly a matter of not letting single controls own a row: the neatline's width
+sits on the neatline's own row with the colour and opacity it applies to, so
+the appearance rows are a three-column grid and the background row simply
+leaves the last column empty. That also stops the colour field stretching, and
+the details grid's label column is sized for "Aspect ratio" rather than padded
+out. The column is fixed rather than `auto` so the ratio at the top of the
+panel lines up with the details at the bottom, which are a separate grid.
+
 - The **aspect ratio**, read-only, saying whether it is fixed or taken from the
   extent — the thing that decides how the pair above behaves. Setting a ratio
   reshapes the extent, so it belongs to the resize tool rather than here.
@@ -987,10 +1026,111 @@ unchanged, preserving scripts that style or export a newly created frame
 without an intervening `-target`.
 
 **Resize frame** turns on preview, displays the handle overlay and opens only
-a compact floating toolbar. Crop/change-scale state, Fit view, Fit layers and
-Done live there;
-numeric and appearance controls do not compete with the map in a large
-persistent panel.
+a compact floating toolbar. The size mode, the fixed ratio, Fit with its margin
+and Done live there; numeric and appearance controls do not compete with the
+map in a large persistent panel.
+
+The mode was a single button that rewrote its own label between Crop and Change
+scale. The distinction it draws is real — when the extent changes, either the
+map scale is held and the output grows, or the output is held and the scale
+changes — but a self-relabeling toggle gives the user no way to tell the mode
+they are in from the mode a click would put them in. It is now a two-segment
+control, **Fix scale** and **Fix output**, with both labels visible and the
+active one lit.
+
+The labels name the invariant rather than the action, because the action is the
+same either way: you change the extent, and all that differs is which quantity
+absorbs it. Naming the action is what made the old pair confusing, and it is
+why "Resize"/"Rescale" was rejected too — near-synonyms that do not say what is
+being resized. "Output" is the word already on screen for the page in the
+creation dialog and Frame properties ("Output width"), which "size" would have
+left ambiguous against the frame's other size, its geographic extent.
+
+There is no caption over the pair. An earlier "Drag changes" was wrong as well
+as redundant: the mode governs **Fit** too, not just the handles.
+
+Because the mode reaches Fit, `-update-frame` grew a `fix-scale` flag: hold
+ground units per output pixel and derive the size from the new extent. The
+alternative was for the GUI to compute the width, as the drag path still does,
+but a fitted extent can also be padded by a margin, and the width has to follow
+the padded extent — which the GUI would only know by redoing the command's
+offset arithmetic. Putting it in the command keeps one implementation and gets
+the ordering right by construction. The drag path could move onto the flag
+later.
+
+Fixing that ordering exposed a related bug. `-update-frame` applied offsets by
+calling `applyPixelOffsets()` with the frame's stored width *and* height, and
+that function pads the bbox out to the page shape before measuring pixel
+margins. With a derived height the stored page shape is just the old extent's
+shape, so `bbox= offset=` together held a re-fitted frame to its old shape
+instead of letting it take its new bounds. The aspect mode is now resolved
+before offsets are applied, and a page height is passed only when the shape is
+actually fixed.
+
+Beside the mode is a **Ratio** field, the same free text the creation dialog
+takes, blank meaning the extent gives the shape. It is here rather than in
+Frame properties because this is where the shape is worked out by dragging, and
+it drives `frameBox.setAspectRatio()` so the handles obey the moment it is set.
+It writes through `-update-frame aspect-ratio=`, or `auto-aspect` when cleared,
+and reads back the ratio the frame actually has: a ratio with a name keeps its
+`w:h` form, one without shows as a number. Frame properties keeps displaying
+the ratio read-only.
+
+**Margin** sits after Fit rather than with the frame settings, because it is
+not frame state: it pads the fitted bounds and is then spent, exactly as it
+does on the creation dialog's Fit visible layers row. It reaches the command as
+`offset=`, so its unit handling lives in one place.
+
+The mode control and the two fields needed new `FloatingToolbar` primitives,
+`addSegmentedControl()` and `addTextField()`, since the toolbar previously had
+only buttons and separators. Text buttons also needed `white-space: nowrap` and
+`flex: none`: the toolbar is a flex row, which was squeezing a two-word label
+onto two lines. The fields stop keydown propagation, because `gui.keyboard`
+listens on the document and would otherwise run map shortcuts while a field has
+focus; Enter commits and Escape abandons the edit and leaves the field rather
+than closing the tool around it.
+
+The tool also has to close when its subject goes away, which needs two
+listeners rather than one. Resizing is a preview-mode gesture — the handles sit
+on the page boundary preview draws — so `preview_mode_change` with
+`enabled: false` turns the mode off; without it the toolbar and handles were
+left stranded over an ordinary map view. Deleting the frame is caught on
+`model.update` instead. Preview mode drops itself on that same event when the
+frame disappears, which would cascade into the first listener, but the order of
+model listeners is not a contract worth depending on, so the tool checks for a
+frame itself.
+
+The map keeps a display copy of the frame layer (`layer.gui`), and it has to be
+discarded whenever the frame's coordinates can have moved, or the map draws the
+frame it used to be. `-update-frame` was handled; `-proj` was not, because it
+rewrites the frame through the sweep that projects the data rather than through
+a frame command, so the display copy survived holding the pre-projection
+rectangle — the frame appeared unprojected and empty even though the model and
+the exported file were correct. The invalidation now covers any update where
+arcs may have changed. `findFrameLayer()` rebuilds the copy on demand and the
+frame is one rectangle, so discarding it freely costs nothing.
+
+Projecting the frame itself has two wrinkles, both handled in
+`rebuildProjectedFrameLayer()`. A frame is a viewport rather than data, so it
+can legitimately extend past the edges of the globe — fitting a near-global
+extent to a fixed aspect ratio pads it with whitespace that can reach beyond a
+pole. Those coordinates have no projected equivalent, and
+`projectAndDensifyArcs()` drops a whole arc when any vertex fails, which took
+out three sides of the rectangle and made `-proj` fail outright with "Unable to
+project map frame". The sampled boundary is now clamped to valid lat/long
+first, so the frame projects and only the off-globe padding is lost. Second,
+projecting a rectangle's boundary and taking its bounds does not preserve the
+rectangle's shape, so a frame that declares `frame_aspect_ratio` is padded back
+out to that ratio afterwards; a frame without one gets its derived `height`
+recomputed, since `getFrameLayerData()` recalculates height anyway but the
+record is what ends up in an output file.
+
+Neither frame mode lights up the pointer button. They are reached from the
+layer panel and the frame menu, never from that button's menu, so a highlight
+there points at a tool the menu does not list. `frame_draw` was already
+excluded; `frame` is now excluded through the same predicate that keeps
+`updateCurrentMode()` from closing a frame mode for being absent from the
+active layer's tool list.
 
 ### Command-backed edits, and drag granularity
 
@@ -1224,8 +1364,8 @@ Browser tests (`browser-tests/`) for milestones 4–5:
 - Snap to 100%: the rendered symbol scale is exactly 1, and page-interior
   symbol transforms and dimensions match SVG output, excluding preview chrome,
   outside mask, viewport margin and antialiasing.
-- Crop drag: percentage constant, page size changes.
-- Change-scale drag with size locked: page size constant, percentage changes;
+- Fix scale drag or fit: percentage constant, output size changes.
+- Fix output drag or fit: output size constant, percentage changes;
   fixed-aspect drag anchoring is preserved.
 - Undo after a frame drag restores the extent, the overlay and the readout.
 - Create, delete, rename and numeric edits produce correct undo and replayable

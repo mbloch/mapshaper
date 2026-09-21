@@ -334,7 +334,8 @@ export function MshpMap(gui) {
       return;
     }
 
-    if (arcsMayHaveChanged(e.flags)) {
+    var arcsChanged = arcsMayHaveChanged(e.flags);
+    if (arcsChanged) {
       // regenerate filtered arcs the next time they are needed for rendering
       // delete e.dataset.gui.displayArcs
       clearAllDisplayArcs();
@@ -345,7 +346,13 @@ export function MshpMap(gui) {
         updated.dataset.arcs.setRetainedPct(1);
       }
     }
-    if (e.flags['update-frame']) {
+    // The frame's display copy is built from its coordinates, so it has to go
+    // whenever those can have moved. -update-frame is the obvious case; -proj
+    // is the one that was missed, because it rewrites the frame through the
+    // same sweep that projects the data, and the display copy left behind
+    // still held the pre-projection rectangle. findFrameLayer() rebuilds it on
+    // demand and it is one rectangle, so discarding it freely costs nothing.
+    if (e.flags['update-frame'] || arcsChanged) {
       var frameTarget = internal.getActiveFrame(model);
       if (frameTarget) {
         delete frameTarget.layer.gui;

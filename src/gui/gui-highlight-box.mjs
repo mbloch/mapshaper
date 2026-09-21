@@ -2,6 +2,7 @@ import { El } from './gui-el';
 import { EventDispatcher } from './gui-events';
 import { internal, geom } from './gui-core';
 import { translateDisplayPoint, isProjectedLayer } from './gui-display-utils';
+import { getCornerForRatio, applyAspectRatio } from './gui-frame-aspect';
 
 export function HighlightBox(gui, optsArg) {
   var el = El('div').addClass('zoom-box').appendTo('body'),
@@ -16,6 +17,7 @@ export function HighlightBox(gui, optsArg) {
       stroke = 2,
       activeHandle = null,
       prevXY = null,
+      aspectRatio = null,
       boxCoords = null,
       _on = false,
       _visible = false,
@@ -177,6 +179,9 @@ export function HighlightBox(gui, optsArg) {
       boxCoords[1] += dy;
       if (centered) boxCoords[3] -= dy;
     }
+    if (aspectRatio) {
+      applyAspectRatio(boxCoords, activeHandle, aspectRatio);
+    }
   }
 
   function rescaleBox(x, y) {
@@ -190,6 +195,14 @@ export function HighlightBox(gui, optsArg) {
     var dy = (boxCoords[3] - cy) * k;
     boxCoords = [cx - dx, cy - dy, cx + dx, cy + dy];
   }
+
+  // Hold the box to a width/height ratio while it is drawn or resized. The
+  // ratio is in screen pixels, which is what the user is aiming at; the map
+  // draws both axes at one scale, so for a projected view it is also the ratio
+  // of the coordinates the box reports back.
+  box.setAspectRatio = function(ratio) {
+    aspectRatio = ratio > 0 ? Number(ratio) : null;
+  };
 
   box.setDataCoords = function(bbox) {
     boxCoords = bbox;
@@ -271,32 +284,14 @@ export function HighlightBox(gui, optsArg) {
 
   // get bbox coords in the display CRS
   function getBoxCoords(p1, p2) {
-    if (gui.keyboard.shiftIsPressed()) {
-      p2 = getSquareCorner(p1[0], p1[1], p2[0], p2[1]);
+    // A set ratio wins over shift, which is just the 1:1 case of the same rule.
+    var ratio = aspectRatio || (gui.keyboard.shiftIsPressed() ? 1 : 0);
+    if (ratio) {
+      p2 = getCornerForRatio(p1[0], p1[1], p2[0], p2[1], ratio);
     }
     var bbox = pixToCoords(p1.concat(p2), gui.map.getExtent());
     fixBounds(bbox);
     return bbox;
-  }
-
-  function getSquareCorner(x1, y1, x2, y2) {
-    var dx = x2 - x1;
-    var dy = y2 - y1;
-    if (dy === 0 && dx === 0) {
-      return [x2, y2];
-    }
-    if (dy === 0) {
-      dy = 1;
-    }
-    if (dx === 0) {
-      dx = 1;
-    }
-    if (Math.abs(dx) > Math.abs(dy)) {
-      dy = dy * Math.abs(dx / dy);
-    } else {
-      dx = dx * Math.abs(dy / dx);
-    }
-    return [x1 + dx, y1 + dy];
   }
 
   function redraw() {

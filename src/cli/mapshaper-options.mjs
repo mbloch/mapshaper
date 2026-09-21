@@ -2409,8 +2409,12 @@ export function getOptionParser() {
       describe: 'derive page height from the frame extent',
       type: 'flag'
     })
+    .option('fix-scale', {
+      describe: 'hold the map scale; derive the size from the new extent',
+      type: 'flag'
+    })
     .option('offset', {
-      describe: 'padding in display units or pct of width, e.g. 5cm 20px 5%',
+      describe: 'padding in display units or pct of width/height, e.g. 5cm 20px 5%',
       type: 'strings'
     })
     .option('offsets', {
@@ -2535,7 +2539,7 @@ export function getOptionParser() {
       type: 'bbox'
     })
     .option('offset', {
-      describe: 'padding in display units or pct of width, e.g. 5cm 20px 5%',
+      describe: 'padding in display units or pct of width/height, e.g. 5cm 20px 5%',
       type: 'strings'
     })
     .option('offsets', {

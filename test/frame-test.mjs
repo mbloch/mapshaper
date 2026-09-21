@@ -39,6 +39,23 @@ describe('mapshaper-frame.js', function () {
       assert(svg.includes('<path d="M 100 900 100 100 900 100 900 900 100 900 Z"'));
     });
 
+    // A square extent cannot tell "percent of width" from "percent per axis",
+    // which is how the option came to be documented as the former. The sides
+    // are inset by a share of the padded width, the top and bottom by a share
+    // of the padded height: 10% of 125 and 10% of 62.5, not 10% of 100 twice.
+    it('-frame percent offset is measured per axis', async function() {
+      var out = await api.applyCommands(
+        '-frame bbox=0,0,100,50 width=800 offset=10% -o out.json format=geojson'
+      );
+      var ring = JSON.parse(out['out.json']).features[0].geometry.coordinates[0];
+      var xs = ring.map(p => p[0]);
+      var ys = ring.map(p => p[1]);
+      assert.deepEqual(
+        [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)],
+        [-12.5, -6.25, 112.5, 56.25]
+      );
+    });
+
     it('-frame with height= and width= property', async function() {
       var cmd = '-rectangle bbox=0,0,1,1 -frame offset=10% width=1000 height=500 -o target=frame,rectangle out.svg';
       var out = await api.applyCommands(cmd);

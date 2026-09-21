@@ -121,7 +121,8 @@ export function enhanceLayerForDisplay(layer, dataset, opts) {
         var projectedFrame = internal.getProjectedFrameDisplayLayer(
           layer,
           dataset.arcs,
-          getDisplayProjectionTransform(sourceCRS, displayCRS)
+          getDisplayProjectionTransform(sourceCRS, displayCRS),
+          internal.isLatLngCRS(sourceCRS)
         );
         gui.displayLayer = projectedFrame.layer;
         gui.displayArcs = projectedFrame.arcs;

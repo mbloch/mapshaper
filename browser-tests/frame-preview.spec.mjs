@@ -120,7 +120,7 @@ test('the map frame row has frame-specific menu actions', async function({page})
   })).toBe('frame');
   await expect(page.locator('.frame-toolbar')).toBeVisible();
   await expect(page.locator('.frame-toolbar')).toContainText(
-    'CropFit viewFit layersDone'
+    'Fix scaleFix outputRatioFitMarginDone'
   );
   await page.locator('.frame-toolbar .text-btn').filter({hasText: 'Done'}).click();
   expect(await page.evaluate(function() {

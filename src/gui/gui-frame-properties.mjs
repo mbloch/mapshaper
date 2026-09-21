@@ -70,7 +70,10 @@ export function FrameProperties(gui) {
       },
       revert: updateControls
     });
-    neatlineWidthInput = makeSplitRowField(appearance, 'Line width')
+    // The width belongs to the same property as the colour and opacity beside
+    // it, and all three fit on the row. The background row leaves the column
+    // empty rather than putting the width on a line of its own.
+    neatlineWidthInput = makeRowField(neatlineControl.row, 'Width')
       .addClass('frame-neatline-width')
       .on('change', updateNeatlineWidth);
     var clearRow = El('div')
@@ -184,13 +187,8 @@ export function FrameProperties(gui) {
   }
 }
 
-// A field in the narrow right-hand column of a split row, so that it lines up
-// with, and is the same width as, the Opacity above it. The left cell is left
-// empty: the control belongs to the colour row above, and the column is what
-// says so.
-function makeSplitRowField(parent, label) {
-  var row = El('div').addClass('label-style-row label-split-row').appendTo(parent);
-  El('div').addClass('label-split-cell').appendTo(row);
+// An extra captioned cell on an existing colour row.
+function makeRowField(row, label) {
   var cell = El('div').addClass('label-split-cell').appendTo(row);
   El('span').appendTo(cell).text(label);
   return makeTextInput(cell);

@@ -75,6 +75,39 @@ test('a drawn frame takes the aspect ratio but no margin', async function({page}
   expect(command).not.toContain('offset');
 });
 
+// The ratio has to shape the box as it is dragged. Without this the user draws
+// one rectangle and -frame pads it out to a larger one on Done.
+test('a set aspect ratio constrains the box being drawn', async function({page}) {
+  await loadFixture(page);
+  await page.locator('.sidebar-tab.layer-tab').click();
+  await page.locator('.map-frame-empty').click();
+  await setInput(page, '.frame-create-aspect-input', '2:1');
+  await page.locator('.frame-create-popup .dialog-btn')
+    .filter({hasText: 'Draw on the map'}).click();
+
+  await expect(page.locator('.alert-wrapper.non-blocking')).toBeVisible();
+  var mapBox = await page.locator('.map-layers').boundingBox();
+  await page.mouse.click(mapBox.x + 120, mapBox.y + 100);
+  // A pointer square to the first corner; the box must still come out 2:1,
+  // and wide enough to reach the pointer rather than trimmed down to it.
+  await page.mouse.move(mapBox.x + 320, mapBox.y + 300);
+  await expect.poll(async function() {
+    var box = await page.locator('.frame-draw-box').boundingBox();
+    return box ? box.width / box.height : null;
+  }).toBeCloseTo(2, 1);
+  var drawn = await page.locator('.frame-draw-box').boundingBox();
+  expect(drawn.height).toBeGreaterThan(190);
+
+  await page.mouse.click(mapBox.x + 320, mapBox.y + 300);
+  await page.locator('.frame-draw-toolbar .text-btn')
+    .filter({hasText: 'Done'}).click();
+  await expect.poll(function() {
+    return getFrameInfo(page);
+  }).not.toBeNull();
+  var frame = await getFrameInfo(page);
+  expect(frame.width / frame.height).toBeCloseTo(2, 6);
+});
+
 test('an unusable aspect ratio keeps the dialog open', async function({page}) {
   await loadFixture(page);
   await page.locator('.sidebar-tab.layer-tab').click();
@@ -321,6 +354,205 @@ test('frame handles crop by default and preserve width when locked', async funct
     return (await getFrameInfo(page)).bbox[0];
   }).toBeLessThan(-80);
   expect((await getFrameInfo(page)).width).toBe(600);
+});
+
+// A single button that renamed itself gave no way to tell the mode you were in
+// from the mode a click would put you in, so both are shown and one is lit.
+test('the resize toolbar shows both drag modes', async function({page}) {
+  await loadFixture(page);
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand(
+      '-frame bbox=-80,30,-70,40 width=600 name=frame'
+    );
+  });
+  await page.evaluate(function() {
+    window.mapshaper.undoTest.openFrameTool();
+  });
+
+  var segments = page.locator('.frame-size-mode .floating-toolbar-btn');
+  var fixScale = segments.filter({hasText: 'Fix scale'});
+  var fixOutput = segments.filter({hasText: 'Fix output'});
+  await expect(fixScale).toHaveClass(/selected/);
+  await expect(fixOutput).not.toHaveClass(/selected/);
+
+  // Fix output holds the output width while the extent grows.
+  await fixOutput.click();
+  await expect(fixOutput).toHaveClass(/selected/);
+  await expect(fixScale).not.toHaveClass(/selected/);
+  await dragLeftHandle(page, 40);
+  await expect.poll(async function() {
+    return (await getFrameInfo(page)).bbox[0];
+  }).toBeLessThan(-80);
+  expect((await getFrameInfo(page)).width).toBe(600);
+});
+
+// The mode is about what stays put when the extent changes, so it has to reach
+// Fit as well as the handles.
+test('the mode applies to fitting, and Margin pads the fit', async function({page}) {
+  await loadFixture(page);
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand(
+      '-frame bbox=-80,30,-70,40 width=600 name=frame'
+    );
+  });
+  await page.evaluate(function() {
+    window.mapshaper.undoTest.openFrameTool();
+  });
+
+  var segments = page.locator('.frame-size-mode .floating-toolbar-btn');
+  var fit = page.locator('.frame-toolbar .text-btn').filter({hasText: 'Fit'});
+
+  // Fix scale: the output grows or shrinks so the scale is unchanged.
+  var before = await getFrameInfo(page);
+  await fit.click();
+  await expect.poll(async function() {
+    return (await getFrameInfo(page)).bbox.join(',');
+  }).not.toBe(before.bbox.join(','));
+  var fitted = await getFrameInfo(page);
+  var scaleBefore = before.width / (before.bbox[2] - before.bbox[0]);
+  expect(fitted.width / (fitted.bbox[2] - fitted.bbox[0]))
+    .toBeCloseTo(scaleBefore, 6);
+  expect(await getSessionCommands(page).then(function(list) {
+    return list.pop();
+  })).toContain('fix-scale');
+
+  // Fix output: the width is held and the scale absorbs the change instead.
+  await segments.filter({hasText: 'Fix output'}).click();
+  await setInput(page, '.frame-toolbar-margin-input', '10%');
+  await fit.click();
+  await expect.poll(async function() {
+    return (await getSessionCommands(page)).pop();
+  }).toContain("offset='10%'");
+  var padded = await getFrameInfo(page);
+  expect(padded.width).toBe(fitted.width);
+  // The margin widened the extent beyond the unpadded fit.
+  expect(padded.bbox[2] - padded.bbox[0])
+    .toBeGreaterThan(fitted.bbox[2] - fitted.bbox[0]);
+});
+
+test('the resize toolbar sets and clears a fixed ratio', async function({page}) {
+  await loadFixture(page);
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand(
+      '-frame bbox=-80,30,-70,40 width=600 name=frame'
+    );
+  });
+  await page.evaluate(function() {
+    window.mapshaper.undoTest.openFrameTool();
+  });
+
+  var ratio = page.locator('.frame-toolbar-aspect-input');
+  await expect(ratio).toHaveValue('');
+  await setInput(page, '.frame-toolbar-aspect-input', '3:2');
+  await expect.poll(async function() {
+    var frame = await getFrameInfo(page);
+    return frame.width / frame.height;
+  }).toBeCloseTo(1.5, 6);
+  // The field reads back the ratio the frame actually has. A ratio with a name
+  // keeps its w:h form; one without is shown as a number.
+  await expect(ratio).toHaveValue('3:2');
+
+  // Junk is refused and the field snaps back to the frame's real ratio.
+  await setInput(page, '.frame-toolbar-aspect-input', 'wide');
+  await expect(ratio).toHaveValue('3:2');
+  expect((await getFrameInfo(page)).width / (await getFrameInfo(page)).height)
+    .toBeCloseTo(1.5, 6);
+
+  await setInput(page, '.frame-toolbar-aspect-input', '2:1');
+  await expect(ratio).toHaveValue('2');
+
+  // Blank returns the frame to the shape of its extent.
+  await setInput(page, '.frame-toolbar-aspect-input', '');
+  await expect.poll(async function() {
+    return (await getSessionCommands(page)).join('\n');
+  }).toContain('auto-aspect');
+  await expect(ratio).toHaveValue('');
+});
+
+// The handles sit on the page boundary that preview draws, so the tool cannot
+// outlive either preview mode or the frame itself.
+test('the resize tool closes when preview is turned off', async function({page}) {
+  await loadFixture(page);
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand(
+      '-frame bbox=-80,30,-70,40 width=600 name=frame'
+    );
+  });
+  await page.evaluate(function() {
+    window.mapshaper.undoTest.openFrameTool();
+  });
+  await expect(page.locator('.frame-toolbar')).toBeVisible();
+  await expect(page.locator('.frame-edit-box')).toBeVisible();
+  // The frame modes are not in the pointer button's menu, so it must not light
+  // up as though one of its own tools were armed.
+  await expect(page.locator('.pointer-btn')).not.toHaveClass(/selected/);
+
+  await page.evaluate(function() {
+    window.mapshaper.undoTest.setPreviewMode(false);
+  });
+  await expect(page.locator('.frame-toolbar')).not.toBeVisible();
+  await expect(page.locator('.frame-edit-box')).not.toBeVisible();
+  expect(await page.evaluate(function() {
+    return window.mapshaper.undoTest.getInteractionMode();
+  })).toBe('off');
+});
+
+test('the resize tool closes when the frame is deleted', async function({page}) {
+  await loadFixture(page);
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand(
+      '-frame bbox=-80,30,-70,40 width=600 name=frame'
+    );
+  });
+  await page.locator('.sidebar-tab.layer-tab').click();
+  await page.evaluate(function() {
+    window.mapshaper.undoTest.openFrameTool();
+  });
+  await expect(page.locator('.frame-toolbar')).toBeVisible();
+
+  await page.locator('.map-frame-list .more-btn').click();
+  await page.locator('.contextmenu-item').filter({hasText: 'delete frame'}).click();
+  await expect.poll(function() {
+    return getFrameInfo(page);
+  }).toBeNull();
+  await expect(page.locator('.frame-toolbar')).not.toBeVisible();
+  await expect(page.locator('.frame-edit-box')).not.toBeVisible();
+  expect(await page.evaluate(function() {
+    return window.mapshaper.undoTest.getInteractionMode();
+  })).toBe('off');
+});
+
+// -proj rewrites the frame through the same sweep that projects the data, so
+// the frame's display copy has to be thrown away with everything else. Keeping
+// it left the map drawing a pre-projection rectangle.
+test('projecting a layer redraws the frame it carries', async function({page}) {
+  await loadFixture(page);
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand(
+      '-rectangle bbox=-170,-50,170,70 name=world ' +
+      '-frame bbox=-170,-50,170,70 width=800 name=frame target=world'
+    );
+  });
+  await page.evaluate(function() {
+    window.mapshaper.undoTest.setPreviewMode(true);
+  });
+  var before = await getFrameInfo(page);
+  expect(await page.evaluate(function() {
+    return window.mapshaper.undoTest.getPreviewReadout();
+  })).toContain(String(Math.round(before.height)));
+
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand('-proj robin target=world');
+  });
+  var after = await getFrameInfo(page);
+  // Robinson is not as tall as plate carree here, so the page shape changed.
+  expect(Math.round(after.height)).not.toBe(Math.round(before.height));
+  // What the map shows has to agree with what the frame now is.
+  await expect.poll(async function() {
+    return page.evaluate(function() {
+      return window.mapshaper.undoTest.getPreviewReadout();
+    });
+  }).toContain(String(Math.round(after.height)));
 });
 
 test('frame appearance renders as a background and top neatline', async function({page}) {

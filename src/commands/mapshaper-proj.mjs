@@ -307,7 +307,7 @@ export function projectDataset(dataset, src, dest, opts) {
   }
 
   frameSnapshots.forEach(function(snapshot) {
-    rebuildProjectedFrameLayer(snapshot, dataset, proj);
+    rebuildProjectedFrameLayer(snapshot, dataset, proj, isLatLngCRS(src));
   });
 
   if (badArcs > 0 && !opts.quiet) {
