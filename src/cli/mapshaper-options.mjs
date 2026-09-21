@@ -2390,7 +2390,7 @@ export function getOptionParser() {
 
   // used by GUI
   parser.command('update-frame')
-    .describe('update an existing map frame layer')
+    // .describe('update an existing map frame layer')
     .option('bbox', {
       describe: 'frame coordinates (xmin,ymin,xmax,ymax)',
       type: 'bbox'

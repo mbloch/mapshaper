@@ -1,8 +1,13 @@
+v0.7.63
+* [web] Added new UI for setting and updating a map frame. (Map frames set the output size and geographical extent of a map.) Support for multiple frames per project is planned for the future.
+* [web] New preview mode. Symbols and labels are scaled in proportion to map zoom.
+
 v0.7.62
 * Added `-graticule base=` to align meridians to a longitude other than 0 (same idea as `-contours base=`).
 * [web] On the layers panel, "Draw: labels · points · lines · polygons" replaces "Add empty layer". Each link creates a new layer and opens the tool that draws into it.
 * [web] A new "add/edit labels" tool replaces the old layer styling tools, with a revamped label styling panel.
 * [web] A new label creation interface supports both point-anchored labels and labels on drawn paths.
+* Fix for issue #704.
 
 v0.7.60
 * `-clean`’s default `gap-width=auto` is now equivalent to the former `gap-fill-area=auto` + `sliver-control=1` test, restoring the more effective cleanup from before v0.7.53.
