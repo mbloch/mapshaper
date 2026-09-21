@@ -27981,6 +27981,12 @@
   // invariant under translation, rotation and scaling (Hobby 1986), which is
   // what lets the tool fit in display coordinates while storing knots in map
   // coordinates.
+  //
+  // Left alone, the method bulges: a hard turn followed by a much shorter
+  // segment throws the long segment into a wide arc, several times the length of
+  // the short one. Two limits below hold that in, MAX_HANDLE and
+  // MAX_CHORD_RATIO. Both are inert on a path whose chords are of comparable
+  // length, so an ordinary label path is fitted exactly as Hobby describes.
 
   // Curl controls how the curve behaves at the two ends of a run. At 0 it
   // approaches a straight line there; at 1 (Metafont's default) it approaches a
@@ -28068,6 +28074,24 @@
       VEL_B = 1 / 16,
       VEL_C = (3 - Math.sqrt(5)) / 2;
 
+  // Longest a control point may sit from its knot, as a fraction of the chord
+  // length that handleLimit() works out for it. See "Bulge" in the design doc: a
+  // hard turn followed by a short segment otherwise throws the long segment into
+  // a wide arc, which during editing is most of the time, because a short
+  // segment is what a half-dragged knot leaves behind.
+  //
+  // The value is a floor, not a preference. Four points on a circle want 0.3905,
+  // which is the roundest any sensible path asks for, so a limit just above it
+  // never touches a curve that was not already misbehaving.
+  var MAX_HANDLE = 0.4;
+
+  // How much longer one chord may be than its neighbour *for the purposes of the
+  // solve*. Hobby equalizes mock curvature across each knot, and a short chord
+  // carries a lot of curvature, so without this a short segment dictates a wide
+  // arc to a long one. Capping the ratio limits how far that reaches without
+  // moving any knot or touching the curve where the chords are even.
+  var MAX_CHORD_RATIO = 1.5;
+
   // Fits a run of knots, returning a cubic per interval.
   function fitRun(pts) {
     var n = pts.length - 1, // segment count
@@ -28084,14 +28108,52 @@
     psi.push(0);
     for (i = 1; i < n; i++) psi.push(wrapAngle(om[i] - om[i - 1]));
 
-    theta = solveDepartureAngles(dd, psi, n);
+    theta = solveDepartureAngles(evenOutChords(dd, n), psi, n);
     phi = getArrivalAngles(theta, psi, n);
 
     for (i = 0; i < n; i++) {
       segments.push(buildSegment(pts[i], pts[i + 1], dd[i], om[i],
-        theta[i], phi[i + 1]));
+        theta[i], phi[i + 1],
+        handleLimit(dd[i], i > 0 ? dd[i - 1] : Infinity),
+        handleLimit(dd[i], i < n - 1 ? dd[i + 1] : Infinity)));
     }
     return segments;
+  }
+
+  // Longest a handle may be at one end of a segment whose own chord is @own and
+  // whose neighbour across that knot is @neighbor. (At the first and last knot
+  // of a run there is no neighbour, and the segment's own chord is the measure.)
+  //
+  // The scale is the geometric mean of the two, rather than the shorter of them.
+  // Measuring against the shorter alone holds the bulge down just as well, but
+  // it makes a long segment meeting a short one spend nearly all of its shape at
+  // its far end: on a 490-unit arm meeting a 50-unit leg the two handles came
+  // out 9.8:1, so the arm ran almost straight and then hooked hard into the
+  // knot, and the curvature either side of that knot differed by a factor of 14.
+  // The geometric mean gives the long segment a handle in proportion to how
+  // lopsided the pair actually is, which brings the same case to 3.1:1 and the
+  // curvature to within a factor of 1.4 -- about what Hobby's mock curvature
+  // leaves on an ordinary path anyway -- for two points of extra bulge.
+  function handleLimit(own, neighbor) {
+    return MAX_HANDLE * Math.sqrt(own * Math.min(own, neighbor));
+  }
+
+  // The chord lengths the solve sees, with the ratio between neighbours held to
+  // MAX_CHORD_RATIO. Each length becomes the smallest that any chord permits it
+  // to be, allowing for a factor of MAX_CHORD_RATIO per step -- a forward pass
+  // and a backward pass compute that exactly, so this needs no iteration.
+  //
+  // Only the tangent directions are affected. The curve is still built on the
+  // true chord lengths.
+  function evenOutChords(dd, n) {
+    var out = dd.concat(), i;
+    for (i = 1; i < n; i++) {
+      if (out[i] > out[i - 1] * MAX_CHORD_RATIO) out[i] = out[i - 1] * MAX_CHORD_RATIO;
+    }
+    for (i = n - 2; i >= 0; i--) {
+      if (out[i] > out[i + 1] * MAX_CHORD_RATIO) out[i] = out[i + 1] * MAX_CHORD_RATIO;
+    }
+    return out;
   }
 
   // The tridiagonal system of Hobby's mock-curvature conditions, in the
@@ -28137,21 +28199,30 @@
 
   // Turns a pair of angles into a cubic, by way of Hobby's velocity functions --
   // how far along each tangent the control point sits, as a multiple of a third
-  // of the chord.
-  function buildSegment(p0, p1, d, om, theta, phi) {
+  // of the chord -- with each distance held to the caller's limit.
+  //
+  // Shortening a handle leaves its direction alone, so the tangent the two
+  // segments share at a knot is untouched and the curve stays smooth through it.
+  // What it gives up is Hobby's mock-curvature match across that knot, and only
+  // at a knot lopsided enough for the limit to bite.
+  function buildSegment(p0, p1, d, om, theta, phi, maxOut, maxIn) {
     var alpha = VEL_A * (Math.sin(theta) - VEL_B * Math.sin(phi)) *
           (Math.sin(phi) - VEL_B * Math.sin(theta)) *
           (Math.cos(theta) - Math.cos(phi)),
         rho = (2 + alpha) /
           (1 + (1 - VEL_C) * Math.cos(theta) + VEL_C * Math.cos(phi)),
         sigma = (2 - alpha) /
-          (1 + (1 - VEL_C) * Math.cos(phi) + VEL_C * Math.cos(theta));
+          (1 + (1 - VEL_C) * Math.cos(phi) + VEL_C * Math.cos(theta)),
+        out = d * rho / 3,
+        arr = d * sigma / 3;
+    if (out > maxOut) out = maxOut;
+    if (arr > maxIn) arr = maxIn;
     return {
       p0: p0,
-      c1: [p0[0] + d * rho / 3 * Math.cos(theta + om),
-           p0[1] + d * rho / 3 * Math.sin(theta + om)],
-      c2: [p1[0] - d * sigma / 3 * Math.cos(om - phi),
-           p1[1] - d * sigma / 3 * Math.sin(om - phi)],
+      c1: [p0[0] + out * Math.cos(theta + om),
+           p0[1] + out * Math.sin(theta + om)],
+      c2: [p1[0] - arr * Math.cos(om - phi),
+           p1[1] - arr * Math.sin(om - phi)],
       p3: p1
     };
   }
@@ -82718,7 +82789,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.63";
+  var version = "0.7.64";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
