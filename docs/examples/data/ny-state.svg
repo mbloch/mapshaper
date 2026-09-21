@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny" width="600" height="400" viewBox="0 0 600 400" stroke-linecap="round" stroke-linejoin="round">
-<g id="rectangle">
+<g id="rectangle-background">
 <path d="M 0 400 0 0 600 0 600 400 0 400 Z" fill="#f1f1f1"/>
 </g>
 <g id="states">

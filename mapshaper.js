@@ -25445,15 +25445,52 @@
 
 
   function getFrameData(dataset, exportOpts) {
-    var frameLyr = findFrameLayerInDataset(dataset);
+    var frameTarget = resolveExportFrame({targetDataset: dataset, mode: 'cli'});
+    var frameLyr = frameTarget && frameTarget.layer;
     var data;
-    if (frameLyr) {
-      data = getFrameLayerData(frameLyr, dataset.arcs);
+    if (exportOpts.gui_frame?.data) {
+      data = Object.assign({}, exportOpts.gui_frame.data, {
+        bbox: exportOpts.gui_frame.data.bbox.slice()
+      });
+      if (exportOpts.width > 0 || exportOpts.height > 0) {
+        data = resizeFrameForExport(data, exportOpts);
+      }
+    } else if (frameLyr) {
+      data = getFrameLayerData(frameLyr, dataset.arcs, getDatasetCRS(dataset));
+      if (exportOpts.width > 0 || exportOpts.height > 0) {
+        data = resizeFrameForExport(data, exportOpts);
+      }
     } else {
       data = calcFrameData(dataset, exportOpts);
     }
     data.invert_y = !!exportOpts.invert_y;
     data.crs = getDatasetCRS(dataset);
+    return data;
+  }
+
+  function resizeFrameForExport(frame, opts) {
+    var bounds = new Bounds(frame.bbox);
+    // A stored frame is an exact geographic crop. The SVG exporter's default
+    // 1px content margin applies only to frameless output.
+    var outputOpts = Object.assign({}, opts, {margin: 0});
+    var outputBounds = calcOutputBounds(bounds, outputOpts);
+    var data = {
+      type: 'frame',
+      bbox: bounds.toArray(),
+      bbox2: outputBounds.toArray(),
+      width: Math.round(outputBounds.width()),
+      height: Math.round(outputBounds.height()) || 1,
+      // The authored unit still describes this frame, but an explicit output size
+      // supersedes any fixed page shape, so the aspect is no longer pinned.
+      aspect_ratio: null,
+      units: frame.units || 'px'
+    };
+    if (data.width != frame.width || data.height != frame.height) {
+      warn(
+        `Output size ${data.width}×${data.height}px overrides the map frame's ` +
+        `nominal size ${frame.width}×${frame.height}px; symbol and label sizes are not rescaled.`
+      );
+    }
     return data;
   }
 
@@ -25467,18 +25504,29 @@
     });
   }
 
-  function getFrameLayerData(lyr, arcs) {
+  function getFrameLayerData(lyr, arcs, crs) {
+    if (!isFrameLayer(lyr, arcs)) {
+      error('Invalid map frame layer');
+    }
     var bounds = getLayerBounds(lyr, arcs);
-    var d = lyr.data.getReadOnlyRecordAt(0);
-    var w = d.width || 800;
+    var d = getSingleFrameRecord(lyr);
+    var w = d.width;
+    var hasFixedAspect = utils.isFiniteNumber(d.frame_aspect_ratio) &&
+      d.frame_aspect_ratio > 0;
+    var aspectRatio = hasFixedAspect ? d.frame_aspect_ratio :
+      bounds.width() / bounds.height();
     // prevent rounding errors (like 1000.0000000002)
-    var h = Math.round(w * bounds.height() / bounds.width());
-    return {
+    var h = Math.round(w / aspectRatio);
+    var data = {
       type: 'frame',
       width: w,
       height: h,
-      bbox: bounds.toArray()
+      bbox: bounds.toArray(),
+      aspect_ratio: hasFixedAspect ? d.frame_aspect_ratio : null,
+      units: d.frame_units || 'px'
     };
+    if (crs) data.crs = crs;
+    return data;
   }
 
 
@@ -25515,9 +25563,63 @@
   }
 
 
+  var frameReservedFields =
+    ['type', 'width', 'height', 'frame_aspect_ratio', 'frame_units'];
+
+  function parseFrameSize(arg) {
+    var str = String(arg).toLowerCase();
+    var units = /px|pix/.test(str) && 'px' ||
+      /pt|point/.test(str) && 'pt' ||
+      /in/.test(str) && 'in' ||
+      /cm/.test(str) && 'cm' ||
+      'px';
+    return {valuePx: parseSizeParam(arg), units: units};
+  }
+
+  function formatFrameSizeForDisplay(frame) {
+    var units = frame.units || 'px';
+    var k = units == 'in' ? 72 :
+      units == 'cm' ? 28.3465 : 1;
+    return formatFrameDimension(frame.width / k) + ' × ' +
+      formatFrameDimension(frame.height / k) + ' ' + units;
+  }
+
+  function formatFrameDimension(value) {
+    var rounded = Math.round(value * 100) / 100;
+    return String(rounded);
+  }
+
+  function isFrameReservedField(name) {
+    return frameReservedFields.includes(name);
+  }
+
+  function demoteFrameLayer(lyr, operation) {
+    var rec = lyr.data && lyr.data.getRecords()[0];
+    if (!rec) return;
+    operation = operation || 'frame';
+    lyr.data.captureTableBefore({operation: operation});
+    frameReservedFields.forEach(function(field) {
+      delete rec[field];
+    });
+    lyr.data.markChanged({operation: operation});
+  }
+
+  function getSingleFrameRecord(lyr) {
+    if (!lyr || !lyr.data || !lyr.shapes ||
+        lyr.shapes.length != 1 || lyr.data.size() != 1) {
+      return null;
+    }
+    return lyr.data.getReadOnlyRecordAt(0) || null;
+  }
+
   // @lyr dataset layer
   function isFrameLayer(lyr, arcs) {
-    return getFurnitureLayerType(lyr) == 'frame' &&
+    var rec = getSingleFrameRecord(lyr);
+    return !!rec &&
+      lyr.geometry_type == 'polygon' &&
+      rec.type == 'frame' &&
+      utils.isFiniteNumber(rec.width) &&
+      rec.width > 0 &&
       layerIsRectangle(lyr, arcs);
   }
 
@@ -25527,21 +25629,97 @@
     });
   }
 
-  // TODO: handle multiple frames in catalog
+  function findFrames(catalog) {
+    return catalog.getLayers().filter(function(o) {
+      return isFrameLayer(o.layer, o.dataset.arcs);
+    });
+  }
+
+  // Remembers the frame conflict that was last reported, so that resolving the
+  // frame on every map render does not repeat the same warning. Unlike
+  // warnOnce(), this resets when the conflict clears, so a long-lived GUI session
+  // warns again if the user undoes the change and then repeats it.
+  var reportedFrameConflict = null;
+
+  // Generic field commands can promote an ordinary rectangle into a second frame
+  // (e.g. -each 'type="frame", width=400'), and the GUI resolves the frame on
+  // every render, so this has to degrade to a deterministic choice rather than an
+  // error. Rejecting the change outright is assertSingleFrameUpdate()'s job,
+  // where it can still be refused before it is committed.
+  function getActiveFrame(catalog) {
+    var frames = findFrames(catalog);
+    var key;
+    if (frames.length > 1) {
+      key = frames.map(getFrameName).join(', ');
+      if (key !== reportedFrameConflict) {
+        reportedFrameConflict = key;
+        warn('Multiple map frames are not supported; using',
+          getFrameName(frames[0]) + '. Ignoring:',
+          frames.slice(1).map(getFrameName).join(', '));
+      }
+    } else {
+      reportedFrameConflict = null;
+    }
+    return frames[0] || null;
+  }
+
   function findFrameDataset(catalog) {
-    var target = findFrame(catalog);
+    var target = getActiveFrame(catalog);
     return target && target.dataset || null;
   }
 
   function findFrameLayer(catalog) {
-    var target = findFrame(catalog);
+    var target = getActiveFrame(catalog);
     return target && target.layer || null;
   }
 
   function findFrame(catalog) {
-    return utils.find(catalog.getLayers(), function(o) {
-      return isFrameLayer(o.layer, o.dataset.arcs);
+    return getActiveFrame(catalog);
+  }
+
+  function resolveExportFrame(opts) {
+    if (opts.explicitFrame) return opts.explicitFrame;
+    if (opts.targetDataset) {
+      var lyr = findFrameLayerInDataset(opts.targetDataset);
+      return lyr ? {layer: lyr, dataset: opts.targetDataset} : null;
+    }
+    return opts.mode == 'gui' && opts.catalog ? getActiveFrame(opts.catalog) : null;
+  }
+
+  function assertSingleFrameUpdate(catalog, additions, removals) {
+    var removed = removals || [];
+    var frames = catalog.getLayers().filter(function(o) {
+      return !removed.includes(o.layer) && isFrameLayer(o.layer, o.dataset.arcs);
     });
+    (additions || []).forEach(function(o) {
+      if (!removed.includes(o.layer) && isFrameLayer(o.layer, o.dataset.arcs)) {
+        frames.push(o);
+      }
+    });
+    frames = frames.filter(function(o, i) {
+      return frames.findIndex(function(o2) {
+        return o2.layer == o.layer;
+      }) == i;
+    });
+    if (frames.length > 1) {
+      stop$1('Multiple map frames are not supported:', frames.map(getFrameName).join(', '));
+    }
+  }
+
+  function assertCatalogCanAddDatasets(catalog, datasets, removals) {
+    var existingDatasets = catalog.getDatasets();
+    var additions = [];
+    datasets.forEach(function(dataset) {
+      if (existingDatasets.includes(dataset)) return;
+      dataset.layers.forEach(function(lyr) {
+        additions.push({layer: lyr, dataset: dataset});
+      });
+    });
+    assertSingleFrameUpdate(catalog, additions, removals);
+  }
+
+  function getFrameName(o) {
+    return o.layer.name || '[unnamed frame]';
   }
 
   function getFrameLayerBounds(lyr) {
@@ -25670,20 +25848,31 @@
 
   var FrameUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    assertCatalogCanAddDatasets: assertCatalogCanAddDatasets,
+    assertSingleFrameUpdate: assertSingleFrameUpdate,
     calcFrameData: calcFrameData,
     calcOutputBounds: calcOutputBounds,
+    demoteFrameLayer: demoteFrameLayer,
     findFrame: findFrame,
     findFrameDataset: findFrameDataset,
     findFrameLayer: findFrameLayer,
     findFrameLayerInDataset: findFrameLayerInDataset,
+    findFrames: findFrames,
     fitDatasetToFrame: fitDatasetToFrame,
+    formatFrameSizeForDisplay: formatFrameSizeForDisplay,
+    frameReservedFields: frameReservedFields,
+    getActiveFrame: getActiveFrame,
     getFrameData: getFrameData,
     getFrameLayerBounds: getFrameLayerBounds,
     getFrameLayerData: getFrameLayerData,
     getFrameSize: getFrameSize,
     getMapFrameMetersPerPixel: getMapFrameMetersPerPixel,
+    getSingleFrameRecord: getSingleFrameRecord,
     isFrameLayer: isFrameLayer,
-    parseMarginOption: parseMarginOption
+    isFrameReservedField: isFrameReservedField,
+    parseFrameSize: parseFrameSize,
+    parseMarginOption: parseMarginOption,
+    resolveExportFrame: resolveExportFrame
   });
 
   function addFurnitureLayer(lyr, catalog) {
@@ -28649,7 +28838,8 @@
   function exportSVG(dataset, opts) {
     var namespace = 'xmlns="http://www.w3.org/2000/svg"';
     var defs = [];
-    var frame, svg, layers, metadataJSON, files, svgFile;
+    var frame, frameLyr, frameBackground, frameNeatline;
+    var svg, layers, metadataJSON, files, svgFile;
     var style = '';
 
     // kludge for map keys
@@ -28686,6 +28876,21 @@
     if (opts.scalebar) {
       layers.push(getScalebarLayer({})); // default options
     }
+    frameLyr = layers.find(function(lyr) {
+      return isFrameLayer(lyr, dataset.arcs);
+    });
+    if (frameLyr) {
+      frameBackground = exportFrameStylePhase(frameLyr, dataset, opts, 'background');
+      frameNeatline = exportFrameStylePhase(frameLyr, dataset, opts, 'neatline');
+      layers = layers.filter(function(lyr) { return lyr != frameLyr; });
+    } else if (opts.gui_frame?.style) {
+      frameBackground = exportExplicitFrameStyle(
+        frame, opts.gui_frame, 'background'
+      );
+      frameNeatline = exportExplicitFrameStyle(
+        frame, opts.gui_frame, 'neatline'
+      );
+    }
     svg = layers.map(function(lyr) {
       var obj;
       if (layerHasFurniture(lyr)) {
@@ -28698,6 +28903,8 @@
       convertPropertiesToDefinitions(obj, defs);
       return stringify(obj);
     }).join('\n');
+    if (frameBackground) svg = frameBackground + '\n' + svg;
+    if (frameNeatline) svg += '\n' + frameNeatline;
 
     if (metadataJSON) {
       svg = getMetadataBlock(metadataJSON, [0, 0, frame.width, frame.height]) + svg;
@@ -28730,6 +28937,65 @@ ${svg}
     };
     files = [svgFile].concat(opts.svg_image_files);
     return files;
+  }
+
+  function exportFrameStylePhase(lyr, dataset, opts, phase) {
+    var copy = copyLayer(lyr);
+    var rec = copy.data && copy.data.getRecords()[0];
+    var obj;
+    if (!rec) return '';
+    if (phase == 'background') {
+      if (!rec.fill || rec.fill == 'none') return '';
+      removeStylePrefix(rec, 'stroke');
+      copy.name = (lyr.name || 'frame') + '-background';
+    } else {
+      if (!rec.stroke || rec.stroke == 'none' ||
+          Number(rec['stroke-width']) <= 0) return '';
+      removeStylePrefix(rec, 'fill');
+      rec.fill = 'none';
+      copy.name = (lyr.name || 'frame') + '-neatline';
+    }
+    obj = exportLayerForSVG(copy, dataset, opts);
+    return stringify(obj);
+  }
+
+  function removeStylePrefix(rec, prefix) {
+    Object.keys(rec).forEach(function(key) {
+      if (key == prefix || key.indexOf(prefix + '-') === 0) {
+        delete rec[key];
+      }
+    });
+  }
+
+  function exportExplicitFrameStyle(frame, context, phase) {
+    var style = context.style || {};
+    var properties = {
+      id: (context.name || 'frame') + '-' + phase,
+      x: 0,
+      y: 0,
+      width: frame.width,
+      height: frame.height
+    };
+    if (phase == 'background') {
+      if (!style.fill || style.fill == 'none') return '';
+      copyProperties(properties, style,
+        ['fill', 'fill-opacity', 'fill-rule', 'opacity']);
+    } else {
+      if (!style.stroke || style.stroke == 'none' ||
+          Number(style['stroke-width']) <= 0) return '';
+      properties.fill = 'none';
+      copyProperties(properties, style, [
+        'stroke', 'stroke-width', 'stroke-opacity', 'stroke-linecap',
+        'stroke-linejoin', 'stroke-dasharray', 'opacity'
+      ]);
+    }
+    return stringify({tag: 'rect', properties: properties});
+  }
+
+  function copyProperties(dest, src, names) {
+    names.forEach(function(name) {
+      if (src[name] !== undefined) dest[name] = src[name];
+    });
   }
 
   function getSvgFileBase(dataset, opts) {
@@ -28807,12 +29073,24 @@ ${svg}
 
   function exportLayerForSVG(lyr, dataset, opts) {
     var layerObj = getEmptyLayerForSVG(lyr, opts);
+    if (isFrameLayer(lyr, dataset.arcs) && !frameHasExportStyle(lyr)) {
+      layerObj.children = [];
+      return layerObj;
+    }
     if (layerIsRectangle(lyr, dataset.arcs)) {
       lyr = copyLayer(lyr);
       adjustRectangleStyle(lyr);
     }
     layerObj.children = exportSymbolsForSVG(lyr, dataset, opts);
     return layerObj;
+  }
+
+  function frameHasExportStyle(lyr) {
+    var rec = lyr.data && lyr.data.getReadOnlyRecordAt(0);
+    var fields = findStylePropertiesBySymbolGeom(Object.keys(rec || {}), 'polygon');
+    return fields.some(function(name) {
+      return rec[name] !== null && rec[name] !== undefined && rec[name] !== '';
+    });
   }
 
   function exportRasterLayerForSVG(lyr, frame, opts) {
@@ -42583,6 +42861,45 @@ ${svg}
       .option('target', targetOpt);
 
     // used by GUI
+    parser.command('update-frame')
+      // .describe('update an existing map frame layer')
+      .option('bbox', {
+        describe: 'frame coordinates (xmin,ymin,xmax,ymax)',
+        type: 'bbox'
+      })
+      .option('width', {
+        describe: 'nominal frame width (e.g. 5in, 10cm, 600px)'
+      })
+      .option('height', {
+        describe: 'nominal frame height'
+      })
+      .option('aspect-ratio', {
+        describe: 'fixed page aspect ratio',
+        type: 'number'
+      })
+      .option('auto-aspect', {
+        describe: 'derive page height from the frame extent',
+        type: 'flag'
+      })
+      .option('fix-scale', {
+        describe: 'hold the map scale; derive the size from the new extent',
+        type: 'flag'
+      })
+      .option('offset', {
+        describe: 'padding in display units or pct of width/height, e.g. 5cm 20px 5%',
+        type: 'strings'
+      })
+      .option('offsets', {
+        describe: 'separate offsets for each side, in l,b,r,t order',
+        type: 'strings'
+      })
+      .option('remove', {
+        describe: 'demote the frame to an ordinary rectangle layer',
+        type: 'flag'
+      })
+      .option('target', targetOpt);
+
+    // used by GUI
     parser.command('update-label')
       // .describe('move the anchor or curve knots of an existing label')
       .option('ids', {
@@ -42694,7 +43011,7 @@ ${svg}
         type: 'bbox'
       })
       .option('offset', {
-        describe: 'padding in display units or pct of width, e.g. 5cm 20px 5%',
+        describe: 'padding in display units or pct of width/height, e.g. 5cm 20px 5%',
         type: 'strings'
       })
       .option('offsets', {
@@ -42702,6 +43019,10 @@ ${svg}
         type: 'strings'
       })
       .option('name', nameOpt)
+      .option('replace', {
+        describe: 'replace the existing map frame',
+        type: 'flag'
+      })
       .option('target', targetOpt);
 
       // .option('height', {
@@ -49327,12 +49648,13 @@ ${svg}
       return layers;
     };
 
-    this.addDataset = function(dataset) {
-      this.setDefaultTarget(dataset.layers, dataset);
+    this.addDataset = function(dataset, opts) {
+      this.setDefaultTarget(dataset.layers, dataset, opts);
       return this;
     };
 
     this.addDatasets = function(datasets) {
+      assertCatalogCanAddDatasets(this, datasets);
       datasets.forEach(function(dataset) {
         this.addDataset(dataset);
       }, this);
@@ -49361,7 +49683,7 @@ ${svg}
       return defaultTargets;
     };
 
-    this.setDefaultTarget = function(layers, dataset) {
+    this.setDefaultTarget = function(layers, dataset, opts) {
       this.setDefaultTargets([{
         // Copy layers array, in case layers is a reference to dataset.layers.
         // This prevents layers that are added to the dataset inside a command from
@@ -49369,12 +49691,19 @@ ${svg}
         //  by '-join unmatched unjoined'.
         layers: layers.concat(),
         dataset: dataset
-      }]);
+      }], opts);
     };
 
     // arr: array of target objects {layers:[], dataset:{}}
-    this.setDefaultTargets = function(arr) {
+    this.setDefaultTargets = function(arr, opts) {
       if (targetsAreSame(defaultTargets, arr)) return;
+      var newDatasets = arr.reduce(function(memo, target) {
+        if (!datasets.includes(target.dataset) && !memo.includes(target.dataset)) {
+          memo.push(target.dataset);
+        }
+        return memo;
+      }, []);
+      assertCatalogCanAddDatasets(this, newDatasets, opts && opts.removeLayers);
       this.captureCatalogBefore({operation: 'setDefaultTargets'});
       arr.forEach(function(target) {
         if (datasets.indexOf(target.dataset) == -1) {
@@ -49823,6 +50152,965 @@ ${svg}
     }
     return dataset;
   }
+
+  // Returns number of arcs that were removed
+  function editArcs(arcs, onPoint) {
+    var nn2 = [],
+        xx2 = [],
+        yy2 = [],
+        errors = 0,
+        n;
+
+    arcs.forEach(function(arc, i) {
+      editArc(arc, onPoint);
+    });
+    arcs.updateVertexData(nn2, xx2, yy2);
+    return errors;
+
+    function append(p) {
+      if (p) {
+        xx2.push(p[0]);
+        yy2.push(p[1]);
+        n++;
+      }
+    }
+
+    function editArc(arc, cb) {
+      var x, y, xp, yp, retn;
+      var valid = true;
+      var i = 0;
+      n = 0;
+      while (arc.hasNext()) {
+        x = arc.x;
+        y = arc.y;
+        retn = cb(append, x, y, xp, yp, i++);
+        if (retn === false) {
+          valid = false;
+          // assumes that it's ok for the arc iterator to be interrupted.
+          break;
+        }
+        xp = x;
+        yp = y;
+      }
+      if (valid && n == 1) {
+        // only one valid point was added to this arc (invalid)
+        // e.g. this could happen during reprojection.
+        // making this arc empty
+        // error("An invalid arc was created");
+        message("An invalid arc was created");
+        valid = false;
+      }
+      if (valid) {
+        nn2.push(n);
+      } else {
+        // remove any points that were added for an invalid arc
+        while (n-- > 0) {
+          xx2.pop();
+          yy2.pop();
+        }
+        nn2.push(0); // add empty arc (to preserve mapping from paths to arcs)
+        errors++;
+      }
+    }
+  }
+
+  function DatasetEditor(dataset) {
+    var layers = [];
+    var arcs = [];
+
+    this.done = function() {
+      dataset.layers = layers;
+      if (arcs.length) {
+        noteDatasetWillChange(dataset, {operation: 'DatasetEditor.done', unit: 'arcs'});
+        dataset.arcs = new ArcCollection(arcs);
+        markDatasetChanged(dataset, {operation: 'DatasetEditor.done', unit: 'arcs'});
+        withActiveUndoTransaction(null, function() {
+          buildTopology(dataset);
+        });
+      }
+    };
+
+    this.editLayer = function(lyr, cb) {
+      var type = lyr.geometry_type;
+      if (dataset.layers.indexOf(lyr) != layers.length) {
+        error('Layer was edited out-of-order');
+      }
+      if (!type) {
+        layers.push(lyr);
+        return;
+      }
+      var shapes = lyr.shapes.map(function(shape, shpId) {
+        var shape2 = [], retn, input;
+        for (var i=0, n=shape ? shape.length : 0; i<n; i++) {
+          input = type == 'point' ? shape[i] : idsToCoords(shape[i]);
+          retn = cb(input, i, shape);
+          if (!Array.isArray(retn)) continue;
+          if (type == 'point') {
+            shape2.push(retn);
+          } else if (type == 'polygon' || type == 'polyline') {
+            extendPathShape(shape2, retn || []);
+          }
+        }
+        return shape2.length > 0 ? shape2 : null;
+      });
+      noteLayerWillChange(lyr, {operation: 'DatasetEditor.editLayer', unit: 'shapes'});
+      layers.push(Object.assign(lyr, {shapes: shapes}));
+      markLayerChanged(lyr, {operation: 'DatasetEditor.editLayer', unit: 'shapes'});
+    };
+
+    function extendPathShape(shape, parts) {
+      for (var i=0; i<parts.length; i++) {
+        shape.push([arcs.length]);
+        arcs.push(parts[i]);
+      }
+    }
+
+    function idsToCoords(ids) {
+      var coords = [];
+      var iter = dataset.arcs.getShapeIter(ids);
+      while (iter.hasNext()) {
+        coords.push([iter.x, iter.y]);
+      }
+      return coords;
+    }
+  }
+
+  // Planar densification by an interval
+  function densifyPathByInterval(coords, interval, interpolate) {
+    if (findMaxPathInterval(coords) < interval) return coords;
+    if (!interpolate) {
+      interpolate = getIntervalInterpolator(interval);
+    }
+    var coords2 = [coords[0]], a, b;
+    for (var i=1, n=coords.length; i<n; i++) {
+      a = coords[i-1];
+      b = coords[i];
+      if (geom.distance2D(a[0], a[1], b[0], b[1]) > interval + 1e-4) {
+        appendArr(coords2, interpolate(a, b));
+      }
+      coords2.push(b);
+    }
+    return coords2;
+  }
+
+  function getIntervalInterpolator(interval) {
+    return function(a, b) {
+      var points = [];
+      // var rev = a[0] == b[0] ? a[1] > b[1] : a[0] > b[0];
+      var dist = geom.distance2D(a[0], a[1], b[0], b[1]);
+      var n = Math.round(dist / interval) - 1;
+      var dx = (b[0] - a[0]) / (n + 1),
+          dy = (b[1] - a[1]) / (n + 1);
+      for (var i=1; i<=n; i++) {
+        points.push([a[0] + dx * i, a[1] + dy * i]);
+      }
+      return points;
+    };
+  }
+
+
+  // Interpolate the same points regardless of segment direction
+  function densifyAntimeridianSegment(a, b, interval) {
+    var y1, y2;
+    var coords = [];
+    var ascending = a[1] < b[1];
+    if (a[0] != b[0]) error('Expected an edge segment');
+    if (ascending) {
+      y1 = a[1];
+      y2 = b[1];
+    } else {
+      y1 = b[1];
+      y2 = a[1];
+    }
+    var y = Math.floor(y1 / interval) * interval + interval;
+    while (y < y2) {
+      coords.push([a[0], y]);
+      y += interval;
+    }
+    if (!ascending) coords.reverse();
+    return coords;
+  }
+
+  function appendArr(dest, src) {
+    for (var i=0; i<src.length; i++) dest.push(src[i]);
+  }
+
+  function findMaxPathInterval(coords) {
+    var maxSq = 0, intSq, a, b;
+    for (var i=1, n=coords.length; i<n; i++) {
+      a = coords[i-1];
+      b = coords[i];
+      intSq = geom.distanceSq(a[0], a[1], b[0], b[1]);
+      if (intSq > maxSq) maxSq = intSq;
+    }
+    return Math.sqrt(maxSq);
+  }
+
+  function projectAndDensifyArcs(arcs, proj) {
+    var interval = getDefaultDensifyInterval(arcs, proj);
+    var minIntervalSq = interval * interval * 25;
+    var p;
+    return editArcs(arcs, onPoint);
+
+    function onPoint(append, lng, lat, prevLng, prevLat, i) {
+      var pp = p;
+      p = proj(lng, lat);
+      if (!p) return false; // signal that current arc contains an error
+
+      // Don't try to densify shorter segments (optimization)
+      if (i > 0 && geom.distanceSq(p[0], p[1], pp[0], pp[1]) > minIntervalSq) {
+        densifySegment(prevLng, prevLat,  pp[0],  pp[1], lng, lat, p[0], p[1], proj, interval)
+          .forEach(append);
+      }
+      append(p);
+    }
+  }
+
+  // Use the median of intervals computed by projecting segments.
+  // We're probing a number of points, because @proj might only be valid in
+  // a sub-region of the dataset bbox (e.g. +proj=tpers)
+  function findDensifyInterval(bounds, xy, proj) {
+    var steps = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+    var points = [];
+    for (var i=0; i<steps.length; i++) {
+      for (var j=0; j<steps.length; j++) {
+        points.push([steps[i], steps[j]]);
+      }
+    }
+    var intervals = points.map(function(pos) {
+      var x = bounds.xmin + bounds.width() * pos[0];
+      var y = bounds.ymin + bounds.height() * pos[1];
+      var a = proj(x, y);
+      var b = proj(x + xy[0], y + xy[1]);
+      return a && b ? geom.distance2D(a[0], a[1], b[0], b[1]) : Infinity;
+    }).filter(function(int) {return int < Infinity;});
+    return intervals.length > 0 ? utils.findMedian(intervals) : Infinity;
+  }
+
+  // Kludgy way to get a useful interval for densifying a bounding box.
+  // Uses a fraction of average bbox side length)
+  // TODO: improve
+  function findDensifyInterval2(bb, proj) {
+    var a = proj(bb.centerX(), bb.centerY()),
+        c = proj(bb.centerX(), bb.ymin), // right center
+        d = proj(bb.xmax, bb.centerY()); // bottom center
+    var interval = a && c && d ? (geom.distance2D(a[0], a[1], c[0], c[1]) +
+          geom.distance2D(a[0], a[1], d[0], d[1])) / 5000 : Infinity;
+    return interval;
+  }
+
+  // Returns an interval in projected units
+  function getDefaultDensifyInterval(arcs, proj) {
+    var xy = getAvgSegment2(arcs),
+        bb = arcs.getBounds(),
+        intervalA = findDensifyInterval(bb, xy, proj),
+        intervalB = findDensifyInterval2(bb, proj),
+        interval = Math.min(intervalA, intervalB);
+    if (interval == Infinity) {
+      error('Densification error');
+    }
+    return interval;
+  }
+
+  // Interpolate points into a projected line segment if needed to prevent large
+  //   deviations from path of original unprojected segment.
+  // @points (optional) array of accumulated points
+  function densifySegment(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj, interval, points) {
+    // Find midpoint between two endpoints and project it (assumes longitude does
+    // not wrap). TODO Consider bisecting along great circle path -- although this
+    // would not be good for boundaries that follow line of constant latitude.
+    var lng1 = (lng0 + lng2) / 2,
+        lat1 = (lat0 + lat2) / 2,
+        p = proj(lng1, lat1),
+        distSq;
+    if (!p) return; // TODO: consider if this is adequate for handling proj. errors
+    distSq = geom.pointSegDistSq2(p[0], p[1], x0, y0, x2, y2); // sq displacement
+    points = points || [];
+    // Bisect current segment if the projected midpoint deviates from original
+    //   segment by more than the @interval parameter.
+    //   ... but don't bisect very small segments to prevent infinite recursion
+    //   (e.g. if projection function is discontinuous)
+    if (distSq > interval * interval * 0.25 && geom.distance2D(lng0, lat0, lng2, lat2) > 0.01) {
+      densifySegment(lng0, lat0, x0, y0, lng1, lat1, p[0], p[1], proj, interval, points);
+      points.push(p);
+      densifySegment(lng1, lat1, p[0], p[1], lng2, lat2, x2, y2, proj, interval, points);
+    }
+    return points;
+  }
+
+  // Create rectangles around each feature in a layer
+  cmd.rectangles = function(targetLyr, targetDataset, opts) {
+    var crsInfo = getDatasetCrsInfo(targetDataset);
+    var records = targetLyr.data ? targetLyr.data.getRecords() : null;
+    var geometries;
+
+    if (opts.bbox) {
+      geometries = bboxExpressionToGeometries(opts.bbox, targetLyr, targetDataset);
+
+    } else {
+      if (!layerHasGeometry$1(targetLyr)) {
+        stop$1("Layer is missing geometric shapes");
+      }
+      geometries = shapesToBoxGeometries(targetLyr, targetDataset, opts);
+    }
+
+    var geojson = {
+      type: 'FeatureCollection',
+      features: geometries.map(function(geom, i) {
+        var rec = records && records[i] || null;
+        if (rec && opts.no_replace) {
+          rec = utils.extend({}, rec); // make a copy
+        }
+        return {
+          type: 'Feature',
+          properties: rec,
+          geometry: geom
+        };
+      })
+    };
+    var dataset = importGeoJSON(geojson, {});
+    setDatasetCrsInfo(dataset, crsInfo);
+    var outputLayers = mergeDatasetsIntoDataset(targetDataset, [dataset]);
+    setOutputLayerName(outputLayers[0], targetLyr, null, opts);
+    return outputLayers;
+  };
+
+
+
+
+  function shapesToBoxGeometries(lyr, dataset, opts) {
+    var crsInfo = getDatasetCrsInfo(dataset);
+    return lyr.shapes.map(function(shp) {
+      var bounds = lyr.geometry_type == 'point' ?
+        getPointFeatureBounds(shp) : dataset.arcs.getMultiShapeBounds(shp);
+      bounds = applyRectangleOptions(bounds, crsInfo.crs, opts);
+      if (!bounds) return null;
+      return bboxToPolygon(bounds.toArray(), opts);
+    });
+  }
+
+  function bboxExpressionToGeometries(exp, lyr, dataset, opts) {
+    var compiled = compileFeatureExpression(exp, lyr, dataset.arcs, {});
+    var n = getFeatureCount(lyr);
+    var result;
+    var geometries = [];
+    for (var i=0; i<n; i++) {
+      result = compiled(i);
+      if (!looksLikeBbox(result)) {
+        stop$1('Invalid bbox value (expected a GeoJSON-type bbox):', result);
+      }
+      geometries.push(bboxToPolygon(result));
+    }
+    return geometries;
+  }
+
+  function looksLikeBbox(o) {
+    if (!o || o.length != 4) return false;
+    if (o.some(isNaN)) return false;
+    if (o[0] <= o[2] == false || o[1] <= o[3] == false) return false;
+    return true;
+  }
+
+  // Create rectangles around one or more target layers
+  //
+  cmd.rectangle2 = function(target, opts) {
+    // if target layer is a rectangle and we're applying frame properties,
+    // turn the target into a frame instead of creating a new rectangle
+    if (target.layers.length == 1 && opts.width &&
+      layerIsRectangle(target.layers[0], target.dataset.arcs)) {
+      applyFrameProperties(target.layers[0], opts);
+      return;
+    }
+    var datasets = target.layers.map(function(lyr) {
+      var dataset = cmd.rectangle({layer: lyr, dataset: target.dataset}, opts);
+      setOutputLayerName(dataset.layers[0], lyr, null, opts);
+      if (!opts.no_replace) {
+        dataset.layers[0].name = lyr.name || dataset.layers[0].name;
+      }
+      return dataset;
+    });
+    return mergeDatasetsIntoDataset(target.dataset, datasets);
+  };
+
+  cmd.rectangle = function(target, opts) {
+    var bounds, crsInfo;
+    if (opts.bbox) {
+      bounds = new Bounds(opts.bbox);
+      crsInfo = target && getDatasetCrsInfo(target.dataset) ||
+        probablyDecimalDegreeBounds(bounds) && getCrsInfo('wgs84') || {};
+    } else if (target) {
+      bounds = getLayerBounds(target.layer, target.dataset.arcs);
+      crsInfo = getDatasetCrsInfo(target.dataset);
+    }
+    bounds = bounds && applyRectangleOptions(bounds, crsInfo.crs, opts);
+    if (!bounds || !bounds.hasBounds()) {
+      stop$1('Missing rectangle extent');
+    }
+    var feature = {
+      type: 'Feature',
+      properties: {},
+      geometry: bboxToPolygon(bounds.toArray(), opts)
+    };
+    var dataset = importGeoJSON(feature, {});
+    applyFrameProperties(dataset.layers[0], opts);
+    dataset.layers[0].name = opts.name || 'rectangle';
+    setDatasetCrsInfo(dataset, crsInfo);
+    return dataset;
+  };
+
+  function applyFrameProperties(lyr, opts) {
+    if (!opts.width) return;
+    if (!lyr.data) initDataTable(lyr);
+    var d = lyr.data.getRecords()[0] || {};
+    var size = parseFrameSize(opts.width);
+    d.width = size.valuePx;
+    d.type = 'frame';
+    d.frame_units = size.units;
+  }
+
+  function applyRectangleOptions(bounds, crs, opts) {
+    var isGeoBox = probablyDecimalDegreeBounds(bounds);
+    if (opts.offset) {
+      bounds = applyBoundsOffset(opts.offset, bounds, crs);
+    }
+    if (bounds.area() > 0 === false) return null;
+    if (opts.aspect_ratio) {
+      bounds = applyAspectRatio(opts.aspect_ratio, bounds);
+    }
+    if (isGeoBox) {
+      bounds = clampToWorldBounds(bounds);
+    }
+    return bounds;
+  }
+
+  // opt: aspect ratio as a single number or a range (e.g. "1,2");
+  function applyAspectRatio(opt, bounds) {
+    var range = String(opt).split(',').map(parseFloat),
+      aspectRatio = bounds.width() / bounds.height(),
+      min, max; // min is height limit, max is width limit
+    if (range.length == 1) {
+      range.push(range[0]);
+    } else if (range[0] > range[1]) {
+      range.reverse();
+    }
+    min = range[0];
+    max = range[1];
+    if (!min && !max) return bounds;
+    if (!min) min = -Infinity;
+    if (!max) max = Infinity;
+    if (aspectRatio < min) {
+      bounds.fillOut(min);
+    } else if (aspectRatio > max) {
+      bounds.fillOut(max);
+    }
+    return bounds;
+  }
+
+  function applyBoundsOffset(offsetOpt, bounds, crs) {
+    var offsets = convertFourSides(offsetOpt, crs, bounds);
+    bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
+    return bounds;
+  }
+
+  function bboxToPolygon(bbox, optsArg) {
+    var opts = optsArg || {};
+    var coords = bboxToCoords(bbox);
+    if (opts.interval > 0) {
+      coords = densifyPathByInterval(coords, opts.interval);
+    }
+    return {
+      type: 'Polygon',
+      coordinates: [coords]
+    };
+  }
+
+  var Rectangle = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    applyAspectRatio: applyAspectRatio,
+    bboxToPolygon: bboxToPolygon
+  });
+
+  cmd.frame = function(catalog, targets, opts) {
+    var widthPx, heightPx, aspectRatio, bbox;
+    var existingFrame = getActiveFrame(catalog);
+    if (opts.width) {
+      widthPx = parseFrameSize(opts.width).valuePx;
+      if (widthPx > 0 === false) {
+        stop$1('Invalid width parameter:', opts.width);
+      }
+    }
+    if (opts.height) {
+      heightPx = parseFrameSize(opts.height).valuePx;
+      if (heightPx > 0 === false) {
+        stop$1('Invalid height parameter:', opts.height);
+      }
+    }
+    if (!widthPx && !heightPx) {
+      widthPx = 800;
+      message('Using default 800px frame width');
+    }
+
+    if (opts.aspect_ratio) {
+      if (opts.aspect_ratio > 0 === false) {
+        stop$1('Invalid aspect-ratio parameter:', opts.aspect_ratio);
+      }
+      if (!heightPx) {
+        heightPx = roundToDigits(widthPx / opts.aspect_ratio, 1);
+      } else if (!widthPx) {
+        widthPx = roundToDigits(heightPx * opts.aspect_ratio, 1);
+      }
+    }
+
+    if (opts.bbox) {
+      bbox = opts.bbox;
+      // TODO: validate
+    } else {
+      var datasets = utils.pluck(targets, 'dataset');
+      requireDatasetsHaveCompatibleCRS(datasets, 'Targets include both projected and unprojected coordinates');
+      bbox = getTargetBbox(targets);
+      if (!bbox) {
+        stop$1('Command target is missing geographical bounds');
+      }
+    }
+
+    applyPercentageOffsets(bbox, opts.offset || opts.offsets);
+    applyPixelOffsets(bbox, widthPx, heightPx, opts.offset || opts.offsets);
+
+    if (bbox[3] - bbox[1] > 0 === false || bbox[2] - bbox[0] > 0 === false) {
+      stop$1('Frame has a collapsed bbox');
+    }
+
+    aspectRatio = (bbox[2] - bbox[0]) / (bbox[3] - bbox[1]);
+    if (!widthPx) {
+      widthPx = roundToDigits(heightPx * aspectRatio, 1);
+    } else if (!heightPx) {
+      heightPx = roundToDigits(widthPx / aspectRatio, 1);
+    }
+
+    var feature = {
+      type: 'Feature',
+      properties: getFrameProperties(widthPx, heightPx, opts),
+      geometry: bboxToPolygon(bbox)
+    };
+    var frameDataset = importGeoJSON(feature);
+    // set CRS from target dataset
+    // TODO: handle case: targets have different projections
+    // TODO: handle case: first target is missing CRS
+    if (targets.length > 0) {
+      var crsInfo = getDatasetCrsInfo(targets[0].dataset);
+      setDatasetCrsInfo(frameDataset, crsInfo);
+    }
+    frameDataset.layers[0].name = opts.name || 'frame';
+    if (existingFrame) {
+      if (!opts.replace) {
+        stop$1('A map frame already exists:', existingFrame.layer.name || '[unnamed frame]');
+      }
+      demoteFrameLayer(existingFrame.layer);
+    }
+    catalog.addDataset(frameDataset);
+  };
+
+  function getFrameProperties(width, height, opts) {
+    var properties = {
+      type: 'frame',
+      width: width,
+      height: height,
+      frame_units: opts.width || opts.height ?
+        parseFrameSize(opts.width || opts.height).units : 'px'
+    };
+    if (opts.aspect_ratio > 0 || opts.width && opts.height) {
+      properties.frame_aspect_ratio = width / height;
+    }
+    return properties;
+  }
+
+  function fillOutBbox(bbox, widthPx, heightPx) {
+    var hpad = 0, vpad = 0;
+    var w = bbox[2] - bbox[0];
+    var h = bbox[3] - bbox[1];
+    if (widthPx / heightPx > w / h) { // need to add horizontal padding
+      hpad = h * widthPx / heightPx - w;
+    } else {
+      vpad = w * heightPx / widthPx - h;
+    }
+    bbox[0] -= hpad / 2;
+    bbox[1] -= vpad / 2;
+    bbox[2] += hpad / 2;
+    bbox[3] += vpad / 2;
+  }
+
+  function applyPercentageOffsets(bbox, arg) {
+    var sides = getPctOffsets(arg);
+    var l = sides[0],
+      b = sides[1],
+      r = sides[2],
+      t = sides[3],
+      w2 = (bbox[2] - bbox[0]) / (1 - l - r),
+      h2 = (bbox[3] - bbox[1]) / (1 - t - b);
+    bbox[0] -= l * w2;
+    bbox[1] -= b * h2;
+    bbox[2] += r * w2;
+    bbox[3] += t * h2;
+  }
+
+  function applyPixelOffsets(bbox, widthPx, heightPx, arg) {
+    var sides = getPixelOffsets(arg);
+    var l = sides[0],
+      b = sides[1],
+      r = sides[2],
+      t = sides[3],
+      scale, w;
+
+    if (widthPx && heightPx) {
+      // add padding to bbox to match pixel dimensions, if needed
+      fillOutBbox(bbox, widthPx, heightPx);
+    }
+
+    w = bbox[2] - bbox[0];
+    bbox[3] - bbox[1];
+
+    if (widthPx) {
+      scale = w / (widthPx - l - r);
+    } else {
+      scale = w / (heightPx - t - b);
+    }
+
+    bbox[0] -= scale * l;
+    bbox[1] -= scale * b;
+    bbox[2] += scale * r;
+    bbox[3] += scale * t;
+    return scale;
+  }
+
+  function getPctOffsets(arg) {
+    return adjustOffsetsArg(arg).map(str => {
+      return str.includes('%') ? parsePercent(str) : 0;
+    });
+  }
+
+  function getPixelOffsets(arg) {
+    return adjustOffsetsArg(arg).map(str => {
+      return str.includes('%') ? 0 : parseSizeParam(str);
+    });
+  }
+
+  function adjustOffsetsArg(arg) {
+    if (!arg) arg = ['0'];
+    if (arg.length == 1) {
+      return [arg[0], arg[0], arg[0], arg[0]];
+    }
+    if (arg.length != 4) {
+      stop$1('List of offsets should have 4 values');
+    }
+    return arg;
+  }
+
+  function getTargetBbox(targets) {
+    var expanded = expandCommandTargets(targets);
+    var bounds = expanded.reduce(function(memo, o) {
+      return memo.mergeBounds(getLayerBounds(o.layer, o.dataset.arcs));
+    }, new Bounds());
+    return bounds.hasBounds() ? bounds.toArray() : null;
+  }
+
+  // Convert width and height args to aspect ratio arg for the rectangle() function
+  function getAspectRatioArg(widthArg, heightArg) {
+    // heightArg is a string containing either a number or a
+    // comma-sep. pair of numbers (range);
+    return heightArg.split(',').map(function(opt) {
+      var height = Number(opt),
+          width = Number(widthArg);
+      if (!opt) return '';
+      return width / height;
+    }).reverse().join(',');
+  }
+
+  var Frame = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    applyPercentageOffsets: applyPercentageOffsets,
+    applyPixelOffsets: applyPixelOffsets,
+    fillOutBbox: fillOutBbox,
+    getAspectRatioArg: getAspectRatioArg
+  });
+
+  // A frame is a viewport, not data, so it can legitimately extend past the
+  // edges of the globe: fitting a near-global extent to a fixed aspect ratio pads
+  // it with whitespace, and that padding can reach beyond a pole. Those
+  // coordinates have no projected equivalent, and projectAndDensifyArcs() drops a
+  // whole arc when any of its vertices fails -- which took out three sides of the
+  // rectangle and left a zero-area bbox. Clamping first keeps the frame
+  // projectable; the off-globe padding is what gets lost.
+  function clampLatLngBbox(bbox) {
+    return [
+      utils.clamp(bbox[0], -180, 180),
+      utils.clamp(bbox[1], -90, 90),
+      utils.clamp(bbox[2], -180, 180),
+      utils.clamp(bbox[3], -90, 90)
+    ];
+  }
+
+  // Project a rectangular frame as a sampled boundary, rather than projecting
+  // only its corners. Curved projections can reach their x/y extrema between
+  // corners, so a corner-only bbox can crop content that was inside the frame.
+  function getProjectedFrameBounds(bbox, project, srcIsLatLng) {
+    var b = new Bounds(srcIsLatLng ? clampLatLngBbox(bbox) : bbox);
+    var xmin = b.xmin;
+    var ymin = b.ymin;
+    var xmax = b.xmax;
+    var ymax = b.ymax;
+    var arcs = new ArcCollection([
+      [[xmin, ymin], [xmax, ymin]],
+      [[xmax, ymin], [xmax, ymax]],
+      [[xmax, ymax], [xmin, ymax]],
+      [[xmin, ymax], [xmin, ymin]]
+    ]);
+    projectAndDensifyArcs(arcs, project);
+    var projected = arcs.getBounds();
+    if (!projected.hasBounds() || projected.area() > 0 === false) {
+      error('Unable to project map frame');
+    }
+    return projected;
+  }
+
+  // Snapshot frame bounds before the dataset arcs are projected.
+  function getFrameProjectionSnapshots(dataset) {
+    return dataset.layers.reduce(function(memo, lyr) {
+      if (isFrameLayer(lyr, dataset.arcs)) {
+        memo.push({
+          layer: lyr,
+          bbox: getLayerBounds(lyr, dataset.arcs).toArray()
+        });
+      }
+      return memo;
+    }, []);
+  }
+
+  // Rebuild a projected frame through the normal topology-aware replacement
+  // path. This is safe when the frame shares an ArcCollection with other layers.
+  function rebuildProjectedFrameLayer(snapshot, dataset, project, srcIsLatLng) {
+    var bounds = getProjectedFrameBounds(snapshot.bbox, project, srcIsLatLng);
+    var rec = getSingleFrameRecord(snapshot.layer) || {};
+    var fixedAspect = utils.isFiniteNumber(rec.frame_aspect_ratio) &&
+      rec.frame_aspect_ratio > 0 ? rec.frame_aspect_ratio : null;
+    var props;
+    if (fixedAspect) {
+      // Projecting a rectangle's boundary and taking its bounds does not preserve
+      // the rectangle's shape, so a frame that declares a ratio has to be padded
+      // back out to it -- otherwise the geometry and the page disagree.
+      var bbox = bounds.toArray();
+      fillOutBbox(bbox, fixedAspect, 1);
+      bounds = new Bounds(bbox);
+    } else {
+      // Height is derived from the extent, so it goes stale when the extent is
+      // reprojected. getFrameLayerData() recomputes it, but the record is what
+      // gets written to an output file.
+      props = {height: Math.round(rec.width * bounds.height() / bounds.width())};
+    }
+    rebuildFrameLayerGeometry(snapshot.layer, dataset, bounds, props);
+  }
+
+  function rebuildFrameLayerGeometry(lyr, dataset, bounds, props) {
+    bounds = bounds instanceof Bounds ? bounds : new Bounds(bounds);
+    var frameDataset = createFrameRectangleDataset(lyr, bounds, props);
+    // The replacement rectangle is imported from bare GeoJSON, so it carries no
+    // CRS. Merging it into the host dataset runs a projected/unprojected
+    // compatibility check, and during -proj the host still reports its source CRS
+    // while the new rectangle already holds projected coordinates -- so the
+    // check has to compare like with like.
+    setDatasetCrsInfo(frameDataset, getDatasetCrsInfo(dataset));
+    replaceLayerContents(lyr, dataset, frameDataset);
+  }
+
+  // Return an isolated rectangular display layer. Dynamic display projection
+  // must not mutate source shapes or the ArcCollection shared by other layers.
+  function getProjectedFrameDisplayLayer(lyr, arcs, project, srcIsLatLng) {
+    if (!isFrameLayer(lyr, arcs)) return null;
+    var bbox = getLayerBounds(lyr, arcs).toArray();
+    var bounds = getProjectedFrameBounds(bbox, project, srcIsLatLng);
+    var dataset = createFrameRectangleDataset(lyr, bounds);
+    return {
+      layer: dataset.layers[0],
+      arcs: dataset.arcs
+    };
+  }
+
+  function createFrameRectangleDataset(lyr, bounds, props) {
+    var record = lyr.data && lyr.data.getReadOnlyRecordAt(0);
+    var feature = {
+      type: 'Feature',
+      properties: Object.assign({}, record || {}, props || {}),
+      geometry: bboxToPolygon(bounds.toArray())
+    };
+    var dataset = importGeoJSON(feature);
+    dataset.layers[0].name = lyr.name;
+    return dataset;
+  }
+
+  var FrameProjection = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getFrameProjectionSnapshots: getFrameProjectionSnapshots,
+    getProjectedFrameBounds: getProjectedFrameBounds,
+    getProjectedFrameDisplayLayer: getProjectedFrameDisplayLayer,
+    rebuildFrameLayerGeometry: rebuildFrameLayerGeometry,
+    rebuildProjectedFrameLayer: rebuildProjectedFrameLayer
+  });
+
+  var OPERATION$1 = 'update-frame';
+
+  function updateFrame(targetLayers, dataset, opts) {
+    if (!targetLayers || targetLayers.length != 1) {
+      stop$1('-update-frame expects a single target layer');
+    }
+    var lyr = targetLayers[0];
+    if (!isFrameLayer(lyr, dataset.arcs)) {
+      stop$1('Target layer is not a map frame:', lyr.name || '[unnamed layer]');
+    }
+    if (opts.remove) {
+      if (hasUpdateOptions(opts)) {
+        stop$1('The remove option cannot be combined with frame update options');
+      }
+      demoteFrameLayer(lyr, OPERATION$1);
+      return;
+    }
+    if (!hasUpdateOptions(opts)) {
+      stop$1('Missing frame update option(s)');
+    }
+    if (opts.aspect_ratio !== undefined && opts.auto_aspect) {
+      stop$1('aspect-ratio= and auto-aspect are mutually exclusive');
+    }
+    if (opts.fix_scale && (opts.width !== undefined || opts.height !== undefined)) {
+      stop$1('fix-scale cannot be combined with width= or height=');
+    }
+
+    var rec = lyr.data.getRecords()[0];
+    var frame = getFrameLayerData(lyr, dataset.arcs);
+    var bbox = (opts.bbox || frame.bbox).slice();
+    var offsetArg = opts.offset || opts.offsets;
+    var fixedAspect = getFixedAspect(rec);
+    var width = frame.width;
+    var units = rec.frame_units || 'px';
+    var widthSize, heightSize, height, effectiveAspect;
+
+    // 1. Aspect mode, resolved first because whether the page shape is fixed
+    // decides whether it may constrain the extent while offsets are applied.
+    if (opts.auto_aspect) {
+      fixedAspect = null;
+    } else if (opts.aspect_ratio !== undefined) {
+      if (!utils.isFiniteNumber(opts.aspect_ratio) || opts.aspect_ratio <= 0) {
+        stop$1('Invalid aspect-ratio parameter:', opts.aspect_ratio);
+      }
+      fixedAspect = opts.aspect_ratio;
+    }
+
+    // 2. Extent
+    if (offsetArg) {
+      applyPercentageOffsets(bbox, offsetArg);
+      // Pass a page height only when the shape is fixed. A derived height
+      // follows the extent, so letting it pad the bbox here would hold a
+      // re-fitted frame to its old shape instead of its new bounds.
+      applyPixelOffsets(bbox, frame.width,
+        fixedAspect ? frame.width / fixedAspect : null, offsetArg);
+    }
+    requireValidBbox(bbox);
+    if (fixedAspect) {
+      fillOutBbox(bbox, fixedAspect, 1);
+    }
+
+    // 3. Nominal size
+    if (opts.width !== undefined) {
+      widthSize = parseFrameSize(opts.width);
+      requirePositiveSize(widthSize.valuePx, 'width', opts.width);
+    }
+    if (opts.height !== undefined) {
+      heightSize = parseFrameSize(opts.height);
+      requirePositiveSize(heightSize.valuePx, 'height', opts.height);
+    }
+    if (widthSize && heightSize) {
+      effectiveAspect = widthSize.valuePx / heightSize.valuePx;
+      if (opts.aspect_ratio !== undefined &&
+          ratiosDiffer(effectiveAspect, opts.aspect_ratio)) {
+        stop$1('Contradictory width, height and aspect-ratio values');
+      }
+      width = widthSize.valuePx;
+      units = widthSize.units;
+      fixedAspect = effectiveAspect;
+      fillOutBbox(bbox, fixedAspect, 1);
+    } else if (widthSize) {
+      width = widthSize.valuePx;
+      units = widthSize.units;
+    } else if (heightSize) {
+      effectiveAspect = fixedAspect || getBboxAspect(bbox);
+      width = heightSize.valuePx * effectiveAspect;
+      units = heightSize.units;
+    } else if (opts.fix_scale) {
+      // Hold ground units per output pixel, so the page grows and shrinks with
+      // the extent instead of the scale changing to fit the extent on it.
+      width = frame.width * getBboxWidth(bbox) / getBboxWidth(frame.bbox);
+      requirePositiveSize(width, 'fix-scale', width);
+    }
+
+    requireValidBbox(bbox);
+    effectiveAspect = fixedAspect || getBboxAspect(bbox);
+    height = Math.round(width / effectiveAspect);
+
+    noteLayerWillChange(lyr, {operation: OPERATION$1, unit: 'shapes'});
+    lyr.data.captureTableBefore({operation: OPERATION$1});
+    rec.width = width;
+    rec.height = height;
+    rec.frame_units = units;
+    if (fixedAspect) {
+      rec.frame_aspect_ratio = fixedAspect;
+    } else {
+      delete rec.frame_aspect_ratio;
+    }
+    lyr.data.markChanged({operation: OPERATION$1});
+    rebuildFrameLayerGeometry(lyr, dataset, new Bounds(bbox));
+    markLayerChanged(lyr, {operation: OPERATION$1, unit: 'shapes'});
+  }
+
+  function hasUpdateOptions(opts) {
+    return opts.bbox !== undefined ||
+      opts.width !== undefined ||
+      opts.height !== undefined ||
+      opts.aspect_ratio !== undefined ||
+      opts.auto_aspect ||
+      opts.fix_scale ||
+      opts.offset !== undefined ||
+      opts.offsets !== undefined;
+  }
+
+  function getBboxWidth(bbox) {
+    return bbox[2] - bbox[0];
+  }
+
+  function getFixedAspect(rec) {
+    return utils.isFiniteNumber(rec.frame_aspect_ratio) &&
+      rec.frame_aspect_ratio > 0 ? rec.frame_aspect_ratio : null;
+  }
+
+  function getBboxAspect(bbox) {
+    return (bbox[2] - bbox[0]) / (bbox[3] - bbox[1]);
+  }
+
+  function requireValidBbox(bbox) {
+    if (!bbox.every(utils.isFiniteNumber) ||
+        bbox[2] - bbox[0] <= 0 ||
+        bbox[3] - bbox[1] <= 0) {
+      stop$1('Frame has a collapsed bbox');
+    }
+  }
+
+  function requirePositiveSize(value, name, arg) {
+    if (!utils.isFiniteNumber(value) || value <= 0) {
+      stop$1('Invalid ' + name + ' parameter:', arg);
+    }
+  }
+
+  function ratiosDiffer(a, b) {
+    return Math.abs(a - b) > 1e-10 * Math.max(1, Math.abs(a), Math.abs(b));
+  }
+
+  cmd.updateFrame = updateFrame;
 
   var OPERATION = 'update-label';
 
@@ -54275,67 +55563,6 @@ ${svg}
       return points;
     }
 
-  }
-
-  function DatasetEditor(dataset) {
-    var layers = [];
-    var arcs = [];
-
-    this.done = function() {
-      dataset.layers = layers;
-      if (arcs.length) {
-        noteDatasetWillChange(dataset, {operation: 'DatasetEditor.done', unit: 'arcs'});
-        dataset.arcs = new ArcCollection(arcs);
-        markDatasetChanged(dataset, {operation: 'DatasetEditor.done', unit: 'arcs'});
-        withActiveUndoTransaction(null, function() {
-          buildTopology(dataset);
-        });
-      }
-    };
-
-    this.editLayer = function(lyr, cb) {
-      var type = lyr.geometry_type;
-      if (dataset.layers.indexOf(lyr) != layers.length) {
-        error('Layer was edited out-of-order');
-      }
-      if (!type) {
-        layers.push(lyr);
-        return;
-      }
-      var shapes = lyr.shapes.map(function(shape, shpId) {
-        var shape2 = [], retn, input;
-        for (var i=0, n=shape ? shape.length : 0; i<n; i++) {
-          input = type == 'point' ? shape[i] : idsToCoords(shape[i]);
-          retn = cb(input, i, shape);
-          if (!Array.isArray(retn)) continue;
-          if (type == 'point') {
-            shape2.push(retn);
-          } else if (type == 'polygon' || type == 'polyline') {
-            extendPathShape(shape2, retn || []);
-          }
-        }
-        return shape2.length > 0 ? shape2 : null;
-      });
-      noteLayerWillChange(lyr, {operation: 'DatasetEditor.editLayer', unit: 'shapes'});
-      layers.push(Object.assign(lyr, {shapes: shapes}));
-      markLayerChanged(lyr, {operation: 'DatasetEditor.editLayer', unit: 'shapes'});
-    };
-
-    function extendPathShape(shape, parts) {
-      for (var i=0; i<parts.length; i++) {
-        shape.push([arcs.length]);
-        arcs.push(parts[i]);
-      }
-    }
-
-    function idsToCoords(ids) {
-      var coords = [];
-      var iter = dataset.arcs.getShapeIter(ids);
-      while (iter.hasNext()) {
-        coords.push([iter.x, iter.y]);
-      }
-      return coords;
-    }
   }
 
   function makePolylineBuffer(lyr, dataset, opts) {
@@ -61687,420 +62914,6 @@ ${svg}
     return coords;
   }
 
-  // Returns number of arcs that were removed
-  function editArcs(arcs, onPoint) {
-    var nn2 = [],
-        xx2 = [],
-        yy2 = [],
-        errors = 0,
-        n;
-
-    arcs.forEach(function(arc, i) {
-      editArc(arc, onPoint);
-    });
-    arcs.updateVertexData(nn2, xx2, yy2);
-    return errors;
-
-    function append(p) {
-      if (p) {
-        xx2.push(p[0]);
-        yy2.push(p[1]);
-        n++;
-      }
-    }
-
-    function editArc(arc, cb) {
-      var x, y, xp, yp, retn;
-      var valid = true;
-      var i = 0;
-      n = 0;
-      while (arc.hasNext()) {
-        x = arc.x;
-        y = arc.y;
-        retn = cb(append, x, y, xp, yp, i++);
-        if (retn === false) {
-          valid = false;
-          // assumes that it's ok for the arc iterator to be interrupted.
-          break;
-        }
-        xp = x;
-        yp = y;
-      }
-      if (valid && n == 1) {
-        // only one valid point was added to this arc (invalid)
-        // e.g. this could happen during reprojection.
-        // making this arc empty
-        // error("An invalid arc was created");
-        message("An invalid arc was created");
-        valid = false;
-      }
-      if (valid) {
-        nn2.push(n);
-      } else {
-        // remove any points that were added for an invalid arc
-        while (n-- > 0) {
-          xx2.pop();
-          yy2.pop();
-        }
-        nn2.push(0); // add empty arc (to preserve mapping from paths to arcs)
-        errors++;
-      }
-    }
-  }
-
-  // Planar densification by an interval
-  function densifyPathByInterval(coords, interval, interpolate) {
-    if (findMaxPathInterval(coords) < interval) return coords;
-    if (!interpolate) {
-      interpolate = getIntervalInterpolator(interval);
-    }
-    var coords2 = [coords[0]], a, b;
-    for (var i=1, n=coords.length; i<n; i++) {
-      a = coords[i-1];
-      b = coords[i];
-      if (geom.distance2D(a[0], a[1], b[0], b[1]) > interval + 1e-4) {
-        appendArr(coords2, interpolate(a, b));
-      }
-      coords2.push(b);
-    }
-    return coords2;
-  }
-
-  function getIntervalInterpolator(interval) {
-    return function(a, b) {
-      var points = [];
-      // var rev = a[0] == b[0] ? a[1] > b[1] : a[0] > b[0];
-      var dist = geom.distance2D(a[0], a[1], b[0], b[1]);
-      var n = Math.round(dist / interval) - 1;
-      var dx = (b[0] - a[0]) / (n + 1),
-          dy = (b[1] - a[1]) / (n + 1);
-      for (var i=1; i<=n; i++) {
-        points.push([a[0] + dx * i, a[1] + dy * i]);
-      }
-      return points;
-    };
-  }
-
-
-  // Interpolate the same points regardless of segment direction
-  function densifyAntimeridianSegment(a, b, interval) {
-    var y1, y2;
-    var coords = [];
-    var ascending = a[1] < b[1];
-    if (a[0] != b[0]) error('Expected an edge segment');
-    if (ascending) {
-      y1 = a[1];
-      y2 = b[1];
-    } else {
-      y1 = b[1];
-      y2 = a[1];
-    }
-    var y = Math.floor(y1 / interval) * interval + interval;
-    while (y < y2) {
-      coords.push([a[0], y]);
-      y += interval;
-    }
-    if (!ascending) coords.reverse();
-    return coords;
-  }
-
-  function appendArr(dest, src) {
-    for (var i=0; i<src.length; i++) dest.push(src[i]);
-  }
-
-  function findMaxPathInterval(coords) {
-    var maxSq = 0, intSq, a, b;
-    for (var i=1, n=coords.length; i<n; i++) {
-      a = coords[i-1];
-      b = coords[i];
-      intSq = geom.distanceSq(a[0], a[1], b[0], b[1]);
-      if (intSq > maxSq) maxSq = intSq;
-    }
-    return Math.sqrt(maxSq);
-  }
-
-  function projectAndDensifyArcs(arcs, proj) {
-    var interval = getDefaultDensifyInterval(arcs, proj);
-    var minIntervalSq = interval * interval * 25;
-    var p;
-    return editArcs(arcs, onPoint);
-
-    function onPoint(append, lng, lat, prevLng, prevLat, i) {
-      var pp = p;
-      p = proj(lng, lat);
-      if (!p) return false; // signal that current arc contains an error
-
-      // Don't try to densify shorter segments (optimization)
-      if (i > 0 && geom.distanceSq(p[0], p[1], pp[0], pp[1]) > minIntervalSq) {
-        densifySegment(prevLng, prevLat,  pp[0],  pp[1], lng, lat, p[0], p[1], proj, interval)
-          .forEach(append);
-      }
-      append(p);
-    }
-  }
-
-  // Use the median of intervals computed by projecting segments.
-  // We're probing a number of points, because @proj might only be valid in
-  // a sub-region of the dataset bbox (e.g. +proj=tpers)
-  function findDensifyInterval(bounds, xy, proj) {
-    var steps = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
-    var points = [];
-    for (var i=0; i<steps.length; i++) {
-      for (var j=0; j<steps.length; j++) {
-        points.push([steps[i], steps[j]]);
-      }
-    }
-    var intervals = points.map(function(pos) {
-      var x = bounds.xmin + bounds.width() * pos[0];
-      var y = bounds.ymin + bounds.height() * pos[1];
-      var a = proj(x, y);
-      var b = proj(x + xy[0], y + xy[1]);
-      return a && b ? geom.distance2D(a[0], a[1], b[0], b[1]) : Infinity;
-    }).filter(function(int) {return int < Infinity;});
-    return intervals.length > 0 ? utils.findMedian(intervals) : Infinity;
-  }
-
-  // Kludgy way to get a useful interval for densifying a bounding box.
-  // Uses a fraction of average bbox side length)
-  // TODO: improve
-  function findDensifyInterval2(bb, proj) {
-    var a = proj(bb.centerX(), bb.centerY()),
-        c = proj(bb.centerX(), bb.ymin), // right center
-        d = proj(bb.xmax, bb.centerY()); // bottom center
-    var interval = a && c && d ? (geom.distance2D(a[0], a[1], c[0], c[1]) +
-          geom.distance2D(a[0], a[1], d[0], d[1])) / 5000 : Infinity;
-    return interval;
-  }
-
-  // Returns an interval in projected units
-  function getDefaultDensifyInterval(arcs, proj) {
-    var xy = getAvgSegment2(arcs),
-        bb = arcs.getBounds(),
-        intervalA = findDensifyInterval(bb, xy, proj),
-        intervalB = findDensifyInterval2(bb, proj),
-        interval = Math.min(intervalA, intervalB);
-    if (interval == Infinity) {
-      error('Densification error');
-    }
-    return interval;
-  }
-
-  // Interpolate points into a projected line segment if needed to prevent large
-  //   deviations from path of original unprojected segment.
-  // @points (optional) array of accumulated points
-  function densifySegment(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj, interval, points) {
-    // Find midpoint between two endpoints and project it (assumes longitude does
-    // not wrap). TODO Consider bisecting along great circle path -- although this
-    // would not be good for boundaries that follow line of constant latitude.
-    var lng1 = (lng0 + lng2) / 2,
-        lat1 = (lat0 + lat2) / 2,
-        p = proj(lng1, lat1),
-        distSq;
-    if (!p) return; // TODO: consider if this is adequate for handling proj. errors
-    distSq = geom.pointSegDistSq2(p[0], p[1], x0, y0, x2, y2); // sq displacement
-    points = points || [];
-    // Bisect current segment if the projected midpoint deviates from original
-    //   segment by more than the @interval parameter.
-    //   ... but don't bisect very small segments to prevent infinite recursion
-    //   (e.g. if projection function is discontinuous)
-    if (distSq > interval * interval * 0.25 && geom.distance2D(lng0, lat0, lng2, lat2) > 0.01) {
-      densifySegment(lng0, lat0, x0, y0, lng1, lat1, p[0], p[1], proj, interval, points);
-      points.push(p);
-      densifySegment(lng1, lat1, p[0], p[1], lng2, lat2, x2, y2, proj, interval, points);
-    }
-    return points;
-  }
-
-  // Create rectangles around each feature in a layer
-  cmd.rectangles = function(targetLyr, targetDataset, opts) {
-    var crsInfo = getDatasetCrsInfo(targetDataset);
-    var records = targetLyr.data ? targetLyr.data.getRecords() : null;
-    var geometries;
-
-    if (opts.bbox) {
-      geometries = bboxExpressionToGeometries(opts.bbox, targetLyr, targetDataset);
-
-    } else {
-      if (!layerHasGeometry$1(targetLyr)) {
-        stop$1("Layer is missing geometric shapes");
-      }
-      geometries = shapesToBoxGeometries(targetLyr, targetDataset, opts);
-    }
-
-    var geojson = {
-      type: 'FeatureCollection',
-      features: geometries.map(function(geom, i) {
-        var rec = records && records[i] || null;
-        if (rec && opts.no_replace) {
-          rec = utils.extend({}, rec); // make a copy
-        }
-        return {
-          type: 'Feature',
-          properties: rec,
-          geometry: geom
-        };
-      })
-    };
-    var dataset = importGeoJSON(geojson, {});
-    setDatasetCrsInfo(dataset, crsInfo);
-    var outputLayers = mergeDatasetsIntoDataset(targetDataset, [dataset]);
-    setOutputLayerName(outputLayers[0], targetLyr, null, opts);
-    return outputLayers;
-  };
-
-
-
-
-  function shapesToBoxGeometries(lyr, dataset, opts) {
-    var crsInfo = getDatasetCrsInfo(dataset);
-    return lyr.shapes.map(function(shp) {
-      var bounds = lyr.geometry_type == 'point' ?
-        getPointFeatureBounds(shp) : dataset.arcs.getMultiShapeBounds(shp);
-      bounds = applyRectangleOptions(bounds, crsInfo.crs, opts);
-      if (!bounds) return null;
-      return bboxToPolygon(bounds.toArray(), opts);
-    });
-  }
-
-  function bboxExpressionToGeometries(exp, lyr, dataset, opts) {
-    var compiled = compileFeatureExpression(exp, lyr, dataset.arcs, {});
-    var n = getFeatureCount(lyr);
-    var result;
-    var geometries = [];
-    for (var i=0; i<n; i++) {
-      result = compiled(i);
-      if (!looksLikeBbox(result)) {
-        stop$1('Invalid bbox value (expected a GeoJSON-type bbox):', result);
-      }
-      geometries.push(bboxToPolygon(result));
-    }
-    return geometries;
-  }
-
-  function looksLikeBbox(o) {
-    if (!o || o.length != 4) return false;
-    if (o.some(isNaN)) return false;
-    if (o[0] <= o[2] == false || o[1] <= o[3] == false) return false;
-    return true;
-  }
-
-  // Create rectangles around one or more target layers
-  //
-  cmd.rectangle2 = function(target, opts) {
-    // if target layer is a rectangle and we're applying frame properties,
-    // turn the target into a frame instead of creating a new rectangle
-    if (target.layers.length == 1 && opts.width &&
-      layerIsRectangle(target.layers[0], target.dataset.arcs)) {
-      applyFrameProperties(target.layers[0], opts);
-      return;
-    }
-    var datasets = target.layers.map(function(lyr) {
-      var dataset = cmd.rectangle({layer: lyr, dataset: target.dataset}, opts);
-      setOutputLayerName(dataset.layers[0], lyr, null, opts);
-      if (!opts.no_replace) {
-        dataset.layers[0].name = lyr.name || dataset.layers[0].name;
-      }
-      return dataset;
-    });
-    return mergeDatasetsIntoDataset(target.dataset, datasets);
-  };
-
-  cmd.rectangle = function(target, opts) {
-    var bounds, crsInfo;
-    if (opts.bbox) {
-      bounds = new Bounds(opts.bbox);
-      crsInfo = target && getDatasetCrsInfo(target.dataset) ||
-        probablyDecimalDegreeBounds(bounds) && getCrsInfo('wgs84') || {};
-    } else if (target) {
-      bounds = getLayerBounds(target.layer, target.dataset.arcs);
-      crsInfo = getDatasetCrsInfo(target.dataset);
-    }
-    bounds = bounds && applyRectangleOptions(bounds, crsInfo.crs, opts);
-    if (!bounds || !bounds.hasBounds()) {
-      stop$1('Missing rectangle extent');
-    }
-    var feature = {
-      type: 'Feature',
-      properties: {},
-      geometry: bboxToPolygon(bounds.toArray(), opts)
-    };
-    var dataset = importGeoJSON(feature, {});
-    applyFrameProperties(dataset.layers[0], opts);
-    dataset.layers[0].name = opts.name || 'rectangle';
-    setDatasetCrsInfo(dataset, crsInfo);
-    return dataset;
-  };
-
-  function applyFrameProperties(lyr, opts) {
-    if (!opts.width) return;
-    if (!lyr.data) initDataTable(lyr);
-    var d = lyr.data.getRecords()[0] || {};
-    d.width = parseSizeParam(opts.width);
-    d.type = 'frame';
-  }
-
-  function applyRectangleOptions(bounds, crs, opts) {
-    var isGeoBox = probablyDecimalDegreeBounds(bounds);
-    if (opts.offset) {
-      bounds = applyBoundsOffset(opts.offset, bounds, crs);
-    }
-    if (bounds.area() > 0 === false) return null;
-    if (opts.aspect_ratio) {
-      bounds = applyAspectRatio(opts.aspect_ratio, bounds);
-    }
-    if (isGeoBox) {
-      bounds = clampToWorldBounds(bounds);
-    }
-    return bounds;
-  }
-
-  // opt: aspect ratio as a single number or a range (e.g. "1,2");
-  function applyAspectRatio(opt, bounds) {
-    var range = String(opt).split(',').map(parseFloat),
-      aspectRatio = bounds.width() / bounds.height(),
-      min, max; // min is height limit, max is width limit
-    if (range.length == 1) {
-      range.push(range[0]);
-    } else if (range[0] > range[1]) {
-      range.reverse();
-    }
-    min = range[0];
-    max = range[1];
-    if (!min && !max) return bounds;
-    if (!min) min = -Infinity;
-    if (!max) max = Infinity;
-    if (aspectRatio < min) {
-      bounds.fillOut(min);
-    } else if (aspectRatio > max) {
-      bounds.fillOut(max);
-    }
-    return bounds;
-  }
-
-  function applyBoundsOffset(offsetOpt, bounds, crs) {
-    var offsets = convertFourSides(offsetOpt, crs, bounds);
-    bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
-    return bounds;
-  }
-
-  function bboxToPolygon(bbox, optsArg) {
-    var opts = optsArg || {};
-    var coords = bboxToCoords(bbox);
-    if (opts.interval > 0) {
-      coords = densifyPathByInterval(coords, opts.interval);
-    }
-    return {
-      type: 'Polygon',
-      coordinates: [coords]
-    };
-  }
-
-  var Rectangle = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    applyAspectRatio: applyAspectRatio,
-    bboxToPolygon: bboxToPolygon
-  });
-
   function getSemiMinorAxis(P) {
     return P.a * Math.sqrt(1 - (P.es || 0));
   }
@@ -63342,6 +64155,22 @@ ${svg}
   // TODO: add more projections
   //
   function expandProjDefn(str, dataset, targetLayers) {
+    return expandProjDefnWithBounds(str, function() {
+      return getBBox(dataset, targetLayers); // TODO: support projected datasets
+    });
+  }
+
+  // Variant for a command with more than one target dataset. Auto-fitted
+  // parameters describe the combined extent of the targets, so that a single
+  // -proj command produces one destination CRS instead of fitting a different
+  // projection to each dataset it happens to visit.
+  function expandProjDefnForTargets(str, targets) {
+    return expandProjDefnWithBounds(str, function() {
+      return getTargetsBBox(targets);
+    });
+  }
+
+  function expandProjDefnWithBounds(str, getTargetBBox) {
     var mproj = require$1('mproj');
     var proj4, params, bbox, isConic2SP, isCentered, isUtm, decimals;
     if (str in mproj.internal.pj_list === false) {
@@ -63353,7 +64182,7 @@ ${svg}
     isUtm = str == 'utm';
     proj4 = '+proj=' + str;
     if (isConic2SP || isCentered || isUtm) {
-      bbox = getBBox(dataset, targetLayers); // TODO: support projected datasets
+      bbox = getTargetBBox();
       decimals = getBoundsPrecisionForDisplay(bbox);
       if (isUtm) {
         params = getUtmParams(bbox);
@@ -63364,6 +64193,17 @@ ${svg}
       message(`Converted "${str}" to "${proj4}"`);
     }
     return proj4;
+  }
+
+  function getTargetsBBox(targets) {
+    var bounds = new Bounds();
+    targets.forEach(function(targ) {
+      bounds.mergeBounds(getBBox(targ.dataset, targ.layers));
+    });
+    if (!bounds.hasBounds()) {
+      stop$1('Command target is missing geographical bounds');
+    }
+    return bounds.toArray();
   }
 
   function getBBox(dataset, targetLayers) {
@@ -63475,6 +64315,7 @@ ${svg}
   var ProjectionParams = /*#__PURE__*/Object.freeze({
     __proto__: null,
     expandProjDefn: expandProjDefn,
+    expandProjDefnForTargets: expandProjDefnForTargets,
     getAutoFitBBox: getAutoFitBBox,
     getCenterParams: getCenterParams,
     getConicParams: getConicParams,
@@ -64936,32 +65777,112 @@ ${svg}
     return a && b && a[0] == b[0] && a[1] == b[1];
   }
 
-  cmd.proj = function(dataset, catalog, opts, targetLayers) {
-    var srcInfo, destInfo, destStr;
+  // Run -proj over all the targets of a single command.
+  // The destination CRS is resolved once here rather than separately for each
+  // target, for two reasons. Auto-fitted parameters (e.g. the standard parallels
+  // that "lcc" expands to) must describe the whole command target, not whichever
+  // dataset happens to be projected first. And the map frame must receive the
+  // same CRS as the content instead of re-deriving parameters from its own extent.
+  cmd.projTargets = function(targets, catalog, opts) {
+    var destInfo;
+    targets.forEach(function(targ) {
+      applyProjInit(targ.dataset, catalog, opts);
+    });
+    destInfo = resolveProjDestInfo(targets, catalog, opts);
+    targets.forEach(function(targ) {
+      projectTarget(targ.dataset, opts, targ.layers, destInfo);
+    });
+    if (destInfo && destInfo.crs) {
+      projectMapFrame(targets, catalog, opts, destInfo);
+      warnAboutUnprojectedLayers(catalog, destInfo);
+    }
+  };
+
+  cmd.proj = function(dataset, catalog, opts, targetLayers, destInfo) {
+    applyProjInit(dataset, catalog, opts);
+    if (!destInfo) {
+      destInfo = resolveProjDestInfo([{dataset: dataset, layers: targetLayers}], catalog, opts);
+    }
+    projectTarget(dataset, opts, targetLayers, destInfo);
+  };
+
+  function projectTarget(dataset, opts, targetLayers, destInfo) {
     var implicitlyProjectedNames = getImplicitlyTargetedLayerNames(dataset, targetLayers, layerHasGeometry$1);
     // A preserved GeoJSON "crs" member becomes invalid once the CRS changes.
     deleteGeoJSONMetadataCRS(dataset);
-    if (opts.init) {
-      srcInfo = fetchCrsInfo(opts.init, catalog);
-      if (!srcInfo.crs) stop$1("Unknown projection source:", opts.init);
-      setDatasetCrsInfo(dataset, srcInfo);
+    if (!destInfo) return;
+    var didProject = projCmd(dataset, destInfo, opts);
+    if (didProject && implicitlyProjectedNames.length > 0) {
+      message(
+        'Also projected non-target layer' + utils.pluralSuffix(implicitlyProjectedNames.length) +
+        ' from the same dataset: ' + implicitlyProjectedNames.join(', ')
+      );
     }
+  }
+
+  function applyProjInit(dataset, catalog, opts) {
+    if (!opts.init) return;
+    var srcInfo = fetchCrsInfo(opts.init, catalog);
+    if (!srcInfo.crs) stop$1("Unknown projection source:", opts.init);
+    setDatasetCrsInfo(dataset, srcInfo);
+  }
+
+  // @targets [{dataset, layers}, ...] -- all the targets of one -proj command
+  function resolveProjDestInfo(targets, catalog, opts) {
     if (opts.match) {
-      destInfo = fetchCrsInfo(opts.match, catalog);
-    } else if (opts.crs) {
-      destStr = expandProjDefn(opts.crs, dataset, targetLayers);
-      destInfo = getCrsInfo(destStr);
+      return fetchCrsInfo(opts.match, catalog);
     }
-    if (destInfo) {
-      var didProject = projCmd(dataset, destInfo, opts);
-      if (didProject && implicitlyProjectedNames.length > 0) {
-        message(
-          'Also projected non-target layer' + utils.pluralSuffix(implicitlyProjectedNames.length) +
-          ' from the same dataset: ' + implicitlyProjectedNames.join(', ')
-        );
+    if (!opts.crs) return null;
+    return getCrsInfo(expandProjDefnForTargets(opts.crs, targets));
+  }
+
+  // A map frame is composition state, not content: its rectangle describes a
+  // region of the map's coordinate space, so it has to follow the map's CRS even
+  // when the command targeted only a data layer. The GUI deliberately keeps the
+  // frame out of default targets, so nothing else reaches it.
+  function projectMapFrame(targets, catalog, opts, destInfo) {
+    var frame = catalog ? getActiveFrame(catalog) : null;
+    var frameOpts = opts;
+    var frameCrs;
+    if (!frame) return;
+    if (targets.some(function(targ) { return targ.dataset == frame.dataset; })) {
+      return; // already projected as an ordinary target
+    }
+    frameCrs = getDatasetCrsInfo(frame.dataset).crs;
+    if (frameCrs && crsAreEqual(frameCrs, destInfo.crs)) {
+      return; // already in the destination CRS; say nothing
+    }
+    if (!frameCrs) {
+      warn('Unable to reproject the map frame: its coordinate system is unknown.');
+      return;
+    }
+    if (opts.init) {
+      // init= describes the CRS of the targeted data, not the frame's.
+      frameOpts = Object.assign({}, opts);
+      delete frameOpts.init;
+    }
+    cmd.proj(frame.dataset, catalog, frameOpts, frame.dataset.layers, destInfo);
+    message('Also reprojected the map frame.');
+  }
+
+  // -proj only applies to the command's targets, so layers in other datasets are
+  // left behind in the old CRS. That usually surfaces much later as a blank
+  // export or an "unable to combine" error, so name them while the cause is clear.
+  function warnAboutUnprojectedLayers(catalog, destInfo) {
+    var names = [];
+    if (!catalog) return;
+    catalog.getLayers().forEach(function(o) {
+      var crs;
+      if (!layerHasGeometry$1(o.layer) && !layerHasRaster(o.layer)) return;
+      crs = getDatasetCrsInfo(o.dataset).crs;
+      if (crs && !crsAreEqual(crs, destInfo.crs)) {
+        names.push(o.layer.name || '[unnamed]');
       }
-    }
-  };
+    });
+    if (names.length === 0) return;
+    warn(`Layer${utils.pluralSuffix(names.length)} not projected by this command: ` +
+      names.join(', ') + '. Use target=* to project all layers.');
+  }
 
   function projCmd(dataset, destInfo, opts) {
     // modify copy of coordinate data when running in web UI, so original shapes
@@ -65082,6 +66003,7 @@ ${svg}
       stop$1('Unable to project from a coordinate system that has no inverse transform');
     }
     var proj = getProjTransform2(src, dest); // v2 returns null points instead of throwing an error
+    var frameSnapshots = getFrameProjectionSnapshots(dataset);
     var badArcs = 0;
     var badPoints = 0;
     var healAntimeridian = isLatLngCRS(src) &&
@@ -65114,6 +66036,10 @@ ${svg}
       // (probably only needed when clipped area crosses the antimeridian or includes a pole)
       cleanProjectedPathLayers(dataset, {heal_antimeridian: healAntimeridian});
     }
+
+    frameSnapshots.forEach(function(snapshot) {
+      rebuildProjectedFrameLayer(snapshot, dataset, proj, isLatLngCRS(src));
+    });
 
     if (badArcs > 0 && !opts.quiet) {
       message(`Removed ${badArcs} ${badArcs == 1 ? 'path' : 'paths'} containing unprojectable vertices.`);
@@ -73064,185 +73990,6 @@ ${svg}
     return parsed[0];
   }
 
-  cmd.frame = function(catalog, targets, opts) {
-    var widthPx, heightPx, aspectRatio, bbox;
-    if (opts.width) {
-      widthPx = parseSizeParam(opts.width);
-      if (widthPx > 0 === false) {
-        stop$1('Invalid width parameter:', opts.width);
-      }
-    }
-    if (opts.height) {
-      heightPx = parseSizeParam(opts.height);
-      if (heightPx > 0 === false) {
-        stop$1('Invalid height parameter:', opts.height);
-      }
-    }
-    if (!widthPx && !heightPx) {
-      widthPx = 800;
-      message('Using default 800px frame width');
-    }
-
-    if (opts.aspect_ratio) {
-      if (opts.aspect_ratio > 0 === false) {
-        stop$1('Invalid aspect-ratio parameter:', opts.aspect_ratio);
-      }
-      if (!heightPx) {
-        heightPx = roundToDigits(widthPx / opts.aspect_ratio, 1);
-      } else if (!widthPx) {
-        widthPx = roundToDigits(heightPx * opts.aspect_ratio, 1);
-      }
-    }
-
-    if (opts.bbox) {
-      bbox = opts.bbox;
-      // TODO: validate
-    } else {
-      var datasets = utils.pluck(targets, 'dataset');
-      requireDatasetsHaveCompatibleCRS(datasets, 'Targets include both projected and unprojected coordinates');
-      bbox = getTargetBbox(targets);
-      if (!bbox) {
-        stop$1('Command target is missing geographical bounds');
-      }
-    }
-
-    applyPercentageOffsets(bbox, opts.offset || opts.offsets);
-    applyPixelOffsets(bbox, widthPx, heightPx, opts.offset || opts.offsets);
-
-    if (bbox[3] - bbox[1] > 0 === false || bbox[2] - bbox[0] > 0 === false) {
-      stop$1('Frame has a collapsed bbox');
-    }
-
-    aspectRatio = (bbox[2] - bbox[0]) / (bbox[3] - bbox[1]);
-    if (!widthPx) {
-      widthPx = roundToDigits(heightPx * aspectRatio, 1);
-    } else if (!heightPx) {
-      heightPx = roundToDigits(widthPx / aspectRatio, 1);
-    }
-
-    var feature = {
-      type: 'Feature',
-      properties: {type: 'frame', width: widthPx, height: heightPx},
-      geometry: bboxToPolygon(bbox)
-    };
-    var frameDataset = importGeoJSON(feature);
-    // set CRS from target dataset
-    // TODO: handle case: targets have different projections
-    // TODO: handle case: first target is missing CRS
-    if (targets.length > 0) {
-      var crsInfo = getDatasetCrsInfo(targets[0].dataset);
-      setDatasetCrsInfo(frameDataset, crsInfo);
-    }
-    frameDataset.layers[0].name = opts.name || 'frame';
-    catalog.addDataset(frameDataset);
-  };
-
-  function fillOutBbox(bbox, widthPx, heightPx) {
-    var hpad = 0, vpad = 0;
-    var w = bbox[2] - bbox[0];
-    var h = bbox[3] - bbox[1];
-    if (widthPx / heightPx > w / h) { // need to add horizontal padding
-      hpad = h * widthPx / heightPx - w;
-    } else {
-      vpad = w * heightPx / widthPx - h;
-    }
-    bbox[0] -= hpad / 2;
-    bbox[1] -= vpad / 2;
-    bbox[2] += hpad / 2;
-    bbox[3] += vpad / 2;
-  }
-
-  function applyPercentageOffsets(bbox, arg) {
-    var sides = getPctOffsets(arg);
-    var l = sides[0],
-      b = sides[1],
-      r = sides[2],
-      t = sides[3],
-      w2 = (bbox[2] - bbox[0]) / (1 - l - r),
-      h2 = (bbox[3] - bbox[1]) / (1 - t - b);
-    bbox[0] -= l * w2;
-    bbox[1] -= b * h2;
-    bbox[2] += r * w2;
-    bbox[3] += t * h2;
-  }
-
-  function applyPixelOffsets(bbox, widthPx, heightPx, arg) {
-    var sides = getPixelOffsets(arg);
-    var l = sides[0],
-      b = sides[1],
-      r = sides[2],
-      t = sides[3],
-      scale, w;
-
-    if (widthPx && heightPx) {
-      // add padding to bbox to match pixel dimensions, if needed
-      fillOutBbox(bbox, widthPx, heightPx);
-    }
-
-    w = bbox[2] - bbox[0];
-    bbox[3] - bbox[1];
-
-    if (widthPx) {
-      scale = w / (widthPx - l - r);
-    } else {
-      scale = w / (heightPx - t - b);
-    }
-
-    bbox[0] -= scale * l;
-    bbox[1] -= scale * b;
-    bbox[2] += scale * r;
-    bbox[3] += scale * t;
-    return scale;
-  }
-
-  function getPctOffsets(arg) {
-    return adjustOffsetsArg(arg).map(str => {
-      return str.includes('%') ? parsePercent(str) : 0;
-    });
-  }
-
-  function getPixelOffsets(arg) {
-    return adjustOffsetsArg(arg).map(str => {
-      return str.includes('%') ? 0 : parseSizeParam(str);
-    });
-  }
-
-  function adjustOffsetsArg(arg) {
-    if (!arg) arg = ['0'];
-    if (arg.length == 1) {
-      return [arg[0], arg[0], arg[0], arg[0]];
-    }
-    if (arg.length != 4) {
-      stop$1('List of offsets should have 4 values');
-    }
-    return arg;
-  }
-
-  function getTargetBbox(targets) {
-    var expanded = expandCommandTargets(targets);
-    var bounds = expanded.reduce(function(memo, o) {
-      return memo.mergeBounds(getLayerBounds(o.layer, o.dataset.arcs));
-    }, new Bounds());
-    return bounds.hasBounds() ? bounds.toArray() : null;
-  }
-
-  // Convert width and height args to aspect ratio arg for the rectangle() function
-  function getAspectRatioArg(widthArg, heightArg) {
-    // heightArg is a string containing either a number or a
-    // comma-sep. pair of numbers (range);
-    return heightArg.split(',').map(function(opt) {
-      var height = Number(opt),
-          width = Number(widthArg);
-      if (!opt) return '';
-      return width / height;
-    }).reverse().join(',');
-  }
-
-  var Frame = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    getAspectRatioArg: getAspectRatioArg
-  });
-
   // Remove intricate sub-scale detail from a single arc so that -smooth has a
   // clean line to work with, WITHOUT thinning the rest of the line: smooth makes a
   // better approximation of the original when it has more detail to work with, so
@@ -78009,7 +78756,7 @@ ${svg}
     if (lyr) return getFrameLayerData(lyr, dataset.arcs);
     // -frame adds the frame it creates to the catalog as a separate dataset, so a
     // catalog-wide search is needed to find it (-scalebar does the same).
-    target = catalog ? findFrame(catalog) : null;
+    target = catalog ? getActiveFrame(catalog) : null;
     return target ? getFrameLayerData(target.layer, target.dataset.arcs) : null;
   }
 
@@ -81404,6 +82151,9 @@ ${svg}
         job.catalog.captureCatalogBefore({operation: 'addLayer'});
         job.catalog.addDataset(cmd.addLayer(targetDataset, opts));
 
+      } else if (name == 'update-frame') {
+        cmd.updateFrame(targetLayers, targetDataset, opts);
+
       } else if (name == 'update-label') {
         cmd.updateLabel(targetLayers, targetDataset, opts);
 
@@ -81625,9 +82375,7 @@ ${svg}
       } else if (name == 'proj') {
         await initProjLibrary(opts);
         job.resumeCommand();
-        targets.forEach(function(targ) {
-          cmd.proj(targ.dataset, job.catalog, opts, targ.layers);
-        });
+        cmd.projTargets(targets, job.catalog, opts);
 
       } else if (name == 'rectangle') {
         if (source || opts.bbox || targets.length === 0) {
@@ -81733,7 +82481,15 @@ ${svg}
       }
 
       if (outputDataset) {
-        job.catalog.addDataset(outputDataset); // also sets default target
+        var removedLayers = targetLayers && !opts.no_replace ? targetLayers : [];
+        assertSingleFrameUpdate(
+          job.catalog,
+          outputDataset.layers.map(function(lyr) {
+            return {layer: lyr, dataset: outputDataset};
+          }),
+          removedLayers
+        );
+        job.catalog.addDataset(outputDataset, {removeLayers: removedLayers}); // also sets default target
         outputLayers = outputDataset.layers;
         if (targetLayers && !opts.no_replace) {
           // remove target layers from target dataset
@@ -81743,6 +82499,13 @@ ${svg}
         }
       } else if (outputLayers && targetDataset && outputLayers != targetDataset.layers) {
         // integrate output layers into the target dataset
+        assertSingleFrameUpdate(
+          job.catalog,
+          outputLayers.map(function(lyr) {
+            return {layer: lyr, dataset: targetDataset};
+          }),
+          opts.no_replace ? [] : targetLayers
+        );
         if (opts.no_replace) {
           // make sure commands do not return input layers with 'no_replace' option
           if (!outputLayersAreDifferent(outputLayers, targetLayers || [])) {
@@ -81955,7 +82718,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.62";
+  var version = "0.7.63";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -84639,6 +85402,7 @@ ${svg}
     FileTypes,
     FilterGeom,
     Frame,
+    FrameProjection,
     FrameUtils,
     Furniture,
     Geodesic,

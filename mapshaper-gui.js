@@ -1153,6 +1153,11 @@
     if (opts.max_width) {
       infoBox.node().style.maxWidth = opts.max_width;
     }
+    // For a popup that needs to style or unclip the box itself, not just its
+    // content -- the box scrolls its overflow, which would cut off a tooltip.
+    if (opts.classname) {
+      infoBox.addClass(opts.classname);
+    }
     var container = El('div').appendTo(infoBox);
     if (!title && warningRxp.test(msg)) {
       title = 'Warning';
@@ -3140,12 +3145,12 @@
     return decimals >= 0 ? num.toFixed(decimals) : String(num);
   }
 
-  function formatNumber(val) {
+  function formatNumber$2(val) {
     return val + '';
   }
 
   function formatIntlNumber(val) {
-    var str = formatNumber(val);
+    var str = formatNumber$2(val);
     return '"' + str.replace('.', ',') + '"'; // need to quote if comma-delimited
   }
 
@@ -3694,7 +3699,7 @@
     endsWith, every, expandoBuffer, extend, extendBuffer,
     find, findMedian, findQuantile, findRankByValue, findStringPrefix,
     findValueByPct, findValueByRank, forEach, forEachProperty, format,
-    formatDateISO, formatIntlNumber, formatNumber, formatNumberForDisplay,
+    formatDateISO, formatIntlNumber, formatNumber: formatNumber$2, formatNumberForDisplay,
     formatVersionedName, formatter,
     genericSort, getArrayBounds, getGenericComparator, getKeyComparator,
     getSortedIds, getUniqueName, groupBy,
@@ -8564,6 +8569,24 @@
     return copy;
   }
 
+  // Return the point transform used to calculate dynamic-display frame bounds.
+  // This mirrors the WGS84 pivot and Web Mercator latitude clamping used above.
+  function getDisplayProjectionTransform(src, dest) {
+    var wgs84 = internal.parseCrsString('wgs84');
+    var toWGS84 = internal.isWGS84(src) ? null :
+      internal.getProjTransform2(src, wgs84);
+    var fromWGS84 = internal.getProjTransform2(wgs84, dest);
+    var clampLat = internal.isWebMercator(dest);
+    return function(x, y) {
+      var p = toWGS84 ? toWGS84(x, y) : [x, y];
+      if (!p) return null;
+      if (clampLat) {
+        p = [p[0], Math.max(-89.9, Math.min(89.9, p[1]))];
+      }
+      return fromWGS84(p[0], p[1]);
+    };
+  }
+
   function clampY(arcs) {
     var max = 89.9,
         min = -89.9,
@@ -8758,10 +8781,21 @@
       if (internal.layerHasPoints(layer)) {
         gui.displayLayer = projectPointsForDisplay(layer, sourceCRS, displayCRS);
       } else if (internal.layerHasPaths(layer)) {
-        emptyArcs = findEmptyArcs(displayArcs);
-        if (emptyArcs.length > 0) {
-          // Don't try to draw paths containing coordinates that failed to project
-          gui.displayLayer = internal.filterPathLayerByArcIds(gui.displayLayer, emptyArcs);
+        if (internal.isFrameLayer(layer, dataset.arcs)) {
+          var projectedFrame = internal.getProjectedFrameDisplayLayer(
+            layer,
+            dataset.arcs,
+            getDisplayProjectionTransform(sourceCRS, displayCRS),
+            internal.isLatLngCRS(sourceCRS)
+          );
+          gui.displayLayer = projectedFrame.layer;
+          gui.displayArcs = projectedFrame.arcs;
+        } else {
+          emptyArcs = findEmptyArcs(displayArcs);
+          if (emptyArcs.length > 0) {
+            // Don't try to draw paths containing coordinates that failed to project
+            gui.displayLayer = internal.filterPathLayerByArcIds(gui.displayLayer, emptyArcs);
+          }
         }
       } else if (internal.layerHasRaster(layer)) {
         gui.bounds = getProjectedRasterDisplayBounds(layer, sourceCRS, displayCRS);
@@ -10678,6 +10712,8 @@
     var toggleBtn = null; // checkbox <input> for toggling layer selection
     var exportBtn = gui.container.findChild('.export-btn').addClass('disabled');
     var ofileName = gui.container.findChild('#ofile-name');
+    var frameInfo = menu.findChild('.export-frame-info').hide();
+    menu.findChild('.advanced-options').on('input', updateFrameInfo);
     new SimpleButton(menu.findChild('.close2-btn')).on('click', gui.clearMode);
 
     if (!GUI.exportIsSupported()) {
@@ -10746,6 +10782,7 @@
       formatPickedByUser = false;
       // initZipOption();
       initFormatMenu();
+      updateFrameInfo();
       updateExportCheckboxes();
       menu.show();
     }
@@ -10827,6 +10864,10 @@
         var snapshot = gui.session.getHistorySnapshot();
         snapshot.savedAtIndex = snapshot.commands.length;
         opts.history = snapshot;
+        targets = addFrameTarget(targets);
+      }
+      if (opts.format == 'svg' || opts.format == 'topojson') {
+        opts.gui_frame = getGuiFrameContext();
       }
       try {
         var files = await internal.exportTargetLayers(model, targets, opts);
@@ -10892,7 +10933,9 @@
 
     function initLayerMenu() {
       var list = menu.findChild('.export-layer-list').empty();
-      var layers = model.getLayers();
+      var layers = model.getLayers().filter(function(o) {
+        return !internal.isFrameLayer(o.layer, o.dataset.arcs);
+      });
       sortLayersForMenuDisplay(layers);
 
       if (layers.length > 2) {
@@ -11011,11 +11054,13 @@
       // changes afterwards.
       formatPickedByUser = true;
       updateExportCheckboxes();
+      updateFrameInfo();
     }
 
     function setSelectedFormat(fmt) {
       var el = menu.findChild('.export-formats input[value="' + fmt + '"]');
       if (el) el.node().checked = true;
+      updateFrameInfo();
     }
 
     // Which formats apply depends on what is checked for export, so unchecking
@@ -11057,6 +11102,62 @@
         if (o.checkbox.checked) memo.push(o.checkbox.value);
         return memo;
       }, []);
+    }
+
+    function getGuiFrameContext() {
+      var target = internal.getActiveFrame(model);
+      var rec, style;
+      if (!target) return null;
+      rec = target.layer.data.getReadOnlyRecordAt(0) || {};
+      style = {};
+      ['fill', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-opacity',
+        'stroke-linecap', 'stroke-linejoin', 'stroke-dasharray', 'opacity'
+      ].forEach(function(field) {
+        if (rec[field] !== undefined && rec[field] !== null && rec[field] !== '') {
+          style[field] = rec[field];
+        }
+      });
+      return {
+        data: internal.getFrameLayerData(
+          target.layer,
+          target.dataset.arcs,
+          internal.getDatasetCRS(target.dataset)
+        ),
+        name: target.layer.name || 'frame',
+        style: style
+      };
+    }
+
+    function addFrameTarget(targets) {
+      var frame = internal.getActiveFrame(model);
+      var group;
+      if (!frame) return targets;
+      targets = targets.map(function(target) {
+        return Object.assign({}, target, {layers: target.layers.slice()});
+      });
+      group = targets.find(function(target) {
+        return target.dataset == frame.dataset;
+      });
+      if (group) {
+        if (!group.layers.includes(frame.layer)) group.layers.push(frame.layer);
+      } else {
+        targets.push({dataset: frame.dataset, layers: [frame.layer]});
+      }
+      return targets;
+    }
+
+    function updateFrameInfo() {
+      if (!frameInfo) return;
+      var context = getGuiFrameContext();
+      var format = getSelectedFormat();
+      var topoUsesPixels = format == 'topojson' &&
+        /\b(?:width|height)\s*=/.test(getExportOptsAsString());
+      if (context && (format == 'svg' || topoUsesPixels)) {
+        frameInfo.text('Map frame: ' +
+          internal.formatFrameSizeForDisplay(context.data)).show();
+      } else {
+        frameInfo.hide();
+      }
     }
 
   };
@@ -11247,6 +11348,15 @@
       }
       openMenu$1 = this;
 
+      if (e.frameProperties) {
+        addMenuItem('frame properties', e.frameProperties, '');
+      }
+      if (e.resizeFrame) {
+        addMenuItem('resize frame', e.resizeFrame, '');
+      }
+      if (e.deleteFrame) {
+        addMenuItem('delete frame', e.deleteFrame, '');
+      }
       if (e.deleteLayer) {
        addMenuItem('delete layer', e.deleteLayer, '');
       }
@@ -11454,6 +11564,18 @@
     var isOpen = false;
     var cache = new DomCache();
     var pinAll = el.findChild('.pin-all'); // button for toggling layer visibility
+    var frameEmpty = el.findChild('.map-frame-empty')
+      .on('click', openFrameCreateDialog)
+      .on('keydown', function(e) {
+        if (e.key == 'Enter' || e.key == ' ') {
+          e.preventDefault();
+          openFrameCreateDialog();
+        }
+      });
+
+    function openFrameCreateDialog() {
+      if (gui.frameTool) gui.frameTool.openCreateDialog();
+    }
 
     // layer repositioning
     var dragTargetId = null;
@@ -11537,7 +11659,7 @@
     function testAllLayersPinned() {
       var allPinned = true;
       model.forEachLayer(function(lyr, dataset) {
-        if (isPinnable(lyr) && !lyr.pinned) {
+        if (isPinnable(lyr, dataset) && !lyr.pinned) {
           allPinned = false;
         }
       });
@@ -11620,10 +11742,14 @@
 
     function renderLayerList() {
       var list = el.findChild('.layer-list');
+      var frameSection = el.findChild('.map-frame-section');
+      var frameList = el.findChild('.map-frame-list');
       var uniqIds = {};
       var pinnableCount = 0;
       var layerCount = 0;
+      var frameCount = 0;
       list.empty();
+      frameList.empty();
       model.forEachLayer(function(lyr, dataset) {
         // Assign a unique id to each layer, so html strings
         // can be used as unique identifiers for caching rendered HTML, and as
@@ -11632,7 +11758,7 @@
           lyr.menu_id = utils$1.getUniqueName();
         }
         uniqIds[lyr.menu_id] = true;
-        if (isPinnable(lyr)) pinnableCount++;
+        if (isPinnable(lyr, dataset)) pinnableCount++;
         layerCount++;
       });
 
@@ -11645,9 +11771,10 @@
 
       sortLayersForMenuDisplay(model.getLayers()).forEach(function(o) {
         var lyr = o.layer;
+        var isFrame = internal.isFrameLayer(lyr, o.dataset.arcs);
         var opts = {
           show_source: layerCount < 5,
-          pinnable: pinnableCount > 0 && isPinnable(lyr)
+          pinnable: pinnableCount > 0 && isPinnable(lyr, o.dataset)
         };
         var html, element;
         html = renderLayer(lyr, o.dataset, opts);
@@ -11658,14 +11785,22 @@
           initMouseEvents(element, lyr.menu_id, opts.pinnable);
           cache.add(html, element);
         }
-        list.appendChild(element);
+        if (isFrame) {
+          frameList.appendChild(element);
+          frameCount++;
+        } else {
+          list.appendChild(element);
+        }
       });
+      frameSection.classed('hidden', layerCount === 0);
+      frameEmpty.classed('hidden', frameCount > 0);
     }
 
     cache.cleanup();
 
     function renderLayer(lyr, dataset, opts) {
       var classes = 'layer-item';
+      var isFrame = internal.isFrameLayer(lyr, dataset.arcs);
       var entry, html;
 
       if (opts.pinnable) classes += ' pinnable';
@@ -11675,7 +11810,7 @@
 
       html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
       html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + formatLayerNameForDisplay(lyr.name) + '</span>', 'row1');
-      html += rowHTML('contents', describeLyr(lyr, dataset));
+      html += rowHTML(isFrame ? 'size' : 'contents', describeLyr(lyr, dataset));
       html += '<span class="more-btn layer-btn" role="button" aria-label="More layer options"></span>';
       if (opts.pinnable) {
         html += '<img class="eye-btn black-eye layer-btn" draggable="false" src="images/eye.png">';
@@ -11794,7 +11929,18 @@
         if (!target) return;
         popup = showPopupAlert('', 'Layer info');
         content = popup.container().addClass('layer-info-popup');
-        content.node().appendChild(renderLayerInfo(internal.getLayerInfo(target.layer, target.dataset)));
+        content.node().appendChild(renderLayerInfo(
+          internal.getLayerInfo(target.layer, target.dataset)
+        ));
+      }
+
+      function openFrameProperties() {
+        var target = findLayerById(id);
+        if (target && gui.frameProperties) gui.frameProperties.open(target);
+      }
+
+      function resizeFrame() {
+        if (gui.frameTool) gui.frameTool.open();
       }
 
       function styleLayer() {
@@ -11827,10 +11973,18 @@
             pageY: rect.top + rect.height / 2
           };
         }
-        menuEvent.deleteLayer = deleteLayer;
-        menuEvent.duplicateLayer = duplicateLayer;
-        menuEvent.showLayerInfo = showLayerInfo;
-        if (target && layerCanBeStyled(target.layer)) {
+        var isFrame = target &&
+          internal.isFrameLayer(target.layer, target.dataset.arcs);
+        if (isFrame) {
+          menuEvent.frameProperties = openFrameProperties;
+          menuEvent.resizeFrame = resizeFrame;
+          menuEvent.deleteFrame = deleteLayer;
+        } else {
+          menuEvent.deleteLayer = deleteLayer;
+          menuEvent.duplicateLayer = duplicateLayer;
+          menuEvent.showLayerInfo = showLayerInfo;
+        }
+        if (!isFrame && target && layerCanBeStyled(target.layer)) {
           menuEvent.styleLayer = styleLayer;
           if (internal.layerHasLabels(target.layer)) {
             menuEvent.styleLayerName = 'edit labels';
@@ -11895,7 +12049,13 @@
 
       // init click-to-select
       GUI.onClick(entry, function() {
-        selectLayer();
+        var target = findLayerById(id);
+        if (target && internal.isFrameLayer(target.layer, target.dataset.arcs) &&
+            gui.frameProperties) {
+          gui.frameProperties.open(target);
+        } else {
+          selectLayer();
+        }
       });
 
     }
@@ -11912,7 +12072,9 @@
         type = 'raster layer';
       }
       if (isFrame) {
-        str = 'map frame';
+        str = internal.formatFrameSizeForDisplay(
+          internal.getFrameLayerData(lyr, dataset.arcs)
+        );
       } else if (internal.layerHasRaster(lyr)) {
         str = utils$1.format('%,d x %,d %s', internal.getRasterWidth(lyr.raster), internal.getRasterHeight(lyr.raster), type);
       } else if (type) {
@@ -11965,7 +12127,7 @@
       title.className = 'console-info-subtitle';
       title.textContent = 'Attribute data';
       wrapper.appendChild(title);
-      if (!fields) {
+      if (!fields || fields.length === 0) {
         var none = document.createElement('div');
         none.className = 'console-info-empty';
         none.textContent = '[none]';
@@ -12041,7 +12203,8 @@
       }
     }
 
-    function isPinnable(lyr) {
+    function isPinnable(lyr, dataset) {
+      if (dataset && internal.isFrameLayer(lyr, dataset.arcs)) return false;
       return internal.layerIsGeometric(lyr) || internal.layerHasRaster(lyr) || internal.layerHasFurniture(lyr);
     }
 
@@ -13947,6 +14110,8 @@
       vertices: 'edit vertices',
       selection: 'selection tool',
       ruler: 'measure distance',
+      frame: 'edit map frame',
+      frame_draw: 'draw map frame',
       'add-points': 'add points',
       rectangles: 'drag-to-resize',
       off: 'turn off'
@@ -14021,7 +14186,7 @@
     };
 
     this.modeSupportsUndo = function(mode) {
-      return ['data', 'label', 'label_style', 'point_style', 'line_style', 'polygon_style', 'edit_points', 'edit_lines', 'edit_polygons', 'snip_lines', 'vertices', 'rectangles'].includes(mode);
+      return ['data', 'frame', 'label', 'label_style', 'point_style', 'line_style', 'polygon_style', 'edit_points', 'edit_lines', 'edit_polygons', 'snip_lines', 'vertices', 'rectangles'].includes(mode);
     };
 
     this.getMode = getInteractionMode;
@@ -14048,7 +14213,8 @@
     // A mode with a panel of its own: hovering the button must not open the mode
     // menu over the panel.
     function stylePanelIsActive() {
-      return _editMode == 'label' || _editMode == 'label_style' ||
+      return _editMode == 'frame' || _editMode == 'frame_draw' ||
+        _editMode == 'label' || _editMode == 'label_style' ||
         _editMode == 'point_style' || _editMode == 'line_style' ||
         _editMode == 'polygon_style';
     }
@@ -14115,9 +14281,16 @@
     // if current editing mode is not available, turn off the tool
     function updateCurrentMode() {
       var modes = getAvailableModes();
-      if (modes.indexOf(_editMode) == -1 && !labelModeIsAvailable() && !labelStyleModeIsAvailable() && !layerStyleModeIsAvailable() && !pointStyleModeIsAvailable()) {
+      if (modes.indexOf(_editMode) == -1 && !inFrameMode() && !labelModeIsAvailable() && !labelStyleModeIsAvailable() && !layerStyleModeIsAvailable() && !pointStyleModeIsAvailable()) {
         setMode('off');
       }
+    }
+
+    // The frame modes are reached from the layer panel and the frame menu, never
+    // from this button's menu, so they neither belong to the active layer's tool
+    // list nor light the button up.
+    function inFrameMode() {
+      return _editMode == 'frame' || _editMode == 'frame_draw';
     }
 
     // Whether a label made now would join the active layer rather than starting a
@@ -14206,7 +14379,7 @@
       }
       btn.classed('hover', _menuOpen);
       // btn.classed('selected', active() && !_menuOpen);
-      btn.classed('selected', active());
+      btn.classed('selected', active() && !inFrameMode());
     }
 
     function updateSelectionHighlight() {
@@ -14232,6 +14405,9 @@
   //
   // API:
   //   toolbar.addButton(iconRef, opts) -> ToolbarButton
+  //   toolbar.addTextButton(label, opts) -> ToolbarButton
+  //   toolbar.addSegmentedControl(caption, items, opts) -> ToolbarSegmentedControl
+  //   toolbar.addTextField(caption, opts) -> ToolbarTextField
   //   toolbar.addSeparator()
   //   toolbar.show()
   //   toolbar.hide()
@@ -14261,6 +14437,25 @@
 
     this.addButton = function(iconRef, btnOpts) {
       return new ToolbarButton(content, iconRef, btnOpts || {});
+    };
+
+    this.addTextButton = function(label, btnOpts) {
+      var button = new ToolbarButton(content, null, btnOpts || {});
+      button.setText(label);
+      return button;
+    };
+
+    // A choice between modes with every label visible and the active one lit.
+    // Preferred over a button that rewrites its own label, which leaves no way
+    // to tell the mode you are in from the mode a click would put you in.
+    // items: [{value, label, tooltip}]
+    this.addSegmentedControl = function(caption, items, ctrlOpts) {
+      return new ToolbarSegmentedControl(content, caption, items, ctrlOpts || {});
+    };
+
+    // A short typed value, committed on Enter or on leaving the field.
+    this.addTextField = function(caption, fieldOpts) {
+      return new ToolbarTextField(content, caption, fieldOpts || {});
     };
 
     this.addSeparator = function() {
@@ -14309,6 +14504,111 @@
         }, transitionMs);
       }
     }
+  }
+
+  function ToolbarSegmentedControl(parent, caption, items, opts) {
+    var el = El('div').addClass('floating-toolbar-group').appendTo(parent);
+    var changeHandlers = [];
+    var value = null;
+    var segments;
+    if (caption) {
+      El('span').addClass('floating-toolbar-caption').appendTo(el).text(caption);
+    }
+    if (opts.classname) el.addClass(opts.classname);
+    var group = El('div').addClass('floating-toolbar-segments').appendTo(el);
+    segments = items.map(function(item) {
+      var button = new ToolbarButton(group, null, {tooltip: item.tooltip});
+      button.setText(item.label);
+      button.on('click', function() {
+        if (value === item.value) return;
+        setValue(item.value);
+        changeHandlers.forEach(function(fn) { fn(value); });
+      });
+      return {value: item.value, button: button};
+    });
+
+    function setValue(val) {
+      value = val;
+      segments.forEach(function(o) {
+        o.button.setSelected(o.value === val);
+      });
+    }
+
+    // Sets the lit segment without firing 'change', for syncing to outside state.
+    this.setValue = function(val) {
+      setValue(val);
+      return this;
+    };
+
+    this.getValue = function() {
+      return value;
+    };
+
+    this.on = function(event, fn) {
+      if (event == 'change') changeHandlers.push(fn);
+      return this;
+    };
+
+    this.node = function() {
+      return el.node();
+    };
+  }
+
+  function ToolbarTextField(parent, caption, opts) {
+    var el = El('label').addClass('floating-toolbar-group')
+      .addClass('floating-toolbar-field').appendTo(parent);
+    var changeHandlers = [];
+    var committed = '';
+    var input;
+    if (caption) {
+      El('span').addClass('floating-toolbar-caption').appendTo(el).text(caption);
+    }
+    input = El('input').attr('type', 'text').appendTo(el);
+    if (opts.classname) input.addClass(opts.classname);
+    if (opts.placeholder) input.attr('placeholder', opts.placeholder);
+    if (opts.width) input.css('width', opts.width);
+    if (opts.tooltip) el.attr('data-tooltip', opts.tooltip);
+
+    // Keyboard events reach gui.keyboard through the document, so map shortcuts
+    // would fire while the field has focus. Enter commits, Escape abandons the
+    // edit and leaves the field rather than closing the tool around it.
+    input.on('keydown', function(e) {
+      e.stopPropagation();
+      if (e.keyCode == 13) {
+        input.node().blur();
+      } else if (e.keyCode == 27) {
+        input.node().value = committed;
+        input.node().blur();
+      }
+    });
+
+    // Native change fires on Enter and on leaving an edited field, and not when
+    // Escape has put the original value back.
+    input.on('change', function() {
+      var value = input.node().value.trim();
+      committed = value;
+      changeHandlers.forEach(function(fn) { fn(value); });
+    });
+
+    // Sets the displayed value without firing 'change'.
+    this.setValue = function(value) {
+      committed = value == null ? '' : String(value);
+      input.node().value = committed;
+      return this;
+    };
+
+    this.getValue = function() {
+      return input.node().value.trim();
+    };
+
+    this.on = function(event, fn) {
+      if (event == 'change') changeHandlers.push(fn);
+      return this;
+    };
+
+    this.node = function() {
+      return input.node();
+    };
   }
 
   function ToolbarButton(parent, iconRef, opts) {
@@ -14368,6 +14668,11 @@
     };
 
     this.setTooltip = setTooltip;
+
+    this.setText = function(text) {
+      btn.addClass('text-btn').text(text);
+      return this;
+    };
 
     this.node = function() {
       return btn.node();
@@ -15125,8 +15430,22 @@
     indigoRamp.concat(purpleRamp)
   ];
 
+  // The pickers that are open, so that opening one can close the rest. They
+  // float over their panel and overlap each other -- in Frame properties,
+  // Background and Neatline are close enough together that two open pickers just
+  // cover one another. Only open pickers are listed and hide() delists them, so
+  // this holds at most one entry.
+  var openPickers = [];
+
+  function closeOpenPickers(except) {
+    openPickers.slice().forEach(function(picker) {
+      if (picker !== except) picker.hide();
+    });
+  }
+
   function ColorPicker(parent, opts) {
     opts = opts || {};
+    var self = this;
     var colorPicker = El('div').addClass('label-color-picker').appendTo(parent).hide();
     var sbCanvas, hueCanvas, sbMarker, hueMarker, pickerHsbInputs;
     var pickerColor = {h: 0, s: 0, b: 0};
@@ -15138,13 +15457,18 @@
       if (colorPicker.visible()) {
         this.hide();
       } else {
+        closeOpenPickers(self);
         colorPicker.show();
+        positionPicker();
         drawColorPicker();
+        if (openPickers.indexOf(self) == -1) openPickers.push(self);
       }
     };
 
     this.hide = function() {
       colorPicker.hide();
+      var i = openPickers.indexOf(self);
+      if (i > -1) openPickers.splice(i, 1);
     };
 
     this.visible = function() {
@@ -15160,6 +15484,24 @@
     this.getColor = function() {
       return hsbToHex(pickerColor);
     };
+
+    // The picker is placed in viewport coordinates (see .label-color-picker), so
+    // it has to be put against the field it belongs to each time it opens. The
+    // offsets reproduce what the stylesheet used to do with `top: 48px; right: 0`
+    // against that field, plus a clamp so that a panel low on the screen cannot
+    // push the picker off the bottom.
+    function positionPicker() {
+      var node = colorPicker.node();
+      var anchor = node.parentNode.getBoundingClientRect();
+      var margin = 8;
+      var top = anchor.top + 48;
+      var left = anchor.right - node.offsetWidth;
+      if (top + node.offsetHeight + margin > window.innerHeight) {
+        top = window.innerHeight - margin - node.offsetHeight;
+      }
+      colorPicker.css('top', Math.round(Math.max(margin, top)) + 'px');
+      colorPicker.css('left', Math.round(Math.max(margin, left)) + 'px');
+    }
 
     function init() {
       var sbWrap = El('div').addClass('label-color-canvas-wrap').appendTo(colorPicker);
@@ -16068,6 +16410,17 @@
     control.setColor = function(color) {
       control.input.node().value = color || '';
       control.chit.css('background-color', isHexColor(color) ? color : 'transparent');
+    };
+
+    // What a panel calls when it refreshes from the data: the picker has to start
+    // from the colour that is set, not from wherever it was left. A picker that
+    // has never been opened is still on its default, so without this it opens on
+    // black rather than on the colour beside it. Kept apart from setColor(),
+    // which is also the picker's own preview callback and must not feed back into
+    // it mid-drag.
+    control.showColor = function(color) {
+      control.setColor(color);
+      if (isHexColor(color)) control.picker.setColor(color);
     };
 
     El('span').appendTo(colorCell).text(opts.label);
@@ -18078,13 +18431,13 @@
       return control;
     }
 
-    // In the wide column, under the stroke colour it belongs to. Stepping runs
-    // up a ladder of widths rather than by a fixed amount, because the useful
-    // ones are close together at the hairline end and far apart above 2px.
+    // In the narrow column, under the stroke's opacity. Stepping runs up a ladder
+    // of widths rather than by a fixed amount, because the useful ones are close
+    // together at the hairline end and far apart above 2px.
     function addStrokeWidthControl(parent) {
       var row = El('div').addClass('label-style-row label-split-row').appendTo(parent);
-      var cell = El('div').addClass('label-split-cell').appendTo(row);
       El('div').addClass('label-split-cell').appendTo(row);
+      var cell = El('div').addClass('label-split-cell').appendTo(row);
       El('span').appendTo(cell).text('Stroke width');
       return new SizeField(cell, {
         min: 0,
@@ -18123,23 +18476,16 @@
 
     function updateColorControl(control) {
       var value = getCommonStyleValue(control.field);
-      setColorControlValue(control, value);
+      control.showColor(value);
       updateOpacityControl(control);
-      if (isHexColor(value)) {
-        control.picker.setColor(value);
-      } else {
-        control.picker.hide();
-      }
+      // Nothing for the picker to sit on when the selection has no one colour.
+      if (!isHexColor(value)) control.picker.hide();
     }
 
     function updateOpacityControl(control) {
       var value = getCommonStyleValue(control.field + '-opacity');
       control.opacity.node().value =
         formatOpacityPct(value === '' || value === undefined || value === null ? 1 : value);
-    }
-
-    function setColorControlValue(control, value) {
-      control.setColor(value);
     }
 
     function updateStrokeWidthControl() {
@@ -18542,8 +18888,10 @@
       // The two sizes of a circle side by side, in the shape the panel uses for
       // every other pair.
       var sizeRow = El('div').addClass('label-style-row label-split-row').appendTo(circlesSection);
-      var widthCell = El('div').addClass('label-split-cell').appendTo(sizeRow);
+      // Radius in the wide column, stroke width in the narrow one under the
+      // stroke's opacity, matching the line and polygon panels.
       var radiusCell = El('div').addClass('label-split-cell').appendTo(sizeRow);
+      var widthCell = El('div').addClass('label-split-cell').appendTo(sizeRow);
       El('span').appendTo(widthCell).text('Stroke width');
       circleStrokeWidthField = new SizeField(widthCell, {
         min: 0,
@@ -18933,7 +19281,7 @@
     }
 
     function setCircleColor(control, color) {
-      control.setColor(color);
+      control.showColor(color);
     }
 
     function formatNumberValue(val) {
@@ -18980,7 +19328,27 @@
   function Model(gui) {
     var self = new internal.Catalog();
     var deleteLayer = self.deleteLayer;
+    var setDefaultTargets = self.setDefaultTargets;
     utils$1.extend(self, EventDispatcher.prototype);
+
+    // A map frame is composition state, not editable content. Commands may
+    // explicitly target it, but it must not replace the GUI's active content
+    // layer or become the implicit target of the next console command.
+    self.setDefaultTargets = function(targets, opts) {
+      var previousContent = getContentTargets(self.getDefaultTargets());
+      var requestedContent = getContentTargets(targets);
+      setDefaultTargets.call(self, targets, opts);
+      if (countTargetLayers(requestedContent) < countTargetLayers(targets)) {
+        var contentTargets = requestedContent.length ?
+          requestedContent : previousContent;
+        if (!contentTargets.length) {
+          contentTargets = getFirstContentTarget();
+        }
+        if (contentTargets.length) {
+          setDefaultTargets.call(self, contentTargets);
+        }
+      }
+    };
 
     // override Catalog method (so -drop command will work in web console)
     self.deleteLayer = function(lyr, dataset) {
@@ -19037,6 +19405,32 @@
     };
 
     return self;
+
+    function getContentTargets(targets) {
+      return (targets || []).map(function(target) {
+        return {
+          dataset: target.dataset,
+          layers: target.layers.filter(function(lyr) {
+            return !internal.isFrameLayer(lyr, target.dataset.arcs);
+          })
+        };
+      }).filter(function(target) {
+        return target.layers.length > 0;
+      });
+    }
+
+    function getFirstContentTarget() {
+      var target = self.getLayers().find(function(o) {
+        return !internal.isFrameLayer(o.layer, o.dataset.arcs);
+      });
+      return target ? [{dataset: target.dataset, layers: [target.layer]}] : [];
+    }
+
+    function countTargetLayers(targets) {
+      return (targets || []).reduce(function(sum, target) {
+        return sum + target.layers.length;
+      }, 0);
+    }
   }
 
   function absArcId(arcId) {
@@ -20883,6 +21277,95 @@
     });
   }
 
+  // How an aspect ratio is read, written and held to, in one place. The Add map
+  // frame dialog takes one typed into a field, the Frame properties panel shows
+  // the one a frame ended up with, so a ratio entered as 3:2 reads back as 3:2,
+  // and the box drawn on the map is kept to it while it is dragged.
+
+  // Ratios common enough to be worth naming when one is shown.
+  var namedRatios = [
+    [1, '1:1'],
+    [4 / 3, '4:3'],
+    [3 / 2, '3:2'],
+    [16 / 9, '16:9']
+  ];
+
+  // Accepts "5:4" or a bare number. Returns NaN for anything else, including a
+  // ratio with a zero or negative term.
+  function parseFrameAspectRatio(value) {
+    var parts = String(value).trim().split(':').map(Number);
+    if (parts.length == 2) {
+      return parts[0] > 0 && parts[1] > 0 ? parts[0] / parts[1] : NaN;
+    }
+    return parts.length == 1 ? parts[0] : NaN;
+  }
+
+  // "3:2" for a ratio that has a name, "1.62" for one that does not.
+  function formatFrameAspectRatio(aspect) {
+    var match = namedRatios.find(function(item) {
+      return Math.abs(item[0] - aspect) < 1e-10;
+    });
+    return match ? match[1] : String(Math.round(aspect * 100) / 100);
+  }
+
+  // Move the pointer-side corner of a box being dragged out from (x1, y1) so the
+  // box has the given width/height ratio. Grows the short side rather than
+  // trimming the long one, so the box always reaches the pointer on one axis and
+  // never shrinks away from the drag. Works in screen pixels, where y runs
+  // downwards; only the magnitudes matter, so the sign of each axis is kept.
+  function getCornerForRatio(x1, y1, x2, y2, ratio) {
+    var sx = x2 < x1 ? -1 : 1,
+        sy = y2 < y1 ? -1 : 1,
+        w = Math.abs(x2 - x1),
+        h = Math.abs(y2 - y1);
+    if (w / h > ratio) { // also catches h == 0
+      h = w / ratio;
+    } else if (w > 0 || h > 0) {
+      w = h * ratio;
+    }
+    return [x1 + sx * w, y1 + sy * h];
+  }
+
+  // Reshape a [minx, miny, maxx, maxy] box that a handle drag has pulled off
+  // ratio. A corner handle grows whichever side is short, anchored on the corner
+  // opposite the handle; an edge handle drives the axis it moves along and the
+  // other axis grows from the centre, so the box widens in place instead of
+  // walking sideways. Mutates bbox.
+  function applyAspectRatio(bbox, handle, ratio) {
+    var w = bbox[2] - bbox[0],
+        h = bbox[3] - bbox[1],
+        cx, cy;
+    // Leave an inverted or empty box alone; the drag has flipped it past an edge
+    // and the caller puts the corners back in order when the drag ends.
+    if (!(w > 0) || !(h > 0) || handle.type == 'center') return;
+    if (handle.type == 'corner') {
+      if (w / h > ratio) h = w / ratio;
+      else w = h * ratio;
+    } else if (handle.col == 'left' || handle.col == 'right') {
+      h = w / ratio;
+    } else {
+      w = h * ratio;
+    }
+    if (handle.col == 'left') {
+      bbox[0] = bbox[2] - w;
+    } else if (handle.col == 'right') {
+      bbox[2] = bbox[0] + w;
+    } else {
+      cx = (bbox[0] + bbox[2]) / 2;
+      bbox[0] = cx - w / 2;
+      bbox[2] = cx + w / 2;
+    }
+    if (handle.row == 'top') {
+      bbox[3] = bbox[1] + h;
+    } else if (handle.row == 'bottom') {
+      bbox[1] = bbox[3] - h;
+    } else {
+      cy = (bbox[1] + bbox[3]) / 2;
+      bbox[1] = cy - h / 2;
+      bbox[3] = cy + h / 2;
+    }
+  }
+
   function HighlightBox(gui, optsArg) {
     var el = El('div').addClass('zoom-box').appendTo('body'),
         opts = Object.assign({
@@ -20891,11 +21374,12 @@
           persistent: false,
           draggable: false  // does dragging the map draw a box
         }, optsArg),
-        clickToStart = opts.name == 'box-tool', // other versions use shift-drag
+        clickToStart = opts.clickToStart || opts.name == 'box-tool',
         box = new EventDispatcher(),
         stroke = 2,
         activeHandle = null,
         prevXY = null,
+        aspectRatio = null,
         boxCoords = null,
         _on = false,
         _visible = false,
@@ -20990,18 +21474,25 @@
         }
         prevXY = xy;
         redraw();
-        box.dispatchEvent('handle_drag');
+        box.dispatchEvent('handle_drag', {
+          handle: copyHandle(activeHandle),
+          map_bbox: boxCoords.slice()
+        });
       });
 
       gui.map.getMouse().on('mouseup', function(e) {
         if (activeHandle && _on) {
+          var handle = copyHandle(activeHandle);
           activeHandle.el.css('background', null);
           activeHandle = null;
           prevXY = null;
-          box.dispatchEvent('handle_up');
           // reset box if it has been inverted (by dragging)
           fixBounds(boxCoords);
           redraw();
+          box.dispatchEvent('handle_up', {
+            handle: handle,
+            map_bbox: boxCoords.slice()
+          });
         }
       });
     }
@@ -21050,6 +21541,9 @@
         boxCoords[1] += dy;
         if (centered) boxCoords[3] -= dy;
       }
+      if (aspectRatio) {
+        applyAspectRatio(boxCoords, activeHandle, aspectRatio);
+      }
     }
 
     function rescaleBox(x, y) {
@@ -21063,6 +21557,14 @@
       var dy = (boxCoords[3] - cy) * k;
       boxCoords = [cx - dx, cy - dy, cx + dx, cy + dy];
     }
+
+    // Hold the box to a width/height ratio while it is drawn or resized. The
+    // ratio is in screen pixels, which is what the user is aiming at; the map
+    // draws both axes at one scale, so for a projected view it is also the ratio
+    // of the coordinates the box reports back.
+    box.setAspectRatio = function(ratio) {
+      aspectRatio = ratio > 0 ? Number(ratio) : null;
+    };
 
     box.setDataCoords = function(bbox) {
       boxCoords = bbox;
@@ -21079,6 +21581,12 @@
       var dataBox = lyr ? translateCoordsToLayerCRS(boxCoords, lyr) : translateCoordsToLatLon(boxCoords);
       fixBounds(dataBox);
       return dataBox;
+    };
+
+    // Coordinates in the map's display CRS. This avoids routing frame-tool
+    // coordinates through the currently active content layer.
+    box.getDisplayCoords = function() {
+      return boxCoords ? boxCoords.slice() : null;
     };
 
     box.turnOn = function() {
@@ -21138,32 +21646,14 @@
 
     // get bbox coords in the display CRS
     function getBoxCoords(p1, p2) {
-      if (gui.keyboard.shiftIsPressed()) {
-        p2 = getSquareCorner(p1[0], p1[1], p2[0], p2[1]);
+      // A set ratio wins over shift, which is just the 1:1 case of the same rule.
+      var ratio = aspectRatio || (gui.keyboard.shiftIsPressed() ? 1 : 0);
+      if (ratio) {
+        p2 = getCornerForRatio(p1[0], p1[1], p2[0], p2[1], ratio);
       }
       var bbox = pixToCoords(p1.concat(p2), gui.map.getExtent());
       fixBounds(bbox);
       return bbox;
-    }
-
-    function getSquareCorner(x1, y1, x2, y2) {
-      var dx = x2 - x1;
-      var dy = y2 - y1;
-      if (dy === 0 && dx === 0) {
-        return [x2, y2];
-      }
-      if (dy === 0) {
-        dy = 1;
-      }
-      if (dx === 0) {
-        dx = 1;
-      }
-      if (Math.abs(dx) > Math.abs(dy)) {
-        dy = dy * Math.abs(dx / dy);
-      } else {
-        dx = dx * Math.abs(dy / dx);
-      }
-      return [x1 + dx, y1 + dy];
     }
 
     function redraw() {
@@ -21177,6 +21667,14 @@
     }
 
     return box;
+  }
+
+  function copyHandle(handle) {
+    return handle ? {
+      type: handle.type,
+      col: handle.col,
+      row: handle.row
+    } : null;
   }
 
   function coordsToPix(bbox, ext) {
@@ -21739,7 +22237,11 @@
       var recIds = id >= 0 ? [id] : ids;
       var el = content;
       var table = lyr.data; // table can be null (e.g. if layer has no attribute data)
-      var tableEl = table ? renderTable(recIds, table, editable) : null;
+      var isFrame = layerIsFrame(lyr);
+      var hasCustomFrameFields = isFrame && table && table.getFields().some(function(field) {
+        return !internal.isFrameReservedField(field);
+      });
+      var tableEl = table ? renderTable(recIds, table, editable, isFrame) : null;
       el.empty(); // clean up if panel is already open
       if (tableEl) {
         tableEl.appendTo(el);
@@ -21753,6 +22255,8 @@
             e.preventDefault(); // don't copy original string with tabs
           }
         });
+      } else if (isFrame) {
+        el.html('<div class="note">Map frame settings are edited separately from attribute data.</div>');
       } else {
         // Some individual features can have undefined values for some or all of
         // their data properties (properties are set to undefined when an input JSON file
@@ -21762,13 +22266,13 @@
       }
 
       var footer = El('div').appendTo(el);
-      if (editable) {
+      if (editable && !isFrame) {
         // render "add field" button
         El('span').addClass('add-field-btn').appendTo(footer).on('click', async function(e) {
           // show "add field" dialog
           openAddFieldPopup(gui, recIds, lyr);
         }).text('+ add field');
-      } else if (pinned) {
+      } else if (pinned && (!isFrame || hasCustomFrameFields)) {
         // render "Click to edit" button
         El('span').addClass('edit-data-btn').appendTo(footer).on('click', async function(e) {
           self.show(id, ids, lyr, true, true);
@@ -21776,7 +22280,7 @@
       }
     }
 
-    function renderTable(recIds, table, editable) {
+    function renderTable(recIds, table, editable, isFrame) {
       var tableEl = El('table').addClass('selectable');
       var rows = 0;
       var rec;
@@ -21791,6 +22295,7 @@
       utils$1.forEachProperty(rec, function(v, k) {
         // missing GeoJSON fields are set to undefined on import; skip these
         if (v === undefined) return;
+        if (isFrame && internal.isFrameReservedField(k)) return;
         var rowEl = renderRow(k, v, recIds, table, editable);
         if (rowEl) {
           rowEl.appendTo(tableEl);
@@ -21798,6 +22303,11 @@
         }
       });
       return rows > 0 ? tableEl : null;
+    }
+
+    function layerIsFrame(lyr) {
+      var dataset = lyr.gui && lyr.gui.source && lyr.gui.source.dataset;
+      return !!dataset && internal.isFrameLayer(lyr, dataset.arcs);
     }
 
     function getMultiRecord(recIds, table) {
@@ -22474,7 +22984,7 @@
     function showInstructions() {
       var isMac = navigator.userAgent.includes('Mac');
       var symbol = isMac ? '⌘' : '^';
-      var msg = `Instructions: click on the map to add points. Move points by dragging.`;
+      var msg = `Click on the map to add points.<br>Move points by dragging.`;
       alert = showPopupAlert(msg, null, { non_blocking: true, max_width: '290px'});
     }
 
@@ -22692,7 +23202,7 @@
     function showInstructions() {
       var isMac = navigator.userAgent.includes('Mac');
       var undoKey = isMac ? '⌘' : '^';
-      var msg = `Instructions: click to start a path, click or drag to keep drawing. Drag vertices to reshape a path.`;
+      var msg = `Click to add points to a path or click and drag to draw continuously. Drag vertices to reshape a path.`;
         alert = showPopupAlert(msg, null, {
           non_blocking: true, max_width: '350px'});
     }
@@ -23269,7 +23779,7 @@
     }
 
     function showInstructions() {
-      var msg = 'Instructions: click a line to snip it apart. Snipping a ring ' +
+      var msg = 'Click a line to snip it apart. Snipping a ring ' +
         'takes two clicks -- the ring divides at the second one.';
       alert = showPopupAlert(msg, null, {non_blocking: true, max_width: '350px'});
     }
@@ -24052,7 +24562,7 @@
   //
   // See docs/development/label-tool-design.md.
 
-  var SVG_NS$2 = 'http://www.w3.org/2000/svg';
+  var SVG_NS$3 = 'http://www.w3.org/2000/svg';
   var XML_NS = 'http://www.w3.org/XML/1998/namespace';
   var BOX_PADDING$1 = 3;
 
@@ -24350,7 +24860,7 @@
       }
       removePendingGroup(o);
       o.pending.markup = markup;
-      o.pending.group = document.createElementNS(SVG_NS$2, 'g');
+      o.pending.group = document.createElementNS(SVG_NS$3, 'g');
       o.pending.group.setAttribute('class', 'label-edit-pending');
       o.pending.group.innerHTML = markup;
       container.appendChild(o.pending.group);
@@ -24432,7 +24942,7 @@
       lines = getRenderedLines(o.text);
       content.appendChild(document.createTextNode(lines[0]));
       for (i = 1; i < lines.length; i++) {
-        tspan = document.createElementNS(SVG_NS$2, 'tspan');
+        tspan = document.createElementNS(SVG_NS$3, 'tspan');
         tspan.setAttribute('x', o.nodes.text.getAttribute('x') || 0);
         tspan.setAttribute('dy', getLineHeight(o));
         tspan.appendChild(document.createTextNode(lines[i]));
@@ -24542,7 +25052,7 @@
     // nothing on screen at all. Drawn from the same <defs> path the <textPath>
     // references, so it cannot drift from the text it belongs to.
     function ghostPath(pathId) {
-      var el = document.createElementNS(SVG_NS$2, 'use');
+      var el = document.createElementNS(SVG_NS$3, 'use');
       el.setAttribute('href', '#' + pathId);
       el.setAttribute('class', 'label-edit-path');
       return el;
@@ -24555,7 +25065,7 @@
       if (!pathId) return;
       // A thickened, transparent copy of the baseline: about one em wide, so that
       // the region follows the curve rather than boxing it.
-      el = document.createElementNS(SVG_NS$2, 'use');
+      el = document.createElementNS(SVG_NS$3, 'use');
       el.setAttribute('href', '#' + pathId);
       el.setAttribute('class', 'label-edit-hit-baseline');
       el.setAttribute('stroke-width', caret ? caret.ascent + caret.descent : 12);
@@ -24616,7 +25126,7 @@
     }
 
     function makeGroup(className) {
-      var g = document.createElementNS(SVG_NS$2, 'g');
+      var g = document.createElementNS(SVG_NS$3, 'g');
       g.setAttribute('class', className);
       return g;
     }
@@ -24651,7 +25161,7 @@
     }
 
     function rect(box, className) {
-      var el = document.createElementNS(SVG_NS$2, 'rect');
+      var el = document.createElementNS(SVG_NS$3, 'rect');
       el.setAttribute('x', box.x);
       el.setAttribute('y', box.y);
       el.setAttribute('width', box.width);
@@ -24661,7 +25171,7 @@
     }
 
     function caretLine(caret) {
-      var el = document.createElementNS(SVG_NS$2, 'line');
+      var el = document.createElementNS(SVG_NS$3, 'line');
       el.setAttribute('x1', caret.x);
       el.setAttribute('y1', caret.y - caret.ascent);
       el.setAttribute('x2', caret.x);
@@ -24821,7 +25331,7 @@
   //
   // See docs/development/label-tool-design.md.
 
-  var SVG_NS$1 = 'http://www.w3.org/2000/svg';
+  var SVG_NS$2 = 'http://www.w3.org/2000/svg';
   var BOX_PADDING = 3;
   var ANCHOR_RADIUS = 3.5;
   var KNOT_RADIUS = 3;
@@ -24995,7 +25505,7 @@
     // moves and hides with it, and inserted before it so the outline paints
     // beneath the glyphs.
     function makeGroup(nodes, className) {
-      var g = document.createElementNS(SVG_NS$1, 'g');
+      var g = document.createElementNS(SVG_NS$2, 'g');
       var transform = nodes.symbol.getAttribute('transform');
       var display = nodes.symbol.getAttribute('display');
       g.setAttribute('class', 'label-cue ' + className);
@@ -25014,7 +25524,7 @@
     }
 
     function rect(box, pad) {
-      var el = document.createElementNS(SVG_NS$1, 'rect');
+      var el = document.createElementNS(SVG_NS$2, 'rect');
       el.setAttribute('x', box.x - pad);
       el.setAttribute('y', box.y - pad);
       el.setAttribute('width', box.width + pad * 2);
@@ -25024,7 +25534,7 @@
     }
 
     function anchorMarker() {
-      var el = document.createElementNS(SVG_NS$1, 'circle');
+      var el = document.createElementNS(SVG_NS$2, 'circle');
       // The group's own origin is the anchor point, so the marker sits at 0,0.
       el.setAttribute('cx', 0);
       el.setAttribute('cy', 0);
@@ -25037,7 +25547,7 @@
     // of its box rather than to the middle of it: a line to the middle would run
     // underneath the glyphs it is pointing at.
     function tether(box) {
-      var el = document.createElementNS(SVG_NS$1, 'line');
+      var el = document.createElementNS(SVG_NS$2, 'line');
       el.setAttribute('x1', 0);
       el.setAttribute('y1', 0);
       el.setAttribute('x2', clamp(0, box.x - BOX_PADDING, box.x + box.width + BOX_PADDING));
@@ -25051,7 +25561,7 @@
     }
 
     function knotHandle(p) {
-      var el = document.createElementNS(SVG_NS$1, 'circle');
+      var el = document.createElementNS(SVG_NS$2, 'circle');
       el.setAttribute('cx', p[0]);
       el.setAttribute('cy', p[1]);
       el.setAttribute('r', KNOT_RADIUS);
@@ -25060,7 +25570,7 @@
     }
 
     function curve(pathId) {
-      var el = document.createElementNS(SVG_NS$1, 'use');
+      var el = document.createElementNS(SVG_NS$2, 'use');
       el.setAttribute('href', '#' + pathId);
       el.setAttribute('class', 'label-cue-curve');
       return el;
@@ -25407,9 +25917,9 @@
       hideInstructions();
       if (!armed) return;
       alert = showPopupAlert(armed == 'anchor' ?
-        'Instructions: click on the map to place a label.' :
-        'Instructions: click to place points along the path. Double-click, ' +
-        'Enter or Escape to finish. Backspace removes the last point.',
+        'Click on the map to place a label.' :
+        'Click to draw a curved path. Type Esc or double-click ' +
+        'to finish. Backspace removes the last point.',
         null, {non_blocking: true, max_width: '330px'});
     }
 
@@ -26703,6 +27213,18 @@
       var bounds = new Bounds$1(_frame.bbox);
       var bounds2 = bounds.clone().transform(this.getTransform());
       return bounds2.width() / _frame.width;
+    };
+
+    this.zoomToFrameMagnification = function(targetScale) {
+      if (!_frame || !(targetScale > 0)) return;
+      var currentScale = this.getSymbolScale();
+      var frameBounds = new Bounds$1(_frame.bbox);
+      var p = this.translateCoords(frameBounds.centerX(), frameBounds.centerY());
+      this.zoomByPct(
+        targetScale / currentScale,
+        p[0] / this.width(),
+        p[1] / this.height()
+      );
     };
 
     // convert pixel coords (0,0 is top left corner of map) to display CRS coords
@@ -28576,7 +29098,7 @@
     function showInstructions() {
       var isMac = navigator.userAgent.includes('Mac');
       var symbol = isMac ? '⌘' : '^';
-      var msg = `Instructions: Click to start a rectangle. Drag handles to resize. Press shift key to resize symmetrically.`;
+      var msg = `Click to start a rectangle. Drag handles to resize. Press shift key to resize symmetrically.`;
       alert = showPopupAlert(msg, null, { non_blocking: true, max_width: '360px'});
     }
 
@@ -28590,11 +29112,12 @@
       return !_on && gui.getMode() != 'selection_tool';
     }
 
-    function runCommand(cmd) {
+    function runCommand(cmd, onSuccess) {
       if (gui.console) {
         gui.console.runMapshaperCommands(cmd, function(err) {
           reset();
           gui.clearMode();
+          if (!err && onSuccess) onSuccess();
         });
       }
       // reset(); // TODO: exit interactive mode
@@ -28662,9 +29185,7 @@
       var popup = showPopupAlert('', 'Add a map frame');
       var el = popup.container();
       el.addClass('option-menu');
-      var html = `<p>Enter a width in px, cm or inches to create a frame layer
-for setting the size of the map for symbol scaling in the
-GUI and setting the size and crop of SVG output.</p><div><input type="text" class="frame-width text-input" placeholder="examples: 600px 5in"></div>
+      var html = `<p>Enter an output width in px, cm or inches.</p><div><input type="text" class="frame-width text-input" placeholder="examples: 600px 5in"></div>
     <div class="btn dialog-btn">Create</div></span>`;
       el.html(html);
       var input = el.findChild('.frame-width');
@@ -28676,8 +29197,10 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
           input.node().value = '';
           return;
         }
-        var cmd = `-rectangle + name=frame bbox='${bbox.join(',')}' width='${widthStr}'`;
-        runCommand(cmd);
+        var cmd = `-frame name=frame bbox='${bbox.join(',')}' width='${widthStr}'`;
+        runCommand(cmd, function() {
+          if (gui.frameTool) gui.frameTool.open();
+        });
         popup.close();
       });
     }
@@ -28861,7 +29384,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     return Math.max(min, Math.min(max, val));
   }
 
-  var SVG_NS = 'http://www.w3.org/2000/svg';
+  var SVG_NS$1 = 'http://www.w3.org/2000/svg';
   var OUT_OF_RANGE_MESSAGE = 'out of range';
   var GEODESIC_PIXEL_TOLERANCE = 1.5;
   var GEODESIC_MAX_DEPTH = 14;
@@ -28874,11 +29397,11 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
   function RulerTool(gui, ext) {
     var mapLayers = gui.container.findChild('.map-layers');
     var parent = gui.container.findChild('.mshp-main-map');
-    var svg = createSvgNode('svg');
-    var directPath = createSvgNode('path');
-    var geodesicPath = createSvgNode('path');
-    var startMarker = createSvgNode('circle');
-    var endMarker = createSvgNode('circle');
+    var svg = createSvgNode$1('svg');
+    var directPath = createSvgNode$1('path');
+    var geodesicPath = createSvgNode$1('path');
+    var startMarker = createSvgNode$1('circle');
+    var endMarker = createSvgNode$1('circle');
     var vertexMarkers = [];
     var popup = El('div').addClass('ruler-popup rollover').appendTo(parent).hide();
     var content = El('div').addClass('ruler-popup-content').appendTo(popup);
@@ -29560,7 +30083,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     function getVertexMarker(i) {
       var marker;
       while (vertexMarkers.length <= i) {
-        marker = createSvgNode('circle');
+        marker = createSvgNode$1('circle');
         marker.classList.add('ruler-endpoint');
         svg.insertBefore(marker, endMarker);
         vertexMarkers.push(marker);
@@ -29592,8 +30115,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
   }
 
-  function createSvgNode(name) {
-    return document.createElementNS(SVG_NS, name);
+  function createSvgNode$1(name) {
+    return document.createElementNS(SVG_NS$1, name);
   }
 
   function round(n) {
@@ -29766,6 +30289,24 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     this.getSvgRoot = function() { return _renderer ? _renderer.getSvgRoot() : null; };
     this.getActiveLayer = function() { return _activeLyr; };
     this.getHitControl = function() { return _hit; };
+    this.getCompositionLayers = function() { return getContentLayers().slice(); };
+    this.getPreviewFrameData = getFrameLayerData;
+    this.isPreviewView = isPreviewView;
+    this.setPreviewMode = function(on, fitPage) {
+      var hasFrame = !!internal.getActiveFrame(model);
+      var next = !!on && hasFrame;
+      var changed = gui.state.preview_mode != next;
+      gui.state.preview_mode = next;
+      _ext.setFrameData(isPreviewView() ? getFrameLayerData() : null);
+      updateFullBounds();
+      if (fitPage !== false) {
+        _ext.home();
+      }
+      drawLayers();
+      if (changed) {
+        gui.dispatchEvent('preview_mode_change', {enabled: next});
+      }
+    };
     // this.getViewData = function() {
     //   return {
     //     isPreview: isPreviewView(),
@@ -29784,7 +30325,6 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     // Set or clear a CRS to use for display, without reprojecting the underlying dataset(s).
     // crs: a CRS object or string, or null to clear the current setting
     this.setDisplayCRS = function(crs) {
-      // TODO: update bounds of frame layer, if there is a frame layer
       var oldCRS = this.getDisplayCRS();
       var newCRS = utils$1.isString(crs) ? internal.parseCrsString(crs) : crs;
       // TODO: handle case that old and new CRS are the same
@@ -29798,6 +30338,13 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       getContentLayers().concat(_intersectionLyr || []).concat(_compareLyr || []).forEach(function(lyr) {
         projectLayerForDisplay(lyr, newCRS);
       });
+      var frameTarget = internal.getActiveFrame(model);
+      if (frameTarget) {
+        if (!frameTarget.layer.gui) {
+          enhanceLayerForDisplay(frameTarget.layer, frameTarget.dataset, getDisplayOptions());
+        }
+        projectLayerForDisplay(frameTarget.layer, newCRS);
+      }
 
       // Update map extent (also triggers redraw)
       projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), calcFullBounds());
@@ -29890,7 +30437,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         return;
       }
 
-      if (arcsMayHaveChanged(e.flags)) {
+      var arcsChanged = arcsMayHaveChanged(e.flags);
+      if (arcsChanged) {
         // regenerate filtered arcs the next time they are needed for rendering
         // delete e.dataset.gui.displayArcs
         clearAllDisplayArcs();
@@ -29899,6 +30447,19 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         // TODO: preserve simplification pct (need to record pct before change)
         if (e.flags.proj && updated.dataset.arcs) {
           updated.dataset.arcs.setRetainedPct(1);
+        }
+      }
+      // The frame's display copy is built from its coordinates, so it has to go
+      // whenever those can have moved. -update-frame is the obvious case; -proj
+      // is the one that was missed, because it rewrites the frame through the
+      // same sweep that projects the data, and the display copy left behind
+      // still held the pre-projection rectangle. findFrameLayer() rebuilds it on
+      // demand and it is one rectangle, so discarding it freely costs nothing.
+      if (e.flags['update-frame'] || arcsChanged) {
+        var frameTarget = internal.getActiveFrame(model);
+        if (frameTarget) {
+          delete frameTarget.layer.gui;
+          delete frameTarget.dataset.gui;
         }
       }
 
@@ -29926,7 +30487,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       } else if (_hit) {
         _hit.clearSelection();
       }
-      _hit.setLayer(_activeLyr); // need this every time, to support dynamic reprojection
+      _hit.setLayer(isFrameMapLayer(_activeLyr) ? null : _activeLyr);
+      // need this every time, to support dynamic reprojection
 
       updateVisibleMapLayers();
       fullBounds = calcFullBounds();
@@ -30046,19 +30608,28 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
 
     function findFrameLayer() {
-      return getVisibleMapLayers().find(function(lyr) {
-        return internal.isFrameLayer(lyr.gui.displayLayer, lyr.gui.displayArcs);
-      });
+      var target = internal.getActiveFrame(model);
+      if (!target) return null;
+      if (!target.layer.gui) {
+        enhanceLayerForDisplay(target.layer, target.dataset, getDisplayOptions());
+      }
+      return target.layer;
     }
 
     // Preview view: symbols are scaled based on display size of frame layer
     function isPreviewView() {
-      return !isTableView() && !!getFrameLayerData();
+      return !isTableView() && !!gui.state.preview_mode && !!getFrameLayerData();
     }
 
     function getFrameLayerData() {
       var lyr = findFrameLayer();
-      return lyr && internal.getFrameLayerData(lyr, lyr.gui.displayArcs) || null;
+      var crs = lyr && (lyr.gui.dynamic_crs ||
+        internal.getDatasetCRS(lyr.gui.source.dataset));
+      return lyr && internal.getFrameLayerData(
+        lyr.gui.displayLayer,
+        lyr.gui.displayArcs,
+        crs
+      ) || null;
     }
 
     function clearAllDisplayArcs() {
@@ -30100,8 +30671,13 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         return findActiveLayer(layers);
       }
       return layers.filter(function(o) {
-        return !!o.gui.geographic;
+        return !!o.gui.geographic && !isFrameMapLayer(o);
       });
+    }
+
+    function isFrameMapLayer(lyr) {
+      var dataset = lyr && lyr.gui && lyr.gui.source && lyr.gui.source.dataset;
+      return !!dataset && internal.isFrameLayer(lyr, dataset.arcs);
     }
 
     function getDrawableContentLayers() {
@@ -30173,9 +30749,9 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         console.error("Collapsed map container, unable to draw.");
         return;
       }
+      _ext.setFrameData(isPreviewView() ? getFrameLayerData() : null);
       if (layersMayHaveChanged) {
         // kludge to handle layer visibility toggling
-        _ext.setFrameData(isPreviewView() ? getFrameLayerData() : null);
         updateFullBounds();
         updateLayerStyles(contentLayers);
         updateLayerStackOrder(model.getLayers());// update menu_order property of all layers
@@ -30215,6 +30791,1081 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       // transforms alone, so anything anchored to them is still good.
       gui.dispatchEvent('map_rendered', {action: action});
     }
+  }
+
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+
+  function PreviewMode(gui) {
+    var self = this;
+    var ext = gui.map.getExtent();
+    var mapLayers = gui.container.findChild('.map-layers').node();
+    var map = gui.container.findChild('.mshp-main-map');
+    var toggle = gui.buttons.addButton('#frame-tool-icon')
+      .addClass('menu-btn preview-toggle')
+      .attr('title', 'Toggle map preview');
+    var readout = El('div')
+      .addClass('preview-readout')
+      .appendTo(map)
+      .hide();
+    var readoutLabel = El('span').addClass('preview-readout-label').appendTo(readout);
+    El('span').addClass('preview-readout-arrow').text('⌄').appendTo(readout);
+    var menu = El('div').addClass('preview-scale-menu').appendTo(readout);
+    var temporaryReadout = null;
+    var backgroundSvg = createSvgNode('svg');
+    var background = createSvgNode('rect');
+    var svg = createSvgNode('svg');
+    var mask = createSvgNode('path');
+    var neatline = createSvgNode('rect');
+    var border = createSvgNode('rect');
+
+    gui.state.preview_mode = false;
+    gui.previewMode = this;
+
+    backgroundSvg.classList.add('preview-background-overlay');
+    background.classList.add('preview-page-background');
+    backgroundSvg.appendChild(background);
+    mapLayers.insertBefore(backgroundSvg, mapLayers.firstChild);
+    svg.classList.add('preview-overlay');
+    mask.classList.add('preview-outside-mask');
+    mask.setAttribute('fill-rule', 'evenodd');
+    neatline.classList.add('preview-page-neatline');
+    border.classList.add('preview-page-border');
+    svg.appendChild(mask);
+    svg.appendChild(neatline);
+    svg.appendChild(border);
+    mapLayers.appendChild(svg);
+    hideOverlay();
+
+    [
+      {label: '50%', scale: 0.5},
+      {label: '67%', scale: 0.67},
+      {label: '100%', scale: 1},
+      {label: '150%', scale: 1.5},
+      {label: '200%', scale: 2},
+      {label: 'Fit page', fit: true}
+    ].forEach(function(item) {
+      El('div')
+        .addClass('preview-scale-menu-item')
+        .attr('data-preview-scale', item.fit ? 'fit' : String(item.scale))
+        .text(item.label)
+        .appendTo(menu)
+        .on('click', function(e) {
+          e.stopPropagation();
+          closeMenu();
+          if (item.fit) {
+            ext.home();
+          } else {
+            ext.zoomToFrameMagnification(item.scale);
+          }
+          gui.dispatchEvent('map_interaction_end');
+        });
+    });
+
+    toggle.on('click', function(e) {
+      e.stopPropagation();
+      if (!hasFrame()) {
+        if (gui.frameTool) gui.frameTool.openCreateDialog();
+        return;
+      }
+      self.setOn(!self.isOn());
+    });
+
+    readout.on('click', function(e) {
+      e.stopPropagation();
+      readout.classed('open', !readout.hasClass('open'));
+    });
+
+    gui.on('map_click', closeMenu);
+    gui.on('map_rendered', function() {
+      refreshControls();
+      renderOverlay();
+    });
+    gui.on('preview_mode_change', refreshControls);
+    gui.model.on('update', function() {
+      if (!hasFrame() && self.isOn()) {
+        gui.map.setPreviewMode(false, false);
+      }
+      refreshControls();
+    });
+    ext.on('change', updateReadout);
+
+    this.isOn = function() {
+      return !!gui.state.preview_mode;
+    };
+
+    this.setOn = function(on) {
+      gui.map.setPreviewMode(!!on, true);
+      refreshControls();
+    };
+
+    this.getReadoutText = function() {
+      return readoutLabel.text();
+    };
+
+    this.setTemporaryReadout = function(frame, scale) {
+      temporaryReadout = {frame: frame, scale: scale};
+      updateReadout();
+    };
+
+    this.clearTemporaryReadout = function() {
+      temporaryReadout = null;
+      updateReadout();
+    };
+
+    refreshControls();
+
+    function hasFrame() {
+      return !!internal.getActiveFrame(gui.model);
+    }
+
+    function refreshControls() {
+      var available = hasFrame();
+      toggle.removeClass('disabled');
+      toggle.classed('selected', available && self.isOn());
+      toggle.attr('title', available ? 'Toggle map preview' : 'Add map frame');
+      toggle.attr('aria-disabled', 'false');
+      toggle.attr('aria-pressed', available && self.isOn() ? 'true' : 'false');
+      if (gui.map.isPreviewView()) {
+        readout.show();
+        updateReadout();
+      } else {
+        readout.hide();
+        closeMenu();
+      }
+    }
+
+    function updateReadout() {
+      if (!gui.map.isPreviewView()) return;
+      var frame = temporaryReadout ?
+        temporaryReadout.frame : gui.map.getPreviewFrameData();
+      if (!frame) return;
+      var size = internal.formatFrameSizeForDisplay(frame);
+      var scale = temporaryReadout ?
+        temporaryReadout.scale : ext.getSymbolScale();
+      var pct = Math.round(scale * 100);
+      readoutLabel.text(size + ' · ' + pct + '%');
+    }
+
+    function renderOverlay() {
+      if (!gui.map.isPreviewView()) {
+        hideOverlay();
+        return;
+      }
+      var frame = gui.map.getPreviewFrameData();
+      if (!frame) {
+        hideOverlay();
+        return;
+      }
+      var p1 = ext.translateCoords(frame.bbox[0], frame.bbox[3]);
+      var p2 = ext.translateCoords(frame.bbox[2], frame.bbox[1]);
+      var x = Math.min(p1[0], p2[0]);
+      var y = Math.min(p1[1], p2[1]);
+      var w = Math.abs(p2[0] - p1[0]);
+      var h = Math.abs(p2[1] - p1[1]);
+      var viewW = ext.width();
+      var viewH = ext.height();
+      var style = getFrameStyle();
+      backgroundSvg.setAttribute('width', viewW);
+      backgroundSvg.setAttribute('height', viewH);
+      backgroundSvg.setAttribute('viewBox', '0 0 ' + viewW + ' ' + viewH);
+      svg.setAttribute('width', viewW);
+      svg.setAttribute('height', viewH);
+      svg.setAttribute('viewBox', '0 0 ' + viewW + ' ' + viewH);
+      mask.setAttribute(
+        'd',
+        'M0 0H' + viewW + 'V' + viewH + 'H0Z ' +
+        'M' + x + ' ' + y + 'V' + (y + h) + 'H' + (x + w) +
+        'V' + y + 'H' + x + 'Z'
+      );
+      border.setAttribute('x', x);
+      border.setAttribute('y', y);
+      border.setAttribute('width', w);
+      border.setAttribute('height', h);
+      setRectGeometry(background, x, y, w, h);
+      setRectGeometry(neatline, x, y, w, h);
+      applyFrameStyle(style);
+      svg.style.display = '';
+    }
+
+    function hideOverlay() {
+      backgroundSvg.style.display = 'none';
+      svg.style.display = 'none';
+    }
+
+    function getFrameStyle() {
+      var target = internal.getActiveFrame(gui.model);
+      return target && target.layer.data ?
+        target.layer.data.getReadOnlyRecordAt(0) || {} : {};
+    }
+
+    function applyFrameStyle(style) {
+      var strokeWidth = Number(style['stroke-width']);
+      var hasFill = style.fill && style.fill != 'none';
+      var hasStroke = style.stroke && style.stroke != 'none' && strokeWidth > 0;
+      if (hasFill) {
+        background.setAttribute('fill', style.fill);
+        background.setAttribute('fill-opacity',
+          style['fill-opacity'] === undefined ? 1 : style['fill-opacity']);
+        backgroundSvg.style.display = '';
+      } else {
+        backgroundSvg.style.display = 'none';
+      }
+      if (hasStroke) {
+        neatline.setAttribute('fill', 'none');
+        neatline.setAttribute('stroke', style.stroke);
+        // Stroke width is in output pixels, so it has to be scaled to the size
+        // the page is drawn at or the neatline reads thinner than it will print.
+        neatline.setAttribute('stroke-width', strokeWidth * ext.getSymbolScale());
+        neatline.setAttribute('stroke-opacity',
+          style['stroke-opacity'] === undefined ? 1 : style['stroke-opacity']);
+        neatline.style.display = '';
+      } else {
+        neatline.style.display = 'none';
+      }
+      // The border is chrome, there to show where the page is when nothing else
+      // marks it. A neatline is the page edge, and since the border is painted
+      // last it was covering every neatline with the same dark grey line.
+      border.style.display = hasStroke ? 'none' : '';
+    }
+
+    function closeMenu() {
+      readout.removeClass('open');
+    }
+  }
+
+  function createSvgNode(name) {
+    return document.createElementNS(SVG_NS, name);
+  }
+
+  function setRectGeometry(rect, x, y, width, height) {
+    rect.setAttribute('x', x);
+    rect.setAttribute('y', y);
+    rect.setAttribute('width', width);
+    rect.setAttribute('height', height);
+  }
+
+  function FrameResizeTool(gui) {
+    var ext = gui.map.getExtent();
+    var lockSize = false;
+    var on = false;
+    var drawing = false;
+    var drawingRequested = false;
+    var drawWidth = '800px';
+    var drawAspect = '';
+    var drawSource = null;
+    var drawInstructions = null;
+    var frameBox = new HighlightBox(gui, {
+      name: 'frame-editor',
+      classname: 'frame-edit-box',
+      persistent: true,
+      handles: true,
+      draggable: false
+    });
+    var drawBox = new HighlightBox(gui, {
+      name: 'frame-draw',
+      classname: 'frame-draw-box',
+      clickToStart: true,
+      persistent: true,
+      handles: true,
+      draggable: true
+    });
+    var toolbar = new FloatingToolbar(gui, {name: 'frame-toolbar'});
+    // Named by what stays put, not by the action: changing the extent -- by
+    // dragging a handle or by fitting -- is the same gesture either way, and all
+    // that differs is which quantity absorbs it. Both labels stay visible so the
+    // lit one reads as the current mode rather than as the result of a click.
+    var sizeModeControl = toolbar.addSegmentedControl(null, [
+      {value: 'scale', label: 'Fix scale',
+        tooltip: 'Keep the map scale; the output gets bigger or smaller'},
+      {value: 'output', label: 'Fix output',
+        tooltip: 'Keep the output size; the map scale changes'}
+    ], {classname: 'frame-size-mode'}).on('change', function(value) {
+      setLockSize(value == 'output');
+    });
+    var aspectField = toolbar.addTextField('Ratio', {
+      classname: 'frame-toolbar-aspect-input',
+      placeholder: 'free',
+      tooltip: 'Hold the frame to a shape: 16:9, 1.5, or blank for none'
+    }).on('change', commitAspectRatio);
+    toolbar.addSeparator();
+    toolbar.addTextButton('Fit', {
+      tooltip: 'Fit the frame to the visible layers'
+    }).on('click', fitVisibleLayers);
+    // Padding is spent on the fit rather than stored on the frame, so it sits
+    // beside the button it modifies, as it does in the creation dialog.
+    var marginField = toolbar.addTextField('Margin', {
+      classname: 'frame-toolbar-margin-input',
+      placeholder: '0',
+      tooltip: 'Padding added when fitting: 20px, 1cm, ' +
+        "or a percentage of the frame's width and height"
+    });
+    toolbar.addSeparator();
+    toolbar.addTextButton('Done', {
+      tooltip: 'Finish resizing'
+    }).on('click', function() {
+      gui.interaction.turnOff();
+    });
+    var drawToolbar = new FloatingToolbar(gui, {name: 'frame-draw-toolbar'});
+    var drawDoneButton = drawToolbar.addTextButton('Done')
+      .setEnabled(false)
+      .on('click', finishFrameDrawing);
+    drawToolbar.addTextButton('Cancel').on('click', function() {
+      gui.interaction.turnOff();
+    });
+
+    gui.frameTool = this;
+    setLockSize(lockSize); // light the default segment
+
+    this.open = function() {
+      if (getFrameTarget()) {
+        gui.interaction.setMode('frame');
+      } else {
+        openCreateDialog();
+      }
+    };
+
+    this.openCreateDialog = openCreateDialog;
+    this.isLockSize = function() { return lockSize; };
+    this.setLockSize = setLockSize;
+
+    frameBox.on('handle_drag', previewFrameDrag);
+    frameBox.on('handle_up', commitFrameDrag);
+    drawBox.on('dragend', function() {
+      drawDoneButton.enable();
+      hideFrameDrawingInstructions('fade');
+    });
+
+    gui.on('interaction_mode_change', function(e) {
+      if (e.mode == 'frame' || e.mode == 'frame_draw') turnOn();
+      else turnOff();
+    });
+
+    // Resizing is a preview-mode gesture: the handles sit on the page boundary
+    // that preview draws, so turning preview off leaves nothing to resize and
+    // the tool has to close with it rather than stranding its toolbar and
+    // handles over an ordinary map view.
+    gui.on('preview_mode_change', function(e) {
+      if (on && !e.enabled) gui.interaction.turnOff();
+    });
+
+    gui.model.on('update', function() {
+      if (on) refreshOrClose();
+    });
+
+    gui.on('undo_redo_post', function() {
+      if (on) refreshOrClose();
+    });
+
+    // Deleting the frame takes the tool's subject away. Preview mode drops
+    // itself on the same event, but the order of model listeners is not a
+    // contract worth relying on, so the tool checks for itself.
+    function refreshOrClose() {
+      if (!getFrameTarget()) {
+        gui.interaction.turnOff();
+      } else {
+        syncFrameOverlay();
+      }
+    }
+
+    gui.keyboard.on('keydown', function(e) {
+      if ((on || drawing) && e.keyName == 'esc') {
+        gui.interaction.turnOff();
+        e.stopPropagation();
+      }
+    }, 10);
+
+    function turnOn() {
+      if (drawingRequested) {
+        drawingRequested = false;
+        drawing = true;
+        drawBox.turnOn();
+        drawDoneButton.disable();
+        drawToolbar.show();
+        showFrameDrawingInstructions();
+        return;
+      }
+      if (!getFrameTarget()) {
+        gui.interaction.turnOff();
+        openCreateDialog();
+        return;
+      }
+      on = true;
+      frameBox.turnOn();
+      toolbar.show();
+      if (gui.previewMode && !gui.previewMode.isOn()) {
+        gui.previewMode.setOn(true);
+      }
+      syncFrameOverlay();
+    }
+
+    function turnOff() {
+      if (on) {
+        on = false;
+        frameBox.turnOff();
+        toolbar.hide();
+        if (gui.previewMode) gui.previewMode.clearTemporaryReadout();
+      }
+      if (drawing) {
+        drawing = false;
+        drawBox.turnOff();
+        drawBox.setAspectRatio(null);
+        drawToolbar.hide();
+        hideFrameDrawingInstructions();
+        drawSource = null;
+      }
+    }
+
+    function setLockSize(value) {
+      lockSize = !!value;
+      sizeModeControl.setValue(lockSize ? 'output' : 'scale');
+    }
+
+    function syncFrameOverlay() {
+      var frame = gui.map.isPreviewView() && gui.map.getPreviewFrameData();
+      if (frame) {
+        frameBox.setDataCoords(frame.bbox.slice());
+        // Only a frame with a fixed ratio constrains; otherwise the shape is
+        // whatever the extent gives and the handles are free.
+        frameBox.setAspectRatio(frame.aspect_ratio || null);
+      } else {
+        frameBox.hide();
+      }
+      syncAspectField();
+    }
+
+    function previewFrameDrag(e) {
+      var frame = gui.map.getPreviewFrameData();
+      if (!frame || !e.map_bbox) return;
+      var width = getDragWidth(frame, e.map_bbox, e.handle);
+      var aspect = frame.aspect_ratio ||
+        getBboxWidth(e.map_bbox) / getBboxHeight(e.map_bbox);
+      var temporaryFrame = Object.assign({}, frame, {
+        bbox: e.map_bbox.slice(),
+        width: width,
+        height: Math.round(width / aspect)
+      });
+      gui.previewMode.setTemporaryReadout(
+        temporaryFrame,
+        getPixelWidth(e.map_bbox) / width
+      );
+    }
+
+    function commitFrameDrag(e) {
+      var target = getFrameTarget();
+      var displayFrame = gui.map.getPreviewFrameData();
+      var width = null;
+      var targetScale = null;
+      if (!target || !displayFrame || !e.map_bbox) return;
+      if (e.handle?.type != 'center' && !lockSize) {
+        var frame = internal.getFrameLayerData(target.layer, target.dataset.arcs);
+        var widthPx = getDragWidth(displayFrame, e.map_bbox, e.handle);
+        width = formatNumber$1(widthPx / getUnitFactor$1(frame.units)) + frame.units;
+        targetScale = getPixelWidth(e.map_bbox) / widthPx;
+      }
+      gui.previewMode.clearTemporaryReadout();
+      updateFrameBounds(
+        target,
+        getDisplayBoundsInLayerCRS(target.layer, e.map_bbox),
+        width,
+        targetScale
+      );
+    }
+
+    function getDragWidth(frame, bbox, handle) {
+      if (handle?.type == 'center' || lockSize) return frame.width;
+      return frame.width * getBboxWidth(bbox) / getBboxWidth(frame.bbox);
+    }
+
+    function updateFrameBounds(target, bbox, width, targetScale) {
+      var parts = [
+        '-update-frame',
+        'bbox=' + quoteCommandValue(bbox.join(','))
+      ];
+      if (width) parts.push('width=' + quoteCommandValue(width));
+      parts.push(getTargetOption(target));
+      runGuiEditCommand(gui, parts.join(' '), {
+        title: 'Resize map frame',
+        onSuccess: function() {
+          if (targetScale) {
+            ext.zoomToFrameMagnification(targetScale);
+            gui.dispatchEvent('map_interaction_end');
+          }
+        },
+        onError: syncFrameOverlay
+      });
+    }
+
+    // Blank clears the fixed ratio and returns the frame to its extent's shape.
+    // Anything that is not a ratio is refused and the field snaps back, rather
+    // than quietly reshaping the frame to NaN.
+    function commitAspectRatio(text) {
+      var target = getFrameTarget();
+      var value;
+      if (!target) return;
+      if (!text) {
+        runAspectUpdate(target, 'auto-aspect');
+        return;
+      }
+      value = parseFrameAspectRatio(text);
+      if (!(value > 0)) {
+        syncAspectField();
+        return;
+      }
+      runAspectUpdate(target, 'aspect-ratio=' + value);
+    }
+
+    function runAspectUpdate(target, option) {
+      runGuiEditCommand(gui, ['-update-frame', option, getTargetOption(target)]
+        .join(' '), {
+        title: 'Set frame aspect ratio',
+        onError: syncAspectField
+      });
+    }
+
+    // Shows the ratio the frame actually has, so a ratio typed as 3:2 reads back
+    // as 3:2 and one the frame never took does not linger in the field.
+    function syncAspectField() {
+      var frame = gui.map.getPreviewFrameData();
+      var aspect = frame && frame.aspect_ratio;
+      aspectField.setValue(aspect > 0 ? formatFrameAspectRatio(aspect) : '');
+    }
+
+    // Fitting obeys the same mode as a handle drag: holding the scale grows the
+    // output to cover the new extent, holding the output rescales onto it. The
+    // command works out both the padding and the held-scale width, so the
+    // margin's unit handling lives in one place.
+    function fitVisibleLayers() {
+      var target = getFrameTarget();
+      var entries = getCompositionEntries();
+      var margin = getMargin();
+      var parts, bounds;
+      if (!target || !entries.length) return;
+      bounds = entries.reduce(function(memo, o) {
+        return memo.mergeBounds(
+          internal.getLayerBounds(o.layer, o.dataset.arcs)
+        );
+      }, new internal.Bounds());
+      parts = [
+        '-update-frame',
+        'bbox=' + quoteCommandValue(bounds.toArray().join(','))
+      ];
+      if (margin) parts.push('offset=' + quoteCommandValue(margin));
+      if (!lockSize) parts.push('fix-scale');
+      parts.push(getTargetOption(target));
+      runGuiEditCommand(gui, parts.join(' '), {
+        title: 'Fit map frame',
+        onError: syncFrameOverlay
+      });
+    }
+
+    // Anything that is not a positive length is dropped, and the field is
+    // cleared so the fit that just ran matches what the toolbar shows.
+    function getMargin() {
+      var value = marginField.getValue();
+      if (parseFloat(value) > 0) return value;
+      if (value) marginField.setValue('');
+      return '';
+    }
+
+    function openCreateDialog() {
+      if (getFrameTarget()) {
+        gui.interaction.setMode('frame');
+        return;
+      }
+      if (!getSourceLayer()) {
+        showPopupAlert(
+          'Add one or more layers before creating a map frame.',
+          'Map frame'
+        );
+        return;
+      }
+      var popup = showPopupAlert('', 'Add map frame', {classname: 'frame-create-box'});
+      // label-style-panel is where the flat field look lives -- no bezel, and a
+      // focus ring that is a border rather than a glow. frame-create-form turns
+      // off the chrome the class also carries, as the properties panel does.
+      var content = El('div').addClass('label-style-panel frame-create-form')
+        .appendTo(popup.container().addClass('frame-create-popup'));
+      El('p').appendTo(content)
+        .text('Sets the size and crop of exported maps.');
+
+      var widthInput = makeCreateField(content, 'Output width',
+        'Width of the exported map.\nExamples: 800px, 5in, 10cm.')
+        .addClass('frame-create-width-input');
+      widthInput.node().value = '800px';
+
+      var aspectInput = makeCreateField(content, 'Aspect ratio',
+        'Width divided by height, as a number or\na ratio: 1.5 or 3:2. ' +
+        'Leave blank to vary freely.')
+        .addClass('frame-create-aspect-input');
+
+      // Two ways to say where the frame goes. The heading is what makes them read
+      // as a choice rather than as two loose actions; the margin sits on the row
+      // it modifies, because it pads layer bounds and a drawn box is already the
+      // extent the user meant.
+      var section = makePanelSection(content, 'Frame area', {minor: true});
+      var fitRow = El('div').addClass('frame-create-option-row').appendTo(section);
+      addButton(fitRow, 'Fit visible layers', function() {
+        var aspect = getAspect();
+        if (aspect === null) return;
+        popup.close();
+        createFromVisibleLayers(getWidth(), aspect, getMargin());
+      });
+      var marginCell = El('label').addClass('frame-create-margin').appendTo(fitRow);
+      El('span').appendTo(marginCell).text('Margin');
+      var marginInput = El('input').attr('type', 'text').appendTo(marginCell);
+      marginInput.node().value = '2%';
+      makeFieldTip(fitRow,
+        'Space around the layers: 2%, 20px, 1cm.\n' +
+        "A percentage is of the frame's width on the\n" +
+        'side and of its height on top and bottom.');
+
+      var drawRow = El('div').addClass('frame-create-option-row').appendTo(section);
+      addButton(drawRow, 'Draw on the map', function() {
+        var aspect = getAspect();
+        if (aspect === null) return;
+        popup.close();
+        beginFrameDrawing(getWidth(), aspect);
+      });
+
+      function getWidth() {
+        var value = widthInput.node().value.trim();
+        return parseFloat(value) > 0 ? value : '800px';
+      }
+
+      // Returns a ratio, '' when the field is blank -- the frame area then gives
+      // the shape -- or null if the field holds something that is not a ratio, in
+      // which case the dialog stays open on the bad value.
+      function getAspect() {
+        var text = aspectInput.node().value.trim();
+        var value;
+        if (!text) return '';
+        value = parseFrameAspectRatio(text);
+        if (!(value > 0)) {
+          aspectInput.node().focus();
+          return null;
+        }
+        return String(value);
+      }
+
+      function getMargin() {
+        var value = marginInput.node().value.trim();
+        return parseFloat(value) > 0 ? value : '';
+      }
+    }
+
+    // A captioned field with a tip beside it. The caption and field are a label
+    // so that clicking the caption focuses the field; the tip is outside it, or
+    // opening the tip would focus the field too.
+    function makeCreateField(parent, label, tip) {
+      var row = El('div').addClass('frame-create-row').appendTo(parent);
+      var cell = El('label').addClass('frame-field-row').appendTo(row);
+      El('span').appendTo(cell).text(label);
+      var input = El('input').attr('type', 'text').appendTo(cell);
+      makeFieldTip(row, tip);
+      return input;
+    }
+
+    function beginFrameDrawing(width, aspect) {
+      drawSource = getSourceLayer();
+      if (!drawSource) {
+        showPopupAlert(
+          'Add or select a geographic layer before creating a frame.',
+          'Map frame'
+        );
+        return;
+      }
+      drawWidth = width;
+      drawAspect = aspect || '';
+      // Without this the box is drawn freehand and -frame silently pads it out to
+      // the ratio, so the frame that appears is bigger than the one drawn.
+      drawBox.setAspectRatio(drawAspect ? Number(drawAspect) : null);
+      drawingRequested = true;
+      gui.interaction.setMode('frame_draw');
+    }
+
+    function showFrameDrawingInstructions() {
+      var text = 'Click to place the first corner, then click the opposite ' +
+        'corner. Drag the handles to resize the frame.';
+      if (drawAspect) {
+        text += ' The box is held to ' +
+          formatFrameAspectRatio(Number(drawAspect)) + '.';
+      }
+      drawInstructions = showPopupAlert(text, null,
+        {non_blocking: true, max_width: '380px'});
+    }
+
+    function hideFrameDrawingInstructions(action) {
+      if (!drawInstructions) return;
+      drawInstructions.close(action);
+      drawInstructions = null;
+    }
+
+    function finishFrameDrawing() {
+      var displayBounds = drawBox.getDisplayCoords();
+      var source = drawSource;
+      if (!displayBounds || !source) return;
+      var bbox = getDisplayBoundsInLayerCRS(source, displayBounds);
+      gui.interaction.turnOff();
+      var parts = [
+        '-frame',
+        'bbox=' + quoteCommandValue(bbox.join(',')),
+        'width=' + quoteCommandValue(drawWidth)
+      ];
+      if (drawAspect) parts.push('aspect-ratio=' + drawAspect);
+      parts.push('name=frame');
+      parts.push('target=' +
+        internal.formatOptionValue(internal.getLayerTargetId(gui.model, source)));
+      runCreateCommand(parts.join(' '));
+    }
+
+    function createFromVisibleLayers(width, aspect, margin) {
+      var entries = getCompositionEntries();
+      if (!entries.length) {
+        showPopupAlert('No visible geographic layers are available.', 'Map frame');
+        return;
+      }
+      var ids = entries.map(function(o) {
+        return internal.getLayerTargetId(gui.model, o.layer);
+      });
+      var parts = ['-frame', 'width=' + quoteCommandValue(width)];
+      if (aspect) parts.push('aspect-ratio=' + aspect);
+      if (margin) parts.push('offset=' + quoteCommandValue(margin));
+      parts.push('name=frame');
+      parts.push('target=' + internal.formatOptionValue(ids.join(',')));
+      runCreateCommand(parts.join(' '));
+    }
+
+    function runCreateCommand(cmd) {
+      runGuiEditCommand(gui, cmd, {
+        title: 'Create map frame',
+        onSuccess: function() {
+          gui.previewMode.setOn(true);
+        }
+      });
+    }
+
+    function getFrameTarget() {
+      return internal.getActiveFrame(gui.model);
+    }
+
+    function getTargetOption(target) {
+      return 'target=' +
+        internal.formatOptionValue(internal.getLayerTargetId(gui.model, target.layer));
+    }
+
+    function getSourceLayer() {
+      var active = gui.model.getActiveLayer();
+      if (active && active.layer && active.layer.geometry_type &&
+          !internal.isFrameLayer(active.layer, active.dataset.arcs)) {
+        return active.layer;
+      }
+      var entries = getCompositionEntries();
+      return entries.length ? entries[0].layer : null;
+    }
+
+    function getCompositionEntries() {
+      var layers = gui.map.getCompositionLayers();
+      return gui.model.getLayers().filter(function(o) {
+        return layers.includes(o.layer);
+      });
+    }
+
+    function getDisplayBoundsInLayerCRS(layer, view) {
+      if (!layer.gui?.invertPoint) return view.slice();
+      var bounds = new internal.Bounds();
+      var steps = 16;
+      for (var i = 0; i <= steps; i++) {
+        var t = i / steps;
+        mergeDisplayPoint(bounds, layer, view[0] + getBboxWidth(view) * t, view[1]);
+        mergeDisplayPoint(bounds, layer, view[0] + getBboxWidth(view) * t, view[3]);
+        mergeDisplayPoint(bounds, layer, view[0], view[1] + getBboxHeight(view) * t);
+        mergeDisplayPoint(bounds, layer, view[2], view[1] + getBboxHeight(view) * t);
+      }
+      return bounds.toArray();
+    }
+
+    function mergeDisplayPoint(bounds, layer, x, y) {
+      var p = translateDisplayPoint(layer, [x, y]);
+      if (p && Number.isFinite(p[0]) && Number.isFinite(p[1])) {
+        bounds.mergePoint(p[0], p[1]);
+      }
+    }
+
+    function getPixelWidth(bbox) {
+      var a = ext.translateCoords(bbox[0], bbox[1]);
+      var b = ext.translateCoords(bbox[2], bbox[1]);
+      return Math.abs(b[0] - a[0]);
+    }
+  }
+
+  function addButton(parent, label, action) {
+    El('div').addClass('btn dialog-btn').appendTo(parent)
+      .text(label).on('click', action);
+  }
+
+  // The "?" the rest of the app uses for field help (see .tip-button in
+  // elements.css and the static ones in index.html). The bubble is white-space:
+  // pre, so the line breaks in the text are the ones it gets.
+  function makeFieldTip(parent, text) {
+    var btn = El('div').addClass('tip-button').appendTo(parent).text('?');
+    var anchor = El('div').addClass('tip-anchor').appendTo(btn);
+    El('div').addClass('tip').appendTo(anchor).text(text);
+    return btn;
+  }
+
+  function getUnitFactor$1(units) {
+    return units == 'in' ? 72 : units == 'cm' ? 28.3465 : 1;
+  }
+
+  function formatNumber$1(value) {
+    return String(Math.round(value * 100) / 100);
+  }
+
+  function getBboxWidth(bbox) {
+    return bbox[2] - bbox[0];
+  }
+
+  function getBboxHeight(bbox) {
+    return bbox[3] - bbox[1];
+  }
+
+  function FrameProperties(gui) {
+    var target, form, widthInput, heightInput, unitsSelect, aspectValue;
+    var backgroundControl, neatlineControl, neatlineWidthInput;
+    var boundsValue, crsValue;
+
+    gui.frameProperties = this;
+
+    this.open = function(targetArg) {
+      target = targetArg || internal.getActiveFrame(gui.model);
+      if (!target) return;
+      var popup = showPopupAlert('', 'Frame properties');
+      popup.container().addClass('frame-properties-popup');
+      form = El('div')
+        .addClass('label-style-panel frame-properties-form')
+        .appendTo(popup.container());
+      initForm();
+      updateControls();
+    };
+
+    function initForm() {
+      // Width and height are two ways of writing one thing: either one rescales
+      // the frame and the other follows, because the frame's extent is not what
+      // this panel changes. Shown side by side so that they read as a pair.
+      var sizeRow = El('div').addClass('label-style-row frame-size-row').appendTo(form);
+      widthInput = makeLabeledInput(sizeRow, 'Width')
+        .addClass('frame-width-input').on('change', updateWidth);
+      heightInput = makeLabeledInput(sizeRow, 'Height')
+        .addClass('frame-height-input').on('change', updateHeight);
+      unitsSelect = El('select').addClass('frame-units-select').appendTo(sizeRow)
+        .on('change', updateUnits);
+      ['px', 'pt', 'in', 'cm'].forEach(function(unit) {
+        El('option').attr('value', unit).appendTo(unitsSelect).text(unit);
+      });
+
+      // Read-only: setting a ratio reshapes the frame's extent, which is what the
+      // resize tool is for. What is worth saying here is whether the ratio is
+      // fixed or follows the extent, since that is what decides how the pair
+      // above behaves.
+      aspectValue = makeReadOnlyRow(form, 'Aspect ratio');
+
+      var appearance = makePanelSection(form, 'Appearance');
+      backgroundControl = makeColorRow(appearance, {
+        label: 'Background',
+        onColor: function(color) {
+          if (color) applyFrameStyle([['fill', color]]);
+        },
+        onOpacity: function(value) {
+          applyFrameStyle([['fill-opacity', value]]);
+        },
+        revert: updateControls
+      });
+      neatlineControl = makeColorRow(appearance, {
+        label: 'Neatline',
+        onColor: function(color) {
+          if (!color) return;
+          var styles = [['stroke', color]];
+          if (!getStyleValue('stroke-width')) styles.push(['stroke-width', 1]);
+          applyFrameStyle(styles);
+        },
+        onOpacity: function(value) {
+          applyFrameStyle([['stroke-opacity', value]]);
+        },
+        revert: updateControls
+      });
+      // The width belongs to the same property as the colour and opacity beside
+      // it, and all three fit on the row. The background row leaves the column
+      // empty rather than putting the width on a line of its own.
+      neatlineWidthInput = makeRowField(neatlineControl.row, 'Width')
+        .addClass('frame-neatline-width')
+        .on('change', updateNeatlineWidth);
+      var clearRow = El('div')
+        .addClass('label-style-row label-panel-button-row')
+        .appendTo(appearance);
+      makeActionButton(clearRow, 'Clear appearance', clearFrameStyle);
+
+      var details = makePanelSection(form, 'Details');
+      boundsValue = makeReadOnlyRow(details, 'Bounds');
+      crsValue = makeReadOnlyRow(details, 'CRS');
+    }
+
+    function updateControls() {
+      if (!target || !internal.isFrameLayer(target.layer, target.dataset.arcs)) return;
+      var frame = internal.getFrameLayerData(target.layer, target.dataset.arcs);
+      var rec = target.layer.data.getReadOnlyRecordAt(0);
+      var units = frame.units || 'px';
+      var factor = getUnitFactor(units);
+      var info = internal.getLayerInfo(target.layer, target.dataset);
+      widthInput.node().value = formatNumber(frame.width / factor);
+      heightInput.node().value = formatNumber(frame.height / factor);
+      unitsSelect.node().value = units;
+      aspectValue.text(getAspectText(frame));
+      backgroundControl.showColor(rec.fill || '');
+      backgroundControl.opacity.node().value = formatOpacity(rec['fill-opacity']);
+      neatlineControl.showColor(rec.stroke || '');
+      neatlineControl.opacity.node().value = formatOpacity(rec['stroke-opacity']);
+      neatlineWidthInput.node().value =
+        rec['stroke-width'] === undefined ? '' : rec['stroke-width'];
+      boundsValue.text(frame.bbox.map(formatCoordinate).join(', '));
+      crsValue.text(info.proj4 || '[unknown]');
+    }
+
+    function updateWidth() {
+      updateDimension('width', widthInput);
+    }
+
+    function updateHeight() {
+      updateDimension('height', heightInput);
+    }
+
+    // One dimension per command, never both: -update-frame takes a lone width= or
+    // height= as a rescale and derives the other from the extent, but takes the
+    // two together as a new page shape and stretches the extent to fit it.
+    function updateDimension(name, input) {
+      var value = Number(input.node().value);
+      if (!(value > 0)) {
+        updateControls();
+        return;
+      }
+      runCommand(
+        '-update-frame ' + name + '=' +
+        quoteCommandValue(value + unitsSelect.node().value) + ' ' +
+        getTargetOption(),
+        'Update frame size'
+      );
+    }
+
+    function updateUnits() {
+      var frame = internal.getFrameLayerData(target.layer, target.dataset.arcs);
+      var value = frame.width / getUnitFactor(unitsSelect.node().value);
+      runCommand(
+        '-update-frame width=' +
+        quoteCommandValue(formatNumber(value) + unitsSelect.node().value) + ' ' +
+        getTargetOption(),
+        'Update frame units'
+      );
+    }
+
+    function updateNeatlineWidth() {
+      var value = Number(neatlineWidthInput.node().value);
+      if (!(value >= 0)) {
+        updateControls();
+        return;
+      }
+      var styles = [['stroke-width', value]];
+      if (value > 0 && !getStyleValue('stroke')) {
+        styles.push(['stroke', '#000000']);
+      }
+      applyFrameStyle(styles);
+    }
+
+    function getStyleValue(field) {
+      var rec = target.layer.data.getReadOnlyRecordAt(0);
+      return rec && rec[field];
+    }
+
+    function applyFrameStyle(styles) {
+      var parts = ['-style'];
+      styles.forEach(function(item) {
+        parts.push(item[0] + '=' + quoteCommandValue(item[1]));
+      });
+      parts.push(getTargetOption());
+      runCommand(parts.join(' '), 'Style map frame');
+    }
+
+    function clearFrameStyle() {
+      runCommand('-style clear ' + getTargetOption(), 'Clear frame appearance');
+    }
+
+    function getTargetOption() {
+      return 'target=' +
+        internal.formatOptionValue(internal.getLayerTargetId(gui.model, target.layer));
+    }
+
+    function runCommand(cmd, title) {
+      runGuiEditCommand(gui, cmd, {
+        title: title,
+        onDone: updateControls
+      });
+    }
+  }
+
+  // An extra captioned cell on an existing colour row.
+  function makeRowField(row, label) {
+    var cell = El('div').addClass('label-split-cell').appendTo(row);
+    El('span').appendTo(cell).text(label);
+    return makeTextInput(cell);
+  }
+
+  function makeTextInput(parent) {
+    return El('input').attr('type', 'text').appendTo(parent);
+  }
+
+  function makeLabeledInput(parent, label) {
+    var cell = El('label').addClass('frame-input-cell').appendTo(parent);
+    El('span').appendTo(cell).text(label);
+    return makeTextInput(cell);
+  }
+
+  function makeActionButton(parent, label, action) {
+    return El('div').addClass('label-panel-action-btn')
+      .attr('role', 'button').appendTo(parent).text(label).on('click', action);
+  }
+
+  function makeReadOnlyRow(parent, label) {
+    var row = El('div').addClass('frame-property-detail-row').appendTo(parent);
+    El('span').appendTo(row).text(label);
+    return El('span').addClass('frame-property-detail-value').appendTo(row);
+  }
+
+  function getUnitFactor(units) {
+    return units == 'in' ? 72 : units == 'cm' ? 28.3465 : 1;
+  }
+
+  function formatNumber(value) {
+    return String(Math.round(value * 100) / 100);
+  }
+
+  function formatCoordinate(value) {
+    return String(Number(value.toPrecision(12)));
+  }
+
+  function formatOpacity(value) {
+    return value === undefined ? '' :
+      String(Math.round(Number(value) * 100)) + '%';
+  }
+
+  // A fixed ratio holds when the frame is rescaled; one taken from the extent
+  // changes whenever the extent does. That difference is the reason to show the
+  // ratio at all, so it is said rather than implied.
+  function getAspectText(frame) {
+    if (frame.aspect_ratio > 0) {
+      return formatFrameAspectRatio(frame.aspect_ratio) + ' (fixed)';
+    }
+    var bbox = frame.bbox;
+    var ratio = (bbox[2] - bbox[0]) / (bbox[3] - bbox[1]);
+    if (!(ratio > 0) || !Number.isFinite(ratio)) return 'unavailable';
+    return formatFrameAspectRatio(ratio) + ' (from extent)';
   }
 
   // This is a new way to handle compatibility problems between
@@ -31016,6 +32667,9 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       new SessionSnapshots(gui);
     }
     gui.interaction = new InteractionMode(gui);
+    new PreviewMode(gui);
+    new FrameResizeTool(gui);
+    new FrameProperties(gui);
     gui.editToolbar = new EditToolbar(gui);
     gui.labelTool = new LabelTool(gui);
     gui.layerStyleTool = new LayerStyleTool(gui);
@@ -31301,6 +32955,13 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
           })
         };
       },
+      selectLayer: function(name) {
+        var target = gui.model.getLayers().filter(function(o) {
+          return getLayerName(o.layer) === name;
+        })[0];
+        if (!target) throw new Error('Missing layer: ' + name);
+        gui.model.selectLayer(target.layer, target.dataset);
+      },
       // What the label path guide drew, as last rendered.
       getLabelPathGuideInfo: function() {
         return getLabelPathGuideLayers(gui).map(function(lyr) {
@@ -31333,6 +32994,34 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       },
       zoomByPct: function(pct) {
         gui.map.getExtent().zoomByPct(pct);
+      },
+      setPreviewMode: function(on) {
+        if (gui.previewMode) gui.previewMode.setOn(on);
+      },
+      getPreviewMode: function() {
+        return gui.previewMode ? gui.previewMode.isOn() : false;
+      },
+      getPreviewReadout: function() {
+        return gui.previewMode ? gui.previewMode.getReadoutText() : '';
+      },
+      getSymbolScale: function() {
+        return gui.map.getExtent().getSymbolScale();
+      },
+      zoomToFrameMagnification: function(scale) {
+        gui.map.getExtent().zoomToFrameMagnification(scale);
+      },
+      openFrameTool: function() {
+        if (gui.frameTool) gui.frameTool.open();
+      },
+      getFrameInfo: function() {
+        var target = internal.getActiveFrame(gui.model);
+        if (!target) return null;
+        return Object.assign({
+          name: target.layer.name || ''
+        }, internal.getFrameLayerData(target.layer, target.dataset.arcs));
+      },
+      setFrameLockSize: function(on) {
+        if (gui.frameTool) gui.frameTool.setLockSize(on);
       },
       // The map's current view, in display CRS coordinates, for a test that an
       // edit leaves the view where the user put it.

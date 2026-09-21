@@ -1284,6 +1284,26 @@ body.simplify .layer-control-btn {
 	cursor: pointer;
 }
 
+.map-frame-section {
+	border-top: 1px solid #ddd;
+	margin-top: 8px;
+	padding-top: 7px;
+}
+
+.map-frame-heading h3 {
+	margin: 0 0 1px 0;
+}
+
+.map-frame-list .layer-item {
+	cursor: pointer;
+}
+
+.map-frame-empty {
+	cursor: pointer;
+	font-size: 12px;
+	padding: 7px 4px 4px;
+}
+
 .pin-all img,
 .layer-item img
 {
@@ -2046,6 +2066,41 @@ body.pan.panning .map-layers:not(.drawing) {
 	overflow: visible;
 }
 
+.map-layers > svg.preview-overlay {
+	top: 0;
+	left: 0;
+	z-index: 15;
+	pointer-events: none;
+	overflow: hidden;
+}
+
+.map-layers > svg.preview-background-overlay {
+	top: 0;
+	left: 0;
+	pointer-events: none;
+	overflow: hidden;
+}
+
+.preview-outside-mask {
+	fill: rgba(24, 28, 32, 0.38);
+	fill: #999;
+	fill: #000;
+	opacity: 0.85;
+	opacity: 0.3;
+	fill-rule: evenodd;
+}
+
+.preview-page-border {
+	fill: none;
+	stroke: rgba(30, 30, 30, 0.9);
+	stroke-width: 1.5px;
+	vector-effect: non-scaling-stroke;
+}
+
+.preview-page-neatline {
+	pointer-events: none;
+}
+
 .ruler-line {
 	fill: none;
 	stroke: #cc35a5;
@@ -2335,12 +2390,12 @@ body.pan.panning .map-layers:not(.drawing) {
 	position: relative;
 	cursor:pointer;
 	/* padding: 3px 3px 5px 3px; */
-	padding: 4px 5px;
+	padding: 3px 4px;
 	line-height: 1;
 }
 
 .nav-btn.menu-btn {
-	padding-top:  3px;
+	padding-top:  2px;
 }
 
 .nav-btn.selected {
@@ -2355,6 +2410,85 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .nav-btn.menu-btn.selected:not(.disabled) svg * {
 	fill: white;
+}
+
+.nav-btn.preview-toggle {
+	align-items: center;
+	box-sizing: border-box;
+	display: flex;
+	height: 28px;
+	justify-content: center;
+	margin-top: 2px;
+	padding-bottom: 0;
+	padding-top: 1px;
+}
+
+.preview-toggle svg {
+	display: block;
+	height: 16px;
+	transform: translateY(-1px);
+	width: 16px;
+}
+
+.preview-readout {
+	position: absolute;
+	z-index: 20;
+	top: 6px;
+	left: 50%;
+	transform: translateX(-50%);
+	background: rgba(255, 255, 255, 0.96);
+	border: 1px solid #ddd;
+	border-radius: 5px;
+	box-shadow: 0 1px 5px rgba(0,0,0,0.12);
+	color: #333;
+	cursor: pointer;
+	font-size: 12px;
+	line-height: 15px;
+	padding: 3px 7px;
+	white-space: nowrap;
+}
+
+.preview-readout-arrow {
+	color: #777;
+	font-size: 16px;
+	font-weight: bold;
+	line-height: 9px;
+	margin-left: 6px;
+	position: relative;
+	top: -1px;
+}
+
+.preview-scale-menu {
+	position: absolute;
+	z-index: 1;
+	display: none;
+	pointer-events: none;
+	padding: 5px 0;
+	background-color: white;
+	top: calc(100% + 4px);
+	right: 0;
+	text-align: right;
+	white-space: nowrap;
+	border-radius: 6px;
+	border: 1px solid #ddd;
+	box-shadow: 0 1px 7px rgba(0,0,0,0.12);
+}
+
+.preview-readout.open .preview-scale-menu {
+	display: block;
+	pointer-events: inherit;
+}
+
+.preview-scale-menu-item {
+	color: #555;
+	padding: 3px 9px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.preview-scale-menu-item:hover {
+	color: black;
+	background: var(--lt-theme-col);
 }
 
 .label-style-panel {
@@ -2401,6 +2535,178 @@ body.pan.panning .map-layers:not(.drawing) {
 	font-size: 16px; /* close button icon */
 }
 
+.frame-properties-popup {
+	width: 264px;
+}
+
+.frame-properties-form.label-style-panel,
+.frame-create-form.label-style-panel {
+	background: transparent;
+	border: 0;
+	border-radius: 0;
+	box-shadow: none;
+	box-sizing: border-box;
+	max-height: none;
+	overflow: visible;
+	padding: 0;
+	position: static;
+	width: 100%;
+}
+
+/* Three columns on the appearance rows: the neatline's width sits with the
+   colour and opacity it applies to, and the background row leaves the last
+   column empty rather than pushing a lone field onto a line of its own. */
+.frame-properties-form .label-split-row {
+	column-gap: 8px;
+	grid-template-columns: 1fr 54px 54px;
+}
+
+/* Wide enough for "Aspect ratio", and fixed rather than auto so that the ratio
+   at the top of the panel lines up with the details at the bottom, which are a
+   separate grid. */
+.frame-property-detail-row {
+	display: grid;
+	font-size: 12px;
+	gap: 6px;
+	grid-template-columns: 66px 1fr;
+	margin-top: 6px;
+}
+
+.frame-property-detail-row > span:first-child {
+	color: #555;
+}
+
+.frame-property-detail-value {
+	overflow-wrap: anywhere;
+}
+
+.frame-create-popup {
+	width: 264px;
+}
+
+/* The field tips are drawn above the "?" that opens them, which the box's own
+   overflow would clip. The dialog is three rows and two buttons and never has
+   anything to scroll. */
+.alert-box.frame-create-box {
+	overflow: visible;
+}
+
+/* A field and the "?" beside it. The field itself is a .frame-field-row, shared
+   with Frame properties, so that the dialog that creates a frame and the panel
+   that edits it look like one program. The gap matches the option rows below,
+   so that every field ends on the same vertical and the tips line up. */
+.frame-create-row {
+	align-items: center;
+	display: flex;
+	gap: 8px;
+	margin-top: 6px;
+}
+
+.frame-create-row > .frame-field-row {
+	flex: 1;
+	min-width: 0;
+}
+
+/* float is what the static tips in index.html are placed with; here the row is
+   a flex container, which ignores it. */
+.frame-create-popup .tip-button {
+	flex: none;
+	float: none;
+	margin-top: 0;
+	margin-left: 0;
+	width: 12px;
+}
+
+/* The button names what it does and is as wide as its name, so the two options
+   are left-aligned at a common width rather than sized by their labels. */
+.frame-create-option-row {
+	align-items: center;
+	display: flex;
+	gap: 8px;
+	margin-top: 6px;
+}
+
+/* flex: none, or the margin field beside the first button shrinks it and the
+   two options stop looking like peers. */
+.frame-create-option-row > .dialog-btn {
+	box-sizing: border-box;
+	flex: none;
+	margin: 0;
+	text-align: center;
+	width: 130px;
+}
+
+/* Stretches so that the margin field ends where the fields above it do: the
+   row is shorter than they are, and a ragged right edge reads as unfinished
+   rather than as deliberate grouping. */
+.frame-create-margin {
+	align-items: center;
+	display: flex;
+	flex: 1;
+	gap: 6px;
+	min-width: 0; /* a flex item defaults to min-width:auto and will not shrink below its field */
+}
+
+.frame-create-margin > span {
+	color: #555;
+	font-size: 12px;
+}
+
+.frame-create-margin > input {
+	box-sizing: border-box;
+	flex: 1;
+	min-width: 0;
+}
+
+.frame-field-row {
+	align-items: center;
+	display: flex;
+	gap: 8px;
+}
+
+.frame-field-row > span {
+	flex: 0 0 82px;
+}
+
+.frame-field-row > input,
+.frame-field-row > select {
+	flex: 1;
+	min-width: 0;
+}
+
+.frame-field-row > .label-panel-action-btn {
+	flex: none;
+}
+
+/* Two class names, because .label-style-row's display:block is declared later
+   in this file and a single class would lose to it -- which is what stacked
+   width and height down the panel at full width instead of pairing them. */
+.label-style-row.frame-size-row {
+	align-items: end;
+	display: grid;
+	gap: 6px;
+	grid-template-columns: 1fr 1fr 54px;
+}
+
+.frame-input-cell > span {
+	color: #555;
+	font-size: 12px;
+}
+
+.frame-input-cell > input {
+	box-sizing: border-box;
+	width: 100%;
+}
+
+.frame-units-select {
+	width: 54px;
+}
+
+.export-frame-info {
+	color: #555;
+	font-size: 12px;
+	margin: 8px 0 12px;
+}
 
 .label-style-panel select,
 .label-saved-style-btn {
@@ -3065,11 +3371,6 @@ body.pan.panning .map-layers:not(.drawing) {
 	opacity: 0.45;
 }
 
-.label-color-row .label-color-picker {
-	left: auto;
-	right: 0;
-}
-
 .label-color-row .label-color-picker input[type="text"] {
 	width: 45px;
 }
@@ -3109,11 +3410,14 @@ body.pan.panning .map-layers:not(.drawing) {
 	color: #555;
 }
 
+/* Fixed rather than absolute so that a panel inside a scrolling box cannot trap
+   the picker: Frame properties lives in an .alert-box that scrolls its
+   overflow, which clipped the picker into the panel instead of letting it float
+   over it. ColorPicker sets top/left from the field it belongs to when it
+   opens. */
 .label-color-picker {
-	position: absolute;
+	position: fixed;
 	z-index: 25;
-	top: 48px;
-	right: 0;
 	padding: 8px;
 	background: white;
 	border: 1px solid #ddd;
@@ -3654,6 +3958,16 @@ body.dragging-color-picker * {
 	height: 24px;
 }
 
+.floating-toolbar-btn.text-btn {
+	font-size: 12px;
+	padding: 0 7px;
+	width: auto;
+	/* The toolbar is a flex row, which would otherwise squeeze a two-word
+	   label onto two lines and leave the button taller than its neighbours. */
+	flex: none;
+	white-space: nowrap;
+}
+
 .floating-toolbar-btn svg * {
 	fill: var(--theme-col);
 	transition: fill 100ms ease;
@@ -3680,6 +3994,21 @@ body.dragging-color-picker * {
 	fill: #166689;
 }
 
+/* An icon button's blue wash goes with its themed icon, but a text button is
+   grey and takes the grey the panels' action buttons use. A selected button
+   keeps its own background while hovered rather than flashing back to grey. */
+.floating-toolbar-btn.text-btn:hover:not(.disabled):not(.selected) {
+	background-color: #f0f0f0;
+}
+
+.floating-toolbar-btn.text-btn:active:not(.disabled):not(.selected) {
+	background-color: #e5e5e5;
+}
+
+.floating-toolbar-btn.text-btn.selected {
+	background-color: #e5e5e5;
+}
+
 .floating-toolbar-btn.disabled {
 	cursor: default;
 }
@@ -3688,8 +4017,83 @@ body.dragging-color-picker * {
 	fill: #b8c4ca;
 }
 
-/* Tooltip shown above the button on hover */
-.floating-toolbar-btn[data-tooltip]:hover:not(.disabled)::after {
+/* A captioned control: a segmented mode switch or a short typed value. The
+   caption is what lets the control be read at a glance, so it is always shown
+   rather than hidden behind a tooltip. */
+.floating-toolbar-group {
+	position: relative;
+	display: flex;
+	align-items: center;
+	flex: none;
+	gap: 5px;
+	margin: 0 4px;
+}
+
+.floating-toolbar-caption {
+	font-size: 12px;
+	color: #808080;
+	white-space: nowrap;
+	user-select: none;
+}
+
+/* Both modes stay visible inside a single outlined well, so the lit one reads
+   as the current state rather than as the result of clicking. */
+.floating-toolbar-segments {
+	display: flex;
+	align-items: center;
+	background-color: #f0f0f0;
+	border-radius: 6px;
+	padding: 2px;
+	gap: 2px;
+}
+
+.floating-toolbar-segments .floating-toolbar-btn {
+	height: 22px;
+	border-radius: 4px;
+}
+
+/* A segment sits on the well rather than on the toolbar, so its hover has to
+   darken past the well's own grey to register. */
+.floating-toolbar-segments .floating-toolbar-btn:hover:not(.disabled):not(.selected) {
+	background-color: #e4e4e4;
+}
+
+.floating-toolbar-segments .floating-toolbar-btn.selected {
+	background-color: #fff;
+	color: #166689;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.floating-toolbar-field {
+	cursor: default;
+}
+
+.floating-toolbar-field input[type=text] {
+	width: 48px;
+	height: 22px;
+	box-sizing: border-box;
+	font-size: 12px;
+	padding: 0 5px;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+	background-color: #fff;
+	color: var(--dark-text-col);
+	-webkit-appearance: none;
+	appearance: none;
+	outline: none;
+}
+
+/* The same flat focus as the panels: the border turns gold and the global
+   input rule's glow is suppressed. */
+.floating-toolbar-field input[type=text]:focus {
+	border-color: #d3aa00;
+	box-shadow: none;
+	outline: none;
+}
+
+/* Tooltip shown above the button (or captioned control) on hover */
+.floating-toolbar-btn[data-tooltip]:hover:not(.disabled)::after,
+.floating-toolbar-group[data-tooltip]:hover::after {
 	content: attr(data-tooltip);
 	position: absolute;
 	bottom: calc(100% + 8px);
