@@ -146,8 +146,10 @@ export function PointStyleTool(gui) {
     // The two sizes of a circle side by side, in the shape the panel uses for
     // every other pair.
     var sizeRow = El('div').addClass('label-style-row label-split-row').appendTo(circlesSection);
-    var widthCell = El('div').addClass('label-split-cell').appendTo(sizeRow);
+    // Radius in the wide column, stroke width in the narrow one under the
+    // stroke's opacity, matching the line and polygon panels.
     var radiusCell = El('div').addClass('label-split-cell').appendTo(sizeRow);
+    var widthCell = El('div').addClass('label-split-cell').appendTo(sizeRow);
     El('span').appendTo(widthCell).text('Stroke width');
     circleStrokeWidthField = new SizeField(widthCell, {
       min: 0,
@@ -537,7 +539,7 @@ export function PointStyleTool(gui) {
   }
 
   function setCircleColor(control, color) {
-    control.setColor(color);
+    control.showColor(color);
   }
 
   function formatNumberValue(val) {

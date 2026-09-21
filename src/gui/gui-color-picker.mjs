@@ -28,8 +28,22 @@ export var layerColorPresetRows = [
   indigoRamp.concat(purpleRamp)
 ];
 
+// The pickers that are open, so that opening one can close the rest. They
+// float over their panel and overlap each other -- in Frame properties,
+// Background and Neatline are close enough together that two open pickers just
+// cover one another. Only open pickers are listed and hide() delists them, so
+// this holds at most one entry.
+var openPickers = [];
+
+function closeOpenPickers(except) {
+  openPickers.slice().forEach(function(picker) {
+    if (picker !== except) picker.hide();
+  });
+}
+
 export function ColorPicker(parent, opts) {
   opts = opts || {};
+  var self = this;
   var colorPicker = El('div').addClass('label-color-picker').appendTo(parent).hide();
   var sbCanvas, hueCanvas, sbMarker, hueMarker, pickerHsbInputs;
   var pickerColor = {h: 0, s: 0, b: 0};
@@ -41,13 +55,18 @@ export function ColorPicker(parent, opts) {
     if (colorPicker.visible()) {
       this.hide();
     } else {
+      closeOpenPickers(self);
       colorPicker.show();
+      positionPicker();
       drawColorPicker();
+      if (openPickers.indexOf(self) == -1) openPickers.push(self);
     }
   };
 
   this.hide = function() {
     colorPicker.hide();
+    var i = openPickers.indexOf(self);
+    if (i > -1) openPickers.splice(i, 1);
   };
 
   this.visible = function() {
@@ -63,6 +82,24 @@ export function ColorPicker(parent, opts) {
   this.getColor = function() {
     return hsbToHex(pickerColor);
   };
+
+  // The picker is placed in viewport coordinates (see .label-color-picker), so
+  // it has to be put against the field it belongs to each time it opens. The
+  // offsets reproduce what the stylesheet used to do with `top: 48px; right: 0`
+  // against that field, plus a clamp so that a panel low on the screen cannot
+  // push the picker off the bottom.
+  function positionPicker() {
+    var node = colorPicker.node();
+    var anchor = node.parentNode.getBoundingClientRect();
+    var margin = 8;
+    var top = anchor.top + 48;
+    var left = anchor.right - node.offsetWidth;
+    if (top + node.offsetHeight + margin > window.innerHeight) {
+      top = window.innerHeight - margin - node.offsetHeight;
+    }
+    colorPicker.css('top', Math.round(Math.max(margin, top)) + 'px');
+    colorPicker.css('left', Math.round(Math.max(margin, left)) + 'px');
+  }
 
   function init() {
     var sbWrap = El('div').addClass('label-color-canvas-wrap').appendTo(colorPicker);

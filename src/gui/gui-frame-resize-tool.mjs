@@ -359,8 +359,8 @@ export function FrameResizeTool(gui) {
     widthInput.node().value = '800px';
 
     var aspectInput = makeCreateField(content, 'Aspect ratio',
-      'Width divided by height, as a number\nor a ratio: 1.5 or 3:2.\n' +
-      'Leave blank to take the shape of the\nframe area.')
+      'Width divided by height, as a number or\na ratio: 1.5 or 3:2. ' +
+      'Leave blank to vary freely.')
       .addClass('frame-create-aspect-input');
 
     // Two ways to say where the frame goes. The heading is what makes them read
@@ -380,9 +380,9 @@ export function FrameResizeTool(gui) {
     var marginInput = El('input').attr('type', 'text').appendTo(marginCell);
     marginInput.node().value = '2%';
     makeFieldTip(fitRow,
-      'Padding around the layers: 2%, 20px, 1cm.\n' +
-      "A percentage is of the frame's width at the\n" +
-      'sides, its height above and below.');
+      'Space around the layers: 2%, 20px, 1cm.\n' +
+      "A percentage is of the frame's width on the\n" +
+      'side and of its height on top and bottom.');
 
     var drawRow = El('div').addClass('frame-create-option-row').appendTo(section);
     addButton(drawRow, 'Draw on the map', function() {

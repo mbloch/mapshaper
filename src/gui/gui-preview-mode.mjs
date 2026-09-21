@@ -207,9 +207,9 @@ export function PreviewMode(gui) {
   }
 
   function applyFrameStyle(style) {
+    var strokeWidth = Number(style['stroke-width']);
     var hasFill = style.fill && style.fill != 'none';
-    var hasStroke = style.stroke && style.stroke != 'none' &&
-      Number(style['stroke-width']) > 0;
+    var hasStroke = style.stroke && style.stroke != 'none' && strokeWidth > 0;
     if (hasFill) {
       background.setAttribute('fill', style.fill);
       background.setAttribute('fill-opacity',
@@ -221,13 +221,19 @@ export function PreviewMode(gui) {
     if (hasStroke) {
       neatline.setAttribute('fill', 'none');
       neatline.setAttribute('stroke', style.stroke);
-      neatline.setAttribute('stroke-width', style['stroke-width']);
+      // Stroke width is in output pixels, so it has to be scaled to the size
+      // the page is drawn at or the neatline reads thinner than it will print.
+      neatline.setAttribute('stroke-width', strokeWidth * ext.getSymbolScale());
       neatline.setAttribute('stroke-opacity',
         style['stroke-opacity'] === undefined ? 1 : style['stroke-opacity']);
       neatline.style.display = '';
     } else {
       neatline.style.display = 'none';
     }
+    // The border is chrome, there to show where the page is when nothing else
+    // marks it. A neatline is the page edge, and since the border is painted
+    // last it was covering every neatline with the same dark grey line.
+    border.style.display = hasStroke ? 'none' : '';
   }
 
   function closeMenu() {

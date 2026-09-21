@@ -2395,7 +2395,7 @@ body.pan.panning .map-layers:not(.drawing) {
 }
 
 .nav-btn.menu-btn {
-	padding-top:  3px;
+	padding-top:  2px;
 }
 
 .nav-btn.selected {
@@ -3371,11 +3371,6 @@ body.pan.panning .map-layers:not(.drawing) {
 	opacity: 0.45;
 }
 
-.label-color-row .label-color-picker {
-	left: auto;
-	right: 0;
-}
-
 .label-color-row .label-color-picker input[type="text"] {
 	width: 45px;
 }
@@ -3415,11 +3410,14 @@ body.pan.panning .map-layers:not(.drawing) {
 	color: #555;
 }
 
+/* Fixed rather than absolute so that a panel inside a scrolling box cannot trap
+   the picker: Frame properties lives in an .alert-box that scrolls its
+   overflow, which clipped the picker into the panel instead of letting it float
+   over it. ColorPicker sets top/left from the field it belongs to when it
+   opens. */
 .label-color-picker {
-	position: absolute;
+	position: fixed;
 	z-index: 25;
-	top: 48px;
-	right: 0;
 	padding: 8px;
 	background: white;
 	border: 1px solid #ddd;

@@ -144,13 +144,13 @@ export function LayerStyleTool(gui) {
     return control;
   }
 
-  // In the wide column, under the stroke colour it belongs to. Stepping runs
-  // up a ladder of widths rather than by a fixed amount, because the useful
-  // ones are close together at the hairline end and far apart above 2px.
+  // In the narrow column, under the stroke's opacity. Stepping runs up a ladder
+  // of widths rather than by a fixed amount, because the useful ones are close
+  // together at the hairline end and far apart above 2px.
   function addStrokeWidthControl(parent) {
     var row = El('div').addClass('label-style-row label-split-row').appendTo(parent);
-    var cell = El('div').addClass('label-split-cell').appendTo(row);
     El('div').addClass('label-split-cell').appendTo(row);
+    var cell = El('div').addClass('label-split-cell').appendTo(row);
     El('span').appendTo(cell).text('Stroke width');
     return new SizeField(cell, {
       min: 0,
@@ -189,23 +189,16 @@ export function LayerStyleTool(gui) {
 
   function updateColorControl(control) {
     var value = getCommonStyleValue(control.field);
-    setColorControlValue(control, value);
+    control.showColor(value);
     updateOpacityControl(control);
-    if (isHexColor(value)) {
-      control.picker.setColor(value);
-    } else {
-      control.picker.hide();
-    }
+    // Nothing for the picker to sit on when the selection has no one colour.
+    if (!isHexColor(value)) control.picker.hide();
   }
 
   function updateOpacityControl(control) {
     var value = getCommonStyleValue(control.field + '-opacity');
     control.opacity.node().value =
       formatOpacityPct(value === '' || value === undefined || value === null ? 1 : value);
-  }
-
-  function setColorControlValue(control, value) {
-    control.setColor(value);
   }
 
   function updateStrokeWidthControl() {

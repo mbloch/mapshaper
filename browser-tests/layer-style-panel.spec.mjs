@@ -46,6 +46,22 @@ test('a colour is set from its field, and its opacity from the one beside it', a
   expect(errors).toEqual([]);
 });
 
+// Stroke width sits under the stroke's opacity, in the narrow column, so that
+// it reads as belonging to the stroke rather than as a row of its own.
+test('layer style fields are laid out in two columns by what they belong to',
+  async function({page}) {
+    await loadFixture(page, FIXTURE);
+    expect(await page.evaluate(function() {
+      var rows = document.querySelectorAll('.layer-style-panel .label-split-row');
+      return Array.prototype.map.call(rows, function(row) {
+        return Array.prototype.map.call(row.children, function(cell) {
+          var span = cell.querySelector('span');
+          return span ? span.textContent : '-';
+        }).join(' | ');
+      });
+    })).toEqual(['Fill | Opacity', 'Stroke | Opacity', '- | Stroke width']);
+  });
+
 test('stroke width is typed or stepped in a size field', async function({page}) {
   // It was a value between a − and a +, three clicks wide, with no way to
   // type a width at all until the value itself was clicked.

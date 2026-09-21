@@ -244,6 +244,64 @@ test('frame properties edits output size through an undoable command', async fun
   }).toBe(600);
 });
 
+// The panel sits in a box that scrolls its overflow, which used to clip the
+// picker into the panel instead of letting it float over it.
+test('the frame colour picker floats over the panel it belongs to',
+  async function({page}) {
+    await loadFixture(page);
+    await page.evaluate(function() {
+      return window.mapshaper.undoTest.runCommand(
+        '-frame bbox=-80,30,-70,40 width=600 name=frame'
+      );
+    });
+    await page.locator('.sidebar-tab.layer-tab').click();
+    await page.locator('.map-frame-list .layer-item').click();
+    await expect(page.locator('.frame-properties-popup')).toBeVisible();
+    // Neatline is the lower of the two colour rows, the worse case.
+    await page.locator('.frame-properties-popup .label-color-chit').nth(1).click();
+
+    var picker = page.locator('.frame-properties-popup .label-color-picker').nth(1);
+    await expect(picker).toBeVisible();
+    await expect(picker).toBeInViewport();
+    var reach = await page.evaluate(function() {
+      var el = Array.prototype.filter.call(
+        document.querySelectorAll('.label-color-picker'), function(node) {
+          return node.getBoundingClientRect().height > 0;
+        })[0];
+      return {
+        picker: el.getBoundingClientRect().bottom,
+        panel: document.querySelector('.alert-box').getBoundingClientRect().bottom
+      };
+    });
+    // Clipped by the panel, the picker could not reach past its bottom edge.
+    expect(reach.picker).toBeGreaterThan(reach.panel);
+  });
+
+test('a frame colour picker opens on the colour that is set', async function({page}) {
+  await loadFixture(page);
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand(
+      '-frame bbox=-80,30,-70,40 width=600 name=frame ' +
+      '-style target=frame fill=#aed9ef stroke=#cc3300'
+    );
+  });
+  await page.locator('.sidebar-tab.layer-tab').click();
+  await page.locator('.map-frame-list .layer-item').click();
+  await expect(page.locator('.frame-properties-popup')).toBeVisible();
+
+  // Neatline first: its picker opens below its own row, leaving the Background
+  // chit above it clickable. The other order buries the second chit.
+  await page.locator('.frame-properties-popup .label-color-chit').nth(1).click();
+  expect(await readPickerHsb(page, 1)).toBe('16° 100% 80%'); // #cc3300
+
+  // Two pickers open at once just cover each other.
+  await page.locator('.frame-properties-popup .label-color-chit').nth(0).click();
+  expect(await readPickerHsb(page, 0)).toBe('200° 27% 94%'); // #aed9ef
+  await expect(
+    page.locator('.frame-properties-popup .label-color-picker').nth(1)
+  ).toBeHidden();
+});
+
 // Either dimension rescales the frame and the other follows; neither reshapes
 // the extent, which is the resize tool's job.
 test('frame properties rescales the frame without moving its extent',
@@ -570,7 +628,19 @@ test('frame appearance renders as a background and top neatline', async function
   await expect(page.locator('.preview-page-background')).toHaveAttribute('fill', '#f2e3c6');
   await expect(page.locator('.preview-page-background')).toHaveAttribute('fill-opacity', '0.75');
   await expect(page.locator('.preview-page-neatline')).toHaveAttribute('stroke', '#234567');
-  await expect(page.locator('.preview-page-neatline')).toHaveAttribute('stroke-width', '3');
+
+  // 3 output pixels, drawn at whatever size the page is being shown at, so the
+  // neatline reads on screen as thick as it will print.
+  var neatline = await page.evaluate(function() {
+    var el = document.querySelector('.preview-page-neatline');
+    return {
+      width: Number(el.getAttribute('stroke-width')),
+      pageScale: Number(el.getAttribute('width')) /
+        window.mapshaper.undoTest.getFrameInfo().width
+    };
+  });
+  expect(neatline.pageScale).not.toBe(1); // otherwise this proves nothing
+  expect(neatline.width).toBeCloseTo(3 * neatline.pageScale, 3);
 
   var order = await page.evaluate(function() {
     var layers = document.querySelector('.map-layers');
@@ -583,7 +653,25 @@ test('frame appearance renders as a background and top neatline', async function
   });
   expect(order.background).toBeLessThan(order.firstCanvas);
   expect(order.neatlineOverlay).toBeGreaterThan(order.firstCanvas);
+
+  // The chrome border says where the page is when nothing else does. It is
+  // painted after the neatline, so leaving it on hid every neatline behind the
+  // same dark grey line.
+  await expect(page.locator('.preview-page-border')).toBeHidden();
 });
+
+test('the page border only stands in for a neatline that is not there',
+  async function({page}) {
+    await loadFixture(page);
+    await page.evaluate(async function() {
+      await window.mapshaper.undoTest.runCommand(
+        '-frame bbox=-80,30,-70,40 width=600 name=frame'
+      );
+      window.mapshaper.undoTest.setPreviewMode(true);
+    });
+    await expect(page.locator('.preview-page-border')).toBeVisible();
+    await expect(page.locator('.preview-page-neatline')).toBeHidden();
+  });
 
 test('export treats the frame as output settings, not a selectable layer', async function({page}) {
   await loadFixture(page);
@@ -612,6 +700,17 @@ async function loadFixture(page) {
   await page.waitForFunction(function() {
     return window.mapshaper.undoTest.getState().model.datasetCount > 0;
   });
+}
+
+// What the picker's H/S/B fields read, which is where it is actually sitting.
+async function readPickerHsb(page, n) {
+  return page.evaluate(function(i) {
+    var picker = document.querySelectorAll(
+      '.frame-properties-popup .label-color-picker')[i];
+    return Array.prototype.map.call(
+      picker.querySelectorAll('.label-color-picker-fields input'),
+      function(el) {return el.value;}).join(' ');
+  }, n);
 }
 
 async function getFrameInfo(page) {

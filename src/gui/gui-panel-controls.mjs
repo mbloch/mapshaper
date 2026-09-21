@@ -94,6 +94,17 @@ export function makeColorRow(parent, opts) {
     control.chit.css('background-color', isHexColor(color) ? color : 'transparent');
   };
 
+  // What a panel calls when it refreshes from the data: the picker has to start
+  // from the colour that is set, not from wherever it was left. A picker that
+  // has never been opened is still on its default, so without this it opens on
+  // black rather than on the colour beside it. Kept apart from setColor(),
+  // which is also the picker's own preview callback and must not feed back into
+  // it mid-drag.
+  control.showColor = function(color) {
+    control.setColor(color);
+    if (isHexColor(color)) control.picker.setColor(color);
+  };
+
   El('span').appendTo(colorCell).text(opts.label);
   control.chit = El('div').addClass('label-color-chit').attr('role', 'button')
     .on('click', function() {

@@ -8,20 +8,34 @@ test('a circle is sized from its radius and stroke width fields', async function
   await loadFixture(page, FIXTURE);
   await clickButton(page, 'Create simple circles');
   expect(await getStyleValue(page, 'r')).toBe(3);
-  var sizes = page.locator('.point-style-panel .size-field-input');
+  var radius = sizeField(page, 'Radius');
+  var strokeWidth = sizeField(page, 'Stroke width');
 
-  await setField(sizes.nth(1), '8'); // radius
+  await setField(radius, '8');
   expect(await getStyleValue(page, 'r')).toBe(8);
 
-  await setField(sizes.nth(0), '0.75'); // stroke width, kept to the quarter
+  await setField(strokeWidth, '0.75'); // kept to the quarter
   expect(await getStyleValue(page, 'stroke-width')).toBe(0.75);
 
   // the ladder of widths, walked from the keyboard
-  await sizes.nth(0).press('ArrowUp');
+  await strokeWidth.press('ArrowUp');
   await page.waitForTimeout(250);
   expect(await getStyleValue(page, 'stroke-width')).toBe(1);
   expect(errors).toEqual([]);
 });
+
+// Stroke width belongs under the stroke's opacity, in the narrow column, the
+// same place the line and polygon panels put it.
+test('circle fields are laid out in two columns by what they belong to',
+  async function({page}) {
+    await loadFixture(page, FIXTURE);
+    await clickButton(page, 'Create simple circles');
+    expect(await columnLayout(page, '.point-style-panel')).toEqual([
+      'Fill | Opacity',
+      'Stroke | Opacity',
+      'Radius | Stroke width'
+    ]);
+  });
 
 test('a circle colour is set from the field, and its opacity beside it', async function({page}) {
   var errors = collectPageErrors(page);
@@ -57,6 +71,26 @@ async function clickButton(page, label) {
   await page.locator('.point-style-panel .label-panel-action-btn')
     .filter({hasText: label}).click();
   await page.waitForTimeout(400);
+}
+
+// Each split row as "left column label | right column label".
+async function columnLayout(page, panel) {
+  return page.evaluate(function(sel) {
+    var rows = document.querySelectorAll(sel + ' .label-split-row');
+    return Array.prototype.map.call(rows, function(row) {
+      return Array.prototype.map.call(row.children, function(cell) {
+        var span = cell.querySelector('span');
+        return span ? span.textContent : '-';
+      }).join(' | ');
+    });
+  }, panel);
+}
+
+// By its label, so that rearranging the panel does not quietly point a test at
+// the wrong field.
+function sizeField(page, label) {
+  return page.locator('.point-style-panel .label-split-cell')
+    .filter({hasText: label}).locator('.size-field-input');
 }
 
 async function setField(locator, value) {

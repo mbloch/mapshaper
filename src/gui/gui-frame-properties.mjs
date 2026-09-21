@@ -97,9 +97,9 @@ export function FrameProperties(gui) {
     heightInput.node().value = formatNumber(frame.height / factor);
     unitsSelect.node().value = units;
     aspectValue.text(getAspectText(frame));
-    backgroundControl.setColor(rec.fill || '');
+    backgroundControl.showColor(rec.fill || '');
     backgroundControl.opacity.node().value = formatOpacity(rec['fill-opacity']);
-    neatlineControl.setColor(rec.stroke || '');
+    neatlineControl.showColor(rec.stroke || '');
     neatlineControl.opacity.node().value = formatOpacity(rec['stroke-opacity']);
     neatlineWidthInput.node().value =
       rec['stroke-width'] === undefined ? '' : rec['stroke-width'];
