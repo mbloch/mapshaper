@@ -31,6 +31,11 @@ export function showPopupAlert(msg, title, optsArg) {
   if (opts.max_width) {
     infoBox.node().style.maxWidth = opts.max_width;
   }
+  // For a popup that needs to style or unclip the box itself, not just its
+  // content -- the box scrolls its overflow, which would cut off a tooltip.
+  if (opts.classname) {
+    infoBox.addClass(opts.classname);
+  }
   var container = El('div').appendTo(infoBox);
   if (!title && warningRxp.test(msg)) {
     title = 'Warning';

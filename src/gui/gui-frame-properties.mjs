@@ -4,6 +4,11 @@ import { runGuiEditCommand } from './gui-edit-command';
 import { quoteCommandValue } from './gui-command-utils';
 import { showPopupAlert } from './gui-alert';
 import { makeColorRow, makePanelSection } from './gui-panel-controls';
+import {
+  getFrameAspectPreset,
+  makeFrameAspectSelect,
+  parseFrameAspectRatio
+} from './gui-frame-aspect';
 
 export function FrameProperties(gui) {
   var target, form, nameInput, widthInput, heightInput, unitsSelect;
@@ -41,17 +46,7 @@ export function FrameProperties(gui) {
     });
 
     var aspectRow = makeFieldRow(form, 'Aspect');
-    aspectSelect = El('select').appendTo(aspectRow).on('change', updateAspect);
-    [
-      ['auto', 'From extent'],
-      ['1', '1:1'],
-      ['1.3333333333333333', '4:3'],
-      ['1.5', '3:2'],
-      ['1.7777777777777777', '16:9'],
-      ['custom', 'Custom']
-    ].forEach(function(item) {
-      El('option').attr('value', item[0]).appendTo(aspectSelect).text(item[1]);
-    });
+    aspectSelect = makeFrameAspectSelect(aspectRow).on('change', updateAspect);
     customAspectRow = makeFieldRow(form, 'Custom ratio').addClass('hidden');
     customAspectInput = makeTextInput(customAspectRow)
       .attr('placeholder', 'e.g. 5:4')
@@ -101,7 +96,7 @@ export function FrameProperties(gui) {
     var rec = target.layer.data.getReadOnlyRecordAt(0);
     var units = frame.units || 'px';
     var factor = getUnitFactor(units);
-    var preset = getAspectPreset(frame.aspect_ratio);
+    var preset = getFrameAspectPreset(frame.aspect_ratio);
     var info = internal.getLayerInfo(target.layer, target.dataset);
     nameInput.node().value = target.layer.name || '';
     widthInput.node().value = formatNumber(frame.width / factor);
@@ -184,7 +179,7 @@ export function FrameProperties(gui) {
   }
 
   function updateCustomAspect() {
-    var value = parseAspectRatio(customAspectInput.node().value);
+    var value = parseFrameAspectRatio(customAspectInput.node().value);
     if (!(value > 0)) {
       updateControls();
       return;
@@ -281,23 +276,6 @@ function formatCoordinate(value) {
 function formatOpacity(value) {
   return value === undefined ? '' :
     String(Math.round(Number(value) * 100)) + '%';
-}
-
-function parseAspectRatio(value) {
-  var parts = String(value).trim().split(':').map(Number);
-  if (parts.length == 2) {
-    return parts[0] > 0 && parts[1] > 0 ? parts[0] / parts[1] : NaN;
-  }
-  return parts.length == 1 ? parts[0] : NaN;
-}
-
-function getAspectPreset(aspect) {
-  if (!aspect) return 'auto';
-  var presets = [1, 4 / 3, 3 / 2, 16 / 9];
-  var match = presets.find(function(value) {
-    return Math.abs(value - aspect) < 1e-10;
-  });
-  return match ? String(match) : 'custom';
 }
 
 function getResolutionText(frame, dataset) {

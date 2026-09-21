@@ -6,6 +6,8 @@ import { showPopupAlert } from './gui-alert';
 import { translateDisplayPoint } from './gui-display-utils';
 import { HighlightBox } from './gui-highlight-box';
 import { FloatingToolbar } from './gui-floating-toolbar';
+import { makePanelSection } from './gui-panel-controls';
+import { parseFrameAspectRatio } from './gui-frame-aspect';
 
 export function FrameResizeTool(gui) {
   var ext = gui.map.getExtent();
@@ -14,6 +16,7 @@ export function FrameResizeTool(gui) {
   var drawing = false;
   var drawingRequested = false;
   var drawWidth = '800px';
+  var drawAspect = '';
   var drawSource = null;
   var drawInstructions = null;
   var frameBox = new HighlightBox(gui, {
@@ -242,35 +245,92 @@ export function FrameResizeTool(gui) {
       );
       return;
     }
-    var popup = showPopupAlert('', 'Add map frame');
-    var content = popup.container().addClass('frame-create-popup');
+    var popup = showPopupAlert('', 'Add map frame', {classname: 'frame-create-box'});
+    // label-style-panel is where the flat field look lives -- no bezel, and a
+    // focus ring that is a border rather than a glow. frame-create-form turns
+    // off the chrome the class also carries, as the properties panel does.
+    var content = El('div').addClass('label-style-panel frame-create-form')
+      .appendTo(popup.container().addClass('frame-create-popup'));
     El('p').appendTo(content)
-      .text('Create a frame from the current map view or visible layers.');
-    var row = El('label').addClass('frame-create-width').appendTo(content);
-    El('span').appendTo(row).text('Output width');
-    var input = El('input').attr('type', 'text').appendTo(row);
-    input.node().value = '800px';
-    var buttons = El('div').addClass('frame-create-buttons').appendTo(content);
-    addButton(buttons, 'Frame this view', function() {
+      .text('Sets the size and crop of exported maps.');
+
+    var widthInput = makeCreateField(content, 'Output width',
+      'Width of the exported map.\nExamples: 800px, 5in, 10cm.')
+      .addClass('frame-create-width-input');
+    widthInput.node().value = '800px';
+
+    var aspectInput = makeCreateField(content, 'Aspect ratio',
+      'Width divided by height, as a number\nor a ratio: 1.5 or 3:2.\n' +
+      'Leave blank to take the shape of the\nframe area.')
+      .addClass('frame-create-aspect-input');
+
+    // Two ways to say where the frame goes. The heading is what makes them read
+    // as a choice rather than as two loose actions; the margin sits on the row
+    // it modifies, because it pads layer bounds and a drawn box is already the
+    // extent the user meant.
+    var section = makePanelSection(content, 'Frame area', {minor: true});
+    var fitRow = El('div').addClass('frame-create-option-row').appendTo(section);
+    addButton(fitRow, 'Fit visible layers', function() {
+      var aspect = getAspect();
+      if (aspect === null) return;
       popup.close();
-      createFromView(getWidth());
+      createFromVisibleLayers(getWidth(), aspect, getMargin());
     });
-    addButton(buttons, 'Fit visible layers', function() {
+    var marginCell = El('label').addClass('frame-create-margin').appendTo(fitRow);
+    El('span').appendTo(marginCell).text('Margin');
+    var marginInput = El('input').attr('type', 'text').appendTo(marginCell);
+    marginInput.node().value = '2%';
+    makeFieldTip(fitRow,
+      'Padding around the layers, in percent of\n' +
+      'width or in display units: 2%, 20px, 1cm.');
+
+    var drawRow = El('div').addClass('frame-create-option-row').appendTo(section);
+    addButton(drawRow, 'Draw on the map', function() {
+      var aspect = getAspect();
+      if (aspect === null) return;
       popup.close();
-      createFromVisibleLayers(getWidth());
-    });
-    addButton(buttons, 'Draw frame', function() {
-      popup.close();
-      beginFrameDrawing(getWidth());
+      beginFrameDrawing(getWidth(), aspect);
     });
 
     function getWidth() {
-      var value = input.node().value.trim();
+      var value = widthInput.node().value.trim();
       return parseFloat(value) > 0 ? value : '800px';
+    }
+
+    // Returns a ratio, '' when the field is blank -- the frame area then gives
+    // the shape -- or null if the field holds something that is not a ratio, in
+    // which case the dialog stays open on the bad value.
+    function getAspect() {
+      var text = aspectInput.node().value.trim();
+      var value;
+      if (!text) return '';
+      value = parseFrameAspectRatio(text);
+      if (!(value > 0)) {
+        aspectInput.node().focus();
+        return null;
+      }
+      return String(value);
+    }
+
+    function getMargin() {
+      var value = marginInput.node().value.trim();
+      return parseFloat(value) > 0 ? value : '';
     }
   }
 
-  function beginFrameDrawing(width) {
+  // A captioned field with a tip beside it. The caption and field are a label
+  // so that clicking the caption focuses the field; the tip is outside it, or
+  // opening the tip would focus the field too.
+  function makeCreateField(parent, label, tip) {
+    var row = El('div').addClass('frame-create-row').appendTo(parent);
+    var cell = El('label').addClass('frame-field-row').appendTo(row);
+    El('span').appendTo(cell).text(label);
+    var input = El('input').attr('type', 'text').appendTo(cell);
+    makeFieldTip(row, tip);
+    return input;
+  }
+
+  function beginFrameDrawing(width, aspect) {
     drawSource = getSourceLayer();
     if (!drawSource) {
       showPopupAlert(
@@ -280,6 +340,7 @@ export function FrameResizeTool(gui) {
       return;
     }
     drawWidth = width;
+    drawAspect = aspect || '';
     drawingRequested = true;
     gui.interaction.setMode('frame_draw');
   }
@@ -305,36 +366,19 @@ export function FrameResizeTool(gui) {
     if (!displayBounds || !source) return;
     var bbox = getDisplayBoundsInLayerCRS(source, displayBounds);
     gui.interaction.turnOff();
-    runCreateCommand(
-      '-frame bbox=' + quoteCommandValue(bbox.join(',')) +
-      ' width=' + quoteCommandValue(drawWidth) +
-      ' name=frame target=' +
-      internal.formatOptionValue(internal.getLayerTargetId(gui.model, source))
-    );
+    var parts = [
+      '-frame',
+      'bbox=' + quoteCommandValue(bbox.join(',')),
+      'width=' + quoteCommandValue(drawWidth)
+    ];
+    if (drawAspect) parts.push('aspect-ratio=' + drawAspect);
+    parts.push('name=frame');
+    parts.push('target=' +
+      internal.formatOptionValue(internal.getLayerTargetId(gui.model, source)));
+    runCreateCommand(parts.join(' '));
   }
 
-  function createFromView(width) {
-    var source = getSourceLayer();
-    if (!source) {
-      showPopupAlert(
-        'Add or select a geographic layer before creating a frame.',
-        'Map frame'
-      );
-      return;
-    }
-    var bbox = getDisplayBoundsInLayerCRS(
-      source,
-      ext.getBounds().toArray()
-    );
-    runCreateCommand(
-      '-frame bbox=' + quoteCommandValue(bbox.join(',')) +
-      ' width=' + quoteCommandValue(width) +
-      ' name=frame target=' +
-      internal.formatOptionValue(internal.getLayerTargetId(gui.model, source))
-    );
-  }
-
-  function createFromVisibleLayers(width) {
+  function createFromVisibleLayers(width, aspect, margin) {
     var entries = getCompositionEntries();
     if (!entries.length) {
       showPopupAlert('No visible geographic layers are available.', 'Map frame');
@@ -343,10 +387,12 @@ export function FrameResizeTool(gui) {
     var ids = entries.map(function(o) {
       return internal.getLayerTargetId(gui.model, o.layer);
     });
-    runCreateCommand(
-      '-frame width=' + quoteCommandValue(width) +
-      ' name=frame target=' + internal.formatOptionValue(ids.join(','))
-    );
+    var parts = ['-frame', 'width=' + quoteCommandValue(width)];
+    if (aspect) parts.push('aspect-ratio=' + aspect);
+    if (margin) parts.push('offset=' + quoteCommandValue(margin));
+    parts.push('name=frame');
+    parts.push('target=' + internal.formatOptionValue(ids.join(',')));
+    runCreateCommand(parts.join(' '));
   }
 
   function runCreateCommand(cmd) {
@@ -415,6 +461,16 @@ export function FrameResizeTool(gui) {
 function addButton(parent, label, action) {
   El('div').addClass('btn dialog-btn').appendTo(parent)
     .text(label).on('click', action);
+}
+
+// The "?" the rest of the app uses for field help (see .tip-button in
+// elements.css and the static ones in index.html). The bubble is white-space:
+// pre, so the line breaks in the text are the ones it gets.
+function makeFieldTip(parent, text) {
+  var btn = El('div').addClass('tip-button').appendTo(parent).text('?');
+  var anchor = El('div').addClass('tip-anchor').appendTo(btn);
+  El('div').addClass('tip').appendTo(anchor).text(text);
+  return btn;
 }
 
 function getUnitFactor(units) {

@@ -45,8 +45,10 @@ export function PreviewMode(gui) {
   hideOverlay();
 
   [
-    {label: '100%', scale: 1},
     {label: '50%', scale: 0.5},
+    {label: '67%', scale: 0.67},
+    {label: '100%', scale: 1},
+    {label: '150%', scale: 1.5},
     {label: '200%', scale: 2},
     {label: 'Fit page', fit: true}
   ].forEach(function(item) {

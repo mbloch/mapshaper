@@ -2481,7 +2481,7 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .preview-scale-menu-item {
 	color: #555;
-	padding: 5px 9px;
+	padding: 3px 9px;
 	white-space: nowrap;
 	cursor: pointer;
 }
@@ -2539,7 +2539,8 @@ body.pan.panning .map-layers:not(.drawing) {
 	width: 340px;
 }
 
-.frame-properties-form.label-style-panel {
+.frame-properties-form.label-style-panel,
+.frame-create-form.label-style-panel {
 	background: transparent;
 	border: 0;
 	border-radius: 0;
@@ -2568,21 +2569,82 @@ body.pan.panning .map-layers:not(.drawing) {
 	overflow-wrap: anywhere;
 }
 
-.frame-create-width {
+.frame-create-popup {
+	width: 264px;
+}
+
+/* The field tips are drawn above the "?" that opens them, which the box's own
+   overflow would clip. The dialog is three rows and two buttons and never has
+   anything to scroll. */
+.alert-box.frame-create-box {
+	overflow: visible;
+}
+
+/* A field and the "?" beside it. The field itself is a .frame-field-row, shared
+   with Frame properties, so that the dialog that creates a frame and the panel
+   that edits it look like one program. The gap matches the option rows below,
+   so that every field ends on the same vertical and the tips line up. */
+.frame-create-row {
 	align-items: center;
 	display: flex;
 	gap: 8px;
-	margin: 10px 0;
+	margin-top: 6px;
 }
 
-.frame-create-width input {
+.frame-create-row > .frame-field-row {
 	flex: 1;
+	min-width: 0;
 }
 
-.frame-create-buttons {
+/* float is what the static tips in index.html are placed with; here the row is
+   a flex container, which ignores it. */
+.frame-create-popup .tip-button {
+	flex: none;
+	float: none;
+	margin-top: 0;
+	margin-left: 0;
+	width: 12px;
+}
+
+/* The button names what it does and is as wide as its name, so the two options
+   are left-aligned at a common width rather than sized by their labels. */
+.frame-create-option-row {
+	align-items: center;
 	display: flex;
-	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 6px;
+}
+
+/* flex: none, or the margin field beside the first button shrinks it and the
+   two options stop looking like peers. */
+.frame-create-option-row > .dialog-btn {
+	box-sizing: border-box;
+	flex: none;
+	margin: 0;
+	text-align: center;
+	width: 130px;
+}
+
+/* Stretches so that the margin field ends where the fields above it do: the
+   row is shorter than they are, and a ragged right edge reads as unfinished
+   rather than as deliberate grouping. */
+.frame-create-margin {
+	align-items: center;
+	display: flex;
+	flex: 1;
 	gap: 6px;
+	min-width: 0; /* a flex item defaults to min-width:auto and will not shrink below its field */
+}
+
+.frame-create-margin > span {
+	color: #555;
+	font-size: 12px;
+}
+
+.frame-create-margin > input {
+	box-sizing: border-box;
+	flex: 1;
+	min-width: 0;
 }
 
 .frame-field-row {

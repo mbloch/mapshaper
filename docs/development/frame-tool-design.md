@@ -789,7 +789,7 @@ Frame identity remains resolvable while preview is off, but frame-constrained
 full bounds and GUI symbol scaling are active only while preview is on in map
 view. Export never depends on preview state. Normal map pan and zoom change
 only the editor viewport; frame extent changes only through the frame tool,
-numeric controls or an explicit "Frame this view" action.
+numeric controls or the resize toolbar's explicit Fit view action.
 
 ### What turns on
 
@@ -855,17 +855,14 @@ Entering the mode turns on preview if it is not already on.
 
 ### Creating a frame
 
-Three entry points, all running `-frame`:
+Two entry points, both running `-frame`:
 
-- **From the current view.** The most natural gesture for a viewport object:
-  pan and zoom until the map looks right, then press "Frame this view". The
-  extent is `ext.getBounds()` and the nominal width defaults to the viewport
-  width in CSS pixels, so the frame is created at 100% and what you were
-  looking at is what you get.
 - **Fit visible layers.** Uses the merged bounds of the current
-  visible/pinned content stack and applies an optional margin. This makes the
-  existing composition state useful without pretending it is a persistent
-  frame-to-layer association.
+  visible/pinned content stack and applies an optional margin, defaulting to
+  2% — near what `calcFullBounds()` already adds on screen, so the page
+  resembles the view it was made from. This makes the existing composition
+  state useful without pretending it is a persistent frame-to-layer
+  association.
 - **By drawing.** A frame-specific use of `HighlightBox` takes two corner
   clicks, supports draggable handles, and shows only **Done** and **Cancel**.
   It does not open the general rectangle-tool menu. The rectangle tool's
@@ -875,8 +872,35 @@ Three entry points, all running `-frame`:
   tool's arrow button.
 
 When no frame exists, the Map frame section remains visible and shows an
-**add map frame** entry. It opens a compact creation dialog with all three
+**add map frame** entry. It opens a compact creation dialog offering both
 paths; the existing rectangle-tool path remains available.
+
+There is deliberately no "frame this view" button. It was the most natural
+gesture for a viewport object, but once the dialog also sets an aspect ratio
+and a margin it became the one option whose result would not match its name:
+both settings silently alter the extent you just chose by eye. The gesture
+survives as **Fit view** in the resize toolbar, one step later. For the same
+reason the margin applies only to Fit visible layers — a drawn box is already
+the extent the user meant — while the aspect ratio applies to both, since it
+describes the page rather than the area.
+
+The dialog's settings are Output width, Aspect ratio and Margin, each with the
+app's hoverable `?` beside it saying what the field will accept. Aspect ratio
+is a free text field taking either a number or a `w:h` ratio, and blank — the
+default — means the frame area gives the shape. Both it and the Frame
+properties panel's Custom field parse through `gui-frame-aspect.mjs`, so a
+ratio accepted in one panel is accepted in the other.
+
+The two extent buttons sit under a **Frame area** heading: two equally weighted
+buttons with no caption read as a list of actions rather than as a choice
+between two ways of doing one thing.
+
+The dialog's content carries `label-style-panel`, which is where the flat field
+look lives — no bezel, and a focus ring that is a border rather than a glow —
+with `frame-create-form` turning off the panel chrome that the class also
+carries, exactly as `frame-properties-form` does. Its alert box opts out of
+`overflow: auto`, because the tips are drawn above the `?` that opens them and
+would otherwise be clipped.
 
 ### The three gestures, one at a time
 

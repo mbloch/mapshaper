@@ -2,14 +2,14 @@ import { expect, test } from '@playwright/test';
 
 var POINT_FIXTURE = 'test/data/geojson/three_points.geojson';
 
-test('layer panel creates a frame from the current view', async function({page}) {
+test('layer panel creates a frame from the visible layers', async function({page}) {
   await loadFixture(page);
 
   await page.locator('.sidebar-tab.layer-tab').click();
   await page.locator('.map-frame-empty').click();
   await expect(page.locator('.frame-create-popup')).toBeVisible();
   await page.locator('.frame-create-popup .dialog-btn')
-    .filter({hasText: 'Frame this view'}).click();
+    .filter({hasText: 'Fit visible layers'}).click();
 
   await expect.poll(function() {
     return getFrameInfo(page);
@@ -25,6 +25,82 @@ test('layer panel creates a frame from the current view', async function({page})
   await expect(page.locator('.map-frame-list .layer-item')).toContainText(
     /size\d+ × \d+ px/
   );
+});
+
+test('fitting visible layers applies the aspect ratio and margin', async function({page}) {
+  await loadFixture(page);
+  await page.locator('.sidebar-tab.layer-tab').click();
+  await page.locator('.map-frame-empty').click();
+  await setInput(page, '.frame-create-aspect-input', '5:4');
+  await setInput(page, '.frame-create-margin input', '10%');
+  await page.locator('.frame-create-popup .dialog-btn')
+    .filter({hasText: 'Fit visible layers'}).click();
+
+  await expect.poll(function() {
+    return getFrameInfo(page);
+  }).not.toBeNull();
+  var frame = await getFrameInfo(page);
+  expect(frame.width / frame.height).toBeCloseTo(1.25, 6);
+  expect((await getSessionCommands(page)).pop())
+    .toContain("aspect-ratio=1.25 offset='10%'");
+});
+
+// A drawn box is already the extent the user meant, so the margin is not
+// offered for it and must not leak into the command.
+test('a drawn frame takes the aspect ratio but no margin', async function({page}) {
+  await loadFixture(page);
+  await page.locator('.sidebar-tab.layer-tab').click();
+  await page.locator('.map-frame-empty').click();
+  await setInput(page, '.frame-create-aspect-input', '1');
+  await page.locator('.frame-create-popup .dialog-btn')
+    .filter({hasText: 'Draw on the map'}).click();
+
+  // The instructions appear when drawing mode is live; clicking the map before
+  // then loses the first corner.
+  await expect(page.locator('.alert-wrapper.non-blocking')).toBeVisible();
+  var mapBox = await page.locator('.map-layers').boundingBox();
+  await page.mouse.click(mapBox.x + 120, mapBox.y + 100);
+  await page.mouse.move(mapBox.x + 480, mapBox.y + 260);
+  await page.mouse.click(mapBox.x + 480, mapBox.y + 260);
+  await page.locator('.frame-draw-toolbar .text-btn')
+    .filter({hasText: 'Done'}).click();
+
+  await expect.poll(function() {
+    return getFrameInfo(page);
+  }).not.toBeNull();
+  var frame = await getFrameInfo(page);
+  expect(frame.width / frame.height).toBeCloseTo(1, 6);
+  var command = (await getSessionCommands(page)).pop();
+  expect(command).toContain('aspect-ratio=1');
+  expect(command).not.toContain('offset');
+});
+
+test('an unusable aspect ratio keeps the dialog open', async function({page}) {
+  await loadFixture(page);
+  await page.locator('.sidebar-tab.layer-tab').click();
+  await page.locator('.map-frame-empty').click();
+  await setInput(page, '.frame-create-aspect-input', '0:3');
+  await page.locator('.frame-create-popup .dialog-btn')
+    .filter({hasText: 'Fit visible layers'}).click();
+
+  await expect(page.locator('.frame-create-popup')).toBeVisible();
+  expect(await getFrameInfo(page)).toBeNull();
+});
+
+// Blank is the default and means "take the shape of the frame area", so it
+// must not reach the command as an aspect-ratio option.
+test('a blank aspect ratio sends no aspect-ratio option', async function({page}) {
+  await loadFixture(page);
+  await page.locator('.sidebar-tab.layer-tab').click();
+  await page.locator('.map-frame-empty').click();
+  await expect(page.locator('.frame-create-aspect-input')).toHaveValue('');
+  await page.locator('.frame-create-popup .dialog-btn')
+    .filter({hasText: 'Fit visible layers'}).click();
+
+  await expect.poll(function() {
+    return getFrameInfo(page);
+  }).not.toBeNull();
+  expect((await getSessionCommands(page)).pop()).not.toContain('aspect-ratio');
 });
 
 test('frame creation preserves the active content and console target', async function({page}) {
@@ -64,7 +140,7 @@ test('draw frame uses a dedicated Done and Cancel interface', async function({pa
   await page.locator('.sidebar-tab.layer-tab').click();
   await page.locator('.map-frame-empty').click();
   await page.locator('.frame-create-popup .dialog-btn')
-    .filter({hasText: 'Draw frame'}).click();
+    .filter({hasText: 'Draw on the map'}).click();
 
   await expect(page.locator('.frame-draw-toolbar')).toBeVisible();
   await expect(page.locator('.frame-draw-toolbar')).toContainText('DoneCancel');
@@ -82,8 +158,9 @@ test('draw frame uses a dedicated Done and Cancel interface', async function({pa
 
   await page.locator('.map-frame-empty').click();
   await page.locator('.frame-create-popup .dialog-btn')
-    .filter({hasText: 'Draw frame'}).click();
+    .filter({hasText: 'Draw on the map'}).click();
 
+  await expect(page.locator('.alert-wrapper.non-blocking')).toBeVisible();
   var mapBox = await page.locator('.map-layers').boundingBox();
   await page.mouse.click(mapBox.x + 120, mapBox.y + 100);
   await page.mouse.move(mapBox.x + 480, mapBox.y + 380);
