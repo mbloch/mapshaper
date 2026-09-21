@@ -656,14 +656,82 @@ originally used:
   which is what lets the tool fit in display coordinates while storing knots in
   map coordinates. See the group-space note below.
 
-Note that a curvature-continuous fit **bows further outside the knots** than
-Catmull-Rom did when knots are placed awkwardly: on a hairpin whose knots span
-one unit, the curve reaches about 2.9 units past them. This is the cost of the
-smoothness rather than a defect — κ-curves, which is what Illustrator actually
-uses, reaches about 1 unit past on the same knots. Hobby's tension parameter
-would pull this in, at the price of flattening the roundness everywhere (a
-circle sampled at 8 points is reproduced exactly at unit tension and flattens
-by 4% at tension 1.5), so tension is fixed at 1.
+#### Bulging, and the two limits that hold it in
+
+Left alone, the fit **bows a long way outside the knots** when they are placed
+awkwardly: on a hairpin whose knots span one unit, it reached about 2.9 units
+past them, and a 372-unit arm meeting a 38-unit leg at 161° threw an arc 6.7
+leg-lengths off the drawn polyline. This is not an exotic input. A short
+segment next to a long one is what a half-finished drag leaves behind, so the
+balloon appears and disappears while the user is still working, and dragging
+the short leg round moved the curve up to **28 times as far as the knot**.
+
+The cause is the property the method was chosen for. Hobby equalizes mock
+curvature across every knot, a short chord carries a lot of curvature, and
+matching it on the long neighbour is what opens the arc. The bulge therefore
+scales with how *uneven* the spacing is, not with how hard the path turns.
+
+Two limits hold it in, both inert when the chords are of comparable length:
+
+- **`MAX_HANDLE`** — no control point sits further from its knot than **0.4×**
+  the length `handleLimit()` measures it against. This is a floor rather than a
+  preference: four points on a circle ask for 0.3905 of the chord, the roundest
+  anything reasonable asks for, so a limit just above it cannot flatten a curve
+  that was not already misbehaving. At 0.35 a four-point circle visibly clips.
+
+  The length it is measured against is the **geometric mean** of the segment's
+  own chord and the shorter of the two chords meeting at that knot. Measuring
+  against the shorter chord alone holds the bulge down just as well, but it
+  makes a long segment meeting a short one spend nearly all of its shape at its
+  far end: on a 490-unit arm meeting a 50-unit leg the arm's two handles came
+  out 9.8:1, so it ran almost straight and then hooked hard into the knot, and
+  curvature either side of that knot differed by a factor of 14. The geometric
+  mean gives the long segment a handle in proportion to how lopsided the pair
+  actually is, bringing that case to 3.1:1 and the curvature to within a factor
+  of 1.4 — about what Hobby's mock curvature leaves on an ordinary path anyway
+  — for two points of extra bulge. Across the whole pathological family the
+  worst curvature mismatch falls from 53× to 1.4×. The exponent is a genuine
+  optimum rather than a fitted value: mismatch is worst at both ends (13.8× at
+  the shorter chord, 6.8× at the segment's own) and minimal at the mean.
+- **`MAX_CHORD_RATIO`** — inside the solve only, no chord counts as more than
+  **1.5×** its neighbour. This limits how far a short segment can dictate to a
+  long one without moving a knot; the curve is still built on the true lengths.
+  It is what improves paths of four or more knots, taking the hairpin from 1.4
+  to 0.87 units past the knots.
+
+Together these take the hairpin to about one gap past the knots (−1.05..2.05,
+against κ-curves' −0.97..1.97), the 161° case to 1.8 leg-lengths, and the drag
+response to under 2× the knot's own movement. Across bend angles from 30° to
+170° and chord ratios from 1:1 to 37:1, the curve now strays a bounded fraction
+of the knots' diagonal, governed by how hard the path turns rather than by the
+spacing.
+
+**What stays continuous.** Shortening a handle does not turn it, so the
+direction the curve leaves a knot is exactly the direction it arrived by: the
+fit is G1 to machine precision, whatever the limits do, and a baseline never
+acquires a visible corner. Curvature (G2) is where a cost could land, and with
+the geometric-mean scale it is small — a factor of 1.4 at worst on a
+pathological path, against the 1.1 that Hobby's mock-curvature approximation
+leaves on an ordinary one.
+
+C1 in the sense of matching derivative *vectors* has never held here and is not
+a meaningful target: each segment is a Bézier over its own [0,1], so the
+derivative magnitude at a knot is proportional to that segment's handle length,
+and any interpolating spline through unevenly spaced knots has a jump there.
+Nothing downstream is parameterized that way — flattening, path length and
+text-on-path all work in arc length — so it is G1 and G2 that matter.
+
+Other approaches were measured and rejected. **Tension as a function of bend
+angle** works, but any fade-in band leaves an angle where the fix is absent and
+makes the bulge grow and then collapse as the knot is dragged through the band;
+it also over-corrects, flattening the long arm into a straight line rather than
+taming it. **Asymmetric tension** (Metafont's `..tension a and b..`, tightening
+only the side facing the sharp knot) is far worse — a slack far end levers the
+arm outward. **Metafont's `tension atleast`**, which clamps handles to the
+tangent-intersection triangle, barely helps, because that triangle is large
+exactly when the bend is. And **solving for the tension that meets a handle
+bound** gives a perfect drag response but collapses the curve onto the
+polyline, turning a smooth path into a visible corner.
 
 #### Curl
 
