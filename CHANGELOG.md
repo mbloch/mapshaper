@@ -1,3 +1,6 @@
+v0.7.64
+* Modify Hobby's algorithm to remove the tendency for the text path spline to balloon out under certain geometries.
+
 v0.7.63
 * [web] Added new UI for setting and updating a map frame. (Map frames set the output size and geographical extent of a map.) Support for multiple frames per project is planned for the future.
 * [web] New preview mode. Symbols and labels are scaled in proportion to map zoom.
