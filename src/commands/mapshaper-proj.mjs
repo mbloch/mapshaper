@@ -15,7 +15,7 @@ import { preProjectionClip } from '../crs/mapshaper-spherical-clipping';
 import { cleanLayers } from '../commands/mapshaper-clean';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { projectAndDensifyArcs } from '../crs/mapshaper-densify';
-import { expandProjDefn } from '../crs/mapshaper-projection-params';
+import { expandProjDefnForTargets } from '../crs/mapshaper-projection-params';
 import {
   layerHasPoints, layerHasGeometry, layerHasRaster, copyLayerShapes,
   getImplicitlyTargetedLayerNames
@@ -24,7 +24,7 @@ import { datasetHasGeometry, datasetHasRaster } from '../dataset/mapshaper-datas
 import { createRasterPreview } from '../rasters/mapshaper-raster-utils';
 import { projectRasterGridForward } from '../rasters/mapshaper-raster-reprojection';
 import { runningInBrowser } from '../mapshaper-env';
-import { stop, message, error } from '../utils/mapshaper-logging';
+import { stop, message, warn, error } from '../utils/mapshaper-logging';
 import { importFile } from '../io/mapshaper-file-import';
 import { buildTopology } from '../topology/mapshaper-topology';
 import {
@@ -44,33 +44,114 @@ import {
   getFrameProjectionSnapshots,
   rebuildProjectedFrameLayer
 } from '../furniture/mapshaper-frame-projection';
+import { getActiveFrame } from '../furniture/mapshaper-frame-utils';
 
-cmd.proj = function(dataset, catalog, opts, targetLayers) {
-  var srcInfo, destInfo, destStr;
+// Run -proj over all the targets of a single command.
+// The destination CRS is resolved once here rather than separately for each
+// target, for two reasons. Auto-fitted parameters (e.g. the standard parallels
+// that "lcc" expands to) must describe the whole command target, not whichever
+// dataset happens to be projected first. And the map frame must receive the
+// same CRS as the content instead of re-deriving parameters from its own extent.
+cmd.projTargets = function(targets, catalog, opts) {
+  var destInfo;
+  targets.forEach(function(targ) {
+    applyProjInit(targ.dataset, catalog, opts);
+  });
+  destInfo = resolveProjDestInfo(targets, catalog, opts);
+  targets.forEach(function(targ) {
+    projectTarget(targ.dataset, opts, targ.layers, destInfo);
+  });
+  if (destInfo && destInfo.crs) {
+    projectMapFrame(targets, catalog, opts, destInfo);
+    warnAboutUnprojectedLayers(catalog, destInfo);
+  }
+};
+
+cmd.proj = function(dataset, catalog, opts, targetLayers, destInfo) {
+  applyProjInit(dataset, catalog, opts);
+  if (!destInfo) {
+    destInfo = resolveProjDestInfo([{dataset: dataset, layers: targetLayers}], catalog, opts);
+  }
+  projectTarget(dataset, opts, targetLayers, destInfo);
+};
+
+function projectTarget(dataset, opts, targetLayers, destInfo) {
   var implicitlyProjectedNames = getImplicitlyTargetedLayerNames(dataset, targetLayers, layerHasGeometry);
   // A preserved GeoJSON "crs" member becomes invalid once the CRS changes.
   deleteGeoJSONMetadataCRS(dataset);
-  if (opts.init) {
-    srcInfo = fetchCrsInfo(opts.init, catalog);
-    if (!srcInfo.crs) stop("Unknown projection source:", opts.init);
-    setDatasetCrsInfo(dataset, srcInfo);
+  if (!destInfo) return;
+  var didProject = projCmd(dataset, destInfo, opts);
+  if (didProject && implicitlyProjectedNames.length > 0) {
+    message(
+      'Also projected non-target layer' + utils.pluralSuffix(implicitlyProjectedNames.length) +
+      ' from the same dataset: ' + implicitlyProjectedNames.join(', ')
+    );
   }
+}
+
+function applyProjInit(dataset, catalog, opts) {
+  if (!opts.init) return;
+  var srcInfo = fetchCrsInfo(opts.init, catalog);
+  if (!srcInfo.crs) stop("Unknown projection source:", opts.init);
+  setDatasetCrsInfo(dataset, srcInfo);
+}
+
+// @targets [{dataset, layers}, ...] -- all the targets of one -proj command
+function resolveProjDestInfo(targets, catalog, opts) {
   if (opts.match) {
-    destInfo = fetchCrsInfo(opts.match, catalog);
-  } else if (opts.crs) {
-    destStr = expandProjDefn(opts.crs, dataset, targetLayers);
-    destInfo = getCrsInfo(destStr);
+    return fetchCrsInfo(opts.match, catalog);
   }
-  if (destInfo) {
-    var didProject = projCmd(dataset, destInfo, opts);
-    if (didProject && implicitlyProjectedNames.length > 0) {
-      message(
-        'Also projected non-target layer' + utils.pluralSuffix(implicitlyProjectedNames.length) +
-        ' from the same dataset: ' + implicitlyProjectedNames.join(', ')
-      );
+  if (!opts.crs) return null;
+  return getCrsInfo(expandProjDefnForTargets(opts.crs, targets));
+}
+
+// A map frame is composition state, not content: its rectangle describes a
+// region of the map's coordinate space, so it has to follow the map's CRS even
+// when the command targeted only a data layer. The GUI deliberately keeps the
+// frame out of default targets, so nothing else reaches it.
+function projectMapFrame(targets, catalog, opts, destInfo) {
+  var frame = catalog ? getActiveFrame(catalog) : null;
+  var frameOpts = opts;
+  var frameCrs;
+  if (!frame) return;
+  if (targets.some(function(targ) { return targ.dataset == frame.dataset; })) {
+    return; // already projected as an ordinary target
+  }
+  frameCrs = getDatasetCrsInfo(frame.dataset).crs;
+  if (frameCrs && crsAreEqual(frameCrs, destInfo.crs)) {
+    return; // already in the destination CRS; say nothing
+  }
+  if (!frameCrs) {
+    warn('Unable to reproject the map frame: its coordinate system is unknown.');
+    return;
+  }
+  if (opts.init) {
+    // init= describes the CRS of the targeted data, not the frame's.
+    frameOpts = Object.assign({}, opts);
+    delete frameOpts.init;
+  }
+  cmd.proj(frame.dataset, catalog, frameOpts, frame.dataset.layers, destInfo);
+  message('Also reprojected the map frame.');
+}
+
+// -proj only applies to the command's targets, so layers in other datasets are
+// left behind in the old CRS. That usually surfaces much later as a blank
+// export or an "unable to combine" error, so name them while the cause is clear.
+function warnAboutUnprojectedLayers(catalog, destInfo) {
+  var names = [];
+  if (!catalog) return;
+  catalog.getLayers().forEach(function(o) {
+    var crs;
+    if (!layerHasGeometry(o.layer) && !layerHasRaster(o.layer)) return;
+    crs = getDatasetCrsInfo(o.dataset).crs;
+    if (crs && !crsAreEqual(crs, destInfo.crs)) {
+      names.push(o.layer.name || '[unnamed]');
     }
-  }
-};
+  });
+  if (names.length === 0) return;
+  warn(`Layer${utils.pluralSuffix(names.length)} not projected by this command: ` +
+    names.join(', ') + '. Use target=* to project all layers.');
+}
 
 function projCmd(dataset, destInfo, opts) {
   // modify copy of coordinate data when running in web UI, so original shapes

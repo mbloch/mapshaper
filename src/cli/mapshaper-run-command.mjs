@@ -495,9 +495,7 @@ export async function runCommand(command, job) {
     } else if (name == 'proj') {
       await initProjLibrary(opts);
       job.resumeCommand();
-      targets.forEach(function(targ) {
-        cmd.proj(targ.dataset, job.catalog, opts, targ.layers);
-      });
+      cmd.projTargets(targets, job.catalog, opts);
 
     } else if (name == 'rectangle') {
       if (source || opts.bbox || targets.length === 0) {

@@ -5,6 +5,7 @@ import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { projectAndDensifyArcs } from '../crs/mapshaper-densify';
 import { replaceLayerContents } from '../dataset/mapshaper-dataset-utils';
+import { getDatasetCrsInfo, setDatasetCrsInfo } from '../crs/mapshaper-projections';
 import { isFrameLayer } from './mapshaper-frame-utils';
 import { error } from '../utils/mapshaper-logging';
 
@@ -54,6 +55,12 @@ export function rebuildProjectedFrameLayer(snapshot, dataset, project) {
 export function rebuildFrameLayerGeometry(lyr, dataset, bounds) {
   bounds = bounds instanceof Bounds ? bounds : new Bounds(bounds);
   var frameDataset = createFrameRectangleDataset(lyr, bounds);
+  // The replacement rectangle is imported from bare GeoJSON, so it carries no
+  // CRS. Merging it into the host dataset runs a projected/unprojected
+  // compatibility check, and during -proj the host still reports its source CRS
+  // while the new rectangle already holds projected coordinates -- so the
+  // check has to compare like with like.
+  setDatasetCrsInfo(frameDataset, getDatasetCrsInfo(dataset));
   replaceLayerContents(lyr, dataset, frameDataset);
 }
 

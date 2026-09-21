@@ -1,5 +1,6 @@
 import { stop, message } from '../utils/mapshaper-logging';
 import { isLatLngCRS , getDatasetCRS } from '../crs/mapshaper-projections';
+import { Bounds } from '../geom/mapshaper-bounds';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { getBoundsPrecisionForDisplay } from '../geom/mapshaper-rounding';
 import { forEachArcId } from '../paths/mapshaper-path-utils';
@@ -12,6 +13,22 @@ import require from '../mapshaper-require';
 // TODO: add more projections
 //
 export function expandProjDefn(str, dataset, targetLayers) {
+  return expandProjDefnWithBounds(str, function() {
+    return getBBox(dataset, targetLayers); // TODO: support projected datasets
+  });
+}
+
+// Variant for a command with more than one target dataset. Auto-fitted
+// parameters describe the combined extent of the targets, so that a single
+// -proj command produces one destination CRS instead of fitting a different
+// projection to each dataset it happens to visit.
+export function expandProjDefnForTargets(str, targets) {
+  return expandProjDefnWithBounds(str, function() {
+    return getTargetsBBox(targets);
+  });
+}
+
+function expandProjDefnWithBounds(str, getTargetBBox) {
   var mproj = require('mproj');
   var proj4, params, bbox, isConic2SP, isCentered, isUtm, decimals;
   if (str in mproj.internal.pj_list === false) {
@@ -23,7 +40,7 @@ export function expandProjDefn(str, dataset, targetLayers) {
   isUtm = str == 'utm';
   proj4 = '+proj=' + str;
   if (isConic2SP || isCentered || isUtm) {
-    bbox = getBBox(dataset, targetLayers); // TODO: support projected datasets
+    bbox = getTargetBBox();
     decimals = getBoundsPrecisionForDisplay(bbox);
     if (isUtm) {
       params = getUtmParams(bbox);
@@ -34,6 +51,17 @@ export function expandProjDefn(str, dataset, targetLayers) {
     message(`Converted "${str}" to "${proj4}"`);
   }
   return proj4;
+}
+
+function getTargetsBBox(targets) {
+  var bounds = new Bounds();
+  targets.forEach(function(targ) {
+    bounds.mergeBounds(getBBox(targ.dataset, targ.layers));
+  });
+  if (!bounds.hasBounds()) {
+    stop('Command target is missing geographical bounds');
+  }
+  return bounds.toArray();
 }
 
 function getBBox(dataset, targetLayers) {

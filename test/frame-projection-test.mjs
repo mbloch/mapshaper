@@ -4,6 +4,7 @@ import { Bounds } from '../src/geom/mapshaper-bounds';
 import { enhanceLayerForDisplay } from '../src/gui/gui-display-layer';
 import { getDisplayProjectionTransform } from '../src/gui/gui-dynamic-crs';
 import { getProjectedFrameBounds } from '../src/furniture/mapshaper-frame-projection';
+import { captureLogCallsAsync } from './helpers';
 
 describe('map frame projection', function() {
   var src = api.internal.parseCrsString('wgs84');
@@ -65,6 +66,150 @@ describe('map frame projection', function() {
     var displayProject = getDisplayProjectionTransform(src, dest);
     var sideMidpoint = displayProject(bbox[2], 0);
     assert(new Bounds(displayFrame.bbox).containsPoint(sideMidpoint[0], sideMidpoint[1]));
+  });
+});
+
+// -frame always calls catalog.addDataset(), so a frame is normally alone in its
+// own dataset -- which is the configuration -proj has to handle, and the one
+// -proj's per-dataset targeting cannot reach on its own.
+describe('map frame projection (frame in its own dataset)', function() {
+  var content = JSON.stringify({
+    type: 'Feature',
+    properties: {n: 'a'},
+    geometry: {
+      type: 'Polygon',
+      coordinates: [[[-120, 30], [-70, 30], [-70, 50], [-120, 50], [-120, 30]]]
+    }
+  });
+  var point = JSON.stringify({
+    type: 'Feature',
+    properties: {n: 'b'},
+    geometry: {type: 'Point', coordinates: [-95, 40]}
+  });
+  var files = {'a.json': content, 'b.json': point};
+
+  async function getFrameCoords(cmd) {
+    var out = await api.applyCommands(cmd + ' -o out.json target=frame', files);
+    return JSON.parse(out['out.json']).features[0].geometry.coordinates[0];
+  }
+
+  it('projects the frame when only a data layer is targeted', async function() {
+    var swept = await getFrameCoords(
+      '-i a.json -frame width=600 target=a -target a -proj merc');
+    var explicit = await getFrameCoords(
+      '-i a.json -frame width=600 target=a -proj merc target=*');
+    assert.deepEqual(swept, explicit);
+    // no longer in degrees
+    assert(Math.abs(swept[0][0]) > 1000);
+  });
+
+  it('reports that the frame was projected', async function() {
+    var captured = await captureLogCallsAsync(function() {
+      return api.applyCommands(
+        '-i a.json -frame width=600 target=a -target a -proj merc -o out.json target=a', files);
+    });
+    assert(captured.log.some(function(str) {
+      return str.includes('Also reprojected the map frame');
+    }));
+  });
+
+  it('says nothing when the frame is already in the destination CRS', async function() {
+    var captured = await captureLogCallsAsync(function() {
+      return api.applyCommands(
+        '-i a.json -frame width=600 target=a -proj merc target=* ' +
+        '-i b.json -target b -proj merc -o out.json target=b', files);
+    });
+    assert.equal(captured.log.some(function(str) {
+      return str.includes('Also reprojected the map frame') ||
+        str.includes('Source and destination CRS are the same');
+    }), false);
+  });
+
+  it('gives the frame the same auto-fitted CRS as the content', async function() {
+    var captured = await captureLogCallsAsync(function() {
+      return api.applyCommands(
+        '-i a.json -frame width=600 target=a -target a -proj lcc -o out.json target=a', files);
+    });
+    // One expansion for the whole command: re-deriving parameters from the
+    // frame's own extent would put the frame in a different lcc.
+    var expansions = captured.log.filter(function(str) {
+      return str.includes('Converted "lcc"');
+    });
+    assert.equal(expansions.length, 1);
+    assert(captured.log.some(function(str) {
+      return str.includes('Also reprojected the map frame');
+    }));
+  });
+
+  it('names layers that the command did not project', async function() {
+    var captured = await captureLogCallsAsync(function() {
+      return api.applyCommands(
+        '-i a.json -i b.json -frame width=600 target=a,b -target a -proj merc ' +
+        '-o out.json target=a', files);
+    });
+    assert(captured.log.some(function(str) {
+      return str.includes('Layer not projected by this command: b') &&
+        str.includes('target=*');
+    }));
+  });
+
+  it('survives a round trip back to lat-long', async function() {
+    var coords = await getFrameCoords(
+      '-i a.json -frame width=600 target=a -proj merc target=* -target a -proj wgs84');
+    coords.forEach(function(p) {
+      assert(Math.abs(p[0]) <= 180 && Math.abs(p[1]) <= 90);
+    });
+  });
+
+  it('keeps the frame usable for sizing SVG output', async function() {
+    var out = await api.applyCommands(
+      '-i a.json -frame width=600 target=a -target a -proj merc -o out.svg target=a,frame',
+      files);
+    var svg = String(out['out.svg']);
+    assert(svg.includes('width="600"'));
+    // content spans the full page, so the frame still matches the data
+    assert(/<path d="M 0[. ]/.test(svg));
+  });
+
+  // A generic field command can promote an ordinary rectangle into a second
+  // frame. The GUI resolves the frame on every render, so the resolver has to
+  // choose one rather than throw.
+  it('resolves one frame when a second has been promoted', function() {
+    var catalog = new api.internal.Catalog();
+    var frameDataset = importRectangle([0, 0, 2, 1],
+      {type: 'frame', width: 600, height: 300});
+    var otherDataset = importRectangle([0, 0, 1, 1], {});
+    frameDataset.layers[0].name = 'frame';
+    otherDataset.layers[0].name = 'rect';
+    catalog.addDataset(frameDataset);
+    catalog.addDataset(otherDataset);
+    var rec = otherDataset.layers[0].data.getRecords()[0];
+    rec.type = 'frame';
+    rec.width = 400;
+
+    assert.equal(api.internal.findFrames(catalog).length, 2);
+    assert.equal(api.internal.getActiveFrame(catalog).layer.name, 'frame');
+  });
+});
+
+describe('-proj with several target datasets', function() {
+  it('resolves one destination CRS for the whole command', async function() {
+    var west = JSON.stringify({type: 'Feature', properties: {}, geometry: {
+      type: 'Polygon',
+      coordinates: [[[-120, 30], [-100, 30], [-100, 50], [-120, 50], [-120, 30]]]}});
+    var east = JSON.stringify({type: 'Feature', properties: {}, geometry: {
+      type: 'Polygon',
+      coordinates: [[[-80, 25], [-60, 25], [-60, 40], [-80, 40], [-80, 25]]]}});
+    var captured = await captureLogCallsAsync(function() {
+      return api.applyCommands('-i west.json -i east.json -proj lcc target=* -o out.json target=west',
+        {'west.json': west, 'east.json': east});
+    });
+    var expansions = captured.log.filter(function(str) {
+      return str.includes('Converted "lcc"');
+    });
+    assert.equal(expansions.length, 1);
+    // fitted to the combined extent of both targets, not to either one alone
+    assert(expansions[0].includes('+lon_0=-90'));
   });
 });
 

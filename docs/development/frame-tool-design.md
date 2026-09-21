@@ -557,6 +557,48 @@ violate the arc-id representation, and a legacy frame may share its
 paths and then run the normal unused-arc cleanup without changing other
 layers.
 
+### Which datasets a `-proj` command reaches
+
+Rebuilding the rectangle correctly is only half the problem. `-frame` calls
+`catalog.addDataset()`, so a frame is always alone in a dataset of its own, and
+`-proj` projects the datasets its target resolves to. The two never meet: in the
+GUI the default target is the active layer's dataset, and milestone 2
+deliberately excludes frames from default targets, so nothing reaches the frame
+unless the user names it. Left alone, the frame keeps coordinates in a CRS the
+map no longer uses, which surfaces later as a blank page rather than an error.
+
+**Rule: `-proj` always projects the session frame, whatever its target
+resolves to, and reports that it did.** The frame is the one object in the
+catalog whose CRS is not independent information — its rectangle describes a
+region of the map's coordinate space, so it is derived from the map's CRS rather
+than describing data of its own. It holds no user content, and there is exactly
+one, so there is no ambiguity about what to project or risk in projecting it.
+
+Two conditions on the rule:
+
+- If the frame is already in the destination CRS, it is skipped silently. It
+  must not emit `Source and destination CRS are the same`, because projecting
+  content *into* the frame's existing CRS is the ordinary case.
+- The frame receives the destination CRS **resolved from the content**, not one
+  re-derived from its own extent. `expandProjDefn()` fits `lcc`, `aea`, `tmerc`,
+  `etmerc` and `utm` parameters to the bounds of the dataset being projected, so
+  a frame that resolved its own would land in a different projection of the same
+  family. This requires resolving the destination CRS once per command rather
+  than once per target dataset — which also fixes the pre-existing case where
+  `-proj lcc target=*` across several datasets produced a different projection
+  for each one.
+
+The rule deliberately stops at the frame. Content layers in other datasets still
+need `target=*` or an explicit list, because which content to reproject is a real
+user decision. What changes is that the divergence is no longer silent: when a
+`-proj` command leaves layers behind in another CRS, it names them and points at
+`target=*`.
+
+This belongs in the command rather than in the GUI. The console records the
+literal command string in session history, so a frame that were picked up only
+in the browser would be skipped when the recorded script is replayed on the
+command line, and the replay would produce a different map.
+
 ### Display CRS
 
 `GuiMap#setDisplayCRS()` reprojects for display without touching the data, so
@@ -1054,8 +1096,15 @@ is the seam it would be built on.
 - **No print furniture.** Bleed, trim marks and page margins distinct from
   frame offsets are not modelled.
 - **CLI field commands remain powerful.** Explicitly removing or renaming
-  reserved frame fields can demote a frame. The GUI prevents accidental edits,
-  but the canonical record is not made immutable.
+  reserved frame fields can demote a frame — and can also promote an ordinary
+  one-record rectangle into a second one. Because the GUI resolves the frame on
+  every render, `getActiveFrame()` degrades to a deterministic choice plus one
+  warning rather than an error; refusing the change is the catalog guard's job,
+  where it can still be rejected before it is committed. The GUI prevents
+  accidental edits, but the canonical record is not made immutable.
+- **`-proj` reaches the frame, not the rest of the session.** Content layers in
+  other datasets still need explicit targeting; the command names the ones it
+  left behind.
 
 ## Resolved Product Choices
 
@@ -1111,6 +1160,12 @@ Unit tests, which should cover most of milestones 1–3:
   feature near a curved-edge extremum is not cropped.
 - Projection is safe when the frame and content initially share an
   `ArcCollection`; dynamic display-CRS preview uses the same effective bounds.
+- Projection tests must cover the configuration `-frame` actually produces —
+  the frame alone in its own dataset — and not only the shared-`ArcCollection`
+  case. Targeting a data layer projects the frame to the same CRS; a frame
+  already in the destination CRS produces no message; `-proj lcc` expands its
+  parameters once and applies them to both; a round trip back to lat-long
+  leaves the frame in degrees.
 - Generic attribute removal can deliberately demote a frame; frame-aware
   geometry commands preserve its canonical record and rectangular result.
 - `-update-frame` for each option, and each of the three gesture combinations;

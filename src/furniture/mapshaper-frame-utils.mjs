@@ -52,7 +52,11 @@ function resizeFrameForExport(frame, opts) {
     bbox: bounds.toArray(),
     bbox2: outputBounds.toArray(),
     width: Math.round(outputBounds.width()),
-    height: Math.round(outputBounds.height()) || 1
+    height: Math.round(outputBounds.height()) || 1,
+    // The authored unit still describes this frame, but an explicit output size
+    // supersedes any fixed page shape, so the aspect is no longer pinned.
+    aspect_ratio: null,
+    units: frame.units || 'px'
   };
   if (data.width != frame.width || data.height != frame.height) {
     warn(
@@ -204,10 +208,30 @@ export function findFrames(catalog) {
   });
 }
 
+// Remembers the frame conflict that was last reported, so that resolving the
+// frame on every map render does not repeat the same warning. Unlike
+// warnOnce(), this resets when the conflict clears, so a long-lived GUI session
+// warns again if the user undoes the change and then repeats it.
+var reportedFrameConflict = null;
+
+// Generic field commands can promote an ordinary rectangle into a second frame
+// (e.g. -each 'type="frame", width=400'), and the GUI resolves the frame on
+// every render, so this has to degrade to a deterministic choice rather than an
+// error. Rejecting the change outright is assertSingleFrameUpdate()'s job,
+// where it can still be refused before it is committed.
 export function getActiveFrame(catalog) {
   var frames = findFrames(catalog);
+  var key;
   if (frames.length > 1) {
-    stop('Multiple map frames are not supported:', frames.map(getFrameName).join(', '));
+    key = frames.map(getFrameName).join(', ');
+    if (key !== reportedFrameConflict) {
+      reportedFrameConflict = key;
+      warn('Multiple map frames are not supported; using',
+        getFrameName(frames[0]) + '. Ignoring:',
+        frames.slice(1).map(getFrameName).join(', '));
+    }
+  } else {
+    reportedFrameConflict = null;
   }
   return frames[0] || null;
 }
