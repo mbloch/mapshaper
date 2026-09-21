@@ -2667,7 +2667,10 @@ body.pan.panning .map-layers:not(.drawing) {
 	flex: none;
 }
 
-.frame-size-row {
+/* Two class names, because .label-style-row's display:block is declared later
+   in this file and a single class would lose to it -- which is what stacked
+   width and height down the panel at full width instead of pairing them. */
+.label-style-row.frame-size-row {
 	align-items: end;
 	display: grid;
 	gap: 6px;

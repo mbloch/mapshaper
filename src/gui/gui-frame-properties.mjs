@@ -4,17 +4,12 @@ import { runGuiEditCommand } from './gui-edit-command';
 import { quoteCommandValue } from './gui-command-utils';
 import { showPopupAlert } from './gui-alert';
 import { makeColorRow, makePanelSection } from './gui-panel-controls';
-import {
-  getFrameAspectPreset,
-  makeFrameAspectSelect,
-  parseFrameAspectRatio
-} from './gui-frame-aspect';
+import { formatFrameAspectRatio } from './gui-frame-aspect';
 
 export function FrameProperties(gui) {
-  var target, form, nameInput, widthInput, heightInput, unitsSelect;
-  var aspectSelect, customAspectRow, customAspectInput;
+  var target, form, widthInput, heightInput, unitsSelect, aspectValue;
   var backgroundControl, neatlineControl, neatlineWidthInput;
-  var boundsValue, crsValue, resolutionValue;
+  var boundsValue, crsValue;
 
   gui.frameProperties = this;
 
@@ -31,9 +26,9 @@ export function FrameProperties(gui) {
   };
 
   function initForm() {
-    nameInput = makeTextInput(makeFieldRow(form, 'Name'))
-      .on('change', renameFrame);
-
+    // Width and height are two ways of writing one thing: either one rescales
+    // the frame and the other follows, because the frame's extent is not what
+    // this panel changes. Shown side by side so that they read as a pair.
     var sizeRow = El('div').addClass('label-style-row frame-size-row').appendTo(form);
     widthInput = makeLabeledInput(sizeRow, 'Width')
       .addClass('frame-width-input').on('change', updateWidth);
@@ -45,12 +40,11 @@ export function FrameProperties(gui) {
       El('option').attr('value', unit).appendTo(unitsSelect).text(unit);
     });
 
-    var aspectRow = makeFieldRow(form, 'Aspect');
-    aspectSelect = makeFrameAspectSelect(aspectRow).on('change', updateAspect);
-    customAspectRow = makeFieldRow(form, 'Custom ratio').addClass('hidden');
-    customAspectInput = makeTextInput(customAspectRow)
-      .attr('placeholder', 'e.g. 5:4')
-      .on('change', updateCustomAspect);
+    // Read-only: setting a ratio reshapes the frame's extent, which is what the
+    // resize tool is for. What is worth saying here is whether the ratio is
+    // fixed or follows the extent, since that is what decides how the pair
+    // above behaves.
+    aspectValue = makeReadOnlyRow(form, 'Aspect ratio');
 
     var appearance = makePanelSection(form, 'Appearance');
     backgroundControl = makeColorRow(appearance, {
@@ -76,7 +70,7 @@ export function FrameProperties(gui) {
       },
       revert: updateControls
     });
-    neatlineWidthInput = makeTextInput(makeFieldRow(appearance, 'Line width'))
+    neatlineWidthInput = makeSplitRowField(appearance, 'Line width')
       .addClass('frame-neatline-width')
       .on('change', updateNeatlineWidth);
     var clearRow = El('div')
@@ -87,7 +81,6 @@ export function FrameProperties(gui) {
     var details = makePanelSection(form, 'Details');
     boundsValue = makeReadOnlyRow(details, 'Bounds');
     crsValue = makeReadOnlyRow(details, 'CRS');
-    resolutionValue = makeReadOnlyRow(details, 'Ground resolution');
   }
 
   function updateControls() {
@@ -96,16 +89,11 @@ export function FrameProperties(gui) {
     var rec = target.layer.data.getReadOnlyRecordAt(0);
     var units = frame.units || 'px';
     var factor = getUnitFactor(units);
-    var preset = getFrameAspectPreset(frame.aspect_ratio);
     var info = internal.getLayerInfo(target.layer, target.dataset);
-    nameInput.node().value = target.layer.name || '';
     widthInput.node().value = formatNumber(frame.width / factor);
     heightInput.node().value = formatNumber(frame.height / factor);
     unitsSelect.node().value = units;
-    aspectSelect.node().value = preset;
-    customAspectRow.classed('hidden', preset != 'custom');
-    customAspectInput.node().value =
-      preset == 'custom' ? formatNumber(frame.aspect_ratio) : '';
+    aspectValue.text(getAspectText(frame));
     backgroundControl.setColor(rec.fill || '');
     backgroundControl.opacity.node().value = formatOpacity(rec['fill-opacity']);
     neatlineControl.setColor(rec.stroke || '');
@@ -114,19 +102,6 @@ export function FrameProperties(gui) {
       rec['stroke-width'] === undefined ? '' : rec['stroke-width'];
     boundsValue.text(frame.bbox.map(formatCoordinate).join(', '));
     crsValue.text(info.proj4 || '[unknown]');
-    resolutionValue.text(getResolutionText(frame, target.dataset));
-  }
-
-  function renameFrame() {
-    var name = nameInput.node().value.trim();
-    if (!name || name == target.layer.name) {
-      updateControls();
-      return;
-    }
-    runCommand(
-      '-rename-layers ' + quoteCommandValue(name) + ' ' + getTargetOption(),
-      'Rename frame'
-    );
   }
 
   function updateWidth() {
@@ -137,6 +112,9 @@ export function FrameProperties(gui) {
     updateDimension('height', heightInput);
   }
 
+  // One dimension per command, never both: -update-frame takes a lone width= or
+  // height= as a rescale and derives the other from the extent, but takes the
+  // two together as a new page shape and stretches the extent to fit it.
   function updateDimension(name, input) {
     var value = Number(input.node().value);
     if (!(value > 0)) {
@@ -159,34 +137,6 @@ export function FrameProperties(gui) {
       quoteCommandValue(formatNumber(value) + unitsSelect.node().value) + ' ' +
       getTargetOption(),
       'Update frame units'
-    );
-  }
-
-  function updateAspect() {
-    var value = aspectSelect.node().value;
-    if (value == 'custom') {
-      customAspectRow.removeClass('hidden');
-      customAspectInput.node().focus();
-      return;
-    }
-    customAspectRow.addClass('hidden');
-    runCommand(
-      '-update-frame ' +
-      (value == 'auto' ? 'auto-aspect' : 'aspect-ratio=' + value) +
-      ' ' + getTargetOption(),
-      'Update frame aspect ratio'
-    );
-  }
-
-  function updateCustomAspect() {
-    var value = parseFrameAspectRatio(customAspectInput.node().value);
-    if (!(value > 0)) {
-      updateControls();
-      return;
-    }
-    runCommand(
-      '-update-frame aspect-ratio=' + value + ' ' + getTargetOption(),
-      'Update frame aspect ratio'
     );
   }
 
@@ -234,10 +184,16 @@ export function FrameProperties(gui) {
   }
 }
 
-function makeFieldRow(parent, label) {
-  var row = El('label').addClass('label-style-row frame-field-row').appendTo(parent);
-  El('span').appendTo(row).text(label);
-  return row;
+// A field in the narrow right-hand column of a split row, so that it lines up
+// with, and is the same width as, the Opacity above it. The left cell is left
+// empty: the control belongs to the colour row above, and the column is what
+// says so.
+function makeSplitRowField(parent, label) {
+  var row = El('div').addClass('label-style-row label-split-row').appendTo(parent);
+  El('div').addClass('label-split-cell').appendTo(row);
+  var cell = El('div').addClass('label-split-cell').appendTo(row);
+  El('span').appendTo(cell).text(label);
+  return makeTextInput(cell);
 }
 
 function makeTextInput(parent) {
@@ -278,19 +234,15 @@ function formatOpacity(value) {
     String(Math.round(Number(value) * 100)) + '%';
 }
 
-function getResolutionText(frame, dataset) {
-  var crs = internal.getDatasetCRS(dataset);
-  var value;
-  if (!crs) return 'unavailable';
-  try {
-    value = internal.getMapFrameMetersPerPixel(
-      Object.assign({}, frame, {crs: crs})
-    );
-  } catch (e) {
-    value = NaN;
+// A fixed ratio holds when the frame is rescaled; one taken from the extent
+// changes whenever the extent does. That difference is the reason to show the
+// ratio at all, so it is said rather than implied.
+function getAspectText(frame) {
+  if (frame.aspect_ratio > 0) {
+    return formatFrameAspectRatio(frame.aspect_ratio) + ' (fixed)';
   }
-  if (!(value > 0) || !Number.isFinite(value)) return 'unavailable';
-  if (value >= 1000) return formatNumber(value / 1000) + ' km/px';
-  if (value >= 1) return formatNumber(value) + ' m/px';
-  return formatNumber(value * 100) + ' cm/px';
+  var bbox = frame.bbox;
+  var ratio = (bbox[2] - bbox[0]) / (bbox[3] - bbox[1]);
+  if (!(ratio > 0) || !Number.isFinite(ratio)) return 'unavailable';
+  return formatFrameAspectRatio(ratio) + ' (from extent)';
 }

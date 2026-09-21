@@ -211,6 +211,55 @@ test('frame properties edits output size through an undoable command', async fun
   }).toBe(600);
 });
 
+// Either dimension rescales the frame and the other follows; neither reshapes
+// the extent, which is the resize tool's job.
+test('frame properties rescales the frame without moving its extent',
+  async function({page}) {
+    await loadFixture(page);
+    await page.evaluate(function() {
+      return window.mapshaper.undoTest.runCommand(
+        '-frame bbox=-80,30,-70,40 width=600 name=frame'
+      );
+    });
+    await page.locator('.sidebar-tab.layer-tab').click();
+    await page.locator('.map-frame-list .layer-item').click();
+    await expect(page.locator('.frame-properties-popup')).toBeVisible();
+
+    await setInput(page, '.frame-width-input', '300');
+    await expect.poll(async function() {
+      return (await getFrameInfo(page)).height;
+    }).toBe(300);
+    await expect(page.locator('.frame-height-input')).toHaveValue('300');
+
+    await setInput(page, '.frame-height-input', '150');
+    await expect.poll(async function() {
+      return (await getFrameInfo(page)).width;
+    }).toBe(150);
+    await expect(page.locator('.frame-width-input')).toHaveValue('150');
+
+    expect((await getFrameInfo(page)).bbox).toEqual([-80, 30, -70, 40]);
+  });
+
+test('frame properties shows aspect ratio without offering to set it',
+  async function({page}) {
+    await loadFixture(page);
+    await page.evaluate(function() {
+      return window.mapshaper.undoTest.runCommand(
+        '-frame bbox=-80,30,-70,40 width=600 name=frame'
+      );
+    });
+    await page.locator('.sidebar-tab.layer-tab').click();
+    await page.locator('.map-frame-list .layer-item').click();
+
+    var panel = page.locator('.frame-properties-popup');
+    await expect(panel).toContainText('1:1 (from extent)');
+    // The name is edited in the layer list, and the ratio through the resize
+    // tool, so neither has a control here.
+    await expect(panel).not.toContainText('Name');
+    await expect(panel).not.toContainText('Ground resolution');
+    await expect(panel.locator('select')).toHaveCount(1); // units only
+  });
+
 test('clicking the map frame row opens frame properties', async function({page}) {
   await loadFixture(page);
   await page.evaluate(function() {

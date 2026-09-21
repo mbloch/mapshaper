@@ -1,26 +1,14 @@
-import { El } from './gui-el';
+// How an aspect ratio is read and written, in one place. The Add map frame
+// dialog takes one typed into a field and the Frame properties panel shows the
+// one a frame ended up with, so a ratio entered as 3:2 reads back as 3:2.
 
-// What an aspect ratio may be written as, in one place. The Add map frame
-// dialog takes one typed into a field and the Frame properties panel offers
-// presets plus a Custom field, but both go through parseFrameAspectRatio, so
-// a ratio that is accepted in one panel is accepted in the other.
-
-export var frameAspectPresets = [
-  ['auto', 'From extent'],
-  ['1', '1:1'],
-  [String(4 / 3), '4:3'],
-  [String(3 / 2), '3:2'],
-  [String(16 / 9), '16:9'],
-  ['custom', 'Custom']
+// Ratios common enough to be worth naming when one is shown.
+var namedRatios = [
+  [1, '1:1'],
+  [4 / 3, '4:3'],
+  [3 / 2, '3:2'],
+  [16 / 9, '16:9']
 ];
-
-export function makeFrameAspectSelect(parent) {
-  var select = El('select').appendTo(parent);
-  frameAspectPresets.forEach(function(item) {
-    El('option').attr('value', item[0]).appendTo(select).text(item[1]);
-  });
-  return select;
-}
 
 // Accepts "5:4" or a bare number. Returns NaN for anything else, including a
 // ratio with a zero or negative term.
@@ -32,12 +20,10 @@ export function parseFrameAspectRatio(value) {
   return parts.length == 1 ? parts[0] : NaN;
 }
 
-// Maps a stored ratio back onto the select's value.
-export function getFrameAspectPreset(aspect) {
-  if (!aspect) return 'auto';
-  var match = frameAspectPresets.find(function(item) {
-    return item[0] != 'auto' && item[0] != 'custom' &&
-      Math.abs(Number(item[0]) - aspect) < 1e-10;
+// "3:2" for a ratio that has a name, "1.62" for one that does not.
+export function formatFrameAspectRatio(aspect) {
+  var match = namedRatios.find(function(item) {
+    return Math.abs(item[0] - aspect) < 1e-10;
   });
-  return match ? match[0] : 'custom';
+  return match ? match[1] : String(Math.round(aspect * 100) / 100);
 }

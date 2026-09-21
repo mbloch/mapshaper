@@ -943,19 +943,31 @@ changing.
 
 The frame row opens a compact **Frame properties** dialog with:
 
-- An editable **Name**, committed through the existing rename command path
-- **Width** and **Height** numeric fields with a unit selector (px/pt/in/cm)
-- An **aspect ratio lock** between them. With the lock off, height is derived
-  from the extent and displayed read-only; setting both dimensions or turning
-  the lock on stores a fixed aspect ratio, not a separate authoritative height.
-- Common aspect presets plus a custom ratio; choosing a preset fixes the
-  aspect and pads the extent
+- **Width** and **Height** numeric fields, side by side, with a unit selector
+  (px/pt/in/cm). Either one rescales the frame and the other follows. They are
+  sent one at a time on purpose: `-update-frame` reads a lone `width=` or
+  `height=` as a rescale and derives the other from the extent, but reads the
+  two together as a new page shape and stretches the extent to fit it.
+- The **aspect ratio**, read-only, saying whether it is fixed or taken from the
+  extent — the thing that decides how the pair above behaves. Setting a ratio
+  reshapes the extent, so it belongs to the resize tool rather than here.
 - Read-only extent and CRS details
-- The current ground resolution as read-only context when the CRS supports a
-  reliable value. Editable print scale is deferred; it would be misleading
-  without an explicit physical-output contract.
-- **Background** fill and **Neatline** stroke controls. These style the frame
+- **Background** fill and **Neatline** stroke controls, with **Line width** in
+  the narrow column under the neatline's opacity. These style the frame
   directly but render in separate bottom and top composition passes.
+
+The panel has no Name field: the frame's name is edited in place in the Map
+frame row, like any other layer's.
+
+Ground resolution was shown here and has been removed. A single figure is
+wrong in two ways: resolution varies across a map in proportion to scale
+distortion, and `getMapFrameMetersPerPixel()` returns a badly wrong number for
+unprojected data — it probes a point `1/to_meter` coordinate units away, which
+for a geographic CRS is one degree rather than one metre, and then inverts it
+as though it were radians. A world frame 800px wide reported 432 km/px against
+a true figure near 51. Showing it as a range would be worth having, but needs
+that function fixed first. Editable print scale remains deferred; it would be
+misleading without an explicit physical-output contract.
 
 The layer panel gets a separate, non-pinnable **Map frame** section whose row
 opens this dialog. Its second line is **Size** followed by the output size,
@@ -1082,9 +1094,9 @@ table-view behavior.
 **5. The frame tool — implemented.** The nav contains one frame-related
 button: the preview toggle, using the frame icon at the bottom of the stack.
 The separate Map frame section stays visible when empty and opens a compact
-three-path creation dialog. A frame row opens editable Frame properties for
-name, authored size and units, aspect, ground-resolution context, background
-and neatline. Its context menu also starts a dedicated resize mode with
+two-path creation dialog. A frame row opens Frame properties, which rescales
+through authored size and units, reports the aspect ratio and extent, and
+edits background and neatline. Its context menu also starts a dedicated resize mode with
 handles and a compact crop/change-scale and Done toolbar. Handle drags move
 the frame, crop at constant scale by default, or change scale with page size
 locked; one command is committed per gesture and undo restores both geometry
