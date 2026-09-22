@@ -1,3 +1,6 @@
+v0.7.65
+* Fixed label dragging bugs.
+
 v0.7.64
 * Modify Hobby's algorithm to remove the tendency for the text path spline to balloon out under certain geometries.
 
