@@ -16663,10 +16663,15 @@
   //   aligned: whether it carries a label-align (see below)
   // delta: {dx, dy} -- how far the pointer has moved, in the same space.
   //
-  // Returns {dx, dy, text-anchor, x}, where x is where the text will be drawn
-  // once the other three are written -- the same as dx except on an aligned
-  // label. The three have to be written together: applying dx without its
-  // text-anchor moves the text by half its own width or by all of it.
+  // Returns two descriptions of the same placement:
+  //
+  //   dx, dy, text-anchor:  what the drag writes to the record. The three have to
+  //     be written together: applying dx without its text-anchor moves the text
+  //     by half its own width or by all of it.
+  //   x, anchor:  where the text sits and how it is justified while it is drawn,
+  //     which is what the preview writes onto the rendered label. The same as
+  //     dx and text-anchor except on an aligned label, whose stored offset is
+  //     measured against a justification it is not drawn with.
   function getOffsetDragValues(start, delta) {
     var width = start.width > 0 ? start.width : 0;
     var drawnAnchor = normalizeAnchor(start.anchor);
@@ -16685,12 +16690,18 @@
     // if the alignment were later removed.
     var anchor = start.aligned ? 'start' :
       width > 0 ? getAnchorForCentre(left + width / 2, width) : drawnAnchor;
+    // An aligned label goes on being drawn with the anchor its alignment gives
+    // it, whatever the drag writes: the alignment is unchanged, so the renderer
+    // will justify it the same way afterwards. Drawing it as 'start' instead
+    // would slide the text right by half its width or by all of it for the
+    // length of the drag, and drop it back on release.
+    var drawn = start.aligned ? drawnAnchor : anchor;
     return {
       dx: round$1(left + anchorOffsets[anchor] * width),
       dy: round$1(start.dy + delta.dy),
       'text-anchor': anchor,
-      x: round$1(start.aligned ? start.dx + delta.dx :
-        left + anchorOffsets[anchor] * width)
+      x: round$1(left + anchorOffsets[drawn] * width),
+      anchor: drawn
     };
   }
 
@@ -17070,8 +17081,12 @@
         applyInlineCss(cssInput.node().value.trim());
       });
 
+      // The caption for the grid and the drag-mode toggle below it, and what
+      // gives Fixed|Draggable something to be an adjective of. "Position" read as
+      // the label's own position -- which a drag moves in either mode -- and made
+      // Fixed sound like a lock on a label that is still perfectly draggable.
       var positionRow = El('label').addClass('label-style-row').appendTo(textSection);
-      El('span').appendTo(positionRow).text('Position');
+      El('span').appendTo(positionRow).text('Offset from anchor');
 
       // Whether the label has a symbol is one question and which symbol it has is
       // another, so the first is a switch on the section's heading rather than a
@@ -25332,6 +25347,9 @@
   // See docs/development/label-tool-design.md.
 
   var SVG_NS$2 = 'http://www.w3.org/2000/svg';
+  // How far outside its text a label's outline is drawn. Exported because the
+  // tool grabs a label by the same box: what looks like the object is what takes
+  // a drag on it.
   var BOX_PADDING = 3;
   var ANCHOR_RADIUS = 3.5;
   var KNOT_RADIUS = 3;
@@ -26524,7 +26542,10 @@
       // ended.
       setMultilineAttribute(nodes.text, 'x', o.values.x);
       nodes.text.setAttribute('y', o.values.dy);
-      nodes.text.setAttribute('text-anchor', o.values['text-anchor']);
+      // The anchor the label is drawn with, not the one the drag writes: on an
+      // aligned label the two differ, and the stored one belongs with the stored
+      // dx rather than with the x being previewed here.
+      nodes.text.setAttribute('text-anchor', o.values.anchor);
       // The cue is drawn around the text rather than moved with it, so it has to
       // be rebuilt to follow -- one getBBox on one label per mouse move.
       selection.refresh(true);
@@ -26679,9 +26700,34 @@
       hoverTextId = id > -1 && (!hoverHandle || glyphsOutrankHandle(id)) ? id : -1;
     }
 
+    // The exception is about the pointer being on the glyphs, not about the mode:
+    // an offset label's anchor is out from under its text, and taking the handle
+    // away there left it with no anchor handle at all -- dragging the symbol of a
+    // label positioned ne slid its text instead of moving the label.
     function glyphsOutrankHandle(id) {
       return hoverHandle.id == id && labelTextIsDraggable(gui) &&
-        !isPathLabel(hit.getHitTarget(), id);
+        !isPathLabel(hit.getHitTarget(), id) && pointerIsOverText(id);
+    }
+
+    // Whether the pointer is within the box drawn around a label's text -- the
+    // outline the selection cue draws, padding and all, so that the thing on
+    // screen that says "this is the object" is the thing that takes the drag.
+    //
+    // From the last hover rather than from an event, because this is asked from
+    // the hit control's 'change' as well, which arrives without a position; the
+    // pointer has not moved since the hover that preceded it.
+    function pointerIsOverText(id) {
+      var target = hit.getHitTarget();
+      var shapes = target && getDisplayShapes(target);
+      var shp = shapes && shapes[id];
+      var nodes = findLabelNodes(target, id);
+      var box = nodes && !nodes.textPath ? measureNode(nodes.text) : null;
+      var pix = hoverPoint && ext.translateCoords(hoverPoint[0], hoverPoint[1]);
+      var p;
+      if (!box || !pix || !shp) return false;
+      p = getLabelSpacePoint(shp[0], {x: pix[0], y: pix[1]});
+      return p.x >= box.x - BOX_PADDING && p.x <= box.x + box.width + BOX_PADDING &&
+        p.y >= box.y - BOX_PADDING && p.y <= box.y + box.height + BOX_PADDING;
     }
 
     // The label a drag on the glyphs would act on, or -1. Only a selected label
