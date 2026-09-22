@@ -1,3 +1,7 @@
+v0.7.66
+* Added the ability to select groups of labels according to various criteria to the right-click context menu. Cmd-A selects all labels.
+* Interface improvements
+
 v0.7.65
 * Fixed label dragging bugs.
 
