@@ -11,6 +11,24 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
+**Preview mode.** The web UI has a preview toggle that shows what a map will look like when exported. You can continue editing map layers in preview mode.
+
+</div>
+
+<div class="whats-new-entry">
+
+**Path-aligned labels.** Labels can now follow a path instead of being aligned to a point anchor. Click along a curving feature to define a path and then type the label text.
+
+</div>
+
+<div class="whats-new-entry">
+
+**Improved label editing.** The label tool's floating toolbar has been reworked, and label text is now edited in-place, directly on the map.
+
+</div>
+
+<div class="whats-new-entry">
+
 **Pie and donut symbols.** The `-symbols` command has a new `pie` type. A `values=` list sets the size of each wedge from numbers, field names or expressions, and a `fills=` list sets their colors. Adding `hole=` makes the symbol a donut, either as a radius or, if negative, as a distance inward from the edge.
 
 → See [`-symbols`](/docs/reference.html#-symbols) and the [styles and symbols guide](/docs/guides/styles-and-symbols.html).
