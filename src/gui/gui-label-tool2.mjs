@@ -20,6 +20,9 @@ import { findNearestKnot, knotMoveIsValid } from './gui-label-knots';
 import { LabelEditor } from './gui-label-editor';
 import { LabelSelection, BOX_PADDING } from './gui-label-selection';
 import {
+  getLabelSelectActions, getAllLabelIds
+} from './gui-label-select-matchers';
+import {
   getNewLabelStyle, labelTextIsDraggable, setLabelPositionMode
 } from './gui-label-style-state';
 import {
@@ -294,6 +297,7 @@ export function initLabelTool(gui, ext, hit) {
     if (!active()) return;
     id = getRightClickedLabel(e);
     if (target && id > -1) {
+      e.selectActions = getSelectActions(target, id);
       e.deleteFeature = getDeleteAction(target, id);
       // Nobody guesses that text is dragged across its own curve, and there is
       // no bracket drawn to suggest it, so the gesture has a second way in.
@@ -320,6 +324,43 @@ export function initLabelTool(gui, ext, hit) {
       return editor.getFeatureId();
     }
     return -1;
+  }
+
+  // The "select" items for a right-click on label @id: the labels that share
+  // something with it, so that a style can be changed across a group without
+  // shift-clicking every one of it.
+  //
+  // The predicate comes from the label pointed at rather than from whatever
+  // happens to be selected -- a right-click deliberately leaves the selection
+  // alone -- and running an item replaces the selection with what it matched.
+  function getSelectActions(target, id) {
+    var records = target.data ? target.data.getRecords() : null;
+    return getLabelSelectActions(records, id, internal.svg.featureIsLabel)
+      .map(function(action) {
+        return {
+          label: action.label,
+          count: action.ids.length,
+          run: function() { selectLabels(action.ids); }
+        };
+      });
+  }
+
+  // A label being typed into is not a label being styled, so a group selection
+  // ends the session -- which saves its text, as clicking away would. Closing
+  // first and selecting second, because closing puts the label it was editing
+  // back in the selection when the selection is empty.
+  function selectLabels(ids) {
+    if (editor.isOpen()) editor.close();
+    hit.setSelectionIds(ids);
+  }
+
+  // Cmd/Ctrl-A: the keyboard way to the menu's "all labels", for the commonest
+  // of the group selections -- restyling a layer's labels as one.
+  function selectAllLabels() {
+    var target = hit.getHitTarget();
+    var records = target && target.data ? target.data.getRecords() : null;
+    var ids = getAllLabelIds(records, internal.svg.featureIsLabel);
+    if (ids.length > 0) selectLabels(ids);
   }
 
   // Deleting a label ends whatever was being done to it first: its text
@@ -1097,8 +1138,17 @@ export function initLabelTool(gui, ext, hit) {
   gui.keyboard.on('keydown', function(e) {
     if (!active()) return;
     // While a session is open the textarea has focus and handles its own keys;
-    // it stops propagation for the ones it acts on.
+    // it stops propagation for the ones it acts on. Cmd-A there means select
+    // the text being typed, which is the browser's to handle.
     if (editor.isOpen()) return;
+    // Not while a curve is being drawn: that gesture owns the keyboard, and
+    // selecting the layer in the middle of placing a label is not what the
+    // keystroke can have meant.
+    if (isSelectAll(e) && !drawingCurve()) {
+      selectAllLabels();
+      consume(e); // the default is to select the whole page
+      return;
+    }
     if (e.keyName == 'esc') {
       // One rung per press, innermost first: the curve being drawn, then the
       // selection, then the armed tool. The hit control's own escape handler
@@ -1128,6 +1178,16 @@ export function initLabelTool(gui, ext, hit) {
       consume(e);
     }
   }, null, 10);
+
+  // Cmd-A on a Mac, Ctrl-A elsewhere. Read from the key rather than the
+  // keyCode, as undo and redo are.
+  function isSelectAll(e) {
+    var evt = e.originalEvent;
+    if (!evt || !(evt.metaKey || evt.ctrlKey) || evt.shiftKey || evt.altKey) {
+      return false;
+    }
+    return (evt.key || '').toLowerCase() == 'a';
+  }
 
   // Suppresses the key's default action as well as the rest of the GUI's
   // handlers. The default matters here: finishing a curve opens an editing

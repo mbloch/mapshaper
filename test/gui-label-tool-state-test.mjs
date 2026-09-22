@@ -1,7 +1,7 @@
 import assert from 'assert';
 import {
   mergeStyleValues, getNewLabelStyle, updateNewLabelStyle, clearNewLabelStyle,
-  NEW_LABEL_STYLE_FIELDS
+  getToggleState, NEW_LABEL_STYLE_FIELDS
 } from '../src/gui/gui-label-style-state';
 import api from '../mapshaper.js';
 import {
@@ -10,6 +10,9 @@ import {
   handleClick, getDblclickAction, clearGesture
 } from '../src/gui/gui-label-curve-state';
 import { getLabelTarget, getAddLabelCommand } from '../src/gui/gui-label-commands';
+import {
+  getMatchingLabelIds, getLabelSelectActions, getAllLabelIds, TEXT_STYLE_FIELDS
+} from '../src/gui/gui-label-select-matchers';
 import { getOptionParser } from '../src/cli/mapshaper-options';
 import { parseSizeValue, getSizeFieldKeyAction } from '../src/gui/gui-size-field';
 import { quoteCommandValue } from '../src/gui/gui-command-utils';
@@ -537,6 +540,213 @@ describe('gui label tool state', function() {
       var gui = fakeGui();
       updateNewLabelStyle(gui, [['label-pos', 'ne']]);
       assert.deepEqual(getNewLabelStyle(gui), {'label-pos': 'ne'});
+    });
+  });
+
+  describe('selecting labels from one of them', function() {
+    // the real test, so that these predicates agree with the renderer about
+    // what a label is
+    var isLabel = api.internal.svg.featureIsLabel;
+
+    // A label record, given the style properties that matter to a test.
+    function label(style) {
+      return Object.assign({'label-text': 'Reno'}, style || {});
+    }
+
+    function ids(records, id, kind) {
+      return getMatchingLabelIds(records, id, kind, isLabel);
+    }
+
+    function actionNames(records, id) {
+      return getLabelSelectActions(records, id, isLabel).map(function(a) {
+        return a.label + ':' + a.ids.length;
+      });
+    }
+
+    describe('all labels', function() {
+      it('is every label on the layer', function() {
+        var records = [label(), label(), label()];
+        assert.deepEqual(ids(records, 1, 'all'), [0, 1, 2]);
+      });
+
+      it('Cmd-A asks for the same set without pointing at a label', function() {
+        var records = [label(), {r: 3, fill: '#c00'}, label()];
+        assert.deepEqual(getAllLabelIds(records, isLabel), [0, 2]);
+        assert.deepEqual(getAllLabelIds(null, isLabel), []);
+      });
+
+      it('skips features that are not labels', function() {
+        // a labels layer can hold plain points too -- a dots layer given label
+        // text by the point panel is one -- and a point is not stylable here
+        var records = [label(), {r: 3, fill: '#c00'}, label()];
+        assert.deepEqual(ids(records, 0, 'all'), [0, 2]);
+      });
+
+      it('a right-click that did not land on a label matches nothing', function() {
+        assert.deepEqual(ids([label(), {r: 3}], 1, 'all'), []);
+      });
+    });
+
+    describe('same text style', function() {
+      it('a property left unset matches the default it renders as', function() {
+        // the commonest pair on a map: a label the panel has touched and one it
+        // has not, which look identical
+        var records = [label({'font-size': 12}), label()];
+        assert.deepEqual(ids(records, 0, 'text-style'), [0, 1]);
+      });
+
+      it('a different size is a different style', function() {
+        var records = [label({'font-size': 12}), label({'font-size': 18})];
+        assert.deepEqual(ids(records, 0, 'text-style'), [0]);
+      });
+
+      it('an unset font is its own value', function() {
+        // it is whatever the browser resolves sans-serif to, which differs by
+        // machine and is a real difference from a font the user named
+        var records = [label(), label({'font-family': 'Georgia'}), label()];
+        assert.deepEqual(ids(records, 0, 'text-style'), [0, 2]);
+      });
+
+      it('weight and slant count, and Regular stored as nothing matches it', function() {
+        var records = [
+          label({'font-style': 'normal', 'font-weight': '400'}),
+          label(),
+          label({'font-weight': '700'})
+        ];
+        assert.deepEqual(ids(records, 0, 'text-style'), [0, 1]);
+      });
+
+      it('css and class count', function() {
+        // either can carry anything the properties above carry and more
+        var records = [label(), label({css: 'text-shadow: 1px 1px #fff'}),
+          label({'class': 'big'})];
+        assert.deepEqual(ids(records, 0, 'text-style'), [0]);
+        assert.deepEqual(ids(records, 1, 'text-style'), [1]);
+      });
+
+      it('where the text sits does not count', function() {
+        // the panel's other sections edit these, and they are usually the
+        // difference between a label placed by hand and one that was not
+        var records = [
+          label(),
+          label({'label-pos': 'ne', 'label-align': 'right', dx: 4, dy: -2,
+            'text-anchor': 'end', 'label-start-offset': '40%'})
+        ];
+        assert.deepEqual(ids(records, 0, 'text-style'), [0, 1]);
+        assert.ok(TEXT_STYLE_FIELDS.indexOf('label-pos') == -1);
+        assert.ok(TEXT_STYLE_FIELDS.indexOf('label-align') == -1);
+      });
+
+      it('colour and symbol do not count either', function() {
+        var records = [label(), label({fill: '#c00', icon: 'star'})];
+        assert.deepEqual(ids(records, 0, 'text-style'), [0, 1]);
+      });
+    });
+
+    describe('same fill color', function() {
+      it('black stored as nothing is black', function() {
+        var records = [label({fill: '#000000'}), label(), label({fill: '#c00'})];
+        assert.deepEqual(ids(records, 0, 'fill'), [0, 1]);
+      });
+
+      it('opacity is not colour', function() {
+        // the item says colour, and a label faded to 50% is the same colour
+        var records = [label({fill: '#c00'}), label({fill: '#c00', opacity: 0.5})];
+        assert.deepEqual(ids(records, 0, 'fill'), [0, 1]);
+      });
+    });
+
+    describe('same icon', function() {
+      it('is the shape, not its size or colour', function() {
+        var records = [
+          label({icon: 'star', 'icon-size': 5}),
+          label({icon: 'star', 'icon-size': 9, 'icon-color': '#c00'}),
+          label({icon: 'circle'})
+        ];
+        assert.deepEqual(ids(records, 0, 'icon'), [0, 1]);
+      });
+    });
+
+    describe('which items are worth offering', function() {
+      it('a whole menu', function() {
+        var records = [
+          label({fill: '#c00', icon: 'star'}),
+          label({fill: '#c00', icon: 'star', 'font-size': 18}),
+          label({fill: '#c00', 'font-size': 18}),
+          label({'font-size': 18})
+        ];
+        assert.deepEqual(actionNames(records, 0),
+          ['all labels:4', 'same fill color:3', 'same icon:2']);
+        // label 0 is the only one in its text style, so that item is left out
+        assert.deepEqual(ids(records, 0, 'text-style'), [0]);
+      });
+
+      it('an item that would select only the label pointed at is left out', function() {
+        // a plain click on that label already narrows the selection to it
+        var records = [label({fill: '#c00'}), label(), label()];
+        assert.deepEqual(actionNames(records, 0), ['all labels:3']);
+      });
+
+      it('an item that matches every label is left out', function() {
+        // "all labels" says it more plainly, and four items doing the same
+        // thing says nothing about the layer
+        var records = [label(), label(), label()];
+        assert.deepEqual(actionNames(records, 1), ['all labels:3']);
+      });
+
+      it('same icon is not offered for a label with no symbol', function() {
+        // it would select every label that has none, which nobody asked for
+        var records = [label(), label(), label({icon: 'star'})];
+        assert.deepEqual(actionNames(records, 0), ['all labels:3']);
+        assert.deepEqual(actionNames(records, 2), ['all labels:3']);
+      });
+
+      it('a layer with one label has nothing to offer', function() {
+        assert.deepEqual(actionNames([label()], 0), []);
+      });
+
+      it('the label pointed at is always in what an item selects', function() {
+        var records = [label({fill: '#c00'}), label({fill: '#c00'}), label()];
+        getLabelSelectActions(records, 1, isLabel).forEach(function(action) {
+          assert.ok(action.ids.indexOf(1) > -1, action.label);
+          // ascending, because they go to the hit control as a selection
+          assert.deepEqual(action.ids, action.ids.concat().sort(function(a, b) {
+            return a - b;
+          }));
+        });
+      });
+    });
+  });
+
+  describe('getToggleState()', function() {
+    it('agrees on or off', function() {
+      assert.equal(getToggleState([true, true]), 'on');
+      assert.equal(getToggleState([false, false, false]), 'off');
+    });
+
+    it('a target that disagrees is mixed', function() {
+      // The state the Icon switch has no value to show for: some of the
+      // selected labels have a symbol and some do not.
+      assert.equal(getToggleState([true, false]), 'mixed');
+      assert.equal(getToggleState([false, false, true]), 'mixed');
+    });
+
+    it('one label is never mixed', function() {
+      assert.equal(getToggleState([true]), 'on');
+      assert.equal(getToggleState([false]), 'off');
+    });
+
+    it('nothing to ask about is off', function() {
+      // "new labels", where the style is held by the tool rather than by any
+      // feature; the panel answers from that style instead.
+      assert.equal(getToggleState([]), 'off');
+    });
+
+    it('reads the values it is given rather than requiring booleans', function() {
+      // it is handed icon names and undefined record fields
+      assert.equal(getToggleState(['circle', 'star']), 'on');
+      assert.equal(getToggleState([undefined, '']), 'off');
+      assert.equal(getToggleState(['circle', undefined]), 'mixed');
     });
   });
 

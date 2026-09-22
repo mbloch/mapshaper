@@ -72,6 +72,24 @@ export function clearNewLabelStyle(gui) {
   gui.state.new_label_style = null;
 }
 
+// What a two-state control shows for a group of labels: 'on', 'off', or
+// 'mixed' when they disagree.
+//
+// The panel's other controls say "they disagree" by showing nothing -- an empty
+// select, an unlit button, a blank field. A switch has no empty state to fall
+// back on, so it needs a third one named here.
+//
+// flags: one truthy/falsy value per label, in any order
+export function getToggleState(flags) {
+  var on = 0;
+  var i;
+  for (i = 0; i < flags.length; i++) {
+    if (flags[i]) on++;
+  }
+  if (on === 0) return 'off';
+  return on == flags.length ? 'on' : 'mixed';
+}
+
 // What a drag on a label's glyphs means: 'fixed' moves the label, anchor and
 // text together, and 'draggable' leaves the anchor where it is and offsets the
 // text from it.

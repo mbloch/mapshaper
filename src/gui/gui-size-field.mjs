@@ -130,6 +130,13 @@ export function SizeField(parent, opts) {
     setDisplay(shown);
   };
 
+  // What the field shows while it is blank, or '' for nothing. The panel uses
+  // it to say that the selected features disagree about the size, which is one
+  // of the two reasons the field can be empty.
+  this.setPlaceholder = function(str) {
+    input.attr('placeholder', str || '');
+  };
+
   this.setDisabled = function(off) {
     disabled = !!off;
     input.node().disabled = disabled;

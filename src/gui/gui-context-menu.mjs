@@ -196,7 +196,7 @@ export function ContextMenu(parentArg) {
       if (e.deleteVertex || e.deletePoint || copyable || e.deleteFeature ||
           e.flipLabel) {
 
-        addMenuLabel('selection');
+        addMenuLabel('actions');
         if (e.deleteVertex) {
           addMenuItem('delete vertex', e.deleteVertex);
         }
@@ -212,6 +212,18 @@ export function ContextMenu(parentArg) {
         if (e.deleteFeature) {
           addMenuItem(getDeleteLabel(), e.deleteFeature);
         }
+      }
+
+      // What the actions above could be applied to: the labels that share
+      // something with the one pointed at. Each item carries the number it
+      // would select, so that what the click is about to do is visible before
+      // it happens -- and the caller leaves out an item that would select the
+      // label already under the pointer and nothing else.
+      if (e.selectActions?.length) {
+        addMenuLabel('select');
+        e.selectActions.forEach(function(action) {
+          addMenuItem(action.label + getCountHtml(action.count), action.run);
+        });
       }
 
       if (e.lonlat_coordinates) {
@@ -342,6 +354,12 @@ function getBandLabel(bands) {
   if (bands == 3) return 'red, green, blue';
   if (bands == 4) return 'red, green, blue, alpha';
   return 'band values';
+}
+
+// How many features a "select" item would select, in the grey of a menu
+// heading: it qualifies the item rather than being part of what it says.
+function getCountHtml(count) {
+  return ' <span class="contextmenu-count">' + count + '</span>';
 }
 
 // A color tile, used in place of the bullet that other menu items get.

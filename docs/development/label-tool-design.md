@@ -1091,6 +1091,82 @@ Two rules keep this unambiguous:
 Placing a new label still goes straight to a caret, skipping the selected
 state: the point of placing one is to type into it.
 
+#### Selecting a group from the menu
+
+Clicks and shift-clicks are enough for a label or three, and restyling a map's
+labels is not done a label at a time. The panel could already write to a group
+— its controls act on every selected label, and show nothing where the group
+disagrees — so what was missing was a way to say which group.
+
+A right-click on a label offers it. The menu's `selection` heading, which sat
+over "copy as GeoJSON" and "delete label", is now `actions`: those act on a
+selection, and the section below them is how one is made. The items are:
+
+| Item | Selects the labels that share |
+|---|---|
+| all labels | nothing; every label on the layer |
+| same text style | how the glyphs are drawn: font, size, face, stretch, letter spacing, line height, `css`, `class` |
+| same fill color | `fill` |
+| same icon | the symbol's shape |
+
+The decisions behind that table:
+
+- **The predicate comes from the label pointed at**, not from whatever is
+  selected, and running an item replaces the selection with what it matched. A
+  right-click deliberately does not disturb the selection it finds — it never
+  has — so the exemplar is unambiguous: it is the label under the pointer.
+- **"Same text style" is about the glyphs and not about where they sit.**
+  Alignment, position, offsets and a path label's start offset are what the
+  panel's other sections edit, and two labels in the same font at the same size
+  are in the same text style whether one is centred and the other hangs
+  north-east of its anchor — which is usually the difference between a label
+  placed by hand and one that was not. `css` and `class` are in, because either
+  can carry anything the typography properties carry and more.
+- **Defaults are normalized before comparing.** A label with `font-size=12` and
+  one with no `font-size` render identically and match, as they already agree
+  in the panel. Without this the commonest pair on a map — a label the panel
+  has touched and one it has not — would count as two text styles while looking
+  like one. `font-family` is the exception: an unset font is whatever the
+  browser resolves `sans-serif` to, which differs by machine and is a real
+  difference from a font the user named, so it matches only another unset one.
+- **"Same fill color" is the colour and not the opacity**, and **"same icon" is
+  the shape and not its size or colour**: each item says what it compares.
+- **Each item carries the number it would select**, so that what the click is
+  about to do is visible before it happens.
+- **An item that has nothing to offer is left out rather than shown disabled.**
+  One that would select only the label already pointed at is a way of narrowing
+  the selection to one label, which a plain click on it already is. One that
+  matches every label is what "all labels" says more plainly — on a layer
+  styled all at once, which is most layers, that would otherwise be four items
+  doing the same thing. "Same icon" is not offered for a label with no symbol:
+  it would select every label that has none, a question nobody asked.
+- **A group selection ends a text editing session**, since a label being typed
+  into is not a label being styled. It closes first and selects second, because
+  closing puts the label it was editing back into an empty selection.
+
+The predicates are pure functions in `gui-label-select-matchers.mjs`, tested
+directly; `featureIsLabel` is injected rather than imported so the module needs
+none of the GUI's internals. They skip features that are not labels, because a
+labels layer can hold plain points too — a dots layer given label text by the
+point panel is one — and a point is not something this panel can style.
+
+`ContextMenu` renders the section from `e.selectActions`, a list of
+`{label, count, run}`, so the menu learns nothing about labels; the label tool
+builds it in its own `contextmenu` handler.
+
+**Cmd-A (Ctrl-A elsewhere) is "all labels" without the menu**, since selecting
+the layer is the commonest of these and the least worth a right-click to
+reach. It is the tool's key only while the tool has the keyboard: a session
+being typed into handles its own keys, where Cmd-A means select the text, and
+a curve being drawn owns the keyboard too. Elsewhere the default — select the
+whole page — is refused, which on a map made of text nodes is not something
+anyone wants to see.
+
+Items do not compose: an item replaces the selection rather than adding its
+matches to it. Shift-clicking one to add would be a second meaning for
+shift-click on a menu nobody shift-clicks, and the predicates already start
+from the label under the pointer, so a second group is a second right-click.
+
 Whether a click landed on what was already the whole selection is a fact about
 the gesture, and only the hit control knows it — it replaces the selection
 before the tool's click handler runs. It is reported as
@@ -1242,8 +1318,14 @@ The cues are drawn in each label's own coordinate space and wear its transform,
 so they move and hide with it. That also means the cost is one `getBBox()` per
 selected label per **SVG redraw**, not per frame — navigation repositions the
 symbol layer instead of rebuilding it. A select-all on a large layer would still
-pay it, for outlines too small to tell apart, so past `MAX_OUTLINES` the cue is
-dropped rather than drawn. Hover fires on every pointer move and mostly changes
+pay it, for outlines too small to tell apart, so past `MAX_OUTLINES` the labels
+wear a halo instead (`.label-cue-marked`, the selection's blue) — a class on the
+text node, which costs no measurement. It says less than an outline: no box, no
+anchor, no knots. That is the right trade at that size, where the selection is a
+group about to be restyled rather than objects being handled one at a time, and
+the one thing the cue has to say is which labels are in it. Past the cap the cue
+used to be dropped altogether, so selecting a whole layer left the map looking
+untouched. Hover fires on every pointer move and mostly changes
 nothing here, so `refresh()` compares what it is about to draw against what is
 already drawn and returns; a map render passes `force` to get past that, since
 the markup the cues were in has been replaced.
@@ -3218,9 +3300,9 @@ The faces are what the menu holds now, and nothing else:
   Bold Italic after the font changes, or in the nearest face the new font is
   installed with. Both properties go in one command, so the change is one undo
   step and the label is never briefly in a face the font does not have.
-- **A selection that disagrees shows nothing selected**, rather than the first
-  face, which is how the rest of the panel reads an empty common value. The
-  list stays live, so picking a face is how the selection is brought into line.
+- **A selection that disagrees shows a "mixed" entry**, rather than the first
+  face, and the list stays live, so picking a face is how the selection is
+  brought into line. See "A blank control says which kind of blank it is".
 
 `getNearestVariant()` in `gui-label-fonts.mjs` does the matching, over the
 variant list the detector builds: upright before oblique, then the nearest
@@ -3340,12 +3422,89 @@ that was chosen is the shape that returns (`lastIconShape`), and an
 `icon-opacity` still stored on the label is taken back rather than reset to
 full.
 
-A selection where only *some* labels have a symbol counts as on. Off would be
-the one state from which nothing in the section can be reached, and with the
-switch on, turning it off removes every symbol in the selection and a shape
-applies to all of them — both well-defined. This replaces an earlier rule where
-styling a symbol that did not exist quietly created one: with the controls
-gated, the switch is the only way to ask for a symbol, and it asks plainly.
+##### A blank control says which kind of blank it is
+
+Showing nothing is the panel's way of saying the selected labels disagree, and
+it was also how a field showed a property nobody has set — a label carries no
+letter spacing until one is chosen. One blank meaning two things was tolerable
+while a selection was a label or two and stopped being so once a menu item
+could select a layer: the user cannot tell whether the selection is uniform,
+which is the first thing to know before restyling it.
+
+So a control that is blank because the labels disagree says **mixed**:
+
+- **In the placeholder**, for the fields — size, colour, opacity, letter
+  spacing, line height, inline CSS. The word displaces the field's own
+  placeholder while it is there, and the spacing fields get theirs back
+  afterwards (`data-placeholder` holds it).
+- **As a menu entry**, for the font and face selects. A font menu is a list of
+  fonts, so "they are in different fonts" cannot be one of the fonts: the
+  entry appears only while it is true, carries no value, and does nothing if
+  it is picked. The list stays live, so choosing a font is still how the
+  selection is brought into line. A select showing nothing at all is left for
+  the one case that is not disagreement — a face menu with no font to list the
+  faces of, which is disabled as well.
+- **As a split swatch**, for the colour chits, since an empty swatch is how a
+  chit says the colour is unset. Two greys, so that it cannot be read as one
+  of the colours in the selection.
+- **Not at all** for the button groups — alignment, position, shape. An unlit
+  group is not ambiguous: there is no such thing as an unset alignment that
+  renders as no button being lit.
+
+`getCommonValueInfo()` returns `{value, mixed}` and `getShownValue()` wraps it
+for a panel with no target, which is the third kind of blank and not a mixed
+one. The distinction is in the reading rather than in the writing: what is
+stored, and which labels a control writes to, are unchanged.
+
+##### The switch has a third state, because a selection can disagree
+
+A selection where only *some* labels have a symbol shows the switch **mixed**:
+the knob over the join of a half-dark, half-pale track, with a hard gradient
+stop rather than a blend so that it reads as one half on and one half off
+rather than as a third colour. Every other control in the panel says "they
+disagree" by showing nothing, or by showing the word (above) where it has
+somewhere to put it — and a switch is the one control with neither an empty
+state nor anywhere to write.
+
+Earlier, a mixed selection counted as **on**. That was defensible when a
+selection was a label or two and stopped being so once a whole layer of them
+could be selected at once: the switch said every label had a symbol while the
+fields under it described the ones that did.
+
+The rules that follow from it:
+
+- **Clicking a mixed switch turns everything on**, using `lastIconShape` for
+  the labels that had none. It is the convention, and it is the click that
+  reaches a state the switch can describe; the next click turns everything off,
+  so both are one click away. `makeToggle()` resolves this itself — the panel
+  is told the state to move to, not the state that was clicked.
+- **The section stays live**, because there are symbols in the selection to
+  style, and the shape shown is the one the labels that have a symbol share.
+  Its fields read from those labels too (`getIconValueIds()`), so a mixed
+  selection shows the size and colour it actually has rather than blanking
+  every field because the rest of the selection has nothing to compare.
+- **`icon-size`, `icon-color` and `icon-opacity` go only to the labels that
+  have a symbol** (`getIconTargetIds()`, which `applyStyleValues()` takes as
+  its optional id set). One of those on a label with no `icon` draws nothing
+  and adds a column to the user's table. So styling a symbol still never
+  creates one, and the switch remains the only way to ask for that — which is
+  the rule that replaced an earlier behavior where styling a symbol that did
+  not exist quietly created one.
+- **A shape is the exception and does apply to every selected label**, because
+  choosing a shape for a group is a plain statement about all of it. The size
+  it gives the labels that had no symbol is the one already shared in the
+  selection rather than the default.
+
+With no symbol anywhere the section is off and inert as before, and its fields
+go on showing what the target carries, greyed — narrowing there would show the
+values held for the next label instead of the ones stored on the selection.
+
+`getToggleState()` in `gui-label-style-state.mjs` is the whole decision, over
+one flag per label, and is tested directly. Reported to a screen reader as
+`aria-checked="mixed"`, which means the element is `role="checkbox"` rather
+than `role="switch"`: `mixed` is legal for the first and not the second, and a
+switch reporting a mixed selection as unchecked would say the one thing the
+third state exists to avoid saying. It still looks and behaves like a switch.
 
 ##### How the controls are drawn
 
@@ -3918,6 +4077,8 @@ one undo step reverses one label's text rather than one keystroke.
 | Hover and selection cues | `src/gui/gui-label-selection.mjs` (new), `www/page.css` (`.label-cue-*`) |
 | Suppressing the canvas hover/selection overlay | `src/gui/gui-overlay-styler.mjs` (the `label` branch) |
 | Which selection a click narrows to, and what it was | `src/gui/gui-hit-control.mjs` (`selectStyleFeature`, `describeClickedSelection`) |
+| Selecting a group by what it shares (pure) | `src/gui/gui-label-select-matchers.mjs` (new) |
+| The menu's "select" section | `src/gui/gui-context-menu.mjs` (`e.selectActions`), built in `gui-label-tool2.mjs` |
 | Overlay/preview rendering | `src/gui/gui-svg-display.mjs`, `gui-svg-symbols.mjs` |
 | Path guide + knot handles | `src/gui/gui-label-path-guide.mjs` (new), reached from the `label` branch of `gui-overlay-styler.mjs` |
 | Mode registration | `src/gui/gui-interaction-mode-control.mjs`, plus the mode gates in `gui-hit-control.mjs` |
@@ -4319,6 +4480,31 @@ And in `browser-tests/label-editing.spec.mjs`:
   onto a polyline, the offset following the pointer, what a flip does to an
   offset and an anchor, and the fallbacks for a label with no offset or one
   written in units this tool cannot read.
+
+And in `browser-tests/label-select-menu.spec.mjs`, the menu's select section:
+the headings and the items with their counts for a right-click on a label; that
+the right-click leaves the selection it found alone; "all labels" selecting the
+layer and "same fill color" selecting the subset that shares it; a font size
+then set on that group reaching both of its labels and neither of the others,
+in one `-style ... ids=1,2`; and a 435-label layer selected whole, where the
+cue falls back to the halo — no outlines drawn, the halo on more than two
+hundred labels, and the panel counting all 435. Cmd-A is there too, selecting
+the layer without the menu and leaving the page unselected, and so is the
+panel's reading of such a selection: "mixed" in the font menu, the size
+placeholder and the colour field with its swatch split, and each of them back
+to a value, an unmarked swatch and its own placeholder once the labels agree.
+
+And in `browser-tests/label-icon-toggle.spec.mjs`, the Icon switch over a
+selection of two labels, one with a symbol and one without: the switch mixed
+and reported as `aria-checked="mixed"` with the section still live and the
+shared shape shown; on and off when the selection agrees; a click on a mixed
+switch turning every label on and the next one turning them all off; a symbol
+size reaching only the label that has a symbol, and a shape reaching both and
+carrying the size the selection already shared. `getToggleState()` and the select predicates
+themselves are in `test/gui-label-tool-state-test.mjs`: what each kind matches,
+that a property left unset matches the default it renders as while an unset
+font is its own value, that position and colour do not count as text style, and
+which items a given layer is worth offering.
 
 Still to write:
 

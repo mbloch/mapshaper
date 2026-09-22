@@ -9,8 +9,7 @@ export function PreviewMode(gui) {
   var mapLayers = gui.container.findChild('.map-layers').node();
   var map = gui.container.findChild('.mshp-main-map');
   var toggle = gui.buttons.addButton('#frame-tool-icon')
-    .addClass('menu-btn preview-toggle')
-    .attr('title', 'Toggle map preview');
+    .addClass('menu-btn preview-toggle');
   var readout = El('div')
     .addClass('preview-readout')
     .appendTo(map)
@@ -130,7 +129,11 @@ export function PreviewMode(gui) {
     var available = hasFrame();
     toggle.removeClass('disabled');
     toggle.classed('selected', available && self.isOn());
-    toggle.attr('title', available ? 'Toggle map preview' : 'Add map frame');
+    // data-tooltip, not title: the CSS label in .nav-btn[data-tooltip] appears
+    // without the browser's delay and matches the arrow menu's type.
+    var label = available ? 'Toggle map preview' : 'Add map frame';
+    toggle.attr('data-tooltip', label);
+    toggle.attr('aria-label', label);
     toggle.attr('aria-disabled', 'false');
     toggle.attr('aria-pressed', available && self.isOn() ? 'true' : 'false');
     if (gui.map.isPreviewView()) {

@@ -18,7 +18,7 @@ import { runGuiEditCommand } from './gui-edit-command';
 import { quoteCommandValue } from './gui-command-utils';
 import {
   getNewLabelStyle, updateNewLabelStyle, getLabelTextSession,
-  getLabelPositionMode, setLabelPositionMode
+  getLabelPositionMode, setLabelPositionMode, getToggleState
 } from './gui-label-style-state';
 import { getTextCentreOffset, getNearestPosition } from './gui-label-offset';
 
@@ -48,6 +48,11 @@ var defaultIconSize = 5;
 // no line-height until one is chosen. "auto" is the honest description of a
 // blank field: something else decides.
 var lineHeightPlaceholder = 'auto';
+// What a control shows for a selection whose labels disagree about it. One
+// word, used in every field and menu that can be in that state: the panel
+// otherwise says it by showing nothing, which is also what an unset property
+// looks like.
+var MIXED_TEXT = 'mixed';
 var labelStyleMode = 'label_style';
 var labelStylePanelMode = 'label_style_tool';
 var labelMode = 'label';
@@ -481,26 +486,38 @@ export function LabelTool(gui) {
     return makePanelSection(panel, title, opts);
   }
 
-  // A two-state switch: a track with a knob that sits left when off and right
-  // when on, which is the direction users expect and the only thing that says
-  // which state is which without a label for each.
+  // A switch: a track with a knob that sits left when off and right when on,
+  // which is the direction users expect and the only thing that says which
+  // state is which without a label for each. A third state says that the
+  // labels it is asking about disagree -- the knob sits over the join of a
+  // half-and-half track, which is the panel's only control that has to show
+  // "some of them" rather than a value.
+  //
+  // role=checkbox rather than switch, which is what it looks like: 'mixed' is a
+  // legal aria-checked value for a checkbox and not for a switch, and a switch
+  // reporting a mixed selection as unchecked would be telling a screen reader
+  // the one thing the third state exists to avoid saying.
   function makeToggle(parent, opts) {
-    var track = El('div').addClass('label-toggle').attr('role', 'switch').appendTo(parent);
-    var on = false;
+    var track = El('div').addClass('label-toggle').attr('role', 'checkbox').appendTo(parent);
+    var state = 'off';
     var disabled = false;
     El('div').addClass('label-toggle-knob').appendTo(track);
     if (opts.title) track.attr('title', opts.title);
+    // A click on a mixed switch turns everything on. It is the convention, and
+    // it is the reading that reaches a state the switch can describe: the next
+    // click then turns everything off, so both are one click away.
     track.on('click', function() {
       if (disabled) return;
-      opts.onChange(!on);
+      opts.onChange(state != 'on');
     });
     return {
-      setState: function(isOn) {
-        on = !!isOn;
-        track.classed('on', on).attr('aria-checked', on ? 'true' : 'false');
-      },
-      getState: function() {
-        return on;
+      // val: 'on', 'off' or 'mixed'; anything else reads as off
+      setState: function(val) {
+        state = val == 'on' || val == 'mixed' ? val : 'off';
+        track.classed('on', state == 'on')
+          .classed('mixed', state == 'mixed')
+          .attr('aria-checked', state == 'mixed' ? 'mixed' :
+            state == 'on' ? 'true' : 'false');
       },
       setDisabled: function(off) {
         disabled = !!off;
@@ -523,6 +540,9 @@ export function LabelTool(gui) {
   function makeMeasureInput(parent, field, placeholder) {
     var input = El('input').attr('type', 'text').addClass('label-measure-input')
       .attr('placeholder', placeholder)
+      // The field's own placeholder, kept because the shown one is replaced
+      // while the selection disagrees -- see setMixedPlaceholder().
+      .attr('data-placeholder', placeholder)
       .appendTo(parent)
       .on('change', function() {
         applyStyleValues([[field, input.node().value.trim()]]);
@@ -694,51 +714,72 @@ export function LabelTool(gui) {
     // With nothing selected the menu shows the font the next label will be
     // made in; with labels selected it shows the font they are drawn in, which
     // for a label carrying none is whatever sans-serif resolves to here.
-    var fontVal = getCommonValue(ids, fontField,
+    var font = getShownValue(ids, fontField,
       {useDefault: true, defaultValue: getFontNameForTarget(ids)});
-    var fontSizeVal = getCommonValue(ids, fontSizeField, {useDefault: true, defaultValue: defaultFontSize});
+    var fontSize = getShownValue(ids, fontSizeField, {useDefault: true, defaultValue: defaultFontSize});
     var fontStyleVal = getCommonValue(ids, fontStyleField, {useDefault: true, defaultValue: defaultFontStyle});
     var fontWeightVal = getCommonValue(ids, fontWeightField, {useDefault: true, defaultValue: defaultFontWeight});
-    var fillVal = getCommonValue(ids, fillField, {useDefault: true, defaultValue: defaultLabelColor});
-    var opacityVal = getCommonValue(ids, opacityField, {useDefault: true, defaultValue: 1});
-    var letterSpacingVal = getCommonValue(ids, letterSpacingField);
-    var lineHeightVal = getCommonValue(ids, lineHeightField);
+    var fill = getShownValue(ids, fillField, {useDefault: true, defaultValue: defaultLabelColor});
+    var opacity = getShownValue(ids, opacityField, {useDefault: true, defaultValue: 1});
+    var letterSpacing = getShownValue(ids, letterSpacingField);
+    var lineHeight = getShownValue(ids, lineHeightField);
     var alignVal = getCommonAlignment(ids);
-    var cssVal = getCommonValue(ids, cssField);
+    var css = getShownValue(ids, cssField);
     var posVal = getCommonValue(ids, 'label-pos');
-    var iconVal = getCommonValue(ids, iconField);
-    var iconSizeVal = getCommonValue(ids, iconSizeField, {useDefault: true, defaultValue: defaultIconSize});
-    var iconColorVal = getCommonValue(ids, iconColorField, {useDefault: true, defaultValue: defaultIconColor});
-    var iconOpacityVal = getCommonValue(ids, iconOpacityField, {useDefault: true, defaultValue: 1});
+    // From the labels that have a symbol, so that a selection where only some
+    // do shows the symbols it has rather than blanking every field because the
+    // rest of the selection has nothing to compare.
+    var iconIds = getIconValueIds();
+    var iconVal = getCommonValue(iconIds, iconField);
+    var iconSize = getShownValue(iconIds, iconSizeField, {useDefault: true, defaultValue: defaultIconSize});
+    var iconColor = getShownValue(iconIds, iconColorField, {useDefault: true, defaultValue: defaultIconColor});
+    var iconOpacity = getShownValue(iconIds, iconOpacityField, {useDefault: true, defaultValue: 1});
     updateEditingStatus(manualIds.length, !!getLabelTextSession(gui));
     updateSavedStyleControls();
     fontSelect.node().disabled = !showValues;
-    updateFontControl(fontVal);
-    updateFontStyleControls(fontVal, fontStyleVal, fontWeightVal);
-    updateFontSizeControls(showValues ? fontSizeVal : '');
-    updateColorControls(showValues ? fillVal : '');
-    updateOpacityControl(opacityInput, showValues ? opacityVal : '');
-    updateMeasureControl(letterSpacingInput, showValues ? letterSpacingVal : '');
-    updateMeasureControl(lineHeightInput, showValues ? lineHeightVal : '');
+    updateFontControl(font);
+    updateFontStyleControls(font.value, fontStyleVal, fontWeightVal);
+    updateFontSizeControls(fontSize);
+    updateColorControls(fill);
+    updateOpacityControl(opacityInput, opacity);
+    updateMeasureControl(letterSpacingInput, letterSpacing);
+    updateMeasureControl(lineHeightInput, lineHeight);
     updateAlignButtons(showValues ? alignVal : '');
-    updateCssControl(showValues ? cssVal : '');
+    updateCssControl(css);
     updatePositionButtons(showValues ? posVal : '', ids);
     // The symbol's controls keep showing their values while the switch is off,
     // greyed: what they show is what the symbol comes back as.
     var iconOff = updateIconControls(showValues ? iconVal : '');
-    updateIconSizeControls(showValues ? iconSizeVal : '', iconOff);
-    updateIconColorControls(showValues ? iconColorVal : '', iconOff);
-    updateOpacityControl(iconOpacityInput, showValues ? iconOpacityVal : '', iconOff);
+    updateIconSizeControls(iconSize, iconOff);
+    updateIconColorControls(iconColor, iconOff);
+    updateOpacityControl(iconOpacityInput, iconOpacity, iconOff);
   }
 
-  function updateOpacityControl(input, val, disabled) {
+  // Every field that can show a value can also show nothing, which is why each
+  // of these takes a {value, mixed} rather than a value: a field blank because
+  // the selected labels disagree says so, in the placeholder, where one blank
+  // because the property is unset shows what the renderer will do instead.
+  function updateOpacityControl(input, shown, disabled) {
     input.node().disabled = disabled || !controlsEnabled();
-    input.node().value = val === '' ? '' : formatOpacityPct(val);
+    input.node().value = shown.value === '' ? '' : formatOpacityPct(shown.value);
+    setMixedPlaceholder(input, shown.mixed);
   }
 
-  function updateMeasureControl(input, val) {
+  function updateMeasureControl(input, shown) {
+    var val = shown.value;
     input.node().disabled = !controlsEnabled();
     input.node().value = val || val === 0 ? String(val) : '';
+    setMixedPlaceholder(input, shown.mixed);
+  }
+
+  // A field showing nothing because the labels disagree says "mixed" where it
+  // would otherwise show its own placeholder -- the spacing fields show the
+  // value the renderer uses when the property is absent, which is not what is
+  // true of a mixed selection.
+  function setMixedPlaceholder(input, mixed) {
+    var el = input.node();
+    var own = el.getAttribute('data-placeholder') || '';
+    el.setAttribute('placeholder', mixed ? MIXED_TEXT : own);
   }
 
   // Alignment stays live whatever is selected, including nothing. It was
@@ -897,8 +938,9 @@ export function LabelTool(gui) {
     return labelModeIsOn() ? 'new labels' : 'all';
   }
 
-  function updateFontSizeControls(fontSizeVal) {
-    fontSizeInput.setValue(fontSizeVal || '');
+  function updateFontSizeControls(shown) {
+    fontSizeInput.setValue(shown.value || '');
+    fontSizeInput.setPlaceholder(shown.mixed ? MIXED_TEXT : '');
     fontSizeInput.setDisabled(!controlsEnabled());
   }
 
@@ -911,15 +953,43 @@ export function LabelTool(gui) {
   // here, and a project moves between machines. It is added to the menu as
   // itself rather than replaced by an installed font, since the name is the
   // user's data and choosing something else for them would restyle the label.
-  function updateFontControl(fontVal) {
+  function updateFontControl(shown) {
+    var fontVal = shown.value;
+    // A font menu is a list of fonts, so "they are in different fonts" cannot
+    // be one of the fonts: it is an entry that appears only while it is true,
+    // and picking it does nothing (applyFont() ignores a blank value). The
+    // list stays live, so choosing a font is how the selection is brought into
+    // line -- as it is for the face menu below.
+    setMixedOption(fontSelect, shown.mixed);
     fontSelect.node().value = fontVal || '';
     if (fontVal && fontSelect.node().selectedIndex < 0) {
       El('option').attr('value', fontVal).text(fontVal).appendTo(fontSelect);
       fontSelect.node().value = fontVal;
     }
-    // Nothing selected, rather than the first font in the list, for a
-    // selection whose labels are in different fonts.
-    if (!fontVal) fontSelect.node().selectedIndex = -1;
+    // Nothing selected, rather than the first font in the list, for a target
+    // there is nothing to say about -- a disabled menu with no labels behind it.
+    if (!fontVal && !shown.mixed) fontSelect.node().selectedIndex = -1;
+  }
+
+  // Adds or removes a menu's "mixed" entry, which carries no value: a select
+  // showing nothing looks like a control that failed to load, and this is the
+  // one state the panel cannot express by lighting no button.
+  //
+  // First in the list, and removed as soon as the selection agrees, so that it
+  // is never an option among the real ones.
+  function setMixedOption(select, mixed) {
+    var el = select.node();
+    var first = el.options[0];
+    var has = !!first && first.value === '' && first.dataset.mixed == 'true';
+    if (mixed && !has) {
+      first = document.createElement('option');
+      first.value = '';
+      first.textContent = MIXED_TEXT;
+      first.dataset.mixed = 'true';
+      el.insertBefore(first, el.firstChild);
+    } else if (!mixed && has) {
+      el.removeChild(first);
+    }
   }
 
   // The faces the chosen font is installed with, and no entry for "whatever
@@ -939,12 +1009,13 @@ export function LabelTool(gui) {
         El('option').attr('value', variant.value).appendTo(fontStyleSelect).text(variant.label);
       });
     }
+    // The faces are rebuilt above, so the "mixed" entry goes on afterwards.
+    setMixedOption(fontStyleSelect, mixed);
     fontStyleSelect.node().disabled = disabled;
     fontStyleSelect.node().value = shown ? shown.value : '';
-    // Nothing selected rather than the first face, for a selection that does
-    // not agree on one: the list is still live, so picking a face is how the
-    // selection is brought into line.
-    if (!shown) fontStyleSelect.node().selectedIndex = -1;
+    // Nothing selected rather than the first face, for a menu with no font to
+    // list the faces of.
+    if (!shown && !mixed) fontStyleSelect.node().selectedIndex = -1;
   }
 
   // The face the panel shows for a label in @fontName. A font-style and
@@ -955,12 +1026,17 @@ export function LabelTool(gui) {
     return getNearestFontStyleVariant(fontName, fontStyleVal, fontWeightVal);
   }
 
-  function updateColorControls(colorVal) {
+  function updateColorControls(shown) {
+    var colorVal = shown.value;
     var disabled = !controlsEnabled();
     colorInput.node().disabled = disabled;
     colorInput.node().value = colorVal || '';
+    setMixedPlaceholder(colorInput, shown.mixed);
     colorFieldBox.classed('disabled', disabled);
     setPanelButtonDisabled(colorChit, disabled);
+    // An empty swatch is how the field says "no colour", so a mixed one is
+    // marked instead of being left blank to mean two things.
+    colorChit.classed('mixed', shown.mixed);
     colorChit.css('background-color', isHexColor(colorVal) ? colorVal : 'transparent');
     if (colorPicker.visible()) {
       return; // avoid HSB -> RGB -> HSB rounding jumps after picker commits
@@ -972,50 +1048,59 @@ export function LabelTool(gui) {
     }
   }
 
-  function updateCssControl(cssVal) {
+  function updateCssControl(shown) {
     cssInput.node().disabled = !controlsEnabled();
-    cssInput.node().value = cssVal || '';
+    cssInput.node().value = shown.value || '';
+    setMixedPlaceholder(cssInput, shown.mixed);
   }
 
   // The toggle reads the data rather than holding a state of its own: a symbol
   // is on when the target has one, which is what makes it follow an undo.
   //
-  // A selection where only some labels have a symbol counts as on, so that the
-  // section stays usable -- turning the switch off then removes every symbol in
-  // it, and a shape applies to all of them. Treating it as off would show the
-  // one state from which nothing in the section can be reached.
+  // A selection where only some labels have a symbol shows the switch mixed,
+  // and the section stays usable: there are symbols in the selection to style.
+  // What the controls below it then act on narrows to the labels that have one
+  // -- see getIconTargetIds() -- so styling a symbol never creates one. The
+  // switch is still the only way to ask for that, and clicking a shape is the
+  // one thing in the section that applies to every selected label, because
+  // choosing a shape for a group is a plain statement about all of it.
   function updateIconControls(iconVal) {
     var enabled = controlsEnabled();
-    var on = enabled && !everyTargetLacksAnIcon();
+    var state = enabled ? getIconState() : 'off';
+    var off = state == 'off';
     if (iconVal) lastIconShape = iconVal;
-    iconToggle.setState(on);
+    iconToggle.setState(state);
     iconToggle.setDisabled(!enabled);
     // The group is faded as a whole rather than button by button, so that the
     // border the buttons share fades with them -- a live border around dead
     // buttons is the one part of a disabled control that still looks usable.
-    iconGroupEl.classed('disabled', !on);
+    iconGroupEl.classed('disabled', off);
     iconTypes.forEach(function(icon) {
-      iconBtns[icon.name].classed('selected', on && icon.name == iconVal);
-      setPanelButtonDisabled(iconBtns[icon.name], !on);
+      iconBtns[icon.name].classed('selected', !off && icon.name == iconVal);
+      setPanelButtonDisabled(iconBtns[icon.name], off);
     });
-    return !on;
+    return off;
   }
 
   function setIconOn(on) {
     applyIcon(on ? lastIconShape : '');
   }
 
-  function updateIconSizeControls(iconSizeVal, iconOff) {
-    iconSizeInput.setValue(iconSizeVal || '');
+  function updateIconSizeControls(shown, iconOff) {
+    iconSizeInput.setValue(shown.value || '');
+    iconSizeInput.setPlaceholder(shown.mixed ? MIXED_TEXT : '');
     iconSizeInput.setDisabled(iconOff || !controlsEnabled());
   }
 
-  function updateIconColorControls(colorVal, iconOff) {
+  function updateIconColorControls(shown, iconOff) {
+    var colorVal = shown.value;
     var disabled = iconOff || !controlsEnabled();
     iconColorInput.node().disabled = disabled;
     iconColorInput.node().value = colorVal || '';
+    setMixedPlaceholder(iconColorInput, shown.mixed);
     iconColorFieldBox.classed('disabled', disabled);
     setPanelButtonDisabled(iconColorChit, disabled);
+    iconColorChit.classed('mixed', shown.mixed);
     iconColorChit.css('background-color', isHexColor(colorVal) ? colorVal : 'transparent');
     if (iconColorPicker.visible()) {
       return; // avoid HSB -> RGB -> HSB rounding jumps after picker commits
@@ -1032,29 +1117,57 @@ export function LabelTool(gui) {
   }
 
   function getCommonValue(ids, field, opts) {
+    return getCommonValueInfo(ids, field, opts).value;
+  }
+
+  // What the target labels say about one property:
+  //
+  //   value: the value they agree on, or '' if they do not
+  //   mixed: whether they disagree
+  //
+  // Both, because a control showing nothing has to be able to say which of the
+  // two kinds of nothing it means. Blank is also what an unset property looks
+  // like -- a label carries no letter-spacing until one is chosen -- and a
+  // field that reads the same either way leaves the user to guess whether the
+  // selection is uniform.
+  function getCommonValueInfo(ids, field, opts) {
     var table = getActiveTable();
     var records = table && table.getRecords();
     var value, val, hasValue;
-    if (ids.length === 0) return getNewLabelValue(field, opts);
-    if (!records) return '';
+    if (ids.length === 0) {
+      return {value: getNewLabelValue(field, opts), mixed: false};
+    }
+    if (!records) return {value: '', mixed: false};
     for (var i=0; i<ids.length; i++) {
       val = records[ids[i]] && records[ids[i]][field];
       if (!val) {
-        if (opts && opts.useDefault) {
-          val = opts.defaultValue;
-        } else {
-          return '';
-        }
+        // A property nobody set reads as what it renders as, where the caller
+        // says what that is: a label with font-size=12 and one with no
+        // font-size are drawn the same and agree. Without a default the two
+        // disagree, which is right for a property that means nothing when it
+        // is absent -- one label carrying inline css and one not are not in
+        // the same state.
+        val = opts && opts.useDefault ? opts.defaultValue : '';
       } else {
         hasValue = true;
       }
       if (i === 0) {
         value = val;
       } else if (val != value) {
-        return '';
+        return {value: '', mixed: true};
       }
     }
-    return hasValue || opts && opts.useDefault ? value : '';
+    return {
+      value: hasValue || opts && opts.useDefault ? value : '',
+      mixed: false
+    };
+  }
+
+  // The same, as a control shows it: nothing at all, and nothing to say about
+  // it, while there is no target to read.
+  function getShownValue(ids, field, opts) {
+    if (!controlsEnabled()) return {value: '', mixed: false};
+    return getCommonValueInfo(ids, field, opts);
   }
 
   // The alignment the labels are *drawn* with, rather than the one they carry.
@@ -1283,7 +1396,11 @@ export function LabelTool(gui) {
     var ids = getTargetIds();
     var styles = [[iconField, iconName || '']];
     if (iconName) {
-      styles.push([iconSizeField, getNumericSize(ids, iconSizeField, defaultIconSize)]);
+      // The size the symbols in the selection already share, where they share
+      // one: a shape applied to a mixed selection gives the labels that had no
+      // symbol the size of the ones that did, rather than resetting them all to
+      // the default.
+      styles.push([iconSizeField, getNumericSize(getIconValueIds(), iconSizeField, defaultIconSize)]);
       // The symbol's own opacity goes on with it, because the label's opacity
       // is applied to both elements: without this, text set to 50% would give
       // a half-faded symbol while the Icon section showed it at 100%.
@@ -1327,36 +1444,65 @@ export function LabelTool(gui) {
   }
 
   function applyIconSize(value) {
-    applyStyleValues([[iconSizeField, value]]);
+    applyStyleValues([[iconSizeField, value]], getIconTargetIds());
   }
 
   function applyIconColor(color) {
-    applyStyleValues([[iconColorField, color]]);
+    applyStyleValues([[iconColorField, color]], getIconTargetIds());
   }
 
   function applyIconOpacity(value) {
-    applyStyleValues([[iconOpacityField, value]]);
+    applyStyleValues([[iconOpacityField, value]], getIconTargetIds());
   }
 
   function nudgeIconSize(delta) {
-    var ids = getTargetIds();
-    var size = getNumericSize(ids, iconSizeField, defaultIconSize);
+    var size = getNumericSize(getIconTargetIds(), iconSizeField, defaultIconSize);
     if (!controlsEnabled()) return;
     size = Math.max(1, size + delta);
     applyIconSize(size);
   }
 
+  // Whether the target labels have a symbol: 'on', 'off', or 'mixed' when only
+  // some of them do.
+  //
   // An icon-size or icon-color on a label with no symbol draws nothing, which
   // is why the shape, size and colour controls are inert until the toggle puts
   // a symbol there to style.
-  function everyTargetLacksAnIcon() {
+  function getIconState() {
     var ids = getTargetIds();
     var table = getActiveTable();
-    if (ids.length === 0) return !getNewLabelValue(iconField);
-    return ids.every(function(id) {
+    if (ids.length === 0) return getNewLabelValue(iconField) ? 'on' : 'off';
+    return getToggleState(ids.map(function(id) {
       var rec = table && table.getRecordAt(id);
-      return !(rec && rec[iconField]);
+      return !!(rec && rec[iconField]);
+    }));
+  }
+
+  // The labels an icon-size, icon-color or icon-opacity goes to: those in the
+  // target that have a symbol, which is all of them unless the switch is mixed.
+  // Writing one of these to a label with no icon would add a property that
+  // draws nothing and a column to the user's table.
+  //
+  // Empty for a target with no symbol anywhere, which is the state those
+  // controls are disabled in, and empty for "new labels", where the style is
+  // held by the tool rather than by any feature.
+  function getIconTargetIds() {
+    var ids = getTargetIds();
+    var table = getActiveTable();
+    return ids.filter(function(id) {
+      var rec = table && table.getRecordAt(id);
+      return !!(rec && rec[iconField]);
     });
+  }
+
+  // The labels the section's controls *show* the values of, which is not quite
+  // the set they write to: with no symbol anywhere the fields go on showing
+  // what the target carries, greyed, because that is what the symbol comes back
+  // as when the switch is turned on. Narrowing there would show the values held
+  // for the next label instead of the ones stored on the selection.
+  function getIconValueIds() {
+    var ids = getIconTargetIds();
+    return ids.length > 0 ? ids : getTargetIds();
   }
 
   function getIconOpacityToWrite() {
@@ -1365,7 +1511,7 @@ export function LabelTool(gui) {
     // The field reads blank while the section is off, so a symbol switched off
     // and on again takes back the fade still stored on the label rather than
     // being reset to full.
-    var stored = getCommonValue(getTargetIds(), iconOpacityField, {useDefault: true, defaultValue: 1});
+    var stored = getCommonValue(getIconValueIds(), iconOpacityField, {useDefault: true, defaultValue: 1});
     val = stored === '' ? 1 : Number(stored);
     return isFinite(val) ? val : 1;
   }
@@ -1418,7 +1564,10 @@ export function LabelTool(gui) {
     }
   }
 
-  function applyStyleValues(styles) {
+  // idsArg: (optional) the labels to write to, when they are not the whole
+  //   target -- an icon property goes only to the labels that have a symbol.
+  function applyStyleValues(styles, idsArg) {
+    var ids = idsArg || getTargetIds();
     if (styles.length === 0) return;
     releaseFocus();
     // What the panel is set to is always what the next label gets, whether or
@@ -1431,8 +1580,8 @@ export function LabelTool(gui) {
       // style, so it has to be redrawn to show the change -- it is the preview.
       refreshPendingLabel();
     }
-    if (getTargetIds().length > 0) {
-      applyStyleCommand(styles);
+    if (ids.length > 0) {
+      applyStyleCommand(styles, ids);
       return;
     }
     if (!labelModeIsOn()) return;
@@ -1444,9 +1593,8 @@ export function LabelTool(gui) {
     if (session && session.id == -1 && session.refresh) session.refresh();
   }
 
-  function applyStyleCommand(styles) {
+  function applyStyleCommand(styles, ids) {
     var lyr = getActiveLayer();
-    var ids = getTargetIds();
     var parts = ['-style'];
     if (!gui.console || !lyr) return;
     styles.forEach(function(style) {

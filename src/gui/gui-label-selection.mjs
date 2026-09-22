@@ -39,6 +39,13 @@ var KNOT_RADIUS = 3;
 // layer instead of rebuilding it, and the cue moves with the map by wearing the
 // label's own transform -- but a select-all on a big layer would still pay it,
 // for an outline per label too small to tell apart anyway.
+//
+// Over the cap the selected labels wear a halo instead (.label-cue-marked),
+// which is a class on the text node and costs no measurement. It says less
+// than an outline -- no anchors, no knots, no box -- but a selection of
+// hundreds is a group being restyled rather than objects being handled one by
+// one, and the one thing it has to say is which labels are in it. This used to
+// draw nothing at all, so selecting a whole layer left the map unchanged.
 var MAX_OUTLINES = 200;
 
 // getEditingId: returns the feature id of an open text editing session, or -1.
@@ -46,6 +53,7 @@ var MAX_OUTLINES = 200;
 export function LabelSelection(gui, ext, hit, getEditingId) {
   var self = {};
   var groups = []; // one <g> per drawn cue, in the layer's markup
+  var marked = []; // text nodes wearing the halo, when there are too many to outline
   var drawn = null; // what those cues represent, so hover does not redraw them
   var on = false;
   var tetherId = -1; // the label whose text is being dragged off its anchor
@@ -75,9 +83,11 @@ export function LabelSelection(gui, ext, hit, getEditingId) {
   // markup and takes the old cues with it.
   self.refresh = function(force) {
     var target = hit.getHitTarget();
-    var ids = on ? getDrawableIds() : [];
-    var hoverId = on ? getHoverId(ids) : -1;
-    var key = ids.join(',') + '/' + hoverId + '/' + tetherId;
+    var selected = on ? hit.getSelectionIds() : [];
+    var tooMany = selected.length > MAX_OUTLINES;
+    var ids = tooMany ? [] : selected;
+    var hoverId = on ? getHoverId(selected) : -1;
+    var key = selected.join(',') + '/' + hoverId + '/' + tetherId;
     // Hover fires on every pointer move, and most of them change nothing here.
     if (!force && drawn === key) return;
     clearAll();
@@ -92,6 +102,9 @@ export function LabelSelection(gui, ext, hit, getEditingId) {
       // would offer handles that cannot be grabbed.
       draw(target, id, 'label-cue-selected', true);
     });
+    // Too many to outline: a halo on the glyphs instead, which is the whole cue
+    // for those labels.
+    if (tooMany) markAll(target, selected);
   };
 
   // The label under the pointer, when showing it would say something: not one
@@ -103,10 +116,23 @@ export function LabelSelection(gui, ext, hit, getEditingId) {
     return id;
   }
 
-  // The selected labels, or none if there are too many to outline usefully.
-  function getDrawableIds() {
-    var ids = hit.getSelectionIds();
-    return ids.length > MAX_OUTLINES ? [] : ids;
+  // Puts the halo on each selected label's glyphs. A class of its own rather
+  // than the label_style mode's yellow one: that class is cleared on every
+  // model update while the label tool is on, so the two would fight.
+  function markAll(target, ids) {
+    ids.forEach(function(id) {
+      var nodes = findNodes(target, id);
+      if (!nodes) return;
+      nodes.text.classList.add('label-cue-marked');
+      marked.push(nodes.text);
+    });
+  }
+
+  function clearMarks() {
+    marked.forEach(function(node) {
+      node.classList.remove('label-cue-marked');
+    });
+    marked = [];
   }
 
   function draw(target, id, className, withHandles) {
@@ -180,7 +206,8 @@ export function LabelSelection(gui, ext, hit, getEditingId) {
     var content;
     if (!text) return null;
     content = text.querySelector('textPath') || text;
-    return {symbol: symbol, content: content, pathId: getPathId(content)};
+    return {symbol: symbol, text: text, content: content,
+      pathId: getPathId(content)};
   }
 
   // The id of the baseline a path label is laid along, or null for an anchored
@@ -277,6 +304,7 @@ export function LabelSelection(gui, ext, hit, getEditingId) {
       if (g.parentNode) g.parentNode.removeChild(g);
     });
     groups = [];
+    clearMarks();
     drawn = null;
   }
 
