@@ -18,7 +18,7 @@ import { setMultilineAttribute } from './gui-svg-labels';
 import { getLabelPathNode } from './gui-svg-symbols';
 import { findNearestKnot, knotMoveIsValid } from './gui-label-knots';
 import { LabelEditor } from './gui-label-editor';
-import { LabelSelection } from './gui-label-selection';
+import { LabelSelection, BOX_PADDING } from './gui-label-selection';
 import {
   getNewLabelStyle, labelTextIsDraggable, setLabelPositionMode
 } from './gui-label-style-state';
@@ -990,9 +990,34 @@ export function initLabelTool(gui, ext, hit) {
     hoverTextId = id > -1 && (!hoverHandle || glyphsOutrankHandle(id)) ? id : -1;
   }
 
+  // The exception is about the pointer being on the glyphs, not about the mode:
+  // an offset label's anchor is out from under its text, and taking the handle
+  // away there left it with no anchor handle at all -- dragging the symbol of a
+  // label positioned ne slid its text instead of moving the label.
   function glyphsOutrankHandle(id) {
     return hoverHandle.id == id && labelTextIsDraggable(gui) &&
-      !isPathLabel(hit.getHitTarget(), id);
+      !isPathLabel(hit.getHitTarget(), id) && pointerIsOverText(id);
+  }
+
+  // Whether the pointer is within the box drawn around a label's text -- the
+  // outline the selection cue draws, padding and all, so that the thing on
+  // screen that says "this is the object" is the thing that takes the drag.
+  //
+  // From the last hover rather than from an event, because this is asked from
+  // the hit control's 'change' as well, which arrives without a position; the
+  // pointer has not moved since the hover that preceded it.
+  function pointerIsOverText(id) {
+    var target = hit.getHitTarget();
+    var shapes = target && getDisplayShapes(target);
+    var shp = shapes && shapes[id];
+    var nodes = findLabelNodes(target, id);
+    var box = nodes && !nodes.textPath ? measureNode(nodes.text) : null;
+    var pix = hoverPoint && ext.translateCoords(hoverPoint[0], hoverPoint[1]);
+    var p;
+    if (!box || !pix || !shp) return false;
+    p = getLabelSpacePoint(shp[0], {x: pix[0], y: pix[1]});
+    return p.x >= box.x - BOX_PADDING && p.x <= box.x + box.width + BOX_PADDING &&
+      p.y >= box.y - BOX_PADDING && p.y <= box.y + box.height + BOX_PADDING;
   }
 
   // The label a drag on the glyphs would act on, or -1. Only a selected label

@@ -25,7 +25,10 @@ import { internal } from './gui-core';
 // See docs/development/label-tool-design.md.
 
 var SVG_NS = 'http://www.w3.org/2000/svg';
-var BOX_PADDING = 3;
+// How far outside its text a label's outline is drawn. Exported because the
+// tool grabs a label by the same box: what looks like the object is what takes
+// a drag on it.
+export var BOX_PADDING = 3;
 var ANCHOR_RADIUS = 3.5;
 var KNOT_RADIUS = 3;
 

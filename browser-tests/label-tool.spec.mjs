@@ -1485,6 +1485,38 @@ test('an aligned label is dragged where it is drawn', async function({page}) {
   expect(errors).toEqual([]);
 });
 
+test('in Draggable mode the symbol at the anchor still moves the anchor',
+  async function({page}) {
+    // Draggable governs the text and nothing else. The glyphs outrank the
+    // anchor handle underneath them because a centred label's anchor is under
+    // its own text, and the handle winning there would leave the text
+    // ungrabbable -- but that is about the glyphs being where the pointer is,
+    // not about the mode. Applied wherever the pointer was, it took the anchor
+    // handle away entirely: dragging an offset label's symbol slid its text.
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+
+    await clickMap(page, 0.4, 0.45);
+    await writeLabel(page, 'Reno');
+    await disarmTool(page);
+    await clickLabel(page, 0);
+    await turnIconOn(page); // which also moves the text to ne, clear of it
+    await setDragMode(page, 'draggable');
+    var before = await getLabelLayer(page);
+
+    await hoverNothing(page);
+    await dragBy(page, await getAnchorPoint(page, 0), 40, 25);
+
+    var lyr = await getLabelLayer(page);
+    // the label moved, text and anchor together, and took no offset
+    expect(lyr.shapes[0]).not.toEqual(before.shapes[0]);
+    expect(lyr.records[0].dx).toBeUndefined();
+    expect(lyr.records[0].dy).toBeUndefined();
+    expect(lyr.records[0]['label-pos']).toBe('ne');
+    expect(await getSessionHistory(page)).toMatch(/-update-label/);
+    expect(errors).toEqual([]);
+  });
+
 test('the drag mode is the tool\'s and not the label\'s', async function({page}) {
   // Nothing in the record says which segment is lit: a label with a position
   // can be dragged or not, and one that has been dragged stays dragged when
@@ -2086,14 +2118,20 @@ async function hoverGlyph(page, id, frac) {
 // Hovers a label's first point. A symbol's transform is its anchor, so the
 // origin of its own coordinate space is that point in screen space.
 async function hoverAnchor(page, id) {
-  var p = await page.evaluate(function(args) {
+  var p = await getAnchorPoint(page, id);
+  return hoverPoint(page, p.x, p.y);
+}
+
+// A label's anchor on screen. The symbol group is translated to it, so it is
+// the group's own origin.
+async function getAnchorPoint(page, id) {
+  return page.evaluate(function(args) {
     var node = document.querySelector(
       '.mapshaper-svg-symbol[data-id="' + args.id + '"]');
     var pt = node.ownerSVGElement.createSVGPoint();
     pt = pt.matrixTransform(node.getScreenCTM());
     return {x: pt.x, y: pt.y};
   }, {id: id});
-  return hoverPoint(page, p.x, p.y);
 }
 
 async function getNewLabelStyle(page) {

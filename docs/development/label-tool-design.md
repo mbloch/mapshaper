@@ -2586,9 +2586,9 @@ selection".
 
 #### Fixed and Draggable
 
-**The Position row has a two-segment toggle, `Fixed | Draggable`, and the
-nine-position grid stays live in both.** The names say what a drag on a label
-does:
+**The Offset from anchor row has a two-segment toggle, `Fixed | Draggable`, and
+the nine-position grid stays live in both.** The names say what a drag on a
+label does:
 
 - **Fixed** — the text is fixed to its anchor, so dragging the label moves
   anchor and text together. That is the `-update-label` gesture the tool
@@ -2600,6 +2600,23 @@ The toggle is therefore not a safety catch. It is which of two meanings a drag
 on the glyphs carries, a question that has to be answered somewhere, and
 answering it with a mode rather than by hit-priority is what keeps a centred
 label — whose text sits on top of its own anchor — grabbable at all.
+
+That exception is about the pointer and not about the mode, which
+`glyphsOutrankHandle()` first got wrong: in Draggable mode the glyphs won
+wherever the pointer was, so a label with its text offset had no anchor handle
+left — dragging the symbol under a `ne` label slid the text it was nowhere
+near. The handle only stands down where the glyphs are actually under the
+pointer, tested against the box the selection cue outlines.
+
+**The row's caption is what those two words are adjectives of**, and it was the
+ambiguous half of the control. Under "Position" the pair described the label,
+which is draggable in both modes — the anchor moves with a drag on the symbol
+whichever segment is lit, and in Fixed mode with a drag on the glyphs as well —
+so "Fixed" read as a lock that the tool does not have and does not need. (What
+it would be a lock against is already covered: nothing on an unselected label
+is grabbable, so Escape is the way to put a placed label out of a drag's
+reach.) Under "Offset from anchor" the same two words describe the offset,
+which is what the toggle actually governs and what the grid below it sets.
 
 The grid staying live is what makes the toggle cheap: **clicking a position is
 the way back**, since `-style label-pos=…` clears `dx`, `dy` and `text-anchor`

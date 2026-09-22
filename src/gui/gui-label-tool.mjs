@@ -347,8 +347,12 @@ export function LabelTool(gui) {
       applyInlineCss(cssInput.node().value.trim());
     });
 
+    // The caption for the grid and the drag-mode toggle below it, and what
+    // gives Fixed|Draggable something to be an adjective of. "Position" read as
+    // the label's own position -- which a drag moves in either mode -- and made
+    // Fixed sound like a lock on a label that is still perfectly draggable.
     var positionRow = El('label').addClass('label-style-row').appendTo(textSection);
-    El('span').appendTo(positionRow).text('Position');
+    El('span').appendTo(positionRow).text('Offset from anchor');
 
     // Whether the label has a symbol is one question and which symbol it has is
     // another, so the first is a switch on the section's heading rather than a
