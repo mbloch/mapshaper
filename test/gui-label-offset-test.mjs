@@ -16,6 +16,12 @@ function leftEdge(values, width) {
   return getTextCentreOffset(values.dx, values['text-anchor'], width) - width / 2;
 }
 
+// How far to the left of x a justification puts the text, as a fraction of its
+// width -- the same table the module works from.
+function anchorOffset(anchor) {
+  return {start: 0, middle: 0.5, end: 1}[anchor];
+}
+
 describe('gui label offset drags', function() {
 
   describe('getOffsetDragValues()', function() {
@@ -89,6 +95,30 @@ describe('gui label offset drags', function() {
     it('reports where an unaligned label will be drawn, which is its dx', function() {
       var o = getOffsetDragValues(centred({dx: 20}), {dx: 5, dy: 0});
       assert.equal(o.x, o.dx);
+    });
+
+    // The preview writes x and the anchor onto the rendered label, so the two
+    // have to describe the same placement. An aligned label keeps the anchor
+    // its alignment gives it; taking the stored 'start' instead drew the text
+    // half a width or a whole width to the right until the drag was released.
+    it('draws an aligned label with the justification it already had', function() {
+      var o = getOffsetDragValues(centred({dx: 20, aligned: true}), {dx: 5, dy: 0});
+      assert.equal(o.anchor, 'middle');
+      assert.equal(o['text-anchor'], 'start');
+    });
+
+    it('draws an aligned label where it was dragged to', function() {
+      ['start', 'middle', 'end'].forEach(function(anchor) {
+        var o = getOffsetDragValues(centred({dx: 20, anchor: anchor, aligned: true}),
+          {dx: 5, dy: 0});
+        // the preview's own left edge, from the pair it writes
+        assert.equal(o.x - anchorOffset(o.anchor) * 40, 20 + 5 - anchorOffset(anchor) * 40);
+      });
+    });
+
+    it('draws an unaligned label with the justification it writes', function() {
+      var o = getOffsetDragValues(centred(), {dx: 30, dy: 0});
+      assert.equal(o.anchor, o['text-anchor']);
     });
   });
 

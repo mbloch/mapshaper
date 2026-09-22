@@ -1443,6 +1443,48 @@ test('the justification follows the text across its anchor', async function({pag
   expect(errors).toEqual([]);
 });
 
+test('an aligned label is dragged where it is drawn', async function({page}) {
+  // A label carrying a label-align is drawn with the anchor its alignment
+  // gives it, and the drag writes text-anchor=start against the correction the
+  // renderer applies. The preview used to write that stored value onto the
+  // rendered text, which drew a right-aligned label a full width right of the
+  // pointer and a centred one half a width -- and dropped it back into place
+  // on release, so the label appeared to jump left the moment it was let go.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+
+  await clickMap(page, 0.45, 0.45);
+  await writeLabel(page, 'Winnemucca');
+  await disarmTool(page);
+  await clickLabel(page, 0);
+  await setDragMode(page, 'draggable');
+
+  for (var align of ['right', 'center']) {
+    await page.locator('.text-style-panel .label-align-buttons [data-align="' +
+      align + '"]').click();
+    await page.waitForTimeout(200);
+    await hoverNothing(page);
+    var before = await getLabelBox(page, 0);
+    var from = await getGlyphPoint(page, 0, 0.5);
+
+    await page.mouse.move(from.x, from.y);
+    await page.waitForTimeout(80);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 60, from.y - 30, {steps: 8});
+    // mid-drag: the text is under the pointer, not a width away from it
+    var dragging = await getLabelBox(page, 0);
+    expect(Math.abs(dragging.x - (before.x + 60))).toBeLessThan(2);
+
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+    // and the command's redraw leaves it where the drag showed it
+    var after = await getLabelBox(page, 0);
+    expect(Math.abs(after.x - dragging.x)).toBeLessThan(2);
+    expect((await getLabelLayer(page)).records[0]['label-align']).toBe(align);
+  }
+  expect(errors).toEqual([]);
+});
+
 test('the drag mode is the tool\'s and not the label\'s', async function({page}) {
   // Nothing in the record says which segment is lit: a label with a position
   // can be dragged or not, and one that has been dragged stays dragged when

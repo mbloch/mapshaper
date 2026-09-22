@@ -2792,6 +2792,14 @@ the block's width to hold the text still while its lines re-justify — so
 `start` is both the anchor whose `dx` is the left edge itself and the value that
 would leave the label where it is if the alignment were later removed.
 
+That is the value the drag *writes*, and not the one the label is *drawn* with
+while the drag is in progress, which is still the alignment's own. So
+`getOffsetDragValues()` returns both: `dx`/`text-anchor` for the command and
+`x`/`anchor` for the preview. Previewing with the stored pair drew a
+right-aligned label a full width to the right of the pointer, and a centred one
+half a width, for as long as the drag lasted — the text then dropped back into
+place on release, which read as the label jumping left the moment it was let go.
+
 A drag works in the label's own coordinate space, inside its symbol group,
 which is what `dx` and `dy` are measured in: pointer movement is divided by the
 symbol scale on the way in, or a drag would overshoot at any scale but 1.

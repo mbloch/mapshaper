@@ -832,7 +832,10 @@ export function initLabelTool(gui, ext, hit) {
     // ended.
     setMultilineAttribute(nodes.text, 'x', o.values.x);
     nodes.text.setAttribute('y', o.values.dy);
-    nodes.text.setAttribute('text-anchor', o.values['text-anchor']);
+    // The anchor the label is drawn with, not the one the drag writes: on an
+    // aligned label the two differ, and the stored one belongs with the stored
+    // dx rather than with the x being previewed here.
+    nodes.text.setAttribute('text-anchor', o.values.anchor);
     // The cue is drawn around the text rather than moved with it, so it has to
     // be rebuilt to follow -- one getBBox on one label per mouse move.
     selection.refresh(true);
