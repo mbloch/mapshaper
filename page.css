@@ -2259,6 +2259,19 @@ body.pan.panning .map-layers:not(.drawing) {
 	vector-effect: non-scaling-stroke;
 }
 
+/* The cue for a selection too large to outline label by label -- selecting a
+   whole layer to restyle it. A halo in the selection's own blue, the same
+   treatment the older styling mode uses in yellow: at that size the question
+   is which labels are in the selection, not where each one's anchor is. */
+.map-layers > svg text.label-cue-marked {
+	stroke: #3a7ddc;
+	stroke-opacity: 0.3;
+	paint-order: stroke fill;
+	stroke-width: 4px;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
 /* Transparent rather than fill:none / stroke:none, because an unpainted shape
    is not hit-testable. */
 .label-edit-hit-area {
@@ -2410,6 +2423,28 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .nav-btn.menu-btn.selected:not(.disabled) svg * {
 	fill: white;
+}
+
+/* Tooltip shown to the left of a nav button on hover. It borrows the type of
+   .nav-menu-item so the strip reads as one family, but stays a flat label --
+   no border, radius or shadow -- so it is not mistaken for the arrow menu.
+   The translucent white wash keeps it legible over dark map content. */
+.nav-btn[data-tooltip]:hover:not(.disabled)::after {
+	content: attr(data-tooltip);
+	position: absolute;
+	/* Below .nav-sub-menu, which is at -1 and lingers for a moment after the
+	   pointer leaves the arrow button: the tooltip must pass behind it. */
+	z-index: -2;
+	top: 50%;
+	right: calc(100% + 2px);
+	transform: translateY(-50%);
+	pointer-events: none;
+	background-color: rgba(255, 255, 255, 0.85);
+	color: var(--colored-text);
+	font-size: 13px;
+	line-height: 13px;
+	padding: 3px 6px 4px 6px;
+	white-space: nowrap;
 }
 
 .nav-btn.preview-toggle {
@@ -3215,7 +3250,8 @@ body.pan.panning .map-layers:not(.drawing) {
 
 /* A switch, because whether the label has a symbol at all is a yes/no that the
    four shapes below it then qualify. Off is a pale track with the knob left,
-   on a dark one with the knob right. */
+   on a dark one with the knob right, and mixed -- some of the selected labels
+   on, some off -- is both halves at once with the knob over the join. */
 .label-toggle {
 	position: relative;
 	flex: none;
@@ -3246,6 +3282,16 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .label-toggle.on .label-toggle-knob {
 	left: 13px;
+}
+
+/* The hard edge is the point: a gradient stop rather than a blend, so that the
+   track reads as one half on and one half off rather than as a third colour. */
+.label-toggle.mixed {
+	background: linear-gradient(to right, #333 50%, #ccc 50%);
+}
+
+.label-toggle.mixed .label-toggle-knob {
+	left: 7.5px;
 }
 
 .label-toggle.disabled {
@@ -3347,6 +3393,13 @@ body.pan.panning .map-layers:not(.drawing) {
 	margin-right: 6px;
 	border: 1px solid #bbb;
 	border-radius: 2px;
+}
+
+/* A swatch for a selection whose colours disagree: split rather than empty,
+   because empty is how the swatch says the colour is unset. Two greys, so that
+   it cannot be read as one of the colours in the selection. */
+.label-style-panel .label-color-field .label-color-chit.mixed {
+	background-image: linear-gradient(135deg, #d9d9d9 0 50%, #8c8c8c 50% 100%);
 }
 
 .label-style-panel .label-color-field input[type="text"] {
@@ -3761,19 +3814,33 @@ body.dragging-color-picker * {
 .contextmenu-item {
 	background-color: #fff;
 	white-space: nowrap;
-	padding: 3px 10px 4px 10px;
+	/* padding: 3px 10px 4px 10px; */
+	margin: 1px 10px;
+	padding: 2px 0;
 	cursor: pointer;
-	font-size: 13px;
+	font-size: 12px;
 	line-height: 13px;
 }
 
 .contextmenu-label {
 	color: #999;
 	white-space: nowrap;
-	padding: 4px 10px 1px 10px;
+	padding: 5px 10px 1px 10px;
 	font-size: 12px;
 	line-height: 12px;
 	margin-top: -2px;
+}
+
+/* How many labels a "select" item would select. In the grey of a menu heading
+   rather than the item's own colour: it qualifies what the item says rather
+   than being part of it. */
+.contextmenu-count {
+	font-size: 10px;
+	color: #999;
+}
+
+.contextmenu-item:hover .contextmenu-count {
+	color: #777;
 }
 
 /* color tile shown instead of a bullet in the raster color readout */

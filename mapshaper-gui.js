@@ -11373,10 +11373,22 @@
       }
 
       if (lyr && lyr.gui.geographic) {
+        // Above the actions, because it is what they would be applied to: the
+        // labels that share something with the one pointed at, read and chosen
+        // before "copy as GeoJSON" or "delete label" means anything definite.
+        // Each item carries the number it would select, so that what the click
+        // is about to do is visible before it happens.
+        if (e.selectActions?.length) {
+          addMenuLabel('select');
+          e.selectActions.forEach(function(action) {
+            addMenuItem(action.label + getCountHtml(action.count), action.run);
+          });
+        }
+
         if (e.deleteVertex || e.deletePoint || copyable || e.deleteFeature ||
             e.flipLabel) {
 
-          addMenuLabel('selection');
+          addMenuLabel('actions');
           if (e.deleteVertex) {
             addMenuItem('delete vertex', e.deleteVertex);
           }
@@ -11522,6 +11534,12 @@
     if (bands == 3) return 'red, green, blue';
     if (bands == 4) return 'red, green, blue, alpha';
     return 'band values';
+  }
+
+  // How many features a "select" item would select, in the grey of a menu
+  // heading: it qualifies the item rather than being part of what it says.
+  function getCountHtml(count) {
+    return ' <span class="contextmenu-count">' + count + '</span>';
   }
 
   // A color tile, used in place of the bullet that other menu items get.
@@ -16193,6 +16211,13 @@
       setDisplay(shown);
     };
 
+    // What the field shows while it is blank, or '' for nothing. The panel uses
+    // it to say that the selected features disagree about the size, which is one
+    // of the two reasons the field can be empty.
+    this.setPlaceholder = function(str) {
+      input.attr('placeholder', str || '');
+    };
+
     this.setDisabled = function(off) {
       disabled = !!off;
       input.node().disabled = disabled;
@@ -16551,6 +16576,24 @@
     gui.state.new_label_style = null;
   }
 
+  // What a two-state control shows for a group of labels: 'on', 'off', or
+  // 'mixed' when they disagree.
+  //
+  // The panel's other controls say "they disagree" by showing nothing -- an empty
+  // select, an unlit button, a blank field. A switch has no empty state to fall
+  // back on, so it needs a third one named here.
+  //
+  // flags: one truthy/falsy value per label, in any order
+  function getToggleState(flags) {
+    var on = 0;
+    var i;
+    for (i = 0; i < flags.length; i++) {
+      if (flags[i]) on++;
+    }
+    if (on === 0) return 'off';
+    return on == flags.length ? 'on' : 'mixed';
+  }
+
   // What a drag on a label's glyphs means: 'fixed' moves the label, anchor and
   // text together, and 'draggable' leaves the anchor where it is and offsets the
   // text from it.
@@ -16782,6 +16825,11 @@
   // no line-height until one is chosen. "auto" is the honest description of a
   // blank field: something else decides.
   var lineHeightPlaceholder = 'auto';
+  // What a control shows for a selection whose labels disagree about it. One
+  // word, used in every field and menu that can be in that state: the panel
+  // otherwise says it by showing nothing, which is also what an unset property
+  // looks like.
+  var MIXED_TEXT = 'mixed';
   var labelStyleMode = 'label_style';
   var labelStylePanelMode = 'label_style_tool';
   var labelMode = 'label';
@@ -17215,26 +17263,38 @@
       return makePanelSection(panel, title, opts);
     }
 
-    // A two-state switch: a track with a knob that sits left when off and right
-    // when on, which is the direction users expect and the only thing that says
-    // which state is which without a label for each.
+    // A switch: a track with a knob that sits left when off and right when on,
+    // which is the direction users expect and the only thing that says which
+    // state is which without a label for each. A third state says that the
+    // labels it is asking about disagree -- the knob sits over the join of a
+    // half-and-half track, which is the panel's only control that has to show
+    // "some of them" rather than a value.
+    //
+    // role=checkbox rather than switch, which is what it looks like: 'mixed' is a
+    // legal aria-checked value for a checkbox and not for a switch, and a switch
+    // reporting a mixed selection as unchecked would be telling a screen reader
+    // the one thing the third state exists to avoid saying.
     function makeToggle(parent, opts) {
-      var track = El('div').addClass('label-toggle').attr('role', 'switch').appendTo(parent);
-      var on = false;
+      var track = El('div').addClass('label-toggle').attr('role', 'checkbox').appendTo(parent);
+      var state = 'off';
       var disabled = false;
       El('div').addClass('label-toggle-knob').appendTo(track);
       if (opts.title) track.attr('title', opts.title);
+      // A click on a mixed switch turns everything on. It is the convention, and
+      // it is the reading that reaches a state the switch can describe: the next
+      // click then turns everything off, so both are one click away.
       track.on('click', function() {
         if (disabled) return;
-        opts.onChange(!on);
+        opts.onChange(state != 'on');
       });
       return {
-        setState: function(isOn) {
-          on = !!isOn;
-          track.classed('on', on).attr('aria-checked', on ? 'true' : 'false');
-        },
-        getState: function() {
-          return on;
+        // val: 'on', 'off' or 'mixed'; anything else reads as off
+        setState: function(val) {
+          state = val == 'on' || val == 'mixed' ? val : 'off';
+          track.classed('on', state == 'on')
+            .classed('mixed', state == 'mixed')
+            .attr('aria-checked', state == 'mixed' ? 'mixed' :
+              state == 'on' ? 'true' : 'false');
         },
         setDisabled: function(off) {
           disabled = !!off;
@@ -17257,6 +17317,9 @@
     function makeMeasureInput(parent, field, placeholder) {
       var input = El('input').attr('type', 'text').addClass('label-measure-input')
         .attr('placeholder', placeholder)
+        // The field's own placeholder, kept because the shown one is replaced
+        // while the selection disagrees -- see setMixedPlaceholder().
+        .attr('data-placeholder', placeholder)
         .appendTo(parent)
         .on('change', function() {
           applyStyleValues([[field, input.node().value.trim()]]);
@@ -17428,51 +17491,72 @@
       // With nothing selected the menu shows the font the next label will be
       // made in; with labels selected it shows the font they are drawn in, which
       // for a label carrying none is whatever sans-serif resolves to here.
-      var fontVal = getCommonValue(ids, fontField,
+      var font = getShownValue(ids, fontField,
         {useDefault: true, defaultValue: getFontNameForTarget(ids)});
-      var fontSizeVal = getCommonValue(ids, fontSizeField, {useDefault: true, defaultValue: defaultFontSize});
+      var fontSize = getShownValue(ids, fontSizeField, {useDefault: true, defaultValue: defaultFontSize});
       var fontStyleVal = getCommonValue(ids, fontStyleField, {useDefault: true, defaultValue: defaultFontStyle});
       var fontWeightVal = getCommonValue(ids, fontWeightField, {useDefault: true, defaultValue: defaultFontWeight});
-      var fillVal = getCommonValue(ids, fillField, {useDefault: true, defaultValue: defaultLabelColor});
-      var opacityVal = getCommonValue(ids, opacityField, {useDefault: true, defaultValue: 1});
-      var letterSpacingVal = getCommonValue(ids, letterSpacingField);
-      var lineHeightVal = getCommonValue(ids, lineHeightField);
+      var fill = getShownValue(ids, fillField, {useDefault: true, defaultValue: defaultLabelColor});
+      var opacity = getShownValue(ids, opacityField, {useDefault: true, defaultValue: 1});
+      var letterSpacing = getShownValue(ids, letterSpacingField);
+      var lineHeight = getShownValue(ids, lineHeightField);
       var alignVal = getCommonAlignment(ids);
-      var cssVal = getCommonValue(ids, cssField);
+      var css = getShownValue(ids, cssField);
       var posVal = getCommonValue(ids, 'label-pos');
-      var iconVal = getCommonValue(ids, iconField);
-      var iconSizeVal = getCommonValue(ids, iconSizeField, {useDefault: true, defaultValue: defaultIconSize});
-      var iconColorVal = getCommonValue(ids, iconColorField, {useDefault: true, defaultValue: defaultIconColor});
-      var iconOpacityVal = getCommonValue(ids, iconOpacityField, {useDefault: true, defaultValue: 1});
+      // From the labels that have a symbol, so that a selection where only some
+      // do shows the symbols it has rather than blanking every field because the
+      // rest of the selection has nothing to compare.
+      var iconIds = getIconValueIds();
+      var iconVal = getCommonValue(iconIds, iconField);
+      var iconSize = getShownValue(iconIds, iconSizeField, {useDefault: true, defaultValue: defaultIconSize});
+      var iconColor = getShownValue(iconIds, iconColorField, {useDefault: true, defaultValue: defaultIconColor});
+      var iconOpacity = getShownValue(iconIds, iconOpacityField, {useDefault: true, defaultValue: 1});
       updateEditingStatus(manualIds.length, !!getLabelTextSession(gui));
       updateSavedStyleControls();
       fontSelect.node().disabled = !showValues;
-      updateFontControl(fontVal);
-      updateFontStyleControls(fontVal, fontStyleVal, fontWeightVal);
-      updateFontSizeControls(showValues ? fontSizeVal : '');
-      updateColorControls(showValues ? fillVal : '');
-      updateOpacityControl(opacityInput, showValues ? opacityVal : '');
-      updateMeasureControl(letterSpacingInput, showValues ? letterSpacingVal : '');
-      updateMeasureControl(lineHeightInput, showValues ? lineHeightVal : '');
+      updateFontControl(font);
+      updateFontStyleControls(font.value, fontStyleVal, fontWeightVal);
+      updateFontSizeControls(fontSize);
+      updateColorControls(fill);
+      updateOpacityControl(opacityInput, opacity);
+      updateMeasureControl(letterSpacingInput, letterSpacing);
+      updateMeasureControl(lineHeightInput, lineHeight);
       updateAlignButtons(showValues ? alignVal : '');
-      updateCssControl(showValues ? cssVal : '');
+      updateCssControl(css);
       updatePositionButtons(showValues ? posVal : '', ids);
       // The symbol's controls keep showing their values while the switch is off,
       // greyed: what they show is what the symbol comes back as.
       var iconOff = updateIconControls(showValues ? iconVal : '');
-      updateIconSizeControls(showValues ? iconSizeVal : '', iconOff);
-      updateIconColorControls(showValues ? iconColorVal : '', iconOff);
-      updateOpacityControl(iconOpacityInput, showValues ? iconOpacityVal : '', iconOff);
+      updateIconSizeControls(iconSize, iconOff);
+      updateIconColorControls(iconColor, iconOff);
+      updateOpacityControl(iconOpacityInput, iconOpacity, iconOff);
     }
 
-    function updateOpacityControl(input, val, disabled) {
+    // Every field that can show a value can also show nothing, which is why each
+    // of these takes a {value, mixed} rather than a value: a field blank because
+    // the selected labels disagree says so, in the placeholder, where one blank
+    // because the property is unset shows what the renderer will do instead.
+    function updateOpacityControl(input, shown, disabled) {
       input.node().disabled = disabled || !controlsEnabled();
-      input.node().value = val === '' ? '' : formatOpacityPct(val);
+      input.node().value = shown.value === '' ? '' : formatOpacityPct(shown.value);
+      setMixedPlaceholder(input, shown.mixed);
     }
 
-    function updateMeasureControl(input, val) {
+    function updateMeasureControl(input, shown) {
+      var val = shown.value;
       input.node().disabled = !controlsEnabled();
       input.node().value = val || val === 0 ? String(val) : '';
+      setMixedPlaceholder(input, shown.mixed);
+    }
+
+    // A field showing nothing because the labels disagree says "mixed" where it
+    // would otherwise show its own placeholder -- the spacing fields show the
+    // value the renderer uses when the property is absent, which is not what is
+    // true of a mixed selection.
+    function setMixedPlaceholder(input, mixed) {
+      var el = input.node();
+      var own = el.getAttribute('data-placeholder') || '';
+      el.setAttribute('placeholder', mixed ? MIXED_TEXT : own);
     }
 
     // Alignment stays live whatever is selected, including nothing. It was
@@ -17496,7 +17580,6 @@
       // to take. The commands ignore a position given for one, and a disabled
       // button says so where a console warning would not.
       var disabled = !controlsEnabled() || everyLabelIsOnAPath(ids);
-      var locked = !disabled && gridIsLockedToCentre(ids);
       // Faintly, and only when no cell is lit: a label carrying offsets is not
       // at any of the nine, but one of them is roughly where it is and clicking
       // it is the way back.
@@ -17504,35 +17587,9 @@
       labelPositions.forEach(function(name) {
         posBtns[name].classed('selected', !disabled && name == pos);
         posBtns[name].classed('nearest', name == nearest);
-        setPanelButtonDisabled(posBtns[name], disabled || locked && name != 'c');
+        setPanelButtonDisabled(posBtns[name], disabled);
       });
       updateDragModeButtons();
-    }
-
-    // The nine positions place text around something, so with nothing drawn at
-    // the anchor the grid is locked to the centre cell: there is no answer to
-    // "north-east of what?", and the centre is what -add-label gives a new label
-    // anyway. The cell stays clickable, because text over its own symbol is a
-    // real thing to ask for.
-    //
-    // The test is whether the label draws a symbol, not whether it has an icon:
-    // a styled dots layer given label text by the point panel's "Create labels"
-    // keeps its r and fill, and keying this on icon= alone would lock the
-    // commonest labels in the app to the middle of their own dots.
-    //
-    // A default and a guard rather than an invariant. A label that arrives
-    // positioned with nothing at its anchor -- from the CLI, from an expression,
-    // from the legacy positioning mode -- is shown as it is, with the grid live:
-    // refusing to display what is in the record is worse than letting an odd
-    // state be edited. Dragging is not gated on a symbol either, since a labels
-    // layer whose dots live in a different layer still needs its text placed.
-    function gridIsLockedToCentre(ids) {
-      var table = getActiveTable();
-      if (!everyTargetLacksASymbol(ids)) return false;
-      if (ids.length === 0) return !labelIsPlaced(getNewLabelStyle(gui));
-      return ids.every(function(id) {
-        return !labelIsPlaced(table && table.getRecordAt(id));
-      });
     }
 
     // Whether a label has been put somewhere other than on top of its anchor: a
@@ -17542,16 +17599,6 @@
       if (rec['label-pos']) return rec['label-pos'] != 'c';
       return internal.hasStyleValue(rec, 'dx') ||
         internal.hasStyleValue(rec, 'dy');
-    }
-
-    function everyTargetLacksASymbol(ids) {
-      var table = getActiveTable();
-      if (ids.length === 0) {
-        return !internal.featureHasSvgSymbol(getNewLabelStyle(gui));
-      }
-      return ids.every(function(id) {
-        return !internal.featureHasSvgSymbol(table && table.getRecordAt(id));
-      });
     }
 
     // Which of the nine positions a dragged label is nearest, or ''.
@@ -17631,8 +17678,9 @@
       return labelModeIsOn() ? 'new labels' : 'all';
     }
 
-    function updateFontSizeControls(fontSizeVal) {
-      fontSizeInput.setValue(fontSizeVal || '');
+    function updateFontSizeControls(shown) {
+      fontSizeInput.setValue(shown.value || '');
+      fontSizeInput.setPlaceholder(shown.mixed ? MIXED_TEXT : '');
       fontSizeInput.setDisabled(!controlsEnabled());
     }
 
@@ -17645,15 +17693,43 @@
     // here, and a project moves between machines. It is added to the menu as
     // itself rather than replaced by an installed font, since the name is the
     // user's data and choosing something else for them would restyle the label.
-    function updateFontControl(fontVal) {
+    function updateFontControl(shown) {
+      var fontVal = shown.value;
+      // A font menu is a list of fonts, so "they are in different fonts" cannot
+      // be one of the fonts: it is an entry that appears only while it is true,
+      // and picking it does nothing (applyFont() ignores a blank value). The
+      // list stays live, so choosing a font is how the selection is brought into
+      // line -- as it is for the face menu below.
+      setMixedOption(fontSelect, shown.mixed);
       fontSelect.node().value = fontVal || '';
       if (fontVal && fontSelect.node().selectedIndex < 0) {
         El('option').attr('value', fontVal).text(fontVal).appendTo(fontSelect);
         fontSelect.node().value = fontVal;
       }
-      // Nothing selected, rather than the first font in the list, for a
-      // selection whose labels are in different fonts.
-      if (!fontVal) fontSelect.node().selectedIndex = -1;
+      // Nothing selected, rather than the first font in the list, for a target
+      // there is nothing to say about -- a disabled menu with no labels behind it.
+      if (!fontVal && !shown.mixed) fontSelect.node().selectedIndex = -1;
+    }
+
+    // Adds or removes a menu's "mixed" entry, which carries no value: a select
+    // showing nothing looks like a control that failed to load, and this is the
+    // one state the panel cannot express by lighting no button.
+    //
+    // First in the list, and removed as soon as the selection agrees, so that it
+    // is never an option among the real ones.
+    function setMixedOption(select, mixed) {
+      var el = select.node();
+      var first = el.options[0];
+      var has = !!first && first.value === '' && first.dataset.mixed == 'true';
+      if (mixed && !has) {
+        first = document.createElement('option');
+        first.value = '';
+        first.textContent = MIXED_TEXT;
+        first.dataset.mixed = 'true';
+        el.insertBefore(first, el.firstChild);
+      } else if (!mixed && has) {
+        el.removeChild(first);
+      }
     }
 
     // The faces the chosen font is installed with, and no entry for "whatever
@@ -17673,12 +17749,13 @@
           El('option').attr('value', variant.value).appendTo(fontStyleSelect).text(variant.label);
         });
       }
+      // The faces are rebuilt above, so the "mixed" entry goes on afterwards.
+      setMixedOption(fontStyleSelect, mixed);
       fontStyleSelect.node().disabled = disabled;
       fontStyleSelect.node().value = shown ? shown.value : '';
-      // Nothing selected rather than the first face, for a selection that does
-      // not agree on one: the list is still live, so picking a face is how the
-      // selection is brought into line.
-      if (!shown) fontStyleSelect.node().selectedIndex = -1;
+      // Nothing selected rather than the first face, for a menu with no font to
+      // list the faces of.
+      if (!shown && !mixed) fontStyleSelect.node().selectedIndex = -1;
     }
 
     // The face the panel shows for a label in @fontName. A font-style and
@@ -17689,12 +17766,17 @@
       return getNearestFontStyleVariant(fontName, fontStyleVal, fontWeightVal);
     }
 
-    function updateColorControls(colorVal) {
+    function updateColorControls(shown) {
+      var colorVal = shown.value;
       var disabled = !controlsEnabled();
       colorInput.node().disabled = disabled;
       colorInput.node().value = colorVal || '';
+      setMixedPlaceholder(colorInput, shown.mixed);
       colorFieldBox.classed('disabled', disabled);
       setPanelButtonDisabled(colorChit, disabled);
+      // An empty swatch is how the field says "no colour", so a mixed one is
+      // marked instead of being left blank to mean two things.
+      colorChit.classed('mixed', shown.mixed);
       colorChit.css('background-color', isHexColor(colorVal) ? colorVal : 'transparent');
       if (colorPicker.visible()) {
         return; // avoid HSB -> RGB -> HSB rounding jumps after picker commits
@@ -17706,50 +17788,59 @@
       }
     }
 
-    function updateCssControl(cssVal) {
+    function updateCssControl(shown) {
       cssInput.node().disabled = !controlsEnabled();
-      cssInput.node().value = cssVal || '';
+      cssInput.node().value = shown.value || '';
+      setMixedPlaceholder(cssInput, shown.mixed);
     }
 
     // The toggle reads the data rather than holding a state of its own: a symbol
     // is on when the target has one, which is what makes it follow an undo.
     //
-    // A selection where only some labels have a symbol counts as on, so that the
-    // section stays usable -- turning the switch off then removes every symbol in
-    // it, and a shape applies to all of them. Treating it as off would show the
-    // one state from which nothing in the section can be reached.
+    // A selection where only some labels have a symbol shows the switch mixed,
+    // and the section stays usable: there are symbols in the selection to style.
+    // What the controls below it then act on narrows to the labels that have one
+    // -- see getIconTargetIds() -- so styling a symbol never creates one. The
+    // switch is still the only way to ask for that, and clicking a shape is the
+    // one thing in the section that applies to every selected label, because
+    // choosing a shape for a group is a plain statement about all of it.
     function updateIconControls(iconVal) {
       var enabled = controlsEnabled();
-      var on = enabled && !everyTargetLacksAnIcon();
+      var state = enabled ? getIconState() : 'off';
+      var off = state == 'off';
       if (iconVal) lastIconShape = iconVal;
-      iconToggle.setState(on);
+      iconToggle.setState(state);
       iconToggle.setDisabled(!enabled);
       // The group is faded as a whole rather than button by button, so that the
       // border the buttons share fades with them -- a live border around dead
       // buttons is the one part of a disabled control that still looks usable.
-      iconGroupEl.classed('disabled', !on);
+      iconGroupEl.classed('disabled', off);
       iconTypes.forEach(function(icon) {
-        iconBtns[icon.name].classed('selected', on && icon.name == iconVal);
-        setPanelButtonDisabled(iconBtns[icon.name], !on);
+        iconBtns[icon.name].classed('selected', !off && icon.name == iconVal);
+        setPanelButtonDisabled(iconBtns[icon.name], off);
       });
-      return !on;
+      return off;
     }
 
     function setIconOn(on) {
       applyIcon(on ? lastIconShape : '');
     }
 
-    function updateIconSizeControls(iconSizeVal, iconOff) {
-      iconSizeInput.setValue(iconSizeVal || '');
+    function updateIconSizeControls(shown, iconOff) {
+      iconSizeInput.setValue(shown.value || '');
+      iconSizeInput.setPlaceholder(shown.mixed ? MIXED_TEXT : '');
       iconSizeInput.setDisabled(iconOff || !controlsEnabled());
     }
 
-    function updateIconColorControls(colorVal, iconOff) {
+    function updateIconColorControls(shown, iconOff) {
+      var colorVal = shown.value;
       var disabled = iconOff || !controlsEnabled();
       iconColorInput.node().disabled = disabled;
       iconColorInput.node().value = colorVal || '';
+      setMixedPlaceholder(iconColorInput, shown.mixed);
       iconColorFieldBox.classed('disabled', disabled);
       setPanelButtonDisabled(iconColorChit, disabled);
+      iconColorChit.classed('mixed', shown.mixed);
       iconColorChit.css('background-color', isHexColor(colorVal) ? colorVal : 'transparent');
       if (iconColorPicker.visible()) {
         return; // avoid HSB -> RGB -> HSB rounding jumps after picker commits
@@ -17766,29 +17857,57 @@
     }
 
     function getCommonValue(ids, field, opts) {
+      return getCommonValueInfo(ids, field, opts).value;
+    }
+
+    // What the target labels say about one property:
+    //
+    //   value: the value they agree on, or '' if they do not
+    //   mixed: whether they disagree
+    //
+    // Both, because a control showing nothing has to be able to say which of the
+    // two kinds of nothing it means. Blank is also what an unset property looks
+    // like -- a label carries no letter-spacing until one is chosen -- and a
+    // field that reads the same either way leaves the user to guess whether the
+    // selection is uniform.
+    function getCommonValueInfo(ids, field, opts) {
       var table = getActiveTable();
       var records = table && table.getRecords();
       var value, val, hasValue;
-      if (ids.length === 0) return getNewLabelValue(field, opts);
-      if (!records) return '';
+      if (ids.length === 0) {
+        return {value: getNewLabelValue(field, opts), mixed: false};
+      }
+      if (!records) return {value: '', mixed: false};
       for (var i=0; i<ids.length; i++) {
         val = records[ids[i]] && records[ids[i]][field];
         if (!val) {
-          if (opts && opts.useDefault) {
-            val = opts.defaultValue;
-          } else {
-            return '';
-          }
+          // A property nobody set reads as what it renders as, where the caller
+          // says what that is: a label with font-size=12 and one with no
+          // font-size are drawn the same and agree. Without a default the two
+          // disagree, which is right for a property that means nothing when it
+          // is absent -- one label carrying inline css and one not are not in
+          // the same state.
+          val = opts && opts.useDefault ? opts.defaultValue : '';
         } else {
           hasValue = true;
         }
         if (i === 0) {
           value = val;
         } else if (val != value) {
-          return '';
+          return {value: '', mixed: true};
         }
       }
-      return hasValue || opts && opts.useDefault ? value : '';
+      return {
+        value: hasValue || opts && opts.useDefault ? value : '',
+        mixed: false
+      };
+    }
+
+    // The same, as a control shows it: nothing at all, and nothing to say about
+    // it, while there is no target to read.
+    function getShownValue(ids, field, opts) {
+      if (!controlsEnabled()) return {value: '', mixed: false};
+      return getCommonValueInfo(ids, field, opts);
     }
 
     // The alignment the labels are *drawn* with, rather than the one they carry.
@@ -18017,7 +18136,11 @@
       var ids = getTargetIds();
       var styles = [[iconField, iconName || '']];
       if (iconName) {
-        styles.push([iconSizeField, getNumericSize(ids, iconSizeField, defaultIconSize)]);
+        // The size the symbols in the selection already share, where they share
+        // one: a shape applied to a mixed selection gives the labels that had no
+        // symbol the size of the ones that did, rather than resetting them all to
+        // the default.
+        styles.push([iconSizeField, getNumericSize(getIconValueIds(), iconSizeField, defaultIconSize)]);
         // The symbol's own opacity goes on with it, because the label's opacity
         // is applied to both elements: without this, text set to 50% would give
         // a half-faded symbol while the Icon section showed it at 100%.
@@ -18029,25 +18152,21 @@
       applyStyleValues(styles);
     }
 
-    // Switching a symbol on or off changes which positions are legal, so the
-    // position moves with it -- in the same command, which makes the pair one
-    // undo step.
+    // Switching a symbol on moves a label sitting at the centre out from under
+    // it, in the same command, so that the pair is one undo step and the text
+    // is never briefly drawn over the symbol it just asked for.
     //
-    // On: the centre cell stops being the default and a label sitting there
-    // moves out from under its new symbol. Off: the grid locks back to the
-    // centre, so the position goes and the offsets go with it -- label-pos=c
-    // clears dx, dy and text-anchor by itself. That makes switching a symbol off
-    // destructive, since a hand-placed label loses its placement; being one
-    // undoable command is what makes that acceptable.
+    // Switching one off moves nothing. It used to put the label back to the
+    // centre, which threw away a placement the user had made by hand for the
+    // sake of an invariant -- that text with nothing at its anchor sits on the
+    // anchor -- that was never worth what it cost.
     //
     // Not for path labels, whose text runs along a curve: the commands ignore a
     // position given for one and warn about it, and a warning from switching a
     // symbol on would be about something the user did not ask for.
     function addIconPositionChange(styles, ids, iconOn) {
-      if (anyLabelIsOnAPath(ids)) return;
-      if (!iconOn) {
-        styles.push(['label-pos', 'c']);
-      } else if (everyTargetIsCentred(ids)) {
+      if (anyLabelIsOnAPath(ids) || !iconOn) return;
+      if (everyTargetIsCentred(ids)) {
         styles.push(['label-pos', labelPositionBesideIcon]);
       }
     }
@@ -18061,36 +18180,65 @@
     }
 
     function applyIconSize(value) {
-      applyStyleValues([[iconSizeField, value]]);
+      applyStyleValues([[iconSizeField, value]], getIconTargetIds());
     }
 
     function applyIconColor(color) {
-      applyStyleValues([[iconColorField, color]]);
+      applyStyleValues([[iconColorField, color]], getIconTargetIds());
     }
 
     function applyIconOpacity(value) {
-      applyStyleValues([[iconOpacityField, value]]);
+      applyStyleValues([[iconOpacityField, value]], getIconTargetIds());
     }
 
     function nudgeIconSize(delta) {
-      var ids = getTargetIds();
-      var size = getNumericSize(ids, iconSizeField, defaultIconSize);
+      var size = getNumericSize(getIconTargetIds(), iconSizeField, defaultIconSize);
       if (!controlsEnabled()) return;
       size = Math.max(1, size + delta);
       applyIconSize(size);
     }
 
+    // Whether the target labels have a symbol: 'on', 'off', or 'mixed' when only
+    // some of them do.
+    //
     // An icon-size or icon-color on a label with no symbol draws nothing, which
     // is why the shape, size and colour controls are inert until the toggle puts
     // a symbol there to style.
-    function everyTargetLacksAnIcon() {
+    function getIconState() {
       var ids = getTargetIds();
       var table = getActiveTable();
-      if (ids.length === 0) return !getNewLabelValue(iconField);
-      return ids.every(function(id) {
+      if (ids.length === 0) return getNewLabelValue(iconField) ? 'on' : 'off';
+      return getToggleState(ids.map(function(id) {
         var rec = table && table.getRecordAt(id);
-        return !(rec && rec[iconField]);
+        return !!(rec && rec[iconField]);
+      }));
+    }
+
+    // The labels an icon-size, icon-color or icon-opacity goes to: those in the
+    // target that have a symbol, which is all of them unless the switch is mixed.
+    // Writing one of these to a label with no icon would add a property that
+    // draws nothing and a column to the user's table.
+    //
+    // Empty for a target with no symbol anywhere, which is the state those
+    // controls are disabled in, and empty for "new labels", where the style is
+    // held by the tool rather than by any feature.
+    function getIconTargetIds() {
+      var ids = getTargetIds();
+      var table = getActiveTable();
+      return ids.filter(function(id) {
+        var rec = table && table.getRecordAt(id);
+        return !!(rec && rec[iconField]);
       });
+    }
+
+    // The labels the section's controls *show* the values of, which is not quite
+    // the set they write to: with no symbol anywhere the fields go on showing
+    // what the target carries, greyed, because that is what the symbol comes back
+    // as when the switch is turned on. Narrowing there would show the values held
+    // for the next label instead of the ones stored on the selection.
+    function getIconValueIds() {
+      var ids = getIconTargetIds();
+      return ids.length > 0 ? ids : getTargetIds();
     }
 
     function getIconOpacityToWrite() {
@@ -18099,7 +18247,7 @@
       // The field reads blank while the section is off, so a symbol switched off
       // and on again takes back the fade still stored on the label rather than
       // being reset to full.
-      var stored = getCommonValue(getTargetIds(), iconOpacityField, {useDefault: true, defaultValue: 1});
+      var stored = getCommonValue(getIconValueIds(), iconOpacityField, {useDefault: true, defaultValue: 1});
       val = stored === '' ? 1 : Number(stored);
       return isFinite(val) ? val : 1;
     }
@@ -18152,7 +18300,10 @@
       }
     }
 
-    function applyStyleValues(styles) {
+    // idsArg: (optional) the labels to write to, when they are not the whole
+    //   target -- an icon property goes only to the labels that have a symbol.
+    function applyStyleValues(styles, idsArg) {
+      var ids = idsArg || getTargetIds();
       if (styles.length === 0) return;
       releaseFocus();
       // What the panel is set to is always what the next label gets, whether or
@@ -18165,8 +18316,8 @@
         // style, so it has to be redrawn to show the change -- it is the preview.
         refreshPendingLabel();
       }
-      if (getTargetIds().length > 0) {
-        applyStyleCommand(styles);
+      if (ids.length > 0) {
+        applyStyleCommand(styles, ids);
         return;
       }
       if (!labelModeIsOn()) return;
@@ -18178,9 +18329,8 @@
       if (session && session.id == -1 && session.refresh) session.refresh();
     }
 
-    function applyStyleCommand(styles) {
+    function applyStyleCommand(styles, ids) {
       var lyr = getActiveLayer();
-      var ids = getTargetIds();
       var parts = ['-style'];
       if (!gui.console || !lyr) return;
       styles.forEach(function(style) {
@@ -25361,6 +25511,13 @@
   // layer instead of rebuilding it, and the cue moves with the map by wearing the
   // label's own transform -- but a select-all on a big layer would still pay it,
   // for an outline per label too small to tell apart anyway.
+  //
+  // Over the cap the selected labels wear a halo instead (.label-cue-marked),
+  // which is a class on the text node and costs no measurement. It says less
+  // than an outline -- no anchors, no knots, no box -- but a selection of
+  // hundreds is a group being restyled rather than objects being handled one by
+  // one, and the one thing it has to say is which labels are in it. This used to
+  // draw nothing at all, so selecting a whole layer left the map unchanged.
   var MAX_OUTLINES = 200;
 
   // getEditingId: returns the feature id of an open text editing session, or -1.
@@ -25368,6 +25525,7 @@
   function LabelSelection(gui, ext, hit, getEditingId) {
     var self = {};
     var groups = []; // one <g> per drawn cue, in the layer's markup
+    var marked = []; // text nodes wearing the halo, when there are too many to outline
     var drawn = null; // what those cues represent, so hover does not redraw them
     var on = false;
     var tetherId = -1; // the label whose text is being dragged off its anchor
@@ -25397,9 +25555,11 @@
     // markup and takes the old cues with it.
     self.refresh = function(force) {
       var target = hit.getHitTarget();
-      var ids = on ? getDrawableIds() : [];
-      var hoverId = on ? getHoverId(ids) : -1;
-      var key = ids.join(',') + '/' + hoverId + '/' + tetherId;
+      var selected = on ? hit.getSelectionIds() : [];
+      var tooMany = selected.length > MAX_OUTLINES;
+      var ids = tooMany ? [] : selected;
+      var hoverId = on ? getHoverId(selected) : -1;
+      var key = selected.join(',') + '/' + hoverId + '/' + tetherId;
       // Hover fires on every pointer move, and most of them change nothing here.
       if (!force && drawn === key) return;
       clearAll();
@@ -25414,6 +25574,9 @@
         // would offer handles that cannot be grabbed.
         draw(target, id, 'label-cue-selected', true);
       });
+      // Too many to outline: a halo on the glyphs instead, which is the whole cue
+      // for those labels.
+      if (tooMany) markAll(target, selected);
     };
 
     // The label under the pointer, when showing it would say something: not one
@@ -25425,10 +25588,23 @@
       return id;
     }
 
-    // The selected labels, or none if there are too many to outline usefully.
-    function getDrawableIds() {
-      var ids = hit.getSelectionIds();
-      return ids.length > MAX_OUTLINES ? [] : ids;
+    // Puts the halo on each selected label's glyphs. A class of its own rather
+    // than the label_style mode's yellow one: that class is cleared on every
+    // model update while the label tool is on, so the two would fight.
+    function markAll(target, ids) {
+      ids.forEach(function(id) {
+        var nodes = findNodes(target, id);
+        if (!nodes) return;
+        nodes.text.classList.add('label-cue-marked');
+        marked.push(nodes.text);
+      });
+    }
+
+    function clearMarks() {
+      marked.forEach(function(node) {
+        node.classList.remove('label-cue-marked');
+      });
+      marked = [];
     }
 
     function draw(target, id, className, withHandles) {
@@ -25502,7 +25678,8 @@
       var content;
       if (!text) return null;
       content = text.querySelector('textPath') || text;
-      return {symbol: symbol, content: content, pathId: getPathId(content)};
+      return {symbol: symbol, text: text, content: content,
+        pathId: getPathId(content)};
     }
 
     // The id of the baseline a path label is laid along, or null for an anchored
@@ -25599,10 +25776,181 @@
         if (g.parentNode) g.parentNode.removeChild(g);
       });
       groups = [];
+      clearMarks();
       drawn = null;
     }
 
     return self;
+  }
+
+  // Selecting a group of labels by pointing at one of them: every label on the
+  // layer, or the ones that share its text style, its colour or its symbol.
+  //
+  // Styling a group is something the panel could already do -- a control shows
+  // nothing when the selected labels disagree, and writes to all of them -- but
+  // there was no way to select more than a shift-click's worth. These are the
+  // predicates the context menu offers, as pure functions so that they can be
+  // tested without a map.
+  //
+  // See docs/development/label-tool-design.md.
+
+  // The properties that make up "the same text style": how the glyphs are drawn,
+  // and nothing about where the text sits.
+  //
+  // Alignment, position, offsets and a path label's start offset are left out
+  // deliberately. They are what the panel's other sections edit, and two labels
+  // in the same font at the same size are in the same text style whether one of
+  // them is centred and the other hangs north-east of its anchor -- which is
+  // usually the difference between a label placed by hand and one that was not.
+  //
+  // css and class are in, because either can carry anything the properties above
+  // carry and more: two labels are not in the same text style if one of them is
+  // wearing a stylesheet the other is not.
+  var TEXT_STYLE_FIELDS = [
+    'font-family', 'font-size', 'font-style', 'font-weight', 'font-stretch',
+    'letter-spacing', 'line-height', 'css', 'class'
+  ];
+
+  // The colour of the text, and not its opacity: the item says colour, and a
+  // label faded to 50% is the same colour as one that is not.
+  var FILL_FIELDS = ['fill'];
+
+  // The shape of the symbol, and not its size or colour, for the same reason.
+  var ICON_FIELDS = ['icon'];
+
+  // What a property means when a label does not carry it.
+  //
+  // Compared after this substitution, so that a label with font-size=12 and one
+  // with no font-size match: they render identically, and the panel already
+  // treats them as agreeing. Without it the commonest pair of labels on a map --
+  // one the panel has touched and one it has not -- would count as different
+  // text styles while looking the same.
+  //
+  // font-family is deliberately absent. An unset font is whatever the browser
+  // resolves sans-serif to, which differs by machine and is a real difference
+  // from a font the user named, so an unset font is its own value and matches
+  // only another unset one. css, class and icon are absent because they have no
+  // default: not having one is not the same as having a particular one.
+  var STYLE_DEFAULTS = {
+    'font-size': 12,
+    'font-style': 'normal',
+    'font-weight': '400',
+    'letter-spacing': 0,
+    fill: '#000000'
+  };
+
+  // The items the "select" section offers, in menu order.
+  //
+  // needs: a property the pointed-at label must carry for the item to be worth
+  //   offering. "Same icon" on a label with no symbol would select every label
+  //   that has none, which is a question nobody asked and which "all labels"
+  //   nearly answers anyway.
+  // always: offered whatever it matches, rather than only when it says something
+  //   the other items do not. See getLabelSelectActions().
+  var SELECT_KINDS = [
+    {name: 'all', label: 'all labels'},
+    {name: 'text-style', label: 'same text style', fields: TEXT_STYLE_FIELDS,
+      always: true},
+    {name: 'fill', label: 'same fill color', fields: FILL_FIELDS},
+    {name: 'icon', label: 'same icon', fields: ICON_FIELDS, needs: 'icon'}
+  ];
+
+  // Every label on the layer, in ascending id order.
+  //
+  // Not every feature: a labels layer can hold plain points as well -- a dots
+  // layer given label text by the point panel is one -- and a point is not
+  // something the label panel can style.
+  //
+  //   records: the layer's data records, or null
+  //   isLabel: (rec) -> whether a record is a label at all. Injected rather than
+  //     imported so that this module stays testable without the GUI's internals;
+  //     the caller passes internal.svg.featureIsLabel.
+  function getAllLabelIds(records, isLabel) {
+    var ids = [];
+    var i;
+    for (i = 0; records && i < records.length; i++) {
+      if (isLabel(records[i])) ids.push(i);
+    }
+    return ids;
+  }
+
+  // The labels that match label @id on @kind, in ascending id order.
+  //
+  //   records: the layer's data records, or null
+  //   id:      the label the predicate is taken from, which is always in the result
+  //   kind:    'all', 'text-style', 'fill' or 'icon'
+  //   isLabel: as getAllLabelIds()
+  function getMatchingLabelIds(records, id, kind, isLabel) {
+    var defn = findKind(kind);
+    var rec = records && records[id];
+    if (!defn || !rec || !isLabel(rec)) return [];
+    return getAllLabelIds(records, isLabel).filter(function(i) {
+      return !defn.fields || fieldsMatch(records[i], rec, defn.fields);
+    });
+  }
+
+  // The menu items worth offering for a right-click on label @id, as
+  // [{name, label, ids}, ...].
+  //
+  // "All labels" and "same text style" are always offered, the first because it
+  // asks nothing of the layer and the second because it is the item this section
+  // is mostly for: styling the type of a map as a group. Offering it only when it
+  // differs from "all labels" would make it come and go between one right-click
+  // and the next, and its count is worth reading either way -- "same text style
+  // 40" over a layer of 40 says the labels are uniform, which is a fact about the
+  // layer and not a reason to hide the item.
+  //
+  // The rest are dropped rather than shown and disabled when:
+  //
+  // - They would select the label already pointed at and nothing else, which
+  //   would look like a way of narrowing the selection to one label -- a plain
+  //   click on that label already is one.
+  // - They match every label on the layer, which "all labels" says more plainly.
+  // A layer with one label on it gets no section at all: every item there would
+  // select the label that was right-clicked, which clicking it already does.
+  function getLabelSelectActions(records, id, isLabel) {
+    var rec = records && records[id];
+    var all = getMatchingLabelIds(records, id, 'all', isLabel);
+    var out = [];
+    if (!rec || all.length < 2) return out;
+    SELECT_KINDS.forEach(function(defn) {
+      var always = defn.name == 'all' || defn.always;
+      var ids;
+      if (defn.needs && !hasValue(rec[defn.needs])) return;
+      ids = defn.name == 'all' ? all :
+        getMatchingLabelIds(records, id, defn.name, isLabel);
+      if (!always && (ids.length < 2 || ids.length === all.length)) return;
+      out.push({name: defn.name, label: defn.label, ids: ids});
+    });
+    return out;
+  }
+
+  function findKind(name) {
+    var found = null;
+    SELECT_KINDS.forEach(function(defn) {
+      if (defn.name == name) found = defn;
+    });
+    return found;
+  }
+
+  function fieldsMatch(a, b, fields) {
+    return fields.every(function(field) {
+      return styleValue(a, field) === styleValue(b, field);
+    });
+  }
+
+  // A property as it is compared: what the label carries, or what it means to
+  // carry nothing, as a string so that 12 and '12' are one value.
+  function styleValue(rec, field) {
+    var val = rec ? rec[field] : null;
+    if (!hasValue(val)) {
+      val = field in STYLE_DEFAULTS ? STYLE_DEFAULTS[field] : '';
+    }
+    return String(val);
+  }
+
+  function hasValue(val) {
+    return !(val === undefined || val === null || val === '');
   }
 
   // State of a label curve being drawn, and the operations the curvature tool
@@ -26004,6 +26352,7 @@
       if (!active()) return;
       id = getRightClickedLabel(e);
       if (target && id > -1) {
+        e.selectActions = getSelectActions(target, id);
         e.deleteFeature = getDeleteAction(target, id);
         // Nobody guesses that text is dragged across its own curve, and there is
         // no bracket drawn to suggest it, so the gesture has a second way in.
@@ -26030,6 +26379,43 @@
         return editor.getFeatureId();
       }
       return -1;
+    }
+
+    // The "select" items for a right-click on label @id: the labels that share
+    // something with it, so that a style can be changed across a group without
+    // shift-clicking every one of it.
+    //
+    // The predicate comes from the label pointed at rather than from whatever
+    // happens to be selected -- a right-click deliberately leaves the selection
+    // alone -- and running an item replaces the selection with what it matched.
+    function getSelectActions(target, id) {
+      var records = target.data ? target.data.getRecords() : null;
+      return getLabelSelectActions(records, id, internal.svg.featureIsLabel)
+        .map(function(action) {
+          return {
+            label: action.label,
+            count: action.ids.length,
+            run: function() { selectLabels(action.ids); }
+          };
+        });
+    }
+
+    // A label being typed into is not a label being styled, so a group selection
+    // ends the session -- which saves its text, as clicking away would. Closing
+    // first and selecting second, because closing puts the label it was editing
+    // back in the selection when the selection is empty.
+    function selectLabels(ids) {
+      if (editor.isOpen()) editor.close();
+      hit.setSelectionIds(ids);
+    }
+
+    // Cmd/Ctrl-A: the keyboard way to the menu's "all labels", for the commonest
+    // of the group selections -- restyling a layer's labels as one.
+    function selectAllLabels() {
+      var target = hit.getHitTarget();
+      var records = target && target.data ? target.data.getRecords() : null;
+      var ids = getAllLabelIds(records, internal.svg.featureIsLabel);
+      if (ids.length > 0) selectLabels(ids);
     }
 
     // Deleting a label ends whatever was being done to it first: its text
@@ -26807,8 +27193,17 @@
     gui.keyboard.on('keydown', function(e) {
       if (!active()) return;
       // While a session is open the textarea has focus and handles its own keys;
-      // it stops propagation for the ones it acts on.
+      // it stops propagation for the ones it acts on. Cmd-A there means select
+      // the text being typed, which is the browser's to handle.
       if (editor.isOpen()) return;
+      // Not while a curve is being drawn: that gesture owns the keyboard, and
+      // selecting the layer in the middle of placing a label is not what the
+      // keystroke can have meant.
+      if (isSelectAll(e) && !drawingCurve()) {
+        selectAllLabels();
+        consume(e); // the default is to select the whole page
+        return;
+      }
       if (e.keyName == 'esc') {
         // One rung per press, innermost first: the curve being drawn, then the
         // selection, then the armed tool. The hit control's own escape handler
@@ -26838,6 +27233,16 @@
         consume(e);
       }
     }, null, 10);
+
+    // Cmd-A on a Mac, Ctrl-A elsewhere. Read from the key rather than the
+    // keyCode, as undo and redo are.
+    function isSelectAll(e) {
+      var evt = e.originalEvent;
+      if (!evt || !(evt.metaKey || evt.ctrlKey) || evt.shiftKey || evt.altKey) {
+        return false;
+      }
+      return (evt.key || '').toLowerCase() == 'a';
+    }
 
     // Suppresses the key's default action as well as the rest of the GUI's
     // handlers. The default matters here: finishing a curve opens an editing
@@ -30847,8 +31252,7 @@
     var mapLayers = gui.container.findChild('.map-layers').node();
     var map = gui.container.findChild('.mshp-main-map');
     var toggle = gui.buttons.addButton('#frame-tool-icon')
-      .addClass('menu-btn preview-toggle')
-      .attr('title', 'Toggle map preview');
+      .addClass('menu-btn preview-toggle');
     var readout = El('div')
       .addClass('preview-readout')
       .appendTo(map)
@@ -30968,7 +31372,11 @@
       var available = hasFrame();
       toggle.removeClass('disabled');
       toggle.classed('selected', available && self.isOn());
-      toggle.attr('title', available ? 'Toggle map preview' : 'Add map frame');
+      // data-tooltip, not title: the CSS label in .nav-btn[data-tooltip] appears
+      // without the browser's delay and matches the arrow menu's type.
+      var label = available ? 'Toggle map preview' : 'Add map frame';
+      toggle.attr('data-tooltip', label);
+      toggle.attr('aria-label', label);
       toggle.attr('aria-disabled', 'false');
       toggle.attr('aria-pressed', available && self.isOn() ? 'true' : 'false');
       if (gui.map.isPreviewView()) {
