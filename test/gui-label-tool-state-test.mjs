@@ -676,29 +676,44 @@ describe('gui label tool state', function() {
           label({'font-size': 18})
         ];
         assert.deepEqual(actionNames(records, 0),
-          ['all labels:4', 'same fill color:3', 'same icon:2']);
-        // label 0 is the only one in its text style, so that item is left out
+          ['all labels:4', 'same text style:1', 'same fill color:3',
+            'same icon:2']);
+        // label 0 is the only one in its text style, and the item says so
         assert.deepEqual(ids(records, 0, 'text-style'), [0]);
       });
 
       it('an item that would select only the label pointed at is left out', function() {
         // a plain click on that label already narrows the selection to it
         var records = [label({fill: '#c00'}), label(), label()];
-        assert.deepEqual(actionNames(records, 0), ['all labels:3']);
+        assert.deepEqual(actionNames(records, 0),
+          ['all labels:3', 'same text style:3']);
       });
 
       it('an item that matches every label is left out', function() {
         // "all labels" says it more plainly, and four items doing the same
-        // thing says nothing about the layer
+        // thing says nothing about the layer: every label here is the same
+        // colour, and only the text styles have anything to divide
+        var records = [label({'font-size': 18}), label(), label()];
+        assert.deepEqual(actionNames(records, 0),
+          ['all labels:3', 'same text style:1']);
+      });
+
+      it('same text style is offered whatever it matches', function() {
+        // the item this section is mostly for, so it does not come and go
+        // between one right-click and the next; a count equal to the layer's
+        // says the labels are uniform, which is worth reading
         var records = [label(), label(), label()];
-        assert.deepEqual(actionNames(records, 1), ['all labels:3']);
+        assert.deepEqual(actionNames(records, 1),
+          ['all labels:3', 'same text style:3']);
       });
 
       it('same icon is not offered for a label with no symbol', function() {
         // it would select every label that has none, which nobody asked for
         var records = [label(), label(), label({icon: 'star'})];
-        assert.deepEqual(actionNames(records, 0), ['all labels:3']);
-        assert.deepEqual(actionNames(records, 2), ['all labels:3']);
+        assert.deepEqual(actionNames(records, 0),
+          ['all labels:3', 'same text style:3']);
+        assert.deepEqual(actionNames(records, 2),
+          ['all labels:3', 'same text style:3']);
       });
 
       it('a layer with one label has nothing to offer', function() {

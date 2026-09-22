@@ -1550,11 +1550,8 @@ test('the drag mode is the tool\'s and not the label\'s', async function({page})
   expect(errors).toEqual([]);
 });
 
-test('a symbol at the anchor is what moves a label out from under it',
+test('a symbol arriving under a centred label moves it out from under it',
   async function({page}) {
-    // The nine positions place text around something, and there is no answer
-    // to "north-east of what?" on a label that draws nothing at its anchor, so
-    // the grid offers only the centre until there is a symbol.
     var errors = collectPageErrors(page);
     await loadFixture(page, FIXTURE);
 
@@ -1563,8 +1560,11 @@ test('a symbol at the anchor is what moves a label out from under it',
     await disarmTool(page);
     await clickLabel(page, 0);
 
-    // the centre still answers: text over its own symbol is a real thing to
-    // ask for, and it is where the label already is
+    // the whole grid is live with nothing at the anchor: a labels layer whose
+    // dots live in another layer still has text to place around them
+    await setLabelPosition(page, 'sw');
+    expect((await getLabelLayer(page)).records[0]['label-pos']).toBe('sw');
+
     await setLabelPosition(page, 'c');
     expect((await getLabelLayer(page)).records[0]['label-pos']).toBe('c');
 
@@ -1583,10 +1583,11 @@ test('a symbol at the anchor is what moves a label out from under it',
     expect(errors).toEqual([]);
   });
 
-test('switching the symbol off takes the placement with it', async function({page}) {
-  // The grid locks back to the centre with nothing at the anchor, so the
-  // position and the offsets go with the symbol. That makes the switch
-  // destructive; being one undoable command is what makes it acceptable.
+test('switching the symbol off leaves the placement alone', async function({page}) {
+  // It used to put the label back to the centre, on the grounds that text
+  // with nothing at its anchor belongs on the anchor. That threw away a
+  // placement the user had made by hand for the sake of an invariant, and the
+  // switch is for the symbol.
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
 
@@ -1602,11 +1603,10 @@ test('switching the symbol off takes the placement with it', async function({pag
   await page.waitForTimeout(250);
   var rec = (await getLabelLayer(page)).records[0];
   expect(rec.icon).toBeFalsy();
-  expect(rec['label-pos']).toBe('c');
-
-  await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
-  await page.waitForTimeout(200);
-  expect((await getLabelLayer(page)).records[0]['label-pos']).toBe('se');
+  expect(rec['label-pos']).toBe('se');
+  // and the grid says so: the cell the label is at stays lit with the symbol
+  // gone, rather than the centre taking over
+  expect(await getSelectedPosition(page)).toBe('se');
   expect(errors).toEqual([]);
 });
 
@@ -1896,8 +1896,15 @@ async function setDragMode(page, mode) {
   await page.waitForTimeout(150);
 }
 
-// Switches the symbol on, which is also what unlocks the position grid: the
-// nine positions place text around something.
+// Which of the nine cells the grid is showing as the label's position, or ''.
+async function getSelectedPosition(page) {
+  return page.evaluate(function() {
+    var el = document.querySelector(
+      '.text-style-panel .label-position-grid .selected');
+    return el ? el.getAttribute('data-position') : '';
+  });
+}
+
 async function turnIconOn(page) {
   await page.locator('.text-style-panel .label-toggle').click();
   await page.waitForTimeout(250);

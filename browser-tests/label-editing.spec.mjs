@@ -625,9 +625,6 @@ test('the style panel acts on the label being typed into, and lets typing go on'
   await clickMap(page, 0.4, 0.45);
   expect(await getPanelStatus(page)).toBe('Editing: this label');
 
-  // Alignment rather than a position, because the position grid is locked to
-  // its centre cell while there is no symbol at the anchor to place text
-  // around -- see the label tool's own tests.
   await clickAlignment(page, 'right');
   expect((await getEditorState(page)).focused).toBe(true);
   // The label has no feature to style yet, so the panel sets the style the

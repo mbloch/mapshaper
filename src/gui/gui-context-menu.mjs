@@ -193,6 +193,18 @@ export function ContextMenu(parentArg) {
     }
 
     if (lyr && lyr.gui.geographic) {
+      // Above the actions, because it is what they would be applied to: the
+      // labels that share something with the one pointed at, read and chosen
+      // before "copy as GeoJSON" or "delete label" means anything definite.
+      // Each item carries the number it would select, so that what the click
+      // is about to do is visible before it happens.
+      if (e.selectActions?.length) {
+        addMenuLabel('select');
+        e.selectActions.forEach(function(action) {
+          addMenuItem(action.label + getCountHtml(action.count), action.run);
+        });
+      }
+
       if (e.deleteVertex || e.deletePoint || copyable || e.deleteFeature ||
           e.flipLabel) {
 
@@ -212,18 +224,6 @@ export function ContextMenu(parentArg) {
         if (e.deleteFeature) {
           addMenuItem(getDeleteLabel(), e.deleteFeature);
         }
-      }
-
-      // What the actions above could be applied to: the labels that share
-      // something with the one pointed at. Each item carries the number it
-      // would select, so that what the click is about to do is visible before
-      // it happens -- and the caller leaves out an item that would select the
-      // label already under the pointer and nothing else.
-      if (e.selectActions?.length) {
-        addMenuLabel('select');
-        e.selectActions.forEach(function(action) {
-          addMenuItem(action.label + getCountHtml(action.count), action.run);
-        });
       }
 
       if (e.lonlat_coordinates) {

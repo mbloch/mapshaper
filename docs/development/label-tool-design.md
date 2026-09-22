@@ -1100,7 +1100,10 @@ disagrees — so what was missing was a way to say which group.
 
 A right-click on a label offers it. The menu's `selection` heading, which sat
 over "copy as GeoJSON" and "delete label", is now `actions`: those act on a
-selection, and the section below them is how one is made. The items are:
+selection, and the new `select` section is how one is made. `select` goes
+first, above the actions, because it is what they would be applied to — "copy
+as GeoJSON" does not mean anything definite until the selection is the one the
+user wants. Its items are:
 
 | Item | Selects the labels that share |
 |---|---|
@@ -1133,13 +1136,20 @@ The decisions behind that table:
   the shape and not its size or colour**: each item says what it compares.
 - **Each item carries the number it would select**, so that what the click is
   about to do is visible before it happens.
+- **"All labels" and "same text style" are always there.** The first asks
+  nothing of the layer; the second is what the section is mostly for — styling
+  the type of a map as a group — and an item that came and went between one
+  right-click and the next would be worse than one whose count sometimes reads
+  the same as the layer's. That count is itself worth reading: "same text style
+  40" over a layer of 40 says the labels are uniform, and "same text style 1"
+  says the one under the pointer is unlike every other.
 - **An item that has nothing to offer is left out rather than shown disabled.**
   One that would select only the label already pointed at is a way of narrowing
   the selection to one label, which a plain click on it already is. One that
-  matches every label is what "all labels" says more plainly — on a layer
-  styled all at once, which is most layers, that would otherwise be four items
-  doing the same thing. "Same icon" is not offered for a label with no symbol:
-  it would select every label that has none, a question nobody asked.
+  matches every label is what "all labels" says more plainly. "Same icon" is
+  not offered for a label with no symbol: it would select every label that has
+  none, a question nobody asked. A layer with a single label on it gets no
+  section at all, since every item there would select that label.
 - **A group selection ends a text editing session**, since a label being typed
   into is not a label being styled. It closes first and selects second, because
   closing puts the label it was editing back into an empty selection.
@@ -2734,51 +2744,43 @@ It will also *look* per-label, sitting in a panel whose every other control
 writes a property to the selection. Styling it as a tool control rather than as
 a value is the mitigation.
 
-#### The grid needs a symbol at the anchor
+#### A symbol changes which position a label is given, and never which it may have
 
-**The nine positions place text around something, so with nothing drawn at the
-anchor the grid is locked to the centre cell.** There is no answer to
-"north-east of what?", and `c` is already what `-add-label` gives a new label.
+**The whole grid is always live**, and switching a symbol off leaves a label
+where it was.
 
-The test is whether the feature draws a symbol, not whether it has an `icon`:
+It was not. The rule was that the nine positions place text around something,
+so a label with nothing drawn at its anchor was locked to the centre cell and
+was put back there when its symbol was switched off — there being no answer to
+"north-east of what?". Both parts are gone:
 
-```js
-// svg-symbols.mjs
-if (featureHasSvgSymbol(rec)) children.push(renderSymbol(rec));
-if (featureHasLabel(rec)) children.push(renderStyledLabel(rec));
-```
+- The lock **disabled eight cells of a grid over the commonest kind of label
+  in the app**. A labels layer whose dots live in a *different* layer — the
+  usual way to give symbol and text unrelated styling — has nothing at its
+  anchors and still has text to place around them. The premise was wrong
+  anyway: there is an answer to "north-east of what?", and it is the anchor,
+  which is a point on the map whether or not anything is drawn on it.
+- The snap **threw away a placement the user had made by hand** to maintain an
+  invariant that was not worth its cost. Switching a symbol off is a statement
+  about the symbol.
 
-`renderSymbol()` draws an `svg-symbol`, an `icon`, or a plain circle for
-`r > 0`, and `featureHasSvgSymbol()` covers all three. Keying the gate on `icon`
-alone would lock the commonest labels in the app to the centre of their own
-dots: the point panel's **Create labels** button runs
-`-style label-text=<expr>` on the layer in front of you, so a styled dots layer
-keeps its `r` and `fill` and gains label text.
+What is left is the half that only ever adds: **a symbol arriving under a
+centred label moves the label out from under it**, to `labelPositionBesideIcon`,
+in the same command as the `icon` so that the pair is one undo step. A label
+that was placed somewhere of its own is left alone, and the centre cell stays
+clickable with a symbol present — text over its own symbol is a real thing to
+ask for, a number inside a hollow `ring` or a letter on a `square`, and
+`dominant-baseline` is in the vocabulary to make it sit right.
 
-With a symbol present the centre cell stops being the default but **stays
-clickable**. Text over its own symbol is a real thing to ask for — a number
-inside a hollow `ring`, a letter on a `square` — and `dominant-baseline` is in
-the vocabulary to make it sit right. Disabling the cell would foreclose that to
-save a user from a mistake they may not be making, so gaining a symbol changes
-which position a label is *given* and never takes one away.
-
-**Dragging is not gated on a symbol.** A labels layer whose dots live in a
-*different* layer — the usual way to give symbol and text unrelated styling —
-has nothing at its anchors and still needs its text placed. Those labels get
-the centre cell and Draggable.
-
-A label that arrives in a state this would not have produced — `label-pos=ne`
-with no symbol, or `dx`/`dy` from the legacy mode — is shown as it is, with the
-grid live. The rule is a default and a guard, not an invariant: a panel that
-refuses to display what is in the record is what "a position is stored as a
-position" was getting away from.
+`everyTargetIsCentred()` is what "was not placed" means: no `label-pos` other
+than `c`, and no `dx`/`dy` from a drag.
 
 #### The anchor ring goes, with one exception
 
-The selection cue draws a ring on the anchor of any label with no `icon`. Under
-these rules that is redundant almost everywhere — a label with no symbol is
-centred, so its anchor is under the glyphs and the selection box already says
-where it is, and a label with a symbol has the symbol.
+The selection cue draws a ring on the anchor of any label with no `icon`. That
+is redundant almost everywhere — a label sitting on its anchor has it under the
+glyphs, where the selection box already says where it is, and a label with a
+symbol has the symbol.
 
 It stays for one combination: **selected, offset, and nothing drawn at the
 anchor.** There the ring is the only thing that says what the text hangs off,
@@ -2943,15 +2945,13 @@ so a record written anywhere else cannot make the grid lie.
 
 #### Turning the icon off and on
 
-Both transitions change which positions are legal, so both are commands and
-both are one undo step.
-
-- **Icon on**: the centre cell stops being the default, and a label sitting
-  there moves to `ne` — upper right, the conventional first choice for a point
-  label, and the position a cartographer would have to undo least often.
-- **Icon off**: the grid locks back to centre and the offsets go with it, so a
-  hand-placed label loses its placement. That makes the icon toggle
-  destructive; being one undoable command is what makes it acceptable.
+- **Icon on**: a label sitting at the centre moves to `ne` — upper right, the
+  conventional first choice for a point label, and the position a cartographer
+  would have to undo least often. The shape and the position go in one command,
+  so the pair is one undo step and the text is never briefly drawn over the
+  symbol it just asked for. A label placed somewhere of its own is left alone.
+- **Icon off**: nothing moves. See "A symbol changes which position a label is
+  given, and never which it may have" for why it used to.
 
 This is what `labels` was still needed for, so retiring that mode is now only a
 removal: the two branches above go with it — `selectStyleFeature()`'s
@@ -4503,8 +4503,9 @@ size reaching only the label that has a symbol, and a shape reaching both and
 carrying the size the selection already shared. `getToggleState()` and the select predicates
 themselves are in `test/gui-label-tool-state-test.mjs`: what each kind matches,
 that a property left unset matches the default it renders as while an unset
-font is its own value, that position and colour do not count as text style, and
-which items a given layer is worth offering.
+font is its own value, that position and colour do not count as text style,
+which items a given layer is worth offering, and that "same text style" is
+offered whatever it matches while the others come and go.
 
 Still to write:
 

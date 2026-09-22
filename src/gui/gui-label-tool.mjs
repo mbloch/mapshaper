@@ -803,7 +803,6 @@ export function LabelTool(gui) {
     // to take. The commands ignore a position given for one, and a disabled
     // button says so where a console warning would not.
     var disabled = !controlsEnabled() || everyLabelIsOnAPath(ids);
-    var locked = !disabled && gridIsLockedToCentre(ids);
     // Faintly, and only when no cell is lit: a label carrying offsets is not
     // at any of the nine, but one of them is roughly where it is and clicking
     // it is the way back.
@@ -811,35 +810,9 @@ export function LabelTool(gui) {
     labelPositions.forEach(function(name) {
       posBtns[name].classed('selected', !disabled && name == pos);
       posBtns[name].classed('nearest', name == nearest);
-      setPanelButtonDisabled(posBtns[name], disabled || locked && name != 'c');
+      setPanelButtonDisabled(posBtns[name], disabled);
     });
     updateDragModeButtons();
-  }
-
-  // The nine positions place text around something, so with nothing drawn at
-  // the anchor the grid is locked to the centre cell: there is no answer to
-  // "north-east of what?", and the centre is what -add-label gives a new label
-  // anyway. The cell stays clickable, because text over its own symbol is a
-  // real thing to ask for.
-  //
-  // The test is whether the label draws a symbol, not whether it has an icon:
-  // a styled dots layer given label text by the point panel's "Create labels"
-  // keeps its r and fill, and keying this on icon= alone would lock the
-  // commonest labels in the app to the middle of their own dots.
-  //
-  // A default and a guard rather than an invariant. A label that arrives
-  // positioned with nothing at its anchor -- from the CLI, from an expression,
-  // from the legacy positioning mode -- is shown as it is, with the grid live:
-  // refusing to display what is in the record is worse than letting an odd
-  // state be edited. Dragging is not gated on a symbol either, since a labels
-  // layer whose dots live in a different layer still needs its text placed.
-  function gridIsLockedToCentre(ids) {
-    var table = getActiveTable();
-    if (!everyTargetLacksASymbol(ids)) return false;
-    if (ids.length === 0) return !labelIsPlaced(getNewLabelStyle(gui));
-    return ids.every(function(id) {
-      return !labelIsPlaced(table && table.getRecordAt(id));
-    });
   }
 
   // Whether a label has been put somewhere other than on top of its anchor: a
@@ -849,16 +822,6 @@ export function LabelTool(gui) {
     if (rec['label-pos']) return rec['label-pos'] != 'c';
     return internal.hasStyleValue(rec, 'dx') ||
       internal.hasStyleValue(rec, 'dy');
-  }
-
-  function everyTargetLacksASymbol(ids) {
-    var table = getActiveTable();
-    if (ids.length === 0) {
-      return !internal.featureHasSvgSymbol(getNewLabelStyle(gui));
-    }
-    return ids.every(function(id) {
-      return !internal.featureHasSvgSymbol(table && table.getRecordAt(id));
-    });
   }
 
   // Which of the nine positions a dragged label is nearest, or ''.
@@ -1412,25 +1375,21 @@ export function LabelTool(gui) {
     applyStyleValues(styles);
   }
 
-  // Switching a symbol on or off changes which positions are legal, so the
-  // position moves with it -- in the same command, which makes the pair one
-  // undo step.
+  // Switching a symbol on moves a label sitting at the centre out from under
+  // it, in the same command, so that the pair is one undo step and the text
+  // is never briefly drawn over the symbol it just asked for.
   //
-  // On: the centre cell stops being the default and a label sitting there
-  // moves out from under its new symbol. Off: the grid locks back to the
-  // centre, so the position goes and the offsets go with it -- label-pos=c
-  // clears dx, dy and text-anchor by itself. That makes switching a symbol off
-  // destructive, since a hand-placed label loses its placement; being one
-  // undoable command is what makes that acceptable.
+  // Switching one off moves nothing. It used to put the label back to the
+  // centre, which threw away a placement the user had made by hand for the
+  // sake of an invariant -- that text with nothing at its anchor sits on the
+  // anchor -- that was never worth what it cost.
   //
   // Not for path labels, whose text runs along a curve: the commands ignore a
   // position given for one and warn about it, and a warning from switching a
   // symbol on would be about something the user did not ask for.
   function addIconPositionChange(styles, ids, iconOn) {
-    if (anyLabelIsOnAPath(ids)) return;
-    if (!iconOn) {
-      styles.push(['label-pos', 'c']);
-    } else if (everyTargetIsCentred(ids)) {
+    if (anyLabelIsOnAPath(ids) || !iconOn) return;
+    if (everyTargetIsCentred(ids)) {
       styles.push(['label-pos', labelPositionBesideIcon]);
     }
   }

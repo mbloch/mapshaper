@@ -18,8 +18,9 @@ test('right-clicking a label offers the groups it belongs to', async function({p
   // "selection" was the heading over copy and delete; those act on a
   // selection, and this section is how one is made, so they are now named for
   // what they are.
+  // "select" comes first: it is what the actions below it would be applied to.
   expect(await menuHeadings(page))
-    .toEqual(['actions', 'select', 'longitude, latitude']);
+    .toEqual(['select', 'actions', 'longitude, latitude']);
   // "copy as GeoJSON" is not there: it copies the selection, and a right-click
   // on an unselected label leaves the selection alone -- which is the point of
   // the section below.
@@ -27,9 +28,10 @@ test('right-clicking a label offers the groups it belongs to', async function({p
   // Each select item carries the number it would select, so that what the
   // click is about to do is visible before it happens.
   expect(await selectItems(page))
-    .toEqual(['all labels 3', 'same fill color 2']);
-  // Every label is in the same text style, so that item would do what "all
-  // labels" does; none has a symbol, so "same icon" has nothing to ask about.
+    .toEqual(['all labels 3', 'same text style 3', 'same fill color 2']);
+  // "Same text style" is offered whatever it matches, and here it matches the
+  // layer -- a count that says the labels are uniform. No label has a symbol,
+  // so "same icon" has nothing to ask about and is left out.
   expect(errors).toEqual([]);
 });
 

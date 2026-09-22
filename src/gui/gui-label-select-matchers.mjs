@@ -60,9 +60,12 @@ var STYLE_DEFAULTS = {
 //   offering. "Same icon" on a label with no symbol would select every label
 //   that has none, which is a question nobody asked and which "all labels"
 //   nearly answers anyway.
+// always: offered whatever it matches, rather than only when it says something
+//   the other items do not. See getLabelSelectActions().
 var SELECT_KINDS = [
   {name: 'all', label: 'all labels'},
-  {name: 'text-style', label: 'same text style', fields: TEXT_STYLE_FIELDS},
+  {name: 'text-style', label: 'same text style', fields: TEXT_STYLE_FIELDS,
+    always: true},
   {name: 'fill', label: 'same fill color', fields: FILL_FIELDS},
   {name: 'icon', label: 'same icon', fields: ICON_FIELDS, needs: 'icon'}
 ];
@@ -104,26 +107,34 @@ export function getMatchingLabelIds(records, id, kind, isLabel) {
 // The menu items worth offering for a right-click on label @id, as
 // [{name, label, ids}, ...].
 //
-// Two kinds of item are dropped rather than shown and disabled:
+// "All labels" and "same text style" are always offered, the first because it
+// asks nothing of the layer and the second because it is the item this section
+// is mostly for: styling the type of a map as a group. Offering it only when it
+// differs from "all labels" would make it come and go between one right-click
+// and the next, and its count is worth reading either way -- "same text style
+// 40" over a layer of 40 says the labels are uniform, which is a fact about the
+// layer and not a reason to hide the item.
 //
-// - One that would select the label already pointed at and nothing else. It
-//   would look like a way of narrowing the selection to one label, which a
-//   plain click on that label already is.
-// - One that matches every label on the layer, which "all labels" says more
-//   plainly. On a layer styled all at once -- a freshly placed set of labels,
-//   or one styled from the CLI -- that is most of them, and four items doing
-//   the same thing says nothing about the layer.
+// The rest are dropped rather than shown and disabled when:
+//
+// - They would select the label already pointed at and nothing else, which
+//   would look like a way of narrowing the selection to one label -- a plain
+//   click on that label already is one.
+// - They match every label on the layer, which "all labels" says more plainly.
+// A layer with one label on it gets no section at all: every item there would
+// select the label that was right-clicked, which clicking it already does.
 export function getLabelSelectActions(records, id, isLabel) {
+  var rec = records && records[id];
+  var all = getMatchingLabelIds(records, id, 'all', isLabel);
   var out = [];
-  var total = null;
+  if (!rec || all.length < 2) return out;
   SELECT_KINDS.forEach(function(defn) {
-    var rec = records && records[id];
+    var always = defn.name == 'all' || defn.always;
     var ids;
-    if (!rec || defn.needs && !hasValue(rec[defn.needs])) return;
-    ids = getMatchingLabelIds(records, id, defn.name, isLabel);
-    if (defn.name == 'all') total = ids.length;
-    if (ids.length < 2) return;
-    if (defn.name != 'all' && ids.length === total) return;
+    if (defn.needs && !hasValue(rec[defn.needs])) return;
+    ids = defn.name == 'all' ? all :
+      getMatchingLabelIds(records, id, defn.name, isLabel);
+    if (!always && (ids.length < 2 || ids.length === all.length)) return;
     out.push({name: defn.name, label: defn.label, ids: ids});
   });
   return out;
