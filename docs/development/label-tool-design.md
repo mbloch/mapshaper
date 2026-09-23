@@ -324,6 +324,15 @@ single point has always had.
 | `label-side` | `left`\|`right` | Which side of the path the text sits on |
 | `icon-opacity` | number | Opacity of the anchor symbol, 0–1, independent of the text's |
 | `label-align` | `left`\|`center`\|`right` | How the lines of a multi-line label line up with each other |
+| `halo-width` | number | How far a halo reaches past the glyphs, in px; drawn as a stroke of twice this. No halo unless above 0 |
+| `halo-color` | color | Halo color, default white |
+| `halo-opacity` | number | Halo opacity, 0–1, independent of the text's |
+
+The halo fields are not `stroke`, `stroke-width` and `stroke-opacity`, because
+a label's record also styles its icon, which would be ringed too. The GUI draws
+a halo as the text's own stroke with `paint-order="stroke fill"`; export draws a
+stroked, unfilled copy of the text beneath it, because Illustrator and Figma
+ignore `paint-order` on import. See `svg-label-halo.mjs`.
 
 `label-align` is there because `text-anchor` justifies the lines of a label
 *and* places the block of them, and the panel's alignment control is asking
@@ -3197,6 +3206,14 @@ They cannot go in the style panel, for two reasons that are easy to miss:
   be unavailable precisely when they are needed.
 - The panel is **dismissible**, via the `×` in its header. Mode-level controls
   should not be reachable only through something the user can close.
+
+**The `×` leaves the tool** when it is the tool's panel, rather than closing
+the panel over a map still armed for placing labels — which would leave the
+tool half on, with the toolbar up and nothing on screen to turn it off from.
+The button was hidden in label mode for that reason; hiding it made the panel
+the only style panel without one, and doing what the user asked for is a
+better answer than refusing to be asked. Outside the tool — the panel opened
+on its own from the layer menu — it clears the panel's mode as before.
 
 #### What the tool is armed with on entry
 

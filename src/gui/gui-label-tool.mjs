@@ -33,6 +33,9 @@ var lineHeightField = 'line-height';
 var textAnchorField = 'text-anchor';
 var labelAlignField = 'label-align';
 var cssField = 'css';
+var haloWidthField = 'halo-width';
+var haloColorField = 'halo-color';
+var haloOpacityField = 'halo-opacity';
 var iconField = 'icon';
 var iconSizeField = 'icon-size';
 var iconColorField = 'icon-color';
@@ -43,6 +46,10 @@ var defaultFontWeight = '400';
 var defaultLabelColor = '#000000';
 var defaultIconColor = '#000000';
 var defaultIconSize = 5;
+// The width a halo is switched on at: past the edge of the glyphs, so a
+// stroke of twice this.
+var defaultHaloWidth = 2;
+var defaultHaloColor = internal.svg.DEFAULT_HALO_COLOR;
 // The line height field shows this rather than renderLabel()'s 1.1em default,
 // and shows it as a placeholder rather than a value, so that a label carries
 // no line-height until one is chosen. "auto" is the honest description of a
@@ -69,6 +76,9 @@ var savedStyleFields = [
   labelAlignField,
   cssField,
   'label-pos',
+  haloWidthField,
+  haloColorField,
+  haloOpacityField,
   iconField,
   iconSizeField,
   iconColorField,
@@ -148,11 +158,13 @@ export function LabelTool(gui) {
   // label-style-panel carries the styling the point and layer panels share; the
   // second class is this panel's own, as theirs are
   var panel = El('div').addClass('label-style-panel text-style-panel rollover').appendTo(parent).hide();
-  var presetControl, fontSelect, fontStyleSelect, fontSizeInput, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, dragModeBtns, iconToggle, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, editingStatus, clearLink, closeBtn, hit;
+  var presetControl, fontSelect, fontStyleSelect, fontSizeInput, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, dragModeBtns, haloToggle, haloWidthInput, haloColorFieldBox, haloColorChit, haloColorInput, haloColorPicker, haloOpacityInput, iconToggle, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, editingStatus, clearLink, closeBtn, hit;
   var fontOptionsRendered = false;
   // The shape the toggle turns back on, so that switching a symbol off and on
   // again does not silently change a star into a circle.
   var lastIconShape = defaultIconShape;
+  // Likewise the halo's width, which is what switching one off removes.
+  var lastHaloWidth = defaultHaloWidth;
 
   initPanel();
   gui.addMode(labelStylePanelMode, turnOn, turnOff);
@@ -252,8 +264,18 @@ export function LabelTool(gui) {
     });
 
     var header = El('div').addClass('label-style-panel-title').appendTo(panel).text('Label styles');
+    // In label mode the panel belongs to the mode, so closing it leaves the
+    // mode: a panel that shut while the map stayed armed for placing labels
+    // would leave the tool half on, with no panel to turn it off from. Every
+    // other style panel's × closes a panel and nothing else, and this one
+    // reads as the same button, which is the argument for it doing the whole
+    // of what the user asked for rather than part.
     closeBtn = El('button').addClass('label-style-close').appendTo(header).text('×').on('click', function() {
-      gui.clearMode();
+      if (labelModeIsOn()) {
+        gui.interaction.turnOff(); // the tool's own turnOff() takes the panel
+      } else {
+        gui.clearMode();
+      }
     });
 
     var selectRow = El('div').addClass('label-style-selection-row').appendTo(panel);
@@ -358,6 +380,58 @@ export function LabelTool(gui) {
     // Fixed sound like a lock on a label that is still perfectly draggable.
     var positionRow = El('label').addClass('label-style-row').appendTo(textSection);
     El('span').appendTo(positionRow).text('Offset from anchor');
+
+    // A halo is a yes/no that its three values then qualify, as a symbol is, so
+    // it is switched the same way and its controls are inert while it is off.
+    // Its rows are ones the Text section already has: a colour and its opacity
+    // on one line, and a width in the narrow column beneath, where letter
+    // spacing sits above.
+    var haloSection = addSection('Halo');
+    var haloTitle = haloSection.findChild('.label-style-section-title');
+    haloToggle = makeToggle(haloTitle, {
+      title: 'Draw a halo around the text',
+      onChange: setHaloOn
+    });
+
+    var haloColorRow = El('div').addClass('label-style-row label-split-row').appendTo(haloSection);
+    var haloColorCell = El('div').addClass('label-split-cell label-color-row').appendTo(haloColorRow);
+    haloColorChit = El('div').addClass('label-color-chit').attr('role', 'button');
+    haloColorInput = El('input').attr('type', 'text').attr('title', 'Halo color');
+    haloColorFieldBox = makeColorField(haloColorCell, haloColorChit, haloColorInput);
+    haloColorChit.on('click', function() {
+      if (this.classList.contains('disabled')) return;
+      haloColorPicker.toggle();
+    });
+    haloColorInput.on('change', function() {
+      var color = haloColorInput.node().value.trim();
+      if (color) {
+        if (isHexColor(color)) {
+          haloColorPicker.setColor(color);
+        }
+        applyHaloColor(color);
+      }
+    });
+    haloColorPicker = initColorPicker(haloColorCell, haloColorChit, haloColorInput, applyHaloColor);
+
+    var haloOpacityCell = El('div').addClass('label-split-cell label-opacity-row').appendTo(haloColorRow);
+    haloOpacityInput = addOpacityInput(haloOpacityCell, applyHaloOpacity);
+
+    var haloWidthRow = El('div').addClass('label-style-row label-split-row').appendTo(haloSection);
+    El('div').addClass('label-split-cell').appendTo(haloWidthRow);
+    var haloWidthCell = El('div').addClass('label-split-cell label-spacing-row').appendTo(haloWidthRow);
+    El('span').appendTo(haloWidthCell).text('Width');
+    // Halves as well as whole pixels: a halo is usually 1 to 2px, and the
+    // step between those two is most of the range anyone uses.
+    haloWidthInput = new SizeField(haloWidthCell, {
+      title: 'How far the halo extends past the text, in px',
+      min: 0.1,
+      max: 50,
+      step: 0.5,
+      bigStep: 2,
+      onSet: applyHaloWidth,
+      onStep: nudgeHaloWidth,
+      onDone: releaseFocus
+    });
 
     // Whether the label has a symbol is one question and which symbol it has is
     // another, so the first is a switch on the section's heading rather than a
@@ -585,9 +659,7 @@ export function LabelTool(gui) {
     renderFontOptions();
     gui.state.label_style_panel_open = true;
     panel.show();
-    // In label mode the panel belongs to the mode rather than being a thing the
-    // user opened, and closing it would leave the tool half on.
-    closeBtn[labelModeIsOn() ? 'hide' : 'show']();
+    closeBtn.show();
     textBtn.addClass('selected');
     updateControls();
     updateSelectionDisplay();
@@ -734,6 +806,10 @@ export function LabelTool(gui) {
     var iconSize = getShownValue(iconIds, iconSizeField, {useDefault: true, defaultValue: defaultIconSize});
     var iconColor = getShownValue(iconIds, iconColorField, {useDefault: true, defaultValue: defaultIconColor});
     var iconOpacity = getShownValue(iconIds, iconOpacityField, {useDefault: true, defaultValue: 1});
+    var haloIds = getHaloValueIds();
+    var haloWidth = getShownValue(haloIds, haloWidthField, {useDefault: true, defaultValue: lastHaloWidth});
+    var haloColor = getShownValue(haloIds, haloColorField, {useDefault: true, defaultValue: defaultHaloColor});
+    var haloOpacity = getShownValue(haloIds, haloOpacityField, {useDefault: true, defaultValue: 1});
     updateEditingStatus(manualIds.length, !!getLabelTextSession(gui));
     updateSavedStyleControls();
     fontSelect.node().disabled = !showValues;
@@ -747,6 +823,11 @@ export function LabelTool(gui) {
     updateAlignButtons(showValues ? alignVal : '');
     updateCssControl(css);
     updatePositionButtons(showValues ? posVal : '', ids);
+    var haloOff = updateHaloToggle();
+    updateHaloWidthControl(haloWidth, haloOff);
+    updateSwatchField(haloColorInput, haloColorFieldBox, haloColorChit,
+      haloColorPicker, haloColor, haloOff);
+    updateOpacityControl(haloOpacityInput, haloOpacity, haloOff);
     // The symbol's controls keep showing their values while the switch is off,
     // greyed: what they show is what the symbol comes back as.
     var iconOff = updateIconControls(showValues ? iconVal : '');
@@ -1004,10 +1085,12 @@ export function LabelTool(gui) {
     if (colorPicker.visible()) {
       return; // avoid HSB -> RGB -> HSB rounding jumps after picker commits
     }
+    // Only this field's own picker: the halo's or the symbol's may be the one
+    // open, and a text fill like "blue" says nothing about either.
     if (isHexColor(colorVal)) {
       colorPicker.setColor(colorVal);
     } else {
-      hideColorPicker();
+      colorPicker.hide();
     }
   }
 
@@ -1056,23 +1139,109 @@ export function LabelTool(gui) {
   }
 
   function updateIconColorControls(shown, iconOff) {
+    updateSwatchField(iconColorInput, iconColorFieldBox, iconColorChit,
+      iconColorPicker, shown, iconOff);
+  }
+
+  // A colour field belonging to a section with a switch: the symbol's and the
+  // halo's, which both go on showing their colour, greyed, while switched off.
+  function updateSwatchField(input, fieldBox, chit, picker, shown, sectionOff) {
     var colorVal = shown.value;
-    var disabled = iconOff || !controlsEnabled();
-    iconColorInput.node().disabled = disabled;
-    iconColorInput.node().value = colorVal || '';
-    setMixedPlaceholder(iconColorInput, shown.mixed);
-    iconColorFieldBox.classed('disabled', disabled);
-    setPanelButtonDisabled(iconColorChit, disabled);
-    iconColorChit.classed('mixed', shown.mixed);
-    iconColorChit.css('background-color', isHexColor(colorVal) ? colorVal : 'transparent');
-    if (iconColorPicker.visible()) {
+    var disabled = sectionOff || !controlsEnabled();
+    input.node().disabled = disabled;
+    input.node().value = colorVal || '';
+    setMixedPlaceholder(input, shown.mixed);
+    fieldBox.classed('disabled', disabled);
+    setPanelButtonDisabled(chit, disabled);
+    chit.classed('mixed', shown.mixed);
+    chit.css('background-color', isHexColor(colorVal) ? colorVal : 'transparent');
+    if (picker.visible()) {
       return; // avoid HSB -> RGB -> HSB rounding jumps after picker commits
     }
     if (isHexColor(colorVal)) {
-      iconColorPicker.setColor(colorVal);
+      picker.setColor(colorVal);
     } else {
-      iconColorPicker.hide();
+      picker.hide();
     }
+  }
+
+  // The switch reads the data, as the symbol's does, so that it follows an
+  // undo. A halo is on for a label whose halo-width is above 0.
+  //
+  // The width, colour and opacity go on showing while it is off, greyed: the
+  // colour and opacity stay on the label, and the width is the one the halo
+  // comes back at.
+  function updateHaloToggle() {
+    var enabled = controlsEnabled();
+    var state = enabled ? getHaloState() : 'off';
+    haloToggle.setState(state);
+    haloToggle.setDisabled(!enabled);
+    return state == 'off';
+  }
+
+  function updateHaloWidthControl(shown, haloOff) {
+    if (!haloOff && Number(shown.value) > 0) lastHaloWidth = Number(shown.value);
+    haloWidthInput.setValue(shown.value || '');
+    haloWidthInput.setPlaceholder(shown.mixed ? MIXED_TEXT : '');
+    haloWidthInput.setDisabled(haloOff || !controlsEnabled());
+  }
+
+  function getHaloState() {
+    var ids = getTargetIds();
+    var table = getActiveTable();
+    if (ids.length === 0) {
+      return internal.svg.labelHasHalo(labelModeIsOn() ? getNewLabelStyle(gui) : null) ? 'on' : 'off';
+    }
+    return getToggleState(ids.map(function(id) {
+      return internal.svg.labelHasHalo(table && table.getRecordAt(id));
+    }));
+  }
+
+  // Switching a halo on gives every target the same width: the one the
+  // selection's halos already share, where they share one, so that a mixed
+  // selection is brought into line with the labels that had a halo rather
+  // than reset. Switching it off removes the width and leaves the colour and
+  // opacity, which is how a halo switched off and on again comes back as it
+  // was.
+  function setHaloOn(on) {
+    var width = on ? getNumericSize(getHaloValueIds(), haloWidthField, lastHaloWidth) : '';
+    applyStyleValues([[haloWidthField, width]]);
+  }
+
+  function applyHaloWidth(value) {
+    applyStyleValues([[haloWidthField, value]], getHaloTargetIds());
+  }
+
+  function nudgeHaloWidth(delta) {
+    var width = getNumericSize(getHaloTargetIds(), haloWidthField, lastHaloWidth);
+    if (!controlsEnabled() || getHaloState() == 'off') return;
+    width = Math.max(0.5, Math.round((width + delta) * 10) / 10);
+    applyHaloWidth(width);
+  }
+
+  function applyHaloColor(color) {
+    applyStyleValues([[haloColorField, color]], getHaloTargetIds());
+  }
+
+  // Full opacity is stored as no halo-opacity, as it is for the text's own.
+  function applyHaloOpacity(value) {
+    applyStyleValues([[haloOpacityField, value >= 1 ? '' : value]], getHaloTargetIds());
+  }
+
+  // The labels a halo's width, colour or opacity goes to: the targets that
+  // have a halo, for the reason the symbol's values go only to labels with a
+  // symbol. Empty for "new labels", as there.
+  function getHaloTargetIds() {
+    var table = getActiveTable();
+    return getTargetIds().filter(function(id) {
+      return internal.svg.labelHasHalo(table && table.getRecordAt(id));
+    });
+  }
+
+  // As getIconValueIds(): the labels the section shows the values of.
+  function getHaloValueIds() {
+    var ids = getHaloTargetIds();
+    return ids.length > 0 ? ids : getTargetIds();
   }
 
   function updateSavedStyleControls() {
@@ -1286,6 +1455,13 @@ export function LabelTool(gui) {
     addStyleValue(style, labelAlignField, getSelectedAlignment());
     addStyleValue(style, cssField, cssInput.node().value.trim());
     addStyleValue(style, 'label-pos', getSelectedLabelPosition());
+    // A style saved without a halo carries no halo-width, so applying it
+    // leaves a halo alone rather than removing one; the same is true of icons.
+    if (getHaloState() == 'on') {
+      addStyleValue(style, haloWidthField, haloWidthInput.getValue());
+      addStyleValue(style, haloColorField, haloColorInput.node().value.trim());
+      addStyleValue(style, haloOpacityField, getOpacityBelowFull(haloOpacityInput));
+    }
     addStyleValue(style, iconField, icon);
     if (icon) {
       addStyleValue(style, iconSizeField, iconSizeInput.getValue());
@@ -1497,6 +1673,7 @@ export function LabelTool(gui) {
 
   function hideColorPicker() {
     colorPicker.hide();
+    haloColorPicker.hide();
     iconColorPicker.hide();
   }
 

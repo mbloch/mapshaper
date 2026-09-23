@@ -23,6 +23,10 @@ var stylePropertyTypes = {
   'font-style': null,
   'font-stretch': null,
   'font-weight': null,
+  // a stroke around a label's text, painted beneath it -- see svg-label-halo.mjs
+  'halo-color': 'color',
+  'halo-opacity': 'number',
+  'halo-width': 'number',
   icon: null,
   'icon-color': 'color',
   // opacity of the symbol at a label's anchor, apart from the text's. Needed

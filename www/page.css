@@ -2441,8 +2441,8 @@ body.pan.panning .map-layers:not(.drawing) {
 	pointer-events: none;
 	background-color: rgba(255, 255, 255, 0.85);
 	color: var(--colored-text);
-	font-size: 13px;
-	line-height: 13px;
+	font-size: 12px;
+	line-height: 12px;
 	padding: 3px 6px 4px 6px;
 	white-space: nowrap;
 }
@@ -2777,7 +2777,8 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .label-style-row {
 	display: block;
-	margin-top: 7px;
+	margin-top: 2px;
+	margin-bottom: 5px;
 }
 
 .label-style-row span,
@@ -3254,6 +3255,7 @@ body.pan.panning .map-layers:not(.drawing) {
    on, some off -- is both halves at once with the knob over the join. */
 .label-toggle {
 	position: relative;
+	top: -1px;
 	flex: none;
 	width: 26px;
 	height: 15px;
@@ -3300,7 +3302,7 @@ body.pan.panning .map-layers:not(.drawing) {
 }
 
 .label-style-section-title {
-	margin-top: 11px;
+	margin-top: 8px;
 	font-weight: 600;
 	color: #333;
 }

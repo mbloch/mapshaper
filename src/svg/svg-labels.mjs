@@ -1,6 +1,7 @@
 import { applyStyleAttributes, resolveLabelPosition, getLabelPositionAnchor,
   parseSvgMeasure } from '../svg/svg-properties';
 import { getAlignmentShift } from '../svg/svg-label-align';
+import { applyLabelHalo } from '../svg/svg-label-halo';
 import utils from '../utils/mapshaper-utils';
 
 // Accepting \n (two chars) as an alternative to the newline character
@@ -29,7 +30,7 @@ export function renderStyledLabel(recArg) {
   var rec = resolveLabelPosition(recArg);
   var o = renderLabel(rec);
   applyStyleAttributes(o, 'label', rec);
-  return o;
+  return applyLabelHalo(o, rec);
 }
 
 export function renderLabel(recArg) {

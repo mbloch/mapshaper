@@ -2,6 +2,7 @@ import GeoJSON from '../geojson/geojson-common';
 import { renderPoint, getTransform } from './svg-symbols';
 import { applyStyleAttributes } from '../svg/svg-properties';
 import { featureIsPathLabel, renderPathLabel } from '../svg/svg-label-paths';
+import { labelHasHalo, splitLabelHalos } from '../svg/svg-label-halo';
 import {
   importLineString, importMultiLineString, importPolygon,
   importMultiPolygon, flattenMultiPolygonCoords
@@ -49,6 +50,11 @@ export function importGeoJSONFeatures(features, opts) {
       applyStyleAttributes(svgObj, msType, d, simpleCircleFilter);
     } else {
       // other point symbols: attributes are complicated, added downstream
+    }
+    // Only here, where SVG is written for other programs to read: the GUI
+    // draws the same labels with paint-order and has no use for the copies.
+    if (labelHasHalo(d)) {
+      svgObj = splitLabelHalos(svgObj);
     }
     if ('id' in obj) {
       if (!svgObj.properties) {

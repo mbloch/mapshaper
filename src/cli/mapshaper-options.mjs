@@ -42,6 +42,9 @@ export function getOptionParser() {
         dy: {describe: 'vertical offset from the anchor'},
         fill: {describe: 'text color'},
         opacity: {describe: 'text opacity'},
+        'halo-width': {describe: 'width of a halo around the text in px'},
+        'halo-color': {describe: 'halo color (default is white)'},
+        'halo-opacity': {describe: 'halo opacity, 0-1'},
         css: {describe: 'inline css style'},
         class: {describe: 'name of CSS class or classes (space-separated)'}
       },
@@ -2068,6 +2071,15 @@ export function getOptionParser() {
     })
     .option('label-align', {
       describe: 'alignment of the lines of multi-line labels; left, center or right'
+    })
+    .option('halo-width', {
+      describe: 'width of a halo around label text in px (default is 0, no halo)'
+    })
+    .option('halo-color', {
+      describe: 'color of label halos (default is white)'
+    })
+    .option('halo-opacity', {
+      describe: 'opacity of label halos, 0-1'
     })
     .option('dx', {
       describe: 'x offset of labels (default is 0)'

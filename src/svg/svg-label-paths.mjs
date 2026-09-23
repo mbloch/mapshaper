@@ -4,6 +4,7 @@ import { applyStyleAttributes } from './svg-properties';
 import { getLabelFitState } from './svg-label-fit';
 import { labelNewlineRxp, toLabelString } from './svg-labels';
 import { featureHasLabel, featureIsLabel } from './svg-feature-utils';
+import { applyLabelHalo } from './svg-label-halo';
 import { message, warn } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 
@@ -123,6 +124,7 @@ export function renderPathLabel(rec, knots, opts) {
   if (rec.dy) textPath.properties.dy = rec.dy;
   o = {tag: 'text', properties: {}, children: [textPath]};
   applyStyleAttributes(o, 'label', rec);
+  applyLabelHalo(o, rec);
   if (cls) {
     o.properties.class = o.properties.class ? o.properties.class + ' ' + cls : cls;
   }

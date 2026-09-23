@@ -151,6 +151,31 @@ test("a label layer's menu opens the label tool rather than a style panel",
     expect(errors).toEqual([]);
   });
 
+test('the panel\'s close button leaves the label tool', async function({page}) {
+  // The × is the same button the polygon and polyline style panels carry, and
+  // in label mode the panel belongs to the mode: closing it while the map
+  // stayed armed for placing labels would leave the tool half on, with no
+  // panel to turn it off from.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.4, 0.45);
+  await writeLabel(page, 'Reno');
+
+  var panel = page.locator('.text-style-panel');
+  await expect(panel).toBeVisible();
+  await panel.locator('.label-style-close').click();
+  await page.waitForTimeout(200);
+
+  await expect(panel).toBeHidden();
+  await expect(page.locator('.floating-toolbar.label-toolbar')).toBeHidden();
+  expect(await getInteractionMode(page)).not.toBe('label');
+  // and the labels are still there: the button closes a panel, it does not
+  // undo anything
+  expect((await getLabelLayer(page)).shapeCount).toBe(1);
+  expect(errors).toEqual([]);
+});
+
 test('right-clicking a label deletes it, through a command', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
