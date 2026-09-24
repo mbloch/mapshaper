@@ -31,7 +31,7 @@ export function getOptionParser() {
         'font-weight': {describe: 'normal, bold or a numeric weight'},
         'font-stretch': {describe: 'e.g. condensed'},
         'letter-spacing': {describe: 'extra space between letters'},
-        'line-height': {describe: 'spacing between lines of a multi-line label'},
+        'line-height': {describe: 'spacing between lines of a multi-line label; a bare number is a multiple of the font size'},
         'text-anchor': {describe: 'start, middle or end'},
         'label-align': {describe: 'how the lines of a multi-line label align: left, center or right'},
         'dominant-baseline': {describe: 'vertical alignment, e.g. central'},
@@ -2117,7 +2117,7 @@ export function getOptionParser() {
       describe: 'CSS letter-spacing property of labels'
     })
      .option('line-height', {
-      describe: 'line spacing of multi-line labels (default is 1.1em)'
+      describe: 'line spacing of multi-line labels; a bare number is a multiple of the font size, as in CSS (default is 1.1)'
     })
     .option('dominant-baseline', {
       describe: 'vertical alignment of labels (e.g. central)'

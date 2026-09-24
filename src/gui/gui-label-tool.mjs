@@ -61,11 +61,11 @@ var defaultIconSize = 5;
 // stroke of twice this.
 var defaultHaloWidth = 2;
 var defaultHaloColor = internal.svg.DEFAULT_HALO_COLOR;
-// The line height field shows this rather than renderLabel()'s 1.1em default,
-// and shows it as a placeholder rather than a value, so that a label carries
-// no line-height until one is chosen. "auto" is the honest description of a
-// blank field: something else decides.
-var lineHeightPlaceholder = 'auto';
+// The line height a label without one is drawn with, shown as a placeholder
+// rather than a value so that a label carries no line-height until one is
+// chosen. Shown as a bare multiple, which also says what a bare number typed
+// here means: a multiple of the font size, as in CSS, not px.
+var lineHeightPlaceholder = String(internal.svg.DEFAULT_LINE_HEIGHT);
 // What a control shows for a selection whose labels disagree about it. One
 // word, used in every field and menu that can be in that state: the panel
 // otherwise says it by showing nothing, which is also what an unset property

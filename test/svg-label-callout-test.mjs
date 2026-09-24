@@ -322,9 +322,19 @@ describe('svg-label-callout.mjs', function () {
     it('grows downward by one line height per extra line, soft or hard', function () {
       var one = getLabelTextBox({'label-text': 'a', 'font-size': 10});
       var three = getLabelTextBox({'label-text': 'a <wbr>b\\nc', 'font-size': 10,
-        'line-height': 15});
+        'line-height': '15px'});
       near(three.ymin, one.ymin);
       near(three.ymax - one.ymax, 30);
+    });
+
+    it('reads a bare line-height as a multiple of the font size', function () {
+      var one = getLabelTextBox({'label-text': 'a', 'font-size': 10});
+      var two = getLabelTextBox({'label-text': 'a\\nb', 'font-size': 10,
+        'line-height': 1.5});
+      var str = getLabelTextBox({'label-text': 'a\\nb', 'font-size': 10,
+        'line-height': '1.5'});
+      near(two.ymax - one.ymax, 15);
+      near(str.ymax - one.ymax, 15);
     });
 
     it('falls back on label-width when the text cannot be measured', function () {

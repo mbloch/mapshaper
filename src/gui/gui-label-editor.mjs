@@ -459,7 +459,7 @@ export function LabelEditor(gui, ext) {
 
   function getLineHeight(o) {
     var rec = o.pending ? o.pending.getStyle() : getRecord(o.target, o.id);
-    return rec && rec['line-height'] || '1.1em';
+    return internal.svg.getLineHeightDy(rec && rec['line-height']);
   }
 
   function getProvider(nodes) {

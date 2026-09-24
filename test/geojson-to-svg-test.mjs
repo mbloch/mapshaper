@@ -197,6 +197,25 @@ describe('geojson-to-svg.js', function () {
       assert.deepEqual(output, target);
     })
 
+    it('multiline label with a bare line-height writes it in ems, as in CSS', function() {
+      function getDys(lineHeight) {
+        var props = {'label-text': 'a\nb'};
+        if (lineHeight !== undefined) props['line-height'] = lineHeight;
+        var output = importGeoJSONFeatures([{type: 'Feature', properties: props,
+          geometry: {type: 'Point', coordinates: [0, 0]}}]);
+        var dys = [];
+        (function find(o) {
+          if (o.tag == 'tspan') dys.push(o.properties.dy);
+          (o.children || []).forEach(find);
+        })(output[0]);
+        return dys;
+      }
+      assert.deepEqual(getDys(1.3), ['1.3em']);
+      assert.deepEqual(getDys('1.3'), ['1.3em']);
+      assert.deepEqual(getDys('16px'), ['16px']);
+      assert.deepEqual(getDys(undefined), ['1.1em']);
+    })
+
 
     it('label with dx, dy and font style properties', function() {
       var geo = {

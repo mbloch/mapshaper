@@ -3427,8 +3427,10 @@ Behaviours in it that are not visible in the markup:
   property".
 - **Blanking a spacing field removes the property**, which is the only way back
   to the renderer's own spacing once a value has been chosen. Line height shows
-  `auto` as a placeholder rather than a value, so a label carries no
-  `line-height` until one is asked for.
+  the default, `1.1`, as a placeholder rather than a value, so a label carries
+  no `line-height` until one is asked for. A bare line height is a multiple of
+  the font size, as in CSS, and is written to SVG in ems; the other measure
+  fields read a bare number as px.
 
 ##### Whether a label has a symbol is a switch
 

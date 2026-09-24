@@ -1,5 +1,5 @@
 import { getDrawnLabelOffset, splitLabelLines, toLabelString, toPixels,
-  DEFAULT_LABEL_FONT_SIZE } from './svg-labels';
+  getLineHeightDy, DEFAULT_LABEL_FONT_SIZE, DEFAULT_LINE_HEIGHT } from './svg-labels';
 import { getMeasuredTextWidth } from './svg-label-metrics';
 import { parseCalloutType, parseCalloutEnd, parsePointPair,
   isSvgNumber } from './svg-properties';
@@ -18,7 +18,6 @@ import { roundToTenths } from '../geom/mapshaper-rounding';
 
 var DEFAULT_PADDING = 3;
 var DEFAULT_LINE_WIDTH = 1;
-var DEFAULT_LINE_HEIGHT = '1.1em';
 // Space left between the anchor's symbol and the end of the line
 var SYMBOL_CLEARANCE = 2;
 // How far an automatic curve bows out, as a fraction of its chord
@@ -106,14 +105,14 @@ export function getLabelTextBox(rec) {
   var fontSize = getFontSizeInPx(rec);
   var offset = getDrawnLabelOffset(rec);
   var lines = splitLabelLines(toLabelString(rec['label-text']));
-  var lineHeight = measureToPx(rec['line-height'] || DEFAULT_LINE_HEIGHT, fontSize);
+  var lineHeight = measureToPx(getLineHeightDy(rec['line-height']), fontSize);
   var width = getMeasuredTextWidth(rec) || getNumber(rec['label-width'], 0);
   // An anchor the record does not set is inherited from the layer's group,
   // which is 'middle' -- see getLabelTextDefaults().
   var anchor = offset['text-anchor'] || 'middle';
   var xmin = offset.dx - width * (anchor == 'middle' ? 0.5 : anchor == 'end' ? 1 : 0);
   var baseline = offset.dy + getBaselineShift(rec['dominant-baseline']) * fontSize;
-  if (!(lineHeight > 0)) lineHeight = fontSize * 1.1;
+  if (!(lineHeight > 0)) lineHeight = fontSize * DEFAULT_LINE_HEIGHT;
   return {
     xmin: xmin,
     xmax: xmin + width,

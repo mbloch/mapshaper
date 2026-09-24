@@ -46,6 +46,23 @@ export function removeSoftBreaks(text) {
 // different one would put the label somewhere it is not drawn.
 export var DEFAULT_LABEL_FONT_SIZE = 12;
 
+// The line height a label is drawn with when it carries none, as a multiple of
+// its font size.
+export var DEFAULT_LINE_HEIGHT = 1.1;
+
+// The dy of each line after a label's first, from its line-height.
+//
+// A bare number is a multiple of the font size, as in CSS, and not px, as a
+// bare dy would be in SVG -- so it is written in ems. Nobody who types 1.3
+// into a field called line height wants lines 1.3px apart, and a multiple
+// keeps its proportions when the font size changes. Values with units are
+// passed through.
+export function getLineHeightDy(val) {
+  var measure = val === undefined || val === null || val === '' ?
+    DEFAULT_LINE_HEIGHT : parseSvgMeasure(val);
+  return utils.isFiniteNumber(measure) ? measure + 'em' : measure;
+}
+
 export function toLabelString(val) {
   if (val || val === 0 || val === false) return String(val);
   return '';
@@ -93,7 +110,7 @@ export function renderLabel(recArg) {
         value: line,
         properties: {
           x: dx,
-          dy: rec['line-height'] || '1.1em'
+          dy: getLineHeightDy(rec['line-height'])
         }
       };
       obj.children.push(tspan);

@@ -3,6 +3,7 @@ v0.7.67
 * [web] Callout lines can be added to labels in the label styles panel. Curved, straight and elbow callouts are supported, with or without arrowheads.
 * New label style option: halos
 * [web] All layers are now visible by default, so a layer used as a guide stays on the map when a new layer is created or imported. The `-a/--display-all` option of `mapshaper-gui` and the `display-all` URL variable are no longer needed, and are ignored.
+* The `line-height` label style now treats a bare number as a multiple of the font size, as in CSS (e.g. `line-height=1.3`). Previously a bare number was read as pixels; add `px` to keep a fixed spacing (e.g. `line-height=16px`).
 
 v0.7.66
 * Added the ability to select groups of labels according to various criteria to the right-click context menu. Cmd-A selects all labels.
