@@ -31,6 +31,9 @@ var MIN_LEG = 8;
 // arrow.
 var ARROW_ANGLE = 44;
 var OPEN_ARROW_ANGLE = 70;
+// How far into a solid arrowhead the line reaches, as a fraction of the
+// head's length: far enough that its cap is hidden, short of the tip.
+var ARROW_LINE_OVERLAP = 0.7;
 // Where glyphs sit relative to their baseline, in ems, for estimating the
 // height of a block of text that is measured only for its width
 var ASCENT = 0.8;
@@ -149,7 +152,7 @@ export function getCalloutShape(o) {
   var box = padBox(o.box, o.padding || 0);
   var a = [0, 0];
   var size = o.endSize > 0 ? o.endSize : getDefaultCalloutEndSize(o.end, o.width);
-  var t, v, path, tip, dir, out, lineWidth;
+  var t, v, path, tip, dir, out, lineWidth, headLen, curved;
   if (boxContains(box, a)) return null;
   t = o.attach ? getBoxPoint(box, o.attach) :
     getAutoAttachment(o.type, box, o.via || null);
@@ -177,12 +180,14 @@ export function getCalloutShape(o) {
   out = {kind: path.kind, coords: path.coords, head: null, openHead: null,
     box: box, attach: t, via: v || null, tip: tip};
   if (o.end == 'arrow') {
-    dir = getStartDirection(path);
+    headLen = getArrowHeadLength(size, ARROW_ANGLE);
+    curved = path.kind == 'bezier' ? getCurveIntoArrowHead(path, headLen) : null;
+    dir = curved ? curved.dir : getStartDirection(path);
     if (!dir) return null;
     out.head = getArrowHead(tip, dir, size, ARROW_ANGLE);
     // The line stops inside the head, so that its cap does not show past the
     // tip. A line too short to reach past the head is drawn as the head alone.
-    path = trimPath(path, getArrowHeadLength(size, ARROW_ANGLE) * 0.7);
+    path = curved ? curved.path : trimPath(path, headLen * ARROW_LINE_OVERLAP);
     out.coords = path ? path.coords : null;
   } else if (o.end == 'open-arrow') {
     // Stroked with the line's round join, which reaches half a line width past
@@ -440,6 +445,53 @@ function getStartDirection(path) {
   var next = c[1];
   if (path.kind == 'bezier' && distance(c[0], c[1]) === 0) next = c[2];
   return getUnitVector(c[0], next);
+}
+
+// A solid arrowhead on a curve, and the curve that runs into it:
+// {dir, path}, or null if the curve does not reach past the head.
+//
+// Pointed along the curve's tangent at the tip, the head faces off to one side
+// of where the line goes on a bend, and the line cut back along the curve then
+// meets the back of the head off-centre and at a slant. So the head points
+// along the chord from its tip to where the curve leaves it, which puts that
+// point at the middle of its base, and the curve is re-fitted to leave the
+// head along the same line: it starts at the middle of the base, heading
+// along the head's axis, and keeps its own direction into the text. The
+// control point that does both is where those two lines cross. Starting on
+// the base rather than inside the head keeps the line centred exactly, since
+// a curve bends away from its starting direction; its round cap reaches back
+// into the head, where it is hidden.
+//
+// path: a quadratic Bezier from the anchor end; len: the head's length
+function getCurveIntoArrowHead(path, len) {
+  var tip = path.coords[0];
+  var rest = trimBezier(path.coords, len);
+  var dir, start, end, ctrl;
+  if (!rest) return null;
+  start = rest.coords[0];
+  dir = getUnitVector(tip, start);
+  if (!dir) return null;
+  end = rest.coords[2];
+  ctrl = intersectRays(start, dir, end, getUnitVector(end, rest.coords[1]));
+  // A curve that doubles back, or runs straight on: a control point on the
+  // head's axis still takes the line out of the head straight.
+  if (!ctrl) ctrl = [start[0] + dir[0] * distance(start, end) / 2,
+    start[1] + dir[1] * distance(start, end) / 2];
+  return {dir: dir, path: {kind: 'bezier', coords: [start, ctrl, end]}};
+}
+
+// Where the ray from @p along @d meets the ray from @q along @e, or null if
+// they do not meet ahead of both
+function intersectRays(p, d, q, e) {
+  var cross, s, u, qx, qy;
+  if (!d || !e) return null;
+  cross = d[0] * e[1] - d[1] * e[0];
+  if (Math.abs(cross) < 1e-9) return null;
+  qx = q[0] - p[0];
+  qy = q[1] - p[1];
+  s = (qx * e[1] - qy * e[0]) / cross;
+  u = (qx * d[1] - qy * d[0]) / cross;
+  return s > 0 && u > 0 ? [p[0] + d[0] * s, p[1] + d[1] * s] : null;
 }
 
 // [tip, wing, wing], for a head with sides @side long meeting at @angle degrees

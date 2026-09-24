@@ -1,5 +1,6 @@
 import { EventDispatcher } from './gui-events';
 import { internal, utils } from './gui-core';
+import { showNewLayers } from './gui-layer-utils';
 
 export function Model(gui) {
   var self = new internal.Catalog();
@@ -55,6 +56,9 @@ export function Model(gui) {
       self.setDefaultTarget([active.layer], active.dataset);
       gui.session.setTargetLayer(active.layer); // add -target command to target single layer
     }
+    // Before anything hears of the update, so that the map draws a layer that
+    // has just arrived along with the ones already showing.
+    showNewLayers(self.getLayers());
     if (flags.select) {
       self.dispatchEvent('select', active);
     }

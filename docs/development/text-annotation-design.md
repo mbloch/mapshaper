@@ -257,7 +257,11 @@ look the same size.
 
 - `arrow`: a filled triangle pointing along the path's direction at its end,
   44° at its point; the line is shortened so its cap does not poke through the
-  tip.
+  tip. On a curve the head points along the chord from its tip to where the
+  curve leaves it, and the curve is refit to start at the middle of the head's
+  base, heading along the head's axis, while keeping its end and its direction
+  at the text. Without the refit, the curve would cross the base off-centre and
+  at an angle.
 - `open-arrow`: a stroked chevron in the line's colour and width, 70° at its
   point, with the line running into it. Round joins reach half a line width
   past a point, so the point is set back by that much and the arrow ends where

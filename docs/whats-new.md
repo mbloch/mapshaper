@@ -11,6 +11,18 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
+**Area text.** The label toolbar has a new text block tool for placing labels that wrap to a set width. Click the map to place a default-sized block, or drag across to set the width. Once placed, a block can be resized with a width handle.
+
+</div>
+
+<div class="whats-new-entry">
+
+**Callouts.** A label can be connected to its anchor by adding a callout line from the new Callout section of the label panel. Variations include straight, elbow or curved lines, with optional arrowheads.
+
+</div>
+
+<div class="whats-new-entry">
+
 **Preview mode.** The web UI has a preview toggle that shows what a map will look like when exported. You can continue editing map layers in preview mode.
 
 </div>

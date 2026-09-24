@@ -10,7 +10,9 @@ var defaultPort = 5555,
       .option('-i, --import-prompt', 'prompt for import options')
       .option('-s, --direct-save', 'save files outside the browser\'s download folder')
       .option('-f, --force-save', 'allow overwriting input files with output files')
-      .option('-a, --display-all', 'turn on initial visibility of all layers')
+      // Accepted so that existing scripts still run: every layer is now
+      // visible by default.
+      .addOption(new commander.Option('-a, --display-all').hideHelp())
       .option('-n, --name <name(s)>', 'rename input layer or layers')
       .option('-c, --commands <string>', 'console commands to run initially')
       .option('-t, --target <name>', 'name of layer to select initially')
@@ -286,7 +288,6 @@ function getManifestJS(files, opts) {
     files: files,
     target: opts.target,
     allow_saving: opts.directSave,
-    display_all: opts.displayAll,
     quick_view: !opts.importPrompt, // removed: opts.quickView,
     name: opts.name,
     commands: opts.commands,

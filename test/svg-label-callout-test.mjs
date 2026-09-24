@@ -220,6 +220,32 @@ describe('svg-label-callout.mjs', function () {
       near(angleAt(o.head[0], o.head[1], o.head[2]), 44);
     });
 
+    it('runs a curve into the middle of a solid arrowhead\'s base, along its axis', function () {
+      var o = shape({type: 'curve', end: 'arrow', endSize: 14, via: [-40, -40],
+        box: {xmin: 20, xmax: 80, ymin: -120, ymax: -100, midline: -115}});
+      var tip = o.head[0];
+      var mid = [(o.head[1][0] + o.head[2][0]) / 2, (o.head[1][1] + o.head[2][1]) / 2];
+      var headLen = Math.hypot(mid[0] - tip[0], mid[1] - tip[1]);
+      var axis = [(mid[0] - tip[0]) / headLen, (mid[1] - tip[1]) / headLen];
+      var c = o.coords;
+      var along = function(p) { return (p[0] - tip[0]) * axis[0] + (p[1] - tip[1]) * axis[1]; };
+      var across = function(p) { return (p[0] - tip[0]) * axis[1] - (p[1] - tip[1]) * axis[0]; };
+      assert.equal(o.kind, 'bezier');
+      // starts at the middle of the base, heading along the head's axis
+      nearPoint(c[0], mid);
+      near(across(c[1]), 0);
+      assert.ok(along(c[1]) > headLen);
+      // and still arrives at the text from the same direction
+      var plain = shape({type: 'curve', via: [-40, -40],
+        box: {xmin: 20, xmax: 80, ymin: -120, ymax: -100, midline: -115}});
+      var dirIn = function(q) {
+        var d = Math.hypot(q[2][0] - q[1][0], q[2][1] - q[1][1]);
+        return [(q[2][0] - q[1][0]) / d, (q[2][1] - q[1][1]) / d];
+      };
+      nearPoint(c[2], plain.coords[2]);
+      nearPoint(dirIn(c), dirIn(plain.coords));
+    });
+
     it('gives the default line a 10px arrowhead', function () {
       assert.equal(getDefaultCalloutEndSize('arrow', 1), 10);
     });

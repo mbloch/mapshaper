@@ -1,4 +1,4 @@
-import { utils } from './gui-core';
+import { utils, internal } from './gui-core';
 
 export function filterLayerByIds(lyr, ids) {
   var shapes;
@@ -43,6 +43,31 @@ export function sortLayersForMenuDisplay(layers) {
 
 export function setLayerPinning(lyr, pinned) {
   lyr.pinned = !!pinned;
+}
+
+// Whether a layer can be shown on the map alongside the active layer, and so
+// has an eye icon in the layers panel. A frame is drawn by preview mode, and a
+// data-only layer has nothing to draw.
+export function layerIsPinnable(lyr, dataset) {
+  if (dataset && internal.isFrameLayer(lyr, dataset.arcs)) return false;
+  return internal.layerIsGeometric(lyr) || internal.layerHasRaster(lyr) ||
+    internal.layerHasFurniture(lyr);
+}
+
+// Every layer is visible until something says otherwise, so that a layer
+// made or imported next to another does not hide it -- a reference layer used
+// as a guide for drawing or labelling would otherwise vanish the moment the
+// new layer became the active one. Only layers whose visibility has never
+// been set are touched: a snapshot stores every layer's, and a layer hidden
+// with its eye icon stays hidden.
+//
+// layers: [{layer, dataset}], as from model.getLayers()
+export function showNewLayers(layers) {
+  layers.forEach(function(o) {
+    if (o.layer.pinned === undefined && layerIsPinnable(o.layer, o.dataset)) {
+      setLayerPinning(o.layer, true);
+    }
+  });
 }
 
 

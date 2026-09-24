@@ -3,6 +3,7 @@ import {
   sortLayersForMenuDisplay,
   formatLayerNameForDisplay,
   setLayerPinning,
+  layerIsPinnable,
   cleanLayerName } from './gui-layer-utils';
 import { utils, internal } from './gui-core';
 import { El } from './gui-el';
@@ -224,7 +225,9 @@ export function LayerControl(gui) {
       layerCount++;
     });
 
-    if (pinnableCount < 2) {
+    // Shown for a single layer too: it says whether the next layer made or
+    // imported will be drawn over this one or replace it on the map.
+    if (pinnableCount < 1) {
       pinAll.hide();
     } else {
       pinAll.show();
@@ -666,8 +669,7 @@ export function LayerControl(gui) {
   }
 
   function isPinnable(lyr, dataset) {
-    if (dataset && internal.isFrameLayer(lyr, dataset.arcs)) return false;
-    return internal.layerIsGeometric(lyr) || internal.layerHasRaster(lyr) || internal.layerHasFurniture(lyr);
+    return layerIsPinnable(lyr, dataset);
   }
 
   function layerCanBeStyled(lyr) {

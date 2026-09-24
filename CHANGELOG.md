@@ -1,3 +1,9 @@
+v0.7.67 (unreleased)
+* [web] New label type: area text. A text block that wraps at a user-defined width.
+* [web] Callout lines can be added to labels in the label styles panel. Curved, straight and elbow callouts are supported, with or without arrowheads.
+* New label style option: halos
+* [web] All layers are now visible by default, so a layer used as a guide stays on the map when a new layer is created or imported. The `-a/--display-all` option of `mapshaper-gui` and the `display-all` URL variable are no longer needed, and are ignored.
+
 v0.7.66
 * Added the ability to select groups of labels according to various criteria to the right-click context menu. Cmd-A selects all labels.
 * Interface improvements

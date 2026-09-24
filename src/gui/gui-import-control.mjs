@@ -3,7 +3,6 @@ import { utils, internal, stop } from './gui-core';
 import { El } from './gui-el';
 import { SimpleButton } from './gui-elements';
 import { GUI } from './gui-lib';
-import { setLayerPinning } from './gui-layer-utils';
 import { importSessionData } from './gui-session-snapshot-control';
 import { considerReprojecting, loadGeopackageLib, getGeoPackageFeatureTables, loadGeoParquetLib, loadGeoTIFFLib } from './gui-import-utils';
 import { persistRasterSourceForDataset } from './gui-raster-source-store';
@@ -260,11 +259,6 @@ export function ImportControl(gui, opts) {
       if (target) {
         model.setDefaultTarget([target.layers[0]], target.dataset);
       }
-    }
-    if (opts.display_all && importTotal === 0) {
-      model.getLayers().forEach(function(o) {
-        setLayerPinning(o.layer, true);
-      });
     }
     model.updated({select: true}); // trigger redraw
   }

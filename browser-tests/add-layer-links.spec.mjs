@@ -144,6 +144,26 @@ test('the arrow menu offers the label tool only on a label layer',
     expect(errors).toEqual([]);
   });
 
+test('a new layer leaves the layer beside it visible, as a guide',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+    await openLayerPanel(page);
+    // shown, and on, with only one layer: the next layer will not hide this one
+    await expect(page.locator('.layer-control .pin-all .black-eye')).toBeVisible();
+    await expect(page.locator('.layer-control .pin-all')).toHaveClass(/pinned/);
+
+    await clickNewLayerLink(page, 'labels');
+    var source = page.locator('.layer-list .layer-item', {hasText: 'ring_and_line'});
+    await expect(source).not.toHaveClass(/active/);
+    await expect(source).toHaveClass(/pinned/);
+
+    // hiding everything but the active layer is still one click
+    await page.locator('.layer-control .pin-all .black-eye').click();
+    await expect(source).not.toHaveClass(/pinned/);
+    expect(errors).toEqual([]);
+  });
+
 test('each link says that it creates a layer, which its name does not',
   async function({page}) {
     await loadFixture(page, FIXTURE);
