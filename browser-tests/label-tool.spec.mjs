@@ -705,9 +705,9 @@ test('the symbol is faded and coloured apart from the text', async function({pag
   await page.waitForTimeout(120);
   await panel.locator('.label-icon-buttons [data-icon="circle"]').click();
   await page.waitForTimeout(120);
-  await setFieldValue(panel.locator('.label-text-opacity-row input'), '40%');
-  await setFieldValue(panel.locator('.label-icon-color-row .label-color-field input'), '#cc0000');
-  await setFieldValue(panel.locator('.label-icon-opacity-row input'), '80%');
+  await setFieldValue(panel.locator('.label-text-color-row .label-opacity-input'), '40%');
+  await setFieldValue(panel.locator('.label-icon-color-row .label-color-input'), '#cc0000');
+  await setFieldValue(panel.locator('.label-icon-color-row .label-opacity-input'), '80%');
 
   expect((await getLabelLayer(page)).records[0]).toMatchObject({
     icon: 'circle',
@@ -718,7 +718,7 @@ test('the symbol is faded and coloured apart from the text', async function({pag
 
   // full opacity is stored as no opacity at all: the property is what makes a
   // label translucent, and a column of 1s is noise in the user's table
-  await setFieldValue(panel.locator('.label-text-opacity-row input'), '100%');
+  await setFieldValue(panel.locator('.label-text-color-row .label-opacity-input'), '100%');
   expect((await getLabelLayer(page)).records[0].opacity).toBeUndefined();
   expect(errors).toEqual([]);
 });
@@ -739,7 +739,7 @@ test('the switch is what gives a label a symbol and takes it away', async functi
   var panel = page.locator('.text-style-panel');
   var toggle = panel.locator('.label-icon-toggle');
   var starBtn = panel.locator('.label-icon-buttons [data-icon="star"]');
-  var iconColor = panel.locator('.label-icon-color-row .label-color-field input');
+  var iconColor = panel.locator('.label-icon-color-row .label-color-input');
 
   await toggle.click();
   await page.waitForTimeout(150);

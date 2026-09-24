@@ -339,8 +339,7 @@ The Callout section:
   beside them. The size field shows the size the marker is
   drawn at, which for one with no `callout-end-size` is the default its line
   width gives it, and is inert with no marker;
-- colour and opacity;
-- gap, in the narrow column.
+- colour and opacity, in one field, with the **Gap** beside them.
 
 Each choice sits in the wide column with the size that qualifies it beside
 it, as Alignment has Line height.

@@ -991,8 +991,8 @@ panel lines up with the details at the bottom, which are a separate grid.
   extent — the thing that decides how the pair above behaves. Setting a ratio
   reshapes the extent, so it belongs to the resize tool rather than here.
 - Read-only extent and CRS details
-- **Background** fill and **Neatline** stroke controls, with **Line width** in
-  the narrow column under the neatline's opacity. These style the frame
+- **Background** fill and **Neatline** stroke controls, each colour with its
+  opacity inside its field, and the neatline's **Width** beside it. These style the frame
   directly but render in separate bottom and top composition passes.
 
 The panel has no Name field: the frame's name is edited in place in the Map

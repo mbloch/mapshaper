@@ -71,23 +71,38 @@ export function setPanelButtonDisabled(el, disabled) {
 export function makeColorField(parent, chit, input) {
   var box = El('div').addClass('label-color-field').appendTo(parent);
   chit.appendTo(box);
-  input.appendTo(box);
+  input.addClass('label-color-input').appendTo(box);
   return box;
 }
 
-// A colour and its opacity on one line: the swatch inside the field with the
-// hex value, and the opacity in the narrow column beside it. Fill and Stroke
-// are each one of these, and so are a label's text and icon colours.
+// A colour field with its opacity at the right-hand end, behind a divider:
+// opacity qualifies the colour, and one border says so where two fields side
+// by side said they were separate settings. It also leaves the narrow column
+// of the row free for a field that needs it. The opacity has no caption; its
+// percent sign and its tooltip say what it is.
 //
-// opts.label            the caption over the colour field
+// Returns the field's box; the opacity input is made by makeOpacityInput().
+export function makeColorOpacityField(parent, chit, input, opacityOpts) {
+  var box = makeColorField(parent, chit, input).addClass('label-color-opacity-field');
+  var opacity = makeOpacityInput(box, opacityOpts);
+  return {box: box, opacity: opacity};
+}
+
+// A colour and its opacity in one field, captioned, in the wide column of a
+// split row. Fill and Stroke are each one of these.
+//
+// opts.label            the caption over the field
 // opts.onColor(hex)     a colour was typed, picked or previewed to a finish
 // opts.onOpacity(frac)  a usable percentage was typed
 // opts.revert()         one that was not, so put the row back as it was
+//
+// control.aside is the row's narrow column, empty, for a field that belongs
+// beside the colour -- a stroke's width, say.
 export function makeColorRow(parent, opts) {
   var row = El('div').addClass('label-style-row label-split-row').appendTo(parent);
   var colorCell = El('div').addClass('label-split-cell label-color-row').appendTo(row);
-  var opacityCell = El('div').addClass('label-split-cell').appendTo(row);
-  var control = {row: row, chit: null, input: null, opacity: null, picker: null};
+  var aside = El('div').addClass('label-split-cell').appendTo(row);
+  var control = {row: row, aside: aside, chit: null, input: null, opacity: null, picker: null};
 
   control.setColor = function(color) {
     control.input.node().value = color || '';
@@ -117,7 +132,10 @@ export function makeColorRow(parent, opts) {
       if (isHexColor(color)) control.picker.setColor(color);
       opts.onColor(color);
     });
-  makeColorField(colorCell, control.chit, control.input);
+  control.opacity = makeColorOpacityField(colorCell, control.chit, control.input, {
+    onSet: opts.onOpacity,
+    revert: opts.revert
+  }).opacity;
   control.picker = new ColorPicker(colorCell, {
     presetRows: layerColorPresetRows,
     // A drag in the picker shows on the map's own terms -- the swatch and the
@@ -127,12 +145,6 @@ export function makeColorRow(parent, opts) {
       control.setColor(hex);
       opts.onColor(hex);
     }
-  });
-
-  El('span').appendTo(opacityCell).text('Opacity');
-  control.opacity = makeOpacityInput(opacityCell, {
-    onSet: opts.onOpacity,
-    revert: opts.revert
   });
   return control;
 }

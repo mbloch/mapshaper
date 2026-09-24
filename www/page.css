@@ -2649,12 +2649,12 @@ body.pan.panning .map-layers:not(.drawing) {
 	width: 100%;
 }
 
-/* Three columns on the appearance rows: the neatline's width sits with the
-   colour and opacity it applies to, and the background row leaves the last
-   column empty rather than pushing a lone field onto a line of its own. */
+/* The neatline's width sits beside the colour and opacity it applies to, and
+   the background row leaves the column empty rather than pushing a lone field
+   onto a line of its own. */
 .frame-properties-form .label-split-row {
 	column-gap: 8px;
-	grid-template-columns: 1fr 54px 54px;
+	grid-template-columns: 1fr 54px;
 }
 
 /* Wide enough for "Aspect ratio", and fixed rather than auto so that the ratio
@@ -3080,8 +3080,9 @@ body.pan.panning .map-layers:not(.drawing) {
    different place.
 
    Bottom-aligned, so that a caption above one control cannot push it out of
-   line with the control beside it: the icon size has a "Size" over it and the
-   shape buttons beside it have nothing, and the two still have to be level. */
+   line with the control beside it: the frame's neatline width has a "Width"
+   over it and the colour beside it has a longer caption, and the two still
+   have to be level. */
 .label-split-row {
 	display: grid;
 	grid-template-columns: 1fr var(--label-split-b-width);
@@ -3106,7 +3107,6 @@ body.pan.panning .map-layers:not(.drawing) {
 .label-style-panel .label-split-cell > span,
 .label-style-panel .label-style-row > .label-style-row-label,
 .label-style-panel .label-split-cell > .label-style-row-label,
-.label-style-panel .label-icon-size-caption,
 .label-style-panel .point-style-note {
 	font-size: 12px;
 }
@@ -3210,10 +3210,8 @@ body.pan.panning .map-layers:not(.drawing) {
 	align-self: center;
 }
 
-/* A section switched off shows only its heading (see setSectionCollapsed()),
-   including the caption the Icon heading carries over its size column. */
-.label-style-panel .label-style-section.collapsed > :not(.label-style-section-title),
-.label-style-panel .label-style-section.collapsed .label-icon-size-caption {
+/* A section switched off shows only its heading (see setSectionCollapsed()). */
+.label-style-panel .label-style-section.collapsed > :not(.label-style-section-title) {
 	display: none;
 }
 
@@ -3259,22 +3257,6 @@ body.pan.panning .map-layers:not(.drawing) {
 	width: 1px;
 	height: 1px;
 	overflow: hidden;
-}
-
-/* Closer to the heading above it than a row usually is, because that heading
-   line carries this row's "Size" caption: the gap between a caption and the
-   field it names is 2px everywhere else in the panel. */
-.text-style-panel .label-icon-shapes-row {
-	margin-top: 2px;
-}
-
-/* Pushed to the right and given the width of a split row's narrow column, so
-   that it sits over the size field a row below it. */
-.text-style-panel .label-icon-size-caption {
-	width: var(--label-split-b-width);
-	margin-left: auto;
-	font-weight: normal;
-	color: #555;
 }
 
 /* Darker than the app's default placeholder. These fields show the value the
@@ -3418,7 +3400,8 @@ body.pan.panning .map-layers:not(.drawing) {
 /* A button with a word on it: Clear style, Random fills, Create. The same
    shape as Save current in the saved styles row, which is the same kind of
    thing -- a named action, as wide as its name -- and the same height as the
-   fields above it. */
+   fields above it. A div, so the panel's type rules for button, select and
+   input do not reach it, and it has to set its own size. */
 .label-panel-action-btn {
 	box-sizing: border-box;
 	display: inline-flex;
@@ -3428,6 +3411,7 @@ body.pan.panning .map-layers:not(.drawing) {
 	border: 1px solid var(--label-field-border);
 	border-radius: var(--label-field-radius);
 	background-color: white;
+	font-size: 12px;
 	color: var(--normal-text);
 	cursor: pointer;
 	user-select: none;
@@ -3503,6 +3487,23 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .label-style-panel .label-color-field.disabled {
 	opacity: 0.45;
+}
+
+/* The opacity at the end of a colour field, behind a divider the height of the
+   field. Wide enough for "100%" and for "mixed", and no wider: the hex value
+   beside it gets the rest. Selectors as specific as the colour field's input
+   rules above, which would otherwise stretch it and take its divider away. */
+.label-style-panel .label-color-field input.label-opacity-input,
+.label-style-panel .label-color-field input.label-opacity-input:focus {
+	flex: none;
+	align-self: stretch;
+	width: 44px;
+	height: auto;
+	margin: 0 -3px 0 4px;
+	padding: 0 4px 0 6px;
+	border: none;
+	border-left: 1px solid var(--label-field-border);
+	border-radius: 0;
 }
 
 .label-color-row .label-color-picker input[type="text"] {

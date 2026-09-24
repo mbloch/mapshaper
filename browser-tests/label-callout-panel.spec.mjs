@@ -31,6 +31,38 @@ test('sections with a switch collapse to their heading while off', async functio
   expect(errors).toEqual([]);
 });
 
+// Every colour carries its opacity inside its own field, which leaves the
+// narrow column of its row for the value that qualifies it most closely.
+test('each colour row has its opacity inside the field and a value beside it',
+  async function({page}) {
+    await oneLabel(page);
+    await runCommand(page, '-style dx=40 dy=-40 label-pos= target=labels');
+    await selectLabels(page, [0]);
+    await clickToggle(page, 'halo');
+    await clickToggle(page, 'icon');
+    await clickToggle(page, 'callout');
+    expect(await page.evaluate(function() {
+      var rows = document.querySelectorAll(
+        '.text-style-panel .label-style-section .label-split-row');
+      return Array.prototype.map.call(rows, function(row) {
+        return Array.prototype.map.call(row.children, function(cell) {
+          var span = cell.querySelector(':scope > span');
+          return span ? span.textContent : '-';
+        }).join(' | ');
+      });
+    })).toEqual([
+      '- | -', // font style and size
+      'Color | Letter spacing',
+      'Alignment | Line height',
+      'Color | Width', // halo
+      'Color | Size', // icon
+      'Line | Width',
+      'End | Size',
+      'Color | Gap'
+    ]);
+    expect(await page.locator('.text-style-panel .label-color-field .label-opacity-input').count()).toBe(4);
+  });
+
 test('the callout switch draws a straight line, and the section styles it', async function({page}) {
   var errors = collectPageErrors(page);
   await oneLabel(page);

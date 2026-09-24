@@ -143,14 +143,11 @@ export function PointStyleTool(gui) {
     circleStrokeControl = addCircleColorControl('Stroke', 'stroke');
     circleControlRows.push(circleFillControl.row, circleStrokeControl.row);
 
-    // The two sizes of a circle side by side, in the shape the panel uses for
-    // every other pair.
-    var sizeRow = El('div').addClass('label-style-row label-split-row').appendTo(circlesSection);
-    // Radius in the wide column, stroke width in the narrow one under the
-    // stroke's opacity, matching the line and polygon panels.
-    var radiusCell = El('div').addClass('label-split-cell').appendTo(sizeRow);
-    var widthCell = El('div').addClass('label-split-cell').appendTo(sizeRow);
-    El('span').appendTo(widthCell).text('Stroke width');
+    // Each size beside the colour it goes with: the radius beside the fill,
+    // the stroke's width beside its colour, as in the line and polygon panels.
+    var radiusCell = circleFillControl.aside;
+    var widthCell = circleStrokeControl.aside;
+    El('span').appendTo(widthCell).text('Width');
     circleStrokeWidthField = new SizeField(widthCell, {
       min: 0,
       decimals: 2, // quarter-pixel hairlines, which the ladder below steps through
@@ -181,7 +178,6 @@ export function PointStyleTool(gui) {
       },
       onDone: releaseFocus
     });
-    circleControlRows.push(sizeRow);
   }
 
   function initSymbolsSection() {

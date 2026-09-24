@@ -10,7 +10,7 @@ test('a style field gives the keyboard back when it is finished with', async fun
   // a value still being edited.
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
-  var fill = page.locator('.layer-style-panel .label-color-field input').first();
+  var fill = page.locator('.layer-style-panel .label-color-input').first();
 
   await fill.fill('#00ff00');
   await fill.press('Enter');
@@ -34,9 +34,9 @@ test('a colour is set from its field, and its opacity from the one beside it', a
   var rows = page.locator('.layer-style-panel .label-split-row');
 
   // fill on the first line, stroke on the second
-  await setField(rows.nth(0).locator('.label-color-field input'), '#3366cc');
+  await setField(rows.nth(0).locator('.label-color-input'), '#3366cc');
   await setField(rows.nth(0).locator('.label-opacity-input'), '40%');
-  await setField(rows.nth(1).locator('.label-color-field input'), '#ff0000');
+  await setField(rows.nth(1).locator('.label-color-input'), '#ff0000');
   await setField(rows.nth(1).locator('.label-opacity-input'), '80%');
 
   expect(await getStyleValue(page, 'fill')).toBe('#3366cc');
@@ -46,8 +46,9 @@ test('a colour is set from its field, and its opacity from the one beside it', a
   expect(errors).toEqual([]);
 });
 
-// Stroke width sits under the stroke's opacity, in the narrow column, so that
-// it reads as belonging to the stroke rather than as a row of its own.
+// Each colour's opacity is inside its field, and the stroke's width sits
+// beside the stroke's colour in the narrow column, so that it reads as
+// belonging to the stroke rather than as a row of its own.
 test('layer style fields are laid out in two columns by what they belong to',
   async function({page}) {
     await loadFixture(page, FIXTURE);
@@ -59,7 +60,9 @@ test('layer style fields are laid out in two columns by what they belong to',
           return span ? span.textContent : '-';
         }).join(' | ');
       });
-    })).toEqual(['Fill | Opacity', 'Stroke | Opacity', '- | Stroke width']);
+    })).toEqual(['Fill | -', 'Stroke | Width']);
+    // the opacity is part of the colour's field, not a column of its own
+    expect(await page.locator('.layer-style-panel .label-color-field .label-opacity-input').count()).toBe(2);
   });
 
 test('stroke width is typed or stepped in a size field', async function({page}) {
@@ -91,7 +94,7 @@ test('stroke width is typed or stepped in a size field', async function({page}) 
 test('the panel buttons still do what they say', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
-  await setField(page.locator('.layer-style-panel .label-color-field input').first(), '#00ff00');
+  await setField(page.locator('.layer-style-panel .label-color-input').first(), '#00ff00');
   expect(await getStyleValue(page, 'fill')).toBe('#00ff00');
 
   await clickButton(page, 'Random fills');

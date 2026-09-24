@@ -119,8 +119,8 @@ test('a control shows "mixed" where the selected labels disagree',
     // size is the size it renders at, and that is not 18
     expect(await placeholderOf(panel.locator('.label-size-row input'))).toBe('mixed');
     var colorRow = panel.locator('.label-color-row').first();
-    expect(await colorRow.locator('.label-color-field input').inputValue()).toBe('');
-    expect(await placeholderOf(colorRow.locator('.label-color-field input'))).toBe('mixed');
+    expect(await colorRow.locator('.label-color-input').inputValue()).toBe('');
+    expect(await placeholderOf(colorRow.locator('.label-color-input'))).toBe('mixed');
     // an empty swatch is how the field says "no colour", so a mixed one is
     // marked rather than left blank to mean two things
     await expect(colorRow.locator('.label-color-chit')).toHaveClass(/mixed/);
@@ -140,7 +140,7 @@ test('a control that agrees shows its value, and its own placeholder back',
       .textContent()).not.toBe('mixed');
     expect(await panel.locator('.label-size-row input').inputValue()).toBe('18');
     var colorRow = panel.locator('.label-color-row').first();
-    expect(await colorRow.locator('.label-color-field input').inputValue()).toBe('#cc0000');
+    expect(await colorRow.locator('.label-color-input').inputValue()).toBe('#cc0000');
     await expect(colorRow.locator('.label-color-chit')).not.toHaveClass(/mixed/);
     // a spacing field shows what the renderer does with a property nobody set,
     // which "mixed" displaces while the selection disagrees about it

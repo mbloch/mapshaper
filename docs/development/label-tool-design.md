@@ -3264,16 +3264,26 @@ order:
 
 | Section | Rows |
 |---|---|
-| Text | Font; Font style + Size; Color + Opacity; *(empty)* + Letter spacing; Alignment + Line height; Inline CSS |
-| Icon | Shape + Size; Color + Opacity |
+| Text | Font; Font style + Size; Color/opacity + Letter spacing; Alignment + Line height; Inline CSS |
+| Icon | Shape; Color/opacity + Size |
 | Label position | the 3×3 grid |
 
-Text and Icon are deliberately the same shape — a size on one line, a colour
-and its opacity on the next — so that the second reads as a variation on the
-first rather than as a different kind of control. Letter spacing and line
-height stack in the right column, which groups the two spacing values and
-leaves the left of the second row to the alignment buttons; the cell beside
-letter spacing is empty.
+(Halo and Callout sections followed; see
+[text-annotation-design.md](text-annotation-design.md).)
+
+**A colour and its opacity are one field**: the swatch and hex value, then the
+opacity behind a divider at the right-hand end (`makeColorOpacityField()` in
+`gui-panel-controls.mjs`). Opacity qualifies the colour, and one border says
+so where two fields side by side read as separate settings. It also leaves
+the narrow column of every colour row free, so each section's colour row has
+the same shape — colour and opacity, then the value that qualifies them most
+closely: letter spacing, the halo's width, the icon's size, the callout's gap.
+The opacity carries no caption; its percent sign and tooltip say what it is.
+The colour field carries "Color", because the field beside it has a caption.
+The icon's shape buttons have their row to themselves, with room for more
+shapes. Letter spacing and line height still stack in the right column, which
+groups the two spacing values and leaves the left of the row below to the
+alignment buttons.
 
 **Every split row has the same two columns**: a wide one and a narrow one, the
 widths fixed for the panel (`1fr var(--label-split-b-width)`) rather than each
@@ -3281,9 +3291,9 @@ row sizing its right column to whatever it happens to hold. The panel is a
 stack of these pairs, and sizing them a row at a time leaves every field edge
 in a slightly different place. Each control then fills its column instead of
 keeping a width of its own, and the cells are bottom-aligned, so a caption over
-one control cannot push it out of line with the control beside it — the icon
-size has "Size" above it and the shape buttons next to it have nothing, and the
-two still have to be level. Everything in a row is the same height, which means
+one control cannot push it out of line with the control beside it — the font
+size and the font style beside it have no captions while most rows do, and
+every pair still has to be level. Everything in a row is the same height, which means
 `box-sizing: border-box` on the bordered boxes as well as the fields.
 
 The panel went from 185px to 216px because of those pairs: at 185px the narrow
@@ -3614,14 +3624,15 @@ and round-cornered here and 19px and square there.
 What they share is in `gui-panel-controls.mjs` — a section, a colour-and-its-
 opacity row, an action button, a panel button — and in the CSS that is now
 keyed on `.label-style-panel`, which every style panel carries. The label
-panel keeps its own assembly of the colour field, because its two colours are
-gated by the icon switch and drawn without captions, but the metrics, the
+panel keeps its own assembly of the colour rows, because its colours are gated
+by the section switches, but builds each field with the same
+`makeColorOpacityField()`, and the metrics, the
 disabled look, the caption sizes and the split-row grid are one set of rules
 for all four.
 
 The layout follows from the pairs the other panels turn out to be made of:
-Fill and its opacity, Stroke and its opacity, and for a circle, Stroke width
-beside Radius. Every panel is 216px wide now, since every panel is a stack of
+Fill, and Stroke with its width beside it, each colour with its opacity inside
+its field; for a circle, Radius beside Fill. Every panel is 216px wide now, since every panel is a stack of
 those pairs.
 
 Two things worth knowing:

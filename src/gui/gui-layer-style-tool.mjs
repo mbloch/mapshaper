@@ -102,7 +102,7 @@ export function LayerStyleTool(gui) {
 
     fillControl = addColorControl(panel, 'Fill', 'fill', '');
     strokeControl = addColorControl(panel, 'Stroke', 'stroke', '#000000');
-    strokeWidthField = addStrokeWidthControl(panel);
+    strokeWidthField = addStrokeWidthControl(strokeControl.aside);
 
     var buttonRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(panel);
     randomFillBtn = makePanelActionButton(buttonRow, 'Random fills', applyRandomFillColors);
@@ -144,14 +144,11 @@ export function LayerStyleTool(gui) {
     return control;
   }
 
-  // In the narrow column, under the stroke's opacity. Stepping runs up a ladder
+  // In the narrow column beside the stroke's colour. Stepping runs up a ladder
   // of widths rather than by a fixed amount, because the useful ones are close
   // together at the hairline end and far apart above 2px.
-  function addStrokeWidthControl(parent) {
-    var row = El('div').addClass('label-style-row label-split-row').appendTo(parent);
-    El('div').addClass('label-split-cell').appendTo(row);
-    var cell = El('div').addClass('label-split-cell').appendTo(row);
-    El('span').appendTo(cell).text('Stroke width');
+  function addStrokeWidthControl(cell) {
+    El('span').appendTo(cell).text('Width');
     return new SizeField(cell, {
       min: 0,
       // Quarter-pixel widths are the useful hairlines, and the ladder below

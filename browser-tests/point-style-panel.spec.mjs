@@ -9,7 +9,7 @@ test('a circle is sized from its radius and stroke width fields', async function
   await clickButton(page, 'Create simple circles');
   expect(await getStyleValue(page, 'r')).toBe(3);
   var radius = sizeField(page, 'Radius');
-  var strokeWidth = sizeField(page, 'Stroke width');
+  var strokeWidth = sizeField(page, 'Width');
 
   await setField(radius, '8');
   expect(await getStyleValue(page, 'r')).toBe(8);
@@ -24,16 +24,16 @@ test('a circle is sized from its radius and stroke width fields', async function
   expect(errors).toEqual([]);
 });
 
-// Stroke width belongs under the stroke's opacity, in the narrow column, the
-// same place the line and polygon panels put it.
+// Each size beside the colour it goes with, in the narrow column: the radius
+// beside the fill, the stroke's width beside the stroke, where the line and
+// polygon panels put it.
 test('circle fields are laid out in two columns by what they belong to',
   async function({page}) {
     await loadFixture(page, FIXTURE);
     await clickButton(page, 'Create simple circles');
     expect(await columnLayout(page, '.point-style-panel')).toEqual([
-      'Fill | Opacity',
-      'Stroke | Opacity',
-      'Radius | Stroke width'
+      'Fill | Radius',
+      'Stroke | Width'
     ]);
   });
 
@@ -43,9 +43,9 @@ test('a circle colour is set from the field, and its opacity beside it', async f
   await clickButton(page, 'Create simple circles');
   var rows = page.locator('.point-style-panel .label-split-row');
 
-  await setField(rows.nth(0).locator('.label-color-field input'), '#3366cc');
+  await setField(rows.nth(0).locator('.label-color-input'), '#3366cc');
   await setField(rows.nth(0).locator('.label-opacity-input'), '50%');
-  await setField(rows.nth(1).locator('.label-color-field input'), '#ff0000');
+  await setField(rows.nth(1).locator('.label-color-input'), '#ff0000');
 
   expect(await getStyleValue(page, 'fill')).toBe('#3366cc');
   expect(await getStyleValue(page, 'fill-opacity')).toBe(0.5);

@@ -71,9 +71,9 @@ export function FrameProperties(gui) {
       revert: updateControls
     });
     // The width belongs to the same property as the colour and opacity beside
-    // it, and all three fit on the row. The background row leaves the column
-    // empty rather than putting the width on a line of its own.
-    neatlineWidthInput = makeRowField(neatlineControl.row, 'Width')
+    // it. The background row leaves the column empty rather than putting the
+    // width on a line of its own.
+    neatlineWidthInput = makeCellField(neatlineControl.aside, 'Width')
       .addClass('frame-neatline-width')
       .on('change', updateNeatlineWidth);
     var clearRow = El('div')
@@ -98,9 +98,9 @@ export function FrameProperties(gui) {
     unitsSelect.node().value = units;
     aspectValue.text(getAspectText(frame));
     backgroundControl.showColor(rec.fill || '');
-    backgroundControl.opacity.node().value = formatOpacity(rec['fill-opacity']);
+    backgroundControl.opacity.node().value = formatOpacity(rec['fill-opacity'], rec.fill);
     neatlineControl.showColor(rec.stroke || '');
-    neatlineControl.opacity.node().value = formatOpacity(rec['stroke-opacity']);
+    neatlineControl.opacity.node().value = formatOpacity(rec['stroke-opacity'], rec.stroke);
     neatlineWidthInput.node().value =
       rec['stroke-width'] === undefined ? '' : rec['stroke-width'];
     boundsValue.text(frame.bbox.map(formatCoordinate).join(', '));
@@ -188,8 +188,7 @@ export function FrameProperties(gui) {
 }
 
 // An extra captioned cell on an existing colour row.
-function makeRowField(row, label) {
-  var cell = El('div').addClass('label-split-cell').appendTo(row);
+function makeCellField(cell, label) {
   El('span').appendTo(cell).text(label);
   return makeTextInput(cell);
 }
@@ -227,9 +226,13 @@ function formatCoordinate(value) {
   return String(Number(value.toPrecision(12)));
 }
 
-function formatOpacity(value) {
-  return value === undefined ? '' :
-    String(Math.round(Number(value) * 100)) + '%';
+// A colour with no opacity of its own is drawn opaque, and says so; with no
+// colour either, there is nothing for an opacity to apply to.
+function formatOpacity(value, color) {
+  if (value === undefined || value === null || value === '') {
+    return color ? '100%' : '';
+  }
+  return String(Math.round(Number(value) * 100)) + '%';
 }
 
 // A fixed ratio holds when the frame is rescaled; one taken from the extent

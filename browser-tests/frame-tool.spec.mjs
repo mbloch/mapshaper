@@ -210,6 +210,27 @@ test('draw frame uses a dedicated Done and Cancel interface', async function({pa
   }).not.toBeNull();
 });
 
+test('a frame colour with no opacity of its own shows 100%', async function({page}) {
+  await loadFixture(page);
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand(
+      '-frame bbox=-80,30,-70,40 width=600 name=frame'
+    );
+  });
+  await page.locator('.sidebar-tab.layer-tab').click();
+  await page.locator('.map-frame-list .layer-item').click();
+  var popup = page.locator('.frame-properties-popup');
+  await expect(popup).toBeVisible();
+  var opacities = popup.locator('.label-opacity-input');
+  // no colour, so nothing for an opacity to apply to
+  await expect(opacities.nth(0)).toHaveValue('');
+  await expect(opacities.nth(1)).toHaveValue('');
+
+  await setInput(page, '.frame-properties-popup .label-color-input >> nth=0', '#d72f2f');
+  await expect(opacities.nth(0)).toHaveValue('100%');
+  await expect(opacities.nth(1)).toHaveValue('');
+});
+
 test('frame properties edits output size through an undoable command', async function({page}) {
   await loadFixture(page);
   await page.evaluate(function() {
