@@ -2021,10 +2021,22 @@ div.basemap-style-btn.active {
 	cursor: default;
 }
 
-/* Over a label's knot or anchor handle, where a drag moves the handle rather
-   than placing a label or panning the map. */
-.map-layers.label-handle {
+/* Over a selected label's text, where a drag moves the text (or the whole
+   label) rather than placing a label or panning the map. */
+.map-layers.label-text-drag {
 	cursor: move;
+}
+
+/* Over one of a selected label's control points -- a knot, its anchor, or a
+   callout handle -- which a drag moves on its own. Not the text's cursor,
+   because the two are often close together or on top of each other. */
+.map-layers.label-handle {
+	cursor: pointer;
+}
+
+/* Over a selected label's width handle, which only moves sideways. */
+.map-layers.label-resize {
+	cursor: ew-resize;
 }
 
 .map-layers.ruler-dragging {
@@ -2259,6 +2271,43 @@ body.pan.panning .map-layers:not(.drawing) {
 	vector-effect: non-scaling-stroke;
 }
 
+/* A selected text block's column: the width handle's box, drawn fainter than
+   the box around the text, which is the label itself. */
+.label-cue-column {
+	fill: none;
+	stroke: #3a7ddc;
+	stroke-width: 1px;
+	stroke-dasharray: 3 3;
+	stroke-opacity: 0.6;
+	vector-effect: non-scaling-stroke;
+}
+
+/* A selected label's width and callout handles. The callout's end at the text
+   is filled, so that the two ends of the line read differently. */
+.label-cue-handle {
+	fill: #fff;
+	stroke: #3a7ddc;
+	stroke-width: 1.5px;
+	vector-effect: non-scaling-stroke;
+}
+
+.label-cue-attach {
+	fill: #3a7ddc;
+	stroke: #fff;
+	stroke-width: 1px;
+}
+
+/* The width being dragged out for a new text block: a line's height, dashed
+   like the other things the tool draws that are not yet a label. */
+.label-block-guide {
+	fill: none;
+	stroke: #3a7ddc;
+	stroke-width: 1px;
+	stroke-dasharray: 3 2;
+	vector-effect: non-scaling-stroke;
+	pointer-events: none;
+}
+
 /* The cue for a selection too large to outline label by label -- selecting a
    whole layer to restyle it. A halo in the selection's own blue, the same
    treatment the older styling mode uses in yellow: at that size the question
@@ -2308,6 +2357,18 @@ body.pan.panning .map-layers:not(.drawing) {
 	fill: none;
 	stroke: #cc6acc;
 	stroke-width: 1px;
+	vector-effect: non-scaling-stroke;
+}
+
+/* A text block's column, the width its text wraps to, behind the box around
+   the text itself. Fainter and dashed, because it is a limit rather than the
+   label: the box is what a callout meets. */
+.label-edit-column {
+	fill: none;
+	stroke: #cc6acc;
+	stroke-width: 1px;
+	stroke-dasharray: 3 3;
+	stroke-opacity: 0.6;
 	vector-effect: non-scaling-stroke;
 }
 
@@ -2441,8 +2502,8 @@ body.pan.panning .map-layers:not(.drawing) {
 	pointer-events: none;
 	background-color: rgba(255, 255, 255, 0.85);
 	color: var(--colored-text);
-	font-size: 13px;
-	line-height: 13px;
+	font-size: 12px;
+	line-height: 12px;
 	padding: 3px 6px 4px 6px;
 	white-space: nowrap;
 }
@@ -2533,7 +2594,7 @@ body.pan.panning .map-layers:not(.drawing) {
 	   and the button beside them are all the same height. */
 	--label-field-height: 22px;
 	--label-field-radius: 4px;
-	--label-field-border: #bbb;
+	--label-field-border: #c6c6c6;
 	/* The narrow column of a split row, wide enough for the longest caption
 	   over it -- "Letter spacing", which measures 71px -- and the same in
 	   every row of every panel, so that the field edges line up down the
@@ -2777,7 +2838,8 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .label-style-row {
 	display: block;
-	margin-top: 7px;
+	margin-top: 2px;
+	margin-bottom: 5px;
 }
 
 .label-style-row span,
@@ -3148,6 +3210,13 @@ body.pan.panning .map-layers:not(.drawing) {
 	align-self: center;
 }
 
+/* A section switched off shows only its heading (see setSectionCollapsed()),
+   including the caption the Icon heading carries over its size column. */
+.label-style-panel .label-style-section.collapsed > :not(.label-style-section-title),
+.label-style-panel .label-style-section.collapsed .label-icon-size-caption {
+	display: none;
+}
+
 /* .hidden is one class and the rule above is two, so a heading told to hide
    would go on being laid out. The circle panel hides its Circles heading once
    the points are circles: the panel's title says so, and the section is the
@@ -3173,6 +3242,17 @@ body.pan.panning .map-layers:not(.drawing) {
 /* Where label text is measured (gui-label-measure.mjs). Off the page rather
    than display:none, which would give it no layout and its text no box. */
 .label-measure-svg {
+	position: absolute;
+	left: -10000px;
+	top: -10000px;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+}
+
+/* Where text blocks are wrapped (gui-label-wrap.mjs), for the same reason. The
+   wrapping <div> sets its own width, which the clipped box does not limit. */
+.label-wrap-measure {
 	position: absolute;
 	left: -10000px;
 	top: -10000px;
@@ -3254,6 +3334,7 @@ body.pan.panning .map-layers:not(.drawing) {
    on, some off -- is both halves at once with the knob over the join. */
 .label-toggle {
 	position: relative;
+	top: -1px;
 	flex: none;
 	width: 26px;
 	height: 15px;
@@ -3300,7 +3381,7 @@ body.pan.panning .map-layers:not(.drawing) {
 }
 
 .label-style-section-title {
-	margin-top: 11px;
+	margin-top: 8px;
 	font-weight: 600;
 	color: #333;
 }
@@ -3701,10 +3782,28 @@ body.dragging-color-picker * {
 	transform: scale(1.4);
 }
 
-.label-align-buttons .label-panel-btn {
+.label-align-buttons .label-panel-btn,
+.label-callout-buttons .label-panel-btn {
 	display: flex;
 	align-items: center;
 	justify-content: center;
+}
+
+/* Lines like the alignment glyphs, with the arrowhead and the dot filled. */
+.label-callout-symbol {
+	display: block;
+	width: 16px;
+	height: 16px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.4;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.label-callout-symbol .fill {
+	fill: currentColor;
+	stroke: none;
 }
 
 /* Drawn larger than the icon symbols above, which share its viewBox but not

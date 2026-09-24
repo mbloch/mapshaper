@@ -1031,98 +1031,6 @@
     return _el;
   }
 
-  function filterLayerByIds(lyr, ids) {
-    var shapes;
-    if (lyr.shapes) {
-      shapes = ids.map(function(id) {
-        return lyr.shapes[id];
-      });
-      return utils$1.defaults({shapes: shapes, data: null}, lyr);
-    }
-    return lyr;
-  }
-
-  function formatLayerNameForDisplay(name) {
-    return name || '[unnamed]';
-  }
-
-  function cleanLayerName(raw) {
-    return raw.replace(/[\n\t/\\]/g, '')
-      .replace(/^[.\s]+/, '').replace(/[.\s]+$/, '');
-  }
-
-  function updateLayerStackOrder(layers) {
-    // 1. assign ascending ids to unassigned layers above the range of other layers
-    layers.forEach(function(o, i) {
-      if (!o.layer.menu_order) o.layer.menu_order = 1e6 + i;
-    });
-    // 2. sort in ascending order
-    layers.sort(function(a, b) {
-      return a.layer.menu_order - b.layer.menu_order;
-    });
-    // 3. assign consecutve ids
-    layers.forEach(function(o, i) {
-      o.layer.menu_order = i + 1;
-    });
-    return layers;
-  }
-
-  function sortLayersForMenuDisplay(layers) {
-    layers = updateLayerStackOrder(layers);
-    return layers.reverse();
-  }
-
-  function setLayerPinning(lyr, pinned) {
-    lyr.pinned = !!pinned;
-  }
-
-
-  function calcDotScale(layers, ext) {
-    var bbox = ext.getBounds().scale(1.3).toArray(); // add buffer
-    // var topTier = 50000; // can be a bottleneck
-    var topTier = 10000; // short-circuit counting here
-    var count = 0;
-    layers = layers.filter(function(lyr) {
-      return lyr.geometry_type == 'point' && lyr.gui.style?.dotSize > 0;
-    });
-    layers.forEach(function(lyr) {
-      count += countPoints(lyr.gui.displayLayer.shapes, topTier, bbox);
-    });
-    count = Math.min(topTier, count) || 1;
-    var k = Math.pow(5 - utils$1.clamp(Math.log10(count), 1, 4), 1.25);
-
-    // zoom adjustments
-    var mapScale = ext.scale();
-    if (mapScale < 0.5) {
-      k *= Math.pow(mapScale + 0.5, 0.35);
-    } else if (mapScale > 1) {
-      // scale faster at first
-      k *= Math.pow(Math.min(mapScale, 4), 0.25);
-      k *= Math.pow(mapScale, 0.02);
-    }
-
-    // scale down when map is small
-    var smallSide = Math.min(ext.width(), ext.height());
-    k *= utils$1.clamp(smallSide / 500, 0.5, 1);
-    return k;
-  }
-
-  function countPoints(shapes, max, bbox) {
-    var count = 0;
-    var shp, p;
-    // short-circuit point counting above top threshold
-    for (var i=0, n=shapes.length; i<n && count<max; i++) {
-      shp = shapes[i];
-      for (var j=0, m=(shp ? shp.length : 0); j<m; j++) {
-        p = shp[j];
-        if (p[0] > bbox[0] && p[0] < bbox[2] && p[1] > bbox[1] && p[1] < bbox[3]) {
-          count ++;
-        }
-      }
-    }
-    return count;
-  }
-
   async function showPrompt(msg, title) {
     var popup = showPopupAlert(msg, title);
     return new Promise(function(resolve) {
@@ -2669,7 +2577,7 @@
     return obj === Object(obj); // via underscore
   }
 
-  function clamp$4(val, min, max) {
+  function clamp$5(val, min, max) {
     return val < min ? min : (val > max ? max : val);
   }
 
@@ -3145,12 +3053,12 @@
     return decimals >= 0 ? num.toFixed(decimals) : String(num);
   }
 
-  function formatNumber$2(val) {
+  function formatNumber$3(val) {
     return val + '';
   }
 
   function formatIntlNumber(val) {
-    var str = formatNumber$2(val);
+    var str = formatNumber$3(val);
     return '"' + str.replace('.', ',') + '"'; // need to quote if comma-delimited
   }
 
@@ -3320,7 +3228,7 @@
   function findValueByRank(arr, rank) {
     if (!arr.length || rank < 1 || rank > arr.length) error$1("[findValueByRank()] invalid input");
 
-    rank = clamp$4(rank | 0, 1, arr.length);
+    rank = clamp$5(rank | 0, 1, arr.length);
     var k = rank - 1, // conv. rank to array index
         n = arr.length,
         l = 0,
@@ -3694,12 +3602,12 @@
   // self-import and the resulting Rollup circular-dependency warning.
   var utils = {
     addThousandsSep, addslashes, arrayToIndex,
-    clamp: clamp$4, cleanNumericString, contains, copyElements, countValues, createBuffer,
+    clamp: clamp$5, cleanNumericString, contains, copyElements, countValues, createBuffer,
     defaults, difference,
     endsWith, every, expandoBuffer, extend, extendBuffer,
     find, findMedian, findQuantile, findRankByValue, findStringPrefix,
     findValueByPct, findValueByRank, forEach, forEachProperty, format,
-    formatDateISO, formatIntlNumber, formatNumber: formatNumber$2, formatNumberForDisplay,
+    formatDateISO, formatIntlNumber, formatNumber: formatNumber$3, formatNumberForDisplay,
     formatVersionedName, formatter,
     genericSort, getArrayBounds, getGenericComparator, getKeyComparator,
     getSortedIds, getUniqueName, groupBy,
@@ -7433,11 +7341,6 @@
           model.setDefaultTarget([target.layers[0]], target.dataset);
         }
       }
-      if (opts.display_all && importTotal === 0) {
-        model.getLayers().forEach(function(o) {
-          setLayerPinning(o.layer, true);
-        });
-      }
       model.updated({select: true}); // trigger redraw
     }
 
@@ -8672,6 +8575,123 @@
     } else {
       gui.map.setDisplayCRS(null);
     }
+  }
+
+  function filterLayerByIds(lyr, ids) {
+    var shapes;
+    if (lyr.shapes) {
+      shapes = ids.map(function(id) {
+        return lyr.shapes[id];
+      });
+      return utils$1.defaults({shapes: shapes, data: null}, lyr);
+    }
+    return lyr;
+  }
+
+  function formatLayerNameForDisplay(name) {
+    return name || '[unnamed]';
+  }
+
+  function cleanLayerName(raw) {
+    return raw.replace(/[\n\t/\\]/g, '')
+      .replace(/^[.\s]+/, '').replace(/[.\s]+$/, '');
+  }
+
+  function updateLayerStackOrder(layers) {
+    // 1. assign ascending ids to unassigned layers above the range of other layers
+    layers.forEach(function(o, i) {
+      if (!o.layer.menu_order) o.layer.menu_order = 1e6 + i;
+    });
+    // 2. sort in ascending order
+    layers.sort(function(a, b) {
+      return a.layer.menu_order - b.layer.menu_order;
+    });
+    // 3. assign consecutve ids
+    layers.forEach(function(o, i) {
+      o.layer.menu_order = i + 1;
+    });
+    return layers;
+  }
+
+  function sortLayersForMenuDisplay(layers) {
+    layers = updateLayerStackOrder(layers);
+    return layers.reverse();
+  }
+
+  function setLayerPinning(lyr, pinned) {
+    lyr.pinned = !!pinned;
+  }
+
+  // Whether a layer can be shown on the map alongside the active layer, and so
+  // has an eye icon in the layers panel. A frame is drawn by preview mode, and a
+  // data-only layer has nothing to draw.
+  function layerIsPinnable(lyr, dataset) {
+    if (dataset && internal.isFrameLayer(lyr, dataset.arcs)) return false;
+    return internal.layerIsGeometric(lyr) || internal.layerHasRaster(lyr) ||
+      internal.layerHasFurniture(lyr);
+  }
+
+  // Every layer is visible until something says otherwise, so that a layer
+  // made or imported next to another does not hide it -- a reference layer used
+  // as a guide for drawing or labelling would otherwise vanish the moment the
+  // new layer became the active one. Only layers whose visibility has never
+  // been set are touched: a snapshot stores every layer's, and a layer hidden
+  // with its eye icon stays hidden.
+  //
+  // layers: [{layer, dataset}], as from model.getLayers()
+  function showNewLayers(layers) {
+    layers.forEach(function(o) {
+      if (o.layer.pinned === undefined && layerIsPinnable(o.layer, o.dataset)) {
+        setLayerPinning(o.layer, true);
+      }
+    });
+  }
+
+
+  function calcDotScale(layers, ext) {
+    var bbox = ext.getBounds().scale(1.3).toArray(); // add buffer
+    // var topTier = 50000; // can be a bottleneck
+    var topTier = 10000; // short-circuit counting here
+    var count = 0;
+    layers = layers.filter(function(lyr) {
+      return lyr.geometry_type == 'point' && lyr.gui.style?.dotSize > 0;
+    });
+    layers.forEach(function(lyr) {
+      count += countPoints(lyr.gui.displayLayer.shapes, topTier, bbox);
+    });
+    count = Math.min(topTier, count) || 1;
+    var k = Math.pow(5 - utils$1.clamp(Math.log10(count), 1, 4), 1.25);
+
+    // zoom adjustments
+    var mapScale = ext.scale();
+    if (mapScale < 0.5) {
+      k *= Math.pow(mapScale + 0.5, 0.35);
+    } else if (mapScale > 1) {
+      // scale faster at first
+      k *= Math.pow(Math.min(mapScale, 4), 0.25);
+      k *= Math.pow(mapScale, 0.02);
+    }
+
+    // scale down when map is small
+    var smallSide = Math.min(ext.width(), ext.height());
+    k *= utils$1.clamp(smallSide / 500, 0.5, 1);
+    return k;
+  }
+
+  function countPoints(shapes, max, bbox) {
+    var count = 0;
+    var shp, p;
+    // short-circuit point counting above top threshold
+    for (var i=0, n=shapes.length; i<n && count<max; i++) {
+      shp = shapes[i];
+      for (var j=0, m=(shp ? shp.length : 0); j<m; j++) {
+        p = shp[j];
+        if (p[0] > bbox[0] && p[0] < bbox[2] && p[1] > bbox[1] && p[1] < bbox[3]) {
+          count ++;
+        }
+      }
+    }
+    return count;
   }
 
   // lyr: a map layer with gui property
@@ -10392,6 +10412,20 @@
     return false;
   }
 
+  // Test if the map should be re-framed when the content it was showing had no
+  // area -- a single point, or points in a line -- such as the first label
+  // placed on an otherwise empty map. Such bounds are padded by a token amount,
+  // so mapNeedsReset()'s area-change rule would compare the new bounds against
+  // almost nothing: a second label anywhere in view grows the area by more than
+  // its threshold, and the map zooms in to the two labels. The view is the
+  // only real scale left to compare against, and new content smaller than the
+  // view is no reason to zoom in to it.
+  function mapNeedsResetFromCollapsedBounds(newBounds, viewportBounds, flags) {
+    var chgThreshold = flags.proj ? 1e3 : 1e8;
+    if (!newBounds.intersects(viewportBounds)) return true;
+    return newBounds.area() / viewportBounds.area() > chgThreshold;
+  }
+
   // Test if an update may have affected the visible shape of arcs
   // @flags Flags from update event
   function arcsMayHaveChanged(flags) {
@@ -11780,7 +11814,9 @@
         layerCount++;
       });
 
-      if (pinnableCount < 2) {
+      // Shown for a single layer too: it says whether the next layer made or
+      // imported will be drawn over this one or replace it on the map.
+      if (pinnableCount < 1) {
         pinAll.hide();
       } else {
         pinAll.show();
@@ -12222,8 +12258,7 @@
     }
 
     function isPinnable(lyr, dataset) {
-      if (dataset && internal.isFrameLayer(lyr, dataset.arcs)) return false;
-      return internal.layerIsGeometric(lyr) || internal.layerHasRaster(lyr) || internal.layerHasFurniture(lyr);
+      return layerIsPinnable(lyr, dataset);
     }
 
     function layerCanBeStyled(lyr) {
@@ -13729,6 +13764,13 @@
   // keeps them out of a character class so that "\\n" is matched as a pair.
   var ANY_NEWLINE = /\r\n|\\n|<br>|\n|\r/gi;
 
+  // A line break the wrapper inserted rather than one the user typed. It consumes
+  // no character -- the space the line broke at stays before it -- so removing
+  // every one gives back the text as typed. See
+  // docs/development/text-annotation-design.md.
+  var SOFT_BREAK = '<wbr>';
+  var SOFT_BREAK_RXP = /<wbr>/gi;
+
   // How a label lays out its line breaks, which is not the same for the two kinds.
   // An anchored label stacks its lines with <tspan>. A path label joins them with
   // a space, because a <tspan> inside a <textPath> advances along the curve
@@ -13743,10 +13785,72 @@
   // all, and a line the user has just opened with Enter and not yet typed into.
   var TEXT_PLACEHOLDER = '\u200b';
 
-  // Data value -> the string the user edits, with real newlines.
+  // Data value -> the string the user edits, with real newlines and without the
+  // wrapper's soft breaks, which are rewrapped rather than edited.
   function decodeLabelText(val) {
     if (val === null || val === undefined || val === '') return '';
-    return String(val).replace(ANY_NEWLINE, '\n');
+    return String(val).replace(ANY_NEWLINE, '\n').replace(SOFT_BREAK_RXP, '');
+  }
+
+  // Data value -> {text, breaks}: the string the user edits, and the offsets in
+  // it where the stored value has a soft break.
+  function readSoftBreaks(val) {
+    var str = val === null || val === undefined ? '' : String(val).replace(ANY_NEWLINE, '\n');
+    var parts = str.split(SOFT_BREAK_RXP);
+    var breaks = [];
+    var text = parts[0];
+    for (var i = 1; i < parts.length; i++) {
+      breaks.push(text.length);
+      text += parts[i];
+    }
+    return {text: text, breaks: breaks};
+  }
+
+  // The string the user edits, plus soft breaks at @breaks (ascending offsets
+  // into it) -> the same string with the markers written in.
+  function insertSoftBreaks(text, breaks) {
+    var out = '', prev = 0;
+    if (!breaks || breaks.length === 0) return text;
+    for (var i = 0; i < breaks.length; i++) {
+      out += text.substring(prev, breaks[i]) + SOFT_BREAK;
+      prev = breaks[i];
+    }
+    return out + text.substring(prev);
+  }
+
+  // Where a laid-out text's lines start because they were wrapped, given each
+  // character's top edge (see gui-label-wrap.mjs).
+  //
+  // @getTop(i) returns the top of character i in px, or null for one with no box.
+  // A line that starts after a typed newline is not a soft break, and neither is
+  // a character with no box -- the break lands on the next one that has a box.
+  // The low half of a surrogate pair is never asked about.
+  function findSoftBreaks(text, getTop, threshold) {
+    var breaks = [], lastTop = null, afterNewline = false, i, c, top;
+    for (i = 0; i < text.length; i++) {
+      c = text.charCodeAt(i);
+      if (c == 10) {
+        afterNewline = true;
+        continue;
+      }
+      if (c >= 0xDC00 && c <= 0xDFFF) continue;
+      top = getTop(i);
+      if (top === null) continue;
+      if (lastTop !== null && !afterNewline && top > lastTop + threshold) {
+        breaks.push(i);
+      }
+      lastTop = top;
+      afterNewline = false;
+    }
+    return breaks;
+  }
+
+  function sameSoftBreaks(a, b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
   }
 
   // The string the user edits -> the data value. Newlines become the escape,
@@ -13763,12 +13867,28 @@
   // break that started it. That does two things: an empty line gets something to
   // lay out, so a line the user has just opened appears and can hold the caret,
   // and the rendered characters stay aligned one-for-one with the edited ones.
-  function getRenderedLines(str) {
+  //
+  // @breaks: offsets of soft breaks, which also start a line. A soft break
+  // consumes no character, so its line gets no placeholder and the alignment
+  // holds.
+  function getRenderedLines(str, breaks) {
     var text = decodeLabelText(str);
+    var lines = [], start = 0, lead = '', b = 0, i;
     if (text === '') return [TEXT_PLACEHOLDER];
-    return text.split('\n').map(function(line, i) {
-      return i === 0 ? line : TEXT_PLACEHOLDER + line;
-    });
+    breaks = breaks || [];
+    for (i = 0; i <= text.length; i++) {
+      while (b < breaks.length && breaks[b] < i) b++;
+      if (i == text.length || text.charAt(i) == '\n') {
+        lines.push(lead + text.substring(start, i));
+        start = i + 1;
+        lead = TEXT_PLACEHOLDER;
+      } else if (breaks[b] === i && i > start) {
+        lines.push(lead + text.substring(start, i));
+        start = i;
+        lead = '';
+      }
+    }
+    return lines;
   }
 
   // Whether the text would draw nothing at all: empty, or made only of
@@ -13959,10 +14079,11 @@
   //
   // label-pos places text relative to an anchor point, which a path label does
   // not have -- its text runs along the curve. Writing it there would put a
-  // property on the feature that nothing reads.
+  // property on the feature that nothing reads. label-width is the same: a path
+  // label is one line.
   function getStyleFields$1(style, isPathLabel) {
     return Object.keys(style || {}).filter(function(name) {
-      return !(isPathLabel && name == 'label-pos');
+      return !(isPathLabel && (name == 'label-pos' || name == 'label-width'));
     });
   }
 
@@ -14024,18 +14145,45 @@
   //   anchor: the value for text-anchor
   //   id:     feature id of the label
   //   target: layer name, or null to use the current target
+  //   via:    (optional) the callout-via the text carried with it
   function getLabelOffsetCommand(opts) {
     var parts = ['-style', 'dx=' + opts.dx, 'dy=' + opts.dy,
       'text-anchor=' + opts.anchor, 'label-pos='];
+    if (opts.via) parts.push('callout-via=' + quoteCommandValue(opts.via));
     parts.push('ids=' + opts.id);
     if (opts.target) parts.push('target=' + quoteCommandValue(opts.target));
+    return parts.join(' ');
+  }
+
+  // The command a drag on one of a label's handles writes, run once on release.
+  //
+  //   values: {field: value}, where '' removes the field -- which is what
+  //     -style reads an empty value as, and how a handle goes back to automatic
+  //   id:     feature id of the label
+  //   opts:
+  //     target: layer name, or null to use the current target
+  //     text:   (optional) rewrapped label-text, with real newlines and soft
+  //       breaks. A second -style in the same string, so that a new width and
+  //       the lines it breaks into are one undo step.
+  function getLabelStyleCommand(values, id, opts) {
+    var o = opts || {};
+    var parts = ['-style'];
+    Object.keys(values).forEach(function(name) {
+      var val = values[name];
+      parts.push(name + '=' + (val === '' ? '' : quoteCommandValue(String(val))));
+    });
+    parts.push('ids=' + id);
+    if (o.target) parts.push('target=' + quoteCommandValue(o.target));
+    if (typeof o.text == 'string') {
+      parts.push(getLabelTextCommand(o.text, id, o.target));
+    }
     return parts.join(' ');
   }
 
   // The command that saves edited text, run once when an editing session ends so
   // that a session is one undo step rather than one per keystroke.
   //
-  //   text: the edited string, with real newlines
+  //   text: the edited string, with real newlines and any soft breaks
   //   id:   feature id of the label
   //   target: layer name, or null to use the current target
   function getLabelTextCommand(text, id, target) {
@@ -15631,16 +15779,16 @@
     function getCanvasPoint(canvas, evt) {
       var rect = canvas.getBoundingClientRect();
       return {
-        x: clamp$3(Math.round((evt.clientX - rect.left) / rect.width * (canvas.width - 1)), 0, canvas.width - 1),
-        y: clamp$3(Math.round((evt.clientY - rect.top) / rect.height * (canvas.height - 1)), 0, canvas.height - 1)
+        x: clamp$4(Math.round((evt.clientX - rect.left) / rect.width * (canvas.width - 1)), 0, canvas.width - 1),
+        y: clamp$4(Math.round((evt.clientY - rect.top) / rect.height * (canvas.height - 1)), 0, canvas.height - 1)
       };
     }
 
     function setPickerColor(hsb) {
       pickerColor = {
-        h: clamp$3(Math.round(hsb.h), 0, 255),
-        s: clamp$3(Math.round(hsb.s), 0, 255),
-        b: clamp$3(Math.round(hsb.b), 0, 255)
+        h: clamp$4(Math.round(hsb.h), 0, 255),
+        s: clamp$4(Math.round(hsb.s), 0, 255),
+        b: clamp$4(Math.round(hsb.b), 0, 255)
       };
       drawColorPicker();
       updatePickerFields();
@@ -15781,7 +15929,7 @@
   }
 
   function pctToByte(val) {
-    return Math.round(clamp$3(val, 0, 100) / 100 * 255);
+    return Math.round(clamp$4(val, 0, 100) / 100 * 255);
   }
 
   function byteToDegrees(val) {
@@ -15789,14 +15937,14 @@
   }
 
   function degreesToByte(val) {
-    return Math.round(clamp$3(val, 0, 360) / 360 * 255);
+    return Math.round(clamp$4(val, 0, 360) / 360 * 255);
   }
 
   function parseNumberField(str) {
     return Number(String(str).replace(/[°%]/g, '').trim());
   }
 
-  function clamp$3(val, min, max) {
+  function clamp$4(val, min, max) {
     return isFinite(val) ? Math.max(min, Math.min(max, val)) : min;
   }
 
@@ -16184,9 +16332,12 @@
         setDisplay(shown);
         return;
       }
+      var changed = String(val) !== shown;
       setDisplay(String(val));
-      if (String(val) !== shown && o.onSet) o.onSet(val);
+      // Before onSet, which can take focus away: the blur fires 'change', and
+      // the commit it re-enters has to find this value already shown.
       shown = String(val);
+      if (changed && o.onSet) o.onSet(val);
     }
 
     function setDisplay(str) {
@@ -16521,7 +16672,12 @@
     'dominant-baseline',
     'label-pos', 'label-side', 'label-start-offset', 'dx', 'dy',
     'fill', 'opacity', 'css', 'class',
-    'icon', 'icon-size', 'icon-color', 'icon-opacity'
+    'halo-width', 'halo-color', 'halo-opacity',
+    'icon', 'icon-size', 'icon-color', 'icon-opacity',
+    // not callout-via or callout-attach, which are placed for one label's
+    // surroundings rather than chosen as a style
+    'callout', 'callout-end', 'callout-end-size', 'callout-color', 'callout-opacity', 'callout-width',
+    'callout-gap'
   ];
 
   // values: [[field, value], ...], the form the panel's controls produce
@@ -16610,23 +16766,49 @@
   //
   // Fixed on entry, so that a stray drag cannot displace text in a session that
   // never asked for it, and remembered while the tool stays on.
+  //
+  // Text blocks keep a mode of their own, which starts out Draggable. A block is
+  // usually an annotation set off from the point it is about, and is placed by
+  // dragging it away from its anchor; point text more often sits where its
+  // position puts it and is moved as a whole.
+  //
+  // @kind: 'point' (the default) or 'block' -- see getLabelPositionKind()
   var LABEL_POSITION_MODES = ['fixed', 'draggable'];
 
-  function getLabelPositionMode(gui) {
-    return gui.state.label_position_mode || 'fixed';
+  var DEFAULT_POSITION_MODES = {point: 'fixed', block: 'draggable'};
+
+  function getLabelPositionMode(gui, kind) {
+    var k = kind == 'block' ? 'block' : 'point';
+    var modes = gui.state.label_position_modes || {};
+    return modes[k] || DEFAULT_POSITION_MODES[k];
   }
 
-  function setLabelPositionMode(gui, mode) {
-    gui.state.label_position_mode =
-      LABEL_POSITION_MODES.indexOf(mode) > -1 ? mode : 'fixed';
+  // With no @kind, sets both kinds: 'fixed' puts point text in Fixed mode and
+  // blocks back to their own default, which is what the tool does on entry.
+  function setLabelPositionMode(gui, mode, kind) {
+    var modes = gui.state.label_position_modes || {};
+    var val = LABEL_POSITION_MODES.indexOf(mode) > -1 ? mode : 'fixed';
+    if (kind) {
+      modes[kind == 'block' ? 'block' : 'point'] = val;
+    } else {
+      modes = {point: val, block: DEFAULT_POSITION_MODES.block};
+    }
+    gui.state.label_position_modes = modes;
     // The panel's toggle and the tool's drag both read this, and neither owns the
     // other; the panel also has to relight the grid, whose cells mean something
     // different in each mode.
     gui.dispatchEvent('label_position_mode_change');
   }
 
-  function labelTextIsDraggable(gui) {
-    return getLabelPositionMode(gui) == 'draggable';
+  function labelTextIsDraggable(gui, kind) {
+    return getLabelPositionMode(gui, kind) == 'draggable';
+  }
+
+  // Which position mode governs a label: 'block' for a text block (a label with
+  // a wrap width), 'point' for any other.
+  function getLabelPositionKind(rec) {
+    var w = rec ? Number(rec['label-width']) : 0;
+    return w > 0 && isFinite(w) ? 'block' : 'point';
   }
 
   // The label currently open for text editing, or null: {id, refocus}.
@@ -16704,6 +16886,9 @@
   //   anchor:  the justification it is drawn with
   //   width:   the width of its text, in the same space; 0 if unmeasurable
   //   aligned: whether it carries a label-align (see below)
+  //   keepAnchor: (optional) leave the justification alone, for a text block:
+  //     its lines are laid out within a column, and re-justifying them as the
+  //     block passes its anchor would rearrange the text rather than move it
   // delta: {dx, dy} -- how far the pointer has moved, in the same space.
   //
   // Returns two descriptions of the same placement:
@@ -16731,7 +16916,7 @@
     // that correction, 'start' is the one text-anchor whose dx is the left edge
     // itself -- which is also the value that would leave the label where it is
     // if the alignment were later removed.
-    var anchor = start.aligned ? 'start' :
+    var anchor = start.aligned ? 'start' : start.keepAnchor ? drawnAnchor :
       width > 0 ? getAnchorForCentre(left + width / 2, width) : drawnAnchor;
     // An aligned label goes on being drawn with the anchor its alignment gives
     // it, whatever the drag writes: the alignment is unchanged, so the renderer
@@ -16799,6 +16984,159 @@
     return Math.round(px * PRECISION) / PRECISION;
   }
 
+  // Wrapping a text block to its label-width, with the browser's own line
+  // breaker.
+  //
+  // There is no API that reports where a browser breaks lines, so the text is
+  // laid out in an offscreen <div> at the label's width and font, and read back:
+  // Range.getClientRects() gives each character's line box, and a character
+  // sitting lower than the one before it starts a line. Everything the browser
+  // knows about line breaking -- UAX #14 classes, breaks after hyphens, none at
+  // no-break spaces, CJK, dictionary breaking for Thai -- comes with it.
+  //
+  // The font is read back from a rendered sample of the label rather than
+  // assembled from the record, so that the layer's defaults and any inline css
+  // apply exactly as they do on the map.
+  //
+  // See docs/development/text-annotation-design.md.
+
+  // Properties that change where lines break, and so the ones a change to which
+  // has to rewrap a text block.
+  var WRAP_FIELDS = ['label-width', 'font-family', 'font-size',
+    'font-weight', 'font-style', 'font-stretch', 'letter-spacing', 'css'];
+
+  var COPIED_STYLES = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle',
+    'fontStretch', 'fontVariant', 'fontKerning', 'fontFeatureSettings',
+    'fontVariationSettings', 'letterSpacing', 'wordSpacing', 'textTransform'];
+
+  // Lines are laid out far apart, so that a character in a fallback font sitting
+  // a little higher or lower than its neighbours is not mistaken for a new line.
+  var LINE_HEIGHT = 3;
+
+  var CACHE_LIMIT = 2000;
+  var cache$2 = new Map();
+  var wrapper = null;
+
+  // The label's width in px, or 0 for a label that does not wrap.
+  function getLabelWrapWidth(rec) {
+    var w = rec ? Number(rec['label-width']) : 0;
+    return w > 0 && isFinite(w) ? w : 0;
+  }
+
+  // Offsets into @text (real newlines, no soft breaks) where a line starts
+  // because it was wrapped, in ascending order.
+  function getSoftBreaks(text, rec) {
+    var width = getLabelWrapWidth(rec);
+    var key, breaks;
+    if (!width || !text) return [];
+    key = getWrapKey(text, rec);
+    if (cache$2.has(key)) return cache$2.get(key);
+    breaks = measureSoftBreaks(text, rec, width);
+    if (cache$2.size >= CACHE_LIMIT) cache$2.clear();
+    cache$2.set(key, breaks);
+    return breaks;
+  }
+
+  // A stored label-text value, rewrapped for @rec's width and font. Returned
+  // unchanged when neither the old value nor the new one has a soft break, so
+  // that a label that does not wrap keeps the line breaks it was written with.
+  function rewrapLabelValue(value, rec) {
+    var o = readSoftBreaks(value);
+    var breaks = getSoftBreaks(o.text, rec);
+    if (sameSoftBreaks(o.breaks, breaks)) return value;
+    return encodeLabelText(insertSoftBreaks(o.text, breaks));
+  }
+
+  function clearWrapCache() {
+    cache$2.clear();
+  }
+
+  function getWrapKey(text, rec) {
+    var parts = [text];
+    WRAP_FIELDS.forEach(function(name) {
+      var val = rec[name];
+      parts.push(val === null || val === undefined ? '' : String(val));
+    });
+    parts.push(rec['class'] || '');
+    return parts.join('\u0000');
+  }
+
+  function measureSoftBreaks(text, rec, width) {
+    var w = getWrapper();
+    var style, fontSize, node, range;
+    if (!w) return [];
+    style = getLabelFontStyle(w, rec);
+    if (!style) return [];
+    COPIED_STYLES.forEach(function(name) {
+      w.div.style[name] = style[name] || '';
+    });
+    w.div.style.width = width + 'px';
+    w.div.textContent = text;
+    node = w.div.firstChild;
+    fontSize = parseFloat(style.fontSize) || 12;
+    range = document.createRange();
+    var breaks = findSoftBreaks(text, function(i) {
+      var end = isHighSurrogate(text.charCodeAt(i)) ? i + 2 : i + 1;
+      var r;
+      range.setStart(node, i);
+      range.setEnd(node, Math.min(end, text.length));
+      r = range.getBoundingClientRect();
+      return r.height > 0 ? r.top : null;
+    }, fontSize * LINE_HEIGHT / 2);
+    w.div.textContent = '';
+    return breaks;
+  }
+
+  function isHighSurrogate(c) {
+    return c >= 0xD800 && c <= 0xDBFF;
+  }
+
+  // The computed font of @rec's label, from a sample rendered by the same code
+  // as the map, inside the defaults a label inherits from its layer's group.
+  function getLabelFontStyle(w, rec) {
+    var sample = Object.assign({}, rec, {'label-text': 'x'});
+    var node, cs, out;
+    delete sample['label-align'];
+    w.svg.innerHTML = internal.svg.stringify({
+      tag: 'g',
+      properties: internal.getLabelTextDefaults(),
+      children: [internal.svg.renderStyledLabel(sample)]
+    });
+    node = w.svg.querySelector('text');
+    if (!node) return null;
+    cs = window.getComputedStyle(node);
+    out = {};
+    COPIED_STYLES.forEach(function(name) {
+      out[name] = cs[name];
+    });
+    w.svg.innerHTML = '';
+    return out;
+  }
+
+  // Positioned off the page rather than hidden with display:none, which gives an
+  // element no layout and its text no lines.
+  function getWrapper() {
+    var box, div, svg;
+    if (wrapper) return wrapper;
+    if (typeof document == 'undefined') return null;
+    box = document.createElement('div');
+    box.setAttribute('class', 'label-wrap-measure');
+    box.setAttribute('aria-hidden', 'true');
+    div = document.createElement('div');
+    div.style.whiteSpace = 'pre-wrap';
+    div.style.overflowWrap = 'break-word';
+    div.style.lineHeight = String(LINE_HEIGHT);
+    div.style.padding = '0';
+    div.style.border = '0';
+    div.style.boxSizing = 'content-box';
+    svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    box.appendChild(div);
+    box.appendChild(svg);
+    document.body.appendChild(box);
+    wrapper = {div: div, svg: svg};
+    return wrapper;
+  }
+
   var fontField = 'font-family';
   var fontSizeField = 'font-size';
   var fontStyleField = 'font-style';
@@ -16810,16 +17148,32 @@
   var textAnchorField = 'text-anchor';
   var labelAlignField = 'label-align';
   var cssField = 'css';
+  var haloWidthField = 'halo-width';
+  var haloColorField = 'halo-color';
+  var haloOpacityField = 'halo-opacity';
   var iconField = 'icon';
   var iconSizeField = 'icon-size';
   var iconColorField = 'icon-color';
   var iconOpacityField = 'icon-opacity';
+  var calloutField = 'callout';
+  var calloutEndField = 'callout-end';
+  var calloutEndSizeField = 'callout-end-size';
+  var calloutColorField = 'callout-color';
+  var calloutOpacityField = 'callout-opacity';
+  var calloutWidthField = 'callout-width';
+  var calloutGapField = 'callout-gap';
+  var defaultCalloutShape = 'line';
+  var defaultCalloutWidth = 1;
   var defaultFontSize = 12;
   var defaultFontStyle = 'normal';
   var defaultFontWeight = '400';
   var defaultLabelColor = '#000000';
   var defaultIconColor = '#000000';
   var defaultIconSize = 5;
+  // The width a halo is switched on at: past the edge of the glyphs, so a
+  // stroke of twice this.
+  var defaultHaloWidth = 2;
+  var defaultHaloColor = internal.svg.DEFAULT_HALO_COLOR;
   // The line height field shows this rather than renderLabel()'s 1.1em default,
   // and shows it as a placeholder rather than a value, so that a label carries
   // no line-height until one is chosen. "auto" is the honest description of a
@@ -16846,10 +17200,20 @@
     labelAlignField,
     cssField,
     'label-pos',
+    haloWidthField,
+    haloColorField,
+    haloOpacityField,
     iconField,
     iconSizeField,
     iconColorField,
-    iconOpacityField
+    iconOpacityField,
+    calloutField,
+    calloutEndField,
+    calloutEndSizeField,
+    calloutColorField,
+    calloutOpacityField,
+    calloutWidthField,
+    calloutGapField
   ];
   var labelPositions = ['nw', 'n', 'ne', 'w', 'c', 'e', 'sw', 's', 'se'];
   // The position an icon moves a centred label to when it is switched on: upper
@@ -16911,6 +17275,41 @@
     center: '<line x1="3" y1="4.5" x2="13" y2="4.5"></line><line x1="5.5" y1="8" x2="10.5" y2="8"></line><line x1="4" y1="11.5" x2="12" y2="11.5"></line>',
     right: '<line x1="3" y1="4.5" x2="13" y2="4.5"></line><line x1="8" y1="8" x2="13" y2="8"></line><line x1="5" y1="11.5" x2="13" y2="11.5"></line>'
   };
+  // As with icons, no "none" among the shapes: the section's switch says whether
+  // there is a callout. The ends do have one, since a line with no marker is a
+  // shape of its own rather than the absence of a callout.
+  var calloutShapes = [{
+    name: 'line',
+    title: 'straight'
+  }, {
+    name: 'elbow',
+    title: 'elbow'
+  }, {
+    name: 'curve',
+    title: 'curve'
+  }];
+  var calloutEnds = [{
+    name: 'none',
+    title: 'no marker at the anchor'
+  }, {
+    name: 'arrow',
+    title: 'solid arrowhead at the anchor'
+  }, {
+    name: 'open-arrow',
+    title: 'open arrowhead at the anchor'
+  }];
+  // The anchor is at the lower left of the shapes and at the left of the ends,
+  // which is where the markers go. The arrowheads are drawn to the renderer's
+  // angles, with sides the same visible length -- the open one's stroke
+  // included -- so that they compare as the drawn arrows do.
+  var calloutButtonSymbols = {
+    line: '<path d="M3.5 12.5L12.5 3.5"></path>',
+    elbow: '<path d="M3.5 12.5L8 4.5H13"></path>',
+    curve: '<path d="M3.5 12.5Q4.5 4.5 12.5 4"></path>',
+    none: '<path d="M3 8H13"></path>',
+    arrow: '<path d="M6.7 8H13"></path><path class="fill" d="M2.5 8L8.53 5.57V10.43Z"></path>',
+    'open-arrow': '<path d="M3.2 8H13"></path><path d="M7.38 5.07L3.2 8L7.38 10.93"></path>'
+  };
   var iconButtonSymbols = {
     circle: '<circle cx="8" cy="8" r="4.25"></circle>',
     square: '<rect x="4" y="4" width="8" height="8"></rect>',
@@ -16925,11 +17324,15 @@
     // label-style-panel carries the styling the point and layer panels share; the
     // second class is this panel's own, as theirs are
     var panel = El('div').addClass('label-style-panel text-style-panel rollover').appendTo(parent).hide();
-    var presetControl, fontSelect, fontStyleSelect, fontSizeInput, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, dragModeBtns, iconToggle, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, editingStatus, clearLink, closeBtn, hit;
+    var presetControl, fontSelect, fontStyleSelect, fontSizeInput, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, dragModeBtns, haloToggle, haloWidthInput, haloColorFieldBox, haloColorChit, haloColorInput, haloColorPicker, haloOpacityInput, iconToggle, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, haloSection, iconSection, calloutSection, calloutToggle, calloutShapeGroupEl, calloutShapeBtns, calloutEndGroupEl, calloutEndBtns, calloutColorFieldBox, calloutColorChit, calloutColorInput, calloutColorPicker, calloutOpacityInput, calloutWidthInput, calloutEndSizeInput, calloutGapInput, editingStatus, clearLink, closeBtn, hit;
     var fontOptionsRendered = false;
     // The shape the toggle turns back on, so that switching a symbol off and on
     // again does not silently change a star into a circle.
     var lastIconShape = defaultIconShape;
+    // Likewise the halo's width, which is what switching one off removes.
+    var lastHaloWidth = defaultHaloWidth;
+    // And the callout's shape.
+    var lastCalloutShape = defaultCalloutShape;
 
     initPanel();
     gui.addMode(labelStylePanelMode, turnOn, turnOff);
@@ -17029,8 +17432,18 @@
       });
 
       var header = El('div').addClass('label-style-panel-title').appendTo(panel).text('Label styles');
+      // In label mode the panel belongs to the mode, so closing it leaves the
+      // mode: a panel that shut while the map stayed armed for placing labels
+      // would leave the tool half on, with no panel to turn it off from. Every
+      // other style panel's × closes a panel and nothing else, and this one
+      // reads as the same button, which is the argument for it doing the whole
+      // of what the user asked for rather than part.
       closeBtn = El('button').addClass('label-style-close').appendTo(header).text('×').on('click', function() {
-        gui.clearMode();
+        if (labelModeIsOn()) {
+          gui.interaction.turnOff(); // the tool's own turnOff() takes the panel
+        } else {
+          gui.clearMode();
+        }
       });
 
       var selectRow = El('div').addClass('label-style-selection-row').appendTo(panel);
@@ -17098,6 +17511,9 @@
       // Letter spacing takes the right-hand column on its own, above line
       // height: the two spacing values read as a pair there, and the left of the
       // row is where the alignment buttons go.
+      //
+      // A text block's width is not here: it is set by dragging the block's
+      // handle, and a field for it would be clutter on every other label.
       var letterRow = El('div').addClass('label-style-row label-split-row').appendTo(textSection);
       El('div').addClass('label-split-cell').appendTo(letterRow);
       var letterCell = El('div').addClass('label-split-cell label-spacing-row').appendTo(letterRow);
@@ -17136,15 +17552,69 @@
       var positionRow = El('label').addClass('label-style-row').appendTo(textSection);
       El('span').appendTo(positionRow).text('Offset from anchor');
 
+      // A halo is a yes/no that its three values then qualify, as a symbol is, so
+      // it is switched the same way and its controls are inert while it is off.
+      // Its rows are ones the Text section already has: a colour and its opacity
+      // on one line, and a width in the narrow column beneath, where letter
+      // spacing sits above.
+      haloSection = addSection('Halo');
+      var haloTitle = haloSection.findChild('.label-style-section-title');
+      haloToggle = makeToggle(haloTitle, {
+        title: 'Draw a halo around the text',
+        className: 'label-halo-toggle',
+        onChange: setHaloOn
+      });
+
+      var haloColorRow = El('div').addClass('label-style-row label-split-row').appendTo(haloSection);
+      var haloColorCell = El('div').addClass('label-split-cell label-color-row').appendTo(haloColorRow);
+      haloColorChit = El('div').addClass('label-color-chit').attr('role', 'button');
+      haloColorInput = El('input').attr('type', 'text').attr('title', 'Halo color');
+      haloColorFieldBox = makeColorField(haloColorCell, haloColorChit, haloColorInput);
+      haloColorChit.on('click', function() {
+        if (this.classList.contains('disabled')) return;
+        haloColorPicker.toggle();
+      });
+      haloColorInput.on('change', function() {
+        var color = haloColorInput.node().value.trim();
+        if (color) {
+          if (isHexColor(color)) {
+            haloColorPicker.setColor(color);
+          }
+          applyHaloColor(color);
+        }
+      });
+      haloColorPicker = initColorPicker(haloColorCell, haloColorChit, haloColorInput, applyHaloColor);
+
+      var haloOpacityCell = El('div').addClass('label-split-cell label-opacity-row').appendTo(haloColorRow);
+      haloOpacityInput = addOpacityInput(haloOpacityCell, applyHaloOpacity);
+
+      var haloWidthRow = El('div').addClass('label-style-row label-split-row').appendTo(haloSection);
+      El('div').addClass('label-split-cell').appendTo(haloWidthRow);
+      var haloWidthCell = El('div').addClass('label-split-cell label-spacing-row').appendTo(haloWidthRow);
+      El('span').appendTo(haloWidthCell).text('Width');
+      // Halves as well as whole pixels: a halo is usually 1 to 2px, and the
+      // step between those two is most of the range anyone uses.
+      haloWidthInput = new SizeField(haloWidthCell, {
+        title: 'How far the halo extends past the text, in px',
+        min: 0.1,
+        max: 50,
+        step: 0.5,
+        bigStep: 2,
+        onSet: applyHaloWidth,
+        onStep: nudgeHaloWidth,
+        onDone: releaseFocus
+      });
+
       // Whether the label has a symbol is one question and which symbol it has is
       // another, so the first is a switch on the section's heading rather than a
       // fifth shape button reading "none". Everything below it is inert while it
       // is off, which is also the honest reading of an icon-size or icon-color on
       // a label with no icon: nothing to apply it to.
-      var iconSection = addSection('Icon');
+      iconSection = addSection('Icon');
       var iconTitle = iconSection.findChild('.label-style-section-title');
       iconToggle = makeToggle(iconTitle, {
         title: 'Draw a symbol at the label anchor',
+        className: 'label-icon-toggle',
         onChange: setIconOn
       });
       // The size's caption sits on the heading line, over its own column. It
@@ -17200,6 +17670,8 @@
       var iconOpacityCell = El('div').addClass('label-split-cell label-opacity-row label-icon-opacity-row').appendTo(iconColorRow);
       iconOpacityInput = addOpacityInput(iconOpacityCell, applyIconOpacity);
 
+      initCalloutSection();
+
       var posRow = El('div').addClass('label-style-row label-position-row').appendTo(textSection);
 
 
@@ -17223,7 +17695,7 @@
       dragModeBtns = {};
       labelDragModes.forEach(function(item) {
         dragModeBtns[item.name] = makePanelButton(dragModeGroup, item.label, function() {
-            setLabelPositionMode(gui, item.name);
+            setLabelPositionMode(gui, item.name, getPositionModeKind());
           })
           .attr('data-drag-mode', item.name)
           .attr('title', item.title);
@@ -17242,6 +17714,116 @@
           return !controlsEnabled();
         }
       });
+    }
+
+    // Switched like the halo and the symbol, and shaped like them: the choices on
+    // the first line, a colour and its opacity on the next, then the sizes. The
+    // line's geometry -- its corner or bend, where it meets the text, how far it
+    // stops short of the anchor -- is a matter of positions, which are dragged on
+    // the map rather than typed here. See docs/development/text-annotation-design.md.
+    function initCalloutSection() {
+      calloutSection = addSection('Callout');
+      calloutToggle = makeToggle(calloutSection.findChild('.label-style-section-title'), {
+        title: 'Draw a line from the label anchor to its text',
+        className: 'label-callout-toggle',
+        onChange: setCalloutOn
+      });
+
+      // Each choice in the wide column with the size that qualifies it beside
+      // it, as Alignment has Line height: the line's shape and its width, then
+      // the marker and its size.
+      var shapeRow = El('div').addClass('label-style-row label-split-row').appendTo(calloutSection);
+      var shapeCell = El('div').addClass('label-split-cell label-align-row').appendTo(shapeRow);
+      El('span').appendTo(shapeCell).text('Line');
+      calloutShapeGroupEl = El('div').addClass('label-btn-group label-callout-buttons').appendTo(shapeCell);
+      calloutShapeBtns = {};
+      calloutShapes.forEach(function(item) {
+        calloutShapeBtns[item.name] = makeCalloutButton(calloutShapeGroupEl, item, function() {
+          applyCalloutShape(item.name);
+        });
+      });
+      var widthCell = El('div').addClass('label-split-cell label-spacing-row label-callout-width-row').appendTo(shapeRow);
+      El('span').appendTo(widthCell).text('Width');
+      calloutWidthInput = new SizeField(widthCell, {
+        title: 'Callout line width in px',
+        min: 0.25,
+        max: 20,
+        step: 0.5,
+        bigStep: 2,
+        decimals: 2,
+        onSet: applyCalloutWidth,
+        onStep: nudgeCalloutWidth,
+        onDone: releaseFocus
+      });
+
+      var endRow = El('div').addClass('label-style-row label-split-row').appendTo(calloutSection);
+      var endCell = El('div').addClass('label-split-cell label-align-row').appendTo(endRow);
+      El('span').appendTo(endCell).text('End');
+      calloutEndGroupEl = El('div').addClass('label-btn-group label-callout-buttons').appendTo(endCell);
+      calloutEndBtns = {};
+      calloutEnds.forEach(function(item) {
+        calloutEndBtns[item.name] = makeCalloutButton(calloutEndGroupEl, item, function() {
+          applyCalloutEnd(item.name);
+        });
+      });
+      var endSizeCell = El('div').addClass('label-split-cell label-spacing-row label-callout-end-size-row').appendTo(endRow);
+      El('span').appendTo(endSizeCell).text('Size');
+      calloutEndSizeInput = new SizeField(endSizeCell, {
+        title: 'Arrowhead size in px, the length of its sides',
+        min: 1,
+        max: 60,
+        step: 1,
+        bigStep: 5,
+        onSet: applyCalloutEndSize,
+        onStep: nudgeCalloutEndSize,
+        onDone: releaseFocus
+      });
+
+      var colorRow = El('div').addClass('label-style-row label-split-row').appendTo(calloutSection);
+      var colorCell = El('div').addClass('label-split-cell label-color-row').appendTo(colorRow);
+      calloutColorChit = El('div').addClass('label-color-chit').attr('role', 'button');
+      calloutColorInput = El('input').attr('type', 'text').attr('title', 'Callout color');
+      calloutColorFieldBox = makeColorField(colorCell, calloutColorChit, calloutColorInput);
+      calloutColorChit.on('click', function() {
+        if (this.classList.contains('disabled')) return;
+        calloutColorPicker.toggle();
+      });
+      calloutColorInput.on('change', function() {
+        var color = calloutColorInput.node().value.trim();
+        if (color) {
+          if (isHexColor(color)) {
+            calloutColorPicker.setColor(color);
+          }
+          applyCalloutColor(color);
+        }
+      });
+      calloutColorPicker = initColorPicker(colorCell, calloutColorChit, calloutColorInput, applyCalloutColor);
+      var opacityCell = El('div').addClass('label-split-cell label-opacity-row').appendTo(colorRow);
+      calloutOpacityInput = addOpacityInput(opacityCell, applyCalloutOpacity);
+
+      // The gap in the narrow column, under the sizes: it has a blank state,
+      // "auto", which clears the anchor's symbol, so it is not a size field.
+      var gapRow = El('div').addClass('label-style-row label-split-row').appendTo(calloutSection);
+      El('div').addClass('label-split-cell').appendTo(gapRow);
+      var gapCell = El('div').addClass('label-split-cell label-spacing-row label-callout-gap-row').appendTo(gapRow);
+      El('span').appendTo(gapCell).text('Gap');
+      calloutGapInput = El('input').attr('type', 'text').addClass('label-measure-input')
+        .attr('title', 'Space between the callout and the anchor, in px')
+        .attr('placeholder', 'auto')
+        .attr('data-placeholder', 'auto')
+        .appendTo(gapCell)
+        .on('change', function() {
+          applyCalloutGap(calloutGapInput.node().value.trim());
+        });
+    }
+
+    function makeCalloutButton(parent, item, action) {
+      var btn = makePanelButton(parent, '', action)
+        .attr('data-callout', item.name)
+        .attr('title', item.title);
+      El('<svg class="label-callout-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
+        calloutButtonSymbols[item.name] + '</svg>').appendTo(btn);
+      return btn;
     }
 
     function appendIconButtonSymbol(btn, iconName) {
@@ -17277,6 +17859,7 @@
     function makeToggle(parent, opts) {
       var track = El('div').addClass('label-toggle').attr('role', 'checkbox').appendTo(parent);
       var state = 'off';
+      if (opts.className) track.addClass(opts.className);
       var disabled = false;
       El('div').addClass('label-toggle-knob').appendTo(track);
       if (opts.title) track.attr('title', opts.title);
@@ -17362,9 +17945,7 @@
       renderFontOptions();
       gui.state.label_style_panel_open = true;
       panel.show();
-      // In label mode the panel belongs to the mode rather than being a thing the
-      // user opened, and closing it would leave the tool half on.
-      closeBtn[labelModeIsOn() ? 'hide' : 'show']();
+      closeBtn.show();
       textBtn.addClass('selected');
       updateControls();
       updateSelectionDisplay();
@@ -17511,6 +18092,10 @@
       var iconSize = getShownValue(iconIds, iconSizeField, {useDefault: true, defaultValue: defaultIconSize});
       var iconColor = getShownValue(iconIds, iconColorField, {useDefault: true, defaultValue: defaultIconColor});
       var iconOpacity = getShownValue(iconIds, iconOpacityField, {useDefault: true, defaultValue: 1});
+      var haloIds = getHaloValueIds();
+      var haloWidth = getShownValue(haloIds, haloWidthField, {useDefault: true, defaultValue: lastHaloWidth});
+      var haloColor = getShownValue(haloIds, haloColorField, {useDefault: true, defaultValue: defaultHaloColor});
+      var haloOpacity = getShownValue(haloIds, haloOpacityField, {useDefault: true, defaultValue: 1});
       updateEditingStatus(manualIds.length, !!getLabelTextSession(gui));
       updateSavedStyleControls();
       fontSelect.node().disabled = !showValues;
@@ -17524,12 +18109,34 @@
       updateAlignButtons(showValues ? alignVal : '');
       updateCssControl(css);
       updatePositionButtons(showValues ? posVal : '', ids);
+      var haloOff = updateHaloToggle();
+      updateHaloWidthControl(haloWidth, haloOff);
+      updateSwatchField(haloColorInput, haloColorFieldBox, haloColorChit,
+        haloColorPicker, haloColor, haloOff);
+      updateOpacityControl(haloOpacityInput, haloOpacity, haloOff);
       // The symbol's controls keep showing their values while the switch is off,
       // greyed: what they show is what the symbol comes back as.
       var iconOff = updateIconControls(showValues ? iconVal : '');
       updateIconSizeControls(iconSize, iconOff);
       updateIconColorControls(iconColor, iconOff);
       updateOpacityControl(iconOpacityInput, iconOpacity, iconOff);
+      var calloutOff = updateCalloutValueControls();
+      setSectionCollapsed(haloSection, haloOff, haloColorPicker);
+      setSectionCollapsed(iconSection, iconOff, iconColorPicker);
+      setSectionCollapsed(calloutSection, calloutOff, calloutColorPicker);
+    }
+
+    // A section whose switch is off shows only its heading. What is under it is
+    // inert while it is off, so hiding it loses nothing, and the panel stays short
+    // enough to hold all of them. The values are kept, greyed, for the moment it
+    // is switched back on, which is what they come back as.
+    //
+    // An open picker is closed with its section: it hangs from the colour field,
+    // and a picker left open over a hidden field would change a colour nobody
+    // can see.
+    function setSectionCollapsed(section, collapsed, picker) {
+      section.classed('collapsed', collapsed);
+      if (collapsed && picker.visible()) picker.hide();
     }
 
     // Every field that can show a value can also show nothing, which is why each
@@ -17632,16 +18239,27 @@
       }));
     }
 
-    // The toggle is the tool's state and not the selection's, so nothing here
-    // reads a record. It is inert outside the label tool, where there is no drag
-    // on a label for it to describe.
+    // The toggle is the tool's state and not the selection's, but there is one
+    // for point text and one for text blocks, and it shows the one for the kind
+    // of label selected. It is inert outside the label tool, where there is no
+    // drag on a label for it to describe.
     function updateDragModeButtons() {
-      var mode = getLabelPositionMode(gui);
+      var mode = getLabelPositionMode(gui, getPositionModeKind());
       var disabled = !labelModeIsOn();
       labelDragModes.forEach(function(item) {
         dragModeBtns[item.name].classed('selected', !disabled && item.name == mode);
         setPanelButtonDisabled(dragModeBtns[item.name], disabled);
       });
+    }
+
+    // 'block' when the labels the panel is pointed at are all text blocks, and
+    // otherwise 'point', including for the next label to be made.
+    function getPositionModeKind() {
+      var table = getActiveTable();
+      var ids = getTargetIds();
+      return ids.length > 0 && table && ids.every(function(id) {
+        return getLabelPositionKind(table.getRecordAt(id)) == 'block';
+      }) ? 'block' : 'point';
     }
 
     function everyLabelIsOnAPath(ids) {
@@ -17781,10 +18399,12 @@
       if (colorPicker.visible()) {
         return; // avoid HSB -> RGB -> HSB rounding jumps after picker commits
       }
+      // Only this field's own picker: the halo's or the symbol's may be the one
+      // open, and a text fill like "blue" says nothing about either.
       if (isHexColor(colorVal)) {
         colorPicker.setColor(colorVal);
       } else {
-        hideColorPicker();
+        colorPicker.hide();
       }
     }
 
@@ -17833,23 +18453,305 @@
     }
 
     function updateIconColorControls(shown, iconOff) {
+      updateSwatchField(iconColorInput, iconColorFieldBox, iconColorChit,
+        iconColorPicker, shown, iconOff);
+    }
+
+    // A colour field belonging to a section with a switch: the symbol's and the
+    // halo's, which both go on showing their colour, greyed, while switched off.
+    function updateSwatchField(input, fieldBox, chit, picker, shown, sectionOff) {
       var colorVal = shown.value;
-      var disabled = iconOff || !controlsEnabled();
-      iconColorInput.node().disabled = disabled;
-      iconColorInput.node().value = colorVal || '';
-      setMixedPlaceholder(iconColorInput, shown.mixed);
-      iconColorFieldBox.classed('disabled', disabled);
-      setPanelButtonDisabled(iconColorChit, disabled);
-      iconColorChit.classed('mixed', shown.mixed);
-      iconColorChit.css('background-color', isHexColor(colorVal) ? colorVal : 'transparent');
-      if (iconColorPicker.visible()) {
+      var disabled = sectionOff || !controlsEnabled();
+      input.node().disabled = disabled;
+      input.node().value = colorVal || '';
+      setMixedPlaceholder(input, shown.mixed);
+      fieldBox.classed('disabled', disabled);
+      setPanelButtonDisabled(chit, disabled);
+      chit.classed('mixed', shown.mixed);
+      chit.css('background-color', isHexColor(colorVal) ? colorVal : 'transparent');
+      if (picker.visible()) {
         return; // avoid HSB -> RGB -> HSB rounding jumps after picker commits
       }
       if (isHexColor(colorVal)) {
-        iconColorPicker.setColor(colorVal);
+        picker.setColor(colorVal);
       } else {
-        iconColorPicker.hide();
+        picker.hide();
       }
+    }
+
+    // The switch reads the data, as the symbol's does, so that it follows an
+    // undo. A halo is on for a label whose halo-width is above 0.
+    //
+    // The width, colour and opacity go on showing while it is off, greyed: the
+    // colour and opacity stay on the label, and the width is the one the halo
+    // comes back at.
+    function updateHaloToggle() {
+      var enabled = controlsEnabled();
+      var state = enabled ? getHaloState() : 'off';
+      haloToggle.setState(state);
+      haloToggle.setDisabled(!enabled);
+      return state == 'off';
+    }
+
+    function updateHaloWidthControl(shown, haloOff) {
+      if (!haloOff && Number(shown.value) > 0) lastHaloWidth = Number(shown.value);
+      haloWidthInput.setValue(shown.value || '');
+      haloWidthInput.setPlaceholder(shown.mixed ? MIXED_TEXT : '');
+      haloWidthInput.setDisabled(haloOff || !controlsEnabled());
+    }
+
+    function getHaloState() {
+      var ids = getTargetIds();
+      var table = getActiveTable();
+      if (ids.length === 0) {
+        return internal.svg.labelHasHalo(labelModeIsOn() ? getNewLabelStyle(gui) : null) ? 'on' : 'off';
+      }
+      return getToggleState(ids.map(function(id) {
+        return internal.svg.labelHasHalo(table && table.getRecordAt(id));
+      }));
+    }
+
+    // Switching a halo on gives every target the same width: the one the
+    // selection's halos already share, where they share one, so that a mixed
+    // selection is brought into line with the labels that had a halo rather
+    // than reset. Switching it off removes the width and leaves the colour and
+    // opacity, which is how a halo switched off and on again comes back as it
+    // was.
+    function setHaloOn(on) {
+      var width = on ? getNumericSize(getHaloValueIds(), haloWidthField, lastHaloWidth) : '';
+      applyStyleValues([[haloWidthField, width]]);
+    }
+
+    function applyHaloWidth(value) {
+      applyStyleValues([[haloWidthField, value]], getHaloTargetIds());
+    }
+
+    function nudgeHaloWidth(delta) {
+      var width = getNumericSize(getHaloTargetIds(), haloWidthField, lastHaloWidth);
+      if (!controlsEnabled() || getHaloState() == 'off') return;
+      width = Math.max(0.5, Math.round((width + delta) * 10) / 10);
+      applyHaloWidth(width);
+    }
+
+    function applyHaloColor(color) {
+      applyStyleValues([[haloColorField, color]], getHaloTargetIds());
+    }
+
+    // Full opacity is stored as no halo-opacity, as it is for the text's own.
+    function applyHaloOpacity(value) {
+      applyStyleValues([[haloOpacityField, value >= 1 ? '' : value]], getHaloTargetIds());
+    }
+
+    // The labels a halo's width, colour or opacity goes to: the targets that
+    // have a halo, for the reason the symbol's values go only to labels with a
+    // symbol. Empty for "new labels", as there.
+    function getHaloTargetIds() {
+      var table = getActiveTable();
+      return getTargetIds().filter(function(id) {
+        return internal.svg.labelHasHalo(table && table.getRecordAt(id));
+      });
+    }
+
+    // As getIconValueIds(): the labels the section shows the values of.
+    function getHaloValueIds() {
+      var ids = getHaloTargetIds();
+      return ids.length > 0 ? ids : getTargetIds();
+    }
+
+    // The switch reads the data, as the halo's does. A callout is on for a label
+    // whose callout names a shape.
+    function getCalloutState() {
+      var ids = getTargetIds();
+      var table = getActiveTable();
+      if (ids.length === 0) {
+        return internal.svg.labelHasCallout(labelModeIsOn() ? getNewLabelStyle(gui) : null) ? 'on' : 'off';
+      }
+      return getToggleState(ids.map(function(id) {
+        return internal.svg.labelHasCallout(table && table.getRecordAt(id));
+      }));
+    }
+
+    // The labels a callout's end, colour, width and gap go to: the targets that
+    // have a callout, for the reason the symbol's values go only to labels with a
+    // symbol.
+    function getCalloutTargetIds() {
+      var table = getActiveTable();
+      return getTargetIds().filter(function(id) {
+        return internal.svg.labelHasCallout(table && table.getRecordAt(id));
+      });
+    }
+
+    function getCalloutValueIds() {
+      var ids = getCalloutTargetIds();
+      return ids.length > 0 ? ids : getTargetIds();
+    }
+
+    // Switching a callout on gives every target the shape the selection's
+    // callouts share, or the last one used. Switching it off removes the shape
+    // alone, so that a callout switched off and on again comes back with the
+    // corner, the attachment and the look it had.
+    function setCalloutOn(on) {
+      var shape = on ? getCommonValue(getCalloutTargetIds(), calloutField) || lastCalloutShape : '';
+      applyStyleValues([[calloutField, shape]]);
+    }
+
+    // A shape is a plain statement about every selected label, as a symbol's is.
+    function applyCalloutShape(shape) {
+      applyStyleValues([[calloutField, shape]]);
+    }
+
+    // No marker is stored as no callout-end.
+    function applyCalloutEnd(end) {
+      applyStyleValues([[calloutEndField, end == 'none' ? '' : end]], getCalloutTargetIds());
+    }
+
+    function applyCalloutColor(color) {
+      applyStyleValues([[calloutColorField, color]], getCalloutTargetIds());
+    }
+
+    function applyCalloutOpacity(value) {
+      applyStyleValues([[calloutOpacityField, value >= 1 ? '' : value]], getCalloutTargetIds());
+    }
+
+    function applyCalloutWidth(value) {
+      applyStyleValues([[calloutWidthField, value]], getCalloutTargetIds());
+    }
+
+    function nudgeCalloutWidth(delta) {
+      var width = getNumericSize(getCalloutTargetIds(), calloutWidthField, defaultCalloutWidth);
+      if (!controlsEnabled() || getCalloutState() == 'off') return;
+      applyCalloutWidth(Math.max(0.25, Math.round((width + delta) * 4) / 4));
+    }
+
+    // A marker size goes to the callouts that have a marker to size, as a
+    // symbol's size goes only to labels with a symbol.
+    function applyCalloutEndSize(value) {
+      applyStyleValues([[calloutEndSizeField, value]], getCalloutEndTargetIds());
+    }
+
+    // Stepped from the size each marker is drawn at, which for one with no
+    // callout-end-size is the default its line width gives it.
+    function nudgeCalloutEndSize(delta) {
+      var shown = getCalloutEndSizeShown(getCalloutEndTargetIds());
+      var size = Number(shown.value);
+      if (!controlsEnabled() || !(size > 0)) return;
+      applyCalloutEndSize(Math.max(1, Math.round(size + delta)));
+    }
+
+    function getCalloutEndTargetIds() {
+      var table = getActiveTable();
+      return getCalloutTargetIds().filter(function(id) {
+        return getCalloutEnd(table && table.getRecordAt(id)) != 'none';
+      });
+    }
+
+    function getCalloutEnd(rec) {
+      return internal.svg.getCalloutEndType(rec);
+    }
+
+    // The size a marker is drawn at: its own, or the default for its kind and
+    // line width.
+    function getCalloutEndSizeShown(ids) {
+      return getShownRecordValues(ids, function(rec) {
+        var size = rec ? Number(rec[calloutEndSizeField]) : 0;
+        var width = rec ? Number(rec[calloutWidthField]) : 0;
+        if (size > 0) return size;
+        return internal.svg.getDefaultCalloutEndSize(getCalloutEnd(rec),
+          width > 0 ? width : defaultCalloutWidth);
+      });
+    }
+
+    // Blank is "auto", which clears the anchor's symbol, and 0 is no gap at all:
+    // the two are different, which is why this is not a size field.
+    function applyCalloutGap(str) {
+      var val = Number(str);
+      if (str !== '' && !(isFinite(val) && val >= 0)) {
+        updateControls();
+        return;
+      }
+      applyStyleValues([[calloutGapField, str === '' ? '' : val]], getCalloutTargetIds());
+    }
+
+    // Returns whether the section is off.
+    function updateCalloutValueControls() {
+      var enabled = controlsEnabled();
+      var state = enabled ? getCalloutState() : 'off';
+      var off = state == 'off';
+      var ids = getCalloutValueIds();
+      var shape = enabled ? getCommonValue(ids, calloutField) : '';
+      var end = enabled ? getCommonValue(ids, calloutEndField, {useDefault: true, defaultValue: 'none'}) : '';
+      var width = getShownValue(ids, calloutWidthField, {useDefault: true, defaultValue: defaultCalloutWidth});
+      var gap = getCalloutGapShown(ids);
+      if (shape && shape != 'none') lastCalloutShape = shape;
+      calloutToggle.setState(state);
+      calloutToggle.setDisabled(!enabled);
+      updateButtonGroup(calloutShapeGroupEl, calloutShapeBtns, off ? '' : shape, off);
+      updateButtonGroup(calloutEndGroupEl, calloutEndBtns, off ? '' : end, off);
+      updateSwatchField(calloutColorInput, calloutColorFieldBox, calloutColorChit,
+        calloutColorPicker, getCalloutColorShown(ids), off);
+      updateOpacityControl(calloutOpacityInput,
+        getShownValue(ids, calloutOpacityField, {useDefault: true, defaultValue: 1}), off);
+      calloutWidthInput.setValue(width.value || '');
+      calloutWidthInput.setPlaceholder(width.mixed ? MIXED_TEXT : '');
+      calloutWidthInput.setDisabled(off || !enabled);
+      updateCalloutEndSizeControl(off || !enabled);
+      calloutGapInput.node().disabled = off || !enabled;
+      calloutGapInput.node().value = gap.value;
+      setMixedPlaceholder(calloutGapInput, gap.mixed);
+      return off;
+    }
+
+    // Inert with no marker to size. With nothing selected it describes the next
+    // label's marker, which the new-label style holds.
+    function updateCalloutEndSizeControl(off) {
+      var ids = getTargetIds().length > 0 ? getCalloutEndTargetIds() : [];
+      var noMarker = getTargetIds().length > 0 ? ids.length === 0 :
+        getCalloutEnd(labelModeIsOn() ? getNewLabelStyle(gui) : null) == 'none';
+      var shown = off || noMarker ? {value: '', mixed: false} : getCalloutEndSizeShown(ids);
+      calloutEndSizeInput.setValue(shown.value);
+      calloutEndSizeInput.setPlaceholder(shown.mixed ? MIXED_TEXT : '');
+      calloutEndSizeInput.setDisabled(off || noMarker);
+    }
+
+    function updateButtonGroup(groupEl, btns, selected, off) {
+      groupEl.classed('disabled', off);
+      Object.keys(btns).forEach(function(name) {
+        btns[name].classed('selected', name == selected);
+        setPanelButtonDisabled(btns[name], off);
+      });
+    }
+
+    // The colour a callout is drawn in, which is the text's unless it has its
+    // own -- so a label with red text shows red here, not the black that
+    // getCommonValueInfo() would supply for an unset callout-color.
+    function getCalloutColorShown(ids) {
+      return getShownRecordValues(ids, function(rec) {
+        return rec && (rec[calloutColorField] || rec[fillField]) || defaultLabelColor;
+      });
+    }
+
+    // getCommonValueInfo() reads 0 as unset, and a gap of 0 is a value.
+    function getCalloutGapShown(ids) {
+      return getShownRecordValues(ids, function(rec) {
+        var val = rec ? rec[calloutGapField] : null;
+        return val || val === 0 ? String(val) : '';
+      });
+    }
+
+    // {value, mixed} for a value worked out from each target's record, or from
+    // the new-label style when there is no target.
+    function getShownRecordValues(ids, fn) {
+      var table = getActiveTable();
+      var vals;
+      if (!controlsEnabled()) return {value: '', mixed: false};
+      if (ids.length === 0) {
+        return {value: fn(labelModeIsOn() ? getNewLabelStyle(gui) : null), mixed: false};
+      }
+      vals = ids.map(function(id) {
+        return fn(table && table.getRecordAt(id));
+      });
+      return vals.every(function(val) { return val === vals[0]; }) ?
+        {value: vals[0], mixed: false} : {value: '', mixed: true};
     }
 
     function updateSavedStyleControls() {
@@ -18063,13 +18965,42 @@
       addStyleValue(style, labelAlignField, getSelectedAlignment());
       addStyleValue(style, cssField, cssInput.node().value.trim());
       addStyleValue(style, 'label-pos', getSelectedLabelPosition());
+      // A style saved without a halo carries no halo-width, so applying it
+      // leaves a halo alone rather than removing one; the same is true of icons.
+      if (getHaloState() == 'on') {
+        addStyleValue(style, haloWidthField, haloWidthInput.getValue());
+        addStyleValue(style, haloColorField, haloColorInput.node().value.trim());
+        addStyleValue(style, haloOpacityField, getOpacityBelowFull(haloOpacityInput));
+      }
       addStyleValue(style, iconField, icon);
       if (icon) {
         addStyleValue(style, iconSizeField, iconSizeInput.getValue());
         addStyleValue(style, iconColorField, iconColorInput.node().value.trim());
         addStyleValue(style, iconOpacityField, getIconOpacityToWrite());
       }
+      // A callout's shape and look, but not its geometry: a corner or an
+      // attachment point is placed for one label's surroundings, and means
+      // nothing on another.
+      if (getCalloutState() == 'on') {
+        addStyleValue(style, calloutField, getSelectedButton(calloutShapeBtns));
+        addStyleValue(style, calloutEndField, getSelectedButton(calloutEndBtns));
+        addStyleValue(style, calloutEndSizeField,
+          getCommonValue(getCalloutEndTargetIds(), calloutEndSizeField));
+        addStyleValue(style, calloutColorField,
+          getCommonValue(getCalloutTargetIds(), calloutColorField));
+        addStyleValue(style, calloutOpacityField, getOpacityBelowFull(calloutOpacityInput));
+        addStyleValue(style, calloutWidthField, calloutWidthInput.getValue());
+        addStyleValue(style, calloutGapField, getCommonValue(getCalloutTargetIds(), calloutGapField));
+      }
       return style;
+    }
+
+    function getSelectedButton(btns) {
+      var out = '';
+      Object.keys(btns).forEach(function(name) {
+        if (btns[name].hasClass('selected')) out = name;
+      });
+      return out;
     }
 
     // A saved style carries an opacity only if it has one to carry: saving at
@@ -18274,7 +19205,9 @@
 
     function hideColorPicker() {
       colorPicker.hide();
+      haloColorPicker.hide();
       iconColorPicker.hide();
+      calloutColorPicker.hide();
     }
 
     function isFormElement(node) {
@@ -18339,6 +19272,7 @@
       if (ids.length < internal.getFeatureCount(lyr)) {
         parts.push('ids=' + ids.join(','));
       }
+      parts = parts.concat(getRewrapCommands(styles, ids, lyr));
       runGuiEditCommand(gui, parts.join(' '), {
         title: 'Label styles',
         onDone: function() {
@@ -18347,6 +19281,29 @@
           updateSelectionDisplay();
         }
       });
+    }
+
+    // A text block's breaks are only right for the width and font they were
+    // found with, so a change to either rewraps it in the same command: one undo
+    // step, and no moment at which the block is drawn with its old lines in its
+    // new font. One -style per label, since each has text of its own.
+    function getRewrapCommands(styles, ids, lyr) {
+      var table = lyr.data;
+      var changes = {};
+      var out = [];
+      styles.forEach(function(style) { changes[style[0]] = style[1]; });
+      if (!table || !WRAP_FIELDS.some(function(name) { return name in changes; })) {
+        return out;
+      }
+      ids.forEach(function(id) {
+        var rec = table.getRecordAt(id);
+        var value = rec && rec['label-text'];
+        var wrapped;
+        if (!value || everyLabelIsOnAPath([id])) return;
+        wrapped = rewrapLabelValue(value, Object.assign({}, rec, changes));
+        if (wrapped !== value) out.push(getLabelTextCommand(wrapped, id, null));
+      });
+      return out;
     }
 
     // The yellow halo, which belongs to the older label_style mode. The label
@@ -19544,6 +20501,9 @@
         self.setDefaultTarget([active.layer], active.dataset);
         gui.session.setTargetLayer(active.layer); // add -target command to target single layer
       }
+      // Before anything hears of the update, so that the map draws a layer that
+      // has just arrived along with the ones already showing.
+      showNewLayers(self.getLayers());
       if (flags.select) {
         self.dispatchEvent('select', active);
       }
@@ -20140,18 +21100,48 @@
     var defs = [];
     var symbols = lyr.shapes.map(function(shp, i) {
       var d = records[i];
-      var obj = shp && d ? renderSymbol(d, shp, view, defs, idPrefix, i) : null;
-      if (!obj) return null;
-      obj.properties.class = addClass(obj.properties.class, 'mapshaper-svg-symbol');
-      obj.properties.transform = getSvgSymbolTransform(shp[0], ext);
-      obj.properties['data-id'] = i;
-      return obj;
+      return shp && d ? renderLayerSymbol(d, shp, ext, view, defs, idPrefix, i) : null;
     }).filter(Boolean);
     var obj = internal.getEmptyLayerForSVG(lyr, {});
     // <defs> has to come first so the layer's own markup can reference it
     obj.children = defs.length > 0 ?
       [{tag: 'defs', children: defs}].concat(symbols) : symbols;
     return internal.svg.stringify(obj);
+  }
+
+  function renderLayerSymbol(d, shp, ext, view, defs, idPrefix, i) {
+    var obj = renderSymbol(d, shp, view, defs, idPrefix, i);
+    if (!obj) return null;
+    obj.properties.class = addClass(obj.properties.class, 'mapshaper-svg-symbol');
+    obj.properties.transform = getSvgSymbolTransform(shp[0], ext);
+    obj.properties['data-id'] = i;
+    return obj;
+  }
+
+  // Redraws one anchored label's symbol from @rec, which need not be its record:
+  // a drag previews its edit this way, and the command it commits then redraws
+  // the layer from the data. The node is rendered exactly as renderSymbols()
+  // renders it, so the hit test, the selection cue and the drag's own lookups
+  // find it as they found the one it replaces.
+  //
+  // Anchored labels only: a path label's baseline lives in the layer's <defs>,
+  // which this leaves alone.
+  // Returns the new node, or null if there was nothing to replace.
+  function replaceAnchoredSymbol(container, id, rec, shp, ext) {
+    var old = container && shp && !internal.svg.shapeIsPathLabel(shp, rec) ?
+      container.querySelector('.mapshaper-svg-symbol[data-id="' + id + '"]') : null;
+    var obj = old ? renderLayerSymbol(rec, shp, ext, null, null, '', id) : null;
+    var tmp, node;
+    if (!obj) return null;
+    tmp = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    tmp.innerHTML = internal.svg.stringify(obj);
+    node = tmp.firstElementChild;
+    if (!node) return null;
+    // Off-screen symbols are hidden by repositionSymbols(), which would not know
+    // to hide this one again until the map moved.
+    if (old.hasAttribute('display')) node.setAttribute('display', old.getAttribute('display'));
+    old.parentNode.replaceChild(node, old);
+    return node;
   }
 
   // Markup for a label that is not in any layer yet: the one being typed into
@@ -20690,7 +21680,9 @@
     // What the click found in the selection as it stood before the click, which
     // the click itself is about to replace. The label tool reads this to tell a
     // click that selects a label from a click on the label that was already the
-    // whole selection -- its gesture for editing that label's text.
+    // whole selection -- its gesture for editing that label's text -- and a click
+    // off a selection from one on empty map, since a click on an unlabelled
+    // feature selects it before the tool hears of the click.
     //
     // An additive click never qualifies: shift-click means toggle, and it would
     // otherwise open a text session on the label it was removing.
@@ -20701,7 +21693,8 @@
       var id = hitData.ids.length > 0 ? hitData.ids[0] : -1;
       return {
         clicked_only_selection: id > -1 && !eventUsesAdditiveSelection(e) &&
-          selectionIds.length == 1 && selectionIds[0] === id
+          selectionIds.length == 1 && selectionIds[0] === id,
+        had_selection: selectionIds.length > 0
       };
     }
 
@@ -24165,6 +25158,222 @@
     return len > 0 ? geom.distance2D(x1, y1, p[0], p[1]) / len : 0;
   }
 
+  // The handles on a selected anchored label, and what dragging each one
+  // writes, as pure functions of the label's record and the pointer.
+  //
+  // - width: on a text block only, at the bottom corner of its column on the
+  //   side that is free to move -- the right for text that starts at its
+  //   anchor, the left for text that ends there, the right for centred text,
+  //   which grows both ways. Dragging it sets label-width. Point text has none:
+  //   a label stays the kind it was made as, and a handle that turned point
+  //   text into a block was a way to do that by accident.
+  // - via: the elbow's corner, or the point the curve passes through.
+  // - attach: where the line meets the text, which slides around the padded box.
+  // - gap: where the line stops short of the anchor.
+  //
+  // A corner rather than the middle of the free side for the width handle,
+  // because the middle of a side is where an elbow meets a one-line label, and
+  // the two handles would sit on top of each other.
+  //
+  // Everything is in the label's own space -- origin at the anchor, y down, px
+  // -- which is the space the callout is worked out in. See
+  // docs/development/text-annotation-design.md.
+
+  // The narrowest a text block can be dragged to, px. Narrower than a character
+  // or two, and every character gets a line of its own.
+  var MIN_LABEL_WIDTH = 10;
+
+  // How far out from the anchor the line has to stop before its gap handle is
+  // drawn, in screen px. Nearer than that the handle sits on the anchor's own,
+  // and the anchor is the one that matters more.
+  var MIN_GAP_HANDLE = 6;
+
+  // rec:     the label's record
+  // textBox: the rendered text's bbox, {x, y, width, height}, or null
+  // opts:
+  //   symbolRadius: radius of the symbol at the anchor, which the default gap
+  //     clears
+  //   scale:   screen px per label px
+  //   padding: how far outside the text the selection box is drawn
+  // Returns {handles: [{kind, point}], column}, where column is the x-range
+  //   [xmin, xmax] a text block wraps within, or null for point text. The
+  //   width handle sits on the column's corner, not the text's.
+  function getAnchoredLabelHandles(rec, textBox, opts) {
+    var o = opts || {};
+    var handles = [];
+    var column = getLabelColumn(rec);
+    var shape = internal.svg.getLabelCalloutShape(rec, o.symbolRadius || 0);
+    var width = textBox && column ?
+      getWidthHandlePoint(rec, textBox, column, o.padding || 0) : null;
+    // Nearer-first matters only for ties, which go to the earlier handle: the
+    // callout's own handles are smaller and sit on the line, so they win.
+    if (shape) {
+      if (shape.via) handles.push({kind: 'via', point: shape.via});
+      handles.push({kind: 'attach', point: shape.attach});
+      if (length(shape.tip) * (o.scale || 1) >= MIN_GAP_HANDLE) {
+        handles.push({kind: 'gap', point: shape.tip});
+      }
+    }
+    if (width) handles.push({kind: 'width', point: width});
+    return {handles: handles, column: column};
+  }
+
+  // The x-range a text block's lines wrap within, from where its drawn anchor
+  // puts it, or null for a label with no width.
+  function getLabelColumn(rec) {
+    var w = Number(rec && rec['label-width']);
+    var drawn, anchor;
+    if (!(w > 0 && isFinite(w))) return null;
+    drawn = internal.svg.getDrawnLabelOffset(rec);
+    anchor = getDrawnAnchor(drawn);
+    if (anchor == 'end') return [drawn.dx - w, drawn.dx];
+    if (anchor == 'middle') return [drawn.dx - w / 2, drawn.dx + w / 2];
+    return [drawn.dx, drawn.dx + w];
+  }
+
+  // An anchor the record does not set is inherited from the layer's group,
+  // which is 'middle' -- see getLabelTextDefaults().
+  function getDrawnAnchor(drawn) {
+    return drawn && drawn['text-anchor'] || 'middle';
+  }
+
+  function getWidthHandlePoint(rec, box, column, pad) {
+    var anchor = getDrawnAnchor(internal.svg.getDrawnLabelOffset(rec));
+    var xmin = Math.min(column[0], box.x);
+    var xmax = Math.max(column[1], box.x + box.width);
+    var y = box.y + box.height + pad;
+    return anchor == 'end' ? [xmin - pad, y] : [xmax + pad, y];
+  }
+
+  // The label-width a drag on the width handle sets, in whole px.
+  // anchor: the drawn text-anchor; dx: the drawn dx, which is the edge (or for
+  //   centred text the middle) that stays put
+  // x:   where the handle has been dragged to
+  // pad: how far outside the text the handle is drawn
+  function getDraggedWidth(anchor, dx, x, pad) {
+    var w;
+    if (anchor == 'end') w = dx - x - pad;
+    else if (anchor == 'middle') w = 2 * (Math.abs(x - dx) - pad);
+    else w = x - pad - dx;
+    return Math.max(MIN_LABEL_WIDTH, Math.round(w));
+  }
+
+  // Where a dragged via point lands: on a line level with, or plumb with, the
+  // anchor or the attachment point @t when it comes within @tol of one. Those
+  // are the alignments that make an elbow's legs horizontal or vertical.
+  function snapCalloutVia(p, t, tol) {
+    return [snapTo(p[0], [0, t[0]], tol), snapTo(p[1], [0, t[1]], tol)];
+  }
+
+  // Where on the padded @box a dragged attachment point lands, as the
+  // [fx, fy] fractions callout-attach stores: on the edge nearest @p, and at the
+  // middle of that edge or at a corner when within @tol of one. A side also
+  // snaps to the first line's midline, where an automatic elbow meets it.
+  function getAttachFraction(box, p, tol) {
+    var w = box.xmax - box.xmin;
+    var h = box.ymax - box.ymin;
+    var x = clamp$3(p[0], box.xmin, box.xmax);
+    var y = clamp$3(p[1], box.ymin, box.ymax);
+    var edge = getNearestEdge(box, x, y);
+    var fx, fy, midline;
+    if (edge == 'left' || edge == 'right') {
+      fx = edge == 'left' ? 0 : 1;
+      midline = h > 0 && box.midline > box.ymin && box.midline < box.ymax ?
+        (box.midline - box.ymin) / h : 0.5;
+      fy = h > 0 ? snapTo((y - box.ymin) / h, [0, midline, 0.5, 1], tol / h) : 0.5;
+    } else {
+      fy = edge == 'top' ? 0 : 1;
+      fx = w > 0 ? snapTo((x - box.xmin) / w, [0, 0.5, 1], tol / w) : 0.5;
+    }
+    return [roundTo(fx, 1000), roundTo(fy, 1000)];
+  }
+
+  function getNearestEdge(box, x, y) {
+    var d = {
+      left: x - box.xmin,
+      right: box.xmax - x,
+      top: y - box.ymin,
+      bottom: box.ymax - y
+    };
+    return Object.keys(d).reduce(function(memo, key) {
+      return d[key] < d[memo] ? key : memo;
+    }, 'left');
+  }
+
+  // The callout-gap a drag on the gap handle sets: how far from the anchor the
+  // line now stops, px.
+  function getDraggedGap(p) {
+    return roundTo(length(p), 10);
+  }
+
+  // Where a callout's via point goes when its text moves, which takes the
+  // attachment point from @t0 to @t1.
+  //
+  // A curve keeps its shape: the via point is rotated and scaled about the
+  // anchor by whatever takes @t0 to @t1. An elbow keeps its corner in
+  // proportion across the span from anchor to text, and a leg that was level
+  // with the text (or plumb with it) stays so, since that is almost always what
+  // a corner was put there for.
+  //
+  // type: 'elbow' or 'curve'
+  function followCalloutVia(type, via, t0, t1) {
+    var d2, re, im;
+    if (type == 'curve') {
+      d2 = t0[0] * t0[0] + t0[1] * t0[1];
+      if (!(d2 > 0)) return via.slice();
+      re = (t1[0] * t0[0] + t1[1] * t0[1]) / d2;
+      im = (t1[1] * t0[0] - t1[0] * t0[1]) / d2;
+      return [via[0] * re - via[1] * im, via[0] * im + via[1] * re];
+    }
+    return [followElbowCoord(via[0], t0[0], t1[0]), followElbowCoord(via[1], t0[1], t1[1])];
+  }
+
+  // Close enough to count as level, in px: the values are stored in tenths.
+  var LEVEL_TOLERANCE = 0.05;
+
+  function followElbowCoord(v, t0, t1) {
+    if (Math.abs(v - t0) < LEVEL_TOLERANCE) return t1;
+    // Scaling by a span of almost nothing throws the corner miles away, so a
+    // text that started nearly in line with its anchor moves the corner with it
+    // instead.
+    if (Math.abs(t0) < 1) return v + t1 - t0;
+    return v * t1 / t0;
+  }
+
+  // 'x,y', as callout-via and callout-attach store a pair
+  function formatPointPair(p) {
+    return formatNumber$2(p[0]) + ',' + formatNumber$2(p[1]);
+  }
+
+  function formatNumber$2(n) {
+    var val = roundTo(n, 10);
+    return String(val === 0 ? 0 : val); // no "-0"
+  }
+
+  function snapTo(val, targets, tol) {
+    var best = val, bestDist = tol;
+    targets.forEach(function(t) {
+      var d = Math.abs(val - t);
+      if (d <= bestDist) {
+        bestDist = d;
+        best = t;
+      }
+    });
+    return best;
+  }
+
+  function clamp$3(val, min, max) {
+    return val < min ? min : val > max ? max : val;
+  }
+
+  function length(p) {
+    return Math.sqrt(p[0] * p[0] + p[1] * p[1]);
+  }
+
+  function roundTo(n, k) {
+    return Math.round(n * k) / k;
+  }
+
   // Sliding a path label's text along its curve, and flipping it across.
   //
   // Both are one gesture -- a drag on the glyphs, Illustrator's model -- and both
@@ -24757,6 +25966,7 @@
         created: false,
         onClose: opts && opts.onClose || null,
         startText: decodeLabelText(rec['label-text']),
+        startBreaks: readSoftBreaks(rec['label-text']).breaks,
         nodes: null
       };
       startSession();
@@ -24801,6 +26011,7 @@
         created: true,
         onClose: opts.onClose || null,
         startText: '',
+        startBreaks: [],
         nodes: null
       };
       startSession();
@@ -24938,10 +26149,15 @@
     //   there is no session to abandon -- it was created before this one, perhaps
     //   by the script the file was built by.
     // - An existing label whose text changed has that text **saved**.
+    //
+    // A text block is saved with the soft breaks it was last drawn with, and is
+    // saved even when the typed text did not change if those breaks did: a font
+    // installed since, or a width set from the console, moves them.
     function commit(o) {
       var blank = textHasNoGlyphs(o.text);
+      var breaks = getBreaks(o);
       if (o.pending) {
-        if (!blank) o.pending.create(o.text);
+        if (!blank) o.pending.create(insertSoftBreaks(o.text, breaks));
         return;
       }
       if (blank) {
@@ -24949,10 +26165,21 @@
         removeLabel(o);
         return;
       }
-      if (o.text === o.startText) return;
-      runGuiEditCommand(gui, getLabelTextCommand(o.text, o.id, o.target.name), {
+      if (o.text === o.startText && sameSoftBreaks(breaks, o.startBreaks)) return;
+      runGuiEditCommand(gui, getLabelTextCommand(insertSoftBreaks(o.text, breaks),
+        o.id, o.target.name), {
         title: 'Label text'
       });
+    }
+
+    // Where the session's text wraps, as offsets into it. Only an anchored label
+    // wraps: a path label's text runs along its curve on one line.
+    function getBreaks(o) {
+      var shp = o.pending ? o.pending.coords : o.target.shapes && o.target.shapes[o.id];
+      var rec;
+      if (!shp || shp.length > 1) return [];
+      rec = o.pending ? o.pending.getStyle() : getRecord(o.target, o.id);
+      return getSoftBreaks(o.text, rec);
     }
 
     // Deletes the label's feature, geometry and all.
@@ -25037,7 +26264,9 @@
     // when there is no text, exactly as it does for a committed empty label.
     function getPendingRecord(o) {
       var rec = Object.assign({}, o.pending.getStyle());
-      rec['label-text'] = encodeLabelText(o.text);
+      // With its soft breaks, so that what is aligned and what a callout meets
+      // is the block as wrapped
+      rec['label-text'] = encodeLabelText(insertSoftBreaks(o.text, getBreaks(o)));
       // No need to expand label-pos here, or to measure its text: the renderer
       // resolves the position and asks for the width it needs, so a pending
       // label is laid out by exactly the same code as a committed one.
@@ -25087,12 +26316,14 @@
     //     getRenderedLines() gives it one.
     function writeText(o) {
       var content = o.nodes.content;
+      var breaks = getBreaks(o);
+      var written = o.text + '\u0000' + breaks.join(',');
       var lines, i, tspan;
       // refresh() runs on every map render, which during a pan is every frame;
       // rebuilding text nodes that already say the right thing is pure waste
-      if (o.writtenTo === content && o.writtenText === o.text) return;
+      if (o.writtenTo === content && o.writtenText === written) return;
       o.writtenTo = content;
-      o.writtenText = o.text;
+      o.writtenText = written;
       o.nodes.text.setAttributeNS(XML_NS, 'space', 'preserve');
       while (content.firstChild) content.removeChild(content.firstChild);
       // A <textPath> runs along its baseline, so a second line would advance
@@ -25104,7 +26335,10 @@
         content.appendChild(document.createTextNode(getRenderedContent(o.text)));
         return;
       }
-      lines = getRenderedLines(o.text);
+      // A soft break keeps the space it broke at at the end of its line, where
+      // the rendered label drops it: here every typed character has to be one
+      // the caret can sit beside.
+      lines = getRenderedLines(o.text, breaks);
       content.appendChild(document.createTextNode(lines[0]));
       for (i = 1; i < lines.length; i++) {
         tspan = document.createElementNS(SVG_NS$3, 'tspan');
@@ -25190,6 +26424,7 @@
       if (pathId) {
         groups.back.appendChild(ghostPath(pathId));
       } else if (box) {
+        appendColumn(o, groups.back, box);
         groups.back.appendChild(rect(box, 'label-edit-box'));
       }
       getSelectionRects(provider, bands[0], bands[1], rendered).forEach(function(r) {
@@ -25198,6 +26433,22 @@
       if (caret) groups.front.appendChild(caretLine(caret));
       drawHitRegion(o, groups.hit, box, caret, pathId);
       syncTransform(o, groups);
+    }
+
+    // A text block's column -- the width it wraps to -- as a faint dashed box
+    // behind the box around the text, which is usually narrower. Without it a
+    // text block just placed looks like any other label: a caret in a box the
+    // size of nothing.
+    function appendColumn(o, g, box) {
+      var rec = o.pending ? getPendingRecord(o) : getRecord(o.target, o.id);
+      var column = rec ? getLabelColumn(rec) : null;
+      if (!column) return;
+      g.appendChild(rect({
+        x: column[0] - BOX_PADDING$1,
+        y: box.y,
+        width: column[1] - column[0] + BOX_PADDING$1 * 2,
+        height: box.height
+      }, 'label-edit-column'));
     }
 
     // Keeps clicks near the label inside the session instead of ending it.
@@ -25503,6 +26754,8 @@
   var BOX_PADDING = 3;
   var ANCHOR_RADIUS = 3.5;
   var KNOT_RADIUS = 3;
+  var WIDTH_HANDLE_SIZE = 6;
+  var GAP_HANDLE_RADIUS = 2.5;
 
   // How many labels get an outline before the cue falls back to the halo.
   //
@@ -25522,7 +26775,12 @@
 
   // getEditingId: returns the feature id of an open text editing session, or -1.
   //   A label being typed into draws its own box and does not want a second one.
-  function LabelSelection(gui, ext, hit, getEditingId) {
+  // getHandles: (optional) function(target, id, textBox) returning
+  //   {handles, column} for a selected anchored label, as from
+  //   getAnchoredLabelHandles(), or null. The tool decides when a label has
+  //   handles, and gives a text block's column from what is on screen, which
+  //   during a drag is not the data.
+  function LabelSelection(gui, ext, hit, getEditingId, getHandles) {
     var self = {};
     var groups = []; // one <g> per drawn cue, in the layer's markup
     var marked = []; // text nodes wearing the halo, when there are too many to outline
@@ -25617,7 +26875,7 @@
         g.appendChild(curve(nodes.pathId));
         if (withHandles) appendKnotHandles(g, target, id);
       } else {
-        appendAnchoredCue(g, nodes, rec, id);
+        appendAnchoredCue(g, nodes, rec, id, withHandles ? target : null);
       }
       groups.push(g);
     }
@@ -25633,14 +26891,76 @@
     // ring inside it would. What is left -- offset text with nothing at its
     // anchor -- is the case where the ring is the only thing that says what the
     // text hangs off.
-    function appendAnchoredCue(g, nodes, rec, id) {
+    //
+    // A selected label's handles go in a group of their own, after the symbol
+    // rather than before it: they sit on the callout and on the edge of the box,
+    // and painted beneath the line they would be hidden by it.
+    //
+    // @handleTarget: the layer, when the label is selected and so may have
+    //   handles, or null
+    //
+    // A selected text block also shows its column, the width it wraps to, as a
+    // fainter dashed box behind the solid one. The solid box is the label itself
+    // -- the wrapped text, which is what a callout meets -- and is usually
+    // narrower than its column; the column is what the width handle drags.
+    function appendAnchoredCue(g, nodes, rec, id, handleTarget) {
       var box = measure(nodes.content);
+      var o = box && handleTarget && getHandles ? getHandles(handleTarget, id, box) : null;
+      var column = o ? o.column : null;
       if (!box) return;
+      if (column) g.appendChild(columnRect(box, column, BOX_PADDING));
       if (box.width || box.height) g.appendChild(rect(box, BOX_PADDING));
       if (id === tetherId) g.appendChild(tether(box));
       if (!internal.featureHasSvgSymbol(rec) && !boxHoldsOrigin(box)) {
         g.appendChild(anchorMarker());
       }
+      if (o && o.handles.length > 0) appendHandles(nodes, o.handles);
+    }
+
+    // The column's own extent across, and the text's up and down: a column has
+    // no height of its own.
+    function columnRect(box, column, pad) {
+      var el = rect({x: column[0], y: box.y, width: column[1] - column[0],
+        height: box.height}, pad);
+      el.setAttribute('class', 'label-cue-column');
+      return el;
+    }
+
+    function appendHandles(nodes, handles) {
+      var g = document.createElementNS(SVG_NS$2, 'g');
+      var transform = nodes.symbol.getAttribute('transform');
+      var display = nodes.symbol.getAttribute('display');
+      g.setAttribute('class', 'label-cue label-cue-handles');
+      if (transform) g.setAttribute('transform', transform);
+      if (display) g.setAttribute('display', display);
+      handles.forEach(function(h) {
+        g.appendChild(labelHandle(h));
+      });
+      nodes.symbol.parentNode.insertBefore(g, nodes.symbol.nextSibling);
+      groups.push(g);
+    }
+
+    // A square for the width handle, which is a corner of the box, and a ring
+    // for the callout's, which are points on its line -- filled for the end
+    // that meets the text, so that the two ends of the line read differently.
+    function labelHandle(h) {
+      var p = h.point;
+      var el;
+      if (h.kind == 'width') {
+        el = document.createElementNS(SVG_NS$2, 'rect');
+        el.setAttribute('x', p[0] - WIDTH_HANDLE_SIZE / 2);
+        el.setAttribute('y', p[1] - WIDTH_HANDLE_SIZE / 2);
+        el.setAttribute('width', WIDTH_HANDLE_SIZE);
+        el.setAttribute('height', WIDTH_HANDLE_SIZE);
+      } else {
+        el = document.createElementNS(SVG_NS$2, 'circle');
+        el.setAttribute('cx', p[0]);
+        el.setAttribute('cy', p[1]);
+        el.setAttribute('r', h.kind == 'gap' ? GAP_HANDLE_RADIUS : KNOT_RADIUS);
+      }
+      el.setAttribute('class', 'label-cue-handle label-cue-' + h.kind);
+      el.setAttribute('data-handle', h.kind);
+      return el;
     }
 
     // Whether the label's anchor point is inside the box drawn around its text.
@@ -26107,8 +27427,17 @@
   // resolve and still leaves a short polyline to walk per mouse move.
   var FLATTEN_PX = 0.5;
 
+  // How near a dragged handle has to come to an alignment to snap to it, px on
+  // screen
+  var SNAP_PX = 5;
+
+  // The width a text block placed with a click wraps to, px, when the panel does
+  // not set one
+  var DEFAULT_BLOCK_WIDTH = 160;
+
   function initLabelTool(gui, ext, hit) {
-    // which kind of label a click creates: null, 'anchor' or 'path'
+    // which kind of label a click creates: null, 'anchor', 'block' or 'path'.
+    // A block is an anchored label with a wrap width.
     var armed = null;
     var curve = createCurveState();
     // The pointer's position while a curve is being drawn, in display
@@ -26131,11 +27460,27 @@
     // coordinates. A drag on a label's text starts from here rather than from
     // the dragstart event -- see beginTextDrag().
     var hoverPoint = null;
+    // A drag on one of a selected anchored label's own handles -- its width or
+    // its callout -- or null. See gui-label-handles.mjs.
+    var handleDrag = null;
+    // The handles last drawn, {id, handles}, which is what the pointer is tested
+    // against: they are worked out when the cue is drawn rather than on every
+    // mouse move, since placing them measures the label.
+    var shownHandles = null;
+    // A drag on the map that is setting a new text block's width, or null
+    var blockDrag = null;
+    // A drag that has been released and whose command has not redrawn the map
+    // yet, or null. Its preview is still what is on screen, so the cue goes on
+    // being drawn from it rather than from the data, which has not changed yet.
+    var releasedDrag = null;
+    // The mouseup that ended the last block drag, or null. A short one is
+    // followed by a click from the same mouseup, which it has already handled.
+    var blockRelease = null;
     var editor = new LabelEditor(gui, ext);
     var selection = new LabelSelection(gui, ext, hit, function() {
       return editor.isOpen() ? editor.getFeatureId() : -1;
-    });
-    var toolbar, anchorBtn, pathBtn, alert;
+    }, getLabelHandles);
+    var toolbar, anchorBtn, blockBtn, pathBtn, alert;
 
     gui.addMode('label_tool', turnOn, turnOff);
 
@@ -26207,6 +27552,11 @@
       hideInstructions();
       drag = null;
       textDrag = null;
+      handleDrag = null;
+      releasedDrag = null;
+      blockRelease = null;
+      shownHandles = null;
+      clearBlockDrag();
       hoverHandle = null;
       hoverTextId = -1;
       hoverPoint = null;
@@ -26214,6 +27564,8 @@
       // go back whether or not it was a crosshair.
       gui.container.findChild('.map-layers').classed('label-tool', false);
       gui.container.findChild('.map-layers').classed('label-handle', false);
+      gui.container.findChild('.map-layers').classed('label-text-drag', false);
+      gui.container.findChild('.map-layers').classed('label-resize', false);
       if (toolbar) toolbar.hide();
       if (gui.interaction.getMode() == 'label') {
         // the mode change came from somewhere other than the mode menu
@@ -26239,6 +27591,14 @@
       }).on('click', function() {
         setArmed(armed == 'anchor' ? null : 'anchor');
       });
+      // A tool of its own, although a text block is only a label with a width,
+      // because otherwise the width is something found by dragging a handle on a
+      // label that already exists -- and nothing on screen says it is there.
+      blockBtn = toolbar.addButton('#text-block-icon', {
+        tooltip: 'Add a text block'
+      }).on('click', function() {
+        setArmed(armed == 'block' ? null : 'block');
+      });
       pathBtn = toolbar.addButton('#curved-text-icon', {
         tooltip: 'Add a label along a path'
       }).on('click', function() {
@@ -26258,6 +27618,7 @@
     function updateButtons() {
       if (!toolbar) return;
       anchorBtn.setSelected(armed == 'anchor');
+      blockBtn.setSelected(armed == 'block');
       pathBtn.setSelected(armed == 'path');
       updateCursor();
     }
@@ -26271,22 +27632,34 @@
     // wrong even with a tool armed.
     function updateCursor() {
       var el = gui.container.findChild('.map-layers');
-      // A selected path label's glyphs are a handle as much as its knots are: a
-      // drag there slides the text along its curve.
-      var onHandle = active() && (!!hoverHandle || hoverTextId > -1);
-      var placing = active() && !!armed && hit.getHitId() == -1 && !onHandle;
+      // The text and the control points get different cursors, because they are
+      // often close together -- a callout's attachment point is on the text's
+      // box, and a path label's knots sit under its glyphs -- and a drag on one
+      // does something quite different from a drag on the other.
+      var onText = active() && hoverTextId > -1;
+      var onHandle = active() && !onText && !!hoverHandle;
+      var resizing = onHandle && hoverHandle.kind == 'width';
+      var placing = active() && !!armed && hit.getHitId() == -1 && !onText && !onHandle;
       el.classed('label-tool', placing);
-      el.classed('label-handle', onHandle);
+      el.classed('label-text-drag', onText);
+      el.classed('label-handle', onHandle && !resizing);
+      el.classed('label-resize', resizing);
     }
 
     function showInstructions() {
+      var msg;
       hideInstructions();
       if (!armed) return;
-      alert = showPopupAlert(armed == 'anchor' ?
-        'Click on the map to place a label.' :
-        'Click to draw a curved path. Type Esc or double-click ' +
-        'to finish. Backspace removes the last point.',
-        null, {non_blocking: true, max_width: '330px'});
+      if (armed == 'anchor') {
+        msg = 'Click on the map to place a label.';
+      } else if (armed == 'block') {
+        msg = 'Click on the map to place a text block, or drag across it ' +
+          'to set the width the text wraps to.';
+      } else {
+        msg = 'Click to draw a curved path. Type Esc or double-click ' +
+          'to finish. Backspace removes the last point.';
+      }
+      alert = showPopupAlert(msg, null, {non_blocking: true, max_width: '330px'});
     }
 
     function hideInstructions() {
@@ -26302,10 +27675,20 @@
     // editing acts on exactly one and has nothing to do with the panel.
     hit.on('click', function(e) {
       if (!active()) return;
+      // A press that moved a little is both a block drag and a click, released
+      // by the same mouseup; the drag has answered it already.
+      if (blockRelease && getDomEvent(e) == blockRelease) {
+        blockRelease = null;
+        return;
+      }
       if (armed == 'path' && drawingCurve()) {
         extendCurve(pixToMapCoords(e.x, e.y));
         return;
       }
+      // A label's handles sit on its callout and its box, which the hit test
+      // counts as the label, and a second click there would open its text. A
+      // click on a handle is half of the double-click that resets it.
+      if (hoverHandle && hoverHandle.kind && !editor.isOpen()) return;
       // A click away from the text finishes the label being typed into, and does
       // nothing else: leaving one label is its own gesture, and placing the next
       // one takes another click. This is also what makes one undo step cover one
@@ -26330,10 +27713,18 @@
       if (e.id > -1 && clickLabel(e.id, e)) return;
       if (editor.isOpen()) return; // a click within the text moved the caret
       // Nothing was hit. Any selection is now over with, and the click means
-      // whatever the armed tool says it means.
+      // whatever the armed tool says it means -- except with the text block
+      // tool, where clicking off a selected block is how it is let go of, and
+      // a block dropped at the same time would be one more thing to delete.
+      if (armed == 'block' && e.had_selection) {
+        deselectLabels();
+        return;
+      }
       deselectLabels();
       if (armed == 'anchor') {
-        beginLabel([pixToMapCoords(e.x, e.y)], []);
+        beginLabel([pixToMapCoords(e.x, e.y)]);
+      } else if (armed == 'block') {
+        beginLabel([pixToMapCoords(e.x, e.y)], getBlockStyle);
       } else if (armed == 'path') {
         extendCurve(pixToMapCoords(e.x, e.y));
       }
@@ -26531,13 +27922,17 @@
       return editor.ownsNode(getEventNode(e));
     }
 
-    // The DOM node a hit event came from. A hit event's originalEvent is the
-    // mouse event, whose own originalEvent is the DOM one, so the node is two
-    // levels down.
+    // The DOM node a hit event came from.
     function getEventNode(e) {
-      var mouseEvt = e && e.originalEvent;
-      var domEvt = mouseEvt && mouseEvt.originalEvent || mouseEvt;
+      var domEvt = getDomEvent(e);
       return domEvt && domEvt.target || null;
+    }
+
+    // The DOM event behind a hit event: its originalEvent is the mouse event,
+    // whose own originalEvent is the DOM one.
+    function getDomEvent(e) {
+      var mouseEvt = e && e.originalEvent;
+      return mouseEvt && mouseEvt.originalEvent || mouseEvt || null;
     }
 
     function deselectLabels() {
@@ -26574,6 +27969,7 @@
     // find its nodes again and write the text being edited back into them, and
     // the selection cues have to be drawn onto the new markup.
     gui.on('map_rendered', function(e) {
+      if (!e || e.action != 'hover') releasedDrag = null;
       editor.refresh();
       // The cues went with the old markup, so they have to be drawn again --
       // except after a 'hover' draw, which leaves the SVG alone. That draw now
@@ -26628,7 +28024,14 @@
         if (beginTextDrag(e)) consumeDrag(e);
         return;
       }
-      if (!hoverHandle) return;
+      if (!hoverHandle) {
+        if (armed == 'block' && beginBlockDrag(e)) consumeDrag(e);
+        return;
+      }
+      if (hoverHandle.kind) {
+        if (beginHandleDrag(hoverHandle)) consumeDrag(e);
+        return;
+      }
       beginKnotDrag(hoverHandle);
       consumeDrag(e);
     });
@@ -26663,6 +28066,16 @@
         updateTextDrag(e);
         return;
       }
+      if (handleDrag) {
+        consumeDrag(e);
+        updateHandleDrag(e);
+        return;
+      }
+      if (blockDrag) {
+        consumeDrag(e);
+        updateBlockDrag(e);
+        return;
+      }
       if (!drag) return;
       consumeDrag(e);
       shp = getDisplayShapes(drag.target)[drag.id];
@@ -26685,11 +28098,28 @@
       if (textDrag) {
         o = textDrag;
         textDrag = null;
+        if (o.moved) releasedDrag = o;
         consumeDrag(e);
         selection.setTether(-1);
         // A press that never moved is a click, which the click handler has
         // already dealt with; nothing was previewed, so nothing is undone.
         if (o.moved) commitTextDrag(o);
+        return;
+      }
+      if (handleDrag) {
+        o = handleDrag;
+        handleDrag = null;
+        if (o.values) releasedDrag = o;
+        consumeDrag(e);
+        if (o.values) commitHandleDrag(o);
+        return;
+      }
+      if (blockDrag) {
+        o = blockDrag;
+        clearBlockDrag();
+        blockRelease = getDomEvent(e);
+        consumeDrag(e);
+        commitBlockDrag(o);
         return;
       }
       if (!o) return;
@@ -26726,6 +28156,301 @@
       });
     }
 
+    // The handles a selected anchored label draws, for LabelSelection: only on a
+    // label that is the whole selection, since a handle edits one label, and
+    // not while anything else is going on. Kept as shownHandles for the hover
+    // test, which then tests the pointer against exactly what is on screen.
+    //
+    // During a drag they are worked out from the record being previewed, so that
+    // the handle follows the pointer and the others follow the line.
+    //
+    // Every selected text block gets its column, handles or not, and that too
+    // comes from the preview: the text moves by its attributes during an offset
+    // drag, and a column read from the data stayed where the text had been.
+    function getLabelHandles(target, id, textBox) {
+      var ids = hit.getSelectionIds();
+      var rec = getPreviewRecord(id) || getRecord(target, id);
+      var o;
+      if (!rec || isPathLabel(target, id)) return null;
+      if (!active() || editor.isOpen() || drawingCurve() || textDrag ||
+          ids.length != 1 || ids[0] != id) {
+        shownHandles = null;
+        return {handles: [], column: getLabelColumn(rec)};
+      }
+      o = getAnchoredLabelHandles(rec, textBox, {
+        symbolRadius: internal.svg.getAnchorSymbolRadius(rec),
+        scale: ext.getSymbolScale() || 1,
+        padding: BOX_PADDING
+      });
+      shownHandles = {id: id, target: target, handles: o.handles};
+      return o;
+    }
+
+    function getPreviewRecord(id) {
+      var o = handleDrag || textDrag || releasedDrag;
+      return o && o.id == id && o.previewRec || null;
+    }
+
+    // The label handle nearest the pointer, within reach of it, or null.
+    // Returns a handle shaped like findNearestKnot()'s, plus its kind, its point
+    // in label space and the pointer's, and its distance in screen px.
+    function findLabelHandle(target, e) {
+      var o = shownHandles;
+      var ids = hit.getSelectionIds();
+      var scale = ext.getSymbolScale() || 1;
+      var shp, q, best = null;
+      if (!o || o.target != target || ids.length != 1 || ids[0] != o.id) return null;
+      shp = getDisplayShapes(target)[o.id];
+      if (!shp) return null;
+      q = getLabelSpacePoint(shp[0], e);
+      o.handles.forEach(function(h) {
+        var dist = Math.sqrt(Math.pow(h.point[0] - q.x, 2) +
+          Math.pow(h.point[1] - q.y, 2)) * scale;
+        if (dist <= KNOT_HIT_THRESHOLD && (!best || dist < best.dist)) {
+          best = {id: o.id, kind: h.kind, point: h.point, pointer: [q.x, q.y], dist: dist};
+        }
+      });
+      return best;
+    }
+
+    function beginHandleDrag(handle) {
+      var target = hit.getHitTarget();
+      var rec = getRecord(target, handle.id);
+      var shp = getDisplayShapes(target)[handle.id];
+      var drawn, shape;
+      if (!rec || !shp) return false;
+      drawn = internal.svg.getDrawnLabelOffset(rec);
+      shape = internal.svg.getLabelCalloutShape(rec, internal.svg.getAnchorSymbolRadius(rec));
+      if (handle.kind != 'width' && !shape) return false;
+      handleDrag = {
+        kind: handle.kind,
+        id: handle.id,
+        target: target,
+        rec: rec,
+        anchor: shp[0],
+        // Where within the handle it was grabbed, so that it tracks the pointer
+        // rather than jumping to it -- measured from the last hover, as a knot's
+        // is, since dragstart arrives after the first move.
+        grab: [handle.point[0] - handle.pointer[0], handle.point[1] - handle.pointer[1]],
+        textAnchor: getDrawnAnchor(drawn),
+        dx: drawn.dx,
+        // The padded box the attachment point slides around. It does not move
+        // while the point does: callout-attach is where on the box, not where
+        // the box is.
+        box: shape ? shape.box : null,
+        values: null,
+        previewRec: null
+      };
+      return true;
+    }
+
+    function updateHandleDrag(e) {
+      var o = handleDrag;
+      var q = getLabelSpacePoint(o.anchor, e);
+      var values = getHandleDragValues(o, [q.x + o.grab[0], q.y + o.grab[1]]);
+      if (!values || o.values && sameValues(values, o.values)) return;
+      o.values = values;
+      o.previewRec = Object.assign({}, o.rec, values);
+      previewLabel(o.target, o.id, o.previewRec);
+    }
+
+    // The fields a handle dragged to @p writes, all of them in their stored form.
+    function getHandleDragValues(o, p) {
+      var tol = SNAP_PX / (ext.getSymbolScale() || 1);
+      var width, shape, via;
+      if (o.kind == 'width') {
+        width = getDraggedWidth(o.textAnchor, o.dx, p[0], BOX_PADDING);
+        return {
+          'label-width': width,
+          'label-text': rewrapLabelValue(o.rec['label-text'],
+            Object.assign({}, o.rec, {'label-width': width}))
+        };
+      }
+      if (o.kind == 'via') {
+        // Snapped against where the line meets the text with the via point
+        // where the pointer is, because an automatic attachment faces the via
+        // point and moves with it. Only an elbow's corner snaps: level and plumb
+        // legs are what an elbow is for, but a curve's midpoint has no reason to
+        // line up with anything, and snapping it made the curve hard to place.
+        shape = internal.svg.getLabelCalloutShape(
+          Object.assign({}, o.rec, {'callout-via': formatPointPair(p)}),
+          internal.svg.getAnchorSymbolRadius(o.rec));
+        via = shape && shape.kind != 'bezier' ? snapCalloutVia(p, shape.attach, tol) : p;
+        return {'callout-via': formatPointPair(via)};
+      }
+      if (o.kind == 'attach') {
+        return {'callout-attach': formatPointPair(getAttachFraction(o.box, p, tol))};
+      }
+      if (o.kind == 'gap') {
+        return {'callout-gap': getDraggedGap(p)};
+      }
+      return null;
+    }
+
+    function sameValues(a, b) {
+      return Object.keys(a).every(function(k) { return a[k] === b[k]; });
+    }
+
+    // Redraws one label from @rec without touching its data, then redraws its
+    // cue around the result. The command the drag ends with redraws the layer
+    // from the data, which replaces this.
+    function previewLabel(target, id, rec) {
+      var shp = getDisplayShapes(target)[id];
+      var container = target.gui && target.gui.svg_container;
+      if (!replaceAnchoredSymbol(container, id, rec, shp, ext)) return;
+      selection.refresh(true);
+    }
+
+    // As with an offset drag, the preview is left in place for the command's own
+    // redraw to replace, and is only taken back if the command fails.
+    function commitHandleDrag(o) {
+      var values = Object.assign({}, o.values);
+      var text = values['label-text'];
+      delete values['label-text'];
+      runHandleCommand(o.target, o.id, values,
+        text !== undefined && text !== o.rec['label-text'] ? text : null,
+        handleTitles[o.kind]);
+    }
+
+    var handleTitles = {
+      width: 'Set label width',
+      via: 'Move callout bend',
+      attach: 'Move callout end',
+      gap: 'Set callout gap'
+    };
+
+    // text: rewrapped label-text to write with the values, or null
+    function runHandleCommand(target, id, values, text, title) {
+      var ids = hit.getSelectionIds();
+      runGuiEditCommand(gui, getLabelStyleCommand(values, id, {
+        target: target.name,
+        text: text === null ? undefined : text
+      }), {
+        title: title,
+        // The label stays selected, so its handles are still there to be dragged
+        // again. Re-running the command rebuilds the layer, which drops the
+        // selection.
+        onSuccess: function() { hit.setSelectionIds(ids); },
+        onError: function() { gui.dispatchEvent('map-needs-refresh'); }
+      });
+    }
+
+    // Double-clicking a callout handle gives the label back the callout's own
+    // choice of bend, attachment or gap. The width handle has no automatic value
+    // to go back to: taking the width away would turn the block into point text.
+    function resetHandle(handle) {
+      var target = hit.getHitTarget();
+      var rec = getRecord(target, handle.id);
+      var field = {via: 'callout-via', attach: 'callout-attach',
+        gap: 'callout-gap'}[handle.kind];
+      var values = {};
+      if (!rec || !field || isBlank(rec[field])) return;
+      values[field] = '';
+      runHandleCommand(target, handle.id, values, null, handleTitles[handle.kind]);
+    }
+
+    function isBlank(val) {
+      return val === undefined || val === null || val === '';
+    }
+
+    // Dragging across the map with the text block tool armed sets the new
+    // block's width, which runs between the points pressed and released.
+    function beginBlockDrag(e) {
+      var target = hit.getHitTarget();
+      // Not from a label, whose text a drag there belongs to
+      if (!target || e.id > -1 && isLabel(target, e.id)) return false;
+      if (editor.isOpen()) return false;
+      blockDrag = {
+        target: target,
+        from: getPointerPixels(e),
+        start: hoverPoint || pixToMapCoords(e.x, e.y),
+        width: 0,
+        guide: null
+      };
+      return true;
+    }
+
+    function updateBlockDrag(e) {
+      var o = blockDrag;
+      var scale = ext.getSymbolScale() || 1;
+      o.width = (e.x - o.from[0]) / scale;
+      drawBlockGuide(o, scale);
+    }
+
+    // A dashed box the height of a line, from the press to the pointer, drawn
+    // with a symbol's transform so that it scales as the label will. In the
+    // map's shared <svg> rather than the layer's group, like a pending label,
+    // since a layer with no labels in it yet has no group to draw into.
+    function drawBlockGuide(o, scale) {
+      var container = gui.map.getSvgRoot();
+      var style = getStyleForNewLabel();
+      var h = getNewFontSize(style) * 1.2;
+      var p = ext.translateCoords(o.start[0], o.start[1]);
+      var el = o.guide;
+      if (!container) return;
+      if (!el) {
+        el = o.guide = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        el.setAttribute('class', 'label-block-guide');
+        container.appendChild(el);
+      }
+      el.setAttribute('transform', internal.svg.getTransform(p, scale));
+      el.setAttribute('x', Math.min(0, o.width));
+      el.setAttribute('y', 0);
+      el.setAttribute('width', Math.abs(o.width));
+      el.setAttribute('height', h);
+    }
+
+    function clearBlockDrag() {
+      var el = blockDrag && blockDrag.guide;
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+      blockDrag = null;
+    }
+
+    // A drag too short to mean a width is a click, and does what a click would:
+    // lets go of the selection if there is one, and otherwise places a block at
+    // the default width. A drag to the left places the block the same as a drag
+    // to the right from where it ended, so that its text is left-aligned like
+    // any other block's.
+    function commitBlockDrag(o) {
+      var width = Math.round(Math.abs(o.width));
+      var start = o.start;
+      var p;
+      if (width < MIN_LABEL_WIDTH) {
+        if (hit.getSelectionIds().length > 0) {
+          deselectLabels();
+        } else {
+          beginLabel([start], getBlockStyle);
+        }
+        return;
+      }
+      deselectLabels();
+      if (o.width < 0) {
+        p = ext.translateCoords(start[0], start[1]);
+        start = pixToMapCoords(p[0] + o.width * (ext.getSymbolScale() || 1), p[1]);
+      }
+      beginLabel([start], function() { return getBlockStyle(width); });
+    }
+
+    // A text block's style: the new label's, with a wrap width -- @width or a
+    // default -- and placed with the top left of its column at the anchor, so
+    // that its text is left-aligned and fills the box a drag drew. The offsets
+    // that do that replace the position the panel names.
+    function getBlockStyle(width) {
+      var style = Object.assign({}, getStyleForNewLabel());
+      delete style['label-pos'];
+      return Object.assign(style, {
+        'label-width': width > 0 ? width : DEFAULT_BLOCK_WIDTH,
+        'text-anchor': 'start',
+        dx: 0,
+        dy: Math.round(getNewFontSize(style) * 0.8)
+      });
+    }
+
+    function getNewFontSize(style) {
+      var px = parseFloat(style['font-size']);
+      return px > 0 ? px : internal.svg.DEFAULT_LABEL_FONT_SIZE || 12;
+    }
+
     // What a drag on a selected label's glyphs means, which depends on the kind
     // of label and -- for an anchored one -- on the tool's position mode.
     //
@@ -26738,7 +28463,7 @@
       var shp = id > -1 ? getDisplayShapes(target)[id] : null;
       if (id < 0 || !shp) return false;
       if (isPathLabel(target, id)) return beginPathTextDrag(e, target, id);
-      if (labelTextIsDraggable(gui)) return beginOffsetDrag(e, target, id);
+      if (textIsDraggable(target, id)) return beginOffsetDrag(e, target, id);
       beginKnotDrag({
         id: id,
         index: 0,
@@ -26873,6 +28598,8 @@
         kind: 'offset',
         id: id,
         target: target,
+        rec: rec,
+        previewRec: null,
         // dx and dy are in the space inside the label's symbol group, so pointer
         // movement is divided by the scale that group wears.
         scale: ext.getSymbolScale() || 1,
@@ -26889,7 +28616,8 @@
           // multi-line label -- which is the width its justification is
           // measured against.
           width: box ? box.width : 0,
-          aligned: !!internal.svg.getAlignmentAnchor(rec['label-align'])
+          aligned: !!internal.svg.getAlignmentAnchor(rec['label-align']),
+          keepAnchor: getLabelPositionKind(rec) == 'block'
         },
         // What the attributes said before the preview wrote over them, so that
         // the command is what changes the label rather than the drag.
@@ -26898,12 +28626,30 @@
           y: nodes.text.getAttribute('y'),
           anchor: nodes.text.getAttribute('text-anchor')
         },
+        callout: getOffsetDragCallout(rec),
         moved: false
       };
       // The hairline to the anchor, which is what the drag is measured from and
-      // often the only thing on screen that says so.
-      selection.setTether(id);
+      // often the only thing on screen that says so. A callout says it already.
+      if (!textDrag.callout) selection.setTether(id);
       return true;
+    }
+
+    // What an offset drag needs to carry a label's callout along, or null for a
+    // label without one: the record to redraw it from, and for a callout bent
+    // by hand, its via point and where the line met the text at the start.
+    function getOffsetDragCallout(rec) {
+      var shape;
+      if (!internal.svg.labelHasCallout(rec)) return null;
+      shape = internal.svg.getLabelCalloutShape(rec, internal.svg.getAnchorSymbolRadius(rec));
+      return {
+        rec: rec,
+        box: internal.svg.getLabelTextBox(rec),
+        // the shape's via point is the stored one when there is one
+        via: rec['callout-via'] && shape && shape.via ? shape.via.slice() : null,
+        attach: shape ? shape.attach : null,
+        type: shape && shape.kind == 'bezier' ? 'curve' : 'elbow'
+      };
     }
 
     function updateOffsetDrag(e) {
@@ -26913,7 +28659,41 @@
         dy: (e.y - o.from[1]) / o.scale
       });
       o.moved = true;
-      previewOffset(o);
+      // The record as the drag will leave it, which the selection cue reads a
+      // text block's column from while the drag is on
+      o.previewRec = Object.assign({}, o.rec, {
+        dx: o.values.dx,
+        dy: o.values.dy,
+        'text-anchor': o.values['text-anchor']
+      });
+      delete o.previewRec['label-pos'];
+      if (o.callout) {
+        previewCalloutOffset(o, getDomEvent(e));
+      } else {
+        previewOffset(o);
+      }
+    }
+
+    // A label with a callout is redrawn rather than moved by its attributes, as
+    // previewOffset() does, because the line has to be worked out again for
+    // where the text now is. Redrawn from the fields the drag will write, which
+    // is also what makes the preview the same as the result.
+    //
+    // A via point placed by hand goes with the text, unless Alt is held: a bend
+    // put there to clear something usually still has to, and one left behind by
+    // a long drag doubles the line back on itself.
+    function previewCalloutOffset(o, evt) {
+      var c = o.callout;
+      var rec = o.previewRec;
+      var box, t1;
+      o.via = null;
+      if (c.via && c.attach && !(evt && evt.altKey)) {
+        box = internal.svg.getLabelTextBox(rec);
+        t1 = [c.attach[0] + box.xmin - c.box.xmin, c.attach[1] + box.ymin - c.box.ymin];
+        o.via = formatPointPair(followCalloutVia(c.type, c.via, c.attach, t1));
+        rec['callout-via'] = o.via;
+      }
+      previewLabel(o.target, o.id, rec);
     }
 
     // Shows the offset by writing it onto the rendered text, as the path drag
@@ -26939,6 +28719,12 @@
 
     function restoreOffset(o) {
       var nodes = findLabelNodes(o.target, o.id);
+      releasedDrag = null;
+      if (o.callout) {
+        // redrawn rather than written on, so redrawn back
+        gui.dispatchEvent('map-needs-refresh');
+        return;
+      }
       if (!nodes) return;
       // The renderer always writes x and y on an anchored label, so the removal
       // case is for markup this tool did not draw.
@@ -26960,6 +28746,7 @@
         dx: o.values.dx,
         dy: o.values.dy,
         anchor: o.values['text-anchor'],
+        via: o.via || null,
         id: o.id,
         target: o.target.name
       }), {
@@ -27062,8 +28849,9 @@
     function updateHoverHandle(e) {
       var found = drawingCurve() || editor.isOpen() || !e.overMap ? null :
         findHandle(hit.getHitTarget(), e);
-      var changed = !!found != !!hoverHandle;
-      if (drag || textDrag) return;
+      var changed = !!found != !!hoverHandle ||
+        !!found && found.kind != hoverHandle.kind;
+      if (dragging()) return;
       hoverHandle = found;
       if (changed) {
         updateHoverText(); // a knot handle takes the glyphs' turn away
@@ -27082,16 +28870,30 @@
     // text, and letting the handle win there would leave the text ungrabbable.
     function updateHoverText() {
       var id = findDraggableText();
-      if (drag || textDrag) return;
+      if (dragging()) return;
       hoverTextId = id > -1 && (!hoverHandle || glyphsOutrankHandle(id)) ? id : -1;
+    }
+
+    // Point text and text blocks each have a position mode -- see
+    // getLabelPositionMode().
+    function textIsDraggable(target, id) {
+      return labelTextIsDraggable(gui, getLabelPositionKind(getRecord(target, id)));
+    }
+
+    function dragging() {
+      return !!(drag || textDrag || handleDrag || blockDrag);
     }
 
     // The exception is about the pointer being on the glyphs, not about the mode:
     // an offset label's anchor is out from under its text, and taking the handle
     // away there left it with no anchor handle at all -- dragging the symbol of a
     // label positioned ne slid its text instead of moving the label.
+    //
+    // Only the anchor: the width and callout handles sit on the edge of the box
+    // and would otherwise never be grabbable in Draggable mode.
     function glyphsOutrankHandle(id) {
-      return hoverHandle.id == id && labelTextIsDraggable(gui) &&
+      return !hoverHandle.kind && hoverHandle.id == id &&
+        textIsDraggable(hit.getHitTarget(), id) &&
         !isPathLabel(hit.getHitTarget(), id) && pointerIsOverText(id);
     }
 
@@ -27134,14 +28936,24 @@
     }
 
     // The handle under the pointer, or null. Only a selected label's handles are
-    // grabbable -- see gui-label-knots.mjs.
+    // grabbable -- see gui-label-knots.mjs. A knot and a label handle within
+    // reach of the pointer go to whichever is nearer: a callout's gap handle can
+    // sit close to the anchor.
     function findHandle(target, e) {
       var shapes = target && getDisplayShapes(target);
       var ids = hit.getSelectionIds();
       var p = pixToMapCoords(e.x, e.y);
-      var handle;
+      var handle, labelHandle, knotPix;
       if (!shapes || ids.length === 0) return null;
       handle = findNearestKnot(shapes, ids, p, scaleThreshold(KNOT_HIT_THRESHOLD));
+      labelHandle = findLabelHandle(target, e);
+      if (handle && labelHandle) {
+        knotPix = ext.translateCoords(handle.point[0], handle.point[1]);
+        if (Math.hypot(knotPix[0] - e.x, knotPix[1] - e.y) < labelHandle.dist) {
+          labelHandle = null;
+        }
+      }
+      if (labelHandle) return labelHandle;
       if (handle) handle.pointer = p;
       return handle;
     }
@@ -27181,6 +28993,10 @@
         if (o.action == 'finish') {
           finishCurve();
         }
+        return;
+      }
+      if (hoverHandle && hoverHandle.kind && !editor.isOpen()) {
+        resetHandle(hoverHandle);
         return;
       }
       // Double-clicking a label reaches straight into its text, which is the
@@ -27295,8 +29111,12 @@
     // So the click opens a *pending* session, which draws the label and holds its
     // text, and the label becomes a feature only when the session ends with
     // something in it. See LabelEditor.openPending().
-    function beginLabel(displayCoords) {
+    //
+    // getStyle: (optional) the new label's style, when it is not simply the
+    //   panel's -- a text block's adds a width
+    function beginLabel(displayCoords, getStyle) {
       var target = hit.getHitTarget();
+      var styleFn = getStyle || getStyleForNewLabel;
       if (!target) return;
       hideInstructions();
       editor.openPending(target, {
@@ -27305,15 +29125,15 @@
         // or a position while the caret is sitting there is visible immediately.
         // The same style the label will be created with, down to the font it is
         // named in, so that committing it changes nothing on screen.
-        getStyle: getStyleForNewLabel,
-        create: function(text) { createLabel(displayCoords, text); }
+        getStyle: styleFn,
+        create: function(text) { createLabel(displayCoords, text, styleFn()); }
       });
     }
 
     // Creates the label being typed into. One command carries its geometry, its
     // style and its text, so a new label is a single entry in the session history
     // and a single step to undo.
-    function createLabel(displayCoords, text) {
+    function createLabel(displayCoords, text, style) {
       var target = hit.getHitTarget();
       var coords = displayCoords.map(function(p) {
         return target ? translateDisplayPoint(target, p) : p;
@@ -27323,7 +29143,7 @@
         text: text,
         // whatever the style panel was set to while nothing was selected, so that
         // a font can be chosen before the first label exists
-        style: getStyleForNewLabel()
+        style: style
       }), {title: 'Add label'});
     }
 
@@ -27390,7 +29210,7 @@
       },
       referenceStyle = { // outline style for reference layers
         type: 'outline',
-        strokeColors: [null, '#78c110'], // upped saturation from #86c927
+        strokeColors: [null, '#87b73b'], // was 78c110
         strokeWidth: 0.85,
         dotColor: "#73ba20",
         dotSize: 1
@@ -30612,6 +32432,9 @@
     // getContentLayerBounds() instead. Recorded because the difference matters
     // when deciding whether an update should reset the view.
     var _boundsArePlaceholder = false;
+    // Whether the content's bounds had no width or no height before they were
+    // padded in calcFullBounds() -- see mapNeedsResetFromCollapsedBounds().
+    var _boundsAreCollapsed = false;
 
     var RESIZE_REDRAW_DELAY = 200;
 
@@ -30878,6 +32701,7 @@
       // read before calcFullBounds() below, which describes the map as it is
       // after this update
       var prevBoundsWerePlaceholder = _boundsArePlaceholder;
+      var prevBoundsWereCollapsed = _boundsAreCollapsed;
       var fullBounds;
       var needReset;
 
@@ -30960,6 +32784,8 @@
         // screen, so the view they chose it in is the one to keep, unless what
         // arrived is not in it.
         needReset = !fullBounds.intersects(_ext.getBounds());
+      } else if (prevBoundsWereCollapsed) {
+        needReset = mapNeedsResetFromCollapsedBounds(fullBounds, _ext.getBounds(), e.flags);
       } else {
         needReset = mapNeedsReset(fullBounds, _ext.getFullBounds(), _ext.getBounds(), e.flags);
       }
@@ -31040,7 +32866,8 @@
       b.scale(1 + marginPct / 100 * 2);
 
       // Inflate display bounding box of single-point layers and collapsed shapes a bit
-      if (b.width() === 0 || b.height() === 0) {
+      _boundsAreCollapsed = b.width() === 0 || b.height() === 0;
+      if (_boundsAreCollapsed) {
         b.padBounds(1e-4, 1e-4, 1e-4, 1e-4);
       }
       return b;
@@ -33728,7 +35555,6 @@
     if (manifest.catalog) {
       opts.catalog = manifest.catalog;
     }
-    opts.display_all = vars['display-all'] || vars.a || !!manifest.display_all;
     opts.quick_view = vars['quick-view'] || vars.q || !!manifest.quick_view;
     opts.target = vars.target || manifest.target || null;
     opts.name = vars.name || manifest.name || null;

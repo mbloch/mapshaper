@@ -7549,19 +7549,19 @@
       pointN = [CK.lengthMG, CK.lengthMG * Math.tan(30 * D2R$5)];
       CK.pointA = [CK.lengthMA, 0];
       CK.pointB = lineIntersection(CK.pointM, 30, CK.pointA, 45);
-      CK.lengthAG = distance(CK.pointA, CK.pointG);
-      CK.lengthAB = distance(CK.pointA, CK.pointB);
-      lengthMB = distance(CK.pointM, CK.pointB);
-      lengthMN = distance(CK.pointM, pointN);
-      lengthNG = distance(pointN, CK.pointG);
+      CK.lengthAG = distance$1(CK.pointA, CK.pointG);
+      CK.lengthAB = distance$1(CK.pointA, CK.pointB);
+      lengthMB = distance$1(CK.pointM, CK.pointB);
+      lengthMN = distance$1(CK.pointM, pointN);
+      lengthNG = distance$1(pointN, CK.pointG);
       CK.pointD = interpolate(lengthMB, lengthMN, pointN, CK.pointM);
       CK.pointF = [CK.lengthMG, lengthNG - lengthMB];
       CK.pointE = [
         pointN[0] - CK.lengthMA * Math.sin(30 * D2R$5),
         pointN[1] - CK.lengthMA * Math.cos(30 * D2R$5)
       ];
-      CK.lengthGF = distance(CK.pointG, CK.pointF);
-      CK.lengthBD = distance(CK.pointB, CK.pointD);
+      CK.lengthGF = distance$1(CK.pointG, CK.pointF);
+      CK.lengthBD = distance$1(CK.pointB, CK.pointD);
       CK.lengthGFE = CK.lengthGF + CK.lengthAB;
       CK.deltaMEq = CK.lengthGFE / 45;
       CK.lengthAP75 = 15 * CK.lengthParallel73to90At0;
@@ -7588,7 +7588,7 @@
           k * CK.pointD[0] - CK.pointD[1])
       );
       CK.pointC[0] = k * CK.pointC[1];
-      CK.radius = distance(CK.pointC, CK.pointD);
+      CK.radius = distance$1(CK.pointC, CK.pointD);
     }
 
     function ll2mp(lon, lat) {
@@ -7619,12 +7619,12 @@
       );
       var l15;
       if (hit[0]) {
-        l15 = lT + distance(jointT(m), hit[1]);
+        l15 = lT + distance$1(jointT(m), hit[1]);
       } else {
         hit = circleLineIntersection(
           CK.pointC, CK.radius, jointE(m), jointT(m)
         );
-        l15 = lT - distance(jointT(m), hit[1]);
+        l15 = lT - distance$1(jointT(m), hit[1]);
       }
       return p <= 15 ? zoneK(m, p, l15) : zoneL(m, p, l15);
     }
@@ -7660,8 +7660,8 @@
     function zoneH(m, p) {
       var p75 = parallel75(45);
       var p73 = parallel73(m).parallel73;
-      var lF = distance(CK.pointT, CK.pointB);
-      var lF75 = distance(CK.pointB, p75);
+      var lF = distance$1(CK.pointT, CK.pointB);
+      var lF75 = distance$1(CK.pointB, p75);
       var l = (75 - p) * (lF75 + lF) / 2;
       return l <= lF75 ?
         interpolate(l, lF75, p75, CK.pointB) :
@@ -7688,7 +7688,7 @@
     function zoneJ(m, p) {
       var p75 = parallel75(m);
       var p73a = parallel73(m);
-      var lF75 = distance(jointF(m), p75);
+      var lF75 = distance$1(jointF(m), p75);
       var l = (75 - p) * (lF75 - p73a.lengthParallel73) / 2;
       return l <= lF75 ?
         interpolate(l, lF75, p75, jointF(m)) :
@@ -7745,11 +7745,11 @@
     }
 
     function lengthTorridSegment(m) {
-      return distance(jointE(m), jointT(m));
+      return distance$1(jointE(m), jointT(m));
     }
 
     function lengthMiddleSegment(m) {
-      return distance(jointT(m), jointF(m));
+      return distance$1(jointT(m), jointF(m));
     }
 
     function parallel73(m) {
@@ -7757,15 +7757,15 @@
       var jF = jointF(m);
       if (m <= 30) {
         p73 = radialPoint(CK.pointA, CK.lengthAP73, m);
-        lF = distance(jF, p73);
+        lF = distance$1(jF, p73);
       } else {
         p73 = lineIntersection(CK.pointT, -60, jF, m);
-        lF = distance(jF, p73);
+        lF = distance$1(jF, p73);
         if (m > 44) {
           xy = lineIntersection(CK.pointT, -60, jF, 2 * m / 3);
           if (xy[0] > p73[0]) {
             p73 = xy;
-            lF = -distance(jF, p73);
+            lF = -distance$1(jF, p73);
           }
         }
       }
@@ -7838,7 +7838,7 @@
     return createCahillKeyesTransform(mg, true);
   }
 
-  function distance(a, b) {
+  function distance$1(a, b) {
     return Math.hypot(a[0] - b[0], a[1] - b[1]);
   }
 
@@ -26647,6 +26647,10 @@
     'font-style': null,
     'font-stretch': null,
     'font-weight': null,
+    // a stroke around a label's text, painted beneath it -- see svg-label-halo.mjs
+    'halo-color': 'color',
+    'halo-opacity': 'number',
+    'halo-width': 'number',
     icon: null,
     'icon-color': 'color',
     // opacity of the symbol at a label's anchor, apart from the text's. Needed
@@ -26664,6 +26668,20 @@
     // where the text starts along its path; a length or a percentage
     'label-start-offset': null,
     'label-text': null,  // leaving this null
+    // width of a fixed-width text block, whose lines the GUI wraps and stores
+    // with <wbr> soft breaks -- see docs/development/text-annotation-design.md
+    'label-width': 'number',
+    // a line from a label's anchor to its text -- see svg-label-callout.mjs
+    callout: 'callout',
+    'callout-end': 'calloutend',
+    'callout-end-size': 'number',
+    'callout-via': 'pointpair',
+    'callout-attach': 'pointpair',
+    'callout-gap': 'number',
+    'callout-padding': 'number',
+    'callout-color': 'color',
+    'callout-width': 'number',
+    'callout-opacity': 'number',
     'letter-spacing': 'measure',
     'line-height': 'measure',
     opacity: 'number',
@@ -26971,6 +26989,13 @@
       val = parseLabelPosition(strVal);
     } else if (type == 'labelalign') {
       val = parseLabelAlign(strVal);
+    } else if (type == 'callout') {
+      val = parseCalloutType(strVal);
+    } else if (type == 'calloutend') {
+      val = parseCalloutEnd(strVal);
+    } else if (type == 'pointpair') {
+      val = parsePointPair(strVal);
+      val = val ? formatPointPair(val) : null;
     }
     //  else {
     //   // unknown type -- assume literal value
@@ -27005,6 +27030,29 @@
   function parseLabelPosition(str) {
     var pos = String(str).trim();
     return /^(n|s|e|w|ne|se|nw|sw|c)$/i.test(pos) ? pos : null;
+  }
+
+  // 'none' is kept rather than rejected, so that a data field or an expression
+  // can switch a callout off for some features; it renders as no callout.
+  function parseCalloutType(str) {
+    var type = String(str).trim().toLowerCase();
+    return /^(line|elbow|curve|none)$/.test(type) ? type : null;
+  }
+
+  function parseCalloutEnd(str) {
+    var end = String(str).trim().toLowerCase();
+    return /^(arrow|open-arrow|none)$/.test(end) ? end : null;
+  }
+
+  // "x,y" -> [x, y], or null. Stored as a string so that a pair is set and
+  // cleared as one value and reads plainly in a table.
+  function parsePointPair(str) {
+    var match = /^\s*(-?[0-9]*\.?[0-9]+)\s*,\s*(-?[0-9]*\.?[0-9]+)\s*$/.exec(String(str));
+    return match ? [Number(match[1]), Number(match[2])] : null;
+  }
+
+  function formatPointPair(p) {
+    return p[0] + ',' + p[1];
   }
 
   function getLabelPositionStyle(pos) {
@@ -27095,6 +27143,7 @@
     applyStyleAttributes: applyStyleAttributes,
     emptyValueUnsetsProperty: emptyValueUnsetsProperty,
     findStylePropertiesBySymbolGeom: findStylePropertiesBySymbolGeom,
+    formatPointPair: formatPointPair,
     getLabelPositionAnchor: getLabelPositionAnchor,
     getLabelPositionStyle: getLabelPositionStyle,
     getPropertyAccessor: getPropertyAccessor,
@@ -27111,16 +27160,178 @@
     labelPositionFields: labelPositionFields,
     mightBeExpression: mightBeExpression,
     parseBoolean: parseBoolean,
+    parseCalloutEnd: parseCalloutEnd,
+    parseCalloutType: parseCalloutType,
     parseLabelPosition: parseLabelPosition,
+    parsePointPair: parsePointPair,
     parseStyleLiteral: parseStyleLiteral,
     parseSvgMeasure: parseSvgMeasure,
     resolveLabelPosition: resolveLabelPosition
+  });
+
+  // A halo is a stroke around a label's glyphs, painted underneath their fill so
+  // that it widens the letters' outline without eating into them. Three
+  // properties describe one, named after the icon-* properties they sit beside
+  // in the panel:
+  //
+  //   halo-width    how far the halo reaches past the edge of the glyphs, in px.
+  //                 A halo is drawn when this is above 0 and not otherwise.
+  //   halo-color    defaults to white, the halo nearly every map wants
+  //   halo-opacity  0-1, apart from the text's own opacity
+  //
+  // Not stroke, stroke-width and stroke-opacity, which labels already accept and
+  // which would then mean two things at once: a label's record styles its icon
+  // too (see getIconStyleData()), so a halo stored as a stroke would ring the
+  // symbol as well as the text.
+  //
+  // The stroke is twice halo-width because a stroke is centred on the outline:
+  // the inner half is hidden under the fill, and only the outer half shows.
+  //
+  // In the GUI the halo is the text element's own stroke, with paint-order
+  // putting it underneath. Export draws it as a second copy of the text instead
+  // -- see splitLabelHalos() -- because Illustrator and Figma ignore paint-order
+  // when they import SVG and would draw the stroke over the letters.
+
+  var DEFAULT_HALO_COLOR = '#ffffff';
+  var HALO_PAINT_ORDER = 'stroke fill';
+
+  // The properties of the text element that belong to the halo once it has one.
+  // The label's own stroke properties are among them: a halo is the text's
+  // stroke, and a dash pattern or a second colour meant for the letters has
+  // nowhere left to go.
+  var HALO_STROKE_PROPERTIES = ['stroke', 'stroke-width', 'stroke-opacity',
+    'stroke-dasharray', 'stroke-linecap', 'stroke-linejoin', 'paint-order'];
+
+  function labelHasHalo(rec) {
+    return !!rec && rec['halo-width'] > 0;
+  }
+
+  // Paints @rec's halo on @o, a rendered <text> element, and returns it.
+  // Leaves @o alone when the label has no halo, so that labels without one
+  // render exactly as they did before halos existed.
+  function applyLabelHalo(o, rec) {
+    var props, opacity;
+    if (!labelHasHalo(rec)) return o;
+    props = o.properties || (o.properties = {});
+    HALO_STROKE_PROPERTIES.forEach(function(k) {
+      delete props[k];
+    });
+    props.stroke = rec['halo-color'] || DEFAULT_HALO_COLOR;
+    props['stroke-width'] = rec['halo-width'] * 2;
+    opacity = rec['halo-opacity'];
+    if (isSvgNumber(opacity) && Number(opacity) < 1) {
+      props['stroke-opacity'] = Number(opacity);
+    }
+    // Round, because the default miter join puts spikes on the sharp corners of
+    // letters like M and V, which read as blemishes at any halo width.
+    props['stroke-linejoin'] = 'round';
+    props['paint-order'] = HALO_PAINT_ORDER;
+    return o;
+  }
+
+  // Rewrites every halo'd <text> in @o as a group of two: a stroked copy of the
+  // text underneath, and the text itself on top with no stroke. Returns @o, or
+  // the group that replaces it if @o is itself a halo'd label.
+  //
+  // The two copies are identical apart from their paint, so they sit in exactly
+  // the same place whatever the label's position, alignment or path.
+  //
+  // The halo copy is unfilled. That matches paint-order, where the fill covers
+  // the stroke's inner half and nothing else, and it keeps a translucent fill
+  // from showing a second colour through it.
+  //
+  // Things that apply to the label as a whole move to the group: its transform,
+  // which places it, and its opacity, which would otherwise fade each copy on its
+  // own and let the halo show through the letters. That is also how opacity
+  // reads on a single element with paint-order, which is faded as one image.
+  function splitLabelHalos(o) {
+    if (!o) return o;
+    if (o.tag == 'text' && isHaloText(o)) return splitHalo(o);
+    if (o.children) {
+      for (var i = 0; i < o.children.length; i++) {
+        o.children[i] = splitLabelHalos(o.children[i]);
+      }
+    }
+    return o;
+  }
+
+  function isHaloText(o) {
+    return !!o.properties && o.properties['paint-order'] == HALO_PAINT_ORDER;
+  }
+
+  function splitHalo(text) {
+    var halo = cloneSvgObject(text);
+    var group = {tag: 'g', properties: {}, children: [halo, text]};
+    moveProperty(text.properties, group.properties, 'transform');
+    moveProperty(text.properties, group.properties, 'opacity');
+    delete halo.properties.transform;
+    delete halo.properties.opacity;
+    delete halo.properties['paint-order'];
+    delete halo.properties['fill-opacity'];
+    halo.properties.fill = 'none';
+    HALO_STROKE_PROPERTIES.forEach(function(k) {
+      delete text.properties[k];
+    });
+    return group;
+  }
+
+  function moveProperty(src, dest, k) {
+    if (k in src) {
+      dest[k] = src[k];
+      delete src[k];
+    }
+  }
+
+  function cloneSvgObject(o) {
+    var copy = {tag: o.tag};
+    if ('value' in o) copy.value = o.value;
+    if (o.properties) copy.properties = Object.assign({}, o.properties);
+    if (o.children) copy.children = o.children.map(cloneSvgObject);
+    return copy;
+  }
+
+  var SvgLabelHalo = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    DEFAULT_HALO_COLOR: DEFAULT_HALO_COLOR,
+    applyLabelHalo: applyLabelHalo,
+    labelHasHalo: labelHasHalo,
+    splitLabelHalos: splitLabelHalos
   });
 
   // Accepting \n (two chars) as an alternative to the newline character
   // (sometimes, '\n' is not converted to newline, e.g. in a Makefile)
   // Also accepting <br>
   var labelNewlineRxp = /\n|\\n|<br>/i;
+
+  // A line break that the GUI's wrapper put in a fixed-width text block, as
+  // against one the user typed. It consumes no character: the space or hyphen
+  // the line broke at stays in the text before it, so removing every soft break
+  // gives back exactly what was typed. See docs/development/text-annotation-design.md.
+  var LABEL_SOFT_BREAK = '<wbr>';
+
+  // Every form of line break, captured, so that a split keeps the delimiters and
+  // a soft break can be told from a hard one.
+  var anyLabelBreakRxp = /(\n|\\n|<br>|<wbr>)/i;
+  var softBreakRxp = /^<wbr>$/i;
+
+  // The lines a label's text is drawn as. Whitespace before a soft break is
+  // dropped: a trailing space would move an end- or middle-justified line by a
+  // space's width.
+  function splitLabelLines(text) {
+    var parts = String(text).split(anyLabelBreakRxp);
+    var lines = [parts[0]];
+    for (var i = 1; i < parts.length; i += 2) {
+      if (softBreakRxp.test(parts[i])) {
+        lines[lines.length - 1] = lines[lines.length - 1].replace(/\s+$/, '');
+      }
+      lines.push(parts[i + 1]);
+    }
+    return lines;
+  }
+
+  function removeSoftBreaks(text) {
+    return String(text).replace(/<wbr>/gi, '');
+  }
 
   // The size a label is drawn at when it carries none of its own, which is the
   // size its layer's group supplies (see getLabelTextDefaults()). Shared with
@@ -27143,7 +27354,7 @@
     var rec = resolveLabelPosition(recArg);
     var o = renderLabel$1(rec);
     applyStyleAttributes(o, 'label', rec);
-    return o;
+    return applyLabelHalo(o, rec);
   }
 
   function renderLabel$1(recArg) {
@@ -27151,9 +27362,9 @@
     // already been through it, so calling it here as well costs nothing and means
     // every way into the renderer draws a label in the position it is stored in.
     var rec = resolveLabelPosition(recArg);
-    var line = toLabelString(rec['label-text']);
-    var morelines, obj;
-    var newline = labelNewlineRxp;
+    var morelines = splitLabelLines(toLabelString(rec['label-text']));
+    var line = morelines.shift();
+    var obj;
     var dx = applyAlignmentShift(rec);
     var dy = rec.dy || 0;
     var properties = {
@@ -27162,16 +27373,12 @@
       y: dy,
       x: dx
     };
-    if (newline.test(line)) {
-      morelines = line.split(newline);
-      line = morelines.shift();
-    }
     obj = {
       tag: 'text',
       value: line,
       properties: properties
     };
-    if (morelines) {
+    if (morelines.length > 0) {
       // multiline label
       obj.children = [];
       morelines.forEach(function(line) {
@@ -27274,11 +27481,598 @@
   var SvgLabels = /*#__PURE__*/Object.freeze({
     __proto__: null,
     DEFAULT_LABEL_FONT_SIZE: DEFAULT_LABEL_FONT_SIZE,
+    LABEL_SOFT_BREAK: LABEL_SOFT_BREAK,
     getDrawnLabelOffset: getDrawnLabelOffset,
     labelNewlineRxp: labelNewlineRxp,
+    removeSoftBreaks: removeSoftBreaks,
     renderLabel: renderLabel$1,
     renderStyledLabel: renderStyledLabel,
-    toLabelString: toLabelString
+    splitLabelLines: splitLabelLines,
+    toLabelString: toLabelString,
+    toPixels: toPixels
+  });
+
+  // A callout: a line from a label's anchor to its text, straight, elbowed or
+  // curved, optionally ending in an arrowhead at the anchor. A dot at the anchor
+  // is the label's icon, not a callout marker.
+  //
+  // Everything here is in the label's own space -- origin at the anchor, y down,
+  // in px -- which is the space dx/dy are in and the one the GUI scales with the
+  // frame. Nothing derived is stored: the shape is worked out from the anchor,
+  // the text box and the callout-* fields every time the label is drawn.
+  //
+  // See docs/development/text-annotation-design.md.
+
+  var DEFAULT_PADDING$1 = 3;
+  var DEFAULT_LINE_WIDTH = 1;
+  var DEFAULT_LINE_HEIGHT = '1.1em';
+  // Space left between the anchor's symbol and the end of the line
+  var SYMBOL_CLEARANCE = 2;
+  // How far an automatic curve bows out, as a fraction of its chord
+  var CURVE_BEND = 0.2;
+  // The shortest first leg an automatic elbow into the top or bottom of the text
+  // is drawn with, px
+  var MIN_LEG = 8;
+  // The angle at an arrowhead's point, degrees. The open one is wider, since a
+  // narrow chevron drawn with a line reads as a thickened line more than as an
+  // arrow.
+  var ARROW_ANGLE = 44;
+  var OPEN_ARROW_ANGLE = 70;
+  // How far into a solid arrowhead the line reaches, as a fraction of the
+  // head's length: far enough that its cap is hidden, short of the tip.
+  var ARROW_LINE_OVERLAP = 0.7;
+  // Where glyphs sit relative to their baseline, in ems, for estimating the
+  // height of a block of text that is measured only for its width
+  var ASCENT = 0.8;
+  var DESCENT = 0.2;
+  var MIDLINE = 0.35;
+
+  function labelHasCallout(rec) {
+    var type = rec && rec.callout ? parseCalloutType(rec.callout) : null;
+    return !!type && type != 'none';
+  }
+
+  // The callout for @rec as an SVG object, or null if it has none or there is no
+  // room to draw one.
+  // @symbolRadius: radius of the symbol drawn at the anchor, or 0; the default
+  //   gap keeps the line clear of it
+  function renderLabelCallout(rec, symbolRadius) {
+    var shape = getLabelCalloutShape(rec, symbolRadius);
+    return shape ? renderCalloutShape(shape, rec) : null;
+  }
+
+  // The shape renderLabelCallout() draws for @rec, from getCalloutShape(), or
+  // null. The GUI places its handles on this, so they sit where the line is.
+  function getLabelCalloutShape(rec, symbolRadius) {
+    if (!labelHasCallout(rec)) return null;
+    return getCalloutShape({
+      type: parseCalloutType(rec.callout),
+      end: getCalloutEndType(rec),
+      box: getLabelTextBox(rec),
+      via: parsePointPair(rec['callout-via'] || ''),
+      attach: parsePointPair(rec['callout-attach'] || ''),
+      padding: getNumber(rec['callout-padding'], DEFAULT_PADDING$1),
+      gap: getCalloutGap(rec, symbolRadius),
+      width: getLineWidth(rec),
+      endSize: getNumber(rec['callout-end-size'], 0)
+    });
+  }
+
+  // An arrowhead's size when callout-end-size does not say, in px: 10 for the
+  // default line, and growing with the line, so that a heavier line does not end
+  // in a head too small to read.
+  function getDefaultCalloutEndSize(end, lineWidth) {
+    var w = lineWidth > 0 ? lineWidth : DEFAULT_LINE_WIDTH;
+    return 7 + 3 * w;
+  }
+
+  // 'arrow', 'open-arrow' or 'none'
+  function getCalloutEndType(rec) {
+    return rec && parseCalloutEnd(rec['callout-end'] || '') || 'none';
+  }
+
+  // How far short of the anchor the line stops. Unset, an arrowhead stops clear
+  // of the symbol there, so that its point reads against the background; a
+  // plain line runs to the symbol's edge, so that the two read as one object.
+  // The line's round cap then reaches under the symbol, which is drawn over it.
+  function getCalloutGap(rec, symbolRadius) {
+    if (isSvgNumber(rec['callout-gap'])) return Math.max(0, Number(rec['callout-gap']));
+    if (!(symbolRadius > 0)) return 0;
+    return getCalloutEndType(rec) == 'none' ? symbolRadius : symbolRadius + SYMBOL_CLEARANCE;
+  }
+
+  // The block of text a label draws, in the label's space: {xmin, ymin, xmax,
+  // ymax, midline}, where midline is the middle of the first line's capitals.
+  //
+  // The width is measured, since it depends on the font, and the height is
+  // estimated from the font size and line height, since only the width is. With
+  // no measurement the box takes the label's width if it is a text block, and is
+  // otherwise a vertical line through the text's origin -- a callout then meets
+  // the text where it starts rather than not being drawn.
+  function getLabelTextBox(rec) {
+    var fontSize = getFontSizeInPx$1(rec);
+    var offset = getDrawnLabelOffset(rec);
+    var lines = splitLabelLines(toLabelString(rec['label-text']));
+    var lineHeight = measureToPx(rec['line-height'] || DEFAULT_LINE_HEIGHT, fontSize);
+    var width = getMeasuredTextWidth(rec) || getNumber(rec['label-width'], 0);
+    // An anchor the record does not set is inherited from the layer's group,
+    // which is 'middle' -- see getLabelTextDefaults().
+    var anchor = offset['text-anchor'] || 'middle';
+    var xmin = offset.dx - width * (anchor == 'middle' ? 0.5 : anchor == 'end' ? 1 : 0);
+    var baseline = offset.dy + getBaselineShift(rec['dominant-baseline']) * fontSize;
+    if (!(lineHeight > 0)) lineHeight = fontSize * 1.1;
+    return {
+      xmin: xmin,
+      xmax: xmin + width,
+      ymin: baseline - ASCENT * fontSize,
+      ymax: baseline + (lines.length - 1) * lineHeight + DESCENT * fontSize,
+      midline: baseline - MIDLINE * fontSize
+    };
+  }
+
+  // Where a line meets a callout's text and how it gets there from the anchor.
+  //
+  // o.type     'line', 'elbow' or 'curve'
+  // o.end      'arrow' (filled), 'open-arrow' (stroked) or 'none'
+  // o.box      the text box, from getLabelTextBox()
+  // o.via      [x, y] the elbow's corner or a point the curve passes through, or null
+  // o.attach   [fx, fy] where the line meets the text, as fractions of the padded
+  //            box, or null
+  // o.padding  clearance around the text, px
+  // o.gap      how far short of the anchor the line stops, px
+  // o.width    line width, px
+  // o.endSize  an arrowhead's size, px, or 0 for the default, which grows with
+  //            the line width. The size is the length of the head's sides, as
+  //            drawn, stroke and all: the two styles are different shapes, and
+  //            what makes one look the size of the other is sides the same
+  //            length, not the same length along the line.
+  //
+  // Returns {kind, coords, head, openHead, box, attach, via, tip} with coords
+  // from the anchor end to the text end -- a polyline's vertices, or a quadratic
+  // Bezier's three points -- or null when there is nothing to draw: the anchor
+  // inside the padded box, or a gap that leaves no line. head is a filled
+  // triangle, openHead the three points of a stroked chevron, wing to tip to
+  // wing. The rest is what the shape was worked out from: the padded box, the
+  // point where the line meets it, the elbow's corner or the curve's midpoint
+  // (null for a straight line), and where the line stops short of the anchor.
+  function getCalloutShape(o) {
+    var box = padBox(o.box, o.padding || 0);
+    var a = [0, 0];
+    var size = o.endSize > 0 ? o.endSize : getDefaultCalloutEndSize(o.end, o.width);
+    var t, v, path, tip, dir, out, lineWidth, headLen, curved;
+    if (boxContains(box, a)) return null;
+    t = o.attach ? getBoxPoint(box, o.attach) :
+      getAutoAttachment(o.type, box, o.via || null);
+    // A leg too short to read as one, or to hold the marker, is a jog: the line
+    // goes straight up or down to the text instead.
+    if (o.type == 'elbow' && !o.attach && !o.via && isOnTopOrBottom(box, t) &&
+        Math.abs(t[0]) < getMinimumLeg(o.end, size)) {
+      t = [0, t[1]];
+    }
+    if (o.type == 'elbow') {
+      v = o.via || getAutoElbow(a, t, box);
+      // A corner on either end is no corner -- straight under the text, say --
+      // and a leg of no length has no direction for an arrowhead to take.
+      path = {kind: 'polyline', coords: distance(a, v) > 0 && distance(v, t) > 0 ?
+        [a, v, t] : [a, t]};
+    } else if (o.type == 'curve') {
+      v = o.via || getAutoBend(a, t);
+      path = {kind: 'bezier', coords: [a, getControlPoint(a, v, t), t]};
+    } else {
+      path = {kind: 'polyline', coords: [a, t]};
+    }
+    path = trimPath(path, o.gap || 0);
+    if (!path) return null;
+    tip = path.coords[0];
+    out = {kind: path.kind, coords: path.coords, head: null, openHead: null,
+      box: box, attach: t, via: v || null, tip: tip};
+    if (o.end == 'arrow') {
+      headLen = getArrowHeadLength(size, ARROW_ANGLE);
+      curved = path.kind == 'bezier' ? getCurveIntoArrowHead(path, headLen) : null;
+      dir = curved ? curved.dir : getStartDirection(path);
+      if (!dir) return null;
+      out.head = getArrowHead(tip, dir, size, ARROW_ANGLE);
+      // The line stops inside the head, so that its cap does not show past the
+      // tip. A line too short to reach past the head is drawn as the head alone.
+      path = curved ? curved.path : trimPath(path, headLen * ARROW_LINE_OVERLAP);
+      out.coords = path ? path.coords : null;
+    } else if (o.end == 'open-arrow') {
+      // Stroked with the line's round join, which reaches half a line width past
+      // the chevron's point: the point is set back by that much, so that the
+      // arrow ends where a filled one would. The join and the round cap at the
+      // far end each add half a line width to an arm, which is taken off it.
+      lineWidth = o.width > 0 ? o.width : DEFAULT_LINE_WIDTH;
+      path = trimPath(path, lineWidth / 2) || path;
+      dir = getStartDirection(path);
+      if (!dir) return null;
+      out.coords = path.coords;
+      out.openHead = getArrowHead(path.coords[0], dir,
+        Math.max(size - lineWidth, size / 2), OPEN_ARROW_ANGLE);
+      out.openHead = [out.openHead[1], out.openHead[0], out.openHead[2]];
+    }
+    return out;
+  }
+
+  function renderCalloutShape(shape, rec) {
+    var color = rec['callout-color'] || rec.fill || 'black';
+    var opacity = isSvgNumber(rec['callout-opacity']) ? Number(rec['callout-opacity']) :
+      isSvgNumber(rec.opacity) ? Number(rec.opacity) : 1;
+    var props = {class: 'label-callout'};
+    var children = [];
+    if (shape.coords) {
+      children.push({
+        tag: 'path',
+        properties: {
+          d: getPathData(shape),
+          fill: 'none',
+          stroke: color,
+          'stroke-width': getLineWidth(rec),
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round'
+        }
+      });
+    }
+    if (shape.head) {
+      children.push({
+        tag: 'path',
+        properties: {d: getPolygonData(shape.head), fill: color}
+      });
+    }
+    if (shape.openHead) {
+      children.push({
+        tag: 'path',
+        properties: {
+          d: 'M ' + shape.openHead.map(formatPoint).join(' L '),
+          fill: 'none',
+          stroke: color,
+          'stroke-width': getLineWidth(rec),
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round'
+        }
+      });
+    }
+    if (opacity < 1) props.opacity = opacity;
+    return {tag: 'g', properties: props, children: children};
+  }
+
+  // Drawn from the text to the anchor, which is the direction a leader is read in
+  // and the one a dash pattern starts from. A quadratic's control point is the
+  // same in both directions.
+  function getPathData(shape) {
+    var c = shape.coords;
+    if (shape.kind == 'bezier') {
+      return 'M ' + formatPoint(c[2]) + ' Q ' + formatPoint(c[1]) + ' ' + formatPoint(c[0]);
+    }
+    return 'M ' + c.slice().reverse().map(formatPoint).join(' L ');
+  }
+
+  function getPolygonData(coords) {
+    return 'M ' + coords.map(formatPoint).join(' L ') + ' Z';
+  }
+
+  function formatPoint(p) {
+    return roundToTenths(p[0]) + ' ' + roundToTenths(p[1]);
+  }
+
+  // Attachment
+
+  function getBoxPoint(box, f) {
+    var fx = Math.max(0, Math.min(1, f[0]));
+    var fy = Math.max(0, Math.min(1, f[1]));
+    return [box.xmin + fx * (box.xmax - box.xmin), box.ymin + fy * (box.ymax - box.ymin)];
+  }
+
+  // An elbow meets the side of the text facing the way it comes from, level with
+  // the first line, which is the usual form of an elbowed leader. A straight or
+  // curved line is aimed at the middle of the block and stops at its edge.
+  //
+  // An elbow coming from directly above or below the text cannot reach a side
+  // without crossing the block, so it meets the facing edge instead: in the
+  // middle when it comes from the anchor, and straight above or below a via
+  // point, whose landing is then vertical.
+  function getAutoAttachment(type, box, via) {
+    var cx = (box.xmin + box.xmax) / 2;
+    var cy = (box.ymin + box.ymax) / 2;
+    var from = via || [0, 0];
+    if (type == 'elbow' && isAboveOrBelow(box, from)) {
+      return [via ? from[0] : cx, from[1] > box.ymax ? box.ymax : box.ymin];
+    }
+    if (type == 'elbow') {
+      return [from[0] < cx ? box.xmin : box.xmax,
+        Math.max(box.ymin, Math.min(box.ymax, box.midline))];
+    }
+    return clipToBox(from, [cx, cy], box);
+  }
+
+  function getMinimumLeg(end, size) {
+    return end == 'none' ? MIN_LEG : Math.max(MIN_LEG, size * 1.5);
+  }
+
+  function isAboveOrBelow(box, p) {
+    return p[0] >= box.xmin && p[0] <= box.xmax && (p[1] > box.ymax || p[1] < box.ymin);
+  }
+
+  // Whether @t is on the top or bottom edge of @box, away from its corners
+  function isOnTopOrBottom(box, t) {
+    return t[0] > box.xmin && t[0] < box.xmax && (t[1] == box.ymin || t[1] == box.ymax);
+  }
+
+  // Where the segment from @p (outside the box) to @c (inside it) enters the box.
+  function clipToBox(p, c, box) {
+    var dx = c[0] - p[0];
+    var dy = c[1] - p[1];
+    var s;
+    if (boxContains(box, p)) return c;
+    s = Math.max(0, getEntry(p[0], dx, box.xmin, box.xmax),
+      getEntry(p[1], dy, box.ymin, box.ymax));
+    return [p[0] + s * dx, p[1] + s * dy];
+  }
+
+  function getEntry(p, d, min, max) {
+    if (d === 0) return -Infinity;
+    return Math.min((min - p) / d, (max - p) / d);
+  }
+
+  // Shapes
+
+  // The segment from the anchor rises at 45 degrees to meet a horizontal landing
+  // into the side of the text, or goes straight up or down when the text is too
+  // close horizontally for that.
+  //
+  // Into the top or bottom of the text, the landing is vertical and the line
+  // leaves the anchor horizontally, which keeps the corner clear of the block.
+  function getAutoElbow(a, t, box) {
+    var dx = t[0] - a[0];
+    var dy = Math.abs(t[1] - a[1]);
+    if (isOnTopOrBottom(box, t)) return [t[0], a[1]];
+    if (Math.abs(dx) <= dy) return [a[0], t[1]];
+    return [a[0] + (dx > 0 ? dy : -dy), t[1]];
+  }
+
+  // The chord's midpoint, pushed to its left as seen from the anchor -- which
+  // bows a callout to text on its right upward.
+  function getAutoBend(a, t) {
+    var dx = t[0] - a[0];
+    var dy = t[1] - a[1];
+    return [(a[0] + t[0]) / 2 + dy * CURVE_BEND, (a[1] + t[1]) / 2 - dx * CURVE_BEND];
+  }
+
+  // The control point of the quadratic from @a to @t that passes through @v at
+  // its midpoint. That is also the curve's farthest point from its chord, so a
+  // handle at @v sits where the bend visibly is.
+  function getControlPoint(a, v, t) {
+    return [2 * v[0] - (a[0] + t[0]) / 2, 2 * v[1] - (a[1] + t[1]) / 2];
+  }
+
+  // Trimming
+
+  // @path with its start moved to where it leaves a circle of radius @r around
+  // that start, or null if it never does. A circle rather than a length along the
+  // path, because what the gap has to clear is a symbol drawn at the anchor.
+  function trimPath(path, r) {
+    if (!(r > 0)) return hasLength(path) ? path : null;
+    if (path.kind == 'bezier') return trimBezier(path.coords, r);
+    return trimPolyline(path.coords, r);
+  }
+
+  function hasLength(path) {
+    var c = path.coords;
+    for (var i = 1; i < c.length; i++) {
+      if (distance(c[0], c[i]) > 0) return true;
+    }
+    return false;
+  }
+
+  function trimPolyline(coords, r) {
+    var p0 = coords[0];
+    for (var i = 1; i < coords.length; i++) {
+      if (distance(p0, coords[i]) > r) {
+        return {
+          kind: 'polyline',
+          coords: [getCircleExit(p0, r, coords[i - 1], coords[i])].concat(coords.slice(i))
+        };
+      }
+    }
+    return null;
+  }
+
+  // The point where segment @p-@q, which starts inside the circle and ends
+  // outside it, crosses it.
+  function getCircleExit(c, r, p, q) {
+    var dx = q[0] - p[0];
+    var dy = q[1] - p[1];
+    var ex = p[0] - c[0];
+    var ey = p[1] - c[1];
+    var a = dx * dx + dy * dy;
+    var b = 2 * (dx * ex + dy * ey);
+    var k = ex * ex + ey * ey - r * r;
+    var s = (-b + Math.sqrt(Math.max(0, b * b - 4 * a * k))) / (2 * a);
+    s = Math.max(0, Math.min(1, s));
+    return [p[0] + s * dx, p[1] + s * dy];
+  }
+
+  function trimBezier(c, r) {
+    var steps = 64;
+    var lo = 0, hi = -1, mid, i;
+    for (i = 1; i <= steps; i++) {
+      if (distance(c[0], getBezierPoint(c, i / steps)) > r) {
+        hi = i / steps;
+        lo = (i - 1) / steps;
+        break;
+      }
+    }
+    if (hi < 0) return null;
+    for (i = 0; i < 24; i++) {
+      mid = (lo + hi) / 2;
+      if (distance(c[0], getBezierPoint(c, mid)) > r) hi = mid;
+      else lo = mid;
+    }
+    return {kind: 'bezier', coords: splitBezier(c, hi)};
+  }
+
+  function getBezierPoint(c, t) {
+    var u = 1 - t;
+    return [
+      u * u * c[0][0] + 2 * u * t * c[1][0] + t * t * c[2][0],
+      u * u * c[0][1] + 2 * u * t * c[1][1] + t * t * c[2][1]
+    ];
+  }
+
+  // The part of the quadratic @c from @t to its end
+  function splitBezier(c, t) {
+    return [getBezierPoint(c, t), lerp(c[1], c[2], t), c[2]];
+  }
+
+  // End markers
+
+  // Unit vector from the start of @path into it, or null for a path with no
+  // direction there.
+  function getStartDirection(path) {
+    var c = path.coords;
+    var next = c[1];
+    if (path.kind == 'bezier' && distance(c[0], c[1]) === 0) next = c[2];
+    return getUnitVector(c[0], next);
+  }
+
+  // A solid arrowhead on a curve, and the curve that runs into it:
+  // {dir, path}, or null if the curve does not reach past the head.
+  //
+  // Pointed along the curve's tangent at the tip, the head faces off to one side
+  // of where the line goes on a bend, and the line cut back along the curve then
+  // meets the back of the head off-centre and at a slant. So the head points
+  // along the chord from its tip to where the curve leaves it, which puts that
+  // point at the middle of its base, and the curve is re-fitted to leave the
+  // head along the same line: it starts at the middle of the base, heading
+  // along the head's axis, and keeps its own direction into the text. The
+  // control point that does both is where those two lines cross. Starting on
+  // the base rather than inside the head keeps the line centred exactly, since
+  // a curve bends away from its starting direction; its round cap reaches back
+  // into the head, where it is hidden.
+  //
+  // path: a quadratic Bezier from the anchor end; len: the head's length
+  function getCurveIntoArrowHead(path, len) {
+    var tip = path.coords[0];
+    var rest = trimBezier(path.coords, len);
+    var dir, start, end, ctrl;
+    if (!rest) return null;
+    start = rest.coords[0];
+    dir = getUnitVector(tip, start);
+    if (!dir) return null;
+    end = rest.coords[2];
+    ctrl = intersectRays(start, dir, end, getUnitVector(end, rest.coords[1]));
+    // A curve that doubles back, or runs straight on: a control point on the
+    // head's axis still takes the line out of the head straight.
+    if (!ctrl) ctrl = [start[0] + dir[0] * distance(start, end) / 2,
+      start[1] + dir[1] * distance(start, end) / 2];
+    return {dir: dir, path: {kind: 'bezier', coords: [start, ctrl, end]}};
+  }
+
+  // Where the ray from @p along @d meets the ray from @q along @e, or null if
+  // they do not meet ahead of both
+  function intersectRays(p, d, q, e) {
+    var cross, s, u, qx, qy;
+    if (!d || !e) return null;
+    cross = d[0] * e[1] - d[1] * e[0];
+    if (Math.abs(cross) < 1e-9) return null;
+    qx = q[0] - p[0];
+    qy = q[1] - p[1];
+    s = (qx * e[1] - qy * e[0]) / cross;
+    u = (qx * d[1] - qy * d[0]) / cross;
+    return s > 0 && u > 0 ? [p[0] + d[0] * s, p[1] + d[1] * s] : null;
+  }
+
+  // [tip, wing, wing], for a head with sides @side long meeting at @angle degrees
+  function getArrowHead(tip, dir, side, angle) {
+    var len = getArrowHeadLength(side, angle);
+    var half = side * Math.sin(angle / 2 * Math.PI / 180);
+    var bx = tip[0] + dir[0] * len;
+    var by = tip[1] + dir[1] * len;
+    return [tip, [bx - dir[1] * half, by + dir[0] * half], [bx + dir[1] * half, by - dir[0] * half]];
+  }
+
+  // How far along the line a head with sides @side long reaches
+  function getArrowHeadLength(side, angle) {
+    return side * Math.cos(angle / 2 * Math.PI / 180);
+  }
+
+  // Utilities
+
+  function padBox(box, pad) {
+    return {
+      xmin: box.xmin - pad,
+      xmax: box.xmax + pad,
+      ymin: box.ymin - pad,
+      ymax: box.ymax + pad,
+      midline: box.midline
+    };
+  }
+
+  function boxContains(box, p) {
+    return p[0] > box.xmin && p[0] < box.xmax && p[1] > box.ymin && p[1] < box.ymax;
+  }
+
+  function getUnitVector(p, q) {
+    var dx = q[0] - p[0];
+    var dy = q[1] - p[1];
+    var len = Math.sqrt(dx * dx + dy * dy);
+    return len > 0 ? [dx / len, dy / len] : null;
+  }
+
+  function distance(p, q) {
+    var dx = q[0] - p[0];
+    var dy = q[1] - p[1];
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function lerp(p, q, t) {
+    return [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+  }
+
+  function getNumber(val, defaultVal) {
+    return isSvgNumber(val) && Number(val) >= 0 ? Number(val) : defaultVal;
+  }
+
+  function getLineWidth(rec) {
+    var w = getNumber(rec['callout-width'], DEFAULT_LINE_WIDTH);
+    return w > 0 ? w : DEFAULT_LINE_WIDTH;
+  }
+
+  function getFontSizeInPx$1(rec) {
+    var val = rec['font-size'];
+    var px = val === undefined || val === null || val === '' ? null :
+      measureToPx(val, DEFAULT_LABEL_FONT_SIZE);
+    return px > 0 ? px : DEFAULT_LABEL_FONT_SIZE;
+  }
+
+  // px for a number, a px value or an em value, or null
+  function measureToPx(val, emBasis) {
+    var px = toPixels(val, emBasis);
+    var match;
+    if (px !== null) return px;
+    match = /^(-?[.0-9]+)px$/.exec(String(val).trim());
+    return match ? Number(match[1]) : null;
+  }
+
+  // Where the first baseline sits below the text's y, in ems
+  function getBaselineShift(baseline) {
+    var val = String(baseline || '').toLowerCase();
+    if (val == 'central' || val == 'middle') return MIDLINE;
+    if (val == 'hanging' || val == 'text-before-edge') return ASCENT;
+    if (val == 'text-after-edge' || val == 'ideographic') return -DESCENT;
+    return 0;
+  }
+
+  var SvgLabelCallout = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getCalloutEndType: getCalloutEndType,
+    getCalloutGap: getCalloutGap,
+    getCalloutShape: getCalloutShape,
+    getControlPoint: getControlPoint,
+    getDefaultCalloutEndSize: getDefaultCalloutEndSize,
+    getLabelCalloutShape: getLabelCalloutShape,
+    getLabelTextBox: getLabelTextBox,
+    labelHasCallout: labelHasCallout,
+    renderLabelCallout: renderLabelCallout
   });
 
   // convert data records (properties like svg-symbol, label-text, fill, r) to svg symbols
@@ -27307,7 +28101,13 @@
   // render label and/or point symbol
   function renderPoint(rec) {
     var children = [];
+    var callout;
     // var halfSize = rec.r || 0; // radius or half of symbol size
+    // Beneath the symbol and the text, which it runs between.
+    if (featureHasLabel(rec) && labelHasCallout(rec)) {
+      callout = renderLabelCallout(rec, getAnchorSymbolRadius(rec));
+      if (callout) children.push(callout);
+    }
     if (featureHasSvgSymbol(rec)) {
       children.push(renderSymbol(rec));
     }
@@ -27331,6 +28131,15 @@
       return circle(d);
     }
     return empty();
+  }
+
+  // How far the symbol at a label's anchor reaches from it, which a callout's
+  // default gap clears. A composite svg-symbol has no single radius, and gets no
+  // clearance.
+  function getAnchorSymbolRadius(d) {
+    if (!featureHasSvgSymbol(d) || d['svg-symbol']) return 0;
+    if (featureHasIcon(d)) return getIconRadius(d, d.icon || 'circle');
+    return d.r > 0 ? d.r : 0;
   }
 
   function featureHasIcon(d) {
@@ -27557,6 +28366,7 @@
 
   var SvgSymbols = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    getAnchorSymbolRadius: getAnchorSymbolRadius,
     getTransform: getTransform,
     renderPoint: renderPoint,
     symbolRenderers: symbolRenderers
@@ -28518,7 +29328,9 @@
       }
       cls = LABEL_OVERFLOW_CLASS;
     }
-    text = toLabelString(rec['label-text']);
+    // A soft break is wrapping for a width, which text along a path does not
+    // have, and removing it leaves the space it broke at.
+    text = removeSoftBreaks(toLabelString(rec['label-text']));
     if (labelNewlineRxp.test(text)) {
       // a <tspan> inside a <textPath> advances along the path instead of
       // stacking below it, so the lines are joined rather than dropping
@@ -28546,6 +29358,7 @@
     if (rec.dy) textPath.properties.dy = rec.dy;
     o = {tag: 'text', properties: {}, children: [textPath]};
     applyStyleAttributes(o, 'label', rec);
+    applyLabelHalo(o, rec);
     if (cls) {
       o.properties.class = o.properties.class ? o.properties.class + ' ' + cls : cls;
     }
@@ -28842,6 +29655,11 @@
         // are applied to the <g> container, 'r' property is applied to circle
         applyStyleAttributes(svgObj, msType, d, simpleCircleFilter);
       } else ;
+      // Only here, where SVG is written for other programs to read: the GUI
+      // draws the same labels with paint-order and has no use for the copies.
+      if (labelHasHalo(d)) {
+        svgObj = splitLabelHalos(svgObj);
+      }
       if ('id' in obj) {
         if (!svgObj.properties) {
           svgObj.properties = {};
@@ -40585,6 +41403,20 @@ ${svg}
           dy: {describe: 'vertical offset from the anchor'},
           fill: {describe: 'text color'},
           opacity: {describe: 'text opacity'},
+          'halo-width': {describe: 'width of a halo around the text in px'},
+          'halo-color': {describe: 'halo color (default is white)'},
+          'halo-opacity': {describe: 'halo opacity, 0-1'},
+          'label-width': {describe: 'width of a fixed-width text block in px'},
+          callout: {describe: 'line from the anchor to the text: line, elbow or curve'},
+          'callout-end': {describe: 'arrowhead at the anchor end: arrow, open-arrow or none'},
+          'callout-end-size': {describe: 'length of an arrowhead\'s sides in px'},
+          'callout-via': {describe: 'x,y of an elbow\'s corner or a point on a curve, in px'},
+          'callout-attach': {describe: 'where the callout meets the text, as x,y fractions'},
+          'callout-gap': {describe: 'px between the callout and the anchor'},
+          'callout-padding': {describe: 'px between the callout and the text'},
+          'callout-color': {describe: 'callout color (defaults to the text color)'},
+          'callout-width': {describe: 'callout line width in px'},
+          'callout-opacity': {describe: 'callout opacity, 0-1'},
           css: {describe: 'inline css style'},
           class: {describe: 'name of CSS class or classes (space-separated)'}
         },
@@ -42612,6 +43444,15 @@ ${svg}
       .option('label-align', {
         describe: 'alignment of the lines of multi-line labels; left, center or right'
       })
+      .option('halo-width', {
+        describe: 'width of a halo around label text in px (default is 0, no halo)'
+      })
+      .option('halo-color', {
+        describe: 'color of label halos (default is white)'
+      })
+      .option('halo-opacity', {
+        describe: 'opacity of label halos, 0-1'
+      })
       .option('dx', {
         describe: 'x offset of labels (default is 0)'
       })
@@ -42647,6 +43488,39 @@ ${svg}
       })
       .option('label-start-offset', {
         describe: 'where label text starts along its path, e.g. 50%'
+      })
+      .option('label-width', {
+        describe: 'width of a fixed-width text block in px (lines are wrapped in the web UI)'
+      })
+      .option('callout', {
+        describe: 'line from a label\'s anchor to its text: line, elbow or curve'
+      })
+      .option('callout-end', {
+        describe: 'arrowhead at the anchor end of a callout: arrow (solid), open-arrow or none'
+      })
+      .option('callout-end-size', {
+        describe: 'length of an arrowhead\'s sides in px (default 10, more for a thicker line)'
+      })
+      .option('callout-via', {
+        describe: 'x,y of an elbow\'s corner or a point on a curve, in px from the anchor'
+      })
+      .option('callout-attach', {
+        describe: 'where a callout meets its text, as x,y fractions of the text box'
+      })
+      .option('callout-gap', {
+        describe: 'px between a callout and its anchor (default: a line meets the icon, an arrow clears it)'
+      })
+      .option('callout-padding', {
+        describe: 'px between a callout and its text (default is 3)'
+      })
+      .option('callout-color', {
+        describe: 'callout color (defaults to the text color)'
+      })
+      .option('callout-width', {
+        describe: 'callout line width in px (default is 1)'
+      })
+      .option('callout-opacity', {
+        describe: 'callout opacity, 0-1'
       })
      .option('target', targetOpt);
 
@@ -82789,7 +83663,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.66";
+  var version = "0.7.67";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -83613,7 +84487,7 @@ ${svg}
     if (!(fontSize > 0)) return null;
     // The widest line, which is what the block of a multi-line label is as wide
     // as, and what the browser's getBBox() reports for the same text.
-    width = text.split(labelNewlineRxp).reduce(function(max, line) {
+    width = splitLabelLines(text).reduce(function(max, line) {
       var w = measureLine(font, line, fontSize, spacing);
       return w > max ? w : max;
     }, 0);
@@ -85391,7 +86265,7 @@ ${svg}
   internal.svg = Object.assign({}, SvgStringify, SvgPathUtils, GeojsonToSvg,
     SvgFeatureUtils,
     SvgLabels, SvgSymbols, SvgLabelPaths, SvgLabelFit, SvgLabelAlign,
-    SvgLabelMetrics);
+    SvgLabelMetrics, SvgLabelHalo, SvgLabelCallout);
 
   // Reached through the bundle rather than imported from source, unlike most of
   // what tests use, because these modules load fs and fontkit through the
