@@ -2060,7 +2060,7 @@ Example: `hatches 45deg 2px red 2px grey`
 
 `letter-spacing=`  CSS letter-spacing property of labels
  
-`line-height=`     Line spacing of multi-line labels (default is 1.1em). Lines are separated by newline characters or `<br>` tags in the label text.
+`line-height=`     Line spacing of multi-line labels. As in CSS, a bare number is a multiple of the font size (e.g. `1.3`); use units for a fixed spacing (e.g. `16px`). Default is 1.1. Lines are separated by newline characters or `<br>` tags in the label text.
 
 Common options: `target=`
 

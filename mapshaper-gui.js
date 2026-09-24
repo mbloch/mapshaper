@@ -16565,23 +16565,38 @@
   function makeColorField(parent, chit, input) {
     var box = El('div').addClass('label-color-field').appendTo(parent);
     chit.appendTo(box);
-    input.appendTo(box);
+    input.addClass('label-color-input').appendTo(box);
     return box;
   }
 
-  // A colour and its opacity on one line: the swatch inside the field with the
-  // hex value, and the opacity in the narrow column beside it. Fill and Stroke
-  // are each one of these, and so are a label's text and icon colours.
+  // A colour field with its opacity at the right-hand end, behind a divider:
+  // opacity qualifies the colour, and one border says so where two fields side
+  // by side said they were separate settings. It also leaves the narrow column
+  // of the row free for a field that needs it. The opacity has no caption; its
+  // percent sign and its tooltip say what it is.
   //
-  // opts.label            the caption over the colour field
+  // Returns the field's box; the opacity input is made by makeOpacityInput().
+  function makeColorOpacityField(parent, chit, input, opacityOpts) {
+    var box = makeColorField(parent, chit, input).addClass('label-color-opacity-field');
+    var opacity = makeOpacityInput(box, opacityOpts);
+    return {box: box, opacity: opacity};
+  }
+
+  // A colour and its opacity in one field, captioned, in the wide column of a
+  // split row. Fill and Stroke are each one of these.
+  //
+  // opts.label            the caption over the field
   // opts.onColor(hex)     a colour was typed, picked or previewed to a finish
   // opts.onOpacity(frac)  a usable percentage was typed
   // opts.revert()         one that was not, so put the row back as it was
+  //
+  // control.aside is the row's narrow column, empty, for a field that belongs
+  // beside the colour -- a stroke's width, say.
   function makeColorRow(parent, opts) {
     var row = El('div').addClass('label-style-row label-split-row').appendTo(parent);
     var colorCell = El('div').addClass('label-split-cell label-color-row').appendTo(row);
-    var opacityCell = El('div').addClass('label-split-cell').appendTo(row);
-    var control = {row: row, chit: null, input: null, opacity: null, picker: null};
+    var aside = El('div').addClass('label-split-cell').appendTo(row);
+    var control = {row: row, aside: aside, chit: null, input: null, opacity: null, picker: null};
 
     control.setColor = function(color) {
       control.input.node().value = color || '';
@@ -16611,7 +16626,10 @@
         if (isHexColor(color)) control.picker.setColor(color);
         opts.onColor(color);
       });
-    makeColorField(colorCell, control.chit, control.input);
+    control.opacity = makeColorOpacityField(colorCell, control.chit, control.input, {
+      onSet: opts.onOpacity,
+      revert: opts.revert
+    }).opacity;
     control.picker = new ColorPicker(colorCell, {
       presetRows: layerColorPresetRows,
       // A drag in the picker shows on the map's own terms -- the swatch and the
@@ -16621,12 +16639,6 @@
         control.setColor(hex);
         opts.onColor(hex);
       }
-    });
-
-    El('span').appendTo(opacityCell).text('Opacity');
-    control.opacity = makeOpacityInput(opacityCell, {
-      onSet: opts.onOpacity,
-      revert: opts.revert
     });
     return control;
   }
@@ -17174,11 +17186,11 @@
   // stroke of twice this.
   var defaultHaloWidth = 2;
   var defaultHaloColor = internal.svg.DEFAULT_HALO_COLOR;
-  // The line height field shows this rather than renderLabel()'s 1.1em default,
-  // and shows it as a placeholder rather than a value, so that a label carries
-  // no line-height until one is chosen. "auto" is the honest description of a
-  // blank field: something else decides.
-  var lineHeightPlaceholder = 'auto';
+  // The line height a label without one is drawn with, shown as a placeholder
+  // rather than a value so that a label carries no line-height until one is
+  // chosen. Shown as a bare multiple, which also says what a bare number typed
+  // here means: a multiple of the font size, as in CSS, not px.
+  var lineHeightPlaceholder = String(internal.svg.DEFAULT_LINE_HEIGHT);
   // What a control shows for a selection whose labels disagree about it. One
   // word, used in every field and menu that can be in that state: the panel
   // otherwise says it by showing nothing, which is also what an unset property
@@ -17451,15 +17463,16 @@
       clearLink = El('span').addClass('label-editing-clear colored-text').appendTo(selectRow).text('deselect').on('click', clearSelection);
 
       // Three sections rather than one flat stack: the text, the symbol beside
-      // it, and where the two sit relative to each other. Text and Icon are
-      // deliberately the same shape -- a colour and its opacity on one line, a
-      // size on the line above -- so that the second reads as a variation on the
-      // first rather than as a different kind of control.
+      // it, and where the two sit relative to each other. Every section's colour
+      // row is the same shape -- the colour with its opacity in one field, and
+      // the value that qualifies it most closely beside it -- so that each reads
+      // as a variation on the first rather than as a different kind of control.
       var textSection = addSection('Text');
 
-      // The controls whose own contents say what they are -- a font name, a hex
-      // colour, a percentage, a size beside a font style -- carry no label. The
-      // ones that would be a bare number otherwise keep theirs.
+      // The controls whose own contents say what they are -- a font name, a
+      // size beside a font style -- carry no label. The ones that would be a bare
+      // number otherwise keep theirs, and so does a colour field, because the
+      // field beside it has one and "Color" says the percentage is its opacity.
       var fontRow = El('div').addClass('label-style-row').appendTo(textSection);
       fontSelect = El('select').attr('title', 'Font').appendTo(fontRow).on('change', function() {
         if (fontSelect.node().value) {
@@ -17485,11 +17498,20 @@
         onDone: releaseFocus
       });
 
+      // Letter spacing beside the colour, above line height: the two spacing
+      // values read as a pair in the narrow column, and the left of the row
+      // below is where the alignment buttons go.
+      //
+      // A text block's width is not here: it is set by dragging the block's
+      // handle, and a field for it would be clutter on every other label.
       var colorRow = El('div').addClass('label-style-row label-split-row').appendTo(textSection);
-      var textColorCell = El('div').addClass('label-split-cell label-color-row').appendTo(colorRow);
+      var textColorCell = El('div').addClass('label-split-cell label-color-row label-text-color-row').appendTo(colorRow);
+      El('span').appendTo(textColorCell).text('Color');
       colorChit = El('div').addClass('label-color-chit').attr('role', 'button');
       colorInput = El('input').attr('type', 'text').attr('title', 'Text color');
-      colorFieldBox = makeColorField(textColorCell, colorChit, colorInput);
+      var textColorField = addColorOpacityField(textColorCell, colorChit, colorInput, applyLabelOpacity);
+      colorFieldBox = textColorField.box;
+      opacityInput = textColorField.opacity;
       colorChit.on('click', function() {
         if (this.classList.contains('disabled')) return;
         toggleColorPicker();
@@ -17505,18 +17527,7 @@
       });
       colorPicker = initColorPicker(textColorCell, colorChit, colorInput, applyLabelColor);
 
-      var opacityCell = El('div').addClass('label-split-cell label-opacity-row label-text-opacity-row').appendTo(colorRow);
-      opacityInput = addOpacityInput(opacityCell, applyLabelOpacity);
-
-      // Letter spacing takes the right-hand column on its own, above line
-      // height: the two spacing values read as a pair there, and the left of the
-      // row is where the alignment buttons go.
-      //
-      // A text block's width is not here: it is set by dragging the block's
-      // handle, and a field for it would be clutter on every other label.
-      var letterRow = El('div').addClass('label-style-row label-split-row').appendTo(textSection);
-      El('div').addClass('label-split-cell').appendTo(letterRow);
-      var letterCell = El('div').addClass('label-split-cell label-spacing-row').appendTo(letterRow);
+      var letterCell = El('div').addClass('label-split-cell label-spacing-row').appendTo(colorRow);
       El('span').appendTo(letterCell).text('Letter spacing');
       letterSpacingInput = makeMeasureInput(letterCell, letterSpacingField, '0');
 
@@ -17554,8 +17565,8 @@
 
       // A halo is a yes/no that its three values then qualify, as a symbol is, so
       // it is switched the same way and its controls are inert while it is off.
-      // Its rows are ones the Text section already has: a colour and its opacity
-      // on one line, and a width in the narrow column beneath, where letter
+      // Its row is the shape of the Text section's colour row: a colour and its
+      // opacity, and a width in the narrow column beside them, where letter
       // spacing sits above.
       haloSection = addSection('Halo');
       var haloTitle = haloSection.findChild('.label-style-section-title');
@@ -17566,10 +17577,13 @@
       });
 
       var haloColorRow = El('div').addClass('label-style-row label-split-row').appendTo(haloSection);
-      var haloColorCell = El('div').addClass('label-split-cell label-color-row').appendTo(haloColorRow);
+      var haloColorCell = El('div').addClass('label-split-cell label-color-row label-halo-color-row').appendTo(haloColorRow);
+      El('span').appendTo(haloColorCell).text('Color');
       haloColorChit = El('div').addClass('label-color-chit').attr('role', 'button');
       haloColorInput = El('input').attr('type', 'text').attr('title', 'Halo color');
-      haloColorFieldBox = makeColorField(haloColorCell, haloColorChit, haloColorInput);
+      var haloColorField = addColorOpacityField(haloColorCell, haloColorChit, haloColorInput, applyHaloOpacity);
+      haloColorFieldBox = haloColorField.box;
+      haloOpacityInput = haloColorField.opacity;
       haloColorChit.on('click', function() {
         if (this.classList.contains('disabled')) return;
         haloColorPicker.toggle();
@@ -17585,12 +17599,7 @@
       });
       haloColorPicker = initColorPicker(haloColorCell, haloColorChit, haloColorInput, applyHaloColor);
 
-      var haloOpacityCell = El('div').addClass('label-split-cell label-opacity-row').appendTo(haloColorRow);
-      haloOpacityInput = addOpacityInput(haloOpacityCell, applyHaloOpacity);
-
-      var haloWidthRow = El('div').addClass('label-style-row label-split-row').appendTo(haloSection);
-      El('div').addClass('label-split-cell').appendTo(haloWidthRow);
-      var haloWidthCell = El('div').addClass('label-split-cell label-spacing-row').appendTo(haloWidthRow);
+      var haloWidthCell = El('div').addClass('label-split-cell label-spacing-row').appendTo(haloColorRow);
       El('span').appendTo(haloWidthCell).text('Width');
       // Halves as well as whole pixels: a halo is usually 1 to 2px, and the
       // step between those two is most of the range anyone uses.
@@ -17617,14 +17626,9 @@
         className: 'label-icon-toggle',
         onChange: setIconOn
       });
-      // The size's caption sits on the heading line, over its own column. It
-      // belongs to the field in the row below, but the shapes beside that field
-      // have no caption of their own, and a caption over one control of a pair
-      // pushes it out of line with the other.
-      El('div').addClass('label-icon-size-caption').appendTo(iconTitle).text('Size');
-
-      var iconSizeRow = El('div').addClass('label-style-row label-split-row label-icon-shapes-row').appendTo(iconSection);
-      var iconRow = El('div').addClass('label-split-cell').appendTo(iconSizeRow);
+      // The shapes have the whole row, so there is room for more of them, and
+      // the size sits beside the colour below, as the halo's width does.
+      var iconRow = El('div').addClass('label-style-row label-icon-shapes-row').appendTo(iconSection);
       var iconGroup = iconGroupEl = El('div').addClass('label-btn-group label-icon-buttons').appendTo(iconRow);
       iconBtns = {};
       iconTypes.forEach(function(icon) {
@@ -17637,21 +17641,14 @@
         appendIconButtonSymbol(btn, icon.name);
       });
 
-      var sizeRow = El('div').addClass('label-split-cell label-icon-size-row').appendTo(iconSizeRow);
-      iconSizeInput = new SizeField(sizeRow, {
-        title: 'Symbol size in px',
-        onSet: function(value) {
-          applyIconSize(value);
-        },
-        onStep: nudgeIconSize,
-        onDone: releaseFocus
-      });
-
       var iconColorRow = El('div').addClass('label-style-row label-split-row').appendTo(iconSection);
       var iconColorCell = El('div').addClass('label-split-cell label-color-row label-icon-color-row').appendTo(iconColorRow);
+      El('span').appendTo(iconColorCell).text('Color');
       iconColorChit = El('div').addClass('label-color-chit').attr('role', 'button');
       iconColorInput = El('input').attr('type', 'text').attr('title', 'Symbol color');
-      iconColorFieldBox = makeColorField(iconColorCell, iconColorChit, iconColorInput);
+      var iconColorField = addColorOpacityField(iconColorCell, iconColorChit, iconColorInput, applyIconOpacity);
+      iconColorFieldBox = iconColorField.box;
+      iconOpacityInput = iconColorField.opacity;
       iconColorChit.on('click', function() {
         if (this.classList.contains('disabled')) return;
         iconColorPicker.toggle();
@@ -17667,8 +17664,16 @@
       });
       iconColorPicker = initColorPicker(iconColorCell, iconColorChit, iconColorInput, applyIconColor);
 
-      var iconOpacityCell = El('div').addClass('label-split-cell label-opacity-row label-icon-opacity-row').appendTo(iconColorRow);
-      iconOpacityInput = addOpacityInput(iconOpacityCell, applyIconOpacity);
+      var sizeRow = El('div').addClass('label-split-cell label-icon-size-row').appendTo(iconColorRow);
+      El('span').appendTo(sizeRow).text('Size');
+      iconSizeInput = new SizeField(sizeRow, {
+        title: 'Symbol size in px',
+        onSet: function(value) {
+          applyIconSize(value);
+        },
+        onStep: nudgeIconSize,
+        onDone: releaseFocus
+      });
 
       initCalloutSection();
 
@@ -17780,10 +17785,13 @@
       });
 
       var colorRow = El('div').addClass('label-style-row label-split-row').appendTo(calloutSection);
-      var colorCell = El('div').addClass('label-split-cell label-color-row').appendTo(colorRow);
+      var colorCell = El('div').addClass('label-split-cell label-color-row label-callout-color-row').appendTo(colorRow);
+      El('span').appendTo(colorCell).text('Color');
       calloutColorChit = El('div').addClass('label-color-chit').attr('role', 'button');
       calloutColorInput = El('input').attr('type', 'text').attr('title', 'Callout color');
-      calloutColorFieldBox = makeColorField(colorCell, calloutColorChit, calloutColorInput);
+      var calloutColorField = addColorOpacityField(colorCell, calloutColorChit, calloutColorInput, applyCalloutOpacity);
+      calloutColorFieldBox = calloutColorField.box;
+      calloutOpacityInput = calloutColorField.opacity;
       calloutColorChit.on('click', function() {
         if (this.classList.contains('disabled')) return;
         calloutColorPicker.toggle();
@@ -17798,14 +17806,10 @@
         }
       });
       calloutColorPicker = initColorPicker(colorCell, calloutColorChit, calloutColorInput, applyCalloutColor);
-      var opacityCell = El('div').addClass('label-split-cell label-opacity-row').appendTo(colorRow);
-      calloutOpacityInput = addOpacityInput(opacityCell, applyCalloutOpacity);
 
       // The gap in the narrow column, under the sizes: it has a blank state,
       // "auto", which clears the anchor's symbol, so it is not a size field.
-      var gapRow = El('div').addClass('label-style-row label-split-row').appendTo(calloutSection);
-      El('div').addClass('label-split-cell').appendTo(gapRow);
-      var gapCell = El('div').addClass('label-split-cell label-spacing-row label-callout-gap-row').appendTo(gapRow);
+      var gapCell = El('div').addClass('label-split-cell label-spacing-row label-callout-gap-row').appendTo(colorRow);
       El('span').appendTo(gapCell).text('Gap');
       calloutGapInput = El('input').attr('type', 'text').addClass('label-measure-input')
         .attr('title', 'Space between the callout and the anchor, in px')
@@ -17887,9 +17891,9 @@
       };
     }
 
-    function addOpacityInput(parent, action) {
-      return makeOpacityInput(parent, {
-        onSet: action,
+    function addColorOpacityField(parent, chit, input, onOpacity) {
+      return makeColorOpacityField(parent, chit, input, {
+        onSet: onOpacity,
         revert: updateControls
       });
     }
@@ -19511,7 +19515,7 @@
 
       fillControl = addColorControl(panel, 'Fill', 'fill', '');
       strokeControl = addColorControl(panel, 'Stroke', 'stroke', '#000000');
-      strokeWidthField = addStrokeWidthControl(panel);
+      strokeWidthField = addStrokeWidthControl(strokeControl.aside);
 
       var buttonRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(panel);
       randomFillBtn = makePanelActionButton(buttonRow, 'Random fills', applyRandomFillColors);
@@ -19553,14 +19557,11 @@
       return control;
     }
 
-    // In the narrow column, under the stroke's opacity. Stepping runs up a ladder
+    // In the narrow column beside the stroke's colour. Stepping runs up a ladder
     // of widths rather than by a fixed amount, because the useful ones are close
     // together at the hairline end and far apart above 2px.
-    function addStrokeWidthControl(parent) {
-      var row = El('div').addClass('label-style-row label-split-row').appendTo(parent);
-      El('div').addClass('label-split-cell').appendTo(row);
-      var cell = El('div').addClass('label-split-cell').appendTo(row);
-      El('span').appendTo(cell).text('Stroke width');
+    function addStrokeWidthControl(cell) {
+      El('span').appendTo(cell).text('Width');
       return new SizeField(cell, {
         min: 0,
         // Quarter-pixel widths are the useful hairlines, and the ladder below
@@ -20007,14 +20008,11 @@
       circleStrokeControl = addCircleColorControl('Stroke', 'stroke');
       circleControlRows.push(circleFillControl.row, circleStrokeControl.row);
 
-      // The two sizes of a circle side by side, in the shape the panel uses for
-      // every other pair.
-      var sizeRow = El('div').addClass('label-style-row label-split-row').appendTo(circlesSection);
-      // Radius in the wide column, stroke width in the narrow one under the
-      // stroke's opacity, matching the line and polygon panels.
-      var radiusCell = El('div').addClass('label-split-cell').appendTo(sizeRow);
-      var widthCell = El('div').addClass('label-split-cell').appendTo(sizeRow);
-      El('span').appendTo(widthCell).text('Stroke width');
+      // Each size beside the colour it goes with: the radius beside the fill,
+      // the stroke's width beside its colour, as in the line and polygon panels.
+      var radiusCell = circleFillControl.aside;
+      var widthCell = circleStrokeControl.aside;
+      El('span').appendTo(widthCell).text('Width');
       circleStrokeWidthField = new SizeField(widthCell, {
         min: 0,
         decimals: 2, // quarter-pixel hairlines, which the ladder below steps through
@@ -20045,7 +20043,6 @@
         },
         onDone: releaseFocus
       });
-      circleControlRows.push(sizeRow);
     }
 
     function initSymbolsSection() {
@@ -26361,7 +26358,7 @@
 
     function getLineHeight(o) {
       var rec = o.pending ? o.pending.getStyle() : getRecord(o.target, o.id);
-      return rec && rec['line-height'] || '1.1em';
+      return internal.svg.getLineHeightDy(rec && rec['line-height']);
     }
 
     function getProvider(nodes) {
@@ -33975,9 +33972,9 @@
         revert: updateControls
       });
       // The width belongs to the same property as the colour and opacity beside
-      // it, and all three fit on the row. The background row leaves the column
-      // empty rather than putting the width on a line of its own.
-      neatlineWidthInput = makeRowField(neatlineControl.row, 'Width')
+      // it. The background row leaves the column empty rather than putting the
+      // width on a line of its own.
+      neatlineWidthInput = makeCellField(neatlineControl.aside, 'Width')
         .addClass('frame-neatline-width')
         .on('change', updateNeatlineWidth);
       var clearRow = El('div')
@@ -34002,9 +33999,9 @@
       unitsSelect.node().value = units;
       aspectValue.text(getAspectText(frame));
       backgroundControl.showColor(rec.fill || '');
-      backgroundControl.opacity.node().value = formatOpacity(rec['fill-opacity']);
+      backgroundControl.opacity.node().value = formatOpacity(rec['fill-opacity'], rec.fill);
       neatlineControl.showColor(rec.stroke || '');
-      neatlineControl.opacity.node().value = formatOpacity(rec['stroke-opacity']);
+      neatlineControl.opacity.node().value = formatOpacity(rec['stroke-opacity'], rec.stroke);
       neatlineWidthInput.node().value =
         rec['stroke-width'] === undefined ? '' : rec['stroke-width'];
       boundsValue.text(frame.bbox.map(formatCoordinate).join(', '));
@@ -34092,8 +34089,7 @@
   }
 
   // An extra captioned cell on an existing colour row.
-  function makeRowField(row, label) {
-    var cell = El('div').addClass('label-split-cell').appendTo(row);
+  function makeCellField(cell, label) {
     El('span').appendTo(cell).text(label);
     return makeTextInput(cell);
   }
@@ -34131,9 +34127,13 @@
     return String(Number(value.toPrecision(12)));
   }
 
-  function formatOpacity(value) {
-    return value === undefined ? '' :
-      String(Math.round(Number(value) * 100)) + '%';
+  // A colour with no opacity of its own is drawn opaque, and says so; with no
+  // colour either, there is nothing for an opacity to apply to.
+  function formatOpacity(value, color) {
+    if (value === undefined || value === null || value === '') {
+      return color ? '100%' : '';
+    }
+    return String(Math.round(Number(value) * 100)) + '%';
   }
 
   // A fixed ratio holds when the frame is rescaled; one taken from the extent

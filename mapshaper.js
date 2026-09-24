@@ -27340,6 +27340,23 @@
   // different one would put the label somewhere it is not drawn.
   var DEFAULT_LABEL_FONT_SIZE = 12;
 
+  // The line height a label is drawn with when it carries none, as a multiple of
+  // its font size.
+  var DEFAULT_LINE_HEIGHT = 1.1;
+
+  // The dy of each line after a label's first, from its line-height.
+  //
+  // A bare number is a multiple of the font size, as in CSS, and not px, as a
+  // bare dy would be in SVG -- so it is written in ems. Nobody who types 1.3
+  // into a field called line height wants lines 1.3px apart, and a multiple
+  // keeps its proportions when the font size changes. Values with units are
+  // passed through.
+  function getLineHeightDy(val) {
+    var measure = val === undefined || val === null || val === '' ?
+      DEFAULT_LINE_HEIGHT : parseSvgMeasure(val);
+    return utils.isFiniteNumber(measure) ? measure + 'em' : measure;
+  }
+
   function toLabelString(val) {
     if (val || val === 0 || val === false) return String(val);
     return '';
@@ -27387,7 +27404,7 @@
           value: line,
           properties: {
             x: dx,
-            dy: rec['line-height'] || '1.1em'
+            dy: getLineHeightDy(rec['line-height'])
           }
         };
         obj.children.push(tspan);
@@ -27481,8 +27498,10 @@
   var SvgLabels = /*#__PURE__*/Object.freeze({
     __proto__: null,
     DEFAULT_LABEL_FONT_SIZE: DEFAULT_LABEL_FONT_SIZE,
+    DEFAULT_LINE_HEIGHT: DEFAULT_LINE_HEIGHT,
     LABEL_SOFT_BREAK: LABEL_SOFT_BREAK,
     getDrawnLabelOffset: getDrawnLabelOffset,
+    getLineHeightDy: getLineHeightDy,
     labelNewlineRxp: labelNewlineRxp,
     removeSoftBreaks: removeSoftBreaks,
     renderLabel: renderLabel$1,
@@ -27505,7 +27524,6 @@
 
   var DEFAULT_PADDING$1 = 3;
   var DEFAULT_LINE_WIDTH = 1;
-  var DEFAULT_LINE_HEIGHT = '1.1em';
   // Space left between the anchor's symbol and the end of the line
   var SYMBOL_CLEARANCE = 2;
   // How far an automatic curve bows out, as a fraction of its chord
@@ -27593,14 +27611,14 @@
     var fontSize = getFontSizeInPx$1(rec);
     var offset = getDrawnLabelOffset(rec);
     var lines = splitLabelLines(toLabelString(rec['label-text']));
-    var lineHeight = measureToPx(rec['line-height'] || DEFAULT_LINE_HEIGHT, fontSize);
+    var lineHeight = measureToPx(getLineHeightDy(rec['line-height']), fontSize);
     var width = getMeasuredTextWidth(rec) || getNumber(rec['label-width'], 0);
     // An anchor the record does not set is inherited from the layer's group,
     // which is 'middle' -- see getLabelTextDefaults().
     var anchor = offset['text-anchor'] || 'middle';
     var xmin = offset.dx - width * (anchor == 'middle' ? 0.5 : anchor == 'end' ? 1 : 0);
     var baseline = offset.dy + getBaselineShift(rec['dominant-baseline']) * fontSize;
-    if (!(lineHeight > 0)) lineHeight = fontSize * 1.1;
+    if (!(lineHeight > 0)) lineHeight = fontSize * DEFAULT_LINE_HEIGHT;
     return {
       xmin: xmin,
       xmax: xmin + width,
@@ -41392,7 +41410,7 @@ ${svg}
           'font-weight': {describe: 'normal, bold or a numeric weight'},
           'font-stretch': {describe: 'e.g. condensed'},
           'letter-spacing': {describe: 'extra space between letters'},
-          'line-height': {describe: 'spacing between lines of a multi-line label'},
+          'line-height': {describe: 'spacing between lines of a multi-line label; a bare number is a multiple of the font size'},
           'text-anchor': {describe: 'start, middle or end'},
           'label-align': {describe: 'how the lines of a multi-line label align: left, center or right'},
           'dominant-baseline': {describe: 'vertical alignment, e.g. central'},
@@ -43478,7 +43496,7 @@ ${svg}
         describe: 'CSS letter-spacing property of labels'
       })
        .option('line-height', {
-        describe: 'line spacing of multi-line labels (default is 1.1em)'
+        describe: 'line spacing of multi-line labels; a bare number is a multiple of the font size, as in CSS (default is 1.1)'
       })
       .option('dominant-baseline', {
         describe: 'vertical alignment of labels (e.g. central)'
