@@ -87,10 +87,11 @@ export function getAddLabelCommand(coords, opts) {
 //
 // label-pos places text relative to an anchor point, which a path label does
 // not have -- its text runs along the curve. Writing it there would put a
-// property on the feature that nothing reads.
+// property on the feature that nothing reads. label-width is the same: a path
+// label is one line.
 function getStyleFields(style, isPathLabel) {
   return Object.keys(style || {}).filter(function(name) {
-    return !(isPathLabel && name == 'label-pos');
+    return !(isPathLabel && (name == 'label-pos' || name == 'label-width'));
   });
 }
 
@@ -152,18 +153,45 @@ export function getLabelPlacementCommand(opts) {
 //   anchor: the value for text-anchor
 //   id:     feature id of the label
 //   target: layer name, or null to use the current target
+//   via:    (optional) the callout-via the text carried with it
 export function getLabelOffsetCommand(opts) {
   var parts = ['-style', 'dx=' + opts.dx, 'dy=' + opts.dy,
     'text-anchor=' + opts.anchor, 'label-pos='];
+  if (opts.via) parts.push('callout-via=' + quoteCommandValue(opts.via));
   parts.push('ids=' + opts.id);
   if (opts.target) parts.push('target=' + quoteCommandValue(opts.target));
+  return parts.join(' ');
+}
+
+// The command a drag on one of a label's handles writes, run once on release.
+//
+//   values: {field: value}, where '' removes the field -- which is what
+//     -style reads an empty value as, and how a handle goes back to automatic
+//   id:     feature id of the label
+//   opts:
+//     target: layer name, or null to use the current target
+//     text:   (optional) rewrapped label-text, with real newlines and soft
+//       breaks. A second -style in the same string, so that a new width and
+//       the lines it breaks into are one undo step.
+export function getLabelStyleCommand(values, id, opts) {
+  var o = opts || {};
+  var parts = ['-style'];
+  Object.keys(values).forEach(function(name) {
+    var val = values[name];
+    parts.push(name + '=' + (val === '' ? '' : quoteCommandValue(String(val))));
+  });
+  parts.push('ids=' + id);
+  if (o.target) parts.push('target=' + quoteCommandValue(o.target));
+  if (typeof o.text == 'string') {
+    parts.push(getLabelTextCommand(o.text, id, o.target));
+  }
   return parts.join(' ');
 }
 
 // The command that saves edited text, run once when an editing session ends so
 // that a session is one undo step rather than one per keystroke.
 //
-//   text: the edited string, with real newlines
+//   text: the edited string, with real newlines and any soft breaks
 //   id:   feature id of the label
 //   target: layer name, or null to use the current target
 export function getLabelTextCommand(text, id, target) {

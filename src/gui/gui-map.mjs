@@ -6,7 +6,7 @@ import {
   updateLayerStackOrder,
   calcDotScale } from './gui-layer-utils';
 import { getOverlayLayers } from './gui-overlay-styler';
-import { mapNeedsReset,
+import { mapNeedsReset, mapNeedsResetFromCollapsedBounds,
   arcsMayHaveChanged,
   popupCanStayOpen } from './gui-map-utils';
 import { initInteractiveEditing } from './gui-edit-modes';
@@ -58,6 +58,9 @@ export function MshpMap(gui) {
   // getContentLayerBounds() instead. Recorded because the difference matters
   // when deciding whether an update should reset the view.
   var _boundsArePlaceholder = false;
+  // Whether the content's bounds had no width or no height before they were
+  // padded in calcFullBounds() -- see mapNeedsResetFromCollapsedBounds().
+  var _boundsAreCollapsed = false;
 
   var RESIZE_REDRAW_DELAY = 200;
 
@@ -324,6 +327,7 @@ export function MshpMap(gui) {
     // read before calcFullBounds() below, which describes the map as it is
     // after this update
     var prevBoundsWerePlaceholder = _boundsArePlaceholder;
+    var prevBoundsWereCollapsed = _boundsAreCollapsed;
     var fullBounds;
     var needReset;
 
@@ -406,6 +410,8 @@ export function MshpMap(gui) {
       // screen, so the view they chose it in is the one to keep, unless what
       // arrived is not in it.
       needReset = !fullBounds.intersects(_ext.getBounds());
+    } else if (prevBoundsWereCollapsed) {
+      needReset = mapNeedsResetFromCollapsedBounds(fullBounds, _ext.getBounds(), e.flags);
     } else {
       needReset = mapNeedsReset(fullBounds, _ext.getFullBounds(), _ext.getBounds(), e.flags);
     }
@@ -486,7 +492,8 @@ export function MshpMap(gui) {
     b.scale(1 + marginPct / 100 * 2);
 
     // Inflate display bounding box of single-point layers and collapsed shapes a bit
-    if (b.width() === 0 || b.height() === 0) {
+    _boundsAreCollapsed = b.width() === 0 || b.height() === 0;
+    if (_boundsAreCollapsed) {
       b.padBounds(1e-4, 1e-4, 1e-4, 1e-4);
     }
     return b;

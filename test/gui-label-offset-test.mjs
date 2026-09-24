@@ -87,6 +87,15 @@ describe('gui label offset drags', function() {
       assert.equal(o.dx, 5);
     });
 
+    it('keeps the justification of a text block dragged past its anchor', function() {
+      var start = {dx: 0, dy: 10, anchor: 'start', width: 80, keepAnchor: true};
+      var o = getOffsetDragValues(start, {dx: -120, dy: 5});
+      assert.equal(o['text-anchor'], 'start');
+      assert.equal(o.dx, -120);
+      assert.equal(o.dy, 15);
+      assert.equal(o.x, -120);
+    });
+
     it('reports where an aligned label will be drawn, which is not its dx', function() {
       var o = getOffsetDragValues(centred({dx: 20, aligned: true}), {dx: 5, dy: 0});
       assert.equal(o.x, 25);

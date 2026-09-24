@@ -464,19 +464,26 @@ test('the creation toggles are mutually exclusive', async function({page}) {
   await loadFixture(page, FIXTURE);
   var buttons = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-btn');
 
-  await expect(buttons).toHaveCount(2);
+  // anchored label, text block, path label
+  await expect(buttons).toHaveCount(3);
   // the fixture carries no labels, so the tool arms itself to place one
   await expect(buttons.nth(0)).toHaveClass(/selected/);
   await expect(buttons.nth(1)).not.toHaveClass(/selected/);
+  await expect(buttons.nth(2)).not.toHaveClass(/selected/);
+
+  await buttons.nth(2).click();
+  await expect(buttons.nth(0)).not.toHaveClass(/selected/);
+  await expect(buttons.nth(2)).toHaveClass(/selected/);
 
   await buttons.nth(1).click();
-  await expect(buttons.nth(0)).not.toHaveClass(/selected/);
   await expect(buttons.nth(1)).toHaveClass(/selected/);
+  await expect(buttons.nth(2)).not.toHaveClass(/selected/);
 
   // clicking the armed tool again disarms it
   await buttons.nth(1).click();
-  await expect(buttons.nth(1)).not.toHaveClass(/selected/);
-  await expect(buttons.nth(0)).not.toHaveClass(/selected/);
+  for (var i = 0; i < 3; i++) {
+    await expect(buttons.nth(i)).not.toHaveClass(/selected/);
+  }
   expect(errors).toEqual([]);
 });
 
@@ -500,8 +507,9 @@ test('the tool starts idle on a layer that already has labels', async function({
     window.mapshaper.undoTest.setInteractionMode('label');
   });
   await page.waitForTimeout(200);
-  await expect(buttons.nth(0)).not.toHaveClass(/selected/);
-  await expect(buttons.nth(1)).not.toHaveClass(/selected/);
+  for (var i = 0; i < 3; i++) {
+    await expect(buttons.nth(i)).not.toHaveClass(/selected/);
+  }
   expect(errors).toEqual([]);
 });
 
@@ -651,7 +659,7 @@ test('a field gives the keyboard back when it is finished with', async function(
   expect(await getFocusedElement(page)).toBe('BODY');
 
   // and so does a field that commits on Enter through its change handler
-  var spacing = page.locator('.text-style-panel .label-measure-input').first();
+  var spacing = page.locator('.text-style-panel .label-measure-input[data-placeholder="0"]');
   await spacing.fill('2');
   await spacing.press('Enter');
   expect(await getFocusedElement(page)).toBe('BODY');
@@ -675,7 +683,7 @@ test('a key typed into a field is the field\'s, not the tool\'s', async function
   expect(await getFocusedElement(page)).toBe('BODY');
   expect(await getNewLabelStyle(page)).not.toHaveProperty('css');
   // the curve tool is still armed: the key never reached it
-  await expect(page.locator('.floating-toolbar.label-toolbar .floating-toolbar-btn').nth(1))
+  await expect(page.locator('.floating-toolbar.label-toolbar .floating-toolbar-btn').nth(2))
     .toHaveClass(/selected/);
   expect(errors).toEqual([]);
 });
@@ -693,7 +701,7 @@ test('the symbol is faded and coloured apart from the text', async function({pag
   await clickLabel(page, 0);
 
   var panel = page.locator('.text-style-panel');
-  await panel.locator('.label-toggle').click();
+  await panel.locator('.label-icon-toggle').click();
   await page.waitForTimeout(120);
   await panel.locator('.label-icon-buttons [data-icon="circle"]').click();
   await page.waitForTimeout(120);
@@ -729,7 +737,7 @@ test('the switch is what gives a label a symbol and takes it away', async functi
   await clickLabel(page, 0);
 
   var panel = page.locator('.text-style-panel');
-  var toggle = panel.locator('.label-toggle');
+  var toggle = panel.locator('.label-icon-toggle');
   var starBtn = panel.locator('.label-icon-buttons [data-icon="star"]');
   var iconColor = panel.locator('.label-icon-color-row .label-color-field input');
 
@@ -1624,7 +1632,7 @@ test('switching the symbol off leaves the placement alone', async function({page
   await setLabelPosition(page, 'se');
   expect((await getLabelLayer(page)).records[0]['label-pos']).toBe('se');
 
-  await page.locator('.text-style-panel .label-toggle').click();
+  await page.locator('.text-style-panel .label-icon-toggle').click();
   await page.waitForTimeout(250);
   var rec = (await getLabelLayer(page)).records[0];
   expect(rec.icon).toBeFalsy();
@@ -1931,7 +1939,7 @@ async function getSelectedPosition(page) {
 }
 
 async function turnIconOn(page) {
-  await page.locator('.text-style-panel .label-toggle').click();
+  await page.locator('.text-style-panel .label-icon-toggle').click();
   await page.waitForTimeout(250);
 }
 
@@ -1953,7 +1961,7 @@ async function getSelectionCueCount(page) {
 // tool arms itself on a layer with no labels, so a helper that just clicked the
 // button would disarm it there.
 async function armTool(page, kind) {
-  var i = kind == 'anchor' ? 0 : 1;
+  var i = {anchor: 0, block: 1, path: 2}[kind];
   var btn = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-btn').nth(i);
   if (!(await btn.evaluate(function(el) {
     return el.classList.contains('selected');
@@ -1967,7 +1975,7 @@ async function armTool(page, kind) {
 // not place a label.
 async function disarmTool(page) {
   var btns = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-btn');
-  for (var i = 0; i < 2; i++) {
+  for (var i = 0; i < 3; i++) {
     if (await btns.nth(i).evaluate(function(el) {
       return el.classList.contains('selected');
     })) {

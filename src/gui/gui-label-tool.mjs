@@ -18,9 +18,11 @@ import { runGuiEditCommand } from './gui-edit-command';
 import { quoteCommandValue } from './gui-command-utils';
 import {
   getNewLabelStyle, updateNewLabelStyle, getLabelTextSession,
-  getLabelPositionMode, setLabelPositionMode, getToggleState
+  getLabelPositionMode, setLabelPositionMode, getLabelPositionKind, getToggleState
 } from './gui-label-style-state';
 import { getTextCentreOffset, getNearestPosition } from './gui-label-offset';
+import { WRAP_FIELDS, rewrapLabelValue } from './gui-label-wrap';
+import { getLabelTextCommand } from './gui-label-commands';
 
 var fontField = 'font-family';
 var fontSizeField = 'font-size';
@@ -40,6 +42,15 @@ var iconField = 'icon';
 var iconSizeField = 'icon-size';
 var iconColorField = 'icon-color';
 var iconOpacityField = 'icon-opacity';
+var calloutField = 'callout';
+var calloutEndField = 'callout-end';
+var calloutEndSizeField = 'callout-end-size';
+var calloutColorField = 'callout-color';
+var calloutOpacityField = 'callout-opacity';
+var calloutWidthField = 'callout-width';
+var calloutGapField = 'callout-gap';
+var defaultCalloutShape = 'line';
+var defaultCalloutWidth = 1;
 var defaultFontSize = 12;
 var defaultFontStyle = 'normal';
 var defaultFontWeight = '400';
@@ -82,7 +93,14 @@ var savedStyleFields = [
   iconField,
   iconSizeField,
   iconColorField,
-  iconOpacityField
+  iconOpacityField,
+  calloutField,
+  calloutEndField,
+  calloutEndSizeField,
+  calloutColorField,
+  calloutOpacityField,
+  calloutWidthField,
+  calloutGapField
 ];
 var labelPositions = ['nw', 'n', 'ne', 'w', 'c', 'e', 'sw', 's', 'se'];
 // The position an icon moves a centred label to when it is switched on: upper
@@ -144,6 +162,41 @@ var alignButtonSymbols = {
   center: '<line x1="3" y1="4.5" x2="13" y2="4.5"></line><line x1="5.5" y1="8" x2="10.5" y2="8"></line><line x1="4" y1="11.5" x2="12" y2="11.5"></line>',
   right: '<line x1="3" y1="4.5" x2="13" y2="4.5"></line><line x1="8" y1="8" x2="13" y2="8"></line><line x1="5" y1="11.5" x2="13" y2="11.5"></line>'
 };
+// As with icons, no "none" among the shapes: the section's switch says whether
+// there is a callout. The ends do have one, since a line with no marker is a
+// shape of its own rather than the absence of a callout.
+var calloutShapes = [{
+  name: 'line',
+  title: 'straight'
+}, {
+  name: 'elbow',
+  title: 'elbow'
+}, {
+  name: 'curve',
+  title: 'curve'
+}];
+var calloutEnds = [{
+  name: 'none',
+  title: 'no marker at the anchor'
+}, {
+  name: 'arrow',
+  title: 'solid arrowhead at the anchor'
+}, {
+  name: 'open-arrow',
+  title: 'open arrowhead at the anchor'
+}];
+// The anchor is at the lower left of the shapes and at the left of the ends,
+// which is where the markers go. The arrowheads are drawn to the renderer's
+// angles, with sides the same visible length -- the open one's stroke
+// included -- so that they compare as the drawn arrows do.
+var calloutButtonSymbols = {
+  line: '<path d="M3.5 12.5L12.5 3.5"></path>',
+  elbow: '<path d="M3.5 12.5L8 4.5H13"></path>',
+  curve: '<path d="M3.5 12.5Q4.5 4.5 12.5 4"></path>',
+  none: '<path d="M3 8H13"></path>',
+  arrow: '<path d="M6.7 8H13"></path><path class="fill" d="M2.5 8L8.53 5.57V10.43Z"></path>',
+  'open-arrow': '<path d="M3.2 8H13"></path><path d="M7.38 5.07L3.2 8L7.38 10.93"></path>'
+};
 var iconButtonSymbols = {
   circle: '<circle cx="8" cy="8" r="4.25"></circle>',
   square: '<rect x="4" y="4" width="8" height="8"></rect>',
@@ -158,13 +211,15 @@ export function LabelTool(gui) {
   // label-style-panel carries the styling the point and layer panels share; the
   // second class is this panel's own, as theirs are
   var panel = El('div').addClass('label-style-panel text-style-panel rollover').appendTo(parent).hide();
-  var presetControl, fontSelect, fontStyleSelect, fontSizeInput, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, dragModeBtns, haloToggle, haloWidthInput, haloColorFieldBox, haloColorChit, haloColorInput, haloColorPicker, haloOpacityInput, iconToggle, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, editingStatus, clearLink, closeBtn, hit;
+  var presetControl, fontSelect, fontStyleSelect, fontSizeInput, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, dragModeBtns, haloToggle, haloWidthInput, haloColorFieldBox, haloColorChit, haloColorInput, haloColorPicker, haloOpacityInput, iconToggle, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, haloSection, iconSection, calloutSection, calloutToggle, calloutShapeGroupEl, calloutShapeBtns, calloutEndGroupEl, calloutEndBtns, calloutColorFieldBox, calloutColorChit, calloutColorInput, calloutColorPicker, calloutOpacityInput, calloutWidthInput, calloutEndSizeInput, calloutGapInput, editingStatus, clearLink, closeBtn, hit;
   var fontOptionsRendered = false;
   // The shape the toggle turns back on, so that switching a symbol off and on
   // again does not silently change a star into a circle.
   var lastIconShape = defaultIconShape;
   // Likewise the halo's width, which is what switching one off removes.
   var lastHaloWidth = defaultHaloWidth;
+  // And the callout's shape.
+  var lastCalloutShape = defaultCalloutShape;
 
   initPanel();
   gui.addMode(labelStylePanelMode, turnOn, turnOff);
@@ -343,6 +398,9 @@ export function LabelTool(gui) {
     // Letter spacing takes the right-hand column on its own, above line
     // height: the two spacing values read as a pair there, and the left of the
     // row is where the alignment buttons go.
+    //
+    // A text block's width is not here: it is set by dragging the block's
+    // handle, and a field for it would be clutter on every other label.
     var letterRow = El('div').addClass('label-style-row label-split-row').appendTo(textSection);
     El('div').addClass('label-split-cell').appendTo(letterRow);
     var letterCell = El('div').addClass('label-split-cell label-spacing-row').appendTo(letterRow);
@@ -386,10 +444,11 @@ export function LabelTool(gui) {
     // Its rows are ones the Text section already has: a colour and its opacity
     // on one line, and a width in the narrow column beneath, where letter
     // spacing sits above.
-    var haloSection = addSection('Halo');
+    haloSection = addSection('Halo');
     var haloTitle = haloSection.findChild('.label-style-section-title');
     haloToggle = makeToggle(haloTitle, {
       title: 'Draw a halo around the text',
+      className: 'label-halo-toggle',
       onChange: setHaloOn
     });
 
@@ -438,10 +497,11 @@ export function LabelTool(gui) {
     // fifth shape button reading "none". Everything below it is inert while it
     // is off, which is also the honest reading of an icon-size or icon-color on
     // a label with no icon: nothing to apply it to.
-    var iconSection = addSection('Icon');
+    iconSection = addSection('Icon');
     var iconTitle = iconSection.findChild('.label-style-section-title');
     iconToggle = makeToggle(iconTitle, {
       title: 'Draw a symbol at the label anchor',
+      className: 'label-icon-toggle',
       onChange: setIconOn
     });
     // The size's caption sits on the heading line, over its own column. It
@@ -497,6 +557,8 @@ export function LabelTool(gui) {
     var iconOpacityCell = El('div').addClass('label-split-cell label-opacity-row label-icon-opacity-row').appendTo(iconColorRow);
     iconOpacityInput = addOpacityInput(iconOpacityCell, applyIconOpacity);
 
+    initCalloutSection();
+
     var posRow = El('div').addClass('label-style-row label-position-row').appendTo(textSection);
 
 
@@ -520,7 +582,7 @@ export function LabelTool(gui) {
     dragModeBtns = {};
     labelDragModes.forEach(function(item) {
       dragModeBtns[item.name] = makePanelButton(dragModeGroup, item.label, function() {
-          setLabelPositionMode(gui, item.name);
+          setLabelPositionMode(gui, item.name, getPositionModeKind());
         })
         .attr('data-drag-mode', item.name)
         .attr('title', item.title);
@@ -539,6 +601,116 @@ export function LabelTool(gui) {
         return !controlsEnabled();
       }
     });
+  }
+
+  // Switched like the halo and the symbol, and shaped like them: the choices on
+  // the first line, a colour and its opacity on the next, then the sizes. The
+  // line's geometry -- its corner or bend, where it meets the text, how far it
+  // stops short of the anchor -- is a matter of positions, which are dragged on
+  // the map rather than typed here. See docs/development/text-annotation-design.md.
+  function initCalloutSection() {
+    calloutSection = addSection('Callout');
+    calloutToggle = makeToggle(calloutSection.findChild('.label-style-section-title'), {
+      title: 'Draw a line from the label anchor to its text',
+      className: 'label-callout-toggle',
+      onChange: setCalloutOn
+    });
+
+    // Each choice in the wide column with the size that qualifies it beside
+    // it, as Alignment has Line height: the line's shape and its width, then
+    // the marker and its size.
+    var shapeRow = El('div').addClass('label-style-row label-split-row').appendTo(calloutSection);
+    var shapeCell = El('div').addClass('label-split-cell label-align-row').appendTo(shapeRow);
+    El('span').appendTo(shapeCell).text('Line');
+    calloutShapeGroupEl = El('div').addClass('label-btn-group label-callout-buttons').appendTo(shapeCell);
+    calloutShapeBtns = {};
+    calloutShapes.forEach(function(item) {
+      calloutShapeBtns[item.name] = makeCalloutButton(calloutShapeGroupEl, item, function() {
+        applyCalloutShape(item.name);
+      });
+    });
+    var widthCell = El('div').addClass('label-split-cell label-spacing-row label-callout-width-row').appendTo(shapeRow);
+    El('span').appendTo(widthCell).text('Width');
+    calloutWidthInput = new SizeField(widthCell, {
+      title: 'Callout line width in px',
+      min: 0.25,
+      max: 20,
+      step: 0.5,
+      bigStep: 2,
+      decimals: 2,
+      onSet: applyCalloutWidth,
+      onStep: nudgeCalloutWidth,
+      onDone: releaseFocus
+    });
+
+    var endRow = El('div').addClass('label-style-row label-split-row').appendTo(calloutSection);
+    var endCell = El('div').addClass('label-split-cell label-align-row').appendTo(endRow);
+    El('span').appendTo(endCell).text('End');
+    calloutEndGroupEl = El('div').addClass('label-btn-group label-callout-buttons').appendTo(endCell);
+    calloutEndBtns = {};
+    calloutEnds.forEach(function(item) {
+      calloutEndBtns[item.name] = makeCalloutButton(calloutEndGroupEl, item, function() {
+        applyCalloutEnd(item.name);
+      });
+    });
+    var endSizeCell = El('div').addClass('label-split-cell label-spacing-row label-callout-end-size-row').appendTo(endRow);
+    El('span').appendTo(endSizeCell).text('Size');
+    calloutEndSizeInput = new SizeField(endSizeCell, {
+      title: 'Arrowhead size in px, the length of its sides',
+      min: 1,
+      max: 60,
+      step: 1,
+      bigStep: 5,
+      onSet: applyCalloutEndSize,
+      onStep: nudgeCalloutEndSize,
+      onDone: releaseFocus
+    });
+
+    var colorRow = El('div').addClass('label-style-row label-split-row').appendTo(calloutSection);
+    var colorCell = El('div').addClass('label-split-cell label-color-row').appendTo(colorRow);
+    calloutColorChit = El('div').addClass('label-color-chit').attr('role', 'button');
+    calloutColorInput = El('input').attr('type', 'text').attr('title', 'Callout color');
+    calloutColorFieldBox = makeColorField(colorCell, calloutColorChit, calloutColorInput);
+    calloutColorChit.on('click', function() {
+      if (this.classList.contains('disabled')) return;
+      calloutColorPicker.toggle();
+    });
+    calloutColorInput.on('change', function() {
+      var color = calloutColorInput.node().value.trim();
+      if (color) {
+        if (isHexColor(color)) {
+          calloutColorPicker.setColor(color);
+        }
+        applyCalloutColor(color);
+      }
+    });
+    calloutColorPicker = initColorPicker(colorCell, calloutColorChit, calloutColorInput, applyCalloutColor);
+    var opacityCell = El('div').addClass('label-split-cell label-opacity-row').appendTo(colorRow);
+    calloutOpacityInput = addOpacityInput(opacityCell, applyCalloutOpacity);
+
+    // The gap in the narrow column, under the sizes: it has a blank state,
+    // "auto", which clears the anchor's symbol, so it is not a size field.
+    var gapRow = El('div').addClass('label-style-row label-split-row').appendTo(calloutSection);
+    El('div').addClass('label-split-cell').appendTo(gapRow);
+    var gapCell = El('div').addClass('label-split-cell label-spacing-row label-callout-gap-row').appendTo(gapRow);
+    El('span').appendTo(gapCell).text('Gap');
+    calloutGapInput = El('input').attr('type', 'text').addClass('label-measure-input')
+      .attr('title', 'Space between the callout and the anchor, in px')
+      .attr('placeholder', 'auto')
+      .attr('data-placeholder', 'auto')
+      .appendTo(gapCell)
+      .on('change', function() {
+        applyCalloutGap(calloutGapInput.node().value.trim());
+      });
+  }
+
+  function makeCalloutButton(parent, item, action) {
+    var btn = makePanelButton(parent, '', action)
+      .attr('data-callout', item.name)
+      .attr('title', item.title);
+    El('<svg class="label-callout-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
+      calloutButtonSymbols[item.name] + '</svg>').appendTo(btn);
+    return btn;
   }
 
   function appendIconButtonSymbol(btn, iconName) {
@@ -574,6 +746,7 @@ export function LabelTool(gui) {
   function makeToggle(parent, opts) {
     var track = El('div').addClass('label-toggle').attr('role', 'checkbox').appendTo(parent);
     var state = 'off';
+    if (opts.className) track.addClass(opts.className);
     var disabled = false;
     El('div').addClass('label-toggle-knob').appendTo(track);
     if (opts.title) track.attr('title', opts.title);
@@ -834,6 +1007,23 @@ export function LabelTool(gui) {
     updateIconSizeControls(iconSize, iconOff);
     updateIconColorControls(iconColor, iconOff);
     updateOpacityControl(iconOpacityInput, iconOpacity, iconOff);
+    var calloutOff = updateCalloutValueControls();
+    setSectionCollapsed(haloSection, haloOff, haloColorPicker);
+    setSectionCollapsed(iconSection, iconOff, iconColorPicker);
+    setSectionCollapsed(calloutSection, calloutOff, calloutColorPicker);
+  }
+
+  // A section whose switch is off shows only its heading. What is under it is
+  // inert while it is off, so hiding it loses nothing, and the panel stays short
+  // enough to hold all of them. The values are kept, greyed, for the moment it
+  // is switched back on, which is what they come back as.
+  //
+  // An open picker is closed with its section: it hangs from the colour field,
+  // and a picker left open over a hidden field would change a colour nobody
+  // can see.
+  function setSectionCollapsed(section, collapsed, picker) {
+    section.classed('collapsed', collapsed);
+    if (collapsed && picker.visible()) picker.hide();
   }
 
   // Every field that can show a value can also show nothing, which is why each
@@ -936,16 +1126,27 @@ export function LabelTool(gui) {
     }));
   }
 
-  // The toggle is the tool's state and not the selection's, so nothing here
-  // reads a record. It is inert outside the label tool, where there is no drag
-  // on a label for it to describe.
+  // The toggle is the tool's state and not the selection's, but there is one
+  // for point text and one for text blocks, and it shows the one for the kind
+  // of label selected. It is inert outside the label tool, where there is no
+  // drag on a label for it to describe.
   function updateDragModeButtons() {
-    var mode = getLabelPositionMode(gui);
+    var mode = getLabelPositionMode(gui, getPositionModeKind());
     var disabled = !labelModeIsOn();
     labelDragModes.forEach(function(item) {
       dragModeBtns[item.name].classed('selected', !disabled && item.name == mode);
       setPanelButtonDisabled(dragModeBtns[item.name], disabled);
     });
+  }
+
+  // 'block' when the labels the panel is pointed at are all text blocks, and
+  // otherwise 'point', including for the next label to be made.
+  function getPositionModeKind() {
+    var table = getActiveTable();
+    var ids = getTargetIds();
+    return ids.length > 0 && table && ids.every(function(id) {
+      return getLabelPositionKind(table.getRecordAt(id)) == 'block';
+    }) ? 'block' : 'point';
   }
 
   function everyLabelIsOnAPath(ids) {
@@ -1244,6 +1445,202 @@ export function LabelTool(gui) {
     return ids.length > 0 ? ids : getTargetIds();
   }
 
+  // The switch reads the data, as the halo's does. A callout is on for a label
+  // whose callout names a shape.
+  function getCalloutState() {
+    var ids = getTargetIds();
+    var table = getActiveTable();
+    if (ids.length === 0) {
+      return internal.svg.labelHasCallout(labelModeIsOn() ? getNewLabelStyle(gui) : null) ? 'on' : 'off';
+    }
+    return getToggleState(ids.map(function(id) {
+      return internal.svg.labelHasCallout(table && table.getRecordAt(id));
+    }));
+  }
+
+  // The labels a callout's end, colour, width and gap go to: the targets that
+  // have a callout, for the reason the symbol's values go only to labels with a
+  // symbol.
+  function getCalloutTargetIds() {
+    var table = getActiveTable();
+    return getTargetIds().filter(function(id) {
+      return internal.svg.labelHasCallout(table && table.getRecordAt(id));
+    });
+  }
+
+  function getCalloutValueIds() {
+    var ids = getCalloutTargetIds();
+    return ids.length > 0 ? ids : getTargetIds();
+  }
+
+  // Switching a callout on gives every target the shape the selection's
+  // callouts share, or the last one used. Switching it off removes the shape
+  // alone, so that a callout switched off and on again comes back with the
+  // corner, the attachment and the look it had.
+  function setCalloutOn(on) {
+    var shape = on ? getCommonValue(getCalloutTargetIds(), calloutField) || lastCalloutShape : '';
+    applyStyleValues([[calloutField, shape]]);
+  }
+
+  // A shape is a plain statement about every selected label, as a symbol's is.
+  function applyCalloutShape(shape) {
+    applyStyleValues([[calloutField, shape]]);
+  }
+
+  // No marker is stored as no callout-end.
+  function applyCalloutEnd(end) {
+    applyStyleValues([[calloutEndField, end == 'none' ? '' : end]], getCalloutTargetIds());
+  }
+
+  function applyCalloutColor(color) {
+    applyStyleValues([[calloutColorField, color]], getCalloutTargetIds());
+  }
+
+  function applyCalloutOpacity(value) {
+    applyStyleValues([[calloutOpacityField, value >= 1 ? '' : value]], getCalloutTargetIds());
+  }
+
+  function applyCalloutWidth(value) {
+    applyStyleValues([[calloutWidthField, value]], getCalloutTargetIds());
+  }
+
+  function nudgeCalloutWidth(delta) {
+    var width = getNumericSize(getCalloutTargetIds(), calloutWidthField, defaultCalloutWidth);
+    if (!controlsEnabled() || getCalloutState() == 'off') return;
+    applyCalloutWidth(Math.max(0.25, Math.round((width + delta) * 4) / 4));
+  }
+
+  // A marker size goes to the callouts that have a marker to size, as a
+  // symbol's size goes only to labels with a symbol.
+  function applyCalloutEndSize(value) {
+    applyStyleValues([[calloutEndSizeField, value]], getCalloutEndTargetIds());
+  }
+
+  // Stepped from the size each marker is drawn at, which for one with no
+  // callout-end-size is the default its line width gives it.
+  function nudgeCalloutEndSize(delta) {
+    var shown = getCalloutEndSizeShown(getCalloutEndTargetIds());
+    var size = Number(shown.value);
+    if (!controlsEnabled() || !(size > 0)) return;
+    applyCalloutEndSize(Math.max(1, Math.round(size + delta)));
+  }
+
+  function getCalloutEndTargetIds() {
+    var table = getActiveTable();
+    return getCalloutTargetIds().filter(function(id) {
+      return getCalloutEnd(table && table.getRecordAt(id)) != 'none';
+    });
+  }
+
+  function getCalloutEnd(rec) {
+    return internal.svg.getCalloutEndType(rec);
+  }
+
+  // The size a marker is drawn at: its own, or the default for its kind and
+  // line width.
+  function getCalloutEndSizeShown(ids) {
+    return getShownRecordValues(ids, function(rec) {
+      var size = rec ? Number(rec[calloutEndSizeField]) : 0;
+      var width = rec ? Number(rec[calloutWidthField]) : 0;
+      if (size > 0) return size;
+      return internal.svg.getDefaultCalloutEndSize(getCalloutEnd(rec),
+        width > 0 ? width : defaultCalloutWidth);
+    });
+  }
+
+  // Blank is "auto", which clears the anchor's symbol, and 0 is no gap at all:
+  // the two are different, which is why this is not a size field.
+  function applyCalloutGap(str) {
+    var val = Number(str);
+    if (str !== '' && !(isFinite(val) && val >= 0)) {
+      updateControls();
+      return;
+    }
+    applyStyleValues([[calloutGapField, str === '' ? '' : val]], getCalloutTargetIds());
+  }
+
+  // Returns whether the section is off.
+  function updateCalloutValueControls() {
+    var enabled = controlsEnabled();
+    var state = enabled ? getCalloutState() : 'off';
+    var off = state == 'off';
+    var ids = getCalloutValueIds();
+    var shape = enabled ? getCommonValue(ids, calloutField) : '';
+    var end = enabled ? getCommonValue(ids, calloutEndField, {useDefault: true, defaultValue: 'none'}) : '';
+    var width = getShownValue(ids, calloutWidthField, {useDefault: true, defaultValue: defaultCalloutWidth});
+    var gap = getCalloutGapShown(ids);
+    if (shape && shape != 'none') lastCalloutShape = shape;
+    calloutToggle.setState(state);
+    calloutToggle.setDisabled(!enabled);
+    updateButtonGroup(calloutShapeGroupEl, calloutShapeBtns, off ? '' : shape, off);
+    updateButtonGroup(calloutEndGroupEl, calloutEndBtns, off ? '' : end, off);
+    updateSwatchField(calloutColorInput, calloutColorFieldBox, calloutColorChit,
+      calloutColorPicker, getCalloutColorShown(ids), off);
+    updateOpacityControl(calloutOpacityInput,
+      getShownValue(ids, calloutOpacityField, {useDefault: true, defaultValue: 1}), off);
+    calloutWidthInput.setValue(width.value || '');
+    calloutWidthInput.setPlaceholder(width.mixed ? MIXED_TEXT : '');
+    calloutWidthInput.setDisabled(off || !enabled);
+    updateCalloutEndSizeControl(off || !enabled);
+    calloutGapInput.node().disabled = off || !enabled;
+    calloutGapInput.node().value = gap.value;
+    setMixedPlaceholder(calloutGapInput, gap.mixed);
+    return off;
+  }
+
+  // Inert with no marker to size. With nothing selected it describes the next
+  // label's marker, which the new-label style holds.
+  function updateCalloutEndSizeControl(off) {
+    var ids = getTargetIds().length > 0 ? getCalloutEndTargetIds() : [];
+    var noMarker = getTargetIds().length > 0 ? ids.length === 0 :
+      getCalloutEnd(labelModeIsOn() ? getNewLabelStyle(gui) : null) == 'none';
+    var shown = off || noMarker ? {value: '', mixed: false} : getCalloutEndSizeShown(ids);
+    calloutEndSizeInput.setValue(shown.value);
+    calloutEndSizeInput.setPlaceholder(shown.mixed ? MIXED_TEXT : '');
+    calloutEndSizeInput.setDisabled(off || noMarker);
+  }
+
+  function updateButtonGroup(groupEl, btns, selected, off) {
+    groupEl.classed('disabled', off);
+    Object.keys(btns).forEach(function(name) {
+      btns[name].classed('selected', name == selected);
+      setPanelButtonDisabled(btns[name], off);
+    });
+  }
+
+  // The colour a callout is drawn in, which is the text's unless it has its
+  // own -- so a label with red text shows red here, not the black that
+  // getCommonValueInfo() would supply for an unset callout-color.
+  function getCalloutColorShown(ids) {
+    return getShownRecordValues(ids, function(rec) {
+      return rec && (rec[calloutColorField] || rec[fillField]) || defaultLabelColor;
+    });
+  }
+
+  // getCommonValueInfo() reads 0 as unset, and a gap of 0 is a value.
+  function getCalloutGapShown(ids) {
+    return getShownRecordValues(ids, function(rec) {
+      var val = rec ? rec[calloutGapField] : null;
+      return val || val === 0 ? String(val) : '';
+    });
+  }
+
+  // {value, mixed} for a value worked out from each target's record, or from
+  // the new-label style when there is no target.
+  function getShownRecordValues(ids, fn) {
+    var table = getActiveTable();
+    var vals;
+    if (!controlsEnabled()) return {value: '', mixed: false};
+    if (ids.length === 0) {
+      return {value: fn(labelModeIsOn() ? getNewLabelStyle(gui) : null), mixed: false};
+    }
+    vals = ids.map(function(id) {
+      return fn(table && table.getRecordAt(id));
+    });
+    return vals.every(function(val) { return val === vals[0]; }) ?
+      {value: vals[0], mixed: false} : {value: '', mixed: true};
+  }
+
   function updateSavedStyleControls() {
     presetControl.update();
   }
@@ -1468,7 +1865,29 @@ export function LabelTool(gui) {
       addStyleValue(style, iconColorField, iconColorInput.node().value.trim());
       addStyleValue(style, iconOpacityField, getIconOpacityToWrite());
     }
+    // A callout's shape and look, but not its geometry: a corner or an
+    // attachment point is placed for one label's surroundings, and means
+    // nothing on another.
+    if (getCalloutState() == 'on') {
+      addStyleValue(style, calloutField, getSelectedButton(calloutShapeBtns));
+      addStyleValue(style, calloutEndField, getSelectedButton(calloutEndBtns));
+      addStyleValue(style, calloutEndSizeField,
+        getCommonValue(getCalloutEndTargetIds(), calloutEndSizeField));
+      addStyleValue(style, calloutColorField,
+        getCommonValue(getCalloutTargetIds(), calloutColorField));
+      addStyleValue(style, calloutOpacityField, getOpacityBelowFull(calloutOpacityInput));
+      addStyleValue(style, calloutWidthField, calloutWidthInput.getValue());
+      addStyleValue(style, calloutGapField, getCommonValue(getCalloutTargetIds(), calloutGapField));
+    }
     return style;
+  }
+
+  function getSelectedButton(btns) {
+    var out = '';
+    Object.keys(btns).forEach(function(name) {
+      if (btns[name].hasClass('selected')) out = name;
+    });
+    return out;
   }
 
   // A saved style carries an opacity only if it has one to carry: saving at
@@ -1675,6 +2094,7 @@ export function LabelTool(gui) {
     colorPicker.hide();
     haloColorPicker.hide();
     iconColorPicker.hide();
+    calloutColorPicker.hide();
   }
 
   function isFormElement(node) {
@@ -1739,6 +2159,7 @@ export function LabelTool(gui) {
     if (ids.length < internal.getFeatureCount(lyr)) {
       parts.push('ids=' + ids.join(','));
     }
+    parts = parts.concat(getRewrapCommands(styles, ids, lyr));
     runGuiEditCommand(gui, parts.join(' '), {
       title: 'Label styles',
       onDone: function() {
@@ -1747,6 +2168,29 @@ export function LabelTool(gui) {
         updateSelectionDisplay();
       }
     });
+  }
+
+  // A text block's breaks are only right for the width and font they were
+  // found with, so a change to either rewraps it in the same command: one undo
+  // step, and no moment at which the block is drawn with its old lines in its
+  // new font. One -style per label, since each has text of its own.
+  function getRewrapCommands(styles, ids, lyr) {
+    var table = lyr.data;
+    var changes = {};
+    var out = [];
+    styles.forEach(function(style) { changes[style[0]] = style[1]; });
+    if (!table || !WRAP_FIELDS.some(function(name) { return name in changes; })) {
+      return out;
+    }
+    ids.forEach(function(id) {
+      var rec = table.getRecordAt(id);
+      var value = rec && rec['label-text'];
+      var wrapped;
+      if (!value || everyLabelIsOnAPath([id])) return;
+      wrapped = rewrapLabelValue(value, Object.assign({}, rec, changes));
+      if (wrapped !== value) out.push(getLabelTextCommand(wrapped, id, null));
+    });
+    return out;
   }
 
   // The yellow halo, which belongs to the older label_style mode. The label

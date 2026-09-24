@@ -1329,9 +1329,14 @@ A knot dropped onto its neighbour would collapse a curve segment to nothing,
 leaving the fitter no direction to work from, so `knotMoveIsValid()` refuses the
 move rather than letting it make the label vanish.
 
-A handle under the pointer also takes the cursor (`.map-layers.label-handle`,
-`cursor: move`) ahead of the placement crosshair, since a drag there moves the
-handle rather than placing anything.
+A handle under the pointer also takes the cursor ahead of the placement
+crosshair, since a drag there moves the handle rather than placing anything.
+Control points -- knots, the anchor, a callout's handles -- show the pointing
+hand (`.map-layers.label-handle`), and a selected label's draggable text shows
+`move` (`.map-layers.label-text-drag`). They were both `move` at first, which
+left no way to tell which of the two a drag would take where they are close
+together: a path label's knots sit under its glyphs, and a callout's
+attachment point is on its text's box. The width handle keeps `ew-resize`.
 
 The cues are drawn in each label's own coordinate space and wear its transform,
 so they move and hide with it. That also means the cost is one `getBBox()` per
@@ -2744,7 +2749,12 @@ Three consequences:
   with it;
 - it defaults to **Fixed** when the tool opens, so a stray drag cannot displace
   text in a session that never asked for it, and is remembered while the tool
-  stays on;
+  stays on. Text blocks (labels with a `label-width`) keep a mode of their own,
+  which defaults to **Draggable**: a block is laid out beside the point it
+  annotates, and placing it there is what it is made for. The toggle shows and
+  sets the blocks' mode when every label the panel is pointed at is one, and
+  the point labels' mode otherwise (see `getLabelPositionKind()` in
+  `gui-label-style-state.mjs`);
 - it governs the text's offset from its anchor and nothing else. Anchor drags
   and a path label's knot drags are unaffected — "Draggable" is not a general
   lock.
@@ -3185,7 +3195,9 @@ where the pointer was when the gesture began.
 The tool's controls are split across two surfaces, because creation and
 typography differ both in kind and in when they are used.
 
-**Creation lives in the floating toolbar.** The two creation controls go in
+**Creation lives in the floating toolbar.** The creation controls (two at
+first; a third, for text blocks, is described in
+`text-annotation-design.md`) go in
 `FloatingToolbar` (`gui-floating-toolbar.mjs`) at bottom-centre, alongside
 undo/redo in `EditToolbar` — it already supports a stack of per-mode toolbars
 and its header comment anticipates this use.

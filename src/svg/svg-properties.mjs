@@ -44,6 +44,20 @@ var stylePropertyTypes = {
   // where the text starts along its path; a length or a percentage
   'label-start-offset': null,
   'label-text': null,  // leaving this null
+  // width of a fixed-width text block, whose lines the GUI wraps and stores
+  // with <wbr> soft breaks -- see docs/development/text-annotation-design.md
+  'label-width': 'number',
+  // a line from a label's anchor to its text -- see svg-label-callout.mjs
+  callout: 'callout',
+  'callout-end': 'calloutend',
+  'callout-end-size': 'number',
+  'callout-via': 'pointpair',
+  'callout-attach': 'pointpair',
+  'callout-gap': 'number',
+  'callout-padding': 'number',
+  'callout-color': 'color',
+  'callout-width': 'number',
+  'callout-opacity': 'number',
   'letter-spacing': 'measure',
   'line-height': 'measure',
   opacity: 'number',
@@ -351,6 +365,13 @@ function parseSvgLiteralValue(strVal, type) {
     val = parseLabelPosition(strVal);
   } else if (type == 'labelalign') {
     val = parseLabelAlign(strVal);
+  } else if (type == 'callout') {
+    val = parseCalloutType(strVal);
+  } else if (type == 'calloutend') {
+    val = parseCalloutEnd(strVal);
+  } else if (type == 'pointpair') {
+    val = parsePointPair(strVal);
+    val = val ? formatPointPair(val) : null;
   }
   //  else {
   //   // unknown type -- assume literal value
@@ -385,6 +406,29 @@ export function parseBoolean(o) {
 export function parseLabelPosition(str) {
   var pos = String(str).trim();
   return /^(n|s|e|w|ne|se|nw|sw|c)$/i.test(pos) ? pos : null;
+}
+
+// 'none' is kept rather than rejected, so that a data field or an expression
+// can switch a callout off for some features; it renders as no callout.
+export function parseCalloutType(str) {
+  var type = String(str).trim().toLowerCase();
+  return /^(line|elbow|curve|none)$/.test(type) ? type : null;
+}
+
+export function parseCalloutEnd(str) {
+  var end = String(str).trim().toLowerCase();
+  return /^(arrow|open-arrow|none)$/.test(end) ? end : null;
+}
+
+// "x,y" -> [x, y], or null. Stored as a string so that a pair is set and
+// cleared as one value and reads plainly in a table.
+export function parsePointPair(str) {
+  var match = /^\s*(-?[0-9]*\.?[0-9]+)\s*,\s*(-?[0-9]*\.?[0-9]+)\s*$/.exec(String(str));
+  return match ? [Number(match[1]), Number(match[2])] : null;
+}
+
+export function formatPointPair(p) {
+  return p[0] + ',' + p[1];
 }
 
 export function getLabelPositionStyle(pos) {

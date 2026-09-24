@@ -5,8 +5,11 @@ import { renderPendingSymbol } from './gui-svg-symbols';
 import {
   decodeLabelText, encodeLabelText, getRenderedLines, getRenderedContent,
   getRenderedCaret, getRenderedLength, getEditIndex, textHasNoGlyphs,
+  readSoftBreaks, insertSoftBreaks, sameSoftBreaks,
   LINES_STACKED, LINES_JOINED
 } from './gui-label-text';
+import { getSoftBreaks } from './gui-label-wrap';
+import { getLabelColumn } from './gui-label-handles';
 import {
   getCaretGeometry, getSelectionRects, getLabelBox, getCaretIndexAtPoint,
   growBoxToCaret
@@ -61,6 +64,7 @@ export function LabelEditor(gui, ext) {
       created: false,
       onClose: opts && opts.onClose || null,
       startText: decodeLabelText(rec['label-text']),
+      startBreaks: readSoftBreaks(rec['label-text']).breaks,
       nodes: null
     };
     startSession();
@@ -105,6 +109,7 @@ export function LabelEditor(gui, ext) {
       created: true,
       onClose: opts.onClose || null,
       startText: '',
+      startBreaks: [],
       nodes: null
     };
     startSession();
@@ -242,10 +247,15 @@ export function LabelEditor(gui, ext) {
   //   there is no session to abandon -- it was created before this one, perhaps
   //   by the script the file was built by.
   // - An existing label whose text changed has that text **saved**.
+  //
+  // A text block is saved with the soft breaks it was last drawn with, and is
+  // saved even when the typed text did not change if those breaks did: a font
+  // installed since, or a width set from the console, moves them.
   function commit(o) {
     var blank = textHasNoGlyphs(o.text);
+    var breaks = getBreaks(o);
     if (o.pending) {
-      if (!blank) o.pending.create(o.text);
+      if (!blank) o.pending.create(insertSoftBreaks(o.text, breaks));
       return;
     }
     if (blank) {
@@ -253,10 +263,21 @@ export function LabelEditor(gui, ext) {
       removeLabel(o);
       return;
     }
-    if (o.text === o.startText) return;
-    runGuiEditCommand(gui, getLabelTextCommand(o.text, o.id, o.target.name), {
+    if (o.text === o.startText && sameSoftBreaks(breaks, o.startBreaks)) return;
+    runGuiEditCommand(gui, getLabelTextCommand(insertSoftBreaks(o.text, breaks),
+      o.id, o.target.name), {
       title: 'Label text'
     });
+  }
+
+  // Where the session's text wraps, as offsets into it. Only an anchored label
+  // wraps: a path label's text runs along its curve on one line.
+  function getBreaks(o) {
+    var shp = o.pending ? o.pending.coords : o.target.shapes && o.target.shapes[o.id];
+    var rec;
+    if (!shp || shp.length > 1) return [];
+    rec = o.pending ? o.pending.getStyle() : getRecord(o.target, o.id);
+    return getSoftBreaks(o.text, rec);
   }
 
   // Deletes the label's feature, geometry and all.
@@ -341,7 +362,9 @@ export function LabelEditor(gui, ext) {
   // when there is no text, exactly as it does for a committed empty label.
   function getPendingRecord(o) {
     var rec = Object.assign({}, o.pending.getStyle());
-    rec['label-text'] = encodeLabelText(o.text);
+    // With its soft breaks, so that what is aligned and what a callout meets
+    // is the block as wrapped
+    rec['label-text'] = encodeLabelText(insertSoftBreaks(o.text, getBreaks(o)));
     // No need to expand label-pos here, or to measure its text: the renderer
     // resolves the position and asks for the width it needs, so a pending
     // label is laid out by exactly the same code as a committed one.
@@ -391,12 +414,14 @@ export function LabelEditor(gui, ext) {
   //     getRenderedLines() gives it one.
   function writeText(o) {
     var content = o.nodes.content;
+    var breaks = getBreaks(o);
+    var written = o.text + '\u0000' + breaks.join(',');
     var lines, i, tspan;
     // refresh() runs on every map render, which during a pan is every frame;
     // rebuilding text nodes that already say the right thing is pure waste
-    if (o.writtenTo === content && o.writtenText === o.text) return;
+    if (o.writtenTo === content && o.writtenText === written) return;
     o.writtenTo = content;
-    o.writtenText = o.text;
+    o.writtenText = written;
     o.nodes.text.setAttributeNS(XML_NS, 'space', 'preserve');
     while (content.firstChild) content.removeChild(content.firstChild);
     // A <textPath> runs along its baseline, so a second line would advance
@@ -408,7 +433,10 @@ export function LabelEditor(gui, ext) {
       content.appendChild(document.createTextNode(getRenderedContent(o.text)));
       return;
     }
-    lines = getRenderedLines(o.text);
+    // A soft break keeps the space it broke at at the end of its line, where
+    // the rendered label drops it: here every typed character has to be one
+    // the caret can sit beside.
+    lines = getRenderedLines(o.text, breaks);
     content.appendChild(document.createTextNode(lines[0]));
     for (i = 1; i < lines.length; i++) {
       tspan = document.createElementNS(SVG_NS, 'tspan');
@@ -494,6 +522,7 @@ export function LabelEditor(gui, ext) {
     if (pathId) {
       groups.back.appendChild(ghostPath(pathId));
     } else if (box) {
+      appendColumn(o, groups.back, box);
       groups.back.appendChild(rect(box, 'label-edit-box'));
     }
     getSelectionRects(provider, bands[0], bands[1], rendered).forEach(function(r) {
@@ -502,6 +531,22 @@ export function LabelEditor(gui, ext) {
     if (caret) groups.front.appendChild(caretLine(caret));
     drawHitRegion(o, groups.hit, box, caret, pathId);
     syncTransform(o, groups);
+  }
+
+  // A text block's column -- the width it wraps to -- as a faint dashed box
+  // behind the box around the text, which is usually narrower. Without it a
+  // text block just placed looks like any other label: a caret in a box the
+  // size of nothing.
+  function appendColumn(o, g, box) {
+    var rec = o.pending ? getPendingRecord(o) : getRecord(o.target, o.id);
+    var column = rec ? getLabelColumn(rec) : null;
+    if (!column) return;
+    g.appendChild(rect({
+      x: column[0] - BOX_PADDING,
+      y: box.y,
+      width: column[1] - column[0] + BOX_PADDING * 2,
+      height: box.height
+    }, 'label-edit-column'));
   }
 
   // Keeps clicks near the label inside the session instead of ending it.

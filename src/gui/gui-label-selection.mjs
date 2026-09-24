@@ -31,6 +31,8 @@ var SVG_NS = 'http://www.w3.org/2000/svg';
 export var BOX_PADDING = 3;
 var ANCHOR_RADIUS = 3.5;
 var KNOT_RADIUS = 3;
+var WIDTH_HANDLE_SIZE = 6;
+var GAP_HANDLE_RADIUS = 2.5;
 
 // How many labels get an outline before the cue falls back to the halo.
 //
@@ -50,7 +52,12 @@ var MAX_OUTLINES = 200;
 
 // getEditingId: returns the feature id of an open text editing session, or -1.
 //   A label being typed into draws its own box and does not want a second one.
-export function LabelSelection(gui, ext, hit, getEditingId) {
+// getHandles: (optional) function(target, id, textBox) returning
+//   {handles, column} for a selected anchored label, as from
+//   getAnchoredLabelHandles(), or null. The tool decides when a label has
+//   handles, and gives a text block's column from what is on screen, which
+//   during a drag is not the data.
+export function LabelSelection(gui, ext, hit, getEditingId, getHandles) {
   var self = {};
   var groups = []; // one <g> per drawn cue, in the layer's markup
   var marked = []; // text nodes wearing the halo, when there are too many to outline
@@ -145,7 +152,7 @@ export function LabelSelection(gui, ext, hit, getEditingId) {
       g.appendChild(curve(nodes.pathId));
       if (withHandles) appendKnotHandles(g, target, id);
     } else {
-      appendAnchoredCue(g, nodes, rec, id);
+      appendAnchoredCue(g, nodes, rec, id, withHandles ? target : null);
     }
     groups.push(g);
   }
@@ -161,14 +168,76 @@ export function LabelSelection(gui, ext, hit, getEditingId) {
   // ring inside it would. What is left -- offset text with nothing at its
   // anchor -- is the case where the ring is the only thing that says what the
   // text hangs off.
-  function appendAnchoredCue(g, nodes, rec, id) {
+  //
+  // A selected label's handles go in a group of their own, after the symbol
+  // rather than before it: they sit on the callout and on the edge of the box,
+  // and painted beneath the line they would be hidden by it.
+  //
+  // @handleTarget: the layer, when the label is selected and so may have
+  //   handles, or null
+  //
+  // A selected text block also shows its column, the width it wraps to, as a
+  // fainter dashed box behind the solid one. The solid box is the label itself
+  // -- the wrapped text, which is what a callout meets -- and is usually
+  // narrower than its column; the column is what the width handle drags.
+  function appendAnchoredCue(g, nodes, rec, id, handleTarget) {
     var box = measure(nodes.content);
+    var o = box && handleTarget && getHandles ? getHandles(handleTarget, id, box) : null;
+    var column = o ? o.column : null;
     if (!box) return;
+    if (column) g.appendChild(columnRect(box, column, BOX_PADDING));
     if (box.width || box.height) g.appendChild(rect(box, BOX_PADDING));
     if (id === tetherId) g.appendChild(tether(box));
     if (!internal.featureHasSvgSymbol(rec) && !boxHoldsOrigin(box)) {
       g.appendChild(anchorMarker());
     }
+    if (o && o.handles.length > 0) appendHandles(nodes, o.handles);
+  }
+
+  // The column's own extent across, and the text's up and down: a column has
+  // no height of its own.
+  function columnRect(box, column, pad) {
+    var el = rect({x: column[0], y: box.y, width: column[1] - column[0],
+      height: box.height}, pad);
+    el.setAttribute('class', 'label-cue-column');
+    return el;
+  }
+
+  function appendHandles(nodes, handles) {
+    var g = document.createElementNS(SVG_NS, 'g');
+    var transform = nodes.symbol.getAttribute('transform');
+    var display = nodes.symbol.getAttribute('display');
+    g.setAttribute('class', 'label-cue label-cue-handles');
+    if (transform) g.setAttribute('transform', transform);
+    if (display) g.setAttribute('display', display);
+    handles.forEach(function(h) {
+      g.appendChild(labelHandle(h));
+    });
+    nodes.symbol.parentNode.insertBefore(g, nodes.symbol.nextSibling);
+    groups.push(g);
+  }
+
+  // A square for the width handle, which is a corner of the box, and a ring
+  // for the callout's, which are points on its line -- filled for the end
+  // that meets the text, so that the two ends of the line read differently.
+  function labelHandle(h) {
+    var p = h.point;
+    var el;
+    if (h.kind == 'width') {
+      el = document.createElementNS(SVG_NS, 'rect');
+      el.setAttribute('x', p[0] - WIDTH_HANDLE_SIZE / 2);
+      el.setAttribute('y', p[1] - WIDTH_HANDLE_SIZE / 2);
+      el.setAttribute('width', WIDTH_HANDLE_SIZE);
+      el.setAttribute('height', WIDTH_HANDLE_SIZE);
+    } else {
+      el = document.createElementNS(SVG_NS, 'circle');
+      el.setAttribute('cx', p[0]);
+      el.setAttribute('cy', p[1]);
+      el.setAttribute('r', h.kind == 'gap' ? GAP_HANDLE_RADIUS : KNOT_RADIUS);
+    }
+    el.setAttribute('class', 'label-cue-handle label-cue-' + h.kind);
+    el.setAttribute('data-handle', h.kind);
+    return el;
   }
 
   // Whether the label's anchor point is inside the box drawn around its text.

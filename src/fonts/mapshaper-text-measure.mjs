@@ -1,5 +1,5 @@
 import { setTextMeasureFunction } from '../svg/svg-label-metrics';
-import { labelNewlineRxp, toLabelString, DEFAULT_LABEL_FONT_SIZE } from '../svg/svg-labels';
+import { splitLabelLines, toLabelString, DEFAULT_LABEL_FONT_SIZE } from '../svg/svg-labels';
 import { parseSvgMeasure } from '../svg/svg-properties';
 import { findFontFace } from './mapshaper-font-lookup';
 import { runningInBrowser } from '../mapshaper-env';
@@ -53,7 +53,7 @@ export function measureLabelText(rec) {
   if (!(fontSize > 0)) return null;
   // The widest line, which is what the block of a multi-line label is as wide
   // as, and what the browser's getBBox() reports for the same text.
-  width = text.split(labelNewlineRxp).reduce(function(max, line) {
+  width = splitLabelLines(text).reduce(function(max, line) {
     var w = measureLine(font, line, fontSize, spacing);
     return w > max ? w : max;
   }, 0);

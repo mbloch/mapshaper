@@ -18,7 +18,11 @@ export var NEW_LABEL_STYLE_FIELDS = [
   'label-pos', 'label-side', 'label-start-offset', 'dx', 'dy',
   'fill', 'opacity', 'css', 'class',
   'halo-width', 'halo-color', 'halo-opacity',
-  'icon', 'icon-size', 'icon-color', 'icon-opacity'
+  'icon', 'icon-size', 'icon-color', 'icon-opacity',
+  // not callout-via or callout-attach, which are placed for one label's
+  // surroundings rather than chosen as a style
+  'callout', 'callout-end', 'callout-end-size', 'callout-color', 'callout-opacity', 'callout-width',
+  'callout-gap'
 ];
 
 // values: [[field, value], ...], the form the panel's controls produce
@@ -107,23 +111,49 @@ export function getToggleState(flags) {
 //
 // Fixed on entry, so that a stray drag cannot displace text in a session that
 // never asked for it, and remembered while the tool stays on.
+//
+// Text blocks keep a mode of their own, which starts out Draggable. A block is
+// usually an annotation set off from the point it is about, and is placed by
+// dragging it away from its anchor; point text more often sits where its
+// position puts it and is moved as a whole.
+//
+// @kind: 'point' (the default) or 'block' -- see getLabelPositionKind()
 export var LABEL_POSITION_MODES = ['fixed', 'draggable'];
 
-export function getLabelPositionMode(gui) {
-  return gui.state.label_position_mode || 'fixed';
+var DEFAULT_POSITION_MODES = {point: 'fixed', block: 'draggable'};
+
+export function getLabelPositionMode(gui, kind) {
+  var k = kind == 'block' ? 'block' : 'point';
+  var modes = gui.state.label_position_modes || {};
+  return modes[k] || DEFAULT_POSITION_MODES[k];
 }
 
-export function setLabelPositionMode(gui, mode) {
-  gui.state.label_position_mode =
-    LABEL_POSITION_MODES.indexOf(mode) > -1 ? mode : 'fixed';
+// With no @kind, sets both kinds: 'fixed' puts point text in Fixed mode and
+// blocks back to their own default, which is what the tool does on entry.
+export function setLabelPositionMode(gui, mode, kind) {
+  var modes = gui.state.label_position_modes || {};
+  var val = LABEL_POSITION_MODES.indexOf(mode) > -1 ? mode : 'fixed';
+  if (kind) {
+    modes[kind == 'block' ? 'block' : 'point'] = val;
+  } else {
+    modes = {point: val, block: DEFAULT_POSITION_MODES.block};
+  }
+  gui.state.label_position_modes = modes;
   // The panel's toggle and the tool's drag both read this, and neither owns the
   // other; the panel also has to relight the grid, whose cells mean something
   // different in each mode.
   gui.dispatchEvent('label_position_mode_change');
 }
 
-export function labelTextIsDraggable(gui) {
-  return getLabelPositionMode(gui) == 'draggable';
+export function labelTextIsDraggable(gui, kind) {
+  return getLabelPositionMode(gui, kind) == 'draggable';
+}
+
+// Which position mode governs a label: 'block' for a text block (a label with
+// a wrap width), 'point' for any other.
+export function getLabelPositionKind(rec) {
+  var w = rec ? Number(rec['label-width']) : 0;
+  return w > 0 && isFinite(w) ? 'block' : 'point';
 }
 
 // The label currently open for text editing, or null: {id, refocus}.

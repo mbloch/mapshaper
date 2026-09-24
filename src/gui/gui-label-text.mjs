@@ -13,6 +13,13 @@
 // keeps them out of a character class so that "\\n" is matched as a pair.
 var ANY_NEWLINE = /\r\n|\\n|<br>|\n|\r/gi;
 
+// A line break the wrapper inserted rather than one the user typed. It consumes
+// no character -- the space the line broke at stays before it -- so removing
+// every one gives back the text as typed. See
+// docs/development/text-annotation-design.md.
+var SOFT_BREAK = '<wbr>';
+var SOFT_BREAK_RXP = /<wbr>/gi;
+
 // How a label lays out its line breaks, which is not the same for the two kinds.
 // An anchored label stacks its lines with <tspan>. A path label joins them with
 // a space, because a <tspan> inside a <textPath> advances along the curve
@@ -27,10 +34,72 @@ export var LINES_JOINED = 'joined';
 // all, and a line the user has just opened with Enter and not yet typed into.
 export var TEXT_PLACEHOLDER = '\u200b';
 
-// Data value -> the string the user edits, with real newlines.
+// Data value -> the string the user edits, with real newlines and without the
+// wrapper's soft breaks, which are rewrapped rather than edited.
 export function decodeLabelText(val) {
   if (val === null || val === undefined || val === '') return '';
-  return String(val).replace(ANY_NEWLINE, '\n');
+  return String(val).replace(ANY_NEWLINE, '\n').replace(SOFT_BREAK_RXP, '');
+}
+
+// Data value -> {text, breaks}: the string the user edits, and the offsets in
+// it where the stored value has a soft break.
+export function readSoftBreaks(val) {
+  var str = val === null || val === undefined ? '' : String(val).replace(ANY_NEWLINE, '\n');
+  var parts = str.split(SOFT_BREAK_RXP);
+  var breaks = [];
+  var text = parts[0];
+  for (var i = 1; i < parts.length; i++) {
+    breaks.push(text.length);
+    text += parts[i];
+  }
+  return {text: text, breaks: breaks};
+}
+
+// The string the user edits, plus soft breaks at @breaks (ascending offsets
+// into it) -> the same string with the markers written in.
+export function insertSoftBreaks(text, breaks) {
+  var out = '', prev = 0;
+  if (!breaks || breaks.length === 0) return text;
+  for (var i = 0; i < breaks.length; i++) {
+    out += text.substring(prev, breaks[i]) + SOFT_BREAK;
+    prev = breaks[i];
+  }
+  return out + text.substring(prev);
+}
+
+// Where a laid-out text's lines start because they were wrapped, given each
+// character's top edge (see gui-label-wrap.mjs).
+//
+// @getTop(i) returns the top of character i in px, or null for one with no box.
+// A line that starts after a typed newline is not a soft break, and neither is
+// a character with no box -- the break lands on the next one that has a box.
+// The low half of a surrogate pair is never asked about.
+export function findSoftBreaks(text, getTop, threshold) {
+  var breaks = [], lastTop = null, afterNewline = false, i, c, top;
+  for (i = 0; i < text.length; i++) {
+    c = text.charCodeAt(i);
+    if (c == 10) {
+      afterNewline = true;
+      continue;
+    }
+    if (c >= 0xDC00 && c <= 0xDFFF) continue;
+    top = getTop(i);
+    if (top === null) continue;
+    if (lastTop !== null && !afterNewline && top > lastTop + threshold) {
+      breaks.push(i);
+    }
+    lastTop = top;
+    afterNewline = false;
+  }
+  return breaks;
+}
+
+export function sameSoftBreaks(a, b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
 }
 
 // The string the user edits -> the data value. Newlines become the escape,
@@ -47,12 +116,28 @@ export function encodeLabelText(str) {
 // break that started it. That does two things: an empty line gets something to
 // lay out, so a line the user has just opened appears and can hold the caret,
 // and the rendered characters stay aligned one-for-one with the edited ones.
-export function getRenderedLines(str) {
+//
+// @breaks: offsets of soft breaks, which also start a line. A soft break
+// consumes no character, so its line gets no placeholder and the alignment
+// holds.
+export function getRenderedLines(str, breaks) {
   var text = decodeLabelText(str);
+  var lines = [], start = 0, lead = '', b = 0, i;
   if (text === '') return [TEXT_PLACEHOLDER];
-  return text.split('\n').map(function(line, i) {
-    return i === 0 ? line : TEXT_PLACEHOLDER + line;
-  });
+  breaks = breaks || [];
+  for (i = 0; i <= text.length; i++) {
+    while (b < breaks.length && breaks[b] < i) b++;
+    if (i == text.length || text.charAt(i) == '\n') {
+      lines.push(lead + text.substring(start, i));
+      start = i + 1;
+      lead = TEXT_PLACEHOLDER;
+    } else if (breaks[b] === i && i > start) {
+      lines.push(lead + text.substring(start, i));
+      start = i;
+      lead = '';
+    }
+  }
+  return lines;
 }
 
 // Whether the text would draw nothing at all: empty, or made only of

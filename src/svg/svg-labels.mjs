@@ -9,6 +9,36 @@ import utils from '../utils/mapshaper-utils';
 // Also accepting <br>
 export var labelNewlineRxp = /\n|\\n|<br>/i;
 
+// A line break that the GUI's wrapper put in a fixed-width text block, as
+// against one the user typed. It consumes no character: the space or hyphen
+// the line broke at stays in the text before it, so removing every soft break
+// gives back exactly what was typed. See docs/development/text-annotation-design.md.
+export var LABEL_SOFT_BREAK = '<wbr>';
+
+// Every form of line break, captured, so that a split keeps the delimiters and
+// a soft break can be told from a hard one.
+var anyLabelBreakRxp = /(\n|\\n|<br>|<wbr>)/i;
+var softBreakRxp = /^<wbr>$/i;
+
+// The lines a label's text is drawn as. Whitespace before a soft break is
+// dropped: a trailing space would move an end- or middle-justified line by a
+// space's width.
+export function splitLabelLines(text) {
+  var parts = String(text).split(anyLabelBreakRxp);
+  var lines = [parts[0]];
+  for (var i = 1; i < parts.length; i += 2) {
+    if (softBreakRxp.test(parts[i])) {
+      lines[lines.length - 1] = lines[lines.length - 1].replace(/\s+$/, '');
+    }
+    lines.push(parts[i + 1]);
+  }
+  return lines;
+}
+
+export function removeSoftBreaks(text) {
+  return String(text).replace(/<wbr>/gi, '');
+}
+
 // The size a label is drawn at when it carries none of its own, which is the
 // size its layer's group supplies (see getLabelTextDefaults()). Shared with
 // that function rather than written twice: the em offsets the label positions
@@ -38,9 +68,9 @@ export function renderLabel(recArg) {
   // already been through it, so calling it here as well costs nothing and means
   // every way into the renderer draws a label in the position it is stored in.
   var rec = resolveLabelPosition(recArg);
-  var line = toLabelString(rec['label-text']);
-  var morelines, obj;
-  var newline = labelNewlineRxp;
+  var morelines = splitLabelLines(toLabelString(rec['label-text']));
+  var line = morelines.shift();
+  var obj;
   var dx = applyAlignmentShift(rec);
   var dy = rec.dy || 0;
   var properties = {
@@ -49,16 +79,12 @@ export function renderLabel(recArg) {
     y: dy,
     x: dx
   };
-  if (newline.test(line)) {
-    morelines = line.split(newline);
-    line = morelines.shift();
-  }
   obj = {
     tag: 'text',
     value: line,
     properties: properties
   };
-  if (morelines) {
+  if (morelines.length > 0) {
     // multiline label
     obj.children = [];
     morelines.forEach(function(line) {
@@ -139,7 +165,7 @@ export function getDrawnLabelOffset(recArg) {
 // units the correction cannot be expressed in -- pt, %, anything but px and
 // em. Those keep their value, because correcting them would mean choosing a
 // pixel size for a unit whose whole point is that something else decides.
-function toPixels(measure, fontSizeArg) {
+export function toPixels(measure, fontSizeArg) {
   var val = parseSvgMeasure(measure);
   var fontSize = fontSizeArg === undefined || fontSizeArg === null ||
     fontSizeArg === '' ? DEFAULT_LABEL_FONT_SIZE : Number(fontSizeArg);

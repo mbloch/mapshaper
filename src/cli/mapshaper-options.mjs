@@ -45,6 +45,17 @@ export function getOptionParser() {
         'halo-width': {describe: 'width of a halo around the text in px'},
         'halo-color': {describe: 'halo color (default is white)'},
         'halo-opacity': {describe: 'halo opacity, 0-1'},
+        'label-width': {describe: 'width of a fixed-width text block in px'},
+        callout: {describe: 'line from the anchor to the text: line, elbow or curve'},
+        'callout-end': {describe: 'arrowhead at the anchor end: arrow, open-arrow or none'},
+        'callout-end-size': {describe: 'length of an arrowhead\'s sides in px'},
+        'callout-via': {describe: 'x,y of an elbow\'s corner or a point on a curve, in px'},
+        'callout-attach': {describe: 'where the callout meets the text, as x,y fractions'},
+        'callout-gap': {describe: 'px between the callout and the anchor'},
+        'callout-padding': {describe: 'px between the callout and the text'},
+        'callout-color': {describe: 'callout color (defaults to the text color)'},
+        'callout-width': {describe: 'callout line width in px'},
+        'callout-opacity': {describe: 'callout opacity, 0-1'},
         css: {describe: 'inline css style'},
         class: {describe: 'name of CSS class or classes (space-separated)'}
       },
@@ -2116,6 +2127,39 @@ export function getOptionParser() {
     })
     .option('label-start-offset', {
       describe: 'where label text starts along its path, e.g. 50%'
+    })
+    .option('label-width', {
+      describe: 'width of a fixed-width text block in px (lines are wrapped in the web UI)'
+    })
+    .option('callout', {
+      describe: 'line from a label\'s anchor to its text: line, elbow or curve'
+    })
+    .option('callout-end', {
+      describe: 'arrowhead at the anchor end of a callout: arrow (solid), open-arrow or none'
+    })
+    .option('callout-end-size', {
+      describe: 'length of an arrowhead\'s sides in px (default 10, more for a thicker line)'
+    })
+    .option('callout-via', {
+      describe: 'x,y of an elbow\'s corner or a point on a curve, in px from the anchor'
+    })
+    .option('callout-attach', {
+      describe: 'where a callout meets its text, as x,y fractions of the text box'
+    })
+    .option('callout-gap', {
+      describe: 'px between a callout and its anchor (default: a line meets the icon, an arrow clears it)'
+    })
+    .option('callout-padding', {
+      describe: 'px between a callout and its text (default is 3)'
+    })
+    .option('callout-color', {
+      describe: 'callout color (defaults to the text color)'
+    })
+    .option('callout-width', {
+      describe: 'callout line width in px (default is 1)'
+    })
+    .option('callout-opacity', {
+      describe: 'callout opacity, 0-1'
     })
    .option('target', targetOpt);
 

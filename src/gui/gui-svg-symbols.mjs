@@ -78,18 +78,48 @@ export function renderSymbols(lyr, ext, idPrefix) {
   var defs = [];
   var symbols = lyr.shapes.map(function(shp, i) {
     var d = records[i];
-    var obj = shp && d ? renderSymbol(d, shp, view, defs, idPrefix, i) : null;
-    if (!obj) return null;
-    obj.properties.class = addClass(obj.properties.class, 'mapshaper-svg-symbol');
-    obj.properties.transform = getSvgSymbolTransform(shp[0], ext);
-    obj.properties['data-id'] = i;
-    return obj;
+    return shp && d ? renderLayerSymbol(d, shp, ext, view, defs, idPrefix, i) : null;
   }).filter(Boolean);
   var obj = internal.getEmptyLayerForSVG(lyr, {});
   // <defs> has to come first so the layer's own markup can reference it
   obj.children = defs.length > 0 ?
     [{tag: 'defs', children: defs}].concat(symbols) : symbols;
   return internal.svg.stringify(obj);
+}
+
+function renderLayerSymbol(d, shp, ext, view, defs, idPrefix, i) {
+  var obj = renderSymbol(d, shp, view, defs, idPrefix, i);
+  if (!obj) return null;
+  obj.properties.class = addClass(obj.properties.class, 'mapshaper-svg-symbol');
+  obj.properties.transform = getSvgSymbolTransform(shp[0], ext);
+  obj.properties['data-id'] = i;
+  return obj;
+}
+
+// Redraws one anchored label's symbol from @rec, which need not be its record:
+// a drag previews its edit this way, and the command it commits then redraws
+// the layer from the data. The node is rendered exactly as renderSymbols()
+// renders it, so the hit test, the selection cue and the drag's own lookups
+// find it as they found the one it replaces.
+//
+// Anchored labels only: a path label's baseline lives in the layer's <defs>,
+// which this leaves alone.
+// Returns the new node, or null if there was nothing to replace.
+export function replaceAnchoredSymbol(container, id, rec, shp, ext) {
+  var old = container && shp && !internal.svg.shapeIsPathLabel(shp, rec) ?
+    container.querySelector('.mapshaper-svg-symbol[data-id="' + id + '"]') : null;
+  var obj = old ? renderLayerSymbol(rec, shp, ext, null, null, '', id) : null;
+  var tmp, node;
+  if (!obj) return null;
+  tmp = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  tmp.innerHTML = internal.svg.stringify(obj);
+  node = tmp.firstElementChild;
+  if (!node) return null;
+  // Off-screen symbols are hidden by repositionSymbols(), which would not know
+  // to hide this one again until the map moved.
+  if (old.hasAttribute('display')) node.setAttribute('display', old.getAttribute('display'));
+  old.parentNode.replaceChild(node, old);
+  return node;
 }
 
 // Markup for a label that is not in any layer yet: the one being typed into

@@ -6,8 +6,15 @@ import { runGuiEditCommand } from './gui-edit-command';
 import { FloatingToolbar } from './gui-floating-toolbar';
 import {
   getLabelTarget, getAddLabelCommand, getUpdateLabelCommand,
-  getLabelDeleteCommand, getLabelPlacementCommand, getLabelOffsetCommand
+  getLabelDeleteCommand, getLabelPlacementCommand, getLabelOffsetCommand,
+  getLabelStyleCommand
 } from './gui-label-commands';
+import {
+  getAnchoredLabelHandles, getDraggedWidth, snapCalloutVia, getAttachFraction,
+  getDraggedGap, followCalloutVia, formatPointPair, getDrawnAnchor, getLabelColumn,
+  MIN_LABEL_WIDTH
+} from './gui-label-handles';
+import { rewrapLabelValue } from './gui-label-wrap';
 import {
   projectOntoPolyline, getDragPlacement, getPlacementValues,
   getStartOffsetPct, getDefaultOffsetPct
@@ -15,7 +22,7 @@ import {
 import { getOffsetDragValues } from './gui-label-offset';
 import { getNewLabelFontName } from './gui-label-fonts';
 import { setMultilineAttribute } from './gui-svg-labels';
-import { getLabelPathNode } from './gui-svg-symbols';
+import { getLabelPathNode, replaceAnchoredSymbol } from './gui-svg-symbols';
 import { findNearestKnot, knotMoveIsValid } from './gui-label-knots';
 import { LabelEditor } from './gui-label-editor';
 import { LabelSelection, BOX_PADDING } from './gui-label-selection';
@@ -23,7 +30,7 @@ import {
   getLabelSelectActions, getAllLabelIds
 } from './gui-label-select-matchers';
 import {
-  getNewLabelStyle, labelTextIsDraggable, setLabelPositionMode
+  getNewLabelStyle, labelTextIsDraggable, setLabelPositionMode, getLabelPositionKind
 } from './gui-label-style-state';
 import {
   setPendingLabelPath,
@@ -52,8 +59,17 @@ import {
 // resolve and still leaves a short polyline to walk per mouse move.
 var FLATTEN_PX = 0.5;
 
+// How near a dragged handle has to come to an alignment to snap to it, px on
+// screen
+var SNAP_PX = 5;
+
+// The width a text block placed with a click wraps to, px, when the panel does
+// not set one
+var DEFAULT_BLOCK_WIDTH = 160;
+
 export function initLabelTool(gui, ext, hit) {
-  // which kind of label a click creates: null, 'anchor' or 'path'
+  // which kind of label a click creates: null, 'anchor', 'block' or 'path'.
+  // A block is an anchored label with a wrap width.
   var armed = null;
   var curve = createCurveState();
   // The pointer's position while a curve is being drawn, in display
@@ -76,11 +92,27 @@ export function initLabelTool(gui, ext, hit) {
   // coordinates. A drag on a label's text starts from here rather than from
   // the dragstart event -- see beginTextDrag().
   var hoverPoint = null;
+  // A drag on one of a selected anchored label's own handles -- its width or
+  // its callout -- or null. See gui-label-handles.mjs.
+  var handleDrag = null;
+  // The handles last drawn, {id, handles}, which is what the pointer is tested
+  // against: they are worked out when the cue is drawn rather than on every
+  // mouse move, since placing them measures the label.
+  var shownHandles = null;
+  // A drag on the map that is setting a new text block's width, or null
+  var blockDrag = null;
+  // A drag that has been released and whose command has not redrawn the map
+  // yet, or null. Its preview is still what is on screen, so the cue goes on
+  // being drawn from it rather than from the data, which has not changed yet.
+  var releasedDrag = null;
+  // The mouseup that ended the last block drag, or null. A short one is
+  // followed by a click from the same mouseup, which it has already handled.
+  var blockRelease = null;
   var editor = new LabelEditor(gui, ext);
   var selection = new LabelSelection(gui, ext, hit, function() {
     return editor.isOpen() ? editor.getFeatureId() : -1;
-  });
-  var toolbar, anchorBtn, pathBtn, alert;
+  }, getLabelHandles);
+  var toolbar, anchorBtn, blockBtn, pathBtn, alert;
 
   gui.addMode('label_tool', turnOn, turnOff);
 
@@ -152,6 +184,11 @@ export function initLabelTool(gui, ext, hit) {
     hideInstructions();
     drag = null;
     textDrag = null;
+    handleDrag = null;
+    releasedDrag = null;
+    blockRelease = null;
+    shownHandles = null;
+    clearBlockDrag();
     hoverHandle = null;
     hoverTextId = -1;
     hoverPoint = null;
@@ -159,6 +196,8 @@ export function initLabelTool(gui, ext, hit) {
     // go back whether or not it was a crosshair.
     gui.container.findChild('.map-layers').classed('label-tool', false);
     gui.container.findChild('.map-layers').classed('label-handle', false);
+    gui.container.findChild('.map-layers').classed('label-text-drag', false);
+    gui.container.findChild('.map-layers').classed('label-resize', false);
     if (toolbar) toolbar.hide();
     if (gui.interaction.getMode() == 'label') {
       // the mode change came from somewhere other than the mode menu
@@ -184,6 +223,14 @@ export function initLabelTool(gui, ext, hit) {
     }).on('click', function() {
       setArmed(armed == 'anchor' ? null : 'anchor');
     });
+    // A tool of its own, although a text block is only a label with a width,
+    // because otherwise the width is something found by dragging a handle on a
+    // label that already exists -- and nothing on screen says it is there.
+    blockBtn = toolbar.addButton('#text-block-icon', {
+      tooltip: 'Add a text block'
+    }).on('click', function() {
+      setArmed(armed == 'block' ? null : 'block');
+    });
     pathBtn = toolbar.addButton('#curved-text-icon', {
       tooltip: 'Add a label along a path'
     }).on('click', function() {
@@ -203,6 +250,7 @@ export function initLabelTool(gui, ext, hit) {
   function updateButtons() {
     if (!toolbar) return;
     anchorBtn.setSelected(armed == 'anchor');
+    blockBtn.setSelected(armed == 'block');
     pathBtn.setSelected(armed == 'path');
     updateCursor();
   }
@@ -216,22 +264,34 @@ export function initLabelTool(gui, ext, hit) {
   // wrong even with a tool armed.
   function updateCursor() {
     var el = gui.container.findChild('.map-layers');
-    // A selected path label's glyphs are a handle as much as its knots are: a
-    // drag there slides the text along its curve.
-    var onHandle = active() && (!!hoverHandle || hoverTextId > -1);
-    var placing = active() && !!armed && hit.getHitId() == -1 && !onHandle;
+    // The text and the control points get different cursors, because they are
+    // often close together -- a callout's attachment point is on the text's
+    // box, and a path label's knots sit under its glyphs -- and a drag on one
+    // does something quite different from a drag on the other.
+    var onText = active() && hoverTextId > -1;
+    var onHandle = active() && !onText && !!hoverHandle;
+    var resizing = onHandle && hoverHandle.kind == 'width';
+    var placing = active() && !!armed && hit.getHitId() == -1 && !onText && !onHandle;
     el.classed('label-tool', placing);
-    el.classed('label-handle', onHandle);
+    el.classed('label-text-drag', onText);
+    el.classed('label-handle', onHandle && !resizing);
+    el.classed('label-resize', resizing);
   }
 
   function showInstructions() {
+    var msg;
     hideInstructions();
     if (!armed) return;
-    alert = showPopupAlert(armed == 'anchor' ?
-      'Click on the map to place a label.' :
-      'Click to draw a curved path. Type Esc or double-click ' +
-      'to finish. Backspace removes the last point.',
-      null, {non_blocking: true, max_width: '330px'});
+    if (armed == 'anchor') {
+      msg = 'Click on the map to place a label.';
+    } else if (armed == 'block') {
+      msg = 'Click on the map to place a text block, or drag across it ' +
+        'to set the width the text wraps to.';
+    } else {
+      msg = 'Click to draw a curved path. Type Esc or double-click ' +
+        'to finish. Backspace removes the last point.';
+    }
+    alert = showPopupAlert(msg, null, {non_blocking: true, max_width: '330px'});
   }
 
   function hideInstructions() {
@@ -247,10 +307,20 @@ export function initLabelTool(gui, ext, hit) {
   // editing acts on exactly one and has nothing to do with the panel.
   hit.on('click', function(e) {
     if (!active()) return;
+    // A press that moved a little is both a block drag and a click, released
+    // by the same mouseup; the drag has answered it already.
+    if (blockRelease && getDomEvent(e) == blockRelease) {
+      blockRelease = null;
+      return;
+    }
     if (armed == 'path' && drawingCurve()) {
       extendCurve(pixToMapCoords(e.x, e.y));
       return;
     }
+    // A label's handles sit on its callout and its box, which the hit test
+    // counts as the label, and a second click there would open its text. A
+    // click on a handle is half of the double-click that resets it.
+    if (hoverHandle && hoverHandle.kind && !editor.isOpen()) return;
     // A click away from the text finishes the label being typed into, and does
     // nothing else: leaving one label is its own gesture, and placing the next
     // one takes another click. This is also what makes one undo step cover one
@@ -275,10 +345,18 @@ export function initLabelTool(gui, ext, hit) {
     if (e.id > -1 && clickLabel(e.id, e)) return;
     if (editor.isOpen()) return; // a click within the text moved the caret
     // Nothing was hit. Any selection is now over with, and the click means
-    // whatever the armed tool says it means.
+    // whatever the armed tool says it means -- except with the text block
+    // tool, where clicking off a selected block is how it is let go of, and
+    // a block dropped at the same time would be one more thing to delete.
+    if (armed == 'block' && e.had_selection) {
+      deselectLabels();
+      return;
+    }
     deselectLabels();
     if (armed == 'anchor') {
-      beginLabel([pixToMapCoords(e.x, e.y)], []);
+      beginLabel([pixToMapCoords(e.x, e.y)]);
+    } else if (armed == 'block') {
+      beginLabel([pixToMapCoords(e.x, e.y)], getBlockStyle);
     } else if (armed == 'path') {
       extendCurve(pixToMapCoords(e.x, e.y));
     }
@@ -476,13 +554,17 @@ export function initLabelTool(gui, ext, hit) {
     return editor.ownsNode(getEventNode(e));
   }
 
-  // The DOM node a hit event came from. A hit event's originalEvent is the
-  // mouse event, whose own originalEvent is the DOM one, so the node is two
-  // levels down.
+  // The DOM node a hit event came from.
   function getEventNode(e) {
-    var mouseEvt = e && e.originalEvent;
-    var domEvt = mouseEvt && mouseEvt.originalEvent || mouseEvt;
+    var domEvt = getDomEvent(e);
     return domEvt && domEvt.target || null;
+  }
+
+  // The DOM event behind a hit event: its originalEvent is the mouse event,
+  // whose own originalEvent is the DOM one.
+  function getDomEvent(e) {
+    var mouseEvt = e && e.originalEvent;
+    return mouseEvt && mouseEvt.originalEvent || mouseEvt || null;
   }
 
   function deselectLabels() {
@@ -519,6 +601,7 @@ export function initLabelTool(gui, ext, hit) {
   // find its nodes again and write the text being edited back into them, and
   // the selection cues have to be drawn onto the new markup.
   gui.on('map_rendered', function(e) {
+    if (!e || e.action != 'hover') releasedDrag = null;
     editor.refresh();
     // The cues went with the old markup, so they have to be drawn again --
     // except after a 'hover' draw, which leaves the SVG alone. That draw now
@@ -573,7 +656,14 @@ export function initLabelTool(gui, ext, hit) {
       if (beginTextDrag(e)) consumeDrag(e);
       return;
     }
-    if (!hoverHandle) return;
+    if (!hoverHandle) {
+      if (armed == 'block' && beginBlockDrag(e)) consumeDrag(e);
+      return;
+    }
+    if (hoverHandle.kind) {
+      if (beginHandleDrag(hoverHandle)) consumeDrag(e);
+      return;
+    }
     beginKnotDrag(hoverHandle);
     consumeDrag(e);
   });
@@ -608,6 +698,16 @@ export function initLabelTool(gui, ext, hit) {
       updateTextDrag(e);
       return;
     }
+    if (handleDrag) {
+      consumeDrag(e);
+      updateHandleDrag(e);
+      return;
+    }
+    if (blockDrag) {
+      consumeDrag(e);
+      updateBlockDrag(e);
+      return;
+    }
     if (!drag) return;
     consumeDrag(e);
     shp = getDisplayShapes(drag.target)[drag.id];
@@ -630,11 +730,28 @@ export function initLabelTool(gui, ext, hit) {
     if (textDrag) {
       o = textDrag;
       textDrag = null;
+      if (o.moved) releasedDrag = o;
       consumeDrag(e);
       selection.setTether(-1);
       // A press that never moved is a click, which the click handler has
       // already dealt with; nothing was previewed, so nothing is undone.
       if (o.moved) commitTextDrag(o);
+      return;
+    }
+    if (handleDrag) {
+      o = handleDrag;
+      handleDrag = null;
+      if (o.values) releasedDrag = o;
+      consumeDrag(e);
+      if (o.values) commitHandleDrag(o);
+      return;
+    }
+    if (blockDrag) {
+      o = blockDrag;
+      clearBlockDrag();
+      blockRelease = getDomEvent(e);
+      consumeDrag(e);
+      commitBlockDrag(o);
       return;
     }
     if (!o) return;
@@ -671,6 +788,301 @@ export function initLabelTool(gui, ext, hit) {
     });
   }
 
+  // The handles a selected anchored label draws, for LabelSelection: only on a
+  // label that is the whole selection, since a handle edits one label, and
+  // not while anything else is going on. Kept as shownHandles for the hover
+  // test, which then tests the pointer against exactly what is on screen.
+  //
+  // During a drag they are worked out from the record being previewed, so that
+  // the handle follows the pointer and the others follow the line.
+  //
+  // Every selected text block gets its column, handles or not, and that too
+  // comes from the preview: the text moves by its attributes during an offset
+  // drag, and a column read from the data stayed where the text had been.
+  function getLabelHandles(target, id, textBox) {
+    var ids = hit.getSelectionIds();
+    var rec = getPreviewRecord(id) || getRecord(target, id);
+    var o;
+    if (!rec || isPathLabel(target, id)) return null;
+    if (!active() || editor.isOpen() || drawingCurve() || textDrag ||
+        ids.length != 1 || ids[0] != id) {
+      shownHandles = null;
+      return {handles: [], column: getLabelColumn(rec)};
+    }
+    o = getAnchoredLabelHandles(rec, textBox, {
+      symbolRadius: internal.svg.getAnchorSymbolRadius(rec),
+      scale: ext.getSymbolScale() || 1,
+      padding: BOX_PADDING
+    });
+    shownHandles = {id: id, target: target, handles: o.handles};
+    return o;
+  }
+
+  function getPreviewRecord(id) {
+    var o = handleDrag || textDrag || releasedDrag;
+    return o && o.id == id && o.previewRec || null;
+  }
+
+  // The label handle nearest the pointer, within reach of it, or null.
+  // Returns a handle shaped like findNearestKnot()'s, plus its kind, its point
+  // in label space and the pointer's, and its distance in screen px.
+  function findLabelHandle(target, e) {
+    var o = shownHandles;
+    var ids = hit.getSelectionIds();
+    var scale = ext.getSymbolScale() || 1;
+    var shp, q, best = null;
+    if (!o || o.target != target || ids.length != 1 || ids[0] != o.id) return null;
+    shp = getDisplayShapes(target)[o.id];
+    if (!shp) return null;
+    q = getLabelSpacePoint(shp[0], e);
+    o.handles.forEach(function(h) {
+      var dist = Math.sqrt(Math.pow(h.point[0] - q.x, 2) +
+        Math.pow(h.point[1] - q.y, 2)) * scale;
+      if (dist <= KNOT_HIT_THRESHOLD && (!best || dist < best.dist)) {
+        best = {id: o.id, kind: h.kind, point: h.point, pointer: [q.x, q.y], dist: dist};
+      }
+    });
+    return best;
+  }
+
+  function beginHandleDrag(handle) {
+    var target = hit.getHitTarget();
+    var rec = getRecord(target, handle.id);
+    var shp = getDisplayShapes(target)[handle.id];
+    var drawn, shape;
+    if (!rec || !shp) return false;
+    drawn = internal.svg.getDrawnLabelOffset(rec);
+    shape = internal.svg.getLabelCalloutShape(rec, internal.svg.getAnchorSymbolRadius(rec));
+    if (handle.kind != 'width' && !shape) return false;
+    handleDrag = {
+      kind: handle.kind,
+      id: handle.id,
+      target: target,
+      rec: rec,
+      anchor: shp[0],
+      // Where within the handle it was grabbed, so that it tracks the pointer
+      // rather than jumping to it -- measured from the last hover, as a knot's
+      // is, since dragstart arrives after the first move.
+      grab: [handle.point[0] - handle.pointer[0], handle.point[1] - handle.pointer[1]],
+      textAnchor: getDrawnAnchor(drawn),
+      dx: drawn.dx,
+      // The padded box the attachment point slides around. It does not move
+      // while the point does: callout-attach is where on the box, not where
+      // the box is.
+      box: shape ? shape.box : null,
+      values: null,
+      previewRec: null
+    };
+    return true;
+  }
+
+  function updateHandleDrag(e) {
+    var o = handleDrag;
+    var q = getLabelSpacePoint(o.anchor, e);
+    var values = getHandleDragValues(o, [q.x + o.grab[0], q.y + o.grab[1]]);
+    if (!values || o.values && sameValues(values, o.values)) return;
+    o.values = values;
+    o.previewRec = Object.assign({}, o.rec, values);
+    previewLabel(o.target, o.id, o.previewRec);
+  }
+
+  // The fields a handle dragged to @p writes, all of them in their stored form.
+  function getHandleDragValues(o, p) {
+    var tol = SNAP_PX / (ext.getSymbolScale() || 1);
+    var width, shape, via;
+    if (o.kind == 'width') {
+      width = getDraggedWidth(o.textAnchor, o.dx, p[0], BOX_PADDING);
+      return {
+        'label-width': width,
+        'label-text': rewrapLabelValue(o.rec['label-text'],
+          Object.assign({}, o.rec, {'label-width': width}))
+      };
+    }
+    if (o.kind == 'via') {
+      // Snapped against where the line meets the text with the via point
+      // where the pointer is, because an automatic attachment faces the via
+      // point and moves with it. Only an elbow's corner snaps: level and plumb
+      // legs are what an elbow is for, but a curve's midpoint has no reason to
+      // line up with anything, and snapping it made the curve hard to place.
+      shape = internal.svg.getLabelCalloutShape(
+        Object.assign({}, o.rec, {'callout-via': formatPointPair(p)}),
+        internal.svg.getAnchorSymbolRadius(o.rec));
+      via = shape && shape.kind != 'bezier' ? snapCalloutVia(p, shape.attach, tol) : p;
+      return {'callout-via': formatPointPair(via)};
+    }
+    if (o.kind == 'attach') {
+      return {'callout-attach': formatPointPair(getAttachFraction(o.box, p, tol))};
+    }
+    if (o.kind == 'gap') {
+      return {'callout-gap': getDraggedGap(p)};
+    }
+    return null;
+  }
+
+  function sameValues(a, b) {
+    return Object.keys(a).every(function(k) { return a[k] === b[k]; });
+  }
+
+  // Redraws one label from @rec without touching its data, then redraws its
+  // cue around the result. The command the drag ends with redraws the layer
+  // from the data, which replaces this.
+  function previewLabel(target, id, rec) {
+    var shp = getDisplayShapes(target)[id];
+    var container = target.gui && target.gui.svg_container;
+    if (!replaceAnchoredSymbol(container, id, rec, shp, ext)) return;
+    selection.refresh(true);
+  }
+
+  // As with an offset drag, the preview is left in place for the command's own
+  // redraw to replace, and is only taken back if the command fails.
+  function commitHandleDrag(o) {
+    var values = Object.assign({}, o.values);
+    var text = values['label-text'];
+    delete values['label-text'];
+    runHandleCommand(o.target, o.id, values,
+      text !== undefined && text !== o.rec['label-text'] ? text : null,
+      handleTitles[o.kind]);
+  }
+
+  var handleTitles = {
+    width: 'Set label width',
+    via: 'Move callout bend',
+    attach: 'Move callout end',
+    gap: 'Set callout gap'
+  };
+
+  // text: rewrapped label-text to write with the values, or null
+  function runHandleCommand(target, id, values, text, title) {
+    var ids = hit.getSelectionIds();
+    runGuiEditCommand(gui, getLabelStyleCommand(values, id, {
+      target: target.name,
+      text: text === null ? undefined : text
+    }), {
+      title: title,
+      // The label stays selected, so its handles are still there to be dragged
+      // again. Re-running the command rebuilds the layer, which drops the
+      // selection.
+      onSuccess: function() { hit.setSelectionIds(ids); },
+      onError: function() { gui.dispatchEvent('map-needs-refresh'); }
+    });
+  }
+
+  // Double-clicking a callout handle gives the label back the callout's own
+  // choice of bend, attachment or gap. The width handle has no automatic value
+  // to go back to: taking the width away would turn the block into point text.
+  function resetHandle(handle) {
+    var target = hit.getHitTarget();
+    var rec = getRecord(target, handle.id);
+    var field = {via: 'callout-via', attach: 'callout-attach',
+      gap: 'callout-gap'}[handle.kind];
+    var values = {};
+    if (!rec || !field || isBlank(rec[field])) return;
+    values[field] = '';
+    runHandleCommand(target, handle.id, values, null, handleTitles[handle.kind]);
+  }
+
+  function isBlank(val) {
+    return val === undefined || val === null || val === '';
+  }
+
+  // Dragging across the map with the text block tool armed sets the new
+  // block's width, which runs between the points pressed and released.
+  function beginBlockDrag(e) {
+    var target = hit.getHitTarget();
+    // Not from a label, whose text a drag there belongs to
+    if (!target || e.id > -1 && isLabel(target, e.id)) return false;
+    if (editor.isOpen()) return false;
+    blockDrag = {
+      target: target,
+      from: getPointerPixels(e),
+      start: hoverPoint || pixToMapCoords(e.x, e.y),
+      width: 0,
+      guide: null
+    };
+    return true;
+  }
+
+  function updateBlockDrag(e) {
+    var o = blockDrag;
+    var scale = ext.getSymbolScale() || 1;
+    o.width = (e.x - o.from[0]) / scale;
+    drawBlockGuide(o, scale);
+  }
+
+  // A dashed box the height of a line, from the press to the pointer, drawn
+  // with a symbol's transform so that it scales as the label will. In the
+  // map's shared <svg> rather than the layer's group, like a pending label,
+  // since a layer with no labels in it yet has no group to draw into.
+  function drawBlockGuide(o, scale) {
+    var container = gui.map.getSvgRoot();
+    var style = getStyleForNewLabel();
+    var h = getNewFontSize(style) * 1.2;
+    var p = ext.translateCoords(o.start[0], o.start[1]);
+    var el = o.guide;
+    if (!container) return;
+    if (!el) {
+      el = o.guide = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      el.setAttribute('class', 'label-block-guide');
+      container.appendChild(el);
+    }
+    el.setAttribute('transform', internal.svg.getTransform(p, scale));
+    el.setAttribute('x', Math.min(0, o.width));
+    el.setAttribute('y', 0);
+    el.setAttribute('width', Math.abs(o.width));
+    el.setAttribute('height', h);
+  }
+
+  function clearBlockDrag() {
+    var el = blockDrag && blockDrag.guide;
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+    blockDrag = null;
+  }
+
+  // A drag too short to mean a width is a click, and does what a click would:
+  // lets go of the selection if there is one, and otherwise places a block at
+  // the default width. A drag to the left places the block the same as a drag
+  // to the right from where it ended, so that its text is left-aligned like
+  // any other block's.
+  function commitBlockDrag(o) {
+    var width = Math.round(Math.abs(o.width));
+    var start = o.start;
+    var p;
+    if (width < MIN_LABEL_WIDTH) {
+      if (hit.getSelectionIds().length > 0) {
+        deselectLabels();
+      } else {
+        beginLabel([start], getBlockStyle);
+      }
+      return;
+    }
+    deselectLabels();
+    if (o.width < 0) {
+      p = ext.translateCoords(start[0], start[1]);
+      start = pixToMapCoords(p[0] + o.width * (ext.getSymbolScale() || 1), p[1]);
+    }
+    beginLabel([start], function() { return getBlockStyle(width); });
+  }
+
+  // A text block's style: the new label's, with a wrap width -- @width or a
+  // default -- and placed with the top left of its column at the anchor, so
+  // that its text is left-aligned and fills the box a drag drew. The offsets
+  // that do that replace the position the panel names.
+  function getBlockStyle(width) {
+    var style = Object.assign({}, getStyleForNewLabel());
+    delete style['label-pos'];
+    return Object.assign(style, {
+      'label-width': width > 0 ? width : DEFAULT_BLOCK_WIDTH,
+      'text-anchor': 'start',
+      dx: 0,
+      dy: Math.round(getNewFontSize(style) * 0.8)
+    });
+  }
+
+  function getNewFontSize(style) {
+    var px = parseFloat(style['font-size']);
+    return px > 0 ? px : internal.svg.DEFAULT_LABEL_FONT_SIZE || 12;
+  }
+
   // What a drag on a selected label's glyphs means, which depends on the kind
   // of label and -- for an anchored one -- on the tool's position mode.
   //
@@ -683,7 +1095,7 @@ export function initLabelTool(gui, ext, hit) {
     var shp = id > -1 ? getDisplayShapes(target)[id] : null;
     if (id < 0 || !shp) return false;
     if (isPathLabel(target, id)) return beginPathTextDrag(e, target, id);
-    if (labelTextIsDraggable(gui)) return beginOffsetDrag(e, target, id);
+    if (textIsDraggable(target, id)) return beginOffsetDrag(e, target, id);
     beginKnotDrag({
       id: id,
       index: 0,
@@ -818,6 +1230,8 @@ export function initLabelTool(gui, ext, hit) {
       kind: 'offset',
       id: id,
       target: target,
+      rec: rec,
+      previewRec: null,
       // dx and dy are in the space inside the label's symbol group, so pointer
       // movement is divided by the scale that group wears.
       scale: ext.getSymbolScale() || 1,
@@ -834,7 +1248,8 @@ export function initLabelTool(gui, ext, hit) {
         // multi-line label -- which is the width its justification is
         // measured against.
         width: box ? box.width : 0,
-        aligned: !!internal.svg.getAlignmentAnchor(rec['label-align'])
+        aligned: !!internal.svg.getAlignmentAnchor(rec['label-align']),
+        keepAnchor: getLabelPositionKind(rec) == 'block'
       },
       // What the attributes said before the preview wrote over them, so that
       // the command is what changes the label rather than the drag.
@@ -843,12 +1258,30 @@ export function initLabelTool(gui, ext, hit) {
         y: nodes.text.getAttribute('y'),
         anchor: nodes.text.getAttribute('text-anchor')
       },
+      callout: getOffsetDragCallout(rec),
       moved: false
     };
     // The hairline to the anchor, which is what the drag is measured from and
-    // often the only thing on screen that says so.
-    selection.setTether(id);
+    // often the only thing on screen that says so. A callout says it already.
+    if (!textDrag.callout) selection.setTether(id);
     return true;
+  }
+
+  // What an offset drag needs to carry a label's callout along, or null for a
+  // label without one: the record to redraw it from, and for a callout bent
+  // by hand, its via point and where the line met the text at the start.
+  function getOffsetDragCallout(rec) {
+    var shape;
+    if (!internal.svg.labelHasCallout(rec)) return null;
+    shape = internal.svg.getLabelCalloutShape(rec, internal.svg.getAnchorSymbolRadius(rec));
+    return {
+      rec: rec,
+      box: internal.svg.getLabelTextBox(rec),
+      // the shape's via point is the stored one when there is one
+      via: rec['callout-via'] && shape && shape.via ? shape.via.slice() : null,
+      attach: shape ? shape.attach : null,
+      type: shape && shape.kind == 'bezier' ? 'curve' : 'elbow'
+    };
   }
 
   function updateOffsetDrag(e) {
@@ -858,7 +1291,41 @@ export function initLabelTool(gui, ext, hit) {
       dy: (e.y - o.from[1]) / o.scale
     });
     o.moved = true;
-    previewOffset(o);
+    // The record as the drag will leave it, which the selection cue reads a
+    // text block's column from while the drag is on
+    o.previewRec = Object.assign({}, o.rec, {
+      dx: o.values.dx,
+      dy: o.values.dy,
+      'text-anchor': o.values['text-anchor']
+    });
+    delete o.previewRec['label-pos'];
+    if (o.callout) {
+      previewCalloutOffset(o, getDomEvent(e));
+    } else {
+      previewOffset(o);
+    }
+  }
+
+  // A label with a callout is redrawn rather than moved by its attributes, as
+  // previewOffset() does, because the line has to be worked out again for
+  // where the text now is. Redrawn from the fields the drag will write, which
+  // is also what makes the preview the same as the result.
+  //
+  // A via point placed by hand goes with the text, unless Alt is held: a bend
+  // put there to clear something usually still has to, and one left behind by
+  // a long drag doubles the line back on itself.
+  function previewCalloutOffset(o, evt) {
+    var c = o.callout;
+    var rec = o.previewRec;
+    var box, t1;
+    o.via = null;
+    if (c.via && c.attach && !(evt && evt.altKey)) {
+      box = internal.svg.getLabelTextBox(rec);
+      t1 = [c.attach[0] + box.xmin - c.box.xmin, c.attach[1] + box.ymin - c.box.ymin];
+      o.via = formatPointPair(followCalloutVia(c.type, c.via, c.attach, t1));
+      rec['callout-via'] = o.via;
+    }
+    previewLabel(o.target, o.id, rec);
   }
 
   // Shows the offset by writing it onto the rendered text, as the path drag
@@ -884,6 +1351,12 @@ export function initLabelTool(gui, ext, hit) {
 
   function restoreOffset(o) {
     var nodes = findLabelNodes(o.target, o.id);
+    releasedDrag = null;
+    if (o.callout) {
+      // redrawn rather than written on, so redrawn back
+      gui.dispatchEvent('map-needs-refresh');
+      return;
+    }
     if (!nodes) return;
     // The renderer always writes x and y on an anchored label, so the removal
     // case is for markup this tool did not draw.
@@ -905,6 +1378,7 @@ export function initLabelTool(gui, ext, hit) {
       dx: o.values.dx,
       dy: o.values.dy,
       anchor: o.values['text-anchor'],
+      via: o.via || null,
       id: o.id,
       target: o.target.name
     }), {
@@ -1007,8 +1481,9 @@ export function initLabelTool(gui, ext, hit) {
   function updateHoverHandle(e) {
     var found = drawingCurve() || editor.isOpen() || !e.overMap ? null :
       findHandle(hit.getHitTarget(), e);
-    var changed = !!found != !!hoverHandle;
-    if (drag || textDrag) return;
+    var changed = !!found != !!hoverHandle ||
+      !!found && found.kind != hoverHandle.kind;
+    if (dragging()) return;
     hoverHandle = found;
     if (changed) {
       updateHoverText(); // a knot handle takes the glyphs' turn away
@@ -1027,16 +1502,30 @@ export function initLabelTool(gui, ext, hit) {
   // text, and letting the handle win there would leave the text ungrabbable.
   function updateHoverText() {
     var id = findDraggableText();
-    if (drag || textDrag) return;
+    if (dragging()) return;
     hoverTextId = id > -1 && (!hoverHandle || glyphsOutrankHandle(id)) ? id : -1;
+  }
+
+  // Point text and text blocks each have a position mode -- see
+  // getLabelPositionMode().
+  function textIsDraggable(target, id) {
+    return labelTextIsDraggable(gui, getLabelPositionKind(getRecord(target, id)));
+  }
+
+  function dragging() {
+    return !!(drag || textDrag || handleDrag || blockDrag);
   }
 
   // The exception is about the pointer being on the glyphs, not about the mode:
   // an offset label's anchor is out from under its text, and taking the handle
   // away there left it with no anchor handle at all -- dragging the symbol of a
   // label positioned ne slid its text instead of moving the label.
+  //
+  // Only the anchor: the width and callout handles sit on the edge of the box
+  // and would otherwise never be grabbable in Draggable mode.
   function glyphsOutrankHandle(id) {
-    return hoverHandle.id == id && labelTextIsDraggable(gui) &&
+    return !hoverHandle.kind && hoverHandle.id == id &&
+      textIsDraggable(hit.getHitTarget(), id) &&
       !isPathLabel(hit.getHitTarget(), id) && pointerIsOverText(id);
   }
 
@@ -1079,14 +1568,24 @@ export function initLabelTool(gui, ext, hit) {
   }
 
   // The handle under the pointer, or null. Only a selected label's handles are
-  // grabbable -- see gui-label-knots.mjs.
+  // grabbable -- see gui-label-knots.mjs. A knot and a label handle within
+  // reach of the pointer go to whichever is nearer: a callout's gap handle can
+  // sit close to the anchor.
   function findHandle(target, e) {
     var shapes = target && getDisplayShapes(target);
     var ids = hit.getSelectionIds();
     var p = pixToMapCoords(e.x, e.y);
-    var handle;
+    var handle, labelHandle, knotPix;
     if (!shapes || ids.length === 0) return null;
     handle = findNearestKnot(shapes, ids, p, scaleThreshold(KNOT_HIT_THRESHOLD));
+    labelHandle = findLabelHandle(target, e);
+    if (handle && labelHandle) {
+      knotPix = ext.translateCoords(handle.point[0], handle.point[1]);
+      if (Math.hypot(knotPix[0] - e.x, knotPix[1] - e.y) < labelHandle.dist) {
+        labelHandle = null;
+      }
+    }
+    if (labelHandle) return labelHandle;
     if (handle) handle.pointer = p;
     return handle;
   }
@@ -1126,6 +1625,10 @@ export function initLabelTool(gui, ext, hit) {
       if (o.action == 'finish') {
         finishCurve();
       }
+      return;
+    }
+    if (hoverHandle && hoverHandle.kind && !editor.isOpen()) {
+      resetHandle(hoverHandle);
       return;
     }
     // Double-clicking a label reaches straight into its text, which is the
@@ -1240,8 +1743,12 @@ export function initLabelTool(gui, ext, hit) {
   // So the click opens a *pending* session, which draws the label and holds its
   // text, and the label becomes a feature only when the session ends with
   // something in it. See LabelEditor.openPending().
-  function beginLabel(displayCoords) {
+  //
+  // getStyle: (optional) the new label's style, when it is not simply the
+  //   panel's -- a text block's adds a width
+  function beginLabel(displayCoords, getStyle) {
     var target = hit.getHitTarget();
+    var styleFn = getStyle || getStyleForNewLabel;
     if (!target) return;
     hideInstructions();
     editor.openPending(target, {
@@ -1250,15 +1757,15 @@ export function initLabelTool(gui, ext, hit) {
       // or a position while the caret is sitting there is visible immediately.
       // The same style the label will be created with, down to the font it is
       // named in, so that committing it changes nothing on screen.
-      getStyle: getStyleForNewLabel,
-      create: function(text) { createLabel(displayCoords, text); }
+      getStyle: styleFn,
+      create: function(text) { createLabel(displayCoords, text, styleFn()); }
     });
   }
 
   // Creates the label being typed into. One command carries its geometry, its
   // style and its text, so a new label is a single entry in the session history
   // and a single step to undo.
-  function createLabel(displayCoords, text) {
+  function createLabel(displayCoords, text, style) {
     var target = hit.getHitTarget();
     var coords = displayCoords.map(function(p) {
       return target ? translateDisplayPoint(target, p) : p;
@@ -1268,7 +1775,7 @@ export function initLabelTool(gui, ext, hit) {
       text: text,
       // whatever the style panel was set to while nothing was selected, so that
       // a font can be chosen before the first label exists
-      style: getStyleForNewLabel()
+      style: style
     }), {title: 'Add label'});
   }
 

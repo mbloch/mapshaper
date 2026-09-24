@@ -2,7 +2,7 @@ import { getCurveSegments, getCurveLength } from '../curves/mapshaper-curve-fit'
 import { stringifyLineStringCoords } from './svg-path-utils';
 import { applyStyleAttributes } from './svg-properties';
 import { getLabelFitState } from './svg-label-fit';
-import { labelNewlineRxp, toLabelString } from './svg-labels';
+import { labelNewlineRxp, toLabelString, removeSoftBreaks } from './svg-labels';
 import { featureHasLabel, featureIsLabel } from './svg-feature-utils';
 import { applyLabelHalo } from './svg-label-halo';
 import { message, warn } from '../utils/mapshaper-logging';
@@ -96,7 +96,9 @@ export function renderPathLabel(rec, knots, opts) {
     }
     cls = LABEL_OVERFLOW_CLASS;
   }
-  text = toLabelString(rec['label-text']);
+  // A soft break is wrapping for a width, which text along a path does not
+  // have, and removing it leaves the space it broke at.
+  text = removeSoftBreaks(toLabelString(rec['label-text']));
   if (labelNewlineRxp.test(text)) {
     // a <tspan> inside a <textPath> advances along the path instead of
     // stacking below it, so the lines are joined rather than dropping

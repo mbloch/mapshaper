@@ -3,6 +3,7 @@
 import { importLineString, importMultiLineString, importPolygon } from '../svg/svg-geom-primitives';
 import { featureHasSvgSymbol, featureHasLabel } from '../svg/svg-feature-utils';
 import { renderStyledLabel } from './svg-labels';
+import { labelHasCallout, renderLabelCallout } from './svg-label-callout';
 import utils from '../utils/mapshaper-utils';
 import { applyStyleAttributes, isSvgNumber } from '../svg/svg-properties';
 import { message } from '../utils/mapshaper-logging';
@@ -31,7 +32,13 @@ export var symbolRenderers = {
 // render label and/or point symbol
 export function renderPoint(rec) {
   var children = [];
+  var callout;
   // var halfSize = rec.r || 0; // radius or half of symbol size
+  // Beneath the symbol and the text, which it runs between.
+  if (featureHasLabel(rec) && labelHasCallout(rec)) {
+    callout = renderLabelCallout(rec, getAnchorSymbolRadius(rec));
+    if (callout) children.push(callout);
+  }
   if (featureHasSvgSymbol(rec)) {
     children.push(renderSymbol(rec));
   }
@@ -55,6 +62,15 @@ function renderSymbol(d) {
     return circle(d);
   }
   return empty();
+}
+
+// How far the symbol at a label's anchor reaches from it, which a callout's
+// default gap clears. A composite svg-symbol has no single radius, and gets no
+// clearance.
+export function getAnchorSymbolRadius(d) {
+  if (!featureHasSvgSymbol(d) || d['svg-symbol']) return 0;
+  if (featureHasIcon(d)) return getIconRadius(d, d.icon || 'circle');
+  return d.r > 0 ? d.r : 0;
 }
 
 function featureHasIcon(d) {

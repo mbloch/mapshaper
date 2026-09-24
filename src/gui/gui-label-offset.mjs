@@ -48,6 +48,9 @@ var PRECISION = 10;
 //   anchor:  the justification it is drawn with
 //   width:   the width of its text, in the same space; 0 if unmeasurable
 //   aligned: whether it carries a label-align (see below)
+//   keepAnchor: (optional) leave the justification alone, for a text block:
+//     its lines are laid out within a column, and re-justifying them as the
+//     block passes its anchor would rearrange the text rather than move it
 // delta: {dx, dy} -- how far the pointer has moved, in the same space.
 //
 // Returns two descriptions of the same placement:
@@ -75,7 +78,7 @@ export function getOffsetDragValues(start, delta) {
   // that correction, 'start' is the one text-anchor whose dx is the left edge
   // itself -- which is also the value that would leave the label where it is
   // if the alignment were later removed.
-  var anchor = start.aligned ? 'start' :
+  var anchor = start.aligned ? 'start' : start.keepAnchor ? drawnAnchor :
     width > 0 ? getAnchorForCentre(left + width / 2, width) : drawnAnchor;
   // An aligned label goes on being drawn with the anchor its alignment gives
   // it, whatever the drag writes: the alignment is unchanged, so the renderer

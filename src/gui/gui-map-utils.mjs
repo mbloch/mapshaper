@@ -19,6 +19,20 @@ export function mapNeedsReset(newBounds, prevBounds, viewportBounds, flags) {
   return false;
 }
 
+// Test if the map should be re-framed when the content it was showing had no
+// area -- a single point, or points in a line -- such as the first label
+// placed on an otherwise empty map. Such bounds are padded by a token amount,
+// so mapNeedsReset()'s area-change rule would compare the new bounds against
+// almost nothing: a second label anywhere in view grows the area by more than
+// its threshold, and the map zooms in to the two labels. The view is the
+// only real scale left to compare against, and new content smaller than the
+// view is no reason to zoom in to it.
+export function mapNeedsResetFromCollapsedBounds(newBounds, viewportBounds, flags) {
+  var chgThreshold = flags.proj ? 1e3 : 1e8;
+  if (!newBounds.intersects(viewportBounds)) return true;
+  return newBounds.area() / viewportBounds.area() > chgThreshold;
+}
+
 // Test if an update may have affected the visible shape of arcs
 // @flags Flags from update event
 export function arcsMayHaveChanged(flags) {

@@ -765,7 +765,7 @@ async function loadFixture(page, fixture) {
 // tool arms itself on a layer with no labels, so a helper that just clicked the
 // button would disarm it there.
 async function armTool(page, kind) {
-  var i = kind == 'anchor' ? 0 : 1;
+  var i = {anchor: 0, block: 1, path: 2}[kind];
   var btn = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-btn').nth(i);
   if (!(await btn.evaluate(function(el) {
     return el.classList.contains('selected');
@@ -779,7 +779,7 @@ async function armTool(page, kind) {
 // not place a label.
 async function disarmTool(page) {
   var btns = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-btn');
-  for (var i = 0; i < 2; i++) {
+  for (var i = 0; i < 3; i++) {
     if (await btns.nth(i).evaluate(function(el) {
       return el.classList.contains('selected');
     })) {

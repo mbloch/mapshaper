@@ -309,7 +309,9 @@ export function HitControl(gui, ext, mouse) {
   // What the click found in the selection as it stood before the click, which
   // the click itself is about to replace. The label tool reads this to tell a
   // click that selects a label from a click on the label that was already the
-  // whole selection -- its gesture for editing that label's text.
+  // whole selection -- its gesture for editing that label's text -- and a click
+  // off a selection from one on empty map, since a click on an unlabelled
+  // feature selects it before the tool hears of the click.
   //
   // An additive click never qualifies: shift-click means toggle, and it would
   // otherwise open a text session on the label it was removing.
@@ -320,7 +322,8 @@ export function HitControl(gui, ext, mouse) {
     var id = hitData.ids.length > 0 ? hitData.ids[0] : -1;
     return {
       clicked_only_selection: id > -1 && !eventUsesAdditiveSelection(e) &&
-        selectionIds.length == 1 && selectionIds[0] === id
+        selectionIds.length == 1 && selectionIds[0] === id,
+      had_selection: selectionIds.length > 0
     };
   }
 

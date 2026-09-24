@@ -147,19 +147,19 @@ async function shiftClickLabel(page, id) {
 
 // 'on', 'off' or 'mixed'
 async function getToggleState(page) {
-  return page.locator('.text-style-panel .label-toggle').evaluate(function(el) {
+  return page.locator('.text-style-panel .label-icon-toggle').evaluate(function(el) {
     if (el.classList.contains('mixed')) return 'mixed';
     return el.classList.contains('on') ? 'on' : 'off';
   });
 }
 
 async function getToggleAriaChecked(page) {
-  return page.locator('.text-style-panel .label-toggle')
+  return page.locator('.text-style-panel .label-icon-toggle')
     .getAttribute('aria-checked');
 }
 
 async function clickToggle(page) {
-  await page.locator('.text-style-panel .label-toggle').click();
+  await page.locator('.text-style-panel .label-icon-toggle').click();
   await page.waitForTimeout(250);
 }
 
@@ -225,7 +225,7 @@ async function loadFixture(page, fixture) {
 }
 
 async function armTool(page, kind) {
-  var i = kind == 'anchor' ? 0 : 1;
+  var i = {anchor: 0, block: 1, path: 2}[kind];
   var btn = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-btn').nth(i);
   if (!(await btn.evaluate(function(el) {
     return el.classList.contains('selected');
@@ -237,7 +237,7 @@ async function armTool(page, kind) {
 
 async function disarmTool(page) {
   var btns = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-btn');
-  for (var i = 0; i < 2; i++) {
+  for (var i = 0; i < 3; i++) {
     if (await btns.nth(i).evaluate(function(el) {
       return el.classList.contains('selected');
     })) {

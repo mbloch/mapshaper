@@ -103,9 +103,12 @@ export function SizeField(parent, opts) {
       setDisplay(shown);
       return;
     }
+    var changed = String(val) !== shown;
     setDisplay(String(val));
-    if (String(val) !== shown && o.onSet) o.onSet(val);
+    // Before onSet, which can take focus away: the blur fires 'change', and
+    // the commit it re-enters has to find this value already shown.
     shown = String(val);
+    if (changed && o.onSet) o.onSet(val);
   }
 
   function setDisplay(str) {
