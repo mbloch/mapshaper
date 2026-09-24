@@ -1,4 +1,4 @@
-v0.7.67 (unreleased)
+v0.7.67
 * [web] New label type: area text. A text block that wraps at a user-defined width.
 * [web] Callout lines can be added to labels in the label styles panel. Curved, straight and elbow callouts are supported, with or without arrowheads.
 * New label style option: halos
