@@ -2533,7 +2533,7 @@ body.pan.panning .map-layers:not(.drawing) {
 	   and the button beside them are all the same height. */
 	--label-field-height: 22px;
 	--label-field-radius: 4px;
-	--label-field-border: #bbb;
+	--label-field-border: #c6c6c6;
 	/* The narrow column of a split row, wide enough for the longest caption
 	   over it -- "Letter spacing", which measures 71px -- and the same in
 	   every row of every panel, so that the field edges line up down the
