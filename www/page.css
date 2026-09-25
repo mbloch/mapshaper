@@ -3938,6 +3938,27 @@ body.dragging-color-picker * {
 	top: 1px;
 }
 
+/* Active-layer name at the top of the arrow menu. inline-size containment
+   keeps a long name from widening the menu: the heading takes the width set
+   by the tool names and cuts the layer name short with an ellipsis. */
+.nav-menu-heading {
+	contain: inline-size;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	margin: 1px 10px 3px 10px;
+	padding: 1px 0 3px 0;
+	border-bottom: 1px solid #e4e4e4;
+	color: #999;
+	font-size: 11px;
+	line-height: 12px;
+}
+
+.nav-menu-divider {
+	margin: 4px 10px;
+	border-top: 1px solid #e4e4e4;
+}
+
 .save-menu {
 	text-align: right;
 	padding-bottom: 5px;

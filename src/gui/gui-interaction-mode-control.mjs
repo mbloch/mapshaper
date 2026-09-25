@@ -1,6 +1,7 @@
 import { El } from './gui-el';
 import { internal } from './gui-core';
 import { getLabelTarget } from './gui-label-commands';
+import { formatLayerNameForDisplay } from './gui-layer-utils';
 
 export function InteractionMode(gui) {
 
@@ -29,6 +30,10 @@ export function InteractionMode(gui) {
     // way back into a labels layer that has no label in it yet.
     emptyPoints: ['info', 'selection', 'label', 'point_style', 'edit_points', 'box', 'ruler']
   };
+
+  // Tools that work the same whatever the active layer is. They go below a
+  // divider, so the layer-name heading visibly covers only the tools above it.
+  var layerIndependentModes = ['box', 'ruler'];
 
   var prompts = {
     box: 'Shift-drag to draw a box',
@@ -196,25 +201,52 @@ export function InteractionMode(gui) {
 
   function renderMenu() {
     if (!menu) return;
-    var modes = getAvailableModes();
-    menu.empty();
-    modes.forEach(function(mode) {
+    var modes = getAvailableModes().filter(function(mode) {
       // don't show "turn off" link if not currently editing
-      if (_editMode == 'off' && mode == 'off') return;
-      var link = El('div').addClass('nav-menu-item').attr('data-name', mode).text(getModeLabel(mode)).appendTo(menu);
-      link.on('click', function(e) {
-        if (_editMode == mode) {
-          // closeMenu();
-          setMode('off');
-        } else if (_editMode != mode) {
-          setMode(mode);
-          if (mode == 'off') closeMenu(120); // only close if turning off
-          // closeMenu(mode == 'off' ? 120 : 400); // close after selecting
-        }
-        e.stopPropagation();
-      });
+      return !(_editMode == 'off' && mode == 'off');
     });
+    var layerModes = modes.filter(function(mode) {
+      return !layerIndependentModes.includes(mode);
+    });
+    var otherModes = modes.filter(function(mode) {
+      return layerIndependentModes.includes(mode);
+    });
+    var lyr = gui.model.getActiveLayer()?.layer;
+    menu.empty();
+    if (lyr && layerModes.length > 0) {
+      renderLayerHeading(lyr);
+    }
+    layerModes.forEach(renderMenuItem);
+    if (layerModes.length > 0 && otherModes.length > 0) {
+      El('div').addClass('nav-menu-divider').appendTo(menu);
+    }
+    otherModes.forEach(renderMenuItem);
     updateSelectionHighlight();
+  }
+
+  // Names the layer the tools above the divider act on.
+  function renderLayerHeading(lyr) {
+    var name = formatLayerNameForDisplay(lyr.name);
+    var heading = El('div').addClass('nav-menu-heading').attr('title', name).text(name).appendTo(menu);
+    // A click on the heading would reach the button, which picks a tool.
+    heading.on('click', function(e) {
+      e.stopPropagation();
+    });
+  }
+
+  function renderMenuItem(mode) {
+    var link = El('div').addClass('nav-menu-item').attr('data-name', mode).text(getModeLabel(mode)).appendTo(menu);
+    link.on('click', function(e) {
+      if (_editMode == mode) {
+        // closeMenu();
+        setMode('off');
+      } else if (_editMode != mode) {
+        setMode(mode);
+        if (mode == 'off') closeMenu(120); // only close if turning off
+        // closeMenu(mode == 'off' ? 120 : 400); // close after selecting
+      }
+      e.stopPropagation();
+    });
   }
 
   function getModeLabel(mode) {
