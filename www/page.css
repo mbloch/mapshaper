@@ -1301,7 +1301,7 @@ body.simplify .layer-control-btn {
 .map-frame-empty {
 	cursor: pointer;
 	font-size: 12px;
-	padding: 7px 4px 4px;
+	padding: 4px 0;
 }
 
 .pin-all img,
@@ -2732,20 +2732,12 @@ body.pan.panning .map-layers:not(.drawing) {
 	width: 130px;
 }
 
-/* Stretches so that the margin field ends where the fields above it do: the
-   row is shorter than they are, and a ragged right edge reads as unfinished
-   rather than as deliberate grouping. */
 .frame-create-margin {
 	align-items: center;
 	display: flex;
 	flex: 1;
 	gap: 6px;
 	min-width: 0; /* a flex item defaults to min-width:auto and will not shrink below its field */
-}
-
-.frame-create-margin > span {
-	color: #555;
-	font-size: 12px;
 }
 
 .frame-create-margin > input {
@@ -2784,6 +2776,7 @@ body.pan.panning .map-layers:not(.drawing) {
 	grid-template-columns: 1fr 1fr 54px;
 }
 
+.frame-create-margin > span,
 .frame-input-cell > span {
 	color: #555;
 	font-size: 12px;
@@ -3097,27 +3090,26 @@ body.pan.panning .map-layers:not(.drawing) {
 	color: #555;
 }
 
-/* Captions a couple of sizes down from the values they name. They are read
-   once, when the panel is first met, and the narrow column of a split row is
-   only as wide as the longest of them -- "Letter spacing" is what set it --
-   so quieter captions are also a narrower panel. Direct children only: the
-   colour picker's H/S/B captions are spans in a row too. */
+.label-editing-status,
+.label-style-panel .label-style-row.label-style-selection-row > span {
+	font-size: 12px;
+	color: #555;
+}
+
 .label-style-panel .label-style-row > span,
-.label-style-panel .label-style-selection-row > span,
 .label-style-panel .label-split-cell > span,
 .label-style-panel .label-style-row > .label-style-row-label,
 .label-style-panel .label-split-cell > .label-style-row-label,
+.label-style-panel .frame-input-cell > span,
 .label-style-panel .point-style-note {
-	font-size: 12px;
+	font-size: 11px;
+	color: #555;
 }
 
 .label-split-row .label-split-cell + .label-split-cell {
 	white-space: nowrap;
 }
 
-/* Each column's control fills its column: the widths are the grid's to decide
-   now, and a control keeping a width of its own would sit inside its cell
-   rather than lining up with the one above it. */
 .label-split-cell > select,
 .label-split-cell > .size-field,
 .label-split-cell > input[type="text"] {
@@ -3191,7 +3183,7 @@ body.pan.panning .map-layers:not(.drawing) {
 /* Whitespace and a bold heading separate the sections; a rule as well would be
    a third answer to a question already settled twice. */
 .label-style-panel .label-style-section + .label-style-section {
-	margin-top: 12px;
+	margin-top: 10px;
 	padding-top: 0;
 	border-top: 0;
 }
@@ -3215,18 +3207,12 @@ body.pan.panning .map-layers:not(.drawing) {
 	display: none;
 }
 
-/* .hidden is one class and the rule above is two, so a heading told to hide
-   would go on being laid out. The circle panel hides its Circles heading once
-   the points are circles: the panel's title says so, and the section is the
-   only thing left in it. */
 .label-style-panel .label-style-section-title.hidden {
 	display: none;
 }
 
-/* 15.5px is what the dialogs subhead at (.info-box h4); the weight is the
-   sketch's, which wants these read as headings rather than as captions. */
 .label-style-panel .label-style-section-name {
-	font-size: 15.5px;
+	font-size: 15px;
 	color: #222;
 }
 
@@ -3302,9 +3288,6 @@ body.pan.panning .map-layers:not(.drawing) {
 	background: #f0f0f0;
 }
 
-/* A grey fill, not the inverse the panel's other buttons use: the glyph is
-   what identifies the choice, and reversing it out makes the selected shape
-   the hardest one to read. */
 .label-style-panel .label-btn-group .label-panel-btn.selected {
 	background: #dcdcdc;
 	color: black;
@@ -3372,9 +3355,6 @@ body.pan.panning .map-layers:not(.drawing) {
 	margin-top: 0;
 }
 
-/* The cell a colour field sits in, which is also what its picker hangs from:
-   the picker is wider than the panel, so it opens over the map, and anchoring
-   it to the cell keeps it on the same side of the panel as its field. */
 .label-color-row {
 	position: relative;
 }
@@ -3397,11 +3377,6 @@ body.pan.panning .map-layers:not(.drawing) {
 	opacity: 0.45;
 }
 
-/* A button with a word on it: Clear style, Random fills, Create. The same
-   shape as Save current in the saved styles row, which is the same kind of
-   thing -- a named action, as wide as its name -- and the same height as the
-   fields above it. A div, so the panel's type rules for button, select and
-   input do not reach it, and it has to set its own size. */
 .label-panel-action-btn {
 	box-sizing: border-box;
 	display: inline-flex;
@@ -3433,9 +3408,6 @@ body.pan.panning .map-layers:not(.drawing) {
 	gap: 4px 6px;
 }
 
-/* A swatch and its hex value inside one border: the pair is one answer to one
-   question, and a separate button beside a text box reads as two. The swatch
-   keeps its own outline so that white does not disappear into the field. */
 .label-style-panel .label-color-field {
 	display: flex;
 	align-items: center;
@@ -3456,8 +3428,8 @@ body.pan.panning .map-layers:not(.drawing) {
 	width: 13px;
 	height: 13px;
 	margin-right: 6px;
-	border: 1px solid #bbb;
-	border-radius: 2px;
+	border: 1px solid rgba(0,0,0,0.22);
+	/* border-radius: 2px; */
 }
 
 /* A swatch for a selection whose colours disagree: split rather than empty,
@@ -3515,10 +3487,6 @@ body.pan.panning .map-layers:not(.drawing) {
 	box-sizing: border-box;
 }
 
-/* What a section of this panel says when there is nothing in it to set: the
-   layer is drawn some way this panel cannot edit, or the thing the section is
-   for has to be made in the console. Set like a caption, not like a field's
-   value. */
 .point-style-note {
 	color: #555;
 	line-height: 1.3;
@@ -3668,10 +3636,6 @@ body.dragging-color-picker * {
 	display: none;
 }
 
-.label-editing-status {
-	color: #555;
-}
-
 .label-style-selection-row .label-editing-clear {
 	margin-left: 8px;
 	color: var(--colored-text);
@@ -3702,7 +3666,7 @@ body.dragging-color-picker * {
 .text-style-panel .label-position-grid {
 	grid-template-columns: repeat(3, 10px);
 	gap: 3px;
-	margin-top: -13px;
+	margin-top: -15px;
 	margin-bottom: 3px;
 }
 

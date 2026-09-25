@@ -16,22 +16,18 @@ export function InteractionMode(gui) {
   var menus = {
     standard: ['info', 'selection', 'box', 'ruler'],
     empty: ['edit_polygons', 'edit_lines', 'edit_points', 'box', 'ruler'],
-    polygons: ['info', 'selection', 'box', 'polygon_style', 'edit_polygons', 'ruler'],
-    rectangles: ['info', 'selection', 'box', 'polygon_style', 'rectangles', 'edit_polygons', 'ruler'],
-    lines: ['info', 'selection', 'box', 'line_style', 'edit_lines', 'snip_lines', 'ruler'],
+    polygons: ['info', 'selection', 'polygon_style', 'edit_polygons', 'box', 'ruler'],
+    rectangles: ['info', 'selection', 'polygon_style', 'edit_polygons', 'rectangles', 'box', 'ruler'],
+    lines: ['info', 'selection', 'line_style', 'edit_lines', 'snip_lines', 'box', 'ruler'],
     table: ['info', 'selection'],
-    raster: ['ruler', 'box'],
-    // A label layer has no entry for styling labels, for adding and dragging
-    // points, or for positioning labels: the label tool does all three, along
-    // with creating and retyping labels, so each of them offered a subset of
-    // what sat next to it in the menu.
-    labels: ['info', 'selection', 'box', 'label', 'ruler'],
-    points: ['info', 'selection', 'box', 'point_style', 'edit_points', 'ruler'], // , 'add-points'
+    raster: ['box', 'ruler'],
+    labels: ['info', 'selection', 'label', 'box', 'ruler'],
+    points: ['info', 'selection', 'edit_points', 'point_style', 'box', 'ruler'], // , 'add-points'
     // An empty point layer is the layer the "Draw: labels" link creates,
     // and a label goes into it rather than beside it (see labelWouldJoin), so
     // the label tool belongs in its menu as well as the point tools: it is the
     // way back into a labels layer that has no label in it yet.
-    emptyPoints: ['info', 'selection', 'box', 'point_style', 'label', 'edit_points', 'ruler']
+    emptyPoints: ['info', 'selection', 'label', 'point_style', 'edit_points', 'box', 'ruler']
   };
 
   var prompts = {
