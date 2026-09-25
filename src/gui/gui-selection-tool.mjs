@@ -16,8 +16,11 @@ export function SelectionTool(gui, ext, hit) {
   gui.on('interaction_mode_change', function(e) {
     if (e.mode === 'selection') {
       gui.enterMode('selection_tool');
-    } else if (_on) {
-      turnOff();
+    } else if (gui.getMode() == 'selection_tool') {
+      // Leave the gui mode rather than just calling turnOff(): a mode left
+      // behind makes the next enterMode('selection_tool') a no-op, so the tool
+      // would never turn back on.
+      gui.clearMode();
     }
   });
 

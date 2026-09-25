@@ -125,7 +125,7 @@ export function InteractionMode(gui) {
   };
 
   this.modeUsesPopup = function(mode) {
-    return ['info', 'selection', 'data', 'box', 'edit_points', 'rectangles'].includes(mode);
+    return ['info', 'selection', 'data', 'box', 'edit_points'].includes(mode);
   };
 
   this.modeSupportsUndo = function(mode) {
