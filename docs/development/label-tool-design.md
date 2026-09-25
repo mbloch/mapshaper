@@ -332,7 +332,10 @@ The halo fields are not `stroke`, `stroke-width` and `stroke-opacity`, because
 a label's record also styles its icon, which would be ringed too. The GUI draws
 a halo as the text's own stroke with `paint-order="stroke fill"`; export draws a
 stroked, unfilled copy of the text beneath it, because Illustrator and Figma
-ignore `paint-order` on import. See `svg-label-halo.mjs`.
+ignore `paint-order` on import. The copy is faded with `opacity` rather than
+`stroke-opacity`, which Illustrator ignores. Illustrator's GPU preview still
+overstates a translucent halo where glyphs overlap (its CPU preview and output
+are correct); no SVG structure that was tried avoids this. See `svg-label-halo.mjs`.
 
 `label-align` is there because `text-anchor` justifies the lines of a label
 *and* places the block of them, and the panel's alignment control is asking

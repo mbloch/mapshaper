@@ -67,9 +67,16 @@ export function applyLabelHalo(o, rec) {
 // The two copies are identical apart from their paint, so they sit in exactly
 // the same place whatever the label's position, alignment or path.
 //
-// The halo copy is unfilled. That matches paint-order, where the fill covers
-// the stroke's inner half and nothing else, and it keeps a translucent fill
-// from showing a second colour through it.
+// The halo copy is unfilled, which matches paint-order, where the fill covers
+// the stroke's inner half and nothing else. Its halo-opacity is written as
+// opacity rather than stroke-opacity, which Illustrator ignores on import; the
+// two look the same on a copy with nothing painted but its stroke.
+//
+// Illustrator's GPU preview compounds a translucent halo where glyphs
+// overlap; its CPU preview and its output do not. Nothing in the SVG was
+// found to avoid it: filling the copy (imported as two objects, and no
+// better), and putting the opacity on a group or two nested groups around
+// the copy, all show the same thing.
 //
 // Things that apply to the label as a whole move to the group: its transform,
 // which places it, and its opacity, which would otherwise fade each copy on its
@@ -100,6 +107,10 @@ function splitHalo(text) {
   delete halo.properties['paint-order'];
   delete halo.properties['fill-opacity'];
   halo.properties.fill = 'none';
+  if ('stroke-opacity' in halo.properties) {
+    halo.properties.opacity = halo.properties['stroke-opacity'];
+    delete halo.properties['stroke-opacity'];
+  }
   HALO_STROKE_PROPERTIES.forEach(function(k) {
     delete text.properties[k];
   });

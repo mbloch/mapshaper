@@ -88,6 +88,18 @@ describe('svg-label-halo.mjs', function () {
         x: 0, y: 0, fill: 'blue', 'fill-opacity': 0.5}});
     });
 
+    it('fades the halo copy with opacity, and the whole label on the group', function () {
+      var g = splitLabelHalos(renderPoint({'label-text': 'Paris', opacity: 0.8,
+        'halo-width': 1, 'halo-color': 'yellow', 'halo-opacity': 0.4}));
+      var halo = g.children[0].properties;
+      assert.equal(g.properties.opacity, 0.8);
+      assert.equal(halo.opacity, 0.4);
+      assert.equal(halo.stroke, 'yellow');
+      assert.equal(halo.fill, 'none');
+      assert.equal('stroke-opacity' in halo, false);
+      assert.equal('opacity' in g.children[1].properties, false);
+    });
+
     it('copies a multi-line label\'s lines into the halo', function () {
       var g = splitLabelHalos(renderPoint({'label-text': 'a\nb', 'halo-width': 1}));
       assert.equal(g.children[0].children[0].value, 'b');
@@ -109,7 +121,8 @@ describe('svg-label-halo.mjs', function () {
       assert.ok(/fill="none"/.test(texts[0]));
       assert.ok(/stroke="#ffe"/.test(texts[0]));
       assert.ok(/stroke-width="3"/.test(texts[0]));
-      assert.ok(/stroke-opacity="0.5"/.test(texts[0]));
+      assert.ok(/ opacity="0.5"/.test(texts[0]));
+      assert.ok(!/stroke-opacity/.test(str));
       assert.ok(!/stroke/.test(texts[1]));
       assert.ok(/fill="blue"/.test(texts[1]));
       assert.ok(!/paint-order/.test(str));
