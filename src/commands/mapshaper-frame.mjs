@@ -9,11 +9,10 @@ import { message, stop } from '../utils/mapshaper-logging';
 import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
 import { getDatasetCRS, getDatasetCrsInfo, setDatasetCrsInfo} from '../crs/mapshaper-projections';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
-import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
+import { getFrameContentBbox, getFrameScale } from '../furniture/mapshaper-frame-fit';
 import { importPolygon } from '../svg/svg-geom-primitives';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
-import { Bounds } from '../geom/mapshaper-bounds';
 import { convertFourSides, parseSizeParam } from '../geom/mapshaper-units';
 import { bboxToPolygon } from '../commands/mapshaper-rectangle';
 import { expandCommandTargets } from '../dataset/mapshaper-target-utils';
@@ -23,7 +22,7 @@ import { roundToDigits } from '../geom/mapshaper-rounding';
 import { parsePercent } from '../cli/mapshaper-option-parsing-utils';
 
 cmd.frame = function(catalog, targets, opts) {
-  var widthPx, heightPx, aspectRatio, scale, bbox;
+  var widthPx, heightPx, bbox;
   var existingFrame = getActiveFrame(catalog);
   if (opts.width) {
     widthPx = parseFrameSize(opts.width).valuePx;
@@ -59,30 +58,24 @@ cmd.frame = function(catalog, targets, opts) {
   } else {
     var datasets = utils.pluck(targets, 'dataset');
     requireDatasetsHaveCompatibleCRS(datasets, 'Targets include both projected and unprojected coordinates');
-    bbox = getTargetBbox(targets);
+    bbox = getFrameContentBbox(expandCommandTargets(targets), function(contentBbox) {
+      var extent = getFrameExtent(contentBbox, widthPx, heightPx, opts);
+      return getFrameScale(extent.bbox, extent.width, getFixedAspect(extent, opts));
+    }, opts);
     if (!bbox) {
       stop('Command target is missing geographical bounds');
     }
   }
 
-  applyPercentageOffsets(bbox, opts.offset || opts.offsets);
-  applyPixelOffsets(bbox, widthPx, heightPx, opts.offset || opts.offsets);
-
-  if (bbox[3] - bbox[1] > 0 === false || bbox[2] - bbox[0] > 0 === false) {
+  var extent = getFrameExtent(bbox, widthPx, heightPx, opts);
+  if (!extent.valid) {
     stop('Frame has a collapsed bbox');
-  }
-
-  aspectRatio = (bbox[2] - bbox[0]) / (bbox[3] - bbox[1]);
-  if (!widthPx) {
-    widthPx = roundToDigits(heightPx * aspectRatio, 1);
-  } else if (!heightPx) {
-    heightPx = roundToDigits(widthPx / aspectRatio, 1);
   }
 
   var feature = {
     type: 'Feature',
-    properties: getFrameProperties(widthPx, heightPx, opts),
-    geometry: bboxToPolygon(bbox)
+    properties: getFrameProperties(extent.width, extent.height, opts),
+    geometry: bboxToPolygon(extent.bbox)
   };
   var frameDataset = importGeoJSON(feature);
   // set CRS from target dataset
@@ -101,6 +94,34 @@ cmd.frame = function(catalog, targets, opts) {
   }
   catalog.addDataset(frameDataset);
 };
+
+// The frame's extent and nominal size, from the extent of its content and the
+// size options. Pure, so that fitting to symbols can ask what scale an extent
+// would give the frame.
+function getFrameExtent(contentBbox, widthPx, heightPx, opts) {
+  var offsets = opts.offset || opts.offsets;
+  var bbox = contentBbox.slice();
+  var aspectRatio;
+  applyPercentageOffsets(bbox, offsets);
+  applyPixelOffsets(bbox, widthPx, heightPx, offsets);
+  aspectRatio = (bbox[2] - bbox[0]) / (bbox[3] - bbox[1]);
+  if (!widthPx) {
+    widthPx = roundToDigits(heightPx * aspectRatio, 1);
+  } else if (!heightPx) {
+    heightPx = roundToDigits(widthPx / aspectRatio, 1);
+  }
+  return {
+    bbox: bbox,
+    width: widthPx,
+    height: heightPx,
+    valid: bbox[3] - bbox[1] > 0 && bbox[2] - bbox[0] > 0
+  };
+}
+
+function getFixedAspect(extent, opts) {
+  return opts.aspect_ratio > 0 || opts.width && opts.height ?
+    extent.width / extent.height : null;
+}
 
 function getFrameProperties(width, height, opts) {
   var properties = {
@@ -195,14 +216,6 @@ function adjustOffsetsArg(arg) {
     stop('List of offsets should have 4 values');
   }
   return arg;
-}
-
-function getTargetBbox(targets) {
-  var expanded = expandCommandTargets(targets);
-  var bounds = expanded.reduce(function(memo, o) {
-    return memo.mergeBounds(getLayerBounds(o.layer, o.dataset.arcs));
-  }, new Bounds());
-  return bounds.hasBounds() ? bounds.toArray() : null;
 }
 
 // Convert width and height args to aspect ratio arg for the rectangle() function

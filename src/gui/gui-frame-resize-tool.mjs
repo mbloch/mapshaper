@@ -297,22 +297,20 @@ export function FrameResizeTool(gui) {
 
   // Fitting obeys the same mode as a handle drag: holding the scale grows the
   // output to cover the new extent, holding the output rescales onto it. The
-  // command works out both the padding and the held-scale width, so the
-  // margin's unit handling lives in one place.
+  // command works out the extent, which has to leave room for symbols and
+  // labels at the scale it ends up at, along with the padding and the
+  // held-scale width, so the margin's unit handling lives in one place.
   function fitVisibleLayers() {
     var target = getFrameTarget();
     var entries = getCompositionEntries();
     var margin = getMargin();
-    var parts, bounds;
+    var parts;
     if (!target || !entries.length) return;
-    bounds = entries.reduce(function(memo, o) {
-      return memo.mergeBounds(
-        internal.getLayerBounds(o.layer, o.dataset.arcs)
-      );
-    }, new internal.Bounds());
     parts = [
       '-update-frame',
-      'bbox=' + quoteCommandValue(bounds.toArray().join(','))
+      'fit=' + internal.formatOptionValue(entries.map(function(o) {
+        return internal.getLayerTargetId(gui.model, o.layer);
+      }).join(','))
     ];
     if (margin) parts.push('offset=' + quoteCommandValue(margin));
     if (!lockSize) parts.push('fix-scale');

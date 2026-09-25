@@ -73,7 +73,7 @@ export function getAnchorSymbolRadius(d) {
   return d.r > 0 ? d.r : 0;
 }
 
-function featureHasIcon(d) {
+export function featureHasIcon(d) {
   return !!(d && (d.icon || d['icon-size'] || (d['icon-color'] && d.r > 0)));
 }
 
@@ -92,7 +92,7 @@ function renderIcon(d) {
   return empty();
 }
 
-function getIconRadius(d, type) {
+export function getIconRadius(d, type) {
   var size;
   if (d['icon-size'] > 0 === false) {
     return d.r > 0 ? d.r : 5;

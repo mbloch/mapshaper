@@ -105,7 +105,7 @@ export function getSymbolBoundingRadius(sym) {
 
 // A stroke straddles the path it is drawn on, so half of its width extends
 // beyond the shape.
-function getStrokeOutset(sym) {
+export function getStrokeOutset(sym) {
   var width = sym['stroke-width'];
   if (!sym.stroke || sym.stroke == 'none') return 0;
   // an SVG stroke is one pixel wide unless stroke-width says otherwise

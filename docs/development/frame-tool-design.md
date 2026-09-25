@@ -858,7 +858,8 @@ Entering the mode turns on preview if it is not already on.
 Two entry points, both running `-frame`:
 
 - **Fit visible layers.** Uses the merged bounds of the current
-  visible/pinned content stack and applies an optional margin, defaulting to
+  visible/pinned content stack, with room for their point symbols and labels,
+  and applies an optional margin, defaulting to
   2% — near what `calcFullBounds()` already adds on screen, so the page
   resembles the view it was made from. This makes the existing composition
   state useful without pretending it is a persistent frame-to-layer
@@ -1075,6 +1076,16 @@ It writes through `-update-frame aspect-ratio=`, or `auto-aspect` when cleared,
 and reads back the ratio the frame actually has: a ratio with a name keeps its
 `w:h` form, one without shows as a number. Frame properties keeps displaying
 the ratio read-only.
+
+Fit also leaves room for point symbols and labels, which are sized in output
+pixels. How many map units a pixel covers depends on the extent being fitted,
+so the extent is solved for rather than padded (see
+`src/furniture/mapshaper-frame-fit.mjs`), and the solve has to run through the
+same offset, aspect and `fix-scale` arithmetic as the rest of the fit. That is
+why Fit sends `-update-frame fit=<layers>` and lets the command find the
+extent, instead of sending a `bbox=` computed in the GUI. `-frame` fits its
+target layers the same way; both take `ignore-symbols` to fit point locations
+alone.
 
 **Margin** sits after Fit rather than with the frame settings, because it is
 not frame state: it pads the fitted bounds and is then spent, exactly as it

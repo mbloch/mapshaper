@@ -38,6 +38,9 @@ var ARROW_LINE_OVERLAP = 0.7;
 var ASCENT = 0.8;
 var DESCENT = 0.2;
 var MIDLINE = 0.35;
+// Average advance of a character, in ems, for estimating the width of text
+// that cannot be measured
+var AVERAGE_CHAR_WIDTH = 0.6;
 
 export function labelHasCallout(rec) {
   var type = rec && rec.callout ? parseCalloutType(rec.callout) : null;
@@ -101,12 +104,18 @@ export function getCalloutGap(rec, symbolRadius) {
 // no measurement the box takes the label's width if it is a text block, and is
 // otherwise a vertical line through the text's origin -- a callout then meets
 // the text where it starts rather than not being drawn.
-export function getLabelTextBox(rec) {
+//
+// opts.estimate_width: with no measurement and no label-width, estimate the
+//   width from the length of the longest line instead of taking it as zero
+export function getLabelTextBox(rec, opts) {
   var fontSize = getFontSizeInPx(rec);
   var offset = getDrawnLabelOffset(rec);
   var lines = splitLabelLines(toLabelString(rec['label-text']));
   var lineHeight = measureToPx(getLineHeightDy(rec['line-height']), fontSize);
   var width = getMeasuredTextWidth(rec) || getNumber(rec['label-width'], 0);
+  if (!width && opts && opts.estimate_width) {
+    width = estimateTextWidth(lines, fontSize);
+  }
   // An anchor the record does not set is inherited from the layer's group,
   // which is 'middle' -- see getLabelTextDefaults().
   var anchor = offset['text-anchor'] || 'middle';
@@ -120,6 +129,18 @@ export function getLabelTextBox(rec) {
     ymax: baseline + (lines.length - 1) * lineHeight + DESCENT * fontSize,
     midline: baseline - MIDLINE * fontSize
   };
+}
+
+function estimateTextWidth(lines, fontSize) {
+  var chars = lines.reduce(function(max, line) {
+    return Math.max(max, Array.from(line).length);
+  }, 0);
+  return chars * AVERAGE_CHAR_WIDTH * fontSize;
+}
+
+// The size a label's text is drawn at, in px
+export function getLabelFontSize(rec) {
+  return getFontSizeInPx(rec);
 }
 
 // Where a line meets a callout's text and how it gets there from the anchor.

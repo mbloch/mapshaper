@@ -2451,6 +2451,13 @@ export function getOptionParser() {
       describe: 'frame coordinates (xmin,ymin,xmax,ymax)',
       type: 'bbox'
     })
+    .option('fit', {
+      describe: 'layer(s) to fit the frame to, including their symbols and labels'
+    })
+    .option('ignore-symbols', {
+      describe: 'with fit=, fit to point locations, not symbol and label extents',
+      type: 'flag'
+    })
     .option('width', {
       describe: 'nominal frame width (e.g. 5in, 10cm, 600px)'
     })
@@ -2601,6 +2608,10 @@ export function getOptionParser() {
     .option('offsets', {
       describe: 'separate offsets for each side, in l,b,r,t order',
       type: 'strings'
+    })
+    .option('ignore-symbols', {
+      describe: 'fit to point locations, not the extent of symbols and labels',
+      type: 'flag'
     })
     .option('name', nameOpt)
     .option('replace', {

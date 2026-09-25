@@ -1,4 +1,5 @@
 v0.7.68 (unreleased)
+* A map frame fitted to layers now makes room for the symbols and labels at their points, which were previously cut off at the edges of the frame. This applies to `-frame` without `bbox=`, and to the web UI's Fit buttons. Add `ignore-symbols` to fit to point locations as before.
 * The `line-height` label style now treats a bare number as a multiple of the font size, as in CSS (e.g. `line-height=1.3`). Previously a bare number was read as pixels; add `px` to keep a fixed spacing (e.g. `line-height=16px`).
 
 v0.7.67

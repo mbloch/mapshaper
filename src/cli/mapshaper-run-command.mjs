@@ -16,6 +16,7 @@ import cmd from '../mapshaper-cmd';
 import { stashVar, clearStash } from '../mapshaper-stash';
 import { applyCommandToEachLayer, applyCommandToEachTarget } from '../cli/mapshaper-command-utils';
 import { assertSingleFrameUpdate } from '../furniture/mapshaper-frame-utils';
+import { expandCommandTargets } from '../dataset/mapshaper-target-utils';
 import {
   markDatasetChanged,
   noteDatasetWillChange
@@ -272,7 +273,8 @@ export async function runCommand(command, job) {
       job.catalog.addDataset(cmd.addLayer(targetDataset, opts));
 
     } else if (name == 'update-frame') {
-      cmd.updateFrame(targetLayers, targetDataset, opts);
+      cmd.updateFrame(targetLayers, targetDataset, opts,
+        opts.fit ? expandCommandTargets(job.catalog.findCommandTargets(opts.fit)) : null);
 
     } else if (name == 'update-label') {
       cmd.updateLabel(targetLayers, targetDataset, opts);

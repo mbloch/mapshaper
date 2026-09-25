@@ -509,6 +509,32 @@ test('the mode applies to fitting, and Margin pads the fit', async function({pag
     .toBeGreaterThan(fitted.bbox[2] - fitted.bbox[0]);
 });
 
+// Symbols are sized in output pixels, so a frame fitted to the points alone
+// cuts the ones at its edges in half.
+test('Fit makes room for symbols at the edges of the layers', async function({page}) {
+  await loadFixture(page);
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand(
+      '-style r=20 target=three_points ' +
+      '-frame bbox=-80,30,-70,40 width=600 name=frame'
+    );
+  });
+  await page.evaluate(function() {
+    window.mapshaper.undoTest.openFrameTool();
+  });
+  await page.locator('.frame-toolbar .text-btn').filter({hasText: 'Fit'}).click();
+  await expect.poll(async function() {
+    return (await getSessionCommands(page)).pop();
+  }).toContain('-update-frame fit=');
+
+  var frame = await getFrameInfo(page);
+  var pxPerUnit = frame.width / (frame.bbox[2] - frame.bbox[0]);
+  // the fixture's westernmost, easternmost and northernmost points
+  expect((-79.04411780507252 - frame.bbox[0]) * pxPerUnit).toBeCloseTo(20, 3);
+  expect((frame.bbox[2] - -54.58299719960377) * pxPerUnit).toBeCloseTo(20, 3);
+  expect((frame.bbox[3] - 43.08771393436908) * pxPerUnit).toBeCloseTo(20, 3);
+});
+
 test('the resize toolbar sets and clears a fixed ratio', async function({page}) {
   await loadFixture(page);
   await page.evaluate(function() {
