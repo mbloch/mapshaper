@@ -11,31 +11,19 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
-**Area text.** The label toolbar has a new text block tool for placing labels that wrap to a set width. Click the map to place a default-sized block, or drag across to set the width. Once placed, a block can be resized with a width handle.
+**Preview mode.** The web UI has a preview toggle that shows what a map will look like when exported. (Currently SVG is the only export format for styled maps; more are planned.) You can continue editing map layers in preview mode.
 
 </div>
 
 <div class="whats-new-entry">
 
-**Callouts.** A label can be connected to its anchor by adding a callout line from the new Callout section of the label panel. Variations include straight, elbow or curved lines, with optional arrowheads.
+**Improved label editing.**
 
-</div>
-
-<div class="whats-new-entry">
-
-**Preview mode.** The web UI has a preview toggle that shows what a map will look like when exported. You can continue editing map layers in preview mode.
-
-</div>
-
-<div class="whats-new-entry">
-
-**Path-aligned labels.** Labels can now follow a path instead of being aligned to a point anchor. Click along a curving feature to define a path and then type the label text.
-
-</div>
-
-<div class="whats-new-entry">
-
-**Improved label editing.** The label tool's floating toolbar has been reworked, and label text is now edited in-place, directly on the map.
+- Label text is now edited in place, directly on the map.
+- Curved labels follow a path instead of attaching to a point anchor. Create a path by clicking; a smooth curve connects the points.
+- Area text wraps to a set width. Click the map to place a default-sized text block, or drag across to set the width.
+- Callouts connect a label to its anchor with a straight, elbow or curved line, with optional arrowheads. Add them from the Callout section of the label panel.
+- Halos draw an outline around label text to enhance legibility. See the Halo section of the label panel.
 
 </div>
 
