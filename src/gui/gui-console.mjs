@@ -13,7 +13,7 @@ import {
 
 export function Console(gui) {
   var model = gui.model;
-  var CURSOR = '$ ';
+  var CURSOR = '> ';
   var PROMPT = 'Enter mapshaper commands or type "tips" for console help.';
   var el = gui.container.findChild('.console').hide();
   var content = el.findChild('.console-buffer');
@@ -704,14 +704,14 @@ export function Console(gui) {
   }
 
   function printExamples() {
-    printExample("See a list of all console commands", "$ help");
-    printExample("Get help using a single command", "$ help innerlines");
-    printExample("Get information about imported datasets", "$ info");
-    printExample("Print bot/debug runtime context as JSON", "$ context");
-    printExample("Display browser session as shell commands", "$ history");
-    printExample("Delete one state from a national dataset","$ filter 'STATE != \"Alaska\"'");
-    printExample("Aggregate counties to states by dissolving shared edges" ,"$ dissolve 'STATE'");
-    printExample("Clear the console", "$ clear");
+    printExample("See a list of all console commands", CURSOR + "help");
+    printExample("Get help using a single command", CURSOR + "help innerlines");
+    printExample("Get information about imported datasets", CURSOR + "info");
+    printExample("Print bot/debug runtime context as JSON", CURSOR + "context");
+    printExample("Display browser session as shell commands", CURSOR + "history");
+    printExample("Delete one state from a national dataset", CURSOR + "filter 'STATE != \"Alaska\"'");
+    printExample("Aggregate counties to states by dissolving shared edges" , CURSOR + "dissolve 'STATE'");
+    printExample("Clear the console", CURSOR + "clear");
   }
 
   function renderStructuredConsoleMessage(msg) {
