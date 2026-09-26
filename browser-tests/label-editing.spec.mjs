@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { closeSidebarAfterImport } from './sidebar-helpers.mjs';
 
 // In-place label text editing: creating a label leaves a caret in it, typing
 // renders into the real SVG text node, and the session commits as one undo
@@ -754,6 +755,7 @@ async function loadFixture(page, fixture) {
   await page.waitForFunction(function() {
     return window.mapshaper.undoTest.getState().model.datasetCount > 0;
   });
+  await closeSidebarAfterImport(page);
   await page.evaluate(function() {
     window.mapshaper.undoTest.clearUndoHistory();
     window.mapshaper.undoTest.setInteractionMode('label');

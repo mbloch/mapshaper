@@ -154,4 +154,22 @@ var startEditing = function() {
     El('body').addClass('map-view');
     gui.console.runInitialCommands(getInitialConsoleCommands());
   });
+
+  // The layer list, opened beside the first data so that the user sees what
+  // was imported and where to go next -- once, and only for data: dismissing
+  // the splash popup without importing anything leaves the sidebar closed.
+  // Waits for any menu mode (the import dialog, while files are still loading)
+  // to close, since opening a panel would close it.
+  var layersShownForData = false;
+  gui.model.on('update', showLayersForFirstData);
+  gui.on('mode', showLayersForFirstData);
+  function showLayersForFirstData() {
+    var panels;
+    if (layersShownForData || gui.model.isEmpty() || gui.getMode()) return;
+    layersShownForData = true;
+    panels = gui.getSidebarPanels();
+    if (!panels.includes('layers')) {
+      gui.setSidebarPanels(panels.concat('layers').sort());
+    }
+  }
 };

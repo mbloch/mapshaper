@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { closeSidebarAfterImport } from './sidebar-helpers.mjs';
 
 // The handles on a selected anchored label -- its width, and its callout's
 // bend, attachment and gap -- the text drag that carries a callout along, and
@@ -528,6 +529,7 @@ async function loadFixture(page, fixture) {
   await page.waitForFunction(function() {
     return window.mapshaper.undoTest.getState().model.datasetCount > 0;
   });
+  await closeSidebarAfterImport(page);
   await page.evaluate(function() {
     window.mapshaper.undoTest.clearUndoHistory();
     window.mapshaper.undoTest.setInteractionMode('label');

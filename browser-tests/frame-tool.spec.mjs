@@ -1,11 +1,12 @@
 import { expect, test } from '@playwright/test';
+import { openLayersPanel } from './sidebar-helpers.mjs';
 
 var POINT_FIXTURE = 'test/data/geojson/three_points.geojson';
 
 test('layer panel creates a frame from the visible layers', async function({page}) {
   await loadFixture(page);
 
-  await page.locator('.layer-tab:visible').click();
+  await openLayersPanel(page);
   await page.locator('.map-frame-empty').click();
   await expect(page.locator('.frame-create-popup')).toBeVisible();
   await page.locator('.frame-create-popup .dialog-btn')
@@ -29,7 +30,7 @@ test('layer panel creates a frame from the visible layers', async function({page
 
 test('fitting visible layers applies the aspect ratio and margin', async function({page}) {
   await loadFixture(page);
-  await page.locator('.layer-tab:visible').click();
+  await openLayersPanel(page);
   await page.locator('.map-frame-empty').click();
   await setInput(page, '.frame-create-aspect-input', '5:4');
   await setInput(page, '.frame-create-margin input', '10%');
@@ -49,7 +50,7 @@ test('fitting visible layers applies the aspect ratio and margin', async functio
 // offered for it and must not leak into the command.
 test('a drawn frame takes the aspect ratio but no margin', async function({page}) {
   await loadFixture(page);
-  await page.locator('.layer-tab:visible').click();
+  await openLayersPanel(page);
   await page.locator('.map-frame-empty').click();
   await setInput(page, '.frame-create-aspect-input', '1');
   await page.locator('.frame-create-popup .dialog-btn')
@@ -79,7 +80,7 @@ test('a drawn frame takes the aspect ratio but no margin', async function({page}
 // one rectangle and -frame pads it out to a larger one on Done.
 test('a set aspect ratio constrains the box being drawn', async function({page}) {
   await loadFixture(page);
-  await page.locator('.layer-tab:visible').click();
+  await openLayersPanel(page);
   await page.locator('.map-frame-empty').click();
   await setInput(page, '.frame-create-aspect-input', '2:1');
   await page.locator('.frame-create-popup .dialog-btn')
@@ -110,7 +111,7 @@ test('a set aspect ratio constrains the box being drawn', async function({page})
 
 test('an unusable aspect ratio keeps the dialog open', async function({page}) {
   await loadFixture(page);
-  await page.locator('.layer-tab:visible').click();
+  await openLayersPanel(page);
   await page.locator('.map-frame-empty').click();
   await setInput(page, '.frame-create-aspect-input', '0:3');
   await page.locator('.frame-create-popup .dialog-btn')
@@ -124,7 +125,7 @@ test('an unusable aspect ratio keeps the dialog open', async function({page}) {
 // must not reach the command as an aspect-ratio option.
 test('a blank aspect ratio sends no aspect-ratio option', async function({page}) {
   await loadFixture(page);
-  await page.locator('.layer-tab:visible').click();
+  await openLayersPanel(page);
   await page.locator('.map-frame-empty').click();
   await expect(page.locator('.frame-create-aspect-input')).toHaveValue('');
   await page.locator('.frame-create-popup .dialog-btn')
@@ -150,7 +151,7 @@ test('frame creation preserves the active content and console target', async fun
   expect(await page.evaluate(function() {
     return window.mapshaper.undoTest.getState().model.activeLayer;
   })).toBe(activeName);
-  await page.locator('.layer-tab:visible').click();
+  await openLayersPanel(page);
   await expect(page.locator('.layer-list .layer-item')).toHaveClass(/active/);
   await expect(page.locator('.layer-list .layer-item')).not.toHaveClass(/invisible/);
   await expect(page.locator('.map-frame-list .layer-item')).not.toHaveClass(/active/);
@@ -170,7 +171,7 @@ test('frame creation preserves the active content and console target', async fun
 
 test('draw frame uses a dedicated Done and Cancel interface', async function({page}) {
   await loadFixture(page);
-  await page.locator('.layer-tab:visible').click();
+  await openLayersPanel(page);
   await page.locator('.map-frame-empty').click();
   await page.locator('.frame-create-popup .dialog-btn')
     .filter({hasText: 'Draw on the map'}).click();
@@ -217,7 +218,7 @@ test('a frame colour with no opacity of its own shows 100%', async function({pag
       '-frame bbox=-80,30,-70,40 width=600 name=frame'
     );
   });
-  await page.locator('.layer-tab:visible').click();
+  await openLayersPanel(page);
   await page.locator('.map-frame-list .layer-item').click();
   var popup = page.locator('.frame-properties-popup');
   await expect(popup).toBeVisible();
@@ -238,7 +239,7 @@ test('frame properties edits output size through an undoable command', async fun
       '-frame bbox=-80,30,-70,40 width=600 name=frame'
     );
   });
-  await page.locator('.layer-tab:visible').click();
+  await openLayersPanel(page);
   await page.locator('.map-frame-list .layer-item').click();
   await expect(page.locator('.frame-properties-popup')).toBeVisible();
   await expect(page.locator('.frame-properties-popup')).toContainText('Background');
@@ -275,7 +276,7 @@ test('the frame colour picker floats over the panel it belongs to',
         '-frame bbox=-80,30,-70,40 width=600 name=frame'
       );
     });
-    await page.locator('.layer-tab:visible').click();
+    await openLayersPanel(page);
     await page.locator('.map-frame-list .layer-item').click();
     await expect(page.locator('.frame-properties-popup')).toBeVisible();
     // Neatline is the lower of the two colour rows, the worse case.
@@ -306,7 +307,7 @@ test('a frame colour picker opens on the colour that is set', async function({pa
       '-style target=frame fill=#aed9ef stroke=#cc3300'
     );
   });
-  await page.locator('.layer-tab:visible').click();
+  await openLayersPanel(page);
   await page.locator('.map-frame-list .layer-item').click();
   await expect(page.locator('.frame-properties-popup')).toBeVisible();
 
@@ -333,7 +334,7 @@ test('frame properties rescales the frame without moving its extent',
         '-frame bbox=-80,30,-70,40 width=600 name=frame'
       );
     });
-    await page.locator('.layer-tab:visible').click();
+    await openLayersPanel(page);
     await page.locator('.map-frame-list .layer-item').click();
     await expect(page.locator('.frame-properties-popup')).toBeVisible();
 
@@ -360,7 +361,7 @@ test('frame properties shows aspect ratio without offering to set it',
         '-frame bbox=-80,30,-70,40 width=600 name=frame'
       );
     });
-    await page.locator('.layer-tab:visible').click();
+    await openLayersPanel(page);
     await page.locator('.map-frame-list .layer-item').click();
 
     var panel = page.locator('.frame-properties-popup');
@@ -379,7 +380,7 @@ test('clicking the map frame row opens frame properties', async function({page})
       '-frame bbox=-80,30,-70,40 width=600 name=frame'
     );
   });
-  await page.locator('.layer-tab:visible').click();
+  await openLayersPanel(page);
   await page.locator('.map-frame-list .layer-item').click();
 
   await expect(page.locator('.frame-properties-popup')).toBeVisible();
@@ -609,7 +610,7 @@ test('the resize tool closes when the frame is deleted', async function({page}) 
       '-frame bbox=-80,30,-70,40 width=600 name=frame'
     );
   });
-  await page.locator('.layer-tab:visible').click();
+  await openLayersPanel(page);
   await page.evaluate(function() {
     window.mapshaper.undoTest.openFrameTool();
   });

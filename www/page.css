@@ -949,22 +949,22 @@ body.sidebar-panels-resizing .sidebar-panels-resize-handle::before,
 }
 
 /* Icon buttons for opening the sidebar, shown on the map while the sidebar is
-   closed. Sized and styled to mirror the .nav-buttons on the right. The white
-   backing is for a map, which body.map-view gives a white background; on the
-   tinted page shown before any data is loaded it would be a white box on its
-   own, so the icons sit on the page there. */
+   closed. Sized and styled to mirror the .nav-buttons on the right, and like
+   them hidden on the splash screen: body.map-view is set once data is
+   imported or the splash popup is dismissed. */
 .sidebar-tabs {
 	position: absolute;
 	top: 35px; /* 29px header + the 6px offset of .nav-buttons */
 	left: 0;
 	z-index: 40;
 	padding: 3px;
+	background-color: white;
 	border-radius: 7px;
 	pointer-events: auto;
 }
 
-body.map-view .sidebar-tabs {
-	background-color: white;
+body:not(.map-view) .sidebar-tabs {
+	display: none;
 }
 
 body.sidebar-open .sidebar-tabs {
@@ -1351,10 +1351,42 @@ body.simplify .layer-control-btn {
 	font-size: 13px;
 }
 
+/* "Add files" and "Draw: labels · points · ..." are two groups, and a narrow
+   sidebar wraps between them, so the second line starts with "Draw:". The dot
+   between them is each group's ::before, hung to the group's left: a group that
+   starts a line has its dot pushed past the left edge of the row and clipped,
+   so no line ends or begins with a stray dot. */
 .layer-add-links {
 	margin: 2px 0 2px 0;
 	font-size: 13px;
 	line-height: 1.2;
+	overflow: hidden;
+}
+
+.layer-add-links-inner {
+	display: flex;
+	flex-wrap: wrap;
+	margin-left: -1.6em;
+}
+
+/* The padding holds the dot, so that a group long enough to wrap starts its
+   later lines at the row's edge rather than under the clipped dot. */
+.layer-add-links-group {
+	padding-left: 1.6em;
+}
+
+.layer-add-links-group::before {
+	content: "·";
+	display: inline-block;
+	width: 1.6em;
+	margin-left: -1.6em;
+	text-align: center;
+	color: #777;
+	font-weight: bold;
+}
+
+.layer-add-links-group:first-child {
+	white-space: nowrap;
 }
 
 .layer-menu-link {

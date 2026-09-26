@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openLayersPanel } from './sidebar-helpers.mjs';
 
 var POINT_FIXTURE = 'test/data/geojson/three_points.geojson';
 var LINE_FIXTURE = 'test/data/features/clean/ex20_ogc_line.json';
@@ -1217,7 +1218,7 @@ async function getMainCanvasPixelCount(page) {
 // Makes an empty point layer the way the layer panel does, with the "Draw:
 // points" link. The layer is named for the link that made it.
 async function addEmptyPointLayer(page) {
-  await page.locator('.layer-control-btn').click();
+  await openLayersPanel(page);
   await page.locator('.new-layer-links .layer-menu-link[data-kind="points"]')
     .click();
   await page.waitForTimeout(250);
@@ -1225,7 +1226,7 @@ async function addEmptyPointLayer(page) {
 
 async function deleteFirstLayerFromLayerMenu(page) {
   var layerItem;
-  await page.locator('.layer-control-btn').click();
+  await openLayersPanel(page);
   layerItem = page.locator('.layer-list .layer-item').first();
   await layerItem.hover();
   await layerItem.locator('.more-btn').click();
@@ -1234,7 +1235,7 @@ async function deleteFirstLayerFromLayerMenu(page) {
 
 async function renameFirstLayerFromLayerMenu(page, name) {
   var nameItem;
-  await page.locator('.layer-control-btn').click();
+  await openLayersPanel(page);
   nameItem = page.locator('.layer-list .layer-item .layer-name').first();
   await nameItem.click();
   await nameItem.fill(name);
@@ -1243,7 +1244,7 @@ async function renameFirstLayerFromLayerMenu(page, name) {
 
 async function focusFirstLayerNameEditor(page, name) {
   var nameItem;
-  await page.locator('.layer-control-btn').click();
+  await openLayersPanel(page);
   nameItem = page.locator('.layer-list .layer-item .layer-name').first();
   await nameItem.click();
   await nameItem.fill(name);

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openLayersPanel } from './sidebar-helpers.mjs';
 
 // A 3x3 RGBA image covering -15,-15,15,15. Because the grid has an odd number
 // of rows and columns, the center of the fitted map view lands squarely inside
@@ -90,7 +91,7 @@ test('using menus never makes the page scrollable', async function({page}) {
 
   // Toggling a layer menu shut with its own button is the path that used to
   // leave an empty menu behind on every click.
-  await page.locator('.layer-tab:visible').click();
+  await openLayersPanel(page);
   for (var i = 0; i < 3; i++) {
     await layerMenuBtn.click();
     await expect(menus).toBeVisible();

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { closeSidebarAfterImport, openLayersPanel } from './sidebar-helpers.mjs';
 
 // A square polygon layer: a target the label tool cannot add to, so it should
 // create a label layer beside it.
@@ -1855,6 +1856,7 @@ async function loadFixture(page, fixture, opts) {
   await page.waitForFunction(function() {
     return window.mapshaper.undoTest.getState().model.datasetCount > 0;
   });
+  await closeSidebarAfterImport(page);
   await page.evaluate(function() {
     window.mapshaper.undoTest.clearUndoHistory();
     window.mapshaper.undoTest.setInteractionMode('label');
@@ -2069,7 +2071,7 @@ async function getModeMenuItems(page) {
 
 // Opens a layer's own menu from the layer list, the way a user does.
 async function openLayerMenu(page, layerName) {
-  await page.locator('.layer-control-btn').click();
+  await openLayersPanel(page);
   var item = page.locator('.layer-list .layer-item')
     .filter({hasText: layerName}).first();
   await item.hover();

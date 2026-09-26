@@ -22,7 +22,9 @@ export function AddLayerLinks(gui) {
   if (!container.node()) return;
   DRAW_KINDS.forEach(function(kind, i) {
     if (i > 0) {
-      El('span').addClass('layer-menu-link-separator').html('&nbsp;·&nbsp;')
+      // A breaking space after the dot, so that a sidebar too narrow for the
+      // whole list wraps it between links, and never inside one.
+      El('span').addClass('layer-menu-link-separator').html('&nbsp;· ')
         .appendTo(container);
     }
     El('span').addClass('layer-menu-link').attr('data-kind', kind.kind)
