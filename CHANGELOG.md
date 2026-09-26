@@ -1,7 +1,8 @@
-v0.7.68 (unreleased)
-* A map frame fitted to layers now makes room for the symbols and labels at their points, which were previously cut off at the edges of the frame. This applies to `-frame` without `bbox=`, and to the web UI's Fit buttons. Add `ignore-symbols` to fit to point locations as before.
-* The `line-height` label style now treats a bare number as a multiple of the font size, as in CSS (e.g. `line-height=1.3`). Previously a bare number was read as pixels; add `px` to keep a fixed spacing (e.g. `line-height=16px`).
-* [web] Interface bug fixes and stylistic tweaks
+v0.7.68
+* [web] UI updates to the layers menu, sidebar tabs and arrow menu.
+* [web] Changed the console prompt from `$` to `>`.
+* A map frame fitted to visible layers now makes room for the rendered size of symbols and labels (these could previously be cut off at the edges of the frame). Add `ignore-symbols` to `-frame` to fit to point locations as before.
+* The `line-height` label style now treats a bare number as a multiple of the font size, as in CSS (e.g. `line-height=1.3`). Previously a bare number was read as pixels; add `px` to use pixels (e.g. `line-height=16px`).
 
 v0.7.67
 * [web] New label type: area text. A text block that wraps at a user-defined width.
