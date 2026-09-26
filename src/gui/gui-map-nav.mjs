@@ -24,15 +24,22 @@ export function MapNav(gui, ext, mouse) {
   this.zoomToBbox = zoomToBbox;
 
   if (gui.options.homeControl) {
-    gui.buttons.addButton("#home-icon").on('click', function() {
-      if (disabled()) return;
-      gui.dispatchEvent('map_reset');
-    });
+    gui.buttons.addButton("#home-icon")
+      .attr('data-tooltip', 'Zoom to fit')
+      .attr('aria-label', 'Zoom to fit')
+      .on('click', function() {
+        if (disabled()) return;
+        gui.dispatchEvent('map_reset');
+      });
   }
 
   if (gui.options.zoomControl) {
-    inBtn = gui.buttons.addButton("#zoom-in-icon");
-    outBtn = gui.buttons.addButton("#zoom-out-icon");
+    inBtn = gui.buttons.addButton("#zoom-in-icon")
+      .attr('data-tooltip', 'Zoom in')
+      .attr('aria-label', 'Zoom in');
+    outBtn = gui.buttons.addButton("#zoom-out-icon")
+      .attr('data-tooltip', 'Zoom out')
+      .attr('aria-label', 'Zoom out');
     initVariableClick(inBtn.node(), zoomIn);
     initVariableClick(outBtn.node(), zoomOut);
     ext.on('change', function() {
