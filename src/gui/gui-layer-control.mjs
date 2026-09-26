@@ -8,6 +8,7 @@ import {
 import { utils, internal } from './gui-core';
 import { El } from './gui-el';
 import { ClickText2 } from './gui-elements';
+import { describeFeatureContents, formatCount } from './gui-layer-contents';
 import { GUI } from './gui-lib';
 import { openContextMenu } from './gui-context-menu';
 import { runGuiEditCommand } from './gui-edit-command';
@@ -251,8 +252,7 @@ export function LayerControl(gui) {
 
   function renderLayer(lyr, dataset, opts) {
     var classes = 'layer-item';
-    var isFrame = internal.isFrameLayer(lyr, dataset.arcs);
-    var entry, html;
+    var html;
 
     if (opts.pinnable) classes += ' pinnable';
     if (map.isActiveLayer(lyr)) classes += ' active';
@@ -260,8 +260,9 @@ export function LayerControl(gui) {
     if (lyr.pinned) classes += ' pinned';
 
     html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
-    html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + formatLayerNameForDisplay(lyr.name) + '</span>', 'row1');
-    html += rowHTML(isFrame ? 'size' : 'contents', describeLyr(lyr, dataset));
+    html += '<div class="layer-row"><div class="layer-name-col">' +
+      '<span class="layer-name colored-text dot-underline">' + formatLayerNameForDisplay(lyr.name) + '</span></div>' +
+      renderContents(lyr, dataset) + '</div>';
     html += '<span class="more-btn layer-btn" role="button" aria-label="More layer options"></span>';
     if (opts.pinnable) {
       html += '<img class="eye-btn black-eye layer-btn" draggable="false" src="images/eye.png">';
@@ -511,29 +512,34 @@ export function LayerControl(gui) {
 
   }
 
+  // Returns {text, title}; title is a tooltip, or null
   function describeLyr(lyr, dataset) {
-    var n = internal.getFeatureCount(lyr),
-        isFrame = internal.isFrameLayer(lyr, dataset.arcs),
-        str, type;
-    if (lyr.data && !lyr.shapes) {
-      type = 'data record';
-    } else if (lyr.geometry_type) {
-      type = lyr.geometry_type + ' feature';
-    } else if (internal.layerHasRaster(lyr)) {
-      type = 'raster layer';
-    }
-    if (isFrame) {
-      str = internal.formatFrameSizeForDisplay(
+    if (internal.isFrameLayer(lyr, dataset.arcs)) {
+      return {text: internal.formatFrameSizeForDisplay(
         internal.getFrameLayerData(lyr, dataset.arcs)
-      );
-    } else if (internal.layerHasRaster(lyr)) {
-      str = utils.format('%,d x %,d %s', internal.getRasterWidth(lyr.raster), internal.getRasterHeight(lyr.raster), type);
-    } else if (type) {
-      str = utils.format('%,d %s%s', n, type, utils.pluralSuffix(n));
-    } else {
-      str = "[empty]";
+      ), title: null};
     }
-    return str;
+    if (internal.layerHasRaster(lyr)) {
+      return {text: utils.format('%,d x %,d raster', internal.getRasterWidth(lyr.raster),
+        internal.getRasterHeight(lyr.raster)), title: null};
+    }
+    if (lyr.data && !lyr.shapes) {
+      return {text: formatCount(internal.getFeatureCount(lyr), 'data record'), title: null};
+    }
+    if (lyr.geometry_type) {
+      return describeFeatureContents(lyr.geometry_type, lyr.shapes,
+        lyr.data ? lyr.data.getRecords() : null, lyr.data ? lyr.data.getFields() : []);
+    }
+    return {text: '[empty]', title: null};
+  }
+
+  function renderContents(lyr, dataset) {
+    var o = describeLyr(lyr, dataset);
+    if (!o.title) {
+      return '<div class="layer-contents">' + o.text + '</div>';
+    }
+    return '<div class="layer-contents has-nulls"><span title="' + o.title + '">' +
+      o.text + '</span></div>';
   }
 
   function renderLayerInfo(info) {
@@ -662,8 +668,4 @@ export function LayerControl(gui) {
     return !!(lyr && (lyr.geometry_type == 'point' || lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon'));
   }
 
-  function rowHTML(c1, c2, cname) {
-    return utils.format('<div class="row%s"><div class="col1">%s</div>' +
-      '<div class="col2">%s</div></div>', cname ? ' ' + cname : '', c1, c2);
-  }
 }

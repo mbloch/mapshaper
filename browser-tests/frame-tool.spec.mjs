@@ -24,7 +24,7 @@ test('layer panel creates a frame from the visible layers', async function({page
     return window.mapshaper.undoTest.getPreviewMode();
   })).toBe(true);
   await expect(page.locator('.map-frame-list .layer-item')).toContainText(
-    /size\d+ × \d+ px/
+    /\d+ × \d+ px/
   );
 });
 

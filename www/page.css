@@ -1543,10 +1543,45 @@ img.eye-btn {
 	z-index: 1;
 }
 
-.layer-item .row {
+/* Name and contents on one line. The contents column has a fixed width, so it
+   lines up from row to row, and the name takes the rest, truncated if long. */
+.layer-item .layer-row {
+	display: flex;
+	align-items: baseline;
+	gap: 12px;
+	margin-right: 44px; /* room for row controls */
 	line-height: 17px;
-	margin-bottom: 1px;
 	white-space: nowrap;
+}
+
+.layer-item .layer-name-col {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+/* wraps a point layer that lists several kinds of feature */
+.layer-item .layer-contents {
+	flex: none;
+	width: 9em;
+	white-space: normal;
+	font-size: 12.5px;
+	color: #666;
+}
+
+/* bar on the left edge of the active layer; a shadow rather than a border, so
+   the row's text keeps its alignment with the other rows */
+.layer-menu .layer-item.active {
+	box-shadow: inset 5px 0 0 var(--theme-col);
+}
+
+/* hints at a tooltip that counts the features with null geometry */
+.layer-item .layer-contents.has-nulls span {
+	border-bottom: 1px dotted #999;
+}
+
+/* a name being edited is shown in full, over the contents column */
+.layer-item:has(.layer-name.editing) .layer-contents {
+	visibility: hidden;
 }
 
 .layer-item .layer-name {
@@ -1586,20 +1621,6 @@ img.eye-btn {
 
 .layer-list .layer-item:hover:not(.active):not(.dragging) {
 	background-color: #f7f7f7;
-}
-
-.layer-item .row > div {
-	display: inline-block;
-}
-
-.layer-item .col1 {
-	width: 84px;
-}
-
-.layer-item .row1 .col2 {
-	margin-right: 44px; /* room for row controls */
-	max-width: calc(100% - 132px);
-	vertical-align: top;
 }
 
 
