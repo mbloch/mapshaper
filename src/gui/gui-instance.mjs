@@ -286,7 +286,8 @@ export function GuiInstance(container, opts) {
   }
 
   function clampSidebarPanelsSeparatorPosition(pageY) {
-    var pct = 100 * (pageY - 29) / (window.innerHeight - 29);
+    var rect = gui.container.findChild('.sidebar-panels').node().getBoundingClientRect();
+    var pct = 100 * (pageY - rect.top) / rect.height;
     return Math.max(15, Math.min(85, pct));
   }
 }

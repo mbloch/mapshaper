@@ -387,13 +387,13 @@ async function getCueBoxes(page) {
 async function clickNewLayerLink(page, kind) {
   var links = page.locator('.new-layer-links');
   if (!(await links.isVisible())) {
-    await page.locator('.sidebar-tab.layer-tab').click();
+    await page.locator('.layer-tab:visible').click();
     await links.waitFor({state: 'visible'});
   }
   await page.locator('.new-layer-links .layer-menu-link[data-kind="' + kind + '"]').click();
   await page.waitForTimeout(250);
   if (await links.isVisible()) {
-    await page.locator('.sidebar-tab.layer-tab').click();
+    await page.locator('.layer-tab:visible').click();
     await page.waitForTimeout(150);
   }
 }

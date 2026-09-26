@@ -23,7 +23,6 @@ export function LayerControl(gui) {
   var el = gui.container.findChild(".layer-control").hide();
   var btn = gui.container.findChild('.layer-control-btn');
   var headerBtn = btn.findChild('.active-layer-label');
-  var tab = gui.container.findChild('.layer-tab');
   var isOpen = false;
   var cache = new DomCache();
   var pinAll = el.findChild('.pin-all'); // button for toggling layer visibility
@@ -48,17 +47,6 @@ export function LayerControl(gui) {
   headerBtn.on('click', function() {
     toggle();
   }).on('keydown', function(e) {
-    if (e.key == 'Enter') {
-      e.preventDefault();
-      e.stopPropagation();
-      toggle();
-    } else if (e.key == ' ') {
-      e.preventDefault();
-      e.stopPropagation();
-      gui.toggleSidebarPanel('console');
-    }
-  });
-  tab.on('click', toggle).on('keydown', function(e) {
     if (e.key == 'Enter') {
       e.preventDefault();
       e.stopPropagation();
@@ -174,7 +162,6 @@ export function LayerControl(gui) {
   function turnOn() {
     if (isOpen) return;
     isOpen = true;
-    tab.addClass('active').attr('aria-expanded', 'true');
     render();
     el.addClass('open');
     el.show();
@@ -184,7 +171,6 @@ export function LayerControl(gui) {
     if (!isOpen) return;
     stopDragging();
     isOpen = false;
-    tab.removeClass('active').attr('aria-expanded', 'false');
     el.removeClass('open');
     el.hide();
   }

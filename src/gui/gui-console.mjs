@@ -30,15 +30,6 @@ export function Console(gui) {
   var history = [];
   var historyId = 0;
   var _isOpen = false;
-  var btn = gui.container.findChild('.console-btn')
-    .on('click', toggle)
-    .on('keydown', function(e) {
-      if (e.key == 'Enter' || e.key == ' ') {
-        e.preventDefault();
-        e.stopPropagation();
-        toggle();
-      }
-    });
   var globals = {}; // share user-defined globals (job.defs) between runs
   var sharedVars = {}; // share -vars / -defaults templating scope between runs
 
@@ -69,10 +60,6 @@ export function Console(gui) {
       input.node().focus(); // focus if user clicks blank part of console
     }
   });
-
-  function toggle() {
-    gui.toggleSidebarPanel('console');
-  }
 
   gui.on('sidebar', function(e) {
     if (e.panels.includes('console')) {
@@ -124,7 +111,6 @@ export function Console(gui) {
   function turnOn() {
     // if (!_isOpen && !model.isEmpty()) {
     if (!_isOpen) {
-      btn.addClass('active').attr('aria-expanded', 'true');
       _isOpen = true;
       // Route logging output to the in-app console while it's open, so a
       // user typing CLI commands here sees the results inline -- the same
@@ -145,7 +131,6 @@ export function Console(gui) {
 
   function turnOff() {
     if (_isOpen) {
-      btn.removeClass('active').attr('aria-expanded', 'false');
       _isOpen = false;
       if (GUI.isActiveInstance(gui)) {
         setLoggingForGUI(gui); // reset stop, message and error functions

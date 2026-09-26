@@ -37,7 +37,7 @@ test('preview toggle shows the page mask, boundary and readout', async function(
   await loadPreviewSession(page);
 
   await expect(page.locator('.preview-toggle')).not.toHaveClass(/disabled/);
-  await page.locator('.sidebar-tab.layer-tab').click();
+  await page.locator('.layer-tab:visible').click();
   await expect(page.locator('.map-frame-section')).toBeVisible();
   await expect(page.locator('.map-frame-list .layer-item')).toHaveCount(1);
   await expect(page.locator('.map-frame-list .layer-item')).not.toHaveClass(/pinnable/);
@@ -98,7 +98,7 @@ test('table view suspends preview without clearing its state', async function({p
 
 test('the map frame row has frame-specific menu actions', async function({page}) {
   await loadPreviewSession(page);
-  await page.locator('.sidebar-tab.layer-tab').click();
+  await page.locator('.layer-tab:visible').click();
   await page.locator('.map-frame-list .more-btn').click();
 
   await expect(page.locator('.contextmenu')).toBeVisible();

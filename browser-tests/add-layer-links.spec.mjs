@@ -192,7 +192,7 @@ async function openLayerPanel(page) {
   if (await links.isVisible()) return;
   // the sidebar tab is there whether or not anything has been loaded, unlike
   // the header button, which appears with the first layer
-  await page.locator('.sidebar-tab.layer-tab').click();
+  await page.locator('.layer-tab:visible').click();
   await links.waitFor({state: 'visible'});
 }
 

@@ -90,7 +90,7 @@ test('using menus never makes the page scrollable', async function({page}) {
 
   // Toggling a layer menu shut with its own button is the path that used to
   // leave an empty menu behind on every click.
-  await page.locator('.layer-tab').click();
+  await page.locator('.layer-tab:visible').click();
   for (var i = 0; i < 3; i++) {
     await layerMenuBtn.click();
     await expect(menus).toBeVisible();
