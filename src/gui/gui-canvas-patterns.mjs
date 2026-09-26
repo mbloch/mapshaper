@@ -38,37 +38,103 @@ function convertSvgSphereParams(bounds) {
 }
 
 
-export function getCanvasFillPattern(style) {
-  var fill = hatches[style.fillPattern];
-  if (fill === undefined) {
-    fill = makePatternFill(style);
-    hatches[style.fillPattern] = fill;
+// symbolScale: the preview symbol scale (1 outside preview). Pattern sizes are
+// in output pixels, like stroke widths, so the tile grows with the page.
+// anchor: canvas-pixel position the pattern origin is pinned to, so the tile
+// travels with the map instead of sticking to the viewport. Panning only
+// updates this matrix. The tile image is rebuilt when the scale changes,
+// which is at most once per pattern per render.
+export function getCanvasFillPattern(style, symbolScale, anchor) {
+  var scale = symbolScale > 0 ? symbolScale : 1;
+  var entry = hatches[style.fillPattern];
+  if (!entry || entry.scale != scale) {
+    entry = makePatternEntry(style, scale);
+    hatches[style.fillPattern] = entry;
   }
-  return fill || style.fill || '#000'; // use fill if hatches are invalid
+  if (!entry || !entry.pattern) return style.fill || '#000';
+  if (anchor) applyPatternAnchor(entry, anchor);
+  return entry.pattern;
 }
 
-function makePatternFill(style) {
+function makePatternEntry(style, scale) {
   var o = internal.parsePattern(style.fillPattern);
   if (!o) return null;
   var canv = document.createElement('canvas');
   var ctx = canv.getContext('2d');
-  var res = GUI.getPixelRatio();
-  var w = o.tileSize[0] * res;
-  var h = o.tileSize[1] * res;
+  var k = GUI.getPixelRatio() * scale;
+  var tw = o.tileSize[0], th = o.tileSize[1];
+  // A canvas has whole-pixel dimensions, but the scaled tile generally does
+  // not. The tile is drawn into the nearest whole-pixel canvas, and the
+  // pattern transform stretches it back to its exact size so that the
+  // repeat period doesn't drift across a large polygon.
+  var w = Math.max(1, Math.round(tw * k));
+  var h = Math.max(1, Math.round(th * k));
   canv.setAttribute('width', w);
   canv.setAttribute('height', h);
+  ctx.scale(w / tw, h / th);
   if (o.background) {
     ctx.fillStyle = o.background;
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillRect(0, 0, tw, th);
   }
-  if (o.type == 'dots' || o.type == 'squares') makeDotFill(o, ctx, res);
-  if (o.type == 'dashes') makeDashFill(o, ctx, res);
-  if (o.type == 'hatches') makeHatchFill(o, ctx, res);
-  var pattern = ctx.createPattern(canv, 'repeat');
-  if (o.rotation) {
-    pattern.setTransform(new DOMMatrix('rotate(' + o.rotation + 'deg)'));
-  }
-  return pattern;
+  if (o.type == 'dots' || o.type == 'squares') makeDotFill(o, ctx, 1);
+  if (o.type == 'dashes') makeDashFill(o, ctx, 1);
+  if (o.type == 'hatches') makeHatchFill(o, ctx, 1);
+  return {
+    scale: scale,
+    pattern: ctx.createPattern(canv, 'repeat'),
+    rotation: o.rotation || 0,
+    sx: tw * k / w,
+    sy: th * k / h,
+    w: w,
+    h: h
+  };
+}
+
+// Pins the cached pattern to @anchor. Skipped when the view has not moved,
+// so a hover redraw does not touch the pattern.
+function applyPatternAnchor(entry, anchor) {
+  if (entry.ax == anchor.x && entry.ay == anchor.y) return;
+  entry.ax = anchor.x;
+  entry.ay = anchor.y;
+  var t = getPatternTransform(entry, anchor);
+  entry.pattern.setTransform(new DOMMatrix([t.a, t.b, t.c, t.d, t.e, t.f]));
+}
+
+// Matrix taking pattern-image pixels to canvas pixels: translate to the
+// anchor, then rotate, then scale. The anchor is folded into one tile so a
+// map origin far outside the viewport does not blow the matrix precision.
+export function getPatternTransform(entry, anchor) {
+  var p = wrapPatternAnchor(anchor.x, anchor.y, entry);
+  var rad = (entry.rotation || 0) * Math.PI / 180;
+  var c = Math.cos(rad);
+  var s = Math.sin(rad);
+  return {
+    a: c * entry.sx,
+    b: s * entry.sx,
+    c: -s * entry.sy,
+    d: c * entry.sy,
+    e: p.x,
+    f: p.y
+  };
+}
+
+// @entry.sx/sy scale image pixels to canvas pixels; the image repeats every
+// @entry.w by @entry.h pixels. Returns a point in the same place on the
+// pattern, within one tile of the origin.
+export function wrapPatternAnchor(x, y, entry) {
+  var rad = (entry.rotation || 0) * Math.PI / 180;
+  var c = Math.cos(rad);
+  var s = Math.sin(rad);
+  var rx = c * x + s * y;
+  var ry = -s * x + c * y;
+  var qx = rx / entry.sx - Math.floor(rx / entry.sx / entry.w) * entry.w;
+  var qy = ry / entry.sy - Math.floor(ry / entry.sy / entry.h) * entry.h;
+  var lx = qx * entry.sx;
+  var ly = qy * entry.sy;
+  return {
+    x: c * lx - s * ly,
+    y: s * lx + c * ly
+  };
 }
 
 function makeDashFill(o, ctx, res) {

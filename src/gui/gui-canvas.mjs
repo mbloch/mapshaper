@@ -662,27 +662,66 @@ function protectIterForDrawing(iter, ext) {
   return iter;
 }
 
+// Same multiplier as ctx.lineWidth. Retina canvases are pixRatio times the
+// CSS pixel; preview mode multiplies styled strokes by the symbol scale.
+export function getCanvasStrokeScale(pixRatio, lineScale) {
+  return (pixRatio > 1 ? pixRatio : 1) * (lineScale || 1);
+}
+
+// Scale a stroke-dasharray into canvas pixels. Scale 1 returns the authored
+// tokens, so a 100% preview and a non-preview view keep the pattern as stored.
+export function scaleCanvasLineDash(lineDash, scale) {
+  var parts = String(lineDash).split(' ');
+  var out, i;
+  if (!(scale > 0) || scale === 1) return parts;
+  out = new Array(parts.length);
+  for (i = 0; i < parts.length; i++) {
+    out[i] = +parts[i] * scale;
+  }
+  return out;
+}
+
+// Where a fill pattern's origin sits, in canvas pixels. In preview that is
+// the top-left of the page; otherwise the geographic origin, so a pan (which
+// only changes the translation) carries the pattern with the shapes.
+function getPatternAnchor(ext) {
+  var t = ext.getTransform(GUI.getPixelRatio());
+  var frame = ext.getFrameData();
+  if (frame && frame.bbox) {
+    return {
+      x: frame.bbox[0] * t.mx + t.bx,
+      y: frame.bbox[3] * t.my + t.by
+    };
+  }
+  return {x: t.bx, y: t.by};
+}
+
 function getPathStart(ext, lineScale) {
   var pixRatio = GUI.getPixelRatio();
   if (!lineScale) lineScale = 1;
+  // Same factor as lineWidth, so dash length and gap stay in proportion to
+  // the stroke. In preview that factor includes the symbol scale; without it
+  // the pattern stays a fixed screen size while the line grows.
+  var strokeScale = getCanvasStrokeScale(pixRatio, lineScale);
+  // The symbol scale itself, not lineScale: lineScale adds a bump to widen
+  // hover outlines, which a fill has no reason to follow.
+  var patternScale = ext.getSymbolScale() || 1;
+  // Page corner in preview, so the pattern is fixed to the page the way the
+  // exported SVG is. With no frame, the geographic origin, which is enough
+  // for panning: the pattern is not scaled by the geographic zoom then.
+  var patternAnchor = getPatternAnchor(ext);
   return function(ctx, style) {
     var strokeWidth;
     ctx.beginPath();
     if (style.strokeWidth > 0) {
       strokeWidth = style.strokeWidth;
-      if (pixRatio > 1) {
-        // bump up thin lines on retina, but not to more than 1px
-        // (tests on Chrome showed much faster rendering of 1px lines)
-        // strokeWidth = strokeWidth < 1 ? 1 : strokeWidth * pixRatio;
-        strokeWidth = strokeWidth * pixRatio;
-      }
       ctx.lineCap = style.lineCap || 'round';
       ctx.lineJoin = style.lineJoin || 'round';
-      ctx.lineWidth = strokeWidth * lineScale;
+      ctx.lineWidth = strokeWidth * strokeScale;
       ctx.strokeStyle = style.strokeColor;
       if (style.lineDash){
         ctx.lineCap = 'butt';
-        ctx.setLineDash(style.lineDash.split(' '));
+        ctx.setLineDash(scaleCanvasLineDash(style.lineDash, strokeScale));
       }
       if (style.miterLimit) {
         ctx.miterLimit = style.miterLimit;
@@ -690,7 +729,7 @@ function getPathStart(ext, lineScale) {
     }
 
     if (style.fillPattern) {
-      ctx.fillStyle = getCanvasFillPattern(style);
+      ctx.fillStyle = getCanvasFillPattern(style, patternScale, patternAnchor);
     } else if (style.fillColor) {
       ctx.fillStyle = style.fillColor;
     }

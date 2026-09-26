@@ -995,8 +995,12 @@ body:not(.sidebar-open) .intersection-display {
 	fill: var(--theme-col);
 }
 
+.sidebar-tab.layer-tab {
+	padding-bottom: 6px;
+}
+
 .sidebar-tab.console-tab {
-	padding-top: 8px;
+	padding-top: 7px;
 }
 
 .sidebar-tab:hover .sidebar-icon * {

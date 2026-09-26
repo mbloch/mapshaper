@@ -22,6 +22,7 @@ var darkStroke = "#334",
     referenceStyle = { // outline style for reference layers
       type: 'outline',
       strokeColors: [null, '#87b73b'], // was 78c110
+      // strokeColors: [null, 'rgba(79,140,0,0.67)'],
       strokeWidth: 0.85,
       dotColor: "#73ba20",
       dotSize: 1
