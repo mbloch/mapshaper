@@ -9531,7 +9531,7 @@
 
   function Console(gui) {
     var model = gui.model;
-    var CURSOR = '$ ';
+    var CURSOR = '> ';
     var PROMPT = 'Enter mapshaper commands or type "tips" for console help.';
     var el = gui.container.findChild('.console').hide();
     var content = el.findChild('.console-buffer');
@@ -9548,15 +9548,6 @@
     var history = [];
     var historyId = 0;
     var _isOpen = false;
-    var btn = gui.container.findChild('.console-btn')
-      .on('click', toggle)
-      .on('keydown', function(e) {
-        if (e.key == 'Enter' || e.key == ' ') {
-          e.preventDefault();
-          e.stopPropagation();
-          toggle();
-        }
-      });
     var globals = {}; // share user-defined globals (job.defs) between runs
     var sharedVars = {}; // share -vars / -defaults templating scope between runs
 
@@ -9587,10 +9578,6 @@
         input.node().focus(); // focus if user clicks blank part of console
       }
     });
-
-    function toggle() {
-      gui.toggleSidebarPanel('console');
-    }
 
     gui.on('sidebar', function(e) {
       if (e.panels.includes('console')) {
@@ -9642,7 +9629,6 @@
     function turnOn() {
       // if (!_isOpen && !model.isEmpty()) {
       if (!_isOpen) {
-        btn.addClass('active').attr('aria-expanded', 'true');
         _isOpen = true;
         // Route logging output to the in-app console while it's open, so a
         // user typing CLI commands here sees the results inline -- the same
@@ -9663,7 +9649,6 @@
 
     function turnOff() {
       if (_isOpen) {
-        btn.removeClass('active').attr('aria-expanded', 'false');
         _isOpen = false;
         if (GUI.isActiveInstance(gui)) {
           setLoggingForGUI(gui); // reset stop, message and error functions
@@ -10237,14 +10222,14 @@
     }
 
     function printExamples() {
-      printExample("See a list of all console commands", "$ help");
-      printExample("Get help using a single command", "$ help innerlines");
-      printExample("Get information about imported datasets", "$ info");
-      printExample("Print bot/debug runtime context as JSON", "$ context");
-      printExample("Display browser session as shell commands", "$ history");
-      printExample("Delete one state from a national dataset","$ filter 'STATE != \"Alaska\"'");
-      printExample("Aggregate counties to states by dissolving shared edges" ,"$ dissolve 'STATE'");
-      printExample("Clear the console", "$ clear");
+      printExample("See a list of all console commands", CURSOR + "help");
+      printExample("Get help using a single command", CURSOR + "help innerlines");
+      printExample("Get information about imported datasets", CURSOR + "info");
+      printExample("Print bot/debug runtime context as JSON", CURSOR + "context");
+      printExample("Display browser session as shell commands", CURSOR + "history");
+      printExample("Delete one state from a national dataset", CURSOR + "filter 'STATE != \"Alaska\"'");
+      printExample("Aggregate counties to states by dissolving shared edges" , CURSOR + "dissolve 'STATE'");
+      printExample("Clear the console", CURSOR + "clear");
     }
 
     function renderStructuredConsoleMessage(msg) {
@@ -11219,6 +11204,92 @@
     };
   }
 
+  // Short descriptions of what a layer holds, for the contents column of the
+  // layer panel: "6 polygons", "1 data record", "12 labels".
+  //
+  // A point layer is described by how its features are drawn, in the terms of
+  // the point style panel: labels, symbols, circles and plain points. A layer
+  // that mixes them lists each kind it has, e.g. "12 labels, 30 points".
+  //
+  // Features with null geometry are left out of the counts, which say what is on
+  // the map. The column is too narrow to list them as well, so they go in a
+  // tooltip with the full description.
+
+  var POINT_KINDS = ['label', 'symbol', 'circle', 'point'];
+
+  // How a point feature is drawn, given its data record.
+  // A label wins over any symbol or circle drawn with it.
+  function getPointKind(d) {
+    if (!d) return 'point';
+    if ('label-text' in d) return 'label';
+    if (d['svg-symbol'] || d.icon) return 'symbol';
+    if (d.r > 0) return 'circle';
+    return 'point';
+  }
+
+  // The kind of feature a point layer is set up for, from its field names:
+  // names the features of an empty layer, e.g. "0 labels".
+  function getPointLayerKind(fields) {
+    if (fields.includes('label-text')) return 'label';
+    if (fields.includes('svg-symbol') || fields.includes('icon')) return 'symbol';
+    if (fields.includes('r')) return 'circle';
+    return 'point';
+  }
+
+  // Same test as the -info command's null shape count
+  function isNullShape(shp) {
+    return !shp || shp.length === 0;
+  }
+
+  // @geometryType: 'point', 'polygon' or 'polyline'
+  // @shapes: the layer's shapes
+  // @records: data records, or null for a layer without attribute data
+  // @fields: names of the layer's data fields
+  // Returns {text, nulls, title}; title is the tooltip, or null if there are no nulls.
+  function describeFeatureContents(geometryType, shapes, records, fields) {
+    var nulls = shapes.length - countNonNull(shapes);
+    var text = geometryType == 'point' ?
+      describePoints(shapes, records, fields || []) :
+      formatCount(shapes.length - nulls, geometryType);
+    return {
+      text: text,
+      nulls: nulls,
+      title: nulls > 0 ? text + ', ' + formatInteger(nulls) + ' without geometry' : null
+    };
+  }
+
+  function describePoints(shapes, records, fields) {
+    var counts = {label: 0, symbol: 0, circle: 0, point: 0};
+    var parts, i;
+    for (i=0; i<shapes.length; i++) {
+      if (isNullShape(shapes[i])) continue;
+      counts[getPointKind(records ? records[i] : null)]++;
+    }
+    parts = POINT_KINDS.filter(function(kind) {
+      return counts[kind] > 0;
+    }).map(function(kind) {
+      return formatCount(counts[kind], kind);
+    });
+    return parts.length > 0 ? parts.join(', ') :
+      formatCount(0, getPointLayerKind(fields));
+  }
+
+  function countNonNull(shapes) {
+    var n = 0;
+    for (var i=0; i<shapes.length; i++) {
+      if (!isNullShape(shapes[i])) n++;
+    }
+    return n;
+  }
+
+  function formatCount(n, noun) {
+    return formatInteger(n) + ' ' + noun + (n == 1 ? '' : 's');
+  }
+
+  function formatInteger(n) {
+    return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
   var openMenu$1;
   var openMenuId;
   // One menu element per parent element, created on demand.
@@ -11612,7 +11683,6 @@
     var el = gui.container.findChild(".layer-control").hide();
     var btn = gui.container.findChild('.layer-control-btn');
     var headerBtn = btn.findChild('.active-layer-label');
-    var tab = gui.container.findChild('.layer-tab');
     var isOpen = false;
     var cache = new DomCache();
     var pinAll = el.findChild('.pin-all'); // button for toggling layer visibility
@@ -11637,17 +11707,6 @@
     headerBtn.on('click', function() {
       toggle();
     }).on('keydown', function(e) {
-      if (e.key == 'Enter') {
-        e.preventDefault();
-        e.stopPropagation();
-        toggle();
-      } else if (e.key == ' ') {
-        e.preventDefault();
-        e.stopPropagation();
-        gui.toggleSidebarPanel('console');
-      }
-    });
-    tab.on('click', toggle).on('keydown', function(e) {
       if (e.key == 'Enter') {
         e.preventDefault();
         e.stopPropagation();
@@ -11763,7 +11822,6 @@
     function turnOn() {
       if (isOpen) return;
       isOpen = true;
-      tab.addClass('active').attr('aria-expanded', 'true');
       render();
       el.addClass('open');
       el.show();
@@ -11773,7 +11831,6 @@
       if (!isOpen) return;
       stopDragging();
       isOpen = false;
-      tab.removeClass('active').attr('aria-expanded', 'false');
       el.removeClass('open');
       el.hide();
     }
@@ -11854,8 +11911,7 @@
 
     function renderLayer(lyr, dataset, opts) {
       var classes = 'layer-item';
-      var isFrame = internal.isFrameLayer(lyr, dataset.arcs);
-      var entry, html;
+      var html;
 
       if (opts.pinnable) classes += ' pinnable';
       if (map.isActiveLayer(lyr)) classes += ' active';
@@ -11863,8 +11919,9 @@
       if (lyr.pinned) classes += ' pinned';
 
       html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
-      html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + formatLayerNameForDisplay(lyr.name) + '</span>', 'row1');
-      html += rowHTML(isFrame ? 'size' : 'contents', describeLyr(lyr, dataset));
+      html += '<div class="layer-row"><div class="layer-name-col">' +
+        '<span class="layer-name colored-text dot-underline">' + formatLayerNameForDisplay(lyr.name) + '</span></div>' +
+        renderContents(lyr, dataset) + '</div>';
       html += '<span class="more-btn layer-btn" role="button" aria-label="More layer options"></span>';
       if (opts.pinnable) {
         html += '<img class="eye-btn black-eye layer-btn" draggable="false" src="images/eye.png">';
@@ -12114,29 +12171,34 @@
 
     }
 
+    // Returns {text, title}; title is a tooltip, or null
     function describeLyr(lyr, dataset) {
-      var n = internal.getFeatureCount(lyr),
-          isFrame = internal.isFrameLayer(lyr, dataset.arcs),
-          str, type;
-      if (lyr.data && !lyr.shapes) {
-        type = 'data record';
-      } else if (lyr.geometry_type) {
-        type = lyr.geometry_type + ' feature';
-      } else if (internal.layerHasRaster(lyr)) {
-        type = 'raster layer';
-      }
-      if (isFrame) {
-        str = internal.formatFrameSizeForDisplay(
+      if (internal.isFrameLayer(lyr, dataset.arcs)) {
+        return {text: internal.formatFrameSizeForDisplay(
           internal.getFrameLayerData(lyr, dataset.arcs)
-        );
-      } else if (internal.layerHasRaster(lyr)) {
-        str = utils$1.format('%,d x %,d %s', internal.getRasterWidth(lyr.raster), internal.getRasterHeight(lyr.raster), type);
-      } else if (type) {
-        str = utils$1.format('%,d %s%s', n, type, utils$1.pluralSuffix(n));
-      } else {
-        str = "[empty]";
+        ), title: null};
       }
-      return str;
+      if (internal.layerHasRaster(lyr)) {
+        return {text: utils$1.format('%,d x %,d raster', internal.getRasterWidth(lyr.raster),
+          internal.getRasterHeight(lyr.raster)), title: null};
+      }
+      if (lyr.data && !lyr.shapes) {
+        return {text: formatCount(internal.getFeatureCount(lyr), 'data record'), title: null};
+      }
+      if (lyr.geometry_type) {
+        return describeFeatureContents(lyr.geometry_type, lyr.shapes,
+          lyr.data ? lyr.data.getRecords() : null, lyr.data ? lyr.data.getFields() : []);
+      }
+      return {text: '[empty]', title: null};
+    }
+
+    function renderContents(lyr, dataset) {
+      var o = describeLyr(lyr, dataset);
+      if (!o.title) {
+        return '<div class="layer-contents">' + o.text + '</div>';
+      }
+      return '<div class="layer-contents has-nulls"><span title="' + o.title + '">' +
+        o.text + '</span></div>';
     }
 
     function renderLayerInfo(info) {
@@ -12265,9 +12327,48 @@
       return !!(lyr && (lyr.geometry_type == 'point' || lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon'));
     }
 
-    function rowHTML(c1, c2, cname) {
-      return utils$1.format('<div class="row%s"><div class="col1">%s</div>' +
-        '<div class="col2">%s</div></div>', cname ? ' ' + cname : '', c1, c2);
+  }
+
+  // The buttons that open and close the sidebar panels: an icon strip on the
+  // map while the sidebar is closed, and a strip of toggles at the top of the
+  // sidebar while it is open. Each button toggles its own panel, so both panels
+  // can be open at once.
+  function SidebarTabs(gui) {
+    var buttons = gui.container.findChildren('.sidebar-tab, .sidebar-strip-btn');
+    var hideBtn = gui.container.findChild('.sidebar-hide-btn');
+
+    buttons.forEach(function(btn) {
+      var panel = btn.attr('data-panel');
+      btn.on('click', function() {
+        gui.toggleSidebarPanel(panel);
+      });
+      onKeyboardActivate(btn, function() {
+        gui.toggleSidebarPanel(panel);
+      });
+    });
+
+    hideBtn.on('click', hideSidebar);
+    onKeyboardActivate(hideBtn, hideSidebar);
+
+    gui.on('sidebar', function(e) {
+      buttons.forEach(function(btn) {
+        var open = e.panels.includes(btn.attr('data-panel'));
+        btn.classed('active', open).attr('aria-expanded', String(open));
+      });
+    });
+
+    function hideSidebar() {
+      gui.setSidebarPanels(null);
+    }
+
+    function onKeyboardActivate(btn, action) {
+      btn.on('keydown', function(e) {
+        if (e.key == 'Enter' || e.key == ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          action();
+        }
+      });
     }
   }
 
@@ -12400,7 +12501,9 @@
     if (!container.node()) return;
     DRAW_KINDS.forEach(function(kind, i) {
       if (i > 0) {
-        El('span').addClass('layer-menu-link-separator').html('&nbsp;·&nbsp;')
+        // A breaking space after the dot, so that a sidebar too narrow for the
+        // whole list wraps it between links, and never inside one.
+        El('span').addClass('layer-menu-link-separator').html('&nbsp;· ')
           .appendTo(container);
       }
       El('span').addClass('layer-menu-link').attr('data-kind', kind.kind)
@@ -14234,24 +14337,24 @@
     // labelModeIsAvailable().
     var menus = {
       standard: ['info', 'selection', 'box', 'ruler'],
-      empty: ['edit_polygons', 'edit_lines', 'edit_points', 'box', 'ruler'],
-      polygons: ['info', 'selection', 'box', 'polygon_style', 'edit_polygons', 'ruler'],
-      rectangles: ['info', 'selection', 'box', 'polygon_style', 'rectangles', 'edit_polygons', 'ruler'],
-      lines: ['info', 'selection', 'box', 'line_style', 'edit_lines', 'snip_lines', 'ruler'],
+      empty: [ 'label','edit_points', 'edit_lines',  'edit_polygons','box', 'ruler'],
+      polygons: ['info', 'selection', 'polygon_style', 'edit_polygons', 'box', 'ruler'],
+      rectangles: ['info', 'selection', 'polygon_style', 'edit_polygons', 'rectangles', 'box', 'ruler'],
+      lines: ['info', 'selection', 'line_style', 'edit_lines', 'snip_lines', 'box', 'ruler'],
       table: ['info', 'selection'],
-      raster: ['ruler', 'box'],
-      // A label layer has no entry for styling labels, for adding and dragging
-      // points, or for positioning labels: the label tool does all three, along
-      // with creating and retyping labels, so each of them offered a subset of
-      // what sat next to it in the menu.
-      labels: ['info', 'selection', 'box', 'label', 'ruler'],
-      points: ['info', 'selection', 'box', 'point_style', 'edit_points', 'ruler'], // , 'add-points'
+      raster: ['box', 'ruler'],
+      labels: ['info', 'selection', 'label', 'box', 'ruler'],
+      points: ['info', 'selection', 'edit_points', 'point_style', 'box', 'ruler'], // , 'add-points'
       // An empty point layer is the layer the "Draw: labels" link creates,
       // and a label goes into it rather than beside it (see labelWouldJoin), so
       // the label tool belongs in its menu as well as the point tools: it is the
       // way back into a labels layer that has no label in it yet.
-      emptyPoints: ['info', 'selection', 'box', 'point_style', 'label', 'edit_points', 'ruler']
+      emptyPoints: ['info', 'selection', 'label', 'point_style', 'edit_points', 'box', 'ruler']
     };
+
+    // Tools that work the same whatever the active layer is. They go below a
+    // divider, so the layer-name heading visibly covers only the tools above it.
+    var layerIndependentModes = ['box', 'ruler'];
 
     var prompts = {
       box: 'Shift-drag to draw a box',
@@ -14348,7 +14451,7 @@
     };
 
     this.modeUsesPopup = function(mode) {
-      return ['info', 'selection', 'data', 'box', 'edit_points', 'rectangles'].includes(mode);
+      return ['info', 'selection', 'data', 'box', 'edit_points'].includes(mode);
     };
 
     this.modeSupportsUndo = function(mode) {
@@ -14419,25 +14522,52 @@
 
     function renderMenu() {
       if (!menu) return;
-      var modes = getAvailableModes();
-      menu.empty();
-      modes.forEach(function(mode) {
+      var modes = getAvailableModes().filter(function(mode) {
         // don't show "turn off" link if not currently editing
-        if (_editMode == 'off' && mode == 'off') return;
-        var link = El('div').addClass('nav-menu-item').attr('data-name', mode).text(getModeLabel(mode)).appendTo(menu);
-        link.on('click', function(e) {
-          if (_editMode == mode) {
-            // closeMenu();
-            setMode('off');
-          } else if (_editMode != mode) {
-            setMode(mode);
-            if (mode == 'off') closeMenu(120); // only close if turning off
-            // closeMenu(mode == 'off' ? 120 : 400); // close after selecting
-          }
-          e.stopPropagation();
-        });
+        return !(_editMode == 'off' && mode == 'off');
       });
+      var layerModes = modes.filter(function(mode) {
+        return !layerIndependentModes.includes(mode);
+      });
+      var otherModes = modes.filter(function(mode) {
+        return layerIndependentModes.includes(mode);
+      });
+      var lyr = gui.model.getActiveLayer()?.layer;
+      menu.empty();
+      if (lyr && layerModes.length > 0) {
+        renderLayerHeading(lyr);
+      }
+      layerModes.forEach(renderMenuItem);
+      if (layerModes.length > 0 && otherModes.length > 0) {
+        El('div').addClass('nav-menu-divider').appendTo(menu);
+      }
+      otherModes.forEach(renderMenuItem);
       updateSelectionHighlight();
+    }
+
+    // Names the layer the tools above the divider act on.
+    function renderLayerHeading(lyr) {
+      var name = formatLayerNameForDisplay(lyr.name);
+      var heading = El('div').addClass('nav-menu-heading').attr('title', name).text(name).appendTo(menu);
+      // A click on the heading would reach the button, which picks a tool.
+      heading.on('click', function(e) {
+        e.stopPropagation();
+      });
+    }
+
+    function renderMenuItem(mode) {
+      var link = El('div').addClass('nav-menu-item').attr('data-name', mode).text(getModeLabel(mode)).appendTo(menu);
+      link.on('click', function(e) {
+        if (_editMode == mode) {
+          // closeMenu();
+          setMode('off');
+        } else if (_editMode != mode) {
+          setMode(mode);
+          if (mode == 'off') closeMenu(120); // only close if turning off
+          // closeMenu(mode == 'off' ? 120 : 400); // close after selecting
+        }
+        e.stopPropagation();
+      });
     }
 
     function getModeLabel(mode) {
@@ -23099,8 +23229,11 @@
     gui.on('interaction_mode_change', function(e) {
       if (e.mode === 'selection') {
         gui.enterMode('selection_tool');
-      } else if (_on) {
-        turnOff();
+      } else if (gui.getMode() == 'selection_tool') {
+        // Leave the gui mode rather than just calling turnOff(): a mode left
+        // behind makes the next enterMode('selection_tool') a no-op, so the tool
+        // would never turn back on.
+        gui.clearMode();
       }
     });
 
@@ -31486,49 +31619,72 @@
     gui.on('interaction_mode_change', function(e) {
       if (e.mode === 'rectangles') {
         gui.enterMode('rectangle_tool');
-      } else if (_on) {
-        turnOff();
+      } else if (gui.getMode() == 'rectangle_tool') {
+        // Leave the gui mode rather than just calling turnOff(): a mode left
+        // behind makes the next enterMode('rectangle_tool') a no-op, so the tool
+        // would never turn back on.
+        gui.clearMode();
       }
     });
 
     hit.on('change', function(e) {
       if (!_on) return;
       // TODO: handle multiple hits (see gui-inspection-control)
-      var id = e.id;
       if (e.id > -1 && e.pinned) {
-        var target = hit.getHitTarget();
-        var path = target.shapes[e.id][0];
-        var bbox = target.gui.displayArcs.getSimpleShapeBounds(path).toArray();
-        box.setDataCoords(bbox);
-        dragInfo = {
-          id: e.id,
-          target: target,
-          ids: [],
-          points: []
-        };
-        var iter = target.gui.displayArcs.getShapeIter(path);
-        while (iter.hasNext()) {
-          dragInfo.points.push([iter.x, iter.y]);
-          dragInfo.ids.push(iter._arc.i);
+        if (!dragInfo || dragInfo.id != e.id) {
+          selectRectangle(e.id);
         }
-        gui.container.findChild('.map-layers').classed('dragging', true);
-
-      } else if (dragInfo) {
-        gui.dispatchEvent('rectangle_dragend', dragInfo); // save undo state
-        gui.container.findChild('.map-layers').classed('dragging', false);
-        reset();
       } else {
-        box.hide();
+        reset();
       }
-
     });
 
     box.on('handle_drag', function(e) {
       if (!_on || !dragInfo) return;
       var coords = internal.bboxToCoords(box.getDataCoords());
       setRectangleCoords(dragInfo.target, dragInfo.ids, coords);
+      dragInfo.moved = true;
       gui.dispatchEvent('map-needs-refresh');
     });
+
+    // Each handle drag is one undo step, saved when it ends -- waiting until the
+    // rectangle is deselected would lose the edit if the mode changes first.
+    box.on('handle_up', function() {
+      if (!_on || !dragInfo || !dragInfo.moved) return;
+      gui.dispatchEvent('rectangle_dragend', {
+        target: dragInfo.target,
+        ids: dragInfo.ids,
+        points: dragInfo.points
+      });
+      dragInfo.points = getDataPoints(dragInfo.target, dragInfo.ids);
+      dragInfo.moved = false;
+    });
+
+    function selectRectangle(id) {
+      var target = hit.getHitTarget();
+      var path = target.shapes[id][0];
+      var bbox = target.gui.displayArcs.getSimpleShapeBounds(path).toArray();
+      var ids = [];
+      var iter = target.gui.displayArcs.getShapeIter(path);
+      while (iter.hasNext()) {
+        ids.push(iter._arc.i);
+      }
+      box.setDataCoords(bbox);
+      dragInfo = {
+        id: id,
+        target: target,
+        ids: ids,
+        points: getDataPoints(target, ids), // for undo
+        moved: false
+      };
+      gui.container.findChild('.map-layers').classed('dragging', true);
+    }
+
+    function getDataPoints(target, ids) {
+      return ids.map(function(id) {
+        return getVertexCoords(target, id);
+      });
+    }
 
     function turnOn() {
       box.turnOn();
@@ -31547,6 +31703,9 @@
 
     function reset() {
       box.hide();
+      if (dragInfo) {
+        gui.container.findChild('.map-layers').classed('dragging', false);
+      }
       dragInfo = null;
     }
   }
@@ -33610,22 +33769,20 @@
 
     // Fitting obeys the same mode as a handle drag: holding the scale grows the
     // output to cover the new extent, holding the output rescales onto it. The
-    // command works out both the padding and the held-scale width, so the
-    // margin's unit handling lives in one place.
+    // command works out the extent, which has to leave room for symbols and
+    // labels at the scale it ends up at, along with the padding and the
+    // held-scale width, so the margin's unit handling lives in one place.
     function fitVisibleLayers() {
       var target = getFrameTarget();
       var entries = getCompositionEntries();
       var margin = getMargin();
-      var parts, bounds;
+      var parts;
       if (!target || !entries.length) return;
-      bounds = entries.reduce(function(memo, o) {
-        return memo.mergeBounds(
-          internal.getLayerBounds(o.layer, o.dataset.arcs)
-        );
-      }, new internal.Bounds());
       parts = [
         '-update-frame',
-        'bbox=' + quoteCommandValue(bounds.toArray().join(','))
+        'fit=' + internal.formatOptionValue(entries.map(function(o) {
+          return internal.getLayerTargetId(gui.model, o.layer);
+        }).join(','))
       ];
       if (margin) parts.push('offset=' + quoteCommandValue(margin));
       if (!lockSize) parts.push('fix-scale');
@@ -35151,7 +35308,8 @@
     }
 
     function clampSidebarPanelsSeparatorPosition(pageY) {
-      var pct = 100 * (pageY - 29) / (window.innerHeight - 29);
+      var rect = gui.container.findChild('.sidebar-panels').node().getBoundingClientRect();
+      var pct = 100 * (pageY - rect.top) / rect.height;
       return Math.max(15, Math.min(85, pct));
     }
   }
@@ -35582,6 +35740,7 @@
     new ImportControl(gui, importOpts);
     new ExportControl(gui);
     new LayerControl(gui);
+    new SidebarTabs(gui);
     new AddLayerLinks(gui);
     HeaderMenu();
     gui.console = new Console(gui);
@@ -35644,6 +35803,24 @@
       El('body').addClass('map-view');
       gui.console.runInitialCommands(getInitialConsoleCommands());
     });
+
+    // The layer list, opened beside the first data so that the user sees what
+    // was imported and where to go next -- once, and only for data: dismissing
+    // the splash popup without importing anything leaves the sidebar closed.
+    // Waits for any menu mode (the import dialog, while files are still loading)
+    // to close, since opening a panel would close it.
+    var layersShownForData = false;
+    gui.model.on('update', showLayersForFirstData);
+    gui.on('mode', showLayersForFirstData);
+    function showLayersForFirstData() {
+      var panels;
+      if (layersShownForData || gui.model.isEmpty() || gui.getMode()) return;
+      layersShownForData = true;
+      panels = gui.getSidebarPanels();
+      if (!panels.includes('layers')) {
+        gui.setSidebarPanels(panels.concat('layers').sort());
+      }
+    }
   };
 
 })();

@@ -27236,9 +27236,16 @@
   // The two copies are identical apart from their paint, so they sit in exactly
   // the same place whatever the label's position, alignment or path.
   //
-  // The halo copy is unfilled. That matches paint-order, where the fill covers
-  // the stroke's inner half and nothing else, and it keeps a translucent fill
-  // from showing a second colour through it.
+  // The halo copy is unfilled, which matches paint-order, where the fill covers
+  // the stroke's inner half and nothing else. Its halo-opacity is written as
+  // opacity rather than stroke-opacity, which Illustrator ignores on import; the
+  // two look the same on a copy with nothing painted but its stroke.
+  //
+  // Illustrator's GPU preview compounds a translucent halo where glyphs
+  // overlap; its CPU preview and its output do not. Nothing in the SVG was
+  // found to avoid it: filling the copy (imported as two objects, and no
+  // better), and putting the opacity on a group or two nested groups around
+  // the copy, all show the same thing.
   //
   // Things that apply to the label as a whole move to the group: its transform,
   // which places it, and its opacity, which would otherwise fade each copy on its
@@ -27269,6 +27276,10 @@
     delete halo.properties['paint-order'];
     delete halo.properties['fill-opacity'];
     halo.properties.fill = 'none';
+    if ('stroke-opacity' in halo.properties) {
+      halo.properties.opacity = halo.properties['stroke-opacity'];
+      delete halo.properties['stroke-opacity'];
+    }
     HALO_STROKE_PROPERTIES.forEach(function(k) {
       delete text.properties[k];
     });
@@ -27544,6 +27555,9 @@
   var ASCENT = 0.8;
   var DESCENT = 0.2;
   var MIDLINE = 0.35;
+  // Average advance of a character, in ems, for estimating the width of text
+  // that cannot be measured
+  var AVERAGE_CHAR_WIDTH = 0.6;
 
   function labelHasCallout(rec) {
     var type = rec && rec.callout ? parseCalloutType(rec.callout) : null;
@@ -27607,12 +27621,18 @@
   // no measurement the box takes the label's width if it is a text block, and is
   // otherwise a vertical line through the text's origin -- a callout then meets
   // the text where it starts rather than not being drawn.
-  function getLabelTextBox(rec) {
+  //
+  // opts.estimate_width: with no measurement and no label-width, estimate the
+  //   width from the length of the longest line instead of taking it as zero
+  function getLabelTextBox(rec, opts) {
     var fontSize = getFontSizeInPx$1(rec);
     var offset = getDrawnLabelOffset(rec);
     var lines = splitLabelLines(toLabelString(rec['label-text']));
     var lineHeight = measureToPx(getLineHeightDy(rec['line-height']), fontSize);
     var width = getMeasuredTextWidth(rec) || getNumber(rec['label-width'], 0);
+    if (!width && opts && opts.estimate_width) {
+      width = estimateTextWidth(lines, fontSize);
+    }
     // An anchor the record does not set is inherited from the layer's group,
     // which is 'middle' -- see getLabelTextDefaults().
     var anchor = offset['text-anchor'] || 'middle';
@@ -27626,6 +27646,18 @@
       ymax: baseline + (lines.length - 1) * lineHeight + DESCENT * fontSize,
       midline: baseline - MIDLINE * fontSize
     };
+  }
+
+  function estimateTextWidth(lines, fontSize) {
+    var chars = lines.reduce(function(max, line) {
+      return Math.max(max, Array.from(line).length);
+    }, 0);
+    return chars * AVERAGE_CHAR_WIDTH * fontSize;
+  }
+
+  // The size a label's text is drawn at, in px
+  function getLabelFontSize(rec) {
+    return getFontSizeInPx$1(rec);
   }
 
   // Where a line meets a callout's text and how it gets there from the anchor.
@@ -27654,7 +27686,7 @@
   // point where the line meets it, the elbow's corner or the curve's midpoint
   // (null for a straight line), and where the line stops short of the anchor.
   function getCalloutShape(o) {
-    var box = padBox(o.box, o.padding || 0);
+    var box = padBox$1(o.box, o.padding || 0);
     var a = [0, 0];
     var size = o.endSize > 0 ? o.endSize : getDefaultCalloutEndSize(o.end, o.width);
     var t, v, path, tip, dir, out, lineWidth, headLen, curved;
@@ -28015,7 +28047,7 @@
 
   // Utilities
 
-  function padBox(box, pad) {
+  function padBox$1(box, pad) {
     return {
       xmin: box.xmin - pad,
       xmax: box.xmax + pad,
@@ -28088,6 +28120,7 @@
     getControlPoint: getControlPoint,
     getDefaultCalloutEndSize: getDefaultCalloutEndSize,
     getLabelCalloutShape: getLabelCalloutShape,
+    getLabelFontSize: getLabelFontSize,
     getLabelTextBox: getLabelTextBox,
     labelHasCallout: labelHasCallout,
     renderLabelCallout: renderLabelCallout
@@ -28384,7 +28417,9 @@
 
   var SvgSymbols = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    featureHasIcon: featureHasIcon,
     getAnchorSymbolRadius: getAnchorSymbolRadius,
+    getIconRadius: getIconRadius,
     getTransform: getTransform,
     renderPoint: renderPoint,
     symbolRenderers: symbolRenderers
@@ -43830,6 +43865,13 @@ ${svg}
         describe: 'frame coordinates (xmin,ymin,xmax,ymax)',
         type: 'bbox'
       })
+      .option('fit', {
+        describe: 'layer(s) to fit the frame to, including their symbols and labels'
+      })
+      .option('ignore-symbols', {
+        describe: 'with fit=, fit to point locations, not symbol and label extents',
+        type: 'flag'
+      })
       .option('width', {
         describe: 'nominal frame width (e.g. 5in, 10cm, 600px)'
       })
@@ -43980,6 +44022,10 @@ ${svg}
       .option('offsets', {
         describe: 'separate offsets for each side, in l,b,r,t order',
         type: 'strings'
+      })
+      .option('ignore-symbols', {
+        describe: 'fit to point locations, not the extent of symbols and labels',
+        type: 'flag'
       })
       .option('name', nameOpt)
       .option('replace', {
@@ -51593,8 +51639,637 @@ ${svg}
     bboxToPolygon: bboxToPolygon
   });
 
+  // Apply rotation, scale and/or shift to some or all of the features in a dataset
+  //
+  cmd.affine = function(targetLayers, dataset, opts) {
+    // Need to separate the targeted shapes from any other shapes that share
+    // the same topology. So we duplicate any arcs that are shared by the targeted
+    // shapes and their topological neighbors and remap arc references in the
+    // neighbors to point to the copies.
+    // TODO: explore alternative: if some arcs are shared between transformed and
+    //   non-transformed shapes, first remove topology, then tranform, then rebuild topology
+    //
+    var rotateArg = opts.rotate || 0;
+    var scaleArg = opts.scale || 1;
+    var shiftArg = opts.shift ? convertIntervalPair(opts.shift, getDatasetCRS(dataset)) : [0, 0];
+    var arcs = dataset.arcs;
+    var targetShapes = [];
+    var otherShapes = [];
+    var targetPoints = [];
+    var targetPointLayers = [];
+    var targetFlags, otherFlags, transform;
+    dataset.layers.filter(layerHasGeometry$1).forEach(function(lyr) {
+      var hits = [],
+          misses = [],
+          test;
+      if (targetLayers.indexOf(lyr) == -1) {
+        misses = lyr.shapes;
+      } else if (opts.where) {
+        test = compileFeatureExpression(opts.where, lyr, dataset.arcs);
+        lyr.shapes.forEach(function(shp, i) {
+          (test(i) ? hits : misses).push(shp);
+        });
+      } else {
+        hits = lyr.shapes;
+      }
+      if (lyr.geometry_type == 'point') {
+        targetPoints = targetPoints.concat(hits);
+        if (hits.length > 0) targetPointLayers.push(lyr);
+      } else {
+        targetShapes = targetShapes.concat(hits);
+        otherShapes = otherShapes.concat(misses);
+      }
+    });
+    var anchorArg = getAffineAnchor({arcs: dataset.arcs, layers: [{
+      geometry_type: 'point', shapes: targetPoints}, {geometry_type: 'polyline',
+      shapes: targetShapes}]}, opts);
+    transform = getAffineTransform(rotateArg, scaleArg, shiftArg, anchorArg);
+    if (opts.fit_bbox) {
+      transform = getFitBoxTransform(opts.fit_bbox, targetPoints, targetShapes, arcs);
+    }
+    if (targetShapes.length > 0) {
+      targetFlags = new Uint8Array(arcs.size());
+      otherFlags = new Uint8Array(arcs.size());
+      countArcsInShapes(targetShapes, targetFlags);
+      if (otherShapes.length > 0) {
+        countArcsInShapes(otherShapes, otherFlags);
+        applyArrayMask(otherFlags, targetFlags);
+        noteDatasetWillChange(dataset, {operation: 'affine', unit: 'arcs'});
+        dataset.arcs = duplicateSelectedArcs(otherShapes, arcs, otherFlags);
+        markDatasetChanged(dataset, {operation: 'affine', unit: 'arcs'});
+      }
+      dataset.arcs.transformPoints(function(x, y, arcId) {
+        if (arcId < targetFlags.length && targetFlags[arcId] > 0) {
+          return transform(x, y);
+        }
+      });
+    }
+    targetPointLayers.forEach(function(lyr) {
+      noteLayerWillChange(lyr, {operation: 'affine', unit: 'shapes'});
+    });
+    forEachPoint(targetPoints, function(p) {
+      var p2 = transform(p[0], p[1]);
+      p[0] = p2[0];
+      p[1] = p2[1];
+    });
+    targetPointLayers.forEach(function(lyr) {
+      markLayerChanged(lyr, {operation: 'affine', unit: 'shapes'});
+    });
+  };
+
+  function getAffineAnchor(dataset, opts) {
+    var anchor, bounds;
+    if (opts.anchor) {
+      anchor = opts.anchor;
+    } else {
+      // get bounds of selected shapes to calculate center of rotation/scale
+      bounds = getDatasetBounds(dataset);
+      anchor = [bounds.centerX(), bounds.centerY()];
+    }
+    return anchor;
+  }
+
+  // TODO: handle problems with unprojected datasets
+  //   option 1: don't allow affine transformation of unprojected data
+  //   option 2: error if transformed data exceeds valid coordinate range
+  // source: http://mathworld.wolfram.com/AffineTransformation.html
+  function getAffineTransform(rotation, scale, shift, anchor) {
+    var angle = rotation * Math.PI / 180;
+    var a = scale * Math.cos(angle);
+    var b = -scale * Math.sin(angle);
+    return function(x, y) {
+      var x2 = a * (x - anchor[0]) - b * (y - anchor[1]) + shift[0] + anchor[0];
+      var y2 = b * (x - anchor[0]) + a * (y - anchor[1]) + shift[1] + anchor[1];
+      return [x2, y2];
+    };
+  }
+
+  function getFitBoxTransform(bbox, points, shapes, arcs) {
+    var dataset = {
+      arcs: arcs,
+      layers: []
+    };
+    if (points && points.length) {
+      dataset.layers.push({
+        geometry_type: 'point',
+        shapes: points
+      });
+    }
+    if (shapes && shapes.length) {
+      dataset.layers.push({
+        geometry_type: 'polyline',
+        shapes: shapes
+      });
+    }
+    var frame = calcFrameData(dataset, {fit_bbox: bbox});
+    var fromBounds = new Bounds(frame.bbox);
+    var toBounds = new Bounds(frame.bbox2);
+    var fwd = fromBounds.getTransform(toBounds, false);
+    return function(x, y) {
+      return fwd.transform(x, y);
+    };
+  }
+
+  function applyArrayMask(destArr, maskArr) {
+    for (var i=0, n=destArr.length; i<n; i++) {
+      if (maskArr[i] === 0) destArr[i] = 0;
+    }
+  }
+
+  function duplicateSelectedArcs(shapes, arcs, flags) {
+    var arcCount = 0;
+    var vertexCount = 0;
+    var data = arcs.getVertexData();
+    var xx = [], yy = [], nn = [], map = [], n;
+    for (var i=0, len=flags.length; i<len; i++) {
+      if (flags[i] > 0) {
+        map[i] = arcs.size() + arcCount;
+        n = data.nn[i];
+        utils.copyElements(data.xx, data.ii[i], xx, vertexCount, n);
+        utils.copyElements(data.yy, data.ii[i], yy, vertexCount, n);
+        nn.push(n);
+        vertexCount += n;
+        arcCount++;
+      }
+    }
+    forEachArcId(shapes, function(id) {
+      var absId = absArcId(id);
+      if (flags[absId] > 0) {
+        return id < 0 ? ~map[absId] : map[absId];
+      }
+    });
+    return mergeArcs([arcs, new ArcCollection(nn, xx, yy)]);
+  }
+
+  var roundCoord$1 = getRoundingFunction(0.01);
+
+  function getSymbolFillColor(d) {
+    return d.fill || 'magenta';
+  }
+
+  function getSymbolStrokeColor(d) {
+    return d.stroke || d.fill || 'magenta';
+  }
+
+  function applySymbolStyles(sym, d) {
+    if (sym.type == 'polyline') {
+      sym.stroke = getSymbolStrokeColor(d);
+    } else {
+      sym.fill = getSymbolFillColor(d);
+    }
+    if (d.opacity) {
+      sym.opacity = d.opacity;
+    }
+    return sym;
+  }
+
+  function getSymbolRadius(d) {
+    if (d.radius === 0 || d.length === 0 || d.r === 0) return 0;
+    return d.radius || d.length || d.r || 5; // use a default value
+  }
+
+  // Converts the value of a list-valued option into an array of items. The value
+  // arrives either as a whole string (from a direct call, rather than from the
+  // -symbols option accessor) or as an array of items already resolved one by
+  // one. An item that holds an array of its own, as an expression like
+  // [R, R * 0.5] does, is flattened into the list. Items themselves are left
+  // unsplit, because a single item can contain a comma, as rgba() colors do.
+  function toItemList(val) {
+    var items = utils.isString(val) ? splitListItems(val) : [].concat(val);
+    var list = [];
+    for (var i=0; i<items.length; i++) {
+      if (Array.isArray(items[i])) {
+        list = list.concat(items[i]);
+      } else {
+        list.push(items[i]);
+      }
+    }
+    return list;
+  }
+
+  // Like toItemList(), for options that take numbers. An item that is a string
+  // containing commas is split, so that a data field holding a value like "2,4"
+  // works as a list. Values that aren't numbers become NaN, for the caller to
+  // report or ignore.
+  function toNumberList(val) {
+    var list = [];
+    toItemList(val).forEach(function(item) {
+      if (utils.isString(item) && item.indexOf(',') > -1) {
+        list = list.concat(parseNumberList(item));
+      } else {
+        list.push(Number(item));
+      }
+    });
+    return list;
+  }
+
+  // Returns the radius of the smallest circle centered on a symbol's point that
+  // covers the symbol, or null if the symbol contains a part whose reach can't be
+  // measured.
+  //
+  // Only a symbol drawn around its point can be described this way: a circle, or
+  // a group of the circles and polygons that make up ring, pie and donut symbols.
+  // An arrow is drawn from its point outward, so the circle around its point that
+  // covers it says nothing useful about the space it occupies -- arrows are plain
+  // polygon symbols, which reach this function only as group parts, which they
+  // never are.
+  function getSymbolBoundingRadius(sym) {
+    var max = 0;
+    var parts, r, i;
+    if (!sym) return null;
+    if (sym.type == 'circle') {
+      // Half of a stroke lies outside the circle it follows, which is how a ring
+      // symbol paints its bands.
+      return getPositiveNumber(sym.r) + getStrokeOutset(sym);
+    }
+    if (sym.type == 'polygon') {
+      forEachSymbolCoord(sym.coordinates || [], function(p) {
+        var dist = Math.sqrt(p[0] * p[0] + p[1] * p[1]);
+        if (dist > max) max = dist;
+      });
+      return max + getStrokeOutset(sym);
+    }
+    if (sym.type == 'group') {
+      parts = sym.parts || [];
+      for (i=0; i<parts.length; i++) {
+        r = getSymbolBoundingRadius(parts[i]);
+        if (r === null) return null;
+        if (r > max) max = r;
+      }
+      return max;
+    }
+    return null;
+  }
+
+  // A stroke straddles the path it is drawn on, so half of its width extends
+  // beyond the shape.
+  function getStrokeOutset(sym) {
+    var width = sym['stroke-width'];
+    if (!sym.stroke || sym.stroke == 'none') return 0;
+    // an SVG stroke is one pixel wide unless stroke-width says otherwise
+    if (width === undefined || width === null || width === '') return 0.5;
+    return getPositiveNumber(width) / 2;
+  }
+
+  function getPositiveNumber(val) {
+    var num = +val;
+    return num > 0 ? num : 0;
+  }
+
+  function forEachSymbolCoord(coords, cb) {
+    var isPoint = coords && utils.isNumber(coords[0]);
+    var isNested = !isPoint && coords && Array.isArray(coords[0]);
+    if (isPoint) return cb(coords);
+    for (var i=0; i<coords.length; i++) {
+      if (isNested) forEachSymbolCoord(coords[i], cb);
+    }
+  }
+
+  function flipY(coords) {
+    forEachSymbolCoord(coords, function(p) {
+      p[1] = -p[1];
+    });
+  }
+
+  function scaleAndShiftCoords(coords, scale, shift) {
+    forEachSymbolCoord(coords, function(xy) {
+      xy[0] = xy[0] * scale + shift[0];
+      xy[1] = xy[1] * scale + shift[1];
+    });
+  }
+
+  function roundCoordsForSVG(coords) {
+    forEachSymbolCoord(coords, function(p) {
+      p[0] = roundCoord$1(p[0]);
+      p[1] = roundCoord$1(p[1]);
+    });
+  }
+
+  function rotateCoords(coords, rotation) {
+    if (!rotation) return;
+    var f = getAffineTransform(rotation, 1, [0, 0], [0, 0]);
+    forEachSymbolCoord(coords, function(p) {
+      var p2 = f(p[0], p[1]);
+      p[0] = p2[0];
+      p[1] = p2[1];
+    });
+  }
+
+  // The space that a point's symbol and label take up when drawn, for fitting a
+  // map frame around them.
+  //
+  // Boxes are [xmin, ymin, xmax, ymax] in px, relative to the point, with y down:
+  // the space symbols are drawn in (see renderPoint() in svg-symbols.mjs, which
+  // this follows). A box can leave out parts of what gets drawn -- anti-aliasing,
+  // miter joins, a curve bowing past its control points -- but not by more than a
+  // pixel or so.
+
+  // The box around what renderPoint() draws for @rec, or null if it draws nothing
+  // that can be sized.
+  // @cache: optional Map, for reusing the boxes of svg-symbol strings, which are
+  //   often the same for every feature in a layer
+  function getPointSymbolBox(rec, cache) {
+    var box = null;
+    if (!rec) return null;
+    if (featureHasSvgSymbol(rec)) {
+      box = getSymbolBox(rec, cache);
+    }
+    if (featureHasLabel(rec)) {
+      box = mergeBoxes(box, getLabelBox(rec));
+    }
+    return box;
+  }
+
+  // How far the text of a label drawn along a path can reach from the path, in
+  // px. The side the text sits on turns with the path, so it is allowed for on
+  // every side.
+  function getPathLabelPadding(rec) {
+    return getLabelFontSize(rec) + getHaloWidth(rec);
+  }
+
+  function getLabelBox(rec) {
+    var o = getLabelTextBox(rec, {estimate_width: true});
+    var pad = getHaloWidth(rec);
+    var box = [o.xmin - pad, o.ymin - pad, o.xmax + pad, o.ymax + pad];
+    var via = labelHasCallout(rec) ? parsePointPair(rec['callout-via'] || '') : null;
+    if (via) {
+      box = mergeBoxes(box, [via[0], via[1], via[0], via[1]]);
+    }
+    return box;
+  }
+
+  function getHaloWidth(rec) {
+    var w = +rec['halo-width'];
+    return w > 0 ? w : 0;
+  }
+
+  function getSymbolBox(d, cache) {
+    var sym = d['svg-symbol'];
+    if (sym) return getComplexSymbolBox(sym, cache);
+    if (featureHasIcon(d)) return getIconBox(d);
+    if (d.r > 0) return getSquareBox(+d.r + getStrokeOutset(d), 0, 0);
+    return null;
+  }
+
+  function getIconBox(d) {
+    var type = d.icon || 'circle';
+    var r = getIconRadius(d, type);
+    var sw;
+    if (!(r > 0)) return null;
+    if (type == 'ring') {
+      // drawn as a stroke, one px wide unless stroke-width says otherwise
+      sw = +d['stroke-width'];
+      return getSquareBox(r + (sw > 0 ? sw : 1) / 2, 0, 0);
+    }
+    if (type == 'circle' || type == 'square' || type == 'star') {
+      return getSquareBox(r + getStrokeOutset(d), 0, 0);
+    }
+    return null; // unsupported icons are not drawn
+  }
+
+  function getComplexSymbolBox(sym, cache) {
+    var box;
+    if (!utils.isString(sym)) return getSymbolPartBox(sym, 0, 0);
+    if (cache && cache.has(sym)) return cache.get(sym);
+    try {
+      box = getSymbolPartBox(JSON.parse(sym), 0, 0);
+    } catch(e) {
+      box = null;
+    }
+    if (cache) cache.set(sym, box);
+    return box;
+  }
+
+  // Follows the renderers in svg-symbols.mjs: @x, @y is where the part is drawn,
+  // which circles, squares, images, lines and labels are placed at and polygons
+  // and polylines ignore.
+  function getSymbolPartBox(sym, x, y) {
+    var type = sym && sym.type;
+    var w, h;
+    if (!sym || sym.tag) return null; // raw SVG can't be sized
+    if (type == 'circle' || type == 'square') {
+      return getSquareBox(getPositive(sym.r) + getStrokeOutset(sym), x, y);
+    }
+    if (type == 'image') {
+      w = sym.width || 20;
+      h = sym.height || 20;
+      return [x - w / 2, y - h / 2, x + w / 2, y + h / 2];
+    }
+    if (type == 'polygon') {
+      return padBox(getCoordsBox(sym.coordinates), getStrokeOutset(sym));
+    }
+    if (type == 'polyline') {
+      return padBox(getCoordsBox(sym.coordinates), getLineOutset(sym));
+    }
+    if (type == 'line') {
+      return padBox(getCoordsBox([[x, y], [x + (sym.dx || 0), y + (sym.dy || 0)]]),
+        getLineOutset(sym));
+    }
+    if (type == 'label') {
+      return shiftBox(getLabelBox(sym), x, y);
+    }
+    if (type == 'group') {
+      return getGroupBox(sym, x, y);
+    }
+    return null; // offset draws nothing, and unknown types are not drawn
+  }
+
+  // A line part moves the parts after it to its far end; an offset part moves
+  // them into a group translated by its offset.
+  function getGroupBox(sym, x, y) {
+    var box = null;
+    var ox = 0, oy = 0;
+    (sym.parts || []).forEach(function(part) {
+      box = mergeBoxes(box, shiftBox(getSymbolPartBox(part, x, y), ox, oy));
+      if (!part) return;
+      if (part.type == 'line') {
+        x += part.dx || 0;
+        y += part.dy || 0;
+      } else if (part.type == 'offset') {
+        ox += x + (part.dx || 0);
+        oy += y + (part.dy || 0);
+        x = y = 0;
+      }
+    });
+    return box;
+  }
+
+  // A stroked line is one px wide unless stroke-width says otherwise
+  function getLineOutset(sym) {
+    var sw = +sym['stroke-width'];
+    return (sw > 0 ? sw : 1) / 2;
+  }
+
+  function getCoordsBox(coords) {
+    var box = null;
+    forEachSymbolCoord(coords || [], function(p) {
+      if (!isFinite(p[0]) || !isFinite(p[1])) return;
+      box = mergeBoxes(box, [p[0], p[1], p[0], p[1]]);
+    });
+    return box;
+  }
+
+  function getSquareBox(r, x, y) {
+    return r > 0 ? [x - r, y - r, x + r, y + r] : null;
+  }
+
+  function padBox(box, pad) {
+    return box ? [box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad] : null;
+  }
+
+  function shiftBox(box, dx, dy) {
+    if (!box || !dx && !dy) return box;
+    return [box[0] + dx, box[1] + dy, box[2] + dx, box[3] + dy];
+  }
+
+  function mergeBoxes(a, b) {
+    if (!a) return b;
+    if (!b) return a;
+    return [Math.min(a[0], b[0]), Math.min(a[1], b[1]),
+      Math.max(a[2], b[2]), Math.max(a[3], b[3])];
+  }
+
+  function getPositive(val) {
+    var num = +val;
+    return num > 0 ? num : 0;
+  }
+
+  // Fitting a map frame to its content, including the symbols and labels drawn
+  // at points, which take up room that the point coordinates alone do not.
+  //
+  // Symbols are sized in output pixels, and how many map units a pixel covers is
+  // set by the frame being fitted, so the extent can't simply be padded. It is
+  // found by solving for the scale instead: the smallest scale s (map units per
+  // output pixel) at which the content -- points and their symbols, drawn at s --
+  // gets a frame whose own scale is no larger than s.
+  //
+  // Every point's box moves each side of the extent linearly with s, so the
+  // extent's width and height are convex, piecewise-linear functions of s, and so
+  // is the frame scale they produce. Newton's method converges on the smallest
+  // fixed point of such a function from below, without overshooting, in as many
+  // steps as there are pieces along the way -- usually two or three.
+
+  var MAX_ITERATIONS = 50;
+  var TOLERANCE = 1e-9;
+
+  // Returns the extent of @targets as a bbox array, padded to hold the symbols
+  // and labels at their points, or null if the targets have no extent.
+  //
+  // @targets   [{layer, dataset}]
+  // @getScale  function(bbox) -> map units per output px of a frame fitted to
+  //            @bbox; this is where the caller's offsets and page shape come in.
+  //            May return NaN for a bbox the frame can't be fitted to.
+  // @opts.ignore_symbols  fit to the coordinates alone
+  function getFrameContentBbox(targets, getScale, opts) {
+    var bounds = targets.reduce(function(memo, o) {
+      return memo.mergeBounds(getLayerBounds(o.layer, o.dataset.arcs));
+    }, new Bounds());
+    var raw, items, bbox;
+    if (!bounds.hasBounds()) return null;
+    raw = bounds.toArray();
+    if (opts && opts.ignore_symbols) return raw;
+    items = getSymbolExtents(targets);
+    if (items.length === 0) return raw;
+    bbox = fitBboxToSymbols(raw, items, getScale);
+    if (!bbox) {
+      warn('Symbols and labels are too large to fit in the frame; ' +
+        'fitting the frame to point locations only.');
+      return raw;
+    }
+    return bbox;
+  }
+
+  // The map units per output px of a frame with extent @bbox and nominal width
+  // @width. A frame with a fixed page shape is filled out to that shape when it is
+  // rendered (see fitDatasetToFrame()), so its scale is set by whichever of its
+  // width and height is the tighter fit.
+  function getFrameScale(bbox, width, fixedAspect) {
+    var w = bbox[2] - bbox[0];
+    var h = bbox[3] - bbox[1];
+    return fixedAspect > 0 ? Math.max(w, h * fixedAspect) / width : w / width;
+  }
+
+  // @raw     bbox of the content without symbols
+  // @items   flat array of [x, y, xmin, ymin, xmax, ymax, ...]: each point and the
+  //          box around it in px, oriented like the map (y up)
+  // Returns the padded bbox, or null if there is no scale at which the symbols
+  // fit -- when they add up to more than the width of the page.
+  function fitBboxToSymbols(raw, items, getScale) {
+    var s = getScale(raw);
+    var bbox, h, delta, slope, i;
+    for (i = 0; i < MAX_ITERATIONS; i++) {
+      if (!isValidScale(s)) return null;
+      bbox = expandBbox(raw, items, s);
+      h = getScale(bbox);
+      if (!isValidScale(h)) return null;
+      // Content with no extent of its own, like a single point, stops here with
+      // s = 0: nothing about it sets a scale.
+      if (h <= s * (1 + TOLERANCE)) return bbox;
+      if (!(s > 0)) return null;
+      delta = s * 1e-7;
+      slope = (getScale(expandBbox(raw, items, s + delta)) - h) / delta;
+      if (!(slope < 1)) return null;
+      s += (h - s) / (1 - slope);
+    }
+    return expandBbox(raw, items, s);
+  }
+
+  function isValidScale(s) {
+    return s >= 0 && s < Infinity;
+  }
+
+  function expandBbox(raw, items, s) {
+    var xmin = raw[0], ymin = raw[1], xmax = raw[2], ymax = raw[3];
+    var x, y, v;
+    for (var i = 0, n = items.length; i < n; i += 6) {
+      x = items[i];
+      y = items[i + 1];
+      v = x + items[i + 2] * s;
+      if (v < xmin) xmin = v;
+      v = y + items[i + 3] * s;
+      if (v < ymin) ymin = v;
+      v = x + items[i + 4] * s;
+      if (v > xmax) xmax = v;
+      v = y + items[i + 5] * s;
+      if (v > ymax) ymax = v;
+    }
+    return [xmin, ymin, xmax, ymax];
+  }
+
+  // Boxes come from the renderer's space, where y is down, and are flipped here
+  // to the map's.
+  function getSymbolExtents(targets) {
+    var items = [];
+    var cache = new Map();
+    targets.forEach(function(o) {
+      var lyr = o.layer;
+      var records;
+      if (lyr.geometry_type != 'point' || !lyr.shapes || !lyr.data) return;
+      records = lyr.data.getRecords();
+      lyr.shapes.forEach(function(shp, i) {
+        var rec = records[i];
+        var box, pad;
+        if (!shp || !rec) return;
+        if (shp.length > 1 && featureHasLabel(rec)) {
+          // a multipoint label is drawn along a path through its points,
+          // with no symbol (see featureIsPathLabel())
+          pad = getPathLabelPadding(rec);
+          box = [-pad, -pad, pad, pad];
+        } else {
+          box = getPointSymbolBox(rec, cache);
+        }
+        if (!box) return;
+        for (var j = 0; j < shp.length; j++) {
+          if (!shp[j] || !isFinite(shp[j][0]) || !isFinite(shp[j][1])) continue;
+          items.push(shp[j][0], shp[j][1], box[0], -box[3], box[2], -box[1]);
+        }
+      });
+    });
+    return items;
+  }
+
   cmd.frame = function(catalog, targets, opts) {
-    var widthPx, heightPx, aspectRatio, bbox;
+    var widthPx, heightPx, bbox;
     var existingFrame = getActiveFrame(catalog);
     if (opts.width) {
       widthPx = parseFrameSize(opts.width).valuePx;
@@ -51630,30 +52305,24 @@ ${svg}
     } else {
       var datasets = utils.pluck(targets, 'dataset');
       requireDatasetsHaveCompatibleCRS(datasets, 'Targets include both projected and unprojected coordinates');
-      bbox = getTargetBbox(targets);
+      bbox = getFrameContentBbox(expandCommandTargets(targets), function(contentBbox) {
+        var extent = getFrameExtent(contentBbox, widthPx, heightPx, opts);
+        return getFrameScale(extent.bbox, extent.width, getFixedAspect$1(extent, opts));
+      }, opts);
       if (!bbox) {
         stop$1('Command target is missing geographical bounds');
       }
     }
 
-    applyPercentageOffsets(bbox, opts.offset || opts.offsets);
-    applyPixelOffsets(bbox, widthPx, heightPx, opts.offset || opts.offsets);
-
-    if (bbox[3] - bbox[1] > 0 === false || bbox[2] - bbox[0] > 0 === false) {
+    var extent = getFrameExtent(bbox, widthPx, heightPx, opts);
+    if (!extent.valid) {
       stop$1('Frame has a collapsed bbox');
-    }
-
-    aspectRatio = (bbox[2] - bbox[0]) / (bbox[3] - bbox[1]);
-    if (!widthPx) {
-      widthPx = roundToDigits(heightPx * aspectRatio, 1);
-    } else if (!heightPx) {
-      heightPx = roundToDigits(widthPx / aspectRatio, 1);
     }
 
     var feature = {
       type: 'Feature',
-      properties: getFrameProperties(widthPx, heightPx, opts),
-      geometry: bboxToPolygon(bbox)
+      properties: getFrameProperties(extent.width, extent.height, opts),
+      geometry: bboxToPolygon(extent.bbox)
     };
     var frameDataset = importGeoJSON(feature);
     // set CRS from target dataset
@@ -51672,6 +52341,34 @@ ${svg}
     }
     catalog.addDataset(frameDataset);
   };
+
+  // The frame's extent and nominal size, from the extent of its content and the
+  // size options. Pure, so that fitting to symbols can ask what scale an extent
+  // would give the frame.
+  function getFrameExtent(contentBbox, widthPx, heightPx, opts) {
+    var offsets = opts.offset || opts.offsets;
+    var bbox = contentBbox.slice();
+    var aspectRatio;
+    applyPercentageOffsets(bbox, offsets);
+    applyPixelOffsets(bbox, widthPx, heightPx, offsets);
+    aspectRatio = (bbox[2] - bbox[0]) / (bbox[3] - bbox[1]);
+    if (!widthPx) {
+      widthPx = roundToDigits(heightPx * aspectRatio, 1);
+    } else if (!heightPx) {
+      heightPx = roundToDigits(widthPx / aspectRatio, 1);
+    }
+    return {
+      bbox: bbox,
+      width: widthPx,
+      height: heightPx,
+      valid: bbox[3] - bbox[1] > 0 && bbox[2] - bbox[0] > 0
+    };
+  }
+
+  function getFixedAspect$1(extent, opts) {
+    return opts.aspect_ratio > 0 || opts.width && opts.height ?
+      extent.width / extent.height : null;
+  }
 
   function getFrameProperties(width, height, opts) {
     var properties = {
@@ -51766,14 +52463,6 @@ ${svg}
       stop$1('List of offsets should have 4 values');
     }
     return arg;
-  }
-
-  function getTargetBbox(targets) {
-    var expanded = expandCommandTargets(targets);
-    var bounds = expanded.reduce(function(memo, o) {
-      return memo.mergeBounds(getLayerBounds(o.layer, o.dataset.arcs));
-    }, new Bounds());
-    return bounds.hasBounds() ? bounds.toArray() : null;
   }
 
   // Convert width and height args to aspect ratio arg for the rectangle() function
@@ -51920,7 +52609,8 @@ ${svg}
 
   var OPERATION$1 = 'update-frame';
 
-  function updateFrame(targetLayers, dataset, opts) {
+  // @fitTargets: [{layer, dataset}] named by the fit= option
+  function updateFrame(targetLayers, dataset, opts, fitTargets) {
     if (!targetLayers || targetLayers.length != 1) {
       stop$1('-update-frame expects a single target layer');
     }
@@ -51944,15 +52634,14 @@ ${svg}
     if (opts.fix_scale && (opts.width !== undefined || opts.height !== undefined)) {
       stop$1('fix-scale cannot be combined with width= or height=');
     }
+    if (opts.bbox !== undefined && opts.fit !== undefined) {
+      stop$1('bbox= and fit= are mutually exclusive');
+    }
 
     var rec = lyr.data.getRecords()[0];
     var frame = getFrameLayerData(lyr, dataset.arcs);
-    var bbox = (opts.bbox || frame.bbox).slice();
-    var offsetArg = opts.offset || opts.offsets;
     var fixedAspect = getFixedAspect(rec);
-    var width = frame.width;
-    var units = rec.frame_units || 'px';
-    var widthSize, heightSize, height, effectiveAspect;
+    var sizes, contentBbox, update;
 
     // 1. Aspect mode, resolved first because whether the page shape is fixed
     // decides whether it may constrain the extent while offsets are applied.
@@ -51964,8 +52653,87 @@ ${svg}
       }
       fixedAspect = opts.aspect_ratio;
     }
+    sizes = parseSizeOptions(opts);
 
-    // 2. Extent
+    // 2. Extent, which fit= finds by trying extents out on steps 3 and 4
+    if (opts.fit !== undefined) {
+      contentBbox = getFrameContentBbox(getFitTargets(fitTargets, dataset), function(bbox) {
+        var o = resolveFrameUpdate(bbox, frame, fixedAspect, sizes, opts);
+        return getFrameScale(o.bbox, o.width, o.fixedAspect);
+      }, opts);
+      if (!contentBbox) {
+        stop$1('Layers to fit are missing geographical bounds');
+      }
+    } else {
+      contentBbox = opts.bbox || frame.bbox;
+    }
+
+    update = resolveFrameUpdate(contentBbox, frame, fixedAspect, sizes, opts);
+    if (!update.valid) {
+      stop$1('Frame has a collapsed bbox');
+    }
+    if (opts.fix_scale) {
+      requirePositiveSize(update.width, 'fix-scale', update.width);
+    }
+
+    noteLayerWillChange(lyr, {operation: OPERATION$1, unit: 'shapes'});
+    lyr.data.captureTableBefore({operation: OPERATION$1});
+    rec.width = update.width;
+    rec.height = update.height;
+    rec.frame_units = update.units;
+    if (update.fixedAspect) {
+      rec.frame_aspect_ratio = update.fixedAspect;
+    } else {
+      delete rec.frame_aspect_ratio;
+    }
+    lyr.data.markChanged({operation: OPERATION$1});
+    rebuildFrameLayerGeometry(lyr, dataset, new Bounds(update.bbox));
+    markLayerChanged(lyr, {operation: OPERATION$1, unit: 'shapes'});
+  }
+
+  // The frame's layers are not content to fit, and a frame is only fitted to
+  // layers it shares coordinates with.
+  function getFitTargets(fitTargets, frameDataset) {
+    var targets = (fitTargets || []).filter(function(o) {
+      return !isFrameLayer(o.layer, o.dataset.arcs);
+    });
+    if (targets.length === 0) {
+      stop$1('fit= found no layers to fit the frame to');
+    }
+    requireDatasetsHaveCompatibleCRS(
+      utils.uniq(targets.map(function(o) { return o.dataset; }).concat(frameDataset)),
+      'Layers to fit and the frame have incompatible coordinates'
+    );
+    return targets;
+  }
+
+  function parseSizeOptions(opts) {
+    var sizes = {width: null, height: null};
+    if (opts.width !== undefined) {
+      sizes.width = parseFrameSize(opts.width);
+      requirePositiveSize(sizes.width.valuePx, 'width', opts.width);
+    }
+    if (opts.height !== undefined) {
+      sizes.height = parseFrameSize(opts.height);
+      requirePositiveSize(sizes.height.valuePx, 'height', opts.height);
+    }
+    if (sizes.width && sizes.height && opts.aspect_ratio !== undefined &&
+        ratiosDiffer(sizes.width.valuePx / sizes.height.valuePx, opts.aspect_ratio)) {
+      stop$1('Contradictory width, height and aspect-ratio values');
+    }
+    return sizes;
+  }
+
+  // Steps 3 and 4 as a pure function of the content extent, so that fit= can
+  // ask what scale an extent would give the frame.
+  function resolveFrameUpdate(contentBbox, frame, fixedAspect, sizes, opts) {
+    var bbox = contentBbox.slice();
+    var offsetArg = opts.offset || opts.offsets;
+    var width = frame.width;
+    var units = frame.units || 'px';
+    var valid, effectiveAspect;
+
+    // 3. Padding
     if (offsetArg) {
       applyPercentageOffsets(bbox, offsetArg);
       // Pass a page height only when the shape is fixed. A derived height
@@ -51974,65 +52742,44 @@ ${svg}
       applyPixelOffsets(bbox, frame.width,
         fixedAspect ? frame.width / fixedAspect : null, offsetArg);
     }
-    requireValidBbox(bbox);
+    valid = isValidBbox(bbox);
     if (fixedAspect) {
       fillOutBbox(bbox, fixedAspect, 1);
     }
 
-    // 3. Nominal size
-    if (opts.width !== undefined) {
-      widthSize = parseFrameSize(opts.width);
-      requirePositiveSize(widthSize.valuePx, 'width', opts.width);
-    }
-    if (opts.height !== undefined) {
-      heightSize = parseFrameSize(opts.height);
-      requirePositiveSize(heightSize.valuePx, 'height', opts.height);
-    }
-    if (widthSize && heightSize) {
-      effectiveAspect = widthSize.valuePx / heightSize.valuePx;
-      if (opts.aspect_ratio !== undefined &&
-          ratiosDiffer(effectiveAspect, opts.aspect_ratio)) {
-        stop$1('Contradictory width, height and aspect-ratio values');
-      }
-      width = widthSize.valuePx;
-      units = widthSize.units;
-      fixedAspect = effectiveAspect;
+    // 4. Nominal size
+    if (sizes.width && sizes.height) {
+      width = sizes.width.valuePx;
+      units = sizes.width.units;
+      fixedAspect = sizes.width.valuePx / sizes.height.valuePx;
       fillOutBbox(bbox, fixedAspect, 1);
-    } else if (widthSize) {
-      width = widthSize.valuePx;
-      units = widthSize.units;
-    } else if (heightSize) {
+    } else if (sizes.width) {
+      width = sizes.width.valuePx;
+      units = sizes.width.units;
+    } else if (sizes.height) {
       effectiveAspect = fixedAspect || getBboxAspect(bbox);
-      width = heightSize.valuePx * effectiveAspect;
-      units = heightSize.units;
+      width = sizes.height.valuePx * effectiveAspect;
+      units = sizes.height.units;
     } else if (opts.fix_scale) {
       // Hold ground units per output pixel, so the page grows and shrinks with
       // the extent instead of the scale changing to fit the extent on it.
       width = frame.width * getBboxWidth(bbox) / getBboxWidth(frame.bbox);
-      requirePositiveSize(width, 'fix-scale', width);
     }
 
-    requireValidBbox(bbox);
     effectiveAspect = fixedAspect || getBboxAspect(bbox);
-    height = Math.round(width / effectiveAspect);
-
-    noteLayerWillChange(lyr, {operation: OPERATION$1, unit: 'shapes'});
-    lyr.data.captureTableBefore({operation: OPERATION$1});
-    rec.width = width;
-    rec.height = height;
-    rec.frame_units = units;
-    if (fixedAspect) {
-      rec.frame_aspect_ratio = fixedAspect;
-    } else {
-      delete rec.frame_aspect_ratio;
-    }
-    lyr.data.markChanged({operation: OPERATION$1});
-    rebuildFrameLayerGeometry(lyr, dataset, new Bounds(bbox));
-    markLayerChanged(lyr, {operation: OPERATION$1, unit: 'shapes'});
+    return {
+      bbox: bbox,
+      width: width,
+      height: Math.round(width / effectiveAspect),
+      units: units,
+      fixedAspect: fixedAspect,
+      valid: valid && isValidBbox(bbox)
+    };
   }
 
   function hasUpdateOptions(opts) {
     return opts.bbox !== undefined ||
+      opts.fit !== undefined ||
       opts.width !== undefined ||
       opts.height !== undefined ||
       opts.aspect_ratio !== undefined ||
@@ -52055,12 +52802,10 @@ ${svg}
     return (bbox[2] - bbox[0]) / (bbox[3] - bbox[1]);
   }
 
-  function requireValidBbox(bbox) {
-    if (!bbox.every(utils.isFiniteNumber) ||
-        bbox[2] - bbox[0] <= 0 ||
-        bbox[3] - bbox[1] <= 0) {
-      stop$1('Frame has a collapsed bbox');
-    }
+  function isValidBbox(bbox) {
+    return bbox.every(utils.isFiniteNumber) &&
+      bbox[2] - bbox[0] > 0 &&
+      bbox[3] - bbox[1] > 0;
   }
 
   function requirePositiveSize(value, name, arg) {
@@ -52288,168 +53033,6 @@ ${svg}
     }
 
     stop$1('Unable to import coordinates');
-  }
-
-  // Apply rotation, scale and/or shift to some or all of the features in a dataset
-  //
-  cmd.affine = function(targetLayers, dataset, opts) {
-    // Need to separate the targeted shapes from any other shapes that share
-    // the same topology. So we duplicate any arcs that are shared by the targeted
-    // shapes and their topological neighbors and remap arc references in the
-    // neighbors to point to the copies.
-    // TODO: explore alternative: if some arcs are shared between transformed and
-    //   non-transformed shapes, first remove topology, then tranform, then rebuild topology
-    //
-    var rotateArg = opts.rotate || 0;
-    var scaleArg = opts.scale || 1;
-    var shiftArg = opts.shift ? convertIntervalPair(opts.shift, getDatasetCRS(dataset)) : [0, 0];
-    var arcs = dataset.arcs;
-    var targetShapes = [];
-    var otherShapes = [];
-    var targetPoints = [];
-    var targetPointLayers = [];
-    var targetFlags, otherFlags, transform;
-    dataset.layers.filter(layerHasGeometry$1).forEach(function(lyr) {
-      var hits = [],
-          misses = [],
-          test;
-      if (targetLayers.indexOf(lyr) == -1) {
-        misses = lyr.shapes;
-      } else if (opts.where) {
-        test = compileFeatureExpression(opts.where, lyr, dataset.arcs);
-        lyr.shapes.forEach(function(shp, i) {
-          (test(i) ? hits : misses).push(shp);
-        });
-      } else {
-        hits = lyr.shapes;
-      }
-      if (lyr.geometry_type == 'point') {
-        targetPoints = targetPoints.concat(hits);
-        if (hits.length > 0) targetPointLayers.push(lyr);
-      } else {
-        targetShapes = targetShapes.concat(hits);
-        otherShapes = otherShapes.concat(misses);
-      }
-    });
-    var anchorArg = getAffineAnchor({arcs: dataset.arcs, layers: [{
-      geometry_type: 'point', shapes: targetPoints}, {geometry_type: 'polyline',
-      shapes: targetShapes}]}, opts);
-    transform = getAffineTransform(rotateArg, scaleArg, shiftArg, anchorArg);
-    if (opts.fit_bbox) {
-      transform = getFitBoxTransform(opts.fit_bbox, targetPoints, targetShapes, arcs);
-    }
-    if (targetShapes.length > 0) {
-      targetFlags = new Uint8Array(arcs.size());
-      otherFlags = new Uint8Array(arcs.size());
-      countArcsInShapes(targetShapes, targetFlags);
-      if (otherShapes.length > 0) {
-        countArcsInShapes(otherShapes, otherFlags);
-        applyArrayMask(otherFlags, targetFlags);
-        noteDatasetWillChange(dataset, {operation: 'affine', unit: 'arcs'});
-        dataset.arcs = duplicateSelectedArcs(otherShapes, arcs, otherFlags);
-        markDatasetChanged(dataset, {operation: 'affine', unit: 'arcs'});
-      }
-      dataset.arcs.transformPoints(function(x, y, arcId) {
-        if (arcId < targetFlags.length && targetFlags[arcId] > 0) {
-          return transform(x, y);
-        }
-      });
-    }
-    targetPointLayers.forEach(function(lyr) {
-      noteLayerWillChange(lyr, {operation: 'affine', unit: 'shapes'});
-    });
-    forEachPoint(targetPoints, function(p) {
-      var p2 = transform(p[0], p[1]);
-      p[0] = p2[0];
-      p[1] = p2[1];
-    });
-    targetPointLayers.forEach(function(lyr) {
-      markLayerChanged(lyr, {operation: 'affine', unit: 'shapes'});
-    });
-  };
-
-  function getAffineAnchor(dataset, opts) {
-    var anchor, bounds;
-    if (opts.anchor) {
-      anchor = opts.anchor;
-    } else {
-      // get bounds of selected shapes to calculate center of rotation/scale
-      bounds = getDatasetBounds(dataset);
-      anchor = [bounds.centerX(), bounds.centerY()];
-    }
-    return anchor;
-  }
-
-  // TODO: handle problems with unprojected datasets
-  //   option 1: don't allow affine transformation of unprojected data
-  //   option 2: error if transformed data exceeds valid coordinate range
-  // source: http://mathworld.wolfram.com/AffineTransformation.html
-  function getAffineTransform(rotation, scale, shift, anchor) {
-    var angle = rotation * Math.PI / 180;
-    var a = scale * Math.cos(angle);
-    var b = -scale * Math.sin(angle);
-    return function(x, y) {
-      var x2 = a * (x - anchor[0]) - b * (y - anchor[1]) + shift[0] + anchor[0];
-      var y2 = b * (x - anchor[0]) + a * (y - anchor[1]) + shift[1] + anchor[1];
-      return [x2, y2];
-    };
-  }
-
-  function getFitBoxTransform(bbox, points, shapes, arcs) {
-    var dataset = {
-      arcs: arcs,
-      layers: []
-    };
-    if (points && points.length) {
-      dataset.layers.push({
-        geometry_type: 'point',
-        shapes: points
-      });
-    }
-    if (shapes && shapes.length) {
-      dataset.layers.push({
-        geometry_type: 'polyline',
-        shapes: shapes
-      });
-    }
-    var frame = calcFrameData(dataset, {fit_bbox: bbox});
-    var fromBounds = new Bounds(frame.bbox);
-    var toBounds = new Bounds(frame.bbox2);
-    var fwd = fromBounds.getTransform(toBounds, false);
-    return function(x, y) {
-      return fwd.transform(x, y);
-    };
-  }
-
-  function applyArrayMask(destArr, maskArr) {
-    for (var i=0, n=destArr.length; i<n; i++) {
-      if (maskArr[i] === 0) destArr[i] = 0;
-    }
-  }
-
-  function duplicateSelectedArcs(shapes, arcs, flags) {
-    var arcCount = 0;
-    var vertexCount = 0;
-    var data = arcs.getVertexData();
-    var xx = [], yy = [], nn = [], map = [], n;
-    for (var i=0, len=flags.length; i<len; i++) {
-      if (flags[i] > 0) {
-        map[i] = arcs.size() + arcCount;
-        n = data.nn[i];
-        utils.copyElements(data.xx, data.ii[i], xx, vertexCount, n);
-        utils.copyElements(data.yy, data.ii[i], yy, vertexCount, n);
-        nn.push(n);
-        vertexCount += n;
-        arcCount++;
-      }
-    }
-    forEachArcId(shapes, function(id) {
-      var absId = absArcId(id);
-      if (flags[absId] > 0) {
-        return id < 0 ? ~map[absId] : map[absId];
-      }
-    });
-    return mergeArcs([arcs, new ArcCollection(nn, xx, yy)]);
   }
 
   const epsilon = 1.1102230246251565e-16;
@@ -75994,7 +76577,7 @@ ${svg}
 
     function createMeridianPart(x, ymin, ymax) {
       var coords = densifyPathByInterval([[x, ymin], [x, ymax]], precision);
-      meridians.push(graticuleFeature(coords, {type: 'meridian', value: roundCoord$1(x)}));
+      meridians.push(graticuleFeature(coords, {type: 'meridian', value: roundCoord(x)}));
     }
 
     function createParallel(y) {
@@ -76028,7 +76611,7 @@ ${svg}
   }
 
   // remove tiny offsets
-  function roundCoord$1(x) {
+  function roundCoord(x) {
     return +x.toFixed(3) || 0;
   }
 
@@ -79066,160 +79649,6 @@ ${svg}
         node.insideY = node.y;
       }
     };
-  }
-
-  var roundCoord = getRoundingFunction(0.01);
-
-  function getSymbolFillColor(d) {
-    return d.fill || 'magenta';
-  }
-
-  function getSymbolStrokeColor(d) {
-    return d.stroke || d.fill || 'magenta';
-  }
-
-  function applySymbolStyles(sym, d) {
-    if (sym.type == 'polyline') {
-      sym.stroke = getSymbolStrokeColor(d);
-    } else {
-      sym.fill = getSymbolFillColor(d);
-    }
-    if (d.opacity) {
-      sym.opacity = d.opacity;
-    }
-    return sym;
-  }
-
-  function getSymbolRadius(d) {
-    if (d.radius === 0 || d.length === 0 || d.r === 0) return 0;
-    return d.radius || d.length || d.r || 5; // use a default value
-  }
-
-  // Converts the value of a list-valued option into an array of items. The value
-  // arrives either as a whole string (from a direct call, rather than from the
-  // -symbols option accessor) or as an array of items already resolved one by
-  // one. An item that holds an array of its own, as an expression like
-  // [R, R * 0.5] does, is flattened into the list. Items themselves are left
-  // unsplit, because a single item can contain a comma, as rgba() colors do.
-  function toItemList(val) {
-    var items = utils.isString(val) ? splitListItems(val) : [].concat(val);
-    var list = [];
-    for (var i=0; i<items.length; i++) {
-      if (Array.isArray(items[i])) {
-        list = list.concat(items[i]);
-      } else {
-        list.push(items[i]);
-      }
-    }
-    return list;
-  }
-
-  // Like toItemList(), for options that take numbers. An item that is a string
-  // containing commas is split, so that a data field holding a value like "2,4"
-  // works as a list. Values that aren't numbers become NaN, for the caller to
-  // report or ignore.
-  function toNumberList(val) {
-    var list = [];
-    toItemList(val).forEach(function(item) {
-      if (utils.isString(item) && item.indexOf(',') > -1) {
-        list = list.concat(parseNumberList(item));
-      } else {
-        list.push(Number(item));
-      }
-    });
-    return list;
-  }
-
-  // Returns the radius of the smallest circle centered on a symbol's point that
-  // covers the symbol, or null if the symbol contains a part whose reach can't be
-  // measured.
-  //
-  // Only a symbol drawn around its point can be described this way: a circle, or
-  // a group of the circles and polygons that make up ring, pie and donut symbols.
-  // An arrow is drawn from its point outward, so the circle around its point that
-  // covers it says nothing useful about the space it occupies -- arrows are plain
-  // polygon symbols, which reach this function only as group parts, which they
-  // never are.
-  function getSymbolBoundingRadius(sym) {
-    var max = 0;
-    var parts, r, i;
-    if (!sym) return null;
-    if (sym.type == 'circle') {
-      // Half of a stroke lies outside the circle it follows, which is how a ring
-      // symbol paints its bands.
-      return getPositiveNumber(sym.r) + getStrokeOutset(sym);
-    }
-    if (sym.type == 'polygon') {
-      forEachSymbolCoord(sym.coordinates || [], function(p) {
-        var dist = Math.sqrt(p[0] * p[0] + p[1] * p[1]);
-        if (dist > max) max = dist;
-      });
-      return max + getStrokeOutset(sym);
-    }
-    if (sym.type == 'group') {
-      parts = sym.parts || [];
-      for (i=0; i<parts.length; i++) {
-        r = getSymbolBoundingRadius(parts[i]);
-        if (r === null) return null;
-        if (r > max) max = r;
-      }
-      return max;
-    }
-    return null;
-  }
-
-  // A stroke straddles the path it is drawn on, so half of its width extends
-  // beyond the shape.
-  function getStrokeOutset(sym) {
-    var width = sym['stroke-width'];
-    if (!sym.stroke || sym.stroke == 'none') return 0;
-    // an SVG stroke is one pixel wide unless stroke-width says otherwise
-    if (width === undefined || width === null || width === '') return 0.5;
-    return getPositiveNumber(width) / 2;
-  }
-
-  function getPositiveNumber(val) {
-    var num = +val;
-    return num > 0 ? num : 0;
-  }
-
-  function forEachSymbolCoord(coords, cb) {
-    var isPoint = coords && utils.isNumber(coords[0]);
-    var isNested = !isPoint && coords && Array.isArray(coords[0]);
-    if (isPoint) return cb(coords);
-    for (var i=0; i<coords.length; i++) {
-      if (isNested) forEachSymbolCoord(coords[i], cb);
-    }
-  }
-
-  function flipY(coords) {
-    forEachSymbolCoord(coords, function(p) {
-      p[1] = -p[1];
-    });
-  }
-
-  function scaleAndShiftCoords(coords, scale, shift) {
-    forEachSymbolCoord(coords, function(xy) {
-      xy[0] = xy[0] * scale + shift[0];
-      xy[1] = xy[1] * scale + shift[1];
-    });
-  }
-
-  function roundCoordsForSVG(coords) {
-    forEachSymbolCoord(coords, function(p) {
-      p[0] = roundCoord(p[0]);
-      p[1] = roundCoord(p[1]);
-    });
-  }
-
-  function rotateCoords(coords, rotation) {
-    if (!rotation) return;
-    var f = getAffineTransform(rotation, 1, [0, 0], [0, 0]);
-    forEachSymbolCoord(coords, function(p) {
-      var p2 = f(p[0], p[1]);
-      p[0] = p2[0];
-      p[1] = p2[1];
-    });
   }
 
   // Collision reduction for circular symbols, in the spirit of d3-force's
@@ -83115,7 +83544,8 @@ ${svg}
         job.catalog.addDataset(cmd.addLayer(targetDataset, opts));
 
       } else if (name == 'update-frame') {
-        cmd.updateFrame(targetLayers, targetDataset, opts);
+        cmd.updateFrame(targetLayers, targetDataset, opts,
+          opts.fit ? expandCommandTargets(job.catalog.findCommandTargets(opts.fit)) : null);
 
       } else if (name == 'update-label') {
         cmd.updateLabel(targetLayers, targetDataset, opts);
@@ -83681,7 +84111,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.67";
+  var version = "0.7.68";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

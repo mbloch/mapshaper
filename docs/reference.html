@@ -694,14 +694,15 @@ mapshaper states.shp -filter-fields FID,NAME -o out.shp
 <p><code>remove-empty</code> Delete features with null geometry.</p>
 <p><a href="#common-options"><code>target=</code></a></p>
 </section>
-<section class="cmd-section" data-id="-frame" data-name="-frame" data-options="bbox width height aspect-ratio offset offsets name target"><h3 id="-frame">-frame</h3>
-<p>Create a rectangular frame layer at a given display width. Frame size is used for scaling symbols and for setting the display size of SVG output. The geographical extent of the frame is based on the <code>bbox=</code> option or the bounding box of the target layer or layers, if <code>bbox=</code> is omitted.</p>
+<section class="cmd-section" data-id="-frame" data-name="-frame" data-options="bbox width height aspect-ratio offset offsets ignore-symbols name target"><h3 id="-frame">-frame</h3>
+<p>Create a rectangular frame layer at a given display width. Frame size is used for scaling symbols and for setting the display size of SVG output. The geographical extent of the frame is based on the <code>bbox=</code> option or the bounding box of the target layer or layers, if <code>bbox=</code> is omitted. When fitting to target layers, the extent includes room for the point symbols and labels in those layers, as drawn at the frame&#39;s display size.</p>
 <p><code>width=</code>  Width of frame (e.g. 5in, 10cm, 600px; default is 800px)</p>
 <p><code>height=</code>  Height of frame (in addition to or instead of width= option)</p>
 <p><code>aspect-ratio=</code>  Aspect ratio of frame (optional)</p>
 <p><code>bbox=</code> Bounding coordinates of frame contents in projected map coordinates (xmin,ymin,xmax,ymax). If omitted, the bounding box of the target layer(s) is used.</p>
 <p><code>offset=</code> Padding around the frame&#39;s <code>bbox</code> in display units or pct of width/height, e.g. 5cm 20px 5%</p>
 <p><code>offsets=</code>  Comma-sep. list of offsets for each side of the map frame, in l,b,r,t order</p>
+<p><code>ignore-symbols</code>  Fit the frame to the locations of points in the target layers, without making room for their symbols and labels</p>
 <p>Other options: <code>name=</code> <code>target=</code></p>
 </section>
 <section class="cmd-section" data-id="-graticule" data-name="-graticule" data-options="polygon outline interval base"><h3 id="-graticule">-graticule</h3>
