@@ -1093,6 +1093,7 @@ body.sidebar-open .sidebar-panels {
 	line-height: 1;
 	cursor: pointer;
 	user-select: none;
+	color: black;
 }
 
 

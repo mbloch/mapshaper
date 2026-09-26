@@ -16,7 +16,7 @@ export function InteractionMode(gui) {
   // labelModeIsAvailable().
   var menus = {
     standard: ['info', 'selection', 'box', 'ruler'],
-    empty: ['edit_polygons', 'edit_lines', 'edit_points', 'box', 'ruler'],
+    empty: [ 'label','edit_points', 'edit_lines',  'edit_polygons','box', 'ruler'],
     polygons: ['info', 'selection', 'polygon_style', 'edit_polygons', 'box', 'ruler'],
     rectangles: ['info', 'selection', 'polygon_style', 'edit_polygons', 'rectangles', 'box', 'ruler'],
     lines: ['info', 'selection', 'line_style', 'edit_lines', 'snip_lines', 'box', 'ruler'],
