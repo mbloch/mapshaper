@@ -2,7 +2,8 @@ import { getCurveSegments, getCurveLength } from '../curves/mapshaper-curve-fit'
 import { stringifyLineStringCoords } from './svg-path-utils';
 import { applyStyleAttributes } from './svg-properties';
 import { getLabelFitState } from './svg-label-fit';
-import { labelNewlineRxp, toLabelString, removeSoftBreaks } from './svg-labels';
+import { labelNewlineRxp, toLabelString, removeSoftBreaks, splitLabelLineRuns } from './svg-labels';
+import { applyRunsToSvgObject } from './svg-label-markup';
 import { featureHasLabel, featureIsLabel } from './svg-feature-utils';
 import { applyLabelHalo } from './svg-label-halo';
 import { message, warn } from '../utils/mapshaper-logging';
@@ -103,16 +104,14 @@ export function renderPathLabel(rec, knots, opts) {
     // a <tspan> inside a <textPath> advances along the path instead of
     // stacking below it, so the lines are joined rather than dropping
     // everything after the first one
-    text = text.split(labelNewlineRxp).join(' ');
     addToReport(report, 'joined', id);
   }
-  textPath = {
+  textPath = applyRunsToSvgObject({
     tag: 'textPath',
-    value: text,
     properties: {
       startOffset: rec['label-start-offset'] || getDefaultStartOffset(rec)
     }
-  };
+  }, joinLineRuns(splitLabelLineRuns(text)));
   // the caller replaces this with a reference to a <defs> entry
   textPath.properties[LABEL_PATH_PROPERTY] = d;
   if (rec['label-side']) {
@@ -174,6 +173,28 @@ function getDefaultStartOffset(rec) {
   if (anchor == 'start') return '0%';
   if (anchor == 'end') return '100%';
   return '50%';
+}
+
+// A path label's lines as one line of runs, with a space for each break. The
+// space takes the weight of the text before it, and runs of one weight that
+// the join brings together are merged, so that text with no bold in it is a
+// single run.
+function joinLineRuns(lines) {
+  var out = [];
+  lines.forEach(function(runs, i) {
+    if (i > 0) appendRun(out, {text: ' ', bold: out.length > 0 && out[out.length - 1].bold});
+    runs.forEach(function(run) { appendRun(out, run); });
+  });
+  return out;
+}
+
+function appendRun(runs, run) {
+  var last = runs[runs.length - 1];
+  if (last && last.bold == run.bold) {
+    last.text += run.text;
+  } else {
+    runs.push({text: run.text, bold: run.bold});
+  }
 }
 
 function addToReport(report, key, id) {

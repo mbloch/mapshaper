@@ -269,6 +269,18 @@ describe('Font metrics in Node', function () {
       assert.ok(bold >= regular, regular + ' ' + bold);
     });
 
+    it('measures bold words in the bold face, and not their tags', function () {
+      var regular = measure(font, 'Reno Nevada');
+      var bold = measure(font, 'Reno Nevada', {'font-weight': 'bold'});
+      var mixed = measure(font, 'Reno <b>Nevada</b>');
+      assert.equal(measure(font, '<b>Reno Nevada</b>'), bold);
+      assert.ok(mixed >= regular && mixed <= bold + 1e-9, regular + ' ' + mixed + ' ' + bold);
+    });
+
+    it('measures a tag that is not markup as text', function () {
+      assert.ok(measure(font, 'Reno <b') > measure(font, 'Reno '));
+    });
+
     it('has no width for a label with no text', function () {
       assert.equal(measure(font, ''), null);
       assert.equal(measureLabelText({'font-family': font}), null);

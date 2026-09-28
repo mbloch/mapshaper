@@ -209,9 +209,12 @@ export function ContextMenu(parentArg) {
       }
 
       if (e.deleteVertex || e.deletePoint || copyable || e.deleteFeature ||
-          e.flipLabel) {
+          e.flipLabel || e.boldText) {
 
         addMenuLabel('actions');
+        if (e.boldText) {
+          addMenuItem(e.boldText.label, e.boldText.run);
+        }
         if (e.deleteVertex) {
           addMenuItem('delete vertex', e.deleteVertex);
         }

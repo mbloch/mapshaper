@@ -351,6 +351,19 @@ export function getFontStyleVariants(fontName) {
   return cachedFontStyles[fontName];
 }
 
+// Whether words in @fontName can be set in bold: a bold the browser
+// synthesizes is not one the Node measurer can match, so wrapping and the
+// path-fit check would disagree with what is drawn. A font that cannot be
+// identified is given the benefit of the doubt -- the browser finds whatever
+// bold it has, and there is nothing to check against.
+export function fontHasBoldFace(fontName) {
+  var variants = fontName ? getFontStyleVariants(fontName) : null;
+  if (!variants || variants.length === 0) return true;
+  return variants.some(function(variant) {
+    return Number(variant.weight) >= 600;
+  });
+}
+
 // The installed font the browser draws unfonted text in, or '' if it cannot
 // be worked out.
 //

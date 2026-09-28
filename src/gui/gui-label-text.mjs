@@ -1,3 +1,5 @@
+import { internal } from './gui-core';
+
 // Moving label text between the three forms it takes: the string the user
 // edits, the value stored in the data table, and the lines that get rendered.
 //
@@ -19,6 +21,11 @@ var ANY_NEWLINE = /\r\n|\\n|<br>|\n|\r/gi;
 // docs/development/text-annotation-design.md.
 var SOFT_BREAK = '<wbr>';
 var SOFT_BREAK_RXP = /<wbr>/gi;
+
+// A bold stretch, which is the other markup label text carries. See
+// svg-label-markup.mjs.
+var BOLD_OPEN = '<b>';
+var BOLD_CLOSE = '</b>';
 
 // How a label lays out its line breaks, which is not the same for the two kinds.
 // An anchored label stacks its lines with <tspan>. A path label joins them with
@@ -53,6 +60,66 @@ export function readSoftBreaks(val) {
     text += parts[i];
   }
   return {text: text, breaks: breaks};
+}
+
+// Data value -> {text, breaks, bold}: the string the user edits, the offsets
+// in it where the stored value has a soft break, and its bold stretches as
+// [start, end) offsets into it (see gui-label-bold.mjs).
+//
+// The two kinds of markup are independent -- a bold stretch can cross a soft
+// break, and a soft break can sit at either end of one -- so the bold is read
+// first and its offsets are moved as the soft breaks come out.
+export function readLabelValue(val) {
+  var str = val === null || val === undefined ? '' : String(val).replace(ANY_NEWLINE, '\n');
+  var o = internal.svg.parseBoldMarkup(str);
+  var starts = [], m;
+  SOFT_BREAK_RXP.lastIndex = 0;
+  while ((m = SOFT_BREAK_RXP.exec(o.text))) starts.push(m.index);
+  return {
+    text: o.text.replace(SOFT_BREAK_RXP, ''),
+    breaks: starts.map(function(start, i) {
+      return start - i * SOFT_BREAK.length;
+    }),
+    bold: internal.svg.normalizeBoldRanges(o.bold.map(function(r) {
+      return [removeSoftBreakOffset(r[0], starts), removeSoftBreakOffset(r[1], starts)];
+    }))
+  };
+}
+
+// An offset into text with soft breaks in it -> the same place once they are
+// removed. One that falls inside a marker goes to its start.
+function removeSoftBreakOffset(x, starts) {
+  var shift = 0;
+  for (var i = 0; i < starts.length && starts[i] < x; i++) {
+    if (x < starts[i] + SOFT_BREAK.length) return starts[i] - shift;
+    shift += SOFT_BREAK.length;
+  }
+  return x - shift;
+}
+
+// The string the user edits, its soft breaks and its bold ranges -> the value
+// to store, with both kinds of markup written in. Where they meet, a bold
+// stretch closes before a soft break and opens after one, so that the break
+// is never inside a pair of tags it is not part of.
+export function writeLabelValue(text, breaks, bold) {
+  var marks = [];
+  (bold || []).forEach(function(r) {
+    marks.push({pos: r[0], order: 2, str: BOLD_OPEN});
+    marks.push({pos: r[1], order: 0, str: BOLD_CLOSE});
+  });
+  (breaks || []).forEach(function(pos) {
+    marks.push({pos: pos, order: 1, str: SOFT_BREAK});
+  });
+  if (marks.length === 0) return text;
+  marks.sort(function(a, b) {
+    return a.pos - b.pos || a.order - b.order;
+  });
+  var out = '', prev = 0;
+  marks.forEach(function(mark) {
+    out += text.substring(prev, mark.pos) + mark.str;
+    prev = mark.pos;
+  });
+  return out + text.substring(prev);
 }
 
 // The string the user edits, plus soft breaks at @breaks (ascending offsets
@@ -233,6 +300,29 @@ export function getEditIndex(str, renderedIndex, layout) {
   var length = getRenderedLength(str, layout);
   if (!(renderedIndex >= 0)) return 0;
   return Math.min(renderedIndex, length);
+}
+
+// The word a double-click at edited index @i selects, as [start, end), or an
+// empty range at @i for a click between words. A click on the right half of a
+// word's last letter lands on the index after it, which is still that word.
+//
+// Hyphens and apostrophes count as part of a word, so that "cease-fire" and
+// "Israel's" are one word each, as they are one name on the map.
+export function getWordRange(text, i) {
+  var at = isWordChar(text.charAt(i)) ? i : isWordChar(text.charAt(i - 1)) ? i - 1 : -1;
+  var a, b;
+  if (at < 0) return [i, i];
+  a = at;
+  b = at + 1;
+  while (a > 0 && isWordChar(text.charAt(a - 1))) a--;
+  while (b < text.length && isWordChar(text.charAt(b))) b++;
+  return [a, b];
+}
+
+var WORD_CHAR_RXP = /[\p{L}\p{N}\p{M}'\u2019-]/u;
+
+function isWordChar(c) {
+  return !!c && WORD_CHAR_RXP.test(c);
 }
 
 // Strips the placeholder back out, so that a value read off a rendered node is

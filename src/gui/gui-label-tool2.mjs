@@ -20,7 +20,9 @@ import {
   getStartOffsetPct, getDefaultOffsetPct
 } from './gui-label-path-drag';
 import { getOffsetDragValues } from './gui-label-offset';
-import { getNewLabelFontName } from './gui-label-fonts';
+import {
+  getNewLabelFontName, getDefaultFontName, fontHasBoldFace
+} from './gui-label-fonts';
 import { setMultilineAttribute } from './gui-svg-labels';
 import { getLabelPathNode, replaceAnchoredSymbol } from './gui-svg-symbols';
 import { findNearestKnot, knotMoveIsValid } from './gui-label-knots';
@@ -108,6 +110,14 @@ export function initLabelTool(gui, ext, hit) {
   // The mouseup that ended the last block drag, or null. A short one is
   // followed by a click from the same mouseup, which it has already handled.
   var blockRelease = null;
+  // A drag across the text of the label being typed into, which selects the
+  // characters it passes over: {start}, where start is the pointer's position
+  // at the press, filled in by the first drag event.
+  var selectDrag = null;
+  // The mouseup that ended the last select drag, or null, for the same reason
+  // as blockRelease: the click that follows it would put the caret down and
+  // lose the selection just made.
+  var selectRelease = null;
   var editor = new LabelEditor(gui, ext);
   var selection = new LabelSelection(gui, ext, hit, function() {
     return editor.isOpen() ? editor.getFeatureId() : -1;
@@ -187,6 +197,8 @@ export function initLabelTool(gui, ext, hit) {
     handleDrag = null;
     releasedDrag = null;
     blockRelease = null;
+    selectDrag = null;
+    selectRelease = null;
     shownHandles = null;
     clearBlockDrag();
     hoverHandle = null;
@@ -313,6 +325,10 @@ export function initLabelTool(gui, ext, hit) {
       blockRelease = null;
       return;
     }
+    if (selectRelease && getDomEvent(e) == selectRelease) {
+      selectRelease = null;
+      return;
+    }
     if (armed == 'path' && drawingCurve()) {
       extendCurve(pixToMapCoords(e.x, e.y));
       return;
@@ -385,8 +401,33 @@ export function initLabelTool(gui, ext, hit) {
         e.flipLabel = getFlipAction(target, id);
       }
     }
+    if (target && editor.isOpen() && clickIsOnEditedLabel(e)) {
+      addBoldAction(e, target);
+    }
     gui.contextMenu.open(e, target);
   });
+
+  // Bold for the words being typed: the selection, or with nothing selected,
+  // the word that was right-clicked. The item says what it will do, since a
+  // menu has no pressed state to show that the words are bold already. There
+  // is none in a font with no bold face (see fontHasBoldFace()).
+  function addBoldAction(e, target) {
+    var range = editor.getBoldTargetAtPoint(getLabelSpacePoint(editor.getAnchorCoords(), e));
+    if (!range || !fontHasBoldFace(getEditedFontName(target))) return;
+    e.boldText = {
+      label: range.bold ? 'remove bold' : 'bold text',
+      run: function() { editor.toggleBold(range.start, range.end); }
+    };
+  }
+
+  // The font the label being typed into is drawn in: its own, or for a label
+  // not created yet, the one the panel will give it.
+  function getEditedFontName(target) {
+    var id = editor.getFeatureId();
+    var rec = id > -1 ? getRecord(target, id) : getNewLabelStyle(gui);
+    var font = rec && rec['font-family'];
+    return font || (id > -1 ? getDefaultFontName() : getNewLabelFontName());
+  }
 
   // The label a right-click was aimed at, or -1.
   //
@@ -643,7 +684,16 @@ export function initLabelTool(gui, ext, hit) {
   // takes a drag -- everything else over a label is left alone so that the map
   // still pans, which is why these handlers stop the event themselves.
   hit.on('dragstart', function(e) {
-    if (!active() || drawingCurve() || editor.isOpen()) return;
+    if (!active() || drawingCurve()) return;
+    // With a label open for typing, a drag across its text selects some of it,
+    // as it would in any text field. Anywhere else the map still pans.
+    if (editor.isOpen()) {
+      if (clickIsOnEditedLabel(e)) {
+        selectDrag = {start: null};
+        consumeDrag(e);
+      }
+      return;
+    }
     // The handle comes from the last hover, not from testing the pointer here.
     // dragstart arrives with the pointer already moved off the handle -- by the
     // first mousemove that made it a drag, which on a quick gesture is further
@@ -667,6 +717,22 @@ export function initLabelTool(gui, ext, hit) {
     beginKnotDrag(hoverHandle);
     consumeDrag(e);
   });
+
+  // The selection runs from where the button went down, which dragstart does
+  // not report -- it arrives after the first move -- but every drag event
+  // carries its distance from the press.
+  function updateSelectDrag(e) {
+    var anchor = editor.getAnchorCoords();
+    if (!editor.isOpen() || !anchor) {
+      selectDrag = null;
+      return;
+    }
+    if (!selectDrag.start) {
+      selectDrag.start = {x: e.x - (e.dragX || 0), y: e.y - (e.dragY || 0)};
+    }
+    editor.selectBetweenPoints(getLabelSpacePoint(anchor, selectDrag.start),
+      getLabelSpacePoint(anchor, e));
+  }
 
   // handle: {id, index, point, pointer} from findHandle(), or the same shape
   //   made up for a drag that grabbed a label somewhere other than its knot
@@ -693,6 +759,11 @@ export function initLabelTool(gui, ext, hit) {
 
   hit.on('drag', function(e) {
     var shp, p;
+    if (selectDrag) {
+      consumeDrag(e);
+      updateSelectDrag(e);
+      return;
+    }
     if (textDrag) {
       consumeDrag(e);
       updateTextDrag(e);
@@ -727,6 +798,12 @@ export function initLabelTool(gui, ext, hit) {
 
   hit.on('dragend', function(e) {
     var o = drag;
+    if (selectDrag) {
+      selectDrag = null;
+      selectRelease = getDomEvent(e);
+      consumeDrag(e);
+      return;
+    }
     if (textDrag) {
       o = textDrag;
       textDrag = null;
@@ -1513,7 +1590,7 @@ export function initLabelTool(gui, ext, hit) {
   }
 
   function dragging() {
-    return !!(drag || textDrag || handleDrag || blockDrag);
+    return !!(drag || textDrag || handleDrag || blockDrag || selectDrag);
   }
 
   // The exception is about the pointer being on the glyphs, not about the mode:
@@ -1629,6 +1706,12 @@ export function initLabelTool(gui, ext, hit) {
     }
     if (hoverHandle && hoverHandle.kind && !editor.isOpen()) {
       resetHandle(hoverHandle);
+      return;
+    }
+    // Inside the text being typed, a double-click selects a word -- which is
+    // the quickest way to pick the words to set in bold.
+    if (editor.isOpen() && clickIsOnEditedLabel(e)) {
+      editor.selectWordAtPoint(getLabelSpacePoint(editor.getAnchorCoords(), e));
       return;
     }
     // Double-clicking a label reaches straight into its text, which is the

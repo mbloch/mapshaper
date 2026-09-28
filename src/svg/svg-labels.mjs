@@ -2,6 +2,7 @@ import { applyStyleAttributes, resolveLabelPosition, getLabelPositionAnchor,
   parseSvgMeasure } from '../svg/svg-properties';
 import { getAlignmentShift } from '../svg/svg-label-align';
 import { applyLabelHalo } from '../svg/svg-label-halo';
+import { parseBoldMarkup, getBoldRuns, applyRunsToSvgObject } from '../svg/svg-label-markup';
 import utils from '../utils/mapshaper-utils';
 
 // Accepting \n (two chars) as an alternative to the newline character
@@ -20,19 +21,43 @@ export var LABEL_SOFT_BREAK = '<wbr>';
 var anyLabelBreakRxp = /(\n|\\n|<br>|<wbr>)/i;
 var softBreakRxp = /^<wbr>$/i;
 
-// The lines a label's text is drawn as. Whitespace before a soft break is
-// dropped: a trailing space would move an end- or middle-justified line by a
-// space's width.
+// The lines a label's text is drawn as, without its bold markup.
 export function splitLabelLines(text) {
-  var parts = String(text).split(anyLabelBreakRxp);
-  var lines = [parts[0]];
+  return splitLabelLineRuns(text).map(function(runs) {
+    return runs.map(function(run) { return run.text; }).join('');
+  });
+}
+
+// The lines a label's text is drawn as, each one a list of runs of one weight:
+// [[{text, bold}, ...], ...]. A bold stretch can cross a line break, and is
+// then a run on each line.
+//
+// Whitespace before a soft break is dropped: a trailing space would move an
+// end- or middle-justified line by a space's width.
+export function splitLabelLineRuns(text) {
+  var o = parseBoldMarkup(String(text));
+  var parts = o.text.split(anyLabelBreakRxp);
+  var pos = parts[0].length;
+  var lines = [getBoldRuns(o.text, o.bold, 0, pos)];
   for (var i = 1; i < parts.length; i += 2) {
     if (softBreakRxp.test(parts[i])) {
-      lines[lines.length - 1] = lines[lines.length - 1].replace(/\s+$/, '');
+      trimTrailingSpace(lines[lines.length - 1]);
     }
-    lines.push(parts[i + 1]);
+    pos += parts[i].length;
+    lines.push(getBoldRuns(o.text, o.bold, pos, pos + parts[i + 1].length));
+    pos += parts[i + 1].length;
   }
   return lines;
+}
+
+function trimTrailingSpace(runs) {
+  var last;
+  while (runs.length > 0) {
+    last = runs[runs.length - 1];
+    last.text = last.text.replace(/\s+$/, '');
+    if (last.text) return;
+    runs.pop();
+  }
 }
 
 export function removeSoftBreaks(text) {
@@ -85,7 +110,7 @@ export function renderLabel(recArg) {
   // already been through it, so calling it here as well costs nothing and means
   // every way into the renderer draws a label in the position it is stored in.
   var rec = resolveLabelPosition(recArg);
-  var morelines = splitLabelLines(toLabelString(rec['label-text']));
+  var morelines = splitLabelLineRuns(toLabelString(rec['label-text']));
   var line = morelines.shift();
   var obj;
   var dx = applyAlignmentShift(rec);
@@ -96,23 +121,21 @@ export function renderLabel(recArg) {
     y: dy,
     x: dx
   };
-  obj = {
+  obj = applyRunsToSvgObject({
     tag: 'text',
-    value: line,
     properties: properties
-  };
+  }, line);
   if (morelines.length > 0) {
     // multiline label
-    obj.children = [];
+    obj.children = obj.children || [];
     morelines.forEach(function(line) {
-      var tspan = {
+      var tspan = applyRunsToSvgObject({
         tag: 'tspan',
-        value: line,
         properties: {
           x: dx,
           dy: getLineHeightDy(rec['line-height'])
         }
-      };
+      }, line);
       obj.children.push(tspan);
     });
   }

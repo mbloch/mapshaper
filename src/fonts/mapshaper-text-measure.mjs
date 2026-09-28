@@ -1,5 +1,6 @@
 import { setTextMeasureFunction } from '../svg/svg-label-metrics';
-import { splitLabelLines, toLabelString, DEFAULT_LABEL_FONT_SIZE } from '../svg/svg-labels';
+import { splitLabelLineRuns, toLabelString, DEFAULT_LABEL_FONT_SIZE } from '../svg/svg-labels';
+import { LABEL_BOLD_WEIGHT } from '../svg/svg-label-markup';
 import { parseSvgMeasure } from '../svg/svg-properties';
 import { findFontFace } from './mapshaper-font-lookup';
 import { runningInBrowser } from '../mapshaper-env';
@@ -44,7 +45,7 @@ export function initNodeTextMeasurement() {
 // parse. Null is what every reader already falls back from.
 export function measureLabelText(rec) {
   var text = toLabelString(rec && rec['label-text']);
-  var font, fontSize, spacing, width;
+  var font, fontSize, spacing, width, failed = false;
   if (!text) return null;
   font = getFontForRecord(rec);
   if (!font) return null;
@@ -53,10 +54,22 @@ export function measureLabelText(rec) {
   if (!(fontSize > 0)) return null;
   // The widest line, which is what the block of a multi-line label is as wide
   // as, and what the browser's getBBox() reports for the same text.
-  width = splitLabelLines(text).reduce(function(max, line) {
-    var w = measureLine(font, line, fontSize, spacing);
+  //
+  // A line with bold words in it is measured a run at a time, each in its own
+  // face, which loses the kerning between the last letter of one run and the
+  // first of the next -- a fraction of a pixel at a weight change.
+  width = splitLabelLineRuns(text).reduce(function(max, runs) {
+    var w = runs.reduce(function(sum, run) {
+      var face = run.bold ? getFontForRecord(rec, true) : font;
+      if (!face) {
+        failed = true;
+        return sum;
+      }
+      return sum + measureLine(face, run.text, fontSize, spacing);
+    }, 0);
     return w > max ? w : max;
   }, 0);
+  if (failed) return null;
   return width > 0 ? width : null;
 }
 
@@ -80,9 +93,12 @@ function measureLine(font, line, fontSize, spacing) {
 // The font a record is drawn in, opened and remembered. A record with no
 // font-family is drawn in the layer group's default, the same one the GUI
 // measures against -- see getLabelTextDefaults().
-function getFontForRecord(rec) {
+//
+// @bold: the face its bold runs are drawn in, which is the keyword's 700
+// whatever the label's own weight is, as it is in CSS.
+function getFontForRecord(rec, bold) {
   var family = rec['font-family'] || 'sans-serif';
-  var weight = getFontWeight(rec);
+  var weight = bold ? WEIGHT_NAMES[LABEL_BOLD_WEIGHT] : getFontWeight(rec);
   var italic = isItalic(rec);
   var stretch = rec['font-stretch'] || '';
   var key = [family, weight, italic ? 'i' : 'n', stretch].join('|');

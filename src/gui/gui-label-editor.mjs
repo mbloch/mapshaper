@@ -3,11 +3,14 @@ import { runGuiEditCommand } from './gui-edit-command';
 import { getLabelTextCommand, getLabelDeleteCommand } from './gui-label-commands';
 import { renderPendingSymbol } from './gui-svg-symbols';
 import {
-  decodeLabelText, encodeLabelText, getRenderedLines, getRenderedContent,
+  encodeLabelText, getRenderedLines, getRenderedContent,
   getRenderedCaret, getRenderedLength, getEditIndex, textHasNoGlyphs,
-  readSoftBreaks, insertSoftBreaks, sameSoftBreaks,
+  readLabelValue, writeLabelValue, sameSoftBreaks, getWordRange,
   LINES_STACKED, LINES_JOINED
 } from './gui-label-text';
+import {
+  rangeIsAllBold, toggleBoldRange, updateBoldForEdit, sameBoldRanges
+} from './gui-label-bold';
 import { getSoftBreaks } from './gui-label-wrap';
 import { getLabelColumn } from './gui-label-handles';
 import {
@@ -55,16 +58,19 @@ export function LabelEditor(gui, ext) {
   // so the tool cannot do this at its own call sites.
   self.open = function(target, id, opts) {
     var rec = getRecord(target, id);
+    var value;
     if (!rec) return false;
     self.close();
+    value = readLabelValue(rec['label-text']);
     session = {
       target: target,
       id: id,
       pending: null,
       created: false,
       onClose: opts && opts.onClose || null,
-      startText: decodeLabelText(rec['label-text']),
-      startBreaks: readSoftBreaks(rec['label-text']).breaks,
+      startText: value.text,
+      startBreaks: value.breaks,
+      startBold: value.bold,
       nodes: null
     };
     startSession();
@@ -110,6 +116,7 @@ export function LabelEditor(gui, ext) {
       onClose: opts.onClose || null,
       startText: '',
       startBreaks: [],
+      startBold: [],
       nodes: null
     };
     startSession();
@@ -118,6 +125,7 @@ export function LabelEditor(gui, ext) {
 
   function startSession() {
     session.text = session.startText;
+    session.bold = session.startBold;
     getTextarea().value = session.text;
     setCaret(session.text.length, session.text.length);
     focusTextarea();
@@ -131,6 +139,74 @@ export function LabelEditor(gui, ext) {
       refresh: self.refresh
     });
     self.refresh();
+  }
+
+  // The text a Bold item in the context menu would act on, as {start, end,
+  // bold}, where @bold says whether all of it is bold already; or null. That is
+  // the selection, or with nothing selected, the word under @p -- read when the
+  // menu opens, because by the time an item is chosen the pointer is on the
+  // menu rather than the label.
+  self.getBoldTargetAtPoint = function(p) {
+    var start = getCaretStart(), end = getCaretEnd();
+    var range;
+    if (!session) return null;
+    if (!(end > start)) {
+      start = getEditIndexAtPoint(p);
+      if (start < 0) return null;
+      range = getWordRange(session.text, start);
+      start = range[0];
+      end = range[1];
+    }
+    if (!(end > start)) return null;
+    return {start: start, end: end, bold: rangeIsAllBold(session.bold, start, end)};
+  };
+
+  // Bolds the selected text, or unbolds it if it is all bold already; or the
+  // text from @start to @end, which is selected first. The text stays
+  // selected, so that a second press takes it back.
+  self.toggleBold = function(start, end) {
+    if (!session) return;
+    if (start >= 0 && end > start) {
+      setCaret(start, end);
+    } else {
+      start = getCaretStart();
+      end = getCaretEnd();
+    }
+    if (!(end > start)) return;
+    session.bold = toggleBoldRange(session.bold, start, end);
+    self.refresh();
+  };
+
+  // Selects the text between two points in the label's own coordinate space,
+  // for a drag across it. The selection runs from @p0 towards @p1, so that
+  // shift-arrow then extends it from the end the pointer let go of.
+  self.selectBetweenPoints = function(p0, p1) {
+    var a = getEditIndexAtPoint(p0);
+    var b = getEditIndexAtPoint(p1);
+    if (a < 0 || b < 0) return false;
+    setCaret(Math.min(a, b), Math.max(a, b), b < a ? 'backward' : 'forward');
+    redrawCaret();
+    return true;
+  };
+
+  // Selects the word under @p, for a double-click inside the text.
+  self.selectWordAtPoint = function(p) {
+    var i = getEditIndexAtPoint(p);
+    var range;
+    if (i < 0) return false;
+    range = getWordRange(session.text, i);
+    setCaret(range[0], range[1]);
+    redrawCaret();
+    return true;
+  };
+
+  function getEditIndexAtPoint(p) {
+    var provider, layout, i;
+    if (!session || !session.nodes) return -1;
+    provider = getProvider(session.nodes);
+    layout = getLayout(session);
+    i = getCaretIndexAtPoint(provider, p, getRenderedLength(session.text, layout));
+    return i < 0 ? -1 : getEditIndex(session.text, i, layout);
   }
 
   self.isOpen = function() {
@@ -163,6 +239,7 @@ export function LabelEditor(gui, ext) {
     // arriving just after a redraw is holding one of those.
     if (session.pending && node.closest &&
       node.closest('.label-edit-pending')) return true;
+    if (session.nodes && session.nodes.symbol.contains(node)) return true;
     return !!groups && (groups.hit.contains(node) || groups.back.contains(node) ||
       groups.front.contains(node));
   };
@@ -221,7 +298,7 @@ export function LabelEditor(gui, ext) {
     if (i < 0) return false;
     i = getEditIndex(session.text, i, layout);
     setCaret(i, i);
-    drawOverlay(session);
+    redrawCaret();
     return true;
   };
 
@@ -255,7 +332,7 @@ export function LabelEditor(gui, ext) {
     var blank = textHasNoGlyphs(o.text);
     var breaks = getBreaks(o);
     if (o.pending) {
-      if (!blank) o.pending.create(insertSoftBreaks(o.text, breaks));
+      if (!blank) o.pending.create(writeLabelValue(o.text, breaks, o.bold));
       return;
     }
     if (blank) {
@@ -263,8 +340,9 @@ export function LabelEditor(gui, ext) {
       removeLabel(o);
       return;
     }
-    if (o.text === o.startText && sameSoftBreaks(breaks, o.startBreaks)) return;
-    runGuiEditCommand(gui, getLabelTextCommand(insertSoftBreaks(o.text, breaks),
+    if (o.text === o.startText && sameSoftBreaks(breaks, o.startBreaks) &&
+      sameBoldRanges(o.bold, o.startBold)) return;
+    runGuiEditCommand(gui, getLabelTextCommand(writeLabelValue(o.text, breaks, o.bold),
       o.id, o.target.name), {
       title: 'Label text'
     });
@@ -277,7 +355,7 @@ export function LabelEditor(gui, ext) {
     var rec;
     if (!shp || shp.length > 1) return [];
     rec = o.pending ? o.pending.getStyle() : getRecord(o.target, o.id);
-    return getSoftBreaks(o.text, rec);
+    return getSoftBreaks(o.text, rec, o.bold);
   }
 
   // Deletes the label's feature, geometry and all.
@@ -364,7 +442,7 @@ export function LabelEditor(gui, ext) {
     var rec = Object.assign({}, o.pending.getStyle());
     // With its soft breaks, so that what is aligned and what a callout meets
     // is the block as wrapped
-    rec['label-text'] = encodeLabelText(insertSoftBreaks(o.text, getBreaks(o)));
+    rec['label-text'] = encodeLabelText(writeLabelValue(o.text, getBreaks(o), o.bold));
     // No need to expand label-pos here, or to measure its text: the renderer
     // resolves the position and asks for the width it needs, so a pending
     // label is laid out by exactly the same code as a committed one.
@@ -412,11 +490,15 @@ export function LabelEditor(gui, ext) {
   //   - Line breaks. An empty <tspan> lays out nothing, so a line just opened
   //     with Enter had no position for the caret to move to. The placeholder in
   //     getRenderedLines() gives it one.
+  //
+  // Bold stretches are <tspan>s inside the line they fall on. The character
+  // position APIs count the characters of descendant elements in document
+  // order, so the rendered indexes stay the edited ones whatever the runs are.
   function writeText(o) {
     var content = o.nodes.content;
     var breaks = getBreaks(o);
-    var written = o.text + '\u0000' + breaks.join(',');
-    var lines, i, tspan;
+    var written = o.text + '\u0000' + breaks.join(',') + '\u0000' + o.bold.join(';');
+    var lines, full, pos, i, tspan;
     // refresh() runs on every map render, which during a pan is every frame;
     // rebuilding text nodes that already say the right thing is pure waste
     if (o.writtenTo === content && o.writtenText === written) return;
@@ -430,21 +512,51 @@ export function LabelEditor(gui, ext) {
     // or from a label that was multi-line before it was given a path -- and
     // turning them into spaces is what export does too.
     if (getLayout(o) === LINES_JOINED) {
-      content.appendChild(document.createTextNode(getRenderedContent(o.text)));
+      full = getRenderedContent(o.text);
+      appendRuns(content, full, o.bold, 0, full.length);
       return;
     }
     // A soft break keeps the space it broke at at the end of its line, where
     // the rendered label drops it: here every typed character has to be one
     // the caret can sit beside.
+    //
+    // The lines laid end to end are the edited text character for character --
+    // each hard break is the placeholder that opens the line after it -- so a
+    // line's offset in the one is its offset in the other.
     lines = getRenderedLines(o.text, breaks);
-    content.appendChild(document.createTextNode(lines[0]));
+    full = lines.join('');
+    pos = lines[0].length;
+    appendRuns(content, full, o.bold, 0, pos);
     for (i = 1; i < lines.length; i++) {
       tspan = document.createElementNS(SVG_NS, 'tspan');
       tspan.setAttribute('x', o.nodes.text.getAttribute('x') || 0);
       tspan.setAttribute('dy', getLineHeight(o));
-      tspan.appendChild(document.createTextNode(lines[i]));
+      appendRuns(tspan, full, o.bold, pos, pos + lines[i].length);
+      pos += lines[i].length;
       content.appendChild(tspan);
     }
+  }
+
+  // Characters [start, end) of @str into @parent, the bold ones in bold
+  // <tspan>s and the rest as text. An empty stretch still gets a text node, as
+  // an empty line always did.
+  function appendRuns(parent, str, bold, start, end) {
+    var runs = internal.svg.getBoldRuns(str, bold, start, end);
+    var tspan;
+    if (runs.length === 0) {
+      parent.appendChild(document.createTextNode(''));
+      return;
+    }
+    runs.forEach(function(run) {
+      if (!run.bold) {
+        parent.appendChild(document.createTextNode(run.text));
+        return;
+      }
+      tspan = document.createElementNS(SVG_NS, 'tspan');
+      tspan.setAttribute('font-weight', internal.svg.LABEL_BOLD_WEIGHT);
+      tspan.appendChild(document.createTextNode(run.text));
+      parent.appendChild(tspan);
+    });
   }
 
   // Cached per session: asking costs a record lookup and a geometry test, and
@@ -572,18 +684,33 @@ export function LabelEditor(gui, ext) {
     return el;
   }
 
+  // Updated in place rather than rebuilt. Every caret move redraws the
+  // overlay, and a click is one: a region replaced by the first click of a
+  // double-click takes the node the button went down on out of the document,
+  // and the browser then fires neither the click nor the dblclick.
   function drawHitRegion(o, g, box, caret, pathId) {
-    var el;
-    clear(g);
-    if (box) g.appendChild(rect(box, 'label-edit-hit-area'));
-    if (!pathId) return;
+    var area = g.querySelector('.label-edit-hit-area');
+    var line = g.querySelector('.label-edit-hit-baseline');
+    if (box && area) {
+      setRect(area, box);
+    } else if (box) {
+      g.insertBefore(rect(box, 'label-edit-hit-area'), g.firstChild);
+    } else if (area) {
+      g.removeChild(area);
+    }
+    if (!pathId) {
+      if (line) g.removeChild(line);
+      return;
+    }
     // A thickened, transparent copy of the baseline: about one em wide, so that
     // the region follows the curve rather than boxing it.
-    el = document.createElementNS(SVG_NS, 'use');
-    el.setAttribute('href', '#' + pathId);
-    el.setAttribute('class', 'label-edit-hit-baseline');
-    el.setAttribute('stroke-width', caret ? caret.ascent + caret.descent : 12);
-    g.appendChild(el);
+    if (!line) {
+      line = document.createElementNS(SVG_NS, 'use');
+      line.setAttribute('class', 'label-edit-hit-baseline');
+      g.appendChild(line);
+    }
+    line.setAttribute('href', '#' + pathId);
+    line.setAttribute('stroke-width', caret ? caret.ascent + caret.descent : 12);
   }
 
   function getLabelPathId(nodes) {
@@ -676,12 +803,16 @@ export function LabelEditor(gui, ext) {
 
   function rect(box, className) {
     var el = document.createElementNS(SVG_NS, 'rect');
+    setRect(el, box);
+    el.setAttribute('class', className);
+    return el;
+  }
+
+  function setRect(el, box) {
     el.setAttribute('x', box.x);
     el.setAttribute('y', box.y);
     el.setAttribute('width', box.width);
     el.setAttribute('height', box.height);
-    el.setAttribute('class', className);
-    return el;
   }
 
   function caretLine(caret) {
@@ -711,6 +842,7 @@ export function LabelEditor(gui, ext) {
 
     textarea.addEventListener('input', function() {
       if (!session) return;
+      session.bold = updateBoldForEdit(session.bold, session.text, textarea.value);
       session.text = textarea.value;
       self.refresh();
     });
@@ -733,6 +865,13 @@ export function LabelEditor(gui, ext) {
     function isCommitKey(e) {
       if (e.key != 'Enter' || e.shiftKey) return false;
       return !e.isComposing && e.keyCode != 229;
+    }
+
+    // Cmd-B on a Mac, Ctrl-B elsewhere, as in every text editor. A textarea
+    // has no default for it to replace.
+    function isBoldKey(e) {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return false;
+      return (e.key || '').toLowerCase() == 'b';
     }
 
     textarea.addEventListener('keydown', function(e) {
@@ -761,6 +900,10 @@ export function LabelEditor(gui, ext) {
         e.preventDefault();
         e.stopPropagation();
         self.close();
+      } else if (isBoldKey(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        self.toggleBold();
       } else {
         e.stopPropagation();
       }
@@ -814,9 +957,10 @@ export function LabelEditor(gui, ext) {
     return textarea ? textarea.selectionEnd : 0;
   }
 
-  function setCaret(start, end) {
+  // @direction: 'forward' (the default) or 'backward', which end of the
+  //   selection shift-arrow moves
+  function setCaret(start, end, direction) {
     if (!textarea) return;
-    textarea.selectionStart = start;
-    textarea.selectionEnd = end;
+    textarea.setSelectionRange(start, end, direction || 'forward');
   }
 }

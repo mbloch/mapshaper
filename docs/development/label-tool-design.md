@@ -59,7 +59,8 @@ Deferred, but the data model must not preclude them:
 
 Out of scope:
 
-- Rich text within a single label (mixed fonts, per-run styling)
+- Rich text within a single label (mixed fonts, sizes or colours). Bold words
+  are the one exception, added later — see [Bold words](#bold-words).
 - Text wrapping to a measure, or flowing text into a shape
 
 ## Terminology
@@ -4073,9 +4074,76 @@ focus. It takes focus, the editor ignores the blur because the new focus target
 is inside the panel, and the caret comes back when the menu reports a choice.
 The one thing that must not happen is taking focus back while its menu is open.
 
-**Per-run styling is still out of scope.** With no mixed fonts inside a single
-label, typography never needs to apply to part of the text, so the panel always
-acts on whole labels and the selection rules above are enough.
+**Per-run styling is limited to bold.** Everything else in the panel acts on
+whole labels, and the selection rules above are enough for it. Bold is the
+exception, and it acts on the text selection inside the open label rather than
+on a label selection — see [Bold words](#bold-words).
+
+### Bold words
+
+A label can set some of its words in bold, which is the one mixed style map
+labels commonly need ("Israel **restricted access here** after cease-fire").
+
+**Stored as markup in `label-text`**, not as offsets in a column beside it:
+
+```
+Israel <b>restricted<wbr>access here</b> after cease-fire
+```
+
+Offsets in a second column would drift silently whenever something rewrote the
+text without knowing about them — `-labels text=`, an expression, a join, a
+hand-edited CSV — and would need their own index convention for text whose
+line breaks arrive in three spellings. Tags travel with the words they
+mark, can be written from an expression, and need nothing new in the save
+command, undo, session history or the width cache, whose fingerprint already
+covers the text. It is also the convention `label-text` already had: `<br>`
+and `<wbr>` live there.
+
+Only a matched `<b>…</b>` pair with no other b tag inside it is markup
+(`parseBoldMarkup()` in `src/svg/svg-label-markup.mjs`); anything else is text
+and is drawn as written. As with `<br>`, text that is literally `<b>x</b>`
+cannot be expressed.
+
+**Rendered as `<tspan font-weight="bold">`** inside the line it falls on, and
+inside the `<textPath>` of a path label, where a tspan without x or dy runs on
+along the curve. A stretch that crosses a line break is a run on each line
+(`splitLabelLineRuns()`). Text with no bold renders exactly as before: one
+value, no extra children. The weight is the keyword, which the browser and the
+Node measurer both resolve to the family's own bold face — so a font with no
+bold face gets no bold item in the context menu (`fontHasBoldFace()`), because
+a synthesized bold would render at a width Node cannot reproduce.
+
+**Measured a run at a time** in Node, each in its own face, which drops the
+kerning between the last letter of one run and the first of the next. The GUI
+measures by rendering, so it sees the tspans. Text-block wrapping lays the runs
+out as bold spans, and its cache key includes the ranges.
+
+**Edited without the tags.** The editor reads the stored value into plain text,
+soft-break offsets and bold ranges (`readLabelValue()`), keeps the ranges
+beside the textarea's value, and writes all three back on commit
+(`writeLabelValue()`). On each input the edit is found by common prefix and
+suffix, and the ranges move with it (`updateBoldForEdit()` in
+`gui-label-bold.mjs`); inserted text takes the weight of the character before
+it. Cmd-B / Ctrl-B toggles the selection — bold if any of it is not, plain if
+all of it is. So does the context menu's **bold text** / **remove bold** item,
+shown on a right-click on the label being typed into; with nothing selected, it
+acts on the word under the pointer, which it selects. The target is read when
+the menu opens (`getBoldTargetAtPoint()`), since the pointer is on the menu by
+the time an item is chosen, and the menu refuses the focus change on mousedown,
+so the session stays open. A menu rather than a panel button: the item names
+what it will do, which stands in for a pressed state, and the panel keeps no
+row that exists only while typing. A per-word color would need a swatch, which
+is when a panel row would come back. A drag across the open label selects
+characters; a double-click selects a word, counting hyphens and apostrophes as
+part of it.
+
+Double-click needed one fix outside this feature: the editor's hit region was
+rebuilt on every caret move, so the first click of a double-click removed the
+node the second press would land on, and the browser fired no `dblclick`. It
+is now updated in place.
+
+A label whose own `font-weight` is already bold gains nothing from a bold
+range, and there is no way to set one word of it in regular.
 
 ## Undo/Redo And Session History
 
@@ -4125,6 +4193,8 @@ one undo step reverses one label's text rather than one keystroke.
 | Finding a label's baseline in the markup | `getLabelPathNode()` in `src/gui/gui-svg-symbols.mjs` |
 | "flip to other side of path" menu item | `src/gui/gui-context-menu.mjs` (`e.flipLabel`) |
 | Label text forms and caret indexes (pure) | `src/gui/gui-label-text.mjs` (new) |
+| Bold markup: parsing and runs | `src/svg/svg-label-markup.mjs` |
+| Bold ranges while editing (pure) | `src/gui/gui-label-bold.mjs` |
 | "Is a label" vs "has label text" | `src/svg/svg-feature-utils.mjs` |
 | Typing focus detection | `src/gui/gui-lib.mjs` (`GUI.getInputElement`) |
 | Caret, box, ghosted path, selection and hit region styles | `www/page.css` (`.label-edit-*`) |
@@ -4244,7 +4314,8 @@ The editor added 2.6 KB, again matching its own source and inlining nothing.
   stray whitespace in its data renders.
 - **Typography cannot be changed with the caret live.** The panel's controls take
   focus and the session commits on blur, so the caret is gone by the time a
-  control fires and per-run styling within one label remains out of reach. A
+  control fires. (Bold, which acts on part of the text, is in the context menu
+  and the keyboard instead, and neither takes focus.) A
   label reached by clicking is back in the selection by then and does get
   restyled; see [Why the panel can take
   focus](#why-the-panel-can-take-focus) for why this is a dependency rather than

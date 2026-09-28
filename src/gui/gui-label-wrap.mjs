@@ -1,6 +1,6 @@
 import { internal } from './gui-core';
 import {
-  readSoftBreaks, insertSoftBreaks, sameSoftBreaks, encodeLabelText, findSoftBreaks
+  readLabelValue, writeLabelValue, sameSoftBreaks, encodeLabelText, findSoftBreaks
 } from './gui-label-text';
 
 // Wrapping a text block to its label-width, with the browser's own line
@@ -44,13 +44,17 @@ export function getLabelWrapWidth(rec) {
 
 // Offsets into @text (real newlines, no soft breaks) where a line starts
 // because it was wrapped, in ascending order.
-export function getSoftBreaks(text, rec) {
+//
+// @bold: the text's bold stretches, as [start, end) offsets into it. A bold
+// word is wider, so it moves the breaks.
+export function getSoftBreaks(text, rec, bold) {
   var width = getLabelWrapWidth(rec);
   var key, breaks;
   if (!width || !text) return [];
-  key = getWrapKey(text, rec);
+  bold = bold || [];
+  key = getWrapKey(text, rec, bold);
   if (cache.has(key)) return cache.get(key);
-  breaks = measureSoftBreaks(text, rec, width);
+  breaks = measureSoftBreaks(text, rec, width, bold);
   if (cache.size >= CACHE_LIMIT) cache.clear();
   cache.set(key, breaks);
   return breaks;
@@ -60,29 +64,30 @@ export function getSoftBreaks(text, rec) {
 // unchanged when neither the old value nor the new one has a soft break, so
 // that a label that does not wrap keeps the line breaks it was written with.
 export function rewrapLabelValue(value, rec) {
-  var o = readSoftBreaks(value);
-  var breaks = getSoftBreaks(o.text, rec);
+  var o = readLabelValue(value);
+  var breaks = getSoftBreaks(o.text, rec, o.bold);
   if (sameSoftBreaks(o.breaks, breaks)) return value;
-  return encodeLabelText(insertSoftBreaks(o.text, breaks));
+  return encodeLabelText(writeLabelValue(o.text, breaks, o.bold));
 }
 
 export function clearWrapCache() {
   cache.clear();
 }
 
-function getWrapKey(text, rec) {
+function getWrapKey(text, rec, bold) {
   var parts = [text];
   WRAP_FIELDS.forEach(function(name) {
     var val = rec[name];
     parts.push(val === null || val === undefined ? '' : String(val));
   });
   parts.push(rec['class'] || '');
+  parts.push(bold.join(';'));
   return parts.join('\u0000');
 }
 
-function measureSoftBreaks(text, rec, width) {
+function measureSoftBreaks(text, rec, width, bold) {
   var w = getWrapper();
-  var style, fontSize, node, range;
+  var style, fontSize, pieces, range;
   if (!w) return [];
   style = getLabelFontStyle(w, rec);
   if (!style) return [];
@@ -90,20 +95,49 @@ function measureSoftBreaks(text, rec, width) {
     w.div.style[name] = style[name] || '';
   });
   w.div.style.width = width + 'px';
-  w.div.textContent = text;
-  node = w.div.firstChild;
+  pieces = writeRuns(w.div, text, bold);
   fontSize = parseFloat(style.fontSize) || 12;
   range = document.createRange();
   var breaks = findSoftBreaks(text, function(i) {
+    var piece = findPiece(pieces, i);
     var end = isHighSurrogate(text.charCodeAt(i)) ? i + 2 : i + 1;
     var r;
-    range.setStart(node, i);
-    range.setEnd(node, Math.min(end, text.length));
+    range.setStart(piece.node, i - piece.start);
+    range.setEnd(piece.node, Math.min(end, piece.end) - piece.start);
     r = range.getBoundingClientRect();
     return r.height > 0 ? r.top : null;
   }, fontSize * LINE_HEIGHT / 2);
   w.div.textContent = '';
   return breaks;
+}
+
+// Lays @text out in @div a run at a time, the bold ones in bold spans, and
+// returns each run's text node with the offsets it covers: [{node, start,
+// end}]. Offsets in the text become offsets in one of these nodes.
+function writeRuns(div, text, bold) {
+  var pos = 0;
+  div.textContent = '';
+  return internal.svg.getBoldRuns(text, bold, 0, text.length).map(function(run) {
+    var node = document.createTextNode(run.text);
+    var span;
+    if (run.bold) {
+      span = document.createElement('span');
+      span.style.fontWeight = internal.svg.LABEL_BOLD_WEIGHT;
+      span.appendChild(node);
+      div.appendChild(span);
+    } else {
+      div.appendChild(node);
+    }
+    pos += run.text.length;
+    return {node: node, start: pos - run.text.length, end: pos};
+  });
+}
+
+function findPiece(pieces, i) {
+  for (var j = 0; j < pieces.length; j++) {
+    if (i < pieces[j].end) return pieces[j];
+  }
+  return pieces[pieces.length - 1];
 }
 
 function isHighSurrogate(c) {
