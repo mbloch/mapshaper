@@ -1059,16 +1059,22 @@ together with an external script.</p>
 };
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-scalebar" data-name="-scalebar" data-options="label style bar-width tic-length label-position top bottom position top-left margin"><h3 id="-scalebar">-scalebar</h3>
-<p>Add a scale bar to an SVG map. The command creates a data-only layer containing the scale bar&#39;s data properties. A scale bar is included in the SVG output file if the scale bar layer is included as an output layer.</p>
-<p>The length of the scale bar reflects the scale in the center of the map&#39;s rectangular frame.</p>
-<p><code>&lt;label&gt;</code> or <code>label=</code> Optional label giving the size and units of the scalebar, e.g. <code>&quot;25 k.m.&quot;</code>. If only units are given, a length will be assigned. If the <code>label</code> property is missing, scale bar properties will be auto-generated. If two lengths are given (e.g. <code>1000 km,500 miles</code>), a dual-unit bar will be generated, if the scale bar style supports it.</p>
+<section class="cmd-section" data-id="-scalebar" data-name="-scalebar" data-options="label units km meters miles feet style dual-units bar-width tic-length color font-size font-family font-style font-weight label-position top bottom position top-left top-right bottom-left bottom-right margin remove"><h3 id="-scalebar">-scalebar</h3>
+<p>Add a scale bar to a map. The scale bar&#39;s settings are stored in a data-only layer.</p>
+<p>If a map frame exists (see <a href="#-frame">-frame</a>), the scale bar belongs to the frame: it is stored in the frame&#39;s dataset, running <code>-scalebar</code> again replaces it, and it is exported along with the frame (e.g. <code>-o target=* map.svg</code>). In the web UI, it is drawn in preview mode and included in SVG exports. Without a frame, each <code>-scalebar</code> command adds a standalone scale bar layer, which is included in SVG output if the layer is one of the output layers.</p>
+<p>Scale bars appear only in SVG output; they are skipped when exporting other formats. The map must be projected. The length of the scale bar reflects the scale at the center of the map&#39;s rectangular frame.</p>
+<p><code>&lt;label&gt;</code> or <code>label=</code> Optional label giving the size and units of the scalebar, e.g. <code>&quot;25 k.m.&quot;</code>. Supported units are kilometers, meters, miles and feet. A bare number (e.g. <code>150</code>) is a distance in the units given by <code>units=</code>. If only units are given (e.g. <code>km</code>), a length will be assigned. If the <code>label</code> property is missing, a length will be chosen automatically: the longest round distance that fits within 20% of the map&#39;s width, but not shorter than 70 pixels. If two lengths are given (e.g. <code>1000 km,500 miles</code>), a dual-unit bar will be generated, if the scale bar style supports it.</p>
+<p><code>units=</code> Units of a bare-number label or an automatically chosen length: <code>km</code>, <code>meters</code>, <code>miles</code> or <code>feet</code> (default is <code>miles</code>). Automatic lengths are given in meters or feet when kilometers or miles would be too long.</p>
 <p><code>style=</code> Scalebar style, <code>a</code> or <code>b</code>. Style <code>b</code> has tic marks.</p>
+<p><code>dual-units</code> (style b) Show both metric and imperial distances. Implies <code>style=b</code>.</p>
 <p><code>bar-width=</code> Line width of bar.</p>
 <p><code>tic-length=</code> (style b) length of tic marks.</p>
+<p><code>color=</code> Color of the bar and labels (default is black).</p>
+<p><code>font-size=</code> <code>font-family=</code> <code>font-style=</code> <code>font-weight=</code> Label font properties.</p>
 <p><code>label-position=</code> Position of labels relative to the bar (<code>top</code> or <code>bottom</code>).</p>
-<p><code>position=</code> Position of the scalebar on the map (default is <code>top-left</code>).</p>
+<p><code>position=</code> Position of the scalebar on the map: <code>top-left</code> (default), <code>top-right</code>, <code>bottom-left</code> or <code>bottom-right</code>.</p>
 <p><code>margin=</code> Offset in pixels from edge of map.</p>
+<p><code>remove</code> Remove the map frame&#39;s scale bar.</p>
 </section>
 <section class="cmd-section" data-id="-shape" data-name="-shape" data-options="coordinates closed name"><h3 id="-shape">-shape</h3>
 <p>Create a new layer containing a single polyline or polygon shape.</p>

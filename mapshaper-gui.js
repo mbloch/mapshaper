@@ -3324,7 +3324,7 @@
     return str;
   }
 
-  function formatValue(val, matches) {
+  function formatValue$2(val, matches) {
     var flags = matches[1];
     var padding = matches[2];
     var decimals = matches[3] ? parseInt(matches[3].substr(1)) : void 0;
@@ -3420,7 +3420,7 @@
         error$1("[format()] Data does not match format string; format:", fmt, "data:", arguments);
       }
       for (var i=0; i<n; i++) {
-        str += formatValue(arguments[i], formatCodes[i]) + literals[i+1];
+        str += formatValue$2(arguments[i], formatCodes[i]) + literals[i+1];
       }
       return str;
     };
@@ -8623,10 +8623,10 @@
   }
 
   // Whether a layer can be shown on the map alongside the active layer, and so
-  // has an eye icon in the layers panel. A frame is drawn by preview mode, and a
-  // data-only layer has nothing to draw.
+  // has an eye icon in the layers panel. A frame and its furniture are drawn by
+  // preview mode, and a data-only layer has nothing to draw.
   function layerIsPinnable(lyr, dataset) {
-    if (dataset && internal.isFrameLayer(lyr, dataset.arcs)) return false;
+    if (internal.isFrameComponentLayer(lyr, dataset)) return false;
     return internal.layerIsGeometric(lyr) || internal.layerHasRaster(lyr) ||
       internal.layerHasFurniture(lyr);
   }
@@ -10888,6 +10888,9 @@
       if (opts.format == 'svg' || opts.format == 'topojson') {
         opts.gui_frame = getGuiFrameContext();
       }
+      if (opts.format == 'svg') {
+        targets = addFrameFurnitureTargets(targets, opts.gui_frame);
+      }
       try {
         var files = await internal.exportTargetLayers(model, targets, opts);
       } catch(e) {
@@ -10953,7 +10956,7 @@
     function initLayerMenu() {
       var list = menu.findChild('.export-layer-list').empty();
       var layers = model.getLayers().filter(function(o) {
-        return !internal.isFrameLayer(o.layer, o.dataset.arcs);
+        return !internal.isFrameComponentLayer(o.layer, o.dataset);
       });
       sortLayersForMenuDisplay(layers);
 
@@ -11147,21 +11150,42 @@
       };
     }
 
+    // Snapshots keep the frame and its furniture
     function addFrameTarget(targets) {
       var frame = internal.getActiveFrame(model);
-      var group;
       if (!frame) return targets;
+      return addDatasetTargets(targets, frame.dataset,
+        [frame.layer].concat(internal.getFrameFurnitureLayers(frame.dataset)));
+    }
+
+    // The frame's furniture is drawn in SVG output, the way it is in preview.
+    // An unprojected frame can't show a scalebar, so it doesn't block the export.
+    function addFrameFurnitureTargets(targets, frameContext) {
+      var frame = internal.getActiveFrame(model);
+      var furniture = frame ? internal.getFrameFurnitureLayers(frame.dataset) : [];
+      if (furniture.length === 0) return targets;
+      if (internal.getFurnitureFrameProblem(frameContext && frameContext.data)) {
+        console.warn('Map furniture was not exported: the map frame is unprojected');
+        return targets;
+      }
+      return addDatasetTargets(targets, frame.dataset, furniture);
+    }
+
+    function addDatasetTargets(targets, dataset, layers) {
+      var group;
       targets = targets.map(function(target) {
         return Object.assign({}, target, {layers: target.layers.slice()});
       });
       group = targets.find(function(target) {
-        return target.dataset == frame.dataset;
+        return target.dataset == dataset;
       });
-      if (group) {
-        if (!group.layers.includes(frame.layer)) group.layers.push(frame.layer);
-      } else {
-        targets.push({dataset: frame.dataset, layers: [frame.layer]});
+      if (!group) {
+        group = {dataset: dataset, layers: []};
+        targets.push(group);
       }
+      layers.forEach(function(lyr) {
+        if (!group.layers.includes(lyr)) group.layers.push(lyr);
+      });
       return targets;
     }
 
@@ -11455,6 +11479,9 @@
 
       if (e.frameProperties) {
         addMenuItem('frame properties', e.frameProperties, '');
+      }
+      if (e.scalebarProperties) {
+        addMenuItem(e.scalebarLabel || 'scale bar', e.scalebarProperties, '');
       }
       if (e.resizeFrame) {
         addMenuItem('resize frame', e.resizeFrame, '');
@@ -11883,6 +11910,8 @@
       sortLayersForMenuDisplay(model.getLayers()).forEach(function(o) {
         var lyr = o.layer;
         var isFrame = internal.isFrameLayer(lyr, o.dataset.arcs);
+        // furniture is shown as part of its frame's entry
+        if (!isFrame && internal.isFrameComponentLayer(lyr, o.dataset)) return;
         var opts = {
           show_source: layerCount < 5,
           pinnable: pinnableCount > 0 && isPinnable(lyr, o.dataset)
@@ -11982,23 +12011,37 @@
       function deleteLayer() {
         var target = findLayerById(id);
         var undoTransaction;
+        var furniture;
         if (!target) return;
+        // a frame's furniture goes with it, rather than becoming a stray layer
+        furniture = internal.isFrameLayer(target.layer, target.dataset.arcs) ?
+          internal.getFrameFurnitureLayers(target.dataset) : [];
         undoTransaction = createUndoTransaction(gui, 'delete layer');
         if (map.isVisibleLayer(target.layer)) {
           // TODO: check for double map refresh after model.deleteLayer() below
           setLayerPinning(target.layer, false);
         }
         if (undoTransaction) {
-          undoTransaction.run(function() {
-            model.deleteLayer(target.layer, target.dataset);
-          });
+          undoTransaction.run(deleteLayers);
           addUndoTransactionToHistory(gui, undoTransaction, {
             flags: {select: true, arc_count: true},
             entryPrefix: 'delete-layer'
           });
         } else {
+          deleteLayers();
+        }
+
+        function deleteLayers() {
+          furniture.forEach(function(lyr) {
+            model.deleteLayer(lyr, target.dataset);
+          });
           model.deleteLayer(target.layer, target.dataset);
         }
+      }
+
+      function openScalebarProperties() {
+        var target = findLayerById(id);
+        if (target && gui.scalebarProperties) gui.scalebarProperties.open(target);
       }
 
       // Duplicate a layer by running an equivalent command, so the copy is
@@ -12088,6 +12131,10 @@
           internal.isFrameLayer(target.layer, target.dataset.arcs);
         if (isFrame) {
           menuEvent.frameProperties = openFrameProperties;
+          menuEvent.scalebarProperties = openScalebarProperties;
+          menuEvent.scalebarLabel =
+            internal.findFrameFurnitureLayer(target.dataset, 'scalebar') ?
+              'scale bar' : 'add scale bar';
           menuEvent.resizeFrame = resizeFrame;
           menuEvent.deleteFrame = deleteLayer;
         } else {
@@ -16612,18 +16659,41 @@
 
   // The fraction an opacity control's contents mean ("50%", " 50 " -> 0.5), or
   // null if it is not holding a number. Out-of-range values are clamped rather
-  // than refused: a pasted 150% is an intent, not a mistake.
+  // than refused: a pasted 150% is an intent, not a mistake. A blank field is
+  // null, not zero: it is what a colour with no value shows beside it.
   function parseOpacityValue(str) {
-    var pct = Number(String(str).replace('%', '').trim());
-    if (!isFinite(pct)) return null;
+    var txt = String(str).replace('%', '').trim();
+    var pct = Number(txt);
+    if (txt === '' || !isFinite(pct)) return null;
     return Math.max(0, Math.min(100, pct)) / 100;
+  }
+
+  // A typed dash pattern in the form -style stroke-dasharray= takes: lengths
+  // separated by single spaces. Commas and runs of whitespace are accepted
+  // because SVG accepts them, and a pasted "4, 2" means the same as "4 2".
+  // Returns '' for a blank field. Does not check that the lengths are numbers.
+  function normalizeDashArrayInput(str) {
+    return String(str).trim().split(/[\s,]+/).filter(Boolean).join(' ');
   }
 
   // A stored fraction as the percentage a control shows, or '' for no value --
   // which is how a control over a selection that does not agree shows.
   function formatOpacityPct(val) {
+    if (isUnsetValue(val)) return '';
     val = Number(val);
     return isFinite(val) ? Math.round(Math.max(0, Math.min(1, val)) * 100) + '%' : '';
+  }
+
+  // The opacity shown beside a colour. A colour with no opacity of its own is
+  // drawn opaque, and says so; with no colour either, there is nothing for an
+  // opacity to apply to, and the field is blank like the colour.
+  function formatColorOpacityPct(opacity, hasColor) {
+    if (isUnsetValue(opacity)) return hasColor ? '100%' : '';
+    return formatOpacityPct(opacity);
+  }
+
+  function isUnsetValue(val) {
+    return val === undefined || val === null || val === '';
   }
 
   // The parts the style panels are built from. They were the label panel's, and
@@ -16682,6 +16752,16 @@
         action(e);
       });
     El('span').appendTo(btn).text(label);
+    return btn;
+  }
+
+  // The "?" the rest of the app uses for field help (see .tip-button in
+  // elements.css and the static ones in index.html). The bubble is white-space:
+  // pre, so the line breaks in the text are the ones it gets.
+  function makeFieldTip(parent, text) {
+    var btn = El('div').addClass('tip-button').appendTo(parent).text('?');
+    var anchor = El('div').addClass('tip-anchor').appendTo(btn);
+    El('div').addClass('tip').appendTo(anchor).text(text);
     return btn;
   }
 
@@ -19555,12 +19635,12 @@
   }
 
   var savedStylesKey = 'layer_style_presets';
-  var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'fill', 'fill-opacity'];
+  var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'fill', 'fill-opacity'];
 
   function LayerStyleTool(gui) {
     var parent = gui.container.findChild('.mshp-main-map');
     var panel = El('div').addClass('label-style-panel layer-style-panel rollover').appendTo(parent).hide();
-    var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, randomFillBtn, presetControl, hit;
+    var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, dashControl, randomFillBtn, presetControl, hit;
     var targetLayer = null;
 
     initPanel();
@@ -19646,6 +19726,7 @@
       fillControl = addColorControl(panel, 'Fill', 'fill', '');
       strokeControl = addColorControl(panel, 'Stroke', 'stroke', '#000000');
       strokeWidthField = addStrokeWidthControl(strokeControl.aside);
+      dashControl = addDashArrayControl(panel);
 
       var buttonRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(panel);
       randomFillBtn = makePanelActionButton(buttonRow, 'Random fills', applyRandomFillColors);
@@ -19706,6 +19787,29 @@
       });
     }
 
+    // A literal stroke-dasharray, in the wide column so that it lines up with
+    // the stroke's colour above it. A blank field makes the line solid again.
+    function addDashArrayControl(parent) {
+      var row = El('div').addClass('label-style-row label-split-row layer-dash-row').appendTo(parent);
+      var cell = El('div').addClass('label-split-cell').appendTo(row);
+      El('div').addClass('label-split-cell').appendTo(row);
+      var caption = El('div').addClass('label-style-row-label').appendTo(cell).text('Dashes');
+      makeFieldTip(caption,
+        'Dash and gap lengths in pixels, separated\n' +
+        'by spaces. "4" gives 4px dashes and 4px gaps.\n' +
+        '"6 3" gives 6px dashes and 3px gaps.');
+      var input = El('input').attr('type', 'text').appendTo(cell)
+        .on('change', function() {
+          var value = normalizeDashArrayInput(input.node().value);
+          if (value && internal.parseStyleLiteral('stroke-dasharray', value) === undefined) {
+            updateControls();
+            return;
+          }
+          applyDashArrayStyle(value);
+        });
+      return {row: row, input: input};
+    }
+
     function releaseFocus() {
       releasePanelFocus(panel.node());
     }
@@ -19719,9 +19823,11 @@
       updateEditingStatus(manualIds.length);
       strokeControl.row.show();
       fillControl.row.classed('hidden', geom != 'polygon');
+      dashControl.row.classed('hidden', geom != 'polyline');
       updateColorControl(strokeControl);
       updateColorControl(fillControl);
       updateStrokeWidthControl();
+      updateDashArrayControl();
       randomFillBtn.classed('hidden', geom != 'polygon');
       presetControl.render();
       updateSavedStyleControls();
@@ -19735,10 +19841,13 @@
       if (!isHexColor(value)) control.picker.hide();
     }
 
+    // A selection whose colours disagree still has colours, so an opacity unset
+    // on all of it shows as full rather than blank.
     function updateOpacityControl(control) {
-      var value = getCommonStyleValue(control.field + '-opacity');
-      control.opacity.node().value =
-        formatOpacityPct(value === '' || value === undefined || value === null ? 1 : value);
+      var field = control.field + '-opacity';
+      control.opacity.node().value = styleFieldIsUnsetForTargets(field) ?
+        formatColorOpacityPct(null, !styleFieldIsUnsetForTargets(control.field)) :
+        formatOpacityPct(getCommonStyleValue(field));
     }
 
     function updateStrokeWidthControl() {
@@ -19746,6 +19855,11 @@
       strokeWidthField.setValue(
         formatNumberValue(value === '' || value === undefined || value === null ?
           getDefaultStrokeWidth() : value));
+    }
+
+    function updateDashArrayControl() {
+      var value = getCommonStyleValue('stroke-dasharray');
+      dashControl.input.node().value = value === undefined || value === null ? '' : String(value);
     }
 
     function nudgeStrokeWidth(direction) {
@@ -19784,6 +19898,14 @@
     function applyStrokeWidthStyle(value) {
       var styles = [['stroke-width', value]];
       if (value > 0 && styleFieldIsUnsetForTargets('stroke')) {
+        styles.push(['stroke', strokeControl.defaultColor]);
+      }
+      runStyleCommand(styles);
+    }
+
+    function applyDashArrayStyle(value) {
+      var styles = [['stroke-dasharray', value]];
+      if (value && styleFieldIsUnsetForTargets('stroke')) {
         styles.push(['stroke', strokeControl.defaultColor]);
       }
       runStyleCommand(styles);
@@ -19850,6 +19972,9 @@
       addStyleValue(style, 'stroke', getControlValue(strokeControl.input));
       addStyleValue(style, 'stroke-width', strokeWidthField.getValue());
       addStyleValue(style, 'stroke-opacity', parseOpacityValue(strokeControl.opacity.node().value));
+      if (targetLayer && targetLayer.geometry_type == 'polyline') {
+        addStyleValue(style, 'stroke-dasharray', getControlValue(dashControl.input));
+      }
       if (targetLayer && targetLayer.geometry_type == 'polygon') {
         addStyleValue(style, 'fill', getControlValue(fillControl.input));
         addStyleValue(style, 'fill-opacity', parseOpacityValue(fillControl.opacity.node().value));
@@ -20260,27 +20385,42 @@
       var radius = getCommonValue('r');
       var fill = getCommonValue('fill');
       var stroke = getCommonValue('stroke');
-      var fillOpacity = getCommonValue('fill-opacity');
-      var strokeOpacity = getCommonValue('stroke-opacity');
       var strokeWidth = getCommonValue('stroke-width');
       setCircleRadius(radius);
       setCircleColor(circleFillControl, fill);
       setCircleColor(circleStrokeControl, stroke);
-      setCircleOpacity(circleFillControl, fillOpacity);
-      setCircleOpacity(circleStrokeControl, strokeOpacity);
+      updateCircleOpacity(circleFillControl);
+      updateCircleOpacity(circleStrokeControl);
       setCircleStrokeWidth(strokeWidth === '' ? 0 : strokeWidth);
       if (representation != 'circle' && representation != 'unstyled') {
         setCircleRadius(defaultCircleRadius);
         setCircleColor(circleFillControl, '');
         setCircleColor(circleStrokeControl, '');
-        setCircleOpacity(circleFillControl, '');
-        setCircleOpacity(circleStrokeControl, '');
+        circleFillControl.opacity.node().value = '';
+        circleStrokeControl.opacity.node().value = '';
         setCircleStrokeWidth(0);
       }
     }
 
-    function setCircleOpacity(control, value) {
-      control.opacity.node().value = formatOpacityPct(value === '' ? 1 : value);
+    // The opacity to put in the style command: undefined to leave the property
+    // as it is, null for a field holding something that is not an opacity.
+    // A blank field has nothing to say, and 100% over an unset opacity is the
+    // default being shown rather than a value to store.
+    function getCircleOpacityToWrite(control) {
+      var str = control.opacity.node().value.trim();
+      var val = parseOpacityValue(str);
+      if (str === '') return undefined;
+      if (val === 1 && styleFieldIsUnset(control.field + '-opacity')) return undefined;
+      return val;
+    }
+
+    // A selection whose colours disagree still has colours, so an opacity unset
+    // on all of it shows as full rather than blank.
+    function updateCircleOpacity(control) {
+      var field = control.field + '-opacity';
+      control.opacity.node().value = styleFieldIsUnset(field) ?
+        formatColorOpacityPct(null, !styleFieldIsUnset(control.field)) :
+        formatOpacityPct(getCommonValue(field));
     }
 
     function renderCreateFields() {
@@ -20331,16 +20471,16 @@
     function createSimpleCircles() {
       runCommand('-style r=' + defaultCreatedCircleRadius +
         ' fill=' + quoteCommandValue(defaultCircleFill) +
-        ' fill-opacity=1 stroke-opacity=1 stroke-width=0', 'Create circles');
+        ' stroke-width=0', 'Create circles');
     }
 
     function applyCircleStyles() {
       var representation = getPointRepresentation();
       var radius = getCircleRadius();
       var fill = circleFillControl.input.node().value.trim();
-      var fillOpacity = parseOpacityValue(circleFillControl.opacity.node().value);
+      var fillOpacity = getCircleOpacityToWrite(circleFillControl);
       var stroke = circleStrokeControl.input.node().value.trim();
-      var strokeOpacity = parseOpacityValue(circleStrokeControl.opacity.node().value);
+      var strokeOpacity = getCircleOpacityToWrite(circleStrokeControl);
       var strokeWidth = getCircleStrokeWidth();
       var args;
       if (!gui.console || !(representation == 'unstyled' || representation == 'circle') ||
@@ -20349,11 +20489,9 @@
         fill = defaultCircleFill;
         setCircleColor(circleFillControl, fill);
       }
-      args = [
-        'fill-opacity=' + fillOpacity,
-        'stroke-opacity=' + strokeOpacity,
-        'stroke-width=' + strokeWidth
-      ];
+      args = ['stroke-width=' + strokeWidth];
+      if (fillOpacity !== undefined) args.push('fill-opacity=' + fillOpacity);
+      if (strokeOpacity !== undefined) args.push('stroke-opacity=' + strokeOpacity);
       if (radius !== null) args.unshift('r=' + radius);
       if (fill) args.push('fill=' + quoteCommandValue(fill));
       if (stroke) args.push('stroke=' + quoteCommandValue(stroke));
@@ -20580,7 +20718,7 @@
     var setDefaultTargets = self.setDefaultTargets;
     utils$1.extend(self, EventDispatcher.prototype);
 
-    // A map frame is composition state, not editable content. Commands may
+    // A map frame (and its furniture) is composition state, not editable content. Commands may
     // explicitly target it, but it must not replace the GUI's active content
     // layer or become the implicit target of the next console command.
     self.setDefaultTargets = function(targets, opts) {
@@ -20647,14 +20785,24 @@
     };
 
     self.selectNextLayer = function() {
-      var next = self.findNextLayer(self.getActiveLayer().layer);
+      var next = findContentLayer(self.findNextLayer);
       if (next) self.selectLayer(next.layer, next.dataset);
     };
 
     self.selectPrevLayer = function() {
-      var prev = self.findPrevLayer(self.getActiveLayer().layer);
+      var prev = findContentLayer(self.findPrevLayer);
       if (prev) self.selectLayer(prev.layer, prev.dataset);
     };
+
+    // step past the frame and its furniture, which can't be selected
+    function findContentLayer(step) {
+      var start = self.getActiveLayer().layer;
+      var o = step.call(self, start);
+      while (o && o.layer != start && internal.isFrameComponentLayer(o.layer, o.dataset)) {
+        o = step.call(self, o.layer);
+      }
+      return o;
+    }
 
     return self;
 
@@ -20663,7 +20811,7 @@
         return {
           dataset: target.dataset,
           layers: target.layers.filter(function(lyr) {
-            return !internal.isFrameLayer(lyr, target.dataset.arcs);
+            return !internal.isFrameComponentLayer(lyr, target.dataset);
           })
         };
       }).filter(function(target) {
@@ -20673,7 +20821,7 @@
 
     function getFirstContentTarget() {
       var target = self.getLayers().find(function(o) {
-        return !internal.isFrameLayer(o.layer, o.dataset.arcs);
+        return !internal.isFrameComponentLayer(o.layer, o.dataset);
       });
       return target ? [{dataset: target.dataset, layers: [target.layer]}] : [];
     }
@@ -29348,6 +29496,7 @@
       referenceStyle = { // outline style for reference layers
         type: 'outline',
         strokeColors: [null, '#87b73b'], // was 78c110
+        // strokeColors: [null, 'rgba(79,140,0,0.67)'],
         strokeWidth: 0.85,
         dotColor: "#73ba20",
         dotSize: 1
@@ -30227,37 +30376,103 @@
   }
 
 
-  function getCanvasFillPattern(style) {
-    var fill = hatches[style.fillPattern];
-    if (fill === undefined) {
-      fill = makePatternFill(style);
-      hatches[style.fillPattern] = fill;
+  // symbolScale: the preview symbol scale (1 outside preview). Pattern sizes are
+  // in output pixels, like stroke widths, so the tile grows with the page.
+  // anchor: canvas-pixel position the pattern origin is pinned to, so the tile
+  // travels with the map instead of sticking to the viewport. Panning only
+  // updates this matrix. The tile image is rebuilt when the scale changes,
+  // which is at most once per pattern per render.
+  function getCanvasFillPattern(style, symbolScale, anchor) {
+    var scale = symbolScale > 0 ? symbolScale : 1;
+    var entry = hatches[style.fillPattern];
+    if (!entry || entry.scale != scale) {
+      entry = makePatternEntry(style, scale);
+      hatches[style.fillPattern] = entry;
     }
-    return fill || style.fill || '#000'; // use fill if hatches are invalid
+    if (!entry || !entry.pattern) return style.fill || '#000';
+    if (anchor) applyPatternAnchor(entry, anchor);
+    return entry.pattern;
   }
 
-  function makePatternFill(style) {
+  function makePatternEntry(style, scale) {
     var o = internal.parsePattern(style.fillPattern);
     if (!o) return null;
     var canv = document.createElement('canvas');
     var ctx = canv.getContext('2d');
-    var res = GUI.getPixelRatio();
-    var w = o.tileSize[0] * res;
-    var h = o.tileSize[1] * res;
+    var k = GUI.getPixelRatio() * scale;
+    var tw = o.tileSize[0], th = o.tileSize[1];
+    // A canvas has whole-pixel dimensions, but the scaled tile generally does
+    // not. The tile is drawn into the nearest whole-pixel canvas, and the
+    // pattern transform stretches it back to its exact size so that the
+    // repeat period doesn't drift across a large polygon.
+    var w = Math.max(1, Math.round(tw * k));
+    var h = Math.max(1, Math.round(th * k));
     canv.setAttribute('width', w);
     canv.setAttribute('height', h);
+    ctx.scale(w / tw, h / th);
     if (o.background) {
       ctx.fillStyle = o.background;
-      ctx.fillRect(0, 0, w, h);
+      ctx.fillRect(0, 0, tw, th);
     }
-    if (o.type == 'dots' || o.type == 'squares') makeDotFill(o, ctx, res);
-    if (o.type == 'dashes') makeDashFill(o, ctx, res);
-    if (o.type == 'hatches') makeHatchFill(o, ctx, res);
-    var pattern = ctx.createPattern(canv, 'repeat');
-    if (o.rotation) {
-      pattern.setTransform(new DOMMatrix('rotate(' + o.rotation + 'deg)'));
-    }
-    return pattern;
+    if (o.type == 'dots' || o.type == 'squares') makeDotFill(o, ctx, 1);
+    if (o.type == 'dashes') makeDashFill(o, ctx, 1);
+    if (o.type == 'hatches') makeHatchFill(o, ctx, 1);
+    return {
+      scale: scale,
+      pattern: ctx.createPattern(canv, 'repeat'),
+      rotation: o.rotation || 0,
+      sx: tw * k / w,
+      sy: th * k / h,
+      w: w,
+      h: h
+    };
+  }
+
+  // Pins the cached pattern to @anchor. Skipped when the view has not moved,
+  // so a hover redraw does not touch the pattern.
+  function applyPatternAnchor(entry, anchor) {
+    if (entry.ax == anchor.x && entry.ay == anchor.y) return;
+    entry.ax = anchor.x;
+    entry.ay = anchor.y;
+    var t = getPatternTransform(entry, anchor);
+    entry.pattern.setTransform(new DOMMatrix([t.a, t.b, t.c, t.d, t.e, t.f]));
+  }
+
+  // Matrix taking pattern-image pixels to canvas pixels: translate to the
+  // anchor, then rotate, then scale. The anchor is folded into one tile so a
+  // map origin far outside the viewport does not blow the matrix precision.
+  function getPatternTransform(entry, anchor) {
+    var p = wrapPatternAnchor(anchor.x, anchor.y, entry);
+    var rad = (entry.rotation || 0) * Math.PI / 180;
+    var c = Math.cos(rad);
+    var s = Math.sin(rad);
+    return {
+      a: c * entry.sx,
+      b: s * entry.sx,
+      c: -s * entry.sy,
+      d: c * entry.sy,
+      e: p.x,
+      f: p.y
+    };
+  }
+
+  // @entry.sx/sy scale image pixels to canvas pixels; the image repeats every
+  // @entry.w by @entry.h pixels. Returns a point in the same place on the
+  // pattern, within one tile of the origin.
+  function wrapPatternAnchor(x, y, entry) {
+    var rad = (entry.rotation || 0) * Math.PI / 180;
+    var c = Math.cos(rad);
+    var s = Math.sin(rad);
+    var rx = c * x + s * y;
+    var ry = -s * x + c * y;
+    var qx = rx / entry.sx - Math.floor(rx / entry.sx / entry.w) * entry.w;
+    var qy = ry / entry.sy - Math.floor(ry / entry.sy / entry.h) * entry.h;
+    var lx = qx * entry.sx;
+    var ly = qy * entry.sy;
+    return {
+      x: c * lx - s * ly,
+      y: s * lx + c * ly
+    };
   }
 
   function makeDashFill(o, ctx, res) {
@@ -30948,27 +31163,66 @@
     return iter;
   }
 
+  // Same multiplier as ctx.lineWidth. Retina canvases are pixRatio times the
+  // CSS pixel; preview mode multiplies styled strokes by the symbol scale.
+  function getCanvasStrokeScale(pixRatio, lineScale) {
+    return (pixRatio > 1 ? pixRatio : 1) * (lineScale || 1);
+  }
+
+  // Scale a stroke-dasharray into canvas pixels. Scale 1 returns the authored
+  // tokens, so a 100% preview and a non-preview view keep the pattern as stored.
+  function scaleCanvasLineDash(lineDash, scale) {
+    var parts = String(lineDash).split(' ');
+    var out, i;
+    if (!(scale > 0) || scale === 1) return parts;
+    out = new Array(parts.length);
+    for (i = 0; i < parts.length; i++) {
+      out[i] = +parts[i] * scale;
+    }
+    return out;
+  }
+
+  // Where a fill pattern's origin sits, in canvas pixels. In preview that is
+  // the top-left of the page; otherwise the geographic origin, so a pan (which
+  // only changes the translation) carries the pattern with the shapes.
+  function getPatternAnchor(ext) {
+    var t = ext.getTransform(GUI.getPixelRatio());
+    var frame = ext.getFrameData();
+    if (frame && frame.bbox) {
+      return {
+        x: frame.bbox[0] * t.mx + t.bx,
+        y: frame.bbox[3] * t.my + t.by
+      };
+    }
+    return {x: t.bx, y: t.by};
+  }
+
   function getPathStart(ext, lineScale) {
     var pixRatio = GUI.getPixelRatio();
     if (!lineScale) lineScale = 1;
+    // Same factor as lineWidth, so dash length and gap stay in proportion to
+    // the stroke. In preview that factor includes the symbol scale; without it
+    // the pattern stays a fixed screen size while the line grows.
+    var strokeScale = getCanvasStrokeScale(pixRatio, lineScale);
+    // The symbol scale itself, not lineScale: lineScale adds a bump to widen
+    // hover outlines, which a fill has no reason to follow.
+    var patternScale = ext.getSymbolScale() || 1;
+    // Page corner in preview, so the pattern is fixed to the page the way the
+    // exported SVG is. With no frame, the geographic origin, which is enough
+    // for panning: the pattern is not scaled by the geographic zoom then.
+    var patternAnchor = getPatternAnchor(ext);
     return function(ctx, style) {
       var strokeWidth;
       ctx.beginPath();
       if (style.strokeWidth > 0) {
         strokeWidth = style.strokeWidth;
-        if (pixRatio > 1) {
-          // bump up thin lines on retina, but not to more than 1px
-          // (tests on Chrome showed much faster rendering of 1px lines)
-          // strokeWidth = strokeWidth < 1 ? 1 : strokeWidth * pixRatio;
-          strokeWidth = strokeWidth * pixRatio;
-        }
         ctx.lineCap = style.lineCap || 'round';
         ctx.lineJoin = style.lineJoin || 'round';
-        ctx.lineWidth = strokeWidth * lineScale;
+        ctx.lineWidth = strokeWidth * strokeScale;
         ctx.strokeStyle = style.strokeColor;
         if (style.lineDash){
           ctx.lineCap = 'butt';
-          ctx.setLineDash(style.lineDash.split(' '));
+          ctx.setLineDash(scaleCanvasLineDash(style.lineDash, strokeScale));
         }
         if (style.miterLimit) {
           ctx.miterLimit = style.miterLimit;
@@ -30976,7 +31230,7 @@
       }
 
       if (style.fillPattern) {
-        ctx.fillStyle = getCanvasFillPattern(style);
+        ctx.fillStyle = getCanvasFillPattern(style, patternScale, patternAnchor);
       } else if (style.fillColor) {
         ctx.fillStyle = style.fillColor;
       }
@@ -31015,20 +31269,28 @@
     return internal.svg.getTransform(p, scale);
   }
 
-  function repositionFurniture(container, layer, ext) {
-    var g = El.findAll('.mapshaper-svg-furniture', container)[0];
-    g.setAttribute('transform', getSvgFurnitureTransform(ext));
+  function repositionFurniture(container, ext) {
+    if (!ext.getFrameData()) return;
+    El.findAll('.mapshaper-svg-furniture', container).forEach(function(g) {
+      g.setAttribute('transform', getSvgFurnitureTransform(ext));
+    });
   }
 
+  // Returns an SVG string, or '' if the furniture can't be drawn in the current
+  // frame (e.g. the map is unprojected). The scalebar panel explains why.
   function renderFurniture(lyr, ext) {
-    var frame = ext.getFrameData(); // frame should be set if we're rendering a furniture layer
-    var obj = internal.getEmptyLayerForSVG(lyr, {});
-    if (!frame) {
-      stop$1('Missing map frame data');
-    }
+    var frame = ext.getFrameData();
+    var obj;
+    if (internal.getFurnitureFrameProblem(frame)) return '';
+    obj = internal.getEmptyLayerForSVG(lyr, {});
     obj.properties.transform = getSvgFurnitureTransform(ext);
     obj.properties.class = 'mapshaper-svg-furniture';
-    obj.children = internal.renderFurnitureLayer(lyr, frame);
+    try {
+      obj.children = internal.renderFurnitureLayer(lyr, frame);
+    } catch(e) {
+      console.error(e);
+      return '';
+    }
     return internal.svg.stringify(obj);
   }
 
@@ -31070,8 +31332,6 @@
       resize(ext);
       if (type == 'label' || type == 'symbol') {
         html = renderSymbols(lyr.gui.displayLayer, ext, id);
-      } else if (type == 'furniture') {
-        html = renderFurniture(lyr.gui.displayLayer, ext);
       }
       g.innerHTML = html;
       if (type == 'label' || type == 'symbol') {
@@ -31083,6 +31343,26 @@
       if (!gui.map.isActiveLayer(lyr)) {
         g.style.pointerEvents = 'none';
       }
+    };
+
+    // Furniture layers are dataset layers (they have no display layer)
+    el.drawFurniture = function(layers) {
+      el.clear();
+      resize(ext);
+      layers.forEach(function(lyr) {
+        var html = renderFurniture(lyr, ext);
+        var g;
+        if (!html) return;
+        g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', 'mapshaper-svg-layer mapshaper-furniture-layer');
+        g.innerHTML = html;
+        svg.append(g);
+      });
+    };
+
+    el.repositionFurniture = function() {
+      resize(ext);
+      repositionFurniture(svg, ext);
     };
 
     function reposition(lyr, type, ext) {
@@ -31098,8 +31378,6 @@
         // a symbol group's transform absorbs panning, and zooming too when a
         // frame is defined; anything it can't absorb needs the baselines rebuilt
         updateLabelPaths(container.node(), lyr.gui.displayLayer, ext);
-      } else if (type == 'furniture') {
-        repositionFurniture(container.node(), lyr.gui.displayLayer, ext);
       } else {
         // container.getElementsByTagName('text')
         error('Unsupported symbol type:', type);
@@ -31255,19 +31533,14 @@
       });
     };
 
+    // Furniture is sized in frame pixels, so panning and zooming only need to
+    // update its transform; its content changes only with a full redraw.
     this.drawFurnitureLayers = function(layers, action) {
-      // re-render if action == 'nav', because scalebars get resized
-      var noRedraw = action == 'hover';
-      if (!noRedraw) {
-        _furniture.clear();
+      if (action == 'nav' || action == 'hover') {
+        _furniture.repositionFurniture();
+      } else {
+        _furniture.drawFurniture(layers);
       }
-      layers.forEach(function(lyr) {
-        if (noRedraw) {
-          _furniture.reposition(lyr, 'furniture');
-        } else {
-          _furniture.drawLayer(lyr, 'furniture');
-        }
-      });
     };
 
     // kludge: skip rendering base layers if hovering, except on first hover
@@ -33118,7 +33391,7 @@
 
     function isFrameMapLayer(lyr) {
       var dataset = lyr && lyr.gui && lyr.gui.source && lyr.gui.source.dataset;
-      return !!dataset && internal.isFrameLayer(lyr, dataset.arcs);
+      return !!dataset && internal.isFrameComponentLayer(lyr, dataset);
     }
 
     function getDrawableContentLayers() {
@@ -33128,11 +33401,18 @@
       });
     }
 
-    function getDrawableFurnitureLayers(layers) {
-      if (!isPreviewView()) return [];
-      return getVisibleMapLayers().filter(function(o) {
-        return internal.isFurnitureLayer(o);
+    // The active frame's furniture, plus any visible standalone furniture layers
+    // (e.g. from -scalebar run before a frame was created)
+    function getDrawableFurnitureLayers() {
+      var frame = isPreviewView() ? internal.getActiveFrame(model) : null;
+      if (!frame) return [];
+      var layers = internal.getFrameFurnitureLayers(frame.dataset);
+      getVisibleMapLayers().forEach(function(lyr) {
+        if (internal.layerIsFurniture(lyr) && !layers.includes(lyr) && !lyr.hidden) {
+          layers.push(lyr);
+        }
       });
+      return layers;
     }
 
     function updateLayerStyles(layers) {
@@ -33184,7 +33464,6 @@
       var layersMayHaveChanged = action != 'nav'; // !action;
       var fullBounds;
       var contentLayers = getDrawableContentLayers();
-      // var furnitureLayers = getDrawableFurnitureLayers();
       if (!(_ext.width() > 0 && _ext.height() > 0)) {
         // TODO: track down source of these errors
         console.error("Collapsed map container, unable to draw.");
@@ -33225,8 +33504,7 @@
       }
       _renderer.drawOverlayLayers(_overlayLayers, action);
 
-      // TODO: draw furniture
-      // _renderer.drawFurnitureLayers(furnitureLayers, action);
+      _renderer.drawFurnitureLayers(getDrawableFurnitureLayers(), action);
       // The action says how much was redrawn, which a listener rebuilding its own
       // DOM overlays needs: a 'hover' draw leaves the SVG markup and its
       // transforms alone, so anything anchored to them is still good.
@@ -33815,10 +34093,7 @@
         return;
       }
       if (!getSourceLayer()) {
-        showPopupAlert(
-          'Add one or more layers before creating a map frame.',
-          'Map frame'
-        );
+        showPopupAlert(getNoSourceMessage(), 'Map frame');
         return;
       }
       var popup = showPopupAlert('', 'Add map frame', {classname: 'frame-create-box'});
@@ -33963,7 +34238,7 @@
     function createFromVisibleLayers(width, aspect, margin) {
       var entries = getCompositionEntries();
       if (!entries.length) {
-        showPopupAlert('No visible geographic layers are available.', 'Map frame');
+        showPopupAlert(getNoSourceMessage(), 'Map frame');
         return;
       }
       var ids = entries.map(function(o) {
@@ -33986,6 +34261,15 @@
       });
     }
 
+    function getNoSourceMessage() {
+      var active = gui.model.getActiveLayer();
+      if (active && active.layer && !internal.layerHasGeometry(active.layer)) {
+        return 'A map frame is fitted to layers with shapes, and this layer ' +
+          'contains only attribute data. Select or show a map layer to create a frame.';
+      }
+      return 'Add one or more layers before creating a map frame.';
+    }
+
     function getFrameTarget() {
       return internal.getActiveFrame(gui.model);
     }
@@ -34005,10 +34289,11 @@
       return entries.length ? entries[0].layer : null;
     }
 
+    // A frame is fitted to shapes, so a data-only layer on show doesn't count
     function getCompositionEntries() {
       var layers = gui.map.getCompositionLayers();
       return gui.model.getLayers().filter(function(o) {
-        return layers.includes(o.layer);
+        return layers.includes(o.layer) && internal.layerHasGeometry(o.layer);
       });
     }
 
@@ -34045,16 +34330,6 @@
       .text(label).on('click', action);
   }
 
-  // The "?" the rest of the app uses for field help (see .tip-button in
-  // elements.css and the static ones in index.html). The bubble is white-space:
-  // pre, so the line breaks in the text are the ones it gets.
-  function makeFieldTip(parent, text) {
-    var btn = El('div').addClass('tip-button').appendTo(parent).text('?');
-    var anchor = El('div').addClass('tip-anchor').appendTo(btn);
-    El('div').addClass('tip').appendTo(anchor).text(text);
-    return btn;
-  }
-
   function getUnitFactor$1(units) {
     return units == 'in' ? 72 : units == 'cm' ? 28.3465 : 1;
   }
@@ -34074,7 +34349,7 @@
   function FrameProperties(gui) {
     var target, form, widthInput, heightInput, unitsSelect, aspectValue;
     var backgroundControl, neatlineControl, neatlineWidthInput;
-    var boundsValue, crsValue;
+    var boundsValue, crsValue, scalebarButton;
 
     gui.frameProperties = this;
 
@@ -34146,6 +34421,14 @@
         .appendTo(appearance);
       makeActionButton(clearRow, 'Clear appearance', clearFrameStyle);
 
+      var elements = makePanelSection(form, 'Map elements');
+      var elementsRow = El('div')
+        .addClass('label-style-row label-panel-button-row')
+        .appendTo(elements);
+      scalebarButton = makeActionButton(elementsRow, '', function() {
+        if (gui.scalebarProperties) gui.scalebarProperties.open(target);
+      }).addClass('frame-scalebar-btn');
+
       var details = makePanelSection(form, 'Details');
       boundsValue = makeReadOnlyRow(details, 'Bounds');
       crsValue = makeReadOnlyRow(details, 'CRS');
@@ -34163,11 +34446,13 @@
       unitsSelect.node().value = units;
       aspectValue.text(getAspectText(frame));
       backgroundControl.showColor(rec.fill || '');
-      backgroundControl.opacity.node().value = formatOpacity(rec['fill-opacity'], rec.fill);
+      backgroundControl.opacity.node().value = formatColorOpacityPct(rec['fill-opacity'], !!rec.fill);
       neatlineControl.showColor(rec.stroke || '');
-      neatlineControl.opacity.node().value = formatOpacity(rec['stroke-opacity'], rec.stroke);
+      neatlineControl.opacity.node().value = formatColorOpacityPct(rec['stroke-opacity'], !!rec.stroke);
       neatlineWidthInput.node().value =
         rec['stroke-width'] === undefined ? '' : rec['stroke-width'];
+      scalebarButton.text(internal.findFrameFurnitureLayer(target.dataset, 'scalebar') ?
+        'Edit scale bar' : 'Add scale bar');
       boundsValue.text(frame.bbox.map(formatCoordinate).join(', '));
       crsValue.text(info.proj4 || '[unknown]');
     }
@@ -34291,15 +34576,6 @@
     return String(Number(value.toPrecision(12)));
   }
 
-  // A colour with no opacity of its own is drawn opaque, and says so; with no
-  // colour either, there is nothing for an opacity to apply to.
-  function formatOpacity(value, color) {
-    if (value === undefined || value === null || value === '') {
-      return color ? '100%' : '';
-    }
-    return String(Math.round(Number(value) * 100)) + '%';
-  }
-
   // A fixed ratio holds when the frame is rescaled; one taken from the extent
   // changes whenever the extent does. That difference is the reason to show the
   // ratio at all, so it is said rather than implied.
@@ -34311,6 +34587,434 @@
     var ratio = (bbox[2] - bbox[0]) / (bbox[3] - bbox[1]);
     if (!(ratio > 0) || !Number.isFinite(ratio)) return 'unavailable';
     return formatFrameAspectRatio(ratio) + ' (from extent)';
+  }
+
+  // Record fields of a scalebar, in the order they are written as options
+  var scalebarOptions = ['units', 'style', 'position', 'label_position',
+    'font_size', 'font_family', 'font_style', 'font_weight', 'color', 'bar_width',
+    'tic_length', 'label_offset', 'margin'];
+
+  // Returns a -scalebar command that recreates a scalebar with the given
+  // settings (a scalebar data record, with any edits applied). -scalebar
+  // replaces the frame's scalebar, so every setting has to be written.
+  function getScalebarCommand(settings) {
+    var parts = ['-scalebar'];
+    var d = settings || {};
+    if (isSet(d.label)) {
+      parts.push(quoteCommandValue(d.label));
+    }
+    scalebarOptions.forEach(function(k) {
+      if (isSet(d[k])) {
+        parts.push(k.replace(/_/g, '-') + '=' + formatValue$1(d[k]));
+      }
+    });
+    if (d.dual_units) {
+      parts.push('dual-units');
+    }
+    return parts.join(' ');
+  }
+
+  function isSet(val) {
+    return val !== undefined && val !== null && val !== '';
+  }
+
+  function formatValue$1(val) {
+    var str = String(val);
+    return /^[\w.#-]+$/.test(str) ? str : quoteCommandValue(str);
+  }
+
+  var positionOptions = [
+    ['top-left', 'Top left'],
+    ['top-right', 'Top right'],
+    ['bottom-left', 'Bottom left'],
+    ['bottom-right', 'Bottom right']
+  ];
+
+  // What the scalebar is drawn in when it has no color of its own
+  var defaultColor = '#000000';
+
+  // Settings of the frame's scalebar. Every edit sends a complete -scalebar
+  // command, which replaces the scalebar, so edits are undoable and replayable
+  // like any other command.
+  function ScalebarProperties(gui) {
+    var popup, form, note;
+    var labelInput, unitsSelect, styleSelect, dualUnitsBox, positionSelect,
+      labelPositionSelect, fontSizeInput, barWidthInput, marginInput,
+      fontSelect, fontStyleSelect, colorChit, colorInput, colorPicker;
+
+    gui.scalebarProperties = this;
+
+    // The panel doesn't block the map, so anything can change the scalebar or
+    // the frame while it is open: an undo, a frame edit, a console command.
+    gui.model.on('update', function(e) {
+      var flags = e.flags || {};
+      if (!popup || flags.simplify_amount || flags.redraw_only) return;
+      if (getScalebarRecord()) {
+        updateControls();
+      } else {
+        closePanel();
+      }
+    });
+
+    // Adds a scalebar to the frame if it doesn't have one
+    this.open = function(frameTarget) {
+      var frame = frameTarget || internal.getActiveFrame(gui.model);
+      if (!frame) return;
+      if (getScalebarRecord()) {
+        showPanel();
+      } else {
+        runCommand('-scalebar', 'Add scale bar', showPanel);
+      }
+    };
+
+    this.isOpen = function() {
+      return !!popup;
+    };
+
+    // The map stays live, so the panel is placed where it is least likely to
+    // hide the scalebar: at the top of the map, on the side away from it
+    function showPanel() {
+      var d = getScalebarRecord();
+      if (!d) return;
+      closePanel();
+      popup = showPopupAlert('', 'Scale bar', {
+        non_blocking: true,
+        classname: 'scalebar-properties-box'
+      });
+      popup.onClose(function() {
+        popup = form = null;
+      });
+      popup.container().addClass('scalebar-properties-popup');
+      form = El('div')
+        .addClass('label-style-panel scalebar-properties-form')
+        .appendTo(popup.container());
+      initForm();
+      updateControls();
+      placePanel(/right/.test(d.position || '') ? 'left' : 'right');
+    }
+
+    function closePanel() {
+      if (popup) popup.close();
+    }
+
+    function placePanel(side) {
+      var box = popup.container().node().parentNode;
+      var map = gui.container.findChild('.map-layers').node().getBoundingClientRect();
+      // clears the zoom buttons on the right edge of the map
+      var rightInset = 58;
+      var leftInset = 16;
+      box.style.position = 'absolute';
+      box.style.marginTop = '0';
+      box.style.top = Math.round(map.top + 12) + 'px';
+      if (side == 'left') {
+        box.style.left = Math.round(map.left + leftInset) + 'px';
+      } else {
+        box.style.right = Math.round(window.innerWidth - map.right + rightInset) + 'px';
+      }
+    }
+
+    function initForm() {
+      var row;
+      note = El('div').addClass('scalebar-properties-note').appendTo(form).hide();
+
+      row = makeRow(form);
+      labelInput = makeInput(makeCell(row, 'Distance'), 'scalebar-label-input')
+        .attr('placeholder', 'Automatic')
+        .on('change', function() {
+          update({label: labelInput.node().value.trim()});
+        });
+      unitsSelect = makeSelect(makeCell(row, 'Units'), 'scalebar-units-select',
+        [['miles', 'Miles'], ['km', 'Kilometers']])
+        .on('change', function() {
+          var changes = {units: unitsSelect.node().value};
+          var bare = getBareDistance(getScalebarRecord().label);
+          if (bare) changes.label = bare;
+          update(changes);
+        });
+
+      row = makeRow(form);
+      styleSelect = makeSelect(makeCell(row, 'Style'), 'scalebar-style-select',
+        [['a', 'Bar'], ['b', 'Ticks']])
+        .on('change', function() {
+          update({style: styleSelect.node().value});
+        });
+      dualUnitsBox = makeCheckbox(row, 'Metric + imperial', 'scalebar-dual-units')
+        .on('change', function() {
+          update({dual_units: dualUnitsBox.node().checked});
+        });
+
+      row = makeRow(form);
+      positionSelect = makeSelect(makeCell(row, 'Position'), 'scalebar-position-select',
+        positionOptions)
+        .on('change', function() {
+          update({position: positionSelect.node().value});
+        });
+      labelPositionSelect = makeSelect(makeCell(row, 'Labels'),
+        'scalebar-label-position-select', [['top', 'Above'], ['bottom', 'Below']])
+        .on('change', function() {
+          update({label_position: labelPositionSelect.node().value});
+        });
+
+      var appearance = makePanelSection(form, 'Appearance');
+
+      // Font and face menus, as in the label panel
+      row = makeRow(appearance);
+      fontSelect = El('select').attr('title', 'Font').addClass('scalebar-font-select')
+        .appendTo(makeCell(row, 'Font'))
+        .on('change', function() {
+          if (fontSelect.node().value) applyFont(fontSelect.node().value);
+        });
+      renderFontOptions();
+      fontStyleSelect = El('select').attr('title', 'Font style')
+        .addClass('scalebar-font-style-select')
+        .appendTo(makeCell(row, 'Font style'))
+        .on('change', function() {
+          if (fontStyleSelect.node().value) applyFontStyle(fontStyleSelect.node().value);
+        });
+
+      // The picker lines up with the right edge of its parent, so the row is its
+      // parent rather than the narrow color cell
+      row = makeRow(appearance);
+      var colorCell = El('div').addClass('frame-input-cell scalebar-color-cell').appendTo(row);
+      El('span').appendTo(colorCell).text('Color');
+      colorChit = El('div').addClass('label-color-chit').attr('role', 'button')
+        .on('click', function() { colorPicker.toggle(); });
+      colorInput = El('input').attr('type', 'text').attr('title', 'Scale bar color')
+        .on('change', function() {
+          var color = colorInput.node().value.trim();
+          if (!color) {
+            updateControls();
+            return;
+          }
+          if (isHexColor(color)) colorPicker.setColor(color);
+          update({color: color});
+        });
+      makeColorField(colorCell, colorChit, colorInput);
+      colorPicker = new ColorPicker(row, {
+        onPreview: showColor,
+        onChange: function(hex) {
+          showColor(hex);
+          update({color: hex});
+        }
+      });
+      fontSizeInput = makeNumberInput(makeCell(row, 'Font size'), 'font_size',
+        'scalebar-font-size');
+
+      row = makeRow(appearance);
+      barWidthInput = makeNumberInput(makeCell(row, 'Bar width'), 'bar_width',
+        'scalebar-bar-width');
+      marginInput = makeNumberInput(makeCell(row, 'Inset'), 'margin',
+        'scalebar-margin')
+        .attr('title', 'Distance from the edges of the frame, in pixels');
+
+      row = El('div').addClass('label-style-row label-panel-button-row').appendTo(form);
+      makePanelActionButton(row, 'Remove scale bar', function() {
+        runCommand('-scalebar remove', 'Remove scale bar', function() {
+          if (popup) popup.close();
+        });
+      });
+    }
+
+    function updateControls() {
+      var d = getScalebarRecord();
+      var problem;
+      if (!d || !form) return;
+      labelInput.node().value = d.label || '';
+      setSelectValue(unitsSelect, getUnitsMenuValue(d.units ||
+        internal.parseScalebarUnits(d.label || '')));
+      setSelectValue(styleSelect, d.style == 'b' || d.style == 'B' ||
+        !d.style && d.dual_units ? 'b' : 'a');
+      dualUnitsBox.node().checked = !!d.dual_units;
+      setSelectValue(positionSelect, d.position || 'top-left');
+      setSelectValue(labelPositionSelect, d.label_position || 'top');
+      fontSizeInput.node().value = formatValue(d.font_size);
+      barWidthInput.node().value = formatValue(d.bar_width);
+      marginInput.node().value = formatValue(d.margin);
+      updateFontControls(d);
+      showColor(d.color || defaultColor);
+      if (isHexColor(d.color || defaultColor)) colorPicker.setColor(d.color || defaultColor);
+      problem = getFrameProblem();
+      note.text(problem ? 'The scale bar is hidden: ' + problem + '.' : '');
+      if (problem) note.show(); else note.hide();
+    }
+
+    function showColor(color) {
+      colorInput.node().value = color || '';
+      colorChit.css('background-color', color || 'transparent');
+    }
+
+    function renderFontOptions() {
+      getInstalledFonts().forEach(function(group) {
+        var optgroup = El('optgroup').attr('label', group.name).appendTo(fontSelect);
+        group.fonts.forEach(function(fontName) {
+          El('option').attr('value', fontName).appendTo(optgroup).text(fontName);
+        });
+      });
+    }
+
+    // A scalebar with no font of its own is shown in the font it is drawn in
+    function getShownFont(d) {
+      return d.font_family || getDefaultFontName();
+    }
+
+    function updateFontControls(d) {
+      var font = getShownFont(d);
+      var shown = font ? getNearestFontStyleVariant(font, d.font_style, d.font_weight) : null;
+      if (font) {
+        setSelectValue(fontSelect, font);
+      } else {
+        fontSelect.node().selectedIndex = -1;
+      }
+      fontStyleSelect.empty();
+      getFontStyleVariants(font).forEach(function(variant) {
+        El('option').attr('value', variant.value).appendTo(fontStyleSelect).text(variant.label);
+      });
+      fontStyleSelect.node().disabled = !font;
+      if (shown) {
+        fontStyleSelect.node().value = shown.value;
+      } else {
+        fontStyleSelect.node().selectedIndex = -1;
+      }
+    }
+
+    // Keeps the current face, or the nearest one the new font has
+    function applyFont(fontName) {
+      var d = getScalebarRecord();
+      var changes = {font_family: fontName};
+      var variant = getNearestFontStyleVariant(fontName, d.font_style, d.font_weight);
+      if (variant) Object.assign(changes, getFontStyleValues(variant));
+      update(changes);
+    }
+
+    // A face belongs to a font, so a scalebar given one names the font it is
+    // drawn in
+    function applyFontStyle(value) {
+      var parts = value.split('|');
+      var changes = getFontStyleValues({style: parts[0], weight: parts[1]});
+      var d = getScalebarRecord();
+      if (!d.font_family && getDefaultFontName()) {
+        changes.font_family = getDefaultFontName();
+      }
+      update(changes);
+    }
+
+    // Regular is stored as no face at all
+    function getFontStyleValues(variant) {
+      if (variantIsRegular(variant)) {
+        return {font_style: '', font_weight: ''};
+      }
+      return {font_style: variant.style, font_weight: variant.weight};
+    }
+
+    // Applies edits to the current settings and replaces the scalebar. The
+    // units menu always applies, so it is written even when it shows the default.
+    function update(changes) {
+      var d = Object.assign({}, getScalebarRecord(), changes);
+      if (changes.style == 'a') d.dual_units = false;
+      if (changes.dual_units) d.style = 'b';
+      if (!d.units) d.units = unitsSelect.node().value;
+      runCommand(getScalebarCommand(d), 'Update scale bar', updateControls);
+    }
+
+    function makeNumberInput(cell, field, className) {
+      var input = makeInput(cell, className).attr('placeholder', 'auto');
+      input.on('change', function() {
+        var str = input.node().value.trim();
+        var o = {};
+        if (str !== '' && !(Number(str) >= 0)) {
+          updateControls();
+          return;
+        }
+        o[field] = str === '' ? '' : Number(str);
+        update(o);
+      });
+      return input;
+    }
+
+    function getFrameProblem() {
+      var frame = internal.getActiveFrame(gui.model);
+      var crs, data;
+      if (!frame) return 'there is no map frame';
+      crs = frame.layer.gui && frame.layer.gui.dynamic_crs ||
+        internal.getDatasetCRS(frame.dataset);
+      data = internal.getFrameLayerData(frame.layer, frame.dataset.arcs, crs);
+      return internal.getFurnitureFrameProblem(data);
+    }
+
+    function getScalebarRecord() {
+      var frame = internal.getActiveFrame(gui.model);
+      var lyr = frame && internal.findFrameFurnitureLayer(frame.dataset, 'scalebar');
+      return lyr ? lyr.data.getReadOnlyRecordAt(0) : null;
+    }
+
+    function runCommand(cmd, title, done) {
+      runGuiEditCommand(gui, cmd, {
+        title: title,
+        onSuccess: done,
+        onError: updateControls
+      });
+    }
+  }
+
+  function makeRow(parent, className) {
+    return El('div').addClass('label-style-row scalebar-row')
+      .addClass(className || 'scalebar-two-col').appendTo(parent);
+  }
+
+  function makeCell(row, label) {
+    var cell = El('label').addClass('frame-input-cell').appendTo(row);
+    El('span').appendTo(cell).text(label);
+    return cell;
+  }
+
+  function makeInput(parent, className) {
+    return El('input').attr('type', 'text').addClass(className).appendTo(parent);
+  }
+
+  function makeSelect(parent, className, options) {
+    var select = El('select').addClass(className).appendTo(parent);
+    options.forEach(function(o) {
+      El('option').attr('value', o[0]).appendTo(select).text(o[1]);
+    });
+    return select;
+  }
+
+  function makeCheckbox(parent, label, className) {
+    var box = El('input').attr('type', 'checkbox').addClass(className);
+    var wrapper = El('label').addClass('scalebar-checkbox').appendTo(parent);
+    box.appendTo(wrapper);
+    El('span').appendTo(wrapper).text(label);
+    return box;
+  }
+
+  // Shows a value that came from the command line even if the menu lacks it
+  function setSelectValue(select, value) {
+    var node = select.node();
+    var found = Array.prototype.some.call(node.options, function(o) {
+      return o.value == value;
+    });
+    if (!found) {
+      El('option').attr('value', value).appendTo(select).text(value);
+    }
+    node.value = value;
+  }
+
+  // The number of a single-distance label, e.g. "100" from "100 km", so the
+  // units menu can apply to it
+  function getBareDistance(label) {
+    var match = /^([\d\s.,/]*\d)\s*[^\d\s.,/]+$/.exec(String(label || '').trim());
+    return match ? match[1].trim() : '';
+  }
+
+  function getUnitsMenuValue(units) {
+    var parsed = internal.parseLabelUnits(units);
+    return parsed == 'mile' || !parsed ? 'miles' :
+      parsed == 'm' ? 'meters' :
+      parsed == 'ft' ? 'feet' : 'km';
+  }
+
+  function formatValue(val) {
+    return val === undefined || val === null ? '' : String(val);
   }
 
   // This is a new way to handle compatibility problems between
@@ -35115,6 +35819,7 @@
     new PreviewMode(gui);
     new FrameResizeTool(gui);
     new FrameProperties(gui);
+    new ScalebarProperties(gui);
     gui.editToolbar = new EditToolbar(gui);
     gui.labelTool = new LabelTool(gui);
     gui.layerStyleTool = new LayerStyleTool(gui);
