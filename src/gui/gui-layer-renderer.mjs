@@ -145,19 +145,14 @@ export function LayerRenderer(gui, container) {
     });
   };
 
+  // Furniture is sized in frame pixels, so panning and zooming only need to
+  // update its transform; its content changes only with a full redraw.
   this.drawFurnitureLayers = function(layers, action) {
-    // re-render if action == 'nav', because scalebars get resized
-    var noRedraw = action == 'hover';
-    if (!noRedraw) {
-      _furniture.clear();
+    if (action == 'nav' || action == 'hover') {
+      _furniture.repositionFurniture();
+    } else {
+      _furniture.drawFurniture(layers);
     }
-    layers.forEach(function(lyr) {
-      if (noRedraw) {
-        _furniture.reposition(lyr, 'furniture');
-      } else {
-        _furniture.drawLayer(lyr, 'furniture');
-      }
-    });
   };
 
   // kludge: skip rendering base layers if hovering, except on first hover

@@ -1,7 +1,7 @@
 import { Bounds } from '../geom/mapshaper-bounds';
 import { getDatasetCRS, getScaleFactorAtXY} from '../crs/mapshaper-projections';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
-import { getFurnitureLayerData } from '../furniture/mapshaper-furniture-utils';
+import { getFurnitureLayerData, getFurnitureLayerType, layerIsFurniture } from '../furniture/mapshaper-furniture-utils';
 import { error, stop, warn } from '../utils/mapshaper-logging';
 import { layerIsRectangle, getLayerBounds } from '../dataset/mapshaper-layer-utils';
 import { transformPoints } from '../dataset/mapshaper-dataset-utils';
@@ -200,6 +200,27 @@ export function findFrameLayerInDataset(dataset) {
   return utils.find(dataset.layers, function(lyr) {
     return isFrameLayer(lyr, dataset.arcs);
   });
+}
+
+// Furniture (scalebars, etc.) belongs to a frame by sharing its dataset.
+// Furniture in a dataset without a frame is an ordinary standalone layer.
+export function getFrameFurnitureLayers(dataset) {
+  if (!dataset || !findFrameLayerInDataset(dataset)) return [];
+  return dataset.layers.filter(layerIsFurniture);
+}
+
+export function findFrameFurnitureLayer(dataset, type) {
+  return getFrameFurnitureLayers(dataset).find(function(lyr) {
+    return getFurnitureLayerType(lyr) == type;
+  }) || null;
+}
+
+// True for a map frame and for the furniture that belongs to it: layers that
+// describe the map layout rather than holding map content.
+export function isFrameComponentLayer(lyr, dataset) {
+  if (!dataset) return false;
+  if (isFrameLayer(lyr, dataset.arcs)) return true;
+  return layerIsFurniture(lyr) && !!findFrameLayerInDataset(dataset);
 }
 
 export function findFrames(catalog) {

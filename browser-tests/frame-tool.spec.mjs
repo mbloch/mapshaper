@@ -28,6 +28,15 @@ test('layer panel creates a frame from the visible layers', async function({page
   );
 });
 
+test('a data-only layer gets a clear message instead of a frame', async function({page}) {
+  await loadFixture(page, 'test/data/text/states.csv');
+  await openLayersPanel(page);
+  await page.locator('.map-frame-empty').click();
+  await expect(page.locator('.alert-box')).toContainText('only attribute data');
+  await expect(page.locator('.frame-create-popup')).toHaveCount(0);
+  expect(await getFrameInfo(page)).toBeNull();
+});
+
 test('fitting visible layers applies the aspect ratio and margin', async function({page}) {
   await loadFixture(page);
   await openLayersPanel(page);
@@ -739,8 +748,8 @@ test('export treats the frame as output settings, not a selectable layer', async
   );
 });
 
-async function loadFixture(page) {
-  var url = '/?undo=on&undo-test=on&files=' + encodeURIComponent(POINT_FIXTURE);
+async function loadFixture(page, file) {
+  var url = '/?undo=on&undo-test=on&files=' + encodeURIComponent(file || POINT_FIXTURE);
   await page.goto(url);
   await page.waitForFunction(function() {
     return window.mapshaper && window.mapshaper.undoTest;

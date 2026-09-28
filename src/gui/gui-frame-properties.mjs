@@ -9,7 +9,7 @@ import { formatFrameAspectRatio } from './gui-frame-aspect';
 export function FrameProperties(gui) {
   var target, form, widthInput, heightInput, unitsSelect, aspectValue;
   var backgroundControl, neatlineControl, neatlineWidthInput;
-  var boundsValue, crsValue;
+  var boundsValue, crsValue, scalebarButton;
 
   gui.frameProperties = this;
 
@@ -81,6 +81,14 @@ export function FrameProperties(gui) {
       .appendTo(appearance);
     makeActionButton(clearRow, 'Clear appearance', clearFrameStyle);
 
+    var elements = makePanelSection(form, 'Map elements');
+    var elementsRow = El('div')
+      .addClass('label-style-row label-panel-button-row')
+      .appendTo(elements);
+    scalebarButton = makeActionButton(elementsRow, '', function() {
+      if (gui.scalebarProperties) gui.scalebarProperties.open(target);
+    }).addClass('frame-scalebar-btn');
+
     var details = makePanelSection(form, 'Details');
     boundsValue = makeReadOnlyRow(details, 'Bounds');
     crsValue = makeReadOnlyRow(details, 'CRS');
@@ -103,6 +111,8 @@ export function FrameProperties(gui) {
     neatlineControl.opacity.node().value = formatOpacity(rec['stroke-opacity'], rec.stroke);
     neatlineWidthInput.node().value =
       rec['stroke-width'] === undefined ? '' : rec['stroke-width'];
+    scalebarButton.text(internal.findFrameFurnitureLayer(target.dataset, 'scalebar') ?
+      'Edit scale bar' : 'Add scale bar');
     boundsValue.text(frame.bbox.map(formatCoordinate).join(', '));
     crsValue.text(info.proj4 || '[unknown]');
   }

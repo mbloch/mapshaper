@@ -179,6 +179,9 @@ export var ExportControl = function(gui) {
     if (opts.format == 'svg' || opts.format == 'topojson') {
       opts.gui_frame = getGuiFrameContext();
     }
+    if (opts.format == 'svg') {
+      targets = addFrameFurnitureTargets(targets, opts.gui_frame);
+    }
     try {
       var files = await internal.exportTargetLayers(model, targets, opts);
     } catch(e) {
@@ -244,7 +247,7 @@ export var ExportControl = function(gui) {
   function initLayerMenu() {
     var list = menu.findChild('.export-layer-list').empty();
     var layers = model.getLayers().filter(function(o) {
-      return !internal.isFrameLayer(o.layer, o.dataset.arcs);
+      return !internal.isFrameComponentLayer(o.layer, o.dataset);
     });
     sortLayersForMenuDisplay(layers);
 
@@ -438,21 +441,42 @@ export var ExportControl = function(gui) {
     };
   }
 
+  // Snapshots keep the frame and its furniture
   function addFrameTarget(targets) {
     var frame = internal.getActiveFrame(model);
-    var group;
     if (!frame) return targets;
+    return addDatasetTargets(targets, frame.dataset,
+      [frame.layer].concat(internal.getFrameFurnitureLayers(frame.dataset)));
+  }
+
+  // The frame's furniture is drawn in SVG output, the way it is in preview.
+  // An unprojected frame can't show a scalebar, so it doesn't block the export.
+  function addFrameFurnitureTargets(targets, frameContext) {
+    var frame = internal.getActiveFrame(model);
+    var furniture = frame ? internal.getFrameFurnitureLayers(frame.dataset) : [];
+    if (furniture.length === 0) return targets;
+    if (internal.getFurnitureFrameProblem(frameContext && frameContext.data)) {
+      console.warn('Map furniture was not exported: the map frame is unprojected');
+      return targets;
+    }
+    return addDatasetTargets(targets, frame.dataset, furniture);
+  }
+
+  function addDatasetTargets(targets, dataset, layers) {
+    var group;
     targets = targets.map(function(target) {
       return Object.assign({}, target, {layers: target.layers.slice()});
     });
     group = targets.find(function(target) {
-      return target.dataset == frame.dataset;
+      return target.dataset == dataset;
     });
-    if (group) {
-      if (!group.layers.includes(frame.layer)) group.layers.push(frame.layer);
-    } else {
-      targets.push({dataset: frame.dataset, layers: [frame.layer]});
+    if (!group) {
+      group = {dataset: dataset, layers: []};
+      targets.push(group);
     }
+    layers.forEach(function(lyr) {
+      if (!group.layers.includes(lyr)) group.layers.push(lyr);
+    });
     return targets;
   }
 

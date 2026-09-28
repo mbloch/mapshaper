@@ -2618,7 +2618,7 @@ body.pan.panning .map-layers:not(.drawing) {
 }
 
 .pointer-btn .nav-sub-menu {
-	top: -3px;
+	top: -2px;
 }
 
 .nav-btn.open .nav-sub-menu {
@@ -2845,6 +2845,69 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .frame-create-popup {
 	width: 264px;
+}
+
+.scalebar-properties-popup {
+	width: 264px;
+}
+
+.scalebar-properties-form.label-style-panel {
+	background: transparent;
+	border: 0;
+	border-radius: 0;
+	box-shadow: none;
+	box-sizing: border-box;
+	max-height: none;
+	overflow: visible;
+	padding: 0;
+	position: static;
+	width: 100%;
+}
+
+.label-style-row.scalebar-row {
+	align-items: end;
+	display: grid;
+	gap: 6px;
+}
+
+.scalebar-two-col {
+	grid-template-columns: 1fr 1fr;
+}
+
+.scalebar-row select {
+	box-sizing: border-box;
+	min-width: 0;
+	width: 100%;
+}
+
+.scalebar-row > * {
+	min-width: 0;
+}
+
+/* The bottom padding puts the text on the baseline of the menu beside it.
+   Baseline alignment doesn't: Chrome puts a select's baseline 2px above the
+   text it shows. */
+.scalebar-checkbox {
+	align-items: center;
+	display: flex;
+	padding-bottom: 2px;
+	font-size: 12px;
+	gap: 4px;
+	white-space: nowrap;
+}
+
+/* centered on the menu, which the text's baseline alignment leaves it below */
+.scalebar-checkbox input {
+	margin: 0;
+	position: relative;
+	top: -2px;
+	width: auto;
+}
+
+.scalebar-properties-note {
+	color: #a33;
+	font-size: 12px;
+	margin-bottom: 8px;
 }
 
 /* The field tips are drawn above the "?" that opens them, which the box's own
@@ -4500,7 +4563,7 @@ body.dragging-color-picker * {
 
 .simplify-control .handle {
 	position: absolute;
-	top: -3px;
+	top: -2px;
 }
 
 .simplify-control .handle img {

@@ -42,8 +42,6 @@ export function SvgDisplayLayer(gui, ext, mouse) {
     resize(ext);
     if (type == 'label' || type == 'symbol') {
       html = renderSymbols(lyr.gui.displayLayer, ext, id);
-    } else if (type == 'furniture') {
-      html = renderFurniture(lyr.gui.displayLayer, ext);
     }
     g.innerHTML = html;
     if (type == 'label' || type == 'symbol') {
@@ -55,6 +53,26 @@ export function SvgDisplayLayer(gui, ext, mouse) {
     if (!gui.map.isActiveLayer(lyr)) {
       g.style.pointerEvents = 'none';
     }
+  };
+
+  // Furniture layers are dataset layers (they have no display layer)
+  el.drawFurniture = function(layers) {
+    el.clear();
+    resize(ext);
+    layers.forEach(function(lyr) {
+      var html = renderFurniture(lyr, ext);
+      var g;
+      if (!html) return;
+      g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('class', 'mapshaper-svg-layer mapshaper-furniture-layer');
+      g.innerHTML = html;
+      svg.append(g);
+    });
+  };
+
+  el.repositionFurniture = function() {
+    resize(ext);
+    repositionFurniture(svg, ext);
   };
 
   function reposition(lyr, type, ext) {
@@ -70,8 +88,6 @@ export function SvgDisplayLayer(gui, ext, mouse) {
       // a symbol group's transform absorbs panning, and zooming too when a
       // frame is defined; anything it can't absorb needs the baselines rebuilt
       updateLabelPaths(container.node(), lyr.gui.displayLayer, ext);
-    } else if (type == 'furniture') {
-      repositionFurniture(container.node(), lyr.gui.displayLayer, ext);
     } else {
       // container.getElementsByTagName('text')
       error('Unsupported symbol type:', type);

@@ -46,10 +46,10 @@ export function setLayerPinning(lyr, pinned) {
 }
 
 // Whether a layer can be shown on the map alongside the active layer, and so
-// has an eye icon in the layers panel. A frame is drawn by preview mode, and a
-// data-only layer has nothing to draw.
+// has an eye icon in the layers panel. A frame and its furniture are drawn by
+// preview mode, and a data-only layer has nothing to draw.
 export function layerIsPinnable(lyr, dataset) {
-  if (dataset && internal.isFrameLayer(lyr, dataset.arcs)) return false;
+  if (internal.isFrameComponentLayer(lyr, dataset)) return false;
   return internal.layerIsGeometric(lyr) || internal.layerHasRaster(lyr) ||
     internal.layerHasFurniture(lyr);
 }

@@ -23,6 +23,7 @@ import { runningInBrowser } from '../mapshaper-env';
 import { getFileBase, layerNameIsUnsafeFilename } from '../utils/mapshaper-filename-utils';
 import { gzipSync } from '../io/mapshaper-gzip';
 import { getRasterBBox, getRasterGrid, getRasterPreview } from '../rasters/mapshaper-raster-utils';
+import { layerIsFurniture } from '../furniture/mapshaper-furniture-utils';
 
 // @targets - non-empty output from Catalog#findCommandTargets()
 //
@@ -57,6 +58,9 @@ export async function exportTargetLayers(catalog, targets, opts) {
 async function exportDatasets(datasets, opts) {
   var format = getOutputFormat(datasets[0], opts);
   var files;
+  if (format != 'svg' && format != PACKAGE_EXT) {
+    datasets = removeFurnitureLayers(datasets);
+  }
   validateRasterExportFormat(datasets, format);
   if (format != 'geoparquet' && opts.level !== undefined) {
     error('The level= option only applies to GeoParquet output');
@@ -130,6 +134,25 @@ async function exportDatasets(datasets, opts) {
     });
   }
   return files;
+}
+
+// Scalebars and other map furniture only have a meaning in SVG output
+function removeFurnitureLayers(datasets) {
+  var hasFurniture = datasets.some(function(dataset) {
+    return dataset.layers.some(layerIsFurniture);
+  });
+  if (!hasFurniture) return datasets;
+  datasets = datasets.map(function(dataset) {
+    return utils.defaults({
+      layers: dataset.layers.filter(function(lyr) { return !layerIsFurniture(lyr); })
+    }, dataset);
+  }).filter(function(dataset) {
+    return dataset.layers.length > 0;
+  });
+  if (datasets.length === 0) {
+    stop('Map furniture layers (e.g. scalebars) can only be exported as SVG');
+  }
+  return datasets;
 }
 
 function validateRasterExportFormat(datasets, format) {

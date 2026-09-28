@@ -581,7 +581,7 @@ export function MshpMap(gui) {
 
   function isFrameMapLayer(lyr) {
     var dataset = lyr && lyr.gui && lyr.gui.source && lyr.gui.source.dataset;
-    return !!dataset && internal.isFrameLayer(lyr, dataset.arcs);
+    return !!dataset && internal.isFrameComponentLayer(lyr, dataset);
   }
 
   function getDrawableContentLayers() {
@@ -591,11 +591,18 @@ export function MshpMap(gui) {
     });
   }
 
-  function getDrawableFurnitureLayers(layers) {
-    if (!isPreviewView()) return [];
-    return getVisibleMapLayers().filter(function(o) {
-      return internal.isFurnitureLayer(o);
+  // The active frame's furniture, plus any visible standalone furniture layers
+  // (e.g. from -scalebar run before a frame was created)
+  function getDrawableFurnitureLayers() {
+    var frame = isPreviewView() ? internal.getActiveFrame(model) : null;
+    if (!frame) return [];
+    var layers = internal.getFrameFurnitureLayers(frame.dataset);
+    getVisibleMapLayers().forEach(function(lyr) {
+      if (internal.layerIsFurniture(lyr) && !layers.includes(lyr) && !lyr.hidden) {
+        layers.push(lyr);
+      }
     });
+    return layers;
   }
 
   function updateLayerStyles(layers) {
@@ -647,7 +654,6 @@ export function MshpMap(gui) {
     var layersMayHaveChanged = action != 'nav'; // !action;
     var fullBounds;
     var contentLayers = getDrawableContentLayers();
-    // var furnitureLayers = getDrawableFurnitureLayers();
     if (!(_ext.width() > 0 && _ext.height() > 0)) {
       // TODO: track down source of these errors
       console.error("Collapsed map container, unable to draw.");
@@ -688,8 +694,7 @@ export function MshpMap(gui) {
     }
     _renderer.drawOverlayLayers(_overlayLayers, action);
 
-    // TODO: draw furniture
-    // _renderer.drawFurnitureLayers(furnitureLayers, action);
+    _renderer.drawFurnitureLayers(getDrawableFurnitureLayers(), action);
     // The action says how much was redrawn, which a listener rebuilding its own
     // DOM overlays needs: a 'hover' draw leaves the SVG markup and its
     // transforms alone, so anything anchored to them is still good.

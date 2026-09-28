@@ -31,8 +31,10 @@ var TOLERANCE = 1e-9;
 //            May return NaN for a bbox the frame can't be fitted to.
 // @opts.ignore_symbols  fit to the coordinates alone
 export function getFrameContentBbox(targets, getScale, opts) {
+  // a data-only layer has no bounds
   var bounds = targets.reduce(function(memo, o) {
-    return memo.mergeBounds(getLayerBounds(o.layer, o.dataset.arcs));
+    var b = getLayerBounds(o.layer, o.dataset.arcs);
+    return b ? memo.mergeBounds(b) : memo;
   }, new Bounds());
   var raw, items, bbox;
   if (!bounds.hasBounds()) return null;

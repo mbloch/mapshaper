@@ -16,6 +16,19 @@ describe('mapshaper-frame.js', function () {
       assert(svg.includes('width="100" height="100" viewBox="0 0 100 100"'));
     });
 
+    it('-frame explains that a data-only layer has nothing to fit', async function() {
+      await assert.rejects(
+        api.applyCommands('-i data.csv -frame width=600', {'data.csv': 'a,b\n1,2\n'}),
+        /Unable to fit a frame to a layer with no geometry/);
+    });
+
+    it('-frame fits the layers with shapes among its targets', async function() {
+      var cmd = '-i data.csv -rectangle bbox=0,0,2,1 name=box ' +
+        '-frame width=200 target=data,box -o target=frame,box out.svg';
+      var out = await api.applyCommands(cmd, {'data.csv': 'a,b\n1,2\n'});
+      assert(String(out['out.svg']).includes('width="200" height="100"'));
+    });
+
     it('-frame with default width', async function() {
       var cmd = '-rectangle bbox=0,0,2,1 -frame -o out.svg';
       var out = await api.applyCommands(cmd);

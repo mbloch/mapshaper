@@ -2717,16 +2717,31 @@ export function getOptionParser() {
     .option('target', targetOpt);
 
   parser.command('scalebar')
-    .describe('add a simple scale bar to SVG output')
+    .describe('add a scale bar to the map frame and SVG output')
     .option('label', {
       DEFAULT: true,
-      describe: 'distance label, e.g. "35 miles"'
+      describe: 'distance label, e.g. "35 miles" (default is automatic)'
+    })
+    .option('units', {
+      describe: 'units of a bare-number or automatic label: km, meters, miles or feet (default is miles)'
     })
     .option('style', {
       describe: 'two options: a or b'
     })
     .option('font-size', {
       type: 'number'
+    })
+    .option('font-family', {
+      describe: 'font family of labels'
+    })
+    .option('font-style', {
+      describe: 'font style of labels, e.g. italic'
+    })
+    .option('font-weight', {
+      describe: 'font weight of labels, e.g. bold'
+    })
+    .option('color', {
+      describe: 'color of bar and labels (default is black)'
     })
     .option('tic-length', {
       describe: 'length of tic marks (style b)',
@@ -2740,18 +2755,22 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('position', {
-      describe: 'e.g. bottom-right (default is top-left)'
+      describe: 'top-left (default), top-right, bottom-left or bottom-right'
     })
     .option('label-position', {
       describe: 'top, bottom, top-center (style a), etc'
     })
     .option('dual-units', {
-      // describe: 'display both metric and imperial units',
+      describe: 'show both metric and imperial units (style b)',
       type: 'flag'
     })
     .option('margin', {
       describe: 'offset in pixels from edge of map',
       type: 'number'
+    })
+    .option('remove', {
+      describe: 'remove the scale bar from the map frame',
+      type: 'flag'
     });
 
   parser.command('shape')

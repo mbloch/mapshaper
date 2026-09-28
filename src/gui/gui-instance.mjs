@@ -16,6 +16,7 @@ import { MshpMap } from './gui-map';
 import { PreviewMode } from './gui-preview-mode';
 import { FrameResizeTool } from './gui-frame-resize-tool';
 import { FrameProperties } from './gui-frame-properties';
+import { ScalebarProperties } from './gui-scalebar-properties';
 import { utils } from './gui-core';
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
@@ -86,6 +87,7 @@ export function GuiInstance(container, opts) {
   new PreviewMode(gui);
   new FrameResizeTool(gui);
   new FrameProperties(gui);
+  new ScalebarProperties(gui);
   gui.editToolbar = new EditToolbar(gui);
   gui.labelTool = new LabelTool(gui);
   gui.layerStyleTool = new LayerStyleTool(gui);

@@ -105,6 +105,7 @@ test('the map frame row has frame-specific menu actions', async function({page})
   await expect(page.locator('.contextmenu')).toBeVisible();
   expect(await page.locator('.contextmenu-item').allInnerTexts()).toEqual([
     'frame properties',
+    'add scale bar',
     'resize frame',
     'delete frame',
   ]);

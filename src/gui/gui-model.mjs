@@ -8,7 +8,7 @@ export function Model(gui) {
   var setDefaultTargets = self.setDefaultTargets;
   utils.extend(self, EventDispatcher.prototype);
 
-  // A map frame is composition state, not editable content. Commands may
+  // A map frame (and its furniture) is composition state, not editable content. Commands may
   // explicitly target it, but it must not replace the GUI's active content
   // layer or become the implicit target of the next console command.
   self.setDefaultTargets = function(targets, opts) {
@@ -75,14 +75,24 @@ export function Model(gui) {
   };
 
   self.selectNextLayer = function() {
-    var next = self.findNextLayer(self.getActiveLayer().layer);
+    var next = findContentLayer(self.findNextLayer);
     if (next) self.selectLayer(next.layer, next.dataset);
   };
 
   self.selectPrevLayer = function() {
-    var prev = self.findPrevLayer(self.getActiveLayer().layer);
+    var prev = findContentLayer(self.findPrevLayer);
     if (prev) self.selectLayer(prev.layer, prev.dataset);
   };
+
+  // step past the frame and its furniture, which can't be selected
+  function findContentLayer(step) {
+    var start = self.getActiveLayer().layer;
+    var o = step.call(self, start);
+    while (o && o.layer != start && internal.isFrameComponentLayer(o.layer, o.dataset)) {
+      o = step.call(self, o.layer);
+    }
+    return o;
+  }
 
   return self;
 
@@ -91,7 +101,7 @@ export function Model(gui) {
       return {
         dataset: target.dataset,
         layers: target.layers.filter(function(lyr) {
-          return !internal.isFrameLayer(lyr, target.dataset.arcs);
+          return !internal.isFrameComponentLayer(lyr, target.dataset);
         })
       };
     }).filter(function(target) {
@@ -101,7 +111,7 @@ export function Model(gui) {
 
   function getFirstContentTarget() {
     var target = self.getLayers().find(function(o) {
-      return !internal.isFrameLayer(o.layer, o.dataset.arcs);
+      return !internal.isFrameComponentLayer(o.layer, o.dataset);
     });
     return target ? [{dataset: target.dataset, layers: [target.layer]}] : [];
   }

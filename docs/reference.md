@@ -1515,23 +1515,35 @@ module.exports.voronoi = async function(points, bbox) {
 
 ### -scalebar
 
-Add a scale bar to an SVG map. The command creates a data-only layer containing the scale bar's data properties. A scale bar is included in the SVG output file if the scale bar layer is included as an output layer.
+Add a scale bar to a map. The scale bar's settings are stored in a data-only layer.
 
-The length of the scale bar reflects the scale in the center of the map's rectangular frame.
+If a map frame exists (see [-frame](#-frame)), the scale bar belongs to the frame: it is stored in the frame's dataset, running `-scalebar` again replaces it, and it is exported along with the frame (e.g. `-o target=* map.svg`). In the web UI, it is drawn in preview mode and included in SVG exports. Without a frame, each `-scalebar` command adds a standalone scale bar layer, which is included in SVG output if the layer is one of the output layers.
 
-`<label>` or `label=` Optional label giving the size and units of the scalebar, e.g. `"25 k.m."`. If only units are given, a length will be assigned. If the `label` property is missing, scale bar properties will be auto-generated. If two lengths are given (e.g. `1000 km,500 miles`), a dual-unit bar will be generated, if the scale bar style supports it.
+Scale bars appear only in SVG output; they are skipped when exporting other formats. The map must be projected. The length of the scale bar reflects the scale at the center of the map's rectangular frame.
+
+`<label>` or `label=` Optional label giving the size and units of the scalebar, e.g. `"25 k.m."`. Supported units are kilometers, meters, miles and feet. A bare number (e.g. `150`) is a distance in the units given by `units=`. If only units are given (e.g. `km`), a length will be assigned. If the `label` property is missing, a length will be chosen automatically: the longest round distance that fits within 20% of the map's width, but not shorter than 70 pixels. If two lengths are given (e.g. `1000 km,500 miles`), a dual-unit bar will be generated, if the scale bar style supports it.
+
+`units=` Units of a bare-number label or an automatically chosen length: `km`, `meters`, `miles` or `feet` (default is `miles`). Automatic lengths are given in meters or feet when kilometers or miles would be too long.
 
 `style=` Scalebar style, `a` or `b`. Style `b` has tic marks.
+
+`dual-units` (style b) Show both metric and imperial distances. Implies `style=b`.
 
 `bar-width=` Line width of bar.
 
 `tic-length=` (style b) length of tic marks.
 
+`color=` Color of the bar and labels (default is black).
+
+`font-size=` `font-family=` `font-style=` `font-weight=` Label font properties.
+
 `label-position=` Position of labels relative to the bar (`top` or `bottom`).
 
-`position=` Position of the scalebar on the map (default is `top-left`).
+`position=` Position of the scalebar on the map: `top-left` (default), `top-right`, `bottom-left` or `bottom-right`.
 
 `margin=` Offset in pixels from edge of map.
+
+`remove` Remove the map frame's scale bar.
 
 
 ### -shape

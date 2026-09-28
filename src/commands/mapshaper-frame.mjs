@@ -18,8 +18,10 @@ import { bboxToPolygon } from '../commands/mapshaper-rectangle';
 import { expandCommandTargets } from '../dataset/mapshaper-target-utils';
 import { requireDatasetsHaveCompatibleCRS } from '../crs/mapshaper-projections';
 import { importGeoJSON } from '../geojson/geojson-import';
+import { layerHasGeometry } from '../dataset/mapshaper-layer-type-utils';
 import { roundToDigits } from '../geom/mapshaper-rounding';
 import { parsePercent } from '../cli/mapshaper-option-parsing-utils';
+import { moveFrameFurniture } from '../furniture/mapshaper-furniture-cmd';
 
 cmd.frame = function(catalog, targets, opts) {
   var widthPx, heightPx, bbox;
@@ -62,6 +64,11 @@ cmd.frame = function(catalog, targets, opts) {
       var extent = getFrameExtent(contentBbox, widthPx, heightPx, opts);
       return getFrameScale(extent.bbox, extent.width, getFixedAspect(extent, opts));
     }, opts);
+    if (!bbox && !expandCommandTargets(targets).some(function(o) {
+      return layerHasGeometry(o.layer);
+    })) {
+      stop('Unable to fit a frame to a layer with no geometry. Target a layer containing shapes, or use the bbox= option.');
+    }
     if (!bbox) {
       stop('Command target is missing geographical bounds');
     }
@@ -85,14 +92,17 @@ cmd.frame = function(catalog, targets, opts) {
     var crsInfo = getDatasetCrsInfo(targets[0].dataset);
     setDatasetCrsInfo(frameDataset, crsInfo);
   }
-  frameDataset.layers[0].name = opts.name || 'frame';
+  var frameLyr = frameDataset.layers[0];
+  frameLyr.name = opts.name || 'frame';
   if (existingFrame) {
     if (!opts.replace) {
       stop('A map frame already exists:', existingFrame.layer.name || '[unnamed frame]');
     }
+    moveFrameFurniture(existingFrame.dataset, frameDataset);
     demoteFrameLayer(existingFrame.layer);
   }
-  catalog.addDataset(frameDataset);
+  // target the frame, not any furniture that came with it
+  catalog.setDefaultTarget([frameLyr], frameDataset);
 };
 
 // The frame's extent and nominal size, from the extent of its content and the

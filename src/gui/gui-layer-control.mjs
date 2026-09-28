@@ -224,6 +224,8 @@ export function LayerControl(gui) {
     sortLayersForMenuDisplay(model.getLayers()).forEach(function(o) {
       var lyr = o.layer;
       var isFrame = internal.isFrameLayer(lyr, o.dataset.arcs);
+      // furniture is shown as part of its frame's entry
+      if (!isFrame && internal.isFrameComponentLayer(lyr, o.dataset)) return;
       var opts = {
         show_source: layerCount < 5,
         pinnable: pinnableCount > 0 && isPinnable(lyr, o.dataset)
@@ -323,23 +325,37 @@ export function LayerControl(gui) {
     function deleteLayer() {
       var target = findLayerById(id);
       var undoTransaction;
+      var furniture;
       if (!target) return;
+      // a frame's furniture goes with it, rather than becoming a stray layer
+      furniture = internal.isFrameLayer(target.layer, target.dataset.arcs) ?
+        internal.getFrameFurnitureLayers(target.dataset) : [];
       undoTransaction = createUndoTransaction(gui, 'delete layer');
       if (map.isVisibleLayer(target.layer)) {
         // TODO: check for double map refresh after model.deleteLayer() below
         setLayerPinning(target.layer, false);
       }
       if (undoTransaction) {
-        undoTransaction.run(function() {
-          model.deleteLayer(target.layer, target.dataset);
-        });
+        undoTransaction.run(deleteLayers);
         addUndoTransactionToHistory(gui, undoTransaction, {
           flags: {select: true, arc_count: true},
           entryPrefix: 'delete-layer'
         });
       } else {
+        deleteLayers();
+      }
+
+      function deleteLayers() {
+        furniture.forEach(function(lyr) {
+          model.deleteLayer(lyr, target.dataset);
+        });
         model.deleteLayer(target.layer, target.dataset);
       }
+    }
+
+    function openScalebarProperties() {
+      var target = findLayerById(id);
+      if (target && gui.scalebarProperties) gui.scalebarProperties.open(target);
     }
 
     // Duplicate a layer by running an equivalent command, so the copy is
@@ -429,6 +445,10 @@ export function LayerControl(gui) {
         internal.isFrameLayer(target.layer, target.dataset.arcs);
       if (isFrame) {
         menuEvent.frameProperties = openFrameProperties;
+        menuEvent.scalebarProperties = openScalebarProperties;
+        menuEvent.scalebarLabel =
+          internal.findFrameFurnitureLayer(target.dataset, 'scalebar') ?
+            'scale bar' : 'add scale bar';
         menuEvent.resizeFrame = resizeFrame;
         menuEvent.deleteFrame = deleteLayer;
       } else {

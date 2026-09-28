@@ -336,10 +336,7 @@ export function FrameResizeTool(gui) {
       return;
     }
     if (!getSourceLayer()) {
-      showPopupAlert(
-        'Add one or more layers before creating a map frame.',
-        'Map frame'
-      );
+      showPopupAlert(getNoSourceMessage(), 'Map frame');
       return;
     }
     var popup = showPopupAlert('', 'Add map frame', {classname: 'frame-create-box'});
@@ -484,7 +481,7 @@ export function FrameResizeTool(gui) {
   function createFromVisibleLayers(width, aspect, margin) {
     var entries = getCompositionEntries();
     if (!entries.length) {
-      showPopupAlert('No visible geographic layers are available.', 'Map frame');
+      showPopupAlert(getNoSourceMessage(), 'Map frame');
       return;
     }
     var ids = entries.map(function(o) {
@@ -507,6 +504,15 @@ export function FrameResizeTool(gui) {
     });
   }
 
+  function getNoSourceMessage() {
+    var active = gui.model.getActiveLayer();
+    if (active && active.layer && !internal.layerHasGeometry(active.layer)) {
+      return 'A map frame is fitted to layers with shapes, and this layer ' +
+        'contains only attribute data. Select or show a map layer to create a frame.';
+    }
+    return 'Add one or more layers before creating a map frame.';
+  }
+
   function getFrameTarget() {
     return internal.getActiveFrame(gui.model);
   }
@@ -526,10 +532,11 @@ export function FrameResizeTool(gui) {
     return entries.length ? entries[0].layer : null;
   }
 
+  // A frame is fitted to shapes, so a data-only layer on show doesn't count
   function getCompositionEntries() {
     var layers = gui.map.getCompositionLayers();
     return gui.model.getLayers().filter(function(o) {
-      return layers.includes(o.layer);
+      return layers.includes(o.layer) && internal.layerHasGeometry(o.layer);
     });
   }
 
