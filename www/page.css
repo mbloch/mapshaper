@@ -3336,6 +3336,37 @@ body.pan.panning .map-layers:not(.drawing) {
 	color: #555;
 }
 
+/* A "?" just after its caption rather than floated to the far edge of the row,
+   and in the caption's size, so it reads as part of the caption. */
+.label-style-panel .label-style-row-label > .tip-button {
+	float: none;
+	margin: 0 0 0 4px;
+	font-size: 12px;
+	font-weight: bold;
+}
+
+/* The panel sits at the top of the map, where a bubble drawn above its "?"
+   would go under the page header, so these open downward, tail pointing up. */
+.label-style-panel .label-style-row-label > .tip-button .tip-anchor {
+	bottom: auto;
+	top: 22px;
+}
+
+.label-style-panel .label-style-row-label > .tip-button .tip:after,
+.label-style-panel .label-style-row-label > .tip-button .tip:before {
+	top: auto;
+	bottom: 100%;
+	border-top-color: transparent;
+}
+
+.label-style-panel .label-style-row-label > .tip-button .tip:after {
+	border-bottom-color: #fff;
+}
+
+.label-style-panel .label-style-row-label > .tip-button .tip:before {
+	border-bottom-color: #999;
+}
+
 .label-split-row .label-split-cell + .label-split-cell {
 	white-space: nowrap;
 }

@@ -6,7 +6,7 @@ import { showPopupAlert } from './gui-alert';
 import { translateDisplayPoint } from './gui-display-utils';
 import { HighlightBox } from './gui-highlight-box';
 import { FloatingToolbar } from './gui-floating-toolbar';
-import { makePanelSection } from './gui-panel-controls';
+import { makeFieldTip, makePanelSection } from './gui-panel-controls';
 import { parseFrameAspectRatio, formatFrameAspectRatio } from './gui-frame-aspect';
 
 export function FrameResizeTool(gui) {
@@ -571,16 +571,6 @@ export function FrameResizeTool(gui) {
 function addButton(parent, label, action) {
   El('div').addClass('btn dialog-btn').appendTo(parent)
     .text(label).on('click', action);
-}
-
-// The "?" the rest of the app uses for field help (see .tip-button in
-// elements.css and the static ones in index.html). The bubble is white-space:
-// pre, so the line breaks in the text are the ones it gets.
-function makeFieldTip(parent, text) {
-  var btn = El('div').addClass('tip-button').appendTo(parent).text('?');
-  var anchor = El('div').addClass('tip-anchor').appendTo(btn);
-  El('div').addClass('tip').appendTo(anchor).text(text);
-  return btn;
 }
 
 function getUnitFactor(units) {

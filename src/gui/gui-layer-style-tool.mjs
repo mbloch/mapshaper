@@ -3,21 +3,21 @@ import { El } from './gui-el';
 import {
   claimFieldKeys, isTextInput, releasePanelFocus
 } from './gui-panel-focus';
-import { makeColorRow, makePanelActionButton } from './gui-panel-controls';
+import { makeColorRow, makeFieldTip, makePanelActionButton } from './gui-panel-controls';
 import { SizeField } from './gui-size-field';
-import { parseOpacityValue, formatOpacityPct } from './gui-style-values';
+import { parseOpacityValue, formatOpacityPct, normalizeDashArrayInput } from './gui-style-values';
 import { StylePresetControl } from './gui-style-preset-control';
 import { runGuiEditCommand } from './gui-edit-command';
 import { internal } from './gui-core';
 import { quoteCommandValue } from './gui-command-utils';
 
 var savedStylesKey = 'layer_style_presets';
-var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'fill', 'fill-opacity'];
+var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'fill', 'fill-opacity'];
 
 export function LayerStyleTool(gui) {
   var parent = gui.container.findChild('.mshp-main-map');
   var panel = El('div').addClass('label-style-panel layer-style-panel rollover').appendTo(parent).hide();
-  var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, randomFillBtn, presetControl, hit;
+  var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, dashControl, randomFillBtn, presetControl, hit;
   var targetLayer = null;
 
   initPanel();
@@ -103,6 +103,7 @@ export function LayerStyleTool(gui) {
     fillControl = addColorControl(panel, 'Fill', 'fill', '');
     strokeControl = addColorControl(panel, 'Stroke', 'stroke', '#000000');
     strokeWidthField = addStrokeWidthControl(strokeControl.aside);
+    dashControl = addDashArrayControl(panel);
 
     var buttonRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(panel);
     randomFillBtn = makePanelActionButton(buttonRow, 'Random fills', applyRandomFillColors);
@@ -163,6 +164,29 @@ export function LayerStyleTool(gui) {
     });
   }
 
+  // A literal stroke-dasharray, in the wide column so that it lines up with
+  // the stroke's colour above it. A blank field makes the line solid again.
+  function addDashArrayControl(parent) {
+    var row = El('div').addClass('label-style-row label-split-row layer-dash-row').appendTo(parent);
+    var cell = El('div').addClass('label-split-cell').appendTo(row);
+    El('div').addClass('label-split-cell').appendTo(row);
+    var caption = El('div').addClass('label-style-row-label').appendTo(cell).text('Dashes');
+    makeFieldTip(caption,
+      'Dash and gap lengths in pixels, separated\n' +
+      'by spaces. "4" gives 4px dashes and 4px gaps.\n' +
+      '"6 3" gives 6px dashes and 3px gaps.');
+    var input = El('input').attr('type', 'text').appendTo(cell)
+      .on('change', function() {
+        var value = normalizeDashArrayInput(input.node().value);
+        if (value && internal.parseStyleLiteral('stroke-dasharray', value) === undefined) {
+          updateControls();
+          return;
+        }
+        applyDashArrayStyle(value);
+      });
+    return {row: row, input: input};
+  }
+
   function releaseFocus() {
     releasePanelFocus(panel.node());
   }
@@ -176,9 +200,11 @@ export function LayerStyleTool(gui) {
     updateEditingStatus(manualIds.length);
     strokeControl.row.show();
     fillControl.row.classed('hidden', geom != 'polygon');
+    dashControl.row.classed('hidden', geom != 'polyline');
     updateColorControl(strokeControl);
     updateColorControl(fillControl);
     updateStrokeWidthControl();
+    updateDashArrayControl();
     randomFillBtn.classed('hidden', geom != 'polygon');
     presetControl.render();
     updateSavedStyleControls();
@@ -203,6 +229,11 @@ export function LayerStyleTool(gui) {
     strokeWidthField.setValue(
       formatNumberValue(value === '' || value === undefined || value === null ?
         getDefaultStrokeWidth() : value));
+  }
+
+  function updateDashArrayControl() {
+    var value = getCommonStyleValue('stroke-dasharray');
+    dashControl.input.node().value = value === undefined || value === null ? '' : String(value);
   }
 
   function nudgeStrokeWidth(direction) {
@@ -241,6 +272,14 @@ export function LayerStyleTool(gui) {
   function applyStrokeWidthStyle(value) {
     var styles = [['stroke-width', value]];
     if (value > 0 && styleFieldIsUnsetForTargets('stroke')) {
+      styles.push(['stroke', strokeControl.defaultColor]);
+    }
+    runStyleCommand(styles);
+  }
+
+  function applyDashArrayStyle(value) {
+    var styles = [['stroke-dasharray', value]];
+    if (value && styleFieldIsUnsetForTargets('stroke')) {
       styles.push(['stroke', strokeControl.defaultColor]);
     }
     runStyleCommand(styles);
@@ -307,6 +346,9 @@ export function LayerStyleTool(gui) {
     addStyleValue(style, 'stroke', getControlValue(strokeControl.input));
     addStyleValue(style, 'stroke-width', strokeWidthField.getValue());
     addStyleValue(style, 'stroke-opacity', parseOpacityValue(strokeControl.opacity.node().value));
+    if (targetLayer && targetLayer.geometry_type == 'polyline') {
+      addStyleValue(style, 'stroke-dasharray', getControlValue(dashControl.input));
+    }
     if (targetLayer && targetLayer.geometry_type == 'polygon') {
       addStyleValue(style, 'fill', getControlValue(fillControl.input));
       addStyleValue(style, 'fill-opacity', parseOpacityValue(fillControl.opacity.node().value));

@@ -61,6 +61,16 @@ export function makePanelActionButton(parent, label, action) {
   return btn;
 }
 
+// The "?" the rest of the app uses for field help (see .tip-button in
+// elements.css and the static ones in index.html). The bubble is white-space:
+// pre, so the line breaks in the text are the ones it gets.
+export function makeFieldTip(parent, text) {
+  var btn = El('div').addClass('tip-button').appendTo(parent).text('?');
+  var anchor = El('div').addClass('tip-anchor').appendTo(btn);
+  El('div').addClass('tip').appendTo(anchor).text(text);
+  return btn;
+}
+
 export function setPanelButtonDisabled(el, disabled) {
   el.classed('disabled', !!disabled)
     .attr('aria-disabled', disabled ? 'true' : 'false');

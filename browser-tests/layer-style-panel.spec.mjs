@@ -53,8 +53,10 @@ test('layer style fields are laid out in two columns by what they belong to',
   async function({page}) {
     await loadFixture(page, FIXTURE);
     expect(await page.evaluate(function() {
-      var rows = document.querySelectorAll('.layer-style-panel .label-split-row');
-      return Array.prototype.map.call(rows, function(row) {
+      var rows = Array.prototype.filter.call(
+        document.querySelectorAll('.layer-style-panel .label-split-row'),
+        function(row) { return row.offsetParent !== null; });
+      return rows.map(function(row) {
         return Array.prototype.map.call(row.children, function(cell) {
           var span = cell.querySelector('span');
           return span ? span.textContent : '-';
@@ -105,6 +107,48 @@ test('the panel buttons still do what they say', async function({page}) {
   expect(errors).toEqual([]);
 });
 
+var LINE_FIXTURE = 'test/data/features/divide/ex1_line.json';
+var LINE_LAYER = 'ex1_line';
+
+test('dashes are typed as a -style stroke-dasharray value', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page, LINE_FIXTURE, 'line_style');
+  var input = page.locator('.layer-style-panel .layer-dash-row input');
+  await expect(page.locator('.layer-style-panel .layer-dash-row .label-style-row-label'))
+    .toContainText('Dashes');
+  await expect(page.locator('.layer-style-panel .layer-dash-row .tip-button')).toHaveCount(1);
+
+  await setField(input, '6 3');
+  expect(await getStyleValue(page, 'stroke-dasharray', LINE_LAYER)).toBe('6 3');
+  expect((await getSessionCommands(page)).join('\n')).toContain("stroke-dasharray='6 3'");
+
+  // commas and extra spaces are tidied into the form -style takes
+  await setField(input, ' 4,  2 ');
+  expect(await getStyleValue(page, 'stroke-dasharray', LINE_LAYER)).toBe('4 2');
+  await expect(input).toHaveValue('4 2');
+
+  // a value -style would not accept puts the field back and changes nothing
+  await setField(input, 'dotted');
+  expect(await getStyleValue(page, 'stroke-dasharray', LINE_LAYER)).toBe('4 2');
+  await expect(input).toHaveValue('4 2');
+
+  // blank makes the line solid again
+  await setField(input, '');
+  expect(await getStyleValue(page, 'stroke-dasharray', LINE_LAYER)).toBeUndefined();
+  expect(errors).toEqual([]);
+});
+
+test('the dashes field is only on the line panel', async function({page}) {
+  await loadFixture(page, FIXTURE);
+  await expect(page.locator('.layer-style-panel .layer-dash-row')).toBeHidden();
+});
+
+async function getSessionCommands(page) {
+  return page.evaluate(function() {
+    return window.mapshaper.undoTest.getSessionHistory().commands;
+  });
+}
+
 async function clickButton(page, label) {
   await page.locator('.layer-style-panel .label-panel-action-btn')
     .filter({hasText: label}).click();
@@ -117,11 +161,11 @@ async function setField(locator, value) {
   await locator.page().waitForTimeout(250);
 }
 
-async function getStyleValue(page, field) {
+async function getStyleValue(page, field, layer) {
   return page.evaluate(function(o) {
     var lyr = window.mapshaper.undoTest.getLayerInfo(o.layer);
     return lyr && lyr.records[0] && lyr.records[0][o.field];
-  }, {layer: LAYER, field: field});
+  }, {layer: layer || LAYER, field: field});
 }
 
 // What has the keyboard: a tag name, or 'BODY' for nothing in particular.
@@ -132,7 +176,7 @@ async function getFocusedElement(page) {
   });
 }
 
-async function loadFixture(page, fixture) {
+async function loadFixture(page, fixture, mode) {
   await page.goto('/?undo=on&undo-test=on&files=' + encodeURIComponent(fixture));
   await page.waitForFunction(function() {
     return window.mapshaper && window.mapshaper.undoTest;
@@ -140,10 +184,10 @@ async function loadFixture(page, fixture) {
   await page.waitForFunction(function() {
     return window.mapshaper.undoTest.getState().model.datasetCount > 0;
   });
-  await page.evaluate(function() {
+  await page.evaluate(function(mode) {
     window.mapshaper.undoTest.clearUndoHistory();
-    window.mapshaper.undoTest.setInteractionMode('polygon_style');
-  });
+    window.mapshaper.undoTest.setInteractionMode(mode);
+  }, mode || 'polygon_style');
   await page.locator('.layer-style-panel').waitFor({state: 'visible'});
 }
 
