@@ -31,7 +31,7 @@ test('point text has no width handle, and a block keeps its width on a double-cl
     expect(rec['label-text'].replace(/<wbr>/g, '')).toBe(TEXT);
     // the width and the lines it breaks into are one edit
     var history = await getHistory(page);
-    expect(history[history.length - 1]).toMatch(/^-style label-width='\d+' ids=0 .*-style label-text=/);
+    expect(history[history.length - 1]).toMatch(/^-labels label-width='\d+' ids=0 .*-labels text=/);
     // still selected, with its handle on the new edge
     var moved = await getHandlePoint(page, 'width');
     expect(moved.x).toBeLessThan(handle.x - 150);
@@ -88,7 +88,7 @@ test('the via handle bends an elbow, and a double-click straightens it',
     await expect.poll(function() { return getLabelField(page, 0, 'callout-via'); })
       .toMatch(/^-?[.\d]+,-?[.\d]+$/);
     var history = await getHistory(page);
-    expect(history[history.length - 1]).toMatch(/^-style callout-via='[^']+' ids=0/);
+    expect(history[history.length - 1]).toMatch(/^-labels callout-via='[^']+' ids=0/);
 
     via = await getHandlePoint(page, 'via');
     await page.mouse.dblclick(via.x, via.y);
@@ -150,7 +150,7 @@ test('dragging the text carries a hand-placed bend with it, unless Alt is held',
     expect(via[1]).toBe(-60);
     // one command for the text and the bend
     var history = await getHistory(page);
-    expect(history[history.length - 1]).toMatch(/^-style dx=.* callout-via=/);
+    expect(history[history.length - 1]).toMatch(/^-labels dx=.* callout-via=/);
 
     glyphs = await getGlyphPoint(page, 0);
     await page.keyboard.down('Alt');

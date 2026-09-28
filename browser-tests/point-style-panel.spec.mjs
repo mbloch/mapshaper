@@ -88,6 +88,23 @@ test('an expression turns a field into labels, and the label tool takes over', a
   expect(errors).toEqual([]);
 });
 
+test('"as new layer" makes a labeled copy and leaves the points alone', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  var btn = page.locator('.point-style-panel .label-panel-action-btn').filter({hasText: 'Create'}).first();
+
+  await page.locator('.point-style-panel .label-create-expression-row input').fill('d.id');
+  await page.locator('.point-style-panel .point-create-copy-label input').check();
+  await btn.click();
+  await page.waitForTimeout(400);
+  expect(await getStyleValue(page, 'label-text')).toBeUndefined();
+  expect(await page.evaluate(function() {
+    var lyr = window.mapshaper.undoTest.getLayerInfo('labels');
+    return lyr && lyr.records[0]['label-text'];
+  })).toBe('A');
+  expect(errors).toEqual([]);
+});
+
 async function clickButton(page, label) {
   await page.locator('.point-style-panel .label-panel-action-btn')
     .filter({hasText: label}).click();

@@ -92,9 +92,9 @@ test('clicking away creates the label in one command', async function({page}) {
   // One command carries the geometry and the text together, rather than a
   // creation followed by a text edit -- there is one entry for the label, not
   // one for placing it and another for what was typed into it.
-  expect(history.match(/-add-label/g).length).toBe(1);
+  expect(history.match(/-labels coordinates=/g).length).toBe(1);
   expect(history).toContain("text='Reno'");
-  expect(history).not.toContain('-style label-text=');
+  expect(history).not.toMatch(/-style label-text=|-labels text=/);
   expect(errors).toEqual([]);
 });
 
@@ -132,7 +132,7 @@ test('a label never typed into is never created', async function({page}) {
   expect(await getLabelLayer(page)).toBeNull();
   expect((await getEditorState(page)).caretCount).toBe(0);
   // nothing ran, so there is nothing in the history to undo
-  expect(await getHistory(page)).not.toContain('-add-label');
+  expect(await getHistory(page)).not.toContain('coordinates=');
   expect(errors).toEqual([]);
 });
 

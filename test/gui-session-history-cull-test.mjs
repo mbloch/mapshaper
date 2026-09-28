@@ -100,4 +100,31 @@ describe('gui-session-history-cull', function() {
       '-style fill=green stroke=white'
     ]);
   });
+
+  it('culls -labels style edits, reading text= as label-text', function() {
+    var commands = [
+      "-labels text='Ren' ids=0",
+      "-labels text='Reno' ids=0",
+      "-style label-text='Reno!' ids=0"
+    ];
+    assert.deepEqual(cull(commands), [
+      "-style label-text='Reno!' ids=0"
+    ]);
+  });
+
+  it('does not cull a -labels command that adds a label', function() {
+    var commands = [
+      '-labels coordinates=0,0 text=a',
+      '-labels text=b'
+    ];
+    assert.deepEqual(cull(commands), commands);
+  });
+
+  it('does not cull a -labels command that makes a copy', function() {
+    var commands = [
+      '-labels text=a + name=copy',
+      '-labels text=b'
+    ];
+    assert.deepEqual(cull(commands), commands);
+  });
 });

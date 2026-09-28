@@ -66,6 +66,22 @@ export function validateGridOpts(cmd) {
   }
 }
 
+// -labels adds a label when given coordinates=, and styles the target's labels
+// otherwise. Options that belong to one of these are refused in the other,
+// rather than ignored.
+export function validateLabelsOpts(cmd) {
+  var o = cmd.options;
+  if ('coordinates' in o) {
+    if (o.where || o.ids) {
+      stop('where= and ids= select labels to style, and can not be used with coordinates=');
+    }
+  } else if (o.properties) {
+    stop('properties= requires coordinates=');
+  } else if ('name' in o && !o.no_replace) {
+    stop('name= requires coordinates= or +');
+  }
+}
+
 export function validateExpressionOpt(cmd) {
   if (!cmd.options.expression) {
     error('Command requires a JavaScript expression');

@@ -45,7 +45,7 @@ test('a text block is rewrapped with its font, in one undo step', async function
   var history = await page.evaluate(function() {
     return window.mapshaper.undoTest.getSessionHistory().commands;
   });
-  expect(history[history.length - 1]).toMatch(/^-style font-size='20' -style label-text=/);
+  expect(history[history.length - 1]).toMatch(/^-labels font-size='20' -labels text=/);
   expect(history.filter(function(cmd) { return /font-size/.test(cmd); }).length).toBe(1);
 
   await page.evaluate(function() { window.mapshaper.undoTest.undo(); });

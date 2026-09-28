@@ -511,6 +511,15 @@ schema tracking, undo capture and session history.
 
 ### `-add-label`
 
+> **Superseded by `-labels`.** Label styling and label creation now share one
+> command: `-labels coordinates=...` is `-add-label`, and `-labels` without
+> `coordinates=` styles the target's labels as `-style` does (with `text=` for
+> `label-text=`). The GUI emits `-labels` for every label edit. `-add-label`
+> remains as a hidden command so that older session histories still run, and
+> `-style` still accepts the label properties, without listing them in its
+> help. The rest of this document uses the names the commands had when it was
+> written.
+
 One command creates both kinds of label, because both are point features and
 they differ only in how many points they have:
 

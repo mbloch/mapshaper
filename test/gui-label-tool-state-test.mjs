@@ -279,25 +279,25 @@ describe('gui label tool state', function() {
 
     it('writes an anchored label as a single coordinate pair', function() {
       assert.equal(getAddLabelCommand([[-119.5, 37.8]], {target: existing}),
-        "-add-label coordinates=-119.5,37.8 target='places'");
+        "-labels coordinates=-119.5,37.8 target='places'");
     });
 
     it('writes a curve as a flat coordinate list', function() {
       assert.equal(
         getAddLabelCommand([[0, 1], [2, 3], [4, 5]], {target: existing}),
-        "-add-label coordinates=0,1,2,3,4,5 target='places'");
+        "-labels coordinates=0,1,2,3,4,5 target='places'");
     });
 
     it('creates a new layer with no-replace, targeting the active layer', function() {
       // target= cannot name the new layer: it is resolved before the command
       // runs, when that layer does not exist yet
       assert.equal(getAddLabelCommand([[0, 1]], {target: fresh}),
-        "-add-label coordinates=0,1 no-replace name='labels' target='poly'");
+        "-labels coordinates=0,1 no-replace name='labels' target='poly'");
     });
 
     it('omits target when there is no layer to target', function() {
       assert.equal(getAddLabelCommand([[0, 1]], {target: empty}),
-        "-add-label coordinates=0,1 no-replace name='labels'");
+        "-labels coordinates=0,1 no-replace name='labels'");
     });
 
     it('omits text when it is empty, since that is the default', function() {
@@ -462,7 +462,7 @@ describe('gui label tool state', function() {
     it('round-trips through the command parser', async function() {
       var cases = ["Martha's Vineyard", 'a b', 'a"b', "it's 'here'", 'plain'];
       for (var i = 0; i < cases.length; i++) {
-        var out = await api.applyCommands('-add-label coordinates=0,0 text=' +
+        var out = await api.applyCommands('-labels coordinates=0,0 text=' +
           quoteCommandValue(cases[i]) + ' -o out.json');
         assert.equal(JSON.parse(out['out.json']).features[0].properties['label-text'],
           cases[i]);
@@ -496,27 +496,30 @@ describe('gui label tool state', function() {
 
       it('removes a field rather than setting it blank', function() {
         // how the panel says "no icon" and "no inline css"; carrying these
-        // through to -add-label would write properties that mean nothing
+        // through to -labels would write properties that mean nothing
         assert.deepEqual(mergeStyleValues({css: 'a', icon: 'star'},
           [['css', ''], ['icon', ''], ['icon-size', 0]]), {});
       });
 
-      it('ignores a property -add-label cannot set', function() {
+      it('ignores a property the panel cannot set on a new label', function() {
         // it would appear to do nothing, which is worse than doing nothing
         assert.deepEqual(mergeStyleValues({}, [['label-text', 'Reno']]), {});
         assert.ok(NEW_LABEL_STYLE_FIELDS.indexOf('label-text') == -1);
       });
 
-      it('every field in the list is an option -add-label takes', function() {
+      it('every field in the list is an option -labels and -add-label take', function() {
         // The list is what the panel is allowed to set with nothing selected,
-        // so a field missing from -add-label is a control that silently does
-        // nothing for the next label. icon-color was one.
-        var defn = getOptionParser().findCommand('add-label').done();
-        var declared = defn.options.map(function(o) { return o.name; });
-        var missing = NEW_LABEL_STYLE_FIELDS.filter(function(field) {
-          return declared.indexOf(field) == -1;
+        // so a field missing from the command is a control that silently does
+        // nothing for the next label. icon-color was one. -add-label is checked
+        // too, because older session histories still run it.
+        ['labels', 'add-label'].forEach(function(name) {
+          var defn = getOptionParser().findCommand(name).done();
+          var declared = defn.options.map(function(o) { return o.name; });
+          var missing = NEW_LABEL_STYLE_FIELDS.filter(function(field) {
+            return declared.indexOf(field) == -1;
+          });
+          assert.deepEqual(missing, [], name);
         });
-        assert.deepEqual(missing, []);
       });
     });
 

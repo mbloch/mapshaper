@@ -327,9 +327,8 @@ export function PointStyleTool(gui) {
     var expr = createExprInput.node().value.trim();
     var cmd;
     if (!expr || !gui.console) return;
-    cmd = createCopyCheckbox.node().checked ?
-      '-filter true + name=labels -style label-text=' + quoteCommandValue(expr) :
-      '-style label-text=' + quoteCommandValue(expr);
+    cmd = '-labels text=' + quoteCommandValue(expr);
+    if (createCopyCheckbox.node().checked) cmd += ' + name=labels';
     runGuiEditCommand(gui, cmd, {
       title: 'Create labels',
       onSuccess: openLabelStyles

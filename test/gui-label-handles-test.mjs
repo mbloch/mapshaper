@@ -169,16 +169,16 @@ describe('gui-label-commands.mjs handle commands', function () {
   it('getLabelStyleCommand() writes each value, and removes an empty one', function () {
     assert.equal(getLabelStyleCommand({'callout-via': '10,-5', 'callout-gap': ''}, 3,
       {target: 'labels'}),
-    "-style callout-via='10,-5' callout-gap= ids=3 target='labels'");
+    "-labels callout-via='10,-5' callout-gap= ids=3 target='labels'");
   });
 
-  it('getLabelStyleCommand() adds rewrapped text as a second -style', function () {
+  it('getLabelStyleCommand() adds rewrapped text as a second -labels', function () {
     assert.equal(getLabelStyleCommand({'label-width': 80}, 0, {text: 'Mount <wbr>Rainier'}),
-      "-style label-width='80' ids=0 -style label-text='Mount <wbr>Rainier' ids=0");
+      "-labels label-width='80' ids=0 -labels text='Mount <wbr>Rainier' ids=0");
   });
 
   it('getLabelOffsetCommand() carries a via point along with the offset', function () {
     assert.equal(getLabelOffsetCommand({dx: 5, dy: -10, anchor: 'start', via: '3,-8', id: 1}),
-      "-style dx=5 dy=-10 text-anchor=start label-pos= callout-via='3,-8' ids=1");
+      "-labels dx=5 dy=-10 text-anchor=start label-pos= callout-via='3,-8' ids=1");
   });
 });

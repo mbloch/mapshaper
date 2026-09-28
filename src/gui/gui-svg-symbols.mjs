@@ -137,7 +137,7 @@ export function replaceAnchoredSymbol(container, id, rec, shp, ext) {
 // hit test, the reposition pass and the selection cue all find labels by those,
 // and a node with no feature behind it must not be found by any of them.
 //
-// @rec: the label's record, as -add-label will write it
+// @rec: the label's record, as -labels coordinates= will write it
 // @shp: its knots, in the layer's display coordinates
 // Returns a markup string, or '' if there is nothing to draw.
 export function renderPendingSymbol(rec, shp, ext, idPrefix) {

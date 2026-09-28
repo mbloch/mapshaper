@@ -58,7 +58,7 @@ function getFeatureCount(lyr) {
 export function getAddLabelCommand(coords, opts) {
   var o = opts || {};
   var target = o.target || {mode: 'new', newLayerName: DEFAULT_LABEL_LAYER_NAME};
-  var parts = ['-add-label', 'coordinates=' + formatCoords(coords)];
+  var parts = ['-labels', 'coordinates=' + formatCoords(coords)];
   if (o.text) {
     // A real newline would break the command parser, so encodeLabelText()
     // writes the two-character escape the label renderer also accepts.
@@ -125,7 +125,7 @@ export function getUpdateLabelCommand(coords, id, target) {
 //   id:     feature id of the label
 //   target: layer name, or null to use the current target
 export function getLabelPlacementCommand(opts) {
-  var parts = ['-style', 'label-start-offset=' + opts.offset];
+  var parts = ['-labels', 'label-start-offset=' + opts.offset];
   if (opts.anchor) {
     parts.push('text-anchor=' + opts.anchor);
   }
@@ -145,7 +145,7 @@ export function getLabelPlacementCommand(opts) {
 // with and the position goes -- "stop taking a position, carry these offsets
 // instead", which is one command because it is one edit.
 //
-// label-pos= is always written, even by a label that has none. -style reads an
+// label-pos= is always written, even by a label that has none. -labels reads an
 // empty value as "remove this", and removing a property no record carries adds
 // nothing to the layer, so there is nothing to be gained by asking first.
 //
@@ -155,7 +155,7 @@ export function getLabelPlacementCommand(opts) {
 //   target: layer name, or null to use the current target
 //   via:    (optional) the callout-via the text carried with it
 export function getLabelOffsetCommand(opts) {
-  var parts = ['-style', 'dx=' + opts.dx, 'dy=' + opts.dy,
+  var parts = ['-labels', 'dx=' + opts.dx, 'dy=' + opts.dy,
     'text-anchor=' + opts.anchor, 'label-pos='];
   if (opts.via) parts.push('callout-via=' + quoteCommandValue(opts.via));
   parts.push('ids=' + opts.id);
@@ -166,16 +166,16 @@ export function getLabelOffsetCommand(opts) {
 // The command a drag on one of a label's handles writes, run once on release.
 //
 //   values: {field: value}, where '' removes the field -- which is what
-//     -style reads an empty value as, and how a handle goes back to automatic
+//     -labels reads an empty value as, and how a handle goes back to automatic
 //   id:     feature id of the label
 //   opts:
 //     target: layer name, or null to use the current target
 //     text:   (optional) rewrapped label-text, with real newlines and soft
-//       breaks. A second -style in the same string, so that a new width and
+//       breaks. A second -labels in the same string, so that a new width and
 //       the lines it breaks into are one undo step.
 export function getLabelStyleCommand(values, id, opts) {
   var o = opts || {};
-  var parts = ['-style'];
+  var parts = ['-labels'];
   Object.keys(values).forEach(function(name) {
     var val = values[name];
     parts.push(name + '=' + (val === '' ? '' : quoteCommandValue(String(val))));
@@ -197,7 +197,7 @@ export function getLabelStyleCommand(values, id, opts) {
 export function getLabelTextCommand(text, id, target) {
   // A real newline would break the command parser, so encodeLabelText() writes
   // the two-character escape that the label renderer also accepts.
-  var parts = ['-style', 'label-text=' + quoteCommandValue(encodeLabelText(text))];
+  var parts = ['-labels', 'text=' + quoteCommandValue(encodeLabelText(text))];
   parts.push('ids=' + id);
   if (target) parts.push('target=' + quoteCommandValue(target));
   return parts.join(' ');

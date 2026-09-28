@@ -22,6 +22,7 @@ import {
   noteDatasetWillChange
 } from '../undo/mapshaper-undo-tracking';
 import '../commands/mapshaper-add-label';
+import '../commands/mapshaper-labels';
 import '../commands/mapshaper-add-layer';
 import '../commands/mapshaper-update-frame';
 import '../commands/mapshaper-update-label';
@@ -122,6 +123,9 @@ function commandRunsPerTargetDataset(name, opts) {
   if (name == 'rectangle') {
     return !opts.source && !opts.bbox;
   }
+  if (name == 'labels') {
+    return !('coordinates' in opts);
+  }
   return [
     'affine', 'alpha-shapes', 'blur', 'buffer', 'calc', 'check-geometry',
     'classify', 'clean', 'clip', 'cluster', 'contours', 'dashlines', 'data-fill',
@@ -136,7 +140,10 @@ function commandRunsPerTargetDataset(name, opts) {
   ].indexOf(name) > -1;
 }
 
-function commandAcceptsEmptyTarget(name) {
+function commandAcceptsEmptyTarget(name, opts) {
+  if (name == 'labels') {
+    return 'coordinates' in opts;
+  }
   return name == 'graticule' || name == 'i' || name == 'help' ||
     name == 'point-grid' || name == 'shape' || name == 'rectangle' || name == 'frame' ||
     name == 'require' || name == 'run' || name == 'define' ||
@@ -232,7 +239,7 @@ export async function runCommand(command, job) {
         stop(utils.format('Missing target: %s\nAvailable layers: %s',
             opts.target, getFormattedLayerList(job.catalog)));
       }
-      if (!commandAcceptsEmptyTarget(name)) {
+      if (!commandAcceptsEmptyTarget(name, opts)) {
         stop("No data is available");
       }
     }
@@ -255,13 +262,16 @@ export async function runCommand(command, job) {
       }
       outputLayers = cmd.addShape(targetLayers, targetDataset, opts);
 
-    } else if (name == 'add-label') {
+    } else if (name == 'add-label' || name == 'labels' && 'coordinates' in opts) {
       if (!targetDataset) {
         targetDataset = {info: {}, layers: []};
         targetLayers = targetDataset.layers;
         job.catalog.addDataset(targetDataset);
       }
       outputLayers = cmd.addLabel(targetLayers, targetDataset, opts);
+
+    } else if (name == 'labels') {
+      outputLayers = cmd.labels(targetLayers, targetDataset, opts);
 
     } else if (name == 'add-layer') {
       // The new layer arrives in a dataset of its own, so it is added to the

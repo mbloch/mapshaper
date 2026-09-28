@@ -506,22 +506,22 @@ describe('gui label caret and text', function() {
   describe('getLabelTextCommand()', function() {
     it('saves the text of one label', function() {
       assert.equal(getLabelTextCommand('Reno', 3, 'places'),
-        "-style label-text='Reno' ids=3 target='places'");
+        "-labels text='Reno' ids=3 target='places'");
     });
 
     it('omits the target when there is not one', function() {
       assert.equal(getLabelTextCommand('Reno', 0, null),
-        "-style label-text='Reno' ids=0");
+        "-labels text='Reno' ids=0");
     });
 
     it('escapes a newline rather than breaking the command', function() {
       assert.equal(getLabelTextCommand('North\nDakota', 1, null),
-        "-style label-text='North\\nDakota' ids=1");
+        "-labels text='North\\nDakota' ids=1");
     });
 
     it('quotes an apostrophe', function() {
       assert.ok(getLabelTextCommand("Martha's", 1, null)
-        .includes("label-text='Martha\\'s'"));
+        .includes("text='Martha\\'s'"));
     });
 
     describe('the commands it writes actually run', function() {

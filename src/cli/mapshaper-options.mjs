@@ -21,17 +21,17 @@ export function getOptionParser() {
       nameOpt2 = { // for -calc and -info
         describe: 'name the output layer'
       },
-      // label style properties accepted by -add-label, so that a label can be
-      // created and styled in one command. These are a subset of the
-      // properties -style accepts -- the ones that apply to text.
+      // label style properties accepted by -labels and -add-label. -style
+      // accepts these too, for backward compatibility, but leaves them out of
+      // its help.
       labelStyleOpts = {
-        'font-family': {describe: 'label font, e.g. Georgia'},
-        'font-size': {describe: 'label font size, e.g. 14'},
+        'font-family': {describe: 'CSS font family, e.g. Georgia (default is sans-serif)'},
+        'font-size': {describe: 'font size (default is 12)'},
         'font-style': {describe: 'normal or italic'},
         'font-weight': {describe: 'normal, bold or a numeric weight'},
         'font-stretch': {describe: 'e.g. condensed'},
         'letter-spacing': {describe: 'extra space between letters'},
-        'line-height': {describe: 'spacing between lines of a multi-line label; a bare number is a multiple of the font size'},
+        'line-height': {describe: 'spacing between lines of a multi-line label; a bare number is a multiple of the font size (default is 1.1)'},
         'text-anchor': {describe: 'start, middle or end'},
         'label-align': {describe: 'how the lines of a multi-line label align: left, center or right'},
         'dominant-baseline': {describe: 'vertical alignment, e.g. central'},
@@ -42,22 +42,29 @@ export function getOptionParser() {
         dy: {describe: 'vertical offset from the anchor'},
         fill: {describe: 'text color'},
         opacity: {describe: 'text opacity'},
-        'halo-width': {describe: 'width of a halo around the text in px'},
+        'halo-width': {describe: 'width of a halo around the text in px (default is 0, no halo)'},
         'halo-color': {describe: 'halo color (default is white)'},
         'halo-opacity': {describe: 'halo opacity, 0-1'},
-        'label-width': {describe: 'width of a fixed-width text block in px'},
+        'label-width': {describe: 'width of a fixed-width text block in px (lines are wrapped in the web UI)'},
         callout: {describe: 'line from the anchor to the text: line, elbow or curve'},
         'callout-end': {describe: 'arrowhead at the anchor end: arrow, open-arrow or none'},
-        'callout-end-size': {describe: 'length of an arrowhead\'s sides in px'},
+        'callout-end-size': {describe: 'length of an arrowhead\'s sides in px (default is 10)'},
         'callout-via': {describe: 'x,y of an elbow\'s corner or a point on a curve, in px'},
         'callout-attach': {describe: 'where the callout meets the text, as x,y fractions'},
         'callout-gap': {describe: 'px between the callout and the anchor'},
-        'callout-padding': {describe: 'px between the callout and the text'},
+        'callout-padding': {describe: 'px between the callout and the text (default is 3)'},
         'callout-color': {describe: 'callout color (defaults to the text color)'},
-        'callout-width': {describe: 'callout line width in px'},
+        'callout-width': {describe: 'callout line width in px (default is 1)'},
         'callout-opacity': {describe: 'callout opacity, 0-1'},
         css: {describe: 'inline css style'},
         class: {describe: 'name of CSS class or classes (space-separated)'}
+      },
+      // a label can carry a symbol at its anchor
+      labelIconOpts = {
+        icon: {describe: 'symbol drawn at the label anchor: circle, square, ring, star'},
+        'icon-size': {describe: 'size of the anchor symbol in px'},
+        'icon-color': {describe: 'color of the anchor symbol (defaults to the text color)'},
+        'icon-opacity': {describe: 'opacity of the anchor symbol, 0-1'}
       },
       noReplaceOpt2 = { // for -calc and -info
         alias: '+',
@@ -137,6 +144,18 @@ export function getOptionParser() {
         describe: 'offset distance or pct of h/w (single value or l,b,r,t list)',
         type: 'distance'
       };
+
+  // The label options -style used to document, before -labels took them over.
+  // fill, opacity, css and class are left out because -style documents them
+  // for every kind of feature.
+  function getHiddenLabelStyleOpts() {
+    var shared = ['fill', 'opacity', 'css', 'class'];
+    var opts = {'label-text': {}};
+    Object.keys(labelStyleOpts).forEach(function(name) {
+      if (shared.indexOf(name) == -1) opts[name] = {};
+    });
+    return opts;
+  }
 
   var parser = new CommandParser();
   parser.usage('Usage:  mapshaper -<command> [options] ...');
@@ -1506,6 +1525,32 @@ export function getOptionParser() {
     .option('encoding', encodingOpt)
     .option('target', targetOpt);
 
+  parser.command('labels')
+    .describe('style labels, convert points to labels or add a label')
+    .validate(V.validateLabelsOpts)
+    .option('text', {
+      describe: 'label text (a field, JS expression or literal value)'
+    })
+    .option('label-text', {
+      alias_to: 'text'
+    })
+    .option('coordinates', {
+      describe: 'add a label at x,y, or a path label along x,y,x,y,...'
+    })
+    .option('where', whereOpt)
+    .option('ids', {
+      describe: 'comma-sep. list of ids of the labels to style',
+      type: 'numbers'
+    })
+    .options(labelStyleOpts)
+    .options(labelIconOpts)
+    .option('properties', {
+      describe: 'with coordinates=, other attributes as a JSON object'
+    })
+    .option('name', nameOpt)
+    .option('no-replace', noReplaceOpt)
+    .option('target', targetOpt);
+
   parser.command('lines')
     .describe('convert a polygon or point layer to a polyline layer')
     .option('fields', {
@@ -2069,99 +2114,11 @@ export function getOptionParser() {
       describe: 'point icon color (defaults to fill color, then black)'
     })
     .option('icon-opacity', {
-      describe: 'point icon opacity, 0-1 (defaults to the label\'s opacity)'
+      describe: 'point icon opacity, 0-1'
     })
-    .option('label-text', {
-      describe: 'label text (set this to export points as labels)'
-    })
-    .option('label-pos', {
-      describe: 'label position; one of: n, s, e, w, ne, se, nw, sw, c'
-    })
-    .option('text-anchor', {
-      describe: 'label alignment; one of: start, end, middle (default)'
-    })
-    .option('label-align', {
-      describe: 'alignment of the lines of multi-line labels; left, center or right'
-    })
-    .option('halo-width', {
-      describe: 'width of a halo around label text in px (default is 0, no halo)'
-    })
-    .option('halo-color', {
-      describe: 'color of label halos (default is white)'
-    })
-    .option('halo-opacity', {
-      describe: 'opacity of label halos, 0-1'
-    })
-    .option('dx', {
-      describe: 'x offset of labels (default is 0)'
-    })
-    .option('dy', {
-      describe: 'y offset of labels (default is 0/baseline-aligned)'
-    })
-    .option('font-size', {
-      describe: 'size of label text (default is 12)'
-    })
-    .option('font-family', {
-      describe: 'CSS font family of labels (default is sans-serif)'
-    })
-    .option('font-weight', {
-      describe: 'CSS font weight property of labels (e.g. bold, 700)'
-    })
-    .option('font-style', {
-      describe: 'CSS font style property of labels (e.g. italic)'
-    })
-    .option('font-stretch', {
-      describe: 'CSS font stretch property of labels (e.g. condensed)'
-    })
-    .option('letter-spacing', {
-      describe: 'CSS letter-spacing property of labels'
-    })
-     .option('line-height', {
-      describe: 'line spacing of multi-line labels; a bare number is a multiple of the font size, as in CSS (default is 1.1)'
-    })
-    .option('dominant-baseline', {
-      describe: 'vertical alignment of labels (e.g. central)'
-    })
-    .option('label-side', {
-      describe: 'which side of its path a label sits on: left or right'
-    })
-    .option('label-start-offset', {
-      describe: 'where label text starts along its path, e.g. 50%'
-    })
-    .option('label-width', {
-      describe: 'width of a fixed-width text block in px (lines are wrapped in the web UI)'
-    })
-    .option('callout', {
-      describe: 'line from a label\'s anchor to its text: line, elbow or curve'
-    })
-    .option('callout-end', {
-      describe: 'arrowhead at the anchor end of a callout: arrow (solid), open-arrow or none'
-    })
-    .option('callout-end-size', {
-      describe: 'length of an arrowhead\'s sides in px (default 10, more for a thicker line)'
-    })
-    .option('callout-via', {
-      describe: 'x,y of an elbow\'s corner or a point on a curve, in px from the anchor'
-    })
-    .option('callout-attach', {
-      describe: 'where a callout meets its text, as x,y fractions of the text box'
-    })
-    .option('callout-gap', {
-      describe: 'px between a callout and its anchor (default: a line meets the icon, an arrow clears it)'
-    })
-    .option('callout-padding', {
-      describe: 'px between a callout and its text (default is 3)'
-    })
-    .option('callout-color', {
-      describe: 'callout color (defaults to the text color)'
-    })
-    .option('callout-width', {
-      describe: 'callout line width in px (default is 1)'
-    })
-    .option('callout-opacity', {
-      describe: 'callout opacity, 0-1'
-    })
-   .option('target', targetOpt);
+    // deprecated in favor of -labels; accepted, but left out of the help
+    .options(getHiddenLabelStyleOpts())
+    .option('target', targetOpt);
 
   parser.command('repel')
     .describe('move overlapping point symbols apart')
@@ -2407,23 +2364,10 @@ export function getOptionParser() {
     .option('text', {
       describe: 'label text'
     })
-    // label style properties, so that creating and styling a label is one
-    // command; anything not listed here can be set with a following -style
+    // superseded by -labels coordinates=; kept so that older session
+    // histories still run
     .options(labelStyleOpts)
-    // a label can carry a symbol at its anchor, so these come along too even
-    // though they are not text properties
-    .option('icon', {
-      describe: 'symbol drawn at the label anchor: circle, square, ring, star'
-    })
-    .option('icon-size', {
-      describe: 'size of the anchor symbol in px'
-    })
-    .option('icon-color', {
-      describe: 'color of the anchor symbol (defaults to the text color)'
-    })
-    .option('icon-opacity', {
-      describe: 'opacity of the anchor symbol, 0-1'
-    })
+    .options(labelIconOpts)
     .option('properties', {
       describe: 'other attributes, as a JSON object'
     })

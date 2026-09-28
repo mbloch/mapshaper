@@ -44,7 +44,7 @@ import {
 } from './gui-label-curve-state';
 
 // The label tool: arming a label type, placing an anchor or a curve, turning
-// the result into an -add-label command, and handing the new label to the
+// the result into a -labels coordinates= command, and handing the new label to the
 // in-place text editor.
 //
 // Creating a label and editing one are one gesture, not two: a click leaves a
@@ -137,7 +137,7 @@ export function initLabelTool(gui, ext, hit) {
   // tools do on entry as well (`addEmptyLayer()` in `gui-edit-points.mjs` and
   // `gui-draw-lines2.mjs`). It is named rather than left unnamed, unlike
   // theirs: it is the layer `getLabelTarget()` would have created for a label
-  // anyway, and naming it is what lets the `-add-label` commands name their
+  // anyway, and naming it is what lets the `-labels` commands name their
   // target and so replay from the session history.
   //
   // Called before entering the tool's own mode, because getInitialTool() reads
@@ -1367,9 +1367,9 @@ export function initLabelTool(gui, ext, hit) {
     selection.refresh(true);
   }
 
-  // Turns the previewed offset into one -style.
+  // Turns the previewed offset into one -labels.
   //
-  // Only the label under the pointer moves, even with several selected: -style
+  // Only the label under the pointer moves, even with several selected: -labels
   // writes one value to every id it is given, so a group drag would set them
   // all to the same absolute offset rather than nudging each by its own delta.
   function commitOffsetDrag(o) {

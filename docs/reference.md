@@ -78,6 +78,7 @@ mapshaper states.geojson \
 [-inlay](#-inlay)
 [-innerlines](#-innerlines)
 [-join](#-join)
+[-labels](#-labels)
 [-lines](#-lines)
 [-merge-layers](#-merge-layers)
 [-mosaic](#-mosaic)
@@ -1124,6 +1125,120 @@ mapshaper states.shp \
   -o out.shp
 ```
 
+### -labels
+
+Style the labels in a point layer, convert points to labels, or add a single label. Labels are drawn in the web UI and exported to SVG. Style values take either a literal value or a JS expression, as with [-style](#-style).
+
+With `coordinates=`, the command adds one label, either to the target point layer or, with `+`, to a new layer. Otherwise it styles the target layer's labels. Setting `text=` on a layer of points turns them into labels.
+
+`text=`            Label text: a field name, a JS expression or a literal value. With `coordinates=`, the value is used as literal text. To create multiline labels, insert line delimiters into the label text. There are three possible line delimiters: the newline character, `\n` (backslash + "n"), and `<br>`. (When importing JSON data, `\n` in a JSON string is parsed as a newline and `\\n` is parsed as backslash + "n"). Note that Mapshaper doesn't accept multiline strings as input on the command line. `label-text=` is accepted as another name for this option.
+
+`coordinates=`     Add a label at `x,y`. Several coordinate pairs (`x,y,x,y,...`) make a label that follows a smooth curve through the points. Coordinates are in the target layer's coordinate system.
+
+`where=`           Boolean JS expression for selecting the labels to style. Can not be used with `coordinates=`.
+
+`ids=`             Comma-separated list of ids of the labels to style. Can not be used with `coordinates=`.
+
+`font-size=`       Size of label text (default is 12)
+
+`font-family=`     CSS font-family of labels (default is sans-serif)
+
+`font-weight=`     CSS font-weight property of labels (e.g. bold, 700)
+
+`font-style=`      CSS font-style property of labels (e.g. italic)
+
+`font-stretch=`    CSS font-stretch property of labels (e.g. condensed)
+
+`letter-spacing=`  CSS letter-spacing property of labels
+
+`line-height=`     Line spacing of multi-line labels. As in CSS, a bare number is a multiple of the font size (e.g. `1.3`); use units for a fixed spacing (e.g. `16px`). Default is 1.1.
+
+`label-pos=`       Position of the text relative to its anchor point: `n`, `s`, `e`, `w`, `ne`, `se`, `nw`, `sw` or `c`.
+
+`text-anchor=`     Horizontal justification of label text. Possible values are: start, end or middle (the default). Note that `text-anchor` also decides where a block of text sits relative to its anchor point, so changing it moves a multiline label as well as justifying it; use `label-align=` to justify the lines without moving the label.
+
+`label-align=`     How the lines of a multiline label line up with each other: `left`, `center` or `right`. Unlike `text-anchor=`, this leaves the label where its position put it, so lines can be left-aligned in a label that is centred on its anchor. Holding the label still requires the width of its text, which only the web UI can measure; a label styled on the command line is justified as asked but moves as `text-anchor=` would move it.
+
+`dominant-baseline=` Vertical alignment of label text (e.g. central)
+
+`dx=`              X offset of labels (default is 0)
+
+`dy=`              Y offset of labels (default is baseline-aligned)
+
+`label-side=`      Which side of its path a curved label's text sits on: `left` or `right`
+
+`label-start-offset=` Where a curved label's text starts along its path, as a length or a percentage (e.g. `50%`)
+
+`label-width=`     Width of a fixed-width text block in pixels. The web UI wraps the text to this width.
+
+`fill=`            Text color
+
+`opacity=`         Text opacity (e.g. `opacity=0.5`)
+
+`halo-width=`      Width in pixels of a halo around the text (default is 0, no halo)
+
+`halo-color=`      Halo color (default is white)
+
+`halo-opacity=`    Halo opacity, 0-1
+
+`callout=`         A line from a label's anchor to its text: `line`, `elbow` or `curve`
+
+`callout-end=`     Arrowhead at the anchor end of a callout: `arrow`, `open-arrow` or `none`
+
+`callout-end-size=` Length of an arrowhead's sides in pixels (default is 10)
+
+`callout-via=`     `x,y` of an elbow's corner or a point on a curve, in pixels from the anchor
+
+`callout-attach=`  Where a callout meets its text, as `x,y` fractions of the text box
+
+`callout-gap=`     Pixels between a callout and its anchor
+
+`callout-padding=` Pixels between a callout and its text (default is 3)
+
+`callout-color=`   Callout color (defaults to the text color)
+
+`callout-width=`   Callout line width in pixels (default is 1)
+
+`callout-opacity=` Callout opacity, 0-1
+
+`icon=`            Symbol drawn at the label's anchor: circle, square, ring or star
+
+`icon-size=`       Size of the anchor symbol in pixels
+
+`icon-color=`      Color of the anchor symbol (defaults to the text color)
+
+`icon-opacity=`    Opacity of the anchor symbol, 0-1
+
+`css=`             Inline CSS to use as the `style=` attribute of each label
+
+`class=`           One or more CSS classes, separated by spaces
+
+`properties=`      With `coordinates=`, other attributes of the new label, as a JSON object
+
+`name=`            With `coordinates=` or `+`, the name of the new layer
+
+Common options: `+` `target=`
+
+**Examples**
+
+```bash
+# Label cities with their names, in bold with a white halo
+mapshaper cities.shp \
+-labels text=NAME font-weight=bold halo-width=3 label-pos=ne \
+-o map.svg
+
+# Make a separate label layer, leaving the points as they are
+mapshaper cities.shp \
+-style r=3 fill=black \
+-labels text=NAME + name=city-labels \
+-o map.svg target=*
+
+# Add a single label, as a new layer
+mapshaper states.shp \
+-labels coordinates=-119.5,37.8 text='Sierra Nevada' font-style=italic + name=labels \
+-o map.svg target=*
+```
+
 ### -lines
 
 Converts points and polygons to lines. Polygons are converted to topological boundaries. Without the `<fields>` argument, external (unshared) polygon boundaries are attributed as `TYPE: "outer", RANK: 0` and internal (shared) boundaries are `TYPE: "inner", RANK: 1`. 
@@ -1765,29 +1880,7 @@ Example: `hatches 45deg 2px red 2px grey`
 
 `icon-color=`      Point icon color. If missing, icons use the `fill=` color, or black if `fill=` is also missing. Ring icons use this color for the stroke.
 
-`label-text=`      Label text (set this to export points as labels). To create multiline labels, insert line delimiters into the label text. There are three possible line delimiters: the newline character, `\n` (backslash + "n"), and `<br>`. (When importing JSON data, `\n` in a JSON string is parsed as a newline and `\\n` is parsed as backslash + "n"). Note that Mapshaper doesn't accept multiline strings as input on the command line.
-  
-`text-anchor=`     Horizontal justification of label text. Possible values are: start, end or middle (the default). Note that `text-anchor` also decides where a block of text sits relative to its anchor point, so changing it moves a multiline label as well as justifying it; use `label-align=` to justify the lines without moving the label.
-
-`label-align=`     How the lines of a multiline label line up with each other: `left`, `center` or `right`. Unlike `text-anchor=`, this leaves the label where its position put it, so lines can be left-aligned in a label that is centred on its anchor. Holding the label still requires the width of its text, which only the web UI can measure; a label styled on the command line is justified as asked but moves as `text-anchor=` would move it.
-
-`dx=`              X offset of labels (default is 0)
-
-`dy=`              Y offset of labels (default is baseline-aligned)
-  
-`font-size=`       Size of label text (default is 12)
-  
-`font-family=`     CSS font-family of labels (default is sans-serif)
-
-`font-weight=`     CSS font-weight property of labels (e.g. bold, 700)
-
-`font-style=`      CSS font-style property of labels (e.g. italic)
-
-`font-stretch=`      CSS font-stretch property of labels (e.g. condensed)
-
-`letter-spacing=`  CSS letter-spacing property of labels
- 
-`line-height=`     Line spacing of multi-line labels. As in CSS, a bare number is a multiple of the font size (e.g. `1.3`); use units for a fixed spacing (e.g. `16px`). Default is 1.1. Lines are separated by newline characters or `<br>` tags in the label text.
+Label options such as `label-text=`, `font-size=` and `text-anchor=` have moved to [-labels](#-labels). `-style` still accepts them, so existing scripts keep working.
 
 Common options: `target=`
 

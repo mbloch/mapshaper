@@ -140,7 +140,7 @@ describe('gui-label-text soft breaks', function () {
   describe('commands', function () {
     it('saves text with its soft breaks', function () {
       assert.equal(getLabelTextCommand('ab <wbr>cd\nef', 2, 'labels'),
-        "-style label-text='ab <wbr>cd\\nef' ids=2 target='labels'");
+        "-labels text='ab <wbr>cd\\nef' ids=2 target='labels'");
     });
 
     it('gives a new path label no label-width', function () {

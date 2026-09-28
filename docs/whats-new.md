@@ -11,6 +11,12 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
+**New `-labels` command.** [-labels](/docs/reference.html#-labels) styles labels, turns points into labels (`-labels text=NAME`) and adds single labels (`-labels coordinates=x,y text='...'`). Label options such as `font-size=`, `halo-width=` and `callout=` are documented there now, not under `-style`, which covers polygons, lines and point symbols. `-style` still accepts the label options, so existing scripts keep working.
+
+</div>
+
+<div class="whats-new-entry">
+
 **Preview mode.** The web UI has a preview toggle that shows what a map will look like when exported. (Currently SVG is the only export format for styled maps; more are planned.) You can continue editing map layers in preview mode.
 
 </div>

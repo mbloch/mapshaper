@@ -45,6 +45,11 @@ function getCullableCommand(str, parseCommand, isStyleProperty) {
   if (cmd.name == 'style' || cmd.name == 'svg-style') {
     return getStyleCullInfo(opts, isStyleProperty);
   }
+  // Adding a label or a labeled copy of a layer is not a style edit, and can
+  // not be superseded by one.
+  if (cmd.name == 'labels' && !('coordinates' in opts) && !opts.no_replace) {
+    return getStyleCullInfo(getLabelStyleOpts(opts), isStyleProperty);
+  }
   if (cmd.name == 'classify') {
     return getClassifyCullInfo(opts);
   }
@@ -62,6 +67,16 @@ function getStyleCullInfo(opts, isStyleProperty) {
     ids: getIdsKey(opts),
     fields: fields
   };
+}
+
+// -labels text= writes the label-text property.
+function getLabelStyleOpts(opts) {
+  var o = Object.assign({}, opts);
+  if ('text' in o) {
+    o['label-text'] = o.text;
+    delete o.text;
+  }
+  return o;
 }
 
 function getStyleFields(opts, isStyleProperty) {

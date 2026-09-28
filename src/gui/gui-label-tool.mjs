@@ -2119,7 +2119,7 @@ export function LabelTool(gui) {
     if (styles.length === 0) return;
     releaseFocus();
     // What the panel is set to is always what the next label gets, whether or
-    // not these values also went to a label that already exists. -add-label
+    // not these values also went to a label that already exists. -labels
     // writes them when that label is created, which is why this needs no
     // command and no undo step of its own.
     if (labelModeIsOn()) {
@@ -2143,7 +2143,7 @@ export function LabelTool(gui) {
 
   function applyStyleCommand(styles, ids) {
     var lyr = getActiveLayer();
-    var parts = ['-style'];
+    var parts = ['-labels'];
     if (!gui.console || !lyr) return;
     styles.forEach(function(style) {
       parts.push(style[0] + '=' + quoteCommandValue(style[1]));
@@ -2165,7 +2165,7 @@ export function LabelTool(gui) {
   // A text block's breaks are only right for the width and font they were
   // found with, so a change to either rewraps it in the same command: one undo
   // step, and no moment at which the block is drawn with its old lines in its
-  // new font. One -style per label, since each has text of its own.
+  // new font. One -labels per label, since each has text of its own.
   function getRewrapCommands(styles, ids, lyr) {
     var table = lyr.data;
     var changes = {};

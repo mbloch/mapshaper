@@ -250,7 +250,7 @@ test('a created label is undoable and appears in the session history', async fun
   var history = await page.evaluate(function() {
     return window.mapshaper.undoTest.getSessionHistory();
   });
-  expect(JSON.stringify(history)).toContain('-add-label');
+  expect(JSON.stringify(history)).toContain('-labels coordinates=');
 
   await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
   expect(await getLabelLayer(page)).toBeNull();
@@ -387,7 +387,7 @@ test('a label left with no glyphs is never created', async function({page}) {
 
   // the map is as it was found, and no command ran to make it so
   expect((await getChecksum(page)).checksum).toBe(before.checksum);
-  expect(await getSessionHistory(page)).not.toContain('-add-label');
+  expect(await getSessionHistory(page)).not.toContain('coordinates=');
   expect(errors).toEqual([]);
 });
 
@@ -588,13 +588,13 @@ test('a style set with nothing selected is given to the next label', async funct
   // and a tool default does not belong in the undo history
   expect(await getNewLabelStyle(page))
     .toEqual({'label-pos': 'c', 'font-family': 'Georgia', 'font-size': 13});
-  expect(await getSessionHistory(page)).not.toContain('-style');
+  expect(await getSessionHistory(page)).not.toMatch(/-style|-labels/);
 
   await armTool(page, 'anchor');
   await clickMap(page, 0.4, 0.45);
   await writeLabel(page, 'Reno');
 
-  // -add-label writes it, so creating a styled label is still one command
+  // -labels coordinates= writes it, so creating a styled label is still one command
   expect(await getSessionHistory(page)).toContain("font-family='Georgia'");
   var lyr = await getLabelLayer(page);
   expect(lyr.records[0]).toMatchObject({'font-family': 'Georgia', 'font-size': '13'});
@@ -1437,7 +1437,7 @@ test('in Draggable mode the same drag offsets the text from its anchor',
     expect(rec['label-pos']).toBeUndefined();
 
     // one -style, so one undo step and one line of session history
-    expect(await getSessionHistory(page)).toMatch(/-style dx=/);
+    expect(await getSessionHistory(page)).toMatch(/-labels dx=/);
     await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
     await page.waitForTimeout(200);
     expect((await getLabelLayer(page)).records[0].dx).toBeFalsy();
@@ -1608,7 +1608,7 @@ test('a symbol arriving under a centred label moves it out from under it',
 
     // the icon and the position move together, in one command and so in one
     // undo step
-    expect(await getSessionHistory(page)).toMatch(/-style icon=.*label-pos='ne'/);
+    expect(await getSessionHistory(page)).toMatch(/-labels icon=.*label-pos='ne'/);
     await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
     await page.waitForTimeout(200);
     var rec = (await getLabelLayer(page)).records[0];

@@ -2,13 +2,13 @@
 //
 // The style panel is worth having open before there is anything to point it at:
 // pick a font, then place labels in it. Values set with nothing selected are
-// held here rather than written to a layer, and -add-label writes them when a
+// held here rather than written to a layer, and -labels coordinates= writes them when a
 // label finally exists -- so this is a tool default, not data, and it never
 // needs its own undo step.
 //
 // See docs/development/label-tool-design.md.
 
-// The style properties -add-label accepts. A panel control whose property is
+// The style properties -labels accepts. A panel control whose property is
 // missing from this list would appear to do nothing when set with no selection,
 // so the list is checked rather than assumed.
 export var NEW_LABEL_STYLE_FIELDS = [
@@ -30,7 +30,7 @@ export var NEW_LABEL_STYLE_FIELDS = [
 //
 // A blank or zero value removes the field instead of setting it: that is how
 // the panel says "no icon" (icon='', icon-size=0) and "no inline css", and
-// carrying those through to -add-label would write properties that mean
+// carrying those through to -labels would write properties that mean
 // nothing.
 export function mergeStyleValues(style, values) {
   var out = Object.assign({}, style);
@@ -56,7 +56,7 @@ export function mergeStyleValues(style, values) {
 // somewhere and typing looks like it should do, and it is the position an icon
 // is drawn to sit behind.
 //
-// Only the tool defaults this. -add-label with no position still creates a
+// Only the tool defaults this. -labels coordinates= with no position still creates a
 // label without one, so the default is a choice this tool makes and passes on
 // explicitly, not a meaning the command gives to its absence.
 export var DEFAULT_NEW_LABEL_STYLE = {'label-pos': 'c'};
