@@ -1,3 +1,7 @@
+v0.7.69
+* [web] Add scalebar configuration to the map frame interface.
+* [web] Add dashes to the line style panel.
+
 v0.7.68
 * [web] UI updates to the layers menu, sidebar tabs and arrow menu.
 * [web] Changed the console prompt from `$` to `>`.
