@@ -5,7 +5,9 @@ import {
 } from './gui-panel-focus';
 import { makeColorRow, makeFieldTip, makePanelActionButton } from './gui-panel-controls';
 import { SizeField } from './gui-size-field';
-import { parseOpacityValue, formatOpacityPct, normalizeDashArrayInput } from './gui-style-values';
+import {
+  parseOpacityValue, formatOpacityPct, formatColorOpacityPct, normalizeDashArrayInput
+} from './gui-style-values';
 import { StylePresetControl } from './gui-style-preset-control';
 import { runGuiEditCommand } from './gui-edit-command';
 import { internal } from './gui-core';
@@ -218,10 +220,13 @@ export function LayerStyleTool(gui) {
     if (!isHexColor(value)) control.picker.hide();
   }
 
+  // A selection whose colours disagree still has colours, so an opacity unset
+  // on all of it shows as full rather than blank.
   function updateOpacityControl(control) {
-    var value = getCommonStyleValue(control.field + '-opacity');
-    control.opacity.node().value =
-      formatOpacityPct(value === '' || value === undefined || value === null ? 1 : value);
+    var field = control.field + '-opacity';
+    control.opacity.node().value = styleFieldIsUnsetForTargets(field) ?
+      formatColorOpacityPct(null, !styleFieldIsUnsetForTargets(control.field)) :
+      formatOpacityPct(getCommonStyleValue(field));
   }
 
   function updateStrokeWidthControl() {

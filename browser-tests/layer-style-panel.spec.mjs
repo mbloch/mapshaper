@@ -46,6 +46,27 @@ test('a colour is set from its field, and its opacity from the one beside it', a
   expect(errors).toEqual([]);
 });
 
+test('an opacity is blank with no colour, and 100% with one', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  var rows = page.locator('.layer-style-panel .label-split-row');
+  // the fixture has a fill and no fill-opacity, and no stroke at all
+  expect(await getStyleValue(page, 'fill')).toBe('#a50000');
+  await expect(rows.nth(0).locator('.label-opacity-input')).toHaveValue('100%');
+  await expect(rows.nth(1).locator('.label-opacity-input')).toHaveValue('');
+
+  // full opacity is the default, so it is shown without being stored
+  await setField(rows.nth(1).locator('.label-color-input'), '#3366cc');
+  await expect(rows.nth(1).locator('.label-opacity-input')).toHaveValue('100%');
+  expect(await getStyleValue(page, 'stroke-opacity')).toBeUndefined();
+
+  // blanking a field is not a way to set it to zero
+  await setField(rows.nth(0).locator('.label-opacity-input'), '');
+  await expect(rows.nth(0).locator('.label-opacity-input')).toHaveValue('100%');
+  expect(await getStyleValue(page, 'fill-opacity')).toBeUndefined();
+  expect(errors).toEqual([]);
+});
+
 // Each colour's opacity is inside its field, and the stroke's width sits
 // beside the stroke's colour in the narrow column, so that it reads as
 // belonging to the stroke rather than as a row of its own.

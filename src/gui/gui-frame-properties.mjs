@@ -4,6 +4,7 @@ import { runGuiEditCommand } from './gui-edit-command';
 import { quoteCommandValue } from './gui-command-utils';
 import { showPopupAlert } from './gui-alert';
 import { makeColorRow, makePanelSection } from './gui-panel-controls';
+import { formatColorOpacityPct } from './gui-style-values';
 import { formatFrameAspectRatio } from './gui-frame-aspect';
 
 export function FrameProperties(gui) {
@@ -106,9 +107,9 @@ export function FrameProperties(gui) {
     unitsSelect.node().value = units;
     aspectValue.text(getAspectText(frame));
     backgroundControl.showColor(rec.fill || '');
-    backgroundControl.opacity.node().value = formatOpacity(rec['fill-opacity'], rec.fill);
+    backgroundControl.opacity.node().value = formatColorOpacityPct(rec['fill-opacity'], !!rec.fill);
     neatlineControl.showColor(rec.stroke || '');
-    neatlineControl.opacity.node().value = formatOpacity(rec['stroke-opacity'], rec.stroke);
+    neatlineControl.opacity.node().value = formatColorOpacityPct(rec['stroke-opacity'], !!rec.stroke);
     neatlineWidthInput.node().value =
       rec['stroke-width'] === undefined ? '' : rec['stroke-width'];
     scalebarButton.text(internal.findFrameFurnitureLayer(target.dataset, 'scalebar') ?
@@ -234,15 +235,6 @@ function formatNumber(value) {
 
 function formatCoordinate(value) {
   return String(Number(value.toPrecision(12)));
-}
-
-// A colour with no opacity of its own is drawn opaque, and says so; with no
-// colour either, there is nothing for an opacity to apply to.
-function formatOpacity(value, color) {
-  if (value === undefined || value === null || value === '') {
-    return color ? '100%' : '';
-  }
-  return String(Math.round(Number(value) * 100)) + '%';
 }
 
 // A fixed ratio holds when the frame is rescaled; one taken from the extent

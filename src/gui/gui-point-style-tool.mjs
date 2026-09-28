@@ -9,7 +9,7 @@ import { SizeField } from './gui-size-field';
 import { internal } from './gui-core';
 import { runGuiEditCommand } from './gui-edit-command';
 import { quoteCommandValue } from './gui-command-utils';
-import { parseOpacityValue, formatOpacityPct } from './gui-style-values';
+import { parseOpacityValue, formatOpacityPct, formatColorOpacityPct } from './gui-style-values';
 
 var defaultCircleRadius = 0;
 var defaultCreatedCircleRadius = 3;
@@ -265,27 +265,42 @@ export function PointStyleTool(gui) {
     var radius = getCommonValue('r');
     var fill = getCommonValue('fill');
     var stroke = getCommonValue('stroke');
-    var fillOpacity = getCommonValue('fill-opacity');
-    var strokeOpacity = getCommonValue('stroke-opacity');
     var strokeWidth = getCommonValue('stroke-width');
     setCircleRadius(radius);
     setCircleColor(circleFillControl, fill);
     setCircleColor(circleStrokeControl, stroke);
-    setCircleOpacity(circleFillControl, fillOpacity);
-    setCircleOpacity(circleStrokeControl, strokeOpacity);
+    updateCircleOpacity(circleFillControl);
+    updateCircleOpacity(circleStrokeControl);
     setCircleStrokeWidth(strokeWidth === '' ? 0 : strokeWidth);
     if (representation != 'circle' && representation != 'unstyled') {
       setCircleRadius(defaultCircleRadius);
       setCircleColor(circleFillControl, '');
       setCircleColor(circleStrokeControl, '');
-      setCircleOpacity(circleFillControl, '');
-      setCircleOpacity(circleStrokeControl, '');
+      circleFillControl.opacity.node().value = '';
+      circleStrokeControl.opacity.node().value = '';
       setCircleStrokeWidth(0);
     }
   }
 
-  function setCircleOpacity(control, value) {
-    control.opacity.node().value = formatOpacityPct(value === '' ? 1 : value);
+  // The opacity to put in the style command: undefined to leave the property
+  // as it is, null for a field holding something that is not an opacity.
+  // A blank field has nothing to say, and 100% over an unset opacity is the
+  // default being shown rather than a value to store.
+  function getCircleOpacityToWrite(control) {
+    var str = control.opacity.node().value.trim();
+    var val = parseOpacityValue(str);
+    if (str === '') return undefined;
+    if (val === 1 && styleFieldIsUnset(control.field + '-opacity')) return undefined;
+    return val;
+  }
+
+  // A selection whose colours disagree still has colours, so an opacity unset
+  // on all of it shows as full rather than blank.
+  function updateCircleOpacity(control) {
+    var field = control.field + '-opacity';
+    control.opacity.node().value = styleFieldIsUnset(field) ?
+      formatColorOpacityPct(null, !styleFieldIsUnset(control.field)) :
+      formatOpacityPct(getCommonValue(field));
   }
 
   function renderCreateFields() {
@@ -336,16 +351,16 @@ export function PointStyleTool(gui) {
   function createSimpleCircles() {
     runCommand('-style r=' + defaultCreatedCircleRadius +
       ' fill=' + quoteCommandValue(defaultCircleFill) +
-      ' fill-opacity=1 stroke-opacity=1 stroke-width=0', 'Create circles');
+      ' stroke-width=0', 'Create circles');
   }
 
   function applyCircleStyles() {
     var representation = getPointRepresentation();
     var radius = getCircleRadius();
     var fill = circleFillControl.input.node().value.trim();
-    var fillOpacity = parseOpacityValue(circleFillControl.opacity.node().value);
+    var fillOpacity = getCircleOpacityToWrite(circleFillControl);
     var stroke = circleStrokeControl.input.node().value.trim();
-    var strokeOpacity = parseOpacityValue(circleStrokeControl.opacity.node().value);
+    var strokeOpacity = getCircleOpacityToWrite(circleStrokeControl);
     var strokeWidth = getCircleStrokeWidth();
     var args;
     if (!gui.console || !(representation == 'unstyled' || representation == 'circle') ||
@@ -354,11 +369,9 @@ export function PointStyleTool(gui) {
       fill = defaultCircleFill;
       setCircleColor(circleFillControl, fill);
     }
-    args = [
-      'fill-opacity=' + fillOpacity,
-      'stroke-opacity=' + strokeOpacity,
-      'stroke-width=' + strokeWidth
-    ];
+    args = ['stroke-width=' + strokeWidth];
+    if (fillOpacity !== undefined) args.push('fill-opacity=' + fillOpacity);
+    if (strokeOpacity !== undefined) args.push('stroke-opacity=' + strokeOpacity);
     if (radius !== null) args.unshift('r=' + radius);
     if (fill) args.push('fill=' + quoteCommandValue(fill));
     if (stroke) args.push('stroke=' + quoteCommandValue(stroke));

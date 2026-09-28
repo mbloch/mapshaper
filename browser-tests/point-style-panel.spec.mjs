@@ -53,6 +53,27 @@ test('a circle colour is set from the field, and its opacity beside it', async f
   expect(errors).toEqual([]);
 });
 
+test('a circle opacity is blank with no colour, and 100% with one', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  await clickButton(page, 'Create simple circles');
+  var rows = page.locator('.point-style-panel .label-split-row');
+  // created with a fill and no stroke, and no opacity stored for either
+  expect(await getStyleValue(page, 'fill-opacity')).toBeUndefined();
+  await expect(rows.nth(0).locator('.label-opacity-input')).toHaveValue('100%');
+  await expect(rows.nth(1).locator('.label-opacity-input')).toHaveValue('');
+
+  // a change elsewhere does not write the opacity being shown as the default
+  await setField(sizeField(page, 'Radius'), '6');
+  expect(await getStyleValue(page, 'fill-opacity')).toBeUndefined();
+  expect(await getStyleValue(page, 'stroke-opacity')).toBeUndefined();
+
+  await setField(rows.nth(1).locator('.label-color-input'), '#ff0000');
+  await expect(rows.nth(1).locator('.label-opacity-input')).toHaveValue('100%');
+  expect(await getStyleValue(page, 'stroke-opacity')).toBeUndefined();
+  expect(errors).toEqual([]);
+});
+
 test('an expression turns a field into labels, and the label tool takes over', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);

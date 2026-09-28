@@ -3,10 +3,12 @@
 
 // The fraction an opacity control's contents mean ("50%", " 50 " -> 0.5), or
 // null if it is not holding a number. Out-of-range values are clamped rather
-// than refused: a pasted 150% is an intent, not a mistake.
+// than refused: a pasted 150% is an intent, not a mistake. A blank field is
+// null, not zero: it is what a colour with no value shows beside it.
 export function parseOpacityValue(str) {
-  var pct = Number(String(str).replace('%', '').trim());
-  if (!isFinite(pct)) return null;
+  var txt = String(str).replace('%', '').trim();
+  var pct = Number(txt);
+  if (txt === '' || !isFinite(pct)) return null;
   return Math.max(0, Math.min(100, pct)) / 100;
 }
 
@@ -21,6 +23,19 @@ export function normalizeDashArrayInput(str) {
 // A stored fraction as the percentage a control shows, or '' for no value --
 // which is how a control over a selection that does not agree shows.
 export function formatOpacityPct(val) {
+  if (isUnsetValue(val)) return '';
   val = Number(val);
   return isFinite(val) ? Math.round(Math.max(0, Math.min(1, val)) * 100) + '%' : '';
+}
+
+// The opacity shown beside a colour. A colour with no opacity of its own is
+// drawn opaque, and says so; with no colour either, there is nothing for an
+// opacity to apply to, and the field is blank like the colour.
+export function formatColorOpacityPct(opacity, hasColor) {
+  if (isUnsetValue(opacity)) return hasColor ? '100%' : '';
+  return formatOpacityPct(opacity);
+}
+
+function isUnsetValue(val) {
+  return val === undefined || val === null || val === '';
 }
