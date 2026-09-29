@@ -16,6 +16,15 @@ export function isTextInput(node) {
     !/^(button|checkbox|radio|submit)$/.test(node.type);
 }
 
+// Whether clicking this node puts a native menu on screen, which must then be
+// left holding the focus: a menu opens on mousedown, so a panel that lets go of
+// focus on the click that follows closes it again -- it flashes open and shut.
+// OPTION counts because a browser that reports the chosen option as the click
+// target is reporting a menu interaction either way.
+export function opensAMenu(node) {
+  return !!node && /^(SELECT|OPTION)$/.test(node.nodeName);
+}
+
 // While the caret is in one of @panel's fields, the keyboard belongs to that
 // field. Without this the GUI's own handlers see the keystrokes: a Backspace
 // typed into a field takes back the last knot of a curve being drawn, and an

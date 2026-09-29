@@ -1,6 +1,6 @@
 import { El } from './gui-el';
 import {
-  claimFieldKeys, isTextInput, releasePanelFocus
+  claimFieldKeys, isTextInput, opensAMenu, releasePanelFocus
 } from './gui-panel-focus';
 import {
   makeColorRow, makePanelActionButton, makePanelSection, setPanelButtonDisabled
@@ -72,8 +72,8 @@ export function PointStyleTool(gui) {
       revert: updateControls,
       release: releaseFocus
     });
-    panel.node().addEventListener('click', function() {
-      if (isTextInput(document.activeElement)) return;
+    panel.node().addEventListener('click', function(e) {
+      if (isTextInput(document.activeElement) || opensAMenu(e.target)) return;
       releaseFocus();
     });
 

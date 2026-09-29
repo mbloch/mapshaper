@@ -3367,6 +3367,22 @@ body.pan.panning .map-layers:not(.drawing) {
 	border-bottom-color: #999;
 }
 
+/* A pattern's size and gap are a pair, measured the same way, so they share
+   the row equally rather than one taking the narrow column. */
+.layer-pattern-size-row {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	column-gap: 10px;
+}
+
+.layer-pattern-size-row .label-split-cell {
+	min-width: 0;
+}
+
+.layer-pattern-code-row input[type="text"] {
+	width: 100%;
+}
+
 .label-split-row .label-split-cell + .label-split-cell {
 	white-space: nowrap;
 }

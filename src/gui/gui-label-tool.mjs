@@ -5,10 +5,10 @@ import { ColorPicker, isHexColor } from './gui-color-picker';
 import { StylePresetControl } from './gui-style-preset-control';
 import { SizeField } from './gui-size-field';
 import {
-  claimFieldKeys, isTextInput, releasePanelFocus
+  claimFieldKeys, isTextInput, opensAMenu, releasePanelFocus
 } from './gui-panel-focus';
 import {
-  makeColorOpacityField, makePanelButton, makePanelSection,
+  makeColorOpacityField, makePanelButton, makePanelSection, makePanelToggle,
   setPanelButtonDisabled
 } from './gui-panel-controls';
 import { parseOpacityValue, formatOpacityPct } from './gui-style-values';
@@ -445,7 +445,7 @@ export function LabelTool(gui) {
     // spacing sits above.
     haloSection = addSection('Halo');
     var haloTitle = haloSection.findChild('.label-style-section-title');
-    haloToggle = makeToggle(haloTitle, {
+    haloToggle = makePanelToggle(haloTitle, {
       title: 'Draw a halo around the text',
       className: 'label-halo-toggle',
       onChange: setHaloOn
@@ -496,7 +496,7 @@ export function LabelTool(gui) {
     // a label with no icon: nothing to apply it to.
     iconSection = addSection('Icon');
     var iconTitle = iconSection.findChild('.label-style-section-title');
-    iconToggle = makeToggle(iconTitle, {
+    iconToggle = makePanelToggle(iconTitle, {
       title: 'Draw a symbol at the label anchor',
       className: 'label-icon-toggle',
       onChange: setIconOn
@@ -603,7 +603,7 @@ export function LabelTool(gui) {
   // the map rather than typed here. See docs/development/text-annotation-design.md.
   function initCalloutSection() {
     calloutSection = addSection('Callout');
-    calloutToggle = makeToggle(calloutSection.findChild('.label-style-section-title'), {
+    calloutToggle = makePanelToggle(calloutSection.findChild('.label-style-section-title'), {
       title: 'Draw a line from the label anchor to its text',
       className: 'label-callout-toggle',
       onChange: setCalloutOn
@@ -722,48 +722,6 @@ export function LabelTool(gui) {
   // giving it the weight of those two would overstate it.
   function addSection(title, opts) {
     return makePanelSection(panel, title, opts);
-  }
-
-  // A switch: a track with a knob that sits left when off and right when on,
-  // which is the direction users expect and the only thing that says which
-  // state is which without a label for each. A third state says that the
-  // labels it is asking about disagree -- the knob sits over the join of a
-  // half-and-half track, which is the panel's only control that has to show
-  // "some of them" rather than a value.
-  //
-  // role=checkbox rather than switch, which is what it looks like: 'mixed' is a
-  // legal aria-checked value for a checkbox and not for a switch, and a switch
-  // reporting a mixed selection as unchecked would be telling a screen reader
-  // the one thing the third state exists to avoid saying.
-  function makeToggle(parent, opts) {
-    var track = El('div').addClass('label-toggle').attr('role', 'checkbox').appendTo(parent);
-    var state = 'off';
-    if (opts.className) track.addClass(opts.className);
-    var disabled = false;
-    El('div').addClass('label-toggle-knob').appendTo(track);
-    if (opts.title) track.attr('title', opts.title);
-    // A click on a mixed switch turns everything on. It is the convention, and
-    // it is the reading that reaches a state the switch can describe: the next
-    // click then turns everything off, so both are one click away.
-    track.on('click', function() {
-      if (disabled) return;
-      opts.onChange(state != 'on');
-    });
-    return {
-      // val: 'on', 'off' or 'mixed'; anything else reads as off
-      setState: function(val) {
-        state = val == 'on' || val == 'mixed' ? val : 'off';
-        track.classed('on', state == 'on')
-          .classed('mixed', state == 'mixed')
-          .attr('aria-checked', state == 'mixed' ? 'mixed' :
-            state == 'on' ? 'true' : 'false');
-      },
-      setDisabled: function(off) {
-        disabled = !!off;
-        track.classed('disabled', disabled)
-          .attr('aria-disabled', disabled ? 'true' : 'false');
-      }
-    };
   }
 
   function addColorOpacityField(parent, chit, input, onOpacity) {
@@ -2091,14 +2049,6 @@ export function LabelTool(gui) {
 
   function isFormElement(node) {
     return !!node && /^(INPUT|SELECT|TEXTAREA|BUTTON|OPTION)$/.test(node.nodeName);
-  }
-
-  // Whether clicking this node puts a native menu on screen, which must then be
-  // left holding the focus. OPTION counts because a browser that reports the
-  // chosen option as the click target is reporting a menu interaction either
-  // way, and a choice restores the caret through its change handler.
-  function opensAMenu(node) {
-    return !!node && /^(SELECT|OPTION)$/.test(node.nodeName);
   }
 
   // Hands the keyboard back after a control has done its job: to the label

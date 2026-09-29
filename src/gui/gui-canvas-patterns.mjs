@@ -73,7 +73,7 @@ function makePatternEntry(style, scale) {
   canv.setAttribute('height', h);
   ctx.scale(w / tw, h / th);
   if (o.background) {
-    ctx.fillStyle = o.background;
+    ctx.fillStyle = getCanvasColor(o.background);
     ctx.fillRect(0, 0, tw, th);
   }
   if (o.type == 'dots' || o.type == 'squares') makeDotFill(o, ctx, 1);
@@ -137,10 +137,16 @@ export function wrapPatternAnchor(x, y, entry) {
   };
 }
 
+// SVG's "none" is not a canvas colour, and a canvas ignores a fillStyle it
+// cannot parse -- keeping the last one set, which on a fresh tile is black.
+export function getCanvasColor(color) {
+  return String(color).trim().toLowerCase() == 'none' ? 'transparent' : color;
+}
+
 function makeDashFill(o, ctx, res) {
   var x = 0;
   for (var i=0; i<o.colors.length; i++) {
-    ctx.fillStyle = o.colors[i];
+    ctx.fillStyle = getCanvasColor(o.colors[i]);
     ctx.fillRect(x, 0, o.width * res, o.dashes[0] * res);
     x += res * (o.spacing + o.width);
   }
@@ -155,7 +161,7 @@ function makeDotFill(o, ctx, res) {
   var x = 0, y = 0;
   for (var i=0; i<dots; i++) {
     if (o.type == 'dots') ctx.beginPath();
-    ctx.fillStyle = o.colors[(i + Math.floor(i / n)) % n];
+    ctx.fillStyle = getCanvasColor(o.colors[(i + Math.floor(i / n)) % n]);
     if (o.type == 'dots') {
       ctx.arc(x + r, y + r, r, 0, Math.PI * 2);
     } else {
@@ -172,8 +178,8 @@ function makeHatchFill(o, ctx, res) {
   var w;
   for (var i=0, x=0; i<o.widths.length; i++) {
     w = o.widths[i] * res;
-    ctx.fillStyle = o.colors[i];
-    ctx.fillRect(x, 0, x + w, h);
+    ctx.fillStyle = getCanvasColor(o.colors[i]);
+    ctx.fillRect(x, 0, w, h);
     x += w;
   }
 }

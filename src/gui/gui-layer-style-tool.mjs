@@ -1,7 +1,7 @@
 import { isHexColor } from './gui-color-picker';
 import { El } from './gui-el';
 import {
-  claimFieldKeys, isTextInput, releasePanelFocus
+  claimFieldKeys, isTextInput, opensAMenu, releasePanelFocus
 } from './gui-panel-focus';
 import { makeColorRow, makeFieldTip, makePanelActionButton } from './gui-panel-controls';
 import { SizeField } from './gui-size-field';
@@ -9,17 +9,19 @@ import {
   parseOpacityValue, formatOpacityPct, formatColorOpacityPct, normalizeDashArrayInput
 } from './gui-style-values';
 import { StylePresetControl } from './gui-style-preset-control';
+import { PatternFillControl } from './gui-pattern-fill-control';
+import { groupStyleEdits } from './gui-fill-pattern';
 import { runGuiEditCommand } from './gui-edit-command';
 import { internal } from './gui-core';
 import { quoteCommandValue } from './gui-command-utils';
 
 var savedStylesKey = 'layer_style_presets';
-var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'fill', 'fill-opacity'];
+var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'fill', 'fill-opacity', 'fill-pattern'];
 
 export function LayerStyleTool(gui) {
   var parent = gui.container.findChild('.mshp-main-map');
   var panel = El('div').addClass('label-style-panel layer-style-panel rollover').appendTo(parent).hide();
-  var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, dashControl, randomFillBtn, presetControl, hit;
+  var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, dashControl, randomFillBtn, presetControl, patternControl, hit;
   var targetLayer = null;
 
   initPanel();
@@ -64,6 +66,7 @@ export function LayerStyleTool(gui) {
 
   function turnOn() {
     targetLayer = getActiveLayer();
+    patternControl.reset();
     applyDefaultLineStyle();
     panel.show();
     updateControls();
@@ -73,6 +76,8 @@ export function LayerStyleTool(gui) {
     panel.hide();
     strokeControl.picker.hide();
     fillControl.picker.hide();
+    patternControl.hidePicker();
+    patternControl.reset();
     targetLayer = null;
   }
 
@@ -89,8 +94,8 @@ export function LayerStyleTool(gui) {
     // picker's Close button, and the panel's own buttons in the browsers that
     // focus a button on click. Left alone while the user is typing into a
     // field, which a click elsewhere in the panel ends on its own.
-    panel.node().addEventListener('click', function() {
-      if (isTextInput(document.activeElement)) return;
+    panel.node().addEventListener('click', function(e) {
+      if (isTextInput(document.activeElement) || opensAMenu(e.target)) return;
       releaseFocus();
     });
 
@@ -110,6 +115,16 @@ export function LayerStyleTool(gui) {
     var buttonRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(panel);
     randomFillBtn = makePanelActionButton(buttonRow, 'Random fills', applyRandomFillColors);
     makePanelActionButton(buttonRow, 'Clear style', clearLayerStyle);
+
+    patternControl = new PatternFillControl(panel, {
+      getRecords: function() {
+        return targetLayer && targetLayer.data ? targetLayer.data.getRecords() : [];
+      },
+      getTargetIds: getTargetIds,
+      applyEdits: runStyleEdits,
+      revert: updateControls,
+      releaseFocus: releaseFocus
+    });
 
     presetControl = new StylePresetControl(panel, {
       storageKey: savedStylesKey,
@@ -208,6 +223,8 @@ export function LayerStyleTool(gui) {
     updateStrokeWidthControl();
     updateDashArrayControl();
     randomFillBtn.classed('hidden', geom != 'polygon');
+    patternControl.section.classed('hidden', geom != 'polygon');
+    if (geom == 'polygon') patternControl.update();
     presetControl.render();
     updateSavedStyleControls();
   }
@@ -271,7 +288,11 @@ export function LayerStyleTool(gui) {
     if (control.field == 'stroke' && strokeWidthIsUnsetForTargets()) {
       styles.push(['stroke-width', 1]);
     }
-    runStyleCommand(styles);
+    if (control.field == 'fill') {
+      runStyleEdits(patternControl.getStyleEdits(styles));
+    } else {
+      runStyleCommand(styles);
+    }
   }
 
   function applyStrokeWidthStyle(value) {
@@ -291,11 +312,30 @@ export function LayerStyleTool(gui) {
   }
 
   function runStyleCommand(styles) {
-    var parts = ['-style'];
     releaseFocus();
     syncTargetLayer();
     var ids = getTargetIds();
     if (!gui.console || !targetLayer || ids.length === 0) return;
+    runCommand(formatStyleCommand(styles, ids), 'Style layer');
+  }
+
+  // Per-feature edits ([{id, styles}]), as one -style command for each set of
+  // styles. They are run as one command string, which is one undo step.
+  function runStyleEdits(edits, title) {
+    releaseFocus();
+    syncTargetLayer();
+    if (!gui.console || !targetLayer || edits.length === 0) return;
+    runCommand(formatStyleEditCommands(edits), title || 'Style layer');
+  }
+
+  function formatStyleEditCommands(edits) {
+    return groupStyleEdits(edits).map(function(group) {
+      return formatStyleCommand(group.styles, group.ids);
+    }).join(' ');
+  }
+
+  function formatStyleCommand(styles, ids) {
+    var parts = ['-style'];
     styles.forEach(function(style) {
       parts.push(style[0] + '=' + quoteCommandValue(style[1]));
     });
@@ -303,7 +343,7 @@ export function LayerStyleTool(gui) {
     if (ids.length < internal.getFeatureCount(targetLayer)) {
       parts.push('ids=' + ids.join(','));
     }
-    runCommand(parts.join(' '), 'Style layer');
+    return parts.join(' ');
   }
 
   function applyDefaultLineStyle() {
@@ -317,12 +357,20 @@ export function LayerStyleTool(gui) {
     }
   }
 
+  // Patterns keep their backgrounds in step with the fills, and the new fills
+  // are not known until -classify has chosen them, so the patterns are
+  // rewritten by an expression that reads each feature's fill when it runs.
   function applyRandomFillColors() {
     var cmd = '-classify colors=random non-adjacent';
+    var patternEdits;
     syncTargetLayer();
     if (!gui.console || !targetLayer || targetLayer.geometry_type != 'polygon') return;
     if (getActiveLayer() != targetLayer) {
       cmd += ' target=' + internal.formatOptionValue(internal.getLayerTargetId(gui.model, targetLayer));
+    }
+    patternEdits = patternControl.getRefillExpressionEdits(getAllFeatureIds(targetLayer));
+    if (patternEdits.length > 0) {
+      cmd += ' ' + formatStyleEditCommands(patternEdits);
     }
     runCommand(cmd, 'Random fill colors');
   }
@@ -342,7 +390,7 @@ export function LayerStyleTool(gui) {
       }
     });
     if (styles.length > 0) {
-      runStyleCommand(styles);
+      runStyleEdits(patternControl.getStyleEdits(styles));
     }
   }
 
@@ -357,6 +405,7 @@ export function LayerStyleTool(gui) {
     if (targetLayer && targetLayer.geometry_type == 'polygon') {
       addStyleValue(style, 'fill', getControlValue(fillControl.input));
       addStyleValue(style, 'fill-opacity', parseOpacityValue(fillControl.opacity.node().value));
+      addStyleValue(style, 'fill-pattern', patternControl.getCode(getControlValue(fillControl.input)));
     }
     return style;
   }

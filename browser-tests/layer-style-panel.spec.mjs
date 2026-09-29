@@ -93,7 +93,8 @@ test('stroke width is typed or stepped in a size field', async function({page}) 
   // type a width at all until the value itself was clicked.
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
-  var input = page.locator('.layer-style-panel .size-field-input');
+  var strokeRow = page.locator('.layer-style-panel .label-split-row').nth(1);
+  var input = strokeRow.locator('.size-field-input');
 
   await setField(input, '3');
   expect(await getStyleValue(page, 'stroke-width')).toBe(3);
@@ -103,7 +104,7 @@ test('stroke width is typed or stepped in a size field', async function({page}) 
   await input.press('ArrowDown');
   await page.waitForTimeout(200);
   expect(await getStyleValue(page, 'stroke-width')).toBe(2);
-  await page.locator('.layer-style-panel .size-field-down').click();
+  await strokeRow.locator('.size-field-down').click();
   await page.waitForTimeout(200);
   expect(await getStyleValue(page, 'stroke-width')).toBe(1.5);
   await expect(input).toHaveValue('1.5');
@@ -163,6 +164,192 @@ test('the dashes field is only on the line panel', async function({page}) {
   await loadFixture(page, FIXTURE);
   await expect(page.locator('.layer-style-panel .layer-dash-row')).toBeHidden();
 });
+
+var POLY_FIXTURE = 'test/data/features/join/ex1_polyB.json';
+var POLY_LAYER = 'ex1_polyB';
+
+test('a hatch pattern is drawn over the fill, and follows it', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page, POLY_FIXTURE);
+  var rows = page.locator('.layer-style-panel .label-split-row');
+  // off to begin with, showing only its heading
+  await expect(patternToggle(page)).toHaveAttribute('aria-checked', 'false');
+  await expect(patternSelect(page)).toBeHidden();
+  await setField(rows.nth(0).locator('.label-color-input'), '#eeeeee');
+
+  // switching it on starts with a hatch
+  await clickPatternToggle(page);
+  expect(await getPatterns(page)).toEqual(Array(3).fill('hatches 3px #eeeeee 1px #000000'));
+  await expect(patternSelect(page)).toHaveValue('hatches');
+  await expect(page.locator('.layer-pattern-size-row span').first()).toHaveText('Width');
+
+  await setField(patternSizeField(page, 'Width'), '2');
+  await setField(patternSizeField(page, 'Gap'), '4');
+  await setField(page.locator('.layer-pattern-color-row .size-field-input'), '90');
+  await setField(page.locator('.layer-pattern-color-row .label-color-input'), '#ff0000');
+  expect((await getPatterns(page))[0]).toBe('hatches 90deg 4px #eeeeee 2px #ff0000');
+
+  // a new fill is the pattern's new background, in the same undo step
+  await setField(rows.nth(0).locator('.label-color-input'), '#cccccc');
+  expect((await getPatterns(page))[0]).toBe('hatches 90deg 4px #cccccc 2px #ff0000');
+  await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
+  await page.waitForTimeout(250);
+  expect((await getPatterns(page))[0]).toBe('hatches 90deg 4px #eeeeee 2px #ff0000');
+  expect(await getStyleValue(page, 'fill', POLY_LAYER)).toBe('#eeeeee');
+  expect(errors).toEqual([]);
+});
+
+test('the pattern menu stays open when clicked', async function({page}) {
+  // A native menu closes when its element is blurred, and the panel lets go of
+  // focus after a click. Focus staying on the <select> is what "the menu is
+  // open" looks like from here: the menu itself is drawn by the OS.
+  await loadFixture(page, POLY_FIXTURE);
+  await clickPatternToggle(page);
+  var box = await patternSelect(page).boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(250);
+  expect(await getFocusedElement(page)).toBe('SELECT');
+  // choosing from it applies the pattern and gives the keyboard back
+  await patternSelect(page).selectOption('dots');
+  await page.waitForTimeout(250);
+  expect((await getPatterns(page))[0]).toBe('dots 2px #000000 3px none');
+  expect(await getFocusedElement(page)).toBe('BODY');
+});
+
+test('each feature gets its pattern over its own fill', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page, POLY_FIXTURE);
+  await runConsoleCommand(page, "-style fill='#aaaaaa' ids=0");
+  await runConsoleCommand(page, "-style fill='#bbbbbb' ids=1");
+
+  await clickPatternToggle(page);
+  await selectPattern(page, 'dots');
+  expect(await getPatterns(page)).toEqual([
+    'dots 2px #000000 3px #aaaaaa',
+    'dots 2px #000000 3px #bbbbbb',
+    'dots 2px #000000 3px none' // no fill, so a clear background
+  ]);
+  // the same pattern over different fills is still one pattern
+  await expect(patternSelect(page)).toHaveValue('dots');
+  await expect(page.locator('.layer-pattern-size-row span').first()).toHaveText('Size');
+
+  // random fills are chosen by the command, and the patterns follow them
+  await page.locator('.layer-style-panel .label-panel-action-btn')
+    .filter({hasText: 'Random fills'}).click();
+  await page.waitForTimeout(400);
+  var records = await getRecords(page);
+  records.forEach(function(rec) {
+    expect(rec['fill-pattern']).toBe('dots 2px #000000 3px ' + rec.fill);
+  });
+  await expect(patternSelect(page)).toHaveValue('dots');
+  expect(errors).toEqual([]);
+});
+
+test('a pattern the controls cannot describe is shown as its code', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page, POLY_FIXTURE);
+  var code = page.locator('.layer-pattern-code-row input');
+  await runConsoleCommand(page, "-style fill-pattern='dashes 4px 2px 1px black 4px white'");
+  await expect(patternToggle(page)).toHaveAttribute('aria-checked', 'true');
+  await expect(patternSelect(page)).toHaveValue('custom');
+  await expect(code).toHaveValue('dashes 4px 2px 1px black 4px white');
+  await expect(page.locator('.layer-pattern-code-row .tip-button')).toHaveCount(1);
+
+  // not a pattern: the field goes back and nothing changes
+  await setField(code, 'zigzag 2px');
+  await expect(code).toHaveValue('dashes 4px 2px 1px black 4px white');
+  expect((await getPatterns(page))[0]).toBe('dashes 4px 2px 1px black 4px white');
+
+  await setField(code, 'hatches 1px red 1px white 1px blue');
+  expect((await getPatterns(page))[0]).toBe('hatches 1px red 1px white 1px blue');
+
+  // off takes it away, and on again brings back the pattern that was showing
+  await clickPatternToggle(page);
+  expect(await getPatterns(page)).toEqual([undefined, undefined, undefined]);
+  await expect(page.locator('.layer-pattern-code-row')).toBeHidden();
+  await clickPatternToggle(page);
+  expect(await getPatterns(page)).toEqual(Array(3).fill('hatches 1px red 1px white 1px blue'));
+  expect(errors).toEqual([]);
+});
+
+test('choosing Custom shows the code for the pattern being replaced', async function({page}) {
+  await loadFixture(page, POLY_FIXTURE);
+  await clickPatternToggle(page);
+  await selectPattern(page, 'squares');
+  await selectPattern(page, 'custom');
+  await expect(page.locator('.layer-pattern-code-row input')).toHaveValue('squares 2px #000000 2px none');
+  await expect(patternSelect(page)).toHaveValue('custom');
+});
+
+test('a pattern on some of the features shows as mixed', async function({page}) {
+  await loadFixture(page, POLY_FIXTURE);
+  await runConsoleCommand(page, "-style fill-pattern='hatches 3px none 1px black' ids=0");
+  await expect(patternToggle(page)).toHaveAttribute('aria-checked', 'mixed');
+  await expect(patternSelect(page)).toHaveValue('mixed');
+  await expect(page.locator('.layer-pattern-color-row')).toBeHidden();
+
+  // switching on gives the rest the pattern the others have
+  await clickPatternToggle(page);
+  expect(await getPatterns(page)).toEqual(Array(3).fill('hatches 3px none 1px black'));
+  await expect(patternToggle(page)).toHaveAttribute('aria-checked', 'true');
+  await expect(patternSelect(page)).toHaveValue('hatches');
+});
+
+test('the pattern section heading matches the label panel\'s switched sections', async function({page}) {
+  await loadFixture(page, POLY_FIXTURE);
+  var title = page.locator('.layer-style-panel .label-style-section-title')
+    .filter({has: page.locator('.layer-pattern-toggle')});
+  await expect(title.locator('.label-style-section-name')).toHaveText('Pattern');
+  // the menu has no caption, and no None -- the switch is how to have none
+  await expect(page.locator('.layer-pattern-type-row .label-style-row-label')).toHaveCount(0);
+  expect(await patternSelect(page).locator('option:not(.hidden)').allTextContents())
+    .toEqual(['Hatches', 'Dots', 'Squares', 'Custom']);
+});
+
+test('the pattern section is only on the polygon panel', async function({page}) {
+  await loadFixture(page, LINE_FIXTURE, 'line_style');
+  await expect(page.locator('.layer-style-panel .layer-pattern-type-row')).toBeHidden();
+});
+
+function patternToggle(page) {
+  return page.locator('.layer-style-panel .layer-pattern-toggle');
+}
+
+async function clickPatternToggle(page) {
+  await patternToggle(page).click();
+  await page.waitForTimeout(250);
+}
+
+function patternSelect(page) {
+  return page.locator('.layer-style-panel .layer-pattern-type-row select');
+}
+
+async function selectPattern(page, type) {
+  await patternSelect(page).selectOption(type);
+  await page.waitForTimeout(250);
+}
+
+function patternSizeField(page, label) {
+  return page.locator('.layer-pattern-size-row .label-split-cell')
+    .filter({hasText: label}).locator('.size-field-input');
+}
+
+async function getRecords(page) {
+  return page.evaluate(function(layer) {
+    return window.mapshaper.undoTest.getLayerInfo(layer).records;
+  }, POLY_LAYER);
+}
+
+async function getPatterns(page) {
+  return (await getRecords(page)).map(function(rec) { return rec['fill-pattern']; });
+}
+
+async function runConsoleCommand(page, cmd) {
+  await page.evaluate(function(str) {
+    return window.mapshaper.undoTest.runCommand(str);
+  }, cmd);
+  await page.waitForTimeout(150);
+}
 
 async function getSessionCommands(page) {
   return page.evaluate(function() {

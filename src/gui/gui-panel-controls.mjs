@@ -29,6 +29,52 @@ export function makePanelSection(parent, title, opts) {
   return section;
 }
 
+// A switch: a track with a knob that sits left when off and right when on,
+// which is the direction users expect and the only thing that says which
+// state is which without a label for each. A third state says that the
+// features it is asking about disagree -- the knob sits over the join of a
+// half-and-half track, which is the only control that has to show "some of
+// them" rather than a value. A section's switch goes in its heading row, and
+// the section shows only its heading while it is off (the .collapsed class).
+//
+// role=checkbox rather than switch, which is what it looks like: 'mixed' is a
+// legal aria-checked value for a checkbox and not for a switch, and a switch
+// reporting a mixed selection as unchecked would be telling a screen reader
+// the one thing the third state exists to avoid saying.
+//
+// opts.onChange(on)  the switch was clicked
+// opts.title, opts.className
+export function makePanelToggle(parent, opts) {
+  var track = El('div').addClass('label-toggle').attr('role', 'checkbox').appendTo(parent);
+  var state = 'off';
+  if (opts.className) track.addClass(opts.className);
+  var disabled = false;
+  El('div').addClass('label-toggle-knob').appendTo(track);
+  if (opts.title) track.attr('title', opts.title);
+  // A click on a mixed switch turns everything on. It is the convention, and
+  // it is the reading that reaches a state the switch can describe: the next
+  // click then turns everything off, so both are one click away.
+  track.on('click', function() {
+    if (disabled) return;
+    opts.onChange(state != 'on');
+  });
+  return {
+    // val: 'on', 'off' or 'mixed'; anything else reads as off
+    setState: function(val) {
+      state = val == 'on' || val == 'mixed' ? val : 'off';
+      track.classed('on', state == 'on')
+        .classed('mixed', state == 'mixed')
+        .attr('aria-checked', state == 'mixed' ? 'mixed' :
+          state == 'on' ? 'true' : 'false');
+    },
+    setDisabled: function(off) {
+      disabled = !!off;
+      track.classed('disabled', disabled)
+        .attr('aria-disabled', disabled ? 'true' : 'false');
+    }
+  };
+}
+
 // Deliberately not focusable: the GUI is pointer-only, so a tab stop here
 // would lead into a control the keyboard cannot then operate. See the focus
 // note in page.css.
@@ -105,6 +151,8 @@ export function makeColorOpacityField(parent, chit, input, opacityOpts) {
 // opts.onColor(hex)     a colour was typed, picked or previewed to a finish
 // opts.onOpacity(frac)  a usable percentage was typed
 // opts.revert()         one that was not, so put the row back as it was
+// opts.noOpacity        a colour with no opacity of its own, like a pattern's,
+//                       which fill-opacity fades along with its background
 //
 // control.aside is the row's narrow column, empty, for a field that belongs
 // beside the colour -- a stroke's width, say.
@@ -142,10 +190,14 @@ export function makeColorRow(parent, opts) {
       if (isHexColor(color)) control.picker.setColor(color);
       opts.onColor(color);
     });
-  control.opacity = makeColorOpacityField(colorCell, control.chit, control.input, {
-    onSet: opts.onOpacity,
-    revert: opts.revert
-  }).opacity;
+  if (opts.noOpacity) {
+    makeColorField(colorCell, control.chit, control.input);
+  } else {
+    control.opacity = makeColorOpacityField(colorCell, control.chit, control.input, {
+      onSet: opts.onOpacity,
+      revert: opts.revert
+    }).opacity;
+  }
   control.picker = new ColorPicker(colorCell, {
     presetRows: layerColorPresetRows,
     // A drag in the picker shows on the map's own terms -- the swatch and the

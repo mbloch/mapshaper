@@ -74,6 +74,19 @@ test('a circle opacity is blank with no colour, and 100% with one', async functi
   expect(errors).toEqual([]);
 });
 
+test('the label field menu stays open when clicked', async function({page}) {
+  // The panel lets go of focus after a click, which closes a native menu the
+  // moment it opens unless the click on the menu itself is left alone.
+  await loadFixture(page, FIXTURE);
+  var menu = page.locator('.point-style-panel .label-style-row select').first();
+  var box = await menu.boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(250);
+  expect(await page.evaluate(function() {
+    return document.activeElement && document.activeElement.nodeName;
+  })).toBe('SELECT');
+});
+
 test('an expression turns a field into labels, and the label tool takes over', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);

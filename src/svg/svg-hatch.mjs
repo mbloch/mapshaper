@@ -29,10 +29,10 @@ export function parsePattern(str) {
     parts.unshift('hatches');
     obj = parseHatches(parts); // hatches is the default, name can be omitted
   }
-  if (!obj) {
-    // consider
-    message('Invalid pattern, ignoring:', str);
-  }
+  // Silent: this is also how a value is tested for being a pattern at all
+  // (-style tries every value as a literal before trying it as an
+  // expression), so a failure here is not necessarily a mistake. The SVG
+  // exporter reports the patterns it has to drop.
   return obj;
 }
 
@@ -172,7 +172,10 @@ export function convertFillPattern(properties, defs) {
 function makeSVGPatternFill(str, id) {
   var o = parsePattern(str);
   var svg;
-  if (!o) return null;
+  if (!o) {
+    message('Invalid pattern, ignoring:', str);
+    return null;
+  }
   if (o.type == 'hatches') {
     svg = makeHatchPatternSVG(o);
   } else if (o.type == 'dots' || o.type == 'squares') {
