@@ -2,6 +2,7 @@ import require from '../mapshaper-require';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { mergeDatasets } from '../dataset/mapshaper-merging';
 import { getCrsInfo, setDatasetCrsInfo } from '../crs/mapshaper-projections';
+import { decodePatternId } from './svg-hatch';
 
 var INHERITED_STYLE_KEYS = [
   'fill', 'fill-opacity',
@@ -448,7 +449,26 @@ function getFeatureProperties(node, inherited, excluded) {
       props[key] = val;
     }
   }
+  importPatternFill(props);
   return props;
+}
+
+// A fill of url(#id), with or without a fallback colour after it, is a
+// reference to a paint server in <defs>. The ones mapshaper exports are
+// pattern fills whose id encodes the fill-pattern code, and the fallback is
+// the feature's own fill. A reference that is not one of those is dropped:
+// nothing can draw a url() stored as a colour. Its fallback, if any, is kept.
+function importPatternFill(props) {
+  var match = /^url\(\s*['"]?#([^'")]+)['"]?\s*\)\s*(.*)$/.exec(String(props.fill || '').trim());
+  var code;
+  if (!match) return;
+  code = decodePatternId(match[1]);
+  if (code) props['fill-pattern'] = code;
+  if (match[2]) {
+    props.fill = match[2];
+  } else {
+    delete props.fill;
+  }
 }
 
 function getNodeStyles(node) {

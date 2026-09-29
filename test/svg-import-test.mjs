@@ -243,4 +243,52 @@ describe('svg import', function () {
     assert.deepEqual(p1, [10, 60]);
     assert.deepEqual(p2, [30, 20]);
   });
+
+  describe('pattern fills', function() {
+    function importSvg(body) {
+      var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">' + body + '</svg>';
+      var dataset = api.internal.importContent({
+        svg: {filename: 'patterns.svg', content: svg}
+      }, {});
+      return dataset.layers[0].data.getRecords();
+    }
+
+    it('recover fill-pattern and fill after an export and an import', async function() {
+      var geojson = {type: 'FeatureCollection', features: [
+        {type: 'Feature', properties: {name: 'a'}, geometry: {type: 'Polygon', coordinates: [[[0, 0], [0, 1], [1, 1], [0, 0]]]}},
+        {type: 'Feature', properties: {name: 'b'}, geometry: {type: 'Polygon', coordinates: [[[2, 0], [2, 1], [3, 1], [2, 0]]]}},
+        {type: 'Feature', properties: {name: 'c'}, geometry: {type: 'Polygon', coordinates: [[[4, 0], [4, 1], [5, 1], [4, 0]]]}}
+      ]};
+      var cmd = '-i in.json -style fill="#aaaaaa" fill-pattern="hatches 3px #aaaaaa 1px #000000" where="name==\'a\'"' +
+        ' -style fill-pattern="dots 2px rgb(0,0,255) 3px white" where="name==\'b\'" -o out.svg';
+      var out = await api.applyCommands(cmd, {'in.json': geojson});
+      var out2 = await api.applyCommands('-i out.svg -o out.json', {'out.svg': out['out.svg']});
+      var props = JSON.parse(out2['out.json']).features.map(f => f.properties);
+      assert.match(String(out['out.svg']), /fill="url\(#hash_hatches_3px_aaaaaa_1px_000000\) #aaaaaa"/);
+      assert.deepEqual(props, [
+        {fill: '#aaaaaa', 'fill-pattern': 'hatches 3px #aaaaaa 1px #000000'},
+        {'fill-pattern': 'dots 2px rgb(0,0,255) 3px white'},
+        {}
+      ]);
+    });
+
+    it('decode the ids of patterns exported with no fallback colour', function() {
+      var recs = importSvg('<path d="M0 0L1 1L1 0Z" fill="url(#hash_squares_2px_000_1px_fff)"/>');
+      assert.deepEqual(recs[0], {'fill-pattern': 'squares 2px #000 1px #fff'});
+    });
+
+    it('apply to the features of a group with a pattern fill', function() {
+      var recs = importSvg('<g fill="url(#hash_hatches_2px_red_2px_grey) #ccc"><path d="M0 0L1 1L1 0Z"/></g>');
+      assert.equal(recs[0]['fill-pattern'], 'hatches 2px red 2px grey');
+      assert.equal(recs[0].fill, '#ccc');
+    });
+
+    it('drop a reference to some other paint server but keep its fallback', function() {
+      var recs = importSvg('<path d="M0 0L1 1L1 0Z" fill="url(#gradient1) blue"/>' +
+        '<path d="M2 0L3 1L3 0Z" style="fill: url(\'#gradient2\')"/>');
+      assert.equal(recs[0].fill, 'blue');
+      assert.equal(recs[1].fill, undefined);
+      assert.equal('fill-pattern' in recs[0], false);
+    });
+  });
 });

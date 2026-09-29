@@ -149,8 +149,114 @@ function splitPattern(str) {
   return String(str).trim().split(splitRxp);
 }
 
-function getHashId(str) {
+// The id of the <pattern> element a fill-pattern code is exported as. It is
+// also how the code is recovered when an exported SVG is imported again (see
+// decodePatternId()), so a change here has to keep decoding the ids of files
+// that are already out there.
+export function getHashId(str) {
   return ('hash_' + str).replace(/[()# ,_]+/g, '_'); // replace some chars that occur in colors
+}
+
+// The fill-pattern code a <pattern> id was made from, or null if the id is not
+// one of ours. The id keeps the tokens of the code but drops the # of a hex
+// colour and the parentheses and commas of rgb() and hsl(), so those are put
+// back by where the colours fall in each pattern type's syntax. A hex colour
+// has to have its # back even where the parser would not need it: without it,
+// a colour of digits reads as a number.
+export function decodePatternId(id) {
+  var tokens, code;
+  if (!/^hash_./.test(id || '')) return null;
+  tokens = mergeColorFunctions(id.substr(5).split('_').filter(Boolean));
+  tokens = restoreHexColors(tokens);
+  if (!tokens) return null;
+  code = tokens.join(' ');
+  return parsePattern(code) ? code : null;
+}
+
+function mergeColorFunctions(tokens) {
+  var out = [];
+  var tok, argc, args;
+  for (var i=0; i<tokens.length; i++) {
+    tok = tokens[i];
+    if (/^(rgb|hsl)a?$/i.test(tok)) {
+      argc = /a$/i.test(tok) ? 4 : 3;
+      args = tokens.slice(i + 1, i + 1 + argc);
+      i += args.length;
+      if (tokens[i + 1] == '/' && i + 2 < tokens.length) {
+        // space-separated form with an alpha: rgb(0 0 0 / 50%)
+        out.push(tok + '(' + args.join(' ') + ' / ' + tokens[i + 2] + ')');
+        i += 2;
+      } else {
+        out.push(tok + '(' + args.join(',') + ')');
+      }
+    } else {
+      out.push(tok);
+    }
+  }
+  return out;
+}
+
+// Marks each token as a colour or not, by pattern type, and gives the colours
+// that look like hex values their # back. Returns null for an unknown type.
+function restoreHexColors(tokens) {
+  var type = tokens[0] || '';
+  var colorAt;
+  if (type.startsWith('dot') || type.startsWith('square')) {
+    colorAt = getDotColorPositions(tokens);
+  } else if (type.startsWith('dash')) {
+    colorAt = getDashColorPositions(tokens);
+  } else if (type.startsWith('hatch') || isNumberToken(type)) {
+    colorAt = getHatchColorPositions(tokens);
+  } else {
+    return null;
+  }
+  return tokens.map(function(tok, i) {
+    return colorAt[i] && /^[0-9a-f]+$/i.test(tok) && [3, 4, 6, 8].includes(tok.length) ?
+      '#' + tok : tok;
+  });
+}
+
+// [hatches] [rotation] width1 color1 [width2 color2 ...]
+function getHatchColorPositions(tokens) {
+  var start = isNumberToken(tokens[0]) ? 0 : 1;
+  var rest = tokens.length - start;
+  var first = start + (rest % 2 == 1 ? 1 : 0); // odd count: a rotation first
+  return tokens.map(function(tok, i) {
+    return i >= first && (i - first) % 2 == 1;
+  });
+}
+
+// dots|squares [rotation] size color1 [color2 ...] spacing background
+function getDotColorPositions(tokens) {
+  var last = tokens.length - 1;
+  // A rotation is there if the second number is also a size -- but a colour
+  // of digits looks like a number too, so a bare one counts as a colour
+  // unless a unit or a decimal point says otherwise.
+  var rotated = /deg$/.test(tokens[1] || '') ||
+    last >= 5 && isNumberToken(tokens[2]) && !mightBeHexDigits(tokens[2]);
+  var firstColor = rotated ? 3 : 2;
+  return tokens.map(function(tok, i) {
+    return i == last || i >= firstColor && i < last - 1;
+  });
+}
+
+// dashes [rotation] dash-length space-length width color1 [color2 ...] spacing background
+function getDashColorPositions(tokens) {
+  var last = tokens.length - 1;
+  var rotated = /deg$/.test(tokens[1] || '') ||
+    last >= 7 && isNumberToken(tokens[4]) && !mightBeHexDigits(tokens[4]);
+  var firstColor = rotated ? 5 : 4;
+  return tokens.map(function(tok, i) {
+    return i == last || i >= firstColor && i < last - 1;
+  });
+}
+
+function isNumberToken(tok) {
+  return /^-?(\d+\.?\d*|\.\d+)(px|deg)?$/.test(tok || '');
+}
+
+function mightBeHexDigits(tok) {
+  return /^\d+$/.test(tok) && [3, 4, 6, 8].includes(tok.length);
 }
 
 // properties: properties object of a path data object (prior to conversion to SVG)
@@ -166,7 +272,10 @@ export function convertFillPattern(properties, defs) {
     if (!hash) return;
     defs.push(hash);
   }
-  properties.fill = hash.href;
+  // The feature's own fill is kept as the paint's fallback colour, which SVG
+  // draws only if the pattern cannot be. It is also how the fill survives
+  // being exported and imported again.
+  properties.fill = properties.fill ? hash.href + ' ' + properties.fill : hash.href;
 }
 
 function makeSVGPatternFill(str, id) {
