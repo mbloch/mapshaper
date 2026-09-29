@@ -1,3 +1,8 @@
+v0.7.70
+* Add -labels command, with more options for labelling than the -style command.
+* [web] Added the ability to select portions of a label and make the text bold.
+* [web] Added pattern fill configuration to the polygon style panel.
+
 v0.7.69
 * [web] Add scalebar configuration to the map frame interface.
 * [web] Add dashes to the line style panel.
