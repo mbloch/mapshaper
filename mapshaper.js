@@ -5882,13 +5882,13 @@
     return msg;
   }
 
-  function requirePointLayer$1(lyr, msg) {
+  function requirePointLayer$2(lyr, msg) {
     if (!lyr || lyr.geometry_type !== 'point')
       stop$1(layerTypeMessage(lyr, "Expected a point layer", msg));
   }
 
   function requireSinglePointLayer(lyr, msg) {
-    requirePointLayer$1(lyr);
+    requirePointLayer$2(lyr);
     if (countMultiPartFeatures(lyr.shapes) > 0) {
       stop$1(msg || 'This command requires single points; layer contains multi-point features.');
     }
@@ -6128,7 +6128,7 @@
     requireDataFields: requireDataFields,
     requireNotRasterLayer: requireNotRasterLayer,
     requirePathLayer: requirePathLayer,
-    requirePointLayer: requirePointLayer$1,
+    requirePointLayer: requirePointLayer$2,
     requirePolygonLayer: requirePolygonLayer,
     requirePolylineLayer: requirePolylineLayer,
     requireSinglePointLayer: requireSinglePointLayer,
@@ -26245,10 +26245,10 @@
       parts.unshift('hatches');
       obj = parseHatches(parts); // hatches is the default, name can be omitted
     }
-    if (!obj) {
-      // consider
-      message('Invalid pattern, ignoring:', str);
-    }
+    // Silent: this is also how a value is tested for being a pattern at all
+    // (-style tries every value as a literal before trying it as an
+    // expression), so a failure here is not necessarily a mistake. The SVG
+    // exporter reports the patterns it has to drop.
     return obj;
   }
 
@@ -26388,7 +26388,10 @@
   function makeSVGPatternFill(str, id) {
     var o = parsePattern(str);
     var svg;
-    if (!o) return null;
+    if (!o) {
+      message('Invalid pattern, ignoring:', str);
+      return null;
+    }
     if (o.type == 'hatches') {
       svg = makeHatchPatternSVG(o);
     } else if (o.type == 'dots' || o.type == 'squares') {
@@ -27383,6 +27386,126 @@
     splitLabelHalos: splitLabelHalos
   });
 
+  // Bold words inside a label: label-text='Israel <b>restricted access</b> here'.
+  //
+  // The markup is part of the text rather than a column beside it, so that the
+  // words and their weight cannot drift apart: an expression, a join or a -labels
+  // text= that rewrites the text rewrites the bold with it. The GUI editor never
+  // shows the tags -- it reads them into ranges and writes them back.
+  //
+  // Only a matched <b>...</b> pair with no other b tag inside it is markup.
+  // Anything else -- an unclosed <b>, a stray </b>, "a < b" -- is text, and is
+  // drawn as typed.
+  //
+  // See docs/development/label-tool-design.md.
+
+  var BOLD_PAIR_RXP = /<b>((?:(?!<\/?b>)[\s\S])*?)<\/b>/gi;
+  var BOLD_TAG_RXP = /<\/?b>/i;
+
+  // The font-weight a bold run is drawn with: the keyword, which a browser and
+  // the Node text measurer both resolve to the family's own bold face.
+  var LABEL_BOLD_WEIGHT = 'bold';
+
+  // @str -> {text, bold}: the text with its bold pairs removed, and the bold
+  // stretches as ascending, non-overlapping [start, end) offsets into it.
+  function parseBoldMarkup(str) {
+    var s = str === null || str === undefined ? '' : String(str);
+    var text = '', bold = [], last = 0, m;
+    if (!BOLD_TAG_RXP.test(s)) return {text: s, bold: bold};
+    BOLD_PAIR_RXP.lastIndex = 0;
+    while ((m = BOLD_PAIR_RXP.exec(s))) {
+      text += s.substring(last, m.index);
+      if (m[1]) {
+        bold.push([text.length, text.length + m[1].length]);
+        text += m[1];
+      }
+      last = m.index + m[0].length;
+    }
+    text += s.substring(last);
+    return {text: text, bold: normalizeBoldRanges(bold)};
+  }
+
+  function stripBoldMarkup(str) {
+    return parseBoldMarkup(str).text;
+  }
+
+  // Sorted, clipped to non-empty, with touching and overlapping ranges merged.
+  // Returns a new array.
+  function normalizeBoldRanges(ranges) {
+    var sorted = (ranges || []).filter(function(r) {
+      return r && r[1] > r[0];
+    }).map(function(r) {
+      return [r[0], r[1]];
+    }).sort(function(a, b) {
+      return a[0] - b[0];
+    });
+    var out = [];
+    sorted.forEach(function(r) {
+      var prev = out[out.length - 1];
+      if (prev && r[0] <= prev[1]) {
+        prev[1] = Math.max(prev[1], r[1]);
+      } else {
+        out.push(r);
+      }
+    });
+    return out;
+  }
+
+  // The characters [start, end) of @text as runs of one weight:
+  // [{text, bold}, ...], with nothing for an empty stretch.
+  function getBoldRuns(text, bold, start, end) {
+    var runs = [], pos = start, i, r, a, b;
+    for (i = 0; i < bold.length && pos < end; i++) {
+      r = bold[i];
+      a = Math.max(r[0], pos);
+      b = Math.min(r[1], end);
+      if (b <= a) continue;
+      if (a > pos) runs.push({text: text.substring(pos, a), bold: false});
+      runs.push({text: text.substring(a, b), bold: true});
+      pos = b;
+    }
+    if (pos < end) runs.push({text: text.substring(pos, end), bold: false});
+    return runs;
+  }
+
+  // @runs -> @obj with the first plain run as its value and the rest as <tspan>s,
+  // which is the shape the stringifier writes as mixed content. A label with no
+  // bold in it comes out exactly as it did before bold existed: one value and no
+  // children. Returns @obj.
+  function applyRunsToSvgObject(obj, runs) {
+    var i = 0;
+    var children = [];
+    if (runs.length > 0 && !runs[0].bold) {
+      obj.value = runs[0].text;
+      i = 1;
+    } else {
+      obj.value = '';
+    }
+    for (; i < runs.length; i++) {
+      children.push(renderRun(runs[i]));
+    }
+    if (children.length > 0) {
+      obj.children = children.concat(obj.children || []);
+    }
+    return obj;
+  }
+
+  function renderRun(run) {
+    var o = {tag: 'tspan', value: run.text};
+    if (run.bold) o.properties = {'font-weight': LABEL_BOLD_WEIGHT};
+    return o;
+  }
+
+  var SvgLabelMarkup = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    LABEL_BOLD_WEIGHT: LABEL_BOLD_WEIGHT,
+    applyRunsToSvgObject: applyRunsToSvgObject,
+    getBoldRuns: getBoldRuns,
+    normalizeBoldRanges: normalizeBoldRanges,
+    parseBoldMarkup: parseBoldMarkup,
+    stripBoldMarkup: stripBoldMarkup
+  });
+
   // Accepting \n (two chars) as an alternative to the newline character
   // (sometimes, '\n' is not converted to newline, e.g. in a Makefile)
   // Also accepting <br>
@@ -27399,19 +27522,43 @@
   var anyLabelBreakRxp = /(\n|\\n|<br>|<wbr>)/i;
   var softBreakRxp = /^<wbr>$/i;
 
-  // The lines a label's text is drawn as. Whitespace before a soft break is
-  // dropped: a trailing space would move an end- or middle-justified line by a
-  // space's width.
+  // The lines a label's text is drawn as, without its bold markup.
   function splitLabelLines(text) {
-    var parts = String(text).split(anyLabelBreakRxp);
-    var lines = [parts[0]];
+    return splitLabelLineRuns(text).map(function(runs) {
+      return runs.map(function(run) { return run.text; }).join('');
+    });
+  }
+
+  // The lines a label's text is drawn as, each one a list of runs of one weight:
+  // [[{text, bold}, ...], ...]. A bold stretch can cross a line break, and is
+  // then a run on each line.
+  //
+  // Whitespace before a soft break is dropped: a trailing space would move an
+  // end- or middle-justified line by a space's width.
+  function splitLabelLineRuns(text) {
+    var o = parseBoldMarkup(String(text));
+    var parts = o.text.split(anyLabelBreakRxp);
+    var pos = parts[0].length;
+    var lines = [getBoldRuns(o.text, o.bold, 0, pos)];
     for (var i = 1; i < parts.length; i += 2) {
       if (softBreakRxp.test(parts[i])) {
-        lines[lines.length - 1] = lines[lines.length - 1].replace(/\s+$/, '');
+        trimTrailingSpace(lines[lines.length - 1]);
       }
-      lines.push(parts[i + 1]);
+      pos += parts[i].length;
+      lines.push(getBoldRuns(o.text, o.bold, pos, pos + parts[i + 1].length));
+      pos += parts[i + 1].length;
     }
     return lines;
+  }
+
+  function trimTrailingSpace(runs) {
+    var last;
+    while (runs.length > 0) {
+      last = runs[runs.length - 1];
+      last.text = last.text.replace(/\s+$/, '');
+      if (last.text) return;
+      runs.pop();
+    }
   }
 
   function removeSoftBreaks(text) {
@@ -27464,7 +27611,7 @@
     // already been through it, so calling it here as well costs nothing and means
     // every way into the renderer draws a label in the position it is stored in.
     var rec = resolveLabelPosition(recArg);
-    var morelines = splitLabelLines(toLabelString(rec['label-text']));
+    var morelines = splitLabelLineRuns(toLabelString(rec['label-text']));
     var line = morelines.shift();
     var obj;
     var dx = applyAlignmentShift(rec);
@@ -27475,23 +27622,21 @@
       y: dy,
       x: dx
     };
-    obj = {
+    obj = applyRunsToSvgObject({
       tag: 'text',
-      value: line,
       properties: properties
-    };
+    }, line);
     if (morelines.length > 0) {
       // multiline label
-      obj.children = [];
+      obj.children = obj.children || [];
       morelines.forEach(function(line) {
-        var tspan = {
+        var tspan = applyRunsToSvgObject({
           tag: 'tspan',
-          value: line,
           properties: {
             x: dx,
             dy: getLineHeightDy(rec['line-height'])
           }
-        };
+        }, line);
         obj.children.push(tspan);
       });
     }
@@ -27591,6 +27736,7 @@
     removeSoftBreaks: removeSoftBreaks,
     renderLabel: renderLabel$1,
     renderStyledLabel: renderStyledLabel,
+    splitLabelLineRuns: splitLabelLineRuns,
     splitLabelLines: splitLabelLines,
     toLabelString: toLabelString,
     toPixels: toPixels
@@ -29627,16 +29773,14 @@
       // a <tspan> inside a <textPath> advances along the path instead of
       // stacking below it, so the lines are joined rather than dropping
       // everything after the first one
-      text = text.split(labelNewlineRxp).join(' ');
       addToReport(report, 'joined', id);
     }
-    textPath = {
+    textPath = applyRunsToSvgObject({
       tag: 'textPath',
-      value: text,
       properties: {
         startOffset: rec['label-start-offset'] || getDefaultStartOffset(rec)
       }
-    };
+    }, joinLineRuns(splitLabelLineRuns(text)));
     // the caller replaces this with a reference to a <defs> entry
     textPath.properties[LABEL_PATH_PROPERTY] = d;
     if (rec['label-side']) {
@@ -29698,6 +29842,28 @@
     if (anchor == 'start') return '0%';
     if (anchor == 'end') return '100%';
     return '50%';
+  }
+
+  // A path label's lines as one line of runs, with a space for each break. The
+  // space takes the weight of the text before it, and runs of one weight that
+  // the join brings together are merged, so that text with no bold in it is a
+  // single run.
+  function joinLineRuns(lines) {
+    var out = [];
+    lines.forEach(function(runs, i) {
+      if (i > 0) appendRun(out, {text: ' ', bold: out.length > 0 && out[out.length - 1].bold});
+      runs.forEach(function(run) { appendRun(out, run); });
+    });
+    return out;
+  }
+
+  function appendRun(runs, run) {
+    var last = runs[runs.length - 1];
+    if (last && last.bold == run.bold) {
+      last.text += run.text;
+    } else {
+      runs.push({text: run.text, bold: run.bold});
+    }
   }
 
   function addToReport(report, key, id) {
@@ -40716,6 +40882,22 @@ ${svg}
     }
   }
 
+  // -labels adds a label when given coordinates=, and styles the target's labels
+  // otherwise. Options that belong to one of these are refused in the other,
+  // rather than ignored.
+  function validateLabelsOpts(cmd) {
+    var o = cmd.options;
+    if ('coordinates' in o) {
+      if (o.where || o.ids) {
+        stop$1('where= and ids= select labels to style, and can not be used with coordinates=');
+      }
+    } else if (o.properties) {
+      stop$1('properties= requires coordinates=');
+    } else if ('name' in o && !o.no_replace) {
+      stop$1('name= requires coordinates= or +');
+    }
+  }
+
   function validateExpressionOpt(cmd) {
     if (!cmd.options.expression) {
       error('Command requires a JavaScript expression');
@@ -41696,17 +41878,17 @@ ${svg}
         nameOpt2 = { // for -calc and -info
           describe: 'name the output layer'
         },
-        // label style properties accepted by -add-label, so that a label can be
-        // created and styled in one command. These are a subset of the
-        // properties -style accepts -- the ones that apply to text.
+        // label style properties accepted by -labels and -add-label. -style
+        // accepts these too, for backward compatibility, but leaves them out of
+        // its help.
         labelStyleOpts = {
-          'font-family': {describe: 'label font, e.g. Georgia'},
-          'font-size': {describe: 'label font size, e.g. 14'},
+          'font-family': {describe: 'CSS font family, e.g. Georgia (default is sans-serif)'},
+          'font-size': {describe: 'font size (default is 12)'},
           'font-style': {describe: 'normal or italic'},
           'font-weight': {describe: 'normal, bold or a numeric weight'},
           'font-stretch': {describe: 'e.g. condensed'},
           'letter-spacing': {describe: 'extra space between letters'},
-          'line-height': {describe: 'spacing between lines of a multi-line label; a bare number is a multiple of the font size'},
+          'line-height': {describe: 'spacing between lines of a multi-line label; a bare number is a multiple of the font size (default is 1.1)'},
           'text-anchor': {describe: 'start, middle or end'},
           'label-align': {describe: 'how the lines of a multi-line label align: left, center or right'},
           'dominant-baseline': {describe: 'vertical alignment, e.g. central'},
@@ -41717,22 +41899,29 @@ ${svg}
           dy: {describe: 'vertical offset from the anchor'},
           fill: {describe: 'text color'},
           opacity: {describe: 'text opacity'},
-          'halo-width': {describe: 'width of a halo around the text in px'},
+          'halo-width': {describe: 'width of a halo around the text in px (default is 0, no halo)'},
           'halo-color': {describe: 'halo color (default is white)'},
           'halo-opacity': {describe: 'halo opacity, 0-1'},
-          'label-width': {describe: 'width of a fixed-width text block in px'},
+          'label-width': {describe: 'width of a fixed-width text block in px (lines are wrapped in the web UI)'},
           callout: {describe: 'line from the anchor to the text: line, elbow or curve'},
           'callout-end': {describe: 'arrowhead at the anchor end: arrow, open-arrow or none'},
-          'callout-end-size': {describe: 'length of an arrowhead\'s sides in px'},
+          'callout-end-size': {describe: 'length of an arrowhead\'s sides in px (default is 10)'},
           'callout-via': {describe: 'x,y of an elbow\'s corner or a point on a curve, in px'},
           'callout-attach': {describe: 'where the callout meets the text, as x,y fractions'},
           'callout-gap': {describe: 'px between the callout and the anchor'},
-          'callout-padding': {describe: 'px between the callout and the text'},
+          'callout-padding': {describe: 'px between the callout and the text (default is 3)'},
           'callout-color': {describe: 'callout color (defaults to the text color)'},
-          'callout-width': {describe: 'callout line width in px'},
+          'callout-width': {describe: 'callout line width in px (default is 1)'},
           'callout-opacity': {describe: 'callout opacity, 0-1'},
           css: {describe: 'inline css style'},
           class: {describe: 'name of CSS class or classes (space-separated)'}
+        },
+        // a label can carry a symbol at its anchor
+        labelIconOpts = {
+          icon: {describe: 'symbol drawn at the label anchor: circle, square, ring, star'},
+          'icon-size': {describe: 'size of the anchor symbol in px'},
+          'icon-color': {describe: 'color of the anchor symbol (defaults to the text color)'},
+          'icon-opacity': {describe: 'opacity of the anchor symbol, 0-1'}
         },
         noReplaceOpt2 = { // for -calc and -info
           alias: '+',
@@ -41812,6 +42001,18 @@ ${svg}
           describe: 'offset distance or pct of h/w (single value or l,b,r,t list)',
           type: 'distance'
         };
+
+    // The label options -style used to document, before -labels took them over.
+    // fill, opacity, css and class are left out because -style documents them
+    // for every kind of feature.
+    function getHiddenLabelStyleOpts() {
+      var shared = ['fill', 'opacity', 'css', 'class'];
+      var opts = {'label-text': {}};
+      Object.keys(labelStyleOpts).forEach(function(name) {
+        if (shared.indexOf(name) == -1) opts[name] = {};
+      });
+      return opts;
+    }
 
     var parser = new CommandParser();
     parser.usage('Usage:  mapshaper -<command> [options] ...');
@@ -43181,6 +43382,32 @@ ${svg}
       .option('encoding', encodingOpt)
       .option('target', targetOpt);
 
+    parser.command('labels')
+      .describe('style labels, convert points to labels or add a label')
+      .validate(validateLabelsOpts)
+      .option('text', {
+        describe: 'label text (a field, JS expression or literal value)'
+      })
+      .option('label-text', {
+        alias_to: 'text'
+      })
+      .option('coordinates', {
+        describe: 'add a label at x,y, or a path label along x,y,x,y,...'
+      })
+      .option('where', whereOpt)
+      .option('ids', {
+        describe: 'comma-sep. list of ids of the labels to style',
+        type: 'numbers'
+      })
+      .options(labelStyleOpts)
+      .options(labelIconOpts)
+      .option('properties', {
+        describe: 'with coordinates=, other attributes as a JSON object'
+      })
+      .option('name', nameOpt)
+      .option('no-replace', noReplaceOpt)
+      .option('target', targetOpt);
+
     parser.command('lines')
       .describe('convert a polygon or point layer to a polyline layer')
       .option('fields', {
@@ -43744,99 +43971,11 @@ ${svg}
         describe: 'point icon color (defaults to fill color, then black)'
       })
       .option('icon-opacity', {
-        describe: 'point icon opacity, 0-1 (defaults to the label\'s opacity)'
+        describe: 'point icon opacity, 0-1'
       })
-      .option('label-text', {
-        describe: 'label text (set this to export points as labels)'
-      })
-      .option('label-pos', {
-        describe: 'label position; one of: n, s, e, w, ne, se, nw, sw, c'
-      })
-      .option('text-anchor', {
-        describe: 'label alignment; one of: start, end, middle (default)'
-      })
-      .option('label-align', {
-        describe: 'alignment of the lines of multi-line labels; left, center or right'
-      })
-      .option('halo-width', {
-        describe: 'width of a halo around label text in px (default is 0, no halo)'
-      })
-      .option('halo-color', {
-        describe: 'color of label halos (default is white)'
-      })
-      .option('halo-opacity', {
-        describe: 'opacity of label halos, 0-1'
-      })
-      .option('dx', {
-        describe: 'x offset of labels (default is 0)'
-      })
-      .option('dy', {
-        describe: 'y offset of labels (default is 0/baseline-aligned)'
-      })
-      .option('font-size', {
-        describe: 'size of label text (default is 12)'
-      })
-      .option('font-family', {
-        describe: 'CSS font family of labels (default is sans-serif)'
-      })
-      .option('font-weight', {
-        describe: 'CSS font weight property of labels (e.g. bold, 700)'
-      })
-      .option('font-style', {
-        describe: 'CSS font style property of labels (e.g. italic)'
-      })
-      .option('font-stretch', {
-        describe: 'CSS font stretch property of labels (e.g. condensed)'
-      })
-      .option('letter-spacing', {
-        describe: 'CSS letter-spacing property of labels'
-      })
-       .option('line-height', {
-        describe: 'line spacing of multi-line labels; a bare number is a multiple of the font size, as in CSS (default is 1.1)'
-      })
-      .option('dominant-baseline', {
-        describe: 'vertical alignment of labels (e.g. central)'
-      })
-      .option('label-side', {
-        describe: 'which side of its path a label sits on: left or right'
-      })
-      .option('label-start-offset', {
-        describe: 'where label text starts along its path, e.g. 50%'
-      })
-      .option('label-width', {
-        describe: 'width of a fixed-width text block in px (lines are wrapped in the web UI)'
-      })
-      .option('callout', {
-        describe: 'line from a label\'s anchor to its text: line, elbow or curve'
-      })
-      .option('callout-end', {
-        describe: 'arrowhead at the anchor end of a callout: arrow (solid), open-arrow or none'
-      })
-      .option('callout-end-size', {
-        describe: 'length of an arrowhead\'s sides in px (default 10, more for a thicker line)'
-      })
-      .option('callout-via', {
-        describe: 'x,y of an elbow\'s corner or a point on a curve, in px from the anchor'
-      })
-      .option('callout-attach', {
-        describe: 'where a callout meets its text, as x,y fractions of the text box'
-      })
-      .option('callout-gap', {
-        describe: 'px between a callout and its anchor (default: a line meets the icon, an arrow clears it)'
-      })
-      .option('callout-padding', {
-        describe: 'px between a callout and its text (default is 3)'
-      })
-      .option('callout-color', {
-        describe: 'callout color (defaults to the text color)'
-      })
-      .option('callout-width', {
-        describe: 'callout line width in px (default is 1)'
-      })
-      .option('callout-opacity', {
-        describe: 'callout opacity, 0-1'
-      })
-     .option('target', targetOpt);
+      // deprecated in favor of -labels; accepted, but left out of the help
+      .options(getHiddenLabelStyleOpts())
+      .option('target', targetOpt);
 
     parser.command('repel')
       .describe('move overlapping point symbols apart')
@@ -44082,23 +44221,10 @@ ${svg}
       .option('text', {
         describe: 'label text'
       })
-      // label style properties, so that creating and styling a label is one
-      // command; anything not listed here can be set with a following -style
+      // superseded by -labels coordinates=; kept so that older session
+      // histories still run
       .options(labelStyleOpts)
-      // a label can carry a symbol at its anchor, so these come along too even
-      // though they are not text properties
-      .option('icon', {
-        describe: 'symbol drawn at the label anchor: circle, square, ring, star'
-      })
-      .option('icon-size', {
-        describe: 'size of the anchor symbol in px'
-      })
-      .option('icon-color', {
-        describe: 'color of the anchor symbol (defaults to the text color)'
-      })
-      .option('icon-opacity', {
-        describe: 'opacity of the anchor symbol, 0-1'
-      })
+      .options(labelIconOpts)
       .option('properties', {
         describe: 'other attributes, as a JSON object'
       })
@@ -51395,6 +51521,621 @@ ${svg}
     return d;
   }
 
+  // Insert cutting points in arcs, where bbox intersects other shapes
+  // Return a polygon layer containing the bounding box vectors, divided at cutting points.
+  function divideDatasetByBBox(dataset, bbox) {
+    var arcs = dataset.arcs;
+    var data = findBBoxCutPoints(arcs, bbox);
+    var map = insertCutPoints(data.cutPoints, arcs);
+    arcs.dedupCoords();
+    remapDividedArcs(dataset, map);
+    // merge bbox dataset with target dataset,
+    // so arcs are shared between target layers and bbox layer
+    var clipDataset = bboxPointsToClipDataset(data.bboxPoints);
+    var mergedDataset = mergeDatasets([dataset, clipDataset]);
+    // TODO: detect if we need to rebuild topology (unlikely), like with the full clip command
+    // buildTopology(mergedDataset);
+    var clipLyr = mergedDataset.layers.pop();
+    dataset.arcs = mergedDataset.arcs;
+    dataset.layers = mergedDataset.layers;
+    return clipLyr;
+  }
+
+  function bboxPointsToClipDataset(arr) {
+    var arcs = [];
+    var shape = [];
+    var layer = {geometry_type: 'polygon', shapes: [[shape]]};
+    var p1, p2;
+    for (var i=0, n=arr.length - 1; i<n; i++) {
+      p1 = arr[i];
+      p2 = arr[i+1];
+      arcs.push([[p1.x, p1.y], [p2.x, p2.y]]);
+      shape.push(i);
+    }
+    return {
+      arcs: new ArcCollection(arcs),
+      layers: [layer]
+    };
+  }
+
+  function findBBoxCutPoints(arcs, bbox) {
+    var left = bbox[0],
+        bottom = bbox[1],
+        right = bbox[2],
+        top = bbox[3];
+
+    // arrays of intersection points along each bbox edge
+    var tt = [],
+        rr = [],
+        bb = [],
+        ll = [];
+
+    arcs.forEachSegment(function(i, j, xx, yy) {
+      var ax = xx[i],
+          ay = yy[i],
+          bx = xx[j],
+          by = yy[j];
+      var hit;
+      if (segmentOutsideBBox(ax, ay, bx, by, left, bottom, right, top)) return;
+      if (segmentInsideBBox(ax, ay, bx, by, left, bottom, right, top)) return;
+
+      hit = geom.segmentIntersection(left, top, right, top, ax, ay, bx, by);
+      if (hit) addHit(tt, hit, i, j, xx, yy);
+
+      hit = geom.segmentIntersection(left, bottom, right, bottom, ax, ay, bx, by);
+      if (hit) addHit(bb, hit, i, j, xx, yy);
+
+      hit = geom.segmentIntersection(left, bottom, left, top, ax, ay, bx, by);
+      if (hit) addHit(ll, hit, i, j, xx, yy);
+
+      hit = geom.segmentIntersection(right, bottom, right, top, ax, ay, bx, by);
+      if (hit) addHit(rr, hit, i, j, xx, yy);
+    });
+
+    return {
+      cutPoints: ll.concat(bb, rr, tt),
+      bboxPoints: getDividedBBoxPoints(bbox, ll, tt, rr, bb)
+    };
+
+    function addHit(arr, hit, i, j, xx, yy) {
+      if (!hit) return;
+      arr.push(formatHit(hit[0], hit[1], i, j, xx, yy));
+      if (hit.length == 4) {
+        arr.push(formatHit(hit[2], hit[3], i, j, xx, yy));
+      }
+    }
+
+    function formatHit(x, y, i, j, xx, yy) {
+      var ids = formatIntersectingSegment(x, y, i, j, xx, yy);
+      return getCutPoint(x, y, ids[0], ids[1]);
+    }
+  }
+
+  function segmentOutsideBBox(ax, ay, bx, by, xmin, ymin, xmax, ymax) {
+    return ax < xmin && bx < xmin || ax > xmax && bx > xmax ||
+        ay < ymin && by < ymin || ay > ymax && by > ymax;
+  }
+
+  function segmentInsideBBox(ax, ay, bx, by, xmin, ymin, xmax, ymax) {
+    return ax > xmin && bx > xmin && ax < xmax && bx < xmax &&
+        ay > ymin && by > ymin && ay < ymax && by < ymax;
+  }
+
+  // Returns an array of points representing the vertices in
+  // the bbox with cutting points inserted.
+  function getDividedBBoxPoints(bbox, ll, tt, rr, bb) {
+    var bl = {x: bbox[0], y: bbox[1]},
+        tl = {x: bbox[0], y: bbox[3]},
+        tr = {x: bbox[2], y: bbox[3]},
+        br = {x: bbox[2], y: bbox[1]};
+    ll = utils.sortOn(ll.concat([bl, tl]), 'y', true);
+    tt = utils.sortOn(tt.concat([tl, tr]), 'x', true);
+    rr = utils.sortOn(rr.concat([tr, br]), 'y', false);
+    bb = utils.sortOn(bb.concat([br, bl]), 'x', false);
+    return ll.concat(tt, rr, bb).reduce(function(memo, p2) {
+      var p1 = memo.length > 0 ? memo[memo.length-1] : null;
+      if (p1 === null || p1.x != p2.x || p1.y != p2.y) memo.push(p2);
+      return memo;
+    }, []);
+  }
+
+  var Bbox2Clipping = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    divideDatasetByBBox: divideDatasetByBBox,
+    segmentInsideBBox: segmentInsideBBox,
+    segmentOutsideBBox: segmentOutsideBBox
+  });
+
+  cmd.filterGeom = function(lyr, arcs, opts) {
+    if (!layerHasGeometry$1(lyr)) {
+      stop$1("Layer is missing geometry");
+    }
+    if (opts.bbox) {
+      filterByBoundsIntersection(lyr, arcs, opts);
+    }
+    cmd.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
+  };
+
+  function filterByBoundsIntersection(lyr, arcs, opts) {
+    var filter = getBoundsIntersectionFilter(opts.bbox, lyr, arcs);
+    noteLayerWillChange(lyr, {operation: 'filter-geom', unit: 'shapes'});
+    editShapes(lyr.shapes, filter);
+    markLayerChanged(lyr, {operation: 'filter-geom', unit: 'shapes'});
+  }
+
+  function getBoundsIntersectionFilter(bbox, lyr, arcs) {
+    var bounds = new Bounds(bbox);
+    var filter = lyr.geometry_type == 'point' ?
+          getPointInBoundsTest(bounds) :
+          getPathBoundsIntersectionTest(bounds, arcs);
+    return filter;
+  }
+
+  function getPointInBoundsTest(bounds) {
+    return function(xy) {
+      var contains =  bounds.containsPoint(xy[0], xy[1]);
+      return contains ? xy : null;
+    };
+  }
+
+  // V1 too-simple test: bounding-box intersection
+  // internal.getPathBoundsIntersectionTest = function(bounds, arcs) {
+  //   return function(path) {
+  //     return bounds.intersects(arcs.getSimpleShapeBounds(path)) ? path : null;
+  //   };
+  // };
+
+  function getPathBoundsIntersectionTest(bounds, arcs) {
+    var bbox = bounds.toArray(),
+      left = bbox[0],
+      bottom = bbox[1],
+      right = bbox[2],
+      top = bbox[3];
+
+    return function(path) {
+      // case: bounding boxes don't intersect -> the path doesn't intersect the box
+      if (!bounds.intersects(arcs.getSimpleShapeBounds(path))) {
+        return null;
+      }
+      var intersects = false;
+      var ax, ay, bx, by;
+      var iter = arcs.getShapeIter(path);
+
+      if (iter.hasNext()) {
+        ax = iter.x;
+        ay = iter.y;
+      }
+      while (iter.hasNext()) {
+        bx = ax;
+        by = ay;
+        ax = iter.x;
+        ay = iter.y;
+        if (segmentOutsideBBox(ax, ay, bx, by, left, bottom, right, top)) continue;
+        if (segmentInsideBBox(ax, ay, bx, by, left, bottom, right, top)) {
+          intersects = true;
+          break;
+        }
+        if (geom.segmentIntersection(left, top, right, top, ax, ay, bx, by) ||
+            geom.segmentIntersection(left, bottom, right, bottom, ax, ay, bx, by) ||
+            geom.segmentIntersection(left, bottom, left, top, ax, ay, bx, by) ||
+            geom.segmentIntersection(right, bottom, right, top, ax, ay, bx, by)) {
+          intersects = true;
+          break;
+        }
+      }
+
+      // case: bbox is entirely inside this ring
+      if (!intersects && geom.testPointInRing(left, bottom, path, arcs)) {
+        intersects = true;
+      }
+      return intersects ? path : null;
+    };
+  }
+
+  // Return a function for testing if a shape (path or point) intersects a bounding box
+  // TODO: move this function to a different file
+  function getBBoxIntersectionTest(bbox, lyr, arcs) {
+    var filter = getBoundsIntersectionFilter(bbox, lyr, arcs);
+    return function(shapeId) {
+      var shp = lyr.shapes[shapeId];
+      if (!shp) return false;
+      for (var i=0; i<shp.length; i++) {
+        if (filter(shp[i])) return true;
+      }
+      return false;
+    };
+  }
+
+  // return array of shape ids
+  function findShapesIntersectingBBox(bbox, lyr, arcs) {
+    var test = getBBoxIntersectionTest(bbox, lyr, arcs);
+    var ids = [];
+    for (var i=0; i<lyr.shapes.length; i++) {
+      if (test(i)) ids.push(i);
+    }
+    return ids;
+  }
+
+  var FilterGeom = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    findShapesIntersectingBBox: findShapesIntersectingBBox,
+    getBBoxIntersectionTest: getBBoxIntersectionTest
+  });
+
+  cmd.filterFeatures = function(lyr, arcs, opts) {
+    var records = lyr.data ? lyr.data.getRecords() : null,
+        shapes = lyr.shapes || null,
+        n = getFeatureCount(lyr),
+        filteredShapes = shapes ? [] : null,
+        filteredRecords = records ? [] : null,
+        filteredLyr = getOutputLayer(lyr, opts),
+        invert = !!opts.invert,
+        filter;
+
+    if (opts.expression) {
+      filter = compileFeatureExpression(opts.expression, lyr, arcs);
+    }
+
+    if (opts.ids) {
+      filter = combineFilters(filter, getIdFilter(opts.ids));
+    }
+
+    if (opts.remove_empty) {
+      filter = combineFilters(filter, getNullGeometryFilter(lyr, arcs));
+    }
+
+    if (opts.bbox) {
+      filter = combineFilters(filter, getBBoxIntersectionTest(opts.bbox, lyr, arcs));
+    }
+
+    if (!filter) {
+      stop$1("Missing a filter criterion");
+    }
+
+    utils.repeat(n, function(shapeId) {
+      var result = filter(shapeId);
+      requireBooleanResult(result);
+      if (invert) result = !result;
+      if (result === true) {
+        if (shapes) filteredShapes.push(shapes[shapeId] || null);
+        if (records) filteredRecords.push(records[shapeId] || null);
+      }
+    });
+
+    if (filteredLyr == lyr) {
+      noteLayerWillChange(lyr, {operation: 'filter'});
+    }
+    filteredLyr.shapes = filteredShapes;
+    filteredLyr.data = filteredRecords ? new DataTable(filteredRecords) : null;
+    if (filteredLyr == lyr) {
+      markLayerChanged(lyr, {operation: 'filter'});
+    }
+    if (opts.no_replace) {
+      // if adding a layer, don't share objects between source and filtered layer
+      filteredLyr = copyLayer(filteredLyr);
+    }
+
+    if (opts.verbose !== false && !opts.quiet) {
+      message(utils.format('Retained %,d of %,d features', getFeatureCount(filteredLyr), n));
+    }
+
+    return filteredLyr;
+  };
+
+  // TODO: update filter command to use this function
+  function filterLayerInPlace(lyr, filter, invert) {
+    var records = lyr.data ? lyr.data.getRecords() : null,
+        shapes = lyr.shapes || null,
+        n = getFeatureCount(lyr),
+        filteredShapes = shapes ? [] : null,
+        filteredRecords = records ? [] : null;
+    utils.repeat(n, function(shapeId) {
+      var result = filter(shapeId);
+      requireBooleanResult(result);
+      if (result === true) {
+        if (shapes) filteredShapes.push(shapes[shapeId] || null);
+        if (records) filteredRecords.push(records[shapeId] || null);
+      }
+    });
+    noteLayerWillChange(lyr, {operation: 'filterLayerInPlace'});
+    lyr.shapes = filteredShapes;
+    lyr.data = filteredRecords ? new DataTable(filteredRecords) : null;
+    markLayerChanged(lyr, {operation: 'filterLayerInPlace'});
+  }
+
+  function getIdFilter(ids) {
+    var set = new Set(ids);
+    return function(i) {
+      return set.has(i);
+    };
+  }
+
+  function getNullGeometryFilter(lyr, arcs) {
+    var shapes = lyr.shapes;
+    if (lyr.geometry_type == 'polygon') {
+      return getEmptyPolygonFilter(shapes, arcs);
+    }
+    return function(i) {return !!shapes[i];};
+  }
+
+  function getEmptyPolygonFilter(shapes, arcs) {
+    return function(i) {
+      var shp = shapes[i];
+      return !!shp && geom.getPlanarShapeArea(shapes[i], arcs) > 0;
+    };
+  }
+
+  function combineFilters(a, b) {
+    return a && b ? function(id) {
+        return a(id) && b(id);
+      } : (a || b);
+  }
+
+  // The icon names accepted by the icon= property of the -style command.
+  // Kept in a module of its own so that both the renderer (svg-symbols.mjs) and
+  // the -style command can use it without forming an import cycle.
+
+  var iconNames = ['circle', 'square', 'ring', 'star'];
+
+  function isSupportedIconName(name) {
+    return iconNames.indexOf(name) > -1;
+  }
+
+  cmd.svgStyle = function(lyr, dataset, opts) {
+    var filterFn, table, fields, hasNewFields, optFields, clearedByPosition, fieldsBefore;
+
+    function hadField(field) {
+      return field in fieldsBefore;
+    }
+
+    if (getFeatureCount(lyr) === 0) {
+      return;
+    }
+    if (!lyr.data) {
+      initDataTable(lyr);
+    }
+    if (opts.where) {
+      filterFn = compileFeatureExpression(opts.where, lyr, dataset.arcs);
+    }
+    if (opts.ids) {
+      filterFn = combineFilters(filterFn, getIdFilter(opts.ids));
+    }
+    if (opts.clear) {
+      lyr.data.getFields().filter(isSupportedSvgStyleProperty).forEach(lyr.data.deleteField, lyr.data);
+    }
+    table = getLayerDataTable(lyr);
+    optFields = getOptionFields(opts);
+    fields = getStyleFields(optFields);
+    // Which of dx/dy/text-anchor a label-pos in this command clears: not the ones
+    // the same command also sets, so that `label-pos=n dx=3` keeps the nudge it
+    // was given instead of clearing it a moment later.
+    //
+    // Clearing at all is what keeps the shorthand usable, since a value on the
+    // record wins over the position: without it, setting a position on a label
+    // that had been dragged would appear to do nothing.
+    clearedByPosition = labelPositionDerivedFields.filter(function(field) {
+      return optFields.indexOf(field) == -1;
+    });
+    hasNewFields = fields.some(function(field) {
+      return !table.fieldExists(field);
+    });
+    // The table's columns as this command found them. Taken once, because the
+    // command adds to them as it runs, and a blanked property must be judged
+    // against what was there before rather than against what it has just made.
+    fieldsBefore = utils.arrayToIndex(table.getFields());
+    if (fields.length > 0) {
+      if (hasNewFields) {
+        table.captureSchemaBefore({operation: 'style', fields: fields});
+      } else {
+        table.captureFieldsBefore(fields, {operation: 'style'});
+      }
+    }
+    Object.keys(opts).forEach(function(optName) {
+      // undo cli parser name conversion; the regex must be global, or a
+      // property with more than one hyphen (e.g. label-start-offset) is silently
+      // skipped rather than applied
+      var svgName = optName.replace(/_/g, '-');
+      if (!isSupportedSvgStyleProperty(svgName)) {
+        return;
+      }
+      var strVal = opts[optName].trim();
+      // An empty value removes the property, rather than being rejected as an
+      // unparseable one. This is how a control gives a property back: a label
+      // dragged off its position clears label-pos, and there is otherwise no
+      // per-property unset -- only -style clear, which clears all of them.
+      var unset = strVal === '' && emptyValueUnsetsProperty(svgName);
+      var accessor = unset ? null : getSymbolPropertyAccessor(strVal, svgName, lyr);
+      var badIcons = svgName == 'icon' ? [] : null;
+      // Removing a position is not setting one, so it neither validates the
+      // value nor clears the offsets the position would have stood for.
+      var posOnPaths = svgName == 'label-pos' && !unset ? [] : null;
+      table.getRecords().forEach(function(rec, i) {
+        if (filterFn && !filterFn(i)) {
+          // make sure field exists if record is excluded by filter
+          setUndefinedFields(rec, [svgName]);
+          if (svgName == 'label-pos') {
+            // ...but a field the position would only have cleared is one this
+            // command is not writing anywhere, so an excluded record has nothing
+            // to stay consistent with
+            setUndefinedFields(rec, labelPositionDerivedFields, {has: hadField});
+          }
+        } else if (unset) {
+          // Nothing to remove, and so nothing to create: removing a property no
+          // record has would otherwise add an empty column for it.
+          if (hadField(svgName) || svgName in rec) rec[svgName] = undefined;
+        } else {
+          rec[svgName] = accessor(i);
+          if (badIcons) {
+            addUnsupportedIconName(badIcons, rec.icon);
+          }
+          if (posOnPaths) {
+            if (!parseLabelPosition(rec['label-pos'])) {
+              stop$1('Unexpected value for label-pos:', rec['label-pos']);
+            }
+            if (shapeIsPathLabel(lyr.shapes && lyr.shapes[i], rec)) {
+              // Not stored, so that ignoring it means ignoring it: a stored
+              // position would show up in the style panel and would start
+              // applying if the label ever lost all but one of its knots. Its
+              // text-anchor is left alone too -- that one does place text along a
+              // path, so a position that had no effect must not clear it.
+              posOnPaths.push(i);
+              rec['label-pos'] = undefined;
+            } else {
+              setUndefinedFields(rec, clearedByPosition, {overwrite: true, has: hadField});
+            }
+          }
+        }
+      });
+      if (badIcons && badIcons.length > 0) {
+        warn(formatUnsupportedIconMessage(badIcons));
+      }
+      if (posOnPaths && posOnPaths.length > 0) {
+        warn(formatPositionOnPathMessage(posOnPaths));
+      }
+    });
+    if (fields.length > 0) {
+      if (hasNewFields) {
+        table.markSchemaChanged({operation: 'style'});
+      } else {
+        table.markFieldsChanged(fields, {operation: 'style'});
+      }
+    }
+  };
+
+  // The style properties this command was given, in SVG spelling.
+  function getOptionFields(opts) {
+    var fields = [];
+    Object.keys(opts).forEach(function(optName) {
+      var svgName = optName.replace(/_/g, '-');
+      if (isSupportedSvgStyleProperty(svgName)) addField(fields, svgName);
+    });
+    return fields;
+  }
+
+  // The fields the command will write, which is what the undo capture covers.
+  // label-pos reaches dx/dy/text-anchor as well -- it no longer stores values in
+  // them, but it does clear them.
+  function getStyleFields(optFields) {
+    var fields = [];
+    optFields.forEach(function(svgName) {
+      addField(fields, svgName);
+      if (svgName == 'label-pos') {
+        labelPositionFields.forEach(function(field) {
+          addField(fields, field);
+        });
+      }
+    });
+    return fields;
+  }
+
+  function addField(fields, field) {
+    if (fields.indexOf(field) == -1) {
+      fields.push(field);
+    }
+  }
+
+  // Icon names can not be validated when options are parsed, because an icon=
+  // value may be a field name or an expression. The assigned values are checked
+  // instead, so that computed names are covered too. Unsupported names are a
+  // warning, not an error -- features with an unsupported name render without an
+  // icon.
+  var maxReportedIconNames = 4;
+
+  function addUnsupportedIconName(names, val) {
+    var name;
+    if (!val) return; // a blank value removes the icon
+    name = String(val);
+    if (isSupportedIconName(name) || names.indexOf(name) > -1) return;
+    names.push(name);
+  }
+
+  function formatUnsupportedIconMessage(names) {
+    var extra = names.length - maxReportedIconNames;
+    var listed = extra > 0 ? names.slice(0, maxReportedIconNames) : names;
+    var str = 'Unsupported icon ' + (names.length > 1 ? 'names' : 'name') + ': ' +
+      listed.join(', ');
+    if (extra > 0) {
+      str += ' (and ' + extra + ' more)';
+    }
+    return str + '. Expected one of: ' + iconNames.join(', ');
+  }
+
+  // Adds @fields to @rec with no value, so that a record the filter excluded
+  // still has the same schema as the ones it kept. With overwrite, also blanks a
+  // value already there -- which is how setting a position takes back the offsets
+  // a label was carrying.
+  //
+  // @has: optional test for whether the layer carries a field at all. A field
+  // nobody has is not created in order to be blanked: -style label-pos=n clears
+  // dx, dy and text-anchor because a value on the record wins over the position,
+  // and there is nothing to win with when the column does not exist. Without
+  // this, clicking a position in the style panel put three empty columns in the
+  // user's table, and three empty columns in their CSV.
+  function setUndefinedFields(rec, fields, opts) {
+    var overwrite = !!(opts && opts.overwrite);
+    var has = opts && opts.has;
+    fields.forEach(function(field) {
+      if (has && !has(field) && field in rec === false) return;
+      if (overwrite || field in rec === false) {
+        rec[field] = undefined;
+      }
+    });
+  }
+
+  // label-pos places text around an anchor point, which a label strung along a
+  // path does not have: its text runs from a start offset in the direction the
+  // path goes. A warning rather than an error, because a layer can hold both
+  // kinds of label and styling all of it at once is reasonable.
+  function formatPositionOnPathMessage(ids) {
+    var extra = ids.length - maxReportedIds;
+    var listed = (extra > 0 ? ids.slice(0, maxReportedIds) : ids).join(', ');
+    return 'Ignoring label-pos on ' + ids.length + ' path ' +
+      (ids.length > 1 ? 'labels' : 'label') + ' (' + listed +
+      (extra > 0 ? ' and ' + extra + ' more' : '') + '). ' +
+      'Use label-start-offset= and text-anchor= to place text along a path.';
+  }
+
+  var maxReportedIds = 4;
+
+  // -labels styles the labels in a point layer, or turns a point layer into
+  // labels by giving it text=. With coordinates=, it adds one label instead; that
+  // case is cmd.addLabel(), dispatched separately because it accepts an empty
+  // target.
+  //
+  // Styling writes the same properties -style writes, through the same code, so
+  // a label styled by either command is the same label.
+  cmd.labels = function(targetLayers, dataset, opts) {
+    var styleOpts = getStyleOpts(opts);
+    var output = targetLayers.map(function(lyr) {
+      var out;
+      requirePointLayer$1(lyr);
+      out = opts.no_replace ? copyLayer(lyr) : lyr;
+      cmd.svgStyle(out, dataset, styleOpts);
+      return out;
+    });
+    return opts.no_replace ? output : null;
+  };
+
+  // text= is label-text= under the name that reads naturally in this command.
+  function getStyleOpts(opts) {
+    var o = Object.assign({}, opts);
+    if ('text' in o) {
+      o.label_text = o.text;
+      delete o.text;
+    }
+    return o;
+  }
+
+  // Labels are drawn at points. A layer with no geometry is let through, since
+  // it has nothing to conflict with.
+  function requirePointLayer$1(lyr) {
+    if (lyr.geometry_type && lyr.geometry_type != 'point') {
+      stop$1('Labels can only be applied to a point layer; layer "' +
+        (lyr.name || '[unnamed]') + '" contains ' + lyr.geometry_type + 's. ' +
+        'Use -points to make a point layer to label.');
+    }
+  }
+
   cmd.addLayer = addLayer;
 
   var GEOMETRY_TYPES = ['point', 'polygon', 'polyline'];
@@ -54072,7 +54813,7 @@ ${svg}
   }
 
   cmd.alphaShapes = function(pointLyr, targetDataset, opts) {
-    requirePointLayer$1(pointLyr);
+    requirePointLayer$2(pointLyr);
     if (opts.interval > 0 === false) {
       stop$1('Expected a non-negative interval parameter');
     }
@@ -61713,131 +62454,6 @@ ${svg}
     normalizeOverlaySource: normalizeOverlaySource
   });
 
-  // Insert cutting points in arcs, where bbox intersects other shapes
-  // Return a polygon layer containing the bounding box vectors, divided at cutting points.
-  function divideDatasetByBBox(dataset, bbox) {
-    var arcs = dataset.arcs;
-    var data = findBBoxCutPoints(arcs, bbox);
-    var map = insertCutPoints(data.cutPoints, arcs);
-    arcs.dedupCoords();
-    remapDividedArcs(dataset, map);
-    // merge bbox dataset with target dataset,
-    // so arcs are shared between target layers and bbox layer
-    var clipDataset = bboxPointsToClipDataset(data.bboxPoints);
-    var mergedDataset = mergeDatasets([dataset, clipDataset]);
-    // TODO: detect if we need to rebuild topology (unlikely), like with the full clip command
-    // buildTopology(mergedDataset);
-    var clipLyr = mergedDataset.layers.pop();
-    dataset.arcs = mergedDataset.arcs;
-    dataset.layers = mergedDataset.layers;
-    return clipLyr;
-  }
-
-  function bboxPointsToClipDataset(arr) {
-    var arcs = [];
-    var shape = [];
-    var layer = {geometry_type: 'polygon', shapes: [[shape]]};
-    var p1, p2;
-    for (var i=0, n=arr.length - 1; i<n; i++) {
-      p1 = arr[i];
-      p2 = arr[i+1];
-      arcs.push([[p1.x, p1.y], [p2.x, p2.y]]);
-      shape.push(i);
-    }
-    return {
-      arcs: new ArcCollection(arcs),
-      layers: [layer]
-    };
-  }
-
-  function findBBoxCutPoints(arcs, bbox) {
-    var left = bbox[0],
-        bottom = bbox[1],
-        right = bbox[2],
-        top = bbox[3];
-
-    // arrays of intersection points along each bbox edge
-    var tt = [],
-        rr = [],
-        bb = [],
-        ll = [];
-
-    arcs.forEachSegment(function(i, j, xx, yy) {
-      var ax = xx[i],
-          ay = yy[i],
-          bx = xx[j],
-          by = yy[j];
-      var hit;
-      if (segmentOutsideBBox(ax, ay, bx, by, left, bottom, right, top)) return;
-      if (segmentInsideBBox(ax, ay, bx, by, left, bottom, right, top)) return;
-
-      hit = geom.segmentIntersection(left, top, right, top, ax, ay, bx, by);
-      if (hit) addHit(tt, hit, i, j, xx, yy);
-
-      hit = geom.segmentIntersection(left, bottom, right, bottom, ax, ay, bx, by);
-      if (hit) addHit(bb, hit, i, j, xx, yy);
-
-      hit = geom.segmentIntersection(left, bottom, left, top, ax, ay, bx, by);
-      if (hit) addHit(ll, hit, i, j, xx, yy);
-
-      hit = geom.segmentIntersection(right, bottom, right, top, ax, ay, bx, by);
-      if (hit) addHit(rr, hit, i, j, xx, yy);
-    });
-
-    return {
-      cutPoints: ll.concat(bb, rr, tt),
-      bboxPoints: getDividedBBoxPoints(bbox, ll, tt, rr, bb)
-    };
-
-    function addHit(arr, hit, i, j, xx, yy) {
-      if (!hit) return;
-      arr.push(formatHit(hit[0], hit[1], i, j, xx, yy));
-      if (hit.length == 4) {
-        arr.push(formatHit(hit[2], hit[3], i, j, xx, yy));
-      }
-    }
-
-    function formatHit(x, y, i, j, xx, yy) {
-      var ids = formatIntersectingSegment(x, y, i, j, xx, yy);
-      return getCutPoint(x, y, ids[0], ids[1]);
-    }
-  }
-
-  function segmentOutsideBBox(ax, ay, bx, by, xmin, ymin, xmax, ymax) {
-    return ax < xmin && bx < xmin || ax > xmax && bx > xmax ||
-        ay < ymin && by < ymin || ay > ymax && by > ymax;
-  }
-
-  function segmentInsideBBox(ax, ay, bx, by, xmin, ymin, xmax, ymax) {
-    return ax > xmin && bx > xmin && ax < xmax && bx < xmax &&
-        ay > ymin && by > ymin && ay < ymax && by < ymax;
-  }
-
-  // Returns an array of points representing the vertices in
-  // the bbox with cutting points inserted.
-  function getDividedBBoxPoints(bbox, ll, tt, rr, bb) {
-    var bl = {x: bbox[0], y: bbox[1]},
-        tl = {x: bbox[0], y: bbox[3]},
-        tr = {x: bbox[2], y: bbox[3]},
-        br = {x: bbox[2], y: bbox[1]};
-    ll = utils.sortOn(ll.concat([bl, tl]), 'y', true);
-    tt = utils.sortOn(tt.concat([tl, tr]), 'x', true);
-    rr = utils.sortOn(rr.concat([tr, br]), 'y', false);
-    bb = utils.sortOn(bb.concat([br, bl]), 'x', false);
-    return ll.concat(tt, rr, bb).reduce(function(memo, p2) {
-      var p1 = memo.length > 0 ? memo[memo.length-1] : null;
-      if (p1 === null || p1.x != p2.x || p1.y != p2.y) memo.push(p2);
-      return memo;
-    }, []);
-  }
-
-  var Bbox2Clipping = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    divideDatasetByBBox: divideDatasetByBBox,
-    segmentInsideBBox: segmentInsideBBox,
-    segmentOutsideBBox: segmentOutsideBBox
-  });
-
   cmd.clipLayers = function(target, src, dataset, opts) {
     return clipLayers(target, src, dataset, "clip", opts);
   };
@@ -64982,7 +65598,7 @@ ${svg}
   cmd.lines = function(lyr, dataset, opts) {
     opts = opts || {};
     if (opts.callouts) {
-      requirePointLayer$1(lyr);
+      requirePointLayer$2(lyr);
       return pointsToCallouts(lyr, dataset, opts);
     } else if (lyr.geometry_type == 'point') {
       return pointsToLines(lyr, dataset, opts);
@@ -75469,231 +76085,6 @@ ${svg}
     return api;
   }
 
-  cmd.filterGeom = function(lyr, arcs, opts) {
-    if (!layerHasGeometry$1(lyr)) {
-      stop$1("Layer is missing geometry");
-    }
-    if (opts.bbox) {
-      filterByBoundsIntersection(lyr, arcs, opts);
-    }
-    cmd.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
-  };
-
-  function filterByBoundsIntersection(lyr, arcs, opts) {
-    var filter = getBoundsIntersectionFilter(opts.bbox, lyr, arcs);
-    noteLayerWillChange(lyr, {operation: 'filter-geom', unit: 'shapes'});
-    editShapes(lyr.shapes, filter);
-    markLayerChanged(lyr, {operation: 'filter-geom', unit: 'shapes'});
-  }
-
-  function getBoundsIntersectionFilter(bbox, lyr, arcs) {
-    var bounds = new Bounds(bbox);
-    var filter = lyr.geometry_type == 'point' ?
-          getPointInBoundsTest(bounds) :
-          getPathBoundsIntersectionTest(bounds, arcs);
-    return filter;
-  }
-
-  function getPointInBoundsTest(bounds) {
-    return function(xy) {
-      var contains =  bounds.containsPoint(xy[0], xy[1]);
-      return contains ? xy : null;
-    };
-  }
-
-  // V1 too-simple test: bounding-box intersection
-  // internal.getPathBoundsIntersectionTest = function(bounds, arcs) {
-  //   return function(path) {
-  //     return bounds.intersects(arcs.getSimpleShapeBounds(path)) ? path : null;
-  //   };
-  // };
-
-  function getPathBoundsIntersectionTest(bounds, arcs) {
-    var bbox = bounds.toArray(),
-      left = bbox[0],
-      bottom = bbox[1],
-      right = bbox[2],
-      top = bbox[3];
-
-    return function(path) {
-      // case: bounding boxes don't intersect -> the path doesn't intersect the box
-      if (!bounds.intersects(arcs.getSimpleShapeBounds(path))) {
-        return null;
-      }
-      var intersects = false;
-      var ax, ay, bx, by;
-      var iter = arcs.getShapeIter(path);
-
-      if (iter.hasNext()) {
-        ax = iter.x;
-        ay = iter.y;
-      }
-      while (iter.hasNext()) {
-        bx = ax;
-        by = ay;
-        ax = iter.x;
-        ay = iter.y;
-        if (segmentOutsideBBox(ax, ay, bx, by, left, bottom, right, top)) continue;
-        if (segmentInsideBBox(ax, ay, bx, by, left, bottom, right, top)) {
-          intersects = true;
-          break;
-        }
-        if (geom.segmentIntersection(left, top, right, top, ax, ay, bx, by) ||
-            geom.segmentIntersection(left, bottom, right, bottom, ax, ay, bx, by) ||
-            geom.segmentIntersection(left, bottom, left, top, ax, ay, bx, by) ||
-            geom.segmentIntersection(right, bottom, right, top, ax, ay, bx, by)) {
-          intersects = true;
-          break;
-        }
-      }
-
-      // case: bbox is entirely inside this ring
-      if (!intersects && geom.testPointInRing(left, bottom, path, arcs)) {
-        intersects = true;
-      }
-      return intersects ? path : null;
-    };
-  }
-
-  // Return a function for testing if a shape (path or point) intersects a bounding box
-  // TODO: move this function to a different file
-  function getBBoxIntersectionTest(bbox, lyr, arcs) {
-    var filter = getBoundsIntersectionFilter(bbox, lyr, arcs);
-    return function(shapeId) {
-      var shp = lyr.shapes[shapeId];
-      if (!shp) return false;
-      for (var i=0; i<shp.length; i++) {
-        if (filter(shp[i])) return true;
-      }
-      return false;
-    };
-  }
-
-  // return array of shape ids
-  function findShapesIntersectingBBox(bbox, lyr, arcs) {
-    var test = getBBoxIntersectionTest(bbox, lyr, arcs);
-    var ids = [];
-    for (var i=0; i<lyr.shapes.length; i++) {
-      if (test(i)) ids.push(i);
-    }
-    return ids;
-  }
-
-  var FilterGeom = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    findShapesIntersectingBBox: findShapesIntersectingBBox,
-    getBBoxIntersectionTest: getBBoxIntersectionTest
-  });
-
-  cmd.filterFeatures = function(lyr, arcs, opts) {
-    var records = lyr.data ? lyr.data.getRecords() : null,
-        shapes = lyr.shapes || null,
-        n = getFeatureCount(lyr),
-        filteredShapes = shapes ? [] : null,
-        filteredRecords = records ? [] : null,
-        filteredLyr = getOutputLayer(lyr, opts),
-        invert = !!opts.invert,
-        filter;
-
-    if (opts.expression) {
-      filter = compileFeatureExpression(opts.expression, lyr, arcs);
-    }
-
-    if (opts.ids) {
-      filter = combineFilters(filter, getIdFilter(opts.ids));
-    }
-
-    if (opts.remove_empty) {
-      filter = combineFilters(filter, getNullGeometryFilter(lyr, arcs));
-    }
-
-    if (opts.bbox) {
-      filter = combineFilters(filter, getBBoxIntersectionTest(opts.bbox, lyr, arcs));
-    }
-
-    if (!filter) {
-      stop$1("Missing a filter criterion");
-    }
-
-    utils.repeat(n, function(shapeId) {
-      var result = filter(shapeId);
-      requireBooleanResult(result);
-      if (invert) result = !result;
-      if (result === true) {
-        if (shapes) filteredShapes.push(shapes[shapeId] || null);
-        if (records) filteredRecords.push(records[shapeId] || null);
-      }
-    });
-
-    if (filteredLyr == lyr) {
-      noteLayerWillChange(lyr, {operation: 'filter'});
-    }
-    filteredLyr.shapes = filteredShapes;
-    filteredLyr.data = filteredRecords ? new DataTable(filteredRecords) : null;
-    if (filteredLyr == lyr) {
-      markLayerChanged(lyr, {operation: 'filter'});
-    }
-    if (opts.no_replace) {
-      // if adding a layer, don't share objects between source and filtered layer
-      filteredLyr = copyLayer(filteredLyr);
-    }
-
-    if (opts.verbose !== false && !opts.quiet) {
-      message(utils.format('Retained %,d of %,d features', getFeatureCount(filteredLyr), n));
-    }
-
-    return filteredLyr;
-  };
-
-  // TODO: update filter command to use this function
-  function filterLayerInPlace(lyr, filter, invert) {
-    var records = lyr.data ? lyr.data.getRecords() : null,
-        shapes = lyr.shapes || null,
-        n = getFeatureCount(lyr),
-        filteredShapes = shapes ? [] : null,
-        filteredRecords = records ? [] : null;
-    utils.repeat(n, function(shapeId) {
-      var result = filter(shapeId);
-      requireBooleanResult(result);
-      if (result === true) {
-        if (shapes) filteredShapes.push(shapes[shapeId] || null);
-        if (records) filteredRecords.push(records[shapeId] || null);
-      }
-    });
-    noteLayerWillChange(lyr, {operation: 'filterLayerInPlace'});
-    lyr.shapes = filteredShapes;
-    lyr.data = filteredRecords ? new DataTable(filteredRecords) : null;
-    markLayerChanged(lyr, {operation: 'filterLayerInPlace'});
-  }
-
-  function getIdFilter(ids) {
-    var set = new Set(ids);
-    return function(i) {
-      return set.has(i);
-    };
-  }
-
-  function getNullGeometryFilter(lyr, arcs) {
-    var shapes = lyr.shapes;
-    if (lyr.geometry_type == 'polygon') {
-      return getEmptyPolygonFilter(shapes, arcs);
-    }
-    return function(i) {return !!shapes[i];};
-  }
-
-  function getEmptyPolygonFilter(shapes, arcs) {
-    return function(i) {
-      var shp = shapes[i];
-      return !!shp && geom.getPlanarShapeArea(shapes[i], arcs) > 0;
-    };
-  }
-
-  function combineFilters(a, b) {
-    return a && b ? function(id) {
-        return a(id) && b(id);
-      } : (a || b);
-  }
-
   cmd.evaluateEachFeature = function(lyr, dataset, expArg, opts) {
     var n = getFeatureCount(lyr),
         arcs = dataset.arcs,
@@ -79540,7 +79931,7 @@ ${svg}
   }
 
   cmd.pointToGrid = function(targetLayers, targetDataset, opts) {
-    targetLayers.forEach(requirePointLayer$1);
+    targetLayers.forEach(requirePointLayer$2);
     if (opts.interval > 0 === false) {
       stop$1('Expected a non-negative interval parameter');
     }
@@ -82325,232 +82716,6 @@ ${svg}
     stopJob(job);
   };
 
-  // The icon names accepted by the icon= property of the -style command.
-  // Kept in a module of its own so that both the renderer (svg-symbols.mjs) and
-  // the -style command can use it without forming an import cycle.
-
-  var iconNames = ['circle', 'square', 'ring', 'star'];
-
-  function isSupportedIconName(name) {
-    return iconNames.indexOf(name) > -1;
-  }
-
-  cmd.svgStyle = function(lyr, dataset, opts) {
-    var filterFn, table, fields, hasNewFields, optFields, clearedByPosition, fieldsBefore;
-
-    function hadField(field) {
-      return field in fieldsBefore;
-    }
-
-    if (getFeatureCount(lyr) === 0) {
-      return;
-    }
-    if (!lyr.data) {
-      initDataTable(lyr);
-    }
-    if (opts.where) {
-      filterFn = compileFeatureExpression(opts.where, lyr, dataset.arcs);
-    }
-    if (opts.ids) {
-      filterFn = combineFilters(filterFn, getIdFilter(opts.ids));
-    }
-    if (opts.clear) {
-      lyr.data.getFields().filter(isSupportedSvgStyleProperty).forEach(lyr.data.deleteField, lyr.data);
-    }
-    table = getLayerDataTable(lyr);
-    optFields = getOptionFields(opts);
-    fields = getStyleFields(optFields);
-    // Which of dx/dy/text-anchor a label-pos in this command clears: not the ones
-    // the same command also sets, so that `label-pos=n dx=3` keeps the nudge it
-    // was given instead of clearing it a moment later.
-    //
-    // Clearing at all is what keeps the shorthand usable, since a value on the
-    // record wins over the position: without it, setting a position on a label
-    // that had been dragged would appear to do nothing.
-    clearedByPosition = labelPositionDerivedFields.filter(function(field) {
-      return optFields.indexOf(field) == -1;
-    });
-    hasNewFields = fields.some(function(field) {
-      return !table.fieldExists(field);
-    });
-    // The table's columns as this command found them. Taken once, because the
-    // command adds to them as it runs, and a blanked property must be judged
-    // against what was there before rather than against what it has just made.
-    fieldsBefore = utils.arrayToIndex(table.getFields());
-    if (fields.length > 0) {
-      if (hasNewFields) {
-        table.captureSchemaBefore({operation: 'style', fields: fields});
-      } else {
-        table.captureFieldsBefore(fields, {operation: 'style'});
-      }
-    }
-    Object.keys(opts).forEach(function(optName) {
-      // undo cli parser name conversion; the regex must be global, or a
-      // property with more than one hyphen (e.g. label-start-offset) is silently
-      // skipped rather than applied
-      var svgName = optName.replace(/_/g, '-');
-      if (!isSupportedSvgStyleProperty(svgName)) {
-        return;
-      }
-      var strVal = opts[optName].trim();
-      // An empty value removes the property, rather than being rejected as an
-      // unparseable one. This is how a control gives a property back: a label
-      // dragged off its position clears label-pos, and there is otherwise no
-      // per-property unset -- only -style clear, which clears all of them.
-      var unset = strVal === '' && emptyValueUnsetsProperty(svgName);
-      var accessor = unset ? null : getSymbolPropertyAccessor(strVal, svgName, lyr);
-      var badIcons = svgName == 'icon' ? [] : null;
-      // Removing a position is not setting one, so it neither validates the
-      // value nor clears the offsets the position would have stood for.
-      var posOnPaths = svgName == 'label-pos' && !unset ? [] : null;
-      table.getRecords().forEach(function(rec, i) {
-        if (filterFn && !filterFn(i)) {
-          // make sure field exists if record is excluded by filter
-          setUndefinedFields(rec, [svgName]);
-          if (svgName == 'label-pos') {
-            // ...but a field the position would only have cleared is one this
-            // command is not writing anywhere, so an excluded record has nothing
-            // to stay consistent with
-            setUndefinedFields(rec, labelPositionDerivedFields, {has: hadField});
-          }
-        } else if (unset) {
-          // Nothing to remove, and so nothing to create: removing a property no
-          // record has would otherwise add an empty column for it.
-          if (hadField(svgName) || svgName in rec) rec[svgName] = undefined;
-        } else {
-          rec[svgName] = accessor(i);
-          if (badIcons) {
-            addUnsupportedIconName(badIcons, rec.icon);
-          }
-          if (posOnPaths) {
-            if (!parseLabelPosition(rec['label-pos'])) {
-              stop$1('Unexpected value for label-pos:', rec['label-pos']);
-            }
-            if (shapeIsPathLabel(lyr.shapes && lyr.shapes[i], rec)) {
-              // Not stored, so that ignoring it means ignoring it: a stored
-              // position would show up in the style panel and would start
-              // applying if the label ever lost all but one of its knots. Its
-              // text-anchor is left alone too -- that one does place text along a
-              // path, so a position that had no effect must not clear it.
-              posOnPaths.push(i);
-              rec['label-pos'] = undefined;
-            } else {
-              setUndefinedFields(rec, clearedByPosition, {overwrite: true, has: hadField});
-            }
-          }
-        }
-      });
-      if (badIcons && badIcons.length > 0) {
-        warn(formatUnsupportedIconMessage(badIcons));
-      }
-      if (posOnPaths && posOnPaths.length > 0) {
-        warn(formatPositionOnPathMessage(posOnPaths));
-      }
-    });
-    if (fields.length > 0) {
-      if (hasNewFields) {
-        table.markSchemaChanged({operation: 'style'});
-      } else {
-        table.markFieldsChanged(fields, {operation: 'style'});
-      }
-    }
-  };
-
-  // The style properties this command was given, in SVG spelling.
-  function getOptionFields(opts) {
-    var fields = [];
-    Object.keys(opts).forEach(function(optName) {
-      var svgName = optName.replace(/_/g, '-');
-      if (isSupportedSvgStyleProperty(svgName)) addField(fields, svgName);
-    });
-    return fields;
-  }
-
-  // The fields the command will write, which is what the undo capture covers.
-  // label-pos reaches dx/dy/text-anchor as well -- it no longer stores values in
-  // them, but it does clear them.
-  function getStyleFields(optFields) {
-    var fields = [];
-    optFields.forEach(function(svgName) {
-      addField(fields, svgName);
-      if (svgName == 'label-pos') {
-        labelPositionFields.forEach(function(field) {
-          addField(fields, field);
-        });
-      }
-    });
-    return fields;
-  }
-
-  function addField(fields, field) {
-    if (fields.indexOf(field) == -1) {
-      fields.push(field);
-    }
-  }
-
-  // Icon names can not be validated when options are parsed, because an icon=
-  // value may be a field name or an expression. The assigned values are checked
-  // instead, so that computed names are covered too. Unsupported names are a
-  // warning, not an error -- features with an unsupported name render without an
-  // icon.
-  var maxReportedIconNames = 4;
-
-  function addUnsupportedIconName(names, val) {
-    var name;
-    if (!val) return; // a blank value removes the icon
-    name = String(val);
-    if (isSupportedIconName(name) || names.indexOf(name) > -1) return;
-    names.push(name);
-  }
-
-  function formatUnsupportedIconMessage(names) {
-    var extra = names.length - maxReportedIconNames;
-    var listed = extra > 0 ? names.slice(0, maxReportedIconNames) : names;
-    var str = 'Unsupported icon ' + (names.length > 1 ? 'names' : 'name') + ': ' +
-      listed.join(', ');
-    if (extra > 0) {
-      str += ' (and ' + extra + ' more)';
-    }
-    return str + '. Expected one of: ' + iconNames.join(', ');
-  }
-
-  // Adds @fields to @rec with no value, so that a record the filter excluded
-  // still has the same schema as the ones it kept. With overwrite, also blanks a
-  // value already there -- which is how setting a position takes back the offsets
-  // a label was carrying.
-  //
-  // @has: optional test for whether the layer carries a field at all. A field
-  // nobody has is not created in order to be blanked: -style label-pos=n clears
-  // dx, dy and text-anchor because a value on the record wins over the position,
-  // and there is nothing to win with when the column does not exist. Without
-  // this, clicking a position in the style panel put three empty columns in the
-  // user's table, and three empty columns in their CSV.
-  function setUndefinedFields(rec, fields, opts) {
-    var overwrite = !!(opts && opts.overwrite);
-    var has = opts && opts.has;
-    fields.forEach(function(field) {
-      if (has && !has(field) && field in rec === false) return;
-      if (overwrite || field in rec === false) {
-        rec[field] = undefined;
-      }
-    });
-  }
-
-  // label-pos places text around an anchor point, which a label strung along a
-  // path does not have: its text runs from a start offset in the direction the
-  // path goes. A warning rather than an error, because a layer can hold both
-  // kinds of label and styling all of it at once is reasonable.
-  function formatPositionOnPathMessage(ids) {
-    var extra = ids.length - maxReportedIds;
-    var listed = (extra > 0 ? ids.slice(0, maxReportedIds) : ids).join(', ');
-    return 'Ignoring label-pos on ' + ids.length + ' path ' +
-      (ids.length > 1 ? 'labels' : 'label') + ' (' + listed +
-      (extra > 0 ? ' and ' + extra + ' more' : '') + '). ' +
-      'Use label-start-offset= and text-anchor= to place text along a path.';
-  }
-
-  var maxReportedIds = 4;
-
   function getStickArrowCoords(d) {
     return getArrowCoords(d, 'stick');
   }
@@ -83082,7 +83247,7 @@ ${svg}
 
   // TODO: refactor to remove duplication in mapshaper-svg-style.js
   cmd.symbols = function(inputLyr, dataset, opts) {
-    requirePointLayer$1(inputLyr);
+    requirePointLayer$2(inputLyr);
     var lyr = opts.no_replace ? copyLayer(inputLyr) : inputLyr;
     var shapeMode = !!opts.geographic;
     var metersPerPx;
@@ -83683,6 +83848,9 @@ ${svg}
     if (name == 'rectangle') {
       return !opts.source && !opts.bbox;
     }
+    if (name == 'labels') {
+      return !('coordinates' in opts);
+    }
     return [
       'affine', 'alpha-shapes', 'blur', 'buffer', 'calc', 'check-geometry',
       'classify', 'clean', 'clip', 'cluster', 'contours', 'dashlines', 'data-fill',
@@ -83697,7 +83865,10 @@ ${svg}
     ].indexOf(name) > -1;
   }
 
-  function commandAcceptsEmptyTarget(name) {
+  function commandAcceptsEmptyTarget(name, opts) {
+    if (name == 'labels') {
+      return 'coordinates' in opts;
+    }
     return name == 'graticule' || name == 'i' || name == 'help' ||
       name == 'point-grid' || name == 'shape' || name == 'rectangle' || name == 'frame' ||
       name == 'require' || name == 'run' || name == 'define' ||
@@ -83793,7 +83964,7 @@ ${svg}
           stop$1(utils.format('Missing target: %s\nAvailable layers: %s',
               opts.target, getFormattedLayerList(job.catalog)));
         }
-        if (!commandAcceptsEmptyTarget(name)) {
+        if (!commandAcceptsEmptyTarget(name, opts)) {
           stop$1("No data is available");
         }
       }
@@ -83816,13 +83987,16 @@ ${svg}
         }
         outputLayers = cmd.addShape(targetLayers, targetDataset, opts);
 
-      } else if (name == 'add-label') {
+      } else if (name == 'add-label' || name == 'labels' && 'coordinates' in opts) {
         if (!targetDataset) {
           targetDataset = {info: {}, layers: []};
           targetLayers = targetDataset.layers;
           job.catalog.addDataset(targetDataset);
         }
         outputLayers = cmd.addLabel(targetLayers, targetDataset, opts);
+
+      } else if (name == 'labels') {
+        outputLayers = cmd.labels(targetLayers, targetDataset, opts);
 
       } else if (name == 'add-layer') {
         // The new layer arrives in a dataset of its own, so it is added to the
@@ -84401,7 +84575,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.69";
+  var version = "0.7.70";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -85216,7 +85390,7 @@ ${svg}
   // parse. Null is what every reader already falls back from.
   function measureLabelText(rec) {
     var text = toLabelString(rec && rec['label-text']);
-    var font, fontSize, spacing, width;
+    var font, fontSize, spacing, width, failed = false;
     if (!text) return null;
     font = getFontForRecord(rec);
     if (!font) return null;
@@ -85225,10 +85399,22 @@ ${svg}
     if (!(fontSize > 0)) return null;
     // The widest line, which is what the block of a multi-line label is as wide
     // as, and what the browser's getBBox() reports for the same text.
-    width = splitLabelLines(text).reduce(function(max, line) {
-      var w = measureLine(font, line, fontSize, spacing);
+    //
+    // A line with bold words in it is measured a run at a time, each in its own
+    // face, which loses the kerning between the last letter of one run and the
+    // first of the next -- a fraction of a pixel at a weight change.
+    width = splitLabelLineRuns(text).reduce(function(max, runs) {
+      var w = runs.reduce(function(sum, run) {
+        var face = run.bold ? getFontForRecord(rec, true) : font;
+        if (!face) {
+          failed = true;
+          return sum;
+        }
+        return sum + measureLine(face, run.text, fontSize, spacing);
+      }, 0);
       return w > max ? w : max;
     }, 0);
+    if (failed) return null;
     return width > 0 ? width : null;
   }
 
@@ -85252,9 +85438,12 @@ ${svg}
   // The font a record is drawn in, opened and remembered. A record with no
   // font-family is drawn in the layer group's default, the same one the GUI
   // measures against -- see getLabelTextDefaults().
-  function getFontForRecord(rec) {
+  //
+  // @bold: the face its bold runs are drawn in, which is the keyword's 700
+  // whatever the label's own weight is, as it is in CSS.
+  function getFontForRecord(rec, bold) {
     var family = rec['font-family'] || 'sans-serif';
-    var weight = getFontWeight(rec);
+    var weight = bold ? WEIGHT_NAMES[LABEL_BOLD_WEIGHT] : getFontWeight(rec);
     var italic = isItalic(rec);
     var stretch = rec['font-stretch'] || '';
     var key = [family, weight, italic ? 'i' : 'n', stretch].join('|');
@@ -87003,7 +87192,7 @@ ${svg}
   internal.svg = Object.assign({}, SvgStringify, SvgPathUtils, GeojsonToSvg,
     SvgFeatureUtils,
     SvgLabels, SvgSymbols, SvgLabelPaths, SvgLabelFit, SvgLabelAlign,
-    SvgLabelMetrics, SvgLabelHalo, SvgLabelCallout);
+    SvgLabelMetrics, SvgLabelHalo, SvgLabelCallout, SvgLabelMarkup);
 
   // Reached through the bundle rather than imported from source, unlike most of
   // what tests use, because these modules load fs and fontkit through the

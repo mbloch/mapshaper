@@ -1697,8 +1697,8 @@ img.eye-btn {
 	box-sizing: border-box;
 	position: absolute;
 	z-index: 40;
-	top: 12px;
-	left: 12px;
+	top: 7px;
+	left: 7px;
 	padding: 5px 0;
 }
 
@@ -2774,7 +2774,7 @@ body.pan.panning .map-layers:not(.drawing) {
 	--label-menu-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath fill='none' stroke='%23666' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round' d='M1 1.5l4 4 4-4'/%3E%3C/svg%3E");
 	position: absolute;
 	z-index: 21;
-	top: 6px;
+	top: 7px;
 	right: 36px;
 	/* Wide enough for a pair of controls side by side, which is what these
 	   panels are mostly made of: at 185px the narrow column of a pair was too
@@ -3365,6 +3365,22 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .label-style-panel .label-style-row-label > .tip-button .tip:before {
 	border-bottom-color: #999;
+}
+
+/* A pattern's size and gap are a pair, measured the same way, so they share
+   the row equally rather than one taking the narrow column. */
+.layer-pattern-size-row {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	column-gap: 10px;
+}
+
+.layer-pattern-size-row .label-split-cell {
+	min-width: 0;
+}
+
+.layer-pattern-code-row input[type="text"] {
+	width: 100%;
 }
 
 .label-split-row .label-split-cell + .label-split-cell {

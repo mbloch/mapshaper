@@ -3053,12 +3053,12 @@
     return decimals >= 0 ? num.toFixed(decimals) : String(num);
   }
 
-  function formatNumber$3(val) {
+  function formatNumber$4(val) {
     return val + '';
   }
 
   function formatIntlNumber(val) {
-    var str = formatNumber$3(val);
+    var str = formatNumber$4(val);
     return '"' + str.replace('.', ',') + '"'; // need to quote if comma-delimited
   }
 
@@ -3607,7 +3607,7 @@
     endsWith, every, expandoBuffer, extend, extendBuffer,
     find, findMedian, findQuantile, findRankByValue, findStringPrefix,
     findValueByPct, findValueByRank, forEach, forEachProperty, format,
-    formatDateISO, formatIntlNumber, formatNumber: formatNumber$3, formatNumberForDisplay,
+    formatDateISO, formatIntlNumber, formatNumber: formatNumber$4, formatNumberForDisplay,
     formatVersionedName, formatter,
     genericSort, getArrayBounds, getGenericComparator, getKeyComparator,
     getSortedIds, getUniqueName, groupBy,
@@ -11518,9 +11518,12 @@
         }
 
         if (e.deleteVertex || e.deletePoint || copyable || e.deleteFeature ||
-            e.flipLabel) {
+            e.flipLabel || e.boldText) {
 
           addMenuLabel('actions');
+          if (e.boldText) {
+            addMenuItem(e.boldText.label, e.boldText.run);
+          }
           if (e.deleteVertex) {
             addMenuItem('delete vertex', e.deleteVertex);
           }
@@ -12904,6 +12907,11 @@
     if (cmd.name == 'style' || cmd.name == 'svg-style') {
       return getStyleCullInfo(opts, isStyleProperty);
     }
+    // Adding a label or a labeled copy of a layer is not a style edit, and can
+    // not be superseded by one.
+    if (cmd.name == 'labels' && !('coordinates' in opts) && !opts.no_replace) {
+      return getStyleCullInfo(getLabelStyleOpts(opts), isStyleProperty);
+    }
     if (cmd.name == 'classify') {
       return getClassifyCullInfo(opts);
     }
@@ -12921,6 +12929,16 @@
       ids: getIdsKey(opts),
       fields: fields
     };
+  }
+
+  // -labels text= writes the label-text property.
+  function getLabelStyleOpts(opts) {
+    var o = Object.assign({}, opts);
+    if ('text' in o) {
+      o['label-text'] = o.text;
+      delete o.text;
+    }
+    return o;
   }
 
   function getStyleFields$2(opts, isStyleProperty) {
@@ -13921,6 +13939,11 @@
   var SOFT_BREAK = '<wbr>';
   var SOFT_BREAK_RXP = /<wbr>/gi;
 
+  // A bold stretch, which is the other markup label text carries. See
+  // svg-label-markup.mjs.
+  var BOLD_OPEN = '<b>';
+  var BOLD_CLOSE = '</b>';
+
   // How a label lays out its line breaks, which is not the same for the two kinds.
   // An anchored label stacks its lines with <tspan>. A path label joins them with
   // a space, because a <tspan> inside a <textPath> advances along the curve
@@ -13954,6 +13977,66 @@
       text += parts[i];
     }
     return {text: text, breaks: breaks};
+  }
+
+  // Data value -> {text, breaks, bold}: the string the user edits, the offsets
+  // in it where the stored value has a soft break, and its bold stretches as
+  // [start, end) offsets into it (see gui-label-bold.mjs).
+  //
+  // The two kinds of markup are independent -- a bold stretch can cross a soft
+  // break, and a soft break can sit at either end of one -- so the bold is read
+  // first and its offsets are moved as the soft breaks come out.
+  function readLabelValue(val) {
+    var str = val === null || val === undefined ? '' : String(val).replace(ANY_NEWLINE, '\n');
+    var o = internal.svg.parseBoldMarkup(str);
+    var starts = [], m;
+    SOFT_BREAK_RXP.lastIndex = 0;
+    while ((m = SOFT_BREAK_RXP.exec(o.text))) starts.push(m.index);
+    return {
+      text: o.text.replace(SOFT_BREAK_RXP, ''),
+      breaks: starts.map(function(start, i) {
+        return start - i * SOFT_BREAK.length;
+      }),
+      bold: internal.svg.normalizeBoldRanges(o.bold.map(function(r) {
+        return [removeSoftBreakOffset(r[0], starts), removeSoftBreakOffset(r[1], starts)];
+      }))
+    };
+  }
+
+  // An offset into text with soft breaks in it -> the same place once they are
+  // removed. One that falls inside a marker goes to its start.
+  function removeSoftBreakOffset(x, starts) {
+    var shift = 0;
+    for (var i = 0; i < starts.length && starts[i] < x; i++) {
+      if (x < starts[i] + SOFT_BREAK.length) return starts[i] - shift;
+      shift += SOFT_BREAK.length;
+    }
+    return x - shift;
+  }
+
+  // The string the user edits, its soft breaks and its bold ranges -> the value
+  // to store, with both kinds of markup written in. Where they meet, a bold
+  // stretch closes before a soft break and opens after one, so that the break
+  // is never inside a pair of tags it is not part of.
+  function writeLabelValue(text, breaks, bold) {
+    var marks = [];
+    (bold || []).forEach(function(r) {
+      marks.push({pos: r[0], order: 2, str: BOLD_OPEN});
+      marks.push({pos: r[1], order: 0, str: BOLD_CLOSE});
+    });
+    (breaks || []).forEach(function(pos) {
+      marks.push({pos: pos, order: 1, str: SOFT_BREAK});
+    });
+    if (marks.length === 0) return text;
+    marks.sort(function(a, b) {
+      return a.pos - b.pos || a.order - b.order;
+    });
+    var out = '', prev = 0;
+    marks.forEach(function(mark) {
+      out += text.substring(prev, mark.pos) + mark.str;
+      prev = mark.pos;
+    });
+    return out + text.substring(prev);
   }
 
   // The string the user edits, plus soft breaks at @breaks (ascending offsets
@@ -14136,6 +14219,29 @@
     return Math.min(renderedIndex, length);
   }
 
+  // The word a double-click at edited index @i selects, as [start, end), or an
+  // empty range at @i for a click between words. A click on the right half of a
+  // word's last letter lands on the index after it, which is still that word.
+  //
+  // Hyphens and apostrophes count as part of a word, so that "cease-fire" and
+  // "Israel's" are one word each, as they are one name on the map.
+  function getWordRange(text, i) {
+    var at = isWordChar(text.charAt(i)) ? i : isWordChar(text.charAt(i - 1)) ? i - 1 : -1;
+    var a, b;
+    if (at < 0) return [i, i];
+    a = at;
+    b = at + 1;
+    while (a > 0 && isWordChar(text.charAt(a - 1))) a--;
+    while (b < text.length && isWordChar(text.charAt(b))) b++;
+    return [a, b];
+  }
+
+  var WORD_CHAR_RXP = /[\p{L}\p{N}\p{M}'\u2019-]/u;
+
+  function isWordChar(c) {
+    return !!c && WORD_CHAR_RXP.test(c);
+  }
+
   // Strips the placeholder back out, so that a value read off a rendered node is
   // not mistaken for text the user typed.
   function stripPlaceholder(str) {
@@ -14200,7 +14306,7 @@
   function getAddLabelCommand(coords, opts) {
     var o = opts || {};
     var target = o.target || {mode: 'new', newLayerName: DEFAULT_LABEL_LAYER_NAME};
-    var parts = ['-add-label', 'coordinates=' + formatCoords(coords)];
+    var parts = ['-labels', 'coordinates=' + formatCoords(coords)];
     if (o.text) {
       // A real newline would break the command parser, so encodeLabelText()
       // writes the two-character escape the label renderer also accepts.
@@ -14267,7 +14373,7 @@
   //   id:     feature id of the label
   //   target: layer name, or null to use the current target
   function getLabelPlacementCommand(opts) {
-    var parts = ['-style', 'label-start-offset=' + opts.offset];
+    var parts = ['-labels', 'label-start-offset=' + opts.offset];
     if (opts.anchor) {
       parts.push('text-anchor=' + opts.anchor);
     }
@@ -14287,7 +14393,7 @@
   // with and the position goes -- "stop taking a position, carry these offsets
   // instead", which is one command because it is one edit.
   //
-  // label-pos= is always written, even by a label that has none. -style reads an
+  // label-pos= is always written, even by a label that has none. -labels reads an
   // empty value as "remove this", and removing a property no record carries adds
   // nothing to the layer, so there is nothing to be gained by asking first.
   //
@@ -14297,7 +14403,7 @@
   //   target: layer name, or null to use the current target
   //   via:    (optional) the callout-via the text carried with it
   function getLabelOffsetCommand(opts) {
-    var parts = ['-style', 'dx=' + opts.dx, 'dy=' + opts.dy,
+    var parts = ['-labels', 'dx=' + opts.dx, 'dy=' + opts.dy,
       'text-anchor=' + opts.anchor, 'label-pos='];
     if (opts.via) parts.push('callout-via=' + quoteCommandValue(opts.via));
     parts.push('ids=' + opts.id);
@@ -14308,16 +14414,16 @@
   // The command a drag on one of a label's handles writes, run once on release.
   //
   //   values: {field: value}, where '' removes the field -- which is what
-  //     -style reads an empty value as, and how a handle goes back to automatic
+  //     -labels reads an empty value as, and how a handle goes back to automatic
   //   id:     feature id of the label
   //   opts:
   //     target: layer name, or null to use the current target
   //     text:   (optional) rewrapped label-text, with real newlines and soft
-  //       breaks. A second -style in the same string, so that a new width and
+  //       breaks. A second -labels in the same string, so that a new width and
   //       the lines it breaks into are one undo step.
   function getLabelStyleCommand(values, id, opts) {
     var o = opts || {};
-    var parts = ['-style'];
+    var parts = ['-labels'];
     Object.keys(values).forEach(function(name) {
       var val = values[name];
       parts.push(name + '=' + (val === '' ? '' : quoteCommandValue(String(val))));
@@ -14339,7 +14445,7 @@
   function getLabelTextCommand(text, id, target) {
     // A real newline would break the command parser, so encodeLabelText() writes
     // the two-character escape that the label renderer also accepts.
-    var parts = ['-style', 'label-text=' + quoteCommandValue(encodeLabelText(text))];
+    var parts = ['-labels', 'text=' + quoteCommandValue(encodeLabelText(text))];
     parts.push('ids=' + id);
     if (target) parts.push('target=' + quoteCommandValue(target));
     return parts.join(' ');
@@ -15452,6 +15558,19 @@
       cachedFontStyles[fontName] = detectFontStyleVariants(fontName);
     }
     return cachedFontStyles[fontName];
+  }
+
+  // Whether words in @fontName can be set in bold: a bold the browser
+  // synthesizes is not one the Node measurer can match, so wrapping and the
+  // path-fit check would disagree with what is drawn. A font that cannot be
+  // identified is given the benefit of the doubt -- the browser finds whatever
+  // bold it has, and there is nothing to check against.
+  function fontHasBoldFace(fontName) {
+    var variants = fontName ? getFontStyleVariants(fontName) : null;
+    if (!variants || variants.length === 0) return true;
+    return variants.some(function(variant) {
+      return Number(variant.weight) >= 600;
+    });
   }
 
   // The installed font the browser draws unfonted text in, or '' if it cannot
@@ -16616,6 +16735,15 @@
       !/^(button|checkbox|radio|submit)$/.test(node.type);
   }
 
+  // Whether clicking this node puts a native menu on screen, which must then be
+  // left holding the focus: a menu opens on mousedown, so a panel that lets go of
+  // focus on the click that follows closes it again -- it flashes open and shut.
+  // OPTION counts because a browser that reports the chosen option as the click
+  // target is reporting a menu interaction either way.
+  function opensAMenu(node) {
+    return !!node && /^(SELECT|OPTION)$/.test(node.nodeName);
+  }
+
   // While the caret is in one of @panel's fields, the keyboard belongs to that
   // field. Without this the GUI's own handlers see the keystrokes: a Backspace
   // typed into a field takes back the last knot of a curve being drawn, and an
@@ -16723,6 +16851,52 @@
     return section;
   }
 
+  // A switch: a track with a knob that sits left when off and right when on,
+  // which is the direction users expect and the only thing that says which
+  // state is which without a label for each. A third state says that the
+  // features it is asking about disagree -- the knob sits over the join of a
+  // half-and-half track, which is the only control that has to show "some of
+  // them" rather than a value. A section's switch goes in its heading row, and
+  // the section shows only its heading while it is off (the .collapsed class).
+  //
+  // role=checkbox rather than switch, which is what it looks like: 'mixed' is a
+  // legal aria-checked value for a checkbox and not for a switch, and a switch
+  // reporting a mixed selection as unchecked would be telling a screen reader
+  // the one thing the third state exists to avoid saying.
+  //
+  // opts.onChange(on)  the switch was clicked
+  // opts.title, opts.className
+  function makePanelToggle(parent, opts) {
+    var track = El('div').addClass('label-toggle').attr('role', 'checkbox').appendTo(parent);
+    var state = 'off';
+    if (opts.className) track.addClass(opts.className);
+    var disabled = false;
+    El('div').addClass('label-toggle-knob').appendTo(track);
+    if (opts.title) track.attr('title', opts.title);
+    // A click on a mixed switch turns everything on. It is the convention, and
+    // it is the reading that reaches a state the switch can describe: the next
+    // click then turns everything off, so both are one click away.
+    track.on('click', function() {
+      if (disabled) return;
+      opts.onChange(state != 'on');
+    });
+    return {
+      // val: 'on', 'off' or 'mixed'; anything else reads as off
+      setState: function(val) {
+        state = val == 'on' || val == 'mixed' ? val : 'off';
+        track.classed('on', state == 'on')
+          .classed('mixed', state == 'mixed')
+          .attr('aria-checked', state == 'mixed' ? 'mixed' :
+            state == 'on' ? 'true' : 'false');
+      },
+      setDisabled: function(off) {
+        disabled = !!off;
+        track.classed('disabled', disabled)
+          .attr('aria-disabled', disabled ? 'true' : 'false');
+      }
+    };
+  }
+
   // Deliberately not focusable: the GUI is pointer-only, so a tab stop here
   // would lead into a control the keyboard cannot then operate. See the focus
   // note in page.css.
@@ -16799,6 +16973,8 @@
   // opts.onColor(hex)     a colour was typed, picked or previewed to a finish
   // opts.onOpacity(frac)  a usable percentage was typed
   // opts.revert()         one that was not, so put the row back as it was
+  // opts.noOpacity        a colour with no opacity of its own, like a pattern's,
+  //                       which fill-opacity fades along with its background
   //
   // control.aside is the row's narrow column, empty, for a field that belongs
   // beside the colour -- a stroke's width, say.
@@ -16836,10 +17012,14 @@
         if (isHexColor(color)) control.picker.setColor(color);
         opts.onColor(color);
       });
-    control.opacity = makeColorOpacityField(colorCell, control.chit, control.input, {
-      onSet: opts.onOpacity,
-      revert: opts.revert
-    }).opacity;
+    if (opts.noOpacity) {
+      makeColorField(colorCell, control.chit, control.input);
+    } else {
+      control.opacity = makeColorOpacityField(colorCell, control.chit, control.input, {
+        onSet: opts.onOpacity,
+        revert: opts.revert
+      }).opacity;
+    }
     control.picker = new ColorPicker(colorCell, {
       presetRows: layerColorPresetRows,
       // A drag in the picker shows on the map's own terms -- the swatch and the
@@ -16879,13 +17059,13 @@
   //
   // The style panel is worth having open before there is anything to point it at:
   // pick a font, then place labels in it. Values set with nothing selected are
-  // held here rather than written to a layer, and -add-label writes them when a
+  // held here rather than written to a layer, and -labels coordinates= writes them when a
   // label finally exists -- so this is a tool default, not data, and it never
   // needs its own undo step.
   //
   // See docs/development/label-tool-design.md.
 
-  // The style properties -add-label accepts. A panel control whose property is
+  // The style properties -labels accepts. A panel control whose property is
   // missing from this list would appear to do nothing when set with no selection,
   // so the list is checked rather than assumed.
   var NEW_LABEL_STYLE_FIELDS = [
@@ -16907,7 +17087,7 @@
   //
   // A blank or zero value removes the field instead of setting it: that is how
   // the panel says "no icon" (icon='', icon-size=0) and "no inline css", and
-  // carrying those through to -add-label would write properties that mean
+  // carrying those through to -labels would write properties that mean
   // nothing.
   function mergeStyleValues(style, values) {
     var out = Object.assign({}, style);
@@ -16933,7 +17113,7 @@
   // somewhere and typing looks like it should do, and it is the position an icon
   // is drawn to sit behind.
   //
-  // Only the tool defaults this. -add-label with no position still creates a
+  // Only the tool defaults this. -labels coordinates= with no position still creates a
   // label without one, so the default is a choice this tool makes and passes on
   // explicitly, not a meaning the command gives to its absence.
   var DEFAULT_NEW_LABEL_STYLE = {'label-pos': 'c'};
@@ -17247,13 +17427,17 @@
 
   // Offsets into @text (real newlines, no soft breaks) where a line starts
   // because it was wrapped, in ascending order.
-  function getSoftBreaks(text, rec) {
+  //
+  // @bold: the text's bold stretches, as [start, end) offsets into it. A bold
+  // word is wider, so it moves the breaks.
+  function getSoftBreaks(text, rec, bold) {
     var width = getLabelWrapWidth(rec);
     var key, breaks;
     if (!width || !text) return [];
-    key = getWrapKey(text, rec);
+    bold = bold || [];
+    key = getWrapKey(text, rec, bold);
     if (cache$2.has(key)) return cache$2.get(key);
-    breaks = measureSoftBreaks(text, rec, width);
+    breaks = measureSoftBreaks(text, rec, width, bold);
     if (cache$2.size >= CACHE_LIMIT) cache$2.clear();
     cache$2.set(key, breaks);
     return breaks;
@@ -17263,29 +17447,30 @@
   // unchanged when neither the old value nor the new one has a soft break, so
   // that a label that does not wrap keeps the line breaks it was written with.
   function rewrapLabelValue(value, rec) {
-    var o = readSoftBreaks(value);
-    var breaks = getSoftBreaks(o.text, rec);
+    var o = readLabelValue(value);
+    var breaks = getSoftBreaks(o.text, rec, o.bold);
     if (sameSoftBreaks(o.breaks, breaks)) return value;
-    return encodeLabelText(insertSoftBreaks(o.text, breaks));
+    return encodeLabelText(writeLabelValue(o.text, breaks, o.bold));
   }
 
   function clearWrapCache() {
     cache$2.clear();
   }
 
-  function getWrapKey(text, rec) {
+  function getWrapKey(text, rec, bold) {
     var parts = [text];
     WRAP_FIELDS.forEach(function(name) {
       var val = rec[name];
       parts.push(val === null || val === undefined ? '' : String(val));
     });
     parts.push(rec['class'] || '');
+    parts.push(bold.join(';'));
     return parts.join('\u0000');
   }
 
-  function measureSoftBreaks(text, rec, width) {
+  function measureSoftBreaks(text, rec, width, bold) {
     var w = getWrapper();
-    var style, fontSize, node, range;
+    var style, fontSize, pieces, range;
     if (!w) return [];
     style = getLabelFontStyle(w, rec);
     if (!style) return [];
@@ -17293,20 +17478,49 @@
       w.div.style[name] = style[name] || '';
     });
     w.div.style.width = width + 'px';
-    w.div.textContent = text;
-    node = w.div.firstChild;
+    pieces = writeRuns(w.div, text, bold);
     fontSize = parseFloat(style.fontSize) || 12;
     range = document.createRange();
     var breaks = findSoftBreaks(text, function(i) {
+      var piece = findPiece(pieces, i);
       var end = isHighSurrogate(text.charCodeAt(i)) ? i + 2 : i + 1;
       var r;
-      range.setStart(node, i);
-      range.setEnd(node, Math.min(end, text.length));
+      range.setStart(piece.node, i - piece.start);
+      range.setEnd(piece.node, Math.min(end, piece.end) - piece.start);
       r = range.getBoundingClientRect();
       return r.height > 0 ? r.top : null;
     }, fontSize * LINE_HEIGHT / 2);
     w.div.textContent = '';
     return breaks;
+  }
+
+  // Lays @text out in @div a run at a time, the bold ones in bold spans, and
+  // returns each run's text node with the offsets it covers: [{node, start,
+  // end}]. Offsets in the text become offsets in one of these nodes.
+  function writeRuns(div, text, bold) {
+    var pos = 0;
+    div.textContent = '';
+    return internal.svg.getBoldRuns(text, bold, 0, text.length).map(function(run) {
+      var node = document.createTextNode(run.text);
+      var span;
+      if (run.bold) {
+        span = document.createElement('span');
+        span.style.fontWeight = internal.svg.LABEL_BOLD_WEIGHT;
+        span.appendChild(node);
+        div.appendChild(span);
+      } else {
+        div.appendChild(node);
+      }
+      pos += run.text.length;
+      return {node: node, start: pos - run.text.length, end: pos};
+    });
+  }
+
+  function findPiece(pieces, i) {
+    for (var j = 0; j < pieces.length; j++) {
+      if (i < pieces[j].end) return pieces[j];
+    }
+    return pieces[pieces.length - 1];
   }
 
   function isHighSurrogate(c) {
@@ -17780,7 +17994,7 @@
       // spacing sits above.
       haloSection = addSection('Halo');
       var haloTitle = haloSection.findChild('.label-style-section-title');
-      haloToggle = makeToggle(haloTitle, {
+      haloToggle = makePanelToggle(haloTitle, {
         title: 'Draw a halo around the text',
         className: 'label-halo-toggle',
         onChange: setHaloOn
@@ -17831,7 +18045,7 @@
       // a label with no icon: nothing to apply it to.
       iconSection = addSection('Icon');
       var iconTitle = iconSection.findChild('.label-style-section-title');
-      iconToggle = makeToggle(iconTitle, {
+      iconToggle = makePanelToggle(iconTitle, {
         title: 'Draw a symbol at the label anchor',
         className: 'label-icon-toggle',
         onChange: setIconOn
@@ -17938,7 +18152,7 @@
     // the map rather than typed here. See docs/development/text-annotation-design.md.
     function initCalloutSection() {
       calloutSection = addSection('Callout');
-      calloutToggle = makeToggle(calloutSection.findChild('.label-style-section-title'), {
+      calloutToggle = makePanelToggle(calloutSection.findChild('.label-style-section-title'), {
         title: 'Draw a line from the label anchor to its text',
         className: 'label-callout-toggle',
         onChange: setCalloutOn
@@ -18057,48 +18271,6 @@
     // giving it the weight of those two would overstate it.
     function addSection(title, opts) {
       return makePanelSection(panel, title, opts);
-    }
-
-    // A switch: a track with a knob that sits left when off and right when on,
-    // which is the direction users expect and the only thing that says which
-    // state is which without a label for each. A third state says that the
-    // labels it is asking about disagree -- the knob sits over the join of a
-    // half-and-half track, which is the panel's only control that has to show
-    // "some of them" rather than a value.
-    //
-    // role=checkbox rather than switch, which is what it looks like: 'mixed' is a
-    // legal aria-checked value for a checkbox and not for a switch, and a switch
-    // reporting a mixed selection as unchecked would be telling a screen reader
-    // the one thing the third state exists to avoid saying.
-    function makeToggle(parent, opts) {
-      var track = El('div').addClass('label-toggle').attr('role', 'checkbox').appendTo(parent);
-      var state = 'off';
-      if (opts.className) track.addClass(opts.className);
-      var disabled = false;
-      El('div').addClass('label-toggle-knob').appendTo(track);
-      if (opts.title) track.attr('title', opts.title);
-      // A click on a mixed switch turns everything on. It is the convention, and
-      // it is the reading that reaches a state the switch can describe: the next
-      // click then turns everything off, so both are one click away.
-      track.on('click', function() {
-        if (disabled) return;
-        opts.onChange(state != 'on');
-      });
-      return {
-        // val: 'on', 'off' or 'mixed'; anything else reads as off
-        setState: function(val) {
-          state = val == 'on' || val == 'mixed' ? val : 'off';
-          track.classed('on', state == 'on')
-            .classed('mixed', state == 'mixed')
-            .attr('aria-checked', state == 'mixed' ? 'mixed' :
-              state == 'on' ? 'true' : 'false');
-        },
-        setDisabled: function(off) {
-          disabled = !!off;
-          track.classed('disabled', disabled)
-            .attr('aria-disabled', disabled ? 'true' : 'false');
-        }
-      };
     }
 
     function addColorOpacityField(parent, chit, input, onOpacity) {
@@ -19428,14 +19600,6 @@
       return !!node && /^(INPUT|SELECT|TEXTAREA|BUTTON|OPTION)$/.test(node.nodeName);
     }
 
-    // Whether clicking this node puts a native menu on screen, which must then be
-    // left holding the focus. OPTION counts because a browser that reports the
-    // chosen option as the click target is reporting a menu interaction either
-    // way, and a choice restores the caret through its change handler.
-    function opensAMenu(node) {
-      return !!node && /^(SELECT|OPTION)$/.test(node.nodeName);
-    }
-
     // Hands the keyboard back after a control has done its job: to the label
     // being typed into if there is one, and to nothing at all otherwise.
     function releaseFocus() {
@@ -19454,7 +19618,7 @@
       if (styles.length === 0) return;
       releaseFocus();
       // What the panel is set to is always what the next label gets, whether or
-      // not these values also went to a label that already exists. -add-label
+      // not these values also went to a label that already exists. -labels
       // writes them when that label is created, which is why this needs no
       // command and no undo step of its own.
       if (labelModeIsOn()) {
@@ -19478,7 +19642,7 @@
 
     function applyStyleCommand(styles, ids) {
       var lyr = getActiveLayer();
-      var parts = ['-style'];
+      var parts = ['-labels'];
       if (!gui.console || !lyr) return;
       styles.forEach(function(style) {
         parts.push(style[0] + '=' + quoteCommandValue(style[1]));
@@ -19500,7 +19664,7 @@
     // A text block's breaks are only right for the width and font they were
     // found with, so a change to either rewraps it in the same command: one undo
     // step, and no moment at which the block is drawn with its old lines in its
-    // new font. One -style per label, since each has text of its own.
+    // new font. One -labels per label, since each has text of its own.
     function getRewrapCommands(styles, ids, lyr) {
       var table = lyr.data;
       var changes = {};
@@ -19634,13 +19798,480 @@
     return measureSvg;
   }
 
+  // The pattern fill controls of the polygon panel, and the fill-pattern codes
+  // they stand for.
+  //
+  // The panel covers the patterns that are one colour over a background: hatch
+  // lines, dots and squares. The background is the feature's own fill, so a
+  // pattern is described by five settings -- {type, color, size, gap, angle} --
+  // and the fill. A hatch has no background in the code: it is a run of stripes,
+  // and the panel's hatch is two of them, the gap in the fill colour and the line
+  // in the pattern colour. Anything else (dashes, several colours, a background
+  // that is not the fill) is a custom pattern, which the panel shows as its code.
+  //
+  // Written into every code rather than read from the fill when drawn, because
+  // the code is what -style stores and what the SVG exporter turns into a
+  // <pattern>: a pattern with no colour of its own would need both to change.
+
+  var patternTypes = ['hatches', 'dots', 'squares'];
+
+  var patternDefaults = {
+    hatches: {size: 1, gap: 3, angle: 45},
+    dots: {size: 2, gap: 3, angle: 0},
+    squares: {size: 2, gap: 2, angle: 0}
+  };
+
+  var defaultPatternColor = '#000000';
+
+  // The settings a newly chosen pattern type starts from. The colour carries
+  // over from the pattern being replaced; the sizes do not, because a hatch
+  // line's width and a dot's diameter look nothing alike at the same number.
+  function getDefaultPatternControls(type, color) {
+    var d = patternDefaults[type];
+    return {type: type, color: color || defaultPatternColor,
+      size: d.size, gap: d.gap, angle: d.angle};
+  }
+
+  // The background a pattern is given over a feature with @fill. A feature with
+  // no fill gets a clear one, so that the pattern is drawn over whatever is
+  // underneath.
+  function getPatternBackground(fill) {
+    return isBlank$1(fill) ? 'none' : String(fill).trim();
+  }
+
+  // Whether the settings describe a pattern the renderer will draw. A hatch with
+  // no gap would be a solid fill, and the parser refuses a stripe of no width.
+  function isValidPatternControls(o) {
+    if (!o || patternTypes.indexOf(o.type) == -1 || isBlank$1(o.color)) return false;
+    if (!(o.size > 0) || !isFinite(o.angle)) return false;
+    return o.type == 'hatches' ? o.gap > 0 : o.gap >= 0;
+  }
+
+  // The fill-pattern code for the settings @o over @background. The angle is left
+  // out where it is the parser's own default, which keeps the common codes as
+  // short as the ones in the documentation.
+  function formatFillPattern(o, background) {
+    var bg = background || 'none';
+    if (o.type == 'hatches') {
+      return 'hatches ' + formatAngle(o.angle, 45) +
+        formatPx(o.gap) + ' ' + bg + ' ' + formatPx(o.size) + ' ' + o.color;
+    }
+    return o.type + ' ' + formatAngle(o.angle, 0) +
+      formatPx(o.size) + ' ' + o.color + ' ' + formatPx(o.gap) + ' ' + bg;
+  }
+
+  // The settings a parsed fill-pattern code (from parsePattern()) was made from,
+  // given the fill of the feature it is on -- or null if the panel's settings
+  // cannot describe it, which makes it a custom pattern.
+  function getPatternControls(parsed, fill) {
+    var bg = getPatternBackground(fill);
+    var line;
+    if (!parsed) return null;
+    if (parsed.type == 'hatches') {
+      if (parsed.widths.length != 2) return null;
+      line = sameColor(parsed.colors[0], bg) ? 1 : sameColor(parsed.colors[1], bg) ? 0 : -1;
+      if (line == -1) return null;
+      return {type: 'hatches', color: parsed.colors[line], size: parsed.widths[line],
+        gap: parsed.widths[1 - line], angle: parsed.rotation};
+    }
+    if (parsed.type == 'dots' || parsed.type == 'squares') {
+      if (parsed.colors.length != 1 || !sameColor(parsed.background, bg)) return null;
+      return {type: parsed.type, color: parsed.colors[0], size: parsed.size,
+        gap: parsed.spacing, angle: parsed.rotation};
+    }
+    return null;
+  }
+
+  // The same pattern over a different fill, or null for a custom pattern, which
+  // is left as it is.
+  function refillPattern(parsed, oldFill, newFill) {
+    var o = getPatternControls(parsed, oldFill);
+    return o ? formatFillPattern(o, getPatternBackground(newFill)) : null;
+  }
+
+  // A -style expression giving each feature the pattern @o over its own fill.
+  // For a change that sets fills the panel cannot know in advance, like
+  // -classify's random colours.
+  function formatFillPatternExpression(o) {
+    var sentinel = '\u0000';
+    var parts = formatFillPattern(o, sentinel).split(sentinel);
+    return JSON.stringify(parts[0]) + ' + (fill || "none") + ' + JSON.stringify(parts[1]);
+  }
+
+  // Collects per-feature edits into as few -style commands as they allow.
+  // @edits: [{id, styles: [[name, value], ...]}]
+  // Returns [{styles, ids}], in the order each set of styles first appears.
+  function groupStyleEdits(edits) {
+    var groups = [];
+    var index = {};
+    edits.forEach(function(edit) {
+      var key = JSON.stringify(edit.styles);
+      if (!(key in index)) {
+        index[key] = groups.length;
+        groups.push({styles: edit.styles, ids: []});
+      }
+      groups[index[key]].ids.push(edit.id);
+    });
+    return groups;
+  }
+
+  function formatAngle(angle, defaultAngle) {
+    return angle == defaultAngle ? '' : formatNumber$3(angle) + 'deg ';
+  }
+
+  function formatPx(val) {
+    return formatNumber$3(val) + 'px';
+  }
+
+  function formatNumber$3(val) {
+    return String(Math.round(Number(val) * 100) / 100);
+  }
+
+  function sameColor(a, b) {
+    return normalizeColor(a) == normalizeColor(b);
+  }
+
+  function normalizeColor(color) {
+    var str = String(color || '').trim().toLowerCase();
+    return str == 'transparent' ? 'none' : str;
+  }
+
+  function isBlank$1(val) {
+    return val === undefined || val === null || String(val).trim() === '';
+  }
+
+  // The polygon panel's "Pattern" section. See gui-fill-pattern.mjs for how its
+  // settings map to fill-pattern codes.
+  //
+  // Switched like the label panel's Halo and Icon sections: a pattern is a
+  // yes/no that the rest of the section then qualifies, and the section shows
+  // only its heading while it is off.
+  //
+  // opts.getRecords()        the target layer's records
+  // opts.getTargetIds()      the features being styled
+  // opts.applyEdits(edits, title)   run per-feature edits: [{id, styles}]
+  // opts.revert()            put the panel back as the data has it
+  // opts.releaseFocus()
+  function PatternFillControl(parent, opts) {
+    var section = makePanelSection(parent, 'Pattern');
+    var shown = {type: 'none'};
+    // What switching the pattern on applies when the features have none: the
+    // last pattern the section showed, so that off and on again is a round trip.
+    var lastPattern = null;
+    // Custom was chosen from the menu, and the code field is waiting for a code.
+    // Until one is applied the data still says what it said before, so the
+    // choice has to be remembered or the next refresh would undo it.
+    var customPending = false;
+    var toggle, typeSelect, mixedOption, colorControl, angleField, sizeRow, sizeCaption,
+        sizeField, gapField, customRow, codeInput;
+
+    initRows();
+
+    this.section = section;
+
+    this.update = update;
+
+    this.reset = function() {
+      customPending = false;
+    };
+
+    this.hidePicker = function() {
+      colorControl.picker.hide();
+    };
+
+    // What a saved style records for the pattern, over the fill it records.
+    this.getCode = function(fill) {
+      if (isSimple(shown)) return formatFillPattern(shown, getPatternBackground(fill));
+      if (shown.type == 'custom') return shown.code || '';
+      return '';
+    };
+
+    // Per-feature edits applying @styles to the targets. A new fill is also
+    // written into the background of each feature's pattern, since that is where
+    // the pattern's background colour is kept; custom patterns are left alone.
+    this.getStyleEdits = function(styles) {
+      var records = opts.getRecords();
+      var fill = findStyle(styles, 'fill');
+      var refill = fill !== undefined && findStyle(styles, 'fill-pattern') === undefined;
+      return opts.getTargetIds().map(function(id) {
+        var rec = records[id];
+        var code = rec && rec['fill-pattern'];
+        var edit = {id: id, styles: styles};
+        var refilled;
+        if (refill && !isBlank(code)) {
+          refilled = refillPattern(internal.parsePattern(code), rec.fill, fill);
+          if (refilled) edit.styles = styles.concat([['fill-pattern', refilled]]);
+        }
+        return edit;
+      });
+    };
+
+    // Edits that keep each feature's pattern over its fill after a command that
+    // sets fills the panel cannot know beforehand. A -style expression reads
+    // the new fill when it runs.
+    this.getRefillExpressionEdits = function(ids) {
+      var records = opts.getRecords();
+      var edits = [];
+      ids.forEach(function(id) {
+        var rec = records[id];
+        var code = rec && rec['fill-pattern'];
+        var o = isBlank(code) ? null : getPatternControls(internal.parsePattern(code), rec.fill);
+        if (o) edits.push({id: id, styles: [['fill-pattern', formatFillPatternExpression(o)]]});
+      });
+      return edits;
+    };
+
+    function initRows() {
+      toggle = makePanelToggle(section.findChild('.label-style-section-title'), {
+        title: 'Fill with a pattern',
+        className: 'layer-pattern-toggle',
+        onChange: setPatternOn
+      });
+      var typeRow = El('div').addClass('label-style-row layer-pattern-type-row').appendTo(section);
+      typeSelect = El('select').attr('title', 'Pattern type').appendTo(typeRow)
+        .on('change', function() {
+          selectType(typeSelect.node().value);
+        });
+      [['hatches', 'Hatches'], ['dots', 'Dots'], ['squares', 'Squares'],
+        ['custom', 'Custom']].forEach(function(o) {
+        El('option').attr('value', o[0]).appendTo(typeSelect).text(o[1]);
+      });
+      // Shown only while the features being styled have different patterns,
+      // which is not a choice the menu offers.
+      mixedOption = El('option').attr('value', 'mixed').appendTo(typeSelect).text('Mixed');
+      mixedOption.node().disabled = true;
+
+      colorControl = makeColorRow(section, {
+        label: 'Color',
+        noOpacity: true,
+        onColor: function(color) {
+          if (color) applyChange({color: color});
+        },
+        revert: opts.revert
+      });
+      colorControl.row.addClass('layer-pattern-color-row');
+      El('span').appendTo(colorControl.aside).text('Angle');
+      angleField = new SizeField(colorControl.aside, {
+        min: -180, max: 180, step: 15, bigStep: 45,
+        title: 'Pattern angle in degrees',
+        onSet: function(value) {
+          applyChange({angle: value});
+        },
+        onStep: function(delta) {
+          applyChange({angle: Math.max(-180, Math.min(180, shown.angle + delta))});
+        },
+        onDone: opts.releaseFocus
+      });
+
+      sizeRow = El('div').addClass('label-style-row layer-pattern-size-row').appendTo(section);
+      var sizeCell = El('div').addClass('label-split-cell').appendTo(sizeRow);
+      var gapCell = El('div').addClass('label-split-cell').appendTo(sizeRow);
+      sizeCaption = El('span').appendTo(sizeCell).text('Size');
+      sizeField = new SizeField(sizeCell, {
+        min: 0.25, step: 0.5, bigStep: 2, decimals: 2,
+        title: 'Size in px',
+        onSet: function(value) {
+          applyChange({size: value});
+        },
+        onStep: function(delta) {
+          applyChange({size: Math.max(0.25, shown.size + delta)});
+        },
+        onDone: opts.releaseFocus
+      });
+      El('span').appendTo(gapCell).text('Gap');
+      gapField = new SizeField(gapCell, {
+        min: 0, step: 0.5, bigStep: 2, decimals: 2,
+        title: 'Gap in px',
+        onSet: function(value) {
+          applyChange({gap: value});
+        },
+        onStep: function(delta) {
+          applyChange({gap: Math.max(0, shown.gap + delta)});
+        },
+        onDone: opts.releaseFocus
+      });
+
+      customRow = El('div').addClass('label-style-row layer-pattern-code-row').appendTo(section);
+      var caption = El('div').addClass('label-style-row-label').appendTo(customRow).text('Code');
+      makeFieldTip(caption,
+        'The fill-pattern syntax of the -style command.\n' +
+        'See the command reference for details.');
+      codeInput = El('input').attr('type', 'text').attr('title', 'Pattern code').appendTo(customRow)
+        .on('change', function() {
+          applyCode(codeInput.node().value.trim());
+        });
+    }
+
+    function update() {
+      var ids = opts.getTargetIds();
+      var toggleState = getToggleState(ids);
+      var state = getCommonPatternState(ids);
+      if (customPending && state.type != 'custom') {
+        state = {type: 'custom', code: shown.type == 'custom' ? shown.code : getPendingCode(state)};
+      }
+      shown = state;
+      if (isSimple(state) || state.type == 'custom' && state.code) lastPattern = state;
+      toggle.setState(toggleState);
+      section.classed('collapsed', toggleState == 'off');
+      mixedOption.classed('hidden', state.type != 'mixed');
+      typeSelect.node().value = state.type;
+      colorControl.row.classed('hidden', !isSimple(state));
+      sizeRow.classed('hidden', !isSimple(state));
+      customRow.classed('hidden', state.type != 'custom');
+      if (isSimple(state)) {
+        colorControl.showColor(state.color);
+        angleField.setValue(state.angle);
+        sizeCaption.text(state.type == 'hatches' ? 'Width' : 'Size');
+        sizeField.setValue(state.size);
+        gapField.setValue(state.gap);
+      } else {
+        colorControl.picker.hide();
+      }
+      if (state.type == 'custom' && document.activeElement !== codeInput.node()) {
+        codeInput.node().value = state.code || '';
+      }
+    }
+
+    function selectType(type) {
+      if (type == 'custom') {
+        customPending = true;
+        update();
+        codeInput.node().focus();
+        return;
+      }
+      customPending = false;
+      if (patternTypes.indexOf(type) > -1) {
+        applyControls(getDefaultPatternControls(type, isSimple(shown) ? shown.color : null));
+      }
+    }
+
+    // On gives every feature being styled a pattern: the one the features that
+    // have a pattern agree on, if they do, or else the last one shown, or else a
+    // default hatch. Off takes the pattern off all of them.
+    function setPatternOn(on) {
+      var ids = opts.getTargetIds();
+      var common, pattern;
+      customPending = false;
+      if (!on) {
+        applyToTargets(function() { return ''; }, 'Remove pattern fill');
+        return;
+      }
+      common = getCommonPatternState(ids.filter(hasPattern));
+      pattern = isSimple(common) || common.type == 'custom' ? common :
+        lastPattern || getDefaultPatternControls('hatches');
+      if (pattern.type == 'custom') {
+        applyToTargets(function() { return pattern.code; }, 'Pattern fill');
+      } else {
+        applyControls(pattern);
+      }
+    }
+
+    function getToggleState(ids) {
+      var n = ids.filter(hasPattern).length;
+      return n === 0 ? 'off' : n < ids.length ? 'mixed' : 'on';
+    }
+
+    function hasPattern(id) {
+      var rec = opts.getRecords()[id];
+      return !isBlank(rec && rec['fill-pattern']);
+    }
+
+    function applyChange(change) {
+      if (!isSimple(shown)) return;
+      var o = Object.assign({}, shown, change);
+      if (!isValidPatternControls(o)) {
+        opts.revert();
+        return;
+      }
+      applyControls(o);
+    }
+
+    function applyControls(o) {
+      applyToTargets(function(rec) {
+        return formatFillPattern(o, getPatternBackground(rec && rec.fill));
+      }, 'Pattern fill');
+    }
+
+    function applyCode(code) {
+      if (code && !internal.parsePattern(code)) {
+        codeInput.node().value = shown.code || '';
+        opts.revert();
+        return;
+      }
+      if (!code) customPending = false;
+      applyToTargets(function() { return code; }, code ? 'Pattern fill' : 'Remove pattern fill');
+    }
+
+    function applyToTargets(getCode, title) {
+      var records = opts.getRecords();
+      opts.applyEdits(opts.getTargetIds().map(function(id) {
+        return {id: id, styles: [['fill-pattern', getCode(records[id])]]};
+      }), title);
+    }
+
+    // The pattern the features being styled have in common, as panel settings,
+    // {type: 'custom', code}, {type: 'none'} -- or {type: 'mixed'} if they differ.
+    // Features with the same pattern over different fills agree: each pattern's
+    // background is its own feature's fill.
+    function getCommonPatternState(ids) {
+      var records = opts.getRecords();
+      var cache = {};
+      var firstKey = null, first = null;
+      var rec, cacheKey, state, key;
+      for (var i=0; i<ids.length; i++) {
+        rec = records[ids[i]];
+        cacheKey = (rec && rec['fill-pattern']) + '\t' + (rec && rec.fill);
+        state = cache[cacheKey] || (cache[cacheKey] = readPatternState(rec));
+        key = JSON.stringify(state);
+        if (firstKey === null) {
+          firstKey = key;
+          first = state;
+        } else if (key != firstKey) {
+          return {type: 'mixed'};
+        }
+      }
+      return first || {type: 'none'};
+    }
+
+    // The code the Custom field starts from: the pattern being replaced, so that
+    // choosing Custom is a way to see the code for the settings shown.
+    function getPendingCode(state) {
+      var records = opts.getRecords();
+      var ids = opts.getTargetIds();
+      var rec = ids.length > 0 ? records[ids[0]] : null;
+      return isSimple(state) ? formatFillPattern(state, getPatternBackground(rec && rec.fill)) : '';
+    }
+  }
+
+  function readPatternState(rec) {
+    var code = rec && rec['fill-pattern'];
+    if (isBlank(code)) return {type: 'none'};
+    return getPatternControls(internal.parsePattern(code), rec.fill) ||
+      {type: 'custom', code: String(code)};
+  }
+
+  function isSimple(state) {
+    return patternTypes.indexOf(state.type) > -1;
+  }
+
+  function findStyle(styles, name) {
+    for (var i=0; i<styles.length; i++) {
+      if (styles[i][0] == name) return styles[i][1];
+    }
+    return undefined;
+  }
+
+  function isBlank(val) {
+    return val === undefined || val === null || String(val).trim() === '';
+  }
+
   var savedStylesKey = 'layer_style_presets';
-  var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'fill', 'fill-opacity'];
+  var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'fill', 'fill-opacity', 'fill-pattern'];
 
   function LayerStyleTool(gui) {
     var parent = gui.container.findChild('.mshp-main-map');
     var panel = El('div').addClass('label-style-panel layer-style-panel rollover').appendTo(parent).hide();
-    var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, dashControl, randomFillBtn, presetControl, hit;
+    var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, dashControl, randomFillBtn, presetControl, patternControl, hit;
     var targetLayer = null;
 
     initPanel();
@@ -19685,6 +20316,7 @@
 
     function turnOn() {
       targetLayer = getActiveLayer();
+      patternControl.reset();
       applyDefaultLineStyle();
       panel.show();
       updateControls();
@@ -19694,6 +20326,8 @@
       panel.hide();
       strokeControl.picker.hide();
       fillControl.picker.hide();
+      patternControl.hidePicker();
+      patternControl.reset();
       targetLayer = null;
     }
 
@@ -19710,8 +20344,8 @@
       // picker's Close button, and the panel's own buttons in the browsers that
       // focus a button on click. Left alone while the user is typing into a
       // field, which a click elsewhere in the panel ends on its own.
-      panel.node().addEventListener('click', function() {
-        if (isTextInput(document.activeElement)) return;
+      panel.node().addEventListener('click', function(e) {
+        if (isTextInput(document.activeElement) || opensAMenu(e.target)) return;
         releaseFocus();
       });
 
@@ -19731,6 +20365,16 @@
       var buttonRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(panel);
       randomFillBtn = makePanelActionButton(buttonRow, 'Random fills', applyRandomFillColors);
       makePanelActionButton(buttonRow, 'Clear style', clearLayerStyle);
+
+      patternControl = new PatternFillControl(panel, {
+        getRecords: function() {
+          return targetLayer && targetLayer.data ? targetLayer.data.getRecords() : [];
+        },
+        getTargetIds: getTargetIds,
+        applyEdits: runStyleEdits,
+        revert: updateControls,
+        releaseFocus: releaseFocus
+      });
 
       presetControl = new StylePresetControl(panel, {
         storageKey: savedStylesKey,
@@ -19829,6 +20473,8 @@
       updateStrokeWidthControl();
       updateDashArrayControl();
       randomFillBtn.classed('hidden', geom != 'polygon');
+      patternControl.section.classed('hidden', geom != 'polygon');
+      if (geom == 'polygon') patternControl.update();
       presetControl.render();
       updateSavedStyleControls();
     }
@@ -19892,7 +20538,11 @@
       if (control.field == 'stroke' && strokeWidthIsUnsetForTargets()) {
         styles.push(['stroke-width', 1]);
       }
-      runStyleCommand(styles);
+      if (control.field == 'fill') {
+        runStyleEdits(patternControl.getStyleEdits(styles));
+      } else {
+        runStyleCommand(styles);
+      }
     }
 
     function applyStrokeWidthStyle(value) {
@@ -19912,11 +20562,30 @@
     }
 
     function runStyleCommand(styles) {
-      var parts = ['-style'];
       releaseFocus();
       syncTargetLayer();
       var ids = getTargetIds();
       if (!gui.console || !targetLayer || ids.length === 0) return;
+      runCommand(formatStyleCommand(styles, ids), 'Style layer');
+    }
+
+    // Per-feature edits ([{id, styles}]), as one -style command for each set of
+    // styles. They are run as one command string, which is one undo step.
+    function runStyleEdits(edits, title) {
+      releaseFocus();
+      syncTargetLayer();
+      if (!gui.console || !targetLayer || edits.length === 0) return;
+      runCommand(formatStyleEditCommands(edits), title || 'Style layer');
+    }
+
+    function formatStyleEditCommands(edits) {
+      return groupStyleEdits(edits).map(function(group) {
+        return formatStyleCommand(group.styles, group.ids);
+      }).join(' ');
+    }
+
+    function formatStyleCommand(styles, ids) {
+      var parts = ['-style'];
       styles.forEach(function(style) {
         parts.push(style[0] + '=' + quoteCommandValue(style[1]));
       });
@@ -19924,7 +20593,7 @@
       if (ids.length < internal.getFeatureCount(targetLayer)) {
         parts.push('ids=' + ids.join(','));
       }
-      runCommand(parts.join(' '), 'Style layer');
+      return parts.join(' ');
     }
 
     function applyDefaultLineStyle() {
@@ -19938,12 +20607,20 @@
       }
     }
 
+    // Patterns keep their backgrounds in step with the fills, and the new fills
+    // are not known until -classify has chosen them, so the patterns are
+    // rewritten by an expression that reads each feature's fill when it runs.
     function applyRandomFillColors() {
       var cmd = '-classify colors=random non-adjacent';
+      var patternEdits;
       syncTargetLayer();
       if (!gui.console || !targetLayer || targetLayer.geometry_type != 'polygon') return;
       if (getActiveLayer() != targetLayer) {
         cmd += ' target=' + internal.formatOptionValue(internal.getLayerTargetId(gui.model, targetLayer));
+      }
+      patternEdits = patternControl.getRefillExpressionEdits(getAllFeatureIds(targetLayer));
+      if (patternEdits.length > 0) {
+        cmd += ' ' + formatStyleEditCommands(patternEdits);
       }
       runCommand(cmd, 'Random fill colors');
     }
@@ -19963,7 +20640,7 @@
         }
       });
       if (styles.length > 0) {
-        runStyleCommand(styles);
+        runStyleEdits(patternControl.getStyleEdits(styles));
       }
     }
 
@@ -19978,6 +20655,7 @@
       if (targetLayer && targetLayer.geometry_type == 'polygon') {
         addStyleValue(style, 'fill', getControlValue(fillControl.input));
         addStyleValue(style, 'fill-opacity', parseOpacityValue(fillControl.opacity.node().value));
+        addStyleValue(style, 'fill-pattern', patternControl.getCode(getControlValue(fillControl.input)));
       }
       return style;
     }
@@ -20192,8 +20870,8 @@
         revert: updateControls,
         release: releaseFocus
       });
-      panel.node().addEventListener('click', function() {
-        if (isTextInput(document.activeElement)) return;
+      panel.node().addEventListener('click', function(e) {
+        if (isTextInput(document.activeElement) || opensAMenu(e.target)) return;
         releaseFocus();
       });
 
@@ -20447,9 +21125,8 @@
       var expr = createExprInput.node().value.trim();
       var cmd;
       if (!expr || !gui.console) return;
-      cmd = createCopyCheckbox.node().checked ?
-        '-filter true + name=labels -style label-text=' + quoteCommandValue(expr) :
-        '-style label-text=' + quoteCommandValue(expr);
+      cmd = '-labels text=' + quoteCommandValue(expr);
+      if (createCopyCheckbox.node().checked) cmd += ' + name=labels';
       runGuiEditCommand(gui, cmd, {
         title: 'Create labels',
         onSuccess: openLabelStyles
@@ -21434,7 +22111,7 @@
   // hit test, the reposition pass and the selection cue all find labels by those,
   // and a node with no feature behind it must not be found by any of them.
   //
-  // @rec: the label's record, as -add-label will write it
+  // @rec: the label's record, as -labels coordinates= will write it
   // @shp: its knots, in the layer's display coordinates
   // Returns a markup string, or '' if there is nothing to draw.
   function renderPendingSymbol(rec, shp, ext, idPrefix) {
@@ -25923,6 +26600,112 @@
     return true;
   }
 
+  // The bold stretches of a label being edited, as [start, end) offsets into the
+  // text the user edits, and how they follow the text as it changes.
+  //
+  // The editor keeps these beside the textarea's value rather than as markup in
+  // it, so that the caret and the selection index the text the user sees. The
+  // markup they come from and go back to is read and written by
+  // readLabelValue() and writeLabelValue() in gui-label-text.mjs.
+  //
+  // Every function returns a new, normalized list -- sorted, non-empty, and with
+  // no two ranges touching -- and leaves its argument alone.
+
+  function isBoldAt(ranges, i) {
+    for (var j = 0; j < ranges.length; j++) {
+      if (i >= ranges[j][0] && i < ranges[j][1]) return true;
+    }
+    return false;
+  }
+
+  // Whether every character in [start, end) is bold. False for an empty range.
+  function rangeIsAllBold(ranges, start, end) {
+    var pos = start;
+    if (!(end > start)) return false;
+    for (var j = 0; j < ranges.length && pos < end; j++) {
+      if (ranges[j][1] <= pos) continue;
+      if (ranges[j][0] > pos) return false;
+      pos = ranges[j][1];
+    }
+    return pos >= end;
+  }
+
+  // [start, end) set bold (@on) or not.
+  function setBoldRange(ranges, start, end, on) {
+    var out = [];
+    ranges.forEach(function(r) {
+      if (r[1] <= start || r[0] >= end) {
+        out.push([r[0], r[1]]);
+        return;
+      }
+      if (r[0] < start) out.push([r[0], start]);
+      if (r[1] > end) out.push([end, r[1]]);
+    });
+    if (on && end > start) out.push([start, end]);
+    return normalize(out);
+  }
+
+  // What pressing Bold does to [start, end): unbolds a range that is all bold
+  // and bolds any other, including one that is partly bold -- the convention of
+  // every word processor, and the reading that leaves the range one weight.
+  function toggleBoldRange(ranges, start, end) {
+    return setBoldRange(ranges, start, end, !rangeIsAllBold(ranges, start, end));
+  }
+
+  // The ranges for @newText, given the ranges they were for @oldText.
+  //
+  // The edit is found as the text between the longest common prefix and suffix,
+  // which is exact for everything a textarea does in one step -- typing,
+  // deleting, pasting over a selection, an IME composition -- and still gives a
+  // sensible answer for its own undo, which can replace a larger stretch at once.
+  //
+  // Inserted text takes the weight of the character before it, so typing on at
+  // the end of a bold word stays bold and typing after it does not; at the start
+  // of the text it takes the weight of the first character.
+  function updateBoldForEdit(ranges, oldText, newText) {
+    var edit, inherit, mapped;
+    if (ranges.length === 0 || oldText === newText) return normalize(ranges);
+    edit = findEdit(oldText, newText);
+    inherit = edit.start > 0 ? isBoldAt(ranges, edit.start - 1) :
+      isBoldAt(ranges, edit.start + edit.removed);
+    mapped = ranges.map(function(r) {
+      return [mapOffset(r[0], edit), mapOffset(r[1], edit)];
+    });
+    return setBoldRange(normalize(mapped), edit.start, edit.start + edit.inserted,
+      inherit);
+  }
+
+  function sameBoldRanges(a, b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i][0] !== b[i][0] || a[i][1] !== b[i][1]) return false;
+    }
+    return true;
+  }
+
+  // {start, removed, inserted}: characters [start, start + removed) of the old
+  // text became [start, start + inserted) of the new one.
+  function findEdit(a, b) {
+    var max = Math.min(a.length, b.length);
+    var pre = 0, suf = 0;
+    while (pre < max && a.charCodeAt(pre) === b.charCodeAt(pre)) pre++;
+    while (suf < max - pre &&
+      a.charCodeAt(a.length - 1 - suf) === b.charCodeAt(b.length - 1 - suf)) suf++;
+    return {start: pre, removed: a.length - pre - suf, inserted: b.length - pre - suf};
+  }
+
+  // A boundary inside the removed stretch collapses to its start. One after it
+  // moves by the change in length.
+  function mapOffset(x, edit) {
+    if (x <= edit.start) return x;
+    if (x >= edit.start + edit.removed) return x - edit.removed + edit.inserted;
+    return edit.start;
+  }
+
+  function normalize(ranges) {
+    return internal.svg.normalizeBoldRanges(ranges);
+  }
+
   // Caret and selection geometry, computed from the SVG character position APIs.
   //
   // The APIs behave identically on <text> and on <text><textPath>, so this code
@@ -26242,16 +27025,19 @@
     // so the tool cannot do this at its own call sites.
     self.open = function(target, id, opts) {
       var rec = getRecord(target, id);
+      var value;
       if (!rec) return false;
       self.close();
+      value = readLabelValue(rec['label-text']);
       session = {
         target: target,
         id: id,
         pending: null,
         created: false,
         onClose: opts && opts.onClose || null,
-        startText: decodeLabelText(rec['label-text']),
-        startBreaks: readSoftBreaks(rec['label-text']).breaks,
+        startText: value.text,
+        startBreaks: value.breaks,
+        startBold: value.bold,
         nodes: null
       };
       startSession();
@@ -26297,6 +27083,7 @@
         onClose: opts.onClose || null,
         startText: '',
         startBreaks: [],
+        startBold: [],
         nodes: null
       };
       startSession();
@@ -26305,6 +27092,7 @@
 
     function startSession() {
       session.text = session.startText;
+      session.bold = session.startBold;
       getTextarea().value = session.text;
       setCaret(session.text.length, session.text.length);
       focusTextarea();
@@ -26318,6 +27106,74 @@
         refresh: self.refresh
       });
       self.refresh();
+    }
+
+    // The text a Bold item in the context menu would act on, as {start, end,
+    // bold}, where @bold says whether all of it is bold already; or null. That is
+    // the selection, or with nothing selected, the word under @p -- read when the
+    // menu opens, because by the time an item is chosen the pointer is on the
+    // menu rather than the label.
+    self.getBoldTargetAtPoint = function(p) {
+      var start = getCaretStart(), end = getCaretEnd();
+      var range;
+      if (!session) return null;
+      if (!(end > start)) {
+        start = getEditIndexAtPoint(p);
+        if (start < 0) return null;
+        range = getWordRange(session.text, start);
+        start = range[0];
+        end = range[1];
+      }
+      if (!(end > start)) return null;
+      return {start: start, end: end, bold: rangeIsAllBold(session.bold, start, end)};
+    };
+
+    // Bolds the selected text, or unbolds it if it is all bold already; or the
+    // text from @start to @end, which is selected first. The text stays
+    // selected, so that a second press takes it back.
+    self.toggleBold = function(start, end) {
+      if (!session) return;
+      if (start >= 0 && end > start) {
+        setCaret(start, end);
+      } else {
+        start = getCaretStart();
+        end = getCaretEnd();
+      }
+      if (!(end > start)) return;
+      session.bold = toggleBoldRange(session.bold, start, end);
+      self.refresh();
+    };
+
+    // Selects the text between two points in the label's own coordinate space,
+    // for a drag across it. The selection runs from @p0 towards @p1, so that
+    // shift-arrow then extends it from the end the pointer let go of.
+    self.selectBetweenPoints = function(p0, p1) {
+      var a = getEditIndexAtPoint(p0);
+      var b = getEditIndexAtPoint(p1);
+      if (a < 0 || b < 0) return false;
+      setCaret(Math.min(a, b), Math.max(a, b), b < a ? 'backward' : 'forward');
+      redrawCaret();
+      return true;
+    };
+
+    // Selects the word under @p, for a double-click inside the text.
+    self.selectWordAtPoint = function(p) {
+      var i = getEditIndexAtPoint(p);
+      var range;
+      if (i < 0) return false;
+      range = getWordRange(session.text, i);
+      setCaret(range[0], range[1]);
+      redrawCaret();
+      return true;
+    };
+
+    function getEditIndexAtPoint(p) {
+      var provider, layout, i;
+      if (!session || !session.nodes) return -1;
+      provider = getProvider(session.nodes);
+      layout = getLayout(session);
+      i = getCaretIndexAtPoint(provider, p, getRenderedLength(session.text, layout));
+      return i < 0 ? -1 : getEditIndex(session.text, i, layout);
     }
 
     self.isOpen = function() {
@@ -26350,6 +27206,7 @@
       // arriving just after a redraw is holding one of those.
       if (session.pending && node.closest &&
         node.closest('.label-edit-pending')) return true;
+      if (session.nodes && session.nodes.symbol.contains(node)) return true;
       return !!groups && (groups.hit.contains(node) || groups.back.contains(node) ||
         groups.front.contains(node));
     };
@@ -26408,7 +27265,7 @@
       if (i < 0) return false;
       i = getEditIndex(session.text, i, layout);
       setCaret(i, i);
-      drawOverlay(session);
+      redrawCaret();
       return true;
     };
 
@@ -26442,7 +27299,7 @@
       var blank = textHasNoGlyphs(o.text);
       var breaks = getBreaks(o);
       if (o.pending) {
-        if (!blank) o.pending.create(insertSoftBreaks(o.text, breaks));
+        if (!blank) o.pending.create(writeLabelValue(o.text, breaks, o.bold));
         return;
       }
       if (blank) {
@@ -26450,8 +27307,9 @@
         removeLabel(o);
         return;
       }
-      if (o.text === o.startText && sameSoftBreaks(breaks, o.startBreaks)) return;
-      runGuiEditCommand(gui, getLabelTextCommand(insertSoftBreaks(o.text, breaks),
+      if (o.text === o.startText && sameSoftBreaks(breaks, o.startBreaks) &&
+        sameBoldRanges(o.bold, o.startBold)) return;
+      runGuiEditCommand(gui, getLabelTextCommand(writeLabelValue(o.text, breaks, o.bold),
         o.id, o.target.name), {
         title: 'Label text'
       });
@@ -26464,7 +27322,7 @@
       var rec;
       if (!shp || shp.length > 1) return [];
       rec = o.pending ? o.pending.getStyle() : getRecord(o.target, o.id);
-      return getSoftBreaks(o.text, rec);
+      return getSoftBreaks(o.text, rec, o.bold);
     }
 
     // Deletes the label's feature, geometry and all.
@@ -26551,7 +27409,7 @@
       var rec = Object.assign({}, o.pending.getStyle());
       // With its soft breaks, so that what is aligned and what a callout meets
       // is the block as wrapped
-      rec['label-text'] = encodeLabelText(insertSoftBreaks(o.text, getBreaks(o)));
+      rec['label-text'] = encodeLabelText(writeLabelValue(o.text, getBreaks(o), o.bold));
       // No need to expand label-pos here, or to measure its text: the renderer
       // resolves the position and asks for the width it needs, so a pending
       // label is laid out by exactly the same code as a committed one.
@@ -26599,11 +27457,15 @@
     //   - Line breaks. An empty <tspan> lays out nothing, so a line just opened
     //     with Enter had no position for the caret to move to. The placeholder in
     //     getRenderedLines() gives it one.
+    //
+    // Bold stretches are <tspan>s inside the line they fall on. The character
+    // position APIs count the characters of descendant elements in document
+    // order, so the rendered indexes stay the edited ones whatever the runs are.
     function writeText(o) {
       var content = o.nodes.content;
       var breaks = getBreaks(o);
-      var written = o.text + '\u0000' + breaks.join(',');
-      var lines, i, tspan;
+      var written = o.text + '\u0000' + breaks.join(',') + '\u0000' + o.bold.join(';');
+      var lines, full, pos, i, tspan;
       // refresh() runs on every map render, which during a pan is every frame;
       // rebuilding text nodes that already say the right thing is pure waste
       if (o.writtenTo === content && o.writtenText === written) return;
@@ -26617,21 +27479,51 @@
       // or from a label that was multi-line before it was given a path -- and
       // turning them into spaces is what export does too.
       if (getLayout(o) === LINES_JOINED) {
-        content.appendChild(document.createTextNode(getRenderedContent(o.text)));
+        full = getRenderedContent(o.text);
+        appendRuns(content, full, o.bold, 0, full.length);
         return;
       }
       // A soft break keeps the space it broke at at the end of its line, where
       // the rendered label drops it: here every typed character has to be one
       // the caret can sit beside.
+      //
+      // The lines laid end to end are the edited text character for character --
+      // each hard break is the placeholder that opens the line after it -- so a
+      // line's offset in the one is its offset in the other.
       lines = getRenderedLines(o.text, breaks);
-      content.appendChild(document.createTextNode(lines[0]));
+      full = lines.join('');
+      pos = lines[0].length;
+      appendRuns(content, full, o.bold, 0, pos);
       for (i = 1; i < lines.length; i++) {
         tspan = document.createElementNS(SVG_NS$3, 'tspan');
         tspan.setAttribute('x', o.nodes.text.getAttribute('x') || 0);
         tspan.setAttribute('dy', getLineHeight(o));
-        tspan.appendChild(document.createTextNode(lines[i]));
+        appendRuns(tspan, full, o.bold, pos, pos + lines[i].length);
+        pos += lines[i].length;
         content.appendChild(tspan);
       }
+    }
+
+    // Characters [start, end) of @str into @parent, the bold ones in bold
+    // <tspan>s and the rest as text. An empty stretch still gets a text node, as
+    // an empty line always did.
+    function appendRuns(parent, str, bold, start, end) {
+      var runs = internal.svg.getBoldRuns(str, bold, start, end);
+      var tspan;
+      if (runs.length === 0) {
+        parent.appendChild(document.createTextNode(''));
+        return;
+      }
+      runs.forEach(function(run) {
+        if (!run.bold) {
+          parent.appendChild(document.createTextNode(run.text));
+          return;
+        }
+        tspan = document.createElementNS(SVG_NS$3, 'tspan');
+        tspan.setAttribute('font-weight', internal.svg.LABEL_BOLD_WEIGHT);
+        tspan.appendChild(document.createTextNode(run.text));
+        parent.appendChild(tspan);
+      });
     }
 
     // Cached per session: asking costs a record lookup and a geometry test, and
@@ -26759,18 +27651,33 @@
       return el;
     }
 
+    // Updated in place rather than rebuilt. Every caret move redraws the
+    // overlay, and a click is one: a region replaced by the first click of a
+    // double-click takes the node the button went down on out of the document,
+    // and the browser then fires neither the click nor the dblclick.
     function drawHitRegion(o, g, box, caret, pathId) {
-      var el;
-      clear(g);
-      if (box) g.appendChild(rect(box, 'label-edit-hit-area'));
-      if (!pathId) return;
+      var area = g.querySelector('.label-edit-hit-area');
+      var line = g.querySelector('.label-edit-hit-baseline');
+      if (box && area) {
+        setRect(area, box);
+      } else if (box) {
+        g.insertBefore(rect(box, 'label-edit-hit-area'), g.firstChild);
+      } else if (area) {
+        g.removeChild(area);
+      }
+      if (!pathId) {
+        if (line) g.removeChild(line);
+        return;
+      }
       // A thickened, transparent copy of the baseline: about one em wide, so that
       // the region follows the curve rather than boxing it.
-      el = document.createElementNS(SVG_NS$3, 'use');
-      el.setAttribute('href', '#' + pathId);
-      el.setAttribute('class', 'label-edit-hit-baseline');
-      el.setAttribute('stroke-width', caret ? caret.ascent + caret.descent : 12);
-      g.appendChild(el);
+      if (!line) {
+        line = document.createElementNS(SVG_NS$3, 'use');
+        line.setAttribute('class', 'label-edit-hit-baseline');
+        g.appendChild(line);
+      }
+      line.setAttribute('href', '#' + pathId);
+      line.setAttribute('stroke-width', caret ? caret.ascent + caret.descent : 12);
     }
 
     function getLabelPathId(nodes) {
@@ -26863,12 +27770,16 @@
 
     function rect(box, className) {
       var el = document.createElementNS(SVG_NS$3, 'rect');
+      setRect(el, box);
+      el.setAttribute('class', className);
+      return el;
+    }
+
+    function setRect(el, box) {
       el.setAttribute('x', box.x);
       el.setAttribute('y', box.y);
       el.setAttribute('width', box.width);
       el.setAttribute('height', box.height);
-      el.setAttribute('class', className);
-      return el;
     }
 
     function caretLine(caret) {
@@ -26898,6 +27809,7 @@
 
       textarea.addEventListener('input', function() {
         if (!session) return;
+        session.bold = updateBoldForEdit(session.bold, session.text, textarea.value);
         session.text = textarea.value;
         self.refresh();
       });
@@ -26920,6 +27832,13 @@
       function isCommitKey(e) {
         if (e.key != 'Enter' || e.shiftKey) return false;
         return !e.isComposing && e.keyCode != 229;
+      }
+
+      // Cmd-B on a Mac, Ctrl-B elsewhere, as in every text editor. A textarea
+      // has no default for it to replace.
+      function isBoldKey(e) {
+        if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return false;
+        return (e.key || '').toLowerCase() == 'b';
       }
 
       textarea.addEventListener('keydown', function(e) {
@@ -26948,6 +27867,10 @@
           e.preventDefault();
           e.stopPropagation();
           self.close();
+        } else if (isBoldKey(e)) {
+          e.preventDefault();
+          e.stopPropagation();
+          self.toggleBold();
         } else {
           e.stopPropagation();
         }
@@ -27001,10 +27924,11 @@
       return textarea ? textarea.selectionEnd : 0;
     }
 
-    function setCaret(start, end) {
+    // @direction: 'forward' (the default) or 'backward', which end of the
+    //   selection shift-arrow moves
+    function setCaret(start, end, direction) {
       if (!textarea) return;
-      textarea.selectionStart = start;
-      textarea.selectionEnd = end;
+      textarea.setSelectionRange(start, end, direction || 'forward');
     }
   }
 
@@ -27697,7 +28621,7 @@
   }
 
   // The label tool: arming a label type, placing an anchor or a curve, turning
-  // the result into an -add-label command, and handing the new label to the
+  // the result into a -labels coordinates= command, and handing the new label to the
   // in-place text editor.
   //
   // Creating a label and editing one are one gesture, not two: a click leaves a
@@ -27761,6 +28685,14 @@
     // The mouseup that ended the last block drag, or null. A short one is
     // followed by a click from the same mouseup, which it has already handled.
     var blockRelease = null;
+    // A drag across the text of the label being typed into, which selects the
+    // characters it passes over: {start}, where start is the pointer's position
+    // at the press, filled in by the first drag event.
+    var selectDrag = null;
+    // The mouseup that ended the last select drag, or null, for the same reason
+    // as blockRelease: the click that follows it would put the caret down and
+    // lose the selection just made.
+    var selectRelease = null;
     var editor = new LabelEditor(gui, ext);
     var selection = new LabelSelection(gui, ext, hit, function() {
       return editor.isOpen() ? editor.getFeatureId() : -1;
@@ -27790,7 +28722,7 @@
     // tools do on entry as well (`addEmptyLayer()` in `gui-edit-points.mjs` and
     // `gui-draw-lines2.mjs`). It is named rather than left unnamed, unlike
     // theirs: it is the layer `getLabelTarget()` would have created for a label
-    // anyway, and naming it is what lets the `-add-label` commands name their
+    // anyway, and naming it is what lets the `-labels` commands name their
     // target and so replay from the session history.
     //
     // Called before entering the tool's own mode, because getInitialTool() reads
@@ -27840,6 +28772,8 @@
       handleDrag = null;
       releasedDrag = null;
       blockRelease = null;
+      selectDrag = null;
+      selectRelease = null;
       shownHandles = null;
       clearBlockDrag();
       hoverHandle = null;
@@ -27966,6 +28900,10 @@
         blockRelease = null;
         return;
       }
+      if (selectRelease && getDomEvent(e) == selectRelease) {
+        selectRelease = null;
+        return;
+      }
       if (armed == 'path' && drawingCurve()) {
         extendCurve(pixToMapCoords(e.x, e.y));
         return;
@@ -28038,8 +28976,33 @@
           e.flipLabel = getFlipAction(target, id);
         }
       }
+      if (target && editor.isOpen() && clickIsOnEditedLabel(e)) {
+        addBoldAction(e, target);
+      }
       gui.contextMenu.open(e, target);
     });
+
+    // Bold for the words being typed: the selection, or with nothing selected,
+    // the word that was right-clicked. The item says what it will do, since a
+    // menu has no pressed state to show that the words are bold already. There
+    // is none in a font with no bold face (see fontHasBoldFace()).
+    function addBoldAction(e, target) {
+      var range = editor.getBoldTargetAtPoint(getLabelSpacePoint(editor.getAnchorCoords(), e));
+      if (!range || !fontHasBoldFace(getEditedFontName(target))) return;
+      e.boldText = {
+        label: range.bold ? 'remove bold' : 'bold text',
+        run: function() { editor.toggleBold(range.start, range.end); }
+      };
+    }
+
+    // The font the label being typed into is drawn in: its own, or for a label
+    // not created yet, the one the panel will give it.
+    function getEditedFontName(target) {
+      var id = editor.getFeatureId();
+      var rec = id > -1 ? getRecord(target, id) : getNewLabelStyle(gui);
+      var font = rec && rec['font-family'];
+      return font || (id > -1 ? getDefaultFontName() : getNewLabelFontName());
+    }
 
     // The label a right-click was aimed at, or -1.
     //
@@ -28296,7 +29259,16 @@
     // takes a drag -- everything else over a label is left alone so that the map
     // still pans, which is why these handlers stop the event themselves.
     hit.on('dragstart', function(e) {
-      if (!active() || drawingCurve() || editor.isOpen()) return;
+      if (!active() || drawingCurve()) return;
+      // With a label open for typing, a drag across its text selects some of it,
+      // as it would in any text field. Anywhere else the map still pans.
+      if (editor.isOpen()) {
+        if (clickIsOnEditedLabel(e)) {
+          selectDrag = {start: null};
+          consumeDrag(e);
+        }
+        return;
+      }
       // The handle comes from the last hover, not from testing the pointer here.
       // dragstart arrives with the pointer already moved off the handle -- by the
       // first mousemove that made it a drag, which on a quick gesture is further
@@ -28320,6 +29292,22 @@
       beginKnotDrag(hoverHandle);
       consumeDrag(e);
     });
+
+    // The selection runs from where the button went down, which dragstart does
+    // not report -- it arrives after the first move -- but every drag event
+    // carries its distance from the press.
+    function updateSelectDrag(e) {
+      var anchor = editor.getAnchorCoords();
+      if (!editor.isOpen() || !anchor) {
+        selectDrag = null;
+        return;
+      }
+      if (!selectDrag.start) {
+        selectDrag.start = {x: e.x - (e.dragX || 0), y: e.y - (e.dragY || 0)};
+      }
+      editor.selectBetweenPoints(getLabelSpacePoint(anchor, selectDrag.start),
+        getLabelSpacePoint(anchor, e));
+    }
 
     // handle: {id, index, point, pointer} from findHandle(), or the same shape
     //   made up for a drag that grabbed a label somewhere other than its knot
@@ -28346,6 +29334,11 @@
 
     hit.on('drag', function(e) {
       var shp, p;
+      if (selectDrag) {
+        consumeDrag(e);
+        updateSelectDrag(e);
+        return;
+      }
       if (textDrag) {
         consumeDrag(e);
         updateTextDrag(e);
@@ -28380,6 +29373,12 @@
 
     hit.on('dragend', function(e) {
       var o = drag;
+      if (selectDrag) {
+        selectDrag = null;
+        selectRelease = getDomEvent(e);
+        consumeDrag(e);
+        return;
+      }
       if (textDrag) {
         o = textDrag;
         textDrag = null;
@@ -29020,9 +30019,9 @@
       selection.refresh(true);
     }
 
-    // Turns the previewed offset into one -style.
+    // Turns the previewed offset into one -labels.
     //
-    // Only the label under the pointer moves, even with several selected: -style
+    // Only the label under the pointer moves, even with several selected: -labels
     // writes one value to every id it is given, so a group drag would set them
     // all to the same absolute offset rather than nudging each by its own delta.
     function commitOffsetDrag(o) {
@@ -29166,7 +30165,7 @@
     }
 
     function dragging() {
-      return !!(drag || textDrag || handleDrag || blockDrag);
+      return !!(drag || textDrag || handleDrag || blockDrag || selectDrag);
     }
 
     // The exception is about the pointer being on the glyphs, not about the mode:
@@ -29282,6 +30281,12 @@
       }
       if (hoverHandle && hoverHandle.kind && !editor.isOpen()) {
         resetHandle(hoverHandle);
+        return;
+      }
+      // Inside the text being typed, a double-click selects a word -- which is
+      // the quickest way to pick the words to set in bold.
+      if (editor.isOpen() && clickIsOnEditedLabel(e)) {
+        editor.selectWordAtPoint(getLabelSpacePoint(editor.getAnchorCoords(), e));
         return;
       }
       // Double-clicking a label reaches straight into its text, which is the
@@ -30411,7 +31416,7 @@
     canv.setAttribute('height', h);
     ctx.scale(w / tw, h / th);
     if (o.background) {
-      ctx.fillStyle = o.background;
+      ctx.fillStyle = getCanvasColor(o.background);
       ctx.fillRect(0, 0, tw, th);
     }
     if (o.type == 'dots' || o.type == 'squares') makeDotFill(o, ctx, 1);
@@ -30475,10 +31480,16 @@
     };
   }
 
+  // SVG's "none" is not a canvas colour, and a canvas ignores a fillStyle it
+  // cannot parse -- keeping the last one set, which on a fresh tile is black.
+  function getCanvasColor(color) {
+    return String(color).trim().toLowerCase() == 'none' ? 'transparent' : color;
+  }
+
   function makeDashFill(o, ctx, res) {
     var x = 0;
     for (var i=0; i<o.colors.length; i++) {
-      ctx.fillStyle = o.colors[i];
+      ctx.fillStyle = getCanvasColor(o.colors[i]);
       ctx.fillRect(x, 0, o.width * res, o.dashes[0] * res);
       x += res * (o.spacing + o.width);
     }
@@ -30493,7 +31504,7 @@
     var x = 0, y = 0;
     for (var i=0; i<dots; i++) {
       if (o.type == 'dots') ctx.beginPath();
-      ctx.fillStyle = o.colors[(i + Math.floor(i / n)) % n];
+      ctx.fillStyle = getCanvasColor(o.colors[(i + Math.floor(i / n)) % n]);
       if (o.type == 'dots') {
         ctx.arc(x + r, y + r, r, 0, Math.PI * 2);
       } else {
@@ -30510,8 +31521,8 @@
     var w;
     for (var i=0, x=0; i<o.widths.length; i++) {
       w = o.widths[i] * res;
-      ctx.fillStyle = o.colors[i];
-      ctx.fillRect(x, 0, x + w, h);
+      ctx.fillStyle = getCanvasColor(o.colors[i]);
+      ctx.fillRect(x, 0, w, h);
       x += w;
     }
   }
