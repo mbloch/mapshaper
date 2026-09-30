@@ -196,7 +196,7 @@ var calloutEnds = [{
 // which is where the markers go. The arrowheads are drawn to the renderer's
 // angles, with sides the same visible length -- the open one's stroke
 // included -- so that they compare as the drawn arrows do.
-var calloutButtonSymbols = {
+export var calloutButtonSymbols = {
   line: '<path d="M3.5 12.5L12.5 3.5"></path>',
   elbow: '<path d="M3.5 12.5L8 4.5H13"></path>',
   curve: '<path d="M3.5 12.5Q4.5 4.5 12.5 4"></path>',

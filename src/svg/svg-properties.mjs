@@ -58,6 +58,11 @@ var stylePropertyTypes = {
   'callout-color': 'color',
   'callout-width': 'number',
   'callout-opacity': 'number',
+  // arrowheads at the ends of a line -- see svg-line-arrows.mjs. Drawn as
+  // shapes, not written as attributes, so not in propertiesBySymbolType.
+  'line-start': 'lineend',
+  'line-end': 'lineend',
+  'line-end-size': 'number',
   'letter-spacing': 'measure',
   'line-height': 'measure',
   opacity: 'number',
@@ -369,6 +374,8 @@ function parseSvgLiteralValue(strVal, type) {
     val = parseCalloutType(strVal);
   } else if (type == 'calloutend') {
     val = parseCalloutEnd(strVal);
+  } else if (type == 'lineend') {
+    val = parseLineEnd(strVal);
   } else if (type == 'pointpair') {
     val = parsePointPair(strVal);
     val = val ? formatPointPair(val) : null;
@@ -418,6 +425,12 @@ export function parseCalloutType(str) {
 export function parseCalloutEnd(str) {
   var end = String(str).trim().toLowerCase();
   return /^(arrow|open-arrow|none)$/.test(end) ? end : null;
+}
+
+// A line's ends take a callout's markers, and a dot
+export function parseLineEnd(str) {
+  var end = String(str).trim().toLowerCase();
+  return end == 'dot' ? end : parseCalloutEnd(end);
 }
 
 // "x,y" -> [x, y], or null. Stored as a string so that a pair is set and

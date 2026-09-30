@@ -261,8 +261,10 @@ export function DisplayCanvas() {
   _self.drawStyledPaths = function(shapes, arcs, style, filter) {
     var styleIndex = {};
     var batchSize = 100;
-    var startPath = getPathStart(_ext, getScaledLineScale(_ext, style));
+    var lineScale = getScaledLineScale(_ext, style);
+    var startPath = getPathStart(_ext, lineScale);
     var draw = getShapePencil(arcs, _ext);
+    var arrowPencil = null;
     var key, item, shp;
     var styler = style.styler || null;
     var drawStyle = styler ? utils.defaults({}, style) : style;
@@ -271,6 +273,13 @@ export function DisplayCanvas() {
       if (!shp || filter && !filter(i)) continue;
       if (styler) {
         styler(drawStyle, i);
+      }
+      // A line with arrowheads is drawn on its own, trimmed to meet its heads;
+      // see svg-line-arrows.mjs. Only lines styled with line-start or line-end
+      // get here, so the batch below is untouched for everything else.
+      if (drawStyle.lineStart || drawStyle.lineEnd) {
+        if (!arrowPencil) arrowPencil = getArrowLinePencil(arcs, _ext, lineScale);
+        if (arrowPencil(shp, _ctx, drawStyle, startPath, draw)) continue;
       }
       if (!drawStyle.batchOverlay && (drawStyle.overlay ||
         drawStyle.opacity < 1 || drawStyle.fillOpacity < 1 ||
@@ -644,6 +653,100 @@ function getShapePencil(arcs, ext) {
       drawPath2(protectIterForDrawing(iter, ext), t, ctx, roundToPix);
     }
   };
+}
+
+// Returns a function that draws one line feature with its arrowheads, and
+// returns false if the feature has none to draw (a style of 'none', or no
+// stroke), for the caller to draw it the usual way.
+//
+// Heads are sized by the same factor as the line width, so that a preview
+// matches the exported SVG. Far enough in that paths are clipped to the view
+// (see protectIterForDrawing()), the line is drawn clipped and untrimmed and
+// only the heads are added, since a clipped path's ends are not its ends.
+function getArrowLinePencil(arcs, ext, lineScale) {
+  var t = getScaledTransform(ext);
+  var iter = new internal.ShapeIter(arcs);
+  var strokeScale = getCanvasStrokeScale(GUI.getPixelRatio(), lineScale);
+  var clipped = ext.scale() > 100;
+  return function(shp, ctx, style, startPath, draw) {
+    var opts = internal.svg.makeLineArrowOpts(style.lineStart, style.lineEnd,
+      style.lineEndSize, style.strokeWidth, strokeScale);
+    var heads = [];
+    var i, coords, shape;
+    if (opts.start == 'none' && opts.end == 'none' || !(style.strokeWidth > 0)) {
+      return false;
+    }
+    startPath(ctx, style);
+    for (i=0; i<shp.length; i++) {
+      coords = getPixelCoords(iter, shp[i], t);
+      if (coords.length < 2) continue;
+      shape = internal.svg.getLineArrowShape(coords, opts);
+      heads = heads.concat(shape.heads);
+      if (!clipped) traceCoords(shape.coords, ctx);
+    }
+    if (clipped) draw(shp, ctx, style);
+    endPath(ctx, style);
+    drawArrowHeads(heads, ctx, style, opts.width);
+    return true;
+  };
+}
+
+function getPixelCoords(iter, path, t) {
+  var coords = [];
+  var x, y, prev;
+  iter.init(path);
+  while (iter.hasNext()) {
+    x = iter.x * t.mx + t.bx;
+    y = iter.y * t.my + t.by;
+    if (prev && prev[0] == x && prev[1] == y) continue;
+    prev = [x, y];
+    coords.push(prev);
+  }
+  return coords;
+}
+
+function traceCoords(coords, ctx) {
+  ctx.moveTo(coords[0][0], coords[0][1]);
+  for (var i=1; i<coords.length; i++) {
+    ctx.lineTo(coords[i][0], coords[i][1]);
+  }
+}
+
+// Solid heads and dots are filled with the line's colour; open ones are stroked with
+// its width, always whole and round-cornered, whatever the line's dashes and
+// caps.
+function drawArrowHeads(heads, ctx, style, width) {
+  var alpha = (style.opacity >= 0 ? style.opacity : 1) *
+    (style.strokeOpacity >= 0 ? style.strokeOpacity : 1);
+  var head, p;
+  if (heads.length === 0) return;
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = style.strokeColor;
+  ctx.strokeStyle = style.strokeColor;
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.setLineDash([]);
+  for (var i=0; i<heads.length; i++) {
+    head = heads[i];
+    ctx.beginPath();
+    if (head.type == 'dot') {
+      ctx.arc(head.center[0], head.center[1], head.radius, 0, Math.PI * 2);
+      ctx.fill();
+      continue;
+    }
+    p = head.points;
+    ctx.moveTo(p[0][0], p[0][1]);
+    ctx.lineTo(p[1][0], p[1][1]);
+    ctx.lineTo(p[2][0], p[2][1]);
+    if (head.type == 'arrow') {
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
 }
 
 function protectIterForDrawing(iter, ext) {

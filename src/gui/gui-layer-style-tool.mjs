@@ -3,7 +3,11 @@ import { El } from './gui-el';
 import {
   claimFieldKeys, isTextInput, opensAMenu, releasePanelFocus
 } from './gui-panel-focus';
-import { makeColorRow, makeFieldTip, makePanelActionButton } from './gui-panel-controls';
+import {
+  makeColorRow, makeFieldTip, makePanelActionButton, makePanelButton, makePanelSection,
+  makePanelToggle
+} from './gui-panel-controls';
+import { calloutButtonSymbols } from './gui-label-tool';
 import { SizeField } from './gui-size-field';
 import {
   parseOpacityValue, formatOpacityPct, formatColorOpacityPct, normalizeDashArrayInput
@@ -16,13 +20,45 @@ import { internal } from './gui-core';
 import { quoteCommandValue } from './gui-command-utils';
 
 var savedStylesKey = 'layer_style_presets';
-var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'fill', 'fill-opacity', 'fill-pattern'];
+var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'line-start', 'line-end', 'line-end-size', 'fill', 'fill-opacity', 'fill-pattern'];
+var arrowShapes = [{
+  name: 'arrow',
+  title: 'solid arrowheads'
+}, {
+  name: 'open-arrow',
+  title: 'open arrowheads'
+}, {
+  name: 'dot',
+  title: 'dots'
+}];
+// The arrows are the label callout's, which point left, the way a line's
+// start head does; the dot's left edge is where their tips are.
+var arrowButtonSymbols = {
+  arrow: calloutButtonSymbols.arrow,
+  'open-arrow': calloutButtonSymbols['open-arrow'],
+  dot: '<path d="M5 8H13"></path><circle class="fill" cx="5" cy="8" r="2.6"></circle>'
+};
+var arrowPositions = [{
+  name: 'start',
+  label: 'Start',
+  title: 'arrowhead at the start of the line'
+}, {
+  name: 'end',
+  label: 'End',
+  title: 'arrowhead at the end of the line'
+}, {
+  name: 'both',
+  label: 'Both',
+  title: 'arrowheads at both ends of the line'
+}];
 
 export function LayerStyleTool(gui) {
   var parent = gui.container.findChild('.mshp-main-map');
   var panel = El('div').addClass('label-style-panel layer-style-panel rollover').appendTo(parent).hide();
-  var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, dashControl, randomFillBtn, presetControl, patternControl, hit;
+  var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, dashControl, arrowControl, randomFillBtn, presetControl, patternControl, hit;
   var targetLayer = null;
+  // What the arrowhead switch turns on, for lines that have no heads
+  var lastArrow = {shape: 'arrow', position: 'end'};
 
   initPanel();
   hit = gui.map.getHitControl && gui.map.getHitControl();
@@ -111,6 +147,7 @@ export function LayerStyleTool(gui) {
     strokeControl = addColorControl(panel, 'Stroke', 'stroke', '#000000');
     strokeWidthField = addStrokeWidthControl(strokeControl.aside);
     dashControl = addDashArrayControl(panel);
+    arrowControl = addArrowControl(panel);
 
     var buttonRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(panel);
     randomFillBtn = makePanelActionButton(buttonRow, 'Random fills', applyRandomFillColors);
@@ -204,6 +241,197 @@ export function LayerStyleTool(gui) {
     return {row: row, input: input};
   }
 
+  // A switch in the heading says whether the lines have arrowheads; the rows
+  // under it are the head's shape with its size beside it, then which ends
+  // get it. A line has one shape for both ends, which is all the panel sets,
+  // though -style can give the two ends different ones.
+  function addArrowControl(parent) {
+    var section = makePanelSection(parent, 'Arrowheads');
+    var toggle = makePanelToggle(section.findChild('.label-style-section-title'), {
+      title: 'Add arrowheads',
+      className: 'layer-arrow-toggle',
+      onChange: setArrowsOn
+    });
+    var shapeRow = El('div').addClass('label-style-row label-split-row').appendTo(section);
+    var shapeCell = El('div').addClass('label-split-cell label-align-row').appendTo(shapeRow);
+    var sizeCell = El('div').addClass('label-split-cell label-spacing-row layer-arrow-size-row').appendTo(shapeRow);
+    var posRow = El('div').addClass('label-style-row label-split-row').appendTo(section);
+    var posCell = El('div').addClass('label-split-cell label-align-row').appendTo(posRow);
+    var control = {section: section, toggle: toggle, shapeBtns: {}, posBtns: {}};
+    El('div').addClass('label-split-cell').appendTo(posRow);
+    El('span').appendTo(shapeCell).text('Shape');
+    var shapeGroup = El('div').addClass('label-btn-group label-callout-buttons layer-arrow-shape-buttons').appendTo(shapeCell);
+    arrowShapes.forEach(function(item) {
+      var btn = makePanelButton(shapeGroup, '', function() {
+        applyArrowShape(item.name);
+      }).attr('data-arrow-shape', item.name).attr('aria-label', item.title);
+      El('<svg class="label-callout-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
+        arrowButtonSymbols[item.name] + '</svg>').appendTo(btn);
+      control.shapeBtns[item.name] = btn;
+    });
+    El('span').appendTo(posCell).text('Ends');
+    var posGroup = El('div').addClass('label-btn-group layer-arrow-position-buttons').appendTo(posCell);
+    arrowPositions.forEach(function(item) {
+      control.posBtns[item.name] = makePanelButton(posGroup, item.label, function() {
+        applyArrowPosition(item.name);
+      }).attr('data-arrow-position', item.name).attr('aria-label', item.title);
+    });
+    El('span').appendTo(sizeCell).text('Size');
+    control.sizeField = new SizeField(sizeCell, {
+      title: 'Arrowhead size in px, the length of its sides or the diameter of a dot',
+      min: 1,
+      max: 60,
+      step: 1,
+      bigStep: 5,
+      onSet: applyArrowSize,
+      onStep: nudgeArrowSize,
+      onDone: releaseFocus
+    });
+    return control;
+  }
+
+  // {shape, position} for one record, 'none' and '' when it has no heads. A
+  // line whose two ends have different shapes reports the start's.
+  function getArrowInfo(rec) {
+    var start = internal.svg.getLineEndType(rec || {}, 'line-start');
+    var end = internal.svg.getLineEndType(rec || {}, 'line-end');
+    var shape = start != 'none' ? start : end;
+    var position = start != 'none' && end != 'none' ? 'both' :
+      start != 'none' ? 'start' : end != 'none' ? 'end' : '';
+    return {shape: shape, position: position};
+  }
+
+  // Switching on gives the lines that have no heads the last shape and ends
+  // the section showed, so that off and on again is a round trip; the lines
+  // that have heads keep theirs. Switching off leaves line-end-size alone,
+  // for the same reason.
+  function setArrowsOn(on) {
+    applyArrowEdits(function(info) {
+      return on ? fillArrowInfo(info) : {shape: 'none', position: ''};
+    });
+  }
+
+  // Each target keeps whichever of shape and position is not being set, so
+  // that changing the shape of a selection whose lines point different ways
+  // leaves them pointing those ways.
+  function applyArrowShape(shape) {
+    applyArrowEdits(function(info) {
+      return {shape: shape, position: fillArrowInfo(info).position};
+    });
+  }
+
+  function applyArrowPosition(position) {
+    applyArrowEdits(function(info) {
+      return {shape: fillArrowInfo(info).shape, position: position};
+    });
+  }
+
+  function fillArrowInfo(info) {
+    return info.shape == 'none' ? {shape: lastArrow.shape, position: lastArrow.position} : info;
+  }
+
+  function applyArrowEdits(getNext) {
+    var records = getTargetRecords();
+    var addStroke = styleFieldIsUnsetForTargets('stroke');
+    var edits = [];
+    getTargetIds().forEach(function(id) {
+      var rec = records[id] || {};
+      var next = getNext(getArrowInfo(rec));
+      var on = next.shape != 'none';
+      var styles = [
+        ['line-start', on && next.position != 'end' ? next.shape : ''],
+        ['line-end', on && next.position != 'start' ? next.shape : '']
+      ].filter(function(style) {
+        // no need to remove what is not there
+        return style[1] || rec[style[0]];
+      });
+      if (on && addStroke) styles.push(['stroke', strokeControl.defaultColor]);
+      if (styles.length > 0) edits.push({id: id, styles: styles});
+    });
+    runStyleEdits(edits);
+  }
+
+  function applyArrowSize(value) {
+    var ids = getArrowTargetIds();
+    if (ids.length === 0) return;
+    runStyleEdits(ids.map(function(id) {
+      return {id: id, styles: [['line-end-size', value]]};
+    }));
+  }
+
+  function nudgeArrowSize(delta) {
+    var shown = getArrowSizeShown(getArrowTargetIds());
+    var size = Number(shown.value);
+    if (!isFinite(size) || shown.value === '') return;
+    applyArrowSize(Math.max(1, Math.round(size + delta)));
+  }
+
+  function getArrowTargetIds() {
+    var records = getTargetRecords();
+    return getTargetIds().filter(function(id) {
+      return getArrowInfo(records[id]).shape != 'none';
+    });
+  }
+
+  // The size a head is drawn at, which is the one its line width gives it
+  // when it has none of its own.
+  function getArrowSizeShown(ids) {
+    var records = getTargetRecords();
+    var value = '', size;
+    for (var i=0; i<ids.length; i++) {
+      size = getArrowSize(records[ids[i]]);
+      if (i > 0 && size !== value) return {value: '', mixed: true};
+      value = size;
+    }
+    return {value: value, mixed: false};
+  }
+
+  function getArrowSize(rec) {
+    var opts = internal.svg.makeLineArrowOpts('arrow', '', rec && rec['line-end-size'],
+      rec && rec['stroke-width'], 1);
+    var size = getArrowInfo(rec).shape == 'dot' ? opts.dotSize : opts.size;
+    return formatNumberValue(Math.round(size * 100) / 100);
+  }
+
+  // The shape and ends shown are those of the lines with heads; lines
+  // without are what the switch's mixed state is for.
+  function updateArrowControl() {
+    var records = getTargetRecords();
+    var ids = getTargetIds();
+    var arrowIds = getArrowTargetIds();
+    var shape, position, info;
+    for (var i=0; i<arrowIds.length; i++) {
+      info = getArrowInfo(records[arrowIds[i]]);
+      if (i === 0) {
+        shape = info.shape;
+        position = info.position;
+      } else {
+        if (info.shape != shape) shape = '';
+        if (info.position != position) position = '';
+      }
+    }
+    if (shape) lastArrow.shape = shape;
+    if (position) lastArrow.position = position;
+    var state = arrowIds.length === 0 ? 'off' :
+      arrowIds.length < ids.length ? 'mixed' : 'on';
+    arrowControl.toggle.setState(state);
+    arrowControl.section.classed('collapsed', state == 'off');
+    arrowShapes.forEach(function(item) {
+      arrowControl.shapeBtns[item.name].classed('selected', item.name == shape);
+    });
+    arrowPositions.forEach(function(item) {
+      arrowControl.posBtns[item.name].classed('selected', item.name == position);
+    });
+    var shown = arrowIds.length > 0 ? getArrowSizeShown(arrowIds) : {value: '', mixed: false};
+    arrowControl.sizeField.setValue(shown.value);
+    arrowControl.sizeField.setPlaceholder(shown.mixed ? 'mixed' : '');
+    arrowControl.sizeField.setDisabled(arrowIds.length === 0);
+  }
+
+  function getTargetRecords() {
+    return targetLayer && targetLayer.data ? targetLayer.data.getRecords() : [];
+  }
+
   function releaseFocus() {
     releasePanelFocus(panel.node());
   }
@@ -218,10 +446,12 @@ export function LayerStyleTool(gui) {
     strokeControl.row.show();
     fillControl.row.classed('hidden', geom != 'polygon');
     dashControl.row.classed('hidden', geom != 'polyline');
+    arrowControl.section.classed('hidden', geom != 'polyline');
     updateColorControl(strokeControl);
     updateColorControl(fillControl);
     updateStrokeWidthControl();
     updateDashArrayControl();
+    if (geom == 'polyline') updateArrowControl();
     randomFillBtn.classed('hidden', geom != 'polygon');
     patternControl.section.classed('hidden', geom != 'polygon');
     if (geom == 'polygon') patternControl.update();
@@ -401,6 +631,7 @@ export function LayerStyleTool(gui) {
     addStyleValue(style, 'stroke-opacity', parseOpacityValue(strokeControl.opacity.node().value));
     if (targetLayer && targetLayer.geometry_type == 'polyline') {
       addStyleValue(style, 'stroke-dasharray', getControlValue(dashControl.input));
+      addArrowStyleValues(style);
     }
     if (targetLayer && targetLayer.geometry_type == 'polygon') {
       addStyleValue(style, 'fill', getControlValue(fillControl.input));
@@ -408,6 +639,14 @@ export function LayerStyleTool(gui) {
       addStyleValue(style, 'fill-pattern', patternControl.getCode(getControlValue(fillControl.input)));
     }
     return style;
+  }
+
+  // Only when every target agrees, as with the other controls; a size is
+  // saved only if the lines have their own.
+  function addArrowStyleValues(style) {
+    ['line-start', 'line-end', 'line-end-size'].forEach(function(field) {
+      addStyleValue(style, field, getCommonStyleValue(field));
+    });
   }
 
   function addStyleValue(style, field, value) {

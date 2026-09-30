@@ -2098,6 +2098,15 @@ export function getOptionParser() {
     .option('stroke-opacity', {
       describe: 'stroke opacity'
     })
+    .option('line-start', {
+      describe: 'marker at the start of each line: arrow, open-arrow, dot or none'
+    })
+    .option('line-end', {
+      describe: 'marker at the end of each line: arrow, open-arrow, dot or none'
+    })
+    .option('line-end-size', {
+      describe: 'length of an arrowhead\'s sides in px (default grows with stroke-width)'
+    })
     .option('opacity', {
       describe: 'opacity; example: 0.5'
     })

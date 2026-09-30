@@ -1,3 +1,7 @@
+v0.7.71
+* Added arrowheads to line features: new `-style` options `line-start=`, `line-end=` (`arrow`, `open-arrow`, `dot` or `none`) and `line-end-size=`.
+* [web] Added arrowhead controls to the line style panel.
+
 v0.7.70
 * Added -labels command, with more options for labelling than the -style command.
 * [web] Added the ability to select portions of a label and make the text bold.

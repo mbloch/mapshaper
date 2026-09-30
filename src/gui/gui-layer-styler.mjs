@@ -102,10 +102,20 @@ export function getCanvasDisplayStyle(lyr) {
       // array of field names of relevant svg display properties
       fields = getStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
       records = lyr.data.getRecords();
+  // Arrowheads are drawn by the canvas as shapes, not set as attributes, so
+  // they are not among the attribute fields. Assigned on every call, like the
+  // rest, because the style object is reused from one feature to the next.
+  var arrowFields = getLineArrowFields(lyr);
+  var hasStrokeFields = fields.includes('stroke') || fields.includes('stroke-width');
 
   var styler = function(style, i) {
     var rec = records[i];
     var fname, val;
+    if (arrowFields) {
+      style.lineStart = rec && rec['line-start'];
+      style.lineEnd = rec && rec['line-end'];
+      style.lineEndSize = rec && rec['line-end-size'];
+    }
     for (var j=0; j<fields.length; j++) {
       fname = fields[j];
       val = rec && rec[fname];
@@ -127,6 +137,12 @@ export function getCanvasDisplayStyle(lyr) {
     }
   };
   var style = {styler: styler, type: 'styled'};
+  // A line layer styled with nothing but arrowheads is drawn the way SVG
+  // export draws it, with the black 1px line the layer's group gives it.
+  if (arrowFields && !hasStrokeFields) {
+    style.strokeColor = 'black';
+    style.strokeWidth = 1;
+  }
   // use squares if radius is missing... (TODO: check behavior with labels, etc)
   if (lyr.geometry_type == 'point' && fields.includes('r') === false) {
     style.dotSize = 1;
@@ -141,7 +157,18 @@ export function layerHasDrawableStyle(lyr) {
     // return fields.indexOf('r') > -1; // require 'r' field for point symbols
     return fields.includes('fill') || fields.includes('r'); // support colored squares
   }
-  return utils.difference(fields, ['opacity', 'class']).length > 0;
+  return utils.difference(fields, ['opacity', 'class']).length > 0 ||
+    !!getLineArrowFields(lyr);
+}
+
+// The arrowhead fields a line layer has, or null
+function getLineArrowFields(lyr) {
+  var fields;
+  if (lyr.geometry_type != 'polyline' || !lyr.data) return null;
+  fields = lyr.data.getFields().filter(function(f) {
+    return internal.svg.lineArrowFields.includes(f);
+  });
+  return fields.length > 0 ? fields : null;
 }
 
 function getStyleFields(lyr) {

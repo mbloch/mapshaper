@@ -4,6 +4,11 @@ import { getMeasuredTextWidth } from './svg-label-metrics';
 import { parseCalloutType, parseCalloutEnd, parsePointPair,
   isSvgNumber } from './svg-properties';
 import { roundToTenths } from '../geom/mapshaper-rounding';
+import {
+  ARROW_ANGLE, OPEN_ARROW_ANGLE, ARROW_LINE_OVERLAP, getDefaultArrowSize,
+  getArrowHead, getArrowHeadLength, trimPolyline as trimPolylineCoords,
+  getUnitVector, distance
+} from './svg-arrowheads';
 
 // A callout: a line from a label's anchor to its text, straight, elbowed or
 // curved, optionally ending in an arrowhead at the anchor. A dot at the anchor
@@ -25,14 +30,6 @@ var CURVE_BEND = 0.2;
 // The shortest first leg an automatic elbow into the top or bottom of the text
 // is drawn with, px
 var MIN_LEG = 8;
-// The angle at an arrowhead's point, degrees. The open one is wider, since a
-// narrow chevron drawn with a line reads as a thickened line more than as an
-// arrow.
-var ARROW_ANGLE = 44;
-var OPEN_ARROW_ANGLE = 70;
-// How far into a solid arrowhead the line reaches, as a fraction of the
-// head's length: far enough that its cap is hidden, short of the tip.
-var ARROW_LINE_OVERLAP = 0.7;
 // Where glyphs sit relative to their baseline, in ems, for estimating the
 // height of a block of text that is measured only for its width
 var ASCENT = 0.8;
@@ -77,8 +74,7 @@ export function getLabelCalloutShape(rec, symbolRadius) {
 // default line, and growing with the line, so that a heavier line does not end
 // in a head too small to read.
 export function getDefaultCalloutEndSize(end, lineWidth) {
-  var w = lineWidth > 0 ? lineWidth : DEFAULT_LINE_WIDTH;
-  return 7 + 3 * w;
+  return getDefaultArrowSize(lineWidth);
 }
 
 // 'arrow', 'open-arrow' or 'none'
@@ -397,31 +393,8 @@ function hasLength(path) {
 }
 
 function trimPolyline(coords, r) {
-  var p0 = coords[0];
-  for (var i = 1; i < coords.length; i++) {
-    if (distance(p0, coords[i]) > r) {
-      return {
-        kind: 'polyline',
-        coords: [getCircleExit(p0, r, coords[i - 1], coords[i])].concat(coords.slice(i))
-      };
-    }
-  }
-  return null;
-}
-
-// The point where segment @p-@q, which starts inside the circle and ends
-// outside it, crosses it.
-function getCircleExit(c, r, p, q) {
-  var dx = q[0] - p[0];
-  var dy = q[1] - p[1];
-  var ex = p[0] - c[0];
-  var ey = p[1] - c[1];
-  var a = dx * dx + dy * dy;
-  var b = 2 * (dx * ex + dy * ey);
-  var k = ex * ex + ey * ey - r * r;
-  var s = (-b + Math.sqrt(Math.max(0, b * b - 4 * a * k))) / (2 * a);
-  s = Math.max(0, Math.min(1, s));
-  return [p[0] + s * dx, p[1] + s * dy];
+  var trimmed = trimPolylineCoords(coords, r);
+  return trimmed ? {kind: 'polyline', coords: trimmed} : null;
 }
 
 function trimBezier(c, r) {
@@ -514,20 +487,6 @@ function intersectRays(p, d, q, e) {
   return s > 0 && u > 0 ? [p[0] + d[0] * s, p[1] + d[1] * s] : null;
 }
 
-// [tip, wing, wing], for a head with sides @side long meeting at @angle degrees
-function getArrowHead(tip, dir, side, angle) {
-  var len = getArrowHeadLength(side, angle);
-  var half = side * Math.sin(angle / 2 * Math.PI / 180);
-  var bx = tip[0] + dir[0] * len;
-  var by = tip[1] + dir[1] * len;
-  return [tip, [bx - dir[1] * half, by + dir[0] * half], [bx + dir[1] * half, by - dir[0] * half]];
-}
-
-// How far along the line a head with sides @side long reaches
-function getArrowHeadLength(side, angle) {
-  return side * Math.cos(angle / 2 * Math.PI / 180);
-}
-
 // Utilities
 
 function padBox(box, pad) {
@@ -542,19 +501,6 @@ function padBox(box, pad) {
 
 function boxContains(box, p) {
   return p[0] > box.xmin && p[0] < box.xmax && p[1] > box.ymin && p[1] < box.ymax;
-}
-
-function getUnitVector(p, q) {
-  var dx = q[0] - p[0];
-  var dy = q[1] - p[1];
-  var len = Math.sqrt(dx * dx + dy * dy);
-  return len > 0 ? [dx / len, dy / len] : null;
-}
-
-function distance(p, q) {
-  var dx = q[0] - p[0];
-  var dy = q[1] - p[1];
-  return Math.sqrt(dx * dx + dy * dy);
 }
 
 function lerp(p, q, t) {
