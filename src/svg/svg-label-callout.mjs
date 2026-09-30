@@ -72,12 +72,21 @@ export function getLabelCalloutShape(rec, symbolRadius) {
 
 // An arrowhead's size when callout-end-size does not say, in px: 10 for the
 // default line, and growing with the line, so that a heavier line does not end
-// in a head too small to read.
+// in a head too small to read. A ring is twice that across, which is room to
+// circle a point and its symbol.
 export function getDefaultCalloutEndSize(end, lineWidth) {
-  return getDefaultArrowSize(lineWidth);
+  var size = getDefaultArrowSize(lineWidth);
+  return end == 'ring' ? size * 2 : size;
 }
 
-// 'arrow', 'open-arrow' or 'none'
+// A ring's size is its diameter, stroke and all, as an icon ring's is; this
+// is the radius of the circle its stroke is centred on.
+function getRingRadius(size, lineWidth) {
+  var w = lineWidth > 0 ? lineWidth : DEFAULT_LINE_WIDTH;
+  return Math.max(size - w, w) / 2;
+}
+
+// 'arrow', 'open-arrow', 'ring' or 'none'
 export function getCalloutEndType(rec) {
   return rec && parseCalloutEnd(rec['callout-end'] || '') || 'none';
 }
@@ -142,7 +151,8 @@ export function getLabelFontSize(rec) {
 // Where a line meets a callout's text and how it gets there from the anchor.
 //
 // o.type     'line', 'elbow' or 'curve'
-// o.end      'arrow' (filled), 'open-arrow' (stroked) or 'none'
+// o.end      'arrow' (filled), 'open-arrow' (stroked), 'ring' (a hollow circle
+//            around the anchor, in the line's width) or 'none'
 // o.box      the text box, from getLabelTextBox()
 // o.via      [x, y] the elbow's corner or a point the curve passes through, or null
 // o.attach   [fx, fy] where the line meets the text, as fractions of the padded
@@ -154,21 +164,22 @@ export function getLabelFontSize(rec) {
 //            the line width. The size is the length of the head's sides, as
 //            drawn, stroke and all: the two styles are different shapes, and
 //            what makes one look the size of the other is sides the same
-//            length, not the same length along the line.
+//            length, not the same length along the line. A ring's size is its
+//            diameter.
 //
-// Returns {kind, coords, head, openHead, box, attach, via, tip} with coords
+// Returns {kind, coords, head, openHead, ring, box, attach, via, tip} with coords
 // from the anchor end to the text end -- a polyline's vertices, or a quadratic
 // Bezier's three points -- or null when there is nothing to draw: the anchor
 // inside the padded box, or a gap that leaves no line. head is a filled
 // triangle, openHead the three points of a stroked chevron, wing to tip to
-// wing. The rest is what the shape was worked out from: the padded box, the
+// wing, ring {center, radius} a stroked circle. The rest is what the shape was worked out from: the padded box, the
 // point where the line meets it, the elbow's corner or the curve's midpoint
 // (null for a straight line), and where the line stops short of the anchor.
 export function getCalloutShape(o) {
   var box = padBox(o.box, o.padding || 0);
   var a = [0, 0];
   var size = o.endSize > 0 ? o.endSize : getDefaultCalloutEndSize(o.end, o.width);
-  var t, v, path, tip, dir, out, lineWidth, headLen, curved;
+  var t, v, path, tip, dir, out, lineWidth, headLen, curved, ringRadius;
   if (boxContains(box, a)) return null;
   t = o.attach ? getBoxPoint(box, o.attach) :
     getAutoAttachment(o.type, box, o.via || null);
@@ -190,10 +201,14 @@ export function getCalloutShape(o) {
   } else {
     path = {kind: 'polyline', coords: [a, t]};
   }
-  path = trimPath(path, o.gap || 0);
+  // A ring is centred on the anchor, and the line starts at its stroke, or
+  // at the gap if that is further out -- round a symbol bigger than the ring.
+  ringRadius = o.end == 'ring' ? getRingRadius(size, o.width) : 0;
+  path = trimPath(path, Math.max(o.gap || 0, ringRadius));
   if (!path) return null;
   tip = path.coords[0];
   out = {kind: path.kind, coords: path.coords, head: null, openHead: null,
+    ring: ringRadius > 0 ? {center: a, radius: ringRadius} : null,
     box: box, attach: t, via: v || null, tip: tip};
   if (o.end == 'arrow') {
     headLen = getArrowHeadLength(size, ARROW_ANGLE);
@@ -257,6 +272,19 @@ function renderCalloutShape(shape, rec) {
         'stroke-width': getLineWidth(rec),
         'stroke-linecap': 'round',
         'stroke-linejoin': 'round'
+      }
+    });
+  }
+  if (shape.ring) {
+    children.push({
+      tag: 'circle',
+      properties: {
+        cx: shape.ring.center[0],
+        cy: shape.ring.center[1],
+        r: Math.round(shape.ring.radius * 100) / 100,
+        fill: 'none',
+        stroke: color,
+        'stroke-width': getLineWidth(rec)
       }
     });
   }

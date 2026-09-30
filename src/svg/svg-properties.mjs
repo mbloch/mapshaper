@@ -424,13 +424,13 @@ export function parseCalloutType(str) {
 
 export function parseCalloutEnd(str) {
   var end = String(str).trim().toLowerCase();
-  return /^(arrow|open-arrow|none)$/.test(end) ? end : null;
+  return /^(arrow|open-arrow|ring|none)$/.test(end) ? end : null;
 }
 
-// A line's ends take a callout's markers, and a dot
+// A line's ends take a callout's arrowheads, and a dot
 export function parseLineEnd(str) {
   var end = String(str).trim().toLowerCase();
-  return end == 'dot' ? end : parseCalloutEnd(end);
+  return /^(arrow|open-arrow|dot|none)$/.test(end) ? end : null;
 }
 
 // "x,y" -> [x, y], or null. Stored as a string so that a pair is set and

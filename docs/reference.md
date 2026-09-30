@@ -1183,9 +1183,9 @@ With `coordinates=`, the command adds one label, either to the target point laye
 
 `callout=`         A line from a label's anchor to its text: `line`, `elbow` or `curve`
 
-`callout-end=`     Arrowhead at the anchor end of a callout: `arrow`, `open-arrow` or `none`
+`callout-end=`     Marker at the anchor end of a callout: `arrow`, `open-arrow`, `ring` (a hollow circle around the anchor, drawn in the callout's width) or `none`
 
-`callout-end-size=` Length of an arrowhead's sides in pixels (default is 10)
+`callout-end-size=` Length of an arrowhead's sides, or a ring's diameter, in pixels (an arrowhead's default is 10 for a 1px line, and grows with the line; a ring's is twice that)
 
 `callout-via=`     `x,y` of an elbow's corner or a point on a curve, in pixels from the anchor
 

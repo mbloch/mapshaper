@@ -136,6 +136,30 @@ test('the marker size shows the drawn size, and is inert with no marker', async 
   expect(errors).toEqual([]);
 });
 
+test('a ring circles the anchor, sized by its diameter', async function({page}) {
+  var errors = collectPageErrors(page);
+  await oneLabel(page);
+  await runCommand(page, '-style dx=40 dy=-60 label-pos= callout=line callout-width=1.5 target=labels');
+  await selectLabels(page, [0]);
+  var size = page.locator('.text-style-panel .label-callout-end-size-row .size-field-input');
+
+  await clickCalloutButton(page, 'ring');
+  await expect.poll(function() { return getLabelField(page, 0, 'callout-end'); }).toBe('ring');
+  // twice an arrowhead's default for the line
+  expect(await size.inputValue()).toBe('23');
+  await size.fill('30');
+  await size.press('Enter');
+  await expect.poll(function() { return getLabelField(page, 0, 'callout-end-size'); }).toBe(30);
+  // the stroke is inside the diameter, and as wide as the line
+  await expect.poll(function() {
+    return page.evaluate(function() {
+      var c = document.querySelector('.mapshaper-svg-symbol .label-callout circle');
+      return c && [c.getAttribute('r'), c.getAttribute('stroke-width'), c.getAttribute('fill')];
+    });
+  }).toEqual(['14.25', '1.5', 'none']);
+  expect(errors).toEqual([]);
+});
+
 // One anchored label, with nothing selected.
 async function oneLabel(page) {
   await loadFixture(page, FIXTURE);

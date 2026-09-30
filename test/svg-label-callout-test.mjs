@@ -220,6 +220,36 @@ describe('svg-label-callout.mjs', function () {
       near(angleAt(o.head[0], o.head[1], o.head[2]), 35);
     });
 
+    it('centres a ring on the anchor, and starts the line at its stroke', function () {
+      var o = shape({box: {xmin: -10, xmax: 10, ymin: -120, ymax: -100, midline: -115},
+        end: 'ring', endSize: 30, width: 2});
+      // the diameter includes the stroke
+      assert.deepEqual(o.ring, {center: [0, 0], radius: 14});
+      near(Math.hypot(o.coords[0][0], o.coords[0][1]), 14);
+      assert.equal(o.head, null);
+    });
+
+    it('gives a ring twice an arrowhead\'s default size', function () {
+      assert.equal(getDefaultCalloutEndSize('ring', 1), 20);
+      assert.equal(shape({end: 'ring', width: 1}).ring.radius, 9.5);
+    });
+
+    it('starts the line at the gap when that is outside the ring', function () {
+      var o = shape({end: 'ring', endSize: 10, width: 1, gap: 12});
+      near(Math.hypot(o.coords[0][0], o.coords[0][1]), 12);
+    });
+
+    it('exports a ring as a stroked circle, and lines do not take one', async function () {
+      var out = await api.applyCommands(
+        '-i in.json -style label-text=A dx=20 dy=-60 callout=line callout-end=ring ' +
+        'callout-end-size=20 callout-width=2 -o out.svg',
+        {'in.json': {type: 'Point', coordinates: [0, 0]}});
+      assert.ok(/<circle cx="0" cy="0" r="9" fill="none" stroke="black" stroke-width="2"\/>/
+        .test(String(out['out.svg'])));
+      await assert.rejects(api.applyCommands('-i in.json -style line-end=ring -o out.json',
+        {'in.json': {type: 'LineString', coordinates: [[0, 0], [1, 1]]}}));
+    });
+
     it('runs a curve into the middle of a solid arrowhead\'s base, along its axis', function () {
       var o = shape({type: 'curve', end: 'arrow', endSize: 14, via: [-40, -40],
         box: {xmin: 20, xmax: 80, ymin: -120, ymax: -100, midline: -115}});

@@ -191,6 +191,9 @@ var calloutEnds = [{
 }, {
   name: 'open-arrow',
   title: 'open arrowhead at the anchor'
+}, {
+  name: 'ring',
+  title: 'ring around the anchor'
 }];
 // The anchor is at the lower left of the shapes and at the left of the ends,
 // which is where the markers go. The arrowheads are drawn to the renderer's
@@ -202,7 +205,8 @@ export var calloutButtonSymbols = {
   curve: '<path d="M3.5 12.5Q4.5 4.5 12.5 4"></path>',
   none: '<path d="M3 8H13"></path>',
   arrow: '<path d="M6.84 8H13"></path><path class="fill" d="M2.5 8L8.7 6.05V9.95Z"></path>',
-  'open-arrow': '<path d="M3.2 8H13"></path><path d="M7.38 5.07L3.2 8L7.38 10.93"></path>'
+  'open-arrow': '<path d="M3.2 8H13"></path><path d="M7.38 5.07L3.2 8L7.38 10.93"></path>',
+  ring: '<path d="M8.4 8H13"></path><circle cx="5.6" cy="8" r="2.8"></circle>'
 };
 var iconButtonSymbols = {
   circle: '<circle cx="8" cy="8" r="4.25"></circle>',
@@ -658,7 +662,7 @@ export function LabelTool(gui) {
     var endSizeCell = El('div').addClass('label-split-cell label-spacing-row label-callout-end-size-row').appendTo(endRow);
     El('span').appendTo(endSizeCell).text('Size');
     calloutEndSizeInput = new SizeField(endSizeCell, {
-      title: 'Arrowhead size in px, the length of its sides',
+      title: 'Marker size in px: an arrowhead\'s sides, or a ring\'s diameter',
       min: 1,
       max: 60,
       step: 1,

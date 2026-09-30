@@ -1,3 +1,6 @@
+v0.7.72
+* New callout terminator: `callout-end=ring`, a hollow circle around the anchor.
+
 v0.7.71
 * Added arrowheads to line features: new `-style` options `line-start=`, `line-end=` (`arrow`, `open-arrow`, `dot` or `none`) and `line-end-size=`.
 * [web] Added arrowhead controls to the line style panel.
