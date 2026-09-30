@@ -132,6 +132,17 @@ describe('mapshaper-pencil-gaussian.mjs', function () {
       });
     });
 
+    it('smooths the pixel jitter of the preview', function () {
+      // a slow straight stroke, stepping between two rows of pixels
+      var samples = [];
+      for (var i = 0; i <= 200; i++) samples.push([10 + i, 100 + (i % 2)]);
+      drawStroke(samples).previews.slice(50).forEach(function(preview) {
+        var dev = preview.points.map(function(p) { return Math.abs(p[1] - 100.5); });
+        var mean = dev.reduce(function(a, b) { return a + b; }, 0) / dev.length;
+        assert(mean < 0.15, 'mean deviation: ' + mean); // 0.5 for the samples
+      });
+    });
+
     it('scales its distances by pixelSize', function () {
       var samples = wobblyWave({jitter: 1.5});
       var scaled = samples.map(function(p) { return [p[0] / 100, p[1] / 100]; });

@@ -259,9 +259,13 @@ function getVertexStyle(o) {
 function getShapeEditingLayers(activeLyr, hitData) {
   var drawingIds = hitData.drawing_id >= 0 ? [hitData.drawing_id] : [];
   var otherIds = utils.difference(hitData.ids || [], drawingIds);
-  var layers = [];
+  var layers = [], lyr;
   if (drawingIds.length > 0) {
-    layers.push(getShapeEditingLayer(activeLyr, hitData, drawingIds, false));
+    lyr = getShapeEditingLayer(activeLyr, hitData, drawingIds, false);
+    // The end of a path being drawn has closely spaced vertices, and pixel
+    // rounding would show as a staircase.
+    lyr.gui.style.unroundedCoords = true;
+    layers.push(lyr);
   }
   if (otherIds.length > 0 || layers.length === 0) {
     layers.push(getShapeEditingLayer(activeLyr, hitData, otherIds, true));

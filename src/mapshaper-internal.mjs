@@ -229,7 +229,6 @@ import * as UndoTransaction from './undo/mapshaper-undo-transaction';
 import * as UndoTracking from './undo/mapshaper-undo-tracking';
 import * as Units from './geom/mapshaper-units';
 import * as CurveFit from './curves/mapshaper-curve-fit';
-import * as PencilStroke from './curves/mapshaper-pencil-stroke';
 import * as PencilGaussian from './curves/mapshaper-pencil-gaussian';
 import * as SvgHatch from './svg/svg-hatch';
 import * as SvgEffect from './svg/svg-effect';
@@ -322,7 +321,6 @@ Object.assign(internal,
   PathExport,
   Pathfinder,
   PathfinderUtils,
-  PencilStroke,
   PencilGaussian,
   PathImport,
   PathRepair,

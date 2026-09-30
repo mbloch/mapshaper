@@ -2,13 +2,14 @@ import { expect, test } from '@playwright/test';
 
 var FIXTURE = 'test/data/features/snip/ring_and_line.json';
 
-// previewLength: how far back from the pointer, along the path, vertices may
-//   still change during the drag
-[['Gaussian smoother', '', 50], ['Hobby spline', '&pencil=hobby', 90]].forEach(function([name, param, previewLength]) {
-test('a dragged stroke is smoothed, pinned at both ends, and undone in one step (' + name + ')',
+// how far back from the pointer, along the path, vertices may still change
+// during a drag
+var PREVIEW_LENGTH = 50;
+
+test('a dragged stroke is smoothed, pinned at both ends, and undone in one step',
   async function({page}) {
     var errors = collectPageErrors(page);
-    await loadFixture(page, FIXTURE, param);
+    await loadFixture(page, FIXTURE);
     await clickNewLayerLink(page, 'lines');
     var box = await getMapBox(page);
     var a = mapPoint(box, 0.15, 0.6);
@@ -30,7 +31,7 @@ test('a dragged stroke is smoothed, pinned at both ends, and undone in one step 
     // what is placed stays put; only the preview near the pointer changes
     var placedCount = 0;
     snapshots.forEach(function(snap) {
-      var placed = snap.path.slice(0, countVerticesBefore(snap.path, previewLength));
+      var placed = snap.path.slice(0, countVerticesBefore(snap.path, PREVIEW_LENGTH));
       expect(path.slice(0, placed.length)).toEqual(placed);
       placedCount = placed.length;
     });
@@ -54,7 +55,6 @@ test('a dragged stroke is smoothed, pinned at both ends, and undone in one step 
     expect((await getPaths(page, 'lines'))[0][0]).toEqual(path);
     expect(errors).toEqual([]);
   });
-});
 
 test('a stroke that returns to the start of a polygon closes it',
   async function({page}) {
@@ -245,8 +245,8 @@ async function clickNewLayerLink(page, kind) {
   await page.waitForTimeout(250);
 }
 
-async function loadFixture(page, fixture, params) {
-  await page.goto('/?undo=on&undo-test=on&files=' + encodeURIComponent(fixture) + (params || ''));
+async function loadFixture(page, fixture) {
+  await page.goto('/?undo=on&undo-test=on&files=' + encodeURIComponent(fixture));
   await page.waitForFunction(function() {
     return window.mapshaper && window.mapshaper.undoTest;
   });

@@ -637,6 +637,10 @@ function roundToPix(x) {
   return x + 0.5 | 0;
 }
 
+function noRound(x) {
+  return x;
+}
+
 function roundToHalfPix(x) {
   return (x * 2 | 0) / 2;
 }
@@ -648,11 +652,15 @@ function getShapePencil(arcs, ext) {
     if (style.fillEffect) {
       ctx.fillStyle = getCanvasFillEffect(ctx, shp, arcs, ext, style);
     }
+    // Rounding also drops vertices that land on the same pixel, which keeps
+    // detailed shapes fast to draw, so only a style for a few short paths
+    // should turn it off (see gui-overlay-styler.mjs).
+    var round = style.unroundedCoords ? noRound : roundToPix;
     for (var i=0, n=shp ? shp.length : 0; i<n; i++) {
       iter.init(shp[i]);
       // 0.2 trades visible seams for performance
       // drawPath(protectIterForDrawing(iter, ext), t, ctx, 0.2);
-      drawPath2(protectIterForDrawing(iter, ext), t, ctx, roundToPix);
+      drawPath2(protectIterForDrawing(iter, ext), t, ctx, round);
     }
   };
 }

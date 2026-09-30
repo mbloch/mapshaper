@@ -43,21 +43,26 @@ var OUTPUT_STEP = 0.5;
 var BEND_ANGLE = 12;
 var MAX_DEVIATION = 0.75;
 
-// Least spacing of the pointer samples returned by getPreview().
+// Spacing of the points returned by getPreview(), and the standard deviation
+// of the kernel that smooths the preview at the pointer. The preview is
+// smoothed more heavily further from the pointer, up to SIGMA where it meets
+// the placed vertices, so that it runs into them without a step. A small
+// kernel at the pointer removes pixel jitter without lagging behind.
 var PREVIEW_SPACING = 2;
+var PREVIEW_SIGMA = 2;
 
 // start: [x, y] first sample
-// opts: (optional) {sigma, bendAngle (degrees), maxDeviation, pixelSize}
+// opts: (optional) {sigma, previewSigma, bendAngle (degrees), maxDeviation, pixelSize}
 export function GaussianStrokeFitter(start, opts) {
   var px = opts && opts.pixelSize > 0 ? opts.pixelSize : 1;
   var sigma = getOpt(opts, 'sigma', SIGMA) * px;
   var radius = sigma * WINDOW_RADIUS;
+  var previewSigma = Math.min(getOpt(opts, 'previewSigma', PREVIEW_SIGMA) * px, sigma);
   var step = SOURCE_STEP * px;
   var outputStep = OUTPUT_STEP * px;
   var decimator = new BendDecimator(start, getOpt(opts, 'bendAngle', BEND_ANGLE) * Math.PI / 180,
     getOpt(opts, 'maxDeviation', MAX_DEVIATION) * px);
   var samples = [[start[0], start[1]]];
-  var sampleT = [0]; // arc length of each sample along the trace, once known
   // the densified trace: arc length and coordinates
   var tt = [0], xx = [start[0]], yy = [start[1]];
   var traceLen = 0; // length of the densified part of the trace
@@ -91,19 +96,18 @@ export function GaussianStrokeFitter(start, opts) {
   };
 
   // Returns points to show between the last placed vertex and the pointer
-  // (not including either): the latest smoothed point, followed by the pointer
-  // samples beyond it.
+  // (not including either): the latest smoothed point, followed by the rest of
+  // the trace, smoothed less and less towards the pointer (see PREVIEW_SIGMA).
+  // These points are not final.
   this.getPreview = function() {
-    var out = [], last = null, cand = decimator.getCandidate(), i;
-    if (cand) {
-      out.push(cand);
-      last = cand;
-    }
-    for (i = 1; i < samples.length - 1; i++) {
-      if (sampleT[i] === undefined || sampleT[i] <= phi - outputStep) continue;
-      if (last && distance(last, samples[i]) < PREVIEW_SPACING * px) continue;
-      out.push(samples[i]);
-      last = samples[i];
+    var cand = decimator.getCandidate();
+    var t0 = cand ? phi - outputStep : 0; // arc length of the candidate
+    var spacing = PREVIEW_SPACING * px;
+    var out = cand ? [cand] : [];
+    var t, s;
+    for (t = t0 + spacing; t < traceLen - spacing / 2; t += spacing) {
+      s = previewSigma + (sigma - previewSigma) * (traceLen - t) / (traceLen - t0);
+      out.push(smoothAt(t, true, s));
     }
     return out;
   };
@@ -119,13 +123,17 @@ export function GaussianStrokeFitter(start, opts) {
     return placed;
   }
 
-  function smoothAt(t, atEnd) {
-    var n = tt.length,
-        lo = firstIndexAbove(t - radius),
-        hi = firstIndexAbove(t + radius),
+  // atEnd: treat the last sample as the end of the stroke
+  // s: (optional) standard deviation of the kernel, if not sigma
+  function smoothAt(t, atEnd, s) {
+    var r = s ? s * WINDOW_RADIUS : radius,
+        n = tt.length,
+        lo = firstIndexAbove(t - r),
+        hi = firstIndexAbove(t + r),
+        end = samples[samples.length - 1],
         wt = [], wx = [], wy = [], i;
     // odd reflection of the start of the trace
-    for (i = Math.min(firstIndexAbove(radius - t), n) - 1; i > 0; i--) {
+    for (i = Math.min(firstIndexAbove(r - t), n) - 1; i > 0; i--) {
       wt.push(-tt[i]);
       wx.push(2 * xx[0] - xx[i]);
       wy.push(2 * yy[0] - yy[i]);
@@ -136,14 +144,21 @@ export function GaussianStrokeFitter(start, opts) {
       wy.push(yy[i]);
     }
     if (atEnd) {
+      // the trace stops short of the last sample until finish() adds it
+      if (tt[n - 1] < traceLen) {
+        wt.push(traceLen);
+        wx.push(end[0]);
+        wy.push(end[1]);
+      }
       // odd reflection of the end of the trace
-      for (i = n - 2; i >= 0 && 2 * traceLen - tt[i] < t + radius; i--) {
+      for (i = n - 1; i >= 0 && 2 * traceLen - tt[i] < t + r; i--) {
+        if (tt[i] >= traceLen) continue;
         wt.push(2 * traceLen - tt[i]);
-        wx.push(2 * xx[n - 1] - xx[i]);
-        wy.push(2 * yy[n - 1] - yy[i]);
+        wx.push(2 * end[0] - xx[i]);
+        wy.push(2 * end[1] - yy[i]);
       }
     }
-    return smoothPoint(wt, [wx, wy], 0, wt.length, t, 'gaussian', sigma, radius, 0);
+    return smoothPoint(wt, [wx, wy], 0, wt.length, t, 'gaussian', s || sigma, r, 0);
   }
 
   // first index of the trace with arc length > @t
@@ -170,7 +185,6 @@ export function GaussianStrokeFitter(start, opts) {
       yy.push(a[1] + (b[1] - a[1]) * f);
     }
     traceLen += len;
-    sampleT[i + 1] = traceLen;
   }
 }
 

@@ -17,8 +17,6 @@ import {
 import { translateDisplayPoint } from './gui-display-utils';
 import { showPopupAlert } from './gui-alert';
 import { addEmptyLayer } from './gui-add-layer';
-import { GUI } from './gui-lib';
-
 // pixel distance threshold for hovering near a vertex or segment midpoint
 var HOVER_THRESHOLD = 10;
 
@@ -325,20 +323,11 @@ export function initLineEditing(gui, ext, hit) {
       // data coords of the vertices before the pointer that no edit records yet
       points: anchorCommitted ? [] : [getVertexCoords(target, n - 2)],
       // fitted in display coords, which survive a zoom mid-stroke
-      fitter: createStrokeFitter(anchor),
+      fitter: new internal.GaussianStrokeFitter(anchor, {pixelSize: ext.getPixelSize()}),
       previewCount: 0, // vertices between the placed vertices and the pointer
       sampleCount: 0,
       lastEvent: e
     };
-  }
-
-  // The Hobby spline fitter can be tried instead of the Gaussian smoother
-  // with ?pencil=hobby in the page URL.
-  function createStrokeFitter(anchor) {
-    var opts = {pixelSize: ext.getPixelSize()};
-    return GUI.getUrlVars().pencil == 'hobby' ?
-      new internal.PencilStrokeFitter(anchor, opts) :
-      new internal.GaussianStrokeFitter(anchor, opts);
   }
 
   // Test if the vertex following the pointer is on the path's last vertex
