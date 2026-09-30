@@ -1,5 +1,5 @@
 
-import { fitCurveThroughKnots, getCurveSegments, getCurveLength, setCurveCurl } from '../src/curves/mapshaper-curve-fit';
+import { fitCurveThroughKnots, getCurveSegments, flattenCurveSegments, getCurveLength, setCurveCurl } from '../src/curves/mapshaper-curve-fit';
 import assert from 'assert';
 
 // max distance from p to the polyline pts
@@ -550,6 +550,35 @@ describe('mapshaper-curve-fit', function () {
       assert.ok(Math.abs(seg.c2[0] - 20) < 1e-9, 'c2 x: ' + seg.c2[0]);
       assert.ok(Math.abs(seg.c1[1]) < 1e-9 && Math.abs(seg.c2[1]) < 1e-9,
         'control points stay on the chord');
+    });
+
+    it('leaves the first knot in a given startDirection', function () {
+      [[[0, 0], [30, 0]], [[0, 0], [10, 8], [22, 3], [30, 10]]].forEach(function(knots) {
+        [-2, 0.5, 3].forEach(function(dir) {
+          var segs = getCurveSegments(knots, {startDirection: dir});
+          var c1 = segs[0].c1, p0 = segs[0].p0;
+          assert.ok(Math.abs(Math.atan2(c1[1] - p0[1], c1[0] - p0[0]) - dir) < 1e-9);
+          assert.deepEqual(segs[segs.length - 1].p3, knots[knots.length - 1]);
+        });
+      });
+    });
+
+    it('a startDirection along the free-end tangent gives the free-end curve', function () {
+      var knots = [[0, 0], [10, 8], [22, 3], [30, 10]];
+      var free = getCurveSegments(knots);
+      var dir = Math.atan2(free[0].c1[1], free[0].c1[0]);
+      var given = getCurveSegments(knots, {startDirection: dir});
+      given.forEach(function(seg, i) {
+        assert.ok(Math.hypot(seg.c2[0] - free[i].c2[0], seg.c2[1] - free[i].c2[1]) < 1e-6);
+      });
+    });
+  });
+
+  describe('flattenCurveSegments()', function () {
+    it('flattens the segments as fitCurveThroughKnots() does, omitting the first knot', function () {
+      var knots = [[0, 0], [10, 8], [22, 3], [30, 10]];
+      var out = flattenCurveSegments(getCurveSegments(knots), 0.1);
+      assert.deepEqual(out, fitCurveThroughKnots(knots, 0.1).slice(1));
     });
   });
 

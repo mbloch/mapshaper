@@ -118,12 +118,7 @@ export function getOverlayLayers(activeLyr, hitData, styleOpts) {
     styleOpts.interactionMode == 'edit_polygons' ||
     styleOpts.interactionMode == 'snip_lines') {
     // special overlay: shape editing mode
-    lyr = getOverlayLayer(activeLyr, hitData.ids);
-    lyr.gui.style = getLineEditingStyle(hitData);
-    if (activeLyr.geometry_type == 'polygon') {
-      lyr.gui.style.fillColor = hoverFill;
-    }
-    return [lyr];
+    return getShapeEditingLayers(activeLyr, hitData);
   }
   layers = [];
   if (styleOpts.interactionMode == 'label') {
@@ -258,15 +253,46 @@ function getVertexStyle(o) {
   };
 }
 
+// The path being drawn is shown without its vertices, which are only of use
+// for reshaping a completed path. The hover markers go on the last layer, so
+// they are drawn on top.
+function getShapeEditingLayers(activeLyr, hitData) {
+  var drawingIds = hitData.drawing_id >= 0 ? [hitData.drawing_id] : [];
+  var otherIds = utils.difference(hitData.ids || [], drawingIds);
+  var layers = [];
+  if (drawingIds.length > 0) {
+    layers.push(getShapeEditingLayer(activeLyr, hitData, drawingIds, false));
+  }
+  if (otherIds.length > 0 || layers.length === 0) {
+    layers.push(getShapeEditingLayer(activeLyr, hitData, otherIds, true));
+  }
+  layers.forEach(function(lyr, i) {
+    if (i < layers.length - 1) {
+      lyr.gui.style.vertex_overlay = null;
+      lyr.gui.style.pending_snip = null;
+    }
+  });
+  return layers;
+}
+
+function getShapeEditingLayer(activeLyr, hitData, ids, showVertices) {
+  var lyr = getOverlayLayer(activeLyr, ids);
+  lyr.gui.style = getLineEditingStyle(hitData, ids, showVertices);
+  if (activeLyr.geometry_type == 'polygon') {
+    lyr.gui.style.fillColor = hoverFill;
+  }
+  return lyr;
+}
+
 // style for vertex edit mode
-function getLineEditingStyle(o) {
+function getLineEditingStyle(o, ids, showVertices) {
   var isVertex = o.hit_type == 'vertex' || o.hit_type == 'disabled';
   return {
-    ids: o.ids,
+    ids: ids,
     overlay: true,
     strokeColor: black,
     strokeWidth: 1.2,
-    vertices: true,
+    vertices: showVertices,
     vertex_overlay_color: getVertexOverlayColor(o.hit_type),
     vertex_overlay_scale: isVertex ? 2.5 : 2,
     vertex_overlay: o.hit_coordinates || null,

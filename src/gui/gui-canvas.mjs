@@ -67,7 +67,7 @@ export function drawStyledLayerToCanvas(lyr, canv, ext) {
     arcs = getArcsForRendering(lyr, ext);
     filter = getShapeFilter(arcs, layer.shapes, ext);
     canv.drawStyledPaths(layer.shapes, arcs, style, filter);
-    if (style.vertices) {
+    if (style.vertices || style.vertex_overlay || style.pending_snip) {
       canv.drawVertices(layer.shapes, arcs, style, filter);
     }
   }
@@ -214,6 +214,8 @@ export function DisplayCanvas() {
   };
   */
 
+  // Draws a dot at each vertex (if style.vertices is set), and the markers of
+  // style.vertex_overlay and style.pending_snip.
   _self.drawVertices = function(shapes, arcs, style, filter) {
     var iter = new internal.ShapeIter(arcs);
     var t = getScaledTransform(_ext);
@@ -223,7 +225,7 @@ export function DisplayCanvas() {
     var i, j, p;
     _ctx.beginPath();
     _ctx.fillStyle = color;
-    for (i=0; i<shapes.length; i++) {
+    for (i=0; style.vertices && i<shapes.length; i++) {
       var shp = shapes[i];
       if (!shp || filter && !filter(i)) continue;
       for (j=0; j<shp.length; j++) {

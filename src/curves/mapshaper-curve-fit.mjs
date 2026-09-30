@@ -82,22 +82,34 @@ export function fitCurveThroughKnots(knots, tolerance) {
   }
   segments = fitRun(pts);
   out = [pts[0].slice()];
-  for (i = 0; i < segments.length; i++) {
-    flattenCubic(segments[i].p0, segments[i].c1, segments[i].c2,
-      segments[i].p3, tolerance, 0, out);
-    out.push([segments[i].p3[0], segments[i].p3[1]]);
-  }
+  flattenCurveSegments(segments, tolerance, out);
   return out;
 }
 
 // Returns the curve's control points as cubic Bezier segments, without
 // flattening. Kept separate from the flattening so that SVG export can emit
 // true curves rather than a densified polyline.
+// opts: (optional) {startDirection}: the angle, in radians, at which the curve
+//   has to leave the first knot, for continuing a curve that ends there
+//   smoothly. Without it, the start is a free end like the last knot.
 // Returns [{p0, c1, c2, p3}, ...], one per knot interval.
-export function getCurveSegments(knots) {
+export function getCurveSegments(knots, opts) {
   var pts = dedupeKnots(knots || []);
   if (pts.length < 2) return [];
-  return fitRun(pts);
+  return fitRun(pts, opts && opts.startDirection);
+}
+
+// Flattens cubic segments to a polyline within @tolerance of the curve,
+// appending the vertices after the start of the first segment to @out.
+// Returns @out.
+export function flattenCurveSegments(segments, tolerance, out) {
+  out = out || [];
+  for (var i = 0; i < segments.length; i++) {
+    flattenCubic(segments[i].p0, segments[i].c1, segments[i].c2,
+      segments[i].p3, tolerance, 0, out);
+    out.push([segments[i].p3[0], segments[i].p3[1]]);
+  }
+  return out;
 }
 
 // Arc length of the fitted curve, in the same units as the knots. Export uses
@@ -139,13 +151,15 @@ var MAX_HANDLE = 0.4;
 var MAX_CHORD_RATIO = 1.5;
 
 // Fits a run of knots, returning a cubic per interval.
-function fitRun(pts) {
+// startDir: direction the curve leaves the first knot in, or null for a free end
+function fitRun(pts, startDir) {
   var n = pts.length - 1, // segment count
       dd = [], om = [], psi = [], segments = [],
-      theta, phi, i;
+      theta0, theta, phi, i;
+  if (!isFiniteNumber(startDir)) startDir = null;
   if (n < 1) return [];
   // two knots have no interior knot to bend around
-  if (n === 1) return [straightSegment(pts[0], pts[1])];
+  if (n === 1 && startDir === null) return [straightSegment(pts[0], pts[1])];
   for (i = 0; i < n; i++) {
     dd.push(distance2D(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]));
     om.push(Math.atan2(pts[i + 1][1] - pts[i][1], pts[i + 1][0] - pts[i][0]));
@@ -154,7 +168,8 @@ function fitRun(pts) {
   psi.push(0);
   for (i = 1; i < n; i++) psi.push(wrapAngle(om[i] - om[i - 1]));
 
-  theta = solveDepartureAngles(evenOutChords(dd, n), psi, n);
+  theta0 = startDir === null ? null : wrapAngle(startDir - om[0]);
+  theta = n === 1 ? [theta0] : solveDepartureAngles(evenOutChords(dd, n), psi, n, theta0);
   phi = getArrivalAngles(theta, psi, n);
 
   for (i = 0; i < n; i++) {
@@ -209,13 +224,20 @@ function evenOutChords(dd, n) {
 //
 // The interior rows come from equalizing mock curvature across knot i; the
 // first and last rows are the curl conditions that close the system at the
-// ends of an open run.
-function solveDepartureAngles(dd, psi, n) {
+// ends of an open run. A given departure angle at the first knot (@theta0)
+// replaces the curl condition there.
+function solveDepartureAngles(dd, psi, n, theta0) {
   var lo = [], di = [], up = [], r = [], i;
   lo.push(0);
-  di.push(2 + curl);
-  up.push(1 + 2 * curl);
-  r.push(-(1 + 2 * curl) * psi[1]);
+  if (theta0 === null) {
+    di.push(2 + curl);
+    up.push(1 + 2 * curl);
+    r.push(-(1 + 2 * curl) * psi[1]);
+  } else {
+    di.push(1);
+    up.push(0);
+    r.push(theta0);
+  }
   for (i = 1; i < n - 1; i++) {
     lo.push(dd[i]);
     di.push(2 * (dd[i] + dd[i - 1]));

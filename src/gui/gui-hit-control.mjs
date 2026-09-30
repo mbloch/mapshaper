@@ -608,6 +608,7 @@ export function HitControl(gui, ext, mouse) {
       // data.ids = [drawingId];
       // data.id = drawingId;
       data.ids = utils.uniq(data.ids.concat([drawingId]));
+      data.drawing_id = drawingId;
     }
     if (pinnedOn) {
       data.pinned = true;

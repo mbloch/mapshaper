@@ -83,6 +83,25 @@ export function createUndoTestApi(gui) {
         })
       };
     },
+    // The vertices of each part of each feature in a path layer, in pixels
+    // from the top left of the map, for a test comparing a drawn path with the
+    // pointer positions that drew it.
+    getLayerPathPixels: function(name) {
+      var o = gui.model.getLayers().filter(function(o) {
+        return getLayerName(o.layer) === name;
+      })[0];
+      var ext = gui.map.getExtent();
+      var arcs;
+      if (!o) return null;
+      arcs = o.layer.gui ? o.layer.gui.displayArcs : o.dataset.arcs;
+      return (o.layer.shapes || []).map(function(shp) {
+        return shp ? shp.map(function(ids) {
+          var iter = arcs.getShapeIter(ids), pts = [];
+          while (iter.hasNext()) pts.push(ext.translateCoords(iter.x, iter.y));
+          return pts;
+        }) : null;
+      });
+    },
     selectLayer: function(name) {
       var target = gui.model.getLayers().filter(function(o) {
         return getLayerName(o.layer) === name;
@@ -97,6 +116,19 @@ export function createUndoTestApi(gui) {
           name: getLayerName(lyr),
           geometryType: lyr.geometry_type,
           shapeCount: lyr.shapes ? lyr.shapes.length : 0
+        };
+      });
+    },
+    // What each overlay layer last drew: the ids of its features, and whether
+    // it marked their vertices. The overlay is drawn to canvas, so there is no
+    // DOM state to assert on.
+    getOverlayInfo: function() {
+      var layers = gui.map && gui.map.getOverlayLayers ?
+        gui.map.getOverlayLayers() : [];
+      return layers.map(function(lyr) {
+        return {
+          ids: lyr.gui.style.ids || null,
+          vertices: !!lyr.gui.style.vertices
         };
       });
     },

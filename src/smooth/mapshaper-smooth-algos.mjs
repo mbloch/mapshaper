@@ -853,7 +853,7 @@ function buildOpenSource(t, channels, n, K, radius, L) {
 // but nonzero weight, and that discrete jump -- amplified by the quadratic fit --
 // shows up as fine-scale jitter rendered as visible kinks. The taper is symmetric
 // in |u|, so odd-reflection endpoint preservation is unaffected.
-function smoothPoint(t, channels, lo, hi, phi, method, scale, radius, gain) {
+export function smoothPoint(t, channels, lo, hi, phi, method, scale, radius, gain) {
   var gaussian = method == 'gaussian';
   // gain scales the quadratic (Savitzky-Golay) curvature correction relative to
   // the plain weighted moving average m: out = m + gain*(a0 - m). gain=0 leaves
