@@ -1,6 +1,6 @@
 import utils from '../utils/mapshaper-utils';
 import { featureHasSvgSymbol, featureHasLabel } from './svg-feature-utils';
-import { featureHasIcon, getIconRadius } from './svg-symbols';
+import { featureHasIcon, getIconRadius, RING_STROKE_WIDTH } from './svg-symbols';
 import { getLabelTextBox, getLabelFontSize, labelHasCallout } from './svg-label-callout';
 import { parsePointPair } from './svg-properties';
 import { forEachSymbolCoord, getStrokeOutset } from '../symbols/mapshaper-symbol-utils';
@@ -67,12 +67,16 @@ function getIconBox(d) {
   var sw;
   if (!(r > 0)) return null;
   if (type == 'ring') {
-    // drawn as a stroke, one px wide unless stroke-width says otherwise
+    // drawn as a stroke, RING_STROKE_WIDTH wide unless stroke-width says otherwise
     sw = +d['stroke-width'];
-    return getSquareBox(r + (sw > 0 ? sw : 1) / 2, 0, 0);
+    return getSquareBox(r + (sw > 0 ? sw : RING_STROKE_WIDTH) / 2, 0, 0);
   }
   if (type == 'circle' || type == 'square' || type == 'star') {
     return getSquareBox(r + getStrokeOutset(d), 0, 0);
+  }
+  if (type == 'nyt-star') {
+    // the outline is part of the symbol's size (see nytStar())
+    return getSquareBox(r, 0, 0);
   }
   return null; // unsupported icons are not drawn
 }

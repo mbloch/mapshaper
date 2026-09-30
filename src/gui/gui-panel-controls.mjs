@@ -43,14 +43,15 @@ export function makePanelSection(parent, title, opts) {
 // the one thing the third state exists to avoid saying.
 //
 // opts.onChange(on)  the switch was clicked
-// opts.title, opts.className
+// opts.title          the switch's accessible name (not a tooltip)
+// opts.className
 export function makePanelToggle(parent, opts) {
   var track = El('div').addClass('label-toggle').attr('role', 'checkbox').appendTo(parent);
   var state = 'off';
   if (opts.className) track.addClass(opts.className);
   var disabled = false;
   El('div').addClass('label-toggle-knob').appendTo(track);
-  if (opts.title) track.attr('title', opts.title);
+  if (opts.title) track.attr('aria-label', opts.title);
   // A click on a mixed switch turns everything on. It is the convention, and
   // it is the reading that reaches a state the switch can describe: the next
   // click then turns everything off, so both are one click away.
@@ -135,7 +136,7 @@ export function makeColorField(parent, chit, input) {
 // opacity qualifies the colour, and one border says so where two fields side
 // by side said they were separate settings. It also leaves the narrow column
 // of the row free for a field that needs it. The opacity has no caption; its
-// percent sign and its tooltip say what it is.
+// percent sign says what it is.
 //
 // Returns the field's box; the opacity input is made by makeOpacityInput().
 export function makeColorOpacityField(parent, chit, input, opacityOpts) {
@@ -184,7 +185,7 @@ export function makeColorRow(parent, opts) {
       control.picker.toggle();
     });
   control.input = El('input').attr('type', 'text')
-    .attr('title', opts.label + ' color')
+    .attr('aria-label', opts.label + ' color')
     .on('change', function() {
       var color = control.input.node().value.trim();
       if (isHexColor(color)) control.picker.setColor(color);
@@ -220,7 +221,7 @@ export function makeColorRow(parent, opts) {
 // opts.revert()        it was not, so put back what the field was showing
 export function makeOpacityInput(parent, opts) {
   var input = El('input').attr('type', 'text').addClass('label-opacity-input')
-    .attr('title', 'Opacity, 0-100%')
+    .attr('aria-label', 'Opacity, 0-100%')
     .appendTo(parent)
     .on('change', function() {
       var val = parseOpacityValue(input.node().value);

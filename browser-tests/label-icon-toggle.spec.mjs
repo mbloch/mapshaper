@@ -91,9 +91,53 @@ test('a shape applied to a mixed selection gives every label the symbol size the
     expect(String(await getLabelField(page, 1, 'icon-size'))).toBe('9');
   });
 
+test('the NYT star is offered only to NYT users', async function({page}) {
+  await twoLabels(page, 'nyt=off');
+  await selectLabels(page, [0]);
+  expect(await getShapeNames(page)).toEqual(['circle', 'square', 'star', 'ring']);
+
+  await twoLabels(page, 'nyt=on');
+  await selectLabels(page, [0]);
+  expect(await getShapeNames(page)).toEqual(['circle', 'square', 'star', 'ring', 'nyt-star']);
+});
+
+test('each shape starts at its own size, and the NYT star in its own red',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    await twoLabels(page, 'nyt=on');
+    await giveIcon(page, 0);
+    expect(String(await getLabelField(page, 0, 'icon-size'))).toBe('5');
+
+    await clickShape(page, 'ring');
+    expect(String(await getLabelField(page, 0, 'icon-size'))).toBe('8');
+    await clickShape(page, 'nyt-star');
+    expect(String(await getLabelField(page, 0, 'icon-size'))).toBe('14');
+    expect(await getLabelField(page, 0, 'icon-color')).toBe('#cc0000');
+    // the red was the shape's, not the user's, so it goes with the shape
+    await clickShape(page, 'circle');
+    expect(String(await getLabelField(page, 0, 'icon-size'))).toBe('5');
+    expect(await getLabelField(page, 0, 'icon-color')).toBeFalsy();
+    expect(errors).toEqual([]);
+  });
+
+test('a size chosen by hand survives a change of shape', async function({page}) {
+  await twoLabels(page, 'nyt=on');
+  await giveIcon(page, 0);
+  await setIconSize(page, 12);
+  await clickShape(page, 'nyt-star');
+  expect(String(await getLabelField(page, 0, 'icon-size'))).toBe('12');
+});
+
+async function getShapeNames(page) {
+  return page.locator('.text-style-panel .label-icon-buttons [data-icon]')
+    .evaluateAll(function(nodes) {
+      return nodes.map(function(node) { return node.getAttribute('data-icon'); });
+    });
+}
+
 // Two anchored labels, with nothing selected.
-async function twoLabels(page) {
-  await loadFixture(page, FIXTURE);
+async function twoLabels(page, query) {
+  await loadFixture(page, FIXTURE, query);
   await armTool(page, 'anchor');
   await clickMap(page, 0.25, 0.35);
   await writeLabel(page, 'Reno');
@@ -209,8 +253,9 @@ function collectPageErrors(page) {
   return errors;
 }
 
-async function loadFixture(page, fixture) {
-  await page.goto('/?undo=on&undo-test=on&files=' + encodeURIComponent(fixture));
+async function loadFixture(page, fixture, query) {
+  await page.goto('/?undo=on&undo-test=on&' + (query ? query + '&' : '') +
+    'files=' + encodeURIComponent(fixture));
   await page.waitForFunction(function() {
     return window.mapshaper && window.mapshaper.undoTest;
   });

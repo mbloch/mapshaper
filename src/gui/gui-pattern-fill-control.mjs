@@ -95,7 +95,7 @@ export function PatternFillControl(parent, opts) {
       onChange: setPatternOn
     });
     var typeRow = El('div').addClass('label-style-row layer-pattern-type-row').appendTo(section);
-    typeSelect = El('select').attr('title', 'Pattern type').appendTo(typeRow)
+    typeSelect = El('select').attr('aria-label', 'Pattern type').appendTo(typeRow)
       .on('change', function() {
         selectType(typeSelect.node().value);
       });
@@ -163,7 +163,7 @@ export function PatternFillControl(parent, opts) {
     makeFieldTip(caption,
       'The fill-pattern syntax of the -style command.\n' +
       'See the command reference for details.');
-    codeInput = El('input').attr('type', 'text').attr('title', 'Pattern code').appendTo(customRow)
+    codeInput = El('input').attr('type', 'text').attr('aria-label', 'Pattern code').appendTo(customRow)
       .on('change', function() {
         applyCode(codeInput.node().value.trim());
       });

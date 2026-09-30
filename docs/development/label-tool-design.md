@@ -2985,6 +2985,21 @@ so a record written anywhere else cannot make the grid lie.
 - **Icon off**: nothing moves. See "A symbol changes which position a label is
   given, and never which it may have" for why it used to.
 
+Each shape has its own default size (`gui-label-icons.mjs`): 5px for a circle
+or square, 8px for a star or ring, which read smaller at the same size, and 14px
+for the NYT star. The NYT star also has its own colour, `#cc0000`. A ring's
+stroke is 1.5px unless the label sets `stroke-width`, and sits inside
+`icon-size` like the other shapes' edges. Changing the
+shape moves a size or colour that was the old shape's default to the new
+shape's, and keeps one the user chose (`getIconShapeChange()`).
+
+The NYT star button is shown only to NYT users, meaning anyone with
+NYTFranklin installed (`isNytUser()` in `gui-nyt.mjs`; `?nyt=on` or `?nyt=off`
+in the URL overrides the check). Only the button is gated. `icon=nyt-star`
+renders for everyone, so a map made with it draws the same wherever it is
+opened. It is also left out of the icon names the `-style` command lists in its
+warning.
+
 This is what `labels` was still needed for, so retiring that mode is now only a
 removal: the two branches above go with it — `selectStyleFeature()`'s
 label-mode click rule and the halo condition — along with

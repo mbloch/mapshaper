@@ -421,6 +421,11 @@ export function chooseNewLabelFont(preferred, installed, drawnFont) {
   return drawnFont || '';
 }
 
+// Whether @fontName is one of the fonts above and installed here.
+export function isInstalledFont(fontName) {
+  return getInstalledFontNames().indexOf(fontName) > -1;
+}
+
 function getInstalledFontNames() {
   var names = [];
   getInstalledFonts().forEach(function(group) {

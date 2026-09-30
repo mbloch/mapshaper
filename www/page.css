@@ -4024,6 +4024,16 @@ body.dragging-color-picker * {
 	transform: scale(1.4);
 }
 
+/* Drawn as the symbol is, an outline around a hollow star, in the artwork's
+   own 40-unit coordinates -- so the stroke width is in those units too. */
+.label-icon-buttons .label-panel-btn[data-icon="nyt-star"] .label-icon-symbol {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 5;
+	stroke-miterlimit: 10;
+	transform: scale(0.95);
+}
+
 .label-align-buttons .label-panel-btn,
 .label-callout-buttons .label-panel-btn {
 	display: flex;

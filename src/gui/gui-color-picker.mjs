@@ -134,7 +134,7 @@ export function ColorPicker(parent, opts) {
         var tile = El('div')
           .addClass('label-color-preset')
           .attr('role', 'button')
-          .attr('title', color)
+          .attr('aria-label', color)
           .appendTo(rowEl)
           .css('background-color', color);
         if (row.length == 16 && i == 8) tile.addClass('label-color-preset-group-start');

@@ -17,6 +17,9 @@ export function getTransform(xy, scale) {
   return str;
 }
 
+// A ring icon's stroke, unless the record sets one; 1px read as too faint.
+export var RING_STROKE_WIDTH = 1.5;
+
 export var symbolRenderers = {
   line: line,
   polygon: polygon,
@@ -89,6 +92,7 @@ function renderIcon(d) {
   if (type == 'square') return square(getIconStyleData(d, r), 0, 0);
   if (type == 'ring') return ring(getIconStyleData(d, r), 0, 0);
   if (type == 'star') return star(getIconStyleData(d, r));
+  if (type == 'nyt-star') return nytStar(getIconStyleData(d, r));
   return empty();
 }
 
@@ -98,8 +102,11 @@ export function getIconRadius(d, type) {
     return d.r > 0 ? d.r : 5;
   }
   size = d['icon-size'];
-  if (type == 'circle' || type == 'ring') {
+  if (type == 'circle') {
     size -= 1;
+  } else if (type == 'ring') {
+    // the stroke's outer half is inside icon-size
+    size -= RING_STROKE_WIDTH;
   } else if (type == 'star') {
     size += 1;
   }
@@ -206,7 +213,7 @@ function ring(d, x, y) {
   o.properties.fill = 'none';
   o.properties.stroke = d.fill;
   if (!o.properties['stroke-width']) {
-    o.properties['stroke-width'] = 1;
+    o.properties['stroke-width'] = RING_STROKE_WIDTH;
   }
   return o;
 }
@@ -216,6 +223,43 @@ function star(d) {
   var o = importPolygon([coords]);
   applyStyleAttributes(o, 'point', d, nonCirclePointFilter);
   return o;
+}
+
+// A white nine-pointed star with a heavy outline in the icon's colour, drawn
+// from the source artwork's 40-unit box. The box includes the outline and its
+// mitred points, so icon-size is the width of the whole symbol.
+var NYT_STAR_BOX = 40;
+var NYT_STAR_STROKE = 5;
+var NYT_STAR_POINTS = [19.9843, 5.7196, 23.1494, 11.7629, 29.4528, 9.1512,
+  27.9924, 15.8152, 34.5, 17.8645, 29.0961, 22.0321, 32.7631, 27.7841,
+  25.9457, 27.504, 25.0572, 34.2675, 20.0149, 29.6714, 14.9847, 34.2804,
+  14.0769, 27.5192, 7.2619, 27.8167, 10.9166, 22.0553, 5.5, 17.9016,
+  12.0024, 15.8357, 10.527, 9.1754, 16.835, 11.771];
+
+function nytStar(d) {
+  var k = d.r * 2 / NYT_STAR_BOX;
+  var o = importPolygon([getNytStarCoords(k)]);
+  applyStyleAttributes(o, 'point', d, nonCirclePointFilter);
+  o.properties.stroke = o.properties.fill;
+  o.properties.fill = '#fff';
+  o.properties['stroke-width'] = roundToHundredths(NYT_STAR_STROKE * k);
+  o.properties['stroke-miterlimit'] = 10;
+  return o;
+}
+
+function getNytStarCoords(k) {
+  var c = NYT_STAR_BOX / 2;
+  var coords = [];
+  for (var i=0; i<NYT_STAR_POINTS.length; i+=2) {
+    coords.push([roundToHundredths((NYT_STAR_POINTS[i] - c) * k),
+      roundToHundredths((NYT_STAR_POINTS[i + 1] - c) * k)]);
+  }
+  coords.push(coords[0].concat());
+  return coords;
+}
+
+function roundToHundredths(n) {
+  return Math.round(n * 100) / 100;
 }
 
 function nonCirclePointFilter(k) {

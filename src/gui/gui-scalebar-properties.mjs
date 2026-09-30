@@ -144,13 +144,13 @@ export function ScalebarProperties(gui) {
 
     // Font and face menus, as in the label panel
     row = makeRow(appearance);
-    fontSelect = El('select').attr('title', 'Font').addClass('scalebar-font-select')
+    fontSelect = El('select').attr('aria-label', 'Font').addClass('scalebar-font-select')
       .appendTo(makeCell(row, 'Font'))
       .on('change', function() {
         if (fontSelect.node().value) applyFont(fontSelect.node().value);
       });
     renderFontOptions();
-    fontStyleSelect = El('select').attr('title', 'Font style')
+    fontStyleSelect = El('select').attr('aria-label', 'Font style')
       .addClass('scalebar-font-style-select')
       .appendTo(makeCell(row, 'Font style'))
       .on('change', function() {
@@ -164,7 +164,7 @@ export function ScalebarProperties(gui) {
     El('span').appendTo(colorCell).text('Color');
     colorChit = El('div').addClass('label-color-chit').attr('role', 'button')
       .on('click', function() { colorPicker.toggle(); });
-    colorInput = El('input').attr('type', 'text').attr('title', 'Scale bar color')
+    colorInput = El('input').attr('type', 'text').attr('aria-label', 'Scale bar color')
       .on('change', function() {
         var color = colorInput.node().value.trim();
         if (!color) {
@@ -190,7 +190,7 @@ export function ScalebarProperties(gui) {
       'scalebar-bar-width');
     marginInput = makeNumberInput(makeCell(row, 'Inset'), 'margin',
       'scalebar-margin')
-      .attr('title', 'Distance from the edges of the frame, in pixels');
+      .attr('aria-label', 'Distance from the edges of the frame, in pixels');
 
     row = El('div').addClass('label-style-row label-panel-button-row').appendTo(form);
     makePanelActionButton(row, 'Remove scale bar', function() {

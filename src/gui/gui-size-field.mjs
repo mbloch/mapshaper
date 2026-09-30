@@ -23,7 +23,7 @@ import { El } from './gui-el';
 //                 Escape. Whether that means giving up the keyboard is the
 //                 caller's question: the field cannot know what else wants it.
 //   decimals      how finely a typed size is kept (default 1)
-//   title         tooltip for the field
+//   title         the field's accessible name (not a tooltip)
 export function SizeField(parent, opts) {
   var o = Object.assign({min: 1, max: 999, step: 1, bigStep: 10}, opts || {});
   var box = El('div').addClass('size-field').appendTo(parent);
@@ -36,7 +36,7 @@ export function SizeField(parent, opts) {
   var dirty = false; // holds typing that has not been committed
   var disabled = false;
 
-  if (o.title) input.attr('title', o.title);
+  if (o.title) input.attr('aria-label', o.title);
 
   // While the caret is in this field the keyboard belongs to it. Without this
   // the GUI's own handlers see the keystrokes: Escape would disarm the tool,

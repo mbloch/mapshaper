@@ -23,6 +23,10 @@ import {
 import { getTextCentreOffset, getNearestPosition } from './gui-label-offset';
 import { WRAP_FIELDS, rewrapLabelValue } from './gui-label-wrap';
 import { getLabelTextCommand } from './gui-label-commands';
+import {
+  getDefaultIconSize, getDefaultIconColor, getIconShapeChange
+} from './gui-label-icons';
+import { isNytUser } from './gui-nyt';
 
 var fontField = 'font-family';
 var fontSizeField = 'font-size';
@@ -56,7 +60,6 @@ var defaultFontStyle = 'normal';
 var defaultFontWeight = '400';
 var defaultLabelColor = '#000000';
 var defaultIconColor = '#000000';
-var defaultIconSize = 5;
 // The width a halo is switched on at: past the edge of the glyphs, so a
 // stroke of twice this.
 var defaultHaloWidth = 2;
@@ -129,6 +132,10 @@ var iconTypes = [{
   name: 'star'
 }, {
   name: 'ring'
+}, {
+  name: 'nyt-star',
+  title: 'NYT star',
+  nytOnly: true
 }];
 var defaultIconShape = 'circle';
 // Alignment writes label-align rather than text-anchor, because text-anchor
@@ -201,7 +208,8 @@ var iconButtonSymbols = {
   circle: '<circle cx="8" cy="8" r="4.25"></circle>',
   square: '<rect x="4" y="4" width="8" height="8"></rect>',
   ring: '<circle cx="8" cy="8" r="3.8"></circle>',
-  star: '<path d="M8 3.2l1.18 2.92 3.14.22-2.42 2 .76 3.06L8 9.75 5.34 11.4l.76-3.06-2.42-2 3.14-.22L8 3.2z"></path>'
+  star: '<path d="M8 3.2l1.18 2.92 3.14.22-2.42 2 .76 3.06L8 9.75 5.34 11.4l.76-3.06-2.42-2 3.14-.22L8 3.2z"></path>',
+  'nyt-star': '<polygon transform="scale(0.4)" points="19.98 5.72 23.15 11.76 29.45 9.15 27.99 15.82 34.5 17.86 29.1 22.03 32.76 27.78 25.95 27.5 25.06 34.27 20.01 29.67 14.98 34.28 14.08 27.52 7.26 27.82 10.92 22.06 5.5 17.9 12 15.84 10.53 9.18 16.84 11.77"></polygon>'
 };
 
 export function LabelTool(gui) {
@@ -216,6 +224,7 @@ export function LabelTool(gui) {
   // The shape the toggle turns back on, so that switching a symbol off and on
   // again does not silently change a star into a circle.
   var lastIconShape = defaultIconShape;
+  var shownIconTypes = null;
   // Likewise the halo's width, which is what switching one off removes.
   var lastHaloWidth = defaultHaloWidth;
   // And the callout's shape.
@@ -349,7 +358,7 @@ export function LabelTool(gui) {
     // number otherwise keep theirs, and so does a colour field, because the
     // field beside it has one and "Color" says the percentage is its opacity.
     var fontRow = El('div').addClass('label-style-row').appendTo(textSection);
-    fontSelect = El('select').attr('title', 'Font').appendTo(fontRow).on('change', function() {
+    fontSelect = El('select').attr('aria-label', 'Font').appendTo(fontRow).on('change', function() {
       if (fontSelect.node().value) {
         applyFont(fontSelect.node().value);
       }
@@ -357,7 +366,7 @@ export function LabelTool(gui) {
 
     var styleSizeRow = El('div').addClass('label-style-row label-split-row').appendTo(textSection);
     var fontStyleRow = El('div').addClass('label-split-cell label-font-style-row').appendTo(styleSizeRow);
-    fontStyleSelect = El('select').attr('title', 'Font style').appendTo(fontStyleRow).on('change', function() {
+    fontStyleSelect = El('select').attr('aria-label', 'Font style').appendTo(fontStyleRow).on('change', function() {
       if (fontStyleSelect.node().value) {
         applyFontStyleVariant(fontStyleSelect.node().value);
       }
@@ -383,7 +392,7 @@ export function LabelTool(gui) {
     var textColorCell = El('div').addClass('label-split-cell label-color-row label-text-color-row').appendTo(colorRow);
     El('span').appendTo(textColorCell).text('Color');
     colorChit = El('div').addClass('label-color-chit').attr('role', 'button');
-    colorInput = El('input').attr('type', 'text').attr('title', 'Text color');
+    colorInput = El('input').attr('type', 'text').attr('aria-label', 'Text color');
     var textColorField = addColorOpacityField(textColorCell, colorChit, colorInput, applyLabelOpacity);
     colorFieldBox = textColorField.box;
     opacityInput = textColorField.opacity;
@@ -416,7 +425,7 @@ export function LabelTool(gui) {
           applyLabelAlign(item.name);
         })
         .attr('data-align', item.name)
-        .attr('title', item.title);
+        .attr('aria-label', item.title);
       alignBtns[item.name] = btn;
       appendAlignButtonSymbol(btn, item.name);
     });
@@ -455,7 +464,7 @@ export function LabelTool(gui) {
     var haloColorCell = El('div').addClass('label-split-cell label-color-row label-halo-color-row').appendTo(haloColorRow);
     El('span').appendTo(haloColorCell).text('Color');
     haloColorChit = El('div').addClass('label-color-chit').attr('role', 'button');
-    haloColorInput = El('input').attr('type', 'text').attr('title', 'Halo color');
+    haloColorInput = El('input').attr('type', 'text').attr('aria-label', 'Halo color');
     var haloColorField = addColorOpacityField(haloColorCell, haloColorChit, haloColorInput, applyHaloOpacity);
     haloColorFieldBox = haloColorField.box;
     haloOpacityInput = haloColorField.opacity;
@@ -506,12 +515,12 @@ export function LabelTool(gui) {
     var iconRow = El('div').addClass('label-style-row label-icon-shapes-row').appendTo(iconSection);
     var iconGroup = iconGroupEl = El('div').addClass('label-btn-group label-icon-buttons').appendTo(iconRow);
     iconBtns = {};
-    iconTypes.forEach(function(icon) {
+    getShownIconTypes().forEach(function(icon) {
       var btn = makePanelButton(iconGroup, '', function() {
           applyIcon(icon.name);
         })
         .attr('data-icon', icon.name)
-        .attr('title', icon.name);
+        .attr('aria-label', icon.title || icon.name);
       iconBtns[icon.name] = btn;
       appendIconButtonSymbol(btn, icon.name);
     });
@@ -520,7 +529,7 @@ export function LabelTool(gui) {
     var iconColorCell = El('div').addClass('label-split-cell label-color-row label-icon-color-row').appendTo(iconColorRow);
     El('span').appendTo(iconColorCell).text('Color');
     iconColorChit = El('div').addClass('label-color-chit').attr('role', 'button');
-    iconColorInput = El('input').attr('type', 'text').attr('title', 'Symbol color');
+    iconColorInput = El('input').attr('type', 'text').attr('aria-label', 'Symbol color');
     var iconColorField = addColorOpacityField(iconColorCell, iconColorChit, iconColorInput, applyIconOpacity);
     iconColorFieldBox = iconColorField.box;
     iconOpacityInput = iconColorField.opacity;
@@ -568,7 +577,7 @@ export function LabelTool(gui) {
           applyLabelPosition(pos);
         })
         .attr('data-position', pos)
-        .attr('title', pos);
+        .attr('aria-label', pos);
     });
 
 
@@ -578,7 +587,7 @@ export function LabelTool(gui) {
           setLabelPositionMode(gui, item.name, getPositionModeKind());
         })
         .attr('data-drag-mode', item.name)
-        .attr('title', item.title);
+        .attr('aria-label', item.title);
     });
 
     presetControl = new StylePresetControl(panel, {
@@ -663,7 +672,7 @@ export function LabelTool(gui) {
     var colorCell = El('div').addClass('label-split-cell label-color-row label-callout-color-row').appendTo(colorRow);
     El('span').appendTo(colorCell).text('Color');
     calloutColorChit = El('div').addClass('label-color-chit').attr('role', 'button');
-    calloutColorInput = El('input').attr('type', 'text').attr('title', 'Callout color');
+    calloutColorInput = El('input').attr('type', 'text').attr('aria-label', 'Callout color');
     var calloutColorField = addColorOpacityField(colorCell, calloutColorChit, calloutColorInput, applyCalloutOpacity);
     calloutColorFieldBox = calloutColorField.box;
     calloutOpacityInput = calloutColorField.opacity;
@@ -687,7 +696,7 @@ export function LabelTool(gui) {
     var gapCell = El('div').addClass('label-split-cell label-spacing-row label-callout-gap-row').appendTo(colorRow);
     El('span').appendTo(gapCell).text('Gap');
     calloutGapInput = El('input').attr('type', 'text').addClass('label-measure-input')
-      .attr('title', 'Space between the callout and the anchor, in px')
+      .attr('aria-label', 'Space between the callout and the anchor, in px')
       .attr('placeholder', 'auto')
       .attr('data-placeholder', 'auto')
       .appendTo(gapCell)
@@ -699,7 +708,7 @@ export function LabelTool(gui) {
   function makeCalloutButton(parent, item, action) {
     var btn = makePanelButton(parent, '', action)
       .attr('data-callout', item.name)
-      .attr('title', item.title);
+      .attr('aria-label', item.title);
     El('<svg class="label-callout-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
       calloutButtonSymbols[item.name] + '</svg>').appendTo(btn);
     return btn;
@@ -926,8 +935,10 @@ export function LabelTool(gui) {
     // rest of the selection has nothing to compare.
     var iconIds = getIconValueIds();
     var iconVal = getCommonValue(iconIds, iconField);
-    var iconSize = getShownValue(iconIds, iconSizeField, {useDefault: true, defaultValue: defaultIconSize});
-    var iconColor = getShownValue(iconIds, iconColorField, {useDefault: true, defaultValue: defaultIconColor});
+    var iconShape = iconVal || lastIconShape;
+    var iconSize = getShownValue(iconIds, iconSizeField, {useDefault: true, defaultValue: getDefaultIconSize(iconShape)});
+    var iconColor = getShownValue(iconIds, iconColorField, {useDefault: true,
+      defaultValue: getDefaultIconColor(iconShape) || defaultIconColor});
     var iconOpacity = getShownValue(iconIds, iconOpacityField, {useDefault: true, defaultValue: 1});
     var haloIds = getHaloValueIds();
     var haloWidth = getShownValue(haloIds, haloWidthField, {useDefault: true, defaultValue: lastHaloWidth});
@@ -1272,7 +1283,7 @@ export function LabelTool(gui) {
     // border the buttons share fades with them -- a live border around dead
     // buttons is the one part of a disabled control that still looks usable.
     iconGroupEl.classed('disabled', off);
-    iconTypes.forEach(function(icon) {
+    getShownIconTypes().forEach(function(icon) {
       iconBtns[icon.name].classed('selected', !off && icon.name == iconVal);
       setPanelButtonDisabled(iconBtns[icon.name], off);
     });
@@ -1871,10 +1882,21 @@ export function LabelTool(gui) {
 
   function getSelectedIcon() {
     var out = '';
-    iconTypes.forEach(function(icon) {
+    getShownIconTypes().forEach(function(icon) {
       if (iconBtns[icon.name].hasClass('selected')) out = icon.name;
     });
     return out;
+  }
+
+  // A label that already has an NYT star keeps it without the button: it is
+  // drawn for everyone, and only choosing one is gated.
+  function getShownIconTypes() {
+    if (!shownIconTypes) {
+      shownIconTypes = iconTypes.filter(function(icon) {
+        return !icon.nytOnly || isNytUser();
+      });
+    }
+    return shownIconTypes;
   }
 
   function applyStyleObject(style) {
@@ -1907,8 +1929,9 @@ export function LabelTool(gui) {
       // The size the symbols in the selection already share, where they share
       // one: a shape applied to a mixed selection gives the labels that had no
       // symbol the size of the ones that did, rather than resetting them all to
-      // the default.
-      styles.push([iconSizeField, getNumericSize(getIconValueIds(), iconSizeField, defaultIconSize)]);
+      // the default. A size or colour that was the old shape's default becomes
+      // the new one's (see getIconShapeChange()).
+      addIconShapeDefaults(styles, iconName, getIconValueIds());
       // The symbol's own opacity goes on with it, because the label's opacity
       // is applied to both elements: without this, text set to 50% would give
       // a half-faded symbol while the Icon section showed it at 100%.
@@ -1918,6 +1941,14 @@ export function LabelTool(gui) {
     }
     addIconPositionChange(styles, ids, !!iconName);
     applyStyleValues(styles);
+  }
+
+  function addIconShapeDefaults(styles, iconName, ids) {
+    var color = getCommonValueInfo(ids, iconColorField);
+    var change = getIconShapeChange(iconName, getCommonValue(ids, iconField) || '',
+      getCommonValue(ids, iconSizeField), color.mixed ? null : color.value || '');
+    styles.push([iconSizeField, change.size]);
+    if ('color' in change) styles.push([iconColorField, change.color]);
   }
 
   // Switching a symbol on moves a label sitting at the centre out from under
@@ -1960,7 +1991,9 @@ export function LabelTool(gui) {
   }
 
   function nudgeIconSize(delta) {
-    var size = getNumericSize(getIconTargetIds(), iconSizeField, defaultIconSize);
+    var ids = getIconTargetIds();
+    var size = getNumericSize(ids, iconSizeField,
+      getDefaultIconSize(getCommonValue(ids, iconField)));
     if (!controlsEnabled()) return;
     size = Math.max(1, size + delta);
     applyIconSize(size);

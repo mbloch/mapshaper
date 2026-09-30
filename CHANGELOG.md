@@ -1,5 +1,5 @@
 v0.7.70
-* Add -labels command, with more options for labelling than the -style command.
+* Added -labels command, with more options for labelling than the -style command.
 * [web] Added the ability to select portions of a label and make the text bold.
 * [web] Added pattern fill configuration to the polygon style panel.
 

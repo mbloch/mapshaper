@@ -211,7 +211,7 @@ export function StylePresetControl(parent, opts) {
       // in a menu that is only on screen while it is being used, and a
       // destructive action is better for waiting until intent is shown.
       El('div').addClass('label-saved-style-delete').attr('role', 'button')
-        .attr('title', 'Delete this ' + opts.styleLabel)
+        .attr('aria-label', 'Delete this ' + opts.styleLabel)
         .appendTo(itemEl).html('&times;')
         .on('click', function() {
           deleteStyle(item);

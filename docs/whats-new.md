@@ -9,11 +9,11 @@ This is a curated list of recently added features. For the full list of changes,
 
 ## September 2026
 
-<div class="whats-new-entry">
+<!-- <div class="whats-new-entry">
 
 **New `-labels` command.** [-labels](/docs/reference.html#-labels) styles labels, turns points into labels (`-labels text=NAME`) and adds single labels (`-labels coordinates=x,y text='...'`). Label options such as `font-size=`, `halo-width=` and `callout=` are documented there now, not under `-style`, which covers polygons, lines and point symbols. `-style` still accepts the label options, so existing scripts keep working.
 
-</div>
+</div> -->
 
 <div class="whats-new-entry">
 
