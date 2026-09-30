@@ -5,7 +5,7 @@
 // The angle at an arrowhead's point, degrees. The open one is wider, since a
 // narrow chevron drawn with a line reads as a thickened line more than as an
 // arrow.
-export var ARROW_ANGLE = 44;
+export var ARROW_ANGLE = 35;
 export var OPEN_ARROW_ANGLE = 70;
 // How far into a solid arrowhead the line reaches, as a fraction of the
 // head's length: far enough that its cap is hidden, short of the tip.

@@ -217,7 +217,7 @@ describe('svg-label-callout.mjs', function () {
       var o = shape({box: {xmin: -10, xmax: 10, ymin: -120, ymax: -100, midline: -115},
         end: 'arrow', endSize: 12});
       near(Math.hypot(o.head[1][0] - o.head[0][0], o.head[1][1] - o.head[0][1]), 12);
-      near(angleAt(o.head[0], o.head[1], o.head[2]), 44);
+      near(angleAt(o.head[0], o.head[1], o.head[2]), 35);
     });
 
     it('runs a curve into the middle of a solid arrowhead\'s base, along its axis', function () {

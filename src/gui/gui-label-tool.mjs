@@ -201,7 +201,7 @@ export var calloutButtonSymbols = {
   elbow: '<path d="M3.5 12.5L8 4.5H13"></path>',
   curve: '<path d="M3.5 12.5Q4.5 4.5 12.5 4"></path>',
   none: '<path d="M3 8H13"></path>',
-  arrow: '<path d="M6.7 8H13"></path><path class="fill" d="M2.5 8L8.53 5.57V10.43Z"></path>',
+  arrow: '<path d="M6.84 8H13"></path><path class="fill" d="M2.5 8L8.7 6.05V9.95Z"></path>',
   'open-arrow': '<path d="M3.2 8H13"></path><path d="M7.38 5.07L3.2 8L7.38 10.93"></path>'
 };
 var iconButtonSymbols = {
