@@ -7549,19 +7549,19 @@
       pointN = [CK.lengthMG, CK.lengthMG * Math.tan(30 * D2R$5)];
       CK.pointA = [CK.lengthMA, 0];
       CK.pointB = lineIntersection(CK.pointM, 30, CK.pointA, 45);
-      CK.lengthAG = distance$1(CK.pointA, CK.pointG);
-      CK.lengthAB = distance$1(CK.pointA, CK.pointB);
-      lengthMB = distance$1(CK.pointM, CK.pointB);
-      lengthMN = distance$1(CK.pointM, pointN);
-      lengthNG = distance$1(pointN, CK.pointG);
+      CK.lengthAG = distance$2(CK.pointA, CK.pointG);
+      CK.lengthAB = distance$2(CK.pointA, CK.pointB);
+      lengthMB = distance$2(CK.pointM, CK.pointB);
+      lengthMN = distance$2(CK.pointM, pointN);
+      lengthNG = distance$2(pointN, CK.pointG);
       CK.pointD = interpolate(lengthMB, lengthMN, pointN, CK.pointM);
       CK.pointF = [CK.lengthMG, lengthNG - lengthMB];
       CK.pointE = [
         pointN[0] - CK.lengthMA * Math.sin(30 * D2R$5),
         pointN[1] - CK.lengthMA * Math.cos(30 * D2R$5)
       ];
-      CK.lengthGF = distance$1(CK.pointG, CK.pointF);
-      CK.lengthBD = distance$1(CK.pointB, CK.pointD);
+      CK.lengthGF = distance$2(CK.pointG, CK.pointF);
+      CK.lengthBD = distance$2(CK.pointB, CK.pointD);
       CK.lengthGFE = CK.lengthGF + CK.lengthAB;
       CK.deltaMEq = CK.lengthGFE / 45;
       CK.lengthAP75 = 15 * CK.lengthParallel73to90At0;
@@ -7588,7 +7588,7 @@
           k * CK.pointD[0] - CK.pointD[1])
       );
       CK.pointC[0] = k * CK.pointC[1];
-      CK.radius = distance$1(CK.pointC, CK.pointD);
+      CK.radius = distance$2(CK.pointC, CK.pointD);
     }
 
     function ll2mp(lon, lat) {
@@ -7619,12 +7619,12 @@
       );
       var l15;
       if (hit[0]) {
-        l15 = lT + distance$1(jointT(m), hit[1]);
+        l15 = lT + distance$2(jointT(m), hit[1]);
       } else {
         hit = circleLineIntersection(
           CK.pointC, CK.radius, jointE(m), jointT(m)
         );
-        l15 = lT - distance$1(jointT(m), hit[1]);
+        l15 = lT - distance$2(jointT(m), hit[1]);
       }
       return p <= 15 ? zoneK(m, p, l15) : zoneL(m, p, l15);
     }
@@ -7660,8 +7660,8 @@
     function zoneH(m, p) {
       var p75 = parallel75(45);
       var p73 = parallel73(m).parallel73;
-      var lF = distance$1(CK.pointT, CK.pointB);
-      var lF75 = distance$1(CK.pointB, p75);
+      var lF = distance$2(CK.pointT, CK.pointB);
+      var lF75 = distance$2(CK.pointB, p75);
       var l = (75 - p) * (lF75 + lF) / 2;
       return l <= lF75 ?
         interpolate(l, lF75, p75, CK.pointB) :
@@ -7688,7 +7688,7 @@
     function zoneJ(m, p) {
       var p75 = parallel75(m);
       var p73a = parallel73(m);
-      var lF75 = distance$1(jointF(m), p75);
+      var lF75 = distance$2(jointF(m), p75);
       var l = (75 - p) * (lF75 - p73a.lengthParallel73) / 2;
       return l <= lF75 ?
         interpolate(l, lF75, p75, jointF(m)) :
@@ -7745,11 +7745,11 @@
     }
 
     function lengthTorridSegment(m) {
-      return distance$1(jointE(m), jointT(m));
+      return distance$2(jointE(m), jointT(m));
     }
 
     function lengthMiddleSegment(m) {
-      return distance$1(jointT(m), jointF(m));
+      return distance$2(jointT(m), jointF(m));
     }
 
     function parallel73(m) {
@@ -7757,15 +7757,15 @@
       var jF = jointF(m);
       if (m <= 30) {
         p73 = radialPoint(CK.pointA, CK.lengthAP73, m);
-        lF = distance$1(jF, p73);
+        lF = distance$2(jF, p73);
       } else {
         p73 = lineIntersection(CK.pointT, -60, jF, m);
-        lF = distance$1(jF, p73);
+        lF = distance$2(jF, p73);
         if (m > 44) {
           xy = lineIntersection(CK.pointT, -60, jF, 2 * m / 3);
           if (xy[0] > p73[0]) {
             p73 = xy;
-            lF = -distance$1(jF, p73);
+            lF = -distance$2(jF, p73);
           }
         }
       }
@@ -7838,7 +7838,7 @@
     return createCahillKeyesTransform(mg, true);
   }
 
-  function distance$1(a, b) {
+  function distance$2(a, b) {
     return Math.hypot(a[0] - b[0], a[1] - b[1]);
   }
 
@@ -26365,8 +26365,114 @@
     return String(str).trim().split(splitRxp);
   }
 
+  // The id of the <pattern> element a fill-pattern code is exported as. It is
+  // also how the code is recovered when an exported SVG is imported again (see
+  // decodePatternId()), so a change here has to keep decoding the ids of files
+  // that are already out there.
   function getHashId(str) {
     return ('hash_' + str).replace(/[()# ,_]+/g, '_'); // replace some chars that occur in colors
+  }
+
+  // The fill-pattern code a <pattern> id was made from, or null if the id is not
+  // one of ours. The id keeps the tokens of the code but drops the # of a hex
+  // colour and the parentheses and commas of rgb() and hsl(), so those are put
+  // back by where the colours fall in each pattern type's syntax. A hex colour
+  // has to have its # back even where the parser would not need it: without it,
+  // a colour of digits reads as a number.
+  function decodePatternId(id) {
+    var tokens, code;
+    if (!/^hash_./.test(id || '')) return null;
+    tokens = mergeColorFunctions(id.substr(5).split('_').filter(Boolean));
+    tokens = restoreHexColors(tokens);
+    if (!tokens) return null;
+    code = tokens.join(' ');
+    return parsePattern(code) ? code : null;
+  }
+
+  function mergeColorFunctions(tokens) {
+    var out = [];
+    var tok, argc, args;
+    for (var i=0; i<tokens.length; i++) {
+      tok = tokens[i];
+      if (/^(rgb|hsl)a?$/i.test(tok)) {
+        argc = /a$/i.test(tok) ? 4 : 3;
+        args = tokens.slice(i + 1, i + 1 + argc);
+        i += args.length;
+        if (tokens[i + 1] == '/' && i + 2 < tokens.length) {
+          // space-separated form with an alpha: rgb(0 0 0 / 50%)
+          out.push(tok + '(' + args.join(' ') + ' / ' + tokens[i + 2] + ')');
+          i += 2;
+        } else {
+          out.push(tok + '(' + args.join(',') + ')');
+        }
+      } else {
+        out.push(tok);
+      }
+    }
+    return out;
+  }
+
+  // Marks each token as a colour or not, by pattern type, and gives the colours
+  // that look like hex values their # back. Returns null for an unknown type.
+  function restoreHexColors(tokens) {
+    var type = tokens[0] || '';
+    var colorAt;
+    if (type.startsWith('dot') || type.startsWith('square')) {
+      colorAt = getDotColorPositions(tokens);
+    } else if (type.startsWith('dash')) {
+      colorAt = getDashColorPositions(tokens);
+    } else if (type.startsWith('hatch') || isNumberToken(type)) {
+      colorAt = getHatchColorPositions(tokens);
+    } else {
+      return null;
+    }
+    return tokens.map(function(tok, i) {
+      return colorAt[i] && /^[0-9a-f]+$/i.test(tok) && [3, 4, 6, 8].includes(tok.length) ?
+        '#' + tok : tok;
+    });
+  }
+
+  // [hatches] [rotation] width1 color1 [width2 color2 ...]
+  function getHatchColorPositions(tokens) {
+    var start = isNumberToken(tokens[0]) ? 0 : 1;
+    var rest = tokens.length - start;
+    var first = start + (rest % 2 == 1 ? 1 : 0); // odd count: a rotation first
+    return tokens.map(function(tok, i) {
+      return i >= first && (i - first) % 2 == 1;
+    });
+  }
+
+  // dots|squares [rotation] size color1 [color2 ...] spacing background
+  function getDotColorPositions(tokens) {
+    var last = tokens.length - 1;
+    // A rotation is there if the second number is also a size -- but a colour
+    // of digits looks like a number too, so a bare one counts as a colour
+    // unless a unit or a decimal point says otherwise.
+    var rotated = /deg$/.test(tokens[1] || '') ||
+      last >= 5 && isNumberToken(tokens[2]) && !mightBeHexDigits(tokens[2]);
+    var firstColor = rotated ? 3 : 2;
+    return tokens.map(function(tok, i) {
+      return i == last || i >= firstColor && i < last - 1;
+    });
+  }
+
+  // dashes [rotation] dash-length space-length width color1 [color2 ...] spacing background
+  function getDashColorPositions(tokens) {
+    var last = tokens.length - 1;
+    var rotated = /deg$/.test(tokens[1] || '') ||
+      last >= 7 && isNumberToken(tokens[4]) && !mightBeHexDigits(tokens[4]);
+    var firstColor = rotated ? 5 : 4;
+    return tokens.map(function(tok, i) {
+      return i == last || i >= firstColor && i < last - 1;
+    });
+  }
+
+  function isNumberToken(tok) {
+    return /^-?(\d+\.?\d*|\.\d+)(px|deg)?$/.test(tok || '');
+  }
+
+  function mightBeHexDigits(tok) {
+    return /^\d+$/.test(tok) && [3, 4, 6, 8].includes(tok.length);
   }
 
   // properties: properties object of a path data object (prior to conversion to SVG)
@@ -26382,7 +26488,10 @@
       if (!hash) return;
       defs.push(hash);
     }
-    properties.fill = hash.href;
+    // The feature's own fill is kept as the paint's fallback colour, which SVG
+    // draws only if the pattern cannot be. It is also how the fill survives
+    // being exported and imported again.
+    properties.fill = properties.fill ? hash.href + ' ' + properties.fill : hash.href;
   }
 
   function makeSVGPatternFill(str, id) {
@@ -26462,6 +26571,8 @@
   var SvgHatch = /*#__PURE__*/Object.freeze({
     __proto__: null,
     convertFillPattern: convertFillPattern,
+    decodePatternId: decodePatternId,
+    getHashId: getHashId,
     parseDashes: parseDashes,
     parseDots: parseDots,
     parseHatches: parseHatches,
@@ -26759,6 +26870,11 @@
     'callout-color': 'color',
     'callout-width': 'number',
     'callout-opacity': 'number',
+    // arrowheads at the ends of a line -- see svg-line-arrows.mjs. Drawn as
+    // shapes, not written as attributes, so not in propertiesBySymbolType.
+    'line-start': 'lineend',
+    'line-end': 'lineend',
+    'line-end-size': 'number',
     'letter-spacing': 'measure',
     'line-height': 'measure',
     opacity: 'number',
@@ -27070,6 +27186,8 @@
       val = parseCalloutType(strVal);
     } else if (type == 'calloutend') {
       val = parseCalloutEnd(strVal);
+    } else if (type == 'lineend') {
+      val = parseLineEnd(strVal);
     } else if (type == 'pointpair') {
       val = parsePointPair(strVal);
       val = val ? formatPointPair(val) : null;
@@ -27119,6 +27237,12 @@
   function parseCalloutEnd(str) {
     var end = String(str).trim().toLowerCase();
     return /^(arrow|open-arrow|none)$/.test(end) ? end : null;
+  }
+
+  // A line's ends take a callout's markers, and a dot
+  function parseLineEnd(str) {
+    var end = String(str).trim().toLowerCase();
+    return end == 'dot' ? end : parseCalloutEnd(end);
   }
 
   // "x,y" -> [x, y], or null. Stored as a string so that a pair is set and
@@ -27240,6 +27364,7 @@
     parseCalloutEnd: parseCalloutEnd,
     parseCalloutType: parseCalloutType,
     parseLabelPosition: parseLabelPosition,
+    parseLineEnd: parseLineEnd,
     parsePointPair: parsePointPair,
     parseStyleLiteral: parseStyleLiteral,
     parseSvgMeasure: parseSvgMeasure,
@@ -27742,6 +27867,85 @@
     toPixels: toPixels
   });
 
+  // Arrowhead geometry shared by label callouts (svg-label-callout.mjs) and the
+  // ends of line features (svg-line-arrows.mjs), so that the two draw the same
+  // heads. Everything is in px, y down.
+
+  // The angle at an arrowhead's point, degrees. The open one is wider, since a
+  // narrow chevron drawn with a line reads as a thickened line more than as an
+  // arrow.
+  var ARROW_ANGLE = 35;
+  var OPEN_ARROW_ANGLE = 70;
+  // How far into a solid arrowhead the line reaches, as a fraction of the
+  // head's length: far enough that its cap is hidden, short of the tip.
+  var ARROW_LINE_OVERLAP = 0.7;
+
+  var DEFAULT_LINE_WIDTH$2 = 1;
+
+  // An arrowhead's size when nothing says, in px: the length of its sides. 10
+  // for a 1px line, growing with the line, so that a heavier line does not end
+  // in a head too small to read.
+  function getDefaultArrowSize(lineWidth) {
+    var w = lineWidth > 0 ? lineWidth : DEFAULT_LINE_WIDTH$2;
+    return 7 + 3 * w;
+  }
+
+  // [tip, wing, wing], for a head with sides @side long meeting at @angle degrees,
+  // pointing at @tip from direction @dir (a unit vector from the tip back along
+  // the line)
+  function getArrowHead(tip, dir, side, angle) {
+    var len = getArrowHeadLength(side, angle);
+    var half = side * Math.sin(angle / 2 * Math.PI / 180);
+    var bx = tip[0] + dir[0] * len;
+    var by = tip[1] + dir[1] * len;
+    return [tip, [bx - dir[1] * half, by + dir[0] * half], [bx + dir[1] * half, by - dir[0] * half]];
+  }
+
+  // How far along the line a head with sides @side long reaches
+  function getArrowHeadLength(side, angle) {
+    return side * Math.cos(angle / 2 * Math.PI / 180);
+  }
+
+  // The part of polyline @coords after it first leaves the circle of radius @r
+  // around its first point, starting on the circle; or null if it never does.
+  function trimPolyline$1(coords, r) {
+    var p0 = coords[0];
+    for (var i = 1; i < coords.length; i++) {
+      if (distance$1(p0, coords[i]) > r) {
+        return [getCircleExit(p0, r, coords[i - 1], coords[i])].concat(coords.slice(i));
+      }
+    }
+    return null;
+  }
+
+  // The point where segment @p-@q, which starts inside the circle and ends
+  // outside it, crosses it.
+  function getCircleExit(c, r, p, q) {
+    var dx = q[0] - p[0];
+    var dy = q[1] - p[1];
+    var ex = p[0] - c[0];
+    var ey = p[1] - c[1];
+    var a = dx * dx + dy * dy;
+    var b = 2 * (dx * ex + dy * ey);
+    var k = ex * ex + ey * ey - r * r;
+    var s = (-b + Math.sqrt(Math.max(0, b * b - 4 * a * k))) / (2 * a);
+    s = Math.max(0, Math.min(1, s));
+    return [p[0] + s * dx, p[1] + s * dy];
+  }
+
+  function getUnitVector(p, q) {
+    var dx = q[0] - p[0];
+    var dy = q[1] - p[1];
+    var len = Math.sqrt(dx * dx + dy * dy);
+    return len > 0 ? [dx / len, dy / len] : null;
+  }
+
+  function distance$1(p, q) {
+    var dx = q[0] - p[0];
+    var dy = q[1] - p[1];
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
   // A callout: a line from a label's anchor to its text, straight, elbowed or
   // curved, optionally ending in an arrowhead at the anchor. A dot at the anchor
   // is the label's icon, not a callout marker.
@@ -27754,7 +27958,7 @@
   // See docs/development/text-annotation-design.md.
 
   var DEFAULT_PADDING$1 = 3;
-  var DEFAULT_LINE_WIDTH = 1;
+  var DEFAULT_LINE_WIDTH$1 = 1;
   // Space left between the anchor's symbol and the end of the line
   var SYMBOL_CLEARANCE = 2;
   // How far an automatic curve bows out, as a fraction of its chord
@@ -27762,14 +27966,6 @@
   // The shortest first leg an automatic elbow into the top or bottom of the text
   // is drawn with, px
   var MIN_LEG = 8;
-  // The angle at an arrowhead's point, degrees. The open one is wider, since a
-  // narrow chevron drawn with a line reads as a thickened line more than as an
-  // arrow.
-  var ARROW_ANGLE = 44;
-  var OPEN_ARROW_ANGLE = 70;
-  // How far into a solid arrowhead the line reaches, as a fraction of the
-  // head's length: far enough that its cap is hidden, short of the tip.
-  var ARROW_LINE_OVERLAP = 0.7;
   // Where glyphs sit relative to their baseline, in ems, for estimating the
   // height of a block of text that is measured only for its width
   var ASCENT = 0.8;
@@ -27814,8 +28010,7 @@
   // default line, and growing with the line, so that a heavier line does not end
   // in a head too small to read.
   function getDefaultCalloutEndSize(end, lineWidth) {
-    var w = lineWidth > 0 ? lineWidth : DEFAULT_LINE_WIDTH;
-    return 7 + 3 * w;
+    return getDefaultArrowSize(lineWidth);
   }
 
   // 'arrow', 'open-arrow' or 'none'
@@ -27923,7 +28118,7 @@
       v = o.via || getAutoElbow(a, t, box);
       // A corner on either end is no corner -- straight under the text, say --
       // and a leg of no length has no direction for an arrowhead to take.
-      path = {kind: 'polyline', coords: distance(a, v) > 0 && distance(v, t) > 0 ?
+      path = {kind: 'polyline', coords: distance$1(a, v) > 0 && distance$1(v, t) > 0 ?
         [a, v, t] : [a, t]};
     } else if (o.type == 'curve') {
       v = o.via || getAutoBend(a, t);
@@ -27951,7 +28146,7 @@
       // the chevron's point: the point is set back by that much, so that the
       // arrow ends where a filled one would. The join and the round cap at the
       // far end each add half a line width to an arm, which is taken off it.
-      lineWidth = o.width > 0 ? o.width : DEFAULT_LINE_WIDTH;
+      lineWidth = o.width > 0 ? o.width : DEFAULT_LINE_WIDTH$1;
       path = trimPath(path, lineWidth / 2) || path;
       dir = getStartDirection(path);
       if (!dir) return null;
@@ -28128,44 +28323,21 @@
   function hasLength(path) {
     var c = path.coords;
     for (var i = 1; i < c.length; i++) {
-      if (distance(c[0], c[i]) > 0) return true;
+      if (distance$1(c[0], c[i]) > 0) return true;
     }
     return false;
   }
 
   function trimPolyline(coords, r) {
-    var p0 = coords[0];
-    for (var i = 1; i < coords.length; i++) {
-      if (distance(p0, coords[i]) > r) {
-        return {
-          kind: 'polyline',
-          coords: [getCircleExit(p0, r, coords[i - 1], coords[i])].concat(coords.slice(i))
-        };
-      }
-    }
-    return null;
-  }
-
-  // The point where segment @p-@q, which starts inside the circle and ends
-  // outside it, crosses it.
-  function getCircleExit(c, r, p, q) {
-    var dx = q[0] - p[0];
-    var dy = q[1] - p[1];
-    var ex = p[0] - c[0];
-    var ey = p[1] - c[1];
-    var a = dx * dx + dy * dy;
-    var b = 2 * (dx * ex + dy * ey);
-    var k = ex * ex + ey * ey - r * r;
-    var s = (-b + Math.sqrt(Math.max(0, b * b - 4 * a * k))) / (2 * a);
-    s = Math.max(0, Math.min(1, s));
-    return [p[0] + s * dx, p[1] + s * dy];
+    var trimmed = trimPolyline$1(coords, r);
+    return trimmed ? {kind: 'polyline', coords: trimmed} : null;
   }
 
   function trimBezier(c, r) {
     var steps = 64;
     var lo = 0, hi = -1, mid, i;
     for (i = 1; i <= steps; i++) {
-      if (distance(c[0], getBezierPoint(c, i / steps)) > r) {
+      if (distance$1(c[0], getBezierPoint(c, i / steps)) > r) {
         hi = i / steps;
         lo = (i - 1) / steps;
         break;
@@ -28174,7 +28346,7 @@
     if (hi < 0) return null;
     for (i = 0; i < 24; i++) {
       mid = (lo + hi) / 2;
-      if (distance(c[0], getBezierPoint(c, mid)) > r) hi = mid;
+      if (distance$1(c[0], getBezierPoint(c, mid)) > r) hi = mid;
       else lo = mid;
     }
     return {kind: 'bezier', coords: splitBezier(c, hi)};
@@ -28200,7 +28372,7 @@
   function getStartDirection(path) {
     var c = path.coords;
     var next = c[1];
-    if (path.kind == 'bezier' && distance(c[0], c[1]) === 0) next = c[2];
+    if (path.kind == 'bezier' && distance$1(c[0], c[1]) === 0) next = c[2];
     return getUnitVector(c[0], next);
   }
 
@@ -28232,8 +28404,8 @@
     ctrl = intersectRays(start, dir, end, getUnitVector(end, rest.coords[1]));
     // A curve that doubles back, or runs straight on: a control point on the
     // head's axis still takes the line out of the head straight.
-    if (!ctrl) ctrl = [start[0] + dir[0] * distance(start, end) / 2,
-      start[1] + dir[1] * distance(start, end) / 2];
+    if (!ctrl) ctrl = [start[0] + dir[0] * distance$1(start, end) / 2,
+      start[1] + dir[1] * distance$1(start, end) / 2];
     return {dir: dir, path: {kind: 'bezier', coords: [start, ctrl, end]}};
   }
 
@@ -28249,20 +28421,6 @@
     s = (qx * e[1] - qy * e[0]) / cross;
     u = (qx * d[1] - qy * d[0]) / cross;
     return s > 0 && u > 0 ? [p[0] + d[0] * s, p[1] + d[1] * s] : null;
-  }
-
-  // [tip, wing, wing], for a head with sides @side long meeting at @angle degrees
-  function getArrowHead(tip, dir, side, angle) {
-    var len = getArrowHeadLength(side, angle);
-    var half = side * Math.sin(angle / 2 * Math.PI / 180);
-    var bx = tip[0] + dir[0] * len;
-    var by = tip[1] + dir[1] * len;
-    return [tip, [bx - dir[1] * half, by + dir[0] * half], [bx + dir[1] * half, by - dir[0] * half]];
-  }
-
-  // How far along the line a head with sides @side long reaches
-  function getArrowHeadLength(side, angle) {
-    return side * Math.cos(angle / 2 * Math.PI / 180);
   }
 
   // Utilities
@@ -28281,19 +28439,6 @@
     return p[0] > box.xmin && p[0] < box.xmax && p[1] > box.ymin && p[1] < box.ymax;
   }
 
-  function getUnitVector(p, q) {
-    var dx = q[0] - p[0];
-    var dy = q[1] - p[1];
-    var len = Math.sqrt(dx * dx + dy * dy);
-    return len > 0 ? [dx / len, dy / len] : null;
-  }
-
-  function distance(p, q) {
-    var dx = q[0] - p[0];
-    var dy = q[1] - p[1];
-    return Math.sqrt(dx * dx + dy * dy);
-  }
-
   function lerp(p, q, t) {
     return [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
   }
@@ -28303,8 +28448,8 @@
   }
 
   function getLineWidth(rec) {
-    var w = getNumber(rec['callout-width'], DEFAULT_LINE_WIDTH);
-    return w > 0 ? w : DEFAULT_LINE_WIDTH;
+    var w = getNumber(rec['callout-width'], DEFAULT_LINE_WIDTH$1);
+    return w > 0 ? w : DEFAULT_LINE_WIDTH$1;
   }
 
   function getFontSizeInPx$1(rec) {
@@ -28356,6 +28501,9 @@
     }
     return str;
   }
+
+  // A ring icon's stroke, unless the record sets one; 1px read as too faint.
+  var RING_STROKE_WIDTH = 1.5;
 
   var symbolRenderers = {
     line: line,
@@ -28429,6 +28577,7 @@
     if (type == 'square') return square(getIconStyleData(d, r), 0, 0);
     if (type == 'ring') return ring(getIconStyleData(d, r), 0, 0);
     if (type == 'star') return star(getIconStyleData(d, r));
+    if (type == 'nyt-star') return nytStar(getIconStyleData(d, r));
     return empty();
   }
 
@@ -28438,8 +28587,11 @@
       return d.r > 0 ? d.r : 5;
     }
     size = d['icon-size'];
-    if (type == 'circle' || type == 'ring') {
+    if (type == 'circle') {
       size -= 1;
+    } else if (type == 'ring') {
+      // the stroke's outer half is inside icon-size
+      size -= RING_STROKE_WIDTH;
     } else if (type == 'star') {
       size += 1;
     }
@@ -28546,7 +28698,7 @@
     o.properties.fill = 'none';
     o.properties.stroke = d.fill;
     if (!o.properties['stroke-width']) {
-      o.properties['stroke-width'] = 1;
+      o.properties['stroke-width'] = RING_STROKE_WIDTH;
     }
     return o;
   }
@@ -28556,6 +28708,43 @@
     var o = importPolygon([coords]);
     applyStyleAttributes(o, 'point', d, nonCirclePointFilter);
     return o;
+  }
+
+  // A white nine-pointed star with a heavy outline in the icon's colour, drawn
+  // from the source artwork's 40-unit box. The box includes the outline and its
+  // mitred points, so icon-size is the width of the whole symbol.
+  var NYT_STAR_BOX = 40;
+  var NYT_STAR_STROKE = 5;
+  var NYT_STAR_POINTS = [19.9843, 5.7196, 23.1494, 11.7629, 29.4528, 9.1512,
+    27.9924, 15.8152, 34.5, 17.8645, 29.0961, 22.0321, 32.7631, 27.7841,
+    25.9457, 27.504, 25.0572, 34.2675, 20.0149, 29.6714, 14.9847, 34.2804,
+    14.0769, 27.5192, 7.2619, 27.8167, 10.9166, 22.0553, 5.5, 17.9016,
+    12.0024, 15.8357, 10.527, 9.1754, 16.835, 11.771];
+
+  function nytStar(d) {
+    var k = d.r * 2 / NYT_STAR_BOX;
+    var o = importPolygon([getNytStarCoords(k)]);
+    applyStyleAttributes(o, 'point', d, nonCirclePointFilter);
+    o.properties.stroke = o.properties.fill;
+    o.properties.fill = '#fff';
+    o.properties['stroke-width'] = roundToHundredths(NYT_STAR_STROKE * k);
+    o.properties['stroke-miterlimit'] = 10;
+    return o;
+  }
+
+  function getNytStarCoords(k) {
+    var c = NYT_STAR_BOX / 2;
+    var coords = [];
+    for (var i=0; i<NYT_STAR_POINTS.length; i+=2) {
+      coords.push([roundToHundredths((NYT_STAR_POINTS[i] - c) * k),
+        roundToHundredths((NYT_STAR_POINTS[i + 1] - c) * k)]);
+    }
+    coords.push(coords[0].concat());
+    return coords;
+  }
+
+  function roundToHundredths(n) {
+    return Math.round(n * 100) / 100;
   }
 
   function nonCirclePointFilter(k) {
@@ -28637,6 +28826,7 @@
 
   var SvgSymbols = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    RING_STROKE_WIDTH: RING_STROKE_WIDTH,
     featureHasIcon: featureHasIcon,
     getAnchorSymbolRadius: getAnchorSymbolRadius,
     getIconRadius: getIconRadius,
@@ -30079,6 +30269,198 @@
   }
   */
 
+  // Markers at the ends of line features: line-start= and line-end= take
+  // arrow (a filled triangle), open-arrow (a stroked chevron), dot (a filled
+  // circle centred on the end) or none, and line-end-size= is the length of a
+  // head's sides in px, for both ends, or a dot's diameter. A dot with no size
+  // of its own is DOT_SIZE_RATIO of an arrowhead's default size.
+  //
+  // The heads are drawn as shapes rather than as SVG <marker>s, so that the
+  // canvas in the GUI and the exported SVG draw the same thing, and so that a
+  // solid head can have the line stop inside it, where its cap is hidden. Every
+  // part of a multi-part line gets its own heads: part order is not something
+  // the commands that make multi-part lines preserve.
+  //
+  // Coordinates are px, y down: the SVG export's space, or the canvas's.
+
+  var DEFAULT_LINE_WIDTH = 1;
+  // 6px across at the default size for a 1px line
+  var DOT_SIZE_RATIO = 0.6;
+
+  // 'arrow', 'open-arrow', 'dot' or 'none'
+  function getLineEndType(rec, field) {
+    return rec && rec[field] && parseLineEnd(rec[field]) || 'none';
+  }
+
+  function lineHasArrows(rec) {
+    return getLineEndType(rec, 'line-start') != 'none' ||
+      getLineEndType(rec, 'line-end') != 'none';
+  }
+
+  // What getLineArrowShape() needs from a record, at scale @scale (the factor
+  // the canvas multiplies line widths by; 1 for SVG).
+  function getLineArrowOpts(rec, scale) {
+    return makeLineArrowOpts(rec['line-start'], rec['line-end'], rec['line-end-size'],
+      rec['stroke-width'], scale);
+  }
+
+  // The same, from the values themselves, for the canvas, which has them in a
+  // style object rather than a record.
+  function makeLineArrowOpts(start, end, size, strokeWidth, scale) {
+    var k = scale > 0 ? scale : 1;
+    var w = isSvgNumber(strokeWidth) && Number(strokeWidth) >= 0 ?
+      Number(strokeWidth) : DEFAULT_LINE_WIDTH;
+    var hasSize = isSvgNumber(size) && Number(size) > 0;
+    var side = hasSize ? Number(size) : getDefaultArrowSize(w);
+    return {
+      start: start && parseLineEnd(start) || 'none',
+      end: end && parseLineEnd(end) || 'none',
+      size: side * k,
+      dotSize: (hasSize ? side : side * DOT_SIZE_RATIO) * k,
+      width: w * k
+    };
+  }
+
+  // Field names, for a layer that may have them
+  var lineArrowFields = ['line-start', 'line-end', 'line-end-size'];
+
+  // One part of a line, with its heads: {coords, heads}, where coords is the
+  // line to stroke -- cut back into a solid head, so that its cap does not show
+  // past the tip -- and heads is a list of {type, points}: a solid head's
+  // triangle, tip first, or an open head's chevron, wing to tip to wing. A dot
+  // is {type, center, radius}.
+  //
+  // A head points along the chord from its tip to where the line first reaches
+  // the head's length from it, rather than along the last segment, which on
+  // detailed or noisy data can be a jog of a fraction of a pixel pointing
+  // anywhere. The line is then straightened to meet the head along its axis. An
+  // end whose part is too short to hold its head gets none.
+  function getLineArrowShape(coords, opts) {
+    var out = {coords: coords, heads: []};
+    var end;
+    if (opts.start != 'none') {
+      addHead(out, opts.start, opts);
+    }
+    if (opts.end != 'none') {
+      end = {coords: out.coords.slice().reverse(), heads: out.heads};
+      addHead(end, opts.end, opts);
+      out.coords = end.coords.reverse();
+    }
+    return out;
+  }
+
+  // Puts a head of @type at the first point of @shape.coords
+  function addHead(shape, type, opts) {
+    var coords = shape.coords;
+    var width = opts.width > 0 ? opts.width : DEFAULT_LINE_WIDTH;
+    var tip, side, angle, len, rest, dir, head;
+    if (!coords || coords.length < 2) return;
+    if (type == 'dot') {
+      addDot(shape, (opts.dotSize || opts.size * DOT_SIZE_RATIO) / 2);
+      return;
+    }
+    if (type == 'open-arrow') {
+      // Stroked with a round join, which reaches half a line width past the
+      // chevron's point: the point is set back by that much, so that the arrow
+      // ends where a solid one would, and the arms lose half a line width each
+      // to the join and the cap.
+      coords = trimPolyline$1(coords, width / 2);
+      if (!coords) return;
+      side = Math.max(opts.size - width, opts.size / 2);
+      angle = OPEN_ARROW_ANGLE;
+    } else {
+      side = opts.size;
+      angle = ARROW_ANGLE;
+    }
+    tip = coords[0];
+    len = getArrowHeadLength(side, angle);
+    rest = trimPolyline$1(coords, len);
+    dir = rest ? getUnitVector(tip, rest[0]) : null;
+    if (!dir) return;
+    head = getArrowHead(tip, dir, side, angle);
+    if (type == 'open-arrow') {
+      shape.heads.push({type: type, points: [head[1], head[0], head[2]]});
+      shape.coords = [tip].concat(rest);
+    } else {
+      shape.heads.push({type: type, points: head});
+      shape.coords = [[tip[0] + dir[0] * len * ARROW_LINE_OVERLAP,
+        tip[1] + dir[1] * len * ARROW_LINE_OVERLAP]].concat(rest);
+    }
+  }
+
+  // The line stops halfway to the dot's edge, which hides its cap in the dot
+  // (for lines narrower than the dot's radius) while overlapping it no more than
+  // a solid head does. A part too short to be cut back keeps its dot.
+  function addDot(shape, radius) {
+    var center = shape.coords[0];
+    var rest = trimPolyline$1(shape.coords, radius / 2);
+    shape.heads.push({type: 'dot', center: center, radius: radius});
+    if (rest) shape.coords = rest;
+  }
+
+  // A line feature with arrowheads, as SVG: a group holding the line and its
+  // heads, for the feature's style attributes to go on. @parts is a list of
+  // polylines (a LineString's coordinates are one).
+  function renderArrowLine(parts, rec) {
+    var opts = getLineArrowOpts(rec, 1);
+    var color = rec.stroke || 'black';
+    var lines = [];
+    var children = [];
+    parts.forEach(function(part) {
+      var shape = getLineArrowShape(part, opts);
+      lines.push(shape.coords.map(roundPoint));
+      shape.heads.forEach(function(head) {
+        children.push(renderHead(head, color, rec));
+      });
+    });
+    children.unshift(importMultiLineString(lines));
+    return {tag: 'g', properties: {}, children: children};
+  }
+
+  function renderHead(head, color, rec) {
+    var points, center;
+    if (head.type == 'dot') {
+      center = roundPoint(head.center);
+      return {tag: 'circle', properties: addFillOpacity({cx: center[0], cy: center[1],
+        r: Math.round(head.radius * 100) / 100, fill: color, stroke: 'none'}, rec)};
+    }
+    points = head.points.map(roundPoint);
+    var d = 'M ' + points.map(function(p) { return p[0] + ' ' + p[1]; }).join(' L ');
+    var props;
+    if (head.type == 'arrow') {
+      props = addFillOpacity({d: d + ' Z', fill: color, stroke: 'none'}, rec);
+    } else {
+      // The line's own dashes would break the chevron up, and its cap may be
+      // square or butt; the chevron is always drawn whole and rounded.
+      props = {d: d, fill: 'none', 'stroke-dasharray': 'none',
+        'stroke-linecap': 'round', 'stroke-linejoin': 'round'};
+    }
+    return {tag: 'path', properties: props};
+  }
+
+  // A filled marker is as transparent as the line it is drawn in
+  function addFillOpacity(props, rec) {
+    if (isSvgNumber(rec['stroke-opacity'])) {
+      props['fill-opacity'] = Number(rec['stroke-opacity']);
+    }
+    return props;
+  }
+
+  function roundPoint(p) {
+    return [Math.round(p[0] * 100) / 100, Math.round(p[1] * 100) / 100];
+  }
+
+  var SvgLineArrows = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getLineArrowOpts: getLineArrowOpts,
+    getLineArrowShape: getLineArrowShape,
+    getLineEndType: getLineEndType,
+    lineArrowFields: lineArrowFields,
+    lineHasArrows: lineHasArrows,
+    makeLineArrowOpts: makeLineArrowOpts,
+    renderArrowLine: renderArrowLine
+  });
+
   var geojsonImporters = {
     Point: importPoint,
     Polygon: importPolygon,
@@ -30101,6 +30483,9 @@
         // rather than several labels at several points
         svgObj = renderPathLabel(d, geom.coordinates,
           {report: opts.path_label_report, id: featureId});
+      } else if (msType == 'polyline' && geom.coordinates && lineHasArrows(d)) {
+        svgObj = renderArrowLine(geomType == 'LineString' ?
+          [geom.coordinates] : geom.coordinates, d);
       } else if (geomType && geom.coordinates) {
         svgObj = geojsonImporters[geomType](geom.coordinates, d);
       }
@@ -43955,6 +44340,15 @@ ${svg}
       .option('stroke-opacity', {
         describe: 'stroke opacity'
       })
+      .option('line-start', {
+        describe: 'marker at the start of each line: arrow, open-arrow, dot or none'
+      })
+      .option('line-end', {
+        describe: 'marker at the end of each line: arrow, open-arrow, dot or none'
+      })
+      .option('line-end-size', {
+        describe: 'length of an arrowhead\'s sides in px (default grows with stroke-width)'
+      })
       .option('opacity', {
         describe: 'opacity; example: 0.5'
       })
@@ -49567,7 +49961,26 @@ ${svg}
         props[key] = val;
       }
     }
+    importPatternFill(props);
     return props;
+  }
+
+  // A fill of url(#id), with or without a fallback colour after it, is a
+  // reference to a paint server in <defs>. The ones mapshaper exports are
+  // pattern fills whose id encodes the fill-pattern code, and the fallback is
+  // the feature's own fill. A reference that is not one of those is dropped:
+  // nothing can draw a url() stored as a colour. Its fallback, if any, is kept.
+  function importPatternFill(props) {
+    var match = /^url\(\s*['"]?#([^'")]+)['"]?\s*\)\s*(.*)$/.exec(String(props.fill || '').trim());
+    var code;
+    if (!match) return;
+    code = decodePatternId(match[1]);
+    if (code) props['fill-pattern'] = code;
+    if (match[2]) {
+      props.fill = match[2];
+    } else {
+      delete props.fill;
+    }
   }
 
   function getNodeStyles(node) {
@@ -51877,8 +52290,13 @@ ${svg}
 
   var iconNames = ['circle', 'square', 'ring', 'star'];
 
+  // Icons that render everywhere but are not advertised: the GUI offers them only
+  // to some users (see gui-nyt.mjs), and a map made with one has to draw the same
+  // for anyone who opens it.
+  var unlistedIconNames = ['nyt-star'];
+
   function isSupportedIconName(name) {
-    return iconNames.indexOf(name) > -1;
+    return iconNames.indexOf(name) > -1 || unlistedIconNames.indexOf(name) > -1;
   }
 
   cmd.svgStyle = function(lyr, dataset, opts) {
@@ -53038,12 +53456,16 @@ ${svg}
     var sw;
     if (!(r > 0)) return null;
     if (type == 'ring') {
-      // drawn as a stroke, one px wide unless stroke-width says otherwise
+      // drawn as a stroke, RING_STROKE_WIDTH wide unless stroke-width says otherwise
       sw = +d['stroke-width'];
-      return getSquareBox(r + (sw > 0 ? sw : 1) / 2, 0, 0);
+      return getSquareBox(r + (sw > 0 ? sw : RING_STROKE_WIDTH) / 2, 0, 0);
     }
     if (type == 'circle' || type == 'square' || type == 'star') {
       return getSquareBox(r + getStrokeOutset(d), 0, 0);
+    }
+    if (type == 'nyt-star') {
+      // the outline is part of the symbol's size (see nytStar())
+      return getSquareBox(r, 0, 0);
     }
     return null; // unsupported icons are not drawn
   }
@@ -54004,10 +54426,10 @@ ${svg}
   }
 
   function isClosedPath$1(arr) {
-    return isArrayOfPoints(arr) && arr.length > 3 && samePoint$2(arr[0], arr[arr.length - 1]);
+    return isArrayOfPoints(arr) && arr.length > 3 && samePoint$3(arr[0], arr[arr.length - 1]);
   }
 
-  function samePoint$2(a, b) {
+  function samePoint$3(a, b) {
     return a[0] == b[0] && a[1] == b[1];
   }
 
@@ -56194,12 +56616,12 @@ ${svg}
     return arr[arr.length - 1];
   }
 
-  function samePoint$1(a, b) {
+  function samePoint$2(a, b) {
     return a && b && a[0] === b[0] && a[1] === b[1];
   }
 
   function isClosedPath(arr) {
-    return samePoint$1(arr[0], lastEl(arr));
+    return samePoint$2(arr[0], lastEl(arr));
   }
 
   // remove likely rounding errors
@@ -56360,7 +56782,7 @@ ${svg}
       if (!nextPart) {
         return null;
       }
-      if (samePoint$1(ring[0], nextPart[0])) {
+      if (samePoint$2(ring[0], nextPart[0])) {
         // done!
         ring.push(ring[0]); // close the ring
         return ring;
@@ -56409,7 +56831,7 @@ ${svg}
 
   function findPartStartingAt(parts, firstPoint) {
     for (var i=0; i<parts.length; i++) {
-      if (samePoint$1(parts[i][0], firstPoint)) {
+      if (samePoint$2(parts[i][0], firstPoint)) {
         return parts[i];
       }
     }
@@ -56433,7 +56855,7 @@ ${svg}
     var part = [];
     var firstPoint = path[0];
     var lastPoint = lastEl(path);
-    var closed = samePoint$1(firstPoint, lastPoint);
+    var closed = samePoint$2(firstPoint, lastPoint);
     var p, pp, y;
     for (var i=0, n=path.length; i<n; i++) {
       p = path[i];
@@ -61099,10 +61521,10 @@ ${svg}
       var p = recenteredVertex(ctx, points[i]);
       // Successive off-center vertices can re-center onto the same neck point;
       // keep one copy so the chain has no zero-length segments.
-      if (!samePoint(p, out[out.length - 1])) out.push(p);
+      if (!samePoint$1(p, out[out.length - 1])) out.push(p);
     }
     var last = points[points.length - 1];
-    if (!samePoint(last, out[out.length - 1])) out.push(last);
+    if (!samePoint$1(last, out[out.length - 1])) out.push(last);
     return out.length >= 2 ? out : points;
   }
 
@@ -61205,7 +61627,7 @@ ${svg}
     out[1] = ay + t * dy;
   }
 
-  function samePoint(a, b) {
+  function samePoint$1(a, b) {
     return a[0] === b[0] && a[1] === b[1];
   }
 
@@ -65565,7 +65987,7 @@ ${svg}
           debug('Short ring', coords);
           return;
         }
-        if (!samePoint$1(coords[0], lastEl(coords))) {
+        if (!samePoint$2(coords[0], lastEl(coords))) {
           error('Open polygon ring');
         }
         rings.push(coords); // accumulate rings
@@ -84575,7 +84997,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.70";
+  var version = "0.7.71";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -87183,6 +87605,257 @@ ${svg}
     restoreCapturedUnits: restoreCapturedUnits
   });
 
+  // Smooths a freehand ("pencil") stroke with a Gaussian kernel while it is
+  // being drawn, placing vertices one at a time, a little behind the pointer.
+  // Vertices never move once they are placed.
+  //
+  // The trace of the pointer samples is densified to even spacing and smoothed
+  // with the Gaussian kernel that -smooth uses, as a plain weighted average in
+  // arc length. (-smooth adds a quadratic correction that keeps bends from being
+  // flattened, but it lets through far more of the jitter of a slow stroke.) A
+  // smoothed point depends only on the trace within a window around it, so it
+  // is final as soon as the trace extends a window radius beyond it. At the
+  // start of the stroke the trace is extended by an odd reflection about its
+  // first point, which keeps the smoothed curve starting exactly there, and the
+  // end is treated the same way when the stroke is finished.
+  //
+  // Vertices are kept from the smoothed points where the curve has turned by a
+  // given angle since the last vertex, or where the chord from the last vertex
+  // would stray too far from a gentle curve -- the rule -smooth uses to space
+  // its output. So vertices are close together at bends and far apart on
+  // straight stretches, and they appear one at a time.
+  //
+  // Distances are in pixels. For samples in other units, the pixelSize option
+  // gives the size of a pixel in those units.
+
+  // Standard deviation of the smoothing kernel, in arc length. Below about 5px,
+  // the jitter of a slow stroke comes through; larger values round off bends a
+  // few pixels across.
+  var SIGMA = 8;
+
+  // Half-width of the smoothing window, in multiples of SIGMA. This is also how
+  // far the pointer has to be ahead of a smoothed point for it to be final.
+  var WINDOW_RADIUS = 3;
+
+  // Spacing of the densified trace, and of the smoothed points that are tested
+  // as vertices. Small enough that a bend of radius SIGMA turns by only a few
+  // degrees per step.
+  var SOURCE_STEP = 0.5;
+  var OUTPUT_STEP = 0.5;
+
+  // Greatest turn between consecutive segments of the output, and greatest
+  // distance of the output from the smoothed curve along gentle bends.
+  var BEND_ANGLE = 12;
+  var MAX_DEVIATION = 0.75;
+
+  // Spacing of the points returned by getPreview(), and the standard deviation
+  // of the kernel that smooths the preview at the pointer. The preview is
+  // smoothed more heavily further from the pointer, up to SIGMA where it meets
+  // the placed vertices, so that it runs into them without a step. A small
+  // kernel at the pointer removes pixel jitter without lagging behind.
+  var PREVIEW_SPACING = 2;
+  var PREVIEW_SIGMA = 2;
+
+  // start: [x, y] first sample
+  // opts: (optional) {sigma, previewSigma, bendAngle (degrees), maxDeviation, pixelSize}
+  function GaussianStrokeFitter(start, opts) {
+    var px = opts && opts.pixelSize > 0 ? opts.pixelSize : 1;
+    var sigma = getOpt(opts, 'sigma', SIGMA) * px;
+    var radius = sigma * WINDOW_RADIUS;
+    var previewSigma = Math.min(getOpt(opts, 'previewSigma', PREVIEW_SIGMA) * px, sigma);
+    var step = SOURCE_STEP * px;
+    var outputStep = OUTPUT_STEP * px;
+    var decimator = new BendDecimator(start, getOpt(opts, 'bendAngle', BEND_ANGLE) * Math.PI / 180,
+      getOpt(opts, 'maxDeviation', MAX_DEVIATION) * px);
+    var samples = [[start[0], start[1]]];
+    // the densified trace: arc length and coordinates
+    var tt = [0], xx = [start[0]], yy = [start[1]];
+    var traceLen = 0; // length of the densified part of the trace
+    var nextT = step; // arc length of the next densified point
+    var phi = outputStep; // arc length of the next smoothed point
+
+    // Returns the vertices placed by the new sample, which may be none.
+    this.addSample = function(p) {
+      var n = samples.length;
+      if (!isSample(p) || samePoint(p, samples[n - 1])) return [];
+      samples.push([p[0], p[1]]);
+      densifySegment(n - 1);
+      return placeSmoothedPoints(traceLen - radius, false);
+    };
+
+    // Returns the vertices that complete the stroke, ending at the last sample.
+    this.finish = function() {
+      var n = samples.length, end, placed, p;
+      if (n < 2) return [];
+      end = samples[n - 1];
+      if (tt[tt.length - 1] < traceLen) {
+        tt.push(traceLen);
+        xx.push(end[0]);
+        yy.push(end[1]);
+      }
+      placed = placeSmoothedPoints(traceLen - outputStep / 2, true);
+      p = decimator.push(end);
+      if (p) placed.push(p);
+      placed.push([end[0], end[1]]);
+      return placed;
+    };
+
+    // Returns points to show between the last placed vertex and the pointer
+    // (not including either): the latest smoothed point, followed by the rest of
+    // the trace, smoothed less and less towards the pointer (see PREVIEW_SIGMA).
+    // These points are not final.
+    this.getPreview = function() {
+      var cand = decimator.getCandidate();
+      var t0 = cand ? phi - outputStep : 0; // arc length of the candidate
+      var spacing = PREVIEW_SPACING * px;
+      var out = cand ? [cand] : [];
+      var t, s;
+      for (t = t0 + spacing; t < traceLen - spacing / 2; t += spacing) {
+        s = previewSigma + (sigma - previewSigma) * (traceLen - t) / (traceLen - t0);
+        out.push(smoothAt(t, true, s));
+      }
+      return out;
+    };
+
+    // Smooths the trace up to arc length @maxT and returns the vertices placed
+    // from the smoothed points.
+    function placeSmoothedPoints(maxT, atEnd) {
+      var placed = [], p;
+      for (; phi <= maxT; phi += outputStep) {
+        p = decimator.push(smoothAt(phi, atEnd));
+        if (p) placed.push(p);
+      }
+      return placed;
+    }
+
+    // atEnd: treat the last sample as the end of the stroke
+    // s: (optional) standard deviation of the kernel, if not sigma
+    function smoothAt(t, atEnd, s) {
+      var r = s ? s * WINDOW_RADIUS : radius,
+          n = tt.length,
+          lo = firstIndexAbove(t - r),
+          hi = firstIndexAbove(t + r),
+          end = samples[samples.length - 1],
+          wt = [], wx = [], wy = [], i;
+      // odd reflection of the start of the trace
+      for (i = Math.min(firstIndexAbove(r - t), n) - 1; i > 0; i--) {
+        wt.push(-tt[i]);
+        wx.push(2 * xx[0] - xx[i]);
+        wy.push(2 * yy[0] - yy[i]);
+      }
+      for (i = lo; i < hi; i++) {
+        wt.push(tt[i]);
+        wx.push(xx[i]);
+        wy.push(yy[i]);
+      }
+      if (atEnd) {
+        // the trace stops short of the last sample until finish() adds it
+        if (tt[n - 1] < traceLen) {
+          wt.push(traceLen);
+          wx.push(end[0]);
+          wy.push(end[1]);
+        }
+        // odd reflection of the end of the trace
+        for (i = n - 1; i >= 0 && 2 * traceLen - tt[i] < t + r; i--) {
+          if (tt[i] >= traceLen) continue;
+          wt.push(2 * traceLen - tt[i]);
+          wx.push(2 * end[0] - xx[i]);
+          wy.push(2 * end[1] - yy[i]);
+        }
+      }
+      return smoothPoint(wt, [wx, wy], 0, wt.length, t, 'gaussian', s || sigma, r, 0);
+    }
+
+    // first index of the trace with arc length > @t
+    function firstIndexAbove(t) {
+      var lo = 0, hi = tt.length, mid;
+      while (lo < hi) {
+        mid = (lo + hi) >> 1;
+        if (tt[mid] <= t) lo = mid + 1;
+        else hi = mid;
+      }
+      return lo;
+    }
+
+    // Adds points to the trace at even spacing from sample @i to the next one.
+    function densifySegment(i) {
+      var a = samples[i],
+          b = samples[i + 1],
+          len = distance(a, b),
+          f;
+      for (; nextT <= traceLen + len; nextT += step) {
+        f = (nextT - traceLen) / len;
+        tt.push(nextT);
+        xx.push(a[0] + (b[0] - a[0]) * f);
+        yy.push(a[1] + (b[1] - a[1]) * f);
+      }
+      traceLen += len;
+    }
+  }
+
+  // Picks vertices from a stream of closely spaced points along a smooth curve,
+  // keeping a point once the curve has turned by @bendAngle (radians) since the
+  // last kept point, or once the chord from the last kept point would bow more
+  // than @maxDeviation from the curve (estimated as for a circular arc). This is
+  // the rule -smooth uses (decimateByBend() in mapshaper-smooth-algos.mjs),
+  // applied one point at a time.
+  function BendDecimator(start, bendAngle, maxDeviation) {
+    var kept = start, prev = start, candidate = null, turn = 0;
+
+    // Returns the point before @p if it is kept, or null.
+    this.push = function(p) {
+      var out = null;
+      if (candidate) {
+        turn += getTurn(prev, candidate, p);
+        if (turn >= bendAngle || distance(kept, p) * turn / 8 >= maxDeviation) {
+          out = kept = candidate;
+          turn = 0;
+        }
+        prev = candidate;
+      }
+      candidate = p;
+      return out;
+    };
+
+    // The latest point, which has not been kept yet
+    this.getCandidate = function() {
+      return candidate;
+    };
+  }
+
+  function getTurn(a, b, c) {
+    var ux = b[0] - a[0], uy = b[1] - a[1],
+        vx = c[0] - b[0], vy = c[1] - b[1],
+        len = Math.sqrt((ux * ux + uy * uy) * (vx * vx + vy * vy)),
+        cos;
+    if (!(len > 0)) return 0;
+    cos = (ux * vx + uy * vy) / len;
+    return Math.acos(Math.min(1, Math.max(-1, cos)));
+  }
+
+  function getOpt(opts, name, defaultVal) {
+    return opts && opts[name] > 0 ? opts[name] : defaultVal;
+  }
+
+  function isSample(p) {
+    return !!p && isFinite(p[0]) && isFinite(p[1]);
+  }
+
+  function samePoint(a, b) {
+    return a[0] == b[0] && a[1] == b[1];
+  }
+
+  function distance(a, b) {
+    var dx = b[0] - a[0], dy = b[1] - a[1];
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  var PencilGaussian = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    BendDecimator: BendDecimator,
+    GaussianStrokeFitter: GaussianStrokeFitter
+  });
+
   // Attach functions exported by modules to the "internal" object,
   // so they can be run by tests and by the GUI.
   // TODO: rewrite tests to import functions directly from modules,
@@ -87192,7 +87865,7 @@ ${svg}
   internal.svg = Object.assign({}, SvgStringify, SvgPathUtils, GeojsonToSvg,
     SvgFeatureUtils,
     SvgLabels, SvgSymbols, SvgLabelPaths, SvgLabelFit, SvgLabelAlign,
-    SvgLabelMetrics, SvgLabelHalo, SvgLabelCallout, SvgLabelMarkup);
+    SvgLabelMetrics, SvgLabelHalo, SvgLabelCallout, SvgLabelMarkup, SvgLineArrows);
 
   // Reached through the bundle rather than imported from source, unlike most of
   // what tests use, because these modules load fs and fontkit through the
@@ -87317,6 +87990,7 @@ ${svg}
     PathExport,
     Pathfinder,
     PathfinderUtils,
+    PencilGaussian,
     PathImport,
     PathRepair,
     PathUtils,

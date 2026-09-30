@@ -8860,30 +8860,6 @@
     }
   }
 
-  // Test if adding point p to a sequence of points (in pixel coords)
-  // would result in a polyline that deviates from a straight line by
-  // more than a given number of pixels
-  //
-  function pointExceedsTolerance(p, points, tolerance) {
-    if (points.length < 2) return false;
-    var p1 = points[0], p2, dist, angle;
-    for (var i=1; i<points.length; i++) {
-      p2 = points[i];
-      dist = Math.sqrt(geom.pointSegDistSq(p2[0], p2[1], p1[0], p1[1], p[0], p[1]));
-      if (dist > tolerance) return true;
-    }
-    return false;
-  }
-
-  function getAvgPoint(points) {
-    var x=0, y=0;
-    for (var i=0; i<points.length; i++) {
-      x += points[i][0];
-      y += points[i][1];
-    }
-    return [x/points.length, y/points.length];
-  }
-
   function setZ(lyr, z) {
     lyr.gui.source.dataset.arcs.setRetainedInterval(z);
     if (isProjectedLayer(lyr)) {
@@ -13466,10 +13442,10 @@
 
     gui.on('path_extend', function(e) {
       var redo = function() {
-        gui.dispatchEvent('redo_path_extend', {p: e.p, shapes: e.shapes2});
+        gui.dispatchEvent('redo_path_extend', {points: e.points, shapes: e.shapes2});
       };
       var undo = function() {
-        gui.dispatchEvent('undo_path_extend', {shapes: e.shapes1});
+        gui.dispatchEvent('undo_path_extend', {points: e.points, shapes: e.shapes1});
       };
       addHistoryState(undo, redo);
     });
@@ -15630,6 +15606,11 @@
     return drawnFont || '';
   }
 
+  // Whether @fontName is one of the fonts above and installed here.
+  function isInstalledFont(fontName) {
+    return getInstalledFontNames().indexOf(fontName) > -1;
+  }
+
   function getInstalledFontNames() {
     var names = [];
     getInstalledFonts().forEach(function(group) {
@@ -15998,7 +15979,7 @@
           var tile = El('div')
             .addClass('label-color-preset')
             .attr('role', 'button')
-            .attr('title', color)
+            .attr('aria-label', color)
             .appendTo(rowEl)
             .css('background-color', color);
           if (row.length == 16 && i == 8) tile.addClass('label-color-preset-group-start');
@@ -16475,7 +16456,7 @@
         // in a menu that is only on screen while it is being used, and a
         // destructive action is better for waiting until intent is shown.
         El('div').addClass('label-saved-style-delete').attr('role', 'button')
-          .attr('title', 'Delete this ' + opts.styleLabel)
+          .attr('aria-label', 'Delete this ' + opts.styleLabel)
           .appendTo(itemEl).html('&times;')
           .on('click', function() {
             deleteStyle(item);
@@ -16548,7 +16529,7 @@
   //                 Escape. Whether that means giving up the keyboard is the
   //                 caller's question: the field cannot know what else wants it.
   //   decimals      how finely a typed size is kept (default 1)
-  //   title         tooltip for the field
+  //   title         the field's accessible name (not a tooltip)
   function SizeField(parent, opts) {
     var o = Object.assign({min: 1, max: 999, step: 1, bigStep: 10}, opts || {});
     var box = El('div').addClass('size-field').appendTo(parent);
@@ -16561,7 +16542,7 @@
     var dirty = false; // holds typing that has not been committed
     var disabled = false;
 
-    if (o.title) input.attr('title', o.title);
+    if (o.title) input.attr('aria-label', o.title);
 
     // While the caret is in this field the keyboard belongs to it. Without this
     // the GUI's own handlers see the keystrokes: Escape would disarm the tool,
@@ -16865,14 +16846,15 @@
   // the one thing the third state exists to avoid saying.
   //
   // opts.onChange(on)  the switch was clicked
-  // opts.title, opts.className
+  // opts.title          the switch's accessible name (not a tooltip)
+  // opts.className
   function makePanelToggle(parent, opts) {
     var track = El('div').addClass('label-toggle').attr('role', 'checkbox').appendTo(parent);
     var state = 'off';
     if (opts.className) track.addClass(opts.className);
     var disabled = false;
     El('div').addClass('label-toggle-knob').appendTo(track);
-    if (opts.title) track.attr('title', opts.title);
+    if (opts.title) track.attr('aria-label', opts.title);
     // A click on a mixed switch turns everything on. It is the convention, and
     // it is the reading that reaches a state the switch can describe: the next
     // click then turns everything off, so both are one click away.
@@ -16957,7 +16939,7 @@
   // opacity qualifies the colour, and one border says so where two fields side
   // by side said they were separate settings. It also leaves the narrow column
   // of the row free for a field that needs it. The opacity has no caption; its
-  // percent sign and its tooltip say what it is.
+  // percent sign says what it is.
   //
   // Returns the field's box; the opacity input is made by makeOpacityInput().
   function makeColorOpacityField(parent, chit, input, opacityOpts) {
@@ -17006,7 +16988,7 @@
         control.picker.toggle();
       });
     control.input = El('input').attr('type', 'text')
-      .attr('title', opts.label + ' color')
+      .attr('aria-label', opts.label + ' color')
       .on('change', function() {
         var color = control.input.node().value.trim();
         if (isHexColor(color)) control.picker.setColor(color);
@@ -17042,7 +17024,7 @@
   // opts.revert()        it was not, so put back what the field was showing
   function makeOpacityInput(parent, opts) {
     var input = El('input').attr('type', 'text').addClass('label-opacity-input')
-      .attr('title', 'Opacity, 0-100%')
+      .attr('aria-label', 'Opacity, 0-100%')
       .appendTo(parent)
       .on('change', function() {
         var val = parseOpacityValue(input.node().value);
@@ -17573,6 +17555,80 @@
     return wrapper;
   }
 
+  // Default sizes and colours of the label tool's anchor symbols, which differ by
+  // shape: a star or a ring at the size of a circle reads as smaller, and the NYT
+  // star is a logo, drawn in its own red.
+  var iconDefaults = {
+    circle: {size: 5},
+    square: {size: 5},
+    star: {size: 8},
+    ring: {size: 8},
+    'nyt-star': {size: 14, color: '#cc0000'}
+  };
+  var fallbackSize = 5;
+
+  function getDefaultIconSize(shape) {
+    var o = iconDefaults[shape];
+    return o ? o.size : fallbackSize;
+  }
+
+  // '' for a shape drawn in whatever colour the label gives it.
+  function getDefaultIconColor(shape) {
+    var o = iconDefaults[shape];
+    return o && o.color || '';
+  }
+
+  // The icon-size and icon-color to write when labels whose symbol is @prevShape
+  // ('' for none, or for a selection of mixed shapes) are given @shape, from the
+  // @size and @color they share. A missing size is '' or 0, and a colour of ''
+  // is none; null is a colour the labels do not agree on, which is left alone.
+  //
+  // A value that is the old shape's default follows the shape to its own
+  // default, and a value the user chose is kept -- so switching shapes resizes a
+  // symbol nobody sized, and never undoes a size somebody set. The colour is
+  // returned only if it changes, as '' to remove it.
+  function getIconShapeChange(shape, prevShape, size, color) {
+    var out = {};
+    var sizeVal = Number(size);
+    var prevColor = getDefaultIconColor(prevShape);
+    var nextColor = getDefaultIconColor(shape);
+    if (!(sizeVal > 0) || prevShape && sizeVal == getDefaultIconSize(prevShape)) {
+      out.size = getDefaultIconSize(shape);
+    } else {
+      out.size = sizeVal;
+    }
+    if (color !== null && sameColor$1(color, prevColor) && !sameColor$1(color, nextColor)) {
+      out.color = nextColor;
+    }
+    return out;
+  }
+
+  function sameColor$1(a, b) {
+    return String(a || '').toLowerCase() == String(b || '').toLowerCase();
+  }
+
+  // Features offered only to people at The New York Times, who are the ones with
+  // its NYTFranklin typeface installed. This is a convenience, not access
+  // control: anything gated here must still render for everyone, because a map
+  // made with it can be opened anywhere.
+  //
+  // ?nyt=on or ?nyt=off in the page URL overrides the check, so that the gated
+  // features can be tested (and hidden) on any machine.
+  var NYT_FONT = 'NYTFranklin';
+  var cached;
+
+  function isNytUser() {
+    if (cached === undefined) cached = detectNytUser();
+    return cached;
+  }
+
+  function detectNytUser() {
+    var flag = GUI.getUrlVars().nyt;
+    if (flag == 'on' || flag === true) return true;
+    if (flag == 'off' || flag === false) return false;
+    return isInstalledFont(NYT_FONT);
+  }
+
   var fontField = 'font-family';
   var fontSizeField = 'font-size';
   var fontStyleField = 'font-style';
@@ -17605,7 +17661,6 @@
   var defaultFontWeight = '400';
   var defaultLabelColor = '#000000';
   var defaultIconColor = '#000000';
-  var defaultIconSize = 5;
   // The width a halo is switched on at: past the edge of the glyphs, so a
   // stroke of twice this.
   var defaultHaloWidth = 2;
@@ -17678,6 +17733,10 @@
     name: 'star'
   }, {
     name: 'ring'
+  }, {
+    name: 'nyt-star',
+    title: 'NYT star',
+    nytOnly: true
   }];
   var defaultIconShape = 'circle';
   // Alignment writes label-align rather than text-anchor, because text-anchor
@@ -17743,14 +17802,15 @@
     elbow: '<path d="M3.5 12.5L8 4.5H13"></path>',
     curve: '<path d="M3.5 12.5Q4.5 4.5 12.5 4"></path>',
     none: '<path d="M3 8H13"></path>',
-    arrow: '<path d="M6.7 8H13"></path><path class="fill" d="M2.5 8L8.53 5.57V10.43Z"></path>',
+    arrow: '<path d="M6.84 8H13"></path><path class="fill" d="M2.5 8L8.7 6.05V9.95Z"></path>',
     'open-arrow': '<path d="M3.2 8H13"></path><path d="M7.38 5.07L3.2 8L7.38 10.93"></path>'
   };
   var iconButtonSymbols = {
     circle: '<circle cx="8" cy="8" r="4.25"></circle>',
     square: '<rect x="4" y="4" width="8" height="8"></rect>',
     ring: '<circle cx="8" cy="8" r="3.8"></circle>',
-    star: '<path d="M8 3.2l1.18 2.92 3.14.22-2.42 2 .76 3.06L8 9.75 5.34 11.4l.76-3.06-2.42-2 3.14-.22L8 3.2z"></path>'
+    star: '<path d="M8 3.2l1.18 2.92 3.14.22-2.42 2 .76 3.06L8 9.75 5.34 11.4l.76-3.06-2.42-2 3.14-.22L8 3.2z"></path>',
+    'nyt-star': '<polygon transform="scale(0.4)" points="19.98 5.72 23.15 11.76 29.45 9.15 27.99 15.82 34.5 17.86 29.1 22.03 32.76 27.78 25.95 27.5 25.06 34.27 20.01 29.67 14.98 34.28 14.08 27.52 7.26 27.82 10.92 22.06 5.5 17.9 12 15.84 10.53 9.18 16.84 11.77"></polygon>'
   };
 
   function LabelTool(gui) {
@@ -17765,6 +17825,7 @@
     // The shape the toggle turns back on, so that switching a symbol off and on
     // again does not silently change a star into a circle.
     var lastIconShape = defaultIconShape;
+    var shownIconTypes = null;
     // Likewise the halo's width, which is what switching one off removes.
     var lastHaloWidth = defaultHaloWidth;
     // And the callout's shape.
@@ -17898,7 +17959,7 @@
       // number otherwise keep theirs, and so does a colour field, because the
       // field beside it has one and "Color" says the percentage is its opacity.
       var fontRow = El('div').addClass('label-style-row').appendTo(textSection);
-      fontSelect = El('select').attr('title', 'Font').appendTo(fontRow).on('change', function() {
+      fontSelect = El('select').attr('aria-label', 'Font').appendTo(fontRow).on('change', function() {
         if (fontSelect.node().value) {
           applyFont(fontSelect.node().value);
         }
@@ -17906,7 +17967,7 @@
 
       var styleSizeRow = El('div').addClass('label-style-row label-split-row').appendTo(textSection);
       var fontStyleRow = El('div').addClass('label-split-cell label-font-style-row').appendTo(styleSizeRow);
-      fontStyleSelect = El('select').attr('title', 'Font style').appendTo(fontStyleRow).on('change', function() {
+      fontStyleSelect = El('select').attr('aria-label', 'Font style').appendTo(fontStyleRow).on('change', function() {
         if (fontStyleSelect.node().value) {
           applyFontStyleVariant(fontStyleSelect.node().value);
         }
@@ -17932,7 +17993,7 @@
       var textColorCell = El('div').addClass('label-split-cell label-color-row label-text-color-row').appendTo(colorRow);
       El('span').appendTo(textColorCell).text('Color');
       colorChit = El('div').addClass('label-color-chit').attr('role', 'button');
-      colorInput = El('input').attr('type', 'text').attr('title', 'Text color');
+      colorInput = El('input').attr('type', 'text').attr('aria-label', 'Text color');
       var textColorField = addColorOpacityField(textColorCell, colorChit, colorInput, applyLabelOpacity);
       colorFieldBox = textColorField.box;
       opacityInput = textColorField.opacity;
@@ -17965,7 +18026,7 @@
             applyLabelAlign(item.name);
           })
           .attr('data-align', item.name)
-          .attr('title', item.title);
+          .attr('aria-label', item.title);
         alignBtns[item.name] = btn;
         appendAlignButtonSymbol(btn, item.name);
       });
@@ -18004,7 +18065,7 @@
       var haloColorCell = El('div').addClass('label-split-cell label-color-row label-halo-color-row').appendTo(haloColorRow);
       El('span').appendTo(haloColorCell).text('Color');
       haloColorChit = El('div').addClass('label-color-chit').attr('role', 'button');
-      haloColorInput = El('input').attr('type', 'text').attr('title', 'Halo color');
+      haloColorInput = El('input').attr('type', 'text').attr('aria-label', 'Halo color');
       var haloColorField = addColorOpacityField(haloColorCell, haloColorChit, haloColorInput, applyHaloOpacity);
       haloColorFieldBox = haloColorField.box;
       haloOpacityInput = haloColorField.opacity;
@@ -18055,12 +18116,12 @@
       var iconRow = El('div').addClass('label-style-row label-icon-shapes-row').appendTo(iconSection);
       var iconGroup = iconGroupEl = El('div').addClass('label-btn-group label-icon-buttons').appendTo(iconRow);
       iconBtns = {};
-      iconTypes.forEach(function(icon) {
+      getShownIconTypes().forEach(function(icon) {
         var btn = makePanelButton(iconGroup, '', function() {
             applyIcon(icon.name);
           })
           .attr('data-icon', icon.name)
-          .attr('title', icon.name);
+          .attr('aria-label', icon.title || icon.name);
         iconBtns[icon.name] = btn;
         appendIconButtonSymbol(btn, icon.name);
       });
@@ -18069,7 +18130,7 @@
       var iconColorCell = El('div').addClass('label-split-cell label-color-row label-icon-color-row').appendTo(iconColorRow);
       El('span').appendTo(iconColorCell).text('Color');
       iconColorChit = El('div').addClass('label-color-chit').attr('role', 'button');
-      iconColorInput = El('input').attr('type', 'text').attr('title', 'Symbol color');
+      iconColorInput = El('input').attr('type', 'text').attr('aria-label', 'Symbol color');
       var iconColorField = addColorOpacityField(iconColorCell, iconColorChit, iconColorInput, applyIconOpacity);
       iconColorFieldBox = iconColorField.box;
       iconOpacityInput = iconColorField.opacity;
@@ -18117,7 +18178,7 @@
             applyLabelPosition(pos);
           })
           .attr('data-position', pos)
-          .attr('title', pos);
+          .attr('aria-label', pos);
       });
 
 
@@ -18127,7 +18188,7 @@
             setLabelPositionMode(gui, item.name, getPositionModeKind());
           })
           .attr('data-drag-mode', item.name)
-          .attr('title', item.title);
+          .attr('aria-label', item.title);
       });
 
       presetControl = new StylePresetControl(panel, {
@@ -18212,7 +18273,7 @@
       var colorCell = El('div').addClass('label-split-cell label-color-row label-callout-color-row').appendTo(colorRow);
       El('span').appendTo(colorCell).text('Color');
       calloutColorChit = El('div').addClass('label-color-chit').attr('role', 'button');
-      calloutColorInput = El('input').attr('type', 'text').attr('title', 'Callout color');
+      calloutColorInput = El('input').attr('type', 'text').attr('aria-label', 'Callout color');
       var calloutColorField = addColorOpacityField(colorCell, calloutColorChit, calloutColorInput, applyCalloutOpacity);
       calloutColorFieldBox = calloutColorField.box;
       calloutOpacityInput = calloutColorField.opacity;
@@ -18236,7 +18297,7 @@
       var gapCell = El('div').addClass('label-split-cell label-spacing-row label-callout-gap-row').appendTo(colorRow);
       El('span').appendTo(gapCell).text('Gap');
       calloutGapInput = El('input').attr('type', 'text').addClass('label-measure-input')
-        .attr('title', 'Space between the callout and the anchor, in px')
+        .attr('aria-label', 'Space between the callout and the anchor, in px')
         .attr('placeholder', 'auto')
         .attr('data-placeholder', 'auto')
         .appendTo(gapCell)
@@ -18248,7 +18309,7 @@
     function makeCalloutButton(parent, item, action) {
       var btn = makePanelButton(parent, '', action)
         .attr('data-callout', item.name)
-        .attr('title', item.title);
+        .attr('aria-label', item.title);
       El('<svg class="label-callout-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
         calloutButtonSymbols[item.name] + '</svg>').appendTo(btn);
       return btn;
@@ -18475,8 +18536,10 @@
       // rest of the selection has nothing to compare.
       var iconIds = getIconValueIds();
       var iconVal = getCommonValue(iconIds, iconField);
-      var iconSize = getShownValue(iconIds, iconSizeField, {useDefault: true, defaultValue: defaultIconSize});
-      var iconColor = getShownValue(iconIds, iconColorField, {useDefault: true, defaultValue: defaultIconColor});
+      var iconShape = iconVal || lastIconShape;
+      var iconSize = getShownValue(iconIds, iconSizeField, {useDefault: true, defaultValue: getDefaultIconSize(iconShape)});
+      var iconColor = getShownValue(iconIds, iconColorField, {useDefault: true,
+        defaultValue: getDefaultIconColor(iconShape) || defaultIconColor});
       var iconOpacity = getShownValue(iconIds, iconOpacityField, {useDefault: true, defaultValue: 1});
       var haloIds = getHaloValueIds();
       var haloWidth = getShownValue(haloIds, haloWidthField, {useDefault: true, defaultValue: lastHaloWidth});
@@ -18821,7 +18884,7 @@
       // border the buttons share fades with them -- a live border around dead
       // buttons is the one part of a disabled control that still looks usable.
       iconGroupEl.classed('disabled', off);
-      iconTypes.forEach(function(icon) {
+      getShownIconTypes().forEach(function(icon) {
         iconBtns[icon.name].classed('selected', !off && icon.name == iconVal);
         setPanelButtonDisabled(iconBtns[icon.name], off);
       });
@@ -19420,10 +19483,21 @@
 
     function getSelectedIcon() {
       var out = '';
-      iconTypes.forEach(function(icon) {
+      getShownIconTypes().forEach(function(icon) {
         if (iconBtns[icon.name].hasClass('selected')) out = icon.name;
       });
       return out;
+    }
+
+    // A label that already has an NYT star keeps it without the button: it is
+    // drawn for everyone, and only choosing one is gated.
+    function getShownIconTypes() {
+      if (!shownIconTypes) {
+        shownIconTypes = iconTypes.filter(function(icon) {
+          return !icon.nytOnly || isNytUser();
+        });
+      }
+      return shownIconTypes;
     }
 
     function applyStyleObject(style) {
@@ -19456,8 +19530,9 @@
         // The size the symbols in the selection already share, where they share
         // one: a shape applied to a mixed selection gives the labels that had no
         // symbol the size of the ones that did, rather than resetting them all to
-        // the default.
-        styles.push([iconSizeField, getNumericSize(getIconValueIds(), iconSizeField, defaultIconSize)]);
+        // the default. A size or colour that was the old shape's default becomes
+        // the new one's (see getIconShapeChange()).
+        addIconShapeDefaults(styles, iconName, getIconValueIds());
         // The symbol's own opacity goes on with it, because the label's opacity
         // is applied to both elements: without this, text set to 50% would give
         // a half-faded symbol while the Icon section showed it at 100%.
@@ -19467,6 +19542,14 @@
       }
       addIconPositionChange(styles, ids, !!iconName);
       applyStyleValues(styles);
+    }
+
+    function addIconShapeDefaults(styles, iconName, ids) {
+      var color = getCommonValueInfo(ids, iconColorField);
+      var change = getIconShapeChange(iconName, getCommonValue(ids, iconField) || '',
+        getCommonValue(ids, iconSizeField), color.mixed ? null : color.value || '');
+      styles.push([iconSizeField, change.size]);
+      if ('color' in change) styles.push([iconColorField, change.color]);
     }
 
     // Switching a symbol on moves a label sitting at the centre out from under
@@ -19509,7 +19592,9 @@
     }
 
     function nudgeIconSize(delta) {
-      var size = getNumericSize(getIconTargetIds(), iconSizeField, defaultIconSize);
+      var ids = getIconTargetIds();
+      var size = getNumericSize(ids, iconSizeField,
+        getDefaultIconSize(getCommonValue(ids, iconField)));
       if (!controlsEnabled()) return;
       size = Math.max(1, size + delta);
       applyIconSize(size);
@@ -20028,7 +20113,7 @@
         onChange: setPatternOn
       });
       var typeRow = El('div').addClass('label-style-row layer-pattern-type-row').appendTo(section);
-      typeSelect = El('select').attr('title', 'Pattern type').appendTo(typeRow)
+      typeSelect = El('select').attr('aria-label', 'Pattern type').appendTo(typeRow)
         .on('change', function() {
           selectType(typeSelect.node().value);
         });
@@ -20096,7 +20181,7 @@
       makeFieldTip(caption,
         'The fill-pattern syntax of the -style command.\n' +
         'See the command reference for details.');
-      codeInput = El('input').attr('type', 'text').attr('title', 'Pattern code').appendTo(customRow)
+      codeInput = El('input').attr('type', 'text').attr('aria-label', 'Pattern code').appendTo(customRow)
         .on('change', function() {
           applyCode(codeInput.node().value.trim());
         });
@@ -20266,13 +20351,45 @@
   }
 
   var savedStylesKey = 'layer_style_presets';
-  var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'fill', 'fill-opacity', 'fill-pattern'];
+  var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'line-start', 'line-end', 'line-end-size', 'fill', 'fill-opacity', 'fill-pattern'];
+  var arrowShapes = [{
+    name: 'arrow',
+    title: 'solid arrowheads'
+  }, {
+    name: 'open-arrow',
+    title: 'open arrowheads'
+  }, {
+    name: 'dot',
+    title: 'dots'
+  }];
+  // The arrows are the label callout's, which point left, the way a line's
+  // start head does; the dot's left edge is where their tips are.
+  var arrowButtonSymbols = {
+    arrow: calloutButtonSymbols.arrow,
+    'open-arrow': calloutButtonSymbols['open-arrow'],
+    dot: '<path d="M5 8H13"></path><circle class="fill" cx="5" cy="8" r="2.6"></circle>'
+  };
+  var arrowPositions = [{
+    name: 'start',
+    label: 'Start',
+    title: 'arrowhead at the start of the line'
+  }, {
+    name: 'end',
+    label: 'End',
+    title: 'arrowhead at the end of the line'
+  }, {
+    name: 'both',
+    label: 'Both',
+    title: 'arrowheads at both ends of the line'
+  }];
 
   function LayerStyleTool(gui) {
     var parent = gui.container.findChild('.mshp-main-map');
     var panel = El('div').addClass('label-style-panel layer-style-panel rollover').appendTo(parent).hide();
-    var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, dashControl, randomFillBtn, presetControl, patternControl, hit;
+    var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, dashControl, arrowControl, randomFillBtn, presetControl, patternControl, hit;
     var targetLayer = null;
+    // What the arrowhead switch turns on, for lines that have no heads
+    var lastArrow = {shape: 'arrow', position: 'end'};
 
     initPanel();
     hit = gui.map.getHitControl && gui.map.getHitControl();
@@ -20361,6 +20478,7 @@
       strokeControl = addColorControl(panel, 'Stroke', 'stroke', '#000000');
       strokeWidthField = addStrokeWidthControl(strokeControl.aside);
       dashControl = addDashArrayControl(panel);
+      arrowControl = addArrowControl(panel);
 
       var buttonRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(panel);
       randomFillBtn = makePanelActionButton(buttonRow, 'Random fills', applyRandomFillColors);
@@ -20454,6 +20572,197 @@
       return {row: row, input: input};
     }
 
+    // A switch in the heading says whether the lines have arrowheads; the rows
+    // under it are the head's shape with its size beside it, then which ends
+    // get it. A line has one shape for both ends, which is all the panel sets,
+    // though -style can give the two ends different ones.
+    function addArrowControl(parent) {
+      var section = makePanelSection(parent, 'Arrowheads');
+      var toggle = makePanelToggle(section.findChild('.label-style-section-title'), {
+        title: 'Add arrowheads',
+        className: 'layer-arrow-toggle',
+        onChange: setArrowsOn
+      });
+      var shapeRow = El('div').addClass('label-style-row label-split-row').appendTo(section);
+      var shapeCell = El('div').addClass('label-split-cell label-align-row').appendTo(shapeRow);
+      var sizeCell = El('div').addClass('label-split-cell label-spacing-row layer-arrow-size-row').appendTo(shapeRow);
+      var posRow = El('div').addClass('label-style-row label-split-row').appendTo(section);
+      var posCell = El('div').addClass('label-split-cell label-align-row').appendTo(posRow);
+      var control = {section: section, toggle: toggle, shapeBtns: {}, posBtns: {}};
+      El('div').addClass('label-split-cell').appendTo(posRow);
+      El('span').appendTo(shapeCell).text('Shape');
+      var shapeGroup = El('div').addClass('label-btn-group label-callout-buttons layer-arrow-shape-buttons').appendTo(shapeCell);
+      arrowShapes.forEach(function(item) {
+        var btn = makePanelButton(shapeGroup, '', function() {
+          applyArrowShape(item.name);
+        }).attr('data-arrow-shape', item.name).attr('aria-label', item.title);
+        El('<svg class="label-callout-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
+          arrowButtonSymbols[item.name] + '</svg>').appendTo(btn);
+        control.shapeBtns[item.name] = btn;
+      });
+      El('span').appendTo(posCell).text('Ends');
+      var posGroup = El('div').addClass('label-btn-group layer-arrow-position-buttons').appendTo(posCell);
+      arrowPositions.forEach(function(item) {
+        control.posBtns[item.name] = makePanelButton(posGroup, item.label, function() {
+          applyArrowPosition(item.name);
+        }).attr('data-arrow-position', item.name).attr('aria-label', item.title);
+      });
+      El('span').appendTo(sizeCell).text('Size');
+      control.sizeField = new SizeField(sizeCell, {
+        title: 'Arrowhead size in px, the length of its sides or the diameter of a dot',
+        min: 1,
+        max: 60,
+        step: 1,
+        bigStep: 5,
+        onSet: applyArrowSize,
+        onStep: nudgeArrowSize,
+        onDone: releaseFocus
+      });
+      return control;
+    }
+
+    // {shape, position} for one record, 'none' and '' when it has no heads. A
+    // line whose two ends have different shapes reports the start's.
+    function getArrowInfo(rec) {
+      var start = internal.svg.getLineEndType(rec || {}, 'line-start');
+      var end = internal.svg.getLineEndType(rec || {}, 'line-end');
+      var shape = start != 'none' ? start : end;
+      var position = start != 'none' && end != 'none' ? 'both' :
+        start != 'none' ? 'start' : end != 'none' ? 'end' : '';
+      return {shape: shape, position: position};
+    }
+
+    // Switching on gives the lines that have no heads the last shape and ends
+    // the section showed, so that off and on again is a round trip; the lines
+    // that have heads keep theirs. Switching off leaves line-end-size alone,
+    // for the same reason.
+    function setArrowsOn(on) {
+      applyArrowEdits(function(info) {
+        return on ? fillArrowInfo(info) : {shape: 'none', position: ''};
+      });
+    }
+
+    // Each target keeps whichever of shape and position is not being set, so
+    // that changing the shape of a selection whose lines point different ways
+    // leaves them pointing those ways.
+    function applyArrowShape(shape) {
+      applyArrowEdits(function(info) {
+        return {shape: shape, position: fillArrowInfo(info).position};
+      });
+    }
+
+    function applyArrowPosition(position) {
+      applyArrowEdits(function(info) {
+        return {shape: fillArrowInfo(info).shape, position: position};
+      });
+    }
+
+    function fillArrowInfo(info) {
+      return info.shape == 'none' ? {shape: lastArrow.shape, position: lastArrow.position} : info;
+    }
+
+    function applyArrowEdits(getNext) {
+      var records = getTargetRecords();
+      var addStroke = styleFieldIsUnsetForTargets('stroke');
+      var edits = [];
+      getTargetIds().forEach(function(id) {
+        var rec = records[id] || {};
+        var next = getNext(getArrowInfo(rec));
+        var on = next.shape != 'none';
+        var styles = [
+          ['line-start', on && next.position != 'end' ? next.shape : ''],
+          ['line-end', on && next.position != 'start' ? next.shape : '']
+        ].filter(function(style) {
+          // no need to remove what is not there
+          return style[1] || rec[style[0]];
+        });
+        if (on && addStroke) styles.push(['stroke', strokeControl.defaultColor]);
+        if (styles.length > 0) edits.push({id: id, styles: styles});
+      });
+      runStyleEdits(edits);
+    }
+
+    function applyArrowSize(value) {
+      var ids = getArrowTargetIds();
+      if (ids.length === 0) return;
+      runStyleEdits(ids.map(function(id) {
+        return {id: id, styles: [['line-end-size', value]]};
+      }));
+    }
+
+    function nudgeArrowSize(delta) {
+      var shown = getArrowSizeShown(getArrowTargetIds());
+      var size = Number(shown.value);
+      if (!isFinite(size) || shown.value === '') return;
+      applyArrowSize(Math.max(1, Math.round(size + delta)));
+    }
+
+    function getArrowTargetIds() {
+      var records = getTargetRecords();
+      return getTargetIds().filter(function(id) {
+        return getArrowInfo(records[id]).shape != 'none';
+      });
+    }
+
+    // The size a head is drawn at, which is the one its line width gives it
+    // when it has none of its own.
+    function getArrowSizeShown(ids) {
+      var records = getTargetRecords();
+      var value = '', size;
+      for (var i=0; i<ids.length; i++) {
+        size = getArrowSize(records[ids[i]]);
+        if (i > 0 && size !== value) return {value: '', mixed: true};
+        value = size;
+      }
+      return {value: value, mixed: false};
+    }
+
+    function getArrowSize(rec) {
+      var opts = internal.svg.makeLineArrowOpts('arrow', '', rec && rec['line-end-size'],
+        rec && rec['stroke-width'], 1);
+      var size = getArrowInfo(rec).shape == 'dot' ? opts.dotSize : opts.size;
+      return formatNumberValue(Math.round(size * 100) / 100);
+    }
+
+    // The shape and ends shown are those of the lines with heads; lines
+    // without are what the switch's mixed state is for.
+    function updateArrowControl() {
+      var records = getTargetRecords();
+      var ids = getTargetIds();
+      var arrowIds = getArrowTargetIds();
+      var shape, position, info;
+      for (var i=0; i<arrowIds.length; i++) {
+        info = getArrowInfo(records[arrowIds[i]]);
+        if (i === 0) {
+          shape = info.shape;
+          position = info.position;
+        } else {
+          if (info.shape != shape) shape = '';
+          if (info.position != position) position = '';
+        }
+      }
+      if (shape) lastArrow.shape = shape;
+      if (position) lastArrow.position = position;
+      var state = arrowIds.length === 0 ? 'off' :
+        arrowIds.length < ids.length ? 'mixed' : 'on';
+      arrowControl.toggle.setState(state);
+      arrowControl.section.classed('collapsed', state == 'off');
+      arrowShapes.forEach(function(item) {
+        arrowControl.shapeBtns[item.name].classed('selected', item.name == shape);
+      });
+      arrowPositions.forEach(function(item) {
+        arrowControl.posBtns[item.name].classed('selected', item.name == position);
+      });
+      var shown = arrowIds.length > 0 ? getArrowSizeShown(arrowIds) : {value: '', mixed: false};
+      arrowControl.sizeField.setValue(shown.value);
+      arrowControl.sizeField.setPlaceholder(shown.mixed ? 'mixed' : '');
+      arrowControl.sizeField.setDisabled(arrowIds.length === 0);
+    }
+
+    function getTargetRecords() {
+      return targetLayer && targetLayer.data ? targetLayer.data.getRecords() : [];
+    }
+
     function releaseFocus() {
       releasePanelFocus(panel.node());
     }
@@ -20468,10 +20777,12 @@
       strokeControl.row.show();
       fillControl.row.classed('hidden', geom != 'polygon');
       dashControl.row.classed('hidden', geom != 'polyline');
+      arrowControl.section.classed('hidden', geom != 'polyline');
       updateColorControl(strokeControl);
       updateColorControl(fillControl);
       updateStrokeWidthControl();
       updateDashArrayControl();
+      if (geom == 'polyline') updateArrowControl();
       randomFillBtn.classed('hidden', geom != 'polygon');
       patternControl.section.classed('hidden', geom != 'polygon');
       if (geom == 'polygon') patternControl.update();
@@ -20651,6 +20962,7 @@
       addStyleValue(style, 'stroke-opacity', parseOpacityValue(strokeControl.opacity.node().value));
       if (targetLayer && targetLayer.geometry_type == 'polyline') {
         addStyleValue(style, 'stroke-dasharray', getControlValue(dashControl.input));
+        addArrowStyleValues(style);
       }
       if (targetLayer && targetLayer.geometry_type == 'polygon') {
         addStyleValue(style, 'fill', getControlValue(fillControl.input));
@@ -20658,6 +20970,14 @@
         addStyleValue(style, 'fill-pattern', patternControl.getCode(getControlValue(fillControl.input)));
       }
       return style;
+    }
+
+    // Only when every target agrees, as with the other controls; a size is
+    // saved only if the lines have their own.
+    function addArrowStyleValues(style) {
+      ['line-start', 'line-end', 'line-end-size'].forEach(function(field) {
+        addStyleValue(style, field, getCommonStyleValue(field));
+      });
     }
 
     function addStyleValue(style, field, value) {
@@ -22931,6 +23251,7 @@
         // data.ids = [drawingId];
         // data.id = drawingId;
         data.ids = utils$1.uniq(data.ids.concat([drawingId]));
+        data.drawing_id = drawingId;
       }
       if (pinnedOn) {
         data.pinned = true;
@@ -24858,12 +25179,7 @@
       styleOpts.interactionMode == 'edit_polygons' ||
       styleOpts.interactionMode == 'snip_lines') {
       // special overlay: shape editing mode
-      lyr = getOverlayLayer(activeLyr, hitData.ids);
-      lyr.gui.style = getLineEditingStyle(hitData);
-      if (activeLyr.geometry_type == 'polygon') {
-        lyr.gui.style.fillColor = hoverFill;
-      }
-      return [lyr];
+      return getShapeEditingLayers(activeLyr, hitData);
     }
     layers = [];
     if (styleOpts.interactionMode == 'label') {
@@ -24998,15 +25314,50 @@
     };
   }
 
+  // The path being drawn is shown without its vertices, which are only of use
+  // for reshaping a completed path. The hover markers go on the last layer, so
+  // they are drawn on top.
+  function getShapeEditingLayers(activeLyr, hitData) {
+    var drawingIds = hitData.drawing_id >= 0 ? [hitData.drawing_id] : [];
+    var otherIds = utils$1.difference(hitData.ids || [], drawingIds);
+    var layers = [], lyr;
+    if (drawingIds.length > 0) {
+      lyr = getShapeEditingLayer(activeLyr, hitData, drawingIds, false);
+      // The end of a path being drawn has closely spaced vertices, and pixel
+      // rounding would show as a staircase.
+      lyr.gui.style.unroundedCoords = true;
+      layers.push(lyr);
+    }
+    if (otherIds.length > 0 || layers.length === 0) {
+      layers.push(getShapeEditingLayer(activeLyr, hitData, otherIds, true));
+    }
+    layers.forEach(function(lyr, i) {
+      if (i < layers.length - 1) {
+        lyr.gui.style.vertex_overlay = null;
+        lyr.gui.style.pending_snip = null;
+      }
+    });
+    return layers;
+  }
+
+  function getShapeEditingLayer(activeLyr, hitData, ids, showVertices) {
+    var lyr = getOverlayLayer(activeLyr, ids);
+    lyr.gui.style = getLineEditingStyle(hitData, ids, showVertices);
+    if (activeLyr.geometry_type == 'polygon') {
+      lyr.gui.style.fillColor = hoverFill;
+    }
+    return lyr;
+  }
+
   // style for vertex edit mode
-  function getLineEditingStyle(o) {
+  function getLineEditingStyle(o, ids, showVertices) {
     var isVertex = o.hit_type == 'vertex' || o.hit_type == 'disabled';
     return {
-      ids: o.ids,
+      ids: ids,
       overlay: true,
       strokeColor: black,
       strokeWidth: 1.2,
-      vertices: true,
+      vertices: showVertices,
       vertex_overlay_color: getVertexOverlayColor(o.hit_type),
       vertex_overlay_scale: isVertex ? 2.5 : 2,
       vertex_overlay: o.hit_coordinates || null,
@@ -25207,6 +25558,11 @@
   // pixel distance threshold for hovering near a vertex or segment midpoint
   var HOVER_THRESHOLD$1 = 10;
 
+  // How far the pointer has to move from where the mouse was pressed before a
+  // drag draws a stroke. This matches the distance under which gui-mouse treats
+  // a press as a click, so a press that stays this close adds only a click vertex.
+  var STROKE_START_DIST = 6;
+
   function initLineEditing(gui, ext, hit) {
     var hoverVertexInfo;
     var prevVertexAddedEvent;
@@ -25216,7 +25572,8 @@
     var drawingId = -1; // feature id of path being drawn
     var sessionCount = 0;
     var alert;
-    var pencilPoints = [];
+    var stroke = null; // freehand stroke in progress (see startStroke())
+    var blockDrag = false; // a drag finished a path; ignore it until the mouse is released
     var _dragging = false;
 
     function active() {
@@ -25236,7 +25593,7 @@
     }
 
     function pencilIsActive() {
-      return active() && (cmdKeyDown() || pathDrawing()) && !vertexDragging() && !!pencilPoints;
+      return active() && (cmdKeyDown() || pathDrawing()) && !vertexDragging();
     }
 
     function polygonMode() {
@@ -25273,19 +25630,32 @@
       fullRedraw();
     });
 
+    // an undo during a stroke takes back the whole stroke
+    gui.on('undo_redo_pre', function() {
+      if (stroke) {
+        finishStroke();
+        blockDrag = true;
+      }
+    });
+
     gui.on('undo_path_add', function(e) {
       deleteLastPath(hit.getHitTarget());
       clearDrawingInfo();
     });
 
+    // e.points: the vertices that the edit added to the path
     gui.on('redo_path_extend', function(e) {
       var target = hit.getHitTarget();
-
-      if (pathDrawing() && prevHoverEvent) {
-        updatePathEndpoint(e.p);
-        appendVertex$1(target, pixToDataCoords(prevHoverEvent.x, prevHoverEvent.y));
+      var points = e.points;
+      var last = points[points.length - 1];
+      if (pathDrawing()) {
+        // the vertex following the pointer becomes the first added vertex
+        setVertexCoords(target, [target.gui.displayArcs.getPointCount() - 1], points[0]);
+        points.slice(1).forEach(function(p) { appendVertex$1(target, p); });
+        appendVertex$1(target, prevHoverEvent ? pixToDataCoords(prevHoverEvent.x, prevHoverEvent.y) : last);
+        hit.triggerChangeEvent();
       } else {
-        appendVertex$1(target, e.p);
+        points.forEach(function(p) { appendVertex$1(target, p); });
       }
       if (e.shapes) {
         replaceDrawnShapes(e.shapes);
@@ -25294,11 +25664,13 @@
 
     gui.on('undo_path_extend', function(e) {
       var target = hit.getHitTarget();
+      // while drawing, this also removes the vertex that follows the pointer,
+      // and the path's new last vertex takes its place
+      for (var i=0; i<e.points.length; i++) {
+        deleteLastVertex(target);
+      }
       if (pathDrawing() && prevHoverEvent) {
-        deleteLastVertex(target);
         updatePathEndpoint(pixToDataCoords(prevHoverEvent.x, prevHoverEvent.y));
-      } else {
-        deleteLastVertex(target);
       }
       if (e.shapes) {
         replaceDrawnShapes(e.shapes);
@@ -25418,59 +25790,169 @@
     });
 
     gui.map.getMouse().on('dragend', function(e) {
-      pencilPoints = []; // re-enable pencil after closing a path
+      finishStroke();
+      blockDrag = false;
     });
 
     gui.map.getMouse().on('drag', function(e) {
+      if (blockDrag) {
+        e.stopPropagation(); // don't pan until the mouse is released
+        return;
+      }
       if (!pencilIsActive()) {
-        if (!pencilPoints) {
-          // null points signals that a path was just completed -- block panning
-          e.stopPropagation();
-        }
         return;
       }
       if (gui.keyboard.spaceIsPressed()) {
         // pan if dragging with spacebar down
-        pencilPoints = []; // don't continue previous line after panning
+        finishStroke();
         return;
       }
       e.stopPropagation(); // prevent panning
-      hoverVertexInfo = findPathStartInfo(e);
-      var xy = [e.x, e.y], xy2;
-      var p = pixToDataCoords(e.x, e.y);
-      var addedToPath = true;
-      if (!pathDrawing()) {
-        pencilPoints = [xy];
-        startNewPath(p);
-      } else if (pencilPoints.length == 0) {
-        // start pencil-drawing when a path is started
-        pencilPoints = [xy];
-        extendCurrentPath(p);
-      } else if (polygonMode() && hoverVertexInfo && pencilPoints.length > 2) {
-        // close path
-        p = hoverVertexInfo.point;
-        appendVertex$1(hit.getHitTarget(), p);
-        extendCurrentPath(p);
-        pencilPoints = null; // stop drawing
-      } else if (pencilPoints.length >= 2 && pointExceedsTolerance(xy, pencilPoints, 1.2)) {
-        xy2 = pencilPoints.pop();
-        p = pixToDataCoords(xy2[0], xy2[1]);
-        extendCurrentPath(p);
-        // kludgy way to get a smoother line (could be better)
-        // not this pencilPoints = [getAvgPoint(pencilPoints), xy2, xy];
-        // not this pencilPoints = pencilPoints.slice(-2).concat([xy2, xy]);
-        pencilPoints = [getAvgPoint(pencilPoints.slice(-3).concat([xy2])), xy2, xy];
-      } else {
-        // skip this point, update the hover line
-        pencilPoints.push(xy);
-        updatePathEndpoint(p);
-        addedToPath = false;
+      if (!stroke) {
+        if (geom.distance2D(0, 0, e.dragX, e.dragY) < STROKE_START_DIST) return;
+        startStroke(e);
+        if (!stroke) return;
       }
-      if (addedToPath) {
-        //
-        prevVertexAddedEvent = e;
+      hoverVertexInfo = polygonMode() ? findPathStartInfo(e) : null;
+      if (hoverVertexInfo && stroke.sampleCount > 1) {
+        // the stroke has returned to the start of the path -- close it
+        finishStroke(hoverVertexInfo);
+        blockDrag = true;
+      } else {
+        addStrokeSample(e);
       }
     }, null, 3); // higher priority than hit control
+
+    // A stroke is smoothed as it is drawn. Vertices are placed some way behind
+    // the pointer, where later samples no longer change the curve, and they stay
+    // where they are. Between the last of them and the pointer, the path shows
+    // the pointer's own trace (see updateStrokeTail()).
+    //
+    // The first vertex of the stroke (the anchor) is either the start of a new
+    // path or the vertex that was following the pointer when the mouse was
+    // pressed. Vertices are added to the path as they are placed, but the edit
+    // that records them is made when the stroke ends, so that an undo takes back
+    // the whole stroke.
+    function startStroke(e) {
+      var target = hit.getHitTarget();
+      var anchorCommitted = !pathDrawing();
+      var n, anchor;
+      if (anchorCommitted) {
+        // the path_add edit records the anchor
+        hoverVertexInfo = null;
+        startNewPath(pixToDataCoords(e.x - e.dragX, e.y - e.dragY));
+      } else if (polygonMode() && hoverVertexInfo?.type == 'vertex') {
+        // pressing on a vertex closes the polygon, as a click does
+        extendCurrentPath([getLastVertexCoords(target)], true);
+        blockDrag = true;
+        return;
+      } else if (pointerIsOnLastVertex(target)) {
+        // continue from the last vertex rather than doubling it
+        anchorCommitted = true;
+      } else {
+        // leave the vertex under the pointer behind as the anchor, and add a new
+        // one to follow the pointer
+        appendVertex$1(target, getLastVertexCoords(target));
+      }
+      n = target.gui.displayArcs.getPointCount();
+      anchor = target.gui.displayArcs.getVertex2(n - 2);
+      stroke = {
+        anchorCommitted: anchorCommitted,
+        // data coords of the vertices before the pointer that no edit records yet
+        points: anchorCommitted ? [] : [getVertexCoords(target, n - 2)],
+        // fitted in display coords, which survive a zoom mid-stroke
+        fitter: new internal.GaussianStrokeFitter(anchor, {pixelSize: ext.getPixelSize()}),
+        previewCount: 0, // vertices between the placed vertices and the pointer
+        sampleCount: 0,
+        lastEvent: e
+      };
+    }
+
+    // Test if the vertex following the pointer is on the path's last vertex
+    function pointerIsOnLastVertex(target) {
+      var arcs = target.gui.displayArcs;
+      var n = arcs.getPointCount();
+      var a = arcs.getVertex2(n - 1), b = arcs.getVertex2(n - 2);
+      return geom.distance2D(a[0], a[1], b[0], b[1]) / ext.getPixelSize() < 3;
+    }
+
+    function addStrokeSample(e) {
+      var s = stroke;
+      var placed = s.fitter.addSample(ext.pixCoordsToMapCoords(e.x, e.y));
+      s.sampleCount++;
+      s.lastEvent = e;
+      updateStrokeTail(s, placed, s.fitter.getPreview(), pixToDataCoords(e.x, e.y));
+    }
+
+    // Rewrites the end of the path after the stroke's placed vertices: newly
+    // placed vertices, then the preview of the part of the stroke that has not
+    // been placed yet, then the vertex following the pointer. Existing vertices
+    // are overwritten rather than removed and added again, because adding or
+    // removing a vertex copies the coordinates of the whole layer.
+    // placed, preview: display coords
+    // hover: data coords
+    function updateStrokeTail(s, placed, preview, hover) {
+      var target = hit.getHitTarget();
+      var fixed = toDataCoords(target, placed);
+      var tail = fixed.concat(toDataCoords(target, preview), [hover]);
+      var count = s.previewCount + 1; // vertices after the placed vertices
+      var start = target.gui.displayArcs.getPointCount() - count;
+      var i;
+      for (; count > tail.length; count--) {
+        deleteLastVertex(target);
+      }
+      for (i = 0; i < tail.length; i++) {
+        if (i < count) {
+          setVertexCoords(target, [start + i], tail[i]);
+        } else {
+          appendVertex$1(target, tail[i]);
+        }
+      }
+      s.points = s.points.concat(fixed);
+      s.previewCount = tail.length - fixed.length - 1;
+      hit.triggerChangeEvent();
+    }
+
+    function toDataCoords(target, points) {
+      return points.map(function(p) {
+        return translateDisplayPoint(target, p);
+      });
+    }
+
+    // Completes the stroke in progress up to the pointer, and records the
+    // stroke's vertices as a single edit.
+    // end: (optional) hover info of the vertex that the stroke has to end at
+    function finishStroke(end) {
+      var s = stroke;
+      var target, rest, points, count;
+      if (!s) return;
+      stroke = null;
+      target = hit.getHitTarget();
+      rest = end ? s.fitter.addSample(end.displayPoint) : [];
+      rest = toDataCoords(target, rest.concat(s.fitter.finish()));
+      if (end && rest.length > 0) {
+        rest[rest.length - 1] = end.point;
+      }
+      // remove the preview
+      count = s.previewCount + 1;
+      for (; count > 1; count--) {
+        deleteLastVertex(target);
+      }
+      if (rest.length === 0 && s.points.length > 0) {
+        // the last vertex in the path takes the place of the vertex following the pointer
+        deleteLastVertex(target);
+        rest = [s.points.pop()];
+      } else if (rest.length > 0) {
+        setVertexCoords(target, [target.gui.displayArcs.getPointCount() - 1], rest[0]);
+      }
+      points = s.points.concat(rest);
+      if (points.length === 0 || !s.anchorCommitted && points.length == 1) {
+        hit.triggerChangeEvent(); // the stroke never left its anchor
+        return;
+      }
+      prevVertexAddedEvent = s.lastEvent;
+      extendCurrentPath(points, !!end, s.points.length);
+    }
 
     hit.on('drag', function(e) {
       if (!vertexDragging() || pathDrawing()) {
@@ -25551,7 +26033,8 @@
       if (detectDoubleClick(e)) return; // ignore second click of a dblclick
       var p = pixToDataCoords(e.x, e.y);
       if (pathDrawing()) {
-        extendCurrentPath(hoverVertexInfo?.point || p);
+        // finish the path if a vertex is selected (but not an interpolated point)
+        extendCurrentPath([hoverVertexInfo?.point || p], hoverVertexInfo?.type == 'vertex');
       } else if (hoverVertexInfo?.type == 'interpolated') {
         // don't start new path if hovering along a segment -- this is
         // likely to be an attempt to add a new vertex, not start a new path
@@ -25651,6 +26134,11 @@
 
     function finishCurrentPath() {
       if (!pathDrawing()) return;
+      if (stroke) {
+        // finishing mid-drag (e.g. with the Enter key)
+        finishStroke();
+        blockDrag = true;
+      }
       var target = hit.getHitTarget();
       if (getLastArcLength(target) <= 2) { // includes hover point
         // deleteLastPath(target);
@@ -25674,14 +26162,20 @@
       updateCursor();
     }
 
-    // p: [x, y] source data coordinates of new point on path
-    function extendCurrentPath(p) {
+    // points: [x, y] source data coordinates of vertices to add to the path. The
+    //   vertex that follows the pointer becomes points[placed], so it must
+    //   already be there; the rest are appended after it.
+    // finish: true if the path ends at an existing vertex (which closes a polygon)
+    // placed: (optional) number of points already in the path, before the vertex
+    //   that follows the pointer
+    function extendCurrentPath(points, finish, placed) {
       var target = hit.getHitTarget();
       var shapes1, shapes2;
-      // finish the path if a vertex is selected (but not an interpolated point)
-      var finish = hoverVertexInfo?.type == 'vertex';
       if (getLastArcLength(target) < 2) {
         stop$1('Defective path');
+      }
+      for (var i=(placed || 0) + 1; i<points.length; i++) {
+        appendVertex$1(target, points[i]);
       }
       if (finish && polygonMode()) {
         shapes1 = target.shapes.slice(initialShapeCount);
@@ -25694,12 +26188,12 @@
       }
       if (shapes2) {
         replaceDrawnShapes(shapes2);
-        gui.dispatchEvent('path_extend', {target, p, shapes1, shapes2});
+        gui.dispatchEvent('path_extend', {target, points, shapes1, shapes2});
         clearDrawingInfo();
         fullRedraw();
       } else {
-        appendVertex$1(target, p);
-        gui.dispatchEvent('path_extend', {target, p});
+        appendVertex$1(target, points[points.length - 1]); // the new vertex following the pointer
+        gui.dispatchEvent('path_extend', {target, points});
         hit.triggerChangeEvent(); // trigger overlay redraw
       }
     }
@@ -30581,10 +31075,20 @@
         // array of field names of relevant svg display properties
         fields = getStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
         records = lyr.data.getRecords();
+    // Arrowheads are drawn by the canvas as shapes, not set as attributes, so
+    // they are not among the attribute fields. Assigned on every call, like the
+    // rest, because the style object is reused from one feature to the next.
+    var arrowFields = getLineArrowFields(lyr);
+    var hasStrokeFields = fields.includes('stroke') || fields.includes('stroke-width');
 
     var styler = function(style, i) {
       var rec = records[i];
       var fname, val;
+      if (arrowFields) {
+        style.lineStart = rec && rec['line-start'];
+        style.lineEnd = rec && rec['line-end'];
+        style.lineEndSize = rec && rec['line-end-size'];
+      }
       for (var j=0; j<fields.length; j++) {
         fname = fields[j];
         val = rec && rec[fname];
@@ -30606,6 +31110,12 @@
       }
     };
     var style = {styler: styler, type: 'styled'};
+    // A line layer styled with nothing but arrowheads is drawn the way SVG
+    // export draws it, with the black 1px line the layer's group gives it.
+    if (arrowFields && !hasStrokeFields) {
+      style.strokeColor = 'black';
+      style.strokeWidth = 1;
+    }
     // use squares if radius is missing... (TODO: check behavior with labels, etc)
     if (lyr.geometry_type == 'point' && fields.includes('r') === false) {
       style.dotSize = 1;
@@ -30620,7 +31130,18 @@
       // return fields.indexOf('r') > -1; // require 'r' field for point symbols
       return fields.includes('fill') || fields.includes('r'); // support colored squares
     }
-    return utils$1.difference(fields, ['opacity', 'class']).length > 0;
+    return utils$1.difference(fields, ['opacity', 'class']).length > 0 ||
+      !!getLineArrowFields(lyr);
+  }
+
+  // The arrowhead fields a line layer has, or null
+  function getLineArrowFields(lyr) {
+    var fields;
+    if (lyr.geometry_type != 'polyline' || !lyr.data) return null;
+    fields = lyr.data.getFields().filter(function(f) {
+      return internal.svg.lineArrowFields.includes(f);
+    });
+    return fields.length > 0 ? fields : null;
   }
 
   function getStyleFields(lyr) {
@@ -31579,7 +32100,7 @@
       arcs = getArcsForRendering(lyr, ext);
       filter = getShapeFilter(arcs, layer.shapes, ext);
       canv.drawStyledPaths(layer.shapes, arcs, style, filter);
-      if (style.vertices) {
+      if (style.vertices || style.vertex_overlay || style.pending_snip) {
         canv.drawVertices(layer.shapes, arcs, style, filter);
       }
     }
@@ -31726,6 +32247,8 @@
     };
     */
 
+    // Draws a dot at each vertex (if style.vertices is set), and the markers of
+    // style.vertex_overlay and style.pending_snip.
     _self.drawVertices = function(shapes, arcs, style, filter) {
       var iter = new internal.ShapeIter(arcs);
       var t = getScaledTransform(_ext);
@@ -31735,7 +32258,7 @@
       var i, j, p;
       _ctx.beginPath();
       _ctx.fillStyle = color;
-      for (i=0; i<shapes.length; i++) {
+      for (i=0; style.vertices && i<shapes.length; i++) {
         var shp = shapes[i];
         if (!shp || filter && !filter(i)) continue;
         for (j=0; j<shp.length; j++) {
@@ -31773,8 +32296,10 @@
     _self.drawStyledPaths = function(shapes, arcs, style, filter) {
       var styleIndex = {};
       var batchSize = 100;
-      var startPath = getPathStart(_ext, getScaledLineScale(_ext, style));
+      var lineScale = getScaledLineScale(_ext, style);
+      var startPath = getPathStart(_ext, lineScale);
       var draw = getShapePencil(arcs, _ext);
+      var arrowPencil = null;
       var key, item, shp;
       var styler = style.styler || null;
       var drawStyle = styler ? utils$1.defaults({}, style) : style;
@@ -31783,6 +32308,13 @@
         if (!shp || filter && !filter(i)) continue;
         if (styler) {
           styler(drawStyle, i);
+        }
+        // A line with arrowheads is drawn on its own, trimmed to meet its heads;
+        // see svg-line-arrows.mjs. Only lines styled with line-start or line-end
+        // get here, so the batch below is untouched for everything else.
+        if (drawStyle.lineStart || drawStyle.lineEnd) {
+          if (!arrowPencil) arrowPencil = getArrowLinePencil(arcs, _ext, lineScale);
+          if (arrowPencil(shp, _ctx, drawStyle, startPath, draw)) continue;
         }
         if (!drawStyle.batchOverlay && (drawStyle.overlay ||
           drawStyle.opacity < 1 || drawStyle.fillOpacity < 1 ||
@@ -32138,6 +32670,10 @@
     return x + 0.5 | 0;
   }
 
+  function noRound(x) {
+    return x;
+  }
+
   function roundToHalfPix(x) {
     return (x * 2 | 0) / 2;
   }
@@ -32149,13 +32685,111 @@
       if (style.fillEffect) {
         ctx.fillStyle = getCanvasFillEffect(ctx, shp, arcs, ext, style);
       }
+      // Rounding also drops vertices that land on the same pixel, which keeps
+      // detailed shapes fast to draw, so only a style for a few short paths
+      // should turn it off (see gui-overlay-styler.mjs).
+      var round = style.unroundedCoords ? noRound : roundToPix;
       for (var i=0, n=shp ? shp.length : 0; i<n; i++) {
         iter.init(shp[i]);
         // 0.2 trades visible seams for performance
         // drawPath(protectIterForDrawing(iter, ext), t, ctx, 0.2);
-        drawPath2(protectIterForDrawing(iter, ext), t, ctx, roundToPix);
+        drawPath2(protectIterForDrawing(iter, ext), t, ctx, round);
       }
     };
+  }
+
+  // Returns a function that draws one line feature with its arrowheads, and
+  // returns false if the feature has none to draw (a style of 'none', or no
+  // stroke), for the caller to draw it the usual way.
+  //
+  // Heads are sized by the same factor as the line width, so that a preview
+  // matches the exported SVG. Far enough in that paths are clipped to the view
+  // (see protectIterForDrawing()), the line is drawn clipped and untrimmed and
+  // only the heads are added, since a clipped path's ends are not its ends.
+  function getArrowLinePencil(arcs, ext, lineScale) {
+    var t = getScaledTransform(ext);
+    var iter = new internal.ShapeIter(arcs);
+    var strokeScale = getCanvasStrokeScale(GUI.getPixelRatio(), lineScale);
+    var clipped = ext.scale() > 100;
+    return function(shp, ctx, style, startPath, draw) {
+      var opts = internal.svg.makeLineArrowOpts(style.lineStart, style.lineEnd,
+        style.lineEndSize, style.strokeWidth, strokeScale);
+      var heads = [];
+      var i, coords, shape;
+      if (opts.start == 'none' && opts.end == 'none' || !(style.strokeWidth > 0)) {
+        return false;
+      }
+      startPath(ctx, style);
+      for (i=0; i<shp.length; i++) {
+        coords = getPixelCoords(iter, shp[i], t);
+        if (coords.length < 2) continue;
+        shape = internal.svg.getLineArrowShape(coords, opts);
+        heads = heads.concat(shape.heads);
+        if (!clipped) traceCoords(shape.coords, ctx);
+      }
+      if (clipped) draw(shp, ctx, style);
+      endPath(ctx, style);
+      drawArrowHeads(heads, ctx, style, opts.width);
+      return true;
+    };
+  }
+
+  function getPixelCoords(iter, path, t) {
+    var coords = [];
+    var x, y, prev;
+    iter.init(path);
+    while (iter.hasNext()) {
+      x = iter.x * t.mx + t.bx;
+      y = iter.y * t.my + t.by;
+      if (prev && prev[0] == x && prev[1] == y) continue;
+      prev = [x, y];
+      coords.push(prev);
+    }
+    return coords;
+  }
+
+  function traceCoords(coords, ctx) {
+    ctx.moveTo(coords[0][0], coords[0][1]);
+    for (var i=1; i<coords.length; i++) {
+      ctx.lineTo(coords[i][0], coords[i][1]);
+    }
+  }
+
+  // Solid heads and dots are filled with the line's colour; open ones are stroked with
+  // its width, always whole and round-cornered, whatever the line's dashes and
+  // caps.
+  function drawArrowHeads(heads, ctx, style, width) {
+    var alpha = (style.opacity >= 0 ? style.opacity : 1) *
+      (style.strokeOpacity >= 0 ? style.strokeOpacity : 1);
+    var head, p;
+    if (heads.length === 0) return;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = style.strokeColor;
+    ctx.strokeStyle = style.strokeColor;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.setLineDash([]);
+    for (var i=0; i<heads.length; i++) {
+      head = heads[i];
+      ctx.beginPath();
+      if (head.type == 'dot') {
+        ctx.arc(head.center[0], head.center[1], head.radius, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
+      p = head.points;
+      ctx.moveTo(p[0][0], p[0][1]);
+      ctx.lineTo(p[1][0], p[1][1]);
+      ctx.lineTo(p[2][0], p[2][1]);
+      if (head.type == 'arrow') {
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
   }
 
   function protectIterForDrawing(iter, ext) {
@@ -35770,13 +36404,13 @@
 
       // Font and face menus, as in the label panel
       row = makeRow(appearance);
-      fontSelect = El('select').attr('title', 'Font').addClass('scalebar-font-select')
+      fontSelect = El('select').attr('aria-label', 'Font').addClass('scalebar-font-select')
         .appendTo(makeCell(row, 'Font'))
         .on('change', function() {
           if (fontSelect.node().value) applyFont(fontSelect.node().value);
         });
       renderFontOptions();
-      fontStyleSelect = El('select').attr('title', 'Font style')
+      fontStyleSelect = El('select').attr('aria-label', 'Font style')
         .addClass('scalebar-font-style-select')
         .appendTo(makeCell(row, 'Font style'))
         .on('change', function() {
@@ -35790,7 +36424,7 @@
       El('span').appendTo(colorCell).text('Color');
       colorChit = El('div').addClass('label-color-chit').attr('role', 'button')
         .on('click', function() { colorPicker.toggle(); });
-      colorInput = El('input').attr('type', 'text').attr('title', 'Scale bar color')
+      colorInput = El('input').attr('type', 'text').attr('aria-label', 'Scale bar color')
         .on('change', function() {
           var color = colorInput.node().value.trim();
           if (!color) {
@@ -35816,7 +36450,7 @@
         'scalebar-bar-width');
       marginInput = makeNumberInput(makeCell(row, 'Inset'), 'margin',
         'scalebar-margin')
-        .attr('title', 'Distance from the edges of the frame, in pixels');
+        .attr('aria-label', 'Distance from the edges of the frame, in pixels');
 
       row = El('div').addClass('label-style-row label-panel-button-row').appendTo(form);
       makePanelActionButton(row, 'Remove scale bar', function() {
@@ -37117,6 +37751,25 @@
           })
         };
       },
+      // The vertices of each part of each feature in a path layer, in pixels
+      // from the top left of the map, for a test comparing a drawn path with the
+      // pointer positions that drew it.
+      getLayerPathPixels: function(name) {
+        var o = gui.model.getLayers().filter(function(o) {
+          return getLayerName(o.layer) === name;
+        })[0];
+        var ext = gui.map.getExtent();
+        var arcs;
+        if (!o) return null;
+        arcs = o.layer.gui ? o.layer.gui.displayArcs : o.dataset.arcs;
+        return (o.layer.shapes || []).map(function(shp) {
+          return shp ? shp.map(function(ids) {
+            var iter = arcs.getShapeIter(ids), pts = [];
+            while (iter.hasNext()) pts.push(ext.translateCoords(iter.x, iter.y));
+            return pts;
+          }) : null;
+        });
+      },
       selectLayer: function(name) {
         var target = gui.model.getLayers().filter(function(o) {
           return getLayerName(o.layer) === name;
@@ -37131,6 +37784,19 @@
             name: getLayerName(lyr),
             geometryType: lyr.geometry_type,
             shapeCount: lyr.shapes ? lyr.shapes.length : 0
+          };
+        });
+      },
+      // What each overlay layer last drew: the ids of its features, and whether
+      // it marked their vertices. The overlay is drawn to canvas, so there is no
+      // DOM state to assert on.
+      getOverlayInfo: function() {
+        var layers = gui.map && gui.map.getOverlayLayers ?
+          gui.map.getOverlayLayers() : [];
+        return layers.map(function(lyr) {
+          return {
+            ids: lyr.gui.style.ids || null,
+            vertices: !!lyr.gui.style.vertices
           };
         });
       },

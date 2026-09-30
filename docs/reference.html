@@ -1255,7 +1255,7 @@ mapshaper tracts.shp
   -o tract_groups.shp
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-style" data-name="-style" data-options="where clear class css style fill pink fill-pattern ortho npers stroke stroke-width stroke-dasharray opacity icon icon-size icon-color label-text font-size text-anchor target"><h3 id="-style">-style</h3>
+<section class="cmd-section" data-id="-style" data-name="-style" data-options="where clear class css style fill pink fill-pattern ortho npers stroke stroke-width stroke-dasharray line-start arrow open-arrow dot none line-end line-end-size opacity icon icon-size icon-color label-text font-size text-anchor target"><h3 id="-style">-style</h3>
 <p>Add common SVG attributes for SVG export and display in the web UI. Attribute values take either a literal value or a JS expression. See <a href="/docs/guides/expressions.html">JavaScript expressions</a> for the available context. This command was named <code>-svg-style</code> in earlier versions of mapshaper.</p>
 <p><code>where=</code>           Boolean JS expression for targetting a subset of features.</p>
 <p><code>clear</code> Remove all style properties from a layer.</p>
@@ -1274,6 +1274,9 @@ mapshaper tracts.shp
 <p><code>stroke=</code>          Stroke color</p>
 <p><code>stroke-width=</code>    Stroke width</p>
 <p><code>stroke-dasharray=</code> Dashes</p>
+<p><code>line-start=</code>      Marker at the first vertex of a line: <code>arrow</code>, <code>open-arrow</code>, <code>dot</code> or <code>none</code>. Each part of a multi-part line gets its own marker.</p>
+<p><code>line-end=</code>        Marker at the last vertex of a line: <code>arrow</code>, <code>open-arrow</code>, <code>dot</code> or <code>none</code>.</p>
+<p><code>line-end-size=</code>   Length of an arrowhead&#39;s sides in pixels, or the diameter of a dot, for both ends (an arrowhead&#39;s default is 7 plus three times the stroke width; a dot&#39;s is 0.6 of that)</p>
 <p><code>opacity=</code>         Symbol opacity (e.g. <code>opacity=0.5</code>)</p>
 <p><code>r=</code>               Circle radius. Setting this exports points as SVG <code>&lt;circle&gt;</code> symbols, unless the <code>-o point-symbol=square</code> option is used.</p>
 <p><code>icon=</code>            Point icon shape. Possible values are: circle, square, ring or star. Icons are rendered as SVG symbols and can be combined with labels on the same point layer.</p>
@@ -1285,6 +1288,11 @@ mapshaper tracts.shp
 <pre><code class="hljs language-bash"><span class="hljs-comment"># Apply a 2px grey stroke and no fill to a polygon layer</span>
 mapshaper polygons.geojson \
 -style fill=none stroke=<span class="hljs-string">&#x27;#aaa&#x27;</span> stroke-width=2 \
+-o out.svg
+
+<span class="hljs-comment"># Put an open arrowhead at the end of each line</span>
+mapshaper routes.geojson \
+-style stroke=black stroke-width=1.5 line-end=open-arrow \
 -o out.svg
 </code></pre>
 </section>

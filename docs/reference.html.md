@@ -1870,6 +1870,12 @@ Example: `hatches 45deg 2px red 2px grey`
 
 `stroke-dasharray=` Dashes
 
+`line-start=`      Marker at the first vertex of a line: `arrow`, `open-arrow`, `dot` or `none`. Each part of a multi-part line gets its own marker.
+
+`line-end=`        Marker at the last vertex of a line: `arrow`, `open-arrow`, `dot` or `none`.
+
+`line-end-size=`   Length of an arrowhead's sides in pixels, or the diameter of a dot, for both ends (an arrowhead's default is 7 plus three times the stroke width; a dot's is 0.6 of that)
+
 `opacity=`         Symbol opacity (e.g. `opacity=0.5`)
 
 `r=`               Circle radius. Setting this exports points as SVG `<circle>` symbols, unless the `-o point-symbol=square` option is used.
@@ -1890,6 +1896,11 @@ Common options: `target=`
 # Apply a 2px grey stroke and no fill to a polygon layer
 mapshaper polygons.geojson \
 -style fill=none stroke='#aaa' stroke-width=2 \
+-o out.svg
+
+# Put an open arrowhead at the end of each line
+mapshaper routes.geojson \
+-style stroke=black stroke-width=1.5 line-end=open-arrow \
 -o out.svg
 ```
 

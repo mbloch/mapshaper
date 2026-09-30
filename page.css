@@ -3992,6 +3992,16 @@ body.dragging-color-picker * {
 	font-size: 12px;
 }
 
+/* Words, like the label panel's Fixed/Draggable, but splitting the group
+   evenly so that it lines up with the shapes above. */
+.layer-style-panel .layer-arrow-position-buttons .label-panel-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0 4px;
+	font-size: 12px;
+}
+
 .label-panel-btn.selected {
 	background-color: black;
 	border-color: black;
@@ -4022,6 +4032,16 @@ body.dragging-color-picker * {
 
 .label-icon-buttons .label-panel-btn[data-icon="star"] .label-icon-symbol {
 	transform: scale(1.4);
+}
+
+/* Drawn as the symbol is, an outline around a hollow star, in the artwork's
+   own 40-unit coordinates -- so the stroke width is in those units too. */
+.label-icon-buttons .label-panel-btn[data-icon="nyt-star"] .label-icon-symbol {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 5;
+	stroke-miterlimit: 10;
+	transform: scale(0.95);
 }
 
 .label-align-buttons .label-panel-btn,
