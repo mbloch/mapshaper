@@ -1,4 +1,4 @@
-v0.7.72
+v0.7.72 (unreleased)
 * New callout terminator: `callout-end=ring`, a hollow circle around the anchor.
 
 v0.7.71

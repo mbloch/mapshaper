@@ -180,3 +180,17 @@ export function setLabelTextSession(gui, session) {
 export function getLabelTextSession(gui) {
   return gui.state.label_text_session || null;
 }
+
+// The label tool's armed placement tool: 'anchor', 'block', 'path' or null.
+// The tool owns it; the panel reads it, because an armed tool with nothing
+// selected is what points the panel at new labels rather than at all of them.
+export function setLabelToolArmed(gui, mode) {
+  var val = mode || null;
+  if ((gui.state.label_tool_armed || null) === val) return;
+  gui.state.label_tool_armed = val;
+  gui.dispatchEvent('label_tool_armed_change');
+}
+
+export function getLabelToolArmed(gui) {
+  return gui.state.label_tool_armed || null;
+}

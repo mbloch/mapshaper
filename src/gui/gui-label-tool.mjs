@@ -17,9 +17,10 @@ import { internal } from './gui-core';
 import { runGuiEditCommand } from './gui-edit-command';
 import { quoteCommandValue } from './gui-command-utils';
 import {
-  getNewLabelStyle, updateNewLabelStyle, getLabelTextSession,
+  getNewLabelStyle, updateNewLabelStyle, getLabelTextSession, getLabelToolArmed,
   getLabelPositionMode, setLabelPositionMode, getLabelPositionKind, getToggleState
 } from './gui-label-style-state';
+import { formatEditingStatus } from './gui-editing-status';
 import { getTextCentreOffset, getNearestPosition } from './gui-label-offset';
 import { WRAP_FIELDS, rewrapLabelValue } from './gui-label-wrap';
 import { getLabelTextCommand } from './gui-label-commands';
@@ -255,6 +256,11 @@ export function LabelTool(gui) {
   });
   gui.on('label_text_session_change', function() {
     // a label opened for typing becomes what the controls act on
+    if (panel.visible()) updateControls();
+  });
+  gui.on('label_tool_armed_change', function() {
+    // arming a tool points an empty selection at new labels, and disarming
+    // points it back at the whole layer
     if (panel.visible()) updateControls();
   });
   gui.on('label_position_mode_change', function() {
@@ -813,6 +819,16 @@ export function LabelTool(gui) {
     return !!(gui.interaction && gui.interaction.getMode() == labelMode);
   }
 
+  // Whether an empty selection means the next label rather than every label:
+  // only while a placement tool is armed, or a label not yet made is being
+  // typed. With no tool armed the panel styles the whole layer, as the line
+  // and polygon panels do.
+  function editingNewLabels() {
+    var session = getLabelTextSession(gui);
+    if (!labelModeIsOn()) return false;
+    return !!getLabelToolArmed(gui) || !!(session && session.id == -1);
+  }
+
   function updateVisibility() {
     var enabled = activeLayerHasLabels();
     textBtn.classed('disabled', !enabled);
@@ -896,13 +912,14 @@ export function LabelTool(gui) {
     if (session) return [];
     ids = getSelectionIds();
     if (ids.length > 0) return ids;
-    return labelModeIsOn() ? [] : getAllLabelIds();
+    return editingNewLabels() ? [] : getAllLabelIds();
   }
 
-  // With nothing selected the controls edit the style that new labels are given,
-  // so they stay live even when there is no label, and no layer, yet.
+  // With a tool armed and nothing selected the controls edit the style that
+  // new labels are given, so they stay live even when there is no label, and
+  // no layer, yet. With no tool armed and no labels, there is nothing to edit.
   function controlsEnabled() {
-    return getTargetIds().length > 0 || labelModeIsOn();
+    return getTargetIds().length > 0 || editingNewLabels();
   }
 
   function getAllLabelIds() {
@@ -1132,20 +1149,19 @@ export function LabelTool(gui) {
     });
   }
 
+  // What the controls will act on. With a tool armed an empty selection is the
+  // next label rather than the whole layer, and saying "all" there is what
+  // would make the panel untrustworthy.
   function updateEditingStatus(count, editingText) {
-    editingStatus.text('Editing: ' + describeTarget(count, editingText));
+    editingStatus.text(formatEditingStatus({
+      selected: count,
+      total: getActiveLayer() ? internal.getFeatureCount(getActiveLayer()) : 0,
+      newLabels: editingNewLabels(),
+      editingText: editingText
+    }));
     // "deselect" is for a selection the user made; a label being typed into is
     // left by clicking away or pressing Escape, not from here.
     clearLink.classed('hidden', count === 0 || editingText);
-  }
-
-  // What the controls will act on. In label mode an empty selection is the next
-  // label rather than the whole layer, and saying "all" there is what would
-  // make the panel untrustworthy.
-  function describeTarget(count, editingText) {
-    if (editingText) return 'this label';
-    if (count > 0) return count + ' selected';
-    return labelModeIsOn() ? 'new labels' : 'all';
   }
 
   function updateFontSizeControls(shown) {
@@ -1356,7 +1372,7 @@ export function LabelTool(gui) {
     var ids = getTargetIds();
     var table = getActiveTable();
     if (ids.length === 0) {
-      return internal.svg.labelHasHalo(labelModeIsOn() ? getNewLabelStyle(gui) : null) ? 'on' : 'off';
+      return internal.svg.labelHasHalo(editingNewLabels() ? getNewLabelStyle(gui) : null) ? 'on' : 'off';
     }
     return getToggleState(ids.map(function(id) {
       return internal.svg.labelHasHalo(table && table.getRecordAt(id));
@@ -1416,7 +1432,7 @@ export function LabelTool(gui) {
     var ids = getTargetIds();
     var table = getActiveTable();
     if (ids.length === 0) {
-      return internal.svg.labelHasCallout(labelModeIsOn() ? getNewLabelStyle(gui) : null) ? 'on' : 'off';
+      return internal.svg.labelHasCallout(editingNewLabels() ? getNewLabelStyle(gui) : null) ? 'on' : 'off';
     }
     return getToggleState(ids.map(function(id) {
       return internal.svg.labelHasCallout(table && table.getRecordAt(id));
@@ -1558,7 +1574,7 @@ export function LabelTool(gui) {
   function updateCalloutEndSizeControl(off) {
     var ids = getTargetIds().length > 0 ? getCalloutEndTargetIds() : [];
     var noMarker = getTargetIds().length > 0 ? ids.length === 0 :
-      getCalloutEnd(labelModeIsOn() ? getNewLabelStyle(gui) : null) == 'none';
+      getCalloutEnd(editingNewLabels() ? getNewLabelStyle(gui) : null) == 'none';
     var shown = off || noMarker ? {value: '', mixed: false} : getCalloutEndSizeShown(ids);
     calloutEndSizeInput.setValue(shown.value);
     calloutEndSizeInput.setPlaceholder(shown.mixed ? MIXED_TEXT : '');
@@ -1597,7 +1613,7 @@ export function LabelTool(gui) {
     var vals;
     if (!controlsEnabled()) return {value: '', mixed: false};
     if (ids.length === 0) {
-      return {value: fn(labelModeIsOn() ? getNewLabelStyle(gui) : null), mixed: false};
+      return {value: fn(editingNewLabels() ? getNewLabelStyle(gui) : null), mixed: false};
     }
     vals = ids.map(function(id) {
       return fn(table && table.getRecordAt(id));
@@ -1673,7 +1689,7 @@ export function LabelTool(gui) {
     var records = getActiveTable() && getActiveTable().getRecords();
     var value, val;
     if (ids.length === 0) {
-      return resolveAlignment(labelModeIsOn() ? getNewLabelStyle(gui) : null);
+      return resolveAlignment(editingNewLabels() ? getNewLabelStyle(gui) : null);
     }
     for (var i = 0; i < ids.length; i++) {
       val = resolveAlignment(records && records[ids[i]]);
@@ -1693,7 +1709,7 @@ export function LabelTool(gui) {
   // label will be created with, falling back to the same default an existing
   // label would show.
   function getNewLabelValue(field, opts) {
-    var style = labelModeIsOn() ? getNewLabelStyle(gui) : null;
+    var style = editingNewLabels() ? getNewLabelStyle(gui) : null;
     var val = style ? style[field] : '';
     if (val || val === 0) return val;
     return opts && opts.useDefault ? opts.defaultValue : '';
@@ -1784,7 +1800,7 @@ export function LabelTool(gui) {
     var records = getActiveTable() && getActiveTable().getRecords();
     var ids = getTargetIds();
     if (ids.length === 0) {
-      return !!(labelModeIsOn() && getNewLabelStyle(gui)[textAnchorField]);
+      return !!(editingNewLabels() && getNewLabelStyle(gui)[textAnchorField]);
     }
     return ids.some(function(id) {
       var rec = records && records[id];

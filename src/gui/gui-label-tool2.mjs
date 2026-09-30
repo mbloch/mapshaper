@@ -32,7 +32,8 @@ import {
   getLabelSelectActions, getAllLabelIds
 } from './gui-label-select-matchers';
 import {
-  getNewLabelStyle, labelTextIsDraggable, setLabelPositionMode, getLabelPositionKind
+  getNewLabelStyle, labelTextIsDraggable, setLabelPositionMode, getLabelPositionKind,
+  setLabelToolArmed
 } from './gui-label-style-state';
 import {
   setPendingLabelPath,
@@ -190,6 +191,7 @@ export function initLabelTool(gui, ext, hit) {
     selection.turnOff();
     abandonCurve();
     armed = null;
+    setLabelToolArmed(gui, null);
     updateButtons();
     hideInstructions();
     drag = null;
@@ -255,6 +257,7 @@ export function initLabelTool(gui, ext, hit) {
     if (armed == mode) return;
     if (drawingCurve()) abandonCurve();
     armed = mode;
+    setLabelToolArmed(gui, mode);
     updateButtons();
     showInstructions();
   }

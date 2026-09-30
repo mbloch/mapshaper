@@ -7,6 +7,7 @@ import {
 } from './gui-panel-controls';
 import { SizeField } from './gui-size-field';
 import { internal } from './gui-core';
+import { formatEditingStatus } from './gui-editing-status';
 import { runGuiEditCommand } from './gui-edit-command';
 import { quoteCommandValue } from './gui-command-utils';
 import { parseOpacityValue, formatOpacityPct, formatColorOpacityPct } from './gui-style-values';
@@ -541,9 +542,13 @@ export function PointStyleTool(gui) {
     updateControls();
   }
 
+  // As in the line and polygon panels: an empty layer's controls are shown
+  // disabled rather than left to do nothing.
   function updateEditingStatus(count) {
-    editingStatus.text(count > 0 ? 'Editing: ' + count + ' selected' : 'Editing: all');
+    var total = targetLayer ? internal.getFeatureCount(targetLayer) : 0;
+    editingStatus.text(formatEditingStatus({selected: count, total: total}));
     clearLink.classed('hidden', count === 0);
+    panel.classed('no-targets', total === 0);
   }
 
   function setCircleColor(control, color) {
