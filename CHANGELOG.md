@@ -1,7 +1,7 @@
 v0.7.71
 * Added arrowheads to line features: new `-style` options `line-start=`, `line-end=` (`arrow`, `open-arrow`, `dot` or `none`) and `line-end-size=`.
 * [web] Added arrowhead controls to the line style panel.
-* [web] Improved smoothing of hand-drawn lines and polygons.
+* [web] Improved smoothing of hand-drawn curves when drawing lines and polygons.
 
 v0.7.70
 * Added -labels command, with more options for labelling than the -style command.
