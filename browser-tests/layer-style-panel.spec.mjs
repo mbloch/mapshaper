@@ -46,6 +46,28 @@ test('a colour is set from its field, and its opacity from the one beside it', a
   expect(errors).toEqual([]);
 });
 
+test('a typed colour is kept exactly, not snapped to the picker\'s grid', async function({page}) {
+  await loadFixture(page, FIXTURE);
+  var row = page.locator('.layer-style-panel .label-split-row').nth(0);
+  var fill = row.locator('.label-color-input');
+  await setField(fill, '#ff8800');
+  await expect(fill).toHaveValue('#ff8800');
+  expect(await getStyleValue(page, 'fill')).toBe('#ff8800');
+
+  // opening and closing the picker leaves it alone too
+  await row.locator('.label-color-chit').click();
+  await row.locator('.label-color-picker button').filter({hasText: 'Close'}).click();
+  await page.waitForTimeout(150);
+  await expect(fill).toHaveValue('#ff8800');
+
+  // and a preset is applied as the colour it is
+  await row.locator('.label-color-chit').click();
+  await row.locator('.label-color-preset[aria-label="#e39652"]').click();
+  await page.waitForTimeout(250);
+  await expect(fill).toHaveValue('#e39652');
+  expect(await getStyleValue(page, 'fill')).toBe('#e39652');
+});
+
 test('an opacity is blank with no colour, and 100% with one', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);

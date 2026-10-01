@@ -47,6 +47,11 @@ export function ColorPicker(parent, opts) {
   var colorPicker = El('div').addClass('label-color-picker').appendTo(parent).hide();
   var sbCanvas, hueCanvas, sbMarker, hueMarker, pickerHsbInputs;
   var pickerColor = {h: 0, s: 0, b: 0};
+  // The hex value the picker was set to, until it is moved off it. HSB is
+  // held in bytes, which cannot represent every RGB colour, so a colour that
+  // was typed or picked from a preset would otherwise come back as a
+  // neighbour of itself (#ff8800 as #ff8a00).
+  var pickerHex = null;
   var presetRows = opts.presetRows || [grayscaleColorPresets];
 
   init();
@@ -75,13 +80,15 @@ export function ColorPicker(parent, opts) {
 
   this.setColor = function(color) {
     if (isHexColor(color)) {
-      setPickerColor(hexToHsb(color));
+      setPickerColor(hexToHsb(color), color);
     }
   };
 
-  this.getColor = function() {
-    return hsbToHex(pickerColor);
-  };
+  this.getColor = getPickerHex;
+
+  function getPickerHex() {
+    return pickerHex || hsbToHex(pickerColor);
+  }
 
   // The picker is placed in viewport coordinates (see .label-color-picker), so
   // it has to be put against the field it belongs to each time it opens. The
@@ -146,7 +153,7 @@ export function ColorPicker(parent, opts) {
   }
 
   function applyPreset(color) {
-    setPickerColor(hexToHsb(color));
+    setPickerColor(hexToHsb(color), color);
     commitPickerColor();
   }
 
@@ -216,15 +223,17 @@ export function ColorPicker(parent, opts) {
     };
   }
 
-  function setPickerColor(hsb) {
+  // @hex: the exact colour, when @hsb was made from one
+  function setPickerColor(hsb, hex) {
     pickerColor = {
       h: clamp(Math.round(hsb.h), 0, 255),
       s: clamp(Math.round(hsb.s), 0, 255),
       b: clamp(Math.round(hsb.b), 0, 255)
     };
+    pickerHex = hex || null;
     drawColorPicker();
     updatePickerFields();
-    if (opts.onPreview) opts.onPreview(hsbToHex(pickerColor));
+    if (opts.onPreview) opts.onPreview(getPickerHex());
   }
 
   function updatePickerFields() {
@@ -280,7 +289,7 @@ export function ColorPicker(parent, opts) {
   }
 
   function commitPickerColor() {
-    if (opts.onChange) opts.onChange(hsbToHex(pickerColor));
+    if (opts.onChange) opts.onChange(getPickerHex());
   }
 
   function getMarkerColor(rgb) {
