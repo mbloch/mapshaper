@@ -3021,7 +3021,7 @@
     return str + repeatString(pad, size - str.length);
   }
 
-  function trim(str) {
+  function trim$1(str) {
     return ltrim(rtrim(str));
   }
 
@@ -3625,7 +3625,7 @@
     range, regexEscape, reorderArray: reorderArray$1, repeat, repeatString,
     replaceArray, rpad, rtrim,
     shuffle, some, sortArrayIndex, sortOn, splitLines, sum,
-    toArray, toBuffer, trim, trimQuotes,
+    toArray, toBuffer, trim: trim$1, trimQuotes,
     uniq, uniqifyNames,
     wildcardToRegExp
   };
@@ -15892,6 +15892,11 @@
     var colorPicker = El('div').addClass('label-color-picker').appendTo(parent).hide();
     var sbCanvas, hueCanvas, sbMarker, hueMarker, pickerHsbInputs;
     var pickerColor = {h: 0, s: 0, b: 0};
+    // The hex value the picker was set to, until it is moved off it. HSB is
+    // held in bytes, which cannot represent every RGB colour, so a colour that
+    // was typed or picked from a preset would otherwise come back as a
+    // neighbour of itself (#ff8800 as #ff8a00).
+    var pickerHex = null;
     var presetRows = opts.presetRows || [grayscaleColorPresets];
 
     init();
@@ -15920,13 +15925,15 @@
 
     this.setColor = function(color) {
       if (isHexColor(color)) {
-        setPickerColor(hexToHsb(color));
+        setPickerColor(hexToHsb(color), color);
       }
     };
 
-    this.getColor = function() {
-      return hsbToHex(pickerColor);
-    };
+    this.getColor = getPickerHex;
+
+    function getPickerHex() {
+      return pickerHex || hsbToHex(pickerColor);
+    }
 
     // The picker is placed in viewport coordinates (see .label-color-picker), so
     // it has to be put against the field it belongs to each time it opens. The
@@ -15991,7 +15998,7 @@
     }
 
     function applyPreset(color) {
-      setPickerColor(hexToHsb(color));
+      setPickerColor(hexToHsb(color), color);
       commitPickerColor();
     }
 
@@ -16061,15 +16068,17 @@
       };
     }
 
-    function setPickerColor(hsb) {
+    // @hex: the exact colour, when @hsb was made from one
+    function setPickerColor(hsb, hex) {
       pickerColor = {
         h: clamp$4(Math.round(hsb.h), 0, 255),
         s: clamp$4(Math.round(hsb.s), 0, 255),
         b: clamp$4(Math.round(hsb.b), 0, 255)
       };
+      pickerHex = hex || null;
       drawColorPicker();
       updatePickerFields();
-      if (opts.onPreview) opts.onPreview(hsbToHex(pickerColor));
+      if (opts.onPreview) opts.onPreview(getPickerHex());
     }
 
     function updatePickerFields() {
@@ -16125,7 +16134,7 @@
     }
 
     function commitPickerColor() {
-      if (opts.onChange) opts.onChange(hsbToHex(pickerColor));
+      if (opts.onChange) opts.onChange(getPickerHex());
     }
 
     function getMarkerColor(rgb) {
@@ -16894,7 +16903,7 @@
       });
   }
 
-  // A button with a word on it rather than a glyph: Clear style, Random fills,
+  // A button with a word on it rather than a glyph: Clear style, Random fill,
   // Create. Shaped like the panel's fields rather than like its 19px icon
   // buttons, because what it does is named rather than drawn, and it is as wide
   // as the name.
@@ -16952,7 +16961,10 @@
   // split row. Fill and Stroke are each one of these.
   //
   // opts.label            the caption over the field
-  // opts.onColor(hex)     a colour was typed, picked or previewed to a finish
+  // opts.onColor(hex)     a colour was typed, picked or previewed to a finish;
+  //                       '' when the field was emptied, which unsets a colour
+  //                       that can be unset and restores the default of one
+  //                       that cannot
   // opts.onOpacity(frac)  a usable percentage was typed
   // opts.revert()         one that was not, so put the row back as it was
   // opts.noOpacity        a colour with no opacity of its own, like a pattern's,
@@ -17218,6 +17230,36 @@
 
   function getLabelTextSession(gui) {
     return gui.state.label_text_session || null;
+  }
+
+  // The label tool's armed placement tool: 'anchor', 'block', 'path' or null.
+  // The tool owns it; the panel reads it, because an armed tool with nothing
+  // selected is what points the panel at new labels rather than at all of them.
+  function setLabelToolArmed(gui, mode) {
+    var val = mode || null;
+    if ((gui.state.label_tool_armed || null) === val) return;
+    gui.state.label_tool_armed = val;
+    gui.dispatchEvent('label_tool_armed_change');
+  }
+
+  function getLabelToolArmed(gui) {
+    return gui.state.label_tool_armed || null;
+  }
+
+  // The "Editing:" line at the top of the style panels, which says what a
+  // change to the panel's controls will act on. One wording for every panel.
+  //
+  // o.selected     how many features are selected
+  // o.total        how many features the layer has
+  // o.newLabels    (label panel) a placement tool is armed with nothing
+  //                selected, so the controls set the style of the next label
+  // o.editingText  (label panel) a label is open for typing
+  function formatEditingStatus(o) {
+    var what = o.editingText ? 'this label' :
+      o.selected > 0 ? o.selected + ' selected' :
+      o.newLabels ? 'new labels' :
+      o.total > 0 ? 'all' : 'none (empty layer)';
+    return 'Editing: ' + what;
   }
 
   // Dragging an anchored label's text away from its anchor: what the drag
@@ -17792,6 +17834,9 @@
   }, {
     name: 'open-arrow',
     title: 'open arrowhead at the anchor'
+  }, {
+    name: 'ring',
+    title: 'ring around the anchor'
   }];
   // The anchor is at the lower left of the shapes and at the left of the ends,
   // which is where the markers go. The arrowheads are drawn to the renderer's
@@ -17803,7 +17848,8 @@
     curve: '<path d="M3.5 12.5Q4.5 4.5 12.5 4"></path>',
     none: '<path d="M3 8H13"></path>',
     arrow: '<path d="M6.84 8H13"></path><path class="fill" d="M2.5 8L8.7 6.05V9.95Z"></path>',
-    'open-arrow': '<path d="M3.2 8H13"></path><path d="M7.38 5.07L3.2 8L7.38 10.93"></path>'
+    'open-arrow': '<path d="M3.2 8H13"></path><path d="M7.38 5.07L3.2 8L7.38 10.93"></path>',
+    ring: '<path d="M8.4 8H13"></path><circle cx="5.6" cy="8" r="2.8"></circle>'
   };
   var iconButtonSymbols = {
     circle: '<circle cx="8" cy="8" r="4.25"></circle>',
@@ -17852,6 +17898,11 @@
     });
     gui.on('label_text_session_change', function() {
       // a label opened for typing becomes what the controls act on
+      if (panel.visible()) updateControls();
+    });
+    gui.on('label_tool_armed_change', function() {
+      // arming a tool points an empty selection at new labels, and disarming
+      // points it back at the whole layer
       if (panel.visible()) updateControls();
     });
     gui.on('label_position_mode_change', function() {
@@ -18003,12 +18054,9 @@
       });
       colorInput.on('change', function() {
         var color = colorInput.node().value.trim();
-        if (color) {
-          if (isHexColor(color)) {
-            colorPicker.setColor(color);
-          }
-          applyLabelColor(color);
-        }
+        // An emptied field unsets the colour.
+        if (isHexColor(color)) colorPicker.setColor(color);
+        applyLabelColor(color);
       });
       colorPicker = initColorPicker(textColorCell, colorChit, colorInput, applyLabelColor);
 
@@ -18075,12 +18123,8 @@
       });
       haloColorInput.on('change', function() {
         var color = haloColorInput.node().value.trim();
-        if (color) {
-          if (isHexColor(color)) {
-            haloColorPicker.setColor(color);
-          }
-          applyHaloColor(color);
-        }
+        if (isHexColor(color)) haloColorPicker.setColor(color);
+        applyHaloColor(color);
       });
       haloColorPicker = initColorPicker(haloColorCell, haloColorChit, haloColorInput, applyHaloColor);
 
@@ -18140,12 +18184,8 @@
       });
       iconColorInput.on('change', function() {
         var color = iconColorInput.node().value.trim();
-        if (color) {
-          if (isHexColor(color)) {
-            iconColorPicker.setColor(color);
-          }
-          applyIconColor(color);
-        }
+        if (isHexColor(color)) iconColorPicker.setColor(color);
+        applyIconColor(color);
       });
       iconColorPicker = initColorPicker(iconColorCell, iconColorChit, iconColorInput, applyIconColor);
 
@@ -18259,7 +18299,7 @@
       var endSizeCell = El('div').addClass('label-split-cell label-spacing-row label-callout-end-size-row').appendTo(endRow);
       El('span').appendTo(endSizeCell).text('Size');
       calloutEndSizeInput = new SizeField(endSizeCell, {
-        title: 'Arrowhead size in px, the length of its sides',
+        title: 'Marker size in px: an arrowhead\'s sides, or a ring\'s diameter',
         min: 1,
         max: 60,
         step: 1,
@@ -18283,12 +18323,8 @@
       });
       calloutColorInput.on('change', function() {
         var color = calloutColorInput.node().value.trim();
-        if (color) {
-          if (isHexColor(color)) {
-            calloutColorPicker.setColor(color);
-          }
-          applyCalloutColor(color);
-        }
+        if (isHexColor(color)) calloutColorPicker.setColor(color);
+        applyCalloutColor(color);
       });
       calloutColorPicker = initColorPicker(colorCell, calloutColorChit, calloutColorInput, applyCalloutColor);
 
@@ -18410,6 +18446,16 @@
       return !!(gui.interaction && gui.interaction.getMode() == labelMode);
     }
 
+    // Whether an empty selection means the next label rather than every label:
+    // only while a placement tool is armed, or a label not yet made is being
+    // typed. With no tool armed the panel styles the whole layer, as the line
+    // and polygon panels do.
+    function editingNewLabels() {
+      var session = getLabelTextSession(gui);
+      if (!labelModeIsOn()) return false;
+      return !!getLabelToolArmed(gui) || !!(session && session.id == -1);
+    }
+
     function updateVisibility() {
       var enabled = activeLayerHasLabels();
       textBtn.classed('disabled', !enabled);
@@ -18493,13 +18539,14 @@
       if (session) return [];
       ids = getSelectionIds();
       if (ids.length > 0) return ids;
-      return labelModeIsOn() ? [] : getAllLabelIds();
+      return editingNewLabels() ? [] : getAllLabelIds();
     }
 
-    // With nothing selected the controls edit the style that new labels are given,
-    // so they stay live even when there is no label, and no layer, yet.
+    // With a tool armed and nothing selected the controls edit the style that
+    // new labels are given, so they stay live even when there is no label, and
+    // no layer, yet. With no tool armed and no labels, there is nothing to edit.
     function controlsEnabled() {
-      return getTargetIds().length > 0 || labelModeIsOn();
+      return getTargetIds().length > 0 || editingNewLabels();
     }
 
     function getAllLabelIds() {
@@ -18729,20 +18776,19 @@
       });
     }
 
+    // What the controls will act on. With a tool armed an empty selection is the
+    // next label rather than the whole layer, and saying "all" there is what
+    // would make the panel untrustworthy.
     function updateEditingStatus(count, editingText) {
-      editingStatus.text('Editing: ' + describeTarget(count, editingText));
+      editingStatus.text(formatEditingStatus({
+        selected: count,
+        total: getActiveLayer() ? internal.getFeatureCount(getActiveLayer()) : 0,
+        newLabels: editingNewLabels(),
+        editingText: editingText
+      }));
       // "deselect" is for a selection the user made; a label being typed into is
       // left by clicking away or pressing Escape, not from here.
       clearLink.classed('hidden', count === 0 || editingText);
-    }
-
-    // What the controls will act on. In label mode an empty selection is the next
-    // label rather than the whole layer, and saying "all" there is what would
-    // make the panel untrustworthy.
-    function describeTarget(count, editingText) {
-      if (editingText) return 'this label';
-      if (count > 0) return count + ' selected';
-      return labelModeIsOn() ? 'new labels' : 'all';
     }
 
     function updateFontSizeControls(shown) {
@@ -18953,7 +18999,7 @@
       var ids = getTargetIds();
       var table = getActiveTable();
       if (ids.length === 0) {
-        return internal.svg.labelHasHalo(labelModeIsOn() ? getNewLabelStyle(gui) : null) ? 'on' : 'off';
+        return internal.svg.labelHasHalo(editingNewLabels() ? getNewLabelStyle(gui) : null) ? 'on' : 'off';
       }
       return getToggleState(ids.map(function(id) {
         return internal.svg.labelHasHalo(table && table.getRecordAt(id));
@@ -19013,7 +19059,7 @@
       var ids = getTargetIds();
       var table = getActiveTable();
       if (ids.length === 0) {
-        return internal.svg.labelHasCallout(labelModeIsOn() ? getNewLabelStyle(gui) : null) ? 'on' : 'off';
+        return internal.svg.labelHasCallout(editingNewLabels() ? getNewLabelStyle(gui) : null) ? 'on' : 'off';
       }
       return getToggleState(ids.map(function(id) {
         return internal.svg.labelHasCallout(table && table.getRecordAt(id));
@@ -19155,7 +19201,7 @@
     function updateCalloutEndSizeControl(off) {
       var ids = getTargetIds().length > 0 ? getCalloutEndTargetIds() : [];
       var noMarker = getTargetIds().length > 0 ? ids.length === 0 :
-        getCalloutEnd(labelModeIsOn() ? getNewLabelStyle(gui) : null) == 'none';
+        getCalloutEnd(editingNewLabels() ? getNewLabelStyle(gui) : null) == 'none';
       var shown = off || noMarker ? {value: '', mixed: false} : getCalloutEndSizeShown(ids);
       calloutEndSizeInput.setValue(shown.value);
       calloutEndSizeInput.setPlaceholder(shown.mixed ? MIXED_TEXT : '');
@@ -19194,7 +19240,7 @@
       var vals;
       if (!controlsEnabled()) return {value: '', mixed: false};
       if (ids.length === 0) {
-        return {value: fn(labelModeIsOn() ? getNewLabelStyle(gui) : null), mixed: false};
+        return {value: fn(editingNewLabels() ? getNewLabelStyle(gui) : null), mixed: false};
       }
       vals = ids.map(function(id) {
         return fn(table && table.getRecordAt(id));
@@ -19270,7 +19316,7 @@
       var records = getActiveTable() && getActiveTable().getRecords();
       var value, val;
       if (ids.length === 0) {
-        return resolveAlignment(labelModeIsOn() ? getNewLabelStyle(gui) : null);
+        return resolveAlignment(editingNewLabels() ? getNewLabelStyle(gui) : null);
       }
       for (var i = 0; i < ids.length; i++) {
         val = resolveAlignment(records && records[ids[i]]);
@@ -19290,7 +19336,7 @@
     // label will be created with, falling back to the same default an existing
     // label would show.
     function getNewLabelValue(field, opts) {
-      var style = labelModeIsOn() ? getNewLabelStyle(gui) : null;
+      var style = editingNewLabels() ? getNewLabelStyle(gui) : null;
       var val = style ? style[field] : '';
       if (val || val === 0) return val;
       return opts && opts.useDefault ? opts.defaultValue : '';
@@ -19381,7 +19427,7 @@
       var records = getActiveTable() && getActiveTable().getRecords();
       var ids = getTargetIds();
       if (ids.length === 0) {
-        return !!(labelModeIsOn() && getNewLabelStyle(gui)[textAnchorField]);
+        return !!(editingNewLabels() && getNewLabelStyle(gui)[textAnchorField]);
       }
       return ids.some(function(id) {
         var rec = records && records[id];
@@ -19921,13 +19967,13 @@
   // no fill gets a clear one, so that the pattern is drawn over whatever is
   // underneath.
   function getPatternBackground(fill) {
-    return isBlank$1(fill) ? 'none' : String(fill).trim();
+    return isBlank$2(fill) ? 'none' : String(fill).trim();
   }
 
   // Whether the settings describe a pattern the renderer will draw. A hatch with
   // no gap would be a solid fill, and the parser refuses a stripe of no width.
   function isValidPatternControls(o) {
-    if (!o || patternTypes.indexOf(o.type) == -1 || isBlank$1(o.color)) return false;
+    if (!o || patternTypes.indexOf(o.type) == -1 || isBlank$2(o.color)) return false;
     if (!(o.size > 0) || !isFinite(o.angle)) return false;
     return o.type == 'hatches' ? o.gap > 0 : o.gap >= 0;
   }
@@ -20021,7 +20067,7 @@
     return str == 'transparent' ? 'none' : str;
   }
 
-  function isBlank$1(val) {
+  function isBlank$2(val) {
     return val === undefined || val === null || String(val).trim() === '';
   }
 
@@ -20038,7 +20084,7 @@
   // opts.revert()            put the panel back as the data has it
   // opts.releaseFocus()
   function PatternFillControl(parent, opts) {
-    var section = makePanelSection(parent, 'Pattern');
+    var section = makePanelSection(parent, 'Patterns');
     var shown = {type: 'none'};
     // What switching the pattern on applies when the features have none: the
     // last pattern the section showed, so that off and on again is a round trip.
@@ -20083,7 +20129,7 @@
         var code = rec && rec['fill-pattern'];
         var edit = {id: id, styles: styles};
         var refilled;
-        if (refill && !isBlank(code)) {
+        if (refill && !isBlank$1(code)) {
           refilled = refillPattern(internal.parsePattern(code), rec.fill, fill);
           if (refilled) edit.styles = styles.concat([['fill-pattern', refilled]]);
         }
@@ -20100,7 +20146,7 @@
       ids.forEach(function(id) {
         var rec = records[id];
         var code = rec && rec['fill-pattern'];
-        var o = isBlank(code) ? null : getPatternControls(internal.parsePattern(code), rec.fill);
+        var o = isBlank$1(code) ? null : getPatternControls(internal.parsePattern(code), rec.fill);
         if (o) edits.push({id: id, styles: [['fill-pattern', formatFillPatternExpression(o)]]});
       });
       return edits;
@@ -20130,7 +20176,12 @@
         label: 'Color',
         noOpacity: true,
         onColor: function(color) {
-          if (color) applyChange({color: color});
+          // A pattern has to have a colour, so an emptied field is its default.
+          if (!color) {
+            color = defaultPatternColor;
+            colorControl.showColor(color);
+          }
+          applyChange({color: color});
         },
         revert: opts.revert
       });
@@ -20258,7 +20309,7 @@
 
     function hasPattern(id) {
       var rec = opts.getRecords()[id];
-      return !isBlank(rec && rec['fill-pattern']);
+      return !isBlank$1(rec && rec['fill-pattern']);
     }
 
     function applyChange(change) {
@@ -20330,7 +20381,7 @@
 
   function readPatternState(rec) {
     var code = rec && rec['fill-pattern'];
-    if (isBlank(code)) return {type: 'none'};
+    if (isBlank$1(code)) return {type: 'none'};
     return getPatternControls(internal.parsePattern(code), rec.fill) ||
       {type: 'custom', code: String(code)};
   }
@@ -20346,12 +20397,292 @@
     return undefined;
   }
 
+  function isBlank$1(val) {
+    return val === undefined || val === null || String(val).trim() === '';
+  }
+
+  // The polygon panel's "Effects" section: an outer and an inner glow, each a
+  // color, an opacity and a width. See svg-glow.mjs for how they are drawn.
+  //
+  // A glow is there when its color is set, so each glow is a color row with no
+  // switch of its own: picking a color adds the glow, and emptying the color
+  // field removes it. The section's switch opens the section, and switching it
+  // off removes both glows and their settings.
+  //
+  // A width or opacity typed while no feature has the glow is kept, and goes
+  // with the color when one is picked.
+  //
+  // opts.getRecords()        the target layer's records
+  // opts.getTargetIds()      the features being styled
+  // opts.applyEdits(edits, title)   run per-feature edits: [{id, styles}]
+  // opts.revert()            put the panel back as the data has it
+  // opts.releaseFocus()
+
+  var glowTypes = ['outer', 'inner'];
+  var glowTitles = {outer: 'Outer glow', inner: 'Inner glow'};
+
+  function GlowEffectsControl(parent, opts) {
+    var section = makePanelSection(parent, 'Effects');
+    var rows = {};
+    // Switched on, with no glow to show yet.
+    var opened = false;
+    var pending = {outer: {}, inner: {}};
+    var toggle = makePanelToggle(section.findChild('.label-style-section-title'), {
+      title: 'Add glow effects',
+      className: 'layer-effects-toggle',
+      onChange: function(on) {
+        var edits;
+        opened = on;
+        pending = {outer: {}, inner: {}};
+        edits = on ? [] : getEffectsOffEdits(opts.getRecords(), opts.getTargetIds());
+        if (edits.length > 0) {
+          opts.applyEdits(edits, 'Remove glow effects');
+        } else {
+          update();
+        }
+      }
+    });
+    glowTypes.forEach(function(type) {
+      rows[type] = addGlowRow(type);
+    });
+
+    this.section = section;
+    this.update = update;
+    this.hidePickers = hidePickers;
+
+    this.reset = function() {
+      opened = false;
+      pending = {outer: {}, inner: {}};
+      hidePickers();
+    };
+
+    // The glows every target has, for a saved style.
+    this.addStyleValues = function(style) {
+      var records = opts.getRecords();
+      var ids = opts.getTargetIds();
+      glowTypes.forEach(function(type) {
+        if (getGlowState(records, ids, type) != 'on') return;
+        ['color', 'width', 'opacity'].forEach(function(name) {
+          var field = getGlowField(type, name);
+          var val = getCommonValue(records, ids, field);
+          if (val || val === 0) style[field] = val;
+        });
+      });
+    };
+
+    function hidePickers() {
+      rows.outer.picker.hide();
+      rows.inner.picker.hide();
+    }
+
+    function addGlowRow(type) {
+      var o = makeColorRow(section, {
+        label: glowTitles[type],
+        onColor: function(color) {
+          applyGlowColor(type, color);
+        },
+        onOpacity: function(value) {
+          applyGlowValue(type, 'opacity', value);
+        },
+        revert: opts.revert
+      });
+      o.row.addClass('layer-glow-row layer-' + type + '-glow-row');
+      El('span').appendTo(o.aside).text('Width');
+      o.width = new SizeField(o.aside, {
+        min: 0.5,
+        max: 200,
+        step: 1,
+        bigStep: 5,
+        decimals: 1,
+        title: 'How far the glow reaches from the edge, in px',
+        onSet: function(value) {
+          applyGlowValue(type, 'width', value);
+        },
+        onStep: function(delta) {
+          var shown = Number(o.width.getValue());
+          if (!(shown > 0)) shown = internal.svg.DEFAULT_GLOW_WIDTH;
+          applyGlowValue(type, 'width', Math.max(0.5, Math.round(shown + delta)));
+        },
+        onDone: opts.releaseFocus
+      });
+      return o;
+    }
+
+    function applyGlowColor(type, color) {
+      var edits = getGlowColorEdits(opts.getRecords(), opts.getTargetIds(), type, color, pending[type]);
+      if (color) pending[type] = {};
+      if (edits.length > 0) {
+        opts.applyEdits(edits, color ? glowTitles[type] : 'Remove ' + glowTitles[type].toLowerCase());
+      } else {
+        update();
+      }
+    }
+
+    // A width or opacity goes to the features that have the glow, as the label
+    // panel's halo settings go only to the labels that have a halo.
+    function applyGlowValue(type, name, value) {
+      var records = opts.getRecords();
+      var ids = opts.getTargetIds().filter(function(id) {
+        return hasGlow(records[id], type);
+      });
+      if (ids.length === 0) {
+        pending[type][name] = value;
+        update();
+        return;
+      }
+      opts.applyEdits(ids.map(function(id) {
+        return {id: id, styles: [[getGlowField(type, name), formatGlowValue(name, value)]]};
+      }));
+    }
+
+    function update() {
+      var records = opts.getRecords();
+      var ids = opts.getTargetIds();
+      var state = getEffectsState(records, ids);
+      if (state != 'off') opened = true;
+      toggle.setState(state == 'off' && opened ? 'on' : state);
+      section.classed('collapsed', state == 'off' && !opened);
+      if (state == 'off' && !opened) hidePickers();
+      glowTypes.forEach(function(type) {
+        updateGlowRow(type, records, ids);
+      });
+    }
+
+    function updateGlowRow(type, records, ids) {
+      var o = rows[type];
+      var shown = getShownGlow(records, ids, type, pending[type]);
+      o.showColor(shown.color);
+      o.input.attr('placeholder', shown.mixed ? 'mixed' : '');
+      o.chit.classed('mixed', shown.mixed);
+      o.opacity.node().value = shown.opacity === '' ? '' : formatOpacityPct(shown.opacity);
+      o.width.setValue(shown.width === '' ? '' : String(shown.width));
+      o.width.setPlaceholder(shown.width === '' ? 'mixed' : '');
+    }
+  }
+
+  function getGlowField(type, name) {
+    return type + '-glow-' + name;
+  }
+
+  // In the panel, a feature has a glow when the glow's color is set.
+  function hasGlow(rec, type) {
+    return !!rec && !isBlank(rec[getGlowField(type, 'color')]);
+  }
+
+  // 'on', 'off' or 'mixed', over the features @ids
+  function getGlowState(records, ids, type) {
+    var n = ids.filter(function(id) { return hasGlow(records[id], type); }).length;
+    return n === 0 ? 'off' : n < ids.length ? 'mixed' : 'on';
+  }
+
+  function getEffectsState(records, ids) {
+    var n = ids.filter(function(id) {
+      return hasGlow(records[id], 'outer') || hasGlow(records[id], 'inner');
+    }).length;
+    return n === 0 ? 'off' : n < ids.length ? 'mixed' : 'on';
+  }
+
+  // Per-feature edits for a color typed or picked for one glow. A color adds the
+  // glow to every feature, with the @pending width and opacity where a feature
+  // has none of its own; an empty color removes the glow's color.
+  function getGlowColorEdits(records, ids, type, color, pending) {
+    var colorField = getGlowField(type, 'color');
+    var edits = [];
+    ids.forEach(function(id) {
+      var rec = records[id] || {};
+      var styles = [];
+      if (!color) {
+        if (!isBlank(rec[colorField])) styles.push([colorField, '']);
+      } else {
+        if (String(rec[colorField]).trim() != color) styles.push([colorField, color]);
+        ['width', 'opacity'].forEach(function(name) {
+          var field = getGlowField(type, name);
+          if (pending && name in pending && isBlank(rec[field])) {
+            var val = formatGlowValue(name, pending[name]);
+            if (val !== '') styles.push([field, val]);
+          }
+        });
+      }
+      if (styles.length > 0) edits.push({id: id, styles: styles});
+    });
+    return edits;
+  }
+
+  // Switching Effects off removes every glow setting, which mean nothing
+  // without a color.
+  function getEffectsOffEdits(records, ids) {
+    var edits = [];
+    ids.forEach(function(id) {
+      var rec = records[id] || {};
+      var styles = internal.svg.glowFields.filter(function(field) {
+        return !isBlank(rec[field]);
+      }).map(function(field) {
+        return [field, ''];
+      });
+      if (styles.length > 0) edits.push({id: id, styles: styles});
+    });
+    return edits;
+  }
+
+  // What a glow's row shows. The color is blank where no feature has the glow,
+  // and blank and mixed where only some do or their colors differ. The width
+  // and opacity are those the glowing features agree on, '' where they differ;
+  // with no glowing features, they are the @pending ones, the default width and
+  // no opacity.
+  function getShownGlow(records, ids, type, pending) {
+    var glowIds = ids.filter(function(id) { return hasGlow(records[id], type); });
+    var defaultWidth = internal.svg.DEFAULT_GLOW_WIDTH;
+    var color, mixed;
+    pending = pending || {};
+    if (glowIds.length === 0) {
+      return {
+        color: '',
+        mixed: false,
+        width: 'width' in pending ? pending.width : defaultWidth,
+        opacity: 'opacity' in pending ? pending.opacity : ''
+      };
+    }
+    color = getCommonValue(records, glowIds, getGlowField(type, 'color'), undefined, trim);
+    mixed = glowIds.length < ids.length || color === '';
+    return {
+      color: mixed ? '' : color,
+      mixed: mixed,
+      width: getCommonValue(records, glowIds, getGlowField(type, 'width'), defaultWidth, Number),
+      opacity: getCommonValue(records, glowIds, getGlowField(type, 'opacity'), 1, Number)
+    };
+  }
+
+  // Full opacity is the default, and stored as no opacity at all.
+  function formatGlowValue(name, value) {
+    return name == 'opacity' && value >= 1 ? '' : value;
+  }
+
+  // The value of @field that the features @ids share, or '' if they differ.
+  function getCommonValue(records, ids, field, defaultValue, convert) {
+    var value, val;
+    for (var i=0; i<ids.length; i++) {
+      val = records[ids[i]] && records[ids[i]][field];
+      if (isBlank(val)) val = defaultValue === undefined ? '' : defaultValue;
+      if (convert && val !== '' && val !== null) val = convert(val);
+      if (i === 0) {
+        value = val;
+      } else if (val !== value) {
+        return '';
+      }
+    }
+    return ids.length > 0 ? value : '';
+  }
+
+  function trim(val) {
+    return String(val).trim();
+  }
+
   function isBlank(val) {
     return val === undefined || val === null || String(val).trim() === '';
   }
 
   var savedStylesKey = 'layer_style_presets';
-  var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'line-start', 'line-end', 'line-end-size', 'fill', 'fill-opacity', 'fill-pattern'];
+  var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'line-start', 'line-end', 'line-end-size', 'fill', 'fill-opacity', 'fill-pattern'].concat(internal.svg.glowFields);
   var arrowShapes = [{
     name: 'arrow',
     title: 'solid arrowheads'
@@ -20386,7 +20717,7 @@
   function LayerStyleTool(gui) {
     var parent = gui.container.findChild('.mshp-main-map');
     var panel = El('div').addClass('label-style-panel layer-style-panel rollover').appendTo(parent).hide();
-    var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, dashControl, arrowControl, randomFillBtn, presetControl, patternControl, hit;
+    var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, dashControl, arrowControl, randomFillBtn, presetControl, patternControl, glowControl, hit;
     var targetLayer = null;
     // What the arrowhead switch turns on, for lines that have no heads
     var lastArrow = {shape: 'arrow', position: 'end'};
@@ -20445,6 +20776,7 @@
       fillControl.picker.hide();
       patternControl.hidePicker();
       patternControl.reset();
+      glowControl.reset();
       targetLayer = null;
     }
 
@@ -20474,20 +20806,29 @@
       editingStatus = El('span').addClass('label-editing-status').appendTo(editRow);
       clearLink = El('span').addClass('label-editing-clear colored-text').appendTo(editRow).text('deselect').on('click', clearSelection);
 
-      fillControl = addColorControl(panel, 'Fill', 'fill', '');
       strokeControl = addColorControl(panel, 'Stroke', 'stroke', '#000000');
       strokeWidthField = addStrokeWidthControl(strokeControl.aside);
+      fillControl = addColorControl(panel, 'Fill', 'fill', '');
+      randomFillBtn = makePanelActionButton(fillControl.aside, 'Random fill', applyRandomFillColors)
+        .addClass('layer-random-fill-btn');
       dashControl = addDashArrayControl(panel);
       arrowControl = addArrowControl(panel);
 
       var buttonRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(panel);
-      randomFillBtn = makePanelActionButton(buttonRow, 'Random fills', applyRandomFillColors);
       makePanelActionButton(buttonRow, 'Clear style', clearLayerStyle);
 
       patternControl = new PatternFillControl(panel, {
         getRecords: function() {
           return targetLayer && targetLayer.data ? targetLayer.data.getRecords() : [];
         },
+        getTargetIds: getTargetIds,
+        applyEdits: runStyleEdits,
+        revert: updateControls,
+        releaseFocus: releaseFocus
+      });
+
+      glowControl = new GlowEffectsControl(panel, {
+        getRecords: getTargetRecords,
         getTargetIds: getTargetIds,
         applyEdits: runStyleEdits,
         revert: updateControls,
@@ -20515,10 +20856,9 @@
       var control = makeColorRow(parent, {
         label: label,
         onColor: function(color) {
-          // Blanking the field is not a way to unset a colour: -style reads an
-          // empty value as "remove this", and a field left empty by a mistyped
-          // hex would then clear the layer rather than say nothing.
-          if (color) applyColorControlStyle(control, color);
+          // An emptied field unsets the colour: -style reads an empty value as
+          // "remove this".
+          applyColorControlStyle(control, color);
         },
         onOpacity: function(value) {
           applyLayerStyle(field + '-opacity', value);
@@ -20786,6 +21126,8 @@
       randomFillBtn.classed('hidden', geom != 'polygon');
       patternControl.section.classed('hidden', geom != 'polygon');
       if (geom == 'polygon') patternControl.update();
+      glowControl.section.classed('hidden', geom != 'polygon');
+      if (geom == 'polygon') glowControl.update();
       presetControl.render();
       updateSavedStyleControls();
     }
@@ -20846,7 +21188,7 @@
 
     function applyColorControlStyle(control, color) {
       var styles = [[control.field, color]];
-      if (control.field == 'stroke' && strokeWidthIsUnsetForTargets()) {
+      if (color && control.field == 'stroke' && strokeWidthIsUnsetForTargets()) {
         styles.push(['stroke-width', 1]);
       }
       if (control.field == 'fill') {
@@ -20968,6 +21310,7 @@
         addStyleValue(style, 'fill', getControlValue(fillControl.input));
         addStyleValue(style, 'fill-opacity', parseOpacityValue(fillControl.opacity.node().value));
         addStyleValue(style, 'fill-pattern', patternControl.getCode(getControlValue(fillControl.input)));
+        glowControl.addStyleValues(style);
       }
       return style;
     }
@@ -21079,9 +21422,13 @@
       updateControls();
     }
 
+    // An empty layer has nothing for the controls to act on, so they are shown
+    // disabled rather than left to do nothing.
     function updateEditingStatus(count) {
-      editingStatus.text(count > 0 ? 'Editing: ' + count + ' selected' : 'Editing: all');
+      var total = targetLayer ? internal.getFeatureCount(targetLayer) : 0;
+      editingStatus.text(formatEditingStatus({selected: count, total: total}));
       clearLink.classed('hidden', count === 0);
+      panel.classed('no-targets', total === 0);
     }
 
     function getActiveLayer() {
@@ -21308,8 +21655,17 @@
       var control = makeColorRow(circlesSection, {
         label: label,
         // Every circle property is applied together, from what the controls are
-        // showing: the fields are one style, not five.
-        onColor: applyCircleStyles,
+        // showing: the fields are one style, not five. An emptied colour field
+        // unsets the colour, which applying the fields would leave alone.
+        onColor: function(color) {
+          if (color) {
+            applyCircleStyles();
+          } else if (!styleFieldIsUnset(field)) {
+            runStyleCommand([field + '=' + quoteCommandValue('')], 'Remove circle ' + field);
+          } else {
+            updateControls();
+          }
+        },
         onOpacity: applyCircleStyles,
         revert: updateControls
       });
@@ -21659,9 +22015,13 @@
       updateControls();
     }
 
+    // As in the line and polygon panels: an empty layer's controls are shown
+    // disabled rather than left to do nothing.
     function updateEditingStatus(count) {
-      editingStatus.text(count > 0 ? 'Editing: ' + count + ' selected' : 'Editing: all');
+      var total = targetLayer ? internal.getFeatureCount(targetLayer) : 0;
+      editingStatus.text(formatEditingStatus({selected: count, total: total}));
       clearLink.classed('hidden', count === 0);
+      panel.classed('no-targets', total === 0);
     }
 
     function setCircleColor(control, color) {
@@ -29259,6 +29619,7 @@
       selection.turnOff();
       abandonCurve();
       armed = null;
+      setLabelToolArmed(gui, null);
       updateButtons();
       hideInstructions();
       drag = null;
@@ -29324,6 +29685,7 @@
       if (armed == mode) return;
       if (drawingCurve()) abandonCurve();
       armed = mode;
+      setLabelToolArmed(gui, mode);
       updateButtons();
       showInstructions();
     }
@@ -31080,6 +31442,11 @@
     // rest, because the style object is reused from one feature to the next.
     var arrowFields = getLineArrowFields(lyr);
     var hasStrokeFields = fields.includes('stroke') || fields.includes('stroke-width');
+    // Glows are drawn from the record rather than set as attributes, like the
+    // arrowheads. An outer glow that the whole layer shares is drawn once for the
+    // layer (see svg-glow.mjs), so the shapes are then given none of their own.
+    var hasGlows = layerHasGlowFields(lyr);
+    var layerOuterGlow = hasGlows ? internal.svg.getLayerOuterGlow(lyr) : null;
 
     var styler = function(style, i) {
       var rec = records[i];
@@ -31088,6 +31455,10 @@
         style.lineStart = rec && rec['line-start'];
         style.lineEnd = rec && rec['line-end'];
         style.lineEndSize = rec && rec['line-end-size'];
+      }
+      if (hasGlows) {
+        style.outerGlow = layerOuterGlow ? null : internal.svg.getPolygonGlow(rec, 'outer');
+        style.innerGlow = internal.svg.getPolygonGlow(rec, 'inner');
       }
       for (var j=0; j<fields.length; j++) {
         fname = fields[j];
@@ -31110,6 +31481,12 @@
       }
     };
     var style = {styler: styler, type: 'styled'};
+    if (hasGlows) {
+      style.layerOuterGlow = layerOuterGlow;
+      // How far past its shapes the layer draws, which is how far outside the
+      // view a shape can be and still reach into it.
+      style.glowReach = internal.svg.getMaxGlowWidth(records) * internal.svg.GLOW_REACH;
+    }
     // A line layer styled with nothing but arrowheads is drawn the way SVG
     // export draws it, with the black 1px line the layer's group gives it.
     if (arrowFields && !hasStrokeFields) {
@@ -31131,7 +31508,14 @@
       return fields.includes('fill') || fields.includes('r'); // support colored squares
     }
     return utils$1.difference(fields, ['opacity', 'class']).length > 0 ||
-      !!getLineArrowFields(lyr);
+      !!getLineArrowFields(lyr) || layerHasGlowFields(lyr);
+  }
+
+  function layerHasGlowFields(lyr) {
+    if (lyr.geometry_type != 'polygon' || !lyr.data) return false;
+    return lyr.data.getFields().some(function(f) {
+      return internal.svg.glowFields.includes(f);
+    });
   }
 
   // The arrowhead fields a line layer has, or null
@@ -32048,6 +32432,102 @@
     }
   }
 
+  // Canvas rendering of polygon glows, matching the SVG filters in svg-glow.mjs.
+  //
+  // What glows is drawn first into a scratch canvas: one shape, or a whole layer
+  // for a layer's outer glow. The glows are then made from that image's alpha,
+  // the way a filter works from SourceAlpha:
+  //
+  //   outer  the image's shadow, with the image itself cut out of it
+  //   inner  the shadow of the image's inverse, kept only inside the image
+  //
+  // A shadow is only drawn with the image that casts it, so the image is drawn
+  // off the edge of the canvas and its shadow is offset back into place. Drawn
+  // in place and clipped, the image leaks into its own antialiased edge.
+  //
+  // A shadow's shadowBlur is twice the standard deviation of its blur, and a
+  // glow's width is twice the standard deviation of the filter's, so the two
+  // are the same number. Shadows are drawn in device pixels whatever the
+  // transform, and the scratch canvases are never transformed when one is.
+
+  var scratch = {};
+
+  function getScratchCanvas(name, w, h) {
+    var o = scratch[name];
+    if (!o) {
+      o = scratch[name] = {canvas: document.createElement('canvas')};
+      o.ctx = o.canvas.getContext('2d');
+    }
+    // Grown and never shrunk: resizing a canvas reallocates it, and there can
+    // be a resize for every shape drawn.
+    if (o.canvas.width < w || o.canvas.height < h) {
+      o.canvas.width = Math.max(o.canvas.width, w);
+      o.canvas.height = Math.max(o.canvas.height, h);
+    }
+    o.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    o.ctx.clearRect(0, 0, w, h);
+    return o;
+  }
+
+  // A canvas to draw what glows into, @w by @h device pixels. Separate from the
+  // ones compositeGlows() uses, so a shape can be drawn into it while a layer is
+  // being drawn into another.
+  // @name: 'shape' or 'layer'
+  function getGlowSourceCanvas(name, w, h) {
+    return getScratchCanvas('source-' + name, w, h);
+  }
+
+  // How far past a shape its glows reach, in device pixels.
+  function getGlowMargin(outer, inner, pxScale) {
+    var width = Math.max(outer ? outer.width : 0, inner ? inner.width : 0);
+    return Math.ceil(width * pxScale * internal.svg.GLOW_REACH) + 2;
+  }
+
+  // Draws @src (the top-left @w by @h pixels of a canvas) into @ctx at @x, @y,
+  // with its glows: the outer one underneath and the inner one on top.
+  // @pxScale: device pixels per px of glow width
+  function compositeGlows(ctx, src, x, y, w, h, outer, inner, pxScale) {
+    var glow, inverse;
+    if (outer) {
+      glow = getScratchCanvas('glow', w, h);
+      drawShadow(glow.ctx, src, w, h, outer, pxScale);
+      glow.ctx.globalCompositeOperation = 'destination-out';
+      glow.ctx.drawImage(src, 0, 0, w, h, 0, 0, w, h);
+      glow.ctx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(glow.canvas, 0, 0, w, h, x, y, w, h);
+    }
+    ctx.drawImage(src, 0, 0, w, h, x, y, w, h);
+    if (inner) {
+      inverse = getScratchCanvas('inverse', w, h);
+      inverse.ctx.fillStyle = '#000';
+      inverse.ctx.fillRect(0, 0, w, h);
+      inverse.ctx.globalCompositeOperation = 'destination-out';
+      inverse.ctx.drawImage(src, 0, 0, w, h, 0, 0, w, h);
+      inverse.ctx.globalCompositeOperation = 'source-over';
+      glow = getScratchCanvas('glow', w, h);
+      drawShadow(glow.ctx, inverse.canvas, w, h, inner, pxScale);
+      glow.ctx.globalCompositeOperation = 'destination-in';
+      glow.ctx.drawImage(src, 0, 0, w, h, 0, 0, w, h);
+      glow.ctx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(glow.canvas, 0, 0, w, h, x, y, w, h);
+    }
+  }
+
+  // The shadow of the top-left @w by @h pixels of @img, with no image. The glow's
+  // opacity is globalAlpha rather than part of the shadow's color, which can be
+  // any CSS color and would have to be parsed to take one.
+  function drawShadow(ctx, img, w, h, glow, pxScale) {
+    var offset = w + glow.width * pxScale * 4 + 10;
+    ctx.save();
+    ctx.globalAlpha = glow.opacity;
+    ctx.shadowColor = glow.color;
+    ctx.shadowBlur = glow.width * pxScale;
+    ctx.shadowOffsetX = offset;
+    ctx.shadowOffsetY = 0;
+    ctx.drawImage(img, 0, 0, w, h, -offset, 0, w, h);
+    ctx.restore();
+  }
+
   // TODO: consider moving this upstream
   function getArcsForRendering(lyr, ext) {
     var dataset = lyr.gui.source.dataset;
@@ -32098,7 +32578,7 @@
       }
     } else {
       arcs = getArcsForRendering(lyr, ext);
-      filter = getShapeFilter(arcs, layer.shapes, ext);
+      filter = getShapeFilter(arcs, layer.shapes, ext, style.overlay ? 0 : style.glowReach);
       canv.drawStyledPaths(layer.shapes, arcs, style, filter);
       if (style.vertices || style.vertex_overlay || style.pending_snip) {
         canv.drawVertices(layer.shapes, arcs, style, filter);
@@ -32136,10 +32616,17 @@
   // view. The filter takes a shape index and tests the shape's bbox against
   // the viewport. At nearly full extent the test is a no-op, so we return
   // null to let the caller skip it entirely.
-  function getShapeFilter(arcs, shapes, ext) {
+  // reach: how far past its shapes the layer draws, in px (e.g. a glow)
+  function getShapeFilter(arcs, shapes, ext, reach) {
     if (ext.scale() < 1.1) return null;
     var view = ext.getBounds();
     var b = new Bounds$1();
+    var pad;
+    if (reach > 0) {
+      pad = reach * (ext.getSymbolScale() || 1) * ext.getPixelSize();
+      view = new Bounds$1(view.toArray());
+      view.padBounds(pad, pad, pad, pad);
+    }
     return function(i) {
       var shp = shapes[i];
       if (!shp) return false;
@@ -32303,52 +32790,136 @@
       var key, item, shp;
       var styler = style.styler || null;
       var drawStyle = styler ? utils$1.defaults({}, style) : style;
-      for (var i=0; i<shapes.length; i++) {
-        shp = shapes[i];
-        if (!shp || filter && !filter(i)) continue;
-        if (styler) {
-          styler(drawStyle, i);
+      // Hover and selection overlays copy the layer's style; they do not glow.
+      var glows = !style.overlay;
+      var glowScale = getCanvasStrokeScale(GUI.getPixelRatio(), lineScale);
+      var layerGlow = glows && style.layerOuterGlow ?
+        startLayerGlow(style.layerOuterGlow, glowScale) : null;
+      try {
+        drawShapes();
+      } finally {
+        if (layerGlow) endLayerGlow(layerGlow);
+      }
+      if (layerGlow) compositeLayerGlow(layerGlow);
+
+      function drawShapes() {
+        var glowPencil = null;
+        for (var i=0; i<shapes.length; i++) {
+          shp = shapes[i];
+          if (!shp || filter && !filter(i)) continue;
+          if (styler) {
+            styler(drawStyle, i);
+          }
+          if (glows && (drawStyle.outerGlow || drawStyle.innerGlow)) {
+            // Shapes before this one are drawn first, as they are in SVG, where
+            // a shape's outer glow lies over the shapes that precede it.
+            flushBatches();
+            if (!glowPencil) glowPencil = getGlowShapePencil(arcs, startPath, draw, glowScale);
+            glowPencil(shp, drawStyle);
+            continue;
+          }
+          // A line with arrowheads is drawn on its own, trimmed to meet its heads;
+          // see svg-line-arrows.mjs. Only lines styled with line-start or line-end
+          // get here, so the batch below is untouched for everything else.
+          if (drawStyle.lineStart || drawStyle.lineEnd) {
+            if (!arrowPencil) arrowPencil = getArrowLinePencil(arcs, _ext, lineScale);
+            if (arrowPencil(shp, _ctx, drawStyle, startPath, draw)) continue;
+          }
+          if (!drawStyle.batchOverlay && (drawStyle.overlay ||
+            drawStyle.opacity < 1 || drawStyle.fillOpacity < 1 ||
+            drawStyle.strokeOpacity < 1 || drawStyle.fillEffect)) {
+            // don't batch shapes with opacity, in case they overlap
+            drawPaths([shp], startPath, draw, drawStyle);
+            continue;
+          }
+          key = getStyleKey(drawStyle);
+          if (key in styleIndex === false) {
+            styleIndex[key] = {
+              style: utils$1.defaults({}, drawStyle),
+              shapes: []
+            };
+          }
+          item = styleIndex[key];
+          item.shapes.push(shp);
+          if (item.shapes.length >= batchSize) {
+            drawPaths(item.shapes, startPath, draw, item.style);
+            item.shapes = [];
+          }
         }
-        // A line with arrowheads is drawn on its own, trimmed to meet its heads;
-        // see svg-line-arrows.mjs. Only lines styled with line-start or line-end
-        // get here, so the batch below is untouched for everything else.
-        if (drawStyle.lineStart || drawStyle.lineEnd) {
-          if (!arrowPencil) arrowPencil = getArrowLinePencil(arcs, _ext, lineScale);
-          if (arrowPencil(shp, _ctx, drawStyle, startPath, draw)) continue;
-        }
-        if (!drawStyle.batchOverlay && (drawStyle.overlay ||
-          drawStyle.opacity < 1 || drawStyle.fillOpacity < 1 ||
-          drawStyle.strokeOpacity < 1 || drawStyle.fillEffect)) {
-          // don't batch shapes with opacity, in case they overlap
-          drawPaths([shp], startPath, draw, drawStyle);
-          continue;
-        }
-        key = getStyleKey(drawStyle);
-        if (key in styleIndex === false) {
-          styleIndex[key] = {
-            style: utils$1.defaults({}, drawStyle),
-            shapes: []
-          };
-        }
-        item = styleIndex[key];
-        item.shapes.push(shp);
-        if (item.shapes.length >= batchSize) {
+        flushBatches();
+      }
+
+      function flushBatches() {
+        Object.keys(styleIndex).forEach(function(key) {
+          var item = styleIndex[key];
+          if (item.shapes.length === 0) return;
           drawPaths(item.shapes, startPath, draw, item.style);
           item.shapes = [];
-        }
+        });
       }
-      Object.keys(styleIndex).forEach(function(key) {
-        var item = styleIndex[key];
-        drawPaths(item.shapes, startPath, draw, item.style);
-      });
     };
 
-    function drawPaths(shapes, beginPath, drawShape, style) {
-      beginPath(_ctx, style);
+    function drawPaths(shapes, beginPath, drawShape, style, ctx) {
+      ctx = ctx || _ctx;
+      beginPath(ctx, style);
       for (var i=0, n=shapes.length; i<n; i++) {
-        drawShape(shapes[i], _ctx, style);
+        drawShape(shapes[i], ctx, style);
       }
-      endPath(_ctx, style);
+      endPath(ctx, style);
+    }
+
+    // A layer's own outer glow is made from the whole layer, so the layer is
+    // drawn into a canvas of its own and then onto this one with its glow. The
+    // canvas is larger than this one by the reach of the glow, so that shapes
+    // just outside the view still cast theirs into it.
+    function startLayerGlow(glow, pxScale) {
+      var margin = getGlowMargin(glow, null, pxScale);
+      var w = _canvas.width + margin * 2;
+      var h = _canvas.height + margin * 2;
+      var src = getGlowSourceCanvas('layer', w, h);
+      var o = {glow: glow, pxScale: pxScale, margin: margin, w: w, h: h,
+        src: src, ctx: _ctx};
+      src.ctx.setTransform(1, 0, 0, 1, margin, margin);
+      _ctx = src.ctx;
+      return o;
+    }
+
+    function endLayerGlow(o) {
+      o.src.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      _ctx = o.ctx;
+    }
+
+    function compositeLayerGlow(o) {
+      compositeGlows(_ctx, o.src.canvas, -o.margin, -o.margin, o.w, o.h,
+        o.glow, null, o.pxScale);
+    }
+
+    // Draws one shape with its own glows, which are made from the shape alone.
+    // The shape is drawn into a canvas the size of its bounding box and the
+    // reach of its glows, cut down to the part that can be seen.
+    function getGlowShapePencil(arcs, startPath, draw, pxScale) {
+      var t = getScaledTransform(_ext);
+      var b = new Bounds$1();
+      return function(shp, style) {
+        var outer = style.outerGlow, inner = style.innerGlow;
+        var margin = getGlowMargin(outer, inner, pxScale) +
+          Math.ceil((style.strokeWidth > 0 ? style.strokeWidth * pxScale : 0) / 2);
+        var viewMargin = margin * 2;
+        var x0, y0, x1, y1, src;
+        b.empty();
+        arcs.getMultiShapeBounds(shp, b);
+        if (!b.hasBounds()) return;
+        x0 = Math.floor(Math.max(b.xmin * t.mx + t.bx - margin, -viewMargin));
+        x1 = Math.ceil(Math.min(b.xmax * t.mx + t.bx + margin, _canvas.width + viewMargin));
+        y0 = Math.floor(Math.max(b.ymax * t.my + t.by - margin, -viewMargin));
+        y1 = Math.ceil(Math.min(b.ymin * t.my + t.by + margin, _canvas.height + viewMargin));
+        if (x1 <= x0 || y1 <= y0) return;
+        src = getGlowSourceCanvas('shape', x1 - x0, y1 - y0);
+        src.ctx.setTransform(1, 0, 0, 1, -x0, -y0);
+        drawPaths([shp], startPath, draw, style, src.ctx);
+        src.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        compositeGlows(_ctx, src.canvas, x0, y0, x1 - x0, y1 - y0, outer, inner, pxScale);
+      };
     }
 
     _self.drawSquareDots = function(shapes, style) {
@@ -36034,8 +36605,9 @@
       var appearance = makePanelSection(form, 'Appearance');
       backgroundControl = makeColorRow(appearance, {
         label: 'Background',
+        // An emptied colour field unsets the colour.
         onColor: function(color) {
-          if (color) applyFrameStyle([['fill', color]]);
+          applyFrameStyle([['fill', color]]);
         },
         onOpacity: function(value) {
           applyFrameStyle([['fill-opacity', value]]);
@@ -36045,9 +36617,8 @@
       neatlineControl = makeColorRow(appearance, {
         label: 'Neatline',
         onColor: function(color) {
-          if (!color) return;
           var styles = [['stroke', color]];
-          if (!getStyleValue('stroke-width')) styles.push(['stroke-width', 1]);
+          if (color && !getStyleValue('stroke-width')) styles.push(['stroke-width', 1]);
           applyFrameStyle(styles);
         },
         onOpacity: function(value) {
@@ -36427,7 +36998,10 @@
       colorInput = El('input').attr('type', 'text').attr('aria-label', 'Scale bar color')
         .on('change', function() {
           var color = colorInput.node().value.trim();
-          if (!color) {
+          var d = getScalebarRecord();
+          // An emptied field unsets the colour, so the scalebar is drawn in
+          // the default one.
+          if (!color && !(d && d.color)) {
             updateControls();
             return;
           }

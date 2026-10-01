@@ -778,7 +778,7 @@ mapshaper states.shp -filter <span class="hljs-string">&#x27;STATE==&quot;OR&quo
   -o out.shp
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-labels" data-name="-labels" data-options="coordinates text label-text where ids font-size font-family font-weight font-style font-stretch letter-spacing line-height label-pos ne se nw sw text-anchor label-align left center right dominant-baseline dx dy label-side label-start-offset label-width fill opacity halo-width halo-color halo-opacity callout line elbow curve callout-end arrow open-arrow none callout-end-size callout-via callout-attach callout-gap callout-padding callout-color callout-width callout-opacity icon icon-size icon-color icon-opacity css style class properties name target"><h3 id="-labels">-labels</h3>
+<section class="cmd-section" data-id="-labels" data-name="-labels" data-options="coordinates text label-text where ids font-size font-family font-weight font-style font-stretch letter-spacing line-height label-pos ne se nw sw text-anchor label-align left center right dominant-baseline dx dy label-side label-start-offset label-width fill opacity halo-width halo-color halo-opacity callout line elbow curve callout-end arrow open-arrow ring none callout-end-size callout-via callout-attach callout-gap callout-padding callout-color callout-width callout-opacity icon icon-size icon-color icon-opacity css style class properties name target"><h3 id="-labels">-labels</h3>
 <p>Style the labels in a point layer, convert points to labels, or add a single label. Labels are drawn in the web UI and exported to SVG. Style values take either a literal value or a JS expression, as with <a href="#-style">-style</a>.</p>
 <p>With <code>coordinates=</code>, the command adds one label, either to the target point layer or, with <code>+</code>, to a new layer. Otherwise it styles the target layer&#39;s labels. Setting <code>text=</code> on a layer of points turns them into labels.</p>
 <p><code>text=</code>            Label text: a field name, a JS expression or a literal value. With <code>coordinates=</code>, the value is used as literal text. To create multiline labels, insert line delimiters into the label text. There are three possible line delimiters: the newline character, <code>\n</code> (backslash + &quot;n&quot;), and <code>&lt;br&gt;</code>. (When importing JSON data, <code>\n</code> in a JSON string is parsed as a newline and <code>\\n</code> is parsed as backslash + &quot;n&quot;). Note that Mapshaper doesn&#39;t accept multiline strings as input on the command line. To set some of the words in bold, wrap them in <code>&lt;b&gt;</code> and <code>&lt;/b&gt;</code>, e.g. <code>text=&#39;High &lt;b&gt;terrain&lt;/b&gt;&#39;</code>; a bold stretch may span a line break. Only a matched pair counts as markup, so text like <code>a &lt; b</code> is drawn as written. <code>label-text=</code> is accepted as another name for this option.</p>
@@ -807,8 +807,8 @@ mapshaper states.shp -filter <span class="hljs-string">&#x27;STATE==&quot;OR&quo
 <p><code>halo-color=</code>      Halo color (default is white)</p>
 <p><code>halo-opacity=</code>    Halo opacity, 0-1</p>
 <p><code>callout=</code>         A line from a label&#39;s anchor to its text: <code>line</code>, <code>elbow</code> or <code>curve</code></p>
-<p><code>callout-end=</code>     Arrowhead at the anchor end of a callout: <code>arrow</code>, <code>open-arrow</code> or <code>none</code></p>
-<p><code>callout-end-size=</code> Length of an arrowhead&#39;s sides in pixels (default is 10)</p>
+<p><code>callout-end=</code>     Marker at the anchor end of a callout: <code>arrow</code>, <code>open-arrow</code>, <code>ring</code> (a hollow circle around the anchor, drawn in the callout&#39;s width) or <code>none</code></p>
+<p><code>callout-end-size=</code> Length of an arrowhead&#39;s sides, or a ring&#39;s diameter, in pixels (an arrowhead&#39;s default is 10 for a 1px line, and grows with the line; a ring&#39;s is twice that)</p>
 <p><code>callout-via=</code>     <code>x,y</code> of an elbow&#39;s corner or a point on a curve, in pixels from the anchor</p>
 <p><code>callout-attach=</code>  Where a callout meets its text, as <code>x,y</code> fractions of the text box</p>
 <p><code>callout-gap=</code>     Pixels between a callout and its anchor</p>
@@ -1255,7 +1255,7 @@ mapshaper tracts.shp
   -o tract_groups.shp
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-style" data-name="-style" data-options="where clear class css style fill pink fill-pattern ortho npers stroke stroke-width stroke-dasharray line-start arrow open-arrow dot none line-end line-end-size opacity icon icon-size icon-color label-text font-size text-anchor target"><h3 id="-style">-style</h3>
+<section class="cmd-section" data-id="-style" data-name="-style" data-options="where clear class css style fill pink fill-pattern ortho npers outer-glow-color outer-glow-width outer-glow-opacity inner-glow-color inner-glow-width inner-glow-opacity stroke stroke-width stroke-dasharray line-start arrow open-arrow dot none line-end line-end-size opacity icon icon-size icon-color label-text font-size text-anchor target"><h3 id="-style">-style</h3>
 <p>Add common SVG attributes for SVG export and display in the web UI. Attribute values take either a literal value or a JS expression. See <a href="/docs/guides/expressions.html">JavaScript expressions</a> for the available context. This command was named <code>-svg-style</code> in earlier versions of mapshaper.</p>
 <p><code>where=</code>           Boolean JS expression for targetting a subset of features.</p>
 <p><code>clear</code> Remove all style properties from a layer.</p>
@@ -1271,6 +1271,12 @@ mapshaper tracts.shp
 </ul>
 <p>Example: <code>hatches 45deg 2px red 2px grey</code></p>
 <p><code>fill-effect=sphere</code>  Add a gradient effect to the bounding circle of a globe projection (e.g. <code>ortho</code> <code>npers</code>) to create a 3d effect.</p>
+<p><code>outer-glow-color=</code> Add a soft glow of this color outside each polygon. When every polygon in a layer has the same outer glow, the glow is applied to the layer as a whole, like a drop shadow.</p>
+<p><code>outer-glow-width=</code> How far the outer glow reaches from the edge, in pixels (default is 10)</p>
+<p><code>outer-glow-opacity=</code> Opacity of the outer glow, 0-1 (default is 1)</p>
+<p><code>inner-glow-color=</code> Add a soft glow of this color inside each polygon.</p>
+<p><code>inner-glow-width=</code> How far the inner glow reaches from the edge, in pixels (default is 10)</p>
+<p><code>inner-glow-opacity=</code> Opacity of the inner glow, 0-1 (default is 1)</p>
 <p><code>stroke=</code>          Stroke color</p>
 <p><code>stroke-width=</code>    Stroke width</p>
 <p><code>stroke-dasharray=</code> Dashes</p>

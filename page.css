@@ -945,7 +945,7 @@ body.sidebar-panels-resizing .sidebar-panels-resize-handle::before,
 }
 
 :root {
-	--sidebar-strip-height: 33px;
+	--sidebar-strip-height: 34px;
 }
 
 /* Icon buttons for opening the sidebar, shown on the map while the sidebar is
@@ -1059,7 +1059,7 @@ body.sidebar-open .sidebar-panels {
 	display: flex;
 	align-items: center;
 	gap: 5px;
-	padding: 2px 8px 2px 6px;
+	padding: 3px 8px 3px 6px;
 	border: 1px solid #cfdde4;
 	border-radius: 12px;
 	color: var(--theme-col);
@@ -3479,6 +3479,14 @@ body.pan.panning .map-layers:not(.drawing) {
 	align-self: center;
 }
 
+/* A layer with no features: every control is faded and inert, leaving the
+   heading, the "Editing:" line that says why, and the close button. */
+.label-style-panel.no-targets .label-style-row:not(.label-style-selection-row),
+.label-style-panel.no-targets .label-style-section-title .label-toggle {
+	opacity: 0.45;
+	pointer-events: none;
+}
+
 /* A section switched off shows only its heading (see setSectionCollapsed()). */
 .label-style-panel .label-style-section.collapsed > :not(.label-style-section-title) {
 	display: none;
@@ -3667,6 +3675,7 @@ body.pan.panning .map-layers:not(.drawing) {
 	color: var(--normal-text);
 	cursor: pointer;
 	user-select: none;
+	margin-top: 4px;
 }
 
 .label-panel-action-btn:hover:not(.disabled) {
@@ -3683,6 +3692,16 @@ body.pan.panning .map-layers:not(.drawing) {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 4px 6px;
+}
+
+/* In the narrow column beside the fill's colour, level with it and as wide
+   as the fields in that column. */
+.label-split-cell > .layer-random-fill-btn {
+	display: flex;
+	justify-content: center;
+	width: 100%;
+	margin-top: 0;
+	white-space: nowrap;
 }
 
 .label-style-panel .label-color-field {
