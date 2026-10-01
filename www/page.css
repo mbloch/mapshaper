@@ -3694,6 +3694,16 @@ body.pan.panning .map-layers:not(.drawing) {
 	gap: 4px 6px;
 }
 
+/* In the narrow column beside the fill's colour, level with it and as wide
+   as the fields in that column. */
+.label-split-cell > .layer-random-fill-btn {
+	display: flex;
+	justify-content: center;
+	width: 100%;
+	margin-top: 0;
+	white-space: nowrap;
+}
+
 .label-style-panel .label-color-field {
 	display: flex;
 	align-items: center;

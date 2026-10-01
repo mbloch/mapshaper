@@ -21,7 +21,7 @@ import {
 // opts.revert()            put the panel back as the data has it
 // opts.releaseFocus()
 export function PatternFillControl(parent, opts) {
-  var section = makePanelSection(parent, 'Pattern');
+  var section = makePanelSection(parent, 'Patterns');
   var shown = {type: 'none'};
   // What switching the pattern on applies when the features have none: the
   // last pattern the section showed, so that off and on again is a round trip.

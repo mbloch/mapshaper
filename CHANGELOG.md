@@ -1,5 +1,8 @@
-v0.7.72 (unreleased)
+v0.7.72
 * New callout terminator: `callout-end=ring`, a hollow circle around the anchor.
+* Added inner and outer glows to polygons: new `-style` options `outer-glow-color=`, `outer-glow-width=`, `outer-glow-opacity=`, `inner-glow-color=`, `inner-glow-width=` and `inner-glow-opacity=`. Glows are rendered as SVG filters on export.
+* [web] Added an Effects section with glow controls to the polygon style panel.
+* [web] Emptying a color field in a style panel now removes the color (or restores the default, for colors that can't be removed).
 
 v0.7.71
 * Added arrowheads to line features: new `-style` options `line-start=`, `line-end=` (`arrow`, `open-arrow`, `dot` or `none`) and `line-end-size=`.

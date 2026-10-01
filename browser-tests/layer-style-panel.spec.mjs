@@ -105,7 +105,17 @@ test('layer style fields are laid out in two columns by what they belong to',
           return span ? span.textContent : '-';
         }).join(' | ');
       });
-    })).toEqual(['Fill | -', 'Stroke | Width']);
+    })).toEqual(['Fill | Random fill', 'Stroke | Width']);
+    // the button fills the narrow column, level with the fill's colour field
+    var btn = await page.locator('.layer-style-panel .layer-random-fill-btn').boundingBox();
+    var width = await page.locator('.layer-style-panel .label-split-row')
+      .filter({hasText: 'Stroke'}).locator('.size-field').boundingBox();
+    var fill = await page.locator('.layer-style-panel .label-split-row')
+      .filter({has: page.locator('.layer-random-fill-btn')}).locator('.label-color-field').boundingBox();
+    expect(Math.round(btn.width)).toBe(Math.round(width.width));
+    expect(Math.round(btn.x)).toBe(Math.round(width.x));
+    expect(Math.round(btn.y)).toBe(Math.round(fill.y));
+    expect(Math.round(btn.height)).toBe(Math.round(fill.height));
     // the opacity is part of the colour's field, not a column of its own
     expect(await page.locator('.layer-style-panel .label-color-field .label-opacity-input:visible').count()).toBe(2);
   });
@@ -143,7 +153,7 @@ test('the panel buttons still do what they say', async function({page}) {
   await setField(page.locator('.layer-style-panel .label-color-input').first(), '#00ff00');
   expect(await getStyleValue(page, 'fill')).toBe('#00ff00');
 
-  await clickButton(page, 'Random fills');
+  await clickButton(page, 'Random fill');
   expect(await getStyleValue(page, 'fill')).not.toBe('#00ff00');
 
   await clickButton(page, 'Clear style');
@@ -257,7 +267,7 @@ test('each feature gets its pattern over its own fill', async function({page}) {
 
   // random fills are chosen by the command, and the patterns follow them
   await page.locator('.layer-style-panel .label-panel-action-btn')
-    .filter({hasText: 'Random fills'}).click();
+    .filter({hasText: 'Random fill'}).click();
   await page.waitForTimeout(400);
   var records = await getRecords(page);
   records.forEach(function(rec) {

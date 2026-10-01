@@ -91,7 +91,7 @@ export function makePanelButton(parent, label, action) {
     });
 }
 
-// A button with a word on it rather than a glyph: Clear style, Random fills,
+// A button with a word on it rather than a glyph: Clear style, Random fill,
 // Create. Shaped like the panel's fields rather than like its 19px icon
 // buttons, because what it does is named rather than drawn, and it is as wide
 // as the name.

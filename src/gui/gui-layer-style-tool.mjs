@@ -146,14 +146,15 @@ export function LayerStyleTool(gui) {
     editingStatus = El('span').addClass('label-editing-status').appendTo(editRow);
     clearLink = El('span').addClass('label-editing-clear colored-text').appendTo(editRow).text('deselect').on('click', clearSelection);
 
-    fillControl = addColorControl(panel, 'Fill', 'fill', '');
     strokeControl = addColorControl(panel, 'Stroke', 'stroke', '#000000');
     strokeWidthField = addStrokeWidthControl(strokeControl.aside);
+    fillControl = addColorControl(panel, 'Fill', 'fill', '');
+    randomFillBtn = makePanelActionButton(fillControl.aside, 'Random fill', applyRandomFillColors)
+      .addClass('layer-random-fill-btn');
     dashControl = addDashArrayControl(panel);
     arrowControl = addArrowControl(panel);
 
     var buttonRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(panel);
-    randomFillBtn = makePanelActionButton(buttonRow, 'Random fills', applyRandomFillColors);
     makePanelActionButton(buttonRow, 'Clear style', clearLayerStyle);
 
     patternControl = new PatternFillControl(panel, {
