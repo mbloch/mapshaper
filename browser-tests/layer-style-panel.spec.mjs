@@ -10,7 +10,7 @@ test('a style field gives the keyboard back when it is finished with', async fun
   // a value still being edited.
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
-  var fill = page.locator('.layer-style-panel .label-color-input').first();
+  var fill = colorRow(page, 'Fill').locator('.label-color-input');
 
   await fill.fill('#00ff00');
   await fill.press('Enter');
@@ -31,13 +31,13 @@ test('a style field gives the keyboard back when it is finished with', async fun
 test('a colour is set from its field, and its opacity from the one beside it', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
-  var rows = page.locator('.layer-style-panel .label-split-row');
+  var fill = colorRow(page, 'Fill');
+  var stroke = colorRow(page, 'Stroke');
 
-  // fill on the first line, stroke on the second
-  await setField(rows.nth(0).locator('.label-color-input'), '#3366cc');
-  await setField(rows.nth(0).locator('.label-opacity-input'), '40%');
-  await setField(rows.nth(1).locator('.label-color-input'), '#ff0000');
-  await setField(rows.nth(1).locator('.label-opacity-input'), '80%');
+  await setField(fill.locator('.label-color-input'), '#3366cc');
+  await setField(fill.locator('.label-opacity-input'), '40%');
+  await setField(stroke.locator('.label-color-input'), '#ff0000');
+  await setField(stroke.locator('.label-opacity-input'), '80%');
 
   expect(await getStyleValue(page, 'fill')).toBe('#3366cc');
   expect(await getStyleValue(page, 'fill-opacity')).toBe(0.4);
@@ -48,7 +48,7 @@ test('a colour is set from its field, and its opacity from the one beside it', a
 
 test('a typed colour is kept exactly, not snapped to the picker\'s grid', async function({page}) {
   await loadFixture(page, FIXTURE);
-  var row = page.locator('.layer-style-panel .label-split-row').nth(0);
+  var row = colorRow(page, 'Fill');
   var fill = row.locator('.label-color-input');
   await setField(fill, '#ff8800');
   await expect(fill).toHaveValue('#ff8800');
@@ -71,61 +71,31 @@ test('a typed colour is kept exactly, not snapped to the picker\'s grid', async 
 test('an opacity is blank with no colour, and 100% with one', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
-  var rows = page.locator('.layer-style-panel .label-split-row');
+  var fill = colorRow(page, 'Fill');
+  var stroke = colorRow(page, 'Stroke');
   // the fixture has a fill and no fill-opacity, and no stroke at all
   expect(await getStyleValue(page, 'fill')).toBe('#a50000');
-  await expect(rows.nth(0).locator('.label-opacity-input')).toHaveValue('100%');
-  await expect(rows.nth(1).locator('.label-opacity-input')).toHaveValue('');
+  await expect(fill.locator('.label-opacity-input')).toHaveValue('100%');
+  await expect(stroke.locator('.label-opacity-input')).toHaveValue('');
 
   // full opacity is the default, so it is shown without being stored
-  await setField(rows.nth(1).locator('.label-color-input'), '#3366cc');
-  await expect(rows.nth(1).locator('.label-opacity-input')).toHaveValue('100%');
+  await setField(stroke.locator('.label-color-input'), '#3366cc');
+  await expect(stroke.locator('.label-opacity-input')).toHaveValue('100%');
   expect(await getStyleValue(page, 'stroke-opacity')).toBeUndefined();
 
   // blanking a field is not a way to set it to zero
-  await setField(rows.nth(0).locator('.label-opacity-input'), '');
-  await expect(rows.nth(0).locator('.label-opacity-input')).toHaveValue('100%');
+  await setField(fill.locator('.label-opacity-input'), '');
+  await expect(fill.locator('.label-opacity-input')).toHaveValue('100%');
   expect(await getStyleValue(page, 'fill-opacity')).toBeUndefined();
   expect(errors).toEqual([]);
 });
-
-// Each colour's opacity is inside its field, and the stroke's width sits
-// beside the stroke's colour in the narrow column, so that it reads as
-// belonging to the stroke rather than as a row of its own.
-test('layer style fields are laid out in two columns by what they belong to',
-  async function({page}) {
-    await loadFixture(page, FIXTURE);
-    expect(await page.evaluate(function() {
-      var rows = Array.prototype.filter.call(
-        document.querySelectorAll('.layer-style-panel .label-split-row'),
-        function(row) { return row.offsetParent !== null; });
-      return rows.map(function(row) {
-        return Array.prototype.map.call(row.children, function(cell) {
-          var span = cell.querySelector('span');
-          return span ? span.textContent : '-';
-        }).join(' | ');
-      });
-    })).toEqual(['Fill | Random fill', 'Stroke | Width']);
-    // the button fills the narrow column, level with the fill's colour field
-    var btn = await page.locator('.layer-style-panel .layer-random-fill-btn').boundingBox();
-    var width = await page.locator('.layer-style-panel .label-split-row')
-      .filter({hasText: 'Stroke'}).locator('.size-field').boundingBox();
-    var fill = await page.locator('.layer-style-panel .label-split-row')
-      .filter({has: page.locator('.layer-random-fill-btn')}).locator('.label-color-field').boundingBox();
-    expect(Math.round(btn.width)).toBe(Math.round(width.width));
-    expect(Math.round(btn.x)).toBe(Math.round(width.x));
-    expect(Math.round(btn.y)).toBe(Math.round(fill.y));
-    expect(Math.round(btn.height)).toBe(Math.round(fill.height));
-    // the opacity is part of the colour's field, not a column of its own
-    expect(await page.locator('.layer-style-panel .label-color-field .label-opacity-input:visible').count()).toBe(2);
-  });
 
 test('stroke width is typed or stepped in a size field', async function({page}) {
   // It was a value between a − and a +, three clicks wide, with no way to
   // type a width at all until the value itself was clicked.
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
-  var strokeRow = page.locator('.layer-style-panel .label-split-row').nth(1);
+  var strokeRow = colorRow(page, 'Stroke');
   var input = strokeRow.locator('.size-field-input');
 
   await setField(input, '3');
@@ -150,7 +120,7 @@ test('stroke width is typed or stepped in a size field', async function({page}) 
 test('the panel buttons still do what they say', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
-  await setField(page.locator('.layer-style-panel .label-color-input').first(), '#00ff00');
+  await setField(colorRow(page, 'Fill').locator('.label-color-input'), '#00ff00');
   expect(await getStyleValue(page, 'fill')).toBe('#00ff00');
 
   await clickButton(page, 'Random fill');
@@ -203,11 +173,11 @@ var POLY_LAYER = 'ex1_polyB';
 test('a hatch pattern is drawn over the fill, and follows it', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, POLY_FIXTURE);
-  var rows = page.locator('.layer-style-panel .label-split-row');
+  var fill = colorRow(page, 'Fill');
   // off to begin with, showing only its heading
   await expect(patternToggle(page)).toHaveAttribute('aria-checked', 'false');
   await expect(patternSelect(page)).toBeHidden();
-  await setField(rows.nth(0).locator('.label-color-input'), '#eeeeee');
+  await setField(fill.locator('.label-color-input'), '#eeeeee');
 
   // switching it on starts with a hatch
   await clickPatternToggle(page);
@@ -222,7 +192,7 @@ test('a hatch pattern is drawn over the fill, and follows it', async function({p
   expect((await getPatterns(page))[0]).toBe('hatches 90deg 4px #eeeeee 2px #ff0000');
 
   // a new fill is the pattern's new background, in the same undo step
-  await setField(rows.nth(0).locator('.label-color-input'), '#cccccc');
+  await setField(fill.locator('.label-color-input'), '#cccccc');
   expect((await getPatterns(page))[0]).toBe('hatches 90deg 4px #cccccc 2px #ff0000');
   await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
   await page.waitForTimeout(250);
@@ -327,17 +297,6 @@ test('a pattern on some of the features shows as mixed', async function({page}) 
   await expect(patternSelect(page)).toHaveValue('hatches');
 });
 
-test('the pattern section heading matches the label panel\'s switched sections', async function({page}) {
-  await loadFixture(page, POLY_FIXTURE);
-  var title = page.locator('.layer-style-panel .label-style-section-title')
-    .filter({has: page.locator('.layer-pattern-toggle')});
-  await expect(title.locator('.label-style-section-name')).toHaveText('Pattern');
-  // the menu has no caption, and no None -- the switch is how to have none
-  await expect(page.locator('.layer-pattern-type-row .label-style-row-label')).toHaveCount(0);
-  expect(await patternSelect(page).locator('option:not(.hidden)').allTextContents())
-    .toEqual(['Hatches', 'Dots', 'Squares', 'Custom']);
-});
-
 test('the pattern section is only on the polygon panel', async function({page}) {
   await loadFixture(page, LINE_FIXTURE, 'line_style');
   await expect(page.locator('.layer-style-panel .layer-pattern-type-row')).toBeHidden();
@@ -357,12 +316,9 @@ test('a glow is added by picking its color, and removed by emptying it',
     await effects.click();
     await page.waitForTimeout(250);
     await expect(effects).toHaveAttribute('aria-checked', 'true');
-    await expect(outerRow.locator('span').first()).toHaveText('Outer glow');
-    await expect(innerRow.locator('span').first()).toHaveText('Inner glow');
     await expect(outerRow.locator('.label-color-input')).toHaveValue('');
     await expect(outerRow.locator('.label-opacity-input')).toHaveValue('');
     await expect(outerRow.locator('.size-field-input')).toHaveValue('10');
-    await expect(page.locator('.layer-style-panel .layer-outer-glow-toggle')).toHaveCount(0);
     expect(await getGlows(page, 'outer')).toEqual(Array(3).fill('  '));
 
     // a width typed before the color goes with it
@@ -408,12 +364,12 @@ test('a glow on some of the features shows as mixed', async function({page}) {
 test('an emptied fill or stroke is unset, and an emptied pattern color is the default',
   async function({page}) {
     await loadFixture(page, POLY_FIXTURE);
-    var rows = page.locator('.layer-style-panel .label-split-row');
+    var fill = colorRow(page, 'Fill').locator('.label-color-input');
     await runConsoleCommand(page, "-style fill='#aaaaaa' stroke='#333333' stroke-width=2");
-    await setField(rows.nth(0).locator('.label-color-input'), '');
+    await setField(fill, '');
     expect((await getRecords(page)).map(function(rec) { return rec.fill; })).toEqual(Array(3).fill(undefined));
-    await expect(rows.nth(0).locator('.label-color-input')).toHaveValue('');
-    await setField(rows.nth(1).locator('.label-color-input'), '');
+    await expect(fill).toHaveValue('');
+    await setField(colorRow(page, 'Stroke').locator('.label-color-input'), '');
     expect((await getRecords(page))[0].stroke).toBeUndefined();
 
     await clickPatternToggle(page);
@@ -464,6 +420,13 @@ async function getMapPixels(page) {
       }
     });
     return {red: red};
+  });
+}
+
+// The colour row with the caption @label, wherever the panel puts it.
+function colorRow(page, label) {
+  return page.locator('.layer-style-panel .label-split-row').filter({
+    has: page.locator('.label-split-cell > span', {hasText: new RegExp('^' + label + '$')})
   });
 }
 

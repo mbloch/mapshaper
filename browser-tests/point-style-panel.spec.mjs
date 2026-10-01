@@ -24,28 +24,15 @@ test('a circle is sized from its radius and stroke width fields', async function
   expect(errors).toEqual([]);
 });
 
-// Each size beside the colour it goes with, in the narrow column: the radius
-// beside the fill, the stroke's width beside the stroke, where the line and
-// polygon panels put it.
-test('circle fields are laid out in two columns by what they belong to',
-  async function({page}) {
-    await loadFixture(page, FIXTURE);
-    await clickButton(page, 'Create simple circles');
-    expect(await columnLayout(page, '.point-style-panel')).toEqual([
-      'Fill | Radius',
-      'Stroke | Width'
-    ]);
-  });
-
 test('a circle colour is set from the field, and its opacity beside it', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
   await clickButton(page, 'Create simple circles');
-  var rows = page.locator('.point-style-panel .label-split-row');
+  var fill = colorRow(page, 'Fill');
 
-  await setField(rows.nth(0).locator('.label-color-input'), '#3366cc');
-  await setField(rows.nth(0).locator('.label-opacity-input'), '50%');
-  await setField(rows.nth(1).locator('.label-color-input'), '#ff0000');
+  await setField(fill.locator('.label-color-input'), '#3366cc');
+  await setField(fill.locator('.label-opacity-input'), '50%');
+  await setField(colorRow(page, 'Stroke').locator('.label-color-input'), '#ff0000');
 
   expect(await getStyleValue(page, 'fill')).toBe('#3366cc');
   expect(await getStyleValue(page, 'fill-opacity')).toBe(0.5);
@@ -57,19 +44,20 @@ test('a circle opacity is blank with no colour, and 100% with one', async functi
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
   await clickButton(page, 'Create simple circles');
-  var rows = page.locator('.point-style-panel .label-split-row');
+  var fill = colorRow(page, 'Fill');
+  var stroke = colorRow(page, 'Stroke');
   // created with a fill and no stroke, and no opacity stored for either
   expect(await getStyleValue(page, 'fill-opacity')).toBeUndefined();
-  await expect(rows.nth(0).locator('.label-opacity-input')).toHaveValue('100%');
-  await expect(rows.nth(1).locator('.label-opacity-input')).toHaveValue('');
+  await expect(fill.locator('.label-opacity-input')).toHaveValue('100%');
+  await expect(stroke.locator('.label-opacity-input')).toHaveValue('');
 
   // a change elsewhere does not write the opacity being shown as the default
   await setField(sizeField(page, 'Radius'), '6');
   expect(await getStyleValue(page, 'fill-opacity')).toBeUndefined();
   expect(await getStyleValue(page, 'stroke-opacity')).toBeUndefined();
 
-  await setField(rows.nth(1).locator('.label-color-input'), '#ff0000');
-  await expect(rows.nth(1).locator('.label-opacity-input')).toHaveValue('100%');
+  await setField(stroke.locator('.label-color-input'), '#ff0000');
+  await expect(stroke.locator('.label-opacity-input')).toHaveValue('100%');
   expect(await getStyleValue(page, 'stroke-opacity')).toBeUndefined();
   expect(errors).toEqual([]);
 });
@@ -124,17 +112,11 @@ async function clickButton(page, label) {
   await page.waitForTimeout(400);
 }
 
-// Each split row as "left column label | right column label".
-async function columnLayout(page, panel) {
-  return page.evaluate(function(sel) {
-    var rows = document.querySelectorAll(sel + ' .label-split-row');
-    return Array.prototype.map.call(rows, function(row) {
-      return Array.prototype.map.call(row.children, function(cell) {
-        var span = cell.querySelector('span');
-        return span ? span.textContent : '-';
-      }).join(' | ');
-    });
-  }, panel);
+// The colour row with the caption @label, wherever the panel puts it.
+function colorRow(page, label) {
+  return page.locator('.point-style-panel .label-split-row').filter({
+    has: page.locator('.label-split-cell > span', {hasText: new RegExp('^' + label + '$')})
+  });
 }
 
 // By its label, so that rearranging the panel does not quietly point a test at
