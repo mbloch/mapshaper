@@ -5,10 +5,10 @@ import { smoothPoint } from '../smooth/mapshaper-smooth-algos';
 // Vertices never move once they are placed.
 //
 // The trace of the pointer samples is densified to even spacing and smoothed
-// with the Gaussian kernel that -smooth uses, as a plain weighted average in
-// arc length. (-smooth adds a quadratic correction that keeps bends from being
-// flattened, but it lets through far more of the jitter of a slow stroke.) A
-// smoothed point depends only on the trace within a window around it, so it
+// with -smooth's Gaussian-weighted quadratic fit, in arc length. The quadratic
+// keeps small bends from being flattened the way a plain weighted average
+// flattens them, at the cost of letting a little more of the jitter of a slow
+// stroke through. A smoothed point depends only on the trace within a window around it, so it
 // is final as soon as the trace extends a window radius beyond it. At the
 // start of the stroke the trace is extended by an odd reflection about its
 // first point, which keeps the smoothed curve starting exactly there, and the
@@ -23,10 +23,11 @@ import { smoothPoint } from '../smooth/mapshaper-smooth-algos';
 // Distances are in pixels. For samples in other units, the pixelSize option
 // gives the size of a pixel in those units.
 
-// Standard deviation of the smoothing kernel, in arc length. Below about 5px,
-// the jitter of a slow stroke comes through; larger values round off bends a
-// few pixels across.
-var SIGMA = 8;
+// Standard deviation of the smoothing kernel, in arc length. Smaller values
+// follow the hand more closely, which gives a feeling of control; larger ones
+// are smoother but feel less precise and place vertices further behind the
+// pointer.
+var SIGMA = 7;
 
 // Half-width of the smoothing window, in multiples of SIGMA. This is also how
 // far the pointer has to be ahead of a smoothed point for it to be final.
@@ -51,10 +52,16 @@ var MAX_DEVIATION = 0.75;
 var PREVIEW_SPACING = 2;
 var PREVIEW_SIGMA = 2;
 
+// Weight of -smooth's quadratic correction, which keeps bends from being
+// flattened: 0 is the plain weighted average, 1 the fully corrected fit.
+// At 1, small bends keep most of their amplitude.
+var GAIN = 1;
+
 // start: [x, y] first sample
-// opts: (optional) {sigma, previewSigma, bendAngle (degrees), maxDeviation, pixelSize}
+// opts: (optional) {sigma, previewSigma, gain, bendAngle (degrees), maxDeviation, pixelSize}
 export function GaussianStrokeFitter(start, opts) {
   var px = opts && opts.pixelSize > 0 ? opts.pixelSize : 1;
+  var gain = opts && opts.gain >= 0 ? opts.gain : GAIN;
   var sigma = getOpt(opts, 'sigma', SIGMA) * px;
   var radius = sigma * WINDOW_RADIUS;
   var previewSigma = Math.min(getOpt(opts, 'previewSigma', PREVIEW_SIGMA) * px, sigma);
@@ -158,7 +165,7 @@ export function GaussianStrokeFitter(start, opts) {
         wy.push(2 * end[1] - yy[i]);
       }
     }
-    return smoothPoint(wt, [wx, wy], 0, wt.length, t, 'gaussian', s || sigma, r, 0);
+    return smoothPoint(wt, [wx, wy], 0, wt.length, t, 'gaussian', s || sigma, r, gain);
   }
 
   // first index of the trace with arc length > @t

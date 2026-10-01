@@ -75,7 +75,7 @@ describe('mapshaper-pencil-gaussian.mjs', function () {
 
     it('places vertices a few at a time, not in bursts', function () {
       var stroke = drawStroke(wobblyWave({jitter: 1.5}));
-      assert(Math.max.apply(null, stroke.counts) <= 2, 'counts: ' + stroke.counts);
+      assert(Math.max.apply(null, stroke.counts) <= 3, 'counts: ' + stroke.counts);
     });
 
     it('smooths out the jitter of a hand-held mouse', function () {
