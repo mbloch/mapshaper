@@ -27,11 +27,11 @@ import { smoothPoint } from '../smooth/mapshaper-smooth-algos';
 // follow the hand more closely, which gives a feeling of control; larger ones
 // are smoother but feel less precise and place vertices further behind the
 // pointer.
-var SIGMA = 7;
+var SIGMA = 8;
 
 // Half-width of the smoothing window, in multiples of SIGMA. This is also how
 // far the pointer has to be ahead of a smoothed point for it to be final.
-var WINDOW_RADIUS = 3;
+var WINDOW_RADIUS = 4;
 
 // Spacing of the densified trace, and of the smoothed points that are tested
 // as vertices. Small enough that a bend of radius SIGMA turns by only a few
