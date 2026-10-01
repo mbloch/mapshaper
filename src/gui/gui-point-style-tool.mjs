@@ -191,8 +191,17 @@ export function PointStyleTool(gui) {
     var control = makeColorRow(circlesSection, {
       label: label,
       // Every circle property is applied together, from what the controls are
-      // showing: the fields are one style, not five.
-      onColor: applyCircleStyles,
+      // showing: the fields are one style, not five. An emptied colour field
+      // unsets the colour, which applying the fields would leave alone.
+      onColor: function(color) {
+        if (color) {
+          applyCircleStyles();
+        } else if (!styleFieldIsUnset(field)) {
+          runStyleCommand([field + '=' + quoteCommandValue('')], 'Remove circle ' + field);
+        } else {
+          updateControls();
+        }
+      },
       onOpacity: applyCircleStyles,
       revert: updateControls
     });

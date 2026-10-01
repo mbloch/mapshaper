@@ -18,6 +18,14 @@ var stylePropertyTypes = {
   fill: 'color',
   'fill-pattern': 'pattern',
   'fill-effect': null, // todo: validate effect names
+  // soft glows along a polygon's edges -- see svg-glow.mjs. Drawn with a
+  // filter, not written as attributes, so not in propertiesBySymbolType.
+  'outer-glow-color': 'color',
+  'outer-glow-opacity': 'number',
+  'outer-glow-width': 'number',
+  'inner-glow-color': 'color',
+  'inner-glow-opacity': 'number',
+  'inner-glow-width': 'number',
   'font-family': null,
   'font-size': null,
   'font-style': null,

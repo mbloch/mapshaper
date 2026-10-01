@@ -85,7 +85,7 @@ test('layer style fields are laid out in two columns by what they belong to',
       });
     })).toEqual(['Fill | -', 'Stroke | Width']);
     // the opacity is part of the colour's field, not a column of its own
-    expect(await page.locator('.layer-style-panel .label-color-field .label-opacity-input').count()).toBe(2);
+    expect(await page.locator('.layer-style-panel .label-color-field .label-opacity-input:visible').count()).toBe(2);
   });
 
 test('stroke width is typed or stepped in a size field', async function({page}) {
@@ -310,6 +310,130 @@ test('the pattern section is only on the polygon panel', async function({page}) 
   await loadFixture(page, LINE_FIXTURE, 'line_style');
   await expect(page.locator('.layer-style-panel .layer-pattern-type-row')).toBeHidden();
 });
+
+test('a glow is added by picking its color, and removed by emptying it',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    await loadFixture(page, POLY_FIXTURE);
+    var effects = page.locator('.layer-style-panel .layer-effects-toggle');
+    var outerRow = page.locator('.layer-style-panel .layer-outer-glow-row');
+    var innerRow = page.locator('.layer-style-panel .layer-inner-glow-row');
+    await expect(effects).toHaveAttribute('aria-checked', 'false');
+    await expect(outerRow).toBeHidden();
+
+    // switching on opens the section, with no glow yet
+    await effects.click();
+    await page.waitForTimeout(250);
+    await expect(effects).toHaveAttribute('aria-checked', 'true');
+    await expect(outerRow.locator('span').first()).toHaveText('Outer glow');
+    await expect(innerRow.locator('span').first()).toHaveText('Inner glow');
+    await expect(outerRow.locator('.label-color-input')).toHaveValue('');
+    await expect(outerRow.locator('.label-opacity-input')).toHaveValue('');
+    await expect(outerRow.locator('.size-field-input')).toHaveValue('10');
+    await expect(page.locator('.layer-style-panel .layer-outer-glow-toggle')).toHaveCount(0);
+    expect(await getGlows(page, 'outer')).toEqual(Array(3).fill('  '));
+
+    // a width typed before the color goes with it
+    await setField(outerRow.locator('.size-field-input'), '14');
+    await setField(outerRow.locator('.label-color-input'), '#000000');
+    expect(await getGlows(page, 'outer')).toEqual(Array(3).fill('#000000 14 '));
+    await expect(outerRow.locator('.label-opacity-input')).toHaveValue('100%');
+    await setField(outerRow.locator('.label-opacity-input'), '50%');
+    expect(await getGlows(page, 'outer')).toEqual(Array(3).fill('#000000 14 0.5'));
+
+    await setField(innerRow.locator('.label-color-input'), '#ff0000');
+    expect(await getGlows(page, 'inner')).toEqual(Array(3).fill('#ff0000  '));
+
+    // emptying the color removes the glow, and is one undo step
+    await setField(innerRow.locator('.label-color-input'), '');
+    expect(await getGlows(page, 'inner')).toEqual(Array(3).fill('  '));
+    await expect(innerRow.locator('.label-opacity-input')).toHaveValue('');
+    await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
+    await page.waitForTimeout(250);
+    expect(await getGlows(page, 'inner')).toEqual(Array(3).fill('#ff0000  '));
+
+    // switching off removes both glows and their settings
+    await effects.click();
+    await page.waitForTimeout(250);
+    expect(await getGlows(page, 'outer')).toEqual(Array(3).fill('  '));
+    expect(await getGlows(page, 'inner')).toEqual(Array(3).fill('  '));
+    await expect(effects).toHaveAttribute('aria-checked', 'false');
+    await expect(outerRow).toBeHidden();
+    expect(errors).toEqual([]);
+  });
+
+test('a glow on some of the features shows as mixed', async function({page}) {
+  await loadFixture(page, POLY_FIXTURE);
+  await runConsoleCommand(page, '-style inner-glow-color=white inner-glow-width=6 ids=0');
+  await runConsoleCommand(page, '-style inner-glow-color=white inner-glow-width=4 ids=1');
+  var innerRow = page.locator('.layer-style-panel .layer-inner-glow-row');
+  await expect(page.locator('.layer-style-panel .layer-effects-toggle')).toHaveAttribute('aria-checked', 'mixed');
+  await expect(innerRow.locator('.size-field-input')).toHaveValue('');
+  await expect(innerRow.locator('.label-color-input')).toHaveValue('');
+  await expect(innerRow.locator('.label-color-input')).toHaveAttribute('placeholder', 'mixed');
+});
+
+test('an emptied fill or stroke is unset, and an emptied pattern color is the default',
+  async function({page}) {
+    await loadFixture(page, POLY_FIXTURE);
+    var rows = page.locator('.layer-style-panel .label-split-row');
+    await runConsoleCommand(page, "-style fill='#aaaaaa' stroke='#333333' stroke-width=2");
+    await setField(rows.nth(0).locator('.label-color-input'), '');
+    expect((await getRecords(page)).map(function(rec) { return rec.fill; })).toEqual(Array(3).fill(undefined));
+    await expect(rows.nth(0).locator('.label-color-input')).toHaveValue('');
+    await setField(rows.nth(1).locator('.label-color-input'), '');
+    expect((await getRecords(page))[0].stroke).toBeUndefined();
+
+    await clickPatternToggle(page);
+    await selectPattern(page, 'dots');
+    var color = page.locator('.layer-pattern-color-row .label-color-input');
+    await setField(color, '#ff0000');
+    expect((await getPatterns(page))[0]).toBe('dots 2px #ff0000 3px none');
+    await setField(color, '');
+    expect((await getPatterns(page))[0]).toBe('dots 2px #000000 3px none');
+    await expect(color).toHaveValue('#000000');
+  });
+
+test('glows are drawn on the map', async function({page}) {
+  await loadFixture(page, POLY_FIXTURE);
+  await runConsoleCommand(page, '-style fill=#cccccc');
+  var before = await getMapPixels(page);
+  // a glow is of what a shape paints, so a shape that paints nothing has none
+  await runConsoleCommand(page, '-style fill=none outer-glow-width=20 outer-glow-color=#ff0000');
+  expect((await getMapPixels(page)).red).toBe(before.red);
+  await runConsoleCommand(page, '-style fill=#cccccc');
+  await page.waitForTimeout(250);
+  var after = await getMapPixels(page);
+  expect(after.red).toBeGreaterThan(before.red + 100);
+});
+
+test('the Effects section is only on the polygon panel', async function({page}) {
+  await loadFixture(page, LINE_FIXTURE, 'line_style');
+  await expect(page.locator('.layer-style-panel .layer-effects-toggle')).toBeHidden();
+});
+
+async function getGlows(page, type) {
+  return (await getRecords(page)).map(function(rec) {
+    return ['color', 'width', 'opacity'].map(function(name) {
+      var val = rec[type + '-glow-' + name];
+      return val === undefined ? '' : val;
+    }).join(' ');
+  });
+}
+
+// How many of the map's pixels are mostly red.
+async function getMapPixels(page) {
+  return page.evaluate(function() {
+    var red = 0;
+    document.querySelectorAll('.map-layers canvas').forEach(function(canvas) {
+      var data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+      for (var i=0; i<data.length; i+=4) {
+        if (data[i+3] > 30 && data[i] > 2 * data[i+1] && data[i] > 2 * data[i+2]) red++;
+      }
+    });
+    return {red: red};
+  });
+}
 
 function patternToggle(page) {
   return page.locator('.layer-style-panel .layer-pattern-toggle');

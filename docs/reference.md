@@ -1864,6 +1864,18 @@ Example: `hatches 45deg 2px red 2px grey`
 
 `fill-effect=sphere`  Add a gradient effect to the bounding circle of a globe projection (e.g. `ortho` `npers`) to create a 3d effect.
 
+`outer-glow-color=` Add a soft glow of this color outside each polygon. When every polygon in a layer has the same outer glow, the glow is applied to the layer as a whole, like a drop shadow.
+
+`outer-glow-width=` How far the outer glow reaches from the edge, in pixels (default is 10)
+
+`outer-glow-opacity=` Opacity of the outer glow, 0-1 (default is 1)
+
+`inner-glow-color=` Add a soft glow of this color inside each polygon.
+
+`inner-glow-width=` How far the inner glow reaches from the edge, in pixels (default is 10)
+
+`inner-glow-opacity=` Opacity of the inner glow, 0-1 (default is 1)
+
 `stroke=`          Stroke color
 
 `stroke-width=`    Stroke width

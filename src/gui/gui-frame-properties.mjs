@@ -50,8 +50,9 @@ export function FrameProperties(gui) {
     var appearance = makePanelSection(form, 'Appearance');
     backgroundControl = makeColorRow(appearance, {
       label: 'Background',
+      // An emptied colour field unsets the colour.
       onColor: function(color) {
-        if (color) applyFrameStyle([['fill', color]]);
+        applyFrameStyle([['fill', color]]);
       },
       onOpacity: function(value) {
         applyFrameStyle([['fill-opacity', value]]);
@@ -61,9 +62,8 @@ export function FrameProperties(gui) {
     neatlineControl = makeColorRow(appearance, {
       label: 'Neatline',
       onColor: function(color) {
-        if (!color) return;
         var styles = [['stroke', color]];
-        if (!getStyleValue('stroke-width')) styles.push(['stroke-width', 1]);
+        if (color && !getStyleValue('stroke-width')) styles.push(['stroke-width', 1]);
         applyFrameStyle(styles);
       },
       onOpacity: function(value) {

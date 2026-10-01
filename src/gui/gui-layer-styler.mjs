@@ -107,6 +107,11 @@ export function getCanvasDisplayStyle(lyr) {
   // rest, because the style object is reused from one feature to the next.
   var arrowFields = getLineArrowFields(lyr);
   var hasStrokeFields = fields.includes('stroke') || fields.includes('stroke-width');
+  // Glows are drawn from the record rather than set as attributes, like the
+  // arrowheads. An outer glow that the whole layer shares is drawn once for the
+  // layer (see svg-glow.mjs), so the shapes are then given none of their own.
+  var hasGlows = layerHasGlowFields(lyr);
+  var layerOuterGlow = hasGlows ? internal.svg.getLayerOuterGlow(lyr) : null;
 
   var styler = function(style, i) {
     var rec = records[i];
@@ -115,6 +120,10 @@ export function getCanvasDisplayStyle(lyr) {
       style.lineStart = rec && rec['line-start'];
       style.lineEnd = rec && rec['line-end'];
       style.lineEndSize = rec && rec['line-end-size'];
+    }
+    if (hasGlows) {
+      style.outerGlow = layerOuterGlow ? null : internal.svg.getPolygonGlow(rec, 'outer');
+      style.innerGlow = internal.svg.getPolygonGlow(rec, 'inner');
     }
     for (var j=0; j<fields.length; j++) {
       fname = fields[j];
@@ -137,6 +146,12 @@ export function getCanvasDisplayStyle(lyr) {
     }
   };
   var style = {styler: styler, type: 'styled'};
+  if (hasGlows) {
+    style.layerOuterGlow = layerOuterGlow;
+    // How far past its shapes the layer draws, which is how far outside the
+    // view a shape can be and still reach into it.
+    style.glowReach = internal.svg.getMaxGlowWidth(records) * internal.svg.GLOW_REACH;
+  }
   // A line layer styled with nothing but arrowheads is drawn the way SVG
   // export draws it, with the black 1px line the layer's group gives it.
   if (arrowFields && !hasStrokeFields) {
@@ -158,7 +173,14 @@ export function layerHasDrawableStyle(lyr) {
     return fields.includes('fill') || fields.includes('r'); // support colored squares
   }
   return utils.difference(fields, ['opacity', 'class']).length > 0 ||
-    !!getLineArrowFields(lyr);
+    !!getLineArrowFields(lyr) || layerHasGlowFields(lyr);
+}
+
+function layerHasGlowFields(lyr) {
+  if (lyr.geometry_type != 'polygon' || !lyr.data) return false;
+  return lyr.data.getFields().some(function(f) {
+    return internal.svg.glowFields.includes(f);
+  });
 }
 
 // The arrowhead fields a line layer has, or null

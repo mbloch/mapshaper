@@ -945,7 +945,7 @@ body.sidebar-panels-resizing .sidebar-panels-resize-handle::before,
 }
 
 :root {
-	--sidebar-strip-height: 33px;
+	--sidebar-strip-height: 34px;
 }
 
 /* Icon buttons for opening the sidebar, shown on the map while the sidebar is

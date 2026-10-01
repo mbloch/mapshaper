@@ -167,7 +167,10 @@ export function ScalebarProperties(gui) {
     colorInput = El('input').attr('type', 'text').attr('aria-label', 'Scale bar color')
       .on('change', function() {
         var color = colorInput.node().value.trim();
-        if (!color) {
+        var d = getScalebarRecord();
+        // An emptied field unsets the colour, so the scalebar is drawn in
+        // the default one.
+        if (!color && !(d && d.color)) {
           updateControls();
           return;
         }

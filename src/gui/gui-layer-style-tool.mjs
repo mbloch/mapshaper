@@ -15,13 +15,14 @@ import {
 } from './gui-style-values';
 import { StylePresetControl } from './gui-style-preset-control';
 import { PatternFillControl } from './gui-pattern-fill-control';
+import { GlowEffectsControl } from './gui-glow-control';
 import { groupStyleEdits } from './gui-fill-pattern';
 import { runGuiEditCommand } from './gui-edit-command';
 import { internal } from './gui-core';
 import { quoteCommandValue } from './gui-command-utils';
 
 var savedStylesKey = 'layer_style_presets';
-var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'line-start', 'line-end', 'line-end-size', 'fill', 'fill-opacity', 'fill-pattern'];
+var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'line-start', 'line-end', 'line-end-size', 'fill', 'fill-opacity', 'fill-pattern'].concat(internal.svg.glowFields);
 var arrowShapes = [{
   name: 'arrow',
   title: 'solid arrowheads'
@@ -56,7 +57,7 @@ var arrowPositions = [{
 export function LayerStyleTool(gui) {
   var parent = gui.container.findChild('.mshp-main-map');
   var panel = El('div').addClass('label-style-panel layer-style-panel rollover').appendTo(parent).hide();
-  var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, dashControl, arrowControl, randomFillBtn, presetControl, patternControl, hit;
+  var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, dashControl, arrowControl, randomFillBtn, presetControl, patternControl, glowControl, hit;
   var targetLayer = null;
   // What the arrowhead switch turns on, for lines that have no heads
   var lastArrow = {shape: 'arrow', position: 'end'};
@@ -115,6 +116,7 @@ export function LayerStyleTool(gui) {
     fillControl.picker.hide();
     patternControl.hidePicker();
     patternControl.reset();
+    glowControl.reset();
     targetLayer = null;
   }
 
@@ -164,6 +166,14 @@ export function LayerStyleTool(gui) {
       releaseFocus: releaseFocus
     });
 
+    glowControl = new GlowEffectsControl(panel, {
+      getRecords: getTargetRecords,
+      getTargetIds: getTargetIds,
+      applyEdits: runStyleEdits,
+      revert: updateControls,
+      releaseFocus: releaseFocus
+    });
+
     presetControl = new StylePresetControl(panel, {
       storageKey: savedStylesKey,
       type: getStyleType,
@@ -185,10 +195,9 @@ export function LayerStyleTool(gui) {
     var control = makeColorRow(parent, {
       label: label,
       onColor: function(color) {
-        // Blanking the field is not a way to unset a colour: -style reads an
-        // empty value as "remove this", and a field left empty by a mistyped
-        // hex would then clear the layer rather than say nothing.
-        if (color) applyColorControlStyle(control, color);
+        // An emptied field unsets the colour: -style reads an empty value as
+        // "remove this".
+        applyColorControlStyle(control, color);
       },
       onOpacity: function(value) {
         applyLayerStyle(field + '-opacity', value);
@@ -456,6 +465,8 @@ export function LayerStyleTool(gui) {
     randomFillBtn.classed('hidden', geom != 'polygon');
     patternControl.section.classed('hidden', geom != 'polygon');
     if (geom == 'polygon') patternControl.update();
+    glowControl.section.classed('hidden', geom != 'polygon');
+    if (geom == 'polygon') glowControl.update();
     presetControl.render();
     updateSavedStyleControls();
   }
@@ -516,7 +527,7 @@ export function LayerStyleTool(gui) {
 
   function applyColorControlStyle(control, color) {
     var styles = [[control.field, color]];
-    if (control.field == 'stroke' && strokeWidthIsUnsetForTargets()) {
+    if (color && control.field == 'stroke' && strokeWidthIsUnsetForTargets()) {
       styles.push(['stroke-width', 1]);
     }
     if (control.field == 'fill') {
@@ -638,6 +649,7 @@ export function LayerStyleTool(gui) {
       addStyleValue(style, 'fill', getControlValue(fillControl.input));
       addStyleValue(style, 'fill-opacity', parseOpacityValue(fillControl.opacity.node().value));
       addStyleValue(style, 'fill-pattern', patternControl.getCode(getControlValue(fillControl.input)));
+      glowControl.addStyleValues(style);
     }
     return style;
   }

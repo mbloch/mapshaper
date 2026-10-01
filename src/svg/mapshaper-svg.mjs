@@ -19,6 +19,7 @@ import { runningInBrowser } from '../mapshaper-env';
 import require from '../mapshaper-require';
 import { getRasterBBox, intersectBboxes, renderRasterExportPreview } from '../rasters/mapshaper-raster-utils';
 import { findStylePropertiesBySymbolGeom } from './svg-properties';
+import { applyPolygonGlows } from './svg-glow';
 
 var ILLUSTRATOR_PATH_VERTEX_LIMIT = 32000;
 
@@ -269,7 +270,7 @@ export function exportLayerForSVG(lyr, dataset, opts) {
     lyr = copyLayer(lyr);
     adjustRectangleStyle(lyr);
   }
-  layerObj.children = exportSymbolsForSVG(lyr, dataset, opts);
+  layerObj.children = exportSymbolsForSVG(lyr, dataset, opts, layerObj);
   return layerObj;
 }
 
@@ -447,7 +448,7 @@ function encodeWithCanvas(preview, type, quality) {
   return dataUrl.split(',')[1];
 }
 
-function exportSymbolsForSVG(lyr, dataset, opts) {
+function exportSymbolsForSVG(lyr, dataset, opts, layerObj) {
   // TODO: convert geojson features one at a time
   var d = utils.defaults({layers: [lyr]}, dataset);
   var geojson = exportDatasetAsGeoJSON(d, opts);
@@ -459,6 +460,9 @@ function exportSymbolsForSVG(lyr, dataset, opts) {
   var children = importGeoJSONFeatures(features,
     utils.defaults({path_label_report: pathLabelReport}, opts));
   reportPathLabels(pathLabelReport, lyr);
+  if (lyr.geometry_type == 'polygon') {
+    applyPolygonGlows(layerObj, children, features, lyr);
+  }
   // Drop empty placeholder <g/> elements (features whose geometry was null in the
   // source data, collapsed during simplification, or otherwise produced no
   // visible output). Keep the layer's records in lockstep so that data-*

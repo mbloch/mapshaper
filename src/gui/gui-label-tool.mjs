@@ -412,12 +412,9 @@ export function LabelTool(gui) {
     });
     colorInput.on('change', function() {
       var color = colorInput.node().value.trim();
-      if (color) {
-        if (isHexColor(color)) {
-          colorPicker.setColor(color);
-        }
-        applyLabelColor(color);
-      }
+      // An emptied field unsets the colour.
+      if (isHexColor(color)) colorPicker.setColor(color);
+      applyLabelColor(color);
     });
     colorPicker = initColorPicker(textColorCell, colorChit, colorInput, applyLabelColor);
 
@@ -484,12 +481,8 @@ export function LabelTool(gui) {
     });
     haloColorInput.on('change', function() {
       var color = haloColorInput.node().value.trim();
-      if (color) {
-        if (isHexColor(color)) {
-          haloColorPicker.setColor(color);
-        }
-        applyHaloColor(color);
-      }
+      if (isHexColor(color)) haloColorPicker.setColor(color);
+      applyHaloColor(color);
     });
     haloColorPicker = initColorPicker(haloColorCell, haloColorChit, haloColorInput, applyHaloColor);
 
@@ -549,12 +542,8 @@ export function LabelTool(gui) {
     });
     iconColorInput.on('change', function() {
       var color = iconColorInput.node().value.trim();
-      if (color) {
-        if (isHexColor(color)) {
-          iconColorPicker.setColor(color);
-        }
-        applyIconColor(color);
-      }
+      if (isHexColor(color)) iconColorPicker.setColor(color);
+      applyIconColor(color);
     });
     iconColorPicker = initColorPicker(iconColorCell, iconColorChit, iconColorInput, applyIconColor);
 
@@ -692,12 +681,8 @@ export function LabelTool(gui) {
     });
     calloutColorInput.on('change', function() {
       var color = calloutColorInput.node().value.trim();
-      if (color) {
-        if (isHexColor(color)) {
-          calloutColorPicker.setColor(color);
-        }
-        applyCalloutColor(color);
-      }
+      if (isHexColor(color)) calloutColorPicker.setColor(color);
+      applyCalloutColor(color);
     });
     calloutColorPicker = initColorPicker(colorCell, calloutColorChit, calloutColorInput, applyCalloutColor);
 

@@ -4,7 +4,8 @@ import { makeColorRow, makeFieldTip, makePanelSection, makePanelToggle } from '.
 import { SizeField } from './gui-size-field';
 import {
   patternTypes, getDefaultPatternControls, getPatternBackground, getPatternControls,
-  isValidPatternControls, formatFillPattern, formatFillPatternExpression, refillPattern
+  isValidPatternControls, formatFillPattern, formatFillPatternExpression, refillPattern,
+  defaultPatternColor
 } from './gui-fill-pattern';
 
 // The polygon panel's "Pattern" section. See gui-fill-pattern.mjs for how its
@@ -112,7 +113,12 @@ export function PatternFillControl(parent, opts) {
       label: 'Color',
       noOpacity: true,
       onColor: function(color) {
-        if (color) applyChange({color: color});
+        // A pattern has to have a colour, so an emptied field is its default.
+        if (!color) {
+          color = defaultPatternColor;
+          colorControl.showColor(color);
+        }
+        applyChange({color: color});
       },
       revert: opts.revert
     });

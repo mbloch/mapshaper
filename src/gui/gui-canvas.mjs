@@ -10,6 +10,7 @@ import {
   scheduleRasterReprojectedPreview
 } from './gui-raster-reprojected-preview';
 import { getCanvasFillPattern, getCanvasFillEffect } from './gui-canvas-patterns';
+import { compositeGlows, getGlowMargin, getGlowSourceCanvas } from './gui-canvas-glow';
 import {
   previewHasSourcePixels,
   rasterPreviewIsSmoothed
@@ -65,7 +66,7 @@ export function drawStyledLayerToCanvas(lyr, canv, ext) {
     }
   } else {
     arcs = getArcsForRendering(lyr, ext);
-    filter = getShapeFilter(arcs, layer.shapes, ext);
+    filter = getShapeFilter(arcs, layer.shapes, ext, style.overlay ? 0 : style.glowReach);
     canv.drawStyledPaths(layer.shapes, arcs, style, filter);
     if (style.vertices || style.vertex_overlay || style.pending_snip) {
       canv.drawVertices(layer.shapes, arcs, style, filter);
@@ -103,10 +104,17 @@ function getArcFilter(arcs, ext, usedFlag, arcCounts) {
 // view. The filter takes a shape index and tests the shape's bbox against
 // the viewport. At nearly full extent the test is a no-op, so we return
 // null to let the caller skip it entirely.
-function getShapeFilter(arcs, shapes, ext) {
+// reach: how far past its shapes the layer draws, in px (e.g. a glow)
+function getShapeFilter(arcs, shapes, ext, reach) {
   if (ext.scale() < 1.1) return null;
   var view = ext.getBounds();
   var b = new Bounds();
+  var pad;
+  if (reach > 0) {
+    pad = reach * (ext.getSymbolScale() || 1) * ext.getPixelSize();
+    view = new Bounds(view.toArray());
+    view.padBounds(pad, pad, pad, pad);
+  }
   return function(i) {
     var shp = shapes[i];
     if (!shp) return false;
@@ -270,52 +278,136 @@ export function DisplayCanvas() {
     var key, item, shp;
     var styler = style.styler || null;
     var drawStyle = styler ? utils.defaults({}, style) : style;
-    for (var i=0; i<shapes.length; i++) {
-      shp = shapes[i];
-      if (!shp || filter && !filter(i)) continue;
-      if (styler) {
-        styler(drawStyle, i);
+    // Hover and selection overlays copy the layer's style; they do not glow.
+    var glows = !style.overlay;
+    var glowScale = getCanvasStrokeScale(GUI.getPixelRatio(), lineScale);
+    var layerGlow = glows && style.layerOuterGlow ?
+      startLayerGlow(style.layerOuterGlow, glowScale) : null;
+    try {
+      drawShapes();
+    } finally {
+      if (layerGlow) endLayerGlow(layerGlow);
+    }
+    if (layerGlow) compositeLayerGlow(layerGlow);
+
+    function drawShapes() {
+      var glowPencil = null;
+      for (var i=0; i<shapes.length; i++) {
+        shp = shapes[i];
+        if (!shp || filter && !filter(i)) continue;
+        if (styler) {
+          styler(drawStyle, i);
+        }
+        if (glows && (drawStyle.outerGlow || drawStyle.innerGlow)) {
+          // Shapes before this one are drawn first, as they are in SVG, where
+          // a shape's outer glow lies over the shapes that precede it.
+          flushBatches();
+          if (!glowPencil) glowPencil = getGlowShapePencil(arcs, startPath, draw, glowScale);
+          glowPencil(shp, drawStyle);
+          continue;
+        }
+        // A line with arrowheads is drawn on its own, trimmed to meet its heads;
+        // see svg-line-arrows.mjs. Only lines styled with line-start or line-end
+        // get here, so the batch below is untouched for everything else.
+        if (drawStyle.lineStart || drawStyle.lineEnd) {
+          if (!arrowPencil) arrowPencil = getArrowLinePencil(arcs, _ext, lineScale);
+          if (arrowPencil(shp, _ctx, drawStyle, startPath, draw)) continue;
+        }
+        if (!drawStyle.batchOverlay && (drawStyle.overlay ||
+          drawStyle.opacity < 1 || drawStyle.fillOpacity < 1 ||
+          drawStyle.strokeOpacity < 1 || drawStyle.fillEffect)) {
+          // don't batch shapes with opacity, in case they overlap
+          drawPaths([shp], startPath, draw, drawStyle);
+          continue;
+        }
+        key = getStyleKey(drawStyle);
+        if (key in styleIndex === false) {
+          styleIndex[key] = {
+            style: utils.defaults({}, drawStyle),
+            shapes: []
+          };
+        }
+        item = styleIndex[key];
+        item.shapes.push(shp);
+        if (item.shapes.length >= batchSize) {
+          drawPaths(item.shapes, startPath, draw, item.style);
+          item.shapes = [];
+        }
       }
-      // A line with arrowheads is drawn on its own, trimmed to meet its heads;
-      // see svg-line-arrows.mjs. Only lines styled with line-start or line-end
-      // get here, so the batch below is untouched for everything else.
-      if (drawStyle.lineStart || drawStyle.lineEnd) {
-        if (!arrowPencil) arrowPencil = getArrowLinePencil(arcs, _ext, lineScale);
-        if (arrowPencil(shp, _ctx, drawStyle, startPath, draw)) continue;
-      }
-      if (!drawStyle.batchOverlay && (drawStyle.overlay ||
-        drawStyle.opacity < 1 || drawStyle.fillOpacity < 1 ||
-        drawStyle.strokeOpacity < 1 || drawStyle.fillEffect)) {
-        // don't batch shapes with opacity, in case they overlap
-        drawPaths([shp], startPath, draw, drawStyle);
-        continue;
-      }
-      key = getStyleKey(drawStyle);
-      if (key in styleIndex === false) {
-        styleIndex[key] = {
-          style: utils.defaults({}, drawStyle),
-          shapes: []
-        };
-      }
-      item = styleIndex[key];
-      item.shapes.push(shp);
-      if (item.shapes.length >= batchSize) {
+      flushBatches();
+    }
+
+    function flushBatches() {
+      Object.keys(styleIndex).forEach(function(key) {
+        var item = styleIndex[key];
+        if (item.shapes.length === 0) return;
         drawPaths(item.shapes, startPath, draw, item.style);
         item.shapes = [];
-      }
+      });
     }
-    Object.keys(styleIndex).forEach(function(key) {
-      var item = styleIndex[key];
-      drawPaths(item.shapes, startPath, draw, item.style);
-    });
   };
 
-  function drawPaths(shapes, beginPath, drawShape, style) {
-    beginPath(_ctx, style);
+  function drawPaths(shapes, beginPath, drawShape, style, ctx) {
+    ctx = ctx || _ctx;
+    beginPath(ctx, style);
     for (var i=0, n=shapes.length; i<n; i++) {
-      drawShape(shapes[i], _ctx, style);
+      drawShape(shapes[i], ctx, style);
     }
-    endPath(_ctx, style);
+    endPath(ctx, style);
+  }
+
+  // A layer's own outer glow is made from the whole layer, so the layer is
+  // drawn into a canvas of its own and then onto this one with its glow. The
+  // canvas is larger than this one by the reach of the glow, so that shapes
+  // just outside the view still cast theirs into it.
+  function startLayerGlow(glow, pxScale) {
+    var margin = getGlowMargin(glow, null, pxScale);
+    var w = _canvas.width + margin * 2;
+    var h = _canvas.height + margin * 2;
+    var src = getGlowSourceCanvas('layer', w, h);
+    var o = {glow: glow, pxScale: pxScale, margin: margin, w: w, h: h,
+      src: src, ctx: _ctx};
+    src.ctx.setTransform(1, 0, 0, 1, margin, margin);
+    _ctx = src.ctx;
+    return o;
+  }
+
+  function endLayerGlow(o) {
+    o.src.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    _ctx = o.ctx;
+  }
+
+  function compositeLayerGlow(o) {
+    compositeGlows(_ctx, o.src.canvas, -o.margin, -o.margin, o.w, o.h,
+      o.glow, null, o.pxScale);
+  }
+
+  // Draws one shape with its own glows, which are made from the shape alone.
+  // The shape is drawn into a canvas the size of its bounding box and the
+  // reach of its glows, cut down to the part that can be seen.
+  function getGlowShapePencil(arcs, startPath, draw, pxScale) {
+    var t = getScaledTransform(_ext);
+    var b = new Bounds();
+    return function(shp, style) {
+      var outer = style.outerGlow, inner = style.innerGlow;
+      var margin = getGlowMargin(outer, inner, pxScale) +
+        Math.ceil((style.strokeWidth > 0 ? style.strokeWidth * pxScale : 0) / 2);
+      var viewMargin = margin * 2;
+      var x0, y0, x1, y1, src;
+      b.empty();
+      arcs.getMultiShapeBounds(shp, b);
+      if (!b.hasBounds()) return;
+      x0 = Math.floor(Math.max(b.xmin * t.mx + t.bx - margin, -viewMargin));
+      x1 = Math.ceil(Math.min(b.xmax * t.mx + t.bx + margin, _canvas.width + viewMargin));
+      y0 = Math.floor(Math.max(b.ymax * t.my + t.by - margin, -viewMargin));
+      y1 = Math.ceil(Math.min(b.ymin * t.my + t.by + margin, _canvas.height + viewMargin));
+      if (x1 <= x0 || y1 <= y0) return;
+      src = getGlowSourceCanvas('shape', x1 - x0, y1 - y0);
+      src.ctx.setTransform(1, 0, 0, 1, -x0, -y0);
+      drawPaths([shp], startPath, draw, style, src.ctx);
+      src.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      compositeGlows(_ctx, src.canvas, x0, y0, x1 - x0, y1 - y0, outer, inner, pxScale);
+    };
   }
 
   _self.drawSquareDots = function(shapes, style) {

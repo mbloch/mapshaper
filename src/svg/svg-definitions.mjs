@@ -2,6 +2,7 @@ import { sha1 } from '../utils/mapshaper-sha1';
 import { convertFillPattern } from '../svg/svg-hatch';
 import { LABEL_PATH_PROPERTY } from '../svg/svg-label-paths';
 import { convertFillEffect } from '../svg/svg-effect';
+import { convertGlowFilter } from '../svg/svg-glow';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import require from '../mapshaper-require';
@@ -11,6 +12,9 @@ export function convertPropertiesToDefinitions(obj, defs) {
   procNode(obj);
 
   function procNode(obj) {
+    if (obj.glowFilter) {
+      convertGlowFilter(obj, defs);
+    }
     if (obj.tag == 'textPath' && obj.properties && obj.properties[LABEL_PATH_PROPERTY]) {
       convertLabelPath(obj.properties, defs);
     }

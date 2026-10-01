@@ -149,7 +149,10 @@ export function makeColorOpacityField(parent, chit, input, opacityOpts) {
 // split row. Fill and Stroke are each one of these.
 //
 // opts.label            the caption over the field
-// opts.onColor(hex)     a colour was typed, picked or previewed to a finish
+// opts.onColor(hex)     a colour was typed, picked or previewed to a finish;
+//                       '' when the field was emptied, which unsets a colour
+//                       that can be unset and restores the default of one
+//                       that cannot
 // opts.onOpacity(frac)  a usable percentage was typed
 // opts.revert()         one that was not, so put the row back as it was
 // opts.noOpacity        a colour with no opacity of its own, like a pattern's,

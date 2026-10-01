@@ -19,11 +19,13 @@ import * as SvgLabelCallout from './svg/svg-label-callout';
 import * as SvgFeatureUtils from './svg/svg-feature-utils';
 import * as SvgLabelMarkup from './svg/svg-label-markup';
 import * as SvgLineArrows from './svg/svg-line-arrows';
+import * as SvgGlow from './svg/svg-glow';
 
 internal.svg = Object.assign({}, SvgStringify, SvgPathUtils, GeojsonToSvg,
   SvgFeatureUtils,
   SvgLabels, SvgSymbols, SvgLabelPaths, SvgLabelFit, SvgLabelAlign,
-  SvgLabelMetrics, SvgLabelHalo, SvgLabelCallout, SvgLabelMarkup, SvgLineArrows);
+  SvgLabelMetrics, SvgLabelHalo, SvgLabelCallout, SvgLabelMarkup, SvgLineArrows,
+  SvgGlow);
 
 import * as FontLookup from './fonts/mapshaper-font-lookup';
 import * as TextMeasure from './fonts/mapshaper-text-measure';

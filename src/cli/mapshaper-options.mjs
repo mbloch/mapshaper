@@ -2086,6 +2086,24 @@ export function getOptionParser() {
     .option('fill-hatch', {
       alias_to: 'fill-pattern'
     })
+    .option('outer-glow-color', {
+      describe: 'color of a glow outside each polygon (adds the glow)'
+    })
+    .option('outer-glow-width', {
+      describe: 'how far the outer glow reaches, in px (default is 10)'
+    })
+    .option('outer-glow-opacity', {
+      describe: 'opacity of the outer glow, 0-1'
+    })
+    .option('inner-glow-color', {
+      describe: 'color of a glow inside each polygon (adds the glow)'
+    })
+    .option('inner-glow-width', {
+      describe: 'how far the inner glow reaches, in px (default is 10)'
+    })
+    .option('inner-glow-opacity', {
+      describe: 'opacity of the inner glow, 0-1'
+    })
     .option('stroke', {
       describe: 'stroke color'
     })
