@@ -276,16 +276,16 @@ export function InteractionMode(gui) {
   }
 
   // The label tool is offered where a label would join the active layer (see
-  // menus above), but it can act on any target once it is open: a label goes
-  // into a label layer created beside a layer that cannot hold one. So
-  // selecting a polygon layer while the tool is open must not close it -- the
-  // next label will start a label layer of its own.
+  // menus above), and it stays open only there: selecting a layer that cannot
+  // hold labels closes it, as selecting another kind of layer closes the line
+  // and polygon tools. Left open, its panel went on styling a layer that has
+  // no labels, and the next label would have started a label layer of its own
+  // beside whatever had been selected. With no layer at all the tool stays,
+  // since it creates the layer it needs.
   function labelModeIsAvailable() {
     var o = gui.model.getActiveLayer();
     if (_editMode != 'label') return false;
-    if (!o || !o.layer) return true; // the tool creates the layer it needs
-    // A table is the one target with no map to click on.
-    return internal.layerHasRaster(o.layer) || !!o.layer.geometry_type;
+    return !o || !o.layer || labelWouldJoin(o.layer);
   }
 
   function labelStyleModeIsAvailable() {

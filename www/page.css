@@ -4369,6 +4369,12 @@ body.dragging-color-picker * {
 	pointer-events: none;
 }
 
+/* Undo/redo stays at the bottom, below any mode toolbar, whichever toolbar
+   happened to be created first. */
+.floating-toolbar-stack > .edit-toolbar {
+	order: -1;
+}
+
 .floating-toolbar {
 	pointer-events: auto;
 	display: flex;

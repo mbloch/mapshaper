@@ -10,9 +10,9 @@ import { rebuildFrameLayerGeometry } from '../furniture/mapshaper-frame-projecti
 import { getFrameContentBbox, getFrameScale } from '../furniture/mapshaper-frame-fit';
 import { requireDatasetsHaveCompatibleCRS } from '../crs/mapshaper-projections';
 import {
-  applyPercentageOffsets,
-  applyPixelOffsets,
-  fillOutBbox
+  applyFrameOffsets,
+  fillOutBbox,
+  parseFrameOffsets
 } from './mapshaper-frame';
 import { stop } from '../utils/mapshaper-logging';
 import { noteLayerWillChange, markLayerChanged } from '../undo/mapshaper-undo-tracking';
@@ -52,6 +52,7 @@ export function updateFrame(targetLayers, dataset, opts, fitTargets) {
   var rec = lyr.data.getRecords()[0];
   var frame = getFrameLayerData(lyr, dataset.arcs);
   var fixedAspect = getFixedAspect(rec);
+  var offsets = parseFrameOffsets(opts);
   var sizes, contentBbox, update;
 
   // 1. Aspect mode, resolved first because whether the page shape is fixed
@@ -69,7 +70,7 @@ export function updateFrame(targetLayers, dataset, opts, fitTargets) {
   // 2. Extent, which fit= finds by trying extents out on steps 3 and 4
   if (opts.fit !== undefined) {
     contentBbox = getFrameContentBbox(getFitTargets(fitTargets, dataset), function(bbox) {
-      var o = resolveFrameUpdate(bbox, frame, fixedAspect, sizes, opts);
+      var o = resolveFrameUpdate(bbox, frame, fixedAspect, sizes, offsets, opts);
       return getFrameScale(o.bbox, o.width, o.fixedAspect);
     }, opts);
     if (!contentBbox) {
@@ -79,7 +80,7 @@ export function updateFrame(targetLayers, dataset, opts, fitTargets) {
     contentBbox = opts.bbox || frame.bbox;
   }
 
-  update = resolveFrameUpdate(contentBbox, frame, fixedAspect, sizes, opts);
+  update = resolveFrameUpdate(contentBbox, frame, fixedAspect, sizes, offsets, opts);
   if (!update.valid) {
     stop('Frame has a collapsed bbox');
   }
@@ -137,21 +138,17 @@ function parseSizeOptions(opts) {
 
 // Steps 3 and 4 as a pure function of the content extent, so that fit= can
 // ask what scale an extent would give the frame.
-function resolveFrameUpdate(contentBbox, frame, fixedAspect, sizes, opts) {
+function resolveFrameUpdate(contentBbox, frame, fixedAspect, sizes, offsets, opts) {
   var bbox = contentBbox.slice();
-  var offsetArg = opts.offset || opts.offsets;
   var width = frame.width;
   var units = frame.units || 'px';
   var valid, effectiveAspect;
 
   // 3. Padding
-  if (offsetArg) {
-    applyPercentageOffsets(bbox, offsetArg);
-    // Pass a page height only when the shape is fixed. A derived height
-    // follows the extent, so letting it pad the bbox here would hold a
-    // re-fitted frame to its old shape instead of its new bounds.
-    applyPixelOffsets(bbox, frame.width,
-      fixedAspect ? frame.width / fixedAspect : null, offsetArg);
+  if (offsets) {
+    applyFrameOffsets(bbox, offsets,
+      getPaddingSize(frame, sizes.width && sizes.height ?
+        sizes.width.valuePx / sizes.height.valuePx : fixedAspect, sizes, opts));
   }
   valid = isValidBbox(bbox);
   if (fixedAspect) {
@@ -188,6 +185,25 @@ function resolveFrameUpdate(contentBbox, frame, fixedAspect, sizes, opts) {
   };
 }
 
+// The size the frame is padded for, which is the size it ends up with: a
+// percentage offset is a share of the final width, and a px offset is px at
+// the final scale. A page height is given only when the shape is fixed; a
+// derived height follows the extent, so letting it pad the bbox would hold a
+// re-fitted frame to its old shape instead of its new bounds.
+function getPaddingSize(frame, fixedAspect, sizes, opts) {
+  var width = frame.width;
+  if (opts.fix_scale) {
+    return {scale: getBboxWidth(frame.bbox) / frame.width};
+  }
+  if (sizes.width) {
+    width = sizes.width.valuePx;
+  } else if (sizes.height) {
+    if (!fixedAspect) return {height: sizes.height.valuePx};
+    width = sizes.height.valuePx * fixedAspect;
+  }
+  return {width: width, height: fixedAspect ? width / fixedAspect : null};
+}
+
 function hasUpdateOptions(opts) {
   return opts.bbox !== undefined ||
     opts.fit !== undefined ||
@@ -196,6 +212,7 @@ function hasUpdateOptions(opts) {
     opts.aspect_ratio !== undefined ||
     opts.auto_aspect ||
     opts.fix_scale ||
+    opts.margin !== undefined ||
     opts.offset !== undefined ||
     opts.offsets !== undefined;
 }

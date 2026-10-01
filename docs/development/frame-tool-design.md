@@ -1060,8 +1060,8 @@ the ordering right by construction. The drag path could move onto the flag
 later.
 
 Fixing that ordering exposed a related bug. `-update-frame` applied offsets by
-calling `applyPixelOffsets()` with the frame's stored width *and* height, and
-that function pads the bbox out to the page shape before measuring pixel
+calling `applyPixelOffsets()` (since replaced by `applyFrameOffsets()`) with
+the frame's stored width *and* height, and that function padded the bbox out to the page shape before measuring pixel
 margins. With a derived height the stored page shape is just the old extent's
 shape, so `bbox= offset=` together held a re-fitted frame to its old shape
 instead of letting it take its new bounds. The aspect mode is now resolved
@@ -1090,7 +1090,19 @@ alone.
 **Margin** sits after Fit rather than with the frame settings, because it is
 not frame state: it pads the fitted bounds and is then spent, exactly as it
 does on the creation dialog's Fit visible layers row. It reaches the command as
-`offset=`, so its unit handling lives in one place.
+`margin=`, so its unit handling lives in one place.
+
+Margins are even by default. As with CSS padding, a percentage is a share of
+the frame's width on every side, top and bottom included; the old rule took
+the top and bottom as a share of the height, so a wide map got thin top and
+bottom margins. `margin=` takes one to four values in CSS order (top right
+bottom left), which is what the Margin fields accept. The older `offset=` and
+`offsets=` still work, undocumented, with the l,b,r,t order of a bbox; giving
+CSS order its own option name keeps the two orders from being confused. `applyFrameOffsets()` in
+`src/commands/mapshaper-frame.mjs` does the padding for both commands. Because
+a percentage depends on the final width, it is given the size the frame will
+end up with: the width when that is known, the height when the width is
+derived from the extent, or the held scale under `fix-scale`.
 
 The mode control and the two fields needed new `FloatingToolbar` primitives,
 `addSegmentedControl()` and `addTextField()`, since the toolbar previously had

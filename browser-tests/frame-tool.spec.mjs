@@ -52,7 +52,7 @@ test('fitting visible layers applies the aspect ratio and margin', async functio
   var frame = await getFrameInfo(page);
   expect(frame.width / frame.height).toBeCloseTo(1.25, 6);
   expect((await getSessionCommands(page)).pop())
-    .toContain("aspect-ratio=1.25 offset='10%'");
+    .toContain("aspect-ratio=1.25 margin='10%'");
 });
 
 // A drawn box is already the extent the user meant, so the margin is not
@@ -82,7 +82,7 @@ test('a drawn frame takes the aspect ratio but no margin', async function({page}
   expect(frame.width / frame.height).toBeCloseTo(1, 6);
   var command = (await getSessionCommands(page)).pop();
   expect(command).toContain('aspect-ratio=1');
-  expect(command).not.toContain('offset');
+  expect(command).not.toContain('margin');
 });
 
 // The ratio has to shape the box as it is dragged. Without this the user draws
@@ -511,12 +511,24 @@ test('the mode applies to fitting, and Margin pads the fit', async function({pag
   await fit.click();
   await expect.poll(async function() {
     return (await getSessionCommands(page)).pop();
-  }).toContain("offset='10%'");
+  }).toContain("margin='10%'");
   var padded = await getFrameInfo(page);
   expect(padded.width).toBe(fitted.width);
   // The margin widened the extent beyond the unpadded fit.
   expect(padded.bbox[2] - padded.bbox[0])
     .toBeGreaterThan(fitted.bbox[2] - fitted.bbox[0]);
+
+  // A margin of several values is kept even when its first value is zero.
+  await setInput(page, '.frame-toolbar-margin-input', '0 10%');
+  await fit.click();
+  await expect.poll(async function() {
+    return (await getSessionCommands(page)).pop();
+  }).toContain("margin='0 10%'");
+  var sidesOnly = await getFrameInfo(page);
+  expect(sidesOnly.bbox[2] - sidesOnly.bbox[0])
+    .toBeCloseTo(padded.bbox[2] - padded.bbox[0], 6);
+  expect(sidesOnly.bbox[3] - sidesOnly.bbox[1])
+    .toBeLessThan(padded.bbox[3] - padded.bbox[1]);
 });
 
 // Symbols are sized in output pixels, so a frame fitted to the points alone

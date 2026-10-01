@@ -143,6 +143,14 @@ export function getOptionParser() {
       offsetOpt = {
         describe: 'offset distance or pct of h/w (single value or l,b,r,t list)',
         type: 'distance'
+      },
+      frameMarginOpt = {
+        describe: 'padding in display units or pct of frame width; 1-4 values in CSS order, e.g. 5% or 10%,2%',
+        type: 'strings'
+      },
+      frameOffsetOpt = {
+        // undocumented: older form of margin=, one value or an l,b,r,t list
+        type: 'strings'
       };
 
   // The label options -style used to document, before -labels took them over.
@@ -2447,14 +2455,9 @@ export function getOptionParser() {
       describe: 'hold the map scale; derive the size from the new extent',
       type: 'flag'
     })
-    .option('offset', {
-      describe: 'padding in display units or pct of width/height, e.g. 5cm 20px 5%',
-      type: 'strings'
-    })
-    .option('offsets', {
-      describe: 'separate offsets for each side, in l,b,r,t order',
-      type: 'strings'
-    })
+    .option('margin', frameMarginOpt)
+    .option('offset', frameOffsetOpt)
+    .option('offsets', frameOffsetOpt)
     .option('remove', {
       describe: 'demote the frame to an ordinary rectangle layer',
       type: 'flag'
@@ -2572,14 +2575,9 @@ export function getOptionParser() {
       describe: 'frame coordinates (xmin,ymin,xmax,ymax)',
       type: 'bbox'
     })
-    .option('offset', {
-      describe: 'padding in display units or pct of width/height, e.g. 5cm 20px 5%',
-      type: 'strings'
-    })
-    .option('offsets', {
-      describe: 'separate offsets for each side, in l,b,r,t order',
-      type: 'strings'
-    })
+    .option('margin', frameMarginOpt)
+    .option('offset', frameOffsetOpt)
+    .option('offsets', frameOffsetOpt)
     .option('ignore-symbols', {
       describe: 'fit to point locations, not the extent of symbols and labels',
       type: 'flag'

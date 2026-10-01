@@ -61,8 +61,9 @@ export function FrameResizeTool(gui) {
   var marginField = toolbar.addTextField('Margin', {
     classname: 'frame-toolbar-margin-input',
     placeholder: '0',
-    tooltip: 'Padding added when fitting: 20px, 1cm, ' +
-      "or a percentage of the frame's width and height"
+    tooltip: 'Padding added when fitting: 2%, 20px, 1cm, or ' +
+      'one to four values in CSS order (top right bottom left). ' +
+      "A percentage is of the frame's width on every side."
   });
   toolbar.addSeparator();
   toolbar.addTextButton('Done', {
@@ -312,7 +313,7 @@ export function FrameResizeTool(gui) {
         return internal.getLayerTargetId(gui.model, o.layer);
       }).join(','))
     ];
-    if (margin) parts.push('offset=' + quoteCommandValue(margin));
+    if (margin) parts.push('margin=' + quoteCommandValue(margin));
     if (!lockSize) parts.push('fix-scale');
     parts.push(getTargetOption(target));
     runGuiEditCommand(gui, parts.join(' '), {
@@ -325,7 +326,7 @@ export function FrameResizeTool(gui) {
   // cleared so the fit that just ran matches what the toolbar shows.
   function getMargin() {
     var value = marginField.getValue();
-    if (parseFloat(value) > 0) return value;
+    if (hasNonZeroMargin(value)) return value;
     if (value) marginField.setValue('');
     return '';
   }
@@ -376,8 +377,10 @@ export function FrameResizeTool(gui) {
     marginInput.node().value = '2%';
     makeFieldTip(fitRow,
       'Space around the layers: 2%, 20px, 1cm.\n' +
-      "A percentage is of the frame's width on the\n" +
-      'side and of its height on top and bottom.');
+      "A percentage is of the frame's width, on\n" +
+      'every side. Use two to four values for\n' +
+      'uneven margins, in CSS order: 4% 2%, or\n' +
+      '8% 2% 2% 2% (top right bottom left).');
 
     var drawRow = El('div').addClass('frame-create-option-row').appendTo(section);
     addButton(drawRow, 'Draw on the map', function() {
@@ -409,7 +412,7 @@ export function FrameResizeTool(gui) {
 
     function getMargin() {
       var value = marginInput.node().value.trim();
-      return parseFloat(value) > 0 ? value : '';
+      return hasNonZeroMargin(value) ? value : '';
     }
   }
 
@@ -489,7 +492,7 @@ export function FrameResizeTool(gui) {
     });
     var parts = ['-frame', 'width=' + quoteCommandValue(width)];
     if (aspect) parts.push('aspect-ratio=' + aspect);
-    if (margin) parts.push('offset=' + quoteCommandValue(margin));
+    if (margin) parts.push('margin=' + quoteCommandValue(margin));
     parts.push('name=frame');
     parts.push('target=' + internal.formatOptionValue(ids.join(',')));
     runCreateCommand(parts.join(' '));
@@ -566,6 +569,14 @@ export function FrameResizeTool(gui) {
     var b = ext.translateCoords(bbox[2], bbox[1]);
     return Math.abs(b[0] - a[0]);
   }
+}
+
+// A margin field's value is passed to the command when any of its one to four
+// values is positive, e.g. '0 2%'; a blank or all-zero margin is dropped.
+export function hasNonZeroMargin(value) {
+  return String(value || '').split(/[\s,]+/).some(function(str) {
+    return parseFloat(str) > 0;
+  });
 }
 
 function addButton(parent, label, action) {

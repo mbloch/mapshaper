@@ -57,6 +57,15 @@ describe('-update-frame', function() {
     assert.deepEqual(getFeatureBbox(feature), [-12.5, -12.5, 112.5, 112.5]);
   });
 
+  it('pads with an even percentage margin in CSS order', async function() {
+    var feature = await runGeoJSON(
+      '-frame bbox=0,0,100,100 width=100 -update-frame bbox=0,0,80,50 margin=10%,10%,30%,10%'
+    );
+    // 10px sides on a 100px frame leave 80px for 80 units; top 10, bottom 30
+    assert.deepEqual(getFeatureBbox(feature), [-10, -30, 90, 60]);
+    assert.equal(feature.properties.height, 90);
+  });
+
   it('sets both dimensions and fixes their aspect ratio', async function() {
     var feature = await runGeoJSON(
       '-frame bbox=0,0,2,1 width=800 -update-frame width=6in height=3in'
@@ -173,14 +182,24 @@ describe('-update-frame', function() {
     it('counts the padding an offset adds', async function() {
       var feature = await runGeoJSON(
         '-frame bbox=0,0,2,1 width=800 ' +
-        '-update-frame bbox=0,0,4,2 offset=10% fix-scale'
+        '-update-frame bbox=0,0,4,2 margin=10% fix-scale'
       );
-      // The offset is a share of the padded frame, so 10% a side turns a
-      // 4-wide extent into a 5-wide one; the held scale takes the width from
-      // 800 to 2000 rather than from 800 to 1600.
-      assert.deepEqual(getFeatureBbox(feature), [-0.5, -0.25, 4.5, 2.25]);
+      // The offset is a share of the padded frame's width, so 10% a side
+      // turns a 4-wide extent into a 5-wide one, and the top and bottom get
+      // the same 0.5; the held scale takes the width from 800 to 2000 rather
+      // than from 800 to 1600.
+      assert.deepEqual(getFeatureBbox(feature), [-0.5, -0.5, 4.5, 2.5]);
       assert.equal(feature.properties.width, 2000);
-      assert.equal(feature.properties.height, 1000);
+      assert.equal(feature.properties.height, 1200);
+    });
+
+    it('measures px offsets at the held scale', async function() {
+      var feature = await runGeoJSON(
+        '-frame bbox=0,0,2,1 width=800 ' +
+        '-update-frame bbox=0,0,4,2 offset=40px fix-scale'
+      );
+      assert.deepEqual(getFeatureBbox(feature), [-0.1, -0.1, 4.1, 2.1]);
+      assert.equal(Math.round(feature.properties.width * 1e6) / 1e6, 1680);
     });
 
     it('keeps a fixed aspect ratio', async function() {

@@ -45,6 +45,30 @@ test('with no tool armed the label panel styles every label', async function({pa
   expect(errors).toEqual([]);
 });
 
+test('selecting a layer that cannot hold labels closes the label tool', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page, LABEL_FIXTURE, 'label');
+  // the first label goes into a new layer of its own, which becomes active
+  await placeLabel(page, 0.3, 0.5, 'Reno');
+  await disarmTool(page);
+  await expect(page.locator('.text-style-panel')).toBeVisible();
+
+  await page.locator('.layer-item').filter({hasText: 'ring_and_line'}).first().click();
+  await expect(page.locator('.text-style-panel')).toBeHidden();
+  await expect(page.locator('.floating-toolbar.label-toolbar')).toBeHidden();
+  expect(await page.evaluate(function() {
+    return window.mapshaper.undoTest.getState().model.activeLayer;
+  })).toBe('ring_and_line');
+
+  // and back on the label layer, the tool is in its menu again
+  await page.locator('.layer-item').filter({hasText: 'labels'}).first().click();
+  await page.evaluate(function() {
+    window.mapshaper.undoTest.setInteractionMode('label');
+  });
+  await expect(page.locator('.text-style-panel')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test('an empty label layer with no tool armed has nothing to edit', async function({page}) {
   await page.goto('/?undo=on&undo-test=on');
   await page.waitForFunction(function() {
