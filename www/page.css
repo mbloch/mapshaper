@@ -3021,12 +3021,6 @@ body.pan.panning .map-layers:not(.drawing) {
 	width: 54px;
 }
 
-.export-frame-info {
-	color: #555;
-	font-size: 12px;
-	margin: 8px 0 12px;
-}
-
 .label-style-panel select,
 .label-saved-style-btn {
 	background-image: var(--label-menu-chevron);

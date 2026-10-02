@@ -1,6 +1,6 @@
 {
   "name": "mapshaper",
-  "version": "0.7.72",
+  "version": "0.7.73",
   "description": "A tool for editing geospatial data for mapping and GIS.",
   "keywords": [
     "shapefile",
@@ -123,5 +123,9 @@
   },
   "overrides": {
     "better-sqlite3": "^12.10.0"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.10.0": true,
+    "msgpackr-extract@3.0.2": true
   }
 }

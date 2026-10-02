@@ -22,8 +22,6 @@ export var ExportControl = function(gui) {
   var toggleBtn = null; // checkbox <input> for toggling layer selection
   var exportBtn = gui.container.findChild('.export-btn').addClass('disabled');
   var ofileName = gui.container.findChild('#ofile-name');
-  var frameInfo = menu.findChild('.export-frame-info').hide();
-  menu.findChild('.advanced-options').on('input', updateFrameInfo);
   new SimpleButton(menu.findChild('.close2-btn')).on('click', gui.clearMode);
 
   if (!GUI.exportIsSupported()) {
@@ -92,7 +90,6 @@ export var ExportControl = function(gui) {
     formatPickedByUser = false;
     // initZipOption();
     initFormatMenu();
-    updateFrameInfo();
     updateExportCheckboxes();
     menu.show();
   }
@@ -367,13 +364,11 @@ export var ExportControl = function(gui) {
     // changes afterwards.
     formatPickedByUser = true;
     updateExportCheckboxes();
-    updateFrameInfo();
   }
 
   function setSelectedFormat(fmt) {
     var el = menu.findChild('.export-formats input[value="' + fmt + '"]');
     if (el) el.node().checked = true;
-    updateFrameInfo();
   }
 
   // Which formats apply depends on what is checked for export, so unchecking
@@ -479,19 +474,4 @@ export var ExportControl = function(gui) {
     });
     return targets;
   }
-
-  function updateFrameInfo() {
-    if (!frameInfo) return;
-    var context = getGuiFrameContext();
-    var format = getSelectedFormat();
-    var topoUsesPixels = format == 'topojson' &&
-      /\b(?:width|height)\s*=/.test(getExportOptsAsString());
-    if (context && (format == 'svg' || format == 'html' || topoUsesPixels)) {
-      frameInfo.text('Map frame: ' +
-        internal.formatFrameSizeForDisplay(context.data)).show();
-    } else {
-      frameInfo.hide();
-    }
-  }
-
 };

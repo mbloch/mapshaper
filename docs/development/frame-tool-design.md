@@ -741,10 +741,11 @@ layer checklist.
 
 ### Decided: the GUI export dialog treats the frame as output settings
 
-The frame stops appearing in the export dialog's layer checklist. In its place,
-when the selected format is one the frame affects (SVG, or TopoJSON with
-`width=`), the dialog shows a line reporting the output size and extent —
-"Map frame: 600 × 300 px" — and the frame is always applied.
+The frame stops appearing in the export dialog's layer checklist, and the frame
+is always applied when the selected format is one the frame affects (SVG, HTML,
+or TopoJSON with `width=`). The dialog doesn't report the frame size: preview
+mode already shows it above the map, and a size line made the menu change size
+when switching formats.
 
 The GUI passes the normalized frame data to the export pipeline as layout
 context; it does not add the frame geometry to the user's checked content

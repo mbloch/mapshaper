@@ -753,11 +753,6 @@ test('export treats the frame as output settings, not a selectable layer', async
   await expect(page.locator('.export-options')).toBeVisible();
   await expect(page.locator('.export-layer-list .layer-item')).toHaveCount(1);
   await expect(page.locator('.export-layer-list')).not.toContainText('frame');
-
-  await page.locator('.export-formats input[value="svg"]').check();
-  await expect(page.locator('.export-frame-info')).toContainText(
-    'Map frame: 600 × 600 px'
-  );
 });
 
 async function loadFixture(page, file) {
