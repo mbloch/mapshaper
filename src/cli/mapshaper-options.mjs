@@ -2131,6 +2131,9 @@ export function getOptionParser() {
     .option('stroke-dasharray', {
       describe: 'stroke dashes. Examples: "4" "2 4"'
     })
+    .option('stroke-linecap', {
+      describe: 'line caps: round, butt or square (dashed lines default to butt)'
+    })
     .option('stroke-opacity', {
       describe: 'stroke opacity'
     })

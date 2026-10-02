@@ -137,10 +137,10 @@ var LINE_LAYER = 'ex1_line';
 test('dashes are typed as a -style stroke-dasharray value', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, LINE_FIXTURE, 'line_style');
-  var input = page.locator('.layer-style-panel .layer-dash-row input');
-  await expect(page.locator('.layer-style-panel .layer-dash-row .label-style-row-label'))
+  var input = page.locator('.layer-style-panel .layer-dash-cell input');
+  await expect(page.locator('.layer-style-panel .layer-dash-cell .label-style-row-label'))
     .toContainText('Dashes');
-  await expect(page.locator('.layer-style-panel .layer-dash-row .tip-button')).toHaveCount(1);
+  await expect(page.locator('.layer-style-panel .layer-dash-cell .tip-button')).toHaveCount(1);
 
   await setField(input, '6 3');
   expect(await getStyleValue(page, 'stroke-dasharray', LINE_LAYER)).toBe('6 3');
@@ -164,7 +164,44 @@ test('dashes are typed as a -style stroke-dasharray value', async function({page
 
 test('the dashes field is only on the line panel', async function({page}) {
   await loadFixture(page, FIXTURE);
-  await expect(page.locator('.layer-style-panel .layer-dash-row')).toBeHidden();
+  await expect(page.locator('.layer-style-panel .layer-line-row')).toBeHidden();
+});
+
+test('line caps are a three-way toggle, round by default', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page, LINE_FIXTURE, 'line_style');
+  var btn = function(cap) {
+    return page.locator('.layer-style-panel .layer-cap-buttons [data-line-cap="' + cap + '"]');
+  };
+  await expect(page.locator('.layer-style-panel .layer-cap-buttons .label-panel-btn'))
+    .toHaveText(['Round', 'Butt', 'Square']);
+  await expect(btn('round')).toHaveClass(/selected/);
+
+  await btn('square').click();
+  await page.waitForTimeout(200);
+  expect(await getStyleValue(page, 'stroke-linecap', LINE_LAYER)).toBe('square');
+  expect((await getSessionCommands(page)).join('\n')).toContain("stroke-linecap='square'");
+  await expect(btn('square')).toHaveClass(/selected/);
+  await expect(btn('round')).not.toHaveClass(/selected/);
+
+  // the default is unset rather than stored
+  await btn('round').click();
+  await page.waitForTimeout(200);
+  expect(await getStyleValue(page, 'stroke-linecap', LINE_LAYER)).toBeUndefined();
+  await expect(btn('round')).toHaveClass(/selected/);
+
+  // dashed lines default to butt caps, so round has to be stored for them
+  await setField(page.locator('.layer-style-panel .layer-dash-cell input'), '4');
+  await expect(btn('butt')).toHaveClass(/selected/);
+  await btn('round').click();
+  await page.waitForTimeout(200);
+  expect(await getStyleValue(page, 'stroke-linecap', LINE_LAYER)).toBe('round');
+
+  await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
+  await page.waitForTimeout(250);
+  expect(await getStyleValue(page, 'stroke-linecap', LINE_LAYER)).toBeUndefined();
+  await expect(btn('butt')).toHaveClass(/selected/);
+  expect(errors).toEqual([]);
 });
 
 var POLY_FIXTURE = 'test/data/features/join/ex1_polyB.json';

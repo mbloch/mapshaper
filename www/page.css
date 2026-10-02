@@ -4007,7 +4007,8 @@ body.dragging-color-picker * {
 
 /* Words, like the label panel's Fixed/Draggable, but splitting the group
    evenly so that it lines up with the shapes above. */
-.layer-style-panel .layer-arrow-position-buttons .label-panel-btn {
+.layer-style-panel .layer-arrow-position-buttons .label-panel-btn,
+.layer-style-panel .layer-cap-buttons .label-panel-btn {
 	display: flex;
 	align-items: center;
 	justify-content: center;

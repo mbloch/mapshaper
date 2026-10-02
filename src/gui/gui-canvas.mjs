@@ -925,7 +925,7 @@ function getPathStart(ext, lineScale) {
       ctx.lineWidth = strokeWidth * strokeScale;
       ctx.strokeStyle = style.strokeColor;
       if (style.lineDash){
-        ctx.lineCap = 'butt';
+        ctx.lineCap = style.lineCap || 'butt';
         ctx.setLineDash(scaleCanvasLineDash(style.lineDash, strokeScale));
       }
       if (style.miterLimit) {

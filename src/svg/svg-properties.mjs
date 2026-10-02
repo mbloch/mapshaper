@@ -77,6 +77,7 @@ var stylePropertyTypes = {
   r: 'number',
   stroke: 'color',
   'stroke-dasharray': 'dasharray',
+  'stroke-linecap': 'linecap',
   'stroke-width': 'number',
   'stroke-opacity': 'number',
   'stroke-miterlimit': 'number',
@@ -169,9 +170,17 @@ var labelPositionStyles = {
 // symType: point, polygon, polyline, label
 export function applyStyleAttributes(svgObj, symType, rec, filter) {
   var fields = findStylePropertiesBySymbolGeom(Object.keys(rec || {}), symType);
+  var dashed = false, capped = false;
   for (var i=0, n=fields.length; i<n; i++) {
     if (filter && !filter(fields[i])) continue;
     setAttribute(svgObj, fields[i], rec[fields[i]]);
+    if (fields[i] == 'stroke-dasharray' && rec[fields[i]]) dashed = true;
+    if (fields[i] == 'stroke-linecap' && rec[fields[i]]) capped = true;
+  }
+  // kludge for cleaner dashes: butt caps, unless the line has a cap of its own
+  // (the GUI canvas renderer does the same)
+  if (dashed && !capped) {
+    setAttribute(svgObj, 'stroke-linecap', 'butt');
   }
   // kludge to prevent default black fill on polygons with stroke styles
   if ((symType == 'polygon' || symType == 'circle') && rec.stroke && !rec.fill) {
@@ -182,10 +191,6 @@ export function applyStyleAttributes(svgObj, symType, rec, filter) {
 function setAttribute(obj, k, v) {
   if (!obj.properties) obj.properties = {};
   obj.properties[k] = v;
-  if (k == 'stroke-dasharray' && v) {
-    // kludge for cleaner dashes... make butt the default?
-    obj.properties['stroke-linecap'] = 'butt';
-  }
 }
 
 export function isSupportedSvgStyleProperty(name) {
@@ -384,6 +389,8 @@ function parseSvgLiteralValue(strVal, type) {
     val = parseCalloutEnd(strVal);
   } else if (type == 'lineend') {
     val = parseLineEnd(strVal);
+  } else if (type == 'linecap') {
+    val = parseLineCap(strVal);
   } else if (type == 'pointpair') {
     val = parsePointPair(strVal);
     val = val ? formatPointPair(val) : null;
@@ -439,6 +446,11 @@ export function parseCalloutEnd(str) {
 export function parseLineEnd(str) {
   var end = String(str).trim().toLowerCase();
   return /^(arrow|open-arrow|dot|none)$/.test(end) ? end : null;
+}
+
+export function parseLineCap(str) {
+  var cap = String(str).trim().toLowerCase();
+  return /^(round|butt|square)$/.test(cap) ? cap : null;
 }
 
 // "x,y" -> [x, y], or null. Stored as a string so that a pair is set and

@@ -22,7 +22,7 @@ import { internal } from './gui-core';
 import { quoteCommandValue } from './gui-command-utils';
 
 var savedStylesKey = 'layer_style_presets';
-var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'line-start', 'line-end', 'line-end-size', 'fill', 'fill-opacity', 'fill-pattern'].concat(internal.svg.glowFields);
+var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'fill', 'fill-opacity', 'fill-pattern'].concat(internal.svg.glowFields);
 var arrowShapes = [{
   name: 'arrow',
   title: 'solid arrowheads'
@@ -53,11 +53,24 @@ var arrowPositions = [{
   label: 'Both',
   title: 'arrowheads at both ends of the line'
 }];
+var lineCaps = [{
+  name: 'round',
+  label: 'Round',
+  title: 'round line caps'
+}, {
+  name: 'butt',
+  label: 'Butt',
+  title: 'flat line caps that end at the line\'s endpoints'
+}, {
+  name: 'square',
+  label: 'Square',
+  title: 'flat line caps that extend past the line\'s endpoints'
+}];
 
 export function LayerStyleTool(gui) {
   var parent = gui.container.findChild('.mshp-main-map');
   var panel = El('div').addClass('label-style-panel layer-style-panel rollover').appendTo(parent).hide();
-  var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, dashControl, arrowControl, randomFillBtn, presetControl, patternControl, glowControl, hit;
+  var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, capControl, dashControl, arrowControl, randomFillBtn, presetControl, patternControl, glowControl, hit;
   var targetLayer = null;
   // What the arrowhead switch turns on, for lines that have no heads
   var lastArrow = {shape: 'arrow', position: 'end'};
@@ -151,7 +164,10 @@ export function LayerStyleTool(gui) {
     fillControl = addColorControl(panel, 'Fill', 'fill', '');
     randomFillBtn = makePanelActionButton(fillControl.aside, 'Random fill', applyRandomFillColors)
       .addClass('layer-random-fill-btn');
-    dashControl = addDashArrayControl(panel);
+    var lineRow = El('div').addClass('label-style-row label-split-row layer-line-row').appendTo(panel);
+    capControl = addLineCapControl(lineRow);
+    dashControl = addDashArrayControl(lineRow);
+    dashControl.row = lineRow;
     arrowControl = addArrowControl(panel);
 
     var buttonRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(panel);
@@ -229,12 +245,60 @@ export function LayerStyleTool(gui) {
     });
   }
 
-  // A literal stroke-dasharray, in the wide column so that it lines up with
-  // the stroke's colour above it. A blank field makes the line solid again.
-  function addDashArrayControl(parent) {
-    var row = El('div').addClass('label-style-row label-split-row layer-dash-row').appendTo(parent);
-    var cell = El('div').addClass('label-split-cell').appendTo(row);
-    El('div').addClass('label-split-cell').appendTo(row);
+  // Round is the default, except on a dashed line, which the renderers give
+  // butt caps unless it has a cap of its own.
+  function addLineCapControl(row) {
+    var cell = El('div').addClass('label-split-cell label-align-row').appendTo(row);
+    var control = {btns: {}};
+    El('span').appendTo(cell).text('Caps');
+    var group = El('div').addClass('label-btn-group layer-cap-buttons').appendTo(cell);
+    lineCaps.forEach(function(item) {
+      control.btns[item.name] = makePanelButton(group, item.label, function() {
+        applyLineCap(item.name);
+      }).attr('data-line-cap', item.name).attr('aria-label', item.title);
+    });
+    return control;
+  }
+
+  function getDefaultLineCap(rec) {
+    return rec && rec['stroke-dasharray'] ? 'butt' : 'round';
+  }
+
+  function getLineCap(rec) {
+    return rec && rec['stroke-linecap'] || getDefaultLineCap(rec);
+  }
+
+  // A cap that is the line's default is unset rather than stored, so that a
+  // layer left at Round gets no stroke-linecap column.
+  function applyLineCap(cap) {
+    var records = getTargetRecords();
+    var edits = [];
+    getTargetIds().forEach(function(id) {
+      var rec = records[id] || {};
+      var value = cap == getDefaultLineCap(rec) ? '' : cap;
+      if (value != (rec['stroke-linecap'] || '')) {
+        edits.push({id: id, styles: [['stroke-linecap', value]]});
+      }
+    });
+    runStyleEdits(edits);
+  }
+
+  function updateLineCapControl() {
+    var records = getTargetRecords();
+    var cap;
+    getTargetIds().forEach(function(id, i) {
+      var val = getLineCap(records[id]);
+      cap = i === 0 || val == cap ? val : '';
+    });
+    lineCaps.forEach(function(item) {
+      capControl.btns[item.name].classed('selected', item.name == cap);
+    });
+  }
+
+  // A literal stroke-dasharray, in the narrow column beside the caps. A blank
+  // field makes the line solid again.
+  function addDashArrayControl(row) {
+    var cell = El('div').addClass('label-split-cell layer-dash-cell').appendTo(row);
     var caption = El('div').addClass('label-style-row-label').appendTo(cell).text('Dashes');
     makeFieldTip(caption,
       'Dash and gap lengths in pixels, separated\n' +
@@ -249,7 +313,7 @@ export function LayerStyleTool(gui) {
         }
         applyDashArrayStyle(value);
       });
-    return {row: row, input: input};
+    return {input: input};
   }
 
   // A switch in the heading says whether the lines have arrowheads; the rows
@@ -462,7 +526,10 @@ export function LayerStyleTool(gui) {
     updateColorControl(fillControl);
     updateStrokeWidthControl();
     updateDashArrayControl();
-    if (geom == 'polyline') updateArrowControl();
+    if (geom == 'polyline') {
+      updateLineCapControl();
+      updateArrowControl();
+    }
     randomFillBtn.classed('hidden', geom != 'polygon');
     patternControl.section.classed('hidden', geom != 'polygon');
     if (geom == 'polygon') patternControl.update();
@@ -644,6 +711,7 @@ export function LayerStyleTool(gui) {
     addStyleValue(style, 'stroke-opacity', parseOpacityValue(strokeControl.opacity.node().value));
     if (targetLayer && targetLayer.geometry_type == 'polyline') {
       addStyleValue(style, 'stroke-dasharray', getControlValue(dashControl.input));
+      addStyleValue(style, 'stroke-linecap', getCommonStyleValue('stroke-linecap'));
       addArrowStyleValues(style);
     }
     if (targetLayer && targetLayer.geometry_type == 'polygon') {
