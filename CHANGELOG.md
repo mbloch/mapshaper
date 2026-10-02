@@ -1,3 +1,5 @@
+v0.7.74 (unreleased)
+
 v0.7.73
 * Added a `margin=` option to `-frame` and `-update-frame`, taking one to four values in CSS order (top right bottom left), e.g. `margin=5%` or `margin=10%,2%`. It replaces `offset=` and `offsets=` (which still work and keep their l,b,r,t order).
 * Percentage margins in `-frame` and `-update-frame` are now a share of the frame's width on every side, as in CSS, so that `margin=5%` gives an even margin. Previously the top and bottom margins were a share of the frame's height. This also applies to percentages given to `offset=` and `offsets=`.

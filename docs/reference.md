@@ -1890,11 +1890,15 @@ Example: `hatches 45deg 2px red 2px grey`
 
 `stroke-dasharray=` Dashes
 
+`stroke-linecap=`  Line caps: `round` (the default), `butt` or `square`. Dashed lines default to `butt`.
+
 `line-start=`      Marker at the first vertex of a line: `arrow`, `open-arrow`, `dot` or `none`. Each part of a multi-part line gets its own marker.
 
 `line-end=`        Marker at the last vertex of a line: `arrow`, `open-arrow`, `dot` or `none`.
 
 `line-end-size=`   Length of an arrowhead's sides in pixels, or the diameter of a dot, for both ends (an arrowhead's default is 7 plus three times the stroke width; a dot's is 0.6 of that)
+
+`line-fade=`       Share of a line's length, from 0 to 1, that fades in from transparent at its tail (e.g. `line-fade=0.4`). The tail is the start of the line, unless only the start has a marker. The fade is a straight gradient, so it suits straight or gently curved lines best.
 
 `opacity=`         Symbol opacity (e.g. `opacity=0.5`)
 

@@ -1362,7 +1362,7 @@ body.simplify .layer-control-btn {
    starts a line has its dot pushed past the left edge of the row and clipped,
    so no line ends or begins with a stray dot. */
 .layer-add-links {
-	margin: 2px 0 2px 0;
+	margin: 4px 0 8px 0;
 	font-size: 13px;
 	line-height: 1.2;
 	overflow: hidden;
@@ -1414,20 +1414,20 @@ body.simplify .layer-control-btn {
 }
 
 .layer-menu .layer-list {
-	margin-top: -5px;
-	/* margin: 0 0 7px 0; */
+	margin-top: -2px;
 }
 
 .layer-menu .layer-item {
 	position: relative;
 	margin-left: -14px;
 	margin-right: 6px;
-	padding: 6px 14px;
+	padding: 0 14px;
 	width: 100%;
 }
 
 .layer-menu .layer-list .layer-item {
 	cursor: pointer;
+	padding: 6px 14px;
 }
 
 .map-frame-section {
@@ -1499,8 +1499,8 @@ img.close-btn {
 
 .pin-all img {
 	position: absolute;
-	top: 11px;
 	cursor: pointer;
+	top: 0;
 }
 
 
