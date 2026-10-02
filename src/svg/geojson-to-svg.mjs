@@ -56,9 +56,8 @@ export function importGeoJSONFeatures(features, opts) {
       // other point symbols: attributes are complicated, added downstream
     }
     // Only here, where SVG is written for other programs to read: the GUI
-    // draws the same labels with paint-order and has no use for the copies,
-    // and neither does HTML output, which is read by browsers.
-    if (labelHasHalo(d) && !opts.paint_order_halos) {
+    // draws the same labels with paint-order and has no use for the copies.
+    if (labelHasHalo(d)) {
       svgObj = splitLabelHalos(svgObj);
     }
     if ('id' in obj) {

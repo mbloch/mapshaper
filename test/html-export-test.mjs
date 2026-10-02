@@ -110,10 +110,19 @@ describe('HTML output', function () {
       assert.equal((str.match(/id="p"/g) || []).length, 1);
     });
 
-    it('draws a halo as paint-order on one text element, not as a copy', async function () {
+    it('draws a halo as a copy of the text, beneath it, without paint-order', async function () {
+      var str = await html(FRAME + ' -add-label + name=labels coordinates=50,25 text=A -style halo-width=2 halo-opacity=0.5');
+      assert.equal((str.match(/<text/g) || []).length, 2);
+      assert.ok(/<text [^>]*class="ms-text-0">A<\/text>\s*<text [^>]*class="ms-text-1">A<\/text>/.test(str));
+      assert.ok(/\.ms-text-0 \{[^}]*fill:none;[^}]*opacity:0\.5;[^}]*stroke-width:4px;/.test(str));
+      assert.ok(!/\.ms-text-1 \{[^}]*stroke/.test(str));
+      assert.ok(!str.includes('paint-order'));
+    });
+
+    it('hides the map from screen readers', async function () {
       var str = await html(FRAME + ' -add-label + name=labels coordinates=50,25 text=A -style halo-width=2');
-      assert.equal((str.match(/<text/g) || []).length, 1);
-      assert.ok(/\.ms-text-0 \{[^}]*stroke-width:4px;[^}]*paint-order:stroke fill;/.test(str));
+      assert.ok(str.startsWith('<div id="ms-out" class="ms-map" aria-hidden="true">'));
+      assert.equal((str.match(/aria-hidden/g) || []).length, 1);
     });
 
     it('adds data-* attributes to symbol containers with svg-data=', async function () {

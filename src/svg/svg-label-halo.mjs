@@ -21,7 +21,8 @@ import { isSvgNumber } from './svg-properties';
 // In the GUI the halo is the text element's own stroke, with paint-order
 // putting it underneath. Export draws it as a second copy of the text instead
 // -- see splitLabelHalos() -- because Illustrator and Figma ignore paint-order
-// when they import SVG and would draw the stroke over the letters.
+// when they import SVG and would draw the stroke over the letters, and Chrome
+// and Safari draw paint-order halos badly where letters overlap.
 
 export var DEFAULT_HALO_COLOR = '#ffffff';
 var HALO_PAINT_ORDER = 'stroke fill';
@@ -82,6 +83,10 @@ export function applyLabelHalo(o, rec) {
 // which places it, and its opacity, which would otherwise fade each copy on its
 // own and let the halo show through the letters. That is also how opacity
 // reads on a single element with paint-order, which is faded as one image.
+//
+// Browsers need the copy too: Chrome and Safari paint a text element's stroke
+// and fill one glyph at a time, so with paint-order the halos of overlapping
+// letters compound a translucent halo, and cover the letters beside them.
 export function splitLabelHalos(o) {
   if (!o) return o;
   if (o.tag == 'text' && isHaloText(o)) return splitHalo(o);

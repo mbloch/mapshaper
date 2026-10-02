@@ -143,8 +143,7 @@ function renderOverlayLayer(lyr, dataset, frame, opts) {
     return feat;
   });
   var symbols = importGeoJSONFeatures(localFeatures, utils.defaults({
-    path_label_report: report,
-    paint_order_halos: true
+    path_label_report: report
   }, opts));
   reportPathLabels(report, lyr);
 
@@ -237,7 +236,9 @@ function renderHtmlFragment(o) {
   ];
   var classCss = formatTextClassesAsCss(overlay.classes, selector);
   if (classCss) css.push(classCss);
-  var html = `<div id="${stringEscape(id)}" class="${CLASS_PREFIX}map">
+  // Hidden from screen readers, which would otherwise read the labels as a
+  // list of unrelated words, and each halo'd label twice
+  var html = `<div id="${stringEscape(id)}" class="${CLASS_PREFIX}map" aria-hidden="true">
 <style>
 ${css.join('\n')}
 </style>

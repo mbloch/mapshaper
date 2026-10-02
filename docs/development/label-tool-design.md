@@ -331,9 +331,11 @@ single point has always had.
 
 The halo fields are not `stroke`, `stroke-width` and `stroke-opacity`, because
 a label's record also styles its icon, which would be ringed too. The GUI draws
-a halo as the text's own stroke with `paint-order="stroke fill"`; export draws a
-stroked, unfilled copy of the text beneath it, because Illustrator and Figma
-ignore `paint-order` on import. The copy is faded with `opacity` rather than
+a halo as the text's own stroke with `paint-order="stroke fill"`; SVG and HTML
+export draw a stroked, unfilled copy of the text beneath it, because Illustrator
+and Figma ignore `paint-order` on import, and Chrome and Safari paint a text
+element's stroke and fill glyph by glyph, so a `paint-order` halo compounds
+where letters overlap and covers the neighbouring letters. The copy is faded with `opacity` rather than
 `stroke-opacity`, which Illustrator ignores. Illustrator's GPU preview still
 overstates a translucent halo where glyphs overlap (its CPU preview and output
 are correct); no SVG structure that was tried avoids this. See `svg-label-halo.mjs`.
