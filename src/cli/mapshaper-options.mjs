@@ -2146,6 +2146,9 @@ export function getOptionParser() {
     .option('line-end-size', {
       describe: 'length of an arrowhead\'s sides in px (default grows with stroke-width)'
     })
+    .option('line-fade', {
+      describe: 'share of a line (0-1) that fades in from its tail'
+    })
     .option('opacity', {
       describe: 'opacity; example: 0.5'
     })

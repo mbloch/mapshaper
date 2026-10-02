@@ -92,6 +92,41 @@ test('arrowheads are drawn on the map', async function({page}) {
   expect(errors).toEqual([]);
 });
 
+test('the fade is set as a percent, kept by the switch, and drawn', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page);
+  await clickToggle(page);
+  await expect(fadeField(page)).toHaveValue('0');
+  var solid = await getCanvasInkCount(page);
+
+  await setField(fadeField(page), '40');
+  expect(await getFade(page)).toBe(0.4);
+  expect((await getSessionCommands(page)).join('\n')).toContain("line-fade='0.4'");
+  await page.waitForTimeout(250);
+  // the faded stretch is lighter, so there is less dark ink
+  expect(await getCanvasInkCount(page)).toBeLessThan(solid);
+
+  await fadeField(page).press('ArrowUp');
+  await page.waitForTimeout(250);
+  expect(await getFade(page)).toBe(0.45);
+
+  // off removes the fade along with the heads; on again brings it back
+  await clickToggle(page);
+  expect(await getFade(page)).toBeUndefined();
+  await clickToggle(page);
+  expect(await getFade(page)).toBe(0.45);
+  await expect(fadeField(page)).toHaveValue('45');
+
+  // no fade is unset rather than stored
+  await setField(fadeField(page), '0');
+  expect(await getFade(page)).toBeUndefined();
+
+  await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
+  await page.waitForTimeout(250);
+  expect(await getFade(page)).toBe(0.45);
+  expect(errors).toEqual([]);
+});
+
 test('the arrowhead section is only for lines', async function({page}) {
   await page.goto('/?undo=on&undo-test=on&files=' +
     encodeURIComponent('test/data/issues/389_clipping_error/inner_polygon.json'));
@@ -130,6 +165,16 @@ function positionButton(page, name) {
 
 function sizeField(page) {
   return page.locator('.layer-style-panel .layer-arrow-size-row .size-field-input');
+}
+
+function fadeField(page) {
+  return page.locator('.layer-style-panel .layer-arrow-fade-cell .size-field-input');
+}
+
+async function getFade(page) {
+  return page.evaluate(function(layer) {
+    return window.mapshaper.undoTest.getLayerInfo(layer).records[0]['line-fade'];
+  }, LAYER);
 }
 
 async function getArrowStyles(page) {

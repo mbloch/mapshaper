@@ -71,6 +71,7 @@ var stylePropertyTypes = {
   'line-start': 'lineend',
   'line-end': 'lineend',
   'line-end-size': 'number',
+  'line-fade': 'number',
   'letter-spacing': 'measure',
   'line-height': 'measure',
   opacity: 'number',

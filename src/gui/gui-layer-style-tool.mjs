@@ -22,7 +22,7 @@ import { internal } from './gui-core';
 import { quoteCommandValue } from './gui-command-utils';
 
 var savedStylesKey = 'layer_style_presets';
-var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'fill', 'fill-opacity', 'fill-pattern'].concat(internal.svg.glowFields);
+var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'line-fade', 'fill', 'fill-opacity', 'fill-pattern'].concat(internal.svg.glowFields);
 var arrowShapes = [{
   name: 'arrow',
   title: 'solid arrowheads'
@@ -73,7 +73,7 @@ export function LayerStyleTool(gui) {
   var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, capControl, dashControl, arrowControl, randomFillBtn, presetControl, patternControl, glowControl, hit;
   var targetLayer = null;
   // What the arrowhead switch turns on, for lines that have no heads
-  var lastArrow = {shape: 'arrow', position: 'end'};
+  var lastArrow = {shape: 'arrow', position: 'end', fade: 0};
 
   initPanel();
   hit = gui.map.getHitControl && gui.map.getHitControl();
@@ -318,8 +318,9 @@ export function LayerStyleTool(gui) {
 
   // A switch in the heading says whether the lines have arrowheads; the rows
   // under it are the head's shape with its size beside it, then which ends
-  // get it. A line has one shape for both ends, which is all the panel sets,
-  // though -style can give the two ends different ones.
+  // get it with the line's fade beside that. A line has one shape for both
+  // ends, which is all the panel sets, though -style can give the two ends
+  // different ones.
   function addArrowControl(parent) {
     var section = makePanelSection(parent, 'Arrowheads');
     var toggle = makePanelToggle(section.findChild('.label-style-section-title'), {
@@ -332,8 +333,8 @@ export function LayerStyleTool(gui) {
     var sizeCell = El('div').addClass('label-split-cell label-spacing-row layer-arrow-size-row').appendTo(shapeRow);
     var posRow = El('div').addClass('label-style-row label-split-row').appendTo(section);
     var posCell = El('div').addClass('label-split-cell label-align-row').appendTo(posRow);
+    var fadeCell = El('div').addClass('label-split-cell layer-arrow-fade-cell').appendTo(posRow);
     var control = {section: section, toggle: toggle, shapeBtns: {}, posBtns: {}};
-    El('div').addClass('label-split-cell').appendTo(posRow);
     El('span').appendTo(shapeCell).text('Shape');
     var shapeGroup = El('div').addClass('label-btn-group label-callout-buttons layer-arrow-shape-buttons').appendTo(shapeCell);
     arrowShapes.forEach(function(item) {
@@ -362,6 +363,22 @@ export function LayerStyleTool(gui) {
       onStep: nudgeArrowSize,
       onDone: releaseFocus
     });
+    var fadeCaption = El('div').addClass('label-style-row-label').appendTo(fadeCell).text('Fade %');
+    makeFieldTip(fadeCaption,
+      'How much of the line fades in from its\n' +
+      'tail, as a percent of its length. The fade\n' +
+      'is a straight gradient, so it follows\n' +
+      'straight and gently curved lines best.');
+    control.fadeField = new SizeField(fadeCell, {
+      title: 'Percent of the line that fades in from its tail',
+      min: 0,
+      max: 100,
+      step: 5,
+      bigStep: 25,
+      onSet: applyArrowFade,
+      onStep: nudgeArrowFade,
+      onDone: releaseFocus
+    });
     return control;
   }
 
@@ -376,10 +393,11 @@ export function LayerStyleTool(gui) {
     return {shape: shape, position: position};
   }
 
-  // Switching on gives the lines that have no heads the last shape and ends
-  // the section showed, so that off and on again is a round trip; the lines
-  // that have heads keep theirs. Switching off leaves line-end-size alone,
-  // for the same reason.
+  // Switching on gives the lines that have no heads the last shape, ends and
+  // fade the section showed, so that off and on again is a round trip; the
+  // lines that have heads keep theirs. Switching off leaves line-end-size
+  // alone, for the same reason, but removes the fade, which would otherwise
+  // go on showing with its control hidden.
   function setArrowsOn(on) {
     applyArrowEdits(function(info) {
       return on ? fillArrowInfo(info) : {shape: 'none', position: ''};
@@ -411,7 +429,8 @@ export function LayerStyleTool(gui) {
     var edits = [];
     getTargetIds().forEach(function(id) {
       var rec = records[id] || {};
-      var next = getNext(getArrowInfo(rec));
+      var info = getArrowInfo(rec);
+      var next = getNext(info);
       var on = next.shape != 'none';
       var styles = [
         ['line-start', on && next.position != 'end' ? next.shape : ''],
@@ -420,6 +439,11 @@ export function LayerStyleTool(gui) {
         // no need to remove what is not there
         return style[1] || rec[style[0]];
       });
+      if (!on && rec['line-fade']) {
+        styles.push(['line-fade', '']);
+      } else if (on && info.shape == 'none' && lastArrow.fade > 0 && !rec['line-fade']) {
+        styles.push(['line-fade', lastArrow.fade]);
+      }
       if (on && addStroke) styles.push(['stroke', strokeControl.defaultColor]);
       if (styles.length > 0) edits.push({id: id, styles: styles});
     });
@@ -439,6 +463,34 @@ export function LayerStyleTool(gui) {
     var size = Number(shown.value);
     if (!isFinite(size) || shown.value === '') return;
     applyArrowSize(Math.max(1, Math.round(size + delta)));
+  }
+
+  // The field is a percent; line-fade is a share of the line, 0-1. No fade
+  // is unset rather than stored as 0.
+  function applyArrowFade(pct) {
+    var ids = getArrowTargetIds();
+    var value = pct > 0 ? Math.round(pct * 10) / 1000 : '';
+    if (ids.length === 0) return;
+    runStyleEdits(ids.map(function(id) {
+      return {id: id, styles: [['line-fade', value]]};
+    }));
+  }
+
+  function nudgeArrowFade(delta) {
+    var shown = getArrowFadeShown(getArrowTargetIds());
+    if (shown.value === '') return;
+    applyArrowFade(Math.max(0, Math.min(100, Math.round(shown.value + delta))));
+  }
+
+  function getArrowFadeShown(ids) {
+    var records = getTargetRecords();
+    var value = '', pct;
+    for (var i=0; i<ids.length; i++) {
+      pct = Math.round(internal.svg.parseLineFade(records[ids[i]] && records[ids[i]]['line-fade']) * 1000) / 10;
+      if (i > 0 && pct !== value) return {value: '', mixed: true};
+      value = pct;
+    }
+    return {value: value, mixed: false};
   }
 
   function getArrowTargetIds() {
@@ -501,6 +553,11 @@ export function LayerStyleTool(gui) {
     arrowControl.sizeField.setValue(shown.value);
     arrowControl.sizeField.setPlaceholder(shown.mixed ? 'mixed' : '');
     arrowControl.sizeField.setDisabled(arrowIds.length === 0);
+    var fade = arrowIds.length > 0 ? getArrowFadeShown(arrowIds) : {value: '', mixed: false};
+    if (fade.value !== '') lastArrow.fade = fade.value / 100;
+    arrowControl.fadeField.setValue(fade.value);
+    arrowControl.fadeField.setPlaceholder(fade.mixed ? 'mixed' : '');
+    arrowControl.fadeField.setDisabled(arrowIds.length === 0);
   }
 
   function getTargetRecords() {
@@ -726,7 +783,7 @@ export function LayerStyleTool(gui) {
   // Only when every target agrees, as with the other controls; a size is
   // saved only if the lines have their own.
   function addArrowStyleValues(style) {
-    ['line-start', 'line-end', 'line-end-size'].forEach(function(field) {
+    ['line-start', 'line-end', 'line-end-size', 'line-fade'].forEach(function(field) {
       addStyleValue(style, field, getCommonStyleValue(field));
     });
   }

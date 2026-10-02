@@ -1,7 +1,8 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
 import { getLineArrowShape, makeLineArrowOpts, getLineArrowOpts,
-  lineHasArrows } from '../src/svg/svg-line-arrows.mjs';
+  lineHasArrows, getLineFadeAxis, getLineFadeColors, parseLineFade
+} from '../src/svg/svg-line-arrows.mjs';
 import { getCanvasDisplayStyle, layerHasDrawableStyle } from '../src/gui/gui-layer-styler.mjs';
 
 function near(a, b, msg) {
@@ -106,7 +107,7 @@ describe('line arrowheads', function() {
       assert.equal(makeLineArrowOpts('arrow', '', null, 1, 1).size, 10);
       assert.equal(makeLineArrowOpts('arrow', '', null, 2, 1).size, 13);
       assert.deepEqual(makeLineArrowOpts('arrow', 'open-arrow', 8, 2, 2),
-        {start: 'arrow', end: 'open-arrow', size: 16, dotSize: 16, width: 4});
+        {start: 'arrow', end: 'open-arrow', size: 16, dotSize: 16, width: 4, fade: 0});
     });
 
     it('a dot is 0.6 of the default arrow size, or line-end-size across', function() {
@@ -174,6 +175,84 @@ describe('line arrowheads', function() {
     });
   });
 
+  describe('fade', function() {
+    var line = [[0, 0], [60, 0], [60, 40]]; // 100px long
+
+    it('runs from the tail to the point that share of the length along', function() {
+      var axis = getLineFadeAxis(line, false, 0.5);
+      assert.deepEqual(axis.from, [0, 0]);
+      assert.deepEqual(axis.to, [50, 0]);
+      axis = getLineFadeAxis(line, false, 0.8);
+      near(axis.to[0], 60);
+      near(axis.to[1], 20);
+      assert.deepEqual(getLineFadeAxis(line, false, 1).to, [60, 40]);
+    });
+
+    it('can run from the end', function() {
+      var axis = getLineFadeAxis(line, true, 0.25);
+      assert.deepEqual(axis.from, [60, 40]);
+      assert.deepEqual(axis.to, [60, 15]);
+    });
+
+    it('is null where its two points would meet', function() {
+      assert.equal(getLineFadeAxis([[0, 0], [10, 0], [10, 10], [0, 0]], false, 1), null);
+      assert.equal(getLineFadeAxis([[5, 5], [5, 5]], false, 1), null);
+    });
+
+    it('fades the end without a head, or the start', function() {
+      function axisFrom(start, end) {
+        var shape = getLineArrowShape([[0, 0], [100, 0]], makeLineArrowOpts(start, end, '', 1, 1, 0.5));
+        return shape.fade.from;
+      }
+      assert.deepEqual(axisFrom('none', 'arrow'), [0, 0]);
+      assert.deepEqual(axisFrom('arrow', 'none'), [100, 0]);
+      assert.deepEqual(axisFrom('arrow', 'arrow'), [0, 0]);
+      assert.deepEqual(axisFrom('none', 'none'), [0, 0]);
+    });
+
+    it('takes a share of the line, clamped to 1', function() {
+      assert.equal(parseLineFade(0.4), 0.4);
+      assert.equal(parseLineFade('2'), 1);
+      assert.equal(parseLineFade(0), 0);
+      assert.equal(parseLineFade(-1), 0);
+      assert.equal(parseLineFade('abc'), 0);
+      assert.equal(parseLineFade(undefined), 0);
+    });
+
+    it('fades from the stroke colour to the same colour, transparent', function() {
+      assert.deepEqual(getLineFadeColors('#ff0000'), {transparent: 'rgba(255,0,0,0)', solid: '#ff0000'});
+      assert.deepEqual(getLineFadeColors(undefined), {transparent: 'rgba(0,0,0,0)', solid: 'black'});
+      assert.equal(getLineFadeColors('none'), null);
+    });
+
+    it('is a gradient stroke in SVG, in the path\'s own coordinates', async function() {
+      var svg = await exportSvg('-style stroke=red line-end=arrow line-fade=0.5');
+      var gradients = svg.match(/<linearGradient [^>]*>/g) || [];
+      // one per part: 1 + 2
+      assert.equal(gradients.length, 3);
+      gradients.forEach(function(g) {
+        assert.ok(/gradientUnits="userSpaceOnUse"/.test(g));
+      });
+      assert.ok(/<stop offset="0" stop-color="red" stop-opacity="0"\/>/.test(svg));
+      assert.equal((svg.match(/<path [^>]*stroke="url\(#line-fade-\d\)"/g) || []).length, 3);
+      // the heads are left solid
+      assert.equal((svg.match(/fill="red" stroke="none"/g) || []).length, 3);
+      assert.ok(!/line-fade=/.test(svg));
+    });
+
+    it('needs no arrowheads', async function() {
+      var svg = await exportSvg('-style stroke=red line-fade=1');
+      assert.equal((svg.match(/<linearGradient /g) || []).length, 3);
+    });
+
+    it('lines without a fade are exported as before', async function() {
+      var plain = await exportSvg('-style stroke=red line-end=arrow');
+      var zero = await exportSvg('-style stroke=red line-end=arrow line-fade=0');
+      assert.equal(zero, plain);
+      assert.ok(!/linearGradient/.test(plain));
+    });
+  });
+
   describe('canvas styler', function() {
     function makeLayer(records) {
       return {
@@ -200,6 +279,17 @@ describe('line arrowheads', function() {
       base.styler(drawStyle, 1);
       assert.equal(drawStyle.lineEnd, undefined);
       assert.equal(drawStyle.lineEndSize, undefined);
+    });
+
+    it('sets and clears the fade on the reused style object', function() {
+      var lyr = makeLayer([{'line-fade': 0.5}, {}]);
+      var base = getCanvasDisplayStyle(lyr);
+      var drawStyle = Object.assign({}, base);
+      assert.ok(layerHasDrawableStyle(lyr));
+      base.styler(drawStyle, 0);
+      assert.equal(drawStyle.lineFade, 0.5);
+      base.styler(drawStyle, 1);
+      assert.equal(drawStyle.lineFade, undefined);
     });
 
     it('leaves styles alone on layers without arrow fields', function() {

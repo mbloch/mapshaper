@@ -1,9 +1,10 @@
 import {
   ARROW_ANGLE, OPEN_ARROW_ANGLE, ARROW_LINE_OVERLAP, getDefaultArrowSize,
-  getArrowHead, getArrowHeadLength, trimPolyline, getUnitVector
+  getArrowHead, getArrowHeadLength, trimPolyline, getUnitVector, distance
 } from './svg-arrowheads';
 import { parseLineEnd, isSvgNumber } from './svg-properties';
-import { importMultiLineString } from './svg-geom-primitives';
+import { importLineString, importMultiLineString } from './svg-geom-primitives';
+import { parseColor } from '../color/color-utils';
 
 // Markers at the ends of line features: line-start= and line-end= take
 // arrow (a filled triangle), open-arrow (a stroked chevron), dot (a filled
@@ -16,6 +17,14 @@ import { importMultiLineString } from './svg-geom-primitives';
 // solid head can have the line stop inside it, where its cap is hidden. Every
 // part of a multi-part line gets its own heads: part order is not something
 // the commands that make multi-part lines preserve.
+//
+// line-fade= fades the line in from its tail: 0-1, the share of the line's
+// length over which it goes from transparent to its full opacity. The tail is
+// the start, unless only the start has a head. The fade is a straight linear
+// gradient from the tail to the point that far along the line, which follows a
+// straight or gently curved line closely; SVG and canvas have no gradient that
+// follows a path, so a line that bends sharply within its fade will not fade
+// evenly along its length.
 //
 // Coordinates are px, y down: the SVG export's space, or the canvas's.
 
@@ -33,16 +42,26 @@ export function lineHasArrows(rec) {
     getLineEndType(rec, 'line-end') != 'none';
 }
 
+// The share of the line that fades, 0 for none
+export function parseLineFade(val) {
+  return isSvgNumber(val) && Number(val) > 0 ? Math.min(Number(val), 1) : 0;
+}
+
+// Whether a line is drawn by renderArrowLine() rather than as a plain path
+export function lineHasEndStyles(rec) {
+  return lineHasArrows(rec) || parseLineFade(rec && rec['line-fade']) > 0;
+}
+
 // What getLineArrowShape() needs from a record, at scale @scale (the factor
 // the canvas multiplies line widths by; 1 for SVG).
 export function getLineArrowOpts(rec, scale) {
   return makeLineArrowOpts(rec['line-start'], rec['line-end'], rec['line-end-size'],
-    rec['stroke-width'], scale);
+    rec['stroke-width'], scale, rec['line-fade']);
 }
 
 // The same, from the values themselves, for the canvas, which has them in a
 // style object rather than a record.
-export function makeLineArrowOpts(start, end, size, strokeWidth, scale) {
+export function makeLineArrowOpts(start, end, size, strokeWidth, scale, fade) {
   var k = scale > 0 ? scale : 1;
   var w = isSvgNumber(strokeWidth) && Number(strokeWidth) >= 0 ?
     Number(strokeWidth) : DEFAULT_LINE_WIDTH;
@@ -53,18 +72,20 @@ export function makeLineArrowOpts(start, end, size, strokeWidth, scale) {
     end: end && parseLineEnd(end) || 'none',
     size: side * k,
     dotSize: (hasSize ? side : side * DOT_SIZE_RATIO) * k,
-    width: w * k
+    width: w * k,
+    fade: parseLineFade(fade)
   };
 }
 
 // Field names, for a layer that may have them
-export var lineArrowFields = ['line-start', 'line-end', 'line-end-size'];
+export var lineArrowFields = ['line-start', 'line-end', 'line-end-size', 'line-fade'];
 
-// One part of a line, with its heads: {coords, heads}, where coords is the
-// line to stroke -- cut back into a solid head, so that its cap does not show
-// past the tip -- and heads is a list of {type, points}: a solid head's
+// One part of a line, with its heads: {coords, heads, fade}, where coords is
+// the line to stroke -- cut back into a solid head, so that its cap does not
+// show past the tip -- and heads is a list of {type, points}: a solid head's
 // triangle, tip first, or an open head's chevron, wing to tip to wing. A dot
-// is {type, center, radius}.
+// is {type, center, radius}. fade is the axis of the line's fade (see
+// getLineFadeAxis()), or null.
 //
 // A head points along the chord from its tip to where the line first reaches
 // the head's length from it, rather than along the last segment, which on
@@ -72,8 +93,11 @@ export var lineArrowFields = ['line-start', 'line-end', 'line-end-size'];
 // anywhere. The line is then straightened to meet the head along its axis. An
 // end whose part is too short to hold its head gets none.
 export function getLineArrowShape(coords, opts) {
-  var out = {coords: coords, heads: []};
+  var out = {coords: coords, heads: [], fade: null};
   var end;
+  if (opts.fade > 0) {
+    out.fade = getLineFadeAxis(coords, opts.start != 'none' && opts.end == 'none', opts.fade);
+  }
   if (opts.start != 'none') {
     addHead(out, opts.start, opts);
   }
@@ -83,6 +107,45 @@ export function getLineArrowShape(coords, opts) {
     out.coords = end.coords.reverse();
   }
   return out;
+}
+
+// {from, to}: the line's tail, where the fade is transparent, and the point
+// @fraction of the line's length along it from there, where the fade ends.
+// Measured on the whole line, before the heads trim it. Null for a line too
+// short to fade, or a closed one faded all the way round, whose two points
+// would be the same.
+export function getLineFadeAxis(coords, fromEnd, fraction) {
+  var path = fromEnd ? coords.slice().reverse() : coords;
+  var total = 0, target, d, i, to, k;
+  for (i=1; i<path.length; i++) {
+    total += distance(path[i - 1], path[i]);
+  }
+  target = total * fraction;
+  to = path[path.length - 1];
+  for (i=1; i<path.length && target > 0; i++) {
+    d = distance(path[i - 1], path[i]);
+    if (d >= target) {
+      k = target / d;
+      to = [path[i - 1][0] + (path[i][0] - path[i - 1][0]) * k,
+        path[i - 1][1] + (path[i][1] - path[i - 1][1]) * k];
+      break;
+    }
+    target -= d;
+  }
+  if (!(total > 0) || distance(path[0], to) < 0.5) return null;
+  return {from: path[0], to: to};
+}
+
+// The fade's two colours: the stroke's, and the same with no opacity, so
+// that the colour does not shift on its way to transparent. Null for a stroke
+// colour that cannot be faded (e.g. 'none').
+export function getLineFadeColors(color) {
+  var rgb = parseColor(color || 'black');
+  if (!rgb) return null;
+  return {
+    transparent: 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0)',
+    solid: color || 'black'
+  };
 }
 
 // Puts a head of @type at the first point of @shape.coords
@@ -134,23 +197,64 @@ function addDot(shape, radius) {
   if (rest) shape.coords = rest;
 }
 
-// A line feature with arrowheads, as SVG: a group holding the line and its
-// heads, for the feature's style attributes to go on. @parts is a list of
-// polylines (a LineString's coordinates are one).
+// A line feature with arrowheads or a fade, as SVG: a group holding the line
+// and its heads, for the feature's style attributes to go on. @parts is a list
+// of polylines (a LineString's coordinates are one). A faded part is a path of
+// its own, since each part has its own gradient.
 export function renderArrowLine(parts, rec) {
   var opts = getLineArrowOpts(rec, 1);
   var color = rec.stroke || 'black';
+  var fadeColors = opts.fade > 0 ? getLineFadeColors(color) : null;
   var lines = [];
-  var children = [];
+  var fadedLines = [];
+  var heads = [];
   parts.forEach(function(part) {
     var shape = getLineArrowShape(part, opts);
-    lines.push(shape.coords.map(roundPoint));
+    var coords = shape.coords.map(roundPoint);
+    if (shape.fade && fadeColors) {
+      fadedLines.push(renderFadedLine(coords, shape.fade, fadeColors));
+    } else {
+      lines.push(coords);
+    }
     shape.heads.forEach(function(head) {
-      children.push(renderHead(head, color, rec));
+      heads.push(renderHead(head, color, rec));
     });
   });
-  children.unshift(importMultiLineString(lines));
-  return {tag: 'g', properties: {}, children: children};
+  var children = lines.length > 0 ? [importMultiLineString(lines)] : [];
+  return {tag: 'g', properties: {}, children: children.concat(fadedLines, heads)};
+}
+
+// The gradient is added to the SVG's <defs> by convertLineFade(), which also
+// points the path's stroke at it.
+function renderFadedLine(coords, axis, colors) {
+  var obj = importLineString(coords);
+  var from = roundPoint(axis.from);
+  var to = roundPoint(axis.to);
+  obj.lineFade = {x1: from[0], y1: from[1], x2: to[0], y2: to[1], color: colors.solid};
+  return obj;
+}
+
+// Replaces the fade an object was marked with by a reference to a
+// <linearGradient> in @defs, which lines with the same fade share. The
+// gradient is in the path's own coordinates (userSpaceOnUse): the default, the
+// path's bounding box, has no height for a horizontal line, and a gradient
+// over an empty box paints nothing.
+export function convertLineFade(obj, defs) {
+  var f = obj.lineFade;
+  var color = String(f.color).replace(/"/g, '');
+  var body = 'gradientUnits="userSpaceOnUse" x1="' + f.x1 + '" y1="' + f.y1 +
+    '" x2="' + f.x2 + '" y2="' + f.y2 + '"><stop offset="0" stop-color="' + color +
+    '" stop-opacity="0"/><stop offset="1" stop-color="' + color + '"/></linearGradient>';
+  var item = defs.find(function(o) { return o.lineFadeKey === body; });
+  var count;
+  if (!item) {
+    count = defs.filter(function(o) { return !!o.lineFadeKey; }).length;
+    item = {lineFadeKey: body, id: 'line-fade-' + (count + 1)};
+    item.svg = '<linearGradient id="' + item.id + '" ' + body + '\n';
+    defs.push(item);
+  }
+  delete obj.lineFade;
+  obj.properties.stroke = 'url(#' + item.id + ')';
 }
 
 function renderHead(head, color, rec) {

@@ -120,6 +120,7 @@ export function getCanvasDisplayStyle(lyr) {
       style.lineStart = rec && rec['line-start'];
       style.lineEnd = rec && rec['line-end'];
       style.lineEndSize = rec && rec['line-end-size'];
+      style.lineFade = rec && rec['line-fade'];
     }
     if (hasGlows) {
       style.outerGlow = layerOuterGlow ? null : internal.svg.getPolygonGlow(rec, 'outer');

@@ -3,7 +3,7 @@ import { renderPoint, getTransform } from './svg-symbols';
 import { applyStyleAttributes } from '../svg/svg-properties';
 import { featureIsPathLabel, renderPathLabel } from '../svg/svg-label-paths';
 import { labelHasHalo, splitLabelHalos } from '../svg/svg-label-halo';
-import { lineHasArrows, renderArrowLine } from '../svg/svg-line-arrows';
+import { lineHasEndStyles, renderArrowLine } from '../svg/svg-line-arrows';
 import {
   importLineString, importMultiLineString, importPolygon,
   importMultiPolygon, flattenMultiPolygonCoords
@@ -38,7 +38,7 @@ export function importGeoJSONFeatures(features, opts) {
       // rather than several labels at several points
       svgObj = renderPathLabel(d, geom.coordinates,
         {report: opts.path_label_report, id: featureId});
-    } else if (msType == 'polyline' && geom.coordinates && lineHasArrows(d)) {
+    } else if (msType == 'polyline' && geom.coordinates && lineHasEndStyles(d)) {
       svgObj = renderArrowLine(geomType == 'LineString' ?
         [geom.coordinates] : geom.coordinates, d);
     } else if (geomType && geom.coordinates) {

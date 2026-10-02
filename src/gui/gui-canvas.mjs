@@ -307,9 +307,10 @@ export function DisplayCanvas() {
           continue;
         }
         // A line with arrowheads is drawn on its own, trimmed to meet its heads;
-        // see svg-line-arrows.mjs. Only lines styled with line-start or line-end
-        // get here, so the batch below is untouched for everything else.
-        if (drawStyle.lineStart || drawStyle.lineEnd) {
+        // see svg-line-arrows.mjs. Only lines styled with line-start, line-end
+        // or line-fade get here, so the batch below is untouched for
+        // everything else.
+        if (drawStyle.lineStart || drawStyle.lineEnd || drawStyle.lineFade) {
           if (!arrowPencil) arrowPencil = getArrowLinePencil(arcs, _ext, lineScale);
           if (arrowPencil(shp, _ctx, drawStyle, startPath, draw)) continue;
         }
@@ -757,14 +758,17 @@ function getShapePencil(arcs, ext) {
   };
 }
 
-// Returns a function that draws one line feature with its arrowheads, and
-// returns false if the feature has none to draw (a style of 'none', or no
-// stroke), for the caller to draw it the usual way.
+// Returns a function that draws one line feature with its arrowheads and fade,
+// and returns false if the feature has neither to draw (a style of 'none', or
+// no stroke), for the caller to draw it the usual way.
 //
 // Heads are sized by the same factor as the line width, so that a preview
 // matches the exported SVG. Far enough in that paths are clipped to the view
 // (see protectIterForDrawing()), the line is drawn clipped and untrimmed and
-// only the heads are added, since a clipped path's ends are not its ends.
+// only the heads are added, since a clipped path's ends are not its ends. The
+// fade is placed by the whole line, so it is unaffected by the clipping.
+//
+// A faded part is stroked on its own, with its own gradient, as in SVG.
 function getArrowLinePencil(arcs, ext, lineScale) {
   var t = getScaledTransform(ext);
   var iter = new internal.ShapeIter(arcs);
@@ -772,10 +776,13 @@ function getArrowLinePencil(arcs, ext, lineScale) {
   var clipped = ext.scale() > 100;
   return function(shp, ctx, style, startPath, draw) {
     var opts = internal.svg.makeLineArrowOpts(style.lineStart, style.lineEnd,
-      style.lineEndSize, style.strokeWidth, strokeScale);
+      style.lineEndSize, style.strokeWidth, strokeScale, style.lineFade);
+    var fadeColors = opts.fade > 0 ? internal.svg.getLineFadeColors(style.strokeColor) : null;
     var heads = [];
+    var plain = [];
+    var faded = [];
     var i, coords, shape;
-    if (opts.start == 'none' && opts.end == 'none' || !(style.strokeWidth > 0)) {
+    if (opts.start == 'none' && opts.end == 'none' && !fadeColors || !(style.strokeWidth > 0)) {
       return false;
     }
     startPath(ctx, style);
@@ -784,13 +791,36 @@ function getArrowLinePencil(arcs, ext, lineScale) {
       if (coords.length < 2) continue;
       shape = internal.svg.getLineArrowShape(coords, opts);
       heads = heads.concat(shape.heads);
-      if (!clipped) traceCoords(shape.coords, ctx);
+      if (shape.fade && fadeColors) {
+        faded.push({path: shp[i], shape: shape});
+      } else if (clipped) {
+        plain.push(shp[i]);
+      } else {
+        traceCoords(shape.coords, ctx);
+      }
     }
-    if (clipped) draw(shp, ctx, style);
+    if (clipped && plain.length > 0) draw(plain, ctx, style);
     endPath(ctx, style);
+    for (i=0; i<faded.length; i++) {
+      startPath(ctx, style);
+      ctx.strokeStyle = getLineFadeGradient(ctx, faded[i].shape.fade, fadeColors);
+      if (clipped) {
+        draw([faded[i].path], ctx, style);
+      } else {
+        traceCoords(faded[i].shape.coords, ctx);
+      }
+      endPath(ctx, style);
+    }
     drawArrowHeads(heads, ctx, style, opts.width);
     return true;
   };
+}
+
+function getLineFadeGradient(ctx, axis, colors) {
+  var gradient = ctx.createLinearGradient(axis.from[0], axis.from[1], axis.to[0], axis.to[1]);
+  gradient.addColorStop(0, colors.transparent);
+  gradient.addColorStop(1, colors.solid);
+  return gradient;
 }
 
 function getPixelCoords(iter, path, t) {
