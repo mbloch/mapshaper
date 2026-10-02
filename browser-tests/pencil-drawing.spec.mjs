@@ -32,7 +32,7 @@ test('a dragged stroke is smoothed, pinned at both ends, and undone in one step'
     var placedCount = 0;
     snapshots.forEach(function(snap) {
       var placed = snap.path.slice(0, countVerticesBefore(snap.path, PREVIEW_LENGTH));
-      expect(path.slice(0, placed.length)).toEqual(placed);
+      expectSamePath(path.slice(0, placed.length), placed);
       placedCount = placed.length;
     });
     expect(placedCount).toBeGreaterThan(20);
@@ -172,6 +172,16 @@ function maxTurn(pts) {
 
 function expectNear(p, q) {
   expect(Math.hypot(p[0] - q[0], p[1] - q[1])).toBeLessThan(1);
+}
+
+// Pixel coordinates read back from the map pick up rounding error of around
+// 1e-13 px, so a vertex that stays put may not compare exactly equal.
+function expectSamePath(a, b) {
+  expect(a.length).toBe(b.length);
+  var maxDist = a.reduce(function(memo, p, i) {
+    return Math.max(memo, Math.hypot(p[0] - b[i][0], p[1] - b[i][1]));
+  }, 0);
+  expect(maxDist).toBeLessThan(1e-6);
 }
 
 async function getMapBox(page) {
