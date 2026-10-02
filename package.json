@@ -49,6 +49,7 @@
     "@bokuweb/zstd-wasm": "^0.0.27",
     "@ngageoint/geopackage": "^4.2.6",
     "@placemarkio/tokml": "^0.3.3",
+    "@resvg/resvg-wasm": "^2.6.2",
     "@tmcw/togeojson": "^5.6.0",
     "@xmldom/xmldom": "^0.8.6",
     "adm-zip": "^0.5.9",

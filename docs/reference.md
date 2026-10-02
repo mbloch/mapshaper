@@ -230,7 +230,9 @@ Save content of the target layer(s) to a file or files.
 
 `<file>|<directory>|-`  Name of output file or directory. Use `-` to export text-based formats to `/dev/stdout`.
 
-`format=shapefile|geojson|topojson|flatgeobuf|geopackage|geoparquet|geotiff|json|dbf|csv|tsv|svg` Specify output format. If the `format=` option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper exports to the same format as the input format. The `json` format is an array of objects containing data properties for each feature. The `geotiff` format takes raster layers only; every other format takes vector or table layers only, apart from `svg` and `msx`, which accept both.
+`format=shapefile|geojson|topojson|flatgeobuf|geopackage|geoparquet|geotiff|json|dbf|csv|tsv|svg|html` Specify output format. If the `format=` option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper exports to the same format as the input format. The `json` format is an array of objects containing data properties for each feature. The `geotiff` format takes raster layers only; every other format takes vector or table layers only, apart from `svg`, `html` and `msx`, which accept both.
+
+The `html` format writes a map as an HTML fragment and an image, in the manner of the [ai2html](https://github.com/newsdev/ai2html) script for Adobe Illustrator. Polygons, lines, rasters, the map frame and scale bars are drawn in a PNG or JPEG image. Point layers (labels, icons and circles) are drawn over the image as inline SVG, with text styles written as CSS classes in a `<style>` element. Each point symbol is anchored to a position given as a percentage of the map's width and height, so symbols stay in place and keep their size when the map is resized. A label along a path is anchored at the point where its text is attached, and keeps the size and shape of its path. Point layers are always drawn above the image, regardless of layer order. In the CSS, the fonts of HTML maps on nytimes.com are listed before the installed fonts they stand for: `nyt-franklin` before NYTFranklin and `nyt-cheltenham` before NYTCheltenham (including families with a weight in their names, like `NYTFranklin Medium`). Unless a label's font family list includes a generic family such as `serif`, common fallback fonts and a generic family are also added, e.g. `Helvetica, Arial, sans-serif`. SVG output keeps label font families as they are.
 
 `target=` Specify layer(s) to export (comma-separated list). The default target is the output layer(s) of the previous command. Use `target=*` to select all layers.
 
@@ -310,7 +312,13 @@ Save content of the target layer(s) to a file or files.
 
 `linked-images` (SVG) Output raster images as separate JPEG or PNG files and link to them from SVG `<image>` elements instead of embedding them as data URIs.
 
-`jpeg-quality=` (SVG) JPEG quality for embedded or linked raster images, from `1` to `100`. The default is `85`.
+`jpeg-quality=` (SVG/HTML) JPEG quality for embedded or linked raster images, or for the image of HTML output, from `1` to `100`. The default is `85`.
+
+`responsiveness=` (HTML) `fixed` (the default) gives the map a fixed size in pixels. `dynamic` makes the map fill the width of its container, keeping its aspect ratio.
+
+`image-format=` (HTML) Format of the map image: `png` (the default) or `jpg`.
+
+`pixel-ratio=` (HTML) Resolution of the map image, in image pixels per CSS pixel. The default is `2`, for sharp images on high-density displays.
 
 `fit-extent=<layer id>` (SVG) Use a layer (typically a layer containing a single rectangle) to set the extent of the map. Paths that overflow this extent are retained in the SVG output.
 

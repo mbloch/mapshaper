@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import AdmZip from 'adm-zip';
 
 var SOURCE_FIXTURE = 'test/data/geojson/three_points.geojson';
 var RASTER_FIXTURE = 'test/data/geotiff/wgs84-geographic-epsg4326.tif';
@@ -47,6 +48,27 @@ test('GUI exports GeoTIFF file for a raster layer', async function({page}) {
   expect(download.suggestedFilename()).toMatch(/\.tif$/i);
   var errors = await getExportErrors(page);
   expect(errors).toEqual([]);
+});
+
+// HTML output is a fragment and an image, so it downloads as a zip. The image
+// is drawn on a canvas by the browser, not by resvg as it is in Node.
+test('GUI exports HTML as a zip with a fragment and an image', async function({page}) {
+  await loadFixture(page, SOURCE_FIXTURE);
+  await openExportMenu(page);
+  await selectExportFormat(page, 'html');
+  await setAdvancedOptions(page, 'responsiveness=dynamic');
+  var download = await triggerExportDownload(page);
+  expect(download.suggestedFilename()).toMatch(/\.zip$/i);
+  var errors = await getExportErrors(page);
+  expect(errors).toEqual([]);
+  var zip = new AdmZip(await download.path());
+  var names = zip.getEntries().map(function(entry) { return entry.entryName; }).sort();
+  expect(names).toEqual(['three_points.html', 'three_points.png']);
+  var html = zip.readAsText('three_points.html');
+  expect(html).toContain('aspect-ratio:');
+  expect(html).toContain('src="three_points.png"');
+  var png = zip.readFile('three_points.png');
+  expect(png.subarray(1, 4).toString()).toBe('PNG');
 });
 
 test('GUI does not offer GeoTIFF for a vector layer', async function({page}) {

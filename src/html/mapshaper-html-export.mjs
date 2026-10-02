@@ -1,0 +1,291 @@
+import { prepareDatasetForSVG, renderSVGDocument, getEmptyLayerForSVG,
+  exportDataAttributesForSVG, getJpegQuality } from '../svg/mapshaper-svg';
+import { exportDatasetAsGeoJSON } from '../geojson/geojson-export';
+import { importGeoJSONFeatures } from '../svg/geojson-to-svg';
+import { featureIsPathLabel, getDefaultStartOffset, initPathLabelReport,
+  reportPathLabels } from '../svg/svg-label-paths';
+import { convertPropertiesToDefinitions } from '../svg/svg-definitions';
+import { stringify, stringEscape } from '../svg/svg-stringify';
+import { rasterizeSVG } from '../svg/mapshaper-svg-rasterize';
+import { getCurveLength, getPointAtCurveLength } from '../curves/mapshaper-curve-fit';
+import { layerHasFurniture } from '../furniture/mapshaper-furniture';
+import { isFrameLayer } from '../furniture/mapshaper-frame-utils';
+import { layerHasRaster } from '../dataset/mapshaper-layer-utils';
+import { getOutputFileBase } from '../utils/mapshaper-filename-utils';
+import { convertTextStylesToClasses, formatTextClassesAsCss } from './html-text-classes';
+import { applyWebFonts } from './html-font-stacks';
+import { stop, warn } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
+
+// HTML output, modeled on the ai2html script for Adobe Illustrator: the map's
+// shapes are drawn in an image, and its point symbols -- labels, icons, dots --
+// are drawn over it as inline SVG. Each symbol is anchored to a position given
+// as a percentage of the map's width and height, so that a map that resizes
+// with its container keeps its symbols where they belong without scaling them.
+//
+// A label along a path is anchored the same way, at the point on its path
+// where its text is attached, and keeps the shape and size of its path.
+
+var CLASS_PREFIX = 'ms-';
+
+export async function exportHTML(dataset, opts) {
+  var responsiveness = getResponsiveness(opts);
+  var imageFormat = getImageFormat(opts);
+  var pixelRatio = getPixelRatio(opts);
+  var o = prepareDatasetForSVG(dataset, Object.assign({}, opts, {
+    // raster layers are resampled to the pixel density of the image
+    raster_res: opts.raster_res || pixelRatio,
+    linked_images: false
+  }));
+  var frame = o.frame;
+  var base = getHtmlFileBase(o.dataset, opts);
+  var layers = splitLayersForHTML(o.dataset.layers, o.dataset);
+  var imageFile = base + (imageFormat == 'jpeg' ? '.jpg' : '.png');
+  var image = await rasterizeSVG(renderSVGDocument(o.dataset, frame, layers.image, o.opts), {
+    width: frame.width,
+    height: frame.height,
+    scale: pixelRatio,
+    format: imageFormat,
+    quality: getJpegQuality(opts)
+  });
+  var html = renderHtmlFragment({
+    id: getContainerId(base),
+    frame: frame,
+    responsiveness: responsiveness,
+    imageFile: imageFile,
+    overlay: renderOverlay(o.dataset, frame, layers.overlay, o.opts)
+  });
+  return [{
+    filename: opts.file || base + '.html',
+    content: html
+  }, {
+    filename: imageFile,
+    content: image
+  }];
+}
+
+// Point layers go in the overlay; everything else is drawn in the image,
+// beneath them. Layers are listed bottom to top.
+export function splitLayersForHTML(layers, dataset) {
+  var image = [], overlay = [];
+  layers.forEach(function(lyr) {
+    if (layerGoesInOverlay(lyr)) {
+      overlay.push(lyr);
+    } else {
+      if (overlay.length > 0 && !isFrameLayer(lyr, dataset.arcs)) {
+        warn(utils.format('Layer "%s" is drawn in the map image, beneath point layer "%s", which is above it in the layer order.',
+          lyr.name || '[unnamed]', overlay[overlay.length - 1].name || '[unnamed]'));
+      }
+      image.push(lyr);
+    }
+  });
+  return {image: image, overlay: overlay};
+}
+
+function layerGoesInOverlay(lyr) {
+  return lyr.geometry_type == 'point' && !layerHasFurniture(lyr) &&
+    !layerHasRaster(lyr);
+}
+
+function renderOverlay(dataset, frame, layers, opts) {
+  var defs = [];
+  var objects = layers.map(function(lyr) {
+    var obj = renderOverlayLayer(lyr, dataset, frame, opts);
+    convertPropertiesToDefinitions(obj, defs);
+    return obj;
+  });
+  var classes = convertTextStylesToClasses(objects, CLASS_PREFIX + 'text-');
+  classes.forEach(function(o) {
+    applyWebFonts(o.style);
+  });
+  return {
+    defs: defs,
+    layers: objects,
+    classes: classes
+  };
+}
+
+function renderOverlayLayer(lyr, dataset, frame, opts) {
+  var layerObj = getEmptyLayerForSVG(lyr, opts);
+  var geojson = exportDatasetAsGeoJSON(utils.defaults({layers: [lyr]}, dataset), opts);
+  var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
+  var dataAttributes = getDataAttributes(lyr, opts);
+  var report = initPathLabelReport();
+  var anchors = [];
+  // each feature is rendered at the origin, and placed by a container
+  var localFeatures = features.map(function(feat, i) {
+    var geom = feat && feat.type == 'Feature' ? feat.geometry : feat;
+    var props = feat && feat.properties || {};
+    var localGeom = null;
+    anchors[i] = [];
+    if (!geom || !geom.coordinates) {
+      // empty feature
+    } else if (featureIsPathLabel(geom, props)) {
+      anchors[i].push(getPathLabelAnchor(geom.coordinates, props));
+      localGeom = {
+        type: 'MultiPoint',
+        coordinates: shiftCoords(geom.coordinates, anchors[i][0])
+      };
+    } else if (geom.type == 'Point' || geom.type == 'MultiPoint') {
+      // the points of a multipoint feature (other than a path label) are drawn
+      // with the same symbol
+      anchors[i] = geom.type == 'Point' ? [geom.coordinates] : geom.coordinates;
+      localGeom = {type: 'Point', coordinates: [0, 0]};
+    }
+    return {
+      type: 'Feature',
+      id: feat && feat.id,
+      properties: props,
+      geometry: localGeom
+    };
+  }).map(function(feat) {
+    if (feat.id === undefined) delete feat.id;
+    return feat;
+  });
+  var symbols = importGeoJSONFeatures(localFeatures, utils.defaults({
+    path_label_report: report,
+    paint_order_halos: true
+  }, opts));
+  reportPathLabels(report, lyr);
+
+  symbols.forEach(function(sym, i) {
+    if (isEmptySymbol(sym)) return;
+    removeOriginTransform(sym);
+    anchors[i].forEach(function(xy, j) {
+      layerObj.children.push({
+        tag: 'svg',
+        properties: Object.assign({
+          x: formatPct(xy[0], frame.width),
+          y: formatPct(xy[1], frame.height),
+          overflow: 'visible'
+        }, dataAttributes ? dataAttributes[i] : null),
+        children: [j === 0 ? sym : copySymbolWithoutId(sym)]
+      });
+    });
+  });
+  return layerObj;
+}
+
+// The point on a label's path where its text is attached: its start offset,
+// which is where text-anchor places the text.
+function getPathLabelAnchor(knots, rec) {
+  var offset = String(rec['label-start-offset'] || getDefaultStartOffset(rec));
+  var len = getCurveLength(knots);
+  var dist = parseFloat(offset);
+  var p;
+  if (/%$/.test(offset)) {
+    dist = dist / 100 * len;
+  }
+  p = getPointAtCurveLength(knots, utils.isFiniteNumber(dist) ? dist : len / 2) || knots[0];
+  return [roundCoord(p[0]), roundCoord(p[1])];
+}
+
+function shiftCoords(coords, origin) {
+  return coords.map(function(p) {
+    return [roundCoord(p[0] - origin[0]), roundCoord(p[1] - origin[1])];
+  });
+}
+
+function roundCoord(c) {
+  return Math.round(c * 100) / 100;
+}
+
+function getDataAttributes(lyr, opts) {
+  var fields;
+  if (!opts.svg_data || !lyr.data) return null;
+  fields = opts.svg_data.includes('*') ? lyr.data.getFields() :
+    opts.svg_data.filter(function(name) { return lyr.data.fieldExists(name); });
+  return exportDataAttributesForSVG(lyr.data.getRecords(), fields);
+}
+
+function isEmptySymbol(o) {
+  return !o || o.tag == 'g' && (!o.children || o.children.length === 0);
+}
+
+// Symbols rendered at the origin are given a transform that places them there
+function removeOriginTransform(o) {
+  if (o.properties && o.properties.transform == 'translate(0 0)') {
+    delete o.properties.transform;
+  }
+}
+
+// ids must be unique, so only the first copy of a multipoint symbol keeps it
+function copySymbolWithoutId(o) {
+  var copy = JSON.parse(JSON.stringify(o));
+  if (copy.properties) delete copy.properties.id;
+  return copy;
+}
+
+export function formatPct(val, total) {
+  var pct = total > 0 ? val / total * 100 : 0;
+  return String(Math.round(pct * 1000) / 1000) + '%';
+}
+
+function renderHtmlFragment(o) {
+  var id = o.id;
+  var w = o.frame.width;
+  var h = o.frame.height;
+  var overlay = o.overlay;
+  var selector = '#' + id;
+  var boxCss = o.responsiveness == 'dynamic' ?
+    `width:100%;aspect-ratio:${w} / ${h};` :
+    `width:${w}px;height:${h}px;`;
+  var css = [
+    `${selector} {position:relative;overflow:hidden;${boxCss}}`,
+    `${selector} .${CLASS_PREFIX}image {position:absolute;top:0;left:0;width:100%;height:100%;max-width:none;margin:0;display:block;}`,
+    `${selector} .${CLASS_PREFIX}overlay {position:absolute;top:0;left:0;width:100%;height:100%;overflow:visible;}`
+  ];
+  var classCss = formatTextClassesAsCss(overlay.classes, selector);
+  if (classCss) css.push(classCss);
+  var html = `<div id="${stringEscape(id)}" class="${CLASS_PREFIX}map">
+<style>
+${css.join('\n')}
+</style>
+<img class="${CLASS_PREFIX}image" src="${stringEscape(o.imageFile)}" width="${w}" height="${h}" alt="">`;
+  if (overlay.layers.length > 0) {
+    html += '\n' + renderOverlaySvg(overlay);
+  }
+  return html + '\n</div>\n';
+}
+
+function renderOverlaySvg(overlay) {
+  var svg = `<svg class="${CLASS_PREFIX}overlay" stroke-linecap="round" stroke-linejoin="round">\n`;
+  if (overlay.defs.length > 0) {
+    svg += '<defs>\n' + utils.pluck(overlay.defs, 'svg').join('') + '</defs>\n';
+  }
+  svg += overlay.layers.map(stringify).join('\n');
+  return svg + '\n</svg>';
+}
+
+function getHtmlFileBase(dataset, opts) {
+  return opts.file ? opts.file.replace(/\.html?$/i, '') : getOutputFileBase(dataset);
+}
+
+function getContainerId(base) {
+  return CLASS_PREFIX + base.replace(/[^\w-]+/g, '-');
+}
+
+function getResponsiveness(opts) {
+  var val = opts.responsiveness || 'fixed';
+  if (val != 'fixed' && val != 'dynamic') {
+    stop('Unsupported responsiveness= option:', val, '(expected fixed or dynamic)');
+  }
+  return val;
+}
+
+function getImageFormat(opts) {
+  var fmt = String(opts.image_format || 'png').toLowerCase();
+  if (fmt == 'jpg') fmt = 'jpeg';
+  if (fmt != 'png' && fmt != 'jpeg') {
+    stop('Unsupported image-format= option:', opts.image_format, '(expected png or jpg)');
+  }
+  return fmt;
+}
+
+function getPixelRatio(opts) {
+  var val = opts.pixel_ratio === undefined ? 2 : opts.pixel_ratio;
+  if (val > 0 === false || val > 8) {
+    stop('Expected pixel-ratio= to be a number greater than 0 and no more than 8');
+  }
+  return val;
+}

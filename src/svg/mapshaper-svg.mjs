@@ -25,20 +25,19 @@ var ILLUSTRATOR_PATH_VERTEX_LIMIT = 32000;
 
 //
 export function exportSVG(dataset, opts) {
-  var namespace = 'xmlns="http://www.w3.org/2000/svg"';
-  var defs = [];
-  var frame, frameLyr, frameBackground, frameNeatline;
-  var svg, layers, metadataJSON, files, svgFile;
-  var style = '';
+  var o = prepareDatasetForSVG(dataset, opts);
+  var svgFile = {
+    content: renderSVGDocument(o.dataset, o.frame, o.dataset.layers, o.opts),
+    filename: o.opts.file || getOutputFileBase(o.dataset) + '.svg'
+  };
+  return [svgFile].concat(o.opts.svg_image_files);
+}
 
-  // kludge for map keys
-  if (opts.crisp_paths) {
-    style = `
-<style>
-  path {shape-rendering: crispEdges;}
-</style>`;
-  }
-
+// Returns a copy of @dataset (unless opts.final is set) with coordinates
+// transformed to the pixel space of the output frame, along with the frame and
+// the export options, which are given SVG defaults.
+export function prepareDatasetForSVG(dataset, opts) {
+  var frame;
   // TODO: consider moving this logic to mapshaper-export.js
   if (opts.final) {
     if (dataset.arcs) dataset.arcs.flatten();
@@ -54,16 +53,35 @@ export function exportSVG(dataset, opts) {
   frame = getFrameData(dataset, opts);
   fitDatasetToFrame(dataset, frame);
   setCoordinatePrecision(dataset, opts.precision || 0.01);
+
+  // error if one or more svg_data fields are not present in any layers
+  if (opts.svg_data) validateSvgDataFields(dataset.layers, opts.svg_data);
+  return {dataset: dataset, frame: frame, opts: opts};
+}
+
+// Renders @layers, a subset of the layers of a dataset prepared by
+// prepareDatasetForSVG(), as an SVG document.
+export function renderSVGDocument(dataset, frame, layers, opts) {
+  var namespace = 'xmlns="http://www.w3.org/2000/svg"';
+  var defs = [];
+  var frameLyr, frameBackground, frameNeatline;
+  var svg, metadataJSON;
+  var style = '';
+
+  // kludge for map keys
+  if (opts.crisp_paths) {
+    style = `
+<style>
+  path {shape-rendering: crispEdges;}
+</style>`;
+  }
+
   if (opts.metadata) {
     metadataJSON = JSON.stringify(getGeospatialMetadata(dataset, frame));
   }
 
-  // error if one or more svg_data fields are not present in any layers
-  if (opts.svg_data) validateSvgDataFields(dataset.layers, opts.svg_data);
-
-  layers = dataset.layers;
   if (opts.scalebar) {
-    layers.push(getScalebarLayer({})); // default options
+    layers = layers.concat(getScalebarLayer({})); // default options
   }
   frameLyr = layers.find(function(lyr) {
     return isFrameLayer(lyr, dataset.arcs);
@@ -119,13 +137,7 @@ export function exportSVG(dataset, opts) {
 <svg ${namespace} version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" ${lineProps}>${style}
 ${svg}
 </svg>`;
-  svg = utils.format(template, frame.width, frame.height, 0, 0, frame.width, frame.height);
-  svgFile = {
-    content: svg,
-    filename: opts.file || getOutputFileBase(dataset) + '.svg'
-  };
-  files = [svgFile].concat(opts.svg_image_files);
-  return files;
+  return utils.format(template, frame.width, frame.height, 0, 0, frame.width, frame.height);
 }
 
 function exportFrameStylePhase(lyr, dataset, opts, phase) {
@@ -189,7 +201,7 @@ function copyProperties(dest, src, names) {
 
 function getSvgFileBase(dataset, opts) {
   var file = opts.file || getOutputFileBase(dataset) + '.svg';
-  return file.replace(/\.svg$/i, '');
+  return file.replace(/\.(svg|html?)$/i, '');
 }
 
 function getMetadataBlock(metadataJSON, viewBox) {
@@ -419,7 +431,7 @@ function encodeJpeg(preview, opts) {
   }, quality).data).toString('base64');
 }
 
-function getJpegQuality(opts) {
+export function getJpegQuality(opts) {
   var quality = opts.jpeg_quality == null ? 85 : opts.jpeg_quality;
   if ((quality >= 1 && quality <= 100) === false) {
     stop('jpeg-quality= option should be a number from 1 to 100');

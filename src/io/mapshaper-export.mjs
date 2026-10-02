@@ -1,5 +1,6 @@
 import { getLayerBounds, layerHasRaster } from '../dataset/mapshaper-layer-utils';
 import { exportSVG } from '../svg/mapshaper-svg';
+import { exportHTML } from '../html/mapshaper-html-export';
 import { exportKML } from '../kml/kml-export';
 import { exportDbf } from '../shapefile/dbf-export';
 import { exportPackedDatasets, PACKAGE_EXT } from '../pack/mapshaper-pack';
@@ -58,7 +59,7 @@ export async function exportTargetLayers(catalog, targets, opts) {
 async function exportDatasets(datasets, opts) {
   var format = getOutputFormat(datasets[0], opts);
   var files;
-  if (format != 'svg' && format != PACKAGE_EXT) {
+  if (format != 'svg' && format != 'html' && format != PACKAGE_EXT) {
     datasets = removeFurnitureLayers(datasets);
   }
   validateRasterExportFormat(datasets, format);
@@ -72,8 +73,8 @@ async function exportDatasets(datasets, opts) {
     opts = utils.defaults({compact: true}, opts);
     return exportPackedDatasets(datasets, opts);
   }
-  if (format == 'kml' || format == 'svg' || format == 'topojson' || format == 'geopackage' ||
-      format == 'geojson' && opts.combine_layers) {
+  if (format == 'kml' || format == 'svg' || format == 'html' || format == 'topojson' ||
+      format == 'geopackage' || format == 'geojson' && opts.combine_layers) {
     // multi-layer formats: combine multiple datasets into one
     if (datasets.length > 1) {
       datasets = [mergeDatasetsForExport(datasets)];
@@ -92,7 +93,12 @@ async function exportDatasets(datasets, opts) {
     datasets = datasets.map(copyDatasetForRenaming);
     assignUniqueLayerNames2(datasets);
   }
-  if (format == 'geopackage') {
+  if (format == 'html') {
+    sortExportLayers(datasets[0]);
+    // HTML bypasses exportFileContent(), because rendering its image is async.
+    files = await exportHTML(copyDatasetForHTMLExport(datasets[0]),
+      utils.defaults({format: format}, opts));
+  } else if (format == 'geopackage') {
     if (datasets.length > 1) {
       datasets = [mergeDatasetsForExport(datasets)];
     }
@@ -163,8 +169,19 @@ function validateRasterExportFormat(datasets, format) {
     return;
   }
   if (!datasetsHaveRasterLayers(datasets)) return;
-  if (format == 'svg' || format == PACKAGE_EXT) return;
-  stop('Raster layers can only be exported as GeoTIFF, SVG or ' + PACKAGE_EXT + ' files');
+  if (format == 'svg' || format == 'html' || format == PACKAGE_EXT) return;
+  stop('Raster layers can only be exported as GeoTIFF, SVG, HTML or ' + PACKAGE_EXT + ' files');
+}
+
+// The parts of exportFileContent() that apply to HTML output: layers are
+// shallow-copied so they can be given unique names, which become element ids.
+function copyDatasetForHTMLExport(dataset) {
+  dataset = utils.defaults({
+    layers: dataset.layers.map(function(lyr) {return utils.extend({}, lyr);})
+  }, dataset);
+  assignUniqueLayerNames(dataset.layers);
+  validateLayerData(dataset.layers);
+  return dataset;
 }
 
 function datasetsHaveRasterLayers(datasets) {

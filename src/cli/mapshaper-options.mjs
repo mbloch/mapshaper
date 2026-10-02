@@ -329,7 +329,7 @@ export function getOptionParser() {
       }
     })
     .option('format', {
-      describe: 'options: shapefile,geojson,topojson,flatgeobuf,geopackage,geoparquet,geotiff,json,dbf,csv,tsv,svg'
+      describe: 'options: shapefile,geojson,topojson,flatgeobuf,geopackage,geoparquet,geotiff,json,dbf,csv,tsv,svg,html'
     })
     .option('target', targetOpt)
     .option('force', {
@@ -456,11 +456,11 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('width', {
-      describe: '[SVG/TopoJSON] pixel width of output (SVG default is 800)',
+      describe: '[SVG/HTML/TopoJSON] pixel width of output (SVG default is 800)',
       type: 'number'
     })
     .option('height', {
-      describe: '[SVG/TopoJSON] pixel height of output (optional)',
+      describe: '[SVG/HTML/TopoJSON] pixel height of output (optional)',
       type: 'number'
     })
     .option('max-height', {
@@ -495,7 +495,17 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('jpeg-quality', {
-      describe: '[SVG] JPEG quality for raster images, 1-100 (default is 85)',
+      describe: '[SVG/HTML] JPEG quality for raster images, 1-100 (default is 85)',
+      type: 'number'
+    })
+    .option('responsiveness', {
+      describe: '[HTML] fixed or dynamic (resizes to fill its container)'
+    })
+    .option('image-format', {
+      describe: '[HTML] format of the map image: png or jpg (default is png)'
+    })
+    .option('pixel-ratio', {
+      describe: '[HTML] image pixels per CSS pixel (default is 2)',
       type: 'number'
     })
     .option('fit-extent', {

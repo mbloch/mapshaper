@@ -176,10 +176,10 @@ export var ExportControl = function(gui) {
       opts.history = snapshot;
       targets = addFrameTarget(targets);
     }
-    if (opts.format == 'svg' || opts.format == 'topojson') {
+    if (opts.format == 'svg' || opts.format == 'html' || opts.format == 'topojson') {
       opts.gui_frame = getGuiFrameContext();
     }
-    if (opts.format == 'svg') {
+    if (opts.format == 'svg' || opts.format == 'html') {
       targets = addFrameFurnitureTargets(targets, opts.gui_frame);
     }
     try {
@@ -319,7 +319,7 @@ export var ExportControl = function(gui) {
   }
 
   function getExportFormats() {
-    var formats = ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'geopackage', 'geoparquet', 'kml', 'svg', internal.PACKAGE_EXT];
+    var formats = ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'geopackage', 'geoparquet', 'svg', 'kml', 'html', internal.PACKAGE_EXT];
     // GeoTIFF is the one format here that only accepts raster layers, so it is
     // offered only when there is a raster to export.
     if (getExportFormatLayers().some(hasRaster)) formats.push('geotiff');
@@ -486,7 +486,7 @@ export var ExportControl = function(gui) {
     var format = getSelectedFormat();
     var topoUsesPixels = format == 'topojson' &&
       /\b(?:width|height)\s*=/.test(getExportOptsAsString());
-    if (context && (format == 'svg' || topoUsesPixels)) {
+    if (context && (format == 'svg' || format == 'html' || topoUsesPixels)) {
       frameInfo.text('Map frame: ' +
         internal.formatFrameSizeForDisplay(context.data)).show();
     } else {

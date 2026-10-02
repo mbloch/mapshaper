@@ -2,7 +2,7 @@ import { PACKAGE_EXT } from '../pack/mapshaper-pack';
 
 
 export function isSupportedOutputFormat(fmt) {
-  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg', 'kml', PACKAGE_EXT, 'flatgeobuf', 'geopackage', 'geoparquet', 'geotiff'];
+  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg', 'html', 'kml', PACKAGE_EXT, 'flatgeobuf', 'geopackage', 'geoparquet', 'geotiff'];
   return types.indexOf(fmt) > -1;
 }
 
@@ -21,7 +21,8 @@ export function getFormatName(fmt) {
     geopackage: 'GeoPackage',
     geoparquet: 'GeoParquet',
     geotiff: 'GeoTIFF',
-    svg: 'SVG'
+    svg: 'SVG',
+    html: 'HTML'
   }[fmt] || '';
 }
 

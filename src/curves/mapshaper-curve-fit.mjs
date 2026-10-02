@@ -114,6 +114,48 @@ export function getCurveLength(knots) {
   return len;
 }
 
+// The point @dist along the fitted curve from its first knot, clamped to the
+// curve's ends, or null if the knots collapse to a single point.
+export function getPointAtCurveLength(knots, dist) {
+  var segments = getCurveSegments(knots);
+  var seg, len, i;
+  if (segments.length === 0) return null;
+  for (i = 0; i < segments.length; i++) {
+    seg = segments[i];
+    len = getCubicLength(seg, 0);
+    if (dist <= len) return getPointAtCubicLength(seg, Math.max(dist, 0));
+    dist -= len;
+  }
+  return [seg.p3[0], seg.p3[1]];
+}
+
+// Walks a flattening of the segment, which is shorter than the true curve by
+// a negligible amount at this many steps.
+function getPointAtCubicLength(seg, dist) {
+  var steps = 64;
+  var prev = seg.p0, p, d, k, i;
+  for (i = 1; i <= steps; i++) {
+    p = getCubicPoint(seg, i / steps);
+    d = distance2D(prev[0], prev[1], p[0], p[1]);
+    if (d > 0 && d >= dist) {
+      k = dist / d;
+      return [prev[0] + (p[0] - prev[0]) * k, prev[1] + (p[1] - prev[1]) * k];
+    }
+    dist -= d;
+    prev = p;
+  }
+  return [seg.p3[0], seg.p3[1]];
+}
+
+function getCubicPoint(seg, t) {
+  var mt = 1 - t;
+  var a = mt * mt * mt, b = 3 * mt * mt * t, c = 3 * mt * t * t, d = t * t * t;
+  return [
+    a * seg.p0[0] + b * seg.c1[0] + c * seg.c2[0] + d * seg.p3[0],
+    a * seg.p0[1] + b * seg.c1[1] + c * seg.c2[1] + d * seg.p3[1]
+  ];
+}
+
 // Hobby's velocity function constants (Hobby 1986, eq. 11), the approximation
 // Metafont uses in place of the transcendental form.
 var VEL_A = Math.SQRT2,

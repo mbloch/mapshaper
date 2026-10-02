@@ -52,6 +52,8 @@ export function inferOutputFormat(file, inputFormat) {
     format = 'geotiff';
   } else if (ext == 'svg') {
     format = 'svg';
+  } else if (ext == 'html' || ext == 'htm') {
+    format = 'html';
   } else if (ext == 'kml' || ext == 'kmz') {
     format = 'kml';
   } else if (/json$/.test(ext)) {

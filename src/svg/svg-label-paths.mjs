@@ -168,7 +168,7 @@ export function referenceLabelPath(el, pathId) {
 // startOffset positions the text's anchor along the path, so the default that
 // leaves text where the anchor implies depends on text-anchor. 'middle' is the
 // layer-level default set by getEmptyLayerForSVG().
-function getDefaultStartOffset(rec) {
+export function getDefaultStartOffset(rec) {
   var anchor = rec['text-anchor'] || 'middle';
   if (anchor == 'start') return '0%';
   if (anchor == 'end') return '100%';
