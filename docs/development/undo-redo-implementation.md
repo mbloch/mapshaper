@@ -251,6 +251,34 @@ Current GUI conventions:
   closes and simplification state changed.
 - **Snapshot restore**: not undoable. Restoring a snapshot replaces the current
   session baseline and clears app undo/redo history.
+- **Color scheme panel**: a command session (below). Every `-classify` the
+  panel runs while it is open is one undo entry and one history command.
+
+### Command Sessions
+
+A panel that previews its edits by running commands as they are made, but
+should leave one undo entry for the set, runs them through a command session:
+`gui.console.createCommandSession({label, onCommit})`, then
+`runGuiEditCommand(gui, cmd, {session})` for each edit and `session.finish()`
+when the panel closes.
+
+- The commands share one transaction, which keeps the first before-state of
+  each unit, so the entry restores the state from before the first command.
+- Each command replaces the session's previous command in the session history.
+- A command submitted while another is running waits, and replaces any other
+  that is waiting.
+- Nothing else may add an undo entry while a session's is pending (the rule
+  above). Any other console command finishes the session before it runs, and
+  `Undo#undo()` and `redo()` wait for pending commits registered with
+  `Undo#addPendingCommit()`. A GUI action that adds an entry directly, without
+  running a command (layer-menu delete or rename, an import), does not finish
+  a session first. The color scheme panel closes, and finishes its session,
+  when the interaction mode or the active layer changes, but by then the
+  action's entry is already in the history, so the two entries are stored in
+  the opposite order to the edits. Those actions should call a pending-commit
+  flush before capturing if this turns out to matter.
+- `onCommit()` may return `{onUndo, onRedo}` for GUI state that goes with the
+  edits, like the scheme a layer was colored with.
 
 When adding a new GUI action, decide whether it is a baseline operation or a
 model edit. Baseline operations should clear or leave undo history empty.

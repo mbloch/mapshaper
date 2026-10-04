@@ -21,7 +21,7 @@ export function getOutputFunction(classValues, nullValue, opts) {
   // get a function to convert class indexes to output values
   //
   if (opts.continuous) {
-    return getInterpolatedValueGetter(classValues, nullValue);
+    return getInterpolatedValueGetter(classValues, nullValue, opts);
   } else {
     return  getDiscreteValueGetter(classValues, nullValue, opts.other);
   }

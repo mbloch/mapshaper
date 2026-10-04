@@ -20,6 +20,7 @@ import { getClassValues, getNullValue } from '../classification/mapshaper-classi
 import { getClassifyMethod } from '../classification/mapshaper-classify-methods';
 import { color as d3_color } from 'd3-color';
 import { getBlackiClassifier } from '../classification/mapshaper-blacki';
+import { getInterpolationOptions } from '../classification/mapshaper-interpolation';
 
 cmd.classify = function(lyr, dataset, optsArg) {
   if (!lyr.data) {
@@ -37,6 +38,7 @@ cmd.classify = function(lyr, dataset, optsArg) {
   if (opts.color_scheme) {
     stop('color-scheme is not a valid option, use colors instead');
   }
+  opts = Object.assign({}, opts, getInterpolationOptions(opts));
 
   // get data field to use for classification
   //

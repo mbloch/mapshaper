@@ -1,5 +1,6 @@
 import { El } from './gui-el';
 import { utils } from './gui-core';
+import { parseColorInput, formatColorInput, colorInputFormats } from './gui-color-input';
 
 export var grayscaleColorPresets = [
   '#000000', '#111111', '#222222', '#333333',
@@ -35,17 +36,23 @@ export var layerColorPresetRows = [
 // this holds at most one entry.
 var openPickers = [];
 
+// The format color fields show colors in, chosen with the picker's tabs. It
+// is shared by every picker, so it carries over from one to the next.
+var colorFieldFormat = 'hex';
+
 function closeOpenPickers(except) {
   openPickers.slice().forEach(function(picker) {
     if (picker !== except) picker.hide();
   });
 }
 
+// opts.presetRows   rows of preset colors; [] for none
+// opts.onPreview(hex), opts.onChange(hex), opts.onHide()
 export function ColorPicker(parent, opts) {
   opts = opts || {};
   var self = this;
   var colorPicker = El('div').addClass('label-color-picker').appendTo(parent).hide();
-  var sbCanvas, hueCanvas, sbMarker, hueMarker, pickerHsbInputs;
+  var sbCanvas, hueCanvas, sbMarker, hueMarker, colorInput, formatTabs;
   var pickerColor = {h: 0, s: 0, b: 0};
   // The hex value the picker was set to, until it is moved off it. HSB is
   // held in bytes, which cannot represent every RGB colour, so a colour that
@@ -62,17 +69,29 @@ export function ColorPicker(parent, opts) {
     } else {
       closeOpenPickers(self);
       colorPicker.show();
+      setPanelRaised(true);
       positionPicker();
       drawColorPicker();
+      updatePickerFields();
       if (openPickers.indexOf(self) == -1) openPickers.push(self);
     }
   };
 
   this.hide = function() {
+    var wasVisible = colorPicker.visible();
     colorPicker.hide();
+    setPanelRaised(false);
     var i = openPickers.indexOf(self);
     if (i > -1) openPickers.splice(i, 1);
+    if (wasVisible && opts.onHide) opts.onHide();
   };
+
+  // The picker's z-index only places it within its panel, which is a stacking
+  // context of its own (see .label-style-panel.color-picker-open).
+  function setPanelRaised(raised) {
+    var panel = colorPicker.node().closest('.label-style-panel');
+    if (panel) panel.classList.toggle('color-picker-open', raised);
+  }
 
   this.visible = function() {
     return colorPicker.visible();
@@ -115,14 +134,14 @@ export function ColorPicker(parent, opts) {
     var hueWrap = El('div').addClass('label-color-canvas-wrap').appendTo(colorPicker);
     hueCanvas = El('canvas').attr('width', '256').attr('height', '18').appendTo(hueWrap);
     hueMarker = makePickerMarker().appendTo(hueWrap);
-    renderPresetRows(colorPicker);
-    pickerHsbInputs = {};
-    var hsbRow = El('div').addClass('label-color-picker-fields').appendTo(colorPicker);
-    addPickerNumberInput(hsbRow, 'h', 'H');
-    addPickerNumberInput(hsbRow, 's', 'S');
-    addPickerNumberInput(hsbRow, 'b', 'B');
-    El('button').appendTo(hsbRow).text('Close').on('click', function() {
-      colorPicker.hide();
+    if (presetRows.length > 0) renderPresetRows(colorPicker);
+    // a field for a typed or pasted color, with tabs for the format it shows
+    // colors in
+    addFormatTabs(colorPicker);
+    var fieldRow = El('div').addClass('label-color-picker-fields').appendTo(colorPicker);
+    addColorInput(fieldRow);
+    El('button').appendTo(fieldRow).text('Close').on('click', function() {
+      self.hide();
     });
     sbCanvas.on('mousedown', function(e) {
       startCanvasDrag(e, updateSbFromEvent);
@@ -157,24 +176,48 @@ export function ColorPicker(parent, opts) {
     commitPickerColor();
   }
 
-  function addPickerNumberInput(row, name, label) {
-    var wrapper = El('label').appendTo(row);
-    El('span').appendTo(wrapper).text(label);
-    pickerHsbInputs[name] = El('input')
-      .attr('type', 'text')
-      .appendTo(wrapper)
-      .on('change', function() {
-        var h = parseNumberField(pickerHsbInputs.h.node().value);
-        var s = parseNumberField(pickerHsbInputs.s.node().value);
-        var b = parseNumberField(pickerHsbInputs.b.node().value);
-        if (!isFinite(h) || !isFinite(s) || !isFinite(b)) return;
-        setPickerColor({
-          h: degreesToByte(h),
-          s: pctToByte(s),
-          b: pctToByte(b)
+  function addFormatTabs(parent) {
+    var row = El('div').addClass('label-color-format-tabs').attr('role', 'group')
+      .attr('aria-label', 'Color format').appendTo(parent);
+    formatTabs = colorInputFormats.map(function(format) {
+      return El('button').addClass('label-color-format-tab').attr('type', 'button')
+        .attr('data-format', format.name).text(format.label).appendTo(row)
+        .on('click', function() {
+          colorFieldFormat = format.name;
+          updatePickerFields();
         });
-        commitPickerColor();
+    });
+  }
+
+  // A color is applied when it is pasted, or when the field is left (Enter
+  // leaves it, in the style panels). Whatever was accepted is shown in the
+  // chosen format; something that isn't a color puts the field back.
+  function addColorInput(row) {
+    colorInput = El('input').attr('type', 'text').addClass('label-color-picker-input')
+      .attr('aria-label', 'Color: hex, name, rgb(), hsl() or oklch()')
+      .attr('spellcheck', 'false')
+      .appendTo(row)
+      .on('change', applyColorInput)
+      .on('paste', function() {
+        setTimeout(applyColorInput, 0);
       });
+    colorInput.node().addEventListener('keydown', function(e) {
+      if (e.key == 'Escape') updatePickerFields();
+    });
+  }
+
+  function applyColorInput() {
+    var hex = parseColorInput(colorInput.node().value);
+    if (!hex) {
+      updatePickerFields();
+      return;
+    }
+    if (hex == getPickerHex()) {
+      updatePickerFields();
+      return;
+    }
+    setPickerColor(hexToHsb(hex), hex);
+    commitPickerColor();
   }
 
   function startCanvasDrag(e, update) {
@@ -237,9 +280,11 @@ export function ColorPicker(parent, opts) {
   }
 
   function updatePickerFields() {
-    pickerHsbInputs.h.node().value = byteToDegrees(pickerColor.h) + '°';
-    pickerHsbInputs.s.node().value = byteToPct(pickerColor.s) + '%';
-    pickerHsbInputs.b.node().value = byteToPct(pickerColor.b) + '%';
+    colorInput.node().value = formatColorInput(getPickerHex(), colorFieldFormat);
+    formatTabs.forEach(function(tab) {
+      var selected = tab.node().getAttribute('data-format') == colorFieldFormat;
+      tab.classed('selected', selected).attr('aria-pressed', String(selected));
+    });
   }
 
   function drawColorPicker() {
@@ -363,26 +408,6 @@ function hsbToRgb(hsb) {
     g: Math.round((rgb[1] + m) * 255),
     b: Math.round((rgb[2] + m) * 255)
   };
-}
-
-function byteToPct(val) {
-  return Math.round(val / 255 * 100);
-}
-
-function pctToByte(val) {
-  return Math.round(clamp(val, 0, 100) / 100 * 255);
-}
-
-function byteToDegrees(val) {
-  return Math.round(val / 255 * 360);
-}
-
-function degreesToByte(val) {
-  return Math.round(clamp(val, 0, 360) / 360 * 255);
-}
-
-function parseNumberField(str) {
-  return Number(String(str).replace(/[°%]/g, '').trim());
 }
 
 function clamp(val, min, max) {

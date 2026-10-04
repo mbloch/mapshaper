@@ -31,6 +31,8 @@ function getEventKey(e) {
 
 export function Undo(gui) {
   var history, offset, stashedUndo, editSession;
+  var pendingCommits = [];
+  var self = this;
   editSession = createEditSessionUndo();
   reset();
 
@@ -256,6 +258,29 @@ export function Undo(gui) {
     addHistoryState(undo, redo, cleanup, opts);
   };
 
+  // An edit whose history state has not been added yet -- a panel session
+  // that records one state when it ends -- registers a function that adds it.
+  // Undo and redo run it, and wait for it, before they act; otherwise they
+  // would take back the state before the edit and leave the edit in place.
+  // Returns a function that unregisters it.
+  this.addPendingCommit = function(commit) {
+    pendingCommits.push(commit);
+    return function() {
+      var i = pendingCommits.indexOf(commit);
+      if (i > -1) pendingCommits.splice(i, 1);
+    };
+  };
+
+  function flushPendingCommits() {
+    var commits = pendingCommits.splice(0);
+    if (commits.length === 0) return null;
+    return Promise.all(commits.map(function(commit) {
+      return Promise.resolve(commit()).catch(function(e) {
+        console.error(e);
+      });
+    }));
+  }
+
   this.evictOldestHistoryState = function(opts) {
     return evictOldestHistoryState(opts || {});
   };
@@ -326,6 +351,8 @@ export function Undo(gui) {
   }
 
   this.undo = function() {
+    var pending = flushPendingCommits();
+    if (pending) return pending.then(function() { return self.undo(); });
     // firing even if history is empty
     // (because this event may trigger a new history state)
     gui.dispatchEvent('undo_redo_pre', {type: 'undo'});
@@ -339,6 +366,8 @@ export function Undo(gui) {
   };
 
   this.redo = function() {
+    var pending = flushPendingCommits();
+    if (pending) return pending.then(function() { return self.redo(); });
     gui.dispatchEvent('undo_redo_pre', {type: 'redo'});
     if (offset <= 0) return;
     offset--;

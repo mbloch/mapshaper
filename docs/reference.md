@@ -480,6 +480,12 @@ Assign colors or data values to each feature using one of several classification
 
 `continuous`    Output continuously interpolated values (experimental). Uses linear interpolation between class breaks, which may give poor results with some distributions of data. This option is for creating unclassed/continuous-color maps.
 
+`interpolation=`    How intermediate colors are calculated when colors are interpolated (with the `colors=`, `stops=` and `continuous` options). `rgb` (the default) mixes colors in RGB space. `oklab` mixes them along a straight line through the perceptually uniform OKLab color space, which gives evenly spaced steps in lightness and avoids the dull, dark midpoints that RGB mixing can produce. `oklch` changes lightness, chroma (colorfulness) and hue separately, each by equal steps, with hue going the shorter way around the color wheel; between colors of different hues this keeps intermediate colors saturated rather than passing through gray. Where an `oklch` color falls outside the sRGB gamut, it is fitted as described under `vibrance=`.
+
+`vibrance=`    Raise the chroma (colorfulness) of colors interpolated with `interpolation=oklch`. The sRGB gamut holds little chroma near black and white, so a ramp between a dark color and a light one has dull midtones. The value is the OKLCH chroma added to every color of the interpolation, including the given colors, which get it as far as the gamut has room at their lightness (grays are left alone). The same amount is added at every hue. In classed ramps, where the lighter of two given colors gains less chroma than the color next to it, that color's lightness moves a little toward it, and the other classes are evenly spaced in lightness from it. `0.04` is a moderate boost; the default is `0` and the maximum `0.4`. Giving `vibrance=` without `interpolation=` selects `oklch`.
+
+With `interpolation=oklch`, a color that falls outside the sRGB gamut keeps its hue. Its lightness may move by up to 0.05 (less when classes are close together in lightness) to where the gamut has room for more chroma, to whatever extent brings the color closest to its ideal, counting lightness differences twice as heavily as chroma differences. Its chroma is then reduced to fit.
+
 `index-field=`  Use class ids that have been precalculated and assigned to this field. Values should be integers from `0 ... n-1` (where n is the number of classes). `-1` is the null value.
 
 `precision=`    Round data values before classification (e.g. `precision=0.1`).

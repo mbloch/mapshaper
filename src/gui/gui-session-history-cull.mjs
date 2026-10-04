@@ -90,19 +90,28 @@ function getStyleFields(opts, isStyleProperty) {
   return fields.sort();
 }
 
+// A -classify that assigns colors or values rewrites its output field in every
+// feature, so it supersedes an earlier one that wrote the same field -- unless
+// it reads that field, or writes a key file that would be lost.
 function getClassifyCullInfo(opts) {
-  if (opts.where || !classifyIsRandomFill(opts)) return null;
+  var saveAs = opts.save_as || opts['save-as'] || '';
+  var kind = opts.colors ? 'colors' : opts.values ? 'values' : '';
+  if (opts.where || !kind || classifyWritesKey(opts)) return null;
+  if ([opts.field, opts.index_field].some(function(field) {
+    return field && (saveAs ? field == saveAs : ['fill', 'stroke', 'class'].includes(field));
+  })) return null;
   return {
     type: 'classify',
     target: getTargetKey(opts),
     ids: getIdsKey(opts),
-    key: 'random-fill'
+    key: kind + ':' + saveAs
   };
 }
 
-function classifyIsRandomFill(opts) {
-  return opts.colors == 'random' && opts.method == 'non-adjacent' &&
-    !opts.field && !opts.values && !opts['save-as'] && !opts.save_as;
+function classifyWritesKey(opts) {
+  return Object.keys(opts).some(function(name) {
+    return name == 'key' || name.indexOf('key_') === 0 || name.indexOf('key-') === 0;
+  });
 }
 
 function getTargetKey(opts) {

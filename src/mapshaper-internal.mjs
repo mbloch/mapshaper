@@ -106,6 +106,9 @@ import * as Catalog from './dataset/mapshaper-catalog';
 import * as ClipErase from './commands/mapshaper-clip-erase';
 import * as ClipPoints from './clipping/mapshaper-point-clipping';
 import * as ColorUtils from './color/color-utils';
+import * as ColorRamps from './color/color-ramps';
+import * as ColorSchemes from './color/color-schemes';
+import * as Oklab from './color/oklab';
 import * as Colorizer from './commands/mapshaper-colorizer';
 import * as CustomProjections from './crs/mapshaper-custom-projections';
 import * as Dymaxion from './crs/mapshaper-dymaxion';
@@ -254,6 +257,9 @@ Object.assign(internal,
   ClipErase,
   ClipPoints,
   ColorUtils,
+  ColorRamps,
+  ColorSchemes,
+  Oklab,
   Colorizer,
   CustomProjections,
   Dymaxion,

@@ -20,6 +20,8 @@ import { groupStyleEdits } from './gui-fill-pattern';
 import { runGuiEditCommand } from './gui-edit-command';
 import { internal } from './gui-core';
 import { quoteCommandValue } from './gui-command-utils';
+import { ColorSchemePanel, getStripBackground } from './gui-color-scheme-panel';
+import { getLayerScheme } from './gui-color-scheme-model';
 
 var savedStylesKey = 'layer_style_presets';
 var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'line-fade', 'fill', 'fill-opacity', 'fill-pattern'].concat(internal.svg.glowFields);
@@ -71,6 +73,7 @@ export function LayerStyleTool(gui) {
   var parent = gui.container.findChild('.mshp-main-map');
   var panel = El('div').addClass('label-style-panel layer-style-panel rollover').appendTo(parent).hide();
   var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, capControl, dashControl, arrowControl, randomFillBtn, presetControl, patternControl, glowControl, hit;
+  var schemeRow, schemeBtn, schemeStrip, schemePanel;
   var targetLayer = null;
   // What the arrowhead switch turns on, for lines that have no heads
   var lastArrow = {shape: 'arrow', position: 'end', fade: 0};
@@ -124,6 +127,7 @@ export function LayerStyleTool(gui) {
   }
 
   function turnOff() {
+    schemePanel.close();
     panel.hide();
     strokeControl.picker.hide();
     fillControl.picker.hide();
@@ -164,6 +168,7 @@ export function LayerStyleTool(gui) {
     fillControl = addColorControl(panel, 'Fill', 'fill', '');
     randomFillBtn = makePanelActionButton(fillControl.aside, 'Random fill', applyRandomFillColors)
       .addClass('layer-random-fill-btn');
+    addColorSchemeControl();
     var lineRow = El('div').addClass('label-style-row label-split-row layer-line-row').appendTo(panel);
     capControl = addLineCapControl(lineRow);
     dashControl = addDashArrayControl(lineRow);
@@ -224,6 +229,74 @@ export function LayerStyleTool(gui) {
     control.field = field;
     control.defaultColor = defaultColor;
     return control;
+  }
+
+  // Fills colored by a data field. While a scheme is applied, its colors take
+  // the place of the fill's swatch and hex value, which have no one value to
+  // show; the opacity still applies. Clicking them reopens the scheme.
+  function addColorSchemeControl() {
+    var box = fillControl.input.parent();
+    schemeStrip = El('div').addClass('layer-scheme-strip').attr('role', 'button')
+      .attr('aria-label', 'Edit color scheme');
+    box.node().insertBefore(schemeStrip.node(), fillControl.input.node());
+    schemeStrip.on('click', openColorSchemePanel);
+    El('div').addClass('layer-scheme-colors').appendTo(schemeStrip);
+    El('div').addClass('layer-scheme-remove').attr('role', 'button')
+      .attr('aria-label', 'Remove color scheme').attr('title', 'Remove color scheme')
+      .text('×').appendTo(schemeStrip)
+      .on('click', function(e) {
+        e.stopPropagation();
+        removeColorScheme();
+      });
+    schemeRow = El('div').addClass('label-style-row layer-scheme-row').appendTo(panel);
+    fillControl.row.node().after(schemeRow.node());
+    schemeBtn = makePanelActionButton(schemeRow, 'Color by data…', openColorSchemePanel);
+    schemePanel = new ColorSchemePanel(gui, {
+      getExtraCommands: function() {
+        if (!targetLayer) return '';
+        return formatStyleEditCommands(patternControl.getRefillExpressionEdits(getAllFeatureIds(targetLayer)));
+      },
+      getSelectionCount: function() {
+        return getSelectionIds().length;
+      },
+      onUpdate: function() {
+        if (panel.visible()) updateControls();
+      },
+      onClose: function() {
+        panel.removeClass('replaced');
+      }
+    });
+  }
+
+  function openColorSchemePanel() {
+    syncTargetLayer();
+    if (!targetLayer || targetLayer.geometry_type != 'polygon') return;
+    fillControl.picker.hide();
+    strokeControl.picker.hide();
+    patternControl.hidePicker();
+    // The scheme panel takes this panel's place until it closes
+    panel.addClass('replaced');
+    schemePanel.open(targetLayer);
+  }
+
+  // Back to a single fill, unset, as when the fill field is emptied
+  function removeColorScheme() {
+    schemePanel.close();
+    applyColorControlStyle(fillControl, '');
+  }
+
+  function updateColorSchemeControl() {
+    var isPolygon = targetLayer && targetLayer.geometry_type == 'polygon';
+    var scheme = isPolygon ? getLayerScheme(targetLayer) : null;
+    schemeRow.classed('hidden', !isPolygon);
+    fillControl.input.parent().classed('has-scheme', !!scheme);
+    schemeBtn.classed('selected', schemePanel.isOpen());
+    if (scheme) {
+      schemeStrip.findChild('.layer-scheme-colors')
+        .css('background-image', getStripBackground(scheme.colors));
+      schemeStrip.attr('title', 'Colored by ' + scheme.field);
+      fillControl.picker.hide();
+    }
   }
 
   // In the narrow column beside the stroke's colour. Stepping runs up a ladder
@@ -588,6 +661,7 @@ export function LayerStyleTool(gui) {
       updateArrowControl();
     }
     randomFillBtn.classed('hidden', geom != 'polygon');
+    updateColorSchemeControl();
     patternControl.section.classed('hidden', geom != 'polygon');
     if (geom == 'polygon') patternControl.update();
     glowControl.section.classed('hidden', geom != 'polygon');
@@ -904,6 +978,7 @@ export function LayerStyleTool(gui) {
   function syncTargetLayer() {
     var lyr = getActiveLayer();
     if (lyr == targetLayer) return;
+    schemePanel.close();
     if (layerCanBeStyled(lyr)) {
       targetLayer = lyr;
       if (hit) hit.clearSelection();

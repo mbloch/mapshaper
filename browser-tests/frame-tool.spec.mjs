@@ -323,11 +323,11 @@ test('a frame colour picker opens on the colour that is set', async function({pa
   // Neatline first: its picker opens below its own row, leaving the Background
   // chit above it clickable. The other order buries the second chit.
   await page.locator('.frame-properties-popup .label-color-chit').nth(1).click();
-  expect(await readPickerHsb(page, 1)).toBe('16° 100% 80%'); // #cc3300
+  expect(await readPickerColor(page, 1)).toBe('#cc3300');
 
   // Two pickers open at once just cover each other.
   await page.locator('.frame-properties-popup .label-color-chit').nth(0).click();
-  expect(await readPickerHsb(page, 0)).toBe('200° 27% 94%'); // #aed9ef
+  expect(await readPickerColor(page, 0)).toBe('#aed9ef');
   await expect(
     page.locator('.frame-properties-popup .label-color-picker').nth(1)
   ).toBeHidden();
@@ -766,13 +766,13 @@ async function loadFixture(page, file) {
   });
 }
 
-// What the picker's H/S/B fields read, which is where it is actually sitting.
-async function readPickerHsb(page, n) {
+// What the picker's color field reads, which is where it is actually sitting.
+async function readPickerColor(page, n) {
   return page.evaluate(function(i) {
     var picker = document.querySelectorAll(
       '.frame-properties-popup .label-color-picker')[i];
     return Array.prototype.map.call(
-      picker.querySelectorAll('.label-color-picker-fields input'),
+      picker.querySelectorAll('.label-color-picker-input'),
       function(el) {return el.value;}).join(' ');
   }, n);
 }

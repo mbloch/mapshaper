@@ -82,6 +82,42 @@ describe('gui-session-history-cull', function() {
     ]);
   });
 
+  it('a color classification supersedes an earlier one, or a random fill', function() {
+    var commands = [
+      '-classify colors=random non-adjacent',
+      '-classify field=pop quantile colors=#000000,#ffffff',
+      '-classify field=area equal-interval colors=#ff0000,#0000ff,#00ff00'
+    ];
+    assert.deepEqual(cull(commands), [
+      '-classify field=area equal-interval colors=#ff0000,#0000ff,#00ff00'
+    ]);
+  });
+
+  it('does not cull classify commands that write different fields', function() {
+    var commands = [
+      '-classify field=pop colors=#000000,#ffffff',
+      '-classify field=pop colors=#000000,#ffffff save-as=fill2',
+      '-classify field=pop values=1,2'
+    ];
+    assert.deepEqual(cull(commands), commands);
+  });
+
+  it('does not cull a classify command that a later one reads', function() {
+    var commands = [
+      '-classify field=pop colors=#000000,#ffffff',
+      '-classify field=fill method=categorical colors=#ff0000,#0000ff'
+    ];
+    assert.deepEqual(cull(commands), commands);
+  });
+
+  it('does not cull a classify command that writes a key', function() {
+    var commands = [
+      '-classify field=pop colors=#000000,#ffffff key',
+      '-classify field=pop colors=#ff0000,#0000ff'
+    ];
+    assert.deepEqual(cull(commands), commands);
+  });
+
   it('does not cull random classify commands with different targets', function() {
     var commands = [
       '-classify colors=random non-adjacent target=a',

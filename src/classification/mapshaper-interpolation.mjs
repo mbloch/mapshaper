@@ -1,5 +1,7 @@
 import { stop, error } from '../utils/mapshaper-logging';
 import { interpolate as d3_interpolate } from 'd3-interpolate';
+import { interpolateOklab, interpolateOklch, getVibrantColor } from '../color/oklab';
+import { parseColor } from '../color/color-utils';
 
 // TODO: support three or more stops
 export function getGradientFunction(stops) {
@@ -16,8 +18,43 @@ export function getGradientFunction(stops) {
   };
 }
 
-export function getStoppedValues(values, stops) {
-  var interpolate = getInterpolatedValueGetter(values, null);
+// Returns the interpolation options of -classify, checked, with
+// interpolation=oklch filled in when vibrance= is given without a method.
+export function getInterpolationOptions(opts) {
+  var method = opts.interpolation;
+  var vibrance = opts.vibrance;
+  if (method && method != 'rgb' && method != 'oklab' && method != 'oklch') {
+    stop('Unsupported interpolation method:', method, '(expected rgb, oklab or oklch)');
+  }
+  if (vibrance === undefined) {
+    return {interpolation: method};
+  }
+  if (method && method != 'oklch') {
+    stop('vibrance= requires interpolation=oklch');
+  }
+  if (!(vibrance >= 0 && vibrance <= 0.4)) {
+    stop('vibrance= takes an OKLCH chroma from 0 to 0.4');
+  }
+  return {interpolation: 'oklch', vibrance: vibrance};
+}
+
+// opts.interpolation: 'rgb' (default), 'oklab' or 'oklch'; the last two apply
+// only to pairs of colors. opts.vibrance goes with oklch (see
+// interpolateOklch()).
+export function getPairInterpolator(a, b, opts) {
+  var method = opts && opts.interpolation;
+  if (method == 'oklab' && parseColor(a) && parseColor(b)) {
+    return interpolateOklab(a, b);
+  }
+  if (method == 'oklch' && parseColor(a) && parseColor(b)) {
+    return interpolateOklch(a, b, opts);
+  }
+  return d3_interpolate(a, b);
+}
+
+// opts: interpolation options (see getPairInterpolator())
+export function getStoppedValues(values, stops, opts) {
+  var interpolate = getInterpolatedValueGetter(values, null, opts);
   var n = values.length;
   var fstop = getGradientFunction(stops);
   var values2 = [];
@@ -31,11 +68,11 @@ export function getStoppedValues(values, stops) {
 }
 
 // convert a continuous index ([0, n-1], -1) to a corresponding interpolated value
-export function getInterpolatedValueGetter(values, nullValue) {
+export function getInterpolatedValueGetter(values, nullValue, opts) {
   var interpolators = [];
   var tmax = values.length - 1;
   for (var i=1; i<values.length; i++) {
-    interpolators.push(d3_interpolate(values[i-1], values[i]));
+    interpolators.push(getPairInterpolator(values[i-1], values[i], opts));
   }
   return function(t) {
     if (t == -1) return nullValue;
@@ -51,22 +88,34 @@ export function getInterpolatedValueGetter(values, nullValue) {
 // return an array of n values
 // assumes that values can be interpolated by d3-interpolate
 // (colors and numbers should work)
-export function interpolateValuesToClasses(values, n, stops) {
-  if (values.length == n && !stops) return values;
+export function interpolateValuesToClasses(values, n, stops, opts) {
+  if (values.length == n && !stops) return getVibrantValues(values, opts);
   var numPairs = values.length - 1;
-  var output = [values[0]];
+  var pairOpts = Object.assign({}, opts, {steps: (n - 1) / numPairs});
+  var output = [getVibrantValues(values, opts)[0]];
   var k, j, t, intVal;
   for (var i=1; i<n-1; i++) {
     k = i / (n-1) * numPairs;
     j = Math.floor(k);
     t = k - j;
     // if (convert) t = convert(t);
-    intVal = d3_interpolate(values[j], values[j+1])(t);
+    intVal = getPairInterpolator(values[j], values[j+1], pairOpts)(t);
     output.push(intVal);
   }
-  output.push(values[values.length - 1]);
+  output.push(getVibrantValues(values, opts)[values.length - 1]);
   if (stops) {
-    output = getStoppedValues(output, stops);
+    // the colors already have their vibrance
+    output = getStoppedValues(output, stops, {interpolation: opts && opts.interpolation});
   }
   return output;
+}
+
+// The user's colors, with vibrance added (see getVibrantColor()), as the
+// oklch interpolator gives them at the ends of each pair
+function getVibrantValues(values, opts) {
+  var vibrance = opts && opts.interpolation == 'oklch' && opts.vibrance;
+  if (!(vibrance > 0)) return values;
+  return values.map(function(val) {
+    return parseColor(val) ? getVibrantColor(val, vibrance) : val;
+  });
 }

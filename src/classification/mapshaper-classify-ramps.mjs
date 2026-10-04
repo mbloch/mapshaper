@@ -66,7 +66,7 @@ export function getClassValues(method, n, opts) {
     if (categorical && isCategoricalColorScheme(colorScheme)) {
       return getCategoricalColorScheme(colorScheme, n);
     } else {
-      return getColorRamp(colorScheme, n, opts.stops);
+      return getColorRamp(colorScheme, n, opts.stops, opts);
     }
   } else if (opts.colors || opts.values) {
     if (categorical) {
@@ -97,11 +97,8 @@ function getIndexes(n) {
 
 // TODO: check for non-interpolatable value types (e.g. boolean, text)
 function getInterpolableValues(arr, n, opts) {
-  var values = parseValues(arr);
-  if (n != values.length || opts.stops) {
-    return interpolateValuesToClasses(values, n, opts.stops);
-  }
-  return values;
+  // with one value per class, this only adds vibrance= to colors
+  return interpolateValuesToClasses(parseValues(arr), n, opts.stops, opts);
 }
 
 // convert strings to numbers if they all parse as numbers

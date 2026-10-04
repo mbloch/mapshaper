@@ -3768,10 +3768,6 @@ body.pan.panning .map-layers:not(.drawing) {
 	border-radius: 0;
 }
 
-.label-color-row .label-color-picker input[type="text"] {
-	width: 45px;
-}
-
 .label-css-row input {
 	width: 100%;
 	box-sizing: border-box;
@@ -3816,6 +3812,13 @@ body.pan.panning .map-layers:not(.drawing) {
 	border: 1px solid #ddd;
 	border-radius: 6px;
 	box-shadow: 0 1px 7px rgba(0,0,0,0.18);
+}
+
+/* A style panel is a stacking context, below the floating toolbars (25), so a
+   picker that opens low enough to reach them would be drawn under them. The
+   panel comes forward while one of its pickers is open. */
+.label-style-panel.color-picker-open {
+	z-index: 26;
 }
 
 .label-color-picker canvas {
@@ -3886,27 +3889,24 @@ body.dragging-color-picker * {
 	margin-top: 6px;
 }
 
-.label-color-picker-fields label {
-	display: inline-flex;
-	align-items: center;
-	gap: 3px;
-	margin: 0;
-	color: #555;
-}
-
-.label-color-picker-fields span {
-	display: inline;
-	margin: 0;
-	color: #555;
-}
-
-.label-color-picker-fields input {
-	width: 34px;
-	box-sizing: border-box;
-}
-
+/* Like the panels' own buttons (.label-panel-action-btn) */
 .label-color-picker-fields button {
-	margin-left: auto;
+	box-sizing: border-box;
+	height: var(--label-field-height, 22px);
+	margin: 0 0 0 auto;
+	padding: 0 8px;
+	border: 1px solid var(--label-field-border, #c6c6c6);
+	border-radius: var(--label-field-radius, 4px);
+	background-color: white;
+	box-shadow: none;
+	font: inherit;
+	font-size: 12px;
+	color: var(--normal-text);
+	cursor: pointer;
+}
+
+.label-color-picker-fields button:hover {
+	background-color: #f0f0f0;
 }
 
 .label-style-selection-row {
@@ -4670,4 +4670,329 @@ body.dragging-color-picker * {
 
 .simplify-control .clicktext:focus {
 	background: #fff;
+}
+
+/* Color scheme panel (gui-color-scheme-panel.mjs): it opens in the polygon
+   style panel's place, which is hidden until it closes. */
+.layer-style-panel.replaced {
+	display: none;
+}
+
+.color-scheme-note {
+	font-size: 11px;
+	line-height: 1.3;
+	color: #555;
+}
+
+.label-style-panel .color-scheme-select-row > span {
+	margin-bottom: 2px;
+}
+
+.color-scheme-palette-cell {
+	position: relative;
+}
+
+.color-scheme-palette-btn {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	box-sizing: border-box;
+	height: var(--label-field-height);
+	padding: 0 20px 0 4px;
+	border: 1px solid var(--label-field-border);
+	border-radius: var(--label-field-radius);
+	background: white var(--label-menu-chevron) no-repeat right 6px center / 10px 7px;
+	cursor: pointer;
+	user-select: none;
+}
+
+/* The background stops at the border: a gradient repeats under a border,
+   which would show the first color along the far edge. */
+.color-scheme-strip {
+	flex: none;
+	width: 48px;
+	height: 12px;
+	border: 1px solid rgba(0,0,0,0.15);
+	background-clip: padding-box;
+}
+
+.label-style-panel .color-scheme-palette-btn > span,
+.label-style-panel .color-scheme-palette-item > span {
+	display: inline;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 12px;
+	color: var(--normal-text);
+}
+
+.color-scheme-palette-menu {
+	position: absolute;
+	z-index: 2;
+	top: 100%;
+	left: 0;
+	right: -84px;
+	max-height: 260px;
+	overflow-y: auto;
+	margin-top: 2px;
+	padding: 3px 0;
+	background: white;
+	border: 1px solid #ccc;
+	border-radius: var(--label-field-radius);
+	box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.color-scheme-palette-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 3px 8px;
+	cursor: pointer;
+}
+
+.color-scheme-palette-item:hover {
+	background-color: #f0f0f0;
+}
+
+.color-scheme-palette-item.selected {
+	background-color: var(--lt-theme-col);
+}
+
+.color-scheme-tile-row {
+	margin-top: 10px;
+}
+
+.color-scheme-tiles {
+	display: flex;
+	gap: 3px;
+}
+
+/* The pins' tooltips are placed against the cell, which ends at the pin */
+.color-scheme-tile-cell {
+	position: relative;
+	flex: 1;
+	min-width: 0;
+}
+
+.color-scheme-tile {
+	height: 26px;
+	border-radius: 3px;
+	box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12);
+	cursor: pointer;
+}
+
+.color-scheme-tile.selected {
+	box-shadow: 0 0 0 2px #000;
+}
+
+/* A dot under each color the user set. The end dots are hollow: the ends of
+   a ramp are always pinned, so there is nothing to click. */
+.color-scheme-pin {
+	width: 7px;
+	height: 7px;
+	margin: 4px auto 0;
+	border-radius: 50%;
+}
+
+.color-scheme-pin.pinned {
+	background: #222;
+	cursor: pointer;
+}
+
+.color-scheme-pin.pinned.end {
+	box-sizing: border-box;
+	background: transparent;
+	border: 1.5px solid #222;
+	cursor: default;
+}
+
+.label-color-picker-fields input.label-color-picker-input {
+	flex: 1;
+	width: auto;
+	min-width: 0;
+	font-family: Menlo, Consolas, monospace;
+	font-size: 11.5px;
+}
+
+/* Format tabs over a picker's color field: a segmented control on a grey
+   well, the chosen tab drawn like the panels' fields and buttons. */
+.label-color-format-tabs {
+	display: flex;
+	margin-top: 6px;
+	border-radius: var(--label-field-radius, 4px);
+	background-color: #f0f0f0;
+}
+
+.label-color-picker .label-color-format-tab {
+	flex: 1;
+	min-width: 0;
+	box-sizing: border-box;
+	height: var(--label-field-height, 22px);
+	margin: 0;
+	padding: 0 4px;
+	border: 1px solid transparent;
+	border-radius: var(--label-field-radius, 4px);
+	background: transparent;
+	box-shadow: none;
+	font: inherit;
+	font-size: 12px;
+	color: #777;
+	cursor: pointer;
+}
+
+.label-color-picker .label-color-format-tab:hover:not(.selected) {
+	color: var(--normal-text);
+}
+
+.label-color-picker .label-color-format-tab.selected {
+	border-color: var(--label-field-border, #c6c6c6);
+	background-color: white;
+	color: var(--normal-text);
+	cursor: default;
+}
+
+/* In the style panel, the scheme's colors take the place of the fill's swatch
+   and hex value. */
+.label-style-panel .label-color-field.has-scheme .label-color-chit,
+.label-style-panel .label-color-field.has-scheme .label-color-input {
+	display: none;
+}
+
+.layer-scheme-strip {
+	display: none;
+	flex: 1;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+	height: 100%;
+	cursor: pointer;
+}
+
+.label-color-field.has-scheme .layer-scheme-strip {
+	display: flex;
+}
+
+.layer-scheme-colors {
+	flex: 1;
+	height: 13px;
+	border: 1px solid rgba(0,0,0,0.22);
+	background-clip: padding-box;
+}
+
+.layer-scheme-remove {
+	flex: none;
+	padding: 0 2px;
+	font-size: 14px;
+	line-height: 1;
+	color: #777;
+}
+
+.layer-scheme-remove:hover {
+	color: #000;
+}
+
+.layer-scheme-row .label-panel-action-btn {
+	margin-top: 0;
+}
+
+.layer-scheme-row .label-panel-action-btn.selected {
+	background-color: var(--lt-theme-col);
+}
+
+.color-scheme-slider-row:not(.hidden) {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.color-scheme-tile-row + .color-scheme-slider-row {
+	margin-top: 6px;
+}
+
+.color-scheme-slider-label {
+	position: relative;
+	flex: none;
+	cursor: default;
+}
+
+.color-scheme-slider-row input[type=range] {
+	flex: 1;
+	min-width: 0;
+	margin: 0;
+	accent-color: var(--theme-col);
+}
+
+/* Presets have only the reverse button in the vibrance row */
+.color-scheme-slider-row.preset {
+	justify-content: flex-end;
+}
+
+.color-scheme-slider-row.preset > :not(.color-scheme-icon-btn),
+.color-scheme-slider-row.preset > .color-scheme-icon-btn:not(:last-child) {
+	display: none;
+}
+
+.color-scheme-icon-btn {
+	position: relative;
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: var(--label-field-height, 22px);
+	height: var(--label-field-height, 22px);
+	padding: 0;
+	border: 1px solid var(--label-field-border);
+	border-radius: var(--label-field-radius, 4px);
+	background-color: white;
+	color: var(--normal-text);
+	font: inherit;
+	cursor: pointer;
+}
+
+.color-scheme-icon-btn:hover {
+	background-color: #f0f0f0;
+}
+
+.color-scheme-icon-btn.selected {
+	background-color: var(--lt-theme-col);
+}
+
+.color-scheme-slider-row > .color-scheme-icon-btn + .color-scheme-icon-btn {
+	margin-left: -4px;
+}
+
+/* Under an interpolated tile whose color was moved to fit the sRGB gamut,
+   in place of a pin dot */
+.color-scheme-pin.adjusted {
+	width: 0;
+	height: 0;
+	border-radius: 0;
+	border-left: 4px solid transparent;
+	border-right: 4px solid transparent;
+	border-bottom: 7px solid #dd5555;
+}
+
+/* In the floating toolbar's tooltip style, below the pins so as not to cover
+   the tiles. A newline in the text breaks the line. --tooltip-shift is set
+   on hover to keep the tooltip inside the window; the script reads the
+   tooltip's width, so it is sized as a border box. */
+.color-scheme-pin[data-tooltip]:hover::after,
+.color-scheme-slider-label[data-tooltip]:hover::after,
+.color-scheme-icon-btn[data-tooltip]:hover::after {
+	content: attr(data-tooltip);
+	box-sizing: border-box;
+	position: absolute;
+	top: calc(100% + 5px);
+	left: 50%;
+	transform: translateX(calc(-50% + var(--tooltip-shift, 0px)));
+	background-color: rgba(40, 40, 40, 0.92);
+	color: #fff;
+	font-size: 11px;
+	line-height: 1.3;
+	white-space: pre;
+	padding: 5px 7px;
+	border-radius: 4px;
+	pointer-events: none;
+	z-index: 1;
 }

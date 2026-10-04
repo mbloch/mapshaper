@@ -33,8 +33,11 @@ export function Console(gui) {
   var globals = {}; // share user-defined globals (job.defs) between runs
   var sharedVars = {}; // share -vars / -defaults templating scope between runs
 
+  var activeSession = null; // see createCommandSession()
+
   // expose this function, so other components can run commands (e.g. box tool)
   this.runMapshaperCommands = runMapshaperCommands;
+  this.createCommandSession = createCommandSession;
 
   // Open the console (if closed) and run a command, as if the user had
   // typed it. Used by UI controls that surface console functionality, e.g.
@@ -430,8 +433,118 @@ export function Console(gui) {
     }
   }
 
-  function runMapshaperCommands(str, done) {
+  // A command session is for a panel that applies its edits as they are made
+  // (a live preview) but should leave one undo state and one history command
+  // for the whole set: the commands run with session.run() share one undo
+  // transaction, which keeps the state from before the first of them; each
+  // one replaces the session's previous command in the session history; and
+  // finish() adds the transaction to the undo history as one state.
+  //
+  // Nothing else may add an undo state while a session's is still to come, or
+  // undoing that state would also take back the session's edits without
+  // saying so. So another command finishes the session before it runs, and
+  // Undo and Redo finish it before they act (Undo#addPendingCommit()). The
+  // panel finishes it when it closes. A finished session can be run again,
+  // which starts a new set.
+  //
+  // opts.label     the undo state's label
+  // opts.onCommit  called as the state is added; may return {onUndo, onRedo},
+  //                called after the state is undone or redone, for GUI state
+  //                that goes with the edits
+  function createCommandSession(optsArg) {
+    var opts = optsArg || {};
+    var busy = Promise.resolve();
+    var queued = null;
+    var unregisterCommit = null;
+    var session = {
+      tx: null,
+      historyIds: [],
+      flags: {},
+      // Runs a command string. A command submitted while an earlier one is
+      // still running waits for it, and replaces any other that is waiting,
+      // so that a burst of edits runs the first and the last of them.
+      run: function(cmd, done) {
+        if (queued) {
+          queued.cmd = cmd;
+          queued.callbacks.push(done);
+          return;
+        }
+        queued = {cmd: cmd, callbacks: [done]};
+        busy = busy.then(function() {
+          var job = queued;
+          queued = null;
+          return new Promise(function(resolve) {
+            runMapshaperCommands(job.cmd, function(err, flags) {
+              job.callbacks.forEach(function(cb) {
+                if (cb) cb(err, flags);
+              });
+              resolve();
+            }, {session: session});
+          });
+        });
+      },
+      finish: function() {
+        return busy.then(commit);
+      },
+      isPending: function() {
+        return activeSession == session;
+      },
+      // for runMapshaperCommands()
+      activate: activate
+    };
+    return session;
+
+    function commit() {
+      var tx = session.tx,
+          historyIds = session.historyIds,
+          flags = session.flags,
+          callbacks;
+      session.tx = null;
+      session.historyIds = [];
+      session.flags = {};
+      if (activeSession == session) activeSession = null;
+      if (unregisterCommit) unregisterCommit();
+      unregisterCommit = null;
+      if (!tx || !isCommandUndoEnabled()) return;
+      callbacks = opts.onCommit ? opts.onCommit() || {} : {};
+      return getStoredUndoHistory(gui).addTransaction(tx, {
+        flags: flags,
+        entryPrefix: 'command-session',
+        onUndo: function() {
+          gui.session.setCommandsActive(historyIds, false);
+          if (callbacks.onUndo) callbacks.onUndo();
+        },
+        onRedo: function() {
+          gui.session.setCommandsActive(historyIds, true);
+          if (callbacks.onRedo) callbacks.onRedo();
+        }
+      }).catch(function(e) {
+        console.error(e);
+        consoleWarn('Undo state was not saved:', e.message || e);
+      });
+    }
+
+    function activate() {
+      if (activeSession == session) return;
+      activeSession = session;
+      session.tx = createCommandUndoTransaction(opts.label || '');
+      if (gui.undo && gui.undo.addPendingCommit) {
+        unregisterCommit = gui.undo.addPendingCommit(session.finish);
+      }
+    }
+
+  }
+
+  function runMapshaperCommands(str, done, runOpts) {
+    var session = runOpts && runOpts.session || null;
     var commands;
+    if (activeSession && activeSession != session) {
+      activeSession.finish().then(function() {
+        runMapshaperCommands(str, done, runOpts);
+      });
+      return;
+    }
+    if (session) session.activate();
     try {
       commands = internal.parseConsoleCommands(str);
       // don't add info commands to console history
@@ -442,7 +555,7 @@ export function Console(gui) {
       return done(e, {});
     }
     if (commands.length === 0) return done();
-    applyParsedCommands(commands, str, function(err, flags) {
+    applyParsedCommands(commands, str, session, function(err, flags) {
       if (flags) {
         model.updated(flags); // info commands do not return flags
       }
@@ -468,13 +581,13 @@ export function Console(gui) {
     });
   }
 
-  function applyParsedCommands(commands, commandString, done) {
+  function applyParsedCommands(commands, commandString, session, done) {
     var active = model.getActiveLayer(),
         prevArcs = active?.dataset.arcs,
         prevTable = active?.layer.data,
         prevTableSize = prevTable ? prevTable.size() : 0,
         prevArcCount = prevArcs ? prevArcs.size() : 0,
-        undoTransaction = createCommandUndoTransaction(commandString),
+        undoTransaction = session ? session.tx : createCommandUndoTransaction(commandString),
         job = new internal.Job(model),
         commandStart = Date.now();
 
@@ -535,11 +648,24 @@ export function Console(gui) {
       // the data.
       if (!err) {
         commandString = internal.standardizeConsoleCommands(commandString);
+        if (session) {
+          // the session's previous command is at the end of the history, and
+          // an inactive tail is discarded by the next command added
+          gui.session.setCommandsActive(session.historyIds, false);
+        }
         historyIds.push(gui.session.consoleCommands(commandString));
         // kludge to terminate unclosed -if blocks
         if (commandString.includes('-if') && !commandString.includes('-endif')) {
           historyIds.push(gui.session.consoleCommands('-endif'));
         }
+      }
+      if (session) {
+        if (!err) session.historyIds = historyIds;
+        Object.assign(session.flags, flags);
+        if (!undoTransaction) discardHistoryAfterUnrecordedCommand();
+        logCommandTiming(commandString, commands, err, Date.now() - commandStart, null);
+        done(err, flags);
+        return;
       }
       addCommandUndoHistory(undoTransaction, err, flags, historyIds).then(function(undoTiming) {
         logCommandTiming(commandString, commands, err, Date.now() - commandStart, undoTiming);

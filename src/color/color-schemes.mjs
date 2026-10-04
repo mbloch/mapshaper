@@ -101,6 +101,13 @@ export function printColorSchemeNames() {
   print ('\nMulti-hue/rainbow\n' + formatStringsAsGrid(index.rainbow));
 }
 
+// type: categorical, sequential, rainbow or diverging
+export function getColorSchemeNames(type) {
+  initSchemes();
+  if (!index[type]) error('Unknown color scheme type:', type);
+  return index[type].concat();
+}
+
 export function pickRandomColorScheme(type) {
   initSchemes();
   var names = index[type];
@@ -167,7 +174,8 @@ export function isCategoricalColorScheme(name) {
   return index.categorical.includes(standardName(name));
 }
 
-export function getColorRamp(name, n, stops) {
+// interpOpts: how stops= colors are interpolated (see getPairInterpolator())
+export function getColorRamp(name, n, stops, interpOpts) {
   initSchemes();
   name = standardName(name);
   var ramps = d3Scales['scheme' + name];
@@ -185,7 +193,7 @@ export function getColorRamp(name, n, stops) {
     ramp = getInterpolatedRamp(interpolate, n);
   }
   if (stops) {
-    ramp = getStoppedValues(ramp, stops);
+    ramp = getStoppedValues(ramp, stops, interpOpts);
   }
   return ramp;
 }

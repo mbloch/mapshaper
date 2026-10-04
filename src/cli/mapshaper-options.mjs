@@ -805,6 +805,13 @@ export function getOptionParser() {
       describe: 'output interpolated values, for unclassed colors',
       type: 'flag'
     })
+    .option('interpolation', {
+      describe: 'color interpolation: rgb (default), oklab or oklch'
+    })
+    .option('vibrance', {
+      describe: '(oklch) chroma added to midtones, e.g. 0.04 (default 0)',
+      type: 'number'
+    })
     .option('index-field', {
       describe: 'apply pre-calculated classes (0 ... n-1, -1)'
     })
