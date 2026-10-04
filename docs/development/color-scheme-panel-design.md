@@ -189,8 +189,9 @@ layer properties still needs to be checked before this is built.
 - `vibrance=` (0-1) on `-classify`, for `oklch`, scaled to OKLCH chroma
   (1 adds 0.09, the top of the panel's slider); `vibrance=` alone
   selects `oklch`.
-- `pivot=`, `pivot-range=`, `no-pivot-class` and `classes=lo,hi` for
-  diverging schemes (see Diverging schemes).
+- `pivot=`, `pivot-range=`, `no-pivot-class`, `pivot-class` and
+  `classes=lo,hi` for diverging schemes (see Diverging schemes).
+- With `continuous`, N colors give N-1 intervals (see Continuous ramps).
 - Possibly later: placeholder slots in `colors=` (e.g. `#334,*,*,#fd5`) to
   express pinned ramps on the command line.
 
@@ -309,8 +310,9 @@ Diverging tab uses the same layout function (`internal.getDivergingLayout`).
   pivot inside a class makes that class the neutral class (an error with
   `no-pivot-class`). `pivot-range=` can't be combined with `breaks=`.
 - `invert`, `null-value=`, `precision=`, `outer-breaks=` and
-  `interpolation=`/`vibrance=` work as before. `continuous`, `stops=` and
-  the categorical methods are rejected with `pivot=`.
+  `interpolation=`/`vibrance=` work as before, and `continuous` (see
+  Continuous ramps). `stops=` and the categorical methods are rejected with
+  `pivot=`.
 - A message reports the pivot and the classes on each side, before the
   usual table of class ranges.
 
@@ -353,7 +355,91 @@ Diverging tab uses the same layout function (`internal.getDivergingLayout`).
    Done.
 3. CLI options, messages, docs and tests. Done.
 4. GUI model and panel, browser tests. Done.
-5. Later: distribution plot, continuous diverging ramps, keys.
+5. Continuous diverging ramps (see Continuous ramps). Done.
+6. Later: distribution plot, keys.
+
+## Continuous ramps
+
+Unclassed colors for sequential and diverging schemes, with -classify's
+`continuous` flag: the tiles become control points, and each feature's color
+is interpolated between the two around its value.
+
+### How -classify places the colors
+
+- The colors sit at the class breaks: the first at the data's minimum, the
+  last at its maximum, the inner ones at the breaks the method finds. A value
+  between two breaks is interpolated between their colors. So the method
+  still matters -- it places the control points in the data (equal interval
+  gives a linear ramp, quantile one that evens out the histogram).
+- Change: with `continuous`, a list of N colors gives N-1 intervals by
+  default, so each color is a control point, used as given. (Before, N
+  colors made N classes and N+1 colors, re-interpolated from the list.)
+- The panel passes `continuous interpolation=oklch classes=N-1` and its tile
+  colors. Not `vibrance=`: the tiles already have it, and the interpolation
+  between them would add it again.
+
+### Panel
+
+- An icon toggle beside the reverse button (pressed state like the long-hue
+  button's), with a gradient icon: a rounded rectangle filled from
+  transparent to the icon color. Tooltip "Continuous colors (unclassed)".
+  Shown on the sequential and diverging tabs, presets included.
+- A gradient bar (about 12px) over half-height tiles (about 14px), which stay
+  clickable and pinnable as the control points. Each stop is under the
+  center of its tile, with the end colors held over the outer half-tiles.
+  The gradient is built from samples of the same interpolator -classify uses
+  (about 6 per interval), not a CSS `in oklch` gradient, whose gamut mapping
+  differs.
+- Tile tooltips give the data value at each stop ("1806 (min)", "2016",
+  "5434 (max)").
+- The gradient's extent shows which tiles are used, so the black bar is not
+  drawn in this mode.
+- Starting the mode with 5 or more stops: with 2-3, vibrance and the long hue
+  path show only at the stops, since -classify interpolates directly between
+  them.
+
+### Diverging
+
+- -classify takes `pivot=` with `continuous`.
+- The center color is never a stop of the interpolation. Each side is its
+  own gradient, of its own tiles only: a side with m classes becomes m
+  intervals, with m + 1 tiles from the one next to the center outward. So
+  each side has one more tile than in the classed layout (K = the longer
+  side's m + 1), and a side with data always has a gradient of at least two
+  tiles.
+- The pivot class is off by default in this mode. Off, the center tile is
+  unused (as in the classed layout without one), and the two gradients meet
+  at the pivot, each starting at its own first tile, so there is a step
+  there. The panel draws two bars with a gap at the center tile.
+- On, the pivot class is a discrete class outside the interpolation: a flat
+  band of the center color across its range, and the two gradients start at
+  its edges.
+- The panel keeps the switch's setting for each mode, so that turning
+  continuous on and off doesn't lose it. On the command line, `continuous`
+  has no pivot class unless `pivot-class` (a new flag, the opposite of
+  `no-pivot-class`; automatic range) or `pivot-range=` is given; classed
+  output keeps its pivot class by default. The panel always passes one of
+  the two flags.
+- A list of colors still has the center color in the middle (2K+1 colors),
+  so the same list works in both modes; without a pivot class the center
+  color is ignored.
+- Equal interval and nice: the sides end at the pivot (or the band's edge)
+  +/- K steps, not at the data's min and max, so that equal distances from
+  the pivot get equally strong colors; the shorter side's gradient stops
+  partway between two tiles, at the end of its data. Quantile and hybrid
+  sides run to their own data extents, as in the classed layout.
+- A side with no data: no gradient on that half, and the ramp is the other
+  side's gradient alone.
+
+### Other changes needed
+
+- The layer record checks that every fill is one of the scheme's colors,
+  which interpolated fills aren't. Keep a fingerprint of the fills (a hash
+  of the fill column) when the scheme is applied, and check that instead.
+- The style panel's strip and the palette button show the gradients rather
+  than blocks, end to end: each gradient runs from its first stop to its
+  last, without the flat half-tiles of the panel's bar, and a pivot class
+  takes a tile's width.
 
 ## Panel contents (sequential, first version)
 
@@ -390,7 +476,8 @@ Phase 2 is in place for polygon layers:
   field.
 - Browser tests: `browser-tests/color-scheme-panel.spec.mjs`.
 
-Sequential, Diverging and Categorical tabs are in place.
+Sequential, Diverging and Categorical tabs are in place, with continuous
+ramps on the first two.
 
 ## Phases
 

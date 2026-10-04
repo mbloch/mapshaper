@@ -20,7 +20,7 @@ import { groupStyleEdits } from './gui-fill-pattern';
 import { runGuiEditCommand } from './gui-edit-command';
 import { internal } from './gui-core';
 import { quoteCommandValue } from './gui-command-utils';
-import { ColorSchemePanel, getStripBackground } from './gui-color-scheme-panel';
+import { ColorSchemePanel, getSchemeStripBackground } from './gui-color-scheme-panel';
 import { getLayerScheme } from './gui-color-scheme-model';
 
 var savedStylesKey = 'layer_style_presets';
@@ -290,7 +290,7 @@ export function LayerStyleTool(gui) {
     schemeBtn.classed('selected', schemePanel.isOpen());
     if (scheme) {
       schemeStrip.findChild('.layer-scheme-colors')
-        .css('background-image', getStripBackground(scheme.colors));
+        .css('background-image', getSchemeStripBackground(scheme));
       schemeStrip.attr('title', scheme.method == 'non-adjacent' ?
         'Neighbors colored differently' : 'Colored by ' + scheme.field);
       fillControl.picker.hide();

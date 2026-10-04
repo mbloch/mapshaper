@@ -25,6 +25,13 @@ import { quoteCommandValue } from './gui-command-utils';
 // will find (see updateDivergingLayout()). A custom diverging ramp is pinned
 // at its ends and its center.
 //
+// A continuous sequential or diverging scheme gives unclassed colors: its
+// tiles are color stops, at the data's min, the class breaks and its max,
+// with colors interpolated between them. Each side of a diverging scheme is
+// a ramp of its own, a tile longer than its classes (so K is the longer
+// side's classes + 1); the center tile is used only by a pivot class, which
+// is a flat band of the center color.
+//
 // scheme: {
 //   type: 'sequential', 'diverging' or 'categorical',
 //   field, method, n,                         (n: the number of colors, or for
@@ -38,8 +45,11 @@ import { quoteCommandValue } from './gui-command-utils';
 //                                             of the preset's colors, as
 //                                             rearranged)
 //   swatches: [...] or null                   (custom categorical lists)
+//   continuous: boolean                       (sequential and diverging)
 //   pivot: 'auto', 'median', 'mean' or a number,
-//   neutral: boolean (a pivot class),
+//   neutral, continuousNeutral: boolean       (a pivot class, for classed
+//                                             and continuous schemes; see
+//                                             getSchemeNeutral())
 //   split: 'size' or 'count'                  (diverging: n is the total
 //                                             number of classes, split so
 //                                             they're the same size on both
@@ -51,6 +61,8 @@ import { quoteCommandValue } from './gui-command-utils';
 //   nullColor       the color of features with no data (both types; not
 //                   used by non-adjacent schemes)
 //   colors: [...]   the colors that were applied, for checking a layer later
+//   fillHash        continuous schemes: a fingerprint of the fills they gave
+//                   the layer (interpolated fills aren't the scheme's colors)
 // }
 
 export var schemeTypes = [
@@ -163,15 +175,42 @@ export function updateDivergingLayout(scheme, lyr) {
 function getDivergingLayout(scheme, lyr) {
   var values = getAscendingValues(lyr, scheme.field);
   if (values.length === 0) return null;
+  var neutral = getSchemeNeutral(scheme);
   try {
     return internal.getDivergingLayout(values, scheme.method, {
       pivot: scheme.pivot,
-      no_pivot_class: !scheme.neutral,
+      continuous: !!scheme.continuous,
+      pivot_class: neutral,
+      no_pivot_class: !neutral,
       classes: getDivergingClassesOption(scheme)
     });
   } catch(e) {
     return null;
   }
+}
+
+// Whether a diverging scheme has a pivot class. Classed and continuous
+// schemes each keep their own setting, so that switching between them keeps
+// both: on by default for classes, off for continuous colors.
+export function getSchemeNeutral(scheme) {
+  return scheme.continuous ? !!scheme.continuousNeutral : scheme.neutral !== false;
+}
+
+export function isContinuousScheme(scheme) {
+  return scheme.type != 'categorical' && !!scheme.continuous;
+}
+
+// A sequential ramp starts with at least this many stops, since -classify
+// interpolates straight between them, so vibrance and the long hue path
+// show only at the stops.
+var minContinuousStartColors = 5;
+
+export function setSchemeContinuous(scheme, continuous) {
+  var next = Object.assign({}, scheme, {continuous: !!continuous});
+  if (continuous && next.type == 'sequential' && next.n < minContinuousStartColors) {
+    next.n = minContinuousStartColors;
+  }
+  return next;
 }
 
 function getAscendingValues(lyr, field) {
@@ -187,26 +226,132 @@ function getDivergingClassesOption(scheme) {
 }
 
 // The number of tiles of a ramp: for a diverging scheme, the center tile and
-// enough on each side for the longer side's classes
+// enough on each side for the longer side's classes (or a continuous
+// side's stops)
 function getRampSize(scheme) {
   var layout = scheme.layout;
   var k;
   if (scheme.type != 'diverging') return scheme.n;
-  k = layout ? Math.max(layout.below, layout.above, 1) :
-    scheme.split == 'count' ? scheme.n : Math.max(Math.floor(scheme.n / 2), 1);
+  k = layout ? Math.max(layout.below, layout.above) :
+    scheme.split == 'count' ? scheme.n : Math.floor(scheme.n / 2);
+  k = scheme.continuous ? k + 1 : Math.max(k, 1);
   return k * 2 + 1;
 }
 
-// One boolean per tile of a diverging scheme: whether a class uses it
+// The numbers of tiles that each side of a diverging scheme uses
+function getSideTiles(scheme) {
+  var layout = scheme.layout;
+  if (!scheme.continuous) return [layout.below, layout.above];
+  return [internal.getContinuousSideStops(layout.below), internal.getContinuousSideStops(layout.above)];
+}
+
+// One boolean per tile of a diverging scheme: whether a class (or a color
+// stop) uses it
 export function getDivergingTileUse(scheme) {
   var size = getRampSize(scheme);
   var k = (size - 1) / 2;
   var layout = scheme.layout;
+  var sides = layout ? getSideTiles(scheme) : [0, 0];
   var use = [];
   for (var i=0; i<size; i++) {
-    use.push(!!layout && (i < k ? i >= k - layout.below : i > k ? i <= k + layout.above : !!layout.neutral));
+    use.push(!!layout && (i < k ? i >= k - sides[0] : i > k ? i <= k + sides[1] : !!layout.neutral));
   }
   return use;
+}
+
+// The data value at each tile of a continuous scheme: {value, min, max}
+// (min and max: the value is the data's min or max), or for a diverging
+// scheme's center tile, the pivot class's range: {range}. Tiles that no stop
+// uses are null. Returns null if there are no data.
+export function getContinuousTileStops(scheme, lyr) {
+  var values, breaks, layout, stops, k, tiles;
+  if (scheme.type == 'sequential') {
+    values = getAscendingValues(lyr, scheme.field);
+    if (values.length === 0) return null;
+    try {
+      breaks = internal.getSequentialBreaks(values, scheme.method, scheme.n - 2);
+    } catch(e) {
+      return null;
+    }
+    return markDataRange([values[0]].concat(breaks, [values[values.length - 1]]), values);
+  }
+  layout = scheme.layout;
+  if (!layout) return null;
+  stops = internal.getDivergingStops(layout);
+  k = (getRampSize(scheme) - 1) / 2;
+  tiles = new Array(k * 2 + 1).fill(null);
+  markDataRange(stops.below, layout.dataRange).forEach(function(stop, i) {
+    tiles[k - stops.below.length + i] = stop;
+  });
+  if (layout.neutral) tiles[k] = {range: layout.neutral};
+  markDataRange(stops.above, layout.dataRange).forEach(function(stop, i) {
+    tiles[k + 1 + i] = stop;
+  });
+  return tiles;
+}
+
+// range: ascending values, of which the first is the min and the last the max
+function markDataRange(stops, range) {
+  var min = range[0], max = range[range.length - 1];
+  return stops.map(function(val) {
+    return {value: val, min: val == min, max: val == max};
+  });
+}
+
+// The gradients to draw over the tiles of a continuous scheme, in order:
+// [{start, end, flatStart, flatEnd, samples: [{pos, color}]}], with positions
+// in tiles (0 is the center of the first tile, 1 of the second...). A
+// gradient runs from stop to stop, and holds its end colors over the outer
+// halves of its end tiles (flatStart, flatEnd) -- except where the data ends
+// between two stops (the shorter side of an equal-interval or nice
+// diverging scheme). A pivot class is a gradient of one color, over its
+// tile. The samples are of the interpolation -classify does between the
+// stops (samplesPerTile to each pair).
+export function getContinuousSegments(scheme, samplesPerTile) {
+  var colors = getSchemeColors(scheme);
+  var layout = scheme.layout;
+  var steps = samplesPerTile || 6;
+  var segments = [];
+  var stops, k, first, last;
+  if (!isContinuousScheme(scheme)) return [];
+  if (scheme.type == 'sequential') {
+    return [makeSegment(colors, 0, 0, colors.length - 1, steps)];
+  }
+  if (!layout) return [];
+  stops = internal.getDivergingStops(layout);
+  k = (colors.length - 1) / 2;
+  if (stops.below.length > 0) {
+    first = k - stops.below.length;
+    segments.push(makeSegment(colors.slice(first, k), first,
+      first + internal.getStopPosition(stops.below, layout.dataRange[0]), k - 1, steps));
+  }
+  if (layout.neutral) {
+    segments.push(makeSegment([colors[k]], k, k, k, steps));
+  }
+  if (stops.above.length > 0) {
+    last = k + stops.above.length;
+    segments.push(makeSegment(colors.slice(k + 1, last + 1), k + 1,
+      k + 1, k + 1 + internal.getStopPosition(stops.above, layout.dataRange[1]), steps));
+  }
+  return segments;
+}
+
+// colors: the stops' colors, the first at tile first
+// start, end: where the gradient starts and ends, in tiles
+function makeSegment(colors, first, start, end, steps) {
+  var last = first + colors.length - 1;
+  var getColor = colors.length > 1 ?
+    internal.getInterpolatedValueGetter(colors, null, {interpolation: 'oklch'}) : null;
+  var samples = [];
+  var sample = function(pos) {
+    samples.push({pos: pos, color: getColor ? toHex(getColor(pos - first)) : colors[0]});
+  };
+  sample(start);
+  for (var i=Math.floor(start * steps) + 1; i / steps < end; i++) {
+    sample(i / steps);
+  }
+  if (end > start) sample(end);
+  return {start: start, end: end, flatStart: start == first, flatEnd: end == last, samples: samples};
 }
 
 // The data range of each class of a diverging layout, in class order:
@@ -253,8 +398,9 @@ export function setSchemePivot(scheme, pivot) {
   return Object.assign({}, scheme, {pivot: pivot});
 }
 
+// sets the pivot class of the scheme's mode (see getSchemeNeutral())
 export function setSchemeNeutral(scheme, neutral) {
-  return Object.assign({}, scheme, {neutral: !!neutral});
+  return Object.assign({}, scheme, scheme.continuous ? {continuousNeutral: !!neutral} : {neutral: !!neutral});
 }
 
 // Switching between a total and a number per side starts over with the
@@ -649,7 +795,15 @@ export function formatSchemeCommand(scheme, colors, opts) {
   parts.push('method=' + scheme.method);
   if (scheme.type == 'diverging') {
     parts.push('pivot=' + scheme.pivot, 'classes=' + getDivergingClassesOption(scheme));
-    if (!scheme.neutral) parts.push('no-pivot-class');
+    // continuous output has no pivot class by default, classes have one
+    if (!getSchemeNeutral(scheme)) parts.push('no-pivot-class');
+    else if (scheme.continuous) parts.push('pivot-class');
+  } else if (isContinuousScheme(scheme)) {
+    parts.push('classes=' + (scheme.n - 1));
+  }
+  if (isContinuousScheme(scheme)) {
+    // the tiles already have their vibrance, so no vibrance=
+    parts.push('continuous', 'interpolation=oklch');
   }
   parts.push('colors=' + colors.join(','));
   if (scheme.method != 'non-adjacent' && getSchemeNullColor(scheme) != defaultNullColor) {
@@ -693,6 +847,9 @@ export function schemeMatchesLayer(scheme, lyr) {
   var records, colors, val;
   if (!lyr || !lyr.data || !scheme.colors) return false;
   if (scheme.method != 'non-adjacent' && !lyr.data.fieldExists(scheme.field)) return false;
+  if (isContinuousScheme(scheme)) {
+    return !!scheme.fillHash && scheme.fillHash == getFillFingerprint(lyr);
+  }
   colors = scheme.colors.map(function(c) { return c.toLowerCase(); });
   records = lyr.data.getRecords();
   for (var i=0; i<records.length; i++) {
@@ -702,6 +859,33 @@ export function schemeMatchesLayer(scheme, lyr) {
     }
   }
   return true;
+}
+
+// A scheme as applied to a layer, with what's needed to check it later
+// colors: the colors given to -classify
+export function getAppliedScheme(scheme, colors, lyr) {
+  var applied = Object.assign({}, scheme, {colors: colors});
+  if (isContinuousScheme(scheme)) {
+    applied.fillHash = getFillFingerprint(lyr);
+  } else {
+    delete applied.fillHash;
+  }
+  return applied;
+}
+
+// A hash of a layer's fill values (FNV-1a, 32 bits)
+export function getFillFingerprint(lyr) {
+  var records = lyr && lyr.data ? lyr.data.getRecords() : [];
+  var hash = 0x811c9dc5;
+  var str;
+  for (var i=0; i<records.length; i++) {
+    str = String(records[i] ? records[i].fill : '') + '\n';
+    for (var j=0; j<str.length; j++) {
+      hash ^= str.charCodeAt(j);
+      hash = Math.imul(hash, 0x01000193);
+    }
+  }
+  return records.length + ':' + (hash >>> 0).toString(16);
 }
 
 function isNullFill(val, scheme) {

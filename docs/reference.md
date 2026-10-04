@@ -470,6 +470,8 @@ Assign colors or data values to each feature using one of several classification
 
 `no-pivot-class` Omit the pivot class: the two sides meet at the pivot.
 
+`pivot-class` Add a pivot class to `continuous` output, which has none by default. The pivot class gets the center color, without interpolation.
+
 `breaks=`       Specify user-defined sequential class breaks (an alternative to automatic classification using `quantile`, `equal-interval`, etc.).
 
 `outer-breaks=`  A pair of comma-separated numbers setting min and max breakpoints to use when computing class breaks. This setting overrides the default behavior, which is to use the min and max values of the data field being classified. This setting can be used to prevent extreme data values (outliers) from affecting equal-interval classification. Also useful for setting outside breakpoints for continuous color ramps (when using the `continuous` option).
@@ -484,7 +486,7 @@ Assign colors or data values to each feature using one of several classification
 
 `invert`        Reverse the order of colors/values.
 
-`continuous`    Output continuously interpolated values (experimental). Uses linear interpolation between class breaks, which may give poor results with some distributions of data. This option is for creating unclassed/continuous-color maps.
+`continuous`    Output continuously interpolated values, for unclassed/continuous-color maps. The colors (or values) are stops at the class breaks: the first at the data's minimum, the last at its maximum, and the others at the breaks the method finds, with linear interpolation between them. A list of N colors gives N-1 intervals by default, so each color is used as given (earlier versions made N intervals). With `pivot=`, each side of the pivot is interpolated separately, between its own colors, and the center color is used only by a pivot class (see `pivot-class`). With `equal-interval` and `nice`, each side ends a whole number of steps from the pivot, so that equal distances from the pivot get equally strong colors.
 
 `interpolation=`    How intermediate colors are calculated when colors are interpolated (with the `colors=`, `stops=` and `continuous` options). `rgb` (the default) mixes colors in RGB space. `oklch` uses the perceptually uniform OKLCH color space, changing lightness, chroma (colorfulness) and hue separately, each by equal steps, with hue going the shorter way around the color wheel. This gives evenly spaced steps in lightness, avoids the dull, dark midpoints that RGB mixing can produce, and between colors of different hues keeps intermediate colors saturated rather than passing through gray. Where an `oklch` color falls outside the sRGB gamut, it is fitted as described under `vibrance=`.
 

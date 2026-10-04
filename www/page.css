@@ -4821,6 +4821,26 @@ body.dragging-color-picker * {
 	box-shadow: 0 0 0 2px #000;
 }
 
+/* A continuous ramp: the gradient over half-height tiles, which are its
+   color stops. The script places each gradient over its tiles. */
+.color-scheme-gradient {
+	position: relative;
+	height: 12px;
+	margin-bottom: 4px;
+}
+
+.color-scheme-gradient-segment {
+	position: absolute;
+	top: 0;
+	height: 100%;
+	border-radius: 3px;
+	box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12);
+}
+
+.color-scheme-tiles.continuous .color-scheme-tile {
+	height: 14px;
+}
+
 /* A dot under each color the user set between the ends of a ramp; the ends
    are always pinned, so they have no dot. */
 .color-scheme-pin {

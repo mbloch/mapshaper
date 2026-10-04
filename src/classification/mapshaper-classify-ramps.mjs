@@ -16,6 +16,7 @@ import {
   interpolateValuesToClasses,
   getPairInterpolator
 } from '../classification/mapshaper-interpolation';
+import { getContinuousSideStops } from '../classification/mapshaper-diverging';
 
 export function getNullValue(opts) {
   var nullValue;
@@ -87,7 +88,13 @@ export function getClassValues(method, n, opts) {
 // uses the ones nearest the center, so equal steps from the pivot get
 // equally strong colors on both sides. The middle of a scheme or list of
 // colors is the center color (an even list interpolates one).
-export function getDivergingClassValues(layout, opts) {
+// With opts.continuous, each side has a value per color stop (see
+// getDivergingStops()) instead of one per class.
+export function getDivergingClassValues(layoutArg, opts) {
+  var layout = opts.continuous ? Object.assign({}, layoutArg, {
+    below: getContinuousSideStops(layoutArg.below),
+    above: getContinuousSideStops(layoutArg.above)
+  }) : layoutArg;
   var n = layout.below + layout.above + (layout.neutral ? 1 : 0);
   var colorArg = opts.colors && opts.colors.length == 1 ? opts.colors[0] : null;
   var list = opts.colors || opts.values;

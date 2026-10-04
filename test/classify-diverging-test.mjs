@@ -5,7 +5,9 @@ import {
   resolvePivot,
   parseClassCounts,
   splitClasses,
-  getNiceStep
+  getNiceStep,
+  getDivergingStops,
+  getStopPosition
 } from '../src/classification/mapshaper-diverging.mjs';
 import { getDivergingClassValues } from '../src/classification/mapshaper-classify-ramps.mjs';
 
@@ -209,8 +211,7 @@ describe('mapshaper-diverging.mjs', function () {
       assert.deepEqual(JSON.parse(out['data.json']).map(d => d.fill), ['red', '#eee', 'blue']);
     });
 
-    it('rejects continuous and categorical classes', async function () {
-      await assert.rejects(() => classify(data, 'pivot=0 continuous'));
+    it('rejects categorical classes', async function () {
       await assert.rejects(() => classify(data, 'pivot=0 categorical'));
     });
 
@@ -225,6 +226,70 @@ describe('mapshaper-diverging.mjs', function () {
     it('precision= with breaks= (regression)', async function () {
       var classes = await classify([0.12, 0.26], 'breaks=0.2 precision=0.1');
       assert.deepEqual(classes, [0, 1]);
+    });
+  });
+
+  describe('continuous', function () {
+    it('getStopPosition()', function () {
+      assert.equal(getStopPosition([0, 10, 30], -5), 0);
+      assert.equal(getStopPosition([0, 10, 30], 5), 0.5);
+      assert.equal(getStopPosition([0, 10, 30], 20), 1.5);
+      assert.equal(getStopPosition([0, 10, 30], 40), 2);
+    });
+
+    it('equal-interval sides end whole steps from the pivot', function () {
+      var layout = getDivergingLayout([-5, 0, 5, 20], 'equal-interval', {classes: 3, pivot: 0, continuous: true});
+      assert.equal(layout.neutral, null);
+      assert.deepEqual(layout.extent, [-10, 20]);
+      assert.deepEqual(getDivergingStops(layout), {below: [-10, 0], above: [0, 10, 20]});
+    });
+
+    it('quantile sides end at the data extent', function () {
+      var layout = getDivergingLayout([-4, -2, 0, 2, 4, 8], 'quantile', {classes: [1, 2], pivot: 0, continuous: true});
+      assert.deepEqual(getDivergingStops(layout), {below: [-4, 0], above: [0, 4, 8]});
+    });
+
+    it('continuous output has no pivot class unless pivot-class or pivot-range= is given', function () {
+      var opts = {classes: 3, pivot: 0, continuous: true};
+      assert.equal(getDivergingLayout(data, 'quantile', opts).neutral, null);
+      assert.ok(getDivergingLayout(data, 'quantile', Object.assign({pivot_class: true}, opts)).neutral);
+      assert.deepEqual(getDivergingLayout(data, 'quantile', Object.assign({pivot_range: [-1, 1]}, opts)).neutral, [-1, 1]);
+    });
+
+    it('each side takes a value per stop, without the center value', function () {
+      var layout = {below: 1, above: 2, neutral: null};
+      var values = getDivergingClassValues(layout, {values: ['-3', '-2', '-1', '0', '1', '2', '3'], continuous: true});
+      assert.deepEqual(values, [-2, -1, 1, 2, 3]);
+    });
+
+    it('-classify interpolates each side between its stops, with a step at the pivot', async function () {
+      var values = await classify([-5, 0, 5, 20], 'pivot=0 continuous equal-interval classes=3 values=-3,-2,-1,0,1,2,3');
+      assert.deepEqual(values, [-1.5, 1, 1.5, 3]);
+    });
+
+    it('-classify with a pivot class: a flat band, and the sides start at its edges', async function () {
+      var values = await classify([-5, 0, 5, 20], 'pivot=0 pivot-range=-1,1 continuous equal-interval classes=1,2 values=-3,-2,-1,0,1,2,3');
+      assert.deepEqual(values.map(v => Math.round(v * 1000) / 1000), [-2, 0, 1.421, 3]);
+    });
+
+    it('-classify quantile sides', async function () {
+      var values = await classify([-4, -2, 0, 2, 4, 8], 'pivot=0 continuous quantile classes=1,1 values=-2,-1,0,1,2');
+      assert.deepEqual(values, [-2, -1.5, 1, 1.25, 1.5, 2]);
+    });
+
+    it('rejects pivot-class with no-pivot-class, or without pivot=', async function () {
+      await assert.rejects(() => classify(data, 'pivot=0 continuous pivot-class no-pivot-class'));
+      await assert.rejects(() => classify(data, 'continuous pivot-class'));
+    });
+
+    it('a list of N values gives N-1 intervals, with the values at the min, the breaks and the max', async function () {
+      var values = await classify([0, 5, 10, 15, 20], 'continuous equal-interval values=0,10,20');
+      assert.deepEqual(values, [0, 5, 10, 15, 20]);
+    });
+
+    it('classes=1 gives one interval from the min to the max', async function () {
+      var values = await classify([0, 5, 20], 'continuous classes=1 values=0,1');
+      assert.deepEqual(values, [0, 0.25, 1]);
     });
   });
 });

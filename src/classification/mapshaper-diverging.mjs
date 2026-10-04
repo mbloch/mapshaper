@@ -1,17 +1,20 @@
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { getQuantileBreaks, getHybridBreaks } from '../classification/mapshaper-class-stats';
+import { getInterpolatedValueGetter } from '../classification/mapshaper-interpolation';
 
 // Diverging classification: classes on either side of a pivot value, and an
 // optional neutral class at the pivot. Each side is classified on its own
 // data. See docs/development/color-scheme-panel-design.md
 //
-// A layout is {pivot, neutral, below, above, breaks}: neutral is the range
-// [lo, hi) of the neutral class, or null; below and above are the numbers of
-// classes on either side (outside the neutral class); breaks are the inner
-// breaks of all the classes, in ascending order, for the sequential
-// classifier. Classes are numbered from the lowest: below, then the neutral
-// class, then above.
+// A layout is {pivot, neutral, below, above, breaks, extent, dataRange}:
+// neutral is the range [lo, hi) of the neutral class, or null; below and
+// above are the numbers of classes on either side (outside the neutral
+// class); breaks are the inner breaks of all the classes, in ascending
+// order, for the sequential classifier. Classes are numbered from the
+// lowest: below, then the neutral class, then above. extent is where the
+// outer classes end: the data's min and max, or for equal interval and nice,
+// whole steps out from the pivot. dataRange is the data's [min, max].
 
 var intervalMethods = ['equal-interval', 'nice'];
 var quantileMethods = ['quantile', 'hybrid'];
@@ -20,12 +23,25 @@ export function isDivergingClassification(opts) {
   return opts.pivot !== undefined || !!opts.pivot_range;
 }
 
+// Whether a diverging classification has a pivot (neutral) class: classed
+// output has one unless no-pivot-class is given; continuous output only with
+// pivot-class or pivot-range=
+export function hasPivotClass(opts) {
+  if (opts.pivot_class && opts.no_pivot_class) {
+    stop('Use pivot-class or no-pivot-class, not both');
+  }
+  if (opts.continuous) {
+    return !!(opts.pivot_class || opts.pivot_range);
+  }
+  return !opts.no_pivot_class;
+}
+
 // ascending: the data values, in ascending order
-// opts: pivot, pivot_range, no_pivot_class, classes (a total, or the numbers
-//   of classes [below, above]), breaks
+// opts: pivot, pivot_range, pivot_class, no_pivot_class, continuous,
+//   classes (a total, or the numbers of classes [below, above]), breaks
 export function getDivergingLayout(ascending, method, opts) {
   var range = opts.pivot_range || null;
-  var hasNeutral = !opts.no_pivot_class;
+  var hasNeutral = hasPivotClass(opts);
   var pivot, counts, layout;
   if (ascending.length === 0) {
     stop('No numeric data to classify');
@@ -34,7 +50,7 @@ export function getDivergingLayout(ascending, method, opts) {
     if (range.length != 2 || !(range[0] <= range[1])) {
       stop('pivot-range= takes two numbers, low,high');
     }
-    if (!hasNeutral) stop('pivot-range= sets the range of the pivot class (remove no-pivot-class)');
+    if (opts.no_pivot_class) stop('pivot-range= sets the range of the pivot class (remove no-pivot-class)');
   }
   pivot = resolvePivot(opts.pivot, ascending, range);
   if (range && (pivot < range[0] || pivot > range[1])) {
@@ -58,7 +74,81 @@ export function getDivergingLayout(ascending, method, opts) {
   }
   layout.breaks = layout.breaks.map(tidyNumber);
   if (layout.neutral) layout.neutral = layout.neutral.map(tidyNumber);
+  layout.dataRange = [ascending[0], ascending[ascending.length - 1]];
+  layout.extent = (layout.extent || layout.dataRange).map(tidyNumber);
   return layout;
+}
+
+// The values at the color stops of continuous output: each side with
+// classes is a ramp of its own, with a stop at each of its breaks, from the
+// side's inner edge (the pivot or the pivot class) to the end of its outer
+// class. Returns {below, above}, the stops of each side in ascending order
+// (m + 1 stops for m classes, none for a side without classes).
+export function getDivergingStops(layout) {
+  var edges = getSideEdges(layout);
+  var below = [], above = [];
+  if (layout.below > 0) {
+    below = [Math.min(layout.extent[0], edges[0])]
+      .concat(layout.breaks.filter(function(b) { return b < edges[0]; }), [edges[0]]);
+  }
+  if (layout.above > 0) {
+    above = [edges[1]]
+      .concat(layout.breaks.filter(function(b) { return b > edges[1]; }),
+        [Math.max(layout.extent[1], edges[1])]);
+  }
+  return {below: below, above: above};
+}
+
+// The inner edges of the two sides: the pivot, or the pivot class's range
+function getSideEdges(layout) {
+  return layout.neutral ? layout.neutral : [layout.pivot, layout.pivot];
+}
+
+// The number of colors one side of continuous output takes: one per stop
+export function getContinuousSideStops(classes) {
+  return classes > 0 ? classes + 1 : 0;
+}
+
+// Returns a function for continuous output: each side's value is
+// interpolated between the values at its stops, and the pivot class has the
+// center value.
+// values: the side below's values (one per stop, ascending), the center
+//   value (with a pivot class), and the side above's (see
+//   getDivergingClassValues())
+export function getContinuousDivergingClassifier(layout, values, nullValue, opts) {
+  var stops = getDivergingStops(layout);
+  var nb = stops.below.length;
+  var na = stops.above.length;
+  var low = nb > 0 ? getStopInterpolator(stops.below, values.slice(0, nb), opts) : null;
+  var high = na > 0 ? getStopInterpolator(stops.above, values.slice(values.length - na), opts) : null;
+  var center = layout.neutral ? values[nb] : null;
+  var edges = getSideEdges(layout);
+  return function(val) {
+    if (!utils.isFiniteNumber(val)) return nullValue;
+    if (layout.neutral && val >= edges[0] && val < edges[1]) return center;
+    if (val < edges[0]) return (low || high)(val);
+    return (high || low)(val);
+  };
+}
+
+function getStopInterpolator(stops, values, opts) {
+  var getValue = getInterpolatedValueGetter(values, null, opts);
+  return function(val) {
+    return getValue(getStopPosition(stops, val));
+  };
+}
+
+// The position of a value among ascending stops (0 at the first stop, 1 at
+// the second, ...), clamped to the stops
+export function getStopPosition(stops, val) {
+  var n = stops.length;
+  if (!(val > stops[0])) return 0;
+  for (var i=1; i<n; i++) {
+    if (val <= stops[i]) {
+      return stops[i] > stops[i - 1] ? i - 1 + (val - stops[i - 1]) / (stops[i] - stops[i - 1]) : i;
+    }
+  }
+  return n - 1;
 }
 
 // The CLI's message about a layout
@@ -167,9 +257,11 @@ function getIntervalLayout(ascending, pivot, hasNeutral, range, counts, nice) {
     }
   }
   offsets = getOffsets(steps);
-  return makeLayout(pivot, hasNeutral, pivot - offsets[0], pivot + offsets[1], sides[0], sides[1],
+  return Object.assign(makeLayout(pivot, hasNeutral, pivot - offsets[0], pivot + offsets[1], sides[0], sides[1],
     getSteppedBreaks(pivot - offsets[0], -steps[0], sides[0]),
-    getSteppedBreaks(pivot + offsets[1], steps[1], sides[1]));
+    getSteppedBreaks(pivot + offsets[1], steps[1], sides[1])), {
+    extent: [pivot - offsets[0] - sides[0] * steps[0], pivot + offsets[1] + sides[1] * steps[1]]
+  });
 }
 
 // The number of classes of a given step that reach from a side's inner edge
@@ -314,7 +406,7 @@ function getBreaksLayout(breaks, pivot, hasNeutral) {
   for (i=0; i<b && breaks[i] < pivot; i++);
   // the pivot is in class i
   if (!hasNeutral) {
-    stop('With no-pivot-class, the pivot must be one of the breaks');
+    stop('Without a pivot class, the pivot must be one of the breaks');
   }
   return {
     pivot: pivot,

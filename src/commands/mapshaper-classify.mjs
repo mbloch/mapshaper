@@ -9,7 +9,10 @@ import {
 } from '../classification/mapshaper-sequential-classifier';
 import {
   isDivergingClassification,
+  hasPivotClass,
   getDivergingLayout,
+  getDivergingStops,
+  getContinuousDivergingClassifier,
   formatDivergingLayout
 } from '../classification/mapshaper-diverging';
 import { getRoundingFunction } from '../geom/mapshaper-rounding';
@@ -94,8 +97,8 @@ cmd.classify = function(lyr, dataset, optsArg) {
   diverging = isDivergingClassification(opts);
   if (diverging) {
     validateDivergingOptions(method, fieldType, opts);
-  } else if (opts.no_pivot_class) {
-    stop('no-pivot-class requires pivot= or pivot-range=');
+  } else if (opts.no_pivot_class || opts.pivot_class) {
+    stop(opts.pivot_class ? 'pivot-class' : 'no-pivot-class', 'requires pivot= or pivot-range=');
   }
   if (Array.isArray(opts.classes) && !diverging) {
     if (opts.classes.length != 1) {
@@ -108,7 +111,8 @@ cmd.classify = function(lyr, dataset, optsArg) {
     // the classes depend on the data (see getDivergingLayout())
     numClasses = 0;
   } else if (opts.classes) {
-    if (!utils.isInteger(opts.classes) || opts.classes > 1 === false) {
+    // continuous output can have a single interval, from the min to the max
+    if (!utils.isInteger(opts.classes) || opts.classes >= (opts.continuous ? 1 : 2) === false) {
       stop('Invalid number of classes:', opts.classes, '(expected a value greater than 1)');
     }
     numClasses = opts.classes;
@@ -121,9 +125,10 @@ cmd.classify = function(lyr, dataset, optsArg) {
   } else if (method == 'categorical' && opts.categories) {
     numClasses = opts.categories.length;
   } else if (opts.colors && opts.colors.length > 1) {
-    numClasses = opts.colors.length;
+    // continuous: each color is a stop, at the ends and breaks of the classes
+    numClasses = opts.continuous ? opts.colors.length - 1 : opts.colors.length;
   } else if (opts.values && opts.values.length > 1) {
-    numClasses = opts.values.length;
+    numClasses = opts.continuous ? opts.values.length - 1 : opts.values.length;
   } else if (method == 'non-adjacent') {
     numClasses = 5;
   } else {
@@ -142,6 +147,9 @@ cmd.classify = function(lyr, dataset, optsArg) {
     divergingLayout = getDivergingLayout(getDivergingData(records, dataField, opts), method,
       Object.assign({}, opts, {classes: getDivergingClassCount(opts)}));
     message(formatDivergingLayout(divergingLayout));
+    if (opts.continuous) {
+      message(formatDivergingStops(divergingLayout));
+    }
     values = getDivergingClassValues(divergingLayout, opts);
   } else {
     values = getClassValues(method, numValues, opts);
@@ -169,6 +177,8 @@ cmd.classify = function(lyr, dataset, optsArg) {
     classifyByValue = getIndexedClassifier(values, nullValue, opts);
   } else if (method == 'categorical') {
     classifyByValue = getCategoricalClassifier(values, nullValue, opts);
+  } else if (diverging && opts.continuous) {
+    classifyByValue = getContinuousDivergingDataClassifier(divergingLayout, values, nullValue, opts);
   } else if (diverging) {
     classifyByValue = getSequentialClassifier(values, nullValue, getFieldValues(records, dataField), method,
       Object.assign({}, opts, {breaks: divergingLayout.breaks}));
@@ -212,9 +222,27 @@ function validateDivergingOptions(method, fieldType, opts) {
   if (!['quantile', 'equal-interval', 'nice', 'hybrid', 'breaks'].includes(method)) {
     stop('The', method, 'method does not support pivot=');
   }
-  if (opts.continuous) {
-    stop('pivot= does not support continuous classes');
-  }
+}
+
+// Rounds and clamps data values as getDivergingData() does
+function getContinuousDivergingDataClassifier(layout, values, nullValue, opts) {
+  var classify = getContinuousDivergingClassifier(layout, values, nullValue, opts);
+  var round = opts.precision ? getRoundingFunction(opts.precision) : null;
+  var range = opts.outer_breaks;
+  return function(val) {
+    if (!utils.isFiniteNumber(val)) return nullValue;
+    if (round) val = round(val);
+    if (range) val = Math.min(Math.max(val, range[0]), range[1]);
+    return classify(val);
+  };
+}
+
+function formatDivergingStops(layout) {
+  var stops = getDivergingStops(layout);
+  var parts = [];
+  if (stops.below.length > 0) parts.push('below: ' + stops.below.join(', '));
+  if (stops.above.length > 0) parts.push('above: ' + stops.above.join(', '));
+  return 'Color stops (' + parts.join('; ') + ')';
 }
 
 // The data that the classes divide: numbers, rounded and clamped as the
@@ -235,10 +263,15 @@ function getDivergingData(records, field, opts) {
 // The total number of classes (including a pivot class), or the numbers of
 // classes [below, above] the pivot
 function getDivergingClassCount(opts) {
-  var hasNeutral = !opts.no_pivot_class;
+  var hasNeutral = hasPivotClass(opts);
+  var list = opts.colors && opts.colors.length > 1 && opts.colors ||
+    opts.values && opts.values.length > 1 && opts.values;
   if (opts.classes) return opts.classes;
-  if (opts.colors && opts.colors.length > 1) return opts.colors.length;
-  if (opts.values && opts.values.length > 1) return opts.values.length;
+  if (list && opts.continuous) {
+    // a list of 2K+1 colors has K stops on each side, for K-1 classes
+    return Math.max(2, (Math.floor(list.length / 2) - 1) * 2) + (hasNeutral ? 1 : 0);
+  }
+  if (list) return list.length;
   return hasNeutral ? 7 : 6;
 }
 

@@ -117,6 +117,7 @@ import * as Narukawa2022 from './crs/mapshaper-narukawa2022';
 import * as DataAggregation from './dissolve/mapshaper-data-aggregation';
 import * as Diverging from './classification/mapshaper-diverging';
 import { getSequentialBreaks } from './classification/mapshaper-sequential-classifier';
+import { getInterpolatedValueGetter } from './classification/mapshaper-interpolation';
 import * as DatasetUtils from './dataset/mapshaper-dataset-utils';
 import * as DataUtils from './datatable/mapshaper-data-utils';
 import * as DbfImport from './shapefile/dbf-import';
@@ -269,7 +270,7 @@ Object.assign(internal,
   Narukawa2022,
   DataAggregation,
   Diverging,
-  {getSequentialBreaks},
+  {getSequentialBreaks, getInterpolatedValueGetter},
   DatasetUtils,
   DataUtils,
   DbfImport,

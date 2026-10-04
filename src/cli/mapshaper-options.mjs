@@ -808,12 +808,16 @@ export function getOptionParser() {
       describe: 'diverging classes meet at the pivot (no pivot class)',
       type: 'flag'
     })
+    .option('pivot-class', {
+      describe: 'add a pivot class to continuous diverging colors',
+      type: 'flag'
+    })
     .option('invert', {
       describe: 'reverse the order of colors/values',
       type: 'flag'
     })
     .option('continuous', {
-      describe: 'output interpolated values, for unclassed colors',
+      describe: 'interpolate between values at the class breaks (unclassed colors)',
       type: 'flag'
     })
     .option('interpolation', {

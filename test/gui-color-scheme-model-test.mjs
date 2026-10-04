@@ -11,7 +11,8 @@ import {
   moveSwatch, shuffleScheme, getSchemeNullColor, setSchemeNullColor, getNoDataCount,
   defaultNullColor, updateDivergingLayout, getDivergingTileUse, getDivergingClassRanges,
   getPivotSummary, setSchemePivot, setSchemeNeutral, setSchemeSplit, getCenterTile,
-  getSequentialClassRanges
+  getSequentialClassRanges, setSchemeContinuous, isContinuousScheme, getSchemeNeutral,
+  getContinuousTileStops, getContinuousSegments, getAppliedScheme, getFillFingerprint
 } from '../src/gui/gui-color-scheme-model';
 import api from '../mapshaper.js';
 
@@ -582,6 +583,144 @@ describe('gui-color-scheme-model.mjs', function() {
       scheme = setSchemeSplit(setSchemeNeutral(setSchemePivot(scheme, -2.5), false), 'count');
       assert.equal(formatSchemeCommand(scheme, ['#000000', '#ffffff', '#ff0000']),
         "-classify field='change' method=quantile pivot=-2.5 classes=3,3 no-pivot-class colors=#000000,#ffffff,#ff0000");
+    });
+  });
+
+  describe('continuous schemes', function() {
+    var values = [-40, -30, -20, -10, 5, 10, 20, 30, 40, 50, 60, 70];
+    function makeTestLayer() {
+      return makeLayer(values.map(function(v) { return {change: v}; }));
+    }
+    function diverging(lyr, edit) {
+      var scheme = setSchemeContinuous(getDefaultSchemeOfType('diverging', lyr), true);
+      return updateDivergingLayout(edit ? edit(scheme) : scheme, lyr);
+    }
+    function hex(color) {
+      return internal.formatColor(internal.parseColor(color));
+    }
+
+    // the color the tiles give a value: interpolated between the stops
+    // around it, on its side of the pivot
+    function getExpectedFill(scheme, lyr, v) {
+      var stops = getContinuousTileStops(scheme, lyr);
+      var colors = getSchemeColors(scheme);
+      var layout = scheme.layout;
+      var k = getCenterTile(scheme);
+      var tiles = stops.map(function(stop, i) { return stop && !stop.range ? i : -1; })
+        .filter(function(i) { return i > -1; });
+      var edges = layout && layout.neutral || layout && [layout.pivot, layout.pivot];
+      if (layout && layout.neutral && v >= edges[0] && v < edges[1]) return hex(colors[k]);
+      if (layout) {
+        tiles = tiles.filter(function(i) { return v < edges[0] ? i < k : i > k; });
+      }
+      var getColor = internal.getInterpolatedValueGetter(tiles.map(function(i) { return colors[i]; }),
+        null, {interpolation: 'oklch'});
+      return hex(getColor(internal.getStopPosition(tiles.map(function(i) { return stops[i].value; }), v)));
+    }
+
+    it('turning continuous on starts a sequential ramp with at least 5 stops', function() {
+      assert.equal(setSchemeContinuous(setTileCount(getDefaultScheme('change'), 3), true).n, 5);
+      assert.equal(setSchemeContinuous(setTileCount(getDefaultScheme('change'), 7), true).n, 7);
+      assert.equal(isContinuousScheme(setSchemeContinuous(getDefaultScheme('change'), true)), true);
+    });
+
+    it('sequential stops are at the min, the breaks and the max', function() {
+      var lyr = makeTestLayer();
+      var scheme = Object.assign(setSchemeContinuous(getDefaultScheme('change'), true), {method: 'equal-interval'});
+      var stops = getContinuousTileStops(scheme, lyr);
+      assert.deepEqual(stops.map(function(s) { return s.value; }), [-40, -12.5, 15, 42.5, 70]);
+      assert.equal(stops[0].min, true);
+      assert.equal(stops[4].max, true);
+    });
+
+    it('a diverging side has a tile more than its classes, and no pivot class by default', function() {
+      var lyr = makeTestLayer();
+      var scheme = diverging(lyr);
+      var layout = scheme.layout;
+      var k = Math.max(layout.below, layout.above) + 1;
+      assert.equal(layout.neutral, null);
+      assert.equal(getSchemeTiles(scheme).length, k * 2 + 1);
+      var use = getDivergingTileUse(scheme);
+      assert.equal(use.filter(Boolean).length, layout.below + layout.above + 2);
+      assert.equal(use[k], false);
+    });
+
+    it('classed and continuous schemes each keep their pivot class setting', function() {
+      var lyr = makeTestLayer();
+      var scheme = setSchemeNeutral(diverging(lyr), true);
+      assert.equal(getSchemeNeutral(scheme), true);
+      var classed = setSchemeContinuous(scheme, false);
+      assert.equal(getSchemeNeutral(classed), true);
+      classed = setSchemeNeutral(classed, false);
+      assert.equal(getSchemeNeutral(setSchemeContinuous(classed, true)), true);
+      assert.equal(getSchemeNeutral(setSchemeContinuous(classed, false)), false);
+    });
+
+    it('diverging gradients: one per side, and one for a pivot class', function() {
+      var lyr = makeTestLayer();
+      var scheme = diverging(lyr);
+      var k = getCenterTile(scheme);
+      var segments = getContinuousSegments(scheme);
+      assert.equal(segments.length, 2);
+      assert.equal(segments[0].end, k - 1);
+      assert.equal(segments[1].start, k + 1);
+      assert.equal(segments[0].samples[0].pos, segments[0].start);
+      scheme = updateDivergingLayout(setSchemeNeutral(scheme, true), lyr);
+      k = getCenterTile(scheme);
+      segments = getContinuousSegments(scheme);
+      assert.equal(segments.length, 3);
+      assert.deepEqual([segments[1].start, segments[1].end], [k, k]);
+    });
+
+    it('an equal-interval shorter side ends where its data ends, between two stops', function() {
+      var lyr = makeTestLayer();
+      var scheme = diverging(lyr, function(s) { return Object.assign(s, {method: 'equal-interval'}); });
+      var low = getContinuousSegments(scheme)[0];
+      assert.equal(low.flatStart, false);
+      assert(low.start > Math.floor(low.start));
+      assert.equal(getContinuousSegments(scheme)[1].flatEnd, true);
+    });
+
+    it('the command', function() {
+      var lyr = makeTestLayer();
+      var seq = setSchemeContinuous(getDefaultScheme('change'), true);
+      assert.equal(formatSchemeCommand(seq, ['#000000', '#ffffff']),
+        "-classify field='change' method=quantile classes=4 continuous interpolation=oklch colors=#000000,#ffffff");
+      assert.equal(formatSchemeCommand(diverging(lyr), ['#000000']),
+        "-classify field='change' method=quantile pivot=auto classes=7 no-pivot-class continuous interpolation=oklch colors=#000000");
+      assert.equal(formatSchemeCommand(setSchemeNeutral(diverging(lyr), true), ['#000000']),
+        "-classify field='change' method=quantile pivot=auto classes=7 pivot-class continuous interpolation=oklch colors=#000000");
+    });
+
+    it('the command colors the features as the tiles show them', async function() {
+      var lyr = makeTestLayer();
+      var schemes = [
+        setSchemeContinuous(getDefaultScheme('change'), true),
+        Object.assign(setSchemeContinuous(setSchemeVibrance(getDefaultScheme('change'), 0.05), true), {method: 'equal-interval'}),
+        diverging(lyr),
+        diverging(lyr, function(s) { return setSchemeNeutral(s, true); }),
+        diverging(lyr, function(s) { return setSchemeSplit(s, 'count'); }),
+        diverging(lyr, function(s) { return Object.assign(s, {method: 'equal-interval'}); }),
+        diverging(lyr, function(s) { return setTileColor(Object.assign(s, {method: 'nice'}), 0, '#000000'); })
+      ];
+      for (var scheme of schemes) {
+        scheme = updateDivergingLayout(scheme, lyr);
+        var cmd = formatSchemeCommand(scheme, getAppliedColors(scheme));
+        var out = await api.applyCommands('-i data.json ' + cmd + ' -o', {'data.json': lyr.data.getRecords()});
+        var fills = JSON.parse(out['data.json']).map(function(d) { return hex(d.fill); });
+        var expected = values.map(function(v) { return getExpectedFill(scheme, lyr, v); });
+        assert.deepEqual(fills, expected, cmd);
+      }
+    });
+
+    it('the layer record checks a fingerprint of the fills', function() {
+      var lyr = makeLayer([{change: 1, fill: 'rgb(1, 2, 3)'}, {change: 2, fill: 'rgb(4, 5, 6)'}]);
+      var scheme = setSchemeContinuous(getDefaultScheme('change'), true);
+      setLayerScheme(lyr, getAppliedScheme(scheme, getSchemeColors(scheme), lyr));
+      assert(getLayerScheme(lyr));
+      assert.equal(getFillFingerprint(lyr), getLayerScheme(lyr).fillHash);
+      lyr.data.getRecords()[1].fill = 'rgb(4, 5, 7)';
+      assert.equal(getLayerScheme(lyr), null);
     });
   });
 });

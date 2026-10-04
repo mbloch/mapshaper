@@ -16,7 +16,8 @@ import {
   getSchemeNullColor, setSchemeNullColor, getNoDataCount,
   getDivergingPresetNames, pivotOptions, divergingSplits, updateDivergingLayout, getDivergingTileUse,
   getDivergingClassRanges, getSequentialClassRanges, getPivotSummary, setSchemePivot, setSchemeNeutral, setSchemeSplit,
-  getCenterTile,
+  getCenterTile, getSchemeNeutral, isContinuousScheme, setSchemeContinuous, getContinuousTileStops,
+  getContinuousSegments, getAppliedScheme,
   getLayerScheme, setLayerScheme
 } from './gui-color-scheme-model';
 
@@ -43,6 +44,12 @@ var shuffleIcon = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" s
 var longHueIcon = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" ' +
   'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">' +
   '<path d="M11.5 4.6A5 5 0 1 0 12 7"/><path d="M12 1.8v3h-3"/></svg>';
+var continuousIcon = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none">' +
+  '<defs><linearGradient id="color-scheme-continuous-icon">' +
+  '<stop offset="0" stop-color="currentColor" stop-opacity="0"/>' +
+  '<stop offset="1" stop-color="currentColor"/></linearGradient></defs>' +
+  '<rect x="1.5" y="3.5" width="11" height="7" rx="1.5" fill="url(#color-scheme-continuous-icon)" ' +
+  'stroke="currentColor" stroke-width="1.2"/></svg>';
 
 export function ColorSchemePanel(gui, opts) {
   var parent = gui.container.findChild('.mshp-main-map');
@@ -56,9 +63,9 @@ export function ColorSchemePanel(gui, opts) {
   // the scheme last used on each tab while the panel is open, for switching back
   var tabSchemes = {};
   var tabs = {};
-  var paletteBtn, paletteMenu, countField, tileRow, tilesEl, picker, fieldRow, fieldSelect, methodSelect,
+  var paletteBtn, paletteMenu, countField, tileRow, gradientEl, tilesEl, picker, fieldRow, fieldSelect, methodSelect,
       noFieldsNote, selectionNote, controlsEl, vibranceRow, vibranceInput,
-      longHueBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount, countLabel,
+      longHueBtn, continuousBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount, countLabel,
       divergingEl, pivotSelect, pivotInput, pivotNote, neutralToggle, splitSelect;
   // set while a tile is being dragged, so that letting go isn't a click
   var tileDrag = null;
@@ -192,6 +199,7 @@ export function ColorSchemePanel(gui, opts) {
     });
 
     tileRow = El('div').addClass('color-scheme-tile-row').appendTo(controlsEl);
+    gradientEl = El('div').addClass('color-scheme-gradient').appendTo(tileRow);
     tilesEl = El('div').addClass('color-scheme-tiles').appendTo(tileRow);
     picker = new ColorPicker(tileRow, {
       presetRows: [],
@@ -218,6 +226,9 @@ export function ColorSchemePanel(gui, opts) {
     longHueBtn = addIconButton(vibranceRow, 'Go the long way around the color wheel', longHueIcon, function() {
       changeScheme(setSchemeLongHue(scheme, !scheme.longHue));
     }).addClass('long-hue-btn');
+    continuousBtn = addIconButton(vibranceRow, 'Continuous colors (unclassed)', continuousIcon, function() {
+      changeScheme(setSchemeContinuous(scheme, !scheme.continuous));
+    }).addClass('continuous-btn');
     reverseBtn = addIconButton(vibranceRow, 'Reverse the colors', reverseIcon, function() {
       changeScheme(reverseScheme(scheme));
     });
@@ -318,7 +329,7 @@ export function ColorSchemePanel(gui, opts) {
     summary = getPivotSummary(scheme, targetLayer);
     pivotNote.text(summary ? formatCount(summary.below) + ' below the pivot, ' +
       summary.above + ' at or above' : 'No numeric data to classify.');
-    neutralToggle.setState(scheme.neutral ? 'on' : 'off');
+    neutralToggle.setState(getSchemeNeutral(scheme) ? 'on' : 'off');
     splitSelect.node().value = scheme.split;
   }
 
@@ -439,6 +450,9 @@ export function ColorSchemePanel(gui, opts) {
     longHueBtn.classed('hidden', scheme.type == 'diverging')
       .classed('selected', !!scheme.longHue)
       .attr('aria-pressed', scheme.longHue ? 'true' : 'false');
+    continuousBtn.classed('hidden', scheme.type == 'categorical')
+      .classed('selected', isContinuousScheme(scheme))
+      .attr('aria-pressed', isContinuousScheme(scheme) ? 'true' : 'false');
   }
 
   function setSliderValue(input, val) {
@@ -456,7 +470,8 @@ export function ColorSchemePanel(gui, opts) {
   function renderPaletteButton(colors) {
     paletteBtn.empty();
     El('div').addClass('color-scheme-strip').appendTo(paletteBtn)
-      .css('background-image', getStripBackground(colors));
+      .css('background-image', isContinuousScheme(scheme) ?
+        getGradientStripBackground(scheme) : getStripBackground(colors));
     El('span').addClass('color-scheme-palette-name').appendTo(paletteBtn)
       .text(scheme.preset || 'Custom');
   }
@@ -464,10 +479,11 @@ export function ColorSchemePanel(gui, opts) {
   function renderTiles(tiles) {
     var categorical = scheme.type == 'categorical';
     var diverging = scheme.type == 'diverging';
+    var continuous = isContinuousScheme(scheme);
     var used = tiles.length;
     var tileUse = diverging ? getDivergingTileUse(scheme) : null;
     var center = getCenterTile(scheme);
-    var classLabels = categorical ? null : getClassLabels(tileUse);
+    var classLabels = categorical ? null : continuous ? getStopLabels() : getClassLabels(tileUse);
     var groups = categorical && scheme.method == 'categorical' ?
       getSwatchCategories(getCategories(targetLayer, scheme.field), used) : null;
     var n, perRow;
@@ -479,9 +495,11 @@ export function ColorSchemePanel(gui, opts) {
       });
     }
     n = tiles.length;
-    perRow = n > 12 ? Math.ceil(n / 2) : n;
+    // the stops of a continuous ramp stay in one row, under the gradient
+    perRow = n > 12 && !continuous ? Math.ceil(n / 2) : n;
     tilesEl.empty();
-    tilesEl.classed('two-rows', n > 12);
+    tilesEl.classed('two-rows', perRow < n);
+    tilesEl.classed('continuous', continuous);
     tilesEl.node().style.setProperty('--tiles-per-row', perRow);
     dropMarker = El('div').addClass('color-scheme-drop-marker').appendTo(tilesEl).hide();
     tiles.forEach(function(tile, i) {
@@ -506,9 +524,9 @@ export function ColorSchemePanel(gui, opts) {
         tileEl.attr('data-tooltip', groups ? formatCategories(groups[i]) : classLabels[i])
           .on('mouseenter', function() { keepTooltipInWindow(tileEl.node()); });
       }
-      if (diverging) {
+      if (diverging && !continuous) {
         // the bar under the tiles that classes use; a gap at the center
-        // when there is no pivot class
+        // when there is no pivot class (continuous ramps have the gradient)
         El('div').addClass('color-scheme-bar').appendTo(cell)
           .classed('used', inUse)
           .classed('joined', inUse && i < n - 1 && tileUse[i + 1]);
@@ -531,6 +549,48 @@ export function ColorSchemePanel(gui, opts) {
       } else if (tile.adjusted) {
         pin.addClass('adjusted').attr('data-tooltip', describeAdjustment(tile));
       }
+    });
+    renderGradient(continuous ? getContinuousSegments(scheme) : null, n);
+  }
+
+  // The gradient over a continuous ramp's tiles, each stop over the center
+  // of its tile; one bar per side of a diverging ramp, and one for a pivot
+  // class
+  function renderGradient(segments, n) {
+    var width = tilesEl.node().clientWidth;
+    var gap = 3;
+    var tileWidth = (width - (n - 1) * gap) / n;
+    var center = function(pos) { return pos * (tileWidth + gap) + tileWidth / 2; };
+    gradientEl.empty();
+    gradientEl.classed('hidden', !segments);
+    if (!segments || !(width > 0)) return;
+    segments.forEach(function(seg) {
+      var left = seg.flatStart ? center(seg.start) - tileWidth / 2 : center(seg.start);
+      var right = seg.flatEnd ? center(seg.end) + tileWidth / 2 : center(seg.end);
+      var stops = seg.samples.map(function(sample) {
+        return sample.color + ' ' + round(center(sample.pos) - left) + 'px';
+      });
+      if (stops.length == 1) stops.push(stops[0]);
+      El('div').addClass('color-scheme-gradient-segment').appendTo(gradientEl).css({
+        left: round(left) + 'px',
+        width: round(right - left) + 'px',
+        'background-image': 'linear-gradient(to right, ' + stops.join(', ') + ')'
+      });
+    });
+  }
+
+  function round(val) {
+    return Math.round(val * 10) / 10;
+  }
+
+  // The data value at each stop of a continuous ramp, and the range of a
+  // pivot class
+  function getStopLabels() {
+    var stops = getContinuousTileStops(scheme, targetLayer) || [];
+    return stops.map(function(stop) {
+      if (!stop) return null;
+      if (stop.range) return formatClassRange(stop.range);
+      return formatNumber(stop.value) + (stop.min ? ' (min)' : stop.max ? ' (max)' : '');
     });
   }
 
@@ -750,8 +810,8 @@ export function ColorSchemePanel(gui, opts) {
 
   function apply() {
     var lyr = targetLayer;
+    var applying = scheme;
     var colors = getAppliedColors(scheme, getCategoryCount());
-    var applied = Object.assign({}, scheme, {colors: colors});
     var cmd, extra;
     if (!lyr || !canApply(scheme) || !gui.console) return;
     getSession();
@@ -766,7 +826,7 @@ export function ColorSchemePanel(gui, opts) {
       title: 'Color scheme',
       session: session,
       onDone: function(err) {
-        if (!err) setLayerScheme(lyr, applied);
+        if (!err) setLayerScheme(lyr, getAppliedScheme(applying, colors, lyr));
         opts.onUpdate();
       }
     });
@@ -798,6 +858,39 @@ export function ColorSchemePanel(gui, opts) {
   function releaseFocus() {
     releasePanelFocus(panel.node());
   }
+}
+
+// A scheme's colors as a CSS background: blocks, or for a continuous scheme,
+// its gradients, side by side
+export function getSchemeStripBackground(scheme) {
+  return isContinuousScheme(scheme) ? getGradientStripBackground(scheme) : getStripBackground(scheme.colors);
+}
+
+// Each gradient takes room for its length, from its first stop to its last
+// (see getContinuousSegments()), without the flat ends the panel's bar has
+// over its end tiles; a pivot class takes a tile's width. Hard edges between
+// them.
+function getGradientStripBackground(scheme) {
+  var segments = getContinuousSegments(scheme);
+  var lengths = segments.map(function(seg) {
+    return seg.end > seg.start ? seg.end - seg.start : 1;
+  });
+  var total = lengths.reduce(function(memo, len) { return memo + len; }, 0);
+  var offset = 0;
+  var stops = [];
+  var pct = function(pos) { return (Math.round(pos / total * 10000) / 100) + '%'; };
+  if (!(total > 0)) return 'none';
+  segments.forEach(function(seg, i) {
+    var first = seg.samples[0].color;
+    var last = seg.samples[seg.samples.length - 1].color;
+    stops.push(first + ' ' + pct(offset));
+    seg.samples.forEach(function(sample) {
+      stops.push(sample.color + ' ' + pct(offset + sample.pos - seg.start));
+    });
+    offset += lengths[i];
+    stops.push(last + ' ' + pct(offset));
+  });
+  return 'linear-gradient(to right, ' + stops.join(', ') + ')';
 }
 
 // A row of hard-edged color blocks, as a CSS background

@@ -723,6 +723,127 @@ test('a diverging pivot can be a value, with the same number of classes per side
   expect(errors).toEqual([]);
 });
 
+test('continuous colors interpolate between the tiles, under a gradient', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page);
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  var button = panel.getByLabel('Continuous colors (unclassed)');
+  await expect(panel.locator('.color-scheme-gradient')).toBeHidden();
+  await button.click();
+  await page.waitForTimeout(300);
+  await expect(button).toHaveAttribute('aria-pressed', 'true');
+  await expect(panel.locator('.color-scheme-gradient-segment')).toHaveCount(1);
+  var tiles = panel.locator('.color-scheme-tile');
+  await expect(tiles).toHaveCount(5);
+  expect((await tiles.first().boundingBox()).height).toBe(14);
+  // the gradient runs from end to end of the tiles
+  var bar = await panel.locator('.color-scheme-gradient-segment').boundingBox();
+  var first = await tiles.first().boundingBox();
+  var last = await tiles.last().boundingBox();
+  expect(Math.abs(bar.x - first.x)).toBeLessThan(1);
+  expect(Math.abs(bar.x + bar.width - last.x - last.width)).toBeLessThan(1);
+  // each tile's tooltip is the data value at its stop
+  await expect(tiles.first()).toHaveAttribute('data-tooltip', '1806 (min)');
+  await expect(tiles.last()).toHaveAttribute('data-tooltip', '5434 (max)');
+
+  var records = await getRecords(page);
+  var fills = await getFills(page);
+  var colors = await getTileColors(page);
+  var lowest = records.reduce(function(memo, rec, i) { return rec.id < records[memo].id ? i : memo; }, 0);
+  expect(fills[lowest]).toBe(await toHex(page, colors[0]));
+  expect(new Set(fills).size).toBeGreaterThan(5);
+
+  // the style panel keeps showing the scheme, and reopening the panel shows it
+  await closeSchemePanel(page);
+  await expect(page.locator('.layer-style-panel .label-color-field.has-scheme')).toHaveCount(1);
+  await openSchemePanel(page);
+  await expect(button).toHaveAttribute('aria-pressed', 'true');
+  await closeSchemePanel(page);
+  var classify = (await getSessionCommands(page)).filter(function(cmd) {
+    return /^-classify/.test(cmd);
+  });
+  expect(classify).toEqual([expect.stringMatching(/^-classify field='id' method=quantile classes=4 continuous interpolation=oklch colors=\S+$/)]);
+  expect(errors).toEqual([]);
+});
+
+test('continuous diverging colors: a gradient on each side, and an optional pivot class', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page);
+  await runCommand(page, "-each 'v = id - 3000'");
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  await panel.locator('.color-scheme-tab').filter({hasText: 'Diverging'}).click();
+  await page.waitForTimeout(300);
+  await fieldSelect(page).selectOption('v');
+  await page.waitForTimeout(300);
+  var pivotClass = panel.getByRole('checkbox', {name: 'Pivot class'});
+  await expect(pivotClass).toBeChecked();
+
+  await panel.getByLabel('Continuous colors (unclassed)').click();
+  await page.waitForTimeout(300);
+  // no pivot class by default in this mode: two gradients, and no bar
+  await expect(pivotClass).not.toBeChecked();
+  await expect(panel.locator('.color-scheme-gradient-segment')).toHaveCount(2);
+  await expect(panel.locator('.color-scheme-bar')).toHaveCount(0);
+  var segments = await getSegmentBoxes(page);
+  var center = await panel.locator('.color-scheme-tile').nth(await getCenterIndex(page)).boundingBox();
+  expect(segments[0].x + segments[0].width).toBeLessThanOrEqual(center.x);
+  expect(segments[1].x).toBeGreaterThanOrEqual(center.x + center.width);
+  // the lowest and highest features have the outer stops' colors
+  var records = await getRecords(page);
+  var fills = await getFills(page);
+  var colors = await getTileColors(page);
+  var lowest = records.reduce(function(memo, rec, i) { return rec.v < records[memo].v ? i : memo; }, 0);
+  var highest = records.reduce(function(memo, rec, i) { return rec.v > records[memo].v ? i : memo; }, 0);
+  var tileBoxes = await Promise.all(colors.map(function(c, i) {
+    return panel.locator('.color-scheme-tile').nth(i).boundingBox();
+  }));
+  // (7 intervals split 4 and 3: the upper side's gradient stops short of
+  // the last tile)
+  var firstUsed = tileBoxes.findIndex(function(box) { return box.x + box.width > segments[0].x; });
+  var lastUsed = tileBoxes.findLastIndex(function(box) { return box.x < segments[1].x + segments[1].width; });
+  expect(lastUsed).toBe(colors.length - 2);
+  expect(fills[lowest]).toBe(await toHex(page, colors[firstUsed]));
+  expect(fills[highest]).toBe(await toHex(page, colors[lastUsed]));
+
+  await pivotClass.click();
+  await page.waitForTimeout(300);
+  await expect(panel.locator('.color-scheme-gradient-segment')).toHaveCount(3);
+  await expect(panel.locator('.color-scheme-tile').nth(await getCenterIndex(page)))
+    .toHaveAttribute('data-tooltip', /^-?[\d.]+ to [\d.]+$/);
+
+  // the classed scheme kept its own pivot class setting
+  await panel.getByLabel('Continuous colors (unclassed)').click();
+  await page.waitForTimeout(300);
+  await expect(pivotClass).toBeChecked();
+  await expect(panel.locator('.color-scheme-gradient')).toBeHidden();
+  await panel.getByLabel('Continuous colors (unclassed)').click();
+  await page.waitForTimeout(300);
+  await expect(pivotClass).toBeChecked();
+
+  await closeSchemePanel(page);
+  var classify = (await getSessionCommands(page)).filter(function(cmd) {
+    return /^-classify/.test(cmd);
+  });
+  expect(classify).toEqual([expect.stringMatching(/^-classify field='v' method=quantile pivot=auto classes=7 pivot-class continuous interpolation=oklch colors=\S+$/)]);
+  await expect(page.locator('.layer-style-panel .label-color-field.has-scheme')).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
+
+async function getSegmentBoxes(page) {
+  var segments = schemePanel(page).locator('.color-scheme-gradient-segment');
+  var boxes = [];
+  for (var i=0; i<await segments.count(); i++) {
+    boxes.push(await segments.nth(i).boundingBox());
+  }
+  return boxes;
+}
+
+async function getCenterIndex(page) {
+  return (await schemePanel(page).locator('.color-scheme-tile').count() - 1) / 2;
+}
+
 // whether a class uses each diverging tile (the bar under it)
 async function getUsedTiles(page) {
   return schemePanel(page).locator('.color-scheme-bar').evaluateAll(function(bars) {
