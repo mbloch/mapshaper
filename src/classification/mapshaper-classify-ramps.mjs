@@ -3,6 +3,7 @@ import {
   getColorRamp,
   getCategoricalColorScheme,
   getRandomizedCategoricalColorScheme,
+  wrapColors,
   isCategoricalColorScheme,
   pickRandomColorScheme,
   pickRandomCategoricalScheme
@@ -70,7 +71,7 @@ export function getClassValues(method, n, opts) {
     }
   } else if (opts.colors || opts.values) {
     if (categorical) {
-      return getCategoricalValues(opts.colors || opts.values, n);
+      return getCategoricalValues(opts.colors || opts.values, n, !!opts.colors);
     } else {
       return getInterpolableValues(opts.colors || opts.values, n, opts);
     }
@@ -80,7 +81,13 @@ export function getClassValues(method, n, opts) {
   }
 }
 
-function getCategoricalValues(values, n) {
+// A list of colors shorter than the list of categories is repeated, as the
+// colors of a color scheme are
+function getCategoricalValues(values, n, valuesAreColors) {
+  if (valuesAreColors && values.length < n) {
+    message('Repeating', values.length, 'colors to match', n, 'categories.');
+    values = wrapColors(values, n);
+  }
   if (n != values.length) {
     stop('Mismatch in number of categories and number of values');
   }

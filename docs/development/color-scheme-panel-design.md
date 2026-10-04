@@ -15,7 +15,9 @@ categorical color schemes, with user-editable ramps.
   returns to a single fill. Fill opacity, stroke and the other rows keep
   working. If the stored scheme no longer matches the data (a hand-edited
   fill, a changed field), the strip shows a "modified" state.
-- **Tabs.** Sequential | Diverging | Categorical.
+- **Tabs.** Sequential | Diverging | Categorical (Diverging is still to
+  come). Each tab keeps its own scheme while the panel is open, so switching
+  back finds it as it was; the switch is part of the same undo step.
 - **Live preview, one undo step per panel session.** Edits are applied to the
   map as they are made. Everything done while the panel is open becomes one
   undo step and one `-classify` command in the session history.
@@ -191,6 +193,39 @@ layer properties still needs to be checked before this is built.
 - Possibly later: placeholder slots in `colors=` (e.g. `#334,*,*,#fd5`) to
   express pinned ramps on the command line.
 
+## Categorical schemes
+
+A categorical scheme is a palette of swatches, of which the first n are used
+on the map: a d3 categorical scheme (Tableau10 by default), or a custom list.
+The panel shows the whole palette, with a bar under the swatches in use.
+Dragging a swatch moves it in the palette; dragging one into the swatches in
+use pushes the last of them out of use, and dragging one out brings the
+first unused one in. The shuffle button puts the whole palette, used and
+unused, in a random order. A preset that is moved or shuffled keeps its name
+(the scheme stores the new order as indexes into the preset's colors), and
+choosing it from the menu puts it back in order. Editing a swatch makes a
+custom list of the palette's colors; one that grows past them goes on with
+Tableau20 colors it doesn't have. There are no pins and no interpolation.
+
+Two methods:
+
+- **Categories** (`-classify method=categorical`): each unique value of a
+  text or number field gets a swatch, in the order the values first appear,
+  which is the order `-classify` uses. If there are more values than
+  swatches, they share swatches in turn; a tile's tooltip lists the values it
+  colors. The swatch count is capped at the number of values, and choosing a
+  field resets it to that number (up to the palette's size). The panel gives
+  `-classify` one color per swatch, and `-classify` now repeats a `colors=`
+  list that is shorter than the categories, so the command stays short for
+  fields with many values.
+- **Non-adjacent** (`-classify method=non-adjacent`): no field; neighboring
+  polygons get different colors. This takes over from the style panel's old
+  Random fill button.
+
+The swatch count goes up to the palette's size (20 for custom lists).
+Non-adjacent starts with 5. Palettes of more than 12 swatches are drawn in
+two rows.
+
 ## Diverging schemes
 
 A diverging ramp is a custom ramp with a third fixed pin at the center, plus a
@@ -232,15 +267,14 @@ Phase 2 is in place for polygon layers:
   field.
 - Browser tests: `browser-tests/color-scheme-panel.spec.mjs`.
 
-Not yet done from the panel contents list: the null-data color chit, and the
-Sequential/Diverging/Categorical tabs (only sequential exists, so there are no
-tabs yet).
+Not yet done from the panel contents list: the null-data color chit and the
+Diverging tab. Sequential and Categorical tabs are in place.
 
 ## Phases
 
 1. Core helpers: OKLab conversion, ramp resolution, `interpolation=oklab`.
 2. Sequential classed ramps in the GUI, the style panel strip, the layer
    record, and merged undo for a panel session.
-3. Categorical schemes.
+3. Categorical schemes (done).
 4. Diverging schemes and the CLI midpoint option.
 5. Continuous (unclassed) ramps, class table and key.

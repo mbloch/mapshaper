@@ -5,11 +5,14 @@ import { SizeField } from './gui-size-field';
 import { runGuiEditCommand } from './gui-edit-command';
 import { internal } from './gui-core';
 import {
-  classifyMethods, minSchemeColors, maxSchemeColors,
-  getSequentialPresetNames, getDefaultScheme, getSchemeColors, getPresetColors,
+  schemeTypes, minSchemeColors, maxCategoricalColors,
+  getSequentialPresetNames, getCategoricalPresetNames, getDefaultSchemeOfType, getSchemeColors,
+  getPresetColors, getCategoricalPresetColors, getSchemeMethods, setSchemeField, setSchemeMethod,
   choosePreset, makeSchemeCustom, setTileColor, clearTileColor, setTileCount, reverseScheme,
   getSchemeVibrance, setSchemeVibrance, setSchemeLongHue, getSchemeTiles, getTileEditColor, maxVibrance,
-  formatSchemeCommand, getNumericFields, getLayerScheme, setLayerScheme
+  formatSchemeCommand, getAppliedColors, getNumericFields, getCategoryFields, getCategories,
+  getSwatchCategories, getCategoricalPalette, moveSwatch, shuffleScheme,
+  getLayerScheme, setLayerScheme
 } from './gui-color-scheme-model';
 
 // A popup beside the polygon style panel for coloring a layer's fills by a
@@ -27,6 +30,11 @@ import {
 var reverseIcon = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" ' +
   'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">' +
   '<path d="M2 4.5h9.5M9 2l2.5 2.5L9 7"/><path d="M12 9.5H2.5M5 7L2.5 9.5 5 12"/></svg>';
+var shuffleIcon = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" ' +
+  'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M1.5 3.5h2.2c1.4 0 2.3.7 3 2l1.6 3c.7 1.3 1.6 2 3 2h1.2"/>' +
+  '<path d="M1.5 10.5h2.2c1.2 0 2-.5 2.6-1.4M8.2 4.9c.6-.9 1.4-1.4 2.6-1.4h1.7"/>' +
+  '<path d="M11 1.5l1.7 2-1.7 2M11 8.5l1.7 2-1.7 2"/></svg>';
 var longHueIcon = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" ' +
   'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">' +
   '<path d="M11.5 4.6A5 5 0 1 0 12 7"/><path d="M12 1.8v3h-3"/></svg>';
@@ -40,9 +48,14 @@ export function ColorSchemePanel(gui, opts) {
   var sessionLayer = null; // the layer the session's edits are to
   var baseScheme = null; // its scheme when they began
   var selectedTile = -1;
-  var paletteBtn, paletteMenu, countField, tileRow, tilesEl, picker, fieldSelect, methodSelect,
+  // the scheme last used on each tab while the panel is open, for switching back
+  var tabSchemes = {};
+  var tabs = {};
+  var paletteBtn, paletteMenu, countField, tileRow, tilesEl, picker, fieldRow, fieldSelect, methodSelect,
       noFieldsNote, selectionNote, controlsEl, vibranceRow, vibranceInput,
-      longHueBtn;
+      longHueBtn, reverseBtn, shuffleBtn, dropMarker;
+  // set while a tile is being dragged, so that letting go isn't a click
+  var tileDrag = null;
 
   initPanel();
 
@@ -63,12 +76,13 @@ export function ColorSchemePanel(gui, opts) {
     if (targetLayer && targetLayer != lyr) close();
     targetLayer = lyr;
     selectedTile = -1;
+    tabSchemes = {};
     scheme = getLayerScheme(lyr);
     panel.show();
     if (!scheme) {
       fields = getNumericFields(lyr);
-      scheme = getDefaultScheme(fields[0]);
-      if (scheme.field) apply();
+      scheme = getDefaultSchemeOfType(fields.length > 0 ? 'sequential' : 'categorical', lyr);
+      if (canApply(scheme)) apply();
     }
     render();
   };
@@ -114,23 +128,31 @@ export function ColorSchemePanel(gui, opts) {
       opts.onUpdate();
     });
 
+    var tabRow = El('div').addClass('label-style-row color-scheme-tabs').attr('role', 'tablist').appendTo(panel);
+    schemeTypes.forEach(function(type) {
+      tabs[type.name] = El('button').addClass('color-scheme-tab').attr('type', 'button')
+        .attr('role', 'tab').text(type.label).appendTo(tabRow)
+        .on('click', function() {
+          switchType(type.name);
+        });
+    });
+
     noFieldsNote = El('div').addClass('label-style-row color-scheme-note').appendTo(panel)
       .text('This layer has no numeric fields to classify.');
     controlsEl = El('div').appendTo(panel);
 
-    var fieldRow = El('div').addClass('label-style-row color-scheme-select-row').appendTo(controlsEl);
+    fieldRow = El('div').addClass('label-style-row color-scheme-select-row').appendTo(controlsEl);
     El('span').appendTo(fieldRow).text('Field');
     fieldSelect = El('select').attr('aria-label', 'Data field').appendTo(fieldRow).on('change', function() {
-      updateScheme({field: fieldSelect.node().value});
+      var field = fieldSelect.node().value;
+      changeScheme(setSchemeField(scheme, field, getCategoryCount(field)));
     });
 
     var methodRow = El('div').addClass('label-style-row color-scheme-select-row').appendTo(controlsEl);
     El('span').appendTo(methodRow).text('Method');
     methodSelect = El('select').attr('aria-label', 'Classification method').appendTo(methodRow).on('change', function() {
-      updateScheme({method: methodSelect.node().value});
-    });
-    classifyMethods.forEach(function(item) {
-      El('option').attr('value', item.name).text(item.label).appendTo(methodSelect);
+      var field = scheme.field || getCategoryFields(targetLayer)[0];
+      changeScheme(setSchemeMethod(scheme, methodSelect.node().value, field, getCategoryCount(field)));
     });
 
     var paletteRow = El('div').addClass('label-style-row label-split-row').appendTo(controlsEl);
@@ -141,18 +163,19 @@ export function ColorSchemePanel(gui, opts) {
       .attr('aria-label', 'Palette').appendTo(paletteCell).on('click', togglePaletteMenu);
     paletteMenu = El('div').addClass('color-scheme-palette-menu').appendTo(paletteCell).hide();
     El('span').appendTo(countCell).text('Colors');
+    // the scheme sets the upper limit (see getMaxSchemeColors())
     countField = new SizeField(countCell, {
       min: minSchemeColors,
-      max: maxSchemeColors,
+      max: maxCategoricalColors,
       step: 1,
       bigStep: 2,
       decimals: 0,
       title: 'Number of classes',
       onSet: function(n) {
-        changeScheme(setTileCount(scheme, n));
+        changeScheme(setTileCount(scheme, n, getCategoryCount()));
       },
       onStep: function(delta) {
-        changeScheme(setTileCount(scheme, scheme.n + (delta > 0 ? 1 : -1)));
+        changeScheme(setTileCount(scheme, scheme.n + (delta > 0 ? 1 : -1), getCategoryCount()));
       },
       onDone: releaseFocus
     });
@@ -162,7 +185,7 @@ export function ColorSchemePanel(gui, opts) {
     picker = new ColorPicker(tileRow, {
       presetRows: [],
       onPreview: function(hex) {
-        var tile = tilesEl.node().children[selectedTile];
+        var tile = getTileCells()[selectedTile];
         if (tile) tile.querySelector('.color-scheme-tile').style.backgroundColor = hex;
       },
       onChange: function(hex) {
@@ -183,9 +206,12 @@ export function ColorSchemePanel(gui, opts) {
     vibranceInput = vibranceRow.findChild('input');
     longHueBtn = addIconButton(vibranceRow, 'Go the long way around the color wheel', longHueIcon, function() {
       changeScheme(setSchemeLongHue(scheme, !scheme.longHue));
-    });
-    addIconButton(vibranceRow, 'Reverse the colors', reverseIcon, function() {
+    }).addClass('long-hue-btn');
+    reverseBtn = addIconButton(vibranceRow, 'Reverse the colors', reverseIcon, function() {
       changeScheme(reverseScheme(scheme));
+    });
+    shuffleBtn = addIconButton(vibranceRow, 'Shuffle the colors', shuffleIcon, function() {
+      changeScheme(shuffleScheme(scheme));
     });
     selectionNote = El('div').addClass('label-style-row color-scheme-note').appendTo(controlsEl)
       .text('Colors apply to every feature in the layer, not only the selected ones.');
@@ -199,14 +225,20 @@ export function ColorSchemePanel(gui, opts) {
   }
 
   function render() {
-    var fields, colors, tiles;
+    var categorical, fields, colors, tiles;
     if (!targetLayer || !scheme) return;
-    fields = getNumericFields(targetLayer);
-    noFieldsNote.classed('hidden', fields.length > 0);
-    controlsEl.classed('hidden', fields.length === 0);
-    if (fields.length === 0) return;
+    categorical = scheme.type == 'categorical';
+    Object.keys(tabs).forEach(function(type) {
+      tabs[type].classed('selected', type == scheme.type)
+        .attr('aria-selected', type == scheme.type ? 'true' : 'false');
+    });
+    fields = categorical ? getCategoryFields(targetLayer) : getNumericFields(targetLayer);
+    noFieldsNote.classed('hidden', categorical || fields.length > 0);
+    controlsEl.classed('hidden', !categorical && fields.length === 0);
+    if (!categorical && fields.length === 0) return;
     renderFieldOptions(fields);
-    methodSelect.node().value = scheme.method;
+    fieldRow.classed('hidden', scheme.method == 'non-adjacent');
+    renderMethodOptions(fields);
     countField.setValue(String(scheme.n));
     tiles = getSchemeTiles(scheme);
     colors = tiles.map(function(tile) { return tile.color; });
@@ -214,6 +246,41 @@ export function ColorSchemePanel(gui, opts) {
     renderTiles(tiles);
     renderVibrance();
     selectionNote.classed('hidden', !(opts.getSelectionCount() > 0));
+  }
+
+  function renderMethodOptions(fields) {
+    methodSelect.empty();
+    getSchemeMethods(scheme).forEach(function(item) {
+      var opt = El('option').attr('value', item.name).text(item.label).appendTo(methodSelect);
+      // classifying by category needs a field
+      if (item.name == 'categorical' && fields.length === 0) opt.attr('disabled', true);
+    });
+    methodSelect.node().value = scheme.method;
+  }
+
+  // Each tab keeps its own scheme while the panel is open, and starts from a
+  // default the first time
+  function switchType(type) {
+    var next;
+    if (type == scheme.type) return;
+    tabSchemes[scheme.type] = scheme;
+    next = tabSchemes[type] || getDefaultSchemeOfType(type, targetLayer);
+    picker.hide();
+    selectedTile = -1;
+    scheme = next;
+    if (canApply(scheme)) apply();
+    render();
+  }
+
+  function canApply(s) {
+    return s.method == 'non-adjacent' || !!s.field;
+  }
+
+  // The number of categories in a field (the scheme's, by default), for a
+  // categorical scheme
+  function getCategoryCount(field) {
+    if (scheme.type != 'categorical') return -1;
+    return getCategories(targetLayer, field || scheme.field).length;
   }
 
   function addSliderRow(label, tooltip, min, max, step, onInput) {
@@ -238,12 +305,14 @@ export function ColorSchemePanel(gui, opts) {
     return btn;
   }
 
-  // Presets have no interpolated tiles for vibrance or the hue path to
-  // change; the row keeps only the reverse button for them.
+  // Presets and categorical schemes have no interpolated tiles for vibrance
+  // or the hue path to change; the row keeps only the reverse button for them.
   function renderVibrance() {
     var vibrance = getSchemeVibrance(scheme);
     setSliderValue(vibranceInput, Math.round(vibrance * 1000));
-    vibranceRow.classed('preset', !!scheme.preset);
+    vibranceRow.classed('preset', !!scheme.preset || scheme.type == 'categorical');
+    reverseBtn.classed('hidden', scheme.type == 'categorical');
+    shuffleBtn.classed('hidden', scheme.type != 'categorical');
     longHueBtn.classed('selected', !!scheme.longHue)
       .attr('aria-pressed', scheme.longHue ? 'true' : 'false');
   }
@@ -257,7 +326,7 @@ export function ColorSchemePanel(gui, opts) {
     fields.forEach(function(field) {
       El('option').attr('value', field).text(field).appendTo(fieldSelect);
     });
-    fieldSelect.node().value = scheme.field;
+    fieldSelect.node().value = scheme.field || '';
   }
 
   function renderPaletteButton(colors) {
@@ -269,25 +338,56 @@ export function ColorSchemePanel(gui, opts) {
   }
 
   function renderTiles(tiles) {
-    var n = tiles.length;
+    var categorical = scheme.type == 'categorical';
+    var used = tiles.length;
+    var groups = categorical && scheme.method == 'categorical' ?
+      getSwatchCategories(getCategories(targetLayer, scheme.field), used) : null;
+    var n, perRow;
+    // a categorical scheme shows its whole palette, and marks the swatches
+    // in use
+    if (categorical) {
+      tiles = getCategoricalPalette(scheme).map(function(color) {
+        return {color: color, pinned: false, adjusted: false};
+      });
+    }
+    n = tiles.length;
+    perRow = n > 12 ? Math.ceil(n / 2) : n;
     tilesEl.empty();
+    tilesEl.classed('two-rows', n > 12);
+    tilesEl.node().style.setProperty('--tiles-per-row', perRow);
+    dropMarker = El('div').addClass('color-scheme-drop-marker').appendTo(tilesEl).hide();
     tiles.forEach(function(tile, i) {
       var color = tile.color;
+      var inUse = !categorical || i < used;
       var cell = El('div').addClass('color-scheme-tile-cell').appendTo(tilesEl);
-      El('div').addClass('color-scheme-tile').attr('role', 'button')
-        .attr('aria-label', 'Color ' + (i + 1) + ': ' + color)
+      var tileEl = El('div').addClass('color-scheme-tile').attr('role', 'button')
+        .attr('aria-label', 'Color ' + (i + 1) + ': ' + color + (inUse ? '' : ' (not used)'))
         .classed('selected', i == selectedTile)
         .css('background-color', color)
         .appendTo(cell)
         .on('click', function() {
+          if (tileDrag && tileDrag.moved) return;
           selectTile(i, color);
         });
+      if (categorical) {
+        tileEl.on('pointerdown', function(e) {
+          startTileDrag(e, i);
+        });
+      }
+      if (groups && inUse) {
+        tileEl.attr('data-tooltip', formatCategories(groups[i]))
+          .on('mouseenter', function() { keepTooltipInWindow(tileEl.node()); });
+      }
       var pin = El('div').addClass('color-scheme-pin').appendTo(cell)
         .on('mouseenter', function() { keepTooltipInWindow(pin.node()); });
       var end = i === 0 || i == n - 1;
+      if (categorical) {
+        // a bar under the swatches in use, unbroken to the end of each row
+        pin.classed('used', inUse)
+          .classed('joined', inUse && i < used - 1 && (i + 1) % perRow > 0);
       // a pinned tile between the ends needs its dot for unpinning, even if
       // vibrance was clipped
-      if (tile.pinned && !end) {
+      } else if (tile.pinned && !end) {
         pin.addClass('pinned').attr('role', 'button').attr('aria-label', 'Unpin this color')
           .attr('data-tooltip', 'Unpin this color')
           .on('click', function() {
@@ -297,6 +397,93 @@ export function ColorSchemePanel(gui, opts) {
         pin.addClass('adjusted').attr('data-tooltip', describeAdjustment(tile));
       }
     });
+  }
+
+  // Dragging a categorical swatch moves it to where it's dropped, which may
+  // be into or out of the swatches in use
+  function startTileDrag(e, from) {
+    var x0 = e.clientX, y0 = e.clientY;
+    var drag = tileDrag = {from: from, moved: false, before: -1};
+    if (e.button !== 0) return;
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onCancel);
+
+    function onMove(e) {
+      if (!drag.moved && Math.abs(e.clientX - x0) + Math.abs(e.clientY - y0) < 5) return;
+      if (!drag.moved) {
+        drag.moved = true;
+        tilesEl.addClass('dragging');
+        getTileCells()[from].classList.add('drag-source');
+      }
+      drag.before = findDropPlace(e.clientX, e.clientY);
+      showDropMarker(drag.before);
+    }
+
+    function onUp() {
+      var to = drag.before > from ? drag.before - 1 : drag.before;
+      finish();
+      if (drag.moved && drag.before > -1 && to != from) {
+        picker.hide();
+        selectedTile = -1;
+        changeScheme(moveSwatch(scheme, from, to));
+      }
+      // the click that follows a drag is ignored, then dragging is over
+      setTimeout(function() {
+        if (tileDrag == drag) tileDrag = null;
+      }, 0);
+    }
+
+    function onCancel() {
+      finish();
+      tileDrag = null;
+    }
+
+    function finish() {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onCancel);
+      tilesEl.removeClass('dragging');
+      getTileCells().forEach(function(cell) { cell.classList.remove('drag-source'); });
+      dropMarker.hide();
+    }
+  }
+
+  function getTileCells() {
+    return Array.from(tilesEl.node().querySelectorAll('.color-scheme-tile-cell'));
+  }
+
+  // The index of the tile that a swatch dropped at (x, y) goes in front of
+  // (the number of tiles, after the last), on the row nearest the pointer
+  function findDropPlace(x, y) {
+    var rects = getTileCells().map(function(cell) {
+      return cell.querySelector('.color-scheme-tile').getBoundingClientRect();
+    });
+    var best = -1, bestDist = Infinity;
+    rects.forEach(function(rect, i) {
+      var dy = y < rect.top ? rect.top - y : y > rect.bottom ? y - rect.bottom : 0;
+      var dx = x < rect.left ? rect.left - x : x > rect.right ? x - rect.right : 0;
+      var dist = dy * 1000 + dx;
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = x < (rect.left + rect.right) / 2 ? i : i + 1;
+      }
+    });
+    return best;
+  }
+
+  // A line in the gap where the swatch would go
+  function showDropMarker(before) {
+    var cells = getTileCells();
+    var box = tilesEl.node().getBoundingClientRect();
+    var ref = cells[Math.min(before, cells.length - 1)].querySelector('.color-scheme-tile');
+    var rect = ref.getBoundingClientRect();
+    var left = before < cells.length ? rect.left - 2 : rect.right + 1;
+    dropMarker.css({
+      left: (left - box.left) + 'px',
+      top: (rect.top - box.top) + 'px',
+      height: rect.height + 'px'
+    }).show();
   }
 
   // A tooltip is centered under its pin or button, unless that would run it past the
@@ -315,6 +502,15 @@ export function ColorSchemePanel(gui, opts) {
     if (right > maxRight) shift = maxRight - right;
     else if (left < margin) shift = margin - left;
     if (shift) el.style.setProperty('--tooltip-shift', shift + 'px');
+  }
+
+  function formatCategories(values) {
+    var max = 4;
+    var labels = values.slice(0, max).map(function(val) {
+      return val === '' || val === null || val === undefined ? '(no value)' : String(val);
+    });
+    if (values.length > max) labels.push('and ' + (values.length - max) + ' more');
+    return labels.join('\n');
   }
 
   function describeAdjustment(tile) {
@@ -355,13 +551,16 @@ export function ColorSchemePanel(gui, opts) {
   }
 
   function renderPaletteMenu() {
+    var categorical = scheme.type == 'categorical';
+    var names = categorical ? getCategoricalPresetNames() : getSequentialPresetNames();
     paletteMenu.empty();
     addPaletteItem('Custom', getSchemeColors(makeSchemeCustom(scheme)), !scheme.preset, function() {
       changeScheme(makeSchemeCustom(scheme));
     });
-    getSequentialPresetNames().forEach(function(name) {
-      addPaletteItem(name, getPresetColors(name, 7), scheme.preset == name, function() {
-        changeScheme(choosePreset(scheme, name));
+    names.forEach(function(name) {
+      var colors = categorical ? getCategoricalPresetColors(name) : getPresetColors(name, 7);
+      addPaletteItem(name, colors, scheme.preset == name, function() {
+        changeScheme(choosePreset(scheme, name, getCategoryCount()));
       });
     });
   }
@@ -378,10 +577,6 @@ export function ColorSchemePanel(gui, opts) {
     El('span').appendTo(item).text(name);
   }
 
-  function updateScheme(changes) {
-    changeScheme(Object.assign({}, scheme, changes));
-  }
-
   function changeScheme(next) {
     var prevN = scheme.n;
     scheme = next;
@@ -395,10 +590,10 @@ export function ColorSchemePanel(gui, opts) {
 
   function apply() {
     var lyr = targetLayer;
-    var colors = getSchemeColors(scheme);
+    var colors = getAppliedColors(scheme, getCategoryCount());
     var applied = Object.assign({}, scheme, {colors: colors});
     var cmd, extra;
-    if (!lyr || !scheme.field || !gui.console) return;
+    if (!lyr || !canApply(scheme) || !gui.console) return;
     getSession();
     if (!session || !session.isPending()) {
       sessionLayer = lyr;

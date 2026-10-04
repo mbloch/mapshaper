@@ -157,6 +157,14 @@ export function getCategoricalColorScheme(name, n, randomized) {
   return colors;
 }
 
+// All the colors of a categorical scheme
+export function getCategoricalColors(name) {
+  initSchemes();
+  name = standardName(name);
+  if (!isCategoricalColorScheme(name)) stop('Not a categorical color scheme:', name);
+  return (ramps[name] || d3Scales['scheme' + name]).concat();
+}
+
 export function wrapColors(colors, n) {
   while (colors.length > 0 && colors.length < n) {
     colors = colors.concat(colors.slice(0, n - colors.length));

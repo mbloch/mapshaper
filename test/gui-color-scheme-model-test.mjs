@@ -4,7 +4,11 @@ import {
   setTileColor, clearTileColor, setTileCount, reverseScheme, formatSchemeCommand,
   getSequentialPresetNames, getNumericFields, setLayerScheme, getLayerScheme,
   getPresetColors, getSchemeVibrance, setSchemeVibrance, defaultVibrance, maxVibrance,
-  getSchemeTiles, getTileEditColor, setSchemeLongHue
+  getSchemeTiles, getTileEditColor, setSchemeLongHue,
+  getDefaultCategoricalScheme, getDefaultSchemeOfType, getCategoryFields, getCategories,
+  getSwatchCategories, getCategoricalPresetColors, getMaxSchemeColors, setSchemeField,
+  setSchemeMethod, getAppliedColors, maxCategoricalColors, getCategoricalPalette,
+  moveSwatch, shuffleScheme
 } from '../src/gui/gui-color-scheme-model';
 import api from '../mapshaper.js';
 
@@ -209,6 +213,180 @@ describe('gui-color-scheme-model.mjs', function() {
       var lyr = makeLayer([{fill: '#000000'}]);
       setLayerScheme(lyr, Object.assign(getDefaultScheme('pop'), {colors: ['#000000', '#ffffff']}));
       assert.strictEqual(getLayerScheme(lyr), null);
+    });
+
+    it('a non-adjacent scheme has no field to go missing', function() {
+      var lyr = makeLayer([{fill: '#000000'}]);
+      var scheme = Object.assign(getDefaultCategoricalScheme(lyr), {colors: ['#000000', '#ffffff']});
+      assert.equal(scheme.method, 'non-adjacent');
+      setLayerScheme(lyr, scheme);
+      assert.strictEqual(getLayerScheme(lyr), scheme);
+    });
+  });
+
+  describe('categorical schemes', function() {
+    var records = [
+      {code: 3, kind: 'farm', fill: 'red'},
+      {code: 1, kind: 'city', fill: 'red'},
+      {code: 3, kind: 'farm', fill: 'red'},
+      {code: 2, kind: 'park', fill: 'red'}
+    ];
+    var tableau = ['#4e79a7', '#f28e2c', '#e15759', '#76b7b2', '#59a14f', '#edc949',
+      '#af7aa1', '#ff9da7', '#9c755f', '#bab0ab'];
+
+    it('text and number fields can be categories, but not the fill', function() {
+      assert.deepEqual(getCategoryFields(makeLayer(records)), ['code', 'kind']);
+    });
+
+    it('defaults to the first text field, with a swatch for each value', function() {
+      var lyr = makeLayer(records);
+      var scheme = getDefaultCategoricalScheme(lyr);
+      assert.equal(scheme.type, 'categorical');
+      assert.equal(scheme.field, 'kind');
+      assert.equal(scheme.method, 'categorical');
+      assert.equal(scheme.preset, 'Tableau10');
+      assert.equal(scheme.n, 3);
+      assert.deepEqual(getSchemeColors(scheme), getCategoricalPresetColors('Tableau10').slice(0, 3));
+      assert.deepEqual(getDefaultSchemeOfType('categorical', lyr), scheme);
+    });
+
+    it('categories are the field\'s values in the order -classify uses', function() {
+      assert.deepEqual(getCategories(makeLayer(records), 'kind'), ['farm', 'city', 'park']);
+    });
+
+    it('a layer without fields defaults to non-adjacent colors', function() {
+      var scheme = getDefaultCategoricalScheme(makeLayer([{}, {}]));
+      assert.equal(scheme.method, 'non-adjacent');
+      assert.strictEqual(scheme.field, null);
+      assert.equal(getSchemeColors(scheme).length, 5);
+    });
+
+    it('the swatch count is limited by the palette and the categories', function() {
+      var scheme = getDefaultCategoricalScheme(makeLayer(records));
+      assert.equal(getMaxSchemeColors(scheme, 3), 3);
+      assert.equal(getMaxSchemeColors(scheme, 50), 10);
+      assert.equal(getMaxSchemeColors(scheme, 1), 2);
+      assert.equal(setTileCount(scheme, 8, 3).n, 3);
+      scheme = setSchemeMethod(scheme, 'non-adjacent');
+      assert.equal(setTileCount(scheme, 15, 3).n, 10);
+      assert.equal(setTileCount(makeSchemeCustom(scheme), 30, 3).n, maxCategoricalColors);
+    });
+
+    it('a new field gets a swatch for each of its values', function() {
+      var scheme = setSchemeField(getDefaultCategoricalScheme(makeLayer(records)), 'code', 3);
+      assert.equal(scheme.field, 'code');
+      assert.equal(scheme.n, 3);
+      assert.equal(setSchemeField(scheme, 'x', 40).n, 10);
+    });
+
+    it('changing to the categorical method picks a field', function() {
+      var scheme = getDefaultCategoricalScheme(makeLayer([{}, {}]));
+      scheme = setSchemeMethod(setTileCount(scheme, 8), 'categorical', 'kind', 3);
+      assert.equal(scheme.field, 'kind');
+      assert.equal(scheme.n, 3);
+    });
+
+    it('choosing a preset with fewer colors limits the swatch count', function() {
+      var scheme = setSchemeMethod(getDefaultCategoricalScheme(makeLayer([{}])), 'non-adjacent');
+      scheme = choosePreset(setTileCount(choosePreset(scheme, 'Category20'), 15), 'Set1');
+      assert.equal(scheme.n, 9);
+    });
+
+    it('editing a swatch makes a custom list, which keeps its colors as it grows', function() {
+      var scheme = getDefaultCategoricalScheme(makeLayer([{}]));
+      var custom = setTileColor(scheme, 1, '#ff0000');
+      assert.strictEqual(custom.preset, null);
+      assert.deepEqual(getSchemeColors(custom), ['#4e79a7', '#ff0000', '#e15759', '#76b7b2', '#59a14f']);
+      // the whole palette, edited
+      assert.deepEqual(getCategoricalPalette(custom), ['#4e79a7', '#ff0000'].concat(tableau.slice(2)));
+      assert.deepEqual(getSchemeColors(setTileCount(custom, 10)).slice(5), tableau.slice(5));
+      // past the palette's colors, more come from Tableau20
+      var grown = setTileCount(custom, 20);
+      assert.equal(new Set(getSchemeColors(grown)).size, 20);
+      assert.equal(getCategoricalPalette(grown).length, maxCategoricalColors);
+      assert.deepEqual(getPinnedTiles(custom), [false, false, false, false, false]);
+      assert.equal(getTileEditColor(custom, 1), '#ff0000');
+    });
+
+    it('shows the whole palette, of which the first n are used', function() {
+      var scheme = getDefaultCategoricalScheme(makeLayer([{}]));
+      assert.deepEqual(getCategoricalPalette(scheme), tableau);
+      assert.deepEqual(getSchemeColors(scheme), tableau.slice(0, 5));
+    });
+
+    it('non-adjacent colors start at 5', function() {
+      var scheme = getDefaultCategoricalScheme(makeLayer(records.concat(records, records)));
+      assert.equal(setTileCount(scheme, 3, 3).n, 3);
+      assert.equal(setSchemeMethod(setTileCount(scheme, 3, 3), 'non-adjacent').n, 5);
+    });
+
+    it('moving a swatch into use pushes the last one out', function() {
+      var scheme = getDefaultCategoricalScheme(makeLayer([{}]));
+      var moved = moveSwatch(scheme, 7, 1);
+      assert.equal(moved.preset, 'Tableau10');
+      assert.deepEqual(getSchemeColors(moved), [tableau[0], tableau[7], tableau[1], tableau[2], tableau[3]]);
+      assert.equal(getCategoricalPalette(moved)[5], tableau[4]);
+      // and out of use brings the first unused one in
+      moved = moveSwatch(scheme, 0, 9);
+      assert.deepEqual(getSchemeColors(moved), tableau.slice(1, 6));
+      assert.equal(getCategoricalPalette(moved)[9], tableau[0]);
+      // custom lists move their own colors
+      var custom = moveSwatch(makeSchemeCustom(scheme), 7, 1);
+      assert.deepEqual(getSchemeColors(custom), getSchemeColors(moveSwatch(scheme, 7, 1)));
+      // choosing the preset again puts it back in order
+      assert.deepEqual(getCategoricalPalette(choosePreset(moveSwatch(scheme, 7, 1), 'Tableau10')), tableau);
+    });
+
+    it('shuffles the whole palette, keeping the preset', function() {
+      var scheme = getDefaultCategoricalScheme(makeLayer([{}]));
+      var shuffled = shuffleScheme(scheme, function() { return 0; });
+      assert.equal(shuffled.preset, 'Tableau10');
+      assert.deepEqual(getCategoricalPalette(shuffled).concat().sort(), tableau.concat().sort());
+      assert.notDeepEqual(getCategoricalPalette(shuffled), tableau);
+      assert.equal(shuffled.n, 5);
+      var custom = shuffleScheme(makeSchemeCustom(scheme), function() { return 0; });
+      assert.deepEqual(getCategoricalPalette(custom), getCategoricalPalette(shuffled));
+    });
+
+    it('a shuffle that leaves the order as it was is tried again', function() {
+      var scheme = getDefaultCategoricalScheme(makeLayer([{}]));
+      var palette = getCategoricalPalette(scheme);
+      // the first try leaves every swatch in place
+      var calls = 0;
+      var shuffled = shuffleScheme(scheme, function() { return calls++ < 9 ? 0.9999 : 0; });
+      assert.notDeepEqual(getCategoricalPalette(shuffled), palette);
+      for (var i=0; i<20; i++) {
+        assert.notDeepEqual(getCategoricalPalette(shuffleScheme(scheme)), palette);
+      }
+    });
+
+    it('swatches are shared by categories in turn', function() {
+      assert.deepEqual(getSwatchCategories(['a', 'b', 'c', 'd', 'e'], 2), [['a', 'c', 'e'], ['b', 'd']]);
+    });
+
+    it('applies no more colors than there are categories', function() {
+      var scheme = Object.assign(getDefaultCategoricalScheme(makeLayer(records)), {n: 5});
+      assert.equal(getAppliedColors(scheme, 3).length, 3);
+      assert.equal(getAppliedColors(setSchemeMethod(scheme, 'non-adjacent'), 3).length, 5);
+    });
+
+    it('writes -classify commands', function() {
+      var scheme = getDefaultCategoricalScheme(makeLayer(records));
+      assert.equal(formatSchemeCommand(scheme, ['#000000', '#ffffff']),
+        "-classify field='kind' method=categorical colors=#000000,#ffffff");
+      assert.equal(formatSchemeCommand(setSchemeMethod(scheme, 'non-adjacent'), ['#000000', '#ffffff']),
+        '-classify method=non-adjacent colors=#000000,#ffffff');
+    });
+
+    it('the command colors each category', async function() {
+      var csv = 'kind\nfarm\ncity\nfarm\npark\nlake';
+      var lyr = makeLayer([{kind: 'farm'}, {kind: 'city'}, {kind: 'farm'}, {kind: 'park'}, {kind: 'lake'}]);
+      var scheme = setTileCount(getDefaultCategoricalScheme(lyr), 2, 4);
+      var colors = getAppliedColors(scheme, 4);
+      var out = await api.applyCommands('-i data.csv ' + formatSchemeCommand(scheme, colors) + ' -o format=json',
+        {'data.csv': csv});
+      var fills = JSON.parse(out['data.json']).map(function(d) { return d.fill; });
+      assert.deepEqual(fills, [colors[0], colors[1], colors[0], colors[0], colors[1]]);
     });
   });
 });

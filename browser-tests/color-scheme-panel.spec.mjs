@@ -378,6 +378,180 @@ async function setPickerColor(panel, str) {
   await panel.page().waitForTimeout(300);
 }
 
+test('the categorical tab gives each value of a field a swatch', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page);
+  await runCommand(page, "-each 'kind = [\"farm\", \"city\", \"park\"][this.id % 3]'");
+  var before = await getFills(page);
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  var seqColors = await getTileColors(page);
+  await expect(panel.locator('.color-scheme-tab.selected')).toHaveText('Sequential');
+
+  await panel.locator('.color-scheme-tab').filter({hasText: 'Categorical'}).click();
+  await page.waitForTimeout(300);
+  await expect(panel.locator('.color-scheme-tab.selected')).toHaveText('Categorical');
+  await expect(fieldSelect(page)).toHaveValue('kind');
+  await expect(methodSelect(page)).toHaveValue('categorical');
+  await expect(panel.locator('.color-scheme-palette-name')).toHaveText('Tableau10');
+  // the whole palette, with a bar under the three swatches in use
+  await expect(panel.locator('.color-scheme-tile')).toHaveCount(10);
+  await expect(panel.locator('.color-scheme-pin.used')).toHaveCount(3);
+  // no pins, and no vibrance for categories
+  await expect(panel.locator('.color-scheme-pin.pinned')).toHaveCount(0);
+  await expect(panel.getByLabel('Vibrance')).toBeHidden();
+
+  var records = await getRecords(page);
+  var byKind = {};
+  records.forEach(function(rec) {
+    expect(byKind[rec.kind] || rec.fill).toBe(rec.fill);
+    byKind[rec.kind] = rec.fill;
+  });
+  expect(new Set(Object.values(byKind)).size).toBe(3);
+  var firstKind = records[0].kind;
+  await expect(panel.locator('.color-scheme-tile').first()).toHaveAttribute('data-tooltip', firstKind);
+
+  // editing a swatch makes the palette custom
+  await panel.locator('.color-scheme-tile').nth(1).click();
+  await setPickerColor(panel, '#b11b1b');
+  await page.waitForTimeout(300);
+  await expect(panel.locator('.color-scheme-palette-name')).toHaveText('Custom');
+  expect(await getFills(page)).toContain('#b11b1b');
+
+  // each tab keeps its scheme while the panel is open
+  await panel.locator('.color-scheme-tab').filter({hasText: 'Sequential'}).click();
+  await page.waitForTimeout(300);
+  expect(await getTileColors(page)).toEqual(seqColors);
+  await panel.locator('.color-scheme-tab').filter({hasText: 'Categorical'}).click();
+  await page.waitForTimeout(300);
+  expect(await getFills(page)).toContain('#b11b1b');
+
+  await closeSchemePanel(page);
+  var classify = (await getSessionCommands(page)).filter(function(cmd) {
+    return /^-classify/.test(cmd);
+  });
+  expect(classify).toEqual([expect.stringMatching(/^-classify field='kind' method=categorical colors=#[0-9a-f]{6},#b11b1b,#[0-9a-f]{6}$/)]);
+
+  // reopening shows the categorical scheme that was applied
+  await openSchemePanel(page);
+  await expect(panel.locator('.color-scheme-tab.selected')).toHaveText('Categorical');
+  await expect(panel.locator('.color-scheme-palette-name')).toHaveText('Custom');
+  await closeSchemePanel(page);
+
+  await undo(page);
+  expect(await getFills(page)).toEqual(before);
+  expect(errors).toEqual([]);
+});
+
+test('non-adjacent colors need no field', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page);
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  await panel.locator('.color-scheme-tab').filter({hasText: 'Categorical'}).click();
+  await page.waitForTimeout(300);
+  // the numeric id field gives a swatch to each of its 12 values, up to Tableau10's 10
+  await expect(fieldSelect(page)).toHaveValue('id');
+  await expect(panel.locator('.color-scheme-pin.used')).toHaveCount(10);
+
+  await methodSelect(page).selectOption('non-adjacent');
+  await page.waitForTimeout(300);
+  await expect(fieldSelect(page)).toBeHidden();
+  await expect(panel.locator('.size-field-input')).toHaveValue('5');
+  await expect(panel.locator('.color-scheme-pin.used')).toHaveCount(5);
+  await setField(panel.locator('.size-field-input'), '4');
+  await expect(panel.locator('.color-scheme-tile')).toHaveCount(10);
+  await expect(panel.locator('.color-scheme-pin.used')).toHaveCount(4);
+  var colors = (await getTileColors(page)).slice(0, 4);
+  var fills = await getFills(page);
+  expect(new Set(fills).size).toBeLessThanOrEqual(4);
+  for (var fill of fills) {
+    expect(colors).toContain(await toCssColor(page, fill));
+  }
+  await expect(page.locator('.layer-style-panel .layer-scheme-strip'))
+    .toHaveAttribute('title', 'Neighbors colored differently');
+
+  await closeSchemePanel(page);
+  var classify = (await getSessionCommands(page)).filter(function(cmd) {
+    return /^-classify/.test(cmd);
+  });
+  expect(classify).toEqual([expect.stringMatching(/^-classify method=non-adjacent colors=(#[0-9a-f]{6},){3}#[0-9a-f]{6}$/)]);
+  expect(errors).toEqual([]);
+});
+
+test('more than 12 swatches go on two rows', async function({page}) {
+  await loadFixture(page);
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  await panel.locator('.color-scheme-tab').filter({hasText: 'Categorical'}).click();
+  await methodSelect(page).selectOption('non-adjacent');
+  await panel.locator('.color-scheme-palette-btn').click();
+  await panel.locator('.color-scheme-palette-item').filter({hasText: /^Category20$/}).click();
+  var tiles = panel.locator('.color-scheme-tile');
+  await expect(tiles).toHaveCount(20);
+  // the bar under the swatches in use goes on to the second row
+  await setField(panel.locator('.size-field-input'), '12');
+  await expect(panel.locator('.color-scheme-pin.used')).toHaveCount(12);
+  await expect(panel.locator('.color-scheme-pin.joined')).toHaveCount(10);
+  var first = await tiles.nth(0).boundingBox();
+  var eleventh = await tiles.nth(10).boundingBox();
+  expect(eleventh.y).toBeGreaterThan(first.y + first.height);
+  expect(Math.abs(eleventh.x - first.x)).toBeLessThan(1);
+});
+
+test('dragging a swatch into use pushes the last one out of use', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page);
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  await panel.locator('.color-scheme-tab').filter({hasText: 'Categorical'}).click();
+  await methodSelect(page).selectOption('non-adjacent');
+  await page.waitForTimeout(300);
+  var before = await getTileColors(page);
+  var tiles = panel.locator('.color-scheme-tile');
+
+  // the eighth swatch, dropped in front of the second
+  await dragTile(page, tiles.nth(7), tiles.nth(1), 'left');
+  var after = await getTileColors(page);
+  expect(after.slice(0, 6)).toEqual([before[0], before[7], before[1], before[2], before[3], before[4]]);
+  await expect(panel.locator('.color-scheme-pin.used')).toHaveCount(5);
+  // a preset keeps its name when its swatches are moved
+  await expect(panel.locator('.color-scheme-palette-name')).toHaveText('Tableau10');
+  // the picker didn't open
+  await expect(panel.locator('.label-color-picker')).toBeHidden();
+  var fills = new Set(await getFills(page));
+  expect(fills.has(await toHex(page, before[7]))).toBe(true);
+  expect(fills.has(await toHex(page, before[4]))).toBe(false);
+
+  // dropped past the last swatch
+  await dragTile(page, tiles.nth(0), tiles.nth(9), 'right');
+  expect((await getTileColors(page))[9]).toBe(before[0]);
+
+  await closeSchemePanel(page);
+  expect((await getSessionCommands(page)).filter(function(cmd) {
+    return /^-classify/.test(cmd);
+  }).length).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+test('shuffle reorders the whole palette', async function({page}) {
+  await loadFixture(page);
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  await expect(panel.getByLabel('Shuffle the colors')).toBeHidden();
+  await expect(panel.getByLabel('Reverse the colors')).toBeVisible();
+  await panel.locator('.color-scheme-tab').filter({hasText: 'Categorical'}).click();
+  await page.waitForTimeout(300);
+  await expect(panel.getByLabel('Reverse the colors')).toBeHidden();
+  var before = await getTileColors(page);
+  await panel.getByLabel('Shuffle the colors').click();
+  await page.waitForTimeout(300);
+  var after = await getTileColors(page);
+  expect(after).not.toEqual(before);
+  expect(after.concat().sort()).toEqual(before.concat().sort());
+  await expect(panel.locator('.color-scheme-palette-name')).toHaveText('Tableau10');
+});
+
 function schemePanel(page) {
   return page.locator('.color-scheme-panel');
 }
@@ -422,6 +596,46 @@ async function getTileColors(page) {
   return schemePanel(page).locator('.color-scheme-tile').evaluateAll(function(tiles) {
     return tiles.map(function(tile) { return tile.style.backgroundColor; });
   });
+}
+
+function fieldSelect(page) {
+  return schemePanel(page).getByLabel('Data field');
+}
+
+function methodSelect(page) {
+  return schemePanel(page).getByLabel('Classification method');
+}
+
+async function getRecords(page) {
+  return page.evaluate(function(layer) {
+    return window.mapshaper.undoTest.getLayerInfo(layer).records;
+  }, LAYER);
+}
+
+async function runCommand(page, cmd) {
+  await page.evaluate(function(str) {
+    return window.mapshaper.undoTest.runCommand(str);
+  }, cmd);
+  await page.waitForTimeout(150);
+}
+
+async function dragTile(page, source, target, side) {
+  var a = await source.boundingBox();
+  var b = await target.boundingBox();
+  var x = side == 'left' ? b.x + 2 : b.x + b.width - 2;
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(a.x + a.width / 2 + 10, a.y + a.height / 2, {steps: 2});
+  await page.mouse.move(x, b.y + b.height / 2, {steps: 5});
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+}
+
+async function toHex(page, cssColor) {
+  return page.evaluate(function(color) {
+    var internal = window.mapshaper.internal;
+    return internal.formatColor(internal.parseColor(color));
+  }, cssColor);
 }
 
 async function getFills(page) {

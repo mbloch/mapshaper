@@ -291,7 +291,8 @@ export function LayerStyleTool(gui) {
     if (scheme) {
       schemeStrip.findChild('.layer-scheme-colors')
         .css('background-image', getStripBackground(scheme.colors));
-      schemeStrip.attr('title', 'Colored by ' + scheme.field);
+      schemeStrip.attr('title', scheme.method == 'non-adjacent' ?
+        'Neighbors colored differently' : 'Colored by ' + scheme.field);
       fillControl.picker.hide();
     }
   }

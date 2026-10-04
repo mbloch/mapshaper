@@ -58,6 +58,20 @@ describe('mapshaper-classify.js', function () {
       assert.deepEqual(data, [{code: 0, opacity: 0.3}, {code: 1, opacity: 0.5}, {code: 2, opacity: 0.7}, {code: 3, opacity: 0}]);
     });
 
+    it('repeat a list of colors that is shorter than the list of categories', async function() {
+      var data = 'name\ncar\ntruck\ntrain\nbike\ncar';
+      var cmd = '-i data.csv -classify name method=categorical colors=#111,#222 -o format=json';
+      var out = await api.applyCommands(cmd, {'data.csv': data});
+      assert.deepEqual(JSON.parse(out['data.json']).map(function(d) { return d.fill; }),
+        ['#111', '#222', '#111', '#222', '#111']);
+    });
+
+    it('a list of values that does not match the categories is still an error', async function() {
+      var data = 'name\ncar\ntruck\ntrain';
+      var cmd = '-i data.csv -classify name save-as=n values=1,2 -o format=json';
+      await assert.rejects(api.applyCommands(cmd, {'data.csv': data}), /Mismatch/);
+    });
+
   })
 
   describe('empty field tests', function() {

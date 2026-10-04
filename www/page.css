@@ -4763,8 +4763,41 @@ body.dragging-color-picker * {
 }
 
 .color-scheme-tiles {
+	position: relative;
 	display: flex;
 	gap: 3px;
+}
+
+/* Where a dragged categorical swatch would go */
+.color-scheme-drop-marker {
+	position: absolute;
+	z-index: 1;
+	width: 2px;
+	margin-left: -0.5px;
+	background-color: #000;
+	pointer-events: none;
+}
+
+.color-scheme-tiles.dragging .color-scheme-tile {
+	cursor: grabbing;
+}
+
+.color-scheme-tiles.dragging .color-scheme-tile:hover::after {
+	display: none;
+}
+
+.color-scheme-tile-cell.drag-source .color-scheme-tile {
+	opacity: 0.35;
+}
+
+.color-scheme-tiles.two-rows {
+	flex-wrap: wrap;
+	row-gap: 7px;
+}
+
+.color-scheme-tiles.two-rows > .color-scheme-tile-cell {
+	flex: none;
+	width: calc((100% - (var(--tiles-per-row) - 1) * 3px) / var(--tiles-per-row));
 }
 
 /* The pins' tooltips are placed against the cell, which ends at the pin */
@@ -4775,10 +4808,13 @@ body.dragging-color-picker * {
 }
 
 .color-scheme-tile {
+	position: relative;
 	height: 26px;
 	border-radius: 3px;
 	box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12);
 	cursor: pointer;
+	touch-action: none;
+	user-select: none;
 }
 
 .color-scheme-tile.selected {
@@ -4807,16 +4843,19 @@ body.dragging-color-picker * {
 	font-size: 11.5px;
 }
 
-/* Format tabs over a picker's color field: a segmented control on a grey
-   well, the chosen tab drawn like the panels' fields and buttons. */
-.label-color-format-tabs {
+/* Format tabs over a picker's color field, and the color palette panel's
+   scheme types: a segmented control on a grey well, the chosen tab drawn like
+   the panels' fields and buttons. */
+.label-color-format-tabs,
+.color-scheme-tabs {
 	display: flex;
 	margin-top: 6px;
 	border-radius: var(--label-field-radius, 4px);
 	background-color: #f0f0f0;
 }
 
-.label-color-picker .label-color-format-tab {
+.label-color-picker .label-color-format-tab,
+.color-scheme-tabs .color-scheme-tab {
 	flex: 1;
 	min-width: 0;
 	box-sizing: border-box;
@@ -4833,11 +4872,13 @@ body.dragging-color-picker * {
 	cursor: pointer;
 }
 
-.label-color-picker .label-color-format-tab:hover:not(.selected) {
+.label-color-picker .label-color-format-tab:hover:not(.selected),
+.color-scheme-tabs .color-scheme-tab:hover:not(.selected) {
 	color: var(--normal-text);
 }
 
-.label-color-picker .label-color-format-tab.selected {
+.label-color-picker .label-color-format-tab.selected,
+.color-scheme-tabs .color-scheme-tab.selected {
 	border-color: var(--label-field-border, #c6c6c6);
 	background-color: white;
 	color: var(--normal-text);
@@ -4917,7 +4958,7 @@ body.dragging-color-picker * {
 }
 
 .color-scheme-slider-row.preset > :not(.color-scheme-icon-btn),
-.color-scheme-slider-row.preset > .color-scheme-icon-btn:not(:last-child) {
+.color-scheme-slider-row.preset > .long-hue-btn {
 	display: none;
 }
 
@@ -4951,6 +4992,20 @@ body.dragging-color-picker * {
 	margin-left: -4px;
 }
 
+/* A bar under the categorical swatches in use, joined across the gaps
+   between them */
+.color-scheme-pin.used {
+	width: 100%;
+	height: 3px;
+	margin: 5px 0 0;
+	border-radius: 0;
+	background-color: #333;
+}
+
+.color-scheme-pin.used.joined {
+	width: calc(100% + 3px);
+}
+
 /* Under an interpolated tile whose color was moved to fit the sRGB gamut,
    in place of a pin dot */
 .color-scheme-pin.adjusted {
@@ -4967,6 +5022,7 @@ body.dragging-color-picker * {
    on hover to keep the tooltip inside the window; the script reads the
    tooltip's width, so it is sized as a border box. */
 .color-scheme-pin[data-tooltip]:hover::after,
+.color-scheme-tile[data-tooltip]:hover::after,
 .color-scheme-slider-label[data-tooltip]:hover::after,
 .color-scheme-icon-btn[data-tooltip]:hover::after {
 	content: attr(data-tooltip);
