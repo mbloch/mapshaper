@@ -806,7 +806,7 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('interpolation', {
-      describe: 'color interpolation: rgb (default), oklab or oklch'
+      describe: 'color interpolation: rgb (default) or oklch'
     })
     .option('vibrance', {
       describe: '(oklch) chroma added to midtones, e.g. 0.04 (default 0)',

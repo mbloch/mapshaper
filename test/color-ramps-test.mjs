@@ -2,7 +2,7 @@ import {
   resolveRamp, resolveRampTiles, getPinnedSlots, setRampPin, clearRampPin
 } from '../src/color/color-ramps';
 import {
-  rgbToOklab, oklabToRgb, interpolateOklab, interpolateOklch, oklabToOklch, oklchToRgb,
+  rgbToOklab, oklabToRgb, interpolateOklch, oklabToOklch, oklchToRgb,
   oklabIsInGamut, getMaxChroma, getOklchInterpolator, getVibrantColor
 } from '../src/color/oklab';
 import { parseColor } from '../src/color/color-utils';
@@ -53,23 +53,6 @@ describe('color-ramps.mjs and oklab.mjs', function () {
     });
   });
 
-  describe('interpolateOklab()', function () {
-    it('returns the end colors at t=0 and t=1', function () {
-      var f = interpolateOklab('#334a72', 'yellow');
-      assert.equal(f(0), '#334a72');
-      assert.equal(f(1), '#ffff00');
-    });
-
-    it('black-white midpoint is OKLab L=0.5', function () {
-      // sRGB 99, darker than the RGB average of 128
-      assert.equal(interpolateOklab('#000', '#fff')(0.5), '#636363');
-    });
-
-    it('interpolates alpha', function () {
-      assert.equal(interpolateOklab('rgba(0,0,0,0)', 'rgba(0,0,0,1)')(0.5), 'rgba(0,0,0,0.5)');
-    });
-  });
-
   describe('interpolateOklch()', function () {
     it('returns the end colors at t=0 and t=1', function () {
       var f = interpolateOklch('#fbe9d9', '#2f6b1f');
@@ -90,10 +73,11 @@ describe('color-ramps.mjs and oklab.mjs', function () {
     });
 
     it('keeps the midpoint of two saturated hues saturated', function () {
-      // a straight line through OKLab passes near gray
+      // a straight line through OKLab would pass near gray
+      var a = rgbToOklab(parseColor('#d62728')), b = rgbToOklab(parseColor('#1f77b4'));
+      var straight = oklabToOklch({l: (a.l + b.l) / 2, a: (a.a + b.a) / 2, b: (a.b + b.b) / 2});
       var lch = toLch(interpolateOklch('#d62728', '#1f77b4')(0.5));
-      var lab = toLch(interpolateOklab('#d62728', '#1f77b4')(0.5));
-      assert(lch.c > lab.c * 2);
+      assert(lch.c > straight.c * 2);
     });
 
     it('takes the shorter way around the hue circle', function () {
@@ -505,11 +489,6 @@ describe('color-ramps.mjs and oklab.mjs', function () {
       assert.deepEqual(fills, ['#fbe9d9', interpolateOklch('#fbe9d9', '#2f6b1f', {steps: 2})(0.5), '#2f6b1f']);
     });
 
-    it('oklab interpolates intermediate colors perceptually', async function () {
-      var fills = await classify('colors=#000,#fff classes=3 equal-interval interpolation=oklab');
-      assert.deepEqual(fills, ['#000', '#636363', '#fff']);
-    });
-
     it('rgb is the default', async function () {
       var a = await classify('colors=#000,#fff classes=3 equal-interval');
       var b = await classify('colors=#000,#fff classes=3 equal-interval interpolation=rgb');
@@ -518,12 +497,13 @@ describe('color-ramps.mjs and oklab.mjs', function () {
     });
 
     it('applies to continuous output', async function () {
-      var fills = await classify('colors=#000,#fff continuous classes=2 equal-interval interpolation=oklab');
+      var fills = await classify('colors=#000,#fff continuous classes=2 equal-interval interpolation=oklch');
       assert.deepEqual(fills, ['#000000', '#636363', '#ffffff']);
     });
 
     it('rejects unknown methods', async function () {
       await assert.rejects(classify('colors=#000,#fff interpolation=hsl'));
+      await assert.rejects(classify('colors=#000,#fff interpolation=oklab'), /expected rgb or oklch/);
     });
 
     it('vibrance= raises chroma, and implies oklch', async function () {

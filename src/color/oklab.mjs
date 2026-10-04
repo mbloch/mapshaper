@@ -28,24 +28,6 @@ export function oklabToRgb(lab) {
   };
 }
 
-// Returns a function that maps t in [0, 1] to a color string (hex, or rgba()
-// if either color is translucent).
-export function interpolateOklab(color1, color2) {
-  var rgb1 = parseColorOrStop(color1),
-      rgb2 = parseColorOrStop(color2);
-  var lab1 = rgbToOklab(rgb1),
-      lab2 = rgbToOklab(rgb2);
-  return function(t) {
-    var rgb = oklabToRgb({
-      l: lab1.l + (lab2.l - lab1.l) * t,
-      a: lab1.a + (lab2.a - lab1.a) * t,
-      b: lab1.b + (lab2.b - lab1.b) * t
-    });
-    rgb.a = rgb1.a + (rgb2.a - rgb1.a) * t;
-    return formatColor(rgb);
-  };
-}
-
 // OKLCH is OKLab in polar form: lightness, chroma (colorfulness) and hue
 // angle in degrees.
 export function oklabToOklch(lab) {

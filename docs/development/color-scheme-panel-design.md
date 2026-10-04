@@ -26,7 +26,7 @@ categorical color schemes, with user-editable ramps.
   `-classify field=pop quantile classes=5 colors=#344a72,#9a4c64,...`.
   The history is readable and replays exactly, independent of how the ramp
   was built. CLI users get the same interpolation through
-  `interpolation=oklab`.
+  `interpolation=oklch`.
 - **Editing a preset makes it custom.** Pinning any tile of a preset switches
   the palette menu to "Custom". The preset's two end colors become end pins,
   the edited tile becomes a third pin, and the other tiles are interpolated.
@@ -79,8 +79,8 @@ Pinned colors are fixed, so steps can still differ in size from one segment
 to the next. Evening those out would mean moving pinned colors, which the
 model doesn't do.
 
-`-classify interpolation=oklch` uses the same method; `interpolation=oklab`
-keeps the straight line.
+`-classify interpolation=oklch` uses the same method. An `interpolation=oklab`
+option for the straight line was removed once the panel moved to OKLCH.
 
 ### Vibrance
 
@@ -182,7 +182,7 @@ layer properties still needs to be checked before this is built.
 
 ## CLI additions
 
-- `interpolation=rgb|oklab|oklch` on `-classify` (default `rgb`, so existing
+- `interpolation=rgb|oklch` on `-classify` (default `rgb`, so existing
   outputs don't change). It affects interpolation between user colors in
   `colors=`, `stops=` and `continuous` output. Numeric `values=` are
   unaffected.
@@ -284,7 +284,7 @@ Not yet done from the panel contents list: the Diverging tab. Sequential and Cat
 
 ## Phases
 
-1. Core helpers: OKLab conversion, ramp resolution, `interpolation=oklab`.
+1. Core helpers: OKLab conversion, ramp resolution, `interpolation=oklch`.
 2. Sequential classed ramps in the GUI, the style panel strip, the layer
    record, and merged undo for a panel session.
 3. Categorical schemes (done).

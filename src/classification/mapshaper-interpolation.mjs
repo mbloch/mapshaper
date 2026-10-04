@@ -1,6 +1,6 @@
 import { stop, error } from '../utils/mapshaper-logging';
 import { interpolate as d3_interpolate } from 'd3-interpolate';
-import { interpolateOklab, interpolateOklch, getVibrantColor } from '../color/oklab';
+import { interpolateOklch, getVibrantColor } from '../color/oklab';
 import { parseColor } from '../color/color-utils';
 
 // TODO: support three or more stops
@@ -23,8 +23,8 @@ export function getGradientFunction(stops) {
 export function getInterpolationOptions(opts) {
   var method = opts.interpolation;
   var vibrance = opts.vibrance;
-  if (method && method != 'rgb' && method != 'oklab' && method != 'oklch') {
-    stop('Unsupported interpolation method:', method, '(expected rgb, oklab or oklch)');
+  if (method && method != 'rgb' && method != 'oklch') {
+    stop('Unsupported interpolation method:', method, '(expected rgb or oklch)');
   }
   if (vibrance === undefined) {
     return {interpolation: method};
@@ -38,14 +38,11 @@ export function getInterpolationOptions(opts) {
   return {interpolation: 'oklch', vibrance: vibrance};
 }
 
-// opts.interpolation: 'rgb' (default), 'oklab' or 'oklch'; the last two apply
-// only to pairs of colors. opts.vibrance goes with oklch (see
+// opts.interpolation: 'rgb' (default) or 'oklch'; oklch applies only to pairs
+// of colors. opts.vibrance goes with oklch (see
 // interpolateOklch()).
 export function getPairInterpolator(a, b, opts) {
   var method = opts && opts.interpolation;
-  if (method == 'oklab' && parseColor(a) && parseColor(b)) {
-    return interpolateOklab(a, b);
-  }
   if (method == 'oklch' && parseColor(a) && parseColor(b)) {
     return interpolateOklch(a, b, opts);
   }
