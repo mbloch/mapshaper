@@ -1,4 +1,11 @@
-v0.7.74 (unreleased)
+v0.7.74
+* Added `-style` options `stroke-linecap=` (`round`, `butt` or `square`; dashed lines default to `butt`) and `line-fade=`, which fades a line in from transparent along its tail.
+* [web] Added line cap and fade controls to the line style panel.
+* Added diverging classification to `-classify`: `pivot=` (a value, `median`, `mean` or `auto`), `pivot-range=`, `no-pivot-class`, `pivot-class` and `classes=<below>,<above>`. Each side of the pivot is classified separately, with an optional pivot class in the center color.
+* Added `interpolation=oklch` and `vibrance=` options to `-classify`, for interpolating colors in the OKLCH color space.
+* `-classify continuous` now works with `pivot=`. A list of N colors now gives N-1 intervals, so that each color is a stop to guide the interpolation (previously N colors made N intervals).
+* `-classify method=categorical` now repeats a list of colors that is shorter than the list of categories, and empty values are no longer categories (they get the null value).
+* [web] Added a Color palettes panel, opened by the Palettes button beside the polygon fill color. It colors polygons by a data field using sequential, diverging or categorical schemes, preset or custom color ramps, and classed or continuous colors.
 
 v0.7.73
 * Added a `margin=` option to `-frame` and `-update-frame`, taking one to four values in CSS order (top right bottom left), e.g. `margin=5%` or `margin=10%,2%`. It replaces `offset=` and `offsets=` (which still work and keep their l,b,r,t order).
