@@ -28,6 +28,8 @@ import { quoteCommandValue } from './gui-command-utils';
 //                                             of the preset's colors, as
 //                                             rearranged)
 //   swatches: [...] or null                   (custom categorical lists)
+//   nullColor       the color of features with no data (both types; not
+//                   used by non-adjacent schemes)
 //   colors: [...]   the colors that were applied, for checking a layer later
 // }
 
@@ -47,6 +49,9 @@ export var categoricalMethods = [
   {name: 'categorical', label: 'Categories'},
   {name: 'non-adjacent', label: 'Non-adjacent'}
 ];
+
+// -classify's default null value for colors, as hex
+export var defaultNullColor = '#eeeeee';
 
 export var minSchemeColors = 2;
 export var maxSchemeColors = 12;
@@ -158,10 +163,43 @@ export function getCategoryFields(lyr) {
   });
 }
 
-// The values of a field, in the order -classify gives them swatches
+// The values of a field, in the order -classify gives them swatches. Empty
+// values are left out, as -classify leaves them out: they are no data.
 export function getCategories(lyr, field) {
   if (!lyr || !lyr.data || !field || !lyr.data.fieldExists(field)) return [];
-  return internal.getUniqFieldValues(lyr.data.getRecords(), field);
+  return internal.getUniqFieldValues(lyr.data.getRecords(), field).filter(isCategoryValue);
+}
+
+// The same test as -classify's (0 is a value; null, undefined, '' and NaN
+// are not)
+function isCategoryValue(val) {
+  return !!val || val === 0;
+}
+
+// How many features the scheme gives the no-data color
+export function getNoDataCount(lyr, scheme) {
+  var records, test;
+  if (!lyr || !lyr.data || !scheme.field || scheme.method == 'non-adjacent' ||
+      !lyr.data.fieldExists(scheme.field)) return 0;
+  records = lyr.data.getRecords();
+  test = scheme.type == 'categorical' ? isCategoryValue : isFiniteNumber;
+  return records.filter(function(rec) {
+    return !test(rec ? rec[scheme.field] : undefined);
+  }).length;
+}
+
+function isFiniteNumber(val) {
+  return typeof val == 'number' && isFinite(val);
+}
+
+export function getSchemeNullColor(scheme) {
+  return scheme.nullColor || defaultNullColor;
+}
+
+// An empty or unreadable color is the default
+export function setSchemeNullColor(scheme, color) {
+  var rgb = color ? internal.parseColor(color) : null;
+  return Object.assign({}, scheme, {nullColor: rgb ? internal.formatColor(rgb) : defaultNullColor});
 }
 
 // The categories each swatch colors, as -classify assigns them
@@ -417,6 +455,9 @@ export function formatSchemeCommand(scheme, colors, opts) {
     parts.push('field=' + quoteCommandValue(scheme.field));
   }
   parts.push('method=' + scheme.method, 'colors=' + colors.join(','));
+  if (scheme.method != 'non-adjacent' && getSchemeNullColor(scheme) != defaultNullColor) {
+    parts.push('null-value=' + getSchemeNullColor(scheme));
+  }
   if (opts && opts.target) {
     parts.push('target=' + opts.target);
   }
@@ -459,16 +500,18 @@ export function schemeMatchesLayer(scheme, lyr) {
   records = lyr.data.getRecords();
   for (var i=0; i<records.length; i++) {
     val = records[i] && records[i].fill;
-    if (!val || (!colors.includes(String(val).toLowerCase()) && !isNullFill(val))) {
+    if (!val || (!colors.includes(String(val).toLowerCase()) && !isNullFill(val, scheme))) {
       return false;
     }
   }
   return true;
 }
 
-// The default null-value of -classify colors
-function isNullFill(val) {
-  return val == '#eee' || val == '#eeeeee';
+function isNullFill(val, scheme) {
+  var color = getSchemeNullColor(scheme);
+  val = String(val).toLowerCase();
+  // -classify writes its default as #eee
+  return val == color || color == defaultNullColor && val == '#eee';
 }
 
 function toHex(color) {

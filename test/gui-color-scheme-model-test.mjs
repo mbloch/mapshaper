@@ -8,7 +8,8 @@ import {
   getDefaultCategoricalScheme, getDefaultSchemeOfType, getCategoryFields, getCategories,
   getSwatchCategories, getCategoricalPresetColors, getMaxSchemeColors, setSchemeField,
   setSchemeMethod, getAppliedColors, maxCategoricalColors, getCategoricalPalette,
-  moveSwatch, shuffleScheme
+  moveSwatch, shuffleScheme, getSchemeNullColor, setSchemeNullColor, getNoDataCount,
+  defaultNullColor
 } from '../src/gui/gui-color-scheme-model';
 import api from '../mapshaper.js';
 
@@ -387,6 +388,63 @@ describe('gui-color-scheme-model.mjs', function() {
         {'data.csv': csv});
       var fills = JSON.parse(out['data.json']).map(function(d) { return d.fill; });
       assert.deepEqual(fills, [colors[0], colors[1], colors[0], colors[0], colors[1]]);
+    });
+  });
+
+  describe('no-data color', function() {
+    it('defaults to -classify\'s null value, which the command leaves out', function() {
+      var scheme = getDefaultScheme('pop');
+      assert.equal(getSchemeNullColor(scheme), defaultNullColor);
+      assert.equal(formatSchemeCommand(scheme, ['#000000', '#ffffff']),
+        "-classify field='pop' method=quantile colors=#000000,#ffffff");
+    });
+
+    it('is given to -classify when set', function() {
+      var scheme = setSchemeNullColor(getDefaultScheme('pop'), '#FF0000');
+      assert.equal(getSchemeNullColor(scheme), '#ff0000');
+      assert.equal(formatSchemeCommand(scheme, ['#000000', '#ffffff']),
+        "-classify field='pop' method=quantile colors=#000000,#ffffff null-value=#ff0000");
+      // but not for non-adjacent colors, which have no data
+      var lyr = makeLayer([{}]);
+      var nonAdjacent = setSchemeNullColor(getDefaultCategoricalScheme(lyr), '#ff0000');
+      assert.equal(formatSchemeCommand(nonAdjacent, ['#000000', '#ffffff']),
+        '-classify method=non-adjacent colors=#000000,#ffffff');
+    });
+
+    it('an empty or unreadable color is the default', function() {
+      var scheme = setSchemeNullColor(getDefaultScheme('pop'), '#ff0000');
+      assert.equal(getSchemeNullColor(setSchemeNullColor(scheme, '')), defaultNullColor);
+      assert.equal(getSchemeNullColor(setSchemeNullColor(scheme, 'zzz')), defaultNullColor);
+    });
+
+    it('counts the features with no data', function() {
+      var lyr = makeLayer([{pop: 1, kind: 'a'}, {pop: null, kind: ''}, {pop: 'x', kind: 0}, {pop: NaN}, {pop: 0, kind: 'b'}]);
+      assert.equal(getNoDataCount(lyr, getDefaultScheme('pop')), 3);
+      var cat = setSchemeField(getDefaultCategoricalScheme(lyr), 'kind', 3);
+      assert.equal(getNoDataCount(lyr, cat), 2);
+      assert.equal(getNoDataCount(lyr, setSchemeMethod(cat, 'non-adjacent')), 0);
+    });
+
+    it('empty values are not categories', function() {
+      var lyr = makeLayer([{kind: 'a'}, {kind: ''}, {kind: null}, {}, {kind: 'b'}, {kind: 0}]);
+      assert.deepEqual(getCategories(lyr, 'kind'), ['a', 'b', 0]);
+    });
+
+    it('a layer keeps its scheme with features in the no-data color', function() {
+      var lyr = makeLayer([{pop: 1, fill: '#000000'}, {pop: null, fill: '#ff0000'}]);
+      var scheme = Object.assign(setSchemeNullColor(getDefaultScheme('pop'), '#ff0000'), {colors: ['#000000', '#ffffff']});
+      setLayerScheme(lyr, scheme);
+      assert.strictEqual(getLayerScheme(lyr), scheme);
+      setLayerScheme(lyr, Object.assign({}, scheme, {nullColor: '#00ff00'}));
+      assert.strictEqual(getLayerScheme(lyr), null);
+    });
+
+    it('the command colors the features with no data', async function() {
+      var scheme = setSchemeNullColor(getDefaultScheme('value'), '#ff0000');
+      var colors = getSchemeColors(setTileCount(scheme, 2));
+      var cmd = formatSchemeCommand(setTileCount(scheme, 2), colors);
+      var out = await api.applyCommands('-i data.json ' + cmd + ' -o', {'data.json': [{value: 1}, {value: null}, {value: 2}]});
+      assert.deepEqual(JSON.parse(out['data.json']).map(function(d) { return d.fill; }), [colors[0], '#ff0000', colors[1]]);
     });
   });
 });

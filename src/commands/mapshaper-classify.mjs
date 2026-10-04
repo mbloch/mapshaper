@@ -73,9 +73,10 @@ cmd.classify = function(lyr, dataset, optsArg) {
   //
   // expand categories if value is '*'
   // use all unique values if categories option is missing
+  // (empty values are not categories: they get the null value)
   if (method == 'categorical') {
     if ((!opts.categories || opts.categories.includes('*')) && dataField) {
-      opts.categories = getUniqFieldValues(records, dataField);
+      opts.categories = getUniqFieldValues(records, dataField).filter(isCategoryValue);
     }
     if (opts.categories && fieldType == 'number') {
       opts.categories = opts.categories.map(str => +str);
@@ -166,6 +167,12 @@ cmd.classify = function(lyr, dataset, optsArg) {
   });
   lyr.data.markSchemaChanged({operation: 'classify', field: outputField});
 };
+
+// Like the categorical classifier, counts 0 as a value and other falsy
+// values (null, undefined, '', NaN) as empty
+export function isCategoryValue(val) {
+  return !!val || val === 0;
+}
 
 function formatValuesForLogging(arr) {
   if (arr.some(val => utils.isString(val) && val.indexOf('rgb(') === 0)) {

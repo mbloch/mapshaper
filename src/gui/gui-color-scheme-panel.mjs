@@ -3,6 +3,7 @@ import { ColorPicker } from './gui-color-picker';
 import { claimFieldKeys, isTextInput, opensAMenu, releasePanelFocus } from './gui-panel-focus';
 import { SizeField } from './gui-size-field';
 import { runGuiEditCommand } from './gui-edit-command';
+import { makeColorRow } from './gui-panel-controls';
 import { internal } from './gui-core';
 import {
   schemeTypes, minSchemeColors, maxCategoricalColors,
@@ -12,6 +13,7 @@ import {
   getSchemeVibrance, setSchemeVibrance, setSchemeLongHue, getSchemeTiles, getTileEditColor, maxVibrance,
   formatSchemeCommand, getAppliedColors, getNumericFields, getCategoryFields, getCategories,
   getSwatchCategories, getCategoricalPalette, moveSwatch, shuffleScheme,
+  getSchemeNullColor, setSchemeNullColor, getNoDataCount,
   getLayerScheme, setLayerScheme
 } from './gui-color-scheme-model';
 
@@ -53,7 +55,7 @@ export function ColorSchemePanel(gui, opts) {
   var tabs = {};
   var paletteBtn, paletteMenu, countField, tileRow, tilesEl, picker, fieldRow, fieldSelect, methodSelect,
       noFieldsNote, selectionNote, controlsEl, vibranceRow, vibranceInput,
-      longHueBtn, reverseBtn, shuffleBtn, dropMarker;
+      longHueBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount;
   // set while a tile is being dragged, so that letting go isn't a click
   var tileDrag = null;
 
@@ -96,6 +98,7 @@ export function ColorSchemePanel(gui, opts) {
   function close() {
     var wasOpen = !!targetLayer;
     picker.hide();
+    nullControl.picker.hide();
     hidePaletteMenu();
     panel.hide();
     targetLayer = null;
@@ -213,6 +216,20 @@ export function ColorSchemePanel(gui, opts) {
     shuffleBtn = addIconButton(vibranceRow, 'Shuffle the colors', shuffleIcon, function() {
       changeScheme(shuffleScheme(scheme));
     });
+    // the color of features with no data, and how many there are
+    nullControl = makeColorRow(controlsEl, {
+      label: 'No data',
+      noOpacity: true,
+      onColor: function(color) {
+        changeScheme(setSchemeNullColor(scheme, color));
+      }
+    });
+    nullControl.row.addClass('color-scheme-null-row');
+    nullControl.chit.on('click', function() {
+      picker.hide();
+    });
+    nullCount = El('span').addClass('color-scheme-note color-scheme-null-count').appendTo(nullControl.aside);
+
     selectionNote = El('div').addClass('label-style-row color-scheme-note').appendTo(controlsEl)
       .text('Colors apply to every feature in the layer, not only the selected ones.');
 
@@ -245,7 +262,16 @@ export function ColorSchemePanel(gui, opts) {
     renderPaletteButton(colors);
     renderTiles(tiles);
     renderVibrance();
+    renderNullColor();
     selectionNote.classed('hidden', !(opts.getSelectionCount() > 0));
+  }
+
+  function renderNullColor() {
+    var count = getNoDataCount(targetLayer, scheme);
+    nullControl.row.classed('hidden', scheme.method == 'non-adjacent');
+    if (scheme.method == 'non-adjacent') nullControl.picker.hide();
+    nullControl.showColor(getSchemeNullColor(scheme));
+    nullCount.text(count === 0 ? 'None in this layer' : count + (count == 1 ? ' feature' : ' features'));
   }
 
   function renderMethodOptions(fields) {
@@ -265,6 +291,8 @@ export function ColorSchemePanel(gui, opts) {
     if (type == scheme.type) return;
     tabSchemes[scheme.type] = scheme;
     next = tabSchemes[type] || getDefaultSchemeOfType(type, targetLayer);
+    // one no-data color for both tabs
+    next = Object.assign({}, next, {nullColor: scheme.nullColor});
     picker.hide();
     selectedTile = -1;
     scheme = next;
@@ -505,7 +533,8 @@ export function ColorSchemePanel(gui, opts) {
   }
 
   function formatCategories(values) {
-    var max = 4;
+    // "and 1 more" would take a line that the value itself can have
+    var max = values.length == 5 ? 5 : 4;
     var labels = values.slice(0, max).map(function(val) {
       return val === '' || val === null || val === undefined ? '(no value)' : String(val);
     });
@@ -527,6 +556,7 @@ export function ColorSchemePanel(gui, opts) {
   }
 
   function selectTile(i, color) {
+    nullControl.picker.hide();
     if (selectedTile == i && picker.visible()) {
       picker.hide();
     } else {

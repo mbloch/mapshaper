@@ -66,6 +66,22 @@ describe('mapshaper-classify.js', function () {
         ['#111', '#222', '#111', '#222', '#111']);
     });
 
+    it('empty values are not categories, and get the null value', async function() {
+      var data = [{name: 'car'}, {name: ''}, {name: null}, {name: 'bike'}, {}, {name: 0}];
+      var cmd = '-i data.json -classify name method=categorical colors=#111,#222,#333 null-value=#999 -o';
+      var out = await api.applyCommands(cmd, {'data.json': data});
+      assert.deepEqual(JSON.parse(out['data.json']).map(function(d) { return d.fill; }),
+        ['#111', '#999', '#999', '#222', '#999', '#333']);
+    });
+
+    it('empty numbers are not categories', async function() {
+      var data = [{code: 3}, {code: null}, {code: 1}];
+      var cmd = '-i data.json -classify code method=categorical colors=#111,#222 -o';
+      var out = await api.applyCommands(cmd, {'data.json': data});
+      assert.deepEqual(JSON.parse(out['data.json']).map(function(d) { return d.fill; }),
+        ['#111', '#eee', '#222']);
+    });
+
     it('a list of values that does not match the categories is still an error', async function() {
       var data = 'name\ncar\ntruck\ntrain';
       var cmd = '-i data.csv -classify name save-as=n values=1,2 -o format=json';

@@ -100,7 +100,7 @@ test('a preset can be chosen, and editing it makes a custom ramp', async functio
   expect(await getPinStates(page)).toEqual(['', '', 'pin', '', '']);
   // the ends keep the preset's colors, which vibrance raises in the ramp
   await panel.locator('.color-scheme-tile').nth(0).click();
-  await expect(panel.locator('.label-color-picker-input')).toHaveValue(await getVibrantColor(page, viridis[0], 0));
+  await expect(panel.locator('.color-scheme-tile-row .label-color-picker-input')).toHaveValue(await getVibrantColor(page, viridis[0], 0));
   var colors = await getTileColors(page);
   expect(colors[0]).toBe(await toCssColor(page, await getVibrantColor(page, viridis[0])));
   expect(errors).toEqual([]);
@@ -116,14 +116,14 @@ test('a tile is highlighted only while the picker is editing it', async function
   await page.waitForTimeout(300);
   // still editing the same tile after a color is picked
   await expect(panel.locator('.color-scheme-tile').nth(1)).toHaveClass(/selected/);
-  await panel.locator('.label-color-picker button').filter({hasText: 'Close'}).click();
+  await panel.locator('.color-scheme-tile-row .label-color-picker button').filter({hasText: 'Close'}).click();
   await expect(panel.locator('.color-scheme-tile.selected')).toHaveCount(0);
 
   // clicking the tile again closes the picker, and the highlight with it
   await panel.locator('.color-scheme-tile').nth(1).click();
   await expect(panel.locator('.color-scheme-tile.selected')).toHaveCount(1);
   await panel.locator('.color-scheme-tile').nth(1).click();
-  await expect(panel.locator('.label-color-picker')).toBeHidden();
+  await expect(panel.locator('.color-scheme-tile-row .label-color-picker')).toBeHidden();
   await expect(panel.locator('.color-scheme-tile.selected')).toHaveCount(0);
 });
 
@@ -156,7 +156,7 @@ test('the tile picker takes a typed or pasted color, and has no presets', async 
   await openSchemePanel(page);
   var panel = schemePanel(page);
   await panel.locator('.color-scheme-tile').nth(2).click();
-  var picker = panel.locator('.label-color-picker');
+  var picker = panel.locator('.color-scheme-tile-row .label-color-picker');
   var input = picker.locator('.label-color-picker-input');
   await expect(picker.locator('.label-color-preset')).toHaveCount(0);
   await expect(picker.locator('.label-color-picker-fields label')).toHaveCount(0);
@@ -170,7 +170,7 @@ test('the tile picker takes a typed or pasted color, and has no presets', async 
   await input.focus();
   await input.selectText();
   await page.evaluate(function() {
-    var el = document.querySelector('.color-scheme-panel .label-color-picker-input');
+    var el = document.querySelector('.color-scheme-panel .color-scheme-tile-row .label-color-picker-input');
     var data = new DataTransfer();
     data.setData('text/plain', '3a7');
     el.value = '3a7';
@@ -180,7 +180,7 @@ test('the tile picker takes a typed or pasted color, and has no presets', async 
   await expect(input).toHaveValue('#33aa77');
   expect(await getFills(page)).toContain(await getVibrantColor(page, '#33aa77'));
   // reopened, the picker shows the pinned color, not the one vibrance raised
-  await panel.locator('.label-color-picker button').filter({hasText: 'Close'}).click();
+  await panel.locator('.color-scheme-tile-row .label-color-picker button').filter({hasText: 'Close'}).click();
   await panel.locator('.color-scheme-tile').nth(2).click();
   await expect(input).toHaveValue('#33aa77');
 
@@ -317,7 +317,7 @@ test('the tile picker shows colors in the chosen format, which it keeps', async 
   await loadFixture(page);
   await openSchemePanel(page);
   var panel = schemePanel(page);
-  var picker = panel.locator('.label-color-picker');
+  var picker = panel.locator('.color-scheme-tile-row .label-color-picker');
   var input = picker.locator('.label-color-picker-input');
   var tab = function(label) {
     return picker.locator('.label-color-format-tab').filter({hasText: label});
@@ -352,12 +352,12 @@ test('the tile picker is drawn over the undo toolbar', async function({page}) {
   var panel = schemePanel(page);
   await expect(page.locator('.edit-toolbar.visible')).toHaveCount(1);
   await panel.locator('.color-scheme-tile').nth(2).click();
-  var picker = panel.locator('.label-color-picker');
+  var picker = panel.locator('.color-scheme-tile-row .label-color-picker');
   await expect(picker).toBeVisible();
 
   // where the picker opens depends on the window size, so put it over the toolbar
   var onTop = await page.evaluate(function() {
-    var picker = document.querySelector('.color-scheme-panel .label-color-picker');
+    var picker = document.querySelector('.color-scheme-panel .color-scheme-tile-row .label-color-picker');
     var bar = document.querySelector('.edit-toolbar').getBoundingClientRect();
     picker.style.left = (bar.left - 10) + 'px';
     picker.style.top = (bar.top - 10) + 'px';
@@ -372,7 +372,7 @@ test('the tile picker is drawn over the undo toolbar', async function({page}) {
 });
 
 async function setPickerColor(panel, str) {
-  var input = panel.locator('.label-color-picker-input');
+  var input = panel.locator('.color-scheme-tile-row .label-color-picker-input');
   await input.fill(str);
   await input.press('Enter');
   await panel.page().waitForTimeout(300);
@@ -518,7 +518,7 @@ test('dragging a swatch into use pushes the last one out of use', async function
   // a preset keeps its name when its swatches are moved
   await expect(panel.locator('.color-scheme-palette-name')).toHaveText('Tableau10');
   // the picker didn't open
-  await expect(panel.locator('.label-color-picker')).toBeHidden();
+  await expect(panel.locator('.color-scheme-tile-row .label-color-picker')).toBeHidden();
   var fills = new Set(await getFills(page));
   expect(fills.has(await toHex(page, before[7]))).toBe(true);
   expect(fills.has(await toHex(page, before[4]))).toBe(false);
@@ -550,6 +550,75 @@ test('shuffle reorders the whole palette', async function({page}) {
   expect(after).not.toEqual(before);
   expect(after.concat().sort()).toEqual(before.concat().sort());
   await expect(panel.locator('.color-scheme-palette-name')).toHaveText('Tableau10');
+});
+
+test('features with no data get the no-data color, on both tabs', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page);
+  await runCommand(page, "-each 'id = this.id === 0 ? null : id'");
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  var row = panel.locator('.color-scheme-null-row');
+  var input = row.locator('.label-color-input');
+  await expect(row.locator('.color-scheme-null-count')).toHaveText('1 feature');
+  await expect(input).toHaveValue('#eeeeee');
+  expect((await getFills(page))[0]).toBe('#eee');
+
+  await setField(input, '#ff0000');
+  expect((await getFills(page))[0]).toBe('#ff0000');
+  expect(new Set((await getFills(page)).slice(1)).has('#ff0000')).toBe(false);
+
+  // the same color on the categorical tab, where an empty value is no data too
+  await panel.locator('.color-scheme-tab').filter({hasText: 'Categorical'}).click();
+  await page.waitForTimeout(300);
+  await expect(input).toHaveValue('#ff0000');
+  await expect(row.locator('.color-scheme-null-count')).toHaveText('1 feature');
+  expect((await getFills(page))[0]).toBe('#ff0000');
+  // 11 values, and no swatch for the empty one
+  await expect(panel.locator('.color-scheme-pin.used')).toHaveCount(10);
+
+  // non-adjacent colors have no data to be missing
+  await methodSelect(page).selectOption('non-adjacent');
+  await page.waitForTimeout(300);
+  await expect(row).toBeHidden();
+  await methodSelect(page).selectOption('categorical');
+  await page.waitForTimeout(300);
+
+  // the chit's picker and the tiles' picker don't stay open together
+  await row.locator('.label-color-chit').click();
+  await expect(row.locator('.label-color-picker')).toBeVisible();
+  await panel.locator('.color-scheme-tile').first().click();
+  await expect(row.locator('.label-color-picker')).toBeHidden();
+  await expect(panel.locator('.color-scheme-tile-row .label-color-picker')).toBeVisible();
+
+  await closeSchemePanel(page);
+  var classify = (await getSessionCommands(page)).filter(function(cmd) {
+    return /^-classify/.test(cmd);
+  });
+  expect(classify).toEqual([expect.stringMatching(/^-classify field='id' method=categorical colors=\S+ null-value=#ff0000$/)]);
+  // the style panel still shows the scheme
+  await expect(page.locator('.layer-style-panel .label-color-field.has-scheme')).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
+
+test('a swatch lists up to five values, then how many more', async function({page}) {
+  await loadFixture(page);
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  await panel.locator('.color-scheme-tab').filter({hasText: 'Categorical'}).click();
+  await page.waitForTimeout(300);
+  var ids = (await getRecords(page)).map(function(rec) { return String(rec.id); });
+  var tiles = panel.locator('.color-scheme-tile');
+  // 12 values on 2 swatches: 6 each
+  await setField(panel.locator('.size-field-input'), '2');
+  await expect(tiles.first()).toHaveAttribute('data-tooltip',
+    [ids[0], ids[2], ids[4], ids[6], 'and 2 more'].join('\n'));
+  // 12 values on 3 swatches: 4 each; with 11 values, one swatch has 5
+  await runCommand(page, "-each 'id = this.id === 11 ? null : id'");
+  await setField(panel.locator('.size-field-input'), '3');
+  await setField(panel.locator('.size-field-input'), '2');
+  await expect(tiles.nth(1)).toHaveAttribute('data-tooltip',
+    [ids[1], ids[3], ids[5], ids[7], ids[9]].join('\n'));
 });
 
 function schemePanel(page) {

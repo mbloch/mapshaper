@@ -226,6 +226,19 @@ The swatch count goes up to the palette's size (20 for custom lists).
 Non-adjacent starts with 5. Palettes of more than 12 swatches are drawn in
 two rows.
 
+## No-data color
+
+A "No data" row (a chit and a hex field, with the number of features it
+applies to) sets `-classify null-value=`. Its default is `-classify`'s own,
+`#eee`, and then the command leaves the option out. Both tabs share the
+color, and non-adjacent schemes, which have no field, hide the row.
+
+No data is what `-classify` treats as missing: for sequential schemes, any
+value that isn't a finite number; for categorical schemes, null, undefined,
+empty strings and NaN. `-classify` used to make an empty value a category of
+its own, which would have given it a swatch; categories found from the data
+now leave empty values out, so that they get the null value.
+
 ## Diverging schemes
 
 A diverging ramp is a custom ramp with a third fixed pin at the center, plus a
@@ -267,8 +280,7 @@ Phase 2 is in place for polygon layers:
   field.
 - Browser tests: `browser-tests/color-scheme-panel.spec.mjs`.
 
-Not yet done from the panel contents list: the null-data color chit and the
-Diverging tab. Sequential and Categorical tabs are in place.
+Not yet done from the panel contents list: the Diverging tab. Sequential and Categorical tabs are in place.
 
 ## Phases
 

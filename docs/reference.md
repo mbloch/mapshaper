@@ -490,7 +490,7 @@ With `interpolation=oklch`, a color that falls outside the sRGB gamut keeps its 
 
 `precision=`    Round data values before classification (e.g. `precision=0.1`).
 
-`categories=`   List of values in the source data field. Using this option triggers categorical classification. If `colors=` lists fewer colors than there are categories, the colors are repeated in order.
+`categories=`   List of values in the source data field. Using this option triggers categorical classification. If `colors=` lists fewer colors than there are categories, the colors are repeated in order. Without `categories=` (or with `categories=*`), the categories are the field's values, except empty ones (null, undefined, empty strings and NaN), which get `null-value=`.
 
 `other=`  Default value for categorical classification. This value is used when the value of the source data field is not present in the list of values given by `categories=`. Defaults to `null-value=` or null.
 
