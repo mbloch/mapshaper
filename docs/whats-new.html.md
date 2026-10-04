@@ -7,6 +7,40 @@ description: A curated log of recently added user-visible features in Mapshaper,
 
 This is a curated list of recently added features. For the full list of changes, including bug fixes and internal work, see the [changelog](https://github.com/mbloch/mapshaper/blob/master/CHANGELOG.md) on GitHub.
 
+## October 2026
+
+<div class="whats-new-entry">
+
+**New style effects in the web UI.**
+
+- Inner and outer glows.
+- Dashed lines.
+- Arrowheads or dots at the ends of lines, with an optional fade-in along the line's tail.
+- Pattern fills: hatches, dots, squares and dashes.
+
+→ See [`-style`](/docs/reference.html.md#-style) to create the same effects on the command line.
+</div>
+
+<div class="whats-new-entry">
+
+**Color palettes.** In the web UI, the Palettes button beside the polygon fill color opens a panel for coloring polygons by a data field.
+
+- Sequential, diverging and categorical color schemes.
+- Preset color ramps, or build your own with the help of perceptually even interpolation.
+- Support for continuous (unclassed) color ramps.
+
+→ See [`-classify`](/docs/reference.html.md#-classify) for the command line syntax.
+</div>
+
+<div class="whats-new-entry">
+
+**HTML output**
+
+Maps can now be exported as an HTML fragment plus an image, in the manner of the [ai2html](https://github.com/newsdev/ai2html) script for Adobe Illustrator. Options control the image format and resolution, and whether the map has a fixed size or fills the width of its container.
+
+→ See [`-o`](/docs/reference.html.md#-o) for the `format=html` output options.
+</div>
+
 ## September 2026
 
 <!-- <div class="whats-new-entry">

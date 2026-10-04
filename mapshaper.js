@@ -78,7 +78,7 @@
     return obj === Object(obj); // via underscore
   }
 
-  function clamp$3(val, min, max) {
+  function clamp$4(val, min, max) {
     return val < min ? min : (val > max ? max : val);
   }
 
@@ -721,7 +721,7 @@
   function findValueByRank(arr, rank) {
     if (!arr.length || rank < 1 || rank > arr.length) error$1("[findValueByRank()] invalid input");
 
-    rank = clamp$3(rank | 0, 1, arr.length);
+    rank = clamp$4(rank | 0, 1, arr.length);
     var k = rank - 1, // conv. rank to array index
         n = arr.length,
         l = 0,
@@ -1095,7 +1095,7 @@
   // self-import and the resulting Rollup circular-dependency warning.
   var utils = {
     addThousandsSep, addslashes, arrayToIndex,
-    clamp: clamp$3, cleanNumericString, contains, copyElements, countValues, createBuffer,
+    clamp: clamp$4, cleanNumericString, contains, copyElements, countValues, createBuffer,
     defaults, difference,
     endsWith, every, expandoBuffer, extend: extend$1, extendBuffer,
     find: find$1, findMedian, findQuantile, findRankByValue, findStringPrefix,
@@ -6581,7 +6581,7 @@
     return lon;
   }
 
-  function clamp$2(value, min, max) {
+  function clamp$3(value, min, max) {
     return Math.max(min, Math.min(max, value));
   }
 
@@ -7105,21 +7105,21 @@
       return [
         Math.atan2(y * cosDeltaGamma + z * sinDeltaGamma,
           x * cosDeltaPhi + k * sinDeltaPhi),
-        Math.asin(clamp$2(k * cosDeltaPhi - x * sinDeltaPhi, -1, 1))
+        Math.asin(clamp$3(k * cosDeltaPhi - x * sinDeltaPhi, -1, 1))
       ];
     }
     k = z * cosDeltaPhi + x * sinDeltaPhi;
     return [
       Math.atan2(y * cosDeltaGamma - k * sinDeltaGamma,
         x * cosDeltaPhi - z * sinDeltaPhi),
-      Math.asin(clamp$2(k * cosDeltaGamma + y * sinDeltaGamma, -1, 1))
+      Math.asin(clamp$3(k * cosDeltaGamma + y * sinDeltaGamma, -1, 1))
     ];
   }
 
   function interpolateGreatCircle(a, b, interval) {
     var av = degreesToVector$2(a[0], a[1]);
     var bv = degreesToVector$2(b[0], b[1]);
-    var angle = Math.acos(clamp$2(dot$2(av, bv), -1, 1));
+    var angle = Math.acos(clamp$3(dot$2(av, bv), -1, 1));
     var n = Math.max(1, Math.ceil(angle * R2D$7 / interval));
     var sinAngle = Math.sin(angle);
     var points = [];
@@ -7178,7 +7178,7 @@
   }
 
   function angularDistance(a, b) {
-    return Math.acos(clamp$2(dot$2(degreesToVector$2(a[0], a[1]),
+    return Math.acos(clamp$3(dot$2(degreesToVector$2(a[0], a[1]),
       degreesToVector$2(b[0], b[1])), -1, 1));
   }
 
@@ -7194,7 +7194,7 @@
   function vectorToDegrees$2(p) {
     return [
       Math.atan2(p[1], p[0]) * R2D$7,
-      Math.asin(clamp$2(p[2], -1, 1)) * R2D$7
+      Math.asin(clamp$3(p[2], -1, 1)) * R2D$7
     ];
   }
 
@@ -8904,7 +8904,7 @@
   function interpolateSphericalRadians(a, b, interval) {
     var av = radiansToVector(a[0], a[1]);
     var bv = radiansToVector(b[0], b[1]);
-    var angle = Math.acos(clamp$2(dot$1(av, bv), -1, 1));
+    var angle = Math.acos(clamp$3(dot$1(av, bv), -1, 1));
     var count = Math.max(1, Math.ceil(angle / interval));
     var sinAngle = Math.sin(angle);
     var points = [];
@@ -8924,7 +8924,7 @@
   function vectorToRadians(p) {
     return [
       Math.atan2(p[1], p[0]),
-      Math.asin(clamp$2(p[2], -1, 1))
+      Math.asin(clamp$3(p[2], -1, 1))
     ];
   }
 
@@ -8998,8 +8998,8 @@
     }
     x = qx - BLOCK_HEIGHT;
     y = qy + 1.5;
-    x = clamp$2(x, XMIN, XMAX);
-    y = clamp$2(y, YMIN, YMAX);
+    x = clamp$3(x, XMIN, XMAX);
+    y = clamp$3(y, YMIN, YMAX);
     return {
       x: x,
       y: y,
@@ -9109,7 +9109,7 @@
     var v = radiansToVector(lam, phi);
     return [
       Math.atan2(dot$1(v, orientation.y), dot$1(v, orientation.x)),
-      Math.asin(clamp$2(dot$1(v, orientation.z), -1, 1))
+      Math.asin(clamp$3(dot$1(v, orientation.z), -1, 1))
     ];
   }
 
@@ -9120,7 +9120,7 @@
       orientation.x[1] * v[0] + orientation.y[1] * v[1] + orientation.z[1] * v[2],
       orientation.x[2] * v[0] + orientation.y[2] * v[1] + orientation.z[2] * v[2]
     ];
-    return [Math.atan2(p[1], p[0]), Math.asin(clamp$2(p[2], -1, 1))];
+    return [Math.atan2(p[1], p[0]), Math.asin(clamp$3(p[2], -1, 1))];
   }
 
   // Adapted from Justin Kunimune's Imago implementation.
@@ -9134,7 +9134,7 @@
       lat1 = lat;
       lon1 = lon - lon0;
     } else {
-      lat1 = Math.asin(clamp$2(
+      lat1 = Math.asin(clamp$3(
         Math.sin(lat0) * Math.sin(lat) +
         Math.cos(lat0) * Math.cos(lat) * Math.cos(lon0 - lon),
         -1,
@@ -9145,7 +9145,7 @@
         (Math.cos(lat0) * Math.sin(lat) -
           Math.sin(lat0) * Math.cos(lat) * Math.cos(lon0 - lon)) /
         denominator;
-      lon1 = Math.acos(clamp$2(value, -1, 1)) - Math.PI;
+      lon1 = Math.acos(clamp$3(value, -1, 1)) - Math.PI;
       if (Math.sin(lon - lon0) > 0) lon1 = -lon1;
     }
     return [lat1, normalizeRadians(lon1 - theta0)];
@@ -9155,7 +9155,7 @@
     var lat0 = pole.lat;
     var lon0 = pole.lon;
     lon += pole.meridian;
-    var latOut = Math.asin(clamp$2(
+    var latOut = Math.asin(clamp$3(
       Math.sin(lat0) * Math.sin(lat) -
       Math.cos(lat0) * Math.cos(lon) * Math.cos(lat),
       -1,
@@ -9167,8 +9167,8 @@
     } else {
       var value = Math.sin(lat) / Math.cos(lat0) / Math.cos(latOut) -
         Math.tan(lat0) * Math.tan(latOut);
-      if (Math.sin(lon) > 0) lonOut = lon0 + Math.acos(clamp$2(value, -1, 1));
-      else lonOut = lon0 - Math.acos(clamp$2(value, -1, 1));
+      if (Math.sin(lon) > 0) lonOut = lon0 + Math.acos(clamp$3(value, -1, 1));
+      else lonOut = lon0 - Math.acos(clamp$3(value, -1, 1));
     }
     return [latOut, normalizeRadians(lonOut)];
   }
@@ -9643,8 +9643,8 @@
       var copy = getLayoutCopy(p);
       var q = applyMatrix(copy.matrix, p);
       q[0] = wrapLayoutX(q[0] + layoutPhase);
-      q[0] = clamp$2(q[0], RECT_XMIN, RECT_XMAX);
-      q[1] = clamp$2(q[1], RECT_YMIN, RECT_YMAX);
+      q[0] = clamp$3(q[0], RECT_XMIN, RECT_XMAX);
+      q[1] = clamp$3(q[1], RECT_YMIN, RECT_YMAX);
       return centerOutputPoint(q);
     }
 
@@ -9748,8 +9748,8 @@
         var copy = getLayoutCopy(p);
         var q = applyMatrix(copy.matrix, p);
         q[0] = wrapLayoutX(q[0] + layoutPhase);
-        q[0] = clamp$2(q[0], RECT_XMIN, RECT_XMAX);
-        q[1] = clamp$2(q[1], RECT_YMIN, RECT_YMAX);
+        q[0] = clamp$3(q[0], RECT_XMIN, RECT_XMAX);
+        q[1] = clamp$3(q[1], RECT_YMIN, RECT_YMAX);
         q = centerOutputPoint(q);
         var ids = rasterPieceIndex.get(getPieceKey(face, copy.id)) || [];
         var region = findPieceContainingPoint(rasterPieces, ids, q);
@@ -26883,12 +26883,14 @@
     'line-start': 'lineend',
     'line-end': 'lineend',
     'line-end-size': 'number',
+    'line-fade': 'number',
     'letter-spacing': 'measure',
     'line-height': 'measure',
     opacity: 'number',
     r: 'number',
     stroke: 'color',
     'stroke-dasharray': 'dasharray',
+    'stroke-linecap': 'linecap',
     'stroke-width': 'number',
     'stroke-opacity': 'number',
     'stroke-miterlimit': 'number',
@@ -26981,9 +26983,17 @@
   // symType: point, polygon, polyline, label
   function applyStyleAttributes(svgObj, symType, rec, filter) {
     var fields = findStylePropertiesBySymbolGeom(Object.keys(rec || {}), symType);
+    var dashed = false, capped = false;
     for (var i=0, n=fields.length; i<n; i++) {
       if (filter && !filter(fields[i])) continue;
       setAttribute(svgObj, fields[i], rec[fields[i]]);
+      if (fields[i] == 'stroke-dasharray' && rec[fields[i]]) dashed = true;
+      if (fields[i] == 'stroke-linecap' && rec[fields[i]]) capped = true;
+    }
+    // kludge for cleaner dashes: butt caps, unless the line has a cap of its own
+    // (the GUI canvas renderer does the same)
+    if (dashed && !capped) {
+      setAttribute(svgObj, 'stroke-linecap', 'butt');
     }
     // kludge to prevent default black fill on polygons with stroke styles
     if ((symType == 'polygon' || symType == 'circle') && rec.stroke && !rec.fill) {
@@ -26994,10 +27004,6 @@
   function setAttribute(obj, k, v) {
     if (!obj.properties) obj.properties = {};
     obj.properties[k] = v;
-    if (k == 'stroke-dasharray' && v) {
-      // kludge for cleaner dashes... make butt the default?
-      obj.properties['stroke-linecap'] = 'butt';
-    }
   }
 
   function isSupportedSvgStyleProperty(name) {
@@ -27196,6 +27202,8 @@
       val = parseCalloutEnd(strVal);
     } else if (type == 'lineend') {
       val = parseLineEnd(strVal);
+    } else if (type == 'linecap') {
+      val = parseLineCap(strVal);
     } else if (type == 'pointpair') {
       val = parsePointPair(strVal);
       val = val ? formatPointPair(val) : null;
@@ -27251,6 +27259,11 @@
   function parseLineEnd(str) {
     var end = String(str).trim().toLowerCase();
     return /^(arrow|open-arrow|dot|none)$/.test(end) ? end : null;
+  }
+
+  function parseLineCap(str) {
+    var cap = String(str).trim().toLowerCase();
+    return /^(round|butt|square)$/.test(cap) ? cap : null;
   }
 
   // "x,y" -> [x, y], or null. Stored as a string so that a pair is set and
@@ -27372,6 +27385,7 @@
     parseCalloutEnd: parseCalloutEnd,
     parseCalloutType: parseCalloutType,
     parseLabelPosition: parseLabelPosition,
+    parseLineCap: parseLineCap,
     parseLineEnd: parseLineEnd,
     parsePointPair: parsePointPair,
     parseStyleLiteral: parseStyleLiteral,
@@ -27400,7 +27414,8 @@
   // In the GUI the halo is the text element's own stroke, with paint-order
   // putting it underneath. Export draws it as a second copy of the text instead
   // -- see splitLabelHalos() -- because Illustrator and Figma ignore paint-order
-  // when they import SVG and would draw the stroke over the letters.
+  // when they import SVG and would draw the stroke over the letters, and Chrome
+  // and Safari draw paint-order halos badly where letters overlap.
 
   var DEFAULT_HALO_COLOR = '#ffffff';
   var HALO_PAINT_ORDER = 'stroke fill';
@@ -27461,6 +27476,10 @@
   // which places it, and its opacity, which would otherwise fade each copy on its
   // own and let the halo show through the letters. That is also how opacity
   // reads on a single element with paint-order, which is faded as one image.
+  //
+  // Browsers need the copy too: Chrome and Safari paint a text element's stroke
+  // and fill one glyph at a time, so with paint-order the halos of overlapping
+  // letters compound a translucent halo, and cover the letters beside them.
   function splitLabelHalos(o) {
     if (!o) return o;
     if (o.tag == 'text' && isHaloText(o)) return splitHalo(o);
@@ -29542,6 +29561,48 @@
     return len;
   }
 
+  // The point @dist along the fitted curve from its first knot, clamped to the
+  // curve's ends, or null if the knots collapse to a single point.
+  function getPointAtCurveLength(knots, dist) {
+    var segments = getCurveSegments(knots);
+    var seg, len, i;
+    if (segments.length === 0) return null;
+    for (i = 0; i < segments.length; i++) {
+      seg = segments[i];
+      len = getCubicLength(seg, 0);
+      if (dist <= len) return getPointAtCubicLength(seg, Math.max(dist, 0));
+      dist -= len;
+    }
+    return [seg.p3[0], seg.p3[1]];
+  }
+
+  // Walks a flattening of the segment, which is shorter than the true curve by
+  // a negligible amount at this many steps.
+  function getPointAtCubicLength(seg, dist) {
+    var steps = 64;
+    var prev = seg.p0, p, d, k, i;
+    for (i = 1; i <= steps; i++) {
+      p = getCubicPoint(seg, i / steps);
+      d = distance2D$1(prev[0], prev[1], p[0], p[1]);
+      if (d > 0 && d >= dist) {
+        k = dist / d;
+        return [prev[0] + (p[0] - prev[0]) * k, prev[1] + (p[1] - prev[1]) * k];
+      }
+      dist -= d;
+      prev = p;
+    }
+    return [seg.p3[0], seg.p3[1]];
+  }
+
+  function getCubicPoint(seg, t) {
+    var mt = 1 - t;
+    var a = mt * mt * mt, b = 3 * mt * mt * t, c = 3 * mt * t * t, d = t * t * t;
+    return [
+      a * seg.p0[0] + b * seg.c1[0] + c * seg.c2[0] + d * seg.p3[0],
+      a * seg.p0[1] + b * seg.c1[1] + c * seg.c2[1] + d * seg.p3[1]
+    ];
+  }
+
   // Hobby's velocity function constants (Hobby 1986, eq. 11), the approximation
   // Metafont uses in place of the transcendental form.
   var VEL_A = Math.SQRT2,
@@ -29822,13 +29883,14 @@
     getCurveCurl: getCurveCurl,
     getCurveLength: getCurveLength,
     getCurveSegments: getCurveSegments,
+    getPointAtCurveLength: getPointAtCurveLength,
     setCurveCurl: setCurveCurl
   });
 
-  var roundCoord$2 = getRoundingFunction(0.01);
+  var roundCoord$3 = getRoundingFunction(0.01);
 
   function stringifyVertex(p) {
-    return ' ' + roundCoord$2(p[0]) + ' ' + roundCoord$2(p[1]);
+    return ' ' + roundCoord$3(p[0]) + ' ' + roundCoord$3(p[1]);
   }
 
   function isCubicCtrl(p) {
@@ -30125,6 +30187,7 @@
     LABEL_OVERFLOW_CLASS: LABEL_OVERFLOW_CLASS,
     LABEL_PATH_PROPERTY: LABEL_PATH_PROPERTY,
     featureIsPathLabel: featureIsPathLabel,
+    getDefaultStartOffset: getDefaultStartOffset,
     getLabelPathCoords: getLabelPathCoords,
     getLabelPathData: getLabelPathData,
     initPathLabelReport: initPathLabelReport,
@@ -30463,6 +30526,306 @@
     renderGlowFilter: renderGlowFilter
   });
 
+  // Markers at the ends of line features: line-start= and line-end= take
+  // arrow (a filled triangle), open-arrow (a stroked chevron), dot (a filled
+  // circle centred on the end) or none, and line-end-size= is the length of a
+  // head's sides in px, for both ends, or a dot's diameter. A dot with no size
+  // of its own is DOT_SIZE_RATIO of an arrowhead's default size.
+  //
+  // The heads are drawn as shapes rather than as SVG <marker>s, so that the
+  // canvas in the GUI and the exported SVG draw the same thing, and so that a
+  // solid head can have the line stop inside it, where its cap is hidden. Every
+  // part of a multi-part line gets its own heads: part order is not something
+  // the commands that make multi-part lines preserve.
+  //
+  // line-fade= fades the line in from its tail: 0-1, the share of the line's
+  // length over which it goes from transparent to its full opacity. The tail is
+  // the start, unless only the start has a head. The fade is a straight linear
+  // gradient from the tail to the point that far along the line, which follows a
+  // straight or gently curved line closely; SVG and canvas have no gradient that
+  // follows a path, so a line that bends sharply within its fade will not fade
+  // evenly along its length.
+  //
+  // Coordinates are px, y down: the SVG export's space, or the canvas's.
+
+  var DEFAULT_LINE_WIDTH = 1;
+  // 6px across at the default size for a 1px line
+  var DOT_SIZE_RATIO = 0.6;
+
+  // 'arrow', 'open-arrow', 'dot' or 'none'
+  function getLineEndType(rec, field) {
+    return rec && rec[field] && parseLineEnd(rec[field]) || 'none';
+  }
+
+  function lineHasArrows(rec) {
+    return getLineEndType(rec, 'line-start') != 'none' ||
+      getLineEndType(rec, 'line-end') != 'none';
+  }
+
+  // The share of the line that fades, 0 for none
+  function parseLineFade(val) {
+    return isSvgNumber(val) && Number(val) > 0 ? Math.min(Number(val), 1) : 0;
+  }
+
+  // Whether a line is drawn by renderArrowLine() rather than as a plain path
+  function lineHasEndStyles(rec) {
+    return lineHasArrows(rec) || parseLineFade(rec && rec['line-fade']) > 0;
+  }
+
+  // What getLineArrowShape() needs from a record, at scale @scale (the factor
+  // the canvas multiplies line widths by; 1 for SVG).
+  function getLineArrowOpts(rec, scale) {
+    return makeLineArrowOpts(rec['line-start'], rec['line-end'], rec['line-end-size'],
+      rec['stroke-width'], scale, rec['line-fade']);
+  }
+
+  // The same, from the values themselves, for the canvas, which has them in a
+  // style object rather than a record.
+  function makeLineArrowOpts(start, end, size, strokeWidth, scale, fade) {
+    var k = scale > 0 ? scale : 1;
+    var w = isSvgNumber(strokeWidth) && Number(strokeWidth) >= 0 ?
+      Number(strokeWidth) : DEFAULT_LINE_WIDTH;
+    var hasSize = isSvgNumber(size) && Number(size) > 0;
+    var side = hasSize ? Number(size) : getDefaultArrowSize(w);
+    return {
+      start: start && parseLineEnd(start) || 'none',
+      end: end && parseLineEnd(end) || 'none',
+      size: side * k,
+      dotSize: (hasSize ? side : side * DOT_SIZE_RATIO) * k,
+      width: w * k,
+      fade: parseLineFade(fade)
+    };
+  }
+
+  // Field names, for a layer that may have them
+  var lineArrowFields = ['line-start', 'line-end', 'line-end-size', 'line-fade'];
+
+  // One part of a line, with its heads: {coords, heads, fade}, where coords is
+  // the line to stroke -- cut back into a solid head, so that its cap does not
+  // show past the tip -- and heads is a list of {type, points}: a solid head's
+  // triangle, tip first, or an open head's chevron, wing to tip to wing. A dot
+  // is {type, center, radius}. fade is the axis of the line's fade (see
+  // getLineFadeAxis()), or null.
+  //
+  // A head points along the chord from its tip to where the line first reaches
+  // the head's length from it, rather than along the last segment, which on
+  // detailed or noisy data can be a jog of a fraction of a pixel pointing
+  // anywhere. The line is then straightened to meet the head along its axis. An
+  // end whose part is too short to hold its head gets none.
+  function getLineArrowShape(coords, opts) {
+    var out = {coords: coords, heads: [], fade: null};
+    var end;
+    if (opts.fade > 0) {
+      out.fade = getLineFadeAxis(coords, opts.start != 'none' && opts.end == 'none', opts.fade);
+    }
+    if (opts.start != 'none') {
+      addHead(out, opts.start, opts);
+    }
+    if (opts.end != 'none') {
+      end = {coords: out.coords.slice().reverse(), heads: out.heads};
+      addHead(end, opts.end, opts);
+      out.coords = end.coords.reverse();
+    }
+    return out;
+  }
+
+  // {from, to}: the line's tail, where the fade is transparent, and the point
+  // @fraction of the line's length along it from there, where the fade ends.
+  // Measured on the whole line, before the heads trim it. Null for a line too
+  // short to fade, or a closed one faded all the way round, whose two points
+  // would be the same.
+  function getLineFadeAxis(coords, fromEnd, fraction) {
+    var path = fromEnd ? coords.slice().reverse() : coords;
+    var total = 0, target, d, i, to, k;
+    for (i=1; i<path.length; i++) {
+      total += distance$1(path[i - 1], path[i]);
+    }
+    target = total * fraction;
+    to = path[path.length - 1];
+    for (i=1; i<path.length && target > 0; i++) {
+      d = distance$1(path[i - 1], path[i]);
+      if (d >= target) {
+        k = target / d;
+        to = [path[i - 1][0] + (path[i][0] - path[i - 1][0]) * k,
+          path[i - 1][1] + (path[i][1] - path[i - 1][1]) * k];
+        break;
+      }
+      target -= d;
+    }
+    if (!(total > 0) || distance$1(path[0], to) < 0.5) return null;
+    return {from: path[0], to: to};
+  }
+
+  // The fade's two colours: the stroke's, and the same with no opacity, so
+  // that the colour does not shift on its way to transparent. Null for a stroke
+  // colour that cannot be faded (e.g. 'none').
+  function getLineFadeColors(color) {
+    var rgb = parseColor(color || 'black');
+    if (!rgb) return null;
+    return {
+      transparent: 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0)',
+      solid: color || 'black'
+    };
+  }
+
+  // Puts a head of @type at the first point of @shape.coords
+  function addHead(shape, type, opts) {
+    var coords = shape.coords;
+    var width = opts.width > 0 ? opts.width : DEFAULT_LINE_WIDTH;
+    var tip, side, angle, len, rest, dir, head;
+    if (!coords || coords.length < 2) return;
+    if (type == 'dot') {
+      addDot(shape, (opts.dotSize || opts.size * DOT_SIZE_RATIO) / 2);
+      return;
+    }
+    if (type == 'open-arrow') {
+      // Stroked with a round join, which reaches half a line width past the
+      // chevron's point: the point is set back by that much, so that the arrow
+      // ends where a solid one would, and the arms lose half a line width each
+      // to the join and the cap.
+      coords = trimPolyline$1(coords, width / 2);
+      if (!coords) return;
+      side = Math.max(opts.size - width, opts.size / 2);
+      angle = OPEN_ARROW_ANGLE;
+    } else {
+      side = opts.size;
+      angle = ARROW_ANGLE;
+    }
+    tip = coords[0];
+    len = getArrowHeadLength(side, angle);
+    rest = trimPolyline$1(coords, len);
+    dir = rest ? getUnitVector(tip, rest[0]) : null;
+    if (!dir) return;
+    head = getArrowHead(tip, dir, side, angle);
+    if (type == 'open-arrow') {
+      shape.heads.push({type: type, points: [head[1], head[0], head[2]]});
+      shape.coords = [tip].concat(rest);
+    } else {
+      shape.heads.push({type: type, points: head});
+      shape.coords = [[tip[0] + dir[0] * len * ARROW_LINE_OVERLAP,
+        tip[1] + dir[1] * len * ARROW_LINE_OVERLAP]].concat(rest);
+    }
+  }
+
+  // The line stops halfway to the dot's edge, which hides its cap in the dot
+  // (for lines narrower than the dot's radius) while overlapping it no more than
+  // a solid head does. A part too short to be cut back keeps its dot.
+  function addDot(shape, radius) {
+    var center = shape.coords[0];
+    var rest = trimPolyline$1(shape.coords, radius / 2);
+    shape.heads.push({type: 'dot', center: center, radius: radius});
+    if (rest) shape.coords = rest;
+  }
+
+  // A line feature with arrowheads or a fade, as SVG: a group holding the line
+  // and its heads, for the feature's style attributes to go on. @parts is a list
+  // of polylines (a LineString's coordinates are one). A faded part is a path of
+  // its own, since each part has its own gradient.
+  function renderArrowLine(parts, rec) {
+    var opts = getLineArrowOpts(rec, 1);
+    var color = rec.stroke || 'black';
+    var fadeColors = opts.fade > 0 ? getLineFadeColors(color) : null;
+    var lines = [];
+    var fadedLines = [];
+    var heads = [];
+    parts.forEach(function(part) {
+      var shape = getLineArrowShape(part, opts);
+      var coords = shape.coords.map(roundPoint);
+      if (shape.fade && fadeColors) {
+        fadedLines.push(renderFadedLine(coords, shape.fade, fadeColors));
+      } else {
+        lines.push(coords);
+      }
+      shape.heads.forEach(function(head) {
+        heads.push(renderHead(head, color, rec));
+      });
+    });
+    var children = lines.length > 0 ? [importMultiLineString(lines)] : [];
+    return {tag: 'g', properties: {}, children: children.concat(fadedLines, heads)};
+  }
+
+  // The gradient is added to the SVG's <defs> by convertLineFade(), which also
+  // points the path's stroke at it.
+  function renderFadedLine(coords, axis, colors) {
+    var obj = importLineString(coords);
+    var from = roundPoint(axis.from);
+    var to = roundPoint(axis.to);
+    obj.lineFade = {x1: from[0], y1: from[1], x2: to[0], y2: to[1], color: colors.solid};
+    return obj;
+  }
+
+  // Replaces the fade an object was marked with by a reference to a
+  // <linearGradient> in @defs, which lines with the same fade share. The
+  // gradient is in the path's own coordinates (userSpaceOnUse): the default, the
+  // path's bounding box, has no height for a horizontal line, and a gradient
+  // over an empty box paints nothing.
+  function convertLineFade(obj, defs) {
+    var f = obj.lineFade;
+    var color = String(f.color).replace(/"/g, '');
+    var body = 'gradientUnits="userSpaceOnUse" x1="' + f.x1 + '" y1="' + f.y1 +
+      '" x2="' + f.x2 + '" y2="' + f.y2 + '"><stop offset="0" stop-color="' + color +
+      '" stop-opacity="0"/><stop offset="1" stop-color="' + color + '"/></linearGradient>';
+    var item = defs.find(function(o) { return o.lineFadeKey === body; });
+    var count;
+    if (!item) {
+      count = defs.filter(function(o) { return !!o.lineFadeKey; }).length;
+      item = {lineFadeKey: body, id: 'line-fade-' + (count + 1)};
+      item.svg = '<linearGradient id="' + item.id + '" ' + body + '\n';
+      defs.push(item);
+    }
+    delete obj.lineFade;
+    obj.properties.stroke = 'url(#' + item.id + ')';
+  }
+
+  function renderHead(head, color, rec) {
+    var points, center;
+    if (head.type == 'dot') {
+      center = roundPoint(head.center);
+      return {tag: 'circle', properties: addFillOpacity({cx: center[0], cy: center[1],
+        r: Math.round(head.radius * 100) / 100, fill: color, stroke: 'none'}, rec)};
+    }
+    points = head.points.map(roundPoint);
+    var d = 'M ' + points.map(function(p) { return p[0] + ' ' + p[1]; }).join(' L ');
+    var props;
+    if (head.type == 'arrow') {
+      props = addFillOpacity({d: d + ' Z', fill: color, stroke: 'none'}, rec);
+    } else {
+      // The line's own dashes would break the chevron up, and its cap may be
+      // square or butt; the chevron is always drawn whole and rounded.
+      props = {d: d, fill: 'none', 'stroke-dasharray': 'none',
+        'stroke-linecap': 'round', 'stroke-linejoin': 'round'};
+    }
+    return {tag: 'path', properties: props};
+  }
+
+  // A filled marker is as transparent as the line it is drawn in
+  function addFillOpacity(props, rec) {
+    if (isSvgNumber(rec['stroke-opacity'])) {
+      props['fill-opacity'] = Number(rec['stroke-opacity']);
+    }
+    return props;
+  }
+
+  function roundPoint(p) {
+    return [Math.round(p[0] * 100) / 100, Math.round(p[1] * 100) / 100];
+  }
+
+  var SvgLineArrows = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    convertLineFade: convertLineFade,
+    getLineArrowOpts: getLineArrowOpts,
+    getLineArrowShape: getLineArrowShape,
+    getLineEndType: getLineEndType,
+    getLineFadeAxis: getLineFadeAxis,
+    getLineFadeColors: getLineFadeColors,
+    lineArrowFields: lineArrowFields,
+    lineHasArrows: lineHasArrows,
+    lineHasEndStyles: lineHasEndStyles,
+    makeLineArrowOpts: makeLineArrowOpts,
+    parseLineFade: parseLineFade,
+    renderArrowLine: renderArrowLine
+  });
+
   // convert object properties to definitions for images and hatch fills
   function convertPropertiesToDefinitions(obj, defs) {
     procNode(obj);
@@ -30470,6 +30833,9 @@
     function procNode(obj) {
       if (obj.glowFilter) {
         convertGlowFilter(obj, defs);
+      }
+      if (obj.lineFade) {
+        convertLineFade(obj, defs);
       }
       if (obj.tag == 'textPath' && obj.properties && obj.properties[LABEL_PATH_PROPERTY]) {
         convertLabelPath(obj.properties, defs);
@@ -30596,198 +30962,6 @@
   }
   */
 
-  // Markers at the ends of line features: line-start= and line-end= take
-  // arrow (a filled triangle), open-arrow (a stroked chevron), dot (a filled
-  // circle centred on the end) or none, and line-end-size= is the length of a
-  // head's sides in px, for both ends, or a dot's diameter. A dot with no size
-  // of its own is DOT_SIZE_RATIO of an arrowhead's default size.
-  //
-  // The heads are drawn as shapes rather than as SVG <marker>s, so that the
-  // canvas in the GUI and the exported SVG draw the same thing, and so that a
-  // solid head can have the line stop inside it, where its cap is hidden. Every
-  // part of a multi-part line gets its own heads: part order is not something
-  // the commands that make multi-part lines preserve.
-  //
-  // Coordinates are px, y down: the SVG export's space, or the canvas's.
-
-  var DEFAULT_LINE_WIDTH = 1;
-  // 6px across at the default size for a 1px line
-  var DOT_SIZE_RATIO = 0.6;
-
-  // 'arrow', 'open-arrow', 'dot' or 'none'
-  function getLineEndType(rec, field) {
-    return rec && rec[field] && parseLineEnd(rec[field]) || 'none';
-  }
-
-  function lineHasArrows(rec) {
-    return getLineEndType(rec, 'line-start') != 'none' ||
-      getLineEndType(rec, 'line-end') != 'none';
-  }
-
-  // What getLineArrowShape() needs from a record, at scale @scale (the factor
-  // the canvas multiplies line widths by; 1 for SVG).
-  function getLineArrowOpts(rec, scale) {
-    return makeLineArrowOpts(rec['line-start'], rec['line-end'], rec['line-end-size'],
-      rec['stroke-width'], scale);
-  }
-
-  // The same, from the values themselves, for the canvas, which has them in a
-  // style object rather than a record.
-  function makeLineArrowOpts(start, end, size, strokeWidth, scale) {
-    var k = scale > 0 ? scale : 1;
-    var w = isSvgNumber(strokeWidth) && Number(strokeWidth) >= 0 ?
-      Number(strokeWidth) : DEFAULT_LINE_WIDTH;
-    var hasSize = isSvgNumber(size) && Number(size) > 0;
-    var side = hasSize ? Number(size) : getDefaultArrowSize(w);
-    return {
-      start: start && parseLineEnd(start) || 'none',
-      end: end && parseLineEnd(end) || 'none',
-      size: side * k,
-      dotSize: (hasSize ? side : side * DOT_SIZE_RATIO) * k,
-      width: w * k
-    };
-  }
-
-  // Field names, for a layer that may have them
-  var lineArrowFields = ['line-start', 'line-end', 'line-end-size'];
-
-  // One part of a line, with its heads: {coords, heads}, where coords is the
-  // line to stroke -- cut back into a solid head, so that its cap does not show
-  // past the tip -- and heads is a list of {type, points}: a solid head's
-  // triangle, tip first, or an open head's chevron, wing to tip to wing. A dot
-  // is {type, center, radius}.
-  //
-  // A head points along the chord from its tip to where the line first reaches
-  // the head's length from it, rather than along the last segment, which on
-  // detailed or noisy data can be a jog of a fraction of a pixel pointing
-  // anywhere. The line is then straightened to meet the head along its axis. An
-  // end whose part is too short to hold its head gets none.
-  function getLineArrowShape(coords, opts) {
-    var out = {coords: coords, heads: []};
-    var end;
-    if (opts.start != 'none') {
-      addHead(out, opts.start, opts);
-    }
-    if (opts.end != 'none') {
-      end = {coords: out.coords.slice().reverse(), heads: out.heads};
-      addHead(end, opts.end, opts);
-      out.coords = end.coords.reverse();
-    }
-    return out;
-  }
-
-  // Puts a head of @type at the first point of @shape.coords
-  function addHead(shape, type, opts) {
-    var coords = shape.coords;
-    var width = opts.width > 0 ? opts.width : DEFAULT_LINE_WIDTH;
-    var tip, side, angle, len, rest, dir, head;
-    if (!coords || coords.length < 2) return;
-    if (type == 'dot') {
-      addDot(shape, (opts.dotSize || opts.size * DOT_SIZE_RATIO) / 2);
-      return;
-    }
-    if (type == 'open-arrow') {
-      // Stroked with a round join, which reaches half a line width past the
-      // chevron's point: the point is set back by that much, so that the arrow
-      // ends where a solid one would, and the arms lose half a line width each
-      // to the join and the cap.
-      coords = trimPolyline$1(coords, width / 2);
-      if (!coords) return;
-      side = Math.max(opts.size - width, opts.size / 2);
-      angle = OPEN_ARROW_ANGLE;
-    } else {
-      side = opts.size;
-      angle = ARROW_ANGLE;
-    }
-    tip = coords[0];
-    len = getArrowHeadLength(side, angle);
-    rest = trimPolyline$1(coords, len);
-    dir = rest ? getUnitVector(tip, rest[0]) : null;
-    if (!dir) return;
-    head = getArrowHead(tip, dir, side, angle);
-    if (type == 'open-arrow') {
-      shape.heads.push({type: type, points: [head[1], head[0], head[2]]});
-      shape.coords = [tip].concat(rest);
-    } else {
-      shape.heads.push({type: type, points: head});
-      shape.coords = [[tip[0] + dir[0] * len * ARROW_LINE_OVERLAP,
-        tip[1] + dir[1] * len * ARROW_LINE_OVERLAP]].concat(rest);
-    }
-  }
-
-  // The line stops halfway to the dot's edge, which hides its cap in the dot
-  // (for lines narrower than the dot's radius) while overlapping it no more than
-  // a solid head does. A part too short to be cut back keeps its dot.
-  function addDot(shape, radius) {
-    var center = shape.coords[0];
-    var rest = trimPolyline$1(shape.coords, radius / 2);
-    shape.heads.push({type: 'dot', center: center, radius: radius});
-    if (rest) shape.coords = rest;
-  }
-
-  // A line feature with arrowheads, as SVG: a group holding the line and its
-  // heads, for the feature's style attributes to go on. @parts is a list of
-  // polylines (a LineString's coordinates are one).
-  function renderArrowLine(parts, rec) {
-    var opts = getLineArrowOpts(rec, 1);
-    var color = rec.stroke || 'black';
-    var lines = [];
-    var children = [];
-    parts.forEach(function(part) {
-      var shape = getLineArrowShape(part, opts);
-      lines.push(shape.coords.map(roundPoint));
-      shape.heads.forEach(function(head) {
-        children.push(renderHead(head, color, rec));
-      });
-    });
-    children.unshift(importMultiLineString(lines));
-    return {tag: 'g', properties: {}, children: children};
-  }
-
-  function renderHead(head, color, rec) {
-    var points, center;
-    if (head.type == 'dot') {
-      center = roundPoint(head.center);
-      return {tag: 'circle', properties: addFillOpacity({cx: center[0], cy: center[1],
-        r: Math.round(head.radius * 100) / 100, fill: color, stroke: 'none'}, rec)};
-    }
-    points = head.points.map(roundPoint);
-    var d = 'M ' + points.map(function(p) { return p[0] + ' ' + p[1]; }).join(' L ');
-    var props;
-    if (head.type == 'arrow') {
-      props = addFillOpacity({d: d + ' Z', fill: color, stroke: 'none'}, rec);
-    } else {
-      // The line's own dashes would break the chevron up, and its cap may be
-      // square or butt; the chevron is always drawn whole and rounded.
-      props = {d: d, fill: 'none', 'stroke-dasharray': 'none',
-        'stroke-linecap': 'round', 'stroke-linejoin': 'round'};
-    }
-    return {tag: 'path', properties: props};
-  }
-
-  // A filled marker is as transparent as the line it is drawn in
-  function addFillOpacity(props, rec) {
-    if (isSvgNumber(rec['stroke-opacity'])) {
-      props['fill-opacity'] = Number(rec['stroke-opacity']);
-    }
-    return props;
-  }
-
-  function roundPoint(p) {
-    return [Math.round(p[0] * 100) / 100, Math.round(p[1] * 100) / 100];
-  }
-
-  var SvgLineArrows = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    getLineArrowOpts: getLineArrowOpts,
-    getLineArrowShape: getLineArrowShape,
-    getLineEndType: getLineEndType,
-    lineArrowFields: lineArrowFields,
-    lineHasArrows: lineHasArrows,
-    makeLineArrowOpts: makeLineArrowOpts,
-    renderArrowLine: renderArrowLine
-  });
-
   var geojsonImporters = {
     Point: importPoint,
     Polygon: importPolygon,
@@ -30810,7 +30984,7 @@
         // rather than several labels at several points
         svgObj = renderPathLabel(d, geom.coordinates,
           {report: opts.path_label_report, id: featureId});
-      } else if (msType == 'polyline' && geom.coordinates && lineHasArrows(d)) {
+      } else if (msType == 'polyline' && geom.coordinates && lineHasEndStyles(d)) {
         svgObj = renderArrowLine(geomType == 'LineString' ?
           [geom.coordinates] : geom.coordinates, d);
       } else if (geomType && geom.coordinates) {
@@ -30895,20 +31069,19 @@
 
   //
   function exportSVG(dataset, opts) {
-    var namespace = 'xmlns="http://www.w3.org/2000/svg"';
-    var defs = [];
-    var frame, frameLyr, frameBackground, frameNeatline;
-    var svg, layers, metadataJSON, files, svgFile;
-    var style = '';
+    var o = prepareDatasetForSVG(dataset, opts);
+    var svgFile = {
+      content: renderSVGDocument(o.dataset, o.frame, o.dataset.layers, o.opts),
+      filename: o.opts.file || getOutputFileBase(o.dataset) + '.svg'
+    };
+    return [svgFile].concat(o.opts.svg_image_files);
+  }
 
-    // kludge for map keys
-    if (opts.crisp_paths) {
-      style = `
-<style>
-  path {shape-rendering: crispEdges;}
-</style>`;
-    }
-
+  // Returns a copy of @dataset (unless opts.final is set) with coordinates
+  // transformed to the pixel space of the output frame, along with the frame and
+  // the export options, which are given SVG defaults.
+  function prepareDatasetForSVG(dataset, opts) {
+    var frame;
     // TODO: consider moving this logic to mapshaper-export.js
     if (opts.final) {
       if (dataset.arcs) dataset.arcs.flatten();
@@ -30924,16 +31097,35 @@
     frame = getFrameData(dataset, opts);
     fitDatasetToFrame(dataset, frame);
     setCoordinatePrecision(dataset, opts.precision || 0.01);
+
+    // error if one or more svg_data fields are not present in any layers
+    if (opts.svg_data) validateSvgDataFields(dataset.layers, opts.svg_data);
+    return {dataset: dataset, frame: frame, opts: opts};
+  }
+
+  // Renders @layers, a subset of the layers of a dataset prepared by
+  // prepareDatasetForSVG(), as an SVG document.
+  function renderSVGDocument(dataset, frame, layers, opts) {
+    var namespace = 'xmlns="http://www.w3.org/2000/svg"';
+    var defs = [];
+    var frameLyr, frameBackground, frameNeatline;
+    var svg, metadataJSON;
+    var style = '';
+
+    // kludge for map keys
+    if (opts.crisp_paths) {
+      style = `
+<style>
+  path {shape-rendering: crispEdges;}
+</style>`;
+    }
+
     if (opts.metadata) {
       metadataJSON = JSON.stringify(getGeospatialMetadata(dataset, frame));
     }
 
-    // error if one or more svg_data fields are not present in any layers
-    if (opts.svg_data) validateSvgDataFields(dataset.layers, opts.svg_data);
-
-    layers = dataset.layers;
     if (opts.scalebar) {
-      layers.push(getScalebarLayer({})); // default options
+      layers = layers.concat(getScalebarLayer({})); // default options
     }
     frameLyr = layers.find(function(lyr) {
       return isFrameLayer(lyr, dataset.arcs);
@@ -30989,13 +31181,7 @@
 <svg ${namespace} version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" ${lineProps}>${style}
 ${svg}
 </svg>`;
-    svg = utils.format(template, frame.width, frame.height, 0, 0, frame.width, frame.height);
-    svgFile = {
-      content: svg,
-      filename: opts.file || getOutputFileBase(dataset) + '.svg'
-    };
-    files = [svgFile].concat(opts.svg_image_files);
-    return files;
+    return utils.format(template, frame.width, frame.height, 0, 0, frame.width, frame.height);
   }
 
   function exportFrameStylePhase(lyr, dataset, opts, phase) {
@@ -31059,7 +31245,7 @@ ${svg}
 
   function getSvgFileBase(dataset, opts) {
     var file = opts.file || getOutputFileBase(dataset) + '.svg';
-    return file.replace(/\.svg$/i, '');
+    return file.replace(/\.(svg|html?)$/i, '');
   }
 
   function getMetadataBlock(metadataJSON, viewBox) {
@@ -31558,11 +31744,1063 @@ ${svg}
     featureHasLabel: featureHasLabel,
     featureHasSvgSymbol: featureHasSvgSymbol,
     getEmptyLayerForSVG: getEmptyLayerForSVG,
+    getJpegQuality: getJpegQuality,
     getLabelTextDefaults: getLabelTextDefaults,
     layerHasLabels: layerHasLabels,
     layerHasSvgSymbols: layerHasSvgSymbols,
+    prepareDatasetForSVG: prepareDatasetForSVG,
+    renderSVGDocument: renderSVGDocument,
     validateSvgDataFields: validateSvgDataFields
   });
+
+  // Finding the font file a label's font-family names, among the fonts installed
+  // on this computer.
+  //
+  // The browser does this for us in the GUI; in Node there is nothing between
+  // mapshaper and the filesystem, so a family name has to be matched against the
+  // name tables of the files themselves. Names cannot be inferred from
+  // filenames: NYTFranklinLight.otf calls itself "NYTFranklin Light", and a
+  // label asking for NYTFranklin at weight 300 has to reach it.
+  //
+  // See docs/development/label-tool-design.md.
+
+  // Collections (.ttc/.otc) hold several faces in one file and are how macOS
+  // ships Helvetica, Menlo and Avenir, so a lookup that skipped them would miss
+  // the font mapshaper's own tool writes by default there.
+  var FONT_FILE_RXP = /\.(ttf|otf|ttc|otc)$/i;
+
+  // What a generic family means when there is no browser to resolve it. A guess,
+  // but an ordered one: the first of these that is installed is what a browser
+  // on this platform would almost certainly have picked.
+  var GENERIC_FAMILIES$1 = {
+    'sans-serif': ['Helvetica', 'Arial', 'Liberation Sans', 'DejaVu Sans', 'Roboto', 'Segoe UI'],
+    serif: ['Times New Roman', 'Times', 'Liberation Serif', 'DejaVu Serif', 'Georgia'],
+    monospace: ['Menlo', 'Courier New', 'Liberation Mono', 'DejaVu Sans Mono', 'Consolas'],
+    'system-ui': ['Helvetica Neue', 'Segoe UI', 'Cantarell', 'Roboto'],
+    cursive: [],
+    fantasy: []
+  };
+
+  var faceCache = {};
+  var familyCache = {};
+  var fullIndex = null;
+  var fileList = null;
+
+  // Width classes, as OS/2 numbers them 1 to 9. A font-stretch is one of these
+  // keywords or a percentage of normal width.
+  var STRETCH_NAMES = {
+    'ultra-condensed': 1, 'extra-condensed': 2, condensed: 3,
+    'semi-condensed': 4, normal: 5, 'semi-expanded': 6, expanded: 7,
+    'extra-expanded': 8, 'ultra-expanded': 9
+  };
+  var STRETCH_PERCENTS = [50, 62.5, 75, 87.5, 100, 112.5, 125, 150, 200];
+
+  // The face to open for @family in (@weight, @italic, @stretch), or null if this
+  // computer has no such font: {path, postscriptName}.
+  //
+  // postscriptName is how a face inside a collection is named to fontkit, and is
+  // null for a file holding one face.
+  function findFontFace(family, weight, italic, stretch) {
+    var key = [family, weight, italic ? 'i' : 'n', stretch || ''].join('|');
+    if (!(key in faceCache)) {
+      faceCache[key] = lookupFace(family, weight, italic, stretch);
+    }
+    return faceCache[key];
+  }
+
+  // Which of a family's faces answers a request for (@weight, @italic,
+  // @stretch).
+  //
+  // Width first, then upright before oblique, then the nearest weight, then the
+  // heavier of two equally near. The first three are the order CSS matches fonts
+  // in, and the last is the rule the style menu uses to carry a face across a
+  // change of font (getNearestVariant() in gui-label-fonts.mjs), applied here to
+  // faces read from files rather than measured in a browser.
+  //
+  // A missing face is answered with a near one rather than refused: the browser
+  // would synthesize the missing weight or slant from exactly this face, so its
+  // widths are much closer to what is drawn than no measurement at all.
+  function pickFace(faces, weight, italic, stretch) {
+    var wanted = weight > 0 ? weight : 400;
+    var wantedWidth = parseFontStretch(stretch);
+    var best = null;
+    var bestScore = null;
+    (faces || []).forEach(function(face) {
+      var score = [
+        Math.abs((face.width || 5) - wantedWidth),
+        !!face.italic === !!italic ? 0 : 1,
+        Math.abs(face.weight - wanted),
+        face.weight < wanted ? 1 : 0
+      ];
+      if (!best || compareScores(score, bestScore) < 0) {
+        best = face;
+        bestScore = score;
+      }
+    });
+    return best;
+  }
+
+  // A font-stretch as the width class it names, or normal width for anything
+  // unreadable. A percentage is taken to the nearest class, the way CSS defines
+  // the keywords.
+  function parseFontStretch(stretch) {
+    var str = String(stretch === null || stretch === undefined ? '' : stretch).trim().toLowerCase();
+    var pct = /^([.0-9]+)%$/.exec(str);
+    var best = 5;
+    if (STRETCH_NAMES[str]) return STRETCH_NAMES[str];
+    if (!pct) return 5;
+    STRETCH_PERCENTS.forEach(function(val, i) {
+      if (Math.abs(val - Number(pct[1])) <
+          Math.abs(STRETCH_PERCENTS[best - 1] - Number(pct[1]))) {
+        best = i + 1;
+      }
+    });
+    return best;
+  }
+
+  // Family names are compared without spaces, punctuation or case, so that
+  // "NYTFranklin" finds "NYT Franklin" and "Helvetica Neue" finds
+  // "HelveticaNeue". Font vendors are not consistent about any of the three.
+  function normalizeFamilyName(name) {
+    return String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
+  // The families a face answers to. The typographic family (name ID 16) is the
+  // one a stylesheet means: every weight of NYTFranklin has its own ID 1 family
+  // ("NYTFranklin Light", "NYTFranklin Medium") and they are one family only
+  // under ID 16. Both are indexed, because plenty of fonts have no ID 16.
+  function getFaceFamilies(font) {
+    var records = font && font.name && font.name.records || {};
+    return [pickName(records.preferredFamily), pickName(records.fontFamily),
+      font && font.familyName].filter(Boolean);
+  }
+
+  function clearFontCache() {
+    faceCache = {};
+    familyCache = {};
+    fullIndex = null;
+    fileList = null;
+  }
+
+  function lookupFace(family, weight, italic, stretch) {
+    var names = resolveFamilyNames(family);
+    var face = findBestFace(names, weight, italic, stretch);
+    // The filename guess can find a family and still miss one of its faces:
+    // Segoe UI Semibold lives in seguisb.ttf, which does not begin with the
+    // family's name. Anything other than the face that was asked for is worth
+    // the full index -- once per session -- to be sure it is the nearest this
+    // machine has.
+    if (!fullIndex && !faceAnswersRequest(face, weight, italic, stretch)) {
+      fullIndex = readFaces(getFontFiles());
+      face = findBestFace(names, weight, italic, stretch) || face;
+    }
+    return face;
+  }
+
+  function findBestFace(names, weight, italic, stretch) {
+    for (var i = 0; i < names.length; i++) {
+      var faces = findFamilyFaces(names[i]);
+      if (faces && faces.length > 0) return pickFace(faces, weight, italic, stretch);
+    }
+    return null;
+  }
+
+  function faceAnswersRequest(face, weight, italic, stretch) {
+    return !!face && face.weight == (weight > 0 ? weight : 400) &&
+      !!face.italic === !!italic && (face.width || 5) == parseFontStretch(stretch);
+  }
+
+  // A font-family is a list, and may end in a generic: each name is tried in
+  // turn, exactly as a browser would, and a generic stands for the first of its
+  // candidates that is installed.
+  function resolveFamilyNames(family) {
+    var out = [];
+    splitFamilyList(family).forEach(function(name) {
+      var generic = GENERIC_FAMILIES$1[name.toLowerCase()];
+      if (generic) {
+        out = out.concat(generic);
+      } else {
+        out.push(name);
+      }
+    });
+    return out;
+  }
+
+  function splitFamilyList(family) {
+    return String(family || '').split(',').map(function(name) {
+      return name.trim().replace(/^['"]|['"]$/g, '');
+    }).filter(Boolean);
+  }
+
+  // Two passes, because parsing every font on the computer costs the best part
+  // of a second and most lookups do not need it: the file holding a family is
+  // usually named after it, so files whose name begins with the family's are
+  // parsed first. Whether that was good enough is lookupFace()'s decision.
+  function findFamilyFaces(family) {
+    var key = normalizeFamilyName(family);
+    if (!key) return null;
+    if (fullIndex) return fullIndex[key] || null;
+    if (!(key in familyCache)) {
+      familyCache[key] = readFaces(getLikelyFiles(key))[key] || null;
+    }
+    return familyCache[key];
+  }
+
+  function getLikelyFiles(key) {
+    return getFontFiles().filter(function(file) {
+      return normalizeFamilyName(basename(file)).indexOf(key) === 0;
+    });
+  }
+
+  // Faces by normalized family name. A file that cannot be parsed is skipped
+  // rather than reported: a font directory can hold anything, and a broken font
+  // is not an error in the user's data.
+  function readFaces(files) {
+    var index = {};
+    files.forEach(function(file) {
+      getFileFaces(file).forEach(function(face) {
+        face.families.forEach(function(name) {
+          var key = normalizeFamilyName(name);
+          if (!key) return;
+          if (!index[key]) index[key] = [];
+          index[key].push(face);
+        });
+      });
+    });
+    return index;
+  }
+
+  function getFileFaces(file) {
+    var fontkit = getFontkit();
+    var font, fonts;
+    if (!fontkit) return [];
+    try {
+      font = fontkit.openSync(file);
+      // A collection reports its members in .fonts; a single font is its own.
+      fonts = font && font.fonts || [font];
+      return fonts.filter(Boolean).map(function(one) {
+        return {
+          path: file,
+          // Named rather than numbered because fontkit takes a name, and because
+          // a name survives a font being reinstalled in a different order.
+          postscriptName: font.fonts ? one.postscriptName : null,
+          families: getFaceFamilies(one),
+          weight: getFaceWeight(one),
+          width: getFaceWidth(one),
+          italic: isItalicFace(one)
+        };
+      }).filter(function(face) {
+        return face.families.length > 0;
+      });
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function getFaceWeight(font) {
+    var os2 = font['OS/2'];
+    var weight = os2 && os2.usWeightClass;
+    return weight > 0 ? weight : 400;
+  }
+
+  function getFaceWidth(font) {
+    var os2 = font['OS/2'];
+    var width = os2 && os2.usWidthClass;
+    return width >= 1 && width <= 9 ? width : 5;
+  }
+
+  function isItalicFace(font) {
+    var os2 = font['OS/2'];
+    if (os2 && os2.fsSelection && typeof os2.fsSelection.italic == 'boolean') {
+      return os2.fsSelection.italic;
+    }
+    return !!font.italicAngle;
+  }
+
+  // A name record is a string, or an object of translations to pick English out
+  // of, depending on the font and the version of fontkit.
+  function pickName(rec) {
+    if (!rec) return '';
+    if (typeof rec == 'string') return rec;
+    return rec.en || Object.keys(rec).map(function(k) { return rec[k]; })[0] || '';
+  }
+
+  function compareScores(a, b) {
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return a[i] - b[i];
+    }
+    return 0;
+  }
+
+  // Every font file on this computer, listed once. Listing is cheap -- a few
+  // hundred directory entries -- next to parsing them, so this is not the part
+  // worth avoiding.
+  function getFontFiles() {
+    var fs = getFs();
+    var files = [];
+    if (fileList) return fileList;
+    if (!fs) return [];
+    getFontDirs().forEach(function(dir) {
+      var entries;
+      try {
+        entries = fs.readdirSync(dir, {recursive: true});
+      } catch (e) {
+        return; // a directory this platform does not have
+      }
+      entries.forEach(function(entry) {
+        var file = dir + '/' + String(entry).split('\\').join('/');
+        if (FONT_FILE_RXP.test(file)) files.push(file);
+      });
+    });
+    fileList = files;
+    return files;
+  }
+
+  // Where each platform keeps fonts, or MAPSHAPER_FONT_PATH if it is set.
+  //
+  // It replaces the platform's directories rather than adding to them, which is
+  // what makes a machine's font situation something a caller can state: a
+  // container with its fonts somewhere of its own, a build that has to produce
+  // the same SVG wherever it runs, a test that needs to know there is nothing to
+  // find. Several directories are separated by : or ;.
+  function getFontDirs() {
+    var home = getHomeDir();
+    var platform = typeof process == 'object' && process.platform || '';
+    var dirs = getEnvDirs();
+    if (dirs.length > 0) return dirs;
+    if (platform == 'darwin') {
+      dirs = ['/System/Library/Fonts', '/Library/Fonts',
+        '/Network/Library/Fonts'];
+      if (home) dirs.push(home + '/Library/Fonts');
+    } else if (platform == 'win32') {
+      dirs = [(getEnv('WINDIR') || 'C:\\Windows') + '/Fonts'];
+      if (home) dirs.push(home + '/AppData/Local/Microsoft/Windows/Fonts');
+    } else {
+      dirs = ['/usr/share/fonts', '/usr/local/share/fonts', '/run/host/fonts'];
+      if (home) {
+        dirs.push(home + '/.fonts', home + '/.local/share/fonts');
+      }
+    }
+    return dirs;
+  }
+
+  function getEnvDirs() {
+    var val = getEnv('MAPSHAPER_FONT_PATH');
+    if (!val) return [];
+    return val.split(/[:;]/).filter(Boolean);
+  }
+
+  function getEnv(name) {
+    return typeof process == 'object' && process.env && process.env[name] || '';
+  }
+
+  function getHomeDir() {
+    var os = safeRequire('os');
+    try {
+      return os && os.homedir() || '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function basename(file) {
+    var parts = file.split('/');
+    return parts[parts.length - 1].replace(FONT_FILE_RXP, '');
+  }
+
+  function getFs() {
+    return safeRequire('fs');
+  }
+
+  // Loaded through the require shim and only when a label actually needs
+  // measuring, so that the browser bundle -- which is this same file -- never
+  // reaches for a module it does not have, and a CLI run that touches no labels
+  // never pays for loading it.
+  function getFontkit() {
+    return safeRequire('fontkit');
+  }
+
+  function safeRequire(name) {
+    if (runningInBrowser()) return null;
+    try {
+      return require$1(name) || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  var FontLookup = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    clearFontCache: clearFontCache,
+    findFontFace: findFontFace,
+    getFaceFamilies: getFaceFamilies,
+    normalizeFamilyName: normalizeFamilyName,
+    parseFontStretch: parseFontStretch,
+    pickFace: pickFace
+  });
+
+  // Renders an SVG document as a PNG or JPEG image.
+  //
+  // Node uses resvg, compiled to WebAssembly, which cannot see the fonts
+  // installed on the computer: the files for the families a document names are
+  // found the way label measurement finds them (see mapshaper-font-lookup.mjs)
+  // and handed to it. The browser draws the document on a canvas with its own
+  // fonts.
+
+  var resvgPromise = null;
+
+  // opts:
+  //   width, height  size of the document, in CSS pixels
+  //   scale          image pixels per CSS pixel
+  //   format         'png' or 'jpeg' (JPEG is drawn over a white background)
+  //   quality        JPEG quality, 1-100
+  // Returns the bytes of the image file.
+  async function rasterizeSVG(svg, opts) {
+    if (runningInBrowser()) {
+      return rasterizeInBrowser(svg, opts);
+    }
+    return rasterizeWithResvg(svg, opts);
+  }
+
+  async function rasterizeWithResvg(svg, opts) {
+    var resvg = await loadResvg();
+    var renderer = new resvg.Resvg(svg, {
+      fitTo: {mode: 'width', value: getImageSize(opts.width, opts.scale)},
+      background: opts.format == 'jpeg' ? 'white' : undefined,
+      font: svgHasText(svg) ? getResvgFontOptions(svg) : {fontBuffers: []}
+    });
+    var img = renderer.render();
+    var content;
+    try {
+      if (opts.format == 'jpeg') {
+        content = require$1('jpeg-js').encode({
+          data: Buffer.from(img.pixels),
+          width: img.width,
+          height: img.height
+        }, opts.quality).data;
+      } else {
+        content = Buffer.from(img.asPng());
+      }
+    } finally {
+      // wasm memory is not garbage-collected
+      img.free();
+      renderer.free();
+    }
+    return content;
+  }
+
+  function loadResvg() {
+    var resvg, fs;
+    if (!resvgPromise) {
+      resvg = require$1('@resvg/resvg-wasm');
+      fs = require$1('fs');
+      // initWasm() throws if it is called a second time
+      resvgPromise = resvg.initWasm(fs.readFileSync(require$1.resolve('@resvg/resvg-wasm/index_bg.wasm')))
+        .then(function() { return resvg; });
+    }
+    return resvgPromise;
+  }
+
+  function svgHasText(svg) {
+    return /<text\b/.test(svg);
+  }
+
+  // Regular and bold faces of each family named in @svg, plus the faces that
+  // the generic families resolve to on this computer.
+  function getResvgFontOptions(svg) {
+    var paths = [];
+    var opts = {fontBuffers: []};
+    var generics = {
+      sansSerifFamily: 'sans-serif',
+      serifFamily: 'serif',
+      monospaceFamily: 'monospace'
+    };
+    getFontFamilies(svg).concat(Object.values(generics)).forEach(function(family) {
+      [400, 700].forEach(function(weight) {
+        var face = findFontFace(family, weight, false);
+        if (face && !paths.includes(face.path)) paths.push(face.path);
+      });
+    });
+    Object.keys(generics).forEach(function(key) {
+      var face = findFontFace(generics[key], 400, false);
+      if (face) opts[key] = face.families[0];
+    });
+    opts.defaultFontFamily = opts.sansSerifFamily;
+    opts.fontBuffers = paths.map(function(path) {
+      return require$1('fs').readFileSync(path);
+    });
+    return opts;
+  }
+
+  function getFontFamilies(svg) {
+    var families = [];
+    var rxp = /font-family(?:="|:\s*)([^";]+)/g;
+    var match, family;
+    while ((match = rxp.exec(svg)) !== null) {
+      family = match[1].replace(/&quot;|&apos;/g, '"').trim();
+      if (!families.includes(family)) families.push(family);
+    }
+    return families;
+  }
+
+  async function rasterizeInBrowser(svg, opts) {
+    var url = URL.createObjectURL(new Blob([svg], {type: 'image/svg+xml'}));
+    var canvas = document.createElement('canvas');
+    var img = new Image();
+    var ctx, blob;
+    try {
+      img.src = url;
+      await img.decode();
+      canvas.width = getImageSize(opts.width, opts.scale);
+      canvas.height = getImageSize(opts.height, opts.scale);
+      ctx = canvas.getContext('2d');
+      if (opts.format == 'jpeg') {
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      blob = await new Promise(function(resolve) {
+        canvas.toBlob(resolve, 'image/' + opts.format, opts.quality / 100);
+      });
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+    if (!blob) stop$1('Unable to render the map image');
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+
+  function getImageSize(cssPixels, scale) {
+    return Math.max(1, Math.round(cssPixels * scale));
+  }
+
+  // Font families in HTML output, which differ from the families a map's labels
+  // are given (and that SVG output keeps) in two ways.
+  //
+  // Web fonts: a site's own fonts may be loaded under names unlike those of the
+  // same fonts installed on a computer (NYTFranklin is nyt-franklin on
+  // nytimes.com). They are listed before the installed fonts they stand for.
+  // Only the two NYT fonts are mapped.
+  //
+  // Fallbacks: for pages viewed on devices that lack a map's fonts (or before
+  // its web fonts load). A family list that contains a generic family is the
+  // user's own fallback plan and is left alone. Any other list is given the
+  // common fonts of the category its first font belongs to, then that category's
+  // generic family -- the convention ai2html follows, e.g.
+  // nyt-franklin,arial,helvetica,sans-serif.
+
+  var GENERIC_FAMILIES = ['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy',
+    'system-ui', 'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded',
+    'math', 'emoji', 'fangsong'];
+
+  var FALLBACKS = {
+    'sans-serif': ['Helvetica', 'Arial', 'sans-serif'],
+    serif: ['Times New Roman', 'Times', 'serif'],
+    monospace: ['Menlo', 'Consolas', 'Courier New', 'monospace']
+  };
+
+  // Matched anywhere in a normalized family name, so that the list covers
+  // variants like "Times New Roman", "Bodoni 72" and nyt-cheltenham.
+  var SERIF_FONTS = ['times', 'georgia', 'garamond', 'baskerville', 'palatino',
+    'bookantiqua', 'cambria', 'didot', 'bodoni', 'minion', 'caslon',
+    'centuryschoolbook', 'charter', 'hoefler', 'merriweather', 'playfair',
+    'cheltenham', 'imperial'];
+
+  var MONOSPACE_FONTS = ['courier', 'menlo', 'monaco', 'consolas',
+    'lucidaconsole', 'andalemono', 'sfmono', 'inconsolata'];
+
+  // The web fonts that HTML maps on nytimes.com use. Installed NYT fonts have a
+  // family for each weight ("NYTFranklin Medium") as well as one family for all
+  // of them, which is the name mapshaper writes.
+  var NYT_WEB_FONTS = [['NYTFranklin', 'nyt-franklin'], ['NYTCheltenham', 'nyt-cheltenham']];
+  var NYT_WEIGHTS = {
+    '': null, ExtraLight: '200', Light: '300', Book: '400', Medium: '500',
+    Semibold: '600', Bold: '700', ExtraBold: '800', Headline: '700'
+  };
+  var WEB_FONTS = getNytWebFonts();
+
+  // Returns a CSS font-family value for @family, a font-family list
+  function addFontFallbacks(family) {
+    var names = parseFamilyList(family);
+    var lowerNames, category;
+    if (names.length === 0) return String(family);
+    lowerNames = names.map(function(name) { return name.toLowerCase(); });
+    if (!lowerNames.some(isGenericFamily)) {
+      category = guessFontCategory(lowerNames[0]);
+      FALLBACKS[category].forEach(function(name) {
+        if (!lowerNames.includes(name.toLowerCase())) names.push(name);
+      });
+    }
+    return names.map(formatFamilyName).join(', ');
+  }
+
+  function getNytWebFonts() {
+    var fonts = [];
+    NYT_WEB_FONTS.forEach(function(pair) {
+      Object.keys(NYT_WEIGHTS).forEach(function(weightName) {
+        fonts.push({
+          system: weightName ? pair[0] + ' ' + weightName : pair[0],
+          web: pair[1],
+          weight: NYT_WEIGHTS[weightName]
+        });
+      });
+    });
+    return fonts;
+  }
+
+  // Adds the web font that stands for each system font in @style, a text class's
+  // properties, just before that system font, which stays in the list for
+  // computers that have it installed. The weight of a system family with a weight
+  // in its name (like "NYTFranklin Medium") replaces the label's font-weight, if
+  // it is the label's first font.
+  function applyWebFonts(style) {
+    var names = parseFamilyList(style['font-family']);
+    var out = [];
+    var weight = null;
+    if (names.length === 0) return style;
+    names.forEach(function(name, i) {
+      var font = findWebFont(WEB_FONTS, name);
+      if (font && !containsName(names, font.web) && !containsName(out, font.web)) {
+        out.push(font.web);
+        if (i === 0) weight = font.weight;
+      }
+      out.push(name);
+    });
+    style['font-family'] = out.map(formatFamilyName).join(', ');
+    if (weight) style['font-weight'] = weight;
+    return style;
+  }
+
+  // System font names are compared as the font lookup compares them, so that
+  // NYTFranklin also matches "NYT Franklin"
+  function findWebFont(webFonts, name) {
+    var key = normalizeFamilyName(name);
+    return webFonts.find(function(font) {
+      return normalizeFamilyName(font.system) == key;
+    }) || null;
+  }
+
+  // Web font names are compared exactly (but for case): nyt-franklin and
+  // NYTFranklin normalize to the same name
+  function containsName(names, name) {
+    return names.some(function(name2) {
+      return name2.toLowerCase() == name.toLowerCase();
+    });
+  }
+
+  function guessFontCategory(name) {
+    var key = normalizeFamilyName(name);
+    name = name.toLowerCase();
+    if (containsFontKey(MONOSPACE_FONTS, key) || /\b(mono|code)\b/.test(name)) {
+      return 'monospace';
+    }
+    if (containsFontKey(SERIF_FONTS, key) || /\bslab\b/.test(name) ||
+        /serif/.test(name) && !/sans/.test(name)) {
+      return 'serif';
+    }
+    return 'sans-serif';
+  }
+
+  function containsFontKey(keys, key) {
+    return keys.some(function(k) {
+      return key.includes(k);
+    });
+  }
+
+  function isGenericFamily(name) {
+    return GENERIC_FAMILIES.includes(name);
+  }
+
+  function parseFamilyList(family) {
+    return String(family || '').split(',').map(unquote).filter(Boolean);
+  }
+
+  function unquote(name) {
+    return name.trim().replace(/^['"]|['"]$/g, '').trim();
+  }
+
+  // A name is quoted unless it is a generic family or a run of plain words, so
+  // that CSS cannot read it as a keyword or a malformed identifier.
+  function formatFamilyName(name) {
+    if (isGenericFamily(name.toLowerCase())) return name;
+    if (/^[a-z][a-z-]*$/i.test(name)) return name;
+    return '"' + name.replace(/"/g, '') + '"';
+  }
+
+  // Text styles in HTML output are written as CSS classes rather than as
+  // attributes on each label: one class for each combination of style properties
+  // in the map, so that a page can restyle a map's labels by editing a few rules.
+
+  var TEXT_TAGS = {text: true, tspan: true, textPath: true};
+
+  var TEXT_STYLE_PROPERTIES = [
+    'font-family', 'font-size', 'font-style', 'font-weight', 'font-stretch',
+    'letter-spacing', 'text-anchor', 'dominant-baseline', 'fill', 'fill-opacity',
+    'opacity', 'stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray',
+    'stroke-linejoin', 'paint-order'
+  ];
+
+  // The text defaults a layer's group carries for its labels to inherit (see
+  // getLabelTextDefaults()), which are folded into the labels' own classes.
+  var LAYER_TEXT_PROPERTIES = ['font-family', 'font-size', 'text-anchor'];
+
+  // A bare number is px in an SVG attribute, and not valid CSS for these.
+  var LENGTH_PROPERTIES = {'font-size': true, 'letter-spacing': true, 'stroke-width': true};
+
+  // Moves the text style properties of the elements in @layers (SVG objects, one
+  // per layer) into classes named @prefix + n. Returns the classes in the order
+  // they were first used: [{name, style: {property: value, ...}}, ...]
+  function convertTextStylesToClasses(layers, prefix) {
+    var classes = [];
+    var index = {};
+    layers.forEach(function(lyr) {
+      var inherited = moveProperties(lyr.properties, {}, LAYER_TEXT_PROPERTIES);
+      procNode(lyr, inherited, false);
+    });
+    return classes;
+
+    function procNode(node, inherited, inText) {
+      var style, name;
+      if (TEXT_TAGS[node.tag]) {
+        // text inside a text element inherits from it, not from the layer
+        style = Object.assign({}, inText ? null : inherited);
+        moveProperties(node.properties, style, TEXT_STYLE_PROPERTIES);
+        if (Object.keys(style).length > 0) {
+          name = getClassName(style);
+          node.properties.class = node.properties.class ?
+            node.properties.class + ' ' + name : name;
+        }
+        inText = true;
+      }
+      (node.children || []).forEach(function(child) {
+        procNode(child, inherited, inText);
+      });
+    }
+
+    function getClassName(style) {
+      var key = getStyleKey(style);
+      if (!(key in index)) {
+        index[key] = prefix + classes.length;
+        classes.push({name: index[key], style: style});
+      }
+      return index[key];
+    }
+  }
+
+  // Returns CSS rules for @classes, scoped to @selector
+  function formatTextClassesAsCss(classes, selector) {
+    return classes.map(function(o) {
+      var decl = Object.keys(o.style).map(function(k) {
+        return k + ':' + formatCssValue(k, o.style[k]) + ';';
+      }).join('');
+      return selector + ' .' + o.name + ' {' + decl + '}';
+    }).join('\n');
+  }
+
+  function formatCssValue(name, val) {
+    var str = sanitizeCssValue(val);
+    if (LENGTH_PROPERTIES[name] && /^-?(\d+\.?\d*|\.\d+)$/.test(str)) {
+      str += 'px';
+    } else if (name == 'font-family') {
+      str = addFontFallbacks(str);
+    }
+    return str;
+  }
+
+  // Values come from data, and must not be able to end the declaration, the
+  // rule or the <style> element they are written into.
+  function sanitizeCssValue(val) {
+    return String(val).replace(/[{}<>;\\]/g, '').trim();
+  }
+
+  function getStyleKey(style) {
+    return Object.keys(style).sort().map(function(k) {
+      return k + ':' + style[k];
+    }).join(';');
+  }
+
+  function moveProperties(src, dest, names) {
+    if (!src) return dest;
+    names.forEach(function(k) {
+      var val = src[k];
+      delete src[k];
+      // stringify() omits these, so they are not style
+      if (!val && val !== 0) return;
+      dest[k] = val;
+    });
+    return dest;
+  }
+
+  // HTML output, modeled on the ai2html script for Adobe Illustrator: the map's
+  // shapes are drawn in an image, and its point symbols -- labels, icons, dots --
+  // are drawn over it as inline SVG. Each symbol is anchored to a position given
+  // as a percentage of the map's width and height, so that a map that resizes
+  // with its container keeps its symbols where they belong without scaling them.
+  //
+  // A label along a path is anchored the same way, at the point on its path
+  // where its text is attached, and keeps the shape and size of its path.
+
+  var CLASS_PREFIX = 'ms-';
+
+  async function exportHTML(dataset, opts) {
+    var responsiveness = getResponsiveness(opts);
+    var imageFormat = getImageFormat(opts);
+    var pixelRatio = getPixelRatio(opts);
+    var o = prepareDatasetForSVG(dataset, Object.assign({}, opts, {
+      // raster layers are resampled to the pixel density of the image
+      raster_res: opts.raster_res || pixelRatio,
+      linked_images: false
+    }));
+    var frame = o.frame;
+    var base = getHtmlFileBase(o.dataset, opts);
+    var layers = splitLayersForHTML(o.dataset.layers, o.dataset);
+    var imageFile = base + (imageFormat == 'jpeg' ? '.jpg' : '.png');
+    var image = await rasterizeSVG(renderSVGDocument(o.dataset, frame, layers.image, o.opts), {
+      width: frame.width,
+      height: frame.height,
+      scale: pixelRatio,
+      format: imageFormat,
+      quality: getJpegQuality(opts)
+    });
+    var html = renderHtmlFragment({
+      id: getContainerId(base),
+      frame: frame,
+      responsiveness: responsiveness,
+      imageFile: imageFile,
+      overlay: renderOverlay(o.dataset, frame, layers.overlay, o.opts)
+    });
+    return [{
+      filename: opts.file || base + '.html',
+      content: html
+    }, {
+      filename: imageFile,
+      content: image
+    }];
+  }
+
+  // Point layers go in the overlay; everything else is drawn in the image,
+  // beneath them. Layers are listed bottom to top.
+  function splitLayersForHTML(layers, dataset) {
+    var image = [], overlay = [];
+    layers.forEach(function(lyr) {
+      if (layerGoesInOverlay(lyr)) {
+        overlay.push(lyr);
+      } else {
+        if (overlay.length > 0 && !isFrameLayer(lyr, dataset.arcs)) {
+          warn(utils.format('Layer "%s" is drawn in the map image, beneath point layer "%s", which is above it in the layer order.',
+            lyr.name || '[unnamed]', overlay[overlay.length - 1].name || '[unnamed]'));
+        }
+        image.push(lyr);
+      }
+    });
+    return {image: image, overlay: overlay};
+  }
+
+  function layerGoesInOverlay(lyr) {
+    return lyr.geometry_type == 'point' && !layerHasFurniture(lyr) &&
+      !layerHasRaster(lyr);
+  }
+
+  function renderOverlay(dataset, frame, layers, opts) {
+    var defs = [];
+    var objects = layers.map(function(lyr) {
+      var obj = renderOverlayLayer(lyr, dataset, frame, opts);
+      convertPropertiesToDefinitions(obj, defs);
+      return obj;
+    });
+    var classes = convertTextStylesToClasses(objects, CLASS_PREFIX + 'text-');
+    classes.forEach(function(o) {
+      applyWebFonts(o.style);
+    });
+    return {
+      defs: defs,
+      layers: objects,
+      classes: classes
+    };
+  }
+
+  function renderOverlayLayer(lyr, dataset, frame, opts) {
+    var layerObj = getEmptyLayerForSVG(lyr, opts);
+    var geojson = exportDatasetAsGeoJSON(utils.defaults({layers: [lyr]}, dataset), opts);
+    var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
+    var dataAttributes = getDataAttributes(lyr, opts);
+    var report = initPathLabelReport();
+    var anchors = [];
+    // each feature is rendered at the origin, and placed by a container
+    var localFeatures = features.map(function(feat, i) {
+      var geom = feat && feat.type == 'Feature' ? feat.geometry : feat;
+      var props = feat && feat.properties || {};
+      var localGeom = null;
+      anchors[i] = [];
+      if (!geom || !geom.coordinates) ; else if (featureIsPathLabel(geom, props)) {
+        anchors[i].push(getPathLabelAnchor(geom.coordinates, props));
+        localGeom = {
+          type: 'MultiPoint',
+          coordinates: shiftCoords(geom.coordinates, anchors[i][0])
+        };
+      } else if (geom.type == 'Point' || geom.type == 'MultiPoint') {
+        // the points of a multipoint feature (other than a path label) are drawn
+        // with the same symbol
+        anchors[i] = geom.type == 'Point' ? [geom.coordinates] : geom.coordinates;
+        localGeom = {type: 'Point', coordinates: [0, 0]};
+      }
+      return {
+        type: 'Feature',
+        id: feat && feat.id,
+        properties: props,
+        geometry: localGeom
+      };
+    }).map(function(feat) {
+      if (feat.id === undefined) delete feat.id;
+      return feat;
+    });
+    var symbols = importGeoJSONFeatures(localFeatures, utils.defaults({
+      path_label_report: report
+    }, opts));
+    reportPathLabels(report, lyr);
+
+    symbols.forEach(function(sym, i) {
+      if (isEmptySymbol(sym)) return;
+      removeOriginTransform(sym);
+      anchors[i].forEach(function(xy, j) {
+        layerObj.children.push({
+          tag: 'svg',
+          properties: Object.assign({
+            x: formatPct(xy[0], frame.width),
+            y: formatPct(xy[1], frame.height),
+            overflow: 'visible'
+          }, dataAttributes ? dataAttributes[i] : null),
+          children: [j === 0 ? sym : copySymbolWithoutId(sym)]
+        });
+      });
+    });
+    return layerObj;
+  }
+
+  // The point on a label's path where its text is attached: its start offset,
+  // which is where text-anchor places the text.
+  function getPathLabelAnchor(knots, rec) {
+    var offset = String(rec['label-start-offset'] || getDefaultStartOffset(rec));
+    var len = getCurveLength(knots);
+    var dist = parseFloat(offset);
+    var p;
+    if (/%$/.test(offset)) {
+      dist = dist / 100 * len;
+    }
+    p = getPointAtCurveLength(knots, utils.isFiniteNumber(dist) ? dist : len / 2) || knots[0];
+    return [roundCoord$2(p[0]), roundCoord$2(p[1])];
+  }
+
+  function shiftCoords(coords, origin) {
+    return coords.map(function(p) {
+      return [roundCoord$2(p[0] - origin[0]), roundCoord$2(p[1] - origin[1])];
+    });
+  }
+
+  function roundCoord$2(c) {
+    return Math.round(c * 100) / 100;
+  }
+
+  function getDataAttributes(lyr, opts) {
+    var fields;
+    if (!opts.svg_data || !lyr.data) return null;
+    fields = opts.svg_data.includes('*') ? lyr.data.getFields() :
+      opts.svg_data.filter(function(name) { return lyr.data.fieldExists(name); });
+    return exportDataAttributesForSVG(lyr.data.getRecords(), fields);
+  }
+
+  function isEmptySymbol(o) {
+    return !o || o.tag == 'g' && (!o.children || o.children.length === 0);
+  }
+
+  // Symbols rendered at the origin are given a transform that places them there
+  function removeOriginTransform(o) {
+    if (o.properties && o.properties.transform == 'translate(0 0)') {
+      delete o.properties.transform;
+    }
+  }
+
+  // ids must be unique, so only the first copy of a multipoint symbol keeps it
+  function copySymbolWithoutId(o) {
+    var copy = JSON.parse(JSON.stringify(o));
+    if (copy.properties) delete copy.properties.id;
+    return copy;
+  }
+
+  function formatPct(val, total) {
+    var pct = total > 0 ? val / total * 100 : 0;
+    return String(Math.round(pct * 1000) / 1000) + '%';
+  }
+
+  function renderHtmlFragment(o) {
+    var id = o.id;
+    var w = o.frame.width;
+    var h = o.frame.height;
+    var overlay = o.overlay;
+    var selector = '#' + id;
+    var boxCss = o.responsiveness == 'dynamic' ?
+      `width:100%;aspect-ratio:${w} / ${h};` :
+      `width:${w}px;height:${h}px;`;
+    var css = [
+      `${selector} {position:relative;overflow:hidden;${boxCss}}`,
+      `${selector} .${CLASS_PREFIX}image {position:absolute;top:0;left:0;width:100%;height:100%;max-width:none;margin:0;display:block;}`,
+      `${selector} .${CLASS_PREFIX}overlay {position:absolute;top:0;left:0;width:100%;height:100%;overflow:visible;}`
+    ];
+    var classCss = formatTextClassesAsCss(overlay.classes, selector);
+    if (classCss) css.push(classCss);
+    // Hidden from screen readers, which would otherwise read the labels as a
+    // list of unrelated words, and each halo'd label twice
+    var html = `<div id="${stringEscape(id)}" class="${CLASS_PREFIX}map" aria-hidden="true">
+<style>
+${css.join('\n')}
+</style>
+<img class="${CLASS_PREFIX}image" src="${stringEscape(o.imageFile)}" width="${w}" height="${h}" alt="">`;
+    if (overlay.layers.length > 0) {
+      html += '\n' + renderOverlaySvg(overlay);
+    }
+    return html + '\n</div>\n';
+  }
+
+  function renderOverlaySvg(overlay) {
+    var svg = `<svg class="${CLASS_PREFIX}overlay" stroke-linecap="round" stroke-linejoin="round">\n`;
+    if (overlay.defs.length > 0) {
+      svg += '<defs>\n' + utils.pluck(overlay.defs, 'svg').join('') + '</defs>\n';
+    }
+    svg += overlay.layers.map(stringify).join('\n');
+    return svg + '\n</svg>';
+  }
+
+  function getHtmlFileBase(dataset, opts) {
+    return opts.file ? opts.file.replace(/\.html?$/i, '') : getOutputFileBase(dataset);
+  }
+
+  function getContainerId(base) {
+    return CLASS_PREFIX + base.replace(/[^\w-]+/g, '-');
+  }
+
+  function getResponsiveness(opts) {
+    var val = opts.responsiveness || 'fixed';
+    if (val != 'fixed' && val != 'dynamic') {
+      stop$1('Unsupported responsiveness= option:', val, '(expected fixed or dynamic)');
+    }
+    return val;
+  }
+
+  function getImageFormat(opts) {
+    var fmt = String(opts.image_format || 'png').toLowerCase();
+    if (fmt == 'jpg') fmt = 'jpeg';
+    if (fmt != 'png' && fmt != 'jpeg') {
+      stop$1('Unsupported image-format= option:', opts.image_format, '(expected png or jpg)');
+    }
+    return fmt;
+  }
+
+  function getPixelRatio(opts) {
+    var val = opts.pixel_ratio === undefined ? 2 : opts.pixel_ratio;
+    if (val > 0 === false || val > 8) {
+      stop$1('Expected pixel-ratio= to be a number greater than 0 and no more than 8');
+    }
+    return val;
+  }
 
   function exportKML(dataset, opts) {
     var toKML = require$1("@placemarkio/tokml").toKML;
@@ -40261,6 +41499,8 @@ ${svg}
       format = 'geotiff';
     } else if (ext == 'svg') {
       format = 'svg';
+    } else if (ext == 'html' || ext == 'htm') {
+      format = 'html';
     } else if (ext == 'kml' || ext == 'kmz') {
       format = 'kml';
     } else if (/json$/.test(ext)) {
@@ -40319,7 +41559,7 @@ ${svg}
   async function exportDatasets(datasets, opts) {
     var format = getOutputFormat(datasets[0], opts);
     var files;
-    if (format != 'svg' && format != PACKAGE_EXT) {
+    if (format != 'svg' && format != 'html' && format != PACKAGE_EXT) {
       datasets = removeFurnitureLayers(datasets);
     }
     validateRasterExportFormat(datasets, format);
@@ -40333,8 +41573,8 @@ ${svg}
       opts = utils.defaults({compact: true}, opts);
       return exportPackedDatasets(datasets, opts);
     }
-    if (format == 'kml' || format == 'svg' || format == 'topojson' || format == 'geopackage' ||
-        format == 'geojson' && opts.combine_layers) {
+    if (format == 'kml' || format == 'svg' || format == 'html' || format == 'topojson' ||
+        format == 'geopackage' || format == 'geojson' && opts.combine_layers) {
       // multi-layer formats: combine multiple datasets into one
       if (datasets.length > 1) {
         datasets = [mergeDatasetsForExport(datasets)];
@@ -40353,7 +41593,12 @@ ${svg}
       datasets = datasets.map(copyDatasetForRenaming);
       assignUniqueLayerNames2(datasets);
     }
-    if (format == 'geopackage') {
+    if (format == 'html') {
+      sortExportLayers(datasets[0]);
+      // HTML bypasses exportFileContent(), because rendering its image is async.
+      files = await exportHTML(copyDatasetForHTMLExport(datasets[0]),
+        utils.defaults({format: format}, opts));
+    } else if (format == 'geopackage') {
       if (datasets.length > 1) {
         datasets = [mergeDatasetsForExport(datasets)];
       }
@@ -40424,8 +41669,19 @@ ${svg}
       return;
     }
     if (!datasetsHaveRasterLayers(datasets)) return;
-    if (format == 'svg' || format == PACKAGE_EXT) return;
-    stop$1('Raster layers can only be exported as GeoTIFF, SVG or ' + PACKAGE_EXT + ' files');
+    if (format == 'svg' || format == 'html' || format == PACKAGE_EXT) return;
+    stop$1('Raster layers can only be exported as GeoTIFF, SVG, HTML or ' + PACKAGE_EXT + ' files');
+  }
+
+  // The parts of exportFileContent() that apply to HTML output: layers are
+  // shallow-copied so they can be given unique names, which become element ids.
+  function copyDatasetForHTMLExport(dataset) {
+    dataset = utils.defaults({
+      layers: dataset.layers.map(function(lyr) {return utils.extend({}, lyr);})
+    }, dataset);
+    assignUniqueLayerNames(dataset.layers);
+    validateLayerData(dataset.layers);
+    return dataset;
   }
 
   function datasetsHaveRasterLayers(datasets) {
@@ -41509,7 +42765,7 @@ ${svg}
   });
 
   function isSupportedOutputFormat(fmt) {
-    var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg', 'kml', PACKAGE_EXT, 'flatgeobuf', 'geopackage', 'geoparquet', 'geotiff'];
+    var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg', 'html', 'kml', PACKAGE_EXT, 'flatgeobuf', 'geopackage', 'geoparquet', 'geotiff'];
     return types.indexOf(fmt) > -1;
   }
 
@@ -41528,7 +42784,8 @@ ${svg}
       geopackage: 'GeoPackage',
       geoparquet: 'GeoParquet',
       geotiff: 'GeoTIFF',
-      svg: 'SVG'
+      svg: 'SVG',
+      html: 'HTML'
     }[fmt] || '';
   }
 
@@ -42715,6 +43972,14 @@ ${svg}
         offsetOpt = {
           describe: 'offset distance or pct of h/w (single value or l,b,r,t list)',
           type: 'distance'
+        },
+        frameMarginOpt = {
+          describe: 'padding in display units or pct of frame width; 1-4 values in CSS order, e.g. 5% or 10%,2%',
+          type: 'strings'
+        },
+        frameOffsetOpt = {
+          // undocumented: older form of margin=, one value or an l,b,r,t list
+          type: 'strings'
         };
 
     // The label options -style used to document, before -labels took them over.
@@ -42893,7 +44158,7 @@ ${svg}
         }
       })
       .option('format', {
-        describe: 'options: shapefile,geojson,topojson,flatgeobuf,geopackage,geoparquet,geotiff,json,dbf,csv,tsv,svg'
+        describe: 'options: shapefile,geojson,topojson,flatgeobuf,geopackage,geoparquet,geotiff,json,dbf,csv,tsv,svg,html'
       })
       .option('target', targetOpt)
       .option('force', {
@@ -43020,11 +44285,11 @@ ${svg}
         type: 'flag'
       })
       .option('width', {
-        describe: '[SVG/TopoJSON] pixel width of output (SVG default is 800)',
+        describe: '[SVG/HTML/TopoJSON] pixel width of output (SVG default is 800)',
         type: 'number'
       })
       .option('height', {
-        describe: '[SVG/TopoJSON] pixel height of output (optional)',
+        describe: '[SVG/HTML/TopoJSON] pixel height of output (optional)',
         type: 'number'
       })
       .option('max-height', {
@@ -43059,7 +44324,17 @@ ${svg}
         type: 'flag'
       })
       .option('jpeg-quality', {
-        describe: '[SVG] JPEG quality for raster images, 1-100 (default is 85)',
+        describe: '[SVG/HTML] JPEG quality for raster images, 1-100 (default is 85)',
+        type: 'number'
+      })
+      .option('responsiveness', {
+        describe: '[HTML] fixed or dynamic (resizes to fill its container)'
+      })
+      .option('image-format', {
+        describe: '[HTML] format of the map image: png or jpg (default is png)'
+      })
+      .option('pixel-ratio', {
+        describe: '[HTML] image pixels per CSS pixel (default is 2)',
         type: 'number'
       })
       .option('fit-extent', {
@@ -43348,16 +44623,38 @@ ${svg}
         type: 'numbers'
       })
       .option('classes', {
-        describe: 'number of classes (can be inferred from other options)',
-        type: 'integer'
+        describe: 'number of classes (with pivot=, or below,above the pivot)',
+        type: 'numbers'
+      })
+      .option('pivot', {
+        describe: 'diverging classes: a value, median, mean or auto (0 or median)'
+      })
+      .option('pivot-range', {
+        describe: 'low,high range of the pivot class (diverging classes)',
+        type: 'numbers'
+      })
+      .option('no-pivot-class', {
+        describe: 'diverging classes meet at the pivot (no pivot class)',
+        type: 'flag'
+      })
+      .option('pivot-class', {
+        describe: 'add a pivot class to continuous diverging colors',
+        type: 'flag'
       })
       .option('invert', {
         describe: 'reverse the order of colors/values',
         type: 'flag'
       })
       .option('continuous', {
-        describe: 'output interpolated values, for unclassed colors',
+        describe: 'interpolate between values at the class breaks (unclassed colors)',
         type: 'flag'
+      })
+      .option('interpolation', {
+        describe: 'color interpolation: rgb (default) or oklch'
+      })
+      .option('vibrance', {
+        describe: '(oklch) more vivid midtones, 0-1 (default 0)',
+        type: 'number'
       })
       .option('index-field', {
         describe: 'apply pre-calculated classes (0 ... n-1, -1)'
@@ -44685,6 +45982,9 @@ ${svg}
       .option('stroke-dasharray', {
         describe: 'stroke dashes. Examples: "4" "2 4"'
       })
+      .option('stroke-linecap', {
+        describe: 'line caps: round, butt or square (dashed lines default to butt)'
+      })
       .option('stroke-opacity', {
         describe: 'stroke opacity'
       })
@@ -44696,6 +45996,9 @@ ${svg}
       })
       .option('line-end-size', {
         describe: 'length of an arrowhead\'s sides in px (default grows with stroke-width)'
+      })
+      .option('line-fade', {
+        describe: 'share of a line (0-1) that fades in from its tail'
       })
       .option('opacity', {
         describe: 'opacity; example: 0.5'
@@ -45019,14 +46322,9 @@ ${svg}
         describe: 'hold the map scale; derive the size from the new extent',
         type: 'flag'
       })
-      .option('offset', {
-        describe: 'padding in display units or pct of width/height, e.g. 5cm 20px 5%',
-        type: 'strings'
-      })
-      .option('offsets', {
-        describe: 'separate offsets for each side, in l,b,r,t order',
-        type: 'strings'
-      })
+      .option('margin', frameMarginOpt)
+      .option('offset', frameOffsetOpt)
+      .option('offsets', frameOffsetOpt)
       .option('remove', {
         describe: 'demote the frame to an ordinary rectangle layer',
         type: 'flag'
@@ -45144,14 +46442,9 @@ ${svg}
         describe: 'frame coordinates (xmin,ymin,xmax,ymax)',
         type: 'bbox'
       })
-      .option('offset', {
-        describe: 'padding in display units or pct of width/height, e.g. 5cm 20px 5%',
-        type: 'strings'
-      })
-      .option('offsets', {
-        describe: 'separate offsets for each side, in l,b,r,t order',
-        type: 'strings'
-      })
+      .option('margin', frameMarginOpt)
+      .option('offset', frameOffsetOpt)
+      .option('offsets', frameOffsetOpt)
       .option('ignore-symbols', {
         describe: 'fit to point locations, not the extent of symbols and labels',
         type: 'flag'
@@ -54064,6 +55357,7 @@ ${svg}
   cmd.frame = function(catalog, targets, opts) {
     var widthPx, heightPx, bbox;
     var existingFrame = getActiveFrame(catalog);
+    var offsets = parseFrameOffsets(opts);
     if (opts.width) {
       widthPx = parseFrameSize(opts.width).valuePx;
       if (widthPx > 0 === false) {
@@ -54099,7 +55393,7 @@ ${svg}
       var datasets = utils.pluck(targets, 'dataset');
       requireDatasetsHaveCompatibleCRS(datasets, 'Targets include both projected and unprojected coordinates');
       bbox = getFrameContentBbox(expandCommandTargets(targets), function(contentBbox) {
-        var extent = getFrameExtent(contentBbox, widthPx, heightPx, opts);
+        var extent = getFrameExtent(contentBbox, widthPx, heightPx, offsets);
         return getFrameScale(extent.bbox, extent.width, getFixedAspect$1(extent, opts));
       }, opts);
       if (!bbox && !expandCommandTargets(targets).some(function(o) {
@@ -54112,7 +55406,7 @@ ${svg}
       }
     }
 
-    var extent = getFrameExtent(bbox, widthPx, heightPx, opts);
+    var extent = getFrameExtent(bbox, widthPx, heightPx, offsets);
     if (!extent.valid) {
       stop$1('Frame has a collapsed bbox');
     }
@@ -54146,12 +55440,10 @@ ${svg}
   // The frame's extent and nominal size, from the extent of its content and the
   // size options. Pure, so that fitting to symbols can ask what scale an extent
   // would give the frame.
-  function getFrameExtent(contentBbox, widthPx, heightPx, opts) {
-    var offsets = opts.offset || opts.offsets;
+  function getFrameExtent(contentBbox, widthPx, heightPx, offsets) {
     var bbox = contentBbox.slice();
     var aspectRatio;
-    applyPercentageOffsets(bbox, offsets);
-    applyPixelOffsets(bbox, widthPx, heightPx, offsets);
+    applyFrameOffsets(bbox, offsets, {width: widthPx, height: heightPx});
     aspectRatio = (bbox[2] - bbox[0]) / (bbox[3] - bbox[1]);
     if (!widthPx) {
       widthPx = roundToDigits(heightPx * aspectRatio, 1);
@@ -54200,70 +55492,113 @@ ${svg}
     bbox[3] += vpad / 2;
   }
 
-  function applyPercentageOffsets(bbox, arg) {
-    var sides = getPctOffsets(arg);
-    var l = sides[0],
-      b = sides[1],
-      r = sides[2],
-      t = sides[3],
-      w2 = (bbox[2] - bbox[0]) / (1 - l - r),
-      h2 = (bbox[3] - bbox[1]) / (1 - t - b);
-    bbox[0] -= l * w2;
-    bbox[1] -= b * h2;
-    bbox[2] += r * w2;
-    bbox[3] += t * h2;
+  // Margins from the margin=, offset= or offsets= option, in l,b,r,t order, or
+  // null if none is given. margin= takes one to four values in CSS order (all
+  // sides; vertical horizontal; top horizontal bottom; top right bottom left).
+  // offset= and offsets= are the older form, and take one value or four in
+  // l,b,r,t order, the order of a bbox. Each side is a length in px plus a share
+  // of the frame's width: as in CSS, a percentage is of the width on every side,
+  // so that 5% is an even margin.
+  function parseFrameOffsets(opts) {
+    var names = ['margin', 'offset', 'offsets'].filter(name => opts[name]);
+    var name = names[0];
+    var tokens;
+    if (names.length > 1) {
+      stop$1(names.map(name => name + '=').join(' and ') + ' are mutually exclusive');
+    }
+    if (!name) return null;
+    tokens = splitOffsetList(opts[name]);
+    if (name == 'margin') {
+      tokens = expandCssSides(tokens);
+    } else if (tokens.length == 1) {
+      tokens = [tokens[0], tokens[0], tokens[0], tokens[0]];
+    } else if (tokens.length != 4) {
+      stop$1(name + '= expects one value or four, in l,b,r,t order');
+    }
+    return {
+      px: tokens.map(str => str.includes('%') ? 0 : parseSizeParam(str)),
+      pct: tokens.map(str => str.includes('%') ? parsePercent(str) : 0)
+    };
   }
 
-  function applyPixelOffsets(bbox, widthPx, heightPx, arg) {
-    var sides = getPixelOffsets(arg);
-    var l = sides[0],
-      b = sides[1],
-      r = sides[2],
-      t = sides[3],
-      scale, w;
+  // Accepts comma- or space-separated values, e.g. margin=10%,2% or
+  // margin='10% 2%'
+  function splitOffsetList(arg) {
+    return [].concat(arg).join(' ').split(/[\s,]+/).filter(Boolean);
+  }
 
-    if (widthPx && heightPx) {
-      // add padding to bbox to match pixel dimensions, if needed
-      fillOutBbox(bbox, widthPx, heightPx);
+  // CSS shorthand to l,b,r,t
+  function expandCssSides(arr) {
+    var t, r, b, l;
+    if (arr.length < 1 || arr.length > 4) {
+      stop$1('margin= expects one to four values, in CSS order (top right bottom left)');
     }
+    t = arr[0];
+    r = arr.length > 1 ? arr[1] : t;
+    b = arr.length > 2 ? arr[2] : t;
+    l = arr.length > 3 ? arr[3] : r;
+    return [l, b, r, t];
+  }
 
-    w = bbox[2] - bbox[0];
-    bbox[3] - bbox[1];
+  // Pads @bbox in place by @offsets (from parseFrameOffsets(), or null for no
+  // padding). The frame's display width, which percentage margins are a share
+  // of, is given by @size.width, or follows from @size.height (when the width is
+  // derived from the padded extent) or from @size.scale (map units per px, when
+  // the scale is held and the size follows the extent). Given both a width and
+  // a height, the content is centered on the page and the bbox takes the page's
+  // shape, so the margins are a minimum on two of the sides.
+  function applyFrameOffsets(bbox, offsets, size) {
+    var px = offsets ? offsets.px : [0, 0, 0, 0];
+    var pct = offsets ? offsets.pct : [0, 0, 0, 0];
+    var cw = bbox[2] - bbox[0];
+    var ch = bbox[3] - bbox[1];
+    var hpct = pct[0] + pct[2],
+        vpct = pct[1] + pct[3],
+        hpx = px[0] + px[2],
+        vpx = px[1] + px[3];
+    var widthPx = size.width, heightPx = size.height, scale = size.scale;
+    var margins, innerW, innerH, k, hpad = 0, vpad = 0;
 
-    if (widthPx) {
-      scale = w / (widthPx - l - r);
+    if (hpct >= 1) {
+      stop$1('Left and right offsets add up to 100% or more of the frame width');
+    }
+    if (widthPx > 0) ; else if (scale > 0) {
+      widthPx = (cw / scale + hpx) / (1 - hpct);
+    } else if (heightPx > 0) {
+      // heightPx = ch / scale + vpx + vpct * widthPx, where
+      // widthPx = (cw / scale + hpx) / (1 - hpct)
+      k = vpct / (1 - hpct);
+      innerH = heightPx - vpx - k * hpx;
+      if (!(innerH > 0)) stopNoRoom();
+      scale = (ch + k * cw) / innerH;
+      widthPx = (cw / scale + hpx) / (1 - hpct);
     } else {
-      scale = w / (heightPx - t - b);
+      stop$1('Unable to apply offsets to a frame with no display size');
+    }
+    margins = px.map((n, i) => n + pct[i] * widthPx);
+
+    if (!(scale > 0)) {
+      innerW = widthPx - margins[0] - margins[2];
+      if (!(innerW > 0)) stopNoRoom();
+      if (heightPx > 0) {
+        innerH = heightPx - margins[1] - margins[3];
+        if (!(innerH > 0)) stopNoRoom();
+        scale = Math.max(cw / innerW, ch / innerH);
+        hpad = innerW * scale - cw;
+        vpad = innerH * scale - ch;
+      } else {
+        scale = cw / innerW;
+      }
     }
 
-    bbox[0] -= scale * l;
-    bbox[1] -= scale * b;
-    bbox[2] += scale * r;
-    bbox[3] += scale * t;
-    return scale;
+    bbox[0] -= scale * margins[0] + hpad / 2;
+    bbox[1] -= scale * margins[1] + vpad / 2;
+    bbox[2] += scale * margins[2] + hpad / 2;
+    bbox[3] += scale * margins[3] + vpad / 2;
   }
 
-  function getPctOffsets(arg) {
-    return adjustOffsetsArg(arg).map(str => {
-      return str.includes('%') ? parsePercent(str) : 0;
-    });
-  }
-
-  function getPixelOffsets(arg) {
-    return adjustOffsetsArg(arg).map(str => {
-      return str.includes('%') ? 0 : parseSizeParam(str);
-    });
-  }
-
-  function adjustOffsetsArg(arg) {
-    if (!arg) arg = ['0'];
-    if (arg.length == 1) {
-      return [arg[0], arg[0], arg[0], arg[0]];
-    }
-    if (arg.length != 4) {
-      stop$1('List of offsets should have 4 values');
-    }
-    return arg;
+  function stopNoRoom() {
+    stop$1('Frame offsets leave no room for the map');
   }
 
   // Convert width and height args to aspect ratio arg for the rectangle() function
@@ -54280,10 +55615,10 @@ ${svg}
 
   var Frame = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    applyPercentageOffsets: applyPercentageOffsets,
-    applyPixelOffsets: applyPixelOffsets,
+    applyFrameOffsets: applyFrameOffsets,
     fillOutBbox: fillOutBbox,
-    getAspectRatioArg: getAspectRatioArg
+    getAspectRatioArg: getAspectRatioArg,
+    parseFrameOffsets: parseFrameOffsets
   });
 
   // A frame is a viewport, not data, so it can legitimately extend past the
@@ -54442,6 +55777,7 @@ ${svg}
     var rec = lyr.data.getRecords()[0];
     var frame = getFrameLayerData(lyr, dataset.arcs);
     var fixedAspect = getFixedAspect(rec);
+    var offsets = parseFrameOffsets(opts);
     var sizes, contentBbox, update;
 
     // 1. Aspect mode, resolved first because whether the page shape is fixed
@@ -54459,7 +55795,7 @@ ${svg}
     // 2. Extent, which fit= finds by trying extents out on steps 3 and 4
     if (opts.fit !== undefined) {
       contentBbox = getFrameContentBbox(getFitTargets(fitTargets, dataset), function(bbox) {
-        var o = resolveFrameUpdate(bbox, frame, fixedAspect, sizes, opts);
+        var o = resolveFrameUpdate(bbox, frame, fixedAspect, sizes, offsets, opts);
         return getFrameScale(o.bbox, o.width, o.fixedAspect);
       }, opts);
       if (!contentBbox) {
@@ -54469,7 +55805,7 @@ ${svg}
       contentBbox = opts.bbox || frame.bbox;
     }
 
-    update = resolveFrameUpdate(contentBbox, frame, fixedAspect, sizes, opts);
+    update = resolveFrameUpdate(contentBbox, frame, fixedAspect, sizes, offsets, opts);
     if (!update.valid) {
       stop$1('Frame has a collapsed bbox');
     }
@@ -54527,21 +55863,17 @@ ${svg}
 
   // Steps 3 and 4 as a pure function of the content extent, so that fit= can
   // ask what scale an extent would give the frame.
-  function resolveFrameUpdate(contentBbox, frame, fixedAspect, sizes, opts) {
+  function resolveFrameUpdate(contentBbox, frame, fixedAspect, sizes, offsets, opts) {
     var bbox = contentBbox.slice();
-    var offsetArg = opts.offset || opts.offsets;
     var width = frame.width;
     var units = frame.units || 'px';
     var valid, effectiveAspect;
 
     // 3. Padding
-    if (offsetArg) {
-      applyPercentageOffsets(bbox, offsetArg);
-      // Pass a page height only when the shape is fixed. A derived height
-      // follows the extent, so letting it pad the bbox here would hold a
-      // re-fitted frame to its old shape instead of its new bounds.
-      applyPixelOffsets(bbox, frame.width,
-        fixedAspect ? frame.width / fixedAspect : null, offsetArg);
+    if (offsets) {
+      applyFrameOffsets(bbox, offsets,
+        getPaddingSize(frame, sizes.width && sizes.height ?
+          sizes.width.valuePx / sizes.height.valuePx : fixedAspect, sizes, opts));
     }
     valid = isValidBbox(bbox);
     if (fixedAspect) {
@@ -54578,6 +55910,25 @@ ${svg}
     };
   }
 
+  // The size the frame is padded for, which is the size it ends up with: a
+  // percentage offset is a share of the final width, and a px offset is px at
+  // the final scale. A page height is given only when the shape is fixed; a
+  // derived height follows the extent, so letting it pad the bbox would hold a
+  // re-fitted frame to its old shape instead of its new bounds.
+  function getPaddingSize(frame, fixedAspect, sizes, opts) {
+    var width = frame.width;
+    if (opts.fix_scale) {
+      return {scale: getBboxWidth(frame.bbox) / frame.width};
+    }
+    if (sizes.width) {
+      width = sizes.width.valuePx;
+    } else if (sizes.height) {
+      if (!fixedAspect) return {height: sizes.height.valuePx};
+      width = sizes.height.valuePx * fixedAspect;
+    }
+    return {width: width, height: fixedAspect ? width / fixedAspect : null};
+  }
+
   function hasUpdateOptions(opts) {
     return opts.bbox !== undefined ||
       opts.fit !== undefined ||
@@ -54586,6 +55937,7 @@ ${svg}
       opts.aspect_ratio !== undefined ||
       opts.auto_aspect ||
       opts.fix_scale ||
+      opts.margin !== undefined ||
       opts.offset !== undefined ||
       opts.offsets !== undefined;
   }
@@ -67886,7 +69238,7 @@ ${svg}
   function sphericalPointDistance(a, b) {
     var av = lonLatToVector(a);
     var bv = lonLatToVector(b);
-    return Math.acos(clamp$1(
+    return Math.acos(clamp$2(
       av[0] * bv[0] + av[1] * bv[1] + av[2] * bv[2], -1, 1
     )) * 180 / Math.PI;
   }
@@ -67901,7 +69253,7 @@ ${svg}
   function vectorToLonLat(p) {
     return [
       Math.atan2(p[1], p[0]) * 180 / Math.PI,
-      Math.asin(clamp$1(p[2], -1, 1)) * 180 / Math.PI
+      Math.asin(clamp$2(p[2], -1, 1)) * 180 / Math.PI
     ];
   }
 
@@ -68669,10 +70021,10 @@ ${svg}
 
   function getTrianglePixelBounds(grid, p1, p2, p3) {
     return [
-      clamp$1(Math.floor(Math.min(p1.x, p2.x, p3.x)), 0, grid.width - 1),
-      clamp$1(Math.floor(Math.min(p1.y, p2.y, p3.y)), 0, grid.height - 1),
-      clamp$1(Math.ceil(Math.max(p1.x, p2.x, p3.x)), 0, grid.width - 1),
-      clamp$1(Math.ceil(Math.max(p1.y, p2.y, p3.y)), 0, grid.height - 1)
+      clamp$2(Math.floor(Math.min(p1.x, p2.x, p3.x)), 0, grid.width - 1),
+      clamp$2(Math.floor(Math.min(p1.y, p2.y, p3.y)), 0, grid.height - 1),
+      clamp$2(Math.ceil(Math.max(p1.x, p2.x, p3.x)), 0, grid.width - 1),
+      clamp$2(Math.ceil(Math.max(p1.y, p2.y, p3.y)), 0, grid.height - 1)
     ];
   }
 
@@ -68710,8 +70062,8 @@ ${svg}
   function copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrapX) {
     var srcX = wrapX ?
       modulo(Math.floor(sx), srcGrid.width) :
-      clamp$1(Math.floor(sx), 0, srcGrid.width - 1);
-    var srcY = clamp$1(Math.floor(sy), 0, srcGrid.height - 1);
+      clamp$2(Math.floor(sx), 0, srcGrid.width - 1);
+    var srcY = clamp$2(Math.floor(sy), 0, srcGrid.height - 1);
     var src = (srcY * srcGrid.width + srcX) * srcGrid.bands;
     var dest = (dy * destGrid.width + dx) * destGrid.bands;
     // Nearest sampling copies a nodata sample through unchanged, rather than
@@ -68728,13 +70080,13 @@ ${svg}
     if (wrapX) sx = modulo(sx, srcGrid.width);
     var srcX = wrapX ?
       modulo(Math.floor(sx - 0.5), srcGrid.width) :
-      clamp$1(Math.floor(sx - 0.5), 0, srcGrid.width - 1);
-    var srcY = clamp$1(Math.floor(sy - 0.5), 0, srcGrid.height - 1);
+      clamp$2(Math.floor(sx - 0.5), 0, srcGrid.width - 1);
+    var srcY = clamp$2(Math.floor(sy - 0.5), 0, srcGrid.height - 1);
     var srcX2 = wrapX ? (srcX + 1) % srcGrid.width :
-      clamp$1(srcX + 1, 0, srcGrid.width - 1);
-    var srcY2 = clamp$1(srcY + 1, 0, srcGrid.height - 1);
-    var tx = clamp$1(sx - 0.5 - srcX, 0, 1);
-    var ty = clamp$1(sy - 0.5 - srcY, 0, 1);
+      clamp$2(srcX + 1, 0, srcGrid.width - 1);
+    var srcY2 = clamp$2(srcY + 1, 0, srcGrid.height - 1);
+    var tx = clamp$2(sx - 0.5 - srcX, 0, 1);
+    var ty = clamp$2(sy - 0.5 - srcY, 0, 1);
     var src00 = (srcY * srcGrid.width + srcX) * srcGrid.bands;
     var src10 = (srcY * srcGrid.width + srcX2) * srcGrid.bands;
     var src01 = (srcY2 * srcGrid.width + srcX) * srcGrid.bands;
@@ -68841,7 +70193,7 @@ ${svg}
     return (x - a.x) * (b.y - a.y) - (y - a.y) * (b.x - a.x);
   }
 
-  function clamp$1(val, min, max) {
+  function clamp$2(val, min, max) {
     return val < min ? min : val > max ? max : val;
   }
 
@@ -70473,6 +71825,367 @@ ${svg}
   cubehelix$1(hue);
   var cubehelixLong = cubehelix$1(nogamma);
 
+  // OKLab conversion (Björn Ottosson, https://bottosson.github.io/posts/oklab/)
+  // RGB objects use 0-255 channels, as returned by parseColor().
+
+  function rgbToOklab(rgb) {
+    var r = toLinear(rgb.r / 255),
+        g = toLinear(rgb.g / 255),
+        b = toLinear(rgb.b / 255);
+    var l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b),
+        m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b),
+        s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    return {
+      l: 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+      a: 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+      b: 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s
+    };
+  }
+
+  // Colors outside the sRGB gamut are clipped per channel.
+  function oklabToRgb(lab) {
+    var rgb = oklabToLinearRgb(lab);
+    return {
+      r: fromLinear(rgb.r) * 255,
+      g: fromLinear(rgb.g) * 255,
+      b: fromLinear(rgb.b) * 255
+    };
+  }
+
+  // OKLCH is OKLab in polar form: lightness, chroma (colorfulness) and hue
+  // angle in degrees.
+  function oklabToOklch(lab) {
+    var h = Math.atan2(lab.b, lab.a) * 180 / Math.PI;
+    return {l: lab.l, c: Math.sqrt(lab.a * lab.a + lab.b * lab.b), h: h < 0 ? h + 360 : h};
+  }
+
+  function oklchToOklab(lch) {
+    var rad = lch.h * Math.PI / 180;
+    return {l: lch.l, a: lch.c * Math.cos(rad), b: lch.c * Math.sin(rad)};
+  }
+
+  // Below this chroma a color is treated as a gray, whose hue means nothing.
+  var ACHROMATIC = 0.002;
+
+  // Lightness may move this far (OKLCH L) to make room for chroma ...
+  var MAX_LIGHTNESS_SHIFT = 0.05;
+  // ... and no more than this share of the lightness step between tiles, so
+  // that steps in lightness stay close to even.
+  var LIGHTNESS_SHIFT_SHARE = 0.2;
+  // Lightness differences count this many times as much as chroma differences
+  // when fitting a color to the gamut (see fitLightness()).
+  var LIGHTNESS_WEIGHT = 2;
+  // Shifts and chroma losses smaller than this are not reported.
+  var DEVIATION = 0.003;
+
+  // Where the light end of a ramp gains less chroma from vibrance than the
+  // color next to it (the gamut has little room near white), the step between
+  // them looks larger than the others. So that color's lightness moves toward
+  // the light end by this many times the difference in chroma gained. Set by
+  // eye; see getSecondLightness().
+  var VIBRANCE_LIGHTNESS = 0.2;
+
+  // The OKLCH chroma that -classify's vibrance=1 adds, and the top of the color
+  // palette panel's slider. More than this fills the gamut at most lightnesses,
+  // leaving the midtones of a ramp all as vivid as they can be.
+  var MAX_VIBRANCE_CHROMA = 0.09;
+
+  // vibrance=: 0-1, scaled to OKLCH chroma
+  function getVibranceChroma(vibrance) {
+    return vibrance * MAX_VIBRANCE_CHROMA;
+  }
+
+  // A user's color with vibrance added to its chroma, as far as the gamut has
+  // room at its lightness and hue. Grays are left alone, having no hue.
+  function getVibrantColor(color, vibrance) {
+    return getVibrantTile(color, vibrance).color;
+  }
+
+  // Like getVibrantColor(), but returns {color, l, c, h, ideal, adjusted}, as
+  // the function from getOklchInterpolator() does. A color is adjusted if the
+  // gamut didn't have room for all of the vibrance.
+  function getVibrantTile(color, vibrance) {
+    var rgb = parseColorOrStop(color);
+    var lch = oklabToOklch(rgbToOklab(rgb));
+    var ideal = {l: lch.l, c: lch.c, h: lch.h};
+    var c = lch.c, out;
+    if (vibrance > 0 && lch.c >= ACHROMATIC) {
+      ideal.c += vibrance;
+      c = getVibrantChroma(lch, vibrance);
+      out = oklchToRgb({l: lch.l, c: c, h: lch.h});
+      out.a = rgb.a;
+    }
+    return {
+      color: formatColor(out || rgb),
+      l: lch.l, c: c, h: lch.h,
+      ideal: ideal,
+      adjusted: ideal.c - c > DEVIATION
+    };
+  }
+
+  function getVibrantChroma(lch, vibrance) {
+    if (!(vibrance > 0) || lch.c < ACHROMATIC) return lch.c;
+    return Math.max(lch.c, Math.min(lch.c + vibrance, getMaxChroma(lch.l, lch.h)));
+  }
+
+  // Returns a function that maps t in [0, 1] to a color string. Lightness,
+  // chroma and hue are each interpolated on their own, so that equal steps in
+  // t are equal steps in each of them; hue takes the shorter way around the
+  // color wheel, unless opts.hue is 'longer'. A gray end takes the hue of the other end, so that a ramp from
+  // white to blue is blue all the way rather than passing through other hues.
+  // See getOklchInterpolator() for options, and for colors outside the sRGB
+  // gamut.
+  function interpolateOklch(color1, color2, opts) {
+    var interpolate = getOklchInterpolator(color1, color2, opts);
+    return function(t) {
+      return interpolate(t).color;
+    };
+  }
+
+  // Like interpolateOklch(), but the function returns {color, l, c, h, ideal,
+  // adjusted}: the color, its OKLCH values, the ideal OKLCH values it was
+  // fitted from ({l, c, h}), and whether fitting changed it noticeably.
+  //
+  // opts.vibrance (OKLCH chroma, default 0) raises the chroma of the midtones.
+  // The sRGB gamut holds little chroma near black and white, so a ramp between
+  // a dark and a light color has dull midtones when its chroma goes in equal
+  // steps. The amount is the same at every hue. Ramps between two grays get no
+  // boost. Vibrance is added to the chroma of every color of the straight
+  // interpolation. The two end colors get it as far as the gamut has room at
+  // their lightness, without being marked as adjusted (see getVibrantColor());
+  // gray ends are left alone. In a classed ramp, the color next to the lighter
+  // end moves toward it in lightness if it gained more chroma than that end,
+  // and the others are evenly spaced from it to the darker end (see
+  // getSecondLightness()).
+  //
+  // opts.steps: the number of tiles from one color to the other, if the ramp
+  // is classed, which limits how far lightness may move (see below).
+  //
+  // opts.hue: 'shorter' (default) or 'longer', the way around the color wheel
+  // that hue takes. A gray end has no hue to go around from, so a ramp with
+  // one always takes the other end's hue.
+  //
+  // A color outside the sRGB gamut keeps its hue. Its lightness may move, up
+  // to MAX_LIGHTNESS_SHIFT (and a share of the lightness step between tiles),
+  // to where the gamut has room for more of its chroma, if the chroma gained
+  // is worth the lightness lost (see fitLightness()). Chroma is then reduced
+  // to fit.
+  function getOklchInterpolator(color1, color2, opts) {
+    var rgb1 = parseColorOrStop(color1),
+        rgb2 = parseColorOrStop(color2);
+    var lch1 = oklabToOklch(rgbToOklab(rgb1)),
+        lch2 = oklabToOklch(rgbToOklab(rgb2));
+    var vibrance = opts && opts.vibrance || 0;
+    var steps = opts && opts.steps;
+    var longHue = opts && opts.hue == 'longer' &&
+        lch1.c >= ACHROMATIC && lch2.c >= ACHROMATIC;
+    var maxShift = MAX_LIGHTNESS_SHIFT;
+    var dh, lSecond, vivid1, vivid2;
+    if (steps > 0) {
+      maxShift = Math.min(maxShift, LIGHTNESS_SHIFT_SHARE * Math.abs(lch2.l - lch1.l) / steps);
+    }
+    if (lch1.c < ACHROMATIC && lch2.c < ACHROMATIC) vibrance = 0;
+    // the ends' chroma with vibrance, before a gray end takes the other's hue
+    vivid1 = getVibrantChroma(lch1, vibrance);
+    vivid2 = getVibrantChroma(lch2, vibrance);
+    if (lch1.c < ACHROMATIC && lch2.c >= ACHROMATIC) lch1.h = lch2.h;
+    if (lch2.c < ACHROMATIC && lch1.c >= ACHROMATIC) lch2.h = lch1.h;
+    dh = lch2.h - lch1.h;
+    if (dh > 180) dh -= 360;
+    if (dh < -180) dh += 360;
+    if (longHue) dh = dh > 0 ? dh - 360 : dh + 360;
+    if (vibrance > 0 && steps >= 2) {
+      lSecond = getSecondLightness(lch1, lch2, dh, vibrance, steps, vivid1, vivid2);
+    }
+    return function(t) {
+      var h = lch1.h + dh * t;
+      var ideal = {
+        l: lch1.l + (lch2.l - lch1.l) * t,
+        c: t <= 0 ? vivid1 : t >= 1 ? vivid2 : lch1.c + (lch2.c - lch1.c) * t,
+        h: normalizeHue(h)
+      };
+      var l = ideal.l, c = ideal.c, rgb;
+      if (t > 0 && t < 1) {
+        if (lSecond !== undefined) {
+          ideal.l = getLightnessFromSecond(t, lch1.l, lch2.l, lSecond, steps);
+        }
+        ideal.c += vibrance;
+        l = fitLightness(ideal.l, ideal.c, ideal.h, maxShift);
+        c = Math.min(ideal.c, getMaxChroma(l, ideal.h));
+      }
+      rgb = oklchToRgb({l: l, c: c, h: ideal.h});
+      rgb.a = rgb1.a + (rgb2.a - rgb1.a) * t;
+      return {
+        color: formatColor(rgb),
+        l: l, c: c, h: ideal.h,
+        ideal: ideal,
+        adjusted: Math.abs(l - ideal.l) > DEVIATION || ideal.c - c > DEVIATION
+      };
+    };
+  }
+
+  // The lightness of the color next to the lighter end of a classed ramp from
+  // lch1 to lch2, boosted by vibrance. Each gains chroma as far as the gamut
+  // has room at its unshifted lightness; where the color gains more than the
+  // end, it moves toward the end by VIBRANCE_LIGHTNESS times the difference,
+  // stopping at the end's lightness.
+  function getSecondLightness(lch1, lch2, dh, vibrance, steps, vivid1, vivid2) {
+    var lightFirst = lch1.l >= lch2.l;
+    var light = lightFirst ? lch1 : lch2;
+    var endGain = (lightFirst ? vivid1 : vivid2) - light.c;
+    var t = lightFirst ? 1 / steps : 1 - 1 / steps;
+    var l = lch1.l + (lch2.l - lch1.l) * t;
+    var c = lch1.c + (lch2.c - lch1.c) * t;
+    var h = normalizeHue(lch1.h + dh * t);
+    var gain = Math.max(0, Math.min(c + vibrance, getMaxChroma(l, h)) - c);
+    var shift = Math.min(VIBRANCE_LIGHTNESS * Math.max(0, gain - endGain), Math.abs(light.l - l));
+    return light.l > l ? l + shift : l - shift;
+  }
+
+  // The lightness at t of a classed ramp from lightness l1 to l2 whose color
+  // next to the lighter end has lightness lSecond; the others are evenly
+  // spaced from it to the darker end.
+  function getLightnessFromSecond(t, l1, l2, lSecond, steps) {
+    var lightFirst = l1 >= l2;
+    var lDark = lightFirst ? l2 : l1;
+    var u = lightFirst ? t : 1 - t; // distance from the light end
+    var uSecond = 1 / steps;
+    if (u <= uSecond) return lSecond;
+    return lSecond + (lDark - lSecond) * (u - uSecond) / (1 - uSecond);
+  }
+
+  function normalizeHue(h) {
+    return h < 0 ? h + 360 : h >= 360 ? h - 360 : h;
+  }
+
+  // Returns the lightness within maxShift of l that brings a color with ideal
+  // lightness l and chroma c (at hue h) closest to its ideal, by a color
+  // difference that weights lightness LIGHTNESS_WEIGHT times as heavily as
+  // chroma: viewers notice lightness differences more, and even lightness
+  // steps matter more than even chroma steps.
+  function fitLightness(l, c, h, maxShift) {
+    var n = 20;
+    var lo = clamp$1(l - maxShift, 0, 1), hi = clamp$1(l + maxShift, 0, 1);
+    var best = l, bestCost = getFitCost(l, l, c, h);
+    var step = (hi - lo) / n, l2, cost, i, a, b, m1, m2;
+    if (bestCost === 0 || !(maxShift > 0)) return l;
+    for (i=0; i<=n; i++) {
+      l2 = lo + step * i;
+      cost = getFitCost(l2, l, c, h);
+      if (cost < bestCost) {
+        best = l2;
+        bestCost = cost;
+      }
+    }
+    // refine between the samples on either side of the best one
+    a = Math.max(lo, best - step);
+    b = Math.min(hi, best + step);
+    for (i=0; i<20; i++) {
+      m1 = a + (b - a) / 3;
+      m2 = b - (b - a) / 3;
+      if (getFitCost(m1, l, c, h) < getFitCost(m2, l, c, h)) {
+        b = m2;
+      } else {
+        a = m1;
+      }
+    }
+    l2 = (a + b) / 2;
+    return getFitCost(l2, l, c, h) < bestCost ? l2 : best;
+  }
+
+  function getFitCost(l2, l, c, h) {
+    var dl = (l2 - l) * LIGHTNESS_WEIGHT;
+    var dc = Math.max(0, c - getMaxChroma(l2, h));
+    return dl * dl + dc * dc;
+  }
+
+  function clamp$1(val, min, max) {
+    return val < min ? min : val > max ? max : val;
+  }
+
+  // The most chroma the sRGB gamut has at a lightness and hue
+  function getMaxChroma(l, h) {
+    return findMaxChroma(l, h, 0.4);
+  }
+
+  // Converts an OKLCH color to sRGB (0-255 channels). A color outside the sRGB
+  // gamut keeps its hue, then its lightness, and gives up chroma: chroma is
+  // reduced to the most the gamut has at that hue and lightness.
+  function oklchToRgb(lch) {
+    var lab = oklchToOklab(lch);
+    if (!oklabIsInGamut(lab)) {
+      lab = oklchToOklab({l: lch.l, c: findMaxChroma(lch.l, lch.h, lch.c), h: lch.h});
+    }
+    return oklabToRgb(lab);
+  }
+
+  function findMaxChroma(l, h, maxChroma) {
+    var lo = 0, hi = maxChroma, mid;
+    for (var i=0; i<24; i++) {
+      mid = (lo + hi) / 2;
+      if (oklabIsInGamut(oklchToOklab({l: l, c: mid, h: h}))) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    return lo;
+  }
+
+  function oklabIsInGamut(lab) {
+    var rgb = oklabToLinearRgb(lab);
+    var e = 1e-6;
+    return rgb.r >= -e && rgb.r <= 1 + e && rgb.g >= -e && rgb.g <= 1 + e &&
+      rgb.b >= -e && rgb.b <= 1 + e;
+  }
+
+  function oklabToLinearRgb(lab) {
+    var l = cube(lab.l + 0.3963377774 * lab.a + 0.2158037573 * lab.b),
+        m = cube(lab.l - 0.1055613458 * lab.a - 0.0638541728 * lab.b),
+        s = cube(lab.l - 0.0894841775 * lab.a - 1.2914855480 * lab.b);
+    return {
+      r: 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+      g: -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+      b: -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s
+    };
+  }
+
+  function parseColorOrStop(color) {
+    var rgb = parseColor(color);
+    if (!rgb) stop$1('Unsupported color:', color);
+    return rgb;
+  }
+
+  function toLinear(c) {
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  }
+
+  function fromLinear(c) {
+    c = c < 0 ? 0 : c > 1 ? 1 : c;
+    return c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+  }
+
+  function cube(x) {
+    return x * x * x;
+  }
+
+  var Oklab = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    MAX_VIBRANCE_CHROMA: MAX_VIBRANCE_CHROMA,
+    getMaxChroma: getMaxChroma,
+    getOklchInterpolator: getOklchInterpolator,
+    getVibranceChroma: getVibranceChroma,
+    getVibrantColor: getVibrantColor,
+    getVibrantTile: getVibrantTile,
+    interpolateOklch: interpolateOklch,
+    oklabIsInGamut: oklabIsInGamut,
+    oklabToOklch: oklabToOklch,
+    oklabToRgb: oklabToRgb,
+    oklchToOklab: oklchToOklab,
+    oklchToRgb: oklchToRgb,
+    rgbToOklab: rgbToOklab
+  });
+
   // TODO: support three or more stops
   function getGradientFunction(stops) {
     var min = stops[0] / 100,
@@ -70488,8 +72201,41 @@ ${svg}
     };
   }
 
-  function getStoppedValues(values, stops) {
-    var interpolate = getInterpolatedValueGetter(values, null);
+  // Returns the interpolation options of -classify, checked, with
+  // interpolation=oklch filled in when vibrance= is given without a method.
+  // vibrance= (0-1) is returned as OKLCH chroma, as the interpolators take it.
+  function getInterpolationOptions(opts) {
+    var method = opts.interpolation;
+    var vibrance = opts.vibrance;
+    if (method && method != 'rgb' && method != 'oklch') {
+      stop$1('Unsupported interpolation method:', method, '(expected rgb or oklch)');
+    }
+    if (vibrance === undefined) {
+      return {interpolation: method};
+    }
+    if (method && method != 'oklch') {
+      stop$1('vibrance= requires interpolation=oklch');
+    }
+    if (!(vibrance >= 0 && vibrance <= 1)) {
+      stop$1('vibrance= takes a value from 0 to 1');
+    }
+    return {interpolation: 'oklch', vibrance: getVibranceChroma(vibrance)};
+  }
+
+  // opts.interpolation: 'rgb' (default) or 'oklch'; oklch applies only to pairs
+  // of colors. opts.vibrance goes with oklch (see
+  // interpolateOklch()).
+  function getPairInterpolator(a, b, opts) {
+    var method = opts && opts.interpolation;
+    if (method == 'oklch' && parseColor(a) && parseColor(b)) {
+      return interpolateOklch(a, b, opts);
+    }
+    return d3_interpolate(a, b);
+  }
+
+  // opts: interpolation options (see getPairInterpolator())
+  function getStoppedValues(values, stops, opts) {
+    var interpolate = getInterpolatedValueGetter(values, null, opts);
     var n = values.length;
     var fstop = getGradientFunction(stops);
     var values2 = [];
@@ -70503,11 +72249,11 @@ ${svg}
   }
 
   // convert a continuous index ([0, n-1], -1) to a corresponding interpolated value
-  function getInterpolatedValueGetter(values, nullValue) {
+  function getInterpolatedValueGetter(values, nullValue, opts) {
     var interpolators = [];
     var tmax = values.length - 1;
     for (var i=1; i<values.length; i++) {
-      interpolators.push(d3_interpolate(values[i-1], values[i]));
+      interpolators.push(getPairInterpolator(values[i-1], values[i], opts));
     }
     return function(t) {
       if (t == -1) return nullValue;
@@ -70523,24 +72269,36 @@ ${svg}
   // return an array of n values
   // assumes that values can be interpolated by d3-interpolate
   // (colors and numbers should work)
-  function interpolateValuesToClasses(values, n, stops) {
-    if (values.length == n && !stops) return values;
+  function interpolateValuesToClasses(values, n, stops, opts) {
+    if (values.length == n && !stops) return getVibrantValues(values, opts);
     var numPairs = values.length - 1;
-    var output = [values[0]];
+    var pairOpts = Object.assign({}, opts, {steps: (n - 1) / numPairs});
+    var output = [getVibrantValues(values, opts)[0]];
     var k, j, t, intVal;
     for (var i=1; i<n-1; i++) {
       k = i / (n-1) * numPairs;
       j = Math.floor(k);
       t = k - j;
       // if (convert) t = convert(t);
-      intVal = d3_interpolate(values[j], values[j+1])(t);
+      intVal = getPairInterpolator(values[j], values[j+1], pairOpts)(t);
       output.push(intVal);
     }
-    output.push(values[values.length - 1]);
+    output.push(getVibrantValues(values, opts)[values.length - 1]);
     if (stops) {
-      output = getStoppedValues(output, stops);
+      // the colors already have their vibrance
+      output = getStoppedValues(output, stops, {interpolation: opts && opts.interpolation});
     }
     return output;
+  }
+
+  // The user's colors, with vibrance added (see getVibrantColor()), as the
+  // oklch interpolator gives them at the ends of each pair
+  function getVibrantValues(values, opts) {
+    var vibrance = opts && opts.interpolation == 'oklch' && opts.vibrance;
+    if (!(vibrance > 0)) return values;
+    return values.map(function(val) {
+      return parseColor(val) ? getVibrantColor(val, vibrance) : val;
+    });
   }
 
   // convert an index (0 ... n-1, -1, -2) to a corresponding discreet value
@@ -70561,7 +72319,7 @@ ${svg}
     // get a function to convert class indexes to output values
     //
     if (opts.continuous) {
-      return getInterpolatedValueGetter(classValues, nullValue);
+      return getInterpolatedValueGetter(classValues, nullValue, opts);
     } else {
       return  getDiscreteValueGetter(classValues, nullValue, opts.other);
     }
@@ -70886,17 +72644,9 @@ ${svg}
     } else if (opts.breaks) {
       // user-defined breaks
       breaks = opts.breaks;
-    } else if (method == 'equal-interval') {
-      breaks = getEqualIntervalBreaks(ascending, numBreaks);
-    } else if (method == 'quantile') {
-      breaks = getQuantileBreaks(ascending, numBreaks);
-    } else if (method == 'hybrid') {
-      breaks = getHybridBreaks(ascending, numBreaks);
-    } else if (method == 'nice') {
-      breaks = getNiceBreaks(ascending, numBreaks);
-      message('Nice breaks:', breaks);
     } else {
-      stop$1('Unknown classification method:', method);
+      breaks = getSequentialBreaks(ascending, method, numBreaks);
+      if (method == 'nice') message('Nice breaks:', breaks);
     }
 
     printDistributionInfo(ascending, breaks, nullCount);
@@ -70926,6 +72676,18 @@ ${svg}
     }
 
     return classifier;
+  }
+
+  // The inner breaks of a sequential method's classes (also used by the GUI,
+  // to show each class's range)
+  // ascending: the data values, in ascending order
+  function getSequentialBreaks(ascending, method, numBreaks) {
+    if (numBreaks === 0) return [];
+    if (method == 'equal-interval') return getEqualIntervalBreaks(ascending, numBreaks);
+    if (method == 'quantile') return getQuantileBreaks(ascending, numBreaks);
+    if (method == 'hybrid') return getHybridBreaks(ascending, numBreaks);
+    if (method == 'nice') return getNiceBreaks(ascending, numBreaks);
+    stop$1('Unknown classification method:', method);
   }
 
   function getClassRanges(breaks, ascending) {
@@ -71001,7 +72763,7 @@ ${svg}
     return function(val) {
       var i = -1;
       if (Number(val) === val) { // exclude null, NaN, strings, etc.
-        if (round) val = val(round);
+        if (round) val = round(val);
         i = getClassId(val, breaks);
       }
       if (inverted && i > -1) {
@@ -71073,6 +72835,458 @@ ${svg}
   function testDescendingNumbers(arr) {
     return arraysAreIdentical(arr, utils.genericSort(arr.map(parseFloat), false));
   }
+
+  // Diverging classification: classes on either side of a pivot value, and an
+  // optional neutral class at the pivot. Each side is classified on its own
+  // data. See docs/development/color-scheme-panel-design.md
+  //
+  // A layout is {pivot, neutral, below, above, breaks, extent, dataRange}:
+  // neutral is the range [lo, hi) of the neutral class, or null; below and
+  // above are the numbers of classes on either side (outside the neutral
+  // class); breaks are the inner breaks of all the classes, in ascending
+  // order, for the sequential classifier. Classes are numbered from the
+  // lowest: below, then the neutral class, then above. extent is where the
+  // outer classes end: the data's min and max, or for equal interval and nice,
+  // whole steps out from the pivot. dataRange is the data's [min, max].
+
+  var intervalMethods = ['equal-interval', 'nice'];
+  var quantileMethods = ['quantile', 'hybrid'];
+
+  function isDivergingClassification(opts) {
+    return opts.pivot !== undefined || !!opts.pivot_range;
+  }
+
+  // Whether a diverging classification has a pivot (neutral) class: classed
+  // output has one unless no-pivot-class is given; continuous output only with
+  // pivot-class or pivot-range=
+  function hasPivotClass(opts) {
+    if (opts.pivot_class && opts.no_pivot_class) {
+      stop$1('Use pivot-class or no-pivot-class, not both');
+    }
+    if (opts.continuous) {
+      return !!(opts.pivot_class || opts.pivot_range);
+    }
+    return !opts.no_pivot_class;
+  }
+
+  // ascending: the data values, in ascending order
+  // opts: pivot, pivot_range, pivot_class, no_pivot_class, continuous,
+  //   classes (a total, or the numbers of classes [below, above]), breaks
+  function getDivergingLayout(ascending, method, opts) {
+    var range = opts.pivot_range || null;
+    var hasNeutral = hasPivotClass(opts);
+    var pivot, counts, layout;
+    if (ascending.length === 0) {
+      stop$1('No numeric data to classify');
+    }
+    if (range) {
+      if (range.length != 2 || !(range[0] <= range[1])) {
+        stop$1('pivot-range= takes two numbers, low,high');
+      }
+      if (opts.no_pivot_class) stop$1('pivot-range= sets the range of the pivot class (remove no-pivot-class)');
+    }
+    pivot = resolvePivot(opts.pivot, ascending, range);
+    if (range && (pivot < range[0] || pivot > range[1])) {
+      stop$1('The pivot', pivot, 'is outside pivot-range=', range.join(','));
+    }
+    if (opts.breaks) {
+      if (range) stop$1('Use breaks= or pivot-range=, not both');
+      layout = getBreaksLayout(opts.breaks, pivot, hasNeutral);
+    } else {
+      counts = parseClassCounts(opts.classes);
+      if (intervalMethods.includes(method)) {
+        layout = getIntervalLayout(ascending, pivot, hasNeutral, range, counts, method == 'nice');
+      } else if (quantileMethods.includes(method)) {
+        layout = getQuantileLayout(ascending, pivot, hasNeutral, range, counts, method);
+      } else {
+        stop$1('The', method, 'method does not support pivot=');
+      }
+    }
+    if (layout.below + layout.above === 0 && !layout.neutral) {
+      stop$1('Unable to classify the data around the pivot');
+    }
+    layout.breaks = layout.breaks.map(tidyNumber);
+    if (layout.neutral) layout.neutral = layout.neutral.map(tidyNumber);
+    layout.dataRange = [ascending[0], ascending[ascending.length - 1]];
+    layout.extent = (layout.extent || layout.dataRange).map(tidyNumber);
+    return layout;
+  }
+
+  // The values at the color stops of continuous output: each side with
+  // classes is a ramp of its own, with a stop at each of its breaks, from the
+  // side's inner edge (the pivot or the pivot class) to the end of its outer
+  // class. Returns {below, above}, the stops of each side in ascending order
+  // (m + 1 stops for m classes, none for a side without classes).
+  function getDivergingStops(layout) {
+    var edges = getSideEdges(layout);
+    var below = [], above = [];
+    if (layout.below > 0) {
+      below = [Math.min(layout.extent[0], edges[0])]
+        .concat(layout.breaks.filter(function(b) { return b < edges[0]; }), [edges[0]]);
+    }
+    if (layout.above > 0) {
+      above = [edges[1]]
+        .concat(layout.breaks.filter(function(b) { return b > edges[1]; }),
+          [Math.max(layout.extent[1], edges[1])]);
+    }
+    return {below: below, above: above};
+  }
+
+  // The inner edges of the two sides: the pivot, or the pivot class's range
+  function getSideEdges(layout) {
+    return layout.neutral ? layout.neutral : [layout.pivot, layout.pivot];
+  }
+
+  // The number of colors one side of continuous output takes: one per stop
+  function getContinuousSideStops(classes) {
+    return classes > 0 ? classes + 1 : 0;
+  }
+
+  // Returns a function for continuous output: each side's value is
+  // interpolated between the values at its stops, and the pivot class has the
+  // center value.
+  // values: the side below's values (one per stop, ascending), the center
+  //   value (with a pivot class), and the side above's (see
+  //   getDivergingClassValues())
+  function getContinuousDivergingClassifier(layout, values, nullValue, opts) {
+    var stops = getDivergingStops(layout);
+    var nb = stops.below.length;
+    var na = stops.above.length;
+    var low = nb > 0 ? getStopInterpolator(stops.below, values.slice(0, nb), opts) : null;
+    var high = na > 0 ? getStopInterpolator(stops.above, values.slice(values.length - na), opts) : null;
+    var center = layout.neutral ? values[nb] : null;
+    var edges = getSideEdges(layout);
+    return function(val) {
+      if (!utils.isFiniteNumber(val)) return nullValue;
+      if (layout.neutral && val >= edges[0] && val < edges[1]) return center;
+      if (val < edges[0]) return (low || high)(val);
+      return (high || low)(val);
+    };
+  }
+
+  function getStopInterpolator(stops, values, opts) {
+    var getValue = getInterpolatedValueGetter(values, null, opts);
+    return function(val) {
+      return getValue(getStopPosition(stops, val));
+    };
+  }
+
+  // The position of a value among ascending stops (0 at the first stop, 1 at
+  // the second, ...), clamped to the stops
+  function getStopPosition(stops, val) {
+    var n = stops.length;
+    if (!(val > stops[0])) return 0;
+    for (var i=1; i<n; i++) {
+      if (val <= stops[i]) {
+        return stops[i] > stops[i - 1] ? i - 1 + (val - stops[i - 1]) / (stops[i] - stops[i - 1]) : i;
+      }
+    }
+    return n - 1;
+  }
+
+  // The CLI's message about a layout
+  function formatDivergingLayout(layout) {
+    var parts = [layout.below + ' below'];
+    if (layout.neutral) {
+      parts.push('a pivot class from ' + layout.neutral[0] + ' to ' + layout.neutral[1]);
+    }
+    parts.push(layout.above + ' above');
+    return 'Pivot: ' + tidyNumber(layout.pivot) + ' (classes: ' + parts.join(', ') + ')';
+  }
+
+  // pivotOpt: a number, 'median', 'mean' or 'auto' (0 if the data has
+  // values on both sides of 0, or else the median); with no pivot=, the
+  // middle of pivot-range=
+  function resolvePivot(pivotOpt, ascending, range) {
+    var n = ascending.length;
+    var val = pivotOpt;
+    if (val === undefined || val === null || val === '') {
+      if (range) return (range[0] + range[1]) / 2;
+      val = 'auto';
+    }
+    if (val == 'auto') {
+      return ascending[0] < 0 && ascending[n - 1] > 0 ? 0 : getMedian(ascending);
+    }
+    if (val == 'median') return getMedian(ascending);
+    if (val == 'mean') return utils.sum(ascending) / n;
+    if (utils.isString(val) && val.trim() !== '' && !isNaN(+val)) val = +val;
+    if (!utils.isFiniteNumber(val)) {
+      stop$1('Invalid pivot:', pivotOpt, '(expected a number, median, mean or auto)');
+    }
+    return val;
+  }
+
+  function getMedian(ascending) {
+    var n = ascending.length;
+    var mid = Math.floor(n / 2);
+    return n % 2 == 1 ? ascending[mid] : (ascending[mid - 1] + ascending[mid]) / 2;
+  }
+
+  // Returns {total} (all the classes, including a neutral class) or
+  // {below, above} (the classes on either side of it)
+  function parseClassCounts(classes, hasNeutral) {
+    var arr = Array.isArray(classes) ? classes : [classes];
+    if (arr.length == 1 && utils.isInteger(arr[0]) && arr[0] >= 2) {
+      return {total: arr[0]};
+    }
+    if (arr.length == 2 && arr.every(isCount) && arr[0] + arr[1] > 0) {
+      return {below: arr[0], above: arr[1]};
+    }
+    stop$1('Invalid classes= for pivot=:', String(classes),
+      '(expected a total number of classes, or the numbers below and above the pivot)');
+  }
+
+  function isCount(n) {
+    return utils.isInteger(n) && n >= 0;
+  }
+
+  // Equal-interval and nice breaks: each side's classes step out from the
+  // pivot. Given a total, the two sides share one step, and the side with
+  // less data gets fewer classes. An automatic neutral class is one step
+  // wide, centered on the pivot.
+  function getIntervalLayout(ascending, pivot, hasNeutral, range, counts, nice) {
+    var extents = [Math.max(0, pivot - ascending[0]), Math.max(0, ascending[ascending.length - 1] - pivot)];
+    var auto = hasNeutral && !range;
+    var fixed = range ? [pivot - range[0], range[1] - pivot] : [0, 0];
+    var steps, offsets, sides;
+
+    // distances from the pivot to each side's classes
+    function getOffsets(steps) {
+      var half;
+      if (!auto) return fixed;
+      half = Math.min(steps[0] || Infinity, steps[1] || Infinity) / 2;
+      return isFinite(half) ? [half, half] : [0, 0];
+    }
+
+    function countSides(steps) {
+      var offsets = getOffsets(steps);
+      return [0, 1].map(function(i) {
+        return getSideCount(extents[i], offsets[i], steps[i]);
+      });
+    }
+
+    if (counts.total) {
+      steps = getCommonStep(extents, counts.total - (hasNeutral ? 1 : 0), auto ? null : fixed, nice);
+      sides = countSides(steps);
+    } else {
+      sides = [counts.below, counts.above];
+      if (auto) {
+        // the neutral class is one step wide, the narrower side's step
+        offsets = getOffsets([0, 1].map(function(i) {
+          return sides[i] > 0 ? extents[i] / (sides[i] + 0.5) : 0;
+        }));
+      } else {
+        offsets = fixed;
+      }
+      sides = sides.map(function(n, i) {
+        return sideHasData(extents[i] > offsets[i], n);
+      });
+      steps = [0, 1].map(function(i) {
+        return sides[i] > 0 ? (extents[i] - offsets[i]) / sides[i] : 0;
+      });
+      if (nice) {
+        steps = steps.map(getNiceStep);
+        sides = countSides(steps);
+      }
+    }
+    offsets = getOffsets(steps);
+    return Object.assign(makeLayout(pivot, hasNeutral, pivot - offsets[0], pivot + offsets[1], sides[0], sides[1],
+      getSteppedBreaks(pivot - offsets[0], -steps[0], sides[0]),
+      getSteppedBreaks(pivot + offsets[1], steps[1], sides[1])), {
+      extent: [pivot - offsets[0] - sides[0] * steps[0], pivot + offsets[1] + sides[1] * steps[1]]
+    });
+  }
+
+  // The number of classes of a given step that reach from a side's inner edge
+  // (offset from the pivot) to its data extent
+  function getSideCount(extent, offset, step) {
+    if (!(extent > offset) || !(step > 0)) return 0;
+    return Math.max(1, Math.ceil((extent - offset) / step - 1e-9));
+  }
+
+  function sideHasData(hasData, count) {
+    return hasData ? count : 0;
+  }
+
+  // Returns [step, step]: the step that gives the two sides a total of n
+  // classes, with the longer side's classes reaching just to the end of its
+  // data (or a total as close to n as the data allows, without going over).
+  // fixed: distances from the pivot to each side's classes, or null for half
+  //   a step (an automatic neutral class)
+  // nice: use the nice step that comes closest to n classes
+  function getCommonStep(extents, n, fixed, nice) {
+    var candidates = [];
+    var best = null;
+    var count = function(s) {
+      return extents.reduce(function(memo, extent, i) {
+        return memo + getSideCount(extent, fixed ? fixed[i] : s / 2, s);
+      }, 0);
+    };
+    // the steps at which a side's count of classes changes
+    extents.forEach(function(extent, i) {
+      for (var j=fixed ? 1 : 0; j<=n; j++) {
+        candidates.push(fixed ? (extent - fixed[i]) / j : extent / (j + 0.5));
+      }
+    });
+    candidates.filter(function(s) { return s > 0 && isFinite(s); })
+      .sort(function(a, b) { return b - a; })
+      .forEach(function(s) {
+        var total = count(s);
+        if (total <= n && (!best || total > best.total)) {
+          best = {step: s, total: total};
+        }
+      });
+    if (!best) return [0, 0];
+    if (nice) {
+      best = getNiceSteps(best.step).reduce(function(memo, s) {
+        var total = count(s);
+        var diff = Math.abs(total - n);
+        return !memo || diff < memo.diff || diff == memo.diff && s > memo.step ?
+          {step: s, diff: diff} : memo;
+      }, null);
+    }
+    return [best.step, best.step];
+  }
+
+  // nice numbers: 1, 2, 2.5 or 5 times a power of 10
+  function getNiceSteps(val) {
+    var exp = Math.floor(Math.log10(val));
+    var steps = [];
+    [exp - 1, exp, exp + 1].forEach(function(e) {
+      [1, 2, 2.5, 5].forEach(function(m) {
+        steps.push(tidyNumber(m * Math.pow(10, e)));
+      });
+    });
+    return steps;
+  }
+
+  // the nice number nearest to val (on a log scale)
+  function getNiceStep(val) {
+    if (!(val > 0)) return val;
+    return getNiceSteps(val).reduce(function(memo, s) {
+      return Math.abs(Math.log(s / val)) < Math.abs(Math.log(memo / val)) ? s : memo;
+    });
+  }
+
+  // the inner breaks of n classes stepping out from edge (step < 0 below the
+  // pivot), in ascending order
+  function getSteppedBreaks(edge, step, n) {
+    var breaks = [];
+    for (var i=1; i<n; i++) {
+      breaks.push(edge + step * i);
+    }
+    return step < 0 ? breaks.reverse() : breaks;
+  }
+
+  // Quantile and hybrid breaks: each side's classes divide its own data.
+  // Given a total, the two sides' classes hold the same number of features,
+  // so the side with fewer features gets fewer classes. An automatic neutral
+  // class holds as many features as a class does on average, taken from those
+  // nearest the pivot, so its range is centered on the pivot.
+  function getQuantileLayout(ascending, pivot, hasNeutral, range, counts, method) {
+    var n = ascending.length;
+    var getBreaks = method == 'hybrid' ? getHybridBreaks : getQuantileBreaks;
+    var lo = pivot, hi = pivot;
+    var classCount, inNeutral, dists, d, belowVals, aboveVals, sideClasses, below, above;
+    if (hasNeutral && range) {
+      lo = range[0];
+      hi = range[1];
+    } else if (hasNeutral) {
+      classCount = counts.total || counts.below + counts.above + 1;
+      inNeutral = Math.max(1, Math.round(n / classCount));
+      dists = ascending.map(function(val) { return Math.abs(val - pivot); })
+        .sort(function(a, b) { return a - b; });
+      // halfway to the next value out, so that no value sits on an edge
+      d = inNeutral < n ? (dists[inNeutral - 1] + dists[inNeutral]) / 2 : dists[n - 1] * 2 + 1;
+      lo = pivot - d;
+      hi = pivot + d;
+    }
+    belowVals = ascending.filter(function(val) { return val < lo; });
+    aboveVals = ascending.filter(function(val) { return val >= hi; });
+    if (counts.total) {
+      sideClasses = counts.total - (hasNeutral ? 1 : 0);
+      below = splitClasses(sideClasses, belowVals.length, aboveVals.length);
+      above = belowVals.length + aboveVals.length > 0 ? sideClasses - below : 0;
+    } else {
+      below = sideHasData(belowVals.length > 0, counts.below);
+      above = sideHasData(aboveVals.length > 0, counts.above);
+    }
+    return makeLayout(pivot, hasNeutral, lo, hi, below, above,
+      below > 1 ? getBreaks(belowVals, below - 1) : [],
+      above > 1 ? getBreaks(aboveVals, above - 1) : []);
+  }
+
+  // The number of n classes that go below the pivot, in proportion to the
+  // counts of features, giving each side that has features at least one
+  function splitClasses(n, countBelow, countAbove) {
+    var below;
+    if (countBelow + countAbove === 0) return 0;
+    below = Math.round(n * countBelow / (countBelow + countAbove));
+    if (countBelow > 0 && below === 0 && n > 1) below = 1;
+    if (countAbove > 0 && below == n && n > 1) below = n - 1;
+    return below;
+  }
+
+  // User-defined breaks: a pivot that is one of the breaks divides the
+  // classes; one inside a class makes that class the neutral class.
+  function getBreaksLayout(breaks, pivot, hasNeutral) {
+    var b = breaks.length;
+    var k = breaks.indexOf(pivot);
+    var i;
+    if (k > -1) {
+      return {pivot: pivot, neutral: null, below: k + 1, above: b - k, breaks: breaks};
+    }
+    for (i=0; i<b && breaks[i] < pivot; i++);
+    // the pivot is in class i
+    if (!hasNeutral) {
+      stop$1('Without a pivot class, the pivot must be one of the breaks');
+    }
+    return {
+      pivot: pivot,
+      neutral: [i > 0 ? breaks[i - 1] : -Infinity, i < b ? breaks[i] : Infinity],
+      below: i,
+      above: b - i,
+      breaks: breaks
+    };
+  }
+
+  function makeLayout(pivot, hasNeutral, lo, hi, below, above, breaksBelow, breaksAbove) {
+    var breaks = breaksBelow.concat();
+    if (hasNeutral) {
+      if (below > 0) breaks.push(lo);
+      if (above > 0) breaks.push(hi);
+    } else if (below > 0 && above > 0) {
+      breaks.push(pivot);
+    }
+    return {
+      pivot: pivot,
+      neutral: hasNeutral ? [lo, hi] : null,
+      below: below,
+      above: above,
+      breaks: breaks.concat(breaksAbove)
+    };
+  }
+
+  // rounds off floating point noise, like 0.30000000000000004
+  function tidyNumber(val) {
+    return isFinite(val) ? +val.toPrecision(12) : val;
+  }
+
+  var Diverging = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    formatDivergingLayout: formatDivergingLayout,
+    getContinuousDivergingClassifier: getContinuousDivergingClassifier,
+    getContinuousSideStops: getContinuousSideStops,
+    getDivergingLayout: getDivergingLayout,
+    getDivergingStops: getDivergingStops,
+    getNiceStep: getNiceStep,
+    getStopPosition: getStopPosition,
+    hasPivotClass: hasPivotClass,
+    isDivergingClassification: isDivergingClassification,
+    parseClassCounts: parseClassCounts,
+    resolvePivot: resolvePivot,
+    splitClasses: splitClasses
+  });
 
   function getCategoricalClassifier(classValues, nullVal, opts) {
     // categories: strings to match in the data
@@ -71885,7 +74099,7 @@ ${svg}
     addSchemesFromD3('categorical', 'Category10,Accent,Dark2,Paired,Pastel1,Pastel2,Set1,Set2,Set3,Tableau10');
     addSchemesFromD3('sequential', 'Blues,Greens,Greys,Purples,Reds,Oranges,BuGn,BuPu,GnBu,OrRd,PuBuGn,PuBu,PuRd,RdPu,YlGnBu,YlGn,YlOrBr,YlOrRd');
     addSchemesFromD3('rainbow', 'Cividis,CubehelixDefault,Rainbow,Warm,Cool,Sinebow,Turbo,Viridis,Magma,Inferno,Plasma');
-    addSchemesFromD3('diverging', 'BrBG,PRGn,PRGn,PiYG,PuOr,RdBu,RdGy,RdYlBu,RdYlGn,Spectral');
+    addSchemesFromD3('diverging', 'BrBG,PRGn,PiYG,PuOr,RdBu,RdGy,RdYlBu,RdYlGn,Spectral');
     testLib(); // make sure these schemes are all available
     addCategoricalScheme('Category20',
       '1f77b4aec7e8ff7f0effbb782ca02c98df8ad62728ff98969467bdc5b0d58c564bc49c94e377c2f7b6d27f7f7fc7c7c7bcbd22dbdb8d17becf9edae5');
@@ -71967,6 +74181,13 @@ ${svg}
     print ('\nMulti-hue/rainbow\n' + formatStringsAsGrid(index.rainbow));
   }
 
+  // type: categorical, sequential, rainbow or diverging
+  function getColorSchemeNames(type) {
+    initSchemes();
+    if (!index[type]) error('Unknown color scheme type:', type);
+    return index[type].concat();
+  }
+
   function pickRandomColorScheme(type) {
     initSchemes();
     var names = index[type];
@@ -72016,6 +74237,14 @@ ${svg}
     return colors;
   }
 
+  // All the colors of a categorical scheme
+  function getCategoricalColors(name) {
+    initSchemes();
+    name = standardName(name);
+    if (!isCategoricalColorScheme(name)) stop$1('Not a categorical color scheme:', name);
+    return (ramps[name] || d3Scales['scheme' + name]).concat();
+  }
+
   function wrapColors(colors, n) {
     while (colors.length > 0 && colors.length < n) {
       colors = colors.concat(colors.slice(0, n - colors.length));
@@ -72033,7 +74262,8 @@ ${svg}
     return index.categorical.includes(standardName(name));
   }
 
-  function getColorRamp(name, n, stops) {
+  // interpOpts: how stops= colors are interpolated (see getPairInterpolator())
+  function getColorRamp(name, n, stops, interpOpts) {
     initSchemes();
     name = standardName(name);
     var ramps = d3Scales['scheme' + name];
@@ -72051,7 +74281,7 @@ ${svg}
       ramp = getInterpolatedRamp(interpolate, n);
     }
     if (stops) {
-      ramp = getStoppedValues(ramp, stops);
+      ramp = getStoppedValues(ramp, stops, interpOpts);
     }
     return ramp;
   }
@@ -72066,6 +74296,21 @@ ${svg}
     }
     return ramp;
   }
+
+  var ColorSchemes = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getCategoricalColorScheme: getCategoricalColorScheme,
+    getCategoricalColors: getCategoricalColors,
+    getColorRamp: getColorRamp,
+    getColorSchemeNames: getColorSchemeNames,
+    getRandomizedCategoricalColorScheme: getRandomizedCategoricalColorScheme,
+    isCategoricalColorScheme: isCategoricalColorScheme,
+    isColorSchemeName: isColorSchemeName,
+    pickRandomCategoricalScheme: pickRandomCategoricalScheme,
+    pickRandomColorScheme: pickRandomColorScheme,
+    printColorSchemeNames: printColorSchemeNames,
+    wrapColors: wrapColors
+  });
 
   function getNullValue(opts) {
     var nullValue;
@@ -72118,11 +74363,11 @@ ${svg}
       if (categorical && isCategoricalColorScheme(colorScheme)) {
         return getCategoricalColorScheme(colorScheme, n);
       } else {
-        return getColorRamp(colorScheme, n, opts.stops);
+        return getColorRamp(colorScheme, n, opts.stops, opts);
       }
     } else if (opts.colors || opts.values) {
       if (categorical) {
-        return getCategoricalValues(opts.colors || opts.values, n);
+        return getCategoricalValues(opts.colors || opts.values, n, !!opts.colors);
       } else {
         return getInterpolableValues(opts.colors || opts.values, n, opts);
       }
@@ -72132,7 +74377,87 @@ ${svg}
     }
   }
 
-  function getCategoricalValues(values, n) {
+  // The values of the classes of a diverging layout (see getDivergingLayout()):
+  // colors (or values) are spread over the longer side, and the shorter side
+  // uses the ones nearest the center, so equal steps from the pivot get
+  // equally strong colors on both sides. The middle of a scheme or list of
+  // colors is the center color (an even list interpolates one).
+  // With opts.continuous, each side has a value per color stop (see
+  // getDivergingStops()) instead of one per class.
+  function getDivergingClassValues(layoutArg, opts) {
+    var layout = opts.continuous ? Object.assign({}, layoutArg, {
+      below: getContinuousSideStops(layoutArg.below),
+      above: getContinuousSideStops(layoutArg.above)
+    }) : layoutArg;
+    var n = layout.below + layout.above + (layout.neutral ? 1 : 0);
+    var colorArg = opts.colors && opts.colors.length == 1 ? opts.colors[0] : null;
+    var list = opts.colors || opts.values;
+    var colorScheme, values;
+    if (opts.stops) stop$1('stops= is not supported with pivot=');
+    if (colorArg == 'random') {
+      colorScheme = pickRandomColorScheme('diverging');
+      message('Randomly selected color scheme:', colorScheme);
+    } else if (isColorSchemeName(colorArg)) {
+      colorScheme = colorArg;
+    } else if (colorArg && !parseColor(colorArg)) {
+      stop$1('Unrecognized color scheme name:', colorArg);
+    } else if (opts.colors) {
+      opts.colors.forEach(validateColor);
+    }
+    if (!colorScheme && !list) {
+      values = getIndexes(n);
+    } else if (!colorScheme && list.length == n && listFitsLayout(layout, opts)) {
+      // one value per class
+      values = interpolateValuesToClasses(parseValues(list), n, null, opts);
+    } else if (!colorScheme && list.length < 2) {
+      stop$1('Expected a color scheme or a list of two or more values');
+    } else if (opts.invert) {
+      // the sides trade places
+      return getDivergingValues(colorScheme, list, layout.above, layout.below, !!layout.neutral, opts).reverse();
+    } else {
+      return getDivergingValues(colorScheme, list, layout.below, layout.above, !!layout.neutral, opts);
+    }
+    return opts.invert ? values.reverse() : values;
+  }
+
+  // A list with one value per class is used as given if its middle value
+  // falls at the pivot, or if classes= gave the numbers of classes on each side
+  function listFitsLayout(layout, opts) {
+    return layout.below == layout.above ||
+      Array.isArray(opts.classes) && opts.classes.length == 2;
+  }
+
+  function getDivergingValues(colorScheme, list, below, above, neutral, opts) {
+    var k = Math.max(below, above, 1);
+    var full = colorScheme ?
+      getColorRamp(colorScheme, k * 2 + 1, null, opts) :
+      getDivergingRamp(parseValues(list), k, opts);
+    // full: k values below the center value, and k above
+    return full.slice(k - below, k)
+      .concat(neutral ? [full[k]] : [])
+      .concat(full.slice(k + 1, k + 1 + above));
+  }
+
+  // Interpolates each half of a list separately, so the center value stays in
+  // the middle
+  function getDivergingRamp(values, k, opts) {
+    var mid = Math.floor(values.length / 2);
+    var odd = values.length % 2 == 1;
+    var center = odd ? values[mid] : getPairInterpolator(values[mid - 1], values[mid], opts)(0.5);
+    var lower = values.slice(0, mid).concat([center]);
+    var upper = [center].concat(values.slice(odd ? mid + 1 : mid));
+    var lowerRamp = interpolateValuesToClasses(lower, k + 1, null, opts);
+    var upperRamp = interpolateValuesToClasses(upper, k + 1, null, opts);
+    return lowerRamp.concat(upperRamp.slice(1));
+  }
+
+  // A list of colors shorter than the list of categories is repeated, as the
+  // colors of a color scheme are
+  function getCategoricalValues(values, n, valuesAreColors) {
+    if (valuesAreColors && values.length < n) {
+      message('Repeating', values.length, 'colors to match', n, 'categories.');
+      values = wrapColors(values, n);
+    }
     if (n != values.length) {
       stop$1('Mismatch in number of categories and number of values');
     }
@@ -72149,18 +74474,15 @@ ${svg}
 
   // TODO: check for non-interpolatable value types (e.g. boolean, text)
   function getInterpolableValues(arr, n, opts) {
-    var values = parseValues(arr);
-    if (n != values.length || opts.stops) {
-      return interpolateValuesToClasses(values, n, opts.stops);
-    }
-    return values;
+    // with one value per class, this only adds vibrance= to colors
+    return interpolateValuesToClasses(parseValues(arr), n, opts.stops, opts);
   }
 
   // convert strings to numbers if they all parse as numbers
   // arr: an array of strings
   function parseValues(strings) {
     var values = strings;
-    if (strings.every(utils.parseNumber)) {
+    if (strings.every(str => utils.parseNumber(str) !== null)) {
       values = strings.map(function(str) {
         return +str;
       });
@@ -72293,11 +74615,12 @@ ${svg}
     var values, nullValue;
     var classifyByValue, classifyByRecordId;
     var numClasses, numValues;
-    var method;
+    var method, diverging, divergingLayout;
 
     if (opts.color_scheme) {
       stop$1('color-scheme is not a valid option, use colors instead');
     }
+    opts = Object.assign({}, opts, getInterpolationOptions(opts));
 
     // get data field to use for classification
     //
@@ -72332,17 +74655,35 @@ ${svg}
     //
     // expand categories if value is '*'
     // use all unique values if categories option is missing
+    // (empty values are not categories: they get the null value)
     if (method == 'categorical') {
       if ((!opts.categories || opts.categories.includes('*')) && dataField) {
-        opts.categories = getUniqFieldValues(records, dataField);
+        opts.categories = getUniqFieldValues(records, dataField).filter(isCategoryValue);
       }
       if (opts.categories && fieldType == 'number') {
         opts.categories = opts.categories.map(str => +str);
       }
     }
 
-    if (opts.classes) {
-      if (!utils.isInteger(opts.classes) || opts.classes > 1 === false) {
+    diverging = isDivergingClassification(opts);
+    if (diverging) {
+      validateDivergingOptions(method, fieldType);
+    } else if (opts.no_pivot_class || opts.pivot_class) {
+      stop$1(opts.pivot_class ? 'pivot-class' : 'no-pivot-class', 'requires pivot= or pivot-range=');
+    }
+    if (Array.isArray(opts.classes) && !diverging) {
+      if (opts.classes.length != 1) {
+        stop$1('classes= takes two numbers (classes below and above the pivot) only with pivot=');
+      }
+      opts.classes = opts.classes[0];
+    }
+
+    if (diverging) {
+      // the classes depend on the data (see getDivergingLayout())
+      numClasses = 0;
+    } else if (opts.classes) {
+      // continuous output can have a single interval, from the min to the max
+      if (!utils.isInteger(opts.classes) || opts.classes >= (opts.continuous ? 1 : 2) === false) {
         stop$1('Invalid number of classes:', opts.classes, '(expected a value greater than 1)');
       }
       numClasses = opts.classes;
@@ -72355,24 +74696,37 @@ ${svg}
     } else if (method == 'categorical' && opts.categories) {
       numClasses = opts.categories.length;
     } else if (opts.colors && opts.colors.length > 1) {
-      numClasses = opts.colors.length;
+      // continuous: each color is a stop, at the ends and breaks of the classes
+      numClasses = opts.continuous ? opts.colors.length - 1 : opts.colors.length;
     } else if (opts.values && opts.values.length > 1) {
-      numClasses = opts.values.length;
+      numClasses = opts.continuous ? opts.values.length - 1 : opts.values.length;
     } else if (method == 'non-adjacent') {
       numClasses = 5;
     } else {
       numClasses = 4;
     }
     numValues = opts.continuous ? numClasses + 1 : numClasses;
-    if (numValues > 1 === false) {
+    if (numValues > 1 === false && !diverging) {
       stop$1('Missing a valid number of values');
     }
 
     // get colors or other values
     //
-    values = getClassValues(method, numValues, opts);
-    if (opts.invert) {
-      values = values.concat().reverse();
+    if (diverging && fieldType === null) {
+      values = []; // no data: every feature gets the null value
+    } else if (diverging) {
+      divergingLayout = getDivergingLayout(getDivergingData(records, dataField, opts), method,
+        Object.assign({}, opts, {classes: getDivergingClassCount(opts)}));
+      message(formatDivergingLayout(divergingLayout));
+      if (opts.continuous) {
+        message(formatDivergingStops(divergingLayout));
+      }
+      values = getDivergingClassValues(divergingLayout, opts);
+    } else {
+      values = getClassValues(method, numValues, opts);
+      if (opts.invert) {
+        values = values.concat().reverse();
+      }
     }
     if (valuesAreColors) {
       message('Colors:', formatValuesForLogging(values));
@@ -72394,6 +74748,11 @@ ${svg}
       classifyByValue = getIndexedClassifier(values, nullValue, opts);
     } else if (method == 'categorical') {
       classifyByValue = getCategoricalClassifier(values, nullValue, opts);
+    } else if (diverging && opts.continuous) {
+      classifyByValue = getContinuousDivergingDataClassifier(divergingLayout, values, nullValue, opts);
+    } else if (diverging) {
+      classifyByValue = getSequentialClassifier$1(values, nullValue, getFieldValues(records, dataField), method,
+        Object.assign({}, opts, {breaks: divergingLayout.breaks}));
     } else {
       classifyByValue = getSequentialClassifier$1(values, nullValue, getFieldValues(records, dataField), method, opts);
     }
@@ -72425,6 +74784,73 @@ ${svg}
     });
     lyr.data.markSchemaChanged({operation: 'classify', field: outputField});
   };
+
+  function validateDivergingOptions(method, fieldType, opts) {
+    if (fieldType === null) return; // no data
+    if (fieldType != 'number') {
+      stop$1('pivot= requires a numeric data field');
+    }
+    if (!['quantile', 'equal-interval', 'nice', 'hybrid', 'breaks'].includes(method)) {
+      stop$1('The', method, 'method does not support pivot=');
+    }
+  }
+
+  // Rounds and clamps data values as getDivergingData() does
+  function getContinuousDivergingDataClassifier(layout, values, nullValue, opts) {
+    var classify = getContinuousDivergingClassifier(layout, values, nullValue, opts);
+    var round = opts.precision ? getRoundingFunction(opts.precision) : null;
+    var range = opts.outer_breaks;
+    return function(val) {
+      if (!utils.isFiniteNumber(val)) return nullValue;
+      if (round) val = round(val);
+      if (range) val = Math.min(Math.max(val, range[0]), range[1]);
+      return classify(val);
+    };
+  }
+
+  function formatDivergingStops(layout) {
+    var stops = getDivergingStops(layout);
+    var parts = [];
+    if (stops.below.length > 0) parts.push('below: ' + stops.below.join(', '));
+    if (stops.above.length > 0) parts.push('above: ' + stops.above.join(', '));
+    return 'Color stops (' + parts.join('; ') + ')';
+  }
+
+  // The data that the classes divide: numbers, rounded and clamped as the
+  // sequential classifier does
+  function getDivergingData(records, field, opts) {
+    var values = getFieldValues(records, field);
+    var ascending;
+    if (opts.precision) {
+      values = values.map(getRoundingFunction(opts.precision));
+    }
+    ascending = getAscendingNumbers(values);
+    if (opts.outer_breaks) {
+      ascending = applyDataRange(ascending, opts.outer_breaks);
+    }
+    return ascending;
+  }
+
+  // The total number of classes (including a pivot class), or the numbers of
+  // classes [below, above] the pivot
+  function getDivergingClassCount(opts) {
+    var hasNeutral = hasPivotClass(opts);
+    var list = opts.colors && opts.colors.length > 1 && opts.colors ||
+      opts.values && opts.values.length > 1 && opts.values;
+    if (opts.classes) return opts.classes;
+    if (list && opts.continuous) {
+      // a list of 2K+1 colors has K stops on each side, for K-1 classes
+      return Math.max(2, (Math.floor(list.length / 2) - 1) * 2) + (hasNeutral ? 1 : 0);
+    }
+    if (list) return list.length;
+    return hasNeutral ? 7 : 6;
+  }
+
+  // Like the categorical classifier, counts 0 as a value and other falsy
+  // values (null, undefined, '', NaN) as empty
+  function isCategoryValue(val) {
+    return !!val || val === 0;
+  }
 
   function formatValuesForLogging(arr) {
     if (arr.some(val => utils.isString(val) && val.indexOf('rgb(') === 0)) {
@@ -85345,7 +87771,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.72";
+  var version = "0.7.74";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -85734,392 +88160,6 @@ ${svg}
     runCommandsXL: runCommandsXL,
     runParsedCommands: runParsedCommands,
     testCommands: testCommands
-  });
-
-  // Finding the font file a label's font-family names, among the fonts installed
-  // on this computer.
-  //
-  // The browser does this for us in the GUI; in Node there is nothing between
-  // mapshaper and the filesystem, so a family name has to be matched against the
-  // name tables of the files themselves. Names cannot be inferred from
-  // filenames: NYTFranklinLight.otf calls itself "NYTFranklin Light", and a
-  // label asking for NYTFranklin at weight 300 has to reach it.
-  //
-  // See docs/development/label-tool-design.md.
-
-  // Collections (.ttc/.otc) hold several faces in one file and are how macOS
-  // ships Helvetica, Menlo and Avenir, so a lookup that skipped them would miss
-  // the font mapshaper's own tool writes by default there.
-  var FONT_FILE_RXP = /\.(ttf|otf|ttc|otc)$/i;
-
-  // What a generic family means when there is no browser to resolve it. A guess,
-  // but an ordered one: the first of these that is installed is what a browser
-  // on this platform would almost certainly have picked.
-  var GENERIC_FAMILIES = {
-    'sans-serif': ['Helvetica', 'Arial', 'Liberation Sans', 'DejaVu Sans', 'Roboto', 'Segoe UI'],
-    serif: ['Times New Roman', 'Times', 'Liberation Serif', 'DejaVu Serif', 'Georgia'],
-    monospace: ['Menlo', 'Courier New', 'Liberation Mono', 'DejaVu Sans Mono', 'Consolas'],
-    'system-ui': ['Helvetica Neue', 'Segoe UI', 'Cantarell', 'Roboto'],
-    cursive: [],
-    fantasy: []
-  };
-
-  var faceCache = {};
-  var familyCache = {};
-  var fullIndex = null;
-  var fileList = null;
-
-  // Width classes, as OS/2 numbers them 1 to 9. A font-stretch is one of these
-  // keywords or a percentage of normal width.
-  var STRETCH_NAMES = {
-    'ultra-condensed': 1, 'extra-condensed': 2, condensed: 3,
-    'semi-condensed': 4, normal: 5, 'semi-expanded': 6, expanded: 7,
-    'extra-expanded': 8, 'ultra-expanded': 9
-  };
-  var STRETCH_PERCENTS = [50, 62.5, 75, 87.5, 100, 112.5, 125, 150, 200];
-
-  // The face to open for @family in (@weight, @italic, @stretch), or null if this
-  // computer has no such font: {path, postscriptName}.
-  //
-  // postscriptName is how a face inside a collection is named to fontkit, and is
-  // null for a file holding one face.
-  function findFontFace(family, weight, italic, stretch) {
-    var key = [family, weight, italic ? 'i' : 'n', stretch || ''].join('|');
-    if (!(key in faceCache)) {
-      faceCache[key] = lookupFace(family, weight, italic, stretch);
-    }
-    return faceCache[key];
-  }
-
-  // Which of a family's faces answers a request for (@weight, @italic,
-  // @stretch).
-  //
-  // Width first, then upright before oblique, then the nearest weight, then the
-  // heavier of two equally near. The first three are the order CSS matches fonts
-  // in, and the last is the rule the style menu uses to carry a face across a
-  // change of font (getNearestVariant() in gui-label-fonts.mjs), applied here to
-  // faces read from files rather than measured in a browser.
-  //
-  // A missing face is answered with a near one rather than refused: the browser
-  // would synthesize the missing weight or slant from exactly this face, so its
-  // widths are much closer to what is drawn than no measurement at all.
-  function pickFace(faces, weight, italic, stretch) {
-    var wanted = weight > 0 ? weight : 400;
-    var wantedWidth = parseFontStretch(stretch);
-    var best = null;
-    var bestScore = null;
-    (faces || []).forEach(function(face) {
-      var score = [
-        Math.abs((face.width || 5) - wantedWidth),
-        !!face.italic === !!italic ? 0 : 1,
-        Math.abs(face.weight - wanted),
-        face.weight < wanted ? 1 : 0
-      ];
-      if (!best || compareScores(score, bestScore) < 0) {
-        best = face;
-        bestScore = score;
-      }
-    });
-    return best;
-  }
-
-  // A font-stretch as the width class it names, or normal width for anything
-  // unreadable. A percentage is taken to the nearest class, the way CSS defines
-  // the keywords.
-  function parseFontStretch(stretch) {
-    var str = String(stretch === null || stretch === undefined ? '' : stretch).trim().toLowerCase();
-    var pct = /^([.0-9]+)%$/.exec(str);
-    var best = 5;
-    if (STRETCH_NAMES[str]) return STRETCH_NAMES[str];
-    if (!pct) return 5;
-    STRETCH_PERCENTS.forEach(function(val, i) {
-      if (Math.abs(val - Number(pct[1])) <
-          Math.abs(STRETCH_PERCENTS[best - 1] - Number(pct[1]))) {
-        best = i + 1;
-      }
-    });
-    return best;
-  }
-
-  // Family names are compared without spaces, punctuation or case, so that
-  // "NYTFranklin" finds "NYT Franklin" and "Helvetica Neue" finds
-  // "HelveticaNeue". Font vendors are not consistent about any of the three.
-  function normalizeFamilyName(name) {
-    return String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  }
-
-  // The families a face answers to. The typographic family (name ID 16) is the
-  // one a stylesheet means: every weight of NYTFranklin has its own ID 1 family
-  // ("NYTFranklin Light", "NYTFranklin Medium") and they are one family only
-  // under ID 16. Both are indexed, because plenty of fonts have no ID 16.
-  function getFaceFamilies(font) {
-    var records = font && font.name && font.name.records || {};
-    return [pickName(records.preferredFamily), pickName(records.fontFamily),
-      font && font.familyName].filter(Boolean);
-  }
-
-  function clearFontCache() {
-    faceCache = {};
-    familyCache = {};
-    fullIndex = null;
-    fileList = null;
-  }
-
-  function lookupFace(family, weight, italic, stretch) {
-    var names = resolveFamilyNames(family);
-    var face = findBestFace(names, weight, italic, stretch);
-    // The filename guess can find a family and still miss one of its faces:
-    // Segoe UI Semibold lives in seguisb.ttf, which does not begin with the
-    // family's name. Anything other than the face that was asked for is worth
-    // the full index -- once per session -- to be sure it is the nearest this
-    // machine has.
-    if (!fullIndex && !faceAnswersRequest(face, weight, italic, stretch)) {
-      fullIndex = readFaces(getFontFiles());
-      face = findBestFace(names, weight, italic, stretch) || face;
-    }
-    return face;
-  }
-
-  function findBestFace(names, weight, italic, stretch) {
-    for (var i = 0; i < names.length; i++) {
-      var faces = findFamilyFaces(names[i]);
-      if (faces && faces.length > 0) return pickFace(faces, weight, italic, stretch);
-    }
-    return null;
-  }
-
-  function faceAnswersRequest(face, weight, italic, stretch) {
-    return !!face && face.weight == (weight > 0 ? weight : 400) &&
-      !!face.italic === !!italic && (face.width || 5) == parseFontStretch(stretch);
-  }
-
-  // A font-family is a list, and may end in a generic: each name is tried in
-  // turn, exactly as a browser would, and a generic stands for the first of its
-  // candidates that is installed.
-  function resolveFamilyNames(family) {
-    var out = [];
-    splitFamilyList(family).forEach(function(name) {
-      var generic = GENERIC_FAMILIES[name.toLowerCase()];
-      if (generic) {
-        out = out.concat(generic);
-      } else {
-        out.push(name);
-      }
-    });
-    return out;
-  }
-
-  function splitFamilyList(family) {
-    return String(family || '').split(',').map(function(name) {
-      return name.trim().replace(/^['"]|['"]$/g, '');
-    }).filter(Boolean);
-  }
-
-  // Two passes, because parsing every font on the computer costs the best part
-  // of a second and most lookups do not need it: the file holding a family is
-  // usually named after it, so files whose name begins with the family's are
-  // parsed first. Whether that was good enough is lookupFace()'s decision.
-  function findFamilyFaces(family) {
-    var key = normalizeFamilyName(family);
-    if (!key) return null;
-    if (fullIndex) return fullIndex[key] || null;
-    if (!(key in familyCache)) {
-      familyCache[key] = readFaces(getLikelyFiles(key))[key] || null;
-    }
-    return familyCache[key];
-  }
-
-  function getLikelyFiles(key) {
-    return getFontFiles().filter(function(file) {
-      return normalizeFamilyName(basename(file)).indexOf(key) === 0;
-    });
-  }
-
-  // Faces by normalized family name. A file that cannot be parsed is skipped
-  // rather than reported: a font directory can hold anything, and a broken font
-  // is not an error in the user's data.
-  function readFaces(files) {
-    var index = {};
-    files.forEach(function(file) {
-      getFileFaces(file).forEach(function(face) {
-        face.families.forEach(function(name) {
-          var key = normalizeFamilyName(name);
-          if (!key) return;
-          if (!index[key]) index[key] = [];
-          index[key].push(face);
-        });
-      });
-    });
-    return index;
-  }
-
-  function getFileFaces(file) {
-    var fontkit = getFontkit();
-    var font, fonts;
-    if (!fontkit) return [];
-    try {
-      font = fontkit.openSync(file);
-      // A collection reports its members in .fonts; a single font is its own.
-      fonts = font && font.fonts || [font];
-      return fonts.filter(Boolean).map(function(one) {
-        return {
-          path: file,
-          // Named rather than numbered because fontkit takes a name, and because
-          // a name survives a font being reinstalled in a different order.
-          postscriptName: font.fonts ? one.postscriptName : null,
-          families: getFaceFamilies(one),
-          weight: getFaceWeight(one),
-          width: getFaceWidth(one),
-          italic: isItalicFace(one)
-        };
-      }).filter(function(face) {
-        return face.families.length > 0;
-      });
-    } catch (e) {
-      return [];
-    }
-  }
-
-  function getFaceWeight(font) {
-    var os2 = font['OS/2'];
-    var weight = os2 && os2.usWeightClass;
-    return weight > 0 ? weight : 400;
-  }
-
-  function getFaceWidth(font) {
-    var os2 = font['OS/2'];
-    var width = os2 && os2.usWidthClass;
-    return width >= 1 && width <= 9 ? width : 5;
-  }
-
-  function isItalicFace(font) {
-    var os2 = font['OS/2'];
-    if (os2 && os2.fsSelection && typeof os2.fsSelection.italic == 'boolean') {
-      return os2.fsSelection.italic;
-    }
-    return !!font.italicAngle;
-  }
-
-  // A name record is a string, or an object of translations to pick English out
-  // of, depending on the font and the version of fontkit.
-  function pickName(rec) {
-    if (!rec) return '';
-    if (typeof rec == 'string') return rec;
-    return rec.en || Object.keys(rec).map(function(k) { return rec[k]; })[0] || '';
-  }
-
-  function compareScores(a, b) {
-    for (var i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) return a[i] - b[i];
-    }
-    return 0;
-  }
-
-  // Every font file on this computer, listed once. Listing is cheap -- a few
-  // hundred directory entries -- next to parsing them, so this is not the part
-  // worth avoiding.
-  function getFontFiles() {
-    var fs = getFs();
-    var files = [];
-    if (fileList) return fileList;
-    if (!fs) return [];
-    getFontDirs().forEach(function(dir) {
-      var entries;
-      try {
-        entries = fs.readdirSync(dir, {recursive: true});
-      } catch (e) {
-        return; // a directory this platform does not have
-      }
-      entries.forEach(function(entry) {
-        var file = dir + '/' + String(entry).split('\\').join('/');
-        if (FONT_FILE_RXP.test(file)) files.push(file);
-      });
-    });
-    fileList = files;
-    return files;
-  }
-
-  // Where each platform keeps fonts, or MAPSHAPER_FONT_PATH if it is set.
-  //
-  // It replaces the platform's directories rather than adding to them, which is
-  // what makes a machine's font situation something a caller can state: a
-  // container with its fonts somewhere of its own, a build that has to produce
-  // the same SVG wherever it runs, a test that needs to know there is nothing to
-  // find. Several directories are separated by : or ;.
-  function getFontDirs() {
-    var home = getHomeDir();
-    var platform = typeof process == 'object' && process.platform || '';
-    var dirs = getEnvDirs();
-    if (dirs.length > 0) return dirs;
-    if (platform == 'darwin') {
-      dirs = ['/System/Library/Fonts', '/Library/Fonts',
-        '/Network/Library/Fonts'];
-      if (home) dirs.push(home + '/Library/Fonts');
-    } else if (platform == 'win32') {
-      dirs = [(getEnv('WINDIR') || 'C:\\Windows') + '/Fonts'];
-      if (home) dirs.push(home + '/AppData/Local/Microsoft/Windows/Fonts');
-    } else {
-      dirs = ['/usr/share/fonts', '/usr/local/share/fonts', '/run/host/fonts'];
-      if (home) {
-        dirs.push(home + '/.fonts', home + '/.local/share/fonts');
-      }
-    }
-    return dirs;
-  }
-
-  function getEnvDirs() {
-    var val = getEnv('MAPSHAPER_FONT_PATH');
-    if (!val) return [];
-    return val.split(/[:;]/).filter(Boolean);
-  }
-
-  function getEnv(name) {
-    return typeof process == 'object' && process.env && process.env[name] || '';
-  }
-
-  function getHomeDir() {
-    var os = safeRequire('os');
-    try {
-      return os && os.homedir() || '';
-    } catch (e) {
-      return '';
-    }
-  }
-
-  function basename(file) {
-    var parts = file.split('/');
-    return parts[parts.length - 1].replace(FONT_FILE_RXP, '');
-  }
-
-  function getFs() {
-    return safeRequire('fs');
-  }
-
-  // Loaded through the require shim and only when a label actually needs
-  // measuring, so that the browser bundle -- which is this same file -- never
-  // reaches for a module it does not have, and a CLI run that touches no labels
-  // never pays for loading it.
-  function getFontkit() {
-    return safeRequire('fontkit');
-  }
-
-  function safeRequire(name) {
-    if (runningInBrowser()) return null;
-    try {
-      return require$1(name) || null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  var FontLookup = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    clearFontCache: clearFontCache,
-    findFontFace: findFontFace,
-    getFaceFamilies: getFaceFamilies,
-    normalizeFamilyName: normalizeFamilyName,
-    parseFontStretch: parseFontStretch,
-    pickFace: pickFace
   });
 
   // Measuring a label's text outside a browser, from the font files installed on
@@ -87118,6 +89158,139 @@ ${svg}
     blurRasterLayers: blurRasterLayers
   });
 
+  // A ramp is defined by pins: [{t, color}], where t is a position from 0 (left
+  // end) to 1 (right end). Both ends must be pinned. Pins are stored by position
+  // rather than by tile index so they survive changes in the number of tiles.
+  // See docs/development/color-scheme-panel-design.md
+
+  // Returns an array of n colors. Pinned tiles take their pin's color; the
+  // others are interpolated in OKLCH between the nearest pinned tiles, so that
+  // lightness, chroma and hue each change by equal steps from tile to tile.
+  // opts.vibrance: a midtone chroma boost between each
+  // pair of pinned tiles (see getOklchInterpolator()).
+  function resolveRamp(pins, n, opts) {
+    return resolveRampTiles(pins, n, opts).map(function(tile) {
+      return tile.color;
+    });
+  }
+
+  // Like resolveRamp(), but returns a {color, pinned, adjusted, l, c, h, ideal}
+  // object for each tile. Tiles that had to be fitted to the sRGB gamut are
+  // adjusted, and ideal has the OKLCH values they were fitted from.
+  function resolveRampTiles(pins, n, opts) {
+    var slots = getPinnedSlots(pins, n);
+    var tiles = [];
+    var left = 0, right, interpolate, tile;
+    for (var i=0; i<n; i++) {
+      if (slots[i] > -1) {
+        // vibrance raises a pinned color's chroma only as far as the gamut has
+        // room at its own lightness; it is adjusted if that cut the vibrance short
+        tile = getVibrantTile(pins[slots[i]].color, opts && opts.vibrance);
+        tile.pinned = true;
+        tiles.push(tile);
+        left = i;
+        continue;
+      }
+      if (!interpolate || right < i) {
+        right = i + 1;
+        while (slots[right] == -1) right++;
+        interpolate = getOklchInterpolator(pins[slots[left]].color, pins[slots[right]].color,
+          Object.assign({}, opts, {steps: right - left}));
+      }
+      tile = interpolate((i - left) / (right - left));
+      tile.pinned = false;
+      tiles.push(tile);
+    }
+    return tiles;
+  }
+
+  // Returns an array of n tile slots, each containing the index of the pin
+  // that sets the tile's color, or -1 if the tile is interpolated.
+  // When several pins snap to the same tile, an end pin wins, otherwise the pin
+  // closest to the tile's own position.
+  function getPinnedSlots(pins, n) {
+    var slots = [], dists = [];
+    validateRamp(pins, n);
+    for (var i=0; i<n; i++) {
+      slots.push(-1);
+      dists.push(Infinity);
+    }
+    pins.forEach(function(pin, pinId) {
+      var k = pin.t * (n - 1);
+      var slot = Math.round(k);
+      var dist = isEndPin(pin) ? -1 : Math.abs(k - slot);
+      if (dist < dists[slot]) {
+        slots[slot] = pinId;
+        dists[slot] = dist;
+      }
+    });
+    return slots;
+  }
+
+  // Returns a new pin array with tile i of an n-tile ramp pinned to color,
+  // replacing any pins that snap to the same tile.
+  function setRampPin(pins, n, i, color) {
+    validateTileIndex(i, n);
+    if (!parseColor(color)) stop$1('Unsupported color:', color);
+    return removePinsAtSlot(pins, n, i)
+      .concat({t: getTilePosition(i, n), color: color})
+      .sort(function(a, b) { return a.t - b.t; });
+  }
+
+  // Returns a new pin array with tile i unpinned. End tiles stay pinned.
+  function clearRampPin(pins, n, i) {
+    validateTileIndex(i, n);
+    if (i === 0 || i == n - 1) return pins.concat();
+    return removePinsAtSlot(pins, n, i);
+  }
+
+  function removePinsAtSlot(pins, n, i) {
+    validateRamp(pins, n);
+    return pins.filter(function(pin) {
+      return Math.round(pin.t * (n - 1)) != i;
+    });
+  }
+
+  function getTilePosition(i, n) {
+    return i == n - 1 ? 1 : i / (n - 1);
+  }
+
+  function isEndPin(pin) {
+    return pin.t === 0 || pin.t === 1;
+  }
+
+  function validateTileIndex(i, n) {
+    if (!(i >= 0 && i < n && Math.floor(i) === i)) {
+      stop$1('Invalid ramp tile index:', i);
+    }
+  }
+
+  function validateRamp(pins, n) {
+    if (!(n >= 2 && Math.floor(n) === n)) {
+      stop$1('Invalid number of ramp colors:', n);
+    }
+    if (!Array.isArray(pins)) {
+      stop$1('Expected an array of ramp pins');
+    }
+    pins.forEach(function(pin) {
+      if (!(pin.t >= 0 && pin.t <= 1)) stop$1('Invalid ramp pin position:', pin.t);
+      if (!parseColor(pin.color)) stop$1('Unsupported color:', pin.color);
+    });
+    if (!pins.some(function(pin) { return pin.t === 0; }) ||
+        !pins.some(function(pin) { return pin.t === 1; })) {
+      stop$1('A ramp must have pins at both ends');
+    }
+  }
+
+  var ColorRamps = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    clearRampPin: clearRampPin,
+    getPinnedSlots: getPinnedSlots,
+    resolveRamp: resolveRamp,
+    resolveRampTiles: resolveRampTiles,
+    setRampPin: setRampPin
+  });
+
   function getPolygonRewinder(nodes) {
     var splitter = getSelfIntersectionSplitter(nodes);
     return rewindPolygon;
@@ -87958,10 +90131,10 @@ ${svg}
   // Vertices never move once they are placed.
   //
   // The trace of the pointer samples is densified to even spacing and smoothed
-  // with the Gaussian kernel that -smooth uses, as a plain weighted average in
-  // arc length. (-smooth adds a quadratic correction that keeps bends from being
-  // flattened, but it lets through far more of the jitter of a slow stroke.) A
-  // smoothed point depends only on the trace within a window around it, so it
+  // with -smooth's Gaussian-weighted quadratic fit, in arc length. The quadratic
+  // keeps small bends from being flattened the way a plain weighted average
+  // flattens them, at the cost of letting a little more of the jitter of a slow
+  // stroke through. A smoothed point depends only on the trace within a window around it, so it
   // is final as soon as the trace extends a window radius beyond it. At the
   // start of the stroke the trace is extended by an odd reflection about its
   // first point, which keeps the smoothed curve starting exactly there, and the
@@ -87976,14 +90149,15 @@ ${svg}
   // Distances are in pixels. For samples in other units, the pixelSize option
   // gives the size of a pixel in those units.
 
-  // Standard deviation of the smoothing kernel, in arc length. Below about 5px,
-  // the jitter of a slow stroke comes through; larger values round off bends a
-  // few pixels across.
+  // Standard deviation of the smoothing kernel, in arc length. Smaller values
+  // follow the hand more closely, which gives a feeling of control; larger ones
+  // are smoother but feel less precise and place vertices further behind the
+  // pointer.
   var SIGMA = 8;
 
   // Half-width of the smoothing window, in multiples of SIGMA. This is also how
   // far the pointer has to be ahead of a smoothed point for it to be final.
-  var WINDOW_RADIUS = 3;
+  var WINDOW_RADIUS = 4;
 
   // Spacing of the densified trace, and of the smoothed points that are tested
   // as vertices. Small enough that a bend of radius SIGMA turns by only a few
@@ -88004,10 +90178,16 @@ ${svg}
   var PREVIEW_SPACING = 2;
   var PREVIEW_SIGMA = 2;
 
+  // Weight of -smooth's quadratic correction, which keeps bends from being
+  // flattened: 0 is the plain weighted average, 1 the fully corrected fit.
+  // At 1, small bends keep most of their amplitude.
+  var GAIN = 1;
+
   // start: [x, y] first sample
-  // opts: (optional) {sigma, previewSigma, bendAngle (degrees), maxDeviation, pixelSize}
+  // opts: (optional) {sigma, previewSigma, gain, bendAngle (degrees), maxDeviation, pixelSize}
   function GaussianStrokeFitter(start, opts) {
     var px = opts && opts.pixelSize > 0 ? opts.pixelSize : 1;
+    var gain = opts && opts.gain >= 0 ? opts.gain : GAIN;
     var sigma = getOpt(opts, 'sigma', SIGMA) * px;
     var radius = sigma * WINDOW_RADIUS;
     var previewSigma = Math.min(getOpt(opts, 'previewSigma', PREVIEW_SIGMA) * px, sigma);
@@ -88111,7 +90291,7 @@ ${svg}
           wy.push(2 * end[1] - yy[i]);
         }
       }
-      return smoothPoint(wt, [wx, wy], 0, wt.length, t, 'gaussian', s || sigma, r, 0);
+      return smoothPoint(wt, [wx, wy], 0, wt.length, t, 'gaussian', s || sigma, r, gain);
     }
 
     // first index of the trace with arc length > @t
@@ -88270,12 +90450,17 @@ ${svg}
     ClipErase,
     ClipPoints,
     ColorUtils,
+    ColorRamps,
+    ColorSchemes,
+    Oklab,
     Colorizer,
     CustomProjections,
     Dymaxion,
     ButterflyProjections,
     Narukawa2022,
     DataAggregation,
+    Diverging,
+    {getSequentialBreaks, getInterpolatedValueGetter},
     DatasetUtils,
     DataUtils,
     DbfImport,

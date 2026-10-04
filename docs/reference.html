@@ -211,11 +211,13 @@ mapshaper states.geojson \
 mapshaper countries_wgs84.shp encoding=latin1 -info
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-o-output" data-name="-o (output)" data-options="format json geotiff svg msx target force gzip zip cut-table drop-table precision fix-geometry bbox-index encoding field-order id-field bbox extension prettify singles quantization no-quantization presimplify topojson-precision ndjson gj2008 reverse-winding combine-layers geojson-type no-null-props hoist metadata crs id width height max-height margin pixels id-prefix svg-data svg-scale raster-res linked-images jpeg-quality delimiter decimal-comma compression snappy zstd none deflate level rowgroup show-all"><h3 id="-o-output">-o (output)</h3>
+<section class="cmd-section" data-id="-o-output" data-name="-o (output)" data-options="format json html target force gzip zip cut-table drop-table precision fix-geometry bbox-index encoding field-order id-field bbox extension prettify singles quantization no-quantization presimplify topojson-precision ndjson gj2008 reverse-winding combine-layers geojson-type no-null-props hoist metadata crs id width height max-height margin pixels id-prefix svg-data svg-scale raster-res linked-images jpeg-quality responsiveness fixed dynamic image-format png jpg pixel-ratio delimiter decimal-comma compression snappy zstd none deflate level rowgroup show-all"><h3 id="-o-output">-o (output)</h3>
 <p>Save content of the target layer(s) to a file or files.</p>
 <p><strong>Options</strong></p>
 <p><code>&lt;file&gt;|&lt;directory&gt;|-</code>  Name of output file or directory. Use <code>-</code> to export text-based formats to <code>/dev/stdout</code>.</p>
-<p><code class="is-wrappable">format=shapefile|<wbr>geojson|<wbr>topojson|<wbr>flatgeobuf|<wbr>geopackage|<wbr>geoparquet|<wbr>geotiff|<wbr>json|<wbr>dbf|<wbr>csv|<wbr>tsv|<wbr>svg</code> Specify output format. If the <code>format=</code> option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper exports to the same format as the input format. The <code>json</code> format is an array of objects containing data properties for each feature. The <code>geotiff</code> format takes raster layers only; every other format takes vector or table layers only, apart from <code>svg</code> and <code>msx</code>, which accept both.</p>
+<p><code class="is-wrappable">format=shapefile|<wbr>geojson|<wbr>topojson|<wbr>flatgeobuf|<wbr>geopackage|<wbr>geoparquet|<wbr>geotiff|<wbr>json|<wbr>dbf|<wbr>csv|<wbr>tsv|<wbr>svg|<wbr>html</code> Specify output format. If the <code>format=</code> option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper exports to the same format as the input format.</p>
+<p>The <code>json</code> format is an array of objects containing data properties for each feature.</p>
+<p>The <code>html</code> format writes a map as an HTML fragment and an image, in the manner of the <a href="https://github.com/newsdev/ai2html">ai2html</a> script for Adobe Illustrator.</p>
 <p><code>target=</code> Specify layer(s) to export (comma-separated list). The default target is the output layer(s) of the previous command. Use <code>target=*</code> to select all layers.</p>
 <p><code>force</code>  Allow output files to overwrite input files (without this option, overwriting input files is not allowed).</p>
 <p><code>gzip</code>  Apply gzip compression to output files.</p>
@@ -255,7 +257,10 @@ mapshaper countries_wgs84.shp encoding=latin1 -info
 <p><code>svg-bbox=&lt;xmin,ymin,xmax,ymax&gt;</code> (SVG)  Bounding box of SVG map in projected map units. By default, the extent of SVG output fits the content; this option lets you provide a custom extent. This could be useful when aligning the SVG output with other content layers, such as images or videos.</p>
 <p><code>raster-res=</code> (SVG) Resolution of embedded raster images, in raster pixels per SVG pixel. The default is <code>1</code>; larger values produce higher-resolution embedded images, up to the resolution of the source raster.</p>
 <p><code>linked-images</code> (SVG) Output raster images as separate JPEG or PNG files and link to them from SVG <code>&lt;image&gt;</code> elements instead of embedding them as data URIs.</p>
-<p><code>jpeg-quality=</code> (SVG) JPEG quality for embedded or linked raster images, from <code>1</code> to <code>100</code>. The default is <code>85</code>.</p>
+<p><code>jpeg-quality=</code> (SVG/HTML) JPEG quality for embedded or linked raster images, or for the image of HTML output, from <code>1</code> to <code>100</code>. The default is <code>85</code>.</p>
+<p><code>responsiveness=</code> (HTML) <code>fixed</code> (the default) gives the map a fixed size in pixels. <code>dynamic</code> makes the map fill the width of its container, keeping its aspect ratio.</p>
+<p><code>image-format=</code> (HTML) Format of the map image: <code>png</code> (the default) or <code>jpg</code>.</p>
+<p><code>pixel-ratio=</code> (HTML) Resolution of the map image, in image pixels per CSS pixel. The default is <code>2</code>, for sharp images on high-density displays.</p>
 <p><code>fit-extent=&lt;layer id&gt;</code> (SVG) Use a layer (typically a layer containing a single rectangle) to set the extent of the map. Paths that overflow this extent are retained in the SVG output.</p>
 <p><code>point-symbol=square</code>  (SVG) Use squares instead of circles to symbolize point data.</p>
 <p><code>delimiter=</code>  (CSV) Set the field delimiter for CSV/delimited text output; e.g. <code>delimiter=|</code>.</p>
@@ -340,7 +345,7 @@ mapshaper counties.shp -buffer 100m topological -o counties_buffer.geojson
 mapshaper land.shp -buffer 500m fill-gaps -o land_filled.geojson
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-classify" data-name="-classify" data-options="quantile equal-interval hybrid nice field save-as fill stroke class values classes breaks colors random non-adjacent stops null-value outer-breaks continuous method categorical indexed index-field categories invert precision other key-style key-width key-font-size key-tile-height key-tic-length key-label-suffix key-last-suffix"><h3 id="-classify">-classify</h3>
+<section class="cmd-section" data-id="-classify" data-name="-classify" data-options="quantile equal-interval hybrid nice field save-as fill stroke class values classes breaks colors random non-adjacent stops null-value pivot median mean auto pivot-range no-pivot-class pivot-class continuous outer-breaks method categorical indexed index-field categories invert interpolation rgb oklch vibrance precision other key-style key-width key-font-size key-tile-height key-tic-length key-label-suffix key-last-suffix"><h3 id="-classify">-classify</h3>
 <p>Assign colors or data values to each feature using one of several classification methods. Methods for sequential data include <code>quantile</code>, <code>equal-interval</code>, <code>hybrid</code> and <code>nice</code> or categorical classification to a data field.</p>
 <p><code>&lt;field&gt;</code> or <code>field=</code> Name of the data field to classify.</p>
 <p><code>save-as=</code>      Name of a (new or existing) field to receive the output of classification. The default output field for colors is <code>fill</code> or <code>stroke</code> (depending on geometry type) and <code>class</code> for non-color output.</p>
@@ -349,7 +354,11 @@ mapshaper land.shp -buffer 500m fill-gaps -o land_filled.geojson
 <p><code>non-adjacent</code>  Assign colors to a polygon layer in a randomish pattern, trying not to assign the same color to adjacent polygons. Mapshaper&#39;s algorithm balances performance and quality. Usually it can find a solution with four or five colors. If mapshaper is unable to avoid giving the same color to neighboring polygons, it will print a warning. You can resolve the problem by increasing the number of colors.</p>
 <p><code>stops=</code> A pair of comma-separated numbers (0-100) for limiting the output range of a color ramp.</p>
 <p><code>null-value=</code>   Value (or color) to use for invalid or missing data.</p>
-<p><code>classes=</code>      Number of data classes. This number can also be inferred from the <code>breaks=</code> or <code>values=</code> options.</p>
+<p><code>classes=</code>      Number of data classes. This number can also be inferred from the <code>breaks=</code> or <code>values=</code> options. With <code>pivot=</code>, either the total number of classes (including the pivot class), or two numbers: the classes below and above the pivot (not counting the pivot class).</p>
+<p><code>pivot=</code>        Classify diverging data: classes step away from a pivot value on either side. The value is a number, <code>median</code>, <code>mean</code> or <code>auto</code> (<code>0</code> if the data has values both below and above 0, or else the median). Each side is classified separately, using <code>quantile</code>, <code>equal-interval</code>, <code>nice</code> or <code>hybrid</code> classification (or <code>breaks=</code>). The middle color of a color scheme or of a list of colors is the color of the pivot class (an even-numbered list interpolates one). With <code>breaks=</code>, a pivot that is one of the breaks divides the classes, and a pivot inside a class makes it the pivot class.</p>
+<p><code>pivot-range=</code>  A pair of comma-separated numbers giving the range of the pivot class. By default, the pivot class is centered on the pivot and is one class wide (for <code>quantile</code>, it holds an average class&#39;s share of the features nearest the pivot). With <code>pivot-range=</code>, <code>pivot=</code> defaults to the middle of the range.</p>
+<p><code>no-pivot-class</code> Omit the pivot class: the two sides meet at the pivot.</p>
+<p><code>pivot-class</code> Add a pivot class to <code>continuous</code> output, which has none by default. The pivot class gets the center color, without interpolation.</p>
 <p><code>breaks=</code>       Specify user-defined sequential class breaks (an alternative to automatic classification using <code>quantile</code>, <code>equal-interval</code>, etc.).</p>
 <p><code>outer-breaks=</code>  A pair of comma-separated numbers setting min and max breakpoints to use when computing class breaks. This setting overrides the default behavior, which is to use the min and max values of the data field being classified. This setting can be used to prevent extreme data values (outliers) from affecting equal-interval classification. Also useful for setting outside breakpoints for continuous color ramps (when using the <code>continuous</code> option).</p>
 <p><code>method=</code>       Classification method. One of: <code>quantile</code>, <code>equal-interval</code>, <code>nice</code>, <code>hybrid</code> (sequential data), <code>categorical</code>, <code>non-adjacent</code> and <code>indexed</code>. This parameter is not required if the classification method can be inferred from other options. For example, the <code>index-field=</code> parameter implies indexed classification, the <code>categories=</code> parameter implies categorical classification.</p>
@@ -357,10 +366,13 @@ mapshaper land.shp -buffer 500m fill-gaps -o land_filled.geojson
 <p><code>equal-interval</code> Use equal interval classification. Shortcut for <code>method=equal-interval</code>.</p>
 <p><code>nice</code>          Same as <code>method=nice</code>. This scheme finds equally spaced, round breakpoints that roughly divide the dataset into equal parts (similar to quantile classification).</p>
 <p><code>invert</code>        Reverse the order of colors/values.</p>
-<p><code>continuous</code>    Output continuously interpolated values (experimental). Uses linear interpolation between class breaks, which may give poor results with some distributions of data. This option is for creating unclassed/continuous-color maps.</p>
+<p><code>continuous</code>    Output continuously interpolated values, for unclassed/continuous-color maps. Discrete color values are treated as control points, determining the shape of the continuously interpolated color gradient.</p>
+<p><code>interpolation=</code>    How intermediate colors are calculated when colors are interpolated. <code>rgb</code> (the default) mixes colors in RGB space. <code>oklch</code> uses the perceptually uniform OKLCH color space. Lightness, chroma and hue are interpolated separately. This gives evenly spaced steps in lightness and color saturation, avoiding the dull midtones that RGB mixing can produce. Where an <code>oklch</code> color falls outside the sRGB gamut, it is fitted as described under <code>vibrance=</code>.</p>
+<p><code>vibrance=</code>    Boost the chroma (vividness or saturation) of colors interpolated with <code>interpolation=oklch</code>. The sRGB gamut holds little chroma near black and white, so a linear ramp between a dark color and a light one may appear under-saturated. The value of <code>vibrance</code>, which varies from <code>0</code> to <code>1</code>, determines how much OKLCH chroma is added to every color of the interpolation. The default is <code>0</code>.</p>
+<p>With <code>interpolation=oklch</code>, when a color falls outside the sRGB gamut, its hue is held constant and chroma is reduced to fit. Lightness may be shifted by a small amount.</p>
 <p><code>index-field=</code>  Use class ids that have been precalculated and assigned to this field. Values should be integers from <code>0 ... n-1</code> (where n is the number of classes). <code>-1</code> is the null value.</p>
 <p><code>precision=</code>    Round data values before classification (e.g. <code>precision=0.1</code>).</p>
-<p><code>categories=</code>   List of values in the source data field. Using this option triggers categorical classification.</p>
+<p><code>categories=</code>   List of values in the source data field. Using this option triggers categorical classification. If <code>colors=</code> lists fewer colors than there are categories, the colors are repeated in order. Without <code>categories=</code> (or with <code>categories=*</code>), the categories are the field&#39;s values, except empty ones (null, undefined, empty strings and NaN), which get <code>null-value=</code>.</p>
 <p><code>other=</code>  Default value for categorical classification. This value is used when the value of the source data field is not present in the list of values given by <code>categories=</code>. Defaults to <code>null-value=</code> or null.</p>
 <p><strong>Options for generating SVG keys</strong></p>
 <p><code>key-style=</code>         One of: simple, gradient, dataviz</p>
@@ -376,6 +388,12 @@ mapshaper land.shp -buffer 500m fill-gaps -o land_filled.geojson
 mapshaper covid_cases.geojson \
   -classify save-as=fill quantile color-scheme=Oranges classes=6 \
   -o out.geojson
+
+<span class="hljs-comment"># Color the change in population on either side of 0, with a class</span>
+<span class="hljs-comment"># for small changes</span>
+mapshaper counties.shp \
+  -classify pop_change pivot=0 pivot-range=-1,1 equal-interval colors=RdBu classes=9 \
+  -o out.shp
 </code></pre>
 </section>
 <section class="cmd-section" data-id="-clean" data-name="-clean" data-options="allow-empty close-outer-gaps gap-width gap-fill-area sliver-control overlap-rule allow-overlaps snap-interval rewind target"><h3 id="-clean">-clean</h3>
@@ -695,14 +713,13 @@ mapshaper states.shp -filter-fields FID,NAME -o out.shp
 <p><code>remove-empty</code> Delete features with null geometry.</p>
 <p><a href="#common-options"><code>target=</code></a></p>
 </section>
-<section class="cmd-section" data-id="-frame" data-name="-frame" data-options="bbox width height aspect-ratio offset offsets ignore-symbols name target"><h3 id="-frame">-frame</h3>
+<section class="cmd-section" data-id="-frame" data-name="-frame" data-options="bbox width height aspect-ratio margin offset offsets ignore-symbols name target"><h3 id="-frame">-frame</h3>
 <p>Create a rectangular frame layer at a given display width. Frame size is used for scaling symbols and for setting the display size of SVG output. The geographical extent of the frame is based on the <code>bbox=</code> option or the bounding box of the target layer or layers, if <code>bbox=</code> is omitted. When fitting to target layers, the extent includes room for the point symbols and labels in those layers, as drawn at the frame&#39;s display size.</p>
 <p><code>width=</code>  Width of frame (e.g. 5in, 10cm, 600px; default is 800px)</p>
 <p><code>height=</code>  Height of frame (in addition to or instead of width= option)</p>
 <p><code>aspect-ratio=</code>  Aspect ratio of frame (optional)</p>
 <p><code>bbox=</code> Bounding coordinates of frame contents in projected map coordinates (xmin,ymin,xmax,ymax). If omitted, the bounding box of the target layer(s) is used.</p>
-<p><code>offset=</code> Padding around the frame&#39;s <code>bbox</code> in display units or pct of width/height, e.g. 5cm 20px 5%</p>
-<p><code>offsets=</code>  Comma-sep. list of offsets for each side of the map frame, in l,b,r,t order</p>
+<p><code>margin=</code> Padding around the frame&#39;s <code>bbox</code> in display units or as a percentage of the frame&#39;s width, e.g. 5cm 20px 5%. As in CSS, a percentage is of the width on every side (top and bottom included), so a single value gives an even margin. Takes one to four values in CSS order: all sides (<code>5%</code>); vertical and horizontal (<code>margin=10%,2%</code>); top, horizontal and bottom; or top, right, bottom and left (<code>margin=&#39;40px 2% 2% 2%&#39;</code>). When the frame has a fixed width and height, the content is centered and the padding is a minimum on two sides. (The older <code>offset=</code> and <code>offsets=</code> options still work; they take a single value or a list in l,b,r,t order.)</p>
 <p><code>ignore-symbols</code>  Fit the frame to the locations of points in the target layers, without making room for their symbols and labels</p>
 <p>Other options: <code>name=</code> <code>target=</code></p>
 </section>
@@ -1255,7 +1272,7 @@ mapshaper tracts.shp
   -o tract_groups.shp
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-style" data-name="-style" data-options="where clear class css style fill pink fill-pattern ortho npers outer-glow-color outer-glow-width outer-glow-opacity inner-glow-color inner-glow-width inner-glow-opacity stroke stroke-width stroke-dasharray line-start arrow open-arrow dot none line-end line-end-size opacity icon icon-size icon-color label-text font-size text-anchor target"><h3 id="-style">-style</h3>
+<section class="cmd-section" data-id="-style" data-name="-style" data-options="where clear class css style fill pink fill-pattern ortho npers outer-glow-color outer-glow-width outer-glow-opacity inner-glow-color inner-glow-width inner-glow-opacity stroke stroke-width stroke-dasharray stroke-linecap round butt square line-start arrow open-arrow dot none line-end line-end-size line-fade opacity icon icon-size icon-color label-text font-size text-anchor target"><h3 id="-style">-style</h3>
 <p>Add common SVG attributes for SVG export and display in the web UI. Attribute values take either a literal value or a JS expression. See <a href="/docs/guides/expressions.html">JavaScript expressions</a> for the available context. This command was named <code>-svg-style</code> in earlier versions of mapshaper.</p>
 <p><code>where=</code>           Boolean JS expression for targetting a subset of features.</p>
 <p><code>clear</code> Remove all style properties from a layer.</p>
@@ -1280,9 +1297,11 @@ mapshaper tracts.shp
 <p><code>stroke=</code>          Stroke color</p>
 <p><code>stroke-width=</code>    Stroke width</p>
 <p><code>stroke-dasharray=</code> Dashes</p>
+<p><code>stroke-linecap=</code>  Line caps: <code>round</code> (the default), <code>butt</code> or <code>square</code>. Dashed lines default to <code>butt</code>.</p>
 <p><code>line-start=</code>      Marker at the first vertex of a line: <code>arrow</code>, <code>open-arrow</code>, <code>dot</code> or <code>none</code>. Each part of a multi-part line gets its own marker.</p>
 <p><code>line-end=</code>        Marker at the last vertex of a line: <code>arrow</code>, <code>open-arrow</code>, <code>dot</code> or <code>none</code>.</p>
 <p><code>line-end-size=</code>   Length of an arrowhead&#39;s sides in pixels, or the diameter of a dot, for both ends (an arrowhead&#39;s default is 7 plus three times the stroke width; a dot&#39;s is 0.6 of that)</p>
+<p><code>line-fade=</code>       Share of a line&#39;s length, from 0 to 1, that fades in from transparent at its tail (e.g. <code>line-fade=0.4</code>). The tail is the start of the line, unless only the start has a marker. The fade is a straight gradient, so it suits straight or gently curved lines best.</p>
 <p><code>opacity=</code>         Symbol opacity (e.g. <code>opacity=0.5</code>)</p>
 <p><code>r=</code>               Circle radius. Setting this exports points as SVG <code>&lt;circle&gt;</code> symbols, unless the <code>-o point-symbol=square</code> option is used.</p>
 <p><code>icon=</code>            Point icon shape. Possible values are: circle, square, ring or star. Icons are rendered as SVG symbols and can be combined with labels on the same point layer.</p>

@@ -2577,7 +2577,7 @@
     return obj === Object(obj); // via underscore
   }
 
-  function clamp$5(val, min, max) {
+  function clamp$7(val, min, max) {
     return val < min ? min : (val > max ? max : val);
   }
 
@@ -2595,7 +2595,7 @@
   }
 
   // Similar to isFinite() but does not coerce strings or other types
-  function isFiniteNumber(val) {
+  function isFiniteNumber$1(val) {
     return isValidNumber(val) && val !== Infinity && val !== -Infinity;
   }
 
@@ -3076,7 +3076,7 @@
     return fmt;
   }
 
-  function shuffle(arr) {
+  function shuffle$1(arr) {
     var tmp, i, j;
     for (i = arr.length - 1; i > 0; i--) {
       j = Math.floor(Math.random() * (i + 1));
@@ -3228,7 +3228,7 @@
   function findValueByRank(arr, rank) {
     if (!arr.length || rank < 1 || rank > arr.length) error$1("[findValueByRank()] invalid input");
 
-    rank = clamp$5(rank | 0, 1, arr.length);
+    rank = clamp$7(rank | 0, 1, arr.length);
     var k = rank - 1, // conv. rank to array index
         n = arr.length,
         l = 0,
@@ -3602,7 +3602,7 @@
   // self-import and the resulting Rollup circular-dependency warning.
   var utils = {
     addThousandsSep, addslashes, arrayToIndex,
-    clamp: clamp$5, cleanNumericString, contains, copyElements, countValues, createBuffer,
+    clamp: clamp$7, cleanNumericString, contains, copyElements, countValues, createBuffer,
     defaults, difference,
     endsWith, every, expandoBuffer, extend, extendBuffer,
     find, findMedian, findQuantile, findRankByValue, findStringPrefix,
@@ -3613,7 +3613,7 @@
     getSortedIds, getUniqueName, groupBy,
     htmlEscape,
     indexOf, indexOn, inherit, initializeArray, intersection,
-    isArray, isArrayLike, isBoolean, isDate, isEven, isFiniteNumber, isFunction,
+    isArray, isArrayLike, isBoolean, isDate, isEven, isFiniteNumber: isFiniteNumber$1, isFunction,
     isInteger, isNonNegNumber, isNumber, isObject, isOdd, isPromise, isString,
     isValidNumber,
     lpad, ltrim,
@@ -3624,7 +3624,7 @@
     quicksort, quicksortPartition,
     range, regexEscape, reorderArray: reorderArray$1, repeat, repeatString,
     replaceArray, rpad, rtrim,
-    shuffle, some, sortArrayIndex, sortOn, splitLines, sum,
+    shuffle: shuffle$1, some, sortArrayIndex, sortOn, splitLines, sum,
     toArray, toBuffer, trim: trim$1, trimQuotes,
     uniq, uniqifyNames,
     wildcardToRegExp
@@ -9527,8 +9527,11 @@
     var globals = {}; // share user-defined globals (job.defs) between runs
     var sharedVars = {}; // share -vars / -defaults templating scope between runs
 
+    var activeSession = null; // see createCommandSession()
+
     // expose this function, so other components can run commands (e.g. box tool)
     this.runMapshaperCommands = runMapshaperCommands;
+    this.createCommandSession = createCommandSession;
 
     // Open the console (if closed) and run a command, as if the user had
     // typed it. Used by UI controls that surface console functionality, e.g.
@@ -9924,8 +9927,118 @@
       }
     }
 
-    function runMapshaperCommands(str, done) {
+    // A command session is for a panel that applies its edits as they are made
+    // (a live preview) but should leave one undo state and one history command
+    // for the whole set: the commands run with session.run() share one undo
+    // transaction, which keeps the state from before the first of them; each
+    // one replaces the session's previous command in the session history; and
+    // finish() adds the transaction to the undo history as one state.
+    //
+    // Nothing else may add an undo state while a session's is still to come, or
+    // undoing that state would also take back the session's edits without
+    // saying so. So another command finishes the session before it runs, and
+    // Undo and Redo finish it before they act (Undo#addPendingCommit()). The
+    // panel finishes it when it closes. A finished session can be run again,
+    // which starts a new set.
+    //
+    // opts.label     the undo state's label
+    // opts.onCommit  called as the state is added; may return {onUndo, onRedo},
+    //                called after the state is undone or redone, for GUI state
+    //                that goes with the edits
+    function createCommandSession(optsArg) {
+      var opts = optsArg || {};
+      var busy = Promise.resolve();
+      var queued = null;
+      var unregisterCommit = null;
+      var session = {
+        tx: null,
+        historyIds: [],
+        flags: {},
+        // Runs a command string. A command submitted while an earlier one is
+        // still running waits for it, and replaces any other that is waiting,
+        // so that a burst of edits runs the first and the last of them.
+        run: function(cmd, done) {
+          if (queued) {
+            queued.cmd = cmd;
+            queued.callbacks.push(done);
+            return;
+          }
+          queued = {cmd: cmd, callbacks: [done]};
+          busy = busy.then(function() {
+            var job = queued;
+            queued = null;
+            return new Promise(function(resolve) {
+              runMapshaperCommands(job.cmd, function(err, flags) {
+                job.callbacks.forEach(function(cb) {
+                  if (cb) cb(err, flags);
+                });
+                resolve();
+              }, {session: session});
+            });
+          });
+        },
+        finish: function() {
+          return busy.then(commit);
+        },
+        isPending: function() {
+          return activeSession == session;
+        },
+        // for runMapshaperCommands()
+        activate: activate
+      };
+      return session;
+
+      function commit() {
+        var tx = session.tx,
+            historyIds = session.historyIds,
+            flags = session.flags,
+            callbacks;
+        session.tx = null;
+        session.historyIds = [];
+        session.flags = {};
+        if (activeSession == session) activeSession = null;
+        if (unregisterCommit) unregisterCommit();
+        unregisterCommit = null;
+        if (!tx || !isCommandUndoEnabled()) return;
+        callbacks = opts.onCommit ? opts.onCommit() || {} : {};
+        return getStoredUndoHistory(gui).addTransaction(tx, {
+          flags: flags,
+          entryPrefix: 'command-session',
+          onUndo: function() {
+            gui.session.setCommandsActive(historyIds, false);
+            if (callbacks.onUndo) callbacks.onUndo();
+          },
+          onRedo: function() {
+            gui.session.setCommandsActive(historyIds, true);
+            if (callbacks.onRedo) callbacks.onRedo();
+          }
+        }).catch(function(e) {
+          console.error(e);
+          consoleWarn('Undo state was not saved:', e.message || e);
+        });
+      }
+
+      function activate() {
+        if (activeSession == session) return;
+        activeSession = session;
+        session.tx = createCommandUndoTransaction(opts.label || '');
+        if (gui.undo && gui.undo.addPendingCommit) {
+          unregisterCommit = gui.undo.addPendingCommit(session.finish);
+        }
+      }
+
+    }
+
+    function runMapshaperCommands(str, done, runOpts) {
+      var session = runOpts && runOpts.session || null;
       var commands;
+      if (activeSession && activeSession != session) {
+        activeSession.finish().then(function() {
+          runMapshaperCommands(str, done, runOpts);
+        });
+        return;
+      }
+      if (session) session.activate();
       try {
         commands = internal.parseConsoleCommands(str);
         // don't add info commands to console history
@@ -9936,7 +10049,7 @@
         return done(e, {});
       }
       if (commands.length === 0) return done();
-      applyParsedCommands(commands, str, function(err, flags) {
+      applyParsedCommands(commands, str, session, function(err, flags) {
         if (flags) {
           model.updated(flags); // info commands do not return flags
         }
@@ -9962,13 +10075,13 @@
       });
     }
 
-    function applyParsedCommands(commands, commandString, done) {
+    function applyParsedCommands(commands, commandString, session, done) {
       var active = model.getActiveLayer(),
           prevArcs = active?.dataset.arcs,
           prevTable = active?.layer.data,
           prevTableSize = prevTable ? prevTable.size() : 0,
           prevArcCount = prevArcs ? prevArcs.size() : 0,
-          undoTransaction = createCommandUndoTransaction(commandString),
+          undoTransaction = session ? session.tx : createCommandUndoTransaction(commandString),
           job = new internal.Job(model),
           commandStart = Date.now();
 
@@ -10029,11 +10142,24 @@
         // the data.
         if (!err) {
           commandString = internal.standardizeConsoleCommands(commandString);
+          if (session) {
+            // the session's previous command is at the end of the history, and
+            // an inactive tail is discarded by the next command added
+            gui.session.setCommandsActive(session.historyIds, false);
+          }
           historyIds.push(gui.session.consoleCommands(commandString));
           // kludge to terminate unclosed -if blocks
           if (commandString.includes('-if') && !commandString.includes('-endif')) {
             historyIds.push(gui.session.consoleCommands('-endif'));
           }
+        }
+        if (session) {
+          if (!err) session.historyIds = historyIds;
+          Object.assign(session.flags, flags);
+          if (!undoTransaction) discardHistoryAfterUnrecordedCommand();
+          logCommandTiming(commandString, commands, err, Date.now() - commandStart, null);
+          done(err, flags);
+          return;
         }
         addCommandUndoHistory(undoTransaction, err, flags, historyIds).then(function(undoTiming) {
           logCommandTiming(commandString, commands, err, Date.now() - commandStart, undoTiming);
@@ -10707,8 +10833,6 @@
     var toggleBtn = null; // checkbox <input> for toggling layer selection
     var exportBtn = gui.container.findChild('.export-btn').addClass('disabled');
     var ofileName = gui.container.findChild('#ofile-name');
-    var frameInfo = menu.findChild('.export-frame-info').hide();
-    menu.findChild('.advanced-options').on('input', updateFrameInfo);
     new SimpleButton(menu.findChild('.close2-btn')).on('click', gui.clearMode);
 
     if (!GUI.exportIsSupported()) {
@@ -10777,7 +10901,6 @@
       formatPickedByUser = false;
       // initZipOption();
       initFormatMenu();
-      updateFrameInfo();
       updateExportCheckboxes();
       menu.show();
     }
@@ -10861,10 +10984,10 @@
         opts.history = snapshot;
         targets = addFrameTarget(targets);
       }
-      if (opts.format == 'svg' || opts.format == 'topojson') {
+      if (opts.format == 'svg' || opts.format == 'html' || opts.format == 'topojson') {
         opts.gui_frame = getGuiFrameContext();
       }
-      if (opts.format == 'svg') {
+      if (opts.format == 'svg' || opts.format == 'html') {
         targets = addFrameFurnitureTargets(targets, opts.gui_frame);
       }
       try {
@@ -11004,7 +11127,7 @@
     }
 
     function getExportFormats() {
-      var formats = ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'geopackage', 'geoparquet', 'kml', 'svg', internal.PACKAGE_EXT];
+      var formats = ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'geopackage', 'geoparquet', 'svg', 'kml', 'html', internal.PACKAGE_EXT];
       // GeoTIFF is the one format here that only accepts raster layers, so it is
       // offered only when there is a raster to export.
       if (getExportFormatLayers().some(hasRaster)) formats.push('geotiff');
@@ -11052,13 +11175,11 @@
       // changes afterwards.
       formatPickedByUser = true;
       updateExportCheckboxes();
-      updateFrameInfo();
     }
 
     function setSelectedFormat(fmt) {
       var el = menu.findChild('.export-formats input[value="' + fmt + '"]');
       if (el) el.node().checked = true;
-      updateFrameInfo();
     }
 
     // Which formats apply depends on what is checked for export, so unchecking
@@ -11164,21 +11285,6 @@
       });
       return targets;
     }
-
-    function updateFrameInfo() {
-      if (!frameInfo) return;
-      var context = getGuiFrameContext();
-      var format = getSelectedFormat();
-      var topoUsesPixels = format == 'topojson' &&
-        /\b(?:width|height)\s*=/.test(getExportOptsAsString());
-      if (context && (format == 'svg' || topoUsesPixels)) {
-        frameInfo.text('Map frame: ' +
-          internal.formatFrameSizeForDisplay(context.data)).show();
-      } else {
-        frameInfo.hide();
-      }
-    }
-
   };
 
   function DomCache() {
@@ -11667,10 +11773,18 @@
     return retn;
   }
 
+  // opts.session  a command session from gui.console.createCommandSession(),
+  //               for an edit that is one of a set recorded as one undo state
   function runGuiEditCommand(gui, cmd, optsArg) {
     var opts = optsArg || {};
     if (!gui.console) return;
-    gui.console.runMapshaperCommands(cmd, function(err, flags) {
+    if (opts.session) {
+      opts.session.run(cmd, onDone);
+    } else {
+      gui.console.runMapshaperCommands(cmd, onDone);
+    }
+
+    function onDone(err, flags) {
       if (err) {
         showPopupAlert(err.message || String(err), opts.title || 'Command error');
         if (opts.onError) opts.onError(err);
@@ -11680,7 +11794,7 @@
       if (opts.onDone) {
         opts.onDone(err, flags);
       }
-    });
+    }
   }
 
   function LayerControl(gui) {
@@ -12928,19 +13042,28 @@
     return fields.sort();
   }
 
+  // A -classify that assigns colors or values rewrites its output field in every
+  // feature, so it supersedes an earlier one that wrote the same field -- unless
+  // it reads that field, or writes a key file that would be lost.
   function getClassifyCullInfo(opts) {
-    if (opts.where || !classifyIsRandomFill(opts)) return null;
+    var saveAs = opts.save_as || opts['save-as'] || '';
+    var kind = opts.colors ? 'colors' : opts.values ? 'values' : '';
+    if (opts.where || !kind || classifyWritesKey(opts)) return null;
+    if ([opts.field, opts.index_field].some(function(field) {
+      return field && (saveAs ? field == saveAs : ['fill', 'stroke', 'class'].includes(field));
+    })) return null;
     return {
       type: 'classify',
       target: getTargetKey(opts),
       ids: getIdsKey(opts),
-      key: 'random-fill'
+      key: kind + ':' + saveAs
     };
   }
 
-  function classifyIsRandomFill(opts) {
-    return opts.colors == 'random' && opts.method == 'non-adjacent' &&
-      !opts.field && !opts.values && !opts['save-as'] && !opts.save_as;
+  function classifyWritesKey(opts) {
+    return Object.keys(opts).some(function(name) {
+      return name == 'key' || name.indexOf('key_') === 0 || name.indexOf('key-') === 0;
+    });
   }
 
   function getTargetKey(opts) {
@@ -13250,6 +13373,8 @@
 
   function Undo(gui) {
     var history, offset, stashedUndo, editSession;
+    var pendingCommits = [];
+    var self = this;
     editSession = createEditSessionUndo();
     reset();
 
@@ -13475,6 +13600,29 @@
       addHistoryState(undo, redo, cleanup, opts);
     };
 
+    // An edit whose history state has not been added yet -- a panel session
+    // that records one state when it ends -- registers a function that adds it.
+    // Undo and redo run it, and wait for it, before they act; otherwise they
+    // would take back the state before the edit and leave the edit in place.
+    // Returns a function that unregisters it.
+    this.addPendingCommit = function(commit) {
+      pendingCommits.push(commit);
+      return function() {
+        var i = pendingCommits.indexOf(commit);
+        if (i > -1) pendingCommits.splice(i, 1);
+      };
+    };
+
+    function flushPendingCommits() {
+      var commits = pendingCommits.splice(0);
+      if (commits.length === 0) return null;
+      return Promise.all(commits.map(function(commit) {
+        return Promise.resolve(commit()).catch(function(e) {
+          console.error(e);
+        });
+      }));
+    }
+
     this.evictOldestHistoryState = function(opts) {
       return evictOldestHistoryState(opts || {});
     };
@@ -13545,6 +13693,8 @@
     }
 
     this.undo = function() {
+      var pending = flushPendingCommits();
+      if (pending) return pending.then(function() { return self.undo(); });
       // firing even if history is empty
       // (because this event may trigger a new history state)
       gui.dispatchEvent('undo_redo_pre', {type: 'undo'});
@@ -13558,6 +13708,8 @@
     };
 
     this.redo = function() {
+      var pending = flushPendingCommits();
+      if (pending) return pending.then(function() { return self.redo(); });
       gui.dispatchEvent('undo_redo_pre', {type: 'redo'});
       if (offset <= 0) return;
       offset--;
@@ -14726,16 +14878,16 @@
     }
 
     // The label tool is offered where a label would join the active layer (see
-    // menus above), but it can act on any target once it is open: a label goes
-    // into a label layer created beside a layer that cannot hold one. So
-    // selecting a polygon layer while the tool is open must not close it -- the
-    // next label will start a label layer of its own.
+    // menus above), and it stays open only there: selecting a layer that cannot
+    // hold labels closes it, as selecting another kind of layer closes the line
+    // and polygon tools. Left open, its panel went on styling a layer that has
+    // no labels, and the next label would have started a label layer of its own
+    // beside whatever had been selected. With no layer at all the tool stays,
+    // since it creates the layer it needs.
     function labelModeIsAvailable() {
       var o = gui.model.getActiveLayer();
       if (_editMode != 'label') return false;
-      if (!o || !o.layer) return true; // the tool creates the layer it needs
-      // A table is the one target with no map to click on.
-      return internal.layerHasRaster(o.layer) || !!o.layer.geometry_type;
+      return !o || !o.layer || labelWouldJoin(o.layer);
     }
 
     function labelStyleModeIsAvailable() {
@@ -15846,6 +15998,175 @@
     return Math.round(val * 100) / 100;
   }
 
+  // Reads a color typed or pasted into a color field, and returns it as a
+  // six-digit hex value (#rrggbb), or null if it isn't a color. Accepts what a
+  // user is likely to have copied from somewhere else: hex with or without the
+  // "#" and with 3, 4, 6 or 8 digits, CSS color names, rgb() and hsl() in
+  // either the comma or the space-separated syntax, and oklch(). Alpha is
+  // accepted and dropped, because the field holds an opaque color. An oklch()
+  // color outside the sRGB gamut loses chroma, keeping its hue and lightness.
+  function parseColorInput(str) {
+    var s = String(str || '').trim().toLowerCase();
+    var rgb;
+    if (!s) return null;
+    if (/^([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.test(s)) {
+      s = '#' + s;
+    }
+    if (s[0] == '#') {
+      rgb = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.test(s) ? internal.parseHexColor(s) : null;
+    } else if (/^rgba?\(/.test(s)) {
+      rgb = parseRgbFunction(s);
+    } else if (/^hsla?\(/.test(s)) {
+      rgb = parseHslFunction(s);
+    } else if (/^oklch\(/.test(s)) {
+      rgb = parseOklchFunction(s);
+    } else if (/^[a-z]+$/.test(s)) {
+      rgb = internal.parseColor(s);
+    }
+    return rgb ? formatHex(rgb) : null;
+  }
+
+  // The formats a color field can show a color in
+  var colorInputFormats = [
+    {name: 'hex', label: 'HEX'},
+    {name: 'rgb', label: 'RGB'},
+    {name: 'hsl', label: 'HSL'},
+    {name: 'oklch', label: 'OKLCH'}
+  ];
+
+  // Shows a #rrggbb color in one of colorInputFormats, in a form that
+  // parseColorInput() reads back.
+  function formatColorInput(hex, format) {
+    var rgb = internal.parseHexColor(hex);
+    var hsl, lch;
+    if (!rgb) return hex;
+    if (format == 'rgb') {
+      return 'rgb(' + [rgb.r, rgb.g, rgb.b].join(', ') + ')';
+    }
+    if (format == 'hsl') {
+      hsl = rgbToHsl(rgb);
+      return 'hsl(' + round$2(hsl.h, 1) + ', ' + round$2(hsl.s * 100, 1) + '%, ' +
+        round$2(hsl.l * 100, 1) + '%)';
+    }
+    if (format == 'oklch') {
+      lch = internal.oklabToOklch(internal.rgbToOklab(rgb));
+      // a gray has no hue
+      return 'oklch(' + lch.l.toFixed(4) + ' ' + lch.c.toFixed(4) + ' ' +
+        (lch.c < 0.00005 ? 0 : round$2(lch.h, 2)) + ')';
+    }
+    return internal.formatColor({r: rgb.r, g: rgb.g, b: rgb.b, a: 1});
+  }
+
+  function getFunctionArgs(s) {
+    var match = /^[a-z]+\(([^)]*)\)$/.exec(s);
+    var args;
+    if (!match) return null;
+    args = match[1].split(/[\s,/]+/).filter(Boolean);
+    return args.length == 3 || args.length == 4 ? args : null;
+  }
+
+  function parseRgbFunction(s) {
+    var args = getFunctionArgs(s);
+    var channels;
+    if (!args) return null;
+    channels = args.slice(0, 3).map(function(arg) {
+      var val = parseFloat(arg);
+      if (!/^-?[0-9.]+%?$/.test(arg) || !isFinite(val)) return NaN;
+      return clamp$6(/%$/.test(arg) ? val / 100 * 255 : val, 0, 255);
+    });
+    if (channels.some(isNaN)) return null;
+    return {r: channels[0], g: channels[1], b: channels[2]};
+  }
+
+  function parseHslFunction(s) {
+    var args = getFunctionArgs(s);
+    var h, sat, light;
+    if (!args) return null;
+    h = parseHue(args[0]);
+    sat = parsePercent(args[1]);
+    light = parsePercent(args[2]);
+    if (isNaN(h) || isNaN(sat) || isNaN(light)) return null;
+    return hslToRgb(h, sat, light);
+  }
+
+  // L is 0-1 or a percent; C is a number, or a percent of 0.4, as in CSS
+  function parseOklchFunction(s) {
+    var args = getFunctionArgs(s);
+    var l, c, h;
+    if (!args) return null;
+    l = parseNumberOrPercent(args[0], 1);
+    c = parseNumberOrPercent(args[1], 0.4);
+    h = args[2] == 'none' ? 0 : parseHue(args[2]);
+    if (isNaN(l) || isNaN(c) || isNaN(h)) return null;
+    return internal.oklchToRgb({l: clamp$6(l, 0, 1), c: Math.max(c, 0), h: h});
+  }
+
+  function parseNumberOrPercent(arg, pctScale) {
+    if (arg == 'none') return 0;
+    if (!/^-?[0-9.]+%?$/.test(arg) || !isFinite(parseFloat(arg))) return NaN;
+    return /%$/.test(arg) ? parseFloat(arg) / 100 * pctScale : parseFloat(arg);
+  }
+
+  // degrees, from a number or an angle with a CSS unit
+  function parseHue(arg) {
+    var match = /^(-?[0-9.]+)(deg|rad|grad|turn)?$/.exec(arg);
+    var val, unit;
+    if (!match) return NaN;
+    val = parseFloat(match[1]);
+    unit = match[2] || 'deg';
+    if (unit == 'rad') val = val * 180 / Math.PI;
+    if (unit == 'grad') val = val * 0.9;
+    if (unit == 'turn') val = val * 360;
+    return ((val % 360) + 360) % 360;
+  }
+
+  // 0-1; the percent sign is optional, as in the space-separated syntax
+  function parsePercent(arg) {
+    if (!/^-?[0-9.]+%?$/.test(arg)) return NaN;
+    return clamp$6(parseFloat(arg), 0, 100) / 100;
+  }
+
+  function hslToRgb(h, s, l) {
+    var c = (1 - Math.abs(2 * l - 1)) * s;
+    var x = c * (1 - Math.abs((h / 60) % 2 - 1));
+    var m = l - c / 2;
+    var rgb = h < 60 ? [c, x, 0] :
+      h < 120 ? [x, c, 0] :
+      h < 180 ? [0, c, x] :
+      h < 240 ? [0, x, c] :
+      h < 300 ? [x, 0, c] : [c, 0, x];
+    return {r: (rgb[0] + m) * 255, g: (rgb[1] + m) * 255, b: (rgb[2] + m) * 255};
+  }
+
+  function rgbToHsl(rgb) {
+    var r = rgb.r / 255, g = rgb.g / 255, b = rgb.b / 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b);
+    var d = max - min;
+    var l = (max + min) / 2;
+    var h = 0, s = 0;
+    if (d > 0) {
+      s = d / (1 - Math.abs(2 * l - 1));
+      if (max == r) h = ((g - b) / d + 6) % 6;
+      else if (max == g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+    }
+    return {h: h, s: s, l: l};
+  }
+
+  function round$2(val, decimals) {
+    var k = Math.pow(10, decimals);
+    return Math.round(val * k) / k;
+  }
+
+  function formatHex(rgb) {
+    return internal.formatColor({r: rgb.r, g: rgb.g, b: rgb.b, a: 1});
+  }
+
+  function clamp$6(val, min, max) {
+    return Math.max(min, Math.min(max, val));
+  }
+
   var grayscaleColorPresets = [
     '#000000', '#111111', '#222222', '#333333',
     '#444444', '#555555', '#666666', '#777777',
@@ -15880,17 +16201,23 @@
   // this holds at most one entry.
   var openPickers = [];
 
+  // The format color fields show colors in, chosen with the picker's tabs. It
+  // is shared by every picker, so it carries over from one to the next.
+  var colorFieldFormat = 'hex';
+
   function closeOpenPickers(except) {
     openPickers.slice().forEach(function(picker) {
       if (picker !== except) picker.hide();
     });
   }
 
+  // opts.presetRows   rows of preset colors; [] for none
+  // opts.onPreview(hex), opts.onChange(hex), opts.onHide()
   function ColorPicker(parent, opts) {
     opts = opts || {};
     var self = this;
     var colorPicker = El('div').addClass('label-color-picker').appendTo(parent).hide();
-    var sbCanvas, hueCanvas, sbMarker, hueMarker, pickerHsbInputs;
+    var sbCanvas, hueCanvas, sbMarker, hueMarker, colorInput, formatTabs;
     var pickerColor = {h: 0, s: 0, b: 0};
     // The hex value the picker was set to, until it is moved off it. HSB is
     // held in bytes, which cannot represent every RGB colour, so a colour that
@@ -15907,17 +16234,29 @@
       } else {
         closeOpenPickers(self);
         colorPicker.show();
+        setPanelRaised(true);
         positionPicker();
         drawColorPicker();
+        updatePickerFields();
         if (openPickers.indexOf(self) == -1) openPickers.push(self);
       }
     };
 
     this.hide = function() {
+      var wasVisible = colorPicker.visible();
       colorPicker.hide();
+      setPanelRaised(false);
       var i = openPickers.indexOf(self);
       if (i > -1) openPickers.splice(i, 1);
+      if (wasVisible && opts.onHide) opts.onHide();
     };
+
+    // The picker's z-index only places it within its panel, which is a stacking
+    // context of its own (see .label-style-panel.color-picker-open).
+    function setPanelRaised(raised) {
+      var panel = colorPicker.node().closest('.label-style-panel');
+      if (panel) panel.classList.toggle('color-picker-open', raised);
+    }
 
     this.visible = function() {
       return colorPicker.visible();
@@ -15960,14 +16299,14 @@
       var hueWrap = El('div').addClass('label-color-canvas-wrap').appendTo(colorPicker);
       hueCanvas = El('canvas').attr('width', '256').attr('height', '18').appendTo(hueWrap);
       hueMarker = makePickerMarker().appendTo(hueWrap);
-      renderPresetRows(colorPicker);
-      pickerHsbInputs = {};
-      var hsbRow = El('div').addClass('label-color-picker-fields').appendTo(colorPicker);
-      addPickerNumberInput(hsbRow, 'h', 'H');
-      addPickerNumberInput(hsbRow, 's', 'S');
-      addPickerNumberInput(hsbRow, 'b', 'B');
-      El('button').appendTo(hsbRow).text('Close').on('click', function() {
-        colorPicker.hide();
+      if (presetRows.length > 0) renderPresetRows(colorPicker);
+      // a field for a typed or pasted color, with tabs for the format it shows
+      // colors in
+      addFormatTabs(colorPicker);
+      var fieldRow = El('div').addClass('label-color-picker-fields').appendTo(colorPicker);
+      addColorInput(fieldRow);
+      El('button').appendTo(fieldRow).text('Close').on('click', function() {
+        self.hide();
       });
       sbCanvas.on('mousedown', function(e) {
         startCanvasDrag(e, updateSbFromEvent);
@@ -16002,24 +16341,48 @@
       commitPickerColor();
     }
 
-    function addPickerNumberInput(row, name, label) {
-      var wrapper = El('label').appendTo(row);
-      El('span').appendTo(wrapper).text(label);
-      pickerHsbInputs[name] = El('input')
-        .attr('type', 'text')
-        .appendTo(wrapper)
-        .on('change', function() {
-          var h = parseNumberField(pickerHsbInputs.h.node().value);
-          var s = parseNumberField(pickerHsbInputs.s.node().value);
-          var b = parseNumberField(pickerHsbInputs.b.node().value);
-          if (!isFinite(h) || !isFinite(s) || !isFinite(b)) return;
-          setPickerColor({
-            h: degreesToByte(h),
-            s: pctToByte(s),
-            b: pctToByte(b)
+    function addFormatTabs(parent) {
+      var row = El('div').addClass('label-color-format-tabs').attr('role', 'group')
+        .attr('aria-label', 'Color format').appendTo(parent);
+      formatTabs = colorInputFormats.map(function(format) {
+        return El('button').addClass('label-color-format-tab').attr('type', 'button')
+          .attr('data-format', format.name).text(format.label).appendTo(row)
+          .on('click', function() {
+            colorFieldFormat = format.name;
+            updatePickerFields();
           });
-          commitPickerColor();
+      });
+    }
+
+    // A color is applied when it is pasted, or when the field is left (Enter
+    // leaves it, in the style panels). Whatever was accepted is shown in the
+    // chosen format; something that isn't a color puts the field back.
+    function addColorInput(row) {
+      colorInput = El('input').attr('type', 'text').addClass('label-color-picker-input')
+        .attr('aria-label', 'Color: hex, name, rgb(), hsl() or oklch()')
+        .attr('spellcheck', 'false')
+        .appendTo(row)
+        .on('change', applyColorInput)
+        .on('paste', function() {
+          setTimeout(applyColorInput, 0);
         });
+      colorInput.node().addEventListener('keydown', function(e) {
+        if (e.key == 'Escape') updatePickerFields();
+      });
+    }
+
+    function applyColorInput() {
+      var hex = parseColorInput(colorInput.node().value);
+      if (!hex) {
+        updatePickerFields();
+        return;
+      }
+      if (hex == getPickerHex()) {
+        updatePickerFields();
+        return;
+      }
+      setPickerColor(hexToHsb(hex), hex);
+      commitPickerColor();
     }
 
     function startCanvasDrag(e, update) {
@@ -16063,17 +16426,17 @@
     function getCanvasPoint(canvas, evt) {
       var rect = canvas.getBoundingClientRect();
       return {
-        x: clamp$4(Math.round((evt.clientX - rect.left) / rect.width * (canvas.width - 1)), 0, canvas.width - 1),
-        y: clamp$4(Math.round((evt.clientY - rect.top) / rect.height * (canvas.height - 1)), 0, canvas.height - 1)
+        x: clamp$5(Math.round((evt.clientX - rect.left) / rect.width * (canvas.width - 1)), 0, canvas.width - 1),
+        y: clamp$5(Math.round((evt.clientY - rect.top) / rect.height * (canvas.height - 1)), 0, canvas.height - 1)
       };
     }
 
     // @hex: the exact colour, when @hsb was made from one
     function setPickerColor(hsb, hex) {
       pickerColor = {
-        h: clamp$4(Math.round(hsb.h), 0, 255),
-        s: clamp$4(Math.round(hsb.s), 0, 255),
-        b: clamp$4(Math.round(hsb.b), 0, 255)
+        h: clamp$5(Math.round(hsb.h), 0, 255),
+        s: clamp$5(Math.round(hsb.s), 0, 255),
+        b: clamp$5(Math.round(hsb.b), 0, 255)
       };
       pickerHex = hex || null;
       drawColorPicker();
@@ -16082,9 +16445,11 @@
     }
 
     function updatePickerFields() {
-      pickerHsbInputs.h.node().value = byteToDegrees(pickerColor.h) + '°';
-      pickerHsbInputs.s.node().value = byteToPct(pickerColor.s) + '%';
-      pickerHsbInputs.b.node().value = byteToPct(pickerColor.b) + '%';
+      colorInput.node().value = formatColorInput(getPickerHex(), colorFieldFormat);
+      formatTabs.forEach(function(tab) {
+        var selected = tab.node().getAttribute('data-format') == colorFieldFormat;
+        tab.classed('selected', selected).attr('aria-pressed', String(selected));
+      });
     }
 
     function drawColorPicker() {
@@ -16210,27 +16575,7 @@
     };
   }
 
-  function byteToPct(val) {
-    return Math.round(val / 255 * 100);
-  }
-
-  function pctToByte(val) {
-    return Math.round(clamp$4(val, 0, 100) / 100 * 255);
-  }
-
-  function byteToDegrees(val) {
-    return Math.round(val / 255 * 360);
-  }
-
-  function degreesToByte(val) {
-    return Math.round(clamp$4(val, 0, 360) / 360 * 255);
-  }
-
-  function parseNumberField(str) {
-    return Number(String(str).replace(/[°%]/g, '').trim());
-  }
-
-  function clamp$4(val, min, max) {
+  function clamp$5(val, min, max) {
     return isFinite(val) ? Math.max(min, Math.min(max, val)) : min;
   }
 
@@ -20681,8 +21026,1787 @@
     return val === undefined || val === null || String(val).trim() === '';
   }
 
+  // The state behind the color scheme panel, as plain objects and functions
+  // that return new ones. See docs/development/color-scheme-panel-design.md
+  //
+  // A sequential scheme is either a preset (a named d3 ramp, possibly reversed)
+  // or a custom ramp defined by pins ([{t, color}], see src/color/color-ramps.mjs).
+  // Editing a tile of a preset turns it into a custom ramp, pinned at the
+  // preset's two ends and at the edited tile.
+  //
+  // A categorical scheme is a palette of swatches, either a d3 categorical
+  // scheme (in its own order, or rearranged) or a custom list, of which the
+  // first n are used. Its 'categorical' method gives each unique value of the
+  // field a swatch, taking them in turn (so there are never more swatches in
+  // use than values); 'non-adjacent' has no field, and colors neighboring
+  // polygons differently. Editing a swatch of a preset turns it into a custom
+  // list.
+  //
+  // A diverging scheme is a ramp of 2K+1 tiles: K tiles on either side of a
+  // center color, where K is the number of classes on the longer side of the
+  // pivot. The shorter side uses the tiles nearest the center, and the center
+  // tile colors the pivot class (if there is one). How many classes each side
+  // has depends on the data, so the scheme keeps the layout that -classify
+  // will find (see updateDivergingLayout()). A custom diverging ramp is pinned
+  // at its ends and its center.
+  //
+  // A continuous sequential or diverging scheme gives unclassed colors: its
+  // tiles are color stops, at the data's min, the class breaks and its max,
+  // with colors interpolated between them. Each side of a diverging scheme is
+  // a ramp of its own, a tile longer than its classes (so K is the longer
+  // side's classes + 1); the center tile is used only by a pivot class, which
+  // is a flat band of the center color.
+  //
+  // scheme: {
+  //   type: 'sequential', 'diverging' or 'categorical',
+  //   field, method, n,                         (n: the number of colors, or for
+  //                                             diverging schemes, of classes:
+  //                                             the total, or per side)
+  //   preset: name or null, reversed: boolean,  (presets)
+  //   pins: [{t, color}] or null,               (custom sequential ramps)
+  //   vibrance, longHue                         (custom sequential ramps, see
+  //                                             getOklchInterpolator())
+  //   order: [...] or null                      (categorical presets: indexes
+  //                                             of the preset's colors, as
+  //                                             rearranged)
+  //   swatches: [...] or null                   (custom categorical lists)
+  //   continuous: boolean                       (sequential and diverging)
+  //   pivot: 'auto', 'median', 'mean' or a number,
+  //   neutral, continuousNeutral: boolean       (a pivot class, for classed
+  //                                             and continuous schemes; see
+  //                                             getSchemeNeutral())
+  //   split: 'size' or 'count'                  (diverging: n is the total
+  //                                             number of classes, split so
+  //                                             they're the same size on both
+  //                                             sides, or the number per side)
+  //   layout: {pivot, neutral, below, above, breaks} or null
+  //                                             (diverging: the classes the
+  //                                             data gives, see
+  //                                             getDivergingLayout())
+  //   nullColor       the color of features with no data (both types; not
+  //                   used by non-adjacent schemes)
+  //   colors: [...]   the colors that were applied, for checking a layer later
+  //   fillHash        continuous schemes: a fingerprint of the fills they gave
+  //                   the layer (interpolated fills aren't the scheme's colors)
+  // }
+
+  var schemeTypes = [
+    {name: 'sequential', label: 'Sequential'},
+    {name: 'diverging', label: 'Diverging'},
+    {name: 'categorical', label: 'Categorical'}
+  ];
+
+  var classifyMethods = [
+    {name: 'quantile', label: 'Quantile'},
+    {name: 'equal-interval', label: 'Equal interval'},
+    {name: 'nice', label: 'Nice breaks'},
+    {name: 'hybrid', label: 'Hybrid'}
+  ];
+
+  var pivotOptions = [
+    {name: 'auto', label: 'Auto (0 or median)'},
+    {name: 'median', label: 'Median'},
+    {name: 'mean', label: 'Mean'},
+    {name: 'value', label: 'Value'}
+  ];
+
+  var divergingSplits = [
+    {name: 'size', label: 'Same class size'},
+    {name: 'count', label: 'Same number of classes'}
+  ];
+
+  var categoricalMethods = [
+    {name: 'categorical', label: 'Categories'},
+    {name: 'non-adjacent', label: 'Non-adjacent'}
+  ];
+
+  // -classify's default null value for colors, as hex
+  var defaultNullColor = '#eeeeee';
+
+  var minSchemeColors = 2;
+  var maxSchemeColors = 12;
+  var maxCategoricalColors = 20;
+  var defaultCategoricalPreset = 'Tableau10';
+  var defaultNonAdjacentColors = 5;
+  var defaultDivergingPreset = 'RdBu';
+  var defaultDivergingClasses = 7;
+  var defaultDivergingSideClasses = 3;
+  var maxDivergingSideClasses = 6;
+  // colors for growing a custom categorical list past the palette it came from
+  var extraSwatchSource = 'Tableau20';
+  // vibrance is OKLCH chroma added to the colors of each interpolated segment
+  // (-classify's vibrance= is the same, scaled to 0-1)
+  var defaultVibrance = 0;
+  var maxVibrance = internal.MAX_VIBRANCE_CHROMA;
+  var defaultEnds = ['#344a72', '#f0d26b'];
+  // Cyclic ramps start and end on the same hue, which reads as a category
+  // rather than an order.
+  var excludedPresets = ['Rainbow', 'Sinebow'];
+
+  // Layers keep the scheme that colored them, so that the panel can reopen it
+  // and the style panel can show it. Undo and redo of a scheme edit put back
+  // the scheme that went with the colors (see the panel's command session).
+  var layerSchemes = new WeakMap();
+
+  function getSequentialPresetNames() {
+    return internal.getColorSchemeNames('sequential')
+      .concat(internal.getColorSchemeNames('rainbow'))
+      .filter(function(name) {
+        return !excludedPresets.includes(name);
+      });
+  }
+
+  function getDivergingPresetNames() {
+    return internal.getColorSchemeNames('diverging');
+  }
+
+  function getCategoricalPresetNames() {
+    return internal.getColorSchemeNames('categorical');
+  }
+
+  // The scheme a panel tab starts with on a layer
+  function getDefaultSchemeOfType(type, lyr) {
+    if (type == 'categorical') return getDefaultCategoricalScheme(lyr);
+    if (type == 'diverging') return getDefaultDivergingScheme(lyr);
+    return getDefaultScheme(getNumericFields(lyr)[0]);
+  }
+
+  function getDefaultDivergingScheme(lyr) {
+    return updateDivergingLayout({
+      type: 'diverging',
+      field: getNumericFields(lyr)[0] || null,
+      method: 'quantile',
+      n: defaultDivergingClasses,
+      split: 'size',
+      pivot: 'auto',
+      neutral: true,
+      preset: defaultDivergingPreset,
+      reversed: false,
+      pins: null,
+      vibrance: defaultVibrance
+    }, lyr);
+  }
+
+  // The layout of a diverging scheme's classes on the layer's data, as
+  // -classify finds it; null if there are no data to classify. Done after
+  // every change that can move the classes (the field, method, pivot, pivot
+  // class, number of classes), and when the panel opens, since the data may
+  // have changed.
+  function updateDivergingLayout(scheme, lyr) {
+    if (scheme.type != 'diverging') return scheme;
+    return Object.assign({}, scheme, {layout: getDivergingLayout(scheme, lyr)});
+  }
+
+  function getDivergingLayout(scheme, lyr) {
+    var values = getAscendingValues(lyr, scheme.field);
+    if (values.length === 0) return null;
+    var neutral = getSchemeNeutral(scheme);
+    try {
+      return internal.getDivergingLayout(values, scheme.method, {
+        pivot: scheme.pivot,
+        continuous: !!scheme.continuous,
+        pivot_class: neutral,
+        no_pivot_class: !neutral,
+        classes: getDivergingClassesOption(scheme)
+      });
+    } catch(e) {
+      return null;
+    }
+  }
+
+  // Whether a diverging scheme has a pivot class. Classed and continuous
+  // schemes each keep their own setting, so that switching between them keeps
+  // both: on by default for classes, off for continuous colors.
+  function getSchemeNeutral(scheme) {
+    return scheme.continuous ? !!scheme.continuousNeutral : scheme.neutral !== false;
+  }
+
+  function isContinuousScheme(scheme) {
+    return scheme.type != 'categorical' && !!scheme.continuous;
+  }
+
+  // A sequential ramp starts with at least this many stops, since -classify
+  // interpolates straight between them, so vibrance and the long hue path
+  // show only at the stops.
+  var minContinuousStartColors = 5;
+
+  function setSchemeContinuous(scheme, continuous) {
+    var next = Object.assign({}, scheme, {continuous: !!continuous});
+    if (continuous && next.type == 'sequential' && next.n < minContinuousStartColors) {
+      next.n = minContinuousStartColors;
+    }
+    return next;
+  }
+
+  function getAscendingValues(lyr, field) {
+    if (!lyr || !lyr.data || !field || !lyr.data.fieldExists(field)) return [];
+    return lyr.data.getRecords().map(function(rec) {
+      return rec ? rec[field] : undefined;
+    }).filter(isFiniteNumber).sort(function(a, b) { return a - b; });
+  }
+
+  // -classify's classes= for a diverging scheme
+  function getDivergingClassesOption(scheme) {
+    return scheme.split == 'count' ? [scheme.n, scheme.n] : scheme.n;
+  }
+
+  // The number of tiles of a ramp: for a diverging scheme, the center tile and
+  // enough on each side for the longer side's classes (or a continuous
+  // side's stops)
+  function getRampSize(scheme) {
+    var layout = scheme.layout;
+    var k;
+    if (scheme.type != 'diverging') return scheme.n;
+    k = layout ? Math.max(layout.below, layout.above) :
+      scheme.split == 'count' ? scheme.n : Math.floor(scheme.n / 2);
+    k = scheme.continuous ? k + 1 : Math.max(k, 1);
+    return k * 2 + 1;
+  }
+
+  // The numbers of tiles that each side of a diverging scheme uses
+  function getSideTiles(scheme) {
+    var layout = scheme.layout;
+    if (!scheme.continuous) return [layout.below, layout.above];
+    return [internal.getContinuousSideStops(layout.below), internal.getContinuousSideStops(layout.above)];
+  }
+
+  // One boolean per tile of a diverging scheme: whether a class (or a color
+  // stop) uses it
+  function getDivergingTileUse(scheme) {
+    var size = getRampSize(scheme);
+    var k = (size - 1) / 2;
+    var layout = scheme.layout;
+    var sides = layout ? getSideTiles(scheme) : [0, 0];
+    var use = [];
+    for (var i=0; i<size; i++) {
+      use.push(!!layout && (i < k ? i >= k - sides[0] : i > k ? i <= k + sides[1] : !!layout.neutral));
+    }
+    return use;
+  }
+
+  // The data value at each tile of a continuous scheme: {value, min, max}
+  // (min and max: the value is the data's min or max), or for a diverging
+  // scheme's center tile, the pivot class's range: {range}. Tiles that no stop
+  // uses are null. Returns null if there are no data.
+  function getContinuousTileStops(scheme, lyr) {
+    var values, breaks, layout, stops, k, tiles;
+    if (scheme.type == 'sequential') {
+      values = getAscendingValues(lyr, scheme.field);
+      if (values.length === 0) return null;
+      try {
+        breaks = internal.getSequentialBreaks(values, scheme.method, scheme.n - 2);
+      } catch(e) {
+        return null;
+      }
+      return markDataRange([values[0]].concat(breaks, [values[values.length - 1]]), values);
+    }
+    layout = scheme.layout;
+    if (!layout) return null;
+    stops = internal.getDivergingStops(layout);
+    k = (getRampSize(scheme) - 1) / 2;
+    tiles = new Array(k * 2 + 1).fill(null);
+    markDataRange(stops.below, layout.dataRange).forEach(function(stop, i) {
+      tiles[k - stops.below.length + i] = stop;
+    });
+    if (layout.neutral) tiles[k] = {range: layout.neutral};
+    markDataRange(stops.above, layout.dataRange).forEach(function(stop, i) {
+      tiles[k + 1 + i] = stop;
+    });
+    return tiles;
+  }
+
+  // range: ascending values, of which the first is the min and the last the max
+  function markDataRange(stops, range) {
+    var min = range[0], max = range[range.length - 1];
+    return stops.map(function(val) {
+      return {value: val, min: val == min, max: val == max};
+    });
+  }
+
+  // The gradients to draw over the tiles of a continuous scheme, in order:
+  // [{start, end, flatStart, flatEnd, samples: [{pos, color}]}], with positions
+  // in tiles (0 is the center of the first tile, 1 of the second...). A
+  // gradient runs from stop to stop, and holds its end colors over the outer
+  // halves of its end tiles (flatStart, flatEnd) -- except where the data ends
+  // between two stops (the shorter side of an equal-interval or nice
+  // diverging scheme). A pivot class is a gradient of one color, over its
+  // tile. The samples are of the interpolation -classify does between the
+  // stops (samplesPerTile to each pair).
+  function getContinuousSegments(scheme, samplesPerTile) {
+    var colors = getSchemeColors(scheme);
+    var layout = scheme.layout;
+    var steps = samplesPerTile || 6;
+    var segments = [];
+    var stops, k, first, last;
+    if (!isContinuousScheme(scheme)) return [];
+    if (scheme.type == 'sequential') {
+      return [makeSegment(colors, 0, 0, colors.length - 1, steps)];
+    }
+    if (!layout) return [];
+    stops = internal.getDivergingStops(layout);
+    k = (colors.length - 1) / 2;
+    if (stops.below.length > 0) {
+      first = k - stops.below.length;
+      segments.push(makeSegment(colors.slice(first, k), first,
+        first + internal.getStopPosition(stops.below, layout.dataRange[0]), k - 1, steps));
+    }
+    if (layout.neutral) {
+      segments.push(makeSegment([colors[k]], k, k, k, steps));
+    }
+    if (stops.above.length > 0) {
+      last = k + stops.above.length;
+      segments.push(makeSegment(colors.slice(k + 1, last + 1), k + 1,
+        k + 1, k + 1 + internal.getStopPosition(stops.above, layout.dataRange[1]), steps));
+    }
+    return segments;
+  }
+
+  // colors: the stops' colors, the first at tile first
+  // start, end: where the gradient starts and ends, in tiles
+  function makeSegment(colors, first, start, end, steps) {
+    var last = first + colors.length - 1;
+    var getColor = colors.length > 1 ?
+      internal.getInterpolatedValueGetter(colors, null, {interpolation: 'oklch'}) : null;
+    var samples = [];
+    var sample = function(pos) {
+      samples.push({pos: pos, color: getColor ? toHex(getColor(pos - first)) : colors[0]});
+    };
+    sample(start);
+    for (var i=Math.floor(start * steps) + 1; i / steps < end; i++) {
+      sample(i / steps);
+    }
+    if (end > start) sample(end);
+    return {start: start, end: end, flatStart: start == first, flatEnd: end == last, samples: samples};
+  }
+
+  // The data range of each class of a diverging layout, in class order:
+  // [low, high), with -Infinity and Infinity at the outer ends
+  function getDivergingClassRanges(layout) {
+    return getBreakRanges(layout ? layout.breaks : []);
+  }
+
+  // The data range of each class of a sequential scheme, as -classify finds
+  // them (see getDivergingClassRanges()), or null if there are no data
+  function getSequentialClassRanges(scheme, lyr) {
+    var values = getAscendingValues(lyr, scheme.field);
+    if (values.length === 0) return null;
+    try {
+      return getBreakRanges(internal.getSequentialBreaks(values, scheme.method, scheme.n - 1));
+    } catch(e) {
+      return null;
+    }
+  }
+
+  function getBreakRanges(breaks) {
+    var ranges = [];
+    for (var i=0; i<=breaks.length; i++) {
+      ranges.push([i > 0 ? breaks[i - 1] : -Infinity, i < breaks.length ? breaks[i] : Infinity]);
+    }
+    return ranges;
+  }
+
+  // How the data falls around the pivot of a diverging scheme:
+  // {pivot, below, above} (features below the pivot, and at or above it)
+  function getPivotSummary(scheme, lyr) {
+    var values = getAscendingValues(lyr, scheme.field);
+    var pivot = scheme.layout ? scheme.layout.pivot : null;
+    if (pivot === null) return null;
+    return {
+      pivot: pivot,
+      below: values.filter(function(val) { return val < pivot; }).length,
+      above: values.filter(function(val) { return val >= pivot; }).length
+    };
+  }
+
+  // pivot: 'auto', 'median', 'mean' or a number
+  function setSchemePivot(scheme, pivot) {
+    return Object.assign({}, scheme, {pivot: pivot});
+  }
+
+  // sets the pivot class of the scheme's mode (see getSchemeNeutral())
+  function setSchemeNeutral(scheme, neutral) {
+    return Object.assign({}, scheme, scheme.continuous ? {continuousNeutral: !!neutral} : {neutral: !!neutral});
+  }
+
+  // Switching between a total and a number per side starts over with the
+  // default number
+  function setSchemeSplit(scheme, split) {
+    if (scheme.split == split) return scheme;
+    return Object.assign({}, scheme, {
+      split: split,
+      n: split == 'count' ? defaultDivergingSideClasses : defaultDivergingClasses
+    });
+  }
+
+  // By the first text field, or else the first field that can be classified
+  // by value, or else non-adjacent
+  function getDefaultCategoricalScheme(lyr) {
+    var fields = getCategoryFields(lyr);
+    var records = lyr && lyr.data ? lyr.data.getRecords() : [];
+    var field = fields.find(function(name) {
+      return internal.getColumnType(name, records) == 'string';
+    }) || fields[0] || null;
+    var scheme = {
+      type: 'categorical',
+      field: field,
+      method: field ? 'categorical' : 'non-adjacent',
+      n: defaultNonAdjacentColors,
+      preset: defaultCategoricalPreset,
+      order: null,
+      swatches: null
+    };
+    return field ? setSchemeField(scheme, field, getCategories(lyr, field).length) : scheme;
+  }
+
+  function getMinSchemeColors(scheme) {
+    return scheme.type == 'diverging' && scheme.split == 'count' ? 1 : minSchemeColors;
+  }
+
+  function getSchemeMethods(scheme) {
+    return scheme.type == 'categorical' ? categoricalMethods : classifyMethods;
+  }
+
+  // count: the number of categories, for the categorical method
+  function getMaxSchemeColors(scheme, count) {
+    var max = maxSchemeColors;
+    if (scheme.type == 'diverging' && scheme.split == 'count') return maxDivergingSideClasses;
+    if (scheme.type != 'categorical') return max;
+    max = scheme.preset ? internal.getCategoricalColors(scheme.preset).length : maxCategoricalColors;
+    if (scheme.method == 'categorical' && count >= 0) {
+      max = Math.min(max, Math.max(count, minSchemeColors));
+    }
+    return max;
+  }
+
+  function clampColorCount(scheme, n, count) {
+    var min = getMinSchemeColors(scheme);
+    return clamp$4(Math.round(n) || min, min, getMaxSchemeColors(scheme, count));
+  }
+
+  // A new field for a categorical scheme gets a swatch for each of its values,
+  // up to as many as the palette has.
+  // count: the number of categories in the field
+  function setSchemeField(scheme, field, count) {
+    var next = Object.assign({}, scheme, {field: field});
+    if (next.type == 'categorical' && next.method == 'categorical') {
+      next.n = clampColorCount(next, count, count);
+    }
+    return next;
+  }
+
+  // field, count: the field to use, and its number of categories, when a
+  // categorical scheme changes to the categorical method
+  function setSchemeMethod(scheme, method, field, count) {
+    var next = Object.assign({}, scheme, {method: method});
+    if (next.type != 'categorical') return next;
+    if (method == 'categorical') {
+      return setSchemeField(next, next.field || field, count);
+    }
+    return setTileCount(next, defaultNonAdjacentColors);
+  }
+
+  // Fields that a categorical scheme can classify: text and numbers. The
+  // fill field is left out, since the scheme writes over it.
+  function getCategoryFields(lyr) {
+    var records = lyr && lyr.data ? lyr.data.getRecords() : [];
+    if (!lyr || !lyr.data) return [];
+    return lyr.data.getFields().filter(function(field) {
+      var type = internal.getColumnType(field, records);
+      return field != 'fill' && (type == 'string' || type == 'number');
+    });
+  }
+
+  // The values of a field, in the order -classify gives them swatches. Empty
+  // values are left out, as -classify leaves them out: they are no data.
+  function getCategories(lyr, field) {
+    if (!lyr || !lyr.data || !field || !lyr.data.fieldExists(field)) return [];
+    return internal.getUniqFieldValues(lyr.data.getRecords(), field).filter(isCategoryValue);
+  }
+
+  // The same test as -classify's (0 is a value; null, undefined, '' and NaN
+  // are not)
+  function isCategoryValue(val) {
+    return !!val || val === 0;
+  }
+
+  // How many features the scheme gives the no-data color
+  function getNoDataCount(lyr, scheme) {
+    var records, test;
+    if (!lyr || !lyr.data || !scheme.field || scheme.method == 'non-adjacent' ||
+        !lyr.data.fieldExists(scheme.field)) return 0;
+    records = lyr.data.getRecords();
+    test = scheme.type == 'categorical' ? isCategoryValue : isFiniteNumber;
+    return records.filter(function(rec) {
+      return !test(rec ? rec[scheme.field] : undefined);
+    }).length;
+  }
+
+  function isFiniteNumber(val) {
+    return typeof val == 'number' && isFinite(val);
+  }
+
+  function getSchemeNullColor(scheme) {
+    return scheme.nullColor || defaultNullColor;
+  }
+
+  // An empty or unreadable color is the default
+  function setSchemeNullColor(scheme, color) {
+    var rgb = color ? internal.parseColor(color) : null;
+    return Object.assign({}, scheme, {nullColor: rgb ? internal.formatColor(rgb) : defaultNullColor});
+  }
+
+  // The categories each swatch colors, as -classify assigns them
+  function getSwatchCategories(categories, n) {
+    var groups = [];
+    for (var i=0; i<n; i++) groups.push([]);
+    categories.forEach(function(val, i) {
+      groups[i % n].push(val);
+    });
+    return groups;
+  }
+
+  function getDefaultScheme(field) {
+    return {
+      type: 'sequential',
+      field: field || null,
+      method: 'quantile',
+      n: 5,
+      preset: null,
+      reversed: false,
+      pins: [{t: 0, color: defaultEnds[0]}, {t: 1, color: defaultEnds[1]}],
+      vibrance: defaultVibrance
+    };
+  }
+
+  function getSchemeColors(scheme) {
+    return getSchemeTiles(scheme).map(function(tile) {
+      return tile.color;
+    });
+  }
+
+  // One object per tile: {color, pinned, adjusted, ...}, where adjusted means
+  // an interpolated color was moved to fit the sRGB gamut (see resolveRampTiles())
+  function getSchemeTiles(scheme) {
+    var colors;
+    if (scheme.type == 'categorical') {
+      return getCategoricalPalette(scheme).slice(0, scheme.n).map(function(color) {
+        return {color: color, pinned: false, adjusted: false};
+      });
+    }
+    if (scheme.preset) {
+      colors = getPresetColors(scheme.preset, getRampSize(scheme));
+      if (scheme.reversed) colors.reverse();
+      return colors.map(function(color) {
+        return {color: color, pinned: false, adjusted: false};
+      });
+    }
+    return internal.resolveRampTiles(scheme.pins, getRampSize(scheme), {
+      vibrance: getSchemeVibrance(scheme),
+      hue: scheme.longHue && scheme.type != 'diverging' ? 'longer' : 'shorter'
+    });
+  }
+
+  function getSchemeVibrance(scheme) {
+    return scheme.vibrance >= 0 ? scheme.vibrance : defaultVibrance;
+  }
+
+  function setSchemeVibrance(scheme, vibrance) {
+    vibrance = clamp$4(+vibrance || 0, 0, maxVibrance);
+    return Object.assign({}, scheme, {vibrance: vibrance});
+  }
+
+  // longHue: hues go the long way around the color wheel between pinned colors
+  function setSchemeLongHue(scheme, longHue) {
+    return Object.assign({}, scheme, {longHue: !!longHue});
+  }
+
+  function clamp$4(val, min, max) {
+    return Math.min(Math.max(val, min), max);
+  }
+
+  function getPresetColors(name, n) {
+    return internal.getColorRamp(name, n).map(toHex);
+  }
+
+  // All the swatches of a categorical scheme, in order: the first n are used
+  function getCategoricalPalette(scheme) {
+    var colors;
+    if (!scheme.preset) return scheme.swatches.concat();
+    colors = getCategoricalPresetColors(scheme.preset);
+    if (!scheme.order) return colors;
+    return scheme.order.map(function(i) { return colors[i]; });
+  }
+
+  function getCategoricalPresetColors(name) {
+    return internal.getCategoricalColors(name).map(toHex);
+  }
+
+  // A list of n colors, starting with the given ones and going on with colors
+  // they don't have yet
+  function extendSwatches(colors, n) {
+    var swatches = colors.slice(0, n);
+    getCategoricalPresetColors(extraSwatchSource).forEach(function(color) {
+      if (swatches.length < n && !swatches.includes(color)) {
+        swatches.push(color);
+      }
+    });
+    return internal.wrapColors(swatches, n);
+  }
+
+  // One boolean per tile: whether the user set its color.
+  function getPinnedTiles(scheme) {
+    if (scheme.preset || scheme.type == 'categorical') {
+      return new Array(getRampSize(scheme)).fill(false);
+    }
+    return internal.getPinnedSlots(scheme.pins, getRampSize(scheme)).map(function(pinId) {
+      return pinId > -1;
+    });
+  }
+
+  // count: the number of categories, for a categorical scheme
+  function choosePreset(scheme, name, count) {
+    var next;
+    if (scheme.type == 'categorical') {
+      next = Object.assign({}, scheme, {preset: name, order: null, swatches: null});
+      next.n = clampColorCount(next, next.n, count);
+      return next;
+    }
+    return Object.assign({}, scheme, {preset: name, reversed: false, pins: null});
+  }
+
+  // A preset as a custom ramp, pinned at its ends, for editing.
+  function makeSchemeCustom(scheme) {
+    var colors;
+    if (!scheme.preset) return scheme;
+    if (scheme.type == 'categorical') {
+      return Object.assign({}, scheme, {preset: null, order: null, swatches: getCategoricalPalette(scheme)});
+    }
+    colors = getSchemeColors(scheme);
+    return Object.assign({}, scheme, {
+      preset: null,
+      reversed: false,
+      pins: scheme.type == 'diverging' ?
+        [{t: 0, color: colors[0]}, {t: 0.5, color: colors[(colors.length - 1) / 2]},
+          {t: 1, color: colors[colors.length - 1]}] :
+        [{t: 0, color: colors[0]}, {t: 1, color: colors[colors.length - 1]}]
+    });
+  }
+
+  // The center tile of a diverging ramp, which stays pinned
+  function getCenterTile(scheme) {
+    return scheme.type == 'diverging' ? (getRampSize(scheme) - 1) / 2 : -1;
+  }
+
+  // The color to edit for tile i: a pinned tile's own color, which vibrance
+  // may have raised in the ramp, or else the tile's color
+  function getTileEditColor(scheme, i) {
+    var slot = scheme.preset || scheme.type == 'categorical' ? -1 :
+      internal.getPinnedSlots(scheme.pins, getRampSize(scheme))[i];
+    if (slot > -1) return toHex(scheme.pins[slot].color);
+    return getSchemeColors(scheme)[i];
+  }
+
+  function setTileColor(scheme, i, color) {
+    var custom = makeSchemeCustom(scheme);
+    var swatches;
+    if (custom.type == 'categorical') {
+      swatches = custom.swatches.concat();
+      swatches[i] = toHex(color);
+      return Object.assign({}, custom, {swatches: swatches});
+    }
+    return Object.assign({}, custom, {
+      pins: internal.setRampPin(custom.pins, getRampSize(custom), i, toHex(color))
+    });
+  }
+
+  function clearTileColor(scheme, i) {
+    if (scheme.preset || scheme.type == 'categorical' || i == getCenterTile(scheme)) return scheme;
+    return Object.assign({}, scheme, {
+      pins: internal.clearRampPin(scheme.pins, getRampSize(scheme), i)
+    });
+  }
+
+  // A custom categorical list grows to have at least n swatches.
+  // count: the number of categories, for a categorical scheme
+  function setTileCount(scheme, n, count) {
+    var next = Object.assign({}, scheme, {n: clampColorCount(scheme, n, count)});
+    if (next.type == 'categorical' && !next.preset && next.swatches.length < next.n) {
+      next.swatches = extendSwatches(next.swatches, next.n);
+    }
+    return next;
+  }
+
+  // Moves a categorical swatch to a new place in the palette. Moving one
+  // into the swatches in use pushes the last of them out of use, and moving one
+  // out of use brings the first unused one in.
+  // to: the swatch's index after the move
+  function moveSwatch(scheme, from, to) {
+    return rearrangeSwatches(scheme, function(items) {
+      var item = items.splice(from, 1)[0];
+      items.splice(to, 0, item);
+      return items;
+    });
+  }
+
+  // Shuffles all of a categorical palette's swatches, in use or not, into a
+  // new order.
+  // random: a function like Math.random (for testing)
+  function shuffleScheme(scheme, random) {
+    var rand = random || Math.random;
+    return rearrangeSwatches(scheme, function(items) {
+      var shuffled, tries = 0;
+      do {
+        shuffled = shuffle(items.concat(), rand);
+      } while (items.length > 1 && ++tries < 10 && shuffled.every(function(item, i) {
+        return item == items[i];
+      }));
+      return shuffled;
+    });
+  }
+
+  function shuffle(arr, rand) {
+    var j, tmp;
+    for (var i=arr.length - 1; i>0; i--) {
+      j = Math.floor(rand() * (i + 1));
+      tmp = arr[i];
+      arr[i] = arr[j];
+      arr[j] = tmp;
+    }
+    return arr;
+  }
+
+  // Presets are rearranged by index, so that they keep their name
+  function rearrangeSwatches(scheme, rearrange) {
+    var order;
+    if (scheme.type != 'categorical') return scheme;
+    if (!scheme.preset) {
+      return Object.assign({}, scheme, {swatches: rearrange(scheme.swatches.concat())});
+    }
+    order = scheme.order || getCategoricalPresetColors(scheme.preset).map(function(c, i) { return i; });
+    return Object.assign({}, scheme, {order: rearrange(order.concat())});
+  }
+
+  function reverseScheme(scheme) {
+    if (scheme.type == 'categorical') return scheme;
+    if (scheme.preset) {
+      return Object.assign({}, scheme, {reversed: !scheme.reversed});
+    }
+    return Object.assign({}, scheme, {
+      pins: scheme.pins.map(function(pin) {
+        return {t: 1 - pin.t, color: pin.color};
+      }).reverse()
+    });
+  }
+
+  // The colors to give -classify: no more than there are categories, for the
+  // categorical method. A diverging scheme gives all its tiles, from which
+  // -classify takes the same ones the classes use here (see
+  // getDivergingClassValues()).
+  // count: the number of categories
+  function getAppliedColors(scheme, count) {
+    var colors = getSchemeColors(scheme);
+    if (scheme.type == 'categorical' && scheme.method == 'categorical' && count > 0) {
+      colors = colors.slice(0, count);
+    }
+    return colors;
+  }
+
+  // opts.target  a -target value, when the layer is not the active one
+  function formatSchemeCommand(scheme, colors, opts) {
+    var parts = ['-classify'];
+    if (scheme.method != 'non-adjacent') {
+      parts.push('field=' + quoteCommandValue(scheme.field));
+    }
+    parts.push('method=' + scheme.method);
+    if (scheme.type == 'diverging') {
+      parts.push('pivot=' + scheme.pivot, 'classes=' + getDivergingClassesOption(scheme));
+      // continuous output has no pivot class by default, classes have one
+      if (!getSchemeNeutral(scheme)) parts.push('no-pivot-class');
+      else if (scheme.continuous) parts.push('pivot-class');
+    } else if (isContinuousScheme(scheme)) {
+      parts.push('classes=' + (scheme.n - 1));
+    }
+    if (isContinuousScheme(scheme)) {
+      // the tiles already have their vibrance, so no vibrance=
+      parts.push('continuous', 'interpolation=oklch');
+    }
+    parts.push('colors=' + colors.join(','));
+    if (scheme.method != 'non-adjacent' && getSchemeNullColor(scheme) != defaultNullColor) {
+      parts.push('null-value=' + getSchemeNullColor(scheme));
+    }
+    if (opts && opts.target) {
+      parts.push('target=' + opts.target);
+    }
+    return parts.join(' ');
+  }
+
+  function getNumericFields(lyr) {
+    var records = lyr && lyr.data ? lyr.data.getRecords() : [];
+    if (!lyr || !lyr.data) return [];
+    return lyr.data.getFields().filter(function(field) {
+      return internal.getColumnType(field, records) == 'number';
+    });
+  }
+
+  function setLayerScheme(lyr, scheme) {
+    if (!lyr) return;
+    if (scheme) {
+      layerSchemes.set(lyr, scheme);
+    } else {
+      layerSchemes.delete(lyr);
+    }
+  }
+
+  // The scheme that colored a layer, or null if it has none, or if its fills
+  // have since been changed some other way.
+  function getLayerScheme(lyr) {
+    var scheme = lyr ? layerSchemes.get(lyr) : null;
+    if (!scheme || !schemeMatchesLayer(scheme, lyr)) return null;
+    return scheme;
+  }
+
+  // Checked from the data rather than kept in step with every edit, so that
+  // anything that changes the fills -- a -style command, a typed fill color,
+  // an undo past the scheme -- retires it.
+  function schemeMatchesLayer(scheme, lyr) {
+    var records, colors, val;
+    if (!lyr || !lyr.data || !scheme.colors) return false;
+    if (scheme.method != 'non-adjacent' && !lyr.data.fieldExists(scheme.field)) return false;
+    if (isContinuousScheme(scheme)) {
+      return !!scheme.fillHash && scheme.fillHash == getFillFingerprint(lyr);
+    }
+    colors = scheme.colors.map(function(c) { return c.toLowerCase(); });
+    records = lyr.data.getRecords();
+    for (var i=0; i<records.length; i++) {
+      val = records[i] && records[i].fill;
+      if (!val || (!colors.includes(String(val).toLowerCase()) && !isNullFill(val, scheme))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // A scheme as applied to a layer, with what's needed to check it later
+  // colors: the colors given to -classify
+  function getAppliedScheme(scheme, colors, lyr) {
+    var applied = Object.assign({}, scheme, {colors: colors});
+    if (isContinuousScheme(scheme)) {
+      applied.fillHash = getFillFingerprint(lyr);
+    } else {
+      delete applied.fillHash;
+    }
+    return applied;
+  }
+
+  // A hash of a layer's fill values (FNV-1a, 32 bits)
+  function getFillFingerprint(lyr) {
+    var records = lyr && lyr.data ? lyr.data.getRecords() : [];
+    var hash = 0x811c9dc5;
+    var str;
+    for (var i=0; i<records.length; i++) {
+      str = String(records[i] ? records[i].fill : '') + '\n';
+      for (var j=0; j<str.length; j++) {
+        hash ^= str.charCodeAt(j);
+        hash = Math.imul(hash, 0x01000193);
+      }
+    }
+    return records.length + ':' + (hash >>> 0).toString(16);
+  }
+
+  function isNullFill(val, scheme) {
+    var color = getSchemeNullColor(scheme);
+    val = String(val).toLowerCase();
+    // -classify writes its default as #eee
+    return val == color || color == defaultNullColor && val == '#eee';
+  }
+
+  function toHex(color) {
+    return internal.formatColor(internal.parseColor(color));
+  }
+
+  // A popup beside the polygon style panel for coloring a layer's fills by a
+  // data field, with -classify. Edits are applied as they are made, in a command
+  // session, so that the whole time the panel is open on a layer is one undo
+  // state and one command in the session history.
+  // See docs/development/color-scheme-panel-design.md
+  //
+  // opts.getExtraCommands()  commands to run after -classify, in the same step
+  //                          (the style panel's pattern backgrounds follow the
+  //                          fills)
+  // opts.getSelectionCount() features selected in the style panel
+  // opts.onUpdate()          the scheme or the fills changed
+  // opts.onClose()           the panel was closed
+  var reverseIcon = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M2 4.5h9.5M9 2l2.5 2.5L9 7"/><path d="M12 9.5H2.5M5 7L2.5 9.5 5 12"/></svg>';
+  var shuffleIcon = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M1.5 3.5h2.2c1.4 0 2.3.7 3 2l1.6 3c.7 1.3 1.6 2 3 2h1.2"/>' +
+    '<path d="M1.5 10.5h2.2c1.2 0 2-.5 2.6-1.4M8.2 4.9c.6-.9 1.4-1.4 2.6-1.4h1.7"/>' +
+    '<path d="M11 1.5l1.7 2-1.7 2M11 8.5l1.7 2-1.7 2"/></svg>';
+  var longHueIcon = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M11.5 4.6A5 5 0 1 0 12 7"/><path d="M12 1.8v3h-3"/></svg>';
+  var continuousIcon = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none">' +
+    '<defs><linearGradient id="color-scheme-continuous-icon">' +
+    '<stop offset="0" stop-color="currentColor" stop-opacity="0"/>' +
+    '<stop offset="1" stop-color="currentColor"/></linearGradient></defs>' +
+    '<rect x="1.5" y="3.5" width="11" height="7" rx="1.5" fill="url(#color-scheme-continuous-icon)" ' +
+    'stroke="currentColor" stroke-width="1.2"/></svg>';
+
+  function ColorSchemePanel(gui, opts) {
+    var parent = gui.container.findChild('.mshp-main-map');
+    var panel = El('div').addClass('label-style-panel color-scheme-panel').appendTo(parent).hide();
+    var session = null; // made on first use: the console is made after the panel
+    var targetLayer = null;
+    var scheme = null;
+    var sessionLayer = null; // the layer the session's edits are to
+    var baseScheme = null; // its scheme when they began
+    var selectedTile = -1;
+    // the scheme last used on each tab while the panel is open, for switching back
+    var tabSchemes = {};
+    var tabs = {};
+    var paletteBtn, paletteMenu, countField, tileRow, gradientEl, tilesEl, picker, fieldRow, fieldSelect, methodSelect,
+        noFieldsNote, selectionNote, controlsEl, vibranceRow, vibranceInput,
+        longHueBtn, continuousBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount, countLabel,
+        divergingEl, pivotSelect, pivotInput, pivotNote, neutralToggle, splitSelect;
+    // set while a tile is being dragged, so that letting go isn't a click
+    var tileDrag = null;
+
+    initPanel();
+
+    gui.on('undo_redo_post', function() {
+      var restored;
+      if (!targetLayer) return;
+      restored = getLayerScheme(targetLayer);
+      if (restored) {
+        scheme = updateDivergingLayout(restored, targetLayer);
+        render();
+      } else {
+        close();
+      }
+    });
+
+    this.open = function(lyr) {
+      var fields;
+      if (targetLayer && targetLayer != lyr) close();
+      targetLayer = lyr;
+      selectedTile = -1;
+      tabSchemes = {};
+      scheme = getLayerScheme(lyr);
+      panel.show();
+      if (scheme) {
+        scheme = updateDivergingLayout(scheme, lyr);
+      } else {
+        fields = getNumericFields(lyr);
+        scheme = getDefaultSchemeOfType(fields.length > 0 ? 'sequential' : 'categorical', lyr);
+        if (canApply(scheme)) apply();
+      }
+      render();
+    };
+
+    this.close = close;
+
+    this.isOpen = function() {
+      return !!targetLayer;
+    };
+
+    function close() {
+      var wasOpen = !!targetLayer;
+      picker.hide();
+      nullControl.picker.hide();
+      hidePaletteMenu();
+      panel.hide();
+      targetLayer = null;
+      scheme = null;
+      if (session) session.finish();
+      if (wasOpen && opts.onClose) opts.onClose();
+    }
+
+    function getSession() {
+      if (!session && gui.console && gui.console.createCommandSession) {
+        session = gui.console.createCommandSession({label: 'Color scheme', onCommit: onCommit});
+      }
+      return session;
+    }
+
+    function initPanel() {
+      claimFieldKeys(panel.node(), {
+        revert: render,
+        release: releaseFocus
+      });
+      panel.node().addEventListener('click', function(e) {
+        if (isTextInput(document.activeElement) || opensAMenu(e.target)) return;
+        releaseFocus();
+      });
+
+      var header = El('div').addClass('label-style-panel-title').appendTo(panel);
+      El('span').appendTo(header).text('Color palettes');
+      El('button').addClass('label-style-close').appendTo(header).text('×').on('click', function() {
+        close();
+        opts.onUpdate();
+      });
+
+      var tabRow = El('div').addClass('label-style-row color-scheme-tabs').attr('role', 'tablist').appendTo(panel);
+      schemeTypes.forEach(function(type) {
+        tabs[type.name] = El('button').addClass('color-scheme-tab').attr('type', 'button')
+          .attr('role', 'tab').text(type.label).appendTo(tabRow)
+          .on('click', function() {
+            switchType(type.name);
+          });
+      });
+
+      noFieldsNote = El('div').addClass('label-style-row color-scheme-note').appendTo(panel)
+        .text('This layer has no numeric fields to classify.');
+      controlsEl = El('div').appendTo(panel);
+
+      fieldRow = El('div').addClass('label-style-row color-scheme-select-row').appendTo(controlsEl);
+      El('span').appendTo(fieldRow).text('Field');
+      fieldSelect = El('select').attr('aria-label', 'Data field').appendTo(fieldRow).on('change', function() {
+        var field = fieldSelect.node().value;
+        changeScheme(setSchemeField(scheme, field, getCategoryCount(field)));
+      });
+
+      var methodRow = El('div').addClass('label-style-row color-scheme-select-row').appendTo(controlsEl);
+      El('span').appendTo(methodRow).text('Method');
+      methodSelect = El('select').attr('aria-label', 'Classification method').appendTo(methodRow).on('change', function() {
+        var field = scheme.field || getCategoryFields(targetLayer)[0];
+        changeScheme(setSchemeMethod(scheme, methodSelect.node().value, field, getCategoryCount(field)));
+      });
+
+      initDivergingControls();
+
+      var paletteRow = El('div').addClass('label-style-row label-split-row').appendTo(controlsEl);
+      var paletteCell = El('div').addClass('label-split-cell color-scheme-palette-cell').appendTo(paletteRow);
+      var countCell = El('div').addClass('label-split-cell').appendTo(paletteRow);
+      El('span').appendTo(paletteCell).text('Palette');
+      paletteBtn = El('div').addClass('color-scheme-palette-btn').attr('role', 'button')
+        .attr('aria-label', 'Palette').appendTo(paletteCell).on('click', togglePaletteMenu);
+      paletteMenu = El('div').addClass('color-scheme-palette-menu').appendTo(paletteCell).hide();
+      countLabel = El('span').appendTo(countCell).text('Colors');
+      // the scheme sets the limits (see getMinSchemeColors(), getMaxSchemeColors())
+      countField = new SizeField(countCell, {
+        min: 1,
+        max: maxCategoricalColors,
+        step: 1,
+        bigStep: 2,
+        decimals: 0,
+        title: 'Number of classes',
+        onSet: function(n) {
+          changeScheme(setTileCount(scheme, n, getCategoryCount()));
+        },
+        onStep: function(delta) {
+          changeScheme(setTileCount(scheme, scheme.n + (delta > 0 ? 1 : -1), getCategoryCount()));
+        },
+        onDone: releaseFocus
+      });
+
+      tileRow = El('div').addClass('color-scheme-tile-row').appendTo(controlsEl);
+      gradientEl = El('div').addClass('color-scheme-gradient').appendTo(tileRow);
+      tilesEl = El('div').addClass('color-scheme-tiles').appendTo(tileRow);
+      picker = new ColorPicker(tileRow, {
+        presetRows: [],
+        onPreview: function(hex) {
+          var tile = getTileCells()[selectedTile];
+          if (tile) tile.querySelector('.color-scheme-tile').style.backgroundColor = hex;
+        },
+        onChange: function(hex) {
+          if (selectedTile > -1) changeScheme(setTileColor(scheme, selectedTile, hex));
+        },
+        // the highlight says which tile the picker is editing
+        onHide: function() {
+          selectedTile = -1;
+          render();
+        }
+      });
+
+      // the slider works in thousandths of OKLCH chroma
+      vibranceRow = addSliderRow('Vibrance', 'Makes all the colors more vivid',
+          0, Math.round(maxVibrance * 1000), 5, function(val) {
+        changeScheme(setSchemeVibrance(scheme, val / 1000));
+      });
+      vibranceInput = vibranceRow.findChild('input');
+      longHueBtn = addIconButton(vibranceRow, 'Go the long way around the color wheel', longHueIcon, function() {
+        changeScheme(setSchemeLongHue(scheme, !scheme.longHue));
+      }).addClass('long-hue-btn');
+      continuousBtn = addIconButton(vibranceRow, 'Continuous colors (unclassed)', continuousIcon, function() {
+        changeScheme(setSchemeContinuous(scheme, !scheme.continuous));
+      }).addClass('continuous-btn');
+      reverseBtn = addIconButton(vibranceRow, 'Reverse the colors', reverseIcon, function() {
+        changeScheme(reverseScheme(scheme));
+      });
+      shuffleBtn = addIconButton(vibranceRow, 'Shuffle the colors', shuffleIcon, function() {
+        changeScheme(shuffleScheme(scheme));
+      });
+      // the color of features with no data, and how many there are
+      nullControl = makeColorRow(controlsEl, {
+        label: 'No data',
+        noOpacity: true,
+        onColor: function(color) {
+          changeScheme(setSchemeNullColor(scheme, color));
+        }
+      });
+      nullControl.row.addClass('color-scheme-null-row');
+      nullControl.chit.on('click', function() {
+        picker.hide();
+      });
+      nullCount = El('span').addClass('color-scheme-note color-scheme-null-count').appendTo(nullControl.aside);
+
+      selectionNote = El('div').addClass('label-style-row color-scheme-note').appendTo(controlsEl)
+        .text('Colors apply to every feature in the layer, not only the selected ones.');
+
+      document.addEventListener('mousedown', function(e) {
+        if (paletteMenu.visible() && !paletteMenu.node().contains(e.target) &&
+            !paletteBtn.node().contains(e.target)) {
+          hidePaletteMenu();
+        }
+      });
+    }
+
+    // The pivot, the pivot class and how the classes are split between the
+    // sides
+    function initDivergingControls() {
+      divergingEl = El('div').appendTo(controlsEl);
+      var pivotRow = El('div').addClass('label-style-row label-split-row').appendTo(divergingEl);
+      var pivotCell = El('div').addClass('label-split-cell color-scheme-select-row').appendTo(pivotRow);
+      var valueCell = El('div').addClass('label-split-cell color-scheme-select-row').appendTo(pivotRow);
+      El('span').appendTo(pivotCell).text('Pivot');
+      pivotSelect = El('select').attr('aria-label', 'Pivot').appendTo(pivotCell).on('change', function() {
+        var name = pivotSelect.node().value;
+        var current = scheme.layout ? scheme.layout.pivot : 0;
+        changeScheme(setSchemePivot(scheme, name == 'value' ? current : name));
+      });
+      pivotOptions.forEach(function(item) {
+        El('option').attr('value', item.name).text(item.label).appendTo(pivotSelect);
+      });
+      El('span').appendTo(valueCell).text('Value');
+      pivotInput = El('input').attr('type', 'text').attr('aria-label', 'Pivot value')
+        .addClass('color-scheme-pivot-input').appendTo(valueCell)
+        .on('change', function() {
+          var val = parseFloat(pivotInput.node().value);
+          if (isFinite(val)) {
+            changeScheme(setSchemePivot(scheme, val));
+          } else {
+            render();
+          }
+        })
+        .on('keydown', function(e) {
+          if (e.key == 'Enter') pivotInput.node().blur();
+        });
+      pivotNote = El('div').addClass('label-style-row color-scheme-note').appendTo(divergingEl);
+
+      var optionRow = El('div').addClass('label-style-row label-split-row').appendTo(divergingEl);
+      var splitCell = El('div').addClass('label-split-cell color-scheme-select-row').appendTo(optionRow);
+      var neutralCell = El('div').addClass('label-split-cell color-scheme-select-row').appendTo(optionRow);
+      var neutralLabel = El('span').addClass('color-scheme-hint-label').appendTo(neutralCell).text('Pivot class')
+        .attr('data-tooltip', 'A class around the pivot, in the center color')
+        .on('mouseenter', function() { keepTooltipInWindow(neutralLabel.node()); });
+      var neutralLine = El('div').addClass('color-scheme-toggle-line').appendTo(neutralCell);
+      neutralToggle = makePanelToggle(neutralLine, {
+        title: 'Pivot class',
+        onChange: function(on) {
+          changeScheme(setSchemeNeutral(scheme, on));
+        }
+      });
+      El('span').appendTo(splitCell).text('Sides');
+      splitSelect = El('select').attr('aria-label', 'Classes on each side').appendTo(splitCell).on('change', function() {
+        changeScheme(setSchemeSplit(scheme, splitSelect.node().value));
+      });
+      divergingSplits.forEach(function(item) {
+        El('option').attr('value', item.name).text(item.label).appendTo(splitSelect);
+      });
+    }
+
+    function renderDivergingControls() {
+      var diverging = scheme.type == 'diverging';
+      var pivot = scheme.pivot;
+      var option = typeof pivot == 'number' ? 'value' : pivot;
+      var summary;
+      divergingEl.classed('hidden', !diverging);
+      if (!diverging) return;
+      pivotSelect.node().value = option;
+      pivotInput.node().disabled = option != 'value';
+      if (document.activeElement != pivotInput.node()) {
+        pivotInput.node().value = scheme.layout ? formatNumber(scheme.layout.pivot) : '';
+      }
+      summary = getPivotSummary(scheme, targetLayer);
+      pivotNote.text(summary ? formatCount(summary.below) + ' below the pivot, ' +
+        summary.above + ' at or above' : 'No numeric data to classify.');
+      neutralToggle.setState(getSchemeNeutral(scheme) ? 'on' : 'off');
+      splitSelect.node().value = scheme.split;
+    }
+
+    function formatCount(n) {
+      return n + (n == 1 ? ' feature' : ' features');
+    }
+
+    function formatNumber(val) {
+      return String(+val.toPrecision(6));
+    }
+
+    function render() {
+      var categorical, fields, colors, tiles;
+      if (!targetLayer || !scheme) return;
+      categorical = scheme.type == 'categorical';
+      Object.keys(tabs).forEach(function(type) {
+        tabs[type].classed('selected', type == scheme.type)
+          .attr('aria-selected', type == scheme.type ? 'true' : 'false');
+      });
+      fields = categorical ? getCategoryFields(targetLayer) : getNumericFields(targetLayer);
+      noFieldsNote.classed('hidden', categorical || fields.length > 0);
+      controlsEl.classed('hidden', !categorical && fields.length === 0);
+      if (!categorical && fields.length === 0) return;
+      renderFieldOptions(fields);
+      fieldRow.classed('hidden', scheme.method == 'non-adjacent');
+      renderMethodOptions(fields);
+      renderDivergingControls();
+      countLabel.text(scheme.type != 'diverging' ? 'Colors' : scheme.split == 'count' ? 'Per side' : 'Classes');
+      countField.setValue(String(scheme.n));
+      tiles = getSchemeTiles(scheme);
+      colors = tiles.map(function(tile) { return tile.color; });
+      renderPaletteButton(colors);
+      renderTiles(tiles);
+      renderVibrance();
+      renderNullColor();
+      selectionNote.classed('hidden', !(opts.getSelectionCount() > 0));
+    }
+
+    function renderNullColor() {
+      var count = getNoDataCount(targetLayer, scheme);
+      nullControl.row.classed('hidden', scheme.method == 'non-adjacent');
+      if (scheme.method == 'non-adjacent') nullControl.picker.hide();
+      nullControl.showColor(getSchemeNullColor(scheme));
+      nullCount.text(count === 0 ? 'None in this layer' : formatCount(count));
+    }
+
+    function renderMethodOptions(fields) {
+      methodSelect.empty();
+      getSchemeMethods(scheme).forEach(function(item) {
+        var opt = El('option').attr('value', item.name).text(item.label).appendTo(methodSelect);
+        // classifying by category needs a field
+        if (item.name == 'categorical' && fields.length === 0) opt.attr('disabled', true);
+      });
+      methodSelect.node().value = scheme.method;
+    }
+
+    // Each tab keeps its own scheme while the panel is open, and starts from a
+    // default the first time
+    function switchType(type) {
+      var next;
+      if (type == scheme.type) return;
+      tabSchemes[scheme.type] = scheme;
+      next = tabSchemes[type] || getDefaultSchemeOfType(type, targetLayer);
+      // one no-data color for both tabs
+      next = updateDivergingLayout(Object.assign({}, next, {nullColor: scheme.nullColor}), targetLayer);
+      picker.hide();
+      selectedTile = -1;
+      scheme = next;
+      if (canApply(scheme)) apply();
+      render();
+    }
+
+    // a diverging scheme needs data that its classes can divide
+    function canApply(s) {
+      if (s.type == 'diverging' && !s.layout) return false;
+      return s.method == 'non-adjacent' || !!s.field;
+    }
+
+    // The number of categories in a field (the scheme's, by default), for a
+    // categorical scheme
+    function getCategoryCount(field) {
+      if (scheme.type != 'categorical') return -1;
+      return getCategories(targetLayer, field || scheme.field).length;
+    }
+
+    function addSliderRow(label, tooltip, min, max, step, onInput) {
+      var row = El('div').addClass('label-style-row color-scheme-slider-row').appendTo(controlsEl);
+      var labelEl = El('span').addClass('color-scheme-slider-label').attr('data-tooltip', tooltip)
+        .appendTo(row).text(label)
+        .on('mouseenter', function() { keepTooltipInWindow(labelEl.node()); });
+      var input = El('input').attr('type', 'range').attr('min', min).attr('max', max).attr('step', step)
+        .attr('aria-label', label).appendTo(row)
+        .on('input', function() {
+          onInput(+input.node().value);
+        })
+        .on('change', releaseFocus);
+      return row;
+    }
+
+    function addIconButton(parent, label, icon, onClick) {
+      var btn = El('button').addClass('color-scheme-icon-btn').attr('type', 'button')
+        .attr('aria-label', label).attr('data-tooltip', label).html(icon).appendTo(parent)
+        .on('click', onClick)
+        .on('mouseenter', function() { keepTooltipInWindow(btn.node()); });
+      return btn;
+    }
+
+    // Presets and categorical schemes have no interpolated tiles for vibrance
+    // or the hue path to change; the row keeps only the reverse button for them.
+    function renderVibrance() {
+      var vibrance = getSchemeVibrance(scheme);
+      setSliderValue(vibranceInput, Math.round(vibrance * 1000));
+      vibranceRow.classed('preset', !!scheme.preset || scheme.type == 'categorical');
+      reverseBtn.classed('hidden', scheme.type == 'categorical');
+      shuffleBtn.classed('hidden', scheme.type != 'categorical');
+      // each half of a diverging ramp runs from a low-chroma center, where the
+      // hue path makes little difference
+      longHueBtn.classed('hidden', scheme.type == 'diverging')
+        .classed('selected', !!scheme.longHue)
+        .attr('aria-pressed', scheme.longHue ? 'true' : 'false');
+      continuousBtn.classed('hidden', scheme.type == 'categorical')
+        .classed('selected', isContinuousScheme(scheme))
+        .attr('aria-pressed', isContinuousScheme(scheme) ? 'true' : 'false');
+    }
+
+    function setSliderValue(input, val) {
+      if (input.node().value != val) input.node().value = val;
+    }
+
+    function renderFieldOptions(fields) {
+      fieldSelect.empty();
+      fields.forEach(function(field) {
+        El('option').attr('value', field).text(field).appendTo(fieldSelect);
+      });
+      fieldSelect.node().value = scheme.field || '';
+    }
+
+    function renderPaletteButton(colors) {
+      paletteBtn.empty();
+      El('div').addClass('color-scheme-strip').appendTo(paletteBtn)
+        .css('background-image', isContinuousScheme(scheme) ?
+          getGradientStripBackground(scheme) : getStripBackground(colors));
+      El('span').addClass('color-scheme-palette-name').appendTo(paletteBtn)
+        .text(scheme.preset || 'Custom');
+    }
+
+    function renderTiles(tiles) {
+      var categorical = scheme.type == 'categorical';
+      var diverging = scheme.type == 'diverging';
+      var continuous = isContinuousScheme(scheme);
+      var used = tiles.length;
+      var tileUse = diverging ? getDivergingTileUse(scheme) : null;
+      var center = getCenterTile(scheme);
+      var classLabels = categorical ? null : continuous ? getStopLabels() : getClassLabels(tileUse);
+      var groups = categorical && scheme.method == 'categorical' ?
+        getSwatchCategories(getCategories(targetLayer, scheme.field), used) : null;
+      var n, perRow;
+      // a categorical scheme shows its whole palette, and marks the swatches
+      // in use
+      if (categorical) {
+        tiles = getCategoricalPalette(scheme).map(function(color) {
+          return {color: color, pinned: false, adjusted: false};
+        });
+      }
+      n = tiles.length;
+      // the stops of a continuous ramp stay in one row, under the gradient
+      perRow = n > 12 && !continuous ? Math.ceil(n / 2) : n;
+      tilesEl.empty();
+      tilesEl.classed('two-rows', perRow < n);
+      tilesEl.classed('continuous', continuous);
+      tilesEl.node().style.setProperty('--tiles-per-row', perRow);
+      dropMarker = El('div').addClass('color-scheme-drop-marker').appendTo(tilesEl).hide();
+      tiles.forEach(function(tile, i) {
+        var color = tile.color;
+        var inUse = tileUse ? tileUse[i] : !categorical || i < used;
+        var cell = El('div').addClass('color-scheme-tile-cell').appendTo(tilesEl);
+        var tileEl = El('div').addClass('color-scheme-tile').attr('role', 'button')
+          .attr('aria-label', 'Color ' + (i + 1) + ': ' + color + (inUse ? '' : ' (not used)'))
+          .classed('selected', i == selectedTile)
+          .css('background-color', color)
+          .appendTo(cell)
+          .on('click', function() {
+            if (tileDrag && tileDrag.moved) return;
+            selectTile(i, color);
+          });
+        if (categorical) {
+          tileEl.on('pointerdown', function(e) {
+            startTileDrag(e, i);
+          });
+        }
+        if (groups && inUse || classLabels && classLabels[i]) {
+          tileEl.attr('data-tooltip', groups ? formatCategories(groups[i]) : classLabels[i])
+            .on('mouseenter', function() { keepTooltipInWindow(tileEl.node()); });
+        }
+        if (diverging && !continuous) {
+          // the bar under the tiles that classes use; a gap at the center
+          // when there is no pivot class (continuous ramps have the gradient)
+          El('div').addClass('color-scheme-bar').appendTo(cell)
+            .classed('used', inUse)
+            .classed('joined', inUse && i < n - 1 && tileUse[i + 1]);
+        }
+        var pin = El('div').addClass('color-scheme-pin').appendTo(cell)
+          .on('mouseenter', function() { keepTooltipInWindow(pin.node()); });
+        var end = i === 0 || i == n - 1 || i == center;
+        if (categorical) {
+          // a bar under the swatches in use, unbroken to the end of each row
+          pin.classed('used', inUse)
+            .classed('joined', inUse && i < used - 1 && (i + 1) % perRow > 0);
+        // a pinned tile between the ends needs its dot for unpinning, even if
+        // vibrance was clipped
+        } else if (tile.pinned && !end) {
+          pin.addClass('pinned').attr('role', 'button').attr('aria-label', 'Unpin this color')
+            .attr('data-tooltip', 'Unpin this color')
+            .on('click', function() {
+              changeScheme(clearTileColor(scheme, i));
+            });
+        } else if (tile.adjusted) {
+          pin.addClass('adjusted').attr('data-tooltip', describeAdjustment(tile));
+        }
+      });
+      renderGradient(continuous ? getContinuousSegments(scheme) : null, n);
+    }
+
+    // The gradient over a continuous ramp's tiles, each stop over the center
+    // of its tile; one bar per side of a diverging ramp, and one for a pivot
+    // class
+    function renderGradient(segments, n) {
+      var width = tilesEl.node().clientWidth;
+      var gap = 3;
+      var tileWidth = (width - (n - 1) * gap) / n;
+      var center = function(pos) { return pos * (tileWidth + gap) + tileWidth / 2; };
+      gradientEl.empty();
+      gradientEl.classed('hidden', !segments);
+      if (!segments || !(width > 0)) return;
+      segments.forEach(function(seg) {
+        var left = seg.flatStart ? center(seg.start) - tileWidth / 2 : center(seg.start);
+        var right = seg.flatEnd ? center(seg.end) + tileWidth / 2 : center(seg.end);
+        var stops = seg.samples.map(function(sample) {
+          return sample.color + ' ' + round(center(sample.pos) - left) + 'px';
+        });
+        if (stops.length == 1) stops.push(stops[0]);
+        El('div').addClass('color-scheme-gradient-segment').appendTo(gradientEl).css({
+          left: round(left) + 'px',
+          width: round(right - left) + 'px',
+          'background-image': 'linear-gradient(to right, ' + stops.join(', ') + ')'
+        });
+      });
+    }
+
+    function round(val) {
+      return Math.round(val * 10) / 10;
+    }
+
+    // The data value at each stop of a continuous ramp, and the range of a
+    // pivot class
+    function getStopLabels() {
+      var stops = getContinuousTileStops(scheme, targetLayer) || [];
+      return stops.map(function(stop) {
+        if (!stop) return null;
+        if (stop.range) return formatClassRange(stop.range);
+        return formatNumber(stop.value) + (stop.min ? ' (min)' : stop.max ? ' (max)' : '');
+      });
+    }
+
+    // The data range of each tile's class, for the tiles that classes use
+    // (sequential tiles are all used, one class each)
+    function getClassLabels(tileUse) {
+      var ranges, j = 0;
+      if (scheme.type == 'sequential') {
+        ranges = getSequentialClassRanges(scheme, targetLayer) || [];
+        return ranges.map(formatClassRange);
+      }
+      ranges = getDivergingClassRanges(scheme.layout);
+      return tileUse.map(function(used) {
+        return used ? formatClassRange(ranges[j++]) : null;
+      });
+    }
+
+    function formatClassRange(range) {
+      if (!range) return null;
+      if (range[0] == -Infinity && range[1] == Infinity) return 'All values';
+      if (range[0] == -Infinity) return 'Below ' + formatNumber(range[1]);
+      if (range[1] == Infinity) return formatNumber(range[0]) + ' and above';
+      return formatNumber(range[0]) + ' to ' + formatNumber(range[1]);
+    }
+
+    // Dragging a categorical swatch moves it to where it's dropped, which may
+    // be into or out of the swatches in use
+    function startTileDrag(e, from) {
+      var x0 = e.clientX, y0 = e.clientY;
+      var drag = tileDrag = {from: from, moved: false, before: -1};
+      if (e.button !== 0) return;
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+      document.addEventListener('pointercancel', onCancel);
+
+      function onMove(e) {
+        if (!drag.moved && Math.abs(e.clientX - x0) + Math.abs(e.clientY - y0) < 5) return;
+        if (!drag.moved) {
+          drag.moved = true;
+          tilesEl.addClass('dragging');
+          getTileCells()[from].classList.add('drag-source');
+        }
+        drag.before = findDropPlace(e.clientX, e.clientY);
+        showDropMarker(drag.before);
+      }
+
+      function onUp() {
+        var to = drag.before > from ? drag.before - 1 : drag.before;
+        finish();
+        if (drag.moved && drag.before > -1 && to != from) {
+          picker.hide();
+          selectedTile = -1;
+          changeScheme(moveSwatch(scheme, from, to));
+        }
+        // the click that follows a drag is ignored, then dragging is over
+        setTimeout(function() {
+          if (tileDrag == drag) tileDrag = null;
+        }, 0);
+      }
+
+      function onCancel() {
+        finish();
+        tileDrag = null;
+      }
+
+      function finish() {
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        document.removeEventListener('pointercancel', onCancel);
+        tilesEl.removeClass('dragging');
+        getTileCells().forEach(function(cell) { cell.classList.remove('drag-source'); });
+        dropMarker.hide();
+      }
+    }
+
+    function getTileCells() {
+      return Array.from(tilesEl.node().querySelectorAll('.color-scheme-tile-cell'));
+    }
+
+    // The index of the tile that a swatch dropped at (x, y) goes in front of
+    // (the number of tiles, after the last), on the row nearest the pointer
+    function findDropPlace(x, y) {
+      var rects = getTileCells().map(function(cell) {
+        return cell.querySelector('.color-scheme-tile').getBoundingClientRect();
+      });
+      var best = -1, bestDist = Infinity;
+      rects.forEach(function(rect, i) {
+        var dy = y < rect.top ? rect.top - y : y > rect.bottom ? y - rect.bottom : 0;
+        var dx = x < rect.left ? rect.left - x : x > rect.right ? x - rect.right : 0;
+        var dist = dy * 1000 + dx;
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = x < (rect.left + rect.right) / 2 ? i : i + 1;
+        }
+      });
+      return best;
+    }
+
+    // A line in the gap where the swatch would go
+    function showDropMarker(before) {
+      var cells = getTileCells();
+      var box = tilesEl.node().getBoundingClientRect();
+      var ref = cells[Math.min(before, cells.length - 1)].querySelector('.color-scheme-tile');
+      var rect = ref.getBoundingClientRect();
+      var left = before < cells.length ? rect.left - 2 : rect.right + 1;
+      dropMarker.css({
+        left: (left - box.left) + 'px',
+        top: (rect.top - box.top) + 'px',
+        height: rect.height + 'px'
+      }).show();
+    }
+
+    // A tooltip is centered under its pin or button, unless that would run it past the
+    // edge of the window
+    function keepTooltipInWindow(el) {
+      var margin = 4;
+      el.style.removeProperty('--tooltip-shift');
+      if (!el.hasAttribute('data-tooltip')) return;
+      var width = parseFloat(getComputedStyle(el, '::after').width) || 0;
+      var rect = el.getBoundingClientRect();
+      var center = rect.left + rect.width / 2;
+      var left = center - width / 2;
+      var right = center + width / 2;
+      var maxRight = document.documentElement.clientWidth - margin;
+      var shift = 0;
+      if (right > maxRight) shift = maxRight - right;
+      else if (left < margin) shift = margin - left;
+      if (shift) el.style.setProperty('--tooltip-shift', shift + 'px');
+    }
+
+    function formatCategories(values) {
+      // "and 1 more" would take a line that the value itself can have
+      var max = values.length == 5 ? 5 : 4;
+      var labels = values.slice(0, max).map(function(val) {
+        return val === '' || val === null || val === undefined ? '(no value)' : String(val);
+      });
+      if (values.length > max) labels.push('and ' + (values.length - max) + ' more');
+      return labels.join('\n');
+    }
+
+    function describeAdjustment(tile) {
+      var parts = [];
+      var dl = tile.l - tile.ideal.l;
+      var dc = tile.c - tile.ideal.c;
+      if (Math.abs(dl) >= 0.0005) parts.push('lightness ' + formatShift(dl));
+      if (Math.abs(dc) >= 0.0005) parts.push('chroma ' + formatShift(dc));
+      return 'Shifted to fit the sRGB gamut:\n' + parts.join(', ');
+    }
+
+    function formatShift(val) {
+      return (val > 0 ? '+' : '') + val.toFixed(3);
+    }
+
+    function selectTile(i, color) {
+      nullControl.picker.hide();
+      if (selectedTile == i && picker.visible()) {
+        picker.hide();
+      } else {
+        selectedTile = i;
+        picker.setColor(getTileEditColor(scheme, i) || color);
+        if (!picker.visible()) picker.toggle();
+      }
+      render();
+    }
+
+    function togglePaletteMenu() {
+      if (paletteMenu.visible()) {
+        hidePaletteMenu();
+      } else {
+        renderPaletteMenu();
+        paletteMenu.show();
+      }
+    }
+
+    function hidePaletteMenu() {
+      paletteMenu.hide();
+    }
+
+    function renderPaletteMenu() {
+      var categorical = scheme.type == 'categorical';
+      var names = categorical ? getCategoricalPresetNames() :
+        scheme.type == 'diverging' ? getDivergingPresetNames() : getSequentialPresetNames();
+      paletteMenu.empty();
+      addPaletteItem('Custom', getSchemeColors(makeSchemeCustom(scheme)), !scheme.preset, function() {
+        changeScheme(makeSchemeCustom(scheme));
+      });
+      names.forEach(function(name) {
+        var colors = categorical ? getCategoricalPresetColors(name) : getPresetColors(name, 7);
+        addPaletteItem(name, colors, scheme.preset == name, function() {
+          changeScheme(choosePreset(scheme, name, getCategoryCount()));
+        });
+      });
+    }
+
+    function addPaletteItem(name, colors, selected, onSelect) {
+      var item = El('div').addClass('color-scheme-palette-item').attr('role', 'button')
+        .classed('selected', selected).appendTo(paletteMenu)
+        .on('click', function() {
+          hidePaletteMenu();
+          onSelect();
+        });
+      El('div').addClass('color-scheme-strip').appendTo(item)
+        .css('background-image', getStripBackground(colors));
+      El('span').appendTo(item).text(name);
+    }
+
+    function changeScheme(next) {
+      var prevSize = getSchemeTiles(scheme).length;
+      scheme = updateDivergingLayout(next, targetLayer);
+      if (getSchemeTiles(scheme).length != prevSize) {
+        picker.hide();
+        selectedTile = -1;
+      }
+      apply();
+      render();
+    }
+
+    function apply() {
+      var lyr = targetLayer;
+      var applying = scheme;
+      var colors = getAppliedColors(scheme, getCategoryCount());
+      var cmd, extra;
+      if (!lyr || !canApply(scheme) || !gui.console) return;
+      getSession();
+      if (!session || !session.isPending()) {
+        sessionLayer = lyr;
+        baseScheme = getLayerScheme(lyr);
+      }
+      cmd = formatSchemeCommand(scheme, colors, {target: getTargetOption(lyr)});
+      extra = opts.getExtraCommands ? opts.getExtraCommands() : '';
+      if (extra) cmd += ' ' + extra;
+      runGuiEditCommand(gui, cmd, {
+        title: 'Color scheme',
+        session: session,
+        onDone: function(err) {
+          if (!err) setLayerScheme(lyr, getAppliedScheme(applying, colors, lyr));
+          opts.onUpdate();
+        }
+      });
+    }
+
+    // The scheme on each side of the session's undo state, to go with the fills
+    // that undo and redo put back.
+    function onCommit() {
+      var lyr = sessionLayer;
+      var before = baseScheme;
+      var after = lyr ? getLayerScheme(lyr) : null;
+      if (!lyr) return null;
+      return {
+        onUndo: function() {
+          setLayerScheme(lyr, before);
+        },
+        onRedo: function() {
+          setLayerScheme(lyr, after);
+        }
+      };
+    }
+
+    function getTargetOption(lyr) {
+      var active = gui.model.getActiveLayer();
+      if (active && active.layer == lyr) return '';
+      return internal.formatOptionValue(internal.getLayerTargetId(gui.model, lyr));
+    }
+
+    function releaseFocus() {
+      releasePanelFocus(panel.node());
+    }
+  }
+
+  // A scheme's colors as a CSS background: blocks, or for a continuous scheme,
+  // its gradients, side by side
+  function getSchemeStripBackground(scheme) {
+    return isContinuousScheme(scheme) ? getGradientStripBackground(scheme) : getStripBackground(scheme.colors);
+  }
+
+  // Each gradient takes room for its length, from its first stop to its last
+  // (see getContinuousSegments()), without the flat ends the panel's bar has
+  // over its end tiles; a pivot class takes a tile's width. Hard edges between
+  // them.
+  function getGradientStripBackground(scheme) {
+    var segments = getContinuousSegments(scheme);
+    var lengths = segments.map(function(seg) {
+      return seg.end > seg.start ? seg.end - seg.start : 1;
+    });
+    var total = lengths.reduce(function(memo, len) { return memo + len; }, 0);
+    var offset = 0;
+    var stops = [];
+    var pct = function(pos) { return (Math.round(pos / total * 10000) / 100) + '%'; };
+    if (!(total > 0)) return 'none';
+    segments.forEach(function(seg, i) {
+      var first = seg.samples[0].color;
+      var last = seg.samples[seg.samples.length - 1].color;
+      stops.push(first + ' ' + pct(offset));
+      seg.samples.forEach(function(sample) {
+        stops.push(sample.color + ' ' + pct(offset + sample.pos - seg.start));
+      });
+      offset += lengths[i];
+      stops.push(last + ' ' + pct(offset));
+    });
+    return 'linear-gradient(to right, ' + stops.join(', ') + ')';
+  }
+
+  // A row of hard-edged color blocks, as a CSS background
+  function getStripBackground(colors) {
+    var n = colors.length;
+    var stops = colors.map(function(color, i) {
+      return color + ' ' + (i / n * 100) + '%, ' + color + ' ' + ((i + 1) / n * 100) + '%';
+    });
+    return 'linear-gradient(to right, ' + stops.join(', ') + ')';
+  }
+
   var savedStylesKey = 'layer_style_presets';
-  var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'line-start', 'line-end', 'line-end-size', 'fill', 'fill-opacity', 'fill-pattern'].concat(internal.svg.glowFields);
+  var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'line-fade', 'fill', 'fill-opacity', 'fill-pattern'].concat(internal.svg.glowFields);
   var arrowShapes = [{
     name: 'arrow',
     title: 'solid arrowheads'
@@ -20713,14 +22837,28 @@
     label: 'Both',
     title: 'arrowheads at both ends of the line'
   }];
+  var lineCaps = [{
+    name: 'round',
+    label: 'Round',
+    title: 'round line caps'
+  }, {
+    name: 'butt',
+    label: 'Butt',
+    title: 'flat line caps that end at the line\'s endpoints'
+  }, {
+    name: 'square',
+    label: 'Square',
+    title: 'flat line caps that extend past the line\'s endpoints'
+  }];
 
   function LayerStyleTool(gui) {
     var parent = gui.container.findChild('.mshp-main-map');
     var panel = El('div').addClass('label-style-panel layer-style-panel rollover').appendTo(parent).hide();
-    var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, dashControl, arrowControl, randomFillBtn, presetControl, patternControl, glowControl, hit;
+    var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, capControl, dashControl, arrowControl, presetControl, patternControl, glowControl, hit;
+    var schemeBtn, schemeStrip, schemePanel;
     var targetLayer = null;
     // What the arrowhead switch turns on, for lines that have no heads
-    var lastArrow = {shape: 'arrow', position: 'end'};
+    var lastArrow = {shape: 'arrow', position: 'end', fade: 0};
 
     initPanel();
     hit = gui.map.getHitControl && gui.map.getHitControl();
@@ -20771,6 +22909,7 @@
     }
 
     function turnOff() {
+      schemePanel.close();
       panel.hide();
       strokeControl.picker.hide();
       fillControl.picker.hide();
@@ -20809,9 +22948,11 @@
       strokeControl = addColorControl(panel, 'Stroke', 'stroke', '#000000');
       strokeWidthField = addStrokeWidthControl(strokeControl.aside);
       fillControl = addColorControl(panel, 'Fill', 'fill', '');
-      randomFillBtn = makePanelActionButton(fillControl.aside, 'Random fill', applyRandomFillColors)
-        .addClass('layer-random-fill-btn');
-      dashControl = addDashArrayControl(panel);
+      addColorSchemeControl();
+      var lineRow = El('div').addClass('label-style-row label-split-row layer-line-row').appendTo(panel);
+      capControl = addLineCapControl(lineRow);
+      dashControl = addDashArrayControl(lineRow);
+      dashControl.row = lineRow;
       arrowControl = addArrowControl(panel);
 
       var buttonRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(panel);
@@ -20870,6 +23011,74 @@
       return control;
     }
 
+    // Fills colored by a data field. While a scheme is applied, its colors take
+    // the place of the fill's swatch and hex value, which have no one value to
+    // show; the opacity still applies. Clicking them reopens the scheme.
+    function addColorSchemeControl() {
+      var box = fillControl.input.parent();
+      schemeStrip = El('div').addClass('layer-scheme-strip').attr('role', 'button')
+        .attr('aria-label', 'Edit color scheme');
+      box.node().insertBefore(schemeStrip.node(), fillControl.input.node());
+      schemeStrip.on('click', openColorSchemePanel);
+      El('div').addClass('layer-scheme-colors').appendTo(schemeStrip);
+      El('div').addClass('layer-scheme-remove').attr('role', 'button')
+        .attr('aria-label', 'Remove color scheme').attr('title', 'Remove color scheme')
+        .text('×').appendTo(schemeStrip)
+        .on('click', function(e) {
+          e.stopPropagation();
+          removeColorScheme();
+        });
+      schemeBtn = makePanelActionButton(fillControl.aside, 'Palettes', openColorSchemePanel)
+        .addClass('layer-palettes-btn');
+      schemePanel = new ColorSchemePanel(gui, {
+        getExtraCommands: function() {
+          if (!targetLayer) return '';
+          return formatStyleEditCommands(patternControl.getRefillExpressionEdits(getAllFeatureIds(targetLayer)));
+        },
+        getSelectionCount: function() {
+          return getSelectionIds().length;
+        },
+        onUpdate: function() {
+          if (panel.visible()) updateControls();
+        },
+        onClose: function() {
+          panel.removeClass('replaced');
+        }
+      });
+    }
+
+    function openColorSchemePanel() {
+      syncTargetLayer();
+      if (!targetLayer || targetLayer.geometry_type != 'polygon') return;
+      fillControl.picker.hide();
+      strokeControl.picker.hide();
+      patternControl.hidePicker();
+      // The scheme panel takes this panel's place until it closes
+      panel.addClass('replaced');
+      schemePanel.open(targetLayer);
+    }
+
+    // Back to a single fill, unset, as when the fill field is emptied
+    function removeColorScheme() {
+      schemePanel.close();
+      applyColorControlStyle(fillControl, '');
+    }
+
+    function updateColorSchemeControl() {
+      var isPolygon = targetLayer && targetLayer.geometry_type == 'polygon';
+      var scheme = isPolygon ? getLayerScheme(targetLayer) : null;
+      schemeBtn.classed('hidden', !isPolygon);
+      fillControl.input.parent().classed('has-scheme', !!scheme);
+      schemeBtn.classed('selected', schemePanel.isOpen());
+      if (scheme) {
+        schemeStrip.findChild('.layer-scheme-colors')
+          .css('background-image', getSchemeStripBackground(scheme));
+        schemeStrip.attr('title', scheme.method == 'non-adjacent' ?
+          'Neighbors colored differently' : 'Colored by ' + scheme.field);
+        fillControl.picker.hide();
+      }
+    }
+
     // In the narrow column beside the stroke's colour. Stepping runs up a ladder
     // of widths rather than by a fixed amount, because the useful ones are close
     // together at the hairline end and far apart above 2px.
@@ -20889,12 +23098,60 @@
       });
     }
 
-    // A literal stroke-dasharray, in the wide column so that it lines up with
-    // the stroke's colour above it. A blank field makes the line solid again.
-    function addDashArrayControl(parent) {
-      var row = El('div').addClass('label-style-row label-split-row layer-dash-row').appendTo(parent);
-      var cell = El('div').addClass('label-split-cell').appendTo(row);
-      El('div').addClass('label-split-cell').appendTo(row);
+    // Round is the default, except on a dashed line, which the renderers give
+    // butt caps unless it has a cap of its own.
+    function addLineCapControl(row) {
+      var cell = El('div').addClass('label-split-cell label-align-row').appendTo(row);
+      var control = {btns: {}};
+      El('span').appendTo(cell).text('Caps');
+      var group = El('div').addClass('label-btn-group layer-cap-buttons').appendTo(cell);
+      lineCaps.forEach(function(item) {
+        control.btns[item.name] = makePanelButton(group, item.label, function() {
+          applyLineCap(item.name);
+        }).attr('data-line-cap', item.name).attr('aria-label', item.title);
+      });
+      return control;
+    }
+
+    function getDefaultLineCap(rec) {
+      return rec && rec['stroke-dasharray'] ? 'butt' : 'round';
+    }
+
+    function getLineCap(rec) {
+      return rec && rec['stroke-linecap'] || getDefaultLineCap(rec);
+    }
+
+    // A cap that is the line's default is unset rather than stored, so that a
+    // layer left at Round gets no stroke-linecap column.
+    function applyLineCap(cap) {
+      var records = getTargetRecords();
+      var edits = [];
+      getTargetIds().forEach(function(id) {
+        var rec = records[id] || {};
+        var value = cap == getDefaultLineCap(rec) ? '' : cap;
+        if (value != (rec['stroke-linecap'] || '')) {
+          edits.push({id: id, styles: [['stroke-linecap', value]]});
+        }
+      });
+      runStyleEdits(edits);
+    }
+
+    function updateLineCapControl() {
+      var records = getTargetRecords();
+      var cap;
+      getTargetIds().forEach(function(id, i) {
+        var val = getLineCap(records[id]);
+        cap = i === 0 || val == cap ? val : '';
+      });
+      lineCaps.forEach(function(item) {
+        capControl.btns[item.name].classed('selected', item.name == cap);
+      });
+    }
+
+    // A literal stroke-dasharray, in the narrow column beside the caps. A blank
+    // field makes the line solid again.
+    function addDashArrayControl(row) {
+      var cell = El('div').addClass('label-split-cell layer-dash-cell').appendTo(row);
       var caption = El('div').addClass('label-style-row-label').appendTo(cell).text('Dashes');
       makeFieldTip(caption,
         'Dash and gap lengths in pixels, separated\n' +
@@ -20909,13 +23166,14 @@
           }
           applyDashArrayStyle(value);
         });
-      return {row: row, input: input};
+      return {input: input};
     }
 
     // A switch in the heading says whether the lines have arrowheads; the rows
     // under it are the head's shape with its size beside it, then which ends
-    // get it. A line has one shape for both ends, which is all the panel sets,
-    // though -style can give the two ends different ones.
+    // get it with the line's fade beside that. A line has one shape for both
+    // ends, which is all the panel sets, though -style can give the two ends
+    // different ones.
     function addArrowControl(parent) {
       var section = makePanelSection(parent, 'Arrowheads');
       var toggle = makePanelToggle(section.findChild('.label-style-section-title'), {
@@ -20928,8 +23186,8 @@
       var sizeCell = El('div').addClass('label-split-cell label-spacing-row layer-arrow-size-row').appendTo(shapeRow);
       var posRow = El('div').addClass('label-style-row label-split-row').appendTo(section);
       var posCell = El('div').addClass('label-split-cell label-align-row').appendTo(posRow);
+      var fadeCell = El('div').addClass('label-split-cell layer-arrow-fade-cell').appendTo(posRow);
       var control = {section: section, toggle: toggle, shapeBtns: {}, posBtns: {}};
-      El('div').addClass('label-split-cell').appendTo(posRow);
       El('span').appendTo(shapeCell).text('Shape');
       var shapeGroup = El('div').addClass('label-btn-group label-callout-buttons layer-arrow-shape-buttons').appendTo(shapeCell);
       arrowShapes.forEach(function(item) {
@@ -20958,6 +23216,22 @@
         onStep: nudgeArrowSize,
         onDone: releaseFocus
       });
+      var fadeCaption = El('div').addClass('label-style-row-label').appendTo(fadeCell).text('Fade %');
+      makeFieldTip(fadeCaption,
+        'How much of the line fades in from its\n' +
+        'tail, as a percent of its length. The fade\n' +
+        'is a straight gradient, so it follows\n' +
+        'straight and gently curved lines best.');
+      control.fadeField = new SizeField(fadeCell, {
+        title: 'Percent of the line that fades in from its tail',
+        min: 0,
+        max: 100,
+        step: 5,
+        bigStep: 25,
+        onSet: applyArrowFade,
+        onStep: nudgeArrowFade,
+        onDone: releaseFocus
+      });
       return control;
     }
 
@@ -20972,10 +23246,11 @@
       return {shape: shape, position: position};
     }
 
-    // Switching on gives the lines that have no heads the last shape and ends
-    // the section showed, so that off and on again is a round trip; the lines
-    // that have heads keep theirs. Switching off leaves line-end-size alone,
-    // for the same reason.
+    // Switching on gives the lines that have no heads the last shape, ends and
+    // fade the section showed, so that off and on again is a round trip; the
+    // lines that have heads keep theirs. Switching off leaves line-end-size
+    // alone, for the same reason, but removes the fade, which would otherwise
+    // go on showing with its control hidden.
     function setArrowsOn(on) {
       applyArrowEdits(function(info) {
         return on ? fillArrowInfo(info) : {shape: 'none', position: ''};
@@ -21007,7 +23282,8 @@
       var edits = [];
       getTargetIds().forEach(function(id) {
         var rec = records[id] || {};
-        var next = getNext(getArrowInfo(rec));
+        var info = getArrowInfo(rec);
+        var next = getNext(info);
         var on = next.shape != 'none';
         var styles = [
           ['line-start', on && next.position != 'end' ? next.shape : ''],
@@ -21016,6 +23292,11 @@
           // no need to remove what is not there
           return style[1] || rec[style[0]];
         });
+        if (!on && rec['line-fade']) {
+          styles.push(['line-fade', '']);
+        } else if (on && info.shape == 'none' && lastArrow.fade > 0 && !rec['line-fade']) {
+          styles.push(['line-fade', lastArrow.fade]);
+        }
         if (on && addStroke) styles.push(['stroke', strokeControl.defaultColor]);
         if (styles.length > 0) edits.push({id: id, styles: styles});
       });
@@ -21035,6 +23316,34 @@
       var size = Number(shown.value);
       if (!isFinite(size) || shown.value === '') return;
       applyArrowSize(Math.max(1, Math.round(size + delta)));
+    }
+
+    // The field is a percent; line-fade is a share of the line, 0-1. No fade
+    // is unset rather than stored as 0.
+    function applyArrowFade(pct) {
+      var ids = getArrowTargetIds();
+      var value = pct > 0 ? Math.round(pct * 10) / 1000 : '';
+      if (ids.length === 0) return;
+      runStyleEdits(ids.map(function(id) {
+        return {id: id, styles: [['line-fade', value]]};
+      }));
+    }
+
+    function nudgeArrowFade(delta) {
+      var shown = getArrowFadeShown(getArrowTargetIds());
+      if (shown.value === '') return;
+      applyArrowFade(Math.max(0, Math.min(100, Math.round(shown.value + delta))));
+    }
+
+    function getArrowFadeShown(ids) {
+      var records = getTargetRecords();
+      var value = '', pct;
+      for (var i=0; i<ids.length; i++) {
+        pct = Math.round(internal.svg.parseLineFade(records[ids[i]] && records[ids[i]]['line-fade']) * 1000) / 10;
+        if (i > 0 && pct !== value) return {value: '', mixed: true};
+        value = pct;
+      }
+      return {value: value, mixed: false};
     }
 
     function getArrowTargetIds() {
@@ -21097,6 +23406,11 @@
       arrowControl.sizeField.setValue(shown.value);
       arrowControl.sizeField.setPlaceholder(shown.mixed ? 'mixed' : '');
       arrowControl.sizeField.setDisabled(arrowIds.length === 0);
+      var fade = arrowIds.length > 0 ? getArrowFadeShown(arrowIds) : {value: '', mixed: false};
+      if (fade.value !== '') lastArrow.fade = fade.value / 100;
+      arrowControl.fadeField.setValue(fade.value);
+      arrowControl.fadeField.setPlaceholder(fade.mixed ? 'mixed' : '');
+      arrowControl.fadeField.setDisabled(arrowIds.length === 0);
     }
 
     function getTargetRecords() {
@@ -21122,8 +23436,11 @@
       updateColorControl(fillControl);
       updateStrokeWidthControl();
       updateDashArrayControl();
-      if (geom == 'polyline') updateArrowControl();
-      randomFillBtn.classed('hidden', geom != 'polygon');
+      if (geom == 'polyline') {
+        updateLineCapControl();
+        updateArrowControl();
+      }
+      updateColorSchemeControl();
       patternControl.section.classed('hidden', geom != 'polygon');
       if (geom == 'polygon') patternControl.update();
       glowControl.section.classed('hidden', geom != 'polygon');
@@ -21260,6 +23577,8 @@
       }
     }
 
+    // No button runs this for now; the Random fill button is waiting for a new
+    // place in the panel.
     // Patterns keep their backgrounds in step with the fills, and the new fills
     // are not known until -classify has chosen them, so the patterns are
     // rewritten by an expression that reads each feature's fill when it runs.
@@ -21304,6 +23623,7 @@
       addStyleValue(style, 'stroke-opacity', parseOpacityValue(strokeControl.opacity.node().value));
       if (targetLayer && targetLayer.geometry_type == 'polyline') {
         addStyleValue(style, 'stroke-dasharray', getControlValue(dashControl.input));
+        addStyleValue(style, 'stroke-linecap', getCommonStyleValue('stroke-linecap'));
         addArrowStyleValues(style);
       }
       if (targetLayer && targetLayer.geometry_type == 'polygon') {
@@ -21318,7 +23638,7 @@
     // Only when every target agrees, as with the other controls; a size is
     // saved only if the lines have their own.
     function addArrowStyleValues(style) {
-      ['line-start', 'line-end', 'line-end-size'].forEach(function(field) {
+      ['line-start', 'line-end', 'line-end-size', 'line-fade'].forEach(function(field) {
         addStyleValue(style, field, getCommonStyleValue(field));
       });
     }
@@ -21439,6 +23759,7 @@
     function syncTargetLayer() {
       var lyr = getActiveLayer();
       if (lyr == targetLayer) return;
+      schemePanel.close();
       if (layerCanBeStyled(lyr)) {
         targetLayer = lyr;
         if (hit) hit.clearSelection();
@@ -31455,6 +33776,7 @@
         style.lineStart = rec && rec['line-start'];
         style.lineEnd = rec && rec['line-end'];
         style.lineEndSize = rec && rec['line-end-size'];
+        style.lineFade = rec && rec['line-fade'];
       }
       if (hasGlows) {
         style.outerGlow = layerOuterGlow ? null : internal.svg.getPolygonGlow(rec, 'outer');
@@ -32819,9 +35141,10 @@
             continue;
           }
           // A line with arrowheads is drawn on its own, trimmed to meet its heads;
-          // see svg-line-arrows.mjs. Only lines styled with line-start or line-end
-          // get here, so the batch below is untouched for everything else.
-          if (drawStyle.lineStart || drawStyle.lineEnd) {
+          // see svg-line-arrows.mjs. Only lines styled with line-start, line-end
+          // or line-fade get here, so the batch below is untouched for
+          // everything else.
+          if (drawStyle.lineStart || drawStyle.lineEnd || drawStyle.lineFade) {
             if (!arrowPencil) arrowPencil = getArrowLinePencil(arcs, _ext, lineScale);
             if (arrowPencil(shp, _ctx, drawStyle, startPath, draw)) continue;
           }
@@ -33269,14 +35592,17 @@
     };
   }
 
-  // Returns a function that draws one line feature with its arrowheads, and
-  // returns false if the feature has none to draw (a style of 'none', or no
-  // stroke), for the caller to draw it the usual way.
+  // Returns a function that draws one line feature with its arrowheads and fade,
+  // and returns false if the feature has neither to draw (a style of 'none', or
+  // no stroke), for the caller to draw it the usual way.
   //
   // Heads are sized by the same factor as the line width, so that a preview
   // matches the exported SVG. Far enough in that paths are clipped to the view
   // (see protectIterForDrawing()), the line is drawn clipped and untrimmed and
-  // only the heads are added, since a clipped path's ends are not its ends.
+  // only the heads are added, since a clipped path's ends are not its ends. The
+  // fade is placed by the whole line, so it is unaffected by the clipping.
+  //
+  // A faded part is stroked on its own, with its own gradient, as in SVG.
   function getArrowLinePencil(arcs, ext, lineScale) {
     var t = getScaledTransform(ext);
     var iter = new internal.ShapeIter(arcs);
@@ -33284,10 +35610,13 @@
     var clipped = ext.scale() > 100;
     return function(shp, ctx, style, startPath, draw) {
       var opts = internal.svg.makeLineArrowOpts(style.lineStart, style.lineEnd,
-        style.lineEndSize, style.strokeWidth, strokeScale);
+        style.lineEndSize, style.strokeWidth, strokeScale, style.lineFade);
+      var fadeColors = opts.fade > 0 ? internal.svg.getLineFadeColors(style.strokeColor) : null;
       var heads = [];
+      var plain = [];
+      var faded = [];
       var i, coords, shape;
-      if (opts.start == 'none' && opts.end == 'none' || !(style.strokeWidth > 0)) {
+      if (opts.start == 'none' && opts.end == 'none' && !fadeColors || !(style.strokeWidth > 0)) {
         return false;
       }
       startPath(ctx, style);
@@ -33296,13 +35625,36 @@
         if (coords.length < 2) continue;
         shape = internal.svg.getLineArrowShape(coords, opts);
         heads = heads.concat(shape.heads);
-        if (!clipped) traceCoords(shape.coords, ctx);
+        if (shape.fade && fadeColors) {
+          faded.push({path: shp[i], shape: shape});
+        } else if (clipped) {
+          plain.push(shp[i]);
+        } else {
+          traceCoords(shape.coords, ctx);
+        }
       }
-      if (clipped) draw(shp, ctx, style);
+      if (clipped && plain.length > 0) draw(plain, ctx, style);
       endPath(ctx, style);
+      for (i=0; i<faded.length; i++) {
+        startPath(ctx, style);
+        ctx.strokeStyle = getLineFadeGradient(ctx, faded[i].shape.fade, fadeColors);
+        if (clipped) {
+          draw([faded[i].path], ctx, style);
+        } else {
+          traceCoords(faded[i].shape.coords, ctx);
+        }
+        endPath(ctx, style);
+      }
       drawArrowHeads(heads, ctx, style, opts.width);
       return true;
     };
+  }
+
+  function getLineFadeGradient(ctx, axis, colors) {
+    var gradient = ctx.createLinearGradient(axis.from[0], axis.from[1], axis.to[0], axis.to[1]);
+    gradient.addColorStop(0, colors.transparent);
+    gradient.addColorStop(1, colors.solid);
+    return gradient;
   }
 
   function getPixelCoords(iter, path, t) {
@@ -33437,7 +35789,7 @@
         ctx.lineWidth = strokeWidth * strokeScale;
         ctx.strokeStyle = style.strokeColor;
         if (style.lineDash){
-          ctx.lineCap = 'butt';
+          ctx.lineCap = style.lineCap || 'butt';
           ctx.setLineDash(scaleCanvasLineDash(style.lineDash, strokeScale));
         }
         if (style.miterLimit) {
@@ -36034,8 +38386,9 @@
     var marginField = toolbar.addTextField('Margin', {
       classname: 'frame-toolbar-margin-input',
       placeholder: '0',
-      tooltip: 'Padding added when fitting: 20px, 1cm, ' +
-        "or a percentage of the frame's width and height"
+      tooltip: 'Padding added when fitting: 2%, 20px, 1cm, or ' +
+        'one to four values in CSS order (top right bottom left). ' +
+        "A percentage is of the frame's width on every side."
     });
     toolbar.addSeparator();
     toolbar.addTextButton('Done', {
@@ -36285,7 +38638,7 @@
           return internal.getLayerTargetId(gui.model, o.layer);
         }).join(','))
       ];
-      if (margin) parts.push('offset=' + quoteCommandValue(margin));
+      if (margin) parts.push('margin=' + quoteCommandValue(margin));
       if (!lockSize) parts.push('fix-scale');
       parts.push(getTargetOption(target));
       runGuiEditCommand(gui, parts.join(' '), {
@@ -36298,7 +38651,7 @@
     // cleared so the fit that just ran matches what the toolbar shows.
     function getMargin() {
       var value = marginField.getValue();
-      if (parseFloat(value) > 0) return value;
+      if (hasNonZeroMargin(value)) return value;
       if (value) marginField.setValue('');
       return '';
     }
@@ -36349,8 +38702,10 @@
       marginInput.node().value = '2%';
       makeFieldTip(fitRow,
         'Space around the layers: 2%, 20px, 1cm.\n' +
-        "A percentage is of the frame's width on the\n" +
-        'side and of its height on top and bottom.');
+        "A percentage is of the frame's width, on\n" +
+        'every side. Use two to four values for\n' +
+        'uneven margins, in CSS order: 4% 2%, or\n' +
+        '8% 2% 2% 2% (top right bottom left).');
 
       var drawRow = El('div').addClass('frame-create-option-row').appendTo(section);
       addButton(drawRow, 'Draw on the map', function() {
@@ -36382,7 +38737,7 @@
 
       function getMargin() {
         var value = marginInput.node().value.trim();
-        return parseFloat(value) > 0 ? value : '';
+        return hasNonZeroMargin(value) ? value : '';
       }
     }
 
@@ -36462,7 +38817,7 @@
       });
       var parts = ['-frame', 'width=' + quoteCommandValue(width)];
       if (aspect) parts.push('aspect-ratio=' + aspect);
-      if (margin) parts.push('offset=' + quoteCommandValue(margin));
+      if (margin) parts.push('margin=' + quoteCommandValue(margin));
       parts.push('name=frame');
       parts.push('target=' + internal.formatOptionValue(ids.join(',')));
       runCreateCommand(parts.join(' '));
@@ -36539,6 +38894,14 @@
       var b = ext.translateCoords(bbox[2], bbox[1]);
       return Math.abs(b[0] - a[0]);
     }
+  }
+
+  // A margin field's value is passed to the command when any of its one to four
+  // values is positive, e.g. '0 2%'; a blank or all-zero margin is dropped.
+  function hasNonZeroMargin(value) {
+    return String(value || '').split(/[\s,]+/).some(function(str) {
+      return parseFloat(str) > 0;
+    });
   }
 
   function addButton(parent, label, action) {

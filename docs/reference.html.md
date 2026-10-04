@@ -230,7 +230,11 @@ Save content of the target layer(s) to a file or files.
 
 `<file>|<directory>|-`  Name of output file or directory. Use `-` to export text-based formats to `/dev/stdout`.
 
-`format=shapefile|geojson|topojson|flatgeobuf|geopackage|geoparquet|geotiff|json|dbf|csv|tsv|svg` Specify output format. If the `format=` option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper exports to the same format as the input format. The `json` format is an array of objects containing data properties for each feature. The `geotiff` format takes raster layers only; every other format takes vector or table layers only, apart from `svg` and `msx`, which accept both.
+`format=shapefile|geojson|topojson|flatgeobuf|geopackage|geoparquet|geotiff|json|dbf|csv|tsv|svg|html` Specify output format. If the `format=` option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper exports to the same format as the input format.
+
+The `json` format is an array of objects containing data properties for each feature.
+
+The `html` format writes a map as an HTML fragment and an image, in the manner of the [ai2html](https://github.com/newsdev/ai2html) script for Adobe Illustrator.
 
 `target=` Specify layer(s) to export (comma-separated list). The default target is the output layer(s) of the previous command. Use `target=*` to select all layers.
 
@@ -310,7 +314,13 @@ Save content of the target layer(s) to a file or files.
 
 `linked-images` (SVG) Output raster images as separate JPEG or PNG files and link to them from SVG `<image>` elements instead of embedding them as data URIs.
 
-`jpeg-quality=` (SVG) JPEG quality for embedded or linked raster images, from `1` to `100`. The default is `85`.
+`jpeg-quality=` (SVG/HTML) JPEG quality for embedded or linked raster images, or for the image of HTML output, from `1` to `100`. The default is `85`.
+
+`responsiveness=` (HTML) `fixed` (the default) gives the map a fixed size in pixels. `dynamic` makes the map fill the width of its container, keeping its aspect ratio.
+
+`image-format=` (HTML) Format of the map image: `png` (the default) or `jpg`.
+
+`pixel-ratio=` (HTML) Resolution of the map image, in image pixels per CSS pixel. The default is `2`, for sharp images on high-density displays.
 
 `fit-extent=<layer id>` (SVG) Use a layer (typically a layer containing a single rectangle) to set the extent of the map. Paths that overflow this extent are retained in the SVG output.
 
@@ -452,7 +462,15 @@ Assign colors or data values to each feature using one of several classification
 
 `null-value=`   Value (or color) to use for invalid or missing data.
 
-`classes=`      Number of data classes. This number can also be inferred from the `breaks=` or `values=` options.
+`classes=`      Number of data classes. This number can also be inferred from the `breaks=` or `values=` options. With `pivot=`, either the total number of classes (including the pivot class), or two numbers: the classes below and above the pivot (not counting the pivot class).
+
+`pivot=`        Classify diverging data: classes step away from a pivot value on either side. The value is a number, `median`, `mean` or `auto` (`0` if the data has values both below and above 0, or else the median). Each side is classified separately, using `quantile`, `equal-interval`, `nice` or `hybrid` classification (or `breaks=`). The middle color of a color scheme or of a list of colors is the color of the pivot class (an even-numbered list interpolates one). With `breaks=`, a pivot that is one of the breaks divides the classes, and a pivot inside a class makes it the pivot class.
+
+`pivot-range=`  A pair of comma-separated numbers giving the range of the pivot class. By default, the pivot class is centered on the pivot and is one class wide (for `quantile`, it holds an average class's share of the features nearest the pivot). With `pivot-range=`, `pivot=` defaults to the middle of the range.
+
+`no-pivot-class` Omit the pivot class: the two sides meet at the pivot.
+
+`pivot-class` Add a pivot class to `continuous` output, which has none by default. The pivot class gets the center color, without interpolation.
 
 `breaks=`       Specify user-defined sequential class breaks (an alternative to automatic classification using `quantile`, `equal-interval`, etc.).
 
@@ -468,13 +486,19 @@ Assign colors or data values to each feature using one of several classification
 
 `invert`        Reverse the order of colors/values.
 
-`continuous`    Output continuously interpolated values (experimental). Uses linear interpolation between class breaks, which may give poor results with some distributions of data. This option is for creating unclassed/continuous-color maps.
+`continuous`    Output continuously interpolated values, for unclassed/continuous-color maps. Discrete color values are treated as control points, determining the shape of the continuously interpolated color gradient.
+
+`interpolation=`    How intermediate colors are calculated when colors are interpolated. `rgb` (the default) mixes colors in RGB space. `oklch` uses the perceptually uniform OKLCH color space. Lightness, chroma and hue are interpolated separately. This gives evenly spaced steps in lightness and color saturation, avoiding the dull midtones that RGB mixing can produce. Where an `oklch` color falls outside the sRGB gamut, it is fitted as described under `vibrance=`.
+
+`vibrance=`    Boost the chroma (vividness or saturation) of colors interpolated with `interpolation=oklch`. The sRGB gamut holds little chroma near black and white, so a linear ramp between a dark color and a light one may appear under-saturated. The value of `vibrance`, which varies from `0` to `1`, determines how much OKLCH chroma is added to every color of the interpolation. The default is `0`.
+
+With `interpolation=oklch`, when a color falls outside the sRGB gamut, its hue is held constant and chroma is reduced to fit. Lightness may be shifted by a small amount.
 
 `index-field=`  Use class ids that have been precalculated and assigned to this field. Values should be integers from `0 ... n-1` (where n is the number of classes). `-1` is the null value.
 
 `precision=`    Round data values before classification (e.g. `precision=0.1`).
 
-`categories=`   List of values in the source data field. Using this option triggers categorical classification.
+`categories=`   List of values in the source data field. Using this option triggers categorical classification. If `colors=` lists fewer colors than there are categories, the colors are repeated in order. Without `categories=` (or with `categories=*`), the categories are the field's values, except empty ones (null, undefined, empty strings and NaN), which get `null-value=`.
 
 `other=`  Default value for categorical classification. This value is used when the value of the source data field is not present in the list of values given by `categories=`. Defaults to `null-value=` or null.
 
@@ -504,6 +528,12 @@ Assign colors or data values to each feature using one of several classification
 mapshaper covid_cases.geojson \
   -classify save-as=fill quantile color-scheme=Oranges classes=6 \
   -o out.geojson
+
+# Color the change in population on either side of 0, with a class
+# for small changes
+mapshaper counties.shp \
+  -classify pop_change pivot=0 pivot-range=-1,1 equal-interval colors=RdBu classes=9 \
+  -o out.shp
 ```
 
 ### -clean
@@ -990,9 +1020,7 @@ Create a rectangular frame layer at a given display width. Frame size is used fo
 
 `bbox=` Bounding coordinates of frame contents in projected map coordinates (xmin,ymin,xmax,ymax). If omitted, the bounding box of the target layer(s) is used.
 
-`offset=` Padding around the frame's `bbox` in display units or pct of width/height, e.g. 5cm 20px 5%
-
-`offsets=`  Comma-sep. list of offsets for each side of the map frame, in l,b,r,t order
+`margin=` Padding around the frame's `bbox` in display units or as a percentage of the frame's width, e.g. 5cm 20px 5%. As in CSS, a percentage is of the width on every side (top and bottom included), so a single value gives an even margin. Takes one to four values in CSS order: all sides (`5%`); vertical and horizontal (`margin=10%,2%`); top, horizontal and bottom; or top, right, bottom and left (`margin='40px 2% 2% 2%'`). When the frame has a fixed width and height, the content is centered and the padding is a minimum on two sides. (The older `offset=` and `offsets=` options still work; they take a single value or a list in l,b,r,t order.)
 
 `ignore-symbols`  Fit the frame to the locations of points in the target layers, without making room for their symbols and labels
 
@@ -1882,11 +1910,15 @@ Example: `hatches 45deg 2px red 2px grey`
 
 `stroke-dasharray=` Dashes
 
+`stroke-linecap=`  Line caps: `round` (the default), `butt` or `square`. Dashed lines default to `butt`.
+
 `line-start=`      Marker at the first vertex of a line: `arrow`, `open-arrow`, `dot` or `none`. Each part of a multi-part line gets its own marker.
 
 `line-end=`        Marker at the last vertex of a line: `arrow`, `open-arrow`, `dot` or `none`.
 
 `line-end-size=`   Length of an arrowhead's sides in pixels, or the diameter of a dot, for both ends (an arrowhead's default is 7 plus three times the stroke width; a dot's is 0.6 of that)
+
+`line-fade=`       Share of a line's length, from 0 to 1, that fades in from transparent at its tail (e.g. `line-fade=0.4`). The tail is the start of the line, unless only the start has a marker. The fade is a straight gradient, so it suits straight or gently curved lines best.
 
 `opacity=`         Symbol opacity (e.g. `opacity=0.5`)
 
