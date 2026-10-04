@@ -5,7 +5,7 @@ categorical color schemes, with user-editable ramps.
 
 ## Decisions
 
-- **Placement.** A separate popup panel, opened from a "Color by data…" button
+- **Placement.** A separate popup panel, opened from a "Palettes" button
   on the Fill row of the polygon style panel. The style panel is already long
   (stroke, fill, patterns, glow, presets) and the scheme editor plus its
   data-mapping controls would roughly double it.
@@ -216,7 +216,7 @@ Phase 2 is in place for polygon layers:
 - `src/gui/gui-color-scheme-panel.mjs` is the popup;
   `src/gui/gui-color-scheme-model.mjs` holds its state as pure functions
   (unit tests in `test/gui-color-scheme-model-test.mjs`).
-- The style panel has a "Color by data…" row under Fill. While a scheme is
+- The style panel has a "Palettes" button beside the Fill color (where the Random fill button was; that button is removed for now). While a scheme is
   applied, the fill's swatch and hex value are replaced by the scheme's
   colors; clicking them reopens the panel, and × unsets the fills.
 - The layer record lives in a `WeakMap` keyed by layer, not on the layer, and

@@ -73,8 +73,9 @@ describe('gui-color-scheme-model.mjs', function() {
       });
       var tiles = getSchemeTiles(scheme);
       assert.deepEqual(tiles.map(function(t) { return t.pinned; }), [true, false, false, false, true]);
-      assert.equal(tiles[0].adjusted, false);
-      assert(tiles.some(function(t) { return t.adjusted; }));
+      // the navy end has no room in the gamut for more chroma
+      assert.equal(tiles[0].adjusted, true);
+      assert(tiles.slice(1, 4).some(function(t) { return t.adjusted; }));
       assert(getSchemeTiles(choosePreset(scheme, 'Blues')).every(function(t) { return !t.adjusted; }));
     });
 

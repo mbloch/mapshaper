@@ -82,14 +82,29 @@ var VIBRANCE_LIGHTNESS = 0.2;
 // A user's color with vibrance added to its chroma, as far as the gamut has
 // room at its lightness and hue. Grays are left alone, having no hue.
 export function getVibrantColor(color, vibrance) {
+  return getVibrantTile(color, vibrance).color;
+}
+
+// Like getVibrantColor(), but returns {color, l, c, h, ideal, adjusted}, as
+// the function from getOklchInterpolator() does. A color is adjusted if the
+// gamut didn't have room for all of the vibrance.
+export function getVibrantTile(color, vibrance) {
   var rgb = parseColorOrStop(color);
-  var lch, out;
-  if (!(vibrance > 0)) return formatColor(rgb);
-  lch = oklabToOklch(rgbToOklab(rgb));
-  if (lch.c < ACHROMATIC) return formatColor(rgb);
-  out = oklchToRgb({l: lch.l, c: getVibrantChroma(lch, vibrance), h: lch.h});
-  out.a = rgb.a;
-  return formatColor(out);
+  var lch = oklabToOklch(rgbToOklab(rgb));
+  var ideal = {l: lch.l, c: lch.c, h: lch.h};
+  var c = lch.c, out;
+  if (vibrance > 0 && lch.c >= ACHROMATIC) {
+    ideal.c += vibrance;
+    c = getVibrantChroma(lch, vibrance);
+    out = oklchToRgb({l: lch.l, c: c, h: lch.h});
+    out.a = rgb.a;
+  }
+  return {
+    color: formatColor(out || rgb),
+    l: lch.l, c: c, h: lch.h,
+    ideal: ideal,
+    adjusted: ideal.c - c > DEVIATION
+  };
 }
 
 function getVibrantChroma(lch, vibrance) {

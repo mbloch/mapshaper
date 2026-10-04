@@ -3690,7 +3690,7 @@ body.pan.panning .map-layers:not(.drawing) {
 
 /* In the narrow column beside the fill's colour, level with it and as wide
    as the fields in that column. */
-.label-split-cell > .layer-random-fill-btn {
+.label-split-cell > .layer-palettes-btn {
 	display: flex;
 	justify-content: center;
 	width: 100%;
@@ -4785,8 +4785,8 @@ body.dragging-color-picker * {
 	box-shadow: 0 0 0 2px #000;
 }
 
-/* A dot under each color the user set. The end dots are hollow: the ends of
-   a ramp are always pinned, so there is nothing to click. */
+/* A dot under each color the user set between the ends of a ramp; the ends
+   are always pinned, so they have no dot. */
 .color-scheme-pin {
 	width: 7px;
 	height: 7px;
@@ -4797,13 +4797,6 @@ body.dragging-color-picker * {
 .color-scheme-pin.pinned {
 	background: #222;
 	cursor: pointer;
-}
-
-.color-scheme-pin.pinned.end {
-	box-sizing: border-box;
-	background: transparent;
-	border: 1.5px solid #222;
-	cursor: default;
 }
 
 .label-color-picker-fields input.label-color-picker-input {
@@ -4891,11 +4884,7 @@ body.dragging-color-picker * {
 	color: #000;
 }
 
-.layer-scheme-row .label-panel-action-btn {
-	margin-top: 0;
-}
-
-.layer-scheme-row .label-panel-action-btn.selected {
+.layer-palettes-btn.selected {
 	background-color: var(--lt-theme-col);
 }
 

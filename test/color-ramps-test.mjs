@@ -185,12 +185,27 @@ describe('color-ramps.mjs and oklab.mjs', function () {
         });
       });
 
-      it('raises the pinned tiles too, without marking them', function () {
+      it('raises the pinned tiles too', function () {
         var tiles = resolveRampTiles(pins, 5, {vibrance: 0.02});
         assert.equal(tiles[0].color, getVibrantColor('#344a72', 0.02));
         assert.equal(tiles[4].color, getVibrantColor('#f7ffec', 0.02));
         assert.notEqual(tiles[0].color, '#344a72');
-        assert(!tiles[0].adjusted && !tiles[4].adjusted);
+        assert.equal(tiles[0].adjusted, false);
+      });
+
+      it('marks pinned tiles whose vibrance the gamut cut short', function () {
+        var light = toLch('#f7ffec');
+        var tile = resolveRampTiles(pins, 5, {vibrance: 0.09})[4];
+        assert.equal(tile.adjusted, true);
+        assert(Math.abs(tile.ideal.c - (light.c + 0.09)) < 1e-9);
+        assert.equal(tile.c, getMaxChroma(light.l, light.h));
+        assert.equal(tile.l, light.l);
+      });
+
+      it('does not mark gray pinned tiles', function () {
+        var tiles = resolveRampTiles([{t: 0, color: '#344a72'}, {t: 1, color: '#fff'}], 5, {vibrance: 0.09});
+        assert.equal(tiles[4].adjusted, false);
+        assert.equal(tiles[4].color, '#ffffff');
       });
 
       it('works with the light end on either side', function () {

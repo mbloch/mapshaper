@@ -1,5 +1,5 @@
 import { parseColor } from '../color/color-utils';
-import { getOklchInterpolator, getVibrantColor } from '../color/oklab';
+import { getOklchInterpolator, getVibrantTile } from '../color/oklab';
 import { stop } from '../utils/mapshaper-logging';
 
 // A ramp is defined by pins: [{t, color}], where t is a position from 0 (left
@@ -19,8 +19,8 @@ export function resolveRamp(pins, n, opts) {
 }
 
 // Like resolveRamp(), but returns a {color, pinned, adjusted, l, c, h, ideal}
-// object for each tile. Interpolated tiles that had to be fitted to the sRGB
-// gamut are adjusted, and ideal has the OKLCH values they were fitted from.
+// object for each tile. Tiles that had to be fitted to the sRGB gamut are
+// adjusted, and ideal has the OKLCH values they were fitted from.
 export function resolveRampTiles(pins, n, opts) {
   var slots = getPinnedSlots(pins, n);
   var tiles = [];
@@ -28,9 +28,10 @@ export function resolveRampTiles(pins, n, opts) {
   for (var i=0; i<n; i++) {
     if (slots[i] > -1) {
       // vibrance raises a pinned color's chroma only as far as the gamut has
-      // room at its own lightness, so it is never marked as adjusted
-      tiles.push({color: getVibrantColor(pins[slots[i]].color, opts && opts.vibrance),
-        pinned: true, adjusted: false});
+      // room at its own lightness; it is adjusted if that cut the vibrance short
+      tile = getVibrantTile(pins[slots[i]].color, opts && opts.vibrance);
+      tile.pinned = true;
+      tiles.push(tile);
       left = i;
       continue;
     }

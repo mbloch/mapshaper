@@ -72,8 +72,8 @@ var lineCaps = [{
 export function LayerStyleTool(gui) {
   var parent = gui.container.findChild('.mshp-main-map');
   var panel = El('div').addClass('label-style-panel layer-style-panel rollover').appendTo(parent).hide();
-  var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, capControl, dashControl, arrowControl, randomFillBtn, presetControl, patternControl, glowControl, hit;
-  var schemeRow, schemeBtn, schemeStrip, schemePanel;
+  var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, capControl, dashControl, arrowControl, presetControl, patternControl, glowControl, hit;
+  var schemeBtn, schemeStrip, schemePanel;
   var targetLayer = null;
   // What the arrowhead switch turns on, for lines that have no heads
   var lastArrow = {shape: 'arrow', position: 'end', fade: 0};
@@ -166,8 +166,6 @@ export function LayerStyleTool(gui) {
     strokeControl = addColorControl(panel, 'Stroke', 'stroke', '#000000');
     strokeWidthField = addStrokeWidthControl(strokeControl.aside);
     fillControl = addColorControl(panel, 'Fill', 'fill', '');
-    randomFillBtn = makePanelActionButton(fillControl.aside, 'Random fill', applyRandomFillColors)
-      .addClass('layer-random-fill-btn');
     addColorSchemeControl();
     var lineRow = El('div').addClass('label-style-row label-split-row layer-line-row').appendTo(panel);
     capControl = addLineCapControl(lineRow);
@@ -248,9 +246,8 @@ export function LayerStyleTool(gui) {
         e.stopPropagation();
         removeColorScheme();
       });
-    schemeRow = El('div').addClass('label-style-row layer-scheme-row').appendTo(panel);
-    fillControl.row.node().after(schemeRow.node());
-    schemeBtn = makePanelActionButton(schemeRow, 'Color by data…', openColorSchemePanel);
+    schemeBtn = makePanelActionButton(fillControl.aside, 'Palettes', openColorSchemePanel)
+      .addClass('layer-palettes-btn');
     schemePanel = new ColorSchemePanel(gui, {
       getExtraCommands: function() {
         if (!targetLayer) return '';
@@ -288,7 +285,7 @@ export function LayerStyleTool(gui) {
   function updateColorSchemeControl() {
     var isPolygon = targetLayer && targetLayer.geometry_type == 'polygon';
     var scheme = isPolygon ? getLayerScheme(targetLayer) : null;
-    schemeRow.classed('hidden', !isPolygon);
+    schemeBtn.classed('hidden', !isPolygon);
     fillControl.input.parent().classed('has-scheme', !!scheme);
     schemeBtn.classed('selected', schemePanel.isOpen());
     if (scheme) {
@@ -660,7 +657,6 @@ export function LayerStyleTool(gui) {
       updateLineCapControl();
       updateArrowControl();
     }
-    randomFillBtn.classed('hidden', geom != 'polygon');
     updateColorSchemeControl();
     patternControl.section.classed('hidden', geom != 'polygon');
     if (geom == 'polygon') patternControl.update();
@@ -798,6 +794,8 @@ export function LayerStyleTool(gui) {
     }
   }
 
+  // No button runs this for now; the Random fill button is waiting for a new
+  // place in the panel.
   // Patterns keep their backgrounds in step with the fills, and the new fills
   // are not known until -classify has chosen them, so the patterns are
   // rewritten by an expression that reads each feature's fill when it runs.

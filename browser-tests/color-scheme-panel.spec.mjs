@@ -5,7 +5,7 @@ var FIXTURE = 'test/data/features/clean/ex8_britain.json';
 var LAYER = 'ex8_britain';
 var DEFAULT_VIBRANCE = 0;
 
-test('Color by data colors the fills by a numeric field', async function({page}) {
+test('Color palettes colors the fills by a numeric field', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page);
   await openSchemePanel(page);
@@ -15,7 +15,7 @@ test('Color by data colors the fills by a numeric field', async function({page})
   await expect(panel.locator('.color-scheme-tile')).toHaveCount(5);
   // a custom ramp, pinned at its ends
   await expect(panel.locator('.color-scheme-palette-name')).toHaveText('Custom');
-  expect(await getPinStates(page)).toEqual(['end', '', '', '', 'end']);
+  expect(await getPinStates(page)).toEqual(['', '', '', '', '']);
 
   var fills = await getFills(page);
   expect(new Set(fills).size).toBe(5);
@@ -38,14 +38,14 @@ test('edits made while the panel is open are one undo state and one command', as
   await panel.locator('.color-scheme-tile').nth(3).click();
   await setPickerColor(panel, '#b11b1b');
   await page.waitForTimeout(300);
-  expect(await getPinStates(page)).toEqual(['end', '', '', 'pin', '', '', 'end']);
+  expect(await getPinStates(page)).toEqual(['', '', '', 'pin', '', '', '']);
   var pinned = await getVibrantColor(page, '#b11b1b');
   expect(await getFills(page)).toContain(pinned);
 
   // unpinning the tile puts it back to an interpolated color
-  await panel.locator('.color-scheme-pin.pinned:not(.end)').click();
+  await panel.locator('.color-scheme-pin.pinned').click();
   await page.waitForTimeout(300);
-  expect(await getPinStates(page)).toEqual(['end', '', '', '', '', '', 'end']);
+  expect(await getPinStates(page)).toEqual(['', '', '', '', '', '', '']);
   expect(await getFills(page)).not.toContain(pinned);
   var after = await getFills(page);
 
@@ -97,7 +97,7 @@ test('a preset can be chosen, and editing it makes a custom ramp', async functio
   await setPickerColor(panel, '#ffffff');
   await page.waitForTimeout(300);
   await expect(panel.locator('.color-scheme-palette-name')).toHaveText('Custom');
-  expect(await getPinStates(page)).toEqual(['end', '', 'pin', '', 'end']);
+  expect(await getPinStates(page)).toEqual(['', '', 'pin', '', '']);
   // the ends keep the preset's colors, which vibrance raises in the ramp
   await panel.locator('.color-scheme-tile').nth(0).click();
   await expect(panel.locator('.label-color-picker-input')).toHaveValue(await getVibrantColor(page, viridis[0], 0));
@@ -290,6 +290,12 @@ test('tiles fitted to the sRGB gamut are marked', async function({page}) {
   await panel.getByLabel('Vibrance').fill('0');
   await page.waitForTimeout(300);
   await expect(panel.locator('.color-scheme-pin.adjusted')).toHaveCount(0);
+  // the ends are always pinned, and have no dot
+  for (var end of [0, 4]) {
+    var endPin = panel.locator('.color-scheme-pin').nth(end);
+    await expect(endPin).not.toHaveClass(/pinned/);
+    await expect(endPin).not.toHaveAttribute('data-tooltip');
+  }
 
   for (var [i, color] of [[0, '#001e56'], [4, '#fcf1cd']]) {
     await panel.locator('.color-scheme-tile').nth(i).click();
@@ -301,6 +307,9 @@ test('tiles fitted to the sRGB gamut are marked', async function({page}) {
   expect(await marks.count()).toBeGreaterThan(0);
   await expect(marks.first()).toHaveAttribute('data-tooltip',
     /^Shifted to fit the sRGB gamut:\n(lightness [+-]\d\.\d{3}(, )?)?(chroma [+-]\d\.\d{3})?$/);
+  // the navy end can't take all of the vibrance
+  await expect(panel.locator('.color-scheme-pin').nth(0)).toHaveAttribute('data-tooltip',
+    /^Shifted to fit the sRGB gamut:\nchroma -\d\.\d{3}$/);
 });
 
 test('the tile picker shows colors in the chosen format, which it keeps', async function({page}) {
@@ -375,7 +384,7 @@ function schemePanel(page) {
 
 async function openSchemePanel(page) {
   await page.locator('.layer-style-panel .label-panel-action-btn')
-    .filter({hasText: 'Color by data'}).click();
+    .filter({hasText: 'Palettes'}).click();
   await expect(schemePanel(page)).toBeVisible();
   await page.waitForTimeout(300);
 }
@@ -385,12 +394,11 @@ async function closeSchemePanel(page) {
   await page.waitForTimeout(300);
 }
 
-// 'end', 'pin' or '' for each tile
+// 'pin' or '' for each tile; the ends are always pinned, and have no dot
 async function getPinStates(page) {
   return schemePanel(page).locator('.color-scheme-pin').evaluateAll(function(pins) {
     return pins.map(function(pin) {
-      if (!pin.classList.contains('pinned')) return '';
-      return pin.classList.contains('end') ? 'end' : 'pin';
+      return pin.classList.contains('pinned') ? 'pin' : '';
     });
   });
 }

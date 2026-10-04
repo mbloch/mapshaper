@@ -123,9 +123,6 @@ test('the panel buttons still do what they say', async function({page}) {
   await setField(colorRow(page, 'Fill').locator('.label-color-input'), '#00ff00');
   expect(await getStyleValue(page, 'fill')).toBe('#00ff00');
 
-  await clickButton(page, 'Random fill');
-  expect(await getStyleValue(page, 'fill')).not.toBe('#00ff00');
-
   await clickButton(page, 'Clear style');
   expect(await getStyleValue(page, 'fill')).toBeUndefined();
   expect(errors).toEqual([]);
@@ -271,16 +268,6 @@ test('each feature gets its pattern over its own fill', async function({page}) {
   // the same pattern over different fills is still one pattern
   await expect(patternSelect(page)).toHaveValue('dots');
   await expect(page.locator('.layer-pattern-size-row span').first()).toHaveText('Size');
-
-  // random fills are chosen by the command, and the patterns follow them
-  await page.locator('.layer-style-panel .label-panel-action-btn')
-    .filter({hasText: 'Random fill'}).click();
-  await page.waitForTimeout(400);
-  var records = await getRecords(page);
-  records.forEach(function(rec) {
-    expect(rec['fill-pattern']).toBe('dots 2px #000000 3px ' + rec.fill);
-  });
-  await expect(patternSelect(page)).toHaveValue('dots');
   expect(errors).toEqual([]);
 });
 

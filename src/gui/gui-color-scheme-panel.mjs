@@ -108,7 +108,7 @@ export function ColorSchemePanel(gui, opts) {
     });
 
     var header = El('div').addClass('label-style-panel-title').appendTo(panel);
-    El('span').appendTo(header).text('Color by data');
+    El('span').appendTo(header).text('Color palettes');
     El('button').addClass('label-style-close').appendTo(header).text('×').on('click', function() {
       close();
       opts.onUpdate();
@@ -284,19 +284,17 @@ export function ColorSchemePanel(gui, opts) {
         });
       var pin = El('div').addClass('color-scheme-pin').appendTo(cell)
         .on('mouseenter', function() { keepTooltipInWindow(pin.node()); });
-      if (tile.adjusted) {
-        pin.addClass('adjusted').attr('data-tooltip', describeAdjustment(tile));
-      }
-      if (!tile.pinned) return;
-      pin.addClass('pinned');
-      if (i === 0 || i == n - 1) {
-        pin.addClass('end').attr('data-tooltip', 'The ends of a ramp are always pinned');
-      } else {
-        pin.attr('role', 'button').attr('aria-label', 'Unpin this color')
+      var end = i === 0 || i == n - 1;
+      // a pinned tile between the ends needs its dot for unpinning, even if
+      // vibrance was clipped
+      if (tile.pinned && !end) {
+        pin.addClass('pinned').attr('role', 'button').attr('aria-label', 'Unpin this color')
           .attr('data-tooltip', 'Unpin this color')
           .on('click', function() {
             changeScheme(clearTileColor(scheme, i));
           });
+      } else if (tile.adjusted) {
+        pin.addClass('adjusted').attr('data-tooltip', describeAdjustment(tile));
       }
     });
   }
