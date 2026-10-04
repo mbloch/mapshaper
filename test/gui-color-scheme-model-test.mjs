@@ -10,7 +10,8 @@ import {
   setSchemeMethod, getAppliedColors, maxCategoricalColors, getCategoricalPalette,
   moveSwatch, shuffleScheme, getSchemeNullColor, setSchemeNullColor, getNoDataCount,
   defaultNullColor, updateDivergingLayout, getDivergingTileUse, getDivergingClassRanges,
-  getPivotSummary, setSchemePivot, setSchemeNeutral, setSchemeSplit, getCenterTile
+  getPivotSummary, setSchemePivot, setSchemeNeutral, setSchemeSplit, getCenterTile,
+  getSequentialClassRanges
 } from '../src/gui/gui-color-scheme-model';
 import api from '../mapshaper.js';
 
@@ -438,6 +439,14 @@ describe('gui-color-scheme-model.mjs', function() {
       assert.strictEqual(getLayerScheme(lyr), scheme);
       setLayerScheme(lyr, Object.assign({}, scheme, {nullColor: '#00ff00'}));
       assert.strictEqual(getLayerScheme(lyr), null);
+    });
+
+    it('sequential class ranges are the ones -classify finds', function() {
+      var lyr = makeLayer([{pop: 0}, {pop: 10}, {pop: 20}, {pop: 40}, {pop: null}]);
+      var scheme = Object.assign(getDefaultScheme('pop'), {method: 'equal-interval', n: 4});
+      assert.deepEqual(getSequentialClassRanges(scheme, lyr),
+        [[-Infinity, 10], [10, 20], [20, 30], [30, Infinity]]);
+      assert.equal(getSequentialClassRanges(getDefaultScheme('missing'), lyr), null);
     });
 
     it('the command colors the features with no data', async function() {

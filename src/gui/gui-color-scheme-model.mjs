@@ -212,7 +212,22 @@ export function getDivergingTileUse(scheme) {
 // The data range of each class of a diverging layout, in class order:
 // [low, high), with -Infinity and Infinity at the outer ends
 export function getDivergingClassRanges(layout) {
-  var breaks = layout ? layout.breaks : [];
+  return getBreakRanges(layout ? layout.breaks : []);
+}
+
+// The data range of each class of a sequential scheme, as -classify finds
+// them (see getDivergingClassRanges()), or null if there are no data
+export function getSequentialClassRanges(scheme, lyr) {
+  var values = getAscendingValues(lyr, scheme.field);
+  if (values.length === 0) return null;
+  try {
+    return getBreakRanges(internal.getSequentialBreaks(values, scheme.method, scheme.n - 1));
+  } catch(e) {
+    return null;
+  }
+}
+
+function getBreakRanges(breaks) {
   var ranges = [];
   for (var i=0; i<=breaks.length; i++) {
     ranges.push([i > 0 ? breaks[i - 1] : -Infinity, i < breaks.length ? breaks[i] : Infinity]);

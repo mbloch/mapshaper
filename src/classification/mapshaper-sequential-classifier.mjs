@@ -54,17 +54,9 @@ export function getSequentialClassifier(classValues, nullValue, dataValues, meth
   } else if (opts.breaks) {
     // user-defined breaks
     breaks = opts.breaks;
-  } else if (method == 'equal-interval') {
-    breaks = getEqualIntervalBreaks(ascending, numBreaks);
-  } else if (method == 'quantile') {
-    breaks = getQuantileBreaks(ascending, numBreaks);
-  } else if (method == 'hybrid') {
-    breaks = getHybridBreaks(ascending, numBreaks);
-  } else if (method == 'nice') {
-    breaks = getNiceBreaks(ascending, numBreaks);
-    message('Nice breaks:', breaks);
   } else {
-    stop('Unknown classification method:', method);
+    breaks = getSequentialBreaks(ascending, method, numBreaks);
+    if (method == 'nice') message('Nice breaks:', breaks);
   }
 
   printDistributionInfo(ascending, breaks, nullCount);
@@ -94,6 +86,18 @@ export function getSequentialClassifier(classValues, nullValue, dataValues, meth
   }
 
   return classifier;
+}
+
+// The inner breaks of a sequential method's classes (also used by the GUI,
+// to show each class's range)
+// ascending: the data values, in ascending order
+export function getSequentialBreaks(ascending, method, numBreaks) {
+  if (numBreaks === 0) return [];
+  if (method == 'equal-interval') return getEqualIntervalBreaks(ascending, numBreaks);
+  if (method == 'quantile') return getQuantileBreaks(ascending, numBreaks);
+  if (method == 'hybrid') return getHybridBreaks(ascending, numBreaks);
+  if (method == 'nice') return getNiceBreaks(ascending, numBreaks);
+  stop('Unknown classification method:', method);
 }
 
 export function getClassRanges(breaks, ascending) {

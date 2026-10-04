@@ -4932,7 +4932,7 @@ body.dragging-color-picker * {
 .color-scheme-slider-row:not(.hidden) {
 	display: flex;
 	align-items: center;
-	gap: 10px;
+	gap: 5px;
 }
 
 .color-scheme-tile-row + .color-scheme-slider-row {
@@ -4949,7 +4949,7 @@ body.dragging-color-picker * {
 .color-scheme-slider-row input[type=range] {
 	flex: 1;
 	min-width: 0;
-	margin: 0;
+	margin: 0 5px 0 2px;
 	accent-color: var(--theme-col);
 }
 

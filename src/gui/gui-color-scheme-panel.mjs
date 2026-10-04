@@ -15,7 +15,7 @@ import {
   getSwatchCategories, getCategoricalPalette, moveSwatch, shuffleScheme,
   getSchemeNullColor, setSchemeNullColor, getNoDataCount,
   getDivergingPresetNames, pivotOptions, divergingSplits, updateDivergingLayout, getDivergingTileUse,
-  getDivergingClassRanges, getPivotSummary, setSchemePivot, setSchemeNeutral, setSchemeSplit,
+  getDivergingClassRanges, getSequentialClassRanges, getPivotSummary, setSchemePivot, setSchemeNeutral, setSchemeSplit,
   getCenterTile,
   getLayerScheme, setLayerScheme
 } from './gui-color-scheme-model';
@@ -467,7 +467,7 @@ export function ColorSchemePanel(gui, opts) {
     var used = tiles.length;
     var tileUse = diverging ? getDivergingTileUse(scheme) : null;
     var center = getCenterTile(scheme);
-    var classLabels = diverging ? getClassLabels(tileUse) : null;
+    var classLabels = categorical ? null : getClassLabels(tileUse);
     var groups = categorical && scheme.method == 'categorical' ?
       getSwatchCategories(getCategories(targetLayer, scheme.field), used) : null;
     var n, perRow;
@@ -535,9 +535,14 @@ export function ColorSchemePanel(gui, opts) {
   }
 
   // The data range of each tile's class, for the tiles that classes use
+  // (sequential tiles are all used, one class each)
   function getClassLabels(tileUse) {
-    var ranges = getDivergingClassRanges(scheme.layout);
-    var j = 0;
+    var ranges, j = 0;
+    if (scheme.type == 'sequential') {
+      ranges = getSequentialClassRanges(scheme, targetLayer) || [];
+      return ranges.map(formatClassRange);
+    }
+    ranges = getDivergingClassRanges(scheme.layout);
     return tileUse.map(function(used) {
       return used ? formatClassRange(ranges[j++]) : null;
     });

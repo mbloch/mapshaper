@@ -21,6 +21,13 @@ test('Color palettes colors the fills by a numeric field', async function({page}
   expect(new Set(fills).size).toBe(5);
   expect(fills.every(function(fill) { return /^#[0-9a-f]{6}$/.test(fill); })).toBe(true);
 
+  // each tile shows its class's range: ids from 1806 to 5434, in two equal
+  // intervals
+  await methodSelect(page).selectOption('equal-interval');
+  await setField(panel.locator('.size-field-input'), '2');
+  await expect(panel.locator('.color-scheme-tile').nth(0)).toHaveAttribute('data-tooltip', 'Below 3620');
+  await expect(panel.locator('.color-scheme-tile').nth(1)).toHaveAttribute('data-tooltip', '3620 and above');
+
   // The style panel shows the scheme in place of the fill's single color
   await expect(page.locator('.layer-style-panel .label-color-field.has-scheme')).toHaveCount(1);
   expect(errors).toEqual([]);
