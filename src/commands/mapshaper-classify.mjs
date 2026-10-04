@@ -4,7 +4,15 @@ import { requireDataField, initDataTable } from '../dataset/mapshaper-layer-util
 import { getFieldValues } from '../datatable/mapshaper-data-utils';
 import {
   getSequentialClassifier,
+  getAscendingNumbers,
+  applyDataRange
 } from '../classification/mapshaper-sequential-classifier';
+import {
+  isDivergingClassification,
+  getDivergingLayout,
+  formatDivergingLayout
+} from '../classification/mapshaper-diverging';
+import { getRoundingFunction } from '../geom/mapshaper-rounding';
 import {
   getCategoricalClassifier
 } from '../classification/mapshaper-categorical-classifier';
@@ -16,7 +24,7 @@ import {
 
 import cmd from '../mapshaper-cmd';
 import { getUniqFieldValues, getColumnType } from '../datatable/mapshaper-data-utils';
-import { getClassValues, getNullValue } from '../classification/mapshaper-classify-ramps';
+import { getClassValues, getDivergingClassValues, getNullValue } from '../classification/mapshaper-classify-ramps';
 import { getClassifyMethod } from '../classification/mapshaper-classify-methods';
 import { color as d3_color } from 'd3-color';
 import { getBlackiClassifier } from '../classification/mapshaper-blacki';
@@ -33,7 +41,7 @@ cmd.classify = function(lyr, dataset, optsArg) {
   var values, nullValue;
   var classifyByValue, classifyByRecordId;
   var numClasses, numValues;
-  var method;
+  var method, diverging, divergingLayout;
 
   if (opts.color_scheme) {
     stop('color-scheme is not a valid option, use colors instead');
@@ -83,7 +91,23 @@ cmd.classify = function(lyr, dataset, optsArg) {
     }
   }
 
-  if (opts.classes) {
+  diverging = isDivergingClassification(opts);
+  if (diverging) {
+    validateDivergingOptions(method, fieldType, opts);
+  } else if (opts.no_pivot_class) {
+    stop('no-pivot-class requires pivot= or pivot-range=');
+  }
+  if (Array.isArray(opts.classes) && !diverging) {
+    if (opts.classes.length != 1) {
+      stop('classes= takes two numbers (classes below and above the pivot) only with pivot=');
+    }
+    opts.classes = opts.classes[0];
+  }
+
+  if (diverging) {
+    // the classes depend on the data (see getDivergingLayout())
+    numClasses = 0;
+  } else if (opts.classes) {
     if (!utils.isInteger(opts.classes) || opts.classes > 1 === false) {
       stop('Invalid number of classes:', opts.classes, '(expected a value greater than 1)');
     }
@@ -106,15 +130,24 @@ cmd.classify = function(lyr, dataset, optsArg) {
     numClasses = 4;
   }
   numValues = opts.continuous ? numClasses + 1 : numClasses;
-  if (numValues > 1 === false) {
+  if (numValues > 1 === false && !diverging) {
     stop('Missing a valid number of values');
   }
 
   // get colors or other values
   //
-  values = getClassValues(method, numValues, opts);
-  if (opts.invert) {
-    values = values.concat().reverse();
+  if (diverging && fieldType === null) {
+    values = []; // no data: every feature gets the null value
+  } else if (diverging) {
+    divergingLayout = getDivergingLayout(getDivergingData(records, dataField, opts), method,
+      Object.assign({}, opts, {classes: getDivergingClassCount(opts)}));
+    message(formatDivergingLayout(divergingLayout));
+    values = getDivergingClassValues(divergingLayout, opts);
+  } else {
+    values = getClassValues(method, numValues, opts);
+    if (opts.invert) {
+      values = values.concat().reverse();
+    }
   }
   if (valuesAreColors) {
     message('Colors:', formatValuesForLogging(values));
@@ -136,6 +169,9 @@ cmd.classify = function(lyr, dataset, optsArg) {
     classifyByValue = getIndexedClassifier(values, nullValue, opts);
   } else if (method == 'categorical') {
     classifyByValue = getCategoricalClassifier(values, nullValue, opts);
+  } else if (diverging) {
+    classifyByValue = getSequentialClassifier(values, nullValue, getFieldValues(records, dataField), method,
+      Object.assign({}, opts, {breaks: divergingLayout.breaks}));
   } else {
     classifyByValue = getSequentialClassifier(values, nullValue, getFieldValues(records, dataField), method, opts);
   }
@@ -167,6 +203,44 @@ cmd.classify = function(lyr, dataset, optsArg) {
   });
   lyr.data.markSchemaChanged({operation: 'classify', field: outputField});
 };
+
+function validateDivergingOptions(method, fieldType, opts) {
+  if (fieldType === null) return; // no data
+  if (fieldType != 'number') {
+    stop('pivot= requires a numeric data field');
+  }
+  if (!['quantile', 'equal-interval', 'nice', 'hybrid', 'breaks'].includes(method)) {
+    stop('The', method, 'method does not support pivot=');
+  }
+  if (opts.continuous) {
+    stop('pivot= does not support continuous classes');
+  }
+}
+
+// The data that the classes divide: numbers, rounded and clamped as the
+// sequential classifier does
+function getDivergingData(records, field, opts) {
+  var values = getFieldValues(records, field);
+  var ascending;
+  if (opts.precision) {
+    values = values.map(getRoundingFunction(opts.precision));
+  }
+  ascending = getAscendingNumbers(values);
+  if (opts.outer_breaks) {
+    ascending = applyDataRange(ascending, opts.outer_breaks);
+  }
+  return ascending;
+}
+
+// The total number of classes (including a pivot class), or the numbers of
+// classes [below, above] the pivot
+function getDivergingClassCount(opts) {
+  var hasNeutral = !opts.no_pivot_class;
+  if (opts.classes) return opts.classes;
+  if (opts.colors && opts.colors.length > 1) return opts.colors.length;
+  if (opts.values && opts.values.length > 1) return opts.values.length;
+  return hasNeutral ? 7 : 6;
+}
 
 // Like the categorical classifier, counts 0 as a value and other falsy
 // values (null, undefined, '', NaN) as empty

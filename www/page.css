@@ -4932,14 +4932,15 @@ body.dragging-color-picker * {
 .color-scheme-slider-row:not(.hidden) {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 10px;
 }
 
 .color-scheme-tile-row + .color-scheme-slider-row {
 	margin-top: 6px;
 }
 
-.color-scheme-slider-label {
+.color-scheme-slider-label,
+.color-scheme-hint-label {
 	position: relative;
 	flex: none;
 	cursor: default;
@@ -4980,6 +4981,10 @@ body.dragging-color-picker * {
 	cursor: pointer;
 }
 
+.label-style-row .color-scheme-icon-btn {
+	margin-right: 0;
+}
+
 .color-scheme-icon-btn:hover {
 	background-color: #f0f0f0;
 }
@@ -4988,22 +4993,37 @@ body.dragging-color-picker * {
 	background-color: var(--lt-theme-col);
 }
 
-.color-scheme-slider-row > .color-scheme-icon-btn + .color-scheme-icon-btn {
-	margin-left: -4px;
-}
-
 /* A bar under the categorical swatches in use, joined across the gaps
-   between them */
-.color-scheme-pin.used {
+   between them; diverging tiles have one under the tiles their classes use,
+   above the pin dots */
+.color-scheme-pin.used,
+.color-scheme-bar.used {
 	width: 100%;
 	height: 3px;
-	margin: 5px 0 0;
+	margin: 4px 0 0;
 	border-radius: 0;
 	background-color: #333;
 }
 
-.color-scheme-pin.used.joined {
+.color-scheme-pin.used.joined,
+.color-scheme-bar.used.joined {
 	width: calc(100% + 3px);
+}
+
+.color-scheme-bar {
+	height: 3px;
+	margin-top: 4px;
+}
+
+.color-scheme-bar + .color-scheme-pin {
+	margin-top: 2px;
+}
+
+/* The pivot class switch, level with the select beside it */
+.color-scheme-toggle-line {
+	display: flex;
+	align-items: center;
+	height: var(--label-field-height);
 }
 
 /* Under an interpolated tile whose color was moved to fit the sRGB gamut,
@@ -5024,6 +5044,7 @@ body.dragging-color-picker * {
 .color-scheme-pin[data-tooltip]:hover::after,
 .color-scheme-tile[data-tooltip]:hover::after,
 .color-scheme-slider-label[data-tooltip]:hover::after,
+.color-scheme-hint-label[data-tooltip]:hover::after,
 .color-scheme-icon-btn[data-tooltip]:hover::after {
 	content: attr(data-tooltip);
 	box-sizing: border-box;

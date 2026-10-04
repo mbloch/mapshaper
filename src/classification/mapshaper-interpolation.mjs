@@ -1,6 +1,6 @@
 import { stop, error } from '../utils/mapshaper-logging';
 import { interpolate as d3_interpolate } from 'd3-interpolate';
-import { interpolateOklch, getVibrantColor } from '../color/oklab';
+import { interpolateOklch, getVibrantColor, getVibranceChroma } from '../color/oklab';
 import { parseColor } from '../color/color-utils';
 
 // TODO: support three or more stops
@@ -20,6 +20,7 @@ export function getGradientFunction(stops) {
 
 // Returns the interpolation options of -classify, checked, with
 // interpolation=oklch filled in when vibrance= is given without a method.
+// vibrance= (0-1) is returned as OKLCH chroma, as the interpolators take it.
 export function getInterpolationOptions(opts) {
   var method = opts.interpolation;
   var vibrance = opts.vibrance;
@@ -32,10 +33,10 @@ export function getInterpolationOptions(opts) {
   if (method && method != 'oklch') {
     stop('vibrance= requires interpolation=oklch');
   }
-  if (!(vibrance >= 0 && vibrance <= 0.4)) {
-    stop('vibrance= takes an OKLCH chroma from 0 to 0.4');
+  if (!(vibrance >= 0 && vibrance <= 1)) {
+    stop('vibrance= takes a value from 0 to 1');
   }
-  return {interpolation: 'oklch', vibrance: vibrance};
+  return {interpolation: 'oklch', vibrance: getVibranceChroma(vibrance)};
 }
 
 // opts.interpolation: 'rgb' (default) or 'oklch'; oklch applies only to pairs

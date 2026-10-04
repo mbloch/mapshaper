@@ -9,7 +9,8 @@ import {
   getSwatchCategories, getCategoricalPresetColors, getMaxSchemeColors, setSchemeField,
   setSchemeMethod, getAppliedColors, maxCategoricalColors, getCategoricalPalette,
   moveSwatch, shuffleScheme, getSchemeNullColor, setSchemeNullColor, getNoDataCount,
-  defaultNullColor
+  defaultNullColor, updateDivergingLayout, getDivergingTileUse, getDivergingClassRanges,
+  getPivotSummary, setSchemePivot, setSchemeNeutral, setSchemeSplit, getCenterTile
 } from '../src/gui/gui-color-scheme-model';
 import api from '../mapshaper.js';
 
@@ -445,6 +446,133 @@ describe('gui-color-scheme-model.mjs', function() {
       var cmd = formatSchemeCommand(setTileCount(scheme, 2), colors);
       var out = await api.applyCommands('-i data.json ' + cmd + ' -o', {'data.json': [{value: 1}, {value: null}, {value: 2}]});
       assert.deepEqual(JSON.parse(out['data.json']).map(function(d) { return d.fill; }), [colors[0], '#ff0000', colors[1]]);
+    });
+  });
+
+  describe('diverging schemes', function() {
+    // 4 values below 0 and 8 above
+    var values = [-40, -30, -20, -10, 5, 10, 20, 30, 40, 50, 60, 70];
+    function divergingLayer() {
+      return makeLayer(values.map(function(v) { return {name: 'x', change: v}; }));
+    }
+
+    it('the default is RdBu around an automatic pivot, with a pivot class', function() {
+      var scheme = getDefaultSchemeOfType('diverging', divergingLayer());
+      assert.equal(scheme.type, 'diverging');
+      assert.equal(scheme.field, 'change');
+      assert.equal(scheme.preset, 'RdBu');
+      assert.equal(scheme.pivot, 'auto');
+      assert.equal(scheme.neutral, true);
+      assert.equal(scheme.layout.pivot, 0);
+    });
+
+    it('has tiles for the longer side on both sides of the center', function() {
+      var scheme = getDefaultSchemeOfType('diverging', divergingLayer());
+      var layout = scheme.layout;
+      var k = Math.max(layout.below, layout.above);
+      assert(layout.below < layout.above);
+      assert.equal(getSchemeTiles(scheme).length, k * 2 + 1);
+      assert.deepEqual(getSchemeColors(scheme), getPresetColors('RdBu', k * 2 + 1));
+      // the shorter side uses the tiles nearest the center
+      var use = getDivergingTileUse(scheme);
+      assert.deepEqual(use.slice(0, k), new Array(k - layout.below).fill(false).concat(new Array(layout.below).fill(true)));
+      assert.equal(use[k], true);
+      assert.deepEqual(use.slice(k + 1), new Array(k).fill(true));
+    });
+
+    it('without a pivot class, the center tile is unused', function() {
+      var lyr = divergingLayer();
+      var scheme = updateDivergingLayout(setSchemeNeutral(getDefaultSchemeOfType('diverging', lyr), false), lyr);
+      var k = (getSchemeTiles(scheme).length - 1) / 2;
+      assert.equal(scheme.layout.neutral, null);
+      assert.equal(getDivergingTileUse(scheme)[k], false);
+    });
+
+    it('a custom ramp is pinned at its ends and center, and the center stays pinned', function() {
+      var lyr = divergingLayer();
+      var scheme = makeSchemeCustom(getDefaultSchemeOfType('diverging', lyr));
+      var center = getCenterTile(scheme);
+      var pinned = getPinnedTiles(scheme);
+      assert.equal(pinned[0] && pinned[center] && pinned[pinned.length - 1], true);
+      assert.equal(pinned.filter(Boolean).length, 3);
+      assert.strictEqual(clearTileColor(scheme, center), scheme);
+      // reversing keeps the center at the center
+      assert.equal(getSchemeColors(reverseScheme(scheme))[center], getSchemeColors(scheme)[center]);
+    });
+
+    it('pins keep their place when the number of tiles changes', function() {
+      var lyr = divergingLayer();
+      var scheme = setTileColor(makeSchemeCustom(getDefaultSchemeOfType('diverging', lyr)), 0, '#000000');
+      var bigger = updateDivergingLayout(setTileCount(scheme, 11), lyr);
+      assert(getSchemeTiles(bigger).length > getSchemeTiles(scheme).length);
+      assert.equal(getSchemeColors(bigger)[0], '#000000');
+    });
+
+    it('a number per side', function() {
+      var lyr = divergingLayer();
+      var scheme = updateDivergingLayout(setSchemeSplit(getDefaultSchemeOfType('diverging', lyr), 'count'), lyr);
+      assert.equal(scheme.n, 3);
+      assert.equal(scheme.layout.below, 3);
+      assert.equal(scheme.layout.above, 3);
+      assert.equal(getSchemeTiles(scheme).length, 7);
+      assert.equal(getMaxSchemeColors(scheme), 6);
+      assert.equal(setTileCount(scheme, 0).n, 1);
+    });
+
+    it('the pivot can be a value, the median or the mean', function() {
+      var lyr = divergingLayer();
+      var scheme = getDefaultSchemeOfType('diverging', lyr);
+      assert.equal(updateDivergingLayout(setSchemePivot(scheme, 25), lyr).layout.pivot, 25);
+      assert.equal(updateDivergingLayout(setSchemePivot(scheme, 'median'), lyr).layout.pivot, 15);
+      assert.deepEqual(getPivotSummary(updateDivergingLayout(setSchemePivot(scheme, 25), lyr), lyr),
+        {pivot: 25, below: 7, above: 5});
+    });
+
+    it('a field with no numbers has no layout', function() {
+      var lyr = divergingLayer();
+      var scheme = updateDivergingLayout(setSchemeField(getDefaultSchemeOfType('diverging', lyr), 'name'), lyr);
+      assert.equal(scheme.layout, null);
+    });
+
+    it('the class ranges of a layout', function() {
+      assert.deepEqual(getDivergingClassRanges({breaks: [-1, 1]}),
+        [[-Infinity, -1], [-1, 1], [1, Infinity]]);
+    });
+
+    it('the command colors the classes as the tiles show them', async function() {
+      var lyr = divergingLayer();
+      var schemes = [
+        getDefaultSchemeOfType('diverging', lyr),
+        setSchemeNeutral(getDefaultSchemeOfType('diverging', lyr), false),
+        setSchemeSplit(getDefaultSchemeOfType('diverging', lyr), 'count'),
+        setSchemePivot(setTileColor(getDefaultSchemeOfType('diverging', lyr), 0, '#000000'), 'median'),
+        setSchemeField(Object.assign(getDefaultSchemeOfType('diverging', lyr), {method: 'equal-interval'}), 'change')
+      ];
+      for (var scheme of schemes) {
+        scheme = updateDivergingLayout(scheme, lyr);
+        var colors = getAppliedColors(scheme);
+        var use = getDivergingTileUse(scheme);
+        var classColors = colors.filter(function(c, i) { return use[i]; });
+        var cmd = formatSchemeCommand(scheme, colors);
+        var out = await api.applyCommands('-i data.json ' + cmd + ' -o', {'data.json': lyr.data.getRecords()});
+        var fills = JSON.parse(out['data.json']).map(function(d) { return d.fill; });
+        var breaks = scheme.layout.breaks;
+        var expected = values.map(function(v) {
+          var j = breaks.filter(function(b) { return v >= b; }).length;
+          return classColors[j];
+        });
+        assert.deepEqual(fills, expected, cmd);
+      }
+    });
+
+    it('the command', function() {
+      var lyr = divergingLayer();
+      var scheme = getDefaultSchemeOfType('diverging', lyr);
+      assert.equal(formatSchemeCommand(scheme, ['#000000', '#ffffff', '#ff0000']),
+        "-classify field='change' method=quantile pivot=auto classes=7 colors=#000000,#ffffff,#ff0000");
+      scheme = setSchemeSplit(setSchemeNeutral(setSchemePivot(scheme, -2.5), false), 'count');
+      assert.equal(formatSchemeCommand(scheme, ['#000000', '#ffffff', '#ff0000']),
+        "-classify field='change' method=quantile pivot=-2.5 classes=3,3 no-pivot-class colors=#000000,#ffffff,#ff0000");
     });
   });
 });

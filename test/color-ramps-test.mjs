@@ -507,25 +507,28 @@ describe('color-ramps.mjs and oklab.mjs', function () {
     });
 
     it('vibrance= raises chroma, and implies oklch', async function () {
-      var expected = interpolateOklch('#011521', '#fff8e1', {vibrance: 0.04, steps: 2})(0.5);
-      var a = await classify('colors=#011521,#fff8e1 classes=3 equal-interval vibrance=0.04');
-      var b = await classify('colors=#011521,#fff8e1 classes=3 equal-interval interpolation=oklch vibrance=0.04');
-      assert.deepEqual(a, [getVibrantColor('#011521', 0.04), expected, getVibrantColor('#fff8e1', 0.04)]);
+      // vibrance=0.5 is half of the 0.09 OKLCH chroma that vibrance=1 adds
+      var chroma = 0.045;
+      var expected = interpolateOklch('#011521', '#fff8e1', {vibrance: chroma, steps: 2})(0.5);
+      var a = await classify('colors=#011521,#fff8e1 classes=3 equal-interval vibrance=0.5');
+      var b = await classify('colors=#011521,#fff8e1 classes=3 equal-interval interpolation=oklch vibrance=0.5');
+      assert.deepEqual(a, [getVibrantColor('#011521', chroma), expected, getVibrantColor('#fff8e1', chroma)]);
       assert.notEqual(a[0], '#011521');
       assert.deepEqual(b, a);
       assert.notEqual(expected, interpolateOklch('#011521', '#fff8e1')(0.5));
     });
 
     it('vibrance= raises the given colors when there is one per class', async function () {
-      var a = await classify('colors=#011521,#336699,#fff8e1 classes=3 equal-interval vibrance=0.04');
+      var a = await classify('colors=#011521,#336699,#fff8e1 classes=3 equal-interval vibrance=1');
       assert.deepEqual(a, ['#011521', '#336699', '#fff8e1'].map(function(c) {
-        return getVibrantColor(c, 0.04);
+        return getVibrantColor(c, 0.09);
       }));
     });
 
     it('rejects vibrance= with other methods, or out of range', async function () {
       await assert.rejects(classify('colors=#000,#fff vibrance=0.5 interpolation=rgb'));
-      await assert.rejects(classify('colors=#000,#fff vibrance=0.5'));
+      await assert.rejects(classify('colors=#000,#fff vibrance=1.5'), /from 0 to 1/);
+      await assert.rejects(classify('colors=#000,#fff vibrance=-0.1'));
     });
   });
 });

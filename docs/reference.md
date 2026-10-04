@@ -462,7 +462,13 @@ Assign colors or data values to each feature using one of several classification
 
 `null-value=`   Value (or color) to use for invalid or missing data.
 
-`classes=`      Number of data classes. This number can also be inferred from the `breaks=` or `values=` options.
+`classes=`      Number of data classes. This number can also be inferred from the `breaks=` or `values=` options. With `pivot=`, either the total number of classes (including the pivot class), or two numbers: the classes below and above the pivot (not counting the pivot class).
+
+`pivot=`        Classify diverging data: classes step away from a pivot value on either side. The value is a number, `median`, `mean` or `auto` (`0` if the data has values both below and above 0, or else the median). Each side is classified separately, using `quantile`, `equal-interval`, `nice` or `hybrid` classification (or `breaks=`). Given a total number of classes, the two sides get classes of the same size (the same step for `equal-interval` and `nice`, the same number of features for `quantile` and `hybrid`), so the side with less data gets fewer classes; the default is 7. A value equal to a class break (including the pivot) goes in the class above it. Colors are spread over the side with more classes, and the other side gets the colors nearest the center, so that classes the same distance from the pivot get colors of the same strength. The middle color of a color scheme or of a list of colors is the color of the pivot class (an even-numbered list interpolates one). A list with one color per class is used as given if both sides have the same number of classes, or if `classes=` gives the number on each side. With `breaks=`, a pivot that is one of the breaks divides the classes, and a pivot inside a class makes it the pivot class.
+
+`pivot-range=`  A pair of comma-separated numbers giving the range of the pivot class. By default, the pivot class is centered on the pivot and is one class wide (for `quantile`, it holds an average class's share of the features nearest the pivot). With `pivot-range=`, `pivot=` defaults to the middle of the range.
+
+`no-pivot-class` Omit the pivot class: the two sides meet at the pivot.
 
 `breaks=`       Specify user-defined sequential class breaks (an alternative to automatic classification using `quantile`, `equal-interval`, etc.).
 
@@ -482,7 +488,7 @@ Assign colors or data values to each feature using one of several classification
 
 `interpolation=`    How intermediate colors are calculated when colors are interpolated (with the `colors=`, `stops=` and `continuous` options). `rgb` (the default) mixes colors in RGB space. `oklch` uses the perceptually uniform OKLCH color space, changing lightness, chroma (colorfulness) and hue separately, each by equal steps, with hue going the shorter way around the color wheel. This gives evenly spaced steps in lightness, avoids the dull, dark midpoints that RGB mixing can produce, and between colors of different hues keeps intermediate colors saturated rather than passing through gray. Where an `oklch` color falls outside the sRGB gamut, it is fitted as described under `vibrance=`.
 
-`vibrance=`    Raise the chroma (colorfulness) of colors interpolated with `interpolation=oklch`. The sRGB gamut holds little chroma near black and white, so a ramp between a dark color and a light one has dull midtones. The value is the OKLCH chroma added to every color of the interpolation, including the given colors, which get it as far as the gamut has room at their lightness (grays are left alone). The same amount is added at every hue. In classed ramps, where the lighter of two given colors gains less chroma than the color next to it, that color's lightness moves a little toward it, and the other classes are evenly spaced in lightness from it. `0.04` is a moderate boost; the default is `0` and the maximum `0.4`. Giving `vibrance=` without `interpolation=` selects `oklch`.
+`vibrance=`    Raise the chroma (colorfulness) of colors interpolated with `interpolation=oklch`. The sRGB gamut holds little chroma near black and white, so a ramp between a dark color and a light one has dull midtones. The value, from `0` (the default) to `1`, sets how much OKLCH chroma is added to every color of the interpolation: `1` adds 0.09, enough to make the midtones of most ramps as vivid as the sRGB gamut allows. The given colors get it too, as far as the gamut has room at their lightness (grays are left alone). The same amount is added at every hue. In classed ramps, where the lighter of two given colors gains less chroma than the color next to it, that color's lightness moves a little toward it, and the other classes are evenly spaced in lightness from it. `0.5` is a moderate boost. Giving `vibrance=` without `interpolation=` selects `oklch`.
 
 With `interpolation=oklch`, a color that falls outside the sRGB gamut keeps its hue. Its lightness may move by up to 0.05 (less when classes are close together in lightness) to where the gamut has room for more chroma, to whatever extent brings the color closest to its ideal, counting lightness differences twice as heavily as chroma differences. Its chroma is then reduced to fit.
 
@@ -520,6 +526,12 @@ With `interpolation=oklch`, a color that falls outside the sRGB gamut keeps its 
 mapshaper covid_cases.geojson \
   -classify save-as=fill quantile color-scheme=Oranges classes=6 \
   -o out.geojson
+
+# Color the change in population on either side of 0, with a class
+# for small changes
+mapshaper counties.shp \
+  -classify pop_change pivot=0 pivot-range=-1,1 equal-interval colors=RdBu classes=9 \
+  -o out.shp
 ```
 
 ### -clean

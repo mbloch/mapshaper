@@ -621,6 +621,108 @@ test('a swatch lists up to five values, then how many more', async function({pag
     [ids[1], ids[3], ids[5], ids[7], ids[9]].join('\n'));
 });
 
+test('the diverging tab colors classes on either side of a pivot', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page);
+  // 6 values below 0 and 6 above
+  await runCommand(page, "-each 'v = id - 3000'");
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  await panel.locator('.color-scheme-tab').filter({hasText: 'Diverging'}).click();
+  await page.waitForTimeout(300);
+  await fieldSelect(page).selectOption('v');
+  await page.waitForTimeout(300);
+  await expect(panel.locator('.color-scheme-palette-name')).toHaveText('RdBu');
+  // a custom diverging ramp has no hue path button
+  await panel.locator('.color-scheme-palette-btn').click();
+  await panel.locator('.color-scheme-palette-item').filter({hasText: /^Custom$/}).click();
+  await page.waitForTimeout(300);
+  await expect(panel.locator('.long-hue-btn')).toBeHidden();
+  await expect(panel.getByLabel('Reverse the colors')).toBeVisible();
+  await expect(panel.getByLabel('Pivot value')).toHaveValue('0');
+  await expect(panel.getByLabel('Pivot value')).toBeDisabled();
+  await expect(panel.getByText('6 features below the pivot, 6 at or above')).toBeVisible();
+
+  // a pivot class and 6 others: the side with features farther from the
+  // pivot gets more of them, and the tiles reach to its end
+  var tiles = await getTileColors(page);
+  var used = await getUsedTiles(page);
+  var k = (tiles.length - 1) / 2;
+  expect(used[k]).toBe(true);
+  expect(used.filter(Boolean).length).toBe(7);
+  var records = await getRecords(page);
+  var fills = await getFills(page);
+  var lowest = records.reduce(function(memo, rec, i) { return rec.v < records[memo].v ? i : memo; }, 0);
+  var highest = records.reduce(function(memo, rec, i) { return rec.v > records[memo].v ? i : memo; }, 0);
+  expect(fills[lowest]).toBe(await toHex(page, tiles[used.indexOf(true)]));
+  expect(fills[highest]).toBe(await toHex(page, tiles[tiles.length - 1]));
+  // a class range on each tile in use
+  await expect(panel.locator('.color-scheme-tile').nth(tiles.length - 1)).toHaveAttribute('data-tooltip', /and above$/);
+
+  // without the pivot class, 7 classes are split 4 and 3, and the bar has a
+  // gap at the center
+  await panel.getByRole('checkbox', {name: 'Pivot class'}).click();
+  await page.waitForTimeout(300);
+  used = await getUsedTiles(page);
+  expect(used).toEqual([true, true, true, true, false, true, true, true, false]);
+  expect(new Set(await getFills(page)).size).toBe(7);
+
+  await closeSchemePanel(page);
+  var classify = (await getSessionCommands(page)).filter(function(cmd) {
+    return /^-classify/.test(cmd);
+  });
+  expect(classify).toEqual([expect.stringMatching(/^-classify field='v' method=quantile pivot=auto classes=7 no-pivot-class colors=\S+$/)]);
+  // the style panel shows the scheme
+  await expect(page.locator('.layer-style-panel .label-color-field.has-scheme')).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
+
+test('a diverging pivot can be a value, with the same number of classes per side', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page);
+  await runCommand(page, "-each 'v = id - 3000'");
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  await panel.locator('.color-scheme-tab').filter({hasText: 'Diverging'}).click();
+  await page.waitForTimeout(300);
+  await fieldSelect(page).selectOption('v');
+  await page.waitForTimeout(300);
+
+  await panel.getByLabel('Pivot', {exact: true}).selectOption('value');
+  await page.waitForTimeout(300);
+  var input = panel.getByLabel('Pivot value');
+  await expect(input).toBeEnabled();
+  await setField(input, '1500');
+  await expect(panel.getByText('9 features below the pivot, 3 at or above')).toBeVisible();
+
+  await panel.getByLabel('Classes on each side').selectOption('count');
+  await page.waitForTimeout(300);
+  await expect(panel.locator('.color-scheme-select-row, .label-split-cell').getByText('Per side', {exact: true})).toBeVisible();
+  await expect(panel.locator('.size-field-input')).toHaveValue('3');
+  expect(await getUsedTiles(page)).toEqual([true, true, true, true, true, true, true]);
+  await setField(panel.locator('.size-field-input'), '2');
+  expect((await getUsedTiles(page)).length).toBe(5);
+
+  // reopening the panel shows the same scheme
+  await closeSchemePanel(page);
+  await openSchemePanel(page);
+  await expect(panel.locator('.color-scheme-tab.selected')).toHaveText('Diverging');
+  await expect(input).toHaveValue('1500');
+  await closeSchemePanel(page);
+  var classify = (await getSessionCommands(page)).filter(function(cmd) {
+    return /^-classify/.test(cmd);
+  });
+  expect(classify).toEqual([expect.stringMatching(/^-classify field='v' method=quantile pivot=1500 classes=2,2 colors=\S+$/)]);
+  expect(errors).toEqual([]);
+});
+
+// whether a class uses each diverging tile (the bar under it)
+async function getUsedTiles(page) {
+  return schemePanel(page).locator('.color-scheme-bar').evaluateAll(function(bars) {
+    return bars.map(function(bar) { return bar.classList.contains('used'); });
+  });
+}
+
 function schemePanel(page) {
   return page.locator('.color-scheme-panel');
 }

@@ -174,7 +174,7 @@ export function getDiscreteClassifier(breaks, round) {
   return function(val) {
     var i = -1;
     if (Number(val) === val) { // exclude null, NaN, strings, etc.
-      if (round) val = val(round);
+      if (round) val = round(val);
       i = getClassId(val, breaks);
     }
     if (inverted && i > -1) {

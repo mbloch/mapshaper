@@ -17,9 +17,19 @@ import { quoteCommandValue } from './gui-command-utils';
 // polygons differently. Editing a swatch of a preset turns it into a custom
 // list.
 //
+// A diverging scheme is a ramp of 2K+1 tiles: K tiles on either side of a
+// center color, where K is the number of classes on the longer side of the
+// pivot. The shorter side uses the tiles nearest the center, and the center
+// tile colors the pivot class (if there is one). How many classes each side
+// has depends on the data, so the scheme keeps the layout that -classify
+// will find (see updateDivergingLayout()). A custom diverging ramp is pinned
+// at its ends and its center.
+//
 // scheme: {
-//   type: 'sequential' or 'categorical',
-//   field, method, n,
+//   type: 'sequential', 'diverging' or 'categorical',
+//   field, method, n,                         (n: the number of colors, or for
+//                                             diverging schemes, of classes:
+//                                             the total, or per side)
 //   preset: name or null, reversed: boolean,  (presets)
 //   pins: [{t, color}] or null,               (custom sequential ramps)
 //   vibrance, longHue                         (custom sequential ramps, see
@@ -28,6 +38,16 @@ import { quoteCommandValue } from './gui-command-utils';
 //                                             of the preset's colors, as
 //                                             rearranged)
 //   swatches: [...] or null                   (custom categorical lists)
+//   pivot: 'auto', 'median', 'mean' or a number,
+//   neutral: boolean (a pivot class),
+//   split: 'size' or 'count'                  (diverging: n is the total
+//                                             number of classes, split so
+//                                             they're the same size on both
+//                                             sides, or the number per side)
+//   layout: {pivot, neutral, below, above, breaks} or null
+//                                             (diverging: the classes the
+//                                             data gives, see
+//                                             getDivergingLayout())
 //   nullColor       the color of features with no data (both types; not
 //                   used by non-adjacent schemes)
 //   colors: [...]   the colors that were applied, for checking a layer later
@@ -35,6 +55,7 @@ import { quoteCommandValue } from './gui-command-utils';
 
 export var schemeTypes = [
   {name: 'sequential', label: 'Sequential'},
+  {name: 'diverging', label: 'Diverging'},
   {name: 'categorical', label: 'Categorical'}
 ];
 
@@ -43,6 +64,18 @@ export var classifyMethods = [
   {name: 'equal-interval', label: 'Equal interval'},
   {name: 'nice', label: 'Nice breaks'},
   {name: 'hybrid', label: 'Hybrid'}
+];
+
+export var pivotOptions = [
+  {name: 'auto', label: 'Auto (0 or median)'},
+  {name: 'median', label: 'Median'},
+  {name: 'mean', label: 'Mean'},
+  {name: 'value', label: 'Value'}
+];
+
+export var divergingSplits = [
+  {name: 'size', label: 'Same class size'},
+  {name: 'count', label: 'Same number of classes'}
 ];
 
 export var categoricalMethods = [
@@ -58,11 +91,16 @@ export var maxSchemeColors = 12;
 export var maxCategoricalColors = 20;
 var defaultCategoricalPreset = 'Tableau10';
 var defaultNonAdjacentColors = 5;
+var defaultDivergingPreset = 'RdBu';
+var defaultDivergingClasses = 7;
+var defaultDivergingSideClasses = 3;
+var maxDivergingSideClasses = 6;
 // colors for growing a custom categorical list past the palette it came from
 var extraSwatchSource = 'Tableau20';
 // vibrance is OKLCH chroma added to the colors of each interpolated segment
+// (-classify's vibrance= is the same, scaled to 0-1)
 export var defaultVibrance = 0;
-export var maxVibrance = 0.09;
+export var maxVibrance = internal.MAX_VIBRANCE_CHROMA;
 var defaultEnds = ['#344a72', '#f0d26b'];
 // Cyclic ramps start and end on the same hue, which reads as a category
 // rather than an order.
@@ -81,6 +119,10 @@ export function getSequentialPresetNames() {
     });
 }
 
+export function getDivergingPresetNames() {
+  return internal.getColorSchemeNames('diverging');
+}
+
 export function getCategoricalPresetNames() {
   return internal.getColorSchemeNames('categorical');
 }
@@ -88,7 +130,126 @@ export function getCategoricalPresetNames() {
 // The scheme a panel tab starts with on a layer
 export function getDefaultSchemeOfType(type, lyr) {
   if (type == 'categorical') return getDefaultCategoricalScheme(lyr);
+  if (type == 'diverging') return getDefaultDivergingScheme(lyr);
   return getDefaultScheme(getNumericFields(lyr)[0]);
+}
+
+export function getDefaultDivergingScheme(lyr) {
+  return updateDivergingLayout({
+    type: 'diverging',
+    field: getNumericFields(lyr)[0] || null,
+    method: 'quantile',
+    n: defaultDivergingClasses,
+    split: 'size',
+    pivot: 'auto',
+    neutral: true,
+    preset: defaultDivergingPreset,
+    reversed: false,
+    pins: null,
+    vibrance: defaultVibrance
+  }, lyr);
+}
+
+// The layout of a diverging scheme's classes on the layer's data, as
+// -classify finds it; null if there are no data to classify. Done after
+// every change that can move the classes (the field, method, pivot, pivot
+// class, number of classes), and when the panel opens, since the data may
+// have changed.
+export function updateDivergingLayout(scheme, lyr) {
+  if (scheme.type != 'diverging') return scheme;
+  return Object.assign({}, scheme, {layout: getDivergingLayout(scheme, lyr)});
+}
+
+function getDivergingLayout(scheme, lyr) {
+  var values = getAscendingValues(lyr, scheme.field);
+  if (values.length === 0) return null;
+  try {
+    return internal.getDivergingLayout(values, scheme.method, {
+      pivot: scheme.pivot,
+      no_pivot_class: !scheme.neutral,
+      classes: getDivergingClassesOption(scheme)
+    });
+  } catch(e) {
+    return null;
+  }
+}
+
+function getAscendingValues(lyr, field) {
+  if (!lyr || !lyr.data || !field || !lyr.data.fieldExists(field)) return [];
+  return lyr.data.getRecords().map(function(rec) {
+    return rec ? rec[field] : undefined;
+  }).filter(isFiniteNumber).sort(function(a, b) { return a - b; });
+}
+
+// -classify's classes= for a diverging scheme
+function getDivergingClassesOption(scheme) {
+  return scheme.split == 'count' ? [scheme.n, scheme.n] : scheme.n;
+}
+
+// The number of tiles of a ramp: for a diverging scheme, the center tile and
+// enough on each side for the longer side's classes
+function getRampSize(scheme) {
+  var layout = scheme.layout;
+  var k;
+  if (scheme.type != 'diverging') return scheme.n;
+  k = layout ? Math.max(layout.below, layout.above, 1) :
+    scheme.split == 'count' ? scheme.n : Math.max(Math.floor(scheme.n / 2), 1);
+  return k * 2 + 1;
+}
+
+// One boolean per tile of a diverging scheme: whether a class uses it
+export function getDivergingTileUse(scheme) {
+  var size = getRampSize(scheme);
+  var k = (size - 1) / 2;
+  var layout = scheme.layout;
+  var use = [];
+  for (var i=0; i<size; i++) {
+    use.push(!!layout && (i < k ? i >= k - layout.below : i > k ? i <= k + layout.above : !!layout.neutral));
+  }
+  return use;
+}
+
+// The data range of each class of a diverging layout, in class order:
+// [low, high), with -Infinity and Infinity at the outer ends
+export function getDivergingClassRanges(layout) {
+  var breaks = layout ? layout.breaks : [];
+  var ranges = [];
+  for (var i=0; i<=breaks.length; i++) {
+    ranges.push([i > 0 ? breaks[i - 1] : -Infinity, i < breaks.length ? breaks[i] : Infinity]);
+  }
+  return ranges;
+}
+
+// How the data falls around the pivot of a diverging scheme:
+// {pivot, below, above} (features below the pivot, and at or above it)
+export function getPivotSummary(scheme, lyr) {
+  var values = getAscendingValues(lyr, scheme.field);
+  var pivot = scheme.layout ? scheme.layout.pivot : null;
+  if (pivot === null) return null;
+  return {
+    pivot: pivot,
+    below: values.filter(function(val) { return val < pivot; }).length,
+    above: values.filter(function(val) { return val >= pivot; }).length
+  };
+}
+
+// pivot: 'auto', 'median', 'mean' or a number
+export function setSchemePivot(scheme, pivot) {
+  return Object.assign({}, scheme, {pivot: pivot});
+}
+
+export function setSchemeNeutral(scheme, neutral) {
+  return Object.assign({}, scheme, {neutral: !!neutral});
+}
+
+// Switching between a total and a number per side starts over with the
+// default number
+export function setSchemeSplit(scheme, split) {
+  if (scheme.split == split) return scheme;
+  return Object.assign({}, scheme, {
+    split: split,
+    n: split == 'count' ? defaultDivergingSideClasses : defaultDivergingClasses
+  });
 }
 
 // By the first text field, or else the first field that can be classified
@@ -111,6 +272,10 @@ export function getDefaultCategoricalScheme(lyr) {
   return field ? setSchemeField(scheme, field, getCategories(lyr, field).length) : scheme;
 }
 
+export function getMinSchemeColors(scheme) {
+  return scheme.type == 'diverging' && scheme.split == 'count' ? 1 : minSchemeColors;
+}
+
 export function getSchemeMethods(scheme) {
   return scheme.type == 'categorical' ? categoricalMethods : classifyMethods;
 }
@@ -118,6 +283,7 @@ export function getSchemeMethods(scheme) {
 // count: the number of categories, for the categorical method
 export function getMaxSchemeColors(scheme, count) {
   var max = maxSchemeColors;
+  if (scheme.type == 'diverging' && scheme.split == 'count') return maxDivergingSideClasses;
   if (scheme.type != 'categorical') return max;
   max = scheme.preset ? internal.getCategoricalColors(scheme.preset).length : maxCategoricalColors;
   if (scheme.method == 'categorical' && count >= 0) {
@@ -127,7 +293,8 @@ export function getMaxSchemeColors(scheme, count) {
 }
 
 function clampColorCount(scheme, n, count) {
-  return clamp(Math.round(n) || minSchemeColors, minSchemeColors, getMaxSchemeColors(scheme, count));
+  var min = getMinSchemeColors(scheme);
+  return clamp(Math.round(n) || min, min, getMaxSchemeColors(scheme, count));
 }
 
 // A new field for a categorical scheme gets a swatch for each of its values,
@@ -241,15 +408,15 @@ export function getSchemeTiles(scheme) {
     });
   }
   if (scheme.preset) {
-    colors = getPresetColors(scheme.preset, scheme.n);
+    colors = getPresetColors(scheme.preset, getRampSize(scheme));
     if (scheme.reversed) colors.reverse();
     return colors.map(function(color) {
       return {color: color, pinned: false, adjusted: false};
     });
   }
-  return internal.resolveRampTiles(scheme.pins, scheme.n, {
+  return internal.resolveRampTiles(scheme.pins, getRampSize(scheme), {
     vibrance: getSchemeVibrance(scheme),
-    hue: scheme.longHue ? 'longer' : 'shorter'
+    hue: scheme.longHue && scheme.type != 'diverging' ? 'longer' : 'shorter'
   });
 }
 
@@ -303,9 +470,9 @@ function extendSwatches(colors, n) {
 // One boolean per tile: whether the user set its color.
 export function getPinnedTiles(scheme) {
   if (scheme.preset || scheme.type == 'categorical') {
-    return new Array(scheme.n).fill(false);
+    return new Array(getRampSize(scheme)).fill(false);
   }
-  return internal.getPinnedSlots(scheme.pins, scheme.n).map(function(pinId) {
+  return internal.getPinnedSlots(scheme.pins, getRampSize(scheme)).map(function(pinId) {
     return pinId > -1;
   });
 }
@@ -332,15 +499,23 @@ export function makeSchemeCustom(scheme) {
   return Object.assign({}, scheme, {
     preset: null,
     reversed: false,
-    pins: [{t: 0, color: colors[0]}, {t: 1, color: colors[colors.length - 1]}]
+    pins: scheme.type == 'diverging' ?
+      [{t: 0, color: colors[0]}, {t: 0.5, color: colors[(colors.length - 1) / 2]},
+        {t: 1, color: colors[colors.length - 1]}] :
+      [{t: 0, color: colors[0]}, {t: 1, color: colors[colors.length - 1]}]
   });
+}
+
+// The center tile of a diverging ramp, which stays pinned
+export function getCenterTile(scheme) {
+  return scheme.type == 'diverging' ? (getRampSize(scheme) - 1) / 2 : -1;
 }
 
 // The color to edit for tile i: a pinned tile's own color, which vibrance
 // may have raised in the ramp, or else the tile's color
 export function getTileEditColor(scheme, i) {
   var slot = scheme.preset || scheme.type == 'categorical' ? -1 :
-    internal.getPinnedSlots(scheme.pins, scheme.n)[i];
+    internal.getPinnedSlots(scheme.pins, getRampSize(scheme))[i];
   if (slot > -1) return toHex(scheme.pins[slot].color);
   return getSchemeColors(scheme)[i];
 }
@@ -354,14 +529,14 @@ export function setTileColor(scheme, i, color) {
     return Object.assign({}, custom, {swatches: swatches});
   }
   return Object.assign({}, custom, {
-    pins: internal.setRampPin(custom.pins, custom.n, i, toHex(color))
+    pins: internal.setRampPin(custom.pins, getRampSize(custom), i, toHex(color))
   });
 }
 
 export function clearTileColor(scheme, i) {
-  if (scheme.preset || scheme.type == 'categorical') return scheme;
+  if (scheme.preset || scheme.type == 'categorical' || i == getCenterTile(scheme)) return scheme;
   return Object.assign({}, scheme, {
-    pins: internal.clearRampPin(scheme.pins, scheme.n, i)
+    pins: internal.clearRampPin(scheme.pins, getRampSize(scheme), i)
   });
 }
 
@@ -438,7 +613,9 @@ export function reverseScheme(scheme) {
 }
 
 // The colors to give -classify: no more than there are categories, for the
-// categorical method.
+// categorical method. A diverging scheme gives all its tiles, from which
+// -classify takes the same ones the classes use here (see
+// getDivergingClassValues()).
 // count: the number of categories
 export function getAppliedColors(scheme, count) {
   var colors = getSchemeColors(scheme);
@@ -454,7 +631,12 @@ export function formatSchemeCommand(scheme, colors, opts) {
   if (scheme.method != 'non-adjacent') {
     parts.push('field=' + quoteCommandValue(scheme.field));
   }
-  parts.push('method=' + scheme.method, 'colors=' + colors.join(','));
+  parts.push('method=' + scheme.method);
+  if (scheme.type == 'diverging') {
+    parts.push('pivot=' + scheme.pivot, 'classes=' + getDivergingClassesOption(scheme));
+    if (!scheme.neutral) parts.push('no-pivot-class');
+  }
+  parts.push('colors=' + colors.join(','));
   if (scheme.method != 'non-adjacent' && getSchemeNullColor(scheme) != defaultNullColor) {
     parts.push('null-value=' + getSchemeNullColor(scheme));
   }

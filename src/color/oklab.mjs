@@ -61,6 +61,16 @@ var DEVIATION = 0.003;
 // eye; see getSecondLightness().
 var VIBRANCE_LIGHTNESS = 0.2;
 
+// The OKLCH chroma that -classify's vibrance=1 adds, and the top of the color
+// palette panel's slider. More than this fills the gamut at most lightnesses,
+// leaving the midtones of a ramp all as vivid as they can be.
+export var MAX_VIBRANCE_CHROMA = 0.09;
+
+// vibrance=: 0-1, scaled to OKLCH chroma
+export function getVibranceChroma(vibrance) {
+  return vibrance * MAX_VIBRANCE_CHROMA;
+}
+
 // A user's color with vibrance added to its chroma, as far as the gamut has
 // room at its lightness and hue. Grays are left alone, having no hue.
 export function getVibrantColor(color, vibrance) {

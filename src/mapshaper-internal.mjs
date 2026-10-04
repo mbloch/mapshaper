@@ -115,6 +115,7 @@ import * as Dymaxion from './crs/mapshaper-dymaxion';
 import * as ButterflyProjections from './crs/mapshaper-butterfly-projections';
 import * as Narukawa2022 from './crs/mapshaper-narukawa2022';
 import * as DataAggregation from './dissolve/mapshaper-data-aggregation';
+import * as Diverging from './classification/mapshaper-diverging';
 import * as DatasetUtils from './dataset/mapshaper-dataset-utils';
 import * as DataUtils from './datatable/mapshaper-data-utils';
 import * as DbfImport from './shapefile/dbf-import';
@@ -266,6 +267,7 @@ Object.assign(internal,
   ButterflyProjections,
   Narukawa2022,
   DataAggregation,
+  Diverging,
   DatasetUtils,
   DataUtils,
   DbfImport,

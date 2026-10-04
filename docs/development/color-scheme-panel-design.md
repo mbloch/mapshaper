@@ -186,10 +186,11 @@ layer properties still needs to be checked before this is built.
   outputs don't change). It affects interpolation between user colors in
   `colors=`, `stops=` and `continuous` output. Numeric `values=` are
   unaffected.
-- `vibrance=` (0-0.4) on `-classify`, for `oklch`; `vibrance=` alone
+- `vibrance=` (0-1) on `-classify`, for `oklch`, scaled to OKLCH chroma
+  (1 adds 0.09, the top of the panel's slider); `vibrance=` alone
   selects `oklch`.
-- Later: a midpoint option for diverging schemes, so breaks fall on either
-  side of a data value such as 0.
+- `pivot=`, `pivot-range=`, `no-pivot-class` and `classes=lo,hi` for
+  diverging schemes (see Diverging schemes).
 - Possibly later: placeholder slots in `colors=` (e.g. `#334,*,*,#fd5`) to
   express pinned ramps on the command line.
 
@@ -241,9 +242,118 @@ now leave empty values out, so that they get the null value.
 
 ## Diverging schemes
 
-A diverging ramp is a custom ramp with a third fixed pin at the center, plus a
-"center at" data value. With an even number of classes there is no neutral
-class; the UI should make that visible rather than hide it.
+A diverging scheme is two sequential schemes back to back around a pivot
+value, optionally sharing a neutral class at the pivot. The classification
+is in `src/classification/mapshaper-diverging.mjs` and
+`getDivergingClassValues()` in `mapshaper-classify-ramps.mjs`; the panel's
+Diverging tab uses the same layout function (`internal.getDivergingLayout`).
+
+### Model
+
+- **Pivot value**: a number, `median` or `mean`. Default (`auto`): 0 if the
+  data has both negative and positive values, otherwise the median. The
+  panel always shows it, since the default is a convenience, not a guess at
+  the map's meaning.
+- **Neutral (pivot) class**, on by default. It straddles the pivot and takes
+  the center color. Its range is either given (`pivot-range=-1,1`) or
+  automatic: one class wide, centered on the pivot -- half a step either
+  side for equal interval and nice, and for quantile and hybrid the share of
+  features one class holds, taken from those nearest the pivot (the range
+  reaches halfway to the next value out, so no value sits on its edge).
+  With the neutral class off, the pivot is a break, and features equal to
+  the pivot go to the upper side, as with other breaks ([lower, upper)).
+- **Classes per side.** Each side is classified on its own data with the
+  chosen method, so quantile and equal interval stay exact within a side
+  even when the pivot is set by hand. `classes=N` (the total, including the
+  neutral class) gives the two sides classes of the same size:
+  - equal interval: one step for both sides, the largest that gives N
+    classes, so the longer side's classes reach just to the end of its data;
+  - nice: of the nice steps (1, 2, 2.5, 5 x 10^k) near that step, the one
+    whose total comes closest to N;
+  - quantile, hybrid: the side classes are split in proportion to each
+    side's feature count, each side with features getting at least one.
+
+  The side with less data gets fewer classes. `classes=lo,hi` sets the
+  counts directly (with nice, the nearest nice step can change them). The
+  default is 7 classes (6 with `no-pivot-class`), or the length of a
+  `colors=`/`values=` list.
+- **Colors and truncation.** With K classes on the longer side, the scheme
+  is built with 2K+1 colors (K per side and the center), and the shorter
+  side drops its outermost colors, so the nth color from the pivot means the
+  same thing on both sides. Presets use `getColorRamp(name, 2K+1)`: the
+  ColorBrewer set for K <= 5, the d3 interpolator beyond. A `colors=` list
+  with an odd count has its middle color as the center; with an even count,
+  the center is interpolated between the middle two. Each half of a list
+  is interpolated separately, center outward. `invert` builds the colors
+  with the sides swapped and reverses them.
+
+### CLI
+
+```bash
+-classify change colors=RdBu pivot=0 classes=7 quantile
+-classify change colors=RdBu pivot=0 pivot-range=-0.5,0.5 classes=3,3 equal-interval
+-classify income colors=#b35806,#f7f7f7,#542788 pivot=median classes=4,6
+```
+
+- `pivot=` (or `pivot-range=`) turns on diverging classification;
+  `no-pivot-class` drops the neutral class, and `pivot-range=` sets its
+  range (with `pivot=` defaulting to the middle of the range).
+- A `colors=` list with one color per class is used as given when the two
+  sides have the same number of classes, or when `classes=lo,hi` is given;
+  otherwise it is treated as a ramp with its center at the pivot.
+- The panel passes `pivot=`, `classes=` and all 2K+1 of its tile colors.
+  -classify finds the same K from the data, so the list is its full ramp,
+  used as given (no interpolation), and it takes the same tiles for the
+  classes as the panel shows in use.
+- `breaks=` works with `pivot=`: a pivot at a break divides the classes; a
+  pivot inside a class makes that class the neutral class (an error with
+  `no-pivot-class`). `pivot-range=` can't be combined with `breaks=`.
+- `invert`, `null-value=`, `precision=`, `outer-breaks=` and
+  `interpolation=`/`vibrance=` work as before. `continuous`, `stops=` and
+  the categorical methods are rejected with `pivot=`.
+- A message reports the pivot and the classes on each side, before the
+  usual table of class ranges.
+
+### Panel
+
+- A Diverging tab between Sequential and Categorical. The scheme keeps the
+  layout -classify will find (`scheme.layout`, refreshed by
+  `updateDivergingLayout()` after each change and when the panel opens).
+- Presets are d3's diverging schemes (RdBu by default). A custom ramp has
+  pins at both ends and at the center (t = 0.5), which stays pinned; each
+  half is an OKLCH ramp, with vibrance. There is no long-hue option: each
+  half runs from a low-chroma center, where the hue path makes little
+  difference.
+- Tiles: 2K+1, low side, center, high side. A bar under the tiles marks the
+  ones classes use: the shorter side's outer tiles have none, and without
+  a pivot class there is a gap at the center. Each tile in use has its
+  class's data range as a tooltip.
+- Data mapping: pivot (Auto, Median, Mean or Value, with the resolved value
+  shown, and the number of features on each side below), the pivot class
+  switch, Sides (same class size, with a total of classes; or the same
+  number per side), and the count.
+- Not yet: `pivot-range=` (the panel's pivot class is always automatic).
+- Later: a small histogram or strip plot with the pivot and breaks, which
+  could also let the pivot be dragged.
+
+### Edge cases
+
+- All the data on one side of the pivot: that side gets every class, with a
+  warning.
+- A neutral range that covers all the data, or crosses its min or max.
+- A side with fewer distinct values than classes (quantile especially).
+- `classes=N` with a neutral class and an even N.
+- A pivot outside the data's range: every class is on one side.
+
+### Phases
+
+1. Classification core: pivot resolution, neutral range, per-side breaks for
+   each method (pure functions, unit tested). Done.
+2. Diverging color assignment: ColorBrewer sets, interpolation, truncation.
+   Done.
+3. CLI options, messages, docs and tests. Done.
+4. GUI model and panel, browser tests. Done.
+5. Later: distribution plot, continuous diverging ramps, keys.
 
 ## Panel contents (sequential, first version)
 
@@ -280,7 +390,7 @@ Phase 2 is in place for polygon layers:
   field.
 - Browser tests: `browser-tests/color-scheme-panel.spec.mjs`.
 
-Not yet done from the panel contents list: the Diverging tab. Sequential and Categorical tabs are in place.
+Sequential, Diverging and Categorical tabs are in place.
 
 ## Phases
 
@@ -288,5 +398,5 @@ Not yet done from the panel contents list: the Diverging tab. Sequential and Cat
 2. Sequential classed ramps in the GUI, the style panel strip, the layer
    record, and merged undo for a panel session.
 3. Categorical schemes (done).
-4. Diverging schemes and the CLI midpoint option.
+4. Diverging schemes: the CLI pivot options and the panel tab (done).
 5. Continuous (unclassed) ramps, class table and key.

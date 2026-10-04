@@ -3,10 +3,10 @@ import { ColorPicker } from './gui-color-picker';
 import { claimFieldKeys, isTextInput, opensAMenu, releasePanelFocus } from './gui-panel-focus';
 import { SizeField } from './gui-size-field';
 import { runGuiEditCommand } from './gui-edit-command';
-import { makeColorRow } from './gui-panel-controls';
+import { makeColorRow, makePanelToggle } from './gui-panel-controls';
 import { internal } from './gui-core';
 import {
-  schemeTypes, minSchemeColors, maxCategoricalColors,
+  schemeTypes, maxCategoricalColors,
   getSequentialPresetNames, getCategoricalPresetNames, getDefaultSchemeOfType, getSchemeColors,
   getPresetColors, getCategoricalPresetColors, getSchemeMethods, setSchemeField, setSchemeMethod,
   choosePreset, makeSchemeCustom, setTileColor, clearTileColor, setTileCount, reverseScheme,
@@ -14,6 +14,9 @@ import {
   formatSchemeCommand, getAppliedColors, getNumericFields, getCategoryFields, getCategories,
   getSwatchCategories, getCategoricalPalette, moveSwatch, shuffleScheme,
   getSchemeNullColor, setSchemeNullColor, getNoDataCount,
+  getDivergingPresetNames, pivotOptions, divergingSplits, updateDivergingLayout, getDivergingTileUse,
+  getDivergingClassRanges, getPivotSummary, setSchemePivot, setSchemeNeutral, setSchemeSplit,
+  getCenterTile,
   getLayerScheme, setLayerScheme
 } from './gui-color-scheme-model';
 
@@ -55,7 +58,8 @@ export function ColorSchemePanel(gui, opts) {
   var tabs = {};
   var paletteBtn, paletteMenu, countField, tileRow, tilesEl, picker, fieldRow, fieldSelect, methodSelect,
       noFieldsNote, selectionNote, controlsEl, vibranceRow, vibranceInput,
-      longHueBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount;
+      longHueBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount, countLabel,
+      divergingEl, pivotSelect, pivotInput, pivotNote, neutralToggle, splitSelect;
   // set while a tile is being dragged, so that letting go isn't a click
   var tileDrag = null;
 
@@ -66,7 +70,7 @@ export function ColorSchemePanel(gui, opts) {
     if (!targetLayer) return;
     restored = getLayerScheme(targetLayer);
     if (restored) {
-      scheme = restored;
+      scheme = updateDivergingLayout(restored, targetLayer);
       render();
     } else {
       close();
@@ -81,7 +85,9 @@ export function ColorSchemePanel(gui, opts) {
     tabSchemes = {};
     scheme = getLayerScheme(lyr);
     panel.show();
-    if (!scheme) {
+    if (scheme) {
+      scheme = updateDivergingLayout(scheme, lyr);
+    } else {
       fields = getNumericFields(lyr);
       scheme = getDefaultSchemeOfType(fields.length > 0 ? 'sequential' : 'categorical', lyr);
       if (canApply(scheme)) apply();
@@ -158,6 +164,8 @@ export function ColorSchemePanel(gui, opts) {
       changeScheme(setSchemeMethod(scheme, methodSelect.node().value, field, getCategoryCount(field)));
     });
 
+    initDivergingControls();
+
     var paletteRow = El('div').addClass('label-style-row label-split-row').appendTo(controlsEl);
     var paletteCell = El('div').addClass('label-split-cell color-scheme-palette-cell').appendTo(paletteRow);
     var countCell = El('div').addClass('label-split-cell').appendTo(paletteRow);
@@ -165,10 +173,10 @@ export function ColorSchemePanel(gui, opts) {
     paletteBtn = El('div').addClass('color-scheme-palette-btn').attr('role', 'button')
       .attr('aria-label', 'Palette').appendTo(paletteCell).on('click', togglePaletteMenu);
     paletteMenu = El('div').addClass('color-scheme-palette-menu').appendTo(paletteCell).hide();
-    El('span').appendTo(countCell).text('Colors');
-    // the scheme sets the upper limit (see getMaxSchemeColors())
+    countLabel = El('span').appendTo(countCell).text('Colors');
+    // the scheme sets the limits (see getMinSchemeColors(), getMaxSchemeColors())
     countField = new SizeField(countCell, {
-      min: minSchemeColors,
+      min: 1,
       max: maxCategoricalColors,
       step: 1,
       bigStep: 2,
@@ -241,6 +249,87 @@ export function ColorSchemePanel(gui, opts) {
     });
   }
 
+  // The pivot, the pivot class and how the classes are split between the
+  // sides
+  function initDivergingControls() {
+    divergingEl = El('div').appendTo(controlsEl);
+    var pivotRow = El('div').addClass('label-style-row label-split-row').appendTo(divergingEl);
+    var pivotCell = El('div').addClass('label-split-cell color-scheme-select-row').appendTo(pivotRow);
+    var valueCell = El('div').addClass('label-split-cell color-scheme-select-row').appendTo(pivotRow);
+    El('span').appendTo(pivotCell).text('Pivot');
+    pivotSelect = El('select').attr('aria-label', 'Pivot').appendTo(pivotCell).on('change', function() {
+      var name = pivotSelect.node().value;
+      var current = scheme.layout ? scheme.layout.pivot : 0;
+      changeScheme(setSchemePivot(scheme, name == 'value' ? current : name));
+    });
+    pivotOptions.forEach(function(item) {
+      El('option').attr('value', item.name).text(item.label).appendTo(pivotSelect);
+    });
+    El('span').appendTo(valueCell).text('Value');
+    pivotInput = El('input').attr('type', 'text').attr('aria-label', 'Pivot value')
+      .addClass('color-scheme-pivot-input').appendTo(valueCell)
+      .on('change', function() {
+        var val = parseFloat(pivotInput.node().value);
+        if (isFinite(val)) {
+          changeScheme(setSchemePivot(scheme, val));
+        } else {
+          render();
+        }
+      })
+      .on('keydown', function(e) {
+        if (e.key == 'Enter') pivotInput.node().blur();
+      });
+    pivotNote = El('div').addClass('label-style-row color-scheme-note').appendTo(divergingEl);
+
+    var optionRow = El('div').addClass('label-style-row label-split-row').appendTo(divergingEl);
+    var splitCell = El('div').addClass('label-split-cell color-scheme-select-row').appendTo(optionRow);
+    var neutralCell = El('div').addClass('label-split-cell color-scheme-select-row').appendTo(optionRow);
+    var neutralLabel = El('span').addClass('color-scheme-hint-label').appendTo(neutralCell).text('Pivot class')
+      .attr('data-tooltip', 'A class around the pivot, in the center color')
+      .on('mouseenter', function() { keepTooltipInWindow(neutralLabel.node()); });
+    var neutralLine = El('div').addClass('color-scheme-toggle-line').appendTo(neutralCell);
+    neutralToggle = makePanelToggle(neutralLine, {
+      title: 'Pivot class',
+      onChange: function(on) {
+        changeScheme(setSchemeNeutral(scheme, on));
+      }
+    });
+    El('span').appendTo(splitCell).text('Sides');
+    splitSelect = El('select').attr('aria-label', 'Classes on each side').appendTo(splitCell).on('change', function() {
+      changeScheme(setSchemeSplit(scheme, splitSelect.node().value));
+    });
+    divergingSplits.forEach(function(item) {
+      El('option').attr('value', item.name).text(item.label).appendTo(splitSelect);
+    });
+  }
+
+  function renderDivergingControls() {
+    var diverging = scheme.type == 'diverging';
+    var pivot = scheme.pivot;
+    var option = typeof pivot == 'number' ? 'value' : pivot;
+    var summary;
+    divergingEl.classed('hidden', !diverging);
+    if (!diverging) return;
+    pivotSelect.node().value = option;
+    pivotInput.node().disabled = option != 'value';
+    if (document.activeElement != pivotInput.node()) {
+      pivotInput.node().value = scheme.layout ? formatNumber(scheme.layout.pivot) : '';
+    }
+    summary = getPivotSummary(scheme, targetLayer);
+    pivotNote.text(summary ? formatCount(summary.below) + ' below the pivot, ' +
+      summary.above + ' at or above' : 'No numeric data to classify.');
+    neutralToggle.setState(scheme.neutral ? 'on' : 'off');
+    splitSelect.node().value = scheme.split;
+  }
+
+  function formatCount(n) {
+    return n + (n == 1 ? ' feature' : ' features');
+  }
+
+  function formatNumber(val) {
+    return String(+val.toPrecision(6));
+  }
+
   function render() {
     var categorical, fields, colors, tiles;
     if (!targetLayer || !scheme) return;
@@ -256,6 +345,8 @@ export function ColorSchemePanel(gui, opts) {
     renderFieldOptions(fields);
     fieldRow.classed('hidden', scheme.method == 'non-adjacent');
     renderMethodOptions(fields);
+    renderDivergingControls();
+    countLabel.text(scheme.type != 'diverging' ? 'Colors' : scheme.split == 'count' ? 'Per side' : 'Classes');
     countField.setValue(String(scheme.n));
     tiles = getSchemeTiles(scheme);
     colors = tiles.map(function(tile) { return tile.color; });
@@ -271,7 +362,7 @@ export function ColorSchemePanel(gui, opts) {
     nullControl.row.classed('hidden', scheme.method == 'non-adjacent');
     if (scheme.method == 'non-adjacent') nullControl.picker.hide();
     nullControl.showColor(getSchemeNullColor(scheme));
-    nullCount.text(count === 0 ? 'None in this layer' : count + (count == 1 ? ' feature' : ' features'));
+    nullCount.text(count === 0 ? 'None in this layer' : formatCount(count));
   }
 
   function renderMethodOptions(fields) {
@@ -292,7 +383,7 @@ export function ColorSchemePanel(gui, opts) {
     tabSchemes[scheme.type] = scheme;
     next = tabSchemes[type] || getDefaultSchemeOfType(type, targetLayer);
     // one no-data color for both tabs
-    next = Object.assign({}, next, {nullColor: scheme.nullColor});
+    next = updateDivergingLayout(Object.assign({}, next, {nullColor: scheme.nullColor}), targetLayer);
     picker.hide();
     selectedTile = -1;
     scheme = next;
@@ -300,7 +391,9 @@ export function ColorSchemePanel(gui, opts) {
     render();
   }
 
+  // a diverging scheme needs data that its classes can divide
   function canApply(s) {
+    if (s.type == 'diverging' && !s.layout) return false;
     return s.method == 'non-adjacent' || !!s.field;
   }
 
@@ -341,7 +434,10 @@ export function ColorSchemePanel(gui, opts) {
     vibranceRow.classed('preset', !!scheme.preset || scheme.type == 'categorical');
     reverseBtn.classed('hidden', scheme.type == 'categorical');
     shuffleBtn.classed('hidden', scheme.type != 'categorical');
-    longHueBtn.classed('selected', !!scheme.longHue)
+    // each half of a diverging ramp runs from a low-chroma center, where the
+    // hue path makes little difference
+    longHueBtn.classed('hidden', scheme.type == 'diverging')
+      .classed('selected', !!scheme.longHue)
       .attr('aria-pressed', scheme.longHue ? 'true' : 'false');
   }
 
@@ -367,7 +463,11 @@ export function ColorSchemePanel(gui, opts) {
 
   function renderTiles(tiles) {
     var categorical = scheme.type == 'categorical';
+    var diverging = scheme.type == 'diverging';
     var used = tiles.length;
+    var tileUse = diverging ? getDivergingTileUse(scheme) : null;
+    var center = getCenterTile(scheme);
+    var classLabels = diverging ? getClassLabels(tileUse) : null;
     var groups = categorical && scheme.method == 'categorical' ?
       getSwatchCategories(getCategories(targetLayer, scheme.field), used) : null;
     var n, perRow;
@@ -386,7 +486,7 @@ export function ColorSchemePanel(gui, opts) {
     dropMarker = El('div').addClass('color-scheme-drop-marker').appendTo(tilesEl).hide();
     tiles.forEach(function(tile, i) {
       var color = tile.color;
-      var inUse = !categorical || i < used;
+      var inUse = tileUse ? tileUse[i] : !categorical || i < used;
       var cell = El('div').addClass('color-scheme-tile-cell').appendTo(tilesEl);
       var tileEl = El('div').addClass('color-scheme-tile').attr('role', 'button')
         .attr('aria-label', 'Color ' + (i + 1) + ': ' + color + (inUse ? '' : ' (not used)'))
@@ -402,13 +502,20 @@ export function ColorSchemePanel(gui, opts) {
           startTileDrag(e, i);
         });
       }
-      if (groups && inUse) {
-        tileEl.attr('data-tooltip', formatCategories(groups[i]))
+      if (groups && inUse || classLabels && classLabels[i]) {
+        tileEl.attr('data-tooltip', groups ? formatCategories(groups[i]) : classLabels[i])
           .on('mouseenter', function() { keepTooltipInWindow(tileEl.node()); });
+      }
+      if (diverging) {
+        // the bar under the tiles that classes use; a gap at the center
+        // when there is no pivot class
+        El('div').addClass('color-scheme-bar').appendTo(cell)
+          .classed('used', inUse)
+          .classed('joined', inUse && i < n - 1 && tileUse[i + 1]);
       }
       var pin = El('div').addClass('color-scheme-pin').appendTo(cell)
         .on('mouseenter', function() { keepTooltipInWindow(pin.node()); });
-      var end = i === 0 || i == n - 1;
+      var end = i === 0 || i == n - 1 || i == center;
       if (categorical) {
         // a bar under the swatches in use, unbroken to the end of each row
         pin.classed('used', inUse)
@@ -425,6 +532,23 @@ export function ColorSchemePanel(gui, opts) {
         pin.addClass('adjusted').attr('data-tooltip', describeAdjustment(tile));
       }
     });
+  }
+
+  // The data range of each tile's class, for the tiles that classes use
+  function getClassLabels(tileUse) {
+    var ranges = getDivergingClassRanges(scheme.layout);
+    var j = 0;
+    return tileUse.map(function(used) {
+      return used ? formatClassRange(ranges[j++]) : null;
+    });
+  }
+
+  function formatClassRange(range) {
+    if (!range) return null;
+    if (range[0] == -Infinity && range[1] == Infinity) return 'All values';
+    if (range[0] == -Infinity) return 'Below ' + formatNumber(range[1]);
+    if (range[1] == Infinity) return formatNumber(range[0]) + ' and above';
+    return formatNumber(range[0]) + ' to ' + formatNumber(range[1]);
   }
 
   // Dragging a categorical swatch moves it to where it's dropped, which may
@@ -582,7 +706,8 @@ export function ColorSchemePanel(gui, opts) {
 
   function renderPaletteMenu() {
     var categorical = scheme.type == 'categorical';
-    var names = categorical ? getCategoricalPresetNames() : getSequentialPresetNames();
+    var names = categorical ? getCategoricalPresetNames() :
+      scheme.type == 'diverging' ? getDivergingPresetNames() : getSequentialPresetNames();
     paletteMenu.empty();
     addPaletteItem('Custom', getSchemeColors(makeSchemeCustom(scheme)), !scheme.preset, function() {
       changeScheme(makeSchemeCustom(scheme));
@@ -608,9 +733,9 @@ export function ColorSchemePanel(gui, opts) {
   }
 
   function changeScheme(next) {
-    var prevN = scheme.n;
-    scheme = next;
-    if (scheme.n != prevN) {
+    var prevSize = getSchemeTiles(scheme).length;
+    scheme = updateDivergingLayout(next, targetLayer);
+    if (getSchemeTiles(scheme).length != prevSize) {
       picker.hide();
       selectedTile = -1;
     }

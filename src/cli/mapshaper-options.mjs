@@ -794,8 +794,19 @@ export function getOptionParser() {
       type: 'numbers'
     })
     .option('classes', {
-      describe: 'number of classes (can be inferred from other options)',
-      type: 'integer'
+      describe: 'number of classes (with pivot=, or below,above the pivot)',
+      type: 'numbers'
+    })
+    .option('pivot', {
+      describe: 'diverging classes: a value, median, mean or auto (0 or median)'
+    })
+    .option('pivot-range', {
+      describe: 'low,high range of the pivot class (diverging classes)',
+      type: 'numbers'
+    })
+    .option('no-pivot-class', {
+      describe: 'diverging classes meet at the pivot (no pivot class)',
+      type: 'flag'
     })
     .option('invert', {
       describe: 'reverse the order of colors/values',
@@ -809,7 +820,7 @@ export function getOptionParser() {
       describe: 'color interpolation: rgb (default) or oklch'
     })
     .option('vibrance', {
-      describe: '(oklch) chroma added to midtones, e.g. 0.04 (default 0)',
+      describe: '(oklch) more vivid midtones, 0-1 (default 0)',
       type: 'number'
     })
     .option('index-field', {
