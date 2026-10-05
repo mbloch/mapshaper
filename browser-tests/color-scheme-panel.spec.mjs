@@ -945,6 +945,108 @@ test('continuous diverging colors: a gradient on each side, and an optional pivo
   expect(errors).toEqual([]);
 });
 
+test('the class breaks dialog edits the breaks, by value or by dragging', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page);
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  var dialog = breaksDialog(page);
+  await methodSelect(page).selectOption('equal-interval');
+  await setField(panel.locator('.size-field-input'), '4');
+  await expect(panel.locator('.color-scheme-select-row > span').nth(1)).toHaveText('Breaks');
+
+  // ids from 1806 to 5434, in four equal intervals
+  await panel.getByText('Customize').click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('.class-breaks-bar')).toHaveCount(40);
+  await expect(dialog.locator('.class-breaks-handle')).toHaveCount(3);
+  var inputs = dialog.locator('.class-breaks-table input');
+  await expect(inputs).toHaveCount(3);
+  await expect(inputs.nth(1)).toHaveValue('3620');
+
+  var before = await getFills(page);
+  // the ids are 1806 to 2023, 4358 to 4361 and 5430 to 5434: the break goes
+  // between 4359 and 4361
+  await setField(inputs.nth(1), '4360');
+  await expect(methodSelect(page)).toHaveValue('breaks');
+  await expect(methodSelect(page).locator('option:checked')).toHaveText('Custom');
+  await expect(panel.locator('.color-scheme-tile').nth(1)).toHaveAttribute('data-tooltip', /4360/);
+  expect(await getFills(page)).not.toEqual(before);
+  // each class, with its color and number of features, between the breaks
+  await expect(dialog.locator('.class-breaks-count')).toHaveText(
+    ['6 features', '2', '1', '3']);
+  var swatchColors = await dialog.locator('.class-breaks-swatch').evaluateAll(function(els) {
+    return els.map(function(el) { return getComputedStyle(el).backgroundColor; });
+  });
+  var tileColors = await panel.locator('.color-scheme-tile').evaluateAll(function(els) {
+    return els.map(function(el) { return getComputedStyle(el).backgroundColor; });
+  });
+  expect(swatchColors).toEqual(tileColors);
+
+  // a dragged break goes to a round value, and the map follows it: to below
+  // the ids from 2016 to 2023
+  before = await getFills(page);
+  var handle = dialog.locator('.class-breaks-handle').nth(0);
+  var box = await handle.boundingBox();
+  var track = await dialog.locator('.class-breaks-handles').boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(track.x + track.width * 0.04, box.y + box.height / 2, {steps: 5});
+  await page.mouse.up();
+  var dragged = Number(await inputs.nth(0).inputValue());
+  expect(dragged).toBeLessThan(2016);
+  expect(dragged).toBeGreaterThan(1815);
+  expect(String(dragged).replace(/^-|0+$/g, '').length).toBeLessThanOrEqual(3);
+  expect(await getFills(page)).not.toEqual(before);
+
+  // more colors keep the custom breaks, splitting a class
+  await setField(panel.locator('.size-field-input'), '5');
+  await expect(methodSelect(page)).toHaveValue('breaks');
+  await expect(inputs).toHaveCount(4);
+  await expect(inputs.nth(0)).toHaveValue(String(dragged));
+
+  // choosing a method starts over with its breaks
+  await methodSelect(page).selectOption('equal-interval');
+  await expect(methodSelect(page).locator('option[value="breaks"]')).toHaveCount(0);
+  await expect(inputs.nth(0)).not.toHaveValue(String(dragged));
+
+  await closeSchemePanel(page);
+  await expect(dialog).toBeHidden();
+  var classify = (await getSessionCommands(page)).filter(function(cmd) {
+    return /^-classify/.test(cmd);
+  });
+  expect(classify.length).toBe(1);
+  expect(classify[0]).toMatch(/method=equal-interval/);
+  expect(errors).toEqual([]);
+});
+
+test('the class breaks dialog keeps a diverging pivot in place, and has no categorical breaks', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page);
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  var dialog = breaksDialog(page);
+  await panel.locator('.color-scheme-tab', {hasText: 'Diverging'}).click();
+  await panel.getByRole('checkbox', {name: 'Pivot class'}).click();
+  await panel.getByText('Customize').click();
+  await expect(dialog.locator('input[aria-label="Pivot"]')).toBeDisabled();  await expect(dialog.locator('.class-breaks-rule.fixed')).toHaveCount(1);
+  await expect(dialog.locator('.class-breaks-handle.fixed')).toHaveCount(1);
+  await expect(dialog.locator('.class-breaks-swatch')).toHaveCount(
+    await dialog.locator('.class-breaks-table input').count() + 1);
+
+  var input = dialog.locator('.class-breaks-table input').first();
+  var value = Number(await input.inputValue());
+  await setField(input, String(value - 1));
+  await expect(input).toHaveValue(String(value - 1));
+  await expect(methodSelect(page)).toHaveValue('breaks');
+
+  await panel.locator('.color-scheme-tab', {hasText: 'Categorical'}).click();
+  await expect(dialog).toBeHidden();
+  await expect(panel.getByText('Customize')).toBeHidden();
+  await expect(panel.locator('.color-scheme-select-row > span').nth(1)).toHaveText('Method');
+  expect(errors).toEqual([]);
+});
+
 async function getSegmentBoxes(page) {
   var segments = schemePanel(page).locator('.color-scheme-gradient-segment');
   var boxes = [];
@@ -1015,8 +1117,13 @@ function fieldSelect(page) {
   return schemePanel(page).getByLabel('Data field');
 }
 
+// "Breaks" on the numeric tabs, "Method" on the categorical tab
 function methodSelect(page) {
-  return schemePanel(page).getByLabel('Classification method');
+  return schemePanel(page).locator('select[aria-label="Class breaks"], select[aria-label="Classification method"]');
+}
+
+function breaksDialog(page) {
+  return page.locator('.class-breaks-dialog');
 }
 
 async function getRecords(page) {

@@ -195,9 +195,11 @@ function getDivergingLayout(scheme, lyr) {
   var values = getAscendingValues(lyr, scheme.field);
   if (values.length === 0) return null;
   var neutral = getSchemeNeutral(scheme);
+  var custom = scheme.method == 'breaks';
   try {
     return internal.getDivergingLayout(values, scheme.method, {
-      pivot: scheme.pivot,
+      pivot: custom ? scheme.breakPivot : scheme.pivot,
+      breaks: custom ? scheme.breaks : undefined,
       continuous: !!scheme.continuous,
       pivot_class: neutral,
       no_pivot_class: !neutral,
@@ -225,7 +227,7 @@ export function isContinuousScheme(scheme) {
 var minContinuousStartColors = 5;
 
 export function setSchemeContinuous(scheme, continuous) {
-  var next = Object.assign({}, scheme, {continuous: !!continuous});
+  var next = Object.assign({}, !!continuous == !!scheme.continuous ? scheme : resetSchemeBreaks(scheme), {continuous: !!continuous});
   if (continuous && next.type == 'sequential' && next.n < minContinuousStartColors) {
     next.n = minContinuousStartColors;
   }
@@ -288,7 +290,7 @@ export function getContinuousTileStops(scheme, lyr) {
     values = getAscendingValues(lyr, scheme.field);
     if (values.length === 0) return null;
     try {
-      breaks = internal.getSequentialBreaks(values, scheme.method, scheme.n - 2, true);
+      breaks = getSequentialSchemeBreaks(scheme, values);
     } catch(e) {
       return null;
     }
@@ -385,10 +387,249 @@ export function getSequentialClassRanges(scheme, lyr) {
   var values = getAscendingValues(lyr, scheme.field);
   if (values.length === 0) return null;
   try {
-    return getBreakRanges(internal.getSequentialBreaks(values, scheme.method, scheme.n - 1));
+    return getBreakRanges(getSequentialSchemeBreaks(scheme, values));
   } catch(e) {
     return null;
   }
+}
+
+// The inner breaks of a sequential scheme: of its classes, or for continuous
+// colors, the stops between the min and the max
+function getSequentialSchemeBreaks(scheme, values) {
+  var continuous = isContinuousScheme(scheme);
+  if (scheme.method == 'breaks') return scheme.breaks.concat();
+  return internal.getSequentialBreaks(values, scheme.method, continuous ? scheme.n - 2 : scheme.n - 1, continuous);
+}
+
+// Custom breaks. A scheme whose method is 'breaks' has class breaks of its
+// own (scheme.breaks), started from another method's (scheme.baseMethod).
+// It goes back to that method when a change leaves the breaks with nothing
+// to mean: a new field, pivot or pivot class, switching between classes and
+// continuous colors, or for a diverging scheme, a new number of classes.
+// The breaks are those of getSchemeBreaks(); a diverging scheme also keeps
+// its pivot as a number (scheme.breakPivot).
+
+// The breaks the class breaks dialog edits: {breaks, fixed, pivot, neutral,
+// min, max}, or null if there are no data. Sequential: the breaks of
+// getSequentialSchemeBreaks(). Diverging: all the breaks of the layout,
+// including the pivot, which is fixed (fixed[i] is true), or the edges of
+// the pivot class (neutral: [lo, hi]). min and max: the data's.
+export function getSchemeBreaks(scheme, lyr) {
+  var values = getAscendingValues(lyr, scheme.field);
+  var layout = scheme.layout;
+  var breaks;
+  if (values.length === 0 || scheme.type == 'categorical') return null;
+  if (scheme.type == 'diverging') {
+    if (!layout) return null;
+    return {
+      breaks: layout.breaks.concat(),
+      fixed: layout.breaks.map(function(b) { return !layout.neutral && b == tidyNumber(layout.pivot); }),
+      pivot: tidyNumber(layout.pivot),
+      neutral: layout.neutral,
+      min: values[0],
+      max: values[values.length - 1]
+    };
+  }
+  try {
+    breaks = getSequentialSchemeBreaks(scheme, values);
+  } catch(e) {
+    return null;
+  }
+  return {
+    breaks: breaks,
+    fixed: breaks.map(function() { return false; }),
+    pivot: null,
+    neutral: null,
+    min: values[0],
+    max: values[values.length - 1]
+  };
+}
+
+// Moves break i to a value, as far as it can go: between its neighbors (and
+// the data's min and max), and for an edge of a pivot class, on its own side
+// of the pivot. The pivot itself doesn't move. A scheme that isn't custom
+// yet becomes custom, starting from the breaks its method gives.
+export function setSchemeBreak(scheme, lyr, i, value) {
+  var info = getSchemeBreaks(scheme, lyr);
+  var breaks, lo, hi, edge, next;
+  if (!info || !(i >= 0 && i < info.breaks.length) || info.fixed[i] || !isFiniteNumber(value)) return scheme;
+  breaks = info.breaks.map(tidyNumber);
+  value = tidyNumber(value);
+  lo = i > 0 ? breaks[i - 1] : Math.min(info.min, breaks[i]);
+  hi = i < breaks.length - 1 ? breaks[i + 1] : Math.max(info.max, breaks[i]);
+  edge = info.neutral ? info.neutral.indexOf(breaks[i]) : -1;
+  if (edge === 0) hi = Math.min(hi, info.pivot);
+  if (edge == 1) lo = Math.max(lo, info.pivot);
+  value = clamp(value, lo, hi);
+  // the pivot class has to keep the pivot inside it
+  if (edge > -1 && value == info.pivot) return scheme;
+  breaks[i] = value;
+  next = Object.assign({}, scheme, {
+    method: 'breaks',
+    baseMethod: scheme.method == 'breaks' ? scheme.baseMethod : scheme.method,
+    breaks: breaks,
+    breakPivot: info.pivot
+  });
+  // e.g. a pivot without a pivot class that isn't one of the breaks, since
+  // the data are all on one side of it
+  if (scheme.type == 'diverging' && !getDivergingLayout(next, lyr)) return scheme;
+  return next;
+}
+
+// The way -classify writes the breaks of a diverging layout, so that a
+// pivot written the same way is still one of them
+function tidyNumber(val) {
+  return isFinite(val) ? +val.toPrecision(12) : val;
+}
+
+// A custom scheme back to the method its breaks came from
+export function resetSchemeBreaks(scheme) {
+  if (scheme.method != 'breaks') return scheme;
+  return Object.assign({}, scheme, {
+    method: scheme.baseMethod || 'quantile',
+    baseMethod: null,
+    breaks: null,
+    breakPivot: null
+  });
+}
+
+// Custom breaks for a new number of colors: a break is added by splitting
+// the class with the most features at its median, and taken away from
+// between the two neighboring classes with the fewest features between them.
+// Returns null if the data can't be split into enough classes.
+// values: the data, ascending
+export function resizeBreaks(breaks, values, numBreaks) {
+  var counts, best, i, j, members, mid;
+  breaks = breaks.concat();
+  while (breaks.length > numBreaks) {
+    counts = getClassCounts(breaks, values);
+    best = 0;
+    for (i=1; i<breaks.length; i++) {
+      if (counts[i] + counts[i + 1] < counts[best] + counts[best + 1]) best = i;
+    }
+    breaks.splice(best, 1);
+  }
+  while (breaks.length < numBreaks) {
+    best = -1;
+    for (j=0; j<=breaks.length; j++) {
+      members = getClassMembers(breaks, values, j);
+      // a class of one value can't be split
+      if (members.length > 1 && members[0] < members[members.length - 1] &&
+          (best == -1 || members.length > getClassMembers(breaks, values, best).length)) {
+        best = j;
+      }
+    }
+    if (best == -1) return null;
+    members = getClassMembers(breaks, values, best);
+    mid = members[Math.floor(members.length / 2)];
+    // a break at the class's lowest value would leave the class below it empty
+    if (mid == members[0]) mid = members.find(function(val) { return val > members[0]; });
+    breaks.splice(best, 0, mid);
+  }
+  return breaks;
+}
+
+// The colors of the classes between a scheme's breaks (see getSchemeBreaks()),
+// as CSS backgrounds: a class's color, or for continuous colors, a gradient
+// from the color at the class's low end to the one at its high end
+export function getBreakClassSwatches(scheme) {
+  var colors = getSchemeColors(scheme);
+  var layout = scheme.layout;
+  var swatches = [];
+  var k, stops;
+  if (scheme.type == 'sequential') {
+    if (!isContinuousScheme(scheme)) return colors;
+    return colors.slice(1).map(function(color, i) { return gradient(colors[i], color); });
+  }
+  if (!layout) return [];
+  if (!scheme.continuous) {
+    k = getDivergingTileUse(scheme);
+    return colors.filter(function(c, i) { return k[i]; });
+  }
+  // each side's stops have tiles running out from the center tile
+  k = getCenterTile(scheme);
+  stops = internal.getDivergingStops(layout);
+  addSideGradients(k - stops.below.length, stops.below.length);
+  if (layout.neutral) swatches.push(colors[k]);
+  addSideGradients(k + 1, stops.above.length);
+  return swatches;
+
+  function addSideGradients(first, n) {
+    for (var i=first; i<first + n - 1; i++) swatches.push(gradient(colors[i], colors[i + 1]));
+  }
+
+  function gradient(a, b) {
+    return 'linear-gradient(' + a + ', ' + b + ')';
+  }
+}
+
+// The number of features in each class between a scheme's breaks
+export function getBreakClassCounts(scheme, lyr, breaks) {
+  return getClassCounts(breaks, getAscendingValues(lyr, scheme.field));
+}
+
+// the number of values in each class (classes are [low, high), as -classify has them)
+function getClassCounts(breaks, values) {
+  var counts = [];
+  for (var j=0; j<=breaks.length; j++) counts.push(getClassMembers(breaks, values, j).length);
+  return counts;
+}
+
+function getClassMembers(breaks, values, j) {
+  var lo = j > 0 ? breaks[j - 1] : -Infinity;
+  var hi = j < breaks.length ? breaks[j] : Infinity;
+  return values.filter(function(val) { return val >= lo && val < hi; });
+}
+
+// The scheme's field's numeric values, ascending
+export function getSchemeValues(scheme, lyr) {
+  return getAscendingValues(lyr, scheme.field);
+}
+
+// Positions along the class breaks dialog's histogram (0 to 1) for values
+// from min to max, on a linear or log scale (log: min must be above 0)
+export function getBreaksScale(min, max, log) {
+  var f = log ? Math.log : function(val) { return val; };
+  var a = f(min), b = f(max);
+  return {
+    toPos: function(val) {
+      if (!(b > a)) return 0.5;
+      if (log && !(val > 0)) return 0;
+      return clamp((f(val) - a) / (b - a), 0, 1);
+    },
+    toValue: function(pos) {
+      var val = a + clamp(pos, 0, 1) * (b - a);
+      if (!(b > a)) return min;
+      return log ? Math.exp(val) : val;
+    }
+  };
+}
+
+// The number of values in each of numBins equal parts of a scale
+export function getHistogram(values, scale, numBins) {
+  var bins = new Array(numBins).fill(0);
+  values.forEach(function(val) {
+    bins[Math.min(Math.floor(scale.toPos(val) * numBins), numBins - 1)]++;
+  });
+  return bins;
+}
+
+// The roundest number from a to b: of the ones with the fewest significant
+// digits, the nearest the middle, for a break dragged to a position that a
+// range of values shares
+export function getRoundestNumber(a, b) {
+  var lo = Math.min(a, b), hi = Math.max(a, b);
+  var mid = (lo + hi) / 2;
+  var exp, step, val;
+  if (lo <= 0 && hi >= 0) return 0;
+  exp = Math.floor(Math.log10(Math.max(Math.abs(lo), Math.abs(hi))));
+  for (var e=exp; e > exp - 15; e--) {
+    step = Math.pow(10, e);
+    val = Math.round(mid / step) * step;
+    if (val < lo || val > hi) val = Math.ceil(lo / step) * step;
+    if (val <= hi) return +val.toPrecision(12);
+  }
+  return lo;
 }
 
 function getBreakRanges(breaks) {
@@ -414,19 +655,19 @@ export function getPivotSummary(scheme, lyr) {
 
 // pivot: 'auto', 'median', 'mean' or a number
 export function setSchemePivot(scheme, pivot) {
-  return Object.assign({}, scheme, {pivot: pivot});
+  return Object.assign({}, resetSchemeBreaks(scheme), {pivot: pivot});
 }
 
 // sets the pivot class of the scheme's mode (see getSchemeNeutral())
 export function setSchemeNeutral(scheme, neutral) {
-  return Object.assign({}, scheme, scheme.continuous ? {continuousNeutral: !!neutral} : {neutral: !!neutral});
+  return Object.assign({}, resetSchemeBreaks(scheme), scheme.continuous ? {continuousNeutral: !!neutral} : {neutral: !!neutral});
 }
 
 // Switching between a total and a number per side starts over with the
 // default number
 export function setSchemeSplit(scheme, split) {
   if (scheme.split == split) return scheme;
-  return Object.assign({}, scheme, {
+  return Object.assign({}, resetSchemeBreaks(scheme), {
     split: split,
     n: split == 'count' ? defaultDivergingSideClasses : defaultDivergingClasses
   });
@@ -481,7 +722,7 @@ function clampColorCount(scheme, n, count) {
 // up to as many as the palette has.
 // count: the number of categories in the field
 export function setSchemeField(scheme, field, count) {
-  var next = Object.assign({}, scheme, {field: field});
+  var next = Object.assign({}, field == scheme.field ? scheme : resetSchemeBreaks(scheme), {field: field});
   if (next.type == 'categorical' && next.method == 'categorical') {
     next.n = clampColorCount(next, count, count);
   }
@@ -491,7 +732,9 @@ export function setSchemeField(scheme, field, count) {
 // field, count: the field to use, and its number of categories, when a
 // categorical scheme changes to the categorical method
 export function setSchemeMethod(scheme, method, field, count) {
-  var next = Object.assign({}, scheme, {method: method});
+  var next;
+  if (method == 'breaks') return scheme; // the Custom entry: breaks come from the dialog
+  next = Object.assign({}, resetSchemeBreaks(scheme), {method: method});
   if (next.type != 'categorical') return next;
   if (method == 'categorical') {
     return setSchemeField(next, next.field || field, count);
@@ -788,10 +1031,19 @@ export function clearTileColor(scheme, i) {
 
 // A custom categorical list grows to have at least n swatches.
 // count: the number of categories, for a categorical scheme
-export function setTileCount(scheme, n, count) {
+// lyr: the layer, for a sequential scheme's custom breaks to be split or
+//   merged to fit (see resizeBreaks()); without it, or for a diverging scheme,
+//   the breaks go back to their method's
+export function setTileCount(scheme, n, count, lyr) {
   var next = Object.assign({}, scheme, {n: clampColorCount(scheme, n, count)});
+  var breaks;
   if (next.type == 'categorical' && !next.preset && next.swatches.length < next.n) {
     next.swatches = extendSwatches(next.swatches, next.n);
+  }
+  if (next.method == 'breaks' && next.n != scheme.n) {
+    breaks = next.type == 'sequential' && lyr ?
+      resizeBreaks(next.breaks, getAscendingValues(lyr, next.field), isContinuousScheme(next) ? next.n - 2 : next.n - 1) : null;
+    next = breaks ? Object.assign(next, {breaks: breaks}) : resetSchemeBreaks(next);
   }
   return next;
 }
@@ -874,16 +1126,22 @@ export function getAppliedColors(scheme, count) {
 // opts.target  a -target value, when the layer is not the active one
 export function formatSchemeCommand(scheme, colors, opts) {
   var parts = ['-classify'];
+  var custom = scheme.method == 'breaks';
   if (scheme.method != 'non-adjacent') {
     parts.push('field=' + quoteCommandValue(scheme.field));
   }
   parts.push('method=' + scheme.method);
+  if (custom) {
+    parts.push('breaks=' + scheme.breaks.join(','));
+  }
   if (scheme.type == 'diverging') {
-    parts.push('pivot=' + scheme.pivot, 'classes=' + getDivergingClassesOption(scheme));
+    // custom breaks give the number of classes
+    parts.push('pivot=' + (custom ? tidyNumber(scheme.breakPivot) : scheme.pivot));
+    if (!custom) parts.push('classes=' + getDivergingClassesOption(scheme));
     // continuous output has no pivot class by default, classes have one
     if (!getSchemeNeutral(scheme)) parts.push('no-pivot-class');
     else if (scheme.continuous) parts.push('pivot-class');
-  } else if (isContinuousScheme(scheme)) {
+  } else if (isContinuousScheme(scheme) && !custom) {
     parts.push('classes=' + (scheme.n - 1));
   }
   if (isContinuousScheme(scheme)) {

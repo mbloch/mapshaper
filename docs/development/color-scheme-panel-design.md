@@ -489,6 +489,44 @@ map may not want. A sequential or diverging preset can use part of its ramp:
 - Choosing another preset, or editing a tile (which makes a custom ramp),
   clears the range.
 
+## Custom breaks
+
+The Breaks row has the method's menu in its left column and a Customize
+button in its right (categorical schemes keep a full-width Method menu and no
+button). Customize opens a dialog to the left of the panel
+(`gui-class-breaks-dialog.mjs`): a 40-bin histogram of the field (linear, or
+log when the data are all above 0), a triangle under it at each break, and
+under that the classes from low to high: a stack of color tiles (gradients
+for continuous colors, from `getBreakClassSwatches()`), each with its number
+of features, and at each boundary between two tiles a rule out to a field
+with the break's value. Typing a value or dragging a triangle (or arrow
+keys on a focused triangle) moves a break, and the map follows as the panel
+applies each change.
+
+- A scheme with custom breaks has `method: 'breaks'`, `breaks`, and
+  `baseMethod`, the method they started from. The menu shows a Custom entry
+  while the breaks are custom; choosing a method drops them. They are also
+  dropped by a change that leaves them with nothing to mean: a new field,
+  pivot or pivot class, or switching between classes and continuous colors.
+- The command is `method=breaks breaks=...`, which `-classify` already takes,
+  with or without `continuous` and `pivot=`. A continuous scheme's breaks are
+  its inner stops; its ends stay at the data's min and max.
+- A new number of colors keeps a sequential scheme's custom breaks
+  (`resizeBreaks()`): a break is added at the median of the class with the
+  most features, and the one between the two neighboring classes with the
+  fewest features between them is taken away. A diverging scheme's breaks go
+  back to the method's, since its number of classes is split between the
+  sides.
+- Diverging: the breaks are those of the layout. Without a pivot class the
+  pivot is one of them, and stays put (a grey triangle and a disabled field).
+  With one, its edges move, but stay on their own sides of the pivot, which
+  is drawn as a dashed line. The command gives the pivot as a number
+  (`scheme.breakPivot`, rounded as `-classify` rounds the breaks, so that it
+  is still one of them).
+- A break stays between its neighbors and within the data's range. A dragged
+  break goes to the roundest value within half a pixel of the pointer
+  (`getRoundestNumber()`).
+
 ## Panel contents (sequential, first version)
 
 - Palette menu with ramp previews (presets plus "Custom"), swatch count.

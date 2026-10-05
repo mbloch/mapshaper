@@ -3,7 +3,8 @@ import { ColorPicker } from './gui-color-picker';
 import { claimFieldKeys, isTextInput, opensAMenu, releasePanelFocus } from './gui-panel-focus';
 import { SizeField } from './gui-size-field';
 import { runGuiEditCommand } from './gui-edit-command';
-import { makeColorRow, makePanelToggle } from './gui-panel-controls';
+import { makeColorRow, makePanelToggle, makePanelActionButton } from './gui-panel-controls';
+import { ClassBreaksDialog } from './gui-class-breaks-dialog';
 import { internal } from './gui-core';
 import {
   schemeTypes, maxCategoricalColors,
@@ -65,6 +66,7 @@ export function ColorSchemePanel(gui, opts) {
   var tabSchemes = {};
   var tabs = {};
   var paletteBtn, paletteMenu, countField, tileRow, gradientEl, tilesEl, picker, fieldRow, fieldSelect, methodSelect,
+      methodRow, methodLabel, customizeCell, customizeBtn, breaksDialog,
       noFieldsNote, controlsEl, vibranceRow, vibranceInput,
       longHueBtn, continuousBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount, countLabel,
       rangeEl, rangeStrip, rangeShades, rangeHandles,
@@ -115,6 +117,7 @@ export function ColorSchemePanel(gui, opts) {
     picker.hide();
     nullControl.picker.hide();
     hidePaletteMenu();
+    breaksDialog.close();
     panel.hide();
     targetLayer = null;
     scheme = null;
@@ -166,11 +169,30 @@ export function ColorSchemePanel(gui, opts) {
       changeScheme(setSchemeField(scheme, field, getCategoryCount(field)));
     });
 
-    var methodRow = El('div').addClass('label-style-row color-scheme-select-row').appendTo(controlsEl);
-    El('span').appendTo(methodRow).text('Method');
-    methodSelect = El('select').attr('aria-label', 'Classification method').appendTo(methodRow).on('change', function() {
+    // numeric schemes: the breaks' method on the left, the button for
+    // editing them on the right
+    methodRow = El('div').addClass('label-style-row').appendTo(controlsEl);
+    var methodCell = El('div').addClass('label-split-cell color-scheme-select-row').appendTo(methodRow);
+    customizeCell = El('div').addClass('label-split-cell color-scheme-customize-cell').appendTo(methodRow);
+    methodLabel = El('span').appendTo(methodCell).text('Method');
+    methodSelect = El('select').attr('aria-label', 'Classification method').appendTo(methodCell).on('change', function() {
       var field = scheme.field || getCategoryFields(targetLayer)[0];
       changeScheme(setSchemeMethod(scheme, methodSelect.node().value, field, getCategoryCount(field)));
+    });
+    customizeBtn = makePanelActionButton(customizeCell, 'Customize', function() {
+      if (breaksDialog.isOpen()) {
+        breaksDialog.close();
+      } else {
+        picker.hide();
+        breaksDialog.open();
+      }
+      renderMethodRow();
+    }).addClass('color-scheme-customize-btn').attr('title', 'Edit the class breaks');
+    breaksDialog = new ClassBreaksDialog(gui, {
+      getScheme: function() { return scheme; },
+      getLayer: function() { return targetLayer; },
+      onChange: changeScheme,
+      onClose: renderMethodRow
     });
 
     initDivergingControls();
@@ -192,10 +214,10 @@ export function ColorSchemePanel(gui, opts) {
       decimals: 0,
       title: 'Number of classes',
       onSet: function(n) {
-        changeScheme(setTileCount(scheme, n, getCategoryCount()));
+        changeScheme(setTileCount(scheme, n, getCategoryCount(), targetLayer));
       },
       onStep: function(delta) {
-        changeScheme(setTileCount(scheme, scheme.n + (delta > 0 ? 1 : -1), getCategoryCount()));
+        changeScheme(setTileCount(scheme, scheme.n + (delta > 0 ? 1 : -1), getCategoryCount(), targetLayer));
       },
       onDone: releaseFocus
     });
@@ -351,7 +373,10 @@ export function ColorSchemePanel(gui, opts) {
     fields = categorical ? getCategoryFields(targetLayer) : getNumericFields(targetLayer);
     noFieldsNote.classed('hidden', categorical || fields.length > 0);
     controlsEl.classed('hidden', !categorical && fields.length === 0);
-    if (!categorical && fields.length === 0) return;
+    if (!categorical && fields.length === 0) {
+      breaksDialog.close();
+      return;
+    }
     renderFieldOptions(fields);
     fieldRow.classed('hidden', scheme.method == 'non-adjacent');
     renderMethodOptions(fields);
@@ -364,6 +389,8 @@ export function ColorSchemePanel(gui, opts) {
     renderTiles(tiles);
     renderVibrance();
     renderNullColor();
+    if (categorical) breaksDialog.close();
+    breaksDialog.update();
   }
 
   function renderNullColor() {
@@ -381,7 +408,21 @@ export function ColorSchemePanel(gui, opts) {
       // classifying by category needs a field
       if (item.name == 'categorical' && fields.length === 0) opt.attr('disabled', true);
     });
+    // edited breaks; choosing a method starts over with its breaks
+    if (scheme.method == 'breaks') {
+      El('option').attr('value', 'breaks').text('Custom').appendTo(methodSelect);
+    }
     methodSelect.node().value = scheme.method;
+    renderMethodRow();
+  }
+
+  function renderMethodRow() {
+    var numeric = scheme && scheme.type != 'categorical';
+    methodRow.classed('label-split-row', numeric);
+    methodLabel.text(numeric ? 'Breaks' : 'Method');
+    methodSelect.attr('aria-label', numeric ? 'Class breaks' : 'Classification method');
+    customizeCell.classed('hidden', !numeric);
+    customizeBtn.classed('selected', breaksDialog.isOpen());
   }
 
   // Each tab keeps its own scheme while the panel is open, and starts from a

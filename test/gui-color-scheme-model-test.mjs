@@ -13,7 +13,9 @@ import {
   getPivotSummary, setSchemePivot, setSchemeNeutral, setSchemeSplit, getCenterTile,
   getSequentialClassRanges, setSchemeContinuous, isContinuousScheme, getSchemeNeutral,
   getContinuousTileStops, getContinuousSegments, getAppliedScheme, getFillFingerprint,
-  setSchemeRangeEnd, getDisplayRange, getDefaultDivergingScheme
+  setSchemeRangeEnd, getDisplayRange, getDefaultDivergingScheme,
+  getSchemeBreaks, setSchemeBreak, resizeBreaks, getRoundestNumber, getBreaksScale, getHistogram,
+  getBreakClassSwatches, getBreakClassCounts
 } from '../src/gui/gui-color-scheme-model';
 import { getRankPositionFunction } from '../src/classification/mapshaper-class-stats';
 import api from '../mapshaper.js';
@@ -821,6 +823,209 @@ describe('gui-color-scheme-model.mjs', function() {
       assert.equal(getFillFingerprint(lyr), getLayerScheme(lyr).fillHash);
       lyr.data.getRecords()[1].fill = 'rgb(4, 5, 7)';
       assert.equal(getLayerScheme(lyr), null);
+    });
+
+    it('the command colors the features by custom breaks as the tiles show them', async function() {
+      var lyr = makeTestLayer();
+      var seq = setSchemeContinuous(getDefaultScheme('change'), true);
+      var schemes = [
+        setSchemeBreak(seq, lyr, 1, 3),
+        diverging(lyr, function(s) { return setSchemeBreak(updateDivergingLayout(s, lyr), lyr, 0, -25); }),
+        diverging(lyr, function(s) {
+          s = updateDivergingLayout(setSchemeNeutral(s, true), lyr);
+          return setSchemeBreak(s, lyr, s.layout.breaks.indexOf(s.layout.neutral[1]), 8);
+        })
+      ];
+      for (var scheme of schemes) {
+        scheme = updateDivergingLayout(scheme, lyr);
+        assert.equal(scheme.method, 'breaks');
+        var cmd = formatSchemeCommand(scheme, getAppliedColors(scheme));
+        var out = await api.applyCommands('-i data.json ' + cmd + ' -o', {'data.json': lyr.data.getRecords()});
+        var fills = JSON.parse(out['data.json']).map(function(d) { return hex(d.fill); });
+        var expected = values.map(function(v) { return getExpectedFill(scheme, lyr, v); });
+        assert.deepEqual(fills, expected, cmd);
+      }
+    });
+  });
+
+  describe('custom breaks', function() {
+    var values = [-40, -30, -20, -10, 5, 10, 20, 30, 40, 50, 60, 70];
+    function makeTestLayer() {
+      return makeLayer(values.map(function(v) { return {change: v, other: v * 2}; }));
+    }
+    function sequential(n) {
+      return setTileCount(Object.assign(getDefaultScheme('change'), {method: 'equal-interval'}), n || 4);
+    }
+
+    it('the breaks start from the method\'s', function() {
+      var lyr = makeTestLayer();
+      var info = getSchemeBreaks(sequential(), lyr);
+      assert.deepEqual(info.breaks, [-12.5, 15, 42.5]);
+      assert.deepEqual(info.fixed, [false, false, false]);
+      assert.equal(info.min, -40);
+      assert.equal(info.max, 70);
+    });
+
+    it('moving a break makes the breaks custom', function() {
+      var lyr = makeTestLayer();
+      var scheme = setSchemeBreak(sequential(), lyr, 1, 20);
+      assert.equal(scheme.method, 'breaks');
+      assert.equal(scheme.baseMethod, 'equal-interval');
+      assert.deepEqual(scheme.breaks, [-12.5, 20, 42.5]);
+      assert.deepEqual(getSequentialClassRanges(scheme, lyr)[1], [-12.5, 20]);
+      assert.equal(setSchemeBreak(scheme, lyr, 0, 0).baseMethod, 'equal-interval');
+    });
+
+    it('a break stays between its neighbors and the data range', function() {
+      var lyr = makeTestLayer();
+      assert.deepEqual(setSchemeBreak(sequential(), lyr, 1, 100).breaks, [-12.5, 42.5, 42.5]);
+      assert.deepEqual(setSchemeBreak(sequential(), lyr, 0, -100).breaks, [-40, 15, 42.5]);
+      assert.deepEqual(setSchemeBreak(sequential(), lyr, 2, 100).breaks, [-12.5, 15, 70]);
+    });
+
+    it('the command has the breaks', function() {
+      var lyr = makeTestLayer();
+      var scheme = setSchemeBreak(sequential(), lyr, 1, 20);
+      assert.equal(formatSchemeCommand(scheme, ['#000000']),
+        "-classify field='change' method=breaks breaks=-12.5,20,42.5 colors=#000000");
+      scheme = setSchemeBreak(setSchemeContinuous(sequential(), true), lyr, 1, 20);
+      assert.equal(formatSchemeCommand(scheme, ['#000000']),
+        "-classify field='change' method=breaks breaks=-12.5,20,42.5 continuous interpolation=oklch colors=#000000");
+    });
+
+    it('a continuous scheme edits the stops between the min and the max', function() {
+      var lyr = makeTestLayer();
+      var scheme = setSchemeBreak(setSchemeContinuous(sequential(), true), lyr, 0, 0);
+      var stops = getContinuousTileStops(scheme, lyr);
+      assert.deepEqual(stops.map(function(s) { return s.value; }), [-40, 0, 15, 42.5, 70]);
+    });
+
+    it('choosing a method, a field or classes vs continuous drops the custom breaks', function() {
+      var lyr = makeTestLayer();
+      var scheme = setSchemeBreak(sequential(), lyr, 1, 20);
+      assert.equal(setSchemeMethod(scheme, 'quantile').method, 'quantile');
+      assert.equal(setSchemeMethod(scheme, 'breaks'), scheme);
+      assert.equal(setSchemeField(scheme, 'other').method, 'equal-interval');
+      assert.equal(setSchemeField(scheme, 'change').method, 'breaks');
+      assert.equal(setSchemeContinuous(scheme, true).method, 'equal-interval');
+      assert.equal(setSchemeContinuous(scheme, true).breaks, null);
+    });
+
+    it('more colors split the classes with the most features, fewer merge the smallest', function() {
+      var lyr = makeTestLayer();
+      var scheme = Object.assign(sequential(2), {method: 'breaks', baseMethod: 'quantile', breaks: [-35]});
+      // [-40] and [-35...]: the larger class splits at its median
+      assert.deepEqual(setTileCount(scheme, 3, -1, lyr).breaks, [-35, 20]);
+      scheme = Object.assign(sequential(4), {method: 'breaks', baseMethod: 'quantile', breaks: [-35, 0, 65]});
+      // the classes have 1, 3, 7 and 1 features: the break between the first two goes
+      assert.deepEqual(setTileCount(scheme, 3, -1, lyr).breaks, [0, 65]);
+      // without the layer, the breaks go back to the method's
+      assert.equal(setTileCount(scheme, 3, -1).method, 'quantile');
+    });
+
+    it('resizing stops when no class can be split', function() {
+      assert.deepEqual(resizeBreaks([2], [1, 1, 2, 2], 2), null);
+      assert.deepEqual(resizeBreaks([2], [1, 1, 2, 3], 2), [2, 3]);
+    });
+
+    describe('diverging', function() {
+      function diverging(lyr, neutral) {
+        var scheme = setSchemeNeutral(getDefaultSchemeOfType('diverging', lyr), neutral);
+        return updateDivergingLayout(scheme, lyr);
+      }
+
+      it('the pivot is a fixed break without a pivot class', function() {
+        var lyr = makeTestLayer();
+        var scheme = diverging(lyr, false);
+        var info = getSchemeBreaks(scheme, lyr);
+        var k = info.breaks.indexOf(0);
+        assert(k > -1);
+        assert.equal(info.fixed[k], true);
+        assert.equal(info.fixed.filter(Boolean).length, 1);
+        assert.equal(setSchemeBreak(scheme, lyr, k, 3), scheme);
+      });
+
+      it('the edges of a pivot class stay on their sides of the pivot', function() {
+        var lyr = makeTestLayer();
+        var scheme = diverging(lyr, true);
+        var info = getSchemeBreaks(scheme, lyr);
+        var lo = info.breaks.indexOf(info.neutral[0]);
+        var hi = info.breaks.indexOf(info.neutral[1]);
+        assert.equal(info.fixed.filter(Boolean).length, 0);
+        assert.deepEqual(setSchemeBreak(scheme, lyr, lo, -2).breaks[lo], -2);
+        // the class can't lose the pivot
+        assert.equal(setSchemeBreak(scheme, lyr, lo, 3), scheme);
+        assert.equal(setSchemeBreak(scheme, lyr, hi, -5), scheme);
+      });
+
+      it('the command has the breaks and the pivot, and no classes=', function() {
+        var lyr = makeTestLayer();
+        var scheme = diverging(lyr, false);
+        var info = getSchemeBreaks(scheme, lyr);
+        scheme = updateDivergingLayout(setSchemeBreak(scheme, lyr, 0, -35), lyr);
+        assert.equal(formatSchemeCommand(scheme, ['#000000']),
+          "-classify field='change' method=breaks breaks=" + [-35].concat(info.breaks.slice(1)).join(',') +
+          ' pivot=0 no-pivot-class colors=#000000');
+        assert.equal(scheme.layout.below + scheme.layout.above, info.breaks.length + 1);
+      });
+
+      it('a new pivot or number of classes drops the custom breaks', function() {
+        var lyr = makeTestLayer();
+        var scheme = setSchemeBreak(diverging(lyr, false), lyr, 0, -35);
+        assert.equal(setSchemePivot(scheme, 10).method, 'quantile');
+        assert.equal(setSchemeNeutral(scheme, true).method, 'quantile');
+        assert.equal(setTileCount(scheme, 9, -1, lyr).method, 'quantile');
+      });
+    });
+
+    it('the classes between the breaks: their colors and numbers of features', function() {
+      var lyr = makeTestLayer();
+      var scheme = sequential();
+      var breaks = getSchemeBreaks(scheme, lyr).breaks;
+      assert.deepEqual(getBreakClassSwatches(scheme), getSchemeColors(scheme));
+      assert.deepEqual(getBreakClassCounts(scheme, lyr, breaks), [3, 3, 3, 3]);
+      // continuous: a gradient between the stops at the ends of each class
+      scheme = setSchemeContinuous(sequential(), true);
+      var colors = getSchemeColors(scheme);
+      var swatches = getBreakClassSwatches(scheme);
+      assert.equal(swatches.length, getSchemeBreaks(scheme, lyr).breaks.length + 1);
+      assert.equal(swatches[0], 'linear-gradient(' + colors[0] + ', ' + colors[1] + ')');
+    });
+
+    it('diverging classes, classed or continuous, have one swatch each', function() {
+      var lyr = makeTestLayer();
+      [false, true].forEach(function(continuous) {
+        [false, true].forEach(function(neutral) {
+          var scheme = getDefaultSchemeOfType('diverging', lyr);
+          scheme = setSchemeNeutral(setSchemeContinuous(scheme, continuous), neutral);
+          scheme = updateDivergingLayout(scheme, lyr);
+          var swatches = getBreakClassSwatches(scheme);
+          assert.equal(swatches.length, scheme.layout.breaks.length + 1, continuous + ' ' + neutral);
+          assert.equal(swatches.every(Boolean), true);
+        });
+      });
+    });
+
+    it('the roundest number in a range', function() {
+      assert.equal(getRoundestNumber(12.34, 12.91), 12.6);
+      assert.equal(getRoundestNumber(12.34, 13.2), 13);
+      assert.equal(getRoundestNumber(-0.5, 0.2), 0);
+      assert.equal(getRoundestNumber(-12.91, -12.34), -12.6);
+      assert.equal(getRoundestNumber(1234, 1290), 1260);
+      assert.equal(getRoundestNumber(0.0123, 0.0125), 0.0124);
+      assert.equal(getRoundestNumber(7, 7), 7);
+    });
+
+    it('the histogram scale, linear or log', function() {
+      var linear = getBreaksScale(0, 100, false);
+      var log = getBreaksScale(1, 100, true);
+      assert.equal(linear.toPos(25), 0.25);
+      assert.equal(linear.toValue(0.25), 25);
+      assert.equal(round3(log.toPos(10)), 0.5);
+      assert.equal(round3(log.toValue(0.5)), 10);
+      assert.equal(log.toPos(-1), 0);
+      assert.equal(getBreaksScale(5, 5, false).toPos(5), 0.5);
+      assert.deepEqual(getHistogram([0, 10, 49, 50, 100], linear, 2), [3, 2]);
     });
   });
 });
