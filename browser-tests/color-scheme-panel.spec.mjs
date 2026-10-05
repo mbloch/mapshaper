@@ -87,6 +87,73 @@ test('undo while the panel is open takes back the edits made in it', async funct
   expect(errors).toEqual([]);
 });
 
+test('the preset menu lists presets under their sources', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page);
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  var headings = panel.locator('.color-scheme-palette-heading');
+
+  await panel.locator('.color-scheme-palette-btn').click();
+  await expect(headings).toHaveText(['ColorBrewer', 'Matplotlib', 'Crameri', 'd3']);
+  await panel.locator('.color-scheme-palette-item').filter({hasText: /^batlow$/}).click();
+  await page.waitForTimeout(300);
+  await expect(panel.locator('.color-scheme-palette-name')).toHaveText('batlow');
+  expect((await getTileColors(page))[0]).toBe('rgb(1, 25, 89)');
+
+  await panel.locator('.color-scheme-tab').filter({hasText: 'Diverging'}).click();
+  await panel.locator('.color-scheme-palette-btn').click();
+  await expect(headings).toHaveText(['ColorBrewer', 'Crameri']);
+  expect(errors).toEqual([]);
+});
+
+test('a preset can lose its end tiles, or be limited to part of its range', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page);
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  var tiles = panel.locator('.color-scheme-tile');
+
+  await panel.locator('.color-scheme-palette-btn').click();
+  await panel.locator('.color-scheme-palette-item').filter({hasText: /^davos$/}).click();
+  await setField(panel.locator('.size-field-input'), '7');
+  await expect(tiles).toHaveCount(7);
+  var seven = await getTileColors(page);
+
+  await tiles.last().hover();
+  await tiles.last().locator('.color-scheme-tile-remove').click();
+  await tiles.first().hover();
+  await tiles.first().locator('.color-scheme-tile-remove').click();
+  await expect(tiles).toHaveCount(5);
+  expect(await getTileColors(page)).toEqual(seven.slice(1, 6));
+  await expect(panel.locator('.color-scheme-palette-name')).toHaveText('davos');
+  await expect(panel.locator('.size-field-input')).toHaveValue('5');
+  var fills = await getFills(page);
+  expect(new Set(fills).size).toBe(5);
+
+  // the handles are where the removed tiles' neighbors were
+  var handles = panel.locator('.color-scheme-range-handle');
+  await expect(handles.first()).toHaveAttribute('aria-valuenow', '17');
+  await expect(handles.last()).toHaveAttribute('aria-valuenow', '83');
+
+  // dragging the right handle to the end brings back the light end
+  var box = await panel.locator('.color-scheme-range').boundingBox();
+  var handleBox = await handles.last().boundingBox();
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width + 20, box.y + box.height / 2, {steps: 4});
+  await page.mouse.up();
+  await expect(handles.last()).toHaveAttribute('aria-valuenow', '100');
+  var colors = await getTileColors(page);
+  expect(colors[0]).toBe(seven[1]);
+  expect(colors[4]).toBe(seven[6]);
+
+  // double-clicking the strip uses the whole ramp
+  await panel.locator('.color-scheme-range').dblclick();
+  await expect(handles.first()).toHaveAttribute('aria-valuenow', '0');
+  expect(errors).toEqual([]);
+});
+
 test('a preset can be chosen, and editing it makes a custom ramp', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page);
@@ -210,13 +277,13 @@ test('the vibrance slider recolors a custom ramp', async function({page}) {
   await expect(panel.locator('.color-scheme-slider-value')).toHaveCount(0);
   await expect(panel.locator('.color-scheme-slider-label')).toHaveAttribute('data-tooltip', /vivid/);
   var before = await getTileColors(page);
-  expect(before[0]).toBe('rgb(52, 74, 114)'); // the default end, #344a72
+  expect(before[0]).toBe('rgb(255, 248, 218)'); // the default light end, #fff8da
 
   await slider.fill('60');
   await page.waitForTimeout(300);
   var vivid = await getTileColors(page);
   // vibrance raises the pinned ends too
-  expect(vivid[0]).not.toBe(before[0]);
+  expect(vivid[4]).not.toBe(before[4]);
   expect(vivid[2]).not.toBe(before[2]);
   expect(new Set(await getFills(page)).size).toBe(5);
   await closeSchemePanel(page);
@@ -331,10 +398,10 @@ test('the tile picker shows colors in the chosen format, which it keeps', async 
   };
   await panel.locator('.color-scheme-tile').nth(0).click();
   await expect(tab('HEX')).toHaveClass(/selected/);
-  await expect(input).toHaveValue('#344a72');
+  await expect(input).toHaveValue('#fff8da');
 
   await tab('RGB').click();
-  await expect(input).toHaveValue('rgb(52, 74, 114)');
+  await expect(input).toHaveValue('rgb(255, 248, 218)');
   await tab('OKLCH').click();
   await expect(input).toHaveValue(/^oklch\(0\.\d{4} 0\.\d{4} [\d.]+\)$/);
   await expect(tab('OKLCH')).toHaveClass(/selected/);
@@ -400,9 +467,9 @@ test('the categorical tab gives each value of a field a swatch', async function(
   await expect(panel.locator('.color-scheme-tab.selected')).toHaveText('Categorical');
   await expect(fieldSelect(page)).toHaveValue('kind');
   await expect(methodSelect(page)).toHaveValue('categorical');
-  await expect(panel.locator('.color-scheme-palette-name')).toHaveText('Tableau10');
+  await expect(panel.locator('.color-scheme-palette-name')).toHaveText('batlowS');
   // the whole palette, with a bar under the three swatches in use
-  await expect(panel.locator('.color-scheme-tile')).toHaveCount(10);
+  await expect(panel.locator('.color-scheme-tile')).toHaveCount(20);
   await expect(panel.locator('.color-scheme-pin.used')).toHaveCount(3);
   // no pins, and no vibrance for categories
   await expect(panel.locator('.color-scheme-pin.pinned')).toHaveCount(0);
@@ -457,9 +524,9 @@ test('non-adjacent colors need no field', async function({page}) {
   var panel = schemePanel(page);
   await panel.locator('.color-scheme-tab').filter({hasText: 'Categorical'}).click();
   await page.waitForTimeout(300);
-  // the numeric id field gives a swatch to each of its 12 values, up to Tableau10's 10
+  // the numeric id field gives a swatch to each of its 12 values
   await expect(fieldSelect(page)).toHaveValue('id');
-  await expect(panel.locator('.color-scheme-pin.used')).toHaveCount(10);
+  await expect(panel.locator('.color-scheme-pin.used')).toHaveCount(12);
 
   await methodSelect(page).selectOption('non-adjacent');
   await page.waitForTimeout(300);
@@ -467,7 +534,7 @@ test('non-adjacent colors need no field', async function({page}) {
   await expect(panel.locator('.size-field-input')).toHaveValue('5');
   await expect(panel.locator('.color-scheme-pin.used')).toHaveCount(5);
   await setField(panel.locator('.size-field-input'), '4');
-  await expect(panel.locator('.color-scheme-tile')).toHaveCount(10);
+  await expect(panel.locator('.color-scheme-tile')).toHaveCount(20);
   await expect(panel.locator('.color-scheme-pin.used')).toHaveCount(4);
   var colors = (await getTileColors(page)).slice(0, 4);
   var fills = await getFills(page);
@@ -523,7 +590,7 @@ test('dragging a swatch into use pushes the last one out of use', async function
   expect(after.slice(0, 6)).toEqual([before[0], before[7], before[1], before[2], before[3], before[4]]);
   await expect(panel.locator('.color-scheme-pin.used')).toHaveCount(5);
   // a preset keeps its name when its swatches are moved
-  await expect(panel.locator('.color-scheme-palette-name')).toHaveText('Tableau10');
+  await expect(panel.locator('.color-scheme-palette-name')).toHaveText('batlowS');
   // the picker didn't open
   await expect(panel.locator('.color-scheme-tile-row .label-color-picker')).toBeHidden();
   var fills = new Set(await getFills(page));
@@ -531,8 +598,8 @@ test('dragging a swatch into use pushes the last one out of use', async function
   expect(fills.has(await toHex(page, before[4]))).toBe(false);
 
   // dropped past the last swatch
-  await dragTile(page, tiles.nth(0), tiles.nth(9), 'right');
-  expect((await getTileColors(page))[9]).toBe(before[0]);
+  await dragTile(page, tiles.nth(0), tiles.nth(19), 'right');
+  expect((await getTileColors(page))[19]).toBe(before[0]);
 
   await closeSchemePanel(page);
   expect((await getSessionCommands(page)).filter(function(cmd) {
@@ -556,7 +623,7 @@ test('shuffle reorders the whole palette', async function({page}) {
   var after = await getTileColors(page);
   expect(after).not.toEqual(before);
   expect(after.concat().sort()).toEqual(before.concat().sort());
-  await expect(panel.locator('.color-scheme-palette-name')).toHaveText('Tableau10');
+  await expect(panel.locator('.color-scheme-palette-name')).toHaveText('batlowS');
 });
 
 test('features with no data get the no-data color, on both tabs', async function({page}) {
@@ -582,7 +649,7 @@ test('features with no data get the no-data color, on both tabs', async function
   await expect(row.locator('.color-scheme-null-count')).toHaveText('1 feature');
   expect((await getFills(page))[0]).toBe('#ff0000');
   // 11 values, and no swatch for the empty one
-  await expect(panel.locator('.color-scheme-pin.used')).toHaveCount(10);
+  await expect(panel.locator('.color-scheme-pin.used')).toHaveCount(11);
 
   // non-adjacent colors have no data to be missing
   await methodSelect(page).selectOption('non-adjacent');

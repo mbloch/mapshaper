@@ -1,3 +1,8 @@
+v0.7.75
+* Added 18 of Fabio Crameri's Scientific colour maps to the built-in color schemes: sequential `batlow`, `batlowW`, `acton`, `bamako`, `bilbao`, `davos`, `devon`, `lajolla`, `lapaz`, `oslo`, `tokyo` and `turku`; diverging `bam`, `broc`, `cork`, `roma` and `vik`; and categorical `batlowS`. `-colors` now lists the schemes by source (ColorBrewer, Tableau, Matplotlib, Crameri, d3).
+* [web] The Color palettes preset menu groups the presets by source.
+* [web] Sequential and diverging presets can be limited to part of their range, by dragging handles on a strip of the whole ramp, and a sequential preset's end colors can be removed.
+
 v0.7.74
 * Added `-style` options `stroke-linecap=` (`round`, `butt` or `square`; dashed lines default to `butt`) and `line-fade=`, which fades a line in from transparent along its tail.
 * [web] Added line cap and fade controls to the line style panel.

@@ -2,7 +2,7 @@ import assert from 'assert';
 import {
   getDefaultScheme, getSchemeColors, getPinnedTiles, choosePreset, makeSchemeCustom,
   setTileColor, clearTileColor, setTileCount, reverseScheme, formatSchemeCommand,
-  getSequentialPresetNames, getNumericFields, setLayerScheme, getLayerScheme,
+  getSequentialPresetNames, getPresetGroups, getNumericFields, setLayerScheme, getLayerScheme,
   getPresetColors, getSchemeVibrance, setSchemeVibrance, defaultVibrance, maxVibrance,
   getSchemeTiles, getTileEditColor, setSchemeLongHue,
   getDefaultCategoricalScheme, getDefaultSchemeOfType, getCategoryFields, getCategories,
@@ -12,11 +12,21 @@ import {
   defaultNullColor, updateDivergingLayout, getDivergingTileUse, getDivergingClassRanges,
   getPivotSummary, setSchemePivot, setSchemeNeutral, setSchemeSplit, getCenterTile,
   getSequentialClassRanges, setSchemeContinuous, isContinuousScheme, getSchemeNeutral,
-  getContinuousTileStops, getContinuousSegments, getAppliedScheme, getFillFingerprint
+  getContinuousTileStops, getContinuousSegments, getAppliedScheme, getFillFingerprint,
+  removeEndTile, canRemoveEndTile, setSchemeRangeEnd, getDisplayRange, getDefaultDivergingScheme
 } from '../src/gui/gui-color-scheme-model';
 import api from '../mapshaper.js';
 
 var internal = api.internal;
+
+// a categorical scheme with Tableau10, whose colors some tests list
+function getTableauScheme() {
+  return choosePreset(getDefaultCategoricalScheme(makeLayer([{}])), 'Tableau10');
+}
+
+function round3(val) {
+  return Math.round(val * 1000) / 1000;
+}
 
 function makeLayer(records) {
   return {geometry_type: 'polygon', shapes: records.map(function() { return null; }),
@@ -49,6 +59,11 @@ describe('gui-color-scheme-model.mjs', function() {
       assert.deepEqual(getSchemeColors(scheme), internal.resolveRamp(pins, 5, {vibrance: defaultVibrance}));
       assert.deepEqual(getSchemeColors(setSchemeVibrance(scheme, 0)), internal.resolveRamp(pins, 5));
       assert.notDeepEqual(getSchemeColors(setSchemeVibrance(scheme, 1)), getSchemeColors(scheme));
+    });
+
+    it('the default ramp runs from cream to blue', function() {
+      assert.deepEqual(getSchemeColors(getDefaultScheme('pop')),
+        ['#fff8da', '#b9d4af', '#67b0a1', '#20839e', '#2d4d8e']);
     });
 
     it('vibrance starts at 0, and goes up to 0.09', function() {
@@ -121,6 +136,76 @@ describe('gui-color-scheme-model.mjs', function() {
       assert(names.includes('Viridis'));
       assert(!names.includes('Sinebow'));
       assert(!names.includes('Category10'));
+    });
+
+    it('groups presets by source, with multi-hue ramps among the sequential ones', function() {
+      var groups = getPresetGroups('sequential');
+      assert.deepEqual(groups.map(function(g) { return g.source; }),
+        ['ColorBrewer', 'Matplotlib', 'Crameri', 'd3']);
+      assert(groups[2].names.includes('batlow'));
+      assert(!groups[3].names.includes('Sinebow'));
+      assert.deepEqual(getPresetGroups('categorical').map(function(g) { return g.source; }),
+        ['ColorBrewer', 'Tableau', 'Crameri', 'd3']);
+      assert.deepEqual(getSequentialPresetNames(), groups.reduce(function(memo, g) {
+        return memo.concat(g.names);
+      }, []));
+    });
+
+    it('removing an end tile keeps the colors of the others', function() {
+      ['davos', 'Viridis', 'Blues'].forEach(function(name) {
+        var scheme = setTileCount(choosePreset(getDefaultScheme('pop'), name), 7);
+        var colors = getSchemeColors(scheme);
+        var five = removeEndTile(removeEndTile(scheme, 'right'), 'left');
+        assert.equal(five.n, 5);
+        assert.deepEqual(getSchemeColors(five), colors.slice(1, 6), name);
+        assert.equal(five.preset, name);
+      });
+    });
+
+    it('removing an end tile of a reversed preset takes the tile on that side', function() {
+      var scheme = reverseScheme(setTileCount(choosePreset(getDefaultScheme('pop'), 'davos'), 7));
+      var colors = getSchemeColors(scheme);
+      assert.deepEqual(getSchemeColors(removeEndTile(scheme, 'left')), colors.slice(1));
+      assert.deepEqual(getDisplayRange(removeEndTile(scheme, 'left')).map(round3), [0.167, 1]);
+      // reversing again flips the range with the colors
+      assert.deepEqual(getSchemeColors(reverseScheme(removeEndTile(scheme, 'left'))),
+        colors.slice(1).reverse());
+    });
+
+    it('a range resamples the preset when the number of colors changes', function() {
+      var scheme = setSchemeRangeEnd(choosePreset(getDefaultScheme('pop'), 'batlow'), 'right', 0.8);
+      var colors = getSchemeColors(setTileCount(scheme, 9));
+      assert.equal(colors.length, 9);
+      assert.equal(colors[0], getPresetColors('batlow', 2)[0]);
+      assert.equal(colors[8], getPresetColors('batlow', 6)[4]);
+    });
+
+    it('a range keeps a minimum span, and covering the whole ramp clears it', function() {
+      var scheme = choosePreset(getDefaultScheme('pop'), 'batlow');
+      var narrow = setSchemeRangeEnd(setSchemeRangeEnd(scheme, 'left', 0.5), 'right', 0.2);
+      assert.deepEqual(getDisplayRange(narrow).map(round3), [0.5, 0.6]);
+      assert.strictEqual(setSchemeRangeEnd(setSchemeRangeEnd(scheme, 'left', 0.5), 'left', 0).range, null);
+      assert.strictEqual(choosePreset(narrow, 'oslo').range, null);
+      assert.strictEqual(makeSchemeCustom(narrow).range, null);
+      assert.deepEqual(getSchemeColors(makeSchemeCustom(narrow)).slice(0, 1), getSchemeColors(narrow).slice(0, 1));
+    });
+
+    it('a diverging range is trimmed at both ends, keeping the center', function() {
+      var scheme = choosePreset(getDefaultDivergingScheme(makeLayer([{v: -2}, {v: -1}, {v: 1}, {v: 2}])), 'vik');
+      var full = getSchemeColors(scheme);
+      var trimmed = setSchemeRangeEnd(scheme, 'right', 0.8);
+      var colors = getSchemeColors(trimmed);
+      var mid = (colors.length - 1) / 2;
+      assert.deepEqual(getDisplayRange(trimmed).map(round3), [0.2, 0.8]);
+      assert.equal(colors[mid], full[mid]);
+      assert.notEqual(colors[0], full[0]);
+      assert(!canRemoveEndTile(trimmed));
+    });
+
+    it('Crameri presets give hex colors', function() {
+      var colors = getSchemeColors(choosePreset(getDefaultScheme('pop'), 'batlow'));
+      assert.equal(colors[0], '#011959');
+      assert.equal(colors[4], '#faccfa');
     });
 
     it('preset colors are hex, with no tiles pinned', function() {
@@ -248,9 +333,9 @@ describe('gui-color-scheme-model.mjs', function() {
       assert.equal(scheme.type, 'categorical');
       assert.equal(scheme.field, 'kind');
       assert.equal(scheme.method, 'categorical');
-      assert.equal(scheme.preset, 'Tableau10');
+      assert.equal(scheme.preset, 'batlowS');
       assert.equal(scheme.n, 3);
-      assert.deepEqual(getSchemeColors(scheme), getCategoricalPresetColors('Tableau10').slice(0, 3));
+      assert.deepEqual(getSchemeColors(scheme), getCategoricalPresetColors('batlowS').slice(0, 3));
       assert.deepEqual(getDefaultSchemeOfType('categorical', lyr), scheme);
     });
 
@@ -268,11 +353,11 @@ describe('gui-color-scheme-model.mjs', function() {
     it('the swatch count is limited by the palette and the categories', function() {
       var scheme = getDefaultCategoricalScheme(makeLayer(records));
       assert.equal(getMaxSchemeColors(scheme, 3), 3);
-      assert.equal(getMaxSchemeColors(scheme, 50), 10);
+      assert.equal(getMaxSchemeColors(scheme, 50), 20);
       assert.equal(getMaxSchemeColors(scheme, 1), 2);
       assert.equal(setTileCount(scheme, 8, 3).n, 3);
       scheme = setSchemeMethod(scheme, 'non-adjacent');
-      assert.equal(setTileCount(scheme, 15, 3).n, 10);
+      assert.equal(setTileCount(scheme, 25, 3).n, 20);
       assert.equal(setTileCount(makeSchemeCustom(scheme), 30, 3).n, maxCategoricalColors);
     });
 
@@ -280,7 +365,7 @@ describe('gui-color-scheme-model.mjs', function() {
       var scheme = setSchemeField(getDefaultCategoricalScheme(makeLayer(records)), 'code', 3);
       assert.equal(scheme.field, 'code');
       assert.equal(scheme.n, 3);
-      assert.equal(setSchemeField(scheme, 'x', 40).n, 10);
+      assert.equal(setSchemeField(scheme, 'x', 40).n, 20);
     });
 
     it('changing to the categorical method picks a field', function() {
@@ -297,7 +382,7 @@ describe('gui-color-scheme-model.mjs', function() {
     });
 
     it('editing a swatch makes a custom list, which keeps its colors as it grows', function() {
-      var scheme = getDefaultCategoricalScheme(makeLayer([{}]));
+      var scheme = getTableauScheme();
       var custom = setTileColor(scheme, 1, '#ff0000');
       assert.strictEqual(custom.preset, null);
       assert.deepEqual(getSchemeColors(custom), ['#4e79a7', '#ff0000', '#e15759', '#76b7b2', '#59a14f']);
@@ -314,8 +399,10 @@ describe('gui-color-scheme-model.mjs', function() {
 
     it('shows the whole palette, of which the first n are used', function() {
       var scheme = getDefaultCategoricalScheme(makeLayer([{}]));
-      assert.deepEqual(getCategoricalPalette(scheme), tableau);
-      assert.deepEqual(getSchemeColors(scheme), tableau.slice(0, 5));
+      var batlow = getCategoricalPresetColors('batlowS');
+      assert.equal(batlow.length, 20);
+      assert.deepEqual(getCategoricalPalette(scheme), batlow);
+      assert.deepEqual(getSchemeColors(scheme), batlow.slice(0, 5));
     });
 
     it('non-adjacent colors start at 5', function() {
@@ -325,7 +412,7 @@ describe('gui-color-scheme-model.mjs', function() {
     });
 
     it('moving a swatch into use pushes the last one out', function() {
-      var scheme = getDefaultCategoricalScheme(makeLayer([{}]));
+      var scheme = getTableauScheme();
       var moved = moveSwatch(scheme, 7, 1);
       assert.equal(moved.preset, 'Tableau10');
       assert.deepEqual(getSchemeColors(moved), [tableau[0], tableau[7], tableau[1], tableau[2], tableau[3]]);
@@ -342,7 +429,7 @@ describe('gui-color-scheme-model.mjs', function() {
     });
 
     it('shuffles the whole palette, keeping the preset', function() {
-      var scheme = getDefaultCategoricalScheme(makeLayer([{}]));
+      var scheme = getTableauScheme();
       var shuffled = shuffleScheme(scheme, function() { return 0; });
       assert.equal(shuffled.preset, 'Tableau10');
       assert.deepEqual(getCategoricalPalette(shuffled).concat().sort(), tableau.concat().sort());

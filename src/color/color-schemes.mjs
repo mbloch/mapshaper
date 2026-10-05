@@ -3,6 +3,8 @@ import { print, stop, error, message } from '../utils/mapshaper-logging';
 import { getStoppedValues } from '../classification/mapshaper-interpolation';
 import utils from '../utils/mapshaper-utils';
 import * as d3Scales from 'd3-scale-chromatic';
+import { piecewise, interpolateRgb } from 'd3-interpolate';
+import { crameriSequential, crameriDiverging, crameriCategorical } from '../color/crameri-schemes';
 
 var index = {
   categorical: [],
@@ -12,10 +14,29 @@ var index = {
   all: []
 };
 var ramps;
+// interpolators of the ramps that are stored as stops (not from d3)
+var stopInterpolators;
+// scheme name -> where the scheme comes from (see getColorSchemeGroups())
+var sources;
+// the order of the sources in lists of schemes
+var sourceOrder = ['ColorBrewer', 'Tableau', 'Matplotlib', 'Crameri', 'd3'];
+// Schemes are listed by their designers, as far as they're known. 'd3' is
+// d3-scale-chromatic's own schemes, and others that it brings in: Turbo
+// (Google) and CubehelixDefault (D. A. Green's cubehelix).
+var d3Sources = {
+  ColorBrewer: 'Accent,Dark2,Paired,Pastel1,Pastel2,Set1,Set2,Set3,' +
+    'Blues,Greens,Greys,Purples,Reds,Oranges,BuGn,BuPu,GnBu,OrRd,PuBuGn,PuBu,PuRd,RdPu,YlGnBu,YlGn,YlOrBr,YlOrRd,' +
+    'BrBG,PRGn,PiYG,PuOr,RdBu,RdGy,RdYlBu,RdYlGn,Spectral',
+  Tableau: 'Tableau10,Tableau20',
+  Matplotlib: 'Cividis,Viridis,Magma,Inferno,Plasma',
+  d3: 'Category10,Category20,Category20b,Category20c,CubehelixDefault,Rainbow,Warm,Cool,Sinebow,Turbo'
+};
 
 function initSchemes() {
   if (ramps) return;
   ramps = {};
+  stopInterpolators = {};
+  sources = {};
   addSchemesFromD3('categorical', 'Category10,Accent,Dark2,Paired,Pastel1,Pastel2,Set1,Set2,Set3,Tableau10');
   addSchemesFromD3('sequential', 'Blues,Greens,Greys,Purples,Reds,Oranges,BuGn,BuPu,GnBu,OrRd,PuBuGn,PuBu,PuRd,RdPu,YlGnBu,YlGn,YlOrBr,YlOrRd');
   addSchemesFromD3('rainbow', 'Cividis,CubehelixDefault,Rainbow,Warm,Cool,Sinebow,Turbo,Viridis,Magma,Inferno,Plasma');
@@ -29,7 +50,27 @@ function initSchemes() {
     '3182bd6baed69ecae1c6dbefe6550dfd8d3cfdae6bfdd0a231a35474c476a1d99bc7e9c0756bb19e9ac8bcbddcdadaeb636363969696bdbdbdd9d9d9');
   addCategoricalScheme('Tableau20',
     '4c78a89ecae9f58518ffbf7954a24b88d27ab79a20f2cf5b43989483bcb6e45756ff9d9879706ebab0acd67195fcbfd2b279a2d6a5c99e765fd8b5a5');
+  Object.keys(d3Sources).forEach(function(source) {
+    d3Sources[source].split(',').forEach(function(name) {
+      sources[name] = source;
+    });
+  });
+  addStoppedSchemes('sequential', crameriSequential, 'Crameri');
+  addStoppedSchemes('diverging', crameriDiverging, 'Crameri');
+  Object.keys(crameriCategorical).forEach(function(name) {
+    addCategoricalScheme(name, crameriCategorical[name]);
+    sources[name] = 'Crameri';
+  });
   index.all = [].concat(index.sequential, index.rainbow, index.diverging, index.categorical);
+}
+
+// Ramps stored as evenly spaced colors, interpolated linearly between them
+function addStoppedSchemes(type, schemes, source) {
+  Object.keys(schemes).forEach(function(name) {
+    index[type].push(name);
+    stopInterpolators[name] = piecewise(interpolateRgb, unpackRamp(schemes[name]));
+    sources[name] = source;
+  });
 }
 
 function standardName(name) {
@@ -93,12 +134,15 @@ function testLib() {
 }
 
 export function printColorSchemeNames() {
+  var types = [['categorical', 'Categorical'], ['sequential', 'Sequential'],
+    ['diverging', 'Diverging'], ['rainbow', 'Multi-hue/rainbow']];
   initSchemes();
-  print('Built-in color schemes (from d3):');
-  print ('Categorical\n' + formatStringsAsGrid(index.categorical));
-  print ('\nSequential\n' + formatStringsAsGrid(index.sequential));
-  print ('\nDiverging\n' + formatStringsAsGrid(index.diverging));
-  print ('\nMulti-hue/rainbow\n' + formatStringsAsGrid(index.rainbow));
+  print('Built-in color schemes');
+  types.forEach(function(type) {
+    getColorSchemeGroups(type[0]).forEach(function(group) {
+      print('\n' + type[1] + ' (' + group.source + ')\n' + formatStringsAsGrid(group.names));
+    });
+  });
 }
 
 // type: categorical, sequential, rainbow or diverging
@@ -106,6 +150,19 @@ export function getColorSchemeNames(type) {
   initSchemes();
   if (!index[type]) error('Unknown color scheme type:', type);
   return index[type].concat();
+}
+
+// The schemes of one or more types, by source: [{source, names}]
+// (sources: ColorBrewer, Tableau, Matplotlib, Crameri, d3)
+export function getColorSchemeGroups(types) {
+  var names = [].concat(types).reduce(function(memo, type) {
+    return memo.concat(getColorSchemeNames(type));
+  }, []);
+  return sourceOrder.map(function(source) {
+    return {source: source, names: names.filter(function(name) { return sources[name] == source; })};
+  }).filter(function(group) {
+    return group.names.length > 0;
+  });
 }
 
 export function pickRandomColorScheme(type) {
@@ -187,7 +244,7 @@ export function getColorRamp(name, n, stops, interpOpts) {
   initSchemes();
   name = standardName(name);
   var ramps = d3Scales['scheme' + name];
-  var interpolate = d3Scales['interpolate' + name];
+  var interpolate = d3Scales['interpolate' + name] || stopInterpolators[name];
   var ramp;
   if (!ramps && !interpolate) {
     stop('Unknown color scheme name:', name);
@@ -204,6 +261,26 @@ export function getColorRamp(name, n, stops, interpOpts) {
     ramp = getStoppedValues(ramp, stops, interpOpts);
   }
   return ramp;
+}
+
+// n colors from part of a ramp, evenly spaced from start to end (0-1).
+// base: interpolate between the colors of the scheme's set of this size, if
+// it has one (ColorBrewer's hand-picked sets), so that a section of a set
+// keeps its colors; otherwise the scheme's own interpolator is used
+export function getColorRampSection(name, n, start, end, base) {
+  initSchemes();
+  name = standardName(name);
+  var sets = d3Scales['scheme' + name];
+  var interpolate = d3Scales['interpolate' + name] || stopInterpolators[name];
+  var colors = [];
+  if (!interpolate || index.categorical.includes(name)) {
+    stop('Not a sequential or diverging color scheme:', name);
+  }
+  if (sets && sets[base]) interpolate = piecewise(interpolateRgb, sets[base]);
+  for (var i=0; i<n; i++) {
+    colors.push(interpolate(n > 1 ? start + (end - start) * i / (n - 1) : (start + end) / 2));
+  }
+  return colors;
 }
 
 function getInterpolatedRamp(interpolate, n) {

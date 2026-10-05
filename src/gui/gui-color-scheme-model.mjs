@@ -38,6 +38,10 @@ import { quoteCommandValue } from './gui-command-utils';
 //                                             diverging schemes, of classes:
 //                                             the total, or per side)
 //   preset: name or null, reversed: boolean,  (presets)
+//   range: {start, end, base} or null         (presets: the part of the ramp
+//                                             the tiles are taken from, 0-1
+//                                             in the preset's own direction;
+//                                             see getSchemeRange())
 //   pins: [{t, color}] or null,               (custom sequential ramps)
 //   vibrance, longHue                         (custom sequential ramps, see
 //                                             getOklchInterpolator())
@@ -101,7 +105,7 @@ export var defaultNullColor = '#eeeeee';
 export var minSchemeColors = 2;
 export var maxSchemeColors = 12;
 export var maxCategoricalColors = 20;
-var defaultCategoricalPreset = 'Tableau10';
+var defaultCategoricalPreset = 'batlowS';
 var defaultNonAdjacentColors = 5;
 var defaultDivergingPreset = 'RdBu';
 var defaultDivergingClasses = 7;
@@ -113,7 +117,8 @@ var extraSwatchSource = 'Tableau20';
 // (-classify's vibrance= is the same, scaled to 0-1)
 export var defaultVibrance = 0;
 export var maxVibrance = internal.MAX_VIBRANCE_CHROMA;
-var defaultEnds = ['#344a72', '#f0d26b'];
+// the default sequential ramp: cream to blue, through green and teal
+var defaultEnds = ['#fff8da', '#2d4d8e'];
 // Cyclic ramps start and end on the same hue, which reads as a category
 // rather than an order.
 var excludedPresets = ['Rainbow', 'Sinebow'];
@@ -124,19 +129,33 @@ var excludedPresets = ['Rainbow', 'Sinebow'];
 var layerSchemes = new WeakMap();
 
 export function getSequentialPresetNames() {
-  return internal.getColorSchemeNames('sequential')
-    .concat(internal.getColorSchemeNames('rainbow'))
-    .filter(function(name) {
-      return !excludedPresets.includes(name);
-    });
+  return flattenGroups(getPresetGroups('sequential'));
 }
 
 export function getDivergingPresetNames() {
-  return internal.getColorSchemeNames('diverging');
+  return flattenGroups(getPresetGroups('diverging'));
 }
 
 export function getCategoricalPresetNames() {
-  return internal.getColorSchemeNames('categorical');
+  return flattenGroups(getPresetGroups('categorical'));
+}
+
+// The presets of a scheme type, by source, for the palette menu:
+// [{source, names}]. Sequential presets include -classify's multi-hue
+// ('rainbow') schemes.
+export function getPresetGroups(type) {
+  var types = type == 'sequential' ? ['sequential', 'rainbow'] : [type];
+  return internal.getColorSchemeGroups(types).map(function(group) {
+    return {source: group.source, names: group.names.filter(function(name) {
+      return !excludedPresets.includes(name);
+    })};
+  }).filter(function(group) {
+    return group.names.length > 0;
+  });
+}
+
+function flattenGroups(groups) {
+  return groups.reduce(function(memo, group) { return memo.concat(group.names); }, []);
 }
 
 // The scheme a panel tab starts with on a layer
@@ -569,7 +588,8 @@ export function getSchemeTiles(scheme) {
     });
   }
   if (scheme.preset) {
-    colors = getPresetColors(scheme.preset, getRampSize(scheme));
+    colors = scheme.range ? getPresetSection(scheme, getRampSize(scheme), scheme.range) :
+      getPresetColors(scheme.preset, getRampSize(scheme));
     if (scheme.reversed) colors.reverse();
     return colors.map(function(color) {
       return {color: color, pinned: false, adjusted: false};
@@ -601,6 +621,88 @@ function clamp(val, min, max) {
 
 export function getPresetColors(name, n) {
   return internal.getColorRamp(name, n).map(toHex);
+}
+
+// The part of a sequential or diverging preset that its tiles are taken
+// from: {start, end, base}, 0-1 in the preset's own direction (before
+// reversing). A diverging range is the same on both sides of the center.
+// base is the number of tiles when the range was first narrowed: a preset
+// with a hand-picked set of that size (ColorBrewer's) is interpolated
+// between the set's colors, so that removing an end tile leaves the others
+// as they were.
+var minRangeSpan = 0.1;
+
+export function getSchemeRange(scheme) {
+  return scheme.range || {start: 0, end: 1, base: getRampSize(scheme)};
+}
+
+export function hasSchemeRange(scheme) {
+  return !!scheme.preset && scheme.type != 'categorical';
+}
+
+// The range as positions along the tiles, left to right: [left, right]
+export function getDisplayRange(scheme) {
+  var range = getSchemeRange(scheme);
+  return scheme.reversed ? [1 - range.end, 1 - range.start] : [range.start, range.end];
+}
+
+// Moves one end of the range, given as a position along the tiles (0-1,
+// left to right); a diverging range moves at both ends.
+// side: 'left' or 'right'
+export function setSchemeRangeEnd(scheme, side, pos) {
+  var display = getDisplayRange(scheme);
+  var left = display[0], right = display[1];
+  pos = clamp(+pos || 0, 0, 1);
+  if (scheme.type == 'diverging') {
+    left = side == 'left' ? pos : 1 - pos;
+    left = clamp(left, 0, (1 - minRangeSpan) / 2);
+    right = 1 - left;
+  } else if (side == 'left') {
+    left = Math.min(pos, right - minRangeSpan);
+  } else {
+    right = Math.max(pos, left + minRangeSpan);
+  }
+  return setDisplayRange(scheme, left, right);
+}
+
+export function resetSchemeRange(scheme) {
+  return Object.assign({}, scheme, {range: null});
+}
+
+// Takes the tile at one end of a sequential preset away, keeping the colors
+// of the others: the range ends where the next tile was.
+// side: 'left' or 'right'
+export function removeEndTile(scheme, side) {
+  var display, step;
+  if (!canRemoveEndTile(scheme)) return scheme;
+  display = getDisplayRange(scheme);
+  step = (display[1] - display[0]) / (scheme.n - 1);
+  if (side == 'left') display[0] += step;
+  else display[1] -= step;
+  return Object.assign(setDisplayRange(scheme, display[0], display[1]), {n: scheme.n - 1});
+}
+
+export function canRemoveEndTile(scheme) {
+  return hasSchemeRange(scheme) && scheme.type == 'sequential' &&
+    scheme.n > getMinSchemeColors(scheme);
+}
+
+function setDisplayRange(scheme, left, right) {
+  var base = getSchemeRange(scheme).base;
+  var start = scheme.reversed ? 1 - right : left;
+  var end = scheme.reversed ? 1 - left : right;
+  if (start <= 0 && end >= 1) return resetSchemeRange(scheme);
+  return Object.assign({}, scheme, {range: {start: Math.max(start, 0), end: Math.min(end, 1), base: base}});
+}
+
+// The whole of a preset, left to right, as the range's strip shows it
+export function getRangeStripColors(scheme, n) {
+  var colors = getPresetSection(scheme, n, {start: 0, end: 1, base: getSchemeRange(scheme).base});
+  return scheme.reversed ? colors.reverse() : colors;
+}
+
+function getPresetSection(scheme, n, range) {
+  return internal.getColorRampSection(scheme.preset, n, range.start, range.end, range.base).map(toHex);
 }
 
 // All the swatches of a categorical scheme, in order: the first n are used
@@ -646,7 +748,7 @@ export function choosePreset(scheme, name, count) {
     next.n = clampColorCount(next, next.n, count);
     return next;
   }
-  return Object.assign({}, scheme, {preset: name, reversed: false, pins: null});
+  return Object.assign({}, scheme, {preset: name, reversed: false, pins: null, range: null});
 }
 
 // A preset as a custom ramp, pinned at its ends, for editing.
@@ -660,6 +762,7 @@ export function makeSchemeCustom(scheme) {
   return Object.assign({}, scheme, {
     preset: null,
     reversed: false,
+    range: null,
     pins: scheme.type == 'diverging' ?
       [{t: 0, color: colors[0]}, {t: 0.5, color: colors[(colors.length - 1) / 2]},
         {t: 1, color: colors[colors.length - 1]}] :

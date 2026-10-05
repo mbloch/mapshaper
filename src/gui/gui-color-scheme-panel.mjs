@@ -7,17 +7,19 @@ import { makeColorRow, makePanelToggle } from './gui-panel-controls';
 import { internal } from './gui-core';
 import {
   schemeTypes, maxCategoricalColors,
-  getSequentialPresetNames, getCategoricalPresetNames, getDefaultSchemeOfType, getSchemeColors,
+  getPresetGroups, getDefaultSchemeOfType, getSchemeColors,
   getPresetColors, getCategoricalPresetColors, getSchemeMethods, setSchemeField, setSchemeMethod,
   choosePreset, makeSchemeCustom, setTileColor, clearTileColor, setTileCount, reverseScheme,
   getSchemeVibrance, setSchemeVibrance, setSchemeLongHue, getSchemeTiles, getTileEditColor, maxVibrance,
   formatSchemeCommand, getAppliedColors, getNumericFields, getCategoryFields, getCategories,
   getSwatchCategories, getCategoricalPalette, moveSwatch, shuffleScheme,
   getSchemeNullColor, setSchemeNullColor, getNoDataCount,
-  getDivergingPresetNames, pivotOptions, divergingSplits, updateDivergingLayout, getDivergingTileUse,
+  pivotOptions, divergingSplits, updateDivergingLayout, getDivergingTileUse,
   getDivergingClassRanges, getSequentialClassRanges, getPivotSummary, setSchemePivot, setSchemeNeutral, setSchemeSplit,
   getCenterTile, getSchemeNeutral, isContinuousScheme, setSchemeContinuous, getContinuousTileStops,
   getContinuousSegments, getAppliedScheme,
+  hasSchemeRange, getDisplayRange, setSchemeRangeEnd, resetSchemeRange, removeEndTile, canRemoveEndTile,
+  getRangeStripColors,
   getLayerScheme, setLayerScheme
 } from './gui-color-scheme-model';
 
@@ -66,6 +68,7 @@ export function ColorSchemePanel(gui, opts) {
   var paletteBtn, paletteMenu, countField, tileRow, gradientEl, tilesEl, picker, fieldRow, fieldSelect, methodSelect,
       noFieldsNote, selectionNote, controlsEl, vibranceRow, vibranceInput,
       longHueBtn, continuousBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount, countLabel,
+      rangeEl, rangeStrip, rangeShades, rangeHandles,
       divergingEl, pivotSelect, pivotInput, pivotNote, neutralToggle, splitSelect;
   // set while a tile is being dragged, so that letting go isn't a click
   var tileDrag = null;
@@ -223,6 +226,7 @@ export function ColorSchemePanel(gui, opts) {
       changeScheme(setSchemeVibrance(scheme, val / 1000));
     });
     vibranceInput = vibranceRow.findChild('input');
+    initRangeControl(vibranceRow);
     longHueBtn = addIconButton(vibranceRow, 'Go the long way around the color wheel', longHueIcon, function() {
       changeScheme(setSchemeLongHue(scheme, !scheme.longHue));
     }).addClass('long-hue-btn');
@@ -423,6 +427,7 @@ export function ColorSchemePanel(gui, opts) {
     var input = El('input').attr('type', 'range').attr('min', min).attr('max', max).attr('step', step)
       .attr('aria-label', label).appendTo(row)
       .on('input', function() {
+        showSliderFill(input);
         onInput(+input.node().value);
       })
       .on('change', releaseFocus);
@@ -437,12 +442,109 @@ export function ColorSchemePanel(gui, opts) {
     return btn;
   }
 
+  // The part of a preset that the tiles are taken from: a strip of the whole
+  // ramp, shaded outside the part in use, with a handle at each end of it
+  function initRangeControl(row) {
+    var label = El('span').addClass('color-scheme-hint-label color-scheme-range-part')
+      .attr('data-tooltip', 'Use part of the color ramp\n(double-click the strip to use all of it)')
+      .appendTo(row).text('Range')
+      .on('mouseenter', function() { keepTooltipInWindow(label.node()); });
+    rangeEl = El('div').addClass('color-scheme-range color-scheme-range-part').appendTo(row)
+      .on('pointerdown', startRangeDrag)
+      .on('dblclick', function() {
+        changeScheme(resetSchemeRange(scheme));
+      });
+    rangeStrip = El('div').addClass('color-scheme-range-strip').appendTo(rangeEl);
+    rangeShades = ['left', 'right'].map(function(side) {
+      return El('div').addClass('color-scheme-range-shade ' + side).appendTo(rangeEl);
+    });
+    rangeHandles = ['left', 'right'].map(function(side) {
+      return El('div').addClass('color-scheme-range-handle').attr('role', 'slider').attr('tabindex', '0')
+        .attr('aria-label', side == 'left' ? 'Start of range' : 'End of range')
+        .attr('aria-valuemin', '0').attr('aria-valuemax', '100')
+        .appendTo(rangeEl)
+        .on('keydown', function(e) {
+          onRangeKey(e, side);
+        });
+    });
+  }
+
+  function renderRange() {
+    var display, colors;
+    if (!hasSchemeRange(scheme)) return;
+    display = getDisplayRange(scheme);
+    colors = getRangeStripColors(scheme, 33);
+    rangeStrip.css('background-image', 'linear-gradient(to right, ' + colors.join(', ') + ')');
+    rangeShades[0].css('width', pct(display[0]));
+    rangeShades[1].css('width', pct(1 - display[1]));
+    rangeHandles.forEach(function(handle, i) {
+      handle.css('left', pct(display[i])).attr('aria-valuenow', String(Math.round(display[i] * 100)));
+    });
+  }
+
+  function pct(val) {
+    return round(val * 100) + '%';
+  }
+
+  // Dragging a handle (or pressing the strip, which takes the nearer handle
+  // there) moves that end of the range
+  function startRangeDrag(e) {
+    var box = rangeStrip.node().getBoundingClientRect();
+    var display = getDisplayRange(scheme);
+    var pos = getPos(e);
+    var side = e.target == rangeHandles[0].node() ? 'left' :
+      e.target == rangeHandles[1].node() ? 'right' :
+      Math.abs(pos - display[0]) <= Math.abs(pos - display[1]) ? 'left' : 'right';
+    if (e.button !== 0 || !(box.width > 0)) return;
+    e.preventDefault();
+    picker.hide();
+    move(e);
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', finish);
+    document.addEventListener('pointercancel', finish);
+
+    // in steps of half a percent, so that a drag runs fewer commands
+    function getPos(e) {
+      return Math.round((e.clientX - box.left) / box.width * 200) / 200;
+    }
+
+    function move(e) {
+      var next = setSchemeRangeEnd(scheme, side, getPos(e));
+      if (getDisplayRange(next).join() != getDisplayRange(scheme).join()) changeScheme(next);
+    }
+
+    function finish() {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', finish);
+      document.removeEventListener('pointercancel', finish);
+    }
+  }
+
+  function onRangeKey(e, side) {
+    var step = e.shiftKey ? 0.05 : 0.01;
+    var display = getDisplayRange(scheme);
+    var pos = side == 'left' ? display[0] : display[1];
+    if (e.key == 'ArrowLeft' || e.key == 'ArrowDown') {
+      pos -= step;
+    } else if (e.key == 'ArrowRight' || e.key == 'ArrowUp') {
+      pos += step;
+    } else {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    changeScheme(setSchemeRangeEnd(scheme, side, pos));
+  }
+
   // Presets and categorical schemes have no interpolated tiles for vibrance
-  // or the hue path to change; the row keeps only the reverse button for them.
+  // or the hue path to change; the row keeps only the reverse button for them,
+  // and for sequential and diverging presets, the range.
   function renderVibrance() {
     var vibrance = getSchemeVibrance(scheme);
     setSliderValue(vibranceInput, Math.round(vibrance * 1000));
     vibranceRow.classed('preset', !!scheme.preset || scheme.type == 'categorical');
+    vibranceRow.classed('ranged', hasSchemeRange(scheme));
+    renderRange();
     reverseBtn.classed('hidden', scheme.type == 'categorical');
     shuffleBtn.classed('hidden', scheme.type != 'categorical');
     // each half of a diverging ramp runs from a low-chroma center, where the
@@ -457,6 +559,16 @@ export function ColorSchemePanel(gui, opts) {
 
   function setSliderValue(input, val) {
     if (input.node().value != val) input.node().value = val;
+    showSliderFill(input);
+  }
+
+  // the track is filled up to the center of the handle, which travels the
+  // track's width less its 12px box (see page.css)
+  function showSliderFill(input) {
+    var el = input.node();
+    var min = +el.min, max = +el.max;
+    var fill = max > min ? (el.value - min) / (max - min) : 0;
+    el.style.setProperty('--fill', 'calc(6px + (100% - 12px) * ' + round(fill * 1000) / 1000 + ')');
   }
 
   function renderFieldOptions(fields) {
@@ -486,6 +598,8 @@ export function ColorSchemePanel(gui, opts) {
     var classLabels = categorical ? null : continuous ? getStopLabels() : getClassLabels(tileUse);
     var groups = categorical && scheme.method == 'categorical' ?
       getSwatchCategories(getCategories(targetLayer, scheme.field), used) : null;
+    // the end tiles of a sequential preset can be taken away
+    var removable = canRemoveEndTile(scheme);
     var n, perRow;
     // a categorical scheme shows its whole palette, and marks the swatches
     // in use
@@ -519,6 +633,14 @@ export function ColorSchemePanel(gui, opts) {
         tileEl.on('pointerdown', function(e) {
           startTileDrag(e, i);
         });
+      }
+      if (removable && (i === 0 || i == n - 1)) {
+        El('button').addClass('color-scheme-tile-remove').attr('type', 'button')
+          .attr('aria-label', 'Remove this color').text('×').appendTo(tileEl)
+          .on('click', function(e) {
+            e.stopPropagation();
+            changeScheme(removeEndTile(scheme, i === 0 ? 'left' : 'right'));
+          });
       }
       if (groups && inUse || classLabels && classLabels[i]) {
         tileEl.attr('data-tooltip', groups ? formatCategories(groups[i]) : classLabels[i])
@@ -771,16 +893,17 @@ export function ColorSchemePanel(gui, opts) {
 
   function renderPaletteMenu() {
     var categorical = scheme.type == 'categorical';
-    var names = categorical ? getCategoricalPresetNames() :
-      scheme.type == 'diverging' ? getDivergingPresetNames() : getSequentialPresetNames();
     paletteMenu.empty();
     addPaletteItem('Custom', getSchemeColors(makeSchemeCustom(scheme)), !scheme.preset, function() {
       changeScheme(makeSchemeCustom(scheme));
     });
-    names.forEach(function(name) {
-      var colors = categorical ? getCategoricalPresetColors(name) : getPresetColors(name, 7);
-      addPaletteItem(name, colors, scheme.preset == name, function() {
-        changeScheme(choosePreset(scheme, name, getCategoryCount()));
+    getPresetGroups(scheme.type).forEach(function(group) {
+      El('div').addClass('color-scheme-palette-heading').appendTo(paletteMenu).text(group.source);
+      group.names.forEach(function(name) {
+        var colors = categorical ? getCategoricalPresetColors(name) : getPresetColors(name, 7);
+        addPaletteItem(name, colors, scheme.preset == name, function() {
+          changeScheme(choosePreset(scheme, name, getCategoryCount()));
+        });
       });
     });
   }

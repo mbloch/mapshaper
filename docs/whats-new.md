@@ -28,6 +28,7 @@ This is a curated list of recently added features. For the full list of changes,
 - Sequential, diverging and categorical color schemes.
 - Preset color ramps, or build your own with the help of perceptually even interpolation.
 - Support for continuous (unclassed) color ramps.
+- Presets can be trimmed to part of their range, e.g. to leave off a black or white end.
 
 → See [`-classify`](/docs/reference.html#-classify) for the command line syntax.
 </div>

@@ -4758,6 +4758,13 @@ body.dragging-color-picker * {
 	background-color: var(--lt-theme-col);
 }
 
+.color-scheme-palette-heading {
+	padding: 7px 8px 2px;
+	font-size: 11px;
+	color: #888;
+	cursor: default;
+}
+
 .color-scheme-tile-row {
 	margin-top: 10px;
 }
@@ -4966,21 +4973,160 @@ body.dragging-color-picker * {
 	cursor: default;
 }
 
+/* Gray like the fields and buttons, and the same at rest, on hover and while
+   dragged. --fill (set by the script) is how far the light gray part of the
+   track goes. The handle is a 12px box, which sets how far it travels, drawn
+   as a 16px circle by its box-shadow rings, so that at either end it covers
+   the end of the track. */
 .color-scheme-slider-row input[type=range] {
+	-webkit-appearance: none;
+	appearance: none;
 	flex: 1;
 	min-width: 0;
-	margin: 0 5px 0 2px;
-	accent-color: var(--theme-col);
+	height: 18px;
+	margin: 0 7px 0 4px;
+	background: transparent;
+	cursor: pointer;
 }
 
-/* Presets have only the reverse button in the vibrance row */
+.color-scheme-slider-row input[type=range]:focus {
+	outline: none;
+}
+
+.color-scheme-slider-row input[type=range]::-webkit-slider-runnable-track {
+	box-sizing: border-box;
+	height: 7px;
+	border: 1px solid var(--label-field-border);
+	border-radius: 3.5px;
+	background: linear-gradient(to right, #dadada var(--fill, 0%), white var(--fill, 0%));
+}
+
+.color-scheme-slider-row input[type=range]::-moz-range-track {
+	box-sizing: border-box;
+	height: 7px;
+	border: 1px solid var(--label-field-border);
+	border-radius: 3.5px;
+	background: white;
+}
+
+.color-scheme-slider-row input[type=range]::-moz-range-progress {
+	height: 5px;
+	border-radius: 3.5px 0 0 3.5px;
+	background: #dadada;
+}
+
+.color-scheme-slider-row input[type=range]::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	width: 12px;
+	height: 12px;
+	margin-top: -3.5px;
+	border: none;
+	border-radius: 50%;
+	background: white;
+	box-shadow: 0 0 0 1px white, 0 0 0 2px #888;
+}
+
+.color-scheme-slider-row input[type=range]::-moz-range-thumb {
+	width: 12px;
+	height: 12px;
+	border: none;
+	border-radius: 50%;
+	background: white;
+	box-shadow: 0 0 0 1px white, 0 0 0 2px #888;
+}
+
+.color-scheme-slider-row input[type=range]:focus-visible::-webkit-slider-thumb {
+	box-shadow: 0 0 0 1px white, 0 0 0 2px #888, 0 0 0 4px var(--theme-col);
+}
+
+.color-scheme-slider-row input[type=range]:focus-visible::-moz-range-thumb {
+	box-shadow: 0 0 0 1px white, 0 0 0 2px #888, 0 0 0 4px var(--theme-col);
+}
+
+/* Presets have only the reverse button in the vibrance row, and sequential
+   and diverging presets, the range */
 .color-scheme-slider-row.preset {
 	justify-content: flex-end;
 }
 
-.color-scheme-slider-row.preset > :not(.color-scheme-icon-btn),
-.color-scheme-slider-row.preset > .long-hue-btn {
+.color-scheme-slider-row.preset > :not(.color-scheme-icon-btn):not(.color-scheme-range-part),
+.color-scheme-slider-row.preset > .long-hue-btn,
+.color-scheme-slider-row:not(.ranged) > .color-scheme-range-part {
 	display: none;
+}
+
+/* A strip of the whole preset, shaded outside the part the tiles use */
+.color-scheme-range {
+	position: relative;
+	flex: 1;
+	min-width: 0;
+	height: 12px;
+	margin: 0 9px 0 6px;
+	cursor: pointer;
+	touch-action: none;
+}
+
+.color-scheme-range-strip {
+	position: absolute;
+	inset: 0;
+	border-radius: 2px;
+	box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12);
+}
+
+.color-scheme-range-shade {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	background-color: rgba(255, 255, 255, 0.75);
+}
+
+.color-scheme-range-shade.left {
+	left: 0;
+}
+
+.color-scheme-range-shade.right {
+	right: 0;
+}
+
+.color-scheme-range-handle {
+	position: absolute;
+	top: -4px;
+	bottom: -4px;
+	width: 4px;
+	margin-left: -3px;
+	border: 1px solid #444;
+	border-radius: 2px;
+	background-color: white;
+	cursor: ew-resize;
+}
+
+.color-scheme-range-handle:focus-visible {
+	outline: 2px solid var(--theme-col);
+	outline-offset: 1px;
+}
+
+/* Takes an end tile of a sequential preset away, shown over the tile on hover */
+.color-scheme-tile-remove {
+	display: none;
+	position: absolute;
+	top: 2px;
+	right: 2px;
+	width: 14px;
+	height: 14px;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	background-color: rgba(255, 255, 255, 0.85);
+	box-shadow: 0 0 0 1px rgba(0,0,0,0.2);
+	color: #333;
+	font-size: 12px;
+	line-height: 14px;
+	text-align: center;
+	cursor: pointer;
+}
+
+.color-scheme-tile:hover > .color-scheme-tile-remove {
+	display: block;
 }
 
 .color-scheme-icon-btn {

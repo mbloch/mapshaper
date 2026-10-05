@@ -167,6 +167,20 @@ so large vibrance values can make one tile stand out. The boost is not
 capped automatically: the marks show where this happens, and lowering
 vibrance until they go away removes it.
 
+Compared with Björn Ottosson's
+[sRGB gamut clipping](https://bottosson.github.io/posts/gamutclipping/)
+(2021): `oklchToRgb()` is his constant-lightness method, and
+`fitLightness()` makes the same trade as his adaptive methods (a little
+lightness for more chroma), but with a cap on the lightness shift, which
+keeps the lightness steps of a ramp even. His projections have no such cap,
+and are meant for clipping the pixels of images, so we don't use them. His
+analytic gamut intersection (from an approximation of the gamut's cusp)
+could replace the bisection in `findMaxChroma()`, but that search is
+already cheap (about 0.13 µs). The cost of fitting is the many searches
+`fitLightness()` makes per color (about 8 µs for a color outside the
+gamut). If continuous `-classify` output on large layers needs to be
+faster, sampling each interval into a lookup table would do more.
+
 ## Layer record
 
 The panel needs to know which scheme produced a layer's fills, both to show
@@ -198,7 +212,7 @@ layer properties still needs to be checked before this is built.
 ## Categorical schemes
 
 A categorical scheme is a palette of swatches, of which the first n are used
-on the map: a d3 categorical scheme (Tableau10 by default), or a custom list.
+on the map: a categorical preset (batlowS by default), or a custom list.
 The panel shows the whole palette, with a bar under the swatches in use.
 Dragging a swatch moves it in the palette; dragging one into the swatches in
 use pushes the last of them out of use, and dragging one out brings the
@@ -321,7 +335,9 @@ Diverging tab uses the same layout function (`internal.getDivergingLayout`).
 - A Diverging tab between Sequential and Categorical. The scheme keeps the
   layout -classify will find (`scheme.layout`, refreshed by
   `updateDivergingLayout()` after each change and when the panel opens).
-- Presets are d3's diverging schemes (RdBu by default). A custom ramp has
+- Presets are the ColorBrewer and Crameri diverging schemes (RdBu by
+  default); the preset menu on each tab groups presets by source, from
+  `getColorSchemeGroups()`. A custom ramp has
   pins at both ends and at the center (t = 0.5), which stays pinned; each
   half is an OKLCH ramp, with vibrance. There is no long-hue option: each
   half runs from a low-chroma center, where the hue path makes little
@@ -440,6 +456,37 @@ is interpolated between the two around its value.
   than blocks, end to end: each gradient runs from its first stop to its
   last, without the flat half-tiles of the panel's bar, and a pivot class
   takes a tile's width.
+
+## Preset ranges
+
+Some presets end in near-black or near-white (davos, oslo, batlowW), which a
+map may not want. A sequential or diverging preset can use part of its ramp:
+
+- `scheme.range` is `{start, end, base}`, 0-1 in the preset's own direction,
+  so reversing a preset doesn't change it; null means the whole ramp. The
+  tiles are evenly spaced over the range, and changing the number of colors
+  resamples within it. The panel sends the tile colors in `colors=`, so
+  `-classify` needs nothing new (its `stops=` option does the same thing on
+  the command line, but not with `pivot=`).
+- Removing an end tile of a sequential preset (the × shown over it on
+  hover) moves that end of the range to the next tile and takes one color
+  away, so the other tiles keep their colors: davos at 7 colors without its
+  ends is the 7-color davos minus its first and last colors.
+- ColorBrewer's 3-9 color sets are hand-picked, not samples of d3's
+  interpolators (a channel can differ by 40 or more), so a range over one
+  of them would change all its colors. `base` is the number of tiles when
+  the range was first narrowed; `getColorRampSection()` interpolates
+  between the colors of the set of that size, if the preset has one, and
+  otherwise uses the preset's interpolator.
+- In the vibrance row (which presets don't otherwise use), a strip of the
+  whole ramp, shaded outside the range, with a handle at each end. Handles
+  drag, take arrow keys (Shift for larger steps), and a double-click
+  restores the whole ramp. The range keeps at least 10% of the ramp.
+- A diverging range is trimmed the same amount at both ends, so the center
+  color stays at the pivot. Diverging tiles can't be removed, since the
+  number of tiles follows the classes on each side.
+- Choosing another preset, or editing a tile (which makes a custom ramp),
+  clears the range.
 
 ## Panel contents (sequential, first version)
 
