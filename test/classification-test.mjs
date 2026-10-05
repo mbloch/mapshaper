@@ -14,6 +14,9 @@ import {
 import {
   getInterpolatedValueGetter
 } from '../src/classification/mapshaper-interpolation';
+import {
+  getRankPositionFunction, getRankBreaks
+} from '../src/classification/mapshaper-class-stats';
 import assert from 'assert';
 import api from '../mapshaper.js';
 
@@ -68,6 +71,26 @@ describe('mapshaper-classification.js', function () {
       assert.deepEqual(dist.concat(), [25,25,25,25,25]);
     })
   })
+
+  describe('getRankPositionFunction() and getRankBreaks()', function () {
+    it('places values by rank, sharing ranks between ties and interpolating between values', function () {
+      var rank = getRankPositionFunction([0, 10, 10, 10, 1000]);
+      assert.equal(rank(0), 0);
+      assert.equal(rank(10), 0.5);
+      assert.equal(rank(1000), 1);
+      assert.equal(rank(5), 0.125);
+      assert.equal(rank(505), 0.875);
+      assert.equal(rank(-1), 0);
+      assert.equal(rank(2000), 1);
+      assert.equal(getRankPositionFunction([7])(7), 0.5);
+    });
+
+    it('breaks are the values at evenly spaced ranks', function () {
+      assert.deepEqual(getRankBreaks([0, 10, 20, 1000, 2000], 1), [20]);
+      assert.deepEqual(getRankBreaks([0, 10, 20, 1000, 2000], 3), [10, 20, 1000]);
+      assert.deepEqual(getRankBreaks([0, 10], 1), [5]);
+    });
+  });
 
   describe('getContinuousClassifier()', function () {
     it('uses piecewise linear interpolation', function () {

@@ -6,7 +6,7 @@ import { getOutputFunction } from '../classification/mapshaper-classification';
 import { makeSimpleKey, makeDatavizKey, makeGradientKey } from '../furniture/mapshaper-key';
 import {
   getEqualIntervalBreaks, getQuantileBreaks, getHybridBreaks,
-  getDistributionData, getClassId
+  getDistributionData, getClassId, getRankBreaks, getRankPositionFunction
 } from '../classification/mapshaper-class-stats';
 
 // Re-exported from mapshaper-class-stats.mjs for back-compat -- the
@@ -55,13 +55,15 @@ export function getSequentialClassifier(classValues, nullValue, dataValues, meth
     // user-defined breaks
     breaks = opts.breaks;
   } else {
-    breaks = getSequentialBreaks(ascending, method, numBreaks);
+    breaks = getSequentialBreaks(ascending, method, numBreaks, opts.continuous);
     if (method == 'nice') message('Nice breaks:', breaks);
   }
 
   printDistributionInfo(ascending, breaks, nullCount);
 
-  if (opts.continuous) {
+  if (opts.continuous && method == 'quantile' && !opts.breaks) {
+    dataToClass = getRankClassifier(ascending, numBuckets);
+  } else if (opts.continuous) {
     dataToClass = getContinuousClassifier(breaks, minVal, maxVal);
   } else {
     dataToClass = getDiscreteClassifier(breaks, round);
@@ -91,8 +93,11 @@ export function getSequentialClassifier(classValues, nullValue, dataValues, meth
 // The inner breaks of a sequential method's classes (also used by the GUI,
 // to show each class's range)
 // ascending: the data values, in ascending order
-export function getSequentialBreaks(ascending, method, numBreaks) {
+// continuous: the breaks are inner color stops of continuous output, which
+//   for quantile are at evenly spaced ranks (see getRankClassifier())
+export function getSequentialBreaks(ascending, method, numBreaks, continuous) {
   if (numBreaks === 0) return [];
+  if (method == 'quantile' && continuous) return getRankBreaks(ascending, numBreaks);
   if (method == 'equal-interval') return getEqualIntervalBreaks(ascending, numBreaks);
   if (method == 'quantile') return getQuantileBreaks(ascending, numBreaks);
   if (method == 'hybrid') return getHybridBreaks(ascending, numBreaks);
@@ -185,6 +190,18 @@ export function getDiscreteClassifier(breaks, round) {
       i = breaks.length - i;
     }
     return i;
+  };
+}
+
+// Continuous quantile output: a value's position on the ramp is its rank
+// among the data, so each part of the ramp has as many features, however
+// many color stops there are. Returns a class index from 0 to numBuckets.
+function getRankClassifier(ascending, numBuckets) {
+  var getPosition = getRankPositionFunction(ascending);
+  var minVal = ascending[0], maxVal = ascending[ascending.length - 1];
+  return function(val) {
+    if (!utils.isValidNumber(val) || val < minVal || val > maxVal) return -1;
+    return getPosition(val) * numBuckets;
   };
 }
 

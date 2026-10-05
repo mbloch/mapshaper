@@ -5106,30 +5106,6 @@ body.dragging-color-picker * {
 	outline-offset: 1px;
 }
 
-/* Takes an end tile of a sequential preset away, shown over the tile on hover */
-.color-scheme-tile-remove {
-	display: none;
-	position: absolute;
-	top: 2px;
-	right: 2px;
-	width: 14px;
-	height: 14px;
-	padding: 0;
-	border: none;
-	border-radius: 50%;
-	background-color: rgba(255, 255, 255, 0.85);
-	box-shadow: 0 0 0 1px rgba(0,0,0,0.2);
-	color: #333;
-	font-size: 12px;
-	line-height: 14px;
-	text-align: center;
-	cursor: pointer;
-}
-
-.color-scheme-tile:hover > .color-scheme-tile-remove {
-	display: block;
-}
-
 .color-scheme-icon-btn {
 	position: relative;
 	flex: none;

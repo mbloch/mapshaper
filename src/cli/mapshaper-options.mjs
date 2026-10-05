@@ -817,7 +817,7 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('continuous', {
-      describe: 'interpolate between values at the class breaks (unclassed colors)',
+      describe: 'interpolate between values at the class breaks (unclassed colors; quantile goes by rank)',
       type: 'flag'
     })
     .option('interpolation', {

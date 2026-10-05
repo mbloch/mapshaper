@@ -31,6 +31,47 @@ export function getQuantileBreaks(ascending, numBreaks) {
   return breaks;
 }
 
+// Continuous quantile output places each value by its rank: 0 for the
+// lowest value, 1 for the highest. Tied values share their average rank, and
+// a value between two data values is interpolated between their ranks.
+// Returns a function, val -> 0-1 (clamped to the data).
+export function getRankPositionFunction(ascending) {
+  var n = ascending.length;
+  return function(val) {
+    var a, b;
+    if (n < 2) return 0.5;
+    if (val < ascending[0]) return 0;
+    if (val > ascending[n - 1]) return 1;
+    a = countBelow(val, false); // the first index of a value >= val
+    b = countBelow(val, true);  // the first index of a value > val
+    if (b > a) return (a + b - 1) / 2 / (n - 1);
+    return (a - 1 + (val - ascending[a - 1]) / (ascending[a] - ascending[a - 1])) / (n - 1);
+  };
+
+  function countBelow(val, orEqual) {
+    var lo = 0, hi = n, mid;
+    while (lo < hi) {
+      mid = (lo + hi) >> 1;
+      if (ascending[mid] < val || orEqual && ascending[mid] == val) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+  }
+}
+
+// The values at evenly spaced ranks, for the inner color stops of
+// continuous quantile output (see getRankPositionFunction())
+export function getRankBreaks(ascending, numBreaks) {
+  var n = ascending.length;
+  var breaks = [];
+  var r, i, j;
+  for (i = 1; i <= numBreaks; i++) {
+    r = i / (numBreaks + 1) * (n - 1);
+    j = Math.floor(r);
+    breaks.push(j + 1 < n ? ascending[j] + (ascending[j + 1] - ascending[j]) * (r - j) : ascending[j]);
+  }
+  return breaks;
+}
+
 // inner breaks have equal-interval spacing
 // first and last bucket are sized like quantiles (they are sized to contain
 // a proportional share of the data)

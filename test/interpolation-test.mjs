@@ -3,6 +3,8 @@ import {
   getStoppedValues,
   getInterpolatedValueGetter
 } from '../src/classification/mapshaper-interpolation';
+import { interpolateOklch } from '../src/color/oklab';
+import { parseColor } from '../src/color/color-utils';
 import api from '../mapshaper.js';
 import assert from 'assert';
 
@@ -49,6 +51,20 @@ describe('mapshaper-interpolation.js', function () {
       assert(out[1].includes('rgb('));
     })
 
+  })
+
+  describe('getInterpolatedValueGetter()', function () {
+    it('cached oklch colors are close to the uncached ones; numbers are not cached', function () {
+      var get = getInterpolatedValueGetter(['#fff8da', '#2d4d8e'], null, {interpolation: 'oklch'});
+      var exact = interpolateOklch('#fff8da', '#2d4d8e');
+      for (var t = 0.01; t < 0.99; t += 0.0173) {
+        var a = parseColor(get(t)), b = parseColor(exact(t));
+        assert(Math.max(Math.abs(a.r - b.r), Math.abs(a.g - b.g), Math.abs(a.b - b.b)) <= 2, String(t));
+      }
+      assert.equal(get(1), '#2d4d8e');
+      get = getInterpolatedValueGetter([0, 1000], null, {interpolation: 'oklch'});
+      assert.equal(get(0.12345), 123.45);
+    })
   })
 
 })

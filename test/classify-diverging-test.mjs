@@ -244,9 +244,10 @@ describe('mapshaper-diverging.mjs', function () {
       assert.deepEqual(getDivergingStops(layout), {below: [-10, 0], above: [0, 10, 20]});
     });
 
-    it('quantile sides end at the data extent', function () {
+    it('quantile sides end at the data extent, with stops at evenly spaced ranks', function () {
+      // above the pivot, 0 (the pivot) ranks with 2, 4 and 8; the stop is halfway, between 2 and 4
       var layout = getDivergingLayout([-4, -2, 0, 2, 4, 8], 'quantile', {classes: [1, 2], pivot: 0, continuous: true});
-      assert.deepEqual(getDivergingStops(layout), {below: [-4, 0], above: [0, 4, 8]});
+      assert.deepEqual(getDivergingStops(layout), {below: [-4, 0], above: [0, 3, 8]});
     });
 
     it('continuous output has no pivot class unless pivot-class or pivot-range= is given', function () {
@@ -272,9 +273,16 @@ describe('mapshaper-diverging.mjs', function () {
       assert.deepEqual(values.map(v => Math.round(v * 1000) / 1000), [-2, 0, 1.421, 3]);
     });
 
-    it('-classify quantile sides', async function () {
+    it('-classify quantile sides place values by their rank on each side', async function () {
+      // below: -4, -2 and the pivot rank 0, 1/2, 1; above: the pivot (and
+      // the 0 at it), 2, 4, 8 rank 0, 1/3, 2/3, 1
       var values = await classify([-4, -2, 0, 2, 4, 8], 'pivot=0 continuous quantile classes=1,1 values=-2,-1,0,1,2');
-      assert.deepEqual(values, [-2, -1.5, 1, 1.25, 1.5, 2]);
+      assert.deepEqual(values.map(v => Math.round(v * 1000) / 1000), [-2, -1.5, 1, 1.333, 1.667, 2]);
+    });
+
+    it('-classify quantile: features at the pivot get the inner color, however many there are', async function () {
+      var values = await classify([-2, 0, 0, 0, 0, 3], 'pivot=0 continuous quantile classes=1,1 values=-2,-1,0,1,2');
+      assert.deepEqual(values, [-2, 1, 1, 1, 1, 2]);
     });
 
     it('rejects pivot-class with no-pivot-class, or without pivot=', async function () {
@@ -288,8 +296,18 @@ describe('mapshaper-diverging.mjs', function () {
     });
 
     it('classes=1 gives one interval from the min to the max', async function () {
-      var values = await classify([0, 5, 20], 'continuous classes=1 values=0,1');
+      var values = await classify([0, 5, 20], 'continuous equal-interval classes=1 values=0,1');
       assert.deepEqual(values, [0, 0.25, 1]);
+    });
+
+    it('quantile places values by rank, however many stops there are', async function () {
+      var data = [1, 2, 3, 100, 1000];
+      var two = await classify(data, 'continuous quantile values=0,1');
+      var five = await classify(data, 'continuous quantile values=0,0.25,0.5,0.75,1');
+      assert.deepEqual(two, [0, 0.25, 0.5, 0.75, 1]);
+      assert.deepEqual(five, two);
+      // tied values share their average rank
+      assert.deepEqual(await classify([1, 2, 2, 5], 'continuous quantile values=0,3'), [0, 1.5, 1.5, 3]);
     });
   });
 });

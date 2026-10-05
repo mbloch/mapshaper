@@ -1,3 +1,7 @@
+v0.7.77
+* `-classify continuous method=quantile` places each value on the color gradient by its rank among the data, so the number of colors affects only the gradient's shape (previously, values were interpolated linearly between quantile breaks, and with two colors the breaks were just the min and max). With a pivot, each side is ranked separately.
+* `-classify continuous interpolation=oklch` is much faster on large layers.
+
 v0.7.76
 * [web] Interface tweaks
 

@@ -130,12 +130,13 @@ test('the preset menu lists presets under their sources', async function({page})
   expect(errors).toEqual([]);
 });
 
-test('a preset can lose its end tiles, or be limited to part of its range', async function({page}) {
+test('a preset can be limited to part of its range', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page);
   await openSchemePanel(page);
   var panel = schemePanel(page);
   var tiles = panel.locator('.color-scheme-tile');
+  var handles = panel.locator('.color-scheme-range-handle');
 
   await panel.locator('.color-scheme-palette-btn').click();
   await panel.locator('.color-scheme-palette-item').filter({hasText: /^davos$/}).click();
@@ -143,21 +144,17 @@ test('a preset can lose its end tiles, or be limited to part of its range', asyn
   await expect(tiles).toHaveCount(7);
   var seven = await getTileColors(page);
 
-  await tiles.last().hover();
-  await tiles.last().locator('.color-scheme-tile-remove').click();
-  await tiles.first().hover();
-  await tiles.first().locator('.color-scheme-tile-remove').click();
-  await expect(tiles).toHaveCount(5);
-  expect(await getTileColors(page)).toEqual(seven.slice(1, 6));
+  // the arrow keys move a handle, Shift by 5%
+  await handles.last().focus();
+  for (var i = 0; i < 3; i++) await page.keyboard.press('Shift+ArrowLeft');
+  await expect(handles.last()).toHaveAttribute('aria-valuenow', '85');
+  var colors = await getTileColors(page);
+  expect(colors).toHaveLength(7);
+  expect(colors[0]).toBe(seven[0]);
+  expect(colors[6]).not.toBe(seven[6]);
   await expect(panel.locator('.color-scheme-palette-name')).toHaveText('davos');
-  await expect(panel.locator('.size-field-input')).toHaveValue('5');
   var fills = await getFills(page);
-  expect(new Set(fills).size).toBe(5);
-
-  // the handles are where the removed tiles' neighbors were
-  var handles = panel.locator('.color-scheme-range-handle');
-  await expect(handles.first()).toHaveAttribute('aria-valuenow', '17');
-  await expect(handles.last()).toHaveAttribute('aria-valuenow', '83');
+  expect(new Set(fills).size).toBe(7);
 
   // dragging the right handle to the end brings back the light end
   var box = await panel.locator('.color-scheme-range').boundingBox();
@@ -167,11 +164,12 @@ test('a preset can lose its end tiles, or be limited to part of its range', asyn
   await page.mouse.move(box.x + box.width + 20, box.y + box.height / 2, {steps: 4});
   await page.mouse.up();
   await expect(handles.last()).toHaveAttribute('aria-valuenow', '100');
-  var colors = await getTileColors(page);
-  expect(colors[0]).toBe(seven[1]);
-  expect(colors[4]).toBe(seven[6]);
+  expect(await getTileColors(page)).toEqual(seven);
 
   // double-clicking the strip uses the whole ramp
+  await handles.first().focus();
+  await page.keyboard.press('Shift+ArrowRight');
+  await expect(handles.first()).toHaveAttribute('aria-valuenow', '5');
   await panel.locator('.color-scheme-range').dblclick();
   await expect(handles.first()).toHaveAttribute('aria-valuenow', '0');
   expect(errors).toEqual([]);

@@ -18,7 +18,7 @@ import {
   getDivergingClassRanges, getSequentialClassRanges, getPivotSummary, setSchemePivot, setSchemeNeutral, setSchemeSplit,
   getCenterTile, getSchemeNeutral, isContinuousScheme, setSchemeContinuous, getContinuousTileStops,
   getContinuousSegments, getAppliedScheme,
-  hasSchemeRange, getDisplayRange, setSchemeRangeEnd, resetSchemeRange, removeEndTile, canRemoveEndTile,
+  hasSchemeRange, getDisplayRange, setSchemeRangeEnd, resetSchemeRange,
   getRangeStripColors,
   getLayerScheme, setLayerScheme
 } from './gui-color-scheme-model';
@@ -592,8 +592,6 @@ export function ColorSchemePanel(gui, opts) {
     var classLabels = categorical ? null : continuous ? getStopLabels() : getClassLabels(tileUse);
     var groups = categorical && scheme.method == 'categorical' ?
       getSwatchCategories(getCategories(targetLayer, scheme.field), used) : null;
-    // the end tiles of a sequential preset can be taken away
-    var removable = canRemoveEndTile(scheme);
     var n, perRow;
     // a categorical scheme shows its whole palette, and marks the swatches
     // in use
@@ -627,14 +625,6 @@ export function ColorSchemePanel(gui, opts) {
         tileEl.on('pointerdown', function(e) {
           startTileDrag(e, i);
         });
-      }
-      if (removable && (i === 0 || i == n - 1)) {
-        El('button').addClass('color-scheme-tile-remove').attr('type', 'button')
-          .attr('aria-label', 'Remove this color').text('×').appendTo(tileEl)
-          .on('click', function(e) {
-            e.stopPropagation();
-            changeScheme(removeEndTile(scheme, i === 0 ? 'left' : 'right'));
-          });
       }
       if (groups && inUse || classLabels && classLabels[i]) {
         tileEl.attr('data-tooltip', groups ? formatCategories(groups[i]) : classLabels[i])

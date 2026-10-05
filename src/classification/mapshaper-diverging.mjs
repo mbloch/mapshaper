@@ -1,6 +1,6 @@
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
-import { getQuantileBreaks, getHybridBreaks } from '../classification/mapshaper-class-stats';
+import { getQuantileBreaks, getHybridBreaks, getRankBreaks, getRankPositionFunction } from '../classification/mapshaper-class-stats';
 import { getInterpolatedValueGetter } from '../classification/mapshaper-interpolation';
 
 // Diverging classification: classes on either side of a pivot value, and an
@@ -64,7 +64,8 @@ export function getDivergingLayout(ascending, method, opts) {
     if (intervalMethods.includes(method)) {
       layout = getIntervalLayout(ascending, pivot, hasNeutral, range, counts, method == 'nice');
     } else if (quantileMethods.includes(method)) {
-      layout = getQuantileLayout(ascending, pivot, hasNeutral, range, counts, method);
+      layout = getQuantileLayout(ascending, pivot, hasNeutral, range, counts, method,
+        method == 'quantile' && !!opts.continuous);
     } else {
       stop('The', method, 'method does not support pivot=');
     }
@@ -115,12 +116,14 @@ export function getContinuousSideStops(classes) {
 // values: the side below's values (one per stop, ascending), the center
 //   value (with a pivot class), and the side above's (see
 //   getDivergingClassValues())
-export function getContinuousDivergingClassifier(layout, values, nullValue, opts) {
+// ascending: the data, in ascending order (needed by a ranked layout)
+export function getContinuousDivergingClassifier(layout, values, nullValue, opts, ascending) {
   var stops = getDivergingStops(layout);
   var nb = stops.below.length;
   var na = stops.above.length;
-  var low = nb > 0 ? getStopInterpolator(stops.below, values.slice(0, nb), opts) : null;
-  var high = na > 0 ? getStopInterpolator(stops.above, values.slice(values.length - na), opts) : null;
+  var ranks = layout.ranked ? getSideRanks(ascending, getSideEdges(layout)) : null;
+  var low = nb > 0 ? getStopInterpolator(stops.below, values.slice(0, nb), opts, ranks && ranks.below) : null;
+  var high = na > 0 ? getStopInterpolator(stops.above, values.slice(values.length - na), opts, ranks && ranks.above) : null;
   var center = layout.neutral ? values[nb] : null;
   var edges = getSideEdges(layout);
   return function(val) {
@@ -131,10 +134,12 @@ export function getContinuousDivergingClassifier(layout, values, nullValue, opts
   };
 }
 
-function getStopInterpolator(stops, values, opts) {
+// sideRanks: the side's data, for placing values by rank (see getSideRanks())
+function getStopInterpolator(stops, values, opts, sideRanks) {
   var getValue = getInterpolatedValueGetter(values, null, opts);
+  var getRank = sideRanks ? getRankPositionFunction(sideRanks) : null;
   return function(val) {
-    return getValue(getStopPosition(stops, val));
+    return getValue(getRank ? getRank(val) * (stops.length - 1) : getStopPosition(stops, val));
   };
 }
 
@@ -350,11 +355,13 @@ function getSteppedBreaks(edge, step, n) {
 // so the side with fewer features gets fewer classes. An automatic neutral
 // class holds as many features as a class does on average, taken from those
 // nearest the pivot, so its range is centered on the pivot.
-function getQuantileLayout(ascending, pivot, hasNeutral, range, counts, method) {
+// ranked: continuous quantile output, which places values by their rank on
+// each side (see getSideRanks()); the stops are at evenly spaced ranks.
+function getQuantileLayout(ascending, pivot, hasNeutral, range, counts, method, ranked) {
   var n = ascending.length;
   var getBreaks = method == 'hybrid' ? getHybridBreaks : getQuantileBreaks;
   var lo = pivot, hi = pivot;
-  var classCount, inNeutral, dists, d, belowVals, aboveVals, sideClasses, below, above;
+  var classCount, inNeutral, dists, d, belowVals, aboveVals, sideClasses, below, above, sides;
   if (hasNeutral && range) {
     lo = range[0];
     hi = range[1];
@@ -378,9 +385,26 @@ function getQuantileLayout(ascending, pivot, hasNeutral, range, counts, method) 
     below = sideHasData(belowVals.length > 0, counts.below);
     above = sideHasData(aboveVals.length > 0, counts.above);
   }
+  if (ranked) {
+    sides = getSideRanks(ascending, [lo, hi]);
+    return Object.assign(makeLayout(pivot, hasNeutral, lo, hi, below, above,
+      below > 1 ? getRankBreaks(sides.below, below - 1) : [],
+      above > 1 ? getRankBreaks(sides.above, above - 1) : []), {ranked: true});
+  }
   return makeLayout(pivot, hasNeutral, lo, hi, below, above,
     below > 1 ? getBreaks(belowVals, below - 1) : [],
     above > 1 ? getBreaks(aboveVals, above - 1) : []);
+}
+
+// The values that each side of a ranked layout ranks: the side's data, with
+// its inner edge (the pivot, or the edge of the pivot class) as the side's
+// innermost value, so that ranks run from the edge out to the side's
+// outermost value. Data at the edge itself rank as the edge.
+function getSideRanks(ascending, edges) {
+  return {
+    below: ascending.filter(function(val) { return val < edges[0]; }).concat([edges[0]]),
+    above: [edges[1]].concat(ascending.filter(function(val) { return val > edges[1]; }))
+  };
 }
 
 // The number of n classes that go below the pivot, in proportion to the

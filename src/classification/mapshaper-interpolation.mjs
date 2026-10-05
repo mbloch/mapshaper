@@ -69,8 +69,14 @@ export function getStoppedValues(values, stops, opts) {
 export function getInterpolatedValueGetter(values, nullValue, opts) {
   var interpolators = [];
   var tmax = values.length - 1;
+  var cache = opts && opts.interpolation == 'oklch';
+  var interpolate;
   for (var i=1; i<values.length; i++) {
-    interpolators.push(getPairInterpolator(values[i-1], values[i], opts));
+    interpolate = getPairInterpolator(values[i-1], values[i], opts);
+    if (cache && parseColor(values[i-1]) && parseColor(values[i])) {
+      interpolate = getCachedInterpolator(interpolate);
+    }
+    interpolators.push(interpolate);
   }
   return function(t) {
     if (t == -1) return nullValue;
@@ -80,6 +86,23 @@ export function getInterpolatedValueGetter(values, nullValue, opts) {
     var i = t == tmax ? tmax - 1 : Math.floor(t);
     var j = t == tmax ? 1 : t % 1;
     return interpolators[i](j);
+  };
+}
+
+// OKLCH colors cost microseconds each (fitting them to the sRGB gamut takes
+// many gamut tests), too slow to compute per feature in a large layer. t is
+// rounded to one of CACHE_SIZE positions, each computed when first needed;
+// neighboring positions differ by less than 8-bit rounding.
+var CACHE_SIZE = 1024;
+
+function getCachedInterpolator(interpolate) {
+  var cache = [];
+  return function(t) {
+    var i = Math.round(t * (CACHE_SIZE - 1));
+    if (cache[i] === undefined) {
+      cache[i] = interpolate(i / (CACHE_SIZE - 1));
+    }
+    return cache[i];
   };
 }
 

@@ -468,10 +468,11 @@ map may not want. A sequential or diverging preset can use part of its ramp:
   resamples within it. The panel sends the tile colors in `colors=`, so
   `-classify` needs nothing new (its `stops=` option does the same thing on
   the command line, but not with `pivot=`).
-- Removing an end tile of a sequential preset (the × shown over it on
-  hover) moves that end of the range to the next tile and takes one color
-  away, so the other tiles keep their colors: davos at 7 colors without its
-  ends is the 7-color davos minus its first and last colors.
+- Trimming one tile's width off each end and taking two colors away leaves
+  the other tiles as they were: davos at 5 colors over 1/6-5/6 is the
+  7-color davos minus its first and last colors. (An earlier × button on
+  the end tiles did this in one click; it was dropped as the range handles
+  do the same and more.)
 - ColorBrewer's 3-9 color sets are hand-picked, not samples of d3's
   interpolators (a channel can differ by 40 or more), so a range over one
   of them would change all its colors. `base` is the number of tiles when

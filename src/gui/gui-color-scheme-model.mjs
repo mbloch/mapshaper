@@ -288,7 +288,7 @@ export function getContinuousTileStops(scheme, lyr) {
     values = getAscendingValues(lyr, scheme.field);
     if (values.length === 0) return null;
     try {
-      breaks = internal.getSequentialBreaks(values, scheme.method, scheme.n - 2);
+      breaks = internal.getSequentialBreaks(values, scheme.method, scheme.n - 2, true);
     } catch(e) {
       return null;
     }
@@ -628,8 +628,8 @@ export function getPresetColors(name, n) {
 // reversing). A diverging range is the same on both sides of the center.
 // base is the number of tiles when the range was first narrowed: a preset
 // with a hand-picked set of that size (ColorBrewer's) is interpolated
-// between the set's colors, so that removing an end tile leaves the others
-// as they were.
+// between the set's colors, so that trimming an end tile's width off the
+// range, with one tile fewer, leaves the others as they were.
 var minRangeSpan = 0.1;
 
 export function getSchemeRange(scheme) {
@@ -667,24 +667,6 @@ export function setSchemeRangeEnd(scheme, side, pos) {
 
 export function resetSchemeRange(scheme) {
   return Object.assign({}, scheme, {range: null});
-}
-
-// Takes the tile at one end of a sequential preset away, keeping the colors
-// of the others: the range ends where the next tile was.
-// side: 'left' or 'right'
-export function removeEndTile(scheme, side) {
-  var display, step;
-  if (!canRemoveEndTile(scheme)) return scheme;
-  display = getDisplayRange(scheme);
-  step = (display[1] - display[0]) / (scheme.n - 1);
-  if (side == 'left') display[0] += step;
-  else display[1] -= step;
-  return Object.assign(setDisplayRange(scheme, display[0], display[1]), {n: scheme.n - 1});
-}
-
-export function canRemoveEndTile(scheme) {
-  return hasSchemeRange(scheme) && scheme.type == 'sequential' &&
-    scheme.n > getMinSchemeColors(scheme);
 }
 
 function setDisplayRange(scheme, left, right) {

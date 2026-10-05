@@ -13,8 +13,9 @@ import {
   getPivotSummary, setSchemePivot, setSchemeNeutral, setSchemeSplit, getCenterTile,
   getSequentialClassRanges, setSchemeContinuous, isContinuousScheme, getSchemeNeutral,
   getContinuousTileStops, getContinuousSegments, getAppliedScheme, getFillFingerprint,
-  removeEndTile, canRemoveEndTile, setSchemeRangeEnd, getDisplayRange, getDefaultDivergingScheme
+  setSchemeRangeEnd, getDisplayRange, getDefaultDivergingScheme
 } from '../src/gui/gui-color-scheme-model';
+import { getRankPositionFunction } from '../src/classification/mapshaper-class-stats';
 import api from '../mapshaper.js';
 
 var internal = api.internal;
@@ -151,25 +152,25 @@ describe('gui-color-scheme-model.mjs', function() {
       }, []));
     });
 
-    it('removing an end tile keeps the colors of the others', function() {
+    it('trimming an end tile off the range, with one tile fewer, keeps the colors of the others', function() {
       ['davos', 'Viridis', 'Blues'].forEach(function(name) {
         var scheme = setTileCount(choosePreset(getDefaultScheme('pop'), name), 7);
         var colors = getSchemeColors(scheme);
-        var five = removeEndTile(removeEndTile(scheme, 'right'), 'left');
-        assert.equal(five.n, 5);
+        var trimmed = setSchemeRangeEnd(setSchemeRangeEnd(scheme, 'right', 5 / 6), 'left', 1 / 6);
+        var five = setTileCount(trimmed, 5);
         assert.deepEqual(getSchemeColors(five), colors.slice(1, 6), name);
         assert.equal(five.preset, name);
       });
     });
 
-    it('removing an end tile of a reversed preset takes the tile on that side', function() {
+    it('the range of a reversed preset is trimmed on the side that is moved', function() {
       var scheme = reverseScheme(setTileCount(choosePreset(getDefaultScheme('pop'), 'davos'), 7));
       var colors = getSchemeColors(scheme);
-      assert.deepEqual(getSchemeColors(removeEndTile(scheme, 'left')), colors.slice(1));
-      assert.deepEqual(getDisplayRange(removeEndTile(scheme, 'left')).map(round3), [0.167, 1]);
+      var six = setTileCount(setSchemeRangeEnd(scheme, 'left', 1 / 6), 6);
+      assert.deepEqual(getSchemeColors(six), colors.slice(1));
+      assert.deepEqual(getDisplayRange(six).map(round3), [0.167, 1]);
       // reversing again flips the range with the colors
-      assert.deepEqual(getSchemeColors(reverseScheme(removeEndTile(scheme, 'left'))),
-        colors.slice(1).reverse());
+      assert.deepEqual(getSchemeColors(reverseScheme(six)), colors.slice(1).reverse());
     });
 
     it('a range resamples the preset when the number of colors changes', function() {
@@ -199,7 +200,6 @@ describe('gui-color-scheme-model.mjs', function() {
       assert.deepEqual(getDisplayRange(trimmed).map(round3), [0.2, 0.8]);
       assert.equal(colors[mid], full[mid]);
       assert.notEqual(colors[0], full[0]);
-      assert(!canRemoveEndTile(trimmed));
     });
 
     it('Crameri presets give hex colors', function() {
@@ -687,7 +687,8 @@ describe('gui-color-scheme-model.mjs', function() {
     }
 
     // the color the tiles give a value: interpolated between the stops
-    // around it, on its side of the pivot
+    // around it, on its side of the pivot -- by value, or for quantile by
+    // rank, among the data on its side (with the pivot as the innermost value)
     function getExpectedFill(scheme, lyr, v) {
       var stops = getContinuousTileStops(scheme, lyr);
       var colors = getSchemeColors(scheme);
@@ -702,7 +703,19 @@ describe('gui-color-scheme-model.mjs', function() {
       }
       var getColor = internal.getInterpolatedValueGetter(tiles.map(function(i) { return colors[i]; }),
         null, {interpolation: 'oklch'});
-      return hex(getColor(internal.getStopPosition(tiles.map(function(i) { return stops[i].value; }), v)));
+      var ranked, pos;
+      if (scheme.method == 'quantile') {
+        ranked = values.slice().sort(function(a, b) { return a - b; });
+        if (layout) {
+          ranked = v < edges[0] ?
+            ranked.filter(function(d) { return d < edges[0]; }).concat([edges[0]]) :
+            [edges[1]].concat(ranked.filter(function(d) { return d > edges[1]; }));
+        }
+        pos = getRankPositionFunction(ranked)(v) * (tiles.length - 1);
+      } else {
+        pos = internal.getStopPosition(tiles.map(function(i) { return stops[i].value; }), v);
+      }
+      return hex(getColor(pos));
     }
 
     it('turning continuous on starts a sequential ramp with at least 5 stops', function() {

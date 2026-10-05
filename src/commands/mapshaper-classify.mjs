@@ -44,7 +44,7 @@ cmd.classify = function(lyr, dataset, optsArg) {
   var values, nullValue;
   var classifyByValue, classifyByRecordId;
   var numClasses, numValues;
-  var method, diverging, divergingLayout;
+  var method, diverging, divergingLayout, divergingData;
 
   if (opts.color_scheme) {
     stop('color-scheme is not a valid option, use colors instead');
@@ -144,7 +144,8 @@ cmd.classify = function(lyr, dataset, optsArg) {
   if (diverging && fieldType === null) {
     values = []; // no data: every feature gets the null value
   } else if (diverging) {
-    divergingLayout = getDivergingLayout(getDivergingData(records, dataField, opts), method,
+    divergingData = getDivergingData(records, dataField, opts);
+    divergingLayout = getDivergingLayout(divergingData, method,
       Object.assign({}, opts, {classes: getDivergingClassCount(opts)}));
     message(formatDivergingLayout(divergingLayout));
     if (opts.continuous) {
@@ -178,7 +179,7 @@ cmd.classify = function(lyr, dataset, optsArg) {
   } else if (method == 'categorical') {
     classifyByValue = getCategoricalClassifier(values, nullValue, opts);
   } else if (diverging && opts.continuous) {
-    classifyByValue = getContinuousDivergingDataClassifier(divergingLayout, values, nullValue, opts);
+    classifyByValue = getContinuousDivergingDataClassifier(divergingLayout, values, nullValue, opts, divergingData);
   } else if (diverging) {
     classifyByValue = getSequentialClassifier(values, nullValue, getFieldValues(records, dataField), method,
       Object.assign({}, opts, {breaks: divergingLayout.breaks}));
@@ -225,8 +226,8 @@ function validateDivergingOptions(method, fieldType, opts) {
 }
 
 // Rounds and clamps data values as getDivergingData() does
-function getContinuousDivergingDataClassifier(layout, values, nullValue, opts) {
-  var classify = getContinuousDivergingClassifier(layout, values, nullValue, opts);
+function getContinuousDivergingDataClassifier(layout, values, nullValue, opts, ascending) {
+  var classify = getContinuousDivergingClassifier(layout, values, nullValue, opts, ascending);
   var round = opts.precision ? getRoundingFunction(opts.precision) : null;
   var range = opts.outer_breaks;
   return function(val) {
