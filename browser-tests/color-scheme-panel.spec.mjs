@@ -87,6 +87,29 @@ test('undo while the panel is open takes back the edits made in it', async funct
   expect(errors).toEqual([]);
 });
 
+test('the panel\'s commands print nothing in an open console, unlike typed ones', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page);
+  await page.locator('.console-tab:visible').first().click();
+  var consoleEl = page.locator('.console');
+  await expect(consoleEl).toBeVisible();
+  // the console takes the keyboard when it opens
+  await page.waitForTimeout(200);
+  await page.keyboard.type('-classify id classes=3');
+  await page.keyboard.press('Enter');
+  await expect(consoleEl).toContainText('[classify]');
+  var count = await consoleEl.getByText('[classify]').count();
+
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  await setField(panel.locator('.size-field-input'), '6');
+  await panel.locator('.color-scheme-tab').filter({hasText: 'Diverging'}).click();
+  await page.waitForTimeout(300);
+  expect(new Set(await getFills(page)).size).toBeGreaterThan(3);
+  expect(await consoleEl.getByText('[classify]').count()).toBe(count);
+  expect(errors).toEqual([]);
+});
+
 test('the preset menu lists presets under their sources', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page);

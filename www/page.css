@@ -3315,6 +3315,7 @@ body.pan.panning .map-layers:not(.drawing) {
 }
 
 .label-editing-status,
+.label-style-selection-row,
 .label-style-panel .label-style-row.label-style-selection-row > span {
 	font-size: 12px;
 	color: #555;

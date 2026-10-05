@@ -1,3 +1,6 @@
+v0.7.76
+* [web] Interface tweaks
+
 v0.7.75
 * Added 18 of Fabio Crameri's Scientific colour maps to the built-in color schemes: sequential `batlow`, `batlowW`, `acton`, `bamako`, `bilbao`, `davos`, `devon`, `lajolla`, `lapaz`, `oslo`, `tokyo` and `turku`; diverging `bam`, `broc`, `cork`, `roma` and `vik`; and categorical `batlowS`. `-colors` now lists the schemes by source (ColorBrewer, Tableau, Matplotlib, Crameri, d3).
 * [web] The Color palettes preset menu groups the presets by source.
