@@ -71333,7 +71333,7 @@ ${css.join('\n')}
     return new Rgb(o.r, o.g, o.b, o.opacity);
   }
 
-  function rgb$1(r, g, b, opacity) {
+  function rgb(r, g, b, opacity) {
     return arguments.length === 1 ? rgbConvert(r) : new Rgb(r, g, b, opacity == null ? 1 : opacity);
   }
 
@@ -71344,7 +71344,7 @@ ${css.join('\n')}
     this.opacity = +opacity;
   }
 
-  define(Rgb, rgb$1, extend(Color, {
+  define(Rgb, rgb, extend(Color, {
     brighter(k) {
       k = k == null ? brighter : Math.pow(brighter, k);
       return new Rgb(this.r * k, this.g * k, this.b * k, this.opacity);
@@ -71606,11 +71606,11 @@ ${css.join('\n')}
     return d ? linear(a, d) : constant(isNaN(a) ? b : a);
   }
 
-  var rgb = (function rgbGamma(y) {
+  var interpolateRgb = (function rgbGamma(y) {
     var color = gamma(y);
 
-    function rgb(start, end) {
-      var r = color((start = rgb$1(start)).r, (end = rgb$1(end)).r),
+    function rgb$1(start, end) {
+      var r = color((start = rgb(start)).r, (end = rgb(end)).r),
           g = color(start.g, end.g),
           b = color(start.b, end.b),
           opacity = nogamma(start.opacity, end.opacity);
@@ -71623,9 +71623,9 @@ ${css.join('\n')}
       };
     }
 
-    rgb.gamma = rgbGamma;
+    rgb$1.gamma = rgbGamma;
 
-    return rgb;
+    return rgb$1;
   })(1);
 
   function rgbSpline(spline) {
@@ -71636,7 +71636,7 @@ ${css.join('\n')}
           b = new Array(n),
           i, color;
       for (i = 0; i < n; ++i) {
-        color = rgb$1(colors[i]);
+        color = rgb(colors[i]);
         r[i] = color.r || 0;
         g[i] = color.g || 0;
         b[i] = color.b || 0;
@@ -71789,8 +71789,8 @@ ${css.join('\n')}
     var t = typeof b, c;
     return b == null || t === "boolean" ? constant(b)
         : (t === "number" ? number
-        : t === "string" ? ((c = color(b)) ? (b = c, rgb) : string)
-        : b instanceof color ? rgb
+        : t === "string" ? ((c = color(b)) ? (b = c, interpolateRgb) : string)
+        : b instanceof color ? interpolateRgb
         : b instanceof Date ? date
         : isNumberArray(b) ? numberArray
         : Array.isArray(b) ? genericArray
@@ -71824,6 +71824,16 @@ ${css.join('\n')}
 
   cubehelix$1(hue);
   var cubehelixLong = cubehelix$1(nogamma);
+
+  function piecewise(interpolate, values) {
+    if (values === undefined) values = interpolate, interpolate = d3_interpolate;
+    var i = 0, n = values.length - 1, v = values[0], I = new Array(n < 0 ? 0 : n);
+    while (i < n) I[i] = interpolate(v, v = values[++i]);
+    return function(t) {
+      var i = Math.max(0, Math.min(n - 1, Math.floor(t *= n)));
+      return I[i](t - i);
+    };
+  }
 
   // OKLab conversion (Björn Ottosson, https://bottosson.github.io/posts/oklab/)
   // RGB objects use 0-255 channels, as returned by parseColor().
@@ -73968,7 +73978,7 @@ ${css.join('\n')}
     return c$1 + "";
   }
 
-  var c = rgb$1(),
+  var c = rgb(),
       pi_1_3 = Math.PI / 3,
       pi_2_3 = Math.PI * 2 / 3;
 
@@ -74084,6 +74094,59 @@ ${css.join('\n')}
     schemeYlOrRd: scheme$6
   });
 
+  // Scientific colour maps, version 8.0.1, by Fabio Crameri
+  // https://www.fabiocrameri.ch/colourmaps/ (https://doi.org/10.5281/zenodo.8409685)
+  //
+  // Each ramp is 33 evenly spaced colors (as packed hex), sampled from the
+  // 256-color version, which they reproduce to within 0.008 OKLab deltaE; the
+  // odd count gives diverging ramps a color at their center. batlowS is the
+  // first 20 swatches of batlow's categorical palette.
+  //
+  // The Scientific colour maps are licensed under a MIT License
+  // Copyright (c) 2023, Fabio Crameri
+  // Permission is hereby granted, free of charge, to any person obtaining a
+  // copy of this software and associated documentation files (the "Software"),
+  // to deal in the Software without restriction, including without limitation
+  // the rights to use, copy, modify, merge, publish, distribute, sublicense,
+  // and/or sell copies of the Software, and to permit persons to whom the
+  // Software is furnished to do so, subject to the following conditions:
+  // The above copyright notice and this permission notice shall be included in
+  // all copies or substantial portions of the Software.
+  // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  // AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+  // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+  // DEALINGS IN THE SOFTWARE.
+
+  var crameriSequential = {
+    batlow: '01195908255b0d315d0f3b5f114360134b611652621b59622260612a655e356a59406f544d734d597646667a3f737e3881823290862da08a2bb08d2ebf9035ce923fdb954ce8985bf29d6cf8a27efca891fdaea3fdb4b4fdbac5fcc0d6fbc6e8faccfa',
+    batlowW: '01195908255b0d315d0f3b5f114360134a611651621a5862205f6228655f326a5c3d6f5749745155794b627d446f823e7d87388c8c339d9232ae9838be9d44cca154d7a565e0a875e8ac84efb094f5b8a6fbc3bafed1ceffdfddffebeafff5f5fffefe',
+    acton: '260d402d17493420523a2a5a413362473b6a4d4472534c79595481615b876a608b74628d7d638e87648e91648f9c658fa76690b36791bf6a93c97097cf789fd482a7d78db0da97b9dda2c2e0accae3b6d2e5c0dae8cae1ead3e8ecdbeeeee3f4f0eafa',
+    bamako: '003b47043d45083f430c424010453e14483b194b381f4e342552312b562d325b29395f2440642048691b516f16597410627a0b6b7f057584017f87008a8900948c019f9108a99815b4a122bfa930cab240d4bb52ddc465e6cc78efd58af7dd9cffe5ad',
+    bilbao: '4c0001580b1064161a6e202478292e8232398b3b4293444a994e509c56549f5d56a16458a26a59a4705aa6765ca77c5da9825eaa885fac8e61ae9463b09c66b4a46eb8ac7bbcb389bfb897c2bda4c5c2b0c9c7bccfcdc8d7d7d5e3e3e2f1f1f1ffffff',
+    davos: '00054a031256081c610e276c1431761a3c802146892850902f5a9636639a3e6b9c46729d4e789d557e9b5d84996489966c8d937392907b978d839d8a8ba38895aa87a0b289adbc8dbcc894cbd49fdadfade6e9bceff0cbf6f6d9faf9e6fcfcf3fefefe',
+    devon: '2c1a4c2b21542a285b29306329376a283f7227477b274f8429588f2c5f9a3265a5386bb04271bc4e78c65e80cf6e87d67d8edd8c95e29a9ce7a6a3ebb0aaeeb7b1f0beb8f2c4bff3cbc6f4d1cdf6d7d4f7dedbf8e4e2faebe9fbf2f0fcf8f8feffffff',
+    lajolla: '191900201c04271e082f210d3724114127164c2b1c592f22663429753931853d3895423fa64644b64a48c54f4ad1564cd95f4ede6a4fe1744fe37e50e58751e79152e99a52eba353edad54efb755f1c159f4cd62f7d972fae588fcef9ffef7b6fffecb',
+    lapaz: '1a0c641d176b1f207122297824327e263a842842892a4a8e2c52932f5a9733629b386a9e3d71a04378a24a7fa35286a45b8ca36591a27096a07a9b9e859e9b90a1999ba496a7a895b4ac96c2b299d0baa1dec4aceaceb9f3d8c8f9e1d6fceae5fef2f3',
+    oslo: '010101050a100a121a0d18240e1e2e0f2439112a4413314f15395b1840671c4773214f7f26568c2d5e993667a54270b14f7abc5c83c3678bc77292c97c99ca859fca8fa4c998aac9a2b0caacb7cbb7bfcdc2c7d1ced1d7dadcdfe6e7e9f3f3f4ffffff',
+    tokyo: '1c0e3429123837163d441d415024465b2d4963364c683f4e6b47506e4e506f5351705951715d52716152726652736a53746f53757554767c54778355798c567b95587e9f5b81ab5f87b7668fc3709ad17da8dd8eb8e9a2c9f1b4d8f7c5e5fad2effcdd',
+    turku: '0000000e0e0d18181620201d28282330302a39382f41413549493951513e5a59426261456a6a4973724d7c7a51878355928b5a9e9360ab9a66b79f6dc2a373cca579d5a780dda887e4aa90ebae9af2b4a5f7bbb1fbc3bdfdccc8fed5d3ffdddcffe6e6'
+  };
+
+  var crameriDiverging = {
+    bam: '65024b77175d88266e97357da5428cb25099bd5ea5c76db0d17ebbd990c6e0a2d0e6b4d9ecc5e2f1d4e9f4e1eef6ebf1f6f1f1f3f3ecedf2e3e4eed4d7e7c1c7deaab4d191a0c3798cb5657aa6546999465a8c3a4c802f3e7425306819205a0d0d4c00',
+    broc: '2c1a4c2b26582a3164293e70294a7d2d588939669449749f5a82a86c8fb27e9dbc91acc5a4bacfb7c8d9cad7e3dde5ebebeeecedeee0e7e7ceddddbcd4d4a9c9c995bbbb82abab709b9b618b8b547b7b476c6c3a5d5d2d4e4e2140401632330c262600',
+    cork: '2c194c2b26592a3265283f71284b7e2d588a38669446729e567ea6668bae7798b889a6c19db4cbb1c4d6c7d4e1dbe4ebe6edecdfeae0cedfcebbd2bba8c5a794b89481ab816e9e6e5d935c4c884c3c7c3c2d702c20621e18541414450e1137090f2903',
+    roma: '7e1700862c068e3c0c964b129d5818a3651ea97223af7e2ab68c32bd9a3cc4aa4acaba5cd0c971d2d789d1e19fcbe8b3c1eac2b2e9cda1e4d48ddcd778d2d764c5d452b8d044aacc399dc63190c12b83bc2677b7226ab11e5dab184fa511409f033198',
+    vik: '001261021f69022b710237790344810450890c5e921b6d9b2f7ca6478db1609dbc79adc792bdd2acccdcc5dbe5dce5e9ece5e1eedacfe9cbb9e2bba4dcab8fd59c7bcf8e68c97f55c37243bc6331b3531fa5400e932e06832106741506660a07590008'
+  };
+
+  var crameriCategorical = {
+    batlowS: '011959faccfa828231226061f29d6d4d734d114360c09036fdb4b4dd954d356a59fcbfd6175262677b3ea18a2b0d315dfca890fbc6e82b655eb18d2f'
+  };
+
   var index = {
     categorical: [],
     sequential: [],
@@ -74092,10 +74155,29 @@ ${css.join('\n')}
     all: []
   };
   var ramps;
+  // interpolators of the ramps that are stored as stops (not from d3)
+  var stopInterpolators;
+  // scheme name -> where the scheme comes from (see getColorSchemeGroups())
+  var sources;
+  // the order of the sources in lists of schemes
+  var sourceOrder = ['ColorBrewer', 'Tableau', 'Matplotlib', 'Crameri', 'd3'];
+  // Schemes are listed by their designers, as far as they're known. 'd3' is
+  // d3-scale-chromatic's own schemes, and others that it brings in: Turbo
+  // (Google) and CubehelixDefault (D. A. Green's cubehelix).
+  var d3Sources = {
+    ColorBrewer: 'Accent,Dark2,Paired,Pastel1,Pastel2,Set1,Set2,Set3,' +
+      'Blues,Greens,Greys,Purples,Reds,Oranges,BuGn,BuPu,GnBu,OrRd,PuBuGn,PuBu,PuRd,RdPu,YlGnBu,YlGn,YlOrBr,YlOrRd,' +
+      'BrBG,PRGn,PiYG,PuOr,RdBu,RdGy,RdYlBu,RdYlGn,Spectral',
+    Tableau: 'Tableau10,Tableau20',
+    Matplotlib: 'Cividis,Viridis,Magma,Inferno,Plasma',
+    d3: 'Category10,Category20,Category20b,Category20c,CubehelixDefault,Rainbow,Warm,Cool,Sinebow,Turbo'
+  };
 
   function initSchemes() {
     if (ramps) return;
     ramps = {};
+    stopInterpolators = {};
+    sources = {};
     addSchemesFromD3('categorical', 'Category10,Accent,Dark2,Paired,Pastel1,Pastel2,Set1,Set2,Set3,Tableau10');
     addSchemesFromD3('sequential', 'Blues,Greens,Greys,Purples,Reds,Oranges,BuGn,BuPu,GnBu,OrRd,PuBuGn,PuBu,PuRd,RdPu,YlGnBu,YlGn,YlOrBr,YlOrRd');
     addSchemesFromD3('rainbow', 'Cividis,CubehelixDefault,Rainbow,Warm,Cool,Sinebow,Turbo,Viridis,Magma,Inferno,Plasma');
@@ -74109,7 +74191,27 @@ ${css.join('\n')}
       '3182bd6baed69ecae1c6dbefe6550dfd8d3cfdae6bfdd0a231a35474c476a1d99bc7e9c0756bb19e9ac8bcbddcdadaeb636363969696bdbdbdd9d9d9');
     addCategoricalScheme('Tableau20',
       '4c78a89ecae9f58518ffbf7954a24b88d27ab79a20f2cf5b43989483bcb6e45756ff9d9879706ebab0acd67195fcbfd2b279a2d6a5c99e765fd8b5a5');
+    Object.keys(d3Sources).forEach(function(source) {
+      d3Sources[source].split(',').forEach(function(name) {
+        sources[name] = source;
+      });
+    });
+    addStoppedSchemes('sequential', crameriSequential, 'Crameri');
+    addStoppedSchemes('diverging', crameriDiverging, 'Crameri');
+    Object.keys(crameriCategorical).forEach(function(name) {
+      addCategoricalScheme(name, crameriCategorical[name]);
+      sources[name] = 'Crameri';
+    });
     index.all = [].concat(index.sequential, index.rainbow, index.diverging, index.categorical);
+  }
+
+  // Ramps stored as evenly spaced colors, interpolated linearly between them
+  function addStoppedSchemes(type, schemes, source) {
+    Object.keys(schemes).forEach(function(name) {
+      index[type].push(name);
+      stopInterpolators[name] = piecewise(interpolateRgb, unpackRamp(schemes[name]));
+      sources[name] = source;
+    });
   }
 
   function standardName(name) {
@@ -74173,12 +74275,15 @@ ${css.join('\n')}
   }
 
   function printColorSchemeNames() {
+    var types = [['categorical', 'Categorical'], ['sequential', 'Sequential'],
+      ['diverging', 'Diverging'], ['rainbow', 'Multi-hue/rainbow']];
     initSchemes();
-    print('Built-in color schemes (from d3):');
-    print ('Categorical\n' + formatStringsAsGrid(index.categorical));
-    print ('\nSequential\n' + formatStringsAsGrid(index.sequential));
-    print ('\nDiverging\n' + formatStringsAsGrid(index.diverging));
-    print ('\nMulti-hue/rainbow\n' + formatStringsAsGrid(index.rainbow));
+    print('Built-in color schemes');
+    types.forEach(function(type) {
+      getColorSchemeGroups(type[0]).forEach(function(group) {
+        print('\n' + type[1] + ' (' + group.source + ')\n' + formatStringsAsGrid(group.names));
+      });
+    });
   }
 
   // type: categorical, sequential, rainbow or diverging
@@ -74186,6 +74291,19 @@ ${css.join('\n')}
     initSchemes();
     if (!index[type]) error('Unknown color scheme type:', type);
     return index[type].concat();
+  }
+
+  // The schemes of one or more types, by source: [{source, names}]
+  // (sources: ColorBrewer, Tableau, Matplotlib, Crameri, d3)
+  function getColorSchemeGroups(types) {
+    var names = [].concat(types).reduce(function(memo, type) {
+      return memo.concat(getColorSchemeNames(type));
+    }, []);
+    return sourceOrder.map(function(source) {
+      return {source: source, names: names.filter(function(name) { return sources[name] == source; })};
+    }).filter(function(group) {
+      return group.names.length > 0;
+    });
   }
 
   function pickRandomColorScheme(type) {
@@ -74267,7 +74385,7 @@ ${css.join('\n')}
     initSchemes();
     name = standardName(name);
     var ramps = d3Scales['scheme' + name];
-    var interpolate = d3Scales['interpolate' + name];
+    var interpolate = d3Scales['interpolate' + name] || stopInterpolators[name];
     var ramp;
     if (!ramps && !interpolate) {
       stop$1('Unknown color scheme name:', name);
@@ -74286,6 +74404,26 @@ ${css.join('\n')}
     return ramp;
   }
 
+  // n colors from part of a ramp, evenly spaced from start to end (0-1).
+  // base: interpolate between the colors of the scheme's set of this size, if
+  // it has one (ColorBrewer's hand-picked sets), so that a section of a set
+  // keeps its colors; otherwise the scheme's own interpolator is used
+  function getColorRampSection(name, n, start, end, base) {
+    initSchemes();
+    name = standardName(name);
+    var sets = d3Scales['scheme' + name];
+    var interpolate = d3Scales['interpolate' + name] || stopInterpolators[name];
+    var colors = [];
+    if (!interpolate || index.categorical.includes(name)) {
+      stop$1('Not a sequential or diverging color scheme:', name);
+    }
+    if (sets && sets[base]) interpolate = piecewise(interpolateRgb, sets[base]);
+    for (var i=0; i<n; i++) {
+      colors.push(interpolate(n > 1 ? start + (end - start) * i / (n - 1) : (start + end) / 2));
+    }
+    return colors;
+  }
+
   function getInterpolatedRamp(interpolate, n) {
     if (n > 0 === false || !utils.isInteger(n)) {
       error('Expected a positive integer');
@@ -74302,6 +74440,8 @@ ${css.join('\n')}
     getCategoricalColorScheme: getCategoricalColorScheme,
     getCategoricalColors: getCategoricalColors,
     getColorRamp: getColorRamp,
+    getColorRampSection: getColorRampSection,
+    getColorSchemeGroups: getColorSchemeGroups,
     getColorSchemeNames: getColorSchemeNames,
     getRandomizedCategoricalColorScheme: getRandomizedCategoricalColorScheme,
     isCategoricalColorScheme: isCategoricalColorScheme,
@@ -87771,7 +87911,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.74";
+  var version = "0.7.75";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

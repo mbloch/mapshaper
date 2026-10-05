@@ -5177,7 +5177,7 @@
     var recipe = getRasterViewRecipe(grid, view && view.recipe);
     var stats = getRasterViewScalingStats(raster, recipe);
     var sourceRange = recipe.scaling == 'none' ? getPixelTypeRange(grid.pixelType) : null;
-    var displayRange = getDisplayRange(recipe.scaleRange);
+    var displayRange = getDisplayRange$1(recipe.scaleRange);
     var offset = pixelId * grid.bands;
     var color = [0, 1, 2].map(function(band) {
       return scaleSample(grid.samples[offset + band], stats && stats[band], sourceRange, displayRange);
@@ -5204,7 +5204,7 @@
     var pixels = new Uint8ClampedArray(width * height * 4);
     var stats = statsArg || getScalingStats(samples, bands, noData, recipe);
     var sourceRange = recipe.scaling == 'none' ? getPixelTypeRange(grid.pixelType) : null;
-    var displayRange = getDisplayRange(recipe.scaleRange);
+    var displayRange = getDisplayRange$1(recipe.scaleRange);
     var src, dest, val, isNoData, j, sample;
     for (var y = 0; y < height; y++) {
       for (var x = 0; x < width; x++) {
@@ -5642,7 +5642,7 @@
     return range;
   }
 
-  function getDisplayRange(scaleRange) {
+  function getDisplayRange$1(scaleRange) {
     return [
       scaleRange[0] / 100 * 255,
       scaleRange[1] / 100 * 255
@@ -21063,6 +21063,10 @@
   //                                             diverging schemes, of classes:
   //                                             the total, or per side)
   //   preset: name or null, reversed: boolean,  (presets)
+  //   range: {start, end, base} or null         (presets: the part of the ramp
+  //                                             the tiles are taken from, 0-1
+  //                                             in the preset's own direction;
+  //                                             see getSchemeRange())
   //   pins: [{t, color}] or null,               (custom sequential ramps)
   //   vibrance, longHue                         (custom sequential ramps, see
   //                                             getOklchInterpolator())
@@ -21126,7 +21130,7 @@
   var minSchemeColors = 2;
   var maxSchemeColors = 12;
   var maxCategoricalColors = 20;
-  var defaultCategoricalPreset = 'Tableau10';
+  var defaultCategoricalPreset = 'batlowS';
   var defaultNonAdjacentColors = 5;
   var defaultDivergingPreset = 'RdBu';
   var defaultDivergingClasses = 7;
@@ -21138,7 +21142,8 @@
   // (-classify's vibrance= is the same, scaled to 0-1)
   var defaultVibrance = 0;
   var maxVibrance = internal.MAX_VIBRANCE_CHROMA;
-  var defaultEnds = ['#344a72', '#f0d26b'];
+  // the default sequential ramp: cream to blue, through green and teal
+  var defaultEnds = ['#fff8da', '#2d4d8e'];
   // Cyclic ramps start and end on the same hue, which reads as a category
   // rather than an order.
   var excludedPresets = ['Rainbow', 'Sinebow'];
@@ -21149,19 +21154,33 @@
   var layerSchemes = new WeakMap();
 
   function getSequentialPresetNames() {
-    return internal.getColorSchemeNames('sequential')
-      .concat(internal.getColorSchemeNames('rainbow'))
-      .filter(function(name) {
-        return !excludedPresets.includes(name);
-      });
+    return flattenGroups(getPresetGroups('sequential'));
   }
 
   function getDivergingPresetNames() {
-    return internal.getColorSchemeNames('diverging');
+    return flattenGroups(getPresetGroups('diverging'));
   }
 
   function getCategoricalPresetNames() {
-    return internal.getColorSchemeNames('categorical');
+    return flattenGroups(getPresetGroups('categorical'));
+  }
+
+  // The presets of a scheme type, by source, for the palette menu:
+  // [{source, names}]. Sequential presets include -classify's multi-hue
+  // ('rainbow') schemes.
+  function getPresetGroups(type) {
+    var types = type == 'sequential' ? ['sequential', 'rainbow'] : [type];
+    return internal.getColorSchemeGroups(types).map(function(group) {
+      return {source: group.source, names: group.names.filter(function(name) {
+        return !excludedPresets.includes(name);
+      })};
+    }).filter(function(group) {
+      return group.names.length > 0;
+    });
+  }
+
+  function flattenGroups(groups) {
+    return groups.reduce(function(memo, group) { return memo.concat(group.names); }, []);
   }
 
   // The scheme a panel tab starts with on a layer
@@ -21594,7 +21613,8 @@
       });
     }
     if (scheme.preset) {
-      colors = getPresetColors(scheme.preset, getRampSize(scheme));
+      colors = scheme.range ? getPresetSection(scheme, getRampSize(scheme), scheme.range) :
+        getPresetColors(scheme.preset, getRampSize(scheme));
       if (scheme.reversed) colors.reverse();
       return colors.map(function(color) {
         return {color: color, pinned: false, adjusted: false};
@@ -21626,6 +21646,88 @@
 
   function getPresetColors(name, n) {
     return internal.getColorRamp(name, n).map(toHex);
+  }
+
+  // The part of a sequential or diverging preset that its tiles are taken
+  // from: {start, end, base}, 0-1 in the preset's own direction (before
+  // reversing). A diverging range is the same on both sides of the center.
+  // base is the number of tiles when the range was first narrowed: a preset
+  // with a hand-picked set of that size (ColorBrewer's) is interpolated
+  // between the set's colors, so that removing an end tile leaves the others
+  // as they were.
+  var minRangeSpan = 0.1;
+
+  function getSchemeRange(scheme) {
+    return scheme.range || {start: 0, end: 1, base: getRampSize(scheme)};
+  }
+
+  function hasSchemeRange(scheme) {
+    return !!scheme.preset && scheme.type != 'categorical';
+  }
+
+  // The range as positions along the tiles, left to right: [left, right]
+  function getDisplayRange(scheme) {
+    var range = getSchemeRange(scheme);
+    return scheme.reversed ? [1 - range.end, 1 - range.start] : [range.start, range.end];
+  }
+
+  // Moves one end of the range, given as a position along the tiles (0-1,
+  // left to right); a diverging range moves at both ends.
+  // side: 'left' or 'right'
+  function setSchemeRangeEnd(scheme, side, pos) {
+    var display = getDisplayRange(scheme);
+    var left = display[0], right = display[1];
+    pos = clamp$4(+pos || 0, 0, 1);
+    if (scheme.type == 'diverging') {
+      left = side == 'left' ? pos : 1 - pos;
+      left = clamp$4(left, 0, (1 - minRangeSpan) / 2);
+      right = 1 - left;
+    } else if (side == 'left') {
+      left = Math.min(pos, right - minRangeSpan);
+    } else {
+      right = Math.max(pos, left + minRangeSpan);
+    }
+    return setDisplayRange(scheme, left, right);
+  }
+
+  function resetSchemeRange(scheme) {
+    return Object.assign({}, scheme, {range: null});
+  }
+
+  // Takes the tile at one end of a sequential preset away, keeping the colors
+  // of the others: the range ends where the next tile was.
+  // side: 'left' or 'right'
+  function removeEndTile(scheme, side) {
+    var display, step;
+    if (!canRemoveEndTile(scheme)) return scheme;
+    display = getDisplayRange(scheme);
+    step = (display[1] - display[0]) / (scheme.n - 1);
+    if (side == 'left') display[0] += step;
+    else display[1] -= step;
+    return Object.assign(setDisplayRange(scheme, display[0], display[1]), {n: scheme.n - 1});
+  }
+
+  function canRemoveEndTile(scheme) {
+    return hasSchemeRange(scheme) && scheme.type == 'sequential' &&
+      scheme.n > getMinSchemeColors(scheme);
+  }
+
+  function setDisplayRange(scheme, left, right) {
+    var base = getSchemeRange(scheme).base;
+    var start = scheme.reversed ? 1 - right : left;
+    var end = scheme.reversed ? 1 - left : right;
+    if (start <= 0 && end >= 1) return resetSchemeRange(scheme);
+    return Object.assign({}, scheme, {range: {start: Math.max(start, 0), end: Math.min(end, 1), base: base}});
+  }
+
+  // The whole of a preset, left to right, as the range's strip shows it
+  function getRangeStripColors(scheme, n) {
+    var colors = getPresetSection(scheme, n, {start: 0, end: 1, base: getSchemeRange(scheme).base});
+    return scheme.reversed ? colors.reverse() : colors;
+  }
+
+  function getPresetSection(scheme, n, range) {
+    return internal.getColorRampSection(scheme.preset, n, range.start, range.end, range.base).map(toHex);
   }
 
   // All the swatches of a categorical scheme, in order: the first n are used
@@ -21671,7 +21773,7 @@
       next.n = clampColorCount(next, next.n, count);
       return next;
     }
-    return Object.assign({}, scheme, {preset: name, reversed: false, pins: null});
+    return Object.assign({}, scheme, {preset: name, reversed: false, pins: null, range: null});
   }
 
   // A preset as a custom ramp, pinned at its ends, for editing.
@@ -21685,6 +21787,7 @@
     return Object.assign({}, scheme, {
       preset: null,
       reversed: false,
+      range: null,
       pins: scheme.type == 'diverging' ?
         [{t: 0, color: colors[0]}, {t: 0.5, color: colors[(colors.length - 1) / 2]},
           {t: 1, color: colors[colors.length - 1]}] :
@@ -21969,6 +22072,7 @@
     var paletteBtn, paletteMenu, countField, tileRow, gradientEl, tilesEl, picker, fieldRow, fieldSelect, methodSelect,
         noFieldsNote, selectionNote, controlsEl, vibranceRow, vibranceInput,
         longHueBtn, continuousBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount, countLabel,
+        rangeEl, rangeStrip, rangeShades, rangeHandles,
         divergingEl, pivotSelect, pivotInput, pivotNote, neutralToggle, splitSelect;
     // set while a tile is being dragged, so that letting go isn't a click
     var tileDrag = null;
@@ -22126,6 +22230,7 @@
         changeScheme(setSchemeVibrance(scheme, val / 1000));
       });
       vibranceInput = vibranceRow.findChild('input');
+      initRangeControl(vibranceRow);
       longHueBtn = addIconButton(vibranceRow, 'Go the long way around the color wheel', longHueIcon, function() {
         changeScheme(setSchemeLongHue(scheme, !scheme.longHue));
       }).addClass('long-hue-btn');
@@ -22326,6 +22431,7 @@
       var input = El('input').attr('type', 'range').attr('min', min).attr('max', max).attr('step', step)
         .attr('aria-label', label).appendTo(row)
         .on('input', function() {
+          showSliderFill(input);
           onInput(+input.node().value);
         })
         .on('change', releaseFocus);
@@ -22340,12 +22446,109 @@
       return btn;
     }
 
+    // The part of a preset that the tiles are taken from: a strip of the whole
+    // ramp, shaded outside the part in use, with a handle at each end of it
+    function initRangeControl(row) {
+      var label = El('span').addClass('color-scheme-hint-label color-scheme-range-part')
+        .attr('data-tooltip', 'Use part of the color ramp\n(double-click the strip to use all of it)')
+        .appendTo(row).text('Range')
+        .on('mouseenter', function() { keepTooltipInWindow(label.node()); });
+      rangeEl = El('div').addClass('color-scheme-range color-scheme-range-part').appendTo(row)
+        .on('pointerdown', startRangeDrag)
+        .on('dblclick', function() {
+          changeScheme(resetSchemeRange(scheme));
+        });
+      rangeStrip = El('div').addClass('color-scheme-range-strip').appendTo(rangeEl);
+      rangeShades = ['left', 'right'].map(function(side) {
+        return El('div').addClass('color-scheme-range-shade ' + side).appendTo(rangeEl);
+      });
+      rangeHandles = ['left', 'right'].map(function(side) {
+        return El('div').addClass('color-scheme-range-handle').attr('role', 'slider').attr('tabindex', '0')
+          .attr('aria-label', side == 'left' ? 'Start of range' : 'End of range')
+          .attr('aria-valuemin', '0').attr('aria-valuemax', '100')
+          .appendTo(rangeEl)
+          .on('keydown', function(e) {
+            onRangeKey(e, side);
+          });
+      });
+    }
+
+    function renderRange() {
+      var display, colors;
+      if (!hasSchemeRange(scheme)) return;
+      display = getDisplayRange(scheme);
+      colors = getRangeStripColors(scheme, 33);
+      rangeStrip.css('background-image', 'linear-gradient(to right, ' + colors.join(', ') + ')');
+      rangeShades[0].css('width', pct(display[0]));
+      rangeShades[1].css('width', pct(1 - display[1]));
+      rangeHandles.forEach(function(handle, i) {
+        handle.css('left', pct(display[i])).attr('aria-valuenow', String(Math.round(display[i] * 100)));
+      });
+    }
+
+    function pct(val) {
+      return round(val * 100) + '%';
+    }
+
+    // Dragging a handle (or pressing the strip, which takes the nearer handle
+    // there) moves that end of the range
+    function startRangeDrag(e) {
+      var box = rangeStrip.node().getBoundingClientRect();
+      var display = getDisplayRange(scheme);
+      var pos = getPos(e);
+      var side = e.target == rangeHandles[0].node() ? 'left' :
+        e.target == rangeHandles[1].node() ? 'right' :
+        Math.abs(pos - display[0]) <= Math.abs(pos - display[1]) ? 'left' : 'right';
+      if (e.button !== 0 || !(box.width > 0)) return;
+      e.preventDefault();
+      picker.hide();
+      move(e);
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', finish);
+      document.addEventListener('pointercancel', finish);
+
+      // in steps of half a percent, so that a drag runs fewer commands
+      function getPos(e) {
+        return Math.round((e.clientX - box.left) / box.width * 200) / 200;
+      }
+
+      function move(e) {
+        var next = setSchemeRangeEnd(scheme, side, getPos(e));
+        if (getDisplayRange(next).join() != getDisplayRange(scheme).join()) changeScheme(next);
+      }
+
+      function finish() {
+        document.removeEventListener('pointermove', move);
+        document.removeEventListener('pointerup', finish);
+        document.removeEventListener('pointercancel', finish);
+      }
+    }
+
+    function onRangeKey(e, side) {
+      var step = e.shiftKey ? 0.05 : 0.01;
+      var display = getDisplayRange(scheme);
+      var pos = side == 'left' ? display[0] : display[1];
+      if (e.key == 'ArrowLeft' || e.key == 'ArrowDown') {
+        pos -= step;
+      } else if (e.key == 'ArrowRight' || e.key == 'ArrowUp') {
+        pos += step;
+      } else {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      changeScheme(setSchemeRangeEnd(scheme, side, pos));
+    }
+
     // Presets and categorical schemes have no interpolated tiles for vibrance
-    // or the hue path to change; the row keeps only the reverse button for them.
+    // or the hue path to change; the row keeps only the reverse button for them,
+    // and for sequential and diverging presets, the range.
     function renderVibrance() {
       var vibrance = getSchemeVibrance(scheme);
       setSliderValue(vibranceInput, Math.round(vibrance * 1000));
       vibranceRow.classed('preset', !!scheme.preset || scheme.type == 'categorical');
+      vibranceRow.classed('ranged', hasSchemeRange(scheme));
+      renderRange();
       reverseBtn.classed('hidden', scheme.type == 'categorical');
       shuffleBtn.classed('hidden', scheme.type != 'categorical');
       // each half of a diverging ramp runs from a low-chroma center, where the
@@ -22360,6 +22563,16 @@
 
     function setSliderValue(input, val) {
       if (input.node().value != val) input.node().value = val;
+      showSliderFill(input);
+    }
+
+    // the track is filled up to the center of the handle, which travels the
+    // track's width less its 12px box (see page.css)
+    function showSliderFill(input) {
+      var el = input.node();
+      var min = +el.min, max = +el.max;
+      var fill = max > min ? (el.value - min) / (max - min) : 0;
+      el.style.setProperty('--fill', 'calc(6px + (100% - 12px) * ' + round(fill * 1000) / 1000 + ')');
     }
 
     function renderFieldOptions(fields) {
@@ -22389,6 +22602,8 @@
       var classLabels = categorical ? null : continuous ? getStopLabels() : getClassLabels(tileUse);
       var groups = categorical && scheme.method == 'categorical' ?
         getSwatchCategories(getCategories(targetLayer, scheme.field), used) : null;
+      // the end tiles of a sequential preset can be taken away
+      var removable = canRemoveEndTile(scheme);
       var n, perRow;
       // a categorical scheme shows its whole palette, and marks the swatches
       // in use
@@ -22422,6 +22637,14 @@
           tileEl.on('pointerdown', function(e) {
             startTileDrag(e, i);
           });
+        }
+        if (removable && (i === 0 || i == n - 1)) {
+          El('button').addClass('color-scheme-tile-remove').attr('type', 'button')
+            .attr('aria-label', 'Remove this color').text('×').appendTo(tileEl)
+            .on('click', function(e) {
+              e.stopPropagation();
+              changeScheme(removeEndTile(scheme, i === 0 ? 'left' : 'right'));
+            });
         }
         if (groups && inUse || classLabels && classLabels[i]) {
           tileEl.attr('data-tooltip', groups ? formatCategories(groups[i]) : classLabels[i])
@@ -22674,16 +22897,17 @@
 
     function renderPaletteMenu() {
       var categorical = scheme.type == 'categorical';
-      var names = categorical ? getCategoricalPresetNames() :
-        scheme.type == 'diverging' ? getDivergingPresetNames() : getSequentialPresetNames();
       paletteMenu.empty();
       addPaletteItem('Custom', getSchemeColors(makeSchemeCustom(scheme)), !scheme.preset, function() {
         changeScheme(makeSchemeCustom(scheme));
       });
-      names.forEach(function(name) {
-        var colors = categorical ? getCategoricalPresetColors(name) : getPresetColors(name, 7);
-        addPaletteItem(name, colors, scheme.preset == name, function() {
-          changeScheme(choosePreset(scheme, name, getCategoryCount()));
+      getPresetGroups(scheme.type).forEach(function(group) {
+        El('div').addClass('color-scheme-palette-heading').appendTo(paletteMenu).text(group.source);
+        group.names.forEach(function(name) {
+          var colors = categorical ? getCategoricalPresetColors(name) : getPresetColors(name, 7);
+          addPaletteItem(name, colors, scheme.preset == name, function() {
+            changeScheme(choosePreset(scheme, name, getCategoryCount()));
+          });
         });
       });
     }
@@ -26293,9 +26517,20 @@
       _self.dispatchEvent('leave');
     }
 
+    // mouseover and mouseout can arrive after a quick move has already pressed
+    // and released the button somewhere else -- a click on a panel over the map
+    // then looked like a click on the map. A press or release is over the area
+    // if it lands on the area itself.
+    function updateHover(e) {
+      var over = !!e.target && element.contains(e.target);
+      if (over && !_isOver) onAreaEnter();
+      else if (!over && _isOver) onAreaOut();
+    }
+
     function onMouseUp(e) {
-      var evt = procMouseEvent(e),
-          elapsed, dx, dy;
+      var evt, elapsed, dx, dy;
+      updateHover(e);
+      evt = procMouseEvent(e);
       _self.dispatchEvent('mouseup', evt);
       if (_dragging) {
         stopDragging(evt);
@@ -26317,6 +26552,7 @@
     }
 
     function onMouseDown(e) {
+     updateHover(e);
      if (e.button != 2 && e.which != 3) { // ignore right-click
         _downEvt = procMouseEvent(e);
       }

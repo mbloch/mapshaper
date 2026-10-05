@@ -2191,7 +2191,9 @@ mapshaper counties.csv \
 ```
 
 ### -colors
-Print list of built-in color schemes. Color schemes can be used with the `color-scheme=` option of the [-classify](#-classify) command. (These color schemes come from the [d3-scale-chromatic](https://github.com/d3/d3-scale-chromatic) library.)
+Print list of built-in color schemes, grouped by source. Color schemes can be used with the `color-scheme=` option of the [-classify](#-classify) command. Scheme names are not case-sensitive.
+
+<!-- The sources are [ColorBrewer](https://colorbrewer2.org) (Cynthia Brewer), [Tableau](https://www.tableau.com), [Matplotlib](https://matplotlib.org) (Viridis and its relatives), Fabio Crameri's [Scientific colour maps](https://www.fabiocrameri.ch/colourmaps/) (version 8.0.1, [doi:10.5281/zenodo.8409685](https://doi.org/10.5281/zenodo.8409685), MIT license) and [d3-scale-chromatic](https://github.com/d3/d3-scale-chromatic), which also supplies the ColorBrewer, Tableau and Matplotlib schemes. -->
 
 ### -comment
 The following text up to the next command is treated as a comment. Useful for adding explanatory comments to a long sequence of commands.
