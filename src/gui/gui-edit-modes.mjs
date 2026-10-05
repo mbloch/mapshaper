@@ -2,10 +2,12 @@ import { initPointEditing } from './gui-edit-points';
 import { initLineEditing } from './gui-draw-lines2';
 import { initSnipTool } from './gui-snip-tool';
 import { initLabelTool } from './gui-label-tool2';
+import { initLabelHitCues } from './gui-label-hit-cues';
 
 export function initInteractiveEditing(gui, ext, hit) {
   initPointEditing(gui, ext, hit);
   initLineEditing(gui, ext, hit);
   initSnipTool(gui, ext, hit);
   initLabelTool(gui, ext, hit);
+  initLabelHitCues(gui, ext, hit);
 }

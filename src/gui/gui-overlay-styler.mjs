@@ -1,5 +1,6 @@
 import { filterLayerByIds } from './gui-layer-utils';
-import { utils } from './gui-core';
+import { utils, internal } from './gui-core';
+import { labelCuesApply } from './gui-label-hit-cues';
 import {
   getLabelPathGuideLayers,
   getPendingLabelPath
@@ -151,6 +152,9 @@ export function getOverlayLayers(activeLyr, hitData, styleOpts) {
     }
     return layers;
   }
+  if (labelCuesApply(styleOpts.interactionMode, activeLyr)) {
+    hitData = withoutLabelledFeatures(displayLyr, hitData);
+  }
   // layer containing selected features, not including hover or pinned feature
   ids = utils.difference(hitData.ids || [], [hitData.id]);
   if (ids.length > 0) {
@@ -168,6 +172,19 @@ export function getOverlayLayers(activeLyr, hitData, styleOpts) {
     layers.push(lyr);
   }
   return layers;
+}
+
+// Labels are cued with boxes around their text (gui-label-hit-cues.mjs). A
+// feature with no text has nothing to box, so it keeps the canvas marker.
+export function withoutLabelledFeatures(lyr, hitData) {
+  var records = lyr.data ? lyr.data.getRecords() : [];
+  var unlabelled = function(id) {
+    return !internal.svg.featureHasLabel(records[id]);
+  };
+  return Object.assign({}, hitData, {
+    ids: (hitData.ids || []).filter(unlabelled),
+    id: hitData.id > -1 && unlabelled(hitData.id) ? hitData.id : -1
+  });
 }
 
 function getOverlayLayer(activeLyr, ids) {

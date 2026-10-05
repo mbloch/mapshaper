@@ -57,7 +57,11 @@ var MAX_OUTLINES = 200;
 //   getAnchoredLabelHandles(), or null. The tool decides when a label has
 //   handles, and gives a text block's column from what is on screen, which
 //   during a drag is not the data.
-export function LabelSelection(gui, ext, hit, getEditingId, getHandles) {
+// getState: (optional) function returning {selected, hoverId}, for a mode whose
+//   idea of what is selected is not the hit control's selection list -- e.g.
+//   the pinned feature in inspect mode. Defaults to the selection list plus
+//   the hit id.
+export function LabelSelection(gui, ext, hit, getEditingId, getHandles, getState) {
   var self = {};
   var groups = []; // one <g> per drawn cue, in the layer's markup
   var marked = []; // text nodes wearing the halo, when there are too many to outline
@@ -90,10 +94,11 @@ export function LabelSelection(gui, ext, hit, getEditingId, getHandles) {
   // markup and takes the old cues with it.
   self.refresh = function(force) {
     var target = hit.getHitTarget();
-    var selected = on ? hit.getSelectionIds() : [];
+    var state = on ? (getState || getSelectionState)() : {selected: [], hoverId: -1};
+    var selected = state.selected;
     var tooMany = selected.length > MAX_OUTLINES;
     var ids = tooMany ? [] : selected;
-    var hoverId = on ? getHoverId(selected) : -1;
+    var hoverId = state.hoverId;
     var key = selected.join(',') + '/' + hoverId + '/' + tetherId;
     // Hover fires on every pointer move, and most of them change nothing here.
     if (!force && drawn === key) return;
@@ -106,13 +111,19 @@ export function LabelSelection(gui, ext, hit, getEditingId, getHandles) {
     ids.forEach(function(id) {
       // Knot handles go on selected curves only. A hovered label is being
       // pointed at, not held, and dotting a curve the pointer merely crossed
-      // would offer handles that cannot be grabbed.
-      draw(target, id, 'label-cue-selected', true);
+      // would offer handles that cannot be grabbed -- as would any handle in a
+      // mode that does not edit labels, which is one that passes no getHandles.
+      draw(target, id, 'label-cue-selected', !!getHandles);
     });
     // Too many to outline: a halo on the glyphs instead, which is the whole cue
     // for those labels.
     if (tooMany) markAll(target, selected);
   };
+
+  function getSelectionState() {
+    var selected = hit.getSelectionIds();
+    return {selected: selected, hoverId: getHoverId(selected)};
+  }
 
   // The label under the pointer, when showing it would say something: not one
   // already cued as selected, and not the one being typed into.
