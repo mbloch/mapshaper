@@ -44646,7 +44646,7 @@ ${css.join('\n')}
         type: 'flag'
       })
       .option('continuous', {
-        describe: 'interpolate between values at the class breaks (unclassed colors)',
+        describe: 'interpolate between values at the class breaks (unclassed colors; quantile goes by rank)',
         type: 'flag'
       })
       .option('interpolation', {
@@ -70920,6 +70920,47 @@ ${css.join('\n')}
     return breaks;
   }
 
+  // Continuous quantile output places each value by its rank: 0 for the
+  // lowest value, 1 for the highest. Tied values share their average rank, and
+  // a value between two data values is interpolated between their ranks.
+  // Returns a function, val -> 0-1 (clamped to the data).
+  function getRankPositionFunction(ascending) {
+    var n = ascending.length;
+    return function(val) {
+      var a, b;
+      if (n < 2) return 0.5;
+      if (val < ascending[0]) return 0;
+      if (val > ascending[n - 1]) return 1;
+      a = countBelow(val, false); // the first index of a value >= val
+      b = countBelow(val, true);  // the first index of a value > val
+      if (b > a) return (a + b - 1) / 2 / (n - 1);
+      return (a - 1 + (val - ascending[a - 1]) / (ascending[a] - ascending[a - 1])) / (n - 1);
+    };
+
+    function countBelow(val, orEqual) {
+      var lo = 0, hi = n, mid;
+      while (lo < hi) {
+        mid = (lo + hi) >> 1;
+        if (ascending[mid] < val || orEqual && ascending[mid] == val) lo = mid + 1; else hi = mid;
+      }
+      return lo;
+    }
+  }
+
+  // The values at evenly spaced ranks, for the inner color stops of
+  // continuous quantile output (see getRankPositionFunction())
+  function getRankBreaks(ascending, numBreaks) {
+    var n = ascending.length;
+    var breaks = [];
+    var r, i, j;
+    for (i = 1; i <= numBreaks; i++) {
+      r = i / (numBreaks + 1) * (n - 1);
+      j = Math.floor(r);
+      breaks.push(j + 1 < n ? ascending[j] + (ascending[j + 1] - ascending[j]) * (r - j) : ascending[j]);
+    }
+    return breaks;
+  }
+
   // inner breaks have equal-interval spacing
   // first and last bucket are sized like quantiles (they are sized to contain
   // a proportional share of the data)
@@ -72262,8 +72303,14 @@ ${css.join('\n')}
   function getInterpolatedValueGetter(values, nullValue, opts) {
     var interpolators = [];
     var tmax = values.length - 1;
+    var cache = opts && opts.interpolation == 'oklch';
+    var interpolate;
     for (var i=1; i<values.length; i++) {
-      interpolators.push(getPairInterpolator(values[i-1], values[i], opts));
+      interpolate = getPairInterpolator(values[i-1], values[i], opts);
+      if (cache && parseColor(values[i-1]) && parseColor(values[i])) {
+        interpolate = getCachedInterpolator(interpolate);
+      }
+      interpolators.push(interpolate);
     }
     return function(t) {
       if (t == -1) return nullValue;
@@ -72273,6 +72320,23 @@ ${css.join('\n')}
       var i = t == tmax ? tmax - 1 : Math.floor(t);
       var j = t == tmax ? 1 : t % 1;
       return interpolators[i](j);
+    };
+  }
+
+  // OKLCH colors cost microseconds each (fitting them to the sRGB gamut takes
+  // many gamut tests), too slow to compute per feature in a large layer. t is
+  // rounded to one of CACHE_SIZE positions, each computed when first needed;
+  // neighboring positions differ by less than 8-bit rounding.
+  var CACHE_SIZE = 1024;
+
+  function getCachedInterpolator(interpolate) {
+    var cache = [];
+    return function(t) {
+      var i = Math.round(t * (CACHE_SIZE - 1));
+      if (cache[i] === undefined) {
+        cache[i] = interpolate(i / (CACHE_SIZE - 1));
+      }
+      return cache[i];
     };
   }
 
@@ -72655,13 +72719,15 @@ ${css.join('\n')}
       // user-defined breaks
       breaks = opts.breaks;
     } else {
-      breaks = getSequentialBreaks(ascending, method, numBreaks);
+      breaks = getSequentialBreaks(ascending, method, numBreaks, opts.continuous);
       if (method == 'nice') message('Nice breaks:', breaks);
     }
 
     printDistributionInfo(ascending, breaks, nullCount);
 
-    if (opts.continuous) {
+    if (opts.continuous && method == 'quantile' && !opts.breaks) {
+      dataToClass = getRankClassifier(ascending, numBuckets);
+    } else if (opts.continuous) {
       dataToClass = getContinuousClassifier(breaks, minVal, maxVal);
     } else {
       dataToClass = getDiscreteClassifier(breaks, round);
@@ -72691,8 +72757,11 @@ ${css.join('\n')}
   // The inner breaks of a sequential method's classes (also used by the GUI,
   // to show each class's range)
   // ascending: the data values, in ascending order
-  function getSequentialBreaks(ascending, method, numBreaks) {
+  // continuous: the breaks are inner color stops of continuous output, which
+  //   for quantile are at evenly spaced ranks (see getRankClassifier())
+  function getSequentialBreaks(ascending, method, numBreaks, continuous) {
     if (numBreaks === 0) return [];
+    if (method == 'quantile' && continuous) return getRankBreaks(ascending, numBreaks);
     if (method == 'equal-interval') return getEqualIntervalBreaks(ascending, numBreaks);
     if (method == 'quantile') return getQuantileBreaks(ascending, numBreaks);
     if (method == 'hybrid') return getHybridBreaks(ascending, numBreaks);
@@ -72780,6 +72849,18 @@ ${css.join('\n')}
         i = breaks.length - i;
       }
       return i;
+    };
+  }
+
+  // Continuous quantile output: a value's position on the ramp is its rank
+  // among the data, so each part of the ramp has as many features, however
+  // many color stops there are. Returns a class index from 0 to numBuckets.
+  function getRankClassifier(ascending, numBuckets) {
+    var getPosition = getRankPositionFunction(ascending);
+    var minVal = ascending[0], maxVal = ascending[ascending.length - 1];
+    return function(val) {
+      if (!utils.isValidNumber(val) || val < minVal || val > maxVal) return -1;
+      return getPosition(val) * numBuckets;
     };
   }
 
@@ -72907,7 +72988,8 @@ ${css.join('\n')}
       if (intervalMethods.includes(method)) {
         layout = getIntervalLayout(ascending, pivot, hasNeutral, range, counts, method == 'nice');
       } else if (quantileMethods.includes(method)) {
-        layout = getQuantileLayout(ascending, pivot, hasNeutral, range, counts, method);
+        layout = getQuantileLayout(ascending, pivot, hasNeutral, range, counts, method,
+          method == 'quantile' && !!opts.continuous);
       } else {
         stop$1('The', method, 'method does not support pivot=');
       }
@@ -72958,12 +73040,14 @@ ${css.join('\n')}
   // values: the side below's values (one per stop, ascending), the center
   //   value (with a pivot class), and the side above's (see
   //   getDivergingClassValues())
-  function getContinuousDivergingClassifier(layout, values, nullValue, opts) {
+  // ascending: the data, in ascending order (needed by a ranked layout)
+  function getContinuousDivergingClassifier(layout, values, nullValue, opts, ascending) {
     var stops = getDivergingStops(layout);
     var nb = stops.below.length;
     var na = stops.above.length;
-    var low = nb > 0 ? getStopInterpolator(stops.below, values.slice(0, nb), opts) : null;
-    var high = na > 0 ? getStopInterpolator(stops.above, values.slice(values.length - na), opts) : null;
+    var ranks = layout.ranked ? getSideRanks(ascending, getSideEdges(layout)) : null;
+    var low = nb > 0 ? getStopInterpolator(stops.below, values.slice(0, nb), opts, ranks && ranks.below) : null;
+    var high = na > 0 ? getStopInterpolator(stops.above, values.slice(values.length - na), opts, ranks && ranks.above) : null;
     var center = layout.neutral ? values[nb] : null;
     var edges = getSideEdges(layout);
     return function(val) {
@@ -72974,10 +73058,12 @@ ${css.join('\n')}
     };
   }
 
-  function getStopInterpolator(stops, values, opts) {
+  // sideRanks: the side's data, for placing values by rank (see getSideRanks())
+  function getStopInterpolator(stops, values, opts, sideRanks) {
     var getValue = getInterpolatedValueGetter(values, null, opts);
+    var getRank = sideRanks ? getRankPositionFunction(sideRanks) : null;
     return function(val) {
-      return getValue(getStopPosition(stops, val));
+      return getValue(getRank ? getRank(val) * (stops.length - 1) : getStopPosition(stops, val));
     };
   }
 
@@ -73193,11 +73279,13 @@ ${css.join('\n')}
   // so the side with fewer features gets fewer classes. An automatic neutral
   // class holds as many features as a class does on average, taken from those
   // nearest the pivot, so its range is centered on the pivot.
-  function getQuantileLayout(ascending, pivot, hasNeutral, range, counts, method) {
+  // ranked: continuous quantile output, which places values by their rank on
+  // each side (see getSideRanks()); the stops are at evenly spaced ranks.
+  function getQuantileLayout(ascending, pivot, hasNeutral, range, counts, method, ranked) {
     var n = ascending.length;
     var getBreaks = method == 'hybrid' ? getHybridBreaks : getQuantileBreaks;
     var lo = pivot, hi = pivot;
-    var classCount, inNeutral, dists, d, belowVals, aboveVals, sideClasses, below, above;
+    var classCount, inNeutral, dists, d, belowVals, aboveVals, sideClasses, below, above, sides;
     if (hasNeutral && range) {
       lo = range[0];
       hi = range[1];
@@ -73221,9 +73309,26 @@ ${css.join('\n')}
       below = sideHasData(belowVals.length > 0, counts.below);
       above = sideHasData(aboveVals.length > 0, counts.above);
     }
+    if (ranked) {
+      sides = getSideRanks(ascending, [lo, hi]);
+      return Object.assign(makeLayout(pivot, hasNeutral, lo, hi, below, above,
+        below > 1 ? getRankBreaks(sides.below, below - 1) : [],
+        above > 1 ? getRankBreaks(sides.above, above - 1) : []), {ranked: true});
+    }
     return makeLayout(pivot, hasNeutral, lo, hi, below, above,
       below > 1 ? getBreaks(belowVals, below - 1) : [],
       above > 1 ? getBreaks(aboveVals, above - 1) : []);
+  }
+
+  // The values that each side of a ranked layout ranks: the side's data, with
+  // its inner edge (the pivot, or the edge of the pivot class) as the side's
+  // innermost value, so that ranks run from the edge out to the side's
+  // outermost value. Data at the edge itself rank as the edge.
+  function getSideRanks(ascending, edges) {
+    return {
+      below: ascending.filter(function(val) { return val < edges[0]; }).concat([edges[0]]),
+      above: [edges[1]].concat(ascending.filter(function(val) { return val > edges[1]; }))
+    };
   }
 
   // The number of n classes that go below the pivot, in proportion to the
@@ -74147,6 +74252,47 @@ ${css.join('\n')}
     batlowS: '011959faccfa828231226061f29d6d4d734d114360c09036fdb4b4dd954d356a59fcbfd6175262677b3ea18a2b0d315dfca890fbc6e82b655eb18d2f'
   };
 
+  // The New York Times's map palettes: hand-picked sets of colors, each of a
+  // set size (the number in a name like nyt-blue3). Other numbers of colors are
+  // interpolated between a set's colors. The GUI offers them only to NYT users
+  // (see gui-nyt.mjs), and -colors doesn't list them, but -classify takes their
+  // names, so that a command that uses one runs anywhere.
+  // Colors are packed as six hex digits each.
+  var nytSequential = {
+    'nyt-blue3': 'bfdff95189b8315e82',
+    'nyt-red3': 'eb8571c441278c1f02',
+    'nyt-purple3': 'e3cce3ba9bba5c455c',
+    'nyt-red4': 'ffbaadeb8571c441278c1f02',
+    'nyt-dem4': 'ceeafd92bde05295cc1375b7',
+    'nyt-rep4': 'fce0e0eaa9a9db7171c93135',
+    'nyt-hot': 'f5ed90f8c081f6934cd75739a72022',
+    'nyt-cool': 'f6f6cdc3e4d157c1cf108693104777'
+  };
+
+  // An odd number of colors, the middle one for the pivot class
+  var nytDiverging = {
+    'nyt-drought': '8c5322d9b466f5e7c3f5f6f6c8e8e45bb4ac06675f',
+    // three colors a side and no pivot class; the center color is drought's,
+    // for a scheme that has one
+    'nyt-heat': 'c44027ed833af9af72f5f6f692cccd2f919006685f'
+  };
+
+  // Diverging sets made for classes without a pivot class
+  var nytCenterless = ['nyt-heat'];
+
+  var nytCategorical = {
+    'nyt-3a': 'abc6dbfade91f5a442',
+    'nyt-3b': 'fade91f5a4426b6159',
+    'nyt-3c': 'd1776dfcb9589bb8d7',
+    'nyt-3d': 'a8a8a8ffb861c44127',
+    'nyt-5': 'bfd6d18eada5e8c051947213d48474',
+    'nyt-6': 'e3e1daadb9c1fade91d7543af5a4425189b8',
+    'nyt-7': 'ba9bba8eada5daccb9e09c90969284ffd29cb6a58c',
+    'nyt-energy': '68624de393259b71b08dd3dd739ac1f6d836d46ba8',
+    'nyt-dem-p': '8357aa3b99a7e26e42ffb609bd457931803d6794ffe7c47e82dcad9f472efff063',
+    'nyt-rep-p': 'cf222cdda2003ca0a06651b7b45e09c22d737faa0050487b933da53ab9bf'
+  };
+
   var index = {
     categorical: [],
     sequential: [],
@@ -74159,8 +74305,13 @@ ${css.join('\n')}
   var stopInterpolators;
   // scheme name -> where the scheme comes from (see getColorSchemeGroups())
   var sources;
+  // scheme name -> its number of colors, for a hand-picked set of one size
+  var setSizes;
   // the order of the sources in lists of schemes
-  var sourceOrder = ['ColorBrewer', 'Tableau', 'Matplotlib', 'Crameri', 'd3'];
+  var sourceOrder = ['NYT', 'ColorBrewer', 'Tableau', 'Matplotlib', 'Crameri', 'd3'];
+  // sources that -colors doesn't list, and -classify doesn't pick at random
+  // (see nyt-schemes.mjs)
+  var unlistedSources = ['NYT'];
   // Schemes are listed by their designers, as far as they're known. 'd3' is
   // d3-scale-chromatic's own schemes, and others that it brings in: Turbo
   // (Google) and CubehelixDefault (D. A. Green's cubehelix).
@@ -74178,6 +74329,7 @@ ${css.join('\n')}
     ramps = {};
     stopInterpolators = {};
     sources = {};
+    setSizes = {};
     addSchemesFromD3('categorical', 'Category10,Accent,Dark2,Paired,Pastel1,Pastel2,Set1,Set2,Set3,Tableau10');
     addSchemesFromD3('sequential', 'Blues,Greens,Greys,Purples,Reds,Oranges,BuGn,BuPu,GnBu,OrRd,PuBuGn,PuBu,PuRd,RdPu,YlGnBu,YlGn,YlOrBr,YlOrRd');
     addSchemesFromD3('rainbow', 'Cividis,CubehelixDefault,Rainbow,Warm,Cool,Sinebow,Turbo,Viridis,Magma,Inferno,Plasma');
@@ -74198,6 +74350,17 @@ ${css.join('\n')}
     });
     addStoppedSchemes('sequential', crameriSequential, 'Crameri');
     addStoppedSchemes('diverging', crameriDiverging, 'Crameri');
+    addStoppedSchemes('sequential', nytSequential, 'NYT');
+    addStoppedSchemes('diverging', nytDiverging, 'NYT');
+    Object.keys(nytCategorical).forEach(function(name) {
+      addCategoricalScheme(name, nytCategorical[name]);
+      sources[name] = 'NYT';
+    });
+    [nytSequential, nytDiverging].forEach(function(schemes) {
+      Object.keys(schemes).forEach(function(name) {
+        setSizes[name] = schemes[name].length / 6;
+      });
+    });
     Object.keys(crameriCategorical).forEach(function(name) {
       addCategoricalScheme(name, crameriCategorical[name]);
       sources[name] = 'Crameri';
@@ -74281,6 +74444,7 @@ ${css.join('\n')}
     print('Built-in color schemes');
     types.forEach(function(type) {
       getColorSchemeGroups(type[0]).forEach(function(group) {
+        if (unlistedSources.includes(group.source)) return;
         print('\n' + type[1] + ' (' + group.source + ')\n' + formatStringsAsGrid(group.names));
       });
     });
@@ -74294,7 +74458,7 @@ ${css.join('\n')}
   }
 
   // The schemes of one or more types, by source: [{source, names}]
-  // (sources: ColorBrewer, Tableau, Matplotlib, Crameri, d3)
+  // (sources: NYT, ColorBrewer, Tableau, Matplotlib, Crameri, d3)
   function getColorSchemeGroups(types) {
     var names = [].concat(types).reduce(function(memo, type) {
       return memo.concat(getColorSchemeNames(type));
@@ -74306,17 +74470,34 @@ ${css.join('\n')}
     });
   }
 
+  // The number of colors of a scheme that is a hand-picked set of one size
+  // (e.g. nyt-blue3), or 0
+  function getColorSchemeSetSize(name) {
+    initSchemes();
+    return setSizes[standardName(name)] || 0;
+  }
+
+  // Whether a diverging scheme is made for classes without a pivot class,
+  // with a center color only for a scheme that has one
+  function isCenterlessColorScheme(name) {
+    initSchemes();
+    return nytCenterless.includes(standardName(name));
+  }
+
   function pickRandomColorScheme(type) {
     initSchemes();
     var names = index[type];
     if (!names) error('Unknown color scheme type:', type);
-    return utils.pickOne(names);
+    return utils.pickOne(names.filter(function(name) {
+      return !unlistedSources.includes(sources[name]);
+    }));
   }
 
   function pickRandomCategoricalScheme(n) {
     initSchemes();
     var minSize = Math.min(n, 20); // use largest available if n is too large
-    var schemes = index.categorical.filter(name => ramps[name].length >= minSize);
+    var schemes = index.categorical.filter(name => ramps[name].length >= minSize &&
+      !unlistedSources.includes(sources[name]));
     return utils.pickOne(schemes) || 'Tableau20';
   }
 
@@ -74443,8 +74624,10 @@ ${css.join('\n')}
     getColorRampSection: getColorRampSection,
     getColorSchemeGroups: getColorSchemeGroups,
     getColorSchemeNames: getColorSchemeNames,
+    getColorSchemeSetSize: getColorSchemeSetSize,
     getRandomizedCategoricalColorScheme: getRandomizedCategoricalColorScheme,
     isCategoricalColorScheme: isCategoricalColorScheme,
+    isCenterlessColorScheme: isCenterlessColorScheme,
     isColorSchemeName: isColorSchemeName,
     pickRandomCategoricalScheme: pickRandomCategoricalScheme,
     pickRandomColorScheme: pickRandomColorScheme,
@@ -74755,7 +74938,7 @@ ${css.join('\n')}
     var values, nullValue;
     var classifyByValue, classifyByRecordId;
     var numClasses, numValues;
-    var method, diverging, divergingLayout;
+    var method, diverging, divergingLayout, divergingData;
 
     if (opts.color_scheme) {
       stop$1('color-scheme is not a valid option, use colors instead');
@@ -74855,7 +75038,8 @@ ${css.join('\n')}
     if (diverging && fieldType === null) {
       values = []; // no data: every feature gets the null value
     } else if (diverging) {
-      divergingLayout = getDivergingLayout(getDivergingData(records, dataField, opts), method,
+      divergingData = getDivergingData(records, dataField, opts);
+      divergingLayout = getDivergingLayout(divergingData, method,
         Object.assign({}, opts, {classes: getDivergingClassCount(opts)}));
       message(formatDivergingLayout(divergingLayout));
       if (opts.continuous) {
@@ -74889,7 +75073,7 @@ ${css.join('\n')}
     } else if (method == 'categorical') {
       classifyByValue = getCategoricalClassifier(values, nullValue, opts);
     } else if (diverging && opts.continuous) {
-      classifyByValue = getContinuousDivergingDataClassifier(divergingLayout, values, nullValue, opts);
+      classifyByValue = getContinuousDivergingDataClassifier(divergingLayout, values, nullValue, opts, divergingData);
     } else if (diverging) {
       classifyByValue = getSequentialClassifier$1(values, nullValue, getFieldValues(records, dataField), method,
         Object.assign({}, opts, {breaks: divergingLayout.breaks}));
@@ -74936,8 +75120,8 @@ ${css.join('\n')}
   }
 
   // Rounds and clamps data values as getDivergingData() does
-  function getContinuousDivergingDataClassifier(layout, values, nullValue, opts) {
-    var classify = getContinuousDivergingClassifier(layout, values, nullValue, opts);
+  function getContinuousDivergingDataClassifier(layout, values, nullValue, opts, ascending) {
+    var classify = getContinuousDivergingClassifier(layout, values, nullValue, opts, ascending);
     var round = opts.precision ? getRoundingFunction(opts.precision) : null;
     var range = opts.outer_breaks;
     return function(val) {
@@ -87911,7 +88095,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.76";
+  var version = "0.7.77";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

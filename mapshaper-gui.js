@@ -21179,9 +21179,13 @@
   // The presets of a scheme type, by source, for the palette menu:
   // [{source, names}]. Sequential presets include -classify's multi-hue
   // ('rainbow') schemes.
-  function getPresetGroups(type) {
+  // opts.nyt  include the NYT presets, which come first (see nyt-schemes.mjs)
+  function getPresetGroups(type, opts) {
     var types = type == 'sequential' ? ['sequential', 'rainbow'] : [type];
-    return internal.getColorSchemeGroups(types).map(function(group) {
+    var nyt = !!(opts && opts.nyt);
+    return internal.getColorSchemeGroups(types).filter(function(group) {
+      return nyt || group.source != 'NYT';
+    }).map(function(group) {
       return {source: group.source, names: group.names.filter(function(name) {
         return !excludedPresets.includes(name);
       })};
@@ -21231,9 +21235,11 @@
     var values = getAscendingValues(lyr, scheme.field);
     if (values.length === 0) return null;
     var neutral = getSchemeNeutral(scheme);
+    var custom = scheme.method == 'breaks';
     try {
       return internal.getDivergingLayout(values, scheme.method, {
-        pivot: scheme.pivot,
+        pivot: custom ? scheme.breakPivot : scheme.pivot,
+        breaks: custom ? scheme.breaks : undefined,
         continuous: !!scheme.continuous,
         pivot_class: neutral,
         no_pivot_class: !neutral,
@@ -21261,7 +21267,7 @@
   var minContinuousStartColors = 5;
 
   function setSchemeContinuous(scheme, continuous) {
-    var next = Object.assign({}, scheme, {continuous: !!continuous});
+    var next = Object.assign({}, !!continuous == !!scheme.continuous ? scheme : resetSchemeBreaks(scheme), {continuous: !!continuous});
     if (continuous && next.type == 'sequential' && next.n < minContinuousStartColors) {
       next.n = minContinuousStartColors;
     }
@@ -21324,7 +21330,7 @@
       values = getAscendingValues(lyr, scheme.field);
       if (values.length === 0) return null;
       try {
-        breaks = internal.getSequentialBreaks(values, scheme.method, scheme.n - 2);
+        breaks = getSequentialSchemeBreaks(scheme, values);
       } catch(e) {
         return null;
       }
@@ -21421,10 +21427,249 @@
     var values = getAscendingValues(lyr, scheme.field);
     if (values.length === 0) return null;
     try {
-      return getBreakRanges(internal.getSequentialBreaks(values, scheme.method, scheme.n - 1));
+      return getBreakRanges(getSequentialSchemeBreaks(scheme, values));
     } catch(e) {
       return null;
     }
+  }
+
+  // The inner breaks of a sequential scheme: of its classes, or for continuous
+  // colors, the stops between the min and the max
+  function getSequentialSchemeBreaks(scheme, values) {
+    var continuous = isContinuousScheme(scheme);
+    if (scheme.method == 'breaks') return scheme.breaks.concat();
+    return internal.getSequentialBreaks(values, scheme.method, continuous ? scheme.n - 2 : scheme.n - 1, continuous);
+  }
+
+  // Custom breaks. A scheme whose method is 'breaks' has class breaks of its
+  // own (scheme.breaks), started from another method's (scheme.baseMethod).
+  // It goes back to that method when a change leaves the breaks with nothing
+  // to mean: a new field, pivot or pivot class, switching between classes and
+  // continuous colors, or for a diverging scheme, a new number of classes.
+  // The breaks are those of getSchemeBreaks(); a diverging scheme also keeps
+  // its pivot as a number (scheme.breakPivot).
+
+  // The breaks the class breaks dialog edits: {breaks, fixed, pivot, neutral,
+  // min, max}, or null if there are no data. Sequential: the breaks of
+  // getSequentialSchemeBreaks(). Diverging: all the breaks of the layout,
+  // including the pivot, which is fixed (fixed[i] is true), or the edges of
+  // the pivot class (neutral: [lo, hi]). min and max: the data's.
+  function getSchemeBreaks(scheme, lyr) {
+    var values = getAscendingValues(lyr, scheme.field);
+    var layout = scheme.layout;
+    var breaks;
+    if (values.length === 0 || scheme.type == 'categorical') return null;
+    if (scheme.type == 'diverging') {
+      if (!layout) return null;
+      return {
+        breaks: layout.breaks.concat(),
+        fixed: layout.breaks.map(function(b) { return !layout.neutral && b == tidyNumber(layout.pivot); }),
+        pivot: tidyNumber(layout.pivot),
+        neutral: layout.neutral,
+        min: values[0],
+        max: values[values.length - 1]
+      };
+    }
+    try {
+      breaks = getSequentialSchemeBreaks(scheme, values);
+    } catch(e) {
+      return null;
+    }
+    return {
+      breaks: breaks,
+      fixed: breaks.map(function() { return false; }),
+      pivot: null,
+      neutral: null,
+      min: values[0],
+      max: values[values.length - 1]
+    };
+  }
+
+  // Moves break i to a value, as far as it can go: between its neighbors (and
+  // the data's min and max), and for an edge of a pivot class, on its own side
+  // of the pivot. The pivot itself doesn't move. A scheme that isn't custom
+  // yet becomes custom, starting from the breaks its method gives.
+  function setSchemeBreak(scheme, lyr, i, value) {
+    var info = getSchemeBreaks(scheme, lyr);
+    var breaks, lo, hi, edge, next;
+    if (!info || !(i >= 0 && i < info.breaks.length) || info.fixed[i] || !isFiniteNumber(value)) return scheme;
+    breaks = info.breaks.map(tidyNumber);
+    value = tidyNumber(value);
+    lo = i > 0 ? breaks[i - 1] : Math.min(info.min, breaks[i]);
+    hi = i < breaks.length - 1 ? breaks[i + 1] : Math.max(info.max, breaks[i]);
+    edge = info.neutral ? info.neutral.indexOf(breaks[i]) : -1;
+    if (edge === 0) hi = Math.min(hi, info.pivot);
+    if (edge == 1) lo = Math.max(lo, info.pivot);
+    value = clamp$4(value, lo, hi);
+    // the pivot class has to keep the pivot inside it
+    if (edge > -1 && value == info.pivot) return scheme;
+    breaks[i] = value;
+    next = Object.assign({}, scheme, {
+      method: 'breaks',
+      baseMethod: scheme.method == 'breaks' ? scheme.baseMethod : scheme.method,
+      breaks: breaks,
+      breakPivot: info.pivot
+    });
+    // e.g. a pivot without a pivot class that isn't one of the breaks, since
+    // the data are all on one side of it
+    if (scheme.type == 'diverging' && !getDivergingLayout(next, lyr)) return scheme;
+    return next;
+  }
+
+  // The way -classify writes the breaks of a diverging layout, so that a
+  // pivot written the same way is still one of them
+  function tidyNumber(val) {
+    return isFinite(val) ? +val.toPrecision(12) : val;
+  }
+
+  // A custom scheme back to the method its breaks came from
+  function resetSchemeBreaks(scheme) {
+    if (scheme.method != 'breaks') return scheme;
+    return Object.assign({}, scheme, {
+      method: scheme.baseMethod || 'quantile',
+      baseMethod: null,
+      breaks: null,
+      breakPivot: null
+    });
+  }
+
+  // Custom breaks for a new number of colors: a break is added by splitting
+  // the class with the most features at its median, and taken away from
+  // between the two neighboring classes with the fewest features between them.
+  // Returns null if the data can't be split into enough classes.
+  // values: the data, ascending
+  function resizeBreaks(breaks, values, numBreaks) {
+    var counts, best, i, j, members, mid;
+    breaks = breaks.concat();
+    while (breaks.length > numBreaks) {
+      counts = getClassCounts(breaks, values);
+      best = 0;
+      for (i=1; i<breaks.length; i++) {
+        if (counts[i] + counts[i + 1] < counts[best] + counts[best + 1]) best = i;
+      }
+      breaks.splice(best, 1);
+    }
+    while (breaks.length < numBreaks) {
+      best = -1;
+      for (j=0; j<=breaks.length; j++) {
+        members = getClassMembers(breaks, values, j);
+        // a class of one value can't be split
+        if (members.length > 1 && members[0] < members[members.length - 1] &&
+            (best == -1 || members.length > getClassMembers(breaks, values, best).length)) {
+          best = j;
+        }
+      }
+      if (best == -1) return null;
+      members = getClassMembers(breaks, values, best);
+      mid = members[Math.floor(members.length / 2)];
+      // a break at the class's lowest value would leave the class below it empty
+      if (mid == members[0]) mid = members.find(function(val) { return val > members[0]; });
+      breaks.splice(best, 0, mid);
+    }
+    return breaks;
+  }
+
+  // The colors of the classes between a scheme's breaks (see getSchemeBreaks()),
+  // as CSS backgrounds: a class's color, or for continuous colors, a gradient
+  // from the color at the class's low end to the one at its high end
+  function getBreakClassSwatches(scheme) {
+    var colors = getSchemeColors(scheme);
+    var layout = scheme.layout;
+    var swatches = [];
+    var k, stops;
+    if (scheme.type == 'sequential') {
+      if (!isContinuousScheme(scheme)) return colors;
+      return colors.slice(1).map(function(color, i) { return gradient(colors[i], color); });
+    }
+    if (!layout) return [];
+    if (!scheme.continuous) {
+      k = getDivergingTileUse(scheme);
+      return colors.filter(function(c, i) { return k[i]; });
+    }
+    // each side's stops have tiles running out from the center tile
+    k = getCenterTile(scheme);
+    stops = internal.getDivergingStops(layout);
+    addSideGradients(k - stops.below.length, stops.below.length);
+    if (layout.neutral) swatches.push(colors[k]);
+    addSideGradients(k + 1, stops.above.length);
+    return swatches;
+
+    function addSideGradients(first, n) {
+      for (var i=first; i<first + n - 1; i++) swatches.push(gradient(colors[i], colors[i + 1]));
+    }
+
+    function gradient(a, b) {
+      return 'linear-gradient(' + a + ', ' + b + ')';
+    }
+  }
+
+  // The number of features in each class between a scheme's breaks
+  function getBreakClassCounts(scheme, lyr, breaks) {
+    return getClassCounts(breaks, getAscendingValues(lyr, scheme.field));
+  }
+
+  // the number of values in each class (classes are [low, high), as -classify has them)
+  function getClassCounts(breaks, values) {
+    var counts = [];
+    for (var j=0; j<=breaks.length; j++) counts.push(getClassMembers(breaks, values, j).length);
+    return counts;
+  }
+
+  function getClassMembers(breaks, values, j) {
+    var lo = j > 0 ? breaks[j - 1] : -Infinity;
+    var hi = j < breaks.length ? breaks[j] : Infinity;
+    return values.filter(function(val) { return val >= lo && val < hi; });
+  }
+
+  // The scheme's field's numeric values, ascending
+  function getSchemeValues(scheme, lyr) {
+    return getAscendingValues(lyr, scheme.field);
+  }
+
+  // Positions along the class breaks dialog's histogram (0 to 1) for values
+  // from min to max, on a linear or log scale (log: min must be above 0)
+  function getBreaksScale(min, max, log) {
+    var f = log ? Math.log : function(val) { return val; };
+    var a = f(min), b = f(max);
+    return {
+      toPos: function(val) {
+        if (!(b > a)) return 0.5;
+        if (log && !(val > 0)) return 0;
+        return clamp$4((f(val) - a) / (b - a), 0, 1);
+      },
+      toValue: function(pos) {
+        var val = a + clamp$4(pos, 0, 1) * (b - a);
+        if (!(b > a)) return min;
+        return log ? Math.exp(val) : val;
+      }
+    };
+  }
+
+  // The number of values in each of numBins equal parts of a scale
+  function getHistogram(values, scale, numBins) {
+    var bins = new Array(numBins).fill(0);
+    values.forEach(function(val) {
+      bins[Math.min(Math.floor(scale.toPos(val) * numBins), numBins - 1)]++;
+    });
+    return bins;
+  }
+
+  // The roundest number from a to b: of the ones with the fewest significant
+  // digits, the nearest the middle, for a break dragged to a position that a
+  // range of values shares
+  function getRoundestNumber(a, b) {
+    var lo = Math.min(a, b), hi = Math.max(a, b);
+    var mid = (lo + hi) / 2;
+    var exp, step, val;
+    if (lo <= 0 && hi >= 0) return 0;
+    exp = Math.floor(Math.log10(Math.max(Math.abs(lo), Math.abs(hi))));
+    for (var e=exp; e > exp - 15; e--) {
+      step = Math.pow(10, e);
+      val = Math.round(mid / step) * step;
+      if (val < lo || val > hi) val = Math.ceil(lo / step) * step;
+      if (val <= hi) return +val.toPrecision(12);
+    }
+    return lo;
   }
 
   function getBreakRanges(breaks) {
@@ -21450,19 +21695,19 @@
 
   // pivot: 'auto', 'median', 'mean' or a number
   function setSchemePivot(scheme, pivot) {
-    return Object.assign({}, scheme, {pivot: pivot});
+    return Object.assign({}, resetSchemeBreaks(scheme), {pivot: pivot});
   }
 
   // sets the pivot class of the scheme's mode (see getSchemeNeutral())
   function setSchemeNeutral(scheme, neutral) {
-    return Object.assign({}, scheme, scheme.continuous ? {continuousNeutral: !!neutral} : {neutral: !!neutral});
+    return Object.assign({}, resetSchemeBreaks(scheme), scheme.continuous ? {continuousNeutral: !!neutral} : {neutral: !!neutral});
   }
 
   // Switching between a total and a number per side starts over with the
   // default number
   function setSchemeSplit(scheme, split) {
     if (scheme.split == split) return scheme;
-    return Object.assign({}, scheme, {
+    return Object.assign({}, resetSchemeBreaks(scheme), {
       split: split,
       n: split == 'count' ? defaultDivergingSideClasses : defaultDivergingClasses
     });
@@ -21517,7 +21762,7 @@
   // up to as many as the palette has.
   // count: the number of categories in the field
   function setSchemeField(scheme, field, count) {
-    var next = Object.assign({}, scheme, {field: field});
+    var next = Object.assign({}, field == scheme.field ? scheme : resetSchemeBreaks(scheme), {field: field});
     if (next.type == 'categorical' && next.method == 'categorical') {
       next.n = clampColorCount(next, count, count);
     }
@@ -21527,7 +21772,9 @@
   // field, count: the field to use, and its number of categories, when a
   // categorical scheme changes to the categorical method
   function setSchemeMethod(scheme, method, field, count) {
-    var next = Object.assign({}, scheme, {method: method});
+    var next;
+    if (method == 'breaks') return scheme; // the Custom entry: breaks come from the dialog
+    next = Object.assign({}, resetSchemeBreaks(scheme), {method: method});
     if (next.type != 'categorical') return next;
     if (method == 'categorical') {
       return setSchemeField(next, next.field || field, count);
@@ -21664,8 +21911,8 @@
   // reversing). A diverging range is the same on both sides of the center.
   // base is the number of tiles when the range was first narrowed: a preset
   // with a hand-picked set of that size (ColorBrewer's) is interpolated
-  // between the set's colors, so that removing an end tile leaves the others
-  // as they were.
+  // between the set's colors, so that trimming an end tile's width off the
+  // range, with one tile fewer, leaves the others as they were.
   var minRangeSpan = 0.1;
 
   function getSchemeRange(scheme) {
@@ -21703,24 +21950,6 @@
 
   function resetSchemeRange(scheme) {
     return Object.assign({}, scheme, {range: null});
-  }
-
-  // Takes the tile at one end of a sequential preset away, keeping the colors
-  // of the others: the range ends where the next tile was.
-  // side: 'left' or 'right'
-  function removeEndTile(scheme, side) {
-    var display, step;
-    if (!canRemoveEndTile(scheme)) return scheme;
-    display = getDisplayRange(scheme);
-    step = (display[1] - display[0]) / (scheme.n - 1);
-    if (side == 'left') display[0] += step;
-    else display[1] -= step;
-    return Object.assign(setDisplayRange(scheme, display[0], display[1]), {n: scheme.n - 1});
-  }
-
-  function canRemoveEndTile(scheme) {
-    return hasSchemeRange(scheme) && scheme.type == 'sequential' &&
-      scheme.n > getMinSchemeColors(scheme);
   }
 
   function setDisplayRange(scheme, left, right) {
@@ -21778,13 +22007,42 @@
 
   // count: the number of categories, for a categorical scheme
   function choosePreset(scheme, name, count) {
-    var next;
+    var next, size;
     if (scheme.type == 'categorical') {
       next = Object.assign({}, scheme, {preset: name, order: null, swatches: null});
       next.n = clampColorCount(next, next.n, count);
       return next;
     }
-    return Object.assign({}, scheme, {preset: name, reversed: false, pins: null, range: null});
+    next = Object.assign({}, scheme, {preset: name, reversed: false, pins: null, range: null});
+    // a hand-picked set starts with its own colors
+    size = internal.getColorSchemeSetSize(name);
+    if (size > 0 && next.type == 'sequential') {
+      next = setTileCount(next, size);
+    }
+    if (size > 0 && next.type == 'diverging') {
+      next = chooseDivergingSet(next, name, size);
+    }
+    return next;
+  }
+
+  // A diverging set's classes: its colors on each side, and its center color
+  // for the pivot class. A set without a center color has no pivot class.
+  // (A side with more of the data may still get more classes than the set
+  // has colors, unless the classes are by number per side.)
+  function chooseDivergingSet(scheme, name, size) {
+    var centerless = internal.isCenterlessColorScheme(name);
+    var next = centerless ? setSchemeNeutral(scheme, false) : scheme;
+    var side = (size - 1) / 2;
+    if (next.continuous) return next;
+    return setTileCount(next, next.split == 'count' ? side : getSchemeNeutral(next) ? size : size - 1);
+  }
+
+  // The colors that show a preset in the palette menu: a hand-picked set's own
+  // (without the center color of a diverging set that has no pivot class)
+  function getPresetMenuColors(name) {
+    var colors = getPresetColors(name, internal.getColorSchemeSetSize(name) || 7);
+    if (internal.isCenterlessColorScheme(name)) colors.splice((colors.length - 1) / 2, 1);
+    return colors;
   }
 
   // A preset as a custom ramp, pinned at its ends, for editing.
@@ -21842,10 +22100,19 @@
 
   // A custom categorical list grows to have at least n swatches.
   // count: the number of categories, for a categorical scheme
-  function setTileCount(scheme, n, count) {
+  // lyr: the layer, for a sequential scheme's custom breaks to be split or
+  //   merged to fit (see resizeBreaks()); without it, or for a diverging scheme,
+  //   the breaks go back to their method's
+  function setTileCount(scheme, n, count, lyr) {
     var next = Object.assign({}, scheme, {n: clampColorCount(scheme, n, count)});
+    var breaks;
     if (next.type == 'categorical' && !next.preset && next.swatches.length < next.n) {
       next.swatches = extendSwatches(next.swatches, next.n);
+    }
+    if (next.method == 'breaks' && next.n != scheme.n) {
+      breaks = next.type == 'sequential' && lyr ?
+        resizeBreaks(next.breaks, getAscendingValues(lyr, next.field), isContinuousScheme(next) ? next.n - 2 : next.n - 1) : null;
+      next = breaks ? Object.assign(next, {breaks: breaks}) : resetSchemeBreaks(next);
     }
     return next;
   }
@@ -21928,16 +22195,22 @@
   // opts.target  a -target value, when the layer is not the active one
   function formatSchemeCommand(scheme, colors, opts) {
     var parts = ['-classify'];
+    var custom = scheme.method == 'breaks';
     if (scheme.method != 'non-adjacent') {
       parts.push('field=' + quoteCommandValue(scheme.field));
     }
     parts.push('method=' + scheme.method);
+    if (custom) {
+      parts.push('breaks=' + scheme.breaks.join(','));
+    }
     if (scheme.type == 'diverging') {
-      parts.push('pivot=' + scheme.pivot, 'classes=' + getDivergingClassesOption(scheme));
+      // custom breaks give the number of classes
+      parts.push('pivot=' + (custom ? tidyNumber(scheme.breakPivot) : scheme.pivot));
+      if (!custom) parts.push('classes=' + getDivergingClassesOption(scheme));
       // continuous output has no pivot class by default, classes have one
       if (!getSchemeNeutral(scheme)) parts.push('no-pivot-class');
       else if (scheme.continuous) parts.push('pivot-class');
-    } else if (isContinuousScheme(scheme)) {
+    } else if (isContinuousScheme(scheme) && !custom) {
       parts.push('classes=' + (scheme.n - 1));
     }
     if (isContinuousScheme(scheme)) {
@@ -22038,6 +22311,274 @@
     return internal.formatColor(internal.parseColor(color));
   }
 
+  // A popup beside the color scheme panel for editing a numeric scheme's class
+  // breaks: a histogram of the field's values with a handle under it at each
+  // break, and the classes, with a field for each break between them. Editing a break makes the
+  // scheme's breaks custom (see setSchemeBreak()); the pivot of a diverging
+  // scheme is shown, but stays where the panel puts it.
+  //
+  // opts.getScheme(), opts.getLayer()  the scheme and layer being edited
+  // opts.onChange(scheme)  a break was moved
+  // opts.onClose()         the dialog was closed
+  var numBins = 40;
+
+  function ClassBreaksDialog(gui, opts) {
+    var parent = gui.container.findChild('.mshp-main-map');
+    var panel = El('div').addClass('label-style-panel class-breaks-dialog').appendTo(parent).hide();
+    var isOpen = false;
+    var logScale = false;
+    var info = null; // see getSchemeBreaks()
+    var scale = null;
+    var chartEl, barsEl, linesEl, handlesEl, minLabel, maxLabel, logToggle, tableEl, noteEl, bodyEl;
+    var handles = [], lines = [], pivotLine, inputs = [], rules = [], classRows = [];
+    var drag = null;
+
+    initDialog();
+
+    this.open = function() {
+      isOpen = true;
+      panel.show();
+      update();
+    };
+
+    this.close = close;
+
+    this.isOpen = function() {
+      return isOpen;
+    };
+
+    this.update = update;
+
+    function update() {
+      var scheme, lyr, values;
+      if (!isOpen) return;
+      scheme = opts.getScheme();
+      lyr = opts.getLayer();
+      info = scheme && lyr ? getSchemeBreaks(scheme, lyr) : null;
+      noteEl.classed('hidden', !!info);
+      bodyEl.classed('hidden', !info);
+      if (!info) return;
+      if (!(info.min > 0)) logScale = false;
+      logToggle.node().disabled = !(info.min > 0);
+      logToggle.node().checked = logScale;
+      scale = getBreaksScale(info.min, info.max, logScale);
+      values = getSchemeValues(scheme, lyr);
+      renderHistogram(getHistogram(values, scale, numBins));
+      minLabel.text(formatNumber(info.min));
+      maxLabel.text(formatNumber(info.max));
+      renderHandles();
+      renderTable();
+    }
+
+    function close() {
+      if (!isOpen) return;
+      isOpen = false;
+      stopDrag();
+      panel.hide();
+      if (opts.onClose) opts.onClose();
+    }
+
+    function initDialog() {
+      claimFieldKeys(panel.node(), {
+        revert: renderTable,
+        release: function() { releasePanelFocus(panel.node()); }
+      });
+      var header = El('div').addClass('label-style-panel-title').appendTo(panel);
+      El('span').appendTo(header).text('Class breaks');
+      El('button').addClass('label-style-close').appendTo(header).text('×').on('click', close);
+      noteEl = El('div').addClass('label-style-row color-scheme-note').appendTo(panel)
+        .text('There are no breaks to edit.');
+      bodyEl = El('div').appendTo(panel);
+
+      chartEl = El('div').addClass('class-breaks-chart').appendTo(bodyEl);
+      barsEl = El('div').addClass('class-breaks-bars').appendTo(chartEl);
+      linesEl = El('div').addClass('class-breaks-lines').appendTo(chartEl);
+      pivotLine = El('div').addClass('class-breaks-pivot').attr('title', 'Pivot').appendTo(linesEl);
+      handlesEl = El('div').addClass('class-breaks-handles').appendTo(chartEl);
+      var axis = El('div').addClass('class-breaks-axis').appendTo(chartEl);
+      minLabel = El('span').appendTo(axis);
+      maxLabel = El('span').appendTo(axis);
+
+      var logRow = El('label').addClass('label-style-row class-breaks-log-row').appendTo(bodyEl);
+      logToggle = El('input').attr('type', 'checkbox').appendTo(logRow).on('change', function() {
+        logScale = logToggle.node().checked;
+        this.blur();
+        update();
+      });
+      El('span').appendTo(logRow).text('Log scale');
+
+      tableEl = El('div').addClass('class-breaks-table').appendTo(bodyEl);
+    }
+
+    function renderHistogram(bins) {
+      var max = Math.max.apply(null, bins);
+      barsEl.empty();
+      bins.forEach(function(count) {
+        var bar = El('div').addClass('class-breaks-bar').appendTo(barsEl);
+        // a bin with any values in it shows, however few
+        bar.css('height', count > 0 ? Math.max(count / max * 100, 3) + '%' : '0');
+      });
+    }
+
+    // a handle for each break, and a line up through the histogram; rebuilt
+    // only when the breaks change in number, so that a drag keeps its handle
+    function renderHandles() {
+      var breaks = info.breaks;
+      var pivotPos;
+      if (handles.length != breaks.length) {
+        handlesEl.empty();
+        lines.forEach(function(line) { line.remove(); });
+        handles = breaks.map(function(b, i) {
+          return El('div').addClass('class-breaks-handle').attr('role', 'slider').attr('tabindex', '0')
+            .appendTo(handlesEl)
+            .on('pointerdown', function(e) { startDrag(e, i); })
+            .on('keydown', function(e) { onHandleKey(e, i); });
+        });
+        lines = breaks.map(function() {
+          return El('div').addClass('class-breaks-line').appendTo(linesEl);
+        });
+      }
+      breaks.forEach(function(b, i) {
+        var left = pct(scale.toPos(b));
+        handles[i].css('left', left)
+          .classed('fixed', info.fixed[i])
+          .attr('aria-label', getBreakLabel(i))
+          .attr('aria-valuenow', String(b))
+          .attr('aria-disabled', info.fixed[i] ? 'true' : null)
+          .attr('title', getBreakLabel(i) + ': ' + formatNumber(b));
+        lines[i].css('left', left).classed('fixed', info.fixed[i]);
+      });
+      // a pivot inside a pivot class isn't a break, but marks where the class's edges can go
+      pivotPos = info.neutral ? scale.toPos(info.pivot) : -1;
+      pivotLine.classed('hidden', pivotPos < 0).css('left', pct(Math.max(pivotPos, 0)));
+    }
+
+    // The classes from low to high, a color tile and the number of features in
+    // each, stacked; a rule across the boundary between two classes runs out to
+    // the field with the break's value (see .class-breaks-list in page.css)
+    function renderTable() {
+      var breaks = info ? info.breaks : [];
+      var scheme = opts.getScheme();
+      var swatches, counts;
+      if (inputs.length != breaks.length || classRows.length != breaks.length + 1) {
+        tableEl.empty();
+        var list = El('div').addClass('class-breaks-list').appendTo(tableEl);
+        classRows = breaks.concat([null]).map(function() {
+          var row = El('div').addClass('class-breaks-class').appendTo(list);
+          El('div').addClass('class-breaks-swatch').appendTo(row);
+          El('span').addClass('class-breaks-count').appendTo(row);
+          return row;
+        });
+        rules = [];
+        inputs = breaks.map(function(b, i) {
+          var mark = El('div').addClass('class-breaks-mark').appendTo(list)
+            .css('top', 'calc((var(--class-breaks-row-height) + var(--class-breaks-gap)) * ' + (i + 1) + ' - 13px)');
+          rules.push(El('div').addClass('class-breaks-rule').appendTo(mark));
+          return El('input').attr('type', 'text').appendTo(mark)
+            .on('change', function() {
+              var val = parseFloat(this.value);
+              if (isFinite(val)) {
+                setBreak(i, val);
+              }
+              renderTable();
+            })
+            .on('keydown', function(e) {
+              if (e.key == 'Enter') this.blur();
+            });
+        });
+      }
+      if (!info) return;
+      swatches = getBreakClassSwatches(scheme);
+      counts = getBreakClassCounts(scheme, opts.getLayer(), breaks);
+      classRows.forEach(function(row, j) {
+        var neutral = info.neutral && j > 0 && breaks[j - 1] == info.neutral[0];
+        row.findChild('.class-breaks-swatch').css('background', swatches[j] || 'transparent');
+        // the top row says what the numbers are
+        row.findChild('.class-breaks-count').text((j === 0 ? formatCount(counts[j]) : String(counts[j])) +
+          (neutral ? ' (pivot class)' : ''));
+      });
+      breaks.forEach(function(b, i) {
+        var input = inputs[i].node();
+        input.disabled = info.fixed[i];
+        input.setAttribute('aria-label', getBreakLabel(i));
+        input.setAttribute('title', getBreakLabel(i));
+        rules[i].classed('fixed', info.fixed[i]);
+        if (document.activeElement != input || !isTextInput(input)) input.value = formatNumber(b);
+      });
+    }
+
+    function formatCount(n) {
+      return n + (n == 1 ? ' feature' : ' features');
+    }
+
+    function getBreakLabel(i) {
+      var b = info.breaks[i];
+      if (info.fixed[i]) return 'Pivot';
+      if (info.neutral && b == info.neutral[0]) return 'Pivot class from';
+      if (info.neutral && b == info.neutral[1]) return 'Pivot class to';
+      return 'Break ' + (i + 1);
+    }
+
+    function setBreak(i, val) {
+      var scheme = opts.getScheme();
+      var next = setSchemeBreak(scheme, opts.getLayer(), i, val);
+      if (next != scheme && next.breaks[i] !== info.breaks[i]) opts.onChange(next);
+    }
+
+    // A dragged break goes to the roundest value under the pointer: the one with
+    // the fewest digits among those within half a pixel of it
+    function startDrag(e, i) {
+      var box = handlesEl.node().getBoundingClientRect();
+      if (e.button !== 0 || !info || info.fixed[i] || !(box.width > 0)) return;
+      e.preventDefault();
+      handles[i].node().focus();
+      drag = {i: i, box: box};
+      handles[i].addClass('dragging');
+      document.addEventListener('pointermove', onDragMove);
+      document.addEventListener('pointerup', stopDrag);
+      document.addEventListener('pointercancel', stopDrag);
+    }
+
+    function onDragMove(e) {
+      var x = e.clientX - drag.box.left;
+      var halfPx = 0.5 / drag.box.width;
+      var pos = x / drag.box.width;
+      setBreak(drag.i, getRoundestNumber(scale.toValue(pos - halfPx), scale.toValue(pos + halfPx)));
+    }
+
+    function stopDrag() {
+      if (!drag) return;
+      if (handles[drag.i]) handles[drag.i].removeClass('dragging');
+      drag = null;
+      document.removeEventListener('pointermove', onDragMove);
+      document.removeEventListener('pointerup', stopDrag);
+      document.removeEventListener('pointercancel', stopDrag);
+    }
+
+    // arrow keys move a break by a hundredth of the histogram's width (a
+    // tenth with Shift)
+    function onHandleKey(e, i) {
+      var step = e.shiftKey ? 0.1 : 0.01;
+      var pos, dir;
+      if (!info || info.fixed[i]) return;
+      if (e.key == 'ArrowLeft' || e.key == 'ArrowDown') dir = -1;
+      else if (e.key == 'ArrowRight' || e.key == 'ArrowUp') dir = 1;
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+      pos = scale.toPos(info.breaks[i]) + dir * step;
+      setBreak(i, getRoundestNumber(scale.toValue(pos - step / 4), scale.toValue(pos + step / 4)));
+    }
+
+    function formatNumber(val) {
+      return String(+val.toPrecision(6));
+    }
+
+    function pct(val) {
+      return Math.round(val * 10000) / 100 + '%';
+    }
+  }
+
   // A popup beside the polygon style panel for coloring a layer's fills by a
   // data field, with -classify. Edits are applied as they are made, in a command
   // session, so that the whole time the panel is open on a layer is one undo
@@ -22047,7 +22588,6 @@
   // opts.getExtraCommands()  commands to run after -classify, in the same step
   //                          (the style panel's pattern backgrounds follow the
   //                          fills)
-  // opts.getSelectionCount() features selected in the style panel
   // opts.onUpdate()          the scheme or the fills changed
   // opts.onClose()           the panel was closed
   var reverseIcon = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" ' +
@@ -22081,7 +22621,8 @@
     var tabSchemes = {};
     var tabs = {};
     var paletteBtn, paletteMenu, countField, tileRow, gradientEl, tilesEl, picker, fieldRow, fieldSelect, methodSelect,
-        noFieldsNote, selectionNote, controlsEl, vibranceRow, vibranceInput,
+        methodRow, methodLabel, customizeCell, customizeBtn, breaksDialog,
+        noFieldsNote, controlsEl, vibranceRow, vibranceInput,
         longHueBtn, continuousBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount, countLabel,
         rangeEl, rangeStrip, rangeShades, rangeHandles,
         divergingEl, pivotSelect, pivotInput, pivotNote, neutralToggle, splitSelect;
@@ -22131,6 +22672,7 @@
       picker.hide();
       nullControl.picker.hide();
       hidePaletteMenu();
+      breaksDialog.close();
       panel.hide();
       targetLayer = null;
       scheme = null;
@@ -22182,11 +22724,30 @@
         changeScheme(setSchemeField(scheme, field, getCategoryCount(field)));
       });
 
-      var methodRow = El('div').addClass('label-style-row color-scheme-select-row').appendTo(controlsEl);
-      El('span').appendTo(methodRow).text('Method');
-      methodSelect = El('select').attr('aria-label', 'Classification method').appendTo(methodRow).on('change', function() {
+      // numeric schemes: the breaks' method on the left, the button for
+      // editing them on the right
+      methodRow = El('div').addClass('label-style-row').appendTo(controlsEl);
+      var methodCell = El('div').addClass('label-split-cell color-scheme-select-row').appendTo(methodRow);
+      customizeCell = El('div').addClass('label-split-cell color-scheme-customize-cell').appendTo(methodRow);
+      methodLabel = El('span').appendTo(methodCell).text('Method');
+      methodSelect = El('select').attr('aria-label', 'Classification method').appendTo(methodCell).on('change', function() {
         var field = scheme.field || getCategoryFields(targetLayer)[0];
         changeScheme(setSchemeMethod(scheme, methodSelect.node().value, field, getCategoryCount(field)));
+      });
+      customizeBtn = makePanelActionButton(customizeCell, 'Customize', function() {
+        if (breaksDialog.isOpen()) {
+          breaksDialog.close();
+        } else {
+          picker.hide();
+          breaksDialog.open();
+        }
+        renderMethodRow();
+      }).addClass('color-scheme-customize-btn').attr('title', 'Edit the class breaks');
+      breaksDialog = new ClassBreaksDialog(gui, {
+        getScheme: function() { return scheme; },
+        getLayer: function() { return targetLayer; },
+        onChange: changeScheme,
+        onClose: renderMethodRow
       });
 
       initDivergingControls();
@@ -22208,10 +22769,10 @@
         decimals: 0,
         title: 'Number of classes',
         onSet: function(n) {
-          changeScheme(setTileCount(scheme, n, getCategoryCount()));
+          changeScheme(setTileCount(scheme, n, getCategoryCount(), targetLayer));
         },
         onStep: function(delta) {
-          changeScheme(setTileCount(scheme, scheme.n + (delta > 0 ? 1 : -1), getCategoryCount()));
+          changeScheme(setTileCount(scheme, scheme.n + (delta > 0 ? 1 : -1), getCategoryCount(), targetLayer));
         },
         onDone: releaseFocus
       });
@@ -22267,10 +22828,6 @@
         picker.hide();
       });
       nullCount = El('span').addClass('color-scheme-note color-scheme-null-count').appendTo(nullControl.aside);
-
-      selectionNote = El('div').addClass('label-style-row color-scheme-note').appendTo(controlsEl)
-        .text('Colors apply to every feature in the layer, not only the selected ones.');
-
       document.addEventListener('mousedown', function(e) {
         if (paletteMenu.visible() && !paletteMenu.node().contains(e.target) &&
             !paletteBtn.node().contains(e.target)) {
@@ -22371,7 +22928,10 @@
       fields = categorical ? getCategoryFields(targetLayer) : getNumericFields(targetLayer);
       noFieldsNote.classed('hidden', categorical || fields.length > 0);
       controlsEl.classed('hidden', !categorical && fields.length === 0);
-      if (!categorical && fields.length === 0) return;
+      if (!categorical && fields.length === 0) {
+        breaksDialog.close();
+        return;
+      }
       renderFieldOptions(fields);
       fieldRow.classed('hidden', scheme.method == 'non-adjacent');
       renderMethodOptions(fields);
@@ -22384,7 +22944,8 @@
       renderTiles(tiles);
       renderVibrance();
       renderNullColor();
-      selectionNote.classed('hidden', !(opts.getSelectionCount() > 0));
+      if (categorical) breaksDialog.close();
+      breaksDialog.update();
     }
 
     function renderNullColor() {
@@ -22402,7 +22963,21 @@
         // classifying by category needs a field
         if (item.name == 'categorical' && fields.length === 0) opt.attr('disabled', true);
       });
+      // edited breaks; choosing a method starts over with its breaks
+      if (scheme.method == 'breaks') {
+        El('option').attr('value', 'breaks').text('Custom').appendTo(methodSelect);
+      }
       methodSelect.node().value = scheme.method;
+      renderMethodRow();
+    }
+
+    function renderMethodRow() {
+      var numeric = scheme && scheme.type != 'categorical';
+      methodRow.classed('label-split-row', numeric);
+      methodLabel.text(numeric ? 'Breaks' : 'Method');
+      methodSelect.attr('aria-label', numeric ? 'Class breaks' : 'Classification method');
+      customizeCell.classed('hidden', !numeric);
+      customizeBtn.classed('selected', breaksDialog.isOpen());
     }
 
     // Each tab keeps its own scheme while the panel is open, and starts from a
@@ -22613,8 +23188,6 @@
       var classLabels = categorical ? null : continuous ? getStopLabels() : getClassLabels(tileUse);
       var groups = categorical && scheme.method == 'categorical' ?
         getSwatchCategories(getCategories(targetLayer, scheme.field), used) : null;
-      // the end tiles of a sequential preset can be taken away
-      var removable = canRemoveEndTile(scheme);
       var n, perRow;
       // a categorical scheme shows its whole palette, and marks the swatches
       // in use
@@ -22648,14 +23221,6 @@
           tileEl.on('pointerdown', function(e) {
             startTileDrag(e, i);
           });
-        }
-        if (removable && (i === 0 || i == n - 1)) {
-          El('button').addClass('color-scheme-tile-remove').attr('type', 'button')
-            .attr('aria-label', 'Remove this color').text('×').appendTo(tileEl)
-            .on('click', function(e) {
-              e.stopPropagation();
-              changeScheme(removeEndTile(scheme, i === 0 ? 'left' : 'right'));
-            });
         }
         if (groups && inUse || classLabels && classLabels[i]) {
           tileEl.attr('data-tooltip', groups ? formatCategories(groups[i]) : classLabels[i])
@@ -22912,10 +23477,10 @@
       addPaletteItem('Custom', getSchemeColors(makeSchemeCustom(scheme)), !scheme.preset, function() {
         changeScheme(makeSchemeCustom(scheme));
       });
-      getPresetGroups(scheme.type).forEach(function(group) {
+      getPresetGroups(scheme.type, {nyt: isNytUser()}).forEach(function(group) {
         El('div').addClass('color-scheme-palette-heading').appendTo(paletteMenu).text(group.source);
         group.names.forEach(function(name) {
-          var colors = categorical ? getCategoricalPresetColors(name) : getPresetColors(name, 7);
+          var colors = categorical ? getCategoricalPresetColors(name) : getPresetMenuColors(name);
           addPaletteItem(name, colors, scheme.preset == name, function() {
             changeScheme(choosePreset(scheme, name, getCategoryCount()));
           });
@@ -23270,13 +23835,11 @@
           if (!targetLayer) return '';
           return formatStyleEditCommands(patternControl.getRefillExpressionEdits(getAllFeatureIds(targetLayer)));
         },
-        getSelectionCount: function() {
-          return getSelectionIds().length;
-        },
         onUpdate: function() {
           if (panel.visible()) updateControls();
         },
         onClose: function() {
+          if (hit) hit.setSelectionEnabled(true);
           panel.removeClass('replaced');
         }
       });
@@ -23288,8 +23851,10 @@
       fillControl.picker.hide();
       strokeControl.picker.hide();
       patternControl.hidePicker();
-      // The scheme panel takes this panel's place until it closes
+      // The scheme panel takes this panel's place until it closes. Its colors go
+      // to the whole layer, so there is no selection while it is open.
       panel.addClass('replaced');
+      if (hit) hit.setSelectionEnabled(false);
       schemePanel.open(targetLayer);
     }
 
@@ -25576,6 +26141,8 @@
     var hitTest;
     var pinnedOn; // used in multi-edit mode (selection) for toggling pinning behavior
     var suppressChangeEvent = false;
+    // set while a panel that acts on the whole layer is open (e.g. color palettes)
+    var selectionDisabled = false;
 
     // event priority is higher than navigation, so stopping propagation disables
     // pan navigation
@@ -25778,6 +26345,14 @@
       updateSelectionState(null);
     };
 
+    // Disabling clears the selection and the hover highlight, and leaves clicks
+    // and hovers over features to the map until selection is enabled again or
+    // the interaction mode changes.
+    self.setSelectionEnabled = function(enabled) {
+      selectionDisabled = !enabled;
+      if (selectionDisabled) self.clearSelection();
+    };
+
     self.clearHover = function() {
       updateSelectionState(mergeHoverData({ids: []}));
     };
@@ -25821,6 +26396,7 @@
     // make sure popup is unpinned and turned off when switching editing modes
     // (some modes do not support pinning)
     gui.on('interaction_mode_change', function(e) {
+      selectionDisabled = false;
       clearSelectionSilently();
       if (gui.interaction.modeUsesHitDetection(e.mode)) {
         turnOn(e.mode);
@@ -25890,7 +26466,7 @@
     mouse.on('hover', function(e) {
       if (gui.contextMenu.isOpen()) return;
       handlePointerEvent(e);
-      if (storedData.pinned || !hitTest || !active) return;
+      if (storedData.pinned || !hitTest || !active || selectionDisabled) return;
       if (e.hover && isOverMap(e)) {
         // mouse is hovering directly over map area -- update hit detection
         updateSelectionState(mergeHoverData(hitTest(e)));
@@ -26042,7 +26618,7 @@
     // check if an event is used in the current interaction mode
     function eventIsEnabled(type) {
       var mode = interactionMode();
-      if (!active) return false;
+      if (!active || selectionDisabled) return false;
       if (type == 'click' && gui.keyboard.ctrlIsPressed()) {
         return false; // don't fire if context menu might open
       }
@@ -27844,6 +28420,453 @@
     return _self;
   }
 
+  // Drawing which labels are selected for styling.
+  //
+  // The older label_style mode marks selected labels with a halo on the glyphs
+  // (text.label-style-selected). That reads as "this text is highlighted", which
+  // is fine for a mode whose only job is styling. The label tool needs it to read
+  // as "this is an object you have hold of", because one click selects a label
+  // and another reaches into its text -- so the cue is an outline around the
+  // object rather than a wash over the letters.
+  //
+  // Two shapes, because a label is one of two things:
+  //
+  // - An anchored label is a block of text: a box around it, plus a marker on
+  //   the anchor point when the anchor is neither drawn by the label nor covered
+  //   by the box. The anchor is worth showing there because it is what the text
+  //   is positioned against, and a position or a drag can put it well outside
+  //   the box -- see appendAnchoredCue().
+  // - A path label is a line of text on a curve: its own curve, stroked. A box
+  //   round a curve is mostly empty air and says very little about what is
+  //   selected. The curve already exists as a path in the layer's <defs> -- it is
+  //   what the text is laid along -- so this strokes a copy of it and is exact by
+  //   construction rather than by recomputation.
+  //
+  // See docs/development/label-tool-design.md.
+
+  var SVG_NS$3 = 'http://www.w3.org/2000/svg';
+  // How far outside its text a label's outline is drawn. Exported because the
+  // tool grabs a label by the same box: what looks like the object is what takes
+  // a drag on it.
+  var BOX_PADDING$1 = 3;
+  var ANCHOR_RADIUS = 3.5;
+  var KNOT_RADIUS$1 = 3;
+  var WIDTH_HANDLE_SIZE = 6;
+  var GAP_HANDLE_RADIUS = 2.5;
+
+  // How many labels get an outline before the cue falls back to the halo.
+  //
+  // Each outline costs a getBBox() on its text node. That is once per label per
+  // SVG redraw rather than once per frame -- navigation repositions the symbol
+  // layer instead of rebuilding it, and the cue moves with the map by wearing the
+  // label's own transform -- but a select-all on a big layer would still pay it,
+  // for an outline per label too small to tell apart anyway.
+  //
+  // Over the cap the selected labels wear a halo instead (.label-cue-marked),
+  // which is a class on the text node and costs no measurement. It says less
+  // than an outline -- no anchors, no knots, no box -- but a selection of
+  // hundreds is a group being restyled rather than objects being handled one by
+  // one, and the one thing it has to say is which labels are in it. This used to
+  // draw nothing at all, so selecting a whole layer left the map unchanged.
+  var MAX_OUTLINES = 200;
+
+  // getEditingId: returns the feature id of an open text editing session, or -1.
+  //   A label being typed into draws its own box and does not want a second one.
+  // getHandles: (optional) function(target, id, textBox) returning
+  //   {handles, column} for a selected anchored label, as from
+  //   getAnchoredLabelHandles(), or null. The tool decides when a label has
+  //   handles, and gives a text block's column from what is on screen, which
+  //   during a drag is not the data.
+  // getState: (optional) function returning {selected, hoverId}, for a mode whose
+  //   idea of what is selected is not the hit control's selection list -- e.g.
+  //   the pinned feature in inspect mode. Defaults to the selection list plus
+  //   the hit id.
+  function LabelSelection(gui, ext, hit, getEditingId, getHandles, getState) {
+    var self = {};
+    var groups = []; // one <g> per drawn cue, in the layer's markup
+    var marked = []; // text nodes wearing the halo, when there are too many to outline
+    var drawn = null; // what those cues represent, so hover does not redraw them
+    var on = false;
+    var tetherId = -1; // the label whose text is being dragged off its anchor
+
+    self.turnOn = function() {
+      on = true;
+      self.refresh();
+    };
+
+    self.turnOff = function() {
+      on = false;
+      tetherId = -1;
+      clearAll();
+    };
+
+    // Draws a hairline from @id's anchor to its text while its offset is being
+    // dragged, or nothing when given -1. The offset is what is being edited, and
+    // on a label with no symbol the anchor is otherwise not drawn at all.
+    self.setTether = function(id) {
+      if (tetherId === id) return;
+      tetherId = id;
+      if (on) self.refresh(true);
+    };
+
+    // Redraws the cues against the current DOM. Called when the hit state changes
+    // and when the map has been rendered, because a redraw replaces the layer's
+    // markup and takes the old cues with it.
+    self.refresh = function(force) {
+      var target = hit.getHitTarget();
+      var state = on ? (getState || getSelectionState)() : {selected: [], hoverId: -1};
+      var selected = state.selected;
+      var tooMany = selected.length > MAX_OUTLINES;
+      var ids = tooMany ? [] : selected;
+      var hoverId = state.hoverId;
+      var key = selected.join(',') + '/' + hoverId + '/' + tetherId;
+      // Hover fires on every pointer move, and most of them change nothing here.
+      if (!force && drawn === key) return;
+      clearAll();
+      drawn = key;
+      if (!target) return;
+      // The hovered label goes first, so that a selected label drawn over it wins
+      // if the two are ever the same.
+      if (hoverId > -1) draw(target, hoverId, 'label-cue-hovered');
+      ids.forEach(function(id) {
+        // Knot handles go on selected curves only. A hovered label is being
+        // pointed at, not held, and dotting a curve the pointer merely crossed
+        // would offer handles that cannot be grabbed -- as would any handle in a
+        // mode that does not edit labels, which is one that passes no getHandles.
+        draw(target, id, 'label-cue-selected', !!getHandles);
+      });
+      // Too many to outline: a halo on the glyphs instead, which is the whole cue
+      // for those labels.
+      if (tooMany) markAll(target, selected);
+    };
+
+    function getSelectionState() {
+      var selected = hit.getSelectionIds();
+      return {selected: selected, hoverId: getHoverId(selected)};
+    }
+
+    // The label under the pointer, when showing it would say something: not one
+    // already cued as selected, and not the one being typed into.
+    function getHoverId(selectedIds) {
+      var id = hit.getHitId();
+      if (id < 0 || selectedIds.indexOf(id) > -1) return -1;
+      if (getEditingId && getEditingId() === id) return -1;
+      return id;
+    }
+
+    // Puts the halo on each selected label's glyphs. A class of its own rather
+    // than the label_style mode's yellow one: that class is cleared on every
+    // model update while the label tool is on, so the two would fight.
+    function markAll(target, ids) {
+      ids.forEach(function(id) {
+        var nodes = findNodes(target, id);
+        if (!nodes) return;
+        nodes.text.classList.add('label-cue-marked');
+        marked.push(nodes.text);
+      });
+    }
+
+    function clearMarks() {
+      marked.forEach(function(node) {
+        node.classList.remove('label-cue-marked');
+      });
+      marked = [];
+    }
+
+    function draw(target, id, className, withHandles) {
+      var nodes = findNodes(target, id);
+      var rec = getRecord(target, id);
+      var g;
+      if (!nodes || !rec) return;
+      g = makeGroup(nodes, className);
+      if (nodes.pathId) {
+        g.appendChild(curve(nodes.pathId));
+        if (withHandles) appendKnotHandles(g, target, id);
+      } else {
+        appendAnchoredCue(g, nodes, rec, id, withHandles ? target : null);
+      }
+      groups.push(g);
+    }
+
+    // A box around the text, the anchor it is positioned against, and while the
+    // two are being pulled apart, a line between them.
+    //
+    // The anchor is only marked when there is something to say: nothing else is
+    // drawn there, and the text is somewhere other than on top of it. A label
+    // that draws a symbol has the symbol, and a marker on top of it would
+    // obscure what the label actually looks like; a label whose text sits over
+    // its own anchor has the box, which says where it is more precisely than a
+    // ring inside it would. What is left -- offset text with nothing at its
+    // anchor -- is the case where the ring is the only thing that says what the
+    // text hangs off.
+    //
+    // A selected label's handles go in a group of their own, after the symbol
+    // rather than before it: they sit on the callout and on the edge of the box,
+    // and painted beneath the line they would be hidden by it.
+    //
+    // @handleTarget: the layer, when the label is selected and so may have
+    //   handles, or null
+    //
+    // A selected text block also shows its column, the width it wraps to, as a
+    // fainter dashed box behind the solid one. The solid box is the label itself
+    // -- the wrapped text, which is what a callout meets -- and is usually
+    // narrower than its column; the column is what the width handle drags.
+    function appendAnchoredCue(g, nodes, rec, id, handleTarget) {
+      var box = measure(nodes.content);
+      var o = box && handleTarget && getHandles ? getHandles(handleTarget, id, box) : null;
+      var column = o ? o.column : null;
+      if (!box) return;
+      if (column) g.appendChild(columnRect(box, column, BOX_PADDING$1));
+      if (box.width || box.height) g.appendChild(rect(box, BOX_PADDING$1));
+      if (id === tetherId) g.appendChild(tether(box));
+      if (!internal.featureHasSvgSymbol(rec) && !boxHoldsOrigin(box)) {
+        g.appendChild(anchorMarker());
+      }
+      if (o && o.handles.length > 0) appendHandles(nodes, o.handles);
+    }
+
+    // The column's own extent across, and the text's up and down: a column has
+    // no height of its own.
+    function columnRect(box, column, pad) {
+      var el = rect({x: column[0], y: box.y, width: column[1] - column[0],
+        height: box.height}, pad);
+      el.setAttribute('class', 'label-cue-column');
+      return el;
+    }
+
+    function appendHandles(nodes, handles) {
+      var g = document.createElementNS(SVG_NS$3, 'g');
+      var transform = nodes.symbol.getAttribute('transform');
+      var display = nodes.symbol.getAttribute('display');
+      g.setAttribute('class', 'label-cue label-cue-handles');
+      if (transform) g.setAttribute('transform', transform);
+      if (display) g.setAttribute('display', display);
+      handles.forEach(function(h) {
+        g.appendChild(labelHandle(h));
+      });
+      nodes.symbol.parentNode.insertBefore(g, nodes.symbol.nextSibling);
+      groups.push(g);
+    }
+
+    // A square for the width handle, which is a corner of the box, and a ring
+    // for the callout's, which are points on its line -- filled for the end
+    // that meets the text, so that the two ends of the line read differently.
+    function labelHandle(h) {
+      var p = h.point;
+      var el;
+      if (h.kind == 'width') {
+        el = document.createElementNS(SVG_NS$3, 'rect');
+        el.setAttribute('x', p[0] - WIDTH_HANDLE_SIZE / 2);
+        el.setAttribute('y', p[1] - WIDTH_HANDLE_SIZE / 2);
+        el.setAttribute('width', WIDTH_HANDLE_SIZE);
+        el.setAttribute('height', WIDTH_HANDLE_SIZE);
+      } else {
+        el = document.createElementNS(SVG_NS$3, 'circle');
+        el.setAttribute('cx', p[0]);
+        el.setAttribute('cy', p[1]);
+        el.setAttribute('r', h.kind == 'gap' ? GAP_HANDLE_RADIUS : KNOT_RADIUS$1);
+      }
+      el.setAttribute('class', 'label-cue-handle label-cue-' + h.kind);
+      el.setAttribute('data-handle', h.kind);
+      return el;
+    }
+
+    // Whether the label's anchor point is inside the box drawn around its text.
+    // The group's own origin is the anchor, so this is a question about zero.
+    function boxHoldsOrigin(box) {
+      return box.x <= 0 && box.x + box.width >= 0 &&
+        box.y <= 0 && box.y + box.height >= 0;
+    }
+
+    // A dot on each knot of a selected curve, so that what can be grabbed is
+    // what can be seen.
+    //
+    // These are placed in the same coordinate space as the curve beside them --
+    // the space inside the symbol group -- by the same mapping the renderer used
+    // to build the curve, rather than by reading positions back out of the path.
+    function appendKnotHandles(g, target, id) {
+      var shp = target.shapes && target.shapes[id];
+      var coords, i;
+      if (!shp || shp.length < 2) return;
+      coords = internal.svg.getLabelPathCoords(shp, ext.getTransform(),
+        ext.getSymbolScale());
+      for (i = 0; i < coords.length; i++) {
+        g.appendChild(knotHandle(coords[i]));
+      }
+    }
+
+    function findNodes(target, id) {
+      var container = target.gui && target.gui.svg_container;
+      // Qualified by the symbol class because an editing session's hit region
+      // carries the same data-id, as the hit test requires.
+      var symbol = container && container.querySelector(
+        '.mapshaper-svg-symbol[data-id="' + id + '"]');
+      var text = !symbol ? null :
+        symbol.tagName == 'text' ? symbol : symbol.querySelector('text');
+      var content;
+      if (!text) return null;
+      content = text.querySelector('textPath') || text;
+      return {symbol: symbol, text: text, content: content,
+        pathId: getPathId(content)};
+    }
+
+    // The id of the baseline a path label is laid along, or null for an anchored
+    // one. This is what tells the two kinds apart here: the geometry is the same
+    // multipoint either way, but only a path label renders a <textPath>.
+    function getPathId(content) {
+      var href = content.tagName != 'textPath' ? null :
+        content.getAttribute('href') || content.getAttribute('xlink:href');
+      return href && href.charAt(0) == '#' ? href.substr(1) : null;
+    }
+
+    function getRecord(target, id) {
+      var records = target.data ? target.data.getRecords() : null;
+      return records ? records[id] : null;
+    }
+
+    // A sibling of the label's symbol node, wearing its transform so that the cue
+    // moves and hides with it, and inserted before it so the outline paints
+    // beneath the glyphs.
+    function makeGroup(nodes, className) {
+      var g = document.createElementNS(SVG_NS$3, 'g');
+      var transform = nodes.symbol.getAttribute('transform');
+      var display = nodes.symbol.getAttribute('display');
+      g.setAttribute('class', 'label-cue ' + className);
+      if (transform) g.setAttribute('transform', transform);
+      if (display) g.setAttribute('display', display);
+      nodes.symbol.parentNode.insertBefore(g, nodes.symbol);
+      return g;
+    }
+
+    function measure(node) {
+      try {
+        return node.getBBox();
+      } catch (e) {
+        return null; // an unrendered node has no box to report
+      }
+    }
+
+    function rect(box, pad) {
+      var el = document.createElementNS(SVG_NS$3, 'rect');
+      el.setAttribute('x', box.x - pad);
+      el.setAttribute('y', box.y - pad);
+      el.setAttribute('width', box.width + pad * 2);
+      el.setAttribute('height', box.height + pad * 2);
+      el.setAttribute('class', 'label-cue-box');
+      return el;
+    }
+
+    function anchorMarker() {
+      var el = document.createElementNS(SVG_NS$3, 'circle');
+      // The group's own origin is the anchor point, so the marker sits at 0,0.
+      el.setAttribute('cx', 0);
+      el.setAttribute('cy', 0);
+      el.setAttribute('r', ANCHOR_RADIUS);
+      el.setAttribute('class', 'label-cue-anchor');
+      return el;
+    }
+
+    // The line from the anchor to the text, drawn to the nearest corner or edge
+    // of its box rather than to the middle of it: a line to the middle would run
+    // underneath the glyphs it is pointing at.
+    function tether(box) {
+      var el = document.createElementNS(SVG_NS$3, 'line');
+      el.setAttribute('x1', 0);
+      el.setAttribute('y1', 0);
+      el.setAttribute('x2', clamp(0, box.x - BOX_PADDING$1, box.x + box.width + BOX_PADDING$1));
+      el.setAttribute('y2', clamp(0, box.y - BOX_PADDING$1, box.y + box.height + BOX_PADDING$1));
+      el.setAttribute('class', 'label-cue-tether');
+      return el;
+    }
+
+    function clamp(val, min, max) {
+      return val < min ? min : val > max ? max : val;
+    }
+
+    function knotHandle(p) {
+      var el = document.createElementNS(SVG_NS$3, 'circle');
+      el.setAttribute('cx', p[0]);
+      el.setAttribute('cy', p[1]);
+      el.setAttribute('r', KNOT_RADIUS$1);
+      el.setAttribute('class', 'label-cue-knot');
+      return el;
+    }
+
+    function curve(pathId) {
+      var el = document.createElementNS(SVG_NS$3, 'use');
+      el.setAttribute('href', '#' + pathId);
+      el.setAttribute('class', 'label-cue-curve');
+      return el;
+    }
+
+    function clearAll() {
+      groups.forEach(function(g) {
+        if (g.parentNode) g.parentNode.removeChild(g);
+      });
+      groups = [];
+      clearMarks();
+      drawn = null;
+    }
+
+    return self;
+  }
+
+  // Hover and selection cues for labels in the inspect and selection modes, in
+  // the same boxes the label tool draws, so that a label looks the same when it
+  // is pointed at or selected whichever mode does it. The canvas overlay leaves
+  // these labels alone (see gui-overlay-styler.mjs).
+  function initLabelHitCues(gui, ext, hit) {
+    var cues = new LabelSelection(gui, ext, hit, null, null, function() {
+      return getLabelCueState(hit.getHitState());
+    });
+    var on = false;
+
+    gui.on('interaction_mode_change', function() { update(true); });
+    hit.on('change', function() { update(false); });
+    // A redraw replaces the layer's markup and the cues with it, except for a
+    // 'hover' draw, which leaves the SVG alone. This also catches a change of
+    // target layer, which comes with a redraw.
+    gui.on('map_rendered', function(e) {
+      update(!e || e.action != 'hover');
+    });
+
+    function update(force) {
+      var want = labelCuesApply(gui.interaction.getMode(), hit.getHitTarget());
+      if (want && !on) {
+        on = true;
+        cues.turnOn();
+      } else if (!want && on) {
+        on = false;
+        cues.turnOff();
+      } else if (on) {
+        cues.refresh(force);
+      }
+    }
+  }
+
+  function labelCuesApply(mode, lyr) {
+    return (mode == 'info' || mode == 'selection') && !!lyr &&
+      !lyr.hidden && internal.layerHasLabels(lyr);
+  }
+
+  // Which labels are selected and which one is hovered, from the hit control's
+  // state. In selection mode the selected set is the hit ids, which include the
+  // labels inside a box being dragged. In inspect mode the hit ids are only what
+  // is under the pointer, and the one selected label is the pinned one.
+  function getLabelCueState(o) {
+    var id = o.id >= 0 ? o.id : -1;
+    var selected;
+    if (o.mode == 'selection') {
+      selected = o.ids || [];
+    } else {
+      selected = o.pinned && id > -1 ? [id] : [];
+    }
+    return {
+      selected: selected,
+      hoverId: id > -1 && selected.indexOf(id) == -1 ? id : -1
+    };
+  }
+
   // The visible guide for a label path being placed: a line along the curve the
   // text will follow, and a handle on each knot.
   //
@@ -27863,7 +28886,7 @@
   var violet$1 = '#cc6acc';
   var white = '#ffffff';
 
-  var KNOT_RADIUS$1 = 3.2;
+  var KNOT_RADIUS = 3.2;
 
   // Flattening tolerance as a fraction of the curve's own size, which keeps the
   // guide smooth at any zoom and, because it does not depend on the view, lets
@@ -27958,7 +28981,7 @@
     }, {
       // type: 'styled' is what gets these drawn as circles.
       type: 'styled',
-      radius: KNOT_RADIUS$1,
+      radius: KNOT_RADIUS,
       strokeColor: violet$1,
       strokeWidth: 1.5,
       fillColor: white
@@ -28140,6 +29163,9 @@
       }
       return layers;
     }
+    if (labelCuesApply(styleOpts.interactionMode, activeLyr)) {
+      hitData = withoutLabelledFeatures(displayLyr, hitData);
+    }
     // layer containing selected features, not including hover or pinned feature
     ids = utils$1.difference(hitData.ids || [], [hitData.id]);
     if (ids.length > 0) {
@@ -28157,6 +29183,19 @@
       layers.push(lyr);
     }
     return layers;
+  }
+
+  // Labels are cued with boxes around their text (gui-label-hit-cues.mjs). A
+  // feature with no text has nothing to box, so it keeps the canvas marker.
+  function withoutLabelledFeatures(lyr, hitData) {
+    var records = lyr.data ? lyr.data.getRecords() : [];
+    var unlabelled = function(id) {
+      return !internal.svg.featureHasLabel(records[id]);
+    };
+    return Object.assign({}, hitData, {
+      ids: (hitData.ids || []).filter(unlabelled),
+      id: hitData.id > -1 && unlabelled(hitData.id) ? hitData.id : -1
+    });
   }
 
   function getOverlayLayer(activeLyr, ids) {
@@ -30426,9 +31465,9 @@
   //
   // See docs/development/label-tool-design.md.
 
-  var SVG_NS$3 = 'http://www.w3.org/2000/svg';
+  var SVG_NS$2 = 'http://www.w3.org/2000/svg';
   var XML_NS = 'http://www.w3.org/XML/1998/namespace';
-  var BOX_PADDING$1 = 3;
+  var BOX_PADDING = 3;
 
   // Prefix for the ids of a pending label's own <defs>, kept away from the ones
   // the layer generates so a pending curve cannot be mistaken for a real one.
@@ -30817,7 +31856,7 @@
       }
       removePendingGroup(o);
       o.pending.markup = markup;
-      o.pending.group = document.createElementNS(SVG_NS$3, 'g');
+      o.pending.group = document.createElementNS(SVG_NS$2, 'g');
       o.pending.group.setAttribute('class', 'label-edit-pending');
       o.pending.group.innerHTML = markup;
       container.appendChild(o.pending.group);
@@ -30917,7 +31956,7 @@
       pos = lines[0].length;
       appendRuns(content, full, o.bold, 0, pos);
       for (i = 1; i < lines.length; i++) {
-        tspan = document.createElementNS(SVG_NS$3, 'tspan');
+        tspan = document.createElementNS(SVG_NS$2, 'tspan');
         tspan.setAttribute('x', o.nodes.text.getAttribute('x') || 0);
         tspan.setAttribute('dy', getLineHeight(o));
         appendRuns(tspan, full, o.bold, pos, pos + lines[i].length);
@@ -30941,7 +31980,7 @@
           parent.appendChild(document.createTextNode(run.text));
           return;
         }
-        tspan = document.createElementNS(SVG_NS$3, 'tspan');
+        tspan = document.createElementNS(SVG_NS$2, 'tspan');
         tspan.setAttribute('font-weight', internal.svg.LABEL_BOLD_WEIGHT);
         tspan.appendChild(document.createTextNode(run.text));
         parent.appendChild(tspan);
@@ -31007,8 +32046,8 @@
       var caret = getCaretGeometry(provider,
         getRenderedCaret(o.text, getCaretStart(), layout));
       var box = growBoxToCaret(
-        getLabelBox(provider, measure(o.nodes.content), rendered, BOX_PADDING$1),
-        caret, BOX_PADDING$1);
+        getLabelBox(provider, measure(o.nodes.content), rendered, BOX_PADDING),
+        caret, BOX_PADDING);
       var groups = getGroups(o);
       var bands = getSelectedRenderedRange(o);
       var pathId = getLabelPathId(o.nodes);
@@ -31043,9 +32082,9 @@
       var column = rec ? getLabelColumn(rec) : null;
       if (!column) return;
       g.appendChild(rect({
-        x: column[0] - BOX_PADDING$1,
+        x: column[0] - BOX_PADDING,
         y: box.y,
-        width: column[1] - column[0] + BOX_PADDING$1 * 2,
+        width: column[1] - column[0] + BOX_PADDING * 2,
         height: box.height
       }, 'label-edit-column'));
     }
@@ -31067,7 +32106,7 @@
     // nothing on screen at all. Drawn from the same <defs> path the <textPath>
     // references, so it cannot drift from the text it belongs to.
     function ghostPath(pathId) {
-      var el = document.createElementNS(SVG_NS$3, 'use');
+      var el = document.createElementNS(SVG_NS$2, 'use');
       el.setAttribute('href', '#' + pathId);
       el.setAttribute('class', 'label-edit-path');
       return el;
@@ -31094,7 +32133,7 @@
       // A thickened, transparent copy of the baseline: about one em wide, so that
       // the region follows the curve rather than boxing it.
       if (!line) {
-        line = document.createElementNS(SVG_NS$3, 'use');
+        line = document.createElementNS(SVG_NS$2, 'use');
         line.setAttribute('class', 'label-edit-hit-baseline');
         g.appendChild(line);
       }
@@ -31156,7 +32195,7 @@
     }
 
     function makeGroup(className) {
-      var g = document.createElementNS(SVG_NS$3, 'g');
+      var g = document.createElementNS(SVG_NS$2, 'g');
       g.setAttribute('class', className);
       return g;
     }
@@ -31191,7 +32230,7 @@
     }
 
     function rect(box, className) {
-      var el = document.createElementNS(SVG_NS$3, 'rect');
+      var el = document.createElementNS(SVG_NS$2, 'rect');
       setRect(el, box);
       el.setAttribute('class', className);
       return el;
@@ -31205,7 +32244,7 @@
     }
 
     function caretLine(caret) {
-      var el = document.createElementNS(SVG_NS$3, 'line');
+      var el = document.createElementNS(SVG_NS$2, 'line');
       el.setAttribute('x1', caret.x);
       el.setAttribute('y1', caret.y - caret.ascent);
       el.setAttribute('x2', caret.x);
@@ -31352,386 +32391,6 @@
       if (!textarea) return;
       textarea.setSelectionRange(start, end, direction || 'forward');
     }
-  }
-
-  // Drawing which labels are selected for styling.
-  //
-  // The older label_style mode marks selected labels with a halo on the glyphs
-  // (text.label-style-selected). That reads as "this text is highlighted", which
-  // is fine for a mode whose only job is styling. The label tool needs it to read
-  // as "this is an object you have hold of", because one click selects a label
-  // and another reaches into its text -- so the cue is an outline around the
-  // object rather than a wash over the letters.
-  //
-  // Two shapes, because a label is one of two things:
-  //
-  // - An anchored label is a block of text: a box around it, plus a marker on
-  //   the anchor point when the anchor is neither drawn by the label nor covered
-  //   by the box. The anchor is worth showing there because it is what the text
-  //   is positioned against, and a position or a drag can put it well outside
-  //   the box -- see appendAnchoredCue().
-  // - A path label is a line of text on a curve: its own curve, stroked. A box
-  //   round a curve is mostly empty air and says very little about what is
-  //   selected. The curve already exists as a path in the layer's <defs> -- it is
-  //   what the text is laid along -- so this strokes a copy of it and is exact by
-  //   construction rather than by recomputation.
-  //
-  // See docs/development/label-tool-design.md.
-
-  var SVG_NS$2 = 'http://www.w3.org/2000/svg';
-  // How far outside its text a label's outline is drawn. Exported because the
-  // tool grabs a label by the same box: what looks like the object is what takes
-  // a drag on it.
-  var BOX_PADDING = 3;
-  var ANCHOR_RADIUS = 3.5;
-  var KNOT_RADIUS = 3;
-  var WIDTH_HANDLE_SIZE = 6;
-  var GAP_HANDLE_RADIUS = 2.5;
-
-  // How many labels get an outline before the cue falls back to the halo.
-  //
-  // Each outline costs a getBBox() on its text node. That is once per label per
-  // SVG redraw rather than once per frame -- navigation repositions the symbol
-  // layer instead of rebuilding it, and the cue moves with the map by wearing the
-  // label's own transform -- but a select-all on a big layer would still pay it,
-  // for an outline per label too small to tell apart anyway.
-  //
-  // Over the cap the selected labels wear a halo instead (.label-cue-marked),
-  // which is a class on the text node and costs no measurement. It says less
-  // than an outline -- no anchors, no knots, no box -- but a selection of
-  // hundreds is a group being restyled rather than objects being handled one by
-  // one, and the one thing it has to say is which labels are in it. This used to
-  // draw nothing at all, so selecting a whole layer left the map unchanged.
-  var MAX_OUTLINES = 200;
-
-  // getEditingId: returns the feature id of an open text editing session, or -1.
-  //   A label being typed into draws its own box and does not want a second one.
-  // getHandles: (optional) function(target, id, textBox) returning
-  //   {handles, column} for a selected anchored label, as from
-  //   getAnchoredLabelHandles(), or null. The tool decides when a label has
-  //   handles, and gives a text block's column from what is on screen, which
-  //   during a drag is not the data.
-  function LabelSelection(gui, ext, hit, getEditingId, getHandles) {
-    var self = {};
-    var groups = []; // one <g> per drawn cue, in the layer's markup
-    var marked = []; // text nodes wearing the halo, when there are too many to outline
-    var drawn = null; // what those cues represent, so hover does not redraw them
-    var on = false;
-    var tetherId = -1; // the label whose text is being dragged off its anchor
-
-    self.turnOn = function() {
-      on = true;
-      self.refresh();
-    };
-
-    self.turnOff = function() {
-      on = false;
-      tetherId = -1;
-      clearAll();
-    };
-
-    // Draws a hairline from @id's anchor to its text while its offset is being
-    // dragged, or nothing when given -1. The offset is what is being edited, and
-    // on a label with no symbol the anchor is otherwise not drawn at all.
-    self.setTether = function(id) {
-      if (tetherId === id) return;
-      tetherId = id;
-      if (on) self.refresh(true);
-    };
-
-    // Redraws the cues against the current DOM. Called when the hit state changes
-    // and when the map has been rendered, because a redraw replaces the layer's
-    // markup and takes the old cues with it.
-    self.refresh = function(force) {
-      var target = hit.getHitTarget();
-      var selected = on ? hit.getSelectionIds() : [];
-      var tooMany = selected.length > MAX_OUTLINES;
-      var ids = tooMany ? [] : selected;
-      var hoverId = on ? getHoverId(selected) : -1;
-      var key = selected.join(',') + '/' + hoverId + '/' + tetherId;
-      // Hover fires on every pointer move, and most of them change nothing here.
-      if (!force && drawn === key) return;
-      clearAll();
-      drawn = key;
-      if (!target) return;
-      // The hovered label goes first, so that a selected label drawn over it wins
-      // if the two are ever the same.
-      if (hoverId > -1) draw(target, hoverId, 'label-cue-hovered');
-      ids.forEach(function(id) {
-        // Knot handles go on selected curves only. A hovered label is being
-        // pointed at, not held, and dotting a curve the pointer merely crossed
-        // would offer handles that cannot be grabbed.
-        draw(target, id, 'label-cue-selected', true);
-      });
-      // Too many to outline: a halo on the glyphs instead, which is the whole cue
-      // for those labels.
-      if (tooMany) markAll(target, selected);
-    };
-
-    // The label under the pointer, when showing it would say something: not one
-    // already cued as selected, and not the one being typed into.
-    function getHoverId(selectedIds) {
-      var id = hit.getHitId();
-      if (id < 0 || selectedIds.indexOf(id) > -1) return -1;
-      if (getEditingId && getEditingId() === id) return -1;
-      return id;
-    }
-
-    // Puts the halo on each selected label's glyphs. A class of its own rather
-    // than the label_style mode's yellow one: that class is cleared on every
-    // model update while the label tool is on, so the two would fight.
-    function markAll(target, ids) {
-      ids.forEach(function(id) {
-        var nodes = findNodes(target, id);
-        if (!nodes) return;
-        nodes.text.classList.add('label-cue-marked');
-        marked.push(nodes.text);
-      });
-    }
-
-    function clearMarks() {
-      marked.forEach(function(node) {
-        node.classList.remove('label-cue-marked');
-      });
-      marked = [];
-    }
-
-    function draw(target, id, className, withHandles) {
-      var nodes = findNodes(target, id);
-      var rec = getRecord(target, id);
-      var g;
-      if (!nodes || !rec) return;
-      g = makeGroup(nodes, className);
-      if (nodes.pathId) {
-        g.appendChild(curve(nodes.pathId));
-        if (withHandles) appendKnotHandles(g, target, id);
-      } else {
-        appendAnchoredCue(g, nodes, rec, id, withHandles ? target : null);
-      }
-      groups.push(g);
-    }
-
-    // A box around the text, the anchor it is positioned against, and while the
-    // two are being pulled apart, a line between them.
-    //
-    // The anchor is only marked when there is something to say: nothing else is
-    // drawn there, and the text is somewhere other than on top of it. A label
-    // that draws a symbol has the symbol, and a marker on top of it would
-    // obscure what the label actually looks like; a label whose text sits over
-    // its own anchor has the box, which says where it is more precisely than a
-    // ring inside it would. What is left -- offset text with nothing at its
-    // anchor -- is the case where the ring is the only thing that says what the
-    // text hangs off.
-    //
-    // A selected label's handles go in a group of their own, after the symbol
-    // rather than before it: they sit on the callout and on the edge of the box,
-    // and painted beneath the line they would be hidden by it.
-    //
-    // @handleTarget: the layer, when the label is selected and so may have
-    //   handles, or null
-    //
-    // A selected text block also shows its column, the width it wraps to, as a
-    // fainter dashed box behind the solid one. The solid box is the label itself
-    // -- the wrapped text, which is what a callout meets -- and is usually
-    // narrower than its column; the column is what the width handle drags.
-    function appendAnchoredCue(g, nodes, rec, id, handleTarget) {
-      var box = measure(nodes.content);
-      var o = box && handleTarget && getHandles ? getHandles(handleTarget, id, box) : null;
-      var column = o ? o.column : null;
-      if (!box) return;
-      if (column) g.appendChild(columnRect(box, column, BOX_PADDING));
-      if (box.width || box.height) g.appendChild(rect(box, BOX_PADDING));
-      if (id === tetherId) g.appendChild(tether(box));
-      if (!internal.featureHasSvgSymbol(rec) && !boxHoldsOrigin(box)) {
-        g.appendChild(anchorMarker());
-      }
-      if (o && o.handles.length > 0) appendHandles(nodes, o.handles);
-    }
-
-    // The column's own extent across, and the text's up and down: a column has
-    // no height of its own.
-    function columnRect(box, column, pad) {
-      var el = rect({x: column[0], y: box.y, width: column[1] - column[0],
-        height: box.height}, pad);
-      el.setAttribute('class', 'label-cue-column');
-      return el;
-    }
-
-    function appendHandles(nodes, handles) {
-      var g = document.createElementNS(SVG_NS$2, 'g');
-      var transform = nodes.symbol.getAttribute('transform');
-      var display = nodes.symbol.getAttribute('display');
-      g.setAttribute('class', 'label-cue label-cue-handles');
-      if (transform) g.setAttribute('transform', transform);
-      if (display) g.setAttribute('display', display);
-      handles.forEach(function(h) {
-        g.appendChild(labelHandle(h));
-      });
-      nodes.symbol.parentNode.insertBefore(g, nodes.symbol.nextSibling);
-      groups.push(g);
-    }
-
-    // A square for the width handle, which is a corner of the box, and a ring
-    // for the callout's, which are points on its line -- filled for the end
-    // that meets the text, so that the two ends of the line read differently.
-    function labelHandle(h) {
-      var p = h.point;
-      var el;
-      if (h.kind == 'width') {
-        el = document.createElementNS(SVG_NS$2, 'rect');
-        el.setAttribute('x', p[0] - WIDTH_HANDLE_SIZE / 2);
-        el.setAttribute('y', p[1] - WIDTH_HANDLE_SIZE / 2);
-        el.setAttribute('width', WIDTH_HANDLE_SIZE);
-        el.setAttribute('height', WIDTH_HANDLE_SIZE);
-      } else {
-        el = document.createElementNS(SVG_NS$2, 'circle');
-        el.setAttribute('cx', p[0]);
-        el.setAttribute('cy', p[1]);
-        el.setAttribute('r', h.kind == 'gap' ? GAP_HANDLE_RADIUS : KNOT_RADIUS);
-      }
-      el.setAttribute('class', 'label-cue-handle label-cue-' + h.kind);
-      el.setAttribute('data-handle', h.kind);
-      return el;
-    }
-
-    // Whether the label's anchor point is inside the box drawn around its text.
-    // The group's own origin is the anchor, so this is a question about zero.
-    function boxHoldsOrigin(box) {
-      return box.x <= 0 && box.x + box.width >= 0 &&
-        box.y <= 0 && box.y + box.height >= 0;
-    }
-
-    // A dot on each knot of a selected curve, so that what can be grabbed is
-    // what can be seen.
-    //
-    // These are placed in the same coordinate space as the curve beside them --
-    // the space inside the symbol group -- by the same mapping the renderer used
-    // to build the curve, rather than by reading positions back out of the path.
-    function appendKnotHandles(g, target, id) {
-      var shp = target.shapes && target.shapes[id];
-      var coords, i;
-      if (!shp || shp.length < 2) return;
-      coords = internal.svg.getLabelPathCoords(shp, ext.getTransform(),
-        ext.getSymbolScale());
-      for (i = 0; i < coords.length; i++) {
-        g.appendChild(knotHandle(coords[i]));
-      }
-    }
-
-    function findNodes(target, id) {
-      var container = target.gui && target.gui.svg_container;
-      // Qualified by the symbol class because an editing session's hit region
-      // carries the same data-id, as the hit test requires.
-      var symbol = container && container.querySelector(
-        '.mapshaper-svg-symbol[data-id="' + id + '"]');
-      var text = !symbol ? null :
-        symbol.tagName == 'text' ? symbol : symbol.querySelector('text');
-      var content;
-      if (!text) return null;
-      content = text.querySelector('textPath') || text;
-      return {symbol: symbol, text: text, content: content,
-        pathId: getPathId(content)};
-    }
-
-    // The id of the baseline a path label is laid along, or null for an anchored
-    // one. This is what tells the two kinds apart here: the geometry is the same
-    // multipoint either way, but only a path label renders a <textPath>.
-    function getPathId(content) {
-      var href = content.tagName != 'textPath' ? null :
-        content.getAttribute('href') || content.getAttribute('xlink:href');
-      return href && href.charAt(0) == '#' ? href.substr(1) : null;
-    }
-
-    function getRecord(target, id) {
-      var records = target.data ? target.data.getRecords() : null;
-      return records ? records[id] : null;
-    }
-
-    // A sibling of the label's symbol node, wearing its transform so that the cue
-    // moves and hides with it, and inserted before it so the outline paints
-    // beneath the glyphs.
-    function makeGroup(nodes, className) {
-      var g = document.createElementNS(SVG_NS$2, 'g');
-      var transform = nodes.symbol.getAttribute('transform');
-      var display = nodes.symbol.getAttribute('display');
-      g.setAttribute('class', 'label-cue ' + className);
-      if (transform) g.setAttribute('transform', transform);
-      if (display) g.setAttribute('display', display);
-      nodes.symbol.parentNode.insertBefore(g, nodes.symbol);
-      return g;
-    }
-
-    function measure(node) {
-      try {
-        return node.getBBox();
-      } catch (e) {
-        return null; // an unrendered node has no box to report
-      }
-    }
-
-    function rect(box, pad) {
-      var el = document.createElementNS(SVG_NS$2, 'rect');
-      el.setAttribute('x', box.x - pad);
-      el.setAttribute('y', box.y - pad);
-      el.setAttribute('width', box.width + pad * 2);
-      el.setAttribute('height', box.height + pad * 2);
-      el.setAttribute('class', 'label-cue-box');
-      return el;
-    }
-
-    function anchorMarker() {
-      var el = document.createElementNS(SVG_NS$2, 'circle');
-      // The group's own origin is the anchor point, so the marker sits at 0,0.
-      el.setAttribute('cx', 0);
-      el.setAttribute('cy', 0);
-      el.setAttribute('r', ANCHOR_RADIUS);
-      el.setAttribute('class', 'label-cue-anchor');
-      return el;
-    }
-
-    // The line from the anchor to the text, drawn to the nearest corner or edge
-    // of its box rather than to the middle of it: a line to the middle would run
-    // underneath the glyphs it is pointing at.
-    function tether(box) {
-      var el = document.createElementNS(SVG_NS$2, 'line');
-      el.setAttribute('x1', 0);
-      el.setAttribute('y1', 0);
-      el.setAttribute('x2', clamp(0, box.x - BOX_PADDING, box.x + box.width + BOX_PADDING));
-      el.setAttribute('y2', clamp(0, box.y - BOX_PADDING, box.y + box.height + BOX_PADDING));
-      el.setAttribute('class', 'label-cue-tether');
-      return el;
-    }
-
-    function clamp(val, min, max) {
-      return val < min ? min : val > max ? max : val;
-    }
-
-    function knotHandle(p) {
-      var el = document.createElementNS(SVG_NS$2, 'circle');
-      el.setAttribute('cx', p[0]);
-      el.setAttribute('cy', p[1]);
-      el.setAttribute('r', KNOT_RADIUS);
-      el.setAttribute('class', 'label-cue-knot');
-      return el;
-    }
-
-    function curve(pathId) {
-      var el = document.createElementNS(SVG_NS$2, 'use');
-      el.setAttribute('href', '#' + pathId);
-      el.setAttribute('class', 'label-cue-curve');
-      return el;
-    }
-
-    function clearAll() {
-      groups.forEach(function(g) {
-        if (g.parentNode) g.parentNode.removeChild(g);
-      });
-      groups = [];
-      clearMarks();
-      drawn = null;
-    }
-
-    return self;
   }
 
   // Selecting a group of labels by pointing at one of them: every label on the
@@ -32888,7 +33547,7 @@
       o = getAnchoredLabelHandles(rec, textBox, {
         symbolRadius: internal.svg.getAnchorSymbolRadius(rec),
         scale: ext.getSymbolScale() || 1,
-        padding: BOX_PADDING
+        padding: BOX_PADDING$1
       });
       shownHandles = {id: id, target: target, handles: o.handles};
       return o;
@@ -32967,7 +33626,7 @@
       var tol = SNAP_PX / (ext.getSymbolScale() || 1);
       var width, shape, via;
       if (o.kind == 'width') {
-        width = getDraggedWidth(o.textAnchor, o.dx, p[0], BOX_PADDING);
+        width = getDraggedWidth(o.textAnchor, o.dx, p[0], BOX_PADDING$1);
         return {
           'label-width': width,
           'label-text': rewrapLabelValue(o.rec['label-text'],
@@ -33622,8 +34281,8 @@
       var p;
       if (!box || !pix || !shp) return false;
       p = getLabelSpacePoint(shp[0], {x: pix[0], y: pix[1]});
-      return p.x >= box.x - BOX_PADDING && p.x <= box.x + box.width + BOX_PADDING &&
-        p.y >= box.y - BOX_PADDING && p.y <= box.y + box.height + BOX_PADDING;
+      return p.x >= box.x - BOX_PADDING$1 && p.x <= box.x + box.width + BOX_PADDING$1 &&
+        p.y >= box.y - BOX_PADDING$1 && p.y <= box.y + box.height + BOX_PADDING$1;
     }
 
     // The label a drag on the glyphs would act on, or -1. Only a selected label
@@ -33901,6 +34560,7 @@
     initLineEditing(gui, ext, hit);
     initSnipTool(gui, ext, hit);
     initLabelTool(gui, ext, hit);
+    initLabelHitCues(gui, ext, hit);
   }
 
   var darkStroke = "#334",
@@ -40997,6 +41657,10 @@
       getHitId: function() {
         var hit = gui.map.getHitControl && gui.map.getHitControl();
         return hit ? hit.getHitId() : -1;
+      },
+      getSelectionIds: function() {
+        var hit = gui.map.getHitControl && gui.map.getHitControl();
+        return hit ? hit.getSelectionIds() : [];
       },
       // The style the label tool will give its next label, set through the style
       // panel with nothing selected. Held in GUI state rather than in a layer, so

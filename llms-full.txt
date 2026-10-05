@@ -802,7 +802,7 @@ Assign colors or data values to each feature using one of several classification
 
 `invert`        Reverse the order of colors/values.
 
-`continuous`    Output continuously interpolated values, for unclassed/continuous-color maps. Discrete color values are treated as control points, determining the shape of the continuously interpolated color gradient.
+`continuous`    Output continuously interpolated values, for unclassed/continuous-color maps. Discrete color values are treated as control points, determining the shape of the continuously interpolated color gradient. With `method=quantile`, each value is placed on the gradient by its rank among the data (tied values share their average rank), so the number of colors affects only the shape of the gradient; with a pivot, each side is ranked separately. With other methods, values are interpolated linearly between the class breaks.
 
 `interpolation=`    How intermediate colors are calculated when colors are interpolated. `rgb` (the default) mixes colors in RGB space. `oklch` uses the perceptually uniform OKLCH color space. Lightness, chroma and hue are interpolated separately. This gives evenly spaced steps in lightness and color saturation, avoiding the dull midtones that RGB mixing can produce. Where an `oklch` color falls outside the sRGB gamut, it is fitted as described under `vibrance=`.
 

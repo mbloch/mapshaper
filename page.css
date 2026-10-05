@@ -5106,30 +5106,6 @@ body.dragging-color-picker * {
 	outline-offset: 1px;
 }
 
-/* Takes an end tile of a sequential preset away, shown over the tile on hover */
-.color-scheme-tile-remove {
-	display: none;
-	position: absolute;
-	top: 2px;
-	right: 2px;
-	width: 14px;
-	height: 14px;
-	padding: 0;
-	border: none;
-	border-radius: 50%;
-	background-color: rgba(255, 255, 255, 0.85);
-	box-shadow: 0 0 0 1px rgba(0,0,0,0.2);
-	color: #333;
-	font-size: 12px;
-	line-height: 14px;
-	text-align: center;
-	cursor: pointer;
-}
-
-.color-scheme-tile:hover > .color-scheme-tile-remove {
-	display: block;
-}
-
 .color-scheme-icon-btn {
 	position: relative;
 	flex: none;
@@ -5228,4 +5204,197 @@ body.dragging-color-picker * {
 	border-radius: 4px;
 	pointer-events: none;
 	z-index: 1;
+}
+/* The Breaks row: the method's menu in the left column, the button that opens
+   the class breaks dialog in the right */
+.color-scheme-customize-cell > .label-panel-action-btn {
+	display: flex;
+	justify-content: center;
+	width: 100%;
+	padding: 0 4px;
+	white-space: nowrap;
+}
+
+.label-style-panel .color-scheme-customize-cell > .label-panel-action-btn.selected {
+	background-color: var(--lt-theme-col);
+}
+
+/* Class breaks dialog (gui-class-breaks-dialog.mjs): to the left of the color
+   scheme panel, which is 216px wide with 12px of padding and a border on each
+   side, 36px from the right */
+.label-style-panel.class-breaks-dialog {
+	right: 286px;
+	width: 216px;
+}
+
+.class-breaks-chart {
+	position: relative;
+	margin-top: 8px;
+}
+
+.class-breaks-bars {
+	display: flex;
+	align-items: flex-end;
+	/* gap: 1px; */
+	height: 72px;
+	border-bottom: 1px solid #999;
+}
+
+.class-breaks-bar {
+	flex: 1;
+	background-color: #b8b8b8;
+}
+
+/* a line up through the histogram at each break; the lines and the handles
+   share the bars' width, so that a value has the same left in both */
+.class-breaks-lines {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 72px;
+	pointer-events: none;
+}
+
+.class-breaks-line,
+.class-breaks-pivot {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 0;
+	border-left: 1px solid rgba(0, 0, 0, 0.55);
+}
+
+.class-breaks-pivot,
+.class-breaks-line.fixed {
+	border-left: 1px dashed #000;
+}
+
+.class-breaks-handles {
+	position: relative;
+	height: 12px;
+}
+
+/* a triangle pointing up at its break */
+.class-breaks-handle {
+	position: absolute;
+	top: 1px;
+	width: 0;
+	height: 0;
+	margin-left: -6px;
+	border-left: 6px solid transparent;
+	border-right: 6px solid transparent;
+	border-bottom: 10px solid #444;
+	cursor: ew-resize;
+	touch-action: none;
+}
+
+.class-breaks-handle:hover,
+.class-breaks-handle.dragging {
+	border-bottom-color: #000;
+}
+
+.class-breaks-handle.fixed {
+	border-bottom-color: #aaa;
+	cursor: default;
+}
+
+.class-breaks-handle:focus-visible {
+	outline: 2px solid var(--theme-col);
+	outline-offset: 1px;
+}
+
+.class-breaks-axis {
+	display: flex;
+	justify-content: space-between;
+	font-size: 11px;
+	color: #555;
+}
+
+.label-style-row.class-breaks-log-row {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	margin-top: 4px;
+	font-size: 11px;
+	color: #555;
+}
+
+.class-breaks-log-row input {
+	margin: 0;
+}
+
+/* The classes, stacked with a 3px gap between their tiles. Each break's mark
+   sits on the gap between two classes: a 1px rule in the middle of the gap,
+   from the counts out to the break's field, which is centered on the rule. A
+   row and its gap are taller than a field, so that the fields don't touch. */
+.class-breaks-table {
+	--class-breaks-row-height: 22px;
+	--class-breaks-gap: 3px;
+	--class-breaks-swatch-width: 32px;
+	max-height: 320px;
+	margin-top: 8px;
+	overflow-y: auto;
+}
+
+.class-breaks-list {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: var(--class-breaks-gap);
+	margin: 4px 0;
+}
+
+.class-breaks-class {
+	display: flex;
+	align-items: center;
+	height: var(--class-breaks-row-height);
+}
+
+/* like the panel's tiles (.color-scheme-tile) */
+.class-breaks-swatch {
+	flex: none;
+	align-self: stretch;
+	width: var(--class-breaks-swatch-width);
+	border-radius: 3px;
+	box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12);
+}
+
+.class-breaks-count {
+	padding-left: 8px;
+	font-size: 11px;
+	color: #555;
+	white-space: nowrap;
+}
+
+/* placed by the script: its top is 11px above the gap's middle pixel, the
+   rule's row */
+.class-breaks-mark {
+	position: absolute;
+	left: 0;
+	right: 0;
+	height: var(--label-field-height, 22px);
+	pointer-events: none;
+}
+
+.class-breaks-rule {
+	position: absolute;
+	top: 11px;
+	left: calc(var(--class-breaks-swatch-width) + 8px);
+	right: 90px;
+	border-top: 1px solid var(--label-field-border);
+}
+
+.class-breaks-rule.fixed {
+	border-top-style: dashed;
+}
+
+.class-breaks-mark input[type="text"] {
+	position: absolute;
+	top: 0;
+	right: 0;
+	box-sizing: border-box;
+	width: 90px;
+	pointer-events: auto;
+	padding-left: 4px;
 }
