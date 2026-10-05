@@ -69,9 +69,9 @@ describe('color-schemes.js', function () {
   describe('getColorSchemeGroups()', function () {
     it('groups schemes by source', function () {
       var groups = internal.getColorSchemeGroups('diverging');
-      assert.deepEqual(groups.map(g => g.source), ['ColorBrewer', 'Crameri']);
-      assert(groups[0].names.includes('RdBu'));
-      assert.deepEqual(groups[1].names, ['bam', 'broc', 'cork', 'roma', 'vik']);
+      assert.deepEqual(groups.map(g => g.source), ['NYT', 'ColorBrewer', 'Crameri']);
+      assert(groups[1].names.includes('RdBu'));
+      assert.deepEqual(groups[2].names, ['bam', 'broc', 'cork', 'roma', 'vik']);
     })
 
     it('combines types, and covers every scheme', function () {
@@ -80,7 +80,35 @@ describe('color-schemes.js', function () {
       var all = types.reduce((memo, type) => memo.concat(internal.getColorSchemeNames(type)), []);
       assert.deepEqual(grouped.concat().sort(), all.concat().sort());
       assert.deepEqual(internal.getColorSchemeGroups(types).map(g => g.source),
-        ['ColorBrewer', 'Tableau', 'Matplotlib', 'Crameri', 'd3']);
+        ['NYT', 'ColorBrewer', 'Tableau', 'Matplotlib', 'Crameri', 'd3']);
+    })
+  })
+
+  describe('NYT schemes', function () {
+    it('are sets of one size, which give their own colors at that size', function () {
+      assert.equal(internal.getColorSchemeSetSize('nyt-blue3'), 3);
+      assert.equal(internal.getColorSchemeSetSize('nyt-hot'), 5);
+      assert.equal(internal.getColorSchemeSetSize('Blues'), 0);
+      assert.deepEqual(internal.getColorRamp('nyt-blue3', 3).map(c => internal.formatColor(internal.parseColor(c))),
+        ['#bfdff9', '#5189b8', '#315e82']);
+      assert.equal(internal.getColorSchemeSetSize('nyt-drought'), 7);
+      assert.equal(internal.isCenterlessColorScheme('nyt-heat'), true);
+      assert.equal(internal.isCenterlessColorScheme('nyt-drought'), false);
+      assert.deepEqual(internal.getCategoricalColors('nyt-7').length, 7);
+      assert.equal(internal.getColorRamp('nyt-red4', 7).length, 7);
+    })
+
+    it('are not picked at random', function () {
+      for (var i=0; i<200; i++) {
+        assert(!/^nyt-/.test(internal.pickRandomColorScheme('sequential')));
+      }
+    })
+
+    it('-classify takes their names', async function () {
+      var csv = 'v\n1\n2\n3';
+      var out = await api.applyCommands('-i data.csv -classify v classes=3 colors=nyt-blue3 -o format=json', {'data.csv': csv});
+      var fills = JSON.parse(out['data.json']).map(d => internal.formatColor(internal.parseColor(d.fill)));
+      assert.deepEqual(fills, ['#bfdff9', '#5189b8', '#315e82']);
     })
   })
 })

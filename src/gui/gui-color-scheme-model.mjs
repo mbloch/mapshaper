@@ -143,9 +143,13 @@ export function getCategoricalPresetNames() {
 // The presets of a scheme type, by source, for the palette menu:
 // [{source, names}]. Sequential presets include -classify's multi-hue
 // ('rainbow') schemes.
-export function getPresetGroups(type) {
+// opts.nyt  include the NYT presets, which come first (see nyt-schemes.mjs)
+export function getPresetGroups(type, opts) {
   var types = type == 'sequential' ? ['sequential', 'rainbow'] : [type];
-  return internal.getColorSchemeGroups(types).map(function(group) {
+  var nyt = !!(opts && opts.nyt);
+  return internal.getColorSchemeGroups(types).filter(function(group) {
+    return nyt || group.source != 'NYT';
+  }).map(function(group) {
     return {source: group.source, names: group.names.filter(function(name) {
       return !excludedPresets.includes(name);
     })};
@@ -967,13 +971,42 @@ export function getPinnedTiles(scheme) {
 
 // count: the number of categories, for a categorical scheme
 export function choosePreset(scheme, name, count) {
-  var next;
+  var next, size;
   if (scheme.type == 'categorical') {
     next = Object.assign({}, scheme, {preset: name, order: null, swatches: null});
     next.n = clampColorCount(next, next.n, count);
     return next;
   }
-  return Object.assign({}, scheme, {preset: name, reversed: false, pins: null, range: null});
+  next = Object.assign({}, scheme, {preset: name, reversed: false, pins: null, range: null});
+  // a hand-picked set starts with its own colors
+  size = internal.getColorSchemeSetSize(name);
+  if (size > 0 && next.type == 'sequential') {
+    next = setTileCount(next, size);
+  }
+  if (size > 0 && next.type == 'diverging') {
+    next = chooseDivergingSet(next, name, size);
+  }
+  return next;
+}
+
+// A diverging set's classes: its colors on each side, and its center color
+// for the pivot class. A set without a center color has no pivot class.
+// (A side with more of the data may still get more classes than the set
+// has colors, unless the classes are by number per side.)
+function chooseDivergingSet(scheme, name, size) {
+  var centerless = internal.isCenterlessColorScheme(name);
+  var next = centerless ? setSchemeNeutral(scheme, false) : scheme;
+  var side = (size - 1) / 2;
+  if (next.continuous) return next;
+  return setTileCount(next, next.split == 'count' ? side : getSchemeNeutral(next) ? size : size - 1);
+}
+
+// The colors that show a preset in the palette menu: a hand-picked set's own
+// (without the center color of a diverging set that has no pivot class)
+export function getPresetMenuColors(name) {
+  var colors = getPresetColors(name, internal.getColorSchemeSetSize(name) || 7);
+  if (internal.isCenterlessColorScheme(name)) colors.splice((colors.length - 1) / 2, 1);
+  return colors;
 }
 
 // A preset as a custom ramp, pinned at its ends, for editing.

@@ -5,11 +5,12 @@ import { SizeField } from './gui-size-field';
 import { runGuiEditCommand } from './gui-edit-command';
 import { makeColorRow, makePanelToggle, makePanelActionButton } from './gui-panel-controls';
 import { ClassBreaksDialog } from './gui-class-breaks-dialog';
+import { isNytUser } from './gui-nyt';
 import { internal } from './gui-core';
 import {
   schemeTypes, maxCategoricalColors,
   getPresetGroups, getDefaultSchemeOfType, getSchemeColors,
-  getPresetColors, getCategoricalPresetColors, getSchemeMethods, setSchemeField, setSchemeMethod,
+  getPresetMenuColors, getCategoricalPresetColors, getSchemeMethods, setSchemeField, setSchemeMethod,
   choosePreset, makeSchemeCustom, setTileColor, clearTileColor, setTileCount, reverseScheme,
   getSchemeVibrance, setSchemeVibrance, setSchemeLongHue, getSchemeTiles, getTileEditColor, maxVibrance,
   formatSchemeCommand, getAppliedColors, getNumericFields, getCategoryFields, getCategories,
@@ -922,10 +923,10 @@ export function ColorSchemePanel(gui, opts) {
     addPaletteItem('Custom', getSchemeColors(makeSchemeCustom(scheme)), !scheme.preset, function() {
       changeScheme(makeSchemeCustom(scheme));
     });
-    getPresetGroups(scheme.type).forEach(function(group) {
+    getPresetGroups(scheme.type, {nyt: isNytUser()}).forEach(function(group) {
       El('div').addClass('color-scheme-palette-heading').appendTo(paletteMenu).text(group.source);
       group.names.forEach(function(name) {
-        var colors = categorical ? getCategoricalPresetColors(name) : getPresetColors(name, 7);
+        var colors = categorical ? getCategoricalPresetColors(name) : getPresetMenuColors(name);
         addPaletteItem(name, colors, scheme.preset == name, function() {
           changeScheme(choosePreset(scheme, name, getCategoryCount()));
         });

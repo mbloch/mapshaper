@@ -5,6 +5,7 @@ import utils from '../utils/mapshaper-utils';
 import * as d3Scales from 'd3-scale-chromatic';
 import { piecewise, interpolateRgb } from 'd3-interpolate';
 import { crameriSequential, crameriDiverging, crameriCategorical } from '../color/crameri-schemes';
+import { nytSequential, nytDiverging, nytCategorical, nytCenterless } from '../color/nyt-schemes';
 
 var index = {
   categorical: [],
@@ -18,8 +19,13 @@ var ramps;
 var stopInterpolators;
 // scheme name -> where the scheme comes from (see getColorSchemeGroups())
 var sources;
+// scheme name -> its number of colors, for a hand-picked set of one size
+var setSizes;
 // the order of the sources in lists of schemes
-var sourceOrder = ['ColorBrewer', 'Tableau', 'Matplotlib', 'Crameri', 'd3'];
+var sourceOrder = ['NYT', 'ColorBrewer', 'Tableau', 'Matplotlib', 'Crameri', 'd3'];
+// sources that -colors doesn't list, and -classify doesn't pick at random
+// (see nyt-schemes.mjs)
+var unlistedSources = ['NYT'];
 // Schemes are listed by their designers, as far as they're known. 'd3' is
 // d3-scale-chromatic's own schemes, and others that it brings in: Turbo
 // (Google) and CubehelixDefault (D. A. Green's cubehelix).
@@ -37,6 +43,7 @@ function initSchemes() {
   ramps = {};
   stopInterpolators = {};
   sources = {};
+  setSizes = {};
   addSchemesFromD3('categorical', 'Category10,Accent,Dark2,Paired,Pastel1,Pastel2,Set1,Set2,Set3,Tableau10');
   addSchemesFromD3('sequential', 'Blues,Greens,Greys,Purples,Reds,Oranges,BuGn,BuPu,GnBu,OrRd,PuBuGn,PuBu,PuRd,RdPu,YlGnBu,YlGn,YlOrBr,YlOrRd');
   addSchemesFromD3('rainbow', 'Cividis,CubehelixDefault,Rainbow,Warm,Cool,Sinebow,Turbo,Viridis,Magma,Inferno,Plasma');
@@ -57,6 +64,17 @@ function initSchemes() {
   });
   addStoppedSchemes('sequential', crameriSequential, 'Crameri');
   addStoppedSchemes('diverging', crameriDiverging, 'Crameri');
+  addStoppedSchemes('sequential', nytSequential, 'NYT');
+  addStoppedSchemes('diverging', nytDiverging, 'NYT');
+  Object.keys(nytCategorical).forEach(function(name) {
+    addCategoricalScheme(name, nytCategorical[name]);
+    sources[name] = 'NYT';
+  });
+  [nytSequential, nytDiverging].forEach(function(schemes) {
+    Object.keys(schemes).forEach(function(name) {
+      setSizes[name] = schemes[name].length / 6;
+    });
+  });
   Object.keys(crameriCategorical).forEach(function(name) {
     addCategoricalScheme(name, crameriCategorical[name]);
     sources[name] = 'Crameri';
@@ -140,6 +158,7 @@ export function printColorSchemeNames() {
   print('Built-in color schemes');
   types.forEach(function(type) {
     getColorSchemeGroups(type[0]).forEach(function(group) {
+      if (unlistedSources.includes(group.source)) return;
       print('\n' + type[1] + ' (' + group.source + ')\n' + formatStringsAsGrid(group.names));
     });
   });
@@ -153,7 +172,7 @@ export function getColorSchemeNames(type) {
 }
 
 // The schemes of one or more types, by source: [{source, names}]
-// (sources: ColorBrewer, Tableau, Matplotlib, Crameri, d3)
+// (sources: NYT, ColorBrewer, Tableau, Matplotlib, Crameri, d3)
 export function getColorSchemeGroups(types) {
   var names = [].concat(types).reduce(function(memo, type) {
     return memo.concat(getColorSchemeNames(type));
@@ -165,17 +184,34 @@ export function getColorSchemeGroups(types) {
   });
 }
 
+// The number of colors of a scheme that is a hand-picked set of one size
+// (e.g. nyt-blue3), or 0
+export function getColorSchemeSetSize(name) {
+  initSchemes();
+  return setSizes[standardName(name)] || 0;
+}
+
+// Whether a diverging scheme is made for classes without a pivot class,
+// with a center color only for a scheme that has one
+export function isCenterlessColorScheme(name) {
+  initSchemes();
+  return nytCenterless.includes(standardName(name));
+}
+
 export function pickRandomColorScheme(type) {
   initSchemes();
   var names = index[type];
   if (!names) error('Unknown color scheme type:', type);
-  return utils.pickOne(names);
+  return utils.pickOne(names.filter(function(name) {
+    return !unlistedSources.includes(sources[name]);
+  }));
 }
 
 export function pickRandomCategoricalScheme(n) {
   initSchemes();
   var minSize = Math.min(n, 20); // use largest available if n is too large
-  var schemes = index.categorical.filter(name => ramps[name].length >= minSize);
+  var schemes = index.categorical.filter(name => ramps[name].length >= minSize &&
+    !unlistedSources.includes(sources[name]));
   return utils.pickOne(schemes) || 'Tableau20';
 }
 

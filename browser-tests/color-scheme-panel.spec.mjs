@@ -130,6 +130,40 @@ test('the preset menu lists presets under their sources', async function({page})
   expect(errors).toEqual([]);
 });
 
+test('NYT users get NYT presets at the top of the menu, each with its own colors', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page, 'on');
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  var headings = panel.locator('.color-scheme-palette-heading');
+
+  await panel.locator('.color-scheme-palette-btn').click();
+  await expect(headings).toHaveText(['NYT', 'ColorBrewer', 'Matplotlib', 'Crameri', 'd3']);
+  await panel.locator('.color-scheme-palette-item').filter({hasText: /^nyt-blue3$/}).click();
+  await page.waitForTimeout(300);
+  await expect(panel.locator('.color-scheme-palette-name')).toHaveText('nyt-blue3');
+  expect(await getTileColors(page)).toEqual(['rgb(191, 223, 249)', 'rgb(81, 137, 184)', 'rgb(49, 94, 130)']);
+
+  await panel.locator('.color-scheme-tab').filter({hasText: 'Diverging'}).click();
+  await panel.locator('.color-scheme-palette-btn').click();
+  await expect(headings).toHaveText(['NYT', 'ColorBrewer', 'Crameri']);
+  await panel.locator('.color-scheme-palette-item').filter({hasText: /^nyt-heat$/}).click();
+  await expect(panel.getByRole('checkbox', {name: 'Pivot class'})).not.toBeChecked();
+
+  await panel.locator('.color-scheme-tab').filter({hasText: 'Categorical'}).click();
+  await panel.locator('.color-scheme-palette-btn').click();
+  await expect(headings.first()).toHaveText('NYT');
+  await panel.locator('.color-scheme-palette-btn').click();
+
+  await panel.locator('.color-scheme-tab').filter({hasText: 'Sequential'}).click();
+  await closeSchemePanel(page);
+  var classify = (await getSessionCommands(page)).filter(function(cmd) {
+    return /^-classify/.test(cmd);
+  });
+  expect(classify.pop()).toMatch(/colors=#bfdff9,#5189b8,#315e82/);
+  expect(errors).toEqual([]);
+});
+
 test('a preset can be limited to part of its range', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page);
@@ -1230,8 +1264,10 @@ async function setField(locator, value) {
   await locator.page().waitForTimeout(300);
 }
 
-async function loadFixture(page) {
-  await page.goto('/?undo=on&undo-test=on&files=' + encodeURIComponent(FIXTURE));
+// nyt: 'on' to offer the NYT presets; off by default, so that the menu is the
+// same on any machine (see gui-nyt.mjs)
+async function loadFixture(page, nyt) {
+  await page.goto('/?undo=on&undo-test=on&nyt=' + (nyt || 'off') + '&files=' + encodeURIComponent(FIXTURE));
   await page.waitForFunction(function() {
     return window.mapshaper && window.mapshaper.undoTest;
   });

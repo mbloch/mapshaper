@@ -14,7 +14,7 @@ import {
   getSequentialClassRanges, setSchemeContinuous, isContinuousScheme, getSchemeNeutral,
   getContinuousTileStops, getContinuousSegments, getAppliedScheme, getFillFingerprint,
   setSchemeRangeEnd, getDisplayRange, getDefaultDivergingScheme,
-  getSchemeBreaks, setSchemeBreak, resizeBreaks, getRoundestNumber, getBreaksScale, getHistogram,
+  getSchemeBreaks, setSchemeBreak, resizeBreaks, getPresetMenuColors, getRoundestNumber, getBreaksScale, getHistogram,
   getBreakClassSwatches, getBreakClassCounts
 } from '../src/gui/gui-color-scheme-model';
 import { getRankPositionFunction } from '../src/classification/mapshaper-class-stats';
@@ -152,6 +152,56 @@ describe('gui-color-scheme-model.mjs', function() {
       assert.deepEqual(getSequentialPresetNames(), groups.reduce(function(memo, g) {
         return memo.concat(g.names);
       }, []));
+    });
+
+    it('NYT presets come first, when asked for', function() {
+      var groups = getPresetGroups('sequential', {nyt: true});
+      assert.equal(groups[0].source, 'NYT');
+      assert.deepEqual(groups[0].names, ['nyt-blue3', 'nyt-red3', 'nyt-purple3', 'nyt-red4',
+        'nyt-dem4', 'nyt-rep4', 'nyt-hot', 'nyt-cool']);
+      assert.deepEqual(getPresetGroups('diverging', {nyt: true}).map(function(g) { return g.source; }),
+        ['NYT', 'ColorBrewer', 'Crameri']);
+      assert.deepEqual(getPresetGroups('diverging', {nyt: true})[0].names, ['nyt-drought', 'nyt-heat']);
+      assert.equal(getPresetGroups('categorical', {nyt: true})[0].names.length, 10);
+      assert.equal(getPresetGroups('categorical')[0].source, 'ColorBrewer');
+    });
+
+    it('choosing an NYT diverging set gives its classes its colors', function() {
+      var values = [-40, -30, -20, -10, -5, 5, 10, 20, 30, 40];
+      var lyr = makeLayer(values.map(function(v) { return {change: v}; }));
+      var start = setSchemeSplit(getDefaultSchemeOfType('diverging', lyr), 'count');
+      var drought = updateDivergingLayout(choosePreset(start, 'nyt-drought'), lyr);
+      assert.equal(drought.n, 3);
+      assert.equal(getSchemeNeutral(drought), true);
+      assert.deepEqual(getSchemeColors(drought), ['#8c5322', '#d9b466', '#f5e7c3', '#f5f6f6',
+        '#c8e8e4', '#5bb4ac', '#06675f']);
+      // heat has no pivot class
+      var heat = updateDivergingLayout(choosePreset(start, 'nyt-heat'), lyr);
+      assert.equal(getSchemeNeutral(heat), false);
+      var use = getDivergingTileUse(heat);
+      assert.deepEqual(getSchemeColors(heat).filter(function(c, i) { return use[i]; }),
+        ['#c44027', '#ed833a', '#f9af72', '#92cccd', '#2f9190', '#06685f']);
+      assert.deepEqual(getPresetMenuColors('nyt-heat').length, 6);
+      // classes split by size: the total
+      assert.equal(choosePreset(getDefaultSchemeOfType('diverging', lyr), 'nyt-drought').n, 7);
+      assert.equal(choosePreset(getDefaultSchemeOfType('diverging', lyr), 'nyt-heat').n, 6);
+    });
+
+    it('NYT categorical presets', function() {
+      var lyr = makeLayer([{k: 'a'}, {k: 'b'}, {k: 'c'}, {k: 'd'}]);
+      var scheme = choosePreset(getDefaultCategoricalScheme(lyr), 'nyt-3a', 4);
+      assert.deepEqual(getCategoricalPalette(scheme), ['#abc6db', '#fade91', '#f5a442']);
+      assert.equal(scheme.n, 3);
+    });
+
+    it('choosing an NYT preset starts with its own colors', function() {
+      var scheme = choosePreset(setTileCount(getDefaultScheme('pop'), 7), 'nyt-dem4');
+      assert.equal(scheme.n, 4);
+      assert.deepEqual(getSchemeColors(scheme), ['#ceeafd', '#92bde0', '#5295cc', '#1375b7']);
+      assert.deepEqual(getPresetMenuColors('nyt-hot'), ['#f5ed90', '#f8c081', '#f6934c', '#d75739', '#a72022']);
+      // more colors are interpolated between them
+      assert.equal(getSchemeColors(setTileCount(scheme, 6)).length, 6);
+      assert.equal(choosePreset(setTileCount(getDefaultScheme('pop'), 7), 'Blues').n, 7);
     });
 
     it('trimming an end tile off the range, with one tile fewer, keeps the colors of the others', function() {
