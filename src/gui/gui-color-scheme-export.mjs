@@ -1,7 +1,7 @@
 import { internal } from './gui-core';
 import {
   getSchemeBreaks, getSchemeColors, getAppliedColors, getCategories, getSchemeNullColor,
-  getContinuousTileStops, getCenterTile, getDivergingTileUse, isContinuousScheme
+  getContinuousTileStops, getCenterTile, getDivergingTileUse, isContinuousScheme, formatSchemeCommand
 } from './gui-color-scheme-model';
 
 // Text versions of a color scheme as applied to a layer's data: a GMT color
@@ -103,7 +103,15 @@ export function getSchemeExportData(scheme, lyr) {
   }
   data.nullColor = getSchemeNullColor(scheme);
   data.maplibre = getMapLibreExpression(scheme.field, scheme.type, classes, data.nullColor);
+  data.command = getSchemeCommand(scheme, lyr);
   return data;
+}
+
+// The -classify command that colors the layer with the scheme, which is also
+// what an import rebuilds the scheme from (see gui-color-scheme-import.mjs)
+function getSchemeCommand(scheme, lyr) {
+  var count = scheme.type == 'categorical' ? getCategories(lyr, scheme.field).length : -1;
+  return formatSchemeCommand(scheme, getAppliedColors(scheme, count));
 }
 
 export function formatSchemeJSON(scheme, lyr) {
@@ -200,6 +208,7 @@ export function formatSchemeCPT(scheme, lyr) {
   lines = [
     '# Color palette exported by mapshaper',
     '# Field: ' + scheme.field + (scheme.preset ? ', palette: ' + scheme.preset : ''),
+    '# mapshaper: ' + getSchemeCommand(scheme, lyr),
     '# COLOR_MODEL = RGB'
   ];
   if (scheme.type == 'categorical') {

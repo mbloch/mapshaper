@@ -6,6 +6,8 @@ import { runGuiEditCommand } from './gui-edit-command';
 import { makeColorRow, makePanelToggle, makePanelActionButton, setPanelButtonDisabled } from './gui-panel-controls';
 import { ClassBreaksDialog } from './gui-class-breaks-dialog';
 import { formatSchemeCPT, formatSchemeJSON, getSchemeExportFileName } from './gui-color-scheme-export';
+import { ColorSchemeImportDialog } from './gui-color-scheme-import-dialog';
+import { importColorPalette } from './gui-color-scheme-import';
 import { saveBlobToLocalFile } from './gui-save';
 import { isNytUser } from './gui-nyt';
 import { internal } from './gui-core';
@@ -69,7 +71,7 @@ export function ColorSchemePanel(gui, opts) {
   var tabSchemes = {};
   var tabs = {};
   var paletteBtn, paletteMenu, countField, tileRow, gradientEl, tilesEl, picker, fieldRow, fieldSelect, methodSelect,
-      methodRow, methodLabel, customizeCell, customizeBtn, breaksDialog, exportBtns,
+      methodRow, methodLabel, customizeCell, customizeBtn, breaksDialog, exportBtns, importBtn, importDialog,
       noFieldsNote, controlsEl, vibranceRow, vibranceInput,
       longHueBtn, continuousBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount, countLabel,
       rangeEl, rangeStrip, rangeShades, rangeHandles,
@@ -121,6 +123,7 @@ export function ColorSchemePanel(gui, opts) {
     nullControl.picker.hide();
     hidePaletteMenu();
     breaksDialog.close();
+    importDialog.close();
     panel.hide();
     targetLayer = null;
     scheme = null;
@@ -187,6 +190,7 @@ export function ColorSchemePanel(gui, opts) {
         breaksDialog.close();
       } else {
         picker.hide();
+        importDialog.close();
         breaksDialog.open();
       }
       renderMethodRow();
@@ -276,8 +280,23 @@ export function ColorSchemePanel(gui, opts) {
       picker.hide();
     });
     nullCount = El('span').addClass('color-scheme-note color-scheme-null-count').appendTo(nullControl.aside);
-    // a file for each format, so that there is no format to choose first
+    // import on the left; on the right, a file for each export format, so
+    // that there is no format to choose first
     var exportRow = El('div').addClass('label-style-row color-scheme-export-row').appendTo(controlsEl);
+    importBtn = makePanelActionButton(exportRow, 'Import', function() {
+      if (importDialog.isOpen()) {
+        importDialog.close();
+      } else {
+        picker.hide();
+        breaksDialog.close();
+        importDialog.open();
+      }
+      renderImportButton();
+    }).attr('title', 'Use a palette from a GMT (.cpt) or JSON file, or a list of colors');
+    importDialog = new ColorSchemeImportDialog(gui, {
+      onImport: importPalette,
+      onClose: renderImportButton
+    });
     El('span').addClass('color-scheme-export-label').appendTo(exportRow).text('Export');
     exportBtns = [
       makePanelActionButton(exportRow, 'GMT', function() { exportScheme('cpt'); })
@@ -410,6 +429,22 @@ export function ColorSchemePanel(gui, opts) {
   function renderExportButtons() {
     var disabled = scheme.method == 'non-adjacent' || !canApply(scheme);
     exportBtns.forEach(function(btn) { setPanelButtonDisabled(btn, disabled); });
+  }
+
+  function renderImportButton() {
+    importBtn.classed('selected', importDialog.isOpen());
+  }
+
+  // An imported scheme of another type goes on its own tab, and the tab it
+  // came from keeps its scheme
+  function importPalette(text) {
+    var result = importColorPalette(text, scheme, targetLayer);
+    if (result.scheme.type != scheme.type) tabSchemes[scheme.type] = scheme;
+    picker.hide();
+    selectedTile = -1;
+    // a palette without a no-data color keeps the panel's
+    changeScheme(Object.assign({nullColor: scheme.nullColor}, result.scheme));
+    return result.note;
   }
 
   function exportScheme(ext) {

@@ -200,6 +200,53 @@ test('the GMT and JSON buttons save the classes and colors', async function({pag
   expect(errors).toEqual([]);
 });
 
+test('a pasted palette is imported, and not loaded as a data file', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page);
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  var dialog = page.locator('.color-scheme-import-dialog');
+  await panel.locator('.color-scheme-export-row').getByText('Import').click();
+  await expect(dialog).toBeVisible();
+
+  await pasteText(page, 'not a palette at all');
+  await expect(dialog.locator('.color-scheme-import-message.error')).toContainText('isn\'t a GMT color palette');
+
+  await pasteText(page, '#ff0000 #00ff00 #0000ff');
+  await expect(dialog).toBeHidden();
+  expect(await getTileColors(page)).toEqual(['rgb(255, 0, 0)', 'rgb(0, 255, 0)', 'rgb(0, 0, 255)']);
+  expect(new Set(await getFills(page))).toEqual(new Set(['#ff0000', '#00ff00', '#0000ff']));
+  expect(await page.evaluate(function() {
+    return window.mapshaper.undoTest.getState().model.datasetCount;
+  })).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+test('an exported palette dropped on the import dialog comes back as it was', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page);
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  await methodSelect(page).selectOption('equal-interval');
+  var colors = await getTileColors(page);
+  var download = page.waitForEvent('download');
+  await panel.locator('.color-scheme-export-row').getByText('GMT').click();
+  var text = fs.readFileSync(await (await download).path(), 'utf8');
+
+  await panel.locator('.color-scheme-tab').filter({hasText: 'Diverging'}).click();
+  await panel.locator('.color-scheme-export-row').getByText('Import').click();
+  await page.locator('.color-scheme-import-drop').evaluate(function(el, text) {
+    var transfer = new DataTransfer();
+    transfer.items.add(new File([text], 'palette.cpt', {type: 'text/plain'}));
+    el.dispatchEvent(new DragEvent('drop', {dataTransfer: transfer, bubbles: true, cancelable: true}));
+  }, text);
+  await expect(page.locator('.color-scheme-import-dialog')).toBeHidden();
+  await expect(panel.locator('.color-scheme-tab.selected')).toHaveText('Sequential');
+  await expect(methodSelect(page)).toHaveValue('equal-interval');
+  expect(await getTileColors(page)).toEqual(colors);
+  expect(errors).toEqual([]);
+});
+
 test('a preset can be limited to part of its range', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page);
@@ -1175,6 +1222,14 @@ async function toCssColor(page, color) {
     el.style.backgroundColor = color;
     return el.style.backgroundColor;
   }, color);
+}
+
+async function pasteText(page, text) {
+  await page.evaluate(function(text) {
+    var transfer = new DataTransfer();
+    transfer.setData('text/plain', text);
+    document.body.dispatchEvent(new ClipboardEvent('paste', {clipboardData: transfer, bubbles: true, cancelable: true}));
+  }, text);
 }
 
 async function getTileColors(page) {

@@ -5403,15 +5403,51 @@ body.dragging-color-picker * {
    for each format */
 .label-style-row.color-scheme-export-row {
 	display: flex;
-	align-items: center;
+	align-items: baseline;
 	gap: 6px;
 	margin-top: 10px;
-	padding-top: 8px;
+	margin-bottom: 0;
+	padding-top: 5px;
 	border-top: 1px solid #e4e4e4;
 }
 
 .label-style-panel .color-scheme-export-label {
-	flex: 1;
+	margin-left: auto;
 	font-size: 11px;
 	color: #555;
+}
+
+/* Import dialog (gui-color-scheme-import-dialog.mjs): where the class breaks
+   dialog goes, which it replaces */
+.label-style-panel.color-scheme-import-dialog {
+	right: 286px;
+	width: 216px;
+}
+
+.color-scheme-import-drop {
+	margin-top: 8px;
+	padding: 18px 12px;
+	border: 1.5px dashed #c4c4c4;
+	border-radius: 4px;
+	font-size: 11px;
+	line-height: 1.4;
+	color: #666;
+	text-align: center;
+}
+
+.color-scheme-import-drop.over {
+	border-color: #3d8bd4;
+	background: #eef5fc;
+	color: #2a6aa8;
+}
+
+.color-scheme-import-message {
+	margin-top: 8px;
+	font-size: 11px;
+	line-height: 1.4;
+	color: #555;
+}
+
+.color-scheme-import-message.error {
+	color: #b3261e;
 }

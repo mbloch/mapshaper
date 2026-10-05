@@ -561,6 +561,50 @@ apart from the panel, so that a command could use it later.
   interpolates in RGB, so continuous exports are close to the map rather
   than exact. Classes and categories are exact.
 - Non-adjacent colors have no classes, so the buttons are disabled.
+- Both formats have the `-classify` command that colors the layer with the
+  scheme: a `# mapshaper: -classify ...` comment in the GMT table (which GMT
+  skips), and `command` in the JSON. It's what an import rebuilds the scheme
+  from, and it can be run in the console as it is.
+
+## Importing a palette
+
+The Import button, at the left of the Export row, opens a popup where the
+class breaks dialog goes (one closes the other). A palette file dropped on
+it, or text pasted while it's open, is imported;
+the app otherwise loads dropped and pasted files as data, so the popup keeps
+its drops and pastes from the page (pastes into other text fields go
+through). An import is a scheme change like any other: it's applied, it's
+in the panel's undo state, and a scheme of another type goes on its own tab.
+The popup closes after an import, or stays open with a message for text
+that isn't a palette, or a note about what of the palette couldn't be used.
+Parsing and conversion are in `gui-color-scheme-import.mjs`.
+
+- A mapshaper export gives back its scheme from its command: the field,
+  method, breaks, pivot, pivot class, classes per side, continuous colors
+  and no-data color. The colors are pinned at every tile, so the ramp is
+  the same; a preset that gives the same colors (as it was or reversed)
+  comes back as that preset. What the command doesn't have is what was
+  baked into the colors: vibrance, the long hue path, part of a preset's
+  range. If the layer doesn't have the command's field, the palette is
+  imported as one from another program.
+- A GMT table from another program has ranges of values or categories.
+  Ranges that cover the data become a sequential scheme: classes as custom
+  breaks (leaving out classes the data don't reach), or continuous colors
+  as stops at the data's min, the table's values between and its max, with
+  the colors GMT gives them there (interpolated in RGB). A table can't say
+  that it's diverging, so it isn't. Categories go to the first field (the
+  scheme's, if it's categorical) whose every value has a category, matched
+  by key or label.
+- Otherwise (ranges that don't cover the data, categories no field has, more
+  classes than the panel has colors, a JSON array or a list of CSS colors)
+  only the colors are imported, into the current scheme, which keeps its
+  field and method: a sequential ramp gets a tile for each color, a
+  diverging ramp has its colors spread over its tiles, and continuous
+  colors are sampled at the tiles.
+- GMT colors can be r/g/b, h-s-v, c/m/y/k, #rrggbb, names or gray levels,
+  or older tables' columns of numbers, read by `COLOR_MODEL` (RGB or HSV).
+  B and F are not imported; N is the no-data color. Patterns and skipped
+  ("-") colors can't be imported.
 
 ## Panel contents (sequential, first version)
 
