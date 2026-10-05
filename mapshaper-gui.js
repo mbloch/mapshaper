@@ -9921,7 +9921,7 @@
             }
             line.show();
             input.node().focus();
-          });
+          }, {typed: true});
         }
         toHistory(str);
       }
@@ -10029,8 +10029,14 @@
 
     }
 
+    // runOpts.session  see createCommandSession()
+    // runOpts.typed    the commands were typed into the console. Commands that
+    //                  the GUI runs for a panel or tool are run as if with -quiet,
+    //                  so their messages don't fill the console (errors still
+    //                  reach the caller).
     function runMapshaperCommands(str, done, runOpts) {
       var session = runOpts && runOpts.session || null;
+      var quiet = !(runOpts && runOpts.typed);
       var commands;
       if (activeSession && activeSession != session) {
         activeSession.finish().then(function() {
@@ -10049,7 +10055,7 @@
         return done(e, {});
       }
       if (commands.length === 0) return done();
-      applyParsedCommands(commands, str, session, function(err, flags) {
+      applyParsedCommands(commands, str, session, quiet, function(err, flags) {
         if (flags) {
           model.updated(flags); // info commands do not return flags
         }
@@ -10075,7 +10081,7 @@
       });
     }
 
-    function applyParsedCommands(commands, commandString, session, done) {
+    function applyParsedCommands(commands, commandString, session, quiet, done) {
       var active = model.getActiveLayer(),
           prevArcs = active?.dataset.arcs,
           prevTable = active?.layer.data,
@@ -10094,7 +10100,9 @@
       // so they can snapshot the pre-command state of the active layer.
       gui.dispatchEvent('command_start', {commands: commands});
       try {
-        internal.runParsedCommands(commands, job, onCommandsDone);
+        // -quiet is a setting, read and removed by runParsedCommands()
+        internal.runParsedCommands(quiet ? [{name: 'quiet', options: {}}].concat(commands) : commands,
+          job, onCommandsDone);
       } catch(e) {
         if (undoTransaction) {
           clearActiveUndoTransaction(undoTransaction);
@@ -10296,13 +10304,16 @@
     // can differ -- warnings shouldn't read as red "something went wrong",
     // they're just heads-ups about how the input was interpreted.
     function consoleWarn() {
-      var msg = GUI.formatMessageArgs(arguments);
-      toLog(msg, 'console-warn');
+      if (internal.getStashedVar('QUIET')) return;
+      toLog(GUI.formatMessageArgs(arguments), 'console-warn');
     }
 
+    // Like the CLI, -quiet (which the GUI's own commands run with, see
+    // runMapshaperCommands()) silences messages and warnings, not errors
     function consoleMessage() {
       var structured = getStructuredConsoleMessage(arguments);
       var msg;
+      if (internal.getStashedVar('QUIET')) return;
       if (internal.loggingEnabled()) {
         if (structured) {
           toLogNode(renderStructuredConsoleMessage(structured), 'console-message');
