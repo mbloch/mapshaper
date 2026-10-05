@@ -189,9 +189,20 @@ export function MouseArea(element, pos) {
     _self.dispatchEvent('leave');
   }
 
+  // mouseover and mouseout can arrive after a quick move has already pressed
+  // and released the button somewhere else -- a click on a panel over the map
+  // then looked like a click on the map. A press or release is over the area
+  // if it lands on the area itself.
+  function updateHover(e) {
+    var over = !!e.target && element.contains(e.target);
+    if (over && !_isOver) onAreaEnter();
+    else if (!over && _isOver) onAreaOut();
+  }
+
   function onMouseUp(e) {
-    var evt = procMouseEvent(e),
-        elapsed, dx, dy;
+    var evt, elapsed, dx, dy;
+    updateHover(e);
+    evt = procMouseEvent(e);
     _self.dispatchEvent('mouseup', evt);
     if (_dragging) {
       stopDragging(evt);
@@ -213,6 +224,7 @@ export function MouseArea(element, pos) {
   }
 
   function onMouseDown(e) {
+   updateHover(e);
    if (e.button != 2 && e.which != 3) { // ignore right-click
       _downEvt = procMouseEvent(e);
     }
