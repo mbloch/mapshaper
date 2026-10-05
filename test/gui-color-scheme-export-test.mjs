@@ -26,7 +26,7 @@ function hex(color) {
   return internal.formatColor(internal.parseColor(color));
 }
 
-// Enough of the MapLibre expression language for the exported expressions
+// Enough of the Mapbox GL / MapLibre expression language for the exported expressions
 function evaluate(expr, props) {
   var op, input, i;
   if (!Array.isArray(expr)) return expr;
@@ -92,7 +92,7 @@ async function getFills(scheme, lyr) {
 }
 
 function getExpressionFills(scheme, lyr) {
-  var expr = getSchemeExportData(scheme, lyr).maplibre;
+  var expr = getSchemeExportData(scheme, lyr).expression;
   return lyr.data.getRecords().map(function(rec) { return hex(evaluate(expr, rec)); });
 }
 
@@ -121,10 +121,10 @@ describe('gui-color-scheme-export.mjs', function() {
     assert.deepEqual(data.breaks, [-12.5, 15, 42.5]);
     assert.equal(data.colors.length, 4);
     assert.equal(data.nullColor, '#eeeeee');
-    assert.equal(data.maplibre[0], 'case');
+    assert.equal(data.expression[0], 'case');
   });
 
-  it('the MapLibre expression colors features as -classify does', async function() {
+  it('the style expression colors features as -classify does', async function() {
     var lyr = testLayer();
     var schemes = [
       classed(lyr),
@@ -145,7 +145,7 @@ describe('gui-color-scheme-export.mjs', function() {
     assert.equal(classes.length, 4);
     assert(classes.every(function(c) { return c.colors.length == 2; }));
     assert.equal(classes[0].colors[1], classes[1].colors[0]);
-    var expr = getSchemeExportData(seq, lyr).maplibre[3];
+    var expr = getSchemeExportData(seq, lyr).expression[3];
     assert.equal(expr[0], 'interpolate');
     assert.deepEqual(expr.filter(function(v, i) { return i > 2 && i % 2 == 1; }), [-40, -12.5, 15, 42.5, 70]);
 
@@ -154,14 +154,14 @@ describe('gui-color-scheme-export.mjs', function() {
     var k = classes.findIndex(function(c) { return c.from === 0; });
     assert(k > 0);
     assert.notEqual(classes[k - 1].colors[1], classes[k].colors[0]);
-    expr = getSchemeExportData(div, lyr).maplibre[3];
+    expr = getSchemeExportData(div, lyr).expression[3];
     assert.equal(expr[0], 'case');
     assert.deepEqual(expr[1], ['<', ['get', 'change'], 0]);
     // the stops are colored as the tiles
     var data = getSchemeExportData(div, lyr);
-    assert.equal(hex(evaluate(data.maplibre, {change: -40})), classes[0].colors[0]);
-    assert.equal(hex(evaluate(data.maplibre, {change: 70})), classes[classes.length - 1].colors[1]);
-    assert.equal(evaluate(data.maplibre, {change: null}), '#eeeeee');
+    assert.equal(hex(evaluate(data.expression, {change: -40})), classes[0].colors[0]);
+    assert.equal(hex(evaluate(data.expression, {change: 70})), classes[classes.length - 1].colors[1]);
+    assert.equal(evaluate(data.expression, {change: null}), '#eeeeee');
   });
 
   it('a continuous pivot class is a flat color between the sides', function() {
@@ -173,7 +173,7 @@ describe('gui-color-scheme-export.mjs', function() {
     assert.equal(neutral.length, 1);
     var data = getSchemeExportData(scheme, lyr);
     var mid = (neutral[0].from + neutral[0].to) / 2;
-    assert.equal(hex(evaluate(data.maplibre, {change: mid})), neutral[0].color);
+    assert.equal(hex(evaluate(data.expression, {change: mid})), neutral[0].color);
   });
 
   it('a GMT palette table: a line per class, then B, F and N', function() {

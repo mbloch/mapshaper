@@ -75,7 +75,7 @@ function getContinuousClasses(scheme, lyr) {
 
 // The JSON format. Classes also come as breaks and colors, which is what
 // d3.scaleThreshold().domain(breaks).range(colors) takes, and the whole
-// scheme as a MapLibre (or Mapbox) GL expression, for a fill-color property.
+// scheme as a Mapbox GL / MapLibre style expression, for a fill-color property.
 export function getSchemeExportData(scheme, lyr) {
   var classes = getExportClasses(scheme, lyr);
   var continuous = isContinuousScheme(scheme);
@@ -102,7 +102,7 @@ export function getSchemeExportData(scheme, lyr) {
     data.colors = classes.map(function(c) { return c.color; });
   }
   data.nullColor = getSchemeNullColor(scheme);
-  data.maplibre = getMapLibreExpression(scheme.field, scheme.type, classes, data.nullColor);
+  data.expression = getStyleExpression(scheme.field, scheme.type, classes, data.nullColor);
   data.command = getSchemeCommand(scheme, lyr);
   return data;
 }
@@ -120,7 +120,7 @@ export function formatSchemeJSON(scheme, lyr) {
 }
 
 // Features without a number get the null color
-function getMapLibreExpression(field, type, classes, nullColor) {
+function getStyleExpression(field, type, classes, nullColor) {
   var value = ['get', field];
   var strings;
   if (type == 'categorical') {

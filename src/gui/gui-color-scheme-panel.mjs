@@ -302,7 +302,7 @@ export function ColorSchemePanel(gui, opts) {
       makePanelActionButton(exportRow, 'GMT', function() { exportScheme('cpt'); })
         .attr('title', 'Save the classes and colors as a GMT color palette table (.cpt)'),
       makePanelActionButton(exportRow, 'JSON', function() { exportScheme('json'); })
-        .attr('title', 'Save the classes and colors as JSON, with a MapLibre style expression')
+        .attr('title', 'Save the classes and colors as JSON, with a Mapbox GL / MapLibre style expression')
     ];
     document.addEventListener('mousedown', function(e) {
       if (paletteMenu.visible() && !paletteMenu.node().contains(e.target) &&

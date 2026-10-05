@@ -1,7 +1,9 @@
+v0.7.78
+* [web] Color palettes can be exported as GMT (.cpt) or JSON files, and imported from these files (including GMT files from other programs) or from a list of colors. The JSON includes a style expression for Mapbox GL and MapLibre maps.
+
 v0.7.77
 * `-classify continuous method=quantile` places each value on the color gradient by its rank among the data, so the number of colors affects only the gradient's shape.
 * [web] Added a custom class breaks panel, with histogram view and editable class breaks.
-* [web] Color palettes can be exported as GMT (.cpt) or JSON files, the JSON including a MapLibre expression, and imported from these files (including GMT files from other programs) or from a list of colors.
 
 v0.7.76
 * [web] Interface tweaks

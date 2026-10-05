@@ -550,8 +550,8 @@ apart from the panel, so that a command could use it later.
   `type`, `field`, `palette`, `method`, `continuous`, `pivot` (diverging),
   `interpolation` (`oklch`, for continuous colors), `classes`, `nullColor`,
   and for classes, `breaks` and `colors` (one more color than breaks, which
-  is what `d3.scaleThreshold()` takes). `maplibre` is the scheme as a
-  MapLibre / Mapbox GL expression for `fill-color`: `step` for classes,
+  is what `d3.scaleThreshold()` takes). `expression` is the scheme as a
+  Mapbox GL / MapLibre style expression for `fill-color`: `step` for classes,
   `interpolate` for continuous colors (one for each run of stretches that
   meet at the same color, chosen between by `case` where the colors jump),
   `match` for categories, all inside a `case` that gives features without

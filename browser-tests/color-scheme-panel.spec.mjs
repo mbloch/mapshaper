@@ -182,7 +182,7 @@ test('the GMT and JSON buttons save the classes and colors', async function({pag
   expect(data.field).toBe('id');
   expect(data.breaks).toEqual([3620]);
   expect(await Promise.all(data.colors.map(function(c) { return toCssColor(page, c); }))).toEqual(colors);
-  expect(data.maplibre[0]).toBe('case');
+  expect(data.expression[0]).toBe('case');
 
   download = page.waitForEvent('download');
   await panel.locator('.color-scheme-export-row').getByText('GMT').click();
