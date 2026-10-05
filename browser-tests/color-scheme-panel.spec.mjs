@@ -380,6 +380,32 @@ test('the panel takes the polygon style panel\'s place until it closes', async f
   await expect(schemePanel(page)).toBeHidden();
 });
 
+test('there is no selection while the panel is open', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page);
+  var status = page.locator('.layer-style-panel .label-editing-status');
+  var p = await getLargestFeatureCenter(page);
+  var x = p[0], y = p[1];
+  await expect(status).toHaveText('Editing: all');
+  await clickMap(page, x, y);
+  await expect(status).not.toHaveText('Editing: all');
+
+  // opening the panel deselects, and clicking the map selects nothing
+  await openSchemePanel(page);
+  expect(await getSelectionIds(page)).toEqual([]);
+  await clickMap(page, x, y);
+  expect(await page.evaluate(function() { return window.mapshaper.undoTest.getHitId(); })).toBe(-1);
+  expect(await getSelectionIds(page)).toEqual([]);
+  await expect(page.locator('.map-layers.symbol-hit')).toHaveCount(0);
+
+  // closing it lets clicks select again
+  await closeSchemePanel(page);
+  await expect(status).toHaveText('Editing: all');
+  await clickMap(page, x, y);
+  await expect(status).not.toHaveText('Editing: all');
+  expect(errors).toEqual([]);
+});
+
 test('tiles fitted to the sRGB gamut are marked', async function({page}) {
   await loadFixture(page);
   await openSchemePanel(page);
@@ -1033,6 +1059,44 @@ async function getFills(page) {
       return rec.fill;
     });
   }, LAYER);
+}
+
+// The middle of the bounding box of the feature that is drawn largest, in page
+// pixels: the fixture's polygons are small and scattered.
+async function getLargestFeatureCenter(page) {
+  var mapBox = await page.locator('.map-layers').boundingBox();
+  var p = await page.evaluate(function(layer) {
+    var best = null, bestSize = -1;
+    window.mapshaper.undoTest.getLayerPathPixels(layer).forEach(function(parts) {
+      var pts = [].concat.apply([], parts || []);
+      var xs = pts.map(function(p) { return p[0]; });
+      var ys = pts.map(function(p) { return p[1]; });
+      var w = Math.max.apply(null, xs) - Math.min.apply(null, xs);
+      var h = Math.max.apply(null, ys) - Math.min.apply(null, ys);
+      if (w * h > bestSize) {
+        bestSize = w * h;
+        best = [(Math.max.apply(null, xs) + Math.min.apply(null, xs)) / 2,
+          (Math.max.apply(null, ys) + Math.min.apply(null, ys)) / 2];
+      }
+    });
+    return best;
+  }, LAYER);
+  return [mapBox.x + p[0], mapBox.y + p[1]];
+}
+
+// a hover finds the feature that the click then selects
+async function clickMap(page, x, y) {
+  await page.mouse.move(x - 5, y - 5);
+  await page.mouse.move(x, y, {steps: 3});
+  await page.waitForTimeout(100);
+  await page.mouse.click(x, y);
+  await page.waitForTimeout(200);
+}
+
+async function getSelectionIds(page) {
+  return page.evaluate(function() {
+    return window.mapshaper.undoTest.getSelectionIds();
+  });
 }
 
 async function getSessionCommands(page) {

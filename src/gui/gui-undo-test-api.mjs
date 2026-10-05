@@ -146,6 +146,10 @@ export function createUndoTestApi(gui) {
       var hit = gui.map.getHitControl && gui.map.getHitControl();
       return hit ? hit.getHitId() : -1;
     },
+    getSelectionIds: function() {
+      var hit = gui.map.getHitControl && gui.map.getHitControl();
+      return hit ? hit.getSelectionIds() : [];
+    },
     // The style the label tool will give its next label, set through the style
     // panel with nothing selected. Held in GUI state rather than in a layer, so
     // there is no model to read it back from.

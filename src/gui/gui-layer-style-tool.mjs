@@ -253,13 +253,11 @@ export function LayerStyleTool(gui) {
         if (!targetLayer) return '';
         return formatStyleEditCommands(patternControl.getRefillExpressionEdits(getAllFeatureIds(targetLayer)));
       },
-      getSelectionCount: function() {
-        return getSelectionIds().length;
-      },
       onUpdate: function() {
         if (panel.visible()) updateControls();
       },
       onClose: function() {
+        if (hit) hit.setSelectionEnabled(true);
         panel.removeClass('replaced');
       }
     });
@@ -271,8 +269,10 @@ export function LayerStyleTool(gui) {
     fillControl.picker.hide();
     strokeControl.picker.hide();
     patternControl.hidePicker();
-    // The scheme panel takes this panel's place until it closes
+    // The scheme panel takes this panel's place until it closes. Its colors go
+    // to the whole layer, so there is no selection while it is open.
     panel.addClass('replaced');
+    if (hit) hit.setSelectionEnabled(false);
     schemePanel.open(targetLayer);
   }
 

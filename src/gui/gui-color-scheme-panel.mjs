@@ -32,7 +32,6 @@ import {
 // opts.getExtraCommands()  commands to run after -classify, in the same step
 //                          (the style panel's pattern backgrounds follow the
 //                          fills)
-// opts.getSelectionCount() features selected in the style panel
 // opts.onUpdate()          the scheme or the fills changed
 // opts.onClose()           the panel was closed
 var reverseIcon = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" ' +
@@ -66,7 +65,7 @@ export function ColorSchemePanel(gui, opts) {
   var tabSchemes = {};
   var tabs = {};
   var paletteBtn, paletteMenu, countField, tileRow, gradientEl, tilesEl, picker, fieldRow, fieldSelect, methodSelect,
-      noFieldsNote, selectionNote, controlsEl, vibranceRow, vibranceInput,
+      noFieldsNote, controlsEl, vibranceRow, vibranceInput,
       longHueBtn, continuousBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount, countLabel,
       rangeEl, rangeStrip, rangeShades, rangeHandles,
       divergingEl, pivotSelect, pivotInput, pivotNote, neutralToggle, splitSelect;
@@ -252,10 +251,6 @@ export function ColorSchemePanel(gui, opts) {
       picker.hide();
     });
     nullCount = El('span').addClass('color-scheme-note color-scheme-null-count').appendTo(nullControl.aside);
-
-    selectionNote = El('div').addClass('label-style-row color-scheme-note').appendTo(controlsEl)
-      .text('Colors apply to every feature in the layer, not only the selected ones.');
-
     document.addEventListener('mousedown', function(e) {
       if (paletteMenu.visible() && !paletteMenu.node().contains(e.target) &&
           !paletteBtn.node().contains(e.target)) {
@@ -369,7 +364,6 @@ export function ColorSchemePanel(gui, opts) {
     renderTiles(tiles);
     renderVibrance();
     renderNullColor();
-    selectionNote.classed('hidden', !(opts.getSelectionCount() > 0));
   }
 
   function renderNullColor() {

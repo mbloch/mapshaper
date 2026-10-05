@@ -17,6 +17,8 @@ export function HitControl(gui, ext, mouse) {
   var hitTest;
   var pinnedOn; // used in multi-edit mode (selection) for toggling pinning behavior
   var suppressChangeEvent = false;
+  // set while a panel that acts on the whole layer is open (e.g. color palettes)
+  var selectionDisabled = false;
 
   // event priority is higher than navigation, so stopping propagation disables
   // pan navigation
@@ -219,6 +221,14 @@ export function HitControl(gui, ext, mouse) {
     updateSelectionState(null);
   };
 
+  // Disabling clears the selection and the hover highlight, and leaves clicks
+  // and hovers over features to the map until selection is enabled again or
+  // the interaction mode changes.
+  self.setSelectionEnabled = function(enabled) {
+    selectionDisabled = !enabled;
+    if (selectionDisabled) self.clearSelection();
+  };
+
   self.clearHover = function() {
     updateSelectionState(mergeHoverData({ids: []}));
   };
@@ -262,6 +272,7 @@ export function HitControl(gui, ext, mouse) {
   // make sure popup is unpinned and turned off when switching editing modes
   // (some modes do not support pinning)
   gui.on('interaction_mode_change', function(e) {
+    selectionDisabled = false;
     clearSelectionSilently();
     if (gui.interaction.modeUsesHitDetection(e.mode)) {
       turnOn(e.mode);
@@ -331,7 +342,7 @@ export function HitControl(gui, ext, mouse) {
   mouse.on('hover', function(e) {
     if (gui.contextMenu.isOpen()) return;
     handlePointerEvent(e);
-    if (storedData.pinned || !hitTest || !active) return;
+    if (storedData.pinned || !hitTest || !active || selectionDisabled) return;
     if (e.hover && isOverMap(e)) {
       // mouse is hovering directly over map area -- update hit detection
       updateSelectionState(mergeHoverData(hitTest(e)));
@@ -483,7 +494,7 @@ export function HitControl(gui, ext, mouse) {
   // check if an event is used in the current interaction mode
   function eventIsEnabled(type) {
     var mode = interactionMode();
-    if (!active) return false;
+    if (!active || selectionDisabled) return false;
     if (type == 'click' && gui.keyboard.ctrlIsPressed()) {
       return false; // don't fire if context menu might open
     }
