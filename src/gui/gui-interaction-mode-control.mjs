@@ -17,18 +17,18 @@ export function InteractionMode(gui) {
   var menus = {
     standard: ['info', 'selection', 'box', 'ruler'],
     empty: [ 'label','edit_points', 'edit_lines',  'edit_polygons','box', 'ruler'],
-    polygons: ['info', 'selection', 'polygon_style', 'edit_polygons', 'box', 'ruler'],
+    polygons: ['info', 'polygon_style', 'edit_polygons', 'selection', 'box', 'ruler'],
     rectangles: ['info', 'selection', 'polygon_style', 'edit_polygons', 'rectangles', 'box', 'ruler'],
-    lines: ['info', 'selection', 'line_style', 'edit_lines', 'snip_lines', 'box', 'ruler'],
+    lines: ['info', 'line_style', 'edit_lines', 'snip_lines', 'selection', 'box', 'ruler'],
     table: ['info', 'selection'],
     raster: ['box', 'ruler'],
-    labels: ['info', 'selection', 'label', 'box', 'ruler'],
-    points: ['info', 'selection', 'edit_points', 'point_style', 'box', 'ruler'], // , 'add-points'
+    labels: ['info', 'label', 'selection', 'box', 'ruler'],
+    points: ['info', 'point_style', 'edit_points', 'selection', 'box', 'ruler'], // , 'add-points'
     // An empty point layer is the layer the "Draw: labels" link creates,
     // and a label goes into it rather than beside it (see labelWouldJoin), so
     // the label tool belongs in its menu as well as the point tools: it is the
     // way back into a labels layer that has no label in it yet.
-    emptyPoints: ['info', 'selection', 'label', 'point_style', 'edit_points', 'box', 'ruler']
+    emptyPoints: ['info', 'label', 'point_style', 'edit_points', 'selection', 'box', 'ruler']
   };
 
   // Tools that work the same whatever the active layer is. They go below a
@@ -46,14 +46,14 @@ export function InteractionMode(gui) {
     info: 'inspect features',
     box: 'rectangle tool',
     data: 'edit attributes',
-    label: 'add/edit labels',
+    label: 'edit labels',
     label_style: 'style labels',
     point_style: 'style points',
     line_style: 'style lines',
     polygon_style: 'style polygons',
-    edit_points: 'add/drag points',
-    edit_lines: 'draw/edit lines',
-    edit_polygons: 'draw/edit polygons',
+    edit_points: 'edit points',
+    edit_lines: 'draw lines',
+    edit_polygons: 'draw polygons',
     snip_lines: 'snip lines',
     vertices: 'edit vertices',
     selection: 'selection tool',

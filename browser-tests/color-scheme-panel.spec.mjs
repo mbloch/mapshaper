@@ -212,7 +212,8 @@ test('a pasted palette is imported, and not loaded as a data file', async functi
   await pasteText(page, 'not a palette at all');
   await expect(dialog.locator('.color-scheme-import-message.error')).toContainText('isn\'t a GMT color palette');
 
-  await pasteText(page, '#ff0000 #00ff00 #0000ff');
+  // with a picture of the text, as some apps copy it
+  await pasteText(page, '"#ff0000", "#00ff00", "#0000ff"', true);
   await expect(dialog).toBeHidden();
   expect(await getTileColors(page)).toEqual(['rgb(255, 0, 0)', 'rgb(0, 255, 0)', 'rgb(0, 0, 255)']);
   expect(new Set(await getFills(page))).toEqual(new Set(['#ff0000', '#00ff00', '#0000ff']));
@@ -1224,12 +1225,13 @@ async function toCssColor(page, color) {
   }, color);
 }
 
-async function pasteText(page, text) {
-  await page.evaluate(function(text) {
+async function pasteText(page, text, withImage) {
+  await page.evaluate(function(args) {
     var transfer = new DataTransfer();
-    transfer.setData('text/plain', text);
+    transfer.setData('text/plain', args.text);
+    if (args.withImage) transfer.items.add(new File(['not text'], 'image.png', {type: 'image/png'}));
     document.body.dispatchEvent(new ClipboardEvent('paste', {clipboardData: transfer, bubbles: true, cancelable: true}));
-  }, text);
+  }, {text: text, withImage: !!withImage});
 }
 
 async function getTileColors(page) {

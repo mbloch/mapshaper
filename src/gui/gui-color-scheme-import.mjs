@@ -50,6 +50,9 @@ function parseJsonPalette(str) {
   try {
     data = JSON.parse(str);
   } catch(e) {
+    // e.g. ['#364774', '#984b64'] from JavaScript
+    palette = parseColorList(str);
+    if (palette) return palette;
     throw new Error('The JSON can\'t be read: ' + e.message);
   }
   if (Array.isArray(data)) {
@@ -97,9 +100,11 @@ function parseColorValue(val) {
 }
 
 // Text that is nothing but colors (hex codes or names, rgb()...), separated
-// by spaces, commas or lines
+// by spaces, commas or lines, and possibly quoted or in brackets
 function parseColorList(str) {
-  var tokens = str.match(/rgba?\([^)]*\)|[^\s,;]+/g) || [];
+  var tokens = (str.match(/rgba?\([^)]*\)|[^\s,;]+/g) || []).map(function(tok) {
+    return tok.replace(/^["'“”‘’[\]]+|["'“”‘’[\]]+$/g, '');
+  }).filter(Boolean);
   var colors = tokens.map(function(tok) {
     return isNumber(tok) ? null : internal.parseColor(tok);
   });

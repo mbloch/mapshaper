@@ -171,6 +171,15 @@ describe('gui-color-scheme-import.mjs', function () {
     it('a list of colors', function() {
       assert.deepEqual(parsePalette('#f00, #00ff00\nblue rgb(1,2,3)').colors,
         ['#ff0000', '#00ff00', '#0000ff', '#010203']);
+      var expected = ['#364774', '#984b64', '#c46c62'];
+      [
+        '#364774, #984b64, #c46c62', '#364774,#984b64,#c46c62', '#364774 #984b64 #c46c62',
+        '"#364774", "#984b64", "#c46c62"', '\'#364774\' \'#984b64\' \'#c46c62\'',
+        '“#364774”, “#984b64”, “#c46c62”', '[\'#364774\', \'#984b64\', \'#c46c62\']',
+        '["#364774", "#984b64", "#c46c62"]'
+      ].forEach(function(str) {
+        assert.deepEqual(parsePalette(str).colors, expected, str);
+      });
       var result = importColorPalette('#f00 #0f0 #00f', getDefaultScheme('change'), lyr);
       assert.deepEqual(getSchemeColors(result.scheme), ['#ff0000', '#00ff00', '#0000ff']);
     });

@@ -76,10 +76,13 @@ export function ColorSchemeImportDialog(gui, opts) {
   }
 
   // Pastes while the popup is open are palettes, unless they're into
-  // another text field
+  // another text field. Copied text can come with a picture of itself,
+  // which isn't a palette, and a copied file with its name as text.
   function onPaste(e) {
     var data = e.clipboardData;
-    var file = data && data.files && data.files[0];
+    var file = data && Array.from(data.files || []).find(function(f) {
+      return !/^image\//.test(f.type);
+    });
     if (isTextInput(e.target) && !panel.node().contains(e.target)) return;
     e.preventDefault();
     e.stopPropagation();
