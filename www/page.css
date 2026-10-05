@@ -5398,3 +5398,20 @@ body.dragging-color-picker * {
 	pointer-events: auto;
 	padding-left: 4px;
 }
+
+/* Export, at the bottom of the color scheme panel: a caption and a button
+   for each format */
+.label-style-row.color-scheme-export-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 10px;
+	padding-top: 8px;
+	border-top: 1px solid #e4e4e4;
+}
+
+.label-style-panel .color-scheme-export-label {
+	flex: 1;
+	font-size: 11px;
+	color: #555;
+}

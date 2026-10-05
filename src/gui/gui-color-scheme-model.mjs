@@ -78,8 +78,8 @@ export var schemeTypes = [
 export var classifyMethods = [
   {name: 'quantile', label: 'Quantile'},
   {name: 'equal-interval', label: 'Equal interval'},
-  {name: 'nice', label: 'Nice breaks'},
-  {name: 'hybrid', label: 'Hybrid'}
+  {name: 'hybrid', label: 'Hybrid'},
+  {name: 'nice', label: 'Nice breaks'}
 ];
 
 export var pivotOptions = [

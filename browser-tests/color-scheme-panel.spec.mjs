@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { expect, test } from '@playwright/test';
 
 // 12 polygons with a numeric "id" field and no fills
@@ -161,6 +162,41 @@ test('NYT users get NYT presets at the top of the menu, each with its own colors
     return /^-classify/.test(cmd);
   });
   expect(classify.pop()).toMatch(/colors=#bfdff9,#5189b8,#315e82/);
+  expect(errors).toEqual([]);
+});
+
+test('the GMT and JSON buttons save the classes and colors', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page);
+  await openSchemePanel(page);
+  var panel = schemePanel(page);
+  await methodSelect(page).selectOption('equal-interval');
+  await setField(panel.locator('.size-field-input'), '2');
+  var colors = await getTileColors(page);
+
+  var download = page.waitForEvent('download');
+  await panel.locator('.color-scheme-export-row').getByText('JSON').click();
+  var file = await download;
+  expect(file.suggestedFilename()).toBe('ex8_britain-id.json');
+  var data = JSON.parse(fs.readFileSync(await file.path(), 'utf8'));
+  expect(data.field).toBe('id');
+  expect(data.breaks).toEqual([3620]);
+  expect(await Promise.all(data.colors.map(function(c) { return toCssColor(page, c); }))).toEqual(colors);
+  expect(data.maplibre[0]).toBe('case');
+
+  download = page.waitForEvent('download');
+  await panel.locator('.color-scheme-export-row').getByText('GMT').click();
+  file = await download;
+  expect(file.suggestedFilename()).toBe('ex8_britain-id.cpt');
+  var lines = fs.readFileSync(await file.path(), 'utf8').trim().split('\n');
+  expect(lines.filter(function(line) { return line[0] != '#'; }).map(function(line) {
+    return line.split('\t')[0];
+  })).toEqual(['1806', '3620', 'B', 'F', 'N']);
+
+  // nothing to export for non-adjacent colors
+  await panel.locator('.color-scheme-tab').filter({hasText: 'Categorical'}).click();
+  await methodSelect(page).selectOption('non-adjacent');
+  await expect(panel.locator('.color-scheme-export-row .label-panel-action-btn.disabled')).toHaveCount(2);
   expect(errors).toEqual([]);
 });
 

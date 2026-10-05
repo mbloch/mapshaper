@@ -527,6 +527,41 @@ applies each change.
   break goes to the roundest value within half a pixel of the pointer
   (`getRoundestNumber()`).
 
+## Exporting a palette
+
+An Export row at the bottom of the panel has a button for each format, so
+there is no format to choose in a second step (an Import button can join
+them). Each saves a file named for the layer and field (`counties-pop.cpt`).
+Both formats have the scheme as applied to the data: its class breaks or
+stops, not just its colors. The formatting is in `gui-color-scheme-export.mjs`,
+apart from the panel, so that a command could use it later.
+
+- Both start from `getExportClasses()`: `{from, to, color}` for a class,
+  `{from, to, colors: [low, high]}` for a stretch of continuous colors, or
+  `{value, color}` for a category. Classes run from the data's min to its
+  max (a diverging layout's extent, which can reach past the data). A
+  continuous diverging scheme's sides are separate stretches, since the
+  colors jump at the pivot, and a pivot class is a flat class between them.
+- GMT (`.cpt`): a line for each class, `from color to color` with colors as
+  r/g/b, then `B` and `F` (the end colors) and `N` (the no-data color).
+  Categories are `key color ;label` lines; a key can't have spaces, so they
+  become underscores in the key, and the label keeps them.
+- JSON has no standard for color schemes, so the format is our own:
+  `type`, `field`, `palette`, `method`, `continuous`, `pivot` (diverging),
+  `interpolation` (`oklch`, for continuous colors), `classes`, `nullColor`,
+  and for classes, `breaks` and `colors` (one more color than breaks, which
+  is what `d3.scaleThreshold()` takes). `maplibre` is the scheme as a
+  MapLibre / Mapbox GL expression for `fill-color`: `step` for classes,
+  `interpolate` for continuous colors (one for each run of stretches that
+  meet at the same color, chosen between by `case` where the colors jump),
+  `match` for categories, all inside a `case` that gives features without
+  a number the no-data color.
+- Continuous quantile colors are placed by rank, which stops at values can
+  only approach, and the panel interpolates in OKLCH where a web map
+  interpolates in RGB, so continuous exports are close to the map rather
+  than exact. Classes and categories are exact.
+- Non-adjacent colors have no classes, so the buttons are disabled.
+
 ## Panel contents (sequential, first version)
 
 - Palette menu with ramp previews (presets plus "Custom"), swatch count.

@@ -3,8 +3,10 @@ import { ColorPicker } from './gui-color-picker';
 import { claimFieldKeys, isTextInput, opensAMenu, releasePanelFocus } from './gui-panel-focus';
 import { SizeField } from './gui-size-field';
 import { runGuiEditCommand } from './gui-edit-command';
-import { makeColorRow, makePanelToggle, makePanelActionButton } from './gui-panel-controls';
+import { makeColorRow, makePanelToggle, makePanelActionButton, setPanelButtonDisabled } from './gui-panel-controls';
 import { ClassBreaksDialog } from './gui-class-breaks-dialog';
+import { formatSchemeCPT, formatSchemeJSON, getSchemeExportFileName } from './gui-color-scheme-export';
+import { saveBlobToLocalFile } from './gui-save';
 import { isNytUser } from './gui-nyt';
 import { internal } from './gui-core';
 import {
@@ -67,7 +69,7 @@ export function ColorSchemePanel(gui, opts) {
   var tabSchemes = {};
   var tabs = {};
   var paletteBtn, paletteMenu, countField, tileRow, gradientEl, tilesEl, picker, fieldRow, fieldSelect, methodSelect,
-      methodRow, methodLabel, customizeCell, customizeBtn, breaksDialog,
+      methodRow, methodLabel, customizeCell, customizeBtn, breaksDialog, exportBtns,
       noFieldsNote, controlsEl, vibranceRow, vibranceInput,
       longHueBtn, continuousBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount, countLabel,
       rangeEl, rangeStrip, rangeShades, rangeHandles,
@@ -274,6 +276,15 @@ export function ColorSchemePanel(gui, opts) {
       picker.hide();
     });
     nullCount = El('span').addClass('color-scheme-note color-scheme-null-count').appendTo(nullControl.aside);
+    // a file for each format, so that there is no format to choose first
+    var exportRow = El('div').addClass('label-style-row color-scheme-export-row').appendTo(controlsEl);
+    El('span').addClass('color-scheme-export-label').appendTo(exportRow).text('Export');
+    exportBtns = [
+      makePanelActionButton(exportRow, 'GMT', function() { exportScheme('cpt'); })
+        .attr('title', 'Save the classes and colors as a GMT color palette table (.cpt)'),
+      makePanelActionButton(exportRow, 'JSON', function() { exportScheme('json'); })
+        .attr('title', 'Save the classes and colors as JSON, with a MapLibre style expression')
+    ];
     document.addEventListener('mousedown', function(e) {
       if (paletteMenu.visible() && !paletteMenu.node().contains(e.target) &&
           !paletteBtn.node().contains(e.target)) {
@@ -390,8 +401,22 @@ export function ColorSchemePanel(gui, opts) {
     renderTiles(tiles);
     renderVibrance();
     renderNullColor();
+    renderExportButtons();
     if (categorical) breaksDialog.close();
     breaksDialog.update();
+  }
+
+  // non-adjacent colors have no classes to export
+  function renderExportButtons() {
+    var disabled = scheme.method == 'non-adjacent' || !canApply(scheme);
+    exportBtns.forEach(function(btn) { setPanelButtonDisabled(btn, disabled); });
+  }
+
+  function exportScheme(ext) {
+    var text = ext == 'cpt' ? formatSchemeCPT(scheme, targetLayer) : formatSchemeJSON(scheme, targetLayer);
+    if (!text) return;
+    saveBlobToLocalFile(getSchemeExportFileName(targetLayer, scheme, ext),
+      new Blob([text], {type: ext == 'json' ? 'application/json' : 'text/plain'}));
   }
 
   function renderNullColor() {
