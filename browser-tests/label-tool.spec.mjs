@@ -115,9 +115,9 @@ test('a label layer is offered the label tool and not the tools it replaces',
     await page.waitForTimeout(120);
 
     var modes = await getModeMenuItems(page);
-    expect(modes).toContain('add/edit labels');
+    expect(modes).toContain('edit labels');
     expect(modes).not.toContain('style labels');
-    expect(modes).not.toContain('add/drag points');
+    expect(modes).not.toContain('edit points');
     expect(modes).not.toContain('position labels');
     expect(errors).toEqual([]);
   });

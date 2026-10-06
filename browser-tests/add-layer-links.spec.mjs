@@ -136,7 +136,7 @@ test('the arrow menu offers the label tool only on a label layer',
     // yet; making one is what the layer panel's links are for.
     var errors = collectPageErrors(page);
     await loadFixture(page, FIXTURE);
-    expect(await getModeMenuItems(page)).not.toContain('add/edit labels');
+    expect(await getModeMenuItems(page)).not.toContain('edit labels');
 
     await clickNewLayerLink(page, 'labels');
     // leave the tool, whose panel the arrow button will not open the menu over
@@ -144,7 +144,7 @@ test('the arrow menu offers the label tool only on a label layer',
       window.mapshaper.undoTest.setInteractionMode('off');
     });
     await page.waitForTimeout(120);
-    expect(await getModeMenuItems(page)).toContain('add/edit labels');
+    expect(await getModeMenuItems(page)).toContain('edit labels');
     expect(errors).toEqual([]);
   });
 
