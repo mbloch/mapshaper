@@ -212,6 +212,8 @@ mapshaper -i 'lat,lon,label\n48.86,2.35,Paris\n51.51,-0.13,London' \
 
 `rendition=` [GeoTIFF] Import a specific GeoTIFF rendition, using a slug such as `full` or `overview-1`. When a GeoTIFF has internal overviews, Mapshaper lists the available slugs during import. By default, large GeoTIFFs are imported from the best available reduced-resolution overview under Mapshaper's import size limit, or resampled during import if no suitable overview is available. Use `rendition=full` to force full-resolution import.
 
+`resolution=` [Raster] Width in pixels to import a GeoTIFF, PNG or JPEG raster at (e.g. `resolution=2000` or `resolution=2000px`), or `full` to import at full resolution. The height follows from the raster's aspect ratio, and a raster is never enlarged. By default, rasters larger than 16 million pixels are reduced to fit that size. A GeoTIFF is read from the smallest internal overview that is at least as wide as the requested width.
+
 `name=`  Rename the imported layer (or layers).
 
 **Example** 

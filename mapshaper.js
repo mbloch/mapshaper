@@ -12358,8 +12358,28 @@
     };
   }
 
+  // The open paths in @lyr with an endpoint exactly at @p ([x, y]), as
+  // [{shapeId, partId, atStart}, ...], where atStart means the path starts at @p.
+  // A closed path has no ends. Used by -add-shape extend, and by the GUI's line
+  // tool to tell which lines a path started at @p would extend.
+  function findLineEnds(lyr, arcs, p) {
+    var matches = [];
+    if (!arcs) return matches;
+    (lyr.shapes || []).forEach(function(shp, shapeId) {
+      (shp || []).forEach(function(ids, partId) {
+        var a = arcs.getVertex(ids[0], 0);
+        var b = arcs.getVertex(ids[ids.length - 1], -1);
+        if (a.x == b.x && a.y == b.y) return;
+        if (a.x == p[0] && a.y == p[1]) matches.push({shapeId, partId, atStart: true});
+        if (b.x == p[0] && b.y == p[1]) matches.push({shapeId, partId, atStart: false});
+      });
+    });
+    return matches;
+  }
+
   var PathEndpoints = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    findLineEnds: findLineEnds,
     getPathEndpointTest: getPathEndpointTest
   });
 
@@ -43554,6 +43574,31 @@ ${css.join('\n')}
     // Editing geometry
     // -------------------------------------------------------------------------
 
+    'add-layer': [
+      {
+        description: 'Create an empty line layer in the same CRS as a basemap',
+        command: 'basemap.shp -add-layer geometry-type=polyline name=routes'
+      }
+    ],
+
+    'add-shape': [
+      {
+        description: 'Draw a red line with an arrowhead into a layer named "routes"',
+        command: 'basemap.shp -add-layer geometry-type=polyline name=routes \\\n' +
+          '  -add-shape coordinates=0,0,5,2,10,0 stroke=#c00 stroke-width=2 \\\n' +
+          '  line-end=arrow target=routes'
+      },
+      {
+        description: 'Add a shaded triangle to a polygon layer named "zones"',
+        command: '-add-shape coordinates=0,0,10,0,5,8 closed fill=#ccd \\\n' +
+          '  stroke=#336 target=zones'
+      },
+      {
+        description: 'Continue the line that ends at 10,0 on to 15,5',
+        command: '-add-shape coordinates=10,0,15,5 extend target=routes'
+      }
+    ],
+
     affine: [
       {
         description: 'Nudge a layer 50m east and 200m north',
@@ -43895,6 +43940,38 @@ ${css.join('\n')}
           'icon-color': {describe: 'color of the anchor symbol (defaults to the text color)'},
           'icon-opacity': {describe: 'opacity of the anchor symbol, 0-1'}
         },
+        // style properties of points, lines and polygons, accepted by -style and
+        // -add-shape
+        featureStyleOpts = {
+          class: {describe: 'name of CSS class or classes (space-separated)'},
+          css: {describe: 'inline css style'},
+          fill: {describe: 'fill color; examples: #eee pink rgba(0, 0, 0, 0.2)'},
+          'fill-pattern': {describe: 'pattern fill, ex: "hatches 2px grey 2px blue"'},
+          'fill-effect': {describe: 'use "sphere" on a circle for a 3d globe effect'},
+          'fill-opacity': {describe: 'fill opacity'},
+          'fill-hatch': {alias_to: 'fill-pattern'},
+          'outer-glow-color': {describe: 'color of a glow outside each polygon (adds the glow)'},
+          'outer-glow-width': {describe: 'how far the outer glow reaches, in px (default is 10)'},
+          'outer-glow-opacity': {describe: 'opacity of the outer glow, 0-1'},
+          'inner-glow-color': {describe: 'color of a glow inside each polygon (adds the glow)'},
+          'inner-glow-width': {describe: 'how far the inner glow reaches, in px (default is 10)'},
+          'inner-glow-opacity': {describe: 'opacity of the inner glow, 0-1'},
+          stroke: {describe: 'stroke color'},
+          'stroke-width': {describe: 'stroke width'},
+          'stroke-dasharray': {describe: 'stroke dashes. Examples: "4" "2 4"'},
+          'stroke-linecap': {describe: 'line caps: round, butt or square (dashed lines default to butt)'},
+          'stroke-opacity': {describe: 'stroke opacity'},
+          'line-start': {describe: 'marker at the start of each line: arrow, open-arrow, dot or none'},
+          'line-end': {describe: 'marker at the end of each line: arrow, open-arrow, dot or none'},
+          'line-end-size': {describe: 'length of an arrowhead\'s sides in px (default grows with stroke-width)'},
+          'line-fade': {describe: 'share of a line (0-1) that fades in from its tail'},
+          opacity: {describe: 'opacity; example: 0.5'},
+          r: {describe: 'symbol radius (set this to export points as circles)'},
+          icon: {describe: 'point icon shape; one of: circle, square, ring, star'},
+          'icon-size': {describe: 'point icon size in pixels'},
+          'icon-color': {describe: 'point icon color (defaults to fill color, then black)'},
+          'icon-opacity': {describe: 'point icon opacity, 0-1'}
+        },
         noReplaceOpt2 = { // for -calc and -info
           alias: '+',
           type: 'flag',
@@ -44096,6 +44173,9 @@ ${css.join('\n')}
       })
       .option('rendition', {
         describe: '[GeoTIFF] import a GeoTIFF rendition: full,overview-1,etc.'
+      })
+      .option('resolution', {
+        describe: '[raster] import width in pixels, or full (default reduces large rasters)'
       })
       .option('geometry-type', {
         // undocumented; GeoJSON import rejects all but one kind of geometry
@@ -44382,6 +44462,52 @@ ${css.join('\n')}
       ;
 
     parser.section('Editing commands');
+
+    parser.command('add-layer')
+      .describe('create an empty layer, to add shapes or labels to')
+      .option('geometry-type', {
+        describe: 'point, polygon or polyline'
+      })
+      .option('name', {
+        describe: 'name of the new layer'
+      })
+      // only the CRS is taken from the target, so that a shape drawn at a
+      // projected coordinate is not read as lat-long
+      .option('target', targetOpt);
+
+    // Used by GUI - leaving undocumented
+    parser.command('add-shape')
+      .describe('add a point, line or polygon, optionally with a style')
+      .option('coordinates', {
+        describe: 'x,y for a point, x,y,x,y,... for a line (a ring makes a polygon)'
+      })
+      .option('closed', {
+        describe: 'close an open path to make a polygon',
+        type: 'flag'
+      })
+      .option('extend', {
+        describe: 'join a line to the line in the target that ends where it starts or ends',
+        type: 'flag'
+      })
+      .option('geojson', {
+        describe: 'a GeoJSON Feature or geometry, instead of coordinates='
+      })
+      .option('properties', {
+        describe: 'attributes as a JSON object, e.g. {"name":"Route 1"}'
+      })
+      .options(featureStyleOpts)
+      .option('name', {
+        describe: 'name of a new layer (with no target, or with +)'
+      })
+      .option('target', {
+        describe: 'layer to add the shape to (default is the current target)'
+      })
+      .option('no-replace', {
+        alias: '+',
+        type: 'flag',
+        label: '+, no-replace',
+        describe: 'add the shape to a new layer instead of the target'
+      });
 
     parser.command('affine')
       .describe('transform coordinates by shifting, scaling and rotating')
@@ -45934,90 +46060,7 @@ ${css.join('\n')}
         describe: 'comma-sep. list of feature ids to style',
         type: 'numbers'
       })
-      .option('class', {
-        describe: 'name of CSS class or classes (space-separated)'
-      })
-      .option('css', {
-        describe: 'inline css style'
-      })
-      .option('fill', {
-        describe: 'fill color; examples: #eee pink rgba(0, 0, 0, 0.2)'
-      })
-      .option('fill-pattern', {
-        describe: 'pattern fill, ex: "hatches 2px grey 2px blue"'
-      })
-      .option('fill-effect', {
-        describe: 'use "sphere" on a circle for a 3d globe effect'
-      })
-      .option('fill-opacity', {
-        describe: 'fill opacity'
-      })
-      .option('fill-hatch', {
-        alias_to: 'fill-pattern'
-      })
-      .option('outer-glow-color', {
-        describe: 'color of a glow outside each polygon (adds the glow)'
-      })
-      .option('outer-glow-width', {
-        describe: 'how far the outer glow reaches, in px (default is 10)'
-      })
-      .option('outer-glow-opacity', {
-        describe: 'opacity of the outer glow, 0-1'
-      })
-      .option('inner-glow-color', {
-        describe: 'color of a glow inside each polygon (adds the glow)'
-      })
-      .option('inner-glow-width', {
-        describe: 'how far the inner glow reaches, in px (default is 10)'
-      })
-      .option('inner-glow-opacity', {
-        describe: 'opacity of the inner glow, 0-1'
-      })
-      .option('stroke', {
-        describe: 'stroke color'
-      })
-      .option('stroke-width', {
-        describe: 'stroke width'
-      })
-      .option('stroke-dasharray', {
-        describe: 'stroke dashes. Examples: "4" "2 4"'
-      })
-      .option('stroke-linecap', {
-        describe: 'line caps: round, butt or square (dashed lines default to butt)'
-      })
-      .option('stroke-opacity', {
-        describe: 'stroke opacity'
-      })
-      .option('line-start', {
-        describe: 'marker at the start of each line: arrow, open-arrow, dot or none'
-      })
-      .option('line-end', {
-        describe: 'marker at the end of each line: arrow, open-arrow, dot or none'
-      })
-      .option('line-end-size', {
-        describe: 'length of an arrowhead\'s sides in px (default grows with stroke-width)'
-      })
-      .option('line-fade', {
-        describe: 'share of a line (0-1) that fades in from its tail'
-      })
-      .option('opacity', {
-        describe: 'opacity; example: 0.5'
-      })
-      .option('r', {
-        describe: 'symbol radius (set this to export points as circles)',
-      })
-      .option('icon', {
-        describe: 'point icon shape; one of: circle, square, ring, star'
-      })
-      .option('icon-size', {
-        describe: 'point icon size in pixels'
-      })
-      .option('icon-color', {
-        describe: 'point icon color (defaults to fill color, then black)'
-      })
-      .option('icon-opacity', {
-        describe: 'point icon opacity, 0-1'
-      })
+      .options(featureStyleOpts)
       // deprecated in favor of -labels; accepted, but left out of the help
       .options(getHiddenLabelStyleOpts())
       .option('target', targetOpt);
@@ -46242,21 +46285,6 @@ ${css.join('\n')}
     // Experimental commands
     parser.section('Experimental commands (may give unexpected results)');
 
-    parser.command('add-shape')
-      .describe('')
-      .option('geojson', {
-
-      })
-      .option('coordinates', {
-
-      })
-      .option('properties', {
-
-      })
-      .option('name', nameOpt)
-      .option('target', targetOpt)
-      .option('no-replace', noReplaceOpt);
-
     // used by GUI
     parser.command('add-label')
       // .describe('add a map label to a point layer')
@@ -46276,19 +46304,6 @@ ${css.join('\n')}
       .option('name', nameOpt)
       .option('target', targetOpt)
       .option('no-replace', noReplaceOpt);
-
-    // used by GUI
-    parser.command('add-layer')
-      // .describe('create an empty layer, to add shapes or labels to')
-      .option('geometry-type', {
-        describe: 'point, polygon or polyline'
-      })
-      .option('name', {
-        describe: 'name of the new layer'
-      })
-      // only the CRS is taken from the target, so that a shape drawn at a
-      // projected coordinate is not read as lat-long
-      .option('target', targetOpt);
 
     // used by GUI
     parser.command('update-frame')
@@ -50368,10 +50383,57 @@ ${css.join('\n')}
     };
   }
 
+  // Rasters larger than this are reduced on import unless resolution=full
+  var DEFAULT_MAX_IMPORT_PIXELS = 16e6;
+
+  var FULL_RESOLUTION_HINT =
+    'Use import option resolution=full to import at full resolution, or resolution=<width> to choose a size.';
+
+  // Parses the resolution= import option: "full", or a width in pixels with an
+  // optional px unit. Returns null if the option is absent, otherwise
+  // {full: true} or {width: <n>}
+  function parseImportResolution(val) {
+    var str, match;
+    if (val === undefined || val === null || val === '') return null;
+    str = String(val).trim().toLowerCase();
+    if (str == 'full') return {full: true};
+    match = /^(\d+)(px)?$/.exec(str);
+    if (!match || +match[1] < 1) {
+      stop$1('Invalid resolution= value:', val + '.', 'Use full or a width in pixels, e.g. resolution=4000');
+    }
+    return {width: +match[1]};
+  }
+
+  function getMaxImportPixels(opts) {
+    return opts && (opts.maxPixels || opts.raster_max_pixels || opts.rasterMaxPixels) ||
+      DEFAULT_MAX_IMPORT_PIXELS;
+  }
+
+  // The size to import a @width x @height raster at, given the resolution=
+  // option. A raster is never enlarged. Without the option, rasters larger than
+  // the import size limit are reduced to fit it.
+  function getRasterImportSize(width, height, opts) {
+    var resolution = parseImportResolution(opts && opts.resolution);
+    var maxPixels, scale;
+    if (resolution && resolution.full) {
+      return {width: width, height: height};
+    }
+    if (resolution) {
+      scale = Math.min(1, resolution.width / width);
+    } else {
+      maxPixels = getMaxImportPixels(opts);
+      scale = Math.min(1, Math.sqrt(maxPixels / (width * height)));
+    }
+    if (scale >= 1) return {width: width, height: height};
+    return {
+      width: Math.max(1, Math.round(width * scale)),
+      height: Math.max(1, Math.round(height * scale))
+    };
+  }
+
   var geotiffPromise = null;
   var geoKeysToProj4Promise = null;
   var dynamicImportModule = Function('id', 'return import(id)');
-  var DEFAULT_MAX_IMPORT_PIXELS = 16e6;
 
   // aux: contents of the file's .aux.xml sidecar, if it has one
   async function importGeoTIFF(input, optsArg, aux) {
@@ -50491,18 +50553,26 @@ ${css.join('\n')}
 
   async function selectGeoTIFFImportImage(tiff, sourceImage, opts) {
     var maxPixels = getMaxImportPixels(opts);
+    var resolution = parseImportResolution(opts.resolution);
     var renditions = await getGeoTIFFRenditions(tiff, sourceImage);
     var source = renditions[0];
     var best = getRequestedRendition(renditions, opts.rendition);
     var bestPixels;
-    if (!best) {
+    if (resolution && resolution.full) {
+      best = best || source;
+    } else if (resolution) {
+      best = best || getRenditionForWidth(renditions, resolution.width);
+      if (best.width > resolution.width) {
+        best = getResizedImportImage(best, getRasterImportSize(best.width, best.height, opts));
+      }
+    } else if (!best) {
       best = source;
       bestPixels = best.width * best.height;
       if (bestPixels > maxPixels) {
         best = getAutomaticRendition(renditions, maxPixels);
         bestPixels = best.width * best.height;
         if (bestPixels > maxPixels) {
-          best = getResizedImportImage(best, maxPixels);
+          best = getResizedImportImage(best, getRasterImportSize(best.width, best.height, opts));
         }
       }
     }
@@ -50510,7 +50580,11 @@ ${css.join('\n')}
       message(getRenditionsMessage(renditions, best));
     }
     if (best.slug != 'full' || best.width != source.width || best.height != source.height) {
-      warnOnce(getImportRenditionMessage(best, source));
+      if (resolution || opts.rendition) {
+        message(getImportRenditionMessage(best, source));
+      } else {
+        warnOnce(getImportRenditionMessage(best, source) + ' ' + FULL_RESOLUTION_HINT);
+      }
     }
     return best;
   }
@@ -50589,20 +50663,23 @@ ${css.join('\n')}
       importImage.width + 'x' + importImage.height + ' (source: ' + source.width + 'x' + source.height + ').';
   }
 
-  function getResizedImportImage(importImage, maxPixels) {
-    var scale = Math.min(1, Math.sqrt(maxPixels / (importImage.width * importImage.height)));
+  // The smallest rendition at least @width pixels wide, so that resampling to
+  // @width reads as little data as possible without enlarging anything
+  function getRenditionForWidth(renditions, width) {
+    return renditions.reduce(function(memo, rendition) {
+      if (rendition.width >= width && rendition.width < memo.width) return rendition;
+      return memo;
+    }, renditions[0]);
+  }
+
+  function getResizedImportImage(importImage, size) {
     return Object.assign({}, importImage, {
       sourceSlug: importImage.slug,
       slug: importImage.slug + '-resampled',
       resampled: true,
-      width: Math.max(1, Math.round(importImage.width * scale)),
-      height: Math.max(1, Math.round(importImage.height * scale))
+      width: size.width,
+      height: size.height
     });
-  }
-
-  function getMaxImportPixels(opts) {
-    return opts.maxPixels || opts.raster_max_pixels || opts.rasterMaxPixels ||
-      DEFAULT_MAX_IMPORT_PIXELS;
   }
 
   async function readGeoTIFFSamples(image, samples, width, height) {
@@ -50820,7 +50897,7 @@ ${css.join('\n')}
     if (crsInfo.absent && !sidecarString) {
       if (probablyDecimalDegreeBounds(getDatasetBounds(dataset))) {
         message('This GeoTIFF has no CRS metadata. Its coordinates are in the',
-          'decimal-degree range, so they are taken for WGS 84 lat-long.');
+          'decimal-degree range, so WGS 84 lat-long is assumed.');
       } else {
         message('This GeoTIFF has no CRS metadata, so what its coordinates refer',
           'to is unknown, and projecting it or showing it over a basemap are',
@@ -50972,15 +51049,20 @@ ${css.join('\n')}
     var opts = optsArg || {};
     var imageType = input.png ? 'png' : input.jpeg ? 'jpeg' : null;
     var imageInput = input[imageType];
-    var decoded = await decodeImage(imageInput, imageType);
     var world = parseWorldFile(input.world && input.world.content);
     var sourceId = getFileBase(imageInput.filename || imageType);
-    var transform, bbox, raster, dataset;
+    var decoded, transform, bbox, raster, dataset;
     if (!world) {
       stop$1('Image raster import requires a world file');
     }
+    decoded = await decodeImage(imageInput, imageType, opts);
+    if (decoded.width != decoded.sourceWidth || decoded.height != decoded.sourceHeight) {
+      showResampledImageMessage(decoded, opts);
+    }
     transform = getWorldTransform(world);
-    bbox = getWorldFileBBox(transform, decoded.width, decoded.height);
+    bbox = getWorldFileBBox(transform, decoded.sourceWidth, decoded.sourceHeight);
+    transform = scaleWorldTransform(transform,
+      decoded.sourceWidth / decoded.width, decoded.sourceHeight / decoded.height);
     raster = {
       sourceId: sourceId,
       interpretation: getRasterInterpretation(opts),
@@ -51013,7 +51095,7 @@ ${css.join('\n')}
     }
     dataset = {
       info: {
-        raster_sources: [getSourceInfo(imageInput, sourceId, imageType, input)]
+        raster_sources: [getSourceInfo(imageInput, sourceId, imageType, input, decoded)]
       },
       layers: [{
         name: imageInput.filename ? getFileBase(imageInput.filename) : null,
@@ -51021,65 +51103,233 @@ ${css.join('\n')}
         raster: raster
       }]
     };
-    importImageCrs(dataset, input.prj);
+    importImageCrs(dataset, input.prj, imageInput.filename);
     return dataset;
+  }
+
+  function showResampledImageMessage(decoded, opts) {
+    var msg = 'Using resampled image for import: ' + decoded.width + 'x' + decoded.height +
+      ' (source: ' + decoded.sourceWidth + 'x' + decoded.sourceHeight + ').';
+    if (parseImportResolution(opts.resolution)) {
+      message(msg);
+    } else {
+      warnOnce(msg + ' ' + FULL_RESOLUTION_HINT);
+    }
   }
 
   function getRasterInterpretation(opts) {
     return opts.interpretation || 'image';
   }
 
-  async function decodeImage(input, imageType) {
+  async function decodeImage(input, imageType, opts) {
     if (runningInBrowser()) {
-      return decodeImageInBrowser(input.content, imageType);
+      return decodeImageInBrowser(input.content, imageType, opts);
     }
-    return imageType == 'png' ? decodePng(input.content) : decodeJpeg(input.content);
+    return imageType == 'png' ? decodePng(input.content, opts) : decodeJpeg(input.content, opts);
   }
 
-  function decodePng(content) {
+  function decodePng(content, opts) {
     var png = require$1('pngjs').PNG.sync.read(Buffer.from(content));
-    return rgbaToImageData(png.data, png.width, png.height, true);
+    return rgbaToImageData(png.data, png.width, png.height, true, opts);
   }
 
-  function decodeJpeg(content) {
+  function decodeJpeg(content, opts) {
     var jpeg = require$1('jpeg-js');
-    var image = jpeg.decode(Buffer.from(content), {useTArray: true});
-    return rgbaToImageData(image.data, image.width, image.height, false);
+    // jpeg-js refuses images over 100 megapixels by default; a large image is
+    // reduced to the import size after it is decoded
+    var image = jpeg.decode(Buffer.from(content), {
+      useTArray: true,
+      maxResolutionInMP: Infinity,
+      maxMemoryUsageInMB: Infinity
+    });
+    return rgbaToImageData(image.data, image.width, image.height, false, opts);
   }
 
-  async function decodeImageInBrowser(content, imageType) {
+  // The image is decoded at the size it is imported at, when its header gives
+  // the full size, so a large image never occupies a full-size canvas.
+  async function decodeImageInBrowser(content, imageType, opts) {
     var blob = new Blob([content], {type: imageType == 'png' ? 'image/png' : 'image/jpeg'});
-    var bitmap = await createImageBitmap(blob);
-    var canvas = document.createElement('canvas');
-    var ctx, data;
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
+    var sourceSize = readImageSize(content, imageType);
+    var size = sourceSize ? getRasterImportSize(sourceSize.width, sourceSize.height, opts) : null;
+    var bitmap, resized, canvas, ctx, data, imageData;
+    if (size && (size.width != sourceSize.width || size.height != sourceSize.height)) {
+      bitmap = await createImageBitmap(blob, getBitmapResizeOptions(size));
+    } else {
+      bitmap = await createImageBitmap(blob);
+    }
+    if (!sourceSize) {
+      sourceSize = {width: bitmap.width, height: bitmap.height};
+      size = getRasterImportSize(bitmap.width, bitmap.height, opts);
+      if (size.width != bitmap.width || size.height != bitmap.height) {
+        resized = await createImageBitmap(bitmap, getBitmapResizeOptions(size));
+        if (bitmap.close) bitmap.close();
+        bitmap = resized;
+      }
+    }
+    canvas = document.createElement('canvas');
+    canvas.width = size.width;
+    canvas.height = size.height;
     ctx = canvas.getContext('2d');
-    ctx.drawImage(bitmap, 0, 0);
-    data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    ctx.imageSmoothingQuality = 'high';
+    // scales the bitmap in a browser that ignores the resize options
+    ctx.drawImage(bitmap, 0, 0, size.width, size.height);
+    data = ctx.getImageData(0, 0, size.width, size.height).data;
     if (bitmap.close) bitmap.close();
-    return rgbaToImageData(data, canvas.width, canvas.height, imageType == 'png');
+    imageData = rgbaToImageData(data, size.width, size.height, imageType == 'png');
+    imageData.sourceWidth = sourceSize.width;
+    imageData.sourceHeight = sourceSize.height;
+    return imageData;
   }
 
-  function rgbaToImageData(rgba, width, height, keepAlpha) {
+  function getBitmapResizeOptions(size) {
+    return {resizeWidth: size.width, resizeHeight: size.height, resizeQuality: 'high'};
+  }
+
+  // Reads the pixel dimensions from a PNG or JPEG header, or returns null
+  function readImageSize(content, imageType) {
+    var bytes = toUint8Array(content);
+    if (!bytes) return null;
+    return imageType == 'png' ? readPngSize(bytes) : readJpegSize(bytes);
+  }
+
+  function toUint8Array(content) {
+    if (!content) return null;
+    if (content instanceof ArrayBuffer) return new Uint8Array(content);
+    if (ArrayBuffer.isView(content)) {
+      return new Uint8Array(content.buffer, content.byteOffset, content.byteLength);
+    }
+    return null;
+  }
+
+  function readPngSize(bytes) {
+    var width, height;
+    if (bytes.length < 24 || bytes[0] != 0x89 || bytes[1] != 0x50 ||
+        String.fromCharCode(bytes[12], bytes[13], bytes[14], bytes[15]) != 'IHDR') {
+      return null;
+    }
+    width = readUint32(bytes, 16);
+    height = readUint32(bytes, 20);
+    return width > 0 && height > 0 ? {width: width, height: height} : null;
+  }
+
+  function readUint32(bytes, i) {
+    return ((bytes[i] << 24) >>> 0) + (bytes[i + 1] << 16) + (bytes[i + 2] << 8) + bytes[i + 3];
+  }
+
+  function readJpegSize(bytes) {
+    var i = 2, marker, len, width, height;
+    if (bytes[0] != 0xFF || bytes[1] != 0xD8) return null;
+    while (i + 3 < bytes.length) {
+      if (bytes[i] != 0xFF) return null;
+      marker = bytes[i + 1];
+      if (marker == 0xFF) { // fill byte
+        i++;
+        continue;
+      }
+      if (marker == 0x01 || marker >= 0xD0 && marker <= 0xD7) { // no length
+        i += 2;
+        continue;
+      }
+      if (marker == 0xD9 || marker == 0xDA) return null; // end of image, or scan data
+      len = (bytes[i + 2] << 8) + bytes[i + 3];
+      // SOF0 to SOF15, except DHT (C4), JPG (C8) and DAC (CC)
+      if (marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC) {
+        if (i + 8 >= bytes.length) return null;
+        height = (bytes[i + 5] << 8) + bytes[i + 6];
+        width = (bytes[i + 7] << 8) + bytes[i + 8];
+        return width > 0 && height > 0 ? {width: width, height: height} : null;
+      }
+      i += 2 + len;
+    }
+    return null;
+  }
+
+  // @opts: import options, for reducing a large image to its import size
+  function rgbaToImageData(rgba, width, height, keepAlpha, opts) {
+    var size = opts ? getRasterImportSize(width, height, opts) : {width: width, height: height};
     var bands = keepAlpha ? 4 : 3;
-    var samples = new Uint8Array(width * height * bands);
-    var src, dest;
-    for (var i = 0, n = width * height; i < n; i++) {
-      src = i * 4;
-      dest = i * bands;
-      samples[dest] = rgba[src];
-      samples[dest + 1] = rgba[src + 1];
-      samples[dest + 2] = rgba[src + 2];
-      if (keepAlpha) samples[dest + 3] = rgba[src + 3];
+    var samples, src, dest;
+    if (size.width != width || size.height != height) {
+      samples = downsampleRgba(rgba, width, height, size.width, size.height, keepAlpha);
+    } else {
+      samples = new Uint8Array(width * height * bands);
+      for (var i = 0, n = width * height; i < n; i++) {
+        src = i * 4;
+        dest = i * bands;
+        samples[dest] = rgba[src];
+        samples[dest + 1] = rgba[src + 1];
+        samples[dest + 2] = rgba[src + 2];
+        if (keepAlpha) samples[dest + 3] = rgba[src + 3];
+      }
     }
     return {
-      width: width,
-      height: height,
+      width: size.width,
+      height: size.height,
+      sourceWidth: width,
+      sourceHeight: height,
       bands: bands,
       samples: samples,
       sampleBands: bands == 4 ? [0, 1, 2, 3] : [0, 1, 2]
     };
+  }
+
+  // Reduces an RGBA image by averaging the source pixels that fall in each
+  // output pixel, returning RGB or RGBA samples. Colors are weighted by alpha,
+  // so transparent pixels don't darken the edges of opaque areas.
+  function downsampleRgba(rgba, srcW, srcH, dstW, dstH, keepAlpha) {
+    var bands = keepAlpha ? 4 : 3;
+    var out = new Uint8Array(dstW * dstH * bands);
+    var colMap = new Int32Array(srcW);
+    var colCount = new Uint32Array(dstW);
+    var sums = new Float64Array(dstW * 4);
+    var sy = 0, rows, i, j, k, n, a, x, tx, ty;
+    for (x = 0; x < srcW; x++) {
+      tx = Math.floor(x * dstW / srcW);
+      colMap[x] = tx * 4;
+      colCount[tx]++;
+    }
+    for (ty = 0; ty < dstH; ty++) {
+      sums.fill(0);
+      rows = 0;
+      for (; sy < srcH && Math.floor(sy * dstH / srcH) == ty; sy++) {
+        rows++;
+        i = sy * srcW * 4;
+        if (keepAlpha) {
+          for (x = 0; x < srcW; x++, i += 4) {
+            j = colMap[x];
+            a = rgba[i + 3];
+            sums[j] += rgba[i] * a;
+            sums[j + 1] += rgba[i + 1] * a;
+            sums[j + 2] += rgba[i + 2] * a;
+            sums[j + 3] += a;
+          }
+        } else {
+          for (x = 0; x < srcW; x++, i += 4) {
+            j = colMap[x];
+            sums[j] += rgba[i];
+            sums[j + 1] += rgba[i + 1];
+            sums[j + 2] += rgba[i + 2];
+          }
+        }
+      }
+      k = ty * dstW * bands;
+      for (tx = 0; tx < dstW; tx++, k += bands) {
+        j = tx * 4;
+        n = colCount[tx] * rows;
+        if (keepAlpha) {
+          a = sums[j + 3];
+          out[k] = a > 0 ? Math.round(sums[j] / a) : 0;
+          out[k + 1] = a > 0 ? Math.round(sums[j + 1] / a) : 0;
+          out[k + 2] = a > 0 ? Math.round(sums[j + 2] / a) : 0;
+          out[k + 3] = Math.round(a / n);
+        } else {
+          out[k] = Math.round(sums[j] / n);
+          out[k + 1] = Math.round(sums[j + 1] / n);
+          out[k + 2] = Math.round(sums[j + 2] / n);
+        }
+      }
+    }
+    return out;
   }
 
   function parseWorldFile(content) {
@@ -51102,6 +51352,11 @@ ${css.join('\n')}
       e,
       f - d / 2 - e / 2
     ];
+  }
+
+  // @sx, @sy: source pixels per imported pixel, across and down
+  function scaleWorldTransform(t, sx, sy) {
+    return [t[0] * sx, t[1] * sy, t[2], t[3] * sx, t[4] * sy, t[5]];
   }
 
   function getWorldFileBBox(transform, width, height) {
@@ -51128,10 +51383,19 @@ ${css.join('\n')}
     ];
   }
 
-  function importImageCrs(dataset, prj) {
+  function importImageCrs(dataset, prj, filename) {
     var wkt = prj && prj.content;
+    var name = filename || 'This image';
     if (!wkt) {
-      warn('Image raster is missing a .prj file; CRS is unknown');
+      // getDatasetCrsInfo() treats a dataset with lat-long range bounds as WGS 84
+      if (probablyDecimalDegreeBounds(getDatasetBounds(dataset))) {
+        message(name, 'has no .prj file. Its coordinates are in the',
+          'decimal-degree range, so WGS 84 lat-long is assumed.');
+      } else {
+        warn(name, 'has no .prj file, so what its coordinates refer to is',
+          'unknown, and projecting it or showing it over a basemap are',
+          'unavailable. If you know the CRS, name it with -proj init=<crs> crs=<crs>');
+      }
       return;
     }
     try {
@@ -51144,13 +51408,15 @@ ${css.join('\n')}
     }
   }
 
-  function getSourceInfo(input, sourceId, imageType, group) {
+  function getSourceInfo(input, sourceId, imageType, group, decoded) {
     var content = input && input.content;
     return {
       id: sourceId,
       type: imageType,
       filename: input && input.filename || null,
       byteLength: content && content.byteLength || null,
+      width: decoded.sourceWidth,
+      height: decoded.sourceHeight,
       storage: runningInBrowser() ? 'indexeddb-pending' : 'path',
       worldFile: group.world && group.world.filename || null,
       prjFile: group.prj && group.prj.filename || null
@@ -53336,6 +53602,59 @@ ${css.join('\n')}
     });
   }
 
+  // Makes the values of a feature about to join a layer match the types the
+  // layer already holds, so that adding a feature cannot be the thing that breaks
+  // a layer's schema. Used by the commands that add one feature at a time
+  // (-add-shape, -labels coordinates=).
+  //
+  // Only string and number are worth reconciling. Anything else in a field is
+  // odd enough that quietly rewriting it would hide a real problem.
+  //
+  // d: the new feature's properties (modified in place)
+  // targetLyr: the layer the feature is joining, or null
+  function matchTargetFieldTypes(d, targetLyr) {
+    var records = targetLyr && targetLyr.data ? targetLyr.data.getRecords() : null;
+    if (!d || !records || records.length === 0) return;
+    Object.keys(d).forEach(function(key) {
+      var type = getColumnType(key, records);
+      var val = d[key];
+      if (!type || type === typeof val) return;
+      if (type == 'string' && utils.isNumber(val)) {
+        d[key] = String(val);
+      } else if (type == 'number' && utils.isString(val)) {
+        if (isFiniteString(val)) {
+          d[key] = Number(val);
+        } else {
+          stringifyColumn(key, records);
+        }
+      }
+    });
+  }
+
+  // Widens a column of numbers to strings, for a value that cannot be a number:
+  // '0.45em' is a length with units, which is what a label position east of its
+  // anchor expands to.
+  //
+  // Every number has a faithful string form, and these values are written out as
+  // SVG attributes, so restating 0 as '0' changes nothing that is drawn or
+  // exported. Narrowing the other way is what is not always possible, which is
+  // why this is the direction the column moves.
+  //
+  // Reached by a layer whose dx column holds numbers -- written before label
+  // positions stored dx as a string -- which would otherwise refuse every label
+  // offered an em offset.
+  function stringifyColumn(key, records) {
+    for (var i = 0; i < records.length; i++) {
+      if (records[i] && utils.isNumber(records[i][key])) {
+        records[i][key] = String(records[i][key]);
+      }
+    }
+  }
+
+  function isFiniteString(str) {
+    return str.trim() !== '' && utils.isFiniteNumber(Number(str));
+  }
+
   // Geometry concerns shared by the commands that write a label's knots,
   // -add-label and -update-label. A label's knots are its geometry, so both
   // commands accept coordinates in the same forms and answer the same questions
@@ -53415,7 +53734,7 @@ ${css.join('\n')}
   //
   // Options consumed directly by this command, rather than passed through as
   // label properties.
-  var RESERVED_OPTIONS = {
+  var RESERVED_OPTIONS$1 = {
     coordinates: true,
     name: true,
     no_replace: true,
@@ -53460,54 +53779,6 @@ ${css.join('\n')}
     return merged;
   }
 
-  // Makes the new label's values match the types the target layer already holds,
-  // so that adding a label cannot be the thing that breaks a layer's schema.
-  //
-  // Only string and number are worth reconciling. Anything else in a style field
-  // is odd enough that quietly rewriting it would hide a real problem.
-  function matchTargetFieldTypes(d, targetLyr) {
-    var records = targetLyr && targetLyr.data ? targetLyr.data.getRecords() : null;
-    if (!records || records.length === 0) return;
-    Object.keys(d).forEach(function(key) {
-      var type = getColumnType(key, records);
-      var val = d[key];
-      if (!type || type === typeof val) return;
-      if (type == 'string' && utils.isNumber(val)) {
-        d[key] = String(val);
-      } else if (type == 'number' && utils.isString(val)) {
-        if (isFiniteString(val)) {
-          d[key] = Number(val);
-        } else {
-          stringifyColumn(key, records);
-        }
-      }
-    });
-  }
-
-  // Widens a column of numbers to strings, for a value that cannot be a number:
-  // '0.45em' is a length with units, which is what a label position east of its
-  // anchor expands to.
-  //
-  // Every number has a faithful string form, and these values are written out as
-  // SVG attributes, so restating 0 as '0' changes nothing that is drawn or
-  // exported. Narrowing the other way is what is not always possible, which is
-  // why this is the direction the column moves.
-  //
-  // Reached by a layer whose dx column holds numbers -- written before label
-  // positions stored dx as a string -- which would otherwise refuse every label
-  // offered an em offset.
-  function stringifyColumn(key, records) {
-    for (var i = 0; i < records.length; i++) {
-      if (records[i] && utils.isNumber(records[i][key])) {
-        records[i][key] = String(records[i][key]);
-      }
-    }
-  }
-
-  function isFiniteString(str) {
-    return str.trim() !== '' && utils.isFiniteNumber(Number(str));
-  }
-
   // Both kinds of label are point features, so a non-point target can never
   // receive one. Refusing is better than silently making a new layer, because
   // the CLI user named a target explicitly.
@@ -53543,7 +53814,7 @@ ${css.join('\n')}
     Object.keys(opts).forEach(function(key) {
       var name = key.replace(/_/g, '-');
       var val;
-      if (key in RESERVED_OPTIONS) return;
+      if (key in RESERVED_OPTIONS$1) return;
       if (!isSupportedSvgStyleProperty(name)) return;
       // Stored as the type -style would store it in. Copying the option string
       // through instead left icon-size=20 as "20" here and 20 from -style, so a
@@ -56060,56 +56331,228 @@ ${css.join('\n')}
 
   cmd.addShape = addShape;
 
+  // Adds one feature -- a point, a line or a polygon -- to the target layer, or
+  // to a new layer. Style options (stroke=, fill=, line-end= ...) are written to
+  // the new feature, so that creating and styling a shape is one command, one
+  // undo step and one entry in the session history. The GUI's line and polygon
+  // drawing tools create every shape with this command.
+  //
+  // Options consumed directly by this command, rather than passed through as
+  // style properties.
+  var RESERVED_OPTIONS = {
+    closed: true,
+    coordinates: true,
+    extend: true,
+    geojson: true,
+    name: true,
+    no_replace: true,
+    properties: true,
+    target: true
+  };
+
   function addShape(targetLayers, targetDataset, opts) {
+    var targetLyr, targetType, feature, dataset, outputLyr, merged;
     if (targetLayers.length > 1) {
       stop$1('Command expects a single target layer');
     }
-    var targetLyr = targetLayers[0]; // may be undefined
-    var targetType = !opts.no_replace && targetLyr && targetLyr.geometry_type || null;
-    var dataset = importGeoJSON(toFeature(opts, targetType));
-    var outputLyr = mergeDatasetsIntoDataset(targetDataset, [dataset])[0];
+    targetLyr = targetLayers[0]; // may be undefined
+    if (opts.extend) {
+      return [extendLine(targetLyr, targetDataset, opts)];
+    }
+    targetType = !opts.no_replace && targetLyr && targetLyr.geometry_type || null;
+    feature = toFeature(opts, targetType);
+    if (!opts.no_replace) {
+      matchTargetFieldTypes(feature.properties, targetLyr);
+    }
+    dataset = importGeoJSON(feature);
+    outputLyr = mergeDatasetsIntoDataset(targetDataset, [dataset])[0];
     if (opts.no_replace || !targetLyr) {
       // create new layer
       setOutputLayerName(outputLyr, targetLyr && targetLyr.name, null, opts);
       return [outputLyr];
     }
-    // merge into target layer
-    return cmd.mergeLayers([targetLyr, outputLyr], {force: true});
+    // verbose: false silences "Fields [...] are missing from one or more layers":
+    // a styled shape rarely has the same fields as the layer it joins.
+    merged = cmd.mergeLayers([targetLyr, outputLyr], {force: true, verbose: false});
+    // mergeLayers() drops empty layers before merging, so adding the first shape
+    // to an empty layer hands back the one-shape layer on its own, without the
+    // name of the layer it was added to.
+    merged[0].name = targetLyr.name;
+    return merged;
   }
 
+  // Joins the new path to the line in the target layer that has an endpoint at
+  // the path's first vertex (or, failing that, its last), so that the two become
+  // one path of the same feature. The path's arcs are appended to the line's
+  // arcs, which leaves the rest of the layer, and the line's attributes, as they
+  // were; style options update the line's attributes.
+  //
+  // The vertex has to match the endpoint exactly, and only one line may end
+  // there: where several do, which one to extend is not clear.
+  function extendLine(targetLyr, targetDataset, opts) {
+    var feature, coords, match, pathLyr, pathIds, outputLyr, shape, part, records;
+    if (!targetLyr || targetLyr.geometry_type != 'polyline') {
+      stop$1('The extend option requires a polyline target layer');
+    }
+    if (opts.no_replace || opts.closed) {
+      stop$1('The extend option can not be combined with', opts.closed ? 'closed' : '+');
+    }
+    feature = toFeature(opts, 'polyline');
+    if (!feature.geometry || feature.geometry.type != 'LineString') {
+      stop$1('The extend option requires a single path');
+    }
+    coords = feature.geometry.coordinates;
+    match = findLineEnd(targetLyr, targetDataset.arcs, coords[0]);
+    if (!match) {
+      match = findLineEnd(targetLyr, targetDataset.arcs, coords[coords.length - 1]);
+      if (match) coords = coords.concat().reverse();
+    }
+    if (!match) {
+      stop$1('No line in the target layer ends at', coords[0].join(','), 'or',
+        coords[coords.length - 1].join(','));
+    }
+    feature.geometry = {type: 'LineString', coordinates: coords};
+    pathLyr = mergeDatasetsIntoDataset(targetDataset, [importGeoJSON(feature)])[0];
+    pathIds = pathLyr.shapes[0][0];
+    // The extended line goes in a copy of the target layer, which replaces it,
+    // as a merged layer does: until the command is done, the GUI goes on drawing
+    // the layer it has, whose arc ids its display arcs cover, and undo restores
+    // that layer along with the dataset's arcs.
+    outputLyr = Object.assign({}, targetLyr, {shapes: targetLyr.shapes.concat()});
+    shape = outputLyr.shapes[match.shapeId] = outputLyr.shapes[match.shapeId].map(function(part) {
+      return part.concat();
+    });
+    part = shape[match.partId];
+    if (match.atStart) {
+      // the path runs out from the line's first vertex, so it goes on reversed
+      part.unshift.apply(part, reversePathIds(pathIds));
+    } else {
+      part.push.apply(part, pathIds);
+    }
+    if (feature.properties && Object.keys(feature.properties).length > 0) {
+      matchTargetFieldTypes(feature.properties, targetLyr);
+      records = targetLyr.data ? targetLyr.data.getRecords().concat() :
+        new DataTable(targetLyr.shapes.length).getRecords();
+      records[match.shapeId] = utils.extend({}, records[match.shapeId], feature.properties);
+      outputLyr.data = new DataTable(records);
+    }
+    return outputLyr;
+  }
+
+  // Returns {shapeId, partId, atStart} for the one open path in @lyr with an
+  // endpoint at @p, or null if there is none
+  function findLineEnd(lyr, arcs, p) {
+    var matches = findLineEnds(lyr, arcs, p);
+    if (matches.length > 1) {
+      stop$1('More than one line ends at', p.join(',') + '; unable to extend');
+    }
+    return matches[0] || null;
+  }
+
+  function reversePathIds(ids) {
+    return ids.map(function(id) { return ~id; }).reverse();
+  }
+
+  // opts: parsed command options
+  // geomType: geometry type of the layer the shape is joining, or null
   function toFeature(opts, geomType) {
+    var feature;
     if (opts.geojson) {
-      return parseArg(opts.geojson);
-    }
-
-    var geom = opts.coordinates && parseCoordsAsGeometry(opts.coordinates) || null;
-
-    if (!geom) {
-      stop$1('Missing required shape coordinates');
-    }
-
-    if (geomType == 'point' && geom.type != 'Point') {
-      stop$1('Expected point coordinates, received', geom.type);
-    }
-
-    if (geomType == 'polygon' && geom.type != 'Polygon') {
-      stop$1('Expected polygon coordinates, received', geom.type);
-    }
-
-    if (geomType == 'polyline') {
-      if (geom.type == 'Polygon') {
-        geom.coordinates = geom.coordinates[0];
-        geom.type = 'LineString';
-      } else {
-        stop$1('Expected polyline coordinates, received', geom.type);
+      feature = toGeoJSONFeature(parseArg(opts.geojson));
+    } else {
+      feature = {
+        type: 'Feature',
+        properties: parseProperties(opts.properties),
+        geometry: opts.coordinates && parseCoordsAsGeometry(opts.coordinates) || null
+      };
+      if (!feature.geometry) {
+        stop$1('Missing required shape coordinates');
       }
     }
+    if (feature.type != 'Feature') {
+      // a FeatureCollection: neither closed= nor the target's type can be
+      // applied to it as a whole, but its features can still take a style
+      (feature.features || []).forEach(function(feat) {
+        addStyleProperties(feat, opts);
+      });
+      return feature;
+    }
+    if (opts.geojson && opts.properties) {
+      feature.properties = utils.extend(feature.properties || {}, parseProperties(opts.properties));
+    }
+    if (opts.closed) {
+      closePath(feature);
+    }
+    conformToLayerType(feature, geomType);
+    addStyleProperties(feature, opts);
+    return feature;
+  }
 
-    return {
-      type: 'Feature',
-      properties: parseProperties(opts.properties),
-      geometry: geom
-    };
+  function toGeoJSONFeature(obj) {
+    if (!obj || !obj.type) {
+      stop$1('Unable to parse geojson= value');
+    }
+    if (obj.type == 'Feature' || obj.type == 'FeatureCollection') {
+      return obj;
+    }
+    return {type: 'Feature', properties: null, geometry: obj};
+  }
+
+  // Turns an open path into a polygon by joining its last vertex to its first.
+  function closePath(feature) {
+    var geom = feature.geometry;
+    var coords;
+    if (!geom || geom.type == 'Polygon' || geom.type == 'MultiPolygon') return;
+    if (geom.type != 'LineString' || geom.coordinates.length < 3) {
+      stop$1('The closed option requires a path with at least three vertices');
+    }
+    coords = geom.coordinates.concat();
+    if (!samePoint$3(coords[0], coords[coords.length - 1])) {
+      coords.push(coords[0]);
+    }
+    feature.geometry = {type: 'Polygon', coordinates: [coords]};
+  }
+
+  function conformToLayerType(feature, geomType) {
+    var geom = feature.geometry;
+    var type = geom ? geom.type : null;
+    if (!geomType || !geom) return;
+    if (geomType == 'point' && type != 'Point' && type != 'MultiPoint') {
+      stop$1('Expected point coordinates, received', type);
+    }
+    if (geomType == 'polygon' && type != 'Polygon' && type != 'MultiPolygon') {
+      stop$1('Expected polygon coordinates, received', type +
+        '. Use the closed option to close an open path.');
+    }
+    if (geomType == 'polyline') {
+      if (type == 'Polygon' && geom.coordinates.length == 1) {
+        // a ring added to a polyline layer is a closed line
+        feature.geometry = {type: 'LineString', coordinates: geom.coordinates[0]};
+      } else if (type != 'LineString' && type != 'MultiLineString') {
+        stop$1('Expected polyline coordinates, received', type);
+      }
+    }
+  }
+
+  // Any option matching a -style property becomes a property of the new feature,
+  // stored as the type -style would store it in. Only literal values are
+  // accepted: there is no layer of features for an expression to be evaluated
+  // against. An empty value is skipped, since there is nothing to remove from a
+  // feature that does not exist yet.
+  function addStyleProperties(feature, opts) {
+    Object.keys(opts).forEach(function(key) {
+      var name = key.replace(/_/g, '-');
+      var raw = opts[key];
+      var val;
+      if (key in RESERVED_OPTIONS || !isSupportedSvgStyleProperty(name)) return;
+      if (raw === '' || raw === null || raw === undefined) return;
+      val = parseStyleLiteral(name, raw);
+      if (val === undefined) {
+        stop$1('Unexpected value for', name + ':', raw);
+      }
+      if (!feature.properties) feature.properties = {};
+      feature.properties[name] = val;
+    });
   }
 
   function parseArg(obj) {
@@ -88095,7 +88538,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.78";
+  var version = "0.7.79";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

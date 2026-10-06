@@ -1898,6 +1898,24 @@
     }
   }
 
+  // Tests whether any part of a bounding box can be transformed, by sampling
+  // a grid of points. (Testing only the center gives false negatives, e.g.
+  // world-extent data in an orthographic projection centered away from 0,0.)
+  function boundsCanBeProjected(bounds, transform, n) {
+    var cells = n > 0 ? n : 8;
+    var w = bounds.width(), h = bounds.height();
+    var x, y, p;
+    for (var i = 0; i <= cells; i++) {
+      for (var j = 0; j <= cells; j++) {
+        x = bounds.xmin + w * i / cells;
+        y = bounds.ymin + h * j / cells;
+        p = transform(x, y);
+        if (p && isFinite(p[0]) && isFinite(p[1])) return true;
+      }
+    }
+    return false;
+  }
+
   async function considerReprojecting(gui, dataset, opts) {
     var mapCRS = gui.map.getActiveLayerCRS();
     var dataCRS = internal.getDatasetCRS(dataset);
@@ -1916,11 +1934,8 @@
 
   function datasetCanBeReprojected(dataset, srcCRS, destCRS) {
     var bounds = internal.getDatasetBounds(dataset);
-    var transform, p;
     if (!bounds || !bounds.hasBounds()) return false;
-    transform = internal.getProjTransform2(srcCRS, destCRS);
-    p = transform(bounds.centerX(), bounds.centerY());
-    return !!(p && isFinite(p[0]) && isFinite(p[1]));
+    return boundsCanBeProjected(bounds, internal.getProjTransform2(srcCRS, destCRS));
   }
 
   function notifyProjectionMismatch(gui, dataset) {
@@ -6834,7 +6849,8 @@
           });
       }, {
         evictToken: evictToken,
-        preserveOnModeChange: true
+        preserveOnModeChange: true,
+        changesEditTarget: !!opts.changesEditTarget
       });
       return {
         skipped: false,
@@ -8155,8 +8171,10 @@
     internal.setLoggingFunctions(message, error, stop, warn);
   }
 
+  // The raster importers' notes that a CRS-less raster was taken for lat-long
+  // end with "so WGS 84 lat-long is assumed."
   function messageShouldGoToInbox(msg) {
-    return /^GeoTIFF renditions:/.test(msg);
+    return /^GeoTIFF renditions:/.test(msg) || /WGS 84 lat-long is assumed\.$/.test(msg);
   }
 
   function WriteFilesProxy(gui) {
@@ -10004,6 +10022,7 @@
         return getStoredUndoHistory(gui).addTransaction(tx, {
           flags: flags,
           entryPrefix: 'command-session',
+          changesEditTarget: true,
           onUndo: function() {
             gui.session.setCommandsActive(historyIds, false);
             if (callbacks.onUndo) callbacks.onUndo();
@@ -10037,9 +10056,20 @@
     function runMapshaperCommands(str, done, runOpts) {
       var session = runOpts && runOpts.session || null;
       var quiet = !(runOpts && runOpts.typed);
-      var commands;
+      // A command session is a panel's edits to the active layer, so it is
+      // taken to change the layer being edited, like a command that says so.
+      var changesEditTarget = !!(runOpts && runOpts.changesEditTarget) || !!session;
+      var commands, checkpoint;
       if (activeSession && activeSession != session) {
         activeSession.finish().then(function() {
+          runMapshaperCommands(str, done, runOpts);
+        });
+        return;
+      }
+      checkpoint = gui.undo && gui.undo.checkpointEditSession ?
+        gui.undo.checkpointEditSession(changesEditTarget) : null;
+      if (checkpoint) {
+        checkpoint.then(function() {
           runMapshaperCommands(str, done, runOpts);
         });
         return;
@@ -10052,15 +10082,22 @@
         commands = internal.runAndRemoveInfoCommands(commands);
         prepareRunCommands(commands);
       } catch (e) {
-        return done(e, {});
+        return finish(e, {});
       }
-      if (commands.length === 0) return done();
-      applyParsedCommands(commands, str, session, quiet, function(err, flags) {
+      if (commands.length === 0) return finish();
+      applyParsedCommands(commands, str, session, quiet, changesEditTarget, function(err, flags) {
         if (flags) {
           model.updated(flags); // info commands do not return flags
         }
-        done(err, flags);
+        finish(err, flags);
       });
+
+      function finish(err, flags) {
+        if (gui.undo && gui.undo.restartEditSession) {
+          gui.undo.restartEditSession();
+        }
+        done(err, flags);
+      }
     }
 
     function prepareRunCommands(commands) {
@@ -10081,7 +10118,7 @@
       });
     }
 
-    function applyParsedCommands(commands, commandString, session, quiet, done) {
+    function applyParsedCommands(commands, commandString, session, quiet, changesEditTarget, done) {
       var active = model.getActiveLayer(),
           prevArcs = active?.dataset.arcs,
           prevTable = active?.layer.data,
@@ -10169,7 +10206,7 @@
           done(err, flags);
           return;
         }
-        addCommandUndoHistory(undoTransaction, err, flags, historyIds).then(function(undoTiming) {
+        addCommandUndoHistory(undoTransaction, err, flags, historyIds, changesEditTarget).then(function(undoTiming) {
           logCommandTiming(commandString, commands, err, Date.now() - commandStart, undoTiming);
           done(err, flags);
         }).catch(function(e) {
@@ -10209,15 +10246,31 @@
       }
     }
 
-    async function addCommandUndoHistory(tx, err, flags, historyIds) {
+    // The command's changes are on the map, and in the session history, before
+    // its undo state is stored, so an Undo pressed in between waits for the
+    // state rather than taking back the command before it.
+    async function addCommandUndoHistory(tx, err, flags, historyIds, changesEditTarget) {
+      var promise, unregister;
       if (!isCommandUndoEnabled()) {
         discardHistoryAfterUnrecordedCommand();
         return {skipped: true};
       }
+      promise = storeCommandUndoState(tx, err, flags, historyIds, changesEditTarget);
+      unregister = gui.undo && gui.undo.addPendingCommit ?
+        gui.undo.addPendingCommit(function() { return promise; }) : null;
+      try {
+        return await promise;
+      } finally {
+        if (unregister) unregister();
+      }
+    }
+
+    function storeCommandUndoState(tx, err, flags, historyIds, changesEditTarget) {
       return getStoredUndoHistory(gui).addTransaction(tx, {
         error: err,
         flags: flags,
         entryPrefix: 'command',
+        changesEditTarget: changesEditTarget,
         onUndo: function() {
           gui.session.setCommandsActive(historyIds, false);
         },
@@ -11786,13 +11839,16 @@
 
   // opts.session  a command session from gui.console.createCommandSession(),
   //               for an edit that is one of a set recorded as one undo state
+  // opts.changesEditTarget  the command changes the layer that the current
+  //               interaction mode is editing (see checkpointEditSession() in
+  //               gui-undo.mjs)
   function runGuiEditCommand(gui, cmd, optsArg) {
     var opts = optsArg || {};
     if (!gui.console) return;
     if (opts.session) {
       opts.session.run(cmd, onDone);
     } else {
-      gui.console.runMapshaperCommands(cmd, onDone);
+      gui.console.runMapshaperCommands(cmd, onDone, {changesEditTarget: !!opts.changesEditTarget});
     }
 
     function onDone(err, flags) {
@@ -13369,6 +13425,12 @@
 
   var copyRecord = internal.copyRecord;
 
+  // Modes whose tools edit the data directly, adding in-memory undo states.
+  // The line and polygon tools' drawing modes ('edit_lines', 'edit_polygons')
+  // are not among them: drawing and styling are commands.
+  var closureEditModes = ['data', 'edit_points', 'reshape_lines', 'reshape_polygons',
+    'vertices', 'rectangles', 'snip_lines'];
+
   function isUndoEvt(e) {
     return (e.ctrlKey || e.metaKey) && !e.shiftKey && getEventKey(e) == 'z';
   }
@@ -13385,6 +13447,7 @@
   function Undo(gui) {
     var history, offset, stashedUndo, editSession;
     var pendingCommits = [];
+    var interceptors = [];
     var self = this;
     editSession = createEditSessionUndo();
     reset();
@@ -13396,6 +13459,12 @@
       editSession.finish(e.prev_mode);
       clearModeHistory();
       editSession.start(e.mode);
+    });
+
+    // A session ended by a command while drawing was disarmed starts again when
+    // drawing is armed, which is when the tools can edit the layer directly.
+    gui.on('interaction_tool_change', function() {
+      editSession.restart();
     });
 
     function reset() {
@@ -13566,26 +13635,6 @@
       addHistoryState(undo, redo);
     });
 
-    gui.on('path_add', function(e) {
-      var redo = function() {
-        gui.dispatchEvent('redo_path_add', {p1: e.p1, p2: e.p2});
-      };
-      var undo = function() {
-        gui.dispatchEvent('undo_path_add');
-      };
-      addHistoryState(undo, redo);
-    });
-
-    gui.on('path_extend', function(e) {
-      var redo = function() {
-        gui.dispatchEvent('redo_path_extend', {points: e.points, shapes: e.shapes2});
-      };
-      var undo = function() {
-        gui.dispatchEvent('undo_path_extend', {points: e.points, shapes: e.shapes1});
-      };
-      addHistoryState(undo, redo);
-    });
-
     this.clear = function() {
       disposeHistoryItems(history);
       reset();
@@ -13624,6 +13673,42 @@
       };
     };
 
+    // A tool with edits of its own that are not in the history yet -- the path
+    // being drawn by the line tool -- registers functions that Undo and Redo
+    // call first: {undo, redo}. A function returns true if it handled the
+    // action, and false to let the history handle it.
+    this.addInterceptor = function(o) {
+      interceptors.push(o);
+    };
+
+    function intercept(type) {
+      return interceptors.some(function(o) {
+        return !!(o[type] && o[type]());
+      });
+    }
+
+    // The edit session captures the layer being edited when it starts, so a
+    // command that changes that layer -- the line tool's -add-shape, say -- has
+    // to end the session first: its edits are committed as a stored state of
+    // their own, and after the command, restartEditSession() starts a new session
+    // from the data the command left. Otherwise the session's state, when it was
+    // committed, would take back the command as well.
+    //
+    // Other commands -- a scale bar edit, say -- leave the session alone, so
+    // that its edits stay separate undo steps on either side of the command,
+    // unless the session has no edits yet, when ending it costs nothing.
+    //
+    // changesEditTarget: the command may change the layer being edited
+    // Returns a promise if there were edits to commit.
+    this.checkpointEditSession = function(changesEditTarget) {
+      if (!changesEditTarget && countModeStates() > 0) return null;
+      return editSession.checkpoint();
+    };
+
+    this.restartEditSession = function() {
+      editSession.restart();
+    };
+
     function flushPendingCommits() {
       var commits = pendingCommits.splice(0);
       if (commits.length === 0) return null;
@@ -13649,7 +13734,8 @@
         redo: redo,
         cleanup: cleanup,
         evictToken: opts && opts.evictToken,
-        preserveOnModeChange: preserveOnModeChange
+        preserveOnModeChange: preserveOnModeChange,
+        changesEditTarget: !!(opts && opts.changesEditTarget)
       });
       if (!preserveOnModeChange) {
         editSession.noteEdit();
@@ -13704,43 +13790,73 @@
     }
 
     this.undo = function() {
+      if (intercept('undo')) return;
       var pending = flushPendingCommits();
       if (pending) return pending.then(function() { return self.undo(); });
       // firing even if history is empty
       // (because this event may trigger a new history state)
       gui.dispatchEvent('undo_redo_pre', {type: 'undo'});
       var item = getHistoryItem();
+      if (item && endsEditSession(item)) {
+        pending = editSession.checkpoint();
+        if (pending) return pending.then(function() { return self.undo(); });
+      }
       if (item) {
         offset++;
-        return runHistoryAction(item.undo, 'undo', function() {
+        return runHistoryAction(item, 'undo', function() {
           offset--;
         });
       }
     };
 
     this.redo = function() {
+      if (intercept('redo')) return;
       var pending = flushPendingCommits();
       if (pending) return pending.then(function() { return self.redo(); });
       gui.dispatchEvent('undo_redo_pre', {type: 'redo'});
       if (offset <= 0) return;
+      if (endsEditSession(history[history.length - offset])) {
+        pending = editSession.checkpoint();
+        if (pending) return pending.then(function() { return self.redo(); });
+      }
       offset--;
       var item = getHistoryItem();
-      return runHistoryAction(item.redo, 'redo', function() {
+      return runHistoryAction(item, 'redo', function() {
         offset++;
       });
     };
 
-    function runHistoryAction(action, type, rollback) {
+    // Undoing or redoing a stored state changes the data outside the edit
+    // session, as a command does, and ends the session on the same terms (see
+    // checkpointEditSession()). A state that changed the layer being edited was
+    // added by checkpointing the session's edits first, so the edits that follow
+    // it in the history have all been undone by the time it is reached: the
+    // checkpoint only drops the ones that could have been redone.
+    function endsEditSession(item) {
+      return !!item && item.preserveOnModeChange && editSession.isActive() &&
+        (item.changesEditTarget || countModeStates() === 0);
+    }
+
+    function runHistoryAction(item, type, rollback) {
+      var action = type == 'undo' ? item.undo : item.redo;
       return Promise.resolve(action()).then(function() {
+        afterHistoryAction(item);
         gui.dispatchEvent('undo_redo_post', {type: type});
         gui.dispatchEvent('map-needs-refresh');
         fireHistoryChange();
       }).catch(function(err) {
         rollback();
+        afterHistoryAction(item);
         fireHistoryChange();
         console.error(err);
         throw err;
       });
+    }
+
+    function afterHistoryAction(item) {
+      if (item.preserveOnModeChange) {
+        editSession.restart();
+      }
     }
 
     function disposeHistoryItems(items) {
@@ -13769,15 +13885,20 @@
     function createEditSessionUndo() {
       var tx = null;
       var changed = false;
+      var mode = null;
 
       return {
         start: start,
         finish: finish,
-        noteEdit: noteEdit
+        noteEdit: noteEdit,
+        checkpoint: checkpoint,
+        restart: restart,
+        isActive: function() { return !!tx; }
       };
 
       function start(nextMode) {
         var target, Transaction;
+        mode = nextMode;
         if (!isEditSessionMode(nextMode)) return;
         if (!appUndoIsEnabled(gui)) return;
         target = gui.model.getActiveLayer();
@@ -13792,15 +13913,48 @@
       function finish(prevMode) {
         var finishedTx = tx;
         var wasChanged = changed;
+        mode = null;
         if (!finishedTx || !isEditSessionMode(prevMode)) {
           resetSession();
           return;
         }
         resetSession();
         if (!wasChanged) return;
-        getStoredUndoHistory(gui).addTransaction(finishedTx, {
+        commit(finishedTx);
+      }
+
+      // Ends the session, committing the edits that are in effect (see
+      // checkpointEditSession()). Returns a promise if there were any.
+      function checkpoint() {
+        var finishedTx = tx;
+        var hasEdits = countDoneModeStates() > 0;
+        var promise, unregister;
+        if (!finishedTx) return null;
+        resetSession();
+        clearModeHistory();
+        if (!hasEdits) return null;
+        promise = commit(finishedTx);
+        // until the state is added, Undo would skip over the edits
+        unregister = self.addPendingCommit(function() { return promise; });
+        return promise.then(unregister);
+      }
+
+      // Starts a new session, in a mode whose tools edit the data directly. In
+      // other modes, edits are made by commands, and capturing the layer after
+      // each one would be wasted work. The line and polygon modes edit directly
+      // only while drawing is armed (see getToolMode()).
+      function restart() {
+        var toolMode = gui.interaction && gui.interaction.getToolMode ?
+          gui.interaction.getToolMode() : mode;
+        if (tx || !mode || !closureEditModes.includes(toolMode)) return;
+        start(mode);
+      }
+
+      function commit(finishedTx) {
+        return getStoredUndoHistory(gui).addTransaction(finishedTx, {
           flags: {select: true},
-          entryPrefix: 'edit-session'
+          entryPrefix: 'edit-session',
+          changesEditTarget: true
         }).catch(function(e) {
           console.error(e);
         });
@@ -13838,11 +13992,21 @@
       }
     }
 
+    function countDoneModeStates() {
+      return countModeStates(history.slice(0, history.length - offset));
+    }
+
+    function countModeStates(items) {
+      return (items || history).filter(function(item) {
+        return !item.preserveOnModeChange;
+      }).length;
+    }
+
     function isEditSessionMode(mode) {
       if (gui.interaction && gui.interaction.modeSupportsUndo) {
         return gui.interaction.modeSupportsUndo(mode);
       }
-      return ['data', 'edit_points', 'edit_lines', 'edit_polygons', 'vertices', 'rectangles'].includes(mode);
+      return closureEditModes.includes(mode);
     }
 
     function getUndoTransactionConstructor() {
@@ -14445,7 +14609,7 @@
   function getAddLabelCommand(coords, opts) {
     var o = opts || {};
     var target = o.target || {mode: 'new', newLayerName: DEFAULT_LABEL_LAYER_NAME};
-    var parts = ['-labels', 'coordinates=' + formatCoords(coords)];
+    var parts = ['-labels', 'coordinates=' + formatCoords$1(coords)];
     if (o.text) {
       // A real newline would break the command parser, so encodeLabelText()
       // writes the two-character escape the label renderer also accepts.
@@ -14490,7 +14654,7 @@
   //   target: layer name, or null to use the current target
   function getUpdateLabelCommand(coords, id, target) {
     var parts = ['-update-label', 'ids=' + id,
-      'coordinates=' + formatCoords(coords)];
+      'coordinates=' + formatCoords$1(coords)];
     if (target) parts.push('target=' + quoteCommandValue(target));
     return parts.join(' ');
   }
@@ -14608,7 +14772,7 @@
 
   // Coordinates are written at full precision: they are the label's geometry, and
   // rounding them would move a curve that was placed against a map feature.
-  function formatCoords(coords) {
+  function formatCoords$1(coords) {
     var parts = [];
     for (var i = 0; i < coords.length; i++) {
       parts.push(coords[i][0], coords[i][1]);
@@ -14616,7 +14780,47 @@
     return parts.join(',');
   }
 
+  // Creates an empty layer directly, which a tool can do in the middle of opening
+  // because it takes effect before the call returns. This is for the layer a tool
+  // makes to have somewhere to put its first feature, in a session that has
+  // nothing loaded (see gui-edit-points.mjs, gui-draw-lines2.mjs and
+  // gui-label-tool2.mjs).
+  //
+  // A layer the user asked for is created by the "Draw" links in the layer panel
+  // instead (gui-add-layer-links.mjs), which run -add-layer: the command puts the
+  // layer in the session history, where a hand-made layer has to appear for the
+  // session to replay.
+  function addEmptyLayer(gui, name, type) {
+    var targ = gui.model.getActiveLayer();
+    var crsInfo = targ && internal.getDatasetCrsInfo(targ.dataset);
+    var undoTransaction = createUndoTransaction(gui, 'add empty layer');
+    var dataset = {
+      layers: [{
+        name: name || undefined,
+        geometry_type: type,
+        shapes: []
+      }],
+      info: {}
+    };
+    if (type == 'polygon' || type == 'polyline') {
+      dataset.arcs = new internal.ArcCollection();
+    }
+    if (crsInfo) {
+      internal.setDatasetCrsInfo(dataset, crsInfo);
+    }
+    if (undoTransaction) {
+      undoTransaction.captureCatalogBefore(gui.model, {operation: 'addEmptyLayer'});
+    }
+    gui.model.addDataset(dataset);
+    gui.model.updated({select: true});
+    addUndoTransactionToHistory(gui, undoTransaction, {
+      flags: {select: true},
+      entryPrefix: 'add-layer'
+    });
+  }
+
   function InteractionMode(gui) {
+    var self = this;
 
     // Each menu holds the tools that suit the active layer, so the label tool
     // appears only where the layer is one labels go into: 'labels' and
@@ -14627,21 +14831,28 @@
     //
     // The tool still acts on any target once it is open: see
     // labelModeIsAvailable().
+    //
+    // Lines and polygons are drawn, reshaped and styled in one mode each,
+    // 'line_style' and 'polygon_style', with drawing or reshaping armed from the
+    // mode's toolbar (see setArmedTool()). 'edit_lines' and 'edit_polygons' are not modes of their
+    // own: setMode() takes them as "open the mode with drawing armed", creating
+    // a layer to draw in if there is none, which is what the menu for an empty
+    // session and the layer panel's "Draw" links ask for.
     var menus = {
       standard: ['info', 'selection', 'box', 'ruler'],
       empty: [ 'label','edit_points', 'edit_lines',  'edit_polygons','box', 'ruler'],
-      polygons: ['info', 'selection', 'polygon_style', 'edit_polygons', 'box', 'ruler'],
-      rectangles: ['info', 'selection', 'polygon_style', 'edit_polygons', 'rectangles', 'box', 'ruler'],
-      lines: ['info', 'selection', 'line_style', 'edit_lines', 'snip_lines', 'box', 'ruler'],
+      polygons: ['info', 'polygon_style', 'selection', 'box', 'ruler'],
+      rectangles: ['info', 'selection', 'polygon_style', 'rectangles', 'box', 'ruler'],
+      lines: ['info', 'line_style', 'snip_lines', 'selection', 'box', 'ruler'],
       table: ['info', 'selection'],
       raster: ['box', 'ruler'],
-      labels: ['info', 'selection', 'label', 'box', 'ruler'],
-      points: ['info', 'selection', 'edit_points', 'point_style', 'box', 'ruler'], // , 'add-points'
+      labels: ['info', 'label', 'selection', 'box', 'ruler'],
+      points: ['info', 'point_style', 'edit_points', 'selection', 'box', 'ruler'], // , 'add-points'
       // An empty point layer is the layer the "Draw: labels" link creates,
       // and a label goes into it rather than beside it (see labelWouldJoin), so
       // the label tool belongs in its menu as well as the point tools: it is the
       // way back into a labels layer that has no label in it yet.
-      emptyPoints: ['info', 'selection', 'label', 'point_style', 'edit_points', 'box', 'ruler']
+      emptyPoints: ['info', 'label', 'point_style', 'edit_points', 'selection', 'box', 'ruler']
     };
 
     // Tools that work the same whatever the active layer is. They go below a
@@ -14659,14 +14870,14 @@
       info: 'inspect features',
       box: 'rectangle tool',
       data: 'edit attributes',
-      label: 'add/edit labels',
+      label: 'edit labels',
       label_style: 'style labels',
       point_style: 'style points',
-      line_style: 'style lines',
-      polygon_style: 'style polygons',
-      edit_points: 'add/drag points',
-      edit_lines: 'draw/edit lines',
-      edit_polygons: 'draw/edit polygons',
+      line_style: 'edit lines',
+      polygon_style: 'edit polygons',
+      edit_points: 'edit points',
+      edit_lines: 'draw lines',
+      edit_polygons: 'draw polygons',
       snip_lines: 'snip lines',
       vertices: 'edit vertices',
       selection: 'selection tool',
@@ -14684,6 +14895,15 @@
     var _editMode = 'off';
     var _prevMode;
     var _menuOpen = false;
+    var _armedTool = null; // 'draw', 'reshape' or null
+
+    // The tool modes that 'line_style' and 'polygon_style' take on when one of
+    // their toolbar's tools is armed
+    var drawingModes = {
+      line_style: {draw: 'edit_lines', reshape: 'reshape_lines'},
+      polygon_style: {draw: 'edit_polygons', reshape: 'reshape_polygons'}
+    };
+    var drawingAliases = {edit_lines: 'line_style', edit_polygons: 'polygon_style'};
 
     // Only render edit mode button/menu if this option is present
     if (gui.options.inspectorControl) {
@@ -14752,12 +14972,72 @@
 
     this.getMode = getInteractionMode;
 
+    // What the pointer does: the mode, except in a line or polygon mode with a
+    // tool armed from its toolbar. Drawing ('edit_lines', 'edit_polygons')
+    // draws new shapes, and a click on a shape selects it for styling;
+    // reshaping ('reshape_lines', 'reshape_polygons') drags, inserts and
+    // deletes vertices. The hit control, the overlay and the drawing tool go by
+    // this; the panel, undo and the menu go by the mode, which arming does not
+    // change.
+    this.getToolMode = getToolMode;
+
+    this.getArmedTool = function() {
+      return _armedTool;
+    };
+
+    this.drawingIsArmed = function() {
+      return _armedTool == 'draw';
+    };
+
+    this.reshapingIsArmed = function() {
+      return _armedTool == 'reshape';
+    };
+
+    this.drawingCanBeArmed = function() {
+      return _editMode in drawingModes;
+    };
+
+    // tool: 'draw', 'reshape' or null
+    this.setArmedTool = function(tool) {
+      var next = tool && _editMode in drawingModes ? tool : null;
+      var prevToolMode;
+      if (next == _armedTool) return;
+      prevToolMode = getToolMode();
+      _armedTool = next;
+      gui.dispatchEvent('interaction_tool_change', {
+        mode: getInteractionMode(),
+        tool_mode: getToolMode(),
+        prev_tool_mode: prevToolMode
+      });
+    };
+
+    // Disarming leaves the reshape tool alone, if that is what is armed
+    this.setDrawingArmed = function(on) {
+      if (on) {
+        self.setArmedTool('draw');
+      } else if (_armedTool == 'draw') {
+        self.setArmedTool(null);
+      }
+    };
+
     this.setMode = function(mode) {
       // TODO: check that this mode is valid for the current dataset
-      if (mode in labels) {
+      if (mode in drawingAliases) {
+        openDrawingMode(drawingAliases[mode]);
+      } else if (mode in labels) {
         setMode(mode);
       }
     };
+
+    function openDrawingMode(mode) {
+      var type = mode == 'polygon_style' ? 'polygon' : 'polyline';
+      var o = gui.model.getActiveLayer();
+      if (!o || !o.layer || o.layer.geometry_type != type) {
+        addEmptyLayer(gui, undefined, type);
+      }
+      setMode(mode, true);
+      self.setDrawingArmed(true);
+    }
 
     gui.model.on('update', function(e) {
       // change mode if active layer doesn't support the current mode
@@ -14810,6 +15090,18 @@
 
     function getInteractionMode() {
       return active() ? _editMode : 'off';
+    }
+
+    function getToolMode() {
+      var mode = getInteractionMode();
+      return _armedTool && mode in drawingModes ? drawingModes[mode][_armedTool] : mode;
+    }
+
+    // A line or polygon layer with nothing in it has nothing to style or
+    // select, so its mode opens ready to draw.
+    function layerIsEmpty() {
+      var o = gui.model.getActiveLayer();
+      return !!(o && o.layer && internal.getFeatureCount(o.layer) === 0);
     }
 
     function renderMenu() {
@@ -14939,12 +15231,16 @@
       }, delay || 0);
     }
 
-    function setMode(mode) {
+    // armed: (optional) open a line or polygon mode with drawing armed
+    function setMode(mode, armed) {
       var changed = mode != _editMode;
       if (changed) {
-        menu.classed('active', mode != 'off');
+        if (menu) menu.classed('active', mode != 'off');
         _prevMode = _editMode;
         _editMode = mode;
+        // set before the event, so that its listeners see the tool mode the
+        // mode opens in
+        _armedTool = mode in drawingModes && (!!armed || layerIsEmpty()) ? 'draw' : null;
         onModeChange();
         updateArrowButton();
         updateSelectionHighlight();
@@ -14954,7 +15250,8 @@
     function onModeChange() {
       var mode = getInteractionMode();
       gui.state.interaction_mode = mode;
-      gui.dispatchEvent('interaction_mode_change', {mode: mode, prev_mode: _prevMode});
+      gui.dispatchEvent('interaction_mode_change', {mode: mode, prev_mode: _prevMode,
+        tool_mode: getToolMode()});
     }
 
     // Update button highlight and selected menu item highlight (if any)
@@ -16275,7 +16572,7 @@
 
     this.setColor = function(color) {
       if (isHexColor(color)) {
-        setPickerColor(hexToHsb(color), color);
+        setPickerColor(hexToPickerHsb(color, pickerColor), color);
       }
     };
 
@@ -16348,7 +16645,7 @@
     }
 
     function applyPreset(color) {
-      setPickerColor(hexToHsb(color), color);
+      setPickerColor(hexToPickerHsb(color, pickerColor), color);
       commitPickerColor();
     }
 
@@ -16392,7 +16689,7 @@
         updatePickerFields();
         return;
       }
-      setPickerColor(hexToHsb(hex), hex);
+      setPickerColor(hexToPickerHsb(hex, pickerColor), hex);
       commitPickerColor();
     }
 
@@ -16536,6 +16833,26 @@
 
   function isHexColor(str) {
     return /^#[0-9a-f]{6}$/i.test(str);
+  }
+
+  // A hex color in the six-digit form the picker takes: "#334" is "#333344".
+  // Returns null for anything else.
+  function toSixDigitHex(str) {
+    if (isHexColor(str)) return str;
+    if (/^#[0-9a-f]{3}$/i.test(str)) {
+      return '#' + str[1] + str[1] + str[2] + str[2] + str[3] + str[3];
+    }
+    return null;
+  }
+
+  // A gray has no hue and black has no saturation either, so those components
+  // are kept from @prev; otherwise a gray fed back to the picker (e.g. by a
+  // panel echoing the committed color) would reset the hue slider to red.
+  function hexToPickerHsb(hex, prev) {
+    var hsb = hexToHsb(hex);
+    if (prev && (hsb.s === 0 || hsb.b === 0)) hsb.h = prev.h;
+    if (prev && hsb.b === 0) hsb.s = prev.s;
+    return hsb;
   }
 
   function hexToHsb(hex) {
@@ -17282,8 +17599,38 @@
   function makeFieldTip(parent, text) {
     var btn = El('div').addClass('tip-button').appendTo(parent).text('?');
     var anchor = El('div').addClass('tip-anchor').appendTo(btn);
-    El('div').addClass('tip').appendTo(anchor).text(text);
+    var tip = El('div').addClass('tip').appendTo(anchor).text(text);
+    btn.on('mouseenter', function() {
+      fitTipToPage(tip.node());
+    });
     return btn;
+  }
+
+  // A tip is centred on its "?", so one near the edge of the page -- the style
+  // panels sit at the right of the map -- would run off it. This slides the
+  // bubble back onto the page and its tail the other way, so that the tail
+  // still points at the "?" (see .tip in elements.css).
+  function fitTipToPage(el) {
+    var margin = 8;
+    var pageWidth = document.documentElement.clientWidth;
+    var rect, shift, maxShift;
+    el.style.transform = '';
+    el.style.removeProperty('--tip-tail-shift');
+    rect = el.getBoundingClientRect();
+    shift = 0;
+    if (rect.right > pageWidth - margin) {
+      shift = pageWidth - margin - rect.right;
+    }
+    if (rect.left + shift < margin) {
+      shift = margin - rect.left;
+    }
+    // keep the tail on the bubble, clear of its rounded corners
+    maxShift = Math.max(rect.width / 2 - 16, 0);
+    shift = Math.max(-maxShift, Math.min(maxShift, shift));
+    if (shift !== 0) {
+      el.style.transform = 'translateX(' + shift + 'px)';
+      el.style.setProperty('--tip-tail-shift', -shift + 'px');
+    }
   }
 
   function setPanelButtonDisabled(el, disabled) {
@@ -17334,9 +17681,12 @@
     var aside = El('div').addClass('label-split-cell').appendTo(row);
     var control = {row: row, aside: aside, chit: null, input: null, opacity: null, picker: null};
 
+    // A color from the data can be any CSS color -- short hex, or a name, from
+    // the command line -- and the swatch shows it, though only hex can be
+    // opened in the picker.
     control.setColor = function(color) {
       control.input.node().value = color || '';
-      control.chit.css('background-color', isHexColor(color) ? color : 'transparent');
+      control.chit.css('background-color', getSwatchColor(color));
     };
 
     // What a panel calls when it refreshes from the data: the picker has to start
@@ -17346,8 +17696,11 @@
     // which is also the picker's own preview callback and must not feed back into
     // it mid-drag.
     control.showColor = function(color) {
+      var hex = toSixDigitHex(color);
+      // the picker previews what it is set to, so it goes first, and the field
+      // then shows the color as the data has it ("#334", not "#333344")
+      if (hex) control.picker.setColor(hex);
       control.setColor(color);
-      if (isHexColor(color)) control.picker.setColor(color);
     };
 
     El('span').appendTo(colorCell).text(opts.label);
@@ -17359,7 +17712,8 @@
       .attr('aria-label', opts.label + ' color')
       .on('change', function() {
         var color = control.input.node().value.trim();
-        if (isHexColor(color)) control.picker.setColor(color);
+        var hex = toSixDigitHex(color);
+        if (hex) control.picker.setColor(hex);
         opts.onColor(color);
       });
     if (opts.noOpacity) {
@@ -17381,6 +17735,17 @@
       }
     });
     return control;
+  }
+
+  // What a swatch shows for @color: the color itself if the browser takes it
+  // as one, otherwise nothing
+  function getSwatchColor(color) {
+    var hex = toSixDigitHex(color);
+    if (hex) return hex;
+    if (color && typeof CSS != 'undefined' && CSS.supports && CSS.supports('color', color)) {
+      return color;
+    }
+    return 'transparent';
   }
 
   // Opacity is shown as a percentage and stored as a fraction. It is a plain
@@ -17610,10 +17975,13 @@
   // o.newLabels    (label panel) a placement tool is armed with nothing
   //                selected, so the controls set the style of the next label
   // o.editingText  (label panel) a label is open for typing
+  // o.newShapes    (line and polygon panel) drawing is armed, so the controls
+  //                set the style of the next shape: 'lines' or 'polygons'
   function formatEditingStatus(o) {
     var what = o.editingText ? 'this label' :
       o.selected > 0 ? o.selected + ' selected' :
       o.newLabels ? 'new labels' :
+      o.newShapes ? 'new ' + o.newShapes :
       o.total > 0 ? 'all' : 'none (empty layer)';
     return 'Editing: ' + what;
   }
@@ -22907,10 +23275,13 @@
     }
 
     // Pastes while the popup is open are palettes, unless they're into
-    // another text field
+    // another text field. Copied text can come with a picture of itself,
+    // which isn't a palette, and a copied file with its name as text.
     function onPaste(e) {
       var data = e.clipboardData;
-      var file = data && data.files && data.files[0];
+      var file = data && Array.from(data.files || []).find(function(f) {
+        return !/^image\//.test(f.type);
+      });
       if (isTextInput(e.target) && !panel.node().contains(e.target)) return;
       e.preventDefault();
       e.stopPropagation();
@@ -22996,6 +23367,9 @@
     try {
       data = JSON.parse(str);
     } catch(e) {
+      // e.g. ['#364774', '#984b64'] from JavaScript
+      palette = parseColorList(str);
+      if (palette) return palette;
       throw new Error('The JSON can\'t be read: ' + e.message);
     }
     if (Array.isArray(data)) {
@@ -23043,9 +23417,11 @@
   }
 
   // Text that is nothing but colors (hex codes or names, rgb()...), separated
-  // by spaces, commas or lines
+  // by spaces, commas or lines, and possibly quoted or in brackets
   function parseColorList(str) {
-    var tokens = str.match(/rgba?\([^)]*\)|[^\s,;]+/g) || [];
+    var tokens = (str.match(/rgba?\([^)]*\)|[^\s,;]+/g) || []).map(function(tok) {
+      return tok.replace(/^["'“”‘’[\]]+|["'“”‘’[\]]+$/g, '');
+    }).filter(Boolean);
     var colors = tokens.map(function(tok) {
       return isNumber(tok) ? null : internal.parseColor(tok);
     });
@@ -24537,6 +24913,115 @@
     return 'linear-gradient(to right, ' + stops.join(', ') + ')';
   }
 
+  // The style the line and polygon tools give to the next shape they draw.
+  //
+  // With drawing armed and nothing selected, the style panel sets this instead
+  // of running -style, and the -add-shape command that creates a shape writes it
+  // (see getAddShapeCommand() in gui-draw-commands.mjs). So, as with the label
+  // tool's new-label style, it is a tool default rather than data, and setting it
+  // is not an undo step.
+  //
+  // See docs/development/line-tool-design.md.
+
+  var LINE_FIELDS = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray',
+    'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'line-fade', 'opacity'];
+
+  var POLYGON_FIELDS = ['stroke', 'stroke-width', 'stroke-opacity', 'fill', 'fill-opacity',
+    'fill-pattern', 'outer-glow-color', 'outer-glow-opacity', 'outer-glow-width',
+    'inner-glow-color', 'inner-glow-opacity', 'inner-glow-width', 'opacity'];
+
+  // The colors of the outline a layer with no style is drawn with (see
+  // gui-layer-styler.mjs), which a shape with no stroke of its own is drawn with
+  // while it is being drawn.
+  var DEFAULT_STROKE = '#334';
+  var DEFAULT_STROKE_DARK = 'white';
+
+  // The stroke written to a shape that needs one: the style panel's default
+  // stroke color, which its other controls add (see gui-layer-style-tool.mjs),
+  // in the six-digit form its color field and picker take.
+  var DEFAULT_SHAPE_STROKE = '#000000';
+  var DEFAULT_SHAPE_STROKE_DARK = '#ffffff';
+
+  // The style properties a shape of @geometryType can be drawn with
+  function getNewShapeStyleFields(geometryType) {
+    return geometryType == 'polygon' ? POLYGON_FIELDS : LINE_FIELDS;
+  }
+
+  // values: [[field, value], ...], the form the panel's controls produce
+  // Returns a new object, leaving the original alone. A blank value removes the
+  // field, which is how the panel's controls say "unset".
+  function mergeShapeStyleValues(style, values, geometryType) {
+    var fields = getNewShapeStyleFields(geometryType);
+    var out = Object.assign({}, style);
+    (values || []).forEach(function(pair) {
+      var field = pair[0], value = pair[1];
+      if (fields.indexOf(field) == -1) return;
+      if (value === '' || value === null || value === undefined) {
+        delete out[field];
+      } else {
+        out[field] = value;
+      }
+    });
+    return out;
+  }
+
+  function getNewShapeStyle(gui, geometryType) {
+    var styles = gui.state.new_shape_styles || {};
+    return styles[getKey(geometryType)] || {};
+  }
+
+  function updateNewShapeStyle(gui, geometryType, values) {
+    var styles = gui.state.new_shape_styles || {};
+    styles[getKey(geometryType)] = mergeShapeStyleValues(getNewShapeStyle(gui, geometryType),
+      values, geometryType);
+    gui.state.new_shape_styles = styles;
+    gui.dispatchEvent('new_shape_style_change', {geometry_type: geometryType});
+    return styles[getKey(geometryType)];
+  }
+
+  function clearNewShapeStyle(gui, geometryType) {
+    var styles = gui.state.new_shape_styles || {};
+    delete styles[getKey(geometryType)];
+    gui.state.new_shape_styles = styles;
+    gui.dispatchEvent('new_shape_style_change', {geometry_type: geometryType});
+  }
+
+  // The style a path is drawn with while it is being drawn: the stroke the shape
+  // will have, or the outline of a layer with no style when it has none. The
+  // path is open until it is finished, so a polygon's fill is not shown.
+  function getPendingPathStyle(style, darkMode) {
+    var out = {};
+    LINE_FIELDS.forEach(function(field) {
+      if (style && field in style) out[field] = style[field];
+    });
+    if (!out.stroke) {
+      out.stroke = darkMode ? DEFAULT_STROKE_DARK : DEFAULT_STROKE;
+    }
+    if (!out['stroke-width'] && out['stroke-width'] !== 0) {
+      out['stroke-width'] = 1;
+    }
+    return out;
+  }
+
+  // The style an -add-shape command gives a new shape. A layer with a style of
+  // its own draws a shape with none as nothing at all, so a shape given neither
+  // a stroke nor a fill gets the panel's default stroke. The path being drawn is
+  // shown in this style too (see refreshPath() in gui-draw-lines2.mjs), so that
+  // it does not change color when it is finished.
+  //
+  // layerIsStyled: the layer has style fields (see layerHasDrawableStyle())
+  function getNewShapeCommandStyle(style, layerIsStyled, darkMode) {
+    var out = Object.assign({}, style);
+    if (layerIsStyled && !out.stroke && !out.fill) {
+      out.stroke = darkMode ? DEFAULT_SHAPE_STROKE_DARK : DEFAULT_SHAPE_STROKE;
+    }
+    return out;
+  }
+
+  function getKey(geometryType) {
+    return geometryType == 'polygon' ? 'polygon' : 'polyline';
+  }
+
   var savedStylesKey = 'layer_style_presets';
   var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'line-fade', 'fill', 'fill-opacity', 'fill-pattern'].concat(internal.svg.glowFields);
   var arrowShapes = [{
@@ -24591,16 +25076,28 @@
     var targetLayer = null;
     // What the arrowhead switch turns on, for lines that have no heads
     var lastArrow = {shape: 'arrow', position: 'end', fade: 0};
+    var lineToolbar, polygonToolbar, drawLineBtn, drawPolygonBtn, reshapeLineBtn, reshapePolygonBtn;
 
     initPanel();
     hit = gui.map.getHitControl && gui.map.getHitControl();
     if (hit) {
       hit.on('change', function(e) {
-        if (targetLayer && (e.mode == 'line_style' || e.mode == 'polygon_style')) {
+        var mode = gui.interaction.getMode();
+        if (targetLayer && (mode == 'line_style' || mode == 'polygon_style')) {
           updateControls();
         }
       });
     }
+
+    // The toolbar arms drawing or reshaping. While drawing is armed and nothing
+    // is selected, the panel's controls set the style of the next shape drawn
+    // rather than restyling the layer (see gui-shape-style-state.mjs); a click
+    // on a shape selects it, and the controls style it, as when nothing is armed.
+    gui.on('interaction_tool_change', function() {
+      if (!panel.visible()) return;
+      updateToolbar();
+      updateControls();
+    });
 
     this.open = function(lyr, dataset) {
       if (!layerCanBeStyled(lyr)) return;
@@ -24637,18 +25134,78 @@
       patternControl.reset();
       applyDefaultLineStyle();
       panel.show();
+      updateToolbar();
       updateControls();
     }
 
     function turnOff() {
       schemePanel.close();
       panel.hide();
+      if (lineToolbar) lineToolbar.hide();
+      if (polygonToolbar) polygonToolbar.hide();
       strokeControl.picker.hide();
       fillControl.picker.hide();
       patternControl.hidePicker();
       patternControl.reset();
       glowControl.reset();
       targetLayer = null;
+    }
+
+    // One toolbar for each geometry type, since the buttons' icons and tooltips
+    // name what they act on
+    function updateToolbar() {
+      var geom = targetLayer && targetLayer.geometry_type;
+      var tool = gui.interaction.getArmedTool();
+      if (geom == 'polyline') {
+        getLineToolbar().show();
+        drawLineBtn.setSelected(tool == 'draw');
+        reshapeLineBtn.setSelected(tool == 'reshape');
+      } else if (lineToolbar) {
+        lineToolbar.hide();
+      }
+      if (geom == 'polygon') {
+        getPolygonToolbar().show();
+        drawPolygonBtn.setSelected(tool == 'draw');
+        reshapePolygonBtn.setSelected(tool == 'reshape');
+      } else if (polygonToolbar) {
+        polygonToolbar.hide();
+      }
+    }
+
+    function getLineToolbar() {
+      if (!lineToolbar) {
+        lineToolbar = new FloatingToolbar(gui, {name: 'line-draw-toolbar'});
+        drawLineBtn = lineToolbar.addButton('#draw-line-icon', {tooltip: 'Draw lines'})
+          .on('click', function() { toggleTool('draw'); });
+        reshapeLineBtn = lineToolbar.addButton('#reshape-icon', {tooltip: 'Reshape lines'})
+          .on('click', function() { toggleTool('reshape'); });
+      }
+      return lineToolbar;
+    }
+
+    function getPolygonToolbar() {
+      if (!polygonToolbar) {
+        polygonToolbar = new FloatingToolbar(gui, {name: 'polygon-draw-toolbar'});
+        drawPolygonBtn = polygonToolbar.addButton('#draw-polygon-icon', {tooltip: 'Draw polygons'})
+          .on('click', function() { toggleTool('draw'); });
+        reshapePolygonBtn = polygonToolbar.addButton('#reshape-icon', {tooltip: 'Reshape polygons'})
+          .on('click', function() { toggleTool('reshape'); });
+      }
+      return polygonToolbar;
+    }
+
+    function toggleTool(tool) {
+      gui.interaction.setArmedTool(gui.interaction.getArmedTool() == tool ? null : tool);
+    }
+
+    // The controls set the style of the next shape drawn
+    function editingNewShapes() {
+      return !!targetLayer && gui.interaction.drawingIsArmed() && getSelectionIds().length === 0;
+    }
+
+    function setNewShapeStyle(styles) {
+      updateNewShapeStyle(gui, targetLayer.geometry_type, styles);
+      updateControls();
     }
 
     function initPanel() {
@@ -24691,9 +25248,7 @@
       makePanelActionButton(buttonRow, 'Clear style', clearLayerStyle);
 
       patternControl = new PatternFillControl(panel, {
-        getRecords: function() {
-          return targetLayer && targetLayer.data ? targetLayer.data.getRecords() : [];
-        },
+        getRecords: getTargetRecords,
         getTargetIds: getTargetIds,
         applyEdits: runStyleEdits,
         revert: updateControls,
@@ -24780,6 +25335,9 @@
     function openColorSchemePanel() {
       syncTargetLayer();
       if (!targetLayer || targetLayer.geometry_type != 'polygon') return;
+      // a scheme colors the polygons there are, not the next one drawn, and
+      // takes the whole layer, leaving nothing for a tool to act on
+      gui.interaction.setArmedTool(null);
       fillControl.picker.hide();
       strokeControl.picker.hide();
       patternControl.hidePicker();
@@ -24854,15 +25412,21 @@
     }
 
     // A cap that is the line's default is unset rather than stored, so that a
-    // layer left at Round gets no stroke-linecap column.
+    // layer left at Round gets no stroke-linecap column. As with the width,
+    // dashes and arrowheads, a cap set on lines with no stroke brings the default
+    // stroke, since a styled line with no stroke is not drawn.
     function applyLineCap(cap) {
       var records = getTargetRecords();
+      var addStroke = styleFieldIsUnsetForTargets('stroke');
       var edits = [];
       getTargetIds().forEach(function(id) {
         var rec = records[id] || {};
         var value = cap == getDefaultLineCap(rec) ? '' : cap;
+        var styles;
         if (value != (rec['stroke-linecap'] || '')) {
-          edits.push({id: id, styles: [['stroke-linecap', value]]});
+          styles = [['stroke-linecap', value]];
+          if (value && addStroke) styles.push(['stroke', strokeControl.defaultColor]);
+          edits.push({id: id, styles: styles});
         }
       });
       runStyleEdits(edits);
@@ -25145,7 +25709,10 @@
       arrowControl.fadeField.setDisabled(arrowIds.length === 0);
     }
 
+    // With drawing armed, the one target is the next shape, whose record is the
+    // new-shape style (see getTargetIds())
     function getTargetRecords() {
+      if (editingNewShapes()) return [getNewShapeStyle(gui, targetLayer.geometry_type)];
       return targetLayer && targetLayer.data ? targetLayer.data.getRecords() : [];
     }
 
@@ -25186,7 +25753,7 @@
       control.showColor(value);
       updateOpacityControl(control);
       // Nothing for the picker to sit on when the selection has no one colour.
-      if (!isHexColor(value)) control.picker.hide();
+      if (!toSixDigitHex(value)) control.picker.hide();
     }
 
     // A selection whose colours disagree still has colours, so an opacity unset
@@ -25267,6 +25834,10 @@
       releaseFocus();
       syncTargetLayer();
       var ids = getTargetIds();
+      if (editingNewShapes()) {
+        setNewShapeStyle(styles);
+        return;
+      }
       if (!gui.console || !targetLayer || ids.length === 0) return;
       runCommand(formatStyleCommand(styles, ids), 'Style layer');
     }
@@ -25276,6 +25847,13 @@
     function runStyleEdits(edits, title) {
       releaseFocus();
       syncTargetLayer();
+      if (editingNewShapes()) {
+        // every edit is to the one target, the next shape
+        setNewShapeStyle(edits.reduce(function(memo, edit) {
+          return memo.concat(edit.styles);
+        }, []));
+        return;
+      }
       if (!gui.console || !targetLayer || edits.length === 0) return;
       runCommand(formatStyleEditCommands(edits), title || 'Style layer');
     }
@@ -25300,7 +25878,7 @@
 
     function applyDefaultLineStyle() {
       var styles = [];
-      if (!targetLayer || targetLayer.geometry_type != 'polyline') return;
+      if (!targetLayer || targetLayer.geometry_type != 'polyline' || editingNewShapes()) return;
       if (styleFieldIsUnsetForTargets('stroke-width')) {
         styles.push(['stroke-width', 1]);
       }
@@ -25332,6 +25910,8 @@
     function runCommand(cmd, title) {
       runGuiEditCommand(gui, cmd, {
         title: title,
+        // the layer is the one the drawing tool edits in this mode
+        changesEditTarget: true,
         onDone: updateControls
       });
     }
@@ -25400,6 +25980,11 @@
     function clearLayerStyle() {
       var parts = ['-style clear'];
       syncTargetLayer();
+      if (editingNewShapes()) {
+        clearNewShapeStyle(gui, targetLayer.geometry_type);
+        updateControls();
+        return;
+      }
       if (!gui.console || !targetLayer) return;
       addTargetOption(parts);
       runCommand(parts.join(' '), 'Clear style');
@@ -25412,7 +25997,8 @@
     }
 
     function getCommonStyleValue(field, idsArg) {
-      var records = targetLayer && targetLayer.data && targetLayer.data.getRecords();
+      var records = editingNewShapes() || targetLayer && targetLayer.data ?
+        getTargetRecords() : null;
       var ids;
       var value, val;
       if (!records) return '';
@@ -25434,7 +26020,8 @@
     }
 
     function styleFieldIsUnsetForTargets(field) {
-      var records = targetLayer && targetLayer.data && targetLayer.data.getRecords();
+      var records = editingNewShapes() || targetLayer && targetLayer.data ?
+        getTargetRecords() : null;
       var ids = getTargetIds();
       var val;
       if (!records) return true;
@@ -25466,6 +26053,7 @@
     function getTargetIds() {
       var ids = getSelectionIds();
       if (!targetLayer) return [];
+      if (editingNewShapes()) return [0];
       return ids.length > 0 ? ids : getAllFeatureIds(targetLayer);
     }
 
@@ -25478,9 +26066,11 @@
     // disabled rather than left to do nothing.
     function updateEditingStatus(count) {
       var total = targetLayer ? internal.getFeatureCount(targetLayer) : 0;
-      editingStatus.text(formatEditingStatus({selected: count, total: total}));
+      var newShapes = editingNewShapes() ?
+        (targetLayer.geometry_type == 'polygon' ? 'polygons' : 'lines') : null;
+      editingStatus.text(formatEditingStatus({selected: count, total: total, newShapes: newShapes}));
       clearLink.classed('hidden', count === 0);
-      panel.classed('no-targets', total === 0);
+      panel.classed('no-targets', total === 0 && !newShapes);
     }
 
     function getActiveLayer() {
@@ -26469,10 +27059,15 @@
     } else if (geoType == 'point') {
       test = pointTest;
     } else if (interactionMode == 'edit_polygons') {
+      // drawing: only the outline, so that a path can be started inside a
+      // polygon, where a click would otherwise select it
+      test = polygonOutlineTest;
+    } else if (interactionMode == 'reshape_polygons') {
       test = polygonVertexTest;
     } else if (
         interactionMode == 'vertices' ||
         interactionMode == 'edit_lines' ||
+        interactionMode == 'reshape_lines' ||
         interactionMode == 'snip_lines') {
       test = vertexTest;
     } else if (geoType == 'polyline') {
@@ -26526,6 +27121,10 @@
       return {
         ids: utils$1.uniq(b.ids.concat(a.ids))
       };
+    }
+
+    function polygonOutlineTest(x, y) {
+      return polylineTest(x, y, 5);
     }
 
     function vertexTest(x, y) {
@@ -27067,7 +27666,8 @@
     var storedData = noHitData(); // may include additional data from SVG symbol hit (e.g. hit node)
     var selectionIds = [];
     var transientIds = []; // e.g. hit ids while dragging a box
-    var drawingId = -1; // kludge to allow hit detection and drawing (different feature ids)
+    var pendingPath = null; // display coords of a path being drawn (see setPendingPath())
+    var pendingPathStyle = null;
     var active = false;
     var targetLayer;
     var hitTest;
@@ -27130,8 +27730,10 @@
       hitTest = getPointerHitTest(targetLayer, ext, interactionMode(), featureFilter);
     }
 
+    // what the pointer does in the mode (see getToolMode())
     function interactionMode() {
-      return gui.interaction.getMode();
+      return gui.interaction.getToolMode ? gui.interaction.getToolMode() :
+        gui.interaction.getMode();
     }
 
     function turnOn(mode) {
@@ -27145,14 +27747,19 @@
         active = false;
         hitTest = null;
         pinnedOn = false;
-        drawingId = -1;
+        pendingPath = null;
       }
     }
 
+    // The drawing tool selects features itself (see setSelectionIds()), since a
+    // click there may instead start or extend a path. So its modes are
+    // selectable, which keeps the selection apart from the hovered feature, but
+    // not clickable.
     function selectable() {
       var mode = interactionMode();
       return mode == 'selection' || mode == 'label' || mode == 'label_style' ||
-        mode == 'point_style' || mode == 'line_style' || mode == 'polygon_style';
+        mode == 'point_style' || mode == 'line_style' || mode == 'polygon_style' ||
+        drawingMode(mode);
     }
 
     function pinnable() {
@@ -27163,7 +27770,16 @@
     function draggable() {
       var mode = interactionMode();
       return mode == 'vertices' || mode == 'edit_points' || mode == 'label' ||
-        mode == 'edit_lines' || mode == 'edit_polygons';
+        lineToolMode(mode);
+    }
+
+    function drawingMode(mode) {
+      return mode == 'edit_lines' || mode == 'edit_polygons';
+    }
+
+    // the modes of the line and polygon tools (gui-draw-lines2.mjs)
+    function lineToolMode(mode) {
+      return drawingMode(mode) || mode == 'reshape_lines' || mode == 'reshape_polygons';
     }
 
     function clickable() {
@@ -27202,9 +27818,12 @@
     // Replaces the selection outright, for a mode that decides what is selected
     // itself rather than letting a click decide -- the label tool putting a label
     // back in the selection when its text editing session ends.
-    self.setSelectionIds = function(ids) {
+    // opts.keepHover: leave the hovered feature as it is, for a tool that changes
+    // the selection with a click and reads the hovered feature on the next one
+    self.setSelectionIds = function(ids, opts) {
+      var hoverId = opts && opts.keepHover && !storedData.pinned ? storedData.id : -1;
       selectionIds = utils$1.uniq(ids || []);
-      updateSelectionState({ids: selectionIds.concat(), id: -1, pinned: false});
+      updateSelectionState({ids: selectionIds.concat(), id: hoverId, pinned: false});
     };
 
     self.setPinning = function(val) {
@@ -27222,24 +27841,19 @@
       }
     };
 
-    // manually set the selected feature id(s)
-    // used when hit detection is turned off, e.g. 'drawing' mode
-    self.setDrawingId = function(id) {
-      if (id == drawingId) return;
-      drawingId = id >= 0 ? id : -1;
-      updateHitTest(function(shpId) {
-        return shpId != id;
-      });
-      self.triggerChangeEvent();
+    // Shows a path that is being drawn and is not yet part of the target layer.
+    // coords: [[x, y], ...] display coordinates, or null to remove the path
+    // style: (optional) SVG style properties to draw it with, e.g. {stroke: 'red'}
+    self.setPendingPath = function(coords, style) {
+      if (!pendingPath && !coords) return;
+      pendingPath = coords && coords.length > 0 ? coords : null;
+      pendingPathStyle = pendingPath && style || null;
+      triggerChangeEvent();
     };
 
     self.triggerChangeEvent = triggerChangeEvent;
 
     self.getHitState = getHitState;
-
-    self.clearDrawingId = function() {
-      self.setDrawingId(-1);
-    };
 
     self.setHoverVertex = function(p, type) {
       var p2 = storedData.hit_coordinates;
@@ -27335,6 +27949,16 @@
       } else {
         turnOff();
       }
+      gui.dispatchEvent('map-needs-refresh');
+    });
+
+    // Arming a tool changes what a click means, so the selection made for
+    // styling goes, and the hit test is remade for the tool.
+    gui.on('interaction_tool_change', function() {
+      if (!active) return;
+      clearSelectionSilently();
+      updateHitTest();
+      triggerChangeEvent();
       gui.dispatchEvent('map-needs-refresh');
     });
 
@@ -27445,10 +28069,18 @@
           selectionIds = styleSelectionMode() ?
             selectStyleFeature(id, e) :
             toggleId(id, selectionIds);
+        } else if (shapeStyleMode(interactionMode()) && !eventUsesAdditiveSelection(e)) {
+          selectionIds = []; // a click off the selection deselects, as in Draw
         }
         hitData.ids = selectionIds;
       }
       return hitData;
+    }
+
+    // The line and polygon style modes select as their Draw tool does (see
+    // selectShape() in gui-draw-lines2.mjs)
+    function shapeStyleMode(mode) {
+      return mode == 'line_style' || mode == 'polygon_style';
     }
 
     function styleSelectionMode() {
@@ -27466,8 +28098,9 @@
       // because the label tool needs a click on the one selected label to mean
       // "edit this label's text"; shift-click is what removes one. The other
       // style modes keep the older rule, where a plain click on a selected
-      // feature deselects it.
-      if (interactionMode() == 'label') {
+      // feature deselects it, except the line and polygon modes, where a click
+      // off the selection deselects instead.
+      if (interactionMode() == 'label' || shapeStyleMode(interactionMode())) {
         return [id];
       }
       if (selectionIds.includes(id)) {
@@ -27557,9 +28190,11 @@
       if (type == 'click' && gui.contextMenu.isOpen()) {
         return false;
       }
-      if (type == 'click' &&
-        (mode == 'edit_lines' || mode == 'edit_polygons')) {
+      if (type == 'click' && drawingMode(mode)) {
         return true; // click events are triggered even if no shape is hit
+      }
+      if (type == 'click' && shapeStyleMode(mode) && selectionIds.length > 0) {
+        return true; // a click off the selection deselects
       }
       if (type == 'click' && mode == 'edit_points') {
         return true;
@@ -27577,8 +28212,7 @@
         // all, and a drag that needed a hit first could never start there.
         return true;
       }
-      if ((mode == 'edit_lines' || mode == 'edit_polygons') &&
-          (type == 'hover' || type == 'dblclick')) {
+      if (lineToolMode(mode) && (type == 'hover' || type == 'dblclick')) {
         return true; // special case -- using hover for line drawing animation
       }
       if (mode == 'snip_lines' && (type == 'hover' || type == 'click')) {
@@ -27608,7 +28242,7 @@
 
     function possiblyStopPropagation(e) {
       var mode = interactionMode();
-      if (mode == 'edit_lines' || mode == 'edit_polygons' || mode == 'snip_lines') {
+      if (lineToolMode(mode) || mode == 'snip_lines') {
         // handled conditionally in the control
         return;
       }
@@ -27669,13 +28303,9 @@
         // add transient ids to any other hit ids
         data.ids = utils$1.uniq(transientIds.concat(data.ids || []));
       }
-      // when drawing, we want the overlay layer to show the path being currently
-      // drawn.
-      if (drawingId >= 0) {
-        // data.ids = [drawingId];
-        // data.id = drawingId;
-        data.ids = utils$1.uniq(data.ids.concat([drawingId]));
-        data.drawing_id = drawingId;
+      if (pendingPath) {
+        data.pending_path = pendingPath;
+        data.pending_path_style = pendingPathStyle;
       }
       if (pinnedOn) {
         data.pinned = true;
@@ -29309,7 +29939,7 @@
       // they can act on -- and the label tool deletes through a command, so it
       // must not be given the direct deletion below.
       if (!e.overMap || e.mode == 'edit_lines' || e.mode == 'edit_polygons' ||
-        e.mode == 'edit_points' || e.mode == 'snip_lines' || e.mode == 'label') {
+        e.mode == 'reshape_lines' || e.mode == 'reshape_polygons' || e.mode == 'edit_points' || e.mode == 'snip_lines' || e.mode == 'label') {
         return;
       }
       var target = hit.getHitTarget();
@@ -29350,6 +29980,221 @@
     }
 
     return _self;
+  }
+
+  var darkStroke = "#334",
+      activeStyle = { // outline style for the active layer
+        type: 'outline',
+        strokeColors: [null, darkStroke],
+        strokeWidth: 0.8,
+        dotColor: "#223",
+        dotSize: 1
+      },
+      activeStyleDarkMode = {
+        type: 'outline',
+        strokeColors: [null, 'white'],
+        strokeWidth: 0.9,
+        dotColor: 'white',
+        dotSize: 1
+      },
+      activeStyleForLabels = {
+        dotColor: "rgba(250, 0, 250, 0.45)", // violet dot with transparency
+        dotSize: 1
+      },
+      referenceStyle = { // outline style for reference layers
+        type: 'outline',
+        strokeColors: [null, '#87b73b'], // was 78c110
+        // strokeColors: [null, 'rgba(79,140,0,0.67)'],
+        strokeWidth: 0.85,
+        dotColor: "#73ba20",
+        dotSize: 1
+      },
+      intersectionStyle = {
+        dotColor: "#FF421D",
+        dotSize: 1.3
+      },
+      compareStyle = { // "before" overlay for the comparison feature
+        type: 'outline',
+        strokeColors: [null, 'rgba(185, 0, 178, 0.45)'],
+        strokeWidth: 1.1,
+        dotColor: 'rgba(185, 0, 178, 0.45)',
+        dotSize: 1
+      };
+
+  function getIntersectionStyle(lyr, opts) {
+    return copyBaseStyle(intersectionStyle);
+  }
+
+  // Style for the temporary "before" comparison overlay (original shapes).
+  function getCompareLayerStyle(lyr, opts) {
+    return copyBaseStyle(compareStyle);
+  }
+
+  // Display style for unselected layers with visibility turned on
+  // (may be fully styled or outlined)
+  function getReferenceLayerStyle(lyr, opts) {
+    var style;
+    if (layerHasDrawableStyle(lyr) && !opts.outlineMode) {
+      // TODO: consider just copying lyr style
+      style = getCanvasDisplayStyle(lyr);
+    } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
+      style = {dotSize: 0}; // no reference dots if labels are visible
+    } else {
+      style = copyBaseStyle(referenceStyle);
+    }
+    return style;
+  }
+
+  function getActiveLayerStyle(lyr, opts) {
+    var style;
+    if (layerHasDrawableStyle(lyr) && !opts.outlineMode) {
+      style = getCanvasDisplayStyle(lyr);
+    } else if (internal.layerHasLabels(lyr) && opts.interactionMode == 'label_style') {
+      style = {dotSize: 0};
+    } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
+      style = copyBaseStyle(activeStyleForLabels);
+    } else if (opts.darkMode) {
+      style = copyBaseStyle(activeStyleDarkMode);
+    } else {
+      style = copyBaseStyle(activeStyle);
+    }
+    return style;
+  }
+
+  function copyBaseStyle(baseStyle) {
+    return Object.assign({}, baseStyle);
+  }
+
+  function getCanvasDisplayStyle(lyr) {
+    var styleIndex = {
+          opacity: 'opacity',
+          r: 'radius',
+          'fill': 'fillColor',
+          'fill-pattern': 'fillPattern',
+          'fill-effect': 'fillEffect',
+          'fill-opacity': 'fillOpacity',
+          'stroke': 'strokeColor',
+          'stroke-width': 'strokeWidth',
+          'stroke-dasharray': 'lineDash',
+          'stroke-opacity': 'strokeOpacity',
+          'stroke-linecap': 'lineCap',
+          'stroke-linejoin': 'lineJoin',
+          'stroke-miterlimit': 'miterLimit'
+        },
+        // array of field names of relevant svg display properties
+        fields = getStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
+        records = lyr.data.getRecords();
+    // Arrowheads are drawn by the canvas as shapes, not set as attributes, so
+    // they are not among the attribute fields. Assigned on every call, like the
+    // rest, because the style object is reused from one feature to the next.
+    var arrowFields = getLineArrowFields(lyr);
+    var hasStrokeField = fields.includes('stroke');
+    var hasWidthField = fields.includes('stroke-width');
+    var hasStrokeFields = hasStrokeField || hasWidthField;
+    // Glows are drawn from the record rather than set as attributes, like the
+    // arrowheads. An outer glow that the whole layer shares is drawn once for the
+    // layer (see svg-glow.mjs), so the shapes are then given none of their own.
+    var hasGlows = layerHasGlowFields(lyr);
+    var layerOuterGlow = hasGlows ? internal.svg.getLayerOuterGlow(lyr) : null;
+
+    var styler = function(style, i) {
+      var rec = records[i];
+      var fname, val;
+      // The stroke defaults below are worked out for each shape, so a value one
+      // shape was given does not carry over to the next one in the reused style
+      // object. (Without stroke fields, the layer-wide values set on the base
+      // style below are the ones to keep.)
+      if (hasStrokeFields) {
+        if (!hasStrokeField) style.strokeColor = undefined;
+        if (!hasWidthField) style.strokeWidth = undefined;
+      }
+      if (arrowFields) {
+        style.lineStart = rec && rec['line-start'];
+        style.lineEnd = rec && rec['line-end'];
+        style.lineEndSize = rec && rec['line-end-size'];
+        style.lineFade = rec && rec['line-fade'];
+      }
+      if (hasGlows) {
+        style.outerGlow = layerOuterGlow ? null : internal.svg.getPolygonGlow(rec, 'outer');
+        style.innerGlow = internal.svg.getPolygonGlow(rec, 'inner');
+      }
+      for (var j=0; j<fields.length; j++) {
+        fname = fields[j];
+        val = rec && rec[fname];
+        if (val == 'none') {
+          val = 'transparent'; // canvas equivalent of CSS 'none'
+        }
+        // convert svg property name to mapshaper style equivalent
+        style[styleIndex[fname]] = val;
+      }
+
+      if (style.strokeWidth && !style.strokeColor) {
+        style.strokeColor = 'black';
+      }
+      // A stroke with no width is 1px wide, as in SVG -- also in a layer whose
+      // other shapes have widths, which gives this one an undefined width
+      if (hasStrokeFields && style.strokeColor && isBlankStyleValue(style.strokeWidth)) {
+        style.strokeWidth = 1;
+      }
+      if (style.radius > 0 && !style.strokeWidth && !style.fillColor && lyr.geometry_type == 'point') {
+        style.fillColor = 'black';
+      }
+    };
+    var style = {styler: styler, type: 'styled'};
+    if (hasGlows) {
+      style.layerOuterGlow = layerOuterGlow;
+      // How far past its shapes the layer draws, which is how far outside the
+      // view a shape can be and still reach into it.
+      style.glowReach = internal.svg.getMaxGlowWidth(records) * internal.svg.GLOW_REACH;
+    }
+    // A line layer styled with nothing but arrowheads is drawn the way SVG
+    // export draws it, with the black 1px line the layer's group gives it.
+    if (arrowFields && !hasStrokeFields) {
+      style.strokeColor = 'black';
+      style.strokeWidth = 1;
+    }
+    // use squares if radius is missing... (TODO: check behavior with labels, etc)
+    if (lyr.geometry_type == 'point' && fields.includes('r') === false) {
+      style.dotSize = 1;
+    }
+    return style;
+  }
+
+  function isBlankStyleValue(val) {
+    return val === undefined || val === null || val === '';
+  }
+
+  // check if layer should be displayed with a full style
+  function layerHasDrawableStyle(lyr) {
+    var fields = getStyleFields(lyr);
+    if (lyr.geometry_type == 'point') {
+      // return fields.indexOf('r') > -1; // require 'r' field for point symbols
+      return fields.includes('fill') || fields.includes('r'); // support colored squares
+    }
+    return utils$1.difference(fields, ['opacity', 'class']).length > 0 ||
+      !!getLineArrowFields(lyr) || layerHasGlowFields(lyr);
+  }
+
+  function layerHasGlowFields(lyr) {
+    if (lyr.geometry_type != 'polygon' || !lyr.data) return false;
+    return lyr.data.getFields().some(function(f) {
+      return internal.svg.glowFields.includes(f);
+    });
+  }
+
+  // The arrowhead fields a line layer has, or null
+  function getLineArrowFields(lyr) {
+    var fields;
+    if (lyr.geometry_type != 'polyline' || !lyr.data) return null;
+    fields = lyr.data.getFields().filter(function(f) {
+      return internal.svg.lineArrowFields.includes(f);
+    });
+    return fields.length > 0 ? fields : null;
+  }
+
+  function getStyleFields(lyr) {
+    var fields = lyr.data ? lyr.data.getFields() : [];
+    return internal.findStylePropertiesBySymbolGeom(fields, lyr.geometry_type);
   }
 
   // Drawing which labels are selected for styling.
@@ -29816,7 +30661,7 @@
   // See docs/development/label-tool-design.md.
 
   var violet$1 = '#cc6acc';
-  var white = '#ffffff';
+  var white$1 = '#ffffff';
 
   var KNOT_RADIUS = 3.2;
 
@@ -29916,7 +30761,7 @@
       radius: KNOT_RADIUS,
       strokeColor: violet$1,
       strokeWidth: 1.5,
-      fillColor: white
+      fillColor: white$1
     });
   }
 
@@ -29952,6 +30797,8 @@
   var selectionFill = "rgba(237, 214, 0, 0.12)",
       // hoverFill = "rgba(255, 120, 255, 0.12)",
       hoverFill = "rgba(0, 0, 0, 0.08)",
+      hoverFillDark = "rgba(255, 255, 255, 0.12)",
+      white = 'white',
       grey = "#888",
       orange = "#f28100",
       violet = "#cc6acc",
@@ -30000,21 +30847,21 @@
         polygon: {
           fillColor: null,
           strokeColor: 'rgb(255, 198, 0)',
-          strokeOpacity: 0.38,
+          strokeOpacity: 0.18,
           strokeWidth: 5,
           strokeOverlay: true,
           batchOverlay: true
         }, polyline:  {
           fillColor: null,
           strokeColor: 'rgb(255, 198, 0)',
-          strokeOpacity: 0.38,
+          strokeOpacity: 0.18,
           strokeWidth: 5,
           strokeOverlay: true,
           batchOverlay: true
         }, point:  {
           fillColor: null,
           strokeColor: 'rgb(255, 198, 0)',
-          strokeOpacity: 0.38,
+          strokeOpacity: 0.25,
           strokeWidth: 5,
           strokeOverlay: true,
           batchOverlay: true
@@ -30060,9 +30907,16 @@
     }
     if (styleOpts.interactionMode == 'edit_lines' ||
       styleOpts.interactionMode == 'edit_polygons' ||
+      styleOpts.interactionMode == 'line_style' ||
+      styleOpts.interactionMode == 'polygon_style') {
+      // with or without the Draw tool, the same selection and hover cues
+      return getDrawingLayers(activeLyr, hitData, styleOpts);
+    }
+    if (styleOpts.interactionMode == 'reshape_lines' ||
+      styleOpts.interactionMode == 'reshape_polygons' ||
       styleOpts.interactionMode == 'snip_lines') {
       // special overlay: shape editing mode
-      return getShapeEditingLayers(activeLyr, hitData);
+      return getShapeEditingLayers(activeLyr, hitData, styleOpts);
     }
     layers = [];
     if (styleOpts.interactionMode == 'label') {
@@ -30084,8 +30938,7 @@
       pending = getPendingLabelPath();
       return getLabelPathGuideLayers$1(activeLyr, pending ? [pending] : []);
     }
-    if (styleOpts.interactionMode == 'line_style' || styleOpts.interactionMode == 'polygon_style' ||
-      styleOpts.interactionMode == 'point_style') {
+    if (styleOpts.interactionMode == 'point_style') {
       ids = hitData.ids || [];
       if (ids.length > 0) {
         lyr = getOverlayLayer(activeLyr, ids);
@@ -30175,6 +31028,10 @@
         style.strokeWidth = outlineStyle.strokeOverlay ?
           (style.strokeWidth || 0) + outlineStyle.strokeWidth :
           Math.max(outlineStyle.strokeWidth, style.strokeWidth || 0);
+        // How much of strokeWidth is halo, so that the canvas can size a line's
+        // arrowheads by the line's own width (see getArrowLinePencil()). Set
+        // for every shape, since the style object is reused.
+        style.haloWidth = outlineStyle.strokeOverlay ? outlineStyle.strokeWidth : 0;
       }
       style.opacity = 1;
       style.fillOpacity = 1;
@@ -30213,22 +31070,19 @@
     };
   }
 
-  // The path being drawn is shown without its vertices, which are only of use
+  // The path being drawn is not part of the layer (see gui-draw-lines2.mjs), so
+  // it is shown as a layer of its own, without vertices, which are only of use
   // for reshaping a completed path. The hover markers go on the last layer, so
   // they are drawn on top.
-  function getShapeEditingLayers(activeLyr, hitData) {
-    var drawingIds = hitData.drawing_id >= 0 ? [hitData.drawing_id] : [];
-    var otherIds = utils$1.difference(hitData.ids || [], drawingIds);
-    var layers = [], lyr;
-    if (drawingIds.length > 0) {
-      lyr = getShapeEditingLayer(activeLyr, hitData, drawingIds, false);
-      // The end of a path being drawn has closely spaced vertices, and pixel
-      // rounding would show as a staircase.
-      lyr.gui.style.unroundedCoords = true;
-      layers.push(lyr);
+  function getShapeEditingLayers(activeLyr, hitData, styleOpts) {
+    var ids = hitData.ids || [];
+    var layers = [];
+    var dark = !!(styleOpts && styleOpts.darkMode);
+    if (hitData.pending_path) {
+      layers.push(getPendingPathLayer(activeLyr, hitData, dark));
     }
-    if (otherIds.length > 0 || layers.length === 0) {
-      layers.push(getShapeEditingLayer(activeLyr, hitData, otherIds, true));
+    if (ids.length > 0 || layers.length === 0) {
+      layers.push(getShapeEditingLayer(activeLyr, hitData, ids, true, dark));
     }
     layers.forEach(function(lyr, i) {
       if (i < layers.length - 1) {
@@ -30239,25 +31093,99 @@
     return layers;
   }
 
-  function getShapeEditingLayer(activeLyr, hitData, ids, showVertices) {
+  // The overlay of the line and polygon style modes and their Draw tool: the
+  // selected shapes; the shape under the pointer, which a click would select;
+  // the path being drawn; and, on top, the vertex a path would start from or
+  // snap to. A shape is not highlighted while a path is being drawn, since a
+  // click then adds a vertex.
+  function getDrawingLayers(activeLyr, hitData, styleOpts) {
+    var geomType = activeLyr.gui.displayLayer.geometry_type;
+    var selected = hitData.ids || [];
+    var dark = !!(styleOpts && styleOpts.darkMode);
+    var layers = [];
+    var lyr;
+    if (selected.length > 0) {
+      lyr = getOverlayLayer(activeLyr, selected);
+      lyr.gui.style = getOverlayStyle(activeLyr, selected,
+        styleSelectionStyles[geomType] || selectionStyles[geomType]);
+      layers.push(lyr);
+    }
+    if (hitData.id > -1 && !hitData.pending_path && !hitData.hit_coordinates &&
+        !selected.includes(hitData.id)) {
+      lyr = getOverlayLayer(activeLyr, [hitData.id]);
+      lyr.gui.style = getOverlayStyle(activeLyr, [hitData.id], getDrawingHoverStyle(dark));
+      layers.push(lyr);
+    }
+    if (hitData.pending_path) {
+      layers.push(getPendingPathLayer(activeLyr, hitData, dark));
+    }
+    if (hitData.hit_coordinates) {
+      // carries the vertex marker, which is drawn with the layer
+      layers.push(getShapeEditingLayer(activeLyr, hitData, [], false, dark));
+    }
+    layers.forEach(function(lyr, i) {
+      if (i < layers.length - 1) lyr.gui.style.vertex_overlay = null;
+    });
+    return layers;
+  }
+
+  // A halo around the shape under the pointer, fainter than the selection's, so
+  // that the shape is still seen in its own style
+  function getDrawingHoverStyle(dark) {
+    return {
+      fillColor: null,
+      strokeColor: dark ? white : black,
+      strokeOpacity: dark ? 0.25 : 0.1,
+      strokeWidth: 5,
+      strokeOverlay: true,
+      batchOverlay: true
+    };
+  }
+
+  // The path is drawn in the style the shape will have when it is finished
+  // (hitData.pending_path_style, from gui-shape-style-state.mjs), so that what
+  // is drawn on a dark basemap can be seen while it is being drawn.
+  function getPendingPathLayer(activeLyr, hitData, dark) {
+    var coords = hitData.pending_path;
+    var xx = coords.map(function(p) { return p[0]; });
+    var yy = coords.map(function(p) { return p[1]; });
+    var displayLayer = {
+      name: 'pending-path',
+      geometry_type: 'polyline',
+      shapes: [[[0]]],
+      data: new internal.DataTable([Object.assign({}, hitData.pending_path_style)])
+    };
+    var style = getLineEditingStyle(hitData, [0], false, dark);
+    if (hitData.pending_path_style) {
+      Object.assign(style, getCanvasDisplayStyle(displayLayer));
+    }
+    // The end of a path being drawn has closely spaced vertices, and pixel
+    // rounding would show as a staircase.
+    style.unroundedCoords = true;
+    return wrapGuideLayer(activeLyr, displayLayer, style,
+      new internal.ArcCollection([coords.length], xx, yy));
+  }
+
+  function getShapeEditingLayer(activeLyr, hitData, ids, showVertices, dark) {
     var lyr = getOverlayLayer(activeLyr, ids);
-    lyr.gui.style = getLineEditingStyle(hitData, ids, showVertices);
+    lyr.gui.style = getLineEditingStyle(hitData, ids, showVertices, dark);
     if (activeLyr.geometry_type == 'polygon') {
-      lyr.gui.style.fillColor = hoverFill;
+      lyr.gui.style.fillColor = dark ? hoverFillDark : hoverFill;
     }
     return lyr;
   }
 
   // style for vertex edit mode
-  function getLineEditingStyle(o, ids, showVertices) {
+  // dark: the basemap is dark, so the outline and markers are drawn in white
+  function getLineEditingStyle(o, ids, showVertices, dark) {
     var isVertex = o.hit_type == 'vertex' || o.hit_type == 'disabled';
     return {
       ids: ids,
       overlay: true,
-      strokeColor: black,
+      strokeColor: dark ? white : black,
       strokeWidth: 1.2,
       vertices: showVertices,
-      vertex_overlay_color: getVertexOverlayColor(o.hit_type),
+      vertex_overlay_color: getVertexOverlayColor(o.hit_type, dark),
       vertex_overlay_scale: isVertex ? 2.5 : 2,
       vertex_overlay: o.hit_coordinates || null,
       pending_snip: o.snip_coordinates || null,
@@ -30267,11 +31195,11 @@
     };
   }
 
-  function getVertexOverlayColor(hitType) {
+  function getVertexOverlayColor(hitType, dark) {
     if (hitType == 'vertex') return violet;
     // a muted dot marks a vertex that the current tool can not act on
     if (hitType == 'disabled') return grey;
-    return black;
+    return dark ? white : black;
   }
 
   function getSelectedFeatureStyle(lyr, o, opts) {
@@ -30293,45 +31221,6 @@
       style = unselectedHoverStyles[geomType];
     }
     return Object.assign({}, style);
-  }
-
-  // Creates an empty layer directly, which a tool can do in the middle of opening
-  // because it takes effect before the call returns. This is for the layer a tool
-  // makes to have somewhere to put its first feature, in a session that has
-  // nothing loaded (see gui-edit-points.mjs, gui-draw-lines2.mjs and
-  // gui-label-tool2.mjs).
-  //
-  // A layer the user asked for is created by the "Draw" links in the layer panel
-  // instead (gui-add-layer-links.mjs), which run -add-layer: the command puts the
-  // layer in the session history, where a hand-made layer has to appear for the
-  // session to replay.
-  function addEmptyLayer(gui, name, type) {
-    var targ = gui.model.getActiveLayer();
-    var crsInfo = targ && internal.getDatasetCrsInfo(targ.dataset);
-    var undoTransaction = createUndoTransaction(gui, 'add empty layer');
-    var dataset = {
-      layers: [{
-        name: name || undefined,
-        geometry_type: type,
-        shapes: []
-      }],
-      info: {}
-    };
-    if (type == 'polygon' || type == 'polyline') {
-      dataset.arcs = new internal.ArcCollection();
-    }
-    if (crsInfo) {
-      internal.setDatasetCrsInfo(dataset, crsInfo);
-    }
-    if (undoTransaction) {
-      undoTransaction.captureCatalogBefore(gui.model, {operation: 'addEmptyLayer'});
-    }
-    gui.model.addDataset(dataset);
-    gui.model.updated({select: true});
-    addUndoTransactionToHistory(gui, undoTransaction, {
-      flags: {select: true},
-      entryPrefix: 'add-layer'
-    });
   }
 
   function initPointEditing(gui, ext, hit) {
@@ -30454,6 +31343,79 @@
     }
   }
 
+  // Turns a path drawn with the line or polygon tool into the command that
+  // creates it, as a pure function so that it can be tested without a map. A
+  // drawn shape is one -add-shape command, which is what gives it one undo step
+  // and a line in the session history that replays it.
+
+  // coords: [[x, y], ...] the path's vertices, in the layer's CRS
+  // opts:
+  //   geometryType: 'polyline' or 'polygon', the type of the layer drawn into
+  //   target: the layer's name, or null to use the current target. Naming it
+  //     makes the command replay against the same layer from the session history.
+  //   style: (optional) style properties for the new shape, e.g. {stroke: 'red'}
+  //   extend: (optional) join the path to the line that ends at its first vertex
+  //     rather than adding a new line
+  function getAddShapeCommand(coords, opts) {
+    var o = opts || {};
+    var parts = ['-add-shape', 'coordinates=' + formatCoords(coords)];
+    if (o.geometryType == 'polygon' && !isClosedRing(coords)) {
+      parts.push('closed');
+    }
+    if (o.extend) {
+      parts.push('extend');
+    }
+    Object.keys(o.style || {}).forEach(function(name) {
+      var val = o.style[name];
+      if (val === '' || val === null || val === undefined) return;
+      parts.push(name + '=' + formatStyleValue(val));
+    });
+    if (o.target) {
+      parts.push('target=' + quoteCommandValue(o.target));
+    }
+    return parts.join(' ');
+  }
+
+  // Whether a path drawn into a layer of @geometryType is complete enough to be
+  // added to it: two vertices for a line, three for a polygon (not counting a
+  // vertex that repeats the first one to close the ring).
+  function drawnPathIsValid(coords, geometryType) {
+    var n = countDistinctVertices(coords);
+    return geometryType == 'polygon' ? n >= 3 : n >= 2;
+  }
+
+  // a number, as typed into a panel field, is written as it would be typed
+  function formatStyleValue(val) {
+    return /^-?(\d+\.?\d*|\.\d+)$/.test(String(val)) ? String(val) : quoteCommandValue(val);
+  }
+
+  function countDistinctVertices(coords) {
+    var n = 0;
+    for (var i = 0; i < coords.length; i++) {
+      if (i === 0 || !samePoint(coords[i], coords[i - 1])) n++;
+    }
+    if (n > 1 && samePoint(coords[0], coords[coords.length - 1])) n--;
+    return n;
+  }
+
+  function isClosedRing(coords) {
+    return coords.length > 3 && samePoint(coords[0], coords[coords.length - 1]);
+  }
+
+  function samePoint(a, b) {
+    return a[0] === b[0] && a[1] === b[1];
+  }
+
+  // Coordinates are written at full precision: they are the shape's geometry, and
+  // rounding them would move a vertex that was snapped to another feature.
+  function formatCoords(coords) {
+    var parts = [];
+    for (var i = 0; i < coords.length; i++) {
+      parts.push(coords[i][0], coords[i][1]);
+    }
+    return parts.join(',');
+  }
+
   // pixel distance threshold for hovering near a vertex or segment midpoint
   var HOVER_THRESHOLD$1 = 10;
 
@@ -30462,21 +31424,55 @@
   // a press as a click, so a press that stays this close adds only a click vertex.
   var STROKE_START_DIST = 6;
 
+  // The line and polygon drawing tool.
+  //
+  // A path being drawn belongs to the tool, not to the layer: its vertices are
+  // held here and drawn as an overlay (see getShapeEditingLayers() in
+  // gui-overlay-styler.mjs), and the layer only changes when the path is
+  // finished, by an -add-shape command. So a finished shape is one undo step and
+  // one line of session history, and a path that is abandoned leaves no trace.
+  // While a path is being drawn, Undo and Redo take back and restore the
+  // vertices it has gained (see pendingUndo()).
+  //
+  // The tool has two modes, armed from the line or polygon style mode's toolbar
+  // (see getToolMode() in gui-interaction-mode-control.mjs):
+  //
+  // Drawing ('edit_lines', 'edit_polygons'): a click on empty map starts a path.
+  // A click on a shape selects it, for the style panel. On a line layer, a path
+  // started on the end of a line extends that line (-add-shape extend), and
+  // with Alt pressed a path starts a new line instead, from any vertex -- which
+  // is how a T junction is made.
+  //
+  // Reshaping ('reshape_lines', 'reshape_polygons'): dragging, inserting and
+  // deleting vertices. This edits the layer directly, with in-memory undo states
+  // that are collapsed into one stored state by the undo edit session
+  // (gui-undo.mjs).
   function initLineEditing(gui, ext, hit) {
+    // The vertex the pointer is on, or the point on a path it would snap to:
+    //   {target, ids, point, displayPoint, type, extendable, ...}, plus
+    //   extends: (drawing) a path started here extends the line, featureId
     var hoverVertexInfo;
     var prevVertexAddedEvent;
-    var prevHoverEvent;
-    var initialArcCount = -1;
-    var initialShapeCount = -1;
-    var drawingId = -1; // feature id of path being drawn
-    var sessionCount = 0;
+    var lastHoverEvent = null; // for redoing the hover when Alt is pressed or released
+    var _active = false;
+    var shownInstructions = {};
     var alert;
+    // The path being drawn, or null:
+    //   data: vertices in the layer's CRS, which go into the -add-shape command
+    //   display: the same vertices in the display CRS, which is what is drawn
+    //   steps: number of vertices added by each edit, for undo
+    //   redo: edits taken back by undo, as arrays of {data, display} vertices
+    //   extendId: id of the line the path extends, or -1 for a new shape
+    var pending = null;
+    // Display coordinates of the pointer while a path is being drawn: the path
+    // is drawn through it to show what the next click would add.
+    var pointer = null;
     var stroke = null; // freehand stroke in progress (see startStroke())
     var blockDrag = false; // a drag finished a path; ignore it until the mouse is released
     var _dragging = false;
 
     function active() {
-      return initialArcCount >= 0;
+      return _active;
     }
 
     function vertexDragging() {
@@ -30484,15 +31480,33 @@
     }
 
     function pathDrawing() {
-      return drawingId > -1;
+      return !!pending;
+    }
+
+    function drawMode() {
+      var mode = active() && gui.interaction.getToolMode();
+      return mode == 'edit_lines' || mode == 'edit_polygons';
+    }
+
+    function reshapeMode() {
+      var mode = active() && gui.interaction.getToolMode();
+      return mode == 'reshape_lines' || mode == 'reshape_polygons';
+    }
+
+    // Alt (Option) starts a new line from any vertex, rather than extending one
+    function altKeyDown() {
+      return gui.keyboard.altIsPressed();
     }
 
     function cmdKeyDown() {
       return gui.keyboard.altIsPressed() || gui.keyboard.metaIsPressed();
     }
 
+    // A drag draws when it continues a path, or starts on a vertex the path
+    // would start from, or with Alt or Cmd pressed; otherwise it pans the map.
     function pencilIsActive() {
-      return active() && (cmdKeyDown() || pathDrawing()) && !vertexDragging();
+      return drawMode() && !vertexDragging() &&
+        (cmdKeyDown() || pathDrawing() || !!hoverVertexInfo);
     }
 
     function polygonMode() {
@@ -30506,10 +31520,17 @@
 
     gui.addMode('drawing_tool', turnOn, turnOff);
 
-    gui.on('interaction_mode_change', function(e) {
-      if (e.mode == 'edit_lines' || e.mode == 'edit_polygons') {
-        if (!gui.model.getActiveLayer()) {
-          addEmptyLayer(gui, undefined, e.mode == 'edit_lines' ? 'polyline' : 'polygon');
+    // The tool is on while the line or polygon mode has drawing or reshaping
+    // armed (see getToolMode() in gui-interaction-mode-control.mjs)
+    function onToolModeChange(e) {
+      var mode = e.tool_mode;
+      if (mode == 'edit_lines' || mode == 'edit_polygons' ||
+          mode == 'reshape_lines' || mode == 'reshape_polygons') {
+        if (active()) {
+          // switching between drawing and reshaping
+          finishPath();
+          clearHoverVertex();
+          showInstructions();
         }
         gui.enterMode('drawing_tool');
       } else if (gui.getMode() == 'drawing_tool') {
@@ -30518,84 +31539,39 @@
         turnOff();
       }
       updateCursor();
-    }, null, 10); // higher priority than hit control, so turnOff() has correct hit target
+    }
 
-    gui.on('redo_path_add', function(e) {
-      var target = hit.getHitTarget();
-      clearDrawingInfo();
-      appendNewPath(target, [e.p1, e.p2]);
-      deleteLastVertex(target); // second vertex is a placeholder
-      gui.undo.redo(); // add next vertex in the path
-      fullRedraw();
-    });
+    // higher priority than hit control, so turnOff() has correct hit target
+    gui.on('interaction_mode_change', onToolModeChange, null, 10);
+    gui.on('interaction_tool_change', onToolModeChange, null, 10);
 
-    // an undo during a stroke takes back the whole stroke
-    gui.on('undo_redo_pre', function() {
-      if (stroke) {
-        finishStroke();
-        blockDrag = true;
-      }
-    });
+    gui.on('new_shape_style_change', refreshPath);
 
-    gui.on('undo_path_add', function(e) {
-      deleteLastPath(hit.getHitTarget());
-      clearDrawingInfo();
-    });
-
-    // e.points: the vertices that the edit added to the path
-    gui.on('redo_path_extend', function(e) {
-      var target = hit.getHitTarget();
-      var points = e.points;
-      var last = points[points.length - 1];
-      if (pathDrawing()) {
-        // the vertex following the pointer becomes the first added vertex
-        setVertexCoords(target, [target.gui.displayArcs.getPointCount() - 1], points[0]);
-        points.slice(1).forEach(function(p) { appendVertex$1(target, p); });
-        appendVertex$1(target, prevHoverEvent ? pixToDataCoords(prevHoverEvent.x, prevHoverEvent.y) : last);
-        hit.triggerChangeEvent();
-      } else {
-        points.forEach(function(p) { appendVertex$1(target, p); });
-      }
-      if (e.shapes) {
-        replaceDrawnShapes(e.shapes);
-      }
-    });
-
-    gui.on('undo_path_extend', function(e) {
-      var target = hit.getHitTarget();
-      // while drawing, this also removes the vertex that follows the pointer,
-      // and the path's new last vertex takes its place
-      for (var i=0; i<e.points.length; i++) {
-        deleteLastVertex(target);
-      }
-      if (pathDrawing() && prevHoverEvent) {
-        updatePathEndpoint(pixToDataCoords(prevHoverEvent.x, prevHoverEvent.y));
-      }
-      if (e.shapes) {
-        replaceDrawnShapes(e.shapes);
-      }
-      if (getLastArcLength(target) < 2) {
-        gui.undo.undo(); // remove the path
-      }
+    gui.undo.addInterceptor({
+      undo: pendingUndo,
+      redo: pendingRedo
     });
 
     function turnOn() {
       if (active()) return;
-      var target = hit.getHitTarget();
-      initialArcCount = target.gui.displayArcs.size();
-      initialShapeCount = target.shapes.length;
-      if (sessionCount === 0) {
-        showInstructions();
-      }
-      sessionCount++;
+      _active = true;
+      showInstructions();
     }
 
+    // shown the first time each tool is used
     function showInstructions() {
-      var isMac = navigator.userAgent.includes('Mac');
-      var undoKey = isMac ? '⌘' : '^';
-      var msg = `Click to add points to a path or click and drag to draw continuously. Drag vertices to reshape a path.`;
-        alert = showPopupAlert(msg, null, {
-          non_blocking: true, max_width: '350px'});
+      var tool = reshapeMode() ? 'reshape' : 'draw';
+      var msg;
+      if (shownInstructions[tool]) return;
+      shownInstructions[tool] = true;
+      hideInstructions();
+      if (tool == 'reshape') {
+        msg = 'Drag a vertex to move it, or drag a point between vertices to add one. Right-click a vertex to delete it.';
+      } else {
+        msg = 'Click to add points to a path or drag to draw a smooth line.' +
+          (polygonMode() ? '' : ' Draw from the end of a line to extend it; hold Alt to start a new line from any vertex.');
+      }
+      alert = showPopupAlert(msg, null, {non_blocking: true, max_width: '350px'});
     }
 
     function hideInstructions() {
@@ -30605,53 +31581,18 @@
     }
 
     function turnOff() {
-      var removed = 0;
-      var mode = gui.interaction.getMode();
-      finishCurrentPath();
-      if (polygonMode()) {
-        removed = removeOpenPolygons();
-      }
-      clearDrawingInfo();
-      hideInstructions();
-      initialArcCount = -1;
-      initialShapeCount = -1;
-      if (mode == 'edit_lines' || mode == 'edit_polygons') {
-        // mode change was not initiated by interactive menu -- turn off interactivity
-        gui.interaction.turnOff();
-      }
-      updateCursor();
-      if (removed > 0) {
-        fullRedraw();
-      }
-    }
-
-    // returns number of removed shapes
-    function removeOpenPolygons() {
-      var target = hit.getHitTarget();
-      var arcs = target.gui.source.dataset.arcs;
-      var n = target.shapes.length;
-      // delete open paths
-      for (var i=initialShapeCount; i<n; i++) {
-        var shp = target.shapes[i];
-        if (!geom.pathIsClosed(shp[0], arcs)) { // assume open paths have one arc
-          target.shapes[i] = null;
-        }
-      }
-      // removes features with wrong winding order or null geometry
-      mapshaper.cmd.filterFeatures(target, arcs, {remove_empty: true, quiet: true});
-      return n - target.shapes.length;
-    }
-
-    // updates display arcs and redraws all layers
-    function fullRedraw() {
-      gui.model.updated({arc_count: true});
-    }
-
-    function clearDrawingInfo() {
-      hit.clearDrawingId();
-      drawingId = -1;
+      if (!active()) return;
+      finishPath();
       hoverVertexInfo = null;
-      prevVertexAddedEvent = prevHoverEvent = null;
+      prevVertexAddedEvent = null;
+      lastHoverEvent = null;
+      hideInstructions();
+      _active = false;
+      if (gui.interaction.getArmedTool()) {
+        // another GUI mode took over -- disarm, rather than leave the mode
+        // saying it is drawing with no tool to draw
+        gui.interaction.setArmedTool(null);
+      }
       updateCursor();
     }
 
@@ -30661,11 +31602,33 @@
       }
     }, null, 1);
 
+    // Esc finishes the path being drawn (below), then clears the selection, and
+    // then disarms the tool
+    gui.keyboard.on('keydown', function(e) {
+      if (e.keyName != 'esc' || !active() || pathDrawing() || vertexDragging()) return;
+      e.stopPropagation();
+      if (drawMode() && hit.getSelectionIds().length > 0) {
+        hit.setSelectionIds([], {keepHover: true});
+      } else {
+        gui.interaction.setArmedTool(null);
+      }
+    }, null, 9);
+
+    // Pressing or releasing Alt changes which vertex a path would start from
+    gui.keyboard.on('keydown', onAltKey);
+    gui.keyboard.on('keyup', onAltKey);
+
+    function onAltKey(e) {
+      var key = e.originalEvent && e.originalEvent.key;
+      if (key != 'Alt' || !drawMode() || !lastHoverEvent || vertexDragging()) return;
+      updateHover(lastHoverEvent);
+    }
+
     hit.on('contextmenu', function(e) {
       if (!active() || pathDrawing() || vertexDragging()) return;
       var target = hit.getHitTarget();
       var vInfo = hoverVertexInfo;
-      if (hoverVertexInfo?.type == 'vertex' && !vertexIsEndpoint(vInfo, target)) {
+      if (reshapeMode() && hoverVertexInfo?.type == 'vertex' && !vertexIsEndpoint(vInfo, target)) {
         e.deleteVertex = function() {
           deleteActiveVertex(e, vInfo);
         };
@@ -30676,7 +31639,8 @@
     });
 
     hit.on('dragstart', function(e) {
-      if (!active() || pathDrawing() || !hoverVertexInfo) return;
+      // a vertex, or a point between vertices, where a vertex is inserted
+      if (!reshapeMode() || !hoverVertexInfo) return;
       hideInstructions();
       e.originalEvent.stopPropagation();
       _dragging = true;
@@ -30725,132 +31689,93 @@
     // A stroke is smoothed as it is drawn. Vertices are placed some way behind
     // the pointer, where later samples no longer change the curve, and they stay
     // where they are. Between the last of them and the pointer, the path shows
-    // the pointer's own trace (see updateStrokeTail()).
+    // the pointer's own trace (see refreshPath()).
     //
     // The first vertex of the stroke (the anchor) is either the start of a new
-    // path or the vertex that was following the pointer when the mouse was
-    // pressed. Vertices are added to the path as they are placed, but the edit
-    // that records them is made when the stroke ends, so that an undo takes back
-    // the whole stroke.
+    // path or the point that the path was following the pointer to when the
+    // mouse was pressed. The stroke's vertices join the path as one edit when
+    // the stroke ends, so that an undo takes back the whole stroke.
     function startStroke(e) {
-      var target = hit.getHitTarget();
-      var anchorCommitted = !pathDrawing();
-      var n, anchor;
-      if (anchorCommitted) {
-        // the path_add edit records the anchor
+      var anchor, anchorIsNew;
+      if (!pathDrawing()) {
+        // from the vertex under the pointer when the mouse was pressed, if any
+        startPath(hoverVertexInfo ? getClickVertex(e) : pixToVertex(e.x - e.dragX, e.y - e.dragY),
+          getExtendId());
         hoverVertexInfo = null;
-        startNewPath(pixToDataCoords(e.x - e.dragX, e.y - e.dragY));
-      } else if (polygonMode() && hoverVertexInfo?.type == 'vertex') {
-        // pressing on a vertex closes the polygon, as a click does
-        extendCurrentPath([getLastVertexCoords(target)], true);
+        anchor = getLastVertex();
+        anchorIsNew = false;
+      } else if (polygonMode() && hoverVertexInfo?.closesPath) {
+        // pressing on the first vertex closes the polygon, as a click does
+        finishPath(true);
         blockDrag = true;
         return;
-      } else if (pointerIsOnLastVertex(target)) {
+      } else if (!pointer || pointerIsOnLastVertex()) {
         // continue from the last vertex rather than doubling it
-        anchorCommitted = true;
+        anchor = getLastVertex();
+        anchorIsNew = false;
       } else {
-        // leave the vertex under the pointer behind as the anchor, and add a new
-        // one to follow the pointer
-        appendVertex$1(target, getLastVertexCoords(target));
+        // the point under the pointer becomes the anchor
+        anchor = getPointerVertex();
+        anchorIsNew = true;
       }
-      n = target.gui.displayArcs.getPointCount();
-      anchor = target.gui.displayArcs.getVertex2(n - 2);
       stroke = {
-        anchorCommitted: anchorCommitted,
-        // data coords of the vertices before the pointer that no edit records yet
-        points: anchorCommitted ? [] : [getVertexCoords(target, n - 2)],
+        anchor: anchorIsNew ? anchor : null,
+        // vertices placed so far, which join the path when the stroke ends
+        placed: [],
+        preview: [],
         // fitted in display coords, which survive a zoom mid-stroke
-        fitter: new internal.GaussianStrokeFitter(anchor, {pixelSize: ext.getPixelSize()}),
-        previewCount: 0, // vertices between the placed vertices and the pointer
+        fitter: new internal.GaussianStrokeFitter(anchor.display, {pixelSize: ext.getPixelSize()}),
         sampleCount: 0,
         lastEvent: e
       };
     }
 
-    // Test if the vertex following the pointer is on the path's last vertex
-    function pointerIsOnLastVertex(target) {
-      var arcs = target.gui.displayArcs;
-      var n = arcs.getPointCount();
-      var a = arcs.getVertex2(n - 1), b = arcs.getVertex2(n - 2);
+    // Test if the pointer is on the path's last vertex
+    function pointerIsOnLastVertex() {
+      var a = pointer, b = pending.display[pending.display.length - 1];
       return geom.distance2D(a[0], a[1], b[0], b[1]) / ext.getPixelSize() < 3;
     }
 
     function addStrokeSample(e) {
       var s = stroke;
-      var placed = s.fitter.addSample(ext.pixCoordsToMapCoords(e.x, e.y));
+      var p = ext.pixCoordsToMapCoords(e.x, e.y);
+      s.fitter.addSample(p).forEach(function(p) {
+        s.placed.push(displayToVertex(p));
+      });
+      s.preview = s.fitter.getPreview();
       s.sampleCount++;
       s.lastEvent = e;
-      updateStrokeTail(s, placed, s.fitter.getPreview(), pixToDataCoords(e.x, e.y));
+      pointer = p;
+      refreshPath();
     }
 
-    // Rewrites the end of the path after the stroke's placed vertices: newly
-    // placed vertices, then the preview of the part of the stroke that has not
-    // been placed yet, then the vertex following the pointer. Existing vertices
-    // are overwritten rather than removed and added again, because adding or
-    // removing a vertex copies the coordinates of the whole layer.
-    // placed, preview: display coords
-    // hover: data coords
-    function updateStrokeTail(s, placed, preview, hover) {
-      var target = hit.getHitTarget();
-      var fixed = toDataCoords(target, placed);
-      var tail = fixed.concat(toDataCoords(target, preview), [hover]);
-      var count = s.previewCount + 1; // vertices after the placed vertices
-      var start = target.gui.displayArcs.getPointCount() - count;
-      var i;
-      for (; count > tail.length; count--) {
-        deleteLastVertex(target);
-      }
-      for (i = 0; i < tail.length; i++) {
-        if (i < count) {
-          setVertexCoords(target, [start + i], tail[i]);
-        } else {
-          appendVertex$1(target, tail[i]);
-        }
-      }
-      s.points = s.points.concat(fixed);
-      s.previewCount = tail.length - fixed.length - 1;
-      hit.triggerChangeEvent();
-    }
-
-    function toDataCoords(target, points) {
-      return points.map(function(p) {
-        return translateDisplayPoint(target, p);
-      });
-    }
-
-    // Completes the stroke in progress up to the pointer, and records the
-    // stroke's vertices as a single edit.
-    // end: (optional) hover info of the vertex that the stroke has to end at
+    // Completes the stroke in progress up to the pointer, and adds the stroke's
+    // vertices to the path as a single edit.
+    // end: (optional) hover info of the path's first vertex, if the stroke has
+    //   returned to it, which closes the polygon
     function finishStroke(end) {
       var s = stroke;
-      var target, rest, points, count;
+      var rest, points;
       if (!s) return;
       stroke = null;
-      target = hit.getHitTarget();
       rest = end ? s.fitter.addSample(end.displayPoint) : [];
-      rest = toDataCoords(target, rest.concat(s.fitter.finish()));
-      if (end && rest.length > 0) {
-        rest[rest.length - 1] = end.point;
+      rest = rest.concat(s.fitter.finish()).map(displayToVertex);
+      if (end) {
+        rest.pop(); // the end vertex; finishPath() closes the ring with the first vertex
       }
-      // remove the preview
-      count = s.previewCount + 1;
-      for (; count > 1; count--) {
-        deleteLastVertex(target);
-      }
-      if (rest.length === 0 && s.points.length > 0) {
-        // the last vertex in the path takes the place of the vertex following the pointer
-        deleteLastVertex(target);
-        rest = [s.points.pop()];
-      } else if (rest.length > 0) {
-        setVertexCoords(target, [target.gui.displayArcs.getPointCount() - 1], rest[0]);
-      }
-      points = s.points.concat(rest);
-      if (points.length === 0 || !s.anchorCommitted && points.length == 1) {
-        hit.triggerChangeEvent(); // the stroke never left its anchor
-        return;
+      points = s.placed.concat(rest);
+      if (points.length > 0 && s.anchor) {
+        points.unshift(s.anchor);
       }
       prevVertexAddedEvent = s.lastEvent;
-      extendCurrentPath(points, !!end, s.points.length);
+      if (points.length > 0) {
+        addVertices(points);
+      }
+      if (end) {
+        finishPath(true);
+      } else {
+        refreshPath();
+      }
     }
 
     hit.on('drag', function(e) {
@@ -30866,8 +31791,6 @@
       }
       internal.snapVerticesToPoint(hoverVertexInfo.ids, p, target.gui.displayArcs);
       hit.setHoverVertex(p, '');
-      // redrawing the whole map updates the data layer as well as the overlay layer
-      // gui.dispatchEvent('map-needs-refresh');
     });
 
     hit.on('dragend', function(e) {
@@ -30882,72 +31805,128 @@
       gui.dispatchEvent('map-needs-refresh'); // redraw basemap
     });
 
-    // shift + double-click deletes a vertex (when not drawing)
     // double-click finishes a path (when drawing)
     hit.on('dblclick', function(e) {
       if (!active()) return;
-      // double click finishes a path
       // note: if the preceding 'click' finished the path, this does not fire
       if (pathDrawing()) {
-        finishCurrentPath();
+        finishPath();
         e.originalEvent.stopPropagation(); // prevent dblclick zoom
-        return;
       }
     });
 
-    // hover event highlights the nearest point in close proximity to the pointer
-    // ... or the closest point along the segment (for adding a new vertex)
     hit.on('hover', function(e) {
       if (!active() || vertexDragging()) return;
 
       if (pathDrawing()) {
         if (!e.overMap) {
-          finishCurrentPath();
+          finishPath();
           return;
         }
         if (gui.keyboard.shiftIsPressed()) {
           alignPointerPosition(e, prevVertexAddedEvent);
         }
-        updatePathEndpoint(pixToDataCoords(e.x, e.y));
       }
+      lastHoverEvent = e;
+      updateHover(e);
+    }, null, 100);
 
-      // highlight nearby snappable vertex (the closest vertex on a nearby line,
-      //   or the first vertex of the current drawing path if not near a line)
-      hoverVertexInfo = e.id >= 0 && findDraggableVertices(e) ||
-          pathDrawing() && findPathStartInfo(e) ||
-          e.id >= 0 && findInterpolatedPoint(e);
+    // Highlights the vertex, or the point on a path, that a click or drag would
+    // act on
+    function updateHover(e) {
+      hoverVertexInfo = findHoverTarget(e);
       if (hoverVertexInfo) {
-        // hovering near a vertex: highlight the vertex
         hit.setHoverVertex(hoverVertexInfo.displayPoint, hoverVertexInfo.type);
       } else {
         clearHoverVertex();
       }
-      updateCursor();
-      prevHoverEvent = e;
-    }, null, 100);
-
-    // click starts or extends a new path
-    hit.on('click', function(e) {
-      if (!active()) return;
-      if (detectDoubleClick(e)) return; // ignore second click of a dblclick
-      var p = pixToDataCoords(e.x, e.y);
       if (pathDrawing()) {
-        // finish the path if a vertex is selected (but not an interpolated point)
-        extendCurrentPath([hoverVertexInfo?.point || p], hoverVertexInfo?.type == 'vertex');
-      } else if (hoverVertexInfo?.type == 'interpolated') {
-        // don't start new path if hovering along a segment -- this is
-        // likely to be an attempt to add a new vertex, not start a new path
+        pointer = hoverVertexInfo ? hoverVertexInfo.displayPoint : ext.pixCoordsToMapCoords(e.x, e.y);
+        refreshPath();
+      }
+      updateCursor();
+    }
+
+    function findHoverTarget(e) {
+      var info;
+      if (reshapeMode()) {
+        // a vertex to drag, or a point between vertices to insert one at
+        return e.id >= 0 && (findDraggableVertices(e) || findInterpolatedPoint(e)) || null;
+      }
+      if (pathDrawing()) {
+        // the next vertex snaps to a vertex of a nearby path, to the first vertex
+        // of the path being drawn, or to a point along a nearby path
+        return e.id >= 0 && findDraggableVertices(e) ||
+          findPathStartInfo(e) ||
+          e.id >= 0 && findInterpolatedPoint(e) || null;
+      }
+      // where a new path would start from
+      info = e.id >= 0 && findDraggableVertices(e) || null;
+      if (!info || altKeyDown()) {
+        return info;
+      }
+      if (!polygonMode() && lineCanBeExtended(info)) {
+        info.extends = true;
+        info.featureId = e.id;
+        return info;
+      }
+      return null;
+    }
+
+    // A path started at the vertex would extend its line: the vertex is the end
+    // of a line, and of no other line (otherwise which line to extend is not
+    // clear -- see -add-shape extend)
+    function lineCanBeExtended(info) {
+      var target = info.target;
+      return info.extendable &&
+        internal.findLineEnds(target, target.gui.source.dataset.arcs, info.point).length == 1;
+    }
+
+    function getExtendId() {
+      return hoverVertexInfo && hoverVertexInfo.extends ? hoverVertexInfo.featureId : -1;
+    }
+
+    hit.on('click', function(e) {
+      if (!drawMode()) return;
+      if (detectDoubleClick(e)) return; // ignore second click of a dblclick
+      if (pathDrawing()) {
+        if (hoverVertexInfo?.closesPath && polygonMode()) {
+          finishPath(true);
+        } else {
+          addVertices([getClickVertex(e)]);
+        }
+      } else if (hoverVertexInfo || altKeyDown()) {
+        // the end of a line, or with Alt, any vertex (or anywhere)
+        startPath(getClickVertex(e), getExtendId());
+      } else if (e.id > -1) {
+        selectShape(e.id);
+      } else if (hit.getSelectionIds().length > 0) {
+        // a click off the selection only deselects, so a path can't be started
+        // by a click meant to deselect
+        hit.setSelectionIds([], {keepHover: true});
       } else {
-        startNewPath(p);
+        startPath(getClickVertex(e), -1);
       }
       prevVertexAddedEvent = e;
     });
+
+    // The style panel styles the selected shapes (see gui-layer-style-tool.mjs).
+    // As in the style modes, shift-click adds to or removes from the selection.
+    function selectShape(id) {
+      var ids = hit.getSelectionIds();
+      if (gui.keyboard.shiftIsPressed()) {
+        ids = ids.includes(id) ? ids.filter(function(id2) { return id2 != id; }) : ids.concat(id);
+      } else {
+        ids = [id];
+      }
+      hit.setSelectionIds(ids, {keepHover: true});
+    }
 
     // esc or enter key finishes a path
     gui.keyboard.on('keydown', function(e) {
       if (pathDrawing() && (e.keyName == 'esc' || e.keyName == 'enter')) {
         e.stopPropagation();
-        finishCurrentPath();
+        finishPath();
         e.originalEvent.preventDefault(); // block console "enter"
       }
     }, null, 10);
@@ -30964,9 +31943,14 @@
 
     function updateCursor() {
       var el = gui.container.findChild('.map-layers');
-      el.classed('draw-tool', active());
-      var useArrow = hoverVertexInfo && !hoverVertexInfo.extendable && !pathDrawing();
-      el.classed('dragging', useArrow);
+      var overShape = !!lastHoverEvent && lastHoverEvent.id > -1;
+      el.classed('draw-tool', drawMode());
+      // a click would select the shape under the pointer
+      el.classed('draw-select', drawMode() && overShape && !pathDrawing() &&
+        !hoverVertexInfo && !altKeyDown());
+      el.classed('reshape-tool', reshapeMode());
+      // a drag would move the vertex, or insert one
+      el.classed('reshape-vertex', reshapeMode() && !!hoverVertexInfo);
       el.classed('drawing', pathDrawing());
     }
 
@@ -30992,9 +31976,35 @@
       gui.dispatchEvent('map-needs-refresh');
     }
 
-    function pixToDataCoords(x, y) {
-      var target = hit.getHitTarget();
-      return translateDisplayPoint(target, ext.pixCoordsToMapCoords(x, y));
+    // A vertex of the path being drawn: {data, display}
+    function displayToVertex(p) {
+      return {data: translateDisplayPoint(hit.getHitTarget(), p), display: p};
+    }
+
+    function pixToVertex(x, y) {
+      return displayToVertex(ext.pixCoordsToMapCoords(x, y));
+    }
+
+    // The vertex a click adds: the vertex or segment point it snapped to, if any,
+    // so that a path that starts or passes on another path meets it exactly.
+    function getClickVertex(e) {
+      if (hoverVertexInfo) {
+        return {data: hoverVertexInfo.point, display: hoverVertexInfo.displayPoint};
+      }
+      return pixToVertex(e.x, e.y);
+    }
+
+    // The vertex the path is following the pointer to (see the hover handler)
+    function getPointerVertex() {
+      if (hoverVertexInfo && !hoverVertexInfo.closesPath) {
+        return {data: hoverVertexInfo.point, display: hoverVertexInfo.displayPoint};
+      }
+      return displayToVertex(pointer);
+    }
+
+    function getLastVertex() {
+      var n = pending.data.length;
+      return {data: pending.data[n - 1], display: pending.display[n - 1]};
     }
 
     // Change the x, y pixel location of thisEvt so that the segment extending
@@ -31031,115 +32041,173 @@
       return null;
     }
 
-    function finishCurrentPath() {
+    // v: the first vertex, {data, display}
+    // extendId: id of the line that the path extends, or -1
+    function startPath(v, extendId) {
+      pending = {data: [], display: [], steps: [], redo: [],
+        extendId: extendId >= 0 ? extendId : -1};
+      hit.clearSelection();
+      pointer = v.display;
+      addVertices([v]);
+      hideInstructions();
+      updateCursor();
+    }
+
+    // Adds vertices to the path being drawn, as one undoable edit.
+    // vertices: [{data, display}, ...]
+    function addVertices(vertices) {
+      appendVertices(vertices);
+      pending.redo = [];
+      refreshPath();
+    }
+
+    function appendVertices(vertices) {
+      vertices.forEach(function(v) {
+        pending.data.push(v.data);
+        pending.display.push(v.display);
+      });
+      pending.steps.push(vertices.length);
+    }
+
+    // Takes back the last edit to the path being drawn. Taking back its first
+    // vertex abandons the path. Returns false if no path is being drawn, so that
+    // Undo goes on to the undo history.
+    function pendingUndo() {
+      var n, start, removed;
+      if (!pathDrawing()) return false;
+      if (stroke) {
+        // an undo during a stroke takes back the whole stroke
+        finishStroke();
+        blockDrag = true;
+      }
+      n = pending.steps.pop();
+      start = pending.data.length - n;
+      removed = pending.data.splice(start).map(function(p, i) {
+        return {data: p, display: pending.display[start + i]};
+      });
+      pending.display.splice(start);
+      pending.redo.push(removed);
+      if (pending.data.length === 0) {
+        cancelPath();
+      } else {
+        refreshPath();
+      }
+      return true;
+    }
+
+    // Restores the last edit taken back. Redo does nothing else while a path is
+    // being drawn: redoing an edit to the layer would happen out of sight of the
+    // path the user is looking at.
+    function pendingRedo() {
+      if (!pathDrawing()) return false;
+      if (pending.redo.length > 0) {
+        appendVertices(pending.redo.pop());
+        refreshPath();
+      }
+      return true;
+    }
+
+    // Ends the path being drawn and creates its shape, if it has enough vertices
+    // to make one; a polygon is closed if the path was left open.
+    // close: (optional) the path ended on its first vertex
+    function finishPath(close) {
+      var target, coords, extendId;
       if (!pathDrawing()) return;
       if (stroke) {
         // finishing mid-drag (e.g. with the Enter key)
         finishStroke();
         blockDrag = true;
       }
-      var target = hit.getHitTarget();
-      if (getLastArcLength(target) <= 2) { // includes hover point
-        // deleteLastPath(target);
-        gui.undo.undo(); // assume previous undo event was path_add
-      } else {
-        deleteLastVertex(target);
+      target = hit.getHitTarget();
+      coords = pending.data.concat();
+      extendId = pending.extendId;
+      if (close) {
+        coords.push(coords[0]);
       }
-      clearDrawingInfo();
-      fullRedraw();
+      clearPath();
+      if (target && drawnPathIsValid(coords, target.geometry_type)) {
+        createShape(target, coords, extendId);
+      }
     }
 
-    // p: [x, y] source data coordinates
-    function startNewPath(p2) {
-      var target = hit.getHitTarget();
-      var p1 = hoverVertexInfo?.point || p2;
-      appendNewPath(target, [p1, p2]);
-      gui.dispatchEvent('path_add', {target, p1, p2});
-      drawingId = target.shapes.length - 1;
-      hit.setDrawingId(drawingId);
-      hideInstructions();
+    function cancelPath() {
+      if (stroke) {
+        stroke = null;
+        blockDrag = true;
+      }
+      clearPath();
+    }
+
+    function clearPath() {
+      pending = null;
+      pointer = null;
+      hoverVertexInfo = null;
+      hit.clearHoverVertex();
+      hit.setPendingPath(null);
       updateCursor();
     }
 
-    // points: [x, y] source data coordinates of vertices to add to the path. The
-    //   vertex that follows the pointer becomes points[placed], so it must
-    //   already be there; the rest are appended after it.
-    // finish: true if the path ends at an existing vertex (which closes a polygon)
-    // placed: (optional) number of points already in the path, before the vertex
-    //   that follows the pointer
-    function extendCurrentPath(points, finish, placed) {
-      var target = hit.getHitTarget();
-      var shapes1, shapes2;
-      if (getLastArcLength(target) < 2) {
-        stop$1('Defective path');
-      }
-      for (var i=(placed || 0) + 1; i<points.length; i++) {
-        appendVertex$1(target, points[i]);
-      }
-      if (finish && polygonMode()) {
-        shapes1 = target.shapes.slice(initialShapeCount);
-        try {
-          shapes2 = convertClosedPaths(shapes1);
-        } catch(e) {
-          console.error(e);
-          stop$1('Invalid path');
-        }
-      }
-      if (shapes2) {
-        replaceDrawnShapes(shapes2);
-        gui.dispatchEvent('path_extend', {target, points, shapes1, shapes2});
-        clearDrawingInfo();
-        fullRedraw();
-      } else {
-        appendVertex$1(target, points[points.length - 1]); // the new vertex following the pointer
-        gui.dispatchEvent('path_extend', {target, points});
-        hit.triggerChangeEvent(); // trigger overlay redraw
-      }
+    // extendId: id of the line the path extends, or -1 to add a new shape
+    function createShape(target, coords, extendId) {
+      var extend = extendId >= 0;
+      // an extension takes on the style of the line it extends
+      var style = extend ? null : getNewShapeCommandStyle(getNewShapeStyle(gui, target.geometry_type),
+        layerHasDrawableStyle(target), !!gui.state.dark_basemap);
+      var cmd = getAddShapeCommand(coords, {
+        geometryType: target.geometry_type,
+        target: target.name || null,
+        style: style,
+        extend: extend
+      });
+      var title = extend ? 'Extend line' :
+        target.geometry_type == 'polygon' ? 'Draw polygon' : 'Draw line';
+      runGuiEditCommand(gui, cmd, {title: title, changesEditTarget: true});
     }
 
-    function replaceDrawnShapes(shapes) {
-      var target = hit.getHitTarget();
-      var records = target.data?.getRecords();
-      var prevLen = target.shapes.length;
-      var newLen = initialShapeCount + shapes.length;
-      var recordCount = records?.length || 0;
-      target.shapes = target.shapes.slice(0, initialShapeCount).concat(shapes);
-      while (records && records.length > newLen) {
-        records.pop();
+    // Shows the path being drawn: its vertices, then the part of a stroke not
+    // yet added to it, then the pointer.
+    function refreshPath() {
+      var coords;
+      if (!pathDrawing()) return;
+      coords = pending.display.concat();
+      if (stroke) {
+        if (stroke.anchor) coords.push(stroke.anchor.display);
+        stroke.placed.forEach(function(v) { coords.push(v.display); });
+        coords = coords.concat(stroke.preview);
       }
-      while (records && records.length < newLen) {
-        appendNewDataRecord(target);
-      }
+      if (pointer) coords.push(pointer);
+      hit.setPendingPath(coords, getPendingPathStyle(getPathStyle(), !!gui.state.dark_basemap));
     }
 
-    // p: [x, y] source data coordinates
-    function updatePathEndpoint(p) {
+    // The style the finished path will be drawn with: the one createShape() will
+    // give it, or that of the line it extends
+    function getPathStyle() {
       var target = hit.getHitTarget();
-      var i = target.gui.displayArcs.getPointCount() - 1;
-      if (hoverVertexInfo) {
-        p = hoverVertexInfo.point; // snap to selected point
+      var records = target.data ? target.data.getRecords() : [];
+      if (pending.extendId >= 0) {
+        return layerHasDrawableStyle(target) && records[pending.extendId] || {};
       }
-      setVertexCoords(target, [i], p);
-      hit.triggerChangeEvent();
+      return getNewShapeCommandStyle(getNewShapeStyle(gui, target.geometry_type),
+        layerHasDrawableStyle(target), !!gui.state.dark_basemap);
     }
 
+    // Hover info for the first vertex of the path being drawn, if the pointer is
+    // near it and there are enough vertices to close a ring.
     function findPathStartInfo(e) {
-      if (!pathDrawing()) return false;
-      var target = hit.getHitTarget();
-      var arcId = target.gui.displayArcs.size() - 1;
-      var p1 = ext.pixCoordsToMapCoords(e.x, e.y); // mouse coords
-      var p2 = internal.getArcStartCoords(arcId, target.gui.displayArcs); // vertex coords
-      var p3 = internal.getArcStartCoords(arcId, target.gui.source.dataset.arcs);
-      var dist = geom.distance2D(p1[0], p1[1], p2[0], p2[1]);
-      var data = target.gui.source.dataset.arcs.getVertexData();
-      var i = data.ii[arcId];
-      var pathLen = data.nn[arcId];
-      var pixelDist = dist / ext.getPixelSize();
-      if (pixelDist > HOVER_THRESHOLD$1 || pathLen < 4) {
+      var p1, p2, n;
+      if (!pathDrawing()) return null;
+      n = pending.data.length;
+      if (stroke) {
+        n += stroke.placed.length + (stroke.anchor ? 1 : 0);
+      }
+      if (n < 3) return null;
+      p1 = ext.pixCoordsToMapCoords(e.x, e.y); // mouse coords
+      p2 = pending.display[0];
+      if (geom.distance2D(p1[0], p1[1], p2[0], p2[1]) / ext.getPixelSize() > HOVER_THRESHOLD$1) {
         return null;
       }
       return {
-        target, ids: [i], extendable: false, displayPoint: p2, point: p3, type: 'vertex'
+        extendable: false, displayPoint: p2, point: pending.data[0], type: 'vertex', closesPath: true
       };
     }
 
@@ -31199,46 +32267,6 @@
       closest.type = 'interpolated';
       closest.target = target;
       return closest;
-    }
-
-    // Try to form polygon shapes from an array of path shapes
-    // shapes: array of all shapes that have been drawn in the current session
-    function convertClosedPaths(shapes) {
-      var target = hit.getHitTarget();
-      // try to convert paths to polygons
-      // NOTE: added "no_cuts" option to prevent polygons function from modifying
-      // arcs, which would break undo/redo and cause other problems
-      var tmpLyr = {
-        geometry_type: 'polyline',
-        shapes: shapes.concat()
-      };
-      var output = mapshaper.cmd.polygons([tmpLyr], target.gui.source.dataset, {no_cuts: true});
-      var closedShapes = output[0].shapes;
-
-      // find paths that were not convertible to polygons
-      var isOpenPath = getOpenPathTest(closedShapes);
-      var openShapes = shapes.filter(function(shp) { return isOpenPath(shp); });
-
-      // retain both converted polygons and unconverted polylines
-      return openShapes.concat(closedShapes);
-    }
-
-    // Returns a function for testing if a shape is an unclosed path, and doesn't
-    // overlap with an array of polygon shapes
-    function getOpenPathTest(polygonShapes) {
-      var polygonArcs = [];
-      internal.forEachArcId(polygonShapes, function(arcId) {
-        polygonArcs.push(internal.absArcId(arcId));
-      });
-
-      return function(shp) {
-        // assume that any compound shape is a polygon
-        return shapeHasOneFwdArc(shp) && !polygonArcs.includes(shp[0][0]);
-      };
-    }
-
-    function shapeHasOneFwdArc(shp) {
-      return shp.length == 1 && shp[0].length == 1 && shp[0][0] >= 0;
     }
   }
 
@@ -35495,205 +36523,6 @@
     initLabelHitCues(gui, ext, hit);
   }
 
-  var darkStroke = "#334",
-      activeStyle = { // outline style for the active layer
-        type: 'outline',
-        strokeColors: [null, darkStroke],
-        strokeWidth: 0.8,
-        dotColor: "#223",
-        dotSize: 1
-      },
-      activeStyleDarkMode = {
-        type: 'outline',
-        strokeColors: [null, 'white'],
-        strokeWidth: 0.9,
-        dotColor: 'white',
-        dotSize: 1
-      },
-      activeStyleForLabels = {
-        dotColor: "rgba(250, 0, 250, 0.45)", // violet dot with transparency
-        dotSize: 1
-      },
-      referenceStyle = { // outline style for reference layers
-        type: 'outline',
-        strokeColors: [null, '#87b73b'], // was 78c110
-        // strokeColors: [null, 'rgba(79,140,0,0.67)'],
-        strokeWidth: 0.85,
-        dotColor: "#73ba20",
-        dotSize: 1
-      },
-      intersectionStyle = {
-        dotColor: "#FF421D",
-        dotSize: 1.3
-      },
-      compareStyle = { // "before" overlay for the comparison feature
-        type: 'outline',
-        strokeColors: [null, 'rgba(185, 0, 178, 0.45)'],
-        strokeWidth: 1.1,
-        dotColor: 'rgba(185, 0, 178, 0.45)',
-        dotSize: 1
-      };
-
-  function getIntersectionStyle(lyr, opts) {
-    return copyBaseStyle(intersectionStyle);
-  }
-
-  // Style for the temporary "before" comparison overlay (original shapes).
-  function getCompareLayerStyle(lyr, opts) {
-    return copyBaseStyle(compareStyle);
-  }
-
-  // Display style for unselected layers with visibility turned on
-  // (may be fully styled or outlined)
-  function getReferenceLayerStyle(lyr, opts) {
-    var style;
-    if (layerHasDrawableStyle(lyr) && !opts.outlineMode) {
-      // TODO: consider just copying lyr style
-      style = getCanvasDisplayStyle(lyr);
-    } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
-      style = {dotSize: 0}; // no reference dots if labels are visible
-    } else {
-      style = copyBaseStyle(referenceStyle);
-    }
-    return style;
-  }
-
-  function getActiveLayerStyle(lyr, opts) {
-    var style;
-    if (layerHasDrawableStyle(lyr) && !opts.outlineMode) {
-      style = getCanvasDisplayStyle(lyr);
-    } else if (internal.layerHasLabels(lyr) && opts.interactionMode == 'label_style') {
-      style = {dotSize: 0};
-    } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
-      style = copyBaseStyle(activeStyleForLabels);
-    } else if (opts.darkMode) {
-      style = copyBaseStyle(activeStyleDarkMode);
-    } else {
-      style = copyBaseStyle(activeStyle);
-    }
-    return style;
-  }
-
-  function copyBaseStyle(baseStyle) {
-    return Object.assign({}, baseStyle);
-  }
-
-  function getCanvasDisplayStyle(lyr) {
-    var styleIndex = {
-          opacity: 'opacity',
-          r: 'radius',
-          'fill': 'fillColor',
-          'fill-pattern': 'fillPattern',
-          'fill-effect': 'fillEffect',
-          'fill-opacity': 'fillOpacity',
-          'stroke': 'strokeColor',
-          'stroke-width': 'strokeWidth',
-          'stroke-dasharray': 'lineDash',
-          'stroke-opacity': 'strokeOpacity',
-          'stroke-linecap': 'lineCap',
-          'stroke-linejoin': 'lineJoin',
-          'stroke-miterlimit': 'miterLimit'
-        },
-        // array of field names of relevant svg display properties
-        fields = getStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
-        records = lyr.data.getRecords();
-    // Arrowheads are drawn by the canvas as shapes, not set as attributes, so
-    // they are not among the attribute fields. Assigned on every call, like the
-    // rest, because the style object is reused from one feature to the next.
-    var arrowFields = getLineArrowFields(lyr);
-    var hasStrokeFields = fields.includes('stroke') || fields.includes('stroke-width');
-    // Glows are drawn from the record rather than set as attributes, like the
-    // arrowheads. An outer glow that the whole layer shares is drawn once for the
-    // layer (see svg-glow.mjs), so the shapes are then given none of their own.
-    var hasGlows = layerHasGlowFields(lyr);
-    var layerOuterGlow = hasGlows ? internal.svg.getLayerOuterGlow(lyr) : null;
-
-    var styler = function(style, i) {
-      var rec = records[i];
-      var fname, val;
-      if (arrowFields) {
-        style.lineStart = rec && rec['line-start'];
-        style.lineEnd = rec && rec['line-end'];
-        style.lineEndSize = rec && rec['line-end-size'];
-        style.lineFade = rec && rec['line-fade'];
-      }
-      if (hasGlows) {
-        style.outerGlow = layerOuterGlow ? null : internal.svg.getPolygonGlow(rec, 'outer');
-        style.innerGlow = internal.svg.getPolygonGlow(rec, 'inner');
-      }
-      for (var j=0; j<fields.length; j++) {
-        fname = fields[j];
-        val = rec && rec[fname];
-        if (val == 'none') {
-          val = 'transparent'; // canvas equivalent of CSS 'none'
-        }
-        // convert svg property name to mapshaper style equivalent
-        style[styleIndex[fname]] = val;
-      }
-
-      if (style.strokeWidth && !style.strokeColor) {
-        style.strokeColor = 'black';
-      }
-      if (!('strokeWidth' in style) && style.strokeColor) {
-        style.strokeWidth = 1;
-      }
-      if (style.radius > 0 && !style.strokeWidth && !style.fillColor && lyr.geometry_type == 'point') {
-        style.fillColor = 'black';
-      }
-    };
-    var style = {styler: styler, type: 'styled'};
-    if (hasGlows) {
-      style.layerOuterGlow = layerOuterGlow;
-      // How far past its shapes the layer draws, which is how far outside the
-      // view a shape can be and still reach into it.
-      style.glowReach = internal.svg.getMaxGlowWidth(records) * internal.svg.GLOW_REACH;
-    }
-    // A line layer styled with nothing but arrowheads is drawn the way SVG
-    // export draws it, with the black 1px line the layer's group gives it.
-    if (arrowFields && !hasStrokeFields) {
-      style.strokeColor = 'black';
-      style.strokeWidth = 1;
-    }
-    // use squares if radius is missing... (TODO: check behavior with labels, etc)
-    if (lyr.geometry_type == 'point' && fields.includes('r') === false) {
-      style.dotSize = 1;
-    }
-    return style;
-  }
-
-  // check if layer should be displayed with a full style
-  function layerHasDrawableStyle(lyr) {
-    var fields = getStyleFields(lyr);
-    if (lyr.geometry_type == 'point') {
-      // return fields.indexOf('r') > -1; // require 'r' field for point symbols
-      return fields.includes('fill') || fields.includes('r'); // support colored squares
-    }
-    return utils$1.difference(fields, ['opacity', 'class']).length > 0 ||
-      !!getLineArrowFields(lyr) || layerHasGlowFields(lyr);
-  }
-
-  function layerHasGlowFields(lyr) {
-    if (lyr.geometry_type != 'polygon' || !lyr.data) return false;
-    return lyr.data.getFields().some(function(f) {
-      return internal.svg.glowFields.includes(f);
-    });
-  }
-
-  // The arrowhead fields a line layer has, or null
-  function getLineArrowFields(lyr) {
-    var fields;
-    if (lyr.geometry_type != 'polyline' || !lyr.data) return null;
-    fields = lyr.data.getFields().filter(function(f) {
-      return internal.svg.lineArrowFields.includes(f);
-    });
-    return fields.length > 0 ? fields : null;
-  }
-
-  function getStyleFields(lyr) {
-    var fields = lyr.data ? lyr.data.getFields() : [];
-    return internal.findStylePropertiesBySymbolGeom(fields, lyr.geometry_type);
-  }
-
   function MapExtent(_position) {
     var _scale = 1,
         _cx, _cy, // center in geographic units
@@ -37442,34 +38271,53 @@
   // fade is placed by the whole line, so it is unaffected by the clipping.
   //
   // A faded part is stroked on its own, with its own gradient, as in SVG.
+  //
+  // A hover or selection halo (style.haloWidth > 0; see getOverlayStyle() in
+  // gui-overlay-styler.mjs) is the line's width plus the halo's. Its heads are
+  // made for the line's own width, so that they have the line's heads' size, tip
+  // and angle, and are grown by half the halo's width all round, as the line
+  // is. The halo is translucent, so the line is clipped out of its heads rather
+  // than drawn over them.
   function getArrowLinePencil(arcs, ext, lineScale) {
     var t = getScaledTransform(ext);
     var iter = new internal.ShapeIter(arcs);
     var strokeScale = getCanvasStrokeScale(GUI.getPixelRatio(), lineScale);
     var clipped = ext.scale() > 100;
     return function(shp, ctx, style, startPath, draw) {
+      var halo = style.haloWidth > 0 ? style.haloWidth : 0;
+      var lineWidth = style.strokeWidth - halo;
       var opts = internal.svg.makeLineArrowOpts(style.lineStart, style.lineEnd,
-        style.lineEndSize, style.strokeWidth, strokeScale, style.lineFade);
+        style.lineEndSize, lineWidth, strokeScale, style.lineFade);
       var fadeColors = opts.fade > 0 ? internal.svg.getLineFadeColors(style.strokeColor) : null;
+      var grow = halo * strokeScale / 2;
       var heads = [];
+      var parts = [];
       var plain = [];
       var faded = [];
-      var i, coords, shape;
-      if (opts.start == 'none' && opts.end == 'none' && !fadeColors || !(style.strokeWidth > 0)) {
+      var i, coords, shape, clipHeads;
+      if (opts.start == 'none' && opts.end == 'none' && !fadeColors || !(lineWidth > 0)) {
         return false;
       }
-      startPath(ctx, style);
       for (i=0; i<shp.length; i++) {
         coords = getPixelCoords(iter, shp[i], t);
         if (coords.length < 2) continue;
         shape = internal.svg.getLineArrowShape(coords, opts);
         heads = heads.concat(shape.heads);
-        if (shape.fade && fadeColors) {
-          faded.push({path: shp[i], shape: shape});
+        parts.push({path: shp[i], shape: shape});
+      }
+      clipHeads = grow > 0 && heads.length > 0;
+      if (clipHeads) {
+        ctx.save();
+        clipOutsideHeads(heads, ctx, grow);
+      }
+      startPath(ctx, style);
+      for (i=0; i<parts.length; i++) {
+        if (parts[i].shape.fade && fadeColors) {
+          faded.push(parts[i]);
         } else if (clipped) {
-          plain.push(shp[i]);
+          plain.push(parts[i].path);
         } else {
-          traceCoords(shape.coords, ctx);
+          traceCoords(parts[i].shape.coords, ctx);
         }
       }
       if (clipped && plain.length > 0) draw(plain, ctx, style);
@@ -37484,9 +38332,54 @@
         }
         endPath(ctx, style);
       }
-      drawArrowHeads(heads, ctx, style, opts.width);
+      if (clipHeads) ctx.restore();
+      drawArrowHeads(heads, ctx, style, opts.width, grow);
       return true;
     };
+  }
+
+  // Limits drawing to outside the heads, grown by @grow. An open head is a
+  // stroke, which can't be cut out of a clip path, so the line is drawn over it.
+  function clipOutsideHeads(heads, ctx, grow) {
+    var big = 1e7;
+    ctx.beginPath();
+    ctx.rect(-big, -big, 2 * big, 2 * big);
+    heads.forEach(function(head) {
+      if (head.type == 'dot') {
+        ctx.moveTo(head.center[0] + head.radius + grow, head.center[1]);
+        ctx.arc(head.center[0], head.center[1], head.radius + grow, 0, Math.PI * 2);
+      } else if (head.type == 'arrow') {
+        traceGrownTriangle(head.points, grow, ctx);
+      }
+    });
+    ctx.clip('evenodd');
+  }
+
+  // Traces a triangle grown by @r on every side: its edges pushed out by r and
+  // joined by arcs around its corners, as one outline, so that a translucent
+  // fill covers it once (a fill and a stroke would overlap along its edges).
+  function traceGrownTriangle(p, r, ctx) {
+    var cross = (p[1][0] - p[0][0]) * (p[2][1] - p[0][1]) -
+      (p[1][1] - p[0][1]) * (p[2][0] - p[0][0]);
+    var s = cross > 0 ? 1 : -1;
+    var angles = [], a, b, i, dx, dy;
+    if (cross === 0) return; // no area: nothing to grow
+    for (i=0; i<3; i++) {
+      a = p[i];
+      b = p[(i + 1) % 3];
+      dx = b[0] - a[0];
+      dy = b[1] - a[1];
+      // direction of the outward normal of the edge from a to b
+      angles.push(Math.atan2(-s * dx, s * dy));
+    }
+    ctx.moveTo(p[0][0] + r * Math.cos(angles[2]), p[0][1] + r * Math.sin(angles[2]));
+    for (i=0; i<3; i++) {
+      // around corner i, from the normal of the edge that ends there to the
+      // normal of the edge that starts there
+      a = p[i];
+      ctx.arc(a[0], a[1], r, angles[(i + 2) % 3], angles[i], s < 0);
+    }
+    ctx.closePath();
   }
 
   function getLineFadeGradient(ctx, axis, colors) {
@@ -37519,16 +38412,18 @@
 
   // Solid heads and dots are filled with the line's colour; open ones are stroked with
   // its width, always whole and round-cornered, whatever the line's dashes and
-  // caps.
-  function drawArrowHeads(heads, ctx, style, width) {
+  // caps. @grow (optional) widens each head by that much on every side, for a
+  // halo.
+  function drawArrowHeads(heads, ctx, style, width, grow) {
     var alpha = (style.opacity >= 0 ? style.opacity : 1) *
       (style.strokeOpacity >= 0 ? style.strokeOpacity : 1);
     var head, p;
+    grow = grow > 0 ? grow : 0;
     if (heads.length === 0) return;
     ctx.globalAlpha = alpha;
     ctx.fillStyle = style.strokeColor;
     ctx.strokeStyle = style.strokeColor;
-    ctx.lineWidth = width;
+    ctx.lineWidth = width + grow * 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.setLineDash([]);
@@ -37536,7 +38431,12 @@
       head = heads[i];
       ctx.beginPath();
       if (head.type == 'dot') {
-        ctx.arc(head.center[0], head.center[1], head.radius, 0, Math.PI * 2);
+        ctx.arc(head.center[0], head.center[1], head.radius + grow, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
+      if (head.type == 'arrow' && grow > 0) {
+        traceGrownTriangle(head.points, grow, ctx);
         ctx.fill();
         continue;
       }
@@ -39529,7 +40429,8 @@
     }
 
     function getGlobalStyleOptions(opts) {
-      var mode = gui.state.interaction_mode;
+      var mode = gui.interaction && gui.interaction.getToolMode ?
+        gui.interaction.getToolMode() : gui.state.interaction_mode;
       return Object.assign({
         darkMode: !!gui.state.dark_basemap,
         outlineMode: mode == 'vertices',
@@ -40673,8 +41574,8 @@
 
     function getNoSourceMessage() {
       var active = gui.model.getActiveLayer();
-      if (active && active.layer && !internal.layerHasGeometry(active.layer)) {
-        return 'A map frame is fitted to layers with shapes, and this layer ' +
+      if (active && active.layer && !layerHasExtent(active.layer)) {
+        return 'A map frame is fitted to layers with shapes or rasters, and this layer ' +
           'contains only attribute data. Select or show a map layer to create a frame.';
       }
       return 'Add one or more layers before creating a map frame.';
@@ -40699,12 +41600,17 @@
       return entries.length ? entries[0].layer : null;
     }
 
-    // A frame is fitted to shapes, so a data-only layer on show doesn't count
+    // A frame is fitted to shapes and rasters, so a data-only layer on show
+    // doesn't count
     function getCompositionEntries() {
       var layers = gui.map.getCompositionLayers();
       return gui.model.getLayers().filter(function(o) {
-        return layers.includes(o.layer) && internal.layerHasGeometry(o.layer);
+        return layers.includes(o.layer) && layerHasExtent(o.layer);
       });
+    }
+
+    function layerHasExtent(lyr) {
+      return internal.layerHasGeometry(lyr) || internal.layerHasRaster(lyr);
     }
 
     function getDisplayBoundsInLayerCRS(layer, view) {
@@ -42497,6 +43403,23 @@
       // Which tool has the map, for a test asking what an action did rather than
       // what it drew: a panel coming up is how a mode change shows, not what it
       // is.
+      // what the pointer does: 'edit_lines' for 'line_style' with drawing armed
+      getToolMode: function() {
+        return gui.interaction ? gui.interaction.getToolMode() : null;
+      },
+      setDrawingArmed: function(on) {
+        gui.interaction.setDrawingArmed(on);
+      },
+      // 'draw', 'reshape' or null
+      getArmedTool: function() {
+        return gui.interaction ? gui.interaction.getArmedTool() : null;
+      },
+      setArmedTool: function(tool) {
+        gui.interaction.setArmedTool(tool);
+      },
+      getNewShapeStyle: function(geometryType) {
+        return Object.assign({}, (gui.state.new_shape_styles || {})[geometryType] || {});
+      },
       getInteractionMode: function() {
         return gui.interaction ? gui.interaction.getMode() : null;
       },
@@ -42545,6 +43468,27 @@
             return pts;
           }) : null;
         });
+      },
+      // The vertices of the path being drawn by the line tool, which is not part
+      // of its layer until it is finished, in pixels as above; null if no path
+      // is being drawn. The last vertex follows the pointer.
+      getPendingPathPixels: function() {
+        var hit = gui.map && gui.map.getHitControl ? gui.map.getHitControl() : null;
+        var coords = hit ? hit.getHitState().pending_path : null;
+        var ext = gui.map.getExtent();
+        return coords ? coords.map(function(p) {
+          return ext.translateCoords(p[0], p[1]);
+        }) : null;
+      },
+      // the vertex marked under the pointer (display coords), or null
+      getHoverVertex: function() {
+        var hit = gui.map && gui.map.getHitControl ? gui.map.getHitControl() : null;
+        return hit && hit.getHitState().hit_coordinates || null;
+      },
+      getPendingPathStyle: function() {
+        var hit = gui.map && gui.map.getHitControl ? gui.map.getHitControl() : null;
+        var style = hit ? hit.getHitState().pending_path_style : null;
+        return style ? Object.assign({}, style) : null;
       },
       selectLayer: function(name) {
         var target = gui.model.getLayers().filter(function(o) {

@@ -28,7 +28,7 @@ This is a curated list of recently added features. For the full list of changes,
 - Sequential, diverging and categorical color schemes.
 - Preset color ramps, or build your own with the help of perceptually even interpolation.
 - Support for continuous (unclassed) color ramps.
-- A popup editor for adjusting class the breaks of sequential and diverging palettes.
+- A popup editor for adjusting the class breaks of sequential and diverging palettes.
 
 → See [`-classify`](/docs/reference.html.md#-classify) for the command line syntax.
 </div>
