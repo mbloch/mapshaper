@@ -5,6 +5,8 @@ import jpeg from 'jpeg-js';
 import os from 'os';
 import path from 'path';
 import { PNG } from 'pngjs';
+import { downsampleRgba, readImageSize } from '../src/rasters/mapshaper-image-import';
+import { getRasterImportSize, parseImportResolution } from '../src/rasters/mapshaper-raster-import-size';
 
 var GEOTIFF_FIXTURE = '/Users/matthewbloch/Development/mapshaper/geotiff.js/test/data/rgb.tiff';
 var BIG_ENDIAN_DEFLATE_FIXTURE = '/Users/matthewbloch/nytweb/2026/mapshaper/rasters/Sentinel-8bit.tiff';
@@ -349,6 +351,82 @@ describe('raster layers', function () {
     assert.equal(lyr.raster.grid.height, 1);
     assert.equal(lyr.raster.grid.bands, 3);
     assert.deepEqual(lyr.raster.grid.bbox, [100, 190, 120, 200]);
+  });
+
+  it('parses resolution= as a pixel width, with or without px, or full', function () {
+    assert.deepEqual(parseImportResolution('2000'), {width: 2000});
+    assert.deepEqual(parseImportResolution(2000), {width: 2000});
+    assert.deepEqual(parseImportResolution('2000px'), {width: 2000});
+    assert.deepEqual(parseImportResolution('FULL'), {full: true});
+    assert.equal(parseImportResolution(undefined), null);
+    assert.throws(function() { parseImportResolution('2km'); }, /Invalid resolution/);
+    assert.throws(function() { parseImportResolution('0'); }, /Invalid resolution/);
+    var cmd = api.internal.parseCommands('-i in.jpg resolution=2000px')[0];
+    assert.equal(cmd.options.resolution, '2000px');
+  });
+
+  it('getRasterImportSize() reduces large rasters and never enlarges', function () {
+    assert.deepEqual(getRasterImportSize(21600, 10800, {}), {width: 5657, height: 2828});
+    assert.deepEqual(getRasterImportSize(21600, 10800, {resolution: 'full'}), {width: 21600, height: 10800});
+    assert.deepEqual(getRasterImportSize(21600, 10800, {resolution: '2000'}), {width: 2000, height: 1000});
+    assert.deepEqual(getRasterImportSize(400, 200, {resolution: '2000'}), {width: 400, height: 200});
+    assert.deepEqual(getRasterImportSize(400, 200, {}), {width: 400, height: 200});
+  });
+
+  it('reads PNG and JPEG sizes from their headers', function () {
+    assert.deepEqual(readImageSize(getRgbaPngImportGroup().png.content, 'png'), {width: 4, height: 2});
+    assert.deepEqual(readImageSize(getJpegImportGroup().jpeg.content, 'jpeg'), {width: 2, height: 1});
+    assert.equal(readImageSize(new Uint8Array([1, 2, 3]), 'jpeg'), null);
+  });
+
+  it('downsampleRgba() averages pixels, weighting color by alpha', function () {
+    var rgba = new Uint8Array([
+      255, 0, 0, 255,   0, 0, 255, 0,
+      255, 0, 0, 255,   0, 0, 255, 0
+    ]);
+    assert.deepEqual(Array.from(downsampleRgba(rgba, 2, 2, 1, 1, true)), [255, 0, 0, 128]);
+    assert.deepEqual(Array.from(downsampleRgba(rgba, 2, 2, 1, 1, false)), [128, 0, 128]);
+  });
+
+  it('imports a PNG raster at the width given by resolution=', async function () {
+    var dataset = await api.internal.importContentAsync(getRgbaPngImportGroup(), {resolution: '2px'});
+    var grid = dataset.layers[0].raster.grid;
+    assert.equal(grid.width, 2);
+    assert.equal(grid.height, 1);
+    assert.deepEqual(grid.bbox, [100, 180, 140, 200]);
+    assert.deepEqual(grid.transform, [20, 0, 100, 0, -20, 200]);
+    assert.deepEqual(Array.from(grid.samples), [
+      255, 0, 0, 255,
+      0, 0, 255, 128
+    ]);
+    assert.equal(dataset.info.raster_sources[0].width, 4);
+  });
+
+  it('reduces a PNG over the import size limit unless resolution=full', async function () {
+    var reduced = await api.internal.importContentAsync(getRgbaPngImportGroup(), {maxPixels: 2});
+    var full = await api.internal.importContentAsync(getRgbaPngImportGroup(), {maxPixels: 2, resolution: 'full'});
+    assert.equal(reduced.layers[0].raster.grid.width, 2);
+    assert.equal(full.layers[0].raster.grid.width, 4);
+    assert.deepEqual(reduced.layers[0].raster.grid.bbox, full.layers[0].raster.grid.bbox);
+  });
+
+  it('imports a JPEG raster at the width given by resolution=', async function () {
+    var dataset = await api.internal.importContentAsync(getJpegImportGroup(), {resolution: '1'});
+    var grid = dataset.layers[0].raster.grid;
+    assert.equal(grid.width, 1);
+    assert.equal(grid.height, 1);
+    assert.deepEqual(grid.bbox, [100, 190, 120, 200]);
+  });
+
+  it('imports a GeoTIFF at the width given by resolution=', async function () {
+    var dataset = await api.internal.importFileAsync(WGS84_GEOTIFF_FIXTURE, {resolution: '1'});
+    assert.equal(dataset.layers[0].raster.grid.width, 1);
+    assert.equal(dataset.layers[0].raster.grid.height, 1);
+  });
+
+  it('resolution=full imports a GeoTIFF over the size limit at full size', async function () {
+    var dataset = await api.internal.importFileAsync(WGS84_GEOTIFF_FIXTURE, {maxPixels: 1, resolution: 'full'});
+    assert.equal(dataset.layers[0].raster.grid.width, 2);
   });
 
   it('blurs projected raster layers', function () {
@@ -1252,6 +1330,26 @@ function getPngImportGroup() {
     prj: {
       filename: 'image.prj',
       content: WGS84_PRJ
+    }
+  };
+}
+
+// 4x2: two opaque red columns, an opaque blue column and a transparent green
+// column
+function getRgbaPngImportGroup() {
+  var png = new PNG({width: 4, height: 2});
+  var row = [
+    255, 0, 0, 255,  255, 0, 0, 255,  0, 0, 255, 255,  0, 255, 0, 0
+  ];
+  png.data.set(row.concat(row));
+  return {
+    png: {
+      filename: 'image.png',
+      content: PNG.sync.write(png)
+    },
+    world: {
+      filename: 'image.pgw',
+      content: WORLD_FILE
     }
   };
 }

@@ -8,11 +8,11 @@ import { getFileBase } from '../utils/mapshaper-filename-utils';
 import require from '../mapshaper-require';
 import { message, stop, warnOnce } from '../utils/mapshaper-logging';
 import { createRasterPreview, getRasterViewRecipe } from '../rasters/mapshaper-raster-utils';
+import { FULL_RESOLUTION_HINT, getMaxImportPixels, getRasterImportSize, parseImportResolution } from '../rasters/mapshaper-raster-import-size';
 
 var geotiffPromise = null;
 var geoKeysToProj4Promise = null;
 var dynamicImportModule = Function('id', 'return import(id)');
-var DEFAULT_MAX_IMPORT_PIXELS = 16e6;
 
 // aux: contents of the file's .aux.xml sidecar, if it has one
 export async function importGeoTIFF(input, optsArg, aux) {
@@ -132,18 +132,26 @@ function getRasterInterpretation(opts) {
 
 async function selectGeoTIFFImportImage(tiff, sourceImage, opts) {
   var maxPixels = getMaxImportPixels(opts);
+  var resolution = parseImportResolution(opts.resolution);
   var renditions = await getGeoTIFFRenditions(tiff, sourceImage);
   var source = renditions[0];
   var best = getRequestedRendition(renditions, opts.rendition);
   var bestPixels;
-  if (!best) {
+  if (resolution && resolution.full) {
+    best = best || source;
+  } else if (resolution) {
+    best = best || getRenditionForWidth(renditions, resolution.width);
+    if (best.width > resolution.width) {
+      best = getResizedImportImage(best, getRasterImportSize(best.width, best.height, opts));
+    }
+  } else if (!best) {
     best = source;
     bestPixels = best.width * best.height;
     if (bestPixels > maxPixels) {
       best = getAutomaticRendition(renditions, maxPixels);
       bestPixels = best.width * best.height;
       if (bestPixels > maxPixels) {
-        best = getResizedImportImage(best, maxPixels);
+        best = getResizedImportImage(best, getRasterImportSize(best.width, best.height, opts));
       }
     }
   }
@@ -151,7 +159,11 @@ async function selectGeoTIFFImportImage(tiff, sourceImage, opts) {
     message(getRenditionsMessage(renditions, best));
   }
   if (best.slug != 'full' || best.width != source.width || best.height != source.height) {
-    warnOnce(getImportRenditionMessage(best, source));
+    if (resolution || opts.rendition) {
+      message(getImportRenditionMessage(best, source));
+    } else {
+      warnOnce(getImportRenditionMessage(best, source) + ' ' + FULL_RESOLUTION_HINT);
+    }
   }
   return best;
 }
@@ -230,20 +242,23 @@ function getImportRenditionMessage(importImage, source) {
     importImage.width + 'x' + importImage.height + ' (source: ' + source.width + 'x' + source.height + ').';
 }
 
-function getResizedImportImage(importImage, maxPixels) {
-  var scale = Math.min(1, Math.sqrt(maxPixels / (importImage.width * importImage.height)));
+// The smallest rendition at least @width pixels wide, so that resampling to
+// @width reads as little data as possible without enlarging anything
+function getRenditionForWidth(renditions, width) {
+  return renditions.reduce(function(memo, rendition) {
+    if (rendition.width >= width && rendition.width < memo.width) return rendition;
+    return memo;
+  }, renditions[0]);
+}
+
+function getResizedImportImage(importImage, size) {
   return Object.assign({}, importImage, {
     sourceSlug: importImage.slug,
     slug: importImage.slug + '-resampled',
     resampled: true,
-    width: Math.max(1, Math.round(importImage.width * scale)),
-    height: Math.max(1, Math.round(importImage.height * scale))
+    width: size.width,
+    height: size.height
   });
-}
-
-function getMaxImportPixels(opts) {
-  return opts.maxPixels || opts.raster_max_pixels || opts.rasterMaxPixels ||
-    DEFAULT_MAX_IMPORT_PIXELS;
 }
 
 async function readGeoTIFFSamples(image, samples, width, height) {
@@ -461,7 +476,7 @@ function reportMissingCrs(dataset, crsInfo, sidecarString) {
   if (crsInfo.absent && !sidecarString) {
     if (probablyDecimalDegreeBounds(getDatasetBounds(dataset))) {
       message('This GeoTIFF has no CRS metadata. Its coordinates are in the',
-        'decimal-degree range, so they are taken for WGS 84 lat-long.');
+        'decimal-degree range, so WGS 84 lat-long is assumed.');
     } else {
       message('This GeoTIFF has no CRS metadata, so what its coordinates refer',
         'to is unknown, and projecting it or showing it over a basemap are',

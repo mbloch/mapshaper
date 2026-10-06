@@ -87,6 +87,49 @@ test('GUI reads a raster CRS from its .aux.xml sidecar', async function({page}) 
   expect(result.datasets[0].crs_string).toContain('+proj=moll');
 });
 
+test('GUI says an image without a .prj file is assumed to be WGS 84', async function({page}) {
+  var files = 'test/data/images/rgb-3x3.png,test/data/images/rgb-3x3.pgw';
+  var messages;
+  await page.goto('/?undo=on&undo-test=on&files=' + encodeURIComponent(files));
+  await page.waitForFunction(function() {
+    return window.mapshaper && window.mapshaper.undoTest &&
+      window.mapshaper.undoTest.getState().model.datasetCount > 0;
+  });
+  messages = await page.evaluate(function() {
+    return window.mapshaper.undoTest.getMessages();
+  });
+  expect(messages.filter(function(o) { return o.severity == 'warn'; })).toEqual([]);
+  expect(messages.map(function(o) { return o.body; }).join('\n')).toMatch(
+    /rgb-3x3\.png has no \.prj file\. Its coordinates are in the decimal-degree range, so WGS 84 lat-long is assumed\./);
+});
+
+// The browser decodes an image straight to its import size, which has to keep
+// the extent the world file gives the full-size image.
+test('GUI imports an image raster at the width given by resolution=', async function({page}) {
+  var result;
+  await page.goto('/');
+  await page.waitForFunction(function() { return window.mapshaper && window.mapshaper.internal; });
+  result = await page.evaluate(async function() {
+    var internal = window.mapshaper.internal;
+    var png = await (await fetch('/test/data/images/rgb-3x3.png')).arrayBuffer();
+    var pgw = await (await fetch('/test/data/images/rgb-3x3.pgw')).text();
+    function getGroup() {
+      return {
+        png: {filename: 'rgb-3x3.png', content: png.slice(0)},
+        world: {filename: 'rgb-3x3.pgw', content: pgw}
+      };
+    }
+    var full = (await internal.importContentAsync(getGroup(), {})).layers[0].raster.grid;
+    var small = (await internal.importContentAsync(getGroup(), {resolution: '2px'})).layers[0].raster.grid;
+    return {full: full, small: {width: small.width, height: small.height, bbox: small.bbox,
+      sampleCount: small.samples.length}};
+  });
+  expect(result.small.width).toBe(2);
+  expect(result.small.height).toBe(2);
+  expect(result.small.sampleCount).toBe(2 * 2 * 4);
+  expect(result.small.bbox).toEqual(result.full.bbox);
+});
+
 // The number of pixels the map canvases have drawn anything into.
 function getPaintedMapPixels(page) {
   return page.evaluate(function() {

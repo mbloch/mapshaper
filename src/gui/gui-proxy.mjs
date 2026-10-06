@@ -50,8 +50,10 @@ export function setLoggingForGUI(gui) {
   internal.setLoggingFunctions(message, error, stop, warn);
 }
 
+// The raster importers' notes that a CRS-less raster was taken for lat-long
+// end with "so WGS 84 lat-long is assumed."
 function messageShouldGoToInbox(msg) {
-  return /^GeoTIFF renditions:/.test(msg);
+  return /^GeoTIFF renditions:/.test(msg) || /WGS 84 lat-long is assumed\.$/.test(msg);
 }
 
 export function WriteFilesProxy(gui) {

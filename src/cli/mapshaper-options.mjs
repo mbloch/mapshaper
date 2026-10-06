@@ -268,6 +268,9 @@ export function getOptionParser() {
     .option('rendition', {
       describe: '[GeoTIFF] import a GeoTIFF rendition: full,overview-1,etc.'
     })
+    .option('resolution', {
+      describe: '[raster] import width in pixels, or full (default reduces large rasters)'
+    })
     .option('geometry-type', {
       // undocumented; GeoJSON import rejects all but one kind of geometry
       // describe: '[GeoJSON] Import one kind of geometry (point|polygon|polyline)'
