@@ -769,34 +769,53 @@ function getShapePencil(arcs, ext) {
 // fade is placed by the whole line, so it is unaffected by the clipping.
 //
 // A faded part is stroked on its own, with its own gradient, as in SVG.
+//
+// A hover or selection halo (style.haloWidth > 0; see getOverlayStyle() in
+// gui-overlay-styler.mjs) is the line's width plus the halo's. Its heads are
+// made for the line's own width, so that they have the line's heads' size, tip
+// and angle, and are grown by half the halo's width all round, as the line
+// is. The halo is translucent, so the line is clipped out of its heads rather
+// than drawn over them.
 function getArrowLinePencil(arcs, ext, lineScale) {
   var t = getScaledTransform(ext);
   var iter = new internal.ShapeIter(arcs);
   var strokeScale = getCanvasStrokeScale(GUI.getPixelRatio(), lineScale);
   var clipped = ext.scale() > 100;
   return function(shp, ctx, style, startPath, draw) {
+    var halo = style.haloWidth > 0 ? style.haloWidth : 0;
+    var lineWidth = style.strokeWidth - halo;
     var opts = internal.svg.makeLineArrowOpts(style.lineStart, style.lineEnd,
-      style.lineEndSize, style.strokeWidth, strokeScale, style.lineFade);
+      style.lineEndSize, lineWidth, strokeScale, style.lineFade);
     var fadeColors = opts.fade > 0 ? internal.svg.getLineFadeColors(style.strokeColor) : null;
+    var grow = halo * strokeScale / 2;
     var heads = [];
+    var parts = [];
     var plain = [];
     var faded = [];
-    var i, coords, shape;
-    if (opts.start == 'none' && opts.end == 'none' && !fadeColors || !(style.strokeWidth > 0)) {
+    var i, coords, shape, clipHeads;
+    if (opts.start == 'none' && opts.end == 'none' && !fadeColors || !(lineWidth > 0)) {
       return false;
     }
-    startPath(ctx, style);
     for (i=0; i<shp.length; i++) {
       coords = getPixelCoords(iter, shp[i], t);
       if (coords.length < 2) continue;
       shape = internal.svg.getLineArrowShape(coords, opts);
       heads = heads.concat(shape.heads);
-      if (shape.fade && fadeColors) {
-        faded.push({path: shp[i], shape: shape});
+      parts.push({path: shp[i], shape: shape});
+    }
+    clipHeads = grow > 0 && heads.length > 0;
+    if (clipHeads) {
+      ctx.save();
+      clipOutsideHeads(heads, ctx, grow);
+    }
+    startPath(ctx, style);
+    for (i=0; i<parts.length; i++) {
+      if (parts[i].shape.fade && fadeColors) {
+        faded.push(parts[i]);
       } else if (clipped) {
-        plain.push(shp[i]);
+        plain.push(parts[i].path);
       } else {
-        traceCoords(shape.coords, ctx);
+        traceCoords(parts[i].shape.coords, ctx);
       }
     }
     if (clipped && plain.length > 0) draw(plain, ctx, style);
@@ -811,9 +830,54 @@ function getArrowLinePencil(arcs, ext, lineScale) {
       }
       endPath(ctx, style);
     }
-    drawArrowHeads(heads, ctx, style, opts.width);
+    if (clipHeads) ctx.restore();
+    drawArrowHeads(heads, ctx, style, opts.width, grow);
     return true;
   };
+}
+
+// Limits drawing to outside the heads, grown by @grow. An open head is a
+// stroke, which can't be cut out of a clip path, so the line is drawn over it.
+function clipOutsideHeads(heads, ctx, grow) {
+  var big = 1e7;
+  ctx.beginPath();
+  ctx.rect(-big, -big, 2 * big, 2 * big);
+  heads.forEach(function(head) {
+    if (head.type == 'dot') {
+      ctx.moveTo(head.center[0] + head.radius + grow, head.center[1]);
+      ctx.arc(head.center[0], head.center[1], head.radius + grow, 0, Math.PI * 2);
+    } else if (head.type == 'arrow') {
+      traceGrownTriangle(head.points, grow, ctx);
+    }
+  });
+  ctx.clip('evenodd');
+}
+
+// Traces a triangle grown by @r on every side: its edges pushed out by r and
+// joined by arcs around its corners, as one outline, so that a translucent
+// fill covers it once (a fill and a stroke would overlap along its edges).
+export function traceGrownTriangle(p, r, ctx) {
+  var cross = (p[1][0] - p[0][0]) * (p[2][1] - p[0][1]) -
+    (p[1][1] - p[0][1]) * (p[2][0] - p[0][0]);
+  var s = cross > 0 ? 1 : -1;
+  var angles = [], a, b, i, dx, dy;
+  if (cross === 0) return; // no area: nothing to grow
+  for (i=0; i<3; i++) {
+    a = p[i];
+    b = p[(i + 1) % 3];
+    dx = b[0] - a[0];
+    dy = b[1] - a[1];
+    // direction of the outward normal of the edge from a to b
+    angles.push(Math.atan2(-s * dx, s * dy));
+  }
+  ctx.moveTo(p[0][0] + r * Math.cos(angles[2]), p[0][1] + r * Math.sin(angles[2]));
+  for (i=0; i<3; i++) {
+    // around corner i, from the normal of the edge that ends there to the
+    // normal of the edge that starts there
+    a = p[i];
+    ctx.arc(a[0], a[1], r, angles[(i + 2) % 3], angles[i], s < 0);
+  }
+  ctx.closePath();
 }
 
 function getLineFadeGradient(ctx, axis, colors) {
@@ -846,16 +910,18 @@ function traceCoords(coords, ctx) {
 
 // Solid heads and dots are filled with the line's colour; open ones are stroked with
 // its width, always whole and round-cornered, whatever the line's dashes and
-// caps.
-function drawArrowHeads(heads, ctx, style, width) {
+// caps. @grow (optional) widens each head by that much on every side, for a
+// halo.
+function drawArrowHeads(heads, ctx, style, width, grow) {
   var alpha = (style.opacity >= 0 ? style.opacity : 1) *
     (style.strokeOpacity >= 0 ? style.strokeOpacity : 1);
   var head, p;
+  grow = grow > 0 ? grow : 0;
   if (heads.length === 0) return;
   ctx.globalAlpha = alpha;
   ctx.fillStyle = style.strokeColor;
   ctx.strokeStyle = style.strokeColor;
-  ctx.lineWidth = width;
+  ctx.lineWidth = width + grow * 2;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.setLineDash([]);
@@ -863,7 +929,12 @@ function drawArrowHeads(heads, ctx, style, width) {
     head = heads[i];
     ctx.beginPath();
     if (head.type == 'dot') {
-      ctx.arc(head.center[0], head.center[1], head.radius, 0, Math.PI * 2);
+      ctx.arc(head.center[0], head.center[1], head.radius + grow, 0, Math.PI * 2);
+      ctx.fill();
+      continue;
+    }
+    if (head.type == 'arrow' && grow > 0) {
+      traceGrownTriangle(head.points, grow, ctx);
       ctx.fill();
       continue;
     }

@@ -11,10 +11,15 @@ export function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
   } else if (geoType == 'point') {
     test = pointTest;
   } else if (interactionMode == 'edit_polygons') {
+    // drawing: only the outline, so that a path can be started inside a
+    // polygon, where a click would otherwise select it
+    test = polygonOutlineTest;
+  } else if (interactionMode == 'reshape_polygons') {
     test = polygonVertexTest;
   } else if (
       interactionMode == 'vertices' ||
       interactionMode == 'edit_lines' ||
+      interactionMode == 'reshape_lines' ||
       interactionMode == 'snip_lines') {
     test = vertexTest;
   } else if (geoType == 'polyline') {
@@ -68,6 +73,10 @@ export function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
     return {
       ids: utils.uniq(b.ids.concat(a.ids))
     };
+  }
+
+  function polygonOutlineTest(x, y) {
+    return polylineTest(x, y, 5);
   }
 
   function vertexTest(x, y) {

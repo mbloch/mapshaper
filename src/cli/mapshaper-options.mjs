@@ -66,6 +66,38 @@ export function getOptionParser() {
         'icon-color': {describe: 'color of the anchor symbol (defaults to the text color)'},
         'icon-opacity': {describe: 'opacity of the anchor symbol, 0-1'}
       },
+      // style properties of points, lines and polygons, accepted by -style and
+      // -add-shape
+      featureStyleOpts = {
+        class: {describe: 'name of CSS class or classes (space-separated)'},
+        css: {describe: 'inline css style'},
+        fill: {describe: 'fill color; examples: #eee pink rgba(0, 0, 0, 0.2)'},
+        'fill-pattern': {describe: 'pattern fill, ex: "hatches 2px grey 2px blue"'},
+        'fill-effect': {describe: 'use "sphere" on a circle for a 3d globe effect'},
+        'fill-opacity': {describe: 'fill opacity'},
+        'fill-hatch': {alias_to: 'fill-pattern'},
+        'outer-glow-color': {describe: 'color of a glow outside each polygon (adds the glow)'},
+        'outer-glow-width': {describe: 'how far the outer glow reaches, in px (default is 10)'},
+        'outer-glow-opacity': {describe: 'opacity of the outer glow, 0-1'},
+        'inner-glow-color': {describe: 'color of a glow inside each polygon (adds the glow)'},
+        'inner-glow-width': {describe: 'how far the inner glow reaches, in px (default is 10)'},
+        'inner-glow-opacity': {describe: 'opacity of the inner glow, 0-1'},
+        stroke: {describe: 'stroke color'},
+        'stroke-width': {describe: 'stroke width'},
+        'stroke-dasharray': {describe: 'stroke dashes. Examples: "4" "2 4"'},
+        'stroke-linecap': {describe: 'line caps: round, butt or square (dashed lines default to butt)'},
+        'stroke-opacity': {describe: 'stroke opacity'},
+        'line-start': {describe: 'marker at the start of each line: arrow, open-arrow, dot or none'},
+        'line-end': {describe: 'marker at the end of each line: arrow, open-arrow, dot or none'},
+        'line-end-size': {describe: 'length of an arrowhead\'s sides in px (default grows with stroke-width)'},
+        'line-fade': {describe: 'share of a line (0-1) that fades in from its tail'},
+        opacity: {describe: 'opacity; example: 0.5'},
+        r: {describe: 'symbol radius (set this to export points as circles)'},
+        icon: {describe: 'point icon shape; one of: circle, square, ring, star'},
+        'icon-size': {describe: 'point icon size in pixels'},
+        'icon-color': {describe: 'point icon color (defaults to fill color, then black)'},
+        'icon-opacity': {describe: 'point icon opacity, 0-1'}
+      },
       noReplaceOpt2 = { // for -calc and -info
         alias: '+',
         type: 'flag',
@@ -556,6 +588,51 @@ export function getOptionParser() {
     ;
 
   parser.section('Editing commands');
+
+  parser.command('add-layer')
+    .describe('create an empty layer, to add shapes or labels to')
+    .option('geometry-type', {
+      describe: 'point, polygon or polyline'
+    })
+    .option('name', {
+      describe: 'name of the new layer'
+    })
+    // only the CRS is taken from the target, so that a shape drawn at a
+    // projected coordinate is not read as lat-long
+    .option('target', targetOpt);
+
+  parser.command('add-shape')
+    .describe('add a point, line or polygon, optionally with a style')
+    .option('coordinates', {
+      describe: 'x,y for a point, x,y,x,y,... for a line (a ring makes a polygon)'
+    })
+    .option('closed', {
+      describe: 'close an open path to make a polygon',
+      type: 'flag'
+    })
+    .option('extend', {
+      describe: 'join a line to the line in the target that ends where it starts or ends',
+      type: 'flag'
+    })
+    .option('geojson', {
+      describe: 'a GeoJSON Feature or geometry, instead of coordinates='
+    })
+    .option('properties', {
+      describe: 'attributes as a JSON object, e.g. {"name":"Route 1"}'
+    })
+    .options(featureStyleOpts)
+    .option('name', {
+      describe: 'name of a new layer (with no target, or with +)'
+    })
+    .option('target', {
+      describe: 'layer to add the shape to (default is the current target)'
+    })
+    .option('no-replace', {
+      alias: '+',
+      type: 'flag',
+      label: '+, no-replace',
+      describe: 'add the shape to a new layer instead of the target'
+    });
 
   parser.command('affine')
     .describe('transform coordinates by shifting, scaling and rotating')
@@ -2108,90 +2185,7 @@ export function getOptionParser() {
       describe: 'comma-sep. list of feature ids to style',
       type: 'numbers'
     })
-    .option('class', {
-      describe: 'name of CSS class or classes (space-separated)'
-    })
-    .option('css', {
-      describe: 'inline css style'
-    })
-    .option('fill', {
-      describe: 'fill color; examples: #eee pink rgba(0, 0, 0, 0.2)'
-    })
-    .option('fill-pattern', {
-      describe: 'pattern fill, ex: "hatches 2px grey 2px blue"'
-    })
-    .option('fill-effect', {
-      describe: 'use "sphere" on a circle for a 3d globe effect'
-    })
-    .option('fill-opacity', {
-      describe: 'fill opacity'
-    })
-    .option('fill-hatch', {
-      alias_to: 'fill-pattern'
-    })
-    .option('outer-glow-color', {
-      describe: 'color of a glow outside each polygon (adds the glow)'
-    })
-    .option('outer-glow-width', {
-      describe: 'how far the outer glow reaches, in px (default is 10)'
-    })
-    .option('outer-glow-opacity', {
-      describe: 'opacity of the outer glow, 0-1'
-    })
-    .option('inner-glow-color', {
-      describe: 'color of a glow inside each polygon (adds the glow)'
-    })
-    .option('inner-glow-width', {
-      describe: 'how far the inner glow reaches, in px (default is 10)'
-    })
-    .option('inner-glow-opacity', {
-      describe: 'opacity of the inner glow, 0-1'
-    })
-    .option('stroke', {
-      describe: 'stroke color'
-    })
-    .option('stroke-width', {
-      describe: 'stroke width'
-    })
-    .option('stroke-dasharray', {
-      describe: 'stroke dashes. Examples: "4" "2 4"'
-    })
-    .option('stroke-linecap', {
-      describe: 'line caps: round, butt or square (dashed lines default to butt)'
-    })
-    .option('stroke-opacity', {
-      describe: 'stroke opacity'
-    })
-    .option('line-start', {
-      describe: 'marker at the start of each line: arrow, open-arrow, dot or none'
-    })
-    .option('line-end', {
-      describe: 'marker at the end of each line: arrow, open-arrow, dot or none'
-    })
-    .option('line-end-size', {
-      describe: 'length of an arrowhead\'s sides in px (default grows with stroke-width)'
-    })
-    .option('line-fade', {
-      describe: 'share of a line (0-1) that fades in from its tail'
-    })
-    .option('opacity', {
-      describe: 'opacity; example: 0.5'
-    })
-    .option('r', {
-      describe: 'symbol radius (set this to export points as circles)',
-    })
-    .option('icon', {
-      describe: 'point icon shape; one of: circle, square, ring, star'
-    })
-    .option('icon-size', {
-      describe: 'point icon size in pixels'
-    })
-    .option('icon-color', {
-      describe: 'point icon color (defaults to fill color, then black)'
-    })
-    .option('icon-opacity', {
-      describe: 'point icon opacity, 0-1'
-    })
+    .options(featureStyleOpts)
     // deprecated in favor of -labels; accepted, but left out of the help
     .options(getHiddenLabelStyleOpts())
     .option('target', targetOpt);
@@ -2416,21 +2410,6 @@ export function getOptionParser() {
   // Experimental commands
   parser.section('Experimental commands (may give unexpected results)');
 
-  parser.command('add-shape')
-    .describe('')
-    .option('geojson', {
-
-    })
-    .option('coordinates', {
-
-    })
-    .option('properties', {
-
-    })
-    .option('name', nameOpt)
-    .option('target', targetOpt)
-    .option('no-replace', noReplaceOpt);
-
   // used by GUI
   parser.command('add-label')
     // .describe('add a map label to a point layer')
@@ -2450,19 +2429,6 @@ export function getOptionParser() {
     .option('name', nameOpt)
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
-
-  // used by GUI
-  parser.command('add-layer')
-    // .describe('create an empty layer, to add shapes or labels to')
-    .option('geometry-type', {
-      describe: 'point, polygon or polyline'
-    })
-    .option('name', {
-      describe: 'name of the new layer'
-    })
-    // only the CRS is taken from the target, so that a shape drawn at a
-    // projected coordinate is not read as lat-long
-    .option('target', targetOpt);
 
   // used by GUI
   parser.command('update-frame')

@@ -29,7 +29,10 @@ test('the polygons link creates a polygon layer and opens the drawing tool',
     var lyr = await getLayerInfo(page, 'polygons');
     expect(lyr).not.toBeNull();
     expect(lyr.geometry_type).toBe('polygon');
-    expect(await getInteractionMode(page)).toBe('edit_polygons');
+    // the polygon mode, with drawing armed from its toolbar
+    expect(await getInteractionMode(page)).toBe('polygon_style');
+    expect(await getToolMode(page)).toBe('edit_polygons');
+    await expect(page.locator('.floating-toolbar.polygon-draw-toolbar .floating-toolbar-btn.selected')).toBeVisible();
     expect(errors).toEqual([]);
   });
 
@@ -49,7 +52,8 @@ test('each link opens the tool that draws the kind of feature it names',
 
     await clickNewLayerLink(page, 'lines');
     expect((await getLayerInfo(page, 'lines')).geometry_type).toBe('polyline');
-    expect(await getInteractionMode(page)).toBe('edit_lines');
+    expect(await getInteractionMode(page)).toBe('line_style');
+    expect(await getToolMode(page)).toBe('edit_lines');
     expect(errors).toEqual([]);
   });
 
@@ -212,6 +216,12 @@ async function getModeMenuItems(page) {
 async function getInteractionMode(page) {
   return page.evaluate(function() {
     return window.mapshaper.undoTest.getInteractionMode();
+  });
+}
+
+async function getToolMode(page) {
+  return page.evaluate(function() {
+    return window.mapshaper.undoTest.getToolMode();
   });
 }
 

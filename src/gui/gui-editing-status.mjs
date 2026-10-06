@@ -6,10 +6,13 @@
 // o.newLabels    (label panel) a placement tool is armed with nothing
 //                selected, so the controls set the style of the next label
 // o.editingText  (label panel) a label is open for typing
+// o.newShapes    (line and polygon panel) drawing is armed, so the controls
+//                set the style of the next shape: 'lines' or 'polygons'
 export function formatEditingStatus(o) {
   var what = o.editingText ? 'this label' :
     o.selected > 0 ? o.selected + ' selected' :
     o.newLabels ? 'new labels' :
+    o.newShapes ? 'new ' + o.newShapes :
     o.total > 0 ? 'all' : 'none (empty layer)';
   return 'Editing: ' + what;
 }

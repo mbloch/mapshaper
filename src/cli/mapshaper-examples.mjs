@@ -62,6 +62,31 @@ const examples = {
   // Editing geometry
   // -------------------------------------------------------------------------
 
+  'add-layer': [
+    {
+      description: 'Create an empty line layer in the same CRS as a basemap',
+      command: 'basemap.shp -add-layer geometry-type=polyline name=routes'
+    }
+  ],
+
+  'add-shape': [
+    {
+      description: 'Draw a red line with an arrowhead into a layer named "routes"',
+      command: 'basemap.shp -add-layer geometry-type=polyline name=routes \\\n' +
+        '  -add-shape coordinates=0,0,5,2,10,0 stroke=#c00 stroke-width=2 \\\n' +
+        '  line-end=arrow target=routes'
+    },
+    {
+      description: 'Add a shaded triangle to a polygon layer named "zones"',
+      command: '-add-shape coordinates=0,0,10,0,5,8 closed fill=#ccd \\\n' +
+        '  stroke=#336 target=zones'
+    },
+    {
+      description: 'Continue the line that ends at 10,0 on to 15,5',
+      command: '-add-shape coordinates=10,0,15,5 extend target=routes'
+    }
+  ],
+
   affine: [
     {
       description: 'Nudge a layer 50m east and 200m north',

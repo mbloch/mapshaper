@@ -312,7 +312,8 @@ export function MshpMap(gui) {
   }
 
   function getGlobalStyleOptions(opts) {
-    var mode = gui.state.interaction_mode;
+    var mode = gui.interaction && gui.interaction.getToolMode ?
+      gui.interaction.getToolMode() : gui.state.interaction_mode;
     return Object.assign({
       darkMode: !!gui.state.dark_basemap,
       outlineMode: mode == 'vertices',

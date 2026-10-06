@@ -1,4 +1,4 @@
-import { isHexColor } from './gui-color-picker';
+import { toSixDigitHex } from './gui-color-picker';
 import { El } from './gui-el';
 import {
   claimFieldKeys, isTextInput, opensAMenu, releasePanelFocus
@@ -22,6 +22,10 @@ import { internal } from './gui-core';
 import { quoteCommandValue } from './gui-command-utils';
 import { ColorSchemePanel, getSchemeStripBackground } from './gui-color-scheme-panel';
 import { getLayerScheme } from './gui-color-scheme-model';
+import { FloatingToolbar } from './gui-floating-toolbar';
+import {
+  getNewShapeStyle, updateNewShapeStyle, clearNewShapeStyle
+} from './gui-shape-style-state';
 
 var savedStylesKey = 'layer_style_presets';
 var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'line-fade', 'fill', 'fill-opacity', 'fill-pattern'].concat(internal.svg.glowFields);
@@ -77,16 +81,28 @@ export function LayerStyleTool(gui) {
   var targetLayer = null;
   // What the arrowhead switch turns on, for lines that have no heads
   var lastArrow = {shape: 'arrow', position: 'end', fade: 0};
+  var lineToolbar, polygonToolbar, drawLineBtn, drawPolygonBtn, reshapeLineBtn, reshapePolygonBtn;
 
   initPanel();
   hit = gui.map.getHitControl && gui.map.getHitControl();
   if (hit) {
     hit.on('change', function(e) {
-      if (targetLayer && (e.mode == 'line_style' || e.mode == 'polygon_style')) {
+      var mode = gui.interaction.getMode();
+      if (targetLayer && (mode == 'line_style' || mode == 'polygon_style')) {
         updateControls();
       }
     });
   }
+
+  // The toolbar arms drawing or reshaping. While drawing is armed and nothing
+  // is selected, the panel's controls set the style of the next shape drawn
+  // rather than restyling the layer (see gui-shape-style-state.mjs); a click
+  // on a shape selects it, and the controls style it, as when nothing is armed.
+  gui.on('interaction_tool_change', function() {
+    if (!panel.visible()) return;
+    updateToolbar();
+    updateControls();
+  });
 
   this.open = function(lyr, dataset) {
     if (!layerCanBeStyled(lyr)) return;
@@ -123,18 +139,78 @@ export function LayerStyleTool(gui) {
     patternControl.reset();
     applyDefaultLineStyle();
     panel.show();
+    updateToolbar();
     updateControls();
   }
 
   function turnOff() {
     schemePanel.close();
     panel.hide();
+    if (lineToolbar) lineToolbar.hide();
+    if (polygonToolbar) polygonToolbar.hide();
     strokeControl.picker.hide();
     fillControl.picker.hide();
     patternControl.hidePicker();
     patternControl.reset();
     glowControl.reset();
     targetLayer = null;
+  }
+
+  // One toolbar for each geometry type, since the buttons' icons and tooltips
+  // name what they act on
+  function updateToolbar() {
+    var geom = targetLayer && targetLayer.geometry_type;
+    var tool = gui.interaction.getArmedTool();
+    if (geom == 'polyline') {
+      getLineToolbar().show();
+      drawLineBtn.setSelected(tool == 'draw');
+      reshapeLineBtn.setSelected(tool == 'reshape');
+    } else if (lineToolbar) {
+      lineToolbar.hide();
+    }
+    if (geom == 'polygon') {
+      getPolygonToolbar().show();
+      drawPolygonBtn.setSelected(tool == 'draw');
+      reshapePolygonBtn.setSelected(tool == 'reshape');
+    } else if (polygonToolbar) {
+      polygonToolbar.hide();
+    }
+  }
+
+  function getLineToolbar() {
+    if (!lineToolbar) {
+      lineToolbar = new FloatingToolbar(gui, {name: 'line-draw-toolbar'});
+      drawLineBtn = lineToolbar.addButton('#draw-line-icon', {tooltip: 'Draw lines'})
+        .on('click', function() { toggleTool('draw'); });
+      reshapeLineBtn = lineToolbar.addButton('#reshape-icon', {tooltip: 'Reshape lines'})
+        .on('click', function() { toggleTool('reshape'); });
+    }
+    return lineToolbar;
+  }
+
+  function getPolygonToolbar() {
+    if (!polygonToolbar) {
+      polygonToolbar = new FloatingToolbar(gui, {name: 'polygon-draw-toolbar'});
+      drawPolygonBtn = polygonToolbar.addButton('#draw-polygon-icon', {tooltip: 'Draw polygons'})
+        .on('click', function() { toggleTool('draw'); });
+      reshapePolygonBtn = polygonToolbar.addButton('#reshape-icon', {tooltip: 'Reshape polygons'})
+        .on('click', function() { toggleTool('reshape'); });
+    }
+    return polygonToolbar;
+  }
+
+  function toggleTool(tool) {
+    gui.interaction.setArmedTool(gui.interaction.getArmedTool() == tool ? null : tool);
+  }
+
+  // The controls set the style of the next shape drawn
+  function editingNewShapes() {
+    return !!targetLayer && gui.interaction.drawingIsArmed() && getSelectionIds().length === 0;
+  }
+
+  function setNewShapeStyle(styles) {
+    updateNewShapeStyle(gui, targetLayer.geometry_type, styles);
+    updateControls();
   }
 
   function initPanel() {
@@ -177,9 +253,7 @@ export function LayerStyleTool(gui) {
     makePanelActionButton(buttonRow, 'Clear style', clearLayerStyle);
 
     patternControl = new PatternFillControl(panel, {
-      getRecords: function() {
-        return targetLayer && targetLayer.data ? targetLayer.data.getRecords() : [];
-      },
+      getRecords: getTargetRecords,
       getTargetIds: getTargetIds,
       applyEdits: runStyleEdits,
       revert: updateControls,
@@ -266,6 +340,9 @@ export function LayerStyleTool(gui) {
   function openColorSchemePanel() {
     syncTargetLayer();
     if (!targetLayer || targetLayer.geometry_type != 'polygon') return;
+    // a scheme colors the polygons there are, not the next one drawn, and
+    // takes the whole layer, leaving nothing for a tool to act on
+    gui.interaction.setArmedTool(null);
     fillControl.picker.hide();
     strokeControl.picker.hide();
     patternControl.hidePicker();
@@ -340,15 +417,21 @@ export function LayerStyleTool(gui) {
   }
 
   // A cap that is the line's default is unset rather than stored, so that a
-  // layer left at Round gets no stroke-linecap column.
+  // layer left at Round gets no stroke-linecap column. As with the width,
+  // dashes and arrowheads, a cap set on lines with no stroke brings the default
+  // stroke, since a styled line with no stroke is not drawn.
   function applyLineCap(cap) {
     var records = getTargetRecords();
+    var addStroke = styleFieldIsUnsetForTargets('stroke');
     var edits = [];
     getTargetIds().forEach(function(id) {
       var rec = records[id] || {};
       var value = cap == getDefaultLineCap(rec) ? '' : cap;
+      var styles;
       if (value != (rec['stroke-linecap'] || '')) {
-        edits.push({id: id, styles: [['stroke-linecap', value]]});
+        styles = [['stroke-linecap', value]];
+        if (value && addStroke) styles.push(['stroke', strokeControl.defaultColor]);
+        edits.push({id: id, styles: styles});
       }
     });
     runStyleEdits(edits);
@@ -631,7 +714,10 @@ export function LayerStyleTool(gui) {
     arrowControl.fadeField.setDisabled(arrowIds.length === 0);
   }
 
+  // With drawing armed, the one target is the next shape, whose record is the
+  // new-shape style (see getTargetIds())
   function getTargetRecords() {
+    if (editingNewShapes()) return [getNewShapeStyle(gui, targetLayer.geometry_type)];
     return targetLayer && targetLayer.data ? targetLayer.data.getRecords() : [];
   }
 
@@ -672,7 +758,7 @@ export function LayerStyleTool(gui) {
     control.showColor(value);
     updateOpacityControl(control);
     // Nothing for the picker to sit on when the selection has no one colour.
-    if (!isHexColor(value)) control.picker.hide();
+    if (!toSixDigitHex(value)) control.picker.hide();
   }
 
   // A selection whose colours disagree still has colours, so an opacity unset
@@ -753,6 +839,10 @@ export function LayerStyleTool(gui) {
     releaseFocus();
     syncTargetLayer();
     var ids = getTargetIds();
+    if (editingNewShapes()) {
+      setNewShapeStyle(styles);
+      return;
+    }
     if (!gui.console || !targetLayer || ids.length === 0) return;
     runCommand(formatStyleCommand(styles, ids), 'Style layer');
   }
@@ -762,6 +852,13 @@ export function LayerStyleTool(gui) {
   function runStyleEdits(edits, title) {
     releaseFocus();
     syncTargetLayer();
+    if (editingNewShapes()) {
+      // every edit is to the one target, the next shape
+      setNewShapeStyle(edits.reduce(function(memo, edit) {
+        return memo.concat(edit.styles);
+      }, []));
+      return;
+    }
     if (!gui.console || !targetLayer || edits.length === 0) return;
     runCommand(formatStyleEditCommands(edits), title || 'Style layer');
   }
@@ -786,7 +883,7 @@ export function LayerStyleTool(gui) {
 
   function applyDefaultLineStyle() {
     var styles = [];
-    if (!targetLayer || targetLayer.geometry_type != 'polyline') return;
+    if (!targetLayer || targetLayer.geometry_type != 'polyline' || editingNewShapes()) return;
     if (styleFieldIsUnsetForTargets('stroke-width')) {
       styles.push(['stroke-width', 1]);
     }
@@ -818,6 +915,8 @@ export function LayerStyleTool(gui) {
   function runCommand(cmd, title) {
     runGuiEditCommand(gui, cmd, {
       title: title,
+      // the layer is the one the drawing tool edits in this mode
+      changesEditTarget: true,
       onDone: updateControls
     });
   }
@@ -886,6 +985,11 @@ export function LayerStyleTool(gui) {
   function clearLayerStyle() {
     var parts = ['-style clear'];
     syncTargetLayer();
+    if (editingNewShapes()) {
+      clearNewShapeStyle(gui, targetLayer.geometry_type);
+      updateControls();
+      return;
+    }
     if (!gui.console || !targetLayer) return;
     addTargetOption(parts);
     runCommand(parts.join(' '), 'Clear style');
@@ -898,7 +1002,8 @@ export function LayerStyleTool(gui) {
   }
 
   function getCommonStyleValue(field, idsArg) {
-    var records = targetLayer && targetLayer.data && targetLayer.data.getRecords();
+    var records = editingNewShapes() || targetLayer && targetLayer.data ?
+      getTargetRecords() : null;
     var ids;
     var value, val;
     if (!records) return '';
@@ -920,7 +1025,8 @@ export function LayerStyleTool(gui) {
   }
 
   function styleFieldIsUnsetForTargets(field) {
-    var records = targetLayer && targetLayer.data && targetLayer.data.getRecords();
+    var records = editingNewShapes() || targetLayer && targetLayer.data ?
+      getTargetRecords() : null;
     var ids = getTargetIds();
     var val;
     if (!records) return true;
@@ -952,6 +1058,7 @@ export function LayerStyleTool(gui) {
   function getTargetIds() {
     var ids = getSelectionIds();
     if (!targetLayer) return [];
+    if (editingNewShapes()) return [0];
     return ids.length > 0 ? ids : getAllFeatureIds(targetLayer);
   }
 
@@ -964,9 +1071,11 @@ export function LayerStyleTool(gui) {
   // disabled rather than left to do nothing.
   function updateEditingStatus(count) {
     var total = targetLayer ? internal.getFeatureCount(targetLayer) : 0;
-    editingStatus.text(formatEditingStatus({selected: count, total: total}));
+    var newShapes = editingNewShapes() ?
+      (targetLayer.geometry_type == 'polygon' ? 'polygons' : 'lines') : null;
+    editingStatus.text(formatEditingStatus({selected: count, total: total, newShapes: newShapes}));
     clearLink.classed('hidden', count === 0);
-    panel.classed('no-targets', total === 0);
+    panel.classed('no-targets', total === 0 && !newShapes);
   }
 
   function getActiveLayer() {

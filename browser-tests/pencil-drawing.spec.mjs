@@ -22,9 +22,21 @@ test('a dragged stroke is smoothed, pinned at both ends, and undone in one step'
     await jitteryClickAt(page, b);
     var snapshots = [];
     await dragThrough(page, wave, async function(i) {
-      if (i % 5 === 0) snapshots.push({pointer: wave[i], path: (await getPaths(page, 'lines'))[0][0]});
+      if (i % 5 === 0) snapshots.push({pointer: wave[i], path: await getPendingPath(page)});
     });
+    // the path being drawn is not in the layer yet
+    expect(await getPaths(page, 'lines')).toEqual([]);
+
+    // while drawing, one undo takes back the whole stroke, and redo puts it back
+    var pending = await getPendingPath(page);
+    await undo(page);
+    expect((await getPendingPath(page)).length).toBe(3); // a, b and the pointer
+    await redo(page);
+    expect(await getPendingPath(page)).toEqual(pending);
+
     await page.keyboard.press('Enter');
+    await expect.poll(() => getShapeCount(page, 'lines')).toBe(1);
+    expect(await getPendingPath(page)).toBe(null);
 
     var path = (await getPaths(page, 'lines'))[0][0];
     // the curve is placed during the drag, a little behind the pointer, and
@@ -48,13 +60,79 @@ test('a dragged stroke is smoothed, pinned at both ends, and undone in one step'
     expect(maxTurn(stroke)).toBeLessThan(maxTurn(pixelPath(wave)) / 2);
     expect(stroke.length).toBeGreaterThan(20);
 
-    // one undo takes back the whole stroke, and redo puts it back
+    // the line is created by a command, which is in the session history
+    var commands = await getSessionCommands(page);
+    expect(commands[commands.length - 1]).toMatch(/^-add-shape coordinates=[-\d.e,]+ target='lines'$/);
+
+    // once the line is finished, one undo takes back all of it, and redo puts it back
     await undo(page);
-    expect((await getPaths(page, 'lines'))[0][0].length).toBe(2);
+    expect(await getShapeCount(page, 'lines')).toBe(0);
     await redo(page);
-    expect((await getPaths(page, 'lines'))[0][0]).toEqual(path);
+    expectSamePath((await getPaths(page, 'lines'))[0][0], path);
     expect(errors).toEqual([]);
   });
+
+test('drawing a line, reshaping it and drawing another are undone in order',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+    await clickNewLayerLink(page, 'lines');
+    var box = await getMapBox(page);
+    var a = mapPoint(box, 0.15, 0.6);
+    var b = mapPoint(box, 0.35, 0.6);
+    var b2 = [b[0], b[1] + 40];
+    await clickAt(page, a);
+    await clickAt(page, b);
+    await page.keyboard.press('Enter');
+    await expect.poll(() => getShapeCount(page, 'lines')).toBe(1);
+    var line1 = (await getPaths(page, 'lines'))[0][0];
+
+    // drag the end of the first line, with the reshape tool
+    await clickToolButton(page, 'Reshape lines');
+    await page.mouse.move(b[0] + 20, b[1] + 20);
+    await page.mouse.move(b[0], b[1], {steps: 4});
+    await dragThrough(page, [b, [b[0], b[1] + 20], b2]);
+    var reshaped = (await getPaths(page, 'lines'))[0][0];
+    expectNear(reshaped[1], toMap(box, b2));
+
+    await clickToolButton(page, 'Draw lines');
+    await clickAt(page, mapPoint(box, 0.15, 0.8));
+    await clickAt(page, mapPoint(box, 0.35, 0.8));
+    await page.keyboard.press('Enter');
+    await expect.poll(() => getShapeCount(page, 'lines')).toBe(2);
+
+    await undo(page);
+    expect(await getShapeCount(page, 'lines')).toBe(1);
+    expectSamePath((await getPaths(page, 'lines'))[0][0], reshaped);
+    await undo(page);
+    expectSamePath((await getPaths(page, 'lines'))[0][0], line1);
+    await undo(page);
+    expect(await getShapeCount(page, 'lines')).toBe(0);
+
+    await redo(page);
+    await redo(page);
+    expectSamePath((await getPaths(page, 'lines'))[0][0], reshaped);
+    await redo(page);
+    expect(await getShapeCount(page, 'lines')).toBe(2);
+    expect(errors).toEqual([]);
+  });
+
+test('undoing the first vertex of a path abandons it', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  await clickNewLayerLink(page, 'lines');
+  var box = await getMapBox(page);
+  await clickAt(page, mapPoint(box, 0.15, 0.6));
+  await clickAt(page, mapPoint(box, 0.35, 0.6));
+  await undo(page);
+  expect((await getPendingPath(page)).length).toBe(2); // first vertex and the pointer
+  await undo(page);
+  expect(await getPendingPath(page)).toBe(null);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(150);
+  expect(await getShapeCount(page, 'lines')).toBe(0);
+  expect(errors).toEqual([]);
+});
 
 test('a stroke that returns to the start of a polygon closes it',
   async function({page}) {
@@ -76,15 +154,14 @@ test('a stroke that returns to the start of a polygon closes it',
     }
     await dragThrough(page, [mapPoint(box, 0.5, 0.6)].concat(arc));
 
-    var info = await getLayerInfo(page, 'polygons');
-    expect(info.shapeCount).toBe(1);
+    await expect.poll(() => getShapeCount(page, 'polygons')).toBe(1);
     var ring = (await getPaths(page, 'polygons'))[0][0];
     expect(ring[0]).toEqual(ring[ring.length - 1]);
     expect(ring.length).toBeGreaterThan(10);
     expect(errors).toEqual([]);
   });
 
-test('vertices are marked on a completed path under the pointer, not on the path being drawn',
+test('vertices are marked on a path under the pointer when reshaping, not on the path being drawn',
   async function({page}) {
     var errors = collectPageErrors(page);
     await loadFixture(page, FIXTURE);
@@ -110,7 +187,8 @@ test('vertices are marked on a completed path under the pointer, not on the path
     await page.keyboard.press('Enter');
     expect(drawnWithVertices).toEqual([]);
 
-    // hovering over the completed path marks its vertices
+    // with the reshape tool, hovering over the completed path marks its vertices
+    await clickToolButton(page, 'Reshape lines');
     var mid = [Math.round((a[0] + b[0]) / 2), a[1]];
     await page.mouse.move(mid[0], mid[1] + 20);
     await page.mouse.move(mid[0], mid[1], {steps: 4});
@@ -231,10 +309,22 @@ async function getPaths(page, name) {
   }, name);
 }
 
-async function getLayerInfo(page, name) {
+async function getPendingPath(page) {
+  return page.evaluate(function() {
+    return window.mapshaper.undoTest.getPendingPathPixels();
+  });
+}
+
+async function getShapeCount(page, name) {
   return page.evaluate(function(name) {
-    return window.mapshaper.undoTest.getLayerInfo(name);
+    return window.mapshaper.undoTest.getLayerInfo(name).shapeCount;
   }, name);
+}
+
+async function getSessionCommands(page) {
+  return page.evaluate(function() {
+    return window.mapshaper.undoTest.getSessionHistory().commands;
+  });
 }
 
 async function undo(page) {
@@ -243,6 +333,12 @@ async function undo(page) {
 
 async function redo(page) {
   await page.evaluate(function() { return window.mapshaper.undoTest.redo(); });
+}
+
+// tooltip: e.g. 'Draw lines', 'Reshape lines'
+async function clickToolButton(page, tooltip) {
+  await page.locator('.floating-toolbar .floating-toolbar-btn[data-tooltip="' + tooltip + '"]').click();
+  await page.waitForTimeout(150);
 }
 
 async function clickNewLayerLink(page, kind) {

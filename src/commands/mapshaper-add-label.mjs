@@ -4,7 +4,7 @@ import utils from '../utils/mapshaper-utils';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { mergeDatasetsIntoDataset } from '../dataset/mapshaper-merging';
-import { getColumnType } from '../datatable/mapshaper-data-utils';
+import { matchTargetFieldTypes } from '../datatable/mapshaper-match-field-types';
 import {
   parseLabelCoords, parseJsonArg, warnIfCurveIsUnprojected
 } from './mapshaper-label-geom';
@@ -63,54 +63,6 @@ export function addLabel(targetLayers, targetDataset, opts) {
   // opens with nothing loaded.
   merged[0].name = targetLyr.name;
   return merged;
-}
-
-// Makes the new label's values match the types the target layer already holds,
-// so that adding a label cannot be the thing that breaks a layer's schema.
-//
-// Only string and number are worth reconciling. Anything else in a style field
-// is odd enough that quietly rewriting it would hide a real problem.
-function matchTargetFieldTypes(d, targetLyr) {
-  var records = targetLyr && targetLyr.data ? targetLyr.data.getRecords() : null;
-  if (!records || records.length === 0) return;
-  Object.keys(d).forEach(function(key) {
-    var type = getColumnType(key, records);
-    var val = d[key];
-    if (!type || type === typeof val) return;
-    if (type == 'string' && utils.isNumber(val)) {
-      d[key] = String(val);
-    } else if (type == 'number' && utils.isString(val)) {
-      if (isFiniteString(val)) {
-        d[key] = Number(val);
-      } else {
-        stringifyColumn(key, records);
-      }
-    }
-  });
-}
-
-// Widens a column of numbers to strings, for a value that cannot be a number:
-// '0.45em' is a length with units, which is what a label position east of its
-// anchor expands to.
-//
-// Every number has a faithful string form, and these values are written out as
-// SVG attributes, so restating 0 as '0' changes nothing that is drawn or
-// exported. Narrowing the other way is what is not always possible, which is
-// why this is the direction the column moves.
-//
-// Reached by a layer whose dx column holds numbers -- written before label
-// positions stored dx as a string -- which would otherwise refuse every label
-// offered an em offset.
-function stringifyColumn(key, records) {
-  for (var i = 0; i < records.length; i++) {
-    if (records[i] && utils.isNumber(records[i][key])) {
-      records[i][key] = String(records[i][key]);
-    }
-  }
-}
-
-function isFiniteString(str) {
-  return str.trim() !== '' && utils.isFiniteNumber(Number(str));
 }
 
 // Both kinds of label are point features, so a non-point target can never

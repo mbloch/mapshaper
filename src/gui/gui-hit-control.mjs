@@ -11,7 +11,8 @@ export function HitControl(gui, ext, mouse) {
   var storedData = noHitData(); // may include additional data from SVG symbol hit (e.g. hit node)
   var selectionIds = [];
   var transientIds = []; // e.g. hit ids while dragging a box
-  var drawingId = -1; // kludge to allow hit detection and drawing (different feature ids)
+  var pendingPath = null; // display coords of a path being drawn (see setPendingPath())
+  var pendingPathStyle = null;
   var active = false;
   var targetLayer;
   var hitTest;
@@ -74,8 +75,10 @@ export function HitControl(gui, ext, mouse) {
     hitTest = getPointerHitTest(targetLayer, ext, interactionMode(), featureFilter);
   }
 
+  // what the pointer does in the mode (see getToolMode())
   function interactionMode() {
-    return gui.interaction.getMode();
+    return gui.interaction.getToolMode ? gui.interaction.getToolMode() :
+      gui.interaction.getMode();
   }
 
   function turnOn(mode) {
@@ -89,14 +92,19 @@ export function HitControl(gui, ext, mouse) {
       active = false;
       hitTest = null;
       pinnedOn = false;
-      drawingId = -1;
+      pendingPath = null;
     }
   }
 
+  // The drawing tool selects features itself (see setSelectionIds()), since a
+  // click there may instead start or extend a path. So its modes are
+  // selectable, which keeps the selection apart from the hovered feature, but
+  // not clickable.
   function selectable() {
     var mode = interactionMode();
     return mode == 'selection' || mode == 'label' || mode == 'label_style' ||
-      mode == 'point_style' || mode == 'line_style' || mode == 'polygon_style';
+      mode == 'point_style' || mode == 'line_style' || mode == 'polygon_style' ||
+      drawingMode(mode);
   }
 
   function pinnable() {
@@ -107,7 +115,16 @@ export function HitControl(gui, ext, mouse) {
   function draggable() {
     var mode = interactionMode();
     return mode == 'vertices' || mode == 'edit_points' || mode == 'label' ||
-      mode == 'edit_lines' || mode == 'edit_polygons';
+      lineToolMode(mode);
+  }
+
+  function drawingMode(mode) {
+    return mode == 'edit_lines' || mode == 'edit_polygons';
+  }
+
+  // the modes of the line and polygon tools (gui-draw-lines2.mjs)
+  function lineToolMode(mode) {
+    return drawingMode(mode) || mode == 'reshape_lines' || mode == 'reshape_polygons';
   }
 
   function clickable() {
@@ -146,9 +163,12 @@ export function HitControl(gui, ext, mouse) {
   // Replaces the selection outright, for a mode that decides what is selected
   // itself rather than letting a click decide -- the label tool putting a label
   // back in the selection when its text editing session ends.
-  self.setSelectionIds = function(ids) {
+  // opts.keepHover: leave the hovered feature as it is, for a tool that changes
+  // the selection with a click and reads the hovered feature on the next one
+  self.setSelectionIds = function(ids, opts) {
+    var hoverId = opts && opts.keepHover && !storedData.pinned ? storedData.id : -1;
     selectionIds = utils.uniq(ids || []);
-    updateSelectionState({ids: selectionIds.concat(), id: -1, pinned: false});
+    updateSelectionState({ids: selectionIds.concat(), id: hoverId, pinned: false});
   };
 
   self.setPinning = function(val) {
@@ -166,24 +186,19 @@ export function HitControl(gui, ext, mouse) {
     }
   };
 
-  // manually set the selected feature id(s)
-  // used when hit detection is turned off, e.g. 'drawing' mode
-  self.setDrawingId = function(id) {
-    if (id == drawingId) return;
-    drawingId = id >= 0 ? id : -1;
-    updateHitTest(function(shpId) {
-      return shpId != id;
-    });
-    self.triggerChangeEvent();
+  // Shows a path that is being drawn and is not yet part of the target layer.
+  // coords: [[x, y], ...] display coordinates, or null to remove the path
+  // style: (optional) SVG style properties to draw it with, e.g. {stroke: 'red'}
+  self.setPendingPath = function(coords, style) {
+    if (!pendingPath && !coords) return;
+    pendingPath = coords && coords.length > 0 ? coords : null;
+    pendingPathStyle = pendingPath && style || null;
+    triggerChangeEvent();
   };
 
   self.triggerChangeEvent = triggerChangeEvent;
 
   self.getHitState = getHitState;
-
-  self.clearDrawingId = function() {
-    self.setDrawingId(-1);
-  };
 
   self.setHoverVertex = function(p, type) {
     var p2 = storedData.hit_coordinates;
@@ -279,6 +294,16 @@ export function HitControl(gui, ext, mouse) {
     } else {
       turnOff();
     }
+    gui.dispatchEvent('map-needs-refresh');
+  });
+
+  // Arming a tool changes what a click means, so the selection made for
+  // styling goes, and the hit test is remade for the tool.
+  gui.on('interaction_tool_change', function() {
+    if (!active) return;
+    clearSelectionSilently();
+    updateHitTest();
+    triggerChangeEvent();
     gui.dispatchEvent('map-needs-refresh');
   });
 
@@ -389,10 +414,18 @@ export function HitControl(gui, ext, mouse) {
         selectionIds = styleSelectionMode() ?
           selectStyleFeature(id, e) :
           toggleId(id, selectionIds);
+      } else if (shapeStyleMode(interactionMode()) && !eventUsesAdditiveSelection(e)) {
+        selectionIds = []; // a click off the selection deselects, as in Draw
       }
       hitData.ids = selectionIds;
     }
     return hitData;
+  }
+
+  // The line and polygon style modes select as their Draw tool does (see
+  // selectShape() in gui-draw-lines2.mjs)
+  function shapeStyleMode(mode) {
+    return mode == 'line_style' || mode == 'polygon_style';
   }
 
   function styleSelectionMode() {
@@ -410,8 +443,9 @@ export function HitControl(gui, ext, mouse) {
     // because the label tool needs a click on the one selected label to mean
     // "edit this label's text"; shift-click is what removes one. The other
     // style modes keep the older rule, where a plain click on a selected
-    // feature deselects it.
-    if (interactionMode() == 'label') {
+    // feature deselects it, except the line and polygon modes, where a click
+    // off the selection deselects instead.
+    if (interactionMode() == 'label' || shapeStyleMode(interactionMode())) {
       return [id];
     }
     if (selectionIds.includes(id)) {
@@ -501,9 +535,11 @@ export function HitControl(gui, ext, mouse) {
     if (type == 'click' && gui.contextMenu.isOpen()) {
       return false;
     }
-    if (type == 'click' &&
-      (mode == 'edit_lines' || mode == 'edit_polygons')) {
+    if (type == 'click' && drawingMode(mode)) {
       return true; // click events are triggered even if no shape is hit
+    }
+    if (type == 'click' && shapeStyleMode(mode) && selectionIds.length > 0) {
+      return true; // a click off the selection deselects
     }
     if (type == 'click' && mode == 'edit_points') {
       return true;
@@ -521,8 +557,7 @@ export function HitControl(gui, ext, mouse) {
       // all, and a drag that needed a hit first could never start there.
       return true;
     }
-    if ((mode == 'edit_lines' || mode == 'edit_polygons') &&
-        (type == 'hover' || type == 'dblclick')) {
+    if (lineToolMode(mode) && (type == 'hover' || type == 'dblclick')) {
       return true; // special case -- using hover for line drawing animation
     }
     if (mode == 'snip_lines' && (type == 'hover' || type == 'click')) {
@@ -552,7 +587,7 @@ export function HitControl(gui, ext, mouse) {
 
   function possiblyStopPropagation(e) {
     var mode = interactionMode();
-    if (mode == 'edit_lines' || mode == 'edit_polygons' || mode == 'snip_lines') {
+    if (lineToolMode(mode) || mode == 'snip_lines') {
       // handled conditionally in the control
       return;
     }
@@ -613,13 +648,9 @@ export function HitControl(gui, ext, mouse) {
       // add transient ids to any other hit ids
       data.ids = utils.uniq(transientIds.concat(data.ids || []));
     }
-    // when drawing, we want the overlay layer to show the path being currently
-    // drawn.
-    if (drawingId >= 0) {
-      // data.ids = [drawingId];
-      // data.id = drawingId;
-      data.ids = utils.uniq(data.ids.concat([drawingId]));
-      data.drawing_id = drawingId;
+    if (pendingPath) {
+      data.pending_path = pendingPath;
+      data.pending_path_style = pendingPathStyle;
     }
     if (pinnedOn) {
       data.pinned = true;

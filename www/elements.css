@@ -46,7 +46,8 @@ div.tip {
 	border-top-color: #fff;
 	border-width: 8px;
 	left: 50%;
-	margin-left: -8px;
+	/* --tip-tail-shift: set by fitTipToPage() when the bubble is moved */
+	margin-left: calc(-8px + var(--tip-tail-shift, 0px));
 }
 
 /* tail bg */
@@ -55,7 +56,7 @@ div.tip {
 	border-top-color: #999;
 	border-width: 9px;
 	left: 50%;
-	margin-left: -9px;
+	margin-left: calc(-9px + var(--tip-tail-shift, 0px));
 }
 
 

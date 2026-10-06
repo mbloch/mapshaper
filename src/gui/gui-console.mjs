@@ -510,6 +510,7 @@ export function Console(gui) {
       return getStoredUndoHistory(gui).addTransaction(tx, {
         flags: flags,
         entryPrefix: 'command-session',
+        changesEditTarget: true,
         onUndo: function() {
           gui.session.setCommandsActive(historyIds, false);
           if (callbacks.onUndo) callbacks.onUndo();
@@ -543,9 +544,20 @@ export function Console(gui) {
   function runMapshaperCommands(str, done, runOpts) {
     var session = runOpts && runOpts.session || null;
     var quiet = !(runOpts && runOpts.typed);
-    var commands;
+    // A command session is a panel's edits to the active layer, so it is
+    // taken to change the layer being edited, like a command that says so.
+    var changesEditTarget = !!(runOpts && runOpts.changesEditTarget) || !!session;
+    var commands, checkpoint;
     if (activeSession && activeSession != session) {
       activeSession.finish().then(function() {
+        runMapshaperCommands(str, done, runOpts);
+      });
+      return;
+    }
+    checkpoint = gui.undo && gui.undo.checkpointEditSession ?
+      gui.undo.checkpointEditSession(changesEditTarget) : null;
+    if (checkpoint) {
+      checkpoint.then(function() {
         runMapshaperCommands(str, done, runOpts);
       });
       return;
@@ -558,15 +570,22 @@ export function Console(gui) {
       commands = internal.runAndRemoveInfoCommands(commands);
       prepareRunCommands(commands);
     } catch (e) {
-      return done(e, {});
+      return finish(e, {});
     }
-    if (commands.length === 0) return done();
-    applyParsedCommands(commands, str, session, quiet, function(err, flags) {
+    if (commands.length === 0) return finish();
+    applyParsedCommands(commands, str, session, quiet, changesEditTarget, function(err, flags) {
       if (flags) {
         model.updated(flags); // info commands do not return flags
       }
-      done(err, flags);
+      finish(err, flags);
     });
+
+    function finish(err, flags) {
+      if (gui.undo && gui.undo.restartEditSession) {
+        gui.undo.restartEditSession();
+      }
+      done(err, flags);
+    }
   }
 
   function prepareRunCommands(commands) {
@@ -587,7 +606,7 @@ export function Console(gui) {
     });
   }
 
-  function applyParsedCommands(commands, commandString, session, quiet, done) {
+  function applyParsedCommands(commands, commandString, session, quiet, changesEditTarget, done) {
     var active = model.getActiveLayer(),
         prevArcs = active?.dataset.arcs,
         prevTable = active?.layer.data,
@@ -675,7 +694,7 @@ export function Console(gui) {
         done(err, flags);
         return;
       }
-      addCommandUndoHistory(undoTransaction, err, flags, historyIds).then(function(undoTiming) {
+      addCommandUndoHistory(undoTransaction, err, flags, historyIds, changesEditTarget).then(function(undoTiming) {
         logCommandTiming(commandString, commands, err, Date.now() - commandStart, undoTiming);
         done(err, flags);
       }).catch(function(e) {
@@ -715,15 +734,31 @@ export function Console(gui) {
     }
   }
 
-  async function addCommandUndoHistory(tx, err, flags, historyIds) {
+  // The command's changes are on the map, and in the session history, before
+  // its undo state is stored, so an Undo pressed in between waits for the
+  // state rather than taking back the command before it.
+  async function addCommandUndoHistory(tx, err, flags, historyIds, changesEditTarget) {
+    var promise, unregister;
     if (!isCommandUndoEnabled()) {
       discardHistoryAfterUnrecordedCommand();
       return {skipped: true};
     }
+    promise = storeCommandUndoState(tx, err, flags, historyIds, changesEditTarget);
+    unregister = gui.undo && gui.undo.addPendingCommit ?
+      gui.undo.addPendingCommit(function() { return promise; }) : null;
+    try {
+      return await promise;
+    } finally {
+      if (unregister) unregister();
+    }
+  }
+
+  function storeCommandUndoState(tx, err, flags, historyIds, changesEditTarget) {
     return getStoredUndoHistory(gui).addTransaction(tx, {
       error: err,
       flags: flags,
       entryPrefix: 'command',
+      changesEditTarget: changesEditTarget,
       onUndo: function() {
         gui.session.setCommandsActive(historyIds, false);
       },

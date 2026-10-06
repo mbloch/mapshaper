@@ -270,7 +270,10 @@ when the panel closes.
 - Nothing else may add an undo entry while a session's is pending (the rule
   above). Any other console command finishes the session before it runs, and
   `Undo#undo()` and `redo()` wait for pending commits registered with
-  `Undo#addPendingCommit()`. A GUI action that adds an entry directly, without
+  `Undo#addPendingCommit()`. Every console command registers one while its
+  entry is being stored, since its changes and its session history line come
+  first: an Undo pressed just after drawing a shape would otherwise take back
+  the edit before it. A GUI action that adds an entry directly, without
   running a command (layer-menu delete or rename, an import), does not finish
   a session first. The color scheme panel closes, and finishes its session,
   when the interaction mode or the active layer changes, but by then the
@@ -319,6 +322,41 @@ checkbox can be flipped in between — a simplify session or an import easily
 straddles the moment. `addUndoTransactionToHistory()` and
 `addCommandUndoHistory()` therefore re-check the setting when they add, so a
 straggler cannot refill a history that was just emptied on purpose.
+
+### Edit sessions and commands
+
+An editing mode's in-memory states are folded into one stored entry when the
+mode ends, by the edit session in `gui-undo.mjs`. The session captures the
+layer being edited when the mode starts, and its entry restores the layer as
+it was then. So a command run during the session that changes that layer --
+the line tool's `-add-shape` -- would be taken back too by an undo of the
+session's entry, and the same rule applies: the session must not span it.
+
+A GUI action whose command changes the layer being edited says so with
+`runGuiEditCommand(gui, cmd, {changesEditTarget: true})`. Before the command
+runs, `Undo#checkpointEditSession()` commits the session's edits so far as an
+entry of their own and ends the session; after it, `restartEditSession()`
+starts a new one from the data the command left. The command's entry carries
+the flag, and so do the session entries, so undoing or redoing either one
+while a session is open ends and restarts the session in the same way.
+
+Commands that leave the layer alone -- the scale bar panel's, say -- don't end
+the session, so its edits stay separate undo steps on either side of them. A
+session that has no in-memory states yet is ended and restarted around any
+command, since there is nothing to lose by it. Sessions are restarted only in
+modes whose tools edit the data directly (`closureEditModes` in
+`gui-undo.mjs`); in the style and label modes every edit is a command, and
+capturing the layer after each one would be wasted work. The check uses the
+tool mode, not the interaction mode: the line and polygon style modes edit the
+data directly only while the Reshape tool is armed (`reshape_lines`,
+`reshape_polygons`; see `line-tool-design.md`). The Draw tool's edits are all
+`-add-shape` commands. So a `-style` command run while Reshape is disarmed ends
+the session without restarting it, and arming Reshape
+(`interaction_tool_change`) starts a new one.
+
+Ending a session in the middle drops the in-memory states that could have been
+redone: after drawing a line, dragging one of its vertices, undoing the drag
+and then undoing the line, the drag can't be redone.
 
 ### Session Baselines
 

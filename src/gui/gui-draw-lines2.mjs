@@ -1,22 +1,19 @@
-import { stop, error, internal, geom, utils, mapshaper } from './gui-core';
+import { internal, geom } from './gui-core';
 import {
   updateVertexCoords,
   insertVertex,
   getVertexCoords,
-  deleteVertex,
-  appendVertex,
-  appendNewPath,
-  setVertexCoords,
-  deleteLastVertex,
-  deleteLastPath,
-  getLastArcLength,
-  getLastArcCoords,
-  getLastVertexCoords,
-  appendNewDataRecord
+  deleteVertex
   } from './gui-drawing-utils';
 import { translateDisplayPoint } from './gui-display-utils';
 import { showPopupAlert } from './gui-alert';
-import { addEmptyLayer } from './gui-add-layer';
+import { runGuiEditCommand } from './gui-edit-command';
+import { getAddShapeCommand, drawnPathIsValid } from './gui-draw-commands';
+import {
+  getNewShapeStyle, getNewShapeCommandStyle, getPendingPathStyle
+} from './gui-shape-style-state';
+import { layerHasDrawableStyle } from './gui-layer-styler';
+
 // pixel distance threshold for hovering near a vertex or segment midpoint
 var HOVER_THRESHOLD = 10;
 
@@ -25,21 +22,55 @@ var HOVER_THRESHOLD = 10;
 // a press as a click, so a press that stays this close adds only a click vertex.
 var STROKE_START_DIST = 6;
 
+// The line and polygon drawing tool.
+//
+// A path being drawn belongs to the tool, not to the layer: its vertices are
+// held here and drawn as an overlay (see getShapeEditingLayers() in
+// gui-overlay-styler.mjs), and the layer only changes when the path is
+// finished, by an -add-shape command. So a finished shape is one undo step and
+// one line of session history, and a path that is abandoned leaves no trace.
+// While a path is being drawn, Undo and Redo take back and restore the
+// vertices it has gained (see pendingUndo()).
+//
+// The tool has two modes, armed from the line or polygon style mode's toolbar
+// (see getToolMode() in gui-interaction-mode-control.mjs):
+//
+// Drawing ('edit_lines', 'edit_polygons'): a click on empty map starts a path.
+// A click on a shape selects it, for the style panel. On a line layer, a path
+// started on the end of a line extends that line (-add-shape extend), and
+// with Alt pressed a path starts a new line instead, from any vertex -- which
+// is how a T junction is made.
+//
+// Reshaping ('reshape_lines', 'reshape_polygons'): dragging, inserting and
+// deleting vertices. This edits the layer directly, with in-memory undo states
+// that are collapsed into one stored state by the undo edit session
+// (gui-undo.mjs).
 export function initLineEditing(gui, ext, hit) {
+  // The vertex the pointer is on, or the point on a path it would snap to:
+  //   {target, ids, point, displayPoint, type, extendable, ...}, plus
+  //   extends: (drawing) a path started here extends the line, featureId
   var hoverVertexInfo;
   var prevVertexAddedEvent;
-  var prevHoverEvent;
-  var initialArcCount = -1;
-  var initialShapeCount = -1;
-  var drawingId = -1; // feature id of path being drawn
-  var sessionCount = 0;
+  var lastHoverEvent = null; // for redoing the hover when Alt is pressed or released
+  var _active = false;
+  var shownInstructions = {};
   var alert;
+  // The path being drawn, or null:
+  //   data: vertices in the layer's CRS, which go into the -add-shape command
+  //   display: the same vertices in the display CRS, which is what is drawn
+  //   steps: number of vertices added by each edit, for undo
+  //   redo: edits taken back by undo, as arrays of {data, display} vertices
+  //   extendId: id of the line the path extends, or -1 for a new shape
+  var pending = null;
+  // Display coordinates of the pointer while a path is being drawn: the path
+  // is drawn through it to show what the next click would add.
+  var pointer = null;
   var stroke = null; // freehand stroke in progress (see startStroke())
   var blockDrag = false; // a drag finished a path; ignore it until the mouse is released
   var _dragging = false;
 
   function active() {
-    return initialArcCount >= 0;
+    return _active;
   }
 
   function vertexDragging() {
@@ -47,15 +78,33 @@ export function initLineEditing(gui, ext, hit) {
   }
 
   function pathDrawing() {
-    return drawingId > -1;
+    return !!pending;
+  }
+
+  function drawMode() {
+    var mode = active() && gui.interaction.getToolMode();
+    return mode == 'edit_lines' || mode == 'edit_polygons';
+  }
+
+  function reshapeMode() {
+    var mode = active() && gui.interaction.getToolMode();
+    return mode == 'reshape_lines' || mode == 'reshape_polygons';
+  }
+
+  // Alt (Option) starts a new line from any vertex, rather than extending one
+  function altKeyDown() {
+    return gui.keyboard.altIsPressed();
   }
 
   function cmdKeyDown() {
     return gui.keyboard.altIsPressed() || gui.keyboard.metaIsPressed();
   }
 
+  // A drag draws when it continues a path, or starts on a vertex the path
+  // would start from, or with Alt or Cmd pressed; otherwise it pans the map.
   function pencilIsActive() {
-    return active() && (cmdKeyDown() || pathDrawing()) && !vertexDragging();
+    return drawMode() && !vertexDragging() &&
+      (cmdKeyDown() || pathDrawing() || !!hoverVertexInfo);
   }
 
   function polygonMode() {
@@ -69,10 +118,17 @@ export function initLineEditing(gui, ext, hit) {
 
   gui.addMode('drawing_tool', turnOn, turnOff);
 
-  gui.on('interaction_mode_change', function(e) {
-    if (e.mode == 'edit_lines' || e.mode == 'edit_polygons') {
-      if (!gui.model.getActiveLayer()) {
-        addEmptyLayer(gui, undefined, e.mode == 'edit_lines' ? 'polyline' : 'polygon');
+  // The tool is on while the line or polygon mode has drawing or reshaping
+  // armed (see getToolMode() in gui-interaction-mode-control.mjs)
+  function onToolModeChange(e) {
+    var mode = e.tool_mode;
+    if (mode == 'edit_lines' || mode == 'edit_polygons' ||
+        mode == 'reshape_lines' || mode == 'reshape_polygons') {
+      if (active()) {
+        // switching between drawing and reshaping
+        finishPath();
+        clearHoverVertex();
+        showInstructions();
       }
       gui.enterMode('drawing_tool');
     } else if (gui.getMode() == 'drawing_tool') {
@@ -81,84 +137,39 @@ export function initLineEditing(gui, ext, hit) {
       turnOff();
     }
     updateCursor();
-  }, null, 10); // higher priority than hit control, so turnOff() has correct hit target
+  }
 
-  gui.on('redo_path_add', function(e) {
-    var target = hit.getHitTarget();
-    clearDrawingInfo();
-    appendNewPath(target, [e.p1, e.p2]);
-    deleteLastVertex(target); // second vertex is a placeholder
-    gui.undo.redo(); // add next vertex in the path
-    fullRedraw();
-  });
+  // higher priority than hit control, so turnOff() has correct hit target
+  gui.on('interaction_mode_change', onToolModeChange, null, 10);
+  gui.on('interaction_tool_change', onToolModeChange, null, 10);
 
-  // an undo during a stroke takes back the whole stroke
-  gui.on('undo_redo_pre', function() {
-    if (stroke) {
-      finishStroke();
-      blockDrag = true;
-    }
-  });
+  gui.on('new_shape_style_change', refreshPath);
 
-  gui.on('undo_path_add', function(e) {
-    deleteLastPath(hit.getHitTarget());
-    clearDrawingInfo();
-  });
-
-  // e.points: the vertices that the edit added to the path
-  gui.on('redo_path_extend', function(e) {
-    var target = hit.getHitTarget();
-    var points = e.points;
-    var last = points[points.length - 1];
-    if (pathDrawing()) {
-      // the vertex following the pointer becomes the first added vertex
-      setVertexCoords(target, [target.gui.displayArcs.getPointCount() - 1], points[0]);
-      points.slice(1).forEach(function(p) { appendVertex(target, p); });
-      appendVertex(target, prevHoverEvent ? pixToDataCoords(prevHoverEvent.x, prevHoverEvent.y) : last);
-      hit.triggerChangeEvent();
-    } else {
-      points.forEach(function(p) { appendVertex(target, p); });
-    }
-    if (e.shapes) {
-      replaceDrawnShapes(e.shapes);
-    }
-  });
-
-  gui.on('undo_path_extend', function(e) {
-    var target = hit.getHitTarget();
-    // while drawing, this also removes the vertex that follows the pointer,
-    // and the path's new last vertex takes its place
-    for (var i=0; i<e.points.length; i++) {
-      deleteLastVertex(target);
-    }
-    if (pathDrawing() && prevHoverEvent) {
-      updatePathEndpoint(pixToDataCoords(prevHoverEvent.x, prevHoverEvent.y));
-    }
-    if (e.shapes) {
-      replaceDrawnShapes(e.shapes);
-    }
-    if (getLastArcLength(target) < 2) {
-      gui.undo.undo(); // remove the path
-    }
+  gui.undo.addInterceptor({
+    undo: pendingUndo,
+    redo: pendingRedo
   });
 
   function turnOn() {
     if (active()) return;
-    var target = hit.getHitTarget();
-    initialArcCount = target.gui.displayArcs.size();
-    initialShapeCount = target.shapes.length;
-    if (sessionCount === 0) {
-      showInstructions();
-    }
-    sessionCount++;
+    _active = true;
+    showInstructions();
   }
 
+  // shown the first time each tool is used
   function showInstructions() {
-    var isMac = navigator.userAgent.includes('Mac');
-    var undoKey = isMac ? '⌘' : '^';
-    var msg = `Click to add points to a path or click and drag to draw continuously. Drag vertices to reshape a path.`;
-      alert = showPopupAlert(msg, null, {
-        non_blocking: true, max_width: '350px'});
+    var tool = reshapeMode() ? 'reshape' : 'draw';
+    var msg;
+    if (shownInstructions[tool]) return;
+    shownInstructions[tool] = true;
+    hideInstructions();
+    if (tool == 'reshape') {
+      msg = 'Drag a vertex to move it, or drag a point between vertices to add one. Right-click a vertex to delete it.';
+    } else {
+      msg = 'Click to add points to a path or drag to draw a smooth line.' +
+        (polygonMode() ? '' : ' Draw from the end of a line to extend it; hold Alt to start a new line from any vertex.');
+    }
+    alert = showPopupAlert(msg, null, {non_blocking: true, max_width: '350px'});
   }
 
   function hideInstructions() {
@@ -168,53 +179,18 @@ export function initLineEditing(gui, ext, hit) {
   }
 
   function turnOff() {
-    var removed = 0;
-    var mode = gui.interaction.getMode();
-    finishCurrentPath();
-    if (polygonMode()) {
-      removed = removeOpenPolygons();
-    }
-    clearDrawingInfo();
-    hideInstructions();
-    initialArcCount = -1;
-    initialShapeCount = -1;
-    if (mode == 'edit_lines' || mode == 'edit_polygons') {
-      // mode change was not initiated by interactive menu -- turn off interactivity
-      gui.interaction.turnOff();
-    }
-    updateCursor();
-    if (removed > 0) {
-      fullRedraw();
-    }
-  }
-
-  // returns number of removed shapes
-  function removeOpenPolygons() {
-    var target = hit.getHitTarget();
-    var arcs = target.gui.source.dataset.arcs;
-    var n = target.shapes.length;
-    // delete open paths
-    for (var i=initialShapeCount; i<n; i++) {
-      var shp = target.shapes[i];
-      if (!geom.pathIsClosed(shp[0], arcs)) { // assume open paths have one arc
-        target.shapes[i] = null;
-      }
-    }
-    // removes features with wrong winding order or null geometry
-    mapshaper.cmd.filterFeatures(target, arcs, {remove_empty: true, quiet: true});
-    return n - target.shapes.length;
-  }
-
-  // updates display arcs and redraws all layers
-  function fullRedraw() {
-    gui.model.updated({arc_count: true});
-  }
-
-  function clearDrawingInfo() {
-    hit.clearDrawingId();
-    drawingId = -1;
+    if (!active()) return;
+    finishPath();
     hoverVertexInfo = null;
-    prevVertexAddedEvent = prevHoverEvent = null;
+    prevVertexAddedEvent = null;
+    lastHoverEvent = null;
+    hideInstructions();
+    _active = false;
+    if (gui.interaction.getArmedTool()) {
+      // another GUI mode took over -- disarm, rather than leave the mode
+      // saying it is drawing with no tool to draw
+      gui.interaction.setArmedTool(null);
+    }
     updateCursor();
   }
 
@@ -224,11 +200,33 @@ export function initLineEditing(gui, ext, hit) {
     }
   }, null, 1);
 
+  // Esc finishes the path being drawn (below), then clears the selection, and
+  // then disarms the tool
+  gui.keyboard.on('keydown', function(e) {
+    if (e.keyName != 'esc' || !active() || pathDrawing() || vertexDragging()) return;
+    e.stopPropagation();
+    if (drawMode() && hit.getSelectionIds().length > 0) {
+      hit.setSelectionIds([], {keepHover: true});
+    } else {
+      gui.interaction.setArmedTool(null);
+    }
+  }, null, 9);
+
+  // Pressing or releasing Alt changes which vertex a path would start from
+  gui.keyboard.on('keydown', onAltKey);
+  gui.keyboard.on('keyup', onAltKey);
+
+  function onAltKey(e) {
+    var key = e.originalEvent && e.originalEvent.key;
+    if (key != 'Alt' || !drawMode() || !lastHoverEvent || vertexDragging()) return;
+    updateHover(lastHoverEvent);
+  }
+
   hit.on('contextmenu', function(e) {
     if (!active() || pathDrawing() || vertexDragging()) return;
     var target = hit.getHitTarget();
     var vInfo = hoverVertexInfo;
-    if (hoverVertexInfo?.type == 'vertex' && !vertexIsEndpoint(vInfo, target)) {
+    if (reshapeMode() && hoverVertexInfo?.type == 'vertex' && !vertexIsEndpoint(vInfo, target)) {
       e.deleteVertex = function() {
         deleteActiveVertex(e, vInfo);
       };
@@ -239,7 +237,8 @@ export function initLineEditing(gui, ext, hit) {
   });
 
   hit.on('dragstart', function(e) {
-    if (!active() || pathDrawing() || !hoverVertexInfo) return;
+    // a vertex, or a point between vertices, where a vertex is inserted
+    if (!reshapeMode() || !hoverVertexInfo) return;
     hideInstructions();
     e.originalEvent.stopPropagation();
     _dragging = true;
@@ -288,132 +287,93 @@ export function initLineEditing(gui, ext, hit) {
   // A stroke is smoothed as it is drawn. Vertices are placed some way behind
   // the pointer, where later samples no longer change the curve, and they stay
   // where they are. Between the last of them and the pointer, the path shows
-  // the pointer's own trace (see updateStrokeTail()).
+  // the pointer's own trace (see refreshPath()).
   //
   // The first vertex of the stroke (the anchor) is either the start of a new
-  // path or the vertex that was following the pointer when the mouse was
-  // pressed. Vertices are added to the path as they are placed, but the edit
-  // that records them is made when the stroke ends, so that an undo takes back
-  // the whole stroke.
+  // path or the point that the path was following the pointer to when the
+  // mouse was pressed. The stroke's vertices join the path as one edit when
+  // the stroke ends, so that an undo takes back the whole stroke.
   function startStroke(e) {
-    var target = hit.getHitTarget();
-    var anchorCommitted = !pathDrawing();
-    var n, anchor;
-    if (anchorCommitted) {
-      // the path_add edit records the anchor
+    var anchor, anchorIsNew;
+    if (!pathDrawing()) {
+      // from the vertex under the pointer when the mouse was pressed, if any
+      startPath(hoverVertexInfo ? getClickVertex(e) : pixToVertex(e.x - e.dragX, e.y - e.dragY),
+        getExtendId());
       hoverVertexInfo = null;
-      startNewPath(pixToDataCoords(e.x - e.dragX, e.y - e.dragY));
-    } else if (polygonMode() && hoverVertexInfo?.type == 'vertex') {
-      // pressing on a vertex closes the polygon, as a click does
-      extendCurrentPath([getLastVertexCoords(target)], true);
+      anchor = getLastVertex();
+      anchorIsNew = false;
+    } else if (polygonMode() && hoverVertexInfo?.closesPath) {
+      // pressing on the first vertex closes the polygon, as a click does
+      finishPath(true);
       blockDrag = true;
       return;
-    } else if (pointerIsOnLastVertex(target)) {
+    } else if (!pointer || pointerIsOnLastVertex()) {
       // continue from the last vertex rather than doubling it
-      anchorCommitted = true;
+      anchor = getLastVertex();
+      anchorIsNew = false;
     } else {
-      // leave the vertex under the pointer behind as the anchor, and add a new
-      // one to follow the pointer
-      appendVertex(target, getLastVertexCoords(target));
+      // the point under the pointer becomes the anchor
+      anchor = getPointerVertex();
+      anchorIsNew = true;
     }
-    n = target.gui.displayArcs.getPointCount();
-    anchor = target.gui.displayArcs.getVertex2(n - 2);
     stroke = {
-      anchorCommitted: anchorCommitted,
-      // data coords of the vertices before the pointer that no edit records yet
-      points: anchorCommitted ? [] : [getVertexCoords(target, n - 2)],
+      anchor: anchorIsNew ? anchor : null,
+      // vertices placed so far, which join the path when the stroke ends
+      placed: [],
+      preview: [],
       // fitted in display coords, which survive a zoom mid-stroke
-      fitter: new internal.GaussianStrokeFitter(anchor, {pixelSize: ext.getPixelSize()}),
-      previewCount: 0, // vertices between the placed vertices and the pointer
+      fitter: new internal.GaussianStrokeFitter(anchor.display, {pixelSize: ext.getPixelSize()}),
       sampleCount: 0,
       lastEvent: e
     };
   }
 
-  // Test if the vertex following the pointer is on the path's last vertex
-  function pointerIsOnLastVertex(target) {
-    var arcs = target.gui.displayArcs;
-    var n = arcs.getPointCount();
-    var a = arcs.getVertex2(n - 1), b = arcs.getVertex2(n - 2);
+  // Test if the pointer is on the path's last vertex
+  function pointerIsOnLastVertex() {
+    var a = pointer, b = pending.display[pending.display.length - 1];
     return geom.distance2D(a[0], a[1], b[0], b[1]) / ext.getPixelSize() < 3;
   }
 
   function addStrokeSample(e) {
     var s = stroke;
-    var placed = s.fitter.addSample(ext.pixCoordsToMapCoords(e.x, e.y));
+    var p = ext.pixCoordsToMapCoords(e.x, e.y);
+    s.fitter.addSample(p).forEach(function(p) {
+      s.placed.push(displayToVertex(p));
+    });
+    s.preview = s.fitter.getPreview();
     s.sampleCount++;
     s.lastEvent = e;
-    updateStrokeTail(s, placed, s.fitter.getPreview(), pixToDataCoords(e.x, e.y));
+    pointer = p;
+    refreshPath();
   }
 
-  // Rewrites the end of the path after the stroke's placed vertices: newly
-  // placed vertices, then the preview of the part of the stroke that has not
-  // been placed yet, then the vertex following the pointer. Existing vertices
-  // are overwritten rather than removed and added again, because adding or
-  // removing a vertex copies the coordinates of the whole layer.
-  // placed, preview: display coords
-  // hover: data coords
-  function updateStrokeTail(s, placed, preview, hover) {
-    var target = hit.getHitTarget();
-    var fixed = toDataCoords(target, placed);
-    var tail = fixed.concat(toDataCoords(target, preview), [hover]);
-    var count = s.previewCount + 1; // vertices after the placed vertices
-    var start = target.gui.displayArcs.getPointCount() - count;
-    var i;
-    for (; count > tail.length; count--) {
-      deleteLastVertex(target);
-    }
-    for (i = 0; i < tail.length; i++) {
-      if (i < count) {
-        setVertexCoords(target, [start + i], tail[i]);
-      } else {
-        appendVertex(target, tail[i]);
-      }
-    }
-    s.points = s.points.concat(fixed);
-    s.previewCount = tail.length - fixed.length - 1;
-    hit.triggerChangeEvent();
-  }
-
-  function toDataCoords(target, points) {
-    return points.map(function(p) {
-      return translateDisplayPoint(target, p);
-    });
-  }
-
-  // Completes the stroke in progress up to the pointer, and records the
-  // stroke's vertices as a single edit.
-  // end: (optional) hover info of the vertex that the stroke has to end at
+  // Completes the stroke in progress up to the pointer, and adds the stroke's
+  // vertices to the path as a single edit.
+  // end: (optional) hover info of the path's first vertex, if the stroke has
+  //   returned to it, which closes the polygon
   function finishStroke(end) {
     var s = stroke;
-    var target, rest, points, count;
+    var rest, points;
     if (!s) return;
     stroke = null;
-    target = hit.getHitTarget();
     rest = end ? s.fitter.addSample(end.displayPoint) : [];
-    rest = toDataCoords(target, rest.concat(s.fitter.finish()));
-    if (end && rest.length > 0) {
-      rest[rest.length - 1] = end.point;
+    rest = rest.concat(s.fitter.finish()).map(displayToVertex);
+    if (end) {
+      rest.pop(); // the end vertex; finishPath() closes the ring with the first vertex
     }
-    // remove the preview
-    count = s.previewCount + 1;
-    for (; count > 1; count--) {
-      deleteLastVertex(target);
-    }
-    if (rest.length === 0 && s.points.length > 0) {
-      // the last vertex in the path takes the place of the vertex following the pointer
-      deleteLastVertex(target);
-      rest = [s.points.pop()];
-    } else if (rest.length > 0) {
-      setVertexCoords(target, [target.gui.displayArcs.getPointCount() - 1], rest[0]);
-    }
-    points = s.points.concat(rest);
-    if (points.length === 0 || !s.anchorCommitted && points.length == 1) {
-      hit.triggerChangeEvent(); // the stroke never left its anchor
-      return;
+    points = s.placed.concat(rest);
+    if (points.length > 0 && s.anchor) {
+      points.unshift(s.anchor);
     }
     prevVertexAddedEvent = s.lastEvent;
-    extendCurrentPath(points, !!end, s.points.length);
+    if (points.length > 0) {
+      addVertices(points);
+    }
+    if (end) {
+      finishPath(true);
+    } else {
+      refreshPath();
+    }
   }
 
   hit.on('drag', function(e) {
@@ -429,8 +389,6 @@ export function initLineEditing(gui, ext, hit) {
     }
     internal.snapVerticesToPoint(hoverVertexInfo.ids, p, target.gui.displayArcs);
     hit.setHoverVertex(p, '');
-    // redrawing the whole map updates the data layer as well as the overlay layer
-    // gui.dispatchEvent('map-needs-refresh');
   });
 
   hit.on('dragend', function(e) {
@@ -445,72 +403,128 @@ export function initLineEditing(gui, ext, hit) {
     gui.dispatchEvent('map-needs-refresh'); // redraw basemap
   });
 
-  // shift + double-click deletes a vertex (when not drawing)
   // double-click finishes a path (when drawing)
   hit.on('dblclick', function(e) {
     if (!active()) return;
-    // double click finishes a path
     // note: if the preceding 'click' finished the path, this does not fire
     if (pathDrawing()) {
-      finishCurrentPath();
+      finishPath();
       e.originalEvent.stopPropagation(); // prevent dblclick zoom
-      return;
     }
   });
 
-  // hover event highlights the nearest point in close proximity to the pointer
-  // ... or the closest point along the segment (for adding a new vertex)
   hit.on('hover', function(e) {
     if (!active() || vertexDragging()) return;
 
     if (pathDrawing()) {
       if (!e.overMap) {
-        finishCurrentPath();
+        finishPath();
         return;
       }
       if (gui.keyboard.shiftIsPressed()) {
         alignPointerPosition(e, prevVertexAddedEvent);
       }
-      updatePathEndpoint(pixToDataCoords(e.x, e.y));
     }
+    lastHoverEvent = e;
+    updateHover(e);
+  }, null, 100);
 
-    // highlight nearby snappable vertex (the closest vertex on a nearby line,
-    //   or the first vertex of the current drawing path if not near a line)
-    hoverVertexInfo = e.id >= 0 && findDraggableVertices(e) ||
-        pathDrawing() && findPathStartInfo(e) ||
-        e.id >= 0 && findInterpolatedPoint(e);
+  // Highlights the vertex, or the point on a path, that a click or drag would
+  // act on
+  function updateHover(e) {
+    hoverVertexInfo = findHoverTarget(e);
     if (hoverVertexInfo) {
-      // hovering near a vertex: highlight the vertex
       hit.setHoverVertex(hoverVertexInfo.displayPoint, hoverVertexInfo.type);
     } else {
       clearHoverVertex();
     }
-    updateCursor();
-    prevHoverEvent = e;
-  }, null, 100);
-
-  // click starts or extends a new path
-  hit.on('click', function(e) {
-    if (!active()) return;
-    if (detectDoubleClick(e)) return; // ignore second click of a dblclick
-    var p = pixToDataCoords(e.x, e.y);
     if (pathDrawing()) {
-      // finish the path if a vertex is selected (but not an interpolated point)
-      extendCurrentPath([hoverVertexInfo?.point || p], hoverVertexInfo?.type == 'vertex');
-    } else if (hoverVertexInfo?.type == 'interpolated') {
-      // don't start new path if hovering along a segment -- this is
-      // likely to be an attempt to add a new vertex, not start a new path
+      pointer = hoverVertexInfo ? hoverVertexInfo.displayPoint : ext.pixCoordsToMapCoords(e.x, e.y);
+      refreshPath();
+    }
+    updateCursor();
+  }
+
+  function findHoverTarget(e) {
+    var info;
+    if (reshapeMode()) {
+      // a vertex to drag, or a point between vertices to insert one at
+      return e.id >= 0 && (findDraggableVertices(e) || findInterpolatedPoint(e)) || null;
+    }
+    if (pathDrawing()) {
+      // the next vertex snaps to a vertex of a nearby path, to the first vertex
+      // of the path being drawn, or to a point along a nearby path
+      return e.id >= 0 && findDraggableVertices(e) ||
+        findPathStartInfo(e) ||
+        e.id >= 0 && findInterpolatedPoint(e) || null;
+    }
+    // where a new path would start from
+    info = e.id >= 0 && findDraggableVertices(e) || null;
+    if (!info || altKeyDown()) {
+      return info;
+    }
+    if (!polygonMode() && lineCanBeExtended(info)) {
+      info.extends = true;
+      info.featureId = e.id;
+      return info;
+    }
+    return null;
+  }
+
+  // A path started at the vertex would extend its line: the vertex is the end
+  // of a line, and of no other line (otherwise which line to extend is not
+  // clear -- see -add-shape extend)
+  function lineCanBeExtended(info) {
+    var target = info.target;
+    return info.extendable &&
+      internal.findLineEnds(target, target.gui.source.dataset.arcs, info.point).length == 1;
+  }
+
+  function getExtendId() {
+    return hoverVertexInfo && hoverVertexInfo.extends ? hoverVertexInfo.featureId : -1;
+  }
+
+  hit.on('click', function(e) {
+    if (!drawMode()) return;
+    if (detectDoubleClick(e)) return; // ignore second click of a dblclick
+    if (pathDrawing()) {
+      if (hoverVertexInfo?.closesPath && polygonMode()) {
+        finishPath(true);
+      } else {
+        addVertices([getClickVertex(e)]);
+      }
+    } else if (hoverVertexInfo || altKeyDown()) {
+      // the end of a line, or with Alt, any vertex (or anywhere)
+      startPath(getClickVertex(e), getExtendId());
+    } else if (e.id > -1) {
+      selectShape(e.id);
+    } else if (hit.getSelectionIds().length > 0) {
+      // a click off the selection only deselects, so a path can't be started
+      // by a click meant to deselect
+      hit.setSelectionIds([], {keepHover: true});
     } else {
-      startNewPath(p);
+      startPath(getClickVertex(e), -1);
     }
     prevVertexAddedEvent = e;
   });
+
+  // The style panel styles the selected shapes (see gui-layer-style-tool.mjs).
+  // As in the style modes, shift-click adds to or removes from the selection.
+  function selectShape(id) {
+    var ids = hit.getSelectionIds();
+    if (gui.keyboard.shiftIsPressed()) {
+      ids = ids.includes(id) ? ids.filter(function(id2) { return id2 != id; }) : ids.concat(id);
+    } else {
+      ids = [id];
+    }
+    hit.setSelectionIds(ids, {keepHover: true});
+  }
 
   // esc or enter key finishes a path
   gui.keyboard.on('keydown', function(e) {
     if (pathDrawing() && (e.keyName == 'esc' || e.keyName == 'enter')) {
       e.stopPropagation();
-      finishCurrentPath();
+      finishPath();
       e.originalEvent.preventDefault(); // block console "enter"
     }
   }, null, 10);
@@ -527,9 +541,14 @@ export function initLineEditing(gui, ext, hit) {
 
   function updateCursor() {
     var el = gui.container.findChild('.map-layers');
-    el.classed('draw-tool', active());
-    var useArrow = hoverVertexInfo && !hoverVertexInfo.extendable && !pathDrawing();
-    el.classed('dragging', useArrow);
+    var overShape = !!lastHoverEvent && lastHoverEvent.id > -1;
+    el.classed('draw-tool', drawMode());
+    // a click would select the shape under the pointer
+    el.classed('draw-select', drawMode() && overShape && !pathDrawing() &&
+      !hoverVertexInfo && !altKeyDown());
+    el.classed('reshape-tool', reshapeMode());
+    // a drag would move the vertex, or insert one
+    el.classed('reshape-vertex', reshapeMode() && !!hoverVertexInfo);
     el.classed('drawing', pathDrawing());
   }
 
@@ -555,9 +574,35 @@ export function initLineEditing(gui, ext, hit) {
     gui.dispatchEvent('map-needs-refresh');
   }
 
-  function pixToDataCoords(x, y) {
-    var target = hit.getHitTarget();
-    return translateDisplayPoint(target, ext.pixCoordsToMapCoords(x, y));
+  // A vertex of the path being drawn: {data, display}
+  function displayToVertex(p) {
+    return {data: translateDisplayPoint(hit.getHitTarget(), p), display: p};
+  }
+
+  function pixToVertex(x, y) {
+    return displayToVertex(ext.pixCoordsToMapCoords(x, y));
+  }
+
+  // The vertex a click adds: the vertex or segment point it snapped to, if any,
+  // so that a path that starts or passes on another path meets it exactly.
+  function getClickVertex(e) {
+    if (hoverVertexInfo) {
+      return {data: hoverVertexInfo.point, display: hoverVertexInfo.displayPoint};
+    }
+    return pixToVertex(e.x, e.y);
+  }
+
+  // The vertex the path is following the pointer to (see the hover handler)
+  function getPointerVertex() {
+    if (hoverVertexInfo && !hoverVertexInfo.closesPath) {
+      return {data: hoverVertexInfo.point, display: hoverVertexInfo.displayPoint};
+    }
+    return displayToVertex(pointer);
+  }
+
+  function getLastVertex() {
+    var n = pending.data.length;
+    return {data: pending.data[n - 1], display: pending.display[n - 1]};
   }
 
   // Change the x, y pixel location of thisEvt so that the segment extending
@@ -594,115 +639,173 @@ export function initLineEditing(gui, ext, hit) {
     return null;
   }
 
-  function finishCurrentPath() {
+  // v: the first vertex, {data, display}
+  // extendId: id of the line that the path extends, or -1
+  function startPath(v, extendId) {
+    pending = {data: [], display: [], steps: [], redo: [],
+      extendId: extendId >= 0 ? extendId : -1};
+    hit.clearSelection();
+    pointer = v.display;
+    addVertices([v]);
+    hideInstructions();
+    updateCursor();
+  }
+
+  // Adds vertices to the path being drawn, as one undoable edit.
+  // vertices: [{data, display}, ...]
+  function addVertices(vertices) {
+    appendVertices(vertices);
+    pending.redo = [];
+    refreshPath();
+  }
+
+  function appendVertices(vertices) {
+    vertices.forEach(function(v) {
+      pending.data.push(v.data);
+      pending.display.push(v.display);
+    });
+    pending.steps.push(vertices.length);
+  }
+
+  // Takes back the last edit to the path being drawn. Taking back its first
+  // vertex abandons the path. Returns false if no path is being drawn, so that
+  // Undo goes on to the undo history.
+  function pendingUndo() {
+    var n, start, removed;
+    if (!pathDrawing()) return false;
+    if (stroke) {
+      // an undo during a stroke takes back the whole stroke
+      finishStroke();
+      blockDrag = true;
+    }
+    n = pending.steps.pop();
+    start = pending.data.length - n;
+    removed = pending.data.splice(start).map(function(p, i) {
+      return {data: p, display: pending.display[start + i]};
+    });
+    pending.display.splice(start);
+    pending.redo.push(removed);
+    if (pending.data.length === 0) {
+      cancelPath();
+    } else {
+      refreshPath();
+    }
+    return true;
+  }
+
+  // Restores the last edit taken back. Redo does nothing else while a path is
+  // being drawn: redoing an edit to the layer would happen out of sight of the
+  // path the user is looking at.
+  function pendingRedo() {
+    if (!pathDrawing()) return false;
+    if (pending.redo.length > 0) {
+      appendVertices(pending.redo.pop());
+      refreshPath();
+    }
+    return true;
+  }
+
+  // Ends the path being drawn and creates its shape, if it has enough vertices
+  // to make one; a polygon is closed if the path was left open.
+  // close: (optional) the path ended on its first vertex
+  function finishPath(close) {
+    var target, coords, extendId;
     if (!pathDrawing()) return;
     if (stroke) {
       // finishing mid-drag (e.g. with the Enter key)
       finishStroke();
       blockDrag = true;
     }
-    var target = hit.getHitTarget();
-    if (getLastArcLength(target) <= 2) { // includes hover point
-      // deleteLastPath(target);
-      gui.undo.undo(); // assume previous undo event was path_add
-    } else {
-      deleteLastVertex(target);
+    target = hit.getHitTarget();
+    coords = pending.data.concat();
+    extendId = pending.extendId;
+    if (close) {
+      coords.push(coords[0]);
     }
-    clearDrawingInfo();
-    fullRedraw();
+    clearPath();
+    if (target && drawnPathIsValid(coords, target.geometry_type)) {
+      createShape(target, coords, extendId);
+    }
   }
 
-  // p: [x, y] source data coordinates
-  function startNewPath(p2) {
-    var target = hit.getHitTarget();
-    var p1 = hoverVertexInfo?.point || p2;
-    appendNewPath(target, [p1, p2]);
-    gui.dispatchEvent('path_add', {target, p1, p2});
-    drawingId = target.shapes.length - 1;
-    hit.setDrawingId(drawingId);
-    hideInstructions();
+  function cancelPath() {
+    if (stroke) {
+      stroke = null;
+      blockDrag = true;
+    }
+    clearPath();
+  }
+
+  function clearPath() {
+    pending = null;
+    pointer = null;
+    hoverVertexInfo = null;
+    hit.clearHoverVertex();
+    hit.setPendingPath(null);
     updateCursor();
   }
 
-  // points: [x, y] source data coordinates of vertices to add to the path. The
-  //   vertex that follows the pointer becomes points[placed], so it must
-  //   already be there; the rest are appended after it.
-  // finish: true if the path ends at an existing vertex (which closes a polygon)
-  // placed: (optional) number of points already in the path, before the vertex
-  //   that follows the pointer
-  function extendCurrentPath(points, finish, placed) {
-    var target = hit.getHitTarget();
-    var shapes1, shapes2;
-    if (getLastArcLength(target) < 2) {
-      stop('Defective path');
-    }
-    for (var i=(placed || 0) + 1; i<points.length; i++) {
-      appendVertex(target, points[i]);
-    }
-    if (finish && polygonMode()) {
-      shapes1 = target.shapes.slice(initialShapeCount);
-      try {
-        shapes2 = convertClosedPaths(shapes1);
-      } catch(e) {
-        console.error(e);
-        stop('Invalid path');
-      }
-    }
-    if (shapes2) {
-      replaceDrawnShapes(shapes2);
-      gui.dispatchEvent('path_extend', {target, points, shapes1, shapes2});
-      clearDrawingInfo();
-      fullRedraw();
-    } else {
-      appendVertex(target, points[points.length - 1]); // the new vertex following the pointer
-      gui.dispatchEvent('path_extend', {target, points});
-      hit.triggerChangeEvent(); // trigger overlay redraw
-    }
+  // extendId: id of the line the path extends, or -1 to add a new shape
+  function createShape(target, coords, extendId) {
+    var extend = extendId >= 0;
+    // an extension takes on the style of the line it extends
+    var style = extend ? null : getNewShapeCommandStyle(getNewShapeStyle(gui, target.geometry_type),
+      layerHasDrawableStyle(target), !!gui.state.dark_basemap);
+    var cmd = getAddShapeCommand(coords, {
+      geometryType: target.geometry_type,
+      target: target.name || null,
+      style: style,
+      extend: extend
+    });
+    var title = extend ? 'Extend line' :
+      target.geometry_type == 'polygon' ? 'Draw polygon' : 'Draw line';
+    runGuiEditCommand(gui, cmd, {title: title, changesEditTarget: true});
   }
 
-  function replaceDrawnShapes(shapes) {
-    var target = hit.getHitTarget();
-    var records = target.data?.getRecords();
-    var prevLen = target.shapes.length;
-    var newLen = initialShapeCount + shapes.length;
-    var recordCount = records?.length || 0;
-    target.shapes = target.shapes.slice(0, initialShapeCount).concat(shapes);
-    while (records && records.length > newLen) {
-      records.pop();
+  // Shows the path being drawn: its vertices, then the part of a stroke not
+  // yet added to it, then the pointer.
+  function refreshPath() {
+    var coords;
+    if (!pathDrawing()) return;
+    coords = pending.display.concat();
+    if (stroke) {
+      if (stroke.anchor) coords.push(stroke.anchor.display);
+      stroke.placed.forEach(function(v) { coords.push(v.display); });
+      coords = coords.concat(stroke.preview);
     }
-    while (records && records.length < newLen) {
-      appendNewDataRecord(target);
-    }
+    if (pointer) coords.push(pointer);
+    hit.setPendingPath(coords, getPendingPathStyle(getPathStyle(), !!gui.state.dark_basemap));
   }
 
-  // p: [x, y] source data coordinates
-  function updatePathEndpoint(p) {
+  // The style the finished path will be drawn with: the one createShape() will
+  // give it, or that of the line it extends
+  function getPathStyle() {
     var target = hit.getHitTarget();
-    var i = target.gui.displayArcs.getPointCount() - 1;
-    if (hoverVertexInfo) {
-      p = hoverVertexInfo.point; // snap to selected point
+    var records = target.data ? target.data.getRecords() : [];
+    if (pending.extendId >= 0) {
+      return layerHasDrawableStyle(target) && records[pending.extendId] || {};
     }
-    setVertexCoords(target, [i], p);
-    hit.triggerChangeEvent();
+    return getNewShapeCommandStyle(getNewShapeStyle(gui, target.geometry_type),
+      layerHasDrawableStyle(target), !!gui.state.dark_basemap);
   }
 
+  // Hover info for the first vertex of the path being drawn, if the pointer is
+  // near it and there are enough vertices to close a ring.
   function findPathStartInfo(e) {
-    if (!pathDrawing()) return false;
-    var target = hit.getHitTarget();
-    var arcId = target.gui.displayArcs.size() - 1;
-    var p1 = ext.pixCoordsToMapCoords(e.x, e.y); // mouse coords
-    var p2 = internal.getArcStartCoords(arcId, target.gui.displayArcs); // vertex coords
-    var p3 = internal.getArcStartCoords(arcId, target.gui.source.dataset.arcs);
-    var dist = geom.distance2D(p1[0], p1[1], p2[0], p2[1]);
-    var data = target.gui.source.dataset.arcs.getVertexData();
-    var i = data.ii[arcId];
-    var pathLen = data.nn[arcId];
-    var pixelDist = dist / ext.getPixelSize();
-    if (pixelDist > HOVER_THRESHOLD || pathLen < 4) {
+    var p1, p2, n;
+    if (!pathDrawing()) return null;
+    n = pending.data.length;
+    if (stroke) {
+      n += stroke.placed.length + (stroke.anchor ? 1 : 0);
+    }
+    if (n < 3) return null;
+    p1 = ext.pixCoordsToMapCoords(e.x, e.y); // mouse coords
+    p2 = pending.display[0];
+    if (geom.distance2D(p1[0], p1[1], p2[0], p2[1]) / ext.getPixelSize() > HOVER_THRESHOLD) {
       return null;
     }
     return {
-      target, ids: [i], extendable: false, displayPoint: p2, point: p3, type: 'vertex'
+      extendable: false, displayPoint: p2, point: pending.data[0], type: 'vertex', closesPath: true
     };
   }
 
@@ -762,45 +865,5 @@ export function initLineEditing(gui, ext, hit) {
     closest.type = 'interpolated';
     closest.target = target;
     return closest;
-  }
-
-  // Try to form polygon shapes from an array of path shapes
-  // shapes: array of all shapes that have been drawn in the current session
-  function convertClosedPaths(shapes) {
-    var target = hit.getHitTarget();
-    // try to convert paths to polygons
-    // NOTE: added "no_cuts" option to prevent polygons function from modifying
-    // arcs, which would break undo/redo and cause other problems
-    var tmpLyr = {
-      geometry_type: 'polyline',
-      shapes: shapes.concat()
-    };
-    var output = mapshaper.cmd.polygons([tmpLyr], target.gui.source.dataset, {no_cuts: true});
-    var closedShapes = output[0].shapes;
-
-    // find paths that were not convertible to polygons
-    var isOpenPath = getOpenPathTest(closedShapes);
-    var openShapes = shapes.filter(function(shp) { return isOpenPath(shp); });
-
-    // retain both converted polygons and unconverted polylines
-    return openShapes.concat(closedShapes);
-  }
-
-  // Returns a function for testing if a shape is an unclosed path, and doesn't
-  // overlap with an array of polygon shapes
-  function getOpenPathTest(polygonShapes) {
-    var polygonArcs = [];
-    internal.forEachArcId(polygonShapes, function(arcId) {
-      polygonArcs.push(internal.absArcId(arcId));
-    });
-
-    return function(shp) {
-      // assume that any compound shape is a polygon
-      return shapeHasOneFwdArc(shp) && !polygonArcs.includes(shp[0][0]);
-    };
-  }
-
-  function shapeHasOneFwdArc(shp) {
-    return shp.length == 1 && shp[0].length == 1 && shp[0][0] >= 0;
   }
 }

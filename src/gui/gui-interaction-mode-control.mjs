@@ -2,8 +2,10 @@ import { El } from './gui-el';
 import { internal } from './gui-core';
 import { getLabelTarget } from './gui-label-commands';
 import { formatLayerNameForDisplay } from './gui-layer-utils';
+import { addEmptyLayer } from './gui-add-layer';
 
 export function InteractionMode(gui) {
+  var self = this;
 
   // Each menu holds the tools that suit the active layer, so the label tool
   // appears only where the layer is one labels go into: 'labels' and
@@ -14,12 +16,19 @@ export function InteractionMode(gui) {
   //
   // The tool still acts on any target once it is open: see
   // labelModeIsAvailable().
+  //
+  // Lines and polygons are drawn, reshaped and styled in one mode each,
+  // 'line_style' and 'polygon_style', with drawing or reshaping armed from the
+  // mode's toolbar (see setArmedTool()). 'edit_lines' and 'edit_polygons' are not modes of their
+  // own: setMode() takes them as "open the mode with drawing armed", creating
+  // a layer to draw in if there is none, which is what the menu for an empty
+  // session and the layer panel's "Draw" links ask for.
   var menus = {
     standard: ['info', 'selection', 'box', 'ruler'],
     empty: [ 'label','edit_points', 'edit_lines',  'edit_polygons','box', 'ruler'],
-    polygons: ['info', 'polygon_style', 'edit_polygons', 'selection', 'box', 'ruler'],
-    rectangles: ['info', 'selection', 'polygon_style', 'edit_polygons', 'rectangles', 'box', 'ruler'],
-    lines: ['info', 'line_style', 'edit_lines', 'snip_lines', 'selection', 'box', 'ruler'],
+    polygons: ['info', 'polygon_style', 'selection', 'box', 'ruler'],
+    rectangles: ['info', 'selection', 'polygon_style', 'rectangles', 'box', 'ruler'],
+    lines: ['info', 'line_style', 'snip_lines', 'selection', 'box', 'ruler'],
     table: ['info', 'selection'],
     raster: ['box', 'ruler'],
     labels: ['info', 'label', 'selection', 'box', 'ruler'],
@@ -49,8 +58,8 @@ export function InteractionMode(gui) {
     label: 'edit labels',
     label_style: 'style labels',
     point_style: 'style points',
-    line_style: 'style lines',
-    polygon_style: 'style polygons',
+    line_style: 'edit lines',
+    polygon_style: 'edit polygons',
     edit_points: 'edit points',
     edit_lines: 'draw lines',
     edit_polygons: 'draw polygons',
@@ -71,6 +80,15 @@ export function InteractionMode(gui) {
   var _editMode = 'off';
   var _prevMode;
   var _menuOpen = false;
+  var _armedTool = null; // 'draw', 'reshape' or null
+
+  // The tool modes that 'line_style' and 'polygon_style' take on when one of
+  // their toolbar's tools is armed
+  var drawingModes = {
+    line_style: {draw: 'edit_lines', reshape: 'reshape_lines'},
+    polygon_style: {draw: 'edit_polygons', reshape: 'reshape_polygons'}
+  };
+  var drawingAliases = {edit_lines: 'line_style', edit_polygons: 'polygon_style'};
 
   // Only render edit mode button/menu if this option is present
   if (gui.options.inspectorControl) {
@@ -139,12 +157,72 @@ export function InteractionMode(gui) {
 
   this.getMode = getInteractionMode;
 
+  // What the pointer does: the mode, except in a line or polygon mode with a
+  // tool armed from its toolbar. Drawing ('edit_lines', 'edit_polygons')
+  // draws new shapes, and a click on a shape selects it for styling;
+  // reshaping ('reshape_lines', 'reshape_polygons') drags, inserts and
+  // deletes vertices. The hit control, the overlay and the drawing tool go by
+  // this; the panel, undo and the menu go by the mode, which arming does not
+  // change.
+  this.getToolMode = getToolMode;
+
+  this.getArmedTool = function() {
+    return _armedTool;
+  };
+
+  this.drawingIsArmed = function() {
+    return _armedTool == 'draw';
+  };
+
+  this.reshapingIsArmed = function() {
+    return _armedTool == 'reshape';
+  };
+
+  this.drawingCanBeArmed = function() {
+    return _editMode in drawingModes;
+  };
+
+  // tool: 'draw', 'reshape' or null
+  this.setArmedTool = function(tool) {
+    var next = tool && _editMode in drawingModes ? tool : null;
+    var prevToolMode;
+    if (next == _armedTool) return;
+    prevToolMode = getToolMode();
+    _armedTool = next;
+    gui.dispatchEvent('interaction_tool_change', {
+      mode: getInteractionMode(),
+      tool_mode: getToolMode(),
+      prev_tool_mode: prevToolMode
+    });
+  };
+
+  // Disarming leaves the reshape tool alone, if that is what is armed
+  this.setDrawingArmed = function(on) {
+    if (on) {
+      self.setArmedTool('draw');
+    } else if (_armedTool == 'draw') {
+      self.setArmedTool(null);
+    }
+  };
+
   this.setMode = function(mode) {
     // TODO: check that this mode is valid for the current dataset
-    if (mode in labels) {
+    if (mode in drawingAliases) {
+      openDrawingMode(drawingAliases[mode]);
+    } else if (mode in labels) {
       setMode(mode);
     }
   };
+
+  function openDrawingMode(mode) {
+    var type = mode == 'polygon_style' ? 'polygon' : 'polyline';
+    var o = gui.model.getActiveLayer();
+    if (!o || !o.layer || o.layer.geometry_type != type) {
+      addEmptyLayer(gui, undefined, type);
+    }
+    setMode(mode, true);
+    self.setDrawingArmed(true);
+  }
 
   gui.model.on('update', function(e) {
     // change mode if active layer doesn't support the current mode
@@ -197,6 +275,18 @@ export function InteractionMode(gui) {
 
   function getInteractionMode() {
     return active() ? _editMode : 'off';
+  }
+
+  function getToolMode() {
+    var mode = getInteractionMode();
+    return _armedTool && mode in drawingModes ? drawingModes[mode][_armedTool] : mode;
+  }
+
+  // A line or polygon layer with nothing in it has nothing to style or
+  // select, so its mode opens ready to draw.
+  function layerIsEmpty() {
+    var o = gui.model.getActiveLayer();
+    return !!(o && o.layer && internal.getFeatureCount(o.layer) === 0);
   }
 
   function renderMenu() {
@@ -326,12 +416,16 @@ export function InteractionMode(gui) {
     }, delay || 0);
   }
 
-  function setMode(mode) {
+  // armed: (optional) open a line or polygon mode with drawing armed
+  function setMode(mode, armed) {
     var changed = mode != _editMode;
     if (changed) {
-      menu.classed('active', mode != 'off');
+      if (menu) menu.classed('active', mode != 'off');
       _prevMode = _editMode;
       _editMode = mode;
+      // set before the event, so that its listeners see the tool mode the
+      // mode opens in
+      _armedTool = mode in drawingModes && (!!armed || layerIsEmpty()) ? 'draw' : null;
       onModeChange();
       updateArrowButton();
       updateSelectionHighlight();
@@ -341,7 +435,8 @@ export function InteractionMode(gui) {
   function onModeChange() {
     var mode = getInteractionMode();
     gui.state.interaction_mode = mode;
-    gui.dispatchEvent('interaction_mode_change', {mode: mode, prev_mode: _prevMode});
+    gui.dispatchEvent('interaction_mode_change', {mode: mode, prev_mode: _prevMode,
+      tool_mode: getToolMode()});
   }
 
   // Update button highlight and selected menu item highlight (if any)

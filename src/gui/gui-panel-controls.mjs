@@ -1,4 +1,4 @@
-import { ColorPicker, isHexColor, layerColorPresetRows } from './gui-color-picker';
+import { ColorPicker, layerColorPresetRows, toSixDigitHex } from './gui-color-picker';
 import { El } from './gui-el';
 import { parseOpacityValue } from './gui-style-values';
 
@@ -114,8 +114,38 @@ export function makePanelActionButton(parent, label, action) {
 export function makeFieldTip(parent, text) {
   var btn = El('div').addClass('tip-button').appendTo(parent).text('?');
   var anchor = El('div').addClass('tip-anchor').appendTo(btn);
-  El('div').addClass('tip').appendTo(anchor).text(text);
+  var tip = El('div').addClass('tip').appendTo(anchor).text(text);
+  btn.on('mouseenter', function() {
+    fitTipToPage(tip.node());
+  });
   return btn;
+}
+
+// A tip is centred on its "?", so one near the edge of the page -- the style
+// panels sit at the right of the map -- would run off it. This slides the
+// bubble back onto the page and its tail the other way, so that the tail
+// still points at the "?" (see .tip in elements.css).
+export function fitTipToPage(el) {
+  var margin = 8;
+  var pageWidth = document.documentElement.clientWidth;
+  var rect, shift, maxShift;
+  el.style.transform = '';
+  el.style.removeProperty('--tip-tail-shift');
+  rect = el.getBoundingClientRect();
+  shift = 0;
+  if (rect.right > pageWidth - margin) {
+    shift = pageWidth - margin - rect.right;
+  }
+  if (rect.left + shift < margin) {
+    shift = margin - rect.left;
+  }
+  // keep the tail on the bubble, clear of its rounded corners
+  maxShift = Math.max(rect.width / 2 - 16, 0);
+  shift = Math.max(-maxShift, Math.min(maxShift, shift));
+  if (shift !== 0) {
+    el.style.transform = 'translateX(' + shift + 'px)';
+    el.style.setProperty('--tip-tail-shift', -shift + 'px');
+  }
 }
 
 export function setPanelButtonDisabled(el, disabled) {
@@ -166,9 +196,12 @@ export function makeColorRow(parent, opts) {
   var aside = El('div').addClass('label-split-cell').appendTo(row);
   var control = {row: row, aside: aside, chit: null, input: null, opacity: null, picker: null};
 
+  // A color from the data can be any CSS color -- short hex, or a name, from
+  // the command line -- and the swatch shows it, though only hex can be
+  // opened in the picker.
   control.setColor = function(color) {
     control.input.node().value = color || '';
-    control.chit.css('background-color', isHexColor(color) ? color : 'transparent');
+    control.chit.css('background-color', getSwatchColor(color));
   };
 
   // What a panel calls when it refreshes from the data: the picker has to start
@@ -178,8 +211,11 @@ export function makeColorRow(parent, opts) {
   // which is also the picker's own preview callback and must not feed back into
   // it mid-drag.
   control.showColor = function(color) {
+    var hex = toSixDigitHex(color);
+    // the picker previews what it is set to, so it goes first, and the field
+    // then shows the color as the data has it ("#334", not "#333344")
+    if (hex) control.picker.setColor(hex);
     control.setColor(color);
-    if (isHexColor(color)) control.picker.setColor(color);
   };
 
   El('span').appendTo(colorCell).text(opts.label);
@@ -191,7 +227,8 @@ export function makeColorRow(parent, opts) {
     .attr('aria-label', opts.label + ' color')
     .on('change', function() {
       var color = control.input.node().value.trim();
-      if (isHexColor(color)) control.picker.setColor(color);
+      var hex = toSixDigitHex(color);
+      if (hex) control.picker.setColor(hex);
       opts.onColor(color);
     });
   if (opts.noOpacity) {
@@ -213,6 +250,17 @@ export function makeColorRow(parent, opts) {
     }
   });
   return control;
+}
+
+// What a swatch shows for @color: the color itself if the browser takes it
+// as one, otherwise nothing
+function getSwatchColor(color) {
+  var hex = toSixDigitHex(color);
+  if (hex) return hex;
+  if (color && typeof CSS != 'undefined' && CSS.supports && CSS.supports('color', color)) {
+    return color;
+  }
+  return 'transparent';
 }
 
 // Opacity is shown as a percentage and stored as a fraction. It is a plain

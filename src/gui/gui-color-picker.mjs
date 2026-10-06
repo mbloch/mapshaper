@@ -362,6 +362,16 @@ export function isHexColor(str) {
   return /^#[0-9a-f]{6}$/i.test(str);
 }
 
+// A hex color in the six-digit form the picker takes: "#334" is "#333344".
+// Returns null for anything else.
+export function toSixDigitHex(str) {
+  if (isHexColor(str)) return str;
+  if (/^#[0-9a-f]{3}$/i.test(str)) {
+    return '#' + str[1] + str[1] + str[2] + str[2] + str[3] + str[3];
+  }
+  return null;
+}
+
 // A gray has no hue and black has no saturation either, so those components
 // are kept from @prev; otherwise a gray fed back to the picker (e.g. by a
 // panel echoing the committed color) would reset the hue slider to red.

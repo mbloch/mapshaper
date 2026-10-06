@@ -77,7 +77,8 @@ export function createStoredUndoHistory(gui) {
         });
     }, {
       evictToken: evictToken,
-      preserveOnModeChange: true
+      preserveOnModeChange: true,
+      changesEditTarget: !!opts.changesEditTarget
     });
     return {
       skipped: false,

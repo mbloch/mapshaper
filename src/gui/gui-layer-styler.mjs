@@ -106,7 +106,9 @@ export function getCanvasDisplayStyle(lyr) {
   // they are not among the attribute fields. Assigned on every call, like the
   // rest, because the style object is reused from one feature to the next.
   var arrowFields = getLineArrowFields(lyr);
-  var hasStrokeFields = fields.includes('stroke') || fields.includes('stroke-width');
+  var hasStrokeField = fields.includes('stroke');
+  var hasWidthField = fields.includes('stroke-width');
+  var hasStrokeFields = hasStrokeField || hasWidthField;
   // Glows are drawn from the record rather than set as attributes, like the
   // arrowheads. An outer glow that the whole layer shares is drawn once for the
   // layer (see svg-glow.mjs), so the shapes are then given none of their own.
@@ -116,6 +118,14 @@ export function getCanvasDisplayStyle(lyr) {
   var styler = function(style, i) {
     var rec = records[i];
     var fname, val;
+    // The stroke defaults below are worked out for each shape, so a value one
+    // shape was given does not carry over to the next one in the reused style
+    // object. (Without stroke fields, the layer-wide values set on the base
+    // style below are the ones to keep.)
+    if (hasStrokeFields) {
+      if (!hasStrokeField) style.strokeColor = undefined;
+      if (!hasWidthField) style.strokeWidth = undefined;
+    }
     if (arrowFields) {
       style.lineStart = rec && rec['line-start'];
       style.lineEnd = rec && rec['line-end'];
@@ -139,7 +149,9 @@ export function getCanvasDisplayStyle(lyr) {
     if (style.strokeWidth && !style.strokeColor) {
       style.strokeColor = 'black';
     }
-    if (!('strokeWidth' in style) && style.strokeColor) {
+    // A stroke with no width is 1px wide, as in SVG -- also in a layer whose
+    // other shapes have widths, which gives this one an undefined width
+    if (hasStrokeFields && style.strokeColor && isBlankStyleValue(style.strokeWidth)) {
       style.strokeWidth = 1;
     }
     if (style.radius > 0 && !style.strokeWidth && !style.fillColor && lyr.geometry_type == 'point') {
@@ -164,6 +176,10 @@ export function getCanvasDisplayStyle(lyr) {
     style.dotSize = 1;
   }
   return style;
+}
+
+function isBlankStyleValue(val) {
+  return val === undefined || val === null || val === '';
 }
 
 // check if layer should be displayed with a full style

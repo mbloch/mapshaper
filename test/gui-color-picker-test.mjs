@@ -1,7 +1,25 @@
 import assert from 'assert';
-import { hexToPickerHsb } from '../src/gui/gui-color-picker';
+import { hexToPickerHsb, toSixDigitHex } from '../src/gui/gui-color-picker';
 
 describe('gui-color-picker', function() {
+  describe('toSixDigitHex()', function() {
+    it('expands short hex', function() {
+      assert.equal(toSixDigitHex('#334'), '#333344');
+      assert.equal(toSixDigitHex('#AbC'), '#AAbbCC');
+    });
+
+    it('leaves six-digit hex alone', function() {
+      assert.equal(toSixDigitHex('#ef6f6f'), '#ef6f6f');
+    });
+
+    it('returns null for anything else', function() {
+      assert.equal(toSixDigitHex('red'), null);
+      assert.equal(toSixDigitHex('#3344'), null);
+      assert.equal(toSixDigitHex(''), null);
+      assert.equal(toSixDigitHex(undefined), null);
+    });
+  });
+
   describe('hexToPickerHsb()', function() {
     var prev = {h: 170, s: 90, b: 200};
 

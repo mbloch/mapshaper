@@ -53,6 +53,23 @@ export function createUndoTestApi(gui) {
     // Which tool has the map, for a test asking what an action did rather than
     // what it drew: a panel coming up is how a mode change shows, not what it
     // is.
+    // what the pointer does: 'edit_lines' for 'line_style' with drawing armed
+    getToolMode: function() {
+      return gui.interaction ? gui.interaction.getToolMode() : null;
+    },
+    setDrawingArmed: function(on) {
+      gui.interaction.setDrawingArmed(on);
+    },
+    // 'draw', 'reshape' or null
+    getArmedTool: function() {
+      return gui.interaction ? gui.interaction.getArmedTool() : null;
+    },
+    setArmedTool: function(tool) {
+      gui.interaction.setArmedTool(tool);
+    },
+    getNewShapeStyle: function(geometryType) {
+      return Object.assign({}, (gui.state.new_shape_styles || {})[geometryType] || {});
+    },
     getInteractionMode: function() {
       return gui.interaction ? gui.interaction.getMode() : null;
     },
@@ -101,6 +118,27 @@ export function createUndoTestApi(gui) {
           return pts;
         }) : null;
       });
+    },
+    // The vertices of the path being drawn by the line tool, which is not part
+    // of its layer until it is finished, in pixels as above; null if no path
+    // is being drawn. The last vertex follows the pointer.
+    getPendingPathPixels: function() {
+      var hit = gui.map && gui.map.getHitControl ? gui.map.getHitControl() : null;
+      var coords = hit ? hit.getHitState().pending_path : null;
+      var ext = gui.map.getExtent();
+      return coords ? coords.map(function(p) {
+        return ext.translateCoords(p[0], p[1]);
+      }) : null;
+    },
+    // the vertex marked under the pointer (display coords), or null
+    getHoverVertex: function() {
+      var hit = gui.map && gui.map.getHitControl ? gui.map.getHitControl() : null;
+      return hit && hit.getHitState().hit_coordinates || null;
+    },
+    getPendingPathStyle: function() {
+      var hit = gui.map && gui.map.getHitControl ? gui.map.getHitControl() : null;
+      var style = hit ? hit.getHitState().pending_path_style : null;
+      return style ? Object.assign({}, style) : null;
     },
     selectLayer: function(name) {
       var target = gui.model.getLayers().filter(function(o) {

@@ -123,7 +123,7 @@ function buildKnotLayer(activeLyr, curves) {
 
 // Presents a synthesized layer the way the canvas renderer expects, borrowing
 // the active layer's gui context for the parts it does not replace.
-function wrapGuideLayer(activeLyr, displayLayer, style, arcs) {
+export function wrapGuideLayer(activeLyr, displayLayer, style, arcs) {
   var gui = Object.assign({}, activeLyr.gui, {
     displayLayer: displayLayer,
     displayArcs: arcs || null,

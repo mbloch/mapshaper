@@ -159,6 +159,25 @@ test('dashes are typed as a -style stroke-dasharray value', async function({page
   expect(errors).toEqual([]);
 });
 
+test('the line panel\'s tips stay on the page', async function({page}) {
+  await loadFixture(page, LINE_FIXTURE, 'line_style');
+  // the arrowhead section has a tip of its own
+  await page.locator('.layer-style-panel .layer-arrow-toggle').click();
+  await page.waitForTimeout(250);
+  var buttons = page.locator('.layer-style-panel .tip-button:visible');
+  var count = await buttons.count();
+  var pageWidth = await page.evaluate(() => document.documentElement.clientWidth);
+  expect(count).toBeGreaterThan(1);
+  for (var i = 0; i < count; i++) {
+    await buttons.nth(i).hover();
+    var tip = buttons.nth(i).locator('.tip');
+    await expect(tip).toBeVisible();
+    var box = await tip.boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(pageWidth);
+  }
+});
+
 test('the dashes field is only on the line panel', async function({page}) {
   await loadFixture(page, FIXTURE);
   await expect(page.locator('.layer-style-panel .layer-line-row')).toBeHidden();
@@ -177,7 +196,10 @@ test('line caps are a three-way toggle, round by default', async function({page}
   await btn('square').click();
   await page.waitForTimeout(200);
   expect(await getStyleValue(page, 'stroke-linecap', LINE_LAYER)).toBe('square');
-  expect((await getSessionCommands(page)).join('\n')).toContain("stroke-linecap='square'");
+  // a line with no stroke gets the default one, as with the other controls,
+  // or the styled line would not be drawn
+  expect(await getStyleValue(page, 'stroke', LINE_LAYER)).toBe('#000000');
+  expect((await getSessionCommands(page)).join('\n')).toContain("stroke-linecap='square' stroke='#000000'");
   await expect(btn('square')).toHaveClass(/selected/);
   await expect(btn('round')).not.toHaveClass(/selected/);
 
@@ -185,6 +207,7 @@ test('line caps are a three-way toggle, round by default', async function({page}
   await btn('round').click();
   await page.waitForTimeout(200);
   expect(await getStyleValue(page, 'stroke-linecap', LINE_LAYER)).toBeUndefined();
+  expect(await getStyleValue(page, 'stroke', LINE_LAYER)).toBe('#000000');
   await expect(btn('round')).toHaveClass(/selected/);
 
   // dashed lines default to butt caps, so round has to be stored for them

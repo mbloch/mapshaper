@@ -2210,8 +2210,13 @@ div.basemap-style-btn.active {
 	cursor: grabbing;
 }
 
-.map-layers.draw-tool.dragging {
-	cursor: default;
+.map-layers.draw-tool.draw-select {
+	cursor: pointer;
+}
+
+/* Not the move cursor, which is large enough to hide the vertex markers. */
+.map-layers.reshape-tool.reshape-vertex {
+	cursor: pointer;
 }
 
 body.pan .map-layers:not(.drawing) {
