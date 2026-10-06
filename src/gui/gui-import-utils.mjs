@@ -1,6 +1,7 @@
 import { showPrompt } from './gui-alert';
 import { internal } from './gui-core';
 import { loadScript } from './dom-utils';
+import { boundsCanBeProjected } from './gui-projection-utils';
 
 export async function considerReprojecting(gui, dataset, opts) {
   var mapCRS = gui.map.getActiveLayerCRS();
@@ -20,11 +21,8 @@ export async function considerReprojecting(gui, dataset, opts) {
 
 function datasetCanBeReprojected(dataset, srcCRS, destCRS) {
   var bounds = internal.getDatasetBounds(dataset);
-  var transform, p;
   if (!bounds || !bounds.hasBounds()) return false;
-  transform = internal.getProjTransform2(srcCRS, destCRS);
-  p = transform(bounds.centerX(), bounds.centerY());
-  return !!(p && isFinite(p[0]) && isFinite(p[1]));
+  return boundsCanBeProjected(bounds, internal.getProjTransform2(srcCRS, destCRS));
 }
 
 function notifyProjectionMismatch(gui, dataset) {
