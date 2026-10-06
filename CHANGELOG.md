@@ -1,3 +1,8 @@
+v0.7.79
+* `-add-shape` and `-add-layer` are now documented editing commands. `-add-shape` takes the `-style` options, `closed` (to make a polygon from an open path) and `extend` (to join a new line to the line that ends where it starts or ends).
+* [web] Drawing and styling lines and polygons happen in the same panel. Draw and Reshape buttons open the drawing and vertex-editing tools, and each new shape is added with an `-add-shape` command that records it in the session history.
+* [web] Clicking a line or polygon selects it for restyling, with or without a tool selected. Esc or clicking off deselects it. Drawing from the end of a line extends that line; with Option/Alt, drawing starts a new line at the nearest vertex.
+
 v0.7.78
 * [web] Color palettes can be exported as GMT (.cpt) or JSON files, and imported from these files (including GMT files from other programs) or from a list of colors. The JSON includes a style expression for Mapbox GL and MapLibre maps.
 

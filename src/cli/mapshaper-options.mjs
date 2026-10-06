@@ -601,6 +601,7 @@ export function getOptionParser() {
     // projected coordinate is not read as lat-long
     .option('target', targetOpt);
 
+  // Used by GUI - leaving undocumented
   parser.command('add-shape')
     .describe('add a point, line or polygon, optionally with a style')
     .option('coordinates', {
