@@ -373,8 +373,8 @@ export function FrameResizeTool(gui) {
     });
     var marginCell = El('label').addClass('frame-create-margin').appendTo(fitRow);
     El('span').appendTo(marginCell).text('Margin');
-    var marginInput = El('input').attr('type', 'text').appendTo(marginCell);
-    marginInput.node().value = '2%';
+    var marginInput = El('input').attr('type', 'text')
+      .attr('placeholder', '0').appendTo(marginCell);
     makeFieldTip(fitRow,
       'Space around the layers: 2%, 20px, 1cm.\n' +
       "A percentage is of the frame's width, on\n" +

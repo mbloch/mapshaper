@@ -2,11 +2,16 @@ import utils from '../utils/mapshaper-utils';
 import { featureHasSvgSymbol, featureHasLabel } from './svg-feature-utils';
 import { featureHasIcon, getIconRadius, RING_STROKE_WIDTH } from './svg-symbols';
 import { getLabelTextBox, getLabelFontSize, labelHasCallout } from './svg-label-callout';
-import { parsePointPair } from './svg-properties';
+import { parsePointPair, isSvgNumber } from './svg-properties';
 import { forEachSymbolCoord, getStrokeOutset } from '../symbols/mapshaper-symbol-utils';
+import { getPolygonGlow } from './svg-glow';
+import { ARROW_ANGLE, OPEN_ARROW_ANGLE, getArrowHead } from './svg-arrowheads';
 
-// The space that a point's symbol and label take up when drawn, for fitting a
-// map frame around them.
+// mapshaper-svg.mjs sets this on the document when any join is mitered
+var SVG_EXPORT_MITER_LIMIT = 2;
+
+// The space that a point's symbol and label, or a path's stroke, take up when
+// drawn, for fitting a map frame around them.
 //
 // Boxes are [xmin, ymin, xmax, ymax] in px, relative to the point, with y down:
 // the space symbols are drawn in (see renderPoint() in svg-symbols.mjs, which
@@ -35,6 +40,60 @@ export function getPointSymbolBox(rec, cache) {
 // every side.
 export function getPathLabelPadding(rec) {
   return getLabelFontSize(rec) + getHaloWidth(rec);
+}
+
+// How far what is drawn along a path can reach past its vertices, in px, on
+// every side: half the stroke, as far as a miter join or a square cap
+// takes it, plus a polygon's outer glow, at the width where it has faded to
+// next to nothing. Follows the SVG export: a line is stroked 1px black unless
+// its stroke is "none", a polygon only when it has a stroke, and joins are
+// round unless stroke-linejoin says otherwise.
+// @type: 'polyline' or 'polygon'
+export function getPathStrokeOutset(rec, type) {
+  var stroke = rec ? rec.stroke : null;
+  var width = rec ? rec['stroke-width'] : null;
+  var stroked = type == 'polyline' ? stroke != 'none' :
+    !!stroke && stroke != 'none';
+  var outset = 0, k = 1, glow;
+  if (stroked) {
+    width = isSvgNumber(width) ? Math.max(Number(width), 0) : 1;
+    if (rec && rec['stroke-linejoin'] == 'miter') {
+      k = isSvgNumber(rec['stroke-miterlimit']) ?
+        Math.max(Number(rec['stroke-miterlimit']), 1) : SVG_EXPORT_MITER_LIMIT;
+    }
+    if (type == 'polyline' && rec && rec['stroke-linecap'] == 'square') {
+      k = Math.max(k, Math.SQRT2);
+    }
+    outset = width / 2 * k;
+  }
+  glow = type == 'polygon' ? getPolygonGlow(rec, 'outer') : null;
+  return glow ? outset + glow.width : outset;
+}
+
+// The box around the arrowhead or dot that @type draws at the end of a line,
+// relative to the line's end, in px, y down; or null for none.
+// @dir: unit vector from the end back along the line, px, y down
+// @opts: from getLineArrowOpts()
+export function getLineEndBox(type, dir, opts) {
+  var r, side, angle, points, box;
+  if (type == 'dot') {
+    r = opts.dotSize / 2;
+    return getSquareBox(r, 0, 0);
+  }
+  if (type != 'arrow' && type != 'open-arrow' || !dir) return null;
+  if (type == 'open-arrow') {
+    side = Math.max(opts.size - opts.width, opts.size / 2);
+    angle = OPEN_ARROW_ANGLE;
+  } else {
+    side = opts.size;
+    angle = ARROW_ANGLE;
+  }
+  points = getArrowHead([0, 0], dir, side, angle);
+  box = points.reduce(function(memo, p) {
+    return mergeBoxes(memo, [p[0], p[1], p[0], p[1]]);
+  }, null);
+  // a chevron is stroked, with a round join and caps
+  return type == 'open-arrow' ? padBox(box, opts.width / 2) : box;
 }
 
 function getLabelBox(rec) {

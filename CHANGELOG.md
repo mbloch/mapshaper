@@ -1,3 +1,7 @@
+v0.7.80
+* A map frame fitted to layers now makes room for the strokes of lines and polygons (including miter joins and square caps), the arrowheads and dots at the ends of lines, and the outer glows of polygons, so that with no margin, everything drawn falls inside the frame. `ignore-symbols` fits to coordinates alone, as before.
+* [web] The Add map frame dialog no longer adds a 2% margin by default when fitting a frame to the visible layers.
+
 v0.7.79
 * `-add-shape` and `-add-layer` are now documented editing commands. `-add-shape` takes the `-style` options, `closed` (to make a polygon from an open path) and `extend` (to join a new line to the line that ends where it starts or ends).
 * [web] Drawing and styling lines and polygons happen in the same panel. Draw and Reshape buttons open the drawing and vertex-editing tools, and each new shape is added with an `-add-shape` command that records it in the session history.

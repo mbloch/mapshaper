@@ -1078,14 +1078,16 @@ and reads back the ratio the frame actually has: a ratio with a name keeps its
 `w:h` form, one without shows as a number. Frame properties keeps displaying
 the ratio read-only.
 
-Fit also leaves room for point symbols and labels, which are sized in output
-pixels. How many map units a pixel covers depends on the extent being fitted,
+Fit also leaves room for point symbols and labels, and for the strokes,
+arrowheads and outer glows of paths, which are all sized in output pixels.
+A stroke pads its feature's bbox by the same amount on every side, so a layer
+whose features are stroked alike is padded once, at the layer's bounds. How many map units a pixel covers depends on the extent being fitted,
 so the extent is solved for rather than padded (see
 `src/furniture/mapshaper-frame-fit.mjs`), and the solve has to run through the
 same offset, aspect and `fix-scale` arithmetic as the rest of the fit. That is
 why Fit sends `-update-frame fit=<layers>` and lets the command find the
 extent, instead of sending a `bbox=` computed in the GUI. `-frame` fits its
-target layers the same way; both take `ignore-symbols` to fit point locations
+target layers the same way; both take `ignore-symbols` to fit coordinates
 alone.
 
 **Margin** sits after Fit rather than with the frame settings, because it is

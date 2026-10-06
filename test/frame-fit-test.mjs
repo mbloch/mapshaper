@@ -1,6 +1,10 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
-import { getPointSymbolBox, getPathLabelPadding } from '../src/svg/svg-symbol-bounds';
+import {
+  getPointSymbolBox,
+  getPathLabelPadding,
+  getPathStrokeOutset
+} from '../src/svg/svg-symbol-bounds';
 import { fitBboxToSymbols, getFrameScale } from '../src/furniture/mapshaper-frame-fit';
 import { setTextMeasureFunction, clearTextWidthCache } from '../src/svg/svg-label-metrics';
 
@@ -239,6 +243,111 @@ describe('mapshaper-frame-fit.mjs', function() {
       var input = {'pt.json': pointsJSON([{coordinates: [0, 0], properties: {r: 5}}])};
       await assert.rejects(api.applyCommands('-i pt.json -frame width=800', input),
         /collapsed bbox/);
+    });
+  });
+
+  describe('getPathStrokeOutset()', function() {
+    it('strokes lines 1px black by default, and polygons only when asked', function() {
+      assert.equal(getPathStrokeOutset(null, 'polyline'), 0.5);
+      assert.equal(getPathStrokeOutset({stroke: 'none'}, 'polyline'), 0);
+      assert.equal(getPathStrokeOutset({}, 'polygon'), 0);
+      assert.equal(getPathStrokeOutset({stroke: 'red'}, 'polygon'), 0.5);
+      assert.equal(getPathStrokeOutset({stroke: 'red', 'stroke-width': 4}, 'polygon'), 2);
+      assert.equal(getPathStrokeOutset({stroke: 'red', 'stroke-width': 0}, 'polygon'), 0);
+    });
+
+    it('allows for miter joins and square caps', function() {
+      assert.equal(getPathStrokeOutset({'stroke-width': 4, 'stroke-linejoin': 'miter'},
+        'polyline'), 4);
+      assert.equal(getPathStrokeOutset({'stroke-width': 4, 'stroke-linejoin': 'miter',
+        'stroke-miterlimit': 3}, 'polyline'), 6);
+      assert.equal(getPathStrokeOutset({'stroke-width': 4, 'stroke-linecap': 'square'},
+        'polyline'), 2 * Math.SQRT2);
+    });
+
+    it('adds an outer glow to a polygon', function() {
+      assert.equal(getPathStrokeOutset({stroke: 'red', 'stroke-width': 2,
+        'outer-glow-color': 'blue', 'outer-glow-width': 6}, 'polygon'), 7);
+    });
+  });
+
+  describe('-frame with strokes', function() {
+    function linesJSON(features) {
+      return JSON.stringify({
+        type: 'FeatureCollection',
+        features: features.map(function(o) {
+          return {type: 'Feature', properties: o.properties || {},
+            geometry: {type: 'LineString', coordinates: o.coordinates}};
+        })
+      });
+    }
+
+    it('keeps a stroked line inside the frame', async function() {
+      var input = {'lines.json': linesJSON([
+        {coordinates: [[0, 0], [100, 50]], properties: {'stroke-width': 20}}
+      ])};
+      var frame = await getFrame('-i lines.json -frame width=800', input);
+      var s = 100 / 780;
+      assertBbox(frame.bbox, [-10 * s, -10 * s, 100 + 10 * s, 50 + 10 * s]);
+    });
+
+    it('pads an unstyled line by half of its default 1px stroke', async function() {
+      var input = {'lines.json': linesJSON([{coordinates: [[0, 0], [100, 50]]}])};
+      var frame = await getFrame('-i lines.json -frame width=800', input);
+      var s = 100 / 799;
+      assertBbox(frame.bbox, [-0.5 * s, -0.5 * s, 100 + 0.5 * s, 50 + 0.5 * s]);
+    });
+
+    it('pads each feature by its own stroke', async function() {
+      // the wide stroke is on the left; the right is set by the thin one
+      var input = {'lines.json': linesJSON([
+        {coordinates: [[0, 0], [0, 50]], properties: {'stroke-width': 20}},
+        {coordinates: [[100, 0], [100, 50]], properties: {'stroke-width': 2}}
+      ])};
+      var frame = await getFrame('-i lines.json -frame width=800', input);
+      var s = 100 / 789;
+      assertBbox(frame.bbox, [-10 * s, -10 * s, 100 + 1 * s, 50 + 10 * s]);
+    });
+
+    it('leaves unstroked polygons unpadded', async function() {
+      var frame = await getFrame('-rectangle bbox=0,0,100,50 -frame width=800', {});
+      assertBbox(frame.bbox, [0, 0, 100, 50]);
+    });
+
+    it('keeps a polygon stroke inside the frame', async function() {
+      var frame = await getFrame('-rectangle bbox=0,0,100,50 ' +
+        '-style stroke=red stroke-width=8 -frame width=800', {});
+      var s = 100 / 792;
+      assertBbox(frame.bbox, [-4 * s, -4 * s, 100 + 4 * s, 50 + 4 * s]);
+    });
+
+    it('adds the margin outside the stroke', async function() {
+      var frame = await getFrame('-rectangle bbox=0,0,100,50 ' +
+        '-style stroke=red stroke-width=8 -frame width=800 margin=10px', {});
+      var s = (frame.bbox[2] - frame.bbox[0]) / 800;
+      assert(Math.abs(-frame.bbox[0] / s - 14) < 1e-6);
+      assert(Math.abs((frame.bbox[3] - 50) / s - 14) < 1e-6);
+    });
+
+    it('makes room for an arrowhead at the end of a line', async function() {
+      // a 10px head (7 + 3 * 1px) pointing right, at the right edge
+      var input = {'lines.json': linesJSON([
+        {coordinates: [[0, 50], [100, 50]], properties: {'line-end': 'arrow'}}
+      ])};
+      var frame = await getFrame('-i lines.json -frame width=800', input);
+      var s = (frame.bbox[2] - frame.bbox[0]) / 800;
+      var half = 10 * Math.sin(17.5 * Math.PI / 180);
+      // the tip is at the end of the line, so the head adds nothing past it
+      assert(Math.abs((frame.bbox[2] - 100) / s - 0.5) < 1e-6);
+      assert(Math.abs((frame.bbox[3] - 50) / s - half) < 1e-6);
+    });
+
+    it('ignores strokes with ignore-symbols', async function() {
+      var input = {'lines.json': linesJSON([
+        {coordinates: [[0, 0], [100, 50]], properties: {'stroke-width': 20}}
+      ])};
+      var frame = await getFrame('-i lines.json -frame width=800 ignore-symbols', input);
+      assertBbox(frame.bbox, [0, 0, 100, 50]);
     });
   });
 

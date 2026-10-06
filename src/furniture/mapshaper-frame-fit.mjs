@@ -1,11 +1,19 @@
 import { Bounds } from '../geom/mapshaper-bounds';
 import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
 import { featureHasLabel } from '../svg/svg-feature-utils';
-import { getPointSymbolBox, getPathLabelPadding } from '../svg/svg-symbol-bounds';
+import {
+  getPointSymbolBox,
+  getPathLabelPadding,
+  getPathStrokeOutset,
+  getLineEndBox
+} from '../svg/svg-symbol-bounds';
+import { getLineArrowOpts, getLineEndType, lineHasArrows } from '../svg/svg-line-arrows';
+import { getCircleExit, getUnitVector } from '../svg/svg-arrowheads';
 import { warn } from '../utils/mapshaper-logging';
 
 // Fitting a map frame to its content, including the symbols and labels drawn
-// at points, which take up room that the point coordinates alone do not.
+// at points and the strokes drawn along paths, which take up room that the
+// coordinates alone do not.
 //
 // Symbols are sized in output pixels, and how many map units a pixel covers is
 // set by the frame being fitted, so the extent can't simply be padded. It is
@@ -23,7 +31,8 @@ var MAX_ITERATIONS = 50;
 var TOLERANCE = 1e-9;
 
 // Returns the extent of @targets as a bbox array, padded to hold the symbols
-// and labels at their points, or null if the targets have no extent.
+// and labels at their points and the strokes along their paths, or null if the
+// targets have no extent.
 //
 // @targets   [{layer, dataset}]
 // @getScale  function(bbox) -> map units per output px of a frame fitted to
@@ -40,12 +49,12 @@ export function getFrameContentBbox(targets, getScale, opts) {
   if (!bounds.hasBounds()) return null;
   raw = bounds.toArray();
   if (opts && opts.ignore_symbols) return raw;
-  items = getSymbolExtents(targets);
+  items = getSymbolExtents(targets).concat(getStrokeExtents(targets, getScale(raw)));
   if (items.length === 0) return raw;
   bbox = fitBboxToSymbols(raw, items, getScale);
   if (!bbox) {
-    warn('Symbols and labels are too large to fit in the frame; ' +
-      'fitting the frame to point locations only.');
+    warn('Symbols, labels and strokes are too large to fit in the frame; ' +
+      'fitting the frame to coordinates only.');
     return raw;
   }
   return bbox;
@@ -138,4 +147,113 @@ export function getSymbolExtents(targets) {
     });
   });
   return items;
+}
+
+// The same, for the strokes of path layers and the heads at the ends of lines.
+// A stroke reaches the same distance past every side of its feature's bbox, so
+// a feature adds two items, at its bbox's corners; a layer whose features are
+// all stroked alike adds two for the layer.
+// @scale  map units per px of a frame fitted to the coordinates alone, for
+//   finding which way an arrowhead points, which depends a little on the
+//   scale (see getLineArrowShape())
+export function getStrokeExtents(targets, scale) {
+  var items = [];
+  targets.forEach(function(o) {
+    var type = o.layer.geometry_type;
+    if (type != 'polyline' && type != 'polygon' || !o.layer.shapes) return;
+    addPathLayerItems(items, o.layer, o.dataset.arcs, scale);
+  });
+  return items;
+}
+
+function addPathLayerItems(items, lyr, arcs, scale) {
+  var type = lyr.geometry_type;
+  var records = lyr.data ? lyr.data.getRecords() : null;
+  var shapes = lyr.shapes;
+  var outsets = [];
+  var layerOutset = null;
+  var uniform = true;
+  var shp, rec, outset, i, bounds;
+  for (i = 0; i < shapes.length; i++) {
+    shp = shapes[i];
+    outsets.push(0);
+    if (!shp || shp.length === 0) continue;
+    rec = records ? records[i] : null;
+    outset = getPathStrokeOutset(rec, type);
+    outsets[i] = outset;
+    if (layerOutset === null) {
+      layerOutset = outset;
+    } else if (outset !== layerOutset) {
+      uniform = false;
+    }
+    if (type == 'polyline' && rec && lineHasArrows(rec)) {
+      addLineEndItems(items, shp, arcs, rec, scale);
+    }
+  }
+  if (uniform) {
+    bounds = layerOutset > 0 ? getLayerBounds(lyr, arcs) : null;
+    if (bounds) addOutsetItems(items, bounds.toArray(), layerOutset);
+    return;
+  }
+  for (i = 0; i < shapes.length; i++) {
+    if (!(outsets[i] > 0)) continue;
+    bounds = arcs.getMultiShapeBounds(shapes[i]);
+    if (bounds.hasBounds()) addOutsetItems(items, bounds.toArray(), outsets[i]);
+  }
+}
+
+function addOutsetItems(items, bbox, pad) {
+  items.push(bbox[0], bbox[1], -pad, -pad, -pad, -pad,
+    bbox[2], bbox[3], pad, pad, pad, pad);
+}
+
+// Every part of a line gets its own heads
+function addLineEndItems(items, shp, arcs, rec, scale) {
+  var opts = getLineArrowOpts(rec, 1);
+  var start = getLineEndType(rec, 'line-start');
+  var end = getLineEndType(rec, 'line-end');
+  shp.forEach(function(ids) {
+    var coords = getPathCoords(ids, arcs);
+    if (coords.length < 2) return;
+    if (start != 'none') addLineEndItem(items, coords, start, opts, scale);
+    if (end != 'none') addLineEndItem(items, coords.reverse(), end, opts, scale);
+  });
+}
+
+// A head at the first point of @coords
+function addLineEndItem(items, coords, type, opts, scale) {
+  var tip = coords[0];
+  var dir = type == 'dot' ? null : getHeadDirection(coords, opts.size, scale);
+  var box = getLineEndBox(type, dir, opts);
+  if (!box) return;
+  items.push(tip[0], tip[1], box[0], -box[3], box[2], -box[1]);
+}
+
+// Unit vector in px, y down, from the end of a line along the chord to where
+// the line first gets @len px from it, as a head drawn at @scale points.
+// Without a scale, along the first segment of any length.
+function getHeadDirection(coords, len, scale) {
+  var tip = coords[0];
+  var origin = [0, 0];
+  var k = scale > 0 ? 1 / scale : 1;
+  var prev = origin, p, i;
+  for (i = 1; i < coords.length; i++) {
+    p = [(coords[i][0] - tip[0]) * k, (tip[1] - coords[i][1]) * k];
+    if (!(scale > 0)) {
+      if (p[0] !== 0 || p[1] !== 0) return getUnitVector(origin, p);
+    } else if (Math.sqrt(p[0] * p[0] + p[1] * p[1]) > len) {
+      return getUnitVector(origin, getCircleExit(origin, len, prev, p));
+    }
+    prev = p;
+  }
+  return getUnitVector(origin, prev);
+}
+
+function getPathCoords(ids, arcs) {
+  var iter = arcs.getShapeIter(ids);
+  var coords = [];
+  while (iter.hasNext()) {
+    coords.push([iter.x, iter.y]);
+  }
+  return coords;
 }

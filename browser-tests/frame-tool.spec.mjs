@@ -73,6 +73,22 @@ test('fitting visible layers applies the aspect ratio and margin', async functio
     .toContain("aspect-ratio=1.25 margin='10%'");
 });
 
+// Fitting already makes room for what is drawn, so no margin is needed to keep
+// the edges of the map from being cut off.
+test('fitting visible layers adds no margin by default', async function({page}) {
+  await loadFixture(page);
+  await openLayersPanel(page);
+  await page.locator('.map-frame-empty').click();
+  await expect(page.locator('.frame-create-margin input')).toHaveValue('');
+  await page.locator('.frame-create-popup .dialog-btn')
+    .filter({hasText: 'Fit visible layers'}).click();
+
+  await expect.poll(function() {
+    return getFrameInfo(page);
+  }).not.toBeNull();
+  expect((await getSessionCommands(page)).pop()).not.toContain('margin');
+});
+
 // A drawn box is already the extent the user meant, so the margin is not
 // offered for it and must not leak into the command.
 test('a drawn frame takes the aspect ratio but no margin', async function({page}) {

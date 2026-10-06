@@ -2442,7 +2442,7 @@ export function getOptionParser() {
       describe: 'layer(s) to fit the frame to, including their symbols and labels'
     })
     .option('ignore-symbols', {
-      describe: 'with fit=, fit to point locations, not symbol and label extents',
+      describe: 'with fit=, fit to coordinates, not the extent of symbols, labels and strokes',
       type: 'flag'
     })
     .option('width', {
@@ -2587,7 +2587,7 @@ export function getOptionParser() {
     .option('offset', frameOffsetOpt)
     .option('offsets', frameOffsetOpt)
     .option('ignore-symbols', {
-      describe: 'fit to point locations, not the extent of symbols and labels',
+      describe: 'fit to coordinates, not the extent of symbols, labels and strokes',
       type: 'flag'
     })
     .option('name', nameOpt)
