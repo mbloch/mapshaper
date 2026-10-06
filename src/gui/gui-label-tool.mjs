@@ -1328,7 +1328,7 @@ export function LabelTool(gui) {
     if (isHexColor(colorVal)) {
       picker.setColor(colorVal);
     } else {
-      picker.hide();
+      picker.clearColor();
     }
   }
 

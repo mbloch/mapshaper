@@ -90,6 +90,47 @@ test('an opacity is blank with no colour, and 100% with one', async function({pa
   expect(errors).toEqual([]);
 });
 
+test('an unset colour opens the picker with nothing picked', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  var fill = colorRow(page, 'Fill');
+  var stroke = colorRow(page, 'Stroke');
+  var picker = stroke.locator('.label-color-picker');
+  var marker = picker.locator('.label-color-canvas-wrap').first().locator('.label-color-marker');
+  // a picker that showed a color before goes back to nothing for an unset field
+  await fill.locator('.label-color-chit').click();
+  await fill.locator('.label-color-picker button').filter({hasText: 'Close'}).click();
+
+  await stroke.locator('.label-color-chit').click();
+  await expect(picker.locator('.label-color-picker-input')).toHaveValue('');
+  await expect(marker).toBeHidden();
+
+  // turning the hue picks nothing, and neither does closing
+  var hue = picker.locator('canvas').nth(1);
+  await hue.click({position: {x: 100, y: 5}});
+  await expect(picker.locator('.label-color-picker-input')).toHaveValue('');
+  await picker.locator('button').filter({hasText: 'Close'}).click();
+  await page.waitForTimeout(150);
+  expect(await getStyleValue(page, 'stroke')).toBeUndefined();
+  await expect(stroke.locator('.label-color-input')).toHaveValue('');
+
+  // black is one click on its tile
+  await stroke.locator('.label-color-chit').click();
+  await picker.locator('.label-color-preset[aria-label="#000000"]').click();
+  await page.waitForTimeout(250);
+  expect(await getStyleValue(page, 'stroke')).toBe('#000000');
+  await expect(stroke.locator('.label-color-input')).toHaveValue('#000000');
+  await expect(marker).toBeVisible();
+
+  // and emptying the field puts the picker back to nothing
+  await setField(stroke.locator('.label-color-input'), '');
+  expect(await getStyleValue(page, 'stroke')).toBeUndefined();
+  await stroke.locator('.label-color-chit').click();
+  await expect(picker.locator('.label-color-picker-input')).toHaveValue('');
+  await expect(marker).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
 test('stroke width is typed or stepped in a size field', async function({page}) {
   // It was a value between a − and a +, three clicks wide, with no way to
   // type a width at all until the value itself was clicked.

@@ -209,14 +209,20 @@ export function makeColorRow(parent, opts) {
   // has never been opened is still on its default, so without this it opens on
   // black rather than on the colour beside it. Kept apart from setColor(),
   // which is also the picker's own preview callback and must not feed back into
-  // it mid-drag.
+  // it mid-drag. A field with no hex color opens the picker with nothing
+  // picked, so that closing it leaves the field as it was.
   control.showColor = function(color) {
-    var hex = toSixDigitHex(color);
     // the picker previews what it is set to, so it goes first, and the field
     // then shows the color as the data has it ("#334", not "#333344")
-    if (hex) control.picker.setColor(hex);
+    showInPicker(color);
     control.setColor(color);
   };
+
+  function showInPicker(color) {
+    var hex = toSixDigitHex(color);
+    if (hex) control.picker.setColor(hex);
+    else control.picker.clearColor();
+  }
 
   El('span').appendTo(colorCell).text(opts.label);
   control.chit = El('div').addClass('label-color-chit').attr('role', 'button')
@@ -227,8 +233,7 @@ export function makeColorRow(parent, opts) {
     .attr('aria-label', opts.label + ' color')
     .on('change', function() {
       var color = control.input.node().value.trim();
-      var hex = toSixDigitHex(color);
-      if (hex) control.picker.setColor(hex);
+      showInPicker(color);
       opts.onColor(color);
     });
   if (opts.noOpacity) {

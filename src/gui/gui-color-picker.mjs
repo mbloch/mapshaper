@@ -59,6 +59,11 @@ export function ColorPicker(parent, opts) {
   // was typed or picked from a preset would otherwise come back as a
   // neighbour of itself (#ff8800 as #ff8a00).
   var pickerHex = null;
+  // No color is picked: the field it belongs to is unset (or holds a color
+  // that can't be shown here). The square has no marker and the fields are
+  // blank, and only a pick in the square, a preset or a typed color ends it.
+  // The hue strip still turns the square, without picking anything.
+  var unset = false;
   var presetRows = opts.presetRows || [grayscaleColorPresets];
 
   init();
@@ -103,9 +108,17 @@ export function ColorPicker(parent, opts) {
     }
   };
 
+  this.clearColor = function() {
+    unset = true;
+    pickerHex = null;
+    drawColorPicker();
+    updatePickerFields();
+  };
+
   this.getColor = getPickerHex;
 
   function getPickerHex() {
+    if (unset) return null;
     return pickerHex || hsbToHex(pickerColor);
   }
 
@@ -251,6 +264,11 @@ export function ColorPicker(parent, opts) {
 
   function updateHueFromEvent(evt) {
     var p = getCanvasPoint(hueCanvas.node(), evt);
+    if (unset) {
+      pickerColor.h = p.x;
+      drawColorPicker();
+      return;
+    }
     setPickerColor({
       h: p.x,
       s: pickerColor.s,
@@ -274,13 +292,14 @@ export function ColorPicker(parent, opts) {
       b: clamp(Math.round(hsb.b), 0, 255)
     };
     pickerHex = hex || null;
+    unset = false;
     drawColorPicker();
     updatePickerFields();
     if (opts.onPreview) opts.onPreview(getPickerHex());
   }
 
   function updatePickerFields() {
-    colorInput.node().value = formatColorInput(getPickerHex(), colorFieldFormat);
+    colorInput.node().value = unset ? '' : formatColorInput(getPickerHex(), colorFieldFormat);
     formatTabs.forEach(function(tab) {
       var selected = tab.node().getAttribute('data-format') == colorFieldFormat;
       tab.classed('selected', selected).attr('aria-pressed', String(selected));
@@ -313,6 +332,7 @@ export function ColorPicker(parent, opts) {
     }
     ctx.putImageData(image, 0, 0);
     positionMarker(sbMarker, pickerColor.s, 255 - pickerColor.b, pickerColor);
+    sbMarker.node().style.display = unset ? 'none' : '';
   }
 
   function drawHueCanvas() {
@@ -334,6 +354,7 @@ export function ColorPicker(parent, opts) {
   }
 
   function commitPickerColor() {
+    if (unset) return;
     if (opts.onChange) opts.onChange(getPickerHex());
   }
 
