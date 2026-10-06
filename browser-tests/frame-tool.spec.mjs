@@ -28,6 +28,24 @@ test('layer panel creates a frame from the visible layers', async function({page
   );
 });
 
+test('fitting visible layers includes a raster layer', async function({page}) {
+  await loadFixture(page, 'test/data/geotiff/wgs84-geographic-epsg4326.tif');
+  await openLayersPanel(page);
+  await page.locator('.map-frame-empty').click();
+  await expect(page.locator('.frame-create-popup')).toBeVisible();
+  await page.locator('.frame-create-popup .dialog-btn')
+    .filter({hasText: 'Fit visible layers'}).click();
+
+  await expect.poll(function() {
+    return getFrameInfo(page);
+  }).not.toBeNull();
+  var frame = await getFrameInfo(page);
+  expect(frame.bbox[0]).toBeLessThanOrEqual(-180);
+  expect(frame.bbox[1]).toBeLessThanOrEqual(-90);
+  expect(frame.bbox[2]).toBeGreaterThanOrEqual(180);
+  expect(frame.bbox[3]).toBeGreaterThanOrEqual(90);
+});
+
 test('a data-only layer gets a clear message instead of a frame', async function({page}) {
   await loadFixture(page, 'test/data/text/states.csv');
   await openLayersPanel(page);

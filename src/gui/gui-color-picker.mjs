@@ -99,7 +99,7 @@ export function ColorPicker(parent, opts) {
 
   this.setColor = function(color) {
     if (isHexColor(color)) {
-      setPickerColor(hexToHsb(color), color);
+      setPickerColor(hexToPickerHsb(color, pickerColor), color);
     }
   };
 
@@ -172,7 +172,7 @@ export function ColorPicker(parent, opts) {
   }
 
   function applyPreset(color) {
-    setPickerColor(hexToHsb(color), color);
+    setPickerColor(hexToPickerHsb(color, pickerColor), color);
     commitPickerColor();
   }
 
@@ -216,7 +216,7 @@ export function ColorPicker(parent, opts) {
       updatePickerFields();
       return;
     }
-    setPickerColor(hexToHsb(hex), hex);
+    setPickerColor(hexToPickerHsb(hex, pickerColor), hex);
     commitPickerColor();
   }
 
@@ -360,6 +360,16 @@ export function ColorPicker(parent, opts) {
 
 export function isHexColor(str) {
   return /^#[0-9a-f]{6}$/i.test(str);
+}
+
+// A gray has no hue and black has no saturation either, so those components
+// are kept from @prev; otherwise a gray fed back to the picker (e.g. by a
+// panel echoing the committed color) would reset the hue slider to red.
+export function hexToPickerHsb(hex, prev) {
+  var hsb = hexToHsb(hex);
+  if (prev && (hsb.s === 0 || hsb.b === 0)) hsb.h = prev.h;
+  if (prev && hsb.b === 0) hsb.s = prev.s;
+  return hsb;
 }
 
 function hexToHsb(hex) {

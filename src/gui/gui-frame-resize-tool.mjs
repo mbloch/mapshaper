@@ -509,8 +509,8 @@ export function FrameResizeTool(gui) {
 
   function getNoSourceMessage() {
     var active = gui.model.getActiveLayer();
-    if (active && active.layer && !internal.layerHasGeometry(active.layer)) {
-      return 'A map frame is fitted to layers with shapes, and this layer ' +
+    if (active && active.layer && !layerHasExtent(active.layer)) {
+      return 'A map frame is fitted to layers with shapes or rasters, and this layer ' +
         'contains only attribute data. Select or show a map layer to create a frame.';
     }
     return 'Add one or more layers before creating a map frame.';
@@ -535,12 +535,17 @@ export function FrameResizeTool(gui) {
     return entries.length ? entries[0].layer : null;
   }
 
-  // A frame is fitted to shapes, so a data-only layer on show doesn't count
+  // A frame is fitted to shapes and rasters, so a data-only layer on show
+  // doesn't count
   function getCompositionEntries() {
     var layers = gui.map.getCompositionLayers();
     return gui.model.getLayers().filter(function(o) {
-      return layers.includes(o.layer) && internal.layerHasGeometry(o.layer);
+      return layers.includes(o.layer) && layerHasExtent(o.layer);
     });
+  }
+
+  function layerHasExtent(lyr) {
+    return internal.layerHasGeometry(lyr) || internal.layerHasRaster(lyr);
   }
 
   function getDisplayBoundsInLayerCRS(layer, view) {
