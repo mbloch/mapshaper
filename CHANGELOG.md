@@ -1,5 +1,6 @@
 v0.7.80
 * [web] Line, polygon and label styling panels can now be minimized to make more room for editing symbols on the map.
+* [web] Adjust toolbar placement to intrude less into the main map area.
 * A map frame fitted to layers now makes room for the strokes of lines and polygons and the outer glows of polygons, so that with no margin, everything drawn falls inside the frame. `ignore-symbols` fits to coordinates alone, as before.
 * [web] The Add map frame dialog no longer adds a 2% margin by default when fitting a frame to the visible layers.
 
