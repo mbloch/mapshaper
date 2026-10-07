@@ -19,13 +19,26 @@ export function getEqualIntervalBreaks(ascending, numBreaks) {
   return breaks;
 }
 
+// A break falling inside a run of tied values is moved to whichever end of the
+// run is closer to the target rank (values equal to a break go in the upper
+// class), so that a large run of ties at the minimum value doesn't leave the
+// first class empty.
 export function getQuantileBreaks(ascending, numBreaks) {
   var numRanges = numBreaks + 1;
-  var n = ascending.length / numRanges;
+  var len = ascending.length;
+  var n = len / numRanges;
   var breaks = [];
-  var i, j;
+  var i, j, lo, hi, target;
   for (i = 1; i<numRanges; i++) {
-    j = Math.floor(i * n);
+    target = i * n;
+    j = Math.floor(target);
+    lo = j;
+    hi = j + 1;
+    while (lo > 0 && ascending[lo - 1] == ascending[j]) lo--;
+    while (hi < len && ascending[hi] == ascending[j]) hi++;
+    if (hi < len && (lo === 0 || hi - target < target - lo)) {
+      j = hi;
+    }
     breaks.push(ascending[j]);
   }
   return breaks;

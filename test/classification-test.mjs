@@ -70,6 +70,18 @@ describe('mapshaper-classification.js', function () {
       var dist = getDistributionData(breaks, values);
       assert.deepEqual(dist.concat(), [25,25,25,25,25]);
     })
+
+    it('a run of tied minimum values goes in the first class', function () {
+      var values = [2,2,2,2,2,2,3,4,5,6];
+      var breaks = getQuantileBreaks(values, 4);
+      assert.equal(breaks[0], 3);
+      assert.equal(getDistributionData(breaks, values)[0], 6);
+    })
+
+    it('moves a break to the nearer end of a run of ties', function () {
+      assert.deepEqual(getQuantileBreaks([1,3,3,3,3,3,3,4,5,6], 1), [4]);
+      assert.deepEqual(getQuantileBreaks([1,2,3,4,5,5,5,5,5,6], 1), [5]);
+    })
   })
 
   describe('getRankPositionFunction() and getRankBreaks()', function () {
