@@ -200,6 +200,11 @@ export function LayerControl(gui) {
     var frameCount = 0;
     list.empty();
     frameList.empty();
+    // A frame entry has been seen outside the frame list, where emptying the
+    // list leaves it on show as a second frame
+    El.findAll('.map-frame-section > .layer-item', el.node()).forEach(function(node) {
+      node.remove();
+    });
     model.forEachLayer(function(lyr, dataset) {
       // Assign a unique id to each layer, so html strings
       // can be used as unique identifiers for caching rendered HTML, and as
@@ -236,7 +241,7 @@ export function LayerControl(gui) {
         element = cache.use(html);
       } else {
         element = El('div').html(html).firstChild();
-        initMouseEvents(element, lyr.menu_id, opts.pinnable);
+        initMouseEvents(element, lyr.menu_id, opts.pinnable, !isFrame);
         cache.add(html, element);
       }
       if (isFrame) {
@@ -274,32 +279,36 @@ export function LayerControl(gui) {
     return html;
   }
 
-  function initMouseEvents(entry, id, pinnable) {
+  // A frame is not in the layer stack, so its entry can't be dragged to reorder
+  function initMouseEvents(entry, id, pinnable, draggable) {
     entry.on('mouseover', init);
     entry.on('focusin', init);
     function init() {
       entry.removeEventListener('mouseover', init);
       entry.removeEventListener('focusin', init);
-      initMouseEvents2(entry, id, pinnable);
+      initMouseEvents2(entry, id, pinnable, draggable);
     }
   }
 
   function initLayerDragging(entry, id) {
 
     // support layer drag-drop
+    // A drag starts with a press on a layer row, not with a held button
+    // entering one, so a press elsewhere (e.g. on the frame) can't reorder layers
+    entry.on('mousedown', function(e) {
+      if (e.button === 0) dragTargetId = id;
+    });
     entry.on('mousemove', function(e) {
       var rect, insertionClass;
       // stop dragging when mouse button is released
       if (!e.buttons && (dragging || dragTargetId)) {
         stopDragging();
       }
-      // start dragging when button is first pressed
-      if (e.buttons && !dragTargetId) {
-        dragTargetId = id;
-        entry.addClass('drag-target');
-      }
       if (!dragTargetId) {
         return;
+      }
+      if (dragTargetId == id) {
+        entry.addClass('drag-target');
       }
       if (dragTargetId != id) {
         // signal to redraw menu later; TODO: improve
@@ -318,9 +327,9 @@ export function LayerControl(gui) {
     });
   }
 
-  function initMouseEvents2(entry, id, pinnable) {
+  function initMouseEvents2(entry, id, pinnable, draggable) {
     var moreBtn = entry.findChild('.more-btn');
-    initLayerDragging(entry, id);
+    if (draggable) initLayerDragging(entry, id);
 
     function deleteLayer() {
       var target = findLayerById(id);

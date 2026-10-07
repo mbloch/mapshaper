@@ -1435,6 +1435,12 @@ body.simplify .layer-control-btn {
 	cursor: pointer;
 }
 
+/* frame rows have no vertical padding, so the 5px offset for layer rows,
+   which have 6px, puts the button below the text */
+.map-frame-list .layer-item .layer-btn {
+	top: -1px;
+}
+
 .map-frame-empty {
 	cursor: pointer;
 	font-size: 12px;

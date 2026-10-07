@@ -789,6 +789,110 @@ test('export treats the frame as output settings, not a selectable layer', async
   await expect(page.locator('.export-layer-list')).not.toContainText('frame');
 });
 
+// A frame fitted to bare points has to grow when the points get symbols and
+// Fit is clicked again.
+test('Fit re-fits the frame after the points are styled', async function({page}) {
+  await loadFixture(page);
+  await openLayersPanel(page);
+  await page.locator('.map-frame-empty').click();
+  await page.locator('.frame-create-popup .dialog-btn')
+    .filter({hasText: 'Fit visible layers'}).click();
+  await expect.poll(function() {
+    return getFrameInfo(page);
+  }).not.toBeNull();
+  var before = await getFrameInfo(page);
+  await page.evaluate(function() {
+    window.mapshaper.undoTest.openFrameTool();
+  });
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand('-style r=10 target=three_points');
+  });
+  await page.waitForTimeout(200);
+  await page.locator('.frame-toolbar .text-btn').filter({hasText: 'Fit'}).click();
+  await expect.poll(async function() {
+    return (await getSessionCommands(page)).pop();
+  }).toContain('-update-frame fit=');
+  var after = await getFrameInfo(page);
+  expect(after.bbox[0]).toBeLessThan(before.bbox[0]);
+  expect(after.bbox[2]).toBeGreaterThan(before.bbox[2]);
+});
+
+test('the frame entry is not dragged like a layer', async function({page}) {
+  await loadFixture(page);
+  await openLayersPanel(page);
+  await page.locator('.map-frame-empty').click();
+  await page.locator('.frame-create-popup .dialog-btn')
+    .filter({hasText: 'Fit visible layers'}).click();
+  await expect(page.locator('.map-frame-list .layer-item')).toHaveCount(1);
+  var box = await page.locator('.map-frame-list .layer-contents').boundingBox();
+  var y = box.y + box.height / 2;
+  await page.mouse.move(box.x + 5, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 25, y, {steps: 5});
+  var classes = await page.locator('.map-frame-list .layer-item').getAttribute('class');
+  await page.mouse.up();
+  expect(classes).not.toMatch(/drag-target|dragging|insert-/);
+});
+
+test('a press on the frame does not drag a layer it moves over', async function({page}) {
+  await loadFixture(page);
+  await openLayersPanel(page);
+  await page.locator('.map-frame-empty').click();
+  await page.locator('.frame-create-popup .dialog-btn')
+    .filter({hasText: 'Fit visible layers'}).click();
+  await expect(page.locator('.map-frame-list .layer-item')).toHaveCount(1);
+  var layerRow = page.locator('.layer-list .layer-item').first();
+  var from = await page.locator('.map-frame-list .layer-contents').boundingBox();
+  var to = await layerRow.boundingBox();
+  await layerRow.hover(); // the row's handlers are attached on first hover
+  await page.mouse.move(from.x + 5, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + 5, to.y + to.height / 2, {steps: 5});
+  var classes = await layerRow.getAttribute('class');
+  await page.mouse.up();
+  expect(classes).not.toMatch(/drag-target|dragging|insert-/);
+});
+
+test('layers can still be reordered by dragging', async function({page}) {
+  await loadFixture(page);
+  await openLayersPanel(page);
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand('-filter true + name=copy');
+  });
+  var names = page.locator('.layer-list .layer-name');
+  await expect(names).toHaveText(['copy', 'three_points']);
+  var rows = page.locator('.layer-list .layer-item');
+  var from = await rows.nth(0).boundingBox();
+  var to = await rows.nth(1).boundingBox();
+  await rows.nth(0).hover();
+  await rows.nth(1).hover();
+  await page.mouse.move(from.x + 5, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + 5, to.y + to.height - 3, {steps: 5});
+  await page.mouse.up();
+  await expect(names).toHaveText(['three_points', 'copy']);
+});
+
+test('a frame entry outside the frame list is removed on redraw', async function({page}) {
+  await loadFixture(page);
+  await openLayersPanel(page);
+  await page.locator('.map-frame-empty').click();
+  await page.locator('.frame-create-popup .dialog-btn')
+    .filter({hasText: 'Fit visible layers'}).click();
+  await expect(page.locator('.map-frame-list .layer-item')).toHaveCount(1);
+  await page.evaluate(function() {
+    var row = document.querySelector('.map-frame-list .layer-item');
+    var list = document.querySelector('.map-frame-list');
+    list.parentNode.insertBefore(row, list);
+  });
+  await expect(page.locator('.map-frame-section > .layer-item')).toHaveCount(1);
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand('-each "x=1" target=three_points');
+  });
+  await expect(page.locator('.map-frame-section > .layer-item')).toHaveCount(0);
+  await expect(page.locator('.map-frame-list .layer-item')).toHaveCount(1);
+});
+
 async function loadFixture(page, file) {
   var url = '/?undo=on&undo-test=on&files=' + encodeURIComponent(file || POINT_FIXTURE);
   await page.goto(url);
