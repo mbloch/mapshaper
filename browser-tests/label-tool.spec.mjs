@@ -152,30 +152,52 @@ test("a label layer's menu opens the label tool rather than a style panel",
     expect(errors).toEqual([]);
   });
 
-test('the panel\'s close button leaves the label tool', async function({page}) {
-  // The × is the same button the polygon and polyline style panels carry, and
-  // in label mode the panel belongs to the mode: closing it while the map
-  // stayed armed for placing labels would leave the tool half on, with no
-  // panel to turn it off from.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-  await writeLabel(page, 'Reno');
+test('the panel can be hidden for room to place labels, and Done leaves the tool',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+    await armTool(page, 'anchor');
+    await clickMap(page, 0.4, 0.45);
+    await writeLabel(page, 'Reno');
 
-  var panel = page.locator('.text-style-panel');
-  await expect(panel).toBeVisible();
-  await panel.locator('.label-style-close').click();
-  await page.waitForTimeout(200);
+    var panel = page.locator('.text-style-panel');
+    var toolbar = page.locator('.floating-toolbar.label-toolbar');
+    var stylesBtn = toolbar.locator('.floating-toolbar-btn[data-tooltip$="style panel"]');
+    await expect(panel).toBeVisible();
+    await expect(stylesBtn).toHaveClass(/selected/);
 
-  await expect(panel).toBeHidden();
-  await expect(page.locator('.floating-toolbar.label-toolbar')).toBeHidden();
-  expect(await getInteractionMode(page)).not.toBe('label');
-  // and the labels are still there: the button closes a panel, it does not
-  // undo anything
-  expect((await getLabelLayer(page)).shapeCount).toBe(1);
-  expect(errors).toEqual([]);
-});
+    // the × hides the panel, and the tool stays on
+    await panel.locator('.label-style-close').click();
+    await expect(panel).toBeHidden();
+    await expect(toolbar).toBeVisible();
+    await expect(stylesBtn).not.toHaveClass(/selected/);
+    await expect(stylesBtn).toHaveAttribute('data-tooltip', 'Show style panel');
+    expect(await getInteractionMode(page)).toBe('label');
+
+    // the toolbar button shows it again, and hides it
+    await stylesBtn.click();
+    await expect(panel).toBeVisible();
+    await expect(stylesBtn).toHaveClass(/selected/);
+    await stylesBtn.click();
+    await expect(panel).toBeHidden();
+
+    // it stays hidden the next time the tool is opened
+    await page.evaluate(function() {
+      window.mapshaper.undoTest.setInteractionMode('info');
+    });
+    await page.evaluate(function() {
+      window.mapshaper.undoTest.setInteractionMode('label');
+    });
+    await expect(toolbar).toBeVisible();
+    await expect(panel).toBeHidden();
+
+    // Done leaves the tool, and the labels are still there
+    await toolbar.locator('.floating-toolbar-btn').filter({hasText: 'Done'}).click();
+    await expect(toolbar).toBeHidden();
+    expect(await getInteractionMode(page)).not.toBe('label');
+    expect((await getLabelLayer(page)).shapeCount).toBe(1);
+    expect(errors).toEqual([]);
+  });
 
 test('right-clicking a label deletes it, through a command', async function({page}) {
   var errors = collectPageErrors(page);
@@ -463,9 +485,9 @@ test('an existing label emptied of its text is removed by a command', async func
 test('the creation toggles are mutually exclusive', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
-  var buttons = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-content > .floating-toolbar-btn');
+  var buttons = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-btn[data-tooltip^="Add"]');
 
-  // anchored label, text block, path label (undo/redo follow, in their own group)
+  // anchored label, text block, path label
   await expect(buttons).toHaveCount(3);
   // the fixture carries no labels, so the tool arms itself to place one
   await expect(buttons.nth(0)).toHaveClass(/selected/);

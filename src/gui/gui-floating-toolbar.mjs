@@ -12,7 +12,6 @@ import { GUI } from './gui-lib';
 //
 // Constructor options:
 //   name:       optional CSS class added to the toolbar element
-//   transition: ms for the show/hide transition (default 150)
 //
 // API:
 //   toolbar.addButton(iconRef, opts) -> ToolbarButton
@@ -31,7 +30,6 @@ import { GUI } from './gui-lib';
 
 export function FloatingToolbar(gui, opts) {
   opts = opts || {};
-  var transitionMs = opts.transition || 150;
   var root = gui.container.findChild('.mshp-main-map');
   var stack = root.findChild('.floating-toolbar-stack');
   if (!stack) {
@@ -41,7 +39,6 @@ export function FloatingToolbar(gui, opts) {
   if (opts.name) el.addClass(opts.name);
   var content = El('div').addClass('floating-toolbar-content').appendTo(el);
   var visible = false;
-  var hideTimer = null;
 
   el.appendTo(stack);
   el.css('display', 'none');
@@ -109,27 +106,14 @@ export function FloatingToolbar(gui, opts) {
     return el.node();
   };
 
+  // Shown and hidden at once, without a fade: one toolbar often replaces
+  // another (the undo buttons move between a mode's toolbar and their own),
+  // and a toolbar fading out keeps its place in the stack, so a fade made the
+  // toolbars around it jump.
   function updateVisibility() {
     var shouldShow = visible && GUI.isActiveInstance(gui);
-    if (shouldShow) {
-      clearTimeout(hideTimer);
-      hideTimer = null;
-      el.css('display', 'flex');
-      // wait one frame so the browser registers the initial state before
-      // the transition kicks in
-      requestAnimationFrame(function() {
-        el.addClass('visible');
-      });
-    } else {
-      el.removeClass('visible');
-      // wait for the transition to finish before hiding completely
-      clearTimeout(hideTimer);
-      hideTimer = setTimeout(function() {
-        if (!(visible && GUI.isActiveInstance(gui))) {
-          el.css('display', 'none');
-        }
-      }, transitionMs);
-    }
+    el.css('display', shouldShow ? 'flex' : 'none');
+    el.classed('visible', shouldShow);
   }
 }
 

@@ -1012,7 +1012,7 @@ Remove small polygon rings.
 
 ### -frame
 
-Create a rectangular frame layer at a given display width. Frame size is used for scaling symbols and for setting the display size of SVG output. The geographical extent of the frame is based on the `bbox=` option or the bounding box of the target layer or layers, if `bbox=` is omitted. When fitting to target layers, the extent includes room for the point symbols and labels in those layers, and for the strokes, arrowheads and outer glows of their lines and polygons, as drawn at the frame's display size. With no margin, everything drawn falls inside the frame.
+Create a rectangular frame layer at a given display width. Frame size is used for scaling symbols and for setting the display size of SVG output. The geographical extent of the frame is based on the `bbox=` option or the bounding box of the target layer or layers, if `bbox=` is omitted. When fitting to target layers, the extent includes room for the point symbols and labels in those layers, and for the strokes and outer glows of their lines and polygons, as drawn at the frame's display size. With no margin, everything drawn falls inside the frame.
 
 `width=`  Width of frame (e.g. 5in, 10cm, 600px; default is 800px)
 

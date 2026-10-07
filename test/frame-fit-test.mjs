@@ -329,19 +329,6 @@ describe('mapshaper-frame-fit.mjs', function() {
       assert(Math.abs((frame.bbox[3] - 50) / s - 14) < 1e-6);
     });
 
-    it('makes room for an arrowhead at the end of a line', async function() {
-      // a 10px head (7 + 3 * 1px) pointing right, at the right edge
-      var input = {'lines.json': linesJSON([
-        {coordinates: [[0, 50], [100, 50]], properties: {'line-end': 'arrow'}}
-      ])};
-      var frame = await getFrame('-i lines.json -frame width=800', input);
-      var s = (frame.bbox[2] - frame.bbox[0]) / 800;
-      var half = 10 * Math.sin(17.5 * Math.PI / 180);
-      // the tip is at the end of the line, so the head adds nothing past it
-      assert(Math.abs((frame.bbox[2] - 100) / s - 0.5) < 1e-6);
-      assert(Math.abs((frame.bbox[3] - 50) / s - half) < 1e-6);
-    });
-
     it('ignores strokes with ignore-symbols', async function() {
       var input = {'lines.json': linesJSON([
         {coordinates: [[0, 0], [100, 50]], properties: {'stroke-width': 20}}

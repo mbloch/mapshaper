@@ -1078,10 +1078,12 @@ and reads back the ratio the frame actually has: a ratio with a name keeps its
 `w:h` form, one without shows as a number. Frame properties keeps displaying
 the ratio read-only.
 
-Fit also leaves room for point symbols and labels, and for the strokes,
-arrowheads and outer glows of paths, which are all sized in output pixels.
-A stroke pads its feature's bbox by the same amount on every side, so a layer
-whose features are stroked alike is padded once, at the layer's bounds. How many map units a pixel covers depends on the extent being fitted,
+Fit also leaves room for point symbols and labels, and for the strokes and
+outer glows of paths, which are all sized in output pixels. A stroke pads its
+feature's bbox by the same amount on every side, so a layer whose features are
+stroked alike is padded once, at the layer's bounds. Arrowheads and dots at
+the ends of lines are not fitted: they hardly ever reach the edge of a map,
+and their extent depends on which way the line ends. How many map units a pixel covers depends on the extent being fitted,
 so the extent is solved for rather than padded (see
 `src/furniture/mapshaper-frame-fit.mjs`), and the solve has to run through the
 same offset, aspect and `fix-scale` arithmetic as the rest of the fit. That is

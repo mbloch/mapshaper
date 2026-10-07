@@ -234,6 +234,10 @@ export function LabelTool(gui) {
   var lastHaloWidth = defaultHaloWidth;
   // And the callout's shape.
   var lastCalloutShape = defaultCalloutShape;
+  // In the label tool the panel can be hidden, for room to place labels, from
+  // its × or the toolbar's Styles button; it stays hidden for the rest of the
+  // session, each time the tool is opened, until it is shown again.
+  var panelHiddenInTool = false;
 
   initPanel();
   gui.addMode(labelStylePanelMode, turnOn, turnOff);
@@ -243,6 +247,10 @@ export function LabelTool(gui) {
   // other is still on. Registering after addMode() means turnOff() has already
   // run by the time this recomputes.
   gui.on('mode', updatePanelVisibility);
+  // from the label tool's toolbar
+  gui.on('label_style_panel_request', function(e) {
+    setPanelShownInTool(!!e.shown);
+  });
   gui.model.on('update', updateVisibility);
   gui.model.on('update', function() {
     if (panel.visible()) updateControls();
@@ -338,15 +346,11 @@ export function LabelTool(gui) {
     });
 
     var header = El('div').addClass('label-style-panel-title').appendTo(panel).text('Label styles');
-    // In label mode the panel belongs to the mode, so closing it leaves the
-    // mode: a panel that shut while the map stayed armed for placing labels
-    // would leave the tool half on, with no panel to turn it off from. Every
-    // other style panel's × closes a panel and nothing else, and this one
-    // reads as the same button, which is the argument for it doing the whole
-    // of what the user asked for rather than part.
+    // In label mode the × hides the panel and leaves the tool on, as in the
+    // line and polygon modes; the toolbar's Done button leaves the tool.
     closeBtn = El('button').addClass('label-style-close').appendTo(header).text('×').on('click', function() {
       if (labelModeIsOn()) {
-        gui.interaction.turnOff(); // the tool's own turnOff() takes the panel
+        setPanelShownInTool(false);
       } else {
         gui.clearMode();
       }
@@ -779,9 +783,17 @@ export function LabelTool(gui) {
   function panelShouldBeVisible() {
     // The label tool keeps the panel up whether or not the layer has labels, so
     // that a style can be chosen before there is a label to apply it to.
-    return labelModeIsOn() || gui.getMode() == labelStylePanelMode;
+    return labelModeIsOn() && !panelHiddenInTool || gui.getMode() == labelStylePanelMode;
   }
 
+  function setPanelShownInTool(shown) {
+    panelHiddenInTool = !shown;
+    if (!shown) releaseFocus();
+    updatePanelVisibility();
+  }
+
+  // gui.state.label_style_panel_open says whether the panel is up, for the
+  // label tool's Styles button, which follows 'label_style_panel_change'
   function showPanel() {
     renderFontOptions();
     gui.state.label_style_panel_open = true;
@@ -790,6 +802,7 @@ export function LabelTool(gui) {
     textBtn.addClass('selected');
     updateControls();
     updateSelectionDisplay();
+    gui.dispatchEvent('label_style_panel_change');
   }
 
   function hidePanel() {
@@ -798,6 +811,7 @@ export function LabelTool(gui) {
     gui.state.label_style_panel_open = false;
     textBtn.removeClass('selected');
     clearSelectionDisplay();
+    gui.dispatchEvent('label_style_panel_change');
   }
 
   function labelModeIsOn() {

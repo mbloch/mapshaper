@@ -1,5 +1,6 @@
 v0.7.80
-* A map frame fitted to layers now makes room for the strokes of lines and polygons (including miter joins and square caps), the arrowheads and dots at the ends of lines, and the outer glows of polygons, so that with no margin, everything drawn falls inside the frame. `ignore-symbols` fits to coordinates alone, as before.
+* [web] Line, polygon and label styling panels can now be minimized to make more room for editing symbols on the map.
+* A map frame fitted to layers now makes room for the strokes of lines and polygons and the outer glows of polygons, so that with no margin, everything drawn falls inside the frame. `ignore-symbols` fits to coordinates alone, as before.
 * [web] The Add map frame dialog no longer adds a 2% margin by default when fitting a frame to the visible layers.
 
 v0.7.79

@@ -5,7 +5,6 @@ import { getLabelTextBox, getLabelFontSize, labelHasCallout } from './svg-label-
 import { parsePointPair, isSvgNumber } from './svg-properties';
 import { forEachSymbolCoord, getStrokeOutset } from '../symbols/mapshaper-symbol-utils';
 import { getPolygonGlow } from './svg-glow';
-import { ARROW_ANGLE, OPEN_ARROW_ANGLE, getArrowHead } from './svg-arrowheads';
 
 // mapshaper-svg.mjs sets this on the document when any join is mitered
 var SVG_EXPORT_MITER_LIMIT = 2;
@@ -68,32 +67,6 @@ export function getPathStrokeOutset(rec, type) {
   }
   glow = type == 'polygon' ? getPolygonGlow(rec, 'outer') : null;
   return glow ? outset + glow.width : outset;
-}
-
-// The box around the arrowhead or dot that @type draws at the end of a line,
-// relative to the line's end, in px, y down; or null for none.
-// @dir: unit vector from the end back along the line, px, y down
-// @opts: from getLineArrowOpts()
-export function getLineEndBox(type, dir, opts) {
-  var r, side, angle, points, box;
-  if (type == 'dot') {
-    r = opts.dotSize / 2;
-    return getSquareBox(r, 0, 0);
-  }
-  if (type != 'arrow' && type != 'open-arrow' || !dir) return null;
-  if (type == 'open-arrow') {
-    side = Math.max(opts.size - opts.width, opts.size / 2);
-    angle = OPEN_ARROW_ANGLE;
-  } else {
-    side = opts.size;
-    angle = ARROW_ANGLE;
-  }
-  points = getArrowHead([0, 0], dir, side, angle);
-  box = points.reduce(function(memo, p) {
-    return mergeBoxes(memo, [p[0], p[1], p[0], p[1]]);
-  }, null);
-  // a chevron is stroked, with a round join and caps
-  return type == 'open-arrow' ? padBox(box, opts.width / 2) : box;
 }
 
 function getLabelBox(rec) {

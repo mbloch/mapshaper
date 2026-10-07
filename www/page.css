@@ -2083,7 +2083,7 @@ p.basemap-warning {
 .basemap-style-btn {
 	position:  relative;
 	border-width: 2px;
-	border-color: #bbddea;
+	border-color: #e3e3e3;
 	border-style: solid;
 	border-radius: 6px;
 }
@@ -4423,20 +4423,10 @@ body.dragging-color-picker * {
 	border-radius: 8px;
 	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
 	padding: 4px;
-	opacity: 0;
-	transform: translateY(6px);
-	transition: opacity 150ms ease, transform 150ms ease;
-}
-
-.floating-toolbar.visible {
-	opacity: 1;
-	transform: translateY(0);
 }
 
 /* The toolbar being hovered comes forward, so that a tooltip drawn above a
-   button is not painted behind the toolbar stacked over it. The tooltip's own
-   z-index cannot do this: each toolbar is transformed, which makes it a
-   stacking context its descendants cannot escape. */
+   button is not painted behind the toolbar stacked over it. */
 .floating-toolbar:hover {
 	z-index: 1;
 }
@@ -4483,7 +4473,7 @@ body.dragging-color-picker * {
 
 .floating-toolbar-btn.text-btn {
 	font-size: 12px;
-	padding: 0 7px;
+	padding: 0 6px;
 	width: auto;
 	/* The toolbar is a flex row, which would otherwise squeeze a two-word
 	   label onto two lines and leave the button taller than its neighbours. */

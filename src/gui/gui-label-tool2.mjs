@@ -123,9 +123,10 @@ export function initLabelTool(gui, ext, hit) {
   var selection = new LabelSelection(gui, ext, hit, function() {
     return editor.isOpen() ? editor.getFeatureId() : -1;
   }, getLabelHandles);
-  var toolbar, anchorBtn, blockBtn, pathBtn, alert;
+  var toolbar, anchorBtn, blockBtn, pathBtn, stylesBtn, alert;
 
   gui.addMode('label_tool', turnOn, turnOff);
+  gui.on('label_style_panel_change', updateStylesButton);
 
   gui.on('interaction_mode_change', function(e) {
     if (e.mode == 'label') {
@@ -250,7 +251,26 @@ export function initLabelTool(gui, ext, hit) {
     }).on('click', function() {
       setArmed(armed == 'path' ? null : 'path');
     });
+    // The style panel's toggle, and Done, which leaves the tool -- with the
+    // panel hidden, its close button is not there to do that
+    toolbar.addSeparator();
+    stylesBtn = toolbar.addButton('#style-panel-icon', {tooltip: 'Hide style panel'})
+      .on('click', function() {
+        gui.dispatchEvent('label_style_panel_request', {shown: !gui.state.label_style_panel_open});
+      });
+    toolbar.addTextButton('Done', {tooltip: 'Stop adding and editing labels'})
+      .on('click', function() {
+        gui.interaction.turnOff(); // turnOff() takes the toolbar and the panel
+      });
+    updateStylesButton();
     return toolbar;
+  }
+
+  function updateStylesButton() {
+    if (!stylesBtn) return;
+    var shown = !!gui.state.label_style_panel_open;
+    stylesBtn.setSelected(shown);
+    stylesBtn.setTooltip(shown ? 'Hide style panel' : 'Show style panel');
   }
 
   function setArmed(mode) {
