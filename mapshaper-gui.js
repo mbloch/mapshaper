@@ -15286,7 +15286,6 @@
   //
   // Constructor options:
   //   name:       optional CSS class added to the toolbar element
-  //   transition: ms for the show/hide transition (default 150)
   //
   // API:
   //   toolbar.addButton(iconRef, opts) -> ToolbarButton
@@ -15294,14 +15293,17 @@
   //   toolbar.addSegmentedControl(caption, items, opts) -> ToolbarSegmentedControl
   //   toolbar.addTextField(caption, opts) -> ToolbarTextField
   //   toolbar.addSeparator()
+  //   toolbar.dock(el)    puts a group of controls kept by another toolbar first
   //   toolbar.show()
   //   toolbar.hide()
   //   toolbar.visible()
   //   toolbar.node()
+  //
+  // Showing or hiding a toolbar fires 'floating_toolbar_change' on the gui.
+  // getVisibleFloatingToolbars(gui) lists the visible ones, bottom first.
 
   function FloatingToolbar(gui, opts) {
     opts = opts || {};
-    var transitionMs = opts.transition || 150;
     var root = gui.container.findChild('.mshp-main-map');
     var stack = root.findChild('.floating-toolbar-stack');
     if (!stack) {
@@ -15311,10 +15313,11 @@
     if (opts.name) el.addClass(opts.name);
     var content = El('div').addClass('floating-toolbar-content').appendTo(el);
     var visible = false;
-    var hideTimer = null;
 
     el.appendTo(stack);
     el.css('display', 'none');
+    if (!gui.floatingToolbars) gui.floatingToolbars = [];
+    gui.floatingToolbars.push(this);
 
     // Hide when this gui instance becomes inactive (e.g. multi-instance mode)
     gui.on('active', updateVisibility);
@@ -15347,16 +15350,26 @@
       return El('div').addClass('floating-toolbar-separator').appendTo(content);
     };
 
+    this.dock = function(groupEl) {
+      var node = groupEl.node();
+      var parent = content.node();
+      if (parent.firstChild != node) {
+        parent.insertBefore(node, parent.firstChild);
+      }
+    };
+
     this.show = function() {
       if (visible) return;
       visible = true;
       updateVisibility();
+      gui.dispatchEvent('floating_toolbar_change');
     };
 
     this.hide = function() {
       if (!visible) return;
       visible = false;
       updateVisibility();
+      gui.dispatchEvent('floating_toolbar_change');
     };
 
     this.visible = function() {
@@ -15367,28 +15380,29 @@
       return el.node();
     };
 
+    // Shown and hidden at once, without a fade: one toolbar often replaces
+    // another (the undo buttons move between a mode's toolbar and their own),
+    // and a toolbar fading out keeps its place in the stack, so a fade made the
+    // toolbars around it jump.
     function updateVisibility() {
       var shouldShow = visible && GUI.isActiveInstance(gui);
-      if (shouldShow) {
-        clearTimeout(hideTimer);
-        hideTimer = null;
-        el.css('display', 'flex');
-        // wait one frame so the browser registers the initial state before
-        // the transition kicks in
-        requestAnimationFrame(function() {
-          el.addClass('visible');
-        });
-      } else {
-        el.removeClass('visible');
-        // wait for the transition to finish before hiding completely
-        clearTimeout(hideTimer);
-        hideTimer = setTimeout(function() {
-          if (!(visible && GUI.isActiveInstance(gui))) {
-            el.css('display', 'none');
-          }
-        }, transitionMs);
-      }
+      el.css('display', shouldShow ? 'flex' : 'none');
+      el.classed('visible', shouldShow);
     }
+  }
+
+  // The stack is a reversed column, so the first toolbar in the DOM is the
+  // bottom one.
+  function getVisibleFloatingToolbars(gui) {
+    return (gui.floatingToolbars || []).filter(function(toolbar) {
+      return toolbar.visible();
+    }).sort(function(a, b) {
+      return a.node().compareDocumentPosition(b.node()) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+    });
+  }
+
+  function makeToolbarButton(parent, iconRef, opts) {
+    return new ToolbarButton(parent, iconRef, opts || {});
   }
 
   function ToolbarSegmentedControl(parent, caption, items, opts) {
@@ -15568,28 +15582,34 @@
     }
   }
 
-  // Floating toolbar that exposes undo/redo while the user is in an editing
-  // interaction mode. The toolbar is the first consumer of FloatingToolbar;
-  // future per-mode toolbars (e.g. feature styling) can follow the same pattern.
+  // Undo/redo while the user is in an editing interaction mode. The buttons are
+  // a group that joins the start of the bottom tool toolbar when there is one,
+  // ahead of a separator, so that a tool and undo take one row rather than two
+  // stacked over the map. With no tool toolbar showing, the group has a toolbar
+  // of its own.
 
   function EditToolbar(gui) {
     var toolbar = new FloatingToolbar(gui, { name: 'edit-toolbar' });
+    var group = El('div').addClass('undo-redo-buttons');
     var isMac = navigator.userAgent.includes('Mac');
     var modKey = isMac ? '\u2318' : 'Ctrl+';
     var shiftKey = isMac ? '\u21e7' : 'Shift+';
+    var wanted = false;
 
-    var undoBtn = toolbar.addButton('#undo-icon', {
+    var undoBtn = makeToolbarButton(group, '#undo-icon', {
       tooltip: 'Undo (' + modKey + 'Z)'
     }).on('click', function() {
       gui.undo.undo();
     });
 
-    var redoBtn = toolbar.addButton('#redo-icon', {
+    var redoBtn = makeToolbarButton(group, '#redo-icon', {
       tooltip: 'Redo (' + shiftKey + modKey + 'Z)'
     }).on('click', function() {
       gui.undo.redo();
     });
+    El('div').addClass('floating-toolbar-separator').appendTo(group);
 
+    toolbar.dock(group);
     updateButtons();
 
     gui.on('interaction_mode_change', function() {
@@ -15599,6 +15619,8 @@
     });
 
     gui.on('app_undo_setting_change', updateVisibility);
+
+    gui.on('floating_toolbar_change', placeGroup);
 
     gui.on('history_change', function(e) {
       undoBtn.setEnabled(!!e.canUndo);
@@ -15610,31 +15632,42 @@
 
     updateVisibility();
 
-    // A mode that supports undo shows the toolbar before anything has been
-    // edited, so that the buttons are where the user expects them. That is only
+    // A mode that supports undo shows the buttons before anything has been
+    // edited, so that they are where the user expects them. That is only
     // a promise worth making if undo is switched on: the modes that edit through
     // commands (label, the style panels) get their history from the stored undo
     // flow, so with the History menu's checkbox off nothing they do is undoable
-    // and the toolbar would sit there permanently greyed out.
+    // and the buttons would sit there permanently greyed out.
     //
-    // `hasHistory` still shows it in that case, which matters for the drawing
+    // `hasHistory` still shows them in that case, which matters for the drawing
     // and vertex modes: they add their own undo states as edits happen, without
     // going through stored undo, so their undo works with the checkbox off and
-    // Ctrl-Z works too. There the toolbar appears with the first edit rather
+    // Ctrl-Z works too. There the buttons appear with the first edit rather
     // than on entering the mode.
     function updateVisibility() {
       if (!gui.interaction) {
-        toolbar.hide();
-        return;
-      }
-      var mode = gui.interaction.getMode();
-      var hasHistory = gui.undo.canUndo() || gui.undo.canRedo();
-      var modeExpectsUndo = gui.interaction.modeSupportsUndo(mode) &&
-        appUndoIsEnabled(gui);
-      if (modeExpectsUndo || hasHistory) {
-        toolbar.show();
+        wanted = false;
       } else {
+        var mode = gui.interaction.getMode();
+        var hasHistory = gui.undo.canUndo() || gui.undo.canRedo();
+        var modeExpectsUndo = gui.interaction.modeSupportsUndo(mode) &&
+          appUndoIsEnabled(gui);
+        wanted = modeExpectsUndo || hasHistory;
+      }
+      placeGroup();
+    }
+
+    function placeGroup() {
+      var host = getVisibleFloatingToolbars(gui).filter(function(o) {
+        return o != toolbar;
+      })[0];
+      if (wanted && host) {
+        host.dock(group);
         toolbar.hide();
+      } else {
+        toolbar.dock(group);
+        if (wanted) toolbar.show();
+        else toolbar.hide();
       }
     }
 
@@ -16532,6 +16565,11 @@
     // was typed or picked from a preset would otherwise come back as a
     // neighbour of itself (#ff8800 as #ff8a00).
     var pickerHex = null;
+    // No color is picked: the field it belongs to is unset (or holds a color
+    // that can't be shown here). The square has no marker and the fields are
+    // blank, and only a pick in the square, a preset or a typed color ends it.
+    // The hue strip still turns the square, without picking anything.
+    var unset = false;
     var presetRows = opts.presetRows || [grayscaleColorPresets];
 
     init();
@@ -16576,9 +16614,17 @@
       }
     };
 
+    this.clearColor = function() {
+      unset = true;
+      pickerHex = null;
+      drawColorPicker();
+      updatePickerFields();
+    };
+
     this.getColor = getPickerHex;
 
     function getPickerHex() {
+      if (unset) return null;
       return pickerHex || hsbToHex(pickerColor);
     }
 
@@ -16724,6 +16770,11 @@
 
     function updateHueFromEvent(evt) {
       var p = getCanvasPoint(hueCanvas.node(), evt);
+      if (unset) {
+        pickerColor.h = p.x;
+        drawColorPicker();
+        return;
+      }
       setPickerColor({
         h: p.x,
         s: pickerColor.s,
@@ -16747,13 +16798,14 @@
         b: clamp$5(Math.round(hsb.b), 0, 255)
       };
       pickerHex = hex || null;
+      unset = false;
       drawColorPicker();
       updatePickerFields();
       if (opts.onPreview) opts.onPreview(getPickerHex());
     }
 
     function updatePickerFields() {
-      colorInput.node().value = formatColorInput(getPickerHex(), colorFieldFormat);
+      colorInput.node().value = unset ? '' : formatColorInput(getPickerHex(), colorFieldFormat);
       formatTabs.forEach(function(tab) {
         var selected = tab.node().getAttribute('data-format') == colorFieldFormat;
         tab.classed('selected', selected).attr('aria-pressed', String(selected));
@@ -16786,6 +16838,7 @@
       }
       ctx.putImageData(image, 0, 0);
       positionMarker(sbMarker, pickerColor.s, 255 - pickerColor.b, pickerColor);
+      sbMarker.node().style.display = unset ? 'none' : '';
     }
 
     function drawHueCanvas() {
@@ -16807,6 +16860,7 @@
     }
 
     function commitPickerColor() {
+      if (unset) return;
       if (opts.onChange) opts.onChange(getPickerHex());
     }
 
@@ -17694,14 +17748,20 @@
     // has never been opened is still on its default, so without this it opens on
     // black rather than on the colour beside it. Kept apart from setColor(),
     // which is also the picker's own preview callback and must not feed back into
-    // it mid-drag.
+    // it mid-drag. A field with no hex color opens the picker with nothing
+    // picked, so that closing it leaves the field as it was.
     control.showColor = function(color) {
-      var hex = toSixDigitHex(color);
       // the picker previews what it is set to, so it goes first, and the field
       // then shows the color as the data has it ("#334", not "#333344")
-      if (hex) control.picker.setColor(hex);
+      showInPicker(color);
       control.setColor(color);
     };
+
+    function showInPicker(color) {
+      var hex = toSixDigitHex(color);
+      if (hex) control.picker.setColor(hex);
+      else control.picker.clearColor();
+    }
 
     El('span').appendTo(colorCell).text(opts.label);
     control.chit = El('div').addClass('label-color-chit').attr('role', 'button')
@@ -17712,8 +17772,7 @@
       .attr('aria-label', opts.label + ' color')
       .on('change', function() {
         var color = control.input.node().value.trim();
-        var hex = toSixDigitHex(color);
-        if (hex) control.picker.setColor(hex);
+        showInPicker(color);
         opts.onColor(color);
       });
     if (opts.noOpacity) {
@@ -18600,6 +18659,10 @@
     var lastHaloWidth = defaultHaloWidth;
     // And the callout's shape.
     var lastCalloutShape = defaultCalloutShape;
+    // In the label tool the panel can be hidden, for room to place labels, from
+    // its × or the toolbar's Styles button; it stays hidden for the rest of the
+    // session, each time the tool is opened, until it is shown again.
+    var panelHiddenInTool = false;
 
     initPanel();
     gui.addMode(labelStylePanelMode, turnOn, turnOff);
@@ -18609,6 +18672,10 @@
     // other is still on. Registering after addMode() means turnOff() has already
     // run by the time this recomputes.
     gui.on('mode', updatePanelVisibility);
+    // from the label tool's toolbar
+    gui.on('label_style_panel_request', function(e) {
+      setPanelShownInTool(!!e.shown);
+    });
     gui.model.on('update', updateVisibility);
     gui.model.on('update', function() {
       if (panel.visible()) updateControls();
@@ -18704,15 +18771,11 @@
       });
 
       var header = El('div').addClass('label-style-panel-title').appendTo(panel).text('Label styles');
-      // In label mode the panel belongs to the mode, so closing it leaves the
-      // mode: a panel that shut while the map stayed armed for placing labels
-      // would leave the tool half on, with no panel to turn it off from. Every
-      // other style panel's × closes a panel and nothing else, and this one
-      // reads as the same button, which is the argument for it doing the whole
-      // of what the user asked for rather than part.
+      // In label mode the × hides the panel and leaves the tool on, as in the
+      // line and polygon modes; the toolbar's Done button leaves the tool.
       closeBtn = El('button').addClass('label-style-close').appendTo(header).text('×').on('click', function() {
         if (labelModeIsOn()) {
-          gui.interaction.turnOff(); // the tool's own turnOff() takes the panel
+          setPanelShownInTool(false);
         } else {
           gui.clearMode();
         }
@@ -19145,9 +19208,17 @@
     function panelShouldBeVisible() {
       // The label tool keeps the panel up whether or not the layer has labels, so
       // that a style can be chosen before there is a label to apply it to.
-      return labelModeIsOn() || gui.getMode() == labelStylePanelMode;
+      return labelModeIsOn() && !panelHiddenInTool || gui.getMode() == labelStylePanelMode;
     }
 
+    function setPanelShownInTool(shown) {
+      panelHiddenInTool = !shown;
+      if (!shown) releaseFocus();
+      updatePanelVisibility();
+    }
+
+    // gui.state.label_style_panel_open says whether the panel is up, for the
+    // label tool's Styles button, which follows 'label_style_panel_change'
     function showPanel() {
       renderFontOptions();
       gui.state.label_style_panel_open = true;
@@ -19156,6 +19227,7 @@
       textBtn.addClass('selected');
       updateControls();
       updateSelectionDisplay();
+      gui.dispatchEvent('label_style_panel_change');
     }
 
     function hidePanel() {
@@ -19164,6 +19236,7 @@
       gui.state.label_style_panel_open = false;
       textBtn.removeClass('selected');
       clearSelectionDisplay();
+      gui.dispatchEvent('label_style_panel_change');
     }
 
     function labelModeIsOn() {
@@ -19694,7 +19767,7 @@
       if (isHexColor(colorVal)) {
         picker.setColor(colorVal);
       } else {
-        picker.hide();
+        picker.clearColor();
       }
     }
 
@@ -25077,6 +25150,12 @@
     // What the arrowhead switch turns on, for lines that have no heads
     var lastArrow = {shape: 'arrow', position: 'end', fade: 0};
     var lineToolbar, polygonToolbar, drawLineBtn, drawPolygonBtn, reshapeLineBtn, reshapePolygonBtn;
+    var lineStylesBtn, polygonStylesBtn;
+    // The mode is on whether or not the panel is showing: the panel can be
+    // hidden, for room to draw, and stays hidden for the rest of the session
+    // until it is shown again.
+    var active = false;
+    var panelHidden = false;
 
     initPanel();
     hit = gui.map.getHitControl && gui.map.getHitControl();
@@ -25094,7 +25173,7 @@
     // rather than restyling the layer (see gui-shape-style-state.mjs); a click
     // on a shape selects it, and the controls style it, as when nothing is armed.
     gui.on('interaction_tool_change', function() {
-      if (!panel.visible()) return;
+      if (!active) return;
       updateToolbar();
       updateControls();
     });
@@ -25116,39 +25195,59 @@
     });
 
     gui.model.on('update', function() {
-      if (panel.visible() && !modeMatchesActiveLayer(gui.interaction.getMode())) {
+      if (active && !modeMatchesActiveLayer(gui.interaction.getMode())) {
         gui.interaction.turnOff();
-      } else if (panel.visible()) {
+      } else if (active) {
         updateControls();
       }
     });
 
     gui.on('undo_redo_post', function() {
-      if (panel.visible()) {
+      if (active) {
         updateControls();
       }
     });
 
     function turnOn() {
+      active = true;
       targetLayer = getActiveLayer();
       patternControl.reset();
       applyDefaultLineStyle();
-      panel.show();
+      if (panelHidden) panel.hide();
+      else panel.show();
       updateToolbar();
       updateControls();
     }
 
     function turnOff() {
-      schemePanel.close();
+      active = false;
+      closePanelPopups();
       panel.hide();
       if (lineToolbar) lineToolbar.hide();
       if (polygonToolbar) polygonToolbar.hide();
-      strokeControl.picker.hide();
-      fillControl.picker.hide();
-      patternControl.hidePicker();
       patternControl.reset();
       glowControl.reset();
       targetLayer = null;
+    }
+
+    function closePanelPopups() {
+      schemePanel.close();
+      strokeControl.picker.hide();
+      fillControl.picker.hide();
+      patternControl.hidePicker();
+    }
+
+    function setPanelShown(shown) {
+      panelHidden = !shown;
+      if (shown) {
+        panel.show();
+        updateControls();
+      } else {
+        closePanelPopups();
+        releaseFocus();
+        panel.hide();
+      }
+      updateToolbar();
     }
 
     // One toolbar for each geometry type, since the buttons' icons and tooltips
@@ -25160,6 +25259,7 @@
         getLineToolbar().show();
         drawLineBtn.setSelected(tool == 'draw');
         reshapeLineBtn.setSelected(tool == 'reshape');
+        updateStylesButton(lineStylesBtn);
       } else if (lineToolbar) {
         lineToolbar.hide();
       }
@@ -25167,9 +25267,15 @@
         getPolygonToolbar().show();
         drawPolygonBtn.setSelected(tool == 'draw');
         reshapePolygonBtn.setSelected(tool == 'reshape');
+        updateStylesButton(polygonStylesBtn);
       } else if (polygonToolbar) {
         polygonToolbar.hide();
       }
+    }
+
+    function updateStylesButton(btn) {
+      btn.setSelected(!panelHidden);
+      btn.setTooltip(panelHidden ? 'Show style panel' : 'Hide style panel');
     }
 
     function getLineToolbar() {
@@ -25179,6 +25285,7 @@
           .on('click', function() { toggleTool('draw'); });
         reshapeLineBtn = lineToolbar.addButton('#reshape-icon', {tooltip: 'Reshape lines'})
           .on('click', function() { toggleTool('reshape'); });
+        lineStylesBtn = addPanelButtons(lineToolbar);
       }
       return lineToolbar;
     }
@@ -25190,8 +25297,20 @@
           .on('click', function() { toggleTool('draw'); });
         reshapePolygonBtn = polygonToolbar.addButton('#reshape-icon', {tooltip: 'Reshape polygons'})
           .on('click', function() { toggleTool('reshape'); });
+        polygonStylesBtn = addPanelButtons(polygonToolbar);
       }
       return polygonToolbar;
+    }
+
+    // The style panel's toggle, and Done, which leaves the mode -- with the
+    // panel hidden, its close button is not there to do that
+    function addPanelButtons(toolbar) {
+      toolbar.addSeparator();
+      var stylesBtn = toolbar.addButton('#style-panel-icon', {tooltip: 'Hide style panel'})
+        .on('click', function() { setPanelShown(panelHidden); });
+      toolbar.addTextButton('Done', {tooltip: 'Stop drawing and styling'})
+        .on('click', exitMode);
+      return stylesBtn;
     }
 
     function toggleTool(tool) {
@@ -25323,7 +25442,7 @@
           return formatStyleEditCommands(patternControl.getRefillExpressionEdits(getAllFeatureIds(targetLayer)));
         },
         onUpdate: function() {
-          if (panel.visible()) updateControls();
+          if (active) updateControls();
         },
         onClose: function() {
           if (hit) hit.setSelectionEnabled(true);
@@ -26090,7 +26209,13 @@
       }
     }
 
+    // The panel's close button hides the panel and leaves the mode on, so that
+    // the map can be drawn on without it; Done on the toolbar ends the mode.
     function closePanel() {
+      setPanelShown(false);
+    }
+
+    function exitMode() {
       turnOff();
       if (gui.interaction.getMode() == 'line_style' || gui.interaction.getMode() == 'polygon_style') {
         gui.interaction.turnOff();
@@ -34738,9 +34863,10 @@
     var selection = new LabelSelection(gui, ext, hit, function() {
       return editor.isOpen() ? editor.getFeatureId() : -1;
     }, getLabelHandles);
-    var toolbar, anchorBtn, blockBtn, pathBtn, alert;
+    var toolbar, anchorBtn, blockBtn, pathBtn, stylesBtn, alert;
 
     gui.addMode('label_tool', turnOn, turnOff);
+    gui.on('label_style_panel_change', updateStylesButton);
 
     gui.on('interaction_mode_change', function(e) {
       if (e.mode == 'label') {
@@ -34865,7 +34991,26 @@
       }).on('click', function() {
         setArmed(armed == 'path' ? null : 'path');
       });
+      // The style panel's toggle, and Done, which leaves the tool -- with the
+      // panel hidden, its close button is not there to do that
+      toolbar.addSeparator();
+      stylesBtn = toolbar.addButton('#style-panel-icon', {tooltip: 'Hide style panel'})
+        .on('click', function() {
+          gui.dispatchEvent('label_style_panel_request', {shown: !gui.state.label_style_panel_open});
+        });
+      toolbar.addTextButton('Done', {tooltip: 'Stop adding and editing labels'})
+        .on('click', function() {
+          gui.interaction.turnOff(); // turnOff() takes the toolbar and the panel
+        });
+      updateStylesButton();
       return toolbar;
+    }
+
+    function updateStylesButton() {
+      if (!stylesBtn) return;
+      var shown = !!gui.state.label_style_panel_open;
+      stylesBtn.setSelected(shown);
+      stylesBtn.setTooltip(shown ? 'Hide style panel' : 'Show style panel');
     }
 
     function setArmed(mode) {
@@ -41438,8 +41583,8 @@
       });
       var marginCell = El('label').addClass('frame-create-margin').appendTo(fitRow);
       El('span').appendTo(marginCell).text('Margin');
-      var marginInput = El('input').attr('type', 'text').appendTo(marginCell);
-      marginInput.node().value = '2%';
+      var marginInput = El('input').attr('type', 'text')
+        .attr('placeholder', '0').appendTo(marginCell);
       makeFieldTip(fitRow,
         'Space around the layers: 2%, 20px, 1cm.\n' +
         "A percentage is of the frame's width, on\n" +
@@ -42719,13 +42864,29 @@
         keyboard: false,
         maxPitch: 0,
         projection: 'mercator', // prevent globe view when zoomed out
-        renderWorldCopies: true // false // false prevents panning off the map
+        renderWorldCopies: true, // false // false prevents panning off the map
+        // the bottom-right corner has the basemap buttons
+        attributionControl: false
       });
+      // added after the logo, so it sits to the logo's right
+      map.addControl(new window.mapboxgl.AttributionControl({compact: true}), 'bottom-left');
+      liftCornerControls();
       setStyle(activeStyle);
       map.on('load', function() {
         loading = false;
         refresh();
       });
+    }
+
+    // The basemap is drawn under the map's layers, which take every click, so
+    // its corner controls (the logo, and the "i" that opens the attribution) are
+    // moved into the map area above them. Their own handlers go with them.
+    function liftCornerControls() {
+      var corner = mapEl.node().querySelector('.mapboxgl-ctrl-bottom-left');
+      if (!corner) return;
+      var holder = El('div').addClass('basemap-controls')
+        .appendTo(gui.container.findChild('.mshp-main-map'));
+      holder.node().appendChild(corner);
     }
 
     // @bbox: latlon bounding box of current map extent

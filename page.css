@@ -1284,19 +1284,10 @@ body.simplify .layer-control-btn {
 		padding-right: 5px;
 	}
 
+	/* the toolbar in the bottom center can reach this far, so the basemap
+	   buttons go up a row */
 	.mshp-main-map .basemap-overlay-buttons {
-		top: 10px;
-		right: 33px;
-		padding: 0;
-		background: transparent;
-		border-radius: 0;
-	}
-
-	.mshp-main-map .basemap-overlay-buttons .basemap-style-btn.basemap-overlay-btn {
-		width: 30px !important;
-		height: 30px !important;
-		margin: 0 0 0 4px !important;
-		border-radius: 4px !important;
+		bottom: 58px;
 	}
 }
 
@@ -2032,6 +2023,42 @@ img.eye-btn {
 	height: 100%;
 }
 
+/* The basemap's logo and attribution, lifted out of the basemap so that they
+   can be clicked (see liftCornerControls()). The font is the one Mapbox
+   sets on its map element, which they are no longer inside. */
+.basemap-controls {
+	display: none;
+	position: absolute;
+	z-index: 20;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	pointer-events: none;
+	font: 12px/20px "Helvetica Neue", Arial, Helvetica, sans-serif;
+}
+
+.basemap-on .basemap-controls {
+	display: block;
+}
+
+/* The "i" goes to the right of the logo, centered on it. Mapbox adds the logo
+   after the attribution, and floats each control onto a row of its own. */
+.basemap-controls .mapboxgl-ctrl-bottom-left {
+	display: flex;
+	align-items: flex-end;
+}
+
+.basemap-controls .mapboxgl-ctrl-bottom-left > .mapboxgl-ctrl-attrib {
+	order: 1;
+	margin: 0 0 5px 6px;
+}
+
+/* Mapbox rings the button whenever it has focus, so a click would leave it
+   ringed; the ring is kept for keyboard focus */
+.basemap-controls .mapboxgl-ctrl-attrib-button:focus:not(:focus-visible) {
+	box-shadow: none;
+}
+
 
 p.basemap-warning {
 	color: #cc0000;
@@ -2056,7 +2083,7 @@ p.basemap-warning {
 .basemap-style-btn {
 	position:  relative;
 	border-width: 2px;
-	border-color: #bbddea;
+	border-color: #e3e3e3;
 	border-style: solid;
 	border-radius: 6px;
 }
@@ -2073,24 +2100,35 @@ div.basemap-style-btn.active {
 	border-color: #f7e286;
 }
 
+/* A pill in the bottom-right corner, the size of the floating toolbar and level
+   with it, with a 28px thumbnail per basemap like the toolbar's buttons. */
 .basemap-overlay-buttons {
 	z-index: 20;
 	position: absolute;
-	top: 6px;
-	right: 36px;
+	bottom: 12px;
+	right: 12px;
 	padding: 4px;
-	background: white;
-	border-radius: 7px;
+	background-color: rgba(255, 255, 255, 0.96);
+	border: 1px solid #ddd;
+	border-radius: 8px;
+	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
 	line-height: 0px;
 	display: none;
 }
 
 .basemap-style-btn.basemap-overlay-btn {
-	width: 40px;
-	height: 40px;
-	margin: 3px;
-	overflow: hidden;
+	box-sizing: border-box;
 	display: inline-block;
+	vertical-align: top;
+	width: 28px;
+	height: 28px;
+	border-width: 1px;
+	border-radius: 5px;
+	overflow: hidden;
+}
+
+.basemap-style-btn.basemap-overlay-btn + .basemap-overlay-btn {
+	margin-left: 4px;
 }
 
 .basemap-overlay-buttons.disabled > div {
@@ -2098,9 +2136,9 @@ div.basemap-style-btn.active {
 }
 
 .basemap-overlay-btn img {
-	margin-left: -31px;
-	margin-top: -5px;
-	width: 90px;
+	margin-left: -22px;
+	margin-top: -4px;
+	width: 65px;
 }
 
 .add-basemap-menu input[type=text] {
@@ -4360,7 +4398,7 @@ body.dragging-color-picker * {
 .floating-toolbar-stack {
 	position: absolute;
 	z-index: 25;
-	bottom: 24px;
+	bottom: 12px;
 	left: 50%;
 	transform: translateX(-50%);
 	display: flex;
@@ -4385,20 +4423,10 @@ body.dragging-color-picker * {
 	border-radius: 8px;
 	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
 	padding: 4px;
-	opacity: 0;
-	transform: translateY(6px);
-	transition: opacity 150ms ease, transform 150ms ease;
-}
-
-.floating-toolbar.visible {
-	opacity: 1;
-	transform: translateY(0);
 }
 
 /* The toolbar being hovered comes forward, so that a tooltip drawn above a
-   button is not painted behind the toolbar stacked over it. The tooltip's own
-   z-index cannot do this: each toolbar is transformed, which makes it a
-   stacking context its descendants cannot escape. */
+   button is not painted behind the toolbar stacked over it. */
 .floating-toolbar:hover {
 	z-index: 1;
 }
@@ -4407,6 +4435,16 @@ body.dragging-color-picker * {
 	display: flex;
 	align-items: center;
 	gap: 0;
+}
+
+.undo-redo-buttons {
+	display: flex;
+	align-items: center;
+}
+
+/* the separator is for undo/redo docked ahead of a tool's own controls */
+.edit-toolbar .undo-redo-buttons > .floating-toolbar-separator {
+	display: none;
 }
 
 .floating-toolbar-separator {
@@ -4435,7 +4473,7 @@ body.dragging-color-picker * {
 
 .floating-toolbar-btn.text-btn {
 	font-size: 12px;
-	padding: 0 7px;
+	padding: 0 6px;
 	width: auto;
 	/* The toolbar is a flex row, which would otherwise squeeze a two-word
 	   label onto two lines and leave the button taller than its neighbours. */

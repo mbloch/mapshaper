@@ -715,13 +715,13 @@ mapshaper states.shp -filter-fields FID,NAME -o out.shp
 <p><a href="#common-options"><code>target=</code></a></p>
 </section>
 <section class="cmd-section" data-id="-frame" data-name="-frame" data-options="bbox width height aspect-ratio margin offset offsets ignore-symbols name target"><h3 id="-frame">-frame</h3>
-<p>Create a rectangular frame layer at a given display width. Frame size is used for scaling symbols and for setting the display size of SVG output. The geographical extent of the frame is based on the <code>bbox=</code> option or the bounding box of the target layer or layers, if <code>bbox=</code> is omitted. When fitting to target layers, the extent includes room for the point symbols and labels in those layers, as drawn at the frame&#39;s display size.</p>
+<p>Create a rectangular frame layer at a given display width. Frame size is used for scaling symbols and for setting the display size of SVG output. The geographical extent of the frame is based on the <code>bbox=</code> option or the bounding box of the target layer or layers, if <code>bbox=</code> is omitted. When fitting to target layers, the extent includes room for the point symbols and labels in those layers, and for the strokes and outer glows of their lines and polygons, as drawn at the frame&#39;s display size. With no margin, everything drawn falls inside the frame.</p>
 <p><code>width=</code>  Width of frame (e.g. 5in, 10cm, 600px; default is 800px)</p>
 <p><code>height=</code>  Height of frame (in addition to or instead of width= option)</p>
 <p><code>aspect-ratio=</code>  Aspect ratio of frame (optional)</p>
 <p><code>bbox=</code> Bounding coordinates of frame contents in projected map coordinates (xmin,ymin,xmax,ymax). If omitted, the bounding box of the target layer(s) is used.</p>
 <p><code>margin=</code> Padding around the frame&#39;s <code>bbox</code> in display units or as a percentage of the frame&#39;s width, e.g. 5cm 20px 5%. As in CSS, a percentage is of the width on every side (top and bottom included), so a single value gives an even margin. Takes one to four values in CSS order: all sides (<code>5%</code>); vertical and horizontal (<code>margin=10%,2%</code>); top, horizontal and bottom; or top, right, bottom and left (<code>margin=&#39;40px 2% 2% 2%&#39;</code>). When the frame has a fixed width and height, the content is centered and the padding is a minimum on two sides. (The older <code>offset=</code> and <code>offsets=</code> options still work; they take a single value or a list in l,b,r,t order.)</p>
-<p><code>ignore-symbols</code>  Fit the frame to the locations of points in the target layers, without making room for their symbols and labels</p>
+<p><code>ignore-symbols</code>  Fit the frame to the coordinates of the target layers, without making room for symbols, labels and strokes</p>
 <p>Other options: <code>name=</code> <code>target=</code></p>
 </section>
 <section class="cmd-section" data-id="-graticule" data-name="-graticule" data-options="polygon outline interval base"><h3 id="-graticule">-graticule</h3>

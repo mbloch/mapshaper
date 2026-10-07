@@ -46316,7 +46316,7 @@ ${css.join('\n')}
         describe: 'layer(s) to fit the frame to, including their symbols and labels'
       })
       .option('ignore-symbols', {
-        describe: 'with fit=, fit to point locations, not symbol and label extents',
+        describe: 'with fit=, fit to coordinates, not the extent of symbols, labels and strokes',
         type: 'flag'
       })
       .option('width', {
@@ -46461,7 +46461,7 @@ ${css.join('\n')}
       .option('offset', frameOffsetOpt)
       .option('offsets', frameOffsetOpt)
       .option('ignore-symbols', {
-        describe: 'fit to point locations, not the extent of symbols and labels',
+        describe: 'fit to coordinates, not the extent of symbols, labels and strokes',
         type: 'flag'
       })
       .option('name', nameOpt)
@@ -55306,8 +55306,11 @@ ${css.join('\n')}
     });
   }
 
-  // The space that a point's symbol and label take up when drawn, for fitting a
-  // map frame around them.
+  // mapshaper-svg.mjs sets this on the document when any join is mitered
+  var SVG_EXPORT_MITER_LIMIT = 2;
+
+  // The space that a point's symbol and label, or a path's stroke, take up when
+  // drawn, for fitting a map frame around them.
   //
   // Boxes are [xmin, ymin, xmax, ymax] in px, relative to the point, with y down:
   // the space symbols are drawn in (see renderPoint() in svg-symbols.mjs, which
@@ -55336,6 +55339,34 @@ ${css.join('\n')}
   // every side.
   function getPathLabelPadding(rec) {
     return getLabelFontSize(rec) + getHaloWidth(rec);
+  }
+
+  // How far what is drawn along a path can reach past its vertices, in px, on
+  // every side: half the stroke, as far as a miter join or a square cap
+  // takes it, plus a polygon's outer glow, at the width where it has faded to
+  // next to nothing. Follows the SVG export: a line is stroked 1px black unless
+  // its stroke is "none", a polygon only when it has a stroke, and joins are
+  // round unless stroke-linejoin says otherwise.
+  // @type: 'polyline' or 'polygon'
+  function getPathStrokeOutset(rec, type) {
+    var stroke = rec ? rec.stroke : null;
+    var width = rec ? rec['stroke-width'] : null;
+    var stroked = type == 'polyline' ? stroke != 'none' :
+      !!stroke && stroke != 'none';
+    var outset = 0, k = 1, glow;
+    if (stroked) {
+      width = isSvgNumber(width) ? Math.max(Number(width), 0) : 1;
+      if (rec && rec['stroke-linejoin'] == 'miter') {
+        k = isSvgNumber(rec['stroke-miterlimit']) ?
+          Math.max(Number(rec['stroke-miterlimit']), 1) : SVG_EXPORT_MITER_LIMIT;
+      }
+      if (type == 'polyline' && rec && rec['stroke-linecap'] == 'square') {
+        k = Math.max(k, Math.SQRT2);
+      }
+      outset = width / 2 * k;
+    }
+    glow = type == 'polygon' ? getPolygonGlow(rec, 'outer') : null;
+    return glow ? outset + glow.width : outset;
   }
 
   function getLabelBox(rec) {
@@ -55490,7 +55521,8 @@ ${css.join('\n')}
   }
 
   // Fitting a map frame to its content, including the symbols and labels drawn
-  // at points, which take up room that the point coordinates alone do not.
+  // at points and the strokes drawn along paths, which take up room that the
+  // coordinates alone do not.
   //
   // Symbols are sized in output pixels, and how many map units a pixel covers is
   // set by the frame being fitted, so the extent can't simply be padded. It is
@@ -55508,7 +55540,8 @@ ${css.join('\n')}
   var TOLERANCE = 1e-9;
 
   // Returns the extent of @targets as a bbox array, padded to hold the symbols
-  // and labels at their points, or null if the targets have no extent.
+  // and labels at their points and the strokes along their paths, or null if the
+  // targets have no extent.
   //
   // @targets   [{layer, dataset}]
   // @getScale  function(bbox) -> map units per output px of a frame fitted to
@@ -55525,12 +55558,12 @@ ${css.join('\n')}
     if (!bounds.hasBounds()) return null;
     raw = bounds.toArray();
     if (opts && opts.ignore_symbols) return raw;
-    items = getSymbolExtents(targets);
+    items = getSymbolExtents(targets).concat(getStrokeExtents(targets));
     if (items.length === 0) return raw;
     bbox = fitBboxToSymbols(raw, items, getScale);
     if (!bbox) {
-      warn('Symbols and labels are too large to fit in the frame; ' +
-        'fitting the frame to point locations only.');
+      warn('Symbols, labels and strokes are too large to fit in the frame; ' +
+        'fitting the frame to coordinates only.');
       return raw;
     }
     return bbox;
@@ -55623,6 +55656,58 @@ ${css.join('\n')}
       });
     });
     return items;
+  }
+
+  // The same, for the strokes of path layers. A stroke reaches the same distance
+  // past every side of its feature's bbox, so a feature adds two items, at its
+  // bbox's corners; a layer whose features are all stroked alike adds two for the
+  // layer. Arrowheads and dots at the ends of lines are left out: they hardly
+  // ever reach the edge of a map.
+  function getStrokeExtents(targets) {
+    var items = [];
+    targets.forEach(function(o) {
+      var type = o.layer.geometry_type;
+      if (type != 'polyline' && type != 'polygon' || !o.layer.shapes) return;
+      addPathLayerItems(items, o.layer, o.dataset.arcs);
+    });
+    return items;
+  }
+
+  function addPathLayerItems(items, lyr, arcs) {
+    var type = lyr.geometry_type;
+    var records = lyr.data ? lyr.data.getRecords() : null;
+    var shapes = lyr.shapes;
+    var outsets = [];
+    var layerOutset = null;
+    var uniform = true;
+    var shp, outset, i, bounds;
+    for (i = 0; i < shapes.length; i++) {
+      shp = shapes[i];
+      outsets.push(0);
+      if (!shp || shp.length === 0) continue;
+      outset = getPathStrokeOutset(records ? records[i] : null, type);
+      outsets[i] = outset;
+      if (layerOutset === null) {
+        layerOutset = outset;
+      } else if (outset !== layerOutset) {
+        uniform = false;
+      }
+    }
+    if (uniform) {
+      bounds = layerOutset > 0 ? getLayerBounds(lyr, arcs) : null;
+      if (bounds) addOutsetItems(items, bounds.toArray(), layerOutset);
+      return;
+    }
+    for (i = 0; i < shapes.length; i++) {
+      if (!(outsets[i] > 0)) continue;
+      bounds = arcs.getMultiShapeBounds(shapes[i]);
+      if (bounds.hasBounds()) addOutsetItems(items, bounds.toArray(), outsets[i]);
+    }
+  }
+
+  function addOutsetItems(items, bbox, pad) {
+    items.push(bbox[0], bbox[1], -pad, -pad, -pad, -pad,
+      bbox[2], bbox[3], pad, pad, pad, pad);
   }
 
   cmd.frame = function(catalog, targets, opts) {
@@ -88538,7 +88623,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.79";
+  var version = "0.7.80";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

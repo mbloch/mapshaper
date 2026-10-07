@@ -1012,7 +1012,7 @@ Remove small polygon rings.
 
 ### -frame
 
-Create a rectangular frame layer at a given display width. Frame size is used for scaling symbols and for setting the display size of SVG output. The geographical extent of the frame is based on the `bbox=` option or the bounding box of the target layer or layers, if `bbox=` is omitted. When fitting to target layers, the extent includes room for the point symbols and labels in those layers, as drawn at the frame's display size.
+Create a rectangular frame layer at a given display width. Frame size is used for scaling symbols and for setting the display size of SVG output. The geographical extent of the frame is based on the `bbox=` option or the bounding box of the target layer or layers, if `bbox=` is omitted. When fitting to target layers, the extent includes room for the point symbols and labels in those layers, and for the strokes and outer glows of their lines and polygons, as drawn at the frame's display size. With no margin, everything drawn falls inside the frame.
 
 `width=`  Width of frame (e.g. 5in, 10cm, 600px; default is 800px)
 
@@ -1024,7 +1024,7 @@ Create a rectangular frame layer at a given display width. Frame size is used fo
 
 `margin=` Padding around the frame's `bbox` in display units or as a percentage of the frame's width, e.g. 5cm 20px 5%. As in CSS, a percentage is of the width on every side (top and bottom included), so a single value gives an even margin. Takes one to four values in CSS order: all sides (`5%`); vertical and horizontal (`margin=10%,2%`); top, horizontal and bottom; or top, right, bottom and left (`margin='40px 2% 2% 2%'`). When the frame has a fixed width and height, the content is centered and the padding is a minimum on two sides. (The older `offset=` and `offsets=` options still work; they take a single value or a list in l,b,r,t order.)
 
-`ignore-symbols`  Fit the frame to the locations of points in the target layers, without making room for their symbols and labels
+`ignore-symbols`  Fit the frame to the coordinates of the target layers, without making room for symbols, labels and strokes
 
 Other options: `name=` `target=`
 
