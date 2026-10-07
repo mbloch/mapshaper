@@ -8,10 +8,13 @@ shape with the same syntax.
 ## One mode for drawing and styling
 
 Drawing is part of the line and polygon style modes ("edit lines" and "edit
-polygons" in the arrow menu, `line_style` and `polygon_style` internally). As
-in the label tool, the style panel is always open. A floating toolbar has two
-buttons, Draw and Reshape, which arm one of two tools; with neither armed, a
-click selects shapes for styling. Selection works the same with or without
+polygons" in the arrow menu, `line_style` and `polygon_style` internally). A
+floating toolbar has undo and redo, then two buttons, Draw and Reshape, which
+arm one of two tools; with neither armed, a click selects shapes for styling.
+Then come a Styles button, which shows and hides the style panel, and Done,
+which leaves the mode. The panel's × hides the panel too, rather than leaving
+the mode, so that the whole map can be drawn on. A hidden panel stays hidden,
+for the rest of the session, each time the mode is entered. Selection works the same with or without
 Draw: the shape under the pointer is highlighted, a click selects it alone
 (shift-click adds or removes it), and a click off the selection deselects.
 

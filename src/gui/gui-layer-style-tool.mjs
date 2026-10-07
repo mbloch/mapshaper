@@ -82,6 +82,12 @@ export function LayerStyleTool(gui) {
   // What the arrowhead switch turns on, for lines that have no heads
   var lastArrow = {shape: 'arrow', position: 'end', fade: 0};
   var lineToolbar, polygonToolbar, drawLineBtn, drawPolygonBtn, reshapeLineBtn, reshapePolygonBtn;
+  var lineStylesBtn, polygonStylesBtn;
+  // The mode is on whether or not the panel is showing: the panel can be
+  // hidden, for room to draw, and stays hidden for the rest of the session
+  // until it is shown again.
+  var active = false;
+  var panelHidden = false;
 
   initPanel();
   hit = gui.map.getHitControl && gui.map.getHitControl();
@@ -99,7 +105,7 @@ export function LayerStyleTool(gui) {
   // rather than restyling the layer (see gui-shape-style-state.mjs); a click
   // on a shape selects it, and the controls style it, as when nothing is armed.
   gui.on('interaction_tool_change', function() {
-    if (!panel.visible()) return;
+    if (!active) return;
     updateToolbar();
     updateControls();
   });
@@ -121,39 +127,59 @@ export function LayerStyleTool(gui) {
   });
 
   gui.model.on('update', function() {
-    if (panel.visible() && !modeMatchesActiveLayer(gui.interaction.getMode())) {
+    if (active && !modeMatchesActiveLayer(gui.interaction.getMode())) {
       gui.interaction.turnOff();
-    } else if (panel.visible()) {
+    } else if (active) {
       updateControls();
     }
   });
 
   gui.on('undo_redo_post', function() {
-    if (panel.visible()) {
+    if (active) {
       updateControls();
     }
   });
 
   function turnOn() {
+    active = true;
     targetLayer = getActiveLayer();
     patternControl.reset();
     applyDefaultLineStyle();
-    panel.show();
+    if (panelHidden) panel.hide();
+    else panel.show();
     updateToolbar();
     updateControls();
   }
 
   function turnOff() {
-    schemePanel.close();
+    active = false;
+    closePanelPopups();
     panel.hide();
     if (lineToolbar) lineToolbar.hide();
     if (polygonToolbar) polygonToolbar.hide();
-    strokeControl.picker.hide();
-    fillControl.picker.hide();
-    patternControl.hidePicker();
     patternControl.reset();
     glowControl.reset();
     targetLayer = null;
+  }
+
+  function closePanelPopups() {
+    schemePanel.close();
+    strokeControl.picker.hide();
+    fillControl.picker.hide();
+    patternControl.hidePicker();
+  }
+
+  function setPanelShown(shown) {
+    panelHidden = !shown;
+    if (shown) {
+      panel.show();
+      updateControls();
+    } else {
+      closePanelPopups();
+      releaseFocus();
+      panel.hide();
+    }
+    updateToolbar();
   }
 
   // One toolbar for each geometry type, since the buttons' icons and tooltips
@@ -165,6 +191,7 @@ export function LayerStyleTool(gui) {
       getLineToolbar().show();
       drawLineBtn.setSelected(tool == 'draw');
       reshapeLineBtn.setSelected(tool == 'reshape');
+      updateStylesButton(lineStylesBtn);
     } else if (lineToolbar) {
       lineToolbar.hide();
     }
@@ -172,9 +199,15 @@ export function LayerStyleTool(gui) {
       getPolygonToolbar().show();
       drawPolygonBtn.setSelected(tool == 'draw');
       reshapePolygonBtn.setSelected(tool == 'reshape');
+      updateStylesButton(polygonStylesBtn);
     } else if (polygonToolbar) {
       polygonToolbar.hide();
     }
+  }
+
+  function updateStylesButton(btn) {
+    btn.setSelected(!panelHidden);
+    btn.setTooltip(panelHidden ? 'Show style panel' : 'Hide style panel');
   }
 
   function getLineToolbar() {
@@ -184,6 +217,7 @@ export function LayerStyleTool(gui) {
         .on('click', function() { toggleTool('draw'); });
       reshapeLineBtn = lineToolbar.addButton('#reshape-icon', {tooltip: 'Reshape lines'})
         .on('click', function() { toggleTool('reshape'); });
+      lineStylesBtn = addPanelButtons(lineToolbar);
     }
     return lineToolbar;
   }
@@ -195,8 +229,20 @@ export function LayerStyleTool(gui) {
         .on('click', function() { toggleTool('draw'); });
       reshapePolygonBtn = polygonToolbar.addButton('#reshape-icon', {tooltip: 'Reshape polygons'})
         .on('click', function() { toggleTool('reshape'); });
+      polygonStylesBtn = addPanelButtons(polygonToolbar);
     }
     return polygonToolbar;
+  }
+
+  // The style panel's toggle, and Done, which leaves the mode -- with the
+  // panel hidden, its close button is not there to do that
+  function addPanelButtons(toolbar) {
+    toolbar.addSeparator();
+    var stylesBtn = toolbar.addButton('#style-panel-icon', {tooltip: 'Hide style panel'})
+      .on('click', function() { setPanelShown(panelHidden); });
+    toolbar.addTextButton('Done', {tooltip: 'Stop drawing and styling'})
+      .on('click', exitMode);
+    return stylesBtn;
   }
 
   function toggleTool(tool) {
@@ -328,7 +374,7 @@ export function LayerStyleTool(gui) {
         return formatStyleEditCommands(patternControl.getRefillExpressionEdits(getAllFeatureIds(targetLayer)));
       },
       onUpdate: function() {
-        if (panel.visible()) updateControls();
+        if (active) updateControls();
       },
       onClose: function() {
         if (hit) hit.setSelectionEnabled(true);
@@ -1095,7 +1141,13 @@ export function LayerStyleTool(gui) {
     }
   }
 
+  // The panel's close button hides the panel and leaves the mode on, so that
+  // the map can be drawn on without it; Done on the toolbar ends the mode.
   function closePanel() {
+    setPanelShown(false);
+  }
+
+  function exitMode() {
     turnOff();
     if (gui.interaction.getMode() == 'line_style' || gui.interaction.getMode() == 'polygon_style') {
       gui.interaction.turnOff();

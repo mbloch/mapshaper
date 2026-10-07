@@ -388,6 +388,54 @@ test('drawing polygons: a click inside a polygon starts a path, a click on its o
     expect(errors).toEqual([]);
   });
 
+test('the style panel can be hidden for room to draw, and Done leaves the mode',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+    await clickNewLayerLink(page, 'lines');
+    var panel = page.locator('.layer-style-panel');
+    var stylesBtn = page.locator('.line-draw-toolbar .floating-toolbar-btn[data-tooltip$="style panel"]');
+    await expect(panel).toBeVisible();
+    await expect(stylesBtn).toHaveClass(/selected/);
+
+    // the toolbar button hides the panel, and drawing goes on without it
+    await stylesBtn.click();
+    await expect(panel).toBeHidden();
+    await expect(stylesBtn).not.toHaveClass(/selected/);
+    await expect(stylesBtn).toHaveAttribute('data-tooltip', 'Show style panel');
+    expect(await getModes(page)).toEqual({mode: 'line_style', tool: 'edit_lines'});
+    var box = await getMapBox(page);
+    await drawLine(page, mapPoint(box, 0.2, 0.6), mapPoint(box, 0.4, 0.6));
+    await expect.poll(() => getShapeCount(page, 'lines')).toBe(1);
+
+    // and shows it again
+    await stylesBtn.click();
+    await expect(panel).toBeVisible();
+    await expect(stylesBtn).toHaveClass(/selected/);
+
+    // the panel's close button hides it too, leaving the mode on
+    await panel.locator('.label-style-close').click();
+    await expect(panel).toBeHidden();
+    expect((await getModes(page)).mode).toBe('line_style');
+
+    // and it stays hidden the next time the mode is entered
+    await page.evaluate(function() {
+      window.mapshaper.undoTest.setInteractionMode('info');
+    });
+    await page.evaluate(function() {
+      window.mapshaper.undoTest.setInteractionMode('line_style');
+    });
+    await expect(page.locator('.line-draw-toolbar')).toBeVisible();
+    await expect(panel).toBeHidden();
+    await expect(stylesBtn).not.toHaveClass(/selected/);
+
+    // Done leaves the mode, and takes the toolbar with it
+    await page.locator('.line-draw-toolbar .floating-toolbar-btn').filter({hasText: 'Done'}).click();
+    await expect.poll(async () => (await getModes(page)).mode).not.toBe('line_style');
+    await expect(page.locator('.line-draw-toolbar')).toBeHidden();
+    expect(errors).toEqual([]);
+  });
+
 test('the menu has one mode for drawing and styling lines', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);

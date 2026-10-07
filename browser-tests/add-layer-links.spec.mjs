@@ -32,7 +32,7 @@ test('the polygons link creates a polygon layer and opens the drawing tool',
     // the polygon mode, with drawing armed from its toolbar
     expect(await getInteractionMode(page)).toBe('polygon_style');
     expect(await getToolMode(page)).toBe('edit_polygons');
-    await expect(page.locator('.floating-toolbar.polygon-draw-toolbar .floating-toolbar-btn.selected')).toBeVisible();
+    await expect(page.locator('.floating-toolbar.polygon-draw-toolbar .floating-toolbar-btn.selected[data-tooltip="Draw polygons"]')).toBeVisible();
     expect(errors).toEqual([]);
   });
 
