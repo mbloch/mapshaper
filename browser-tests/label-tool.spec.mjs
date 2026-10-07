@@ -463,9 +463,9 @@ test('an existing label emptied of its text is removed by a command', async func
 test('the creation toggles are mutually exclusive', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
-  var buttons = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-btn');
+  var buttons = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-content > .floating-toolbar-btn');
 
-  // anchored label, text block, path label
+  // anchored label, text block, path label (undo/redo follow, in their own group)
   await expect(buttons).toHaveCount(3);
   // the fixture carries no labels, so the tool arms itself to place one
   await expect(buttons.nth(0)).toHaveClass(/selected/);
@@ -493,7 +493,7 @@ test('the tool starts idle on a layer that already has labels', async function({
   // user meant to click.
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
-  var buttons = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-btn');
+  var buttons = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-content > .floating-toolbar-btn');
   await armTool(page, 'anchor');
   await clickMap(page, 0.4, 0.45);
   await page.keyboard.type('Reno');
@@ -684,7 +684,7 @@ test('a key typed into a field is the field\'s, not the tool\'s', async function
   expect(await getFocusedElement(page)).toBe('BODY');
   expect(await getNewLabelStyle(page)).not.toHaveProperty('css');
   // the curve tool is still armed: the key never reached it
-  await expect(page.locator('.floating-toolbar.label-toolbar .floating-toolbar-btn').nth(2))
+  await expect(page.locator('.floating-toolbar.label-toolbar .floating-toolbar-content > .floating-toolbar-btn').nth(2))
     .toHaveClass(/selected/);
   expect(errors).toEqual([]);
 });
@@ -1964,7 +1964,7 @@ async function getSelectionCueCount(page) {
 // button would disarm it there.
 async function armTool(page, kind) {
   var i = {anchor: 0, block: 1, path: 2}[kind];
-  var btn = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-btn').nth(i);
+  var btn = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-content > .floating-toolbar-btn').nth(i);
   if (!(await btn.evaluate(function(el) {
     return el.classList.contains('selected');
   }))) {
@@ -1976,7 +1976,7 @@ async function armTool(page, kind) {
 // Disarms whichever creation tool is armed, so that a click on the map does
 // not place a label.
 async function disarmTool(page) {
-  var btns = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-btn');
+  var btns = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-content > .floating-toolbar-btn');
   for (var i = 0; i < 3; i++) {
     if (await btns.nth(i).evaluate(function(el) {
       return el.classList.contains('selected');

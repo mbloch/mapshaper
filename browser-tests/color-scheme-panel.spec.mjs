@@ -589,7 +589,7 @@ test('the tile picker is drawn over the undo toolbar', async function({page}) {
   await loadFixture(page);
   await openSchemePanel(page);
   var panel = schemePanel(page);
-  await expect(page.locator('.edit-toolbar.visible')).toHaveCount(1);
+  await expect(page.locator('.undo-redo-buttons')).toBeVisible();
   await panel.locator('.color-scheme-tile').nth(2).click();
   var picker = panel.locator('.color-scheme-tile-row .label-color-picker');
   await expect(picker).toBeVisible();
@@ -597,7 +597,7 @@ test('the tile picker is drawn over the undo toolbar', async function({page}) {
   // where the picker opens depends on the window size, so put it over the toolbar
   var onTop = await page.evaluate(function() {
     var picker = document.querySelector('.color-scheme-panel .color-scheme-tile-row .label-color-picker');
-    var bar = document.querySelector('.edit-toolbar').getBoundingClientRect();
+    var bar = document.querySelector('.undo-redo-buttons').getBoundingClientRect();
     picker.style.left = (bar.left - 10) + 'px';
     picker.style.top = (bar.top - 10) + 'px';
     var el = document.elementFromPoint(bar.left + bar.width / 2, bar.top + bar.height / 2);

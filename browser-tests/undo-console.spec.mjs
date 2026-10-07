@@ -980,12 +980,12 @@ test('floating undo toolbar buttons undo and redo console command history', asyn
   var changed = await getUndoState(page);
   expect(changed.model.checksum).not.toBe(before.model.checksum);
 
-  await page.locator('.edit-toolbar .floating-toolbar-btn').nth(0).click();
+  await page.locator('.undo-redo-buttons .floating-toolbar-btn').nth(0).click();
   await expect.poll(async function() {
     return (await getUndoState(page)).model.checksum;
   }).toBe(before.model.checksum);
 
-  await page.locator('.edit-toolbar .floating-toolbar-btn').nth(1).click();
+  await page.locator('.undo-redo-buttons .floating-toolbar-btn').nth(1).click();
   await expect.poll(async function() {
     return (await getUndoState(page)).model.checksum;
   }).toBe(changed.model.checksum);

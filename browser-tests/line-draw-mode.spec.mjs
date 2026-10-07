@@ -36,6 +36,31 @@ test('the toolbar button arms and disarms drawing, and the style panel stays ope
     expect(errors).toEqual([]);
   });
 
+test('undo and redo join the drawing toolbar, and stand alone without it',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+    await clickNewLayerLink(page, 'lines');
+    var box = await getMapBox(page);
+    await drawLine(page, mapPoint(box, 0.2, 0.6), mapPoint(box, 0.4, 0.6));
+    await expect.poll(() => getShapeCount(page, 'lines')).toBe(1);
+    await expect(page.locator('.line-draw-toolbar .undo-redo-buttons')).toBeVisible();
+    await expect(page.locator('.floating-toolbar.edit-toolbar')).toBeHidden();
+    // one row: the undo buttons are level with the drawing buttons
+    var draw = await page.locator(LINE_BUTTON).boundingBox();
+    var undoBox = await page.locator('.undo-redo-buttons .floating-toolbar-btn').first().boundingBox();
+    expect(Math.abs(draw.y - undoBox.y)).toBeLessThan(1);
+    expect(undoBox.x).toBeLessThan(draw.x);
+
+    // in a mode with no toolbar of its own, the history still has its buttons
+    await page.evaluate(function() {
+      window.mapshaper.undoTest.setInteractionMode('info');
+    });
+    await expect(page.locator('.floating-toolbar.edit-toolbar .undo-redo-buttons')).toBeVisible();
+    await expect(page.locator('.line-draw-toolbar .undo-redo-buttons')).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
 test('Esc finishes the path being drawn, and a second Esc stops drawing',
   async function({page}) {
     var errors = collectPageErrors(page);

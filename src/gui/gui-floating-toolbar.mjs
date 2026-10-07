@@ -20,10 +20,14 @@ import { GUI } from './gui-lib';
 //   toolbar.addSegmentedControl(caption, items, opts) -> ToolbarSegmentedControl
 //   toolbar.addTextField(caption, opts) -> ToolbarTextField
 //   toolbar.addSeparator()
+//   toolbar.dock(el)    puts a group of controls kept by another toolbar first
 //   toolbar.show()
 //   toolbar.hide()
 //   toolbar.visible()
 //   toolbar.node()
+//
+// Showing or hiding a toolbar fires 'floating_toolbar_change' on the gui.
+// getVisibleFloatingToolbars(gui) lists the visible ones, bottom first.
 
 export function FloatingToolbar(gui, opts) {
   opts = opts || {};
@@ -41,6 +45,8 @@ export function FloatingToolbar(gui, opts) {
 
   el.appendTo(stack);
   el.css('display', 'none');
+  if (!gui.floatingToolbars) gui.floatingToolbars = [];
+  gui.floatingToolbars.push(this);
 
   // Hide when this gui instance becomes inactive (e.g. multi-instance mode)
   gui.on('active', updateVisibility);
@@ -73,16 +79,26 @@ export function FloatingToolbar(gui, opts) {
     return El('div').addClass('floating-toolbar-separator').appendTo(content);
   };
 
+  this.dock = function(groupEl) {
+    var node = groupEl.node();
+    var parent = content.node();
+    if (parent.firstChild != node) {
+      parent.insertBefore(node, parent.firstChild);
+    }
+  };
+
   this.show = function() {
     if (visible) return;
     visible = true;
     updateVisibility();
+    gui.dispatchEvent('floating_toolbar_change');
   };
 
   this.hide = function() {
     if (!visible) return;
     visible = false;
     updateVisibility();
+    gui.dispatchEvent('floating_toolbar_change');
   };
 
   this.visible = function() {
@@ -115,6 +131,20 @@ export function FloatingToolbar(gui, opts) {
       }, transitionMs);
     }
   }
+}
+
+// The stack is a reversed column, so the first toolbar in the DOM is the
+// bottom one.
+export function getVisibleFloatingToolbars(gui) {
+  return (gui.floatingToolbars || []).filter(function(toolbar) {
+    return toolbar.visible();
+  }).sort(function(a, b) {
+    return a.node().compareDocumentPosition(b.node()) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+  });
+}
+
+export function makeToolbarButton(parent, iconRef, opts) {
+  return new ToolbarButton(parent, iconRef, opts || {});
 }
 
 function ToolbarSegmentedControl(parent, caption, items, opts) {

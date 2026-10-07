@@ -348,13 +348,29 @@ export function Basemap(gui) {
       keyboard: false,
       maxPitch: 0,
       projection: 'mercator', // prevent globe view when zoomed out
-      renderWorldCopies: true // false // false prevents panning off the map
+      renderWorldCopies: true, // false // false prevents panning off the map
+      // the bottom-right corner has the basemap buttons
+      attributionControl: false
     });
+    // added after the logo, so it sits to the logo's right
+    map.addControl(new window.mapboxgl.AttributionControl({compact: true}), 'bottom-left');
+    liftCornerControls();
     setStyle(activeStyle);
     map.on('load', function() {
       loading = false;
       refresh();
     });
+  }
+
+  // The basemap is drawn under the map's layers, which take every click, so
+  // its corner controls (the logo, and the "i" that opens the attribution) are
+  // moved into the map area above them. Their own handlers go with them.
+  function liftCornerControls() {
+    var corner = mapEl.node().querySelector('.mapboxgl-ctrl-bottom-left');
+    if (!corner) return;
+    var holder = El('div').addClass('basemap-controls')
+      .appendTo(gui.container.findChild('.mshp-main-map'));
+    holder.node().appendChild(corner);
   }
 
   // @bbox: latlon bounding box of current map extent

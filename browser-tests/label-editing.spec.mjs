@@ -772,7 +772,7 @@ async function loadFixture(page, fixture) {
 // button would disarm it there.
 async function armTool(page, kind) {
   var i = {anchor: 0, block: 1, path: 2}[kind];
-  var btn = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-btn').nth(i);
+  var btn = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-content > .floating-toolbar-btn').nth(i);
   if (!(await btn.evaluate(function(el) {
     return el.classList.contains('selected');
   }))) {
@@ -784,7 +784,7 @@ async function armTool(page, kind) {
 // Disarms whichever creation tool is armed, so that a click on the map does
 // not place a label.
 async function disarmTool(page) {
-  var btns = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-btn');
+  var btns = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-content > .floating-toolbar-btn');
   for (var i = 0; i < 3; i++) {
     if (await btns.nth(i).evaluate(function(el) {
       return el.classList.contains('selected');
