@@ -187,10 +187,27 @@ export function layerHasDrawableStyle(lyr) {
   var fields = getStyleFields(lyr);
   if (lyr.geometry_type == 'point') {
     // return fields.indexOf('r') > -1; // require 'r' field for point symbols
-    return fields.includes('fill') || fields.includes('r'); // support colored squares
+    fields = fields.filter(function(field) {
+      return field == 'fill' || field == 'r';
+    }); // support colored squares
+  } else {
+    fields = utils.difference(fields, ['opacity', 'class']);
   }
-  return utils.difference(fields, ['opacity', 'class']).length > 0 ||
-    !!getLineArrowFields(lyr) || layerHasGlowFields(lyr);
+  return layerHasStyleValues(lyr, fields) ||
+    layerHasStyleValues(lyr, getLineArrowFields(lyr)) ||
+    layerHasStyleValues(lyr, layerHasGlowFields(lyr) ? internal.svg.glowFields : null);
+}
+
+function layerHasStyleValues(lyr, fields) {
+  if (!lyr.data || !fields || fields.length === 0) return false;
+  // -style field= leaves an undefined key in the table so mixed-feature
+  // columns keep their schema. An entirely empty column is not a drawable
+  // style: the layer should go back to its unstyled map appearance.
+  return lyr.data.getRecords().some(function(rec) {
+    return fields.some(function(field) {
+      return rec && !isBlankStyleValue(rec[field]);
+    });
+  });
 }
 
 function layerHasGlowFields(lyr) {

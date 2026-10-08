@@ -852,8 +852,12 @@ export function LayerStyleTool(gui) {
 
   function applyColorControlStyle(control, color) {
     var styles = [[control.field, color]];
-    if (color && control.field == 'stroke' && strokeWidthIsUnsetForTargets()) {
-      styles.push(['stroke-width', 1]);
+    if (control.field == 'stroke') {
+      if (color && strokeWidthIsUnsetForTargets()) {
+        styles.push(['stroke-width', 1]);
+      } else if (!color) {
+        styles.push(['stroke-width', '']);
+      }
     }
     if (control.field == 'fill') {
       runStyleEdits(patternControl.getStyleEdits(styles));

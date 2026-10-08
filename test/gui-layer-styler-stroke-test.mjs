@@ -1,12 +1,18 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
-import { getCanvasDisplayStyle } from '../src/gui/gui-layer-styler.mjs';
+import {
+  getCanvasDisplayStyle, layerHasDrawableStyle
+} from '../src/gui/gui-layer-styler.mjs';
+
+function makeLayer(records) {
+  return {geometry_type: 'polyline', data: new api.internal.DataTable(records)};
+}
 
 // The canvas styler mutates one style object from shape to shape (see
 // drawStyledPaths() in gui-canvas.mjs), so each case styles every shape in
 // turn with the same object.
 function styleShapes(records) {
-  var lyr = {geometry_type: 'polyline', data: new api.internal.DataTable(records)};
+  var lyr = makeLayer(records);
   var base = getCanvasDisplayStyle(lyr);
   var drawStyle = Object.assign({}, base);
   return records.map(function(rec, i) {
@@ -38,5 +44,21 @@ describe('canvas stroke defaults', function() {
   it('keeps a width of 0', function() {
     var out = styleShapes([{stroke: 'red', 'stroke-width': 0}]);
     assert.deepEqual(out[0], {strokeColor: 'red', strokeWidth: 0});
+  });
+
+  it('treats entirely unset style columns as unstyled', function() {
+    var lyr = makeLayer([
+      {stroke: undefined, 'stroke-width': undefined},
+      {stroke: undefined, 'stroke-width': undefined}
+    ]);
+    assert.equal(layerHasDrawableStyle(lyr), false);
+  });
+
+  it('keeps a layer styled when a later shape has style values', function() {
+    var lyr = makeLayer([
+      {stroke: undefined, 'stroke-width': undefined},
+      {stroke: 'red', 'stroke-width': 2}
+    ]);
+    assert.equal(layerHasDrawableStyle(lyr), true);
   });
 });

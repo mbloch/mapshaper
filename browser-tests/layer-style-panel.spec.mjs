@@ -182,6 +182,15 @@ test('the panel buttons still do what they say', async function({page}) {
 var LINE_FIXTURE = 'test/data/features/divide/ex1_line.json';
 var LINE_LAYER = 'ex1_line';
 
+test('clearing a line stroke also clears its width', async function({page}) {
+  await loadFixture(page, LINE_FIXTURE, 'line_style');
+  await runConsoleCommand(page, "-style stroke='#333333' stroke-width=2");
+
+  await setField(colorRow(page, 'Stroke').locator('.label-color-input'), '');
+  expect(await getStyleValue(page, 'stroke', LINE_LAYER)).toBeUndefined();
+  expect(await getStyleValue(page, 'stroke-width', LINE_LAYER)).toBeUndefined();
+});
+
 test('dashes are typed as a -style stroke-dasharray value', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, LINE_FIXTURE, 'line_style');
@@ -468,7 +477,9 @@ test('an emptied fill or stroke is unset, and an emptied pattern color is the de
     expect((await getRecords(page)).map(function(rec) { return rec.fill; })).toEqual(Array(3).fill(undefined));
     await expect(fill).toHaveValue('');
     await setField(colorRow(page, 'Stroke').locator('.label-color-input'), '');
-    expect((await getRecords(page))[0].stroke).toBeUndefined();
+    var records = await getRecords(page);
+    expect(records.map(function(rec) { return rec.stroke; })).toEqual(Array(3).fill(undefined));
+    expect(records.map(function(rec) { return rec['stroke-width']; })).toEqual(Array(3).fill(undefined));
 
     await clickPatternToggle(page);
     await selectPattern(page, 'dots');
@@ -478,6 +489,23 @@ test('an emptied fill or stroke is unset, and an emptied pattern color is the de
     await setField(color, '');
     expect((await getPatterns(page))[0]).toBe('dots 2px #000000 3px none');
     await expect(color).toHaveValue('#000000');
+  });
+
+test('clearing a selected feature stroke leaves other feature strokes alone',
+  async function({page}) {
+    await loadFixture(page, POLY_FIXTURE);
+    await runConsoleCommand(page, "-style stroke='#333333' stroke-width=2");
+    await selectFeature(page, POLY_LAYER, 0);
+
+    await setField(colorRow(page, 'Stroke').locator('.label-color-input'), '');
+    var records = await getRecords(page);
+    expect(records[0].stroke).toBeUndefined();
+    expect(records[0]['stroke-width']).toBeUndefined();
+    expect(records.slice(1).map(function(rec) {
+      return [rec.stroke, rec['stroke-width']];
+    })).toEqual([['#333333', 2], ['#333333', 2]]);
+    expect((await getSessionCommands(page)).join('\n'))
+      .toContain("-style stroke='' stroke-width='' ids=0");
   });
 
 test('glows are drawn on the map', async function({page}) {
@@ -559,6 +587,27 @@ async function getRecords(page) {
 
 async function getPatterns(page) {
   return (await getRecords(page)).map(function(rec) { return rec['fill-pattern']; });
+}
+
+async function selectFeature(page, layer, id) {
+  var p = await page.evaluate(function(o) {
+    var points = window.mapshaper.undoTest.getLayerPathPixels(o.layer)[o.id][0];
+    var xs = points.map(function(point) { return point[0]; });
+    var ys = points.map(function(point) { return point[1]; });
+    return [(Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2,
+      (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2];
+  }, {layer: layer, id: id});
+  var box = await page.locator('.map-layers').boundingBox();
+  var x = box.x + p[0], y = box.y + p[1];
+  await page.mouse.move(x - 5, y - 5);
+  await page.mouse.move(x, y, {steps: 3});
+  await page.waitForTimeout(100);
+  await page.mouse.click(x, y);
+  await expect.poll(function() {
+    return page.evaluate(function() {
+      return window.mapshaper.undoTest.getSelectionIds();
+    });
+  }).toEqual([id]);
 }
 
 async function runConsoleCommand(page, cmd) {
