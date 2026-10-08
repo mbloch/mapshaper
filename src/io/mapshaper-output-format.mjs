@@ -54,6 +54,10 @@ export function inferOutputFormat(file, inputFormat) {
     format = 'svg';
   } else if (ext == 'html' || ext == 'htm') {
     format = 'html';
+  } else if (ext == 'png') {
+    format = 'png';
+  } else if (ext == 'jpg' || ext == 'jpeg') {
+    format = 'jpg';
   } else if (ext == 'kml' || ext == 'kmz') {
     format = 'kml';
   } else if (/json$/.test(ext)) {

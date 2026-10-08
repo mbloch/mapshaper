@@ -3,9 +3,8 @@ import { rasterizeSVG, getPixelRatio } from './mapshaper-svg-rasterize';
 import { getOutputFileBase } from '../utils/mapshaper-filename-utils';
 
 // PNG and JPEG output: the whole map, labels and furniture included, drawn as
-// it is in SVG output and rasterized. Only the web UI offers these formats
-// (see validateOutputOpts()): in Node, resvg is given only the regular and
-// bold faces of each font, so other weights and italics would be lost.
+// it is in SVG output and rasterized: by resvg in Node, by a canvas in the
+// browser (see mapshaper-svg-rasterize.mjs).
 //
 // @format: 'png' or 'jpg'
 export async function exportMapImage(dataset, opts) {

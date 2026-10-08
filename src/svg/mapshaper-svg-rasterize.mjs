@@ -1,15 +1,13 @@
 import require from '../mapshaper-require';
 import { runningInBrowser } from '../mapshaper-env';
-import { findFontFace } from '../fonts/mapshaper-font-lookup';
+import { prepareSvgForResvg } from '../fonts/mapshaper-resvg-fonts';
 import { stop } from '../utils/mapshaper-logging';
 
 // Renders an SVG document as a PNG or JPEG image.
 //
-// Node uses resvg, compiled to WebAssembly, which cannot see the fonts
-// installed on the computer: the files for the families a document names are
-// found the way label measurement finds them (see mapshaper-font-lookup.mjs)
-// and handed to it. The browser draws the document on a canvas with its own
-// fonts.
+// Node uses resvg, compiled to WebAssembly, which is given the font files the
+// document's text needs (see mapshaper-resvg-fonts.mjs). The browser draws the
+// document on a canvas with its own fonts.
 
 var resvgPromise = null;
 
@@ -28,10 +26,12 @@ export async function rasterizeSVG(svg, opts) {
 
 async function rasterizeWithResvg(svg, opts) {
   var resvg = await loadResvg();
-  var renderer = new resvg.Resvg(svg, {
+  var prepared = svgHasText(svg) ? prepareSvgForResvg(svg) :
+    {svg: svg, font: {fontBuffers: []}};
+  var renderer = new resvg.Resvg(prepared.svg, {
     fitTo: {mode: 'width', value: getImageSize(opts.width, opts.scale)},
     background: opts.format == 'jpeg' ? 'white' : undefined,
-    font: svgHasText(svg) ? getResvgFontOptions(svg) : {fontBuffers: []}
+    font: prepared.font
   });
   var img = renderer.render();
   var content;
@@ -67,44 +67,6 @@ function loadResvg() {
 
 function svgHasText(svg) {
   return /<text\b/.test(svg);
-}
-
-// Regular and bold faces of each family named in @svg, plus the faces that
-// the generic families resolve to on this computer.
-function getResvgFontOptions(svg) {
-  var paths = [];
-  var opts = {fontBuffers: []};
-  var generics = {
-    sansSerifFamily: 'sans-serif',
-    serifFamily: 'serif',
-    monospaceFamily: 'monospace'
-  };
-  getFontFamilies(svg).concat(Object.values(generics)).forEach(function(family) {
-    [400, 700].forEach(function(weight) {
-      var face = findFontFace(family, weight, false);
-      if (face && !paths.includes(face.path)) paths.push(face.path);
-    });
-  });
-  Object.keys(generics).forEach(function(key) {
-    var face = findFontFace(generics[key], 400, false);
-    if (face) opts[key] = face.families[0];
-  });
-  opts.defaultFontFamily = opts.sansSerifFamily;
-  opts.fontBuffers = paths.map(function(path) {
-    return require('fs').readFileSync(path);
-  });
-  return opts;
-}
-
-function getFontFamilies(svg) {
-  var families = [];
-  var rxp = /font-family(?:="|:\s*)([^";]+)/g;
-  var match, family;
-  while ((match = rxp.exec(svg)) !== null) {
-    family = match[1].replace(/&quot;|&apos;/g, '"').trim();
-    if (!families.includes(family)) families.push(family);
-  }
-  return families;
 }
 
 async function rasterizeInBrowser(svg, opts) {

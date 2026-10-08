@@ -530,7 +530,7 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('jpeg-quality', {
-      describe: '[SVG/HTML] JPEG quality for raster images, 1-100 (default is 85)',
+      describe: '[SVG/HTML/JPEG] JPEG quality for raster images, 1-100 (default is 85)',
       type: 'number'
     })
     .option('responsiveness', {
@@ -540,7 +540,7 @@ export function getOptionParser() {
       describe: '[HTML] format of the map image: png or jpg (default is png)'
     })
     .option('pixel-ratio', {
-      describe: '[HTML] image pixels per CSS pixel (default is 2)',
+      describe: '[HTML/PNG/JPEG] image pixels per CSS pixel (default is 2)',
       type: 'number'
     })
     .option('fit-extent', {

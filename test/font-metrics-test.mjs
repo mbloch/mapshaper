@@ -1,12 +1,23 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { PNG } from 'pngjs';
+import { captureLogCalls } from './helpers';
 
 // Through the bundle, not the source modules: these read the filesystem and
 // load fontkit through the require shim, which is a stub in an ES module.
 var {findFontFace, pickFace, parseFontStretch, normalizeFamilyName,
   getFaceFamilies, clearFontCache, measureLabelText, getFontSizeInPx,
   getLetterSpacingInPx, getFontWeight, isItalic, getVariationSettings,
-  clearMeasuredFontCache} = api.internal.fonts;
+  clearMeasuredFontCache, splitFontFamilyList, findMissingFontGlyphs,
+  getSvgTextRuns, prepareSvgForResvg, renameFontFamilies} = api.internal.fonts;
+
+// A variable font (weights 200 to 900, default 200) under the SIL Open Font
+// License, shipped with the web UI.
+var SOURCE_SANS = fileURLToPath(new URL('../www/assets/SourceSans3-VariableFont_wght.ttf', import.meta.url));
 
 // Fonts that most machines have one of. The measurements below are written as
 // relations rather than numbers -- twice the size is twice the width -- so that
@@ -141,6 +152,184 @@ describe('Font metrics in Node', function () {
     it('has nothing for a font with no name table', function () {
       assert.deepEqual(getFaceFamilies({}), []);
       assert.deepEqual(getFaceFamilies(null), []);
+    });
+  });
+
+  describe('fonts used by SVG text', function () {
+    it('splits a CSS fallback list', function () {
+      assert.deepEqual(splitFontFamilyList(
+        '"NYT Franklin", Arial, sans-serif'
+      ), ['NYT Franklin', 'Arial', 'sans-serif']);
+      assert.deepEqual(splitFontFamilyList(
+        '"Example, Display", serif'
+      ), ['Example, Display', 'serif']);
+    });
+
+    it('collects inherited and run-level face requests', function () {
+      var svg = '<svg><g font-family="Example, sans-serif" ' +
+        'font-weight="300" font-stretch="condensed">' +
+        '<text>A&amp;B<tspan style="font-weight: 700; font-style: italic">' +
+        'C</tspan>D</text></g><text>E</text></svg>';
+      assert.deepEqual(getSvgTextRuns(svg), [{
+        text: 'A&B',
+        family: 'Example, sans-serif',
+        weight: '300',
+        style: 'normal',
+        stretch: 'condensed'
+      }, {
+        text: 'C',
+        family: 'Example, sans-serif',
+        weight: '700',
+        style: 'italic',
+        stretch: 'condensed'
+      }, {
+        text: 'D',
+        family: 'Example, sans-serif',
+        weight: '300',
+        style: 'normal',
+        stretch: 'condensed'
+      }, {
+        text: 'E',
+        family: 'sans-serif',
+        weight: 'normal',
+        style: 'normal',
+        stretch: 'normal'
+      }]);
+    });
+
+    it('finds characters that the selected face cannot draw', function () {
+      var family = findAFont();
+      var face;
+      if (!family) this.skip();
+      face = findFontFace(family, 400, false);
+      assert.deepEqual(findMissingFontGlyphs(face, 'ABC'), []);
+      assert.deepEqual(findMissingFontGlyphs(face, 'A\u{10ffff}'),
+        ['\u{10ffff}']);
+    });
+
+    it('renames families in attributes and inline styles', function () {
+      var names = {SourceSans3: 'Source Sans 3', 'A&B': 'A&B Sans'};
+      assert.equal(renameFontFamilies(
+        '<text font-family="SourceSans3, sans-serif">x</text>', names),
+        '<text font-family="\'Source Sans 3\', sans-serif">x</text>');
+      assert.equal(renameFontFamilies(
+        '<text style="fill: red; font-family: &quot;A&amp;B&quot;; font-size: 9px">x</text>',
+        names),
+        '<text style="fill: red; font-family: \'A&amp;B Sans\'; font-size: 9px">x</text>');
+    });
+
+    it('leaves a document with nothing to rename unchanged', function () {
+      var svg = '<text font-family="&quot;Source Sans 3&quot;">x</text>';
+      assert.equal(renameFontFamilies(svg, {}), svg);
+    });
+  });
+
+  // Drawn by resvg with the fonts in a directory of the test's own: Source Sans
+  // 3, and the face this computer resolves sans-serif to, which is resvg's
+  // default family.
+  describe('image text drawn by resvg', function () {
+    var fontPath, dir, sans;
+
+    before(function () {
+      clearFontCache();
+      sans = findFontFace('sans-serif', 400, false);
+      if (!sans) this.skip();
+      fontPath = process.env.MAPSHAPER_FONT_PATH;
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mapshaper-fonts-'));
+      fs.copyFileSync(SOURCE_SANS, path.join(dir, path.basename(SOURCE_SANS)));
+      fs.copyFileSync(sans.path, path.join(dir, path.basename(sans.path)));
+      process.env.MAPSHAPER_FONT_PATH = dir;
+      clearFontCache();
+      sans = findFontFace('sans-serif', 400, false);
+    });
+
+    after(function () {
+      if (!dir) return;
+      if (fontPath === undefined) {
+        delete process.env.MAPSHAPER_FONT_PATH;
+      } else {
+        process.env.MAPSHAPER_FONT_PATH = fontPath;
+      }
+      fs.rmSync(dir, {recursive: true, force: true});
+      clearFontCache();
+    });
+
+    function textSvg(attrs, text) {
+      return '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="40">' +
+        '<text x="5" y="28" font-size="24" ' + attrs + '>' + (text || 'Hamburg') +
+        '</text></svg>';
+    }
+
+    async function render(svg) {
+      var png = PNG.sync.read(Buffer.from(await api.internal.svg.rasterizeSVG(svg,
+        {width: 200, height: 40, scale: 1, format: 'png'})));
+      return png.data;
+    }
+
+    function prepare(svg) {
+      var out;
+      var log = captureLogCalls(function() {
+        out = prepareSvgForResvg(svg);
+      });
+      out.log = log;
+      return out;
+    }
+
+    function findLog(log, str) {
+      return log.find(function(line) { return line.includes(str); });
+    }
+
+    it('renames a family to the name resvg matches', function () {
+      var out = prepare(textSvg('font-family="SourceSans3" font-weight="200"'));
+      assert.ok(out.svg.includes('font-family="\'Source Sans 3\'"'), out.svg);
+      assert.deepEqual(out.log, []);
+    });
+
+    it('draws text in a family written another way in that family', async function () {
+      var exact = await render(textSvg('font-family="Source Sans 3"'));
+      var loose = await render(textSvg('font-family="source-sans-3"'));
+      var fallback = await render(textSvg('font-family="sans-serif"'));
+      assert.ok(loose.equals(exact));
+      assert.ok(!loose.equals(fallback));
+    });
+
+    it('names the font drawn in place of one that is not installed', function () {
+      var out = prepare(textSvg('font-family="NoSuchFont, SourceSans3" font-weight="200"'));
+      assert.ok(findLog(out.log,
+        'Font "NoSuchFont" is not installed; text in it is drawn in "Source Sans 3"'),
+        out.log);
+      assert.ok(out.svg.includes('font-family="NoSuchFont, \'Source Sans 3\'"'), out.svg);
+    });
+
+    it('loads a font for a character the text\'s own font lacks', function () {
+      var source = findFontFace('Source Sans 3', 400, false);
+      var ch = null, c, out;
+      for (var cp = 0xa1; cp < 0x3000 && !ch; cp++) {
+        c = String.fromCodePoint(cp);
+        if (findMissingFontGlyphs(source, c).length == 1 &&
+            findMissingFontGlyphs(sans, c).length === 0) ch = c;
+      }
+      if (!ch) this.skip();
+      out = prepare(textSvg('font-family="Source Sans 3" font-weight="200"', 'A' + ch));
+      assert.ok(findLog(out.log, 'Font "Source Sans 3" has no glyphs for "' + ch +
+        '"; they are drawn in "' + sans.families[0] + '"'), out.log);
+    });
+
+    it('leaves out a character that no installed font has, with a warning', function () {
+      var out = prepare(textSvg('font-family="Source Sans 3" font-weight="200"',
+        'A\u{10ffff}B'));
+      assert.ok(findLog(out.log, 'no installed font that images can use has ' +
+        'them, so they are left out'), out.log);
+      assert.ok(out.svg.includes('>AB</text>'), out.svg);
+    });
+
+    it('warns that a variable font is drawn at its default weight', function () {
+      var out = prepare(textSvg('font-family="Source Sans 3" font-weight="700"'));
+      assert.ok(findLog(out.log,
+        '"Source Sans 3" is a variable font, which images are drawn in at its ' +
+        'default weight (200), so text set at weight 700'), out.log);
+      assert.deepEqual(prepare(textSvg('font-family="Source Sans 3" ' +
+        'font-weight="200"')).log, []);
     });
   });
 

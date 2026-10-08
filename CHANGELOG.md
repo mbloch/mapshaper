@@ -1,7 +1,6 @@
 v0.7.81
-* [web] Added PNG and JPEG to the export formats: an image of the whole map, labels included, at twice the frame's size by default (set with `pixel-ratio=`; JPEG quality with `jpeg-quality=`). Not offered in Safari, which draws the labels of an image in system fonts only.
+* Added PNG and JPEG output (e.g. `-o map.png`): an image of the whole map, labels included, at twice the frame's size by default (set with `pixel-ratio=`; JPEG quality with `jpeg-quality=`). From the command line, labels are drawn with installed fonts, with warnings about missing fonts and characters. The web UI doesn't offer these formats in Safari, which draws the labels of an image in system fonts only.
 * In PNG and JPEG images, and the image in HTML output, opaque polygons with a solid fill and no stroke are drawn with a hairline stroke in their fill color, which hides the faint seams that appear between adjacent polygons. SVG output is unchanged.
-
 v0.7.80
 * [web] Line, polygon and label styling panels can now be minimized to make more room for editing symbols on the map.
 * [web] Adjust toolbar placement to intrude less into the main map area.

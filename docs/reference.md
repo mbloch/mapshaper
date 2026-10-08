@@ -316,13 +316,15 @@ The `html` format writes a map as an HTML fragment and an image, in the manner o
 
 `linked-images` (SVG) Output raster images as separate JPEG or PNG files and link to them from SVG `<image>` elements instead of embedding them as data URIs.
 
-`jpeg-quality=` (SVG/HTML) JPEG quality for embedded or linked raster images, or for the image of HTML output, from `1` to `100`. The default is `85`.
+`jpeg-quality=` (SVG/HTML/JPEG) JPEG quality for embedded or linked raster images, for the image of HTML output, or for JPEG output, from `1` to `100`. The default is `85`.
 
 `responsiveness=` (HTML) `fixed` (the default) gives the map a fixed size in pixels. `dynamic` makes the map fill the width of its container, keeping its aspect ratio.
 
 `image-format=` (HTML) Format of the map image: `png` (the default) or `jpg`.
 
-`pixel-ratio=` (HTML) Resolution of the map image, in image pixels per CSS pixel. The default is `2`, for sharp images on high-density displays.
+`pixel-ratio=` (HTML/PNG/JPEG) Resolution of the map image, in image pixels per CSS pixel. The default is `2`, for sharp images on high-density displays.
+
+PNG and JPEG output (`-o map.png`, `-o map.jpg`, or `format=png|jpg`) is an image of the whole styled map, labels and furniture included, at the map frame's size times `pixel-ratio=`. From the command line, labels are drawn with the fonts installed on your computer (or in the directories listed in the `MAPSHAPER_FONT_PATH` environment variable). Mapshaper warns when a label's font is not installed, when a character is drawn from another font or left out because no installed font has it, and when a label is set in a weight that a variable font can't be drawn at.
 
 `fit-extent=<layer id>` (SVG) Use a layer (typically a layer containing a single rectangle) to set the extent of the map. Paths that overflow this extent are retained in the SVG output.
 

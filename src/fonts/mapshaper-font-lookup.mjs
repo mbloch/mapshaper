@@ -31,6 +31,22 @@ var GENERIC_FAMILIES = {
 
 var faceCache = {};
 var familyCache = {};
+var openedFaceCache = {};
+var glyphSupportCache = {};
+var fallbackCache = {};
+
+// Where a character missing from a label's own fonts is looked for first,
+// before every installed font is searched. Families with wide coverage, from
+// macOS, Windows and Linux; the first installed one with the character wins.
+var FALLBACK_FAMILIES = ['Arial Unicode MS', 'Apple Symbols',
+  'Hiragino Sans', 'Apple SD Gothic Neo', 'Noto Sans', 'Noto Sans CJK SC',
+  'Noto Sans Symbols', 'Noto Sans Symbols 2', 'DejaVu Sans',
+  'Segoe UI Symbol', 'Microsoft YaHei', 'Malgun Gothic', 'Yu Gothic',
+  'Nirmala UI'];
+
+// macOS's LastResort font has a placeholder glyph for every character, which
+// is no better than the empty box drawn without it.
+var PLACEHOLDER_FONT_RXP = /lastresort/i;
 var fullIndex = null;
 var fileList = null;
 
@@ -126,8 +142,142 @@ export function getFaceFamilies(font) {
 export function clearFontCache() {
   faceCache = {};
   familyCache = {};
+  openedFaceCache = {};
+  glyphSupportCache = {};
+  fallbackCache = {};
   fullIndex = null;
   fileList = null;
+}
+
+// The names in a CSS font-family value, in fallback order.
+export function splitFontFamilyList(family) {
+  var str = String(family || '');
+  var names = [];
+  var start = 0;
+  var quote = '';
+  var escaped = false;
+  for (var i = 0; i < str.length; i++) {
+    var ch = str[i];
+    if (escaped) {
+      escaped = false;
+    } else if (ch == '\\') {
+      escaped = true;
+    } else if (quote) {
+      if (ch == quote) quote = '';
+    } else if (ch == '"' || ch == "'") {
+      quote = ch;
+    } else if (ch == ',') {
+      addName(str.slice(start, i));
+      start = i + 1;
+    }
+  }
+  addName(str.slice(start));
+  return names;
+
+  function addName(name) {
+    name = name.trim();
+    if (name.length > 1 && (name[0] == '"' || name[0] == "'") &&
+        name[name.length - 1] == name[0]) {
+      name = name.slice(1, -1);
+    }
+    if (name) names.push(name);
+  }
+}
+
+// Characters in @text that @face cannot draw, or null when the face cannot be
+// inspected.
+export function findMissingFontGlyphs(face, text) {
+  var font = openFontFace(face);
+  var support = glyphSupportCache[getFontFaceKey(face)] ||
+    (glyphSupportCache[getFontFaceKey(face)] = Object.create(null));
+  var missing = [];
+  var seen = Object.create(null);
+  var cp;
+  if (!font) return null;
+  Array.from(String(text || '')).forEach(function(ch) {
+    cp = ch.codePointAt(0);
+    if (glyphCanBeIgnored(cp) || seen[cp]) return;
+    seen[cp] = true;
+    if (!(cp in support)) support[cp] = fontHasGlyph(font, cp);
+    if (!support[cp]) missing.push(ch);
+  });
+  return missing;
+}
+
+// An installed face that can draw each of @chars, keyed by character, or null
+// for a character that no installed font has. A face in the style asked for is
+// preferred, when its family has one with the character.
+//
+// The likely families are tried first. Searching every font means reading all
+// of them, so it happens only for characters those families lack, and once
+// per character in a session.
+export function findFallbackFaces(chars, weight, italic, stretch) {
+  var out = {};
+  var styleKey = [weight, italic ? 'i' : 'n', stretch || ''].join('|');
+  var wanted = [];
+  chars.forEach(function(ch) {
+    var key = ch + '|' + styleKey;
+    if (key in fallbackCache) {
+      out[ch] = fallbackCache[key];
+    } else if (!wanted.includes(ch)) {
+      wanted.push(ch);
+    }
+  });
+  FALLBACK_FAMILIES.forEach(function(family) {
+    var face;
+    if (wanted.length === 0) return;
+    face = findFontFace(family, weight, italic, stretch);
+    if (!face || !fontHasOutlines(openFontFace(face))) return;
+    takeCovered(face, findMissingFontGlyphs(face, wanted.join('')) || wanted);
+  });
+  if (wanted.length > 0) {
+    getFontFiles().forEach(function(file) {
+      if (wanted.length === 0 || PLACEHOLDER_FONT_RXP.test(file)) return;
+      // Opened and dropped rather than kept with openFontFace(), which would
+      // hold every font on the computer in memory.
+      getFileFonts(file).forEach(function(o) {
+        var found = !fontHasOutlines(o.font) ? [] : wanted.filter(function(ch) {
+          return fontHasGlyph(o.font, ch.codePointAt(0));
+        });
+        if (found.length > 0) {
+          takeCovered(getStyledFace(o.face, found), wanted.filter(function(ch) {
+            return !found.includes(ch);
+          }));
+        }
+      });
+    });
+  }
+  wanted.forEach(function(ch) {
+    fallbackCache[ch + '|' + styleKey] = out[ch] = null;
+  });
+  return out;
+
+  function takeCovered(face, missing) {
+    wanted = wanted.filter(function(ch) {
+      if (missing.includes(ch)) return true;
+      fallbackCache[ch + '|' + styleKey] = out[ch] = face;
+      return false;
+    });
+  }
+
+  function getStyledFace(face, found) {
+    var styled = findFontFace(face.families[0], weight, italic, stretch);
+    var missing = styled && findMissingFontGlyphs(styled, found.join(''));
+    return missing && missing.length === 0 ? styled : face;
+  }
+}
+
+// The weight axis of a variable face, {min, default, max}, or null for a face
+// that is not variable, or that cannot be read.
+export function getFontWeightAxis(face) {
+  var font = openFontFace(face);
+  var axis;
+  try {
+    axis = font && font.variationAxes && font.variationAxes.wght;
+  } catch (e) {
+    axis = null;
+  }
+  return axis ? {min: axis.min, default: axis.default, max: axis.max} : null;
 }
 
 function lookupFace(family, weight, italic, stretch) {
@@ -163,7 +313,7 @@ function faceAnswersRequest(face, weight, italic, stretch) {
 // candidates that is installed.
 function resolveFamilyNames(family) {
   var out = [];
-  splitFamilyList(family).forEach(function(name) {
+  splitFontFamilyList(family).forEach(function(name) {
     var generic = GENERIC_FAMILIES[name.toLowerCase()];
     if (generic) {
       out = out.concat(generic);
@@ -174,10 +324,56 @@ function resolveFamilyNames(family) {
   return out;
 }
 
-function splitFamilyList(family) {
-  return String(family || '').split(',').map(function(name) {
-    return name.trim().replace(/^['"]|['"]$/g, '');
-  }).filter(Boolean);
+function openFontFace(face) {
+  var fontkit = getFontkit();
+  var key, font;
+  if (!face || !fontkit) return null;
+  key = getFontFaceKey(face);
+  if (!(key in openedFaceCache)) {
+    try {
+      font = fontkit.openSync(face.path, face.postscriptName || undefined);
+    } catch (e) {
+      font = null;
+    }
+    openedFaceCache[key] = font || null;
+  }
+  return openedFaceCache[key];
+}
+
+function getFontFaceKey(face) {
+  return face ? face.path + '|' + (face.postscriptName || '') : '';
+}
+
+// Whether resvg can draw @font's glyphs. Color bitmap fonts (sbix, CBDT) such
+// as Apple Color Emoji and Noto Color Emoji have an outline table with nothing
+// in it, and resvg draws their glyphs as nothing.
+function fontHasOutlines(font) {
+  var tables = font && font.directory && font.directory.tables || {};
+  if (tables.sbix || tables.CBDT) return false;
+  return !!(tables.glyf || tables['CFF '] || tables.CFF2);
+}
+
+function fontHasGlyph(font, cp) {
+  var glyph;
+  if (typeof font.hasGlyphForCodePoint == 'function') {
+    return font.hasGlyphForCodePoint(cp);
+  }
+  if (font.characterSet && typeof font.characterSet.includes == 'function') {
+    return font.characterSet.includes(cp);
+  }
+  try {
+    glyph = font.glyphForCodePoint(cp);
+    return !!glyph && glyph.id !== 0;
+  } catch (e) {
+    return false;
+  }
+}
+
+function glyphCanBeIgnored(cp) {
+  // Layout controls and variation selectors do not need glyphs of their own.
+  return cp <= 0x20 || cp == 0x200c || cp == 0x200d ||
+    cp >= 0xfe00 && cp <= 0xfe0f ||
+    cp >= 0xe0100 && cp <= 0xe01ef;
 }
 
 // Two passes, because parsing every font on the computer costs the best part
@@ -219,26 +415,35 @@ function readFaces(files) {
 }
 
 function getFileFaces(file) {
+  return getFileFonts(file).map(function(o) { return o.face; });
+}
+
+// Each face in @file with the fontkit font it was read from. A collection
+// reports its members in .fonts; a single font is its own.
+function getFileFonts(file) {
   var fontkit = getFontkit();
   var font, fonts;
   if (!fontkit) return [];
   try {
     font = fontkit.openSync(file);
-    // A collection reports its members in .fonts; a single font is its own.
     fonts = font && font.fonts || [font];
     return fonts.filter(Boolean).map(function(one) {
       return {
-        path: file,
-        // Named rather than numbered because fontkit takes a name, and because
-        // a name survives a font being reinstalled in a different order.
-        postscriptName: font.fonts ? one.postscriptName : null,
-        families: getFaceFamilies(one),
-        weight: getFaceWeight(one),
-        width: getFaceWidth(one),
-        italic: isItalicFace(one)
+        font: one,
+        face: {
+          path: file,
+          // Named rather than numbered because fontkit takes a name, and
+          // because a name survives a font being reinstalled in a different
+          // order.
+          postscriptName: font.fonts ? one.postscriptName : null,
+          families: getFaceFamilies(one),
+          weight: getFaceWeight(one),
+          width: getFaceWidth(one),
+          italic: isItalicFace(one)
+        }
       };
-    }).filter(function(face) {
-      return face.families.length > 0;
+    }).filter(function(o) {
+      return o.face.families.length > 0;
     });
   } catch (e) {
     return [];
