@@ -1,4 +1,3 @@
-import { toSixDigitHex } from './gui-color-picker';
 import { El } from './gui-el';
 import {
   claimFieldKeys, isTextInput, opensAMenu, releasePanelFocus
@@ -803,8 +802,6 @@ export function LayerStyleTool(gui) {
     var value = getCommonStyleValue(control.field);
     control.showColor(value);
     updateOpacityControl(control);
-    // Nothing for the picker to sit on when the selection has no one colour.
-    if (!toSixDigitHex(value)) control.picker.hide();
   }
 
   // A selection whose colours disagree still has colours, so an opacity unset

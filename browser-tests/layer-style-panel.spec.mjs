@@ -105,6 +105,16 @@ test('an unset colour opens the picker with nothing picked', async function({pag
   await expect(picker.locator('.label-color-picker-input')).toHaveValue('');
   await expect(marker).toBeHidden();
 
+  // Hover refreshes the panel's controls. It must not close an open picker
+  // just because the color is still unset.
+  var mapBox = await page.locator('.mshp-main-map').boundingBox();
+  await page.mouse.move(mapBox.x + mapBox.width / 2, mapBox.y + mapBox.height / 2);
+  await expect.poll(() => page.evaluate(() => window.mapshaper.undoTest.getHitId())).toBe(0);
+  await expect(picker).toBeVisible();
+  await page.mouse.move(mapBox.x + mapBox.width * 0.1, mapBox.y + mapBox.height * 0.1);
+  await expect.poll(() => page.evaluate(() => window.mapshaper.undoTest.getHitId())).toBe(-1);
+  await expect(picker).toBeVisible();
+
   // turning the hue picks nothing, and neither does closing
   var hue = picker.locator('canvas').nth(1);
   await hue.click({position: {x: 100, y: 5}});
