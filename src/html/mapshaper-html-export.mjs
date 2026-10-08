@@ -35,7 +35,9 @@ export async function exportHTML(dataset, opts) {
   var o = prepareDatasetForSVG(dataset, Object.assign({}, opts, {
     // raster layers are resampled to the pixel density of the image
     raster_res: opts.raster_res || pixelRatio,
-    linked_images: false
+    linked_images: false,
+    // covers the seams between polygons in the image -- see applySeamStroke()
+    seam_stroke_width: 1 / pixelRatio
   }));
   var frame = o.frame;
   var base = getHtmlFileBase(o.dataset, opts);

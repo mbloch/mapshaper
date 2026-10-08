@@ -14,7 +14,9 @@ export async function exportMapImage(dataset, opts) {
   var o = prepareDatasetForSVG(dataset, Object.assign({}, opts, {
     // raster layers are resampled to the pixel density of the image
     raster_res: opts.raster_res || pixelRatio,
-    linked_images: false
+    linked_images: false,
+    // covers the seams between polygons -- see applySeamStroke()
+    seam_stroke_width: 1 / pixelRatio
   }));
   var svg = renderSVGDocument(o.dataset, o.frame, o.dataset.layers, o.opts);
   var content = await rasterizeSVG(svg, {

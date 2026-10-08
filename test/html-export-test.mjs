@@ -2,6 +2,7 @@ import api from '../mapshaper.js';
 import { convertTextStylesToClasses, formatTextClassesAsCss } from '../src/html/html-text-classes';
 import { addFontFallbacks, applyWebFonts } from '../src/html/html-font-stacks';
 import { getPointAtCurveLength } from '../src/curves/mapshaper-curve-fit';
+import { getSeamStrokeColor } from '../src/svg/geojson-to-svg';
 import { PNG } from 'pngjs';
 import assert from 'assert';
 
@@ -62,6 +63,63 @@ describe('HTML output', function () {
 
     it('rejects an unknown image format', async function () {
       await assert.rejects(exportHTML(FRAME, 'image-format=gif'), /image-format/);
+    });
+  });
+
+  describe('seams between polygons', function () {
+    // two dark squares sharing an edge that falls between image pixels, on a
+    // white frame
+    var input = {'squares.json': JSON.stringify({type: 'FeatureCollection', features: [
+      {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[20, 20], [100.4, 20], [100.4, 80], [20, 80], [20, 20]]]}},
+      {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[100.4, 20], [180, 20], [180, 80], [100.4, 80], [100.4, 20]]]}}
+    ]})};
+    var cmd = '-rectangle bbox=0,0,200,100 name=frame -each \'type="frame", width=200, fill="#ffffff"\'' +
+      ' -i squares.json -style fill="#2166ac"';
+
+    function lightestOnSeam(png) {
+      var max = 0;
+      for (var y = 30; y < 70; y++) {
+        for (var x = 98; x < 103; x++) {
+          max = Math.max(max, png.data[(y * png.width + x) * 4]); // red: fill is 0x21
+        }
+      }
+      return max;
+    }
+
+    it('are covered in the image by a stroke in the fill color', async function () {
+      var out = await api.applyCommands(cmd + ' -o target=* out.html pixel-ratio=1', input);
+      var png = PNG.sync.read(out['out.png']);
+      assert.ok(lightestOnSeam(png) < 0x21 + 8, 'seam lightness: ' + lightestOnSeam(png));
+    });
+
+    it('are left alone in SVG output', async function () {
+      var out = await api.applyCommands(cmd + ' -o target=* out.svg', input);
+      assert.ok(!/<path [^>]*stroke=/.test(String(out['out.svg'])));
+    });
+  });
+
+  describe('getSeamStrokeColor()', function () {
+    it('returns the fill of an opaque polygon with a solid fill and no stroke', function () {
+      assert.equal(getSeamStrokeColor({fill: '#2166ac'}), '#2166ac');
+      assert.equal(getSeamStrokeColor({fill: 'steelblue', opacity: 1, stroke: 'none'}), 'steelblue');
+      assert.equal(getSeamStrokeColor({fill: 'rgb(1,2,3)', stroke: '#000', 'stroke-width': 0}), 'rgb(1,2,3)');
+    });
+
+    it('returns null for a polygon a stroke would change', function () {
+      [
+        {},
+        {fill: 'none'},
+        {fill: '#2166ac', stroke: '#fff'},
+        {fill: '#2166ac', 'fill-opacity': 0.5},
+        {fill: '#2166ac', opacity: '0.8'},
+        {fill: 'rgba(0,0,0,0.5)'},
+        {fill: '#2166ac80'},
+        {fill: '#2166ac', 'fill-pattern': 'hatches 2px grey 2px white'},
+        {fill: '#2166ac', 'fill-effect': 'sphere'},
+        {fill: '#2166ac', css: 'fill: red'}
+      ].forEach(function(rec) {
+        assert.strictEqual(getSeamStrokeColor(rec), null, JSON.stringify(rec));
+      });
     });
   });
 
