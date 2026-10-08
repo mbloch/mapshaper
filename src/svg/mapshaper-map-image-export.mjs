@@ -1,0 +1,31 @@
+import { prepareDatasetForSVG, renderSVGDocument, getJpegQuality } from './mapshaper-svg';
+import { rasterizeSVG, getPixelRatio } from './mapshaper-svg-rasterize';
+import { getOutputFileBase } from '../utils/mapshaper-filename-utils';
+
+// PNG and JPEG output: the whole map, labels and furniture included, drawn as
+// it is in SVG output and rasterized. Only the web UI offers these formats
+// (see validateOutputOpts()): in Node, resvg is given only the regular and
+// bold faces of each font, so other weights and italics would be lost.
+//
+// @format: 'png' or 'jpg'
+export async function exportMapImage(dataset, opts) {
+  var pixelRatio = getPixelRatio(opts);
+  var ext = opts.format == 'jpg' ? '.jpg' : '.png';
+  var o = prepareDatasetForSVG(dataset, Object.assign({}, opts, {
+    // raster layers are resampled to the pixel density of the image
+    raster_res: opts.raster_res || pixelRatio,
+    linked_images: false
+  }));
+  var svg = renderSVGDocument(o.dataset, o.frame, o.dataset.layers, o.opts);
+  var content = await rasterizeSVG(svg, {
+    width: o.frame.width,
+    height: o.frame.height,
+    scale: pixelRatio,
+    format: ext == '.jpg' ? 'jpeg' : 'png',
+    quality: getJpegQuality(opts)
+  });
+  return [{
+    filename: opts.file || getOutputFileBase(o.dataset) + ext,
+    content: content
+  }];
+}

@@ -133,6 +133,16 @@ async function rasterizeInBrowser(svg, opts) {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
+// The pixel-ratio= option: image pixels per CSS pixel (default is 2, for
+// sharp images on high-density displays)
+export function getPixelRatio(opts) {
+  var val = opts.pixel_ratio === undefined ? 2 : opts.pixel_ratio;
+  if (val > 0 === false || val > 8) {
+    stop('Expected pixel-ratio= to be a number greater than 0 and no more than 8');
+  }
+  return val;
+}
+
 function getImageSize(cssPixels, scale) {
   return Math.max(1, Math.round(cssPixels * scale));
 }

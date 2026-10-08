@@ -1,5 +1,6 @@
 import { isSupportedDelimiter } from '../text/mapshaper-delim-import';
-import { isSupportedOutputFormat } from '../io/mapshaper-dataset-formats';
+import { isSupportedOutputFormat, isMapImageFormat } from '../io/mapshaper-dataset-formats';
+import { runningInBrowser } from '../mapshaper-env';
 import { filenameIsUnsupportedOutputType, stringLooksLikeJSON } from '../io/mapshaper-file-types';
 import { validateEncoding } from '../text/mapshaper-encodings';
 import { error, stop } from '../utils/mapshaper-logging';
@@ -142,6 +143,11 @@ export function validateOutputOpts(cmd) {
       o.delimiter = o.delimiter || '\t';
     } else if (o.format == 'parquet') {
       o.format = 'geoparquet';
+    } else if (o.format == 'jpeg') {
+      o.format = 'jpg';
+    }
+    if (isMapImageFormat(o.format) && !runningInBrowser()) {
+      error('PNG and JPEG output are only available in the web UI');
     }
     if (!isSupportedOutputFormat(o.format)) {
       error('Unsupported output format:', o.format);

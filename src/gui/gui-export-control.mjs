@@ -173,10 +173,10 @@ export var ExportControl = function(gui) {
       opts.history = snapshot;
       targets = addFrameTarget(targets);
     }
-    if (opts.format == 'svg' || opts.format == 'html' || opts.format == 'topojson') {
+    if (isRenderedMapFormat(opts.format) || opts.format == 'topojson') {
       opts.gui_frame = getGuiFrameContext();
     }
-    if (opts.format == 'svg' || opts.format == 'html') {
+    if (isRenderedMapFormat(opts.format)) {
       targets = addFrameFurnitureTargets(targets, opts.gui_frame);
     }
     try {
@@ -316,11 +316,19 @@ export var ExportControl = function(gui) {
   }
 
   function getExportFormats() {
-    var formats = ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'geopackage', 'geoparquet', 'svg', 'kml', 'html', internal.PACKAGE_EXT];
+    var formats = ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'geopackage', 'geoparquet', 'svg', 'kml'];
+    // the menu has two columns, so formats are added in pairs
+    if (GUI.mapImageExportIsSupported()) formats.push('png', 'jpg');
+    formats.push('html', internal.PACKAGE_EXT);
     // GeoTIFF is the one format here that only accepts raster layers, so it is
     // offered only when there is a raster to export.
     if (getExportFormatLayers().some(hasRaster)) formats.push('geotiff');
     return formats;
+  }
+
+  // formats that draw the map, with its frame and furniture
+  function isRenderedMapFormat(fmt) {
+    return fmt == 'svg' || fmt == 'html' || fmt == 'png' || fmt == 'jpg';
   }
 
   // The layers the format menu describes: the ones checked for export, falling

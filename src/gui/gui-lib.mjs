@@ -22,6 +22,16 @@ GUI.exportIsSupported = function() {
     !!window.navigator.msSaveBlob;
 };
 
+// PNG and JPEG export draw the map's SVG on a canvas as an image. WebKit limits
+// SVG images to the system's own fonts, so labels in fonts the user installed
+// (e.g. NYT Franklin) come out in Times. That rules out Safari, and every iOS
+// browser, all of which use WebKit; their user agents name AppleWebKit but
+// not Chrome, Chromium or Edge (iOS Chrome is CriOS, iOS Firefox FxiOS).
+GUI.mapImageExportIsSupported = function() {
+  var ua = navigator.userAgent || '';
+  return !/AppleWebKit/.test(ua) || /(Chrome|Chromium|Edg)\//.test(ua);
+};
+
 // TODO: make this relative to a single GUI instance
 GUI.canSaveToServer = function() {
   return !!(mapshaper.manifest && mapshaper.manifest.allow_saving) && typeof fetch == 'function';

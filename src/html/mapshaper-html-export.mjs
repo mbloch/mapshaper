@@ -6,7 +6,7 @@ import { featureIsPathLabel, getDefaultStartOffset, initPathLabelReport,
   reportPathLabels } from '../svg/svg-label-paths';
 import { convertPropertiesToDefinitions } from '../svg/svg-definitions';
 import { stringify, stringEscape } from '../svg/svg-stringify';
-import { rasterizeSVG } from '../svg/mapshaper-svg-rasterize';
+import { rasterizeSVG, getPixelRatio } from '../svg/mapshaper-svg-rasterize';
 import { getCurveLength, getPointAtCurveLength } from '../curves/mapshaper-curve-fit';
 import { layerHasFurniture } from '../furniture/mapshaper-furniture';
 import { isFrameLayer } from '../furniture/mapshaper-frame-utils';
@@ -281,12 +281,4 @@ function getImageFormat(opts) {
     stop('Unsupported image-format= option:', opts.image_format, '(expected png or jpg)');
   }
   return fmt;
-}
-
-function getPixelRatio(opts) {
-  var val = opts.pixel_ratio === undefined ? 2 : opts.pixel_ratio;
-  if (val > 0 === false || val > 8) {
-    stop('Expected pixel-ratio= to be a number greater than 0 and no more than 8');
-  }
-  return val;
 }

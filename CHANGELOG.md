@@ -1,3 +1,6 @@
+v0.7.81
+* [web] Added PNG and JPEG to the export formats: an image of the whole map, labels included, at twice the frame's size by default (set with `pixel-ratio=`; JPEG quality with `jpeg-quality=`). Not offered in Safari, which draws the labels of an image in system fonts only.
+
 v0.7.80
 * [web] Line, polygon and label styling panels can now be minimized to make more room for editing symbols on the map.
 * [web] Adjust toolbar placement to intrude less into the main map area.
