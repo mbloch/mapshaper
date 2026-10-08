@@ -716,6 +716,16 @@
       !!window.navigator.msSaveBlob;
   };
 
+  // PNG and JPEG export draw the map's SVG on a canvas as an image. WebKit limits
+  // SVG images to the system's own fonts, so labels in fonts the user installed
+  // (e.g. NYT Franklin) come out in Times. That rules out Safari, and every iOS
+  // browser, all of which use WebKit; their user agents name AppleWebKit but
+  // not Chrome, Chromium or Edge (iOS Chrome is CriOS, iOS Firefox FxiOS).
+  GUI.mapImageExportIsSupported = function() {
+    var ua = navigator.userAgent || '';
+    return !/AppleWebKit/.test(ua) || /(Chrome|Chromium|Edg)\//.test(ua);
+  };
+
   // TODO: make this relative to a single GUI instance
   GUI.canSaveToServer = function() {
     return !!(mapshaper.manifest && mapshaper.manifest.allow_saving) && typeof fetch == 'function';
@@ -11048,10 +11058,10 @@
         opts.history = snapshot;
         targets = addFrameTarget(targets);
       }
-      if (opts.format == 'svg' || opts.format == 'html' || opts.format == 'topojson') {
+      if (isRenderedMapFormat(opts.format) || opts.format == 'topojson') {
         opts.gui_frame = getGuiFrameContext();
       }
-      if (opts.format == 'svg' || opts.format == 'html') {
+      if (isRenderedMapFormat(opts.format)) {
         targets = addFrameFurnitureTargets(targets, opts.gui_frame);
       }
       try {
@@ -11191,11 +11201,19 @@
     }
 
     function getExportFormats() {
-      var formats = ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'geopackage', 'geoparquet', 'svg', 'kml', 'html', internal.PACKAGE_EXT];
+      var formats = ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'geopackage', 'geoparquet', 'svg', 'kml'];
+      // the menu has two columns, so formats are added in pairs
+      if (GUI.mapImageExportIsSupported()) formats.push('png', 'jpg');
+      formats.push('html', internal.PACKAGE_EXT);
       // GeoTIFF is the one format here that only accepts raster layers, so it is
       // offered only when there is a raster to export.
       if (getExportFormatLayers().some(hasRaster)) formats.push('geotiff');
       return formats;
+    }
+
+    // formats that draw the map, with its frame and furniture
+    function isRenderedMapFormat(fmt) {
+      return fmt == 'svg' || fmt == 'html' || fmt == 'png' || fmt == 'jpg';
     }
 
     // The layers the format menu describes: the ones checked for export, falling
@@ -12046,6 +12064,11 @@
       var frameCount = 0;
       list.empty();
       frameList.empty();
+      // A frame entry has been seen outside the frame list, where emptying the
+      // list leaves it on show as a second frame
+      El.findAll('.map-frame-section > .layer-item', el.node()).forEach(function(node) {
+        node.remove();
+      });
       model.forEachLayer(function(lyr, dataset) {
         // Assign a unique id to each layer, so html strings
         // can be used as unique identifiers for caching rendered HTML, and as
@@ -12082,7 +12105,7 @@
           element = cache.use(html);
         } else {
           element = El('div').html(html).firstChild();
-          initMouseEvents(element, lyr.menu_id, opts.pinnable);
+          initMouseEvents(element, lyr.menu_id, opts.pinnable, !isFrame);
           cache.add(html, element);
         }
         if (isFrame) {
@@ -12120,32 +12143,36 @@
       return html;
     }
 
-    function initMouseEvents(entry, id, pinnable) {
+    // A frame is not in the layer stack, so its entry can't be dragged to reorder
+    function initMouseEvents(entry, id, pinnable, draggable) {
       entry.on('mouseover', init);
       entry.on('focusin', init);
       function init() {
         entry.removeEventListener('mouseover', init);
         entry.removeEventListener('focusin', init);
-        initMouseEvents2(entry, id, pinnable);
+        initMouseEvents2(entry, id, pinnable, draggable);
       }
     }
 
     function initLayerDragging(entry, id) {
 
       // support layer drag-drop
+      // A drag starts with a press on a layer row, not with a held button
+      // entering one, so a press elsewhere (e.g. on the frame) can't reorder layers
+      entry.on('mousedown', function(e) {
+        if (e.button === 0) dragTargetId = id;
+      });
       entry.on('mousemove', function(e) {
         var rect, insertionClass;
         // stop dragging when mouse button is released
         if (!e.buttons && (dragging || dragTargetId)) {
           stopDragging();
         }
-        // start dragging when button is first pressed
-        if (e.buttons && !dragTargetId) {
-          dragTargetId = id;
-          entry.addClass('drag-target');
-        }
         if (!dragTargetId) {
           return;
+        }
+        if (dragTargetId == id) {
+          entry.addClass('drag-target');
         }
         if (dragTargetId != id) {
           // signal to redraw menu later; TODO: improve
@@ -12164,9 +12191,9 @@
       });
     }
 
-    function initMouseEvents2(entry, id, pinnable) {
+    function initMouseEvents2(entry, id, pinnable, draggable) {
       var moreBtn = entry.findChild('.more-btn');
-      initLayerDragging(entry, id);
+      if (draggable) initLayerDragging(entry, id);
 
       function deleteLayer() {
         var target = findLayerById(id);
@@ -25871,8 +25898,6 @@
       var value = getCommonStyleValue(control.field);
       control.showColor(value);
       updateOpacityControl(control);
-      // Nothing for the picker to sit on when the selection has no one colour.
-      if (!toSixDigitHex(value)) control.picker.hide();
     }
 
     // A selection whose colours disagree still has colours, so an opacity unset
@@ -25923,8 +25948,12 @@
 
     function applyColorControlStyle(control, color) {
       var styles = [[control.field, color]];
-      if (color && control.field == 'stroke' && strokeWidthIsUnsetForTargets()) {
-        styles.push(['stroke-width', 1]);
+      if (control.field == 'stroke') {
+        if (color && strokeWidthIsUnsetForTargets()) {
+          styles.push(['stroke-width', 1]);
+        } else if (!color) {
+          styles.push(['stroke-width', '']);
+        }
       }
       if (control.field == 'fill') {
         runStyleEdits(patternControl.getStyleEdits(styles));
@@ -30294,10 +30323,27 @@
     var fields = getStyleFields(lyr);
     if (lyr.geometry_type == 'point') {
       // return fields.indexOf('r') > -1; // require 'r' field for point symbols
-      return fields.includes('fill') || fields.includes('r'); // support colored squares
+      fields = fields.filter(function(field) {
+        return field == 'fill' || field == 'r';
+      }); // support colored squares
+    } else {
+      fields = utils$1.difference(fields, ['opacity', 'class']);
     }
-    return utils$1.difference(fields, ['opacity', 'class']).length > 0 ||
-      !!getLineArrowFields(lyr) || layerHasGlowFields(lyr);
+    return layerHasStyleValues(lyr, fields) ||
+      layerHasStyleValues(lyr, getLineArrowFields(lyr)) ||
+      layerHasStyleValues(lyr, layerHasGlowFields(lyr) ? internal.svg.glowFields : null);
+  }
+
+  function layerHasStyleValues(lyr, fields) {
+    if (!lyr.data || !fields || fields.length === 0) return false;
+    // -style field= leaves an undefined key in the table so mixed-feature
+    // columns keep their schema. An entirely empty column is not a drawable
+    // style: the layer should go back to its unstyled map appearance.
+    return lyr.data.getRecords().some(function(rec) {
+      return fields.some(function(field) {
+        return rec && !isBlankStyleValue(rec[field]);
+      });
+    });
   }
 
   function layerHasGlowFields(lyr) {

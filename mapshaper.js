@@ -31014,6 +31014,9 @@
         return {tag: 'g'}; // empty element
       } else if (msType == 'polyline' || msType == 'polygon') {
         applyStyleAttributes(svgObj, msType, d);
+        if (msType == 'polygon' && opts.seam_stroke_width > 0) {
+          applySeamStroke(svgObj, d, opts.seam_stroke_width);
+        }
       } else if (msType == 'point' && isSimpleCircle(d)) {
         // kludge -- maintains bw compatibility/passes tests -- style attributes
         // are applied to the <g> container, 'r' property is applied to circle
@@ -31051,6 +31054,42 @@
     return o;
   }
 
+  // Image output (PNG, JPEG and the image in HTML output) only. Where two
+  // polygons share an edge, each one only partly covers the pixels along it, and
+  // the background shows through the gap as a faint seam. A stroke one image
+  // pixel wide in the polygon's own fill covers the seam, at the cost of growing
+  // the polygon by half an image pixel.
+  function applySeamStroke(svgObj, rec, width) {
+    var color = getSeamStrokeColor(rec);
+    if (!color) return;
+    svgObj.properties.stroke = color;
+    svgObj.properties['stroke-width'] = width;
+    svgObj.properties['stroke-linejoin'] = 'round';
+  }
+
+  // The fill color of a polygon that can take a seam stroke, or null. Polygons
+  // that are left alone: those with a stroke of their own; translucent ones,
+  // where the stroke would double the fill along the edge; pattern and effect
+  // fills, which a stroke can't match; and inline CSS, which may restyle the fill.
+  function getSeamStrokeColor(rec) {
+    var fill = rec.fill;
+    if (!fill || !isSvgColor(fill) || /^(none|transparent)$/i.test(fill) ||
+        /^(rgba|hsla)\(/i.test(fill) || /^#([0-9a-f]{4}|[0-9a-f]{8})$/i.test(fill)) {
+      return null;
+    }
+    if (rec.stroke && rec.stroke != 'none' && rec['stroke-width'] !== 0 &&
+        rec['stroke-width'] !== '0') {
+      return null;
+    }
+    if (isTranslucent(rec['fill-opacity']) || isTranslucent(rec.opacity)) return null;
+    if (rec['fill-pattern'] || rec['fill-effect'] || rec.css) return null;
+    return fill;
+  }
+
+  function isTranslucent(val) {
+    return val !== undefined && val !== null && val !== '' && Number(val) < 1;
+  }
+
   function simpleCircleFilter(k) {
     return k != 'r';
   }
@@ -31077,6 +31116,7 @@
   var GeojsonToSvg = /*#__PURE__*/Object.freeze({
     __proto__: null,
     flattenMultiPolygonCoords: flattenMultiPolygonCoords,
+    getSeamStrokeColor: getSeamStrokeColor,
     importGeoJSONFeatures: importGeoJSONFeatures,
     importLineString: importLineString,
     importMultiLineString: importMultiLineString,
@@ -31803,6 +31843,22 @@ ${svg}
 
   var faceCache = {};
   var familyCache = {};
+  var openedFaceCache = {};
+  var glyphSupportCache = {};
+  var fallbackCache = {};
+
+  // Where a character missing from a label's own fonts is looked for first,
+  // before every installed font is searched. Families with wide coverage, from
+  // macOS, Windows and Linux; the first installed one with the character wins.
+  var FALLBACK_FAMILIES = ['Arial Unicode MS', 'Apple Symbols',
+    'Hiragino Sans', 'Apple SD Gothic Neo', 'Noto Sans', 'Noto Sans CJK SC',
+    'Noto Sans Symbols', 'Noto Sans Symbols 2', 'DejaVu Sans',
+    'Segoe UI Symbol', 'Microsoft YaHei', 'Malgun Gothic', 'Yu Gothic',
+    'Nirmala UI'];
+
+  // macOS's LastResort font has a placeholder glyph for every character, which
+  // is no better than the empty box drawn without it.
+  var PLACEHOLDER_FONT_RXP = /lastresort/i;
   var fullIndex = null;
   var fileList = null;
 
@@ -31898,8 +31954,142 @@ ${svg}
   function clearFontCache() {
     faceCache = {};
     familyCache = {};
+    openedFaceCache = {};
+    glyphSupportCache = {};
+    fallbackCache = {};
     fullIndex = null;
     fileList = null;
+  }
+
+  // The names in a CSS font-family value, in fallback order.
+  function splitFontFamilyList(family) {
+    var str = String(family || '');
+    var names = [];
+    var start = 0;
+    var quote = '';
+    var escaped = false;
+    for (var i = 0; i < str.length; i++) {
+      var ch = str[i];
+      if (escaped) {
+        escaped = false;
+      } else if (ch == '\\') {
+        escaped = true;
+      } else if (quote) {
+        if (ch == quote) quote = '';
+      } else if (ch == '"' || ch == "'") {
+        quote = ch;
+      } else if (ch == ',') {
+        addName(str.slice(start, i));
+        start = i + 1;
+      }
+    }
+    addName(str.slice(start));
+    return names;
+
+    function addName(name) {
+      name = name.trim();
+      if (name.length > 1 && (name[0] == '"' || name[0] == "'") &&
+          name[name.length - 1] == name[0]) {
+        name = name.slice(1, -1);
+      }
+      if (name) names.push(name);
+    }
+  }
+
+  // Characters in @text that @face cannot draw, or null when the face cannot be
+  // inspected.
+  function findMissingFontGlyphs(face, text) {
+    var font = openFontFace(face);
+    var support = glyphSupportCache[getFontFaceKey(face)] ||
+      (glyphSupportCache[getFontFaceKey(face)] = Object.create(null));
+    var missing = [];
+    var seen = Object.create(null);
+    var cp;
+    if (!font) return null;
+    Array.from(String(text || '')).forEach(function(ch) {
+      cp = ch.codePointAt(0);
+      if (glyphCanBeIgnored(cp) || seen[cp]) return;
+      seen[cp] = true;
+      if (!(cp in support)) support[cp] = fontHasGlyph(font, cp);
+      if (!support[cp]) missing.push(ch);
+    });
+    return missing;
+  }
+
+  // An installed face that can draw each of @chars, keyed by character, or null
+  // for a character that no installed font has. A face in the style asked for is
+  // preferred, when its family has one with the character.
+  //
+  // The likely families are tried first. Searching every font means reading all
+  // of them, so it happens only for characters those families lack, and once
+  // per character in a session.
+  function findFallbackFaces(chars, weight, italic, stretch) {
+    var out = {};
+    var styleKey = [weight, italic ? 'i' : 'n', stretch || ''].join('|');
+    var wanted = [];
+    chars.forEach(function(ch) {
+      var key = ch + '|' + styleKey;
+      if (key in fallbackCache) {
+        out[ch] = fallbackCache[key];
+      } else if (!wanted.includes(ch)) {
+        wanted.push(ch);
+      }
+    });
+    FALLBACK_FAMILIES.forEach(function(family) {
+      var face;
+      if (wanted.length === 0) return;
+      face = findFontFace(family, weight, italic, stretch);
+      if (!face || !fontHasOutlines(openFontFace(face))) return;
+      takeCovered(face, findMissingFontGlyphs(face, wanted.join('')) || wanted);
+    });
+    if (wanted.length > 0) {
+      getFontFiles().forEach(function(file) {
+        if (wanted.length === 0 || PLACEHOLDER_FONT_RXP.test(file)) return;
+        // Opened and dropped rather than kept with openFontFace(), which would
+        // hold every font on the computer in memory.
+        getFileFonts(file).forEach(function(o) {
+          var found = !fontHasOutlines(o.font) ? [] : wanted.filter(function(ch) {
+            return fontHasGlyph(o.font, ch.codePointAt(0));
+          });
+          if (found.length > 0) {
+            takeCovered(getStyledFace(o.face, found), wanted.filter(function(ch) {
+              return !found.includes(ch);
+            }));
+          }
+        });
+      });
+    }
+    wanted.forEach(function(ch) {
+      fallbackCache[ch + '|' + styleKey] = out[ch] = null;
+    });
+    return out;
+
+    function takeCovered(face, missing) {
+      wanted = wanted.filter(function(ch) {
+        if (missing.includes(ch)) return true;
+        fallbackCache[ch + '|' + styleKey] = out[ch] = face;
+        return false;
+      });
+    }
+
+    function getStyledFace(face, found) {
+      var styled = findFontFace(face.families[0], weight, italic, stretch);
+      var missing = styled && findMissingFontGlyphs(styled, found.join(''));
+      return missing && missing.length === 0 ? styled : face;
+    }
+  }
+
+  // The weight axis of a variable face, {min, default, max}, or null for a face
+  // that is not variable, or that cannot be read.
+  function getFontWeightAxis(face) {
+    var font = openFontFace(face);
+    var axis;
+    try {
+      axis = font && font.variationAxes && font.variationAxes.wght;
+    } catch (e) {
+      axis = null;
+    }
+    return axis ? {min: axis.min, default: axis.default, max: axis.max} : null;
   }
 
   function lookupFace(family, weight, italic, stretch) {
@@ -31935,7 +32125,7 @@ ${svg}
   // candidates that is installed.
   function resolveFamilyNames(family) {
     var out = [];
-    splitFamilyList(family).forEach(function(name) {
+    splitFontFamilyList(family).forEach(function(name) {
       var generic = GENERIC_FAMILIES$1[name.toLowerCase()];
       if (generic) {
         out = out.concat(generic);
@@ -31946,10 +32136,56 @@ ${svg}
     return out;
   }
 
-  function splitFamilyList(family) {
-    return String(family || '').split(',').map(function(name) {
-      return name.trim().replace(/^['"]|['"]$/g, '');
-    }).filter(Boolean);
+  function openFontFace(face) {
+    var fontkit = getFontkit();
+    var key, font;
+    if (!face || !fontkit) return null;
+    key = getFontFaceKey(face);
+    if (!(key in openedFaceCache)) {
+      try {
+        font = fontkit.openSync(face.path, face.postscriptName || undefined);
+      } catch (e) {
+        font = null;
+      }
+      openedFaceCache[key] = font || null;
+    }
+    return openedFaceCache[key];
+  }
+
+  function getFontFaceKey(face) {
+    return face ? face.path + '|' + (face.postscriptName || '') : '';
+  }
+
+  // Whether resvg can draw @font's glyphs. Color bitmap fonts (sbix, CBDT) such
+  // as Apple Color Emoji and Noto Color Emoji have an outline table with nothing
+  // in it, and resvg draws their glyphs as nothing.
+  function fontHasOutlines(font) {
+    var tables = font && font.directory && font.directory.tables || {};
+    if (tables.sbix || tables.CBDT) return false;
+    return !!(tables.glyf || tables['CFF '] || tables.CFF2);
+  }
+
+  function fontHasGlyph(font, cp) {
+    var glyph;
+    if (typeof font.hasGlyphForCodePoint == 'function') {
+      return font.hasGlyphForCodePoint(cp);
+    }
+    if (font.characterSet && typeof font.characterSet.includes == 'function') {
+      return font.characterSet.includes(cp);
+    }
+    try {
+      glyph = font.glyphForCodePoint(cp);
+      return !!glyph && glyph.id !== 0;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function glyphCanBeIgnored(cp) {
+    // Layout controls and variation selectors do not need glyphs of their own.
+    return cp <= 0x20 || cp == 0x200c || cp == 0x200d ||
+      cp >= 0xfe00 && cp <= 0xfe0f ||
+      cp >= 0xe0100 && cp <= 0xe01ef;
   }
 
   // Two passes, because parsing every font on the computer costs the best part
@@ -31991,26 +32227,35 @@ ${svg}
   }
 
   function getFileFaces(file) {
+    return getFileFonts(file).map(function(o) { return o.face; });
+  }
+
+  // Each face in @file with the fontkit font it was read from. A collection
+  // reports its members in .fonts; a single font is its own.
+  function getFileFonts(file) {
     var fontkit = getFontkit();
     var font, fonts;
     if (!fontkit) return [];
     try {
       font = fontkit.openSync(file);
-      // A collection reports its members in .fonts; a single font is its own.
       fonts = font && font.fonts || [font];
       return fonts.filter(Boolean).map(function(one) {
         return {
-          path: file,
-          // Named rather than numbered because fontkit takes a name, and because
-          // a name survives a font being reinstalled in a different order.
-          postscriptName: font.fonts ? one.postscriptName : null,
-          families: getFaceFamilies(one),
-          weight: getFaceWeight(one),
-          width: getFaceWidth(one),
-          italic: isItalicFace(one)
+          font: one,
+          face: {
+            path: file,
+            // Named rather than numbered because fontkit takes a name, and
+            // because a name survives a font being reinstalled in a different
+            // order.
+            postscriptName: font.fonts ? one.postscriptName : null,
+            families: getFaceFamilies(one),
+            weight: getFaceWeight(one),
+            width: getFaceWidth(one),
+            italic: isItalicFace(one)
+          }
         };
-      }).filter(function(face) {
-        return face.families.length > 0;
+      }).filter(function(o) {
+        return o.face.families.length > 0;
       });
     } catch (e) {
       return [];
@@ -32152,20 +32397,584 @@ ${svg}
   var FontLookup = /*#__PURE__*/Object.freeze({
     __proto__: null,
     clearFontCache: clearFontCache,
+    findFallbackFaces: findFallbackFaces,
     findFontFace: findFontFace,
+    findMissingFontGlyphs: findMissingFontGlyphs,
     getFaceFamilies: getFaceFamilies,
+    getFontWeightAxis: getFontWeightAxis,
     normalizeFamilyName: normalizeFamilyName,
     parseFontStretch: parseFontStretch,
-    pickFace: pickFace
+    pickFace: pickFace,
+    splitFontFamilyList: splitFontFamilyList
+  });
+
+  // Measuring a label's text outside a browser, from the font files installed on
+  // this computer.
+  //
+  // The GUI measures by rendering (gui-label-measure.mjs) and the core asks it
+  // for widths through svg-label-metrics.mjs. Nothing answered that question in
+  // Node, so `-style label-align=left` from the command line re-justified a
+  // label's lines and left the block where it was, and the path-fit check could
+  // not tell whether a label was longer than its curve.
+  //
+  // Advance widths plus kerning, which is what a browser lays out with: summing
+  // hmtx advances alone is exact for most text but out by up to 5% on strings
+  // like "AVATAR Toledo", and the pair positioning that closes that gap is what
+  // fontkit's layout() applies. Measured against Chrome on the same fonts, this
+  // agrees to a hundredth of a pixel.
+  //
+  // See docs/development/label-tool-design.md.
+
+  // Weight keywords. Anything else is a number, or 400 if it is not.
+  var WEIGHT_NAMES = {normal: 400, bold: 700, lighter: 300, bolder: 700};
+
+  var fontCache = {};
+
+  // Installed for every Node use of mapshaper -- the CLI, the API and a script
+  // that only exports -- rather than at one entry point, because a width is read
+  // during rendering and export, which both of those reach without going near a
+  // command of their own. Costs nothing until a label is measured: no font is
+  // read, and fontkit is not even loaded, until then.
+  function initNodeTextMeasurement() {
+    if (runningInBrowser()) return false;
+    setTextMeasureFunction(measureLabelText);
+    return true;
+  }
+
+  // The width of @rec's text in px, or null if it cannot be known -- an unusable
+  // record, a font this computer does not have, or a font file that will not
+  // parse. Null is what every reader already falls back from.
+  function measureLabelText(rec) {
+    var text = toLabelString(rec && rec['label-text']);
+    var font, fontSize, spacing, width, failed = false;
+    if (!text) return null;
+    font = getFontForRecord(rec);
+    if (!font) return null;
+    fontSize = getFontSizeInPx(rec);
+    spacing = getLetterSpacingInPx(rec, fontSize);
+    if (!(fontSize > 0)) return null;
+    // The widest line, which is what the block of a multi-line label is as wide
+    // as, and what the browser's getBBox() reports for the same text.
+    //
+    // A line with bold words in it is measured a run at a time, each in its own
+    // face, which loses the kerning between the last letter of one run and the
+    // first of the next -- a fraction of a pixel at a weight change.
+    width = splitLabelLineRuns(text).reduce(function(max, runs) {
+      var w = runs.reduce(function(sum, run) {
+        var face = run.bold ? getFontForRecord(rec, true) : font;
+        if (!face) {
+          failed = true;
+          return sum;
+        }
+        return sum + measureLine(face, run.text, fontSize, spacing);
+      }, 0);
+      return w > max ? w : max;
+    }, 0);
+    if (failed) return null;
+    return width > 0 ? width : null;
+  }
+
+  // Font units scaled to the size the label is drawn at, plus letter-spacing.
+  //
+  // Spacing is added after every character including the last, which is what the
+  // browser does -- letter-spacing=2 on a four-character label widens it by 8px,
+  // not 6.
+  function measureLine(font, line, fontSize, spacing) {
+    var chars = Array.from(line).length;
+    var advance;
+    if (!line) return 0;
+    try {
+      advance = font.layout(line).advanceWidth;
+    } catch (e) {
+      return 0;
+    }
+    return advance / font.unitsPerEm * fontSize + chars * spacing;
+  }
+
+  // The font a record is drawn in, opened and remembered. A record with no
+  // font-family is drawn in the layer group's default, the same one the GUI
+  // measures against -- see getLabelTextDefaults().
+  //
+  // @bold: the face its bold runs are drawn in, which is the keyword's 700
+  // whatever the label's own weight is, as it is in CSS.
+  function getFontForRecord(rec, bold) {
+    var family = rec['font-family'] || 'sans-serif';
+    var weight = bold ? WEIGHT_NAMES[LABEL_BOLD_WEIGHT] : getFontWeight(rec);
+    var italic = isItalic(rec);
+    var stretch = rec['font-stretch'] || '';
+    var key = [family, weight, italic ? 'i' : 'n', stretch].join('|');
+    if (!(key in fontCache)) {
+      fontCache[key] = openFace(findFontFace(family, weight, italic, stretch),
+        family, weight);
+    }
+    return fontCache[key];
+  }
+
+  function openFace(face, family, weight) {
+    var fontkit = loadFontkit();
+    var font;
+    if (!face || !fontkit) {
+      // Once per font, and only for a font the user named: a label falling back
+      // to the layer default is the ordinary case and not worth a warning, but a
+      // label asking for a font this computer has not got is worth knowing
+      // about, because its alignment is the thing that will be wrong.
+      if (!face && family != 'sans-serif') {
+        warnOnce('[label] Unable to measure text in font "' + family +
+          '" (not installed?); alignment may be off.');
+      }
+      return null;
+    }
+    try {
+      font = fontkit.openSync(face.path, face.postscriptName || undefined);
+      return font ? applyVariation(font, weight) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // A variable font set to the weight asked for. One file covers a range of
+  // weights, and its glyphs are wider at the heavy end: measuring at the file's
+  // default instance would report Light widths for Bold text. Only the weight
+  // axis is applied, because that is the one a label can ask for -- slant and
+  // width usually arrive as separate faces, which the lookup has already chosen
+  // between.
+  function applyVariation(font, weight) {
+    var settings = getVariationSettings(font.variationAxes, weight);
+    if (!settings) return font;
+    try {
+      return font.getVariation(settings) || font;
+    } catch (e) {
+      return font;
+    }
+  }
+
+  // The variation to set, or null for a font that is not variable or is already
+  // at the weight wanted. A weight outside the axis is clamped to it, the way a
+  // browser does.
+  function getVariationSettings(axes, weight) {
+    var axis = axes && axes.wght;
+    var val;
+    if (!axis) return null;
+    val = Math.max(axis.min, Math.min(axis.max, weight));
+    return val == axis.default ? null : {wght: val};
+  }
+
+  // px, for a font-size that may be a number, a px value, an em value relative
+  // to the layer default, or a pt value. Anything else takes the default rather
+  // than failing the measurement: a size mapshaper cannot read is one the
+  // renderer is also reading its own way, and a width from the default size is
+  // closer than no width at all.
+  function getFontSizeInPx(rec) {
+    var val = rec && rec['font-size'];
+    var px = toPixelMeasure(val, DEFAULT_LABEL_FONT_SIZE);
+    return px === null ? DEFAULT_LABEL_FONT_SIZE : px;
+  }
+
+  // px, for a letter-spacing relative to the label's own size rather than to the
+  // layer default: 0.1em on 24px text is 2.4px.
+  function getLetterSpacingInPx(rec, fontSize) {
+    var px = toPixelMeasure(rec && rec['letter-spacing'], fontSize);
+    return px === null ? 0 : px;
+  }
+
+  function getFontWeight(rec) {
+    var val = rec && rec['font-weight'];
+    var named = WEIGHT_NAMES[String(val).toLowerCase()];
+    if (named) return named;
+    return Number(val) > 0 ? Number(val) : 400;
+  }
+
+  function isItalic(rec) {
+    var val = String(rec && rec['font-style'] || '').toLowerCase();
+    return val == 'italic' || val == 'oblique';
+  }
+
+  function toPixelMeasure(val, emBasis) {
+    var measure, match;
+    // An absent value is not a zero: a label with no font-size of its own is
+    // drawn at the layer's size, and one with no letter-spacing is not spaced.
+    if (val === null || val === undefined || val === '') return null;
+    measure = parseSvgMeasure(val);
+    if (typeof measure == 'number' && !isNaN(measure)) return measure;
+    match = /^(-?[.0-9]+)(em|px|pt)$/.exec(String(measure));
+    if (!match) return null;
+    if (match[2] == 'em') return Number(match[1]) * emBasis;
+    if (match[2] == 'pt') return Number(match[1]) * 4 / 3;
+    return Number(match[1]);
+  }
+
+  function loadFontkit() {
+    if (runningInBrowser()) return null;
+    try {
+      return require$1('fontkit') || null;
+    } catch (e) {
+      warnOnce('[label] fontkit is not available; labels cannot be measured.');
+      return null;
+    }
+  }
+
+  // For tests, and for a session that has installed a font since it started.
+  function clearMeasuredFontCache() {
+    fontCache = {};
+  }
+
+  var TextMeasure = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    clearMeasuredFontCache: clearMeasuredFontCache,
+    getFontSizeInPx: getFontSizeInPx,
+    getFontWeight: getFontWeight,
+    getLetterSpacingInPx: getLetterSpacingInPx,
+    getVariationSettings: getVariationSettings,
+    initNodeTextMeasurement: initNodeTextMeasurement,
+    isItalic: isItalic,
+    measureLabelText: measureLabelText
+  });
+
+  // Choosing the fonts resvg draws an SVG document's text with, in Node.
+  //
+  // resvg, compiled to WebAssembly, cannot see the fonts installed on the
+  // computer, so it is handed the files for the faces the document's text asks
+  // for, found the way label measurement finds them (see
+  // mapshaper-font-lookup.mjs). Three things a browser does for itself have to be
+  // done here, or the image is drawn in other fonts than the labels were
+  // measured and aligned in:
+  //
+  // - Family names. The lookup compares names without spaces, punctuation or
+  //   case, but resvg matches a family only by the exact typographic family name
+  //   in the font file ("NYTFranklin", not "NYT Franklin", and not the
+  //   per-weight "NYTFranklin Light"). Names are rewritten to the ones it
+  //   matches.
+  // - Fallback. resvg takes a character a label's fonts lack from any other
+  //   loaded font, but only from fonts it was given, so a font that has it is
+  //   found and loaded. A character that no font has is removed: resvg stops
+  //   looking for fallbacks at the first one in a <text> element, which turns
+  //   every missing character after it into an empty box.
+  // - Variable fonts. resvg draws one at its default instance, whatever weight
+  //   the text asks for. That can't be fixed here, only reported.
+
+  // Generic families that resvg resolves through its own options, which are
+  // set to the faces the lookup resolves the same generics to.
+  var RESVG_GENERICS = ['sans-serif', 'serif', 'monospace', 'cursive', 'fantasy'];
+
+  // Returns {svg, font}: @svg with its font families renamed for resvg, and the
+  // font options to render it with.
+  function prepareSvgForResvg(svg) {
+    var plan = planResvgFonts(getSvgTextRuns(svg));
+    reportResvgFontWarnings(plan.warnings);
+    return {
+      svg: removeTextChars(renameFontFamilies(svg, plan.names), plan.unavailable),
+      font: getResvgFontOptions(plan.faces)
+    };
+  }
+
+  // Removes @chars from the text between the document's tags.
+  function removeTextChars(svg, chars) {
+    if (chars.length === 0) return svg;
+    return svg.replace(/>([^<]+)</g, function(match, text) {
+      return '>' + Array.from(text).filter(function(ch) {
+        return !chars.includes(ch);
+      }).join('') + '<';
+    });
+  }
+
+  // The faces to load, the family names to rewrite and the warnings to give, for
+  // the text runs of a document (see getSvgTextRuns()).
+  function planResvgFonts(runs) {
+    var faces = [];
+    var names = {};
+    var warnings = {missingFonts: {}, fallbacks: {}, variable: {}};
+    var uncovered = [];
+    var unavailable = [];
+    runs.forEach(function(run) {
+      var rec = {'font-weight': run.weight, 'font-style': run.style};
+      var weight = getFontWeight(rec);
+      var italic = isItalic(rec);
+      var families = splitFontFamilyList(run.family);
+      var used = null;
+      var missing = null;
+      if (families.length === 0) families = ['sans-serif'];
+      families.forEach(function(family) {
+        var face = findFontFace(family, weight, italic, run.stretch);
+        if (!face) return;
+        if (!RESVG_GENERICS.includes(family.toLowerCase())) {
+          names[family] = face.families[0];
+        }
+        useFace(family, face);
+      });
+      if (!used) {
+        // resvg draws text in none of its families in the default family
+        useFace('sans-serif', findFontFace('sans-serif', weight, italic, run.stretch));
+      }
+      if (!used || used.family != families[0]) {
+        warnings.missingFonts[families[0]] = used ? used.face.families[0] : null;
+      }
+      missing = filterDrawnChars(missing || Array.from(run.text));
+      if (missing.length > 0) {
+        uncovered.push({family: used ? used.face.families[0] : families[0],
+          chars: missing, weight: weight, italic: italic, stretch: run.stretch});
+      }
+
+      // Characters the preferred font lacks are drawn from the next one in the
+      // list that has them, as in a browser.
+      function useFace(family, face) {
+        if (!face) return;
+        addFace(face);
+        missing = (missing || Array.from(run.text)).filter(function(ch) {
+          return (findMissingFontGlyphs(face, ch) || [ch]).length > 0;
+        });
+        if (!used) {
+          used = {family: family, face: face};
+          checkVariableWeight(face, weight);
+        }
+      }
+    });
+    uncovered.forEach(function(o) {
+      var found = findFallbackFaces(o.chars, o.weight, o.italic, o.stretch);
+      o.chars.forEach(function(ch) {
+        var face = found[ch];
+        var key = o.family + '|' + (face ? face.families[0] : '');
+        if (face) {
+          addFace(face);
+        } else if (!unavailable.includes(ch)) {
+          unavailable.push(ch);
+        }
+        if (!warnings.fallbacks[key]) {
+          warnings.fallbacks[key] = {family: o.family,
+            fallback: face ? face.families[0] : null, chars: []};
+        }
+        if (!warnings.fallbacks[key].chars.includes(ch)) {
+          warnings.fallbacks[key].chars.push(ch);
+        }
+      });
+    });
+    // the faces resvg resolves the generic families to
+    ['sans-serif', 'serif', 'monospace'].forEach(function(family) {
+      addFace(findFontFace(family, 400, false));
+    });
+    return {faces: faces, names: names, unavailable: unavailable,
+      warnings: warnings};
+
+    function addFace(face) {
+      if (face && !faces.includes(face)) faces.push(face);
+    }
+
+    // A browser sets the weight axis to the CSS weight, clamped to the axis.
+    // Some older fonts (Apple's Skia) have an axis on a scale of their own, and
+    // its default is not a CSS weight to report.
+    function checkVariableWeight(face, weight) {
+      var axis = getFontWeightAxis(face);
+      var cssScale = axis && axis.min >= 1 && axis.max <= 1000;
+      if (axis && Math.max(axis.min, Math.min(axis.max, weight)) != axis.default) {
+        warnings.variable[face.families[0] + '|' + weight] = {
+          family: face.families[0], weight: weight,
+          drawn: cssScale ? axis.default : null};
+      }
+    }
+  }
+
+  function filterDrawnChars(chars) {
+    var seen = {};
+    return chars.filter(function(ch) {
+      var cp = ch.codePointAt(0);
+      // Layout controls and variation selectors do not need glyphs of their own.
+      if (cp <= 0x20 || cp == 0x200c || cp == 0x200d ||
+          cp >= 0xfe00 && cp <= 0xfe0f || cp >= 0xe0100 && cp <= 0xe01ef) {
+        return false;
+      }
+      if (seen[ch]) return false;
+      seen[ch] = true;
+      return true;
+    });
+  }
+
+  function reportResvgFontWarnings(warnings) {
+    Object.keys(warnings.missingFonts).forEach(function(family) {
+      var used = warnings.missingFonts[family];
+      warn('[image] Font "' + family + '" is not installed; ' +
+        (used ? 'text in it is drawn in "' + used + '".' :
+          'text in it may not be drawn.'));
+    });
+    Object.keys(warnings.fallbacks).forEach(function(key) {
+      var o = warnings.fallbacks[key];
+      var chars = JSON.stringify(o.chars.slice(0, 6).join('') +
+        (o.chars.length > 6 ? '…' : ''));
+      warn('[image] Font "' + o.family + '" has no glyphs for ' + chars + '; ' +
+        (o.fallback ? 'they are drawn in "' + o.fallback + '".' :
+          'no installed font that images can use has them, so they are ' +
+          'left out.'));
+    });
+    Object.keys(warnings.variable).forEach(function(key) {
+      var o = warnings.variable[key];
+      warn('[image] "' + o.family + '" is a variable font, which images are ' +
+        'drawn in at its default weight' +
+        (o.drawn ? ' (' + o.drawn + ')' : '') + ', so text set at weight ' +
+        o.weight + ' may be lighter or heavier than in a browser, and misaligned.');
+    });
+  }
+
+  function getResvgFontOptions(faces) {
+    var opts = {};
+    var paths = [];
+    var generics = {
+      sansSerifFamily: 'sans-serif',
+      serifFamily: 'serif',
+      monospaceFamily: 'monospace'
+    };
+    Object.keys(generics).forEach(function(key) {
+      var face = findFontFace(generics[key], 400, false);
+      if (face) opts[key] = face.families[0];
+    });
+    opts.defaultFontFamily = opts.sansSerifFamily;
+    faces.forEach(function(face) {
+      if (!paths.includes(face.path)) paths.push(face.path);
+    });
+    opts.fontBuffers = paths.map(function(path) {
+      return require$1('fs').readFileSync(path);
+    });
+    return opts;
+  }
+
+  // Replaces each family in the document's font-family attributes and
+  // font-family style declarations with the name in @names.
+  function renameFontFamilies(svg, names) {
+    return svg.replace(/(\sfont-family=")([^"]*)(")/g, renameMatch)
+      .replace(/(\sstyle="[^"]*?font-family:\s*)((?:&#?\w+;|[^;"])*)()/g, renameMatch);
+
+    function renameMatch(match, before, value, after) {
+      var families = splitFontFamilyList(decodeXml(value));
+      var renamed = families.map(function(family) {
+        return names[family] || family;
+      });
+      if (renamed.join() == families.join()) return match;
+      return before + escapeXmlAttribute(renamed.map(formatFamilyName$1).join(', ')) +
+        after;
+    }
+  }
+
+  function escapeXmlAttribute(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  }
+
+  function formatFamilyName$1(name) {
+    if (RESVG_GENERICS.includes(name.toLowerCase())) return name;
+    return /^[a-z_][a-z0-9_-]*$/i.test(name) ? name :
+      "'" + name.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
+  }
+
+  // Text runs with their inherited font properties. Mapshaper generates this
+  // SVG itself, so a small tokenizer is sufficient and avoids adding an XML DOM
+  // implementation to the browser bundle.
+  function getSvgTextRuns(svg) {
+    var initial = {
+      family: 'sans-serif',
+      weight: 'normal',
+      style: 'normal',
+      stretch: 'normal'
+    };
+    var stack = [{font: initial, text: false}];
+    var runs = [];
+    var tokens = String(svg || '').match(/<[^>]*>|[^<]+/g) || [];
+    tokens.forEach(function(token) {
+      var current = stack[stack.length - 1];
+      var match, tag, font, isText;
+      if (token[0] != '<') {
+        if (current.text) {
+          runs.push(Object.assign({text: decodeXml(token)}, current.font));
+        }
+        return;
+      }
+      if (/^<\//.test(token)) {
+        if (stack.length > 1) stack.pop();
+        return;
+      }
+      if (/^<[?!]/.test(token)) return;
+      match = /^<\s*([^\s/>]+)/.exec(token);
+      if (!match) return;
+      tag = match[1];
+      font = applyFontProperties(current.font, parseSvgAttributes(token));
+      isText = current.text || tag == 'text' || tag == 'tspan' || tag == 'textPath';
+      if (!/\/\s*>$/.test(token)) {
+        stack.push({font: font, text: isText});
+      }
+    });
+    return combineTextRuns(runs);
+  }
+
+  function parseSvgAttributes(tag) {
+    var attrs = {};
+    var rxp = /([^\s=]+)\s*=\s*"([^"]*)"/g;
+    var match;
+    while ((match = rxp.exec(tag)) !== null) {
+      attrs[match[1]] = decodeXml(match[2]);
+    }
+    return attrs;
+  }
+
+  function applyFontProperties(parent, attrs) {
+    var font = Object.assign({}, parent);
+    var names = {
+      'font-family': 'family',
+      'font-weight': 'weight',
+      'font-style': 'style',
+      'font-stretch': 'stretch'
+    };
+    Object.keys(names).forEach(function(name) {
+      if (attrs[name]) font[names[name]] = attrs[name];
+    });
+    parseInlineStyle(attrs.style).forEach(function(decl) {
+      if (names[decl.name]) font[names[decl.name]] = decl.value;
+    });
+    return font;
+  }
+
+  function parseInlineStyle(style) {
+    return String(style || '').split(';').map(function(part) {
+      var i = part.indexOf(':');
+      if (i < 0) return null;
+      return {
+        name: part.slice(0, i).trim().toLowerCase(),
+        value: part.slice(i + 1).replace(/\s*!important\s*$/, '').trim()
+      };
+    }).filter(Boolean);
+  }
+
+  function combineTextRuns(runs) {
+    return runs.reduce(function(out, run) {
+      var prev = out[out.length - 1];
+      if (prev && prev.family == run.family && prev.weight == run.weight &&
+          prev.style == run.style && prev.stretch == run.stretch) {
+        prev.text += run.text;
+      } else {
+        out.push(run);
+      }
+      return out;
+    }, []);
+  }
+
+  function decodeXml(str) {
+    return String(str).replace(/&(amp|lt|gt|quot|apos);/g, function(_, name) {
+      return {amp: '&', lt: '<', gt: '>', quot: '"', apos: "'"}[name];
+    }).replace(/&#(x[0-9a-f]+|[0-9]+);/gi, function(_, code) {
+      var value = code[0].toLowerCase() == 'x' ?
+        parseInt(code.slice(1), 16) : parseInt(code, 10);
+      return String.fromCodePoint(value);
+    });
+  }
+
+  var ResvgFonts = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getSvgTextRuns: getSvgTextRuns,
+    planResvgFonts: planResvgFonts,
+    prepareSvgForResvg: prepareSvgForResvg,
+    removeTextChars: removeTextChars,
+    renameFontFamilies: renameFontFamilies
   });
 
   // Renders an SVG document as a PNG or JPEG image.
   //
-  // Node uses resvg, compiled to WebAssembly, which cannot see the fonts
-  // installed on the computer: the files for the families a document names are
-  // found the way label measurement finds them (see mapshaper-font-lookup.mjs)
-  // and handed to it. The browser draws the document on a canvas with its own
-  // fonts.
+  // Node uses resvg, compiled to WebAssembly, which is given the font files the
+  // document's text needs (see mapshaper-resvg-fonts.mjs). The browser draws the
+  // document on a canvas with its own fonts.
 
   var resvgPromise = null;
 
@@ -32184,10 +32993,12 @@ ${svg}
 
   async function rasterizeWithResvg(svg, opts) {
     var resvg = await loadResvg();
-    var renderer = new resvg.Resvg(svg, {
+    var prepared = svgHasText(svg) ? prepareSvgForResvg(svg) :
+      {svg: svg, font: {fontBuffers: []}};
+    var renderer = new resvg.Resvg(prepared.svg, {
       fitTo: {mode: 'width', value: getImageSize(opts.width, opts.scale)},
       background: opts.format == 'jpeg' ? 'white' : undefined,
-      font: svgHasText(svg) ? getResvgFontOptions(svg) : {fontBuffers: []}
+      font: prepared.font
     });
     var img = renderer.render();
     var content;
@@ -32225,44 +33036,6 @@ ${svg}
     return /<text\b/.test(svg);
   }
 
-  // Regular and bold faces of each family named in @svg, plus the faces that
-  // the generic families resolve to on this computer.
-  function getResvgFontOptions(svg) {
-    var paths = [];
-    var opts = {fontBuffers: []};
-    var generics = {
-      sansSerifFamily: 'sans-serif',
-      serifFamily: 'serif',
-      monospaceFamily: 'monospace'
-    };
-    getFontFamilies(svg).concat(Object.values(generics)).forEach(function(family) {
-      [400, 700].forEach(function(weight) {
-        var face = findFontFace(family, weight, false);
-        if (face && !paths.includes(face.path)) paths.push(face.path);
-      });
-    });
-    Object.keys(generics).forEach(function(key) {
-      var face = findFontFace(generics[key], 400, false);
-      if (face) opts[key] = face.families[0];
-    });
-    opts.defaultFontFamily = opts.sansSerifFamily;
-    opts.fontBuffers = paths.map(function(path) {
-      return require$1('fs').readFileSync(path);
-    });
-    return opts;
-  }
-
-  function getFontFamilies(svg) {
-    var families = [];
-    var rxp = /font-family(?:="|:\s*)([^";]+)/g;
-    var match, family;
-    while ((match = rxp.exec(svg)) !== null) {
-      family = match[1].replace(/&quot;|&apos;/g, '"').trim();
-      if (!families.includes(family)) families.push(family);
-    }
-    return families;
-  }
-
   async function rasterizeInBrowser(svg, opts) {
     var url = URL.createObjectURL(new Blob([svg], {type: 'image/svg+xml'}));
     var canvas = document.createElement('canvas');
@@ -32289,9 +33062,25 @@ ${svg}
     return new Uint8Array(await blob.arrayBuffer());
   }
 
+  // The pixel-ratio= option: image pixels per CSS pixel (default is 2, for
+  // sharp images on high-density displays)
+  function getPixelRatio(opts) {
+    var val = opts.pixel_ratio === undefined ? 2 : opts.pixel_ratio;
+    if (val > 0 === false || val > 8) {
+      stop$1('Expected pixel-ratio= to be a number greater than 0 and no more than 8');
+    }
+    return val;
+  }
+
   function getImageSize(cssPixels, scale) {
     return Math.max(1, Math.round(cssPixels * scale));
   }
+
+  var SvgRasterize = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getPixelRatio: getPixelRatio,
+    rasterizeSVG: rasterizeSVG
+  });
 
   // Font families in HTML output, which differ from the families a map's labels
   // are given (and that SVG output keeps) in two ways.
@@ -32568,7 +33357,9 @@ ${svg}
     var o = prepareDatasetForSVG(dataset, Object.assign({}, opts, {
       // raster layers are resampled to the pixel density of the image
       raster_res: opts.raster_res || pixelRatio,
-      linked_images: false
+      linked_images: false,
+      // covers the seams between polygons in the image -- see applySeamStroke()
+      seam_stroke_width: 1 / pixelRatio
     }));
     var frame = o.frame;
     var base = getHtmlFileBase(o.dataset, opts);
@@ -32814,12 +33605,33 @@ ${css.join('\n')}
     return fmt;
   }
 
-  function getPixelRatio(opts) {
-    var val = opts.pixel_ratio === undefined ? 2 : opts.pixel_ratio;
-    if (val > 0 === false || val > 8) {
-      stop$1('Expected pixel-ratio= to be a number greater than 0 and no more than 8');
-    }
-    return val;
+  // PNG and JPEG output: the whole map, labels and furniture included, drawn as
+  // it is in SVG output and rasterized: by resvg in Node, by a canvas in the
+  // browser (see mapshaper-svg-rasterize.mjs).
+  //
+  // @format: 'png' or 'jpg'
+  async function exportMapImage(dataset, opts) {
+    var pixelRatio = getPixelRatio(opts);
+    var ext = opts.format == 'jpg' ? '.jpg' : '.png';
+    var o = prepareDatasetForSVG(dataset, Object.assign({}, opts, {
+      // raster layers are resampled to the pixel density of the image
+      raster_res: opts.raster_res || pixelRatio,
+      linked_images: false,
+      // covers the seams between polygons -- see applySeamStroke()
+      seam_stroke_width: 1 / pixelRatio
+    }));
+    var svg = renderSVGDocument(o.dataset, o.frame, o.dataset.layers, o.opts);
+    var content = await rasterizeSVG(svg, {
+      width: o.frame.width,
+      height: o.frame.height,
+      scale: pixelRatio,
+      format: ext == '.jpg' ? 'jpeg' : 'png',
+      quality: getJpegQuality(opts)
+    });
+    return [{
+      filename: opts.file || getOutputFileBase(o.dataset) + ext,
+      content: content
+    }];
   }
 
   function exportKML(dataset, opts) {
@@ -41521,6 +42333,10 @@ ${css.join('\n')}
       format = 'svg';
     } else if (ext == 'html' || ext == 'htm') {
       format = 'html';
+    } else if (ext == 'png') {
+      format = 'png';
+    } else if (ext == 'jpg' || ext == 'jpeg') {
+      format = 'jpg';
     } else if (ext == 'kml' || ext == 'kmz') {
       format = 'kml';
     } else if (/json$/.test(ext)) {
@@ -41579,7 +42395,7 @@ ${css.join('\n')}
   async function exportDatasets(datasets, opts) {
     var format = getOutputFormat(datasets[0], opts);
     var files;
-    if (format != 'svg' && format != 'html' && format != PACKAGE_EXT) {
+    if (!isRenderedMapFormat(format) && format != PACKAGE_EXT) {
       datasets = removeFurnitureLayers(datasets);
     }
     validateRasterExportFormat(datasets, format);
@@ -41593,7 +42409,7 @@ ${css.join('\n')}
       opts = utils.defaults({compact: true}, opts);
       return exportPackedDatasets(datasets, opts);
     }
-    if (format == 'kml' || format == 'svg' || format == 'html' || format == 'topojson' ||
+    if (format == 'kml' || isRenderedMapFormat(format) || format == 'topojson' ||
         format == 'geopackage' || format == 'geojson' && opts.combine_layers) {
       // multi-layer formats: combine multiple datasets into one
       if (datasets.length > 1) {
@@ -41616,7 +42432,11 @@ ${css.join('\n')}
     if (format == 'html') {
       sortExportLayers(datasets[0]);
       // HTML bypasses exportFileContent(), because rendering its image is async.
-      files = await exportHTML(copyDatasetForHTMLExport(datasets[0]),
+      files = await exportHTML(copyDatasetForRenderedExport(datasets[0]),
+        utils.defaults({format: format}, opts));
+    } else if (format == 'png' || format == 'jpg') {
+      sortExportLayers(datasets[0]);
+      files = await exportMapImage(copyDatasetForRenderedExport(datasets[0]),
         utils.defaults({format: format}, opts));
     } else if (format == 'geopackage') {
       if (datasets.length > 1) {
@@ -41689,13 +42509,18 @@ ${css.join('\n')}
       return;
     }
     if (!datasetsHaveRasterLayers(datasets)) return;
-    if (format == 'svg' || format == 'html' || format == PACKAGE_EXT) return;
+    if (isRenderedMapFormat(format) || format == PACKAGE_EXT) return;
     stop$1('Raster layers can only be exported as GeoTIFF, SVG, HTML or ' + PACKAGE_EXT + ' files');
   }
 
-  // The parts of exportFileContent() that apply to HTML output: layers are
-  // shallow-copied so they can be given unique names, which become element ids.
-  function copyDatasetForHTMLExport(dataset) {
+  // Formats that draw the map, with its styles and furniture
+  function isRenderedMapFormat(format) {
+    return format == 'svg' || format == 'html' || format == 'png' || format == 'jpg';
+  }
+
+  // The parts of exportFileContent() that apply to HTML and image output: layers
+  // are shallow-copied so they can be given unique names, which become element ids.
+  function copyDatasetForRenderedExport(dataset) {
     dataset = utils.defaults({
       layers: dataset.layers.map(function(lyr) {return utils.extend({}, lyr);})
     }, dataset);
@@ -42786,7 +43611,12 @@ ${css.join('\n')}
 
   function isSupportedOutputFormat(fmt) {
     var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg', 'html', 'kml', PACKAGE_EXT, 'flatgeobuf', 'geopackage', 'geoparquet', 'geotiff'];
-    return types.indexOf(fmt) > -1;
+    return types.indexOf(fmt) > -1 || isMapImageFormat(fmt);
+  }
+
+  // PNG and JPEG images of the map
+  function isMapImageFormat(fmt) {
+    return fmt == 'png' || fmt == 'jpg';
   }
 
   function getFormatName(fmt) {
@@ -42805,13 +43635,16 @@ ${css.join('\n')}
       geoparquet: 'GeoParquet',
       geotiff: 'GeoTIFF',
       svg: 'SVG',
-      html: 'HTML'
+      html: 'HTML',
+      png: 'PNG',
+      jpg: 'JPEG'
     }[fmt] || '';
   }
 
   var FileFormats = /*#__PURE__*/Object.freeze({
     __proto__: null,
     getFormatName: getFormatName,
+    isMapImageFormat: isMapImageFormat,
     isSupportedOutputFormat: isSupportedOutputFormat
   });
 
@@ -42950,6 +43783,8 @@ ${css.join('\n')}
         o.delimiter = o.delimiter || '\t';
       } else if (o.format == 'parquet') {
         o.format = 'geoparquet';
+      } else if (o.format == 'jpeg') {
+        o.format = 'jpg';
       }
       if (!isSupportedOutputFormat(o.format)) {
         error('Unsupported output format:', o.format);
@@ -44404,7 +45239,7 @@ ${css.join('\n')}
         type: 'flag'
       })
       .option('jpeg-quality', {
-        describe: '[SVG/HTML] JPEG quality for raster images, 1-100 (default is 85)',
+        describe: '[SVG/HTML/JPEG] JPEG quality for raster images, 1-100 (default is 85)',
         type: 'number'
       })
       .option('responsiveness', {
@@ -44414,7 +45249,7 @@ ${css.join('\n')}
         describe: '[HTML] format of the map image: png or jpg (default is png)'
       })
       .option('pixel-ratio', {
-        describe: '[HTML] image pixels per CSS pixel (default is 2)',
+        describe: '[HTML/PNG/JPEG] image pixels per CSS pixel (default is 2)',
         type: 'number'
       })
       .option('fit-extent', {
@@ -71436,13 +72271,26 @@ ${css.join('\n')}
     return breaks;
   }
 
+  // A break falling inside a run of tied values is moved to whichever end of the
+  // run is closer to the target rank (values equal to a break go in the upper
+  // class), so that a large run of ties at the minimum value doesn't leave the
+  // first class empty.
   function getQuantileBreaks(ascending, numBreaks) {
     var numRanges = numBreaks + 1;
-    var n = ascending.length / numRanges;
+    var len = ascending.length;
+    var n = len / numRanges;
     var breaks = [];
-    var i, j;
+    var i, j, lo, hi, target;
     for (i = 1; i<numRanges; i++) {
-      j = Math.floor(i * n);
+      target = i * n;
+      j = Math.floor(target);
+      lo = j;
+      hi = j + 1;
+      while (lo > 0 && ascending[lo - 1] == ascending[j]) lo--;
+      while (hi < len && ascending[hi] == ascending[j]) hi++;
+      if (hi < len && (lo === 0 || hi - target < target - lo)) {
+        j = hi;
+      }
       breaks.push(ascending[j]);
     }
     return breaks;
@@ -88623,7 +89471,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.80";
+  var version = "0.7.81";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -89012,228 +89860,6 @@ ${css.join('\n')}
     runCommandsXL: runCommandsXL,
     runParsedCommands: runParsedCommands,
     testCommands: testCommands
-  });
-
-  // Measuring a label's text outside a browser, from the font files installed on
-  // this computer.
-  //
-  // The GUI measures by rendering (gui-label-measure.mjs) and the core asks it
-  // for widths through svg-label-metrics.mjs. Nothing answered that question in
-  // Node, so `-style label-align=left` from the command line re-justified a
-  // label's lines and left the block where it was, and the path-fit check could
-  // not tell whether a label was longer than its curve.
-  //
-  // Advance widths plus kerning, which is what a browser lays out with: summing
-  // hmtx advances alone is exact for most text but out by up to 5% on strings
-  // like "AVATAR Toledo", and the pair positioning that closes that gap is what
-  // fontkit's layout() applies. Measured against Chrome on the same fonts, this
-  // agrees to a hundredth of a pixel.
-  //
-  // See docs/development/label-tool-design.md.
-
-  // Weight keywords. Anything else is a number, or 400 if it is not.
-  var WEIGHT_NAMES = {normal: 400, bold: 700, lighter: 300, bolder: 700};
-
-  var fontCache = {};
-
-  // Installed for every Node use of mapshaper -- the CLI, the API and a script
-  // that only exports -- rather than at one entry point, because a width is read
-  // during rendering and export, which both of those reach without going near a
-  // command of their own. Costs nothing until a label is measured: no font is
-  // read, and fontkit is not even loaded, until then.
-  function initNodeTextMeasurement() {
-    if (runningInBrowser()) return false;
-    setTextMeasureFunction(measureLabelText);
-    return true;
-  }
-
-  // The width of @rec's text in px, or null if it cannot be known -- an unusable
-  // record, a font this computer does not have, or a font file that will not
-  // parse. Null is what every reader already falls back from.
-  function measureLabelText(rec) {
-    var text = toLabelString(rec && rec['label-text']);
-    var font, fontSize, spacing, width, failed = false;
-    if (!text) return null;
-    font = getFontForRecord(rec);
-    if (!font) return null;
-    fontSize = getFontSizeInPx(rec);
-    spacing = getLetterSpacingInPx(rec, fontSize);
-    if (!(fontSize > 0)) return null;
-    // The widest line, which is what the block of a multi-line label is as wide
-    // as, and what the browser's getBBox() reports for the same text.
-    //
-    // A line with bold words in it is measured a run at a time, each in its own
-    // face, which loses the kerning between the last letter of one run and the
-    // first of the next -- a fraction of a pixel at a weight change.
-    width = splitLabelLineRuns(text).reduce(function(max, runs) {
-      var w = runs.reduce(function(sum, run) {
-        var face = run.bold ? getFontForRecord(rec, true) : font;
-        if (!face) {
-          failed = true;
-          return sum;
-        }
-        return sum + measureLine(face, run.text, fontSize, spacing);
-      }, 0);
-      return w > max ? w : max;
-    }, 0);
-    if (failed) return null;
-    return width > 0 ? width : null;
-  }
-
-  // Font units scaled to the size the label is drawn at, plus letter-spacing.
-  //
-  // Spacing is added after every character including the last, which is what the
-  // browser does -- letter-spacing=2 on a four-character label widens it by 8px,
-  // not 6.
-  function measureLine(font, line, fontSize, spacing) {
-    var chars = Array.from(line).length;
-    var advance;
-    if (!line) return 0;
-    try {
-      advance = font.layout(line).advanceWidth;
-    } catch (e) {
-      return 0;
-    }
-    return advance / font.unitsPerEm * fontSize + chars * spacing;
-  }
-
-  // The font a record is drawn in, opened and remembered. A record with no
-  // font-family is drawn in the layer group's default, the same one the GUI
-  // measures against -- see getLabelTextDefaults().
-  //
-  // @bold: the face its bold runs are drawn in, which is the keyword's 700
-  // whatever the label's own weight is, as it is in CSS.
-  function getFontForRecord(rec, bold) {
-    var family = rec['font-family'] || 'sans-serif';
-    var weight = bold ? WEIGHT_NAMES[LABEL_BOLD_WEIGHT] : getFontWeight(rec);
-    var italic = isItalic(rec);
-    var stretch = rec['font-stretch'] || '';
-    var key = [family, weight, italic ? 'i' : 'n', stretch].join('|');
-    if (!(key in fontCache)) {
-      fontCache[key] = openFace(findFontFace(family, weight, italic, stretch),
-        family, weight);
-    }
-    return fontCache[key];
-  }
-
-  function openFace(face, family, weight) {
-    var fontkit = loadFontkit();
-    var font;
-    if (!face || !fontkit) {
-      // Once per font, and only for a font the user named: a label falling back
-      // to the layer default is the ordinary case and not worth a warning, but a
-      // label asking for a font this computer has not got is worth knowing
-      // about, because its alignment is the thing that will be wrong.
-      if (!face && family != 'sans-serif') {
-        warnOnce('[label] Unable to measure text in font "' + family +
-          '" (not installed?); alignment may be off.');
-      }
-      return null;
-    }
-    try {
-      font = fontkit.openSync(face.path, face.postscriptName || undefined);
-      return font ? applyVariation(font, weight) : null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  // A variable font set to the weight asked for. One file covers a range of
-  // weights, and its glyphs are wider at the heavy end: measuring at the file's
-  // default instance would report Light widths for Bold text. Only the weight
-  // axis is applied, because that is the one a label can ask for -- slant and
-  // width usually arrive as separate faces, which the lookup has already chosen
-  // between.
-  function applyVariation(font, weight) {
-    var settings = getVariationSettings(font.variationAxes, weight);
-    if (!settings) return font;
-    try {
-      return font.getVariation(settings) || font;
-    } catch (e) {
-      return font;
-    }
-  }
-
-  // The variation to set, or null for a font that is not variable or is already
-  // at the weight wanted. A weight outside the axis is clamped to it, the way a
-  // browser does.
-  function getVariationSettings(axes, weight) {
-    var axis = axes && axes.wght;
-    var val;
-    if (!axis) return null;
-    val = Math.max(axis.min, Math.min(axis.max, weight));
-    return val == axis.default ? null : {wght: val};
-  }
-
-  // px, for a font-size that may be a number, a px value, an em value relative
-  // to the layer default, or a pt value. Anything else takes the default rather
-  // than failing the measurement: a size mapshaper cannot read is one the
-  // renderer is also reading its own way, and a width from the default size is
-  // closer than no width at all.
-  function getFontSizeInPx(rec) {
-    var val = rec && rec['font-size'];
-    var px = toPixelMeasure(val, DEFAULT_LABEL_FONT_SIZE);
-    return px === null ? DEFAULT_LABEL_FONT_SIZE : px;
-  }
-
-  // px, for a letter-spacing relative to the label's own size rather than to the
-  // layer default: 0.1em on 24px text is 2.4px.
-  function getLetterSpacingInPx(rec, fontSize) {
-    var px = toPixelMeasure(rec && rec['letter-spacing'], fontSize);
-    return px === null ? 0 : px;
-  }
-
-  function getFontWeight(rec) {
-    var val = rec && rec['font-weight'];
-    var named = WEIGHT_NAMES[String(val).toLowerCase()];
-    if (named) return named;
-    return Number(val) > 0 ? Number(val) : 400;
-  }
-
-  function isItalic(rec) {
-    var val = String(rec && rec['font-style'] || '').toLowerCase();
-    return val == 'italic' || val == 'oblique';
-  }
-
-  function toPixelMeasure(val, emBasis) {
-    var measure, match;
-    // An absent value is not a zero: a label with no font-size of its own is
-    // drawn at the layer's size, and one with no letter-spacing is not spaced.
-    if (val === null || val === undefined || val === '') return null;
-    measure = parseSvgMeasure(val);
-    if (typeof measure == 'number' && !isNaN(measure)) return measure;
-    match = /^(-?[.0-9]+)(em|px|pt)$/.exec(String(measure));
-    if (!match) return null;
-    if (match[2] == 'em') return Number(match[1]) * emBasis;
-    if (match[2] == 'pt') return Number(match[1]) * 4 / 3;
-    return Number(match[1]);
-  }
-
-  function loadFontkit() {
-    if (runningInBrowser()) return null;
-    try {
-      return require$1('fontkit') || null;
-    } catch (e) {
-      warnOnce('[label] fontkit is not available; labels cannot be measured.');
-      return null;
-    }
-  }
-
-  // For tests, and for a session that has installed a font since it started.
-  function clearMeasuredFontCache() {
-    fontCache = {};
-  }
-
-  var TextMeasure = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    clearMeasuredFontCache: clearMeasuredFontCache,
-    getFontSizeInPx: getFontSizeInPx,
-    getFontWeight: getFontWeight,
-    getLetterSpacingInPx: getLetterSpacingInPx,
-    getVariationSettings: getVariationSettings,
-    initNodeTextMeasurement: initNodeTextMeasurement,
-    isItalic: isItalic,
-    measureLabelText: measureLabelText
   });
 
   // Return an array containing points from a path iterator, clipped to a bounding box
@@ -91246,13 +91872,13 @@ ${css.join('\n')}
     SvgFeatureUtils,
     SvgLabels, SvgSymbols, SvgLabelPaths, SvgLabelFit, SvgLabelAlign,
     SvgLabelMetrics, SvgLabelHalo, SvgLabelCallout, SvgLabelMarkup, SvgLineArrows,
-    SvgGlow);
+    SvgGlow, SvgRasterize);
 
   // Reached through the bundle rather than imported from source, unlike most of
   // what tests use, because these modules load fs and fontkit through the
   // require shim -- which resolves to a stub outside the bundle, there being no
   // require() in an ES module.
-  internal.fonts = Object.assign({}, FontLookup, TextMeasure);
+  internal.fonts = Object.assign({}, FontLookup, TextMeasure, ResvgFonts);
 
   // Assign functions and objects exported from modules to the 'internal' namespace
   // to maintain compatibility with tests and to expose (some of) them to the GUI.
