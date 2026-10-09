@@ -1,17 +1,23 @@
 import { expect, test } from '@playwright/test';
+import {
+  getSectionPresence, openSection, removeSectionStyle
+} from './style-panel-helpers.mjs';
 
-// The Icon switch in the label style panel, and what the section does when the
+// The Icon section of the label style panel, and what it does when the
 // selected labels disagree about having a symbol.
 //
-// The switch is the only control in the panel that cannot say "they disagree"
-// by showing nothing, so it has a third state; the controls under it then act
-// on the labels that have a symbol rather than creating symbols on the rest.
+// The section's heading says whether the labels have a symbol -- all, some or
+// none of them. Choosing a shape adds one, the heading's × removes it, and the
+// size and colour act on the labels that have a symbol rather than creating
+// symbols on the rest.
 //
 // See docs/development/label-tool-design.md.
 
 var FIXTURE = 'test/data/features/snip/ring_and_line.json';
+var PANEL = '.text-style-panel';
+var SECTION = 'label-icon-section';
 
-test('a selection where only some labels have a symbol shows the switch mixed',
+test('a selection where only some labels have a symbol is marked mixed',
   async function({page}) {
     var errors = collectPageErrors(page);
     await twoLabels(page);
@@ -19,49 +25,54 @@ test('a selection where only some labels have a symbol shows the switch mixed',
     await selectLabels(page, [0, 1]);
 
     expect(await getPanelStatus(page)).toContain('2 selected');
-    expect(await getToggleState(page)).toBe('mixed');
-    expect(await getToggleAriaChecked(page)).toBe('mixed');
+    expect(await getSectionPresence(page, PANEL, SECTION)).toBe('mixed');
+    expect(await page.locator(PANEL + ' .' + SECTION + ' .label-section-marker')
+      .getAttribute('aria-label')).toBe('Applied to some of the selection');
     // The section stays usable: there is a symbol in the selection to style,
     // and the shape the labels that have one share is the shape shown.
-    expect(await sectionIsOff(page)).toBe(false);
+    expect(await shapesAreInert(page)).toBe(false);
     expect(await getSelectedShape(page)).toBe('circle');
     expect(errors).toEqual([]);
   });
 
-test('the switch is on or off when the selection agrees', async function({page}) {
+test('the marker is on or off when the selection agrees', async function({page}) {
   await twoLabels(page);
   await selectLabels(page, [0, 1]);
-  expect(await getToggleState(page)).toBe('off');
+  expect(await getSectionPresence(page, PANEL, SECTION)).toBe('off');
+  // With no symbol the shapes are still live, since choosing one is how a
+  // symbol is added
+  expect(await shapesAreInert(page)).toBe(false);
 
-  await clickToggle(page);
+  await clickShape(page, 'circle');
   await selectLabels(page, [0, 1]);
-  expect(await getToggleState(page)).toBe('on');
-  expect(await getToggleAriaChecked(page)).toBe('true');
+  expect(await getSectionPresence(page, PANEL, SECTION)).toBe('on');
 });
 
-test('clicking a mixed switch turns every selected label on, and again turns them off',
+test('the × takes the symbol off every selected label, with its settings',
   async function({page}) {
-    // Both states are one click away, which is why mixed resolves to on: the
-    // click that follows is the one that turns everything off.
     await twoLabels(page);
     await giveIcon(page, 0);
+    await setIconSize(page, 9);
     await selectLabels(page, [0, 1]);
-    await clickToggle(page);
+    await removeSectionStyle(page, PANEL, SECTION);
 
-    expect(await getLabelField(page, 0, 'icon')).toBe('circle');
-    expect(await getLabelField(page, 1, 'icon')).toBe('circle');
-
-    await selectLabels(page, [0, 1]);
-    expect(await getToggleState(page)).toBe('on');
-    await clickToggle(page);
     expect(await getLabelField(page, 0, 'icon')).toBeFalsy();
+    expect(await getLabelField(page, 0, 'icon-size')).toBeFalsy();
     expect(await getLabelField(page, 1, 'icon')).toBeFalsy();
+    expect(await page.evaluate(function() {
+      return window.mapshaper.undoTest.getLayerInfo('labels').records.some(function(rec) {
+        return Object.keys(rec).some(function(k) {
+          return /^icon/.test(k) && rec[k] !== undefined && rec[k] !== null && rec[k] !== '';
+        });
+      });
+    })).toBe(false);
+    expect(await getSectionPresence(page, PANEL, SECTION)).toBe('off');
   });
 
 test('a symbol size set on a mixed selection goes only to the labels that have one',
   async function({page}) {
     // An icon-size on a label with no icon draws nothing and adds a column to
-    // the user's table. The switch stays the only way to ask for a symbol.
+    // the user's table. Choosing a shape stays the way to ask for a symbol.
     var errors = collectPageErrors(page);
     await twoLabels(page);
     await giveIcon(page, 0);
@@ -145,13 +156,14 @@ async function twoLabels(page, query) {
   await clickMap(page, 0.25, 0.65);
   await writeLabel(page, 'Tahoe');
   await disarmTool(page);
+  await openSection(page, PANEL, SECTION);
 }
 
-// Switches a symbol on for one label, through the switch itself -- which is the
-// only way to ask for one.
+// Gives one label a circle, by choosing the shape -- which is how a symbol is
+// asked for.
 async function giveIcon(page, id) {
   await selectLabels(page, [id]);
-  await clickToggle(page);
+  await clickShape(page, 'circle');
   await expect.poll(function() {
     return getLabelField(page, id, 'icon');
   }).toBe('circle');
@@ -189,27 +201,9 @@ async function shiftClickLabel(page, id) {
   await page.waitForTimeout(100);
 }
 
-// 'on', 'off' or 'mixed'
-async function getToggleState(page) {
-  return page.locator('.text-style-panel .label-icon-toggle').evaluate(function(el) {
-    if (el.classList.contains('mixed')) return 'mixed';
-    return el.classList.contains('on') ? 'on' : 'off';
-  });
-}
-
-async function getToggleAriaChecked(page) {
-  return page.locator('.text-style-panel .label-icon-toggle')
-    .getAttribute('aria-checked');
-}
-
-async function clickToggle(page) {
-  await page.locator('.text-style-panel .label-icon-toggle').click();
-  await page.waitForTimeout(250);
-}
-
-// Whether the shape buttons are inert, which is what the section looks like
-// when nothing in the selection has a symbol.
-async function sectionIsOff(page) {
+// Whether the shape buttons are inert, which they are only with nothing to
+// style at all.
+async function shapesAreInert(page) {
   return page.locator('.text-style-panel .label-icon-buttons').evaluate(function(el) {
     return el.classList.contains('disabled');
   });

@@ -3,8 +3,7 @@ import {
   claimFieldKeys, isTextInput, opensAMenu, releasePanelFocus
 } from './gui-panel-focus';
 import {
-  makeColorRow, makeFieldTip, makePanelActionButton, makePanelButton, makePanelSection,
-  makePanelToggle
+  makeCollapsibleSection, makeColorRow, makeFieldTip, makePanelActionButton, makePanelButton
 } from './gui-panel-controls';
 import { calloutButtonSymbols } from './gui-label-tool';
 import { formatEditingStatus } from './gui-editing-status';
@@ -78,7 +77,7 @@ export function LayerStyleTool(gui) {
   var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, capControl, dashControl, arrowControl, presetControl, patternControl, glowControl, hit;
   var schemeBtn, schemeStrip, schemePanel;
   var targetLayer = null;
-  // What the arrowhead switch turns on, for lines that have no heads
+  // What a shape or an end gives lines that have no heads
   var lastArrow = {shape: 'arrow', position: 'end', fade: 0};
   var lineToolbar, polygonToolbar, drawLineBtn, drawPolygonBtn, reshapeLineBtn, reshapePolygonBtn;
   var lineStylesBtn, polygonStylesBtn;
@@ -515,25 +514,24 @@ export function LayerStyleTool(gui) {
     return {input: input};
   }
 
-  // A switch in the heading says whether the lines have arrowheads; the rows
-  // under it are the head's shape with its size beside it, then which ends
-  // get it with the line's fade beside that. A line has one shape for both
-  // ends, which is all the panel sets, though -style can give the two ends
-  // different ones.
+  // The rows are the head's shape with its size beside it, then which ends
+  // get it with the line's fade beside that. Choosing a shape or an end adds
+  // heads to lines that have none, and the heading's × takes them off. A line
+  // has one shape for both ends, which is all the panel sets, though -style
+  // can give the two ends different ones.
   function addArrowControl(parent) {
-    var section = makePanelSection(parent, 'Arrowheads');
-    var toggle = makePanelToggle(section.findChild('.label-style-section-title'), {
-      title: 'Add arrowheads',
-      className: 'layer-arrow-toggle',
-      onChange: setArrowsOn
+    var heading = makeCollapsibleSection(parent, 'Arrowheads', {
+      onRemove: removeArrows,
+      removeTitle: 'Remove arrowheads'
     });
+    var section = heading.section.addClass('layer-arrow-section');
     var shapeRow = El('div').addClass('label-style-row label-split-row').appendTo(section);
     var shapeCell = El('div').addClass('label-split-cell label-align-row').appendTo(shapeRow);
     var sizeCell = El('div').addClass('label-split-cell label-spacing-row layer-arrow-size-row').appendTo(shapeRow);
     var posRow = El('div').addClass('label-style-row label-split-row').appendTo(section);
     var posCell = El('div').addClass('label-split-cell label-align-row').appendTo(posRow);
     var fadeCell = El('div').addClass('label-split-cell layer-arrow-fade-cell').appendTo(posRow);
-    var control = {section: section, toggle: toggle, shapeBtns: {}, posBtns: {}};
+    var control = {section: section, heading: heading, shapeBtns: {}, posBtns: {}};
     El('span').appendTo(shapeCell).text('Shape');
     var shapeGroup = El('div').addClass('label-btn-group label-callout-buttons layer-arrow-shape-buttons').appendTo(shapeCell);
     arrowShapes.forEach(function(item) {
@@ -592,15 +590,21 @@ export function LayerStyleTool(gui) {
     return {shape: shape, position: position};
   }
 
-  // Switching on gives the lines that have no heads the last shape, ends and
-  // fade the section showed, so that off and on again is a round trip; the
-  // lines that have heads keep theirs. Switching off leaves line-end-size
-  // alone, for the same reason, but removes the fade, which would otherwise
-  // go on showing with its control hidden.
-  function setArrowsOn(on) {
-    applyArrowEdits(function(info) {
-      return on ? fillArrowInfo(info) : {shape: 'none', position: ''};
+  // Everything the heads are drawn with goes with them: the size and the
+  // fade mean nothing on a line without heads.
+  function removeArrows() {
+    var records = getTargetRecords();
+    var edits = [];
+    getTargetIds().forEach(function(id) {
+      var rec = records[id] || {};
+      var styles = ['line-start', 'line-end', 'line-end-size', 'line-fade'].filter(function(field) {
+        return rec[field] !== undefined && rec[field] !== null && String(rec[field]) !== '';
+      }).map(function(field) {
+        return [field, ''];
+      });
+      if (styles.length > 0) edits.push({id: id, styles: styles});
     });
+    runStyleEdits(edits);
   }
 
   // Each target keeps whichever of shape and position is not being set, so
@@ -720,7 +724,7 @@ export function LayerStyleTool(gui) {
   }
 
   // The shape and ends shown are those of the lines with heads; lines
-  // without are what the switch's mixed state is for.
+  // without are what the heading's mixed marker is for.
   function updateArrowControl() {
     var records = getTargetRecords();
     var ids = getTargetIds();
@@ -740,8 +744,7 @@ export function LayerStyleTool(gui) {
     if (position) lastArrow.position = position;
     var state = arrowIds.length === 0 ? 'off' :
       arrowIds.length < ids.length ? 'mixed' : 'on';
-    arrowControl.toggle.setState(state);
-    arrowControl.section.classed('collapsed', state == 'off');
+    arrowControl.heading.setPresence(state);
     arrowShapes.forEach(function(item) {
       arrowControl.shapeBtns[item.name].classed('selected', item.name == shape);
     });

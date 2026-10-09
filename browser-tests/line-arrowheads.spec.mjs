@@ -1,22 +1,28 @@
 import { expect, test } from '@playwright/test';
+import {
+  getSectionPresence, openSection, removeSectionStyle
+} from './style-panel-helpers.mjs';
 
 var FIXTURE = 'test/data/features/divide/ex1_line.json';
 var LAYER = 'ex1_line';
+var PANEL = '.layer-style-panel';
+var SECTION = 'layer-arrow-section';
 
 test('the arrowhead controls set line-start and line-end, one undo step each',
   async function({page}) {
     var errors = collectPageErrors(page);
-    await loadFixture(page);
+    await loadFixture(page, {open: false});
     await expect(arrowSection(page)).toBeVisible();
-    // switched off, the section is just its heading
-    await expect(arrowToggle(page)).toHaveAttribute('aria-checked', 'false');
+    // closed, the section is just its heading
+    expect(await getSectionPresence(page, PANEL, SECTION)).toBe('off');
     await expect(shapeButton(page, 'arrow')).toBeHidden();
+    await openSection(page, PANEL, SECTION);
     await expect(shapeButton(page, 'none')).toHaveCount(0);
 
-    // Switching on puts a solid head at the end
-    await clickToggle(page);
+    // Choosing an end puts a solid head there
+    await addArrows(page);
     expect(await getArrowStyles(page)).toEqual({start: undefined, end: 'arrow', size: undefined});
-    await expect(arrowToggle(page)).toHaveAttribute('aria-checked', 'true');
+    expect(await getSectionPresence(page, PANEL, SECTION)).toBe('on');
     await expect(shapeButton(page, 'arrow')).toHaveClass(/selected/);
     await expect(positionButton(page, 'end')).toHaveClass(/selected/);
     // the size shown is the one the 1px line gives it
@@ -33,17 +39,15 @@ test('the arrowhead controls set line-start and line-end, one undo step each',
     await setField(sizeField(page), '14');
     expect(await getArrowStyles(page)).toEqual({start: 'open-arrow', end: 'open-arrow', size: 14});
 
-    // Off keeps the size, and on again brings back the shape and ends
-    await clickToggle(page);
-    expect(await getArrowStyles(page)).toEqual({start: undefined, end: undefined, size: 14});
-    await expect(shapeButton(page, 'open-arrow')).toBeHidden();
-    await clickToggle(page);
-    expect(await getArrowStyles(page)).toEqual({start: 'open-arrow', end: 'open-arrow', size: 14});
+    // The × removes the heads and their size, in one undo step
+    await removeSectionStyle(page, PANEL, SECTION);
+    expect(await getArrowStyles(page)).toEqual({start: undefined, end: undefined, size: undefined});
+    expect(await getSectionPresence(page, PANEL, SECTION)).toBe('off');
 
     await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
     await page.waitForTimeout(250);
-    expect(await getArrowStyles(page)).toEqual({start: undefined, end: undefined, size: 14});
-    await expect(arrowToggle(page)).toHaveAttribute('aria-checked', 'false');
+    expect(await getArrowStyles(page)).toEqual({start: 'open-arrow', end: 'open-arrow', size: 14});
+    expect(await getSectionPresence(page, PANEL, SECTION)).toBe('on');
 
     var commands = (await getSessionCommands(page)).join('\n');
     expect(commands).toContain("-style line-end='arrow' stroke='#000000'");
@@ -53,7 +57,6 @@ test('the arrowhead controls set line-start and line-end, one undo step each',
 
 test('a dot is sized by its diameter', async function({page}) {
   await loadFixture(page);
-  await clickToggle(page);
   await shapeButton(page, 'dot').click();
   await page.waitForTimeout(250);
   expect(await getArrowStyles(page)).toEqual({start: undefined, end: 'dot', size: undefined});
@@ -64,18 +67,18 @@ test('a dot is sized by its diameter', async function({page}) {
   await expect(sizeField(page)).toHaveValue('9');
 });
 
-test('the switch follows styles set from the console', async function({page}) {
+test('the marker follows styles set from the console', async function({page}) {
   await loadFixture(page);
   await page.evaluate(function() {
     return window.mapshaper.undoTest.runCommand('-style line-start=dot where="false"');
   });
   await page.waitForTimeout(250);
-  await expect(arrowToggle(page)).toHaveAttribute('aria-checked', 'false');
+  expect(await getSectionPresence(page, PANEL, SECTION)).toBe('off');
   await page.evaluate(function() {
     return window.mapshaper.undoTest.runCommand('-style line-start=dot');
   });
   await page.waitForTimeout(250);
-  await expect(arrowToggle(page)).toHaveAttribute('aria-checked', 'true');
+  expect(await getSectionPresence(page, PANEL, SECTION)).toBe('on');
   await expect(positionButton(page, 'start')).toHaveClass(/selected/);
 });
 
@@ -83,7 +86,6 @@ test('arrowheads are drawn on the map', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page);
   var before = await getCanvasInkCount(page);
-  await clickToggle(page);
   await positionButton(page, 'both').click();
   await page.waitForTimeout(400);
   var after = await getCanvasInkCount(page);
@@ -92,10 +94,10 @@ test('arrowheads are drawn on the map', async function({page}) {
   expect(errors).toEqual([]);
 });
 
-test('the fade is set as a percent, kept by the switch, and drawn', async function({page}) {
+test('the fade is set as a percent, removed with the heads, and drawn', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page);
-  await clickToggle(page);
+  await addArrows(page);
   await expect(fadeField(page)).toHaveValue('0');
   var solid = await getCanvasInkCount(page);
 
@@ -110,13 +112,6 @@ test('the fade is set as a percent, kept by the switch, and drawn', async functi
   await page.waitForTimeout(250);
   expect(await getFade(page)).toBe(0.45);
 
-  // off removes the fade along with the heads; on again brings it back
-  await clickToggle(page);
-  expect(await getFade(page)).toBeUndefined();
-  await clickToggle(page);
-  expect(await getFade(page)).toBe(0.45);
-  await expect(fadeField(page)).toHaveValue('45');
-
   // no fade is unset rather than stored
   await setField(fadeField(page), '0');
   expect(await getFade(page)).toBeUndefined();
@@ -124,6 +119,11 @@ test('the fade is set as a percent, kept by the switch, and drawn', async functi
   await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
   await page.waitForTimeout(250);
   expect(await getFade(page)).toBe(0.45);
+  await expect(fadeField(page)).toHaveValue('45');
+
+  // the × removes the fade along with the heads
+  await removeSectionStyle(page, PANEL, SECTION);
+  expect(await getFade(page)).toBeUndefined();
   expect(errors).toEqual([]);
 });
 
@@ -146,12 +146,9 @@ function arrowSection(page) {
     .filter({has: page.locator('.layer-arrow-shape-buttons')});
 }
 
-function arrowToggle(page) {
-  return page.locator('.layer-style-panel .layer-arrow-toggle');
-}
-
-async function clickToggle(page) {
-  await arrowToggle(page).click();
+// A head at the end, which is what choosing an end gives lines with none
+async function addArrows(page) {
+  await positionButton(page, 'end').click();
   await page.waitForTimeout(250);
 }
 
@@ -213,7 +210,8 @@ async function setField(locator, value) {
   await locator.page().waitForTimeout(250);
 }
 
-async function loadFixture(page) {
+// opts.open: false to leave the Arrowheads section closed, as it starts
+async function loadFixture(page, opts) {
   await page.goto('/?undo=on&undo-test=on&files=' + encodeURIComponent(FIXTURE));
   await page.waitForFunction(function() {
     return window.mapshaper && window.mapshaper.undoTest &&
@@ -224,6 +222,7 @@ async function loadFixture(page) {
     window.mapshaper.undoTest.setInteractionMode('line_style');
   });
   await page.locator('.layer-style-panel').waitFor({state: 'visible'});
+  if (!opts || opts.open !== false) await openSection(page, PANEL, SECTION);
 }
 
 function collectPageErrors(page) {

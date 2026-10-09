@@ -1,4 +1,11 @@
 import { expect, test } from '@playwright/test';
+import {
+  getSectionPresence, openAllSections, openSection, removeSectionStyle
+} from './style-panel-helpers.mjs';
+
+var PANEL = '.layer-style-panel';
+var PATTERNS = 'layer-pattern-section';
+var EFFECTS = 'layer-effects-section';
 
 var FIXTURE = 'test/data/issues/389_clipping_error/inner_polygon.json';
 var LAYER = 'inner_polygon';
@@ -222,8 +229,6 @@ test('dashes are typed as a -style stroke-dasharray value', async function({page
 test('the line panel\'s tips stay on the page', async function({page}) {
   await loadFixture(page, LINE_FIXTURE, 'line_style');
   // the arrowhead section has a tip of its own
-  await page.locator('.layer-style-panel .layer-arrow-toggle').click();
-  await page.waitForTimeout(250);
   var buttons = page.locator('.layer-style-panel .tip-button:visible');
   var count = await buttons.count();
   var pageWidth = await page.evaluate(() => document.documentElement.clientWidth);
@@ -289,16 +294,22 @@ var POLY_LAYER = 'ex1_polyB';
 
 test('a hatch pattern is drawn over the fill, and follows it', async function({page}) {
   var errors = collectPageErrors(page);
-  await loadFixture(page, POLY_FIXTURE);
+  await loadFixture(page, POLY_FIXTURE, null, {open: false});
   var fill = colorRow(page, 'Fill');
-  // off to begin with, showing only its heading
-  await expect(patternToggle(page)).toHaveAttribute('aria-checked', 'false');
+  // closed to begin with, showing only its heading
+  expect(await getSectionPresence(page, PANEL, PATTERNS)).toBe('off');
   await expect(patternSelect(page)).toBeHidden();
   await setField(fill.locator('.label-color-input'), '#eeeeee');
 
-  // switching it on starts with a hatch
-  await clickPatternToggle(page);
+  // open, with no pattern, the menu says so
+  await openSection(page, PANEL, PATTERNS);
+  await expect(patternSelect(page)).toHaveValue('none');
+  await expect(page.locator('.layer-pattern-color-row')).toBeHidden();
+
+  // choosing a type adds the pattern
+  await selectPattern(page, 'hatches');
   expect(await getPatterns(page)).toEqual(Array(3).fill('hatches 3px #eeeeee 1px #000000'));
+  expect(await getSectionPresence(page, PANEL, PATTERNS)).toBe('on');
   await expect(patternSelect(page)).toHaveValue('hatches');
   await expect(page.locator('.layer-pattern-size-row span').first()).toHaveText('Width');
 
@@ -323,7 +334,6 @@ test('the pattern menu stays open when clicked', async function({page}) {
   // focus after a click. Focus staying on the <select> is what "the menu is
   // open" looks like from here: the menu itself is drawn by the OS.
   await loadFixture(page, POLY_FIXTURE);
-  await clickPatternToggle(page);
   var box = await patternSelect(page).boundingBox();
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await page.waitForTimeout(250);
@@ -341,7 +351,6 @@ test('each feature gets its pattern over its own fill', async function({page}) {
   await runConsoleCommand(page, "-style fill='#aaaaaa' ids=0");
   await runConsoleCommand(page, "-style fill='#bbbbbb' ids=1");
 
-  await clickPatternToggle(page);
   await selectPattern(page, 'dots');
   expect(await getPatterns(page)).toEqual([
     'dots 2px #000000 3px #aaaaaa',
@@ -359,7 +368,7 @@ test('a pattern the controls cannot describe is shown as its code', async functi
   await loadFixture(page, POLY_FIXTURE);
   var code = page.locator('.layer-pattern-code-row input');
   await runConsoleCommand(page, "-style fill-pattern='dashes 4px 2px 1px black 4px white'");
-  await expect(patternToggle(page)).toHaveAttribute('aria-checked', 'true');
+  expect(await getSectionPresence(page, PANEL, PATTERNS)).toBe('on');
   await expect(patternSelect(page)).toHaveValue('custom');
   await expect(code).toHaveValue('dashes 4px 2px 1px black 4px white');
   await expect(page.locator('.layer-pattern-code-row .tip-button')).toHaveCount(1);
@@ -372,18 +381,16 @@ test('a pattern the controls cannot describe is shown as its code', async functi
   await setField(code, 'hatches 1px red 1px white 1px blue');
   expect((await getPatterns(page))[0]).toBe('hatches 1px red 1px white 1px blue');
 
-  // off takes it away, and on again brings back the pattern that was showing
-  await clickPatternToggle(page);
+  // the × takes it away
+  await removeSectionStyle(page, PANEL, PATTERNS);
   expect(await getPatterns(page)).toEqual([undefined, undefined, undefined]);
   await expect(page.locator('.layer-pattern-code-row')).toBeHidden();
-  await clickPatternToggle(page);
-  expect(await getPatterns(page)).toEqual(Array(3).fill('hatches 1px red 1px white 1px blue'));
+  await expect(patternSelect(page)).toHaveValue('none');
   expect(errors).toEqual([]);
 });
 
 test('choosing Custom shows the code for the pattern being replaced', async function({page}) {
   await loadFixture(page, POLY_FIXTURE);
-  await clickPatternToggle(page);
   await selectPattern(page, 'squares');
   await selectPattern(page, 'custom');
   await expect(page.locator('.layer-pattern-code-row input')).toHaveValue('squares 2px #000000 2px none');
@@ -393,15 +400,15 @@ test('choosing Custom shows the code for the pattern being replaced', async func
 test('a pattern on some of the features shows as mixed', async function({page}) {
   await loadFixture(page, POLY_FIXTURE);
   await runConsoleCommand(page, "-style fill-pattern='hatches 3px none 1px black' ids=0");
-  await expect(patternToggle(page)).toHaveAttribute('aria-checked', 'mixed');
+  expect(await getSectionPresence(page, PANEL, PATTERNS)).toBe('mixed');
   await expect(patternSelect(page)).toHaveValue('mixed');
   await expect(page.locator('.layer-pattern-color-row')).toBeHidden();
 
-  // switching on gives the rest the pattern the others have
-  await clickPatternToggle(page);
-  expect(await getPatterns(page)).toEqual(Array(3).fill('hatches 3px none 1px black'));
-  await expect(patternToggle(page)).toHaveAttribute('aria-checked', 'true');
-  await expect(patternSelect(page)).toHaveValue('hatches');
+  // choosing a type gives every feature that pattern
+  await selectPattern(page, 'dots');
+  expect(await getPatterns(page)).toEqual(Array(3).fill('dots 2px #000000 3px none'));
+  expect(await getSectionPresence(page, PANEL, PATTERNS)).toBe('on');
+  await expect(patternSelect(page)).toHaveValue('dots');
 });
 
 test('the pattern section is only on the polygon panel', async function({page}) {
@@ -412,17 +419,15 @@ test('the pattern section is only on the polygon panel', async function({page}) 
 test('a glow is added by picking its color, and removed by emptying it',
   async function({page}) {
     var errors = collectPageErrors(page);
-    await loadFixture(page, POLY_FIXTURE);
-    var effects = page.locator('.layer-style-panel .layer-effects-toggle');
+    await loadFixture(page, POLY_FIXTURE, null, {open: false});
     var outerRow = page.locator('.layer-style-panel .layer-outer-glow-row');
     var innerRow = page.locator('.layer-style-panel .layer-inner-glow-row');
-    await expect(effects).toHaveAttribute('aria-checked', 'false');
+    expect(await getSectionPresence(page, PANEL, EFFECTS)).toBe('off');
     await expect(outerRow).toBeHidden();
 
-    // switching on opens the section, with no glow yet
-    await effects.click();
-    await page.waitForTimeout(250);
-    await expect(effects).toHaveAttribute('aria-checked', 'true');
+    // opening the section adds nothing
+    await openSection(page, PANEL, EFFECTS);
+    expect(await getSectionPresence(page, PANEL, EFFECTS)).toBe('off');
     await expect(outerRow.locator('.label-color-input')).toHaveValue('');
     await expect(outerRow.locator('.label-opacity-input')).toHaveValue('');
     await expect(outerRow.locator('.size-field-input')).toHaveValue('10');
@@ -447,13 +452,13 @@ test('a glow is added by picking its color, and removed by emptying it',
     await page.waitForTimeout(250);
     expect(await getGlows(page, 'inner')).toEqual(Array(3).fill('#ff0000  '));
 
-    // switching off removes both glows and their settings
-    await effects.click();
-    await page.waitForTimeout(250);
+    // the × removes both glows and their settings, and leaves the section open
+    expect(await getSectionPresence(page, PANEL, EFFECTS)).toBe('on');
+    await removeSectionStyle(page, PANEL, EFFECTS);
     expect(await getGlows(page, 'outer')).toEqual(Array(3).fill('  '));
     expect(await getGlows(page, 'inner')).toEqual(Array(3).fill('  '));
-    await expect(effects).toHaveAttribute('aria-checked', 'false');
-    await expect(outerRow).toBeHidden();
+    expect(await getSectionPresence(page, PANEL, EFFECTS)).toBe('off');
+    await expect(outerRow).toBeVisible();
     expect(errors).toEqual([]);
   });
 
@@ -462,7 +467,7 @@ test('a glow on some of the features shows as mixed', async function({page}) {
   await runConsoleCommand(page, '-style inner-glow-color=white inner-glow-width=6 ids=0');
   await runConsoleCommand(page, '-style inner-glow-color=white inner-glow-width=4 ids=1');
   var innerRow = page.locator('.layer-style-panel .layer-inner-glow-row');
-  await expect(page.locator('.layer-style-panel .layer-effects-toggle')).toHaveAttribute('aria-checked', 'mixed');
+  expect(await getSectionPresence(page, PANEL, EFFECTS)).toBe('mixed');
   await expect(innerRow.locator('.size-field-input')).toHaveValue('');
   await expect(innerRow.locator('.label-color-input')).toHaveValue('');
   await expect(innerRow.locator('.label-color-input')).toHaveAttribute('placeholder', 'mixed');
@@ -481,7 +486,6 @@ test('an emptied fill or stroke is unset, and an emptied pattern color is the de
     expect(records.map(function(rec) { return rec.stroke; })).toEqual(Array(3).fill(undefined));
     expect(records.map(function(rec) { return rec['stroke-width']; })).toEqual(Array(3).fill(undefined));
 
-    await clickPatternToggle(page);
     await selectPattern(page, 'dots');
     var color = page.locator('.layer-pattern-color-row .label-color-input');
     await setField(color, '#ff0000');
@@ -523,7 +527,7 @@ test('glows are drawn on the map', async function({page}) {
 
 test('the Effects section is only on the polygon panel', async function({page}) {
   await loadFixture(page, LINE_FIXTURE, 'line_style');
-  await expect(page.locator('.layer-style-panel .layer-effects-toggle')).toBeHidden();
+  await expect(page.locator('.layer-style-panel .' + EFFECTS)).toBeHidden();
 });
 
 async function getGlows(page, type) {
@@ -554,15 +558,6 @@ function colorRow(page, label) {
   return page.locator('.layer-style-panel .label-split-row').filter({
     has: page.locator('.label-split-cell > span', {hasText: new RegExp('^' + label + '$')})
   });
-}
-
-function patternToggle(page) {
-  return page.locator('.layer-style-panel .layer-pattern-toggle');
-}
-
-async function clickPatternToggle(page) {
-  await patternToggle(page).click();
-  await page.waitForTimeout(250);
 }
 
 function patternSelect(page) {
@@ -650,7 +645,8 @@ async function getFocusedElement(page) {
   });
 }
 
-async function loadFixture(page, fixture, mode) {
+// opts.open: false to leave the panel's sections closed, as they start
+async function loadFixture(page, fixture, mode, opts) {
   await page.goto('/?undo=on&undo-test=on&files=' + encodeURIComponent(fixture));
   await page.waitForFunction(function() {
     return window.mapshaper && window.mapshaper.undoTest;
@@ -663,6 +659,7 @@ async function loadFixture(page, fixture, mode) {
     window.mapshaper.undoTest.setInteractionMode(mode);
   }, mode || 'polygon_style');
   await page.locator('.layer-style-panel').waitFor({state: 'visible'});
+  if (!opts || opts.open !== false) await openAllSections(page);
 }
 
 function collectPageErrors(page) {

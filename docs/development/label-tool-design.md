@@ -2780,12 +2780,12 @@ a value is the mitigation.
 
 #### A symbol changes which position a label is given, and never which it may have
 
-**The whole grid is always live**, and switching a symbol off leaves a label
-where it was.
+**The whole grid is always live**, and removing a symbol leaves a label where
+it was.
 
 It was not. The rule was that the nine positions place text around something,
 so a label with nothing drawn at its anchor was locked to the centre cell and
-was put back there when its symbol was switched off — there being no answer to
+was put back there when its symbol was removed — there being no answer to
 "north-east of what?". Both parts are gone:
 
 - The lock **disabled eight cells of a grid over the commonest kind of label
@@ -2795,7 +2795,7 @@ was put back there when its symbol was switched off — there being no answer to
   anyway: there is an answer to "north-east of what?", and it is the anchor,
   which is a point on the map whether or not anything is drawn on it.
 - The snap **threw away a placement the user had made by hand** to maintain an
-  invariant that was not worth its cost. Switching a symbol off is a statement
+  invariant that was not worth its cost. Removing a symbol is a statement
   about the symbol.
 
 What is left is the half that only ever adds: **a symbol arriving under a
@@ -3472,26 +3472,66 @@ Behaviours in it that are not visible in the markup:
   the font size, as in CSS, and is written to SVG in ems; the other measure
   fields read a bare number as px.
 
-##### Whether a label has a symbol is a switch
+##### Sections open from their headings, and say what the selection has
 
-The Icon heading carries a two-state switch, and the four shapes below it are
-just the four shapes. The heading line also carries the caption over the size
-field in the row beneath it, in that field's column: the shapes beside the
-field have no caption of their own, and a caption over one control of a pair
-pushes it out of line with the other. "None" was a fifth button in the row at first, which put
-two questions in one control: whether the label has a symbol, and which symbol
-it is. The switch answers the first, and its state is read from the data — a
-symbol is on when the target has one — so it follows an undo without being told
-to.
+Every section of the panel — Text, Halo, Icon, Callout and Saved styles —
+opens and closes from its heading, which carries a chevron at the left,
+pointing right when closed and down when open. (A filled triangle read as a
+bullet point.) Only Text starts open, and a section stays as it was left for the
+rest of the session. Opening and closing is the panel's state and not the
+data's: closing a section changes no style, and selecting other labels never
+opens or closes one. The line and polygon panel's Arrowheads, Patterns,
+Effects and Saved styles sections are built the same way, by
+`makeCollapsibleSection()` in `gui-panel-controls.mjs`.
 
-Everything under the switch is inert while it is off: an `icon-size` or
-`icon-color` on a label with no `icon` draws nothing, so there is nothing for
-those controls to do until a symbol exists. They keep *showing* their values
-greyed rather than blanking, because what they show is what the symbol comes
-back as. Two rules make switching off and on again non-destructive: the shape
-that was chosen is the shape that returns (`lastIconShape`), and an
-`icon-opacity` still stored on the label is taken back rather than reset to
-full.
+The heading of a section for a style a label can have or not — a halo, a
+symbol, a callout — also says whether the labels being styled have it, since
+a closed section would otherwise hide it: a dot for all of them, a half-filled
+dot for some, nothing for none. The marker is read from the data, so it
+follows an undo without being told to. Beside it, at the right of the
+heading, is a × that removes the style, shown only while there is a style to
+remove. It works on a closed section as well as an open one.
+
+This replaced a switch in each of those headings, which did three jobs at
+once: it said whether the selection had the style, it added and removed the
+style, and it opened and closed the section. Bundling the three meant that a
+section could not be closed to shorten the panel without taking the style
+off, and that selecting labels with and without halos opened and closed the
+panel's sections under the pointer.
+
+##### A style is added by choosing it, and removed by its ×
+
+With the switch gone, each section is added to by its own controls:
+
+- **A symbol by its shape.** The shapes are just the shapes; there is no
+  "None" among them, which would put two questions in one control. Clicking
+  one gives every target a symbol (see below for a mixed selection). The size,
+  colour and opacity are inert until there is a symbol: an `icon-size` or
+  `icon-color` on a label with no `icon` draws nothing. They keep *showing*
+  their defaults greyed rather than blanking, because what they show is what
+  a shape will add the symbol with.
+- **A callout by its line shape**, in the same way; the ends do have a
+  "none", because a line with no marker is a shape of its own rather than the
+  absence of a callout.
+- **A halo by its colour**, as a line's stroke is: picking one adds the halo,
+  and emptying the field removes it. A label has a halo when its `halo-width`
+  is above 0, which is the renderer's rule and is left alone — `-labels
+  halo-width=2` still gives a white halo from the command line — so a halo
+  with no `halo-color` shows white in the field rather than the blank that
+  means "no halo". With no halo the width field shows the default, 2, as a
+  placeholder, and a width or opacity set then is kept (`haloPending`) and
+  goes on with the colour.
+
+The × removes a style **with everything it is drawn with**: `icon-size`,
+`icon-color` and `icon-opacity` with the `icon`; the halo's width, colour and
+opacity together; every `callout-*` property with the callout, its corner and
+attachment included. They mean nothing without the style, and leaving them
+behind would put columns in the user's table that draw nothing. Undo is the
+way back. Only the properties some target carries are written, so that
+removing a style from a selection where some labels never had it leaves no
+empty column behind. The switch had made off-and-on a round trip instead, by
+leaving the qualifying properties on the label and remembering the last shape
+and width; that memory went with it.
 
 ##### A blank control says which kind of blank it is
 
@@ -3527,28 +3567,22 @@ for a panel with no target, which is the third kind of blank and not a mixed
 one. The distinction is in the reading rather than in the writing: what is
 stored, and which labels a control writes to, are unchanged.
 
-##### The switch has a third state, because a selection can disagree
+##### The marker has a third state, because a selection can disagree
 
-A selection where only *some* labels have a symbol shows the switch **mixed**:
-the knob over the join of a half-dark, half-pale track, with a hard gradient
-stop rather than a blend so that it reads as one half on and one half off
-rather than as a third colour. Every other control in the panel says "they
-disagree" by showing nothing, or by showing the word (above) where it has
-somewhere to put it — and a switch is the one control with neither an empty
-state nor anywhere to write.
+A selection where only *some* labels have a symbol is marked **mixed**: a dot
+filled on one half only, with a hard gradient stop rather than a blend so that
+it reads as half of the dot rather than as a third colour. The marker's
+accessible name says which of the three it is ("Applied to some of the
+selection").
 
-Earlier, a mixed selection counted as **on**. That was defensible when a
-selection was a label or two and stopped being so once a whole layer of them
-could be selected at once: the switch said every label had a symbol while the
-fields under it described the ones that did.
+Earlier, when the heading carried a switch, a mixed selection counted as
+**on**. That was defensible when a selection was a label or two and stopped
+being so once a whole layer of them could be selected at once: the switch
+said every label had a symbol while the fields under it described the ones
+that did.
 
 The rules that follow from it:
 
-- **Clicking a mixed switch turns everything on**, using `lastIconShape` for
-  the labels that had none. It is the convention, and it is the click that
-  reaches a state the switch can describe; the next click turns everything off,
-  so both are one click away. `makeToggle()` resolves this itself — the panel
-  is told the state to move to, not the state that was clicked.
 - **The section stays live**, because there are symbols in the selection to
   style, and the shape shown is the one the labels that have a symbol share.
   Its fields read from those labels too (`getIconValueIds()`), so a mixed
@@ -3557,25 +3591,31 @@ The rules that follow from it:
 - **`icon-size`, `icon-color` and `icon-opacity` go only to the labels that
   have a symbol** (`getIconTargetIds()`, which `applyStyleValues()` takes as
   its optional id set). One of those on a label with no `icon` draws nothing
-  and adds a column to the user's table. So styling a symbol still never
-  creates one, and the switch remains the only way to ask for that — which is
-  the rule that replaced an earlier behavior where styling a symbol that did
-  not exist quietly created one.
-- **A shape is the exception and does apply to every selected label**, because
-  choosing a shape for a group is a plain statement about all of it. The size
-  it gives the labels that had no symbol is the one already shared in the
-  selection rather than the default.
+  and adds a column to the user's table. So styling a symbol never creates
+  one — the rule that replaced an earlier behavior where styling a symbol
+  that did not exist quietly created one.
+- **A shape does apply to every selected label**, because choosing a shape
+  for a group is a plain statement about all of it, and that is how a mixed
+  selection is given symbols throughout. The size it gives the labels that
+  had no symbol is the one already shared in the selection rather than the
+  default.
+- **A halo's colour, likewise, goes to every label**, and shows mixed — blank,
+  with a split swatch — over a selection where only some labels have a halo.
+  The labels that had none are given the width the selection's halos share,
+  or the default. One `-labels` command gives that width to every target,
+  which also brings halos that differed in width into line.
+- **The × removes the style from every selected label**.
 
-With no symbol anywhere the section is off and inert as before, and its fields
-go on showing what the target carries, greyed — narrowing there would show the
-values held for the next label instead of the ones stored on the selection.
+With no symbol anywhere the section's size and colour are inert as before,
+and go on showing what the target carries, greyed — narrowing there would
+show the values held for the next label instead of the ones stored on the
+selection.
 
 `getToggleState()` in `gui-label-style-state.mjs` is the whole decision, over
-one flag per label, and is tested directly. Reported to a screen reader as
-`aria-checked="mixed"`, which means the element is `role="checkbox"` rather
-than `role="switch"`: `mixed` is legal for the first and not the second, and a
-switch reporting a mixed selection as unchecked would say the one thing the
-third state exists to avoid saying. It still looks and behaves like a switch.
+one flag per label, and is tested directly. The colour scheme panel's
+"neutral colour" control is the one switch left in the style panels
+(`makePanelToggle()`), and it keeps the `role="checkbox"` with
+`aria-checked="mixed"` that the section switches had.
 
 ##### How the controls are drawn
 
@@ -3654,8 +3694,9 @@ and round-cornered here and 19px and square there.
 What they share is in `gui-panel-controls.mjs` — a section, a colour-and-its-
 opacity row, an action button, a panel button — and in the CSS that is now
 keyed on `.label-style-panel`, which every style panel carries. The label
-panel keeps its own assembly of the colour rows, because its colours are gated
-by the section switches, but builds each field with the same
+panel keeps its own assembly of the colour rows, because some of its colours
+are inert until their section has a style to colour, but builds each field
+with the same
 `makeColorOpacityField()`, and the metrics, the
 disabled look, the caption sizes and the split-row grid are one set of rules
 for all four.
@@ -4636,13 +4677,16 @@ panel's reading of such a selection: "mixed" in the font menu, the size
 placeholder and the colour field with its swatch split, and each of them back
 to a value, an unmarked swatch and its own placeholder once the labels agree.
 
-And in `browser-tests/label-icon-toggle.spec.mjs`, the Icon switch over a
-selection of two labels, one with a symbol and one without: the switch mixed
-and reported as `aria-checked="mixed"` with the section still live and the
-shared shape shown; on and off when the selection agrees; a click on a mixed
-switch turning every label on and the next one turning them all off; a symbol
-size reaching only the label that has a symbol, and a shape reaching both and
-carrying the size the selection already shared. `getToggleState()` and the select predicates
+And in `browser-tests/label-icon-section.spec.mjs`, the Icon section over a
+selection of two labels, one with a symbol and one without: the heading marked
+mixed, with the section still live and the shared shape shown; on and off when
+the selection agrees, with the shapes live either way; the × taking the symbol
+and its settings off both; a symbol size reaching only the label that has a
+symbol, and a shape reaching both and carrying the size the selection already
+shared. `browser-tests/label-callout-panel.spec.mjs` covers the opening and
+closing of sections, which changes no data and does not follow the selection,
+and a halo added by its colour, with a width set beforehand, and removed by
+emptying it. `getToggleState()` and the select predicates
 themselves are in `test/gui-label-tool-state-test.mjs`: what each kind matches,
 that a property left unset matches the default it renders as while an unset
 font is its own value, that position and colour do not count as text style,

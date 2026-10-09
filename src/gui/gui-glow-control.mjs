@@ -1,16 +1,15 @@
 import { El } from './gui-el';
 import { internal } from './gui-core';
-import { makeColorRow, makePanelSection, makePanelToggle } from './gui-panel-controls';
+import { makeCollapsibleSection, makeColorRow } from './gui-panel-controls';
 import { SizeField } from './gui-size-field';
 import { formatOpacityPct } from './gui-style-values';
 
 // The polygon panel's "Effects" section: an outer and an inner glow, each a
 // color, an opacity and a width. See svg-glow.mjs for how they are drawn.
 //
-// A glow is there when its color is set, so each glow is a color row with no
-// switch of its own: picking a color adds the glow, and emptying the color
-// field removes it. The section's switch opens the section, and switching it
-// off removes both glows and their settings.
+// A glow is there when its color is set, so each glow is a color row: picking
+// a color adds the glow, and emptying the color field removes it. The
+// heading's × removes both glows and their settings.
 //
 // A width or opacity typed while no feature has the glow is kept, and goes
 // with the color when one is picked.
@@ -25,26 +24,20 @@ export var glowTypes = ['outer', 'inner'];
 var glowTitles = {outer: 'Outer glow', inner: 'Inner glow'};
 
 export function GlowEffectsControl(parent, opts) {
-  var section = makePanelSection(parent, 'Effects');
   var rows = {};
-  // Switched on, with no glow to show yet.
-  var opened = false;
   var pending = {outer: {}, inner: {}};
-  var toggle = makePanelToggle(section.findChild('.label-style-section-title'), {
-    title: 'Add glow effects',
-    className: 'layer-effects-toggle',
-    onChange: function(on) {
-      var edits;
-      opened = on;
+  var heading = makeCollapsibleSection(parent, 'Effects', {
+    onToggle: function(open) {
+      if (!open) hidePickers();
+    },
+    onRemove: function() {
       pending = {outer: {}, inner: {}};
-      edits = on ? [] : getEffectsOffEdits(opts.getRecords(), opts.getTargetIds());
-      if (edits.length > 0) {
-        opts.applyEdits(edits, 'Remove glow effects');
-      } else {
-        update();
-      }
-    }
+      opts.applyEdits(getEffectsOffEdits(opts.getRecords(), opts.getTargetIds()),
+        'Remove glow effects');
+    },
+    removeTitle: 'Remove glow effects'
   });
+  var section = heading.section.addClass('layer-effects-section');
   glowTypes.forEach(function(type) {
     rows[type] = addGlowRow(type);
   });
@@ -54,7 +47,6 @@ export function GlowEffectsControl(parent, opts) {
   this.hidePickers = hidePickers;
 
   this.reset = function() {
-    opened = false;
     pending = {outer: {}, inner: {}};
     hidePickers();
   };
@@ -141,11 +133,7 @@ export function GlowEffectsControl(parent, opts) {
   function update() {
     var records = opts.getRecords();
     var ids = opts.getTargetIds();
-    var state = getEffectsState(records, ids);
-    if (state != 'off') opened = true;
-    toggle.setState(state == 'off' && opened ? 'on' : state);
-    section.classed('collapsed', state == 'off' && !opened);
-    if (state == 'off' && !opened) hidePickers();
+    heading.setPresence(getEffectsState(records, ids));
     glowTypes.forEach(function(type) {
       updateGlowRow(type, records, ids);
     });

@@ -8,7 +8,7 @@ import {
   claimFieldKeys, isTextInput, opensAMenu, releasePanelFocus
 } from './gui-panel-focus';
 import {
-  makeColorOpacityField, makePanelButton, makePanelSection, makePanelToggle,
+  makeColorOpacityField, makeCollapsibleSection, makePanelButton,
   setPanelButtonDisabled
 } from './gui-panel-controls';
 import { parseOpacityValue, formatOpacityPct } from './gui-style-values';
@@ -57,15 +57,14 @@ var calloutGapField = 'callout-gap';
 var backgroundField = 'label-background';
 var backgroundOpacityField = 'label-background-opacity';
 var paddingField = 'label-padding';
-var defaultCalloutShape = 'line';
 var defaultCalloutWidth = 1;
 var defaultFontSize = 12;
 var defaultFontStyle = 'normal';
 var defaultFontWeight = '400';
 var defaultLabelColor = '#000000';
 var defaultIconColor = '#000000';
-// The width a halo is switched on at: past the edge of the glyphs, so a
-// stroke of twice this.
+// The width a halo is given when a colour adds it: past the edge of the
+// glyphs, so a stroke of twice this.
 var defaultHaloWidth = 2;
 var defaultHaloColor = internal.svg.DEFAULT_HALO_COLOR;
 // The line height a label without one is drawn with, shown as a placeholder
@@ -113,7 +112,7 @@ var savedStyleFields = [
   calloutGapField
 ];
 var labelPositions = ['nw', 'n', 'ne', 'w', 'c', 'e', 'sw', 's', 'se'];
-// The position an icon moves a centred label to when it is switched on: upper
+// The position an icon moves a centred label to when it is added: upper
 // right, the conventional first choice for a point label and the one a
 // cartographer would have to undo least often.
 var labelPositionBesideIcon = 'ne';
@@ -129,8 +128,8 @@ var labelDragModes = [{
   label: 'Draggable',
   title: 'Dragging a label\'s text offsets it from its anchor'
 }];
-// No "none" among the shapes: whether a label has a symbol at all is what the
-// section's toggle says, which leaves these four to answer only which one.
+// No "none" among the shapes: a symbol is taken off by the × in the section's
+// heading, which leaves these to answer only which one.
 var iconTypes = [{
   name: 'circle'
 }, {
@@ -176,9 +175,9 @@ var alignButtonSymbols = {
   center: '<line x1="3" y1="4.5" x2="13" y2="4.5"></line><line x1="5.5" y1="8" x2="10.5" y2="8"></line><line x1="4" y1="11.5" x2="12" y2="11.5"></line>',
   right: '<line x1="3" y1="4.5" x2="13" y2="4.5"></line><line x1="8" y1="8" x2="13" y2="8"></line><line x1="5" y1="11.5" x2="13" y2="11.5"></line>'
 };
-// As with icons, no "none" among the shapes: the section's switch says whether
-// there is a callout. The ends do have one, since a line with no marker is a
-// shape of its own rather than the absence of a callout.
+// As with icons, no "none" among the shapes: the section's × takes a callout
+// off. The ends do have one, since a line with no marker is a shape of its own
+// rather than the absence of a callout.
 var calloutShapes = [{
   name: 'line',
   title: 'straight'
@@ -230,16 +229,15 @@ export function LabelTool(gui) {
   // label-style-panel carries the styling the point and layer panels share; the
   // second class is this panel's own, as theirs are
   var panel = El('div').addClass('label-style-panel text-style-panel rollover').appendTo(parent).hide();
-  var presetControl, fontSelect, fontStyleSelect, fontSizeInput, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, dragModeBtns, haloToggle, haloWidthInput, haloColorFieldBox, haloColorChit, haloColorInput, haloColorPicker, haloOpacityInput, iconToggle, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, haloSection, iconSection, calloutSection, calloutToggle, calloutShapeGroupEl, calloutShapeBtns, calloutEndGroupEl, calloutEndBtns, calloutColorFieldBox, calloutColorChit, calloutColorInput, calloutColorPicker, calloutOpacityInput, calloutWidthInput, calloutEndSizeInput, calloutGapInput, backgroundColorFieldBox, backgroundColorChit, backgroundColorInput, backgroundColorPicker, backgroundOpacityInput, paddingInput, editingStatus, clearLink, closeBtn, hit;
+  var presetControl, fontSelect, fontStyleSelect, fontSizeInput, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, dragModeBtns, haloWidthInput, haloColorFieldBox, haloColorChit, haloColorInput, haloColorPicker, haloOpacityInput, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, haloControl, iconControl, calloutControl, calloutShapeGroupEl, calloutShapeBtns, calloutEndGroupEl, calloutEndBtns, calloutColorFieldBox, calloutColorChit, calloutColorInput, calloutColorPicker, calloutOpacityInput, calloutWidthInput, calloutEndSizeInput, calloutGapInput, backgroundColorFieldBox, backgroundColorChit, backgroundColorInput, backgroundColorPicker, backgroundOpacityInput, paddingInput, editingStatus, clearLink, closeBtn, hit;
   var fontOptionsRendered = false;
-  // The shape the toggle turns back on, so that switching a symbol off and on
-  // again does not silently change a star into a circle.
+  // The shape the symbol's size and colour defaults are shown for while there
+  // is no symbol: the last one shown.
   var lastIconShape = defaultIconShape;
   var shownIconTypes = null;
-  // Likewise the halo's width, which is what switching one off removes.
-  var lastHaloWidth = defaultHaloWidth;
-  // And the callout's shape.
-  var lastCalloutShape = defaultCalloutShape;
+  // A halo's width and opacity set while no target has a halo, which go on
+  // with the colour that adds one: {width, opacity}.
+  var haloPending = {};
   // In the label tool the panel can be hidden, for room to place labels, from
   // its × or the toolbar's Styles button; it stays hidden for the rest of the
   // session, each time the tool is opened, until it is shown again.
@@ -371,7 +369,7 @@ export function LabelTool(gui) {
     // row is the same shape -- the colour with its opacity in one field, and
     // the value that qualifies it most closely beside it -- so that each reads
     // as a variation on the first rather than as a different kind of control.
-    var textSection = addSection('Text');
+    var textSection = addSection('Text', {open: true}).section;
 
     // The controls whose own contents say what they are -- a font name, a
     // size beside a font style -- carry no label. The ones that would be a bare
@@ -451,9 +449,9 @@ export function LabelTool(gui) {
     El('span').appendTo(lineHeightCell).text('Line height');
     lineHeightInput = makeMeasureInput(lineHeightCell, lineHeightField, lineHeightPlaceholder);
 
-    // No switch, unlike the halo's: an empty colour is "no background", as an
-    // empty text colour is "no fill", and the padding means something without
-    // one -- it moves a callout and a position's offset out from the text.
+    // An empty colour is "no background", as an empty text colour is "no
+    // fill", and the padding means something without one -- it moves a
+    // callout and a position's offset out from the text.
     var backgroundRow = El('div').addClass('label-style-row label-split-row').appendTo(textSection);
     var backgroundColorCell = El('div').addClass('label-split-cell label-color-row label-background-color-row').appendTo(backgroundRow);
     El('span').appendTo(backgroundColorCell).text('Background');
@@ -499,18 +497,16 @@ export function LabelTool(gui) {
     var positionRow = El('label').addClass('label-style-row').appendTo(textSection);
     El('span').appendTo(positionRow).text('Offset from anchor');
 
-    // A halo is a yes/no that its three values then qualify, as a symbol is, so
-    // it is switched the same way and its controls are inert while it is off.
-    // Its row is the shape of the Text section's colour row: a colour and its
-    // opacity, and a width in the narrow column beside them, where letter
-    // spacing sits above.
-    haloSection = addSection('Halo');
-    var haloTitle = haloSection.findChild('.label-style-section-title');
-    haloToggle = makePanelToggle(haloTitle, {
-      title: 'Draw a halo around the text',
-      className: 'label-halo-toggle',
-      onChange: setHaloOn
+    // A halo is there when it has a colour, as a line's stroke is: picking one
+    // adds the halo and emptying the field removes it. Its row is the shape of
+    // the Text section's colour row: a colour and its opacity, and a width in
+    // the narrow column beside them, where letter spacing sits above.
+    haloControl = addSection('Halo', {
+      className: 'label-halo-section',
+      onRemove: removeHalo,
+      removeTitle: 'Remove halo'
     });
+    var haloSection = haloControl.section;
 
     var haloColorRow = El('div').addClass('label-style-row label-split-row').appendTo(haloSection);
     var haloColorCell = El('div').addClass('label-split-cell label-color-row label-halo-color-row').appendTo(haloColorRow);
@@ -546,18 +542,16 @@ export function LabelTool(gui) {
       onDone: releaseFocus
     });
 
-    // Whether the label has a symbol is one question and which symbol it has is
-    // another, so the first is a switch on the section's heading rather than a
-    // fifth shape button reading "none". Everything below it is inert while it
-    // is off, which is also the honest reading of an icon-size or icon-color on
-    // a label with no icon: nothing to apply it to.
-    iconSection = addSection('Icon');
-    var iconTitle = iconSection.findChild('.label-style-section-title');
-    iconToggle = makePanelToggle(iconTitle, {
-      title: 'Draw a symbol at the label anchor',
-      className: 'label-icon-toggle',
-      onChange: setIconOn
+    // Choosing a shape adds a symbol, and the heading's × takes it off. The
+    // size and colour are inert until there is a symbol, which is also the
+    // honest reading of an icon-size or icon-color on a label with no icon:
+    // nothing to apply it to.
+    iconControl = addSection('Icon', {
+      className: 'label-icon-section',
+      onRemove: removeIcon,
+      removeTitle: 'Remove symbol'
     });
+    var iconSection = iconControl.section;
     // The shapes have the whole row, so there is room for more of them, and
     // the size sits beside the colour below, as the halo's width does.
     var iconRow = El('div').addClass('label-style-row label-icon-shapes-row').appendTo(iconSection);
@@ -649,18 +643,18 @@ export function LabelTool(gui) {
     });
   }
 
-  // Switched like the halo and the symbol, and shaped like them: the choices on
-  // the first line, a colour and its opacity on the next, then the sizes. The
+  // Added and removed like the symbol, and shaped like it: the choices on the
+  // first line, a colour and its opacity on the next, then the sizes. The
   // line's geometry -- its corner or bend, where it meets the text, how far it
   // stops short of the anchor -- is a matter of positions, which are dragged on
   // the map rather than typed here. See docs/development/text-annotation-design.md.
   function initCalloutSection() {
-    calloutSection = addSection('Callout');
-    calloutToggle = makePanelToggle(calloutSection.findChild('.label-style-section-title'), {
-      title: 'Draw a line from the label anchor to its text',
-      className: 'label-callout-toggle',
-      onChange: setCalloutOn
+    calloutControl = addSection('Callout', {
+      className: 'label-callout-section',
+      onRemove: removeCallout,
+      removeTitle: 'Remove callout'
     });
+    var calloutSection = calloutControl.section;
 
     // Each choice in the wide column with the size that qualifies it beside
     // it, as Alignment has Line height: the line's shape and its width, then
@@ -766,11 +760,16 @@ export function LabelTool(gui) {
     El(svg).appendTo(btn);
   }
 
-  // opts.minor: a heading in the smaller grey of a row label rather than the
-  // bold of Text and Icon. Label position gets one: it is a single control, and
-  // giving it the weight of those two would overstate it.
+  // A colour picker hangs from its field, so one left open in a section being
+  // closed would change a colour nobody can see.
   function addSection(title, opts) {
-    return makePanelSection(panel, title, opts);
+    var control = makeCollapsibleSection(panel, title, Object.assign({
+      onToggle: function(open) {
+        if (!open) hideColorPicker();
+      }
+    }, opts));
+    if (opts && opts.className) control.section.addClass(opts.className);
+    return control;
   }
 
   function addColorOpacityField(parent, chit, input, onOpacity) {
@@ -849,6 +848,7 @@ export function LabelTool(gui) {
   function hidePanel() {
     panel.hide();
     hideColorPicker();
+    haloPending = {};
     gui.state.label_style_panel_open = false;
     textBtn.removeClass('selected');
     clearSelectionDisplay();
@@ -1001,10 +1001,6 @@ export function LabelTool(gui) {
     var iconColor = getShownValue(iconIds, iconColorField, {useDefault: true,
       defaultValue: getDefaultIconColor(iconShape) || defaultIconColor});
     var iconOpacity = getShownValue(iconIds, iconOpacityField, {useDefault: true, defaultValue: 1});
-    var haloIds = getHaloValueIds();
-    var haloWidth = getShownValue(haloIds, haloWidthField, {useDefault: true, defaultValue: lastHaloWidth});
-    var haloColor = getShownValue(haloIds, haloColorField, {useDefault: true, defaultValue: defaultHaloColor});
-    var haloOpacity = getShownValue(haloIds, haloOpacityField, {useDefault: true, defaultValue: 1});
     var backgroundColor = getShownValue(ids, backgroundField);
     var backgroundOpacity = getShownValue(ids, backgroundOpacityField, {useDefault: true, defaultValue: 1});
     var padding = getShownValue(ids, paddingField);
@@ -1022,34 +1018,14 @@ export function LabelTool(gui) {
     updateBackgroundControls(backgroundColor, backgroundOpacity, padding, ids);
     updateCssControl(css);
     updatePositionButtons(showValues ? posVal : '', ids);
-    var haloOff = updateHaloToggle();
-    updateHaloWidthControl(haloWidth, haloOff);
-    updateSwatchField(haloColorInput, haloColorFieldBox, haloColorChit,
-      haloColorPicker, haloColor, haloOff);
-    updateOpacityControl(haloOpacityInput, haloOpacity, haloOff);
-    // The symbol's controls keep showing their values while the switch is off,
-    // greyed: what they show is what the symbol comes back as.
+    updateHaloControls();
+    // The symbol's size and colour show their defaults, greyed, while there is
+    // no symbol: what they show is what a shape will add.
     var iconOff = updateIconControls(showValues ? iconVal : '');
     updateIconSizeControls(iconSize, iconOff);
     updateIconColorControls(iconColor, iconOff);
     updateOpacityControl(iconOpacityInput, iconOpacity, iconOff);
-    var calloutOff = updateCalloutValueControls();
-    setSectionCollapsed(haloSection, haloOff, haloColorPicker);
-    setSectionCollapsed(iconSection, iconOff, iconColorPicker);
-    setSectionCollapsed(calloutSection, calloutOff, calloutColorPicker);
-  }
-
-  // A section whose switch is off shows only its heading. What is under it is
-  // inert while it is off, so hiding it loses nothing, and the panel stays short
-  // enough to hold all of them. The values are kept, greyed, for the moment it
-  // is switched back on, which is what they come back as.
-  //
-  // An open picker is closed with its section: it hangs from the colour field,
-  // and a picker left open over a hidden field would change a colour nobody
-  // can see.
-  function setSectionCollapsed(section, collapsed, picker) {
-    section.classed('collapsed', collapsed);
-    if (collapsed && picker.visible()) picker.hide();
+    updateCalloutValueControls();
   }
 
   // Every field that can show a value can also show nothing, which is why each
@@ -1338,36 +1314,38 @@ export function LabelTool(gui) {
     setMixedPlaceholder(cssInput, shown.mixed);
   }
 
-  // The toggle reads the data rather than holding a state of its own: a symbol
-  // is on when the target has one, which is what makes it follow an undo.
+  // The heading's marker reads the data rather than holding a state of its
+  // own: a symbol is there when the target has one, which is what makes it
+  // follow an undo.
   //
-  // A selection where only some labels have a symbol shows the switch mixed,
-  // and the section stays usable: there are symbols in the selection to style.
-  // What the controls below it then act on narrows to the labels that have one
-  // -- see getIconTargetIds() -- so styling a symbol never creates one. The
-  // switch is still the only way to ask for that, and clicking a shape is the
-  // one thing in the section that applies to every selected label, because
-  // choosing a shape for a group is a plain statement about all of it.
+  // A selection where only some labels have a symbol is marked mixed, and the
+  // section stays usable: there are symbols in the selection to style. What
+  // the size and colour then act on narrows to the labels that have one --
+  // see getIconTargetIds() -- so styling a symbol never creates one. Clicking
+  // a shape is the one thing in the section that applies to every selected
+  // label, because choosing a shape for a group is a plain statement about
+  // all of it, and it is how a symbol is added.
   function updateIconControls(iconVal) {
     var enabled = controlsEnabled();
     var state = enabled ? getIconState() : 'off';
     var off = state == 'off';
     if (iconVal) lastIconShape = iconVal;
-    iconToggle.setState(state);
-    iconToggle.setDisabled(!enabled);
+    iconControl.setPresence(state);
     // The group is faded as a whole rather than button by button, so that the
     // border the buttons share fades with them -- a live border around dead
     // buttons is the one part of a disabled control that still looks usable.
-    iconGroupEl.classed('disabled', off);
+    iconGroupEl.classed('disabled', !enabled);
     getShownIconTypes().forEach(function(icon) {
       iconBtns[icon.name].classed('selected', !off && icon.name == iconVal);
-      setPanelButtonDisabled(iconBtns[icon.name], off);
+      setPanelButtonDisabled(iconBtns[icon.name], !enabled);
     });
     return off;
   }
 
-  function setIconOn(on) {
-    applyIcon(on ? lastIconShape : '');
+  // Everything a symbol is drawn with goes with it, so that a label with no
+  // symbol carries no icon-size or icon-color that draws nothing.
+  function removeIcon() {
+    applyStyleValues(getRemoveValues([iconField, iconSizeField, iconColorField, iconOpacityField]));
   }
 
   function updateIconSizeControls(shown, iconOff) {
@@ -1381,8 +1359,8 @@ export function LabelTool(gui) {
       iconColorPicker, shown, iconOff);
   }
 
-  // A colour field belonging to a section with a switch: the symbol's and the
-  // halo's, which both go on showing their colour, greyed, while switched off.
+  // A colour field that can be inert: the symbol's, which goes on showing its
+  // colour, greyed, while there is no symbol, and the background's.
   function updateSwatchField(input, fieldBox, chit, picker, shown, sectionOff) {
     var colorVal = shown.value;
     var disabled = sectionOff || !controlsEnabled();
@@ -1403,25 +1381,39 @@ export function LabelTool(gui) {
     }
   }
 
-  // The switch reads the data, as the symbol's does, so that it follows an
-  // undo. A halo is on for a label whose halo-width is above 0.
+  // The marker reads the data, as the symbol's does, so that it follows an
+  // undo. A label has a halo when its halo-width is above 0, which is the
+  // renderer's rule, and one with no halo-color is drawn in white -- so the
+  // colour field shows white for it rather than the blank that means "no halo".
   //
-  // The width, colour and opacity go on showing while it is off, greyed: the
-  // colour and opacity stay on the label, and the width is the one the halo
-  // comes back at.
-  function updateHaloToggle() {
+  // With no halo anywhere the colour is blank and the width and opacity are
+  // live, showing what a colour will add the halo with: the width and
+  // opacity set since, or the default width as a placeholder. A selection
+  // where only some labels have a halo shows the colour mixed, and the width
+  // and opacity of the labels that have one.
+  function updateHaloControls() {
     var enabled = controlsEnabled();
     var state = enabled ? getHaloState() : 'off';
-    haloToggle.setState(state);
-    haloToggle.setDisabled(!enabled);
-    return state == 'off';
-  }
-
-  function updateHaloWidthControl(shown, haloOff) {
-    if (!haloOff && Number(shown.value) > 0) lastHaloWidth = Number(shown.value);
-    haloWidthInput.setValue(shown.value || '');
-    haloWidthInput.setPlaceholder(shown.mixed ? MIXED_TEXT : '');
-    haloWidthInput.setDisabled(haloOff || !controlsEnabled());
+    var ids = getHaloTargetIds();
+    var color, width, opacity;
+    haloControl.setPresence(state);
+    if (state == 'off') {
+      color = {value: '', mixed: false};
+      width = {value: haloPending.width || '', mixed: false};
+      opacity = {value: 'opacity' in haloPending ? haloPending.opacity : '', mixed: false};
+    } else {
+      color = state == 'mixed' ? {value: '', mixed: true} :
+        getShownValue(ids, haloColorField, {useDefault: true, defaultValue: defaultHaloColor});
+      width = getShownValue(ids, haloWidthField);
+      opacity = getShownValue(ids, haloOpacityField, {useDefault: true, defaultValue: 1});
+    }
+    updateSwatchField(haloColorInput, haloColorFieldBox, haloColorChit,
+      haloColorPicker, color, false);
+    haloWidthInput.setValue(width.value || '');
+    haloWidthInput.setPlaceholder(width.mixed ? MIXED_TEXT :
+      state == 'off' && enabled ? String(defaultHaloWidth) : '');
+    haloWidthInput.setDisabled(!enabled);
+    updateOpacityControl(haloOpacityInput, opacity, false);
   }
 
   function getHaloState() {
@@ -1435,30 +1427,58 @@ export function LabelTool(gui) {
     }));
   }
 
-  // Switching a halo on gives every target the same width: the one the
-  // selection's halos already share, where they share one, so that a mixed
+  // A colour gives every target a halo, and an emptied field removes it.
+  //
+  // Labels that had none are given a width as well: the one set while there
+  // was no halo, or else the one the selection's halos share, so that a mixed
   // selection is brought into line with the labels that had a halo rather
-  // than reset. Switching it off removes the width and leaves the colour and
-  // opacity, which is how a halo switched off and on again comes back as it
-  // was.
-  function setHaloOn(on) {
-    var width = on ? getNumericSize(getHaloValueIds(), haloWidthField, lastHaloWidth) : '';
-    applyStyleValues([[haloWidthField, width]]);
+  // than reset, or else the default. One command gives the width to every
+  // target, which brings halos that differed in width into line too.
+  function applyHaloColor(color) {
+    var state = getHaloState();
+    var values = [[haloColorField, color]];
+    if (!color) {
+      removeHalo();
+      return;
+    }
+    if (state != 'on') {
+      values.push([haloWidthField, getNewHaloWidth(state)]);
+      if (haloPending.opacity < 1) values.push([haloOpacityField, haloPending.opacity]);
+    }
+    haloPending = {};
+    applyStyleValues(values);
   }
 
+  function getNewHaloWidth(state) {
+    if (haloPending.width > 0) return haloPending.width;
+    if (state == 'off') return defaultHaloWidth;
+    return getNumericSize(getHaloTargetIds(), haloWidthField, defaultHaloWidth);
+  }
+
+  // Everything a halo is drawn with goes with it, so that a label with no
+  // halo carries no halo-color that draws nothing.
+  function removeHalo() {
+    haloPending = {};
+    applyStyleValues(getRemoveValues([haloWidthField, haloColorField, haloOpacityField]));
+  }
+
+  // With no halo to give it to, a width is kept for the colour that adds one.
   function applyHaloWidth(value) {
+    if (getHaloState() == 'off') {
+      haloPending.width = value;
+      updateControls();
+      return;
+    }
     applyStyleValues([[haloWidthField, value]], getHaloTargetIds());
   }
 
   function nudgeHaloWidth(delta) {
-    var width = getNumericSize(getHaloTargetIds(), haloWidthField, lastHaloWidth);
-    if (!controlsEnabled() || getHaloState() == 'off') return;
+    var off = getHaloState() == 'off';
+    var width = off ? haloPending.width || defaultHaloWidth :
+      getNumericSize(getHaloTargetIds(), haloWidthField, defaultHaloWidth);
+    if (!controlsEnabled()) return;
     width = Math.max(0.5, Math.round((width + delta) * 10) / 10);
     applyHaloWidth(width);
-  }
-
-  function applyHaloColor(color) {
-    applyStyleValues([[haloColorField, color]], getHaloTargetIds());
   }
 
   // An emptied field removes the background.
@@ -1491,12 +1511,17 @@ export function LabelTool(gui) {
 
   // Full opacity is stored as no halo-opacity, as it is for the text's own.
   function applyHaloOpacity(value) {
+    if (getHaloState() == 'off') {
+      haloPending.opacity = value;
+      updateControls();
+      return;
+    }
     applyStyleValues([[haloOpacityField, value >= 1 ? '' : value]], getHaloTargetIds());
   }
 
-  // The labels a halo's width, colour or opacity goes to: the targets that
-  // have a halo, for the reason the symbol's values go only to labels with a
-  // symbol. Empty for "new labels", as there.
+  // The labels a halo's width or opacity goes to: the targets that have a
+  // halo, for the reason the symbol's values go only to labels with a symbol.
+  // Empty for "new labels", as there.
   function getHaloTargetIds() {
     var table = getActiveTable();
     return getTargetIds().filter(function(id) {
@@ -1504,14 +1529,25 @@ export function LabelTool(gui) {
     });
   }
 
-  // As getIconValueIds(): the labels the section shows the values of.
-  function getHaloValueIds() {
-    var ids = getHaloTargetIds();
-    return ids.length > 0 ? ids : getTargetIds();
+  // [field, ''] for each of @fields that a target carries, which is how a
+  // style is removed: -labels writes an empty value as an empty field, and a
+  // property no target had should not leave an empty column behind. With no
+  // target -- the style of the next label -- all of them.
+  function getRemoveValues(fields) {
+    var ids = getTargetIds();
+    var table = getActiveTable();
+    return fields.filter(function(field) {
+      return ids.length === 0 || ids.some(function(id) {
+        var val = table && table.getRecordAt(id) ? table.getRecordAt(id)[field] : null;
+        return val !== undefined && val !== null && String(val) !== '';
+      });
+    }).map(function(field) {
+      return [field, ''];
+    });
   }
 
-  // The switch reads the data, as the halo's does. A callout is on for a label
-  // whose callout names a shape.
+  // The marker reads the data, as the halo's does. A callout is there for a
+  // label whose callout names a shape.
   function getCalloutState() {
     var ids = getTargetIds();
     var table = getActiveTable();
@@ -1538,16 +1574,16 @@ export function LabelTool(gui) {
     return ids.length > 0 ? ids : getTargetIds();
   }
 
-  // Switching a callout on gives every target the shape the selection's
-  // callouts share, or the last one used. Switching it off removes the shape
-  // alone, so that a callout switched off and on again comes back with the
-  // corner, the attachment and the look it had.
-  function setCalloutOn(on) {
-    var shape = on ? getCommonValue(getCalloutTargetIds(), calloutField) || lastCalloutShape : '';
-    applyStyleValues([[calloutField, shape]]);
+  // Everything a callout is drawn with goes with it, its corner and
+  // attachment included: those were placed for the line that was there.
+  function removeCallout() {
+    applyStyleValues(getRemoveValues([calloutField, calloutEndField, calloutEndSizeField,
+      calloutColorField, calloutOpacityField, calloutWidthField, calloutGapField,
+      'callout-via', 'callout-attach']));
   }
 
-  // A shape is a plain statement about every selected label, as a symbol's is.
+  // A shape is a plain statement about every selected label, as a symbol's
+  // is, and choosing one is how a callout is added.
   function applyCalloutShape(shape) {
     applyStyleValues([[calloutField, shape]]);
   }
@@ -1634,10 +1670,8 @@ export function LabelTool(gui) {
     var end = enabled ? getCommonValue(ids, calloutEndField, {useDefault: true, defaultValue: 'none'}) : '';
     var width = getShownValue(ids, calloutWidthField, {useDefault: true, defaultValue: defaultCalloutWidth});
     var gap = getCalloutGapShown(ids);
-    if (shape && shape != 'none') lastCalloutShape = shape;
-    calloutToggle.setState(state);
-    calloutToggle.setDisabled(!enabled);
-    updateButtonGroup(calloutShapeGroupEl, calloutShapeBtns, off ? '' : shape, off);
+    calloutControl.setPresence(state);
+    updateButtonGroup(calloutShapeGroupEl, calloutShapeBtns, off ? '' : shape, !enabled);
     updateButtonGroup(calloutEndGroupEl, calloutEndBtns, off ? '' : end, off);
     updateSwatchField(calloutColorInput, calloutColorFieldBox, calloutColorChit,
       calloutColorPicker, getCalloutColorShown(ids), off);
@@ -2033,22 +2067,18 @@ export function LabelTool(gui) {
 
   function applyIcon(iconName) {
     var ids = getTargetIds();
-    var styles = [[iconField, iconName || '']];
-    if (iconName) {
-      // The size the symbols in the selection already share, where they share
-      // one: a shape applied to a mixed selection gives the labels that had no
-      // symbol the size of the ones that did, rather than resetting them all to
-      // the default. A size or colour that was the old shape's default becomes
-      // the new one's (see getIconShapeChange()).
-      addIconShapeDefaults(styles, iconName, getIconValueIds());
-      // The symbol's own opacity goes on with it, because the label's opacity
-      // is applied to both elements: without this, text set to 50% would give
-      // a half-faded symbol while the Icon section showed it at 100%.
-      styles.push([iconOpacityField, getIconOpacityToWrite()]);
-    } else {
-      styles.push([iconSizeField, 0]);
-    }
-    addIconPositionChange(styles, ids, !!iconName);
+    var styles = [[iconField, iconName]];
+    // The size the symbols in the selection already share, where they share
+    // one: a shape applied to a mixed selection gives the labels that had no
+    // symbol the size of the ones that did, rather than resetting them all to
+    // the default. A size or colour that was the old shape's default becomes
+    // the new one's (see getIconShapeChange()).
+    addIconShapeDefaults(styles, iconName, getIconValueIds());
+    // The symbol's own opacity goes on with it, because the label's opacity
+    // is applied to both elements: without this, text set to 50% would give
+    // a half-faded symbol while the Icon section showed it at 100%.
+    styles.push([iconOpacityField, getIconOpacityToWrite()]);
+    addIconPositionChange(styles, ids);
     applyStyleValues(styles);
   }
 
@@ -2060,20 +2090,20 @@ export function LabelTool(gui) {
     if ('color' in change) styles.push([iconColorField, change.color]);
   }
 
-  // Switching a symbol on moves a label sitting at the centre out from under
-  // it, in the same command, so that the pair is one undo step and the text
-  // is never briefly drawn over the symbol it just asked for.
+  // Adding a symbol moves a label sitting at the centre out from under it, in
+  // the same command, so that the pair is one undo step and the text is never
+  // briefly drawn over the symbol it just asked for.
   //
-  // Switching one off moves nothing. It used to put the label back to the
-  // centre, which threw away a placement the user had made by hand for the
-  // sake of an invariant -- that text with nothing at its anchor sits on the
-  // anchor -- that was never worth what it cost.
+  // Removing one moves nothing. It used to put the label back to the centre,
+  // which threw away a placement the user had made by hand for the sake of an
+  // invariant -- that text with nothing at its anchor sits on the anchor --
+  // that was never worth what it cost.
   //
   // Not for path labels, whose text runs along a curve: the commands ignore a
-  // position given for one and warn about it, and a warning from switching a
-  // symbol on would be about something the user did not ask for.
-  function addIconPositionChange(styles, ids, iconOn) {
-    if (anyLabelIsOnAPath(ids) || !iconOn) return;
+  // position given for one and warn about it, and a warning from adding a
+  // symbol would be about something the user did not ask for.
+  function addIconPositionChange(styles, ids) {
+    if (anyLabelIsOnAPath(ids)) return;
     if (everyTargetIsCentred(ids)) {
       styles.push(['label-pos', labelPositionBesideIcon]);
     }
@@ -2112,8 +2142,8 @@ export function LabelTool(gui) {
   // some of them do.
   //
   // An icon-size or icon-color on a label with no symbol draws nothing, which
-  // is why the shape, size and colour controls are inert until the toggle puts
-  // a symbol there to style.
+  // is why the size and colour controls are inert until a shape puts a symbol
+  // there to style.
   function getIconState() {
     var ids = getTargetIds();
     var table = getActiveTable();
@@ -2125,7 +2155,7 @@ export function LabelTool(gui) {
   }
 
   // The labels an icon-size, icon-color or icon-opacity goes to: those in the
-  // target that have a symbol, which is all of them unless the switch is mixed.
+  // target that have a symbol, which is all of them unless the section is mixed.
   // Writing one of these to a label with no icon would add a property that
   // draws nothing and a column to the user's table.
   //
@@ -2143,9 +2173,9 @@ export function LabelTool(gui) {
 
   // The labels the section's controls *show* the values of, which is not quite
   // the set they write to: with no symbol anywhere the fields go on showing
-  // what the target carries, greyed, because that is what the symbol comes back
-  // as when the switch is turned on. Narrowing there would show the values held
-  // for the next label instead of the ones stored on the selection.
+  // what the target carries, greyed, because that is what a shape adds the
+  // symbol with. Narrowing there would show the values held for the next label
+  // instead of the ones stored on the selection.
   function getIconValueIds() {
     var ids = getIconTargetIds();
     return ids.length > 0 ? ids : getTargetIds();
@@ -2154,9 +2184,9 @@ export function LabelTool(gui) {
   function getIconOpacityToWrite() {
     var val = parseOpacityValue(iconOpacityInput.node().value);
     if (val !== null) return val;
-    // The field reads blank while the section is off, so a symbol switched off
-    // and on again takes back the fade still stored on the label rather than
-    // being reset to full.
+    // The field reads blank while there is no symbol, so a symbol added to a
+    // label that still carries a fade takes it back rather than being reset
+    // to full.
     var stored = getCommonValue(getIconValueIds(), iconOpacityField, {useDefault: true, defaultValue: 1});
     val = stored === '' ? 1 : Number(stored);
     return isFinite(val) ? val : 1;

@@ -1,46 +1,116 @@
 import { expect, test } from '@playwright/test';
+import {
+  getSectionPresence, openSection, removeSectionStyle, sectionIsOpen
+} from './style-panel-helpers.mjs';
 
-// The Callout section of the label style panel, and the collapsing of every
-// section whose heading carries a switch -- Halo, Icon and Callout -- while
-// that switch is off.
+// The Callout section of the label style panel, and the opening and closing
+// of the panel's sections from their headings.
 //
 // See docs/development/text-annotation-design.md.
 
 var FIXTURE = 'test/data/features/snip/ring_and_line.json';
+var PANEL = '.text-style-panel';
 
-test('sections with a switch collapse to their heading while off', async function({page}) {
+test('sections open and close from their headings, which say what the selection has',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    await oneLabel(page);
+    await selectLabels(page, [0]);
+    // Only Text starts open
+    expect(await sectionIsOpen(page, PANEL, 'label-halo-section')).toBe(false);
+    expect(await sectionIsOpen(page, PANEL, 'label-icon-section')).toBe(false);
+    expect(await sectionIsOpen(page, PANEL, 'label-callout-section')).toBe(false);
+    expect(await sectionIsOpen(page, PANEL, 'label-saved-style-row')).toBe(false);
+    expect(await page.locator(PANEL + ' .label-style-section').first()
+      .evaluate(function(el) { return el.classList.contains('collapsed'); })).toBe(false);
+    expect(await getSectionPresence(page, PANEL, 'label-icon-section')).toBe('off');
+    expect(await page.locator(PANEL + ' .label-icon-section .label-section-remove').isVisible()).toBe(false);
+
+    await clickHeading(page, 'icon');
+    expect(await sectionIsOpen(page, PANEL, 'label-icon-section')).toBe(true);
+    expect(await getLabelField(page, 0, 'icon')).toBeFalsy();
+    await page.locator(PANEL + ' .label-icon-buttons [data-icon="circle"]').click();
+    await expect.poll(function() { return getLabelField(page, 0, 'icon'); }).toBe('circle');
+    expect(await getSectionPresence(page, PANEL, 'label-icon-section')).toBe('on');
+
+    // Closing a section changes no style, and its heading still says what is there
+    await clickHeading(page, 'icon');
+    expect(await sectionIsOpen(page, PANEL, 'label-icon-section')).toBe(false);
+    expect(await getLabelField(page, 0, 'icon')).toBe('circle');
+    expect(await getSectionPresence(page, PANEL, 'label-icon-section')).toBe('on');
+
+    // The × works from a closed section, and leaves it closed
+    await removeSectionStyle(page, PANEL, 'label-icon-section');
+    await expect.poll(function() { return getLabelField(page, 0, 'icon'); }).toBeFalsy();
+    expect(await getLabelField(page, 0, 'icon-size')).toBeFalsy();
+    expect(await getSectionPresence(page, PANEL, 'label-icon-section')).toBe('off');
+    expect(await sectionIsOpen(page, PANEL, 'label-icon-section')).toBe(false);
+    expect(errors).toEqual([]);
+  });
+
+test('a section stays open or closed whatever is selected', async function({page}) {
+  await oneLabel(page);
+  await runCommand(page, '-style icon=circle target=labels');
+  await selectLabels(page, [0]);
+  expect(await sectionIsOpen(page, PANEL, 'label-icon-section')).toBe(false);
+  await clickHeading(page, 'halo');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  await selectLabels(page, [0]);
+  expect(await sectionIsOpen(page, PANEL, 'label-halo-section')).toBe(true);
+  expect(await sectionIsOpen(page, PANEL, 'label-icon-section')).toBe(false);
+});
+
+test('a halo color adds a halo, and an emptied one removes it', async function({page}) {
   var errors = collectPageErrors(page);
   await oneLabel(page);
   await selectLabels(page, [0]);
-  expect(await sectionIsCollapsed(page, 'halo')).toBe(true);
-  expect(await sectionIsCollapsed(page, 'icon')).toBe(true);
-  expect(await sectionIsCollapsed(page, 'callout')).toBe(true);
-  // The Text section has no switch, and never collapses.
-  expect(await page.locator('.text-style-panel .label-style-section').first()
-    .evaluate(function(el) { return el.classList.contains('collapsed'); })).toBe(false);
+  await openSection(page, PANEL, 'label-halo-section');
+  var color = page.locator(PANEL + ' .label-halo-color-row input[type=text]').first();
+  var width = page.locator(PANEL + ' .label-halo-section .size-field-input');
+  // The width a color will add the halo with, shown before there is one
+  expect(await color.inputValue()).toBe('');
+  expect(await width.inputValue()).toBe('');
+  expect(await width.getAttribute('placeholder')).toBe('2');
 
-  await clickToggle(page, 'icon');
-  await expect.poll(function() { return getLabelField(page, 0, 'icon'); }).toBe('circle');
-  expect(await sectionIsCollapsed(page, 'icon')).toBe(false);
-  expect(await page.locator('.text-style-panel .label-icon-buttons').isVisible()).toBe(true);
+  // A width set with no halo is kept for the color, and adds nothing yet
+  await width.fill('3');
+  await width.press('Enter');
+  await page.waitForTimeout(200);
+  expect(await getLabelField(page, 0, 'halo-width')).toBeFalsy();
+  expect(await width.inputValue()).toBe('3');
 
-  await clickToggle(page, 'icon');
-  await expect.poll(function() { return getLabelField(page, 0, 'icon'); }).toBeFalsy();
-  expect(await sectionIsCollapsed(page, 'icon')).toBe(true);
-  expect(await page.locator('.text-style-panel .label-icon-buttons').isVisible()).toBe(false);
+  await color.fill('#ffcc00');
+  await color.press('Enter');
+  await expect.poll(function() { return getLabelField(page, 0, 'halo-color'); }).toBe('#ffcc00');
+  expect(await getLabelField(page, 0, 'halo-width')).toBe(3);
+  expect(await getSectionPresence(page, PANEL, 'label-halo-section')).toBe('on');
+
+  await color.fill('');
+  await color.press('Enter');
+  await expect.poll(function() { return getLabelField(page, 0, 'halo-width'); }).toBeFalsy();
+  expect(await getLabelField(page, 0, 'halo-color')).toBeFalsy();
+  expect(await getSectionPresence(page, PANEL, 'label-halo-section')).toBe('off');
+
+  // A halo with a width and no color is drawn in white, and shows as white
+  await runCommand(page, '-style halo-width=1.5 target=labels');
+  await selectLabels(page, [0]);
+  expect(await color.inputValue()).toBe('#ffffff');
+  expect(await width.inputValue()).toBe('1.5');
   expect(errors).toEqual([]);
 });
 
-test('the callout switch draws a straight line, and the section styles it', async function({page}) {
+test('a callout shape draws the line, and the section styles it', async function({page}) {
   var errors = collectPageErrors(page);
   await oneLabel(page);
   // Far enough from the anchor for a line to have somewhere to go
   await runCommand(page, '-style dx=40 dy=-40 label-pos= target=labels');
   await selectLabels(page, [0]);
+  await openSection(page, PANEL, 'label-callout-section');
 
-  await clickToggle(page, 'callout');
+  await clickCalloutButton(page, 'line');
   await expect.poll(function() { return getLabelField(page, 0, 'callout'); }).toBe('line');
-  expect(await sectionIsCollapsed(page, 'callout')).toBe(false);
+  expect(await getSectionPresence(page, PANEL, 'label-callout-section')).toBe('on');
   expect(await getSelectedButton(page, 0)).toBe('line');
   expect(await getSelectedButton(page, 1)).toBe('none');
   await expect.poll(function() { return countCalloutPaths(page); }).toBe(1);
@@ -54,9 +124,7 @@ test('the callout switch draws a straight line, and the section styles it', asyn
   await clickCalloutButton(page, 'none');
   await expect.poll(function() { return getLabelField(page, 0, 'callout-end'); }).toBeFalsy();
 
-  var gap = page.locator('.text-style-panel .label-callout-toggle')
-    .locator('xpath=ancestor::div[contains(@class,"label-style-section")]')
-    .locator('input.label-measure-input');
+  var gap = page.locator(PANEL + ' .label-callout-gap-row input.label-measure-input');
   await gap.fill('0');
   await gap.press('Enter');
   await expect.poll(function() { return getLabelField(page, 0, 'callout-gap'); }).toBe(0);
@@ -66,15 +134,14 @@ test('the callout switch draws a straight line, and the section styles it', asyn
   await gap.press('Enter');
   await expect.poll(function() { return getLabelField(page, 0, 'callout-gap'); }).toBeFalsy();
 
-  // Off removes the shape alone, so that on again brings back the look it had.
-  await runCommand(page, '-style callout-width=2 target=labels');
+  // The × removes the callout and everything it was drawn with.
+  await runCommand(page, '-style callout-width=2 callout-via=10,-20 target=labels');
   await selectLabels(page, [0]);
-  await clickToggle(page, 'callout');
+  await removeSectionStyle(page, PANEL, 'label-callout-section');
   await expect.poll(function() { return getLabelField(page, 0, 'callout'); }).toBeFalsy();
-  expect(await getLabelField(page, 0, 'callout-width')).toBe(2);
+  expect(await getLabelField(page, 0, 'callout-width')).toBeFalsy();
+  expect(await getLabelField(page, 0, 'callout-via')).toBeFalsy();
   expect(await countCalloutPaths(page)).toBe(0);
-  await clickToggle(page, 'callout');
-  await expect.poll(function() { return getLabelField(page, 0, 'callout'); }).toBe('elbow');
   expect(errors).toEqual([]);
 });
 
@@ -83,6 +150,7 @@ test('the marker size shows the drawn size, and is inert with no marker', async 
   await oneLabel(page);
   await runCommand(page, '-style dx=40 dy=-40 label-pos= callout=line target=labels');
   await selectLabels(page, [0]);
+  await openSection(page, PANEL, 'label-callout-section');
   var size = page.locator('.text-style-panel .label-callout-end-size-row .size-field-input');
   expect(await size.isDisabled()).toBe(true);
 
@@ -109,6 +177,7 @@ test('a ring circles the anchor, sized by its diameter', async function({page}) 
   await oneLabel(page);
   await runCommand(page, '-style dx=40 dy=-60 label-pos= callout=line callout-width=1.5 target=labels');
   await selectLabels(page, [0]);
+  await openSection(page, PANEL, 'label-callout-section');
   var size = page.locator('.text-style-panel .label-callout-end-size-row .size-field-input');
 
   await clickCalloutButton(page, 'ring');
@@ -139,16 +208,9 @@ async function oneLabel(page) {
   await disarmTool(page);
 }
 
-async function sectionIsCollapsed(page, name) {
-  return page.locator('.text-style-panel .label-' + name + '-toggle')
-    .evaluate(function(el) {
-      return el.closest('.label-style-section').classList.contains('collapsed');
-    });
-}
-
-async function clickToggle(page, name) {
-  await page.locator('.text-style-panel .label-' + name + '-toggle').click();
-  await page.waitForTimeout(250);
+async function clickHeading(page, name) {
+  await page.locator(PANEL + ' .label-' + name + '-section .label-section-heading').click();
+  await page.waitForTimeout(100);
 }
 
 // @group: 0 for the shapes, 1 for the ends

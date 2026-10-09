@@ -2,6 +2,7 @@ import { El } from './gui-el';
 import { GUI } from './gui-lib';
 import { showPopupAlert, showPrompt } from './gui-alert';
 import { makeStylePresetId } from './gui-style-presets';
+import { makeCollapsibleSection } from './gui-panel-controls';
 
 // Saved styles: a menu that applies one, and a button that saves the current
 // one. Shared by the label panel and the layer style panel.
@@ -56,11 +57,12 @@ function closeOpenMenu() {
 
 export function StylePresetControl(parent, opts) {
   // A section of the panel like Text and Icon, and headed like them.
-  var row = El('div').addClass('label-style-section label-saved-style-row').appendTo(parent);
+  var row = makeCollapsibleSection(parent, 'Saved styles', {
+    onToggle: function(open) {
+      if (!open) closeMenu();
+    }
+  }).section.addClass('label-saved-style-row');
   var menu, menuBtn, list, saveBtn;
-
-  var title = El('div').addClass('label-style-section-title').appendTo(row);
-  El('span').addClass('label-style-section-name').appendTo(title).text('Saved styles');
 
   var controls = El('div').addClass('label-saved-style-controls').appendTo(row);
   menu = El('div').addClass('label-saved-style-menu').appendTo(controls);

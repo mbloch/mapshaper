@@ -29,13 +29,81 @@ export function makePanelSection(parent, title, opts) {
   return section;
 }
 
+// A section that opens and closes from its heading, so that a long panel can
+// be cut down to the sections in use. Open or closed is the panel's state and
+// not the data's: closing a section changes no style, and selecting other
+// features never opens or closes one.
+//
+// A section for a style a feature can have or not -- a halo, an icon, a
+// pattern -- also says in its heading whether the features being styled have
+// it, which a closed section would otherwise hide: a dot for all of them, a
+// half-filled one for some, nothing for none. Its × takes the style off; the
+// controls in the section are how it is put on.
+//
+// opts.open           start open (default closed)
+// opts.onToggle(open) the section was opened or closed from its heading
+// opts.onRemove()     give the heading a × that removes the style, shown
+//                     while setPresence() says the style is there
+// opts.removeTitle    the ×'s accessible name
+//
+// Returns {section, setOpen(open), isOpen(), setPresence(state)}, where state
+// is 'on', 'off' or 'mixed'.
+export function makeCollapsibleSection(parent, title, opts) {
+  var o = opts || {};
+  var section = makePanelSection(parent, title);
+  var row = section.findChild('.label-style-section-title')
+    .addClass('label-section-heading')
+    .attr('role', 'button');
+  var open = !!o.open;
+  var arrow = El('span').addClass('label-section-arrow').attr('aria-hidden', 'true');
+  var marker, removeBtn;
+  row.node().insertBefore(arrow.node(), row.node().firstChild);
+  marker = El('span').addClass('label-section-marker').attr('role', 'img').appendTo(row);
+  if (o.onRemove) {
+    removeBtn = El('div').addClass('label-section-remove').attr('role', 'button')
+      .attr('aria-label', o.removeTitle || 'Remove')
+      .appendTo(row).html('&times;')
+      .on('click', function(e) {
+        // the heading's own click would open or close the section
+        e.stopPropagation();
+        o.onRemove();
+      });
+  }
+  row.on('click', function() {
+    setOpen(!open);
+    if (o.onToggle) o.onToggle(open);
+  });
+  setOpen(open);
+  setPresence('off');
+
+  function setOpen(val) {
+    open = !!val;
+    section.classed('collapsed', !open);
+    row.attr('aria-expanded', open ? 'true' : 'false');
+  }
+
+  function setPresence(state) {
+    var s = state == 'on' || state == 'mixed' ? state : 'off';
+    marker.classed('on', s == 'on').classed('mixed', s == 'mixed')
+      .attr('aria-label', s == 'on' ? 'Applied' :
+        s == 'mixed' ? 'Applied to some of the selection' : 'Not applied');
+    if (removeBtn) removeBtn.classed('hidden', s == 'off');
+  }
+
+  return {
+    section: section,
+    setOpen: setOpen,
+    isOpen: function() { return open; },
+    setPresence: setPresence
+  };
+}
+
 // A switch: a track with a knob that sits left when off and right when on,
 // which is the direction users expect and the only thing that says which
 // state is which without a label for each. A third state says that the
 // features it is asking about disagree -- the knob sits over the join of a
 // half-and-half track, which is the only control that has to show "some of
-// them" rather than a value. A section's switch goes in its heading row, and
-// the section shows only its heading while it is off (the .collapsed class).
+// them" rather than a value.
 //
 // role=checkbox rather than switch, which is what it looks like: 'mixed' is a
 // legal aria-checked value for a checkbox and not for a switch, and a switch

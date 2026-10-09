@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { closeSidebarAfterImport, openLayersPanel } from './sidebar-helpers.mjs';
+import { openAllSections } from './style-panel-helpers.mjs';
 
 // A square polygon layer: a target the label tool cannot add to, so it should
 // create a label layer beside it.
@@ -725,8 +726,6 @@ test('the symbol is faded and coloured apart from the text', async function({pag
   await clickLabel(page, 0);
 
   var panel = page.locator('.text-style-panel');
-  await panel.locator('.label-icon-toggle').click();
-  await page.waitForTimeout(120);
   await panel.locator('.label-icon-buttons [data-icon="circle"]').click();
   await page.waitForTimeout(120);
   await setFieldValue(panel.locator('.label-text-color-row .label-opacity-input'), '40%');
@@ -747,10 +746,8 @@ test('the symbol is faded and coloured apart from the text', async function({pag
   expect(errors).toEqual([]);
 });
 
-test('the switch is what gives a label a symbol and takes it away', async function({page}) {
-  // Whether a label has a symbol is one question and which shape it is another,
-  // so the first is a switch and the four shapes answer only the second. The
-  // shape, size and colour controls are inert until there is a symbol to style:
+test('a shape is what gives a label a symbol, and the × takes it away', async function({page}) {
+  // The size and colour controls are inert until there is a symbol to style:
   // an icon-size or icon-color on a label with no icon draws nothing.
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
@@ -761,37 +758,30 @@ test('the switch is what gives a label a symbol and takes it away', async functi
   await clickLabel(page, 0);
 
   var panel = page.locator('.text-style-panel');
-  var toggle = panel.locator('.label-icon-toggle');
   var starBtn = panel.locator('.label-icon-buttons [data-icon="star"]');
   var iconColor = panel.locator('.label-icon-color-row .label-color-input');
+  expect(await iconColor.isDisabled()).toBe(true);
 
-  await toggle.click();
-  await page.waitForTimeout(150);
-  expect((await getLabelLayer(page)).records[0]).toMatchObject({
-    icon: 'circle',
-    'icon-size': 5,
-    'icon-opacity': 1
-  });
-
-  // the shape chosen is the shape the switch brings back, rather than the
-  // default quietly replacing it
   await starBtn.click();
   await page.waitForTimeout(150);
+  expect((await getLabelLayer(page)).records[0]).toMatchObject({
+    icon: 'star',
+    'icon-opacity': 1
+  });
   await setFieldValue(iconColor, '#cc0000');
   expect((await getLabelLayer(page)).records[0]).toMatchObject({
     icon: 'star',
     'icon-color': '#cc0000'
   });
 
-  // the switch off takes the symbol off the record rather than leaving an
-  // empty name where one was
-  await toggle.click();
+  // the × takes the symbol off the record, with everything it was drawn
+  // with, rather than leaving an empty name where one was
+  await panel.locator('.label-icon-section .label-section-remove').click();
   await page.waitForTimeout(150);
-  expect((await getLabelLayer(page)).records[0].icon).toBeUndefined();
-
-  await toggle.click();
-  await page.waitForTimeout(150);
-  expect((await getLabelLayer(page)).records[0].icon).toBe('star');
+  var rec = (await getLabelLayer(page)).records[0];
+  expect(rec.icon).toBeUndefined();
+  expect(rec['icon-color']).toBeUndefined();
+  expect(rec['icon-size']).toBeUndefined();
   expect(errors).toEqual([]);
 });
 
@@ -1640,11 +1630,11 @@ test('a symbol arriving under a centred label moves it out from under it',
     expect(errors).toEqual([]);
   });
 
-test('switching the symbol off leaves the placement alone', async function({page}) {
+test('removing the symbol leaves the placement alone', async function({page}) {
   // It used to put the label back to the centre, on the grounds that text
   // with nothing at its anchor belongs on the anchor. That threw away a
   // placement the user had made by hand for the sake of an invariant, and the
-  // switch is for the symbol.
+  // × is for the symbol.
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
 
@@ -1656,7 +1646,7 @@ test('switching the symbol off leaves the placement alone', async function({page
   await setLabelPosition(page, 'se');
   expect((await getLabelLayer(page)).records[0]['label-pos']).toBe('se');
 
-  await page.locator('.text-style-panel .label-icon-toggle').click();
+  await page.locator('.text-style-panel .label-icon-section .label-section-remove').click();
   await page.waitForTimeout(250);
   var rec = (await getLabelLayer(page)).records[0];
   expect(rec.icon).toBeFalsy();
@@ -1885,6 +1875,7 @@ async function loadFixture(page, fixture, opts) {
     window.mapshaper.undoTest.setInteractionMode('label');
   });
   await page.locator('.floating-toolbar.label-toolbar').waitFor();
+  await openAllSections(page);
 }
 
 // The app as it stands before anything is imported: the "Import files" dialog
@@ -1964,7 +1955,7 @@ async function getSelectedPosition(page) {
 }
 
 async function turnIconOn(page) {
-  await page.locator('.text-style-panel .label-icon-toggle').click();
+  await page.locator('.text-style-panel .label-icon-buttons [data-icon="circle"]').click();
   await page.waitForTimeout(250);
 }
 

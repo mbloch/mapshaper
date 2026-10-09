@@ -155,9 +155,9 @@ outlined around its background rather than its glyphs. The
 text block tool puts the top left of the padded box at the anchor, and a drag
 sets the padded box's width.
 
-The panel has no switch for the background, unlike the halo: an empty colour
-is no background, as an empty text colour is no fill, and the padding means
-something without one.
+The background is a row of the Text section rather than a section of its own:
+an empty colour is no background, as an empty text colour is no fill, and the
+padding means something without one.
 
 ## Line breaks
 
@@ -382,14 +382,17 @@ For a text block:
 
 ### Panel
 
-Sections whose heading carries an on/off switch -- Halo, Icon and the new
-Callout section -- **collapse to their heading while off** and open when
-switched on. The controls under a switched-off heading are inert anyway, so
-hiding them loses nothing, and it keeps the panel short. A strict accordion
+Every section **opens and closes from its heading**, and only Text starts
+open. A heading says whether the selection has its style -- a dot, half a
+dot, or nothing -- and carries a × that removes it; the section's own
+controls add it (see "Sections open from their headings" in
+label-tool-design.md). The sections first collapsed while a switch in their
+heading was off, which tied the panel's length to the selection's styles: a
+section could not be closed without removing its style. A strict accordion
 (one open section at a time) was rejected because it hides settings adjusted
 together and makes the panel jump under the pointer. The panel does not
 scroll: its colour pickers are wider than the panel and open over the map, and
-a scrolling panel would clip them. Collapsing is what keeps it short.
+a scrolling panel would clip them. Closing sections is what keeps it short.
 
 A gap of 0 is not carried into the style of new labels, because merging the
 remembered style drops falsy values; a new label gets the automatic gap.
@@ -513,7 +516,8 @@ compensated so the text stays put, in the same command.
    measurer and path labels; `label-width`; the callout fields, geometry and
    rendering; `-style` and `-add-label` options; tests.
 2. **Panel** (done). Collapsing Halo, Icon and Callout while their switches
-   are off; the Callout section.
+   are off; the Callout section. (The switches were later replaced by
+   headings that open and close; see Panel.)
 3. **GUI wrapping** (done). The offscreen wrapper (`gui-label-wrap.mjs`);
    editor integration; rewrapping on typography changes. (A Wrap width field
    was added here and later taken out; see Panel.)

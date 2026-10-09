@@ -1,6 +1,6 @@
 import { El } from './gui-el';
 import { internal } from './gui-core';
-import { makeColorRow, makeFieldTip, makePanelSection, makePanelToggle } from './gui-panel-controls';
+import { makeCollapsibleSection, makeColorRow, makeFieldTip } from './gui-panel-controls';
 import { SizeField } from './gui-size-field';
 import {
   patternTypes, getDefaultPatternControls, getPatternBackground, getPatternControls,
@@ -11,9 +11,9 @@ import {
 // The polygon panel's "Pattern" section. See gui-fill-pattern.mjs for how its
 // settings map to fill-pattern codes.
 //
-// Switched like the label panel's Halo and Icon sections: a pattern is a
-// yes/no that the rest of the section then qualifies, and the section shows
-// only its heading while it is off.
+// Added and removed like the label panel's Icon section: choosing a type from
+// the menu gives the features a pattern, the heading's × takes it off, and
+// the rest of the section qualifies the pattern there is.
 //
 // opts.getRecords()        the target layer's records
 // opts.getTargetIds()      the features being styled
@@ -21,16 +21,20 @@ import {
 // opts.revert()            put the panel back as the data has it
 // opts.releaseFocus()
 export function PatternFillControl(parent, opts) {
-  var section = makePanelSection(parent, 'Patterns');
+  var heading = makeCollapsibleSection(parent, 'Patterns', {
+    onToggle: function(open) {
+      if (!open) colorControl.picker.hide();
+    },
+    onRemove: removePattern,
+    removeTitle: 'Remove pattern fill'
+  });
+  var section = heading.section.addClass('layer-pattern-section');
   var shown = {type: 'none'};
-  // What switching the pattern on applies when the features have none: the
-  // last pattern the section showed, so that off and on again is a round trip.
-  var lastPattern = null;
   // Custom was chosen from the menu, and the code field is waiting for a code.
   // Until one is applied the data still says what it said before, so the
   // choice has to be remembered or the next refresh would undo it.
   var customPending = false;
-  var toggle, typeSelect, mixedOption, colorControl, angleField, sizeRow, sizeCaption,
+  var typeSelect, noneOption, mixedOption, colorControl, angleField, sizeRow, sizeCaption,
       sizeField, gapField, customRow, codeInput;
 
   initRows();
@@ -90,16 +94,15 @@ export function PatternFillControl(parent, opts) {
   };
 
   function initRows() {
-    toggle = makePanelToggle(section.findChild('.label-style-section-title'), {
-      title: 'Fill with a pattern',
-      className: 'layer-pattern-toggle',
-      onChange: setPatternOn
-    });
     var typeRow = El('div').addClass('label-style-row layer-pattern-type-row').appendTo(section);
     typeSelect = El('select').attr('aria-label', 'Pattern type').appendTo(typeRow)
       .on('change', function() {
         selectType(typeSelect.node().value);
       });
+    // What the menu shows while the features have no pattern, which is not a
+    // choice: the × in the heading is how a pattern is removed.
+    noneOption = El('option').attr('value', 'none').appendTo(typeSelect).text('None');
+    noneOption.node().disabled = true;
     [['hatches', 'Hatches'], ['dots', 'Dots'], ['squares', 'Squares'],
       ['custom', 'Custom']].forEach(function(o) {
       El('option').attr('value', o[0]).appendTo(typeSelect).text(o[1]);
@@ -177,15 +180,13 @@ export function PatternFillControl(parent, opts) {
 
   function update() {
     var ids = opts.getTargetIds();
-    var toggleState = getToggleState(ids);
     var state = getCommonPatternState(ids);
     if (customPending && state.type != 'custom') {
       state = {type: 'custom', code: shown.type == 'custom' ? shown.code : getPendingCode(state)};
     }
     shown = state;
-    if (isSimple(state) || state.type == 'custom' && state.code) lastPattern = state;
-    toggle.setState(toggleState);
-    section.classed('collapsed', toggleState == 'off');
+    heading.setPresence(getPresence(ids));
+    noneOption.classed('hidden', state.type != 'none');
     mixedOption.classed('hidden', state.type != 'mixed');
     typeSelect.node().value = state.type;
     colorControl.row.classed('hidden', !isSimple(state));
@@ -218,28 +219,14 @@ export function PatternFillControl(parent, opts) {
     }
   }
 
-  // On gives every feature being styled a pattern: the one the features that
-  // have a pattern agree on, if they do, or else the last one shown, or else a
-  // default hatch. Off takes the pattern off all of them.
-  function setPatternOn(on) {
-    var ids = opts.getTargetIds();
-    var common, pattern;
+  function removePattern() {
     customPending = false;
-    if (!on) {
-      applyToTargets(function() { return ''; }, 'Remove pattern fill');
-      return;
-    }
-    common = getCommonPatternState(ids.filter(hasPattern));
-    pattern = isSimple(common) || common.type == 'custom' ? common :
-      lastPattern || getDefaultPatternControls('hatches');
-    if (pattern.type == 'custom') {
-      applyToTargets(function() { return pattern.code; }, 'Pattern fill');
-    } else {
-      applyControls(pattern);
-    }
+    opts.applyEdits(opts.getTargetIds().filter(hasPattern).map(function(id) {
+      return {id: id, styles: [['fill-pattern', '']]};
+    }), 'Remove pattern fill');
   }
 
-  function getToggleState(ids) {
+  function getPresence(ids) {
     var n = ids.filter(hasPattern).length;
     return n === 0 ? 'off' : n < ids.length ? 'mixed' : 'on';
   }
