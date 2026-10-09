@@ -1,3 +1,7 @@
+v0.7.82
+* Added padding and background color options for labels.
+* Changed open/close behavior of collapsable sections of style panels.
+
 v0.7.81
 * Added PNG and JPEG output (e.g. `-o map.png`): an image of the whole map, labels included, at twice the map frame's display size by default (set with `pixel-ratio=`. From the command line, labels are drawn with installed fonts, with warnings about missing fonts and characters.
 * In PNG, JPEG and HMTL output formats, images of opaque polygons with a solid fill and no stroke are drawn with a hairline stroke in their fill color, which hides the faint seams that can appear between adjacent polygons.
