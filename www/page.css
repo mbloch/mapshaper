@@ -3104,8 +3104,7 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .label-style-row {
 	display: block;
-	margin-top: 2px;
-	margin-bottom: 5px;
+	margin: 3px 0;
 }
 
 .label-style-row span,
@@ -3529,7 +3528,7 @@ body.pan.panning .map-layers:not(.drawing) {
 /* Closed sections stack a little closer than open ones, which are spaced to
    set their controls apart. */
 .label-style-panel .label-style-section.collapsed + .label-style-section {
-	margin-top: 1px;
+	margin-top: 0;
 }
 
 /* A closed section shows only its heading (see makeCollapsibleSection()). */
@@ -3542,7 +3541,7 @@ body.pan.panning .map-layers:not(.drawing) {
    baseline: the chevron, the dot and the × have none to share. */
 .label-style-panel .label-section-heading {
 	align-items: center;
-	gap: 6px;
+	gap: 5px;
 	cursor: pointer;
 	user-select: none;
 }
@@ -3555,18 +3554,14 @@ body.pan.panning .map-layers:not(.drawing) {
 	width: 6px;
 	height: 6px;
 	margin: 0 2px 0 1px;
-	border-right: 1.5px solid #777;
-	border-bottom: 1.5px solid #777;
-	transform: translateY(-2px) translateX(2px) rotate(45deg);
+	border-right: 1.5px solid #222;
+	border-bottom: 1.5px solid #222;
+	transform: translateY(-2px) rotate(45deg);
 	transition: transform 0.12s;
 }
 
 .label-style-panel .label-style-section.collapsed .label-section-arrow {
-	transform: rotate(-45deg);
-}
-
-.label-style-panel .label-section-heading:hover .label-section-arrow {
-	border-color: #222;
+	transform: translateX(-2px) rotate(-45deg);
 }
 
 /* Whether the features being styled have the section's style: a dot for all
@@ -3574,6 +3569,7 @@ body.pan.panning .map-layers:not(.drawing) {
    same reason -- and nothing for none. */
 .label-style-panel .label-section-marker {
 	flex: none;
+	margin-left: 2px;
 	box-sizing: border-box;
 	width: 7px;
 	height: 7px;
@@ -3751,12 +3747,13 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .label-style-section-title {
 	margin-top: 8px;
+	margin-bottom: 0px;
 	font-weight: 600;
 	color: #333;
 }
 
 .label-style-section + .label-style-section .label-style-section-title {
-	margin-top: 0;
+	margin-top: 2px;
 }
 
 .label-color-row {
@@ -4081,7 +4078,7 @@ body.dragging-color-picker * {
 .text-style-panel .label-position-grid {
 	grid-template-columns: repeat(3, 10px);
 	gap: 3px;
-	margin-top: -15px;
+	margin-top: -14px;
 	margin-bottom: 3px;
 }
 
