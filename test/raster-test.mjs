@@ -5,6 +5,7 @@ import jpeg from 'jpeg-js';
 import os from 'os';
 import path from 'path';
 import { PNG } from 'pngjs';
+import zlib from 'zlib';
 import { downsampleRgba, readImageSize } from '../src/rasters/mapshaper-image-import';
 import { getRasterImportSize, parseImportResolution } from '../src/rasters/mapshaper-raster-import-size';
 
@@ -233,6 +234,23 @@ describe('raster layers', function () {
     assert.equal(lyr.raster.grid.width, 3);
     assert.deepEqual(lyr.raster.grid.bbox, [-15, -15, 15, 15]);
     assert.deepEqual(api.internal.getLayerBounds(lyr).toArray(), [-15, -15, 15, 15]);
+  });
+
+  // geotiff.js 3.0.5 reads deferred strip offset and byte count arrays as
+  // little-endian whatever the file's byte order, so its strips come out of the
+  // wrong place. The importer repairs the arrays itself until a geotiff.js
+  // release includes the fix (geotiffjs/geotiff.js#535).
+  it('imports a big-endian GeoTIFF whose strip arrays are read lazily', async function () {
+    var samples = new Uint8Array([10, 11, 12, 13, 20, 21, 22, 23, 30, 31, 32, 33]);
+    var bytes = encodeBigEndianStrippedTIFF(4, 3, samples, [0, 0, 4, 3]);
+    var dataset = await api.internal.importFileAsync('big-endian.tif', {
+      input: {'big-endian.tif': Buffer.from(bytes)}
+    });
+    var grid = dataset.layers[0].raster.grid;
+    assert.equal(grid.width, 4);
+    assert.equal(grid.height, 3);
+    assert.deepEqual(grid.bbox, [0, 0, 4, 3]);
+    assert.deepEqual(Array.from(grid.samples), Array.from(samples));
   });
 
   // Nothing is recorded as the file's own CRS, but the coordinates are in the
@@ -1444,6 +1462,72 @@ function makeTestGrid(bbox) {
       0, (bbox[1] - bbox[3]) / 2, bbox[3]
     ]
   };
+}
+
+// A big-endian ("MM"), Deflate-compressed, single-band uint8 TIFF with one row
+// per strip. The strip offset and byte count arrays are written ahead of the
+// IFD: geotiff.js only reads arrays inside the 1024 bytes that follow the IFD
+// when it opens a file, and defers the rest, which is the code path under test.
+function encodeBigEndianStrippedTIFF(width, height, samples, bbox) {
+  var strips = [];
+  for (var y = 0; y < height; y++) {
+    strips.push(zlib.deflateSync(samples.subarray(y * width, (y + 1) * width)));
+  }
+  var offsetsPos = 8;
+  var countsPos = offsetsPos + height * 4;
+  var dataPos = countsPos + height * 4;
+  var dataSize = strips.reduce(function(sum, strip) { return sum + strip.length; }, 0);
+  var ifdPos = dataPos + dataSize + dataSize % 2; // IFDs start on a word boundary
+  var SHORT = 3, LONG = 4, DOUBLE = 12;
+  var entries = [ // [tag, type, count, value or offset]
+    [256, SHORT, 1, width],          // ImageWidth
+    [257, SHORT, 1, height],         // ImageLength
+    [258, SHORT, 1, 8],              // BitsPerSample
+    [259, SHORT, 1, 8],              // Compression: Deflate
+    [262, SHORT, 1, 1],              // PhotometricInterpretation: BlackIsZero
+    [273, LONG, height, offsetsPos], // StripOffsets
+    [277, SHORT, 1, 1],              // SamplesPerPixel
+    [278, SHORT, 1, 1],              // RowsPerStrip
+    [279, LONG, height, countsPos],  // StripByteCounts
+    [284, SHORT, 1, 1],              // PlanarConfiguration: chunky
+    [33550, DOUBLE, 3, 0],           // ModelPixelScale (offset set below)
+    [33922, DOUBLE, 6, 0]            // ModelTiepoint (offset set below)
+  ];
+  var scalePos = ifdPos + 2 + entries.length * 12 + 4;
+  var tiepointPos = scalePos + 3 * 8;
+  entries[10][3] = scalePos;
+  entries[11][3] = tiepointPos;
+  var buf = new ArrayBuffer(tiepointPos + 6 * 8);
+  var view = new DataView(buf); // DataView defaults to big-endian
+  var pos = dataPos;
+  view.setUint16(0, 0x4d4d);
+  view.setUint16(2, 42);
+  view.setUint32(4, ifdPos);
+  strips.forEach(function(strip, i) {
+    view.setUint32(offsetsPos + i * 4, pos);
+    view.setUint32(countsPos + i * 4, strip.length);
+    new Uint8Array(buf).set(strip, pos);
+    pos += strip.length;
+  });
+  view.setUint16(ifdPos, entries.length);
+  entries.forEach(function(entry, i) {
+    var p = ifdPos + 2 + i * 12;
+    view.setUint16(p, entry[0]);
+    view.setUint16(p + 2, entry[1]);
+    view.setUint32(p + 4, entry[2]);
+    if (entry[1] == SHORT && entry[2] == 1) {
+      view.setUint16(p + 8, entry[3]); // inline SHORTs are left-justified
+    } else {
+      view.setUint32(p + 8, entry[3]);
+    }
+  });
+  [(bbox[2] - bbox[0]) / width, (bbox[3] - bbox[1]) / height, 0].forEach(function(n, i) {
+    view.setFloat64(scalePos + i * 8, n);
+  });
+  [0, 0, 0, bbox[0], bbox[3], 0].forEach(function(n, i) {
+    view.setFloat64(tiepointPos + i * 8, n);
+  });
+  return buf;
 }
 
 function getRasterDataset() {
