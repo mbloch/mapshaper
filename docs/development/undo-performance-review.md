@@ -6,24 +6,14 @@ This review measures the experimental web UI command undo path. The goal is to
 identify overhead from enabling undo, payload size risks, and places where
 capture granularity should be narrowed.
 
-## Runner
+## Method
 
-Use `scripts/undo-performance-runner.mjs` to compare command execution with undo
-disabled and enabled.
-
-```sh
-node --import ./test/_register.mjs scripts/undo-performance-runner.mjs \
-  --repeat 1 \
-  --out /tmp/mapshaper-undo-performance \
-  /path/to/workflow.txt
-```
-
-By default, an initial `-i` command is treated as setup and excluded from the
-timed command list. Use `--include-import` to include import time. The runner
-uses the production `UndoTransaction` path and the undo unit/payload store
-adapter, backed by an in-memory payload store. This is useful for measuring
-capture and serialization overhead, but it is not a substitute for browser
-IndexedDB timing.
+Each workflow was run in Node with undo disabled and enabled, and the two runs
+were compared. The initial `-i` command was treated as setup and excluded from
+the timings. The undo runs used the production `UndoTransaction` path and the
+undo unit/payload store adapter, backed by an in-memory payload store. This is
+useful for measuring capture and serialization overhead, but it is not a
+substitute for browser IndexedDB timing.
 
 ## Workflows
 
@@ -96,7 +86,7 @@ Topology-heavy commands remain the largest storage risk. `clip`, `clean`, and
 these may be inherently broad, but they are the best candidates for future
 granularity work if large-dataset undo feels too heavy.
 
-The Node runner uses an in-memory backend. Browser IndexedDB will add structured
+These measurements used an in-memory backend. Browser IndexedDB will add structured
 clone and disk-write cost, so these numbers should be treated as a lower bound
 for storage-heavy commands.
 

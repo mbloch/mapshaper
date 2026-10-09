@@ -28,6 +28,7 @@ release*
 nacis
 .cursorignore
 bench/
+/scripts/
 /DEVELOPING.md
 /DESIGN*
 /CITATION*

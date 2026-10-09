@@ -552,10 +552,9 @@ temporary storage cleanup.
 
 ### Performance Testing
 
-Use `scripts/undo-performance-runner.mjs` when adding hooks to commands that may
-capture large tables, layers, or arcs. See
-`docs/development/undo-performance-review.md` for runner usage and baseline
-results.
+When adding hooks to commands that may capture large tables, layers, or arcs,
+compare command timing and payload size with undo disabled and enabled. See
+`docs/development/undo-performance-review.md` for baseline results.
 
 ## Checklist For Command Authors
 
