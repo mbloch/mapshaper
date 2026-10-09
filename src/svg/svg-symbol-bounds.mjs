@@ -1,7 +1,9 @@
 import utils from '../utils/mapshaper-utils';
 import { featureHasSvgSymbol, featureHasLabel } from './svg-feature-utils';
 import { featureHasIcon, getIconRadius, RING_STROKE_WIDTH } from './svg-symbols';
-import { getLabelTextBox, getLabelFontSize, labelHasCallout } from './svg-label-callout';
+import { getLabelTextBox, getLabelFontSize, labelHasCallout,
+  getLabelBox as getPaddedLabelBox } from './svg-label-callout';
+import { labelHasBackground } from './svg-label-box';
 import { parsePointPair, isSvgNumber } from './svg-properties';
 import { forEachSymbolCoord, getStrokeOutset } from '../symbols/mapshaper-symbol-utils';
 import { getPolygonGlow } from './svg-glow';
@@ -73,6 +75,10 @@ function getLabelBox(rec) {
   var o = getLabelTextBox(rec, {estimate_width: true});
   var pad = getHaloWidth(rec);
   var box = [o.xmin - pad, o.ymin - pad, o.xmax + pad, o.ymax + pad];
+  if (labelHasBackground(rec)) {
+    o = getPaddedLabelBox(rec, {estimate_width: true});
+    box = mergeBoxes(box, [o.xmin, o.ymin, o.xmax, o.ymax]);
+  }
   var via = labelHasCallout(rec) ? parsePointPair(rec['callout-via'] || '') : null;
   if (via) {
     box = mergeBoxes(box, [via[0], via[1], via[0], via[1]]);

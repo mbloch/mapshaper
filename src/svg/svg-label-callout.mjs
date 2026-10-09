@@ -3,6 +3,7 @@ import { getDrawnLabelOffset, splitLabelLines, toLabelString, toPixels,
 import { getMeasuredTextWidth } from './svg-label-metrics';
 import { parseCalloutType, parseCalloutEnd, parsePointPair,
   isSvgNumber } from './svg-properties';
+import { getLabelPadding, labelHasBackground } from './svg-label-box';
 import { roundToTenths } from '../geom/mapshaper-rounding';
 import {
   ARROW_ANGLE, OPEN_ARROW_ANGLE, ARROW_LINE_OVERLAP, getDefaultArrowSize,
@@ -60,10 +61,14 @@ export function getLabelCalloutShape(rec, symbolRadius) {
   return getCalloutShape({
     type: parseCalloutType(rec.callout),
     end: getCalloutEndType(rec),
-    box: getLabelTextBox(rec),
+    box: getLabelBox(rec),
     via: parsePointPair(rec['callout-via'] || ''),
     attach: parsePointPair(rec['callout-attach'] || ''),
-    padding: getNumber(rec['callout-padding'], DEFAULT_PADDING),
+    // A label with a box of its own -- a background or padding -- is met at
+    // the box, which is where the GUI outlines it; bare text is met short of
+    // its glyphs
+    padding: getNumber(rec['callout-padding'],
+      labelHasBackground(rec) || getLabelPadding(rec) ? 0 : DEFAULT_PADDING),
     gap: getCalloutGap(rec, symbolRadius),
     width: getLineWidth(rec),
     endSize: getNumber(rec['callout-end-size'], 0)
@@ -133,6 +138,23 @@ export function getLabelTextBox(rec, opts) {
     ymin: baseline - ASCENT * fontSize,
     ymax: baseline + (lines.length - 1) * lineHeight + DESCENT * fontSize,
     midline: baseline - MIDLINE * fontSize
+  };
+}
+
+// The box a label is positioned by, a callout meets and a background fills:
+// the text box grown by label-padding. A text block's box is its text, like
+// any other label's, and not its column: a background fits the lines as
+// wrapped. Same form as getLabelTextBox().
+export function getLabelBox(rec, opts) {
+  var box = getLabelTextBox(rec, opts);
+  var pad = getLabelPadding(rec);
+  if (!pad) return box;
+  return {
+    xmin: box.xmin - pad.left,
+    xmax: box.xmax + pad.right,
+    ymin: box.ymin - pad.top,
+    ymax: box.ymax + pad.bottom,
+    midline: box.midline
   };
 }
 

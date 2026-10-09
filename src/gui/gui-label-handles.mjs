@@ -38,12 +38,13 @@ var MIN_GAP_HANDLE = 6;
 //   scale:   screen px per label px
 //   padding: how far outside the text the selection box is drawn
 // Returns {handles: [{kind, point}], column}, where column is the x-range
-//   [xmin, xmax] a text block wraps within, or null for point text. The
-//   width handle sits on the column's corner, not the text's.
+//   [xmin, xmax] a text block wraps within, grown by its label-padding, or
+//   null for point text. The width handle sits on the column's corner, not
+//   the text's.
 export function getAnchoredLabelHandles(rec, textBox, opts) {
   var o = opts || {};
   var handles = [];
-  var column = getLabelColumn(rec);
+  var column = getLabelBoxColumn(rec);
   var shape = internal.svg.getLabelCalloutShape(rec, o.symbolRadius || 0);
   var width = textBox && column ?
     getWidthHandlePoint(rec, textBox, column, o.padding || 0) : null;
@@ -71,6 +72,22 @@ export function getLabelColumn(rec) {
   if (anchor == 'end') return [drawn.dx - w, drawn.dx];
   if (anchor == 'middle') return [drawn.dx - w / 2, drawn.dx + w / 2];
   return [drawn.dx, drawn.dx + w];
+}
+
+// The column with the label's padding on either side, which is the width a
+// block's box takes when its lines fill it: what the GUI draws as the column.
+export function getLabelBoxColumn(rec) {
+  var column = getLabelColumn(rec);
+  var pad = column ? internal.svg.getLabelPadding(rec) : null;
+  return pad ? [column[0] - pad.left, column[1] + pad.right] : column;
+}
+
+// How much padding is between the column and its width handle, px: the
+// handle is on the right of the column unless the text ends at its anchor.
+export function getWidthHandlePadding(rec, anchor) {
+  var pad = internal.svg.getLabelPadding(rec);
+  if (!pad) return 0;
+  return anchor == 'end' ? pad.left : pad.right;
 }
 
 // An anchor the record does not set is inherited from the layer's group,

@@ -4,6 +4,8 @@ import { importLineString, importMultiLineString, importPolygon } from '../svg/s
 import { featureHasSvgSymbol, featureHasLabel } from '../svg/svg-feature-utils';
 import { renderStyledLabel } from './svg-labels';
 import { labelHasCallout, renderLabelCallout } from './svg-label-callout';
+import { labelHasBackground } from './svg-label-box';
+import { renderLabelBackground } from './svg-label-background';
 import utils from '../utils/mapshaper-utils';
 import { applyStyleAttributes, isSvgNumber } from '../svg/svg-properties';
 import { message } from '../utils/mapshaper-logging';
@@ -35,8 +37,15 @@ export var symbolRenderers = {
 // render label and/or point symbol
 export function renderPoint(rec) {
   var children = [];
-  var callout;
+  var callout, background;
   // var halfSize = rec.r || 0; // radius or half of symbol size
+  // Under the callout, which would lose half its width where it runs along
+  // the box's edge, and under the symbol, which a centred label's box would
+  // otherwise hide.
+  if (featureHasLabel(rec) && labelHasBackground(rec)) {
+    background = renderLabelBackground(rec);
+    if (background) children.push(background);
+  }
   // Beneath the symbol and the text, which it runs between.
   if (featureHasLabel(rec) && labelHasCallout(rec)) {
     callout = renderLabelCallout(rec, getAnchorSymbolRadius(rec));

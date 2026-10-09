@@ -60,7 +60,10 @@ All new fields are per-feature style properties on anchored labels, declared in
 | `callout-via` | `x,y`, px | The elbow's corner, or a point the curve passes through. Unset = automatic |
 | `callout-attach` | `x,y`, fractions | Where the callout meets the text, as fractions of the padded text box (`0,0` top left, `1,1` bottom right). Unset = automatic |
 | `callout-gap` | number, px | How far short of the anchor the callout stops. Default: a plain line runs to the edge of the label's icon, and an arrowhead stops 2px clear of it |
-| `callout-padding` | number, px | Clearance between the text and the callout. Default 3 |
+| `callout-padding` | number, px | Clearance between the label box and the callout. Default 3, or 0 with a background or padding |
+| `label-padding` | CSS padding string | Space between the text and the label box: one to four lengths (number, px or em), top/right/bottom/left as in CSS. Unset = no padding |
+| `label-background` | color | Fill of the label box. Unset or `none` = no background |
+| `label-background-opacity` | number, 0-1 | Opacity of the background, apart from the text's |
 | `callout-color` | color | Default: the text's `fill`, then black |
 | `callout-width` | number, px | Line width. Default 1 |
 | `callout-opacity` | number, 0-1 | Opacity of the line and its end marker |
@@ -95,6 +98,66 @@ The attachment point belongs to the text: it has to move when the text moves
 and stay on the box when the box changes size as text is edited or rewrapped.
 Fractions of the padded box do both. A fraction of `0` or `1` on either axis
 puts the point on an edge, which is where the GUI snaps it.
+
+## The label box
+
+`label-padding` and `label-background` make the padded text box a box of the
+label's own: the box it is positioned by, that a callout meets and that a
+background fills (`getLabelBox()` in `svg-label-callout.mjs`; the properties
+are parsed in `svg-label-box.mjs` and the fill drawn by
+`svg-label-background.mjs`).
+
+- **The box is the text box plus the padding.** Padding is outside the text, as
+  with CSS's `content-box`, so `label-width` stays the wrap width and changing
+  the padding never makes stored soft breaks stale.
+- **A text block's box is its wrapped text**, as a callout already met it, and
+  not its column: a background fits the lines rather than filling the width
+  they wrap to. In the editor, though, the dashed column and its width handle
+  are the column plus the side padding (`getLabelBoxColumn()` in
+  `gui-label-handles.mjs`), so they enclose the background; a width drag takes
+  the padding back off, so the handle still sets `label-width`.
+- **Positions clear the anchor by the padding.** The offsets `label-pos`
+  supplies move away from the anchor by the padding on the side facing it
+  (`e` by the left padding, `n` by the bottom, `c` not at all), and are then in
+  px. Offsets of the record's own are left alone: they say where the text is.
+  Resolved in `resolveLabelPosition()`, so a drag, which starts from
+  `getDrawnLabelOffset()`, starts from the shifted position.
+- **A callout meets the box**, then `callout-padding` beyond it, which defaults
+  to 0 with a background or padding, so that the line touches the fill and
+  ends on the box the GUI outlines, whether or not the box is filled.
+- **The background is a `<rect>`** beneath everything else the label draws:
+  under the callout, which would otherwise lose half its width where it runs
+  along the box's edge, and under a centred label's icon. Its opacity is
+  written as `opacity`, as the halo's is. The frame-fitting bounds include it.
+- **The selection outline is the box.** A label with a background or padding
+  is outlined on the box exactly (read from the background's rect, or worked
+  out with `getLabelBox()` when there is only padding), rather than a few px
+  outside its glyphs, so that the outline, the fill and where the callout ends
+  agree. See `labelHasOwnBox()` in `gui-label-selection.mjs`.
+- **Path labels have no box.** The panel's Background row is inert for them, and
+  the label tool does not write these fields to them.
+
+The rectangle's size is fixed when it is drawn: the width measured from the
+text, the height estimated from the font size and line height
+as for callouts. An SVG opened where the label's font is missing draws the text
+in another one, which no longer fits the box; in Node, a font that is not
+installed falls back to an estimated width. HTML output that lays labels out
+as positioned elements, with CSS padding and background, would avoid both,
+and would place each element by the top left of this same box.
+
+In the GUI, the editor resizes a committed label's rect on every keystroke,
+since it writes the text without redrawing the symbol, and an offset drag of a
+label with a background redraws the symbol, as it does for a callout. The
+editor's selection band and box, which paint beneath the glyphs from a group
+before the symbol, would be hidden by the background, so for a label with one
+that group goes inside the symbol, just above the rect. A selected label is
+outlined around its background rather than its glyphs. The
+text block tool puts the top left of the padded box at the anchor, and a drag
+sets the padded box's width.
+
+The panel has no switch for the background, unlike the halo: an empty colour
+is no background, as an empty text colour is no fill, and the padding means
+something without one.
 
 ## Line breaks
 

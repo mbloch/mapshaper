@@ -29,6 +29,17 @@ var SVG_NS = 'http://www.w3.org/2000/svg';
 // tool grabs a label by the same box: what looks like the object is what takes
 // a drag on it.
 export var BOX_PADDING = 3;
+
+// A label with a box of its own -- a background or label-padding -- is
+// outlined on that box exactly, since it is what the label looks like and what
+// its callout meets; any other is outlined BOX_PADDING outside its glyphs.
+export function labelHasOwnBox(rec) {
+  return !!rec && (internal.svg.labelHasBackground(rec) || !!internal.svg.getLabelPadding(rec));
+}
+
+export function getCuePadding(rec) {
+  return labelHasOwnBox(rec) ? 0 : BOX_PADDING;
+}
 var ANCHOR_RADIUS = 3.5;
 var KNOT_RADIUS = 3;
 var WIDTH_HANDLE_SIZE = 6;
@@ -68,6 +79,7 @@ export function LabelSelection(gui, ext, hit, getEditingId, getHandles, getState
   var drawn = null; // what those cues represent, so hover does not redraw them
   var on = false;
   var tetherId = -1; // the label whose text is being dragged off its anchor
+  var getPreviewRecord = null;
 
   self.turnOn = function() {
     on = true;
@@ -83,6 +95,13 @@ export function LabelSelection(gui, ext, hit, getEditingId, getHandles, getState
   // Draws a hairline from @id's anchor to its text while its offset is being
   // dragged, or nothing when given -1. The offset is what is being edited, and
   // on a label with no symbol the anchor is otherwise not drawn at all.
+  // @fn: function(id) returning the record a label is being drawn from while
+  //   a drag is previewing it, or null. A padded box is worked out from the
+  //   record, and the data's is out of date until the drag is committed.
+  self.setPreviewRecordGetter = function(fn) {
+    getPreviewRecord = fn;
+  };
+
   self.setTether = function(id) {
     if (tetherId === id) return;
     tetherId = id;
@@ -191,18 +210,44 @@ export function LabelSelection(gui, ext, hit, getEditingId, getHandles, getState
   // fainter dashed box behind the solid one. The solid box is the label itself
   // -- the wrapped text, which is what a callout meets -- and is usually
   // narrower than its column; the column is what the width handle drags.
+  //
+  // A label with a box of its own is outlined on the box (see labelHasOwnBox()),
+  // and its width handle is at the corner of that.
   function appendAnchoredCue(g, nodes, rec, id, handleTarget) {
-    var box = measure(nodes.content);
+    var drawn = getPreviewRecord && getPreviewRecord(id) || rec;
+    var pad = getCuePadding(drawn);
+    var box = pad > 0 ? measure(nodes.content) :
+      getBackgroundBox(nodes.symbol) || getPaddedBox(drawn);
     var o = box && handleTarget && getHandles ? getHandles(handleTarget, id, box) : null;
     var column = o ? o.column : null;
     if (!box) return;
-    if (column) g.appendChild(columnRect(box, column, BOX_PADDING));
-    if (box.width || box.height) g.appendChild(rect(box, BOX_PADDING));
-    if (id === tetherId) g.appendChild(tether(box));
+    if (column) g.appendChild(columnRect(box, column, pad));
+    if (box.width || box.height) g.appendChild(rect(box, pad));
+    if (id === tetherId) g.appendChild(tether(box, pad));
     if (!internal.featureHasSvgSymbol(rec) && !boxHoldsOrigin(box)) {
       g.appendChild(anchorMarker());
     }
     if (o && o.handles.length > 0) appendHandles(nodes, o.handles);
+  }
+
+  // The background's rect in the symbol's space, read from its attributes,
+  // which is the space the cue is drawn in; or null
+  function getBackgroundBox(symbol) {
+    var el = symbol.tagName == 'g' ? symbol.querySelector(':scope > .label-background') : null;
+    if (!el) return null;
+    return {
+      x: Number(el.getAttribute('x')),
+      y: Number(el.getAttribute('y')),
+      width: Number(el.getAttribute('width')),
+      height: Number(el.getAttribute('height'))
+    };
+  }
+
+  // The box a callout meets, for a padded label with no background rect to
+  // read it from
+  function getPaddedBox(rec) {
+    var b = internal.svg.getLabelBox(rec, {estimate_width: true});
+    return {x: b.xmin, y: b.ymin, width: b.xmax - b.xmin, height: b.ymax - b.ymin};
   }
 
   // The column's own extent across, and the text's up and down: a column has
@@ -349,12 +394,12 @@ export function LabelSelection(gui, ext, hit, getEditingId, getHandles, getState
   // The line from the anchor to the text, drawn to the nearest corner or edge
   // of its box rather than to the middle of it: a line to the middle would run
   // underneath the glyphs it is pointing at.
-  function tether(box) {
+  function tether(box, pad) {
     var el = document.createElementNS(SVG_NS, 'line');
     el.setAttribute('x1', 0);
     el.setAttribute('y1', 0);
-    el.setAttribute('x2', clamp(0, box.x - BOX_PADDING, box.x + box.width + BOX_PADDING));
-    el.setAttribute('y2', clamp(0, box.y - BOX_PADDING, box.y + box.height + BOX_PADDING));
+    el.setAttribute('x2', clamp(0, box.x - pad, box.x + box.width + pad));
+    el.setAttribute('y2', clamp(0, box.y - pad, box.y + box.height + pad));
     el.setAttribute('class', 'label-cue-tether');
     return el;
   }

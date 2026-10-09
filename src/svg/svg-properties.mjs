@@ -4,6 +4,8 @@ import utils from '../utils/mapshaper-utils';
 import { stop } from '../utils/mapshaper-logging';
 import { parsePattern } from '../svg/svg-hatch';
 import { parseLabelAlign, getAlignmentAnchor } from '../svg/svg-label-align';
+import { parseLabelPadding, getLabelPadding, getPositionPaddingShift,
+  addPixelsToMeasure } from '../svg/svg-label-box';
 
 // parsing hints for -style command cli options
 // null values indicate the lack of a function for parsing/identifying this property
@@ -55,6 +57,11 @@ var stylePropertyTypes = {
   // width of a fixed-width text block, whose lines the GUI wraps and stores
   // with <wbr> soft breaks -- see docs/development/text-annotation-design.md
   'label-width': 'number',
+  // space around an anchored label's text, and a fill behind it -- see
+  // svg-label-box.mjs
+  'label-padding': 'labelpadding',
+  'label-background': 'color',
+  'label-background-opacity': 'number',
   // a line from a label's anchor to its text -- see svg-label-callout.mjs
   callout: 'callout',
   'callout-end': 'calloutend',
@@ -395,6 +402,8 @@ function parseSvgLiteralValue(strVal, type) {
   } else if (type == 'pointpair') {
     val = parsePointPair(strVal);
     val = val ? formatPointPair(val) : null;
+  } else if (type == 'labelpadding') {
+    val = parseLabelPadding(strVal);
   }
   //  else {
   //   // unknown type -- assume literal value
@@ -486,19 +495,30 @@ export function getLabelPositionStyle(pos) {
 // north. That is also what makes this change invisible to files written before
 // it: they carry all three alongside label-pos, with exactly the values this
 // would supply.
+//
+// With label-padding, the offsets a position supplies move away from the
+// anchor by the padding, so that a background or callout box clears the
+// anchor as the glyphs did. They are then in px. Offsets of the record's own
+// are left where they are: they say where the text goes.
 export function resolveLabelPosition(rec) {
   var style = rec && rec['label-pos'] ? getLabelPositionStyle(rec['label-pos']) : null;
   var out = null;
-  var field, i;
+  var shift, field, i, val;
   // An unusable position renders as if it were unset. The commands that set it
   // reject one, so reaching here means it was written by an expression or came
   // from a data file, where stopping the render is the wrong response.
   if (style) {
+    shift = getPositionPaddingShift(style['label-pos'], getLabelPadding(rec));
     for (i = 0; i < labelPositionDerivedFields.length; i++) {
       field = labelPositionDerivedFields[i];
       if (hasStyleValue(rec, field)) continue;
       if (!out) out = Object.assign({}, rec);
-      out[field] = style[field];
+      val = style[field];
+      if (field == 'dx' && shift[0] || field == 'dy' && shift[1]) {
+        val = addPixelsToMeasure(val, field == 'dx' ? shift[0] : shift[1],
+          rec['font-size']);
+      }
+      out[field] = val;
     }
   }
   out = resolveLabelAlignment(out || rec) || out;

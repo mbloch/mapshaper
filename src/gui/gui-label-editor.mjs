@@ -12,7 +12,7 @@ import {
   rangeIsAllBold, toggleBoldRange, updateBoldForEdit, sameBoldRanges
 } from './gui-label-bold';
 import { getSoftBreaks } from './gui-label-wrap';
-import { getLabelColumn } from './gui-label-handles';
+import { getLabelBoxColumn } from './gui-label-handles';
 import {
   getCaretGeometry, getSelectionRects, getLabelBox, getCaretIndexAtPoint,
   growBoxToCaret
@@ -283,6 +283,7 @@ export function LabelEditor(gui, ext) {
     if (!session.nodes) return;
     session.layout = undefined; // resolved from the nodes, which just changed
     writeText(session);
+    updateBackground(session);
     drawOverlay(session);
   };
 
@@ -537,6 +538,25 @@ export function LabelEditor(gui, ext) {
     }
   }
 
+  // Fits a committed label's background to the text being typed, which
+  // writeText() puts in the <text> without redrawing the rest of the symbol.
+  // A pending label needs nothing: it is redrawn from its record, text and
+  // all, whenever that changes.
+  function updateBackground(o) {
+    var rec = o.pending ? null : getRecord(o.target, o.id);
+    var rect = rec && o.nodes.symbol.querySelector('.label-background');
+    var props;
+    if (!rect || !internal.svg.labelHasBackground(rec)) return;
+    rec = Object.assign({}, rec, {
+      'label-text': encodeLabelText(writeLabelValue(o.text, getBreaks(o), o.bold))
+    });
+    props = internal.svg.renderLabelBackground(rec);
+    if (!props) return;
+    ['x', 'y', 'width', 'height'].forEach(function(name) {
+      rect.setAttribute(name, props.properties[name]);
+    });
+  }
+
   // Characters [start, end) of @str into @parent, the bold ones in bold
   // <tspan>s and the rest as text. An empty stretch still gets a text node, as
   // an empty line always did.
@@ -651,7 +671,7 @@ export function LabelEditor(gui, ext) {
   // size of nothing.
   function appendColumn(o, g, box) {
     var rec = o.pending ? getPendingRecord(o) : getRecord(o.target, o.id);
-    var column = rec ? getLabelColumn(rec) : null;
+    var column = rec ? getLabelBoxColumn(rec) : null;
     if (!column) return;
     g.appendChild(rect({
       x: column[0] - BOX_PADDING,
@@ -745,10 +765,18 @@ export function LabelEditor(gui, ext) {
   // There are two drawing groups rather than one because the z-order matters:
   // the selection band has to paint beneath the glyphs and the caret above
   // them. A single group would draw the band over the text and obscure it.
+  //
+  // A label with a background is the exception: the background is inside the
+  // symbol, and would cover a band painted beneath the symbol. So the back
+  // group goes inside it, just above the background, where it is already in
+  // the symbol's space and wears no transform of its own.
   function getGroups(o) {
     var parent = o.nodes.symbol.parentNode;
+    var background = getBackgroundNode(o.nodes.symbol);
+    var backParent = background ? o.nodes.symbol : parent;
     var after;
-    if (!o.groups || o.groups.back.parentNode !== parent) {
+    if (!o.groups || o.groups.front.parentNode !== parent) {
+      if (o.groups) removeGroups(o.groups);
       o.groups = {
         back: makeGroup('label-edit-overlay label-edit-back'),
         front: makeGroup('label-edit-overlay label-edit-front'),
@@ -758,12 +786,33 @@ export function LabelEditor(gui, ext) {
       // data-id either; the tool recognizes a click on it by asking whether the
       // editor owns the node -- see self.ownsNode().
       if (o.id > -1) o.groups.hit.setAttribute('data-id', o.id);
-      parent.insertBefore(o.groups.back, o.nodes.symbol);
       after = o.nodes.symbol.nextSibling;
       parent.insertBefore(o.groups.front, after);
       parent.insertBefore(o.groups.hit, after);
     }
+    // Placed apart from the other two, which a click may be on: rebuilding
+    // them when only the symbol was redrawn would lose a double-click.
+    if (o.groups.back.parentNode !== backParent) {
+      if (background) {
+        o.nodes.symbol.insertBefore(o.groups.back, background.nextSibling);
+        o.groups.back.removeAttribute('transform');
+        o.groups.back.removeAttribute('display');
+      } else {
+        parent.insertBefore(o.groups.back, o.nodes.symbol);
+      }
+    }
+    o.groups.backInside = !!background;
     return o.groups;
+  }
+
+  function getBackgroundNode(symbol) {
+    return symbol.tagName == 'g' ? symbol.querySelector(':scope > .label-background') : null;
+  }
+
+  function removeGroups(groups) {
+    [groups.back, groups.front, groups.hit].forEach(function(g) {
+      if (g.parentNode) g.parentNode.removeChild(g);
+    });
   }
 
   function makeGroup(className) {
@@ -779,6 +828,7 @@ export function LabelEditor(gui, ext) {
     var transform = o.nodes.symbol.getAttribute('transform');
     var display = o.nodes.symbol.getAttribute('display');
     [groups.back, groups.front, groups.hit].forEach(function(g) {
+      if (g == groups.back && groups.backInside) return;
       if (transform) g.setAttribute('transform', transform);
       if (display) {
         g.setAttribute('display', display);
@@ -791,9 +841,7 @@ export function LabelEditor(gui, ext) {
   function removeOverlay(o) {
     removePendingGroup(o);
     if (!o.groups) return;
-    [o.groups.back, o.groups.front, o.groups.hit].forEach(function(g) {
-      if (g.parentNode) g.parentNode.removeChild(g);
-    });
+    removeGroups(o.groups);
     o.groups = null;
   }
 

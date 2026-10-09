@@ -54,6 +54,9 @@ var calloutColorField = 'callout-color';
 var calloutOpacityField = 'callout-opacity';
 var calloutWidthField = 'callout-width';
 var calloutGapField = 'callout-gap';
+var backgroundField = 'label-background';
+var backgroundOpacityField = 'label-background-opacity';
+var paddingField = 'label-padding';
 var defaultCalloutShape = 'line';
 var defaultCalloutWidth = 1;
 var defaultFontSize = 12;
@@ -91,6 +94,9 @@ var savedStyleFields = [
   labelAlignField,
   cssField,
   'label-pos',
+  backgroundField,
+  backgroundOpacityField,
+  paddingField,
   haloWidthField,
   haloColorField,
   haloOpacityField,
@@ -224,7 +230,7 @@ export function LabelTool(gui) {
   // label-style-panel carries the styling the point and layer panels share; the
   // second class is this panel's own, as theirs are
   var panel = El('div').addClass('label-style-panel text-style-panel rollover').appendTo(parent).hide();
-  var presetControl, fontSelect, fontStyleSelect, fontSizeInput, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, dragModeBtns, haloToggle, haloWidthInput, haloColorFieldBox, haloColorChit, haloColorInput, haloColorPicker, haloOpacityInput, iconToggle, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, haloSection, iconSection, calloutSection, calloutToggle, calloutShapeGroupEl, calloutShapeBtns, calloutEndGroupEl, calloutEndBtns, calloutColorFieldBox, calloutColorChit, calloutColorInput, calloutColorPicker, calloutOpacityInput, calloutWidthInput, calloutEndSizeInput, calloutGapInput, editingStatus, clearLink, closeBtn, hit;
+  var presetControl, fontSelect, fontStyleSelect, fontSizeInput, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, dragModeBtns, haloToggle, haloWidthInput, haloColorFieldBox, haloColorChit, haloColorInput, haloColorPicker, haloOpacityInput, iconToggle, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, haloSection, iconSection, calloutSection, calloutToggle, calloutShapeGroupEl, calloutShapeBtns, calloutEndGroupEl, calloutEndBtns, calloutColorFieldBox, calloutColorChit, calloutColorInput, calloutColorPicker, calloutOpacityInput, calloutWidthInput, calloutEndSizeInput, calloutGapInput, backgroundColorFieldBox, backgroundColorChit, backgroundColorInput, backgroundColorPicker, backgroundOpacityInput, paddingInput, editingStatus, clearLink, closeBtn, hit;
   var fontOptionsRendered = false;
   // The shape the toggle turns back on, so that switching a symbol off and on
   // again does not silently change a star into a circle.
@@ -444,6 +450,41 @@ export function LabelTool(gui) {
     var lineHeightCell = El('div').addClass('label-split-cell label-spacing-row').appendTo(alignRow);
     El('span').appendTo(lineHeightCell).text('Line height');
     lineHeightInput = makeMeasureInput(lineHeightCell, lineHeightField, lineHeightPlaceholder);
+
+    // No switch, unlike the halo's: an empty colour is "no background", as an
+    // empty text colour is "no fill", and the padding means something without
+    // one -- it moves a callout and a position's offset out from the text.
+    var backgroundRow = El('div').addClass('label-style-row label-split-row').appendTo(textSection);
+    var backgroundColorCell = El('div').addClass('label-split-cell label-color-row label-background-color-row').appendTo(backgroundRow);
+    El('span').appendTo(backgroundColorCell).text('Background');
+    backgroundColorChit = El('div').addClass('label-color-chit').attr('role', 'button');
+    backgroundColorInput = El('input').attr('type', 'text').attr('aria-label', 'Background color');
+    var backgroundColorField = addColorOpacityField(backgroundColorCell, backgroundColorChit,
+      backgroundColorInput, applyBackgroundOpacity);
+    backgroundColorFieldBox = backgroundColorField.box;
+    backgroundOpacityInput = backgroundColorField.opacity;
+    backgroundColorChit.on('click', function() {
+      if (this.classList.contains('disabled')) return;
+      backgroundColorPicker.toggle();
+    });
+    backgroundColorInput.on('change', function() {
+      var color = backgroundColorInput.node().value.trim();
+      if (isHexColor(color)) backgroundColorPicker.setColor(color);
+      applyBackgroundColor(color);
+    });
+    backgroundColorPicker = initColorPicker(backgroundColorCell, backgroundColorChit,
+      backgroundColorInput, applyBackgroundColor);
+
+    var paddingCell = El('div').addClass('label-split-cell label-spacing-row label-padding-row').appendTo(backgroundRow);
+    El('span').appendTo(paddingCell).text('Padding');
+    paddingInput = El('input').attr('type', 'text').addClass('label-measure-input')
+      .attr('placeholder', '0')
+      .attr('data-placeholder', '0')
+      .attr('title', 'Space around the text, as in CSS: 4, or 2 6 for top and bottom, then sides')
+      .appendTo(paddingCell)
+      .on('change', function() {
+        applyLabelPadding(paddingInput.node().value.trim());
+      });
 
     var cssRow = El('label').addClass('label-style-row label-css-row').appendTo(textSection);
     El('span').appendTo(cssRow).text('Inline CSS');
@@ -964,6 +1005,9 @@ export function LabelTool(gui) {
     var haloWidth = getShownValue(haloIds, haloWidthField, {useDefault: true, defaultValue: lastHaloWidth});
     var haloColor = getShownValue(haloIds, haloColorField, {useDefault: true, defaultValue: defaultHaloColor});
     var haloOpacity = getShownValue(haloIds, haloOpacityField, {useDefault: true, defaultValue: 1});
+    var backgroundColor = getShownValue(ids, backgroundField);
+    var backgroundOpacity = getShownValue(ids, backgroundOpacityField, {useDefault: true, defaultValue: 1});
+    var padding = getShownValue(ids, paddingField);
     updateEditingStatus(manualIds.length, !!getLabelTextSession(gui));
     updateSavedStyleControls();
     fontSelect.node().disabled = !showValues;
@@ -975,6 +1019,7 @@ export function LabelTool(gui) {
     updateMeasureControl(letterSpacingInput, letterSpacing);
     updateMeasureControl(lineHeightInput, lineHeight);
     updateAlignButtons(showValues ? alignVal : '');
+    updateBackgroundControls(backgroundColor, backgroundOpacity, padding, ids);
     updateCssControl(css);
     updatePositionButtons(showValues ? posVal : '', ids);
     var haloOff = updateHaloToggle();
@@ -1097,7 +1142,8 @@ export function LabelTool(gui) {
       // over a position and would make every candidate the same point.
       var o = internal.svg.getDrawnLabelOffset({
         'label-pos': name,
-        'font-size': rec['font-size']
+        'font-size': rec['font-size'],
+        'label-padding': rec['label-padding']
       });
       return {
         name: name,
@@ -1275,6 +1321,17 @@ export function LabelTool(gui) {
     }
   }
 
+  // Inert for a selection of nothing but path labels, which have no box: text
+  // along a curve has nothing rectangular to fill or pad.
+  function updateBackgroundControls(color, opacity, padding, ids) {
+    var off = everyLabelIsOnAPath(ids);
+    updateSwatchField(backgroundColorInput, backgroundColorFieldBox, backgroundColorChit,
+      backgroundColorPicker, color, off);
+    updateOpacityControl(backgroundOpacityInput, opacity, off);
+    updateMeasureControl(paddingInput, padding);
+    if (off) paddingInput.node().disabled = true;
+  }
+
   function updateCssControl(shown) {
     cssInput.node().disabled = !controlsEnabled();
     cssInput.node().value = shown.value || '';
@@ -1402,6 +1459,34 @@ export function LabelTool(gui) {
 
   function applyHaloColor(color) {
     applyStyleValues([[haloColorField, color]], getHaloTargetIds());
+  }
+
+  // An emptied field removes the background.
+  function applyBackgroundColor(color) {
+    applyStyleValues([[backgroundField, color]], getBoxTargetIds());
+  }
+
+  function applyBackgroundOpacity(value) {
+    applyStyleValues([[backgroundOpacityField, value >= 1 ? '' : value]], getBoxTargetIds());
+  }
+
+  // Padding that is not a CSS padding string is refused here, where the
+  // command would otherwise stop with an error about it.
+  function applyLabelPadding(value) {
+    var padding = value ? internal.svg.parseLabelPadding(value) : '';
+    if (padding === null) {
+      updateControls();
+      return;
+    }
+    applyStyleValues([[paddingField, padding]], getBoxTargetIds());
+  }
+
+  // The targets that are not path labels, for the reason a position is not
+  // written to them: it would be a property nothing reads.
+  function getBoxTargetIds() {
+    return getTargetIds().filter(function(id) {
+      return !everyLabelIsOnAPath([id]);
+    });
   }
 
   // Full opacity is stored as no halo-opacity, as it is for the text's own.
@@ -1832,6 +1917,11 @@ export function LabelTool(gui) {
     addStyleValue(style, labelAlignField, getSelectedAlignment());
     addStyleValue(style, cssField, cssInput.node().value.trim());
     addStyleValue(style, 'label-pos', getSelectedLabelPosition());
+    addStyleValue(style, backgroundField, backgroundColorInput.node().value.trim());
+    if (backgroundColorInput.node().value.trim()) {
+      addStyleValue(style, backgroundOpacityField, getOpacityBelowFull(backgroundOpacityInput));
+    }
+    addStyleValue(style, paddingField, paddingInput.node().value.trim());
     // A style saved without a halo carries no halo-width, so applying it
     // leaves a halo alone rather than removing one; the same is true of icons.
     if (getHaloState() == 'on') {
@@ -2097,6 +2187,7 @@ export function LabelTool(gui) {
     haloColorPicker.hide();
     iconColorPicker.hide();
     calloutColorPicker.hide();
+    backgroundColorPicker.hide();
   }
 
   function isFormElement(node) {

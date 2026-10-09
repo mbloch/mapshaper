@@ -1,7 +1,8 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
 import {
-  getAnchoredLabelHandles, getLabelColumn, getDraggedWidth, snapCalloutVia,
+  getAnchoredLabelHandles, getLabelColumn, getLabelBoxColumn, getWidthHandlePadding,
+  getDraggedWidth, snapCalloutVia,
   getAttachFraction, getDraggedGap, followCalloutVia, formatPointPair,
   MIN_LABEL_WIDTH
 } from '../src/gui/gui-label-handles';
@@ -34,6 +35,29 @@ describe('gui-label-handles.mjs', function () {
 
     it('is centred on the anchor of centred text, which is the default', function () {
       assert.deepEqual(getLabelColumn({'label-width': 100, dx: 10}), [-40, 60]);
+    });
+  });
+
+  describe('getLabelBoxColumn()', function () {
+    it('grows the column by the padding on each side', function () {
+      assert.deepEqual(getLabelBoxColumn({'label-width': 100, dx: 10,
+        'text-anchor': 'start', 'label-padding': '2 6 2 4'}), [6, 116]);
+      assert.deepEqual(getLabelBoxColumn({'label-width': 100, dx: 10,
+        'text-anchor': 'start'}), [10, 110]);
+      assert.strictEqual(getLabelBoxColumn({'label-text': 'a', 'label-padding': 4}), null);
+    });
+
+    it('puts the width handle outside the padding, and a drag there leaves the width', function () {
+      var rec = {'label-text': 'a', 'label-width': 100, dx: 10, dy: 0,
+        'text-anchor': 'start', 'label-padding': '2 6'};
+      var o = getAnchoredLabelHandles(rec, {x: 4, y: -12, width: 112, height: 16}, {padding: 3});
+      var handle = o.handles.filter(function(h) { return h.kind == 'width'; })[0];
+      assert.deepEqual(o.column, [4, 116]);
+      nearPoint(handle.point, [119, 7]);
+      assert.equal(getDraggedWidth('start', 10, handle.point[0],
+        3 + getWidthHandlePadding(rec, 'start')), 100);
+      assert.equal(getWidthHandlePadding({'label-padding': '1 2 3 4'}, 'end'), 4);
+      assert.equal(getWidthHandlePadding({}, 'start'), 0);
     });
   });
 

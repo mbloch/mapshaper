@@ -11,7 +11,8 @@ import {
 } from './gui-label-commands';
 import {
   getAnchoredLabelHandles, getDraggedWidth, snapCalloutVia, getAttachFraction,
-  getDraggedGap, followCalloutVia, formatPointPair, getDrawnAnchor, getLabelColumn,
+  getDraggedGap, followCalloutVia, formatPointPair, getDrawnAnchor,
+  getLabelBoxColumn, getWidthHandlePadding,
   MIN_LABEL_WIDTH
 } from './gui-label-handles';
 import { rewrapLabelValue } from './gui-label-wrap';
@@ -27,7 +28,7 @@ import { setMultilineAttribute } from './gui-svg-labels';
 import { getLabelPathNode, replaceAnchoredSymbol } from './gui-svg-symbols';
 import { findNearestKnot, knotMoveIsValid } from './gui-label-knots';
 import { LabelEditor } from './gui-label-editor';
-import { LabelSelection, BOX_PADDING } from './gui-label-selection';
+import { LabelSelection, BOX_PADDING, getCuePadding } from './gui-label-selection';
 import {
   getLabelSelectActions, getAllLabelIds
 } from './gui-label-select-matchers';
@@ -123,6 +124,7 @@ export function initLabelTool(gui, ext, hit) {
   var selection = new LabelSelection(gui, ext, hit, function() {
     return editor.isOpen() ? editor.getFeatureId() : -1;
   }, getLabelHandles);
+  selection.setPreviewRecordGetter(getPreviewRecord);
   var toolbar, anchorBtn, blockBtn, pathBtn, stylesBtn, alert;
 
   gui.addMode('label_tool', turnOn, turnOff);
@@ -907,12 +909,12 @@ export function initLabelTool(gui, ext, hit) {
     if (!active() || editor.isOpen() || drawingCurve() || textDrag ||
         ids.length != 1 || ids[0] != id) {
       shownHandles = null;
-      return {handles: [], column: getLabelColumn(rec)};
+      return {handles: [], column: getLabelBoxColumn(rec)};
     }
     o = getAnchoredLabelHandles(rec, textBox, {
       symbolRadius: internal.svg.getAnchorSymbolRadius(rec),
       scale: ext.getSymbolScale() || 1,
-      padding: BOX_PADDING
+      padding: getCuePadding(rec)
     });
     shownHandles = {id: id, target: target, handles: o.handles};
     return o;
@@ -991,7 +993,8 @@ export function initLabelTool(gui, ext, hit) {
     var tol = SNAP_PX / (ext.getSymbolScale() || 1);
     var width, shape, via;
     if (o.kind == 'width') {
-      width = getDraggedWidth(o.textAnchor, o.dx, p[0], BOX_PADDING);
+      width = getDraggedWidth(o.textAnchor, o.dx, p[0],
+        getCuePadding(o.rec) + getWidthHandlePadding(o.rec, o.textAnchor));
       return {
         'label-width': width,
         'label-text': rewrapLabelValue(o.rec['label-text'],
@@ -1166,15 +1169,19 @@ export function initLabelTool(gui, ext, hit) {
   // A text block's style: the new label's, with a wrap width -- @width or a
   // default -- and placed with the top left of its column at the anchor, so
   // that its text is left-aligned and fills the box a drag drew. The offsets
-  // that do that replace the position the panel names.
+  // that do that replace the position the panel names. With label-padding it
+  // is the padded box that goes there and fills the drag, and the column is
+  // inside it.
   function getBlockStyle(width) {
     var style = Object.assign({}, getStyleForNewLabel());
+    var pad = internal.svg.getLabelPadding(style) || {top: 0, right: 0, bottom: 0, left: 0};
+    var column = width > 0 ? Math.round(width - pad.left - pad.right) : DEFAULT_BLOCK_WIDTH;
     delete style['label-pos'];
     return Object.assign(style, {
-      'label-width': width > 0 ? width : DEFAULT_BLOCK_WIDTH,
+      'label-width': Math.max(column, MIN_LABEL_WIDTH),
       'text-anchor': 'start',
-      dx: 0,
-      dy: Math.round(getNewFontSize(style) * 0.8)
+      dx: pad.left,
+      dy: Math.round(getNewFontSize(style) * 0.8 + pad.top)
     });
   }
 
@@ -1359,6 +1366,8 @@ export function initLabelTool(gui, ext, hit) {
         anchor: nodes.text.getAttribute('text-anchor')
       },
       callout: getOffsetDragCallout(rec),
+      // A background is drawn around the text, so it is redrawn with it
+      redraw: internal.svg.labelHasBackground(rec),
       moved: false
     };
     // The hairline to the anchor, which is what the drag is measured from and
@@ -1401,6 +1410,8 @@ export function initLabelTool(gui, ext, hit) {
     delete o.previewRec['label-pos'];
     if (o.callout) {
       previewCalloutOffset(o, getDomEvent(e));
+    } else if (o.redraw) {
+      previewLabel(o.target, o.id, o.previewRec);
     } else {
       previewOffset(o);
     }
@@ -1452,7 +1463,7 @@ export function initLabelTool(gui, ext, hit) {
   function restoreOffset(o) {
     var nodes = findLabelNodes(o.target, o.id);
     releasedDrag = null;
-    if (o.callout) {
+    if (o.callout || o.redraw) {
       // redrawn rather than written on, so redrawn back
       gui.dispatchEvent('map-needs-refresh');
       return;

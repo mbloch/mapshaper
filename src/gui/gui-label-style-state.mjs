@@ -17,6 +17,7 @@ export var NEW_LABEL_STYLE_FIELDS = [
   'dominant-baseline',
   'label-pos', 'label-side', 'label-start-offset', 'dx', 'dy',
   'fill', 'opacity', 'css', 'class',
+  'label-background', 'label-background-opacity', 'label-padding',
   'halo-width', 'halo-color', 'halo-opacity',
   'icon', 'icon-size', 'icon-color', 'icon-opacity',
   // not callout-via or callout-attach, which are placed for one label's
