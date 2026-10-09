@@ -14666,10 +14666,13 @@
   // label-pos places text relative to an anchor point, which a path label does
   // not have -- its text runs along the curve. Writing it there would put a
   // property on the feature that nothing reads. label-width is the same: a path
-  // label is one line.
+  // label is one line. And a path label has no box to pad or fill.
+  var ANCHORED_ONLY_FIELDS = ['label-pos', 'label-width', 'label-padding',
+    'label-background', 'label-background-opacity'];
+
   function getStyleFields$1(style, isPathLabel) {
     return Object.keys(style || {}).filter(function(name) {
-      return !(isPathLabel && (name == 'label-pos' || name == 'label-width'));
+      return !(isPathLabel && ANCHORED_ONLY_FIELDS.indexOf(name) > -1);
     });
   }
 
@@ -17011,6 +17014,404 @@
     return slug || 'style';
   }
 
+  // Conversions between what a style control displays and what the property
+  // stores, for the ones more than one panel needs.
+
+  // The fraction an opacity control's contents mean ("50%", " 50 " -> 0.5), or
+  // null if it is not holding a number. Out-of-range values are clamped rather
+  // than refused: a pasted 150% is an intent, not a mistake. A blank field is
+  // null, not zero: it is what a colour with no value shows beside it.
+  function parseOpacityValue(str) {
+    var txt = String(str).replace('%', '').trim();
+    var pct = Number(txt);
+    if (txt === '' || !isFinite(pct)) return null;
+    return Math.max(0, Math.min(100, pct)) / 100;
+  }
+
+  // A typed dash pattern in the form -style stroke-dasharray= takes: lengths
+  // separated by single spaces. Commas and runs of whitespace are accepted
+  // because SVG accepts them, and a pasted "4, 2" means the same as "4 2".
+  // Returns '' for a blank field. Does not check that the lengths are numbers.
+  function normalizeDashArrayInput(str) {
+    return String(str).trim().split(/[\s,]+/).filter(Boolean).join(' ');
+  }
+
+  // A stored fraction as the percentage a control shows, or '' for no value --
+  // which is how a control over a selection that does not agree shows.
+  function formatOpacityPct(val) {
+    if (isUnsetValue(val)) return '';
+    val = Number(val);
+    return isFinite(val) ? Math.round(Math.max(0, Math.min(1, val)) * 100) + '%' : '';
+  }
+
+  // The opacity shown beside a colour. A colour with no opacity of its own is
+  // drawn opaque, and says so; with no colour either, there is nothing for an
+  // opacity to apply to, and the field is blank like the colour.
+  function formatColorOpacityPct(opacity, hasColor) {
+    if (isUnsetValue(opacity)) return hasColor ? '100%' : '';
+    return formatOpacityPct(opacity);
+  }
+
+  function isUnsetValue(val) {
+    return val === undefined || val === null || val === '';
+  }
+
+  // The parts the style panels are built from. They were the label panel's, and
+  // three panels drawing the same control three ways is how they came to look
+  // like three programs: a colour was a swatch inside a field in one and a
+  // button beside a box in the others, and a size was a field with a stepper in
+  // one and a value between a − and a + in the others.
+  //
+  // The look is in page.css, keyed on .label-style-panel, which every style
+  // panel carries.
+
+  // A section of a panel: a heading and the rows under it. Whitespace and the
+  // heading separate one from the next -- a rule as well would be a third
+  // answer to a question already settled twice.
+  //
+  // opts.minor: a heading in the smaller grey of a row caption rather than the
+  // bold of a section name, for a section that is a single control.
+  function makePanelSection(parent, title, opts) {
+    var section = El('div').addClass('label-style-section').appendTo(parent);
+    // The heading's type is on the name rather than on the row, because the row
+    // also holds things that are not headings -- a switch, or a caption over a
+    // column of the row below.
+    var row = El('div').addClass('label-style-section-title')
+      .classed('label-style-section-minor', !!(opts && opts.minor))
+      .appendTo(section);
+    El('span').addClass('label-style-section-name').appendTo(row).text(title);
+    return section;
+  }
+
+  // A section that opens and closes from its heading, so that a long panel can
+  // be cut down to the sections in use. Open or closed is the panel's state and
+  // not the data's: closing a section changes no style, and selecting other
+  // features never opens or closes one.
+  //
+  // A section for a style a feature can have or not -- a halo, an icon, a
+  // pattern -- also says in its heading whether the features being styled have
+  // it, which a closed section would otherwise hide: a dot for all of them, a
+  // half-filled one for some, nothing for none. Its × takes the style off; the
+  // controls in the section are how it is put on.
+  //
+  // opts.open           start open (default closed)
+  // opts.onToggle(open) the section was opened or closed from its heading
+  // opts.onRemove()     give the heading a × that removes the style, shown
+  //                     while setPresence() says the style is there
+  // opts.removeTitle    the ×'s accessible name
+  //
+  // Returns {section, setOpen(open), isOpen(), setPresence(state)}, where state
+  // is 'on', 'off' or 'mixed'.
+  function makeCollapsibleSection(parent, title, opts) {
+    var o = opts || {};
+    var section = makePanelSection(parent, title);
+    var row = section.findChild('.label-style-section-title')
+      .addClass('label-section-heading')
+      .attr('role', 'button');
+    var open = !!o.open;
+    var arrow = El('span').addClass('label-section-arrow').attr('aria-hidden', 'true');
+    var marker, removeBtn;
+    row.node().insertBefore(arrow.node(), row.node().firstChild);
+    marker = El('span').addClass('label-section-marker').attr('role', 'img').appendTo(row);
+    if (o.onRemove) {
+      removeBtn = El('div').addClass('label-section-remove').attr('role', 'button')
+        .attr('aria-label', o.removeTitle || 'Remove')
+        .appendTo(row).html('&times;')
+        .on('click', function(e) {
+          // the heading's own click would open or close the section
+          e.stopPropagation();
+          o.onRemove();
+        });
+    }
+    row.on('click', function() {
+      setOpen(!open);
+      if (o.onToggle) o.onToggle(open);
+    });
+    setOpen(open);
+    setPresence('off');
+
+    function setOpen(val) {
+      open = !!val;
+      section.classed('collapsed', !open);
+      row.attr('aria-expanded', open ? 'true' : 'false');
+    }
+
+    function setPresence(state) {
+      var s = state == 'on' || state == 'mixed' ? state : 'off';
+      marker.classed('on', s == 'on').classed('mixed', s == 'mixed')
+        .attr('aria-label', s == 'on' ? 'Applied' :
+          s == 'mixed' ? 'Applied to some of the selection' : 'Not applied');
+      if (removeBtn) removeBtn.classed('hidden', s == 'off');
+    }
+
+    return {
+      section: section,
+      setOpen: setOpen,
+      isOpen: function() { return open; },
+      setPresence: setPresence
+    };
+  }
+
+  // A switch: a track with a knob that sits left when off and right when on,
+  // which is the direction users expect and the only thing that says which
+  // state is which without a label for each. A third state says that the
+  // features it is asking about disagree -- the knob sits over the join of a
+  // half-and-half track, which is the only control that has to show "some of
+  // them" rather than a value.
+  //
+  // role=checkbox rather than switch, which is what it looks like: 'mixed' is a
+  // legal aria-checked value for a checkbox and not for a switch, and a switch
+  // reporting a mixed selection as unchecked would be telling a screen reader
+  // the one thing the third state exists to avoid saying.
+  //
+  // opts.onChange(on)  the switch was clicked
+  // opts.title          the switch's accessible name (not a tooltip)
+  // opts.className
+  function makePanelToggle(parent, opts) {
+    var track = El('div').addClass('label-toggle').attr('role', 'checkbox').appendTo(parent);
+    var state = 'off';
+    if (opts.className) track.addClass(opts.className);
+    var disabled = false;
+    El('div').addClass('label-toggle-knob').appendTo(track);
+    if (opts.title) track.attr('aria-label', opts.title);
+    // A click on a mixed switch turns everything on. It is the convention, and
+    // it is the reading that reaches a state the switch can describe: the next
+    // click then turns everything off, so both are one click away.
+    track.on('click', function() {
+      if (disabled) return;
+      opts.onChange(state != 'on');
+    });
+    return {
+      // val: 'on', 'off' or 'mixed'; anything else reads as off
+      setState: function(val) {
+        state = val == 'on' || val == 'mixed' ? val : 'off';
+        track.classed('on', state == 'on')
+          .classed('mixed', state == 'mixed')
+          .attr('aria-checked', state == 'mixed' ? 'mixed' :
+            state == 'on' ? 'true' : 'false');
+      },
+      setDisabled: function(off) {
+        disabled = !!off;
+        track.classed('disabled', disabled)
+          .attr('aria-disabled', disabled ? 'true' : 'false');
+      }
+    };
+  }
+
+  // Deliberately not focusable: the GUI is pointer-only, so a tab stop here
+  // would lead into a control the keyboard cannot then operate. See the focus
+  // note in page.css.
+  function makePanelButton(parent, label, action) {
+    return El('div')
+      .addClass('label-panel-btn')
+      .attr('role', 'button')
+      .appendTo(parent)
+      .text(label)
+      .on('click', function(e) {
+        if (this.classList.contains('disabled')) return;
+        action(e);
+      });
+  }
+
+  // A button with a word on it rather than a glyph: Clear style, Random fill,
+  // Create. Shaped like the panel's fields rather than like its 19px icon
+  // buttons, because what it does is named rather than drawn, and it is as wide
+  // as the name.
+  function makePanelActionButton(parent, label, action) {
+    var btn = El('div')
+      .addClass('label-panel-action-btn')
+      .attr('role', 'button')
+      .appendTo(parent)
+      .on('click', function(e) {
+        if (this.classList.contains('disabled')) return;
+        action(e);
+      });
+    El('span').appendTo(btn).text(label);
+    return btn;
+  }
+
+  // The "?" the rest of the app uses for field help (see .tip-button in
+  // elements.css and the static ones in index.html). The bubble is white-space:
+  // pre, so the line breaks in the text are the ones it gets.
+  function makeFieldTip(parent, text) {
+    var btn = El('div').addClass('tip-button').appendTo(parent).text('?');
+    var anchor = El('div').addClass('tip-anchor').appendTo(btn);
+    var tip = El('div').addClass('tip').appendTo(anchor).text(text);
+    btn.on('mouseenter', function() {
+      fitTipToPage(tip.node());
+    });
+    return btn;
+  }
+
+  // A tip is centred on its "?", so one near the edge of the page -- the style
+  // panels sit at the right of the map -- would run off it. This slides the
+  // bubble back onto the page and its tail the other way, so that the tail
+  // still points at the "?" (see .tip in elements.css).
+  function fitTipToPage(el) {
+    var margin = 8;
+    var pageWidth = document.documentElement.clientWidth;
+    var rect, shift, maxShift;
+    el.style.transform = '';
+    el.style.removeProperty('--tip-tail-shift');
+    rect = el.getBoundingClientRect();
+    shift = 0;
+    if (rect.right > pageWidth - margin) {
+      shift = pageWidth - margin - rect.right;
+    }
+    if (rect.left + shift < margin) {
+      shift = margin - rect.left;
+    }
+    // keep the tail on the bubble, clear of its rounded corners
+    maxShift = Math.max(rect.width / 2 - 16, 0);
+    shift = Math.max(-maxShift, Math.min(maxShift, shift));
+    if (shift !== 0) {
+      el.style.transform = 'translateX(' + shift + 'px)';
+      el.style.setProperty('--tip-tail-shift', -shift + 'px');
+    }
+  }
+
+  function setPanelButtonDisabled(el, disabled) {
+    el.classed('disabled', !!disabled)
+      .attr('aria-disabled', disabled ? 'true' : 'false');
+  }
+
+  // A colour swatch and its hex value inside one border, so that the pair reads
+  // as one field rather than as a button beside a text box.
+  function makeColorField(parent, chit, input) {
+    var box = El('div').addClass('label-color-field').appendTo(parent);
+    chit.appendTo(box);
+    input.addClass('label-color-input').appendTo(box);
+    return box;
+  }
+
+  // A colour field with its opacity at the right-hand end, behind a divider:
+  // opacity qualifies the colour, and one border says so where two fields side
+  // by side said they were separate settings. It also leaves the narrow column
+  // of the row free for a field that needs it. The opacity has no caption; its
+  // percent sign says what it is.
+  //
+  // Returns the field's box; the opacity input is made by makeOpacityInput().
+  function makeColorOpacityField(parent, chit, input, opacityOpts) {
+    var box = makeColorField(parent, chit, input).addClass('label-color-opacity-field');
+    var opacity = makeOpacityInput(box, opacityOpts);
+    return {box: box, opacity: opacity};
+  }
+
+  // A colour and its opacity in one field, captioned, in the wide column of a
+  // split row. Fill and Stroke are each one of these.
+  //
+  // opts.label            the caption over the field
+  // opts.onColor(hex)     a colour was typed, picked or previewed to a finish;
+  //                       '' when the field was emptied, which unsets a colour
+  //                       that can be unset and restores the default of one
+  //                       that cannot
+  // opts.onOpacity(frac)  a usable percentage was typed
+  // opts.revert()         one that was not, so put the row back as it was
+  // opts.noOpacity        a colour with no opacity of its own, like a pattern's,
+  //                       which fill-opacity fades along with its background
+  //
+  // control.aside is the row's narrow column, empty, for a field that belongs
+  // beside the colour -- a stroke's width, say.
+  function makeColorRow(parent, opts) {
+    var row = El('div').addClass('label-style-row label-split-row').appendTo(parent);
+    var colorCell = El('div').addClass('label-split-cell label-color-row').appendTo(row);
+    var aside = El('div').addClass('label-split-cell').appendTo(row);
+    var control = {row: row, aside: aside, chit: null, input: null, opacity: null, picker: null};
+
+    // A color from the data can be any CSS color -- short hex, or a name, from
+    // the command line -- and the swatch shows it, though only hex can be
+    // opened in the picker.
+    control.setColor = function(color) {
+      control.input.node().value = color || '';
+      control.chit.css('background-color', getSwatchColor(color));
+    };
+
+    // What a panel calls when it refreshes from the data: the picker has to start
+    // from the colour that is set, not from wherever it was left. A picker that
+    // has never been opened is still on its default, so without this it opens on
+    // black rather than on the colour beside it. Kept apart from setColor(),
+    // which is also the picker's own preview callback and must not feed back into
+    // it mid-drag. A field with no hex color opens the picker with nothing
+    // picked, so that closing it leaves the field as it was.
+    control.showColor = function(color) {
+      // the picker previews what it is set to, so it goes first, and the field
+      // then shows the color as the data has it ("#334", not "#333344")
+      showInPicker(color);
+      control.setColor(color);
+    };
+
+    function showInPicker(color) {
+      var hex = toSixDigitHex(color);
+      if (hex) control.picker.setColor(hex);
+      else control.picker.clearColor();
+    }
+
+    El('span').appendTo(colorCell).text(opts.label);
+    control.chit = El('div').addClass('label-color-chit').attr('role', 'button')
+      .on('click', function() {
+        control.picker.toggle();
+      });
+    control.input = El('input').attr('type', 'text')
+      .attr('aria-label', opts.label + ' color')
+      .on('change', function() {
+        var color = control.input.node().value.trim();
+        showInPicker(color);
+        opts.onColor(color);
+      });
+    if (opts.noOpacity) {
+      makeColorField(colorCell, control.chit, control.input);
+    } else {
+      control.opacity = makeColorOpacityField(colorCell, control.chit, control.input, {
+        onSet: opts.onOpacity,
+        revert: opts.revert
+      }).opacity;
+    }
+    control.picker = new ColorPicker(colorCell, {
+      presetRows: layerColorPresetRows,
+      // A drag in the picker shows on the map's own terms -- the swatch and the
+      // hex value -- and only the colour the drag ends on is applied.
+      onPreview: control.setColor,
+      onChange: function(hex) {
+        control.setColor(hex);
+        opts.onColor(hex);
+      }
+    });
+    return control;
+  }
+
+  // What a swatch shows for @color: the color itself if the browser takes it
+  // as one, otherwise nothing
+  function getSwatchColor(color) {
+    var hex = toSixDigitHex(color);
+    if (hex) return hex;
+    if (color && typeof CSS != 'undefined' && CSS.supports && CSS.supports('color', color)) {
+      return color;
+    }
+    return 'transparent';
+  }
+
+  // Opacity is shown as a percentage and stored as a fraction. It is a plain
+  // field rather than a swatch or a slider: a swatch beside a colour reads as a
+  // second colour, and a slider gives up the exact value for a drag that a
+  // zoomable map makes risky.
+  //
+  // opts.onSet(fraction) a usable percentage was typed
+  // opts.revert()        it was not, so put back what the field was showing
+  function makeOpacityInput(parent, opts) {
+    var input = El('input').attr('type', 'text').addClass('label-opacity-input')
+      .attr('aria-label', 'Opacity, 0-100%')
+      .appendTo(parent)
+      .on('change', function() {
+        var val = parseOpacityValue(input.node().value);
+        if (val === null) {
+          if (opts.revert) opts.revert();
+          return;
+        }
+        opts.onSet(val);
+      });
+    return input;
+  }
+
   // Saved styles: a menu that applies one, and a button that saves the current
   // one. Shared by the label panel and the layer style panel.
   //
@@ -17064,11 +17465,12 @@
 
   function StylePresetControl(parent, opts) {
     // A section of the panel like Text and Icon, and headed like them.
-    var row = El('div').addClass('label-style-section label-saved-style-row').appendTo(parent);
+    var row = makeCollapsibleSection(parent, 'Saved styles', {
+      onToggle: function(open) {
+        if (!open) closeMenu();
+      }
+    }).section.addClass('label-saved-style-row');
     var menu, menuBtn, list, saveBtn;
-
-    var title = El('div').addClass('label-style-section-title').appendTo(row);
-    El('span').addClass('label-style-section-name').appendTo(title).text('Saved styles');
 
     var controls = El('div').addClass('label-saved-style-controls').appendTo(row);
     menu = El('div').addClass('label-saved-style-menu').appendTo(controls);
@@ -17526,336 +17928,6 @@
     return true;
   }
 
-  // Conversions between what a style control displays and what the property
-  // stores, for the ones more than one panel needs.
-
-  // The fraction an opacity control's contents mean ("50%", " 50 " -> 0.5), or
-  // null if it is not holding a number. Out-of-range values are clamped rather
-  // than refused: a pasted 150% is an intent, not a mistake. A blank field is
-  // null, not zero: it is what a colour with no value shows beside it.
-  function parseOpacityValue(str) {
-    var txt = String(str).replace('%', '').trim();
-    var pct = Number(txt);
-    if (txt === '' || !isFinite(pct)) return null;
-    return Math.max(0, Math.min(100, pct)) / 100;
-  }
-
-  // A typed dash pattern in the form -style stroke-dasharray= takes: lengths
-  // separated by single spaces. Commas and runs of whitespace are accepted
-  // because SVG accepts them, and a pasted "4, 2" means the same as "4 2".
-  // Returns '' for a blank field. Does not check that the lengths are numbers.
-  function normalizeDashArrayInput(str) {
-    return String(str).trim().split(/[\s,]+/).filter(Boolean).join(' ');
-  }
-
-  // A stored fraction as the percentage a control shows, or '' for no value --
-  // which is how a control over a selection that does not agree shows.
-  function formatOpacityPct(val) {
-    if (isUnsetValue(val)) return '';
-    val = Number(val);
-    return isFinite(val) ? Math.round(Math.max(0, Math.min(1, val)) * 100) + '%' : '';
-  }
-
-  // The opacity shown beside a colour. A colour with no opacity of its own is
-  // drawn opaque, and says so; with no colour either, there is nothing for an
-  // opacity to apply to, and the field is blank like the colour.
-  function formatColorOpacityPct(opacity, hasColor) {
-    if (isUnsetValue(opacity)) return hasColor ? '100%' : '';
-    return formatOpacityPct(opacity);
-  }
-
-  function isUnsetValue(val) {
-    return val === undefined || val === null || val === '';
-  }
-
-  // The parts the style panels are built from. They were the label panel's, and
-  // three panels drawing the same control three ways is how they came to look
-  // like three programs: a colour was a swatch inside a field in one and a
-  // button beside a box in the others, and a size was a field with a stepper in
-  // one and a value between a − and a + in the others.
-  //
-  // The look is in page.css, keyed on .label-style-panel, which every style
-  // panel carries.
-
-  // A section of a panel: a heading and the rows under it. Whitespace and the
-  // heading separate one from the next -- a rule as well would be a third
-  // answer to a question already settled twice.
-  //
-  // opts.minor: a heading in the smaller grey of a row caption rather than the
-  // bold of a section name, for a section that is a single control.
-  function makePanelSection(parent, title, opts) {
-    var section = El('div').addClass('label-style-section').appendTo(parent);
-    // The heading's type is on the name rather than on the row, because the row
-    // also holds things that are not headings -- a switch, or a caption over a
-    // column of the row below.
-    var row = El('div').addClass('label-style-section-title')
-      .classed('label-style-section-minor', !!(opts && opts.minor))
-      .appendTo(section);
-    El('span').addClass('label-style-section-name').appendTo(row).text(title);
-    return section;
-  }
-
-  // A switch: a track with a knob that sits left when off and right when on,
-  // which is the direction users expect and the only thing that says which
-  // state is which without a label for each. A third state says that the
-  // features it is asking about disagree -- the knob sits over the join of a
-  // half-and-half track, which is the only control that has to show "some of
-  // them" rather than a value. A section's switch goes in its heading row, and
-  // the section shows only its heading while it is off (the .collapsed class).
-  //
-  // role=checkbox rather than switch, which is what it looks like: 'mixed' is a
-  // legal aria-checked value for a checkbox and not for a switch, and a switch
-  // reporting a mixed selection as unchecked would be telling a screen reader
-  // the one thing the third state exists to avoid saying.
-  //
-  // opts.onChange(on)  the switch was clicked
-  // opts.title          the switch's accessible name (not a tooltip)
-  // opts.className
-  function makePanelToggle(parent, opts) {
-    var track = El('div').addClass('label-toggle').attr('role', 'checkbox').appendTo(parent);
-    var state = 'off';
-    if (opts.className) track.addClass(opts.className);
-    var disabled = false;
-    El('div').addClass('label-toggle-knob').appendTo(track);
-    if (opts.title) track.attr('aria-label', opts.title);
-    // A click on a mixed switch turns everything on. It is the convention, and
-    // it is the reading that reaches a state the switch can describe: the next
-    // click then turns everything off, so both are one click away.
-    track.on('click', function() {
-      if (disabled) return;
-      opts.onChange(state != 'on');
-    });
-    return {
-      // val: 'on', 'off' or 'mixed'; anything else reads as off
-      setState: function(val) {
-        state = val == 'on' || val == 'mixed' ? val : 'off';
-        track.classed('on', state == 'on')
-          .classed('mixed', state == 'mixed')
-          .attr('aria-checked', state == 'mixed' ? 'mixed' :
-            state == 'on' ? 'true' : 'false');
-      },
-      setDisabled: function(off) {
-        disabled = !!off;
-        track.classed('disabled', disabled)
-          .attr('aria-disabled', disabled ? 'true' : 'false');
-      }
-    };
-  }
-
-  // Deliberately not focusable: the GUI is pointer-only, so a tab stop here
-  // would lead into a control the keyboard cannot then operate. See the focus
-  // note in page.css.
-  function makePanelButton(parent, label, action) {
-    return El('div')
-      .addClass('label-panel-btn')
-      .attr('role', 'button')
-      .appendTo(parent)
-      .text(label)
-      .on('click', function(e) {
-        if (this.classList.contains('disabled')) return;
-        action(e);
-      });
-  }
-
-  // A button with a word on it rather than a glyph: Clear style, Random fill,
-  // Create. Shaped like the panel's fields rather than like its 19px icon
-  // buttons, because what it does is named rather than drawn, and it is as wide
-  // as the name.
-  function makePanelActionButton(parent, label, action) {
-    var btn = El('div')
-      .addClass('label-panel-action-btn')
-      .attr('role', 'button')
-      .appendTo(parent)
-      .on('click', function(e) {
-        if (this.classList.contains('disabled')) return;
-        action(e);
-      });
-    El('span').appendTo(btn).text(label);
-    return btn;
-  }
-
-  // The "?" the rest of the app uses for field help (see .tip-button in
-  // elements.css and the static ones in index.html). The bubble is white-space:
-  // pre, so the line breaks in the text are the ones it gets.
-  function makeFieldTip(parent, text) {
-    var btn = El('div').addClass('tip-button').appendTo(parent).text('?');
-    var anchor = El('div').addClass('tip-anchor').appendTo(btn);
-    var tip = El('div').addClass('tip').appendTo(anchor).text(text);
-    btn.on('mouseenter', function() {
-      fitTipToPage(tip.node());
-    });
-    return btn;
-  }
-
-  // A tip is centred on its "?", so one near the edge of the page -- the style
-  // panels sit at the right of the map -- would run off it. This slides the
-  // bubble back onto the page and its tail the other way, so that the tail
-  // still points at the "?" (see .tip in elements.css).
-  function fitTipToPage(el) {
-    var margin = 8;
-    var pageWidth = document.documentElement.clientWidth;
-    var rect, shift, maxShift;
-    el.style.transform = '';
-    el.style.removeProperty('--tip-tail-shift');
-    rect = el.getBoundingClientRect();
-    shift = 0;
-    if (rect.right > pageWidth - margin) {
-      shift = pageWidth - margin - rect.right;
-    }
-    if (rect.left + shift < margin) {
-      shift = margin - rect.left;
-    }
-    // keep the tail on the bubble, clear of its rounded corners
-    maxShift = Math.max(rect.width / 2 - 16, 0);
-    shift = Math.max(-maxShift, Math.min(maxShift, shift));
-    if (shift !== 0) {
-      el.style.transform = 'translateX(' + shift + 'px)';
-      el.style.setProperty('--tip-tail-shift', -shift + 'px');
-    }
-  }
-
-  function setPanelButtonDisabled(el, disabled) {
-    el.classed('disabled', !!disabled)
-      .attr('aria-disabled', disabled ? 'true' : 'false');
-  }
-
-  // A colour swatch and its hex value inside one border, so that the pair reads
-  // as one field rather than as a button beside a text box.
-  function makeColorField(parent, chit, input) {
-    var box = El('div').addClass('label-color-field').appendTo(parent);
-    chit.appendTo(box);
-    input.addClass('label-color-input').appendTo(box);
-    return box;
-  }
-
-  // A colour field with its opacity at the right-hand end, behind a divider:
-  // opacity qualifies the colour, and one border says so where two fields side
-  // by side said they were separate settings. It also leaves the narrow column
-  // of the row free for a field that needs it. The opacity has no caption; its
-  // percent sign says what it is.
-  //
-  // Returns the field's box; the opacity input is made by makeOpacityInput().
-  function makeColorOpacityField(parent, chit, input, opacityOpts) {
-    var box = makeColorField(parent, chit, input).addClass('label-color-opacity-field');
-    var opacity = makeOpacityInput(box, opacityOpts);
-    return {box: box, opacity: opacity};
-  }
-
-  // A colour and its opacity in one field, captioned, in the wide column of a
-  // split row. Fill and Stroke are each one of these.
-  //
-  // opts.label            the caption over the field
-  // opts.onColor(hex)     a colour was typed, picked or previewed to a finish;
-  //                       '' when the field was emptied, which unsets a colour
-  //                       that can be unset and restores the default of one
-  //                       that cannot
-  // opts.onOpacity(frac)  a usable percentage was typed
-  // opts.revert()         one that was not, so put the row back as it was
-  // opts.noOpacity        a colour with no opacity of its own, like a pattern's,
-  //                       which fill-opacity fades along with its background
-  //
-  // control.aside is the row's narrow column, empty, for a field that belongs
-  // beside the colour -- a stroke's width, say.
-  function makeColorRow(parent, opts) {
-    var row = El('div').addClass('label-style-row label-split-row').appendTo(parent);
-    var colorCell = El('div').addClass('label-split-cell label-color-row').appendTo(row);
-    var aside = El('div').addClass('label-split-cell').appendTo(row);
-    var control = {row: row, aside: aside, chit: null, input: null, opacity: null, picker: null};
-
-    // A color from the data can be any CSS color -- short hex, or a name, from
-    // the command line -- and the swatch shows it, though only hex can be
-    // opened in the picker.
-    control.setColor = function(color) {
-      control.input.node().value = color || '';
-      control.chit.css('background-color', getSwatchColor(color));
-    };
-
-    // What a panel calls when it refreshes from the data: the picker has to start
-    // from the colour that is set, not from wherever it was left. A picker that
-    // has never been opened is still on its default, so without this it opens on
-    // black rather than on the colour beside it. Kept apart from setColor(),
-    // which is also the picker's own preview callback and must not feed back into
-    // it mid-drag. A field with no hex color opens the picker with nothing
-    // picked, so that closing it leaves the field as it was.
-    control.showColor = function(color) {
-      // the picker previews what it is set to, so it goes first, and the field
-      // then shows the color as the data has it ("#334", not "#333344")
-      showInPicker(color);
-      control.setColor(color);
-    };
-
-    function showInPicker(color) {
-      var hex = toSixDigitHex(color);
-      if (hex) control.picker.setColor(hex);
-      else control.picker.clearColor();
-    }
-
-    El('span').appendTo(colorCell).text(opts.label);
-    control.chit = El('div').addClass('label-color-chit').attr('role', 'button')
-      .on('click', function() {
-        control.picker.toggle();
-      });
-    control.input = El('input').attr('type', 'text')
-      .attr('aria-label', opts.label + ' color')
-      .on('change', function() {
-        var color = control.input.node().value.trim();
-        showInPicker(color);
-        opts.onColor(color);
-      });
-    if (opts.noOpacity) {
-      makeColorField(colorCell, control.chit, control.input);
-    } else {
-      control.opacity = makeColorOpacityField(colorCell, control.chit, control.input, {
-        onSet: opts.onOpacity,
-        revert: opts.revert
-      }).opacity;
-    }
-    control.picker = new ColorPicker(colorCell, {
-      presetRows: layerColorPresetRows,
-      // A drag in the picker shows on the map's own terms -- the swatch and the
-      // hex value -- and only the colour the drag ends on is applied.
-      onPreview: control.setColor,
-      onChange: function(hex) {
-        control.setColor(hex);
-        opts.onColor(hex);
-      }
-    });
-    return control;
-  }
-
-  // What a swatch shows for @color: the color itself if the browser takes it
-  // as one, otherwise nothing
-  function getSwatchColor(color) {
-    var hex = toSixDigitHex(color);
-    if (hex) return hex;
-    if (color && typeof CSS != 'undefined' && CSS.supports && CSS.supports('color', color)) {
-      return color;
-    }
-    return 'transparent';
-  }
-
-  // Opacity is shown as a percentage and stored as a fraction. It is a plain
-  // field rather than a swatch or a slider: a swatch beside a colour reads as a
-  // second colour, and a slider gives up the exact value for a drag that a
-  // zoomable map makes risky.
-  //
-  // opts.onSet(fraction) a usable percentage was typed
-  // opts.revert()        it was not, so put back what the field was showing
-  function makeOpacityInput(parent, opts) {
-    var input = El('input').attr('type', 'text').addClass('label-opacity-input')
-      .attr('aria-label', 'Opacity, 0-100%')
-      .appendTo(parent)
-      .on('change', function() {
-        var val = parseOpacityValue(input.node().value);
-        if (val === null) {
-          if (opts.revert) opts.revert();
-          return;
-        }
-        opts.onSet(val);
-      });
-    return input;
-  }
-
   // The style the label tool gives to the next label it creates.
   //
   // The style panel is worth having open before there is anything to point it at:
@@ -17875,6 +17947,7 @@
     'dominant-baseline',
     'label-pos', 'label-side', 'label-start-offset', 'dx', 'dy',
     'fill', 'opacity', 'css', 'class',
+    'label-background', 'label-background-opacity', 'label-padding',
     'halo-width', 'halo-color', 'halo-opacity',
     'icon', 'icon-size', 'icon-color', 'icon-opacity',
     // not callout-via or callout-attach, which are placed for one label's
@@ -18506,15 +18579,17 @@
   var calloutOpacityField = 'callout-opacity';
   var calloutWidthField = 'callout-width';
   var calloutGapField = 'callout-gap';
-  var defaultCalloutShape = 'line';
+  var backgroundField = 'label-background';
+  var backgroundOpacityField = 'label-background-opacity';
+  var paddingField = 'label-padding';
   var defaultCalloutWidth = 1;
   var defaultFontSize = 12;
   var defaultFontStyle = 'normal';
   var defaultFontWeight = '400';
   var defaultLabelColor = '#000000';
   var defaultIconColor = '#000000';
-  // The width a halo is switched on at: past the edge of the glyphs, so a
-  // stroke of twice this.
+  // The width a halo is given when a colour adds it: past the edge of the
+  // glyphs, so a stroke of twice this.
   var defaultHaloWidth = 2;
   var defaultHaloColor = internal.svg.DEFAULT_HALO_COLOR;
   // The line height a label without one is drawn with, shown as a placeholder
@@ -18543,6 +18618,9 @@
     labelAlignField,
     cssField,
     'label-pos',
+    backgroundField,
+    backgroundOpacityField,
+    paddingField,
     haloWidthField,
     haloColorField,
     haloOpacityField,
@@ -18559,7 +18637,7 @@
     calloutGapField
   ];
   var labelPositions = ['nw', 'n', 'ne', 'w', 'c', 'e', 'sw', 's', 'se'];
-  // The position an icon moves a centred label to when it is switched on: upper
+  // The position an icon moves a centred label to when it is added: upper
   // right, the conventional first choice for a point label and the one a
   // cartographer would have to undo least often.
   var labelPositionBesideIcon = 'ne';
@@ -18575,8 +18653,8 @@
     label: 'Draggable',
     title: 'Dragging a label\'s text offsets it from its anchor'
   }];
-  // No "none" among the shapes: whether a label has a symbol at all is what the
-  // section's toggle says, which leaves these four to answer only which one.
+  // No "none" among the shapes: a symbol is taken off by the × in the section's
+  // heading, which leaves these to answer only which one.
   var iconTypes = [{
     name: 'circle'
   }, {
@@ -18622,9 +18700,9 @@
     center: '<line x1="3" y1="4.5" x2="13" y2="4.5"></line><line x1="5.5" y1="8" x2="10.5" y2="8"></line><line x1="4" y1="11.5" x2="12" y2="11.5"></line>',
     right: '<line x1="3" y1="4.5" x2="13" y2="4.5"></line><line x1="8" y1="8" x2="13" y2="8"></line><line x1="5" y1="11.5" x2="13" y2="11.5"></line>'
   };
-  // As with icons, no "none" among the shapes: the section's switch says whether
-  // there is a callout. The ends do have one, since a line with no marker is a
-  // shape of its own rather than the absence of a callout.
+  // As with icons, no "none" among the shapes: the section's × takes a callout
+  // off. The ends do have one, since a line with no marker is a shape of its own
+  // rather than the absence of a callout.
   var calloutShapes = [{
     name: 'line',
     title: 'straight'
@@ -18676,16 +18754,15 @@
     // label-style-panel carries the styling the point and layer panels share; the
     // second class is this panel's own, as theirs are
     var panel = El('div').addClass('label-style-panel text-style-panel rollover').appendTo(parent).hide();
-    var presetControl, fontSelect, fontStyleSelect, fontSizeInput, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, dragModeBtns, haloToggle, haloWidthInput, haloColorFieldBox, haloColorChit, haloColorInput, haloColorPicker, haloOpacityInput, iconToggle, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, haloSection, iconSection, calloutSection, calloutToggle, calloutShapeGroupEl, calloutShapeBtns, calloutEndGroupEl, calloutEndBtns, calloutColorFieldBox, calloutColorChit, calloutColorInput, calloutColorPicker, calloutOpacityInput, calloutWidthInput, calloutEndSizeInput, calloutGapInput, editingStatus, clearLink, closeBtn, hit;
+    var presetControl, fontSelect, fontStyleSelect, fontSizeInput, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, dragModeBtns, haloWidthInput, haloColorFieldBox, haloColorChit, haloColorInput, haloColorPicker, haloOpacityInput, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, haloControl, iconControl, calloutControl, calloutShapeGroupEl, calloutShapeBtns, calloutEndGroupEl, calloutEndBtns, calloutColorFieldBox, calloutColorChit, calloutColorInput, calloutColorPicker, calloutOpacityInput, calloutWidthInput, calloutEndSizeInput, calloutGapInput, backgroundColorFieldBox, backgroundColorChit, backgroundColorInput, backgroundColorPicker, backgroundOpacityInput, paddingInput, editingStatus, clearLink, closeBtn, hit;
     var fontOptionsRendered = false;
-    // The shape the toggle turns back on, so that switching a symbol off and on
-    // again does not silently change a star into a circle.
+    // The shape the symbol's size and colour defaults are shown for while there
+    // is no symbol: the last one shown.
     var lastIconShape = defaultIconShape;
     var shownIconTypes = null;
-    // Likewise the halo's width, which is what switching one off removes.
-    var lastHaloWidth = defaultHaloWidth;
-    // And the callout's shape.
-    var lastCalloutShape = defaultCalloutShape;
+    // A halo's width and opacity set while no target has a halo, which go on
+    // with the colour that adds one: {width, opacity}.
+    var haloPending = {};
     // In the label tool the panel can be hidden, for room to place labels, from
     // its × or the toolbar's Styles button; it stays hidden for the rest of the
     // session, each time the tool is opened, until it is shown again.
@@ -18817,7 +18894,7 @@
       // row is the same shape -- the colour with its opacity in one field, and
       // the value that qualifies it most closely beside it -- so that each reads
       // as a variation on the first rather than as a different kind of control.
-      var textSection = addSection('Text');
+      var textSection = addSection('Text', {open: true}).section;
 
       // The controls whose own contents say what they are -- a font name, a
       // size beside a font style -- carry no label. The ones that would be a bare
@@ -18897,6 +18974,41 @@
       El('span').appendTo(lineHeightCell).text('Line height');
       lineHeightInput = makeMeasureInput(lineHeightCell, lineHeightField, lineHeightPlaceholder);
 
+      // An empty colour is "no background", as an empty text colour is "no
+      // fill", and the padding means something without one -- it moves a
+      // callout and a position's offset out from the text.
+      var backgroundRow = El('div').addClass('label-style-row label-split-row').appendTo(textSection);
+      var backgroundColorCell = El('div').addClass('label-split-cell label-color-row label-background-color-row').appendTo(backgroundRow);
+      El('span').appendTo(backgroundColorCell).text('Background');
+      backgroundColorChit = El('div').addClass('label-color-chit').attr('role', 'button');
+      backgroundColorInput = El('input').attr('type', 'text').attr('aria-label', 'Background color');
+      var backgroundColorField = addColorOpacityField(backgroundColorCell, backgroundColorChit,
+        backgroundColorInput, applyBackgroundOpacity);
+      backgroundColorFieldBox = backgroundColorField.box;
+      backgroundOpacityInput = backgroundColorField.opacity;
+      backgroundColorChit.on('click', function() {
+        if (this.classList.contains('disabled')) return;
+        backgroundColorPicker.toggle();
+      });
+      backgroundColorInput.on('change', function() {
+        var color = backgroundColorInput.node().value.trim();
+        if (isHexColor(color)) backgroundColorPicker.setColor(color);
+        applyBackgroundColor(color);
+      });
+      backgroundColorPicker = initColorPicker(backgroundColorCell, backgroundColorChit,
+        backgroundColorInput, applyBackgroundColor);
+
+      var paddingCell = El('div').addClass('label-split-cell label-spacing-row label-padding-row').appendTo(backgroundRow);
+      El('span').appendTo(paddingCell).text('Padding');
+      paddingInput = El('input').attr('type', 'text').addClass('label-measure-input')
+        .attr('placeholder', '0')
+        .attr('data-placeholder', '0')
+        .attr('title', 'Space around the text, as in CSS: 4, or 2 6 for top and bottom, then sides')
+        .appendTo(paddingCell)
+        .on('change', function() {
+          applyLabelPadding(paddingInput.node().value.trim());
+        });
+
       var cssRow = El('label').addClass('label-style-row label-css-row').appendTo(textSection);
       El('span').appendTo(cssRow).text('Inline CSS');
       cssInput = El('input').attr('type', 'text').appendTo(cssRow).on('change', function() {
@@ -18910,18 +19022,16 @@
       var positionRow = El('label').addClass('label-style-row').appendTo(textSection);
       El('span').appendTo(positionRow).text('Offset from anchor');
 
-      // A halo is a yes/no that its three values then qualify, as a symbol is, so
-      // it is switched the same way and its controls are inert while it is off.
-      // Its row is the shape of the Text section's colour row: a colour and its
-      // opacity, and a width in the narrow column beside them, where letter
-      // spacing sits above.
-      haloSection = addSection('Halo');
-      var haloTitle = haloSection.findChild('.label-style-section-title');
-      haloToggle = makePanelToggle(haloTitle, {
-        title: 'Draw a halo around the text',
-        className: 'label-halo-toggle',
-        onChange: setHaloOn
+      // A halo is there when it has a colour, as a line's stroke is: picking one
+      // adds the halo and emptying the field removes it. Its row is the shape of
+      // the Text section's colour row: a colour and its opacity, and a width in
+      // the narrow column beside them, where letter spacing sits above.
+      haloControl = addSection('Halo', {
+        className: 'label-halo-section',
+        onRemove: removeHalo,
+        removeTitle: 'Remove halo'
       });
+      var haloSection = haloControl.section;
 
       var haloColorRow = El('div').addClass('label-style-row label-split-row').appendTo(haloSection);
       var haloColorCell = El('div').addClass('label-split-cell label-color-row label-halo-color-row').appendTo(haloColorRow);
@@ -18957,18 +19067,16 @@
         onDone: releaseFocus
       });
 
-      // Whether the label has a symbol is one question and which symbol it has is
-      // another, so the first is a switch on the section's heading rather than a
-      // fifth shape button reading "none". Everything below it is inert while it
-      // is off, which is also the honest reading of an icon-size or icon-color on
-      // a label with no icon: nothing to apply it to.
-      iconSection = addSection('Icon');
-      var iconTitle = iconSection.findChild('.label-style-section-title');
-      iconToggle = makePanelToggle(iconTitle, {
-        title: 'Draw a symbol at the label anchor',
-        className: 'label-icon-toggle',
-        onChange: setIconOn
+      // Choosing a shape adds a symbol, and the heading's × takes it off. The
+      // size and colour are inert until there is a symbol, which is also the
+      // honest reading of an icon-size or icon-color on a label with no icon:
+      // nothing to apply it to.
+      iconControl = addSection('Icon', {
+        className: 'label-icon-section',
+        onRemove: removeIcon,
+        removeTitle: 'Remove symbol'
       });
+      var iconSection = iconControl.section;
       // The shapes have the whole row, so there is room for more of them, and
       // the size sits beside the colour below, as the halo's width does.
       var iconRow = El('div').addClass('label-style-row label-icon-shapes-row').appendTo(iconSection);
@@ -19060,18 +19168,18 @@
       });
     }
 
-    // Switched like the halo and the symbol, and shaped like them: the choices on
-    // the first line, a colour and its opacity on the next, then the sizes. The
+    // Added and removed like the symbol, and shaped like it: the choices on the
+    // first line, a colour and its opacity on the next, then the sizes. The
     // line's geometry -- its corner or bend, where it meets the text, how far it
     // stops short of the anchor -- is a matter of positions, which are dragged on
     // the map rather than typed here. See docs/development/text-annotation-design.md.
     function initCalloutSection() {
-      calloutSection = addSection('Callout');
-      calloutToggle = makePanelToggle(calloutSection.findChild('.label-style-section-title'), {
-        title: 'Draw a line from the label anchor to its text',
-        className: 'label-callout-toggle',
-        onChange: setCalloutOn
+      calloutControl = addSection('Callout', {
+        className: 'label-callout-section',
+        onRemove: removeCallout,
+        removeTitle: 'Remove callout'
       });
+      var calloutSection = calloutControl.section;
 
       // Each choice in the wide column with the size that qualifies it beside
       // it, as Alignment has Line height: the line's shape and its width, then
@@ -19177,11 +19285,16 @@
       El(svg).appendTo(btn);
     }
 
-    // opts.minor: a heading in the smaller grey of a row label rather than the
-    // bold of Text and Icon. Label position gets one: it is a single control, and
-    // giving it the weight of those two would overstate it.
+    // A colour picker hangs from its field, so one left open in a section being
+    // closed would change a colour nobody can see.
     function addSection(title, opts) {
-      return makePanelSection(panel, title, opts);
+      var control = makeCollapsibleSection(panel, title, Object.assign({
+        onToggle: function(open) {
+          if (!open) hideColorPicker();
+        }
+      }, opts));
+      if (opts && opts.className) control.section.addClass(opts.className);
+      return control;
     }
 
     function addColorOpacityField(parent, chit, input, onOpacity) {
@@ -19260,6 +19373,7 @@
     function hidePanel() {
       panel.hide();
       hideColorPicker();
+      haloPending = {};
       gui.state.label_style_panel_open = false;
       textBtn.removeClass('selected');
       clearSelectionDisplay();
@@ -19412,10 +19526,9 @@
       var iconColor = getShownValue(iconIds, iconColorField, {useDefault: true,
         defaultValue: getDefaultIconColor(iconShape) || defaultIconColor});
       var iconOpacity = getShownValue(iconIds, iconOpacityField, {useDefault: true, defaultValue: 1});
-      var haloIds = getHaloValueIds();
-      var haloWidth = getShownValue(haloIds, haloWidthField, {useDefault: true, defaultValue: lastHaloWidth});
-      var haloColor = getShownValue(haloIds, haloColorField, {useDefault: true, defaultValue: defaultHaloColor});
-      var haloOpacity = getShownValue(haloIds, haloOpacityField, {useDefault: true, defaultValue: 1});
+      var backgroundColor = getShownValue(ids, backgroundField);
+      var backgroundOpacity = getShownValue(ids, backgroundOpacityField, {useDefault: true, defaultValue: 1});
+      var padding = getShownValue(ids, paddingField);
       updateEditingStatus(manualIds.length, !!getLabelTextSession(gui));
       updateSavedStyleControls();
       fontSelect.node().disabled = !showValues;
@@ -19427,36 +19540,17 @@
       updateMeasureControl(letterSpacingInput, letterSpacing);
       updateMeasureControl(lineHeightInput, lineHeight);
       updateAlignButtons(showValues ? alignVal : '');
+      updateBackgroundControls(backgroundColor, backgroundOpacity, padding, ids);
       updateCssControl(css);
       updatePositionButtons(showValues ? posVal : '', ids);
-      var haloOff = updateHaloToggle();
-      updateHaloWidthControl(haloWidth, haloOff);
-      updateSwatchField(haloColorInput, haloColorFieldBox, haloColorChit,
-        haloColorPicker, haloColor, haloOff);
-      updateOpacityControl(haloOpacityInput, haloOpacity, haloOff);
-      // The symbol's controls keep showing their values while the switch is off,
-      // greyed: what they show is what the symbol comes back as.
+      updateHaloControls();
+      // The symbol's size and colour show their defaults, greyed, while there is
+      // no symbol: what they show is what a shape will add.
       var iconOff = updateIconControls(showValues ? iconVal : '');
       updateIconSizeControls(iconSize, iconOff);
       updateIconColorControls(iconColor, iconOff);
       updateOpacityControl(iconOpacityInput, iconOpacity, iconOff);
-      var calloutOff = updateCalloutValueControls();
-      setSectionCollapsed(haloSection, haloOff, haloColorPicker);
-      setSectionCollapsed(iconSection, iconOff, iconColorPicker);
-      setSectionCollapsed(calloutSection, calloutOff, calloutColorPicker);
-    }
-
-    // A section whose switch is off shows only its heading. What is under it is
-    // inert while it is off, so hiding it loses nothing, and the panel stays short
-    // enough to hold all of them. The values are kept, greyed, for the moment it
-    // is switched back on, which is what they come back as.
-    //
-    // An open picker is closed with its section: it hangs from the colour field,
-    // and a picker left open over a hidden field would change a colour nobody
-    // can see.
-    function setSectionCollapsed(section, collapsed, picker) {
-      section.classed('collapsed', collapsed);
-      if (collapsed && picker.visible()) picker.hide();
+      updateCalloutValueControls();
     }
 
     // Every field that can show a value can also show nothing, which is why each
@@ -19549,7 +19643,8 @@
         // over a position and would make every candidate the same point.
         var o = internal.svg.getDrawnLabelOffset({
           'label-pos': name,
-          'font-size': rec['font-size']
+          'font-size': rec['font-size'],
+          'label-padding': rec['label-padding']
         });
         return {
           name: name,
@@ -19727,42 +19822,55 @@
       }
     }
 
+    // Inert for a selection of nothing but path labels, which have no box: text
+    // along a curve has nothing rectangular to fill or pad.
+    function updateBackgroundControls(color, opacity, padding, ids) {
+      var off = everyLabelIsOnAPath(ids);
+      updateSwatchField(backgroundColorInput, backgroundColorFieldBox, backgroundColorChit,
+        backgroundColorPicker, color, off);
+      updateOpacityControl(backgroundOpacityInput, opacity, off);
+      updateMeasureControl(paddingInput, padding);
+      if (off) paddingInput.node().disabled = true;
+    }
+
     function updateCssControl(shown) {
       cssInput.node().disabled = !controlsEnabled();
       cssInput.node().value = shown.value || '';
       setMixedPlaceholder(cssInput, shown.mixed);
     }
 
-    // The toggle reads the data rather than holding a state of its own: a symbol
-    // is on when the target has one, which is what makes it follow an undo.
+    // The heading's marker reads the data rather than holding a state of its
+    // own: a symbol is there when the target has one, which is what makes it
+    // follow an undo.
     //
-    // A selection where only some labels have a symbol shows the switch mixed,
-    // and the section stays usable: there are symbols in the selection to style.
-    // What the controls below it then act on narrows to the labels that have one
-    // -- see getIconTargetIds() -- so styling a symbol never creates one. The
-    // switch is still the only way to ask for that, and clicking a shape is the
-    // one thing in the section that applies to every selected label, because
-    // choosing a shape for a group is a plain statement about all of it.
+    // A selection where only some labels have a symbol is marked mixed, and the
+    // section stays usable: there are symbols in the selection to style. What
+    // the size and colour then act on narrows to the labels that have one --
+    // see getIconTargetIds() -- so styling a symbol never creates one. Clicking
+    // a shape is the one thing in the section that applies to every selected
+    // label, because choosing a shape for a group is a plain statement about
+    // all of it, and it is how a symbol is added.
     function updateIconControls(iconVal) {
       var enabled = controlsEnabled();
       var state = enabled ? getIconState() : 'off';
       var off = state == 'off';
       if (iconVal) lastIconShape = iconVal;
-      iconToggle.setState(state);
-      iconToggle.setDisabled(!enabled);
+      iconControl.setPresence(state);
       // The group is faded as a whole rather than button by button, so that the
       // border the buttons share fades with them -- a live border around dead
       // buttons is the one part of a disabled control that still looks usable.
-      iconGroupEl.classed('disabled', off);
+      iconGroupEl.classed('disabled', !enabled);
       getShownIconTypes().forEach(function(icon) {
         iconBtns[icon.name].classed('selected', !off && icon.name == iconVal);
-        setPanelButtonDisabled(iconBtns[icon.name], off);
+        setPanelButtonDisabled(iconBtns[icon.name], !enabled);
       });
       return off;
     }
 
-    function setIconOn(on) {
-      applyIcon(on ? lastIconShape : '');
+    // Everything a symbol is drawn with goes with it, so that a label with no
+    // symbol carries no icon-size or icon-color that draws nothing.
+    function removeIcon() {
+      applyStyleValues(getRemoveValues([iconField, iconSizeField, iconColorField, iconOpacityField]));
     }
 
     function updateIconSizeControls(shown, iconOff) {
@@ -19776,8 +19884,8 @@
         iconColorPicker, shown, iconOff);
     }
 
-    // A colour field belonging to a section with a switch: the symbol's and the
-    // halo's, which both go on showing their colour, greyed, while switched off.
+    // A colour field that can be inert: the symbol's, which goes on showing its
+    // colour, greyed, while there is no symbol, and the background's.
     function updateSwatchField(input, fieldBox, chit, picker, shown, sectionOff) {
       var colorVal = shown.value;
       var disabled = sectionOff || !controlsEnabled();
@@ -19798,25 +19906,39 @@
       }
     }
 
-    // The switch reads the data, as the symbol's does, so that it follows an
-    // undo. A halo is on for a label whose halo-width is above 0.
+    // The marker reads the data, as the symbol's does, so that it follows an
+    // undo. A label has a halo when its halo-width is above 0, which is the
+    // renderer's rule, and one with no halo-color is drawn in white -- so the
+    // colour field shows white for it rather than the blank that means "no halo".
     //
-    // The width, colour and opacity go on showing while it is off, greyed: the
-    // colour and opacity stay on the label, and the width is the one the halo
-    // comes back at.
-    function updateHaloToggle() {
+    // With no halo anywhere the colour is blank and the width and opacity are
+    // live, showing what a colour will add the halo with: the width and
+    // opacity set since, or the default width as a placeholder. A selection
+    // where only some labels have a halo shows the colour mixed, and the width
+    // and opacity of the labels that have one.
+    function updateHaloControls() {
       var enabled = controlsEnabled();
       var state = enabled ? getHaloState() : 'off';
-      haloToggle.setState(state);
-      haloToggle.setDisabled(!enabled);
-      return state == 'off';
-    }
-
-    function updateHaloWidthControl(shown, haloOff) {
-      if (!haloOff && Number(shown.value) > 0) lastHaloWidth = Number(shown.value);
-      haloWidthInput.setValue(shown.value || '');
-      haloWidthInput.setPlaceholder(shown.mixed ? MIXED_TEXT : '');
-      haloWidthInput.setDisabled(haloOff || !controlsEnabled());
+      var ids = getHaloTargetIds();
+      var color, width, opacity;
+      haloControl.setPresence(state);
+      if (state == 'off') {
+        color = {value: '', mixed: false};
+        width = {value: haloPending.width || '', mixed: false};
+        opacity = {value: 'opacity' in haloPending ? haloPending.opacity : '', mixed: false};
+      } else {
+        color = state == 'mixed' ? {value: '', mixed: true} :
+          getShownValue(ids, haloColorField, {useDefault: true, defaultValue: defaultHaloColor});
+        width = getShownValue(ids, haloWidthField);
+        opacity = getShownValue(ids, haloOpacityField, {useDefault: true, defaultValue: 1});
+      }
+      updateSwatchField(haloColorInput, haloColorFieldBox, haloColorChit,
+        haloColorPicker, color, false);
+      haloWidthInput.setValue(width.value || '');
+      haloWidthInput.setPlaceholder(width.mixed ? MIXED_TEXT :
+        state == 'off' && enabled ? String(defaultHaloWidth) : '');
+      haloWidthInput.setDisabled(!enabled);
+      updateOpacityControl(haloOpacityInput, opacity, false);
     }
 
     function getHaloState() {
@@ -19830,40 +19952,101 @@
       }));
     }
 
-    // Switching a halo on gives every target the same width: the one the
-    // selection's halos already share, where they share one, so that a mixed
+    // A colour gives every target a halo, and an emptied field removes it.
+    //
+    // Labels that had none are given a width as well: the one set while there
+    // was no halo, or else the one the selection's halos share, so that a mixed
     // selection is brought into line with the labels that had a halo rather
-    // than reset. Switching it off removes the width and leaves the colour and
-    // opacity, which is how a halo switched off and on again comes back as it
-    // was.
-    function setHaloOn(on) {
-      var width = on ? getNumericSize(getHaloValueIds(), haloWidthField, lastHaloWidth) : '';
-      applyStyleValues([[haloWidthField, width]]);
+    // than reset, or else the default. One command gives the width to every
+    // target, which brings halos that differed in width into line too.
+    function applyHaloColor(color) {
+      var state = getHaloState();
+      var values = [[haloColorField, color]];
+      if (!color) {
+        removeHalo();
+        return;
+      }
+      if (state != 'on') {
+        values.push([haloWidthField, getNewHaloWidth(state)]);
+        if (haloPending.opacity < 1) values.push([haloOpacityField, haloPending.opacity]);
+      }
+      haloPending = {};
+      applyStyleValues(values);
     }
 
+    function getNewHaloWidth(state) {
+      if (haloPending.width > 0) return haloPending.width;
+      if (state == 'off') return defaultHaloWidth;
+      return getNumericSize(getHaloTargetIds(), haloWidthField, defaultHaloWidth);
+    }
+
+    // Everything a halo is drawn with goes with it, so that a label with no
+    // halo carries no halo-color that draws nothing.
+    function removeHalo() {
+      haloPending = {};
+      applyStyleValues(getRemoveValues([haloWidthField, haloColorField, haloOpacityField]));
+    }
+
+    // With no halo to give it to, a width is kept for the colour that adds one.
     function applyHaloWidth(value) {
+      if (getHaloState() == 'off') {
+        haloPending.width = value;
+        updateControls();
+        return;
+      }
       applyStyleValues([[haloWidthField, value]], getHaloTargetIds());
     }
 
     function nudgeHaloWidth(delta) {
-      var width = getNumericSize(getHaloTargetIds(), haloWidthField, lastHaloWidth);
-      if (!controlsEnabled() || getHaloState() == 'off') return;
+      var off = getHaloState() == 'off';
+      var width = off ? haloPending.width || defaultHaloWidth :
+        getNumericSize(getHaloTargetIds(), haloWidthField, defaultHaloWidth);
+      if (!controlsEnabled()) return;
       width = Math.max(0.5, Math.round((width + delta) * 10) / 10);
       applyHaloWidth(width);
     }
 
-    function applyHaloColor(color) {
-      applyStyleValues([[haloColorField, color]], getHaloTargetIds());
+    // An emptied field removes the background.
+    function applyBackgroundColor(color) {
+      applyStyleValues([[backgroundField, color]], getBoxTargetIds());
+    }
+
+    function applyBackgroundOpacity(value) {
+      applyStyleValues([[backgroundOpacityField, value >= 1 ? '' : value]], getBoxTargetIds());
+    }
+
+    // Padding that is not a CSS padding string is refused here, where the
+    // command would otherwise stop with an error about it.
+    function applyLabelPadding(value) {
+      var padding = value ? internal.svg.parseLabelPadding(value) : '';
+      if (padding === null) {
+        updateControls();
+        return;
+      }
+      applyStyleValues([[paddingField, padding]], getBoxTargetIds());
+    }
+
+    // The targets that are not path labels, for the reason a position is not
+    // written to them: it would be a property nothing reads.
+    function getBoxTargetIds() {
+      return getTargetIds().filter(function(id) {
+        return !everyLabelIsOnAPath([id]);
+      });
     }
 
     // Full opacity is stored as no halo-opacity, as it is for the text's own.
     function applyHaloOpacity(value) {
+      if (getHaloState() == 'off') {
+        haloPending.opacity = value;
+        updateControls();
+        return;
+      }
       applyStyleValues([[haloOpacityField, value >= 1 ? '' : value]], getHaloTargetIds());
     }
 
-    // The labels a halo's width, colour or opacity goes to: the targets that
-    // have a halo, for the reason the symbol's values go only to labels with a
-    // symbol. Empty for "new labels", as there.
+    // The labels a halo's width or opacity goes to: the targets that have a
+    // halo, for the reason the symbol's values go only to labels with a symbol.
+    // Empty for "new labels", as there.
     function getHaloTargetIds() {
       var table = getActiveTable();
       return getTargetIds().filter(function(id) {
@@ -19871,14 +20054,25 @@
       });
     }
 
-    // As getIconValueIds(): the labels the section shows the values of.
-    function getHaloValueIds() {
-      var ids = getHaloTargetIds();
-      return ids.length > 0 ? ids : getTargetIds();
+    // [field, ''] for each of @fields that a target carries, which is how a
+    // style is removed: -labels writes an empty value as an empty field, and a
+    // property no target had should not leave an empty column behind. With no
+    // target -- the style of the next label -- all of them.
+    function getRemoveValues(fields) {
+      var ids = getTargetIds();
+      var table = getActiveTable();
+      return fields.filter(function(field) {
+        return ids.length === 0 || ids.some(function(id) {
+          var val = table && table.getRecordAt(id) ? table.getRecordAt(id)[field] : null;
+          return val !== undefined && val !== null && String(val) !== '';
+        });
+      }).map(function(field) {
+        return [field, ''];
+      });
     }
 
-    // The switch reads the data, as the halo's does. A callout is on for a label
-    // whose callout names a shape.
+    // The marker reads the data, as the halo's does. A callout is there for a
+    // label whose callout names a shape.
     function getCalloutState() {
       var ids = getTargetIds();
       var table = getActiveTable();
@@ -19905,16 +20099,16 @@
       return ids.length > 0 ? ids : getTargetIds();
     }
 
-    // Switching a callout on gives every target the shape the selection's
-    // callouts share, or the last one used. Switching it off removes the shape
-    // alone, so that a callout switched off and on again comes back with the
-    // corner, the attachment and the look it had.
-    function setCalloutOn(on) {
-      var shape = on ? getCommonValue(getCalloutTargetIds(), calloutField) || lastCalloutShape : '';
-      applyStyleValues([[calloutField, shape]]);
+    // Everything a callout is drawn with goes with it, its corner and
+    // attachment included: those were placed for the line that was there.
+    function removeCallout() {
+      applyStyleValues(getRemoveValues([calloutField, calloutEndField, calloutEndSizeField,
+        calloutColorField, calloutOpacityField, calloutWidthField, calloutGapField,
+        'callout-via', 'callout-attach']));
     }
 
-    // A shape is a plain statement about every selected label, as a symbol's is.
+    // A shape is a plain statement about every selected label, as a symbol's
+    // is, and choosing one is how a callout is added.
     function applyCalloutShape(shape) {
       applyStyleValues([[calloutField, shape]]);
     }
@@ -20001,10 +20195,8 @@
       var end = enabled ? getCommonValue(ids, calloutEndField, {useDefault: true, defaultValue: 'none'}) : '';
       var width = getShownValue(ids, calloutWidthField, {useDefault: true, defaultValue: defaultCalloutWidth});
       var gap = getCalloutGapShown(ids);
-      if (shape && shape != 'none') lastCalloutShape = shape;
-      calloutToggle.setState(state);
-      calloutToggle.setDisabled(!enabled);
-      updateButtonGroup(calloutShapeGroupEl, calloutShapeBtns, off ? '' : shape, off);
+      calloutControl.setPresence(state);
+      updateButtonGroup(calloutShapeGroupEl, calloutShapeBtns, off ? '' : shape, !enabled);
       updateButtonGroup(calloutEndGroupEl, calloutEndBtns, off ? '' : end, off);
       updateSwatchField(calloutColorInput, calloutColorFieldBox, calloutColorChit,
         calloutColorPicker, getCalloutColorShown(ids), off);
@@ -20284,6 +20476,11 @@
       addStyleValue(style, labelAlignField, getSelectedAlignment());
       addStyleValue(style, cssField, cssInput.node().value.trim());
       addStyleValue(style, 'label-pos', getSelectedLabelPosition());
+      addStyleValue(style, backgroundField, backgroundColorInput.node().value.trim());
+      if (backgroundColorInput.node().value.trim()) {
+        addStyleValue(style, backgroundOpacityField, getOpacityBelowFull(backgroundOpacityInput));
+      }
+      addStyleValue(style, paddingField, paddingInput.node().value.trim());
       // A style saved without a halo carries no halo-width, so applying it
       // leaves a halo alone rather than removing one; the same is true of icons.
       if (getHaloState() == 'on') {
@@ -20395,22 +20592,18 @@
 
     function applyIcon(iconName) {
       var ids = getTargetIds();
-      var styles = [[iconField, iconName || '']];
-      if (iconName) {
-        // The size the symbols in the selection already share, where they share
-        // one: a shape applied to a mixed selection gives the labels that had no
-        // symbol the size of the ones that did, rather than resetting them all to
-        // the default. A size or colour that was the old shape's default becomes
-        // the new one's (see getIconShapeChange()).
-        addIconShapeDefaults(styles, iconName, getIconValueIds());
-        // The symbol's own opacity goes on with it, because the label's opacity
-        // is applied to both elements: without this, text set to 50% would give
-        // a half-faded symbol while the Icon section showed it at 100%.
-        styles.push([iconOpacityField, getIconOpacityToWrite()]);
-      } else {
-        styles.push([iconSizeField, 0]);
-      }
-      addIconPositionChange(styles, ids, !!iconName);
+      var styles = [[iconField, iconName]];
+      // The size the symbols in the selection already share, where they share
+      // one: a shape applied to a mixed selection gives the labels that had no
+      // symbol the size of the ones that did, rather than resetting them all to
+      // the default. A size or colour that was the old shape's default becomes
+      // the new one's (see getIconShapeChange()).
+      addIconShapeDefaults(styles, iconName, getIconValueIds());
+      // The symbol's own opacity goes on with it, because the label's opacity
+      // is applied to both elements: without this, text set to 50% would give
+      // a half-faded symbol while the Icon section showed it at 100%.
+      styles.push([iconOpacityField, getIconOpacityToWrite()]);
+      addIconPositionChange(styles, ids);
       applyStyleValues(styles);
     }
 
@@ -20422,20 +20615,20 @@
       if ('color' in change) styles.push([iconColorField, change.color]);
     }
 
-    // Switching a symbol on moves a label sitting at the centre out from under
-    // it, in the same command, so that the pair is one undo step and the text
-    // is never briefly drawn over the symbol it just asked for.
+    // Adding a symbol moves a label sitting at the centre out from under it, in
+    // the same command, so that the pair is one undo step and the text is never
+    // briefly drawn over the symbol it just asked for.
     //
-    // Switching one off moves nothing. It used to put the label back to the
-    // centre, which threw away a placement the user had made by hand for the
-    // sake of an invariant -- that text with nothing at its anchor sits on the
-    // anchor -- that was never worth what it cost.
+    // Removing one moves nothing. It used to put the label back to the centre,
+    // which threw away a placement the user had made by hand for the sake of an
+    // invariant -- that text with nothing at its anchor sits on the anchor --
+    // that was never worth what it cost.
     //
     // Not for path labels, whose text runs along a curve: the commands ignore a
-    // position given for one and warn about it, and a warning from switching a
-    // symbol on would be about something the user did not ask for.
-    function addIconPositionChange(styles, ids, iconOn) {
-      if (anyLabelIsOnAPath(ids) || !iconOn) return;
+    // position given for one and warn about it, and a warning from adding a
+    // symbol would be about something the user did not ask for.
+    function addIconPositionChange(styles, ids) {
+      if (anyLabelIsOnAPath(ids)) return;
       if (everyTargetIsCentred(ids)) {
         styles.push(['label-pos', labelPositionBesideIcon]);
       }
@@ -20474,8 +20667,8 @@
     // some of them do.
     //
     // An icon-size or icon-color on a label with no symbol draws nothing, which
-    // is why the shape, size and colour controls are inert until the toggle puts
-    // a symbol there to style.
+    // is why the size and colour controls are inert until a shape puts a symbol
+    // there to style.
     function getIconState() {
       var ids = getTargetIds();
       var table = getActiveTable();
@@ -20487,7 +20680,7 @@
     }
 
     // The labels an icon-size, icon-color or icon-opacity goes to: those in the
-    // target that have a symbol, which is all of them unless the switch is mixed.
+    // target that have a symbol, which is all of them unless the section is mixed.
     // Writing one of these to a label with no icon would add a property that
     // draws nothing and a column to the user's table.
     //
@@ -20505,9 +20698,9 @@
 
     // The labels the section's controls *show* the values of, which is not quite
     // the set they write to: with no symbol anywhere the fields go on showing
-    // what the target carries, greyed, because that is what the symbol comes back
-    // as when the switch is turned on. Narrowing there would show the values held
-    // for the next label instead of the ones stored on the selection.
+    // what the target carries, greyed, because that is what a shape adds the
+    // symbol with. Narrowing there would show the values held for the next label
+    // instead of the ones stored on the selection.
     function getIconValueIds() {
       var ids = getIconTargetIds();
       return ids.length > 0 ? ids : getTargetIds();
@@ -20516,9 +20709,9 @@
     function getIconOpacityToWrite() {
       var val = parseOpacityValue(iconOpacityInput.node().value);
       if (val !== null) return val;
-      // The field reads blank while the section is off, so a symbol switched off
-      // and on again takes back the fade still stored on the label rather than
-      // being reset to full.
+      // The field reads blank while there is no symbol, so a symbol added to a
+      // label that still carries a fade takes it back rather than being reset
+      // to full.
       var stored = getCommonValue(getIconValueIds(), iconOpacityField, {useDefault: true, defaultValue: 1});
       val = stored === '' ? 1 : Number(stored);
       return isFinite(val) ? val : 1;
@@ -20549,6 +20742,7 @@
       haloColorPicker.hide();
       iconColorPicker.hide();
       calloutColorPicker.hide();
+      backgroundColorPicker.hide();
     }
 
     function isFormElement(node) {
@@ -20898,9 +21092,9 @@
   // The polygon panel's "Pattern" section. See gui-fill-pattern.mjs for how its
   // settings map to fill-pattern codes.
   //
-  // Switched like the label panel's Halo and Icon sections: a pattern is a
-  // yes/no that the rest of the section then qualifies, and the section shows
-  // only its heading while it is off.
+  // Added and removed like the label panel's Icon section: choosing a type from
+  // the menu gives the features a pattern, the heading's × takes it off, and
+  // the rest of the section qualifies the pattern there is.
   //
   // opts.getRecords()        the target layer's records
   // opts.getTargetIds()      the features being styled
@@ -20908,16 +21102,20 @@
   // opts.revert()            put the panel back as the data has it
   // opts.releaseFocus()
   function PatternFillControl(parent, opts) {
-    var section = makePanelSection(parent, 'Patterns');
+    var heading = makeCollapsibleSection(parent, 'Patterns', {
+      onToggle: function(open) {
+        if (!open) colorControl.picker.hide();
+      },
+      onRemove: removePattern,
+      removeTitle: 'Remove pattern fill'
+    });
+    var section = heading.section.addClass('layer-pattern-section');
     var shown = {type: 'none'};
-    // What switching the pattern on applies when the features have none: the
-    // last pattern the section showed, so that off and on again is a round trip.
-    var lastPattern = null;
     // Custom was chosen from the menu, and the code field is waiting for a code.
     // Until one is applied the data still says what it said before, so the
     // choice has to be remembered or the next refresh would undo it.
     var customPending = false;
-    var toggle, typeSelect, mixedOption, colorControl, angleField, sizeRow, sizeCaption,
+    var typeSelect, noneOption, mixedOption, colorControl, angleField, sizeRow, sizeCaption,
         sizeField, gapField, customRow, codeInput;
 
     initRows();
@@ -20977,16 +21175,15 @@
     };
 
     function initRows() {
-      toggle = makePanelToggle(section.findChild('.label-style-section-title'), {
-        title: 'Fill with a pattern',
-        className: 'layer-pattern-toggle',
-        onChange: setPatternOn
-      });
       var typeRow = El('div').addClass('label-style-row layer-pattern-type-row').appendTo(section);
       typeSelect = El('select').attr('aria-label', 'Pattern type').appendTo(typeRow)
         .on('change', function() {
           selectType(typeSelect.node().value);
         });
+      // What the menu shows while the features have no pattern, which is not a
+      // choice: the × in the heading is how a pattern is removed.
+      noneOption = El('option').attr('value', 'none').appendTo(typeSelect).text('None');
+      noneOption.node().disabled = true;
       [['hatches', 'Hatches'], ['dots', 'Dots'], ['squares', 'Squares'],
         ['custom', 'Custom']].forEach(function(o) {
         El('option').attr('value', o[0]).appendTo(typeSelect).text(o[1]);
@@ -21064,15 +21261,13 @@
 
     function update() {
       var ids = opts.getTargetIds();
-      var toggleState = getToggleState(ids);
       var state = getCommonPatternState(ids);
       if (customPending && state.type != 'custom') {
         state = {type: 'custom', code: shown.type == 'custom' ? shown.code : getPendingCode(state)};
       }
       shown = state;
-      if (isSimple(state) || state.type == 'custom' && state.code) lastPattern = state;
-      toggle.setState(toggleState);
-      section.classed('collapsed', toggleState == 'off');
+      heading.setPresence(getPresence(ids));
+      noneOption.classed('hidden', state.type != 'none');
       mixedOption.classed('hidden', state.type != 'mixed');
       typeSelect.node().value = state.type;
       colorControl.row.classed('hidden', !isSimple(state));
@@ -21105,28 +21300,14 @@
       }
     }
 
-    // On gives every feature being styled a pattern: the one the features that
-    // have a pattern agree on, if they do, or else the last one shown, or else a
-    // default hatch. Off takes the pattern off all of them.
-    function setPatternOn(on) {
-      var ids = opts.getTargetIds();
-      var common, pattern;
+    function removePattern() {
       customPending = false;
-      if (!on) {
-        applyToTargets(function() { return ''; }, 'Remove pattern fill');
-        return;
-      }
-      common = getCommonPatternState(ids.filter(hasPattern));
-      pattern = isSimple(common) || common.type == 'custom' ? common :
-        lastPattern || getDefaultPatternControls('hatches');
-      if (pattern.type == 'custom') {
-        applyToTargets(function() { return pattern.code; }, 'Pattern fill');
-      } else {
-        applyControls(pattern);
-      }
+      opts.applyEdits(opts.getTargetIds().filter(hasPattern).map(function(id) {
+        return {id: id, styles: [['fill-pattern', '']]};
+      }), 'Remove pattern fill');
     }
 
-    function getToggleState(ids) {
+    function getPresence(ids) {
       var n = ids.filter(hasPattern).length;
       return n === 0 ? 'off' : n < ids.length ? 'mixed' : 'on';
     }
@@ -21228,10 +21409,9 @@
   // The polygon panel's "Effects" section: an outer and an inner glow, each a
   // color, an opacity and a width. See svg-glow.mjs for how they are drawn.
   //
-  // A glow is there when its color is set, so each glow is a color row with no
-  // switch of its own: picking a color adds the glow, and emptying the color
-  // field removes it. The section's switch opens the section, and switching it
-  // off removes both glows and their settings.
+  // A glow is there when its color is set, so each glow is a color row: picking
+  // a color adds the glow, and emptying the color field removes it. The
+  // heading's × removes both glows and their settings.
   //
   // A width or opacity typed while no feature has the glow is kept, and goes
   // with the color when one is picked.
@@ -21246,26 +21426,20 @@
   var glowTitles = {outer: 'Outer glow', inner: 'Inner glow'};
 
   function GlowEffectsControl(parent, opts) {
-    var section = makePanelSection(parent, 'Effects');
     var rows = {};
-    // Switched on, with no glow to show yet.
-    var opened = false;
     var pending = {outer: {}, inner: {}};
-    var toggle = makePanelToggle(section.findChild('.label-style-section-title'), {
-      title: 'Add glow effects',
-      className: 'layer-effects-toggle',
-      onChange: function(on) {
-        var edits;
-        opened = on;
+    var heading = makeCollapsibleSection(parent, 'Effects', {
+      onToggle: function(open) {
+        if (!open) hidePickers();
+      },
+      onRemove: function() {
         pending = {outer: {}, inner: {}};
-        edits = on ? [] : getEffectsOffEdits(opts.getRecords(), opts.getTargetIds());
-        if (edits.length > 0) {
-          opts.applyEdits(edits, 'Remove glow effects');
-        } else {
-          update();
-        }
-      }
+        opts.applyEdits(getEffectsOffEdits(opts.getRecords(), opts.getTargetIds()),
+          'Remove glow effects');
+      },
+      removeTitle: 'Remove glow effects'
     });
+    var section = heading.section.addClass('layer-effects-section');
     glowTypes.forEach(function(type) {
       rows[type] = addGlowRow(type);
     });
@@ -21275,7 +21449,6 @@
     this.hidePickers = hidePickers;
 
     this.reset = function() {
-      opened = false;
       pending = {outer: {}, inner: {}};
       hidePickers();
     };
@@ -21362,11 +21535,7 @@
     function update() {
       var records = opts.getRecords();
       var ids = opts.getTargetIds();
-      var state = getEffectsState(records, ids);
-      if (state != 'off') opened = true;
-      toggle.setState(state == 'off' && opened ? 'on' : state);
-      section.classed('collapsed', state == 'off' && !opened);
-      if (state == 'off' && !opened) hidePickers();
+      heading.setPresence(getEffectsState(records, ids));
       glowTypes.forEach(function(type) {
         updateGlowRow(type, records, ids);
       });
@@ -25174,7 +25343,7 @@
     var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, capControl, dashControl, arrowControl, presetControl, patternControl, glowControl, hit;
     var schemeBtn, schemeStrip, schemePanel;
     var targetLayer = null;
-    // What the arrowhead switch turns on, for lines that have no heads
+    // What a shape or an end gives lines that have no heads
     var lastArrow = {shape: 'arrow', position: 'end', fade: 0};
     var lineToolbar, polygonToolbar, drawLineBtn, drawPolygonBtn, reshapeLineBtn, reshapePolygonBtn;
     var lineStylesBtn, polygonStylesBtn;
@@ -25611,25 +25780,24 @@
       return {input: input};
     }
 
-    // A switch in the heading says whether the lines have arrowheads; the rows
-    // under it are the head's shape with its size beside it, then which ends
-    // get it with the line's fade beside that. A line has one shape for both
-    // ends, which is all the panel sets, though -style can give the two ends
-    // different ones.
+    // The rows are the head's shape with its size beside it, then which ends
+    // get it with the line's fade beside that. Choosing a shape or an end adds
+    // heads to lines that have none, and the heading's × takes them off. A line
+    // has one shape for both ends, which is all the panel sets, though -style
+    // can give the two ends different ones.
     function addArrowControl(parent) {
-      var section = makePanelSection(parent, 'Arrowheads');
-      var toggle = makePanelToggle(section.findChild('.label-style-section-title'), {
-        title: 'Add arrowheads',
-        className: 'layer-arrow-toggle',
-        onChange: setArrowsOn
+      var heading = makeCollapsibleSection(parent, 'Arrowheads', {
+        onRemove: removeArrows,
+        removeTitle: 'Remove arrowheads'
       });
+      var section = heading.section.addClass('layer-arrow-section');
       var shapeRow = El('div').addClass('label-style-row label-split-row').appendTo(section);
       var shapeCell = El('div').addClass('label-split-cell label-align-row').appendTo(shapeRow);
       var sizeCell = El('div').addClass('label-split-cell label-spacing-row layer-arrow-size-row').appendTo(shapeRow);
       var posRow = El('div').addClass('label-style-row label-split-row').appendTo(section);
       var posCell = El('div').addClass('label-split-cell label-align-row').appendTo(posRow);
       var fadeCell = El('div').addClass('label-split-cell layer-arrow-fade-cell').appendTo(posRow);
-      var control = {section: section, toggle: toggle, shapeBtns: {}, posBtns: {}};
+      var control = {section: section, heading: heading, shapeBtns: {}, posBtns: {}};
       El('span').appendTo(shapeCell).text('Shape');
       var shapeGroup = El('div').addClass('label-btn-group label-callout-buttons layer-arrow-shape-buttons').appendTo(shapeCell);
       arrowShapes.forEach(function(item) {
@@ -25688,15 +25856,21 @@
       return {shape: shape, position: position};
     }
 
-    // Switching on gives the lines that have no heads the last shape, ends and
-    // fade the section showed, so that off and on again is a round trip; the
-    // lines that have heads keep theirs. Switching off leaves line-end-size
-    // alone, for the same reason, but removes the fade, which would otherwise
-    // go on showing with its control hidden.
-    function setArrowsOn(on) {
-      applyArrowEdits(function(info) {
-        return on ? fillArrowInfo(info) : {shape: 'none', position: ''};
+    // Everything the heads are drawn with goes with them: the size and the
+    // fade mean nothing on a line without heads.
+    function removeArrows() {
+      var records = getTargetRecords();
+      var edits = [];
+      getTargetIds().forEach(function(id) {
+        var rec = records[id] || {};
+        var styles = ['line-start', 'line-end', 'line-end-size', 'line-fade'].filter(function(field) {
+          return rec[field] !== undefined && rec[field] !== null && String(rec[field]) !== '';
+        }).map(function(field) {
+          return [field, ''];
+        });
+        if (styles.length > 0) edits.push({id: id, styles: styles});
       });
+      runStyleEdits(edits);
     }
 
     // Each target keeps whichever of shape and position is not being set, so
@@ -25816,7 +25990,7 @@
     }
 
     // The shape and ends shown are those of the lines with heads; lines
-    // without are what the switch's mixed state is for.
+    // without are what the heading's mixed marker is for.
     function updateArrowControl() {
       var records = getTargetRecords();
       var ids = getTargetIds();
@@ -25836,8 +26010,7 @@
       if (position) lastArrow.position = position;
       var state = arrowIds.length === 0 ? 'off' :
         arrowIds.length < ids.length ? 'mixed' : 'on';
-      arrowControl.toggle.setState(state);
-      arrowControl.section.classed('collapsed', state == 'off');
+      arrowControl.heading.setPresence(state);
       arrowShapes.forEach(function(item) {
         arrowControl.shapeBtns[item.name].classed('selected', item.name == shape);
       });
@@ -30397,6 +30570,17 @@
   // tool grabs a label by the same box: what looks like the object is what takes
   // a drag on it.
   var BOX_PADDING$1 = 3;
+
+  // A label with a box of its own -- a background or label-padding -- is
+  // outlined on that box exactly, since it is what the label looks like and what
+  // its callout meets; any other is outlined BOX_PADDING outside its glyphs.
+  function labelHasOwnBox(rec) {
+    return !!rec && (internal.svg.labelHasBackground(rec) || !!internal.svg.getLabelPadding(rec));
+  }
+
+  function getCuePadding(rec) {
+    return labelHasOwnBox(rec) ? 0 : BOX_PADDING$1;
+  }
   var ANCHOR_RADIUS = 3.5;
   var KNOT_RADIUS$1 = 3;
   var WIDTH_HANDLE_SIZE = 6;
@@ -30436,6 +30620,7 @@
     var drawn = null; // what those cues represent, so hover does not redraw them
     var on = false;
     var tetherId = -1; // the label whose text is being dragged off its anchor
+    var getPreviewRecord = null;
 
     self.turnOn = function() {
       on = true;
@@ -30451,6 +30636,13 @@
     // Draws a hairline from @id's anchor to its text while its offset is being
     // dragged, or nothing when given -1. The offset is what is being edited, and
     // on a label with no symbol the anchor is otherwise not drawn at all.
+    // @fn: function(id) returning the record a label is being drawn from while
+    //   a drag is previewing it, or null. A padded box is worked out from the
+    //   record, and the data's is out of date until the drag is committed.
+    self.setPreviewRecordGetter = function(fn) {
+      getPreviewRecord = fn;
+    };
+
     self.setTether = function(id) {
       if (tetherId === id) return;
       tetherId = id;
@@ -30559,18 +30751,44 @@
     // fainter dashed box behind the solid one. The solid box is the label itself
     // -- the wrapped text, which is what a callout meets -- and is usually
     // narrower than its column; the column is what the width handle drags.
+    //
+    // A label with a box of its own is outlined on the box (see labelHasOwnBox()),
+    // and its width handle is at the corner of that.
     function appendAnchoredCue(g, nodes, rec, id, handleTarget) {
-      var box = measure(nodes.content);
+      var drawn = getPreviewRecord && getPreviewRecord(id) || rec;
+      var pad = getCuePadding(drawn);
+      var box = pad > 0 ? measure(nodes.content) :
+        getBackgroundBox(nodes.symbol) || getPaddedBox(drawn);
       var o = box && handleTarget && getHandles ? getHandles(handleTarget, id, box) : null;
       var column = o ? o.column : null;
       if (!box) return;
-      if (column) g.appendChild(columnRect(box, column, BOX_PADDING$1));
-      if (box.width || box.height) g.appendChild(rect(box, BOX_PADDING$1));
-      if (id === tetherId) g.appendChild(tether(box));
+      if (column) g.appendChild(columnRect(box, column, pad));
+      if (box.width || box.height) g.appendChild(rect(box, pad));
+      if (id === tetherId) g.appendChild(tether(box, pad));
       if (!internal.featureHasSvgSymbol(rec) && !boxHoldsOrigin(box)) {
         g.appendChild(anchorMarker());
       }
       if (o && o.handles.length > 0) appendHandles(nodes, o.handles);
+    }
+
+    // The background's rect in the symbol's space, read from its attributes,
+    // which is the space the cue is drawn in; or null
+    function getBackgroundBox(symbol) {
+      var el = symbol.tagName == 'g' ? symbol.querySelector(':scope > .label-background') : null;
+      if (!el) return null;
+      return {
+        x: Number(el.getAttribute('x')),
+        y: Number(el.getAttribute('y')),
+        width: Number(el.getAttribute('width')),
+        height: Number(el.getAttribute('height'))
+      };
+    }
+
+    // The box a callout meets, for a padded label with no background rect to
+    // read it from
+    function getPaddedBox(rec) {
+      var b = internal.svg.getLabelBox(rec, {estimate_width: true});
+      return {x: b.xmin, y: b.ymin, width: b.xmax - b.xmin, height: b.ymax - b.ymin};
     }
 
     // The column's own extent across, and the text's up and down: a column has
@@ -30717,12 +30935,12 @@
     // The line from the anchor to the text, drawn to the nearest corner or edge
     // of its box rather than to the middle of it: a line to the middle would run
     // underneath the glyphs it is pointing at.
-    function tether(box) {
+    function tether(box, pad) {
       var el = document.createElementNS(SVG_NS$3, 'line');
       el.setAttribute('x1', 0);
       el.setAttribute('y1', 0);
-      el.setAttribute('x2', clamp(0, box.x - BOX_PADDING$1, box.x + box.width + BOX_PADDING$1));
-      el.setAttribute('y2', clamp(0, box.y - BOX_PADDING$1, box.y + box.height + BOX_PADDING$1));
+      el.setAttribute('x2', clamp(0, box.x - pad, box.x + box.width + pad));
+      el.setAttribute('y2', clamp(0, box.y - pad, box.y + box.height + pad));
       el.setAttribute('class', 'label-cue-tether');
       return el;
     }
@@ -32750,12 +32968,13 @@
   //   scale:   screen px per label px
   //   padding: how far outside the text the selection box is drawn
   // Returns {handles: [{kind, point}], column}, where column is the x-range
-  //   [xmin, xmax] a text block wraps within, or null for point text. The
-  //   width handle sits on the column's corner, not the text's.
+  //   [xmin, xmax] a text block wraps within, grown by its label-padding, or
+  //   null for point text. The width handle sits on the column's corner, not
+  //   the text's.
   function getAnchoredLabelHandles(rec, textBox, opts) {
     var o = opts || {};
     var handles = [];
-    var column = getLabelColumn(rec);
+    var column = getLabelBoxColumn(rec);
     var shape = internal.svg.getLabelCalloutShape(rec, o.symbolRadius || 0);
     var width = textBox && column ?
       getWidthHandlePoint(rec, textBox, column, o.padding || 0) : null;
@@ -32783,6 +33002,22 @@
     if (anchor == 'end') return [drawn.dx - w, drawn.dx];
     if (anchor == 'middle') return [drawn.dx - w / 2, drawn.dx + w / 2];
     return [drawn.dx, drawn.dx + w];
+  }
+
+  // The column with the label's padding on either side, which is the width a
+  // block's box takes when its lines fill it: what the GUI draws as the column.
+  function getLabelBoxColumn(rec) {
+    var column = getLabelColumn(rec);
+    var pad = column ? internal.svg.getLabelPadding(rec) : null;
+    return pad ? [column[0] - pad.left, column[1] + pad.right] : column;
+  }
+
+  // How much padding is between the column and its width handle, px: the
+  // handle is on the right of the column unless the text ends at its anchor.
+  function getWidthHandlePadding(rec, anchor) {
+    var pad = internal.svg.getLabelPadding(rec);
+    if (!pad) return 0;
+    return anchor == 'end' ? pad.left : pad.right;
   }
 
   // An anchor the record does not set is inherited from the layer's group,
@@ -33842,6 +34077,7 @@
       if (!session.nodes) return;
       session.layout = undefined; // resolved from the nodes, which just changed
       writeText(session);
+      updateBackground(session);
       drawOverlay(session);
     };
 
@@ -34096,6 +34332,25 @@
       }
     }
 
+    // Fits a committed label's background to the text being typed, which
+    // writeText() puts in the <text> without redrawing the rest of the symbol.
+    // A pending label needs nothing: it is redrawn from its record, text and
+    // all, whenever that changes.
+    function updateBackground(o) {
+      var rec = o.pending ? null : getRecord(o.target, o.id);
+      var rect = rec && o.nodes.symbol.querySelector('.label-background');
+      var props;
+      if (!rect || !internal.svg.labelHasBackground(rec)) return;
+      rec = Object.assign({}, rec, {
+        'label-text': encodeLabelText(writeLabelValue(o.text, getBreaks(o), o.bold))
+      });
+      props = internal.svg.renderLabelBackground(rec);
+      if (!props) return;
+      ['x', 'y', 'width', 'height'].forEach(function(name) {
+        rect.setAttribute(name, props.properties[name]);
+      });
+    }
+
     // Characters [start, end) of @str into @parent, the bold ones in bold
     // <tspan>s and the rest as text. An empty stretch still gets a text node, as
     // an empty line always did.
@@ -34210,7 +34465,7 @@
     // size of nothing.
     function appendColumn(o, g, box) {
       var rec = o.pending ? getPendingRecord(o) : getRecord(o.target, o.id);
-      var column = rec ? getLabelColumn(rec) : null;
+      var column = rec ? getLabelBoxColumn(rec) : null;
       if (!column) return;
       g.appendChild(rect({
         x: column[0] - BOX_PADDING,
@@ -34304,10 +34559,18 @@
     // There are two drawing groups rather than one because the z-order matters:
     // the selection band has to paint beneath the glyphs and the caret above
     // them. A single group would draw the band over the text and obscure it.
+    //
+    // A label with a background is the exception: the background is inside the
+    // symbol, and would cover a band painted beneath the symbol. So the back
+    // group goes inside it, just above the background, where it is already in
+    // the symbol's space and wears no transform of its own.
     function getGroups(o) {
       var parent = o.nodes.symbol.parentNode;
+      var background = getBackgroundNode(o.nodes.symbol);
+      var backParent = background ? o.nodes.symbol : parent;
       var after;
-      if (!o.groups || o.groups.back.parentNode !== parent) {
+      if (!o.groups || o.groups.front.parentNode !== parent) {
+        if (o.groups) removeGroups(o.groups);
         o.groups = {
           back: makeGroup('label-edit-overlay label-edit-back'),
           front: makeGroup('label-edit-overlay label-edit-front'),
@@ -34317,12 +34580,33 @@
         // data-id either; the tool recognizes a click on it by asking whether the
         // editor owns the node -- see self.ownsNode().
         if (o.id > -1) o.groups.hit.setAttribute('data-id', o.id);
-        parent.insertBefore(o.groups.back, o.nodes.symbol);
         after = o.nodes.symbol.nextSibling;
         parent.insertBefore(o.groups.front, after);
         parent.insertBefore(o.groups.hit, after);
       }
+      // Placed apart from the other two, which a click may be on: rebuilding
+      // them when only the symbol was redrawn would lose a double-click.
+      if (o.groups.back.parentNode !== backParent) {
+        if (background) {
+          o.nodes.symbol.insertBefore(o.groups.back, background.nextSibling);
+          o.groups.back.removeAttribute('transform');
+          o.groups.back.removeAttribute('display');
+        } else {
+          parent.insertBefore(o.groups.back, o.nodes.symbol);
+        }
+      }
+      o.groups.backInside = !!background;
       return o.groups;
+    }
+
+    function getBackgroundNode(symbol) {
+      return symbol.tagName == 'g' ? symbol.querySelector(':scope > .label-background') : null;
+    }
+
+    function removeGroups(groups) {
+      [groups.back, groups.front, groups.hit].forEach(function(g) {
+        if (g.parentNode) g.parentNode.removeChild(g);
+      });
     }
 
     function makeGroup(className) {
@@ -34338,6 +34622,7 @@
       var transform = o.nodes.symbol.getAttribute('transform');
       var display = o.nodes.symbol.getAttribute('display');
       [groups.back, groups.front, groups.hit].forEach(function(g) {
+        if (g == groups.back && groups.backInside) return;
         if (transform) g.setAttribute('transform', transform);
         if (display) {
           g.setAttribute('display', display);
@@ -34350,9 +34635,7 @@
     function removeOverlay(o) {
       removePendingGroup(o);
       if (!o.groups) return;
-      [o.groups.back, o.groups.front, o.groups.hit].forEach(function(g) {
-        if (g.parentNode) g.parentNode.removeChild(g);
-      });
+      removeGroups(o.groups);
       o.groups = null;
     }
 
@@ -34909,6 +35192,7 @@
     var selection = new LabelSelection(gui, ext, hit, function() {
       return editor.isOpen() ? editor.getFeatureId() : -1;
     }, getLabelHandles);
+    selection.setPreviewRecordGetter(getPreviewRecord);
     var toolbar, anchorBtn, blockBtn, pathBtn, stylesBtn, alert;
 
     gui.addMode('label_tool', turnOn, turnOff);
@@ -35693,12 +35977,12 @@
       if (!active() || editor.isOpen() || drawingCurve() || textDrag ||
           ids.length != 1 || ids[0] != id) {
         shownHandles = null;
-        return {handles: [], column: getLabelColumn(rec)};
+        return {handles: [], column: getLabelBoxColumn(rec)};
       }
       o = getAnchoredLabelHandles(rec, textBox, {
         symbolRadius: internal.svg.getAnchorSymbolRadius(rec),
         scale: ext.getSymbolScale() || 1,
-        padding: BOX_PADDING$1
+        padding: getCuePadding(rec)
       });
       shownHandles = {id: id, target: target, handles: o.handles};
       return o;
@@ -35777,7 +36061,8 @@
       var tol = SNAP_PX / (ext.getSymbolScale() || 1);
       var width, shape, via;
       if (o.kind == 'width') {
-        width = getDraggedWidth(o.textAnchor, o.dx, p[0], BOX_PADDING$1);
+        width = getDraggedWidth(o.textAnchor, o.dx, p[0],
+          getCuePadding(o.rec) + getWidthHandlePadding(o.rec, o.textAnchor));
         return {
           'label-width': width,
           'label-text': rewrapLabelValue(o.rec['label-text'],
@@ -35952,15 +36237,19 @@
     // A text block's style: the new label's, with a wrap width -- @width or a
     // default -- and placed with the top left of its column at the anchor, so
     // that its text is left-aligned and fills the box a drag drew. The offsets
-    // that do that replace the position the panel names.
+    // that do that replace the position the panel names. With label-padding it
+    // is the padded box that goes there and fills the drag, and the column is
+    // inside it.
     function getBlockStyle(width) {
       var style = Object.assign({}, getStyleForNewLabel());
+      var pad = internal.svg.getLabelPadding(style) || {top: 0, right: 0, bottom: 0, left: 0};
+      var column = width > 0 ? Math.round(width - pad.left - pad.right) : DEFAULT_BLOCK_WIDTH;
       delete style['label-pos'];
       return Object.assign(style, {
-        'label-width': width > 0 ? width : DEFAULT_BLOCK_WIDTH,
+        'label-width': Math.max(column, MIN_LABEL_WIDTH),
         'text-anchor': 'start',
-        dx: 0,
-        dy: Math.round(getNewFontSize(style) * 0.8)
+        dx: pad.left,
+        dy: Math.round(getNewFontSize(style) * 0.8 + pad.top)
       });
     }
 
@@ -36145,6 +36434,8 @@
           anchor: nodes.text.getAttribute('text-anchor')
         },
         callout: getOffsetDragCallout(rec),
+        // A background is drawn around the text, so it is redrawn with it
+        redraw: internal.svg.labelHasBackground(rec),
         moved: false
       };
       // The hairline to the anchor, which is what the drag is measured from and
@@ -36187,6 +36478,8 @@
       delete o.previewRec['label-pos'];
       if (o.callout) {
         previewCalloutOffset(o, getDomEvent(e));
+      } else if (o.redraw) {
+        previewLabel(o.target, o.id, o.previewRec);
       } else {
         previewOffset(o);
       }
@@ -36238,7 +36531,7 @@
     function restoreOffset(o) {
       var nodes = findLabelNodes(o.target, o.id);
       releasedDrag = null;
-      if (o.callout) {
+      if (o.callout || o.redraw) {
         // redrawn rather than written on, so redrawn back
         gui.dispatchEvent('map-needs-refresh');
         return;

@@ -13649,7 +13649,7 @@
       'invalid distance',
       'stream finished',
       'no stream handler',
-      ,
+      , // determined by compression function
       'no callback',
       'invalid UTF-8 data',
       'extra field too long',
@@ -14360,6 +14360,7 @@
   var b2 = function (d, b) { return d[b] | (d[b + 1] << 8); };
   // read 4 bytes
   var b4 = function (d, b) { return (d[b] | (d[b + 1] << 8) | (d[b + 2] << 16) | (d[b + 3] << 24)) >>> 0; };
+  // read 8 bytes
   var b8 = function (d, b) { return b4(d, b) + (b4(d, b + 4) * 4294967296); };
   // write bytes
   var wbytes = function (d, b, v) {
@@ -14436,12 +14437,6 @@
           bInflt
       ], function (ev) { return pbf(inflateSync(ev.data[0], gopt(ev.data[1]))); }, 1, cb);
   }
-  /**
-   * Expands DEFLATE data with no wrapper
-   * @param data The data to decompress
-   * @param opts The decompression options
-   * @returns The decompressed version of the data
-   */
   function inflateSync(data, opts) {
       return inflt(data, { i: 2 }, opts && opts.out, opts && opts.dictionary);
   }
@@ -14481,12 +14476,6 @@
           function () { return [gunzipSync$1]; }
       ], function (ev) { return pbf(gunzipSync$1(ev.data[0], ev.data[1])); }, 3, cb);
   }
-  /**
-   * Expands GZIP data
-   * @param data The data to decompress
-   * @param opts The decompression options
-   * @returns The decompressed version of the data
-   */
   function gunzipSync$1(data, opts) {
       var st = gzs(data);
       if (st + 8 > data.length)
@@ -14513,7 +14502,7 @@
           var val = d[k], n = p + k, op = o;
           if (Array.isArray(val))
               op = mrg(o, val[1]), val = val[0];
-          if (val instanceof u8)
+          if (ArrayBuffer.isView(val))
               t[n] = [val, op];
           else {
               t[n += '/'] = [new u8(0), op];
@@ -14613,15 +14602,30 @@
   var slzh = function (d, b) { return b + 30 + b2(d, b + 26) + b2(d, b + 28); };
   // read zip header
   var zh = function (d, b, z) {
-      var fnl = b2(d, b + 28), fn = strFromU8(d.subarray(b + 46, b + 46 + fnl), !(b2(d, b + 8) & 2048)), es = b + 46 + fnl, bs = b4(d, b + 20);
-      var _a = z && bs == 4294967295 ? z64e(d, es) : [bs, b4(d, b + 24), b4(d, b + 42)], sc = _a[0], su = _a[1], off = _a[2];
-      return [b2(d, b + 10), sc, su, fn, es + b2(d, b + 30) + b2(d, b + 32), off];
+      var fnl = b2(d, b + 28), efl = b2(d, b + 30), fn = strFromU8(d.subarray(b + 46, b + 46 + fnl), !(b2(d, b + 8) & 2048)), es = b + 46 + fnl;
+      var _a = z64hs(d, es, efl, z, b4(d, b + 20), b4(d, b + 24), b4(d, b + 42)), sc = _a[0], su = _a[1], off = _a[2];
+      return [b2(d, b + 10), sc, su, fn, es + efl + b2(d, b + 32), off];
   };
-  // read zip64 extra field
-  var z64e = function (d, b) {
-      for (; b2(d, b) != 1; b += 4 + b2(d, b + 2))
-          ;
-      return [b8(d, b + 12), b8(d, b + 4), b8(d, b + 20)];
+  // read zip64 header sizes
+  var z64hs = function (d, b, l, z, sc, su, off) {
+      var nsc = sc == 4294967295, nsu = su == 4294967295, noff = off == 4294967295, e = b + l;
+      var nf = nsc + nsu + noff;
+      if (z && nf) {
+          for (; b + 4 < e; b += 4 + b2(d, b + 2)) {
+              if (b2(d, b) == 1) {
+                  return [
+                      nsc ? b8(d, b + 4 + 8 * nsu) : sc,
+                      nsu ? b8(d, b + 4) : su,
+                      noff ? b8(d, b + 4 + 8 * (nsu + nsc)) : off,
+                      1
+                  ];
+              }
+          }
+          // z == 2 for unknown whether or not zip64
+          if (z < 2)
+              err(13);
+      }
+      return [sc, su, off, 0];
   };
   // extra field length
   var exfl = function (ex) {
@@ -14854,7 +14858,7 @@
       if (lft) {
           var c = lft;
           var o = b4(data, e + 16);
-          var z = o == 4294967295 || c == 65535;
+          var z = b4(data, e - 20) == 0x7064B50;
           if (z) {
               var ze = b4(data, e - 12);
               z = b4(data, ze) == 0x6064B50;
@@ -14933,7 +14937,7 @@
       if (!c)
           return {};
       var o = b4(data, e + 16);
-      var z = o == 4294967295 || c == 65535;
+      var z = b4(data, e - 20) == 0x7064B50;
       if (z) {
           var ze = b4(data, e - 12);
           z = b4(data, ze) == 0x6064B50;
@@ -26837,6 +26841,115 @@
     parseLabelAlign: parseLabelAlign
   });
 
+  // An anchored label's box: its text, plus label-padding, which is the space
+  // between the glyphs and the box the label is positioned by, a callout stops
+  // at, and label-background fills. The box itself is getLabelBox() in
+  // svg-label-callout.mjs, and its fill is drawn by svg-label-background.mjs.
+  //
+  // label-padding takes a CSS padding string: one to four lengths, for top,
+  // right, bottom and left in CSS order. A length is a bare number or a px or
+  // em value; ems are relative to the label's font size. Padding never changes
+  // where a text block wraps: label-width is the width of the text, and the
+  // padding is outside it, as with CSS's content-box.
+  //
+  // See docs/development/text-annotation-design.md.
+
+  // Kept here rather than imported from svg-labels.mjs, which imports
+  // svg-properties.mjs, which imports this.
+  var DEFAULT_FONT_SIZE = 12;
+
+  var lengthRxp = /^([0-9]*\.?[0-9]+)(px|em)?$/i;
+
+  // 'none' is kept rather than rejected, as callout=none is, so that a field or
+  // an expression can switch a background off for some features.
+  function labelHasBackground(rec) {
+    var val = rec ? rec['label-background'] : null;
+    return !!val && String(val).trim().toLowerCase() != 'none';
+  }
+
+  // The padding string @val, normalized, or null if it is not one. Always a
+  // string, so that a column holding "4" for one label and "2 6" for another
+  // has a single type.
+  function parseLabelPadding(val) {
+    var parts;
+    if (typeof val == 'number') {
+      return isFinite(val) && val >= 0 ? String(val) : null;
+    }
+    parts = String(val === null || val === undefined ? '' : val).trim().split(/\s+/);
+    if (parts.length > 4 || parts[0] === '') return null;
+    for (var i = 0; i < parts.length; i++) {
+      if (!lengthRxp.test(parts[i])) return null;
+    }
+    return parts.join(' ');
+  }
+
+  // @rec's padding in px, as {top, right, bottom, left}, or null if it has none
+  // that can be read.
+  function getLabelPadding(rec) {
+    var str = rec ? parseLabelPadding(rec['label-padding']) : null;
+    var fontSize, px;
+    if (!str) return null;
+    fontSize = getFontSizeInPx$2(rec['font-size']);
+    px = str.split(' ').map(function(part) {
+      var match = lengthRxp.exec(part);
+      var n = Number(match[1]);
+      return match[2] && match[2].toLowerCase() == 'em' ? n * fontSize : n;
+    });
+    // CSS shorthand: 1 value for all sides, 2 for vertical and horizontal, 3
+    // for top, horizontal and bottom, 4 clockwise from the top
+    if (px.length == 1) px = [px[0], px[0], px[0], px[0]];
+    else if (px.length == 2) px = [px[0], px[1], px[0], px[1]];
+    else if (px.length == 3) px = [px[0], px[1], px[2], px[1]];
+    return {top: px[0], right: px[1], bottom: px[2], left: px[3]};
+  }
+
+  // How far a label position's offsets move to keep the padded box, rather
+  // than the glyphs, the same distance from the anchor: away from it, by the
+  // padding on the side that faces it. The centred position moves nowhere.
+  // Returns [dx, dy] in px.
+  function getPositionPaddingShift(pos, pad) {
+    var p = String(pos || '').toLowerCase();
+    var dx = 0, dy = 0;
+    if (!pad) return [0, 0];
+    if (p.indexOf('e') > -1) dx = pad.left;
+    if (p.indexOf('w') > -1) dx = -pad.right;
+    if (p.indexOf('n') > -1) dy = -pad.bottom;
+    if (p.indexOf('s') > -1) dy = pad.top;
+    return [dx, dy];
+  }
+
+  // @measure (a number, or a px or em value) plus @px, in px, or null if
+  // @measure is in units this cannot add to.
+  function addPixelsToMeasure(measure, px, fontSizeArg) {
+    var str = String(measure).trim();
+    var match = /^(-?[0-9]*\.?[0-9]+)(px|em)?$/i.exec(str);
+    var n;
+    if (!match) return null;
+    n = Number(match[1]);
+    if (match[2] && match[2].toLowerCase() == 'em') n *= getFontSizeInPx$2(fontSizeArg);
+    return Math.round((n + px) * 10) / 10;
+  }
+
+  // A number, a px value or an em value relative to the default
+  function getFontSizeInPx$2(val) {
+    var match = /^([0-9]*\.?[0-9]+)(px|em)?$/i.exec(String(val === undefined ||
+      val === null ? '' : val).trim());
+    var n;
+    if (!match) return DEFAULT_FONT_SIZE;
+    n = Number(match[1]);
+    if (match[2] && match[2].toLowerCase() == 'em') n *= DEFAULT_FONT_SIZE;
+    return n > 0 ? n : DEFAULT_FONT_SIZE;
+  }
+
+  var SvgLabelBox = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    addPixelsToMeasure: addPixelsToMeasure,
+    getLabelPadding: getLabelPadding,
+    getPositionPaddingShift: getPositionPaddingShift,
+    labelHasBackground: labelHasBackground,
+    parseLabelPadding: parseLabelPadding
+  });
+
   // parsing hints for -style command cli options
   // null values indicate the lack of a function for parsing/identifying this property
   // (in which case a heuristic is used for distinguishing a string literal from an expression)
@@ -26887,6 +27000,11 @@
     // width of a fixed-width text block, whose lines the GUI wraps and stores
     // with <wbr> soft breaks -- see docs/development/text-annotation-design.md
     'label-width': 'number',
+    // space around an anchored label's text, and a fill behind it -- see
+    // svg-label-box.mjs
+    'label-padding': 'labelpadding',
+    'label-background': 'color',
+    'label-background-opacity': 'number',
     // a line from a label's anchor to its text -- see svg-label-callout.mjs
     callout: 'callout',
     'callout-end': 'calloutend',
@@ -27227,6 +27345,8 @@
     } else if (type == 'pointpair') {
       val = parsePointPair(strVal);
       val = val ? formatPointPair(val) : null;
+    } else if (type == 'labelpadding') {
+      val = parseLabelPadding(strVal);
     }
     //  else {
     //   // unknown type -- assume literal value
@@ -27318,19 +27438,30 @@
   // north. That is also what makes this change invisible to files written before
   // it: they carry all three alongside label-pos, with exactly the values this
   // would supply.
+  //
+  // With label-padding, the offsets a position supplies move away from the
+  // anchor by the padding, so that a background or callout box clears the
+  // anchor as the glyphs did. They are then in px. Offsets of the record's own
+  // are left where they are: they say where the text goes.
   function resolveLabelPosition(rec) {
     var style = rec && rec['label-pos'] ? getLabelPositionStyle(rec['label-pos']) : null;
     var out = null;
-    var field, i;
+    var shift, field, i, val;
     // An unusable position renders as if it were unset. The commands that set it
     // reject one, so reaching here means it was written by an expression or came
     // from a data file, where stopping the render is the wrong response.
     if (style) {
+      shift = getPositionPaddingShift(style['label-pos'], getLabelPadding(rec));
       for (i = 0; i < labelPositionDerivedFields.length; i++) {
         field = labelPositionDerivedFields[i];
         if (hasStyleValue(rec, field)) continue;
         if (!out) out = Object.assign({}, rec);
-        out[field] = style[field];
+        val = style[field];
+        if (field == 'dx' && shift[0] || field == 'dy' && shift[1]) {
+          val = addPixelsToMeasure(val, field == 'dx' ? shift[0] : shift[1],
+            rec['font-size']);
+        }
+        out[field] = val;
       }
     }
     out = resolveLabelAlignment(out || rec) || out;
@@ -28043,10 +28174,14 @@
     return getCalloutShape({
       type: parseCalloutType(rec.callout),
       end: getCalloutEndType(rec),
-      box: getLabelTextBox(rec),
+      box: getLabelBox$1(rec),
       via: parsePointPair(rec['callout-via'] || ''),
       attach: parsePointPair(rec['callout-attach'] || ''),
-      padding: getNumber(rec['callout-padding'], DEFAULT_PADDING$1),
+      // A label with a box of its own -- a background or padding -- is met at
+      // the box, which is where the GUI outlines it; bare text is met short of
+      // its glyphs
+      padding: getNumber(rec['callout-padding'],
+        labelHasBackground(rec) || getLabelPadding(rec) ? 0 : DEFAULT_PADDING$1),
       gap: getCalloutGap(rec, symbolRadius),
       width: getLineWidth(rec),
       endSize: getNumber(rec['callout-end-size'], 0)
@@ -28116,6 +28251,23 @@
       ymin: baseline - ASCENT * fontSize,
       ymax: baseline + (lines.length - 1) * lineHeight + DESCENT * fontSize,
       midline: baseline - MIDLINE * fontSize
+    };
+  }
+
+  // The box a label is positioned by, a callout meets and a background fills:
+  // the text box grown by label-padding. A text block's box is its text, like
+  // any other label's, and not its column: a background fits the lines as
+  // wrapped. Same form as getLabelTextBox().
+  function getLabelBox$1(rec, opts) {
+    var box = getLabelTextBox(rec, opts);
+    var pad = getLabelPadding(rec);
+    if (!pad) return box;
+    return {
+      xmin: box.xmin - pad.left,
+      xmax: box.xmax + pad.right,
+      ymin: box.ymin - pad.top,
+      ymax: box.ymax + pad.bottom,
+      midline: box.midline
     };
   }
 
@@ -28559,11 +28711,56 @@
     getCalloutShape: getCalloutShape,
     getControlPoint: getControlPoint,
     getDefaultCalloutEndSize: getDefaultCalloutEndSize,
+    getLabelBox: getLabelBox$1,
     getLabelCalloutShape: getLabelCalloutShape,
     getLabelFontSize: getLabelFontSize,
     getLabelTextBox: getLabelTextBox,
     labelHasCallout: labelHasCallout,
     renderLabelCallout: renderLabelCallout
+  });
+
+  // A fill behind an anchored label's text, covering its box: the text and its
+  // label-padding. Two properties describe one:
+  //
+  //   label-background          the fill colour. A background is drawn when
+  //                             this is set, and not when it is unset or "none".
+  //   label-background-opacity  0-1, apart from the text's own opacity
+  //
+  // Drawn as a <rect> in the label's own space, beneath the text, its icon and
+  // its callout. The rectangle's size is fixed when it is drawn, from the
+  // measured width of the text and a height estimated from the font size and line
+  // height -- see getLabelTextBox(). An SVG opened where the label's font is
+  // missing draws the text in another one, and the box no longer fits it.
+  //
+  // Opacity is written as opacity rather than fill-opacity, for the reason the
+  // halo's is: see splitLabelHalos().
+
+  // The background of @rec as an SVG object, or null if it has none
+  function renderLabelBackground(rec) {
+    var box, w, h, props, opacity;
+    if (!labelHasBackground(rec)) return null;
+    box = getLabelBox$1(rec, {estimate_width: true});
+    w = box.xmax - box.xmin;
+    h = box.ymax - box.ymin;
+    if (!(w > 0) || !(h > 0)) return null;
+    props = {
+      class: 'label-background',
+      x: roundToTenths(box.xmin),
+      y: roundToTenths(box.ymin),
+      width: roundToTenths(w),
+      height: roundToTenths(h),
+      fill: String(rec['label-background']).trim()
+    };
+    opacity = rec['label-background-opacity'];
+    if (isSvgNumber(opacity) && Number(opacity) < 1) {
+      props.opacity = Math.max(0, Number(opacity));
+    }
+    return {tag: 'rect', properties: props};
+  }
+
+  var SvgLabelBackground = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    renderLabelBackground: renderLabelBackground
   });
 
   // convert data records (properties like svg-symbol, label-text, fill, r) to svg symbols
@@ -28595,8 +28792,15 @@
   // render label and/or point symbol
   function renderPoint(rec) {
     var children = [];
-    var callout;
+    var callout, background;
     // var halfSize = rec.r || 0; // radius or half of symbol size
+    // Under the callout, which would lose half its width where it runs along
+    // the box's edge, and under the symbol, which a centred label's box would
+    // otherwise hide.
+    if (featureHasLabel(rec) && labelHasBackground(rec)) {
+      background = renderLabelBackground(rec);
+      if (background) children.push(background);
+    }
     // Beneath the symbol and the text, which it runs between.
     if (featureHasLabel(rec) && labelHasCallout(rec)) {
       callout = renderLabelCallout(rec, getAnchorSymbolRadius(rec));
@@ -44755,13 +44959,16 @@ ${css.join('\n')}
           'halo-color': {describe: 'halo color (default is white)'},
           'halo-opacity': {describe: 'halo opacity, 0-1'},
           'label-width': {describe: 'width of a fixed-width text block in px (lines are wrapped in the web UI)'},
+          'label-padding': {describe: 'space around the text, as in CSS: one to four lengths, e.g. 4 or "2 6"'},
+          'label-background': {describe: 'color of a box drawn behind the text and its padding'},
+          'label-background-opacity': {describe: 'background opacity, 0-1'},
           callout: {describe: 'line from the anchor to the text: line, elbow or curve'},
           'callout-end': {describe: 'marker at the anchor end: arrow, open-arrow, ring or none'},
           'callout-end-size': {describe: 'length of an arrowhead\'s sides, or a ring\'s diameter, in px'},
           'callout-via': {describe: 'x,y of an elbow\'s corner or a point on a curve, in px'},
           'callout-attach': {describe: 'where the callout meets the text, as x,y fractions'},
           'callout-gap': {describe: 'px between the callout and the anchor'},
-          'callout-padding': {describe: 'px between the callout and the text (default is 3)'},
+          'callout-padding': {describe: 'px between the callout and the text (default is 3, or 0 with a label background or padding)'},
           'callout-color': {describe: 'callout color (defaults to the text color)'},
           'callout-width': {describe: 'callout line width in px (default is 1)'},
           'callout-opacity': {describe: 'callout opacity, 0-1'},
@@ -56208,6 +56415,10 @@ ${css.join('\n')}
     var o = getLabelTextBox(rec, {estimate_width: true});
     var pad = getHaloWidth(rec);
     var box = [o.xmin - pad, o.ymin - pad, o.xmax + pad, o.ymax + pad];
+    if (labelHasBackground(rec)) {
+      o = getLabelBox$1(rec, {estimate_width: true});
+      box = mergeBoxes(box, [o.xmin, o.ymin, o.xmax, o.ymax]);
+    }
     var via = labelHasCallout(rec) ? parsePointPair(rec['callout-via'] || '') : null;
     if (via) {
       box = mergeBoxes(box, [via[0], via[1], via[0], via[1]]);
@@ -89471,7 +89682,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.81";
+  var version = "0.7.82";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -91871,8 +92082,8 @@ ${css.join('\n')}
   internal.svg = Object.assign({}, SvgStringify, SvgPathUtils, GeojsonToSvg,
     SvgFeatureUtils,
     SvgLabels, SvgSymbols, SvgLabelPaths, SvgLabelFit, SvgLabelAlign,
-    SvgLabelMetrics, SvgLabelHalo, SvgLabelCallout, SvgLabelMarkup, SvgLineArrows,
-    SvgGlow, SvgRasterize);
+    SvgLabelMetrics, SvgLabelHalo, SvgLabelCallout, SvgLabelBox, SvgLabelBackground,
+    SvgLabelMarkup, SvgLineArrows, SvgGlow, SvgRasterize);
 
   // Reached through the bundle rather than imported from source, unlike most of
   // what tests use, because these modules load fs and fontkit through the

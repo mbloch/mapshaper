@@ -3504,7 +3504,7 @@ body.pan.panning .map-layers:not(.drawing) {
 /* Whitespace and a bold heading separate the sections; a rule as well would be
    a third answer to a question already settled twice. */
 .label-style-panel .label-style-section + .label-style-section {
-	margin-top: 10px;
+	margin-top: 8px;
 	padding-top: 0;
 	border-top: 0;
 }
@@ -3519,21 +3519,96 @@ body.pan.panning .map-layers:not(.drawing) {
 	gap: 8px;
 }
 
-.label-style-panel .label-style-section-title .label-toggle {
-	align-self: center;
-}
-
 /* A layer with no features: every control is faded and inert, leaving the
-   heading, the "Editing:" line that says why, and the close button. */
-.label-style-panel.no-targets .label-style-row:not(.label-style-selection-row),
-.label-style-panel.no-targets .label-style-section-title .label-toggle {
+   headings, the "Editing:" line that says why, and the close button. */
+.label-style-panel.no-targets .label-style-row:not(.label-style-selection-row) {
 	opacity: 0.45;
 	pointer-events: none;
 }
 
-/* A section switched off shows only its heading (see setSectionCollapsed()). */
+/* Closed sections stack a little closer than open ones, which are spaced to
+   set their controls apart. */
+.label-style-panel .label-style-section.collapsed + .label-style-section {
+	margin-top: 1px;
+}
+
+/* A closed section shows only its heading (see makeCollapsibleSection()). */
 .label-style-panel .label-style-section.collapsed > :not(.label-style-section-title) {
 	display: none;
+}
+
+/* The whole heading opens and closes the section, so that the target is the
+   width of the panel rather than the chevron. Centred rather than set on a
+   baseline: the chevron, the dot and the × have none to share. */
+.label-style-panel .label-section-heading {
+	align-items: center;
+	gap: 6px;
+	cursor: pointer;
+	user-select: none;
+}
+
+/* A chevron, pointing right when closed and down when open, the convention
+   for a disclosure: two sides of a square, turned. */
+.label-style-panel .label-section-arrow {
+	flex: none;
+	box-sizing: border-box;
+	width: 6px;
+	height: 6px;
+	margin: 0 2px 0 1px;
+	border-right: 1.5px solid #777;
+	border-bottom: 1.5px solid #777;
+	transform: translateY(-2px) translateX(2px) rotate(45deg);
+	transition: transform 0.12s;
+}
+
+.label-style-panel .label-style-section.collapsed .label-section-arrow {
+	transform: rotate(-45deg);
+}
+
+.label-style-panel .label-section-heading:hover .label-section-arrow {
+	border-color: #222;
+}
+
+/* Whether the features being styled have the section's style: a dot for all
+   of them, half of one for some -- the hard edge of the mixed switch, for the
+   same reason -- and nothing for none. */
+.label-style-panel .label-section-marker {
+	flex: none;
+	box-sizing: border-box;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	visibility: hidden;
+}
+
+.label-style-panel .label-section-marker.on {
+	visibility: visible;
+	background: var(--theme-col);
+}
+
+.label-style-panel .label-section-marker.mixed {
+	visibility: visible;
+	border: 1px solid var(--theme-col);
+	background: linear-gradient(to right, var(--theme-col) 50%, white 50%);
+}
+
+.label-style-panel .label-section-remove {
+	margin-left: auto;
+	padding: 0 3px;
+	font-size: 16px;
+	font-weight: normal;
+	line-height: 14px;
+	color: #888;
+	cursor: pointer;
+}
+
+.label-style-panel .label-section-remove:hover {
+	color: #222;
+}
+
+.label-style-panel.no-targets .label-section-marker,
+.label-style-panel.no-targets .label-section-remove {
+	visibility: hidden;
 }
 
 .label-style-panel .label-style-section-title.hidden {
@@ -3541,7 +3616,7 @@ body.pan.panning .map-layers:not(.drawing) {
 }
 
 .label-style-panel .label-style-section-name {
-	font-size: 15px;
+	font-size: 13.5px;
 	color: #222;
 }
 
