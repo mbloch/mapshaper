@@ -683,8 +683,8 @@ test('a field gives the keyboard back when it is finished with', async function(
   expect(await getFocusedElement(page)).toBe('BODY');
 
   // and so does a field that commits on Enter through its change handler
-  // letter spacing, the first of the fields with this placeholder
-  var spacing = page.locator('.text-style-panel .label-measure-input[data-placeholder="0"]').first();
+  // letter spacing, the first of the measure fields
+  var spacing = page.locator('.text-style-panel .label-measure-input').first();
   await spacing.fill('2');
   await spacing.press('Enter');
   expect(await getFocusedElement(page)).toBe('BODY');

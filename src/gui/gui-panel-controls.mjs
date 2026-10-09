@@ -355,5 +355,22 @@ export function makeOpacityInput(parent, opts) {
       }
       opts.onSet(val);
     });
+  selectOnFocus(input);
   return input;
+}
+
+// For a field that always holds a value -- a panel shows a default rather
+// than a blank -- so a click selects it, and what is typed replaces it rather
+// than being added to it: 3 into 0 is 3, not 03. The mouseup that ends the
+// click would otherwise drop the selection for a caret.
+export function selectOnFocus(input) {
+  var focusing = false;
+  input.on('focus', function() {
+    input.node().select();
+    focusing = true;
+  });
+  input.on('mouseup', function(e) {
+    if (focusing) e.preventDefault();
+    focusing = false;
+  });
 }

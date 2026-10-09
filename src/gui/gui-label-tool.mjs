@@ -9,7 +9,7 @@ import {
 } from './gui-panel-focus';
 import {
   makeColorOpacityField, makeCollapsibleSection, makePanelButton,
-  setPanelButtonDisabled
+  selectOnFocus, setPanelButtonDisabled
 } from './gui-panel-controls';
 import { parseOpacityValue, formatOpacityPct } from './gui-style-values';
 import { El } from './gui-el';
@@ -67,15 +67,13 @@ var defaultIconColor = '#000000';
 // glyphs, so a stroke of twice this.
 var defaultHaloWidth = 2;
 var defaultHaloColor = internal.svg.DEFAULT_HALO_COLOR;
-// The line height a label without one is drawn with, shown as a placeholder
-// rather than a value so that a label carries no line-height until one is
-// chosen. Shown as a bare multiple, which also says what a bare number typed
-// here means: a multiple of the font size, as in CSS, not px.
-var lineHeightPlaceholder = String(internal.svg.DEFAULT_LINE_HEIGHT);
+// The line height a label without one is drawn with. Shown as a bare
+// multiple, which also says what a bare number typed here means: a multiple
+// of the font size, as in CSS, not px.
+var defaultLineHeight = internal.svg.DEFAULT_LINE_HEIGHT;
 // What a control shows for a selection whose labels disagree about it. One
-// word, used in every field and menu that can be in that state: the panel
-// otherwise says it by showing nothing, which is also what an unset property
-// looks like.
+// word, used in every field and menu that can be in that state, in the
+// placeholder of a field emptied for it.
 var MIXED_TEXT = 'mixed';
 var labelStyleMode = 'label_style';
 var labelStylePanelMode = 'label_style_tool';
@@ -428,7 +426,7 @@ export function LabelTool(gui) {
 
     var letterCell = El('div').addClass('label-split-cell label-spacing-row').appendTo(colorRow);
     El('span').appendTo(letterCell).text('Letter spacing');
-    letterSpacingInput = makeMeasureInput(letterCell, letterSpacingField, '0');
+    letterSpacingInput = makeMeasureInput(letterCell, letterSpacingField);
 
     var alignRow = El('div').addClass('label-style-row label-split-row').appendTo(textSection);
     var alignCell = El('div').addClass('label-split-cell label-align-row').appendTo(alignRow);
@@ -447,7 +445,7 @@ export function LabelTool(gui) {
 
     var lineHeightCell = El('div').addClass('label-split-cell label-spacing-row').appendTo(alignRow);
     El('span').appendTo(lineHeightCell).text('Line height');
-    lineHeightInput = makeMeasureInput(lineHeightCell, lineHeightField, lineHeightPlaceholder);
+    lineHeightInput = makeMeasureInput(lineHeightCell, lineHeightField);
 
     // An empty colour is "no background", as an empty text colour is "no
     // fill", and the padding means something without one -- it moves a
@@ -476,13 +474,12 @@ export function LabelTool(gui) {
     var paddingCell = El('div').addClass('label-split-cell label-spacing-row label-padding-row').appendTo(backgroundRow);
     El('span').appendTo(paddingCell).text('Padding');
     paddingInput = El('input').attr('type', 'text').addClass('label-measure-input')
-      .attr('placeholder', '0')
-      .attr('data-placeholder', '0')
       .attr('title', 'Space around the text, as in CSS: 4, or 2 6 for top and bottom, then sides')
       .appendTo(paddingCell)
       .on('change', function() {
         applyLabelPadding(paddingInput.node().value.trim());
       });
+    selectOnFocus(paddingInput);
 
     var cssRow = El('label').addClass('label-style-row label-css-row').appendTo(textSection);
     El('span').appendTo(cssRow).text('Inline CSS');
@@ -725,18 +722,19 @@ export function LabelTool(gui) {
     });
     calloutColorPicker = initColorPicker(colorCell, calloutColorChit, calloutColorInput, applyCalloutColor);
 
-    // The gap in the narrow column, under the sizes: it has a blank state,
-    // "auto", which clears the anchor's symbol, so it is not a size field.
+    // The gap in the narrow column, under the sizes. Unset, it is worked out
+    // from the anchor's symbol, which it clears, and it shows what that comes
+    // to; blanking it goes back to that. It can be 0, so it is not a size
+    // field.
     var gapCell = El('div').addClass('label-split-cell label-spacing-row label-callout-gap-row').appendTo(colorRow);
     El('span').appendTo(gapCell).text('Gap');
     calloutGapInput = El('input').attr('type', 'text').addClass('label-measure-input')
       .attr('aria-label', 'Space between the callout and the anchor, in px')
-      .attr('placeholder', 'auto')
-      .attr('data-placeholder', 'auto')
       .appendTo(gapCell)
       .on('change', function() {
         applyCalloutGap(calloutGapInput.node().value.trim());
       });
+    selectOnFocus(calloutGapInput);
   }
 
   function makeCalloutButton(parent, item, action) {
@@ -782,16 +780,13 @@ export function LabelTool(gui) {
   // A field for an SVG length: 2, 2px, 0.1em. Blank means the property is not
   // set, and blanking a field that was set removes it -- which is the only way
   // back to the renderer's own spacing once a value has been chosen.
-  function makeMeasureInput(parent, field, placeholder) {
+  function makeMeasureInput(parent, field) {
     var input = El('input').attr('type', 'text').addClass('label-measure-input')
-      .attr('placeholder', placeholder)
-      // The field's own placeholder, kept because the shown one is replaced
-      // while the selection disagrees -- see setMixedPlaceholder().
-      .attr('data-placeholder', placeholder)
       .appendTo(parent)
       .on('change', function() {
         applyStyleValues([[field, input.node().value.trim()]]);
       });
+    selectOnFocus(input);
     return input;
   }
 
@@ -986,8 +981,8 @@ export function LabelTool(gui) {
     var fontWeightVal = getCommonValue(ids, fontWeightField, {useDefault: true, defaultValue: defaultFontWeight});
     var fill = getShownValue(ids, fillField, {useDefault: true, defaultValue: defaultLabelColor});
     var opacity = getShownValue(ids, opacityField, {useDefault: true, defaultValue: 1});
-    var letterSpacing = getShownValue(ids, letterSpacingField);
-    var lineHeight = getShownValue(ids, lineHeightField);
+    var letterSpacing = getShownValue(ids, letterSpacingField, {useDefault: true, defaultValue: 0});
+    var lineHeight = getShownValue(ids, lineHeightField, {useDefault: true, defaultValue: defaultLineHeight});
     var alignVal = getCommonAlignment(ids);
     var css = getShownValue(ids, cssField);
     var posVal = getCommonValue(ids, 'label-pos');
@@ -1003,7 +998,7 @@ export function LabelTool(gui) {
     var iconOpacity = getShownValue(iconIds, iconOpacityField, {useDefault: true, defaultValue: 1});
     var backgroundColor = getShownValue(ids, backgroundField);
     var backgroundOpacity = getShownValue(ids, backgroundOpacityField, {useDefault: true, defaultValue: 1});
-    var padding = getShownValue(ids, paddingField);
+    var padding = getShownValue(ids, paddingField, {useDefault: true, defaultValue: 0});
     updateEditingStatus(manualIds.length, !!getLabelTextSession(gui));
     updateSavedStyleControls();
     fontSelect.node().disabled = !showValues;
@@ -1030,8 +1025,9 @@ export function LabelTool(gui) {
 
   // Every field that can show a value can also show nothing, which is why each
   // of these takes a {value, mixed} rather than a value: a field blank because
-  // the selected labels disagree says so, in the placeholder, where one blank
-  // because the property is unset shows what the renderer will do instead.
+  // the selected labels disagree says so, in the placeholder. An unset
+  // property is not blank -- the field shows the value the renderer uses
+  // instead, as a value like any other.
   function updateOpacityControl(input, shown, disabled) {
     input.node().disabled = disabled || !controlsEnabled();
     input.node().value = shown.value === '' ? '' : formatOpacityPct(shown.value);
@@ -1045,14 +1041,8 @@ export function LabelTool(gui) {
     setMixedPlaceholder(input, shown.mixed);
   }
 
-  // A field showing nothing because the labels disagree says "mixed" where it
-  // would otherwise show its own placeholder -- the spacing fields show the
-  // value the renderer uses when the property is absent, which is not what is
-  // true of a mixed selection.
   function setMixedPlaceholder(input, mixed) {
-    var el = input.node();
-    var own = el.getAttribute('data-placeholder') || '';
-    el.setAttribute('placeholder', mixed ? MIXED_TEXT : own);
+    input.node().setAttribute('placeholder', mixed ? MIXED_TEXT : '');
   }
 
   // Alignment stays live whatever is selected, including nothing. It was
@@ -1388,7 +1378,7 @@ export function LabelTool(gui) {
   //
   // With no halo anywhere the colour is blank and the width and opacity are
   // live, showing what a colour will add the halo with: the width and
-  // opacity set since, or the default width as a placeholder. A selection
+  // opacity set since, or the defaults. A selection
   // where only some labels have a halo shows the colour mixed, and the width
   // and opacity of the labels that have one.
   function updateHaloControls() {
@@ -1399,8 +1389,8 @@ export function LabelTool(gui) {
     haloControl.setPresence(state);
     if (state == 'off') {
       color = {value: '', mixed: false};
-      width = {value: haloPending.width || '', mixed: false};
-      opacity = {value: 'opacity' in haloPending ? haloPending.opacity : '', mixed: false};
+      width = {value: enabled ? haloPending.width || defaultHaloWidth : '', mixed: false};
+      opacity = {value: !enabled ? '' : 'opacity' in haloPending ? haloPending.opacity : 1, mixed: false};
     } else {
       color = state == 'mixed' ? {value: '', mixed: true} :
         getShownValue(ids, haloColorField, {useDefault: true, defaultValue: defaultHaloColor});
@@ -1410,8 +1400,7 @@ export function LabelTool(gui) {
     updateSwatchField(haloColorInput, haloColorFieldBox, haloColorChit,
       haloColorPicker, color, false);
     haloWidthInput.setValue(width.value || '');
-    haloWidthInput.setPlaceholder(width.mixed ? MIXED_TEXT :
-      state == 'off' && enabled ? String(defaultHaloWidth) : '');
+    haloWidthInput.setPlaceholder(width.mixed ? MIXED_TEXT : '');
     haloWidthInput.setDisabled(!enabled);
     updateOpacityControl(haloOpacityInput, opacity, false);
   }
@@ -1716,11 +1705,13 @@ export function LabelTool(gui) {
     });
   }
 
-  // getCommonValueInfo() reads 0 as unset, and a gap of 0 is a value.
+  // The gap the line is drawn with, which for a label with no callout-gap is
+  // the one the renderer works out from the symbol at the anchor. Not from
+  // getCommonValueInfo(), which reads 0 as unset, and a gap of 0 is a value.
   function getCalloutGapShown(ids) {
     return getShownRecordValues(ids, function(rec) {
-      var val = rec ? rec[calloutGapField] : null;
-      return val || val === 0 ? String(val) : '';
+      var gap = internal.svg.getCalloutGap(rec || {}, internal.svg.getAnchorSymbolRadius(rec || {}));
+      return String(Math.round(gap * 10) / 10);
     });
   }
 

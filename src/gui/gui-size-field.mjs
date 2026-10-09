@@ -1,4 +1,5 @@
 import { El } from './gui-el';
+import { selectOnFocus } from './gui-panel-controls';
 
 // A number field with a stepper attached to its right edge: type a size, click
 // the stepper's arrows, or use the arrow keys while the field has focus. Each covers a
@@ -37,6 +38,7 @@ export function SizeField(parent, opts) {
   var disabled = false;
 
   if (o.title) input.attr('aria-label', o.title);
+  selectOnFocus(input);
 
   // While the caret is in this field the keyboard belongs to it. Without this
   // the GUI's own handlers see the keystrokes: Escape would disarm the tool,

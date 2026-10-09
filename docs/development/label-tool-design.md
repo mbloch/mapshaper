@@ -3466,11 +3466,36 @@ Behaviours in it that are not visible in the markup:
   and is always written, for the reason in "The icon's opacity is its own
   property".
 - **Blanking a spacing field removes the property**, which is the only way back
-  to the renderer's own spacing once a value has been chosen. Line height shows
-  the default, `1.1`, as a placeholder rather than a value, so a label carries
-  no `line-height` until one is asked for. A bare line height is a multiple of
-  the font size, as in CSS, and is written to SVG in ems; the other measure
-  fields read a bare number as px.
+  to the renderer's own spacing once a value has been chosen; the field then
+  shows that spacing again. A bare line height is a multiple of the font size,
+  as in CSS, and is written to SVG in ems; the other measure fields read a
+  bare number as px.
+
+##### A default is shown as a value
+
+A field for a property the labels do not carry shows the value the renderer
+uses instead, in black, as it would show a value that is set: 0 for letter
+spacing and padding, 1.1 for line height, 100% for an opacity, the gap the
+callout is drawn with. Nothing is written until a field is edited.
+
+The spacing fields used to show their defaults as grey placeholders, which
+made the panel inconsistent rather than informative: the font, face, size
+and colour are just as unset on a new label (whose style holds only its
+placement) and always showed as values, because a menu and a swatch have no
+placeholder. The difference grey marked — stored or not — draws nothing
+different, and the rest of the GUI already ignores it: a selection of labels
+with `font-size=12` and without one is not mixed, and "select similar" treats
+them as the same. Grey in the panel is for what describes rather than what is
+set: captions, the "Editing:" line, the ×, and "mixed".
+
+A field showing a default holds text, so the number fields — spacing, sizes
+and opacities — select it when clicked (`selectOnFocus()` in
+`gui-panel-controls.mjs`): what is typed replaces it, and 3 typed over 0 is
+3, not 03.
+
+The callout's gap, unset, is worked out from the symbol at the anchor, which
+the line stops clear of, and the field shows what that comes to. It had shown
+"auto", a word in a number field.
 
 ##### Sections open from their headings, and say what the selection has
 
@@ -3518,9 +3543,9 @@ With the switch gone, each section is added to by its own controls:
   is above 0, which is the renderer's rule and is left alone — `-labels
   halo-width=2` still gives a white halo from the command line — so a halo
   with no `halo-color` shows white in the field rather than the blank that
-  means "no halo". With no halo the width field shows the default, 2, as a
-  placeholder, and a width or opacity set then is kept (`haloPending`) and
-  goes on with the colour.
+  means "no halo". With no halo the width and opacity fields show the
+  defaults, 2 and 100%, and a width or opacity set then is kept
+  (`haloPending`) and goes on with the colour.
 
 The × removes a style **with everything it is drawn with**: `icon-size`,
 `icon-color` and `icon-opacity` with the `icon`; the halo's width, colour and
@@ -3545,9 +3570,8 @@ which is the first thing to know before restyling it.
 So a control that is blank because the labels disagree says **mixed**:
 
 - **In the placeholder**, for the fields — size, colour, opacity, letter
-  spacing, line height, inline CSS. The word displaces the field's own
-  placeholder while it is there, and the spacing fields get theirs back
-  afterwards (`data-placeholder` holds it).
+  spacing, line height, inline CSS. It is the only placeholder these fields
+  have.
 - **As a menu entry**, for the font and face selects. A font menu is a list of
   fonts, so "they are in different fonts" cannot be one of the fonts: the
   entry appears only while it is true, carries no value, and does nothing if
@@ -4675,7 +4699,7 @@ hundred labels, and the panel counting all 435. Cmd-A is there too, selecting
 the layer without the menu and leaving the page unselected, and so is the
 panel's reading of such a selection: "mixed" in the font menu, the size
 placeholder and the colour field with its swatch split, and each of them back
-to a value, an unmarked swatch and its own placeholder once the labels agree.
+to a value, an unmarked swatch and no placeholder once the labels agree.
 
 And in `browser-tests/label-icon-section.spec.mjs`, the Icon section over a
 selection of two labels, one with a symbol and one without: the heading marked

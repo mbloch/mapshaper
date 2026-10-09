@@ -127,7 +127,7 @@ test('a control shows "mixed" where the selected labels disagree',
     expect(errors).toEqual([]);
   });
 
-test('a control that agrees shows its value, and its own placeholder back',
+test('a control that agrees shows its value, and no placeholder',
   async function({page}) {
     await threeLabels(page);
     await runCommand(page, '-style fill=#cc0000');
@@ -142,10 +142,11 @@ test('a control that agrees shows its value, and its own placeholder back',
     var colorRow = panel.locator('.label-color-row').first();
     expect(await colorRow.locator('.label-color-input').inputValue()).toBe('#cc0000');
     await expect(colorRow.locator('.label-color-chit')).not.toHaveClass(/mixed/);
-    // a spacing field shows what the renderer does with a property nobody set,
-    // which "mixed" displaces while the selection disagrees about it
-    expect(await placeholderOf(
-      panel.locator('.label-spacing-row .label-measure-input').last())).toBe('auto');
+    // a spacing field shows what the renderer does with a property nobody set
+    // as a value, the same as one that is set
+    var lineHeight = panel.locator('.label-spacing-row .label-measure-input').nth(1);
+    expect(await lineHeight.inputValue()).toBe('1.1');
+    expect(await placeholderOf(lineHeight)).toBe('');
   });
 
 test('a selection too large to outline is still visible', async function({page}) {

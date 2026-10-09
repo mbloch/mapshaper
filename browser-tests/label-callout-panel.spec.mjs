@@ -70,8 +70,8 @@ test('a halo color adds a halo, and an emptied one removes it', async function({
   var width = page.locator(PANEL + ' .label-halo-section .size-field-input');
   // The width a color will add the halo with, shown before there is one
   expect(await color.inputValue()).toBe('');
-  expect(await width.inputValue()).toBe('');
-  expect(await width.getAttribute('placeholder')).toBe('2');
+  expect(await width.inputValue()).toBe('2');
+  expect(await width.getAttribute('placeholder')).toBe('');
 
   // A width set with no halo is kept for the color, and adds nothing yet
   await width.fill('3');
@@ -125,14 +125,15 @@ test('a callout shape draws the line, and the section styles it', async function
   await expect.poll(function() { return getLabelField(page, 0, 'callout-end'); }).toBeFalsy();
 
   var gap = page.locator(PANEL + ' .label-callout-gap-row input.label-measure-input');
-  await gap.fill('0');
+  await gap.fill('4');
   await gap.press('Enter');
-  await expect.poll(function() { return getLabelField(page, 0, 'callout-gap'); }).toBe(0);
-  // 0 is a gap, not a blank: the field shows it
-  expect(await gap.inputValue()).toBe('0');
+  await expect.poll(function() { return getLabelField(page, 0, 'callout-gap'); }).toBe(4);
+  // blanked, it is unset again, and shows the gap that leaves: with no symbol
+  // at the anchor, none
   await gap.fill('');
   await gap.press('Enter');
   await expect.poll(function() { return getLabelField(page, 0, 'callout-gap'); }).toBeFalsy();
+  expect(await gap.inputValue()).toBe('0');
 
   // The × removes the callout and everything it was drawn with.
   await runCommand(page, '-style callout-width=2 callout-via=10,-20 target=labels');
@@ -142,6 +143,44 @@ test('a callout shape draws the line, and the section styles it', async function
   expect(await getLabelField(page, 0, 'callout-width')).toBeFalsy();
   expect(await getLabelField(page, 0, 'callout-via')).toBeFalsy();
   expect(await countCalloutPaths(page)).toBe(0);
+  expect(errors).toEqual([]);
+});
+
+test('an unset property shows its default as a value', async function({page}) {
+  var errors = collectPageErrors(page);
+  await oneLabel(page);
+  await runCommand(page, '-style dx=40 dy=-40 label-pos= callout=line icon=circle icon-size=10 target=labels');
+  await selectLabels(page, [0]);
+  await openSection(page, PANEL, 'label-callout-section');
+  var spacing = page.locator(PANEL + ' .label-measure-input').first();
+  var padding = page.locator(PANEL + ' .label-padding-row input');
+  var gap = page.locator(PANEL + ' .label-callout-gap-row input.label-measure-input');
+  expect(await spacing.inputValue()).toBe('0');
+  expect(await padding.inputValue()).toBe('0');
+  expect(await spacing.getAttribute('placeholder')).toBe('');
+  // the gap the line is drawn with: to the edge of the symbol
+  expect(await gap.inputValue()).toBe('4.5');
+  expect(await getLabelField(page, 0, 'callout-gap')).toBeFalsy();
+  // 0 is a gap, not a blank: it runs the line to the anchor, and shows
+  await gap.fill('0');
+  await gap.press('Enter');
+  await expect.poll(function() { return getLabelField(page, 0, 'callout-gap'); }).toBe(0);
+  expect(await gap.inputValue()).toBe('0');
+
+  // A click selects the default, so what is typed replaces it
+  await spacing.click();
+  await page.keyboard.type('3');
+  await page.keyboard.press('Enter');
+  await expect.poll(function() { return getLabelField(page, 0, 'letter-spacing'); }).toBe(3);
+  // and so do the size fields and the opacities
+  await page.locator(PANEL + ' .label-size-row input').first().click();
+  await page.keyboard.type('20');
+  await page.keyboard.press('Enter');
+  await expect.poll(async function() { return Number(await getLabelField(page, 0, 'font-size')); }).toBe(20);
+  await page.locator(PANEL + ' .label-opacity-input').first().click();
+  await page.keyboard.type('50');
+  await page.keyboard.press('Enter');
+  await expect.poll(async function() { return Number(await getLabelField(page, 0, 'opacity')); }).toBe(0.5);
   expect(errors).toEqual([]);
 });
 
