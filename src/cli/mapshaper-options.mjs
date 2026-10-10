@@ -2534,6 +2534,13 @@ export function getOptionParser() {
       describe: 'max area of a cluster',
       type: 'number'
     })
+    .option('max-features', {
+      describe: 'max feature count per cluster',
+      type: 'number'
+    })
+    .option('expression', {
+      describe: 'stop clustering when JS expression returns true'
+    })
     .option('group-by', {
       describe: 'field name; only same-value shapes will be grouped'
     })

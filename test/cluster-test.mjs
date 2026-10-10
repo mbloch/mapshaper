@@ -130,4 +130,20 @@ describe('mapshaper-cluster.js', function () {
     });
 
   })
+
+  it ('uses max-features parameter', function(done) {
+    api.applyCommands('-i input.json -cluster id-field=aggId max-features=1 -o format=csv output.csv', {'input.json': polys}, function(err, output) {
+      var target = 'aggId\n0\n1\n2\n3';
+      assert.equal(output['output.csv'], target);
+      done();
+    });
+  })
+
+  it ('uses expression parameter', function(done) {
+    api.applyCommands('-i input.json -cluster id-field=aggId expression="A.area + B.area > 3" -o format=csv output.csv', {'input.json': polys}, function(err, output) {
+      var target = 'aggId\n0\n0\n1\n1';
+      assert.equal(output['output.csv'], target);
+      done();
+    });
+  })
 });

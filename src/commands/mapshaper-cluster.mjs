@@ -1,6 +1,7 @@
 import { findPairsOfNeighbors } from '../polygons/mapshaper-polygon-neighbors';
 import { insertFieldValues, requirePolygonLayer } from '../dataset/mapshaper-layer-utils';
 import { parsePercent } from '../cli/mapshaper-option-parsing-utils';
+import { compileFeaturePairExpression } from '../expressions/mapshaper-feature-expressions';
 import cmd from '../mapshaper-cmd';
 import geom from '../geom/mapshaper-geom';
 import utils from '../utils/mapshaper-utils';
@@ -22,7 +23,7 @@ cmd.cluster = function(lyr, arcs, opts) {
 };
 
 function calcPolygonClusters(lyr, arcs, opts) {
-  var calcScore = getPolygonClusterCalculator(opts);
+  var calcScore = getPolygonClusterCalculator(lyr, arcs, opts);
   var size = lyr.shapes.length;
   var pct = opts.pct ? parsePercent(opts.pct) : 1;
   var count = Math.round(size * pct);
@@ -190,18 +191,25 @@ function calcPolygonClusters(lyr, arcs, opts) {
   }
 }
 
-function getPolygonClusterCalculator(opts) {
+function getPolygonClusterCalculator(lyr, arcs, opts) {
   var maxWidth = opts.max_width || Infinity;
   var maxHeight = opts.max_height || Infinity;
   var maxArea = opts.max_area || Infinity;
+  var maxFeatures = opts.max_features || Infinity;
+  var stopExpr = opts.expression ? compileFeaturePairExpression(opts.expression, lyr, arcs) : null;
   return function(a, b) {
     var area = a.area + b.area,
+        count = a.ids.length + b.ids.length,
         // TODO: use geodetic distance when appropriate
         score = geom.distance2D(a.centroid.x, a.centroid.y, b.centroid.x, b.centroid.y),
         bounds = a.bounds.clone().mergeBounds(b.bounds);
     if (area > maxArea || bounds.width() > maxWidth ||
-        bounds.height() > maxHeight) {
+        bounds.height() > maxHeight || count > maxFeatures) {
       score = -1;
+    } else if (stopExpr) {
+      if (stopExpr(a.ids[0], b.ids[0])) {
+        score = -1;
+      }
     }
     return score;
   };
