@@ -1,3 +1,6 @@
+v0.7.83
+* Added -o html-labels option, which renders labels as HTML instead of SVG text in HTML-formatted output.
+
 v0.7.82
 * Added padding and background color options for labels.
 * Changed open/close behavior of collapsable sections of style panels.

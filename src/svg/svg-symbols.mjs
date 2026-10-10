@@ -35,14 +35,17 @@ export var symbolRenderers = {
 };
 
 // render label and/or point symbol
-export function renderPoint(rec) {
+// opts.omit_label_text: leave out the label's text and background, which HTML
+//   output can draw as HTML; its callout and icon are still drawn
+export function renderPoint(rec, opts) {
   var children = [];
+  var omitLabel = !!(opts && opts.omit_label_text);
   var callout, background;
   // var halfSize = rec.r || 0; // radius or half of symbol size
   // Under the callout, which would lose half its width where it runs along
   // the box's edge, and under the symbol, which a centred label's box would
   // otherwise hide.
-  if (featureHasLabel(rec) && labelHasBackground(rec)) {
+  if (featureHasLabel(rec) && labelHasBackground(rec) && !omitLabel) {
     background = renderLabelBackground(rec);
     if (background) children.push(background);
   }
@@ -54,7 +57,7 @@ export function renderPoint(rec) {
   if (featureHasSvgSymbol(rec)) {
     children.push(renderSymbol(rec));
   }
-  if (featureHasLabel(rec)) {
+  if (featureHasLabel(rec) && !omitLabel) {
     children.push(renderStyledLabel(rec));
   }
   var o = children.length > 1 ? {tag: 'g', children: children} : children[0];

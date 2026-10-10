@@ -14,6 +14,8 @@ import { layerHasRaster } from '../dataset/mapshaper-layer-utils';
 import { getOutputFileBase } from '../utils/mapshaper-filename-utils';
 import { convertTextStylesToClasses, formatTextClassesAsCss } from './html-text-classes';
 import { applyWebFonts } from './html-font-stacks';
+import { HtmlLabelClasses, renderHtmlLabelBox, labelHasHtmlText,
+  getHtmlLabelCss } from './html-labels';
 import { stop, warn } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 
@@ -25,6 +27,10 @@ import utils from '../utils/mapshaper-utils';
 //
 // A label along a path is anchored the same way, at the point on its path
 // where its text is attached, and keeps the shape and size of its path.
+//
+// With html-labels, anchored labels and text blocks are written as HTML text
+// instead, above the SVG overlay -- see html-labels.mjs. Their callouts and
+// icons, and path labels, stay in the overlay.
 
 var CLASS_PREFIX = 'ms-';
 
@@ -91,29 +97,39 @@ function layerGoesInOverlay(lyr) {
 
 function renderOverlay(dataset, frame, layers, opts) {
   var defs = [];
+  var labelClasses = opts.html_labels ? new HtmlLabelClasses() : null;
+  var labelLayers = [];
   var objects = layers.map(function(lyr) {
-    var obj = renderOverlayLayer(lyr, dataset, frame, opts);
-    convertPropertiesToDefinitions(obj, defs);
-    return obj;
+    var o = renderOverlayLayer(lyr, dataset, frame, opts, labelClasses);
+    convertPropertiesToDefinitions(o.svg, defs);
+    if (o.labels.length > 0) labelLayers.push(o.labels);
+    return o.svg;
   });
-  var classes = convertTextStylesToClasses(objects, CLASS_PREFIX + 'text-');
+  var classes = convertTextStylesToClasses(objects, CLASS_PREFIX + 'text-')
+    .concat(labelClasses ? labelClasses.classes : []);
   classes.forEach(function(o) {
     applyWebFonts(o.style);
   });
   return {
     defs: defs,
     layers: objects,
+    labelLayers: labelLayers,
     classes: classes
   };
 }
 
-function renderOverlayLayer(lyr, dataset, frame, opts) {
+// Returns {svg: the layer's SVG object, labels: [HTML string, ...]}
+// @labelClasses: from HtmlLabelClasses(), for drawing anchored labels as HTML,
+//   or null
+function renderOverlayLayer(lyr, dataset, frame, opts, labelClasses) {
   var layerObj = getEmptyLayerForSVG(lyr, opts);
   var geojson = exportDatasetAsGeoJSON(utils.defaults({layers: [lyr]}, dataset), opts);
   var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
   var dataAttributes = getDataAttributes(lyr, opts);
   var report = initPathLabelReport();
   var anchors = [];
+  var htmlLabels = [];
+  var labels = [];
   // each feature is rendered at the origin, and placed by a container
   var localFeatures = features.map(function(feat, i) {
     var geom = feat && feat.type == 'Feature' ? feat.geometry : feat;
@@ -133,6 +149,9 @@ function renderOverlayLayer(lyr, dataset, frame, opts) {
       // with the same symbol
       anchors[i] = geom.type == 'Point' ? [geom.coordinates] : geom.coordinates;
       localGeom = {type: 'Point', coordinates: [0, 0]};
+      if (labelClasses && labelHasHtmlText(props)) {
+        htmlLabels[i] = renderHtmlLabelBox(props, labelClasses);
+      }
     }
     return {
       type: 'Feature',
@@ -145,9 +164,18 @@ function renderOverlayLayer(lyr, dataset, frame, opts) {
     return feat;
   });
   var symbols = importGeoJSONFeatures(localFeatures, utils.defaults({
-    path_label_report: report
+    path_label_report: report,
+    omit_label_text: !!labelClasses
   }, opts));
   reportPathLabels(report, lyr);
+
+  htmlLabels.forEach(function(box, i) {
+    if (!box) return;
+    anchors[i].forEach(function(xy) {
+      labels.push(`<div class="${CLASS_PREFIX}label" style="left:${formatPct(xy[0], frame.width)};top:${formatPct(xy[1], frame.height)}"` +
+        formatDataAttributes(dataAttributes ? dataAttributes[i] : null) + '>' + box + '</div>');
+    });
+  });
 
   symbols.forEach(function(sym, i) {
     if (isEmptySymbol(sym)) return;
@@ -164,7 +192,13 @@ function renderOverlayLayer(lyr, dataset, frame, opts) {
       });
     });
   });
-  return layerObj;
+  return {svg: layerObj, labels: labels};
+}
+
+function formatDataAttributes(o) {
+  return Object.keys(o || {}).map(function(k) {
+    return ' ' + k + '="' + stringEscape(o[k]) + '"';
+  }).join('');
 }
 
 // The point on a label's path where its text is attached: its start offset,
@@ -236,6 +270,7 @@ function renderHtmlFragment(o) {
     `${selector} .${CLASS_PREFIX}image {position:absolute;top:0;left:0;width:100%;height:100%;max-width:none;margin:0;display:block;}`,
     `${selector} .${CLASS_PREFIX}overlay {position:absolute;top:0;left:0;width:100%;height:100%;overflow:visible;}`
   ];
+  if (overlay.labelLayers.length > 0) css.push(getHtmlLabelCss(selector));
   var classCss = formatTextClassesAsCss(overlay.classes, selector);
   if (classCss) css.push(classCss);
   // Hidden from screen readers, which would otherwise read the labels as a
@@ -245,10 +280,27 @@ function renderHtmlFragment(o) {
 ${css.join('\n')}
 </style>
 <img class="${CLASS_PREFIX}image" src="${stringEscape(o.imageFile)}" width="${w}" height="${h}" alt="">`;
-  if (overlay.layers.length > 0) {
+  if (overlayHasSvg(overlay)) {
     html += '\n' + renderOverlaySvg(overlay);
   }
+  if (overlay.labelLayers.length > 0) {
+    html += '\n' + renderHtmlLabels(overlay.labelLayers);
+  }
   return html + '\n</div>\n';
+}
+
+// An overlay whose layers are all HTML labels has nothing to draw in SVG
+function overlayHasSvg(overlay) {
+  return overlay.defs.length > 0 || overlay.layers.some(function(lyr) {
+    return lyr.children && lyr.children.length > 0;
+  }) || overlay.layers.length > 0 && overlay.labelLayers.length === 0;
+}
+
+// Above the SVG overlay, bottom layer first
+function renderHtmlLabels(labelLayers) {
+  return `<div class="${CLASS_PREFIX}labels">\n` + labelLayers.map(function(labels) {
+    return labels.join('\n');
+  }).join('\n') + '\n</div>';
 }
 
 function renderOverlaySvg(overlay) {

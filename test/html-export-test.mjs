@@ -210,6 +210,100 @@ describe('HTML output', function () {
     });
   });
 
+  describe('html-labels', function () {
+    var LABEL = FRAME + ' -add-label + name=labels coordinates=50,25 text=A';
+
+    function labels(str) {
+      return str.match(/<div class="ms-label" [^\n]*<\/div>/g) || [];
+    }
+
+    it('writes an anchored label as HTML at a percentage of the map size, with no SVG', async function () {
+      var str = await html(LABEL, 'html-labels');
+      assert.deepEqual(labels(str), ['<div class="ms-label" style="left:25%;top:75%">' +
+        '<div class="ms-label-box ms-label-style-0" style="left:0px;top:0px;transform:translateX(-50%);">' +
+        '<div class="ms-label-text"><span>A</span></div></div></div>']);
+      assert.ok(!str.includes('<text'));
+      assert.ok(!str.includes('ms-overlay"'));
+      assert.ok(str.includes('#ms-out .ms-label-style-0 {font-family:sans-serif;font-size:12px;line-height:1.1;text-align:center;color:#000;}'));
+      assert.ok(str.includes('#ms-out .ms-label::before {content:"";height:10000px;}'));
+    });
+
+    it('is off by default', async function () {
+      var str = await html(LABEL);
+      assert.ok(str.includes('<text'));
+      assert.ok(!str.includes('ms-label'));
+    });
+
+    it('does not change SVG output', async function () {
+      var out = await api.applyCommands(LABEL + ' -o target=* out.svg html-labels');
+      assert.ok(String(out['out.svg']).includes('>A</text>'));
+    });
+
+    it('keeps the icon and the callout in the SVG overlay', async function () {
+      var str = await html(LABEL + ' -style r=3 dx=30 dy=-30 text-anchor=start callout=line', 'html-labels');
+      assert.ok(str.includes('<svg x="25%" y="75%" overflow="visible">'));
+      assert.ok(str.includes('<circle'));
+      assert.ok(str.includes('class="label-callout"'));
+      assert.ok(!str.includes('<text'));
+      assert.ok(labels(str)[0].includes('style="left:30px;top:-30px;"'));
+    });
+
+    it('leaves path labels in SVG', async function () {
+      var str = await html(FRAME + ' -add-label + name=labels coordinates=0,50,100,90,200,50 text=Curve', 'html-labels');
+      assert.ok(str.includes('<textPath'));
+      assert.equal(labels(str).length, 0);
+    });
+
+    it('draws a background and padding on the box, and anchors the text inside the padding', async function () {
+      var str = await html(LABEL + ' text-anchor=end label-background=pink label-background-opacity=0.5 label-padding="2 6 4"', 'html-labels');
+      assert.ok(labels(str)[0].includes('transform:translateX(calc(-100% + 6px));'));
+      assert.ok(str.includes('background-color:color-mix(in srgb, pink 50%, transparent);padding:2px 6px 4px;'));
+      assert.ok(str.includes('text-align:right;'));
+    });
+
+    it('a position clears the anchor by the padding, as in SVG', async function () {
+      var str = await html(LABEL + ' label-pos=n label-padding=4', 'html-labels');
+      assert.ok(labels(str)[0].includes('style="left:0px;top:-10px;transform:translateX(-50%);"'));
+    });
+
+    it('writes line breaks, soft breaks included, as <br>, and bold as <b>', async function () {
+      var str = await html(FRAME + ' -add-label + name=labels coordinates=50,25 text="<b>One</b> two<wbr>three\\nfour"', 'html-labels');
+      assert.ok(labels(str)[0].includes('<span><b>One</b> two<br>three<br>four</span>'));
+    });
+
+    it('draws a halo as a copy of the text beneath it, with its glyphs copied all round', async function () {
+      var str = await html(LABEL + ' halo-width=2 halo-color=yellow halo-opacity=0.5', 'html-labels');
+      assert.ok(labels(str)[0].includes('<span class="ms-label-halo ms-label-style-1">A</span><span>A</span>'));
+      assert.ok(/\.ms-label-style-1 \{text-shadow:[^;]*yellow;opacity:0\.5;\}/.test(str));
+      assert.ok(str.includes('text-shadow:0.92px 0.38px 0 yellow,'));
+      assert.ok(!str.includes('-webkit-text-stroke'));
+    });
+
+    it('fades the text and not its background with opacity', async function () {
+      var str = await html(LABEL + ' opacity=0.5 label-background=pink', 'html-labels');
+      assert.ok(labels(str)[0].includes('<div class="ms-label-text ms-label-style-1">'));
+      assert.ok(str.includes('.ms-label-style-1 {opacity:0.5;}'));
+    });
+
+    it('adds data-* attributes with svg-data=', async function () {
+      var str = await html(LABEL + ' -each \'name="Alpha"\'', 'html-labels svg-data=name');
+      assert.ok(labels(str)[0].startsWith('<div class="ms-label" style="left:25%;top:75%" data-name="Alpha">'));
+    });
+
+    it('labels with the same style share a class', async function () {
+      var str = await html(LABEL + ' -add-label coordinates=20,20 text=B -add-label coordinates=30,30 text=C font-size=20', 'html-labels');
+      assert.deepEqual(str.match(/ms-label-style-\d"/g),
+        ['ms-label-style-0"', 'ms-label-style-0"', 'ms-label-style-1"']);
+    });
+
+    it('escapes text and values from data', async function () {
+      var str = await html(LABEL + ' -each \'this.properties["label-text"]="<script>x</script> & y"; this.properties.class="a\\"b"; this.properties.fill="red}</style>"\'', 'html-labels');
+      assert.ok(labels(str)[0].includes('<span>&lt;script&gt;x&lt;/script&gt; &amp; y</span>'));
+      assert.ok(str.includes('class="ms-label-box ms-label-style-0 a&quot;b"'));
+      assert.equal(str.match(/<\/style>/g).length, 1);
+    });
+  });
+
   describe('text style classes', function () {
     it('labels with the same style share a class; different styles get their own', async function () {
       var str = await html(FRAME + ' -add-label + name=labels coordinates=10,10 text=A font-size=14' +

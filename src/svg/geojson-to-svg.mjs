@@ -42,7 +42,7 @@ export function importGeoJSONFeatures(features, opts) {
       svgObj = renderArrowLine(geomType == 'LineString' ?
         [geom.coordinates] : geom.coordinates, d);
     } else if (geomType && geom.coordinates) {
-      svgObj = geojsonImporters[geomType](geom.coordinates, d);
+      svgObj = geojsonImporters[geomType](geom.coordinates, d, opts);
     }
     if (!svgObj) {
       return {tag: 'g'}; // empty element
@@ -73,7 +73,8 @@ export function importGeoJSONFeatures(features, opts) {
   });
 }
 
-export function importPoint(coords, rec) {
+// opts: passed to renderPoint()
+export function importPoint(coords, rec, opts) {
   rec = rec || {};
   if (isSimpleCircle(rec)) {
     return {
@@ -85,7 +86,7 @@ export function importPoint(coords, rec) {
       }
     };
   }
-  var o = renderPoint(rec, coords);
+  var o = renderPoint(rec, opts);
   if (o) o.properties.transform = getTransform(coords);
   return o;
 }
@@ -135,10 +136,10 @@ function isSimpleCircle(rec) {
   return rec && (rec.r > 0 && !rec['svg-symbol'] && !rec['label-text'] && !rec.icon && !rec['icon-size'] && !rec['icon-color']);
 }
 
-function importMultiPoint(coords, rec) {
+function importMultiPoint(coords, rec, opts) {
   var children = [], p;
   for (var i=0; i<coords.length; i++) {
-    p = importPoint(coords[i], rec);
+    p = importPoint(coords[i], rec, opts);
     if (!p) continue;
     if (p.tag == 'g' && p.children) {
       children = children.concat(p.children);

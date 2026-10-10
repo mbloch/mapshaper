@@ -141,9 +141,13 @@ The rectangle's size is fixed when it is drawn: the width measured from the
 text, the height estimated from the font size and line height
 as for callouts. An SVG opened where the label's font is missing draws the text
 in another one, which no longer fits the box; in Node, a font that is not
-installed falls back to an estimated width. HTML output that lays labels out
-as positioned elements, with CSS padding and background, would avoid both,
-and would place each element by the top left of this same box.
+installed falls back to an estimated width. HTML output with `html-labels`
+avoids both (`src/html/html-labels.mjs`): each label is a positioned element
+with CSS padding and background, which fit the text the browser lays out.
+It is placed by its first baseline rather than by the top of this box, so its
+glyphs land where the SVG text's do and the callout, which stays in SVG and
+is still worked out from the estimated box, meets it; the box's own top and
+bottom can then differ from the estimate by about a tenth of an em.
 
 In the GUI, the editor resizes a committed label's rect on every keystroke,
 since it writes the text without redrawing the symbol, and an offset drag of a

@@ -542,6 +542,10 @@ export function getOptionParser() {
     .option('image-format', {
       describe: '[HTML] format of the map image: png or jpg (default is png)'
     })
+    .option('html-labels', {
+      describe: '[HTML] draw anchored labels and text blocks as HTML text',
+      type: 'flag'
+    })
     .option('pixel-ratio', {
       describe: '[HTML/PNG/JPEG] image pixels per CSS pixel (default is 2)',
       type: 'number'
