@@ -322,6 +322,8 @@ The `html` format writes a map as an HTML fragment and an image, in the manner o
 
 `image-format=` (HTML) Format of the map image: `png` (the default) or `jpg`.
 
+`html-labels` (HTML) Write anchored labels and text blocks as HTML text instead of SVG, placed where the SVG text would be. Their backgrounds and padding are drawn with CSS, and so fit the text as the browser lays it out. Lines break where they do in SVG. Callouts, icons and labels along paths stay in the SVG overlay, and the HTML labels are drawn above it.
+
 `pixel-ratio=` (HTML/PNG/JPEG) Resolution of the map image, in image pixels per CSS pixel. The default is `2`, for sharp images on high-density displays.
 
 PNG and JPEG output (`-o map.png`, `-o map.jpg`, or `format=png|jpg`) is an image of the whole styled map, labels and furniture included, at the map frame's size times `pixel-ratio=`. From the command line, labels are drawn with the fonts installed on your computer (or in the directories listed in the `MAPSHAPER_FONT_PATH` environment variable). Mapshaper warns when a label's font is not installed, when a character is drawn from another font or left out because no installed font has it, and when a label is set in a weight that a variable font can't be drawn at.

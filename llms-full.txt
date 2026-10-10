@@ -91,11 +91,13 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
-**HTML output**
+**HTML, PNG and JPEG output**
 
-Maps can now be exported as an HTML fragment plus an image, in the manner of the [ai2html](https://github.com/newsdev/ai2html) script for Adobe Illustrator. Options control the image format and resolution, and whether the map has a fixed size or fills the width of its container.
+Maps can now be exported as an HTML fragment plus an image, in the manner of the [ai2html](https://github.com/newsdev/ai2html) script for Adobe Illustrator. Options control the image format and resolution, whether the map has a fixed size or fills the width of its container, and whether labels are rendered in SVG or HTML.
 
-→ See [`-o`](/docs/reference.html.md#-o) for the `format=html` output options.
+Maps can also be exported as PNG or JPEG images, labels included.
+
+→ See [`-o`](/docs/reference.html.md#-o) for the `format=html`, `format=png` and `format=jpg` output options.
 </div>
 
 ## September 2026
@@ -637,6 +639,8 @@ The `html` format writes a map as an HTML fragment and an image, in the manner o
 `responsiveness=` (HTML) `fixed` (the default) gives the map a fixed size in pixels. `dynamic` makes the map fill the width of its container, keeping its aspect ratio.
 
 `image-format=` (HTML) Format of the map image: `png` (the default) or `jpg`.
+
+`html-labels` (HTML) Write anchored labels and text blocks as HTML text instead of SVG, placed where the SVG text would be. Their backgrounds and padding are drawn with CSS, and so fit the text as the browser lays it out. Lines break where they do in SVG. Callouts, icons and labels along paths stay in the SVG overlay, and the HTML labels are drawn above it.
 
 `pixel-ratio=` (HTML/PNG/JPEG) Resolution of the map image, in image pixels per CSS pixel. The default is `2`, for sharp images on high-density displays.
 

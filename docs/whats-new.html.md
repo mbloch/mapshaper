@@ -35,11 +35,13 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
-**HTML output**
+**HTML, PNG and JPEG output**
 
-Maps can now be exported as an HTML fragment plus an image, in the manner of the [ai2html](https://github.com/newsdev/ai2html) script for Adobe Illustrator. Options control the image format and resolution, and whether the map has a fixed size or fills the width of its container.
+Maps can now be exported as an HTML fragment plus an image, in the manner of the [ai2html](https://github.com/newsdev/ai2html) script for Adobe Illustrator. Options control the image format and resolution, whether the map has a fixed size or fills the width of its container, and whether labels are rendered in SVG or HTML.
 
-→ See [`-o`](/docs/reference.html.md#-o) for the `format=html` output options.
+Maps can also be exported as PNG or JPEG images, labels included.
+
+→ See [`-o`](/docs/reference.html.md#-o) for the `format=html`, `format=png` and `format=jpg` output options.
 </div>
 
 ## September 2026

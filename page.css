@@ -3594,7 +3594,7 @@ body.pan.panning .map-layers:not(.drawing) {
 	font-size: 16px;
 	font-weight: normal;
 	line-height: 14px;
-	color: #888;
+	color: #555;
 	cursor: pointer;
 }
 
@@ -3645,12 +3645,11 @@ body.pan.panning .map-layers:not(.drawing) {
 	overflow: hidden;
 }
 
-/* Darker than the app's default placeholder. These fields show the value the
-   renderer will use when the property is absent -- 0 and auto are true of the
-   label, they are just not stored on it -- so at #aaa they read as a control
-   that is switched off rather than as an answer. */
+/* The panels' one grey, which their captions are set in. In the label panel
+   a placeholder is only ever "mixed": a property that is not set shows the
+   value the renderer uses instead, in black, as a value. */
 .label-style-panel ::placeholder {
-	color: #777;
+	color: #555;
 }
 
 /* Buttons that answer one question share a border and sit flush, the way the
