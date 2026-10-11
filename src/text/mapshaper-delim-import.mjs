@@ -1,11 +1,11 @@
 import { isInvalidFieldName, deleteFields } from '../datatable/mapshaper-data-utils';
-import { readDelimRecordsFromString, readDelimRecords } from '../text/mapshaper-delim-reader';
-import { encodingIsAsciiCompat, trimBOM } from '../text/mapshaper-encodings';
-import { detectEncodingFromBOM } from '../text/mapshaper-encoding-detection';
+import { openDelimReader, readDelimRows } from '../text/mapshaper-delim-reader';
+import { readFixedWidthRecordsFromString } from '../text/mapshaper-fixed-width';
+import { bufferToString, encodeString } from '../text/mapshaper-encodings';
 import utils from '../utils/mapshaper-utils';
 import { error, message } from '../utils/mapshaper-logging';
 import { DataTable } from '../datatable/mapshaper-data-table';
-import { readFirstChars, FileReader, BufferReader } from '../io/mapshaper-file-reader';
+import { FileReader, BufferReader } from '../io/mapshaper-file-reader';
 import { Buffer } from '../utils/mapshaper-node-buffer';
 
 // Convert a string containing delimited text data into a dataset object
@@ -18,62 +18,140 @@ export function importDelim2(data, opts) {
   // TODO: remove duplication with importJSON()
   var readFromFile = !data.content && data.content !== '',
       content = data.content,
-      reader, records, delimiter, table, encoding;
+      encoding = opts && opts.encoding,
+      reader, input, records, delimiter, table;
   opts = opts || {};
-
-  // // read content of all but very large files into a buffer
-  // if (readFromFile && cli.fileSize(data.filename) < 2e9) {
-  //   content = cli.readFile(data.filename);
-  //   readFromFile = false;
-  // }
 
   if (readFromFile) {
     reader = new FileReader(data.filename);
   } else if (content instanceof ArrayBuffer || content instanceof Buffer || content instanceof Uint8Array) {
     // Web API may import as ArrayBuffer, to support larger files
     reader = new BufferReader(content);
-    content = null;
     // BufferReader keeps its own reference; release the caller's so we
     // don't hold both the source bytes and the parsed records in memory
     // for the duration of the parse.
     data.content = null;
   } else if (utils.isString(content)) {
-    // import as string
+    reader = new BufferReader(encodeString(content, 'utf8'));
+    encoding = 'utf8';
   } else {
     error("Unexpected object type");
   }
 
-  if (reader) {
-    encoding = detectEncodingFromBOM(reader.readSync(0, Math.min(reader.size(), 3)));
-    // Files in some encodings have to be converted to strings before parsing
-    // Other encodings are similar enough to ascii that CSV can be parsed
-    // byte-by-byte.
-    if (encoding == 'utf16be' || encoding == 'utf16le') {
-      content = trimBOM(reader.toString(encoding));
-      reader = null;
-    } else if (opts.encoding && !encodingIsAsciiCompat(opts.encoding)) {
-      content = reader.toString(opts.encoding);
-      reader = null;
-    }
-  }
-
-  if (reader) {
-    delimiter = guessDelimiter(readFirstChars(reader, 2000));
-    records = readDelimRecords(reader, delimiter, opts);
+  input = openDelimReader(reader, encoding, opts);
+  delimiter = guessDelimiter(bufferToString(input.reader.readSync(0, 2000)));
+  if (delimiter == ' ') {
+    records = readFixedWidthRecordsFromString(readAllText(input));
+    adjustRecordTypes(records, opts);
   } else {
-    delimiter = guessDelimiter(content);
-    records = readDelimRecordsFromString(content, delimiter, opts);
+    records = readTypedDelimRecords(input, delimiter, opts);
   }
   if (records.length === 0) {
     message("Unable to read any data records");
   }
-  adjustRecordTypes(records, opts);
   table = new DataTable(records);
   deleteFields(table, isInvalidFieldName);
   return {
     layers: [{data: table}],
     info: {input_delimiter: delimiter}
   };
+}
+
+function readAllText(input) {
+  return bufferToString(input.reader.readSync(0, Infinity), input.encoding);
+}
+
+// Read records from delimited text, converting numeric fields to numbers.
+// Field types are detected as rows are read, which is much faster than a
+// separate pass over the records when there are many fields.
+function readTypedDelimRecords(input, delim, opts) {
+  var rows = [],
+      types = null;
+  readDelimRows(input, delim, opts, {
+    header: function(fields) {
+      types = new DelimFieldTypes(fields, opts);
+    },
+    row: function(row) {
+      types.testRow(row);
+      rows.push(row);
+    }
+  });
+  return types ? types.convertRows(rows) : [];
+}
+
+// Detects the type of each field, one row at a time (using the same rules as
+// adjustRecordTypes()), then converts rows of values to records.
+function DelimFieldTypes(fields, opts) {
+  var typeIndex = getFieldTypeHints(opts),
+      singleType = typeIndex['*'],
+      parseNumber = opts.decimal_comma ? utils.parseIntlNumber : utils.parseNumber,
+      columns = getRecordColumns(fields),
+      numeric = [],    // true for columns that are converted to numbers
+      candidates = [], // columns that may contain numbers
+      hasNumber = [];  // true for candidate columns that contain a number
+
+  columns.forEach(function(col) {
+    var typeHint = typeIndex[fields[col]];
+    if (typeHint == 'number' || singleType == 'number') {
+      numeric[col] = true;
+    } else if (typeHint != 'string' && singleType != 'string') {
+      candidates.push(col);
+    }
+  });
+
+  this.testRow = function(row) {
+    var dropped = false, col, raw;
+    for (var i=0; i<candidates.length; i++) {
+      col = candidates[i];
+      raw = row[col];
+      if (raw === '') continue;
+      if (parseNumber(raw) !== null) {
+        hasNumber[col] = true;
+      } else if (!isMissingValue(raw)) {
+        candidates[i] = -1;
+        dropped = true;
+      }
+    }
+    if (dropped) {
+      candidates = candidates.filter(function(col) { return col > -1; });
+    }
+  };
+
+  this.convertRows = function(rows) {
+    var detected = candidates.filter(function(col) { return hasNumber[col]; });
+    detected.forEach(function(col) { numeric[col] = true; });
+    if (detected.length > 0) {
+      message(utils.format("Auto-detected number field%s: %s",
+        detected.length == 1 ? '' : 's',
+        detected.map(function(col) { return fields[col]; }).join(', ')));
+    }
+    // Use object-literal syntax (faster than alternative)
+    var convert = new Function('row', 'parseNumber', 'return {' + columns.map(function(col) {
+      var val = numeric[col] ? 'parseNumber(row[' + col + '])' : 'row[' + col + ']';
+      return JSON.stringify(fields[col]) + ': ' + val;
+    }).join(', ') + '}');
+    for (var i=0; i<rows.length; i++) {
+      rows[i] = convert(rows[i], parseNumber);
+    }
+    return rows;
+  };
+}
+
+// Returns the column that supplies the value of each field in a record.
+// If a name is repeated, the last column with the name supplies the value
+// (matching an object literal with a repeated key).
+function getRecordColumns(fields) {
+  var index = new Map();
+  fields.forEach(function(name, col) {
+    index.set(name, col); // Map keeps the insertion order of the first occurrence
+  });
+  return Array.from(index.values());
+}
+
+// Empty values and NA values (e.g. from R) are allowed in numeric fields
+function isMissingValue(raw) {
+  var str = raw ? raw.trim() : '';
+  return str.length === 0 || str == 'NA' || str == 'NaN';
 }
 
 var supportedDelimiters = ['|', '\t', ',', ';', ' '];
@@ -180,13 +258,12 @@ function updateFieldsInRecords(fields, records, replacements) {
 function tryNumericField(key, records, parseNumber) {
   var arr = [],
       count = 0,
-      raw, str, num;
+      raw, num;
   for (var i=0, n=records.length; i<n; i++) {
     raw = records[i][key];
     num = parseNumber(raw);
     if (num === null) {
-      str = raw ? raw.trim() : '';
-      if (str.length > 0 && str != 'NA' && str != 'NaN') { // ignore NA values ("NA" seen in R output)
+      if (!isMissingValue(raw)) {
         return null; // unparseable value -- fail
       }
     } else {

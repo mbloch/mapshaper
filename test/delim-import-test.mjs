@@ -528,6 +528,50 @@ LOS ANGELES,,`;
   })
 
 
+  describe('importDelim2() type detection matches adjustRecordTypes()', function () {
+    var values = ['', ' ', '1', '-2.5', '3,000', '1,5', 'NA', 'NaN', '0x1f', '1e3', 'abc', ' 4 ', '001'];
+    var names = ['a', 'b', 'c', 'a'];
+    var optionSets = [
+      {},
+      {field_types: ['a:str']},
+      {field_types: ['b:num']},
+      {field_types: ['*:num']},
+      {string_fields: ['*']},
+      {string_fields: ['c'], field_types: ['c:num']},
+      {decimal_comma: true}
+    ];
+    // seeded random number generator (mulberry32)
+    var seed = 9876;
+    function random(n) {
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      var t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return Math.floor(((t ^ t >>> 14) >>> 0) / 4294967296 * n);
+    }
+
+    optionSets.forEach(function(opts) {
+      it(JSON.stringify(opts), function () {
+        for (var trial=0; trial<100; trial++) {
+          var header = names.slice(0, 1 + random(names.length));
+          var lines = [header.join(',')];
+          var rowCount = random(6);
+          // mostly use values from a few types, so that some fields are numeric
+          var pool = values.slice(0, 3 + random(values.length - 2));
+          for (var i=0; i<rowCount; i++) {
+            lines.push(header.map(function() {
+              return '"' + pool[random(pool.length)] + '"';
+            }).join(','));
+          }
+          var csv = lines.join('\n');
+          var expected = internal.readDelimRecords(new internal.BufferReader(Buffer.from(csv)), ',', opts);
+          adjustRecordTypes(expected, opts);
+          var output = importDelim2({content: Buffer.from(csv)}, opts);
+          assert.deepStrictEqual(output.layers[0].data.getRecords(), expected, csv);
+        }
+      });
+    });
+  });
+
   describe('importDelim2()', function () {
     it('import from a file', function () {
       var input = {

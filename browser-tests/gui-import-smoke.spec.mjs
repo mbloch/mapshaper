@@ -10,6 +10,12 @@ var FIXTURES = [{
 }, {
   name: 'GeoParquet',
   files: 'test/data/geoparquet/example-crs_vermont-4326_geo.parquet'
+}, {
+  name: 'CSV',
+  files: 'test/data/text/states.csv'
+}, {
+  name: 'UTF-16 CSV',
+  files: 'test/data/text/utf16_le_bom.csv'
 }];
 
 FIXTURES.forEach(function(fixture) {

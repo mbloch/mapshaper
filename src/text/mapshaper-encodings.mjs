@@ -58,6 +58,19 @@ export function encodingIsAsciiCompat(enc) {
   return !enc || /^(win|latin|utf8|ascii|iso88|gb)/.test(enc);
 }
 
+// Identify single-byte encodings that are supersets of ascii (text in these
+// encodings can be parsed byte-by-byte and decoded one value at a time)
+export function isSingleByteAsciiEncoding(enc) {
+  return /^(ascii|latin[0-9]+|iso8859[0-9]+|(win|windows|cp)125[0-9])$/.test(standardizeEncodingName(enc));
+}
+
+// Returns a decoder for converting a sequence of buffers to text.
+// decoder.write(buf) returns a string; decoder.end() returns any remaining text.
+// Characters that span buffers are handled, and a BOM is removed.
+export function getStreamingDecoder(enc) {
+  return iconv.getDecoder(enc);
+}
+
 // Ex. convert UTF-8 to utf8
 export function standardizeEncodingName(enc) {
   return (enc || '').toLowerCase().replace(/[_-]/g, '');

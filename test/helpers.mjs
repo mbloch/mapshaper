@@ -51,7 +51,7 @@ function Reader(str, chunkLen) {
   this.size = function() {return buf.length;};
 
   this.readSync = function(offs, maxBytes) {
-    return buf.slice(offs, Math.min(maxBytes || chunkLen, buf.length));
+    return buf.slice(offs, Math.min(offs + (maxBytes || chunkLen), buf.length));
   };
 
   this.toString = function() {

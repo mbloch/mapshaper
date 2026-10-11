@@ -598,6 +598,26 @@ test('a path label with no text is still reachable by its knots', async function
   expect(await hoverAnchor(page, 0)).toBe(0);
 });
 
+test('the font menu shows each font name in its own font', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  var select = page.locator('.text-style-panel select.font-menu');
+  var georgia = select.locator('option[value="Georgia"]');
+
+  // a native menu ignores an option's font in Chrome on a Mac
+  expect(await select.evaluate(function(el) {
+    return getComputedStyle(el).appearance;
+  })).toBe('base-select');
+  expect(await georgia.evaluate(function(el) {
+    return getComputedStyle(el).fontFamily;
+  })).toBe('Georgia');
+  // the closed menu and the category headings stay in the panel's font
+  expect(await select.evaluate(function(el) {
+    return getComputedStyle(el).fontFamily;
+  })).not.toContain('Georgia');
+  expect(errors).toEqual([]);
+});
+
 test('a style set with nothing selected is given to the next label', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);

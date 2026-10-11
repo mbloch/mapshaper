@@ -1,5 +1,5 @@
 
-import { bufferToString } from '../text/mapshaper-encodings';
+import { bufferToString, getStreamingDecoder } from '../text/mapshaper-encodings';
 import { getStashedVar } from '../mapshaper-stash';
 import { BinArray } from '../utils/mapshaper-binarray';
 import { error } from '../utils/mapshaper-logging';
@@ -11,27 +11,76 @@ export function readFirstChars(reader, n) {
   return bufferToString(reader.readSync(0, Math.min(n || 1000, reader.size())));
 }
 
-// Wraps a BufferReader or FileReader with an API that keeps track of position in the file
-export function Reader2(reader) {
-  var offs = 0; // read-head position in bytes
+// Wraps a FileReader or BufferReader containing text in an encoding that can't be
+// parsed byte-by-byte as ascii (e.g. UTF-16), and returns the text as UTF-8 bytes.
+// Like FileReader#readSync(), readSync() returns a view that is only valid until
+// the next read. Reads can only move forward: bytes before @start are discarded.
+// The size of the UTF-8 output is unknown until the end; readSync() returns
+// fewer than @length bytes at the end of the text.
+export function TranscodingReader(reader, encoding, opts) {
+  var chunkSize = opts && opts.chunkSize || 0x1000000,
+      decoder = getStreamingDecoder(encoding),
+      encoder = new TextEncoder(),
+      inputSize = reader.size(),
+      inputPos = 0,
+      finished = false,
+      heldChar = '', // first half of a surrogate pair, if decoded text ended with one
+      buf = utils.createBuffer(0),
+      bufStart = 0, // offset of buf[0] in the UTF-8 output
+      bufLen = 0;   // number of decoded bytes in buf
 
-  this.position = function() {return offs;};
-
-  this.remaining = function() {
-    return Math.max(reader.size() - offs, 0);
+  this.readSync = function(start, length) {
+    if (start < bufStart || start > bufStart + bufLen) {
+      error('TranscodingReader: unsupported read position');
+    }
+    discardBytes(start - bufStart);
+    while (bufLen < length && !finished) {
+      decodeMore();
+    }
+    return buf.subarray(0, Math.min(length, bufLen));
   };
 
-  this.advance = function(i) {
-    offs += i;
-  };
+  function discardBytes(n) {
+    if (n > 0) {
+      buf.copyWithin(0, n, bufLen);
+      bufLen -= n;
+      bufStart += n;
+    }
+  }
 
-  this.readSync = function() {
-    return reader.readSync(offs);
-  };
+  function decodeMore() {
+    var str, bytes;
+    if (inputPos < inputSize) {
+      bytes = reader.readSync(inputPos, Math.min(chunkSize, inputSize - inputPos));
+      inputPos += bytes.length;
+      str = decoder.write(bytes);
+    } else {
+      str = decoder.end() || '';
+      finished = true;
+    }
+    str = heldChar + str;
+    heldChar = '';
+    // TextEncoder would encode half of a surrogate pair as U+FFFD
+    if (!finished && isHighSurrogate(str.charCodeAt(str.length - 1))) {
+      heldChar = str[str.length - 1];
+      str = str.slice(0, -1);
+    }
+    // a UTF-16 code unit becomes at most 3 bytes of UTF-8
+    reserveBytes(bufLen + str.length * 3);
+    bufLen += encoder.encodeInto(str, buf.subarray(bufLen)).written;
+  }
 
-  this.expandBuffer = function() {
-    reader.expandBuffer();
-  };
+  function isHighSurrogate(c) {
+    return c >= 0xD800 && c <= 0xDBFF;
+  }
+
+  // The buffer is reused, so large files don't allocate a new buffer for each chunk
+  function reserveBytes(n) {
+    if (n <= buf.length) return;
+    var buf2 = utils.createBuffer(Math.max(n, buf.length * 2));
+    buf.copy(buf2, 0, 0, bufLen);
+    buf = buf2;
+  }
 }
 
 // Same interface as FileReader, for reading from a Buffer or ArrayBuffer instead of a file.
