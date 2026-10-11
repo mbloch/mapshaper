@@ -1,4 +1,4 @@
-import { getDefaultFontName, getFontStyleVariants, getInstalledFonts,
+import { getDefaultFontName, getFontStyleVariants, appendFontOptions,
   getNearestFontStyleVariant, getNewLabelFontName,
   variantIsRegular } from './gui-label-fonts';
 import { ColorPicker, isHexColor } from './gui-color-picker';
@@ -374,7 +374,7 @@ export function LabelTool(gui) {
     // number otherwise keep theirs, and so does a colour field, because the
     // field beside it has one and "Color" says the percentage is its opacity.
     var fontRow = El('div').addClass('label-style-row').appendTo(textSection);
-    fontSelect = El('select').attr('aria-label', 'Font').appendTo(fontRow).on('change', function() {
+    fontSelect = El('select').attr('aria-label', 'Font').addClass('font-menu').appendTo(fontRow).on('change', function() {
       if (fontSelect.node().value) {
         applyFont(fontSelect.node().value);
       }
@@ -895,12 +895,7 @@ export function LabelTool(gui) {
     // No "Default font" entry: it named a font the user could not see and
     // mapshaper could not measure. A label with no font-family of its own is
     // shown in the font the browser draws it in, under that font's own name.
-    getInstalledFonts().forEach(function(group) {
-      var optgroup = El('optgroup').attr('label', group.name).appendTo(fontSelect);
-      group.fonts.forEach(function(fontName) {
-        El('option').attr('value', fontName).appendTo(optgroup).text(fontName);
-      });
-    });
+    appendFontOptions(fontSelect.node());
   }
 
 

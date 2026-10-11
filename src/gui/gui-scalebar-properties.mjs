@@ -5,7 +5,7 @@ import { showPopupAlert } from './gui-alert';
 import { makePanelSection, makeColorField, makePanelActionButton } from './gui-panel-controls';
 import { ColorPicker, isHexColor } from './gui-color-picker';
 import { getScalebarCommand } from './gui-scalebar-command';
-import { getDefaultFontName, getFontStyleVariants, getInstalledFonts,
+import { getDefaultFontName, getFontStyleVariants, appendFontOptions,
   getNearestFontStyleVariant, variantIsRegular } from './gui-label-fonts';
 
 var positionOptions = [
@@ -144,7 +144,7 @@ export function ScalebarProperties(gui) {
 
     // Font and face menus, as in the label panel
     row = makeRow(appearance);
-    fontSelect = El('select').attr('aria-label', 'Font').addClass('scalebar-font-select')
+    fontSelect = El('select').attr('aria-label', 'Font').addClass('scalebar-font-select font-menu')
       .appendTo(makeCell(row, 'Font'))
       .on('change', function() {
         if (fontSelect.node().value) applyFont(fontSelect.node().value);
@@ -232,12 +232,7 @@ export function ScalebarProperties(gui) {
   }
 
   function renderFontOptions() {
-    getInstalledFonts().forEach(function(group) {
-      var optgroup = El('optgroup').attr('label', group.name).appendTo(fontSelect);
-      group.fonts.forEach(function(fontName) {
-        El('option').attr('value', fontName).appendTo(optgroup).text(fontName);
-      });
-    });
+    appendFontOptions(fontSelect.node());
   }
 
   // A scalebar with no font of its own is shown in the font it is drawn in

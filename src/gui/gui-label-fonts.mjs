@@ -421,6 +421,21 @@ export function chooseNewLabelFont(preferred, installed, drawnFont) {
   return drawnFont || '';
 }
 
+export function appendFontOptions(select) {
+  getInstalledFonts().forEach(function(group) {
+    var optgroup = document.createElement('optgroup');
+    optgroup.label = group.name;
+    group.fonts.forEach(function(fontName) {
+      var option = document.createElement('option');
+      option.value = fontName;
+      option.textContent = fontName;
+      option.style.fontFamily = quoteFontName(fontName);
+      optgroup.appendChild(option);
+    });
+    select.appendChild(optgroup);
+  });
+}
+
 // Whether @fontName is one of the fonts above and installed here.
 export function isInstalledFont(fontName) {
   return getInstalledFontNames().indexOf(fontName) > -1;
