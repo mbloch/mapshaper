@@ -2,6 +2,8 @@ import utils from '../utils/mapshaper-utils';
 import { blend } from '../color/blending';
 import { roundToDigits2 } from '../geom/mapshaper-rounding';
 import { formatDMS, parseDMS } from '../geom/mapshaper-dms';
+import { distance2D } from '../geom/mapshaper-basic-geom';
+import { getWGS84GeodesicDistanceFunction } from '../geom/mapshaper-geodesic';
 import { stop } from '../utils/mapshaper-logging';
 
 export function addFeatureExpressionUtils(env) {
@@ -11,8 +13,38 @@ export function addFeatureExpressionUtils(env) {
     sprintf: utils.format,
     blend: blend,
     format_dms: formatDMS,
-    parse_dms: parseDMS
+    parse_dms: parseDMS,
+    distance_xy: distance_xy,
+    distance_lonlat: distance_lonlat
   });
+}
+
+function isFiniteNumber(val) {
+  return typeof val == 'number' && isFinite(val);
+}
+
+function coordsAreValid(a, b, c, d) {
+  return isFiniteNumber(a) && isFiniteNumber(b) && isFiniteNumber(c) && isFiniteNumber(d);
+}
+
+// Returns null if any coordinate is missing or non-numeric
+export function distance_xy(x1, y1, x2, y2) {
+  if (!coordsAreValid(x1, y1, x2, y2)) return null;
+  return distance2D(x1, y1, x2, y2);
+}
+
+var wgs84Distance = null;
+
+// Returns geodesic distance in meters on the WGS84 ellipsoid, or null if any
+// coordinate is missing, non-numeric or out of range
+export function distance_lonlat(lon1, lat1, lon2, lat2) {
+  if (!coordsAreValid(lon1, lat1, lon2, lat2)) return null;
+  if (Math.abs(lat1) > 90 || Math.abs(lat2) > 90) return null;
+  if (!wgs84Distance) {
+    wgs84Distance = getWGS84GeodesicDistanceFunction();
+  }
+  var dist = wgs84Distance(lon1, lat1, lon2, lat2);
+  return isFiniteNumber(dist) ? dist : null;
 }
 
 export function requireBooleanResult(val, msg) {

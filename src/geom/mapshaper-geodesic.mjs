@@ -12,17 +12,28 @@ var R = WGS84.SEMIMAJOR_AXIS;
 function getGeodesic(P) {
   if (!isLatLngCRS(P)) error('Expected an unprojected CRS');
   var f = P.es / (1 + Math.sqrt(P.one_es));
+  return createGeodesic(P.a, f);
+}
+
+function createGeodesic(a, f) {
   // var GeographicLib = require('mproj').internal.GeographicLib;
   var GeographicLib = require('geographiclib-geodesic');
   // return new GeographicLib.Geodesic.Geodesic(P.a, 0)
-  return new GeographicLib.Geodesic.Geodesic(P.a, f);
+  return new GeographicLib.Geodesic.Geodesic(a, f);
 }
 
-export function getGeodesicDistanceFunction(P) {
-  var geod = getGeodesic(P);
+function getDistanceFunction(geod) {
   return function(lng, lat, lng2, lat2) {
     return geod.Inverse(lat, lng, lat2, lng2).s12;
   };
+}
+
+export function getGeodesicDistanceFunction(P) {
+  return getDistanceFunction(getGeodesic(P));
+}
+
+export function getWGS84GeodesicDistanceFunction() {
+  return getDistanceFunction(createGeodesic(R, 1 / 298.257223563));
 }
 
 export function interpolatePoint2D(ax, ay, bx, by, k) {
