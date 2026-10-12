@@ -88,8 +88,8 @@ function getJoinByKey(dest, destKey, src, srcKey) {
   var srcRecords = src.getRecords();
   var index = createTableIndex(srcRecords, srcKey);
   var srcType, destType;
-  if (srcRecords.length == 0) {
-    // allow empty external tables
+  if (srcRecords.length == 0 || destRecords.length == 0) {
+    // allow empty external tables and empty target layers
     return function(i) {return [];};
   }
   requireDataField(src, srcKey, 'External table is missing a field named:');

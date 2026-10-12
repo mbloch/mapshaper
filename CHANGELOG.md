@@ -5,6 +5,8 @@ v0.7.84
 * Added `-symbols coordinates=`, which adds one symbol to the target layer (or to a new layer), like `-labels coordinates=`.
 * Added curve symbols: `-symbols type=curve` (written as `icon=curve`) draws a smooth curve through the points of a multipoint feature, fitted with Hobby's algorithm like a path label. A curve whose last point repeats its first is closed and can take a fill; an open curve can take `line-start=`, `line-end=`, `line-end-size=` and `line-fade=`. In SVG output, curves without end markers are written as Bézier curves. For example: `-symbols type=curve coordinates=0,0,50,40,100,0 line-end=arrow`.
 * `-clean` no longer removes repeated points from curves and path labels, whose points are the knots of a curve.
+* In quantized TopoJSON output, `-o precision=` now sets an exact quantization grid anchored at the origin (0, 0), so files exported with the same precision share a grid (e.g. adjacent map tiles). Decoded coordinates match the output of `precision=` with `no-quantization`. Point-only layers are also quantized. Previously, the grid was stretched to fit each file's bounding box and a misleading message said the option was ignored.
+* `-dissolve`, `-dissolve2` and `-join` work on layers emptied by a previous command such as `-clip` or `-filter`, instead of stopping with a missing field error (or a crash, when dissolving an empty polyline layer).
 
 v0.7.83
 * Added -o html-labels option, which renders labels as HTML instead of SVG text in HTML-formatted output.

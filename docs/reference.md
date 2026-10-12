@@ -250,7 +250,7 @@ The `html` format writes a map as an HTML fragment and an image, in the manner o
 
 `drop-table`  Remove attribute data from output.
 
-`precision=`  Round all coordinates to a specified precision, e.g. `precision=0.001`. Useful for reducing the size of GeoJSON files.
+`precision=`  Round all coordinates to a specified precision, e.g. `precision=0.001`. Useful for reducing the size of GeoJSON files. In quantized TopoJSON output, `precision=` sets the size of the quantization grid, which is anchored at the origin (0, 0). Files exported with the same precision share a grid, so the same point gets the same coordinates in each file &mdash; useful for map tiles. This option is ignored if `quantization=` or `topojson-precision=` is also given.
 
 `fix-geometry` Remove segment intersections caused by rounding (via the `precision=` option) or TopoJSON quantization, by reverting intersecting areas to the original coordinates. In the case of quantized TopoJSON output, this option produces delta-encoded arcs that contain some decimal numbers. Be sure to test your software for compatibility. Note that this option is only applied if the original paths are free of intersections. Also, some kinds of invalid geometry, like spikes, do not get fixed.
 

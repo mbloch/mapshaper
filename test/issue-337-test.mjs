@@ -43,13 +43,19 @@ describe('Issue #337 (incorrect polygon erasure)', function () {
     });
   });
 
-  it ('erase test: original geometry unmodified', function(done) {
+  it ('erase test: original geometry unmodified', async function() {
     var cmd = '-i target.json -i clip.json -erase target=target clip -o gj2008';
-    api.applyCommands(cmd, {'target.json': target, 'clip.json': clip}, function(err, output) {
-      var json = JSON.parse(output['target.json']);
-      assert.deepEqual(json.geometries, [target]); // output identical to original shape
-      done();
-    });
+    var output = await api.applyCommands(cmd, {'target.json': target, 'clip.json': clip});
+    var json = JSON.parse(output['target.json']);
+    // same shape as the original, with the hole wound counter-clockwise
+    var expected = {
+      type: "Polygon",
+      coordinates: [
+        [[1, 6], [6, 6], [6, 1], [1, 1], [1, 6]],
+        [[2, 5], [2, 2], [5, 2], [5, 5], [2, 5]]
+      ]
+    };
+    assert.deepEqual(json.geometries, [expected]);
   });
 
 

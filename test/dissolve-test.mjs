@@ -9,6 +9,34 @@ describe('mapshaper-dissolve.js', function () {
 
   describe('-dissolve command', function () {
 
+    describe('layers emptied by a previous command', function() {
+      var lines = JSON.stringify({type: 'FeatureCollection', features: [
+        {type: 'Feature', properties: {k: 1}, geometry: {type: 'LineString', coordinates: [[0, 0], [5, 5]]}}
+      ]});
+
+      async function testEmptyOutput(cmd) {
+        var out = await api.applyCommands('-i in.json ' + cmd + ' -o out.json', {'in.json': lines});
+        assert.deepEqual(JSON.parse(out['out.json']), {type: 'GeometryCollection', geometries: []});
+      }
+
+      it('-clip followed by -dissolve <field>', async function() {
+        await testEmptyOutput('-clip bbox=10,10,20,20 -dissolve k');
+      });
+
+      it('-filter followed by -dissolve', async function() {
+        await testEmptyOutput('-filter false -dissolve');
+      });
+
+      it('-filter followed by -dissolve2 <field>', async function() {
+        await testEmptyOutput('-filter false -dissolve2 k');
+      });
+
+      it('a missing field is still an error if the layer is not empty', async function() {
+        await assert.rejects(api.applyCommands('-i in.json -dissolve nonexistent -o out.json', {'in.json': lines}),
+          /Missing a field named: nonexistent/);
+      });
+    });
+
     it('where= options dissolves a subset of features', function(done) {
       var input = 'id,x,y\na,0,0\na,1,1\nb,2,2\nb,3,3';
       var cmd = '-i points.csv -points -dissolve planar id where=\'id == "a"\' -o format=geojson';

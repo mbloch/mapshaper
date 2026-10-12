@@ -5,6 +5,7 @@ import { absArcId } from '../paths/mapshaper-arc-utils';
 // Dissolve polyline features
 export function dissolvePolylineGeometry(lyr, getGroupId, arcs, opts) {
   var groups = getPolylineDissolveGroups(lyr.shapes, getGroupId);
+  if (groups.length === 0) return []; // arcs may be null if the layer is empty
   var dissolve = getPolylineDissolver(arcs);
   return groups.map(dissolve);
 }

@@ -130,19 +130,15 @@ export function PathImporter(opts) {
       return;
     }
     setShapeType('polygon');
-    if (isHole === true && area > 0 || isHole === false && area < 0) {
-      // GeoJSON rings may be either direction -- no point in logging reversal
-      // verbose("Reversing", isHole ? "a CW hole" : "a CCW ring");
-      points.reverse();
-    }
-    this.importPath(points);
+    // GeoJSON rings may be either direction -- no point in logging reversal
+    this.importPath(points, isHole === true && area > 0 || isHole === false && area < 0);
   };
 
-  // Import an array of [x, y] Points
-  this.importPath = function importPath(points) {
-    var p;
-    for (var i=0, n=points.length; i<n; i++) {
-      p = points[i];
+  // Import an array of [x, y] Points, optionally in reverse order
+  this.importPath = function importPath(points, reversed) {
+    var n = points.length, p;
+    for (var i=0; i<n; i++) {
+      p = points[reversed ? n - 1 - i : i];
       this.addPoint(p[0], p[1]);
     }
     this.endPath();

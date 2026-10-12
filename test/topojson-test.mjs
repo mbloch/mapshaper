@@ -2,7 +2,7 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
 import { fixPath } from './helpers';
-import { calcExportBounds } from '../src/topojson/topojson-export';
+import { calcExportBounds, getGridQuantizer } from '../src/topojson/topojson-export';
 var TopoJSON = api.internal.topojson,
   ArcCollection = api.internal.ArcCollection,
   Utils = api.utils;
@@ -35,11 +35,98 @@ describe('topojson-export.js and topojson-import.js', function () {
       assert.deepEqual(bounds2.toArray(), [0, 0, 999, 999]);
     })
 
-    it('precision option', function () {
-      var arcs = new api.internal.ArcCollection([[[0, 0], [2, 1]]]);
-      var bounds = new api.internal.Bounds(0, 0, 2, 1);
-      var bounds2 = calcExportBounds(bounds, arcs, {precision: 0.1});
-      assert.deepEqual(bounds2.toArray(), [0, 0, 20, 10]);
+  })
+
+  describe('-o precision= option with quantized output', function () {
+    function decodeArc(topology, i) {
+      var scale = topology.transform.scale,
+          translate = topology.transform.translate,
+          x = 0, y = 0;
+      return topology.arcs[i].map(function(p) {
+        x += p[0];
+        y += p[1];
+        return [x * scale[0] + translate[0], y * scale[1] + translate[1]];
+      });
+    }
+
+    function isMultiple(n, precision) {
+      var k = n / precision;
+      return Math.abs(k - Math.round(k)) < 1e-9;
+    }
+
+    it('getGridQuantizer() anchors the grid at the origin', function () {
+      var bounds = new api.internal.Bounds(1.23, -4.56, 3, 2);
+      var q = getGridQuantizer(bounds, 0.1);
+      assert.deepEqual(q.scale, [0.1, 0.1]);
+      assert.deepEqual(q.translate, [1.2, -4.6]);
+      assert.deepEqual(q.quantize(1.23, -4.56), [0, 0]);
+      assert.deepEqual(q.quantize(2.06, 1.94), [9, 65]);
+    })
+
+    it('getGridQuantizer() handles precision greater than 1', function () {
+      var bounds = new api.internal.Bounds(-2390182.4, -1336802.8, 0, 0);
+      var q = getGridQuantizer(bounds, 2.5);
+      assert.deepEqual(q.scale, [2.5, 2.5]);
+      assert.deepEqual(q.translate, [-2390182.5, -1336802.5]);
+      assert.deepEqual(q.quantize(-2390182.4, -1336802.8), [0, 0]);
+      assert.deepEqual(q.quantize(-2390170, -1336790), [5, 5]);
+    })
+
+    it('transform uses the precision as the grid unit', async function () {
+      var input = {type: 'LineString', coordinates: [[1003.7, 2001.2], [1050.1, 2090.9], [1101.3, 2003.3]]};
+      var out = await api.applyCommands('-i line.json -o out.json format=topojson precision=10', {'line.json': input});
+      var topology = JSON.parse(out['out.json']);
+      assert.deepEqual(topology.transform, {scale: [10, 10], translate: [1000, 2000]});
+      assert.deepEqual(decodeArc(topology, 0), [[1000, 2000], [1050, 2090], [1100, 2000]]);
+    })
+
+    it('adjacent tiles share a grid', async function () {
+      var input = {type: 'LineString', coordinates: [[0.13, 0.27], [7.31, 3.44], [13.77, 6.01], [19.9, 2.2]]};
+      var cmd = '-i line.json -clip bbox=0,0,10,10 -o left.json format=topojson precision=0.25 ' +
+        '-i line.json -clip bbox=10,0,20,10 -o right.json format=topojson precision=0.25';
+      var out = await api.applyCommands(cmd, {'line.json': input});
+      var left = JSON.parse(out['left.json']);
+      var right = JSON.parse(out['right.json']);
+      assert.notDeepEqual(left.transform.translate, right.transform.translate);
+      [left, right].forEach(function(topology) {
+        assert.deepEqual(topology.transform.scale, [0.25, 0.25]);
+        assert(isMultiple(topology.transform.translate[0], 0.25));
+        assert(isMultiple(topology.transform.translate[1], 0.25));
+      });
+      var leftArc = decodeArc(left, 0);
+      var rightArc = decodeArc(right, 0);
+      var leftEnd = leftArc[leftArc.length - 1];
+      var rightStart = rightArc[0];
+      assert.deepEqual(leftEnd, rightStart);
+      assert.equal(leftEnd[0], 10);
+    })
+
+    it('decoded coordinates match no-quantization output', async function () {
+      var input = {type: 'LineString', coordinates: [[-12.345, 67.891], [-11.111, 66.666], [-9.876, 68.123]]};
+      var cmd = '-i line.json -o a.json format=topojson precision=0.01 ' +
+        '-o b.json format=topojson precision=0.01 no-quantization';
+      var out = await api.applyCommands(cmd, {'line.json': input});
+      var a = JSON.parse(out['a.json']);
+      var b = JSON.parse(out['b.json']);
+      decodeArc(a, 0).forEach(function(p, i) {
+        assert(Math.abs(p[0] - b.arcs[0][i][0]) < 1e-9);
+        assert(Math.abs(p[1] - b.arcs[0][i][1]) < 1e-9);
+      });
+    })
+
+    it('point layers are quantized', async function () {
+      var input = {type: 'MultiPoint', coordinates: [[3.14, 2.71], [1.41, 1.73]]};
+      var out = await api.applyCommands('-i points.json -o out.json format=topojson precision=0.5', {'points.json': input});
+      var topology = JSON.parse(out['out.json']);
+      assert.deepEqual(topology.transform, {scale: [0.5, 0.5], translate: [1.5, 1.5]});
+      assert.deepEqual(topology.objects.points.geometries[0].coordinates, [[3, 2], [0, 0]]);
+    })
+
+    it('quantization= takes precedence over precision=', async function () {
+      var input = {type: 'LineString', coordinates: [[0, 0], [2, 1]]};
+      var out = await api.applyCommands('-i line.json -o out.json format=topojson precision=0.5 quantization=1000', {'line.json': input});
+      var topology = JSON.parse(out['out.json']);
+      assert.notDeepEqual(topology.transform.scale, [0.5, 0.5]);
     })
   })
 

@@ -13,6 +13,13 @@ describe('mapshaper-join.js', function () {
 
   describe('-join command', function () {
 
+    it('join to a target layer emptied by -filter', async function() {
+      var data = 'type\na\nb';
+      var cmd = 'data.csv -filter false -join data.csv keys=type,type -o out.csv';
+      var out = await api.applyCommands(cmd, {'data.csv': data});
+      assert.equal(String(out['out.csv']), '');
+    })
+
     it('self join works with calc= expressions', async function() {
       var data = 'type\na\nb\na\nb\nb';
       var cmd = 'data.csv -join data keys=type,type calc="n = count()" -o';

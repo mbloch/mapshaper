@@ -134,9 +134,13 @@ export function layerIsEmpty(lyr) {
   return getFeatureCount(lyr) == 0;
 }
 
+// A table with no records has no fields, so a field may appear to be missing
+// from a table only because a command removed every record (e.g. -clip or
+// -filter); this is not treated as an error.
 export function requireDataField(obj, field, msg) {
   var data = obj.fieldExists ? obj : obj.data; // accept layer or DataTable
   if (!field) stop('Missing a field parameter');
+  if (data && data.size() === 0) return;
   if (!data || !data.fieldExists(field)) {
     stop(msg || 'Missing a field named:', field);
   }
@@ -147,6 +151,7 @@ export function requireDataFields(table, fields) {
   if (!table) {
     stop("Missing attribute data");
   }
+  if (table.size() === 0) return; // see requireDataField()
   var dataFields = table.getFields(),
       missingFields = utils.difference(fields, dataFields);
   if (missingFields.length > 0) {

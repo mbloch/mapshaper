@@ -48,8 +48,8 @@ export function exportTopoJSON(dataset, opts) {
 
   if (opts.precision && opts.no_quantization) {
     setCoordinatePrecision(dataset, opts.precision, !!opts.fix_geometry);
-  } else if (opts.precision) {
-    message(`Ignoring precision=${opts.precision} -- this option only works with no-quantization.`);
+  } else if (opts.precision && (opts.quantization || opts.topojson_precision)) {
+    message(`Ignoring precision=${opts.precision} -- quantization is set by another option.`);
   }
 
   if (opts.singles) {
@@ -83,7 +83,8 @@ TopoJSON.exportTopology = function(dataset, opts) {
     cmd.simplify(dataset, opts);
   }
   // auto-detect quantization if arcs are present
-  if (!opts.no_quantization && (opts.quantization || hasPaths)) {
+  if (!opts.no_quantization && bounds.hasBounds() &&
+      (opts.quantization || useGridQuantization(opts) || hasPaths)) {
     topology.transform = transformDataset(dataset, bounds, opts);
   }
   if (hasPaths) {
@@ -108,23 +109,14 @@ TopoJSON.exportTopology = function(dataset, opts) {
 };
 
 function transformDataset(dataset, bounds, opts) {
-  var bounds2 = calcExportBounds(bounds, dataset.arcs, opts),
-      fw = bounds.getTransform(bounds2),
-      inv = fw.invert(),
+  var quantizer = useGridQuantization(opts) ?
+        getGridQuantizer(bounds, opts.precision) :
+        getBoundsQuantizer(bounds, dataset.arcs, opts),
       repairArcs;
-
-  function transformWithRounding(x, y) {
-    var p = fw.transform(x, y);
-    return [Math.round(p[0]), Math.round(p[1])];
-  }
-
-  function transformWithoutRounding(x, y) {
-    return fw.transform(x, y);
-  }
 
   if (dataset.arcs && opts.fix_geometry) {
     // try to repair intersections caused by quantization
-    dataset.arcs.transformPoints(transformWithoutRounding);
+    dataset.arcs.transformPoints(quantizer.transform);
     repairArcs = getRepairFunction(dataset.arcs);
     dataset.arcs.transformPoints(function(x, y) {
       return [Math.round(x), Math.round(y)];
@@ -132,21 +124,73 @@ function transformDataset(dataset, bounds, opts) {
     repairArcs(dataset.arcs);
 
   } else if (dataset.arcs) {
-    dataset.arcs.transformPoints(transformWithRounding);
+    dataset.arcs.transformPoints(quantizer.quantize);
   }
 
   // support non-standard format with quantized arcs and non-quantized points
   if (!opts.no_point_quantization) {
     dataset.layers.filter(layerHasPoints).forEach(function(lyr) {
-      transformPointsInLayer(lyr, transformWithRounding);
+      transformPointsInLayer(lyr, quantizer.quantize);
     });
   }
 
   // TODO: think about handling geometrical errors introduced by quantization,
   // e.g. segment intersections and collapsed polygon rings.
   return {
+    scale: quantizer.scale,
+    translate: quantizer.translate
+  };
+}
+
+function useGridQuantization(opts) {
+  return opts.precision > 0 && !opts.quantization && !(opts.topojson_precision > 0);
+}
+
+// Quantize to a grid of cells derived from the bounds of the dataset
+function getBoundsQuantizer(bounds, arcs, opts) {
+  var fw = bounds.getTransform(calcExportBounds(bounds, arcs, opts)),
+      inv = fw.invert();
+  return {
+    quantize: function(x, y) {
+      var p = fw.transform(x, y);
+      return [Math.round(p[0]), Math.round(p[1])];
+    },
+    transform: function(x, y) {
+      return fw.transform(x, y);
+    },
     scale: [inv.mx, inv.my],
     translate: [inv.bx, inv.by]
+  };
+}
+
+// Quantize to a grid of square cells with sides of length @precision, anchored
+// at the origin. Files exported with the same precision share the same grid
+// (e.g. adjacent map tiles), and decoded coordinates match the output of
+// setCoordinatePrecision().
+export function getGridQuantizer(bounds, precision) {
+  var inv = 1 / precision,
+      toGrid, toCoord, ox, oy;
+  if (inv > 1) {
+    // same rounding method as getRoundingFunction()
+    inv = Math.round(inv);
+    toGrid = function(c) { return c * inv; };
+    toCoord = function(i) { return i / inv; };
+  } else {
+    toGrid = function(c) { return c / precision; };
+    toCoord = function(i) { return i * precision; };
+  }
+  // integer offsets keep quantized coordinates small, without moving the grid
+  ox = Math.round(toGrid(bounds.xmin));
+  oy = Math.round(toGrid(bounds.ymin));
+  return {
+    quantize: function(x, y) {
+      return [Math.round(toGrid(x)) - ox, Math.round(toGrid(y)) - oy];
+    },
+    transform: function(x, y) {
+      return [toGrid(x) - ox, toGrid(y) - oy];
+    },
+    scale: [precision, precision],
+    translate: [toCoord(ox), toCoord(oy)]
   };
 }
 
@@ -205,8 +249,6 @@ export function calcExportBounds(bounds, arcs, opts) {
     unitXY = calcExportResolution(arcs, opts.topojson_precision);
   } else if (opts.quantization > 0) {
     unitXY = [bounds.width() / (opts.quantization-1), bounds.height() / (opts.quantization-1)];
-  } else if (opts.precision > 0) {
-    unitXY = [opts.precision, opts.precision];
   } else {
     // default -- auto quantization at 0.02 of avg. segment len
     unitXY = calcExportResolution(arcs, 0.02);
