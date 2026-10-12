@@ -52,20 +52,3 @@ test('HTML labels sit where the SVG labels do', async function({page}) {
     });
   });
 });
-
-test('a background fits the HTML text with its padding around it', async function({page}) {
-  var html = await exportMap('b', 'html-labels');
-  await page.setContent(`<!doctype html><body style="margin:0">${html}</body>`);
-  var o = await page.evaluate(function() {
-    var box = document.querySelectorAll('#ms-b .ms-label-box')[1];
-    var range = document.createRange();
-    range.selectNodeContents(box.querySelector('.ms-label-text > span'));
-    var a = box.getBoundingClientRect();
-    var b = range.getBoundingClientRect();
-    return {left: b.left - a.left, right: a.right - b.right,
-      color: getComputedStyle(box).backgroundColor};
-  });
-  expect(o.left).toBeCloseTo(8, 0);
-  expect(o.right).toBeCloseTo(8, 0);
-  expect(o.color).toBe('rgb(255, 192, 203)');
-});

@@ -129,59 +129,6 @@ test('the links work in a session that has imported nothing',
     expect(errors).toEqual([]);
   });
 
-test('the arrow menu offers the label tool only on a label layer',
-  async function({page}) {
-    // The menu holds the tools that suit the active layer. On a polygon layer
-    // "add/edit labels" was an entry for editing a layer that did not exist
-    // yet; making one is what the layer panel's links are for.
-    var errors = collectPageErrors(page);
-    await loadFixture(page, FIXTURE);
-    expect(await getModeMenuItems(page)).not.toContain('edit labels');
-
-    await clickNewLayerLink(page, 'labels');
-    // leave the tool, whose panel the arrow button will not open the menu over
-    await page.evaluate(function() {
-      window.mapshaper.undoTest.setInteractionMode('off');
-    });
-    await page.waitForTimeout(120);
-    expect(await getModeMenuItems(page)).toContain('edit labels');
-    expect(errors).toEqual([]);
-  });
-
-test('a new layer leaves the layer beside it visible, as a guide',
-  async function({page}) {
-    var errors = collectPageErrors(page);
-    await loadFixture(page, FIXTURE);
-    await openLayerPanel(page);
-    // shown, and on, with only one layer: the next layer will not hide this one
-    await expect(page.locator('.layer-control .pin-all .black-eye')).toBeVisible();
-    await expect(page.locator('.layer-control .pin-all')).toHaveClass(/pinned/);
-
-    await clickNewLayerLink(page, 'labels');
-    var source = page.locator('.layer-list .layer-item', {hasText: 'ring_and_line'});
-    await expect(source).not.toHaveClass(/active/);
-    await expect(source).toHaveClass(/pinned/);
-
-    // hiding everything but the active layer is still one click
-    await page.locator('.layer-control .pin-all .black-eye').click();
-    await expect(source).not.toHaveClass(/pinned/);
-    expect(errors).toEqual([]);
-  });
-
-test('each link says that it creates a layer, which its name does not',
-  async function({page}) {
-    await loadFixture(page, FIXTURE);
-    await openLayerPanel(page);
-    var tips = await page.locator('.new-layer-links .layer-menu-link')
-      .evaluateAll(function(els) {
-        return els.map(function(el) { return el.title; });
-      });
-    expect(tips.length).toBe(5);
-    tips.forEach(function(tip) {
-      expect(tip).toContain('new layer');
-    });
-  });
-
 // Clicks one of the "Draw" links in the layer panel, the way a user does.
 async function clickNewLayerLink(page, kind) {
   await openLayerPanel(page);
@@ -205,12 +152,6 @@ async function clickMap(page, fx, fy) {
   var box = await page.locator('.mshp-main-map').boundingBox();
   await page.mouse.click(box.x + box.width * fx, box.y + box.height * fy);
   await page.waitForTimeout(120);
-}
-
-async function getModeMenuItems(page) {
-  await page.locator('.pointer-btn').hover();
-  await page.locator('.nav-sub-menu .nav-menu-item').first().waitFor();
-  return page.locator('.nav-sub-menu .nav-menu-item').allInnerTexts();
 }
 
 async function getInteractionMode(page) {

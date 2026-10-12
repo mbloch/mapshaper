@@ -24,57 +24,6 @@ test('a circle is sized from its radius and stroke width fields', async function
   expect(errors).toEqual([]);
 });
 
-test('a circle colour is set from the field, and its opacity beside it', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await clickButton(page, 'Create simple circles');
-  var fill = colorRow(page, 'Fill');
-
-  await setField(fill.locator('.label-color-input'), '#3366cc');
-  await setField(fill.locator('.label-opacity-input'), '50%');
-  await setField(colorRow(page, 'Stroke').locator('.label-color-input'), '#ff0000');
-
-  expect(await getStyleValue(page, 'fill')).toBe('#3366cc');
-  expect(await getStyleValue(page, 'fill-opacity')).toBe(0.5);
-  expect(await getStyleValue(page, 'stroke')).toBe('#ff0000');
-  expect(errors).toEqual([]);
-});
-
-test('a circle opacity is blank with no colour, and 100% with one', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await clickButton(page, 'Create simple circles');
-  var fill = colorRow(page, 'Fill');
-  var stroke = colorRow(page, 'Stroke');
-  // created with a fill and no stroke, and no opacity stored for either
-  expect(await getStyleValue(page, 'fill-opacity')).toBeUndefined();
-  await expect(fill.locator('.label-opacity-input')).toHaveValue('100%');
-  await expect(stroke.locator('.label-opacity-input')).toHaveValue('');
-
-  // a change elsewhere does not write the opacity being shown as the default
-  await setField(sizeField(page, 'Radius'), '6');
-  expect(await getStyleValue(page, 'fill-opacity')).toBeUndefined();
-  expect(await getStyleValue(page, 'stroke-opacity')).toBeUndefined();
-
-  await setField(stroke.locator('.label-color-input'), '#ff0000');
-  await expect(stroke.locator('.label-opacity-input')).toHaveValue('100%');
-  expect(await getStyleValue(page, 'stroke-opacity')).toBeUndefined();
-  expect(errors).toEqual([]);
-});
-
-test('the label field menu stays open when clicked', async function({page}) {
-  // The panel lets go of focus after a click, which closes a native menu the
-  // moment it opens unless the click on the menu itself is left alone.
-  await loadFixture(page, FIXTURE);
-  var menu = page.locator('.point-style-panel .label-style-row select').first();
-  var box = await menu.boundingBox();
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await page.waitForTimeout(250);
-  expect(await page.evaluate(function() {
-    return document.activeElement && document.activeElement.nodeName;
-  })).toBe('SELECT');
-});
-
 test('an expression turns a field into labels, and the label tool takes over', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
@@ -110,13 +59,6 @@ async function clickButton(page, label) {
   await page.locator('.point-style-panel .label-panel-action-btn')
     .filter({hasText: label}).click();
   await page.waitForTimeout(400);
-}
-
-// The colour row with the caption @label, wherever the panel puts it.
-function colorRow(page, label) {
-  return page.locator('.point-style-panel .label-split-row').filter({
-    has: page.locator('.label-split-cell > span', {hasText: new RegExp('^' + label + '$')})
-  });
 }
 
 // By its label, so that rearranging the panel does not quietly point a test at

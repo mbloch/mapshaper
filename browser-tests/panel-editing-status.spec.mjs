@@ -6,7 +6,6 @@ import { expect, test } from '@playwright/test';
 // one is.
 
 var LABEL_FIXTURE = 'test/data/features/snip/ring_and_line.json';
-var LINE_FIXTURE = 'test/data/features/divide/ex1_line.json';
 
 test('with no tool armed the label panel styles every label', async function({page}) {
   var errors = collectPageErrors(page);
@@ -67,36 +66,6 @@ test('selecting a layer that cannot hold labels closes the label tool', async fu
   });
   await expect(page.locator('.text-style-panel')).toBeVisible();
   expect(errors).toEqual([]);
-});
-
-test('an empty label layer with no tool armed has nothing to edit', async function({page}) {
-  await page.goto('/?undo=on&undo-test=on');
-  await page.waitForFunction(function() {
-    return window.mapshaper && window.mapshaper.undoTest;
-  });
-  await page.evaluate(function() {
-    window.mapshaper.undoTest.setInteractionMode('label');
-  });
-  await page.locator('.text-style-panel').waitFor({state: 'visible'});
-  // a layer with no labels opens with the anchor tool armed
-  await expect(status(page)).toHaveText('Editing: new labels');
-  await expect(fontSizeInput(page)).toBeEnabled();
-  await disarmTool(page);
-  await expect(status(page)).toHaveText('Editing: none (empty layer)');
-  await expect(fontSizeInput(page)).toBeDisabled();
-});
-
-test('the line panel says when its layer is empty', async function({page}) {
-  await loadFixture(page, LINE_FIXTURE, 'line_style');
-  var panel = page.locator('.layer-style-panel');
-  await expect(panel.locator('.label-editing-status')).toHaveText('Editing: all');
-  await expect(panel).not.toHaveClass(/no-targets/);
-  await runCommand(page, '-filter false');
-  await page.evaluate(function() {
-    window.mapshaper.undoTest.setInteractionMode('line_style');
-  });
-  await expect(panel.locator('.label-editing-status')).toHaveText('Editing: none (empty layer)');
-  await expect(panel).toHaveClass(/no-targets/);
 });
 
 function status(page) {

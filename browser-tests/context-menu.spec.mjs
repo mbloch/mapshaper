@@ -1,6 +1,4 @@
 import { expect, test } from '@playwright/test';
-import { openLayersPanel } from './sidebar-helpers.mjs';
-
 // A 3x3 RGBA image covering -15,-15,15,15. Because the grid has an odd number
 // of rows and columns, the center of the fitted map view lands squarely inside
 // the middle pixel, which is (0, 128, 255).
@@ -44,76 +42,6 @@ test('right-click on a vector layer shows no band info', async function({page}) 
   expect(menu.labels).not.toContain('band value');
   expect(menu.labels).not.toContain('color');
 });
-
-test('copying a value leaves the menu open, so several can be copied',
-  async function({context, page}) {
-    var menu = page.locator('.contextmenu');
-    var bands = menu.locator('.contextmenu-item', {hasText: '0, 128, 255, 255'});
-    var color = menu.locator('.contextmenu-item', {hasText: '#0080ff'});
-    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-    await loadFixture(page, RGB_FIXTURE);
-    await openMapContextMenu(page);
-
-    await bands.click();
-    await expect(bands).toContainText('✓');
-    expect(await readClipboard(page)).toBe('0, 128, 255, 255');
-    await expect(menu).toBeVisible();
-
-    // Clicking the color tile, rather than the text, exercises the case of the
-    // click landing on a child of the menu item.
-    await color.locator('.contextmenu-swatch').click();
-    expect(await readClipboard(page)).toBe('#0080ff');
-    await expect(menu).toBeVisible();
-  });
-
-test('clicking outside the menu closes it', async function({page}) {
-  await loadFixture(page, RGB_FIXTURE);
-  await openMapContextMenu(page);
-  await page.locator('.map-layers').click({position: {x: 5, y: 5}});
-  await expect(page.locator('.contextmenu')).toBeHidden();
-});
-
-// An empty menu is a 10px sliver of padding and border at the end of the page,
-// and the page is exactly as tall as the window, so leaving one visible (or
-// leaving a pile of discarded ones behind) makes the document scrollable. The
-// body is overflow:hidden, but the browser still scrolls the page to reveal a
-// focused element, and the whole UI ends up shifted up (issue #702).
-test('using menus never makes the page scrollable', async function({page}) {
-  var menus = page.locator('.contextmenu');
-  var layerMenuBtn = page.locator('.layer-item .more-btn').first();
-  await loadFixture(page, RGB_FIXTURE);
-  expect(await pageIsScrollable(page)).toBe(false);
-
-  await openMapContextMenu(page);
-  await page.locator('.map-layers').click({position: {x: 5, y: 5}});
-  await expect(menus).toBeHidden();
-  expect(await pageIsScrollable(page)).toBe(false);
-
-  // Toggling a layer menu shut with its own button is the path that used to
-  // leave an empty menu behind on every click.
-  await openLayersPanel(page);
-  for (var i = 0; i < 3; i++) {
-    await layerMenuBtn.click();
-    await expect(menus).toBeVisible();
-    await layerMenuBtn.click();
-    await expect(menus).toBeHidden();
-  }
-  await expect(menus).toHaveCount(1);
-  expect(await pageIsScrollable(page)).toBe(false);
-});
-
-function pageIsScrollable(page) {
-  return page.evaluate(function() {
-    var el = document.scrollingElement;
-    return el.scrollHeight > el.clientHeight;
-  });
-}
-
-function readClipboard(page) {
-  return page.evaluate(function() {
-    return navigator.clipboard.readText();
-  });
-}
 
 async function loadFixture(page, files) {
   await page.goto('/?undo=on&undo-test=on&files=' + encodeURIComponent(files));

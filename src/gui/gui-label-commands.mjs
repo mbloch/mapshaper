@@ -16,14 +16,16 @@ var DEFAULT_LABEL_LAYER_NAME = 'labels';
 // explicitly means refusing is more helpful than guessing.
 //
 //   lyr: the active layer, or null/undefined if there is none
+//   targetId: what target= names lyr with, or null to leave target= off
+//     (the GUI runs its commands on the active layer); its name if omitted
 // Returns:
 //   mode:         'existing' to join the target layer, 'new' for a layer of its own
 //   newLayerName: name for that new layer, when mode is 'new'
 //   target:       the layer the command runs against, which is the active layer
 //     either way. A new layer cannot be the command's target, because target=
 //     is resolved before the command runs and the layer does not exist yet.
-export function getLabelTarget(lyr, layerHasLabels) {
-  var name = lyr && lyr.name || null;
+export function getLabelTarget(lyr, layerHasLabels, targetId) {
+  var name = targetId !== undefined ? targetId : lyr && lyr.name || null;
   if (!lyr) {
     return {mode: 'new', newLayerName: DEFAULT_LABEL_LAYER_NAME, target: null};
   }

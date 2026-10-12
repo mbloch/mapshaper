@@ -20,12 +20,15 @@ import { getIconShapes, getIconShapeGlyph, getDefaultStrokeWidth } from './gui-i
 import { isNytUser } from './gui-nyt';
 
 // The symbol tool's panel. With symbols selected it restyles them, through
-// -style ids=; with none, it sets the style of the next symbol placed, and
-// shows the section for the kind of symbol the toolbar is ready to place.
+// -style ids=. With none, and a tool armed, it sets the style of the next
+// symbol placed, and shows the section for the kind of symbol the toolbar is
+// ready to place; with no tool armed, it restyles every symbol in the layer,
+// as the label panel restyles every label.
 //
 // opts:
 //   getTarget()        the layer the symbols are in
 //   getSelectedIds()   the selected symbols
+//   getAllIds()        every symbol in the layer
 //   getArmed()         null, 'icon' or 'curve'
 //   getNewStyle()      {icon, curve}: the style of the next symbol, which the
 //                      panel changes in place
@@ -255,9 +258,13 @@ export function SymbolPanel(gui, opts) {
   function getState() {
     var lyr = opts.getTarget();
     var ids = opts.getSelectedIds();
+    var all = ids.length === 0 && !opts.getArmed();
     var records = lyr && lyr.data ? lyr.data.getRecords() : [];
-    var o = {
+    var o;
+    if (all) ids = opts.getAllIds();
+    o = {
       mode: ids.length > 0 ? 'selection' : 'new',
+      all: all,
       target: lyr,
       ids: ids,
       icons: [],
@@ -275,8 +282,12 @@ export function SymbolPanel(gui, opts) {
     if (!panel.visible()) return;
     state = getState();
     armed = opts.getArmed();
-    status.text(formatEditingStatus({selected: state.ids.length, newShapes: 'symbols'}));
-    clearLink.classed('hidden', state.mode != 'selection');
+    status.text(formatEditingStatus({
+      selected: state.all ? 0 : state.ids.length,
+      total: state.all ? state.ids.length : 0,
+      newShapes: armed ? 'symbols' : null
+    }));
+    clearLink.classed('hidden', state.mode != 'selection' || state.all);
     toggle(iconSection, state.mode == 'selection' ? state.icons.length > 0 : armed != 'curve');
     toggle(curveSection, state.mode == 'selection' ? state.curves.length > 0 : armed == 'curve');
     updateIconControls();
@@ -323,10 +334,10 @@ export function SymbolPanel(gui, opts) {
     var o, closed;
     if (state.mode == 'new') {
       o = style;
-      closed = true;
+      closed = false;
     } else {
       o = {};
-      ['stroke', 'strokeWidth', 'fill'].forEach(function(key) {
+      ['stroke', 'strokeWidth'].forEach(function(key) {
         o[key] = commonValue(state.curves, function(rec) { return getCurveStyle(rec)[key]; });
       });
       // the ends, from the open curves: a closed one has none
@@ -336,7 +347,10 @@ export function SymbolPanel(gui, opts) {
       o.arrowSize = commonValue(getOpenCurves().filter(curveHasHeads), function(rec) {
         return getShownArrowSize(getCurveStyle(rec));
       });
-      closed = state.curves.every(curveIsClosed);
+      o.fill = commonValue(state.curves.filter(curveIsClosed), function(rec) {
+        return getCurveStyle(rec).fill;
+      });
+      closed = state.curves.some(curveIsClosed);
     }
     curveStroke.showColor(o.stroke || '');
     curveWidthField.setValue(o.strokeWidth === null ? '' : o.strokeWidth);
@@ -354,8 +368,8 @@ export function SymbolPanel(gui, opts) {
     arrowSizeField.setDisabled(o.arrowheads == 'none');
     fadeField.setValue(o.fade === null ? '' : Math.round(o.fade * 1000) / 10);
     curveFill.showColor(o.fill || '');
-    // Only a closed curve has an inside to fill; arrowheads go on the ends of
-    // an open one. A new curve might be either.
+    // Only a closed curve has an inside to fill, and closed curves are rare,
+    // so the row waits for one; arrowheads go on the ends of an open one.
     curveFill.row.classed('hidden', !closed);
     var noEnds = state.mode == 'selection' && state.curves.every(curveIsClosed);
     arrowShapeRow.classed('hidden', noEnds);
@@ -546,31 +560,27 @@ export function SymbolPanel(gui, opts) {
       (groups[key] = groups[key] || {fields: fields, ids: []}).ids.push(id);
     });
     Object.keys(groups).forEach(function(key) {
-      cmds.push(getSymbolStyleCommand(groups[key].fields, groups[key].ids, getTargetName()));
+      cmds.push(getSymbolStyleCommand(groups[key].fields, groups[key].ids));
     });
     run(cmds.join(' '), title);
   }
 
   function runStyle(fields, ids, title) {
     if (ids.length === 0) return update();
-    run(getSymbolStyleCommand(fields, ids, getTargetName()), title);
+    run(getSymbolStyleCommand(fields, ids), title);
   }
 
   function run(cmd, title) {
-    var ids = state.ids.slice();
+    var ids = state.all ? null : state.ids.slice();
     if (!cmd) return update();
     runGuiEditCommand(gui, cmd, {
       title: title,
       onSuccess: function() {
         var hit = gui.map.getHitControl && gui.map.getHitControl();
-        if (hit) hit.setSelectionIds(ids);
+        if (hit && ids) hit.setSelectionIds(ids);
         update();
       },
       onError: update
     });
-  }
-
-  function getTargetName() {
-    return state.target && state.target.name || null;
   }
 }

@@ -432,6 +432,14 @@ export function LayerControl(gui) {
           model.selectLayer(target.layer, target.dataset);
         }
         gui.interaction.setMode('label');
+      } else if (internal.layerHasSvgSymbols(target.layer)) {
+        // Likewise a symbol layer, which the point style panel has no
+        // controls for
+        if (!map.isActiveLayer(target.layer)) {
+          target.layer.hidden = false;
+          model.selectLayer(target.layer, target.dataset);
+        }
+        gui.interaction.setMode('symbols');
       } else if (target.layer.geometry_type == 'point' && gui.pointStyleTool) {
         gui.pointStyleTool.open(target.layer, target.dataset);
       } else if (gui.layerStyleTool) {
@@ -469,6 +477,8 @@ export function LayerControl(gui) {
         menuEvent.styleLayer = styleLayer;
         if (internal.layerHasLabels(target.layer)) {
           menuEvent.styleLayerName = 'edit labels';
+        } else if (internal.layerHasSvgSymbols(target.layer)) {
+          menuEvent.styleLayerName = 'edit symbols';
         }
       }
       menuEvent.contextMenuId = 'layer-' + id;

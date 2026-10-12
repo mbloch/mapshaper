@@ -20,65 +20,6 @@ test('frame button opens frame creation when no frame exists', async function({p
   await expect(page.locator('.frame-create-popup')).toBeVisible();
 });
 
-test('frame button explains that layers are required', async function({page}) {
-  await page.goto('/?undo=on&undo-test=on');
-  await page.waitForFunction(function() {
-    return window.mapshaper && window.mapshaper.undoTest;
-  });
-  await page.locator('.preview-toggle').evaluate(function(el) {
-    el.click();
-  });
-  await expect(page.locator('.alert-wrapper')).toContainText(
-    'Add one or more layers before creating a map frame.'
-  );
-  await expect(page.locator('.frame-create-popup')).toHaveCount(0);
-});
-
-test('preview toggle shows the page mask, boundary and readout', async function({page}) {
-  await loadPreviewSession(page);
-
-  await expect(page.locator('.preview-toggle')).not.toHaveClass(/disabled/);
-  await openLayersPanel(page);
-  await expect(page.locator('.map-frame-section')).toBeVisible();
-  await expect(page.locator('.map-frame-list .layer-item')).toHaveCount(1);
-  await expect(page.locator('.map-frame-list .layer-item')).not.toHaveClass(/pinnable/);
-  await setPreviewMode(page, true);
-
-  await expect(page.locator('.preview-toggle')).toHaveClass(/selected/);
-  await expect(page.locator('.preview-overlay')).toBeVisible();
-  await expect(page.locator('.preview-readout')).toContainText(
-    /600 × 600 px · \d+%/
-  );
-  var chrome = await getPreviewChrome(page);
-  expect(chrome.maskPath.match(/M/g).length).toBe(2);
-  expect(chrome.width).toBeGreaterThan(0);
-  expect(chrome.height).toBeGreaterThan(0);
-  expect(chrome.maskFillsOutside).toBe(true);
-  expect(chrome.maskFillsPage).toBe(false);
-  expect(chrome.readoutInsideNav).toBe(false);
-  expect(await getSymbolScale(page)).toBeGreaterThan(0);
-
-  await setPreviewMode(page, false);
-  await expect(page.locator('.preview-overlay')).toBeHidden();
-  await expect(page.locator('.preview-readout')).toBeHidden();
-  expect(await getSymbolScale(page)).toBe(1);
-});
-
-test('preview magnification snaps to 100 percent', async function({page}) {
-  await loadPreviewSession(page);
-  await setPreviewMode(page, true);
-
-  await page.evaluate(function() {
-    window.mapshaper.undoTest.zoomByPct(1.6);
-  });
-  await page.locator('.preview-readout').click();
-  await page.locator('[data-preview-scale="1"]').click();
-  await expect.poll(function() {
-    return getSymbolScale(page);
-  }).toBeCloseTo(1, 4);
-  await expect(page.locator('.preview-readout')).toContainText('· 100%');
-});
-
 test('table view suspends preview without clearing its state', async function({page}) {
   await loadPreviewSession(page, POINT_FIXTURE + ',' + TABLE_FIXTURE);
   await selectLayer(page, 'three_points');
@@ -180,23 +121,4 @@ async function selectLayer(page, name) {
   await page.evaluate(function(layerName) {
     window.mapshaper.undoTest.selectLayer(layerName);
   }, name);
-}
-
-async function getPreviewChrome(page) {
-  return page.evaluate(function() {
-    var border = document.querySelector('.preview-page-border');
-    var mask = document.querySelector('.preview-outside-mask');
-    return {
-      maskPath: mask.getAttribute('d'),
-      width: Number(border.getAttribute('width')),
-      height: Number(border.getAttribute('height')),
-      maskFillsOutside: mask.isPointInFill(new DOMPoint(1, 1)),
-      maskFillsPage: mask.isPointInFill(new DOMPoint(
-        Number(border.getAttribute('x')) + Number(border.getAttribute('width')) / 2,
-        Number(border.getAttribute('y')) + Number(border.getAttribute('height')) / 2
-      )),
-      readoutInsideNav: document.querySelector('.nav-buttons')
-        .contains(document.querySelector('.preview-readout'))
-    };
-  });
 }

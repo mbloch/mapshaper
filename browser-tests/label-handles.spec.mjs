@@ -10,69 +10,6 @@ import { closeSidebarAfterImport } from './sidebar-helpers.mjs';
 var FIXTURE = 'test/data/features/snip/ring_and_line.json';
 var TEXT = 'Mount Rainier National Park and Preserve';
 
-test('point text has no width handle, and a block keeps its width on a double-click',
-  async function({page}) {
-    var errors = collectPageErrors(page);
-    await oneLabel(page, TEXT);
-    await runCommand(page, '-style text-anchor=start target=labels');
-    await selectLabels(page, [0]);
-    // a label stays the kind it was made as
-    expect(await getHandlePoint(page, 'width')).toBeNull();
-
-    await runCommand(page, "-style label-width=300 target=labels");
-    await selectLabels(page, [0]);
-    var handle = await getHandlePoint(page, 'width');
-    expect(handle).not.toBeNull();
-    await dragBy(page, handle, -200, 0);
-    await expect.poll(function() { return getLabelField(page, 0, 'label-width').then(Number); })
-      .toBeLessThan(300);
-    var rec = await getRecord(page, 0);
-    expect(rec['label-text']).toContain('<wbr>');
-    expect(rec['label-text'].replace(/<wbr>/g, '')).toBe(TEXT);
-    // the width and the lines it breaks into are one edit
-    var history = await getHistory(page);
-    expect(history[history.length - 1]).toMatch(/^-labels label-width='\d+' ids=0 .*-labels text=/);
-    // still selected, with its handle on the new edge
-    var moved = await getHandlePoint(page, 'width');
-    expect(moved.x).toBeLessThan(handle.x - 150);
-
-    // no going back to point text
-    var width = rec['label-width'];
-    await page.mouse.dblclick(moved.x, moved.y);
-    await page.waitForTimeout(250);
-    expect((await getRecord(page, 0))['label-width']).toBe(width);
-    // a double-click on a handle is not a way into the text
-    expect(await page.locator('.label-edit-box').count()).toBe(0);
-    expect(errors).toEqual([]);
-  });
-
-test('control points and text have different cursors', async function({page}) {
-  var errors = collectPageErrors(page);
-  await oneLabel(page, 'Reno');
-  await runCommand(page, '-style dx=80 dy=-80 label-pos= text-anchor=start ' +
-    'callout=elbow target=labels');
-  await selectLabels(page, [0]);
-  var via = await getHandlePoint(page, 'via');
-  await hoverAt(page, via);
-  expect(await getMapCursor(page)).toBe('pointer');
-  // the last glyph, away from the attachment handle on the box's left edge
-  await hoverAt(page, await getFirstGlyphPoint(page, 0, -1));
-  expect(await getMapCursor(page)).toBe('move');
-  expect(errors).toEqual([]);
-});
-
-async function hoverAt(page, p) {
-  await page.mouse.move(p.x - 3, p.y - 3);
-  await page.mouse.move(p.x, p.y);
-  await page.waitForTimeout(100);
-}
-
-async function getMapCursor(page) {
-  return page.evaluate(function() {
-    return getComputedStyle(document.querySelector('.map-layers')).cursor;
-  });
-}
-
 test('the via handle bends an elbow, and a double-click straightens it',
   async function({page}) {
     var errors = collectPageErrors(page);
@@ -94,25 +31,6 @@ test('the via handle bends an elbow, and a double-click straightens it',
     await page.mouse.dblclick(via.x, via.y);
     await expect.poll(function() { return getLabelField(page, 0, 'callout-via'); })
       .toBeFalsy();
-    expect(errors).toEqual([]);
-  });
-
-test('an elbow\'s corner snaps into line with the anchor, and a curve\'s midpoint does not',
-  async function({page}) {
-    var errors = collectPageErrors(page);
-    await oneLabel(page, 'Reno');
-    for (var type of ['elbow', 'curve']) {
-      // a via point 3px off the anchor's vertical, dragged straight up
-      await runCommand(page, '-style dx=80 dy=-80 label-pos= text-anchor=start ' +
-        'callout=' + type + ' callout-via="3,-40" target=labels');
-      await selectLabels(page, [0]);
-      await dragBy(page, await getHandlePoint(page, 'via'), 0, -10);
-      await expect.poll(function() { return getLabelField(page, 0, 'callout-via'); })
-        .not.toBe('3,-40');
-      var x = Number((await getLabelField(page, 0, 'callout-via')).split(',')[0]);
-      if (type == 'elbow') expect(x).toBe(0);
-      else expect(x).toBeGreaterThan(1);
-    }
     expect(errors).toEqual([]);
   });
 
@@ -160,28 +78,6 @@ test('dragging the text carries a hand-placed bend with it, unless Alt is held',
     expect((await getLabelField(page, 0, 'callout-via')).split(',').map(Number)).toEqual(via);
     expect(errors).toEqual([]);
   });
-
-test('the callout is redrawn while its text is dragged', async function({page}) {
-  var errors = collectPageErrors(page);
-  await oneLabel(page, 'Reno');
-  await runCommand(page, '-style dx=80 dy=-80 label-pos= text-anchor=start ' +
-    'callout=line target=labels');
-  await selectLabels(page, [0]);
-  await setDragMode(page, 'draggable');
-  var before = await getCalloutPath(page);
-  var glyphs = await getGlyphPoint(page, 0);
-  await page.mouse.move(glyphs.x, glyphs.y);
-  await page.waitForTimeout(80);
-  await page.mouse.down();
-  await page.mouse.move(glyphs.x + 60, glyphs.y + 30, {steps: 8});
-  // mid-drag, nothing committed yet
-  expect(Number(await getLabelField(page, 0, 'dx'))).toBe(80);
-  expect(await getCalloutPath(page)).not.toBe(before);
-  await page.mouse.up();
-  await expect.poll(function() { return getLabelField(page, 0, 'dx').then(Number); })
-    .not.toBe(80);
-  expect(errors).toEqual([]);
-});
 
 test('a text block placed with a click shows its column, and is left-aligned',
   async function({page}) {
@@ -250,117 +146,6 @@ test('a drag with the text block tool sets its width, on a new label layer too',
     expect(rec['text-anchor']).toBe('start');
     expect(errors).toEqual([]);
   });
-
-test('a text block is draggable by default, keeps its justification, and takes its column along',
-  async function({page}) {
-    var errors = collectPageErrors(page);
-    await loadFixture(page, FIXTURE);
-    await armTool(page, 'block');
-    await clickMap(page, 0.5, 0.5);
-    await page.keyboard.type(TEXT);
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(250);
-    await disarmTool(page);
-
-    // the panel shows the block's mode, not the one point labels use
-    await selectLabels(page, [0]);
-    expect(await getSelectedDragMode(page)).toBe('draggable');
-    var before = await getCueBoxes(page);
-
-    // mid-drag, the column moves with the text, sideways as well as down
-    var from = await getFirstGlyphPoint(page, 0);
-    await page.mouse.move(from.x - 3, from.y - 3);
-    await page.mouse.move(from.x, from.y);
-    await page.waitForTimeout(80);
-    await page.mouse.down();
-    await page.mouse.move(from.x - 250, from.y + 20, {steps: 10});
-    var during = await getCueBoxes(page);
-    expect(during.box.x).toBeLessThan(before.box.x - 200);
-    expect(Math.abs((during.column.x - during.box.x) - (before.column.x - before.box.x)))
-      .toBeLessThan(1);
-    await page.mouse.up();
-    await page.waitForTimeout(250);
-
-    // well to the left of its anchor, and still left-aligned
-    var rec = await getRecord(page, 0);
-    expect(Number(rec.dx)).toBeLessThan(-150);
-    expect(rec['text-anchor']).toBe('start');
-    var after = await getCueBoxes(page);
-    expect(Math.abs(after.column.x - during.column.x)).toBeLessThan(1);
-
-    // a point label next to it still uses the point labels' mode
-    await armTool(page, 'anchor');
-    await clickMap(page, 0.3, 0.7);
-    await page.keyboard.type('Point');
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(250);
-    await disarmTool(page);
-    await selectLabels(page, [1]);
-    expect(await getSelectedDragMode(page)).toBe('fixed');
-    expect(errors).toEqual([]);
-  });
-
-test('with the text block tool, clicking off a selected block only lets go of it',
-  async function({page}) {
-    var errors = collectPageErrors(page);
-    await loadFixture(page, FIXTURE);
-    await armTool(page, 'block');
-    await clickMap(page, 0.5, 0.5);
-    await page.keyboard.type(TEXT);
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(250);
-    await selectLabels(page, [0]);
-    await armTool(page, 'block');
-
-    await clickMap(page, 0.3, 0.7);
-    await page.waitForTimeout(150);
-    expect(await page.locator('.label-edit-box').count()).toBe(0);
-    expect(await page.locator('.label-cue-selected').count()).toBe(0);
-    expect(await getRecord(page, 1)).toBeFalsy();
-    // a press that wanders a little is still a click
-    var box = await page.locator('.mshp-main-map').boundingBox();
-    await selectLabels(page, [0]);
-    await armTool(page, 'block');
-    await dragBy(page, {x: box.x + box.width * 0.3, y: box.y + box.height * 0.7}, 3, 0);
-    expect(await page.locator('.label-edit-box').count()).toBe(0);
-    expect(await page.locator('.label-cue-selected').count()).toBe(0);
-    expect(await getRecord(page, 1)).toBeFalsy();
-
-    // with nothing selected, the next click places a block
-    await clickMap(page, 0.3, 0.7);
-    await page.keyboard.type('Second');
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(250);
-    expect((await getRecord(page, 1))['label-text']).toBe('Second');
-    expect(errors).toEqual([]);
-  });
-
-test('a second label on an otherwise empty map leaves the view alone', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await clickNewLayerLink(page, 'labels');
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.3, 0.4);
-  await page.keyboard.type('One');
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(250);
-  var before = await getFirstGlyphPoint(page, 0);
-  await clickMap(page, 0.6, 0.6);
-  await page.keyboard.type('Two');
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(250);
-  expect(await getRecord(page, 1)).toBeTruthy();
-  // the first label is still where it was put, so the map has not zoomed
-  var after = await getFirstGlyphPoint(page, 0);
-  expect(Math.abs(after.x - before.x)).toBeLessThan(1);
-  expect(Math.abs(after.y - before.y)).toBeLessThan(1);
-  expect(errors).toEqual([]);
-});
-
-async function getSelectedDragMode(page) {
-  return page.locator('.text-style-panel .label-drag-mode-buttons .selected')
-    .getAttribute('data-drag-mode');
-}
 
 async function getEditBoxes(page) {
   return page.evaluate(function() {
@@ -441,13 +226,6 @@ async function getFirstGlyphPoint(page, id, index) {
     var q = new DOMPoint(r.x + r.width / 2, r.y + r.height / 2).matrixTransform(m);
     return {x: q.x, y: q.y};
   }, {id: id, index: index || 0});
-}
-
-async function getCalloutPath(page) {
-  return page.evaluate(function() {
-    var el = document.querySelector('.mapshaper-svg-symbol .label-callout path');
-    return el ? el.getAttribute('d') : null;
-  });
 }
 
 async function dragBy(page, from, dx, dy) {

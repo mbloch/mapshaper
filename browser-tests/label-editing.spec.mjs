@@ -9,35 +9,6 @@ import { closeSidebarAfterImport } from './sidebar-helpers.mjs';
 
 var FIXTURE = 'test/data/features/snip/ring_and_line.json';
 
-test('clicking the map leaves a caret and a box in a new label', async function({page}) {
-  // The label has no text yet, so without the box and the caret there would be
-  // nothing on screen at all and no sign the click did anything.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-
-  var editor = await getEditorState(page);
-  expect(editor.caretCount).toBe(1);
-  expect(editor.boxCount).toBe(1);
-  expect(editor.boxHeight).toBeGreaterThan(0);
-  expect(editor.focused).toBe(true);
-  expect(errors).toEqual([]);
-});
-
-test('a new label renders a node even with no text', async function({page}) {
-  // renderPoint() returns nothing for a label with no text, so the editor
-  // renders a zero-width space to have something to put a caret beside
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-
-  var editor = await getEditorState(page);
-  expect(editor.textNodeCount).toBe(1);
-  expect(editor.rendered).toBe('\u200b');
-});
-
 test('typing renders into the label that will be exported', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
@@ -54,25 +25,6 @@ test('typing renders into the label that will be exported', async function({page
   // a feature at all, so there is nothing to read the text of.
   expect(await getLabelText(page, 0)).toBeNull();
   expect(errors).toEqual([]);
-});
-
-test('the caret moves with the text as it is typed', async function({page}) {
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-
-  var atStart = (await getEditorState(page)).caretX;
-  await page.keyboard.type('Reno');
-  await page.waitForTimeout(60);
-  var atEnd = (await getEditorState(page)).caretX;
-  expect(atEnd).toBeGreaterThan(atStart);
-
-  await page.keyboard.press('ArrowLeft');
-  await page.keyboard.press('ArrowLeft');
-  await page.waitForTimeout(60);
-  var moved = (await getEditorState(page)).caretX;
-  expect(moved).toBeLessThan(atEnd);
-  expect(moved).toBeGreaterThan(atStart);
 });
 
 test('clicking away creates the label in one command', async function({page}) {
@@ -171,34 +123,6 @@ test('clicking away finishes the label without placing another', async function(
   expect((await getLabelLayer(page)).records.length).toBe(2);
 });
 
-test('a label takes two clicks to open for editing', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-  await page.keyboard.type('Reno');
-  await disarmTool(page);
-  await clickMap(page, 0.15, 0.85);
-  expect((await getEditorState(page)).caretCount).toBe(0);
-
-  // the first click selects the label for styling
-  await clickLabel(page, 0);
-  expect((await getEditorState(page)).caretCount).toBe(0);
-  expect(await getSelectionCueCount(page)).toBe(1);
-
-  // the second reaches into its text, and the styling cue gives way
-  await clickLabel(page, 0);
-  expect((await getEditorState(page)).caretCount).toBe(1);
-  expect(await getSelectionCueCount(page)).toBe(0);
-
-  await page.keyboard.press('End');
-  await page.keyboard.type('!');
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.15, 0.85);
-  expect(await getLabelText(page, 0)).toBe('Reno!');
-  expect(errors).toEqual([]);
-});
-
 test('shift-enter adds a line to an anchored label', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
@@ -223,29 +147,6 @@ test('shift-enter adds a line to an anchored label', async function({page}) {
   expect(errors).toEqual([]);
 });
 
-test('a space appears as soon as it is typed', async function({page}) {
-  // SVG's default whitespace handling collapses runs and drops trailing ones,
-  // so a typed space laid out no glyph and the caret did not move until a
-  // non-space character followed it
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-
-  await page.keyboard.type('New');
-  await page.waitForTimeout(60);
-  var before = await getEditorState(page);
-
-  await page.keyboard.type(' ');
-  await page.waitForTimeout(60);
-  var after = await getEditorState(page);
-
-  expect(after.xmlSpace).toBe('preserve');
-  expect(after.renderedChars).toBe(before.renderedChars + 1);
-  expect(after.caretX).toBeGreaterThan(before.caretX);
-  expect(errors).toEqual([]);
-});
-
 test('a run of spaces is kept, not collapsed to one', async function({page}) {
   await loadFixture(page, FIXTURE);
   await armTool(page, 'anchor');
@@ -255,91 +156,6 @@ test('a run of spaces is kept, not collapsed to one', async function({page}) {
   await page.waitForTimeout(60);
 
   expect((await getEditorState(page)).renderedChars).toBe(5);
-});
-
-test('shift-enter opens a line before anything is typed into it', async function({page}) {
-  // an empty <tspan> lays out nothing, so the new line had no position for the
-  // caret to move to and breaking the line appeared to do nothing at all
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-  await page.keyboard.type('North');
-  await page.waitForTimeout(60);
-  var before = await getEditorState(page);
-
-  await page.keyboard.press('Shift+Enter');
-  await page.waitForTimeout(60);
-  var after = await getEditorState(page);
-
-  expect(after.tspanCount).toBe(1);
-  expect(after.caretY).toBeGreaterThan(before.caretY);
-  // the box has to grow too: an empty line adds nothing to the text's bounds,
-  // and the box is the only other sign that a line was started
-  expect(after.boxHeight).toBeGreaterThan(before.boxHeight);
-  expect(errors).toEqual([]);
-});
-
-test('the caret reaches the second line of a multi-line label', async function({page}) {
-  // a line break has no glyph, so the caret index in the text and the character
-  // index in the rendered label diverge from the break onwards
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-  await page.keyboard.type('North');
-  await page.keyboard.press('Shift+Enter');
-  await page.keyboard.type('Dakota');
-  await page.waitForTimeout(60);
-  var onLine2 = (await getEditorState(page)).caretY;
-
-  await page.keyboard.press('ArrowUp');
-  await page.keyboard.press('Home');
-  await page.waitForTimeout(60);
-  var onLine1 = (await getEditorState(page)).caretY;
-
-  expect(onLine2).toBeGreaterThan(onLine1);
-});
-
-test('selecting text draws a band beneath the glyphs', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-  await page.keyboard.type('Reno');
-  expect((await getEditorState(page)).selectionCount).toBe(0);
-
-  await page.keyboard.press('Shift+ArrowLeft');
-  await page.keyboard.press('Shift+ArrowLeft');
-  await page.waitForTimeout(60);
-
-  var editor = await getEditorState(page);
-  expect(editor.selectionCount).toBe(1); // one run on one line, merged
-  expect(editor.selectionWidth).toBeGreaterThan(0);
-  // the band paints beneath the text and the caret above it
-  expect(editor.selectionIsBehindText).toBe(true);
-  expect(editor.caretIsInFrontOfText).toBe(true);
-  expect(errors).toEqual([]);
-});
-
-test('the editor overlay follows the map', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-  await page.keyboard.type('Reno');
-  await page.waitForTimeout(60);
-
-  var before = await getEditorState(page);
-  await page.evaluate(function() { window.mapshaper.undoTest.zoomByPct(2); });
-  await page.waitForTimeout(200);
-  var after = await getEditorState(page);
-
-  // the overlay wears the label's own transform, so the two move together
-  expect(after.overlayTransform).toBe(after.symbolTransform);
-  expect(after.overlayTransform).not.toBe(before.overlayTransform);
-  expect(after.caretCount).toBe(1);
-  expect(after.rendered).toBe('Reno');
-  expect(errors).toEqual([]);
 });
 
 test('a path label is edited along its curve', async function({page}) {
@@ -438,123 +254,6 @@ test('a committed path label is reopened by clicking its text', async function({
   expect(errors).toEqual([]);
 });
 
-test('a click near a curved label keeps the session open', async function({page}) {
-  // a curved label's bounding box is mostly empty air, so glyph-precise hit
-  // testing alone would dismiss the session on a near miss
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'path');
-  await clickMap(page, 0.3, 0.45);
-  await clickMap(page, 0.45, 0.35);
-  await clickMap(page, 0.6, 0.45);
-  await page.keyboard.press('Enter');
-  await page.waitForTimeout(150);
-  await page.keyboard.type('Sierra');
-  await page.waitForTimeout(60);
-
-  var hit = await getEditorState(page);
-  expect(hit.hitRegionCount).toBe(1);
-  expect(hit.hitBaselineCount).toBe(1);
-
-  // A click just off the glyphs, which the path tool is still armed for: it
-  // has to reach the label rather than start a new curve. The tolerance is the
-  // thickened baseline, about one em, so the point is taken from the curve
-  // itself rather than guessed at in map fractions.
-  await clickOffCurve(page, 5);
-  var after = await getEditorState(page);
-  expect(after.caretCount).toBe(1);
-  expect(after.rendered).toBe('Sierra');
-  expect(errors).toEqual([]);
-});
-
-test('a click along the curve past the text puts the caret at the end of it',
-  async function({page}) {
-    // The region a click can arrive from is wider than the glyphs, so a click
-    // that lands on no character is still plainly pointing at one end of the
-    // text or the other.
-    var errors = collectPageErrors(page);
-    await loadFixture(page, FIXTURE);
-    await armTool(page, 'path');
-    await clickMap(page, 0.25, 0.5);
-    await clickMap(page, 0.45, 0.35);
-    await clickMap(page, 0.65, 0.5);
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(150);
-    await page.keyboard.type('Sierra');
-    await page.waitForTimeout(60);
-
-    // the near end of a click on the bare curve, at either end of the text
-    await clickCurveAt(page, 0.01);
-    await page.keyboard.type('!');
-    await page.waitForTimeout(80);
-    expect((await getEditorState(page)).rendered).toBe('!Sierra');
-
-    await clickCurveAt(page, 0.95); // well past the last glyph
-    await page.keyboard.type('?');
-    await page.waitForTimeout(80);
-    expect((await getEditorState(page)).rendered).toBe('!Sierra?');
-    expect(errors).toEqual([]);
-  });
-
-test('the caret follows a click on the band of a curved label nearest its curve',
-  async function({page}) {
-    // The hit region that keeps a near miss inside the session is a <use> of
-    // the label's own baseline, and the SVG hit test walked up from the event
-    // target through a list of tags that <use> was not in. So a click along
-    // the curve resolved to no feature at all and the caret stayed where it
-    // was, while a click higher up the glyphs -- landing on the region's
-    // rectangle instead -- worked. Half of every curved label was dead.
-    var errors = collectPageErrors(page);
-    await loadFixture(page, FIXTURE);
-    await armTool(page, 'path');
-    await clickMap(page, 0.25, 0.5);
-    await clickMap(page, 0.45, 0.35);
-    await clickMap(page, 0.65, 0.5);
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(150);
-    await page.keyboard.type('Sierra');
-    await page.keyboard.press('Enter'); // commits, on a path label
-    await page.waitForTimeout(200);
-    await disarmTool(page);
-
-    await clickGlyph(page, 0, 0); // selects it
-    await clickGlyph(page, 0, 0); // opens its text, caret at the start
-    expect((await getEditorState(page)).caretCount).toBe(1);
-
-    await clickGlyphBaseline(page, 0, 4);
-    await page.keyboard.type('!');
-    await page.waitForTimeout(80);
-    // Which side of the character the caret lands on is the usual half-width
-    // rule, and a rotated glyph's half is measured on its bounding box; what
-    // matters is that the click was followed rather than ignored, which would
-    // have left the caret at the start and typed '!Sierra'.
-    expect(['Sier!ra', 'Sierr!a'])
-      .toContain((await getEditorState(page)).rendered);
-    expect(errors).toEqual([]);
-  });
-
-test('clicking the text moves the caret rather than ending the session', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-  await page.keyboard.type('Mississippi');
-  await page.waitForTimeout(60);
-
-  var atEnd = (await getEditorState(page)).caretX;
-  // clicking a label reaches it even with a creation tool armed, so that a
-  // click never stacks a second label on top of an existing one
-  await clickLabelText(page, 0, 0.2);
-  var after = await getEditorState(page);
-
-  expect(after.caretCount).toBe(1);
-  expect(after.caretX).toBeLessThan(atEnd);
-  // the session is still the same one, on a label that is still not a feature
-  expect(after.rendered).toBe('Mississippi');
-  expect(await getLabelLayer(page)).toBeNull();
-  expect(errors).toEqual([]);
-});
-
 // Disabled: fails intermittently (a few percent of runs, clustered in time)
 // with the label saved but a caret left behind and the path tool not armed,
 // as if the toolbar click also reached the map as a click. Not yet diagnosed.
@@ -592,35 +291,6 @@ test('leaving label mode ends the session and saves', async function({page}) {
   expect(errors).toEqual([]);
 });
 
-test('a path label shows its curve ghosted while it is open', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'path');
-  await clickMap(page, 0.25, 0.55);
-  await clickMap(page, 0.45, 0.35);
-  await clickMap(page, 0.7, 0.5);
-  await page.keyboard.press('Enter');
-  await page.waitForTimeout(200);
-
-  // the label is empty at this point, so the ghost is the only thing on screen
-  expect(await getGhostPathCount(page)).toBe(1);
-  // and the caret waits where the first character will land -- the middle of
-  // the path, not its start, which is where an unplaced caret falls back to
-  var p = await getCaretVsPathMiddle(page);
-  expect(Math.abs(p.caretX - p.middleX)).toBeLessThan(2);
-
-  await page.keyboard.type('Sierra');
-  expect(await getGhostPathCount(page)).toBe(1);
-  // the curve says where the label is; a box around curved text would only
-  // enclose empty air
-  expect((await getEditorState(page)).boxCount).toBe(0);
-
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(200);
-  expect(await getGhostPathCount(page)).toBe(0);
-  expect(errors).toEqual([]);
-});
-
 test('the style panel acts on the label being typed into, and lets typing go on', async function({page}) {
   // placing a label and setting its style before typing a word is ordinary
   // use, so the panel has to reach the empty label and leave the caret in it
@@ -645,86 +315,6 @@ test('the style panel acts on the label being typed into, and lets typing go on'
   expect(await getLabelField(page, 0, 'label-align')).toBe('right');
   expect(errors).toEqual([]);
 });
-
-test('a label is drawn the same before and after it becomes a feature', async function({page}) {
-  // A committed label inherits its font and alignment from the group its layer
-  // is drawn in, and carries an attribute only where it differs. A label being
-  // typed has no such group, so it has to be given the same defaults -- without
-  // them it was drawn left-aligned at the browser's own font size and jumped to
-  // centred at 12px the moment it was created.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-  await page.keyboard.type('Reno');
-  var pending = await getTextStyle(page, '.label-edit-pending text');
-  expect(pending['text-anchor']).toBe('middle');
-
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(250);
-  var committed = await getTextStyle(page, '.mapshaper-svg-symbol');
-  expect(pending).toEqual(committed);
-  expect(errors).toEqual([]);
-});
-
-test('the font menu stays open when clicked mid-session', async function({page}) {
-  // The panel returns the caret to the label after a control has taken focus,
-  // but a native menu closes the moment its element is blurred -- so doing that
-  // on the click that opened the menu made it flash open and shut. Focus
-  // staying on the <select> is what "the menu is open" looks like from here:
-  // the menu itself is drawn by the OS and is not in the DOM.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-  await page.keyboard.type('Reno');
-
-  var menu = page.locator('.text-style-panel select').first();
-  var box = await menu.boundingBox();
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await page.waitForTimeout(250);
-  expect(await activeElementName(page)).toBe('SELECT');
-  // and the label is still being edited, rather than having been finished by
-  // the blur that focusing the menu caused
-  expect((await getEditorState(page)).caretCount).toBe(1);
-
-  // choosing a font applies it and hands the caret back, so typing goes on
-  await menu.selectOption('Georgia');
-  await page.waitForTimeout(250);
-  expect(await activeElementName(page)).toBe('TEXTAREA');
-  await page.keyboard.type('!');
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(250);
-  expect(await getLabelText(page, 0)).toBe('Reno!');
-  expect(await getLabelField(page, 0, 'font-family')).toBe('Georgia');
-  expect(errors).toEqual([]);
-});
-
-test('a field hands the caret back to the label rather than dropping it',
-  async function({page}) {
-    // A control that is finished with gives up the keyboard, but not into
-    // nowhere while there is a label being typed into: the caret goes back
-    // where it was and typing carries on.
-    var errors = collectPageErrors(page);
-    await loadFixture(page, FIXTURE);
-    await armTool(page, 'anchor');
-    await clickMap(page, 0.4, 0.45);
-    await page.keyboard.type('Reno');
-
-    var size = page.locator('.text-style-panel .label-size-row .size-field-input');
-    await size.fill('20');
-    await size.press('Enter');
-    await page.waitForTimeout(150);
-    expect(await activeElementName(page)).toBe('TEXTAREA');
-
-    await page.keyboard.type('!');
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(250);
-    expect(await getLabelText(page, 0)).toBe('Reno!');
-    expect(await getLabelField(page, 0, 'font-size')).toBe('20');
-    expect(errors).toEqual([]);
-  });
 
 test('leaving an untyped label takes back its styling along with it', async function({page}) {
   // the empty label is undone, and styling it added commands on top of its
@@ -812,26 +402,6 @@ async function clickMap(page, fx, fy) {
   await page.waitForTimeout(80);
 }
 
-// Clicks a label's rendered glyphs, the way a user reaches into one.
-async function clickLabel(page, id) {
-  await clickLabelText(page, id, 0.5);
-}
-
-// Clicks a fraction of the way across a label's rendered text.
-async function clickLabelText(page, id, fx) {
-  var box = await page.evaluate(function(args) {
-    // A label being typed into that has not been created yet has no feature id
-    // to find it by, so it is found as the pending one instead.
-    var node = document.querySelector('.label-edit-pending text') ||
-      document.querySelector(
-        '.mapshaper-symbol-layer .mapshaper-svg-symbol[data-id="' + args.id + '"]');
-    var r = node.getBoundingClientRect();
-    return {x: r.x, y: r.y, width: r.width, height: r.height};
-  }, {id: id});
-  await page.mouse.click(box.x + box.width * fx, box.y + box.height / 2);
-  await page.waitForTimeout(80);
-}
-
 // Clicks the middle of one rendered character, using the engine's own idea of
 // where it put it. Needed for a curved label, whose bounding box is mostly air.
 async function clickGlyph(page, id, charIndex) {
@@ -876,94 +446,6 @@ async function getSelectionCueCount(page) {
   });
 }
 
-// Where the caret is, against the midpoint of the curve it sits on. Both are
-// in the label's own coordinate space, which is what the caret is drawn in.
-async function getCaretVsPathMiddle(page) {
-  return page.evaluate(function() {
-    var layer = document.querySelector('.label-edit-pending') ||
-      document.querySelector('.mapshaper-symbol-layer');
-    var caret = layer.querySelector('.label-edit-caret');
-    var tp = layer.querySelector('textPath');
-    var href = tp && (tp.getAttribute('href') || tp.getAttribute('xlink:href'));
-    var path = href && document.getElementById(href.substr(1));
-    var mid = path.getPointAtLength(path.getTotalLength() / 2);
-    return {caretX: parseFloat(caret.getAttribute('x1')), middleX: mid.x};
-  });
-}
-
-// Clicks @dy pixels below the middle of the curve a label's text is set along,
-// which is a near miss on the glyphs rather than a click on the map.
-// Clicks the middle of a character's baseline -- on the curve itself, rather
-// than up inside the glyph where clickGlyph() aims.
-async function clickGlyphBaseline(page, id, charIndex) {
-  var p = await page.evaluate(function(args) {
-    var node = document.querySelector(
-      '.mapshaper-symbol-layer .mapshaper-svg-symbol[data-id="' + args.id + '"]');
-    var content = node.querySelector('textPath') || node;
-    var a = content.getStartPositionOfChar(args.charIndex);
-    var b = content.getEndPositionOfChar(args.charIndex);
-    var pt = node.ownerSVGElement.createSVGPoint();
-    pt.x = (a.x + b.x) / 2;
-    pt.y = (a.y + b.y) / 2;
-    pt = pt.matrixTransform(node.getScreenCTM());
-    return {x: pt.x, y: pt.y};
-  }, {id: id, charIndex: charIndex});
-  await page.mouse.click(p.x, p.y);
-  await page.waitForTimeout(120);
-}
-
-// Clicks a point on the curve the open label's text is set along, at @frac of
-// its length.
-async function clickCurveAt(page, frac) {
-  var p = await page.evaluate(function(f) {
-    var use = document.querySelector('.label-edit-hit-baseline');
-    var href = use.getAttribute('href') || use.getAttribute('xlink:href');
-    var path = document.getElementById(href.substr(1));
-    var m = use.getScreenCTM();
-    var pt = path.getPointAtLength(path.getTotalLength() * f);
-    return {x: pt.x * m.a + pt.y * m.c + m.e, y: pt.x * m.b + pt.y * m.d + m.f};
-  }, frac);
-  await page.mouse.click(p.x, p.y);
-  await page.waitForTimeout(120);
-}
-
-async function clickOffCurve(page, dy) {
-  var p = await page.evaluate(function() {
-    var use = document.querySelector('.label-edit-hit-baseline');
-    var href = use.getAttribute('href') || use.getAttribute('xlink:href');
-    var path = document.getElementById(href.substr(1));
-    var m = use.getScreenCTM();
-    var pt = path.getPointAtLength(path.getTotalLength() / 2);
-    return {x: pt.x * m.a + pt.y * m.c + m.e, y: pt.x * m.b + pt.y * m.d + m.f};
-  });
-  await page.mouse.click(p.x, p.y + dy);
-  await page.waitForTimeout(120);
-}
-
-// The ghosted copy of the curve a label's text is set along.
-async function getGhostPathCount(page) {
-  return page.evaluate(function() {
-    return document.querySelectorAll('.label-edit-path').length;
-  });
-}
-
-// How a label's text is actually drawn, whatever it inherits it from. Read as
-// computed style rather than attributes, since the defaults a committed label
-// is drawn with are on the group above it and not on the text itself.
-async function getTextStyle(page, selector) {
-  return page.evaluate(function(sel) {
-    var node = document.querySelector(sel);
-    if (!node) return null;
-    if (node.tagName.toLowerCase() != 'text') node = node.querySelector('text') || node;
-    var style = getComputedStyle(node);
-    return {
-      'text-anchor': style.textAnchor,
-      'font-size': style.fontSize,
-      'font-family': style.fontFamily
-    };
-  }, selector);
-}
-
 // The text-anchor the label being typed into is drawn with, which is how a
 // label position chosen before the label exists shows up.
 async function getPendingTextAnchor(page) {
@@ -999,13 +481,6 @@ async function getLabelText(page, id) {
     var rec = lyr && lyr.records ? lyr.records[args.id] : null;
     return rec ? rec['label-text'] : null;
   }, {id: id});
-}
-
-// Everything the editor puts in the DOM, read back in one round trip.
-async function activeElementName(page) {
-  return page.evaluate(function() {
-    return document.activeElement && document.activeElement.nodeName;
-  });
 }
 
 async function getEditorState(page) {

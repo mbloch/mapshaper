@@ -417,7 +417,7 @@ export function initLabelTool(gui, ext, hit) {
     id = getRightClickedLabel(e);
     if (target && id > -1) {
       e.selectActions = getSelectActions(target, id);
-      e.deleteFeature = getDeleteAction(target, id);
+      e.deleteFeature = getDeleteAction(id);
       // Nobody guesses that text is dragged across its own curve, and there is
       // no bracket drawn to suggest it, so the gesture has a second way in.
       // Not on a label being typed into: its text is in the editor rather than
@@ -511,11 +511,11 @@ export function initLabelTool(gui, ext, hit) {
   // session would otherwise write the text back to an id that now belongs to
   // the label that moved up into the gap, and the same shift is why the
   // selection cannot be kept either.
-  function getDeleteAction(target, id) {
+  function getDeleteAction(id) {
     return function() {
       if (editor.isOpen() && editor.getFeatureId() == id) editor.cancel();
       deselectLabels();
-      runGuiEditCommand(gui, getLabelDeleteCommand(id, target.name), {
+      runGuiEditCommand(gui, getLabelDeleteCommand(id), {
         title: 'Delete label'
       });
     };
@@ -881,7 +881,7 @@ export function initLabelTool(gui, ext, hit) {
       return translateDisplayPoint(o.target, p);
     });
     shapes[o.id] = o.startKnots;
-    runGuiEditCommand(gui, getUpdateLabelCommand(coords, o.id, o.target.name), {
+    runGuiEditCommand(gui, getUpdateLabelCommand(coords, o.id), {
       title: 'Move label',
       // The label stays selected, so its handles are still there to be nudged
       // again. Re-running the command rebuilds the layer, which drops the
@@ -1042,7 +1042,7 @@ export function initLabelTool(gui, ext, hit) {
     var values = Object.assign({}, o.values);
     var text = values['label-text'];
     delete values['label-text'];
-    runHandleCommand(o.target, o.id, values,
+    runHandleCommand(o.id, values,
       text !== undefined && text !== o.rec['label-text'] ? text : null,
       handleTitles[o.kind]);
   }
@@ -1055,10 +1055,9 @@ export function initLabelTool(gui, ext, hit) {
   };
 
   // text: rewrapped label-text to write with the values, or null
-  function runHandleCommand(target, id, values, text, title) {
+  function runHandleCommand(id, values, text, title) {
     var ids = hit.getSelectionIds();
     runGuiEditCommand(gui, getLabelStyleCommand(values, id, {
-      target: target.name,
       text: text === null ? undefined : text
     }), {
       title: title,
@@ -1081,7 +1080,7 @@ export function initLabelTool(gui, ext, hit) {
     var values = {};
     if (!rec || !field || isBlank(rec[field])) return;
     values[field] = '';
-    runHandleCommand(target, handle.id, values, null, handleTitles[handle.kind]);
+    runHandleCommand(handle.id, values, null, handleTitles[handle.kind]);
   }
 
   function isBlank(val) {
@@ -1490,8 +1489,7 @@ export function initLabelTool(gui, ext, hit) {
       dy: o.values.dy,
       anchor: o.values['text-anchor'],
       via: o.via || null,
-      id: o.id,
-      target: o.target.name
+      id: o.id
     }), {
       title: 'Offset label text',
       // The label stays selected, so it can be nudged again. Re-running the
@@ -1575,8 +1573,7 @@ export function initLabelTool(gui, ext, hit) {
       // adds a column to the layer for nothing.
       anchor: values.anchor == anchor ? '' : values.anchor,
       coords: coords,
-      id: id,
-      target: target.name
+      id: id
     }), {
       title: values.reversed ? 'Flip label' : 'Move label text',
       // The label stays selected, so it can be nudged again. Re-running the
@@ -1888,7 +1885,7 @@ export function initLabelTool(gui, ext, hit) {
       return target ? translateDisplayPoint(target, p) : p;
     });
     runGuiEditCommand(gui, getAddLabelCommand(coords, {
-      target: getLabelTarget(target, internal.layerHasLabels),
+      target: getLabelTarget(target, internal.layerHasLabels, null),
       text: text,
       // whatever the style panel was set to while nothing was selected, so that
       // a font can be chosen before the first label exists

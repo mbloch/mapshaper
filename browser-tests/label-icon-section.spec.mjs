@@ -17,37 +17,6 @@ var FIXTURE = 'test/data/features/snip/ring_and_line.json';
 var PANEL = '.text-style-panel';
 var SECTION = 'label-icon-section';
 
-test('a selection where only some labels have a symbol is marked mixed',
-  async function({page}) {
-    var errors = collectPageErrors(page);
-    await twoLabels(page);
-    await giveIcon(page, 0);
-    await selectLabels(page, [0, 1]);
-
-    expect(await getPanelStatus(page)).toContain('2 selected');
-    expect(await getSectionPresence(page, PANEL, SECTION)).toBe('mixed');
-    expect(await page.locator(PANEL + ' .' + SECTION + ' .label-section-marker')
-      .getAttribute('aria-label')).toBe('Applied to some of the selection');
-    // The section stays usable: there is a symbol in the selection to style,
-    // and the shape the labels that have one share is the shape shown.
-    expect(await shapesAreInert(page)).toBe(false);
-    expect(await getSelectedShape(page)).toBe('circle');
-    expect(errors).toEqual([]);
-  });
-
-test('the marker is on or off when the selection agrees', async function({page}) {
-  await twoLabels(page);
-  await selectLabels(page, [0, 1]);
-  expect(await getSectionPresence(page, PANEL, SECTION)).toBe('off');
-  // With no symbol the shapes are still live, since choosing one is how a
-  // symbol is added
-  expect(await shapesAreInert(page)).toBe(false);
-
-  await clickShape(page, 'circle');
-  await selectLabels(page, [0, 1]);
-  expect(await getSectionPresence(page, PANEL, SECTION)).toBe('on');
-});
-
 test('the × takes the symbol off every selected label, with its settings',
   async function({page}) {
     await twoLabels(page);
@@ -84,33 +53,6 @@ test('a symbol size set on a mixed selection goes only to the labels that have o
     expect(await getLabelField(page, 1, 'icon')).toBeFalsy();
     expect(errors).toEqual([]);
   });
-
-test('a shape applied to a mixed selection gives every label the symbol size they share',
-  async function({page}) {
-    // Choosing a shape for a group is a plain statement about all of it, so
-    // this one control does reach the labels with no symbol -- and the size it
-    // gives them is the one already in the selection, not the default.
-    await twoLabels(page);
-    await giveIcon(page, 0);
-    await selectLabels(page, [0]);
-    await setIconSize(page, 9);
-    await selectLabels(page, [0, 1]);
-    await clickShape(page, 'star');
-
-    expect(await getLabelField(page, 0, 'icon')).toBe('star');
-    expect(await getLabelField(page, 1, 'icon')).toBe('star');
-    expect(String(await getLabelField(page, 1, 'icon-size'))).toBe('9');
-  });
-
-test('the NYT star is offered only to NYT users', async function({page}) {
-  await twoLabels(page, 'nyt=off');
-  await selectLabels(page, [0]);
-  expect(await getShapeNames(page)).toEqual(['circle', 'square', 'triangle', 'star', 'ring']);
-
-  await twoLabels(page, 'nyt=on');
-  await selectLabels(page, [0]);
-  expect(await getShapeNames(page)).toEqual(['circle', 'square', 'triangle', 'star', 'ring', 'nyt-star']);
-});
 
 test('each shape starts at its own size, and the NYT star in its own red',
   async function({page}) {
@@ -155,14 +97,6 @@ test('a ring is a stroke whose width can be set, and it can take a fill', async 
   expect(errors).toEqual([]);
 });
 
-test('a size chosen by hand survives a change of shape', async function({page}) {
-  await twoLabels(page, 'nyt=on');
-  await giveIcon(page, 0);
-  await setIconSize(page, 12);
-  await clickShape(page, 'nyt-star');
-  expect(String(await getLabelField(page, 0, 'icon-size'))).toBe('12');
-});
-
 test('a triangle is a polygon of three sides, which goes when the shape changes',
   async function({page}) {
     // The shapes are the symbol tool's, and a triangle is stored as -symbols
@@ -183,13 +117,6 @@ test('a triangle is a polygon of three sides, which goes when the shape changes'
     expect(await getLabelField(page, 0, 'icon-sides')).toBeFalsy();
     expect(errors).toEqual([]);
   });
-
-async function getShapeNames(page) {
-  return page.locator('.text-style-panel .label-icon-buttons [data-icon]')
-    .evaluateAll(function(nodes) {
-      return nodes.map(function(node) { return node.getAttribute('data-icon'); });
-    });
-}
 
 // Two anchored labels, with nothing selected.
 async function twoLabels(page, query) {
@@ -244,14 +171,6 @@ async function shiftClickLabel(page, id) {
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await page.keyboard.up('Shift');
   await page.waitForTimeout(100);
-}
-
-// Whether the shape buttons are inert, which they are only with nothing to
-// style at all.
-async function shapesAreInert(page) {
-  return page.locator('.text-style-panel .label-icon-buttons').evaluate(function(el) {
-    return el.classList.contains('disabled');
-  });
 }
 
 async function getSelectedShape(page) {

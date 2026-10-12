@@ -47,6 +47,14 @@ describe('gui layer contents', function() {
       assert.equal(o.text, '1 label, 1 circle, 2 points');
     });
 
+    it('counts circles as symbols beside other symbols, and as circles alone', function() {
+      var mixed = [{icon: 'star'}, {icon: 'curve'}, {r: 2}];
+      assert.equal(describeFeatureContents('point', [pt, pt, pt], mixed,
+        ['icon', 'r']).text, '3 symbols');
+      assert.equal(describeFeatureContents('point', [pt, pt], [{r: 2}, {r: 3}],
+        ['r']).text, '2 circles');
+    });
+
     it('treats a point layer without data as plain points', function() {
       assert.equal(describeFeatureContents('point', [pt, pt, pt], null, []).text,
         '3 points');

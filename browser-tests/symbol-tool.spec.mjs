@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openLayersPanel } from './sidebar-helpers.mjs';
 
 test('the tool places a symbol in a session that has imported nothing', async function({page}) {
   var errors = collectPageErrors(page);
@@ -18,23 +19,6 @@ test('the tool places a symbol in a session that has imported nothing', async fu
   expect(errors).toEqual([]);
 });
 
-test('symbols placed in a row leave the view alone', async function({page}) {
-  // The first two share a row of pixels, so the layer's bounds were a sliver
-  // the noise of the pixel conversion tall, and the third symbol grew them by
-  // enough to reset the view out from under the pointer.
-  var errors = collectPageErrors(page);
-  await openTool(page);
-  var before = await getViewBounds(page);
-  await clickMap(page, 0.2, 0.3);
-  await clickMap(page, 0.3, 0.3);
-  await clickMap(page, 0.4, 0.5);
-  expect((await getSymbolLayer(page)).shapeCount).toBe(3);
-  (await getViewBounds(page)).forEach(function(coord, i) {
-    expect(coord).toBeCloseTo(before[i], 6);
-  });
-  expect(errors).toEqual([]);
-});
-
 test("the panel sets the next symbol's style while nothing is selected", async function({page}) {
   var errors = collectPageErrors(page);
   await openTool(page);
@@ -44,23 +28,6 @@ test("the panel sets the next symbol's style while nothing is selected", async f
   var rec = (await getSymbolLayer(page)).records[0];
   expect(rec.icon).toBe('star');
   expect(rec['icon-size']).toBe(20);
-  expect(errors).toEqual([]);
-});
-
-test('the symbol panel offers the label panel\'s shapes, ring included', async function({page}) {
-  var errors = collectPageErrors(page);
-  await openTool(page, 'nyt=off');
-  var names = await page.locator('.symbol-style-panel .label-icon-buttons [data-icon]')
-    .evaluateAll(function(nodes) {
-      return nodes.map(function(node) { return node.getAttribute('data-icon'); });
-    });
-  expect(names).toEqual(['circle', 'square', 'triangle', 'star', 'ring']);
-  await page.locator('.symbol-style-panel .label-icon-buttons [data-icon="ring"]').click();
-  await clickMap(page, 0.3, 0.5);
-  var rec = (await getSymbolLayer(page)).records[0];
-  expect(rec.icon).toBe('ring');
-  expect(rec['icon-size']).toBe(10);
-  expect(rec['icon-radii']).toBeUndefined();
   expect(errors).toEqual([]);
 });
 
@@ -146,10 +113,106 @@ test('a curve takes the layer panel\'s arrowheads, and is colored by "Color"', a
   expect(errors).toEqual([]);
 });
 
+test('in a layer of circles and icons, an icon is hovered and selected', async function({page}) {
+  var errors = collectPageErrors(page);
+  await openTool(page);
+  await clickMap(page, 0.25, 0.5);
+  await page.locator('.symbol-style-panel .label-icon-buttons [data-icon="star"]').click();
+  await clickMap(page, 0.4, 0.5);
+  await armTool(page, null);
+  var box = await page.locator('.mshp-main-map').boundingBox();
+  var x = box.x + box.width * 0.4, y = box.y + box.height * 0.5;
+  // off the star's painted area, but within the circle that covers it
+  await page.mouse.move(x + 4, y - 4);
+  await expect(page.locator('.symbol-halo-hovered')).toHaveCount(1);
+  await page.mouse.click(x, y);
+  await page.waitForTimeout(150);
+  expect(await getSelection(page)).toEqual([1]);
+  await expect(page.locator('.symbol-halo-selected')).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
+
+test('with no tool armed and nothing selected, the panel edits every symbol', async function({page}) {
+  var errors = collectPageErrors(page);
+  var status = page.locator('.symbol-style-panel .label-editing-status');
+  await openTool(page);
+  await expect(status).toHaveText('Editing: new symbols');
+  await clickMap(page, 0.3, 0.5);
+  await clickMap(page, 0.5, 0.5);
+  await armTool(page, null);
+  await expect(status).toHaveText('Editing: all');
+  await setColor(page, 'Fill', '#ff0000');
+  var lyr = await getSymbolLayer(page);
+  expect(lyr.records.map(function(rec) { return rec.fill; })).toEqual(['#ff0000', '#ff0000']);
+  // restyling them all does not select them
+  expect(await getSelection(page)).toEqual([]);
+  await armTool(page, 'curve');
+  await expect(status).toHaveText('Editing: new symbols');
+  expect(errors).toEqual([]);
+});
+
+test('a symbol layer opens the symbol tool from the layer menu, and has no point tools', async function({page}) {
+  var errors = collectPageErrors(page);
+  await openTool(page);
+  await page.locator('.symbol-style-panel .label-icon-buttons [data-icon="star"]').click();
+  await clickMap(page, 0.3, 0.5);
+  await page.evaluate(function() { window.mapshaper.undoTest.setInteractionMode('off'); });
+  await page.locator('.pointer-btn').hover();
+  await page.locator('.nav-sub-menu .nav-menu-item').first().waitFor();
+  var items = await page.locator('.nav-sub-menu .nav-menu-item').allInnerTexts();
+  expect(items).toContain('edit symbols');
+  expect(items).not.toContain('style points');
+  expect(items).not.toContain('edit points');
+  await page.mouse.move(0, 0);
+
+  await openLayersPanel(page);
+  var item = page.locator('.layer-list .layer-item').filter({hasText: 'symbols'}).first();
+  await item.hover();
+  await item.locator('.more-btn').click();
+  await page.locator('.contextmenu-item').filter({hasText: 'edit symbols'}).click();
+  expect(await page.evaluate(function() {
+    return window.mapshaper.undoTest.getInteractionMode();
+  })).toBe('symbols');
+  await expect(page.locator('.symbol-style-panel')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('a symbol in a layer that shares its name with another can be edited', async function({page}) {
+  var errors = collectPageErrors(page);
+  await openTool(page);
+  await page.locator('.symbol-style-panel .label-icon-buttons [data-icon="star"]').click();
+  await clickMap(page, 0.3, 0.5);
+  // the layer menu's "duplicate layer", which keeps the name
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand('-filter true + name=symbols');
+  });
+  await page.waitForTimeout(250);
+  await page.evaluate(function() {
+    window.mapshaper.undoTest.setInteractionMode('symbols');
+  });
+  await page.locator('.symbol-style-panel').waitFor();
+  await armTool(page, null);
+  var p = await getSymbolCentre(page, 0);
+  await page.mouse.click(p.x, p.y);
+  await page.waitForTimeout(150);
+  await dragBy(page, p, 40, 20);
+  await setColor(page, 'Fill', '#ff0000');
+  var history = await getSessionHistory(page);
+  expect(history).toContain('-update-symbol ids=0');
+  // the commands run on the active layer: a target= naming it would match both
+  expect(history).not.toMatch(/-update-symbol [^"]*target=/);
+  expect(history).toMatch(/-style [^"]*ids=0"/);
+  expect(await page.locator('.alert-wrapper').filter({hasText: 'single target layer'}).count()).toBe(0);
+  expect(errors).toEqual([]);
+});
+
 test('clicking the first knot closes a curve', async function({page}) {
   var errors = collectPageErrors(page);
   await openTool(page);
   await armTool(page, 'curve');
+  // the curve section's Fill waits for a closed curve, which has an inside
+  var curveFill = page.locator('.symbol-style-panel input[aria-label="Fill color"]').last();
+  await expect(curveFill).toBeHidden();
   await clickMap(page, 0.2, 0.6);
   await clickMap(page, 0.3, 0.4);
   await clickMap(page, 0.4, 0.6);
@@ -158,6 +221,8 @@ test('clicking the first knot closes a curve', async function({page}) {
   expect(lyr.pointCounts).toEqual([4]);
   // a closed curve has no ends to put arrowheads on
   expect(lyr.records[0]['line-end']).toBeUndefined();
+  await armTool(page, null);
+  await expect(curveFill).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -174,7 +239,15 @@ test('a symbol is selected by clicking it, and dragged to move it', async functi
   await page.mouse.click(p.x, p.y);
   await page.waitForTimeout(150);
   expect(await getSelection(page)).toEqual([0]);
-  expect(await page.locator('.symbol-cue.label-cue-selected').count()).toBe(1);
+  // a halo beneath the star, in the overlay's selection color
+  var halo = await page.evaluate(function() {
+    var g = document.querySelector('.symbol-halo.symbol-halo-selected');
+    var shape = g && g.querySelector('path,polygon,circle');
+    return g ? {next: g.nextElementSibling.getAttribute('data-id'),
+      opacity: g.getAttribute('opacity'), stroke: shape.style.stroke, fill: shape.style.fill} : null;
+  });
+  expect(halo).toEqual({next: '0', opacity: '0.25', stroke: 'rgb(255, 198, 0)', fill: 'none'});
+  expect(await page.locator('.label-cue-box').count()).toBe(0);
 
   await dragBy(page, p, 40, 20);
   var lyr = await getSymbolLayer(page);

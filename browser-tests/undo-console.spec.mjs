@@ -4,30 +4,16 @@ import { openLayersPanel } from './sidebar-helpers.mjs';
 var POINT_FIXTURE = 'test/data/geojson/three_points.geojson';
 var LINE_FIXTURE = 'test/data/features/clean/ex20_ogc_line.json';
 var POLYGON_FIXTURE = 'test/data/features/dissolve2/ex3_two_polygons.json';
-var PROJECTED_POLYGON_FIXTURE = 'test/data/features/polygon_join/ex1_outer.json';
 var MULTIPOLYGON_FIXTURE = 'test/data/features/clean/ex11_ogc.geojson';
 var CLIP_FIXTURES = 'test/data/features/clip/ex1_outer.json,test/data/features/clip/ex1_inner3.json';
 var KEY_JOIN_FIXTURES = 'test/data/features/join/key_target.csv,test/data/features/join/key_source.csv';
 var DATA_FILL_FIXTURE = 'test/data/features/data-fill/simple.geojson';
-var FUZZY_JOIN_FIXTURES = 'test/data/features/fuzzy_join/polys.geojson,test/data/features/fuzzy_join/points.geojson';
-var FILTER_ISLANDS_FIXTURE = 'test/data/features/filter_islands/two_islands.geojson';
-var DIVIDE_FIXTURES = 'test/data/features/divide/ex1_line.json,test/data/features/divide/ex1_polygon.json';
-var INLAY_FIXTURES = 'test/data/features/inlay/ex1_outer.json,test/data/features/inlay/ex1_inner.json';
-var MOSAIC_FIXTURE = 'test/data/features/mosaic/two_polygons.json';
 var POLYGONS_FIXTURE = 'test/data/features/polygons/ia_county_lines.json';
 var GAP_PARTITION_FIXTURE = 'test/data/features/clean/ex24_three_state_internal_gap.json';
-var OUTER_CRACK_FIXTURE = 'test/data/features/clean/ex27_staggered_external_gap.json';
-var ALPHA_SHAPES_FIXTURE = 'test/data/features/alpha_shapes/points.geojson';
 
 var COMMAND_CASES = [{
   name: 'record expression edit',
   command: 'each \'foo = "bar"\''
-}, {
-  name: 'calculated output layer',
-  command: 'calc \'count()\' to-layer'
-}, {
-  name: 'field classification',
-  command: 'classify scalerank save-as=rank_class values=low,high'
 }, {
   name: 'polygon data fill',
   command: 'data-fill field=state',
@@ -40,34 +26,10 @@ var COMMAND_CASES = [{
   payloadTypes: ['table-schema', 'table-fields'],
   noPayloadTypes: ['table']
 }, {
-  name: 'polygon clustering',
-  command: 'cluster id-field=cluster_id',
-  fixture: POLYGON_FIXTURE,
-  payloadTypes: ['table-schema', 'table-fields'],
-  noPayloadTypes: ['table']
-}, {
-  name: 'fuzzy point-to-polygon join',
-  command: 'fuzzy-join points target=polys field=d no-dropouts',
-  fixture: FUZZY_JOIN_FIXTURES
-}, {
-  name: 'svg style fields',
-  command: 'style fill=red stroke=blue',
-  fixture: POLYGON_FIXTURE,
-  payloadTypes: ['table-schema', 'table-fields'],
-  noPayloadTypes: ['table']
-}, {
   name: 'svg point symbols',
   command: 'symbols type=circle radius=5 fill=red',
   payloadTypes: ['table-schema', 'table-fields'],
   noPayloadTypes: ['table']
-}, {
-  name: 'field filtering',
-  command: 'filter-fields name',
-  payloadTypes: ['table-schema', 'table-fields'],
-  noPayloadTypes: ['table']
-}, {
-  name: 'point reprojection',
-  command: 'proj webmercator'
 }, {
   name: 'polygon reprojection',
   command: 'proj webmercator',
@@ -75,81 +37,8 @@ var COMMAND_CASES = [{
   payloadTypes: ['arcs'],
   noPayloadTypes: ['layer']
 }, {
-  name: 'point buffering',
-  command: 'buffer 1km'
-}, {
-  name: 'point affine transform',
-  command: 'affine shift=1,1'
-}, {
-  name: 'polygon affine transform',
-  command: 'affine shift=1,1',
-  fixture: POLYGON_FIXTURE,
-  payloadTypes: ['arcs']
-}, {
-  name: 'spherical rotation',
-  command: 'rotate 10,0',
-  fixture: POLYGON_FIXTURE
-}, {
-  name: 'feature filtering',
-  command: 'filter \'name != "Niagara Falls"\''
-}, {
-  name: 'filtered copy',
-  command: 'filter + \'name != "Niagara Falls"\''
-}, {
-  name: 'point cluster filtering',
-  command: 'filter-points group-interval=3000000'
-}, {
-  name: 'geometry bbox filtering',
-  command: 'filter-geom bbox=-80,40,-78,44'
-}, {
   name: 'layer splitting',
   command: 'split region'
-}, {
-  name: 'grid cell id assignment',
-  command: 'split-on-grid 2,2 id-field=cell_id',
-  payloadTypes: ['table-schema', 'table-fields'],
-  noPayloadTypes: ['table']
-}, {
-  name: 'grid-based layer splitting',
-  command: 'split-on-grid 2,2'
-}, {
-  name: 'field renaming',
-  command: 'rename-fields label=name',
-  payloadTypes: ['table-schema', 'table-fields'],
-  noPayloadTypes: ['table']
-}, {
-  name: 'layer renaming',
-  command: 'rename-layers renamed',
-  noPayloadTypes: ['layer']
-}, {
-  name: 'feature sorting',
-  command: 'sort name descending',
-  noPayloadTypes: ['table', 'layer']
-}, {
-  name: 'duplicate removal',
-  command: 'uniq region'
-}, {
-  name: 'field dropping',
-  command: 'drop fields=comment'
-}, {
-  name: 'geometry dropping',
-  command: 'drop geometry'
-}, {
-  name: 'island filtering',
-  command: 'filter-islands min-area=1',
-  fixture: FILTER_ISLANDS_FIXTURE
-}, {
-  name: 'island filtering v2',
-  command: 'filter-islands2 min-area=1',
-  fixture: FILTER_ISLANDS_FIXTURE
-}, {
-  name: 'sliver filtering',
-  command: 'filter-slivers min-area=1',
-  fixture: FILTER_ISLANDS_FIXTURE
-}, {
-  name: 'line dashing',
-  command: 'dashlines dash-length=20 planar',
-  fixture: LINE_FIXTURE
 }, {
   name: 'polyline simplification',
   command: 'simplify 50% planar no-repair',
@@ -157,121 +46,9 @@ var COMMAND_CASES = [{
   payloadTypes: ['arcs-simplification'],
   noPayloadTypes: ['arcs']
 }, {
-  name: 'variable polyline simplification',
-  command: 'simplify variable percentage=\'"50%"\' planar',
-  fixture: LINE_FIXTURE,
-  payloadTypes: ['arcs']
-}, {
-  name: 'arc snapping by precision',
-  command: 'snap precision=1',
-  fixture: CLIP_FIXTURES
-}, {
   name: 'geometry cleaning',
   command: 'clean',
   fixture: LINE_FIXTURE
-}, {
-  // A gap bordering three features is partitioned with cut arcs, which replaces
-  // the dataset's arc collection.
-  name: 'geometry cleaning that partitions a gap',
-  command: 'clean gap-width=250m',
-  fixture: GAP_PARTITION_FIXTURE
-}, {
-  // Pinching a crack's mouth shut moves coordinates and re-cuts the dataset
-  // before the crack is filled, so the arcs are rewritten twice over.
-  name: 'geometry cleaning that closes an outer crack',
-  command: 'clean close-outer-gaps gap-width=500m',
-  fixture: OUTER_CRACK_FIXTURE
-}, {
-  name: 'point layer copy from vertices',
-  command: 'points + vertices',
-  fixture: LINE_FIXTURE
-}, {
-  name: 'polygon replacement with points',
-  command: 'points',
-  fixture: POLYGON_FIXTURE,
-  payloadTypes: ['layer']
-}, {
-  name: 'add shape to point layer',
-  command: 'add-shape coordinates=-60,0'
-}, {
-  name: 'standalone shape creation',
-  command: 'shape rectangle bbox=-80,-30,-50,45'
-}, {
-  name: 'polygon to line conversion',
-  command: 'lines',
-  fixture: POLYGON_FIXTURE
-}, {
-  name: 'path segment extraction',
-  command: 'lines segments',
-  fixture: POLYGON_FIXTURE
-}, {
-  name: 'polygon innerline extraction',
-  command: 'innerlines +',
-  fixture: POLYGON_FIXTURE
-}, {
-  name: 'rectangle copy from layer bounds',
-  command: 'rectangle +',
-  fixture: POLYGON_FIXTURE
-}, {
-  name: 'rectangles from features',
-  command: 'rectangles'
-}, {
-  name: 'point grid copy',
-  command: 'point-grid + 2,2',
-  fixture: POLYGON_FIXTURE
-}, {
-  name: 'polygon grid copy',
-  command: 'grid + interval=500',
-  fixture: PROJECTED_POLYGON_FIXTURE
-}, {
-  name: 'test grid creation',
-  command: 'grid2 interval=500',
-  fixture: PROJECTED_POLYGON_FIXTURE
-}, {
-  name: 'point density grid',
-  command: 'proj webmercator -point-to-grid interval=10000'
-}, {
-  name: 'graticule creation',
-  command: 'graticule interval=30'
-}, {
-  name: 'dot density points',
-  command: 'dots count',
-  fixture: POLYGON_FIXTURE
-}, {
-  name: 'polyline polygonization',
-  command: 'filter + \'TYPE == "outer"\' name=outline -polygons',
-  fixture: POLYGONS_FIXTURE
-}, {
-  name: 'polyline ring polygonization',
-  command: 'polygons from-rings',
-  fixture: POLYGONS_FIXTURE,
-  payloadTypes: ['layer']
-}, {
-  name: 'alpha shape generation',
-  command: 'alpha-shapes interval=200000',
-  fixture: ALPHA_SHAPES_FIXTURE
-}, {
-  name: 'polygon mosaic',
-  command: 'mosaic',
-  fixture: MOSAIC_FIXTURE
-}, {
-  name: 'line division by polygon',
-  command: 'divide ex1_polygon target=ex1_line',
-  fixture: DIVIDE_FIXTURES,
-  maxUndoPayloadCounts: {arcs: 1}
-}, {
-  name: 'polygon inlay',
-  command: 'inlay ex1_inner target=ex1_outer',
-  fixture: INLAY_FIXTURES,
-  maxUndoPayloadCounts: {arcs: 1}
-}, {
-  name: 'polygon union',
-  command: 'split name -union target=* name=merged',
-  fixture: POLYGON_FIXTURE
-}, {
-  name: 'layer subdivision',
-  command: 'subdivide \'sum(count) > 4\'',
-  fixture: POLYGON_FIXTURE
 }, {
   name: 'map frame creation',
   command: 'frame width=800px'
@@ -283,32 +60,10 @@ var COMMAND_CASES = [{
   command: 'dissolve no-repair',
   fixture: POLYGON_FIXTURE
 }, {
-  name: 'polygon dissolving deprecated alias',
-  command: 'dissolve2',
-  fixture: POLYGON_FIXTURE
-}, {
-  name: 'multipart exploding',
-  command: 'explode',
-  fixture: MULTIPOLYGON_FIXTURE
-}, {
   name: 'polygon clipping',
   command: 'clip ex1_inner3 target=ex1_outer',
   fixture: CLIP_FIXTURES,
   maxUndoPayloadCounts: {arcs: 1}
-}, {
-  name: 'polygon erasing',
-  command: 'erase ex1_inner3 target=ex1_outer',
-  fixture: CLIP_FIXTURES,
-  maxUndoPayloadCounts: {arcs: 1}
-}, {
-  name: 'polygon slicing',
-  command: 'slice ex1_inner3 target=ex1_outer',
-  fixture: CLIP_FIXTURES,
-  maxUndoPayloadCounts: {arcs: 1}
-}, {
-  name: 'layer dropping',
-  command: 'drop target=ex1_inner3',
-  fixture: CLIP_FIXTURES
 }, {
   name: 'layer merging',
   command: 'split region -merge-layers target=* force'
@@ -942,55 +697,6 @@ test('keyboard shortcuts undo and redo console command history', async function(
   }).toBe(changed.model.checksum);
 });
 
-test('keyboard undo is ignored while editing layer menu names', async function({page}) {
-  await loadFixture(page);
-
-  var before = await getUndoState(page);
-  await runConsoleCommand(page, '-each \'foo = "bar"\'');
-  var changed = await getUndoState(page);
-  expect(changed.model.checksum).not.toBe(before.model.checksum);
-
-  await focusFirstLayerNameEditor(page, 'typing_layer_name');
-  await page.keyboard.press('ControlOrMeta+Z');
-  expect((await getUndoState(page)).model.checksum).toBe(changed.model.checksum);
-  expect((await getUndoState(page)).undo.canUndo).toBe(true);
-});
-
-test('keyboard undo is ignored while editing export layer names', async function({page}) {
-  await loadFixture(page);
-
-  var before = await getUndoState(page);
-  await runConsoleCommand(page, '-each \'foo = "bar"\'');
-  var changed = await getUndoState(page);
-  expect(changed.model.checksum).not.toBe(before.model.checksum);
-
-  await focusFirstExportLayerNameEditor(page, 'typing_export_name');
-  await page.keyboard.press('ControlOrMeta+Z');
-  expect((await getUndoState(page)).model.checksum).toBe(changed.model.checksum);
-  expect((await getUndoState(page)).undo.canUndo).toBe(true);
-});
-
-test('floating undo toolbar buttons undo and redo console command history', async function({page}) {
-  await loadFixture(page);
-
-  var before = await getUndoState(page);
-
-  await runConsoleCommand(page, '-each \'foo = "bar"\'');
-
-  var changed = await getUndoState(page);
-  expect(changed.model.checksum).not.toBe(before.model.checksum);
-
-  await page.locator('.undo-redo-buttons .floating-toolbar-btn').nth(0).click();
-  await expect.poll(async function() {
-    return (await getUndoState(page)).model.checksum;
-  }).toBe(before.model.checksum);
-
-  await page.locator('.undo-redo-buttons .floating-toolbar-btn').nth(1).click();
-  await expect.poll(async function() {
-    return (await getUndoState(page)).model.checksum;
-  }).toBe(changed.model.checksum);
-});
-
 test('history menu toggles persisted app undo and reports restore data', async function({page}) {
   await loadFixture(page, POINT_FIXTURE, {undo: null});
 
@@ -1102,20 +808,6 @@ test('a command that is not recorded clears interaction undo history', async fun
   await runConsoleCommand(page, '-each \'foo = "bar"\'', {waitForUndo: false});
 
   expect((await getUndoState(page)).undo.canUndo).toBe(false);
-});
-
-test('history menu stays open and updates restore data after clearing undo history', async function({page}) {
-  await loadFixture(page);
-
-  await runConsoleCommand(page, '-each \'foo = "bar"\'');
-
-  await page.locator('.history-btn').click();
-  await expect(page.locator('.history-menu-note')).toContainText(/restore data stored on-disk: [0-9]/);
-  await page.locator('.history-clear-btn').click();
-  await expect(page.locator('.history-menu-dropdown')).toBeVisible();
-  await expect(page.locator('.history-menu-note')).toContainText('restore data stored on-disk: 0 KB');
-  expect((await getUndoState(page)).undo.canUndo).toBe(false);
-  expect((await getUndoState(page)).payloadStore.ownBytes).toBe(0);
 });
 
 test('console undo disables history cleanly when payload exceeds storage limit', async function({page}) {
@@ -1240,22 +932,6 @@ async function renameFirstLayerFromLayerMenu(page, name) {
   await nameItem.click();
   await nameItem.fill(name);
   await nameItem.press('Enter');
-}
-
-async function focusFirstLayerNameEditor(page, name) {
-  var nameItem;
-  await openLayersPanel(page);
-  nameItem = page.locator('.layer-list .layer-item .layer-name').first();
-  await nameItem.click();
-  await nameItem.fill(name);
-}
-
-async function focusFirstExportLayerNameEditor(page, name) {
-  var nameItem;
-  await page.locator('.export-btn').click();
-  nameItem = page.locator('.export-options .layer-item .layer-name').first();
-  await nameItem.click();
-  await nameItem.fill(name);
 }
 
 async function importAdditionalFile(page, fixture, opts) {

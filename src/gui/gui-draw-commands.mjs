@@ -8,8 +8,9 @@ import { quoteCommandValue } from './gui-command-utils';
 // coords: [[x, y], ...] the path's vertices, in the layer's CRS
 // opts:
 //   geometryType: 'polyline' or 'polygon', the type of the layer drawn into
-//   target: the layer's name, or null to use the current target. Naming it
-//     makes the command replay against the same layer from the session history.
+//   target: (optional) a target= value. The draw tool leaves it off: the
+//     command runs on the active layer, which the session history's -target
+//     commands keep track of on replay.
 //   style: (optional) style properties for the new shape, e.g. {stroke: 'red'}
 //   extend: (optional) join the path to the line that ends at its first vertex
 //     rather than adding a new line

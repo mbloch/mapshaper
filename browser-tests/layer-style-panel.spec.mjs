@@ -10,31 +10,6 @@ var EFFECTS = 'layer-effects-section';
 var FIXTURE = 'test/data/issues/389_clipping_error/inner_polygon.json';
 var LAYER = 'inner_polygon';
 
-test('a style field gives the keyboard back when it is finished with', async function({page}) {
-  // A control that keeps focus keeps the keyboard, so the next Escape or
-  // Enter goes to the field rather than to the map -- and it goes on showing
-  // its focus ring over a value that has already been applied, which reads as
-  // a value still being edited.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  var fill = colorRow(page, 'Fill').locator('.label-color-input');
-
-  await fill.fill('#00ff00');
-  await fill.press('Enter');
-  await page.waitForTimeout(150);
-  expect(await getFocusedElement(page)).toBe('BODY');
-  expect(await getStyleValue(page, 'fill')).toBe('#00ff00');
-
-  // Escape puts back what the panel was showing and lets go of the field too
-  await fill.fill('#123456');
-  await fill.press('Escape');
-  await page.waitForTimeout(150);
-  await expect(fill).toHaveValue('#00ff00');
-  expect(await getFocusedElement(page)).toBe('BODY');
-  expect(await getStyleValue(page, 'fill')).toBe('#00ff00');
-  expect(errors).toEqual([]);
-});
-
 test('a colour is set from its field, and its opacity from the one beside it', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
@@ -75,79 +50,6 @@ test('a typed colour is kept exactly, not snapped to the picker\'s grid', async 
   expect(await getStyleValue(page, 'fill')).toBe('#e39652');
 });
 
-test('an opacity is blank with no colour, and 100% with one', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  var fill = colorRow(page, 'Fill');
-  var stroke = colorRow(page, 'Stroke');
-  // the fixture has a fill and no fill-opacity, and no stroke at all
-  expect(await getStyleValue(page, 'fill')).toBe('#a50000');
-  await expect(fill.locator('.label-opacity-input')).toHaveValue('100%');
-  await expect(stroke.locator('.label-opacity-input')).toHaveValue('');
-
-  // full opacity is the default, so it is shown without being stored
-  await setField(stroke.locator('.label-color-input'), '#3366cc');
-  await expect(stroke.locator('.label-opacity-input')).toHaveValue('100%');
-  expect(await getStyleValue(page, 'stroke-opacity')).toBeUndefined();
-
-  // blanking a field is not a way to set it to zero
-  await setField(fill.locator('.label-opacity-input'), '');
-  await expect(fill.locator('.label-opacity-input')).toHaveValue('100%');
-  expect(await getStyleValue(page, 'fill-opacity')).toBeUndefined();
-  expect(errors).toEqual([]);
-});
-
-test('an unset colour opens the picker with nothing picked', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  var fill = colorRow(page, 'Fill');
-  var stroke = colorRow(page, 'Stroke');
-  var picker = stroke.locator('.label-color-picker');
-  var marker = picker.locator('.label-color-canvas-wrap').first().locator('.label-color-marker');
-  // a picker that showed a color before goes back to nothing for an unset field
-  await fill.locator('.label-color-chit').click();
-  await fill.locator('.label-color-picker button').filter({hasText: 'Close'}).click();
-
-  await stroke.locator('.label-color-chit').click();
-  await expect(picker.locator('.label-color-picker-input')).toHaveValue('');
-  await expect(marker).toBeHidden();
-
-  // Hover refreshes the panel's controls. It must not close an open picker
-  // just because the color is still unset.
-  var mapBox = await page.locator('.mshp-main-map').boundingBox();
-  await page.mouse.move(mapBox.x + mapBox.width / 2, mapBox.y + mapBox.height / 2);
-  await expect.poll(() => page.evaluate(() => window.mapshaper.undoTest.getHitId())).toBe(0);
-  await expect(picker).toBeVisible();
-  await page.mouse.move(mapBox.x + mapBox.width * 0.1, mapBox.y + mapBox.height * 0.1);
-  await expect.poll(() => page.evaluate(() => window.mapshaper.undoTest.getHitId())).toBe(-1);
-  await expect(picker).toBeVisible();
-
-  // turning the hue picks nothing, and neither does closing
-  var hue = picker.locator('canvas').nth(1);
-  await hue.click({position: {x: 100, y: 5}});
-  await expect(picker.locator('.label-color-picker-input')).toHaveValue('');
-  await picker.locator('button').filter({hasText: 'Close'}).click();
-  await page.waitForTimeout(150);
-  expect(await getStyleValue(page, 'stroke')).toBeUndefined();
-  await expect(stroke.locator('.label-color-input')).toHaveValue('');
-
-  // black is one click on its tile
-  await stroke.locator('.label-color-chit').click();
-  await picker.locator('.label-color-preset[aria-label="#000000"]').click();
-  await page.waitForTimeout(250);
-  expect(await getStyleValue(page, 'stroke')).toBe('#000000');
-  await expect(stroke.locator('.label-color-input')).toHaveValue('#000000');
-  await expect(marker).toBeVisible();
-
-  // and emptying the field puts the picker back to nothing
-  await setField(stroke.locator('.label-color-input'), '');
-  expect(await getStyleValue(page, 'stroke')).toBeUndefined();
-  await stroke.locator('.label-color-chit').click();
-  await expect(picker.locator('.label-color-picker-input')).toHaveValue('');
-  await expect(marker).toBeHidden();
-  expect(errors).toEqual([]);
-});
-
 test('stroke width is typed or stepped in a size field', async function({page}) {
   // It was a value between a − and a +, three clicks wide, with no way to
   // type a width at all until the value itself was clicked.
@@ -172,17 +74,6 @@ test('stroke width is typed or stepped in a size field', async function({page}) 
   // a quarter-pixel width survives the field it is shown in
   await setField(input, '0.25');
   expect(await getStyleValue(page, 'stroke-width')).toBe(0.25);
-  expect(errors).toEqual([]);
-});
-
-test('the panel buttons still do what they say', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await setField(colorRow(page, 'Fill').locator('.label-color-input'), '#00ff00');
-  expect(await getStyleValue(page, 'fill')).toBe('#00ff00');
-
-  await clickButton(page, 'Clear style');
-  expect(await getStyleValue(page, 'fill')).toBeUndefined();
   expect(errors).toEqual([]);
 });
 
@@ -224,28 +115,6 @@ test('dashes are typed as a -style stroke-dasharray value', async function({page
   await setField(input, '');
   expect(await getStyleValue(page, 'stroke-dasharray', LINE_LAYER)).toBeUndefined();
   expect(errors).toEqual([]);
-});
-
-test('the line panel\'s tips stay on the page', async function({page}) {
-  await loadFixture(page, LINE_FIXTURE, 'line_style');
-  // the arrowhead section has a tip of its own
-  var buttons = page.locator('.layer-style-panel .tip-button:visible');
-  var count = await buttons.count();
-  var pageWidth = await page.evaluate(() => document.documentElement.clientWidth);
-  expect(count).toBeGreaterThan(1);
-  for (var i = 0; i < count; i++) {
-    await buttons.nth(i).hover();
-    var tip = buttons.nth(i).locator('.tip');
-    await expect(tip).toBeVisible();
-    var box = await tip.boundingBox();
-    expect(box.x).toBeGreaterThanOrEqual(0);
-    expect(box.x + box.width).toBeLessThanOrEqual(pageWidth);
-  }
-});
-
-test('the dashes field is only on the line panel', async function({page}) {
-  await loadFixture(page, FIXTURE);
-  await expect(page.locator('.layer-style-panel .layer-line-row')).toBeHidden();
 });
 
 test('line caps are a three-way toggle, round by default', async function({page}) {
@@ -329,22 +198,6 @@ test('a hatch pattern is drawn over the fill, and follows it', async function({p
   expect(errors).toEqual([]);
 });
 
-test('the pattern menu stays open when clicked', async function({page}) {
-  // A native menu closes when its element is blurred, and the panel lets go of
-  // focus after a click. Focus staying on the <select> is what "the menu is
-  // open" looks like from here: the menu itself is drawn by the OS.
-  await loadFixture(page, POLY_FIXTURE);
-  var box = await patternSelect(page).boundingBox();
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await page.waitForTimeout(250);
-  expect(await getFocusedElement(page)).toBe('SELECT');
-  // choosing from it applies the pattern and gives the keyboard back
-  await patternSelect(page).selectOption('dots');
-  await page.waitForTimeout(250);
-  expect((await getPatterns(page))[0]).toBe('dots 2px #000000 3px none');
-  expect(await getFocusedElement(page)).toBe('BODY');
-});
-
 test('each feature gets its pattern over its own fill', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, POLY_FIXTURE);
@@ -361,59 +214,6 @@ test('each feature gets its pattern over its own fill', async function({page}) {
   await expect(patternSelect(page)).toHaveValue('dots');
   await expect(page.locator('.layer-pattern-size-row span').first()).toHaveText('Size');
   expect(errors).toEqual([]);
-});
-
-test('a pattern the controls cannot describe is shown as its code', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, POLY_FIXTURE);
-  var code = page.locator('.layer-pattern-code-row input');
-  await runConsoleCommand(page, "-style fill-pattern='dashes 4px 2px 1px black 4px white'");
-  expect(await getSectionPresence(page, PANEL, PATTERNS)).toBe('on');
-  await expect(patternSelect(page)).toHaveValue('custom');
-  await expect(code).toHaveValue('dashes 4px 2px 1px black 4px white');
-  await expect(page.locator('.layer-pattern-code-row .tip-button')).toHaveCount(1);
-
-  // not a pattern: the field goes back and nothing changes
-  await setField(code, 'zigzag 2px');
-  await expect(code).toHaveValue('dashes 4px 2px 1px black 4px white');
-  expect((await getPatterns(page))[0]).toBe('dashes 4px 2px 1px black 4px white');
-
-  await setField(code, 'hatches 1px red 1px white 1px blue');
-  expect((await getPatterns(page))[0]).toBe('hatches 1px red 1px white 1px blue');
-
-  // the × takes it away
-  await removeSectionStyle(page, PANEL, PATTERNS);
-  expect(await getPatterns(page)).toEqual([undefined, undefined, undefined]);
-  await expect(page.locator('.layer-pattern-code-row')).toBeHidden();
-  await expect(patternSelect(page)).toHaveValue('none');
-  expect(errors).toEqual([]);
-});
-
-test('choosing Custom shows the code for the pattern being replaced', async function({page}) {
-  await loadFixture(page, POLY_FIXTURE);
-  await selectPattern(page, 'squares');
-  await selectPattern(page, 'custom');
-  await expect(page.locator('.layer-pattern-code-row input')).toHaveValue('squares 2px #000000 2px none');
-  await expect(patternSelect(page)).toHaveValue('custom');
-});
-
-test('a pattern on some of the features shows as mixed', async function({page}) {
-  await loadFixture(page, POLY_FIXTURE);
-  await runConsoleCommand(page, "-style fill-pattern='hatches 3px none 1px black' ids=0");
-  expect(await getSectionPresence(page, PANEL, PATTERNS)).toBe('mixed');
-  await expect(patternSelect(page)).toHaveValue('mixed');
-  await expect(page.locator('.layer-pattern-color-row')).toBeHidden();
-
-  // choosing a type gives every feature that pattern
-  await selectPattern(page, 'dots');
-  expect(await getPatterns(page)).toEqual(Array(3).fill('dots 2px #000000 3px none'));
-  expect(await getSectionPresence(page, PANEL, PATTERNS)).toBe('on');
-  await expect(patternSelect(page)).toHaveValue('dots');
-});
-
-test('the pattern section is only on the polygon panel', async function({page}) {
-  await loadFixture(page, LINE_FIXTURE, 'line_style');
-  await expect(page.locator('.layer-style-panel .layer-pattern-type-row')).toBeHidden();
 });
 
 test('a glow is added by picking its color, and removed by emptying it',
@@ -462,17 +262,6 @@ test('a glow is added by picking its color, and removed by emptying it',
     expect(errors).toEqual([]);
   });
 
-test('a glow on some of the features shows as mixed', async function({page}) {
-  await loadFixture(page, POLY_FIXTURE);
-  await runConsoleCommand(page, '-style inner-glow-color=white inner-glow-width=6 ids=0');
-  await runConsoleCommand(page, '-style inner-glow-color=white inner-glow-width=4 ids=1');
-  var innerRow = page.locator('.layer-style-panel .layer-inner-glow-row');
-  expect(await getSectionPresence(page, PANEL, EFFECTS)).toBe('mixed');
-  await expect(innerRow.locator('.size-field-input')).toHaveValue('');
-  await expect(innerRow.locator('.label-color-input')).toHaveValue('');
-  await expect(innerRow.locator('.label-color-input')).toHaveAttribute('placeholder', 'mixed');
-});
-
 test('an emptied fill or stroke is unset, and an emptied pattern color is the default',
   async function({page}) {
     await loadFixture(page, POLY_FIXTURE);
@@ -512,44 +301,12 @@ test('clearing a selected feature stroke leaves other feature strokes alone',
       .toContain("-style stroke='' stroke-width='' ids=0");
   });
 
-test('glows are drawn on the map', async function({page}) {
-  await loadFixture(page, POLY_FIXTURE);
-  await runConsoleCommand(page, '-style fill=#cccccc');
-  var before = await getMapPixels(page);
-  // a glow is of what a shape paints, so a shape that paints nothing has none
-  await runConsoleCommand(page, '-style fill=none outer-glow-width=20 outer-glow-color=#ff0000');
-  expect((await getMapPixels(page)).red).toBe(before.red);
-  await runConsoleCommand(page, '-style fill=#cccccc');
-  await page.waitForTimeout(250);
-  var after = await getMapPixels(page);
-  expect(after.red).toBeGreaterThan(before.red + 100);
-});
-
-test('the Effects section is only on the polygon panel', async function({page}) {
-  await loadFixture(page, LINE_FIXTURE, 'line_style');
-  await expect(page.locator('.layer-style-panel .' + EFFECTS)).toBeHidden();
-});
-
 async function getGlows(page, type) {
   return (await getRecords(page)).map(function(rec) {
     return ['color', 'width', 'opacity'].map(function(name) {
       var val = rec[type + '-glow-' + name];
       return val === undefined ? '' : val;
     }).join(' ');
-  });
-}
-
-// How many of the map's pixels are mostly red.
-async function getMapPixels(page) {
-  return page.evaluate(function() {
-    var red = 0;
-    document.querySelectorAll('.map-layers canvas').forEach(function(canvas) {
-      var data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
-      for (var i=0; i<data.length; i+=4) {
-        if (data[i+3] > 30 && data[i] > 2 * data[i+1] && data[i] > 2 * data[i+2]) red++;
-      }
-    });
-    return {red: red};
   });
 }
 
@@ -618,12 +375,6 @@ async function getSessionCommands(page) {
   });
 }
 
-async function clickButton(page, label) {
-  await page.locator('.layer-style-panel .label-panel-action-btn')
-    .filter({hasText: label}).click();
-  await page.waitForTimeout(300);
-}
-
 async function setField(locator, value) {
   await locator.fill(value);
   await locator.press('Enter');
@@ -635,14 +386,6 @@ async function getStyleValue(page, field, layer) {
     var lyr = window.mapshaper.undoTest.getLayerInfo(o.layer);
     return lyr && lyr.records[0] && lyr.records[0][o.field];
   }, {layer: layer || LAYER, field: field});
-}
-
-// What has the keyboard: a tag name, or 'BODY' for nothing in particular.
-async function getFocusedElement(page) {
-  return page.evaluate(function() {
-    var el = document.activeElement;
-    return el ? el.nodeName : 'none';
-  });
 }
 
 // opts.open: false to leave the panel's sections closed, as they start

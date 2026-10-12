@@ -48,6 +48,7 @@ export function initSymbolTool(gui, ext, hit) {
   var panel = new SymbolPanel(gui, {
     getTarget: getTarget,
     getSelectedIds: getSelectedSymbols,
+    getAllIds: getAllSymbols,
     getArmed: function() { return armed; },
     getNewStyle: function() { return newStyle; },
     isCurve: isCurve,
@@ -393,7 +394,7 @@ export function initSymbolTool(gui, ext, hit) {
       return translateDisplayPoint(o.target, p);
     });
     shapes[o.id] = o.startShape;
-    runGuiEditCommand(gui, getUpdateSymbolCommand(coords, o.id, o.target.name), {
+    runGuiEditCommand(gui, getUpdateSymbolCommand(coords, o.id), {
       title: o.kind == 'knot' ? 'Reshape curve' : 'Move symbol',
       onSuccess: function() { hit.setSelectionIds(ids); }
     });
@@ -434,13 +435,17 @@ export function initSymbolTool(gui, ext, hit) {
   }, null, 10);
 
   function selectAll() {
+    hit.setSelectionIds(getAllSymbols());
+  }
+
+  function getAllSymbols() {
     var target = getTarget();
     var ids = [];
     var n = target ? internal.getFeatureCount(target) : 0;
     for (var i = 0; i < n; i++) {
       if (isSymbol(target, i)) ids.push(i);
     }
-    hit.setSelectionIds(ids);
+    return ids;
   }
 
   // Cmd-A on a Mac, Ctrl-A elsewhere
@@ -508,14 +513,13 @@ export function initSymbolTool(gui, ext, hit) {
     });
     runGuiEditCommand(gui, getAddSymbolCommand(coords, {
       options: options,
-      target: getSymbolTarget(target, isAnnotationLayer)
+      target: getSymbolTarget(target, isAnnotationLayer, null)
     }), {title: title});
   }
 
   function deleteSymbols(ids) {
-    var target = getTarget();
     deselect();
-    runGuiEditCommand(gui, getSymbolDeleteCommand(ids, target && target.name), {
+    runGuiEditCommand(gui, getSymbolDeleteCommand(ids), {
       title: ids.length > 1 ? 'Delete symbols' : 'Delete symbol'
     });
   }

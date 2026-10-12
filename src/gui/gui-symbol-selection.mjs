@@ -1,16 +1,24 @@
 import { internal } from './gui-core';
 
 // The symbol tool's hover and selection cues, drawn in the layer's SVG beside
-// each symbol: a box around an icon, and a ring on each knot of a curve. They
-// use the label tool's cue styles (.label-cue-* in page.css), so that a
-// selected symbol looks like a selected label.
+// each symbol: a halo like the one the line and polygon tools put around a
+// shape, and a ring on each knot of a selected curve.
 //
-// A layer of canvas-drawn circles has no SVG to draw into; its selection is
-// drawn by the overlay instead (see getOverlayLayers()).
+// A layer of canvas-drawn circles has no SVG to draw into; its halos are drawn
+// by the overlay instead, in the same colors (see getOverlayLayers()).
 
 var SVG_NS = 'http://www.w3.org/2000/svg';
-var BOX_PADDING = 3; // px
 var KNOT_RADIUS = 3.2;
+// The overlay's halos (gui-overlay-styler.mjs): how far a halo reaches past
+// the edge of an icon or each side of a curve, in px, and its colors
+var ICON_HALO = 5;
+var CURVE_HALO = 2.5;
+var HALO_SHAPES = 'circle,ellipse,rect,path,polygon,polyline,line';
+var haloStyles = {
+  selected: {color: 'rgb(255, 198, 0)', opacity: 0.25},
+  hovered: {color: 'black', opacity: 0.1},
+  hoveredDark: {color: 'white', opacity: 0.25}
+};
 
 // getState: function returning {selected: [ids], hoverId}
 // isSymbol: function(target, id) -> true for a feature the tool edits
@@ -41,53 +49,38 @@ export function SymbolSelection(gui, ext, hit, getState, isSymbol) {
     drawn = key;
     if (!target || !target.gui || !target.gui.svg_container) return;
     if (state.hoverId > -1 && state.selected.indexOf(state.hoverId) == -1) {
-      draw(target, state.hoverId, 'label-cue-hovered', false);
+      draw(target, state.hoverId, false);
     }
     state.selected.forEach(function(id) {
-      draw(target, id, 'label-cue-selected', true);
+      draw(target, id, true);
     });
   };
 
-  function draw(target, id, className, selected) {
+  function draw(target, id, selected) {
     var node = findNode(target, id);
     var shp = getDisplayShapes(target)[id];
-    var g;
+    var isCurve, halo, g;
     if (!node || !shp || !isSymbol(target, id)) return;
-    g = document.createElementNS(SVG_NS, 'g');
-    g.setAttribute('class', 'label-cue symbol-cue ' + className);
-    copyAttribute(node, g, 'transform');
-    copyAttribute(node, g, 'display');
-    if (internal.svg.shapeIsCurve(shp, getRecord(target, id))) {
-      appendCurveTrace(g, shp);
-      if (selected) appendKnots(g, shp);
-    } else {
-      appendBox(g, node);
+    isCurve = internal.svg.shapeIsCurve(shp, getRecord(target, id));
+    halo = makeHalo(node, isCurve ? CURVE_HALO : ICON_HALO, getHaloStyle(selected));
+    halo.classList.add(selected ? 'symbol-halo-selected' : 'symbol-halo-hovered');
+    // beneath the symbol, so that it is seen in its own colors
+    node.parentNode.insertBefore(halo, node);
+    groups.push(halo);
+    if (isCurve && selected) {
+      g = document.createElementNS(SVG_NS, 'g');
+      g.setAttribute('class', 'label-cue symbol-cue label-cue-selected');
+      copyAttribute(node, g, 'transform');
+      copyAttribute(node, g, 'display');
+      appendKnots(g, shp);
+      node.parentNode.insertBefore(g, node.nextSibling);
+      groups.push(g);
     }
-    node.parentNode.insertBefore(g, node.nextSibling);
-    groups.push(g);
   }
 
-  function appendBox(g, node) {
-    var box = measure(node);
-    var el;
-    if (!box) return;
-    el = document.createElementNS(SVG_NS, 'rect');
-    el.setAttribute('x', box.x - BOX_PADDING);
-    el.setAttribute('y', box.y - BOX_PADDING);
-    el.setAttribute('width', box.width + BOX_PADDING * 2);
-    el.setAttribute('height', box.height + BOX_PADDING * 2);
-    el.setAttribute('class', 'label-cue-box');
-    g.appendChild(el);
-  }
-
-  // A hairline along the curve, in the box's style: the curve's own stroke
-  // may be too thin or too pale to show that it is the one selected
-  function appendCurveTrace(g, shp) {
-    var coords = getCurveCoords(shp);
-    var el = document.createElementNS(SVG_NS, 'path');
-    el.setAttribute('d', internal.svg.getCurvePathData(coords, internal.svg.curveIsClosed(coords)));
-    el.setAttribute('class', 'label-cue-box');
-    g.appendChild(el);
+  function getHaloStyle(selected) {
+    if (selected) return haloStyles.selected;
+    return gui.state.dark_basemap ? haloStyles.hoveredDark : haloStyles.hovered;
   }
 
   // In the coordinates inside the symbol's group, mapped the way the
@@ -120,14 +113,6 @@ export function SymbolSelection(gui, ext, hit, getState, isSymbol) {
     return records ? records[id] : null;
   }
 
-  function measure(node) {
-    try {
-      return node.getBBox();
-    } catch (e) {
-      return null;
-    }
-  }
-
   function clearAll() {
     groups.forEach(function(g) {
       if (g.parentNode) g.parentNode.removeChild(g);
@@ -144,6 +129,49 @@ export function SymbolSelection(gui, ext, hit, getState, isSymbol) {
 export function getDisplayShapes(target) {
   var lyr = target && target.gui && target.gui.displayLayer;
   return lyr && lyr.shapes ? lyr.shapes : target && target.shapes || [];
+}
+
+// A copy of a symbol's shapes, each stroked @reach px wider on each side than
+// it is drawn, with no fill: beneath the symbol, a band around its edge. The
+// group's opacity, rather than each stroke's, keeps overlapping strokes (an
+// arrowhead on its curve) from showing darker where they cross.
+export function makeHalo(node, reach, style) {
+  var g = document.createElementNS(SVG_NS, 'g');
+  var halo = node.cloneNode(true);
+  // a symbol is a group of shapes, or a single shape
+  var shapes = node.matches(HALO_SHAPES) ? [node] : node.querySelectorAll(HALO_SHAPES);
+  var copies = node.matches(HALO_SHAPES) ? [halo] : halo.querySelectorAll(HALO_SHAPES);
+  var scale = getScale(node);
+  halo.removeAttribute('data-id');
+  halo.removeAttribute('class');
+  halo.removeAttribute('opacity');
+  g.setAttribute('class', 'label-cue symbol-cue symbol-halo');
+  g.setAttribute('opacity', style.opacity);
+  g.appendChild(halo);
+  halo.querySelectorAll('text,image').forEach(function(el) {
+    el.parentNode.removeChild(el);
+  });
+  copies.forEach(function(el, i) {
+    var width = getStrokeWidth(shapes[i]) + reach * 2 / scale;
+    el.removeAttribute('marker-start');
+    el.removeAttribute('marker-end');
+    el.setAttribute('style', 'fill: none; stroke: ' + style.color +
+      '; stroke-opacity: 1; opacity: 1; stroke-dasharray: none; stroke-linejoin: round;' +
+      ' stroke-linecap: round; stroke-width: ' + width + 'px;');
+  });
+  return g;
+}
+
+function getStrokeWidth(el) {
+  var style = window.getComputedStyle(el);
+  if (!style.stroke || style.stroke == 'none') return 0;
+  return parseFloat(style.strokeWidth) || 0;
+}
+
+// map px per unit inside the symbol's group, which a symbol's size can scale
+function getScale(node) {
+  var m = node.getCTM && node.getCTM();
+  return m ? Math.hypot(m.a, m.b) || 1 : 1;
 }
 
 function copyAttribute(from, to, name) {

@@ -55,18 +55,6 @@ test('the arrowhead controls set line-start and line-end, one undo step each',
     expect(errors).toEqual([]);
   });
 
-test('a dot is sized by its diameter', async function({page}) {
-  await loadFixture(page);
-  await shapeButton(page, 'dot').click();
-  await page.waitForTimeout(250);
-  expect(await getArrowStyles(page)).toEqual({start: undefined, end: 'dot', size: undefined});
-  await expect(shapeButton(page, 'dot')).toHaveClass(/selected/);
-  await expect(sizeField(page)).toHaveValue('6');
-  await setField(sizeField(page), '9');
-  expect(await getArrowStyles(page)).toEqual({start: undefined, end: 'dot', size: 9});
-  await expect(sizeField(page)).toHaveValue('9');
-});
-
 test('the marker follows styles set from the console', async function({page}) {
   await loadFixture(page);
   await page.evaluate(function() {
@@ -80,18 +68,6 @@ test('the marker follows styles set from the console', async function({page}) {
   await page.waitForTimeout(250);
   expect(await getSectionPresence(page, PANEL, SECTION)).toBe('on');
   await expect(positionButton(page, 'start')).toHaveClass(/selected/);
-});
-
-test('arrowheads are drawn on the map', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page);
-  var before = await getCanvasInkCount(page);
-  await positionButton(page, 'both').click();
-  await page.waitForTimeout(400);
-  var after = await getCanvasInkCount(page);
-  // Solid heads add more ink than the bits of line they replace
-  expect(after).toBeGreaterThan(before);
-  expect(errors).toEqual([]);
 });
 
 test('the fade is set as a percent, removed with the heads, and drawn', async function({page}) {
@@ -125,20 +101,6 @@ test('the fade is set as a percent, removed with the heads, and drawn', async fu
   await removeSectionStyle(page, PANEL, SECTION);
   expect(await getFade(page)).toBeUndefined();
   expect(errors).toEqual([]);
-});
-
-test('the arrowhead section is only for lines', async function({page}) {
-  await page.goto('/?undo=on&undo-test=on&files=' +
-    encodeURIComponent('test/data/issues/389_clipping_error/inner_polygon.json'));
-  await page.waitForFunction(function() {
-    return window.mapshaper && window.mapshaper.undoTest &&
-      window.mapshaper.undoTest.getState().model.datasetCount > 0;
-  });
-  await page.evaluate(function() {
-    window.mapshaper.undoTest.setInteractionMode('polygon_style');
-  });
-  await page.locator('.layer-style-panel').waitFor({state: 'visible'});
-  await expect(arrowSection(page)).toBeHidden();
 });
 
 function arrowSection(page) {

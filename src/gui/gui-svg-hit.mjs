@@ -48,8 +48,10 @@ export function getSvgHitTest(displayLayer) {
       tag == 'line' || tag == 'use';
   }
 
+  // A symbol of one shape is that shape, with no group around it
   function isSymbolNode(node) {
-    return node.hasAttribute('data-id') && (node.tagName == 'text' || node.tagName == 'g');
+    return node.hasAttribute('data-id') && (node.tagName == 'text' || node.tagName == 'g' ||
+      node.classList.contains('mapshaper-svg-symbol'));
   }
 
   function isSymbolChildNode(node) {

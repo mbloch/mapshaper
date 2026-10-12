@@ -3,7 +3,10 @@
 //
 // A point layer is described by how its features are drawn, in the terms of
 // the point style panel: labels, symbols, circles and plain points. A layer
-// that mixes them lists each kind it has, e.g. "12 labels, 30 points".
+// that mixes them lists each kind it has, e.g. "12 labels, 30 points". A
+// circle is a symbol too, and is counted as one beside other symbols: "13
+// symbols" rather than "12 symbols, 1 circle". A layer of circles alone, which
+// the point style panel styles, is "350 circles".
 //
 // Features with null geometry are left out of the counts, which say what is on
 // the map. The column is too narrow to list them as well, so they go in a
@@ -58,6 +61,10 @@ function describePoints(shapes, records, fields) {
   for (i=0; i<shapes.length; i++) {
     if (isNullShape(shapes[i])) continue;
     counts[getPointKind(records ? records[i] : null)]++;
+  }
+  if (counts.symbol > 0) {
+    counts.symbol += counts.circle;
+    counts.circle = 0;
   }
   parts = POINT_KINDS.filter(function(kind) {
     return counts[kind] > 0;

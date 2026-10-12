@@ -155,16 +155,12 @@ export function getOverlayLayers(activeLyr, hitData, styleOpts) {
   if (styleOpts.interactionMode == 'symbols') {
     // As in the label tool, the overlay shows the curve being drawn, and an
     // SVG layer's cues are drawn in SVG (gui-symbol-selection.mjs). A layer
-    // of plain circles is drawn on canvas, so its cues are drawn here.
+    // of plain circles is drawn on canvas, so its cues are drawn here: the
+    // halos of the line and polygon tools, which SVG symbols are given too.
     pending = getPendingLabelPath();
     layers = getLabelPathGuideLayers(activeLyr, pending ? [pending] : []);
-    ids = utils.uniq((hitData.ids || []).concat(hitData.id > -1 ? [hitData.id] : []));
-    if (ids.length > 0 && !internal.layerHasSvgSymbols(activeLyr) &&
-        !internal.layerHasLabels(activeLyr)) {
-      lyr = getOverlayLayer(activeLyr, ids);
-      outlineStyle = getSelectionStyle(displayLyr.geometry_type, styleOpts);
-      lyr.gui.style = getOverlayStyle(activeLyr, ids, outlineStyle);
-      layers.push(lyr);
+    if (!internal.layerHasSvgSymbols(activeLyr) && !internal.layerHasLabels(activeLyr)) {
+      layers = layers.concat(getSymbolHaloLayers(activeLyr, hitData, styleOpts));
     }
     return layers;
   }
@@ -356,6 +352,24 @@ function getDrawingLayers(activeLyr, hitData, styleOpts) {
   layers.forEach(function(lyr, i) {
     if (i < layers.length - 1) lyr.gui.style.vertex_overlay = null;
   });
+  return layers;
+}
+
+function getSymbolHaloLayers(activeLyr, hitData, styleOpts) {
+  var selected = hitData.ids || [];
+  var dark = !!(styleOpts && styleOpts.darkMode);
+  var layers = [];
+  var lyr;
+  if (hitData.id > -1 && !selected.includes(hitData.id)) {
+    lyr = getOverlayLayer(activeLyr, [hitData.id]);
+    lyr.gui.style = getOverlayStyle(activeLyr, [hitData.id], getDrawingHoverStyle(dark));
+    layers.push(lyr);
+  }
+  if (selected.length > 0) {
+    lyr = getOverlayLayer(activeLyr, selected);
+    lyr.gui.style = getOverlayStyle(activeLyr, selected, styleSelectionStyles.point);
+    layers.push(lyr);
+  }
   return layers;
 }
 

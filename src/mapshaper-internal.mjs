@@ -24,12 +24,14 @@ import * as SvgLineArrows from './svg/svg-line-arrows';
 import * as SvgCurveSymbols from './svg/svg-curve-symbols';
 import * as SvgGlow from './svg/svg-glow';
 import * as SvgRasterize from './svg/mapshaper-svg-rasterize';
+import { getIconBoundingRadius } from './svg/svg-symbol-bounds';
 
 internal.svg = Object.assign({}, SvgStringify, SvgPathUtils, GeojsonToSvg,
   SvgFeatureUtils,
   SvgLabels, SvgSymbols, SvgLabelPaths, SvgLabelFit, SvgLabelAlign,
   SvgLabelMetrics, SvgLabelHalo, SvgLabelCallout, SvgLabelBox, SvgLabelBackground,
-  SvgLabelMarkup, SvgLineArrows, SvgCurveSymbols, SvgGlow, SvgRasterize);
+  SvgLabelMarkup, SvgLineArrows, SvgCurveSymbols, SvgGlow, SvgRasterize,
+  {getIconBoundingRadius});
 
 import * as FontLookup from './fonts/mapshaper-font-lookup';
 import * as TextMeasure from './fonts/mapshaper-text-measure';

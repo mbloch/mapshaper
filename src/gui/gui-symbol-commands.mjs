@@ -17,11 +17,13 @@ export var DEFAULT_SYMBOL_LAYER_NAME = 'symbols';
 //   lyr: the active layer, or null/undefined if there is none
 //   isAnnotationLayer: function(lyr) -> true for a point layer with labels or
 //     SVG symbols in it
+//   targetId: what target= names lyr with, or null to leave target= off
+//     (the GUI runs its commands on the active layer); its name if omitted
 // Returns {mode, newLayerName, target}, as getLabelTarget() does: mode is
 //   'existing' or 'new', and target is the layer the command runs against,
 //   which is the active layer either way.
-export function getSymbolTarget(lyr, isAnnotationLayer) {
-  var name = lyr && lyr.name || null;
+export function getSymbolTarget(lyr, isAnnotationLayer, targetId) {
+  var name = targetId !== undefined ? targetId : lyr && lyr.name || null;
   if (!lyr) {
     return {mode: 'new', newLayerName: DEFAULT_SYMBOL_LAYER_NAME, target: null};
   }

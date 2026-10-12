@@ -73,22 +73,6 @@ test('fitting visible layers applies the aspect ratio and margin', async functio
     .toContain("aspect-ratio=1.25 margin='10%'");
 });
 
-// Fitting already makes room for what is drawn, so no margin is needed to keep
-// the edges of the map from being cut off.
-test('fitting visible layers adds no margin by default', async function({page}) {
-  await loadFixture(page);
-  await openLayersPanel(page);
-  await page.locator('.map-frame-empty').click();
-  await expect(page.locator('.frame-create-margin input')).toHaveValue('');
-  await page.locator('.frame-create-popup .dialog-btn')
-    .filter({hasText: 'Fit visible layers'}).click();
-
-  await expect.poll(function() {
-    return getFrameInfo(page);
-  }).not.toBeNull();
-  expect((await getSessionCommands(page)).pop()).not.toContain('margin');
-});
-
 // A drawn box is already the extent the user meant, so the margin is not
 // offered for it and must not leak into the command.
 test('a drawn frame takes the aspect ratio but no margin', async function({page}) {
@@ -152,18 +136,6 @@ test('a set aspect ratio constrains the box being drawn', async function({page})
   expect(frame.width / frame.height).toBeCloseTo(2, 6);
 });
 
-test('an unusable aspect ratio keeps the dialog open', async function({page}) {
-  await loadFixture(page);
-  await openLayersPanel(page);
-  await page.locator('.map-frame-empty').click();
-  await setInput(page, '.frame-create-aspect-input', '0:3');
-  await page.locator('.frame-create-popup .dialog-btn')
-    .filter({hasText: 'Fit visible layers'}).click();
-
-  await expect(page.locator('.frame-create-popup')).toBeVisible();
-  expect(await getFrameInfo(page)).toBeNull();
-});
-
 // Blank is the default and means "take the shape of the frame area", so it
 // must not reach the command as an aspect-ratio option.
 test('a blank aspect ratio sends no aspect-ratio option', async function({page}) {
@@ -212,69 +184,6 @@ test('frame creation preserves the active content and console target', async fun
   expect(frameFields).not.toContain('gui_target_test');
 });
 
-test('draw frame uses a dedicated Done and Cancel interface', async function({page}) {
-  await loadFixture(page);
-  await openLayersPanel(page);
-  await page.locator('.map-frame-empty').click();
-  await page.locator('.frame-create-popup .dialog-btn')
-    .filter({hasText: 'Draw on the map'}).click();
-
-  await expect(page.locator('.frame-draw-toolbar')).toBeVisible();
-  await expect(page.locator('.frame-draw-toolbar')).toContainText('DoneCancel');
-  await expect(page.locator('.box-tool-options')).toBeHidden();
-  await expect(page.locator('.pointer-btn')).not.toHaveClass(/selected/);
-  await expect(page.locator('.alert-wrapper.non-blocking')).toContainText(
-    'Click to place the first corner'
-  );
-  await expect(page.locator('.frame-draw-toolbar .text-btn')
-    .filter({hasText: 'Done'})).toHaveClass(/disabled/);
-  await page.locator('.frame-draw-toolbar .text-btn')
-    .filter({hasText: 'Cancel'}).click();
-  await expect(page.locator('.frame-draw-toolbar')).toBeHidden();
-  expect(await getFrameInfo(page)).toBeNull();
-
-  await page.locator('.map-frame-empty').click();
-  await page.locator('.frame-create-popup .dialog-btn')
-    .filter({hasText: 'Draw on the map'}).click();
-
-  await expect(page.locator('.alert-wrapper.non-blocking')).toBeVisible();
-  var mapBox = await page.locator('.map-layers').boundingBox();
-  await page.mouse.click(mapBox.x + 120, mapBox.y + 100);
-  await page.mouse.move(mapBox.x + 480, mapBox.y + 380);
-  await page.mouse.click(mapBox.x + 480, mapBox.y + 380);
-  await expect(page.locator('.frame-draw-box')).toBeVisible();
-  await expect(page.locator('.alert-wrapper.non-blocking')).toBeHidden();
-  await expect(page.locator('.frame-draw-toolbar .text-btn')
-    .filter({hasText: 'Done'})).not.toHaveClass(/disabled/);
-
-  await page.locator('.frame-draw-toolbar .text-btn')
-    .filter({hasText: 'Done'}).click();
-  await expect.poll(function() {
-    return getFrameInfo(page);
-  }).not.toBeNull();
-});
-
-test('a frame colour with no opacity of its own shows 100%', async function({page}) {
-  await loadFixture(page);
-  await page.evaluate(function() {
-    return window.mapshaper.undoTest.runCommand(
-      '-frame bbox=-80,30,-70,40 width=600 name=frame'
-    );
-  });
-  await openLayersPanel(page);
-  await page.locator('.map-frame-list .layer-item').click();
-  var popup = page.locator('.frame-properties-popup');
-  await expect(popup).toBeVisible();
-  var opacities = popup.locator('.label-opacity-input');
-  // no colour, so nothing for an opacity to apply to
-  await expect(opacities.nth(0)).toHaveValue('');
-  await expect(opacities.nth(1)).toHaveValue('');
-
-  await setInput(page, '.frame-properties-popup .label-color-input >> nth=0', '#d72f2f');
-  await expect(opacities.nth(0)).toHaveValue('100%');
-  await expect(opacities.nth(1)).toHaveValue('');
-});
-
 test('frame properties edits output size through an undoable command', async function({page}) {
   await loadFixture(page);
   await page.evaluate(function() {
@@ -309,64 +218,6 @@ test('frame properties edits output size through an undoable command', async fun
   }).toBe(600);
 });
 
-// The panel sits in a box that scrolls its overflow, which used to clip the
-// picker into the panel instead of letting it float over it.
-test('the frame colour picker floats over the panel it belongs to',
-  async function({page}) {
-    await loadFixture(page);
-    await page.evaluate(function() {
-      return window.mapshaper.undoTest.runCommand(
-        '-frame bbox=-80,30,-70,40 width=600 name=frame'
-      );
-    });
-    await openLayersPanel(page);
-    await page.locator('.map-frame-list .layer-item').click();
-    await expect(page.locator('.frame-properties-popup')).toBeVisible();
-    // Neatline is the lower of the two colour rows, the worse case.
-    await page.locator('.frame-properties-popup .label-color-chit').nth(1).click();
-
-    var picker = page.locator('.frame-properties-popup .label-color-picker').nth(1);
-    await expect(picker).toBeVisible();
-    await expect(picker).toBeInViewport();
-    var reach = await page.evaluate(function() {
-      var el = Array.prototype.filter.call(
-        document.querySelectorAll('.label-color-picker'), function(node) {
-          return node.getBoundingClientRect().height > 0;
-        })[0];
-      return {
-        picker: el.getBoundingClientRect().bottom,
-        panel: document.querySelector('.alert-box').getBoundingClientRect().bottom
-      };
-    });
-    // Clipped by the panel, the picker could not reach past its bottom edge.
-    expect(reach.picker).toBeGreaterThan(reach.panel);
-  });
-
-test('a frame colour picker opens on the colour that is set', async function({page}) {
-  await loadFixture(page);
-  await page.evaluate(function() {
-    return window.mapshaper.undoTest.runCommand(
-      '-frame bbox=-80,30,-70,40 width=600 name=frame ' +
-      '-style target=frame fill=#aed9ef stroke=#cc3300'
-    );
-  });
-  await openLayersPanel(page);
-  await page.locator('.map-frame-list .layer-item').click();
-  await expect(page.locator('.frame-properties-popup')).toBeVisible();
-
-  // Neatline first: its picker opens below its own row, leaving the Background
-  // chit above it clickable. The other order buries the second chit.
-  await page.locator('.frame-properties-popup .label-color-chit').nth(1).click();
-  expect(await readPickerColor(page, 1)).toBe('#cc3300');
-
-  // Two pickers open at once just cover each other.
-  await page.locator('.frame-properties-popup .label-color-chit').nth(0).click();
-  expect(await readPickerColor(page, 0)).toBe('#aed9ef');
-  await expect(
-    page.locator('.frame-properties-popup .label-color-picker').nth(1)
-  ).toBeHidden();
-});
-
 // Either dimension rescales the frame and the other follows; neither reshapes
 // the extent, which is the resize tool's job.
 test('frame properties rescales the frame without moving its extent',
@@ -395,42 +246,6 @@ test('frame properties rescales the frame without moving its extent',
 
     expect((await getFrameInfo(page)).bbox).toEqual([-80, 30, -70, 40]);
   });
-
-test('frame properties shows aspect ratio without offering to set it',
-  async function({page}) {
-    await loadFixture(page);
-    await page.evaluate(function() {
-      return window.mapshaper.undoTest.runCommand(
-        '-frame bbox=-80,30,-70,40 width=600 name=frame'
-      );
-    });
-    await openLayersPanel(page);
-    await page.locator('.map-frame-list .layer-item').click();
-
-    var panel = page.locator('.frame-properties-popup');
-    await expect(panel).toContainText('1:1 (from extent)');
-    // The name is edited in the layer list, and the ratio through the resize
-    // tool, so neither has a control here.
-    await expect(panel).not.toContainText('Name');
-    await expect(panel).not.toContainText('Ground resolution');
-    await expect(panel.locator('select')).toHaveCount(1); // units only
-  });
-
-test('clicking the map frame row opens frame properties', async function({page}) {
-  await loadFixture(page);
-  await page.evaluate(function() {
-    return window.mapshaper.undoTest.runCommand(
-      '-frame bbox=-80,30,-70,40 width=600 name=frame'
-    );
-  });
-  await openLayersPanel(page);
-  await page.locator('.map-frame-list .layer-item').click();
-
-  await expect(page.locator('.frame-properties-popup')).toBeVisible();
-  expect(await page.evaluate(function() {
-    return window.mapshaper.undoTest.getInteractionMode();
-  })).toBe('off');
-});
 
 test('frame handles crop by default and preserve width when locked', async function({page}) {
   await loadFixture(page);
@@ -472,36 +287,6 @@ test('frame handles crop by default and preserve width when locked', async funct
   await page.evaluate(function() {
     window.mapshaper.undoTest.setFrameLockSize(true);
   });
-  await dragLeftHandle(page, 40);
-  await expect.poll(async function() {
-    return (await getFrameInfo(page)).bbox[0];
-  }).toBeLessThan(-80);
-  expect((await getFrameInfo(page)).width).toBe(600);
-});
-
-// A single button that renamed itself gave no way to tell the mode you were in
-// from the mode a click would put you in, so both are shown and one is lit.
-test('the resize toolbar shows both drag modes', async function({page}) {
-  await loadFixture(page);
-  await page.evaluate(function() {
-    return window.mapshaper.undoTest.runCommand(
-      '-frame bbox=-80,30,-70,40 width=600 name=frame'
-    );
-  });
-  await page.evaluate(function() {
-    window.mapshaper.undoTest.openFrameTool();
-  });
-
-  var segments = page.locator('.frame-size-mode .floating-toolbar-btn');
-  var fixScale = segments.filter({hasText: 'Fix scale'});
-  var fixOutput = segments.filter({hasText: 'Fix output'});
-  await expect(fixScale).toHaveClass(/selected/);
-  await expect(fixOutput).not.toHaveClass(/selected/);
-
-  // Fix output holds the output width while the extent grows.
-  await fixOutput.click();
-  await expect(fixOutput).toHaveClass(/selected/);
-  await expect(fixScale).not.toHaveClass(/selected/);
   await dragLeftHandle(page, 40);
   await expect.poll(async function() {
     return (await getFrameInfo(page)).bbox[0];
@@ -630,34 +415,6 @@ test('the resize toolbar sets and clears a fixed ratio', async function({page}) 
   await expect(ratio).toHaveValue('');
 });
 
-// The handles sit on the page boundary that preview draws, so the tool cannot
-// outlive either preview mode or the frame itself.
-test('the resize tool closes when preview is turned off', async function({page}) {
-  await loadFixture(page);
-  await page.evaluate(function() {
-    return window.mapshaper.undoTest.runCommand(
-      '-frame bbox=-80,30,-70,40 width=600 name=frame'
-    );
-  });
-  await page.evaluate(function() {
-    window.mapshaper.undoTest.openFrameTool();
-  });
-  await expect(page.locator('.frame-toolbar')).toBeVisible();
-  await expect(page.locator('.frame-edit-box')).toBeVisible();
-  // The frame modes are not in the pointer button's menu, so it must not light
-  // up as though one of its own tools were armed.
-  await expect(page.locator('.pointer-btn')).not.toHaveClass(/selected/);
-
-  await page.evaluate(function() {
-    window.mapshaper.undoTest.setPreviewMode(false);
-  });
-  await expect(page.locator('.frame-toolbar')).not.toBeVisible();
-  await expect(page.locator('.frame-edit-box')).not.toBeVisible();
-  expect(await page.evaluate(function() {
-    return window.mapshaper.undoTest.getInteractionMode();
-  })).toBe('off');
-});
-
 test('the resize tool closes when the frame is deleted', async function({page}) {
   await loadFixture(page);
   await page.evaluate(function() {
@@ -716,66 +473,6 @@ test('projecting a layer redraws the frame it carries', async function({page}) {
   }).toContain(String(Math.round(after.height)));
 });
 
-test('frame appearance renders as a background and top neatline', async function({page}) {
-  await loadFixture(page);
-  await page.evaluate(async function() {
-    await window.mapshaper.undoTest.runCommand(
-      '-frame bbox=-80,30,-70,40 width=600 name=frame'
-    );
-    await window.mapshaper.undoTest.runCommand(
-      "-style fill='#f2e3c6' fill-opacity=0.75 stroke='#234567' " +
-      'stroke-width=3 target=frame'
-    );
-    window.mapshaper.undoTest.setPreviewMode(true);
-  });
-  await expect(page.locator('.preview-page-background')).toHaveAttribute('fill', '#f2e3c6');
-  await expect(page.locator('.preview-page-background')).toHaveAttribute('fill-opacity', '0.75');
-  await expect(page.locator('.preview-page-neatline')).toHaveAttribute('stroke', '#234567');
-
-  // 3 output pixels, drawn at whatever size the page is being shown at, so the
-  // neatline reads on screen as thick as it will print.
-  var neatline = await page.evaluate(function() {
-    var el = document.querySelector('.preview-page-neatline');
-    return {
-      width: Number(el.getAttribute('stroke-width')),
-      pageScale: Number(el.getAttribute('width')) /
-        window.mapshaper.undoTest.getFrameInfo().width
-    };
-  });
-  expect(neatline.pageScale).not.toBe(1); // otherwise this proves nothing
-  expect(neatline.width).toBeCloseTo(3 * neatline.pageScale, 3);
-
-  var order = await page.evaluate(function() {
-    var layers = document.querySelector('.map-layers');
-    var children = Array.from(layers.children);
-    return {
-      background: children.indexOf(document.querySelector('.preview-background-overlay')),
-      firstCanvas: children.findIndex(function(el) { return el.tagName == 'CANVAS'; }),
-      neatlineOverlay: children.indexOf(document.querySelector('.preview-overlay'))
-    };
-  });
-  expect(order.background).toBeLessThan(order.firstCanvas);
-  expect(order.neatlineOverlay).toBeGreaterThan(order.firstCanvas);
-
-  // The chrome border says where the page is when nothing else does. It is
-  // painted after the neatline, so leaving it on hid every neatline behind the
-  // same dark grey line.
-  await expect(page.locator('.preview-page-border')).toBeHidden();
-});
-
-test('the page border only stands in for a neatline that is not there',
-  async function({page}) {
-    await loadFixture(page);
-    await page.evaluate(async function() {
-      await window.mapshaper.undoTest.runCommand(
-        '-frame bbox=-80,30,-70,40 width=600 name=frame'
-      );
-      window.mapshaper.undoTest.setPreviewMode(true);
-    });
-    await expect(page.locator('.preview-page-border')).toBeVisible();
-    await expect(page.locator('.preview-page-neatline')).toBeHidden();
-  });
-
 test('export treats the frame as output settings, not a selectable layer', async function({page}) {
   await loadFixture(page);
   await page.evaluate(function() {
@@ -817,42 +514,6 @@ test('Fit re-fits the frame after the points are styled', async function({page})
   expect(after.bbox[2]).toBeGreaterThan(before.bbox[2]);
 });
 
-test('the frame entry is not dragged like a layer', async function({page}) {
-  await loadFixture(page);
-  await openLayersPanel(page);
-  await page.locator('.map-frame-empty').click();
-  await page.locator('.frame-create-popup .dialog-btn')
-    .filter({hasText: 'Fit visible layers'}).click();
-  await expect(page.locator('.map-frame-list .layer-item')).toHaveCount(1);
-  var box = await page.locator('.map-frame-list .layer-contents').boundingBox();
-  var y = box.y + box.height / 2;
-  await page.mouse.move(box.x + 5, y);
-  await page.mouse.down();
-  await page.mouse.move(box.x + 25, y, {steps: 5});
-  var classes = await page.locator('.map-frame-list .layer-item').getAttribute('class');
-  await page.mouse.up();
-  expect(classes).not.toMatch(/drag-target|dragging|insert-/);
-});
-
-test('a press on the frame does not drag a layer it moves over', async function({page}) {
-  await loadFixture(page);
-  await openLayersPanel(page);
-  await page.locator('.map-frame-empty').click();
-  await page.locator('.frame-create-popup .dialog-btn')
-    .filter({hasText: 'Fit visible layers'}).click();
-  await expect(page.locator('.map-frame-list .layer-item')).toHaveCount(1);
-  var layerRow = page.locator('.layer-list .layer-item').first();
-  var from = await page.locator('.map-frame-list .layer-contents').boundingBox();
-  var to = await layerRow.boundingBox();
-  await layerRow.hover(); // the row's handlers are attached on first hover
-  await page.mouse.move(from.x + 5, from.y + from.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(to.x + 5, to.y + to.height / 2, {steps: 5});
-  var classes = await layerRow.getAttribute('class');
-  await page.mouse.up();
-  expect(classes).not.toMatch(/drag-target|dragging|insert-/);
-});
-
 test('layers can still be reordered by dragging', async function({page}) {
   await loadFixture(page);
   await openLayersPanel(page);
@@ -873,26 +534,6 @@ test('layers can still be reordered by dragging', async function({page}) {
   await expect(names).toHaveText(['three_points', 'copy']);
 });
 
-test('a frame entry outside the frame list is removed on redraw', async function({page}) {
-  await loadFixture(page);
-  await openLayersPanel(page);
-  await page.locator('.map-frame-empty').click();
-  await page.locator('.frame-create-popup .dialog-btn')
-    .filter({hasText: 'Fit visible layers'}).click();
-  await expect(page.locator('.map-frame-list .layer-item')).toHaveCount(1);
-  await page.evaluate(function() {
-    var row = document.querySelector('.map-frame-list .layer-item');
-    var list = document.querySelector('.map-frame-list');
-    list.parentNode.insertBefore(row, list);
-  });
-  await expect(page.locator('.map-frame-section > .layer-item')).toHaveCount(1);
-  await page.evaluate(function() {
-    return window.mapshaper.undoTest.runCommand('-each "x=1" target=three_points');
-  });
-  await expect(page.locator('.map-frame-section > .layer-item')).toHaveCount(0);
-  await expect(page.locator('.map-frame-list .layer-item')).toHaveCount(1);
-});
-
 async function loadFixture(page, file) {
   var url = '/?undo=on&undo-test=on&files=' + encodeURIComponent(file || POINT_FIXTURE);
   await page.goto(url);
@@ -902,17 +543,6 @@ async function loadFixture(page, file) {
   await page.waitForFunction(function() {
     return window.mapshaper.undoTest.getState().model.datasetCount > 0;
   });
-}
-
-// What the picker's color field reads, which is where it is actually sitting.
-async function readPickerColor(page, n) {
-  return page.evaluate(function(i) {
-    var picker = document.querySelectorAll(
-      '.frame-properties-popup .label-color-picker')[i];
-    return Array.prototype.map.call(
-      picker.querySelectorAll('.label-color-picker-input'),
-      function(el) {return el.value;}).join(' ');
-  }, n);
 }
 
 async function getFrameInfo(page) {

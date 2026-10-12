@@ -176,15 +176,23 @@ export function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
     };
   }
 
+  // An icon has no radius on the canvas, which draws the layer's circles
+  // only; it is hit within the circle that covers it.
   function getRadiusFunction(style) {
     var o = {};
+    var records = layer.gui.displayLayer.data ? layer.gui.displayLayer.data.getRecords() : null;
+    var iconRadius = function(i) {
+      var rec = records && records[i];
+      return rec && rec.icon ? internal.svg.getIconBoundingRadius(rec) : 0;
+    };
     if (style.styler) {
       return function(i) {
+        o.radius = 0;
         style.styler(o, i);
-        return o.radius || 0;
+        return o.radius || iconRadius(i);
       };
     }
-    return function() {return style.radius || 0;};
+    return function(i) {return style.radius || iconRadius(i);};
   }
 
   function getGraduatedCircleTest(radius) {

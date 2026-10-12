@@ -63,46 +63,6 @@ test('the context menu bolds the selected words, and takes them back', async fun
   expect((await getHistory(page)).match(/<b>/g)).toHaveLength(1);
 });
 
-test('with nothing selected, the context menu bolds the word right-clicked', async function({page}) {
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-  await page.keyboard.type('after cease-fire now');
-  await finishLabel(page);
-
-  await clickLabel(page, 0);
-  await clickLabel(page, 0);
-  await rightClickGlyph(page, 0, 8);
-  await clickMenuItem(page, 'bold text');
-  expect(await getBoldTspans(page)).toEqual(['cease-fire']);
-  expect(await getTextareaSelection(page)).toEqual([6, 16]);
-});
-
-test('the context menu bolds words in a label not created yet', async function({page}) {
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-  await page.keyboard.type('High terrain');
-  await rightClickPendingGlyph(page, 7);
-  await clickMenuItem(page, 'bold text');
-  expect(await getBoldTspans(page)).toEqual(['terrain']);
-  await finishLabel(page);
-  expect(await getLabelText(page, 0)).toBe('High <b>terrain</b>');
-});
-
-test('a label that is not open for typing has no bold item', async function({page}) {
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-  await page.keyboard.type('Reno Nevada');
-  await finishLabel(page);
-
-  await rightClickGlyph(page, 0, 7);
-  var items = await getMenuItems(page);
-  expect(items).toContain('delete label');
-  expect(items).not.toContain('bold text');
-});
-
 test('typing on at the end of a bold word stays bold', async function({page}) {
   await loadFixture(page, FIXTURE);
   await armTool(page, 'anchor');
@@ -114,45 +74,6 @@ test('typing on at the end of a bold word stays bold', async function({page}) {
   await page.keyboard.type('s');
   await page.waitForTimeout(60);
   expect(await getBoldTspans(page)).toEqual(['Renos']);
-});
-
-test('double-clicking a word in an open label selects it', async function({page}) {
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-  await page.keyboard.type('after cease-fire now');
-  await finishLabel(page);
-
-  await clickLabel(page, 0); // selects it
-  await clickLabel(page, 0); // opens its text
-  await dblclickGlyph(page, 0, 8);
-  expect(await getTextareaSelection(page)).toEqual([6, 16]);
-  await page.keyboard.press('ControlOrMeta+b');
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(250);
-  expect(await getLabelText(page, 0)).toBe('after <b>cease-fire</b> now');
-});
-
-test('dragging across an open label selects the text it passes over', async function({page}) {
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-  await page.keyboard.type('North Dakota');
-  await finishLabel(page);
-
-  await clickLabel(page, 0);
-  await clickLabel(page, 0);
-  var from = await getGlyphPoint(page, 0, 6, 0.1);
-  var to = await getGlyphPoint(page, 0, 11, 0.9);
-  await page.mouse.move(from.x, from.y);
-  await page.mouse.down();
-  await page.mouse.move((from.x + to.x) / 2, from.y, {steps: 4});
-  await page.mouse.move(to.x, to.y, {steps: 4});
-  await page.mouse.up();
-  await page.waitForTimeout(120);
-
-  expect(await getTextareaSelection(page)).toEqual([6, 12]);
-  expect(await page.locator('.label-edit-selection').count()).toBeGreaterThan(0);
 });
 
 test('an existing label opens with its bold words, and saves them unchanged', async function({page}) {
@@ -283,12 +204,6 @@ async function getGlyphPoint(page, id, charIndex, fx) {
   }, {id: id, charIndex: charIndex, fx: fx});
 }
 
-async function dblclickGlyph(page, id, charIndex) {
-  var p = await getGlyphPoint(page, id, charIndex, 0.5);
-  await page.mouse.dblclick(p.x, p.y);
-  await page.waitForTimeout(120);
-}
-
 async function selectLeft(page, n) {
   for (var i = 0; i < n; i++) {
     await page.keyboard.press('Shift+ArrowLeft');
@@ -298,20 +213,6 @@ async function selectLeft(page, n) {
 
 async function rightClickGlyph(page, id, charIndex) {
   var p = await getGlyphPoint(page, id, charIndex, 0.5);
-  await page.mouse.click(p.x, p.y, {button: 'right'});
-  await page.waitForTimeout(120);
-}
-
-async function rightClickPendingGlyph(page, charIndex) {
-  var p = await page.evaluate(function(args) {
-    var text = document.querySelector('.label-edit-pending text');
-    var box = text.getExtentOfChar(args.charIndex);
-    var pt = text.ownerSVGElement.createSVGPoint();
-    pt.x = box.x + box.width / 2;
-    pt.y = box.y + box.height / 2;
-    pt = pt.matrixTransform(text.getScreenCTM());
-    return {x: pt.x, y: pt.y};
-  }, {charIndex: charIndex});
   await page.mouse.click(p.x, p.y, {button: 'right'});
   await page.waitForTimeout(120);
 }

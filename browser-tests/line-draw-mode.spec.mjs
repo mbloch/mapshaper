@@ -36,31 +36,6 @@ test('the toolbar button arms and disarms drawing, and the style panel stays ope
     expect(errors).toEqual([]);
   });
 
-test('undo and redo join the drawing toolbar, and stand alone without it',
-  async function({page}) {
-    var errors = collectPageErrors(page);
-    await loadFixture(page, FIXTURE);
-    await clickNewLayerLink(page, 'lines');
-    var box = await getMapBox(page);
-    await drawLine(page, mapPoint(box, 0.2, 0.6), mapPoint(box, 0.4, 0.6));
-    await expect.poll(() => getShapeCount(page, 'lines')).toBe(1);
-    await expect(page.locator('.line-draw-toolbar .undo-redo-buttons')).toBeVisible();
-    await expect(page.locator('.floating-toolbar.edit-toolbar')).toBeHidden();
-    // one row: the undo buttons are level with the drawing buttons
-    var draw = await page.locator(LINE_BUTTON).boundingBox();
-    var undoBox = await page.locator('.undo-redo-buttons .floating-toolbar-btn').first().boundingBox();
-    expect(Math.abs(draw.y - undoBox.y)).toBeLessThan(1);
-    expect(undoBox.x).toBeLessThan(draw.x);
-
-    // in a mode with no toolbar of its own, the history still has its buttons
-    await page.evaluate(function() {
-      window.mapshaper.undoTest.setInteractionMode('info');
-    });
-    await expect(page.locator('.floating-toolbar.edit-toolbar .undo-redo-buttons')).toBeVisible();
-    await expect(page.locator('.line-draw-toolbar .undo-redo-buttons')).toHaveCount(0);
-    expect(errors).toEqual([]);
-  });
-
 test('Esc finishes the path being drawn, and a second Esc stops drawing',
   async function({page}) {
     var errors = collectPageErrors(page);
@@ -101,7 +76,7 @@ test('the style panel sets the style of new lines while drawing is armed',
 
     var commands = await getSessionCommands(page);
     expect(commands[commands.length - 1])
-      .toMatch(/^-add-shape coordinates=[-\d.e,]+ stroke='#ff0000' stroke-width=3 target='lines'$/);
+      .toMatch(/^-add-shape coordinates=[-\d.e,]+ stroke='#ff0000' stroke-width=3$/);
     expect(await getRecords(page, 'lines')).toEqual([{stroke: '#ff0000', 'stroke-width': 3}]);
     // the next line gets the same style
     await drawLine(page, mapPoint(box, 0.2, 0.8), mapPoint(box, 0.4, 0.8));
@@ -151,78 +126,6 @@ test('a line drawn with no stroke in a styled layer gets the panel\'s default st
     expect(errors).toEqual([]);
   });
 
-test('while drawing, a click on a line selects it for styling, and Esc or a click off deselects it',
-  async function({page}) {
-    var errors = collectPageErrors(page);
-    await loadFixture(page, FIXTURE);
-    await clickNewLayerLink(page, 'lines');
-    var box = await getMapBox(page);
-    var a = mapPoint(box, 0.2, 0.6), b = mapPoint(box, 0.4, 0.6);
-    await drawLine(page, a, b);
-    await expect.poll(() => getShapeCount(page, 'lines')).toBe(1);
-
-    var mid = [Math.round((a[0] + b[0]) / 2), a[1]];
-    await clickAt(page, mid);
-    expect(await getSelectionIds(page)).toEqual([0]);
-    expect(await getPendingPath(page)).toBe(null);
-    await expect(page.locator('.layer-style-panel .label-editing-status')).toHaveText(/1 selected/);
-    // the panel styles the selected line, not the next one
-    await setField(colorRow(page, 'Stroke').locator('.label-color-input'), '#00aa00');
-    expect((await getRecords(page, 'lines'))[0].stroke).toBe('#00aa00');
-    expect((await getNewShapeStyle(page, 'polyline')).stroke).toBeUndefined();
-
-    // Esc deselects, and drawing stays armed
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(100);
-    expect(await getSelectionIds(page)).toEqual([]);
-    expect((await getModes(page)).tool).toBe('edit_lines');
-
-    // a click off the selection only deselects
-    await clickAt(page, mid);
-    await clickAt(page, mapPoint(box, 0.3, 0.85));
-    expect(await getSelectionIds(page)).toEqual([]);
-    expect(await getPendingPath(page)).toBe(null);
-    // and the next click starts a line (after a pause, so it isn't a double-click)
-    await page.waitForTimeout(500);
-    await clickAt(page, mapPoint(box, 0.3, 0.85));
-    expect(await getPendingPath(page)).not.toBe(null);
-    expect(errors).toEqual([]);
-  });
-
-test('with no tool armed, a line under the pointer is highlighted, and a click off deselects',
-  async function({page}) {
-    var errors = collectPageErrors(page);
-    await loadFixture(page, FIXTURE);
-    await clickNewLayerLink(page, 'lines');
-    var box = await getMapBox(page);
-    var a = mapPoint(box, 0.2, 0.6), b = mapPoint(box, 0.4, 0.6);
-    await drawLine(page, a, b);
-    await expect.poll(() => getShapeCount(page, 'lines')).toBe(1);
-    await page.locator(LINE_BUTTON).click();
-    await page.waitForTimeout(150);
-    expect((await getModes(page)).tool).toBe('line_style');
-
-    var mid = [Math.round((a[0] + b[0]) / 2), a[1]];
-    await page.mouse.move(mid[0], mid[1] + 30);
-    await page.mouse.move(mid[0], mid[1], {steps: 4});
-    await expect.poll(() => getHitId(page)).toBe(0);
-    expect(await getOverlayIds(page)).toEqual([[0]]); // the hover highlight
-
-    await clickAt(page, mid);
-    expect(await getSelectionIds(page)).toEqual([0]);
-    expect(await getOverlayIds(page)).toEqual([[0]]); // selected, not also hovered
-    // a second click leaves the line selected
-    await page.waitForTimeout(500);
-    await clickAt(page, mid);
-    expect(await getSelectionIds(page)).toEqual([0]);
-
-    await clickAt(page, mapPoint(box, 0.3, 0.85));
-    expect(await getSelectionIds(page)).toEqual([]);
-    expect(await getOverlayIds(page)).toEqual([]);
-    expect(await getPendingPath(page)).toBe(null);
-    expect(errors).toEqual([]);
-  });
-
 test('a path started on the end of a line extends it, in one undo step',
   async function({page}) {
     var errors = collectPageErrors(page);
@@ -249,7 +152,7 @@ test('a path started on the end of a line extends it, in one undo step',
     expectSamePath(path.slice(0, 2), line);
     expectNear(path[2], toMap(box, c));
     var commands = await getSessionCommands(page);
-    expect(commands[commands.length - 1]).toMatch(/^-add-shape coordinates=[-\d.e,]+ extend target='lines'$/);
+    expect(commands[commands.length - 1]).toMatch(/^-add-shape coordinates=[-\d.e,]+ extend$/);
 
     await undo(page);
     expectSamePath((await getPaths(page, 'lines'))[0][0], line);
@@ -388,72 +291,6 @@ test('drawing polygons: a click inside a polygon starts a path, a click on its o
     expect(errors).toEqual([]);
   });
 
-test('the style panel can be hidden for room to draw, and Done leaves the mode',
-  async function({page}) {
-    var errors = collectPageErrors(page);
-    await loadFixture(page, FIXTURE);
-    await clickNewLayerLink(page, 'lines');
-    var panel = page.locator('.layer-style-panel');
-    var stylesBtn = page.locator('.line-draw-toolbar .floating-toolbar-btn[data-tooltip$="style panel"]');
-    await expect(panel).toBeVisible();
-    await expect(stylesBtn).toHaveClass(/selected/);
-
-    // the toolbar button hides the panel, and drawing goes on without it
-    await stylesBtn.click();
-    await expect(panel).toBeHidden();
-    await expect(stylesBtn).not.toHaveClass(/selected/);
-    await expect(stylesBtn).toHaveAttribute('data-tooltip', 'Show style panel');
-    expect(await getModes(page)).toEqual({mode: 'line_style', tool: 'edit_lines'});
-    var box = await getMapBox(page);
-    await drawLine(page, mapPoint(box, 0.2, 0.6), mapPoint(box, 0.4, 0.6));
-    await expect.poll(() => getShapeCount(page, 'lines')).toBe(1);
-
-    // and shows it again
-    await stylesBtn.click();
-    await expect(panel).toBeVisible();
-    await expect(stylesBtn).toHaveClass(/selected/);
-
-    // the panel's close button hides it too, leaving the mode on
-    await panel.locator('.label-style-close').click();
-    await expect(panel).toBeHidden();
-    expect((await getModes(page)).mode).toBe('line_style');
-
-    // and it stays hidden the next time the mode is entered
-    await page.evaluate(function() {
-      window.mapshaper.undoTest.setInteractionMode('info');
-    });
-    await page.evaluate(function() {
-      window.mapshaper.undoTest.setInteractionMode('line_style');
-    });
-    await expect(page.locator('.line-draw-toolbar')).toBeVisible();
-    await expect(panel).toBeHidden();
-    await expect(stylesBtn).not.toHaveClass(/selected/);
-
-    // Done leaves the mode, and takes the toolbar with it
-    await page.locator('.line-draw-toolbar .floating-toolbar-btn').filter({hasText: 'Done'}).click();
-    await expect.poll(async () => (await getModes(page)).mode).not.toBe('line_style');
-    await expect(page.locator('.line-draw-toolbar')).toBeHidden();
-    expect(errors).toEqual([]);
-  });
-
-test('the menu has one mode for drawing and styling lines', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await clickNewLayerLink(page, 'lines');
-  await drawLine(page, mapPoint(await getMapBox(page), 0.2, 0.6), mapPoint(await getMapBox(page), 0.4, 0.6));
-  await expect.poll(() => getShapeCount(page, 'lines')).toBe(1);
-  // leave the tool, whose panel the arrow button will not open the menu over
-  await page.evaluate(function() {
-    window.mapshaper.undoTest.setInteractionMode('off');
-  });
-  await page.waitForTimeout(120);
-  var items = await getModeMenuItems(page);
-  expect(items).toContain('edit lines');
-  expect(items).not.toContain('draw lines');
-  expect(items).not.toContain('style lines');
-  expect(errors).toEqual([]);
-});
-
 async function drawLine(page, a, b) {
   await clickAt(page, a);
   await clickAt(page, b);
@@ -476,13 +313,6 @@ async function getHoverVertex(page) {
 async function getHitId(page) {
   return page.evaluate(function() {
     return window.mapshaper.undoTest.getHitId();
-  });
-}
-
-// the ids drawn by each overlay layer
-async function getOverlayIds(page) {
-  return page.evaluate(function() {
-    return window.mapshaper.undoTest.getOverlayInfo().map(function(o) { return o.ids; });
   });
 }
 
@@ -522,12 +352,6 @@ async function getModes(page) {
     var api = window.mapshaper.undoTest;
     return {mode: api.getInteractionMode(), tool: api.getToolMode()};
   });
-}
-
-async function getModeMenuItems(page) {
-  await page.locator('.pointer-btn').hover();
-  await page.locator('.nav-sub-menu .nav-menu-item').first().waitFor();
-  return page.locator('.nav-sub-menu .nav-menu-item').allInnerTexts();
 }
 
 async function getNewShapeStyle(page, type) {

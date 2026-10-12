@@ -32,6 +32,8 @@ export function InteractionMode(gui) {
     table: ['info', 'selection'],
     raster: ['box', 'ruler'],
     labels: ['info', 'label', 'symbols', 'selection', 'box', 'ruler'],
+    // a layer of symbols, which the point tools have no controls for
+    symbols: ['info', 'symbols', 'selection', 'box', 'ruler'],
     points: ['info', 'point_style', 'symbols', 'edit_points', 'selection', 'box', 'ruler'], // , 'add-points'
     // An empty point layer is the layer the "Draw: labels" link creates,
     // and a label goes into it rather than beside it (see labelWouldJoin), so
@@ -259,6 +261,9 @@ export function InteractionMode(gui) {
     }
     if (internal.layerHasLabels(o.layer)) {
       return menus.labels;
+    }
+    if (o.layer.geometry_type == 'point' && internal.layerHasSvgSymbols(o.layer)) {
+      return menus.symbols;
     }
     if (o.layer.geometry_type == 'point') {
       return labelWouldJoin(o.layer) ? menus.emptyPoints : menus.points;

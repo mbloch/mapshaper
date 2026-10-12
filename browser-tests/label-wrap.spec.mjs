@@ -8,26 +8,6 @@ import { expect, test } from '@playwright/test';
 var FIXTURE = 'test/data/features/snip/ring_and_line.json';
 var TEXT = 'Mount Rainier National Park';
 
-test('a text block wraps as it is typed', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'block');
-  await dragAcrossMap(page, 0.3, 0.5, 70);
-  await page.keyboard.type(TEXT);
-  // wrapped while the session is still open
-  await expect.poll(function() { return countLines(page); }).toBeGreaterThan(1);
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(250);
-
-  var rec = await getRecord(page, 0);
-  expect(Number(rec['label-width'])).toBe(70);
-  expect(rec['label-text']).toContain('<wbr>');
-  expect(rec['label-text'].replace(/<wbr>/g, '')).toBe(TEXT);
-  // the committed label draws the lines it was typed into
-  expect(await countLines(page)).toBe(rec['label-text'].split('<wbr>').length);
-  expect(errors).toEqual([]);
-});
-
 test('a text block is rewrapped with its font, in one undo step', async function({page}) {
   var errors = collectPageErrors(page);
   await wrappedLabel(page, 120);
@@ -102,16 +82,6 @@ async function dragAcrossMap(page, fx, fy, width) {
 
 function countBreaks(str) {
   return str.split('<wbr>').length - 1;
-}
-
-// The lines the label's <text> is drawn in: its first, plus one per <tspan>.
-// A label still being typed has no feature, and is drawn apart from its layer.
-async function countLines(page) {
-  return page.evaluate(function() {
-    var node = document.querySelector('.label-edit-pending text') ||
-      document.querySelector('.mapshaper-svg-symbol text, text.mapshaper-svg-symbol');
-    return node ? node.querySelectorAll('tspan').length + 1 : 0;
-  });
 }
 
 async function setFieldValue(page, selector, value) {

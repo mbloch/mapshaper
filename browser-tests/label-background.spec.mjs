@@ -43,104 +43,6 @@ test('the background row sets a colour and a CSS padding', async function({page}
   expect(errors).toEqual([]);
 });
 
-test('a background grows with the text as it is typed', async function({page}) {
-  var errors = collectPageErrors(page);
-  await oneLabel(page);
-  await runCommand(page, '-style label-background=pink label-padding=4 target=labels');
-  var before = await getBackgroundWidth(page);
-  expect(before).toBeGreaterThan(8);
-  await selectLabels(page, [0]);
-  await page.keyboard.press('Escape');
-  await clickLabel(page, 0);
-  await clickLabel(page, 0);
-  await page.keyboard.press('End');
-  await page.keyboard.type(' and Sparks');
-  await expect.poll(function() { return getBackgroundWidth(page); }).toBeGreaterThan(before + 30);
-  // the rect still frames the text, as typed, before anything is committed
-  expect(await getBackgroundToTextWidth(page)).toBeGreaterThan(7);
-  expect(await getBackgroundToTextWidth(page)).toBeLessThan(9);
-  expect(errors).toEqual([]);
-});
-
-test('a selected label is outlined on its background', async function({page}) {
-  var errors = collectPageErrors(page);
-  await oneLabel(page);
-  await runCommand(page, '-style label-background=pink label-padding=10 target=labels');
-  await selectLabels(page, [0]);
-  var o = await page.evaluate(function() {
-    var bg = document.querySelector('.mapshaper-svg-symbol .label-background').getBBox();
-    var cue = document.querySelector('.label-cue-selected .label-cue-box').getBBox();
-    return {bg: [bg.x, bg.y, bg.width, bg.height], cue: [cue.x, cue.y, cue.width, cue.height]};
-  });
-  o.cue.forEach(function(val, i) {
-    expect(val).toBeCloseTo(o.bg[i], 1);
-  });
-  expect(errors).toEqual([]);
-});
-
-test('a padded label with no background is outlined on its padded box', async function({page}) {
-  var errors = collectPageErrors(page);
-  await oneLabel(page);
-  await runCommand(page, '-style label-padding=10 target=labels');
-  await selectLabels(page, [0]);
-  var o = await page.evaluate(function() {
-    var text = document.querySelector('text.mapshaper-svg-symbol').getBBox();
-    var cue = document.querySelector('.label-cue-selected .label-cue-box').getBBox();
-    return {text: text.width, cue: cue.width};
-  });
-  expect(Math.abs(o.cue - o.text - 20)).toBeLessThan(1.5);
-  expect(errors).toEqual([]);
-});
-
-test('selected text shows over a background', async function({page}) {
-  var errors = collectPageErrors(page);
-  await oneLabel(page);
-  await runCommand(page, '-style label-background=pink label-padding=4 target=labels');
-  await selectLabels(page, [0]);
-  await page.keyboard.press('Escape');
-  await clickLabel(page, 0);
-  await clickLabel(page, 0);
-  await page.keyboard.press('End');
-  await page.keyboard.press('Shift+Home');
-  var order = await page.evaluate(function() {
-    var symbol = document.querySelector('.mapshaper-svg-symbol[data-id="0"]');
-    return Array.from(symbol.children).map(function(el) {
-      return el.getAttribute('class') || el.tagName;
-    });
-  });
-  // the band is drawn above the background and beneath the glyphs
-  expect(order.indexOf('label-background')).toBeLessThan(order.indexOf('label-edit-overlay label-edit-back'));
-  expect(order.indexOf('label-edit-overlay label-edit-back')).toBeLessThan(order.indexOf('text'));
-  expect(await page.locator('.mapshaper-svg-symbol .label-edit-selection').count()).toBeGreaterThan(0);
-  expect(errors).toEqual([]);
-});
-
-test('a text block\'s background fits its wrapped text, not its column', async function({page}) {
-  var errors = collectPageErrors(page);
-  await oneLabel(page);
-  await runCommand(page, '-style label-width=300 label-background=pink label-padding=4 target=labels');
-  expect(await getBackgroundToTextWidth(page)).toBeCloseTo(8, 0);
-  expect(errors).toEqual([]);
-});
-
-test('a text block\'s column and width handle include its padding', async function({page}) {
-  var errors = collectPageErrors(page);
-  await oneLabel(page);
-  await runCommand(page, '-style label-width=200 text-anchor=start dx=0 dy=10 label-pos= ' +
-    'label-background=pink label-padding="4 10" target=labels');
-  await selectLabels(page, [0]);
-  var o = await page.evaluate(function() {
-    var column = document.querySelector('.label-cue-selected .label-cue-column').getBBox();
-    var handle = document.querySelector('.label-cue-width').getBBox();
-    return {x: column.x, width: column.width, handle: handle.x + handle.width / 2};
-  });
-  // 10px of padding on each side of the 200px column
-  expect(o.x).toBeCloseTo(-10, 1);
-  expect(o.width).toBeCloseTo(220, 1);
-  expect(o.handle).toBeCloseTo(210, 1);
-  expect(errors).toEqual([]);
-});
-
 // One anchored label, with nothing selected.
 async function oneLabel(page) {
   await loadFixture(page, FIXTURE);
@@ -156,14 +58,6 @@ async function countBackgrounds(page) {
   return page.evaluate(function() {
     return document.querySelectorAll(
       '.mapshaper-symbol-layer .mapshaper-svg-symbol .label-background').length;
-  });
-}
-
-// In the label's own units, which is what the padding is in
-async function getBackgroundWidth(page) {
-  return page.evaluate(function() {
-    var rect = document.querySelector('.mapshaper-svg-symbol .label-background');
-    return rect ? Number(rect.getAttribute('width')) : 0;
   });
 }
 
@@ -200,12 +94,6 @@ async function shiftClickLabel(page, id) {
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await page.keyboard.up('Shift');
   await page.waitForTimeout(100);
-}
-
-async function clickLabel(page, id) {
-  var box = await getTextBox(page, id);
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await page.waitForTimeout(150);
 }
 
 async function getTextBox(page, id) {

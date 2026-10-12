@@ -53,76 +53,6 @@ test('the tool works in a session that has imported nothing', async function({pa
   expect(errors).toEqual([]);
 });
 
-test('the first label in an empty project leaves the view alone', async function({page}) {
-  // Committing the label used to reset the view to the label's own extent: it
-  // was centered and the map zoomed to a box a few metres across, too far in
-  // for a basemap to draw. The label layer's bounds are all there is to zoom
-  // to in a project with nothing else in it, and the bounds being compared
-  // against were the placeholder given to a project with no content, so the
-  // map read the change as one big enough to warrant a reset.
-  var errors = collectPageErrors(page);
-  await loadEmpty(page);
-  await page.evaluate(function() {
-    window.mapshaper.undoTest.setInteractionMode('label');
-  });
-  await page.locator('.floating-toolbar.label-toolbar').waitFor();
-  // navigate first, so the view under test is one the user chose
-  await page.evaluate(function() { window.mapshaper.undoTest.zoomByPct(4); });
-  await page.waitForTimeout(150);
-  var before = await getViewBounds(page);
-
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-  await writeLabel(page, 'Reno');
-  expect((await getLabelLayer(page)).shapeCount).toBe(1);
-
-  // to 6 decimal places, which is a tenth of a metre in these degrees: the
-  // view is rescaled around the layer's new bounds and back, and that round
-  // trip leaves noise in the last few bits
-  var after = await getViewBounds(page);
-  after.forEach(function(coord, i) {
-    expect(coord).toBeCloseTo(before[i], 6);
-  });
-
-  // and the second label, which is compared against the first label's bounds
-  // rather than the placeholder, leaves it alone as well
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.6, 0.55);
-  await writeLabel(page, 'Tahoe');
-  expect((await getLabelLayer(page)).shapeCount).toBe(2);
-  (await getViewBounds(page)).forEach(function(coord, i) {
-    expect(coord).toBeCloseTo(before[i], 6);
-  });
-  expect(errors).toEqual([]);
-});
-
-test('a label layer is offered the label tool and not the tools it replaces',
-  async function({page}) {
-    // 'style labels', 'add/drag points' and 'position labels' each did less
-    // than the label tool beside them in the menu, which styles labels,
-    // positions them against their anchors, and creates, moves and retypes
-    // them as well.
-    var errors = collectPageErrors(page);
-    await loadFixture(page, FIXTURE);
-    await armTool(page, 'anchor');
-    await clickMap(page, 0.4, 0.45);
-    await writeLabel(page, 'Reno');
-    expect(await getLabelLayer(page)).not.toBeNull();
-    // the label tool has a panel of its own, and hovering the arrow button
-    // deliberately does not open the menu over it, so leave the mode first
-    await page.evaluate(function() {
-      window.mapshaper.undoTest.setInteractionMode('off');
-    });
-    await page.waitForTimeout(120);
-
-    var modes = await getModeMenuItems(page);
-    expect(modes).toContain('edit labels');
-    expect(modes).not.toContain('style labels');
-    expect(modes).not.toContain('edit points');
-    expect(modes).not.toContain('position labels');
-    expect(errors).toEqual([]);
-  });
-
 test("a label layer's menu opens the label tool rather than a style panel",
   async function({page}) {
     var errors = collectPageErrors(page);
@@ -150,53 +80,6 @@ test("a label layer's menu opens the label tool rather than a style panel",
     expect(await page.evaluate(function() {
       return window.mapshaper.undoTest.getState().model.activeLayer;
     })).toBe('labels');
-    expect(errors).toEqual([]);
-  });
-
-test('the panel can be hidden for room to place labels, and Done leaves the tool',
-  async function({page}) {
-    var errors = collectPageErrors(page);
-    await loadFixture(page, FIXTURE);
-    await armTool(page, 'anchor');
-    await clickMap(page, 0.4, 0.45);
-    await writeLabel(page, 'Reno');
-
-    var panel = page.locator('.text-style-panel');
-    var toolbar = page.locator('.floating-toolbar.label-toolbar');
-    var stylesBtn = toolbar.locator('.floating-toolbar-btn[data-tooltip$="style panel"]');
-    await expect(panel).toBeVisible();
-    await expect(stylesBtn).toHaveClass(/selected/);
-
-    // the × hides the panel, and the tool stays on
-    await panel.locator('.label-style-close').click();
-    await expect(panel).toBeHidden();
-    await expect(toolbar).toBeVisible();
-    await expect(stylesBtn).not.toHaveClass(/selected/);
-    await expect(stylesBtn).toHaveAttribute('data-tooltip', 'Show style panel');
-    expect(await getInteractionMode(page)).toBe('label');
-
-    // the toolbar button shows it again, and hides it
-    await stylesBtn.click();
-    await expect(panel).toBeVisible();
-    await expect(stylesBtn).toHaveClass(/selected/);
-    await stylesBtn.click();
-    await expect(panel).toBeHidden();
-
-    // it stays hidden the next time the tool is opened
-    await page.evaluate(function() {
-      window.mapshaper.undoTest.setInteractionMode('info');
-    });
-    await page.evaluate(function() {
-      window.mapshaper.undoTest.setInteractionMode('label');
-    });
-    await expect(toolbar).toBeVisible();
-    await expect(panel).toBeHidden();
-
-    // Done leaves the tool, and the labels are still there
-    await toolbar.locator('.floating-toolbar-btn').filter({hasText: 'Done'}).click();
-    await expect(toolbar).toBeHidden();
-    expect(await getInteractionMode(page)).not.toBe('label');
-    expect((await getLabelLayer(page)).shapeCount).toBe(1);
     expect(errors).toEqual([]);
   });
 
@@ -483,141 +366,6 @@ test('an existing label emptied of its text is removed by a command', async func
   expect(errors).toEqual([]);
 });
 
-test('the creation toggles are mutually exclusive', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  var buttons = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-btn[data-tooltip^="Add"]');
-
-  // anchored label, text block, path label
-  await expect(buttons).toHaveCount(3);
-  // the fixture carries no labels, so the tool arms itself to place one
-  await expect(buttons.nth(0)).toHaveClass(/selected/);
-  await expect(buttons.nth(1)).not.toHaveClass(/selected/);
-  await expect(buttons.nth(2)).not.toHaveClass(/selected/);
-
-  await buttons.nth(2).click();
-  await expect(buttons.nth(0)).not.toHaveClass(/selected/);
-  await expect(buttons.nth(2)).toHaveClass(/selected/);
-
-  await buttons.nth(1).click();
-  await expect(buttons.nth(1)).toHaveClass(/selected/);
-  await expect(buttons.nth(2)).not.toHaveClass(/selected/);
-
-  // clicking the armed tool again disarms it
-  await buttons.nth(1).click();
-  for (var i = 0; i < 3; i++) {
-    await expect(buttons.nth(i)).not.toHaveClass(/selected/);
-  }
-  expect(errors).toEqual([]);
-});
-
-test('the tool starts idle on a layer that already has labels', async function({page}) {
-  // Arming there would make the first click place a label beside the one the
-  // user meant to click.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  var buttons = page.locator('.floating-toolbar.label-toolbar .floating-toolbar-content > .floating-toolbar-btn');
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-  await page.keyboard.type('Reno');
-  await disarmTool(page);
-  await clickMap(page, 0.15, 0.85); // finishes the label
-
-  // leave the mode and come back, now that the layer has a label on it
-  await page.evaluate(function() {
-    window.mapshaper.undoTest.setInteractionMode('info');
-  });
-  await page.evaluate(function() {
-    window.mapshaper.undoTest.setInteractionMode('label');
-  });
-  await page.waitForTimeout(200);
-  for (var i = 0; i < 3; i++) {
-    await expect(buttons.nth(i)).not.toHaveClass(/selected/);
-  }
-  expect(errors).toEqual([]);
-});
-
-test('a path label is hovered by its text, not by its knots', async function({page}) {
-  // A curve's knots are construction points that sit off the glyphs, so
-  // proximity to one reads as a hit on empty map. The glyphs were unhoverable
-  // because the SVG hit test did not recognize <textPath>, leaving the knots as
-  // the only way to reach the label -- exactly backwards.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'path');
-  var knots = [[0.25, 0.55], [0.4, 0.4], [0.55, 0.4], [0.7, 0.55]];
-  for (var i = 0; i < knots.length; i++) {
-    await clickMap(page, knots[i][0], knots[i][1]);
-  }
-  await finishCurve(page);
-  await page.keyboard.type('MOUNTAIN RANGE');
-  await hoverNothing(page); // ends the session without placing another label
-  await page.evaluate(function() {
-    window.mapshaper.undoTest.setInteractionMode('info');
-  });
-
-  expect(await hoverGlyph(page, 0, 0.5)).toBe(0);
-  expect(await hoverGlyph(page, 0, 0.9)).toBe(0);
-  for (i = 0; i < knots.length; i++) {
-    expect(await hoverMap(page, knots[i][0], knots[i][1]),
-      'knot ' + i + ' is not a hit target').toBe(-1);
-  }
-  expect(errors).toEqual([]);
-});
-
-test('an anchored label is still hovered by its text and by its anchor', async function({page}) {
-  // the knot rule must not reach anchored labels, whose one point is where the
-  // user put the label rather than a construction point
-  await loadFixture(page, FIXTURE);
-  await page.evaluate(function() {
-    // label-pos moves the text clear of the anchor, so the two are separate
-    // places to point at
-    return window.mapshaper.undoTest.runCommand(
-      "-add-label coordinates=5,3 text='Reno' label-pos=se no-replace name=labels");
-  });
-  await page.evaluate(function() {
-    window.mapshaper.undoTest.setInteractionMode('info');
-  });
-
-  expect(await hoverGlyph(page, 0, 0.5)).toBe(0);
-  expect(await hoverAnchor(page, 0)).toBe(0);
-});
-
-test('a path label with no text is still reachable by its knots', async function({page}) {
-  // it draws nothing to hover, so the knots are the only way in; the label tool
-  // cannot leave one behind, but the CLI can
-  await loadFixture(page, FIXTURE);
-  await page.evaluate(function() {
-    return window.mapshaper.undoTest.runCommand(
-      '-add-label coordinates=2,2,4,4,6,2 no-replace name=labels');
-  });
-  await page.evaluate(function() {
-    window.mapshaper.undoTest.setInteractionMode('info');
-  });
-
-  expect(await hoverAnchor(page, 0)).toBe(0);
-});
-
-test('the font menu shows each font name in its own font', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  var select = page.locator('.text-style-panel select.font-menu');
-  var georgia = select.locator('option[value="Georgia"]');
-
-  // a native menu ignores an option's font in Chrome on a Mac
-  expect(await select.evaluate(function(el) {
-    return getComputedStyle(el).appearance;
-  })).toBe('base-select');
-  expect(await georgia.evaluate(function(el) {
-    return getComputedStyle(el).fontFamily;
-  })).toBe('Georgia');
-  // the closed menu and the category headings stay in the panel's font
-  expect(await select.evaluate(function(el) {
-    return getComputedStyle(el).fontFamily;
-  })).not.toContain('Georgia');
-  expect(errors).toEqual([]);
-});
-
 test('a style set with nothing selected is given to the next label', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
@@ -641,128 +389,6 @@ test('a style set with nothing selected is given to the next label', async funct
   expect(await getSessionHistory(page)).toContain("font-family='Georgia'");
   var lyr = await getLabelLayer(page);
   expect(lyr.records[0]).toMatchObject({'font-family': 'Georgia', 'font-size': '13'});
-  expect(errors).toEqual([]);
-});
-
-test('a size can be typed, stepped and nudged from the keyboard', async function({page}) {
-  // The size controls were display-only spans with a −/+ pair, so the only
-  // route from 12 to 24 was twelve clicks.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  var input = page.locator('.text-style-panel .label-size-row .size-field-input');
-
-  await input.fill('24');
-  await input.press('Enter');
-  expect(await getNewLabelStyle(page)).toMatchObject({'font-size': 24});
-
-  // Enter commits the field and goes no further: the tool's own Enter finishes
-  // a curve, and the keyboard belongs to the field while the caret is in it.
-  expect(await getLabelLayer(page)).toBeNull();
-
-  await input.press('ArrowUp');
-  expect(await getNewLabelStyle(page)).toMatchObject({'font-size': 25});
-  await input.press('Shift+ArrowDown');
-  expect(await getNewLabelStyle(page)).toMatchObject({'font-size': 15});
-  await expect(input).toHaveValue('15');
-
-  await page.locator('.text-style-panel .label-size-row .size-field-down').click();
-  expect(await getNewLabelStyle(page)).toMatchObject({'font-size': 14});
-
-  // an unusable value leaves the size alone rather than being stored
-  await input.fill('huge');
-  await input.press('Enter');
-  await expect(input).toHaveValue('14');
-  expect(await getNewLabelStyle(page)).toMatchObject({'font-size': 14});
-  expect(errors).toEqual([]);
-});
-
-test('a field gives the keyboard back when it is finished with', async function({page}) {
-  // A control that keeps focus keeps the keyboard, so the next Escape or Enter
-  // goes to the field rather than to the map -- and it goes on showing its
-  // focus ring over a value that has already been applied, which reads as a
-  // value still being edited.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  var size = page.locator('.text-style-panel .label-size-row .size-field-input');
-
-  await size.fill('24');
-  await size.press('Enter');
-  expect(await getFocusedElement(page)).toBe('BODY');
-  expect(await getNewLabelStyle(page)).toMatchObject({'font-size': 24});
-
-  // Escape puts back what the field was showing and lets go of it too
-  await size.fill('40');
-  await size.press('Escape');
-  await expect(size).toHaveValue('24');
-  expect(await getFocusedElement(page)).toBe('BODY');
-  expect(await getNewLabelStyle(page)).toMatchObject({'font-size': 24});
-
-  // a menu hands it back as soon as something is chosen from it
-  await page.locator('.text-style-panel select').first().selectOption('Georgia');
-  await page.waitForTimeout(150);
-  expect(await getFocusedElement(page)).toBe('BODY');
-
-  // and so does a field that commits on Enter through its change handler
-  // letter spacing, the first of the measure fields
-  var spacing = page.locator('.text-style-panel .label-measure-input').first();
-  await spacing.fill('2');
-  await spacing.press('Enter');
-  expect(await getFocusedElement(page)).toBe('BODY');
-  expect(await getNewLabelStyle(page)).toMatchObject({'letter-spacing': '2'});
-  expect(errors).toEqual([]);
-});
-
-test('a key typed into a field is the field\'s, not the tool\'s', async function({page}) {
-  // Escape disarmed the tool from inside a field, and silently: the tool
-  // consumes the key before anything in the panel can see it, so the field
-  // showed no sign of having been left.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'path');
-  var css = page.locator('.text-style-panel .label-css-row input');
-
-  await css.fill('text-shadow: 1px 1px #eee');
-  await css.press('Escape');
-
-  await expect(css).toHaveValue('');
-  expect(await getFocusedElement(page)).toBe('BODY');
-  expect(await getNewLabelStyle(page)).not.toHaveProperty('css');
-  // the curve tool is still armed: the key never reached it
-  await expect(page.locator('.floating-toolbar.label-toolbar .floating-toolbar-content > .floating-toolbar-btn').nth(2))
-    .toHaveClass(/selected/);
-  expect(errors).toEqual([]);
-});
-
-test('the symbol is faded and coloured apart from the text', async function({page}) {
-  // A label's opacity is applied to both of the elements its record produces,
-  // so the Icon section needs its own opacity or setting the text to 50% would
-  // half-fade a symbol the panel showed at 100%.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-  await writeLabel(page, 'Reno');
-  await disarmTool(page);
-  await clickLabel(page, 0);
-
-  var panel = page.locator('.text-style-panel');
-  await panel.locator('.label-icon-buttons [data-icon="circle"]').click();
-  await page.waitForTimeout(120);
-  await setFieldValue(panel.locator('.label-text-color-row .label-opacity-input'), '40%');
-  await setFieldValue(panel.locator('.label-icon-color-row .label-color-input'), '#cc0000');
-  await setFieldValue(panel.locator('.label-icon-color-row .label-opacity-input'), '80%');
-
-  expect((await getLabelLayer(page)).records[0]).toMatchObject({
-    icon: 'circle',
-    opacity: 0.4,
-    'icon-fill': '#cc0000',
-    'icon-opacity': 0.8
-  });
-
-  // full opacity is stored as no opacity at all: the property is what makes a
-  // label translucent, and a column of 1s is noise in the user's table
-  await setFieldValue(panel.locator('.label-text-color-row .label-opacity-input'), '100%');
-  expect((await getLabelLayer(page)).records[0].opacity).toBeUndefined();
   expect(errors).toEqual([]);
 });
 
@@ -805,45 +431,6 @@ test('a shape is what gives a label a symbol, and the × takes it away', async f
   expect(errors).toEqual([]);
 });
 
-test('alignment can be chosen before there is anything to align', async function({page}) {
-  // Alignment means how the lines of a label line up with each other, so it
-  // was disabled for anything but a label that already had a second line. That
-  // is the wrong way round: a style is usually set before the text is typed,
-  // and choosing left-aligned and then writing two lines has to work.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  var alignBtn = page.locator('.text-style-panel .label-align-buttons [data-align="left"]');
-
-  // nothing on the layer, nothing selected, and the control still answers
-  await alignBtn.click();
-  await page.waitForTimeout(120);
-  expect(await getNewLabelStyle(page)).toMatchObject({'label-align': 'left'});
-
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.35, 0.4);
-  await page.keyboard.type('North');
-  await page.keyboard.press('Shift+Enter');
-  await writeLabel(page, 'Dakota');
-  await disarmTool(page);
-  var created = (await getLabelLayer(page)).records[0];
-  expect(created['label-align']).toBe('left');
-
-  // and on a single-line label, where it competes with the position grid over
-  // where the text sits, it is still the user's to set
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.6, 0.65);
-  await writeLabel(page, 'Reno');
-  await disarmTool(page);
-  await clickLabel(page, 1);
-  await page.locator('.text-style-panel .label-align-buttons [data-align="right"]').click();
-  await page.waitForTimeout(150);
-
-  var records = (await getLabelLayer(page)).records;
-  expect(records[1]['label-align']).toBe('right');
-  expect(records[0]['label-align']).toBe('left');
-  expect(errors).toEqual([]);
-});
-
 test('an aligned label keeps its place while its lines re-justify', async function({page}) {
   // text-anchor justifies the lines AND decides where the block of them sits,
   // so left-aligning a label centred on its anchor used to slide it half its
@@ -875,115 +462,6 @@ test('an aligned label keeps its place while its lines re-justify', async functi
   // ...and it did not move: half a width to the right is what this is about,
   // and the label is some tens of pixels wide
   expect(Math.abs(after.x - before.x)).toBeLessThan(1);
-  expect(errors).toEqual([]);
-});
-
-test('the block stays put in every one of the nine positions', async function({page}) {
-  // Six of the nine hold text clear of the anchor with an offset in ems, and
-  // an em needs a font size to become a distance. A label usually has none of
-  // its own -- it inherits one from its layer -- so those six went uncorrected
-  // while n, s and c, whose offset is plain 0, looked fine.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.5, 0.45);
-  await page.keyboard.type('North');
-  await page.keyboard.press('Shift+Enter');
-  await writeLabel(page, 'Dakota');
-  await disarmTool(page);
-  await clickLabel(page, 0);
-  await turnIconOn(page);
-
-  var positions = ['nw', 'n', 'ne', 'w', 'c', 'e', 'sw', 's', 'se'];
-  for (var i = 0; i < positions.length; i++) {
-    var pos = positions[i];
-    await setLabelPosition(page, pos);
-    await page.locator('.text-style-panel .label-align-buttons [data-align="center"]').click();
-    await page.waitForTimeout(200);
-    var centered = await getLabelBox(page, 0);
-    for (var align of ['left', 'right']) {
-      await page.locator('.text-style-panel .label-align-buttons [data-align="' + align + '"]').click();
-      await page.waitForTimeout(200);
-      var box = await getLabelBox(page, 0);
-      expect(Math.abs(box.x - centered.x),
-        pos + ' ' + align + ' moved the block').toBeLessThan(1.5);
-    }
-  }
-  expect(errors).toEqual([]);
-});
-
-test('an aligned label is re-measured when its text or font changes', async function({page}) {
-  // Nothing tells the renderer that a measurement is out of date, because
-  // nothing has to: a width is found by a fingerprint of the text and the font
-  // it describes, so an edit makes the old one unfindable and the new one is
-  // measured on demand. What that buys is this: a label centred on its anchor
-  // stays centred on it through a font change and through a text edit, whatever
-  // its lines are aligned to.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.5, 0.45);
-  await page.keyboard.type('North');
-  await page.keyboard.press('Shift+Enter');
-  await writeLabel(page, 'Dakota');
-  await disarmTool(page);
-  await clickLabel(page, 0);
-  await turnIconOn(page);
-  await setLabelPosition(page, 'n');
-  await page.locator('.text-style-panel .label-align-buttons [data-align="left"]').click();
-  await page.waitForTimeout(200);
-  var centre = await getLabelCentre(page, 0);
-  var width = (await getLabelBox(page, 0)).width;
-
-  // a bigger font is wider text, so a block held by a width measured at 12px
-  // would sit visibly off its anchor
-  await setFieldValue(page.locator('.text-style-panel .label-size-row input'), '24');
-  await page.waitForTimeout(250);
-  expect((await getLabelBox(page, 0)).width).toBeGreaterThan(width * 1.5);
-  expect(Math.abs(await getLabelCentre(page, 0) - centre)).toBeLessThan(1.5);
-
-  // and typing into it is the other way a measurement goes out of date: one
-  // click selects, a second reaches into the text
-  await clickLabel(page, 0);
-  await clickLabel(page, 0);
-  await page.keyboard.press('End');
-  await page.keyboard.type(' Northerly');
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(250);
-  var rec = (await getLabelLayer(page)).records[0];
-  expect(rec['label-text']).toMatch(/Northerly/);
-  expect(Math.abs(await getLabelCentre(page, 0) - centre)).toBeLessThan(1.5);
-  expect(errors).toEqual([]);
-});
-
-test('a path label too long for its path is marked as overflowing', async function({page}) {
-  // The fit check is the other reader of a text measurement, and until the GUI
-  // had a measure function it could only answer 'unmeasured': a label the
-  // editor should have flagged, and export should have dropped, went through
-  // both untouched. One measurement switches both on.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-
-  await armTool(page, 'path');
-  await clickMap(page, 0.3, 0.5);
-  await clickMap(page, 0.36, 0.5);
-  await finishCurve(page);
-  await writeLabel(page, 'A NAME FAR TOO LONG FOR THIS LITTLE CURVE');
-  await page.waitForTimeout(200);
-  // drawn, because a label nobody can see is a label nobody can fix, and
-  // marked, because it will not survive export
-  expect(await getLabelClass(page, 0)).toMatch(/label-overflow/);
-
-  // and a curve with room for its text is not marked
-  await armTool(page, 'path');
-  await clickMap(page, 0.15, 0.8);
-  await clickMap(page, 0.75, 0.8);
-  await finishCurve(page);
-  await writeLabel(page, 'ROOM');
-  await page.waitForTimeout(200);
-  expect(await getLabelClass(page, 1)).not.toMatch(/label-overflow/);
   expect(errors).toEqual([]);
 });
 
@@ -1077,37 +555,6 @@ test('a new label names the font it is drawn in', async function({page}) {
   expect(errors).toEqual([]);
 });
 
-test('the tool reaches for its preferred font before the browser default', async function({page}) {
-  // NYTFranklin where the machine has it, and whatever sans-serif resolves to
-  // where it does not. The font a label is made in is a tool default like its
-  // position, so it can be a preference; the font an existing label is *named*
-  // as cannot, because it has to be the one the label is drawn in.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  var fonts = await page.locator('.text-style-panel select').first()
-    .locator('option').allTextContents();
-  test.skip(fonts.indexOf('NYTFranklin') == -1, 'NYTFranklin is not installed here');
-
-  expect(await getDefaultFont(page)).toBe('NYTFranklin');
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.4, 0.45);
-  await writeLabel(page, 'Reno');
-  expect((await getLabelLayer(page)).records[0]['font-family']).toBe('NYTFranklin');
-
-  // a label that arrived with no font is drawn in the browser's default, not
-  // in the tool's preference, so that is what the panel says it is in
-  await page.evaluate(function() {
-    return window.mapshaper.undoTest.runCommand(
-      '-add-label coordinates=2,3 text=Vegas target=labels');
-  });
-  await disarmTool(page);
-  await page.waitForTimeout(200);
-  await clickLabel(page, 1);
-  expect(await page.locator('.text-style-panel select').first().inputValue())
-    .not.toBe('NYTFranklin');
-  expect(errors).toEqual([]);
-});
-
 test('a label that arrived without a font is given one when it is styled', async function({page}) {
   // Labels made by the CLI carry no font-family, and the panel cannot show
   // one without saying which. Choosing a face is the point at which the font
@@ -1131,56 +578,6 @@ test('a label that arrived without a font is given one when it is styled', async
   await page.waitForTimeout(150);
   expect((await getLabelLayer(page)).records[0])
     .toMatchObject({'font-family': shown, 'font-weight': '700'});
-  expect(errors).toEqual([]);
-});
-
-test('the style menu offers the faces of the chosen font, and nothing else', async function({page}) {
-  // "Default style" was an entry of its own, which named a face the user could
-  // not see and mapshaper could not measure. Regular is that face, it is one of
-  // the font's own, and it is in the list under its own name.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  var panel = page.locator('.text-style-panel');
-  var styleSelect = panel.locator('.label-font-style-row select');
-
-  await panel.locator('select').first().selectOption('Georgia');
-  await page.waitForTimeout(100);
-
-  var options = await styleSelect.locator('option').allTextContents();
-  expect(options).not.toContain('Default style');
-  expect(options).toContain('Regular');
-  expect(await styleSelect.isDisabled()).toBe(false);
-  // a font is always set in something, and it is Regular unless it is not
-  expect(await styleSelect.inputValue()).toBe('normal|400');
-  expect(errors).toEqual([]);
-});
-
-test('a selection in two fonts has no face to show', async function({page}) {
-  // A face belongs to a font, so a selection that does not agree on a font
-  // has nothing to list: the faces of one of them would be a menu that lies
-  // about the other.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await page.evaluate(function() {
-    return window.mapshaper.undoTest.runCommand(
-      '-add-label coordinates=2,3 text=A no-replace name=labels ' +
-      '-add-label coordinates=4,3 text=B target=labels ' +
-      "-style font-family='Georgia' ids=0 target=labels");
-  });
-  await disarmTool(page);
-  await page.waitForTimeout(200);
-
-  await clickLabel(page, 0);
-  var styleSelect = page.locator('.text-style-panel .label-font-style-row select');
-  expect(await styleSelect.isDisabled()).toBe(false);
-
-  await page.keyboard.down('Shift');
-  await clickLabel(page, 1);
-  await page.keyboard.up('Shift');
-  await page.waitForTimeout(150);
-
-  expect(await styleSelect.locator('option').count()).toBe(0);
-  expect(await styleSelect.isDisabled()).toBe(true);
   expect(errors).toEqual([]);
 });
 
@@ -1223,126 +620,6 @@ test('a face carries across a change of font, and Regular is stored as none', as
   expect(errors).toEqual([]);
 });
 
-test('shift-click adds a label to the selection, and takes it back out', async function({page}) {
-  // Styling acts on any number of labels, so selecting has to be additive --
-  // and a shift-click must never reach into text, or it would open a session on
-  // the label it was removing.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.3, 0.35);
-  await page.keyboard.type('A');
-  await clickMap(page, 0.15, 0.85);
-  await clickMap(page, 0.55, 0.6);
-  await page.keyboard.type('B');
-  await clickMap(page, 0.2, 0.85);
-  await disarmTool(page);
-  await page.waitForTimeout(150);
-
-  await clickLabel(page, 0);
-  expect(await getSelectionCueCount(page)).toBe(1);
-
-  await page.keyboard.down('Shift');
-  await clickLabel(page, 1);
-  expect(await getSelectionCueCount(page)).toBe(2);
-
-  await clickLabel(page, 1); // still held: takes it back out
-  await page.keyboard.up('Shift');
-  expect(await getSelectionCueCount(page)).toBe(1);
-  expect(await getCaretCount(page)).toBe(0);
-
-  // a plain click on one of several narrows the selection to it
-  await page.keyboard.down('Shift');
-  await clickLabel(page, 1);
-  await page.keyboard.up('Shift');
-  expect(await getSelectionCueCount(page)).toBe(2);
-  await clickLabel(page, 1);
-  expect(await getSelectionCueCount(page)).toBe(1);
-  expect(await getCaretCount(page)).toBe(0);
-  expect(errors).toEqual([]);
-});
-
-test('escape gives up the selection before the armed tool', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'anchor');
-  await clickMap(page, 0.3, 0.35);
-  await page.keyboard.type('A');
-  await clickMap(page, 0.15, 0.85);
-  await disarmTool(page);
-  await clickLabel(page, 0);
-  expect(await getSelectionCueCount(page)).toBe(1);
-
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(150);
-  expect(await getSelectionCueCount(page)).toBe(0);
-  expect(errors).toEqual([]);
-});
-
-test('the curve being drawn is shown as a guide with a handle on each knot', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'path');
-
-  // the guide is drawn to canvas, so assert on the overlay layers the map built
-  await clickMap(page, 0.3, 0.4);
-  expect(await getGuides(page)).toEqual([
-    // one knot has a handle but no line to draw yet
-    {name: 'label-path-knots', geometryType: 'point', shapeCount: 1}
-  ]);
-
-  // the free end of the curve follows the pointer, so a single knot and the
-  // pointer are already a line -- and the pointer gets no handle, because it
-  // is not a knot until it is clicked
-  await hoverMap(page, 0.45, 0.3);
-  expect(await getGuides(page)).toEqual([
-    {name: 'label-path-guide', geometryType: 'polyline', shapeCount: 1},
-    {name: 'label-path-knots', geometryType: 'point', shapeCount: 1}
-  ]);
-
-  await clickMap(page, 0.45, 0.3);
-  await clickMap(page, 0.6, 0.4);
-  expect(await getGuides(page)).toEqual([
-    {name: 'label-path-guide', geometryType: 'polyline', shapeCount: 1},
-    {name: 'label-path-knots', geometryType: 'point', shapeCount: 3}
-  ]);
-
-  // the guide belongs to the tool, not to the map: finishing the curve leaves
-  // nothing selected, so nothing is drawn
-  await finishCurve(page);
-  expect(await getGuides(page)).toEqual([]);
-  expect(errors).toEqual([]);
-});
-
-test('double-clicking a knot that is already there does nothing', async function({page}) {
-  // There are no corners to toggle -- a label path is a smooth curve through
-  // its knots. The gesture still has to leave the curve alone: the double-click
-  // arrives as two clicks first, and those must not drop a knot on top of the
-  // one under the pointer, which drew a stray branch back to it.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'path');
-
-  await clickMap(page, 0.3, 0.4);
-  await clickMap(page, 0.45, 0.3);
-  await clickMap(page, 0.6, 0.4);
-  var before = await getGuideCoords(page);
-
-  await dblclickMap(page, 0.45, 0.3);
-  expect(await getGuideCoords(page)).toEqual(before);
-  // and the curve is still open, so it can be finished in the usual way
-  expect(await getGuides(page)).toEqual([
-    {name: 'label-path-guide', geometryType: 'polyline', shapeCount: 1},
-    {name: 'label-path-knots', geometryType: 'point', shapeCount: 3}
-  ]);
-
-  await finishCurve(page);
-  await writeLabel(page, 'Sierra');
-  var lyr = await getLabelLayer(page);
-  expect(lyr.pointCounts).toEqual([3]);
-  expect(errors).toEqual([]);
-});
-
 test('double-clicking empty map finishes the curve at that point', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
@@ -1356,27 +633,6 @@ test('double-clicking empty map finishes the curve at that point', async functio
   var lyr = await getLabelLayer(page);
   expect(lyr).not.toBeNull();
   expect(lyr.pointCounts).toEqual([3]);
-  expect(errors).toEqual([]);
-});
-
-test('the guide survives a zoom, because its knots are in map coordinates', async function({page}) {
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-  await armTool(page, 'path');
-
-  await clickMap(page, 0.3, 0.4);
-  await clickMap(page, 0.45, 0.3);
-  await clickMap(page, 0.6, 0.4);
-  var before = await getGuideCoords(page);
-  expect(before.length).toBe(3);
-
-  await page.evaluate(function() {
-    window.mapshaper.undoTest.zoomByPct(2);
-  });
-  await page.waitForTimeout(150);
-
-  // in pixel coordinates the knots would now be somewhere else entirely
-  expect(await getGuideCoords(page)).toEqual(before);
   expect(errors).toEqual([]);
 });
 
@@ -1510,113 +766,6 @@ test('the justification follows the text across its anchor', async function({pag
   expect(errors).toEqual([]);
 });
 
-test('an aligned label is dragged where it is drawn', async function({page}) {
-  // A label carrying a label-align is drawn with the anchor its alignment
-  // gives it, and the drag writes text-anchor=start against the correction the
-  // renderer applies. The preview used to write that stored value onto the
-  // rendered text, which drew a right-aligned label a full width right of the
-  // pointer and a centred one half a width -- and dropped it back into place
-  // on release, so the label appeared to jump left the moment it was let go.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-
-  await clickMap(page, 0.45, 0.45);
-  await writeLabel(page, 'Winnemucca');
-  await disarmTool(page);
-  await clickLabel(page, 0);
-  await setDragMode(page, 'draggable');
-
-  for (var align of ['right', 'center']) {
-    await page.locator('.text-style-panel .label-align-buttons [data-align="' +
-      align + '"]').click();
-    await page.waitForTimeout(200);
-    await hoverNothing(page);
-    var before = await getLabelBox(page, 0);
-    var from = await getGlyphPoint(page, 0, 0.5);
-
-    await page.mouse.move(from.x, from.y);
-    await page.waitForTimeout(80);
-    await page.mouse.down();
-    await page.mouse.move(from.x + 60, from.y - 30, {steps: 8});
-    // mid-drag: the text is under the pointer, not a width away from it
-    var dragging = await getLabelBox(page, 0);
-    expect(Math.abs(dragging.x - (before.x + 60))).toBeLessThan(2);
-
-    await page.mouse.up();
-    await page.waitForTimeout(250);
-    // and the command's redraw leaves it where the drag showed it
-    var after = await getLabelBox(page, 0);
-    expect(Math.abs(after.x - dragging.x)).toBeLessThan(2);
-    expect((await getLabelLayer(page)).records[0]['label-align']).toBe(align);
-  }
-  expect(errors).toEqual([]);
-});
-
-test('in Draggable mode the symbol at the anchor still moves the anchor',
-  async function({page}) {
-    // Draggable governs the text and nothing else. The glyphs outrank the
-    // anchor handle underneath them because a centred label's anchor is under
-    // its own text, and the handle winning there would leave the text
-    // ungrabbable -- but that is about the glyphs being where the pointer is,
-    // not about the mode. Applied wherever the pointer was, it took the anchor
-    // handle away entirely: dragging an offset label's symbol slid its text.
-    var errors = collectPageErrors(page);
-    await loadFixture(page, FIXTURE);
-
-    await clickMap(page, 0.4, 0.45);
-    await writeLabel(page, 'Reno');
-    await disarmTool(page);
-    await clickLabel(page, 0);
-    await turnIconOn(page); // which also moves the text to ne, clear of it
-    await setDragMode(page, 'draggable');
-    var before = await getLabelLayer(page);
-
-    await hoverNothing(page);
-    await dragBy(page, await getAnchorPoint(page, 0), 40, 25);
-
-    var lyr = await getLabelLayer(page);
-    // the label moved, text and anchor together, and took no offset
-    expect(lyr.shapes[0]).not.toEqual(before.shapes[0]);
-    expect(lyr.records[0].dx).toBeUndefined();
-    expect(lyr.records[0].dy).toBeUndefined();
-    expect(lyr.records[0]['label-pos']).toBe('ne');
-    expect(await getSessionHistory(page)).toMatch(/-update-label/);
-    expect(errors).toEqual([]);
-  });
-
-test('the drag mode is the tool\'s and not the label\'s', async function({page}) {
-  // Nothing in the record says which segment is lit: a label with a position
-  // can be dragged or not, and one that has been dragged stays dragged when
-  // the toggle goes back to Fixed. A per-label flag would be a column in the
-  // user's table that nothing else reads.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-
-  await clickMap(page, 0.4, 0.45);
-  await writeLabel(page, 'Reno');
-  await disarmTool(page);
-  await clickLabel(page, 0);
-  await setDragMode(page, 'draggable');
-  await dragBy(page, await getGlyphPoint(page, 0, 0.5), 50, 30);
-  var offset = (await getLabelLayer(page)).records[0];
-  expect(offset.dx).toBeGreaterThan(0);
-
-  // back to Fixed: the label keeps the offset it was dragged to, and the drag
-  // moves the label again
-  await setDragMode(page, 'fixed');
-  var anchor = (await getLabelLayer(page)).shapes[0];
-  await dragBy(page, await getGlyphPoint(page, 0, 0.5), -40, 0);
-  var lyr = await getLabelLayer(page);
-  expect(lyr.shapes[0]).not.toEqual(anchor);
-  expect(lyr.records[0].dx).toBe(offset.dx);
-  expect(lyr.records[0].dy).toBe(offset.dy);
-
-  // and nothing about the mode is written to the layer or to a new label
-  expect(lyr.fields).not.toContain('label-position-mode');
-  expect(await getNewLabelStyle(page)).not.toHaveProperty('label-position-mode');
-  expect(errors).toEqual([]);
-});
-
 test('a symbol arriving under a centred label moves it out from under it',
   async function({page}) {
     var errors = collectPageErrors(page);
@@ -1649,94 +798,6 @@ test('a symbol arriving under a centred label moves it out from under it',
     expect(rec['label-pos']).toBe('c');
     expect(errors).toEqual([]);
   });
-
-test('removing the symbol leaves the placement alone', async function({page}) {
-  // It used to put the label back to the centre, on the grounds that text
-  // with nothing at its anchor belongs on the anchor. That threw away a
-  // placement the user had made by hand for the sake of an invariant, and the
-  // × is for the symbol.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-
-  await clickMap(page, 0.4, 0.45);
-  await writeLabel(page, 'Reno');
-  await disarmTool(page);
-  await clickLabel(page, 0);
-  await turnIconOn(page);
-  await setLabelPosition(page, 'se');
-  expect((await getLabelLayer(page)).records[0]['label-pos']).toBe('se');
-
-  await page.locator('.text-style-panel .label-icon-section .label-section-remove').click();
-  await page.waitForTimeout(250);
-  var rec = (await getLabelLayer(page)).records[0];
-  expect(rec.icon).toBeFalsy();
-  expect(rec['label-pos']).toBe('se');
-  // and the grid says so: the cell the label is at stays lit with the symbol
-  // gone, rather than the centre taking over
-  expect(await getSelectedPosition(page)).toBe('se');
-  expect(errors).toEqual([]);
-});
-
-test('a dragged label is tethered to its anchor while it moves',
-  async function({page}) {
-    // The offset is what is being edited, and on a label that draws nothing at
-    // its anchor the ring and the line to it are the only things that say what
-    // the text hangs off.
-    var errors = collectPageErrors(page);
-    await loadFixture(page, FIXTURE);
-
-    await clickMap(page, 0.4, 0.45);
-    await writeLabel(page, 'Reno');
-    await disarmTool(page);
-    await clickLabel(page, 0);
-    // centred, so the box holds the anchor and a ring inside it would say
-    // nothing the box does not
-    expect(await page.locator('.label-cue-anchor').count()).toBe(0);
-    await setDragMode(page, 'draggable');
-
-    var p = await getGlyphPoint(page, 0, 0.5);
-    await page.mouse.move(p.x, p.y);
-    await page.waitForTimeout(80);
-    await page.mouse.down();
-    await page.mouse.move(p.x + 70, p.y - 50, {steps: 8});
-    await page.waitForTimeout(100);
-    expect(await page.locator('.label-cue-tether').count()).toBe(1);
-    expect(await page.locator('.label-cue-anchor').count()).toBe(1);
-    await page.mouse.up();
-    await page.waitForTimeout(250);
-
-    // the line goes when the drag does; the ring stays, because the anchor is
-    // now outside the box and nothing else marks it
-    expect(await page.locator('.label-cue-tether').count()).toBe(0);
-    expect(await page.locator('.label-cue-anchor').count()).toBe(1);
-    expect(errors).toEqual([]);
-  });
-
-test('a drag on a label that is not selected pans the map', async function({page}) {
-  // Only a selected label is held; anywhere else a drag over a label has to
-  // stay available for panning, in either mode.
-  var errors = collectPageErrors(page);
-  await loadFixture(page, FIXTURE);
-
-  await clickMap(page, 0.4, 0.45);
-  await writeLabel(page, 'Reno');
-  await disarmTool(page);
-  await clickLabel(page, 0);
-  await setDragMode(page, 'draggable');
-  await page.keyboard.press('Escape'); // gives up the selection
-  await page.waitForTimeout(120);
-  await hoverNothing(page);
-  var before = (await getLabelLayer(page)).shapes[0];
-  var view = await getViewBounds(page);
-
-  await dragBy(page, await getGlyphPoint(page, 0, 0.5), 70, 0);
-
-  var lyr = await getLabelLayer(page);
-  expect(lyr.records[0].dx).toBeUndefined();
-  expect(lyr.shapes[0]).toEqual(before);
-  expect(await getViewBounds(page)).not.toEqual(view);
-  expect(errors).toEqual([]);
-});
 
 test('a knot drag is one undo step', async function({page}) {
   var errors = collectPageErrors(page);
@@ -1820,27 +881,6 @@ test('dragging a path label across its curve flips it', async function({page}) {
   expect((await getLabelLayer(page)).shapes[0]).toEqual(before);
   expect(errors).toEqual([]);
 });
-
-test('a drag on a path label that is not selected pans the map',
-  async function({page}) {
-    // Only a selected label is held; anywhere else a drag over a label has to
-    // stay available for panning.
-    var errors = collectPageErrors(page);
-    await loadFixture(page, FIXTURE);
-    await drawPathLabel(page, [[0.15, 0.6], [0.45, 0.55], [0.75, 0.6]], 'SIERRA');
-    await disarmTool(page);
-    await hoverNothing(page);
-    var before = (await getLabelLayer(page)).shapes[0];
-    var view = await getViewBounds(page);
-
-    await dragBy(page, await getGlyphPoint(page, 0, 0.5), 70, 0);
-
-    expect((await getLabelLayer(page)).records[0]['label-start-offset'])
-      .toBeUndefined();
-    expect((await getLabelLayer(page)).shapes[0]).toEqual(before);
-    expect(await getViewBounds(page)).not.toEqual(view);
-    expect(errors).toEqual([]);
-  });
 
 test('the context menu flips a path label and carries its placement',
   async function({page}) {
@@ -1935,25 +975,6 @@ async function getLabelBox(page, id) {
   }, {id: id});
 }
 
-// The class attribute of a label's <text>, which is where the renderer records
-// what it thinks of the label -- overflowing its path, for one.
-async function getLabelClass(page, id) {
-  return page.evaluate(function(args) {
-    var symbol = document.querySelector(
-      '.mapshaper-symbol-layer .mapshaper-svg-symbol[data-id="' + args.id + '"]');
-    var node = symbol && (symbol.tagName == 'text' ? symbol : symbol.querySelector('text'));
-    return node ? node.getAttribute('class') || '' : null;
-  }, {id: id});
-}
-
-// The horizontal middle of a label's text, which is where its anchor is for a
-// label positioned n, s or c -- and so the thing that must not move when the
-// text or the font changes under an alignment.
-async function getLabelCentre(page, id) {
-  var box = await getLabelBox(page, id);
-  return box.x + box.width / 2;
-}
-
 async function setLabelPosition(page, pos) {
   await page.locator('.text-style-panel .label-position-grid [data-position="' + pos + '"]').click();
   await page.waitForTimeout(150);
@@ -1965,15 +986,6 @@ async function setDragMode(page, mode) {
   await page.waitForTimeout(150);
 }
 
-// Which of the nine cells the grid is showing as the label's position, or ''.
-async function getSelectedPosition(page) {
-  return page.evaluate(function() {
-    var el = document.querySelector(
-      '.text-style-panel .label-position-grid .selected');
-    return el ? el.getAttribute('data-position') : '';
-  });
-}
-
 async function turnIconOn(page) {
   await page.locator('.text-style-panel .label-icon-buttons [data-icon="circle"]').click();
   await page.waitForTimeout(250);
@@ -1982,14 +994,6 @@ async function turnIconOn(page) {
 async function getCaretCount(page) {
   return page.evaluate(function() {
     return document.querySelectorAll('.label-edit-caret').length;
-  });
-}
-
-// How many labels are cued as selected for styling.
-async function getSelectionCueCount(page) {
-  return page.evaluate(function() {
-    return document.querySelectorAll(
-      '.label-cue-selected').length;
   });
 }
 
@@ -2063,16 +1067,6 @@ async function writeLabel(page, text) {
   await page.waitForTimeout(250);
 }
 
-// Types a value into a panel text field and commits it, which is what a user
-// leaving the field does: the panel's fields apply their value on 'change'.
-// What has the keyboard: a tag name, or 'BODY' for nothing in particular.
-async function getFocusedElement(page) {
-  return page.evaluate(function() {
-    var el = document.activeElement;
-    return el ? el.nodeName : 'none';
-  });
-}
-
 async function setFieldValue(locator, value) {
   await locator.fill(value);
   await locator.press('Enter');
@@ -2094,13 +1088,6 @@ async function rightClickLabel(page, id) {
   await page.waitForTimeout(80);
   await page.mouse.click(x, y, {button: 'right'});
   await page.waitForTimeout(150);
-}
-
-// The interaction modes the arrow menu offers for the active layer.
-async function getModeMenuItems(page) {
-  await page.locator('.pointer-btn').hover();
-  await page.locator('.nav-sub-menu .nav-menu-item').first().waitFor();
-  return page.locator('.nav-sub-menu .nav-menu-item').allInnerTexts();
 }
 
 // Opens a layer's own menu from the layer list, the way a user does.
@@ -2172,44 +1159,6 @@ async function hoverNothing(page) {
   return hoverMap(page, 0.92, 0.08);
 }
 
-// Hovers a fraction of the way along a label's rendered characters, using the
-// engine's own idea of where it put them.
-async function hoverGlyph(page, id, frac) {
-  var p = await page.evaluate(function(args) {
-    var node = document.querySelector(
-      '.mapshaper-svg-symbol[data-id="' + args.id + '"]');
-    var content = node.querySelector('textPath') ||
-      (node.tagName == 'text' ? node : node.querySelector('text'));
-    var n = content.getNumberOfChars();
-    var box = content.getExtentOfChar(Math.min(Math.floor(n * args.frac), n - 1));
-    var pt = node.ownerSVGElement.createSVGPoint();
-    pt.x = box.x + box.width / 2;
-    pt.y = box.y + box.height / 2;
-    pt = pt.matrixTransform(node.getScreenCTM());
-    return {x: pt.x, y: pt.y};
-  }, {id: id, frac: frac});
-  return hoverPoint(page, p.x, p.y);
-}
-
-// Hovers a label's first point. A symbol's transform is its anchor, so the
-// origin of its own coordinate space is that point in screen space.
-async function hoverAnchor(page, id) {
-  var p = await getAnchorPoint(page, id);
-  return hoverPoint(page, p.x, p.y);
-}
-
-// A label's anchor on screen. The symbol group is translated to it, so it is
-// the group's own origin.
-async function getAnchorPoint(page, id) {
-  return page.evaluate(function(args) {
-    var node = document.querySelector(
-      '.mapshaper-svg-symbol[data-id="' + args.id + '"]');
-    var pt = node.ownerSVGElement.createSVGPoint();
-    pt = pt.matrixTransform(node.getScreenCTM());
-    return {x: pt.x, y: pt.y};
-  }, {id: id});
-}
-
 async function getNewLabelStyle(page) {
   return page.evaluate(function() {
     return window.mapshaper.undoTest.getNewLabelStyle();
@@ -2220,19 +1169,6 @@ async function getSessionHistory(page) {
   return JSON.stringify(await page.evaluate(function() {
     return window.mapshaper.undoTest.getSessionHistory();
   }));
-}
-
-async function getGuides(page) {
-  return page.evaluate(function() {
-    return window.mapshaper.undoTest.getLabelPathGuideInfo();
-  });
-}
-
-// The knot handle positions, in map coordinates.
-async function getGuideCoords(page) {
-  return page.evaluate(function() {
-    return window.mapshaper.undoTest.getLabelPathKnotCoords();
-  });
 }
 
 // Viewport positions of the knot handles drawn on a selected curve.

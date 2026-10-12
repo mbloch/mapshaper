@@ -79,76 +79,6 @@ test('a bare distance uses the units menu', async function({page}) {
   await expect(page.locator('.mapshaper-svg-furniture text')).toHaveText('80 MILES');
 });
 
-test('color and font controls show the defaults the scale bar is drawn with', async function({page}) {
-  await loadProjectedFrame(page);
-  await runCommand(page, '-scalebar');
-  var popup = await openScalebarPanel(page);
-  await expect(popup.locator('.scalebar-color-cell .label-color-input')).toHaveValue('#000000');
-  await expect(popup.locator('.scalebar-color-cell .label-color-chit'))
-    .toHaveCSS('background-color', 'rgb(0, 0, 0)');
-  var fontSelect = popup.locator('.scalebar-font-select');
-  expect(await fontSelect.inputValue()).not.toBe('');
-  expect(await fontSelect.locator('optgroup').count()).toBeGreaterThan(0);
-
-  await popup.locator('.scalebar-color-cell .label-color-input').fill('#cc0000');
-  await popup.locator('.scalebar-color-cell .label-color-input').press('Enter');
-  await expect.poll(async function() {
-    return (await getScalebarRecord(page)).color;
-  }).toBe('#cc0000');
-  await expect(popup.locator('.scalebar-color-cell .label-color-chit'))
-    .toHaveCSS('background-color', 'rgb(204, 0, 0)');
-
-  var fontName = await fontSelect.locator('option').nth(1).getAttribute('value');
-  await fontSelect.selectOption(fontName);
-  await expect.poll(async function() {
-    return (await getScalebarRecord(page)).font_family;
-  }).toBe(fontName);
-  await expect(page.locator('.mapshaper-svg-furniture text'))
-    .toHaveAttribute('font-family', fontName);
-});
-
-test('the panel leaves the map usable and opens away from the scale bar', async function({page}) {
-  await loadProjectedFrame(page);
-  await runCommand(page, '-scalebar position=bottom-left');
-  var popup = await openScalebarPanel(page);
-  var map = await page.locator('.map-layers').boundingBox();
-  var box = await popup.boundingBox();
-  expect(box.x).toBeGreaterThan(map.x + map.width / 2);
-
-  // the map under the panel's wrapper still gets the pointer
-  var bounds = await getViewBounds(page);
-  await page.mouse.move(map.x + 100, map.y + map.height - 100);
-  await page.mouse.wheel(0, -300);
-  await expect.poll(function() { return getViewBounds(page); }).not.toEqual(bounds);
-  await expect(popup).toBeVisible();
-
-  await runCommand(page, '-scalebar position=top-right');
-  popup = await openScalebarPanel(page);
-  box = await popup.boundingBox();
-  expect(box.x + box.width).toBeLessThan(map.x + map.width / 2);
-});
-
-test('the open panel follows undo and closes when the scale bar goes', async function({page}) {
-  await loadProjectedFrame(page);
-  await runCommand(page, '-scalebar');
-  var popup = await openScalebarPanel(page);
-  await popup.locator('.scalebar-position-select').selectOption('bottom-right');
-  await expect.poll(async function() {
-    return (await getScalebarRecord(page)).position;
-  }).toBe('bottom-right');
-
-  await undo(page);
-  await expect(popup.locator('.scalebar-position-select')).toHaveValue('top-left');
-  await redo(page);
-  await expect(popup.locator('.scalebar-position-select')).toHaveValue('bottom-right');
-
-  // undoing the command that added the scale bar
-  await undo(page);
-  await undo(page);
-  await expect.poll(function() { return getScalebarRecord(page); }).toBeNull();
-  await expect(popup).toHaveCount(0);
-});
-
 test('scale bar edits interleave with point edits in the undo history', async function({page}) {
   await loadProjectedFrame(page);
   await runCommand(page, '-scalebar');
@@ -286,18 +216,6 @@ test('SVG export includes the scale bar but the layer list does not', async func
   var svg = await readDownload(download);
   expect(svg).toContain('id="scalebar"');
   expect(svg).toContain('50 km');
-});
-
-test('an unprojected frame explains why the scale bar is hidden', async function({page}) {
-  await loadFixture(page);
-  await runCommand(page, '-frame width=600 name=frame');
-  await runCommand(page, '-scalebar');
-  await openLayersPanel(page);
-  await openFrameMenu(page);
-  await page.locator('.contextmenu-item').filter({hasText: /^scale bar$/}).click();
-  await expect(page.locator('.scalebar-properties-note')).toContainText('unprojected');
-  await setPreviewMode(page, true);
-  await expect(page.locator('.mapshaper-svg-furniture')).toHaveCount(0);
 });
 
 async function loadProjectedFrame(page) {

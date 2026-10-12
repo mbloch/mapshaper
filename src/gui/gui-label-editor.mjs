@@ -344,7 +344,7 @@ export function LabelEditor(gui, ext) {
     if (o.text === o.startText && sameSoftBreaks(breaks, o.startBreaks) &&
       sameBoldRanges(o.bold, o.startBold)) return;
     runGuiEditCommand(gui, getLabelTextCommand(writeLabelValue(o.text, breaks, o.bold),
-      o.id, o.target.name), {
+      o.id), {
       title: 'Label text'
     });
   }
@@ -371,7 +371,7 @@ export function LabelEditor(gui, ext) {
   // session's undo history is being kept: undo is a setting, and a rule about
   // what may exist in the data cannot depend on one.
   function removeLabel(o) {
-    runGuiEditCommand(gui, getLabelDeleteCommand(o.id, o.target.name), {
+    runGuiEditCommand(gui, getLabelDeleteCommand(o.id), {
       title: 'Remove empty label'
     });
   }

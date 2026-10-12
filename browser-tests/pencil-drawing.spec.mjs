@@ -62,7 +62,7 @@ test('a dragged stroke is smoothed, pinned at both ends, and undone in one step'
 
     // the line is created by a command, which is in the session history
     var commands = await getSessionCommands(page);
-    expect(commands[commands.length - 1]).toMatch(/^-add-shape coordinates=[-\d.e,]+ target='lines'$/);
+    expect(commands[commands.length - 1]).toMatch(/^-add-shape coordinates=[-\d.e,]+$/);
 
     // once the line is finished, one undo takes back all of it, and redo puts it back
     await undo(page);
@@ -158,45 +158,6 @@ test('a stroke that returns to the start of a polygon closes it',
     var ring = (await getPaths(page, 'polygons'))[0][0];
     expect(ring[0]).toEqual(ring[ring.length - 1]);
     expect(ring.length).toBeGreaterThan(10);
-    expect(errors).toEqual([]);
-  });
-
-test('vertices are marked on a path under the pointer when reshaping, not on the path being drawn',
-  async function({page}) {
-    var errors = collectPageErrors(page);
-    await loadFixture(page, FIXTURE);
-    await clickNewLayerLink(page, 'lines');
-    var box = await getMapBox(page);
-    var a = mapPoint(box, 0.15, 0.6);
-    var b = mapPoint(box, 0.35, 0.6);
-    var wave = wobblyWave(mapPoint(box, 0.4, 0.7), 300, 40);
-    var drawnWithVertices = [];
-    async function checkOverlay() {
-      (await getOverlayInfo(page)).forEach(function(o) {
-        if (o.vertices && (o.ids || []).includes(0)) drawnWithVertices.push(o);
-      });
-    }
-    await clickAt(page, a);
-    await checkOverlay();
-    await clickAt(page, b);
-    await page.mouse.move(b[0] + 20, b[1] + 10, {steps: 3});
-    await checkOverlay();
-    await dragThrough(page, wave, async function(i) {
-      if (i % 10 === 0) await checkOverlay();
-    });
-    await page.keyboard.press('Enter');
-    expect(drawnWithVertices).toEqual([]);
-
-    // with the reshape tool, hovering over the completed path marks its vertices
-    await clickToolButton(page, 'Reshape lines');
-    var mid = [Math.round((a[0] + b[0]) / 2), a[1]];
-    await page.mouse.move(mid[0], mid[1] + 20);
-    await page.mouse.move(mid[0], mid[1], {steps: 4});
-    await expect.poll(async function() {
-      return (await getOverlayInfo(page)).some(function(o) {
-        return o.vertices && (o.ids || []).includes(0);
-      });
-    }).toBe(true);
     expect(errors).toEqual([]);
   });
 

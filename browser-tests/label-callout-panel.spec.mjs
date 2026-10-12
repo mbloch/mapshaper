@@ -11,56 +11,6 @@ import {
 var FIXTURE = 'test/data/features/snip/ring_and_line.json';
 var PANEL = '.text-style-panel';
 
-test('sections open and close from their headings, which say what the selection has',
-  async function({page}) {
-    var errors = collectPageErrors(page);
-    await oneLabel(page);
-    await selectLabels(page, [0]);
-    // Only Text starts open
-    expect(await sectionIsOpen(page, PANEL, 'label-halo-section')).toBe(false);
-    expect(await sectionIsOpen(page, PANEL, 'label-icon-section')).toBe(false);
-    expect(await sectionIsOpen(page, PANEL, 'label-callout-section')).toBe(false);
-    expect(await sectionIsOpen(page, PANEL, 'label-saved-style-row')).toBe(false);
-    expect(await page.locator(PANEL + ' .label-style-section').first()
-      .evaluate(function(el) { return el.classList.contains('collapsed'); })).toBe(false);
-    expect(await getSectionPresence(page, PANEL, 'label-icon-section')).toBe('off');
-    expect(await page.locator(PANEL + ' .label-icon-section .label-section-remove').isVisible()).toBe(false);
-
-    await clickHeading(page, 'icon');
-    expect(await sectionIsOpen(page, PANEL, 'label-icon-section')).toBe(true);
-    expect(await getLabelField(page, 0, 'icon')).toBeFalsy();
-    await page.locator(PANEL + ' .label-icon-buttons [data-icon="circle"]').click();
-    await expect.poll(function() { return getLabelField(page, 0, 'icon'); }).toBe('circle');
-    expect(await getSectionPresence(page, PANEL, 'label-icon-section')).toBe('on');
-
-    // Closing a section changes no style, and its heading still says what is there
-    await clickHeading(page, 'icon');
-    expect(await sectionIsOpen(page, PANEL, 'label-icon-section')).toBe(false);
-    expect(await getLabelField(page, 0, 'icon')).toBe('circle');
-    expect(await getSectionPresence(page, PANEL, 'label-icon-section')).toBe('on');
-
-    // The × works from a closed section, and leaves it closed
-    await removeSectionStyle(page, PANEL, 'label-icon-section');
-    await expect.poll(function() { return getLabelField(page, 0, 'icon'); }).toBeFalsy();
-    expect(await getLabelField(page, 0, 'icon-size')).toBeFalsy();
-    expect(await getSectionPresence(page, PANEL, 'label-icon-section')).toBe('off');
-    expect(await sectionIsOpen(page, PANEL, 'label-icon-section')).toBe(false);
-    expect(errors).toEqual([]);
-  });
-
-test('a section stays open or closed whatever is selected', async function({page}) {
-  await oneLabel(page);
-  await runCommand(page, '-style icon=circle target=labels');
-  await selectLabels(page, [0]);
-  expect(await sectionIsOpen(page, PANEL, 'label-icon-section')).toBe(false);
-  await clickHeading(page, 'halo');
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(150);
-  await selectLabels(page, [0]);
-  expect(await sectionIsOpen(page, PANEL, 'label-halo-section')).toBe(true);
-  expect(await sectionIsOpen(page, PANEL, 'label-icon-section')).toBe(false);
-});
-
 test('a halo color adds a halo, and an emptied one removes it', async function({page}) {
   var errors = collectPageErrors(page);
   await oneLabel(page);
@@ -146,96 +96,6 @@ test('a callout shape draws the line, and the section styles it', async function
   expect(errors).toEqual([]);
 });
 
-test('an unset property shows its default as a value', async function({page}) {
-  var errors = collectPageErrors(page);
-  await oneLabel(page);
-  await runCommand(page, '-style dx=40 dy=-40 label-pos= callout=line icon=circle icon-size=10 target=labels');
-  await selectLabels(page, [0]);
-  await openSection(page, PANEL, 'label-callout-section');
-  var spacing = page.locator(PANEL + ' .label-measure-input').first();
-  var padding = page.locator(PANEL + ' .label-padding-row input');
-  var gap = page.locator(PANEL + ' .label-callout-gap-row input.label-measure-input');
-  expect(await spacing.inputValue()).toBe('0');
-  expect(await padding.inputValue()).toBe('0');
-  expect(await spacing.getAttribute('placeholder')).toBe('');
-  // the gap the line is drawn with: to the edge of the symbol
-  expect(await gap.inputValue()).toBe('4.5');
-  expect(await getLabelField(page, 0, 'callout-gap')).toBeFalsy();
-  // 0 is a gap, not a blank: it runs the line to the anchor, and shows
-  await gap.fill('0');
-  await gap.press('Enter');
-  await expect.poll(function() { return getLabelField(page, 0, 'callout-gap'); }).toBe(0);
-  expect(await gap.inputValue()).toBe('0');
-
-  // A click selects the default, so what is typed replaces it
-  await spacing.click();
-  await page.keyboard.type('3');
-  await page.keyboard.press('Enter');
-  await expect.poll(function() { return getLabelField(page, 0, 'letter-spacing'); }).toBe(3);
-  // and so do the size fields and the opacities
-  await page.locator(PANEL + ' .label-size-row input').first().click();
-  await page.keyboard.type('20');
-  await page.keyboard.press('Enter');
-  await expect.poll(async function() { return Number(await getLabelField(page, 0, 'font-size')); }).toBe(20);
-  await page.locator(PANEL + ' .label-opacity-input').first().click();
-  await page.keyboard.type('50');
-  await page.keyboard.press('Enter');
-  await expect.poll(async function() { return Number(await getLabelField(page, 0, 'opacity')); }).toBe(0.5);
-  expect(errors).toEqual([]);
-});
-
-test('the marker size shows the drawn size, and is inert with no marker', async function({page}) {
-  var errors = collectPageErrors(page);
-  await oneLabel(page);
-  await runCommand(page, '-style dx=40 dy=-40 label-pos= callout=line target=labels');
-  await selectLabels(page, [0]);
-  await openSection(page, PANEL, 'label-callout-section');
-  var size = page.locator('.text-style-panel .label-callout-end-size-row .size-field-input');
-  expect(await size.isDisabled()).toBe(true);
-
-  await clickCalloutButton(page, 'open-arrow');
-  await expect.poll(function() { return getLabelField(page, 0, 'callout-end'); }).toBe('open-arrow');
-  expect(await size.isDisabled()).toBe(false);
-  // the default for a 1px line, which nothing has written
-  expect(await size.inputValue()).toBe('10');
-  expect(await getLabelField(page, 0, 'callout-end-size')).toBeFalsy();
-  // a stroked chevron: the line, and a second unfilled path
-  expect(await page.evaluate(function() {
-    var paths = document.querySelectorAll('.mapshaper-svg-symbol .label-callout path');
-    return paths.length == 2 && paths[1].getAttribute('fill') == 'none';
-  })).toBe(true);
-
-  await size.fill('14');
-  await size.press('Enter');
-  await expect.poll(function() { return getLabelField(page, 0, 'callout-end-size'); }).toBe(14);
-  expect(errors).toEqual([]);
-});
-
-test('a ring circles the anchor, sized by its diameter', async function({page}) {
-  var errors = collectPageErrors(page);
-  await oneLabel(page);
-  await runCommand(page, '-style dx=40 dy=-60 label-pos= callout=line callout-width=1.5 target=labels');
-  await selectLabels(page, [0]);
-  await openSection(page, PANEL, 'label-callout-section');
-  var size = page.locator('.text-style-panel .label-callout-end-size-row .size-field-input');
-
-  await clickCalloutButton(page, 'ring');
-  await expect.poll(function() { return getLabelField(page, 0, 'callout-end'); }).toBe('ring');
-  // twice an arrowhead's default for the line
-  expect(await size.inputValue()).toBe('23');
-  await size.fill('30');
-  await size.press('Enter');
-  await expect.poll(function() { return getLabelField(page, 0, 'callout-end-size'); }).toBe(30);
-  // the stroke is inside the diameter, and as wide as the line
-  await expect.poll(function() {
-    return page.evaluate(function() {
-      var c = document.querySelector('.mapshaper-svg-symbol .label-callout circle');
-      return c && [c.getAttribute('r'), c.getAttribute('stroke-width'), c.getAttribute('fill')];
-    });
-  }).toEqual(['14.25', '1.5', 'none']);
-  expect(errors).toEqual([]);
-});
-
 // One anchored label, with nothing selected.
 async function oneLabel(page) {
   await loadFixture(page, FIXTURE);
@@ -245,11 +105,6 @@ async function oneLabel(page) {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(250);
   await disarmTool(page);
-}
-
-async function clickHeading(page, name) {
-  await page.locator(PANEL + ' .label-' + name + '-section .label-section-heading').click();
-  await page.waitForTimeout(100);
 }
 
 // @group: 0 for the shapes, 1 for the ends

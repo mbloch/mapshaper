@@ -753,7 +753,6 @@ export function initLineEditing(gui, ext, hit) {
       layerHasDrawableStyle(target), !!gui.state.dark_basemap);
     var cmd = getAddShapeCommand(coords, {
       geometryType: target.geometry_type,
-      target: target.name || null,
       style: style,
       extend: extend
     });
