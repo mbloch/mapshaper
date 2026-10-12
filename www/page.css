@@ -2223,6 +2223,7 @@ div.basemap-style-btn.active {
 .map-layers.add-points,
 .map-layers.draw-tool,
 .map-layers.label-tool,
+.map-layers.symbol-tool,
 .map-layers.snip-tool,
 .map-layers.ruler-tool {
 	cursor: crosshair;
@@ -2242,6 +2243,16 @@ div.basemap-style-btn.active {
    callout handle -- which a drag moves on its own. Not the text's cursor,
    because the two are often close together or on top of each other. */
 .map-layers.label-handle {
+	cursor: pointer;
+}
+
+/* The symbol tool: over a symbol, which a drag moves, and over a knot of a
+   selected curve, which a drag moves on its own. */
+.map-layers.symbol-move {
+	cursor: move;
+}
+
+.map-layers.symbol-handle {
 	cursor: pointer;
 }
 
@@ -4198,7 +4209,8 @@ body.dragging-color-picker * {
 /* Words, like the label panel's Fixed/Draggable, but splitting the group
    evenly so that it lines up with the shapes above. */
 .layer-style-panel .layer-arrow-position-buttons .label-panel-btn,
-.layer-style-panel .layer-cap-buttons .label-panel-btn {
+.layer-style-panel .layer-cap-buttons .label-panel-btn,
+.symbol-style-panel .symbol-arrowhead-buttons .label-panel-btn {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -4632,12 +4644,24 @@ body.dragging-color-picker * {
 	transition: fill 100ms ease;
 }
 
+/* A line in an icon is drawn in the icon's color and not filled */
+.floating-toolbar-btn svg .stroked {
+	fill: none;
+	stroke: var(--theme-col);
+	transition: stroke 100ms ease;
+}
+
 .floating-toolbar-btn:hover:not(.disabled) {
 	background-color: var(--lt-theme-col);
 }
 
 .floating-toolbar-btn:hover:not(.disabled) svg * {
 	fill: #166689;
+}
+
+.floating-toolbar-btn:hover:not(.disabled) svg .stroked {
+	fill: none;
+	stroke: #166689;
 }
 
 .floating-toolbar-btn:active:not(.disabled) {
@@ -4651,6 +4675,11 @@ body.dragging-color-picker * {
 
 .floating-toolbar-btn.selected svg * {
 	fill: #166689;
+}
+
+.floating-toolbar-btn.selected svg .stroked {
+	fill: none;
+	stroke: #166689;
 }
 
 /* An icon button's blue wash goes with its themed icon, but a text button is
@@ -4674,6 +4703,11 @@ body.dragging-color-picker * {
 
 .floating-toolbar-btn.disabled svg * {
 	fill: #b8c4ca;
+}
+
+.floating-toolbar-btn.disabled svg .stroked {
+	fill: none;
+	stroke: #b8c4ca;
 }
 
 /* A captioned control: a segmented mode switch or a short typed value. The

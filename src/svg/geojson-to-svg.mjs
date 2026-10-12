@@ -137,7 +137,8 @@ function simpleCircleFilter(k) {
 
 // just a dot, no label or icon
 function isSimpleCircle(rec) {
-  return rec && (rec.r > 0 && !rec['svg-symbol'] && !rec['label-text'] && !rec.icon && !rec['icon-size'] && !rec['icon-color']);
+  return rec && (rec.r > 0 && !rec['svg-symbol'] && !rec['label-text'] && !rec.icon && !rec['icon-size'] && !rec['icon-color'] &&
+    !rec['icon-fill'] && !rec['icon-stroke']);
 }
 
 function importMultiPoint(coords, rec, opts) {

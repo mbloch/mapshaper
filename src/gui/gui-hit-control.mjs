@@ -104,7 +104,7 @@ export function HitControl(gui, ext, mouse) {
     var mode = interactionMode();
     return mode == 'selection' || mode == 'label' || mode == 'label_style' ||
       mode == 'point_style' || mode == 'line_style' || mode == 'polygon_style' ||
-      drawingMode(mode);
+      mode == 'symbols' || drawingMode(mode);
   }
 
   function pinnable() {
@@ -115,7 +115,7 @@ export function HitControl(gui, ext, mouse) {
   function draggable() {
     var mode = interactionMode();
     return mode == 'vertices' || mode == 'edit_points' || mode == 'label' ||
-      lineToolMode(mode);
+      mode == 'symbols' || lineToolMode(mode);
   }
 
   function drawingMode(mode) {
@@ -133,7 +133,7 @@ export function HitControl(gui, ext, mouse) {
     return mode == 'data' || mode == 'info' || mode == 'selection' ||
     mode == 'label' || mode == 'label_style' || mode == 'point_style' ||
     mode == 'line_style' || mode == 'polygon_style' ||
-    mode == 'rectangles' || mode == 'edit_points';
+    mode == 'rectangles' || mode == 'edit_points' || mode == 'symbols';
   }
 
   self.getHitId = function() {
@@ -431,7 +431,7 @@ export function HitControl(gui, ext, mouse) {
   function styleSelectionMode() {
     var mode = interactionMode();
     return mode == 'label' || mode == 'label_style' || mode == 'point_style' ||
-      mode == 'line_style' || mode == 'polygon_style';
+      mode == 'line_style' || mode == 'polygon_style' || mode == 'symbols';
   }
 
   function selectStyleFeature(id, e) {
@@ -445,7 +445,8 @@ export function HitControl(gui, ext, mouse) {
     // style modes keep the older rule, where a plain click on a selected
     // feature deselects it, except the line and polygon modes, where a click
     // off the selection deselects instead.
-    if (interactionMode() == 'label' || shapeStyleMode(interactionMode())) {
+    if (interactionMode() == 'label' || interactionMode() == 'symbols' ||
+        shapeStyleMode(interactionMode())) {
       return [id];
     }
     if (selectionIds.includes(id)) {
@@ -544,7 +545,7 @@ export function HitControl(gui, ext, mouse) {
     if (type == 'click' && mode == 'edit_points') {
       return true;
     }
-    if (mode == 'label' && (type == 'click' || type == 'dblclick' ||
+    if ((mode == 'label' || mode == 'symbols') && (type == 'click' || type == 'dblclick' ||
         type == 'hover' || isDragEvent(type))) {
       // placing a label or a knot happens on empty map as often as on a
       // feature, and a double-click finishes a curve wherever it lands.
@@ -591,7 +592,7 @@ export function HitControl(gui, ext, mouse) {
       // handled conditionally in the control
       return;
     }
-    if (mode == 'label' && (e.type == 'hover' || isDragEvent(e.type))) {
+    if ((mode == 'label' || mode == 'symbols') && (e.type == 'hover' || isDragEvent(e.type))) {
       // Hover: the label tool only watches the pointer in this mode;
       // swallowing the event would take hover away from everything downstream.
       //

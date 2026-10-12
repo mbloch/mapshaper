@@ -23,10 +23,16 @@ import { roundToTenths } from '../geom/mapshaper-rounding';
 // A ring icon's stroke, unless the record sets one; 1px read as too faint.
 export var RING_STROKE_WIDTH = 1.5;
 
+// The NYT star's outline, as a fraction of its icon-size (5 units of the
+// artwork's 40-unit box -- see nytStar() in svg-symbols.mjs), and its middle
+export var NYT_STAR_STROKE_RATIO = 5 / 40;
+export var NYT_STAR_FILL = '#ffffff';
+
 // Fields that hold a point's symbol. -symbols clears them all before writing
 // the ones a symbol needs, so that a symbol never inherits a parameter from
 // the one it replaces.
 export var symbolFields = ['svg-symbol', 'r', 'icon', 'icon-size', 'icon-color',
+  'icon-fill', 'icon-stroke', 'icon-stroke-width',
   'icon-opacity', 'icon-rotation', 'icon-sides', 'icon-points', 'icon-radii',
   'icon-values', 'icon-fills', 'icon-hole', 'arrow-style', 'arrow-stem-width',
   'arrow-head-width', 'arrow-head-length', 'arrow-head-angle', 'arrow-stem-taper',
@@ -48,6 +54,52 @@ var arrowParams = {
 var shapeStyleFields = ['stroke', 'stroke-width', 'stroke-dasharray',
   'stroke-opacity', 'fill-opacity'];
 
+// Which paint carries an icon's color by default: a ring is a stroke with no
+// fill, the NYT star a stroke around a white middle, and the rest are filled.
+// 'fill', 'stroke' or 'nyt'
+export function getIconPaintKind(type) {
+  if (type == 'ring') return 'stroke';
+  if (type == 'nyt-star') return 'nyt';
+  return 'fill';
+}
+
+// The fill, stroke and stroke width an icon is drawn with, from icon-fill,
+// icon-stroke and icon-stroke-width. Each one that is unset falls back to the
+// way icons were drawn before those fields: icon-color (then the record's
+// fill, which on a label is its text color) is a filled shape's fill and the
+// stroke of a ring or the NYT star, and a filled shape takes the record's own
+// stroke. The NYT star's outline is always the same width for its size.
+// Returns {fill, stroke, strokeWidth}: colors or 'none', and a width that is
+// 0 when there is no stroke.
+export function getIconPaint(d, type) {
+  var kind = getIconPaintKind(type);
+  var color = d['icon-color'] || d.fill || 'black';
+  var fill, stroke, width;
+  if (kind == 'fill') {
+    fill = color;
+    stroke = d.stroke;
+    width = d['stroke-width'];
+  } else {
+    fill = kind == 'nyt' ? NYT_STAR_FILL : 'none';
+    stroke = color;
+    width = kind == 'stroke' ? d['stroke-width'] : null;
+  }
+  if (hasValue(d['icon-fill'])) fill = d['icon-fill'];
+  if (hasValue(d['icon-stroke'])) stroke = d['icon-stroke'];
+  if (hasValue(d['icon-stroke-width'])) width = d['icon-stroke-width'];
+  if (!hasValue(stroke)) stroke = 'none';
+  if (kind == 'nyt') {
+    width = getIconSize(d) * NYT_STAR_STROKE_RATIO;
+  } else if (!hasValue(width) || !isFinite(width) || width < 0) {
+    width = kind == 'stroke' ? RING_STROKE_WIDTH : 1;
+  }
+  return {
+    fill: hasValue(fill) ? fill : 'none',
+    stroke: stroke,
+    strokeWidth: stroke == 'none' ? 0 : Number(width)
+  };
+}
+
 // The radius an icon is drawn at. Circles, rings and stars are adjusted so
 // that the three read as the same size at the same icon-size.
 export function getIconRadius(d, type) {
@@ -60,7 +112,7 @@ export function getIconRadius(d, type) {
     size -= 1;
   } else if (type == 'ring') {
     // the stroke's outer half is inside icon-size
-    size -= RING_STROKE_WIDTH;
+    size -= getIconPaint(d, 'ring').strokeWidth;
   } else if (type == 'star') {
     size += 1;
   }
@@ -200,8 +252,15 @@ function getRingsIcon(d) {
 
 function getFilledShape(d, coords) {
   var sym = {type: 'polygon', coordinates: coords};
+  var paint = getIconPaint(d, d.icon);
   addShapeStyle(sym, d);
-  sym.fill = getIconFill(d);
+  sym.fill = paint.fill;
+  delete sym.stroke;
+  delete sym['stroke-width'];
+  if (paint.stroke != 'none') {
+    sym.stroke = paint.stroke;
+    sym['stroke-width'] = paint.strokeWidth;
+  }
   return addOpacity(sym, d);
 }
 

@@ -128,6 +128,8 @@ cmd.addSymbol = function(targetLayers, targetDataset, opts) {
   return merged;
 };
 
+var NYT_STAR_COLOR = '#cc0000';
+
 var POLYGON_SIDES = {
   triangle: 3,
   pentagon: 5,
@@ -150,6 +152,7 @@ export function getSymbolFields(d, rec, opts) {
   if (type == 'pie') return getPieFields(d, scale);
   if (type == 'ring') return getRingFields(d, scale);
   if (type == 'star') return getStarFields(d, scale);
+  if (type == 'nyt-star') return getNytStarFields(d, scale);
   if (type == 'square' && !d.sides) return getSquareFields(d, scale);
   if (type == 'polygon' || type == 'square' || type in POLYGON_SIDES) {
     return getPolygonFields(d, type, scale);
@@ -201,13 +204,39 @@ function getStarFields(d, scale) {
   return addFilledStyle(o, d);
 }
 
+// Not advertised, like icon=nyt-star (see svg-icons.mjs): the web UI offers it
+// only to some users. stroke= is its outline, NYT red unless given, at a width
+// fixed by its size; fill= is its middle, white unless given. Not rotated.
+function getNytStarFields(d, scale) {
+  var o = {icon: 'nyt-star', 'icon-size': getSymbolRadius(d) * 2 * scale,
+    'icon-stroke': hasValue(d.stroke) ? d.stroke : NYT_STAR_COLOR};
+  if (hasValue(d.fill)) o['icon-fill'] = d.fill;
+  if (hasValue(d.opacity)) o['icon-opacity'] = d.opacity;
+  return o;
+}
+
+// Without radii=, one ring reaching radius=, the stroked circle a label's
+// icon=ring draws; with them, concentric rings. A ring is a stroke, so with no
+// stroke= given, fill= is its color, as it always was.
 function getRingFields(d, scale) {
-  var radii = toNumberList(d.radii || '2').filter(function(r) {
+  var radii, o;
+  if (!hasValue(d.radii)) {
+    o = {icon: 'ring', 'icon-size': getSymbolRadius(d) * 2 * scale};
+    if (hasValue(d.stroke)) {
+      o['icon-stroke'] = d.stroke;
+      if (hasValue(d.fill)) o['icon-fill'] = d.fill;
+    } else {
+      o['icon-stroke'] = getSymbolFillColor(d);
+    }
+    if (hasValue(d['stroke-width'])) o['icon-stroke-width'] = d['stroke-width'];
+    if (hasValue(d.opacity)) o['icon-opacity'] = d.opacity;
+    return o;
+  }
+  radii = toNumberList(d.radii).filter(function(r) {
     return r >= 0;
   }).map(function(r) {
     return r * scale;
   });
-  var o;
   utils.genericSort(radii, true);
   o = {icon: 'ring', 'icon-radii': utils.uniq(radii).join(','), 'icon-color': getSymbolFillColor(d)};
   if (hasValue(d.opacity)) o['icon-opacity'] = d.opacity;
@@ -290,8 +319,9 @@ function getCurveFields(d, scale) {
 }
 
 function addFilledStyle(o, d) {
-  o['icon-color'] = getSymbolFillColor(d);
-  addStroke(o, d);
+  o['icon-fill'] = getSymbolFillColor(d);
+  if (hasValue(d.stroke)) o['icon-stroke'] = d.stroke;
+  if (hasValue(d['stroke-width'])) o['icon-stroke-width'] = d['stroke-width'];
   if (hasValue(d.opacity)) o['icon-opacity'] = d.opacity;
   return o;
 }

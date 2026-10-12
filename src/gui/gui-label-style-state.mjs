@@ -19,7 +19,8 @@ export var NEW_LABEL_STYLE_FIELDS = [
   'fill', 'opacity', 'css', 'class',
   'label-background', 'label-background-opacity', 'label-padding',
   'halo-width', 'halo-color', 'halo-opacity',
-  'icon', 'icon-size', 'icon-color', 'icon-opacity',
+  'icon', 'icon-size', 'icon-sides', 'icon-color', 'icon-fill', 'icon-stroke',
+  'icon-stroke-width', 'icon-opacity',
   // not callout-via or callout-attach, which are placed for one label's
   // surroundings rather than chosen as a style
   'callout', 'callout-end', 'callout-end-size', 'callout-color', 'callout-opacity', 'callout-width',

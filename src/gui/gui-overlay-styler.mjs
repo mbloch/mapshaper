@@ -152,6 +152,22 @@ export function getOverlayLayers(activeLyr, hitData, styleOpts) {
     pending = getPendingLabelPath();
     return getLabelPathGuideLayers(activeLyr, pending ? [pending] : []);
   }
+  if (styleOpts.interactionMode == 'symbols') {
+    // As in the label tool, the overlay shows the curve being drawn, and an
+    // SVG layer's cues are drawn in SVG (gui-symbol-selection.mjs). A layer
+    // of plain circles is drawn on canvas, so its cues are drawn here.
+    pending = getPendingLabelPath();
+    layers = getLabelPathGuideLayers(activeLyr, pending ? [pending] : []);
+    ids = utils.uniq((hitData.ids || []).concat(hitData.id > -1 ? [hitData.id] : []));
+    if (ids.length > 0 && !internal.layerHasSvgSymbols(activeLyr) &&
+        !internal.layerHasLabels(activeLyr)) {
+      lyr = getOverlayLayer(activeLyr, ids);
+      outlineStyle = getSelectionStyle(displayLyr.geometry_type, styleOpts);
+      lyr.gui.style = getOverlayStyle(activeLyr, ids, outlineStyle);
+      layers.push(lyr);
+    }
+    return layers;
+  }
   if (styleOpts.interactionMode == 'point_style') {
     ids = hitData.ids || [];
     if (ids.length > 0) {

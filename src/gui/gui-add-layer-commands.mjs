@@ -22,6 +22,12 @@ export var DRAW_KINDS = [{
   mode: 'label',
   tip: 'Create a new layer and add labels to it'
 }, {
+  kind: 'symbols',
+  geometryType: 'point',
+  name: 'symbols',
+  mode: 'symbols',
+  tip: 'Create a new layer and add symbols and arrows to it'
+}, {
   kind: 'points',
   geometryType: 'point',
   name: 'points',

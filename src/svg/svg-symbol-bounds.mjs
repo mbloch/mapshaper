@@ -1,13 +1,13 @@
 import utils from '../utils/mapshaper-utils';
 import { featureHasSvgSymbol, featureHasLabel } from './svg-feature-utils';
-import { featureHasIcon, getIconRadius, RING_STROKE_WIDTH } from './svg-symbols';
+import { featureHasIcon, getIconRadius } from './svg-symbols';
 import { getLabelTextBox, getLabelFontSize, labelHasCallout,
   getLabelBox as getPaddedLabelBox } from './svg-label-callout';
 import { labelHasBackground } from './svg-label-box';
 import { parsePointPair, isSvgNumber } from './svg-properties';
 import { forEachSymbolCoord, getStrokeOutset } from '../symbols/mapshaper-symbol-utils';
 import { getPolygonGlow } from './svg-glow';
-import { getIconSymbol } from '../symbols/mapshaper-icon-symbols';
+import { getIconSymbol, getIconPaint } from '../symbols/mapshaper-icon-symbols';
 
 // mapshaper-svg.mjs sets this on the document when any join is mitered
 var SVG_EXPORT_MITER_LIMIT = 2;
@@ -114,13 +114,9 @@ function getIconBox(d) {
   if (sym) return getSymbolPartBox(sym, 0, 0);
   r = getIconRadius(d, type);
   if (!(r > 0)) return null;
-  if (type == 'ring') {
-    // drawn as a stroke, RING_STROKE_WIDTH wide unless stroke-width says otherwise
-    sw = +d['stroke-width'];
-    return getSquareBox(r + (sw > 0 ? sw : RING_STROKE_WIDTH) / 2, 0, 0);
-  }
-  if (type == 'circle' || type == 'square' || type == 'star') {
-    return getSquareBox(r + getStrokeOutset(d), 0, 0);
+  if (type == 'circle' || type == 'square' || type == 'star' || type == 'ring') {
+    sw = getIconPaint(d, type).strokeWidth;
+    return getSquareBox(r + sw / 2, 0, 0);
   }
   if (type == 'nyt-star') {
     // the outline is part of the symbol's size (see nytStar())

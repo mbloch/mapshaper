@@ -755,7 +755,7 @@ test('the symbol is faded and coloured apart from the text', async function({pag
   expect((await getLabelLayer(page)).records[0]).toMatchObject({
     icon: 'circle',
     opacity: 0.4,
-    'icon-color': '#cc0000',
+    'icon-fill': '#cc0000',
     'icon-opacity': 0.8
   });
 
@@ -791,7 +791,7 @@ test('a shape is what gives a label a symbol, and the × takes it away', async f
   await setFieldValue(iconColor, '#cc0000');
   expect((await getLabelLayer(page)).records[0]).toMatchObject({
     icon: 'star',
-    'icon-color': '#cc0000'
+    'icon-fill': '#cc0000'
   });
 
   // the × takes the symbol off the record, with everything it was drawn
@@ -800,7 +800,7 @@ test('a shape is what gives a label a symbol, and the × takes it away', async f
   await page.waitForTimeout(150);
   var rec = (await getLabelLayer(page)).records[0];
   expect(rec.icon).toBeUndefined();
-  expect(rec['icon-color']).toBeUndefined();
+  expect(rec['icon-fill']).toBeUndefined();
   expect(rec['icon-size']).toBeUndefined();
   expect(errors).toEqual([]);
 });

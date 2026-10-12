@@ -677,7 +677,8 @@ export function layerHasSvgSymbols(lyr) {
     lyr.data.fieldExists('svg-symbol') ||
     lyr.data.fieldExists('icon') ||
     lyr.data.fieldExists('icon-size') ||
-    (lyr.data.fieldExists('icon-color') && lyr.data.fieldExists('r'))
+    (lyr.data.fieldExists('r') && (lyr.data.fieldExists('icon-color') ||
+      lyr.data.fieldExists('icon-fill') || lyr.data.fieldExists('icon-stroke')))
   );
 }
 

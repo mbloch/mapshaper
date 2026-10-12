@@ -105,11 +105,11 @@ test('a shape applied to a mixed selection gives every label the symbol size the
 test('the NYT star is offered only to NYT users', async function({page}) {
   await twoLabels(page, 'nyt=off');
   await selectLabels(page, [0]);
-  expect(await getShapeNames(page)).toEqual(['circle', 'square', 'star', 'ring']);
+  expect(await getShapeNames(page)).toEqual(['circle', 'square', 'triangle', 'star', 'ring']);
 
   await twoLabels(page, 'nyt=on');
   await selectLabels(page, [0]);
-  expect(await getShapeNames(page)).toEqual(['circle', 'square', 'star', 'ring', 'nyt-star']);
+  expect(await getShapeNames(page)).toEqual(['circle', 'square', 'triangle', 'star', 'ring', 'nyt-star']);
 });
 
 test('each shape starts at its own size, and the NYT star in its own red',
@@ -123,13 +123,37 @@ test('each shape starts at its own size, and the NYT star in its own red',
     expect(String(await getLabelField(page, 0, 'icon-size'))).toBe('8');
     await clickShape(page, 'nyt-star');
     expect(String(await getLabelField(page, 0, 'icon-size'))).toBe('14');
-    expect(await getLabelField(page, 0, 'icon-color')).toBe('#cc0000');
+    expect(await getLabelField(page, 0, 'icon-stroke')).toBe('#cc0000');
+    // its outline has the logo's weight
+    expect(await page.locator('.text-style-panel .label-icon-stroke-width-row').isVisible()).toBe(false);
     // the red was the shape's, not the user's, so it goes with the shape
     await clickShape(page, 'circle');
     expect(String(await getLabelField(page, 0, 'icon-size'))).toBe('5');
-    expect(await getLabelField(page, 0, 'icon-color')).toBeFalsy();
+    expect(await getLabelField(page, 0, 'icon-stroke')).toBeFalsy();
     expect(errors).toEqual([]);
   });
+
+test('a ring is a stroke whose width can be set, and it can take a fill', async function({page}) {
+  var errors = collectPageErrors(page);
+  await twoLabels(page);
+  await giveIcon(page, 0);
+  var fill = page.locator('.text-style-panel .label-icon-fill-row .label-color-input');
+  var stroke = page.locator('.text-style-panel .label-icon-stroke-row .label-color-input');
+  // a circle is filled, in the text's color, and has no stroke
+  expect(await fill.inputValue()).toBe('#000000');
+  expect(await stroke.inputValue()).toBe('');
+
+  await clickShape(page, 'ring');
+  expect(await fill.inputValue()).toBe('');
+  expect(await stroke.inputValue()).toBe('#000000');
+  await setPanelField(page, '.label-icon-stroke-width-row input', '3');
+  expect(String(await getLabelField(page, 0, 'icon-stroke-width'))).toBe('3');
+  await setPanelField(page, '.label-icon-fill-row .label-color-input', '#ffcc00');
+  expect(await getLabelField(page, 0, 'icon-fill')).toBe('#ffcc00');
+  // and the ring is drawn so
+  expect(await page.locator('svg circle[stroke-width="3"]').getAttribute('fill')).toBe('#ffcc00');
+  expect(errors).toEqual([]);
+});
 
 test('a size chosen by hand survives a change of shape', async function({page}) {
   await twoLabels(page, 'nyt=on');
@@ -138,6 +162,27 @@ test('a size chosen by hand survives a change of shape', async function({page}) 
   await clickShape(page, 'nyt-star');
   expect(String(await getLabelField(page, 0, 'icon-size'))).toBe('12');
 });
+
+test('a triangle is a polygon of three sides, which goes when the shape changes',
+  async function({page}) {
+    // The shapes are the symbol tool's, and a triangle is stored as -symbols
+    // stores one, which takes two fields where the other shapes take one.
+    var errors = collectPageErrors(page);
+    await twoLabels(page);
+    await giveIcon(page, 0);
+    await clickShape(page, 'triangle');
+    expect(await getLabelField(page, 0, 'icon')).toBe('polygon');
+    expect(Number(await getLabelField(page, 0, 'icon-sides'))).toBe(3);
+    expect(String(await getLabelField(page, 0, 'icon-size'))).toBe('8');
+    expect(await getSelectedShape(page)).toBe('triangle');
+    expect(await page.locator('.mapshaper-svg-symbol[data-id="0"] path, ' +
+      '.mapshaper-svg-symbol[data-id="0"] polygon').count()).toBeGreaterThan(0);
+
+    await clickShape(page, 'star');
+    expect(await getLabelField(page, 0, 'icon')).toBe('star');
+    expect(await getLabelField(page, 0, 'icon-sides')).toBeFalsy();
+    expect(errors).toEqual([]);
+  });
 
 async function getShapeNames(page) {
   return page.locator('.text-style-panel .label-icon-buttons [data-icon]')
@@ -217,6 +262,13 @@ async function getSelectedShape(page) {
 async function clickShape(page, name) {
   await page.locator('.text-style-panel .label-icon-buttons ' +
     '[data-icon="' + name + '"]').click();
+  await page.waitForTimeout(250);
+}
+
+async function setPanelField(page, selector, value) {
+  var input = page.locator('.text-style-panel ' + selector);
+  await input.fill(String(value));
+  await input.press('Enter');
   await page.waitForTimeout(250);
 }
 

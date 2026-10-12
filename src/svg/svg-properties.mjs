@@ -39,6 +39,10 @@ var stylePropertyTypes = {
   'halo-width': 'number',
   icon: null,
   'icon-color': 'color',
+  // an icon's own paint, apart from a label's text -- see getIconPaint()
+  'icon-fill': 'color',
+  'icon-stroke': 'color',
+  'icon-stroke-width': 'number',
   // opacity of the symbol at a label's anchor, apart from the text's. Needed
   // because a label's own opacity properties are applied to both of the
   // elements its record produces -- see getIconStyleData().

@@ -64,9 +64,13 @@ export function getOptionParser() {
       },
       // a label can carry a symbol at its anchor
       labelIconOpts = {
-        icon: {describe: 'symbol drawn at the label anchor: circle, square, ring, star'},
+        icon: {describe: 'symbol drawn at the label anchor: circle, square, ring, star, polygon'},
         'icon-size': {describe: 'size of the anchor symbol in px'},
-        'icon-color': {describe: 'color of the anchor symbol (defaults to the text color)'},
+        'icon-sides': {describe: '(polygon) number of sides of the anchor symbol'},
+        'icon-fill': {describe: 'fill of the anchor symbol, or none (defaults to the text color; a ring has none)'},
+        'icon-stroke': {describe: 'stroke color of the anchor symbol, or none (a ring\'s defaults to the text color)'},
+        'icon-stroke-width': {describe: 'stroke width of the anchor symbol in px'},
+        'icon-color': {describe: 'color of the anchor symbol: a ring\'s stroke, other shapes\' fill'},
         'icon-opacity': {describe: 'opacity of the anchor symbol, 0-1'}
       },
       // style properties of points, lines and polygons, accepted by -style and
@@ -98,7 +102,10 @@ export function getOptionParser() {
         r: {describe: 'symbol radius (set this to export points as circles)'},
         icon: {describe: 'point icon shape: circle, square, ring, star, polygon, arrow, pie'},
         'icon-size': {describe: 'point icon size in pixels (an arrow\'s length)'},
-        'icon-color': {describe: 'point icon color (defaults to fill color, then black)'},
+        'icon-fill': {describe: 'point icon fill color, or none (defaults to icon-color)'},
+        'icon-stroke': {describe: 'point icon stroke color, or none'},
+        'icon-stroke-width': {describe: 'point icon stroke width in px'},
+        'icon-color': {describe: 'point icon color: a ring\'s stroke, other icons\' fill (defaults to fill color, then black)'},
         'icon-opacity': {describe: 'point icon opacity, 0-1'},
         'icon-rotation': {describe: 'point icon rotation in degrees clockwise'},
         'icon-sides': {describe: '(polygon) number of sides'},
@@ -2252,7 +2259,7 @@ export function getOptionParser() {
       describe: 'types: arrow, circle, square, star, polygon, ring, pie, curve'
     })
     .option('fill', {
-      describe: 'symbol fill color (filled symbols only)'
+      describe: 'symbol fill color, or none (a ring with no stroke= is drawn in it)'
     })
     .option('stroke', {
       describe: 'symbol outline color, or a stick arrow\'s line color'
@@ -2304,7 +2311,7 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('radii', {
-      describe: '(ring) comma-sep. list of concentric radii, ascending order'
+      describe: '(ring) comma-sep. list of concentric radii, ascending order (default is one ring of radius=)'
     })
     .option('hole', {
       describe: '(pie) radius of the hole in a donut symbol'
@@ -2524,6 +2531,17 @@ export function getOptionParser() {
     })
     .option('coordinates', {
       describe: 'x,y of the label anchor, or x,y,x,y,... of a curve\'s knots'
+    })
+    .option('target', targetOpt);
+
+  parser.command('update-symbol')
+    // .describe('move an existing symbol, or the knots of a curve symbol')
+    .option('ids', {
+      describe: 'feature id of the symbol to update',
+      type: 'numbers'
+    })
+    .option('coordinates', {
+      describe: 'x,y of the symbol, or x,y,x,y,... of a curve\'s knots'
     })
     .option('target', targetOpt);
 

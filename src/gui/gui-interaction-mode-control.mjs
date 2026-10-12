@@ -25,19 +25,19 @@ export function InteractionMode(gui) {
   // session and the layer panel's "Draw" links ask for.
   var menus = {
     standard: ['info', 'selection', 'box', 'ruler'],
-    empty: [ 'label','edit_points', 'edit_lines',  'edit_polygons','box', 'ruler'],
+    empty: [ 'label', 'symbols', 'edit_points', 'edit_lines',  'edit_polygons','box', 'ruler'],
     polygons: ['info', 'polygon_style', 'selection', 'box', 'ruler'],
     rectangles: ['info', 'selection', 'polygon_style', 'rectangles', 'box', 'ruler'],
     lines: ['info', 'line_style', 'snip_lines', 'selection', 'box', 'ruler'],
     table: ['info', 'selection'],
     raster: ['box', 'ruler'],
-    labels: ['info', 'label', 'selection', 'box', 'ruler'],
-    points: ['info', 'point_style', 'edit_points', 'selection', 'box', 'ruler'], // , 'add-points'
+    labels: ['info', 'label', 'symbols', 'selection', 'box', 'ruler'],
+    points: ['info', 'point_style', 'symbols', 'edit_points', 'selection', 'box', 'ruler'], // , 'add-points'
     // An empty point layer is the layer the "Draw: labels" link creates,
     // and a label goes into it rather than beside it (see labelWouldJoin), so
     // the label tool belongs in its menu as well as the point tools: it is the
     // way back into a labels layer that has no label in it yet.
-    emptyPoints: ['info', 'label', 'point_style', 'edit_points', 'selection', 'box', 'ruler']
+    emptyPoints: ['info', 'label', 'symbols', 'point_style', 'edit_points', 'selection', 'box', 'ruler']
   };
 
   // Tools that work the same whatever the active layer is. They go below a
@@ -56,6 +56,7 @@ export function InteractionMode(gui) {
     box: 'rectangle tool',
     data: 'edit attributes',
     label: 'edit labels',
+    symbols: 'edit symbols',
     label_style: 'style labels',
     point_style: 'style points',
     line_style: 'edit lines',
@@ -144,7 +145,7 @@ export function InteractionMode(gui) {
   };
 
   this.modeUsesHitDetection = function(mode) {
-    return ['info', 'selection', 'data', 'label', 'label_style', 'point_style', 'line_style', 'polygon_style', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons', 'snip_lines'].includes(mode);
+    return ['info', 'selection', 'data', 'label', 'label_style', 'symbols', 'point_style', 'line_style', 'polygon_style', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons', 'snip_lines'].includes(mode);
   };
 
   this.modeUsesPopup = function(mode) {
@@ -152,7 +153,7 @@ export function InteractionMode(gui) {
   };
 
   this.modeSupportsUndo = function(mode) {
-    return ['data', 'frame', 'label', 'label_style', 'point_style', 'line_style', 'polygon_style', 'edit_points', 'edit_lines', 'edit_polygons', 'snip_lines', 'vertices', 'rectangles'].includes(mode);
+    return ['data', 'frame', 'label', 'label_style', 'symbols', 'point_style', 'line_style', 'polygon_style', 'edit_points', 'edit_lines', 'edit_polygons', 'snip_lines', 'vertices', 'rectangles'].includes(mode);
   };
 
   this.getMode = getInteractionMode;
@@ -240,7 +241,7 @@ export function InteractionMode(gui) {
   // menu over the panel.
   function stylePanelIsActive() {
     return _editMode == 'frame' || _editMode == 'frame_draw' ||
-      _editMode == 'label' || _editMode == 'label_style' ||
+      _editMode == 'label' || _editMode == 'label_style' || _editMode == 'symbols' ||
       _editMode == 'point_style' || _editMode == 'line_style' ||
       _editMode == 'polygon_style';
   }
@@ -346,7 +347,7 @@ export function InteractionMode(gui) {
   // if current editing mode is not available, turn off the tool
   function updateCurrentMode() {
     var modes = getAvailableModes();
-    if (modes.indexOf(_editMode) == -1 && !inFrameMode() && !labelModeIsAvailable() && !labelStyleModeIsAvailable() && !layerStyleModeIsAvailable() && !pointStyleModeIsAvailable()) {
+    if (modes.indexOf(_editMode) == -1 && !inFrameMode() && !labelModeIsAvailable() && !labelStyleModeIsAvailable() && !layerStyleModeIsAvailable() && !pointStyleModeIsAvailable() && !symbolModeIsAvailable()) {
       setMode('off');
     }
   }
@@ -387,6 +388,14 @@ export function InteractionMode(gui) {
     var o = gui.model.getActiveLayer();
     return _editMode == 'line_style' && o && o.layer && o.layer.geometry_type == 'polyline' ||
       _editMode == 'polygon_style' && o && o.layer && o.layer.geometry_type == 'polygon';
+  }
+
+  // Symbols go into point layers, and the tool makes one if there is no layer
+  // at all, as the label tool does.
+  function symbolModeIsAvailable() {
+    var o = gui.model.getActiveLayer();
+    if (_editMode != 'symbols') return false;
+    return !o || !o.layer || o.layer.geometry_type == 'point';
   }
 
   function pointStyleModeIsAvailable() {

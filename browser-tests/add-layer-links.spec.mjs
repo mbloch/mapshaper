@@ -176,7 +176,7 @@ test('each link says that it creates a layer, which its name does not',
       .evaluateAll(function(els) {
         return els.map(function(el) { return el.title; });
       });
-    expect(tips.length).toBe(4);
+    expect(tips.length).toBe(5);
     tips.forEach(function(tip) {
       expect(tip).toContain('new layer');
     });

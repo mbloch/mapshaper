@@ -33,6 +33,17 @@ export function mapNeedsResetFromCollapsedBounds(newBounds, viewportBounds, flag
   return newBounds.area() / viewportBounds.area() > chgThreshold;
 }
 
+// Whether bounds have no width or no height. Negligible counts as none: two
+// points placed on the same row of pixels differ in y by the noise of
+// converting pixels to map coordinates, and bounds a billionth as tall as
+// they are wide would make the next point a change of area big enough to
+// reset the view.
+export function boundsAreCollapsed(b) {
+  var w = b.width(), h = b.height();
+  var tol = Math.max(w, h) * 1e-9;
+  return w <= tol || h <= tol;
+}
+
 // Test if an update may have affected the visible shape of arcs
 // @flags Flags from update event
 export function arcsMayHaveChanged(flags) {

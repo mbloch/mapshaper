@@ -6,7 +6,7 @@ import {
   updateLayerStackOrder,
   calcDotScale } from './gui-layer-utils';
 import { getOverlayLayers } from './gui-overlay-styler';
-import { mapNeedsReset, mapNeedsResetFromCollapsedBounds,
+import { mapNeedsReset, mapNeedsResetFromCollapsedBounds, boundsAreCollapsed,
   arcsMayHaveChanged,
   popupCanStayOpen } from './gui-map-utils';
 import { initInteractiveEditing } from './gui-edit-modes';
@@ -493,7 +493,7 @@ export function MshpMap(gui) {
     b.scale(1 + marginPct / 100 * 2);
 
     // Inflate display bounding box of single-point layers and collapsed shapes a bit
-    _boundsAreCollapsed = b.width() === 0 || b.height() === 0;
+    _boundsAreCollapsed = boundsAreCollapsed(b);
     if (_boundsAreCollapsed) {
       b.padBounds(1e-4, 1e-4, 1e-4, 1e-4);
     }

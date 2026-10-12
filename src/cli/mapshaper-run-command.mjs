@@ -26,6 +26,7 @@ import '../commands/mapshaper-labels';
 import '../commands/mapshaper-add-layer';
 import '../commands/mapshaper-update-frame';
 import '../commands/mapshaper-update-label';
+import '../commands/mapshaper-update-symbol';
 import '../commands/mapshaper-add-shape';
 import '../commands/mapshaper-affine';
 import '../commands/mapshaper-alpha-shapes';
@@ -288,6 +289,9 @@ export async function runCommand(command, job) {
 
     } else if (name == 'update-label') {
       cmd.updateLabel(targetLayers, targetDataset, opts);
+
+    } else if (name == 'update-symbol') {
+      cmd.updateSymbol(targetLayers, targetDataset, opts);
 
     } else if (name == 'affine') {
       cmd.affine(targetLayers, targetDataset, opts);

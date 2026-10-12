@@ -124,8 +124,11 @@ export function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
 
   function pointTest(x, y) {
     var bullseyeDist = 2, // hit all points w/in 2 px
-        // use small threshold when adding points
-        hitThreshold = interactionMode == 'edit_points' ? 12 : 25,
+        // use small threshold when adding points; the symbol tool places
+        // symbols close together, and hits larger ones on their painted area
+        // (see gui-svg-hit.mjs)
+        hitThreshold = interactionMode == 'edit_points' ? 12 :
+          interactionMode == 'symbols' ? 8 : 25,
         toPx = ext.getTransform().mx,
         skip = getPathLabelKnotTest(),
         hits = [];

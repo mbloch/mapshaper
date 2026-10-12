@@ -3,6 +3,7 @@ import { initLineEditing } from './gui-draw-lines2';
 import { initSnipTool } from './gui-snip-tool';
 import { initLabelTool } from './gui-label-tool2';
 import { initLabelHitCues } from './gui-label-hit-cues';
+import { initSymbolTool } from './gui-symbol-tool';
 
 export function initInteractiveEditing(gui, ext, hit) {
   initPointEditing(gui, ext, hit);
@@ -10,4 +11,5 @@ export function initInteractiveEditing(gui, ext, hit) {
   initSnipTool(gui, ext, hit);
   initLabelTool(gui, ext, hit);
   initLabelHitCues(gui, ext, hit);
+  initSymbolTool(gui, ext, hit);
 }

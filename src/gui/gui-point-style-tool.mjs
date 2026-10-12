@@ -11,6 +11,7 @@ import { formatEditingStatus } from './gui-editing-status';
 import { runGuiEditCommand } from './gui-edit-command';
 import { quoteCommandValue } from './gui-command-utils';
 import { parseOpacityValue, formatOpacityPct, formatColorOpacityPct } from './gui-style-values';
+import { getSelectionChangeTest } from './gui-selection-change';
 
 var defaultCircleRadius = 0;
 var defaultCreatedCircleRadius = 3;
@@ -30,6 +31,7 @@ export function PointStyleTool(gui) {
   var circleFillControl, circleStrokeControl;
   var targetLayer = null;
   var hit = null;
+  var selectionChanged = getSelectionChangeTest();
 
   initPanel();
 
@@ -60,6 +62,7 @@ export function PointStyleTool(gui) {
   hit = gui.map.getHitControl && gui.map.getHitControl();
   if (hit) {
     hit.on('change', function(e) {
+      if (!selectionChanged(getSelectionIds())) return;
       if (e.mode == 'point_style') {
         updateControls();
       }

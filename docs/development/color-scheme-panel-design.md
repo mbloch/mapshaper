@@ -194,6 +194,9 @@ lyr.classify = {type, field, method, n, preset, pins, nullColor}
 It must be covered by undo/redo along with the fill values. How undo snapshots
 layer properties still needs to be checked before this is built.
 
+See `layer-metadata.md` for the limits of the current record (a GUI-only
+`WeakMap`, see Status) and the deferred design for persistent layer metadata.
+
 ## CLI additions
 
 - `interpolation=rgb|oklch` on `-classify` (default `rgb`, so existing

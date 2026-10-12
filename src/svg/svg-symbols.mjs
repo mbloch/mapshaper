@@ -10,7 +10,7 @@ import utils from '../utils/mapshaper-utils';
 import { applyStyleAttributes, isSvgNumber } from '../svg/svg-properties';
 import { message } from '../utils/mapshaper-logging';
 import { roundToTenths } from '../geom/mapshaper-rounding';
-import { getIconSymbol, getIconRadius, getIconStarCoords,
+import { getIconSymbol, getIconRadius, getIconStarCoords, getIconPaint,
   RING_STROKE_WIDTH } from '../symbols/mapshaper-icon-symbols';
 
 export { getIconRadius, RING_STROKE_WIDTH };
@@ -90,7 +90,8 @@ export function getAnchorSymbolRadius(d) {
 }
 
 export function featureHasIcon(d) {
-  return !!(d && (d.icon || d['icon-size'] || (d['icon-color'] && d.r > 0)));
+  return !!(d && (d.icon || d['icon-size'] ||
+    (d.r > 0 && (d['icon-color'] || d['icon-fill'] || d['icon-stroke']))));
 }
 
 // An unsupported icon name renders as nothing, without a message -- this
@@ -103,25 +104,32 @@ function renderIcon(d) {
   if (sym) return renderComplexSymbol(sym);
   var r = getIconRadius(d, type);
   if (r > 0 === false) return empty();
-  if (type == 'circle') return circle(getIconStyleData(d, r));
-  if (type == 'square') return square(getIconStyleData(d, r), 0, 0);
-  if (type == 'ring') return ring(getIconStyleData(d, r), 0, 0);
-  if (type == 'star') return star(getIconStyleData(d, r));
-  if (type == 'nyt-star') return nytStar(getIconStyleData(d, r));
+  if (type == 'circle' || type == 'ring') return circle(getIconStyleData(d, r, type));
+  if (type == 'square') return square(getIconStyleData(d, r, type), 0, 0);
+  if (type == 'star') return star(getIconStyleData(d, r, type));
+  if (type == 'nyt-star') return nytStar(getIconStyleData(d, r, type));
   return empty();
 }
 
 // A label with a symbol renders two elements from one record, and every opacity
 // property in commonProperties is applied to both, so the text's opacity fades
-// the symbol with it. icon-color and icon-opacity are how a symbol is styled
-// apart from the text: each overrides its counterpart here.
+// the symbol with it. The icon's paint (see getIconPaint()) and icon-opacity
+// are how a symbol is styled apart from the text: each overrides its
+// counterpart here.
 //
 // icon-opacity maps to opacity rather than fill-opacity because a ring is drawn
 // as a stroked circle with no fill, which a fill opacity would leave alone.
-function getIconStyleData(d, r) {
+function getIconStyleData(d, r, type) {
   var o = utils.extend({}, d);
+  var paint = getIconPaint(d, type);
   o.r = r;
-  o.fill = d['icon-color'] || d.fill || 'black';
+  o.fill = paint.fill;
+  delete o.stroke;
+  delete o['stroke-width'];
+  if (paint.stroke != 'none') {
+    o.stroke = paint.stroke;
+    o['stroke-width'] = paint.strokeWidth;
+  }
   if (isSvgNumber(d['icon-opacity'])) {
     o.opacity = Number(d['icon-opacity']);
   }
@@ -206,16 +214,6 @@ function square(d, x, y) {
   return o;
 }
 
-function ring(d, x, y) {
-  var o = circle(d, x, y);
-  o.properties.fill = 'none';
-  o.properties.stroke = d.fill;
-  if (!o.properties['stroke-width']) {
-    o.properties['stroke-width'] = RING_STROKE_WIDTH;
-  }
-  return o;
-}
-
 function star(d) {
   var coords = getIconStarCoords(d.r);
   var o = importPolygon([coords]);
@@ -223,9 +221,10 @@ function star(d) {
   return o;
 }
 
-// A white nine-pointed star with a heavy outline in the icon's colour, drawn
-// from the source artwork's 40-unit box. The box includes the outline and its
-// mitred points, so icon-size is the width of the whole symbol.
+// A nine-pointed star with a heavy outline, white inside unless icon-fill says
+// otherwise, drawn from the source artwork's 40-unit box. The box includes the
+// outline and its mitred points, so icon-size is the width of the whole
+// symbol, and the outline's width is fixed (see getIconPaint()).
 var NYT_STAR_BOX = 40;
 var NYT_STAR_STROKE = 5;
 var NYT_STAR_POINTS = [19.9843, 5.7196, 23.1494, 11.7629, 29.4528, 9.1512,
@@ -238,10 +237,10 @@ function nytStar(d) {
   var k = d.r * 2 / NYT_STAR_BOX;
   var o = importPolygon([getNytStarCoords(k)]);
   applyStyleAttributes(o, 'point', d, nonCirclePointFilter);
-  o.properties.stroke = o.properties.fill;
-  o.properties.fill = '#fff';
-  o.properties['stroke-width'] = roundToHundredths(NYT_STAR_STROKE * k);
-  o.properties['stroke-miterlimit'] = 10;
+  if (d.stroke) {
+    o.properties['stroke-width'] = roundToHundredths(NYT_STAR_STROKE * k);
+    o.properties['stroke-miterlimit'] = 10;
+  }
   return o;
 }
 

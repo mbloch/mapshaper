@@ -8,7 +8,7 @@ import {
   claimFieldKeys, isTextInput, opensAMenu, releasePanelFocus
 } from './gui-panel-focus';
 import {
-  makeColorOpacityField, makeCollapsibleSection, makePanelButton,
+  makeColorField, makeColorOpacityField, makeCollapsibleSection, makePanelButton,
   selectOnFocus, setPanelButtonDisabled
 } from './gui-panel-controls';
 import { parseOpacityValue, formatOpacityPct } from './gui-style-values';
@@ -24,10 +24,13 @@ import { formatEditingStatus } from './gui-editing-status';
 import { getTextCentreOffset, getNearestPosition } from './gui-label-offset';
 import { WRAP_FIELDS, rewrapLabelValue } from './gui-label-wrap';
 import { getLabelTextCommand } from './gui-label-commands';
-import {
-  getDefaultIconSize, getDefaultIconColor, getIconShapeChange
-} from './gui-label-icons';
+import { getDefaultIconSize, getIconShapeChange } from './gui-label-icons';
 import { isNytUser } from './gui-nyt';
+import { ARROWHEAD_GLYPHS } from './gui-arrowhead-shapes';
+import {
+  getIconShapes, getIconShapeName, getIconShapeValues, getIconShapeGlyph, ICON_FIELDS,
+  getShownIconPaint, getIconPaintChange, getIconShapePaint
+} from './gui-icon-shapes';
 
 var fontField = 'font-family';
 var fontSizeField = 'font-size';
@@ -46,6 +49,9 @@ var haloOpacityField = 'halo-opacity';
 var iconField = 'icon';
 var iconSizeField = 'icon-size';
 var iconColorField = 'icon-color';
+var iconFillField = 'icon-fill';
+var iconStrokeField = 'icon-stroke';
+var iconStrokeWidthField = 'icon-stroke-width';
 var iconOpacityField = 'icon-opacity';
 var calloutField = 'callout';
 var calloutEndField = 'callout-end';
@@ -62,7 +68,6 @@ var defaultFontSize = 12;
 var defaultFontStyle = 'normal';
 var defaultFontWeight = '400';
 var defaultLabelColor = '#000000';
-var defaultIconColor = '#000000';
 // The width a halo is given when a colour adds it: past the edge of the
 // glyphs, so a stroke of twice this.
 var defaultHaloWidth = 2;
@@ -98,8 +103,12 @@ var savedStyleFields = [
   haloColorField,
   haloOpacityField,
   iconField,
+  'icon-sides',
   iconSizeField,
   iconColorField,
+  iconFillField,
+  iconStrokeField,
+  iconStrokeWidthField,
   iconOpacityField,
   calloutField,
   calloutEndField,
@@ -126,21 +135,9 @@ var labelDragModes = [{
   label: 'Draggable',
   title: 'Dragging a label\'s text offsets it from its anchor'
 }];
-// No "none" among the shapes: a symbol is taken off by the × in the section's
-// heading, which leaves these to answer only which one.
-var iconTypes = [{
-  name: 'circle'
-}, {
-  name: 'square'
-}, {
-  name: 'star'
-}, {
-  name: 'ring'
-}, {
-  name: 'nyt-star',
-  title: 'NYT star',
-  nytOnly: true
-}];
+// The shapes are gui-icon-shapes.mjs's, shared with the symbol tool. No
+// "none" among them: a symbol is taken off by the × in the section's heading,
+// which leaves these to answer only which one.
 var defaultIconShape = 'circle';
 // Alignment writes label-align rather than text-anchor, because text-anchor
 // answers two questions at once -- how the lines line up with each other and
@@ -200,24 +197,16 @@ var calloutEnds = [{
   title: 'ring around the anchor'
 }];
 // The anchor is at the lower left of the shapes and at the left of the ends,
-// which is where the markers go. The arrowheads are drawn to the renderer's
-// angles, with sides the same visible length -- the open one's stroke
-// included -- so that they compare as the drawn arrows do.
-export var calloutButtonSymbols = {
+// which is where the markers go. The arrowheads are the ones lines are given
+// (see gui-arrowhead-shapes.mjs).
+var calloutButtonSymbols = {
   line: '<path d="M3.5 12.5L12.5 3.5"></path>',
   elbow: '<path d="M3.5 12.5L8 4.5H13"></path>',
   curve: '<path d="M3.5 12.5Q4.5 4.5 12.5 4"></path>',
   none: '<path d="M3 8H13"></path>',
-  arrow: '<path d="M6.84 8H13"></path><path class="fill" d="M2.5 8L8.7 6.05V9.95Z"></path>',
-  'open-arrow': '<path d="M3.2 8H13"></path><path d="M7.38 5.07L3.2 8L7.38 10.93"></path>',
+  arrow: ARROWHEAD_GLYPHS.arrow,
+  'open-arrow': ARROWHEAD_GLYPHS['open-arrow'],
   ring: '<path d="M8.4 8H13"></path><circle cx="5.6" cy="8" r="2.8"></circle>'
-};
-var iconButtonSymbols = {
-  circle: '<circle cx="8" cy="8" r="4.25"></circle>',
-  square: '<rect x="4" y="4" width="8" height="8"></rect>',
-  ring: '<circle cx="8" cy="8" r="3.8"></circle>',
-  star: '<path d="M8 3.2l1.18 2.92 3.14.22-2.42 2 .76 3.06L8 9.75 5.34 11.4l.76-3.06-2.42-2 3.14-.22L8 3.2z"></path>',
-  'nyt-star': '<polygon transform="scale(0.4)" points="19.98 5.72 23.15 11.76 29.45 9.15 27.99 15.82 34.5 17.86 29.1 22.03 32.76 27.78 25.95 27.5 25.06 34.27 20.01 29.67 14.98 34.28 14.08 27.52 7.26 27.82 10.92 22.06 5.5 17.9 12 15.84 10.53 9.18 16.84 11.77"></polygon>'
 };
 
 export function LabelTool(gui) {
@@ -227,7 +216,7 @@ export function LabelTool(gui) {
   // label-style-panel carries the styling the point and layer panels share; the
   // second class is this panel's own, as theirs are
   var panel = El('div').addClass('label-style-panel text-style-panel rollover').appendTo(parent).hide();
-  var presetControl, fontSelect, fontStyleSelect, fontSizeInput, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, dragModeBtns, haloWidthInput, haloColorFieldBox, haloColorChit, haloColorInput, haloColorPicker, haloOpacityInput, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, haloControl, iconControl, calloutControl, calloutShapeGroupEl, calloutShapeBtns, calloutEndGroupEl, calloutEndBtns, calloutColorFieldBox, calloutColorChit, calloutColorInput, calloutColorPicker, calloutOpacityInput, calloutWidthInput, calloutEndSizeInput, calloutGapInput, backgroundColorFieldBox, backgroundColorChit, backgroundColorInput, backgroundColorPicker, backgroundOpacityInput, paddingInput, editingStatus, clearLink, closeBtn, hit;
+  var presetControl, fontSelect, fontStyleSelect, fontSizeInput, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, dragModeBtns, haloWidthInput, haloColorFieldBox, haloColorChit, haloColorInput, haloColorPicker, haloOpacityInput, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, iconStrokeFieldBox, iconStrokeChit, iconStrokeInput, iconStrokePicker, iconStrokeWidthInput, iconStrokeWidthCell, haloControl, iconControl, calloutControl, calloutShapeGroupEl, calloutShapeBtns, calloutEndGroupEl, calloutEndBtns, calloutColorFieldBox, calloutColorChit, calloutColorInput, calloutColorPicker, calloutOpacityInput, calloutWidthInput, calloutEndSizeInput, calloutGapInput, backgroundColorFieldBox, backgroundColorChit, backgroundColorInput, backgroundColorPicker, backgroundOpacityInput, paddingInput, editingStatus, clearLink, closeBtn, hit;
   var fontOptionsRendered = false;
   // The shape the symbol's size and colour defaults are shown for while there
   // is no symbol: the last one shown.
@@ -564,11 +553,14 @@ export function LabelTool(gui) {
       appendIconButtonSymbol(btn, icon.name);
     });
 
+    // Every shape has a fill and a stroke, as a symbol does in the symbol
+    // tool; a shape only decides which it starts with -- a ring a stroke, the
+    // rest a fill. The opacity in the fill's field is the whole symbol's.
     var iconColorRow = El('div').addClass('label-style-row label-split-row').appendTo(iconSection);
-    var iconColorCell = El('div').addClass('label-split-cell label-color-row label-icon-color-row').appendTo(iconColorRow);
-    El('span').appendTo(iconColorCell).text('Color');
+    var iconColorCell = El('div').addClass('label-split-cell label-color-row label-icon-color-row label-icon-fill-row').appendTo(iconColorRow);
+    El('span').appendTo(iconColorCell).text('Fill');
     iconColorChit = El('div').addClass('label-color-chit').attr('role', 'button');
-    iconColorInput = El('input').attr('type', 'text').attr('aria-label', 'Symbol color');
+    iconColorInput = El('input').attr('type', 'text').attr('aria-label', 'Symbol fill');
     var iconColorField = addColorOpacityField(iconColorCell, iconColorChit, iconColorInput, applyIconOpacity);
     iconColorFieldBox = iconColorField.box;
     iconOpacityInput = iconColorField.opacity;
@@ -591,6 +583,37 @@ export function LabelTool(gui) {
         applyIconSize(value);
       },
       onStep: nudgeIconSize,
+      onDone: releaseFocus
+    });
+
+    var iconStrokeRow = El('div').addClass('label-style-row label-split-row').appendTo(iconSection);
+    var iconStrokeCell = El('div').addClass('label-split-cell label-color-row label-icon-stroke-row').appendTo(iconStrokeRow);
+    El('span').appendTo(iconStrokeCell).text('Stroke');
+    iconStrokeChit = El('div').addClass('label-color-chit').attr('role', 'button');
+    iconStrokeInput = El('input').attr('type', 'text').attr('aria-label', 'Symbol stroke');
+    iconStrokeFieldBox = makeColorField(iconStrokeCell, iconStrokeChit, iconStrokeInput);
+    iconStrokeChit.on('click', function() {
+      if (this.classList.contains('disabled')) return;
+      iconStrokePicker.toggle();
+    });
+    iconStrokeInput.on('change', function() {
+      var color = iconStrokeInput.node().value.trim();
+      if (isHexColor(color)) iconStrokePicker.setColor(color);
+      applyIconStroke(color);
+    });
+    iconStrokePicker = initColorPicker(iconStrokeCell, iconStrokeChit, iconStrokeInput, applyIconStroke);
+
+    // The NYT star's outline is part of the logo, so it has no width to set
+    iconStrokeWidthCell = El('div').addClass('label-split-cell label-icon-stroke-width-row').appendTo(iconStrokeRow);
+    El('span').appendTo(iconStrokeWidthCell).text('Width');
+    iconStrokeWidthInput = new SizeField(iconStrokeWidthCell, {
+      title: 'Symbol stroke width in px',
+      min: 0,
+      max: 50,
+      step: 0.5,
+      bigStep: 2,
+      onSet: applyIconStrokeWidth,
+      onStep: nudgeIconStrokeWidth,
       onDone: releaseFocus
     });
 
@@ -747,9 +770,7 @@ export function LabelTool(gui) {
   }
 
   function appendIconButtonSymbol(btn, iconName) {
-    var svg = '<svg class="label-icon-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
-      iconButtonSymbols[iconName] + '</svg>';
-    El(svg).appendTo(btn);
+    El(getIconShapeGlyph(iconName)).appendTo(btn);
   }
 
   function appendAlignButtonSymbol(btn, anchor) {
@@ -985,11 +1006,10 @@ export function LabelTool(gui) {
     // do shows the symbols it has rather than blanking every field because the
     // rest of the selection has nothing to compare.
     var iconIds = getIconValueIds();
-    var iconVal = getCommonValue(iconIds, iconField);
+    var iconVal = getCommonIconShape(iconIds);
     var iconShape = iconVal || lastIconShape;
     var iconSize = getShownValue(iconIds, iconSizeField, {useDefault: true, defaultValue: getDefaultIconSize(iconShape)});
-    var iconColor = getShownValue(iconIds, iconColorField, {useDefault: true,
-      defaultValue: getDefaultIconColor(iconShape) || defaultIconColor});
+    var iconPaint = getShownIconPaints(iconIds, iconShape);
     var iconOpacity = getShownValue(iconIds, iconOpacityField, {useDefault: true, defaultValue: 1});
     var backgroundColor = getShownValue(ids, backgroundField);
     var backgroundOpacity = getShownValue(ids, backgroundOpacityField, {useDefault: true, defaultValue: 1});
@@ -1013,7 +1033,7 @@ export function LabelTool(gui) {
     // no symbol: what they show is what a shape will add.
     var iconOff = updateIconControls(showValues ? iconVal : '');
     updateIconSizeControls(iconSize, iconOff);
-    updateIconColorControls(iconColor, iconOff);
+    updateIconPaintControls(iconPaint, iconShape, iconOff);
     updateOpacityControl(iconOpacityInput, iconOpacity, iconOff);
     updateCalloutValueControls();
   }
@@ -1330,7 +1350,7 @@ export function LabelTool(gui) {
   // Everything a symbol is drawn with goes with it, so that a label with no
   // symbol carries no icon-size or icon-color that draws nothing.
   function removeIcon() {
-    applyStyleValues(getRemoveValues([iconField, iconSizeField, iconColorField, iconOpacityField]));
+    applyStyleValues(getRemoveValues(ICON_FIELDS));
   }
 
   function updateIconSizeControls(shown, iconOff) {
@@ -1339,9 +1359,39 @@ export function LabelTool(gui) {
     iconSizeInput.setDisabled(iconOff || !controlsEnabled());
   }
 
-  function updateIconColorControls(shown, iconOff) {
+  function updateIconPaintControls(paint, shape, iconOff) {
     updateSwatchField(iconColorInput, iconColorFieldBox, iconColorChit,
-      iconColorPicker, shown, iconOff);
+      iconColorPicker, paint.fill, iconOff);
+    updateSwatchField(iconStrokeInput, iconStrokeFieldBox, iconStrokeChit,
+      iconStrokePicker, paint.stroke, iconOff);
+    iconStrokeWidthInput.setValue(paint.strokeWidth.value || '');
+    iconStrokeWidthInput.setPlaceholder(paint.strokeWidth.mixed ? MIXED_TEXT : '');
+    iconStrokeWidthInput.setDisabled(iconOff || !controlsEnabled() || !paint.stroke.value);
+    iconStrokeWidthCell.classed('hidden', getIconShapePaint(shape) == 'nyt');
+  }
+
+  // The fill, stroke and stroke width the labels' symbols are drawn with, each
+  // as a {value, mixed} for a field to show. A symbol with no color of its own
+  // takes its label's text color, which is what is shown for it.
+  function getShownIconPaints(ids, shape) {
+    var recs = getTargetRecords(ids);
+    var blank = {value: '', mixed: false};
+    var paints;
+    if (!controlsEnabled()) return {fill: blank, stroke: blank, strokeWidth: blank};
+    paints = (recs.length > 0 ? recs : [{}]).map(function(rec) {
+      return getShownIconPaint(rec, shape, rec[fillField] || defaultLabelColor);
+    });
+    return {
+      fill: getSharedValue(paints, 'fill'),
+      stroke: getSharedValue(paints, 'stroke'),
+      strokeWidth: getSharedValue(paints, 'strokeWidth')
+    };
+  }
+
+  function getSharedValue(objects, key) {
+    var first = objects[0][key];
+    var mixed = objects.some(function(o) { return o[key] !== first; });
+    return {value: mixed ? '' : first, mixed: mixed};
   }
 
   // A colour field that can be inert: the symbol's, which goes on showing its
@@ -1949,10 +1999,19 @@ export function LabelTool(gui) {
       addStyleValue(style, haloColorField, haloColorInput.node().value.trim());
       addStyleValue(style, haloOpacityField, getOpacityBelowFull(haloOpacityInput));
     }
-    addStyleValue(style, iconField, icon);
     if (icon) {
+      getIconShapeValues(icon).forEach(function(pair) {
+        addStyleValue(style, pair[0], pair[1]);
+      });
       addStyleValue(style, iconSizeField, iconSizeInput.getValue());
-      addStyleValue(style, iconColorField, iconColorInput.node().value.trim());
+      // none is said only where the shape would otherwise have one
+      addStyleValue(style, iconFillField, iconColorInput.node().value.trim() ||
+        (getIconShapePaint(icon) == 'stroke' ? '' : 'none'));
+      addStyleValue(style, iconStrokeField, iconStrokeInput.node().value.trim() ||
+        (getIconShapePaint(icon) == 'fill' ? '' : 'none'));
+      if (iconStrokeInput.node().value.trim() && getIconShapePaint(icon) != 'nyt') {
+        addStyleValue(style, iconStrokeWidthField, iconStrokeWidthInput.getValue());
+      }
       addStyleValue(style, iconOpacityField, getIconOpacityToWrite());
     }
     // A callout's shape and look, but not its geometry: a corner or an
@@ -2021,9 +2080,7 @@ export function LabelTool(gui) {
   // drawn for everyone, and only choosing one is gated.
   function getShownIconTypes() {
     if (!shownIconTypes) {
-      shownIconTypes = iconTypes.filter(function(icon) {
-        return !icon.nytOnly || isNytUser();
-      });
+      shownIconTypes = getIconShapes('label', {nyt: isNytUser()});
     }
     return shownIconTypes;
   }
@@ -2053,7 +2110,7 @@ export function LabelTool(gui) {
 
   function applyIcon(iconName) {
     var ids = getTargetIds();
-    var styles = [[iconField, iconName]];
+    var styles = getIconShapeValues(iconName, getTargetRecords(ids));
     // The size the symbols in the selection already share, where they share
     // one: a shape applied to a mixed selection gives the labels that had no
     // symbol the size of the ones that did, rather than resetting them all to
@@ -2068,12 +2125,22 @@ export function LabelTool(gui) {
     applyStyleValues(styles);
   }
 
+  // The paint moves with the shape too: a circle's fill becomes a ring's
+  // stroke, and the NYT star brings its red (see getIconPaintChange()).
   function addIconShapeDefaults(styles, iconName, ids) {
-    var color = getCommonValueInfo(ids, iconColorField);
-    var change = getIconShapeChange(iconName, getCommonValue(ids, iconField) || '',
-      getCommonValue(ids, iconSizeField), color.mixed ? null : color.value || '');
+    var prevShape = getCommonIconShape(ids);
+    var change = getIconShapeChange(iconName, prevShape, getCommonValue(ids, iconSizeField));
+    var vals = {};
+    var paint;
     styles.push([iconSizeField, change.size]);
-    if ('color' in change) styles.push([iconColorField, change.color]);
+    [iconFillField, iconStrokeField, iconStrokeWidthField, iconColorField].forEach(function(field) {
+      var info = getCommonValueInfo(ids, field);
+      vals[field] = info.mixed ? null : info.value || '';
+    });
+    paint = getIconPaintChange(iconName, prevShape, vals, '');
+    Object.keys(paint).forEach(function(field) {
+      styles.push([field, paint[field]]);
+    });
   }
 
   // Adding a symbol moves a label sitting at the centre out from under it, in
@@ -2107,8 +2174,28 @@ export function LabelTool(gui) {
     applyStyleValues([[iconSizeField, value]], getIconTargetIds());
   }
 
+  // An emptied field is no fill, or no stroke: "none" where the shape would
+  // otherwise have one -- a ring's stroke, a circle's fill -- and nothing
+  // where it has none without one.
   function applyIconColor(color) {
-    applyStyleValues([[iconColorField, color]], getIconTargetIds());
+    var noneByDefault = getIconShapePaint(getCommonIconShape(getIconTargetIds())) == 'stroke';
+    applyStyleValues([[iconFillField, color || (noneByDefault ? '' : 'none')]], getIconTargetIds());
+  }
+
+  function applyIconStroke(color) {
+    var noneByDefault = getIconShapePaint(getCommonIconShape(getIconTargetIds())) == 'fill';
+    applyStyleValues([[iconStrokeField, color || (noneByDefault ? '' : 'none')]], getIconTargetIds());
+  }
+
+  function applyIconStrokeWidth(value) {
+    applyStyleValues([[iconStrokeWidthField, value]], getIconTargetIds());
+  }
+
+  function nudgeIconStrokeWidth(delta) {
+    var ids = getIconTargetIds();
+    var shown = getShownIconPaints(ids, getCommonIconShape(ids) || lastIconShape).strokeWidth;
+    if (!controlsEnabled() || shown.mixed) return;
+    applyIconStrokeWidth(Math.max(0, (Number(shown.value) || 0) + delta * 0.5));
   }
 
   function applyIconOpacity(value) {
@@ -2118,7 +2205,7 @@ export function LabelTool(gui) {
   function nudgeIconSize(delta) {
     var ids = getIconTargetIds();
     var size = getNumericSize(ids, iconSizeField,
-      getDefaultIconSize(getCommonValue(ids, iconField)));
+      getDefaultIconSize(getCommonIconShape(ids)));
     if (!controlsEnabled()) return;
     size = Math.max(1, size + delta);
     applyIconSize(size);
@@ -2167,6 +2254,26 @@ export function LabelTool(gui) {
     return ids.length > 0 ? ids : getTargetIds();
   }
 
+  // The panel's shape for the labels' icons -- 'triangle' rather than the
+  // icon=polygon and icon-sides=3 it is stored as -- or '' if they disagree,
+  // or have an icon the panel does not offer, or none.
+  function getCommonIconShape(ids) {
+    var names = getTargetRecords(ids).map(getIconShapeName);
+    var first = names.length > 0 ? names[0] : null;
+    return first && names.every(function(name) { return name == first; }) ? first : '';
+  }
+
+  // The records of @ids, or the style of the next label for none
+  function getTargetRecords(ids) {
+    var table = getActiveTable();
+    if (ids.length === 0) {
+      return editingNewLabels() ? [getNewLabelStyle(gui)] : [];
+    }
+    return ids.map(function(id) {
+      return table && table.getRecordAt(id) || {};
+    });
+  }
+
   function getIconOpacityToWrite() {
     var val = parseOpacityValue(iconOpacityInput.node().value);
     if (val !== null) return val;
@@ -2202,6 +2309,7 @@ export function LabelTool(gui) {
     colorPicker.hide();
     haloColorPicker.hide();
     iconColorPicker.hide();
+    iconStrokePicker.hide();
     calloutColorPicker.hide();
     backgroundColorPicker.hide();
   }

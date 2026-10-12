@@ -5,7 +5,7 @@ import {
 import {
   makeCollapsibleSection, makeColorRow, makeFieldTip, makePanelActionButton, makePanelButton
 } from './gui-panel-controls';
-import { calloutButtonSymbols } from './gui-label-tool';
+import { ARROWHEAD_SHAPES, getArrowheadGlyph } from './gui-arrowhead-shapes';
 import { formatEditingStatus } from './gui-editing-status';
 import { SizeField } from './gui-size-field';
 import {
@@ -24,26 +24,10 @@ import { FloatingToolbar } from './gui-floating-toolbar';
 import {
   getNewShapeStyle, updateNewShapeStyle, clearNewShapeStyle
 } from './gui-shape-style-state';
+import { getSelectionChangeTest } from './gui-selection-change';
 
 var savedStylesKey = 'layer_style_presets';
 var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'line-fade', 'fill', 'fill-opacity', 'fill-pattern'].concat(internal.svg.glowFields);
-var arrowShapes = [{
-  name: 'arrow',
-  title: 'solid arrowheads'
-}, {
-  name: 'open-arrow',
-  title: 'open arrowheads'
-}, {
-  name: 'dot',
-  title: 'dots'
-}];
-// The arrows are the label callout's, which point left, the way a line's
-// start head does; the dot's left edge is where their tips are.
-var arrowButtonSymbols = {
-  arrow: calloutButtonSymbols.arrow,
-  'open-arrow': calloutButtonSymbols['open-arrow'],
-  dot: '<path d="M5 8H13"></path><circle class="fill" cx="5" cy="8" r="2.6"></circle>'
-};
 var arrowPositions = [{
   name: 'start',
   label: 'Start',
@@ -77,6 +61,7 @@ export function LayerStyleTool(gui) {
   var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, capControl, dashControl, arrowControl, presetControl, patternControl, glowControl, hit;
   var schemeBtn, schemeStrip, schemePanel;
   var targetLayer = null;
+  var selectionChanged = getSelectionChangeTest();
   // What a shape or an end gives lines that have no heads
   var lastArrow = {shape: 'arrow', position: 'end', fade: 0};
   var lineToolbar, polygonToolbar, drawLineBtn, drawPolygonBtn, reshapeLineBtn, reshapePolygonBtn;
@@ -92,6 +77,7 @@ export function LayerStyleTool(gui) {
   if (hit) {
     hit.on('change', function(e) {
       var mode = gui.interaction.getMode();
+      if (!selectionChanged(getSelectionIds())) return;
       if (targetLayer && (mode == 'line_style' || mode == 'polygon_style')) {
         updateControls();
       }
@@ -534,12 +520,11 @@ export function LayerStyleTool(gui) {
     var control = {section: section, heading: heading, shapeBtns: {}, posBtns: {}};
     El('span').appendTo(shapeCell).text('Shape');
     var shapeGroup = El('div').addClass('label-btn-group label-callout-buttons layer-arrow-shape-buttons').appendTo(shapeCell);
-    arrowShapes.forEach(function(item) {
+    ARROWHEAD_SHAPES.forEach(function(item) {
       var btn = makePanelButton(shapeGroup, '', function() {
         applyArrowShape(item.name);
       }).attr('data-arrow-shape', item.name).attr('aria-label', item.title);
-      El('<svg class="label-callout-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
-        arrowButtonSymbols[item.name] + '</svg>').appendTo(btn);
+      El(getArrowheadGlyph(item.name)).appendTo(btn);
       control.shapeBtns[item.name] = btn;
     });
     El('span').appendTo(posCell).text('Ends');
@@ -745,7 +730,7 @@ export function LayerStyleTool(gui) {
     var state = arrowIds.length === 0 ? 'off' :
       arrowIds.length < ids.length ? 'mixed' : 'on';
     arrowControl.heading.setPresence(state);
-    arrowShapes.forEach(function(item) {
+    ARROWHEAD_SHAPES.forEach(function(item) {
       arrowControl.shapeBtns[item.name].classed('selected', item.name == shape);
     });
     arrowPositions.forEach(function(item) {

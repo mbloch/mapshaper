@@ -253,6 +253,7 @@ export function makeColorOpacityField(parent, chit, input, opacityOpts) {
 //                       that cannot
 // opts.onOpacity(frac)  a usable percentage was typed
 // opts.revert()         one that was not, so put the row back as it was
+// opts.ariaLabel        the field's accessible name, if "<label> color" isn't one
 // opts.noOpacity        a colour with no opacity of its own, like a pattern's,
 //                       which fill-opacity fades along with its background
 //
@@ -298,7 +299,7 @@ export function makeColorRow(parent, opts) {
       control.picker.toggle();
     });
   control.input = El('input').attr('type', 'text')
-    .attr('aria-label', opts.label + ' color')
+    .attr('aria-label', opts.ariaLabel || opts.label + ' color')
     .on('change', function() {
       var color = control.input.node().value.trim();
       showInPicker(color);

@@ -12,6 +12,8 @@ var LABEL_PATH_SCALE_ATTR = 'data-label-path-scale';
 // coordinates and has to be redrawn when they change (see updateLabelPaths())
 var CURVE_ATTR = 'data-curve';
 var CURVE_SELECTOR = '.mapshaper-svg-symbol[' + CURVE_ATTR + ']';
+var CURVE_HIT_CLASS = 'curve-hit-area';
+var CURVE_HIT_WIDTH = 10; // px
 
 export function getSymbolNodeId(node) {
   return parseInt(node.getAttribute('data-id'));
@@ -169,9 +171,7 @@ export function renderPendingSymbol(rec, shp, ext, idPrefix) {
 function renderSymbol(d, shp, view, defs, idPrefix, i) {
   var obj, pathId, rec;
   if (internal.svg.shapeIsCurve(shp, d)) {
-    obj = internal.svg.renderCurveSymbol(d, getLabelPathCoords(shp, view));
-    if (obj) obj.properties[CURVE_ATTR] = '';
-    return obj;
+    return renderCurve(d, getLabelPathCoords(shp, view));
   }
   rec = withPlaceholderText(d);
   if (!internal.svg.shapeIsPathLabel(shp, rec)) {
@@ -191,6 +191,25 @@ function renderSymbol(d, shp, view, defs, idPrefix, i) {
   defs.push(getLabelPathDefinition(pathId, i,
     internal.svg.referenceLabelPath(obj, pathId)));
   return obj;
+}
+
+// A curve, over a transparent stroke wide enough to point at: a curve is
+// often a hairline, and the hit test goes by what the pointer is over (see
+// gui-svg-hit.mjs). GUI only -- the export draws the curve alone.
+function renderCurve(d, coords) {
+  var obj = internal.svg.renderCurveSymbol(d, coords);
+  var pathData = obj ? internal.svg.getCurvePathData(coords, internal.svg.curveIsClosed(coords)) : null;
+  var group;
+  if (!obj) return null;
+  group = {tag: 'g', properties: {}, children: [obj]};
+  if (pathData) {
+    group.children.unshift({tag: 'path', properties: {
+      d: pathData, class: CURVE_HIT_CLASS, fill: 'none', stroke: '#000',
+      'stroke-opacity': 0, 'stroke-width': CURVE_HIT_WIDTH
+    }});
+  }
+  group.properties[CURVE_ATTR] = '';
+  return group;
 }
 
 function getLabelPathDefinition(pathId, featureId, d) {

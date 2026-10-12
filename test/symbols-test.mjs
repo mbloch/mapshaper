@@ -93,12 +93,12 @@ describe('mapshaper-symbols.js', function () {
     it('a circle on a label is an icon, so fill= keeps coloring the text', async function () {
       var recs = await getSymbolRecords('-symbols type=circle radius=8 fill=red',
         [{'label-text': 'A'}]);
-      assert.deepEqual(recs[0], {'label-text': 'A', icon: 'circle', 'icon-size': 16, 'icon-color': 'red'});
+      assert.deepEqual(recs[0], {'label-text': 'A', icon: 'circle', 'icon-size': 16, 'icon-fill': 'red'});
     });
 
     it('square', async function () {
       var recs = await getSymbolRecords('-symbols type=square radius=10 fill=blue');
-      assert.deepEqual(recs[0], {icon: 'square', 'icon-size': 14.14, 'icon-color': 'blue'});
+      assert.deepEqual(recs[0], {icon: 'square', 'icon-size': 14.14, 'icon-fill': 'blue'});
       recs = await getSymbolRecords('-symbols type=square radius=10 rotated');
       assert.equal(recs[0]['icon-rotation'], 45);
     });
@@ -106,7 +106,7 @@ describe('mapshaper-symbols.js', function () {
     it('named polygon types', async function () {
       var recs = await getSymbolRecords('-symbols type=triangle radius=10 opacity=0.5');
       assert.deepEqual(recs[0], {icon: 'polygon', 'icon-sides': 3, 'icon-size': 20,
-        'icon-color': 'magenta', 'icon-opacity': 0.5});
+        'icon-fill': 'magenta', 'icon-opacity': 0.5});
       recs = await getSymbolRecords('-symbols type=polygon sides=6 radius=10 rotated rotation=10');
       assert.equal(recs[0]['icon-sides'], 6);
       assert.equal(recs[0]['icon-rotation'], 40);
@@ -114,7 +114,7 @@ describe('mapshaper-symbols.js', function () {
 
     it('star', async function () {
       var recs = await getSymbolRecords('-symbols type=star radius=10');
-      assert.deepEqual(recs[0], {icon: 'star', 'icon-size': 20, 'icon-color': 'magenta'});
+      assert.deepEqual(recs[0], {icon: 'star', 'icon-size': 20, 'icon-fill': 'magenta'});
       recs = await getSymbolRecords('-symbols type=star points=6 radius=10 rotated');
       assert.equal(recs[0]['icon-points'], 6);
       assert.equal(recs[0]['icon-rotation'], 30);
@@ -125,11 +125,37 @@ describe('mapshaper-symbols.js', function () {
       assert.deepEqual(recs[0], {icon: 'ring', 'icon-radii': '4,8,16', 'icon-color': 'red'});
     });
 
+    it('nyt-star, which is not advertised', async function () {
+      var recs = await getSymbolRecords('-symbols type=nyt-star radius=7');
+      assert.deepEqual(recs[0], {icon: 'nyt-star', 'icon-size': 14, 'icon-stroke': '#cc0000'});
+      recs = await getSymbolRecords('-symbols type=nyt-star radius=7 stroke=blue fill=yellow');
+      assert.deepEqual(recs[0], {icon: 'nyt-star', 'icon-size': 14, 'icon-stroke': 'blue',
+        'icon-fill': 'yellow'});
+    });
+
+    it('ring without radii= is one ring, the kind a label icon draws', async function () {
+      var recs = await getSymbolRecords('-symbols type=ring radius=5 fill=red stroke-width=2');
+      assert.deepEqual(recs[0], {icon: 'ring', 'icon-size': 10, 'icon-stroke': 'red',
+        'icon-stroke-width': 2});
+    });
+
+    it('a ring given stroke= can also take a fill', async function () {
+      var recs = await getSymbolRecords('-symbols type=ring radius=5 stroke=red fill=yellow');
+      assert.deepEqual(recs[0], {icon: 'ring', 'icon-size': 10, 'icon-stroke': 'red',
+        'icon-fill': 'yellow'});
+    });
+
+    it('a filled symbol\'s outline is icon-stroke=, apart from a label\'s text', async function () {
+      var recs = await getSymbolRecords('-symbols type=star radius=5 fill=red stroke=black stroke-width=1.5');
+      assert.deepEqual(recs[0], {icon: 'star', 'icon-size': 10, 'icon-fill': 'red',
+        'icon-stroke': 'black', 'icon-stroke-width': 1.5});
+    });
+
     it('arrow', async function () {
       var recs = await getSymbolRecords(
         '-symbols type=arrow length=30 direction=45 rotation=10 head-angle=60 anchor=end fill=red');
       assert.deepEqual(recs[0], {icon: 'arrow', 'icon-size': 30, 'icon-rotation': 55,
-        'icon-color': 'red', 'arrow-head-angle': 60, 'arrow-anchor': 'end'});
+        'icon-fill': 'red', 'arrow-head-angle': 60, 'arrow-anchor': 'end'});
     });
 
     it('scale= multiplies an arrow\'s lengths, including the default stem width', async function () {
@@ -172,7 +198,7 @@ describe('mapshaper-symbols.js', function () {
       var out = await api.applyCommands('-i in.json -symbols type=kind radius=10 -o out.csv',
         {'in.json': pointGeoJSON([{kind: 'circle'}, {kind: 'star'}])});
       assert.equal(String(out['out.csv']),
-        'kind,r,fill,icon,icon-size,icon-color\ncircle,10,magenta,,,\nstar,,,star,20,magenta');
+        'kind,r,fill,icon,icon-size,icon-fill\ncircle,10,magenta,,,\nstar,,,star,20,magenta');
     });
 
     it('a style field that a symbol doesn\'t use keeps the record\'s value', async function () {
@@ -184,7 +210,7 @@ describe('mapshaper-symbols.js', function () {
     it('a new symbol replaces the fields of the old one', async function () {
       var recs = await getSymbolRecords(
         '-symbols type=pie values=1,1 fills=red,blue -symbols type=star radius=5');
-      assert.deepEqual(recs[0], {icon: 'star', 'icon-size': 10, 'icon-color': 'magenta'});
+      assert.deepEqual(recs[0], {icon: 'star', 'icon-size': 10, 'icon-fill': 'magenta'});
     });
 
     it('replaces a legacy svg-symbol', async function () {
@@ -207,7 +233,7 @@ describe('mapshaper-symbols.js', function () {
     });
 
     it('the fields can be edited with -style', async function () {
-      var svg = await getSVG('-symbols type=triangle radius=10 -style icon-sides=6 icon-color=red');
+      var svg = await getSVG('-symbols type=triangle radius=10 -style icon-sides=6 icon-fill=red');
       assert.ok(svg.includes('fill="red"'));
       var d = svg.match(/ d="([^"]+)"/)[1];
       assert.equal(d.match(/-?[\d.]+/g).length, 14); // closed hexagon
@@ -231,7 +257,7 @@ describe('mapshaper-symbols.js', function () {
       var json = JSON.parse(out['out.json']);
       assert.deepEqual(json.features, [{type: 'Feature',
         geometry: {type: 'Point', coordinates: [10, 20]},
-        properties: {icon: 'star', 'icon-size': 10, 'icon-color': 'red'}}]);
+        properties: {icon: 'star', 'icon-size': 10, 'icon-fill': 'red'}}]);
       out = await run('-symbols coordinates=10,20 type=star -info save-to=info.json');
       assert.equal(JSON.parse(out['info.json'])[0].layer_name, 'symbols');
     });
