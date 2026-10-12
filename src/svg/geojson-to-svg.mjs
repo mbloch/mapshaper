@@ -2,6 +2,7 @@ import GeoJSON from '../geojson/geojson-common';
 import { renderPoint, getTransform } from './svg-symbols';
 import { applyStyleAttributes, isSvgColor } from '../svg/svg-properties';
 import { featureIsPathLabel, renderPathLabel } from '../svg/svg-label-paths';
+import { shapeIsCurve, renderCurveSymbol } from '../svg/svg-curve-symbols';
 import { labelHasHalo, splitLabelHalos } from '../svg/svg-label-halo';
 import { lineHasEndStyles, renderArrowLine } from '../svg/svg-line-arrows';
 import {
@@ -38,6 +39,9 @@ export function importGeoJSONFeatures(features, opts) {
       // rather than several labels at several points
       svgObj = renderPathLabel(d, geom.coordinates,
         {report: opts.path_label_report, id: featureId});
+    } else if (geomType == 'MultiPoint' && shapeIsCurve(geom.coordinates, d)) {
+      // likewise, one curve through the points
+      svgObj = renderCurveSymbol(d, geom.coordinates);
     } else if (msType == 'polyline' && geom.coordinates && lineHasEndStyles(d)) {
       svgObj = renderArrowLine(geomType == 'LineString' ?
         [geom.coordinates] : geom.coordinates, d);

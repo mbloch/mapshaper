@@ -10,6 +10,9 @@ import {
 } from '../points/mapshaper-symbol-containment';
 import { getSymbolPropertyAccessor, getPropertyAccessor } from '../svg/svg-properties';
 import { getSymbolBoundingRadius } from '../symbols/mapshaper-symbol-utils';
+import { getIconSymbol } from '../symbols/mapshaper-icon-symbols';
+import { featureHasIcon } from '../svg/svg-symbols';
+import { getIconBoundingRadius } from '../svg/svg-symbol-bounds';
 import { findFrameLayerInDataset, getActiveFrame, getFrameLayerData } from '../furniture/mapshaper-frame-utils';
 import { noteLayerWillChange, markLayerChanged } from '../undo/mapshaper-undo-tracking';
 import {
@@ -164,7 +167,9 @@ function requireRepelTarget(lyr, opts) {
 }
 
 function layerHasSymbols(lyr) {
-  return !!lyr.data && (lyr.data.fieldExists('svg-symbol') || lyr.data.fieldExists('r'));
+  var data = lyr.data;
+  return !!data && (data.fieldExists('svg-symbol') || data.fieldExists('r') ||
+    data.fieldExists('icon') || data.fieldExists('icon-size'));
 }
 
 function addLayerNodes(nodes, lyr, pixelsPerUnit, opts) {
@@ -221,8 +226,8 @@ function getPixelValueAccessor(optVal, name, defaultVal, lyr, allowNegative) {
   };
 }
 
-// Radii come from one of three places: an explicit radius= option, the
-// svg-symbol field written by -symbols, or the r field written by -style.
+// Radii come from an explicit radius= option, or from the symbol fields: icon
+// fields, a circle's r, or a legacy svg-symbol.
 // Deliberately not using getSymbolRadius(), whose default of 5 would invent
 // radii for symbols that don't exist.
 function getRadiusAccessor(lyr, opts) {
@@ -234,8 +239,23 @@ function getRadiusAccessor(lyr, opts) {
     var rec = records[i];
     if (!rec) return 0;
     if (rec['svg-symbol']) return getSymbolLayoutRadius(rec['svg-symbol']);
+    if (featureHasIcon(rec)) return getIconLayoutRadius(rec);
     return rec.r > 0 ? +rec.r : 0;
   };
+}
+
+// An arrow is drawn from its point outward, like a legacy polygon symbol, and
+// a curve runs between several points, so neither has a layout radius.
+function getIconLayoutRadius(rec) {
+  var sym, r;
+  if (rec.icon == 'arrow' || rec.icon == 'curve') {
+    stop('-repel is unable to size ' + (rec.icon == 'arrow' ? 'an arrow' : 'a curve') +
+      ' symbol; use a radius= option to give it a radius.');
+  }
+  sym = getIconSymbol(rec);
+  if (!sym) return getIconBoundingRadius(rec);
+  r = getSymbolBoundingRadius(sym);
+  return r === null ? getIconBoundingRadius(rec) : r;
 }
 
 // A symbol is laid out as the circle that covers it, so a symbol type is

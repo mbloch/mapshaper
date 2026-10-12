@@ -2,7 +2,7 @@
 // Kept in a module of its own so that both the renderer (svg-symbols.mjs) and
 // the -style command can use it without forming an import cycle.
 
-export var iconNames = ['circle', 'square', 'ring', 'star'];
+export var iconNames = ['circle', 'square', 'ring', 'star', 'polygon', 'arrow', 'pie', 'curve'];
 
 // Icons that render everywhere but are not advertised: the GUI offers them only
 // to some users (see gui-nyt.mjs), and a map made with one has to draw the same

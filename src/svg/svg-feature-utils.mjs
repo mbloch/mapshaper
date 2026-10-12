@@ -18,6 +18,15 @@ export function featureHasLabel(d) {
 // render a node for it: with no node there is nothing to see, nothing to click
 // and nowhere to put a caret, so a label the user just made would be invisible
 // and unrecoverable. Export has no editor and drops the empty ones.
+//
+// A curve symbol (icon=curve) without text is not a label, though merging it
+// into a layer of labels gives it an empty label-text field.
 export function featureIsLabel(d) {
-  return !!d && 'label-text' in d;
+  return !!d && 'label-text' in d && (d.icon != 'curve' || !!featureHasLabel(d));
+}
+
+// A curve symbol: a smooth path through the feature's points (its knots),
+// rather than a symbol at each point. A curve with label text is a path label.
+export function featureIsCurve(d) {
+  return !!d && d.icon == 'curve' && !featureHasLabel(d);
 }

@@ -45,7 +45,7 @@ export function warnIfCurveIsUnprojected(dataset, knotCount) {
   if (!dataset) return;
   crs = getDatasetCRS(dataset);
   if (crs && crs.is_latlong) {
-    warn('Fitting a label curve to unprojected coordinates. Consider using -proj first.');
+    warn('Fitting a curve to unprojected coordinates. Consider using -proj first.');
   }
 }
 

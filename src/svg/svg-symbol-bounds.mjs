@@ -7,6 +7,7 @@ import { labelHasBackground } from './svg-label-box';
 import { parsePointPair, isSvgNumber } from './svg-properties';
 import { forEachSymbolCoord, getStrokeOutset } from '../symbols/mapshaper-symbol-utils';
 import { getPolygonGlow } from './svg-glow';
+import { getIconSymbol } from '../symbols/mapshaper-icon-symbols';
 
 // mapshaper-svg.mjs sets this on the document when any join is mitered
 var SVG_EXPORT_MITER_LIMIT = 2;
@@ -99,10 +100,19 @@ function getSymbolBox(d, cache) {
   return null;
 }
 
+// The radius of the smallest circle centered on the point that covers an
+// icon, from its box -- which for a star or a polygon is a little generous.
+export function getIconBoundingRadius(d) {
+  var box = getIconBox(d);
+  return box ? Math.max(-box[0], -box[1], box[2], box[3]) : 0;
+}
+
 function getIconBox(d) {
   var type = d.icon || 'circle';
-  var r = getIconRadius(d, type);
-  var sw;
+  var sym = getIconSymbol(d);
+  var r, sw;
+  if (sym) return getSymbolPartBox(sym, 0, 0);
+  r = getIconRadius(d, type);
   if (!(r > 0)) return null;
   if (type == 'ring') {
     // drawn as a stroke, RING_STROKE_WIDTH wide unless stroke-width says otherwise

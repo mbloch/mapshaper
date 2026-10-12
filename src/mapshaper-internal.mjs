@@ -21,6 +21,7 @@ import * as SvgLabelBackground from './svg/svg-label-background';
 import * as SvgFeatureUtils from './svg/svg-feature-utils';
 import * as SvgLabelMarkup from './svg/svg-label-markup';
 import * as SvgLineArrows from './svg/svg-line-arrows';
+import * as SvgCurveSymbols from './svg/svg-curve-symbols';
 import * as SvgGlow from './svg/svg-glow';
 import * as SvgRasterize from './svg/mapshaper-svg-rasterize';
 
@@ -28,7 +29,7 @@ internal.svg = Object.assign({}, SvgStringify, SvgPathUtils, GeojsonToSvg,
   SvgFeatureUtils,
   SvgLabels, SvgSymbols, SvgLabelPaths, SvgLabelFit, SvgLabelAlign,
   SvgLabelMetrics, SvgLabelHalo, SvgLabelCallout, SvgLabelBox, SvgLabelBackground,
-  SvgLabelMarkup, SvgLineArrows, SvgGlow, SvgRasterize);
+  SvgLabelMarkup, SvgLineArrows, SvgCurveSymbols, SvgGlow, SvgRasterize);
 
 import * as FontLookup from './fonts/mapshaper-font-lookup';
 import * as TextMeasure from './fonts/mapshaper-text-measure';

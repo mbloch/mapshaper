@@ -96,10 +96,27 @@ export function getOptionParser() {
         'line-fade': {describe: 'share of a line (0-1) that fades in from its tail'},
         opacity: {describe: 'opacity; example: 0.5'},
         r: {describe: 'symbol radius (set this to export points as circles)'},
-        icon: {describe: 'point icon shape; one of: circle, square, ring, star'},
-        'icon-size': {describe: 'point icon size in pixels'},
+        icon: {describe: 'point icon shape: circle, square, ring, star, polygon, arrow, pie'},
+        'icon-size': {describe: 'point icon size in pixels (an arrow\'s length)'},
         'icon-color': {describe: 'point icon color (defaults to fill color, then black)'},
-        'icon-opacity': {describe: 'point icon opacity, 0-1'}
+        'icon-opacity': {describe: 'point icon opacity, 0-1'},
+        'icon-rotation': {describe: 'point icon rotation in degrees clockwise'},
+        'icon-sides': {describe: '(polygon) number of sides'},
+        'icon-points': {describe: '(star) number of points'},
+        'icon-radii': {describe: '(ring) comma-sep. list of concentric radii'},
+        'icon-values': {describe: '(pie) comma-sep. list of wedge values'},
+        'icon-fills': {describe: '(pie) comma-sep. list of wedge colors'},
+        'icon-hole': {describe: '(pie) radius of a donut\'s hole (negative: inward from the edge)'},
+        'arrow-style': {describe: '(arrow) standard or stick'},
+        'arrow-stem-width': {describe: '(arrow) width of the stem'},
+        'arrow-head-width': {describe: '(arrow) width of the head'},
+        'arrow-head-length': {describe: '(arrow) length of the head'},
+        'arrow-head-angle': {describe: '(arrow) angle of the tip, in degrees'},
+        'arrow-stem-taper': {describe: '(arrow) stem taper, 0-1'},
+        'arrow-stem-curve': {describe: '(arrow) stem curvature, in degrees'},
+        'arrow-stem-length': {describe: '(arrow) length of the stem'},
+        'arrow-min-stem-ratio': {describe: '(arrow) minimum ratio of stem to total length'},
+        'arrow-anchor': {describe: '(arrow) start, middle or end'}
       },
       noReplaceOpt2 = { // for -calc and -info
         alias: '+',
@@ -2230,27 +2247,25 @@ export function getOptionParser() {
     .option('target', targetOpt);
 
   parser.command('symbols')
-    .describe('symbolize points as arrows, circles, stars, polygons, etc.')
+    .describe('symbolize points as arrows, circles, stars, etc. (as icon= fields)')
     .option('type', {
-      describe: 'types: arrow, circle, square, star, polygon, ring, pie'
+      describe: 'types: arrow, circle, square, star, polygon, ring, pie, curve'
     })
-    .option('stroke', {})
-    .option('stroke-width', {})
     .option('fill', {
       describe: 'symbol fill color (filled symbols only)'
     })
     .option('stroke', {
-      describe: 'symbol line color (linear symbols only)'
+      describe: 'symbol outline color, or a stick arrow\'s line color'
     })
     .option('stroke-width', {
-      describe: 'symbol line width (linear symbols only)'
+      describe: 'symbol outline width, or a stick arrow\'s line width'
     })
     .option('opacity', {
       describe: 'symbol opacity'
     })
     .option('geographic', {
       old_alias: 'polygons',
-       describe: 'make geographic shapes instead of SVG objects',
+       describe: 'replace points with polygon shapes instead of symbol fields',
       type: 'flag'
     })
     .option('pixel-scale', {
@@ -2285,7 +2300,7 @@ export function getOptionParser() {
     })
     .option('point-ratio', {
       old_alias: 'star-ratio',
-      describe: '(star) ratio of minor to major radius of star',
+      // not implemented
       type: 'number'
     })
     .option('radii', {
@@ -2349,6 +2364,27 @@ export function getOptionParser() {
     })
     .option('anchor', {
       describe: '(arrow) takes one of: start, middle, end (default is start)'
+    })
+    .option('stroke-dasharray', {
+      describe: '(curve) dashes, e.g. "4 2"'
+    })
+    .option('line-start', {
+      describe: '(curve) marker at the start: arrow, open-arrow, dot or none'
+    })
+    .option('line-end', {
+      describe: '(curve) marker at the end: arrow, open-arrow, dot or none'
+    })
+    .option('line-end-size', {
+      describe: '(curve) size of the end markers in pixels'
+    })
+    .option('line-fade', {
+      describe: '(curve) share of the curve that fades in from its tail, 0-1'
+    })
+    .option('coordinates', {
+      describe: 'add a symbol at x,y (or x,y,x,y,... for a curve)'
+    })
+    .option('properties', {
+      describe: 'with coordinates=, other attributes as a JSON object'
     })
     .option('effect', {})
     // .option('where', whereOpt)

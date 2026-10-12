@@ -15,6 +15,7 @@ import { buildTopology } from '../topology/mapshaper-topology';
 import { profileStart, profileEnd } from '../utils/mapshaper-profile';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
+import { featureIsCurve, featureIsLabel } from '../svg/svg-feature-utils';
 import {
   markArcsChanged,
   markLayerChanged,
@@ -159,6 +160,7 @@ function collectArcIds(shapes) {
 // Remove duplicate points from multipoint geometries
 // TODO: consider checking for invalid coordinates
 function cleanPointLayerGeometry(lyr, dataset, opts) {
+  var records = lyr.data ? lyr.data.getRecords() : null;
   var index, parts;
   noteLayerWillChange(lyr, {operation: 'cleanPointLayerGeometry', unit: 'shapes'});
   lyr.shapes = lyr.shapes.map(function(shp, i) {
@@ -167,6 +169,11 @@ function cleanPointLayerGeometry(lyr, dataset, opts) {
     }
     if (shp.length == 1) {
       return shp; // single part
+    }
+    if (records && featureHasKnots(records[i])) {
+      // the points of a curve or a path label are its knots, in order: a
+      // closed curve repeats its first knot as its last
+      return shp;
     }
     // remove duplicate points from multipoint geometry
     index = {};
@@ -185,5 +192,9 @@ function cleanPointLayerGeometry(lyr, dataset, opts) {
     index[key] = true;
     parts.push(p);
   }
+}
+
+function featureHasKnots(rec) {
+  return featureIsCurve(rec) || featureIsLabel(rec);
 }
 

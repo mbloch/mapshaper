@@ -1,6 +1,12 @@
 import { makePieSymbol, getPieWedges, getPieRadii } from '../src/symbols/mapshaper-pie-symbols';
+import { getIconSymbol } from '../src/symbols/mapshaper-icon-symbols';
 import api from '../mapshaper.js';
 import assert from 'assert';
+
+// The symbol drawn for a feature written by -symbols
+function getSymbol(feat) {
+  return getIconSymbol(feat.properties);
+}
 
 // Bearing of a point relative to the center of a symbol, in degrees clockwise
 // from the top, in the y-up space used by getPieWedges().
@@ -288,13 +294,34 @@ describe('mapshaper-pie-symbols.js', function () {
   });
 
   describe('-symbols type=pie', function () {
-    it('writes a group symbol to each record', async function () {
+    it('writes icon fields to each record', async function () {
       var out = await api.applyCommands(
         '-i in.json -symbols type=pie values=a,b,c fills=red,green,blue radius=20 -o out.json',
         {'in.json': pointGeoJSON([{a: 30, b: 50, c: 20}])});
-      var sym = JSON.parse(out['out.json']).features[0].properties['svg-symbol'];
+      var feat = JSON.parse(out['out.json']).features[0];
+      var sym = getSymbol(feat);
+      assert.deepEqual(feat.properties, {a: 30, b: 50, c: 20, icon: 'pie', 'icon-size': 40,
+        'icon-values': '30,50,20', 'icon-fills': 'red,green,blue'});
       assert.equal(sym.type, 'group');
       assert.deepEqual(sym.parts.map(function(p) {return p.fill;}), ['red', 'green', 'blue']);
+    });
+
+    it('scales the size and the hole', async function () {
+      var out = await api.applyCommands(
+        '-i in.json -symbols type=pie values=a fills=red radius=20 hole=5 scale=2 -o out.json',
+        {'in.json': pointGeoJSON([{a: 1}])});
+      var d = JSON.parse(out['out.json']).features[0].properties;
+      assert.equal(d['icon-size'], 80);
+      assert.equal(d['icon-hole'], 10);
+    });
+
+    it('writes "none" for a missing wedge color', async function () {
+      var out = await api.applyCommands(
+        '-i in.json -symbols type=pie values=a,b fills=red,c radius=20 -o out.json',
+        {'in.json': pointGeoJSON([{a: 1, b: 1, c: null}])});
+      var feat = JSON.parse(out['out.json']).features[0];
+      assert.equal(feat.properties['icon-fills'], 'red,none');
+      assert.equal(getSymbol(feat).parts.length, 1);
     });
 
     it('reads wedge values from data fields', async function () {
@@ -302,8 +329,8 @@ describe('mapshaper-pie-symbols.js', function () {
         '-i in.json -symbols type=pie values=a,b fills=red,green radius=20 -o out.json',
         {'in.json': pointGeoJSON([{a: 1, b: 3}, {a: 1, b: 1}])});
       var features = JSON.parse(out['out.json']).features;
-      var first = features[0].properties['svg-symbol'];
-      var second = features[1].properties['svg-symbol'];
+      var first = getSymbol(features[0]);
+      var second = getSymbol(features[1]);
       // 1:3 split, so the second wedge of the first symbol starts a quarter
       // of the way around; the 1:1 split starts halfway around
       assert.equal(Math.round(bearing(flipY(first.parts[1].coordinates[0][0]))), 90);
@@ -319,7 +346,7 @@ describe('mapshaper-pie-symbols.js', function () {
       var out = await api.applyCommands(
         '-i in.json -symbols type=pie values=a,b "fills=rgba(255,0,0,0.5),#00f" radius=20 -o out.json',
         {'in.json': pointGeoJSON([{a: 1, b: 1}])});
-      var sym = JSON.parse(out['out.json']).features[0].properties['svg-symbol'];
+      var sym = getSymbol(JSON.parse(out['out.json']).features[0]);
       assert.deepEqual(sym.parts.map(function(p) {return p.fill;}), ['rgba(255,0,0,0.5)', '#00f']);
     });
 
@@ -327,7 +354,7 @@ describe('mapshaper-pie-symbols.js', function () {
       var out = await api.applyCommands(
         '-i in.json -symbols type=pie "values=[a,b]" "fills=[\'red\',\'blue\']" radius=20 -o out.json',
         {'in.json': pointGeoJSON([{a: 1, b: 3}])});
-      var sym = JSON.parse(out['out.json']).features[0].properties['svg-symbol'];
+      var sym = getSymbol(JSON.parse(out['out.json']).features[0]);
       assert.deepEqual(sym.parts.map(function(p) {return p.fill;}), ['red', 'blue']);
       // a 1:3 split, so the second wedge starts a quarter of the way around
       assert.equal(Math.round(bearing([
@@ -339,17 +366,18 @@ describe('mapshaper-pie-symbols.js', function () {
       var out = await api.applyCommands(
         '-i in.json -symbols type=pie "values=a*2,50" fills=red,green radius=20 -o out.json',
         {'in.json': pointGeoJSON([{a: 25}])});
-      var sym = JSON.parse(out['out.json']).features[0].properties['svg-symbol'];
+      var sym = getSymbol(JSON.parse(out['out.json']).features[0]);
       assert.equal(sym.parts.length, 2);
     });
 
-    it('omits the symbol when all of a feature\'s values are zero', async function () {
+    it('draws nothing when all of a feature\'s values are zero', async function () {
       var out = await api.applyCommands(
         '-i in.json -symbols type=pie values=a,b fills=red,green radius=20 -o out.json',
         {'in.json': pointGeoJSON([{a: 1, b: 1}, {a: 0, b: 0}])});
       var features = JSON.parse(out['out.json']).features;
-      assert.ok(features[0].properties['svg-symbol']);
-      assert.strictEqual(features[1].properties['svg-symbol'], undefined);
+      assert.equal(getSymbol(features[0]).parts.length, 2);
+      assert.equal(features[1].properties['icon-values'], '0,0');
+      assert.equal(getSymbol(features[1]).parts.length, 0);
     });
 
     it('sizes a donut from data, with a band of constant width', async function () {
@@ -359,7 +387,7 @@ describe('mapshaper-pie-symbols.js', function () {
         {'in.json': pointGeoJSON([{a: 1, size: 20}, {a: 1, size: 12}])});
       var features = JSON.parse(out['out.json']).features;
       var radii = features.map(function(feat) {
-        var coords = feat.properties['svg-symbol'].parts[0].coordinates;
+        var coords = getSymbol(feat).parts[0].coordinates;
         return [Math.round(radius(coords[0][0])), Math.round(radius(coords[1][0]))];
       });
       assert.deepEqual(radii, [[20, 15], [12, 7]]);
@@ -371,7 +399,7 @@ describe('mapshaper-pie-symbols.js', function () {
         {'in.json': pointGeoJSON([{a: 1, size: 20}, {a: 1, size: 12}])});
       var features = JSON.parse(out['out.json']).features;
       var radii = features.map(function(feat) {
-        var coords = feat.properties['svg-symbol'].parts[0].coordinates;
+        var coords = getSymbol(feat).parts[0].coordinates;
         return [Math.round(radius(coords[0][0])), Math.round(radius(coords[1][0]))];
       });
       assert.deepEqual(radii, [[20, 10], [12, 6]]);

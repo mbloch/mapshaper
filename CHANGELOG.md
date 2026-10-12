@@ -1,3 +1,11 @@
+v0.7.84
+* `-symbols` writes each symbol as attribute fields instead of an `svg-symbol` object: `icon=` (square, star, polygon, ring, pie or arrow) with `icon-size=`, `icon-color=`, `icon-rotation=` and parameters like `icon-sides=`, `icon-values=` and `arrow-head-width=`. These fields can be edited with `-style`, and the symbols are redrawn from them. Circles are written as `r=` and `fill=` fields, like circles made with `-style r=`, so the web UI draws large circle layers quickly. Existing `svg-symbol` values are still drawn.
+* `-symbols` now stops on an unknown symbol type, instead of drawing a square.
+* `-repel` can size stars and polygon symbols.
+* Added `-symbols coordinates=`, which adds one symbol to the target layer (or to a new layer), like `-labels coordinates=`.
+* Added curve symbols: `-symbols type=curve` (written as `icon=curve`) draws a smooth curve through the points of a multipoint feature, fitted with Hobby's algorithm like a path label. A curve whose last point repeats its first is closed and can take a fill; an open curve can take `line-start=`, `line-end=`, `line-end-size=` and `line-fade=`. In SVG output, curves without end markers are written as Bézier curves. For example: `-symbols type=curve coordinates=0,0,50,40,100,0 line-end=arrow`.
+* `-clean` no longer removes repeated points from curves and path labels, whose points are the knots of a curve.
+
 v0.7.83
 * Added -o html-labels option, which renders labels as HTML instead of SVG text in HTML-formatted output.
 

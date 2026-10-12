@@ -8,6 +8,10 @@ import { TEXT_PLACEHOLDER } from './gui-label-text';
 var LABEL_PATH_ATTR = 'data-label-path';
 var LABEL_PATH_SELECTOR = 'path[' + LABEL_PATH_ATTR + ']';
 var LABEL_PATH_SCALE_ATTR = 'data-label-path-scale';
+// Marks a curve symbol, which like a label path is drawn in its group's own
+// coordinates and has to be redrawn when they change (see updateLabelPaths())
+var CURVE_ATTR = 'data-curve';
+var CURVE_SELECTOR = '.mapshaper-svg-symbol[' + CURVE_ATTR + ']';
 
 export function getSymbolNodeId(node) {
   return parseInt(node.getAttribute('data-id'));
@@ -41,10 +45,10 @@ export function repositionSymbols(elements, layer, ext) {
     if (!shp) continue;
     p = shp[0];
     displayOn = !el.hasAttribute('display') || el.getAttribute('display') == 'block';
-    // A path label occupies its whole curve rather than a point, so testing
-    // only the anchor knot would hide a label that is still mostly on screen --
-    // or all of one that spans the viewport.
-    inView = records && internal.svg.shapeIsPathLabel(shp, records[idx]) ?
+    // A path label or a curve occupies its whole curve rather than a point, so
+    // testing only the first knot would hide one that is still mostly on
+    // screen -- or all of one that spans the viewport.
+    inView = records && shapeHasKnots(shp, records[idx]) ?
       shapeBoundsInView(shp, displayBounds) :
       displayBounds.containsPoint(p[0], p[1]);
     if (inView) {
@@ -54,6 +58,10 @@ export function repositionSymbols(elements, layer, ext) {
       if (displayOn) el.setAttribute('display', 'none');
     }
   }
+}
+
+function shapeHasKnots(shp, rec) {
+  return internal.svg.shapeIsPathLabel(shp, rec) || internal.svg.shapeIsCurve(shp, rec);
 }
 
 // Bounding-box overlap test, written out rather than built as a Bounds so that
@@ -106,7 +114,7 @@ function renderLayerSymbol(d, shp, ext, view, defs, idPrefix, i) {
 // which this leaves alone.
 // Returns the new node, or null if there was nothing to replace.
 export function replaceAnchoredSymbol(container, id, rec, shp, ext) {
-  var old = container && shp && !internal.svg.shapeIsPathLabel(shp, rec) ?
+  var old = container && shp && !shapeHasKnots(shp, rec) ?
     container.querySelector('.mapshaper-svg-symbol[data-id="' + id + '"]') : null;
   var obj = old ? renderLayerSymbol(rec, shp, ext, null, null, '', id) : null;
   var tmp, node;
@@ -159,8 +167,13 @@ export function renderPendingSymbol(rec, shp, ext, idPrefix) {
 }
 
 function renderSymbol(d, shp, view, defs, idPrefix, i) {
-  var obj, pathId;
-  var rec = withPlaceholderText(d);
+  var obj, pathId, rec;
+  if (internal.svg.shapeIsCurve(shp, d)) {
+    obj = internal.svg.renderCurveSymbol(d, getLabelPathCoords(shp, view));
+    if (obj) obj.properties[CURVE_ATTR] = '';
+    return obj;
+  }
+  rec = withPlaceholderText(d);
   if (!internal.svg.shapeIsPathLabel(shp, rec)) {
     return internal.svg.renderPoint(rec);
   }
@@ -218,18 +231,40 @@ export function markLabelPathScale(node, ext) {
 // they were built at no longer applies -- so never on a pan, and never on a
 // zoom of a framed layer. Called from the reposition path, because navigating
 // the map does not redraw SVG layers.
+//
+// Curve symbols are rebuilt here too, as whole nodes: an open curve's end
+// markers are fitted to the curve, so it is more than a path to update.
 export function updateLabelPaths(container, layer, ext) {
   var paths = container.querySelectorAll(LABEL_PATH_SELECTOR);
-  var records, scale, view;
-  if (paths.length === 0) return;
+  var curves = container.querySelectorAll(CURVE_SELECTOR);
+  var records, scale, view, i;
+  if (paths.length === 0 && curves.length === 0) return;
   scale = getLabelPathScale(ext);
   if (container.getAttribute(LABEL_PATH_SCALE_ATTR) == String(scale)) return;
   container.setAttribute(LABEL_PATH_SCALE_ATTR, String(scale));
   records = layer.data ? layer.data.getRecords() : null;
   view = getLabelPathView(ext);
-  for (var i = 0; i < paths.length; i++) {
+  for (i = 0; i < paths.length; i++) {
     updateLabelPath(paths[i], layer, records, view);
   }
+  for (i = 0; i < curves.length; i++) {
+    updateCurve(curves[i], layer, records, ext, view);
+  }
+}
+
+function updateCurve(node, layer, records, ext, view) {
+  var id = getSymbolNodeId(node);
+  var shp = layer.shapes[id];
+  var rec = records && records[id];
+  var obj = shp && rec ? renderLayerSymbol(rec, shp, ext, view, null, '', id) : null;
+  var tmp, node2;
+  if (!obj) return;
+  tmp = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  tmp.innerHTML = internal.svg.stringify(obj);
+  node2 = tmp.firstElementChild;
+  if (!node2) return;
+  if (node.hasAttribute('display')) node2.setAttribute('display', node.getAttribute('display'));
+  node.parentNode.replaceChild(node2, node);
 }
 
 function updateLabelPath(path, layer, records, view) {

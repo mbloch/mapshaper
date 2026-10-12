@@ -1,6 +1,7 @@
 import { Bounds } from '../geom/mapshaper-bounds';
 import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
-import { featureHasLabel } from '../svg/svg-feature-utils';
+import { featureHasLabel, featureIsCurve } from '../svg/svg-feature-utils';
+import { getCurvePadding } from '../svg/svg-curve-symbols';
 import {
   getPointSymbolBox,
   getPathLabelPadding,
@@ -132,6 +133,11 @@ export function getSymbolExtents(targets) {
         // a multipoint label is drawn along a path through its points,
         // with no symbol (see featureIsPathLabel())
         pad = getPathLabelPadding(rec);
+        box = [-pad, -pad, pad, pad];
+      } else if (featureIsCurve(rec)) {
+        // a curve's stroke runs through its knots; a single knot draws nothing
+        if (shp.length < 2) return;
+        pad = getCurvePadding(rec);
         box = [-pad, -pad, pad, pad];
       } else {
         box = getPointSymbolBox(rec, cache);

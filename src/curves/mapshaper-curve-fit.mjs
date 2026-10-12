@@ -66,12 +66,22 @@ var MAX_SUBDIVIDE_DEPTH = 8;
 var LENGTH_TOLERANCE = 1e-5;
 var MAX_LENGTH_DEPTH = 16;
 
+// A curve is closed when its last knot repeats its first exactly, as a GeoJSON
+// ring does, and it has at least three distinct knots. Fewer can't enclose
+// anything: A,B,A is drawn as the straight segment A,B.
+export function curveIsClosed(knots) {
+  var n = knots ? knots.length : 0;
+  return n > 3 && samePoint(knots[0], knots[n - 1]) &&
+    getLoopKnots(dedupeKnots(knots)).length >= 3;
+}
+
 // knots: array of [x, y] in a single coordinate space
 // tolerance: max deviation of the output polyline from the true curve, in the
 //   same units as the knots
+// closed: fit a closed loop (see curveIsClosed()) rather than an open run
 // Returns an array of [x, y] starting at the first knot, ending at the last,
 //   and passing through every knot in between.
-export function fitCurveThroughKnots(knots, tolerance) {
+export function fitCurveThroughKnots(knots, tolerance, closed) {
   var pts = dedupeKnots(knots || []),
       segments, out, i;
   if (pts.length < 2) return pts;
@@ -80,7 +90,7 @@ export function fitCurveThroughKnots(knots, tolerance) {
     // are the curve at its coarsest
     return pts;
   }
-  segments = fitRun(pts);
+  segments = fitKnots(pts, closed);
   out = [pts[0].slice()];
   for (i = 0; i < segments.length; i++) {
     flattenCubic(segments[i].p0, segments[i].c1, segments[i].c2,
@@ -93,11 +103,84 @@ export function fitCurveThroughKnots(knots, tolerance) {
 // Returns the curve's control points as cubic Bezier segments, without
 // flattening. Kept separate from the flattening so that SVG export can emit
 // true curves rather than a densified polyline.
-// Returns [{p0, c1, c2, p3}, ...], one per knot interval.
-export function getCurveSegments(knots) {
+// Returns [{p0, c1, c2, p3}, ...], one per knot interval. A closed curve's
+// last segment ends at its first knot.
+export function getCurveSegments(knots, closed) {
   var pts = dedupeKnots(knots || []);
   if (pts.length < 2) return [];
+  return fitKnots(pts, closed);
+}
+
+function fitKnots(pts, closed) {
+  var loop;
+  if (closed) {
+    loop = getLoopKnots(pts);
+    return loop.length >= 3 ? fitLoop(loop) : fitRun(loop);
+  }
   return fitRun(pts);
+}
+
+// A closed curve's knots without the repeated last one
+function getLoopKnots(pts) {
+  var n = pts.length;
+  return n > 1 && samePoint(pts[0], pts[n - 1]) ? pts.slice(0, n - 1) : pts;
+}
+
+// Fits a closed loop through @pts (the first knot not repeated at the end),
+// returning a cubic per interval, the last one ending at the first knot.
+//
+// Every knot is an interior knot of a loop, so each row of the system is the
+// mock-curvature condition of fitRun()'s interior rows, with indices taken
+// round the loop. The rows that wrap make the matrix cyclic tridiagonal.
+function fitLoop(pts) {
+  var n = pts.length, // segment count = knot count
+      dd = [], om = [], psi = [], lo = [], di = [], up = [], r = [],
+      segments = [], ee, theta, phi, i, prev, next, j;
+  for (i = 0; i < n; i++) {
+    j = (i + 1) % n;
+    dd.push(distance2D(pts[i][0], pts[i][1], pts[j][0], pts[j][1]));
+    om.push(Math.atan2(pts[j][1] - pts[i][1], pts[j][0] - pts[i][0]));
+  }
+  for (i = 0; i < n; i++) {
+    psi.push(wrapAngle(om[i] - om[(i + n - 1) % n]));
+  }
+  ee = evenOutLoopChords(dd, n);
+  for (i = 0; i < n; i++) {
+    prev = (i + n - 1) % n;
+    next = (i + 1) % n;
+    lo.push(ee[i]);
+    di.push(2 * (ee[i] + ee[prev]));
+    up.push(ee[prev]);
+    r.push(-2 * ee[i] * psi[i] - ee[prev] * psi[next]);
+  }
+  theta = solveCyclicTridiagonal(lo, di, up, r);
+  phi = [];
+  for (i = 0; i < n; i++) phi.push(-psi[i] - theta[i]);
+  for (i = 0; i < n; i++) {
+    j = (i + 1) % n;
+    segments.push(buildSegment(pts[i], pts[j], dd[i], om[i], theta[i], phi[j],
+      handleLimit(dd[i], dd[(i + n - 1) % n]),
+      handleLimit(dd[i], dd[j])));
+  }
+  return segments;
+}
+
+// evenOutChords() round a loop. A pass in each direction settles an open run;
+// round a loop a chord's limit can come from either side, so the passes repeat
+// until nothing changes -- n passes at most, since each settles a chord.
+function evenOutLoopChords(dd, n) {
+  var out = dd.concat(), changed = true, passes = 0, i, j, max;
+  while (changed && passes++ <= n) {
+    changed = false;
+    for (i = 0; i < n; i++) {
+      j = (i + 1) % n;
+      max = out[i] * MAX_CHORD_RATIO;
+      if (out[j] > max) { out[j] = max; changed = true; }
+      max = out[j] * MAX_CHORD_RATIO;
+      if (out[i] > max) { out[i] = max; changed = true; }
+    }
+  }
+  return out;
 }
 
 // Arc length of the fitted curve, in the same units as the knots. Export uses
@@ -343,6 +426,36 @@ function solveTridiagonal(lo, di, up, r) {
     x[i] = dp[i] - cp[i] * x[i + 1];
   }
   return x;
+}
+
+// A tridiagonal system whose first row also couples to the last unknown (by
+// lo[0]) and whose last row couples to the first (by up[n-1]), solved with the
+// Sherman-Morrison formula: as an ordinary tridiagonal system with a rank-one
+// correction. Needs n >= 3.
+function solveCyclicTridiagonal(lo, di, up, r) {
+  var n = di.length,
+      alpha = up[n - 1], // last row, first column
+      beta = lo[0],      // first row, last column
+      gamma = -di[0],
+      bb = di.concat(), u = [], lo2 = lo.concat(), up2 = up.concat(),
+      x, z, fact, i;
+  bb[0] = di[0] - gamma;
+  bb[n - 1] = di[n - 1] - alpha * beta / gamma;
+  lo2[0] = 0;
+  up2[n - 1] = 0;
+  for (i = 0; i < n; i++) u.push(0);
+  u[0] = gamma;
+  u[n - 1] = alpha;
+  x = solveTridiagonal(lo2, bb, up2, r);
+  z = solveTridiagonal(lo2, bb, up2, u);
+  fact = (x[0] + beta * x[n - 1] / gamma) /
+    (1 + z[0] + beta * z[n - 1] / gamma);
+  for (i = 0; i < n; i++) x[i] -= fact * z[i];
+  return x;
+}
+
+function samePoint(a, b) {
+  return !!a && !!b && a[0] === b[0] && a[1] === b[1];
 }
 
 // Into (-PI, PI], so that a turn is measured the short way round.

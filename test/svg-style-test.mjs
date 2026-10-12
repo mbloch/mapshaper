@@ -124,7 +124,7 @@ describe('mapshaper-svg-style.js', function () {
       assert.deepEqual(capture.messages, []);
       assert.equal(capture.warnings.length, 1, JSON.stringify(capture.warnings));
       assert.equal(capture.warnings[0],
-        'Unsupported icon name: triangle. Expected one of: circle, square, ring, star');
+        'Unsupported icon name: triangle. Expected one of: circle, square, ring, star, polygon, arrow, pie, curve');
       // the value is still assigned; only the rendered icon is missing
       var result = JSON.parse(capture.value['data.json']);
       assert.deepEqual(result, [
@@ -141,7 +141,7 @@ describe('mapshaper-svg-style.js', function () {
       });
       assert.equal(capture.warnings.length, 1, JSON.stringify(capture.warnings));
       assert.equal(capture.warnings[0],
-        'Unsupported icon names: triangle, blob. Expected one of: circle, square, ring, star');
+        'Unsupported icon names: triangle, blob. Expected one of: circle, square, ring, star, polygon, arrow, pie, curve');
     });
 
     it('-style does not warn about supported or blank icon names', async function() {

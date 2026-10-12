@@ -1,5 +1,5 @@
 
-import { fitCurveThroughKnots, getCurveSegments, getCurveLength, setCurveCurl } from '../src/curves/mapshaper-curve-fit';
+import { fitCurveThroughKnots, getCurveSegments, getCurveLength, setCurveCurl, curveIsClosed } from '../src/curves/mapshaper-curve-fit';
 import assert from 'assert';
 
 // max distance from p to the polyline pts
@@ -614,6 +614,54 @@ describe('mapshaper-curve-fit', function () {
       var big = knots.map(function (p) { return [p[0] * 1000, p[1] * 1000]; });
       var ratio = getCurveLength(big) / getCurveLength(knots);
       assert.ok(Math.abs(ratio - 1000) < 1e-6, 'ratio: ' + ratio);
+    });
+  });
+  describe('closed curves', function () {
+    var circle = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 0]];
+
+    it('curveIsClosed() needs a repeated first knot and three distinct knots', function () {
+      assert.equal(curveIsClosed(circle), true);
+      assert.equal(curveIsClosed([[0, 0], [1, 0], [1, 1]]), false);
+      assert.equal(curveIsClosed([[0, 0], [1, 0], [0, 0]]), false);
+      assert.equal(curveIsClosed([[0, 0], [1, 0], [1, 0], [0, 0]]), false);
+      assert.equal(curveIsClosed([[0, 0], [1, 0], [1, 1], [0, 0.000001]]), false);
+    });
+
+    it('four knots on a circle make a circle', function () {
+      var segs = getCurveSegments(circle, true);
+      var pts = fitCurveThroughKnots(circle, 0.001, true);
+      assert.equal(segs.length, 4);
+      segs.forEach(function (seg) {
+        // the standard four-segment Bezier circle has handles of 0.5523
+        assert.ok(Math.abs(Math.hypot(seg.c1[0] - seg.p0[0], seg.c1[1] - seg.p0[1]) - 0.5523) < 1e-3);
+      });
+      pts.forEach(function (p) {
+        assert.ok(Math.abs(Math.hypot(p[0], p[1]) - 1) < 1e-3);
+      });
+      assert.deepEqual(pts[pts.length - 1], [1, 0]);
+    });
+
+    it('is smooth where the loop closes', function () {
+      var segs = getCurveSegments([[0, 0], [10, 0], [12, 5], [3, 9], [0, 0]], true);
+      var last = segs[segs.length - 1], first = segs[0];
+      var a = Math.atan2(last.p3[1] - last.c2[1], last.p3[0] - last.c2[0]);
+      var b = Math.atan2(first.c1[1] - first.p0[1], first.c1[0] - first.p0[0]);
+      assert.ok(Math.abs(a - b) < 1e-9);
+    });
+
+    it('does not depend on which knot comes first', function () {
+      var a = getCurveSegments([[0, 0], [10, 0], [12, 5], [3, 9], [0, 0]], true);
+      var b = getCurveSegments([[10, 0], [12, 5], [3, 9], [0, 0], [10, 0]], true);
+      for (var i = 0; i < 4; i++) {
+        assert.ok(Math.abs(a[(i + 1) % 4].c1[0] - b[i].c1[0]) < 1e-9);
+        assert.ok(Math.abs(a[(i + 1) % 4].c2[1] - b[i].c2[1]) < 1e-9);
+      }
+    });
+
+    it('two distinct knots make a straight segment', function () {
+      var segs = getCurveSegments([[0, 0], [10, 0], [0, 0]], true);
+      assert.equal(segs.length, 1);
+      assert.deepEqual(segs[0].p3, [10, 0]);
     });
   });
 });

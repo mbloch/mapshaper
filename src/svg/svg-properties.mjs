@@ -44,6 +44,25 @@ var stylePropertyTypes = {
   // elements its record produces -- see getIconStyleData().
   'icon-opacity': 'number',
   'icon-size': 'number',
+  // parameters of point symbols -- see mapshaper-icon-symbols.mjs. Drawn as
+  // shapes, not written as attributes, so not in propertiesBySymbolType.
+  'icon-rotation': 'number',
+  'icon-sides': 'number',
+  'icon-points': 'number',
+  'icon-radii': null, // comma-sep. list
+  'icon-values': null, // comma-sep. list
+  'icon-fills': null, // comma-sep. list
+  'icon-hole': 'number',
+  'arrow-style': null,
+  'arrow-stem-width': 'number',
+  'arrow-head-width': 'number',
+  'arrow-head-length': 'number',
+  'arrow-head-angle': 'number',
+  'arrow-stem-taper': 'number',
+  'arrow-stem-curve': 'number',
+  'arrow-stem-length': 'number',
+  'arrow-min-stem-ratio': 'number',
+  'arrow-anchor': null,
   // how the lines of a multi-line label line up with each other, as against
   // text-anchor, which also decides where the block of them sits -- see
   // svg-label-align.mjs

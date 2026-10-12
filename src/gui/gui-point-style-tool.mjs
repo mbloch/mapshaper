@@ -466,6 +466,7 @@ export function PointStyleTool(gui) {
     var table = lyr && lyr.data;
     if (table && table.fieldExists('svg-symbol')) return 'svg-symbol';
     if (table && table.fieldExists('label-text')) return 'label';
+    if (table && table.fieldExists('icon')) return 'svg-symbol';
     if (table && table.fieldExists('r')) return 'circle';
     return 'unstyled';
   }

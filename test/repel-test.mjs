@@ -308,7 +308,7 @@ describe('mapshaper-repel.js', function () {
       assert.ok(out1['out.json'].equals(out2['out.json']));
     });
 
-    it('reads radii from svg-symbol fields written by -symbols', async function () {
+    it('reads radii from r fields written by -symbols type=circle', async function () {
       var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]]);
       var out = await api.applyCommands(
         '-i in.json -symbols type=circle radius=10 -repel width=1000 max-shift=50 padding=0.5 -o out.json',
@@ -603,20 +603,42 @@ describe('mapshaper-repel.js', function () {
       }, /requires a layer containing symbols/);
     });
 
-    // A star is centered on its point, but it is a plain polygon symbol like an
-    // arrow, which is not -- so neither is sized without a radius= option.
+    // An arrow is drawn outward from its point, not around it
     it('errors on a symbol type it cannot size', async function () {
       await assert.rejects(function() {
         return api.applyCommands(
-          '-i in.json -symbols type=star radius=10 -repel width=1000 -o out.json',
+          '-i in.json -symbols type=arrow length=10 -repel width=1000 -o out.json',
           {'in.json': pointsGeoJSON([[0, 0], [8, 0], [1000, 0]])});
+      }, /unable to size an arrow symbol/);
+    });
+
+    it('errors on a legacy polygon svg-symbol', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]]);
+      input.features.forEach(function(f) {
+        f.properties = {'svg-symbol': {type: 'polygon',
+          coordinates: [[[-5, -5], [5, -5], [5, 5], [-5, -5]]]}};
+      });
+      await assert.rejects(function() {
+        return api.applyCommands('-i in.json -repel width=1000 -o out.json',
+          {'in.json': input});
       }, /unable to size a polygon symbol/);
+    });
+
+    // icon-size=20 draws a star of radius 10.5 (stars are drawn 1px larger)
+    it('sizes star symbols', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]]);
+      var out = await api.applyCommands(
+        '-i in.json -symbols type=star radius=10 -repel width=1000 max-shift=50 -o out.json',
+        {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 20.9 && dist < 21.1, 'symbols are ' + dist + 'px apart');
     });
 
     it('accepts a radius= option for a symbol it cannot size', async function () {
       var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]]);
       var out = await api.applyCommands(
-        '-i in.json -symbols type=star radius=10 -repel width=1000 max-shift=50 radius=10 -o out.json',
+        '-i in.json -symbols type=arrow length=10 -repel width=1000 max-shift=50 radius=10 -o out.json',
         {'in.json': input});
       var coords = getCoords(out['out.json']);
       var dist = Math.abs(coords[1][0] - coords[0][0]);

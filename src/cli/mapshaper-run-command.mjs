@@ -123,7 +123,7 @@ function commandRunsPerTargetDataset(name, opts) {
   if (name == 'rectangle') {
     return !opts.source && !opts.bbox;
   }
-  if (name == 'labels') {
+  if (name == 'labels' || name == 'symbols') {
     return !('coordinates' in opts);
   }
   return [
@@ -141,7 +141,7 @@ function commandRunsPerTargetDataset(name, opts) {
 }
 
 function commandAcceptsEmptyTarget(name, opts) {
-  if (name == 'labels') {
+  if (name == 'labels' || name == 'symbols') {
     return 'coordinates' in opts;
   }
   return name == 'graticule' || name == 'i' || name == 'help' ||
@@ -583,6 +583,14 @@ export async function runCommand(command, job) {
 
     } else if (name == 'style') {
       applyCommandToEachLayer(cmd.svgStyle, targetLayers, targetDataset, opts);
+
+    } else if (name == 'symbols' && 'coordinates' in opts) {
+      if (!targetDataset) {
+        targetDataset = {info: {}, layers: []};
+        targetLayers = targetDataset.layers;
+        job.catalog.addDataset(targetDataset);
+      }
+      outputLayers = cmd.addSymbol(targetLayers, targetDataset, opts);
 
     } else if (name == 'symbols') {
       outputLayers = applyCommandToEachLayer(cmd.symbols, targetLayers, targetDataset, opts);

@@ -10,6 +10,10 @@ import utils from '../utils/mapshaper-utils';
 import { applyStyleAttributes, isSvgNumber } from '../svg/svg-properties';
 import { message } from '../utils/mapshaper-logging';
 import { roundToTenths } from '../geom/mapshaper-rounding';
+import { getIconSymbol, getIconRadius, getIconStarCoords,
+  RING_STROKE_WIDTH } from '../symbols/mapshaper-icon-symbols';
+
+export { getIconRadius, RING_STROKE_WIDTH };
 
 export function getTransform(xy, scale) {
   var str = 'translate(' + roundToTenths(xy[0]) + ' ' + roundToTenths(xy[1]) + ')';
@@ -18,9 +22,6 @@ export function getTransform(xy, scale) {
   }
   return str;
 }
-
-// A ring icon's stroke, unless the record sets one; 1px read as too faint.
-export var RING_STROKE_WIDTH = 1.5;
 
 export var symbolRenderers = {
   line: line,
@@ -98,6 +99,8 @@ export function featureHasIcon(d) {
 // command warns about unsupported names when they are assigned instead.
 function renderIcon(d) {
   var type = d.icon || 'circle';
+  var sym = getIconSymbol(d);
+  if (sym) return renderComplexSymbol(sym);
   var r = getIconRadius(d, type);
   if (r > 0 === false) return empty();
   if (type == 'circle') return circle(getIconStyleData(d, r));
@@ -106,23 +109,6 @@ function renderIcon(d) {
   if (type == 'star') return star(getIconStyleData(d, r));
   if (type == 'nyt-star') return nytStar(getIconStyleData(d, r));
   return empty();
-}
-
-export function getIconRadius(d, type) {
-  var size;
-  if (d['icon-size'] > 0 === false) {
-    return d.r > 0 ? d.r : 5;
-  }
-  size = d['icon-size'];
-  if (type == 'circle') {
-    size -= 1;
-  } else if (type == 'ring') {
-    // the stroke's outer half is inside icon-size
-    size -= RING_STROKE_WIDTH;
-  } else if (type == 'star') {
-    size += 1;
-  }
-  return size / 2;
 }
 
 // A label with a symbol renders two elements from one record, and every opacity
@@ -231,7 +217,7 @@ function ring(d, x, y) {
 }
 
 function star(d) {
-  var coords = getStarCoords(d.r);
+  var coords = getIconStarCoords(d.r);
   var o = importPolygon([coords]);
   applyStyleAttributes(o, 'point', d, nonCirclePointFilter);
   return o;
@@ -276,19 +262,6 @@ function roundToHundredths(n) {
 
 function nonCirclePointFilter(k) {
   return k != 'r';
-}
-
-function getStarCoords(r) {
-  var coords = [];
-  var innerR = r * 0.42;
-  var angle, len;
-  for (var i=0; i<10; i++) {
-    len = i % 2 === 0 ? r : innerR;
-    angle = -Math.PI / 2 + i * Math.PI / 5;
-    coords.push([roundToTenths(Math.cos(angle) * len), roundToTenths(Math.sin(angle) * len)]);
-  }
-  coords.push(coords[0].concat());
-  return coords;
 }
 
 function line(d, x, y) {
