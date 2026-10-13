@@ -72,6 +72,19 @@ describe('line arrowheads', function() {
       near(shape.coords[shape.coords.length - 1][0], 99);
     });
 
+    it('a wide head is drawn as a solid one, with a 60 degree point', function() {
+      var shape = getLineArrowShape([[0, 0], [100, 0]], opts({end: 'wide-arrow'}));
+      var p = shape.heads[0].points;
+      var a = Math.atan2(p[1][1] - p[0][1], p[1][0] - p[0][0]);
+      var b = Math.atan2(p[2][1] - p[0][1], p[2][0] - p[0][0]);
+      var deg = Math.abs(a - b) * 180 / Math.PI;
+      assert.equal(shape.heads[0].type, 'arrow');
+      near(deg > 180 ? 360 - deg : deg, 60);
+      near(Math.hypot(p[1][0] - 100, p[1][1]), 10);
+      var lastX = shape.coords[shape.coords.length - 1][0];
+      assert.ok(lastX < 100 && lastX > p[1][0], 'line ends inside the head');
+    });
+
     it('both ends get heads', function() {
       var shape = getLineArrowShape([[0, 0], [50, 0], [100, 0]],
         opts({start: 'arrow', end: 'open-arrow'}));
@@ -137,6 +150,12 @@ describe('line arrowheads', function() {
       assert.equal(props['line-start'], 'arrow');
       assert.equal(props['line-end'], 'open-arrow');
       assert.equal(props['line-end-size'], 12);
+    });
+
+    it('accepts wide-arrow', async function() {
+      var out = await api.applyCommands(
+        '-i in.json -style line-end=wide-arrow -o out.json', input());
+      assert.equal(JSON.parse(out['out.json']).features[0].properties['line-end'], 'wide-arrow');
     });
   });
 

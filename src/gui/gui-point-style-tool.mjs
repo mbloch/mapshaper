@@ -10,7 +10,10 @@ import { internal } from './gui-core';
 import { formatEditingStatus } from './gui-editing-status';
 import { runGuiEditCommand } from './gui-edit-command';
 import { quoteCommandValue } from './gui-command-utils';
-import { parseOpacityValue, formatOpacityPct, formatColorOpacityPct } from './gui-style-values';
+import {
+  parseOpacityValue, formatOpacityPct, formatColorOpacityPct, getNextStrokeWidth,
+  getNextLadderValue
+} from './gui-style-values';
 import { getSelectionChangeTest } from './gui-selection-change';
 import { FloatingToolbar } from './gui-floating-toolbar';
 import { getRestyleSymbolCommand } from './gui-symbol-commands';
@@ -476,34 +479,8 @@ export function PointStyleTool(gui) {
     circleStrokeWidthField.setValue(formatNumberValue(value));
   }
 
-  function getNextStrokeWidth(value, direction) {
-    var baseSteps = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
-    var i;
-    if (direction > 0) {
-      for (i=0; i<baseSteps.length; i++) {
-        if (value < baseSteps[i]) return baseSteps[i];
-      }
-      return Math.floor(value) + 1;
-    }
-    for (i=baseSteps.length - 1; i>=0; i--) {
-      if (value > baseSteps[i]) return baseSteps[i];
-    }
-    return baseSteps[0];
-  }
-
   function getNextCircleRadius(value, direction) {
-    var baseSteps = [0, 0.5, 1, 1.5, 2, 2.5, 3, 4, 5];
-    var i;
-    if (direction > 0) {
-      for (i=0; i<baseSteps.length; i++) {
-        if (value < baseSteps[i]) return baseSteps[i];
-      }
-      return Math.floor(value) + 1;
-    }
-    for (i=baseSteps.length - 1; i>=0; i--) {
-      if (value > baseSteps[i]) return baseSteps[i];
-    }
-    return baseSteps[0];
+    return getNextLadderValue([0, 0.5, 1, 1.5, 2, 2.5, 3, 4, 5], value, direction);
   }
 
   function getPointRepresentation() {

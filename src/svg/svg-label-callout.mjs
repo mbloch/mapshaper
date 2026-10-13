@@ -6,8 +6,8 @@ import { parseCalloutType, parseCalloutEnd, parsePointPair,
 import { getLabelPadding, labelHasBackground } from './svg-label-box';
 import { roundToTenths } from '../geom/mapshaper-rounding';
 import {
-  ARROW_ANGLE, OPEN_ARROW_ANGLE, ARROW_LINE_OVERLAP, getDefaultArrowSize,
-  getArrowHead, getArrowHeadLength, trimPolyline as trimPolylineCoords,
+  isSolidArrow, getSolidArrowAngle, OPEN_ARROW_ANGLE, ARROW_LINE_OVERLAP,
+  getDefaultArrowSize, getArrowHead, getArrowHeadLength, trimPolyline as trimPolylineCoords,
   getUnitVector, distance
 } from './svg-arrowheads';
 
@@ -91,7 +91,7 @@ function getRingRadius(size, lineWidth) {
   return Math.max(size - w, w) / 2;
 }
 
-// 'arrow', 'open-arrow', 'ring' or 'none'
+// 'arrow', 'wide-arrow', 'open-arrow', 'ring' or 'none'
 export function getCalloutEndType(rec) {
   return rec && parseCalloutEnd(rec['callout-end'] || '') || 'none';
 }
@@ -173,8 +173,9 @@ export function getLabelFontSize(rec) {
 // Where a line meets a callout's text and how it gets there from the anchor.
 //
 // o.type     'line', 'elbow' or 'curve'
-// o.end      'arrow' (filled), 'open-arrow' (stroked), 'ring' (a hollow circle
-//            around the anchor, in the line's width) or 'none'
+// o.end      'arrow' or 'wide-arrow' (filled), 'open-arrow' (stroked), 'ring'
+//            (a hollow circle around the anchor, in the line's width) or
+//            'none'
 // o.box      the text box, from getLabelTextBox()
 // o.via      [x, y] the elbow's corner or a point the curve passes through, or null
 // o.attach   [fx, fy] where the line meets the text, as fractions of the padded
@@ -232,12 +233,12 @@ export function getCalloutShape(o) {
   out = {kind: path.kind, coords: path.coords, head: null, openHead: null,
     ring: ringRadius > 0 ? {center: a, radius: ringRadius} : null,
     box: box, attach: t, via: v || null, tip: tip};
-  if (o.end == 'arrow') {
-    headLen = getArrowHeadLength(size, ARROW_ANGLE);
+  if (isSolidArrow(o.end)) {
+    headLen = getArrowHeadLength(size, getSolidArrowAngle(o.end));
     curved = path.kind == 'bezier' ? getCurveIntoArrowHead(path, headLen) : null;
     dir = curved ? curved.dir : getStartDirection(path);
     if (!dir) return null;
-    out.head = getArrowHead(tip, dir, size, ARROW_ANGLE);
+    out.head = getArrowHead(tip, dir, size, getSolidArrowAngle(o.end));
     // The line stops inside the head, so that its cap does not show past the
     // tip. A line too short to reach past the head is drawn as the head alone.
     path = curved ? curved.path : trimPath(path, headLen * ARROW_LINE_OVERLAP);

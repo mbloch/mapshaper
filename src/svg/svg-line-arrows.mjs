@@ -1,5 +1,5 @@
 import {
-  ARROW_ANGLE, OPEN_ARROW_ANGLE, ARROW_LINE_OVERLAP, getDefaultArrowSize,
+  getSolidArrowAngle, OPEN_ARROW_ANGLE, ARROW_LINE_OVERLAP, getDefaultArrowSize,
   getArrowHead, getArrowHeadLength, trimPolyline, getUnitVector, distance
 } from './svg-arrowheads';
 import { parseLineEnd, isSvgNumber } from './svg-properties';
@@ -11,7 +11,8 @@ import {
 } from './svg-line-taper';
 
 // Markers at the ends of line features: line-start= and line-end= take
-// arrow (a filled triangle), open-arrow (a stroked chevron), dot (a filled
+// arrow (a filled triangle), wide-arrow (the same, with a blunter point),
+// open-arrow (a stroked chevron), dot (a filled
 // circle centred on the end) or none, and line-end-size= is the length of a
 // head's sides in px, for both ends, or a dot's diameter. A dot with no size
 // of its own is DOT_SIZE_RATIO of an arrowhead's default size.
@@ -38,7 +39,7 @@ var DEFAULT_LINE_WIDTH = 1;
 // 6px across at the default size for a 1px line
 var DOT_SIZE_RATIO = 0.6;
 
-// 'arrow', 'open-arrow', 'dot' or 'none'
+// 'arrow', 'wide-arrow', 'open-arrow', 'dot' or 'none'
 export function getLineEndType(rec, field) {
   return rec && rec[field] && parseLineEnd(rec[field]) || 'none';
 }
@@ -183,7 +184,7 @@ function addHead(shape, type, opts) {
     angle = OPEN_ARROW_ANGLE;
   } else {
     side = opts.size;
-    angle = ARROW_ANGLE;
+    angle = getSolidArrowAngle(type);
   }
   tip = coords[0];
   len = getArrowHeadLength(side, angle);
@@ -195,7 +196,8 @@ function addHead(shape, type, opts) {
     shape.heads.push({type: type, points: [head[1], head[0], head[2]]});
     shape.coords = [tip].concat(rest);
   } else {
-    shape.heads.push({type: type, points: head});
+    // drawn as any solid head is: the angle is in the points
+    shape.heads.push({type: 'arrow', points: head});
     shape.coords = [[tip[0] + dir[0] * len * ARROW_LINE_OVERLAP,
       tip[1] + dir[1] * len * ARROW_LINE_OVERLAP]].concat(rest);
   }

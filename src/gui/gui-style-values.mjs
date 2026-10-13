@@ -36,6 +36,33 @@ export function formatColorOpacityPct(opacity, hasColor) {
   return formatOpacityPct(opacity);
 }
 
+// The stroke width a spinner step goes to from @value, up (@direction > 0) or
+// down. The useful widths are close together at the hairline end and far
+// apart above 2px.
+var STROKE_WIDTH_STEPS = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
+
+export function getNextStrokeWidth(value, direction) {
+  return getNextLadderValue(STROKE_WIDTH_STEPS, value, direction);
+}
+
+// The value a spinner step goes to from @value, through @steps (ascending);
+// above the last one, steps are whole numbers both ways.
+export function getNextLadderValue(steps, value, direction) {
+  var top = steps[steps.length - 1];
+  var i;
+  if (direction > 0) {
+    for (i=0; i<steps.length; i++) {
+      if (value < steps[i]) return steps[i];
+    }
+    return Math.floor(value) + 1;
+  }
+  if (value > top) return Math.max(top, Math.ceil(value) - 1);
+  for (i=steps.length - 1; i>=0; i--) {
+    if (value > steps[i]) return steps[i];
+  }
+  return steps[0];
+}
+
 function isUnsetValue(val) {
   return val === undefined || val === null || val === '';
 }

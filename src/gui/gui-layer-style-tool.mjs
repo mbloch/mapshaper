@@ -9,7 +9,8 @@ import { ARROWHEAD_SHAPES, getArrowheadGlyph } from './gui-arrowhead-shapes';
 import { formatEditingStatus } from './gui-editing-status';
 import { SizeField } from './gui-size-field';
 import {
-  parseOpacityValue, formatOpacityPct, formatColorOpacityPct, normalizeDashArrayInput
+  parseOpacityValue, formatOpacityPct, formatColorOpacityPct, normalizeDashArrayInput,
+  getNextStrokeWidth
 } from './gui-style-values';
 import { StylePresetControl } from './gui-style-preset-control';
 import { PatternFillControl } from './gui-pattern-fill-control';
@@ -872,21 +873,6 @@ export function LayerStyleTool(gui) {
     var value = Number(getCommonStyleValue('stroke-width'));
     if (!isFinite(value)) value = getDefaultStrokeWidth();
     applyStrokeWidthStyle(getNextStrokeWidth(value, direction));
-  }
-
-  function getNextStrokeWidth(value, direction) {
-    var baseSteps = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
-    var i;
-    if (direction > 0) {
-      for (i=0; i<baseSteps.length; i++) {
-        if (value < baseSteps[i]) return baseSteps[i];
-      }
-      return Math.floor(value) + 1;
-    }
-    for (i=baseSteps.length - 1; i>=0; i--) {
-      if (value > baseSteps[i]) return baseSteps[i];
-    }
-    return baseSteps[0];
   }
 
   function applyLayerStyle(field, value) {

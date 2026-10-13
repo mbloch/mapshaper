@@ -50,7 +50,7 @@ export function getOptionParser() {
         'label-background': {describe: 'color of a box drawn behind the text and its padding'},
         'label-background-opacity': {describe: 'background opacity, 0-1'},
         callout: {describe: 'line from the anchor to the text: line, elbow or curve'},
-        'callout-end': {describe: 'marker at the anchor end: arrow, open-arrow, ring or none'},
+        'callout-end': {describe: 'marker at the anchor end: arrow, wide-arrow, open-arrow, ring or none'},
         'callout-end-size': {describe: 'length of an arrowhead\'s sides, or a ring\'s diameter, in px'},
         'callout-via': {describe: 'x,y of an elbow\'s corner or a point on a curve, in px'},
         'callout-attach': {describe: 'where the callout meets the text, as x,y fractions'},
@@ -94,8 +94,8 @@ export function getOptionParser() {
         'stroke-dasharray': {describe: 'stroke dashes. Examples: "4" "2 4"'},
         'stroke-linecap': {describe: 'line caps: round, butt or square (dashed lines default to butt)'},
         'stroke-opacity': {describe: 'stroke opacity'},
-        'line-start': {describe: 'marker at the start of each line: arrow, open-arrow, dot or none'},
-        'line-end': {describe: 'marker at the end of each line: arrow, open-arrow, dot or none'},
+        'line-start': {describe: 'marker at the start of each line: arrow, wide-arrow, open-arrow, dot or none'},
+        'line-end': {describe: 'marker at the end of each line: arrow, wide-arrow, open-arrow, dot or none'},
         'line-end-size': {describe: 'length of an arrowhead\'s sides in px (default grows with stroke-width)'},
         'line-fade': {describe: 'share of a line (0-1) that fades in from its tail'},
         'line-taper': {describe: 'narrow each line toward its tail (0-1, 1 tapers to a point)'},
@@ -2366,10 +2366,10 @@ export function getOptionParser() {
       describe: '(curve) dashes, e.g. "4 2"'
     })
     .option('line-start', {
-      describe: '(curve) marker at the start: arrow, open-arrow, dot or none'
+      describe: '(curve) marker at the start: arrow, wide-arrow, open-arrow, dot or none'
     })
     .option('line-end', {
-      describe: '(curve) marker at the end: arrow, open-arrow, dot or none'
+      describe: '(curve) marker at the end: arrow, wide-arrow, open-arrow, dot or none'
     })
     .option('line-end-size', {
       describe: '(curve) size of the end markers in pixels'

@@ -479,13 +479,13 @@ export function parseCalloutType(str) {
 
 export function parseCalloutEnd(str) {
   var end = String(str).trim().toLowerCase();
-  return /^(arrow|open-arrow|ring|none)$/.test(end) ? end : null;
+  return /^(arrow|wide-arrow|open-arrow|ring|none)$/.test(end) ? end : null;
 }
 
 // A line's ends take a callout's arrowheads, and a dot
 export function parseLineEnd(str) {
   var end = String(str).trim().toLowerCase();
-  return /^(arrow|open-arrow|dot|none)$/.test(end) ? end : null;
+  return /^(arrow|wide-arrow|open-arrow|dot|none)$/.test(end) ? end : null;
 }
 
 export function parseLineCap(str) {

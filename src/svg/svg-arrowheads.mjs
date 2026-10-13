@@ -4,9 +4,20 @@
 
 // The angle at an arrowhead's point, degrees. The open one is wider, since a
 // narrow chevron drawn with a line reads as a thickened line more than as an
-// arrow.
+// arrow. A wide arrow is a solid one with a blunter point.
 export var ARROW_ANGLE = 35;
+export var WIDE_ARROW_ANGLE = 60;
 export var OPEN_ARROW_ANGLE = 70;
+
+// Whether an end type ('arrow', 'wide-arrow', ...) is a filled arrowhead
+export function isSolidArrow(type) {
+  return type == 'arrow' || type == 'wide-arrow';
+}
+
+// The point angle of a filled arrowhead of @type
+export function getSolidArrowAngle(type) {
+  return type == 'wide-arrow' ? WIDE_ARROW_ANGLE : ARROW_ANGLE;
+}
 // How far into a solid arrowhead the line reaches, as a fraction of the
 // head's length: far enough that its cap is hidden, short of the tip.
 export var ARROW_LINE_OVERLAP = 0.7;

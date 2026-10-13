@@ -190,6 +190,9 @@ var calloutEnds = [{
   name: 'arrow',
   title: 'solid arrowhead at the anchor'
 }, {
+  name: 'wide-arrow',
+  title: 'wide solid arrowhead at the anchor'
+}, {
   name: 'open-arrow',
   title: 'open arrowhead at the anchor'
 }, {
@@ -205,6 +208,7 @@ var calloutButtonSymbols = {
   curve: '<path d="M3.5 12.5Q4.5 4.5 12.5 4"></path>',
   none: '<path d="M3 8H13"></path>',
   arrow: ARROWHEAD_GLYPHS.arrow,
+  'wide-arrow': ARROWHEAD_GLYPHS['wide-arrow'],
   'open-arrow': ARROWHEAD_GLYPHS['open-arrow'],
   ring: '<path d="M8.4 8H13"></path><circle cx="5.6" cy="8" r="2.8"></circle>'
 };
