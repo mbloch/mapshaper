@@ -4482,6 +4482,10 @@
     notifyTransaction(activeTransaction, 'captureArcsBefore', arcs, detail || {});
   }
 
+  function noteArcsWillAppend(arcs, detail) {
+    notifyTransaction(activeTransaction, 'captureArcsAppendBefore', arcs, detail || {});
+  }
+
   function noteArcsSimplificationWillChange(arcs, detail) {
     notifyTransaction(activeTransaction, 'captureArcsSimplificationBefore', arcs, detail || {});
   }
@@ -4585,6 +4589,7 @@
     markTableRecordsChanged: markTableRecordsChanged,
     markTableSchemaChanged: markTableSchemaChanged,
     noteArcsSimplificationWillChange: noteArcsSimplificationWillChange,
+    noteArcsWillAppend: noteArcsWillAppend,
     noteArcsWillChange: noteArcsWillChange,
     noteCatalogWillChange: noteCatalogWillChange,
     noteDatasetInfoWillChange: noteDatasetInfoWillChange,
@@ -11015,7 +11020,11 @@
         _ii, _nn,  // indexes, sizes
         _zz, _zlimit = 0, // simplification
         _bb, _allBounds, // bounding boxes
-        _arcIter, _filteredArcIter; // path iterators
+        _arcIter, _filteredArcIter, // path iterators
+        // Arrays with spare capacity, allocated by appendArcs(). Only these are
+        // written past the end of the current data: arrays received from
+        // elsewhere may be views into a buffer that holds other data.
+        _capNN = null, _capXX = null, _capYY = null;
 
     if (arguments.length == 1) {
       initLegacyArcs(arguments[0]);  // want to phase this out
@@ -11112,10 +11121,86 @@
 
     this.updateVertexData = function(nn, xx, yy, zz) {
       this.captureArcsBefore({operation: 'updateVertexData'});
+      clearAppendCapacity();
       initXYData(nn, xx, yy);
       initZData(zz || null);
       this.markArcsChanged({operation: 'updateVertexData'});
     };
+
+    // Adds arcs to the end of the collection, leaving the ids of existing arcs
+    // unchanged. Unlike merging, this copies only the new vertices (most of the
+    // time), and undo takes it back by truncating the collection, without a
+    // copy of the existing arcs.
+    // nn, xx, yy: vertex data of the arcs to add
+    this.appendArcs = function(nn, xx, yy) {
+      var arcCount = _nn.length + nn.length,
+          pointCount = _xx.length + xx.length,
+          zlimit = _zlimit;
+      if (_zz) {
+        error('ArcCollection#appendArcs() Simplified arcs are not supported');
+      }
+      if (xx.length != yy.length) {
+        error('ArcCollection#appendArcs() Mismatched arrays');
+      }
+      noteArcsWillAppend(this, {operation: 'appendArcs'});
+      if (!hasAppendCapacity(arcCount, pointCount)) {
+        allocateAppendCapacity(arcCount, pointCount);
+      }
+      _capNN.set(nn, _nn.length);
+      _capXX.set(xx, _xx.length);
+      _capYY.set(yy, _yy.length);
+      initXYData(_capNN.subarray(0, arcCount), _capXX.subarray(0, pointCount),
+        _capYY.subarray(0, pointCount));
+      _zlimit = zlimit;
+      this.markArcsChanged({operation: 'appendArcs'});
+    };
+
+    // Removes arcs from the end of the collection, keeping the first @arcCount
+    // (used by undo to take back appendArcs()).
+    this.truncateArcs = function(arcCount) {
+      var zz = _zz,
+          zlimit = _zlimit,
+          pointCount;
+      if (!(arcCount >= 0 && arcCount <= _nn.length)) {
+        error('ArcCollection#truncateArcs() Invalid arc count:', arcCount);
+      }
+      pointCount = arcCount < _nn.length ? _ii[arcCount] : _xx.length;
+      this.captureArcsBefore({operation: 'truncateArcs'});
+      initXYData(_nn.subarray(0, arcCount), _xx.subarray(0, pointCount),
+        _yy.subarray(0, pointCount));
+      initZData(zz ? zz.subarray(0, pointCount) : null);
+      _zlimit = zlimit;
+      this.markArcsChanged({operation: 'truncateArcs'});
+    };
+
+    function hasAppendCapacity(arcCount, pointCount) {
+      return !!_capNN &&
+        _nn.buffer === _capNN.buffer && _capNN.length >= arcCount &&
+        _xx.buffer === _capXX.buffer && _capXX.length >= pointCount &&
+        _yy.buffer === _capYY.buffer && _capYY.length >= pointCount;
+    }
+
+    // Copies the current data into new arrays, with room for growth, so that
+    // a series of appends doesn't copy every vertex each time
+    function allocateAppendCapacity(arcCount, pointCount) {
+      var nn = new Uint32Array(arcCount + getSpareCapacity(arcCount)),
+          xx = new Float64Array(pointCount + getSpareCapacity(pointCount)),
+          yy = new Float64Array(xx.length);
+      nn.set(_nn);
+      xx.set(_xx);
+      yy.set(_yy);
+      _capNN = nn;
+      _capXX = xx;
+      _capYY = yy;
+    }
+
+    function getSpareCapacity(n) {
+      return Math.max(4096, Math.ceil(n * 0.1));
+    }
+
+    function clearAppendCapacity() {
+      _capNN = _capXX = _capYY = null;
+    }
 
     this.getUndoId = function() {
       return getUndoId(this);
@@ -27258,6 +27343,8 @@
     'line-end': 'lineend',
     'line-end-size': 'number',
     'line-fade': 'number',
+    // see svg-line-taper.mjs
+    'line-taper': 'number',
     // a wider stroke beneath a line -- see svg-line-casing.mjs. Drawn as copies
     // of the lines, not written as attributes, so not in propertiesBySymbolType.
     'casing-color': 'color',
@@ -27633,13 +27720,13 @@
 
   function parseCalloutEnd(str) {
     var end = String(str).trim().toLowerCase();
-    return /^(arrow|open-arrow|ring|none)$/.test(end) ? end : null;
+    return /^(arrow|wide-arrow|open-arrow|ring|none)$/.test(end) ? end : null;
   }
 
   // A line's ends take a callout's arrowheads, and a dot
   function parseLineEnd(str) {
     var end = String(str).trim().toLowerCase();
-    return /^(arrow|open-arrow|dot|none)$/.test(end) ? end : null;
+    return /^(arrow|wide-arrow|open-arrow|dot|none)$/.test(end) ? end : null;
   }
 
   function parseLineCap(str) {
@@ -28292,9 +28379,20 @@
 
   // The angle at an arrowhead's point, degrees. The open one is wider, since a
   // narrow chevron drawn with a line reads as a thickened line more than as an
-  // arrow.
+  // arrow. A wide arrow is a solid one with a blunter point.
   var ARROW_ANGLE = 35;
+  var WIDE_ARROW_ANGLE = 60;
   var OPEN_ARROW_ANGLE = 70;
+
+  // Whether an end type ('arrow', 'wide-arrow', ...) is a filled arrowhead
+  function isSolidArrow(type) {
+    return type == 'arrow' || type == 'wide-arrow';
+  }
+
+  // The point angle of a filled arrowhead of @type
+  function getSolidArrowAngle(type) {
+    return type == 'wide-arrow' ? WIDE_ARROW_ANGLE : ARROW_ANGLE;
+  }
   // How far into a solid arrowhead the line reaches, as a fraction of the
   // head's length: far enough that its cap is hidden, short of the tip.
   var ARROW_LINE_OVERLAP = 0.7;
@@ -28445,7 +28543,7 @@
     return Math.max(size - w, w) / 2;
   }
 
-  // 'arrow', 'open-arrow', 'ring' or 'none'
+  // 'arrow', 'wide-arrow', 'open-arrow', 'ring' or 'none'
   function getCalloutEndType(rec) {
     return rec && parseCalloutEnd(rec['callout-end'] || '') || 'none';
   }
@@ -28527,8 +28625,9 @@
   // Where a line meets a callout's text and how it gets there from the anchor.
   //
   // o.type     'line', 'elbow' or 'curve'
-  // o.end      'arrow' (filled), 'open-arrow' (stroked), 'ring' (a hollow circle
-  //            around the anchor, in the line's width) or 'none'
+  // o.end      'arrow' or 'wide-arrow' (filled), 'open-arrow' (stroked), 'ring'
+  //            (a hollow circle around the anchor, in the line's width) or
+  //            'none'
   // o.box      the text box, from getLabelTextBox()
   // o.via      [x, y] the elbow's corner or a point the curve passes through, or null
   // o.attach   [fx, fy] where the line meets the text, as fractions of the padded
@@ -28586,12 +28685,12 @@
     out = {kind: path.kind, coords: path.coords, head: null, openHead: null,
       ring: ringRadius > 0 ? {center: a, radius: ringRadius} : null,
       box: box, attach: t, via: v || null, tip: tip};
-    if (o.end == 'arrow') {
-      headLen = getArrowHeadLength(size, ARROW_ANGLE);
+    if (isSolidArrow(o.end)) {
+      headLen = getArrowHeadLength(size, getSolidArrowAngle(o.end));
       curved = path.kind == 'bezier' ? getCurveIntoArrowHead(path, headLen) : null;
       dir = curved ? curved.dir : getStartDirection(path);
       if (!dir) return null;
-      out.head = getArrowHead(tip, dir, size, ARROW_ANGLE);
+      out.head = getArrowHead(tip, dir, size, getSolidArrowAngle(o.end));
       // The line stops inside the head, so that its cap does not show past the
       // tip. A line too short to reach past the head is drawn as the head alone.
       path = curved ? curved.path : trimPath(path, headLen * ARROW_LINE_OVERLAP);
@@ -32171,8 +32270,473 @@
     renderGlowFilter: renderGlowFilter
   });
 
+  // line-taper= narrows a line toward its tail: 0-1, the share of the line's
+  // width it loses there, so 1 tapers it to a point and 0.5 to half its width.
+  // The width changes evenly along the whole line, from the tail to the head,
+  // which is the start unless only the start has a head (as with line-fade=).
+  // A tapered line need not have heads.
+  //
+  // A line whose width changes can't be stroked, so it is drawn as a fill: the
+  // outline of a stroke whose width runs from one end's to the other's. The
+  // outline is built from pieces -- a quadrilateral for each segment, and a join
+  // at each vertex between segments -- all wound the same way and filled as one
+  // path with the nonzero rule, so that where they overlap they are simply
+  // filled. Tracing a single outline around the line would be smaller, but its
+  // inner side folds over itself at every sharp bend, and the fold leaves a hole.
+  // One path, rather than a path per piece, keeps a translucent fill even and
+  // leaves no seams between the pieces.
+  //
+  // Its ends are round, as an untapered line's are, unless stroke-linecap= is
+  // butt or square, which both end it flat. An end with a head is flat.
+  //
+  // A dashed tapered line is the same outline, built only along its dashes:
+  // stroke-dasharray= lengths are px along the line, as for a stroked line,
+  // and do not shrink with the taper, and the pattern starts at the line's
+  // first point. The dashes have butt ends, unless stroke-linecap= says
+  // otherwise, as an untapered dashed line's do.
+  //
+  // The canvas in the GUI draws the same pieces (see getArrowLinePencil() in
+  // gui-canvas.mjs).
+  //
+  // Coordinates are px, y down: the SVG export's space, or the canvas's.
+
+  // Joins at bends sharper than this are round; gentler ones are beveled,
+  // which at this angle is within a fiftieth of the width of a round join
+  var ROUND_JOIN_ANGLE = 10 * Math.PI / 180;
+
+  // The share of the width lost at the tail, 0 for none
+  function parseLineTaper(val) {
+    return isSvgNumber(val) && Number(val) > 0 ? Math.min(Number(val), 1) : 0;
+  }
+
+  // Which ends of a tapered line are round, for a line with stroke-linecap=
+  // @cap and line-end options @opts (see makeLineArrowOpts()). An end with a
+  // head has none, since a translucent head would show it.
+  function getTaperCaps(cap, opts) {
+    var round = !cap || cap == 'round';
+    return [round && opts.start == 'none', round && opts.end == 'none'];
+  }
+
+  // The pieces of a tapered line's outline (see getTaperedLinePieces()), with
+  // its caps and dashes. o.cap: stroke-linecap=; o.dashes: from
+  // parseDashArray(), or null; o.startHead, o.endHead: whether the ends have
+  // heads; o.bbox: optional [xmin, ymin, xmax, ymax], outside of which no dashes
+  // are made (the pieces may still reach past it).
+  function getTaperedOutline(coords, startWidth, endWidth, o) {
+    var caps;
+    if (o.dashes) {
+      return getTaperedDashPieces(coords, startWidth, endWidth, o.dashes,
+        o.cap || 'butt', [!o.startHead, !o.endHead], o.bbox);
+    }
+    caps = getTaperCaps(o.cap, {start: o.startHead ? 'arrow' : 'none',
+      end: o.endHead ? 'arrow' : 'none'});
+    return getTaperedLinePieces(coords, startWidth, endWidth, caps);
+  }
+
+  // The options getTaperedOutline() takes, for a line with stroke-linecap=
+  // @cap and stroke-dasharray= @dashArray, in px times @scale, and line-end
+  // options @lineOpts (see makeLineArrowOpts())
+  function makeTaperOutlineOpts(cap, dashArray, lineOpts, scale) {
+    return {
+      cap: cap || null,
+      dashes: parseDashArray(dashArray, scale),
+      startHead: lineOpts.start != 'none',
+      endHead: lineOpts.end != 'none'
+    };
+  }
+
+  // A stroke-dasharray= value as a list of px lengths, dash then gap, times
+  // @scale; null for a solid line. An odd number of lengths is repeated, as in
+  // SVG.
+  function parseDashArray(val, scale) {
+    var k = scale > 0 ? scale : 1;
+    var parts, sum = 0, i;
+    if (val === undefined || val === null || String(val).trim() === '' ||
+        String(val).trim() == 'none') return null;
+    parts = String(val).trim().split(/[\s,]+/).map(Number);
+    for (i = 0; i < parts.length; i++) {
+      if (!(parts[i] >= 0) || !isFinite(parts[i])) return null;
+      sum += parts[i];
+    }
+    if (!(sum > 0)) return null;
+    if (parts.length % 2 == 1) parts = parts.concat(parts);
+    return parts.map(function(n) { return n * k; });
+  }
+
+  // A line with more dashes than this along a stretch of it is drawn solid
+  // there, rather than as a fill of countless slivers
+  var MAX_DASHES = 20000;
+
+  // The pieces of the dashes of a tapered line. The line is taken a segment at
+  // a time, with the dashes that overlap it: a dash gets a quadrilateral for its
+  // stretch of each segment it crosses, a join at each vertex inside it, and its
+  // caps. @endCaps, [start, end], is whether the line's own ends take a cap. A
+  // segment is first cut to @bbox (if given), so that zoomed far in, where a
+  // line can be millions of px long, only the dashes in view are made.
+  function getTaperedDashPieces(coords, startWidth, endWidth, dashes, cap, endCaps, bbox) {
+    var pts = removeDuplicatePoints(coords);
+    var pieces = [];
+    var period = dashes.reduce(function(sum, n) { return sum + n; }, 0);
+    var total = 0, lengths = [0], maxR, box, i;
+    if (pts.length < 2) return pieces;
+    for (i = 1; i < pts.length; i++) {
+      total += dist$1(pts[i - 1], pts[i]);
+      lengths.push(total);
+    }
+    maxR = Math.max(startWidth, endWidth) / 2;
+    box = bbox ? [bbox[0] - maxR * 2, bbox[1] - maxR * 2, bbox[2] + maxR * 2, bbox[3] + maxR * 2] : null;
+    for (i = 1; i < pts.length; i++) {
+      addDashedSegment(i);
+    }
+    return pieces;
+
+    function radiusAt(d) {
+      return (startWidth + (endWidth - startWidth) * d / total) / 2;
+    }
+
+    function isCapAllowed(d) {
+      if (d === 0) return endCaps[0];
+      if (d == total) return endCaps[1];
+      return true;
+    }
+
+    function addDashedSegment(i) {
+      var a = pts[i - 1], b = pts[i];
+      var la = lengths[i - 1], lb = lengths[i];
+      var len = lb - la;
+      var range = box ? clipSegmentToBox(a, b, box) : [0, 1];
+      var lo, hi;
+      if (!range) return;
+      lo = la + range[0] * len;
+      hi = la + range[1] * len;
+      if (Math.ceil((hi - lo) / period) * dashes.length / 2 > MAX_DASHES) {
+        addSegment$1(pieces, pointAt(lo), pointAt(hi), radiusAt(lo), radiusAt(hi));
+        if (i < pts.length - 1 && range[1] == 1) {
+          addJoin(pieces, a, b, pts[i + 1], radiusAt(lb));
+        }
+        return;
+      }
+      forEachDash(lo, hi, function(s, e) {
+        var from = Math.max(s, lo), to = Math.min(e, hi);
+        if (to > from) {
+          addSegment$1(pieces, pointAt(from), pointAt(to), radiusAt(from), radiusAt(to));
+        }
+        if (s >= la && (s < lb || s == total)) addCap(s, -1, isCapAllowed(s));
+        if (e > la && e <= lb) addCap(e, 1, isCapAllowed(e));
+        if (e > lb && i < pts.length - 1 && range[1] == 1) {
+          addJoin(pieces, a, b, pts[i + 1], radiusAt(lb));
+        }
+      });
+
+      // @side: -1 at a dash's start, 1 at its end
+      function addCap(d, side, allowed) {
+        var p = pointAt(d), r = radiusAt(d), u;
+        if (!allowed || !(r > 0) || cap == 'butt') return;
+        if (cap == 'round') {
+          pieces.push({center: p, radius: r});
+        } else if (cap == 'square') {
+          u = [(b[0] - a[0]) / len * side * r, (b[1] - a[1]) / len * side * r];
+          addSegment$1(pieces, p, [p[0] + u[0], p[1] + u[1]], r, r);
+        }
+      }
+
+      function pointAt(d) {
+        var k = (d - la) / len;
+        return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
+      }
+    }
+
+    // Calls @cb(start, end) for each dash that overlaps the stretch from @lo to
+    // @hi, where start and end are distances along the line
+    function forEachDash(lo, hi, cb) {
+      var base = Math.floor(lo / period) * period;
+      var s, e, j;
+      for (; base <= hi; base += period) {
+        s = base;
+        for (j = 0; j < dashes.length; j += 2) {
+          e = Math.min(s + dashes[j], total);
+          // a dash that starts where the line ends has nothing left of it,
+          // though a dot (a dash of no length) is still drawn there
+          if (s > hi || s >= total && dashes[j] > 0) return;
+          if (e >= lo && (e > s || cap != 'butt')) cb(s, e);
+          s += dashes[j] + dashes[j + 1];
+        }
+      }
+    }
+  }
+
+  // The part of the segment from @a to @b inside @box, as [t0, t1], shares of
+  // the segment's length, or null if none is (Liang-Barsky)
+  function clipSegmentToBox(a, b, box) {
+    var dx = b[0] - a[0], dy = b[1] - a[1];
+    var t0 = 0, t1 = 1;
+    var p = [-dx, dx, -dy, dy];
+    var q = [a[0] - box[0], box[2] - a[0], a[1] - box[1], box[3] - a[1]];
+    var r, i;
+    for (i = 0; i < 4; i++) {
+      if (p[i] === 0) {
+        if (q[i] < 0) return null;
+      } else {
+        r = q[i] / p[i];
+        if (p[i] < 0) {
+          if (r > t1) return null;
+          if (r > t0) t0 = r;
+        } else {
+          if (r < t0) return null;
+          if (r < t1) t1 = r;
+        }
+      }
+    }
+    return [t0, t1];
+  }
+
+  // The widths of a tapered line at its first and last points, for a line
+  // @width wide tapered by @taper, whose tail is its last point if @fromEnd.
+  function getTaperWidths(width, taper, fromEnd) {
+    var tail = width * (1 - taper);
+    return fromEnd ? [width, tail] : [tail, width];
+  }
+
+  // The pieces of the outline of a line whose width runs evenly from @startWidth
+  // at its first point to @endWidth at its last. A piece is {points}, a polygon;
+  // {center, radius}, a circle; or {center, radius, from, to}, the sector of a
+  // circle from the point @from to the point @to, in increasing angle, less
+  // than half the circle. Polygons are wound with a positive area in y-down
+  // coordinates (clockwise on screen), as a circle or a sector drawn in
+  // increasing angle is. @roundCaps, [start, end], adds round ends. Empty for a line with
+  // no length.
+  function getTaperedLinePieces(coords, startWidth, endWidth, roundCaps) {
+    var pts = removeDuplicatePoints(coords);
+    var pieces = [];
+    var total = 0, lengths = [0], radii, i, n;
+    if (pts.length < 2) return pieces;
+    for (i = 1; i < pts.length; i++) {
+      total += dist$1(pts[i - 1], pts[i]);
+      lengths.push(total);
+    }
+    radii = lengths.map(function(len) {
+      return (startWidth + (endWidth - startWidth) * len / total) / 2;
+    });
+    for (i = 1; i < pts.length; i++) {
+      addSegment$1(pieces, pts[i - 1], pts[i], radii[i - 1], radii[i]);
+      if (i < pts.length - 1) {
+        addJoin(pieces, pts[i - 1], pts[i], pts[i + 1], radii[i]);
+      }
+    }
+    n = pts.length - 1;
+    if (roundCaps && roundCaps[0] && radii[0] > 0) {
+      pieces.push({center: pts[0], radius: radii[0]});
+    }
+    if (roundCaps && roundCaps[1] && radii[n] > 0) {
+      pieces.push({center: pts[n], radius: radii[n]});
+    }
+    return pieces;
+  }
+
+  // The pieces as an SVG path's d attribute, rounded to hundredths of a px
+  function getTaperedLinePathData(pieces) {
+    return pieces.map(function(piece) {
+      var c, r;
+      if (piece.points) {
+        return 'M ' + piece.points.map(fmt$1).join(' L ') + ' Z';
+      }
+      c = piece.center;
+      r = round$2(piece.radius);
+      if (piece.from) {
+        return 'M ' + fmt$1(c) + ' L ' + fmt$1(piece.from) + ' A ' + r + ' ' + r +
+          ' 0 0 1 ' + fmt$1(piece.to) + ' Z';
+      }
+      // two half circles; sweep flag 1 winds them as the polygons are wound
+      return 'M ' + fmt$1([c[0] + r, c[1]]) + ' A ' + r + ' ' + r + ' 0 1 1 ' +
+        fmt$1([c[0] - r, c[1]]) + ' A ' + r + ' ' + r + ' 0 1 1 ' +
+        fmt$1([c[0] + r, c[1]]) + ' Z';
+    }).join(' ');
+  }
+
+  // The pieces that reach into @bbox ([xmin, ymin, xmax, ymax]), with polygons
+  // that cross its edge cut to it. For the canvas, which stops drawing a shape
+  // whose coordinates grow too large: zoomed far in, a line's outline runs far
+  // outside the view, though it is built from the whole line, whose ends set
+  // its widths. Clipping keeps the winding of the polygons, and the cut edges
+  // lie outside the view when @bbox is the view with a margin.
+  function clipTaperedPieces(pieces, bbox) {
+    var out = [];
+    pieces.forEach(function(piece) {
+      var b, points;
+      if (piece.center) {
+        b = [piece.center[0] - piece.radius, piece.center[1] - piece.radius,
+          piece.center[0] + piece.radius, piece.center[1] + piece.radius];
+        if (boxesIntersect(b, bbox)) out.push(piece);
+        return;
+      }
+      b = getPointsBox(piece.points);
+      if (!boxesIntersect(b, bbox)) return;
+      if (b[0] >= bbox[0] && b[1] >= bbox[1] && b[2] <= bbox[2] && b[3] <= bbox[3]) {
+        out.push(piece);
+        return;
+      }
+      points = clipPolygonToBox(piece.points, bbox);
+      if (points.length > 2) out.push({points: points});
+    });
+    return out;
+  }
+
+  // Sutherland-Hodgman, which is exact for a convex polygon such as a piece
+  function clipPolygonToBox(points, bbox) {
+    var out = points;
+    [[0, 1, bbox[0]], [1, 1, bbox[1]], [0, -1, bbox[2]], [1, -1, bbox[3]]].forEach(function(edge) {
+      out = clipPolygonToEdge(out, edge[0], edge[1], edge[2]);
+    });
+    return out;
+  }
+
+  // Keeps the side of the line where p[@dim] * @sign >= @val * @sign
+  function clipPolygonToEdge(points, dim, sign, val) {
+    var out = [];
+    var a, b, ina, inb, k, i;
+    for (i = 0; i < points.length; i++) {
+      a = points[i];
+      b = points[(i + 1) % points.length];
+      ina = (a[dim] - val) * sign >= 0;
+      inb = (b[dim] - val) * sign >= 0;
+      if (ina) out.push(a);
+      if (ina != inb) {
+        k = (val - a[dim]) / (b[dim] - a[dim]);
+        out.push([a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k]);
+      }
+    }
+    return out;
+  }
+
+  function getPointsBox(points) {
+    var b = [Infinity, Infinity, -Infinity, -Infinity];
+    points.forEach(function(p) {
+      if (p[0] < b[0]) b[0] = p[0];
+      if (p[1] < b[1]) b[1] = p[1];
+      if (p[0] > b[2]) b[2] = p[0];
+      if (p[1] > b[3]) b[3] = p[1];
+    });
+    return b;
+  }
+
+  function boxesIntersect(a, b) {
+    return a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
+  }
+
+  function addSegment$1(pieces, a, b, ra, rb) {
+    var n = getNormal(a, b);
+    addPolygon(pieces, [
+      [a[0] + n[0] * ra, a[1] + n[1] * ra],
+      [b[0] + n[0] * rb, b[1] + n[1] * rb],
+      [b[0] - n[0] * rb, b[1] - n[1] * rb],
+      [a[0] - n[0] * ra, a[1] - n[1] * ra]
+    ]);
+  }
+
+  // Fills the gap the two segments' pieces leave on the outside of the bend at
+  // @b: the wedge between the ends of their edges, and no more. It lies behind
+  // the end of each segment's piece at @b, so it can't reach past the end of a
+  // dash that stops just after the bend, as a whole round join would.
+  function addJoin(pieces, a, b, c, r) {
+    var n1 = getNormal(a, b);
+    var n2 = getNormal(b, c);
+    var cos = n1[0] * n2[0] + n1[1] * n2[1];
+    var side, p1, p2, mid, len;
+    if (!(r > 0) || cos >= 1) return;
+    // the gap is on the side the line turns away from
+    side = (c[0] - b[0]) * n1[0] + (c[1] - b[1]) * n1[1] > 0 ? -1 : 1;
+    p1 = [b[0] + side * n1[0] * r, b[1] + side * n1[1] * r];
+    p2 = [b[0] + side * n2[0] * r, b[1] + side * n2[1] * r];
+    if (Math.acos(Math.max(cos, -1)) <= ROUND_JOIN_ANGLE) {
+      addPolygon(pieces, [b, p1, p2]);
+      return;
+    }
+    // a round join, as two sectors meeting halfway round it, so that each is
+    // less than a half circle -- which it is not, for a line that turns back
+    // on itself
+    mid = [side * (n1[0] + n2[0]), side * (n1[1] + n2[1])];
+    len = Math.sqrt(mid[0] * mid[0] + mid[1] * mid[1]);
+    if (len > 1e-9) {
+      mid = [mid[0] / len, mid[1] / len];
+    } else {
+      // straight back: halfway round is straight on
+      mid = [n1[1], -n1[0]];
+    }
+    mid = [b[0] + mid[0] * r, b[1] + mid[1] * r];
+    addSector(pieces, b, r, p1, mid);
+    addSector(pieces, b, r, mid, p2);
+  }
+
+  // A sector of the circle at @center through @from and @to, the short way
+  // round, wound like the polygons
+  function addSector(pieces, center, r, from, to) {
+    var cross = (from[0] - center[0]) * (to[1] - center[1]) -
+      (from[1] - center[1]) * (to[0] - center[0]);
+    pieces.push(cross >= 0 ? {center: center, radius: r, from: from, to: to} :
+      {center: center, radius: r, from: to, to: from});
+  }
+
+  function addPolygon(pieces, points) {
+    if (getSignedArea(points) < 0) points.reverse();
+    pieces.push({points: points});
+  }
+
+  // Twice the area, positive for a ring that is clockwise on screen (y down)
+  function getSignedArea(points) {
+    var sum = 0, a, b, i;
+    for (i = 0; i < points.length; i++) {
+      a = points[i];
+      b = points[(i + 1) % points.length];
+      sum += a[0] * b[1] - b[0] * a[1];
+    }
+    return sum;
+  }
+
+  // Unit vector at right angles to the segment from @a to @b
+  function getNormal(a, b) {
+    var d = dist$1(a, b);
+    return [-(b[1] - a[1]) / d, (b[0] - a[0]) / d];
+  }
+
+  function removeDuplicatePoints(coords) {
+    var pts = [];
+    (coords || []).forEach(function(p) {
+      var prev = pts[pts.length - 1];
+      if (!prev || prev[0] != p[0] || prev[1] != p[1]) pts.push(p);
+    });
+    return pts;
+  }
+
+  function dist$1(a, b) {
+    var dx = b[0] - a[0], dy = b[1] - a[1];
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function fmt$1(p) {
+    return round$2(p[0]) + ' ' + round$2(p[1]);
+  }
+
+  function round$2(n) {
+    return Math.round(n * 100) / 100;
+  }
+
+  var SvgLineTaper = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    clipTaperedPieces: clipTaperedPieces,
+    getTaperCaps: getTaperCaps,
+    getTaperWidths: getTaperWidths,
+    getTaperedDashPieces: getTaperedDashPieces,
+    getTaperedLinePathData: getTaperedLinePathData,
+    getTaperedLinePieces: getTaperedLinePieces,
+    getTaperedOutline: getTaperedOutline,
+    makeTaperOutlineOpts: makeTaperOutlineOpts,
+    parseDashArray: parseDashArray,
+    parseLineTaper: parseLineTaper
+  });
+
   // Markers at the ends of line features: line-start= and line-end= take
-  // arrow (a filled triangle), open-arrow (a stroked chevron), dot (a filled
+  // arrow (a filled triangle), wide-arrow (the same, with a blunter point),
+  // open-arrow (a stroked chevron), dot (a filled
   // circle centred on the end) or none, and line-end-size= is the length of a
   // head's sides in px, for both ends, or a dot's diameter. A dot with no size
   // of its own is DOT_SIZE_RATIO of an arrowhead's default size.
@@ -32191,13 +32755,15 @@
   // follows a path, so a line that bends sharply within its fade will not fade
   // evenly along its length.
   //
+  // line-taper= narrows the line toward the same tail (see svg-line-taper.mjs).
+  //
   // Coordinates are px, y down: the SVG export's space, or the canvas's.
 
   var DEFAULT_LINE_WIDTH$1 = 1;
   // 6px across at the default size for a 1px line
   var DOT_SIZE_RATIO = 0.6;
 
-  // 'arrow', 'open-arrow', 'dot' or 'none'
+  // 'arrow', 'wide-arrow', 'open-arrow', 'dot' or 'none'
   function getLineEndType(rec, field) {
     return rec && rec[field] && parseLineEnd(rec[field]) || 'none';
   }
@@ -32214,19 +32780,20 @@
 
   // Whether a line is drawn by renderArrowLine() rather than as a plain path
   function lineHasEndStyles(rec) {
-    return lineHasArrows(rec) || parseLineFade(rec && rec['line-fade']) > 0;
+    return lineHasArrows(rec) || parseLineFade(rec && rec['line-fade']) > 0 ||
+      parseLineTaper(rec && rec['line-taper']) > 0;
   }
 
   // What getLineArrowShape() needs from a record, at scale @scale (the factor
   // the canvas multiplies line widths by; 1 for SVG).
   function getLineArrowOpts(rec, scale) {
     return makeLineArrowOpts(rec['line-start'], rec['line-end'], rec['line-end-size'],
-      rec['stroke-width'], scale, rec['line-fade']);
+      rec['stroke-width'], scale, rec['line-fade'], rec['line-taper']);
   }
 
   // The same, from the values themselves, for the canvas, which has them in a
   // style object rather than a record.
-  function makeLineArrowOpts(start, end, size, strokeWidth, scale, fade) {
+  function makeLineArrowOpts(start, end, size, strokeWidth, scale, fade, taper) {
     var k = scale > 0 ? scale : 1;
     var w = isSvgNumber(strokeWidth) && Number(strokeWidth) >= 0 ?
       Number(strokeWidth) : DEFAULT_LINE_WIDTH$1;
@@ -32238,19 +32805,21 @@
       size: side * k,
       dotSize: (hasSize ? side : side * DOT_SIZE_RATIO) * k,
       width: w * k,
-      fade: parseLineFade(fade)
+      fade: parseLineFade(fade),
+      taper: parseLineTaper(taper)
     };
   }
 
   // Field names, for a layer that may have them
-  var lineArrowFields = ['line-start', 'line-end', 'line-end-size', 'line-fade'];
+  var lineArrowFields = ['line-start', 'line-end', 'line-end-size', 'line-fade', 'line-taper'];
 
-  // One part of a line, with its heads: {coords, heads, fade}, where coords is
-  // the line to stroke -- cut back into a solid head, so that its cap does not
-  // show past the tip -- and heads is a list of {type, points}: a solid head's
-  // triangle, tip first, or an open head's chevron, wing to tip to wing. A dot
-  // is {type, center, radius}. fade is the axis of the line's fade (see
-  // getLineFadeAxis()), or null.
+  // One part of a line, with its heads: {coords, heads, fade, widths}, where
+  // coords is the line to stroke -- cut back into a solid head, so that its cap
+  // does not show past the tip -- and heads is a list of {type, points}: a
+  // solid head's triangle, tip first, or an open head's chevron, wing to tip to
+  // wing. A dot is {type, center, radius}. fade is the axis of the line's fade
+  // (see getLineFadeAxis()), or null. widths is a tapered line's width at the
+  // first and last points of coords, or null.
   //
   // A head points along the chord from its tip to where the line first reaches
   // the head's length from it, rather than along the last segment, which on
@@ -32258,10 +32827,15 @@
   // anywhere. The line is then straightened to meet the head along its axis. An
   // end whose part is too short to hold its head gets none.
   function getLineArrowShape(coords, opts) {
-    var out = {coords: coords, heads: [], fade: null};
+    var out = {coords: coords, heads: [], fade: null, widths: null};
+    var tailAtEnd = opts.start != 'none' && opts.end == 'none';
     var end;
     if (opts.fade > 0) {
-      out.fade = getLineFadeAxis(coords, opts.start != 'none' && opts.end == 'none', opts.fade);
+      out.fade = getLineFadeAxis(coords, tailAtEnd, opts.fade);
+    }
+    if (opts.taper > 0) {
+      out.widths = getTaperWidths(opts.width > 0 ? opts.width : DEFAULT_LINE_WIDTH$1,
+        opts.taper, tailAtEnd);
     }
     if (opts.start != 'none') {
       addHead(out, opts.start, opts);
@@ -32334,7 +32908,7 @@
       angle = OPEN_ARROW_ANGLE;
     } else {
       side = opts.size;
-      angle = ARROW_ANGLE;
+      angle = getSolidArrowAngle(type);
     }
     tip = coords[0];
     len = getArrowHeadLength(side, angle);
@@ -32346,7 +32920,8 @@
       shape.heads.push({type: type, points: [head[1], head[0], head[2]]});
       shape.coords = [tip].concat(rest);
     } else {
-      shape.heads.push({type: type, points: head});
+      // drawn as any solid head is: the angle is in the points
+      shape.heads.push({type: 'arrow', points: head});
       shape.coords = [[tip[0] + dir[0] * len * ARROW_LINE_OVERLAP,
         tip[1] + dir[1] * len * ARROW_LINE_OVERLAP]].concat(rest);
     }
@@ -32365,19 +32940,31 @@
   // A line feature with arrowheads or a fade, as SVG: a group holding the line
   // and its heads, for the feature's style attributes to go on. @parts is a list
   // of polylines (a LineString's coordinates are one). A faded part is a path of
-  // its own, since each part has its own gradient.
+  // its own, since each part has its own gradient. A tapered line is a filled
+  // path (see svg-line-taper.mjs).
   function renderArrowLine(parts, rec) {
     var opts = getLineArrowOpts(rec, 1);
     var color = rec.stroke || 'black';
     var fadeColors = opts.fade > 0 ? getLineFadeColors(color) : null;
+    var outline = makeTaperOutlineOpts(rec['stroke-linecap'], rec['stroke-dasharray'], opts, 1);
     var lines = [];
+    var tapered = [];
     var fadedLines = [];
     var heads = [];
     parts.forEach(function(part) {
       var shape = getLineArrowShape(part, opts);
       var coords = shape.coords.map(roundPoint$1);
-      if (shape.fade && fadeColors) {
-        fadedLines.push(renderFadedLine(coords, shape.fade, fadeColors));
+      var d;
+      if (shape.widths) {
+        d = getTaperedLinePathData(getTaperedOutline(shape.coords,
+          shape.widths[0], shape.widths[1], outline));
+        if (!d) ; else if (shape.fade && fadeColors) {
+          fadedLines.push(addLineFade(renderTaperedLine(d, color, rec), shape.fade, fadeColors, 'fill'));
+        } else {
+          tapered.push(d);
+        }
+      } else if (shape.fade && fadeColors) {
+        fadedLines.push(addLineFade(importLineString(coords), shape.fade, fadeColors, 'stroke'));
       } else {
         lines.push(coords);
       }
@@ -32386,16 +32973,26 @@
       });
     });
     var children = lines.length > 0 ? [importMultiLineString(lines)] : [];
+    if (tapered.length > 0) {
+      children.push(renderTaperedLine(tapered.join(' '), color, rec));
+    }
     return {tag: 'g', properties: {}, children: children.concat(fadedLines, heads)};
   }
 
+  // The fill rule is set on the path, so that a fill rule on the layer can't
+  // punch holes where the outline's pieces overlap.
+  function renderTaperedLine(d, color, rec) {
+    return {tag: 'path', properties: addFillOpacity({d: d, fill: color,
+      'fill-rule': 'nonzero', stroke: 'none'}, rec)};
+  }
+
   // The gradient is added to the SVG's <defs> by convertLineFade(), which also
-  // points the path's stroke at it.
-  function renderFadedLine(coords, axis, colors) {
-    var obj = importLineString(coords);
+  // points the path's @paint (stroke or fill) at it.
+  function addLineFade(obj, axis, colors, paint) {
     var from = roundPoint$1(axis.from);
     var to = roundPoint$1(axis.to);
-    obj.lineFade = {x1: from[0], y1: from[1], x2: to[0], y2: to[1], color: colors.solid};
+    obj.lineFade = {x1: from[0], y1: from[1], x2: to[0], y2: to[1], color: colors.solid,
+      paint: paint};
     return obj;
   }
 
@@ -32405,11 +33002,7 @@
   // path's bounding box, has no height for a horizontal line, and a gradient
   // over an empty box paints nothing.
   function convertLineFade(obj, defs) {
-    var f = obj.lineFade;
-    var color = String(f.color).replace(/"/g, '');
-    var body = 'gradientUnits="userSpaceOnUse" x1="' + f.x1 + '" y1="' + f.y1 +
-      '" x2="' + f.x2 + '" y2="' + f.y2 + '"><stop offset="0" stop-color="' + color +
-      '" stop-opacity="0"/><stop offset="1" stop-color="' + color + '"/></linearGradient>';
+    var body = getLineFadeGradientBody(obj.lineFade);
     var item = defs.find(function(o) { return o.lineFadeKey === body; });
     var count;
     if (!item) {
@@ -32418,8 +33011,59 @@
       item.svg = '<linearGradient id="' + item.id + '" ' + body + '\n';
       defs.push(item);
     }
+    setLineFadePaint(obj, item.id);
+  }
+
+  // The same, for markup that is not written out through <defs>: each faded
+  // path in @obj gets a gradient in a <defs> of its own, added to @obj's
+  // children, with an id made from the gradient, so that identical gradients
+  // in different places can share it. For the GUI, which draws each curve
+  // symbol on its own.
+  function inlineLineFades(obj) {
+    var defs = [];
+    (function visit(o) {
+      var f = o.lineFade;
+      var id, color;
+      if (f) {
+        id = 'line-fade-' + hashString(getLineFadeGradientBody(f));
+        color = String(f.color);
+        if (!defs.some(function(def) { return def.properties.id == id; })) {
+          defs.push({tag: 'linearGradient', properties: {id: id,
+            gradientUnits: 'userSpaceOnUse', x1: f.x1, y1: f.y1, x2: f.x2, y2: f.y2
+          }, children: [
+            {tag: 'stop', properties: {offset: 0, 'stop-color': color, 'stop-opacity': 0}},
+            {tag: 'stop', properties: {offset: 1, 'stop-color': color}}
+          ]});
+        }
+        setLineFadePaint(o, id);
+      }
+      if (o.children) o.children.forEach(visit);
+    }(obj));
+    if (defs.length > 0) {
+      obj.children = [{tag: 'defs', children: defs}].concat(obj.children || []);
+    }
+    return obj;
+  }
+
+  function getLineFadeGradientBody(f) {
+    var color = String(f.color).replace(/"/g, '');
+    return 'gradientUnits="userSpaceOnUse" x1="' + f.x1 + '" y1="' + f.y1 +
+      '" x2="' + f.x2 + '" y2="' + f.y2 + '"><stop offset="0" stop-color="' + color +
+      '" stop-opacity="0"/><stop offset="1" stop-color="' + color + '"/></linearGradient>';
+  }
+
+  function setLineFadePaint(obj, id) {
+    var paint = obj.lineFade.paint || 'stroke';
     delete obj.lineFade;
-    obj.properties.stroke = 'url(#' + item.id + ')';
+    obj.properties[paint] = 'url(#' + id + ')';
+  }
+
+  function hashString(str) {
+    var h = 5381, i;
+    for (i = 0; i < str.length; i++) {
+      h = (h * 33 + str.charCodeAt(i)) | 0;
+    }
+    return (h >>> 0).toString(36);
   }
 
   function renderHead(head, color, rec) {
@@ -32463,6 +33107,7 @@
     getLineEndType: getLineEndType,
     getLineFadeAxis: getLineFadeAxis,
     getLineFadeColors: getLineFadeColors,
+    inlineLineFades: inlineLineFades,
     lineArrowFields: lineArrowFields,
     lineHasArrows: lineHasArrows,
     lineHasEndStyles: lineHasEndStyles,
@@ -32613,9 +33258,10 @@
   // curve is refitted whenever it is drawn, and stays editable as a curve.
   //
   // A curve whose last knot repeats its first is a closed loop, which can take
-  // a fill. An open curve can take the line-end markers and fade of a line
-  // (line-start=, line-end=, line-end-size=, line-fade=). Stroke widths and
-  // marker sizes are in px, like the sizes of other point symbols.
+  // a fill. An open curve can take the line-end markers, fade and taper of a
+  // line (line-start=, line-end=, line-end-size=, line-fade=, line-taper=).
+  // Stroke widths and marker sizes are in px, like the sizes of other point
+  // symbols.
   //
   // Coordinates are px, y down: the SVG export's space, or the space inside a
   // symbol group in the GUI.
@@ -32881,7 +33527,9 @@
   //
   // A line with arrowheads has its casing along the line itself, which stops
   // at the heads (see getLineArrowShape()); the heads have no casing. A line
-  // with a fade has a casing that does not fade.
+  // with a fade has a casing that does not fade. A tapered line's casing is a
+  // fill the casing's width wider than the line on either side, along its
+  // length (see svg-line-taper.mjs), and solid under a dashed line.
 
   var casingFields = ['casing-color', 'casing-width', 'casing-opacity'];
 
@@ -32948,6 +33596,11 @@
       } else {
         return;
       }
+      if (parseLineTaper(rec['line-taper']) > 0) {
+        obj = renderTaperedCasing(parts, rec, casing);
+        if (obj) children.push(obj);
+        return;
+      }
       parts = getCasingParts(parts, rec);
       if (parts.length === 0) return;
       obj = importMultiLineString(parts);
@@ -32973,6 +33626,23 @@
     return parts.filter(function(part) {
       return part && part.length > 1;
     });
+  }
+
+  function renderTaperedCasing(parts, rec, casing) {
+    var opts = getLineArrowOpts(rec, 1);
+    // solid, with the caps an untapered casing has
+    var outline = makeTaperOutlineOpts(getLineCasingCap(rec), null, opts, 1);
+    var extra = casing.width * 2;
+    var d = parts.map(function(part) {
+      var shape = getLineArrowShape(part, opts);
+      return getTaperedLinePathData(getTaperedOutline(shape.coords,
+        shape.widths[0] + extra, shape.widths[1] + extra, outline));
+    }).filter(Boolean).join(' ');
+    var props;
+    if (!d) return null;
+    props = {d: d, fill: casing.color, 'fill-rule': 'nonzero', stroke: 'none'};
+    if (casing.opacity < 1) props['fill-opacity'] = casing.opacity;
+    return {tag: 'path', properties: props};
   }
 
   function getCasingAttributes(rec, casing) {
@@ -47215,7 +47885,7 @@ ${css.join('\n')}
           'label-background': {describe: 'color of a box drawn behind the text and its padding'},
           'label-background-opacity': {describe: 'background opacity, 0-1'},
           callout: {describe: 'line from the anchor to the text: line, elbow or curve'},
-          'callout-end': {describe: 'marker at the anchor end: arrow, open-arrow, ring or none'},
+          'callout-end': {describe: 'marker at the anchor end: arrow, wide-arrow, open-arrow, ring or none'},
           'callout-end-size': {describe: 'length of an arrowhead\'s sides, or a ring\'s diameter, in px'},
           'callout-via': {describe: 'x,y of an elbow\'s corner or a point on a curve, in px'},
           'callout-attach': {describe: 'where the callout meets the text, as x,y fractions'},
@@ -47259,10 +47929,11 @@ ${css.join('\n')}
           'stroke-dasharray': {describe: 'stroke dashes. Examples: "4" "2 4"'},
           'stroke-linecap': {describe: 'line caps: round, butt or square (dashed lines default to butt)'},
           'stroke-opacity': {describe: 'stroke opacity'},
-          'line-start': {describe: 'marker at the start of each line: arrow, open-arrow, dot or none'},
-          'line-end': {describe: 'marker at the end of each line: arrow, open-arrow, dot or none'},
+          'line-start': {describe: 'marker at the start of each line: arrow, wide-arrow, open-arrow, dot or none'},
+          'line-end': {describe: 'marker at the end of each line: arrow, wide-arrow, open-arrow, dot or none'},
           'line-end-size': {describe: 'length of an arrowhead\'s sides in px (default grows with stroke-width)'},
           'line-fade': {describe: 'share of a line (0-1) that fades in from its tail'},
+          'line-taper': {describe: 'narrow each line toward its tail (0-1, 1 tapers to a point)'},
           'casing-color': {describe: 'color of a casing (outline) drawn beneath each line (adds the casing)'},
           'casing-width': {describe: 'how far the casing extends past each edge of the line, in px (default is 1)'},
           'casing-opacity': {describe: 'opacity of the casing, 0-1'},
@@ -49530,16 +50201,19 @@ ${css.join('\n')}
         describe: '(curve) dashes, e.g. "4 2"'
       })
       .option('line-start', {
-        describe: '(curve) marker at the start: arrow, open-arrow, dot or none'
+        describe: '(curve) marker at the start: arrow, wide-arrow, open-arrow, dot or none'
       })
       .option('line-end', {
-        describe: '(curve) marker at the end: arrow, open-arrow, dot or none'
+        describe: '(curve) marker at the end: arrow, wide-arrow, open-arrow, dot or none'
       })
       .option('line-end-size', {
         describe: '(curve) size of the end markers in pixels'
       })
       .option('line-fade', {
         describe: '(curve) share of the curve that fades in from its tail, 0-1'
+      })
+      .option('line-taper', {
+        describe: '(curve) narrow the curve toward its tail (0-1, 1 tapers to a point)'
       })
       .option('coordinates', {
         describe: 'add a symbol at x,y (or x,y,x,y,... for a curve)'
@@ -59575,7 +60249,7 @@ ${css.join('\n')}
     if (targetDataset) {
       setDatasetCrsInfo(dataset, getDatasetCrsInfo(targetDataset));
     }
-    outputLyr = mergeDatasetsIntoDataset(targetDataset, [dataset])[0];
+    outputLyr = mergeShapeIntoDataset(targetDataset, dataset)[0];
     if (opts.no_replace || !targetLyr) {
       // create new layer
       setOutputLayerName(outputLyr, targetLyr && targetLyr.name, null, opts);
@@ -59622,7 +60296,7 @@ ${css.join('\n')}
         coords[coords.length - 1].join(','));
     }
     feature.geometry = {type: 'LineString', coordinates: coords};
-    pathLyr = mergeDatasetsIntoDataset(targetDataset, [importGeoJSON(feature)])[0];
+    pathLyr = mergeShapeIntoDataset(targetDataset, importGeoJSON(feature))[0];
     pathIds = pathLyr.shapes[0][0];
     // The extended line goes in a copy of the target layer, which replaces it,
     // as a merged layer does: until the command is done, the GUI goes on drawing
@@ -59657,6 +60331,39 @@ ${css.join('\n')}
       stop$1('More than one line ends at', p.join(',') + '; unable to extend');
     }
     return matches[0] || null;
+  }
+
+  // Adds the arcs of @dataset, holding the new shape, to @targetDataset, and
+  // returns its layers. Where it can, this appends the arcs to the target's
+  // arcs in place: merging would copy every vertex in the target dataset, and
+  // an undo state would keep the copy, which adds up when shapes are drawn on
+  // a large layer.
+  function mergeShapeIntoDataset(targetDataset, dataset) {
+    var arcs = targetDataset && targetDataset.arcs;
+    var offset, data;
+    if (!canAppendArcs(arcs, dataset.arcs)) {
+      return mergeDatasetsIntoDataset(targetDataset, [dataset]);
+    }
+    offset = arcs.size();
+    dataset.layers.forEach(function(lyr) {
+      forEachArcId(lyr.shapes, function(id) {
+        return id < 0 ? id - offset : id + offset;
+      });
+    });
+    data = dataset.arcs.getVertexData();
+    arcs.appendArcs(data.nn, data.xx, data.yy);
+    return dataset.layers;
+  }
+
+  // Merging bakes in simplification and drops the thresholds, so simplified
+  // arcs are merged, to keep that behavior.
+  function canAppendArcs(arcs, src) {
+    return !!arcs && arcs.size() > 0 && isUnsimplified(arcs) &&
+      !!src && src.size() > 0 && isUnsimplified(src);
+  }
+
+  function isUnsimplified(arcs) {
+    return arcs.isFlat() && arcs.getRetainedInterval() === 0;
   }
 
   function reversePathIds(ids) {
@@ -90092,7 +90799,7 @@ ${css.join('\n')}
     if (isNumber(d['stroke-width'])) o['stroke-width'] = d['stroke-width'] * scale;
     if (isNumber(d['line-end-size'])) o['line-end-size'] = d['line-end-size'] * scale;
     ['stroke-dasharray', 'stroke-opacity', 'opacity', 'line-start', 'line-end',
-      'line-fade'].forEach(function(name) {
+      'line-fade', 'line-taper'].forEach(function(name) {
       if (hasValue(d[name])) o[name] = d[name];
     });
     return o;
@@ -91442,7 +92149,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.84";
+  var version = "0.7.85";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -92946,6 +93653,7 @@ ${css.join('\n')}
 
     captureArcsBefore: function(arcs, detail) {
       var data, key;
+      promoteArcsAppendUnit(this, arcs);
       key = unitKey('arcs', arcs);
       if (this._captured[key]) return;
       this._captured[key] = true;
@@ -92964,8 +93672,29 @@ ${css.join('\n')}
       });
     },
 
+    // Arcs that are only appended to are restored by truncating them, so the
+    // unit records just the arc count, not a copy of the arcs. If the arcs are
+    // changed in any other way in the same transaction, the unit is replaced by
+    // a full 'arcs' unit (see promoteArcsAppendUnit()).
+    captureArcsAppendBefore: function(arcs, detail) {
+      var key;
+      if (this._captured[unitKey('arcs', arcs)]) return;
+      key = unitKey('arcs-append', arcs);
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      this.units.push({
+        type: 'arcs-append',
+        target: arcs,
+        id: getUndoId(arcs),
+        revision: getUndoRevision(arcs),
+        detail: copyDetail(detail),
+        arcCount: arcs.size()
+      });
+    },
+
     captureArcsSimplificationBefore: function(arcs, detail) {
       var data, key;
+      promoteArcsAppendUnit(this, arcs);
       key = unitKey('arcs-simplification', arcs);
       if (this._captured[key]) return;
       this._captured[key] = true;
@@ -93215,6 +93944,8 @@ ${css.join('\n')}
       return captureCurrentArcs(unit);
     } else if (unit.type == 'arcs-simplification') {
       return captureCurrentArcsSimplification(unit);
+    } else if (unit.type == 'arcs-append') {
+      return captureCurrentArcsAppend(unit);
     } else if (unit.type == 'catalog') {
       return captureCurrentCatalog(unit);
     } else if (unit.type == 'dataset') {
@@ -93304,6 +94035,56 @@ ${css.join('\n')}
     });
   }
 
+  // The arcs appended since the unit was captured, for redo
+  function captureCurrentArcsAppend(unit) {
+    var data = unit.target.getVertexData();
+    var pointCount = getArcsPointOffset(data, unit.arcCount);
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      nn: new Uint32Array(data.nn.subarray(unit.arcCount)),
+      xx: data.xx.slice(pointCount),
+      yy: data.yy.slice(pointCount)
+    });
+  }
+
+  // Index of the first vertex of arc @arcCount (the vertex count of the arcs
+  // before it)
+  function getArcsPointOffset(data, arcCount) {
+    if (arcCount > data.nn.length) {
+      throw new Error('Undo error: arcs were removed after being appended to');
+    }
+    return arcCount < data.nn.length ? data.ii[arcCount] : data.xx.length;
+  }
+
+  // Replaces the transaction's 'arcs-append' unit for @arcs, if it has one,
+  // with an 'arcs' unit holding the arcs as they were before the transaction:
+  // the arcs that the appends left in place.
+  function promoteArcsAppendUnit(tx, arcs) {
+    var key = unitKey('arcs-append', arcs);
+    var i, unit, data, pointCount;
+    if (!tx._captured[key]) return;
+    delete tx._captured[key];
+    i = tx.units.findIndex(function(u) {
+      return u.type == 'arcs-append' && u.target === arcs;
+    });
+    unit = tx.units[i];
+    data = arcs.getVertexData();
+    pointCount = getArcsPointOffset(data, unit.arcCount);
+    tx.units[i] = {
+      type: 'arcs',
+      target: arcs,
+      id: unit.id,
+      revision: unit.revision,
+      detail: unit.detail,
+      nn: new Uint32Array(data.nn.subarray(0, unit.arcCount)),
+      xx: new Float64Array(data.xx.subarray(0, pointCount)),
+      yy: new Float64Array(data.yy.subarray(0, pointCount)),
+      zz: data.zz ? new Float64Array(data.zz.subarray(0, pointCount)) : null,
+      zlimit: arcs.getRetainedInterval()
+    };
+    tx._captured[unitKey('arcs', arcs)] = true;
+  }
+
   function captureCurrentCatalog(unit) {
     return Object.assign({}, unit, {
       revision: getUndoRevision(unit.target),
@@ -93369,6 +94150,8 @@ ${css.join('\n')}
       restoreArcs(unit);
     } else if (unit.type == 'arcs-simplification') {
       restoreArcsSimplification(unit);
+    } else if (unit.type == 'arcs-append') {
+      restoreArcsAppend(unit);
     } else if (unit.type == 'catalog') {
       restoreCatalog(unit);
     } else if (unit.type == 'dataset') {
@@ -93437,6 +94220,18 @@ ${css.join('\n')}
   function restoreArcsSimplification(unit) {
     unit.target.setThresholds(unit.zz ? new Float64Array(unit.zz) : null);
     unit.target.setRetainedInterval(unit.zlimit);
+  }
+
+  // Undo truncates the arcs; redo (a unit from captureCurrentArcsAppend())
+  // then appends the arcs it holds.
+  function restoreArcsAppend(unit) {
+    if (unit.target.size() < unit.arcCount) {
+      throw new Error('Undo error: arcs were removed after being appended to');
+    }
+    unit.target.truncateArcs(unit.arcCount);
+    if (unit.nn && unit.nn.length > 0) {
+      unit.target.appendArcs(unit.nn, unit.xx, unit.yy);
+    }
   }
 
   function restoreCatalog(unit) {
@@ -93843,7 +94638,7 @@ ${css.join('\n')}
     SvgFeatureUtils,
     SvgLabels, SvgSymbols, SvgLabelPaths, SvgLabelFit, SvgLabelAlign,
     SvgLabelMetrics, SvgLabelHalo, SvgLabelCallout, SvgLabelBox, SvgLabelBackground,
-    SvgLabelMarkup, SvgLineArrows, SvgCurveSymbols, SvgGlow, SvgLineCasing, SvgRasterize,
+    SvgLabelMarkup, SvgLineArrows, SvgCurveSymbols, SvgGlow, SvgLineCasing, SvgLineTaper, SvgRasterize,
     {getIconBoundingRadius});
 
   // Reached through the bundle rather than imported from source, unlike most of

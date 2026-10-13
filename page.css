@@ -3510,6 +3510,13 @@ body.pan.panning .map-layers:not(.drawing) {
 	white-space: nowrap;
 }
 
+/* A line's taper goes in the narrow column, under its fade, with nothing
+   beside it. */
+.layer-arrow-taper-cell,
+.symbol-curve-taper-cell {
+	grid-column: 2;
+}
+
 .label-split-cell > select,
 .label-split-cell > .size-field,
 .label-split-cell > input[type="text"] {

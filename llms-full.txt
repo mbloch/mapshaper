@@ -1535,7 +1535,7 @@ With `coordinates=`, the command adds one label, either to the target point laye
 
 `callout=`         A line from a label's anchor to its text: `line`, `elbow` or `curve`
 
-`callout-end=`     Marker at the anchor end of a callout: `arrow`, `open-arrow`, `ring` (a hollow circle around the anchor, drawn in the callout's width) or `none`
+`callout-end=`     Marker at the anchor end of a callout: `arrow`, `wide-arrow` (a solid arrowhead with a blunter, 60° point), `open-arrow`, `ring` (a hollow circle around the anchor, drawn in the callout's width) or `none`
 
 `callout-end-size=` Length of an arrowhead's sides, or a ring's diameter, in pixels (an arrowhead's default is 10 for a 1px line, and grows with the line; a ring's is twice that)
 
@@ -2236,13 +2236,15 @@ Example: `hatches 45deg 2px red 2px grey`
 
 `stroke-linecap=`  Line caps: `round` (the default), `butt` or `square`. Dashed lines default to `butt`.
 
-`line-start=`      Marker at the first vertex of a line: `arrow`, `open-arrow`, `dot` or `none`. Each part of a multi-part line gets its own marker.
+`line-start=`      Marker at the first vertex of a line: `arrow`, `wide-arrow` (a solid arrowhead with a blunter, 60° point), `open-arrow`, `dot` or `none`. Each part of a multi-part line gets its own marker.
 
-`line-end=`        Marker at the last vertex of a line: `arrow`, `open-arrow`, `dot` or `none`.
+`line-end=`        Marker at the last vertex of a line: `arrow`, `wide-arrow`, `open-arrow`, `dot` or `none`.
 
 `line-end-size=`   Length of an arrowhead's sides in pixels, or the diameter of a dot, for both ends (an arrowhead's default is 7 plus three times the stroke width; a dot's is 0.6 of that)
 
 `line-fade=`       Share of a line's length, from 0 to 1, that fades in from transparent at its tail (e.g. `line-fade=0.4`). The tail is the start of the line, unless only the start has a marker. The fade is a straight gradient, so it suits straight or gently curved lines best.
+
+`line-taper=`      Narrow a line toward its tail: the share of its width, from 0 to 1, that it loses there (`line-taper=1` tapers it to a point, `line-taper=0.5` to half its width). The width changes evenly along the whole line, from the tail to the head; the tail is chosen as for `line-fade=`, and a line needs no markers to taper. A tapered line is drawn as a filled shape. Its ends are round unless `stroke-linecap=` is `butt` or `square`. It can be dashed: dash and gap lengths stay the same along the line, and the dashes have butt ends unless `stroke-linecap=` says otherwise. Also accepted by `-symbols type=curve`.
 
 `casing-color=`    Add a casing (an outline) of this color beneath each line. The casings of a layer are all drawn before any of its lines, so that lines join cleanly where they meet. A casing has the line's caps and joins, is solid under a dashed line, and stops at a line's arrowheads.
 

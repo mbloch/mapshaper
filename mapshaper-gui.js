@@ -4909,6 +4909,10 @@
     notifyTransaction(activeTransaction, 'captureArcsBefore', arcs, detail || {});
   }
 
+  function noteArcsWillAppend(arcs, detail) {
+    notifyTransaction(activeTransaction, 'captureArcsAppendBefore', arcs, detail || {});
+  }
+
   function noteArcsSimplificationWillChange$1(arcs, detail) {
     notifyTransaction(activeTransaction, 'captureArcsSimplificationBefore', arcs, detail || {});
   }
@@ -5959,6 +5963,7 @@
 
     captureArcsBefore: function(arcs, detail) {
       var data, key;
+      promoteArcsAppendUnit(this, arcs);
       key = unitKey('arcs', arcs);
       if (this._captured[key]) return;
       this._captured[key] = true;
@@ -5977,8 +5982,29 @@
       });
     },
 
+    // Arcs that are only appended to are restored by truncating them, so the
+    // unit records just the arc count, not a copy of the arcs. If the arcs are
+    // changed in any other way in the same transaction, the unit is replaced by
+    // a full 'arcs' unit (see promoteArcsAppendUnit()).
+    captureArcsAppendBefore: function(arcs, detail) {
+      var key;
+      if (this._captured[unitKey('arcs', arcs)]) return;
+      key = unitKey('arcs-append', arcs);
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      this.units.push({
+        type: 'arcs-append',
+        target: arcs,
+        id: getUndoId(arcs),
+        revision: getUndoRevision(arcs),
+        detail: copyDetail(detail),
+        arcCount: arcs.size()
+      });
+    },
+
     captureArcsSimplificationBefore: function(arcs, detail) {
       var data, key;
+      promoteArcsAppendUnit(this, arcs);
       key = unitKey('arcs-simplification', arcs);
       if (this._captured[key]) return;
       this._captured[key] = true;
@@ -6228,6 +6254,8 @@
       return captureCurrentArcs(unit);
     } else if (unit.type == 'arcs-simplification') {
       return captureCurrentArcsSimplification(unit);
+    } else if (unit.type == 'arcs-append') {
+      return captureCurrentArcsAppend(unit);
     } else if (unit.type == 'catalog') {
       return captureCurrentCatalog(unit);
     } else if (unit.type == 'dataset') {
@@ -6317,6 +6345,56 @@
     });
   }
 
+  // The arcs appended since the unit was captured, for redo
+  function captureCurrentArcsAppend(unit) {
+    var data = unit.target.getVertexData();
+    var pointCount = getArcsPointOffset(data, unit.arcCount);
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      nn: new Uint32Array(data.nn.subarray(unit.arcCount)),
+      xx: data.xx.slice(pointCount),
+      yy: data.yy.slice(pointCount)
+    });
+  }
+
+  // Index of the first vertex of arc @arcCount (the vertex count of the arcs
+  // before it)
+  function getArcsPointOffset(data, arcCount) {
+    if (arcCount > data.nn.length) {
+      throw new Error('Undo error: arcs were removed after being appended to');
+    }
+    return arcCount < data.nn.length ? data.ii[arcCount] : data.xx.length;
+  }
+
+  // Replaces the transaction's 'arcs-append' unit for @arcs, if it has one,
+  // with an 'arcs' unit holding the arcs as they were before the transaction:
+  // the arcs that the appends left in place.
+  function promoteArcsAppendUnit(tx, arcs) {
+    var key = unitKey('arcs-append', arcs);
+    var i, unit, data, pointCount;
+    if (!tx._captured[key]) return;
+    delete tx._captured[key];
+    i = tx.units.findIndex(function(u) {
+      return u.type == 'arcs-append' && u.target === arcs;
+    });
+    unit = tx.units[i];
+    data = arcs.getVertexData();
+    pointCount = getArcsPointOffset(data, unit.arcCount);
+    tx.units[i] = {
+      type: 'arcs',
+      target: arcs,
+      id: unit.id,
+      revision: unit.revision,
+      detail: unit.detail,
+      nn: new Uint32Array(data.nn.subarray(0, unit.arcCount)),
+      xx: new Float64Array(data.xx.subarray(0, pointCount)),
+      yy: new Float64Array(data.yy.subarray(0, pointCount)),
+      zz: data.zz ? new Float64Array(data.zz.subarray(0, pointCount)) : null,
+      zlimit: arcs.getRetainedInterval()
+    };
+    tx._captured[unitKey('arcs', arcs)] = true;
+  }
+
   function captureCurrentCatalog(unit) {
     return Object.assign({}, unit, {
       revision: getUndoRevision(unit.target),
@@ -6382,6 +6460,8 @@
       restoreArcs(unit);
     } else if (unit.type == 'arcs-simplification') {
       restoreArcsSimplification(unit);
+    } else if (unit.type == 'arcs-append') {
+      restoreArcsAppend(unit);
     } else if (unit.type == 'catalog') {
       restoreCatalog(unit);
     } else if (unit.type == 'dataset') {
@@ -6450,6 +6530,18 @@
   function restoreArcsSimplification(unit) {
     unit.target.setThresholds(unit.zz ? new Float64Array(unit.zz) : null);
     unit.target.setRetainedInterval(unit.zlimit);
+  }
+
+  // Undo truncates the arcs; redo (a unit from captureCurrentArcsAppend())
+  // then appends the arcs it holds.
+  function restoreArcsAppend(unit) {
+    if (unit.target.size() < unit.arcCount) {
+      throw new Error('Undo error: arcs were removed after being appended to');
+    }
+    unit.target.truncateArcs(unit.arcCount);
+    if (unit.nn && unit.nn.length > 0) {
+      unit.target.appendArcs(unit.nn, unit.xx, unit.yy);
+    }
   }
 
   function restoreCatalog(unit) {
@@ -6587,6 +6679,7 @@
     'table-schema': ['fields'],
     arcs: ['nn', 'xx', 'yy', 'zz', 'zlimit'],
     'arcs-simplification': ['zz'],
+    'arcs-append': ['nn', 'xx', 'yy'],
     layer: ['shapes', 'raster']
   };
 
@@ -6628,7 +6721,7 @@
     var flags = Object.assign({}, baseFlags || {}, {undo_restore: true});
     units.forEach(function(unit) {
       if (unit.type == 'changed') return;
-      if (unit.type == 'arcs') {
+      if (unit.type == 'arcs' || unit.type == 'arcs-append') {
         flags.arc_count = true;
       } else if (unit.type == 'arcs-simplification') {
         flags.simplify = true;
@@ -16787,6 +16880,33 @@
     return formatOpacityPct(opacity);
   }
 
+  // The stroke width a spinner step goes to from @value, up (@direction > 0) or
+  // down. The useful widths are close together at the hairline end and far
+  // apart above 2px.
+  var STROKE_WIDTH_STEPS = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
+
+  function getNextStrokeWidth(value, direction) {
+    return getNextLadderValue(STROKE_WIDTH_STEPS, value, direction);
+  }
+
+  // The value a spinner step goes to from @value, through @steps (ascending);
+  // above the last one, steps are whole numbers both ways.
+  function getNextLadderValue(steps, value, direction) {
+    var top = steps[steps.length - 1];
+    var i;
+    if (direction > 0) {
+      for (i=0; i<steps.length; i++) {
+        if (value < steps[i]) return steps[i];
+      }
+      return Math.floor(value) + 1;
+    }
+    if (value > top) return Math.max(top, Math.ceil(value) - 1);
+    for (i=steps.length - 1; i>=0; i--) {
+      if (value > steps[i]) return steps[i];
+    }
+    return steps[0];
+  }
+
   function isUnsetValue(val) {
     return val === undefined || val === null || val === '';
   }
@@ -18303,6 +18423,9 @@
     name: 'arrow',
     title: 'solid arrowheads'
   }, {
+    name: 'wide-arrow',
+    title: 'wide solid arrowheads'
+  }, {
     name: 'open-arrow',
     title: 'open arrowheads'
   }, {
@@ -18312,6 +18435,7 @@
 
   var ARROWHEAD_GLYPHS = {
     arrow: '<path d="M6.84 8H13"></path><path class="fill" d="M2.5 8L8.7 6.05V9.95Z"></path>',
+    'wide-arrow': '<path d="M6.44 8H13"></path><path class="fill" d="M2.5 8L8.13 4.75V11.25Z"></path>',
     'open-arrow': '<path d="M3.2 8H13"></path><path d="M7.38 5.07L3.2 8L7.38 10.93"></path>',
     dot: '<path d="M5 8H13"></path><circle class="fill" cx="5" cy="8" r="2.6"></circle>'
   };
@@ -18733,6 +18857,9 @@
     name: 'arrow',
     title: 'solid arrowhead at the anchor'
   }, {
+    name: 'wide-arrow',
+    title: 'wide solid arrowhead at the anchor'
+  }, {
     name: 'open-arrow',
     title: 'open arrowhead at the anchor'
   }, {
@@ -18748,6 +18875,7 @@
     curve: '<path d="M3.5 12.5Q4.5 4.5 12.5 4"></path>',
     none: '<path d="M3 8H13"></path>',
     arrow: ARROWHEAD_GLYPHS.arrow,
+    'wide-arrow': ARROWHEAD_GLYPHS['wide-arrow'],
     'open-arrow': ARROWHEAD_GLYPHS['open-arrow'],
     ring: '<path d="M8.4 8H13"></path><circle cx="5.6" cy="8" r="2.8"></circle>'
   };
@@ -25546,7 +25674,7 @@
   // See docs/development/line-tool-design.md.
 
   var LINE_FIELDS = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray',
-    'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'line-fade',
+    'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'line-fade', 'line-taper',
     'casing-color', 'casing-width', 'casing-opacity', 'opacity'];
 
   var POLYGON_FIELDS = ['stroke', 'stroke-width', 'stroke-opacity', 'fill', 'fill-opacity',
@@ -25667,7 +25795,7 @@
   }
 
   var savedStylesKey = 'layer_style_presets';
-  var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'line-fade', 'fill', 'fill-opacity', 'fill-pattern'].concat(internal.svg.glowFields, internal.svg.casingFields);
+  var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'line-fade', 'line-taper', 'fill', 'fill-opacity', 'fill-pattern'].concat(internal.svg.glowFields, internal.svg.casingFields);
   var arrowPositions = [{
     name: 'start',
     label: 'Start',
@@ -26211,6 +26339,23 @@
         onStep: nudgeArrowFade,
         onDone: releaseFocus
       });
+      var taperRow = El('div').addClass('label-style-row label-split-row').appendTo(section);
+      var taperCell = El('div').addClass('label-split-cell layer-arrow-taper-cell').appendTo(taperRow);
+      var taperCaption = El('div').addClass('label-style-row-label').appendTo(taperCell).text('Taper %');
+      makeFieldTip(taperCaption,
+        'How much of its width the line loses\n' +
+        'toward its tail: 100 tapers it to a point.\n' +
+        'A line can taper with or without heads.');
+      control.taperField = new SizeField(taperCell, {
+        title: 'Percent of the width the line loses toward its tail',
+        min: 0,
+        max: 100,
+        step: 5,
+        bigStep: 25,
+        onSet: applyLineTaper,
+        onStep: nudgeLineTaper,
+        onDone: releaseFocus
+      });
       return control;
     }
 
@@ -26321,14 +26466,36 @@
     }
 
     function getArrowFadeShown(ids) {
+      return getShareShown(ids, 'line-fade', internal.svg.parseLineFade);
+    }
+
+    // A field of shares (0-1) as a percent, for the lines @ids
+    function getShareShown(ids, field, parse) {
       var records = getTargetRecords();
       var value = '', pct;
       for (var i=0; i<ids.length; i++) {
-        pct = Math.round(internal.svg.parseLineFade(records[ids[i]] && records[ids[i]]['line-fade']) * 1000) / 10;
+        pct = Math.round(parse(records[ids[i]] && records[ids[i]][field]) * 1000) / 10;
         if (i > 0 && pct !== value) return {value: '', mixed: true};
         value = pct;
       }
       return {value: value, mixed: false};
+    }
+
+    // Like the fade, but for every target: a line needs no heads to taper, and
+    // removing the heads leaves its taper.
+    function applyLineTaper(pct) {
+      var ids = getTargetIds();
+      var value = pct > 0 ? Math.round(pct * 10) / 1000 : '';
+      if (ids.length === 0) return;
+      runStyleEdits(ids.map(function(id) {
+        return {id: id, styles: [['line-taper', value]]};
+      }));
+    }
+
+    function nudgeLineTaper(delta) {
+      var shown = getShareShown(getTargetIds(), 'line-taper', internal.svg.parseLineTaper);
+      if (shown.value === '') return;
+      applyLineTaper(Math.max(0, Math.min(100, Math.round(shown.value + delta))));
     }
 
     function getArrowTargetIds() {
@@ -26395,6 +26562,9 @@
       arrowControl.fadeField.setValue(fade.value);
       arrowControl.fadeField.setPlaceholder(fade.mixed ? 'mixed' : '');
       arrowControl.fadeField.setDisabled(arrowIds.length === 0);
+      var taper = getShareShown(ids, 'line-taper', internal.svg.parseLineTaper);
+      arrowControl.taperField.setValue(taper.value);
+      arrowControl.taperField.setPlaceholder(taper.mixed ? 'mixed' : '');
     }
 
     // With drawing armed, the one target is the next shape, whose record is the
@@ -26469,21 +26639,6 @@
       var value = Number(getCommonStyleValue('stroke-width'));
       if (!isFinite(value)) value = getDefaultStrokeWidth();
       applyStrokeWidthStyle(getNextStrokeWidth(value, direction));
-    }
-
-    function getNextStrokeWidth(value, direction) {
-      var baseSteps = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
-      var i;
-      if (direction > 0) {
-        for (i=0; i<baseSteps.length; i++) {
-          if (value < baseSteps[i]) return baseSteps[i];
-        }
-        return Math.floor(value) + 1;
-      }
-      for (i=baseSteps.length - 1; i>=0; i--) {
-        if (value > baseSteps[i]) return baseSteps[i];
-      }
-      return baseSteps[0];
     }
 
     function applyLayerStyle(field, value) {
@@ -26643,7 +26798,7 @@
     // Only when every target agrees, as with the other controls; a size is
     // saved only if the lines have their own.
     function addArrowStyleValues(style) {
-      ['line-start', 'line-end', 'line-end-size', 'line-fade'].forEach(function(field) {
+      ['line-start', 'line-end', 'line-end-size', 'line-fade', 'line-taper'].forEach(function(field) {
         addStyleValue(style, field, getCommonStyleValue(field));
       });
     }
@@ -26988,9 +27143,9 @@
   }
 
   function getDefaultCurveStyle() {
-    // arrowSize: '' for the size the stroke width gives a head; fade: 0-1
+    // arrowSize: '' for the size the stroke width gives a head; fade, taper: 0-1
     return {stroke: DEFAULT_SYMBOL_COLOR, strokeWidth: 1.5, arrowheads: 'end',
-      arrowShape: 'arrow', arrowSize: '', fade: 0, fill: ''};
+      arrowShape: 'arrow', arrowSize: '', fade: 0, taper: 0, fill: ''};
   }
 
   // Whether a shape takes a stroke width and a rotation. A circle or a ring
@@ -27059,6 +27214,7 @@
       o['line-end-size'] = style.arrowSize;
     }
     if (!closed && style.fade > 0) o['line-fade'] = style.fade;
+    if (!closed && style.taper > 0) o['line-taper'] = style.taper;
     if (closed && style.fill) o.fill = style.fill;
     return o;
   }
@@ -27120,6 +27276,7 @@
       arrowSize: isNumber(rec['line-end-size']) && rec['line-end-size'] > 0 ?
         Number(rec['line-end-size']) : '',
       fade: isNumber(rec['line-fade']) && rec['line-fade'] > 0 ? Math.min(Number(rec['line-fade']), 1) : 0,
+      taper: isNumber(rec['line-taper']) && rec['line-taper'] > 0 ? Math.min(Number(rec['line-taper']), 1) : 0,
       fill: rec.fill || ''
     };
   }
@@ -27625,34 +27782,8 @@
       circleStrokeWidthField.setValue(formatNumberValue(value));
     }
 
-    function getNextStrokeWidth(value, direction) {
-      var baseSteps = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
-      var i;
-      if (direction > 0) {
-        for (i=0; i<baseSteps.length; i++) {
-          if (value < baseSteps[i]) return baseSteps[i];
-        }
-        return Math.floor(value) + 1;
-      }
-      for (i=baseSteps.length - 1; i>=0; i--) {
-        if (value > baseSteps[i]) return baseSteps[i];
-      }
-      return baseSteps[0];
-    }
-
     function getNextCircleRadius(value, direction) {
-      var baseSteps = [0, 0.5, 1, 1.5, 2, 2.5, 3, 4, 5];
-      var i;
-      if (direction > 0) {
-        for (i=0; i<baseSteps.length; i++) {
-          if (value < baseSteps[i]) return baseSteps[i];
-        }
-        return Math.floor(value) + 1;
-      }
-      for (i=baseSteps.length - 1; i>=0; i--) {
-        if (value > baseSteps[i]) return baseSteps[i];
-      }
-      return baseSteps[0];
+      return getNextLadderValue([0, 0.5, 1, 1.5, 2, 2.5, 3, 4, 5], value, direction);
     }
 
     function getPointRepresentation() {
@@ -28636,6 +28767,7 @@
     var pathData = obj ? internal.svg.getCurvePathData(coords, internal.svg.curveIsClosed(coords)) : null;
     var group;
     if (!obj) return null;
+    internal.svg.inlineLineFades(obj);
     group = {tag: 'g', properties: {}, children: [obj]};
     if (pathData) {
       group.children.unshift({tag: 'path', properties: {
@@ -28643,7 +28775,8 @@
         'stroke-opacity': 0, 'stroke-width': CURVE_HIT_WIDTH
       }});
     }
-    group.properties[CURVE_ATTR] = '';
+    // not '': stringifyProperties() omits empty values
+    group.properties[CURVE_ATTR] = 'true';
     return group;
   }
 
@@ -31310,6 +31443,7 @@
         style.lineEnd = rec && rec['line-end'];
         style.lineEndSize = rec && rec['line-end-size'];
         style.lineFade = rec && rec['line-fade'];
+        style.lineTaper = rec && rec['line-taper'];
       }
       if (hasGlows) {
         style.outerGlow = layerOuterGlow ? null : internal.svg.getPolygonGlow(rec, 'outer');
@@ -38159,7 +38293,7 @@
     var iconSection, shapeBtns = {}, iconFill, iconSizeField, iconStroke,
         iconStrokeWidthField, rotationRow, rotationField;
     var curveSection, curveStroke, curveWidthField, arrowShapeRow, arrowShapeBtns = {},
-        arrowSizeField, arrowRow, arrowBtns = {}, fadeField, curveFill;
+        arrowSizeField, arrowRow, arrowBtns = {}, fadeField, taperRow, taperField, curveFill;
     // what the controls describe: {mode: 'new'|'selection', icons: [ids],
     //   curves: [ids], records}
     var state = null;
@@ -38348,6 +38482,22 @@
         onDone: releaseFocus
       });
 
+      taperRow = El('div').addClass('label-style-row label-split-row').appendTo(curveSection);
+      var taperCell = El('div').addClass('label-split-cell label-spacing-row symbol-curve-taper-cell').appendTo(taperRow);
+      El('span').appendTo(taperCell).text('Taper %');
+      taperField = new SizeField(taperCell, {
+        min: 0,
+        max: 100,
+        step: 5,
+        bigStep: 25,
+        title: 'Percent of the width the curve loses toward its tail (100 tapers it to a point)',
+        onSet: applyTaper,
+        onStep: function(delta) {
+          applyTaper(Math.max(0, Math.min(100, (Number(taperField.getValue()) || 0) + delta)));
+        },
+        onDone: releaseFocus
+      });
+
       curveFill = makeColorRow(curveSection, {
         label: 'Fill',
         noOpacity: true,
@@ -38457,7 +38607,7 @@
           o[key] = commonValue(state.curves, function(rec) { return getCurveStyle(rec)[key]; });
         });
         // the ends, from the open curves: a closed one has none
-        ['arrowheads', 'arrowShape', 'fade'].forEach(function(key) {
+        ['arrowheads', 'arrowShape', 'fade', 'taper'].forEach(function(key) {
           o[key] = commonValue(getOpenCurves(), function(rec) { return getCurveStyle(rec)[key]; });
         });
         o.arrowSize = commonValue(getOpenCurves().filter(curveHasHeads), function(rec) {
@@ -38483,6 +38633,7 @@
       }
       arrowSizeField.setDisabled(o.arrowheads == 'none');
       fadeField.setValue(o.fade === null ? '' : Math.round(o.fade * 1000) / 10);
+      taperField.setValue(o.taper === null ? '' : Math.round(o.taper * 1000) / 10);
       curveFill.showColor(o.fill || '');
       // Only a closed curve has an inside to fill, and closed curves are rare,
       // so the row waits for one; arrowheads go on the ends of an open one.
@@ -38490,6 +38641,7 @@
       var noEnds = state.mode == 'selection' && state.curves.every(curveIsClosed);
       arrowShapeRow.classed('hidden', noEnds);
       arrowRow.classed('hidden', noEnds);
+      taperRow.classed('hidden', noEnds);
     }
 
     // The size a head is drawn at: its own, or the one the stroke width gives it
@@ -38660,6 +38812,17 @@
         return update();
       }
       runStyle({'line-fade': fade || ''}, getOpenCurves(), 'Style curve');
+    }
+
+    // Like the fade: a percent here, a share of the width in line-taper
+    function applyTaper(pct) {
+      var taper = pct > 0 ? Math.round(pct * 10) / 1000 : 0;
+      if (!(pct >= 0)) return update();
+      if (state.mode == 'new') {
+        opts.getNewStyle().curve.taper = taper;
+        return update();
+      }
+      runStyle({'line-taper': taper || ''}, getOpenCurves(), 'Style curve');
     }
 
     function applyCurveWidth(w) {
@@ -40558,10 +40721,10 @@
             continue;
           }
           // A line with arrowheads is drawn on its own, trimmed to meet its heads;
-          // see svg-line-arrows.mjs. Only lines styled with line-start, line-end
-          // or line-fade get here, so the batch below is untouched for
-          // everything else.
-          if (drawStyle.lineStart || drawStyle.lineEnd || drawStyle.lineFade) {
+          // see svg-line-arrows.mjs. Only lines styled with line-start, line-end,
+          // line-fade or line-taper get here, so the batch below is untouched
+          // for everything else.
+          if (drawStyle.lineStart || drawStyle.lineEnd || drawStyle.lineFade || drawStyle.lineTaper) {
             if (!arrowPencil) arrowPencil = getArrowLinePencil(arcs, _ext, lineScale);
             if (arrowPencil(shp, _ctx, drawStyle, startPath, draw)) continue;
           }
@@ -40599,6 +40762,7 @@
         var casingStyle = {};
         var trimForArrows = _ext.scale() <= 100; // see getArrowLinePencil()
         var casingPencil = null;
+        var taperCasingPencil = null;
         var casing, batch, casingKey;
         for (var i=0; i<shapes.length; i++) {
           shp = shapes[i];
@@ -40607,6 +40771,11 @@
           casing = drawStyle.casing;
           if (!casing) continue;
           setCasingStyle(casingStyle, drawStyle, casing);
+          if (drawStyle.lineTaper && internal.svg.parseLineTaper(drawStyle.lineTaper) > 0) {
+            if (!taperCasingPencil) taperCasingPencil = getTaperedCasingPencil(arcs, _ext, lineScale);
+            taperCasingPencil(shp, _ctx, drawStyle, casing);
+            continue;
+          }
           if (trimForArrows && (drawStyle.lineStart || drawStyle.lineEnd)) {
             if (!casingPencil) casingPencil = getArrowCasingPencil(arcs, _ext, lineScale);
             casingPencil(shp, _ctx, drawStyle, casingStyle, startPath);
@@ -41072,6 +41241,10 @@
   // and angle, and are grown by half the halo's width all round, as the line
   // is. The halo is translucent, so the line is clipped out of its heads rather
   // than drawn over them.
+  //
+  // A tapered line is filled, at any scale: its outline is built from the whole
+  // line, whose ends set its widths, and clipped to the view (see
+  // fillTaperedParts()).
   function getArrowLinePencil(arcs, ext, lineScale) {
     var t = getScaledTransform(ext);
     var iter = new internal.ShapeIter(arcs);
@@ -41081,7 +41254,7 @@
       var halo = style.haloWidth > 0 ? style.haloWidth : 0;
       var lineWidth = style.strokeWidth - halo;
       var opts = internal.svg.makeLineArrowOpts(style.lineStart, style.lineEnd,
-        style.lineEndSize, lineWidth, strokeScale, style.lineFade);
+        style.lineEndSize, lineWidth, strokeScale, style.lineFade, style.lineTaper);
       var fadeColors = opts.fade > 0 ? internal.svg.getLineFadeColors(style.strokeColor) : null;
       var grow = halo * strokeScale / 2;
       var heads = [];
@@ -41089,7 +41262,8 @@
       var plain = [];
       var faded = [];
       var i, coords, shape, clipHeads;
-      if (opts.start == 'none' && opts.end == 'none' && !fadeColors || !(lineWidth > 0)) {
+      if (opts.start == 'none' && opts.end == 'none' && !fadeColors && !(opts.taper > 0) ||
+          !(lineWidth > 0)) {
         return false;
       }
       for (i=0; i<shp.length; i++) {
@@ -41103,6 +41277,18 @@
       if (clipHeads) {
         ctx.save();
         clipOutsideHeads(heads, ctx, grow);
+      }
+      if (opts.taper > 0) {
+        fillTaperedParts(parts.map(function(part) { return part.shape; }), ctx, {
+          color: style.strokeColor,
+          fadeColors: fadeColors,
+          alpha: getStrokeAlpha(style),
+          extraWidth: grow * 2,
+          outline: internal.svg.makeTaperOutlineOpts(style.lineCap, style.lineDash, opts, strokeScale)
+        });
+        if (clipHeads) ctx.restore();
+        drawArrowHeads(heads, ctx, style, opts.width, grow);
+        return true;
       }
       startPath(ctx, style);
       for (i=0; i<parts.length; i++) {
@@ -41150,6 +41336,104 @@
       }
       endPath(ctx, casingStyle);
     };
+  }
+
+  // Fills the casing of one tapered line feature: the line's outline, wider by
+  // the casing's width on each side
+  function getTaperedCasingPencil(arcs, ext, lineScale) {
+    var t = getScaledTransform(ext);
+    var iter = new internal.ShapeIter(arcs);
+    var strokeScale = getCanvasStrokeScale(GUI.getPixelRatio(), lineScale);
+    return function(shp, ctx, lineStyle, casing) {
+      var opts = internal.svg.makeLineArrowOpts(lineStyle.lineStart, lineStyle.lineEnd,
+        lineStyle.lineEndSize, lineStyle.strokeWidth, strokeScale, 0, lineStyle.lineTaper);
+      var shapes = [];
+      var coords;
+      for (var i=0; i<shp.length; i++) {
+        coords = getPixelCoords(iter, shp[i], t);
+        if (coords.length > 1) shapes.push(internal.svg.getLineArrowShape(coords, opts));
+      }
+      fillTaperedParts(shapes, ctx, {
+        color: casing.color,
+        alpha: casing.opacity,
+        extraWidth: casing.width * 2 * strokeScale,
+        // solid, with the caps an untapered casing has (see setCasingStyle())
+        outline: internal.svg.makeTaperOutlineOpts(
+          lineStyle.lineCap || (lineStyle.lineDash ? 'butt' : null), null, opts, 1)
+      });
+    };
+  }
+
+  // Fills the outlines of the parts of a tapered line (@shapes, from
+  // getLineArrowShape()) as svg-line-taper.mjs builds them, wider by
+  // o.extraWidth for a halo or a casing, with the caps and dashes of
+  // o.outline (see makeTaperOutlineOpts()). The parts are one path, unless they
+  // fade: each faded part has a gradient of its own.
+  function fillTaperedParts(shapes, ctx, o) {
+    var view = getTaperClipBox(ctx, o.extraWidth);
+    var faded = 0;
+    var i, shape;
+    ctx.globalAlpha = o.alpha;
+    ctx.fillStyle = o.color;
+    ctx.beginPath();
+    for (i=0; i<shapes.length; i++) {
+      shape = shapes[i];
+      if (shape.fade && o.fadeColors) {
+        faded++;
+      } else {
+        traceTaperedShape(shape, ctx, o, view);
+      }
+    }
+    ctx.fill();
+    for (i=0; faded > 0 && i<shapes.length; i++) {
+      shape = shapes[i];
+      if (!shape.fade || !o.fadeColors) continue;
+      ctx.fillStyle = getLineFadeGradient(ctx, shape.fade, o.fadeColors);
+      ctx.beginPath();
+      traceTaperedShape(shape, ctx, o, view);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function traceTaperedShape(shape, ctx, o, view) {
+    var extra = o.extraWidth || 0;
+    var pieces = internal.svg.getTaperedOutline(shape.coords,
+      shape.widths[0] + extra, shape.widths[1] + extra,
+      Object.assign({bbox: view}, o.outline));
+    var piece, p, j;
+    pieces = internal.svg.clipTaperedPieces(pieces, view);
+    for (var i=0; i<pieces.length; i++) {
+      piece = pieces[i];
+      if (piece.from) {
+        p = piece.center;
+        ctx.moveTo(p[0], p[1]);
+        ctx.lineTo(piece.from[0], piece.from[1]);
+        ctx.arc(p[0], p[1], piece.radius,
+          Math.atan2(piece.from[1] - p[1], piece.from[0] - p[0]),
+          Math.atan2(piece.to[1] - p[1], piece.to[0] - p[0]));
+      } else if (piece.center) {
+        ctx.moveTo(piece.center[0] + piece.radius, piece.center[1]);
+        ctx.arc(piece.center[0], piece.center[1], piece.radius, 0, Math.PI * 2);
+      } else {
+        p = piece.points;
+        ctx.moveTo(p[0][0], p[0][1]);
+        for (j=1; j<p.length; j++) ctx.lineTo(p[j][0], p[j][1]);
+      }
+      ctx.closePath();
+    }
+  }
+
+  // The canvas, with a margin wide enough that the edges a clip cuts are out
+  // of sight
+  function getTaperClipBox(ctx, extraWidth) {
+    var pad = 50 + (extraWidth || 0);
+    return [-pad, -pad, ctx.canvas.width + pad, ctx.canvas.height + pad];
+  }
+
+  function getStrokeAlpha(style) {
+    return (style.opacity >= 0 ? style.opacity : 1) *
+      (style.strokeOpacity >= 0 ? style.strokeOpacity : 1);
   }
 
   // Sets @out to the style a line's casing is stroked with: wider than the line
@@ -41249,8 +41533,7 @@
   // caps. @grow (optional) widens each head by that much on every side, for a
   // halo.
   function drawArrowHeads(heads, ctx, style, width, grow) {
-    var alpha = (style.opacity >= 0 ? style.opacity : 1) *
-      (style.strokeOpacity >= 0 ? style.strokeOpacity : 1);
+    var alpha = getStrokeAlpha(style);
     var head, p;
     grow = grow > 0 ? grow : 0;
     if (heads.length === 0) return;
@@ -41445,6 +41728,14 @@
       }
     };
 
+    // Whether @lyr has markup here to reposition. A layer can become an SVG
+    // layer between full redraws -- an empty symbol layer, drawn on the canvas,
+    // gets its first curve -- and a 'hover' or 'nav' draw can come first.
+    el.hasLayer = function(lyr) {
+      var container = lyr.gui.svg_id ? el.findChild('.' + lyr.gui.svg_id) : null;
+      return !!(container && container.node());
+    };
+
     el.reposition = function(lyr, type) {
       resize(ext);
       reposition(lyr, type, ext);
@@ -41600,8 +41891,11 @@
         // SVG symbol reposition is already cheap; keep labels/symbols accurate
         // while the canvas is being transformed.
         layers.forEach(function(lyr) {
-          if (internal.layerHasSvgSymbols(lyr) || internal.layerHasLabels(lyr)) {
+          if (!internal.layerHasSvgSymbols(lyr) && !internal.layerHasLabels(lyr)) return;
+          if (_svg.hasLayer(lyr)) {
             _svg.reposition(lyr, 'symbol');
+          } else {
+            _svg.drawLayer(lyr, 'symbol');
           }
         });
         markRedrawPending();
@@ -41619,7 +41913,7 @@
       }
       layers.forEach(function(lyr) {
         var isSvgLayer = internal.layerHasSvgSymbols(lyr) || internal.layerHasLabels(lyr);
-        if (isSvgLayer && !needSvgRedraw) {
+        if (isSvgLayer && !needSvgRedraw && _svg.hasLayer(lyr)) {
           _svg.reposition(lyr, 'symbol');
         } else if (isSvgLayer) {
           _svg.drawLayer(lyr, 'symbol');
@@ -43284,6 +43578,9 @@
     // Whether the content's bounds had no width or no height before they were
     // padded in calcFullBounds() -- see mapNeedsResetFromCollapsedBounds().
     var _boundsAreCollapsed = false;
+    // The model's layers and datasets as of the last update, so that the
+    // display data of any that leave the model can be released
+    var _modelLayers = [], _modelDatasets = [];
 
     var RESIZE_REDRAW_DELAY = 200;
 
@@ -43557,6 +43854,7 @@
 
       if (!updated) {
         clearMapState();
+        releaseRemovedLayers();
         drawLayers();
         map.dispatchEvent('updated');
         return;
@@ -43646,8 +43944,29 @@
         _ext.reset();
         gui?.basemap.refresh();
       }
+      releaseRemovedLayers();
       drawLayers();
       map.dispatchEvent('updated');
+    }
+
+    // A layer or dataset that has left the model can still be held by the undo
+    // history, so its display data -- with a basemap on, a reprojected copy of
+    // all its arcs -- is released, rather than kept for every undo state. One
+    // that comes back gets new display data from enhanceLayerForDisplay().
+    function releaseRemovedLayers() {
+      var layers = new Set(), datasets = new Set();
+      model.getLayers().forEach(function(o) {
+        layers.add(o.layer);
+        datasets.add(o.dataset);
+      });
+      _modelLayers.forEach(function(lyr) {
+        if (!layers.has(lyr) && lyr != _activeLyr) delete lyr.gui;
+      });
+      _modelDatasets.forEach(function(dataset) {
+        if (!datasets.has(dataset)) delete dataset.gui;
+      });
+      _modelLayers = Array.from(layers);
+      _modelDatasets = Array.from(datasets);
     }
 
     function clearMapState() {
@@ -46710,6 +47029,23 @@
       getViewBounds: function() {
         return gui.map.getExtent().getBounds().toArray();
       },
+      // e.g. 'webmercator', as a basemap sets it; null to clear
+      setDisplayCRS: function(str) {
+        gui.map.setDisplayCRS(str || null);
+      },
+      // Adds a line with the command the line tool runs
+      addLineToActiveLayer: function(coords) {
+        var target = gui.model.getActiveLayer();
+        if (!target || !target.layer || target.layer.geometry_type != 'polyline') {
+          throw new Error('Active layer is not a polyline layer');
+        }
+        return new Promise(function(resolve, reject) {
+          runGuiEditCommand(gui, getAddShapeCommand(coords, {geometryType: 'polyline'}), {
+            changesEditTarget: true,
+            onDone: function(err) { if (err) reject(err); else resolve(); }
+          });
+        });
+      },
       // Adds a point with the command the point tool runs
       addPointToActiveLayer: function(coords) {
         var target = gui.model.getActiveLayer();
@@ -47039,17 +47375,28 @@
     });
 
     // The layer list, opened beside the first data so that the user sees what
-    // was imported and where to go next -- once, and only for data: dismissing
-    // the splash popup without importing anything leaves the sidebar closed.
-    // Waits for any menu mode (the import dialog, while files are still loading)
-    // to close, since opening a panel would close it.
+    // was imported and where to go next, and when the splash popup is dismissed
+    // without importing anything, where its "Draw:" links start a map from
+    // scratch -- once for each. Waits for any menu mode (the import dialog,
+    // while files are still loading) to close, since opening a panel would
+    // close it.
     var layersShownForData = false;
-    gui.model.on('update', showLayersForFirstData);
-    gui.on('mode', showLayersForFirstData);
-    function showLayersForFirstData() {
+    var layersShownForSplash = false;
+    gui.model.on('update', function() {
+      showLayersOnce(false);
+    });
+    gui.on('mode', function() {
+      showLayersOnce(true);
+    });
+    function showLayersOnce(modeChanged) {
+      var empty = gui.model.isEmpty();
+      var firstData = !empty && !layersShownForData;
+      // an empty map with no mode is the splash popup's dismissal
+      var splashDismissed = empty && modeChanged && !layersShownForSplash;
       var panels;
-      if (layersShownForData || gui.model.isEmpty() || gui.getMode()) return;
-      layersShownForData = true;
+      if (gui.getMode() || !firstData && !splashDismissed) return;
+      layersShownForSplash = true;
+      if (firstData) layersShownForData = true;
       panels = gui.getSidebarPanels();
       if (!panels.includes('layers')) {
         gui.setSidebarPanels(panels.concat('layers').sort());
