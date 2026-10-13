@@ -102,6 +102,11 @@ var stylePropertyTypes = {
   'line-end': 'lineend',
   'line-end-size': 'number',
   'line-fade': 'number',
+  // a wider stroke beneath a line -- see svg-line-casing.mjs. Drawn as copies
+  // of the lines, not written as attributes, so not in propertiesBySymbolType.
+  'casing-color': 'color',
+  'casing-width': 'number',
+  'casing-opacity': 'number',
   'letter-spacing': 'measure',
   'line-height': 'measure',
   opacity: 'number',

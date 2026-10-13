@@ -3,6 +3,7 @@ import { importGeoJSON } from '../geojson/geojson-import';
 import { mergeDatasets } from '../dataset/mapshaper-merging';
 import { getCrsInfo, setDatasetCrsInfo } from '../crs/mapshaper-projections';
 import { decodePatternId } from './svg-hatch';
+import { getCasingGroupId } from './svg-line-casing';
 
 var INHERITED_STYLE_KEYS = [
   'fill', 'fill-opacity',
@@ -37,7 +38,8 @@ export function importSVG(str, optsArg) {
   groups.forEach(function(group) {
     var features = [];
     collectFeatures(group.node, {}, features, {
-      forcePolylinePaths: layerHasOpenPaths(group.node)
+      forcePolylinePaths: layerHasOpenPaths(group.node),
+      casingGroupId: getCasingGroupId(group.name)
     });
     if (features.length === 0) return;
     layerData.push({
@@ -359,6 +361,9 @@ function collectFeatures(node, inheritedStyles, features, layerOpts) {
   var inherited = extendProps(inheritedStyles, nodeStyles);
 
   if (tag == 'defs') return;
+  // A line layer's casings are copies of its lines (see svg-line-casing.mjs)
+  if (tag == 'g' && layerOpts && node.getAttribute &&
+      node.getAttribute('id') == layerOpts.casingGroupId) return;
   if (tag == 'g' || tag == 'svg') {
     getElementChildren(node).forEach(function(child) {
       collectFeatures(child, inherited, features, layerOpts);

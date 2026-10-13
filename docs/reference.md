@@ -1926,6 +1926,12 @@ Example: `hatches 45deg 2px red 2px grey`
 
 `line-fade=`       Share of a line's length, from 0 to 1, that fades in from transparent at its tail (e.g. `line-fade=0.4`). The tail is the start of the line, unless only the start has a marker. The fade is a straight gradient, so it suits straight or gently curved lines best.
 
+`casing-color=`    Add a casing (an outline) of this color beneath each line. The casings of a layer are all drawn before any of its lines, so that lines join cleanly where they meet. A casing has the line's caps and joins, is solid under a dashed line, and stops at a line's arrowheads.
+
+`casing-width=`    How far the casing extends past each edge of the line, in pixels (default is 1). The casing's stroke is the line's `stroke-width` plus twice this width.
+
+`casing-opacity=`  Opacity of the casing, 0-1 (default is 1). A line's `opacity=` also fades its casing; its `stroke-opacity=` does not.
+
 `opacity=`         Symbol opacity (e.g. `opacity=0.5`)
 
 `r=`               Circle radius. Setting this exports points as SVG `<circle>` symbols, unless the `-o point-symbol=square` option is used.

@@ -20,6 +20,7 @@ import require from '../mapshaper-require';
 import { getRasterBBox, intersectBboxes, renderRasterExportPreview } from '../rasters/mapshaper-raster-utils';
 import { findStylePropertiesBySymbolGeom } from './svg-properties';
 import { applyPolygonGlows } from './svg-glow';
+import { renderLineCasings } from './svg-line-casing';
 
 var ILLUSTRATOR_PATH_VERTEX_LIMIT = 32000;
 
@@ -465,6 +466,7 @@ function exportSymbolsForSVG(lyr, dataset, opts, layerObj) {
   var d = utils.defaults({layers: [lyr]}, dataset);
   var geojson = exportDatasetAsGeoJSON(d, opts);
   var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
+  var casings;
   warnIfIllustratorPathLimitExceeded(lyr, features);
   // path labels that don't fit their path render as nothing, and are reported
   // rather than dropped silently
@@ -488,6 +490,10 @@ function exportSymbolsForSVG(lyr, dataset, opts, layerObj) {
   });
   if (opts.svg_data && lyr.data) {
     addDataAttributesToSVG(children, keptRecords, lyr.data.getFields(), opts.svg_data);
+  }
+  if (lyr.geometry_type == 'polyline') {
+    casings = renderLineCasings(features, layerObj.properties.id);
+    if (casings) children.unshift(casings);
   }
   return children;
 }

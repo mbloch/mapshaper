@@ -284,6 +284,8 @@ export function DisplayCanvas() {
     var layerGlow = glows && style.layerOuterGlow ?
       startLayerGlow(style.layerOuterGlow, glowScale) : null;
     try {
+      // Overlays copy the layer's style too, and have no casings either
+      if (style.hasCasings && !style.overlay) drawCasings();
       drawShapes();
     } finally {
       if (layerGlow) endLayerGlow(layerGlow);
@@ -336,6 +338,51 @@ export function DisplayCanvas() {
         }
       }
       flushBatches();
+    }
+
+    // Every casing in the layer is drawn before any of its lines, as in SVG
+    // (see svg-line-casing.mjs). Finding them runs the styler over the shapes
+    // a second time, which only layers with casings pay for. The casing style
+    // object is reused from one shape to the next, like the styler's, and
+    // copied for a batch.
+    function drawCasings() {
+      var batches = {};
+      var casingStyle = {};
+      var trimForArrows = _ext.scale() <= 100; // see getArrowLinePencil()
+      var casingPencil = null;
+      var casing, batch, casingKey;
+      for (var i=0; i<shapes.length; i++) {
+        shp = shapes[i];
+        if (!shp || filter && !filter(i)) continue;
+        if (styler) styler(drawStyle, i);
+        casing = drawStyle.casing;
+        if (!casing) continue;
+        setCasingStyle(casingStyle, drawStyle, casing);
+        if (trimForArrows && (drawStyle.lineStart || drawStyle.lineEnd)) {
+          if (!casingPencil) casingPencil = getArrowCasingPencil(arcs, _ext, lineScale);
+          casingPencil(shp, _ctx, drawStyle, casingStyle, startPath);
+          continue;
+        }
+        if (casingStyle.strokeOpacity < 1) {
+          drawPaths([shp], startPath, draw, casingStyle);
+          continue;
+        }
+        casingKey = getCasingStyleKey(casingStyle);
+        batch = batches[casingKey];
+        if (!batch) {
+          batch = batches[casingKey] = {style: utils.defaults({}, casingStyle), shapes: []};
+        }
+        batch.shapes.push(shp);
+        if (batch.shapes.length >= batchSize) {
+          drawPaths(batch.shapes, startPath, draw, batch.style);
+          batch.shapes = [];
+        }
+      }
+      Object.keys(batches).forEach(function(k) {
+        if (batches[k].shapes.length > 0) {
+          drawPaths(batches[k].shapes, startPath, draw, batches[k].style);
+        }
+      });
     }
 
     function flushBatches() {
@@ -834,6 +881,46 @@ function getArrowLinePencil(arcs, ext, lineScale) {
     drawArrowHeads(heads, ctx, style, opts.width, grow);
     return true;
   };
+}
+
+// Draws the casing of one line feature with arrowheads, along the line as
+// getLineArrowShape() trims it to meet its heads.
+function getArrowCasingPencil(arcs, ext, lineScale) {
+  var t = getScaledTransform(ext);
+  var iter = new internal.ShapeIter(arcs);
+  var strokeScale = getCanvasStrokeScale(GUI.getPixelRatio(), lineScale);
+  return function(shp, ctx, lineStyle, casingStyle, startPath) {
+    var opts = internal.svg.makeLineArrowOpts(lineStyle.lineStart, lineStyle.lineEnd,
+      lineStyle.lineEndSize, lineStyle.strokeWidth, strokeScale, 0);
+    var coords;
+    startPath(ctx, casingStyle);
+    for (var i=0; i<shp.length; i++) {
+      coords = getPixelCoords(iter, shp[i], t);
+      if (coords.length < 2) continue;
+      traceCoords(internal.svg.getLineArrowShape(coords, opts).coords, ctx);
+    }
+    endPath(ctx, casingStyle);
+  };
+}
+
+// Sets @out to the style a line's casing is stroked with: wider than the line
+// by the casing's width on each side, with the line's caps and joins and no
+// dashes. Every property is assigned, since @out is reused from one shape to
+// the next. @casing is from getLineCasing(), and its opacity already includes
+// the line's own.
+export function setCasingStyle(out, lineStyle, casing) {
+  out.strokeColor = casing.color;
+  out.strokeWidth = internal.svg.getCasingStrokeWidth(lineStyle.strokeWidth, casing);
+  out.strokeOpacity = casing.opacity;
+  out.lineCap = lineStyle.lineCap || (lineStyle.lineDash ? 'butt' : 'round');
+  out.lineJoin = lineStyle.lineJoin;
+  out.miterLimit = lineStyle.miterLimit;
+  return out;
+}
+
+function getCasingStyleKey(style) {
+  return style.strokeColor + '~' + style.strokeWidth + '~' + style.lineCap + '~' +
+    (style.lineJoin || '') + '~' + (style.miterLimit || '');
 }
 
 // Limits drawing to outside the heads, grown by @grow. An open head is a

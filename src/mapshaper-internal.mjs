@@ -23,6 +23,7 @@ import * as SvgLabelMarkup from './svg/svg-label-markup';
 import * as SvgLineArrows from './svg/svg-line-arrows';
 import * as SvgCurveSymbols from './svg/svg-curve-symbols';
 import * as SvgGlow from './svg/svg-glow';
+import * as SvgLineCasing from './svg/svg-line-casing';
 import * as SvgRasterize from './svg/mapshaper-svg-rasterize';
 import { getIconBoundingRadius } from './svg/svg-symbol-bounds';
 
@@ -30,7 +31,7 @@ internal.svg = Object.assign({}, SvgStringify, SvgPathUtils, GeojsonToSvg,
   SvgFeatureUtils,
   SvgLabels, SvgSymbols, SvgLabelPaths, SvgLabelFit, SvgLabelAlign,
   SvgLabelMetrics, SvgLabelHalo, SvgLabelCallout, SvgLabelBox, SvgLabelBackground,
-  SvgLabelMarkup, SvgLineArrows, SvgCurveSymbols, SvgGlow, SvgRasterize,
+  SvgLabelMarkup, SvgLineArrows, SvgCurveSymbols, SvgGlow, SvgLineCasing, SvgRasterize,
   {getIconBoundingRadius});
 
 import * as FontLookup from './fonts/mapshaper-font-lookup';

@@ -115,6 +115,9 @@ export function getCanvasDisplayStyle(lyr) {
   // layer (see svg-glow.mjs), so the shapes are then given none of their own.
   var hasGlows = layerHasGlowFields(lyr);
   var layerOuterGlow = hasGlows ? internal.svg.getLayerOuterGlow(lyr) : null;
+  // Casings are drawn from the record too, in a pass of their own beneath the
+  // lines (see drawStyledPaths())
+  var hasCasingFields = layerHasCasingFields(lyr);
   // A layer of circles draws a point with no radius as nothing at all
   var markUnstyled = lyr.geometry_type == 'point' && fields.includes('r');
 
@@ -148,6 +151,9 @@ export function getCanvasDisplayStyle(lyr) {
       style.outerGlow = layerOuterGlow ? null : internal.svg.getPolygonGlow(rec, 'outer');
       style.innerGlow = internal.svg.getPolygonGlow(rec, 'inner');
     }
+    if (hasCasingFields) {
+      style.casing = internal.svg.getLineCasing(rec);
+    }
     for (var j=0; j<fields.length; j++) {
       fname = fields[j];
       val = rec && rec[fname];
@@ -177,9 +183,12 @@ export function getCanvasDisplayStyle(lyr) {
     // view a shape can be and still reach into it.
     style.glowReach = internal.svg.getMaxGlowWidth(records) * internal.svg.GLOW_REACH;
   }
-  // A line layer styled with nothing but arrowheads is drawn the way SVG
-  // export draws it, with the black 1px line the layer's group gives it.
-  if (arrowFields && !hasStrokeFields) {
+  if (hasCasingFields) {
+    style.hasCasings = true;
+  }
+  // A line layer styled with nothing but arrowheads or casings is drawn the
+  // way SVG export draws it, with the black 1px line the layer's group gives it.
+  if ((arrowFields || hasCasingFields) && !hasStrokeFields) {
     style.strokeColor = 'black';
     style.strokeWidth = 1;
   }
@@ -227,7 +236,13 @@ export function layerHasDrawableStyle(lyr) {
   }
   return layerHasStyleValues(lyr, fields) ||
     layerHasStyleValues(lyr, getLineArrowFields(lyr)) ||
-    layerHasStyleValues(lyr, layerHasGlowFields(lyr) ? internal.svg.glowFields : null);
+    layerHasStyleValues(lyr, layerHasGlowFields(lyr) ? internal.svg.glowFields : null) ||
+    layerHasStyleValues(lyr, layerHasCasingFields(lyr) ? ['casing-color'] : null);
+}
+
+function layerHasCasingFields(lyr) {
+  return lyr.geometry_type == 'polyline' && !!lyr.data &&
+    lyr.data.fieldExists('casing-color');
 }
 
 function layerHasStyleValues(lyr, fields) {

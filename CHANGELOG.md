@@ -13,6 +13,8 @@ v0.7.84
 * Icons have a fill and a stroke of their own: `icon-fill=`, `icon-stroke=` and `icon-stroke-width=` (accepted by `-style` and `-labels`). A ring is a stroke with no fill by default, and can now be given a fill, and its thickness is its `icon-stroke-width=`; the other shapes are filled and can be given a stroke. On a label, these style the icon apart from the text. The NYT star's `icon-stroke=` is its outline, at a fixed width, and its `icon-fill=` its middle (white by default). `icon-color=` is still drawn, as a ring's stroke and other icons' fill.
 * `-symbols` writes `icon-fill=`, `icon-stroke=` and `icon-stroke-width=` instead of `icon-color=` and `stroke=` for icons (circles are still written as `r=`, `fill=` and `stroke=`). `-symbols type=ring` given `stroke=` takes `fill=` as its fill; without `stroke=`, `fill=` is still the ring's color.
 * [web] The label panel's icon section and the symbol tool's panel have the same Fill and Stroke controls for every shape, in place of Color and Outline. A ring starts as a stroke whose width can be set, and choosing another shape moves the color to where that shape carries it.
+* Added line casings (outlines): `-style casing-color= casing-width= casing-opacity=`. `casing-width=` is how far the casing extends past each edge of the line (default 1px). All of a layer's casings are drawn beneath all of its lines, so that lines join cleanly where they cross. In SVG output, the casings are a group of their own (`<layer>-casing`) before the layer's features.
+* [web] The line style panel has a Casing section, with a color, opacity and width.
 * [web] Fixed the map view resetting when a third label or symbol was placed after two placed on the same row of pixels.
 
 v0.7.83

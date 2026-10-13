@@ -14,6 +14,7 @@ import {
 import { StylePresetControl } from './gui-style-preset-control';
 import { PatternFillControl } from './gui-pattern-fill-control';
 import { GlowEffectsControl } from './gui-glow-control';
+import { LineCasingControl } from './gui-casing-control';
 import { groupStyleEdits } from './gui-fill-pattern';
 import { runGuiEditCommand } from './gui-edit-command';
 import { internal } from './gui-core';
@@ -27,7 +28,7 @@ import {
 import { getSelectionChangeTest } from './gui-selection-change';
 
 var savedStylesKey = 'layer_style_presets';
-var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'line-fade', 'fill', 'fill-opacity', 'fill-pattern'].concat(internal.svg.glowFields);
+var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'line-fade', 'fill', 'fill-opacity', 'fill-pattern'].concat(internal.svg.glowFields, internal.svg.casingFields);
 var arrowPositions = [{
   name: 'start',
   label: 'Start',
@@ -58,7 +59,7 @@ var lineCaps = [{
 export function LayerStyleTool(gui) {
   var parent = gui.container.findChild('.mshp-main-map');
   var panel = El('div').addClass('label-style-panel layer-style-panel rollover').appendTo(parent).hide();
-  var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, capControl, dashControl, arrowControl, presetControl, patternControl, glowControl, hit;
+  var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthField, capControl, dashControl, arrowControl, casingControl, presetControl, patternControl, glowControl, hit;
   var schemeBtn, schemeStrip, schemePanel;
   var targetLayer = null;
   var selectionChanged = getSelectionChangeTest();
@@ -143,6 +144,7 @@ export function LayerStyleTool(gui) {
     if (polygonToolbar) polygonToolbar.hide();
     patternControl.reset();
     glowControl.reset();
+    casingControl.reset();
     targetLayer = null;
   }
 
@@ -151,6 +153,7 @@ export function LayerStyleTool(gui) {
     strokeControl.picker.hide();
     fillControl.picker.hide();
     patternControl.hidePicker();
+    casingControl.hidePicker();
   }
 
   function setPanelShown(shown) {
@@ -278,6 +281,14 @@ export function LayerStyleTool(gui) {
     dashControl = addDashArrayControl(lineRow);
     dashControl.row = lineRow;
     arrowControl = addArrowControl(panel);
+
+    casingControl = new LineCasingControl(panel, {
+      getRecords: getTargetRecords,
+      getTargetIds: getTargetIds,
+      applyEdits: runStyleEdits,
+      revert: updateControls,
+      releaseFocus: releaseFocus
+    });
 
     var buttonRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(panel);
     makePanelActionButton(buttonRow, 'Clear style', clearLayerStyle);
@@ -769,6 +780,7 @@ export function LayerStyleTool(gui) {
     fillControl.row.classed('hidden', geom != 'polygon');
     dashControl.row.classed('hidden', geom != 'polyline');
     arrowControl.section.classed('hidden', geom != 'polyline');
+    casingControl.section.classed('hidden', geom != 'polyline');
     updateColorControl(strokeControl);
     updateColorControl(fillControl);
     updateStrokeWidthControl();
@@ -776,6 +788,7 @@ export function LayerStyleTool(gui) {
     if (geom == 'polyline') {
       updateLineCapControl();
       updateArrowControl();
+      casingControl.update();
     }
     updateColorSchemeControl();
     patternControl.section.classed('hidden', geom != 'polygon');
@@ -977,6 +990,7 @@ export function LayerStyleTool(gui) {
       addStyleValue(style, 'stroke-dasharray', getControlValue(dashControl.input));
       addStyleValue(style, 'stroke-linecap', getCommonStyleValue('stroke-linecap'));
       addArrowStyleValues(style);
+      casingControl.addStyleValues(style);
     }
     if (targetLayer && targetLayer.geometry_type == 'polygon') {
       addStyleValue(style, 'fill', getControlValue(fillControl.input));

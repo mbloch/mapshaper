@@ -6,6 +6,7 @@ import {
 var PANEL = '.layer-style-panel';
 var PATTERNS = 'layer-pattern-section';
 var EFFECTS = 'layer-effects-section';
+var CASING = 'layer-casing-section';
 
 var FIXTURE = 'test/data/issues/389_clipping_error/inner_polygon.json';
 var LAYER = 'inner_polygon';
@@ -262,6 +263,45 @@ test('a glow is added by picking its color, and removed by emptying it',
     expect(errors).toEqual([]);
   });
 
+test('a line casing is added by picking its color, and removed by the section\'s ×',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    await loadFixture(page, LINE_FIXTURE, 'line_style', {open: false});
+    var row = page.locator('.layer-style-panel .layer-casing-row');
+    expect(await getSectionPresence(page, PANEL, CASING)).toBe('off');
+
+    // opening the section adds nothing
+    await openSection(page, PANEL, CASING);
+    expect(await getSectionPresence(page, PANEL, CASING)).toBe('off');
+    await expect(row.locator('.label-color-input')).toHaveValue('');
+    await expect(row.locator('.size-field-input')).toHaveValue('1');
+    expect(await getCasings(page)).toEqual(['  ']);
+
+    // a width typed before the color goes with it
+    await setField(row.locator('.size-field-input'), '2.5');
+    await setField(row.locator('.label-color-input'), '#ffffff');
+    expect(await getCasings(page)).toEqual(['#ffffff 2.5 ']);
+    expect(await getSectionPresence(page, PANEL, CASING)).toBe('on');
+    await setField(row.locator('.label-opacity-input'), '50%');
+    expect(await getCasings(page)).toEqual(['#ffffff 2.5 0.5']);
+    expect((await getSessionCommands(page)).join('\n')).toContain("casing-color='#ffffff'");
+
+    // the × removes the casing and its settings, in one undo step
+    await removeSectionStyle(page, PANEL, CASING);
+    expect(await getCasings(page)).toEqual(['  ']);
+    expect(await getSectionPresence(page, PANEL, CASING)).toBe('off');
+    await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
+    await page.waitForTimeout(250);
+    expect(await getCasings(page)).toEqual(['#ffffff 2.5 0.5']);
+    await expect(row.locator('.label-color-input')).toHaveValue('#ffffff');
+    expect(errors).toEqual([]);
+  });
+
+test('polygons have no casing section', async function({page}) {
+  await loadFixture(page, POLY_FIXTURE);
+  await expect(page.locator('.layer-style-panel .layer-casing-section')).toBeHidden();
+});
+
 test('an emptied fill or stroke is unset, and an emptied pattern color is the default',
   async function({page}) {
     await loadFixture(page, POLY_FIXTURE);
@@ -300,6 +340,18 @@ test('clearing a selected feature stroke leaves other feature strokes alone',
     expect((await getSessionCommands(page)).join('\n'))
       .toContain("-style stroke='' stroke-width='' ids=0");
   });
+
+async function getCasings(page) {
+  var records = await page.evaluate(function(layer) {
+    return window.mapshaper.undoTest.getLayerInfo(layer).records;
+  }, LINE_LAYER);
+  return records.map(function(rec) {
+    return ['color', 'width', 'opacity'].map(function(name) {
+      var val = rec['casing-' + name];
+      return val === undefined ? '' : val;
+    }).join(' ');
+  });
+}
 
 async function getGlows(page, type) {
   return (await getRecords(page)).map(function(rec) {

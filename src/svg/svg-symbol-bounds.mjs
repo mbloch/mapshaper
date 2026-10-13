@@ -7,6 +7,7 @@ import { labelHasBackground } from './svg-label-box';
 import { parsePointPair, isSvgNumber } from './svg-properties';
 import { forEachSymbolCoord, getStrokeOutset } from '../symbols/mapshaper-symbol-utils';
 import { getPolygonGlow } from './svg-glow';
+import { getLineCasing, getCasingStrokeWidth } from './svg-line-casing';
 import { getIconSymbol, getIconPaint } from '../symbols/mapshaper-icon-symbols';
 
 // mapshaper-svg.mjs sets this on the document when any join is mitered
@@ -45,8 +46,9 @@ export function getPathLabelPadding(rec) {
 }
 
 // How far what is drawn along a path can reach past its vertices, in px, on
-// every side: half the stroke, as far as a miter join or a square cap
-// takes it, plus a polygon's outer glow, at the width where it has faded to
+// every side: half the stroke (or a line's casing, if wider), as far as a
+// miter join or a square cap takes it, plus a polygon's outer glow, at the
+// width where it has faded to
 // next to nothing. Follows the SVG export: a line is stroked 1px black unless
 // its stroke is "none", a polygon only when it has a stroke, and joins are
 // round unless stroke-linejoin says otherwise.
@@ -56,17 +58,21 @@ export function getPathStrokeOutset(rec, type) {
   var width = rec ? rec['stroke-width'] : null;
   var stroked = type == 'polyline' ? stroke != 'none' :
     !!stroke && stroke != 'none';
-  var outset = 0, k = 1, glow;
+  var outset = 0, k = 1, glow, casing;
+  if (rec && rec['stroke-linejoin'] == 'miter') {
+    k = isSvgNumber(rec['stroke-miterlimit']) ?
+      Math.max(Number(rec['stroke-miterlimit']), 1) : SVG_EXPORT_MITER_LIMIT;
+  }
+  if (type == 'polyline' && rec && rec['stroke-linecap'] == 'square') {
+    k = Math.max(k, Math.SQRT2);
+  }
   if (stroked) {
-    width = isSvgNumber(width) ? Math.max(Number(width), 0) : 1;
-    if (rec && rec['stroke-linejoin'] == 'miter') {
-      k = isSvgNumber(rec['stroke-miterlimit']) ?
-        Math.max(Number(rec['stroke-miterlimit']), 1) : SVG_EXPORT_MITER_LIMIT;
-    }
-    if (type == 'polyline' && rec && rec['stroke-linecap'] == 'square') {
-      k = Math.max(k, Math.SQRT2);
-    }
-    outset = width / 2 * k;
+    outset = (isSvgNumber(width) ? Math.max(Number(width), 0) : 1) / 2 * k;
+  }
+  // A casing is drawn whether or not the line has a stroke of its own
+  casing = type == 'polyline' ? getLineCasing(rec) : null;
+  if (casing) {
+    outset = Math.max(outset, getCasingStrokeWidth(width, casing) / 2 * k);
   }
   glow = type == 'polygon' ? getPolygonGlow(rec, 'outer') : null;
   return glow ? outset + glow.width : outset;
