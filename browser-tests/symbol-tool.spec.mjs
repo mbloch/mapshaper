@@ -75,6 +75,10 @@ test('NYT users are offered the NYT star, which is placed in its red', async fun
 
 test('a curve is drawn by clicking and finished with Enter', async function({page}) {
   var errors = collectPageErrors(page);
+  var consoleErrors = [];
+  page.on('console', function(msg) {
+    if (msg.type() == 'error') consoleErrors.push(msg.text());
+  });
   await openTool(page);
   await armTool(page, 'curve');
   await clickMap(page, 0.2, 0.6);
@@ -90,6 +94,47 @@ test('a curve is drawn by clicking and finished with Enter', async function({pag
   expect(lyr.records[0].icon).toBe('curve');
   expect(lyr.records[0]['line-end']).toBe('arrow');
   expect(lyr.records[0].stroke).toBe('#333333');
+  // the empty layer was drawn on the canvas, and its first curve makes it an
+  // SVG layer, which a hover redraw can reach before the full one
+  expect(consoleErrors.filter(function(msg) {
+    return msg.includes('[reposition]');
+  })).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('a curve is redrawn when the map zooms, staying on its knots', async function({page}) {
+  var errors = collectPageErrors(page);
+  await openTool(page);
+  await armTool(page, 'curve');
+  await clickMap(page, 0.3, 0.3);
+  await clickMap(page, 0.4, 0.5);
+  await clickMap(page, 0.5, 0.4);
+  await clickMap(page, 0.6, 0.6);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(200);
+  await armTool(page, null);
+  await clickMap(page, 0.4, 0.5);
+  expect(await getSelection(page)).toEqual([0]);
+
+  var box = await page.locator('.mshp-main-map').boundingBox();
+  await page.mouse.move(box.x + box.width * 0.45, box.y + box.height * 0.45);
+  await page.mouse.wheel(0, -400);
+  await page.waitForTimeout(800);
+  var drawn = await page.evaluate(function() {
+    var node = document.querySelector('.mapshaper-svg-symbol[data-id="0"]');
+    var path = node.querySelector('path:not(.curve-hit-area)').getBoundingClientRect();
+    var knots = Array.from(document.querySelectorAll('.label-cue-knot')).map(function(k) {
+      var r = k.getBoundingClientRect();
+      return [r.x + r.width / 2, r.y + r.height / 2];
+    });
+    return {path: [path.left, path.top, path.right, path.bottom], first: knots[0],
+      last: knots[knots.length - 1]};
+  });
+  // the curve runs from its first knot to its last, as it did before the zoom
+  expect(Math.abs(drawn.path[0] - drawn.first[0])).toBeLessThan(8);
+  expect(Math.abs(drawn.path[1] - drawn.first[1])).toBeLessThan(8);
+  expect(Math.abs(drawn.path[2] - drawn.last[0])).toBeLessThan(8);
+  expect(Math.abs(drawn.path[3] - drawn.last[1])).toBeLessThan(8);
   expect(errors).toEqual([]);
 });
 

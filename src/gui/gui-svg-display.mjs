@@ -14,6 +14,14 @@ export function SvgDisplayLayer(gui, ext, mouse) {
     }
   };
 
+  // Whether @lyr has markup here to reposition. A layer can become an SVG
+  // layer between full redraws -- an empty symbol layer, drawn on the canvas,
+  // gets its first curve -- and a 'hover' or 'nav' draw can come first.
+  el.hasLayer = function(lyr) {
+    var container = lyr.gui.svg_id ? el.findChild('.' + lyr.gui.svg_id) : null;
+    return !!(container && container.node());
+  };
+
   el.reposition = function(lyr, type) {
     resize(ext);
     reposition(lyr, type, ext);

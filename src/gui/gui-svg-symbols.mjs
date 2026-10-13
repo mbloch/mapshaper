@@ -210,7 +210,8 @@ function renderCurve(d, coords) {
       'stroke-opacity': 0, 'stroke-width': CURVE_HIT_WIDTH
     }});
   }
-  group.properties[CURVE_ATTR] = '';
+  // not '': stringifyProperties() omits empty values
+  group.properties[CURVE_ATTR] = 'true';
   return group;
 }
 

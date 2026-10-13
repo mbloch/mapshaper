@@ -71,8 +71,11 @@ export function LayerRenderer(gui, container) {
       // SVG symbol reposition is already cheap; keep labels/symbols accurate
       // while the canvas is being transformed.
       layers.forEach(function(lyr) {
-        if (internal.layerHasSvgSymbols(lyr) || internal.layerHasLabels(lyr)) {
+        if (!internal.layerHasSvgSymbols(lyr) && !internal.layerHasLabels(lyr)) return;
+        if (_svg.hasLayer(lyr)) {
           _svg.reposition(lyr, 'symbol');
+        } else {
+          _svg.drawLayer(lyr, 'symbol');
         }
       });
       markRedrawPending();
@@ -90,7 +93,7 @@ export function LayerRenderer(gui, container) {
     }
     layers.forEach(function(lyr) {
       var isSvgLayer = internal.layerHasSvgSymbols(lyr) || internal.layerHasLabels(lyr);
-      if (isSvgLayer && !needSvgRedraw) {
+      if (isSvgLayer && !needSvgRedraw && _svg.hasLayer(lyr)) {
         _svg.reposition(lyr, 'symbol');
       } else if (isSvgLayer) {
         _svg.drawLayer(lyr, 'symbol');
