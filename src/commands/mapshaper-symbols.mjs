@@ -18,6 +18,7 @@ import { DataTable } from '../datatable/mapshaper-data-table';
 import { matchTargetFieldTypes } from '../datatable/mapshaper-match-field-types';
 import { mergeDatasetsIntoDataset } from '../dataset/mapshaper-merging';
 import { setOutputLayerName } from '../dataset/mapshaper-layer-utils';
+import { getIdFilter } from './mapshaper-filter';
 import utils from '../utils/mapshaper-utils';
 
 // -symbols writes each point's symbol as attribute fields: icon= and its
@@ -31,18 +32,24 @@ import utils from '../utils/mapshaper-utils';
 // scale= multiplies the stored sizes, and rotated= (or flipped=) turns into
 // part of icon-rotation.
 //
+// With ids=, only those points are given new symbols; the others keep the
+// fields they have, so that some symbols in a layer can be restyled.
+//
 // The geographic option instead replaces each point with a polygon or line
 // shape in map units.
 cmd.symbols = function(inputLyr, dataset, opts) {
   requirePointLayer(inputLyr);
   if (opts.geographic) {
+    if (opts.ids) stop('The ids= option can not be combined with geographic');
     return makeGeographicSymbols(inputLyr, dataset, opts);
   }
   var lyr = opts.no_replace ? copyLayer(inputLyr) : inputLyr;
   var table = getLayerDataTable(lyr);
   var records = table.getRecords();
   var getSymbolData = getSymbolDataAccessor(lyr, opts);
+  var selected = opts.ids ? getIdFilter(opts.ids) : null;
   var output = lyr.shapes.map(function(shp, i) {
+    if (selected && !selected(i)) return null;
     return shp ? getSymbolFields(getSymbolData(i), records[i], opts) : null;
   });
   var outputFields = getOutputFieldNames(output);
@@ -53,9 +60,11 @@ cmd.symbols = function(inputLyr, dataset, opts) {
   table.captureSchemaBefore({operation: 'symbols', fields: changedFields});
   output.forEach(function(o, i) {
     var rec = records[i] || (records[i] = {});
-    symbolFields.forEach(function(field) {
-      delete rec[field];
-    });
+    if (!selected || selected(i)) {
+      symbolFields.forEach(function(field) {
+        delete rec[field];
+      });
+    }
     // Every record gets every field, so that the table has a single schema
     // when features have different kinds of symbol. A style field like fill
     // that this symbol doesn't use keeps the record's own value.
@@ -85,6 +94,9 @@ cmd.addSymbol = function(targetLayers, targetDataset, opts) {
   }
   if (opts.geographic) {
     stop('The geographic option can not be combined with coordinates=');
+  }
+  if (opts.ids) {
+    stop('The ids= option can not be combined with coordinates=');
   }
   targetLyr = targetLayers[0]; // may be undefined
   if (targetLyr && !opts.no_replace && targetLyr.geometry_type &&

@@ -8,8 +8,7 @@
 //
 // See docs/development/symbol-tool-design.md.
 import {
-  getIconShapeName, getIconShapeValues, getIconShapePaint, getShownIconPaint,
-  getShapeChangePaint
+  getIconShapeName, getIconShapePaint, getShownIconPaint, getShapeChangePaint
 } from './gui-icon-shapes';
 
 // Which ends of a curve have a head. The heads themselves are the ones the
@@ -128,94 +127,31 @@ export function getIconRotation(rec) {
   return rec && isNumber(rec['icon-rotation']) ? Number(rec['icon-rotation']) : 0;
 }
 
-export function getIconSizeFields(rec, size) {
-  if (!getIconShape(rec)) return null;
-  return rec.icon ? {'icon-size': round(size)} : {r: round(size / 2)};
+// The panel style ({shape, size, fill, stroke, strokeWidth, rotation}) of the
+// symbol in @rec, or null for a symbol whose shape the panel does not offer
+export function getIconStyle(rec) {
+  var shape = getIconShape(rec);
+  var paint;
+  if (!shape) return null;
+  paint = getIconPaint(rec);
+  return {shape: shape, size: getIconSize(rec) || getDefaultIconStyle().size,
+    fill: paint.fill, stroke: paint.stroke, strokeWidth: paint.strokeWidth,
+    rotation: getIconRotation(rec)};
 }
 
-// The fields that give the symbol in @rec the paint @paint. A circle drawn
-// with r= is styled by fill=, stroke= and stroke-width=, which the canvas
-// draws; an icon by its own icon-fill=, icon-stroke= and icon-stroke-width=,
-// which take the place of the icon-color= and stroke fields of symbols made
-// before them.
-export function getIconPaintFields(rec, paint) {
-  var o = {};
-  var kind, stroked;
-  if (!rec.icon) {
-    o.fill = paint.fill || 'none';
-    if (paint.stroke && paint.strokeWidth > 0) {
-      o.stroke = paint.stroke;
-      o['stroke-width'] = paint.strokeWidth;
-    } else {
-      clearFields(o, rec, ['stroke', 'stroke-width']);
-    }
-    return o;
-  }
-  kind = getIconShapePaint(getIconShape(rec));
-  stroked = !!paint.stroke && (kind == 'nyt' || paint.strokeWidth > 0);
-  setPaint(o, rec, 'icon-fill', paint.fill, kind == 'stroke');
-  setPaint(o, rec, 'icon-stroke', stroked ? paint.stroke : '', kind == 'fill');
-  if (stroked && kind != 'nyt') {
-    o['icon-stroke-width'] = paint.strokeWidth;
-  } else {
-    clearFields(o, rec, ['icon-stroke-width']);
-  }
-  clearFields(o, rec, ['icon-color', 'stroke', 'stroke-width']);
-  return o;
-}
-
-// A color, or for none, nothing if the shape has none without one, and
-// "none" if it would otherwise get one
-function setPaint(o, rec, field, color, noneByDefault) {
-  if (color) {
-    o[field] = color;
-  } else if (noneByDefault) {
-    clearFields(o, rec, [field]);
-  } else {
-    o[field] = 'none';
-  }
-}
-
-// The fields that turn the symbol in @rec into a @shape, keeping its size and
-// moving its color to where the new shape carries it (see
-// getShapeChangePaint()). The old shape's fields are cleared, but only those
-// the record has, so that changing one symbol doesn't add empty fields to a
-// layer.
-export function getIconShapeFields(rec, shape) {
-  var size = getIconSize(rec) || getDefaultIconStyle().size;
-  var paint = getShapeChangeStyle(shape, getIconShape(rec), getIconPaint(rec));
-  var o = {};
-  var icon;
-  if (shape == 'circle') {
-    o.r = round(size / 2);
-    Object.assign(o, getIconPaintFields({}, paint));
-    clearFields(o, rec, ['icon', 'icon-size', 'icon-color', 'icon-fill', 'icon-stroke',
-      'icon-stroke-width', 'icon-sides']);
-    if (!('stroke' in o)) clearFields(o, rec, ['stroke', 'stroke-width']);
-    return o;
-  }
-  getIconShapeValues(shape, rec).forEach(function(pair) {
-    o[pair[0]] = pair[1];
-  });
-  icon = o.icon;
-  o['icon-size'] = round(size);
-  Object.assign(o, getIconPaintFields(Object.assign({}, rec, {icon: icon,
-    'icon-sides': o['icon-sides']}), paint));
-  clearFields(o, rec, ['r', 'fill']);
-  return o;
-}
-
-// The -style fields that give a point with no symbol (@rec) the symbol
-// described by @style, a panel style like getDefaultIconStyle()'s: what turns
-// a plain point into a symbol without moving it, as -symbols would add one.
-export function getNewSymbolFields(rec, style) {
-  var o = getIconShapeFields(rec || {}, style.shape || 'circle');
-  var sym = Object.assign({}, rec, o);
-  Object.assign(o, getIconSizeFields(sym, style.size > 0 ? style.size : getDefaultIconStyle().size));
-  Object.assign(sym, o);
-  Object.assign(o, getIconPaintFields(sym, {fill: style.fill || '',
-    stroke: style.stroke || '', strokeWidth: style.strokeWidth || 0}));
-  if (style.rotation && shapeHasRotation(style.shape)) o['icon-rotation'] = style.rotation;
+// -symbols options that make the symbol in @rec again with the panel style
+// @style: the panel restyles a symbol with -symbols ids=, which replaces all
+// of a symbol's fields.
+//
+// -symbols leaves a circle's stroke= on a point that becomes another shape,
+// and the icon's stroke falls back to it, so no stroke is said, as "none".
+// What the panel has no control for is carried over: an icon's opacity, and a
+// star's number of points.
+export function getRestyleIconOptions(rec, style) {
+  var o = getAddIconOptions(style);
+  if (!('stroke' in o)) o.stroke = 'none';
+  if (style.shape == 'star' && isNumber(rec['icon-points'])) o.points = Number(rec['icon-points']);
+  if (isNumber(rec['icon-opacity'])) o.opacity = Number(rec['icon-opacity']);
   return o;
 }
 
@@ -262,14 +198,6 @@ export function getArrowheadFields(position, shape) {
 
 function hasMarker(val) {
   return !!val && val != 'none';
-}
-
-function clearFields(o, rec, fields) {
-  fields.forEach(function(name) {
-    if (rec && rec[name] !== undefined && rec[name] !== null && rec[name] !== '') {
-      o[name] = '';
-    }
-  });
 }
 
 function isNumber(val) {

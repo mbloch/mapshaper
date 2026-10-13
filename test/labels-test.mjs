@@ -160,12 +160,21 @@ describe('mapshaper-labels.mjs', function () {
       assert.equal(props(json)[0].callout, 'line');
     });
 
+    it('still accepts the icon options, for older scripts', async function () {
+      var json = await run('-style icon=star icon-size=10 icon-color=red icon-opacity=0.5');
+      assert.equal(props(json)[0].icon, 'star');
+      assert.equal(props(json)[0]['icon-size'], 10);
+      assert.equal(props(json)[0]['icon-color'], 'red');
+      assert.equal(props(json)[0]['icon-opacity'], 0.5);
+    });
+
     it('leaves label options out of its help', function () {
       var help = helpOptions('style');
-      ['label-text=', 'halo-width=', 'callout=', 'font-size=', 'dx='].forEach(function(opt) {
+      ['label-text=', 'halo-width=', 'callout=', 'font-size=', 'dx=', 'icon=',
+        'icon-size=', 'icon-color='].forEach(function(opt) {
         assert.ok(!help.includes(opt), opt);
       });
-      ['fill=', 'stroke=', 'r=', 'icon='].forEach(function(opt) {
+      ['fill=', 'stroke=', 'r='].forEach(function(opt) {
         assert.ok(help.includes(opt), opt);
       });
     });

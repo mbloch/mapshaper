@@ -43,12 +43,7 @@ export function getAddSymbolCommand(coords, opts) {
   var o = opts || {};
   var target = o.target || {mode: 'new', newLayerName: DEFAULT_SYMBOL_LAYER_NAME};
   var parts = ['-symbols', 'coordinates=' + formatCoords(coords)];
-  var options = o.options || {};
-  Object.keys(options).forEach(function(name) {
-    var val = options[name];
-    if (val === undefined || val === null || val === '') return;
-    parts.push(name + '=' + formatValue(val));
-  });
+  addSymbolOptions(parts, o.options);
   if (target.mode == 'new') {
     parts.push('no-replace');
     parts.push('name=' + formatValue(target.newLayerName || DEFAULT_SYMBOL_LAYER_NAME));
@@ -75,7 +70,28 @@ export function getUpdatePointCommand(coords, id, target) {
   return parts.join(' ');
 }
 
-// The command that restyles symbols.
+// The command that restyles icons, by making them again: -symbols replaces
+// all of a symbol's fields, so @options describe the whole symbol.
+//   options: -symbols options, as getAddIconOptions() gives them
+//   ids: feature ids, or null for every point in the layer
+export function getRestyleSymbolCommand(options, ids, target) {
+  var parts = ['-symbols'];
+  if (ids) parts.push('ids=' + ids.join(','));
+  addSymbolOptions(parts, options);
+  if (target) parts.push('target=' + formatValue(target));
+  return parts.join(' ');
+}
+
+function addSymbolOptions(parts, options) {
+  Object.keys(options || {}).forEach(function(name) {
+    var val = options[name];
+    if (val === undefined || val === null || val === '') return;
+    parts.push(name + '=' + formatValue(val));
+  });
+}
+
+// The command that restyles curves, whose fields are the stroke, fill and
+// line-end fields that -style sets on lines.
 //   values: {field: value}, where '' removes the field
 //   ids: feature ids, or null for the whole layer
 export function getSymbolStyleCommand(values, ids, target) {

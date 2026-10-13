@@ -24,7 +24,10 @@ optional fill). Data-driven symbol layers are a separate, later panel.
   - placing: `-symbols coordinates=x,y type=star radius=8 fill=...`
   - a curve: `-symbols coordinates=... type=curve stroke=... line-end=arrow`
   - moving an icon, a knot or a whole curve: `-update-symbol ids=N coordinates=...`
-  - restyling the selection: `-style ids=... icon-fill=... icon-size=...`
+  - restyling selected icons: `-symbols ids=... type=star radius=... fill=...`,
+    which makes them again, so the options describe the whole symbol
+    (`getRestyleIconOptions()`); one command per distinct set of options
+  - restyling selected curves: `-style ids=... stroke=... line-end=...`
   - deleting: `-filter '[...].indexOf(this.id) == -1'`
 - **Toolbar**: Icon, Curve, then Done. Armed Icon places on a click; armed
   Curve places knots, finished by a double-click, Enter or Esc, closed by a
@@ -59,10 +62,13 @@ optional fill). Data-driven symbol layers are a separate, later panel.
   to `icon-color=`, the field these replace, which is a ring's stroke and
   other shapes' fill; the panels read the same way (`getShownIconPaint()`,
   kept in step with the renderer by a unit test) and write the new fields.
-  A label icon with no color of its own takes its text color. "None" is
-  written only where a shape would otherwise have the paint: `icon-fill=none`
-  on a circle, `icon-stroke=none` on a ring.
-- **Size** is the stored `icon-size`, as in the label panel and `-style`
+  A label icon with no color of its own takes its text color. When a symbol
+  is placed, "none" is said only where a shape would otherwise have the
+  paint: `fill=none` on a circle, `stroke=none` on a ring. When one is
+  restyled, no stroke is always said: `-symbols` leaves a circle's
+  `stroke=` on a point that becomes another shape, and the icon's stroke
+  would fall back to it.
+- **Size** is the stored `icon-size`, as in the label panel
   (a square's side, a star's or triangle's circumscribed diameter, a ring's
   outer diameter). A circle is drawn by `r`, so that it takes the fast canvas
   path in a layer of circles only, and its size is `2r`. `-symbols radius=`
@@ -71,10 +77,11 @@ optional fill). Data-driven symbol layers are a separate, later panel.
   side brings back to the size asked for. A ring is placed with
   `-symbols type=ring` and no `radii=`, which draws one ring of `radius=`;
   its stroke is inside its size, whatever its width.
-- **Changing a selected icon's shape** writes the whole field set of the new
-  shape and clears the old one's (`r=` and `fill=` going to a star, `icon=`
-  and `icon-size=` going to a circle), keeping its size, and its color as
-  described under Fill and stroke.
+- **Changing a selected icon's shape** makes it again as the new shape with
+  `-symbols ids=`, which clears the old shape's symbol fields, keeping its
+  size, and its color as described under Fill and stroke. What the panel has
+  no control for is carried over: an icon's opacity and a star's number of
+  points.
 - **Hit testing.** Icons are hit on their painted area (the SVG hit test).
   A curve is hard to hit on a 1px stroke, so the GUI draws each curve with a
   transparent 10px stroke under it, which is never exported. In a layer of

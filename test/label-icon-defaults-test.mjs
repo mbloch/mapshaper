@@ -11,8 +11,8 @@ var point = JSON.stringify({
   geometry: {type: 'Point', coordinates: [0, 0]}
 });
 
-async function renderSvg(style) {
-  var out = await api.applyCommands('-i in.json -style ' + style + ' -o out.svg',
+async function renderSvg(style, command) {
+  var out = await api.applyCommands('-i in.json -' + (command || 'style') + ' ' + style + ' -o out.svg',
     {'in.json': point});
   return String(out['out.svg']);
 }
@@ -59,7 +59,7 @@ describe('icon=nyt-star', function () {
   });
 
   it('takes its outline from icon-stroke and its middle from icon-fill', async function () {
-    var svg = await renderSvg('icon=nyt-star icon-size=40 icon-stroke=#0000ff icon-fill=#ffff00 icon-stroke-width=20');
+    var svg = await renderSvg('type=nyt-star radius=20 stroke=#0000ff fill=#ffff00 stroke-width=20', 'symbols');
     var path = /<path [^>]*>/.exec(svg)[0];
     assert(/fill="#ffff00"/.test(path), path);
     assert(/stroke="#0000ff"/.test(path), path);

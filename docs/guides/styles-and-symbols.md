@@ -32,10 +32,10 @@ To make circles from a point layer, add a `r=` (for radius) property along with 
 
 ### Making point icons
 
-Use `icon=` with `icon-size=` to add circle, square, ring or star icons to a point layer. Icons use `icon-color=` when it is provided. Otherwise they use the layer's `fill=` color, falling back to black.
+Use [`-symbols`](/docs/reference.html#-symbols) to turn the points of a layer into squares, stars, triangles, rings and other icons. `radius=` sets their size.
 
 ```text
--style icon=star icon-size=10 fill="#333"
+-symbols type=star radius=5 fill="#333"
 ```
 
 ## Styling data layers with the `-classify` command
@@ -148,10 +148,10 @@ Use `dx=` together with `text-anchor=start` or `text-anchor=end` to place labels
 -style label-text=NAME dx=6 dy=3 font-size=12 text-anchor=start r=2
 ```
 
-For labeled point icons, use `icon=` on the same layer. In this example the icon and label both use `fill="#555"`.
+For labeled point icons, use the `icon=` option of [`-labels`](/docs/reference.html#-labels), which draws an icon at each label's anchor. The icon takes the text color, `fill="#555"` in this example, unless it is given a color of its own.
 
 ```text
--style label-text=NAME dx=8 dy=3 text-anchor=start \
+-labels text=NAME dx=8 dy=3 text-anchor=start \
   icon=circle icon-size=6 fill="#555"
 ```
 

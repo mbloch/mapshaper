@@ -7,21 +7,21 @@ import { makeColorRow, makePanelButton, makePanelSection } from './gui-panel-con
 import { SizeField } from './gui-size-field';
 import { formatEditingStatus } from './gui-editing-status';
 import { runGuiEditCommand } from './gui-edit-command';
-import { getSymbolStyleCommand } from './gui-symbol-commands';
+import { getSymbolStyleCommand, getRestyleSymbolCommand } from './gui-symbol-commands';
 import {
   ARROWHEAD_POSITIONS, getShapeChangeStyle,
-  getIconShape, getIconSize, getIconPaint, getIconRotation,
-  getIconSizeFields, getIconPaintFields, getIconShapeFields,
+  getIconShape, getIconSize, getIconPaint, getIconRotation, getIconStyle,
+  getRestyleIconOptions,
   getCurveStyle, getArrowheadFields, getArrowheadPosition, getArrowheadShape,
-  shapeHasStrokeWidth, shapeHasRotation, getNewSymbolFields
+  shapeHasStrokeWidth, shapeHasRotation
 } from './gui-symbol-style';
 import { pointIsUnstyled } from './gui-unstyled-points';
 import { ARROWHEAD_SHAPES, getArrowheadGlyph } from './gui-arrowhead-shapes';
 import { getIconShapes, getIconShapeGlyph, getDefaultStrokeWidth } from './gui-icon-shapes';
 import { isNytUser } from './gui-nyt';
 
-// The symbol tool's panel. With symbols selected it restyles them, through
-// -style ids=. With none, and a tool armed, it sets the style of the next
+// The symbol tool's panel. With symbols selected it restyles them: icons
+// through -symbols ids=, curves through -style ids=. With none, and a tool armed, it sets the style of the next
 // symbol placed, and shows the section for the kind of symbol the toolbar is
 // ready to place; with no tool armed, it restyles every symbol in the layer,
 // as the label panel restyles every label.
@@ -425,9 +425,10 @@ export function SymbolPanel(gui, opts) {
       style.shape = shape;
       return update();
     }
-    applyPerRecord(state.icons, function(rec) {
-      if (pointIsUnstyled(rec)) return getNewIconFields(rec, {shape: shape});
-      return getIconShape(rec) == shape ? null : getIconShapeFields(rec, shape);
+    applyPerIcon(function(style) {
+      if (style.shape == shape) return false;
+      Object.assign(style, getShapeChangeStyle(shape, style.shape, style));
+      style.shape = shape;
     }, 'Change symbol shape');
   }
 
@@ -437,9 +438,8 @@ export function SymbolPanel(gui, opts) {
       opts.getNewStyle().icon.size = size;
       return update();
     }
-    applyPerRecord(state.icons, function(rec) {
-      if (pointIsUnstyled(rec)) return getNewIconFields(rec, {size: size});
-      return getIconSizeFields(rec, size);
+    applyPerIcon(function(style) {
+      style.size = size;
     }, 'Resize symbol');
   }
 
@@ -465,25 +465,10 @@ export function SymbolPanel(gui, opts) {
       if (fix) fix(style, style.shape);
       return update();
     }
-    applyPerRecord(state.icons, function(rec) {
-      var paint;
-      if (pointIsUnstyled(rec)) {
-        paint = Object.assign({}, opts.getNewStyle().icon, changes);
-        if (fix) fix(paint, paint.shape);
-        return getNewSymbolFields(rec, paint);
-      }
-      paint = Object.assign(getIconPaint(rec), changes);
-      if (fix) fix(paint, getIconShape(rec));
-      return getIconPaintFields(rec, paint);
+    applyPerIcon(function(style) {
+      Object.assign(style, changes);
+      if (fix) fix(style, style.shape);
     }, 'Style symbol');
-  }
-
-  // A point with no symbol yet gets one: the next symbol's, with @changes
-  function getNewIconFields(rec, changes) {
-    var style = Object.assign({}, opts.getNewStyle().icon, changes);
-    if (changes.shape) Object.assign(style, getShapeChangeStyle(changes.shape,
-      opts.getNewStyle().icon.shape, style));
-    return getNewSymbolFields(rec, style);
   }
 
   function applyIconRotation(deg) {
@@ -492,9 +477,25 @@ export function SymbolPanel(gui, opts) {
       opts.getNewStyle().icon.rotation = deg;
       return update();
     }
-    runStyle({'icon-rotation': deg || ''}, state.icons.filter(function(id) {
-      return !!(state.records[id] || {}).icon;
-    }), 'Rotate symbol');
+    applyPerIcon(function(style) {
+      if (!shapeHasRotation(style.shape)) return false;
+      style.rotation = deg;
+    }, 'Rotate symbol');
+  }
+
+  // Restyles each icon in the selection with -symbols ids=. @change(style)
+  // edits a copy of the icon's panel style, and returns false to leave the
+  // icon as it is. A point with no symbol yet starts from the next symbol's
+  // style, and always gets a symbol. Icons of shapes the panel doesn't offer
+  // are left alone.
+  function applyPerIcon(change, title) {
+    applyPerRecord(state.icons, function(rec) {
+      var unstyled = pointIsUnstyled(rec);
+      var style = unstyled ? Object.assign({}, opts.getNewStyle().icon) : getIconStyle(rec);
+      if (!style) return null;
+      if (change(style) === false && !unstyled) return null;
+      return getRestyleIconOptions(rec, style);
+    }, title, getRestyleSymbolCommand);
   }
 
   // A shape for curves with no heads puts one at the end, as the layer panel
@@ -564,9 +565,9 @@ export function SymbolPanel(gui, opts) {
   }
 
   // Symbols of different shapes need different fields for the same change:
-  // one -style per distinct set of fields, run as one command so that it is
-  // one undo step.
-  function applyPerRecord(ids, getFields, title) {
+  // one command per distinct set of fields (-style by default), run together
+  // so that they are one undo step.
+  function applyPerRecord(ids, getFields, title, toCommand) {
     var groups = {};
     var cmds = [];
     ids.forEach(function(id) {
@@ -577,7 +578,7 @@ export function SymbolPanel(gui, opts) {
       (groups[key] = groups[key] || {fields: fields, ids: []}).ids.push(id);
     });
     Object.keys(groups).forEach(function(key) {
-      cmds.push(getSymbolStyleCommand(groups[key].fields, groups[key].ids));
+      cmds.push((toCommand || getSymbolStyleCommand)(groups[key].fields, groups[key].ids));
     });
     run(cmds.join(' '), title);
   }

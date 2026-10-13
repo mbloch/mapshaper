@@ -74,7 +74,7 @@ test('Convert to symbols gives every point the default symbol and opens the symb
   await expect.poll(function() { return getInteractionMode(page); }).toBe('symbols');
   var records = await getRecords(page);
   expect(records.map(function(rec) { return rec.r; })).toEqual([5, 5, 5]);
-  expect(await getSessionHistory(page)).toContain('-style r=5 fill=#333333');
+  expect(await getSessionHistory(page)).toContain('-symbols type=circle radius=5 fill=#333333');
   expect(errors).toEqual([]);
 });
 

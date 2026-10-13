@@ -2,8 +2,8 @@ import api from '../mapshaper.js';
 import assert from 'assert';
 import { getCanvasDisplayStyle } from '../src/gui/gui-layer-styler.mjs';
 import { pointIsUnstyled, UNSTYLED_POINT_MARKER } from '../src/gui/gui-unstyled-points.mjs';
-import { getNewSymbolFields, getDefaultIconStyle } from '../src/gui/gui-symbol-style.mjs';
-import { getUpdatePointCommand } from '../src/gui/gui-symbol-commands.mjs';
+import { getAddIconOptions, getDefaultIconStyle } from '../src/gui/gui-symbol-style.mjs';
+import { getUpdatePointCommand, getRestyleSymbolCommand } from '../src/gui/gui-symbol-commands.mjs';
 
 function pointLayer(records) {
   return {
@@ -41,29 +41,13 @@ describe('gui-unstyled-points.mjs', function () {
   });
 });
 
-describe('getNewSymbolFields()', function () {
-  it('gives a plain point the default symbol, a circle drawn with r=', function () {
-    assert.deepEqual(getNewSymbolFields({}, getDefaultIconStyle()),
-      {r: 5, fill: '#333333'});
-  });
-
-  it('gives a plain point a star', function () {
-    var style = Object.assign(getDefaultIconStyle(), {shape: 'star', size: 12, fill: '#c00'});
-    var o = getNewSymbolFields({name: 'a'}, style);
-    assert.equal(o.icon, 'star');
-    assert.equal(o['icon-size'], 12);
-    assert.equal(o['icon-fill'], '#c00');
-    assert.equal('r' in o, false);
-  });
-
-  it('the fields convert a layer of points with -style', async function () {
+describe('Convert to symbols', function () {
+  it('gives every plain point the default symbol, a circle drawn with r=', async function () {
     var input = {type: 'FeatureCollection', features: [
       {type: 'Feature', properties: {name: 'a'}, geometry: {type: 'Point', coordinates: [0, 0]}}
     ]};
-    var fields = getNewSymbolFields({}, getDefaultIconStyle());
-    var cmd = '-style ' + Object.keys(fields).map(function(k) {
-      return k + '=' + fields[k];
-    }).join(' ');
+    var cmd = getRestyleSymbolCommand(getAddIconOptions(getDefaultIconStyle()), null);
+    assert.equal(cmd, '-symbols type=circle radius=5 fill=#333333');
     var out = await api.applyCommands('-i in.json ' + cmd + ' -o out.json', {'in.json': input});
     var props = JSON.parse(out['out.json']).features[0].properties;
     assert.deepEqual(props, {name: 'a', r: 5, fill: '#333333'});

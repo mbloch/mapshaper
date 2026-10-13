@@ -13,8 +13,8 @@ import { quoteCommandValue } from './gui-command-utils';
 import { parseOpacityValue, formatOpacityPct, formatColorOpacityPct } from './gui-style-values';
 import { getSelectionChangeTest } from './gui-selection-change';
 import { FloatingToolbar } from './gui-floating-toolbar';
-import { getSymbolStyleCommand } from './gui-symbol-commands';
-import { getNewSymbolFields, getDefaultIconStyle } from './gui-symbol-style';
+import { getRestyleSymbolCommand } from './gui-symbol-commands';
+import { getAddIconOptions, getDefaultIconStyle } from './gui-symbol-style';
 var defaultCircleRadius = 0;
 var defaultCircleFill = '#000000';
 
@@ -382,8 +382,7 @@ export function PointStyleTool(gui) {
   // symbols and half plain points.
   function convertToSymbols() {
     if (!targetLayer || internal.getFeatureCount(targetLayer) === 0) return;
-    runGuiEditCommand(gui, getSymbolStyleCommand(
-      getNewSymbolFields({}, getDefaultIconStyle()), null), {
+    runGuiEditCommand(gui, getRestyleSymbolCommand(getAddIconOptions(getDefaultIconStyle()), null), {
       title: 'Convert to symbols',
       onSuccess: function() {
         gui.interaction.setMode('symbols');

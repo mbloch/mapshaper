@@ -1936,13 +1936,7 @@ Example: `hatches 45deg 2px red 2px grey`
 
 `r=`               Circle radius. Setting this exports points as SVG `<circle>` symbols, unless the `-o point-symbol=square` option is used.
 
-`icon=`            Point icon shape. Possible values are: circle, square, ring or star. Icons are rendered as SVG symbols and can be combined with labels on the same point layer.
-
-`icon-size=`       Point icon size in pixels. If `icon=` is missing, `icon-size=` creates circle icons.
-
-`icon-color=`      Point icon color. If missing, icons use the `fill=` color, or black if `fill=` is also missing. Ring icons use this color for the stroke.
-
-Label options such as `label-text=`, `font-size=` and `text-anchor=` have moved to [-labels](#-labels). `-style` still accepts them, so existing scripts keep working.
+Label options such as `label-text=`, `font-size=` and `text-anchor=` have moved to [-labels](#-labels), and point icons are made with [-symbols](#-symbols) (or `icon=` in `-labels`, for an icon at a label's anchor). `-style` still accepts the old options, including `icon=`, `icon-size=`, `icon-color=` and `icon-opacity=`, so existing scripts keep working.
 
 Common options: `target=`
 
@@ -1967,6 +1961,8 @@ Symbolize points as regular polygons, circles, stars, arrows, pies and donuts.
 A `pie` symbol is a pie or donut chart, sized by `radius=` and divided up by `values=` and `fills=`. Add `hole=` to make it a donut. Its first wedge starts at the top of the symbol and the rest follow in clockwise order. `rotation=` changes the origin.
 
 `type=`            Basic types: star, polygon, circle, arrow, ring, pie. Aliases: triangle, square, pentagon, etc.
+
+`ids=`             Comma-sep. list of ids of the points to symbolize. Other points keep the symbols they have, so this restyles some of a layer's symbols.
 
 `fill=`            Symbol fill color
 

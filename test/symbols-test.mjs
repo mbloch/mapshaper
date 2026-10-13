@@ -103,6 +103,26 @@ describe('mapshaper-symbols.js', function () {
       assert.equal(recs[0]['icon-rotation'], 45);
     });
 
+    it('ids= gives only those points new symbols', async function () {
+      var recs = await getSymbolRecords(
+        '-symbols type=star radius=5 fill=red opacity=0.5 -symbols ids=1,2 type=circle radius=3 fill=blue',
+        [{name: 'a'}, {name: 'b'}, {name: 'c'}]);
+      assert.deepEqual(recs[0], {name: 'a', icon: 'star', 'icon-size': 10, 'icon-fill': 'red',
+        'icon-opacity': 0.5});
+      // the star's fields are gone from the points that became circles
+      assert.deepEqual(recs[1], {name: 'b', r: 3, fill: 'blue'});
+      assert.deepEqual(recs[2], {name: 'c', r: 3, fill: 'blue'});
+    });
+
+    it('ids= can not be combined with coordinates= or geographic', function () {
+      assert.throws(function() {
+        api.cmd.symbols({geometry_type: 'point', shapes: [[[0, 0]]]}, {}, {ids: [0], geographic: true});
+      });
+      assert.throws(function() {
+        api.cmd.addSymbol([], {layers: []}, {ids: [0], coordinates: '0,0'});
+      });
+    });
+
     it('named polygon types', async function () {
       var recs = await getSymbolRecords('-symbols type=triangle radius=10 opacity=0.5');
       assert.deepEqual(recs[0], {icon: 'polygon', 'icon-sides': 3, 'icon-size': 20,
@@ -232,8 +252,8 @@ describe('mapshaper-symbols.js', function () {
       assert.equal((svg.match(/<circle/g) || []).length, 2);
     });
 
-    it('the fields can be edited with -style', async function () {
-      var svg = await getSVG('-symbols type=triangle radius=10 -style icon-sides=6 icon-fill=red');
+    it('a symbol is redrawn from its fields', async function () {
+      var svg = await getSVG('', [{icon: 'polygon', 'icon-sides': 6, 'icon-size': 20, 'icon-fill': 'red'}]);
       assert.ok(svg.includes('fill="red"'));
       var d = svg.match(/ d="([^"]+)"/)[1];
       assert.equal(d.match(/-?[\d.]+/g).length, 14); // closed hexagon

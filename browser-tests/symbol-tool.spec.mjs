@@ -201,7 +201,8 @@ test('a symbol in a layer that shares its name with another can be edited', asyn
   expect(history).toContain('-update-symbol ids=0');
   // the commands run on the active layer: a target= naming it would match both
   expect(history).not.toMatch(/-update-symbol [^"]*target=/);
-  expect(history).toMatch(/-style [^"]*ids=0"/);
+  expect(history).toContain('-symbols ids=0 ');
+  expect(history).not.toMatch(/-symbols ids=0 [^"]*target=/);
   expect(await page.locator('.alert-wrapper').filter({hasText: 'single target layer'}).count()).toBe(0);
   expect(errors).toEqual([]);
 });

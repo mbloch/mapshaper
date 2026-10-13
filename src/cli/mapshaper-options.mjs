@@ -103,30 +103,12 @@ export function getOptionParser() {
         'casing-opacity': {describe: 'opacity of the casing, 0-1'},
         opacity: {describe: 'opacity; example: 0.5'},
         r: {describe: 'symbol radius (set this to export points as circles)'},
-        icon: {describe: 'point icon shape: circle, square, ring, star, polygon, arrow, pie'},
-        'icon-size': {describe: 'point icon size in pixels (an arrow\'s length)'},
-        'icon-fill': {describe: 'point icon fill color, or none (defaults to icon-color)'},
-        'icon-stroke': {describe: 'point icon stroke color, or none'},
-        'icon-stroke-width': {describe: 'point icon stroke width in px'},
-        'icon-color': {describe: 'point icon color: a ring\'s stroke, other icons\' fill (defaults to fill color, then black)'},
-        'icon-opacity': {describe: 'point icon opacity, 0-1'},
-        'icon-rotation': {describe: 'point icon rotation in degrees clockwise'},
-        'icon-sides': {describe: '(polygon) number of sides'},
-        'icon-points': {describe: '(star) number of points'},
-        'icon-radii': {describe: '(ring) comma-sep. list of concentric radii'},
-        'icon-values': {describe: '(pie) comma-sep. list of wedge values'},
-        'icon-fills': {describe: '(pie) comma-sep. list of wedge colors'},
-        'icon-hole': {describe: '(pie) radius of a donut\'s hole (negative: inward from the edge)'},
-        'arrow-style': {describe: '(arrow) standard or stick'},
-        'arrow-stem-width': {describe: '(arrow) width of the stem'},
-        'arrow-head-width': {describe: '(arrow) width of the head'},
-        'arrow-head-length': {describe: '(arrow) length of the head'},
-        'arrow-head-angle': {describe: '(arrow) angle of the tip, in degrees'},
-        'arrow-stem-taper': {describe: '(arrow) stem taper, 0-1'},
-        'arrow-stem-curve': {describe: '(arrow) stem curvature, in degrees'},
-        'arrow-stem-length': {describe: '(arrow) length of the stem'},
-        'arrow-min-stem-ratio': {describe: '(arrow) minimum ratio of stem to total length'},
-        'arrow-anchor': {describe: '(arrow) start, middle or end'}
+        // Accepted, but left out of the help: from when labels and their icons
+        // were styled with -style. Icons are made by -symbols and -labels.
+        icon: {},
+        'icon-size': {},
+        'icon-color': {},
+        'icon-opacity': {}
       },
       noReplaceOpt2 = { // for -calc and -info
         alias: '+',
@@ -2258,6 +2240,10 @@ export function getOptionParser() {
 
   parser.command('symbols')
     .describe('symbolize points as arrows, circles, stars, etc. (as icon= fields)')
+    .option('ids', {
+      describe: 'comma-sep. list of ids of the points to symbolize (default is all)',
+      type: 'numbers'
+    })
     .option('type', {
       describe: 'types: arrow, circle, square, star, polygon, ring, pie, curve'
     })

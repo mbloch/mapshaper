@@ -2,11 +2,11 @@ import assert from 'assert';
 import api from '../mapshaper.js';
 import {
   getSymbolTarget, getAddSymbolCommand, getUpdateSymbolCommand,
-  getSymbolStyleCommand, getSymbolDeleteCommand
+  getSymbolStyleCommand, getRestyleSymbolCommand, getSymbolDeleteCommand
 } from '../src/gui/gui-symbol-commands.mjs';
 import {
   getAddIconOptions, getAddCurveOptions, getIconShape, getIconSize, getIconPaint,
-  getIconSizeFields, getIconPaintFields, getIconShapeFields, getCurveStyle,
+  getIconStyle, getRestyleIconOptions, getCurveStyle,
   getArrowheadPosition, getArrowheadFields, getDefaultIconStyle, getDefaultCurveStyle,
   getShapeChangeStyle
 } from '../src/gui/gui-symbol-style.mjs';
@@ -68,8 +68,15 @@ describe('gui-symbol-commands.mjs', function () {
   });
 
   it('getSymbolStyleCommand()', function () {
-    assert.equal(getSymbolStyleCommand({'icon-color': '#fff', r: ''}, [1, 3], 'notes'),
-      '-style icon-color=#fff r= ids=1,3 target=notes');
+    assert.equal(getSymbolStyleCommand({stroke: '#fff', 'line-end': ''}, [1, 3], 'notes'),
+      '-style stroke=#fff line-end= ids=1,3 target=notes');
+  });
+
+  it('getRestyleSymbolCommand()', function () {
+    assert.equal(getRestyleSymbolCommand({type: 'star', radius: 5, fill: '#cc0000', rotation: ''},
+      [1, 3], 'notes'), '-symbols ids=1,3 type=star radius=5 fill=#cc0000 target=notes');
+    assert.equal(getRestyleSymbolCommand({type: 'circle', radius: 5}, null),
+      '-symbols type=circle radius=5');
   });
 
   it('getSymbolDeleteCommand()', function () {
@@ -85,7 +92,8 @@ describe('gui-symbol-commands.mjs', function () {
         target: {mode: 'existing', target: 'symbols'}}),
       getAddSymbolCommand([[2, 2], [3, 2], [3, 3]], {options: {type: 'curve'},
         target: {mode: 'existing', target: 'symbols'}}),
-      getSymbolStyleCommand({'icon-color': 'red'}, [1], 'symbols'),
+      getRestyleSymbolCommand({type: 'star', radius: 4, fill: 'red'}, [1], 'symbols'),
+      getSymbolStyleCommand({stroke: 'blue'}, [2], 'symbols'),
       getUpdateSymbolCommand([[5, 5]], 0, 'symbols'),
       getSymbolDeleteCommand([2], 'symbols')
     ].join(' ');
@@ -93,7 +101,8 @@ describe('gui-symbol-commands.mjs', function () {
     var json = JSON.parse(out['symbols.json']);
     assert.equal(json.features.length, 2);
     assert.deepEqual(json.features[0].geometry.coordinates, [5, 5]);
-    assert.equal(json.features[1].properties['icon-color'], 'red');
+    assert.equal(json.features[0].properties.r, 3);
+    assert.equal(json.features[1].properties['icon-fill'], 'red');
   });
 });
 
@@ -155,9 +164,6 @@ describe('gui-symbol-style.mjs', function () {
     // a color chosen by hand stays
     assert.equal(getShapeChangeStyle('nyt-star', 'circle',
       {fill: '#0000ff', stroke: '', strokeWidth: 0}).stroke, '#0000ff');
-    assert.deepEqual(getIconShapeFields({r: 5, fill: '#333333'}, 'nyt-star'),
-      {icon: 'nyt-star', 'icon-size': 10, 'icon-fill': '#ffffff', 'icon-stroke': '#cc0000',
-        r: '', fill: ''});
   });
 
   it('the NYT star is placed upright, with an outline of its own weight', function () {
@@ -191,49 +197,58 @@ describe('gui-symbol-style.mjs', function () {
     assert.equal(getIconShape({}), null);
   });
 
-  it('size and color fields depend on the shape', function () {
-    assert.deepEqual(getIconSizeFields({r: 3}, 10), {r: 5});
-    assert.deepEqual(getIconSizeFields({icon: 'star', 'icon-size': 4}, 10), {'icon-size': 10});
-    // a size is the stored icon-size, as in the label panel and -style
-    assert.deepEqual(getIconSizeFields({icon: 'square', 'icon-size': 4}, 10), {'icon-size': 10});
+  it('getIconStyle() reads a symbol as the panel shows it', function () {
+    assert.deepEqual(getIconStyle({r: 5, fill: 'red'}),
+      {shape: 'circle', size: 10, fill: 'red', stroke: '', strokeWidth: 0, rotation: 0});
+    assert.deepEqual(getIconStyle({icon: 'star', 'icon-size': 8, 'icon-fill': 'red',
+      'icon-stroke': '#000', 'icon-stroke-width': 2, 'icon-rotation': 15}),
+      {shape: 'star', size: 8, fill: 'red', stroke: '#000', strokeWidth: 2, rotation: 15});
+    assert.equal(getIconStyle({icon: 'pie', 'icon-size': 8}), null);
   });
 
-  it('paint fields depend on the shape, and replace older ones', function () {
-    var red = {fill: 'red', stroke: '', strokeWidth: 0};
-    assert.deepEqual(getIconPaintFields({r: 3}, red), {fill: 'red'});
-    assert.deepEqual(getIconPaintFields({r: 3, stroke: '#000', 'stroke-width': 1}, red),
-      {fill: 'red', stroke: '', 'stroke-width': ''});
-    // a symbol from before icon-fill: its icon-color and stroke go
-    assert.deepEqual(getIconPaintFields({icon: 'star', 'icon-color': 'blue', stroke: '#000'}, red),
-      {'icon-fill': 'red', 'icon-color': '', stroke: ''});
-    assert.deepEqual(getIconPaintFields({icon: 'ring', 'icon-size': 8},
-      {fill: '', stroke: 'red', strokeWidth: 3}), {'icon-stroke': 'red', 'icon-stroke-width': 3});
-    // a ring with no stroke says so, or its fill would draw as one
-    assert.deepEqual(getIconPaintFields({icon: 'ring', 'icon-size': 8}, red),
-      {'icon-fill': 'red', 'icon-stroke': 'none'});
+  it('restyling says no stroke, and keeps what the panel has no control for', function () {
+    var style = {shape: 'star', size: 10, fill: 'red', stroke: '', strokeWidth: 0, rotation: 0};
+    assert.deepEqual(getRestyleIconOptions({icon: 'star', 'icon-points': 7, 'icon-opacity': 0.5}, style),
+      {type: 'star', radius: 5, fill: 'red', stroke: 'none', points: 7, opacity: 0.5});
   });
 
-  it('changing shape keeps size and color, and clears the old fields', function () {
-    assert.deepEqual(getIconShapeFields({r: 5, fill: 'red'}, 'star'),
-      {icon: 'star', 'icon-size': 10, 'icon-fill': 'red', r: '', fill: ''});
-    assert.deepEqual(getIconShapeFields({r: 5, fill: 'red'}, 'ring'),
-      {icon: 'ring', 'icon-size': 10, 'icon-stroke': 'red', 'icon-stroke-width': 1.5,
-        r: '', fill: ''});
-    assert.deepEqual(getIconShapeFields({icon: 'polygon', 'icon-sides': 3, 'icon-size': 10, 'icon-color': 'red'}, 'circle'),
-      {r: 5, fill: 'red', icon: '', 'icon-size': '', 'icon-color': '', 'icon-sides': ''});
-    assert.deepEqual(getIconShapeFields({icon: 'star', 'icon-size': 10, 'icon-fill': 'red'}, 'triangle'),
-      {icon: 'polygon', 'icon-sides': 3, 'icon-size': 10, 'icon-fill': 'red'});
-  });
-
-  it('changing shape on the command line keeps the drawn size', async function () {
-    var cmd = getAddSymbolCommand([[0, 0]], {options: {type: 'circle', radius: 6, fill: 'red'}});
+  // A record goes through -symbols ids= with options from the style the panel
+  // reads back from it, after the panel's change, and is read back again
+  async function restyle(addOptions, change) {
+    var cmd = getAddSymbolCommand([[0, 0]], {options: addOptions});
     var rec = (await getRecords(cmd))[0];
-    var cmd2 = cmd + ' ' + getSymbolStyleCommand(getIconShapeFields(rec, 'square'), [0], 'symbols');
-    var rec2 = (await getRecords(cmd2))[0];
-    assert.equal(getIconShape(rec2), 'square');
-    assert.equal(getIconSize(rec2), 12);
-    assert.equal(getIconPaint(rec2).fill, 'red');
-    assert.equal(rec2.r, undefined);
+    var style = getIconStyle(rec);
+    change(style);
+    cmd += ' ' + getRestyleSymbolCommand(getRestyleIconOptions(rec, style), [0], 'symbols');
+    return (await getRecords(cmd))[0];
+  }
+
+  it('changing shape keeps the drawn size and color', async function () {
+    var rec = await restyle({type: 'circle', radius: 6, fill: 'red'}, function(style) {
+      style.shape = 'square';
+    });
+    assert.equal(getIconShape(rec), 'square');
+    assert.equal(getIconSize(rec), 12);
+    assert.equal(getIconPaint(rec).fill, 'red');
+    assert.equal(rec.r, undefined);
+  });
+
+  it('a circle that loses its stroke as another shape is drawn with none', async function () {
+    var rec = await restyle({type: 'circle', radius: 5, fill: 'red', stroke: '#000',
+      'stroke-width': 2}, function(style) {
+      Object.assign(style, {shape: 'star', stroke: '', strokeWidth: 0});
+    });
+    assert.deepEqual(getIconPaint(rec), {fill: 'red', stroke: '', strokeWidth: 0});
+  });
+
+  it('a star goes back to a circle', async function () {
+    var rec = await restyle({type: 'star', radius: 5, fill: 'red', rotation: 20}, function(style) {
+      style.shape = 'circle';
+    });
+    assert.equal(getIconShape(rec), 'circle');
+    assert.equal(getIconSize(rec), 10);
+    assert.equal(rec.icon, undefined);
+    assert.equal(rec['icon-rotation'], undefined);
   });
 
   it('curves: arrowheads, and a fill only when closed', async function () {
