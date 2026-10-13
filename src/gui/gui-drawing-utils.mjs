@@ -1,7 +1,5 @@
 import { internal, Bounds, utils, error } from './gui-core';
 import { isProjectedLayer } from './gui-display-utils';
-import { projectLayerForDisplay } from './gui-display-layer';
-
 export function flattenArcs(lyr) {
   lyr.gui.source.dataset.arcs.flatten();
   if (isProjectedLayer(lyr)) {
@@ -118,44 +116,12 @@ export function deleteLastPath(lyr) {
   }
 }
 
-// p: one point in source data coords
-export function appendNewPoint(lyr, p) {
-  lyr.shapes.push([p]);
-  if (lyr.data) {
-    appendNewDataRecord(lyr);
-  }
-  // this reprojects all the points... TODO: improve
-  if (isProjectedLayer(lyr)) {
-    projectLayerForDisplay(lyr, lyr.gui.dynamic_crs);
-  }
-}
-
 export function deleteFeature(lyr, fid) {
   var records = lyr.data?.getRecords();
   if (records) records.splice(fid, 1);
   lyr.shapes.splice(fid, 1);
   if (isProjectedLayer(lyr) && lyr.geometry_type == 'point') {
     lyr.gui.displayLayer.shapes.splice(fid, 1); // point layer
-  }
-}
-
-export function insertFeature(lyr, fid, shp, d) {
-  var records = lyr.data?.getRecords();
-  if (records) records.splice(fid, 0, d);
-  lyr.shapes.splice(fid, 0, shp);
-  if (isProjectedLayer(lyr) && lyr.geometry_type == 'point') {
-    var shp2 = projectPointCoords(shp, lyr.gui.projectPoint);
-    lyr.gui.displayLayer.shapes.splice(fid, 0, shp2);
-  }
-}
-
-export function deleteLastPoint(lyr) {
-  if (lyr.data) {
-    lyr.data.getRecords().pop();
-  }
-  lyr.shapes.pop();
-  if (isProjectedLayer(lyr)) {
-    lyr.gui.displayLayer.shapes.pop();
   }
 }
 
@@ -227,42 +193,5 @@ export function setRectangleCoords(lyr, ids, coords) {
       internal.snapVerticesToPoint([id], lyr.gui.projectPoint(p[0], p[1]), lyr.gui.displayArcs);
     }
   });
-}
-
-// Update source data coordinates by projecting display coordinates
-export function updatePointCoords(lyr, fid) {
-  if (!isProjectedLayer(lyr)) return;
-  var displayShp = lyr.gui.displayLayer.shapes[fid];
-  lyr.shapes[fid] = projectPointCoords(displayShp, lyr.gui.invertPoint);
-}
-
-// coords: [[x, y]] point in data CRS (not display CRS)
-export function setPointCoords(lyr, fid, coords) {
-  lyr.shapes[fid] = coords;
-  if (isProjectedLayer(lyr)) {
-    lyr.gui.displayLayer.shapes[fid] = projectPointCoords(coords, lyr.gui.projectPoint);
-  }
-}
-
-// return an [[x, y]] point in data CRS
-export function getPointCoords(lyr, fid) {
-  var coords = lyr.geometry_type == 'point' && lyr.shapes[fid];
-  if (!coords || coords.length != 1) {
-    return null;
-  }
-  return internal.cloneShape(coords);
-}
-
-// export function getPointCoords(lyr, fid) {
-//   return internal.cloneShape(lyr.shapes[fid]);
-// }
-
-function projectPointCoords(src, proj) {
-  var dest = [], p;
-  for (var i=0; i<src.length; i++) {
-    p = proj(src[i][0], src[i][1]);
-    if (p) dest.push(p);
-  }
-  return dest.length ? dest : null;
 }
 

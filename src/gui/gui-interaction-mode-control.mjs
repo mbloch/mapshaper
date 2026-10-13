@@ -23,6 +23,14 @@ export function InteractionMode(gui) {
   // own: setMode() takes them as "open the mode with drawing armed", creating
   // a layer to draw in if there is none, which is what the menu for an empty
   // session and the layer panel's "Draw" links ask for.
+  //
+  // Points are added and moved in 'point_style'. On a layer of plain points
+  // a click on empty map always adds one, so the tool mode there is
+  // 'edit_points' with nothing to arm (see getToolMode()); a layer of circles
+  // keeps its selection for restyling instead. 'edit_points' opens the mode,
+  // creating a point layer if there is none. The symbol tool is not offered on a layer of plain points: it draws only
+  // symbols, and the panel's Convert button is the way from points to
+  // symbols.
   var menus = {
     standard: ['info', 'selection', 'box', 'ruler'],
     empty: [ 'label', 'symbols', 'edit_points', 'edit_lines',  'edit_polygons','box', 'ruler'],
@@ -34,12 +42,13 @@ export function InteractionMode(gui) {
     labels: ['info', 'label', 'symbols', 'selection', 'box', 'ruler'],
     // a layer of symbols, which the point tools have no controls for
     symbols: ['info', 'symbols', 'selection', 'box', 'ruler'],
-    points: ['info', 'point_style', 'symbols', 'edit_points', 'selection', 'box', 'ruler'], // , 'add-points'
+    points: ['info', 'point_style', 'selection', 'box', 'ruler'],
+    circles: ['info', 'point_style', 'symbols', 'selection', 'box', 'ruler'],
     // An empty point layer is the layer the "Draw: labels" link creates,
     // and a label goes into it rather than beside it (see labelWouldJoin), so
     // the label tool belongs in its menu as well as the point tools: it is the
     // way back into a labels layer that has no label in it yet.
-    emptyPoints: ['info', 'label', 'symbols', 'point_style', 'edit_points', 'selection', 'box', 'ruler']
+    emptyPoints: ['info', 'label', 'symbols', 'point_style', 'selection', 'box', 'ruler']
   };
 
   // Tools that work the same whatever the active layer is. They go below a
@@ -60,7 +69,7 @@ export function InteractionMode(gui) {
     label: 'edit labels',
     symbols: 'edit symbols',
     label_style: 'style labels',
-    point_style: 'style points',
+    point_style: 'edit points',
     line_style: 'edit lines',
     polygon_style: 'edit polygons',
     edit_points: 'edit points',
@@ -91,7 +100,10 @@ export function InteractionMode(gui) {
     line_style: {draw: 'edit_lines', reshape: 'reshape_lines'},
     polygon_style: {draw: 'edit_polygons', reshape: 'reshape_polygons'}
   };
-  var drawingAliases = {edit_lines: 'line_style', edit_polygons: 'polygon_style'};
+  var drawingAliases = {edit_lines: 'line_style', edit_polygons: 'polygon_style',
+    edit_points: 'point_style'};
+  var drawingGeometryTypes = {line_style: 'polyline', polygon_style: 'polygon',
+    point_style: 'point'};
 
   // Only render edit mode button/menu if this option is present
   if (gui.options.inspectorControl) {
@@ -218,7 +230,7 @@ export function InteractionMode(gui) {
   };
 
   function openDrawingMode(mode) {
-    var type = mode == 'polygon_style' ? 'polygon' : 'polyline';
+    var type = drawingGeometryTypes[mode];
     var o = gui.model.getActiveLayer();
     if (!o || !o.layer || o.layer.geometry_type != type) {
       addEmptyLayer(gui, undefined, type);
@@ -265,8 +277,11 @@ export function InteractionMode(gui) {
     if (o.layer.geometry_type == 'point' && internal.layerHasSvgSymbols(o.layer)) {
       return menus.symbols;
     }
+    if (o.layer.geometry_type == 'point' && labelWouldJoin(o.layer)) {
+      return menus.emptyPoints;
+    }
     if (o.layer.geometry_type == 'point') {
-      return labelWouldJoin(o.layer) ? menus.emptyPoints : menus.points;
+      return o.layer.data && o.layer.data.fieldExists('r') ? menus.circles : menus.points;
     }
     if (o.layer.geometry_type == 'polyline') {
       return menus.lines;
@@ -285,7 +300,18 @@ export function InteractionMode(gui) {
 
   function getToolMode() {
     var mode = getInteractionMode();
+    if (mode == 'point_style') {
+      return activeLayerHasPlainPoints() ? 'edit_points' : mode;
+    }
     return _armedTool && mode in drawingModes ? drawingModes[mode][_armedTool] : mode;
+  }
+
+  // Checked on each call rather than on entering the mode, because a -style
+  // command run from the console can turn the points into circles.
+  function activeLayerHasPlainPoints() {
+    var o = gui.model.getActiveLayer();
+    return !!(o && o.layer && o.layer.geometry_type == 'point' &&
+      !(o.layer.data && o.layer.data.fieldExists('r')));
   }
 
   // A line or polygon layer with nothing in it has nothing to style or
@@ -337,7 +363,7 @@ export function InteractionMode(gui) {
         // closeMenu();
         setMode('off');
       } else if (_editMode != mode) {
-        setMode(mode);
+        self.setMode(mode); // resolves drawingAliases
         if (mode == 'off') closeMenu(120); // only close if turning off
         // closeMenu(mode == 'off' ? 120 : 400); // close after selecting
       }

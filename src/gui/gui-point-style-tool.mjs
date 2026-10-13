@@ -12,20 +12,23 @@ import { runGuiEditCommand } from './gui-edit-command';
 import { quoteCommandValue } from './gui-command-utils';
 import { parseOpacityValue, formatOpacityPct, formatColorOpacityPct } from './gui-style-values';
 import { getSelectionChangeTest } from './gui-selection-change';
-
+import { FloatingToolbar } from './gui-floating-toolbar';
+import { getSymbolStyleCommand } from './gui-symbol-commands';
+import { getNewSymbolFields, getDefaultIconStyle } from './gui-symbol-style';
 var defaultCircleRadius = 0;
-var defaultCreatedCircleRadius = 3;
 var defaultCircleFill = '#000000';
 
 export function PointStyleTool(gui) {
   var parent = gui.container.findChild('.mshp-main-map');
   var panel = El('div').addClass('label-style-panel point-style-panel rollover').appendTo(parent).hide();
   var title, noteSection, labelsSection, circlesSection, symbolsSection, labelNoteSection;
-  var circleSectionTitle;
-  var symbolNote;
+  var symbolNote, convertRow, convertBtn;
+  var toolbar, stylesBtn;
+  // whether the mode is on, which the panel no longer shows: it can be hidden
+  var active = false;
+  var panelHidden = false;
   var createFieldSelect, createExprInput, createCopyCheckbox, createLabelsBtn;
   var editingRow, editingStatus, clearLink;
-  var createCirclesRow;
   var circleControlRows = [];
   var circleRadiusField, circleStrokeWidthField;
   var circleFillControl, circleStrokeControl;
@@ -52,9 +55,9 @@ export function PointStyleTool(gui) {
   });
 
   gui.model.on('update', function() {
-    if (panel.visible() && !modeMatchesActiveLayer(gui.interaction.getMode())) {
+    if (active && !modeMatchesActiveLayer(gui.interaction.getMode())) {
       gui.interaction.turnOff();
-    } else if (panel.visible()) {
+    } else if (active) {
       updateControls();
     }
   });
@@ -83,7 +86,9 @@ export function PointStyleTool(gui) {
 
     var header = El('div').addClass('label-style-panel-title').appendTo(panel);
     title = El('span').appendTo(header).text('Point symbols');
-    El('button').addClass('label-style-close').appendTo(header).text('×').on('click', closePanel);
+    El('button').addClass('label-style-close').appendTo(header).text('×').on('click', function() {
+      setPanelShown(false);
+    });
 
     initNoteSections();
     initCreateLabelsSection();
@@ -130,14 +135,9 @@ export function PointStyleTool(gui) {
 
   function initCreateCirclesSection() {
     circlesSection = makePanelSection(panel, 'Circles');
-    // Hidden once the points are circles: the panel's own title says so then,
-    // and the section is the only thing left in the panel.
-    circleSectionTitle = circlesSection.findChild('.label-style-section-title');
-    El('div').addClass('point-style-note point-circle-note').appendTo(circlesSection)
-      .text('Use the -style command in the console to create proportional circles.');
-
-    createCirclesRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(circlesSection);
-    makePanelActionButton(createCirclesRow, 'Create simple circles', createSimpleCircles);
+    // The panel's own title says what the points are, and the section is the
+    // only thing in the panel.
+    circlesSection.findChild('.label-style-section-title').classed('hidden', true);
 
     editingRow = El('div').addClass('label-style-row label-style-selection-row').appendTo(circlesSection);
     editingStatus = El('span').addClass('label-editing-status').appendTo(editingRow);
@@ -186,8 +186,9 @@ export function PointStyleTool(gui) {
 
   function initSymbolsSection() {
     symbolsSection = makePanelSection(panel, 'Symbols');
-    symbolNote = El('div').addClass('point-style-note').appendTo(symbolsSection)
-      .text('Use the -symbols command in the console to create arrows and other symbols.');
+    convertRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(symbolsSection);
+    convertBtn = makePanelActionButton(convertRow, 'Convert to symbols', convertToSymbols);
+    symbolNote = El('div').addClass('point-style-note').appendTo(symbolsSection);
   }
 
   function addCircleColorControl(label, field) {
@@ -217,20 +218,39 @@ export function PointStyleTool(gui) {
   }
 
   function turnOn() {
+    active = true;
     targetLayer = getActiveLayer();
     renderCreateFields();
     updateControls();
-    panel.show();
+    if (!panelHidden) panel.show();
   }
 
   function turnOff() {
-    panel.hide();
-    circleFillControl.picker.hide();
-    circleStrokeControl.picker.hide();
+    active = false;
+    hidePanel();
+    if (toolbar) toolbar.hide();
     targetLayer = null;
   }
 
-  function closePanel() {
+  function hidePanel() {
+    circleFillControl.picker.hide();
+    circleStrokeControl.picker.hide();
+    releaseFocus();
+    panel.hide();
+  }
+
+  function setPanelShown(shown) {
+    panelHidden = !shown;
+    if (shown) {
+      panel.show();
+      updateControls();
+    } else {
+      hidePanel();
+      updateToolbar();
+    }
+  }
+
+  function exitMode() {
     turnOff();
     if (gui.interaction.getMode() == 'point_style') {
       gui.interaction.turnOff();
@@ -241,18 +261,21 @@ export function PointStyleTool(gui) {
     syncTargetLayer();
     var representation = getPointRepresentation();
     updateCreateLabelsButton();
-    title.text(representation == 'circle' ? 'Circle styles' : 'Point symbols');
+    title.text(representation == 'circle' ? 'Circle styles' : 'Points');
     updateEditingStatus(getSelectionIds().length);
     toggleSection(noteSection, representation == 'unstyled');
     toggleSection(labelsSection, representation == 'unstyled');
-    toggleSection(circlesSection, representation == 'unstyled' || representation == 'circle');
+    toggleSection(circlesSection, representation == 'circle');
     toggleSection(symbolsSection, representation == 'unstyled' || representation == 'svg-symbol');
     toggleSection(labelNoteSection, representation == 'label');
+    convertRow.classed('hidden', representation != 'unstyled');
+    setPanelButtonDisabled(convertBtn, !targetLayer || internal.getFeatureCount(targetLayer) === 0);
     symbolNote.text(representation == 'svg-symbol' ?
       'This layer uses SVG symbols. Use the -symbols command in the console to create arrows and other symbols.' :
-      'Use the -symbols command in the console to create arrows and other symbols.');
+      'Use the -symbols and -style commands in the console for symbols that vary with the data, such as proportional circles and arrows.');
     updateCircleSection(representation);
     updateCircleControls(representation);
+    updateToolbar();
   }
 
   function toggleSection(section, visible) {
@@ -264,14 +287,7 @@ export function PointStyleTool(gui) {
   }
 
   function updateCircleSection(representation) {
-    var showCreate = representation == 'unstyled';
-    circleSectionTitle.classed('hidden', !showCreate);
-    createCirclesRow.classed('hidden', !showCreate);
     editingRow.classed('hidden', representation != 'circle');
-    circlesSection.findChild('.point-circle-note').classed('hidden', !showCreate);
-    circleControlRows.forEach(function(row) {
-      row.classed('hidden', showCreate);
-    });
   }
 
   function updateCircleControls(representation) {
@@ -360,10 +376,37 @@ export function PointStyleTool(gui) {
     }
   }
 
-  function createSimpleCircles() {
-    runCommand('-style r=' + defaultCreatedCircleRadius +
-      ' fill=' + quoteCommandValue(defaultCircleFill) +
-      ' stroke-width=0', 'Create circles');
+  // The symbol tool's default symbol for every point in the layer, after
+  // which the symbol tool takes over, as the label tool does once points are
+  // labels. Converting all of them, not some, keeps the layer from being half
+  // symbols and half plain points.
+  function convertToSymbols() {
+    if (!targetLayer || internal.getFeatureCount(targetLayer) === 0) return;
+    runGuiEditCommand(gui, getSymbolStyleCommand(
+      getNewSymbolFields({}, getDefaultIconStyle()), null), {
+      title: 'Convert to symbols',
+      onSuccess: function() {
+        gui.interaction.setMode('symbols');
+      }
+    });
+  }
+
+  function getToolbar() {
+    if (toolbar) return toolbar;
+    toolbar = new FloatingToolbar(gui, {name: 'point-toolbar'});
+    // The style panel's toggle, and Done, which leaves the mode -- with the
+    // panel hidden, its close button is not there to do that
+    stylesBtn = toolbar.addButton('#style-panel-icon', {tooltip: 'Hide style panel'})
+      .on('click', function() { setPanelShown(panelHidden); });
+    toolbar.addTextButton('Done', {tooltip: 'Stop editing points'})
+      .on('click', exitMode);
+    return toolbar;
+  }
+
+  function updateToolbar() {
+    getToolbar().show();
+    stylesBtn.setSelected(!panelHidden);
+    stylesBtn.setTooltip(panelHidden ? 'Show style panel' : 'Hide style panel');
   }
 
   function applyCircleStyles() {
@@ -559,7 +602,8 @@ export function PointStyleTool(gui) {
   // disabled rather than left to do nothing.
   function updateEditingStatus(count) {
     var total = targetLayer ? internal.getFeatureCount(targetLayer) : 0;
-    editingStatus.text(formatEditingStatus({selected: count, total: total}));
+    var text = formatEditingStatus({selected: count, total: total});
+    editingStatus.text(text);
     clearLink.classed('hidden', count === 0);
     panel.classed('no-targets', total === 0);
   }

@@ -1,5 +1,6 @@
 import { internal, utils } from './gui-core';
 import { TEXT_PLACEHOLDER } from './gui-label-text';
+import { pointIsUnstyled, renderUnstyledPointMarker } from './gui-unstyled-points';
 
 // Attribute identifying a label baseline inside a layer's <defs>, and the
 // feature it belongs to. Deliberately not data-id: the label tool looks symbols
@@ -175,7 +176,8 @@ function renderSymbol(d, shp, view, defs, idPrefix, i) {
   }
   rec = withPlaceholderText(d);
   if (!internal.svg.shapeIsPathLabel(shp, rec)) {
-    return internal.svg.renderPoint(rec);
+    return internal.svg.renderPoint(rec) ||
+      (pointIsUnstyled(rec) ? renderUnstyledPointMarker() : null);
   }
   // The editor keeps a label that doesn't fit its path visible and marked,
   // where export drops it: hiding a broken label makes it unfindable, and so

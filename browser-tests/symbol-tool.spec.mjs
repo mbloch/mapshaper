@@ -330,6 +330,24 @@ test('Escape steps back from a selection to an armed tool to nothing', async fun
   expect(errors).toEqual([]);
 });
 
+test("the panel's close button hides the panel and leaves the tool on", async function({page}) {
+  var errors = collectPageErrors(page);
+  var panel = page.locator('.symbol-style-panel');
+  var stylesBtn = page.locator('.symbol-toolbar .floating-toolbar-btn[data-tooltip$="style panel"]');
+  await openTool(page);
+  await panel.locator('.label-style-close').click();
+  await expect(panel).toBeHidden();
+  expect(await getInteractionMode(page)).toBe('symbols');
+  // still placing symbols with the panel out of the way
+  await clickMap(page, 0.3, 0.5);
+  expect((await getSymbolLayer(page)).shapeCount).toBe(1);
+  await stylesBtn.click();
+  await expect(panel).toBeVisible();
+  await page.locator('.symbol-toolbar .floating-toolbar-btn', {hasText: 'Done'}).click();
+  expect(await getInteractionMode(page)).not.toBe('symbols');
+  expect(errors).toEqual([]);
+});
+
 function collectPageErrors(page) {
   var errors = [];
   page.on('pageerror', function(err) {
@@ -429,6 +447,12 @@ async function getSymbolLayer(page) {
 async function getViewBounds(page) {
   return page.evaluate(function() {
     return window.mapshaper.undoTest.getViewBounds();
+  });
+}
+
+async function getInteractionMode(page) {
+  return page.evaluate(function() {
+    return window.mapshaper.undoTest.getInteractionMode();
   });
 }
 

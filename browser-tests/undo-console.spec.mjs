@@ -5,6 +5,9 @@ var POINT_FIXTURE = 'test/data/geojson/three_points.geojson';
 var LINE_FIXTURE = 'test/data/features/clean/ex20_ogc_line.json';
 var POLYGON_FIXTURE = 'test/data/features/dissolve2/ex3_two_polygons.json';
 var MULTIPOLYGON_FIXTURE = 'test/data/features/clean/ex11_ogc.geojson';
+// feature 1 is an open line, which SNIP_CUT divides at its second vertex
+var SNIP_FIXTURE = 'test/data/features/snip/ring_and_line.json';
+var SNIP_CUT = {seq: 0, offset: 1, point: null, displayPoint: null, t: 0};
 var CLIP_FIXTURES = 'test/data/features/clip/ex1_outer.json,test/data/features/clip/ex1_inner3.json';
 var KEY_JOIN_FIXTURES = 'test/data/features/join/key_target.csv,test/data/features/join/key_source.csv';
 var DATA_FILL_FIXTURE = 'test/data/features/data-fill/simple.geojson';
@@ -312,8 +315,8 @@ test('interaction mode changes preserve command undo history', async function({p
   }).toBe(polygonState.model.checksum);
 });
 
-test('completed point edit session becomes one preserved app undo state', async function({page}) {
-  await loadFixture(page, POINT_FIXTURE);
+test('completed snip edit session becomes one preserved app undo state', async function({page}) {
+  await loadFixture(page, SNIP_FIXTURE);
 
   var initialState = await getUndoState(page);
 
@@ -321,11 +324,11 @@ test('completed point edit session becomes one preserved app undo state', async 
   var commandState = await getUndoState(page);
   expect(commandState.model.checksum).not.toBe(initialState.model.checksum);
 
-  await page.evaluate(function() {
-    window.mapshaper.undoTest.setInteractionMode('edit_points');
-    window.mapshaper.undoTest.addPointToActiveLayer([10, 20]);
+  await page.evaluate(function(cut) {
+    window.mapshaper.undoTest.setInteractionMode('snip_lines');
+    window.mapshaper.undoTest.snipActiveLayerPath(1, 0, [cut]);
     window.mapshaper.undoTest.setInteractionMode('off');
-  });
+  }, SNIP_CUT);
   await expect.poll(async function() {
     return (await getUndoState(page)).payloadStore.ownPayloads.some(function(payload) {
       return /^edit-session-/.test(payload.entryId || '');
@@ -364,7 +367,7 @@ test('completed point edit session becomes one preserved app undo state', async 
   }).toBe(editState.model.checksum);
 });
 
-test('empty layer creation is undoable before edit-session content', async function({page}) {
+test('empty layer creation is undoable before the points added to it', async function({page}) {
   await loadFixture(page, POINT_FIXTURE);
 
   var initialState = await getUndoState(page);
@@ -378,9 +381,9 @@ test('empty layer creation is undoable before edit-session content', async funct
   expect(emptyLayerState.undo.canUndo).toBe(true);
   expect(getLayerSummary(emptyLayerState.model, 'points').shapeCount).toBe(0);
 
-  await page.evaluate(function() {
+  await page.evaluate(async function() {
     window.mapshaper.undoTest.setInteractionMode('edit_points');
-    window.mapshaper.undoTest.addPointToActiveLayer([10, 20]);
+    await window.mapshaper.undoTest.addPointToActiveLayer([10, 20]);
     window.mapshaper.undoTest.setInteractionMode('off');
   });
 
@@ -793,14 +796,15 @@ test('a command that is not recorded clears interaction undo history', async fun
   // undo off a drag, a command and another drag would leave a history that
   // quietly spans the command -- and undoing back across it would revert the
   // command's edits too.
-  await loadFixture(page, POINT_FIXTURE, {undo: 'off'});
+  await loadFixture(page, SNIP_FIXTURE, {undo: 'off'});
   expect(await page.evaluate(function() {
     return window.mapshaper.undoTest.appUndoIsEnabled();
   })).toBe(false);
 
-  await page.evaluate(function() {
-    window.mapshaper.undoTest.addPointToActiveLayer([1, 1]);
-  });
+  await page.evaluate(function(cut) {
+    window.mapshaper.undoTest.setInteractionMode('snip_lines');
+    window.mapshaper.undoTest.snipActiveLayerPath(1, 0, [cut]);
+  }, SNIP_CUT);
   await expect.poll(async function() {
     return (await getUndoState(page)).undo.canUndo;
   }).toBe(true);

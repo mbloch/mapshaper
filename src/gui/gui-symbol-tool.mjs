@@ -5,8 +5,10 @@ import { showPopupAlert } from './gui-alert';
 import { runGuiEditCommand } from './gui-edit-command';
 import { FloatingToolbar } from './gui-floating-toolbar';
 import {
-  getSymbolTarget, getAddSymbolCommand, getUpdateSymbolCommand, getSymbolDeleteCommand
+  getSymbolTarget, getAddSymbolCommand, getUpdateSymbolCommand, getUpdatePointCommand,
+  getSymbolDeleteCommand
 } from './gui-symbol-commands';
+import { pointIsUnstyled } from './gui-unstyled-points';
 import {
   getAddIconOptions, getAddCurveOptions, getDefaultIconStyle, getDefaultCurveStyle
 } from './gui-symbol-style';
@@ -43,7 +45,10 @@ export function initSymbolTool(gui, ext, hit) {
   // the style of the next symbol placed, which the panel sets while nothing
   // is selected
   var newStyle = {icon: getDefaultIconStyle(), curve: getDefaultCurveStyle()};
-  var toolbar, iconBtn, curveBtn, alert;
+  var toolbar, iconBtn, curveBtn, stylesBtn, alert;
+  // the panel's toggle, kept from one session to the next, as the line and
+  // polygon panels keep theirs
+  var panelHidden = false;
   var selection = new SymbolSelection(gui, ext, hit, getCueState, isSymbol);
   var panel = new SymbolPanel(gui, {
     getTarget: getTarget,
@@ -53,7 +58,7 @@ export function initSymbolTool(gui, ext, hit) {
     getNewStyle: function() { return newStyle; },
     isCurve: isCurve,
     deselect: deselect,
-    close: function() { gui.interaction.turnOff(); }
+    close: function() { setPanelShown(false); }
   });
 
   gui.addMode('symbol_tool', turnOn, turnOff);
@@ -78,7 +83,8 @@ export function initSymbolTool(gui, ext, hit) {
     getToolbar().show();
     setArmed(getInitialTool());
     selection.turnOn();
-    panel.show();
+    if (!panelHidden) panel.show();
+    updateStylesButton();
   }
 
   // A layer with no symbols in it has nothing to select, so the tool starts
@@ -128,12 +134,28 @@ export function initSymbolTool(gui, ext, hit) {
       .on('click', function() {
         setArmed(armed == 'curve' ? null : 'curve');
       });
+    // The style panel's toggle, and Done, which leaves the tool -- with the
+    // panel hidden, its close button is not there to do that
     toolbar.addSeparator();
+    stylesBtn = toolbar.addButton('#style-panel-icon', {tooltip: 'Hide style panel'})
+      .on('click', function() { setPanelShown(panelHidden); });
     toolbar.addTextButton('Done', {tooltip: 'Stop adding and editing symbols'})
       .on('click', function() {
         gui.interaction.turnOff();
       });
     return toolbar;
+  }
+
+  function setPanelShown(shown) {
+    panelHidden = !shown;
+    if (shown) panel.show(); else panel.hide();
+    updateStylesButton();
+  }
+
+  function updateStylesButton() {
+    if (!stylesBtn) return;
+    stylesBtn.setSelected(!panelHidden);
+    stylesBtn.setTooltip(panelHidden ? 'Show style panel' : 'Hide style panel');
   }
 
   function setArmed(mode) {
@@ -394,7 +416,8 @@ export function initSymbolTool(gui, ext, hit) {
       return translateDisplayPoint(o.target, p);
     });
     shapes[o.id] = o.startShape;
-    runGuiEditCommand(gui, getUpdateSymbolCommand(coords, o.id), {
+    runGuiEditCommand(gui, pointIsUnstyled(getRecord(o.target, o.id)) ?
+      getUpdatePointCommand(coords, o.id) : getUpdateSymbolCommand(coords, o.id), {
       title: o.kind == 'knot' ? 'Reshape curve' : 'Move symbol',
       onSuccess: function() { hit.setSelectionIds(ids); }
     });

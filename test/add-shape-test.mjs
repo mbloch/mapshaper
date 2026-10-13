@@ -30,6 +30,18 @@ describe('mapshaper-add-shape.js', function () {
     });
   })
 
+  it('a point near 0,0 joins a projected layer, rather than being taken for lat-long', async function() {
+    var input = {type: 'FeatureCollection', features: [
+      {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [-70, 40]}},
+      {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [10, 50]}}
+    ]};
+    var out = await api.applyCommands('-i in.json -proj merc -add-shape coordinates=0,0 -o out.json',
+      {'in.json': input});
+    var geometries = JSON.parse(out['out.json']).geometries;
+    assert.equal(geometries.length, 3);
+    assert.deepEqual(geometries[2].coordinates, [0, 0]);
+  });
+
   it('shape is added to target layer by default', async function() {
     var data = {
       type: 'Feature',

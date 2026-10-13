@@ -67,6 +67,14 @@ export function getUpdateSymbolCommand(coords, id, target) {
   return parts.join(' ');
 }
 
+// The command that moves a point that is not a symbol, which -update-symbol
+// refuses to move
+export function getUpdatePointCommand(coords, id, target) {
+  var parts = ['-update-point', 'ids=' + id, 'coordinates=' + formatCoords(coords)];
+  if (target) parts.push('target=' + formatValue(target));
+  return parts.join(' ');
+}
+
 // The command that restyles symbols.
 //   values: {field: value}, where '' removes the field
 //   ids: feature ids, or null for the whole layer

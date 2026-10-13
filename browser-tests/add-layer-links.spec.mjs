@@ -43,12 +43,16 @@ test('each link opens the tool that draws the kind of feature it names',
 
     await clickNewLayerLink(page, 'points');
     expect((await getLayerInfo(page, 'points')).geometry_type).toBe('point');
-    expect(await getInteractionMode(page)).toBe('edit_points');
+    // the point mode, with adding armed from its toolbar
+    expect(await getInteractionMode(page)).toBe('point_style');
+    expect(await getToolMode(page)).toBe('edit_points');
     // the tool is open on the new layer, so a click on the map lands in it --
     // an armed tool over a map where clicking does nothing is the failure this
     // whole flow is prone to
     await clickMap(page, 0.5, 0.5);
-    expect((await getLayerInfo(page, 'points')).shapeCount).toBe(1);
+    await expect.poll(async function() {
+      return (await getLayerInfo(page, 'points')).shapeCount;
+    }).toBe(1);
 
     await clickNewLayerLink(page, 'lines');
     expect((await getLayerInfo(page, 'lines')).geometry_type).toBe('polyline');

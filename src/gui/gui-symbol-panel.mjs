@@ -13,8 +13,9 @@ import {
   getIconShape, getIconSize, getIconPaint, getIconRotation,
   getIconSizeFields, getIconPaintFields, getIconShapeFields,
   getCurveStyle, getArrowheadFields, getArrowheadPosition, getArrowheadShape,
-  shapeHasStrokeWidth, shapeHasRotation
+  shapeHasStrokeWidth, shapeHasRotation, getNewSymbolFields
 } from './gui-symbol-style';
+import { pointIsUnstyled } from './gui-unstyled-points';
 import { ARROWHEAD_SHAPES, getArrowheadGlyph } from './gui-arrowhead-shapes';
 import { getIconShapes, getIconShapeGlyph, getDefaultStrokeWidth } from './gui-icon-shapes';
 import { isNytUser } from './gui-nyt';
@@ -34,7 +35,7 @@ import { isNytUser } from './gui-nyt';
 //                      panel changes in place
 //   isCurve(lyr, id)
 //   deselect()
-//   close()
+//   close()            the close button: hides the panel, leaving the tool on
 export function SymbolPanel(gui, opts) {
   var parent = gui.container.findChild('.mshp-main-map');
   var panel = El('div').addClass('label-style-panel symbol-style-panel rollover')
@@ -425,6 +426,7 @@ export function SymbolPanel(gui, opts) {
       return update();
     }
     applyPerRecord(state.icons, function(rec) {
+      if (pointIsUnstyled(rec)) return getNewIconFields(rec, {shape: shape});
       return getIconShape(rec) == shape ? null : getIconShapeFields(rec, shape);
     }, 'Change symbol shape');
   }
@@ -436,6 +438,7 @@ export function SymbolPanel(gui, opts) {
       return update();
     }
     applyPerRecord(state.icons, function(rec) {
+      if (pointIsUnstyled(rec)) return getNewIconFields(rec, {size: size});
       return getIconSizeFields(rec, size);
     }, 'Resize symbol');
   }
@@ -463,10 +466,24 @@ export function SymbolPanel(gui, opts) {
       return update();
     }
     applyPerRecord(state.icons, function(rec) {
-      var paint = Object.assign(getIconPaint(rec), changes);
+      var paint;
+      if (pointIsUnstyled(rec)) {
+        paint = Object.assign({}, opts.getNewStyle().icon, changes);
+        if (fix) fix(paint, paint.shape);
+        return getNewSymbolFields(rec, paint);
+      }
+      paint = Object.assign(getIconPaint(rec), changes);
       if (fix) fix(paint, getIconShape(rec));
       return getIconPaintFields(rec, paint);
     }, 'Style symbol');
+  }
+
+  // A point with no symbol yet gets one: the next symbol's, with @changes
+  function getNewIconFields(rec, changes) {
+    var style = Object.assign({}, opts.getNewStyle().icon, changes);
+    if (changes.shape) Object.assign(style, getShapeChangeStyle(changes.shape,
+      opts.getNewStyle().icon.shape, style));
+    return getNewSymbolFields(rec, style);
   }
 
   function applyIconRotation(deg) {

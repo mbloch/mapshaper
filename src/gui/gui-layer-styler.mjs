@@ -1,4 +1,5 @@
 import { internal, utils } from './gui-core';
+import { pointIsUnstyled, UNSTYLED_POINT_MARKER } from './gui-unstyled-points';
 
 var darkStroke = "#334",
     activeStyle = { // outline style for the active layer
@@ -114,10 +115,21 @@ export function getCanvasDisplayStyle(lyr) {
   // layer (see svg-glow.mjs), so the shapes are then given none of their own.
   var hasGlows = layerHasGlowFields(lyr);
   var layerOuterGlow = hasGlows ? internal.svg.getLayerOuterGlow(lyr) : null;
+  // A layer of circles draws a point with no radius as nothing at all
+  var markUnstyled = lyr.geometry_type == 'point' && fields.includes('r');
 
   var styler = function(style, i) {
     var rec = records[i];
     var fname, val;
+    if (markUnstyled) {
+      if (pointIsUnstyled(rec)) {
+        applyUnstyledMarker(style);
+        return;
+      }
+      // The style object is reused, and this point's fields may not
+      // overwrite everything the marker set
+      if (style.unstyledMarker) clearUnstyledMarker(style);
+    }
     // The stroke defaults below are worked out for each shape, so a value one
     // shape was given does not carry over to the next one in the reused style
     // object. (Without stroke fields, the layer-wide values set on the base
@@ -176,6 +188,26 @@ export function getCanvasDisplayStyle(lyr) {
     style.dotSize = 1;
   }
   return style;
+}
+
+var markerStyleKeys = ['radius', 'fillColor', 'strokeColor', 'strokeWidth', 'opacity',
+  'fillOpacity', 'strokeOpacity', 'lineDash', 'fillPattern', 'fillEffect'];
+
+function applyUnstyledMarker(style) {
+  var m = UNSTYLED_POINT_MARKER;
+  clearUnstyledMarker(style);
+  style.radius = m.radius;
+  style.fillColor = m.fill;
+  style.strokeColor = m.stroke;
+  style.strokeWidth = m.strokeWidth;
+  style.unstyledMarker = true;
+}
+
+function clearUnstyledMarker(style) {
+  for (var i = 0; i < markerStyleKeys.length; i++) {
+    style[markerStyleKeys[i]] = undefined;
+  }
+  style.unstyledMarker = false;
 }
 
 function isBlankStyleValue(val) {

@@ -1,16 +1,11 @@
 import { internal } from './gui-core';
 import { appUndoIsEnabled, getStoredUndoHistory } from './gui-app-undo';
 import {
-  setPointCoords,
   setVertexCoords,
   getVertexCoords,
   insertVertex,
   deleteVertex,
-  setRectangleCoords,
-  appendNewPoint,
-  deleteLastPoint,
-  deleteFeature,
-  insertFeature
+  setRectangleCoords
 } from './gui-drawing-utils';
 import { snipPath, undoSnip } from './gui-snipping-utils';
 
@@ -18,8 +13,9 @@ var copyRecord = internal.copyRecord;
 
 // Modes whose tools edit the data directly, adding in-memory undo states.
 // The line and polygon tools' drawing modes ('edit_lines', 'edit_polygons')
-// are not among them: drawing and styling are commands.
-var closureEditModes = ['data', 'edit_points', 'reshape_lines', 'reshape_polygons',
+// and the point tool's ('edit_points') are not among them: drawing, adding
+// points and styling are commands.
+var closureEditModes = ['data', 'reshape_lines', 'reshape_polygons',
   'vertices', 'rectangles', 'snip_lines'];
 
 function isUndoEvt(e) {
@@ -120,17 +116,6 @@ export function Undo(gui) {
     return null;
   }
 
-  gui.on('symbol_dragend', function(e) {
-    var target = e.data.target;
-    var undo = function() {
-      setPointCoords(target, e.FID, e.startCoords);
-    };
-    var redo = function() {
-      setPointCoords(target, e.FID, e.endCoords);
-    };
-    addHistoryState(undo, redo);
-  });
-
   // undo/redo data editing
   // TODO: consider setting selected feature to the undo/redo target feature
   //
@@ -202,26 +187,6 @@ export function Undo(gui) {
       // previous snip were removed from the end of the collection
       result = snipPath(target, result.fid, result.partId, result.cuts);
       gui.model.updated({arc_count: true});
-    };
-    addHistoryState(undo, redo);
-  });
-
-  gui.on('point_add', function(e) {
-    var redo = function() {
-      appendNewPoint(e.data.target, e.p);
-    };
-    var undo = function() {
-      deleteLastPoint(e.data.target);
-    };
-    addHistoryState(undo, redo);
-  });
-
-  gui.on('feature_delete', function(e) {
-    var redo = function() {
-      deleteFeature(e.data.target, e.fid);
-    };
-    var undo = function() {
-      insertFeature(e.data.target, e.fid, e.coords, e.d);
     };
     addHistoryState(undo, redo);
   });

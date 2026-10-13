@@ -479,6 +479,8 @@ export function LayerControl(gui) {
           menuEvent.styleLayerName = 'edit labels';
         } else if (internal.layerHasSvgSymbols(target.layer)) {
           menuEvent.styleLayerName = 'edit symbols';
+        } else if (target.layer.geometry_type == 'point') {
+          menuEvent.styleLayerName = 'edit points';
         }
       }
       menuEvent.contextMenuId = 'layer-' + id;

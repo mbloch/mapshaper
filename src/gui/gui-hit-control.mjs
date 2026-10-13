@@ -114,8 +114,8 @@ export function HitControl(gui, ext, mouse) {
 
   function draggable() {
     var mode = interactionMode();
-    return mode == 'vertices' || mode == 'edit_points' || mode == 'label' ||
-      mode == 'symbols' || lineToolMode(mode);
+    return mode == 'vertices' || mode == 'edit_points' || mode == 'point_style' ||
+      mode == 'label' || mode == 'symbols' || lineToolMode(mode);
   }
 
   function drawingMode(mode) {
@@ -127,13 +127,15 @@ export function HitControl(gui, ext, mouse) {
     return drawingMode(mode) || mode == 'reshape_lines' || mode == 'reshape_polygons';
   }
 
+  // 'edit_points' is left out: a click there adds a point or does nothing, and
+  // never selects or pins (see eventIsEnabled())
   function clickable() {
     var mode = interactionMode();
     // click used to pin popup and select features
     return mode == 'data' || mode == 'info' || mode == 'selection' ||
     mode == 'label' || mode == 'label_style' || mode == 'point_style' ||
     mode == 'line_style' || mode == 'polygon_style' ||
-    mode == 'rectangles' || mode == 'edit_points' || mode == 'symbols';
+    mode == 'rectangles' || mode == 'symbols';
   }
 
   self.getHitId = function() {
@@ -334,11 +336,6 @@ export function HitControl(gui, ext, mouse) {
       updateSelectionState(convertClickDataToSelectionData(hitData, e));
     }
 
-    if (pinned && interactionMode() == 'edit_points') {
-      // kludge: intercept the click event if popup is turning off, so
-      // a new point doesn't get made
-      return;
-    }
     triggerPointerEvent('click', e, clickInfo);
   }, null, priority);
 

@@ -87,7 +87,7 @@ test('scale bar edits interleave with point edits in the undo history', async fu
     window.mapshaper.undoTest.selectLayer('three_points');
     window.mapshaper.undoTest.setInteractionMode('edit_points');
   });
-  await expect.poll(getMode(page)).toBe('edit_points');
+  await expect.poll(getMode(page)).toBe('point_style');
   var popup = page.locator('.scalebar-properties-popup');
   await expect(popup).toBeVisible();
 
@@ -96,7 +96,7 @@ test('scale bar edits interleave with point edits in the undo history', async fu
   await expect.poll(getPosition(page)).toBe('bottom-right');
   await addPoint(page, [1, 1]);
   // the scale bar command neither ends the edit nor changes its layer
-  expect(await getMode(page)()).toBe('edit_points');
+  expect(await getMode(page)()).toBe('point_style');
   expect(await getPointCount(page)).toBe(5);
 
   var states = [[4, 'bottom-right'], [4, undefined], [3, undefined]];
@@ -108,27 +108,16 @@ test('scale bar edits interleave with point edits in the undo history', async fu
     await redo(page);
     await expect.poll(getEditState(page)).toEqual(state);
   }
-  expect(await getMode(page)()).toBe('edit_points');
+  expect(await getMode(page)()).toBe('point_style');
 
-  // ending the edit folds its point edits into one step, after the scale bar
-  // edit, and both still undo and redo
+  // each point is a command of its own, so ending the edit leaves the steps
+  // as they were
   await page.evaluate(function() {
     window.mapshaper.undoTest.setInteractionMode('off');
   });
   await expect.poll(getMode(page)).toBe('off');
-  await expect.poll(async function() {
-    return page.evaluate(function() {
-      return window.mapshaper.undoTest.getState().undo.canUndo;
-    });
-  }).toBe(true);
-  for (state of [[3, 'bottom-right'], [3, undefined]]) {
-    await undo(page);
-    await expect.poll(getEditState(page)).toEqual(state);
-  }
-  for (state of [[3, 'bottom-right'], [5, 'bottom-right']]) {
-    await redo(page);
-    await expect.poll(getEditState(page)).toEqual(state);
-  }
+  await undo(page);
+  await expect.poll(getEditState(page)).toEqual([4, 'bottom-right']);
 });
 
 test('scale bar edits interleave with frame tool edits in the undo history', async function({page}) {

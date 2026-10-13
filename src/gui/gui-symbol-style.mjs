@@ -205,6 +205,20 @@ export function getIconShapeFields(rec, shape) {
   return o;
 }
 
+// The -style fields that give a point with no symbol (@rec) the symbol
+// described by @style, a panel style like getDefaultIconStyle()'s: what turns
+// a plain point into a symbol without moving it, as -symbols would add one.
+export function getNewSymbolFields(rec, style) {
+  var o = getIconShapeFields(rec || {}, style.shape || 'circle');
+  var sym = Object.assign({}, rec, o);
+  Object.assign(o, getIconSizeFields(sym, style.size > 0 ? style.size : getDefaultIconStyle().size));
+  Object.assign(sym, o);
+  Object.assign(o, getIconPaintFields(sym, {fill: style.fill || '',
+    stroke: style.stroke || '', strokeWidth: style.strokeWidth || 0}));
+  if (style.rotation && shapeHasRotation(style.shape)) o['icon-rotation'] = style.rotation;
+  return o;
+}
+
 export function getCurveStyle(rec) {
   return {
     stroke: rec.stroke || '',

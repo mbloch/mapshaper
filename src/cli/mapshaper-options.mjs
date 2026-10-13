@@ -2545,6 +2545,17 @@ export function getOptionParser() {
     })
     .option('target', targetOpt);
 
+  parser.command('update-point')
+    // .describe('move an existing point')
+    .option('ids', {
+      describe: 'feature id of the point to update',
+      type: 'numbers'
+    })
+    .option('coordinates', {
+      describe: 'x,y of the point'
+    })
+    .option('target', targetOpt);
+
   parser.command('alpha-shapes')
     // .describe('convert points to alpha shapes (aka concave hulls)')
     .option('interval', {

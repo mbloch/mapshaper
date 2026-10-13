@@ -2,6 +2,8 @@ import { snipPath } from './gui-snipping-utils';
 import { getNewLabelStyle } from './gui-label-style-state';
 import { appUndoIsEnabled } from './gui-app-undo';
 import { internal } from './gui-core';
+import { runGuiEditCommand } from './gui-edit-command';
+import { getAddShapeCommand } from './gui-draw-commands';
 
 export function createUndoTestApi(gui) {
   return {
@@ -119,6 +121,19 @@ export function createUndoTestApi(gui) {
         }) : null;
       });
     },
+    // A point layer's points, in pixels from the top left of the map
+    getLayerPointPixels: function(name) {
+      var o = gui.model.getLayers().filter(function(o) {
+        return getLayerName(o.layer) === name;
+      })[0];
+      var ext = gui.map.getExtent();
+      var shapes;
+      if (!o) return null;
+      shapes = o.layer.gui ? o.layer.gui.displayLayer.shapes : o.layer.shapes;
+      return (shapes || []).map(function(shp) {
+        return shp ? ext.translateCoords(shp[0][0], shp[0][1]) : null;
+      });
+    },
     // The vertices of the path being drawn by the line tool, which is not part
     // of its layer until it is finished, in pixels as above; null if no path
     // is being drawn. The last vertex follows the pointer.
@@ -230,15 +245,18 @@ export function createUndoTestApi(gui) {
     getViewBounds: function() {
       return gui.map.getExtent().getBounds().toArray();
     },
+    // Adds a point with the command the point tool runs
     addPointToActiveLayer: function(coords) {
       var target = gui.model.getActiveLayer();
       var p = coords || [0, 0];
       if (!target || !target.layer || target.layer.geometry_type != 'point') {
         throw new Error('Active layer is not a point layer');
       }
-      appendNewPointForTest(target.layer, p);
-      gui.dispatchEvent('point_add', {target: target.layer, p: p});
-      gui.dispatchEvent('map-needs-refresh');
+      return new Promise(function(resolve, reject) {
+        runGuiEditCommand(gui, getAddShapeCommand([p], {geometryType: 'point'}), {
+          onDone: function(err) { if (err) reject(err); else resolve(); }
+        });
+      });
     },
     // Perform the same edit as the snip tool, without simulating the pointer
     // events that choose the cut locations.
@@ -258,18 +276,6 @@ export function createUndoTestApi(gui) {
       return result;
     }
   };
-}
-
-function appendNewPointForTest(layer, p) {
-  var record;
-  layer.shapes.push([p]);
-  if (layer.data) {
-    record = {};
-    layer.data.getFields().forEach(function(field) {
-      record[field] = null;
-    });
-    layer.data.getRecords().push(record);
-  }
 }
 
 export function getUndoTestState(gui) {

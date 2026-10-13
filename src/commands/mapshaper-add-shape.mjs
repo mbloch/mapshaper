@@ -8,6 +8,7 @@ import { DataTable } from '../datatable/mapshaper-data-table';
 import { matchTargetFieldTypes } from '../datatable/mapshaper-match-field-types';
 import { isSupportedSvgStyleProperty, parseStyleLiteral } from '../svg/svg-properties';
 import { findLineEnds } from '../paths/mapshaper-path-endpoints';
+import { getDatasetCrsInfo, setDatasetCrsInfo } from '../crs/mapshaper-projections';
 
 cmd.addShape = addShape;
 
@@ -45,6 +46,12 @@ export function addShape(targetLayers, targetDataset, opts) {
     matchTargetFieldTypes(feature.properties, targetLyr);
   }
   dataset = importGeoJSON(feature);
+  // The shape is in the target's coordinates. Left to guess, a shape whose
+  // coordinates happen to fit in lat-long bounds (a point near 0,0 in a
+  // projected layer) would be taken for lat-long and refused.
+  if (targetDataset) {
+    setDatasetCrsInfo(dataset, getDatasetCrsInfo(targetDataset));
+  }
   outputLyr = mergeDatasetsIntoDataset(targetDataset, [dataset])[0];
   if (opts.no_replace || !targetLyr) {
     // create new layer
