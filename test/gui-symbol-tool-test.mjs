@@ -264,7 +264,17 @@ describe('gui-symbol-style.mjs', function () {
     var rec = (await getRecords(cmd))[0];
     assert.deepEqual(getCurveStyle(rec),
       {stroke: '#333333', strokeWidth: 1.5, arrowheads: 'both', arrowShape: 'arrow',
-        arrowSize: '', fade: 0, fill: ''});
+        arrowSize: '', fade: 0, taper: 0, fill: ''});
+  });
+
+  it('curves: a taper, as a line takes it', async function () {
+    var style = Object.assign(getDefaultCurveStyle(), {arrowheads: 'none', taper: 0.5});
+    var options = getAddCurveOptions(style, false);
+    assert.equal(options['line-taper'], 0.5);
+    assert.equal(getAddCurveOptions(style, true)['line-taper'], undefined);
+    var rec = (await getRecords(getAddSymbolCommand([[0, 0], [1, 1], [2, 0]], {options: options})))[0];
+    assert.equal(rec['line-taper'], 0.5);
+    assert.equal(getCurveStyle(rec).taper, 0.5);
   });
 
   it('curves: the heads\' shape and size, and a fade, as a line takes them', async function () {

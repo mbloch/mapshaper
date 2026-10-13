@@ -324,7 +324,7 @@ function getCurveFields(d, scale) {
   if (isNumber(d['stroke-width'])) o['stroke-width'] = d['stroke-width'] * scale;
   if (isNumber(d['line-end-size'])) o['line-end-size'] = d['line-end-size'] * scale;
   ['stroke-dasharray', 'stroke-opacity', 'opacity', 'line-start', 'line-end',
-    'line-fade'].forEach(function(name) {
+    'line-fade', 'line-taper'].forEach(function(name) {
     if (hasValue(d[name])) o[name] = d[name];
   });
   return o;

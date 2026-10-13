@@ -309,10 +309,10 @@ export function DisplayCanvas() {
           continue;
         }
         // A line with arrowheads is drawn on its own, trimmed to meet its heads;
-        // see svg-line-arrows.mjs. Only lines styled with line-start, line-end
-        // or line-fade get here, so the batch below is untouched for
-        // everything else.
-        if (drawStyle.lineStart || drawStyle.lineEnd || drawStyle.lineFade) {
+        // see svg-line-arrows.mjs. Only lines styled with line-start, line-end,
+        // line-fade or line-taper get here, so the batch below is untouched
+        // for everything else.
+        if (drawStyle.lineStart || drawStyle.lineEnd || drawStyle.lineFade || drawStyle.lineTaper) {
           if (!arrowPencil) arrowPencil = getArrowLinePencil(arcs, _ext, lineScale);
           if (arrowPencil(shp, _ctx, drawStyle, startPath, draw)) continue;
         }
@@ -350,6 +350,7 @@ export function DisplayCanvas() {
       var casingStyle = {};
       var trimForArrows = _ext.scale() <= 100; // see getArrowLinePencil()
       var casingPencil = null;
+      var taperCasingPencil = null;
       var casing, batch, casingKey;
       for (var i=0; i<shapes.length; i++) {
         shp = shapes[i];
@@ -358,6 +359,11 @@ export function DisplayCanvas() {
         casing = drawStyle.casing;
         if (!casing) continue;
         setCasingStyle(casingStyle, drawStyle, casing);
+        if (drawStyle.lineTaper && internal.svg.parseLineTaper(drawStyle.lineTaper) > 0) {
+          if (!taperCasingPencil) taperCasingPencil = getTaperedCasingPencil(arcs, _ext, lineScale);
+          taperCasingPencil(shp, _ctx, drawStyle, casing);
+          continue;
+        }
         if (trimForArrows && (drawStyle.lineStart || drawStyle.lineEnd)) {
           if (!casingPencil) casingPencil = getArrowCasingPencil(arcs, _ext, lineScale);
           casingPencil(shp, _ctx, drawStyle, casingStyle, startPath);
@@ -823,6 +829,10 @@ function getShapePencil(arcs, ext) {
 // and angle, and are grown by half the halo's width all round, as the line
 // is. The halo is translucent, so the line is clipped out of its heads rather
 // than drawn over them.
+//
+// A tapered line is filled, at any scale: its outline is built from the whole
+// line, whose ends set its widths, and clipped to the view (see
+// fillTaperedParts()).
 function getArrowLinePencil(arcs, ext, lineScale) {
   var t = getScaledTransform(ext);
   var iter = new internal.ShapeIter(arcs);
@@ -832,7 +842,7 @@ function getArrowLinePencil(arcs, ext, lineScale) {
     var halo = style.haloWidth > 0 ? style.haloWidth : 0;
     var lineWidth = style.strokeWidth - halo;
     var opts = internal.svg.makeLineArrowOpts(style.lineStart, style.lineEnd,
-      style.lineEndSize, lineWidth, strokeScale, style.lineFade);
+      style.lineEndSize, lineWidth, strokeScale, style.lineFade, style.lineTaper);
     var fadeColors = opts.fade > 0 ? internal.svg.getLineFadeColors(style.strokeColor) : null;
     var grow = halo * strokeScale / 2;
     var heads = [];
@@ -840,7 +850,8 @@ function getArrowLinePencil(arcs, ext, lineScale) {
     var plain = [];
     var faded = [];
     var i, coords, shape, clipHeads;
-    if (opts.start == 'none' && opts.end == 'none' && !fadeColors || !(lineWidth > 0)) {
+    if (opts.start == 'none' && opts.end == 'none' && !fadeColors && !(opts.taper > 0) ||
+        !(lineWidth > 0)) {
       return false;
     }
     for (i=0; i<shp.length; i++) {
@@ -854,6 +865,18 @@ function getArrowLinePencil(arcs, ext, lineScale) {
     if (clipHeads) {
       ctx.save();
       clipOutsideHeads(heads, ctx, grow);
+    }
+    if (opts.taper > 0) {
+      fillTaperedParts(parts.map(function(part) { return part.shape; }), ctx, {
+        color: style.strokeColor,
+        fadeColors: fadeColors,
+        alpha: getStrokeAlpha(style),
+        extraWidth: grow * 2,
+        outline: internal.svg.makeTaperOutlineOpts(style.lineCap, style.lineDash, opts, strokeScale)
+      });
+      if (clipHeads) ctx.restore();
+      drawArrowHeads(heads, ctx, style, opts.width, grow);
+      return true;
     }
     startPath(ctx, style);
     for (i=0; i<parts.length; i++) {
@@ -901,6 +924,104 @@ function getArrowCasingPencil(arcs, ext, lineScale) {
     }
     endPath(ctx, casingStyle);
   };
+}
+
+// Fills the casing of one tapered line feature: the line's outline, wider by
+// the casing's width on each side
+function getTaperedCasingPencil(arcs, ext, lineScale) {
+  var t = getScaledTransform(ext);
+  var iter = new internal.ShapeIter(arcs);
+  var strokeScale = getCanvasStrokeScale(GUI.getPixelRatio(), lineScale);
+  return function(shp, ctx, lineStyle, casing) {
+    var opts = internal.svg.makeLineArrowOpts(lineStyle.lineStart, lineStyle.lineEnd,
+      lineStyle.lineEndSize, lineStyle.strokeWidth, strokeScale, 0, lineStyle.lineTaper);
+    var shapes = [];
+    var coords;
+    for (var i=0; i<shp.length; i++) {
+      coords = getPixelCoords(iter, shp[i], t);
+      if (coords.length > 1) shapes.push(internal.svg.getLineArrowShape(coords, opts));
+    }
+    fillTaperedParts(shapes, ctx, {
+      color: casing.color,
+      alpha: casing.opacity,
+      extraWidth: casing.width * 2 * strokeScale,
+      // solid, with the caps an untapered casing has (see setCasingStyle())
+      outline: internal.svg.makeTaperOutlineOpts(
+        lineStyle.lineCap || (lineStyle.lineDash ? 'butt' : null), null, opts, 1)
+    });
+  };
+}
+
+// Fills the outlines of the parts of a tapered line (@shapes, from
+// getLineArrowShape()) as svg-line-taper.mjs builds them, wider by
+// o.extraWidth for a halo or a casing, with the caps and dashes of
+// o.outline (see makeTaperOutlineOpts()). The parts are one path, unless they
+// fade: each faded part has a gradient of its own.
+function fillTaperedParts(shapes, ctx, o) {
+  var view = getTaperClipBox(ctx, o.extraWidth);
+  var faded = 0;
+  var i, shape;
+  ctx.globalAlpha = o.alpha;
+  ctx.fillStyle = o.color;
+  ctx.beginPath();
+  for (i=0; i<shapes.length; i++) {
+    shape = shapes[i];
+    if (shape.fade && o.fadeColors) {
+      faded++;
+    } else {
+      traceTaperedShape(shape, ctx, o, view);
+    }
+  }
+  ctx.fill();
+  for (i=0; faded > 0 && i<shapes.length; i++) {
+    shape = shapes[i];
+    if (!shape.fade || !o.fadeColors) continue;
+    ctx.fillStyle = getLineFadeGradient(ctx, shape.fade, o.fadeColors);
+    ctx.beginPath();
+    traceTaperedShape(shape, ctx, o, view);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function traceTaperedShape(shape, ctx, o, view) {
+  var extra = o.extraWidth || 0;
+  var pieces = internal.svg.getTaperedOutline(shape.coords,
+    shape.widths[0] + extra, shape.widths[1] + extra,
+    Object.assign({bbox: view}, o.outline));
+  var piece, p, j;
+  pieces = internal.svg.clipTaperedPieces(pieces, view);
+  for (var i=0; i<pieces.length; i++) {
+    piece = pieces[i];
+    if (piece.from) {
+      p = piece.center;
+      ctx.moveTo(p[0], p[1]);
+      ctx.lineTo(piece.from[0], piece.from[1]);
+      ctx.arc(p[0], p[1], piece.radius,
+        Math.atan2(piece.from[1] - p[1], piece.from[0] - p[0]),
+        Math.atan2(piece.to[1] - p[1], piece.to[0] - p[0]));
+    } else if (piece.center) {
+      ctx.moveTo(piece.center[0] + piece.radius, piece.center[1]);
+      ctx.arc(piece.center[0], piece.center[1], piece.radius, 0, Math.PI * 2);
+    } else {
+      p = piece.points;
+      ctx.moveTo(p[0][0], p[0][1]);
+      for (j=1; j<p.length; j++) ctx.lineTo(p[j][0], p[j][1]);
+    }
+    ctx.closePath();
+  }
+}
+
+// The canvas, with a margin wide enough that the edges a clip cuts are out
+// of sight
+function getTaperClipBox(ctx, extraWidth) {
+  var pad = 50 + (extraWidth || 0);
+  return [-pad, -pad, ctx.canvas.width + pad, ctx.canvas.height + pad];
+}
+
+function getStrokeAlpha(style) {
+  return (style.opacity >= 0 ? style.opacity : 1) *
+    (style.strokeOpacity >= 0 ? style.strokeOpacity : 1);
 }
 
 // Sets @out to the style a line's casing is stroked with: wider than the line
@@ -1000,8 +1121,7 @@ function traceCoords(coords, ctx) {
 // caps. @grow (optional) widens each head by that much on every side, for a
 // halo.
 function drawArrowHeads(heads, ctx, style, width, grow) {
-  var alpha = (style.opacity >= 0 ? style.opacity : 1) *
-    (style.strokeOpacity >= 0 ? style.strokeOpacity : 1);
+  var alpha = getStrokeAlpha(style);
   var head, p;
   grow = grow > 0 ? grow : 0;
   if (heads.length === 0) return;

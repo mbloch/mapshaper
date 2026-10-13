@@ -1,3 +1,8 @@
+v0.7.85
+* Added `line-taper=` (0-1) to `-style` and `-symbols type=curve`, which narrows a line toward its tail, to a point at `line-taper=1`, with or without arrowheads. Tapered lines can be dashed.
+* [web] Tapered lines and curves are drawn on the map. The line style panel's Arrowheads section and the symbol tool's curve section have a Taper % control; a line's taper is independent of its heads.
+* [web] Fixed curve symbols with `line-fade=`, which were drawn without their fade.
+
 v0.7.84
 * Added line casings (outlines): `-style casing-color= casing-width= casing-opacity=`. `casing-width=` is how far the casing extends past each edge of the line (default 1px). All of a layer's casings are drawn beneath all of its lines, so that lines join cleanly where they cross.
 * [web] The line style panel has a Casing section, with a color, opacity and width.

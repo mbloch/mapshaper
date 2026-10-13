@@ -28,7 +28,7 @@ import {
 import { getSelectionChangeTest } from './gui-selection-change';
 
 var savedStylesKey = 'layer_style_presets';
-var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'line-fade', 'fill', 'fill-opacity', 'fill-pattern'].concat(internal.svg.glowFields, internal.svg.casingFields);
+var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'line-fade', 'line-taper', 'fill', 'fill-opacity', 'fill-pattern'].concat(internal.svg.glowFields, internal.svg.casingFields);
 var arrowPositions = [{
   name: 'start',
   label: 'Start',
@@ -572,6 +572,23 @@ export function LayerStyleTool(gui) {
       onStep: nudgeArrowFade,
       onDone: releaseFocus
     });
+    var taperRow = El('div').addClass('label-style-row label-split-row').appendTo(section);
+    var taperCell = El('div').addClass('label-split-cell layer-arrow-taper-cell').appendTo(taperRow);
+    var taperCaption = El('div').addClass('label-style-row-label').appendTo(taperCell).text('Taper %');
+    makeFieldTip(taperCaption,
+      'How much of its width the line loses\n' +
+      'toward its tail: 100 tapers it to a point.\n' +
+      'A line can taper with or without heads.');
+    control.taperField = new SizeField(taperCell, {
+      title: 'Percent of the width the line loses toward its tail',
+      min: 0,
+      max: 100,
+      step: 5,
+      bigStep: 25,
+      onSet: applyLineTaper,
+      onStep: nudgeLineTaper,
+      onDone: releaseFocus
+    });
     return control;
   }
 
@@ -682,14 +699,36 @@ export function LayerStyleTool(gui) {
   }
 
   function getArrowFadeShown(ids) {
+    return getShareShown(ids, 'line-fade', internal.svg.parseLineFade);
+  }
+
+  // A field of shares (0-1) as a percent, for the lines @ids
+  function getShareShown(ids, field, parse) {
     var records = getTargetRecords();
     var value = '', pct;
     for (var i=0; i<ids.length; i++) {
-      pct = Math.round(internal.svg.parseLineFade(records[ids[i]] && records[ids[i]]['line-fade']) * 1000) / 10;
+      pct = Math.round(parse(records[ids[i]] && records[ids[i]][field]) * 1000) / 10;
       if (i > 0 && pct !== value) return {value: '', mixed: true};
       value = pct;
     }
     return {value: value, mixed: false};
+  }
+
+  // Like the fade, but for every target: a line needs no heads to taper, and
+  // removing the heads leaves its taper.
+  function applyLineTaper(pct) {
+    var ids = getTargetIds();
+    var value = pct > 0 ? Math.round(pct * 10) / 1000 : '';
+    if (ids.length === 0) return;
+    runStyleEdits(ids.map(function(id) {
+      return {id: id, styles: [['line-taper', value]]};
+    }));
+  }
+
+  function nudgeLineTaper(delta) {
+    var shown = getShareShown(getTargetIds(), 'line-taper', internal.svg.parseLineTaper);
+    if (shown.value === '') return;
+    applyLineTaper(Math.max(0, Math.min(100, Math.round(shown.value + delta))));
   }
 
   function getArrowTargetIds() {
@@ -756,6 +795,9 @@ export function LayerStyleTool(gui) {
     arrowControl.fadeField.setValue(fade.value);
     arrowControl.fadeField.setPlaceholder(fade.mixed ? 'mixed' : '');
     arrowControl.fadeField.setDisabled(arrowIds.length === 0);
+    var taper = getShareShown(ids, 'line-taper', internal.svg.parseLineTaper);
+    arrowControl.taperField.setValue(taper.value);
+    arrowControl.taperField.setPlaceholder(taper.mixed ? 'mixed' : '');
   }
 
   // With drawing armed, the one target is the next shape, whose record is the
@@ -1004,7 +1046,7 @@ export function LayerStyleTool(gui) {
   // Only when every target agrees, as with the other controls; a size is
   // saved only if the lines have their own.
   function addArrowStyleValues(style) {
-    ['line-start', 'line-end', 'line-end-size', 'line-fade'].forEach(function(field) {
+    ['line-start', 'line-end', 'line-end-size', 'line-fade', 'line-taper'].forEach(function(field) {
       addStyleValue(style, field, getCommonStyleValue(field));
     });
   }

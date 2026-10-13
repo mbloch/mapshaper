@@ -103,6 +103,42 @@ test('the fade is set as a percent, removed with the heads, and drawn', async fu
   expect(errors).toEqual([]);
 });
 
+test('the taper is set as a percent on lines without heads, and drawn', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page);
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand('-style stroke=black stroke-width=8');
+  });
+  await page.waitForTimeout(250);
+  await expect(taperField(page)).toHaveValue('0');
+  var solid = await getCanvasInkCount(page);
+
+  await setField(taperField(page), '100');
+  expect(await getTaper(page)).toBe(1);
+  expect((await getSessionCommands(page)).join('\n')).toContain("line-taper='1'");
+  await page.waitForTimeout(250);
+  // narrowing toward the tail leaves less ink
+  var tapered = await getCanvasInkCount(page);
+  expect(tapered).toBeLessThan(solid);
+  expect(tapered).toBeGreaterThan(solid * 0.3);
+
+  await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
+  await page.waitForTimeout(250);
+  expect(await getTaper(page)).toBeUndefined();
+  await expect(taperField(page)).toHaveValue('0');
+  expect(errors).toEqual([]);
+});
+
+function taperField(page) {
+  return page.locator('.layer-style-panel .layer-arrow-taper-cell .size-field-input');
+}
+
+async function getTaper(page) {
+  return page.evaluate(function(layer) {
+    return window.mapshaper.undoTest.getLayerInfo(layer).records[0]['line-taper'];
+  }, LAYER);
+}
+
 function arrowSection(page) {
   return page.locator('.layer-style-panel .label-style-section')
     .filter({has: page.locator('.layer-arrow-shape-buttons')});

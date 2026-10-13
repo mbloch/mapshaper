@@ -9,9 +9,10 @@ import { featureIsCurve } from './svg-feature-utils';
 // curve is refitted whenever it is drawn, and stays editable as a curve.
 //
 // A curve whose last knot repeats its first is a closed loop, which can take
-// a fill. An open curve can take the line-end markers and fade of a line
-// (line-start=, line-end=, line-end-size=, line-fade=). Stroke widths and
-// marker sizes are in px, like the sizes of other point symbols.
+// a fill. An open curve can take the line-end markers, fade and taper of a
+// line (line-start=, line-end=, line-end-size=, line-fade=, line-taper=).
+// Stroke widths and marker sizes are in px, like the sizes of other point
+// symbols.
 //
 // Coordinates are px, y down: the SVG export's space, or the space inside a
 // symbol group in the GUI.

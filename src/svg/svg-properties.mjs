@@ -102,6 +102,8 @@ var stylePropertyTypes = {
   'line-end': 'lineend',
   'line-end-size': 'number',
   'line-fade': 'number',
+  // see svg-line-taper.mjs
+  'line-taper': 'number',
   // a wider stroke beneath a line -- see svg-line-casing.mjs. Drawn as copies
   // of the lines, not written as attributes, so not in propertiesBySymbolType.
   'casing-color': 'color',

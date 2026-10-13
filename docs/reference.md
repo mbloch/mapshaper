@@ -1926,6 +1926,8 @@ Example: `hatches 45deg 2px red 2px grey`
 
 `line-fade=`       Share of a line's length, from 0 to 1, that fades in from transparent at its tail (e.g. `line-fade=0.4`). The tail is the start of the line, unless only the start has a marker. The fade is a straight gradient, so it suits straight or gently curved lines best.
 
+`line-taper=`      Narrow a line toward its tail: the share of its width, from 0 to 1, that it loses there (`line-taper=1` tapers it to a point, `line-taper=0.5` to half its width). The width changes evenly along the whole line, from the tail to the head; the tail is chosen as for `line-fade=`, and a line needs no markers to taper. A tapered line is drawn as a filled shape. Its ends are round unless `stroke-linecap=` is `butt` or `square`. It can be dashed: dash and gap lengths stay the same along the line, and the dashes have butt ends unless `stroke-linecap=` says otherwise. Also accepted by `-symbols type=curve`.
+
 `casing-color=`    Add a casing (an outline) of this color beneath each line. The casings of a layer are all drawn before any of its lines, so that lines join cleanly where they meet. A casing has the line's caps and joins, is solid under a dashed line, and stops at a line's arrowheads.
 
 `casing-width=`    How far the casing extends past each edge of the line, in pixels (default is 1). The casing's stroke is the line's `stroke-width` plus twice this width.

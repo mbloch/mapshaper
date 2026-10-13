@@ -32,9 +32,9 @@ export function getDefaultIconStyle() {
 }
 
 export function getDefaultCurveStyle() {
-  // arrowSize: '' for the size the stroke width gives a head; fade: 0-1
+  // arrowSize: '' for the size the stroke width gives a head; fade, taper: 0-1
   return {stroke: DEFAULT_SYMBOL_COLOR, strokeWidth: 1.5, arrowheads: 'end',
-    arrowShape: 'arrow', arrowSize: '', fade: 0, fill: ''};
+    arrowShape: 'arrow', arrowSize: '', fade: 0, taper: 0, fill: ''};
 }
 
 // Whether a shape takes a stroke width and a rotation. A circle or a ring
@@ -103,6 +103,7 @@ export function getAddCurveOptions(style, closed) {
     o['line-end-size'] = style.arrowSize;
   }
   if (!closed && style.fade > 0) o['line-fade'] = style.fade;
+  if (!closed && style.taper > 0) o['line-taper'] = style.taper;
   if (closed && style.fill) o.fill = style.fill;
   return o;
 }
@@ -164,6 +165,7 @@ export function getCurveStyle(rec) {
     arrowSize: isNumber(rec['line-end-size']) && rec['line-end-size'] > 0 ?
       Number(rec['line-end-size']) : '',
     fade: isNumber(rec['line-fade']) && rec['line-fade'] > 0 ? Math.min(Number(rec['line-fade']), 1) : 0,
+    taper: isNumber(rec['line-taper']) && rec['line-taper'] > 0 ? Math.min(Number(rec['line-taper']), 1) : 0,
     fill: rec.fill || ''
   };
 }

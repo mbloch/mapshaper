@@ -158,6 +158,38 @@ test('a curve takes the layer panel\'s arrowheads, and is colored by "Color"', a
   expect(errors).toEqual([]);
 });
 
+test('Taper % tapers the selected curve, as one undo step', async function({page}) {
+  var errors = collectPageErrors(page);
+  await openTool(page);
+  await armTool(page, 'curve');
+  await clickMap(page, 0.2, 0.6);
+  await clickMap(page, 0.3, 0.4);
+  await clickMap(page, 0.4, 0.6);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(150);
+  await armTool(page, null);
+  await clickMap(page, 0.3, 0.4);
+  expect(await getSelection(page)).toEqual([0]);
+
+  var input = page.locator('.symbol-style-panel .label-split-cell:has(> span:text-is("Taper %")) .size-field-input');
+  await input.fill('100');
+  await input.press('Enter');
+  await page.waitForTimeout(200);
+  expect((await getSymbolLayer(page)).records[0]['line-taper']).toBe(1);
+  expect(await getSessionHistory(page)).toContain('line-taper');
+  // drawn as a filled outline rather than a stroke
+  var filled = await page.evaluate(function() {
+    var node = document.querySelector('.mapshaper-svg-symbol[data-id="0"]');
+    return !!node.querySelector('path[fill-rule="nonzero"]');
+  });
+  expect(filled).toBe(true);
+
+  await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
+  await page.waitForTimeout(200);
+  expect((await getSymbolLayer(page)).records[0]['line-taper']).toBeUndefined();
+  expect(errors).toEqual([]);
+});
+
 test('in a layer of circles and icons, an icon is hovered and selected', async function({page}) {
   var errors = collectPageErrors(page);
   await openTool(page);

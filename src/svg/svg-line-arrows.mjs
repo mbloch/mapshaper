@@ -5,6 +5,10 @@ import {
 import { parseLineEnd, isSvgNumber } from './svg-properties';
 import { importLineString, importMultiLineString } from './svg-geom-primitives';
 import { parseColor } from '../color/color-utils';
+import {
+  parseLineTaper, getTaperWidths, getTaperedOutline, getTaperedLinePathData,
+  makeTaperOutlineOpts
+} from './svg-line-taper';
 
 // Markers at the ends of line features: line-start= and line-end= take
 // arrow (a filled triangle), open-arrow (a stroked chevron), dot (a filled
@@ -25,6 +29,8 @@ import { parseColor } from '../color/color-utils';
 // straight or gently curved line closely; SVG and canvas have no gradient that
 // follows a path, so a line that bends sharply within its fade will not fade
 // evenly along its length.
+//
+// line-taper= narrows the line toward the same tail (see svg-line-taper.mjs).
 //
 // Coordinates are px, y down: the SVG export's space, or the canvas's.
 
@@ -49,19 +55,20 @@ export function parseLineFade(val) {
 
 // Whether a line is drawn by renderArrowLine() rather than as a plain path
 export function lineHasEndStyles(rec) {
-  return lineHasArrows(rec) || parseLineFade(rec && rec['line-fade']) > 0;
+  return lineHasArrows(rec) || parseLineFade(rec && rec['line-fade']) > 0 ||
+    parseLineTaper(rec && rec['line-taper']) > 0;
 }
 
 // What getLineArrowShape() needs from a record, at scale @scale (the factor
 // the canvas multiplies line widths by; 1 for SVG).
 export function getLineArrowOpts(rec, scale) {
   return makeLineArrowOpts(rec['line-start'], rec['line-end'], rec['line-end-size'],
-    rec['stroke-width'], scale, rec['line-fade']);
+    rec['stroke-width'], scale, rec['line-fade'], rec['line-taper']);
 }
 
 // The same, from the values themselves, for the canvas, which has them in a
 // style object rather than a record.
-export function makeLineArrowOpts(start, end, size, strokeWidth, scale, fade) {
+export function makeLineArrowOpts(start, end, size, strokeWidth, scale, fade, taper) {
   var k = scale > 0 ? scale : 1;
   var w = isSvgNumber(strokeWidth) && Number(strokeWidth) >= 0 ?
     Number(strokeWidth) : DEFAULT_LINE_WIDTH;
@@ -73,19 +80,21 @@ export function makeLineArrowOpts(start, end, size, strokeWidth, scale, fade) {
     size: side * k,
     dotSize: (hasSize ? side : side * DOT_SIZE_RATIO) * k,
     width: w * k,
-    fade: parseLineFade(fade)
+    fade: parseLineFade(fade),
+    taper: parseLineTaper(taper)
   };
 }
 
 // Field names, for a layer that may have them
-export var lineArrowFields = ['line-start', 'line-end', 'line-end-size', 'line-fade'];
+export var lineArrowFields = ['line-start', 'line-end', 'line-end-size', 'line-fade', 'line-taper'];
 
-// One part of a line, with its heads: {coords, heads, fade}, where coords is
-// the line to stroke -- cut back into a solid head, so that its cap does not
-// show past the tip -- and heads is a list of {type, points}: a solid head's
-// triangle, tip first, or an open head's chevron, wing to tip to wing. A dot
-// is {type, center, radius}. fade is the axis of the line's fade (see
-// getLineFadeAxis()), or null.
+// One part of a line, with its heads: {coords, heads, fade, widths}, where
+// coords is the line to stroke -- cut back into a solid head, so that its cap
+// does not show past the tip -- and heads is a list of {type, points}: a
+// solid head's triangle, tip first, or an open head's chevron, wing to tip to
+// wing. A dot is {type, center, radius}. fade is the axis of the line's fade
+// (see getLineFadeAxis()), or null. widths is a tapered line's width at the
+// first and last points of coords, or null.
 //
 // A head points along the chord from its tip to where the line first reaches
 // the head's length from it, rather than along the last segment, which on
@@ -93,10 +102,15 @@ export var lineArrowFields = ['line-start', 'line-end', 'line-end-size', 'line-f
 // anywhere. The line is then straightened to meet the head along its axis. An
 // end whose part is too short to hold its head gets none.
 export function getLineArrowShape(coords, opts) {
-  var out = {coords: coords, heads: [], fade: null};
+  var out = {coords: coords, heads: [], fade: null, widths: null};
+  var tailAtEnd = opts.start != 'none' && opts.end == 'none';
   var end;
   if (opts.fade > 0) {
-    out.fade = getLineFadeAxis(coords, opts.start != 'none' && opts.end == 'none', opts.fade);
+    out.fade = getLineFadeAxis(coords, tailAtEnd, opts.fade);
+  }
+  if (opts.taper > 0) {
+    out.widths = getTaperWidths(opts.width > 0 ? opts.width : DEFAULT_LINE_WIDTH,
+      opts.taper, tailAtEnd);
   }
   if (opts.start != 'none') {
     addHead(out, opts.start, opts);
@@ -200,19 +214,33 @@ function addDot(shape, radius) {
 // A line feature with arrowheads or a fade, as SVG: a group holding the line
 // and its heads, for the feature's style attributes to go on. @parts is a list
 // of polylines (a LineString's coordinates are one). A faded part is a path of
-// its own, since each part has its own gradient.
+// its own, since each part has its own gradient. A tapered line is a filled
+// path (see svg-line-taper.mjs).
 export function renderArrowLine(parts, rec) {
   var opts = getLineArrowOpts(rec, 1);
   var color = rec.stroke || 'black';
   var fadeColors = opts.fade > 0 ? getLineFadeColors(color) : null;
+  var outline = makeTaperOutlineOpts(rec['stroke-linecap'], rec['stroke-dasharray'], opts, 1);
   var lines = [];
+  var tapered = [];
   var fadedLines = [];
   var heads = [];
   parts.forEach(function(part) {
     var shape = getLineArrowShape(part, opts);
     var coords = shape.coords.map(roundPoint);
-    if (shape.fade && fadeColors) {
-      fadedLines.push(renderFadedLine(coords, shape.fade, fadeColors));
+    var d;
+    if (shape.widths) {
+      d = getTaperedLinePathData(getTaperedOutline(shape.coords,
+        shape.widths[0], shape.widths[1], outline));
+      if (!d) {
+        // too short to draw
+      } else if (shape.fade && fadeColors) {
+        fadedLines.push(addLineFade(renderTaperedLine(d, color, rec), shape.fade, fadeColors, 'fill'));
+      } else {
+        tapered.push(d);
+      }
+    } else if (shape.fade && fadeColors) {
+      fadedLines.push(addLineFade(importLineString(coords), shape.fade, fadeColors, 'stroke'));
     } else {
       lines.push(coords);
     }
@@ -221,16 +249,26 @@ export function renderArrowLine(parts, rec) {
     });
   });
   var children = lines.length > 0 ? [importMultiLineString(lines)] : [];
+  if (tapered.length > 0) {
+    children.push(renderTaperedLine(tapered.join(' '), color, rec));
+  }
   return {tag: 'g', properties: {}, children: children.concat(fadedLines, heads)};
 }
 
+// The fill rule is set on the path, so that a fill rule on the layer can't
+// punch holes where the outline's pieces overlap.
+function renderTaperedLine(d, color, rec) {
+  return {tag: 'path', properties: addFillOpacity({d: d, fill: color,
+    'fill-rule': 'nonzero', stroke: 'none'}, rec)};
+}
+
 // The gradient is added to the SVG's <defs> by convertLineFade(), which also
-// points the path's stroke at it.
-function renderFadedLine(coords, axis, colors) {
-  var obj = importLineString(coords);
+// points the path's @paint (stroke or fill) at it.
+function addLineFade(obj, axis, colors, paint) {
   var from = roundPoint(axis.from);
   var to = roundPoint(axis.to);
-  obj.lineFade = {x1: from[0], y1: from[1], x2: to[0], y2: to[1], color: colors.solid};
+  obj.lineFade = {x1: from[0], y1: from[1], x2: to[0], y2: to[1], color: colors.solid,
+    paint: paint};
   return obj;
 }
 
@@ -240,11 +278,7 @@ function renderFadedLine(coords, axis, colors) {
 // path's bounding box, has no height for a horizontal line, and a gradient
 // over an empty box paints nothing.
 export function convertLineFade(obj, defs) {
-  var f = obj.lineFade;
-  var color = String(f.color).replace(/"/g, '');
-  var body = 'gradientUnits="userSpaceOnUse" x1="' + f.x1 + '" y1="' + f.y1 +
-    '" x2="' + f.x2 + '" y2="' + f.y2 + '"><stop offset="0" stop-color="' + color +
-    '" stop-opacity="0"/><stop offset="1" stop-color="' + color + '"/></linearGradient>';
+  var body = getLineFadeGradientBody(obj.lineFade);
   var item = defs.find(function(o) { return o.lineFadeKey === body; });
   var count;
   if (!item) {
@@ -253,8 +287,59 @@ export function convertLineFade(obj, defs) {
     item.svg = '<linearGradient id="' + item.id + '" ' + body + '\n';
     defs.push(item);
   }
+  setLineFadePaint(obj, item.id);
+}
+
+// The same, for markup that is not written out through <defs>: each faded
+// path in @obj gets a gradient in a <defs> of its own, added to @obj's
+// children, with an id made from the gradient, so that identical gradients
+// in different places can share it. For the GUI, which draws each curve
+// symbol on its own.
+export function inlineLineFades(obj) {
+  var defs = [];
+  (function visit(o) {
+    var f = o.lineFade;
+    var id, color;
+    if (f) {
+      id = 'line-fade-' + hashString(getLineFadeGradientBody(f));
+      color = String(f.color);
+      if (!defs.some(function(def) { return def.properties.id == id; })) {
+        defs.push({tag: 'linearGradient', properties: {id: id,
+          gradientUnits: 'userSpaceOnUse', x1: f.x1, y1: f.y1, x2: f.x2, y2: f.y2
+        }, children: [
+          {tag: 'stop', properties: {offset: 0, 'stop-color': color, 'stop-opacity': 0}},
+          {tag: 'stop', properties: {offset: 1, 'stop-color': color}}
+        ]});
+      }
+      setLineFadePaint(o, id);
+    }
+    if (o.children) o.children.forEach(visit);
+  }(obj));
+  if (defs.length > 0) {
+    obj.children = [{tag: 'defs', children: defs}].concat(obj.children || []);
+  }
+  return obj;
+}
+
+function getLineFadeGradientBody(f) {
+  var color = String(f.color).replace(/"/g, '');
+  return 'gradientUnits="userSpaceOnUse" x1="' + f.x1 + '" y1="' + f.y1 +
+    '" x2="' + f.x2 + '" y2="' + f.y2 + '"><stop offset="0" stop-color="' + color +
+    '" stop-opacity="0"/><stop offset="1" stop-color="' + color + '"/></linearGradient>';
+}
+
+function setLineFadePaint(obj, id) {
+  var paint = obj.lineFade.paint || 'stroke';
   delete obj.lineFade;
-  obj.properties.stroke = 'url(#' + item.id + ')';
+  obj.properties[paint] = 'url(#' + id + ')';
+}
+
+function hashString(str) {
+  var h = 5381, i;
+  for (i = 0; i < str.length; i++) {
+    h = (h * 33 + str.charCodeAt(i)) | 0;
+  }
+  return (h >>> 0).toString(36);
 }
 
 function renderHead(head, color, rec) {

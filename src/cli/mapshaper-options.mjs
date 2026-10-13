@@ -98,6 +98,7 @@ export function getOptionParser() {
         'line-end': {describe: 'marker at the end of each line: arrow, open-arrow, dot or none'},
         'line-end-size': {describe: 'length of an arrowhead\'s sides in px (default grows with stroke-width)'},
         'line-fade': {describe: 'share of a line (0-1) that fades in from its tail'},
+        'line-taper': {describe: 'narrow each line toward its tail (0-1, 1 tapers to a point)'},
         'casing-color': {describe: 'color of a casing (outline) drawn beneath each line (adds the casing)'},
         'casing-width': {describe: 'how far the casing extends past each edge of the line, in px (default is 1)'},
         'casing-opacity': {describe: 'opacity of the casing, 0-1'},
@@ -2375,6 +2376,9 @@ export function getOptionParser() {
     })
     .option('line-fade', {
       describe: '(curve) share of the curve that fades in from its tail, 0-1'
+    })
+    .option('line-taper', {
+      describe: '(curve) narrow the curve toward its tail (0-1, 1 tapers to a point)'
     })
     .option('coordinates', {
       describe: 'add a symbol at x,y (or x,y,x,y,... for a curve)'

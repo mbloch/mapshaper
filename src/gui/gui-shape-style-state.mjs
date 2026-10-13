@@ -9,7 +9,7 @@
 // See docs/development/line-tool-design.md.
 
 var LINE_FIELDS = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray',
-  'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'line-fade',
+  'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'line-fade', 'line-taper',
   'casing-color', 'casing-width', 'casing-opacity', 'opacity'];
 
 var POLYGON_FIELDS = ['stroke', 'stroke-width', 'stroke-opacity', 'fill', 'fill-opacity',

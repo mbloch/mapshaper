@@ -44,7 +44,7 @@ export function SymbolPanel(gui, opts) {
   var iconSection, shapeBtns = {}, iconFill, iconSizeField, iconStroke,
       iconStrokeWidthField, rotationRow, rotationField;
   var curveSection, curveStroke, curveWidthField, arrowShapeRow, arrowShapeBtns = {},
-      arrowSizeField, arrowRow, arrowBtns = {}, fadeField, curveFill;
+      arrowSizeField, arrowRow, arrowBtns = {}, fadeField, taperRow, taperField, curveFill;
   // what the controls describe: {mode: 'new'|'selection', icons: [ids],
   //   curves: [ids], records}
   var state = null;
@@ -233,6 +233,22 @@ export function SymbolPanel(gui, opts) {
       onDone: releaseFocus
     });
 
+    taperRow = El('div').addClass('label-style-row label-split-row').appendTo(curveSection);
+    var taperCell = El('div').addClass('label-split-cell label-spacing-row symbol-curve-taper-cell').appendTo(taperRow);
+    El('span').appendTo(taperCell).text('Taper %');
+    taperField = new SizeField(taperCell, {
+      min: 0,
+      max: 100,
+      step: 5,
+      bigStep: 25,
+      title: 'Percent of the width the curve loses toward its tail (100 tapers it to a point)',
+      onSet: applyTaper,
+      onStep: function(delta) {
+        applyTaper(Math.max(0, Math.min(100, (Number(taperField.getValue()) || 0) + delta)));
+      },
+      onDone: releaseFocus
+    });
+
     curveFill = makeColorRow(curveSection, {
       label: 'Fill',
       noOpacity: true,
@@ -342,7 +358,7 @@ export function SymbolPanel(gui, opts) {
         o[key] = commonValue(state.curves, function(rec) { return getCurveStyle(rec)[key]; });
       });
       // the ends, from the open curves: a closed one has none
-      ['arrowheads', 'arrowShape', 'fade'].forEach(function(key) {
+      ['arrowheads', 'arrowShape', 'fade', 'taper'].forEach(function(key) {
         o[key] = commonValue(getOpenCurves(), function(rec) { return getCurveStyle(rec)[key]; });
       });
       o.arrowSize = commonValue(getOpenCurves().filter(curveHasHeads), function(rec) {
@@ -368,6 +384,7 @@ export function SymbolPanel(gui, opts) {
     }
     arrowSizeField.setDisabled(o.arrowheads == 'none');
     fadeField.setValue(o.fade === null ? '' : Math.round(o.fade * 1000) / 10);
+    taperField.setValue(o.taper === null ? '' : Math.round(o.taper * 1000) / 10);
     curveFill.showColor(o.fill || '');
     // Only a closed curve has an inside to fill, and closed curves are rare,
     // so the row waits for one; arrowheads go on the ends of an open one.
@@ -375,6 +392,7 @@ export function SymbolPanel(gui, opts) {
     var noEnds = state.mode == 'selection' && state.curves.every(curveIsClosed);
     arrowShapeRow.classed('hidden', noEnds);
     arrowRow.classed('hidden', noEnds);
+    taperRow.classed('hidden', noEnds);
   }
 
   // The size a head is drawn at: its own, or the one the stroke width gives it
@@ -545,6 +563,17 @@ export function SymbolPanel(gui, opts) {
       return update();
     }
     runStyle({'line-fade': fade || ''}, getOpenCurves(), 'Style curve');
+  }
+
+  // Like the fade: a percent here, a share of the width in line-taper
+  function applyTaper(pct) {
+    var taper = pct > 0 ? Math.round(pct * 10) / 1000 : 0;
+    if (!(pct >= 0)) return update();
+    if (state.mode == 'new') {
+      opts.getNewStyle().curve.taper = taper;
+      return update();
+    }
+    runStyle({'line-taper': taper || ''}, getOpenCurves(), 'Style curve');
   }
 
   function applyCurveWidth(w) {

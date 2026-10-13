@@ -203,6 +203,7 @@ function renderCurve(d, coords) {
   var pathData = obj ? internal.svg.getCurvePathData(coords, internal.svg.curveIsClosed(coords)) : null;
   var group;
   if (!obj) return null;
+  internal.svg.inlineLineFades(obj);
   group = {tag: 'g', properties: {}, children: [obj]};
   if (pathData) {
     group.children.unshift({tag: 'path', properties: {

@@ -107,7 +107,7 @@ describe('line arrowheads', function() {
       assert.equal(makeLineArrowOpts('arrow', '', null, 1, 1).size, 10);
       assert.equal(makeLineArrowOpts('arrow', '', null, 2, 1).size, 13);
       assert.deepEqual(makeLineArrowOpts('arrow', 'open-arrow', 8, 2, 2),
-        {start: 'arrow', end: 'open-arrow', size: 16, dotSize: 16, width: 4, fade: 0});
+        {start: 'arrow', end: 'open-arrow', size: 16, dotSize: 16, width: 4, fade: 0, taper: 0});
     });
 
     it('a dot is 0.6 of the default arrow size, or line-end-size across', function() {

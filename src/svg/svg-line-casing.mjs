@@ -1,6 +1,9 @@
 import { isSvgNumber } from './svg-properties';
 import { lineHasArrows, getLineArrowOpts, getLineArrowShape } from './svg-line-arrows';
 import { importMultiLineString } from './svg-geom-primitives';
+import {
+  parseLineTaper, getTaperedOutline, getTaperedLinePathData, makeTaperOutlineOpts
+} from './svg-line-taper';
 
 // A casing is a wider stroke drawn beneath a line, so that the line has an
 // outline of another color, as roads are drawn on many maps.
@@ -24,7 +27,9 @@ import { importMultiLineString } from './svg-geom-primitives';
 //
 // A line with arrowheads has its casing along the line itself, which stops
 // at the heads (see getLineArrowShape()); the heads have no casing. A line
-// with a fade has a casing that does not fade.
+// with a fade has a casing that does not fade. A tapered line's casing is a
+// fill the casing's width wider than the line on either side, along its
+// length (see svg-line-taper.mjs), and solid under a dashed line.
 
 export var casingFields = ['casing-color', 'casing-width', 'casing-opacity'];
 
@@ -91,6 +96,11 @@ export function renderLineCasings(features, layerId) {
     } else {
       return;
     }
+    if (parseLineTaper(rec['line-taper']) > 0) {
+      obj = renderTaperedCasing(parts, rec, casing);
+      if (obj) children.push(obj);
+      return;
+    }
     parts = getCasingParts(parts, rec);
     if (parts.length === 0) return;
     obj = importMultiLineString(parts);
@@ -116,6 +126,23 @@ function getCasingParts(parts, rec) {
   return parts.filter(function(part) {
     return part && part.length > 1;
   });
+}
+
+function renderTaperedCasing(parts, rec, casing) {
+  var opts = getLineArrowOpts(rec, 1);
+  // solid, with the caps an untapered casing has
+  var outline = makeTaperOutlineOpts(getLineCasingCap(rec), null, opts, 1);
+  var extra = casing.width * 2;
+  var d = parts.map(function(part) {
+    var shape = getLineArrowShape(part, opts);
+    return getTaperedLinePathData(getTaperedOutline(shape.coords,
+      shape.widths[0] + extra, shape.widths[1] + extra, outline));
+  }).filter(Boolean).join(' ');
+  var props;
+  if (!d) return null;
+  props = {d: d, fill: casing.color, 'fill-rule': 'nonzero', stroke: 'none'};
+  if (casing.opacity < 1) props['fill-opacity'] = casing.opacity;
+  return {tag: 'path', properties: props};
 }
 
 function getCasingAttributes(rec, casing) {
