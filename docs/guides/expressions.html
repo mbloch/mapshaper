@@ -424,6 +424,8 @@
 <li><code>format_dms(coord [, fmt])</code> &mdash; Format a number as a degrees/minutes/seconds string. Common formats: <code>&#39;DD° MM′ SS.SSSSS″ [NS]&#39;</code>, <code>&#39;DdMmSs [EW]&#39;</code>, <code>&#39;[+-]DDDMM.MMMMM&#39;</code>, <code>&#39;[-]DD.DDDDD°&#39;</code>.</li>
 <li><code>parse_dms(string [, fmt])</code> &mdash; Parse a DMS string back to a number.</li>
 <li><code>blend(c1, c2, ...)</code> &mdash; Mix CSS color strings together (returns a hex string).</li>
+<li><code>distance_lonlat(lon1, lat1, lon2, lat2)</code> &mdash; Distance in meters between two points given in decimal degrees, on the WGS84 ellipsoid. Returns <code>null</code> if a coordinate is missing or a latitude is outside the range -90 to 90.</li>
+<li><code>distance_xy(x1, y1, x2, y2)</code> &mdash; Straight-line (Euclidean) distance between two points in projected coordinates. Returns <code>null</code> if a coordinate is missing.</li>
 <li><code>console.log(...)</code> &mdash; Write to stderr.</li>
 </ul>
 <p>JavaScript&#39;s built-in <code>Math</code>, <code>JSON</code>, <code>Number</code>, <code>String</code>, <code>Array</code>, <code>Date</code>, <code>Object</code> etc. are all available. Node-specific globals like <code>process</code>, <code>require</code> and <code>setTimeout</code> are not.</p>

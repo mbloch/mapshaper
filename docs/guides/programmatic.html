@@ -66,7 +66,7 @@
 <p>Runs a command line against files on disk (or in-memory). The <code>-o</code> command(s) write their output to disk.</p>
 <ul>
 <li><code>commands</code> &mdash; a command-line string.</li>
-<li><code>input</code> (optional) &mdash; an object whose keys are filenames and whose values are file contents. Files referenced by <code>-i</code> are looked up here first, then on the filesystem.</li>
+<li><code>input</code> (optional) &mdash; an object whose keys are filenames and whose values are file contents. Files referenced by <code>-i</code> are looked up here first, then on the filesystem. GeoJSON and TopoJSON contents may be given as strings or as objects (see <a href="#input-objects-are-modified">Input objects are modified</a>).</li>
 <li><code>callback</code> (optional) &mdash; a Node-style <code>function(err)</code>. Without a callback, <code>runCommands</code> returns a Promise.</li>
 </ul>
 <pre><code class="hljs language-javascript"><span class="hljs-keyword">import</span> mapshaper <span class="hljs-keyword">from</span> <span class="hljs-string">&#x27;mapshaper&#x27;</span>;
@@ -88,6 +88,11 @@
 <pre><code class="hljs language-javascript"><span class="hljs-keyword">await</span> mapshaper.<span class="hljs-title function_">runCommandsXL</span>(commands, { <span class="hljs-attr">xl</span>: <span class="hljs-string">&#x27;16gb&#x27;</span> });
 </code></pre>
 <p>This function reads input only from the filesystem &mdash; there&#39;s no <code>input</code> argument as on <code>runCommands</code>/<code>applyCommands</code>.</p>
+<h2 id="input-objects-are-modified">Input objects are modified</h2>
+<p>When GeoJSON or TopoJSON is passed to <code>runCommands</code> or <code>applyCommands</code> as an object rather than a string, Mapshaper uses the object&#39;s data without copying it, and the object may be modified. Commands that edit attribute data (like <code>-each</code>) can change the objects&#39; <code>properties</code>, and coordinates can be changed during import and output; for example, the final <code>-o</code> command may overwrite point coordinates with quantized TopoJSON or SVG pixel coordinates.</p>
+<p>To keep using an object after passing it to Mapshaper, pass a copy or a JSON string instead:</p>
+<pre><code class="hljs language-javascript"><span class="hljs-keyword">const</span> output = <span class="hljs-keyword">await</span> mapshaper.<span class="hljs-title function_">applyCommands</span>(cmd, { <span class="hljs-string">&#x27;input.json&#x27;</span>: <span class="hljs-title function_">structuredClone</span>(geojson) });
+</code></pre>
 <h2 id="working-with-shapefiles-in-applycommands">Working with Shapefiles in <code>applyCommands</code></h2>
 <p>Shapefiles are really a set of component files. To import one through <code>applyCommands</code>, pass the contents of all the parts you care about:</p>
 <ul>
@@ -115,7 +120,7 @@
   </main>
 
   <aside class="docs-toc">
-    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#calling-the-cli-from-a-build-tool">Calling the CLI from a build tool</a></li><li class="lvl-2"><a href="#the-nodejs-api">The Node.js API</a></li><li class="lvl-3"><a href="#runcommandscommands-input-callback">runCommands(commands[, input][, callback])</a></li><li class="lvl-3"><a href="#applycommandscommands-input-callback">applyCommands(commands[, input][, callback])</a></li><li class="lvl-3"><a href="#runcommandsxlcommands-options-callback">runCommandsXL(commands[, options][, callback])</a></li><li class="lvl-2"><a href="#working-with-shapefiles-in-applycommands">Working with Shapefiles in applyCommands</a></li><li class="lvl-2"><a href="#versioning">Versioning</a></li></ul>
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#calling-the-cli-from-a-build-tool">Calling the CLI from a build tool</a></li><li class="lvl-2"><a href="#the-nodejs-api">The Node.js API</a></li><li class="lvl-3"><a href="#runcommandscommands-input-callback">runCommands(commands[, input][, callback])</a></li><li class="lvl-3"><a href="#applycommandscommands-input-callback">applyCommands(commands[, input][, callback])</a></li><li class="lvl-3"><a href="#runcommandsxlcommands-options-callback">runCommandsXL(commands[, options][, callback])</a></li><li class="lvl-2"><a href="#input-objects-are-modified">Input objects are modified</a></li><li class="lvl-2"><a href="#working-with-shapefiles-in-applycommands">Working with Shapefiles in applyCommands</a></li><li class="lvl-2"><a href="#versioning">Versioning</a></li></ul>
   </aside>
 
 </div>

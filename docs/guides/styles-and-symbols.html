@@ -64,8 +64,8 @@
   stroke=&#x27;rgba(0, 0, 0, 0.15)&#x27;
 </code></pre>
 <h3 id="making-point-icons">Making point icons</h3>
-<p>Use <code>icon=</code> with <code>icon-size=</code> to add circle, square, ring or star icons to a point layer. Icons use <code>icon-color=</code> when it is provided. Otherwise they use the layer&#39;s <code>fill=</code> color, falling back to black.</p>
-<pre><code class="hljs language-text">-style icon=star icon-size=10 fill=&quot;#333&quot;
+<p>Use <a href="/docs/reference.html#-symbols"><code>-symbols</code></a> to turn the points of a layer into squares, stars, triangles, rings and other icons. <code>radius=</code> sets their size.</p>
+<pre><code class="hljs language-text">-symbols type=star radius=5 fill=&quot;#333&quot;
 </code></pre>
 <h2 id="styling-data-layers-with-the--classify-command">Styling data layers with the <code>-classify</code> command</h2>
 <h3 id="classed-and-unclassed-color-gradients">Classed and unclassed color gradients</h3>
@@ -130,8 +130,8 @@
 <p>Use <code>dx=</code> together with <code>text-anchor=start</code> or <code>text-anchor=end</code> to place labels to the left or right of their anchor points. Typically you would combine this with a dot over the anchor point. You can add the dots to the label layer by adding an <code>r=</code> property.</p>
 <pre><code class="hljs language-text">-style label-text=NAME dx=6 dy=3 font-size=12 text-anchor=start r=2
 </code></pre>
-<p>For labeled point icons, use <code>icon=</code> on the same layer. In this example the icon and label both use <code>fill=&quot;#555&quot;</code>.</p>
-<pre><code class="hljs language-text">-style label-text=NAME dx=8 dy=3 text-anchor=start \
+<p>For labeled point icons, use the <code>icon=</code> option of <a href="/docs/reference.html#-labels"><code>-labels</code></a>, which draws an icon at each label&#39;s anchor. The icon takes the text color, <code>fill=&quot;#555&quot;</code> in this example, unless it is given a color of its own.</p>
+<pre><code class="hljs language-text">-labels text=NAME dx=8 dy=3 text-anchor=start \
   icon=circle icon-size=6 fill=&quot;#555&quot;
 </code></pre>
 <p>You can combine <code>where=</code> with multiple <code>-style</code> commands to emphasize important labels.</p>

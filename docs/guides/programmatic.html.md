@@ -32,7 +32,7 @@ Mapshaper exposes three top-level functions for running editing commands program
 Runs a command line against files on disk (or in-memory). The `-o` command(s) write their output to disk.
 
 - `commands` &mdash; a command-line string.
-- `input` (optional) &mdash; an object whose keys are filenames and whose values are file contents. Files referenced by `-i` are looked up here first, then on the filesystem.
+- `input` (optional) &mdash; an object whose keys are filenames and whose values are file contents. Files referenced by `-i` are looked up here first, then on the filesystem. GeoJSON and TopoJSON contents may be given as strings or as objects (see [Input objects are modified](#input-objects-are-modified)).
 - `callback` (optional) &mdash; a Node-style `function(err)`. Without a callback, `runCommands` returns a Promise.
 
 ```javascript
@@ -64,6 +64,16 @@ await mapshaper.runCommandsXL(commands, { xl: '16gb' });
 ```
 
 This function reads input only from the filesystem &mdash; there's no `input` argument as on `runCommands`/`applyCommands`.
+
+## Input objects are modified
+
+When GeoJSON or TopoJSON is passed to `runCommands` or `applyCommands` as an object rather than a string, Mapshaper uses the object's data without copying it, and the object may be modified. Commands that edit attribute data (like `-each`) can change the objects' `properties`, and coordinates can be changed during import and output; for example, the final `-o` command may overwrite point coordinates with quantized TopoJSON or SVG pixel coordinates.
+
+To keep using an object after passing it to Mapshaper, pass a copy or a JSON string instead:
+
+```javascript
+const output = await mapshaper.applyCommands(cmd, { 'input.json': structuredClone(geojson) });
+```
 
 ## Working with Shapefiles in `applyCommands`
 

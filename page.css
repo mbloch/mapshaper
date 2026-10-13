@@ -2223,6 +2223,7 @@ div.basemap-style-btn.active {
 .map-layers.add-points,
 .map-layers.draw-tool,
 .map-layers.label-tool,
+.map-layers.symbol-tool,
 .map-layers.snip-tool,
 .map-layers.ruler-tool {
 	cursor: crosshair;
@@ -2242,6 +2243,16 @@ div.basemap-style-btn.active {
    callout handle -- which a drag moves on its own. Not the text's cursor,
    because the two are often close together or on top of each other. */
 .map-layers.label-handle {
+	cursor: pointer;
+}
+
+/* The symbol tool: over a symbol, which a drag moves, and over a knot of a
+   selected curve, which a drag moves on its own. */
+.map-layers.symbol-move {
+	cursor: move;
+}
+
+.map-layers.symbol-handle {
 	cursor: pointer;
 }
 
@@ -3133,6 +3144,75 @@ body.pan.panning .map-layers:not(.drawing) {
 	border-color: #d3aa00;
 	box-shadow: none;
 	outline: none;
+}
+
+/* A font menu draws each name in its own font, which only a customizable
+   select can do: a native menu ignores an option's font, at least in Chrome
+   and Safari on a Mac. The closed menu keeps the chevron the other menus have
+   and the font they are drawn in, which is the browser's control font rather
+   than the panel's: base-select inherits the panel's instead. */
+@supports (appearance: base-select) {
+	.label-style-panel select.font-menu,
+	.label-style-panel select.font-menu::picker(select) {
+		appearance: base-select;
+	}
+
+	.label-style-panel select.font-menu {
+		align-items: center;
+		color: FieldText;
+		font: -webkit-small-control;
+		font-size: 11.5px;
+	}
+
+	.label-style-panel select.font-menu::picker-icon {
+		display: none;
+	}
+
+	.label-style-panel select.font-menu::picker(select) {
+		max-height: min(420px, 70vh);
+		min-width: anchor-size(width);
+		padding: 4px 0;
+		background: white;
+		border: 1px solid var(--label-field-border);
+		border-radius: 6px;
+		box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+	}
+
+	.label-style-panel select.font-menu optgroup {
+		font-weight: normal;
+		font-size: 11.5px;
+		padding: 2px 0 1px 0;
+		font-family: SourceSans3;
+		color: #888;
+	}
+
+	.label-style-panel select.font-menu optgroup legend {
+		padding: 6px 10px 2px;
+	}
+
+	.label-style-panel select.font-menu option {
+		padding: 1px 10px 0px 6px;
+		font-weight: normal;
+		font-size: 14px;
+		color: #222;
+		white-space: nowrap;
+	}
+
+	.label-style-panel select.font-menu option::checkmark {
+		width: 12px;
+		font-family: system-ui, sans-serif;
+		font-size: 11px;
+	}
+
+	.label-style-panel select.font-menu option:hover,
+	.label-style-panel select.font-menu option:focus-visible {
+		background: #f2ebce;
+		outline: none;
+	}
+
+	.label-style-panel select.font-menu option:checked {
+		background: #fbf6e2;
+	}
 }
 
 .label-style-panel input[type="text"] {
@@ -4129,7 +4209,8 @@ body.dragging-color-picker * {
 /* Words, like the label panel's Fixed/Draggable, but splitting the group
    evenly so that it lines up with the shapes above. */
 .layer-style-panel .layer-arrow-position-buttons .label-panel-btn,
-.layer-style-panel .layer-cap-buttons .label-panel-btn {
+.layer-style-panel .layer-cap-buttons .label-panel-btn,
+.symbol-style-panel .symbol-arrowhead-buttons .label-panel-btn {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -4563,12 +4644,24 @@ body.dragging-color-picker * {
 	transition: fill 100ms ease;
 }
 
+/* A line in an icon is drawn in the icon's color and not filled */
+.floating-toolbar-btn svg .stroked {
+	fill: none;
+	stroke: var(--theme-col);
+	transition: stroke 100ms ease;
+}
+
 .floating-toolbar-btn:hover:not(.disabled) {
 	background-color: var(--lt-theme-col);
 }
 
 .floating-toolbar-btn:hover:not(.disabled) svg * {
 	fill: #166689;
+}
+
+.floating-toolbar-btn:hover:not(.disabled) svg .stroked {
+	fill: none;
+	stroke: #166689;
 }
 
 .floating-toolbar-btn:active:not(.disabled) {
@@ -4582,6 +4675,11 @@ body.dragging-color-picker * {
 
 .floating-toolbar-btn.selected svg * {
 	fill: #166689;
+}
+
+.floating-toolbar-btn.selected svg .stroked {
+	fill: none;
+	stroke: #166689;
 }
 
 /* An icon button's blue wash goes with its themed icon, but a text button is
@@ -4605,6 +4703,11 @@ body.dragging-color-picker * {
 
 .floating-toolbar-btn.disabled svg * {
 	fill: #b8c4ca;
+}
+
+.floating-toolbar-btn.disabled svg .stroked {
+	fill: none;
+	stroke: #b8c4ca;
 }
 
 /* A captioned control: a segmented mode switch or a short typed value. The

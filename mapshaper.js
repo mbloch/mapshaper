@@ -87,16 +87,16 @@
   }
 
   // Is obj a valid number or NaN? (test if obj is type number)
-  function isNumber(obj) {
+  function isNumber$1(obj) {
     return obj != null && obj.constructor == Number;
   }
 
   function isValidNumber(val) {
-    return isNumber(val) && !isNaN(val);
+    return isNumber$1(val) && !isNaN(val);
   }
 
   // Similar to isFinite() but does not coerce strings or other types
-  function isFiniteNumber$2(val) {
+  function isFiniteNumber$3(val) {
     return isValidNumber(val) && val !== Infinity && val !== -Infinity;
   }
 
@@ -106,11 +106,11 @@
   // }
 
   function isNonNegNumber(val) {
-    return isNumber(val) && val >= 0;
+    return isNumber$1(val) && val >= 0;
   }
 
   function isInteger(obj) {
-    return isNumber(obj) && ((obj | 0) === obj);
+    return isNumber$1(obj) && ((obj | 0) === obj);
   }
 
   function isEven(obj) {
@@ -1106,8 +1106,8 @@
     getSortedIds, getUniqueName, groupBy,
     htmlEscape,
     indexOf, indexOn, inherit, initializeArray, intersection,
-    isArray, isArrayLike, isBoolean, isDate, isEven, isFiniteNumber: isFiniteNumber$2, isFunction,
-    isInteger, isNonNegNumber, isNumber, isObject, isOdd: isOdd$1, isPromise, isString,
+    isArray, isArrayLike, isBoolean, isDate, isEven, isFiniteNumber: isFiniteNumber$3, isFunction,
+    isInteger, isNonNegNumber, isNumber: isNumber$1, isObject, isOdd: isOdd$1, isPromise, isString,
     isValidNumber,
     lpad, ltrim,
     mean, merge: merge$1, mergeNames,
@@ -3978,6 +3978,19 @@
     return !enc || /^(win|latin|utf8|ascii|iso88|gb)/.test(enc);
   }
 
+  // Identify single-byte encodings that are supersets of ascii (text in these
+  // encodings can be parsed byte-by-byte and decoded one value at a time)
+  function isSingleByteAsciiEncoding(enc) {
+    return /^(ascii|latin[0-9]+|iso8859[0-9]+|(win|windows|cp)125[0-9])$/.test(standardizeEncodingName(enc));
+  }
+
+  // Returns a decoder for converting a sequence of buffers to text.
+  // decoder.write(buf) returns a string; decoder.end() returns any remaining text.
+  // Characters that span buffers are handled, and a BOM is removed.
+  function getStreamingDecoder(enc) {
+    return iconv.getDecoder(enc);
+  }
+
   // Ex. convert UTF-8 to utf8
   function standardizeEncodingName(enc) {
     return (enc || '').toLowerCase().replace(/[_-]/g, '');
@@ -4076,6 +4089,8 @@
     encodingIsSupported: encodingIsSupported,
     encodingIsUtf8: encodingIsUtf8,
     getEncodings: getEncodings,
+    getStreamingDecoder: getStreamingDecoder,
+    isSingleByteAsciiEncoding: isSingleByteAsciiEncoding,
     printEncodings: printEncodings,
     standardizeEncodingName: standardizeEncodingName,
     stringIsAscii: stringIsAscii,
@@ -5845,9 +5860,13 @@
     return getFeatureCount(lyr) == 0;
   }
 
+  // A table with no records has no fields, so a field may appear to be missing
+  // from a table only because a command removed every record (e.g. -clip or
+  // -filter); this is not treated as an error.
   function requireDataField(obj, field, msg) {
     var data = obj.fieldExists ? obj : obj.data; // accept layer or DataTable
     if (!field) stop$1('Missing a field parameter');
+    if (data && data.size() === 0) return;
     if (!data || !data.fieldExists(field)) {
       stop$1(msg || 'Missing a field named:', field);
     }
@@ -5858,6 +5877,7 @@
     if (!table) {
       stop$1("Missing attribute data");
     }
+    if (table.size() === 0) return; // see requireDataField()
     var dataFields = table.getFields(),
         missingFields = utils.difference(fields, dataFields);
     if (missingFields.length > 0) {
@@ -18861,6 +18881,149 @@
     return str;
   }
 
+  var R$2 = WGS84.SEMIMAJOR_AXIS;
+
+  // GeographicLib docs: https://geographiclib.sourceforge.io/html/js/
+  //   https://geographiclib.sourceforge.io/html/js/module-GeographicLib_Geodesic.Geodesic.html
+  //   https://geographiclib.sourceforge.io/html/js/tutorial-2-interface.html
+  function getGeodesic(P) {
+    if (!isLatLngCRS(P)) error('Expected an unprojected CRS');
+    var f = P.es / (1 + Math.sqrt(P.one_es));
+    return createGeodesic(P.a, f);
+  }
+
+  function createGeodesic(a, f) {
+    // var GeographicLib = require('mproj').internal.GeographicLib;
+    var GeographicLib = require$1('geographiclib-geodesic');
+    // return new GeographicLib.Geodesic.Geodesic(P.a, 0)
+    return new GeographicLib.Geodesic.Geodesic(a, f);
+  }
+
+  function getDistanceFunction(geod) {
+    return function(lng, lat, lng2, lat2) {
+      return geod.Inverse(lat, lng, lat2, lng2).s12;
+    };
+  }
+
+  function getGeodesicDistanceFunction(P) {
+    return getDistanceFunction(getGeodesic(P));
+  }
+
+  function getWGS84GeodesicDistanceFunction() {
+    return getDistanceFunction(createGeodesic(R$2, 1 / 298.257223563));
+  }
+
+  function interpolatePoint2D(ax, ay, bx, by, k) {
+    var j = 1 - k;
+    return [ax * j + bx * k, ay * j + by * k];
+  }
+
+  function getInterpolationFunction(P) {
+    var spherical = P && isLatLngCRS(P);
+    if (!spherical) return interpolatePoint2D;
+    var geod = getGeodesic(P);
+    return function(lng, lat, lng2, lat2, k) {
+      var r = geod.Inverse(lat, lng, lat2, lng2);
+      var dist = r.s12 * k;
+      var r2 = geod.Direct(lat, lng, r.azi1, dist);
+      return [r2.lon2, r2.lat2];
+    };
+  }
+
+  function getPlanarSegmentEndpoint(x, y, bearing, meterDist) {
+    var rad = bearing / 180 * Math.PI;
+    var dx = Math.sin(rad) * meterDist;
+    var dy = Math.cos(rad) * meterDist;
+    return [x + dx, y + dy];
+  }
+
+  // source: https://github.com/mapbox/cheap-ruler/blob/master/index.js
+  function fastGeodeticSegmentFunction(lng, lat, bearing, meterDist) {
+    var D2R = Math.PI / 180;
+    var cos = Math.cos(lat * D2R);
+    var cos2 = 2 * cos * cos - 1;
+    var cos3 = 2 * cos * cos2 - cos;
+    var cos4 = 2 * cos * cos3 - cos2;
+    var cos5 = 2 * cos * cos4 - cos3;
+    var kx = (111.41513 * cos - 0.09455 * cos3 + 0.00012 * cos5) * 1000;
+    var ky = (111.13209 - 0.56605 * cos2 + 0.0012 * cos4) * 1000;
+    var bearingRad = bearing * D2R;
+    var lat2 = lat + Math.cos(bearingRad) * meterDist / ky;
+    var lng2 = lng + Math.sin(bearingRad) * meterDist / kx;
+    return [lng2, lat2];
+  }
+
+
+  function wrap(deg) {
+    while (deg < -180) deg += 360;
+    while (deg > 180) deg -= 360;
+    return deg;
+  }
+
+  function fastGeodeticBearingFunction(lng1, lat1, lng2, lat2) {
+    var D2R = Math.PI / 180;
+    var f = 1 / 298.257223563;
+    var e2 = f * (2 - f);
+    var m = R$2 * D2R;
+    var coslat = Math.cos(lat1 * D2R);
+    var w2 = 1 / (1 - e2 * (1 - coslat * coslat));
+    var w = Math.sqrt(w2);
+    var kx = m * w * coslat;
+    var ky = m * w * w2 * (1 - e2);
+    var dx = wrap(lng2 - lng1) * kx;
+    var dy = (lat2 - lat1) * ky;
+    return Math.atan2(dx, dy) / D2R;
+  }
+
+  function getGeodeticSegmentFunction(P) {
+    if (!isLatLngCRS(P)) {
+      return getPlanarSegmentEndpoint;
+    }
+    var g = getGeodesic(P);
+    return function(lng, lat, bearing, meterDist) {
+      var o = g.Direct(lat, lng, bearing, meterDist);
+      var p = [o.lon2, o.lat2];
+      return p;
+    };
+  }
+
+  function getFastGeodeticSegmentFunction(P) {
+    // CAREFUL: this function has higher error at very large distances and at the poles
+    // also, it wouldn't work for other planets than Earth
+    return isLatLngCRS(P) ? fastGeodeticSegmentFunction : getPlanarSegmentEndpoint;
+  }
+
+  // return function to calculate bearing of a segment in degrees
+  function getBearingFunction(dataset) {
+    var P = getDatasetCRS(dataset);
+    // return isLatLngCRS(P) ? bearingDegrees : bearingDegrees2D;
+    return isLatLngCRS(P) ? fastGeodeticBearingFunction : bearingDegrees2D;
+  }
+
+  // get bearing in degrees from point ab to point cd
+  function bearingDegrees(a, b, c, d) {
+    return geom.bearing(a, b, c, d) * 180 / Math.PI;
+  }
+
+  function bearingDegrees2D(a, b, c, d) {
+    return geom.bearing2D(a, b, c, d) * 180 / Math.PI;
+  }
+
+  var Geodesic = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    bearingDegrees: bearingDegrees,
+    bearingDegrees2D: bearingDegrees2D,
+    getBearingFunction: getBearingFunction,
+    getFastGeodeticSegmentFunction: getFastGeodeticSegmentFunction,
+    getGeodesicDistanceFunction: getGeodesicDistanceFunction,
+    getGeodeticSegmentFunction: getGeodeticSegmentFunction,
+    getInterpolationFunction: getInterpolationFunction,
+    getPlanarSegmentEndpoint: getPlanarSegmentEndpoint,
+    getWGS84GeodesicDistanceFunction: getWGS84GeodesicDistanceFunction,
+    interpolatePoint2D: interpolatePoint2D,
+    wrap: wrap
+  });
+
   function addFeatureExpressionUtils(env) {
     Object.assign(env, {
       round: roundToDigits2,
@@ -18868,8 +19031,38 @@
       sprintf: utils.format,
       blend: blend,
       format_dms: formatDMS,
-      parse_dms: parseDMS
+      parse_dms: parseDMS,
+      distance_xy: distance_xy,
+      distance_lonlat: distance_lonlat
     });
+  }
+
+  function isFiniteNumber$2(val) {
+    return typeof val == 'number' && isFinite(val);
+  }
+
+  function coordsAreValid(a, b, c, d) {
+    return isFiniteNumber$2(a) && isFiniteNumber$2(b) && isFiniteNumber$2(c) && isFiniteNumber$2(d);
+  }
+
+  // Returns null if any coordinate is missing or non-numeric
+  function distance_xy(x1, y1, x2, y2) {
+    if (!coordsAreValid(x1, y1, x2, y2)) return null;
+    return distance2D$1(x1, y1, x2, y2);
+  }
+
+  var wgs84Distance = null;
+
+  // Returns geodesic distance in meters on the WGS84 ellipsoid, or null if any
+  // coordinate is missing, non-numeric or out of range
+  function distance_lonlat(lon1, lat1, lon2, lat2) {
+    if (!coordsAreValid(lon1, lat1, lon2, lat2)) return null;
+    if (Math.abs(lat1) > 90 || Math.abs(lat2) > 90) return null;
+    if (!wgs84Distance) {
+      wgs84Distance = getWGS84GeodesicDistanceFunction();
+    }
+    var dist = wgs84Distance(lon1, lat1, lon2, lat2);
+    return isFiniteNumber$2(dist) ? dist : null;
   }
 
   function requireBooleanResult(val, msg) {
@@ -24667,6 +24860,47 @@
     ];
   }
 
+  // Tiny predicates for inspecting SVG-bound feature records. Extracted so
+  // that svg-symbols.mjs can use them without having to import from the
+  // higher-level mapshaper-svg.mjs (which would otherwise form a cycle).
+
+  function featureHasSvgSymbol(d) {
+    return !!(d && (d['svg-symbol'] || d.r || d.icon || d['icon-size']));
+  }
+
+  function featureHasLabel(d) {
+    var text = d && d['label-text'];
+    return text || text === 0; // accept numerical 0 as label text
+  }
+
+  // Whether a feature is a label at all, including one whose text is still empty.
+  //
+  // The GUI needs this and export does not. A label is a label from the moment it
+  // is created, before anything has been typed into it, and the editor has to
+  // render a node for it: with no node there is nothing to see, nothing to click
+  // and nowhere to put a caret, so a label the user just made would be invisible
+  // and unrecoverable. Export has no editor and drops the empty ones.
+  //
+  // A curve symbol (icon=curve) without text is not a label, though merging it
+  // into a layer of labels gives it an empty label-text field.
+  function featureIsLabel(d) {
+    return !!d && 'label-text' in d && (d.icon != 'curve' || !!featureHasLabel(d));
+  }
+
+  // A curve symbol: a smooth path through the feature's points (its knots),
+  // rather than a symbol at each point. A curve with label text is a path label.
+  function featureIsCurve(d) {
+    return !!d && d.icon == 'curve' && !featureHasLabel(d);
+  }
+
+  var SvgFeatureUtils = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    featureHasLabel: featureHasLabel,
+    featureHasSvgSymbol: featureHasSvgSymbol,
+    featureIsCurve: featureIsCurve,
+    featureIsLabel: featureIsLabel
+  });
+
   cmd.cleanLayers = cleanLayers;
 
   function cleanLayers(layers, dataset, optsArg) {
@@ -24803,6 +25037,7 @@
   // Remove duplicate points from multipoint geometries
   // TODO: consider checking for invalid coordinates
   function cleanPointLayerGeometry(lyr, dataset, opts) {
+    var records = lyr.data ? lyr.data.getRecords() : null;
     var index, parts;
     noteLayerWillChange(lyr, {operation: 'cleanPointLayerGeometry', unit: 'shapes'});
     lyr.shapes = lyr.shapes.map(function(shp, i) {
@@ -24811,6 +25046,11 @@
       }
       if (shp.length == 1) {
         return shp; // single part
+      }
+      if (records && featureHasKnots(records[i])) {
+        // the points of a curve or a path label are its knots, in order: a
+        // closed curve repeats its first knot as its last
+        return shp;
       }
       // remove duplicate points from multipoint geometry
       index = {};
@@ -24829,6 +25069,10 @@
       index[key] = true;
       parts.push(p);
     }
+  }
+
+  function featureHasKnots(rec) {
+    return featureIsCurve(rec) || featureIsLabel(rec);
   }
 
   // Support the opts.flatten option (for removing polygon overlaps)
@@ -26043,37 +26287,6 @@
     return d;
   }
 
-  // Tiny predicates for inspecting SVG-bound feature records. Extracted so
-  // that svg-symbols.mjs can use them without having to import from the
-  // higher-level mapshaper-svg.mjs (which would otherwise form a cycle).
-
-  function featureHasSvgSymbol(d) {
-    return !!(d && (d['svg-symbol'] || d.r || d.icon || d['icon-size']));
-  }
-
-  function featureHasLabel(d) {
-    var text = d && d['label-text'];
-    return text || text === 0; // accept numerical 0 as label text
-  }
-
-  // Whether a feature is a label at all, including one whose text is still empty.
-  //
-  // The GUI needs this and export does not. A label is a label from the moment it
-  // is created, before anything has been typed into it, and the editor has to
-  // render a node for it: with no node there is nothing to see, nothing to click
-  // and nowhere to put a caret, so a label the user just made would be invisible
-  // and unrecoverable. Export has no editor and drops the empty ones.
-  function featureIsLabel(d) {
-    return !!d && 'label-text' in d;
-  }
-
-  var SvgFeatureUtils = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    featureHasLabel: featureHasLabel,
-    featureHasSvgSymbol: featureHasSvgSymbol,
-    featureIsLabel: featureIsLabel
-  });
-
   var assignmentRxp = /^([a-z0-9_+-]+)=(?!=)(.*)$/i; // exclude ==
 
   function splitShellTokens(str) {
@@ -26982,11 +27195,34 @@
     'halo-width': 'number',
     icon: null,
     'icon-color': 'color',
+    // an icon's own paint, apart from a label's text -- see getIconPaint()
+    'icon-fill': 'color',
+    'icon-stroke': 'color',
+    'icon-stroke-width': 'number',
     // opacity of the symbol at a label's anchor, apart from the text's. Needed
     // because a label's own opacity properties are applied to both of the
     // elements its record produces -- see getIconStyleData().
     'icon-opacity': 'number',
     'icon-size': 'number',
+    // parameters of point symbols -- see mapshaper-icon-symbols.mjs. Drawn as
+    // shapes, not written as attributes, so not in propertiesBySymbolType.
+    'icon-rotation': 'number',
+    'icon-sides': 'number',
+    'icon-points': 'number',
+    'icon-radii': null, // comma-sep. list
+    'icon-values': null, // comma-sep. list
+    'icon-fills': null, // comma-sep. list
+    'icon-hole': 'number',
+    'arrow-style': null,
+    'arrow-stem-width': 'number',
+    'arrow-head-width': 'number',
+    'arrow-head-length': 'number',
+    'arrow-head-angle': 'number',
+    'arrow-stem-taper': 'number',
+    'arrow-stem-curve': 'number',
+    'arrow-stem-length': 'number',
+    'arrow-min-stem-ratio': 'number',
+    'arrow-anchor': null,
     // how the lines of a multi-line label line up with each other, as against
     // text-anchor, which also decides where the block of them sits -- see
     // svg-label-align.mjs
@@ -27022,6 +27258,11 @@
     'line-end': 'lineend',
     'line-end-size': 'number',
     'line-fade': 'number',
+    // a wider stroke beneath a line -- see svg-line-casing.mjs. Drawn as copies
+    // of the lines, not written as attributes, so not in propertiesBySymbolType.
+    'casing-color': 'color',
+    'casing-width': 'number',
+    'casing-opacity': 'number',
     'letter-spacing': 'measure',
     'line-height': 'measure',
     opacity: 'number',
@@ -28058,13 +28299,13 @@
   // head's length: far enough that its cap is hidden, short of the tip.
   var ARROW_LINE_OVERLAP = 0.7;
 
-  var DEFAULT_LINE_WIDTH$2 = 1;
+  var DEFAULT_LINE_WIDTH$3 = 1;
 
   // An arrowhead's size when nothing says, in px: the length of its sides. 10
   // for a 1px line, growing with the line, so that a heavier line does not end
   // in a head too small to read.
   function getDefaultArrowSize(lineWidth) {
-    var w = lineWidth > 0 ? lineWidth : DEFAULT_LINE_WIDTH$2;
+    var w = lineWidth > 0 ? lineWidth : DEFAULT_LINE_WIDTH$3;
     return 7 + 3 * w;
   }
 
@@ -28136,7 +28377,7 @@
   // See docs/development/text-annotation-design.md.
 
   var DEFAULT_PADDING$1 = 3;
-  var DEFAULT_LINE_WIDTH$1 = 1;
+  var DEFAULT_LINE_WIDTH$2 = 1;
   // Space left between the anchor's symbol and the end of the line
   var SYMBOL_CLEARANCE = 2;
   // How far an automatic curve bows out, as a fraction of its chord
@@ -28180,11 +28421,11 @@
       // A label with a box of its own -- a background or padding -- is met at
       // the box, which is where the GUI outlines it; bare text is met short of
       // its glyphs
-      padding: getNumber(rec['callout-padding'],
+      padding: getNumber$2(rec['callout-padding'],
         labelHasBackground(rec) || getLabelPadding(rec) ? 0 : DEFAULT_PADDING$1),
       gap: getCalloutGap(rec, symbolRadius),
       width: getLineWidth(rec),
-      endSize: getNumber(rec['callout-end-size'], 0)
+      endSize: getNumber$2(rec['callout-end-size'], 0)
     });
   }
 
@@ -28200,7 +28441,7 @@
   // A ring's size is its diameter, stroke and all, as an icon ring's is; this
   // is the radius of the circle its stroke is centred on.
   function getRingRadius(size, lineWidth) {
-    var w = lineWidth > 0 ? lineWidth : DEFAULT_LINE_WIDTH$1;
+    var w = lineWidth > 0 ? lineWidth : DEFAULT_LINE_WIDTH$2;
     return Math.max(size - w, w) / 2;
   }
 
@@ -28235,7 +28476,7 @@
     var offset = getDrawnLabelOffset(rec);
     var lines = splitLabelLines(toLabelString(rec['label-text']));
     var lineHeight = measureToPx(getLineHeightDy(rec['line-height']), fontSize);
-    var width = getMeasuredTextWidth(rec) || getNumber(rec['label-width'], 0);
+    var width = getMeasuredTextWidth(rec) || getNumber$2(rec['label-width'], 0);
     if (!width && opts && opts.estimate_width) {
       width = estimateTextWidth(lines, fontSize);
     }
@@ -28360,7 +28601,7 @@
       // the chevron's point: the point is set back by that much, so that the
       // arrow ends where a filled one would. The join and the round cap at the
       // far end each add half a line width to an arm, which is taken off it.
-      lineWidth = o.width > 0 ? o.width : DEFAULT_LINE_WIDTH$1;
+      lineWidth = o.width > 0 ? o.width : DEFAULT_LINE_WIDTH$2;
       path = trimPath(path, lineWidth / 2) || path;
       dir = getStartDirection(path);
       if (!dir) return null;
@@ -28670,13 +28911,13 @@
     return [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
   }
 
-  function getNumber(val, defaultVal) {
+  function getNumber$2(val, defaultVal) {
     return isSvgNumber(val) && Number(val) >= 0 ? Number(val) : defaultVal;
   }
 
   function getLineWidth(rec) {
-    var w = getNumber(rec['callout-width'], DEFAULT_LINE_WIDTH$1);
-    return w > 0 ? w : DEFAULT_LINE_WIDTH$1;
+    var w = getNumber$2(rec['callout-width'], DEFAULT_LINE_WIDTH$2);
+    return w > 0 ? w : DEFAULT_LINE_WIDTH$2;
   }
 
   function getFontSizeInPx$1(rec) {
@@ -28763,6 +29004,1101 @@
     renderLabelBackground: renderLabelBackground
   });
 
+  // Apply rotation, scale and/or shift to some or all of the features in a dataset
+  //
+  cmd.affine = function(targetLayers, dataset, opts) {
+    // Need to separate the targeted shapes from any other shapes that share
+    // the same topology. So we duplicate any arcs that are shared by the targeted
+    // shapes and their topological neighbors and remap arc references in the
+    // neighbors to point to the copies.
+    // TODO: explore alternative: if some arcs are shared between transformed and
+    //   non-transformed shapes, first remove topology, then tranform, then rebuild topology
+    //
+    var rotateArg = opts.rotate || 0;
+    var scaleArg = opts.scale || 1;
+    var shiftArg = opts.shift ? convertIntervalPair(opts.shift, getDatasetCRS(dataset)) : [0, 0];
+    var arcs = dataset.arcs;
+    var targetShapes = [];
+    var otherShapes = [];
+    var targetPoints = [];
+    var targetPointLayers = [];
+    var targetFlags, otherFlags, transform;
+    dataset.layers.filter(layerHasGeometry$1).forEach(function(lyr) {
+      var hits = [],
+          misses = [],
+          test;
+      if (targetLayers.indexOf(lyr) == -1) {
+        misses = lyr.shapes;
+      } else if (opts.where) {
+        test = compileFeatureExpression(opts.where, lyr, dataset.arcs);
+        lyr.shapes.forEach(function(shp, i) {
+          (test(i) ? hits : misses).push(shp);
+        });
+      } else {
+        hits = lyr.shapes;
+      }
+      if (lyr.geometry_type == 'point') {
+        targetPoints = targetPoints.concat(hits);
+        if (hits.length > 0) targetPointLayers.push(lyr);
+      } else {
+        targetShapes = targetShapes.concat(hits);
+        otherShapes = otherShapes.concat(misses);
+      }
+    });
+    var anchorArg = getAffineAnchor({arcs: dataset.arcs, layers: [{
+      geometry_type: 'point', shapes: targetPoints}, {geometry_type: 'polyline',
+      shapes: targetShapes}]}, opts);
+    transform = getAffineTransform(rotateArg, scaleArg, shiftArg, anchorArg);
+    if (opts.fit_bbox) {
+      transform = getFitBoxTransform(opts.fit_bbox, targetPoints, targetShapes, arcs);
+    }
+    if (targetShapes.length > 0) {
+      targetFlags = new Uint8Array(arcs.size());
+      otherFlags = new Uint8Array(arcs.size());
+      countArcsInShapes(targetShapes, targetFlags);
+      if (otherShapes.length > 0) {
+        countArcsInShapes(otherShapes, otherFlags);
+        applyArrayMask(otherFlags, targetFlags);
+        noteDatasetWillChange(dataset, {operation: 'affine', unit: 'arcs'});
+        dataset.arcs = duplicateSelectedArcs(otherShapes, arcs, otherFlags);
+        markDatasetChanged(dataset, {operation: 'affine', unit: 'arcs'});
+      }
+      dataset.arcs.transformPoints(function(x, y, arcId) {
+        if (arcId < targetFlags.length && targetFlags[arcId] > 0) {
+          return transform(x, y);
+        }
+      });
+    }
+    targetPointLayers.forEach(function(lyr) {
+      noteLayerWillChange(lyr, {operation: 'affine', unit: 'shapes'});
+    });
+    forEachPoint(targetPoints, function(p) {
+      var p2 = transform(p[0], p[1]);
+      p[0] = p2[0];
+      p[1] = p2[1];
+    });
+    targetPointLayers.forEach(function(lyr) {
+      markLayerChanged(lyr, {operation: 'affine', unit: 'shapes'});
+    });
+  };
+
+  function getAffineAnchor(dataset, opts) {
+    var anchor, bounds;
+    if (opts.anchor) {
+      anchor = opts.anchor;
+    } else {
+      // get bounds of selected shapes to calculate center of rotation/scale
+      bounds = getDatasetBounds(dataset);
+      anchor = [bounds.centerX(), bounds.centerY()];
+    }
+    return anchor;
+  }
+
+  // TODO: handle problems with unprojected datasets
+  //   option 1: don't allow affine transformation of unprojected data
+  //   option 2: error if transformed data exceeds valid coordinate range
+  // source: http://mathworld.wolfram.com/AffineTransformation.html
+  function getAffineTransform(rotation, scale, shift, anchor) {
+    var angle = rotation * Math.PI / 180;
+    var a = scale * Math.cos(angle);
+    var b = -scale * Math.sin(angle);
+    return function(x, y) {
+      var x2 = a * (x - anchor[0]) - b * (y - anchor[1]) + shift[0] + anchor[0];
+      var y2 = b * (x - anchor[0]) + a * (y - anchor[1]) + shift[1] + anchor[1];
+      return [x2, y2];
+    };
+  }
+
+  function getFitBoxTransform(bbox, points, shapes, arcs) {
+    var dataset = {
+      arcs: arcs,
+      layers: []
+    };
+    if (points && points.length) {
+      dataset.layers.push({
+        geometry_type: 'point',
+        shapes: points
+      });
+    }
+    if (shapes && shapes.length) {
+      dataset.layers.push({
+        geometry_type: 'polyline',
+        shapes: shapes
+      });
+    }
+    var frame = calcFrameData(dataset, {fit_bbox: bbox});
+    var fromBounds = new Bounds(frame.bbox);
+    var toBounds = new Bounds(frame.bbox2);
+    var fwd = fromBounds.getTransform(toBounds, false);
+    return function(x, y) {
+      return fwd.transform(x, y);
+    };
+  }
+
+  function applyArrayMask(destArr, maskArr) {
+    for (var i=0, n=destArr.length; i<n; i++) {
+      if (maskArr[i] === 0) destArr[i] = 0;
+    }
+  }
+
+  function duplicateSelectedArcs(shapes, arcs, flags) {
+    var arcCount = 0;
+    var vertexCount = 0;
+    var data = arcs.getVertexData();
+    var xx = [], yy = [], nn = [], map = [], n;
+    for (var i=0, len=flags.length; i<len; i++) {
+      if (flags[i] > 0) {
+        map[i] = arcs.size() + arcCount;
+        n = data.nn[i];
+        utils.copyElements(data.xx, data.ii[i], xx, vertexCount, n);
+        utils.copyElements(data.yy, data.ii[i], yy, vertexCount, n);
+        nn.push(n);
+        vertexCount += n;
+        arcCount++;
+      }
+    }
+    forEachArcId(shapes, function(id) {
+      var absId = absArcId(id);
+      if (flags[absId] > 0) {
+        return id < 0 ? ~map[absId] : map[absId];
+      }
+    });
+    return mergeArcs([arcs, new ArcCollection(nn, xx, yy)]);
+  }
+
+  var roundCoord$3 = getRoundingFunction(0.01);
+
+  function getSymbolFillColor(d) {
+    return d.fill || 'magenta';
+  }
+
+  function getSymbolStrokeColor(d) {
+    return d.stroke || d.fill || 'magenta';
+  }
+
+  function getSymbolRadius(d) {
+    if (d.radius === 0 || d.length === 0 || d.r === 0) return 0;
+    return d.radius || d.length || d.r || 5; // use a default value
+  }
+
+  // Converts the value of a list-valued option into an array of items. The value
+  // arrives either as a whole string (from a direct call, rather than from the
+  // -symbols option accessor) or as an array of items already resolved one by
+  // one. An item that holds an array of its own, as an expression like
+  // [R, R * 0.5] does, is flattened into the list. Items themselves are left
+  // unsplit, because a single item can contain a comma, as rgba() colors do.
+  function toItemList(val) {
+    var items = utils.isString(val) ? splitListItems(val) : [].concat(val);
+    var list = [];
+    for (var i=0; i<items.length; i++) {
+      if (Array.isArray(items[i])) {
+        list = list.concat(items[i]);
+      } else {
+        list.push(items[i]);
+      }
+    }
+    return list;
+  }
+
+  // Like toItemList(), for options that take numbers. An item that is a string
+  // containing commas is split, so that a data field holding a value like "2,4"
+  // works as a list. Values that aren't numbers become NaN, for the caller to
+  // report or ignore.
+  function toNumberList(val) {
+    var list = [];
+    toItemList(val).forEach(function(item) {
+      if (utils.isString(item) && item.indexOf(',') > -1) {
+        list = list.concat(parseNumberList(item));
+      } else {
+        list.push(Number(item));
+      }
+    });
+    return list;
+  }
+
+  // Returns the radius of the smallest circle centered on a symbol's point that
+  // covers the symbol, or null if the symbol contains a part whose reach can't be
+  // measured.
+  //
+  // Only a symbol drawn around its point can be described this way: a circle, or
+  // a group of the circles and polygons that make up ring, pie and donut symbols.
+  // An arrow is drawn from its point outward, so the circle around its point that
+  // covers it says nothing useful about the space it occupies -- arrows are plain
+  // polygon symbols, which reach this function only as group parts, which they
+  // never are.
+  function getSymbolBoundingRadius(sym) {
+    var max = 0;
+    var parts, r, i;
+    if (!sym) return null;
+    if (sym.type == 'circle') {
+      // Half of a stroke lies outside the circle it follows, which is how a ring
+      // symbol paints its bands.
+      return getPositiveNumber(sym.r) + getStrokeOutset(sym);
+    }
+    if (sym.type == 'polygon') {
+      forEachSymbolCoord(sym.coordinates || [], function(p) {
+        var dist = Math.sqrt(p[0] * p[0] + p[1] * p[1]);
+        if (dist > max) max = dist;
+      });
+      return max + getStrokeOutset(sym);
+    }
+    if (sym.type == 'group') {
+      parts = sym.parts || [];
+      for (i=0; i<parts.length; i++) {
+        r = getSymbolBoundingRadius(parts[i]);
+        if (r === null) return null;
+        if (r > max) max = r;
+      }
+      return max;
+    }
+    return null;
+  }
+
+  // A stroke straddles the path it is drawn on, so half of its width extends
+  // beyond the shape.
+  function getStrokeOutset(sym) {
+    var width = sym['stroke-width'];
+    if (!sym.stroke || sym.stroke == 'none') return 0;
+    // an SVG stroke is one pixel wide unless stroke-width says otherwise
+    if (width === undefined || width === null || width === '') return 0.5;
+    return getPositiveNumber(width) / 2;
+  }
+
+  function getPositiveNumber(val) {
+    var num = +val;
+    return num > 0 ? num : 0;
+  }
+
+  function forEachSymbolCoord(coords, cb) {
+    var isPoint = coords && utils.isNumber(coords[0]);
+    var isNested = !isPoint && coords && Array.isArray(coords[0]);
+    if (isPoint) return cb(coords);
+    for (var i=0; i<coords.length; i++) {
+      if (isNested) forEachSymbolCoord(coords[i], cb);
+    }
+  }
+
+  function flipY(coords) {
+    forEachSymbolCoord(coords, function(p) {
+      p[1] = -p[1];
+    });
+  }
+
+  function scaleAndShiftCoords(coords, scale, shift) {
+    forEachSymbolCoord(coords, function(xy) {
+      xy[0] = xy[0] * scale + shift[0];
+      xy[1] = xy[1] * scale + shift[1];
+    });
+  }
+
+  function roundCoordsForSVG(coords) {
+    forEachSymbolCoord(coords, function(p) {
+      p[0] = roundCoord$3(p[0]);
+      p[1] = roundCoord$3(p[1]);
+    });
+  }
+
+  function rotateCoords(coords, rotation) {
+    if (!rotation) return;
+    var f = getAffineTransform(rotation, 1, [0, 0], [0, 0]);
+    forEachSymbolCoord(coords, function(p) {
+      var p2 = f(p[0], p[1]);
+      p[0] = p2[0];
+      p[1] = p2[1];
+    });
+  }
+
+  function getStickArrowCoords(d) {
+    return getArrowCoords(d, 'stick');
+  }
+
+  function getFilledArrowCoords(d) {
+    return getArrowCoords(d, 'standard');
+  }
+
+  function getArrowCoords(d, style) {
+    var stickArrow = style == 'stick',
+        // direction = d.rotation || d.direction || 0,
+        direction = d.direction || 0, // rotation is an independent parameter
+        stemTaper = d['stem-taper'] || 0,
+        curvature = d['stem-curve'] || 0,
+        size = calcArrowSize(d, stickArrow);
+    if (!size) return null;
+    var stemLen = size.stemLen,
+        headLen = size.headLen,
+        totalLen = stickArrow ? Math.max(stemLen, headLen) : stemLen + headLen,
+        headDx = size.headWidth / 2,
+        stemDx = size.stemWidth / 2,
+        baseDx = stemDx * (1 - stemTaper),
+        coords, dx, dy;
+
+    if (curvature) {
+      // make curved stem
+      if (direction > 0) curvature = -curvature;
+      var theta = Math.abs(curvature) / 180 * Math.PI;
+      var sign = curvature > 0 ? 1 : -1;
+      var ax = baseDx * Math.cos(theta); // rotate arrow base
+      var ay = baseDx * Math.sin(theta) * -sign;
+      dx = stemLen * Math.sin(theta / 2) * sign;
+      dy = stemLen * Math.cos(theta / 2);
+
+      if (stickArrow) {
+        coords = getCurvedStemCoords(-ax, -ay, dx, dy);
+      } else {
+        var leftStem = getCurvedStemCoords(-ax, -ay, -stemDx + dx, dy);
+        var rightStem = getCurvedStemCoords(ax, ay, stemDx + dx, dy);
+        coords = leftStem.concat(rightStem.reverse());
+      }
+
+    } else {
+      // make straight stem
+      dx = 0;
+      dy = stemLen;
+      if (stickArrow) {
+        coords = [[0, 0], [0, stemLen]];
+      } else {
+        coords = [[-baseDx, 0], [baseDx, 0]];
+      }
+    }
+
+    if (stickArrow) {
+      // make stick arrow
+      coords = [coords]; // MultiLineString coords
+      if (headLen > 0) {
+        coords.push([[-headDx + dx, stemLen - headLen], [dx, stemLen], [headDx + dx, stemLen - headLen]]);
+      }
+    } else {
+      // make filled arrow
+      // coordinates go counter clockwise, starting from the leftmost head coordinate
+      coords.push([stemDx + dx, dy]);
+      if (headLen > 0) {
+        coords.push([headDx + dx, dy], [dx, headLen + dy], [-headDx + dx, dy]);
+      }
+      coords.push([-stemDx + dx, dy], coords[0].concat()); // close path
+      coords = [coords]; // Polygon coords
+    }
+
+    if (d.anchor == 'end') {
+      scaleAndShiftCoords(coords, 1, [-dx, -totalLen]);
+    } else if (d.anchor == 'middle') {
+      // shift midpoint away from the head a bit for a more balanced placement
+      scaleAndShiftCoords(coords, 1, [-dx * 0.5, -dy * 0.5 - totalLen * 0.25]);
+    }
+
+    rotateCoords(coords, direction);
+    if (d.flipped) {
+      flipY(coords);
+    }
+    return coords;
+  }
+
+  // function calcStraightArrowCoords(stemLen, headLen, stemDx, headDx, baseDx) {
+  //   return [[baseDx, 0], [stemDx, stemLen], [headDx, stemLen], [0, stemLen + headLen],
+  //         [-headDx, stemLen], [-stemDx, stemLen], [-baseDx, 0], [baseDx, 0]];
+  // }
+
+  function calcArrowSize(d, stickArrow) {
+    // don't display arrows with negative length
+    var o = initArrowSize(d), // calc several parameters
+        dataLen = Math.max(d.radius || d.length || d.r || 0),
+        totalLen = Math.max(dataLen, o.headLen, 0),
+        scale = 1;
+    if (totalLen >= 0) {
+      scale = calcScale(totalLen, o.headLen, d);
+      o.stemWidth *= scale;
+      o.headWidth *= scale;
+      o.headLen *= scale;
+      o.stemLen = stickArrow ? dataLen : totalLen - o.headLen;
+    }
+
+    if (o.headWidth < o.stemWidth && o.headWidth > 0) {
+      stop$1('Arrow head must be at least as wide as the stem.');
+    }
+    return o;
+  }
+
+  function calcScale(totalLen, headLen, d) {
+    var minStemRatio = d['min-stem-ratio'] >= 0 ? d['min-stem-ratio'] : 0;
+    var stemLen = d['stem-length'] || 0;
+    var maxHeadPct = 1 - minStemRatio;
+    var headPct = headLen / totalLen;
+    var scale = 1;
+
+    if (headPct > maxHeadPct) {
+      scale = maxHeadPct / headPct;
+    } else if (stemLen + headLen > totalLen) {
+      scale = totalLen / (stemLen + headLen);
+    }
+    return scale || 0;
+  }
+
+  function initArrowSize(d) {
+    var sizeRatio = getHeadSizeRatio(d['head-angle'] || 40); // length to width
+    var o = {
+      stemWidth: d['stem-width'] || 2,
+      stemLen: d['stem-length'] || 0,
+      headWidth: d['head-width'],
+      headLen: d['head-length']
+    };
+    if (o.headWidth === 0) {
+      o.headLen = 0;
+    } else if (o.headWidth > 0 === false) {
+      if (o.headLen > 0) {
+        o.headWidth = o.headLen / sizeRatio;
+      } else if (o.headLen === 0) {
+        o.headWidth = 0;
+      } else {
+        o.headWidth = o.stemWidth * 3; // assumes stemWidth has been set
+      }
+    }
+    if (o.headLen >= 0 === false) {
+      o.headLen = o.headWidth * sizeRatio;
+    }
+    return o;
+  }
+
+  // Returns ratio of head length to head width
+  function getHeadSizeRatio(headAngle) {
+    return 1 / Math.tan(Math.PI * headAngle / 180 / 2) / 2;
+  }
+
+  // ax, ay: point on the base
+  // bx, by: point on the stem
+  function getCurvedStemCoords(ax, ay, bx, by) {
+    // case: curved side intrudes into head (because stem is too short)
+    if (ay > by) {
+      return [[ax * by / ay, by]];
+    }
+    var dx = bx - ax,
+        dy = by - ay,
+        dy1 = (dy * dy - dx * dx) / (2 * dy),
+        dy2 = dy - dy1,
+        dx2 = Math.sqrt(dx * dx + dy * dy) / 2,
+        theta = Math.PI - Math.asin(dx2 / dy2) * 2,
+        degrees = theta * 180 / Math.PI,
+        radius = dy2 / Math.tan(theta / 2),
+        leftBend = bx > ax,
+        sign = leftBend ? 1 : -1,
+        points = Math.round(degrees / 5) + 2,
+        increment = theta / (points + 1),
+        coords = [[bx, by]];
+
+    for (var i=1; i<= points; i++) {
+      var phi = i * increment / 2;
+      var sinPhi = Math.sin(phi);
+      var cosPhi = Math.cos(phi);
+      var c = sinPhi * radius * 2;
+      var a = sinPhi * c;
+      var b = cosPhi * c;
+      coords.push([bx - a * sign, by - b]);
+    }
+    coords.push([ax, ay]);
+    return coords;
+  }
+
+  function getPolygonCoords(d) {
+    var radius = getSymbolRadius(d),
+        sides = +d.sides || getSidesByType(d.type),
+        rotated = sides % 2 == 1,
+        coords = [],
+        angle, b;
+
+    if (radius > 0 === false) return null;
+    if (sides >= 3 === false) {
+      stop$1(`Invalid number of sides (${sides})`);
+    }
+    if (d.orientation == 'b' || d.flipped || d.rotated) {
+      rotated = !rotated;
+    }
+    b = rotated ? 0 : 0.5;
+    for (var i=0; i<sides; i++) {
+      angle = (i + b) / sides * 360;
+      coords.push(getPlanarSegmentEndpoint(0, 0, angle, radius));
+    }
+    coords.push(coords[0].concat());
+    return [coords];
+  }
+
+  function getSidesByType(type) {
+    return {
+      circle: 72,
+      triangle: 3,
+      square: 4,
+      pentagon: 5,
+      hexagon: 6,
+      heptagon: 7,
+      octagon: 8,
+      nonagon: 9,
+      decagon: 10
+    }[type] || 4;
+  }
+
+  function getStarCoords(d) {
+    var radius = getSymbolRadius(d),
+        points = d.points || d.sides && d.sides / 2 || 5,
+        sides = points * 2,
+        minorRadius = getMinorRadius(points) * radius,
+        b = d.orientation == 'b' || d.flipped || d.rotated ? 0 : 1,
+        coords = [],
+        angle, len;
+
+    if (radius > 0 === false) return null;
+    if (points < 5) {
+      stop$1(`Invalid number of points for a star (${points})`);
+    }
+    for (var i=0; i<sides; i++) {
+      len = i % 2 == 0 ? minorRadius : radius;
+      angle = (i + b) / sides * 360;
+      coords.push(getPlanarSegmentEndpoint(0, 0, angle, len));
+    }
+    coords.push(coords[0].concat());
+    return [coords];
+  }
+
+  function getMinorRadius(points) {
+    var innerAngle = 360 / points;
+    var pointAngle = getDefaultPointAngle(points);
+    var thetaA = Math.PI / 180 * innerAngle / 2;
+    var thetaB = Math.PI / 180 * pointAngle / 2;
+    var a = Math.tan(thetaB) / (Math.tan(thetaB) + Math.tan(thetaA));
+    var c = a / Math.cos(thetaA);
+    return c;
+  }
+
+  function getDefaultPointAngle(points) {
+    var minSkip = 1;
+    var maxSkip = Math.ceil(points / 2) - 2;
+    var skip = Math.floor((maxSkip + minSkip) / 2);
+    return getPointAngle(points, skip);
+  }
+
+  // skip: number of adjacent points to skip when drawing a segment
+  function getPointAngle(points, skip) {
+    var unitAngle = 360 / points;
+    var centerAngle = unitAngle * (skip + 1);
+    return 180 - centerAngle;
+  }
+
+  // Matches the vertex density of the 72-sided circle made by getPolygonCoords()
+  var DEGREES_PER_SEGMENT = 5;
+
+  // Returns an array of {fill, coordinates} objects, in the y-up coordinate space
+  // shared by the symbol generators, centered on [0, 0]. Coordinates are an array
+  // of rings, like flattened GeoJSON MultiPolygon coordinates.
+  //
+  // The first wedge starts at the top of the symbol and the rest follow in
+  // clockwise order. A wedge with no value, or without a usable fill color, is
+  // left out -- an unfilled wedge becomes a gap in the pie without shifting the
+  // wedges that follow it.
+  function getPieWedges(d, scale) {
+    var values = getPieValues(d);
+    var fills = getPieFills(d);
+    var radii = getPieRadii(d, scale);
+    var rotation = +d.rotation || 0;
+    var total = sum$1(values);
+    var wedges = [];
+    var start = rotation;
+    var fill, end;
+    if (total > 0 === false || radii.outer > 0 === false) return wedges;
+    for (var i=0; i<values.length; i++) {
+      end = start + values[i] / total * 360;
+      fill = getWedgeFill(fills[i]);
+      if (fill && end > start) {
+        wedges.push({
+          fill: fill,
+          coordinates: getWedgeCoords(start, end, radii.inner, radii.outer)
+        });
+      }
+      start = end;
+    }
+    return wedges;
+  }
+
+  // Returns an array of rings outlining a wedge spanning two bearings.
+  function getWedgeCoords(startAngle, endAngle, inner, outer) {
+    var ring;
+    if (endAngle - startAngle >= 360) {
+      // A single non-zero value covers the whole symbol: a circle, or a pair of
+      // concentric rings if the symbol is a donut.
+      ring = closeRing$1(getArcCoords(startAngle, startAngle + 360, outer));
+      if (inner > 0) {
+        // wind the hole in the opposite direction from the outer ring
+        return [ring, closeRing$1(getArcCoords(startAngle + 360, startAngle, inner))];
+      }
+      return [ring];
+    }
+    ring = getArcCoords(startAngle, endAngle, outer);
+    if (inner > 0) {
+      // A wedge of a donut is a simple polygon, so the hole needs no ring of
+      // its own -- the inner arc doubles back inside the outer one.
+      ring = ring.concat(getArcCoords(endAngle, startAngle, inner));
+    } else {
+      ring.push([0, 0]);
+    }
+    ring.push(ring[0].concat());
+    return [ring];
+  }
+
+  // A 360 degree arc starts and ends at the same angle, but rounding leaves its
+  // endpoints a hair apart, so the ring is closed explicitly.
+  function closeRing$1(ring) {
+    ring[ring.length - 1] = ring[0].concat();
+    return ring;
+  }
+
+  // Returns points along an arc, including both endpoints. Angles are bearings,
+  // which run clockwise from the top of the symbol -- the same convention as
+  // rotateCoords(), so the rotation= option is just an offset to the first angle.
+  function getArcCoords(startAngle, endAngle, radius) {
+    var sweep = endAngle - startAngle;
+    var segments = Math.max(1, Math.ceil(Math.abs(sweep) / DEGREES_PER_SEGMENT));
+    var coords = [];
+    for (var i=0; i<=segments; i++) {
+      coords.push(getPlanarSegmentEndpoint(0, 0, startAngle + sweep * i / segments, radius));
+    }
+    return coords;
+  }
+
+  // Missing, non-numeric and negative values all count as zero.
+  function getPieValues(d) {
+    if (!d.values) {
+      stop$1('A pie symbol requires a values= option.');
+    }
+    return toNumberList(d.values).map(function(num) {
+      return num > 0 ? num : 0;
+    });
+  }
+
+  function getPieFills(d) {
+    if (!d.fills) {
+      stop$1('A pie symbol requires a fills= option.');
+    }
+    return toItemList(d.fills);
+  }
+
+  // Returns the color to fill a wedge with, or null if the wedge should be left
+  // out of the symbol.
+  function getWedgeFill(val) {
+    var str = val === null || val === undefined ? '' : String(val).trim();
+    var name = str.toLowerCase();
+    var rgb;
+    if (!str || name == 'none' || name == 'transparent') {
+      return null;
+    }
+    rgb = parseColor(str);
+    if (!rgb || rgb.a === 0) return null;
+    return str;
+  }
+
+  // Returns {inner, outer} radii in pixels. The hole= option makes a donut. A
+  // negative hole is measured inward from the outer radius, which gives a band
+  // of wedges of a fixed width without having to repeat a data-driven radius=
+  // expression. A hole as wide as the symbol leaves a plain pie, and a
+  // non-positive outer radius is left for the caller to skip, like radius=0 on
+  // the other symbol types.
+  function getPieRadii(d, scale) {
+    var outer = getSymbolRadius(d);
+    var hole = +d.hole;
+    var inner = 0;
+    if (hole > 0) {
+      inner = hole;
+    } else if (hole < 0) {
+      inner = outer + hole;
+    }
+    if (!(inner > 0) || inner >= outer) inner = 0;
+    return {
+      inner: inner * scale,
+      outer: outer * scale
+    };
+  }
+
+  function sum$1(arr) {
+    var total = 0;
+    for (var i=0; i<arr.length; i++) {
+      total += arr[i];
+    }
+    return total;
+  }
+
+  // Returns a svg-symbol object
+  function makeRingSymbol(d, opts) {
+    var scale = +opts.scale || 1;
+    var radii = parseRings(d.radii || '2').map(function(r) { return r * scale; });
+    var solidCenter = utils.isOdd(radii.length);
+    var color = getSymbolFillColor(d);
+    var opacity = opts.opacity || undefined;
+    var parts = [];
+    if (solidCenter) {
+      parts.push({
+        type: 'circle',
+        fill: color,
+        opacity: opacity,
+        r: radii.shift()
+      });
+    }
+    for (var i=0; i<radii.length; i+= 2) {
+      parts.push({
+        type: 'circle',
+        fill: 'none', // TODO remove default black fill so this is not needed
+        stroke: color,
+        opacity: opacity,
+        'stroke-width':  roundToTenths(radii[i+1] - radii[i]),
+        r: roundToTenths(radii[i+1] * 0.5 + radii[i] * 0.5)
+      });
+    }
+    return {
+      type: 'group',
+      parts: parts
+    };
+  }
+
+  // Returns GeoJSON MultiPolygon coords
+  function getRingCoords(d) {
+    var radii = parseRings(d.radii || '2');
+    var coords = [];
+    var solidCenter = utils.isOdd(radii.length);
+    var ring, hole;
+    for (var i=0; i<radii.length; i++) {
+      ring = getPolygonCoords({
+        type: 'circle',
+        radius: radii[i]
+      });
+      if (!solidCenter || i > 0) {
+        i++;
+        hole = ring;
+        ring = getPolygonCoords({
+          type: 'circle',
+          radius: radii[i]
+        });
+        ring.push(hole[0]);
+      }
+      coords.push(ring);
+    }
+    return coords;
+  }
+
+  function parseRings(arg) {
+    var arr = toNumberList(arg);
+    utils.genericSort(arr, true);
+    return utils.uniq(arr);
+  }
+
+  // Point symbols are described by attribute fields: icon= names the shape, and
+  // the icon-* fields (shared with the icons drawn at label anchors) and arrow-*
+  // fields give its parameters. Nothing derived is stored -- a symbol is drawn
+  // from its fields every time, so a panel can show and change any of them.
+  //
+  // Circles, unrotated squares, single rings and five-pointed stars are drawn by
+  // renderIcon() in svg-symbols.mjs. The shapes below are generated as objects
+  // in the format of the legacy svg-symbol field, so that the renderer, the
+  // frame-fitting bounds and -repel can handle them with the code that already
+  // handles that format.
+  //
+  // Coordinates are px, y down, centered on the point. Rotation is in degrees
+  // clockwise.
+
+  // A ring icon's stroke, unless the record sets one; 1px read as too faint.
+  var RING_STROKE_WIDTH = 1.5;
+
+  // The NYT star's outline, as a fraction of its icon-size (5 units of the
+  // artwork's 40-unit box -- see nytStar() in svg-symbols.mjs), and its middle
+  var NYT_STAR_STROKE_RATIO = 5 / 40;
+  var NYT_STAR_FILL = '#ffffff';
+
+  // Fields that hold a point's symbol. -symbols clears them all before writing
+  // the ones a symbol needs, so that a symbol never inherits a parameter from
+  // the one it replaces.
+  var symbolFields = ['svg-symbol', 'r', 'icon', 'icon-size', 'icon-color',
+    'icon-fill', 'icon-stroke', 'icon-stroke-width',
+    'icon-opacity', 'icon-rotation', 'icon-sides', 'icon-points', 'icon-radii',
+    'icon-values', 'icon-fills', 'icon-hole', 'arrow-style', 'arrow-stem-width',
+    'arrow-head-width', 'arrow-head-length', 'arrow-head-angle', 'arrow-stem-taper',
+    'arrow-stem-curve', 'arrow-stem-length', 'arrow-min-stem-ratio', 'arrow-anchor'];
+
+  // arrow-* field -> parameter name used by getArrowCoords()
+  var arrowParams = {
+    'arrow-stem-width': 'stem-width',
+    'arrow-head-width': 'head-width',
+    'arrow-head-length': 'head-length',
+    'arrow-head-angle': 'head-angle',
+    'arrow-stem-taper': 'stem-taper',
+    'arrow-stem-curve': 'stem-curve',
+    'arrow-stem-length': 'stem-length',
+    'arrow-min-stem-ratio': 'min-stem-ratio'
+  };
+
+  // Style properties of the record that a generated shape is drawn with
+  var shapeStyleFields = ['stroke', 'stroke-width', 'stroke-dasharray',
+    'stroke-opacity', 'fill-opacity'];
+
+  // Which paint carries an icon's color by default: a ring is a stroke with no
+  // fill, the NYT star a stroke around a white middle, and the rest are filled.
+  // 'fill', 'stroke' or 'nyt'
+  function getIconPaintKind(type) {
+    if (type == 'ring') return 'stroke';
+    if (type == 'nyt-star') return 'nyt';
+    return 'fill';
+  }
+
+  // The fill, stroke and stroke width an icon is drawn with, from icon-fill,
+  // icon-stroke and icon-stroke-width. Each one that is unset falls back to the
+  // way icons were drawn before those fields: icon-color (then the record's
+  // fill, which on a label is its text color) is a filled shape's fill and the
+  // stroke of a ring or the NYT star, and a filled shape takes the record's own
+  // stroke. The NYT star's outline is always the same width for its size.
+  // Returns {fill, stroke, strokeWidth}: colors or 'none', and a width that is
+  // 0 when there is no stroke.
+  function getIconPaint(d, type) {
+    var kind = getIconPaintKind(type);
+    var color = d['icon-color'] || d.fill || 'black';
+    var fill, stroke, width;
+    if (kind == 'fill') {
+      fill = color;
+      stroke = d.stroke;
+      width = d['stroke-width'];
+    } else {
+      fill = kind == 'nyt' ? NYT_STAR_FILL : 'none';
+      stroke = color;
+      width = kind == 'stroke' ? d['stroke-width'] : null;
+    }
+    if (hasValue$2(d['icon-fill'])) fill = d['icon-fill'];
+    if (hasValue$2(d['icon-stroke'])) stroke = d['icon-stroke'];
+    if (hasValue$2(d['icon-stroke-width'])) width = d['icon-stroke-width'];
+    if (!hasValue$2(stroke)) stroke = 'none';
+    if (kind == 'nyt') {
+      width = getIconSize(d) * NYT_STAR_STROKE_RATIO;
+    } else if (!hasValue$2(width) || !isFinite(width) || width < 0) {
+      width = kind == 'stroke' ? RING_STROKE_WIDTH : 1;
+    }
+    return {
+      fill: hasValue$2(fill) ? fill : 'none',
+      stroke: stroke,
+      strokeWidth: stroke == 'none' ? 0 : Number(width)
+    };
+  }
+
+  // The radius an icon is drawn at. Circles, rings and stars are adjusted so
+  // that the three read as the same size at the same icon-size.
+  function getIconRadius(d, type) {
+    var size;
+    if (d['icon-size'] > 0 === false) {
+      return d.r > 0 ? d.r : 5;
+    }
+    size = d['icon-size'];
+    if (type == 'circle') {
+      size -= 1;
+    } else if (type == 'ring') {
+      // the stroke's outer half is inside icon-size
+      size -= getIconPaint(d, 'ring').strokeWidth;
+    } else if (type == 'star') {
+      size += 1;
+    }
+    return size / 2;
+  }
+
+  // The icon's shape in the legacy svg-symbol format, or null for an icon that
+  // renderIcon() draws itself (or that is not supported).
+  function getIconSymbol(d) {
+    var type = d && d.icon;
+    var rotation = getNumber$1(d && d['icon-rotation']);
+    // a curve is drawn through a feature's points (see svg-curve-symbols.mjs),
+    // so at a single point there is nothing to draw
+    if (type == 'curve') return emptySymbol();
+    if (type == 'polygon') return getPolygonIcon(d, rotation);
+    if (type == 'arrow') return getArrowIcon(d);
+    if (type == 'pie') return getPieIcon(d, rotation);
+    if (type == 'ring' && hasValue$2(d['icon-radii'])) return getRingsIcon(d);
+    if (type == 'star' && (getNumber$1(d['icon-points']) > 0 || rotation)) {
+      return getStarIcon(d, rotation);
+    }
+    if (type == 'square' && rotation) return getSquareIcon(d, rotation);
+    return null;
+  }
+
+  // The arrow parameters that getArrowCoords() takes, from a record's fields
+  function getArrowParams(d) {
+    var len = getNumber$1(d['icon-size']);
+    var o = {
+      length: len > 0 ? len : 0,
+      direction: getNumber$1(d['icon-rotation'])
+    };
+    Object.keys(arrowParams).forEach(function(field) {
+      var val = d[field];
+      if (hasValue$2(val) && isFinite(val)) o[arrowParams[field]] = Number(val);
+    });
+    if (hasValue$2(d['arrow-anchor'])) o.anchor = d['arrow-anchor'];
+    return o;
+  }
+
+  // Points of the star drawn for icon=star, which has a fatter center than the
+  // stars made by getStarCoords(). Already y down.
+  function getIconStarCoords(r) {
+    var coords = [];
+    var innerR = r * 0.42;
+    var angle, len;
+    for (var i=0; i<10; i++) {
+      len = i % 2 === 0 ? r : innerR;
+      angle = -Math.PI / 2 + i * Math.PI / 5;
+      coords.push([roundToTenths(Math.cos(angle) * len), roundToTenths(Math.sin(angle) * len)]);
+    }
+    coords.push(coords[0].concat());
+    return coords;
+  }
+
+  function getPolygonIcon(d, rotation) {
+    var sides = Math.round(getNumber$1(d['icon-sides'])) || 4;
+    var coords;
+    if (sides < 3) return emptySymbol();
+    coords = getPolygonCoords({radius: getIconSize(d) / 2, sides: sides});
+    return getFilledShape(d, toScreenCoords(coords, rotation));
+  }
+
+  function getStarIcon(d, rotation) {
+    var points = Math.round(getNumber$1(d['icon-points']));
+    var coords;
+    if (points > 0) {
+      if (points < 5) return emptySymbol();
+      coords = toScreenCoords(getStarCoords({radius: getIconSize(d) / 2, points: points}), rotation);
+    } else {
+      coords = [getIconStarCoords(getIconRadius(d, 'star'))];
+      rotateScreenCoords(coords, rotation);
+      roundCoordsForSVG(coords);
+    }
+    return getFilledShape(d, coords);
+  }
+
+  function getSquareIcon(d, rotation) {
+    var h = getIconRadius(d, 'square');
+    var coords = [[[-h, -h], [h, -h], [h, h], [-h, h], [-h, -h]]];
+    rotateScreenCoords(coords, rotation);
+    roundCoordsForSVG(coords);
+    return getFilledShape(d, coords);
+  }
+
+  function getArrowIcon(d, rotation) {
+    var stick = d['arrow-style'] == 'stick';
+    var coords, sym;
+    try {
+      coords = getArrowCoords(getArrowParams(d), stick ? 'stick' : 'standard');
+    } catch(e) {
+      // an impossible arrow (e.g. a head narrower than its stem) is reported by
+      // -symbols; drawing must not fail on one that -style made
+      coords = null;
+    }
+    if (!coords) return emptySymbol();
+    coords = toScreenCoords(coords, 0); // the direction is already applied
+    if (!stick) return getFilledShape(d, coords);
+    sym = {
+      type: 'polyline',
+      coordinates: coords,
+      stroke: d['icon-color'] || d.stroke || 'black',
+      'stroke-width': getNumber$1(d['stroke-width']) > 0 ? Number(d['stroke-width']) : 2
+    };
+    return addOpacity(sym, d);
+  }
+
+  function getPieIcon(d, rotation) {
+    var wedges;
+    if (!hasValue$2(d['icon-values']) || !hasValue$2(d['icon-fills'])) return emptySymbol();
+    wedges = getPieWedges({
+      values: d['icon-values'],
+      fills: d['icon-fills'],
+      radius: getIconSize(d) / 2,
+      hole: d['icon-hole'],
+      rotation: rotation
+    }, 1);
+    return {
+      type: 'group',
+      parts: wedges.map(function(wedge) {
+        var part = {type: 'polygon', coordinates: toScreenCoords(wedge.coordinates, 0)};
+        addShapeStyle(part, d);
+        part.fill = wedge.fill;
+        // opacity goes on the parts: renderComplexSymbol() assumes a group has a
+        // properties object, which group() only gives a single-part group
+        return addOpacity(part, d);
+      })
+    };
+  }
+
+  // Concentric bands, from a list of radii. The record's stroke is not applied:
+  // each band is drawn as a stroke of its own.
+  function getRingsIcon(d) {
+    return makeRingSymbol({radii: d['icon-radii'], fill: getIconFill(d)},
+      {opacity: getIconOpacity(d)});
+  }
+
+  function getFilledShape(d, coords) {
+    var sym = {type: 'polygon', coordinates: coords};
+    var paint = getIconPaint(d, d.icon);
+    addShapeStyle(sym, d);
+    sym.fill = paint.fill;
+    delete sym.stroke;
+    delete sym['stroke-width'];
+    if (paint.stroke != 'none') {
+      sym.stroke = paint.stroke;
+      sym['stroke-width'] = paint.strokeWidth;
+    }
+    return addOpacity(sym, d);
+  }
+
+  function addShapeStyle(sym, d) {
+    shapeStyleFields.forEach(function(field) {
+      if (hasValue$2(d[field])) sym[field] = d[field];
+    });
+    return sym;
+  }
+
+  function addOpacity(sym, d) {
+    var opacity = getIconOpacity(d);
+    if (opacity !== undefined) sym.opacity = opacity;
+    return sym;
+  }
+
+  // icon-opacity is the icon's own, apart from a label drawn with it
+  function getIconOpacity(d) {
+    if (hasValue$2(d['icon-opacity']) && isFinite(d['icon-opacity'])) return Number(d['icon-opacity']);
+    return hasValue$2(d.opacity) ? d.opacity : undefined;
+  }
+
+  function getIconFill(d) {
+    return d['icon-color'] || d.fill || 'black';
+  }
+
+  // The icon's full size: a diameter, or an arrow's length. Falls back like
+  // getIconRadius().
+  function getIconSize(d) {
+    return d['icon-size'] > 0 ? Number(d['icon-size']) : d.r > 0 ? d.r * 2 : 10;
+  }
+
+  // From the y-up space the symbol generators work in to y-down px
+  function toScreenCoords(coords, rotation) {
+    rotateCoords(coords, rotation);
+    flipY(coords);
+    roundCoordsForSVG(coords);
+    return coords;
+  }
+
+  // Clockwise, in y-down coordinates
+  function rotateScreenCoords(coords, rotation) {
+    if (!rotation) return;
+    flipY(coords);
+    rotateCoords(coords, rotation);
+    flipY(coords);
+  }
+
+  function emptySymbol() {
+    return {type: 'group', parts: []};
+  }
+
+  function getNumber$1(val) {
+    var num = Number(val);
+    return hasValue$2(val) && isFinite(num) ? num : 0;
+  }
+
+  function hasValue$2(val) {
+    return val !== undefined && val !== null && val !== '';
+  }
+
   // convert data records (properties like svg-symbol, label-text, fill, r) to svg symbols
   //
 
@@ -28773,9 +30109,6 @@
     }
     return str;
   }
-
-  // A ring icon's stroke, unless the record sets one; 1px read as too faint.
-  var RING_STROKE_WIDTH = 1.5;
 
   var symbolRenderers = {
     line: line,
@@ -28844,7 +30177,8 @@
   }
 
   function featureHasIcon(d) {
-    return !!(d && (d.icon || d['icon-size'] || (d['icon-color'] && d.r > 0)));
+    return !!(d && (d.icon || d['icon-size'] ||
+      (d.r > 0 && (d['icon-color'] || d['icon-fill'] || d['icon-stroke']))));
   }
 
   // An unsupported icon name renders as nothing, without a message -- this
@@ -28853,44 +30187,36 @@
   // command warns about unsupported names when they are assigned instead.
   function renderIcon(d) {
     var type = d.icon || 'circle';
+    var sym = getIconSymbol(d);
+    if (sym) return renderComplexSymbol(sym);
     var r = getIconRadius(d, type);
     if (r > 0 === false) return empty();
-    if (type == 'circle') return circle(getIconStyleData(d, r));
-    if (type == 'square') return square(getIconStyleData(d, r), 0, 0);
-    if (type == 'ring') return ring(getIconStyleData(d, r), 0, 0);
-    if (type == 'star') return star(getIconStyleData(d, r));
-    if (type == 'nyt-star') return nytStar(getIconStyleData(d, r));
+    if (type == 'circle' || type == 'ring') return circle(getIconStyleData(d, r, type));
+    if (type == 'square') return square(getIconStyleData(d, r, type), 0, 0);
+    if (type == 'star') return star(getIconStyleData(d, r, type));
+    if (type == 'nyt-star') return nytStar(getIconStyleData(d, r, type));
     return empty();
-  }
-
-  function getIconRadius(d, type) {
-    var size;
-    if (d['icon-size'] > 0 === false) {
-      return d.r > 0 ? d.r : 5;
-    }
-    size = d['icon-size'];
-    if (type == 'circle') {
-      size -= 1;
-    } else if (type == 'ring') {
-      // the stroke's outer half is inside icon-size
-      size -= RING_STROKE_WIDTH;
-    } else if (type == 'star') {
-      size += 1;
-    }
-    return size / 2;
   }
 
   // A label with a symbol renders two elements from one record, and every opacity
   // property in commonProperties is applied to both, so the text's opacity fades
-  // the symbol with it. icon-color and icon-opacity are how a symbol is styled
-  // apart from the text: each overrides its counterpart here.
+  // the symbol with it. The icon's paint (see getIconPaint()) and icon-opacity
+  // are how a symbol is styled apart from the text: each overrides its
+  // counterpart here.
   //
   // icon-opacity maps to opacity rather than fill-opacity because a ring is drawn
   // as a stroked circle with no fill, which a fill opacity would leave alone.
-  function getIconStyleData(d, r) {
+  function getIconStyleData(d, r, type) {
     var o = utils.extend({}, d);
+    var paint = getIconPaint(d, type);
     o.r = r;
-    o.fill = d['icon-color'] || d.fill || 'black';
+    o.fill = paint.fill;
+    delete o.stroke;
+    delete o['stroke-width'];
+    if (paint.stroke != 'none') {
+      o.stroke = paint.stroke;
+      o['stroke-width'] = paint.strokeWidth;
+    }
     if (isSvgNumber(d['icon-opacity'])) {
       o.opacity = Number(d['icon-opacity']);
     }
@@ -28975,26 +30301,17 @@
     return o;
   }
 
-  function ring(d, x, y) {
-    var o = circle(d, x, y);
-    o.properties.fill = 'none';
-    o.properties.stroke = d.fill;
-    if (!o.properties['stroke-width']) {
-      o.properties['stroke-width'] = RING_STROKE_WIDTH;
-    }
-    return o;
-  }
-
   function star(d) {
-    var coords = getStarCoords$1(d.r);
+    var coords = getIconStarCoords(d.r);
     var o = importPolygon([coords]);
     applyStyleAttributes(o, 'point', d, nonCirclePointFilter);
     return o;
   }
 
-  // A white nine-pointed star with a heavy outline in the icon's colour, drawn
-  // from the source artwork's 40-unit box. The box includes the outline and its
-  // mitred points, so icon-size is the width of the whole symbol.
+  // A nine-pointed star with a heavy outline, white inside unless icon-fill says
+  // otherwise, drawn from the source artwork's 40-unit box. The box includes the
+  // outline and its mitred points, so icon-size is the width of the whole
+  // symbol, and the outline's width is fixed (see getIconPaint()).
   var NYT_STAR_BOX = 40;
   var NYT_STAR_STROKE = 5;
   var NYT_STAR_POINTS = [19.9843, 5.7196, 23.1494, 11.7629, 29.4528, 9.1512,
@@ -29007,10 +30324,10 @@
     var k = d.r * 2 / NYT_STAR_BOX;
     var o = importPolygon([getNytStarCoords(k)]);
     applyStyleAttributes(o, 'point', d, nonCirclePointFilter);
-    o.properties.stroke = o.properties.fill;
-    o.properties.fill = '#fff';
-    o.properties['stroke-width'] = roundToHundredths(NYT_STAR_STROKE * k);
-    o.properties['stroke-miterlimit'] = 10;
+    if (d.stroke) {
+      o.properties['stroke-width'] = roundToHundredths$1(NYT_STAR_STROKE * k);
+      o.properties['stroke-miterlimit'] = 10;
+    }
     return o;
   }
 
@@ -29018,32 +30335,19 @@
     var c = NYT_STAR_BOX / 2;
     var coords = [];
     for (var i=0; i<NYT_STAR_POINTS.length; i+=2) {
-      coords.push([roundToHundredths((NYT_STAR_POINTS[i] - c) * k),
-        roundToHundredths((NYT_STAR_POINTS[i + 1] - c) * k)]);
+      coords.push([roundToHundredths$1((NYT_STAR_POINTS[i] - c) * k),
+        roundToHundredths$1((NYT_STAR_POINTS[i + 1] - c) * k)]);
     }
     coords.push(coords[0].concat());
     return coords;
   }
 
-  function roundToHundredths(n) {
+  function roundToHundredths$1(n) {
     return Math.round(n * 100) / 100;
   }
 
   function nonCirclePointFilter(k) {
     return k != 'r';
-  }
-
-  function getStarCoords$1(r) {
-    var coords = [];
-    var innerR = r * 0.42;
-    var angle, len;
-    for (var i=0; i<10; i++) {
-      len = i % 2 === 0 ? r : innerR;
-      angle = -Math.PI / 2 + i * Math.PI / 5;
-      coords.push([roundToTenths(Math.cos(angle) * len), roundToTenths(Math.sin(angle) * len)]);
-    }
-    coords.push(coords[0].concat());
-    return coords;
   }
 
   function line(d, x, y) {
@@ -29740,12 +31044,22 @@
   var LENGTH_TOLERANCE = 1e-5;
   var MAX_LENGTH_DEPTH = 16;
 
+  // A curve is closed when its last knot repeats its first exactly, as a GeoJSON
+  // ring does, and it has at least three distinct knots. Fewer can't enclose
+  // anything: A,B,A is drawn as the straight segment A,B.
+  function curveIsClosed(knots) {
+    var n = knots ? knots.length : 0;
+    return n > 3 && samePoint$4(knots[0], knots[n - 1]) &&
+      getLoopKnots(dedupeKnots(knots)).length >= 3;
+  }
+
   // knots: array of [x, y] in a single coordinate space
   // tolerance: max deviation of the output polyline from the true curve, in the
   //   same units as the knots
+  // closed: fit a closed loop (see curveIsClosed()) rather than an open run
   // Returns an array of [x, y] starting at the first knot, ending at the last,
   //   and passing through every knot in between.
-  function fitCurveThroughKnots(knots, tolerance) {
+  function fitCurveThroughKnots(knots, tolerance, closed) {
     var pts = dedupeKnots(knots || []),
         segments, out, i;
     if (pts.length < 2) return pts;
@@ -29754,7 +31068,7 @@
       // are the curve at its coarsest
       return pts;
     }
-    segments = fitRun(pts);
+    segments = fitKnots(pts, closed);
     out = [pts[0].slice()];
     for (i = 0; i < segments.length; i++) {
       flattenCubic(segments[i].p0, segments[i].c1, segments[i].c2,
@@ -29767,11 +31081,84 @@
   // Returns the curve's control points as cubic Bezier segments, without
   // flattening. Kept separate from the flattening so that SVG export can emit
   // true curves rather than a densified polyline.
-  // Returns [{p0, c1, c2, p3}, ...], one per knot interval.
-  function getCurveSegments(knots) {
+  // Returns [{p0, c1, c2, p3}, ...], one per knot interval. A closed curve's
+  // last segment ends at its first knot.
+  function getCurveSegments(knots, closed) {
     var pts = dedupeKnots(knots || []);
     if (pts.length < 2) return [];
+    return fitKnots(pts, closed);
+  }
+
+  function fitKnots(pts, closed) {
+    var loop;
+    if (closed) {
+      loop = getLoopKnots(pts);
+      return loop.length >= 3 ? fitLoop(loop) : fitRun(loop);
+    }
     return fitRun(pts);
+  }
+
+  // A closed curve's knots without the repeated last one
+  function getLoopKnots(pts) {
+    var n = pts.length;
+    return n > 1 && samePoint$4(pts[0], pts[n - 1]) ? pts.slice(0, n - 1) : pts;
+  }
+
+  // Fits a closed loop through @pts (the first knot not repeated at the end),
+  // returning a cubic per interval, the last one ending at the first knot.
+  //
+  // Every knot is an interior knot of a loop, so each row of the system is the
+  // mock-curvature condition of fitRun()'s interior rows, with indices taken
+  // round the loop. The rows that wrap make the matrix cyclic tridiagonal.
+  function fitLoop(pts) {
+    var n = pts.length, // segment count = knot count
+        dd = [], om = [], psi = [], lo = [], di = [], up = [], r = [],
+        segments = [], ee, theta, phi, i, prev, next, j;
+    for (i = 0; i < n; i++) {
+      j = (i + 1) % n;
+      dd.push(distance2D$1(pts[i][0], pts[i][1], pts[j][0], pts[j][1]));
+      om.push(Math.atan2(pts[j][1] - pts[i][1], pts[j][0] - pts[i][0]));
+    }
+    for (i = 0; i < n; i++) {
+      psi.push(wrapAngle(om[i] - om[(i + n - 1) % n]));
+    }
+    ee = evenOutLoopChords(dd, n);
+    for (i = 0; i < n; i++) {
+      prev = (i + n - 1) % n;
+      next = (i + 1) % n;
+      lo.push(ee[i]);
+      di.push(2 * (ee[i] + ee[prev]));
+      up.push(ee[prev]);
+      r.push(-2 * ee[i] * psi[i] - ee[prev] * psi[next]);
+    }
+    theta = solveCyclicTridiagonal(lo, di, up, r);
+    phi = [];
+    for (i = 0; i < n; i++) phi.push(-psi[i] - theta[i]);
+    for (i = 0; i < n; i++) {
+      j = (i + 1) % n;
+      segments.push(buildSegment(pts[i], pts[j], dd[i], om[i], theta[i], phi[j],
+        handleLimit(dd[i], dd[(i + n - 1) % n]),
+        handleLimit(dd[i], dd[j])));
+    }
+    return segments;
+  }
+
+  // evenOutChords() round a loop. A pass in each direction settles an open run;
+  // round a loop a chord's limit can come from either side, so the passes repeat
+  // until nothing changes -- n passes at most, since each settles a chord.
+  function evenOutLoopChords(dd, n) {
+    var out = dd.concat(), changed = true, passes = 0, i, j, max;
+    while (changed && passes++ <= n) {
+      changed = false;
+      for (i = 0; i < n; i++) {
+        j = (i + 1) % n;
+        max = out[i] * MAX_CHORD_RATIO;
+        if (out[j] > max) { out[j] = max; changed = true; }
+        max = out[j] * MAX_CHORD_RATIO;
+        if (out[i] > max) { out[i] = max; changed = true; }
+      }
+    }
+    return out;
   }
 
   // Arc length of the fitted curve, in the same units as the knots. Export uses
@@ -30019,6 +31406,36 @@
     return x;
   }
 
+  // A tridiagonal system whose first row also couples to the last unknown (by
+  // lo[0]) and whose last row couples to the first (by up[n-1]), solved with the
+  // Sherman-Morrison formula: as an ordinary tridiagonal system with a rank-one
+  // correction. Needs n >= 3.
+  function solveCyclicTridiagonal(lo, di, up, r) {
+    var n = di.length,
+        alpha = up[n - 1], // last row, first column
+        beta = lo[0],      // first row, last column
+        gamma = -di[0],
+        bb = di.concat(), u = [], lo2 = lo.concat(), up2 = up.concat(),
+        x, z, fact, i;
+    bb[0] = di[0] - gamma;
+    bb[n - 1] = di[n - 1] - alpha * beta / gamma;
+    lo2[0] = 0;
+    up2[n - 1] = 0;
+    for (i = 0; i < n; i++) u.push(0);
+    u[0] = gamma;
+    u[n - 1] = alpha;
+    x = solveTridiagonal(lo2, bb, up2, r);
+    z = solveTridiagonal(lo2, bb, up2, u);
+    fact = (x[0] + beta * x[n - 1] / gamma) /
+      (1 + z[0] + beta * z[n - 1] / gamma);
+    for (i = 0; i < n; i++) x[i] -= fact * z[i];
+    return x;
+  }
+
+  function samePoint$4(a, b) {
+    return !!a && !!b && a[0] === b[0] && a[1] === b[1];
+  }
+
   // Into (-PI, PI], so that a turn is measured the short way round.
   function wrapAngle(a) {
     while (a > Math.PI) a -= 2 * Math.PI;
@@ -30106,6 +31523,7 @@
 
   var CurveFit = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    curveIsClosed: curveIsClosed,
     fitCurveThroughKnots: fitCurveThroughKnots,
     getCurveCurl: getCurveCurl,
     getCurveLength: getCurveLength,
@@ -30114,10 +31532,10 @@
     setCurveCurl: setCurveCurl
   });
 
-  var roundCoord$3 = getRoundingFunction(0.01);
+  var roundCoord$2 = getRoundingFunction(0.01);
 
   function stringifyVertex(p) {
-    return ' ' + roundCoord$3(p[0]) + ' ' + roundCoord$3(p[1]);
+    return ' ' + roundCoord$2(p[0]) + ' ' + roundCoord$2(p[1]);
   }
 
   function isCubicCtrl(p) {
@@ -30517,9 +31935,9 @@
     var width, color, opacity;
     if (!rec) return null;
     color = rec[prefix + 'color'];
-    if (isBlank(color) || String(color).trim().toLowerCase() == 'none') return null;
+    if (isBlank$1(color) || String(color).trim().toLowerCase() == 'none') return null;
     width = rec[prefix + 'width'];
-    if (isBlank(width)) width = DEFAULT_GLOW_WIDTH;
+    if (isBlank$1(width)) width = DEFAULT_GLOW_WIDTH;
     if (!isSvgNumber(width) || !(Number(width) > 0)) return null;
     opacity = rec[prefix + 'opacity'];
     opacity = isSvgNumber(opacity) ? Math.min(Math.max(Number(opacity), 0), 1) : 1;
@@ -30527,7 +31945,7 @@
     return {color: String(color).trim(), opacity: opacity, width: Number(width)};
   }
 
-  function isBlank(val) {
+  function isBlank$1(val) {
     return val === undefined || val === null || String(val).trim() === '';
   }
 
@@ -30775,7 +32193,7 @@
   //
   // Coordinates are px, y down: the SVG export's space, or the canvas's.
 
-  var DEFAULT_LINE_WIDTH = 1;
+  var DEFAULT_LINE_WIDTH$1 = 1;
   // 6px across at the default size for a 1px line
   var DOT_SIZE_RATIO = 0.6;
 
@@ -30811,7 +32229,7 @@
   function makeLineArrowOpts(start, end, size, strokeWidth, scale, fade) {
     var k = scale > 0 ? scale : 1;
     var w = isSvgNumber(strokeWidth) && Number(strokeWidth) >= 0 ?
-      Number(strokeWidth) : DEFAULT_LINE_WIDTH;
+      Number(strokeWidth) : DEFAULT_LINE_WIDTH$1;
     var hasSize = isSvgNumber(size) && Number(size) > 0;
     var side = hasSize ? Number(size) : getDefaultArrowSize(w);
     return {
@@ -30898,7 +32316,7 @@
   // Puts a head of @type at the first point of @shape.coords
   function addHead(shape, type, opts) {
     var coords = shape.coords;
-    var width = opts.width > 0 ? opts.width : DEFAULT_LINE_WIDTH;
+    var width = opts.width > 0 ? opts.width : DEFAULT_LINE_WIDTH$1;
     var tip, side, angle, len, rest, dir, head;
     if (!coords || coords.length < 2) return;
     if (type == 'dot') {
@@ -30957,7 +32375,7 @@
     var heads = [];
     parts.forEach(function(part) {
       var shape = getLineArrowShape(part, opts);
-      var coords = shape.coords.map(roundPoint);
+      var coords = shape.coords.map(roundPoint$1);
       if (shape.fade && fadeColors) {
         fadedLines.push(renderFadedLine(coords, shape.fade, fadeColors));
       } else {
@@ -30975,8 +32393,8 @@
   // points the path's stroke at it.
   function renderFadedLine(coords, axis, colors) {
     var obj = importLineString(coords);
-    var from = roundPoint(axis.from);
-    var to = roundPoint(axis.to);
+    var from = roundPoint$1(axis.from);
+    var to = roundPoint$1(axis.to);
     obj.lineFade = {x1: from[0], y1: from[1], x2: to[0], y2: to[1], color: colors.solid};
     return obj;
   }
@@ -31007,11 +32425,11 @@
   function renderHead(head, color, rec) {
     var points, center;
     if (head.type == 'dot') {
-      center = roundPoint(head.center);
+      center = roundPoint$1(head.center);
       return {tag: 'circle', properties: addFillOpacity({cx: center[0], cy: center[1],
         r: Math.round(head.radius * 100) / 100, fill: color, stroke: 'none'}, rec)};
     }
-    points = head.points.map(roundPoint);
+    points = head.points.map(roundPoint$1);
     var d = 'M ' + points.map(function(p) { return p[0] + ' ' + p[1]; }).join(' L ');
     var props;
     if (head.type == 'arrow') {
@@ -31033,7 +32451,7 @@
     return props;
   }
 
-  function roundPoint(p) {
+  function roundPoint$1(p) {
     return [Math.round(p[0] * 100) / 100, Math.round(p[1] * 100) / 100];
   }
 
@@ -31189,6 +32607,110 @@
   }
   */
 
+  // Curve symbols (icon=curve) are smooth paths fitted through a multipoint
+  // feature's points, with Hobby's algorithm -- the fit that path labels use
+  // (see mapshaper-curve-fit.mjs). The knots are the only thing stored, so the
+  // curve is refitted whenever it is drawn, and stays editable as a curve.
+  //
+  // A curve whose last knot repeats its first is a closed loop, which can take
+  // a fill. An open curve can take the line-end markers and fade of a line
+  // (line-start=, line-end=, line-end-size=, line-fade=). Stroke widths and
+  // marker sizes are in px, like the sizes of other point symbols.
+  //
+  // Coordinates are px, y down: the SVG export's space, or the space inside a
+  // symbol group in the GUI.
+
+  // Greatest distance of a flattened curve from the true one, in px. Only a
+  // curve with end markers is flattened, because the markers are fitted to a
+  // polyline (see svg-line-arrows.mjs); any other curve is written as true
+  // cubic Beziers.
+  var FLATTEN_TOLERANCE = 0.1;
+
+  var DEFAULT_STROKE_WIDTH = 1;
+
+  // featureIsCurve() for a point layer's shape, an array of points. A curve needs
+  // two knots; a single-point feature with icon=curve draws nothing.
+  function shapeIsCurve(shp, rec) {
+    return !!(shp && shp.length > 1 && featureIsCurve(rec));
+  }
+
+  // Returns an SVG object, or null if the knots collapse to a single point
+  // knots: the feature's points, in the space the curve is drawn in
+  function renderCurveSymbol(rec, knots) {
+    var closed = curveIsClosed(knots);
+    var stroke = getCurveStroke(rec, closed);
+    var obj, d, pts;
+    if (stroke != rec.stroke) {
+      rec = Object.assign({}, rec, {stroke: stroke});
+    }
+    if (!closed && lineHasEndStyles(rec)) {
+      pts = fitCurveThroughKnots(knots, FLATTEN_TOLERANCE);
+      if (pts.length < 2) return null;
+      obj = renderArrowLine([pts], rec);
+    } else {
+      d = getCurvePathData(knots, closed);
+      if (!d) return null;
+      obj = {tag: 'path', properties: {d: d}};
+    }
+    applyStyleAttributes(obj, closed ? 'polygon' : 'polyline', rec);
+    // set explicitly, so that the layer's defaults (e.g. a point layer's fill)
+    // don't apply
+    obj.properties.fill = closed && rec.fill || 'none';
+    obj.properties.stroke = stroke;
+    return obj;
+  }
+
+  // An open curve has no fill, so a fill color given to one colors its line, as
+  // it does a stick arrow's. A closed curve with a fill and no stroke has none.
+  function getCurveStroke(rec, closed) {
+    if (rec.stroke) return rec.stroke;
+    if (closed) return rec.fill ? 'none' : 'black';
+    return rec.fill || 'black';
+  }
+
+  // The path's 'd' attribute, as cubic curves
+  function getCurvePathData(knots, closed) {
+    var segments = getCurveSegments(knots, closed);
+    var parts, seg, i;
+    if (segments.length === 0) return null;
+    parts = ['M', fmt(segments[0].p0)];
+    for (i = 0; i < segments.length; i++) {
+      seg = segments[i];
+      parts.push('C', fmt(seg.c1), fmt(seg.c2), fmt(seg.p3));
+    }
+    if (closed) parts.push('Z');
+    return parts.join(' ');
+  }
+
+  // How far the curve's stroke and end markers reach past its knots, in px.
+  // The curve itself can bow out past the knots, which this leaves out.
+  function getCurvePadding(rec) {
+    var sw = isSvgNumber(rec['stroke-width']) ? Number(rec['stroke-width']) : DEFAULT_STROKE_WIDTH;
+    var pad = sw / 2;
+    if (lineHasArrows(rec)) {
+      pad = Math.max(pad, getLineArrowOpts(rec, 1).size);
+    }
+    return pad;
+  }
+
+  function fmt(p) {
+    return round$1(p[0]) + ' ' + round$1(p[1]);
+  }
+
+  function round$1(n) {
+    return Math.round(n * 100) / 100;
+  }
+
+  var SvgCurveSymbols = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    curveIsClosed: curveIsClosed,
+    featureIsCurve: featureIsCurve,
+    getCurvePadding: getCurvePadding,
+    getCurvePathData: getCurvePathData,
+    renderCurveSymbol: renderCurveSymbol,
+    shapeIsCurve: shapeIsCurve
+  });
+
   var geojsonImporters = {
     Point: importPoint,
     Polygon: importPolygon,
@@ -31211,6 +32733,9 @@
         // rather than several labels at several points
         svgObj = renderPathLabel(d, geom.coordinates,
           {report: opts.path_label_report, id: featureId});
+      } else if (geomType == 'MultiPoint' && shapeIsCurve(geom.coordinates, d)) {
+        // likewise, one curve through the points
+        svgObj = renderCurveSymbol(d, geom.coordinates);
       } else if (msType == 'polyline' && geom.coordinates && lineHasEndStyles(d)) {
         svgObj = renderArrowLine(geomType == 'LineString' ?
           [geom.coordinates] : geom.coordinates, d);
@@ -31304,7 +32829,8 @@
 
   // just a dot, no label or icon
   function isSimpleCircle(rec) {
-    return rec && (rec.r > 0 && !rec['svg-symbol'] && !rec['label-text'] && !rec.icon && !rec['icon-size'] && !rec['icon-color']);
+    return rec && (rec.r > 0 && !rec['svg-symbol'] && !rec['label-text'] && !rec.icon && !rec['icon-size'] && !rec['icon-color'] &&
+      !rec['icon-fill'] && !rec['icon-stroke']);
   }
 
   function importMultiPoint(coords, rec, opts) {
@@ -31331,6 +32857,161 @@
     importMultiPolygon: importMultiPolygon,
     importPoint: importPoint,
     importPolygon: importPolygon
+  });
+
+  // A casing is a wider stroke drawn beneath a line, so that the line has an
+  // outline of another color, as roads are drawn on many maps.
+  //
+  //   casing-color    a casing is drawn when its color is set, and not
+  //                   otherwise (or if the color is "none")
+  //   casing-width    how far the casing reaches past each edge of the line, in
+  //                   px; default 1, and 0 draws no casing
+  //   casing-opacity  0-1, default 1
+  //
+  // The casing's stroke is the line's width plus the casing's width on either
+  // side, so it keeps its look when the line's width changes. It has the line's
+  // caps and joins, and is solid under a dashed line. A line's own opacity fades
+  // its casing too; its stroke-opacity does not, so that a translucent line
+  // shows its casing through it.
+  //
+  // The casings belong to the layer as a whole: all of them are drawn before any
+  // of the lines, so that where lines meet, the lines join over the casings
+  // instead of each casing cutting across the lines beneath it. The features can
+  // still have casings of different colors and widths.
+  //
+  // A line with arrowheads has its casing along the line itself, which stops
+  // at the heads (see getLineArrowShape()); the heads have no casing. A line
+  // with a fade has a casing that does not fade.
+
+  var casingFields = ['casing-color', 'casing-width', 'casing-opacity'];
+
+  var DEFAULT_CASING_WIDTH = 1;
+
+  var DEFAULT_LINE_WIDTH = 1;
+
+  // {color, width, opacity} for a record's casing, or null if it has none.
+  // The opacity includes the line's own opacity.
+  function getLineCasing(rec) {
+    var color, width, opacity;
+    if (!rec) return null;
+    color = rec['casing-color'];
+    if (isBlank(color) || String(color).trim().toLowerCase() == 'none') return null;
+    width = rec['casing-width'];
+    if (isBlank(width)) width = DEFAULT_CASING_WIDTH;
+    if (!isSvgNumber(width) || !(Number(width) > 0)) return null;
+    opacity = parseOpacity(rec['casing-opacity']) * parseOpacity(rec.opacity);
+    if (opacity === 0) return null;
+    return {color: String(color).trim(), width: Number(width), opacity: opacity};
+  }
+
+  // The width of a casing's stroke, for a line @lineWidth px wide
+  function getCasingStrokeWidth(lineWidth, casing) {
+    var w = isSvgNumber(lineWidth) && Number(lineWidth) >= 0 ?
+      Number(lineWidth) : DEFAULT_LINE_WIDTH;
+    return w + casing.width * 2;
+  }
+
+  // The cap a line is drawn with, if it is not the document's default (round):
+  // a dashed line has butt caps unless it has a cap of its own, as in
+  // applyStyleAttributes()
+  function getLineCasingCap(rec) {
+    if (!isBlank(rec['stroke-linecap'])) return rec['stroke-linecap'];
+    return isBlank(rec['stroke-dasharray']) ? null : 'butt';
+  }
+
+  function layerHasCasing(lyr) {
+    if (!lyr || lyr.geometry_type != 'polyline' || !lyr.data) return false;
+    if (!lyr.data.fieldExists('casing-color')) return false;
+    return lyr.data.getRecords().some(function(rec) {
+      return !!getLineCasing(rec);
+    });
+  }
+
+  // The casings of a line layer's features, as a <g> to go before the
+  // features in the layer's own group, or null if none has a casing. Casings
+  // are copies of the lines' paths, which carry no id or data attributes, so
+  // that they are not mistaken for features.
+  // @features: GeoJSON features, in SVG coordinates
+  // @layerId: the id of the layer's group
+  function renderLineCasings(features, layerId) {
+    var children = [];
+    features.forEach(function(feature) {
+      var geom = feature && (feature.type == 'Feature' ? feature.geometry : feature);
+      var rec = feature && feature.properties || {};
+      var casing = getLineCasing(rec);
+      var parts, obj;
+      if (!casing || !geom || !geom.coordinates) return;
+      if (geom.type == 'LineString') {
+        parts = [geom.coordinates];
+      } else if (geom.type == 'MultiLineString') {
+        parts = geom.coordinates;
+      } else {
+        return;
+      }
+      parts = getCasingParts(parts, rec);
+      if (parts.length === 0) return;
+      obj = importMultiLineString(parts);
+      Object.assign(obj.properties, getCasingAttributes(rec, casing));
+      children.push(obj);
+    });
+    if (children.length === 0) return null;
+    return {tag: 'g', properties: {id: getCasingGroupId(layerId)}, children: children};
+  }
+
+  function getCasingGroupId(layerId) {
+    return layerId + '-casing';
+  }
+
+  function getCasingParts(parts, rec) {
+    var opts;
+    if (lineHasArrows(rec)) {
+      opts = getLineArrowOpts(rec, 1);
+      parts = parts.map(function(part) {
+        return getLineArrowShape(part, opts).coords.map(roundPoint);
+      });
+    }
+    return parts.filter(function(part) {
+      return part && part.length > 1;
+    });
+  }
+
+  function getCasingAttributes(rec, casing) {
+    var props = {
+      stroke: casing.color,
+      'stroke-width': Math.round(getCasingStrokeWidth(rec['stroke-width'], casing) * 1000) / 1000
+    };
+    var cap = getLineCasingCap(rec);
+    if (casing.opacity < 1) props['stroke-opacity'] = casing.opacity;
+    if (cap) props['stroke-linecap'] = cap;
+    ['stroke-linejoin', 'stroke-miterlimit'].forEach(function(name) {
+      if (!isBlank(rec[name])) props[name] = rec[name];
+    });
+    return props;
+  }
+
+  function parseOpacity(val) {
+    if (!isSvgNumber(val)) return 1;
+    return Math.min(Math.max(Number(val), 0), 1);
+  }
+
+  function isBlank(val) {
+    return val === undefined || val === null || String(val).trim() === '';
+  }
+
+  function roundPoint(p) {
+    return [Math.round(p[0] * 100) / 100, Math.round(p[1] * 100) / 100];
+  }
+
+  var SvgLineCasing = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    DEFAULT_CASING_WIDTH: DEFAULT_CASING_WIDTH,
+    casingFields: casingFields,
+    getCasingGroupId: getCasingGroupId,
+    getCasingStrokeWidth: getCasingStrokeWidth,
+    getLineCasing: getLineCasing,
+    getLineCasingCap: getLineCasingCap,
+    layerHasCasing: layerHasCasing,
+    renderLineCasings: renderLineCasings
   });
 
   var ILLUSTRATOR_PATH_VERTEX_LIMIT = 32000;
@@ -31777,6 +33458,7 @@ ${svg}
     var d = utils.defaults({layers: [lyr]}, dataset);
     var geojson = exportDatasetAsGeoJSON(d, opts);
     var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
+    var casings;
     warnIfIllustratorPathLimitExceeded(lyr, features);
     // path labels that don't fit their path render as nothing, and are reported
     // rather than dropped silently
@@ -31800,6 +33482,10 @@ ${svg}
     });
     if (opts.svg_data && lyr.data) {
       addDataAttributesToSVG(children, keptRecords, lyr.data.getFields(), opts.svg_data);
+    }
+    if (lyr.geometry_type == 'polyline') {
+      casings = renderLineCasings(features, layerObj.properties.id);
+      if (casings) children.unshift(casings);
     }
     return children;
   }
@@ -31986,7 +33672,8 @@ ${svg}
       lyr.data.fieldExists('svg-symbol') ||
       lyr.data.fieldExists('icon') ||
       lyr.data.fieldExists('icon-size') ||
-      (lyr.data.fieldExists('icon-color') && lyr.data.fieldExists('r'))
+      (lyr.data.fieldExists('r') && (lyr.data.fieldExists('icon-color') ||
+        lyr.data.fieldExists('icon-fill') || lyr.data.fieldExists('icon-stroke')))
     );
   }
 
@@ -33683,7 +35370,7 @@ ${svg}
       color: withOpacity(rec.fill || '#000', rec['fill-opacity'])
     };
     copyProperties(rec, style, ['font-weight', 'font-style', 'font-stretch']);
-    if (hasValue(rec['letter-spacing'])) {
+    if (hasValue$1(rec['letter-spacing'])) {
       style['letter-spacing'] = formatLength(rec['letter-spacing']);
     }
     if (labelHasBackground(rec)) {
@@ -33751,13 +35438,13 @@ ${svg}
     var color = rec.stroke;
     if (labelHasHalo(rec) || !color || color == 'none') return {};
     return {
-      '-webkit-text-stroke': formatLength(hasValue(rec['stroke-width']) ? rec['stroke-width'] : 1) +
+      '-webkit-text-stroke': formatLength(hasValue$1(rec['stroke-width']) ? rec['stroke-width'] : 1) +
         ' ' + withOpacity(color, rec['stroke-opacity'])
     };
   }
 
   function formatLineHeight(val) {
-    if (!hasValue(val)) return String(DEFAULT_LINE_HEIGHT);
+    if (!hasValue$1(val)) return String(DEFAULT_LINE_HEIGHT);
     return String(val);
   }
 
@@ -33775,13 +35462,13 @@ ${svg}
     return isSvgNumber(val) && Number(val) < 1;
   }
 
-  function hasValue(val) {
+  function hasValue$1(val) {
     return val !== undefined && val !== null && val !== '';
   }
 
   function copyProperties(src, dest, names) {
     names.forEach(function(k) {
-      if (hasValue(src[k])) dest[k] = src[k];
+      if (hasValue$1(src[k])) dest[k] = src[k];
     });
   }
 
@@ -33999,16 +35686,16 @@ ${svg}
       dist = dist / 100 * len;
     }
     p = getPointAtCurveLength(knots, utils.isFiniteNumber(dist) ? dist : len / 2) || knots[0];
-    return [roundCoord$2(p[0]), roundCoord$2(p[1])];
+    return [roundCoord$1(p[0]), roundCoord$1(p[1])];
   }
 
   function shiftCoords(coords, origin) {
     return coords.map(function(p) {
-      return [roundCoord$2(p[0] - origin[0]), roundCoord$2(p[1] - origin[1])];
+      return [roundCoord$1(p[0] - origin[0]), roundCoord$1(p[1] - origin[1])];
     });
   }
 
-  function roundCoord$2(c) {
+  function roundCoord$1(c) {
     return Math.round(c * 100) / 100;
   }
 
@@ -38265,8 +39952,8 @@ ${css.join('\n')}
 
     if (opts.precision && opts.no_quantization) {
       setCoordinatePrecision(dataset, opts.precision, !!opts.fix_geometry);
-    } else if (opts.precision) {
-      message(`Ignoring precision=${opts.precision} -- this option only works with no-quantization.`);
+    } else if (opts.precision && (opts.quantization || opts.topojson_precision)) {
+      message(`Ignoring precision=${opts.precision} -- quantization is set by another option.`);
     }
 
     if (opts.singles) {
@@ -38300,7 +39987,8 @@ ${css.join('\n')}
       cmd.simplify(dataset, opts);
     }
     // auto-detect quantization if arcs are present
-    if (!opts.no_quantization && (opts.quantization || hasPaths)) {
+    if (!opts.no_quantization && bounds.hasBounds() &&
+        (opts.quantization || useGridQuantization(opts) || hasPaths)) {
       topology.transform = transformDataset(dataset, bounds, opts);
     }
     if (hasPaths) {
@@ -38325,23 +40013,14 @@ ${css.join('\n')}
   };
 
   function transformDataset(dataset, bounds, opts) {
-    var bounds2 = calcExportBounds(bounds, dataset.arcs, opts),
-        fw = bounds.getTransform(bounds2),
-        inv = fw.invert(),
+    var quantizer = useGridQuantization(opts) ?
+          getGridQuantizer(bounds, opts.precision) :
+          getBoundsQuantizer(bounds, dataset.arcs, opts),
         repairArcs;
-
-    function transformWithRounding(x, y) {
-      var p = fw.transform(x, y);
-      return [Math.round(p[0]), Math.round(p[1])];
-    }
-
-    function transformWithoutRounding(x, y) {
-      return fw.transform(x, y);
-    }
 
     if (dataset.arcs && opts.fix_geometry) {
       // try to repair intersections caused by quantization
-      dataset.arcs.transformPoints(transformWithoutRounding);
+      dataset.arcs.transformPoints(quantizer.transform);
       repairArcs = getRepairFunction(dataset.arcs);
       dataset.arcs.transformPoints(function(x, y) {
         return [Math.round(x), Math.round(y)];
@@ -38349,21 +40028,73 @@ ${css.join('\n')}
       repairArcs(dataset.arcs);
 
     } else if (dataset.arcs) {
-      dataset.arcs.transformPoints(transformWithRounding);
+      dataset.arcs.transformPoints(quantizer.quantize);
     }
 
     // support non-standard format with quantized arcs and non-quantized points
     if (!opts.no_point_quantization) {
       dataset.layers.filter(layerHasPoints).forEach(function(lyr) {
-        transformPointsInLayer(lyr, transformWithRounding);
+        transformPointsInLayer(lyr, quantizer.quantize);
       });
     }
 
     // TODO: think about handling geometrical errors introduced by quantization,
     // e.g. segment intersections and collapsed polygon rings.
     return {
+      scale: quantizer.scale,
+      translate: quantizer.translate
+    };
+  }
+
+  function useGridQuantization(opts) {
+    return opts.precision > 0 && !opts.quantization && !(opts.topojson_precision > 0);
+  }
+
+  // Quantize to a grid of cells derived from the bounds of the dataset
+  function getBoundsQuantizer(bounds, arcs, opts) {
+    var fw = bounds.getTransform(calcExportBounds(bounds, arcs, opts)),
+        inv = fw.invert();
+    return {
+      quantize: function(x, y) {
+        var p = fw.transform(x, y);
+        return [Math.round(p[0]), Math.round(p[1])];
+      },
+      transform: function(x, y) {
+        return fw.transform(x, y);
+      },
       scale: [inv.mx, inv.my],
       translate: [inv.bx, inv.by]
+    };
+  }
+
+  // Quantize to a grid of square cells with sides of length @precision, anchored
+  // at the origin. Files exported with the same precision share the same grid
+  // (e.g. adjacent map tiles), and decoded coordinates match the output of
+  // setCoordinatePrecision().
+  function getGridQuantizer(bounds, precision) {
+    var inv = 1 / precision,
+        toGrid, toCoord, ox, oy;
+    if (inv > 1) {
+      // same rounding method as getRoundingFunction()
+      inv = Math.round(inv);
+      toGrid = function(c) { return c * inv; };
+      toCoord = function(i) { return i / inv; };
+    } else {
+      toGrid = function(c) { return c / precision; };
+      toCoord = function(i) { return i * precision; };
+    }
+    // integer offsets keep quantized coordinates small, without moving the grid
+    ox = Math.round(toGrid(bounds.xmin));
+    oy = Math.round(toGrid(bounds.ymin));
+    return {
+      quantize: function(x, y) {
+        return [Math.round(toGrid(x)) - ox, Math.round(toGrid(y)) - oy];
+      },
+      transform: function(x, y) {
+        return [toGrid(x) - ox, toGrid(y) - oy];
+      },
+      scale: [precision, precision],
+      translate: [toCoord(ox), toCoord(oy)]
     };
   }
 
@@ -38422,8 +40153,6 @@ ${css.join('\n')}
       unitXY = calcExportResolution(arcs, opts.topojson_precision);
     } else if (opts.quantization > 0) {
       unitXY = [bounds.width() / (opts.quantization-1), bounds.height() / (opts.quantization-1)];
-    } else if (opts.precision > 0) {
-      unitXY = [opts.precision, opts.precision];
     } else {
       // default -- auto quantization at 0.02 of avg. segment len
       unitXY = calcExportResolution(arcs, 0.02);
@@ -38513,7 +40242,8 @@ ${css.join('\n')}
   var TopojsonExport = /*#__PURE__*/Object.freeze({
     __proto__: null,
     calcExportBounds: calcExportBounds,
-    exportTopoJSON: exportTopoJSON
+    exportTopoJSON: exportTopoJSON,
+    getGridQuantizer: getGridQuantizer
   });
 
   function importJSONTable(arr) {
@@ -43330,31 +45060,214 @@ ${css.join('\n')}
     formatVersionedFileName: formatVersionedFileName
   });
 
+  function detectEncodingFromBOM(bytes) {
+    // utf8 EF BB BF
+    // utf16be FE FF
+    // utf16le FF FE
+    var n = bytes.length;
+    if (n >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF) return 'utf16be';
+    if (n >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) return 'utf16le';
+    if (n >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) return 'utf8';
+    return '';
+  }
+
+  // Try to detect the encoding of some sample text.
+  // Returns an encoding name or null.
+  // @samples Array of buffers containing sample text fields
+  // TODO: Improve reliability and number of detectable encodings.
+  function detectEncoding(samples) {
+    // score each encoding as 2 (high confidence) 1 (low confidence) or 0 (fail)
+    var candidates = [{
+      // latin1 is the original Shapefile encoding, using as an imperfect fallback
+      // (sorts to the top only if all other encodings score 0)
+      encoding: 'latin1',
+      confidence: 0
+    },{
+      encoding: 'win1252',
+      confidence: looksLikeWin1252(samples)
+    }, {
+      encoding: 'utf8',
+      confidence: looksLikeUtf8(samples)
+    }, {
+      encoding: 'gb18030',
+      confidence: looksLikeGB18030(samples)
+    }];
+    utils.sortOn(candidates, 'confidence', 'descending');
+    return candidates[0];
+  }
+
+  function decodeSamples(enc, samples) {
+    return samples.map(function(buf) {
+      return decodeString(buf, enc).trim();
+    });
+  }
+
+  // Win1252 is the same as Latin1, except it replaces a block of control
+  // characters with n-dash, Euro and other glyphs. Encountered in-the-wild
+  // in Natural Earth (airports.dbf uses n-dash).
+  //
+  // Quick-and-dirty win1251 detection: decoded string contains mostly common ascii
+  // chars and almost no chars other than word chars + punctuation.
+  // This excludes encodings like Greek, Cyrillic or Thai, but
+  // is susceptible to false positives with encodings like codepage 1250 ("Eastern
+  // European").
+  //
+  function looksLikeWin1252(samples) {
+        //common l.c. ascii chars
+    var commonAscii = 'abcdefghijklmnopqrstuvwxyz0123456789.()\'"?+-\n,:;/|_$% ',
+        // more common extended chars + NBS (found in the wild)
+        moreChars = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ°–±’‘' + '\xA0',
+        str = decodeSamples('win1252', samples).join(''),
+        commonAsciiPct = calcCharPct(str, commonAscii),
+        expandedPct = calcCharPct(str, moreChars) + commonAsciiPct;
+    var high = expandedPct > 0.98 && commonAsciiPct >= 0.8;
+    var low = expandedPct > 0.97 && commonAsciiPct >= 0.6;
+    return getScore(high, low);
+  }
+
+  function looksLikeUtf8(samples) {
+    // Reject string if it contains the "replacement character" after decoding
+    // as utf-8
+    var str = decodeSamples('utf8', samples).join('');
+    var invalidPct = getInvalidPct(str);
+    var high = invalidPct == 0;
+    var low = invalidPct < 0.03;
+    return getScore(high, low);
+  }
+
+  function looksLikeGB18030(samples) {
+    // from Jun Da's frequency table
+    var commonHanZi = '的一了是不我他在人有这来个说上你们到地大着子那就也时道中出得为里下她要么去可以过和看之然后会自没小好生天而起对能还事想都心只家面样把国多又于头年手发如什开前当所无知老但见长已军从方声儿回意作话两点现很成身情十用些走经同进动己三行种向日明女正问此学太打间分因给本眼定二气力被门真法外听实其高先几笑再主将山战才口文最部第它西与全白者便相住公使东等边信像斯机光次感神却死理名重四做别叫王并水月果何位怎马常觉海张少处亲安特美呢色原直望命由候吧让应尔难关许车平师民夫书新接吗路利世比放活快总立队更花爱清五内金带工风克任至指往入空德吃表连解教思飞物电受今完林干代告兵加认通找远非性脸体轻记目令变似反南场跟必石拉士报李火且满该孩字红象即结言员房件万条提写或坐北早失离步陈乎请转近切黑深城办倒各父传音站官半男击合阿英决怕杀未形及算青黄落刚百论谁突交团度义罗始强紧敌八母钱极片化流管惊每题晚虽政兴答司妈夜越啊奇达谈武友数领朝保服曾拿则哪格尽根急语容喜求衣留双影刻制随冷九苦量备布照周故准客船江系姐争功怪星断句龙竟视界讲取古六静底精七河久绝阳识哈台确息期整伤忙娘终剑送计愿欢微您沉装敢云脚消若复收千木乐毛华集树弟皇响希诉号巴穿线汉攻呀警派刘酒雷停史阵错建足显丽另包势破亮首志观病热跑业治田冲运约暗待共院仍区害元哥围屋胡产室调类细议爷注易务众帝市摇乱密姑斗除式示睛楼造朋社持慢般皮京况块忽脑校甚查土怀福单联赶背统喝疑支血饭灵够章群威举兰游器察嘴痛铁掉宝历改推枪念参术帮党据品须居称旁退梦科岁低严引吉睡爸呼追局露维苏证村挥独节谢香亚波角案读图左掌假跳究楚余鬼钟座礼展玉肯既止守广考恩异料段尼画续米草胜存唐医程弹烟商顾招宗堂野初府激雨尚渐诗顿伯孙际沙雪板闻导致护春态基设耳简婚幸味右买演权卡继依恶庄炮亦虎州刀球需兄闪笔否烈玩啦逃排仅弄具散默景顶郑洋丝卫速侠差贵君习妇助恐救湖莫窗险顺封佛委旧印伙妹副宫洞永罪松责组防艺营班试鲁宋靠索灯介翻喊纪秘妻纸银略充戏担某杨射魔遇鱼陆级坏忘乡鲜哭费抓叶醒族纳床咱桌境列午振抱专毫店街怒托剧置秋藏赵划普岛较承脱革忍伸份免齐抗猛园临犯食架选歌按败良隐养属洛朱狂修坚压寻旅谋温探资端投泪阴换药麻施丈冰雄著绿职负短模荣遗农叹川毒吴蒋卖范禁杂富秀县祖梅谷凡刺登蓝奶缓姓牛价规篇劳质婆仙馆摆舞层狗占墙善熟验肉臣状呆圣懂袋唱值迷替归巨讨毕批镇吸森拍灭握伊杰勒卷偷奔省谓危付伦休厅预迎罢恨博亡欲悲宣标闹岸';
+    var str = decodeSamples('gb18030', samples).join('');
+    // Almost all the common Unicode Hanzi are in this range (along with many more uncommon ones)
+    var chineseStr = str.replace(/[^\u4e00-\u9fa5]/g, '');
+    var chinesePct = chineseStr.length / str.length;
+    var commonAsciiStr = extractCommonAsciiChars(str);
+    var commonAsciiPct = commonAsciiStr.length / str.length;
+    // Some encodings get converted almost completely into valid (but mostly
+    // uncommon) Chinese characters by the gb18030 converter.
+    // To guard against this, we're requiring that a certain percentage of
+    // characters be on a list of the most common characters.
+    var commonHanZiPct = calcCharPct(chineseStr, commonHanZi);
+    // check for non-convertible characters
+    var invalidPct = getInvalidPct(str);
+    var high = chinesePct > 0.5 && (chinesePct + commonAsciiPct) > 0.9 &&
+        invalidPct === 0 && commonHanZiPct > 0.25;
+    var low = chinesePct > 0.3 && (chinesePct + commonAsciiPct) > 0.8 &&
+        commonHanZiPct > 0.15;
+    return getScore(high, low);
+  }
+
+  function getScore(high, low) {
+    return high && 2 || low && 1 || 0;
+  }
+
+  function getInvalidPct(str) {
+    // count occurences of the "replacement" character
+    var invalidCount = (str.match(/\ufffd/g) || []).length;
+    return invalidCount / str.length;
+  }
+
+  function extractCommonAsciiChars(str) {
+    return str.replace(/[^a-zA-Z0-9.()'"?+\n,:;/|_$% -]/g, '');
+  }
+
+  // Calc percentage of chars in a string that are present in a second string
+  // @chars String of chars to look for in @str
+  function calcCharPct(str, chars) {
+    var index = {},
+        count = 0;
+    str = str.toLowerCase();
+    for (var i=0, n=chars.length; i<n; i++) {
+      index[chars[i]] = 1;
+    }
+    for (i=0, n=str.length; i<n; i++) {
+      count += index[str[i]] || 0;
+    }
+    return count / str.length || 0;
+  }
+
+  var EncodingDetection = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    decodeSamples: decodeSamples,
+    detectEncoding: detectEncoding,
+    detectEncodingFromBOM: detectEncodingFromBOM
+  });
+
   function readFirstChars(reader, n) {
     return bufferToString(reader.readSync(0, Math.min(n || 1000, reader.size())));
   }
 
-  // Wraps a BufferReader or FileReader with an API that keeps track of position in the file
-  function Reader2(reader) {
-    var offs = 0; // read-head position in bytes
+  // Wraps a FileReader or BufferReader containing text in an encoding that can't be
+  // parsed byte-by-byte as ascii (e.g. UTF-16), and returns the text as UTF-8 bytes.
+  // Like FileReader#readSync(), readSync() returns a view that is only valid until
+  // the next read. Reads can only move forward: bytes before @start are discarded.
+  // The size of the UTF-8 output is unknown until the end; readSync() returns
+  // fewer than @length bytes at the end of the text.
+  function TranscodingReader(reader, encoding, opts) {
+    var chunkSize = opts && opts.chunkSize || 0x1000000,
+        decoder = getStreamingDecoder(encoding),
+        encoder = new TextEncoder(),
+        inputSize = reader.size(),
+        inputPos = 0,
+        finished = false,
+        heldChar = '', // first half of a surrogate pair, if decoded text ended with one
+        buf = utils.createBuffer(0),
+        bufStart = 0, // offset of buf[0] in the UTF-8 output
+        bufLen = 0;   // number of decoded bytes in buf
 
-    this.position = function() {return offs;};
-
-    this.remaining = function() {
-      return Math.max(reader.size() - offs, 0);
+    this.readSync = function(start, length) {
+      if (start < bufStart || start > bufStart + bufLen) {
+        error('TranscodingReader: unsupported read position');
+      }
+      discardBytes(start - bufStart);
+      while (bufLen < length && !finished) {
+        decodeMore();
+      }
+      return buf.subarray(0, Math.min(length, bufLen));
     };
 
-    this.advance = function(i) {
-      offs += i;
-    };
+    function discardBytes(n) {
+      if (n > 0) {
+        buf.copyWithin(0, n, bufLen);
+        bufLen -= n;
+        bufStart += n;
+      }
+    }
 
-    this.readSync = function() {
-      return reader.readSync(offs);
-    };
+    function decodeMore() {
+      var str, bytes;
+      if (inputPos < inputSize) {
+        bytes = reader.readSync(inputPos, Math.min(chunkSize, inputSize - inputPos));
+        inputPos += bytes.length;
+        str = decoder.write(bytes);
+      } else {
+        str = decoder.end() || '';
+        finished = true;
+      }
+      str = heldChar + str;
+      heldChar = '';
+      // TextEncoder would encode half of a surrogate pair as U+FFFD
+      if (!finished && isHighSurrogate(str.charCodeAt(str.length - 1))) {
+        heldChar = str[str.length - 1];
+        str = str.slice(0, -1);
+      }
+      // a UTF-16 code unit becomes at most 3 bytes of UTF-8
+      reserveBytes(bufLen + str.length * 3);
+      bufLen += encoder.encodeInto(str, buf.subarray(bufLen)).written;
+    }
 
-    this.expandBuffer = function() {
-      reader.expandBuffer();
-    };
+    function isHighSurrogate(c) {
+      return c >= 0xD800 && c <= 0xDBFF;
+    }
+
+    // The buffer is reused, so large files don't allocate a new buffer for each chunk
+    function reserveBytes(n) {
+      if (n <= buf.length) return;
+      var buf2 = utils.createBuffer(Math.max(n, buf.length * 2));
+      buf.copy(buf2, 0, 0, bufLen);
+      buf = buf2;
+    }
   }
 
   // Same interface as FileReader, for reading from a Buffer or ArrayBuffer instead of a file.
@@ -43513,71 +45426,299 @@ ${css.join('\n')}
     __proto__: null,
     BufferReader: BufferReader,
     FileReader: FileReader,
-    Reader2: Reader2,
+    TranscodingReader: TranscodingReader,
     readFirstChars: readFirstChars
   });
 
-  // Read and parse a DSV file
-  // This version performs field filtering before fields are extracted (faster)
-  // (tested with a 40GB CSV)
-  //
-  // TODO: confirm compatibility with all supported encodings
+  // Delimited text is parsed directly from bytes, in large chunks. This works for
+  // UTF-8 and for single-byte encodings that are supersets of ascii, because
+  // delimiters, quotes and line breaks are always single ascii bytes. Text in
+  // other encodings (e.g. UTF-16, Big5) is converted to UTF-8 as it is read.
+  // Only the values of imported fields are converted to strings.
+
+  var CR = 13, LF = 10, DQUOTE$1 = 34;
+  var DEFAULT_CHUNK_SIZE = 0x1000000; // 16MB
+
+  // Read and parse a DSV file, returning records with string values
   function readDelimRecords(reader, delim, optsArg) {
     var opts = optsArg || {};
     if (delim == ' ') return readFixedWidthRecords(reader, opts);
-    var reader2 = new Reader2(reader),
-        headerStr = readLinesAsString(reader2, getDelimHeaderLines(opts), opts.encoding),
-        header = parseDelimHeaderSection(headerStr, delim, opts),
-        convertRowArr = getRowConverter(header.import_fields),
-        batchSize = opts.batch_size || 1000,
-        records = [],
-        str, batch;
-    if (header.import_fields.length === 0) return []; // e.g. empty file
-    // read in batches (faster than line-by-line)
-    while ((str = readLinesAsString(reader2, batchSize, opts.encoding))) {
-      batch = parseDelimText(str, delim, convertRowArr, header.column_filter || false, header.row_filter || false);
-      records.push.apply(records, batch);
-      if (opts.csv_lines && records.length >= opts.csv_lines) {
-        return records.slice(0, opts.csv_lines);
-      }
+    var input = openDelimReader(reader, opts.encoding, opts),
+        rows = [],
+        fields = null;
+    readDelimRows(input, delim, opts, {
+      header: function(names) { fields = names; },
+      row: function(row) { rows.push(row); }
+    });
+    if (!fields) return [];
+    var convert = getRowConverter(fields);
+    for (var i=0; i<rows.length; i++) {
+      rows[i] = convert(rows[i]);
     }
-    return records;
+    return rows;
   }
 
-  // Fallback for readDelimRecords(), for encodings that do not use ascii values
-  // for delimiter characters and newlines. Input size is limited by the maximum
-  // string size.
   function readDelimRecordsFromString(str, delim, opts) {
     if (delim == ' ') return readFixedWidthRecordsFromString(str);
-    var header = parseDelimHeaderSection(str, delim, opts);
-    if (header.import_fields.length === 0 || !header.remainder) return [];
-    var convert = getRowConverter(header.import_fields);
-    var records = parseDelimText(header.remainder, delim, convert, header.column_filter, header.row_filter);
-    if (opts.csv_lines > 0) {
-      // TODO: don't parse unneeded rows
-      records = records.slice(0, opts.csv_lines);
-    }
-    return records;
+    var reader = new BufferReader(encodeString(str, 'utf8'));
+    return readDelimRecords(reader, delim, Object.assign({}, opts, {encoding: 'utf8'}));
   }
 
-  // Get index in string of the nth line
-  // line numbers are 1-based (first line is 1)
-  function indexOfLine(str, nth) {
-    var rxp = /\r\n|[\r\n]|.$/g; // dot prevents matching end of string twice
-    var i = 1;
-    if (nth === 1) return 0;
-    if (nth > 1 === false) return -1;
-    while (rxp.exec(str)) {
-      i++;
-      if (i < nth === false) return rxp.lastIndex;
+  // Returns {reader, encoding}, where reader returns bytes that can be parsed
+  // as ascii, and encoding is the encoding to use for converting values to strings.
+  // A UTF-16 BOM overrides the @encoding argument.
+  function openDelimReader(reader, encoding, opts) {
+    var bom = detectEncodingFromBOM(reader.readSync(0, Math.min(reader.size(), 3)));
+    if (bom == 'utf16le' || bom == 'utf16be') {
+      encoding = bom;
     }
-    return -1;
+    encoding = encoding || 'utf8';
+    if (encodingIsUtf8(encoding) || isSingleByteAsciiEncoding(encoding)) {
+      return {reader: reader, encoding: encoding};
+    }
+    return {
+      reader: new TranscodingReader(reader, encoding, {chunkSize: opts && opts.chunk_size}),
+      encoding: 'utf8'
+    };
   }
 
-  function getDelimHeaderLines(opts) {
-    var skip = opts.csv_skip_lines || 0;
-    if (!opts.csv_field_names) skip++;
-    return skip;
+  // Parse delimited text from a reader returned by openDelimReader().
+  // consumer.header(fields) receives the names of the imported fields.
+  // consumer.row(row) receives an array of string values for each data row.
+  function readDelimRows(input, delim, opts, consumer) {
+    var parser = getDelimLineParser(delim, input.encoding),
+        linesToSkip = opts.csv_skip_lines || 0,
+        maxRows = opts.csv_lines > 0 ? opts.csv_lines : Infinity,
+        rowCount = 0,
+        fields = null,
+        fieldCount, toRecord, rowFilter;
+
+    if (opts.csv_field_names) {
+      initFields(opts.csv_field_names);
+    }
+
+    readLines(input, parser, opts.chunk_size || DEFAULT_CHUNK_SIZE, function(values, count) {
+      if (linesToSkip > 0) {
+        linesToSkip--;
+        return true;
+      }
+      if (!fields) {
+        initFields(values.slice(0, count));
+        return true;
+      }
+      var row = values.slice(0, count);
+      for (var i=count; i<fieldCount; i++) {
+        row.push('');
+      }
+      if (rowFilter && !rowFilter(toRecord(row))) {
+        return true;
+      }
+      consumer.row(row);
+      return ++rowCount < maxRows;
+    });
+
+    function initFields(headers) {
+      var colFilter;
+      if (opts.csv_dedup_fields) {
+        headers = utils.uniqifyNames(headers);
+      }
+      if (opts.csv_fields) {
+        colFilter = getDelimFieldFilter(headers, opts.csv_fields);
+        fields = headers.filter(function(name, i) { return colFilter(i); });
+        parser.setColumns(headers.map(function(name, i) { return colFilter(i); }));
+      } else {
+        fields = headers;
+        parser.setColumns(headers.map(function() { return true; }));
+      }
+      fieldCount = fields.length;
+      if (opts.csv_filter) {
+        rowFilter = getDelimRecordFilterFunction(opts.csv_filter);
+        toRecord = getRowConverter(fields);
+      }
+      consumer.header(fields);
+    }
+  }
+
+  // Read chunks of bytes and parse the complete lines in each chunk.
+  // onLine(values, count) receives the values of each line; it returns false to stop reading.
+  function readLines(input, parser, chunkSize, onLine) {
+    var reader = input.reader,
+        pos = startsWithUtf8BOM(input) ? 3 : 0,
+        stopped = false,
+        buf, isLast, bytesParsed;
+    while (!stopped) {
+      buf = reader.readSync(pos, chunkSize);
+      if (buf.length === 0) break;
+      isLast = buf.length < chunkSize;
+      bytesParsed = parser.parseLines(buf, isLast, function(values, count) {
+        stopped = onLine(values, count) === false;
+        return !stopped;
+      });
+      if (isLast) break;
+      if (bytesParsed === 0 && !stopped) {
+        chunkSize *= 2; // the chunk contains part of a single line
+      }
+      pos += bytesParsed;
+    }
+  }
+
+  function startsWithUtf8BOM(input) {
+    return encodingIsUtf8(input.encoding) &&
+      detectEncodingFromBOM(input.reader.readSync(0, 3)) == 'utf8';
+  }
+
+  // Returns a parser for lines of delimited text in a Buffer.
+  // Like the earlier string-based parser, a quote mark anywhere in a field
+  // toggles quoted text, and a field that starts with a quote mark is unquoted.
+  function getDelimLineParser(delim, encoding) {
+    var DELIM = delim.charCodeAt(0),
+        decode = getValueDecoder(encoding),
+        keep = null, // flags for columns to keep, or null to keep all columns
+        skipFrom = Infinity, // column after the last kept column
+        values = [],
+        count = 0, // number of values in the current line
+        buf, end, isLast,
+        nextQuote, nextCR, nextLF; // cached positions of the next quote and line break bytes
+
+    // flags: array of booleans, indexed by column number
+    function setColumns(flags) {
+      keep = flags;
+      skipFrom = flags.lastIndexOf(true) + 1;
+    }
+
+    // Parse the complete lines in a buffer, calling onLine(values, count) for each line.
+    // isLastChunk: true if the buffer extends to the end of the text (so a final
+    //   line without a line break is complete)
+    // Returns the number of bytes parsed.
+    function parseLines(buffer, isLastChunk, onLine) {
+      var pos = 0, next;
+      buf = buffer;
+      end = buf.length;
+      isLast = isLastChunk;
+      nextQuote = nextCR = nextLF = -1;
+      while (pos < end) {
+        next = parseLine(pos);
+        if (next == -1) break; // incomplete line
+        pos = next;
+        if (!onLine(values, count)) break;
+      }
+      return pos;
+    }
+
+    // Parse a line starting at byte i.
+    // Returns the position of the next line, or -1 if the line is incomplete.
+    function parseLine(i) {
+      // local copies of shared variables are faster in the loop
+      var bytes = buf,
+          n = end,
+          delimByte = DELIM,
+          flags = keep,
+          keepAll = flags === null,
+          skipCol = skipFrom,
+          col = 0,
+          fieldStart = i,
+          inQuotes = false,
+          c, eol;
+      count = 0;
+      while (i < n) {
+        c = bytes[i];
+        if (c > DQUOTE$1 && c != delimByte) {
+          i++; // ordinary character (most common case)
+        } else if (inQuotes) {
+          if (c == DQUOTE$1) inQuotes = false;
+          i++;
+        } else if (c == DQUOTE$1) {
+          inQuotes = true;
+          i++;
+        } else if (c == delimByte) {
+          if (keepAll || flags[col] === true) values[count++] = readValue(fieldStart, i);
+          fieldStart = ++i;
+          if (++col == skipCol) {
+            // All kept fields have been read; try to skip the rest of the line
+            eol = findUnquotedLineBreak(i);
+            if (eol > -1) return endLine(eol);
+          }
+        } else if (c == CR || c == LF) {
+          if (keepAll || flags[col] === true) values[count++] = readValue(fieldStart, i);
+          return endLine(i);
+        } else {
+          i++;
+        }
+      }
+      if (!isLast) return -1;
+      // final line has no line break
+      if (keepAll || flags[col] === true) values[count++] = readValue(fieldStart, i);
+      return n;
+    }
+
+    // i: position of a CR or LF
+    // Returns the position after the line break, or -1 if a CRLF might be split
+    // by the end of the buffer
+    function endLine(i) {
+      if (buf[i] == LF) return i + 1;
+      if (i + 1 < end) return buf[i + 1] == LF ? i + 2 : i + 1;
+      return isLast ? i + 1 : -1;
+    }
+
+    // Returns the position of the line break at the end of the line containing
+    // byte i, or -1 if a quote mark comes first (the line break might be quoted
+    // text) or the line continues past the end of the buffer.
+    // Positions are cached, so successive searches don't re-scan the same bytes.
+    function findUnquotedLineBreak(i) {
+      if (nextLF < i) nextLF = indexOfByte(LF, i);
+      if (nextCR < i) nextCR = indexOfByte(CR, i);
+      var eol = nextLF < nextCR ? nextLF : nextCR;
+      if (eol == end) return -1;
+      if (nextQuote < i) nextQuote = indexOfByte(DQUOTE$1, i);
+      return nextQuote < eol ? -1 : eol;
+    }
+
+    function indexOfByte(c, i) {
+      var j = buf.indexOf(c, i);
+      return j == -1 ? end : j;
+    }
+
+    function readValue(i, j) {
+      if (i == j) return '';
+      if (buf[i] == DQUOTE$1) {
+        // remove enclosing quotes and unescape doubled quotes
+        // (a malformed value may be missing the closing quote)
+        var str = decode(buf, i + 1, j - i > 1 && buf[j - 1] == DQUOTE$1 ? j - 1 : j);
+        return str.indexOf('"') > -1 ? str.replace(/""/g, '"') : str;
+      }
+      return decode(buf, i, j);
+    }
+
+    return {
+      setColumns: setColumns,
+      parseLines: parseLines
+    };
+  }
+
+  // Returns a function for converting a range of bytes to a string
+  function getValueDecoder(encoding) {
+    // ignoreBOM: a value that starts with U+FEFF keeps it
+    var utf8 = new TextDecoder('utf-8', {ignoreBOM: true});
+    var decodeNonAscii = encodingIsUtf8(encoding) ?
+      function(buf, start, end) { return utf8.decode(buf.subarray(start, end)); } :
+      function(buf, start, end) { return decodeString(buf.subarray(start, end), encoding); };
+    return function(buf, start, end) {
+      for (var i=start; i<end; i++) {
+        if (buf[i] > 127) return decodeNonAscii(buf, start, end);
+      }
+      return buf.toString('latin1', start, end);
+    };
+  }
+
+  // Parse a string of delimited text into arrays of values (one array per line)
+  function parseDelimText(text, delim) {
+    var parser = getDelimLineParser(delim, 'utf8'),
+        rows = [];
+    parser.parseLines(encodeString(text, 'utf8'), true, function(values, count) {
+      rows.push(values.slice(0, count));
+      return true;
+    });
+    return rows;
   }
 
   // Adapted from https://github.com/d3/d3-dsv
@@ -43585,40 +45726,6 @@ ${css.join('\n')}
     return new Function('arr', 'return {' + fields.map(function(name, i) {
       return JSON.stringify(name) + ': arr[' + i + '] || ""';
     }).join(',') + '}');
-  }
-
-  function parseDelimHeaderSection(str, delim, opts) {
-    var nodata = {headers: [], import_fields: []},
-        retn = {},
-        i;
-    str = str || '';
-    if (opts.csv_skip_lines > 0) {
-      i = indexOfLine(str, opts.csv_skip_lines + 1);
-      if (i === -1) return nodata;
-      str = str.substr(i);
-    }
-    if (opts.csv_field_names) {
-      retn.headers = opts.csv_field_names;
-    } else {
-      i = indexOfLine(str, 2);
-      if (i === -1) return nodata;
-      retn.headers = parseDelimText(str.slice(0, i), delim)[0];
-      str = str.substr(i);
-    }
-    if (opts.csv_dedup_fields) {
-      retn.headers = utils.uniqifyNames(retn.headers);
-    }
-    if (opts.csv_filter) {
-      retn.row_filter = getDelimRecordFilterFunction(opts.csv_filter);
-    }
-    if (opts.csv_fields) {
-      retn.column_filter = getDelimFieldFilter(retn.headers, opts.csv_fields);
-      retn.import_fields = retn.headers.filter(function(name, i) {return retn.column_filter(i);});
-    } else {
-      retn.import_fields = retn.headers;
-    }
-    retn.remainder = str;
-    return retn;
   }
 
   // Returns a function for filtering records
@@ -43650,264 +45757,15 @@ ${css.join('\n')}
     };
   }
 
-  function readLinesAsString(reader, lines, encoding) {
-    var buf = reader.readSync();
-    var retn = readLinesFromBuffer(buf, lines);
-    var str;
-    if (retn.bytesRead == buf.length && retn.bytesRead < reader.remaining()) {
-      // buffer overflow -- enlarge buffer and read lines again
-      reader.expandBuffer();
-      return readLinesAsString(reader, lines, encoding);
-    }
-    // str = retn.bytesRead > 0 ? retn.buffer.toString('ascii', 0, retn.bytesRead) : '';
-    str = retn.bytesRead > 0 ? decodeString(retn.buffer, encoding) : '';
-    if (reader.position() === 0) {
-     str = trimBOM(str);
-    }
-    reader.advance(retn.bytesRead);
-    return str;
-  }
-
-  function readLinesFromBuffer(buf, linesToRead) {
-    var CR = 13, LF = 10, DQUOTE = 34,
-        inQuotedText = false,
-        lineCount = 0,
-        bufLen = buf.length,
-        i, c;
-
-    lineCount++;
-    for (i=0; i < bufLen && lineCount <= linesToRead; i++) {
-      c = buf[i];
-      if (c == DQUOTE) {
-        inQuotedText = !inQuotedText;
-      } else if ((c == CR || c == LF) && !inQuotedText) {
-        if (c == CR && i + 1 < bufLen && buf[i + 1] == LF) {
-          // first half of CRLF pair: advance one byte
-          i++;
-        }
-        lineCount++;
-      }
-    }
-    return {
-      bytesRead: i,
-      buffer: buf.slice(0, i)
-    };
-  }
-
-  // Convert a string of CSV data into an array of data records
-  // convert: optional function for converting an array record to an object record (values indexed by field names)
-  // colFilter: optional function for filtering columns by numerical column id (0-based); accepts an array record and an id
-  // rowFilter: optional function for filtering rows; accepts a record in object format
-  function parseDelimText(text, delim, convert, colFilter, rowFilter) {
-    var CR = 13, LF = 10, DQUOTE = 34,
-        DELIM = delim.charCodeAt(0),
-        inQuotedText = false,
-        capturing = false,
-        srcCol = -1,
-        records = [],
-        fieldStart, i, c, len, record;
-
-    if (!convert) convert = function(d) {return d;};
-
-    function endLine() {
-      var rec = convert ? convert(record) : record;
-      if (!rowFilter || rowFilter(rec)) records.push(rec);
-      srcCol = -1;
-    }
-
-    function startFieldAt(j) {
-      fieldStart = j;
-      srcCol++;
-      if (srcCol === 0) record = [];
-      if (!colFilter || colFilter(srcCol)) {
-        capturing = true;
-      }
-    }
-
-    function captureField(start, end) {
-      var s;
-      if (!capturing) return;
-      capturing = false;
-      if (start === end) {
-        s = '';
-      } else if (text.charCodeAt(start) == DQUOTE) {
-        s = text.slice(start+1, end-1).replace(/""/g, '"');
-      } else {
-        s = text.slice(start, end);
-      }
-      record.push(s);
-    }
-
-    startFieldAt(0);
-    for (i=0, len=text.length; i < len; i++) {
-      c = text.charCodeAt(i);
-      if (c == DQUOTE) {
-        inQuotedText = !inQuotedText;
-      } else if (inQuotedText) ; else if (c == DELIM) {
-        captureField(fieldStart, i);
-        startFieldAt(i + 1);
-      } else if (c == CR || c == LF) {
-        captureField(fieldStart, i);
-        endLine();
-        if (c == CR && text.charCodeAt(i+1) == LF) {
-          i++; // first half of CRLF pair; skip a char
-        }
-        if (i + 1 < len) startFieldAt(i+1);
-      }
-    }
-
-    if (srcCol > -1) { // finish last line (if file ends without newline)
-      if (capturing) captureField(fieldStart, i);
-      endLine();
-    }
-
-    return records;
-  }
-
   var DelimReader = /*#__PURE__*/Object.freeze({
     __proto__: null,
     getDelimFieldFilter: getDelimFieldFilter,
     getRowConverter: getRowConverter,
-    indexOfLine: indexOfLine,
-    parseDelimHeaderSection: parseDelimHeaderSection,
+    openDelimReader: openDelimReader,
     parseDelimText: parseDelimText,
     readDelimRecords: readDelimRecords,
     readDelimRecordsFromString: readDelimRecordsFromString,
-    readLinesAsString: readLinesAsString
-  });
-
-  function detectEncodingFromBOM(bytes) {
-    // utf8 EF BB BF
-    // utf16be FE FF
-    // utf16le FF FE
-    var n = bytes.length;
-    if (n >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF) return 'utf16be';
-    if (n >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) return 'utf16le';
-    if (n >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) return 'utf8';
-    return '';
-  }
-
-  // Try to detect the encoding of some sample text.
-  // Returns an encoding name or null.
-  // @samples Array of buffers containing sample text fields
-  // TODO: Improve reliability and number of detectable encodings.
-  function detectEncoding(samples) {
-    // score each encoding as 2 (high confidence) 1 (low confidence) or 0 (fail)
-    var candidates = [{
-      // latin1 is the original Shapefile encoding, using as an imperfect fallback
-      // (sorts to the top only if all other encodings score 0)
-      encoding: 'latin1',
-      confidence: 0
-    },{
-      encoding: 'win1252',
-      confidence: looksLikeWin1252(samples)
-    }, {
-      encoding: 'utf8',
-      confidence: looksLikeUtf8(samples)
-    }, {
-      encoding: 'gb18030',
-      confidence: looksLikeGB18030(samples)
-    }];
-    utils.sortOn(candidates, 'confidence', 'descending');
-    return candidates[0];
-  }
-
-  function decodeSamples(enc, samples) {
-    return samples.map(function(buf) {
-      return decodeString(buf, enc).trim();
-    });
-  }
-
-  // Win1252 is the same as Latin1, except it replaces a block of control
-  // characters with n-dash, Euro and other glyphs. Encountered in-the-wild
-  // in Natural Earth (airports.dbf uses n-dash).
-  //
-  // Quick-and-dirty win1251 detection: decoded string contains mostly common ascii
-  // chars and almost no chars other than word chars + punctuation.
-  // This excludes encodings like Greek, Cyrillic or Thai, but
-  // is susceptible to false positives with encodings like codepage 1250 ("Eastern
-  // European").
-  //
-  function looksLikeWin1252(samples) {
-        //common l.c. ascii chars
-    var commonAscii = 'abcdefghijklmnopqrstuvwxyz0123456789.()\'"?+-\n,:;/|_$% ',
-        // more common extended chars + NBS (found in the wild)
-        moreChars = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ°–±’‘' + '\xA0',
-        str = decodeSamples('win1252', samples).join(''),
-        commonAsciiPct = calcCharPct(str, commonAscii),
-        expandedPct = calcCharPct(str, moreChars) + commonAsciiPct;
-    var high = expandedPct > 0.98 && commonAsciiPct >= 0.8;
-    var low = expandedPct > 0.97 && commonAsciiPct >= 0.6;
-    return getScore(high, low);
-  }
-
-  function looksLikeUtf8(samples) {
-    // Reject string if it contains the "replacement character" after decoding
-    // as utf-8
-    var str = decodeSamples('utf8', samples).join('');
-    var invalidPct = getInvalidPct(str);
-    var high = invalidPct == 0;
-    var low = invalidPct < 0.03;
-    return getScore(high, low);
-  }
-
-  function looksLikeGB18030(samples) {
-    // from Jun Da's frequency table
-    var commonHanZi = '的一了是不我他在人有这来个说上你们到地大着子那就也时道中出得为里下她要么去可以过和看之然后会自没小好生天而起对能还事想都心只家面样把国多又于头年手发如什开前当所无知老但见长已军从方声儿回意作话两点现很成身情十用些走经同进动己三行种向日明女正问此学太打间分因给本眼定二气力被门真法外听实其高先几笑再主将山战才口文最部第它西与全白者便相住公使东等边信像斯机光次感神却死理名重四做别叫王并水月果何位怎马常觉海张少处亲安特美呢色原直望命由候吧让应尔难关许车平师民夫书新接吗路利世比放活快总立队更花爱清五内金带工风克任至指往入空德吃表连解教思飞物电受今完林干代告兵加认通找远非性脸体轻记目令变似反南场跟必石拉士报李火且满该孩字红象即结言员房件万条提写或坐北早失离步陈乎请转近切黑深城办倒各父传音站官半男击合阿英决怕杀未形及算青黄落刚百论谁突交团度义罗始强紧敌八母钱极片化流管惊每题晚虽政兴答司妈夜越啊奇达谈武友数领朝保服曾拿则哪格尽根急语容喜求衣留双影刻制随冷九苦量备布照周故准客船江系姐争功怪星断句龙竟视界讲取古六静底精七河久绝阳识哈台确息期整伤忙娘终剑送计愿欢微您沉装敢云脚消若复收千木乐毛华集树弟皇响希诉号巴穿线汉攻呀警派刘酒雷停史阵错建足显丽另包势破亮首志观病热跑业治田冲运约暗待共院仍区害元哥围屋胡产室调类细议爷注易务众帝市摇乱密姑斗除式示睛楼造朋社持慢般皮京况块忽脑校甚查土怀福单联赶背统喝疑支血饭灵够章群威举兰游器察嘴痛铁掉宝历改推枪念参术帮党据品须居称旁退梦科岁低严引吉睡爸呼追局露维苏证村挥独节谢香亚波角案读图左掌假跳究楚余鬼钟座礼展玉肯既止守广考恩异料段尼画续米草胜存唐医程弹烟商顾招宗堂野初府激雨尚渐诗顿伯孙际沙雪板闻导致护春态基设耳简婚幸味右买演权卡继依恶庄炮亦虎州刀球需兄闪笔否烈玩啦逃排仅弄具散默景顶郑洋丝卫速侠差贵君习妇助恐救湖莫窗险顺封佛委旧印伙妹副宫洞永罪松责组防艺营班试鲁宋靠索灯介翻喊纪秘妻纸银略充戏担某杨射魔遇鱼陆级坏忘乡鲜哭费抓叶醒族纳床咱桌境列午振抱专毫店街怒托剧置秋藏赵划普岛较承脱革忍伸份免齐抗猛园临犯食架选歌按败良隐养属洛朱狂修坚压寻旅谋温探资端投泪阴换药麻施丈冰雄著绿职负短模荣遗农叹川毒吴蒋卖范禁杂富秀县祖梅谷凡刺登蓝奶缓姓牛价规篇劳质婆仙馆摆舞层狗占墙善熟验肉臣状呆圣懂袋唱值迷替归巨讨毕批镇吸森拍灭握伊杰勒卷偷奔省谓危付伦休厅预迎罢恨博亡欲悲宣标闹岸';
-    var str = decodeSamples('gb18030', samples).join('');
-    // Almost all the common Unicode Hanzi are in this range (along with many more uncommon ones)
-    var chineseStr = str.replace(/[^\u4e00-\u9fa5]/g, '');
-    var chinesePct = chineseStr.length / str.length;
-    var commonAsciiStr = extractCommonAsciiChars(str);
-    var commonAsciiPct = commonAsciiStr.length / str.length;
-    // Some encodings get converted almost completely into valid (but mostly
-    // uncommon) Chinese characters by the gb18030 converter.
-    // To guard against this, we're requiring that a certain percentage of
-    // characters be on a list of the most common characters.
-    var commonHanZiPct = calcCharPct(chineseStr, commonHanZi);
-    // check for non-convertible characters
-    var invalidPct = getInvalidPct(str);
-    var high = chinesePct > 0.5 && (chinesePct + commonAsciiPct) > 0.9 &&
-        invalidPct === 0 && commonHanZiPct > 0.25;
-    var low = chinesePct > 0.3 && (chinesePct + commonAsciiPct) > 0.8 &&
-        commonHanZiPct > 0.15;
-    return getScore(high, low);
-  }
-
-  function getScore(high, low) {
-    return high && 2 || low && 1 || 0;
-  }
-
-  function getInvalidPct(str) {
-    // count occurences of the "replacement" character
-    var invalidCount = (str.match(/\ufffd/g) || []).length;
-    return invalidCount / str.length;
-  }
-
-  function extractCommonAsciiChars(str) {
-    return str.replace(/[^a-zA-Z0-9.()'"?+\n,:;/|_$% -]/g, '');
-  }
-
-  // Calc percentage of chars in a string that are present in a second string
-  // @chars String of chars to look for in @str
-  function calcCharPct(str, chars) {
-    var index = {},
-        count = 0;
-    str = str.toLowerCase();
-    for (var i=0, n=chars.length; i<n; i++) {
-      index[chars[i]] = 1;
-    }
-    for (i=0, n=str.length; i<n; i++) {
-      count += index[str[i]] || 0;
-    }
-    return count / str.length || 0;
-  }
-
-  var EncodingDetection = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    decodeSamples: decodeSamples,
-    detectEncoding: detectEncoding,
-    detectEncodingFromBOM: detectEncodingFromBOM
+    readDelimRows: readDelimRows
   });
 
   // Convert a string containing delimited text data into a dataset object
@@ -43920,60 +45778,140 @@ ${css.join('\n')}
     // TODO: remove duplication with importJSON()
     var readFromFile = !data.content && data.content !== '',
         content = data.content,
-        reader, records, delimiter, table, encoding;
+        encoding = opts && opts.encoding,
+        reader, input, records, delimiter, table;
     opts = opts || {};
-
-    // // read content of all but very large files into a buffer
-    // if (readFromFile && cli.fileSize(data.filename) < 2e9) {
-    //   content = cli.readFile(data.filename);
-    //   readFromFile = false;
-    // }
 
     if (readFromFile) {
       reader = new FileReader(data.filename);
     } else if (content instanceof ArrayBuffer || content instanceof B$3 || content instanceof Uint8Array) {
       // Web API may import as ArrayBuffer, to support larger files
       reader = new BufferReader(content);
-      content = null;
       // BufferReader keeps its own reference; release the caller's so we
       // don't hold both the source bytes and the parsed records in memory
       // for the duration of the parse.
       data.content = null;
-    } else if (utils.isString(content)) ; else {
+    } else if (utils.isString(content)) {
+      reader = new BufferReader(encodeString(content, 'utf8'));
+      encoding = 'utf8';
+    } else {
       error("Unexpected object type");
     }
 
-    if (reader) {
-      encoding = detectEncodingFromBOM(reader.readSync(0, Math.min(reader.size(), 3)));
-      // Files in some encodings have to be converted to strings before parsing
-      // Other encodings are similar enough to ascii that CSV can be parsed
-      // byte-by-byte.
-      if (encoding == 'utf16be' || encoding == 'utf16le') {
-        content = trimBOM(reader.toString(encoding));
-        reader = null;
-      } else if (opts.encoding && !encodingIsAsciiCompat(opts.encoding)) {
-        content = reader.toString(opts.encoding);
-        reader = null;
-      }
-    }
-
-    if (reader) {
-      delimiter = guessDelimiter(readFirstChars(reader, 2000));
-      records = readDelimRecords(reader, delimiter, opts);
+    input = openDelimReader(reader, encoding, opts);
+    delimiter = guessDelimiter(bufferToString(input.reader.readSync(0, 2000)));
+    if (delimiter == ' ') {
+      records = readFixedWidthRecordsFromString(readAllText(input));
+      adjustRecordTypes(records, opts);
     } else {
-      delimiter = guessDelimiter(content);
-      records = readDelimRecordsFromString(content, delimiter, opts);
+      records = readTypedDelimRecords(input, delimiter, opts);
     }
     if (records.length === 0) {
       message("Unable to read any data records");
     }
-    adjustRecordTypes(records, opts);
     table = new DataTable(records);
     deleteFields(table, isInvalidFieldName);
     return {
       layers: [{data: table}],
       info: {input_delimiter: delimiter}
     };
+  }
+
+  function readAllText(input) {
+    return bufferToString(input.reader.readSync(0, Infinity), input.encoding);
+  }
+
+  // Read records from delimited text, converting numeric fields to numbers.
+  // Field types are detected as rows are read, which is much faster than a
+  // separate pass over the records when there are many fields.
+  function readTypedDelimRecords(input, delim, opts) {
+    var rows = [],
+        types = null;
+    readDelimRows(input, delim, opts, {
+      header: function(fields) {
+        types = new DelimFieldTypes(fields, opts);
+      },
+      row: function(row) {
+        types.testRow(row);
+        rows.push(row);
+      }
+    });
+    return types ? types.convertRows(rows) : [];
+  }
+
+  // Detects the type of each field, one row at a time (using the same rules as
+  // adjustRecordTypes()), then converts rows of values to records.
+  function DelimFieldTypes(fields, opts) {
+    var typeIndex = getFieldTypeHints(opts),
+        singleType = typeIndex['*'],
+        parseNumber = opts.decimal_comma ? utils.parseIntlNumber : utils.parseNumber,
+        columns = getRecordColumns(fields),
+        numeric = [],    // true for columns that are converted to numbers
+        candidates = [], // columns that may contain numbers
+        hasNumber = [];  // true for candidate columns that contain a number
+
+    columns.forEach(function(col) {
+      var typeHint = typeIndex[fields[col]];
+      if (typeHint == 'number' || singleType == 'number') {
+        numeric[col] = true;
+      } else if (typeHint != 'string' && singleType != 'string') {
+        candidates.push(col);
+      }
+    });
+
+    this.testRow = function(row) {
+      var dropped = false, col, raw;
+      for (var i=0; i<candidates.length; i++) {
+        col = candidates[i];
+        raw = row[col];
+        if (raw === '') continue;
+        if (parseNumber(raw) !== null) {
+          hasNumber[col] = true;
+        } else if (!isMissingValue(raw)) {
+          candidates[i] = -1;
+          dropped = true;
+        }
+      }
+      if (dropped) {
+        candidates = candidates.filter(function(col) { return col > -1; });
+      }
+    };
+
+    this.convertRows = function(rows) {
+      var detected = candidates.filter(function(col) { return hasNumber[col]; });
+      detected.forEach(function(col) { numeric[col] = true; });
+      if (detected.length > 0) {
+        message(utils.format("Auto-detected number field%s: %s",
+          detected.length == 1 ? '' : 's',
+          detected.map(function(col) { return fields[col]; }).join(', ')));
+      }
+      // Use object-literal syntax (faster than alternative)
+      var convert = new Function('row', 'parseNumber', 'return {' + columns.map(function(col) {
+        var val = numeric[col] ? 'parseNumber(row[' + col + '])' : 'row[' + col + ']';
+        return JSON.stringify(fields[col]) + ': ' + val;
+      }).join(', ') + '}');
+      for (var i=0; i<rows.length; i++) {
+        rows[i] = convert(rows[i], parseNumber);
+      }
+      return rows;
+    };
+  }
+
+  // Returns the column that supplies the value of each field in a record.
+  // If a name is repeated, the last column with the name supplies the value
+  // (matching an object literal with a repeated key).
+  function getRecordColumns(fields) {
+    var index = new Map();
+    fields.forEach(function(name, col) {
+      index.set(name, col); // Map keeps the insertion order of the first occurrence
+    });
+    return Array.from(index.values());
+  }
+
+  // Empty values and NA values (e.g. from R) are allowed in numeric fields
+  function isMissingValue(raw) {
+    var str = raw ? raw.trim() : '';
+    return str.length === 0 || str == 'NA' || str == 'NaN';
   }
 
   var supportedDelimiters = ['|', '\t', ',', ';', ' '];
@@ -44080,13 +46018,12 @@ ${css.join('\n')}
   function tryNumericField(key, records, parseNumber) {
     var arr = [],
         count = 0,
-        raw, str, num;
+        raw, num;
     for (var i=0, n=records.length; i<n; i++) {
       raw = records[i][key];
       num = parseNumber(raw);
       if (num === null) {
-        str = raw ? raw.trim() : '';
-        if (str.length > 0 && str != 'NA' && str != 'NaN') { // ignore NA values ("NA" seen in R output)
+        if (!isMissingValue(raw)) {
           return null; // unparseable value -- fail
         }
       } else {
@@ -45292,9 +47229,13 @@ ${css.join('\n')}
         },
         // a label can carry a symbol at its anchor
         labelIconOpts = {
-          icon: {describe: 'symbol drawn at the label anchor: circle, square, ring, star'},
+          icon: {describe: 'symbol drawn at the label anchor: circle, square, ring, star, polygon'},
           'icon-size': {describe: 'size of the anchor symbol in px'},
-          'icon-color': {describe: 'color of the anchor symbol (defaults to the text color)'},
+          'icon-sides': {describe: '(polygon) number of sides of the anchor symbol'},
+          'icon-fill': {describe: 'fill of the anchor symbol, or none (defaults to the text color; a ring has none)'},
+          'icon-stroke': {describe: 'stroke color of the anchor symbol, or none (a ring\'s defaults to the text color)'},
+          'icon-stroke-width': {describe: 'stroke width of the anchor symbol in px'},
+          'icon-color': {describe: 'color of the anchor symbol: a ring\'s stroke, other shapes\' fill'},
           'icon-opacity': {describe: 'opacity of the anchor symbol, 0-1'}
         },
         // style properties of points, lines and polygons, accepted by -style and
@@ -45322,12 +47263,17 @@ ${css.join('\n')}
           'line-end': {describe: 'marker at the end of each line: arrow, open-arrow, dot or none'},
           'line-end-size': {describe: 'length of an arrowhead\'s sides in px (default grows with stroke-width)'},
           'line-fade': {describe: 'share of a line (0-1) that fades in from its tail'},
+          'casing-color': {describe: 'color of a casing (outline) drawn beneath each line (adds the casing)'},
+          'casing-width': {describe: 'how far the casing extends past each edge of the line, in px (default is 1)'},
+          'casing-opacity': {describe: 'opacity of the casing, 0-1'},
           opacity: {describe: 'opacity; example: 0.5'},
           r: {describe: 'symbol radius (set this to export points as circles)'},
-          icon: {describe: 'point icon shape; one of: circle, square, ring, star'},
-          'icon-size': {describe: 'point icon size in pixels'},
-          'icon-color': {describe: 'point icon color (defaults to fill color, then black)'},
-          'icon-opacity': {describe: 'point icon opacity, 0-1'}
+          // Accepted, but left out of the help: from when labels and their icons
+          // were styled with -style. Icons are made by -symbols and -labels.
+          icon: {},
+          'icon-size': {},
+          'icon-color': {},
+          'icon-opacity': {}
         },
         noReplaceOpt2 = { // for -calc and -info
           alias: '+',
@@ -47458,27 +49404,29 @@ ${css.join('\n')}
       .option('target', targetOpt);
 
     parser.command('symbols')
-      .describe('symbolize points as arrows, circles, stars, polygons, etc.')
-      .option('type', {
-        describe: 'types: arrow, circle, square, star, polygon, ring, pie'
+      .describe('symbolize points as arrows, circles, stars, etc. (as icon= fields)')
+      .option('ids', {
+        describe: 'comma-sep. list of ids of the points to symbolize (default is all)',
+        type: 'numbers'
       })
-      .option('stroke', {})
-      .option('stroke-width', {})
+      .option('type', {
+        describe: 'types: arrow, circle, square, star, polygon, ring, pie, curve'
+      })
       .option('fill', {
-        describe: 'symbol fill color (filled symbols only)'
+        describe: 'symbol fill color, or none (a ring with no stroke= is drawn in it)'
       })
       .option('stroke', {
-        describe: 'symbol line color (linear symbols only)'
+        describe: 'symbol outline color, or a stick arrow\'s line color'
       })
       .option('stroke-width', {
-        describe: 'symbol line width (linear symbols only)'
+        describe: 'symbol outline width, or a stick arrow\'s line width'
       })
       .option('opacity', {
         describe: 'symbol opacity'
       })
       .option('geographic', {
         old_alias: 'polygons',
-         describe: 'make geographic shapes instead of SVG objects',
+         describe: 'replace points with polygon shapes instead of symbol fields',
         type: 'flag'
       })
       .option('pixel-scale', {
@@ -47513,11 +49461,11 @@ ${css.join('\n')}
       })
       .option('point-ratio', {
         old_alias: 'star-ratio',
-        describe: '(star) ratio of minor to major radius of star',
+        // not implemented
         type: 'number'
       })
       .option('radii', {
-        describe: '(ring) comma-sep. list of concentric radii, ascending order'
+        describe: '(ring) comma-sep. list of concentric radii, ascending order (default is one ring of radius=)'
       })
       .option('hole', {
         describe: '(pie) radius of the hole in a donut symbol'
@@ -47577,6 +49525,27 @@ ${css.join('\n')}
       })
       .option('anchor', {
         describe: '(arrow) takes one of: start, middle, end (default is start)'
+      })
+      .option('stroke-dasharray', {
+        describe: '(curve) dashes, e.g. "4 2"'
+      })
+      .option('line-start', {
+        describe: '(curve) marker at the start: arrow, open-arrow, dot or none'
+      })
+      .option('line-end', {
+        describe: '(curve) marker at the end: arrow, open-arrow, dot or none'
+      })
+      .option('line-end-size', {
+        describe: '(curve) size of the end markers in pixels'
+      })
+      .option('line-fade', {
+        describe: '(curve) share of the curve that fades in from its tail, 0-1'
+      })
+      .option('coordinates', {
+        describe: 'add a symbol at x,y (or x,y,x,y,... for a curve)'
+      })
+      .option('properties', {
+        describe: 'with coordinates=, other attributes as a JSON object'
       })
       .option('effect', {})
       // .option('where', whereOpt)
@@ -47716,6 +49685,28 @@ ${css.join('\n')}
       })
       .option('coordinates', {
         describe: 'x,y of the label anchor, or x,y,x,y,... of a curve\'s knots'
+      })
+      .option('target', targetOpt);
+
+    parser.command('update-symbol')
+      // .describe('move an existing symbol, or the knots of a curve symbol')
+      .option('ids', {
+        describe: 'feature id of the symbol to update',
+        type: 'numbers'
+      })
+      .option('coordinates', {
+        describe: 'x,y of the symbol, or x,y,x,y,... of a curve\'s knots'
+      })
+      .option('target', targetOpt);
+
+    parser.command('update-point')
+      // .describe('move an existing point')
+      .option('ids', {
+        describe: 'feature id of the point to update',
+        type: 'numbers'
+      })
+      .option('coordinates', {
+        describe: 'x,y of the point'
       })
       .option('target', targetOpt);
 
@@ -49305,19 +51296,15 @@ ${css.join('\n')}
         return;
       }
       setShapeType('polygon');
-      if (isHole === true && area > 0 || isHole === false && area < 0) {
-        // GeoJSON rings may be either direction -- no point in logging reversal
-        // verbose("Reversing", isHole ? "a CW hole" : "a CCW ring");
-        points.reverse();
-      }
-      this.importPath(points);
+      // GeoJSON rings may be either direction -- no point in logging reversal
+      this.importPath(points, isHole === true && area > 0 || isHole === false && area < 0);
     };
 
-    // Import an array of [x, y] Points
-    this.importPath = function importPath(points) {
-      var p;
-      for (var i=0, n=points.length; i<n; i++) {
-        p = points[i];
+    // Import an array of [x, y] Points, optionally in reverse order
+    this.importPath = function importPath(points, reversed) {
+      var n = points.length, p;
+      for (var i=0; i<n; i++) {
+        p = points[reversed ? n - 1 - i : i];
         this.addPoint(p[0], p[1]);
       }
       this.endPath();
@@ -52817,7 +54804,8 @@ ${css.join('\n')}
     groups.forEach(function(group) {
       var features = [];
       collectFeatures(group.node, {}, features, {
-        forcePolylinePaths: layerHasOpenPaths(group.node)
+        forcePolylinePaths: layerHasOpenPaths(group.node),
+        casingGroupId: getCasingGroupId(group.name)
       });
       if (features.length === 0) return;
       layerData.push({
@@ -53139,6 +55127,9 @@ ${css.join('\n')}
     var inherited = extendProps(inheritedStyles, nodeStyles);
 
     if (tag == 'defs') return;
+    // A line layer's casings are copies of its lines (see svg-line-casing.mjs)
+    if (tag == 'g' && layerOpts && node.getAttribute &&
+        node.getAttribute('id') == layerOpts.casingGroupId) return;
     if (tag == 'g' || tag == 'svg') {
       getElementChildren(node).forEach(function(child) {
         collectFeatures(child, inherited, features, layerOpts);
@@ -53302,12 +55293,12 @@ ${css.join('\n')}
       var coords = path.coords;
       if (coords.length < 2) return;
       if (forcePolylinePaths) {
-        lines.push(path.closed || pointsEqual$1(coords[0], coords[coords.length - 1]) ? closeRing$1(coords) : coords);
+        lines.push(path.closed || pointsEqual$1(coords[0], coords[coords.length - 1]) ? closeRing(coords) : coords);
         return;
       }
       if (path.closed || pointsEqual$1(coords[0], coords[coords.length - 1])) {
         if (coords.length >= 3) {
-          rings.push(closeRing$1(coords));
+          rings.push(closeRing(coords));
         }
       } else {
         lines.push(coords);
@@ -53611,7 +55602,7 @@ ${css.join('\n')}
     return /translate\(/i.test(String(str || ''));
   }
 
-  function closeRing$1(coords) {
+  function closeRing(coords) {
     var ring = coords.map(function(p) { return [p[0], p[1]]; });
     if (!pointsEqual$1(ring[0], ring[ring.length - 1])) {
       ring.push([ring[0][0], ring[0][1]]);
@@ -55059,7 +57050,7 @@ ${css.join('\n')}
     if (!dataset) return;
     crs = getDatasetCRS(dataset);
     if (crs && crs.is_latlong) {
-      warn('Fitting a label curve to unprojected coordinates. Consider using -proj first.');
+      warn('Fitting a curve to unprojected coordinates. Consider using -proj first.');
     }
   }
 
@@ -55561,7 +57552,7 @@ ${css.join('\n')}
   // Kept in a module of its own so that both the renderer (svg-symbols.mjs) and
   // the -style command can use it without forming an import cycle.
 
-  var iconNames = ['circle', 'square', 'ring', 'star'];
+  var iconNames = ['circle', 'square', 'ring', 'star', 'polygon', 'arrow', 'pie', 'curve'];
 
   // Icons that render everywhere but are not advertised: the GUI offers them only
   // to some users (see gui-nyt.mjs), and a map made with one has to draw the same
@@ -56351,322 +58342,6 @@ ${css.join('\n')}
     bboxToPolygon: bboxToPolygon
   });
 
-  // Apply rotation, scale and/or shift to some or all of the features in a dataset
-  //
-  cmd.affine = function(targetLayers, dataset, opts) {
-    // Need to separate the targeted shapes from any other shapes that share
-    // the same topology. So we duplicate any arcs that are shared by the targeted
-    // shapes and their topological neighbors and remap arc references in the
-    // neighbors to point to the copies.
-    // TODO: explore alternative: if some arcs are shared between transformed and
-    //   non-transformed shapes, first remove topology, then tranform, then rebuild topology
-    //
-    var rotateArg = opts.rotate || 0;
-    var scaleArg = opts.scale || 1;
-    var shiftArg = opts.shift ? convertIntervalPair(opts.shift, getDatasetCRS(dataset)) : [0, 0];
-    var arcs = dataset.arcs;
-    var targetShapes = [];
-    var otherShapes = [];
-    var targetPoints = [];
-    var targetPointLayers = [];
-    var targetFlags, otherFlags, transform;
-    dataset.layers.filter(layerHasGeometry$1).forEach(function(lyr) {
-      var hits = [],
-          misses = [],
-          test;
-      if (targetLayers.indexOf(lyr) == -1) {
-        misses = lyr.shapes;
-      } else if (opts.where) {
-        test = compileFeatureExpression(opts.where, lyr, dataset.arcs);
-        lyr.shapes.forEach(function(shp, i) {
-          (test(i) ? hits : misses).push(shp);
-        });
-      } else {
-        hits = lyr.shapes;
-      }
-      if (lyr.geometry_type == 'point') {
-        targetPoints = targetPoints.concat(hits);
-        if (hits.length > 0) targetPointLayers.push(lyr);
-      } else {
-        targetShapes = targetShapes.concat(hits);
-        otherShapes = otherShapes.concat(misses);
-      }
-    });
-    var anchorArg = getAffineAnchor({arcs: dataset.arcs, layers: [{
-      geometry_type: 'point', shapes: targetPoints}, {geometry_type: 'polyline',
-      shapes: targetShapes}]}, opts);
-    transform = getAffineTransform(rotateArg, scaleArg, shiftArg, anchorArg);
-    if (opts.fit_bbox) {
-      transform = getFitBoxTransform(opts.fit_bbox, targetPoints, targetShapes, arcs);
-    }
-    if (targetShapes.length > 0) {
-      targetFlags = new Uint8Array(arcs.size());
-      otherFlags = new Uint8Array(arcs.size());
-      countArcsInShapes(targetShapes, targetFlags);
-      if (otherShapes.length > 0) {
-        countArcsInShapes(otherShapes, otherFlags);
-        applyArrayMask(otherFlags, targetFlags);
-        noteDatasetWillChange(dataset, {operation: 'affine', unit: 'arcs'});
-        dataset.arcs = duplicateSelectedArcs(otherShapes, arcs, otherFlags);
-        markDatasetChanged(dataset, {operation: 'affine', unit: 'arcs'});
-      }
-      dataset.arcs.transformPoints(function(x, y, arcId) {
-        if (arcId < targetFlags.length && targetFlags[arcId] > 0) {
-          return transform(x, y);
-        }
-      });
-    }
-    targetPointLayers.forEach(function(lyr) {
-      noteLayerWillChange(lyr, {operation: 'affine', unit: 'shapes'});
-    });
-    forEachPoint(targetPoints, function(p) {
-      var p2 = transform(p[0], p[1]);
-      p[0] = p2[0];
-      p[1] = p2[1];
-    });
-    targetPointLayers.forEach(function(lyr) {
-      markLayerChanged(lyr, {operation: 'affine', unit: 'shapes'});
-    });
-  };
-
-  function getAffineAnchor(dataset, opts) {
-    var anchor, bounds;
-    if (opts.anchor) {
-      anchor = opts.anchor;
-    } else {
-      // get bounds of selected shapes to calculate center of rotation/scale
-      bounds = getDatasetBounds(dataset);
-      anchor = [bounds.centerX(), bounds.centerY()];
-    }
-    return anchor;
-  }
-
-  // TODO: handle problems with unprojected datasets
-  //   option 1: don't allow affine transformation of unprojected data
-  //   option 2: error if transformed data exceeds valid coordinate range
-  // source: http://mathworld.wolfram.com/AffineTransformation.html
-  function getAffineTransform(rotation, scale, shift, anchor) {
-    var angle = rotation * Math.PI / 180;
-    var a = scale * Math.cos(angle);
-    var b = -scale * Math.sin(angle);
-    return function(x, y) {
-      var x2 = a * (x - anchor[0]) - b * (y - anchor[1]) + shift[0] + anchor[0];
-      var y2 = b * (x - anchor[0]) + a * (y - anchor[1]) + shift[1] + anchor[1];
-      return [x2, y2];
-    };
-  }
-
-  function getFitBoxTransform(bbox, points, shapes, arcs) {
-    var dataset = {
-      arcs: arcs,
-      layers: []
-    };
-    if (points && points.length) {
-      dataset.layers.push({
-        geometry_type: 'point',
-        shapes: points
-      });
-    }
-    if (shapes && shapes.length) {
-      dataset.layers.push({
-        geometry_type: 'polyline',
-        shapes: shapes
-      });
-    }
-    var frame = calcFrameData(dataset, {fit_bbox: bbox});
-    var fromBounds = new Bounds(frame.bbox);
-    var toBounds = new Bounds(frame.bbox2);
-    var fwd = fromBounds.getTransform(toBounds, false);
-    return function(x, y) {
-      return fwd.transform(x, y);
-    };
-  }
-
-  function applyArrayMask(destArr, maskArr) {
-    for (var i=0, n=destArr.length; i<n; i++) {
-      if (maskArr[i] === 0) destArr[i] = 0;
-    }
-  }
-
-  function duplicateSelectedArcs(shapes, arcs, flags) {
-    var arcCount = 0;
-    var vertexCount = 0;
-    var data = arcs.getVertexData();
-    var xx = [], yy = [], nn = [], map = [], n;
-    for (var i=0, len=flags.length; i<len; i++) {
-      if (flags[i] > 0) {
-        map[i] = arcs.size() + arcCount;
-        n = data.nn[i];
-        utils.copyElements(data.xx, data.ii[i], xx, vertexCount, n);
-        utils.copyElements(data.yy, data.ii[i], yy, vertexCount, n);
-        nn.push(n);
-        vertexCount += n;
-        arcCount++;
-      }
-    }
-    forEachArcId(shapes, function(id) {
-      var absId = absArcId(id);
-      if (flags[absId] > 0) {
-        return id < 0 ? ~map[absId] : map[absId];
-      }
-    });
-    return mergeArcs([arcs, new ArcCollection(nn, xx, yy)]);
-  }
-
-  var roundCoord$1 = getRoundingFunction(0.01);
-
-  function getSymbolFillColor(d) {
-    return d.fill || 'magenta';
-  }
-
-  function getSymbolStrokeColor(d) {
-    return d.stroke || d.fill || 'magenta';
-  }
-
-  function applySymbolStyles(sym, d) {
-    if (sym.type == 'polyline') {
-      sym.stroke = getSymbolStrokeColor(d);
-    } else {
-      sym.fill = getSymbolFillColor(d);
-    }
-    if (d.opacity) {
-      sym.opacity = d.opacity;
-    }
-    return sym;
-  }
-
-  function getSymbolRadius(d) {
-    if (d.radius === 0 || d.length === 0 || d.r === 0) return 0;
-    return d.radius || d.length || d.r || 5; // use a default value
-  }
-
-  // Converts the value of a list-valued option into an array of items. The value
-  // arrives either as a whole string (from a direct call, rather than from the
-  // -symbols option accessor) or as an array of items already resolved one by
-  // one. An item that holds an array of its own, as an expression like
-  // [R, R * 0.5] does, is flattened into the list. Items themselves are left
-  // unsplit, because a single item can contain a comma, as rgba() colors do.
-  function toItemList(val) {
-    var items = utils.isString(val) ? splitListItems(val) : [].concat(val);
-    var list = [];
-    for (var i=0; i<items.length; i++) {
-      if (Array.isArray(items[i])) {
-        list = list.concat(items[i]);
-      } else {
-        list.push(items[i]);
-      }
-    }
-    return list;
-  }
-
-  // Like toItemList(), for options that take numbers. An item that is a string
-  // containing commas is split, so that a data field holding a value like "2,4"
-  // works as a list. Values that aren't numbers become NaN, for the caller to
-  // report or ignore.
-  function toNumberList(val) {
-    var list = [];
-    toItemList(val).forEach(function(item) {
-      if (utils.isString(item) && item.indexOf(',') > -1) {
-        list = list.concat(parseNumberList(item));
-      } else {
-        list.push(Number(item));
-      }
-    });
-    return list;
-  }
-
-  // Returns the radius of the smallest circle centered on a symbol's point that
-  // covers the symbol, or null if the symbol contains a part whose reach can't be
-  // measured.
-  //
-  // Only a symbol drawn around its point can be described this way: a circle, or
-  // a group of the circles and polygons that make up ring, pie and donut symbols.
-  // An arrow is drawn from its point outward, so the circle around its point that
-  // covers it says nothing useful about the space it occupies -- arrows are plain
-  // polygon symbols, which reach this function only as group parts, which they
-  // never are.
-  function getSymbolBoundingRadius(sym) {
-    var max = 0;
-    var parts, r, i;
-    if (!sym) return null;
-    if (sym.type == 'circle') {
-      // Half of a stroke lies outside the circle it follows, which is how a ring
-      // symbol paints its bands.
-      return getPositiveNumber(sym.r) + getStrokeOutset(sym);
-    }
-    if (sym.type == 'polygon') {
-      forEachSymbolCoord(sym.coordinates || [], function(p) {
-        var dist = Math.sqrt(p[0] * p[0] + p[1] * p[1]);
-        if (dist > max) max = dist;
-      });
-      return max + getStrokeOutset(sym);
-    }
-    if (sym.type == 'group') {
-      parts = sym.parts || [];
-      for (i=0; i<parts.length; i++) {
-        r = getSymbolBoundingRadius(parts[i]);
-        if (r === null) return null;
-        if (r > max) max = r;
-      }
-      return max;
-    }
-    return null;
-  }
-
-  // A stroke straddles the path it is drawn on, so half of its width extends
-  // beyond the shape.
-  function getStrokeOutset(sym) {
-    var width = sym['stroke-width'];
-    if (!sym.stroke || sym.stroke == 'none') return 0;
-    // an SVG stroke is one pixel wide unless stroke-width says otherwise
-    if (width === undefined || width === null || width === '') return 0.5;
-    return getPositiveNumber(width) / 2;
-  }
-
-  function getPositiveNumber(val) {
-    var num = +val;
-    return num > 0 ? num : 0;
-  }
-
-  function forEachSymbolCoord(coords, cb) {
-    var isPoint = coords && utils.isNumber(coords[0]);
-    var isNested = !isPoint && coords && Array.isArray(coords[0]);
-    if (isPoint) return cb(coords);
-    for (var i=0; i<coords.length; i++) {
-      if (isNested) forEachSymbolCoord(coords[i], cb);
-    }
-  }
-
-  function flipY(coords) {
-    forEachSymbolCoord(coords, function(p) {
-      p[1] = -p[1];
-    });
-  }
-
-  function scaleAndShiftCoords(coords, scale, shift) {
-    forEachSymbolCoord(coords, function(xy) {
-      xy[0] = xy[0] * scale + shift[0];
-      xy[1] = xy[1] * scale + shift[1];
-    });
-  }
-
-  function roundCoordsForSVG(coords) {
-    forEachSymbolCoord(coords, function(p) {
-      p[0] = roundCoord$1(p[0]);
-      p[1] = roundCoord$1(p[1]);
-    });
-  }
-
-  function rotateCoords(coords, rotation) {
-    if (!rotation) return;
-    var f = getAffineTransform(rotation, 1, [0, 0], [0, 0]);
-    forEachSymbolCoord(coords, function(p) {
-      var p2 = f(p[0], p[1]);
-      p[0] = p2[0];
-      p[1] = p2[1];
-    });
-  }
-
   // mapshaper-svg.mjs sets this on the document when any join is mitered
   var SVG_EXPORT_MITER_LIMIT = 2;
 
@@ -56703,8 +58378,9 @@ ${css.join('\n')}
   }
 
   // How far what is drawn along a path can reach past its vertices, in px, on
-  // every side: half the stroke, as far as a miter join or a square cap
-  // takes it, plus a polygon's outer glow, at the width where it has faded to
+  // every side: half the stroke (or a line's casing, if wider), as far as a
+  // miter join or a square cap takes it, plus a polygon's outer glow, at the
+  // width where it has faded to
   // next to nothing. Follows the SVG export: a line is stroked 1px black unless
   // its stroke is "none", a polygon only when it has a stroke, and joins are
   // round unless stroke-linejoin says otherwise.
@@ -56714,17 +58390,21 @@ ${css.join('\n')}
     var width = rec ? rec['stroke-width'] : null;
     var stroked = type == 'polyline' ? stroke != 'none' :
       !!stroke && stroke != 'none';
-    var outset = 0, k = 1, glow;
+    var outset = 0, k = 1, glow, casing;
+    if (rec && rec['stroke-linejoin'] == 'miter') {
+      k = isSvgNumber(rec['stroke-miterlimit']) ?
+        Math.max(Number(rec['stroke-miterlimit']), 1) : SVG_EXPORT_MITER_LIMIT;
+    }
+    if (type == 'polyline' && rec && rec['stroke-linecap'] == 'square') {
+      k = Math.max(k, Math.SQRT2);
+    }
     if (stroked) {
-      width = isSvgNumber(width) ? Math.max(Number(width), 0) : 1;
-      if (rec && rec['stroke-linejoin'] == 'miter') {
-        k = isSvgNumber(rec['stroke-miterlimit']) ?
-          Math.max(Number(rec['stroke-miterlimit']), 1) : SVG_EXPORT_MITER_LIMIT;
-      }
-      if (type == 'polyline' && rec && rec['stroke-linecap'] == 'square') {
-        k = Math.max(k, Math.SQRT2);
-      }
-      outset = width / 2 * k;
+      outset = (isSvgNumber(width) ? Math.max(Number(width), 0) : 1) / 2 * k;
+    }
+    // A casing is drawn whether or not the line has a stroke of its own
+    casing = type == 'polyline' ? getLineCasing(rec) : null;
+    if (casing) {
+      outset = Math.max(outset, getCasingStrokeWidth(width, casing) / 2 * k);
     }
     glow = type == 'polygon' ? getPolygonGlow(rec, 'outer') : null;
     return glow ? outset + glow.width : outset;
@@ -56758,18 +58438,23 @@ ${css.join('\n')}
     return null;
   }
 
+  // The radius of the smallest circle centered on the point that covers an
+  // icon, from its box -- which for a star or a polygon is a little generous.
+  function getIconBoundingRadius(d) {
+    var box = getIconBox(d);
+    return box ? Math.max(-box[0], -box[1], box[2], box[3]) : 0;
+  }
+
   function getIconBox(d) {
     var type = d.icon || 'circle';
-    var r = getIconRadius(d, type);
-    var sw;
+    var sym = getIconSymbol(d);
+    var r, sw;
+    if (sym) return getSymbolPartBox(sym, 0, 0);
+    r = getIconRadius(d, type);
     if (!(r > 0)) return null;
-    if (type == 'ring') {
-      // drawn as a stroke, RING_STROKE_WIDTH wide unless stroke-width says otherwise
-      sw = +d['stroke-width'];
-      return getSquareBox(r + (sw > 0 ? sw : RING_STROKE_WIDTH) / 2, 0, 0);
-    }
-    if (type == 'circle' || type == 'square' || type == 'star') {
-      return getSquareBox(r + getStrokeOutset(d), 0, 0);
+    if (type == 'circle' || type == 'square' || type == 'star' || type == 'ring') {
+      sw = getIconPaint(d, type).strokeWidth;
+      return getSquareBox(r + sw / 2, 0, 0);
     }
     if (type == 'nyt-star') {
       // the outline is part of the symbol's size (see nytStar())
@@ -57009,6 +58694,11 @@ ${css.join('\n')}
           // a multipoint label is drawn along a path through its points,
           // with no symbol (see featureIsPathLabel())
           pad = getPathLabelPadding(rec);
+          box = [-pad, -pad, pad, pad];
+        } else if (featureIsCurve(rec)) {
+          // a curve's stroke runs through its knots; a single knot draws nothing
+          if (shp.length < 2) return;
+          pad = getCurvePadding(rec);
           box = [-pad, -pad, pad, pad];
         } else {
           box = getPointSymbolBox(rec, cache);
@@ -57464,7 +59154,7 @@ ${css.join('\n')}
     rebuildProjectedFrameLayer: rebuildProjectedFrameLayer
   });
 
-  var OPERATION$1 = 'update-frame';
+  var OPERATION = 'update-frame';
 
   // @fitTargets: [{layer, dataset}] named by the fit= option
   function updateFrame(targetLayers, dataset, opts, fitTargets) {
@@ -57479,7 +59169,7 @@ ${css.join('\n')}
       if (hasUpdateOptions(opts)) {
         stop$1('The remove option cannot be combined with frame update options');
       }
-      demoteFrameLayer(lyr, OPERATION$1);
+      demoteFrameLayer(lyr, OPERATION);
       return;
     }
     if (!hasUpdateOptions(opts)) {
@@ -57534,8 +59224,8 @@ ${css.join('\n')}
       requirePositiveSize(update.width, 'fix-scale', update.width);
     }
 
-    noteLayerWillChange(lyr, {operation: OPERATION$1, unit: 'shapes'});
-    lyr.data.captureTableBefore({operation: OPERATION$1});
+    noteLayerWillChange(lyr, {operation: OPERATION, unit: 'shapes'});
+    lyr.data.captureTableBefore({operation: OPERATION});
     rec.width = update.width;
     rec.height = update.height;
     rec.frame_units = update.units;
@@ -57544,9 +59234,9 @@ ${css.join('\n')}
     } else {
       delete rec.frame_aspect_ratio;
     }
-    lyr.data.markChanged({operation: OPERATION$1});
+    lyr.data.markChanged({operation: OPERATION});
     rebuildFrameLayerGeometry(lyr, dataset, new Bounds(update.bbox));
-    markLayerChanged(lyr, {operation: OPERATION$1, unit: 'shapes'});
+    markLayerChanged(lyr, {operation: OPERATION, unit: 'shapes'});
   }
 
   // The frame's layers are not content to fit, and a frame is only fitted to
@@ -57694,9 +59384,15 @@ ${css.join('\n')}
 
   cmd.updateFrame = updateFrame;
 
-  var OPERATION = 'update-label';
-
   cmd.updateLabel = updateLabel;
+
+  var labelKind = {
+    operation: 'update-label',
+    noun: 'label',
+    plural: 'labels',
+    test: featureIsLabel,
+    notKindReason: 'it has no label-text property'
+  };
 
   // Rewrites the knots of a label that already exists.
   //
@@ -57706,51 +59402,60 @@ ${css.join('\n')}
   // an ordinary command with undo and session history rather than a direct
   // mutation with hand-rolled undo.
   //
+  // Nothing about the label's text is touched, and nothing needs to be: a text
+  // measurement describes the *text*, and moving a knot changes the length of
+  // the *path*. The fit check compares the two at render time, against the
+  // curve as it then stands, so a move can turn a fitting label into an
+  // overflowing one with no measurement going out of date.
+  //
   // See docs/development/label-tool-design.md.
   function updateLabel(targetLayers, dataset, opts) {
+    updatePointFeature(targetLayers, dataset, opts, labelKind);
+  }
+
+  // Replaces the points of one feature of a point layer, which must be of the
+  // kind described by @kind -- -update-symbol shares this with -update-label.
+  // kind: {operation, noun, plural, test(rec), notKindReason, validate(rec, coords)}
+  function updatePointFeature(targetLayers, dataset, opts, kind) {
     var lyr, id, coords, rec;
     if (targetLayers.length > 1) {
-      // One coordinate list describes one label, so there is no sensible reading
-      // of this across layers.
+      // One coordinate list describes one feature, so there is no sensible
+      // reading of this across layers.
       stop$1('Command expects a single target layer');
     }
     lyr = targetLayers[0];
-    id = getTargetId(lyr, opts);
+    id = getTargetId(lyr, opts, kind);
     coords = parseLabelCoords(opts.coordinates);
     rec = getLayerDataTable(lyr).getRecords()[id];
-    if (!featureIsLabel(rec)) {
-      // Moving an arbitrary point through a command named -update-label would be
-      // a surprising way to succeed, and in the GUI it would mean the hit test
-      // handed over the wrong feature.
-      stop$1('Feature', id, 'in layer "' + layerName(lyr) + '" is not a label ' +
-        '(it has no label-text property)');
+    if (!kind.test(rec)) {
+      // Moving an arbitrary point through a command named for a kind of feature
+      // would be a surprising way to succeed, and in the GUI it would mean the
+      // hit test handed over the wrong feature.
+      stop$1('Feature', id, 'in layer "' + layerName(lyr) + '" is not a ' + kind.noun +
+        ' (' + kind.notKindReason + ')');
     }
+    if (kind.validate) kind.validate(rec, coords);
     warnIfCurveIsUnprojected(dataset, coords.length);
     // Undo works from what a command declares it is about to change, so an edit
     // that does not say so is an edit that cannot be undone -- the shapes array
     // keeps its identity here, leaving nothing for the transaction to notice
     // afterwards.
-    noteLayerWillChange(lyr, {operation: OPERATION, unit: 'shapes'});
+    noteLayerWillChange(lyr, {operation: kind.operation, unit: 'shapes'});
     // Point shapes hold their coordinates directly, so this is the whole edit.
     // The pairs are copied rather than aliased: the GUI drags a live copy of the
     // knots and would otherwise keep a handle on the layer's own arrays.
     lyr.shapes[id] = coords.map(function(p) { return [p[0], p[1]]; });
-    markLayerChanged(lyr, {operation: OPERATION, unit: 'shapes'});
-    // Nothing about the label's text is touched, and nothing needs to be: a text
-    // measurement describes the *text*, and moving a knot changes the length of
-    // the *path*. The fit check compares the two at render time, against the
-    // curve as it then stands, so a move can turn a fitting label into an
-    // overflowing one with no measurement going out of date.
+    markLayerChanged(lyr, {operation: kind.operation, unit: 'shapes'});
   }
 
-  // Which feature to move. One coordinate list can only describe one label, so
+  // Which feature to move. One coordinate list can only describe one feature, so
   // this takes a single id rather than the ids= list that -style accepts.
-  function getTargetId(lyr, opts) {
+  function getTargetId(lyr, opts, kind) {
     var ids = opts.ids;
     var id;
-    requirePointLayer(lyr);
+    requirePointLayer(lyr, kind);
     if (!ids || ids.length === 0) {
-      stop$1('Missing required ids parameter (the feature id of the label to update)');
+      stop$1('Missing required ids parameter (the feature id of the ' + kind.noun + ' to update)');
     }
     if (ids.length > 1) {
       stop$1('Command expects a single feature id; received', ids.join(','));
@@ -57765,18 +59470,67 @@ ${css.join('\n')}
     return id;
   }
 
-  function requirePointLayer(lyr) {
+  function requirePointLayer(lyr, kind) {
+    var Plural = kind.plural.charAt(0).toUpperCase() + kind.plural.slice(1);
     if (!lyr || getFeatureCount(lyr) === 0) {
-      stop$1('Missing a target layer containing labels');
+      stop$1('Missing a target layer containing ' + kind.plural);
     }
     if (lyr.geometry_type != 'point') {
-      stop$1('Labels can only be updated in a point layer; target "' +
+      stop$1(Plural + ' can only be updated in a point layer; target "' +
         layerName(lyr) + '" contains ' + (lyr.geometry_type || 'no geometry'));
     }
   }
 
   function layerName(lyr) {
     return lyr && lyr.name || '[unnamed]';
+  }
+
+  cmd.updateSymbol = updateSymbol;
+
+  var symbolKind = {
+    operation: 'update-symbol',
+    noun: 'symbol',
+    plural: 'symbols',
+    test: function(rec) {
+      return featureHasSvgSymbol(rec) && !featureIsLabel(rec);
+    },
+    notKindReason: 'it has no symbol properties, or it is a label',
+    validate: function(rec, coords) {
+      if (featureIsCurve(rec) && coords.length < 2) {
+        stop$1('A curve needs at least two points');
+      }
+    }
+  };
+
+  // Moves a symbol that already exists, or rewrites the knots of a curve:
+  // -symbols coordinates= adds a symbol, -style restyles one, and this changes
+  // its points and nothing else. The GUI emits it when a symbol or a curve's
+  // knot is dragged, so that the move is a command, with undo and session
+  // history, like -update-label for labels.
+  //
+  // A closed curve's repeated first point is a point like any other here: the
+  // caller sends both copies.
+  function updateSymbol(targetLayers, dataset, opts) {
+    updatePointFeature(targetLayers, dataset, opts, symbolKind);
+  }
+
+  cmd.updatePoint = updatePoint;
+
+  var pointKind = {
+    operation: 'update-point',
+    noun: 'point',
+    plural: 'points',
+    test: function(rec) {
+      return !featureIsLabel(rec);
+    },
+    notKindReason: 'it is a label'
+  };
+
+  // Moves a point feature of any kind other than a label, which -update-label
+  // moves. The GUI emits it when a point is dragged, so that the move is a
+  // command, with undo and session history, as -update-symbol is for symbols.
+  function updatePoint(targetLayers, dataset, opts) {
+    updatePointFeature(targetLayers, dataset, opts, pointKind);
   }
 
   cmd.addShape = addShape;
@@ -57815,6 +59569,12 @@ ${css.join('\n')}
       matchTargetFieldTypes(feature.properties, targetLyr);
     }
     dataset = importGeoJSON(feature);
+    // The shape is in the target's coordinates. Left to guess, a shape whose
+    // coordinates happen to fit in lat-long bounds (a point near 0,0 in a
+    // projected layer) would be taken for lat-long and refused.
+    if (targetDataset) {
+      setDatasetCrsInfo(dataset, getDatasetCrsInfo(targetDataset));
+    }
     outputLyr = mergeDatasetsIntoDataset(targetDataset, [dataset])[0];
     if (opts.no_replace || !targetLyr) {
       // create new layer
@@ -58086,7 +59846,7 @@ ${css.join('\n')}
   const resulterrbound = (3 + 8 * epsilon) * epsilon;
 
   // fast_expansion_sum_zeroelim routine from oritinal code
-  function sum$1(elen, e, flen, f, h) {
+  function sum(elen, e, flen, f, h) {
       let Q, Qnew, hh, bvirt;
       let enow = e[0];
       let fnow = f[0];
@@ -58269,7 +60029,7 @@ ${css.join('\n')}
       bvirt = u3 - _j;
       u[2] = _j - (u3 - bvirt) + (_i - bvirt);
       u[3] = u3;
-      const C1len = sum$1(4, B$2, 4, u, C1);
+      const C1len = sum(4, B$2, 4, u, C1);
 
       s1 = acx * bcytail;
       c = splitter * acx;
@@ -58300,7 +60060,7 @@ ${css.join('\n')}
       bvirt = u3 - _j;
       u[2] = _j - (u3 - bvirt) + (_i - bvirt);
       u[3] = u3;
-      const C2len = sum$1(C1len, C1, 4, u, C2);
+      const C2len = sum(C1len, C1, 4, u, C2);
 
       s1 = acxtail * bcytail;
       c = splitter * acxtail;
@@ -58331,7 +60091,7 @@ ${css.join('\n')}
       bvirt = u3 - _j;
       u[2] = _j - (u3 - bvirt) + (_i - bvirt);
       u[3] = u3;
-      const Dlen = sum$1(C2len, C2, 4, u, D$1);
+      const Dlen = sum(C2len, C2, 4, u, D$1);
 
       return D$1[Dlen - 1];
   }
@@ -59307,137 +61067,6 @@ ${css.join('\n')}
     var dy = py < chunk.ymin ? chunk.ymin - py : (py > chunk.ymax ? py - chunk.ymax : 0);
     return dx * dx + dy * dy;
   }
-
-  var R$2 = WGS84.SEMIMAJOR_AXIS;
-
-  // GeographicLib docs: https://geographiclib.sourceforge.io/html/js/
-  //   https://geographiclib.sourceforge.io/html/js/module-GeographicLib_Geodesic.Geodesic.html
-  //   https://geographiclib.sourceforge.io/html/js/tutorial-2-interface.html
-  function getGeodesic(P) {
-    if (!isLatLngCRS(P)) error('Expected an unprojected CRS');
-    var f = P.es / (1 + Math.sqrt(P.one_es));
-    // var GeographicLib = require('mproj').internal.GeographicLib;
-    var GeographicLib = require$1('geographiclib-geodesic');
-    // return new GeographicLib.Geodesic.Geodesic(P.a, 0)
-    return new GeographicLib.Geodesic.Geodesic(P.a, f);
-  }
-
-  function getGeodesicDistanceFunction(P) {
-    var geod = getGeodesic(P);
-    return function(lng, lat, lng2, lat2) {
-      return geod.Inverse(lat, lng, lat2, lng2).s12;
-    };
-  }
-
-  function interpolatePoint2D(ax, ay, bx, by, k) {
-    var j = 1 - k;
-    return [ax * j + bx * k, ay * j + by * k];
-  }
-
-  function getInterpolationFunction(P) {
-    var spherical = P && isLatLngCRS(P);
-    if (!spherical) return interpolatePoint2D;
-    var geod = getGeodesic(P);
-    return function(lng, lat, lng2, lat2, k) {
-      var r = geod.Inverse(lat, lng, lat2, lng2);
-      var dist = r.s12 * k;
-      var r2 = geod.Direct(lat, lng, r.azi1, dist);
-      return [r2.lon2, r2.lat2];
-    };
-  }
-
-  function getPlanarSegmentEndpoint(x, y, bearing, meterDist) {
-    var rad = bearing / 180 * Math.PI;
-    var dx = Math.sin(rad) * meterDist;
-    var dy = Math.cos(rad) * meterDist;
-    return [x + dx, y + dy];
-  }
-
-  // source: https://github.com/mapbox/cheap-ruler/blob/master/index.js
-  function fastGeodeticSegmentFunction(lng, lat, bearing, meterDist) {
-    var D2R = Math.PI / 180;
-    var cos = Math.cos(lat * D2R);
-    var cos2 = 2 * cos * cos - 1;
-    var cos3 = 2 * cos * cos2 - cos;
-    var cos4 = 2 * cos * cos3 - cos2;
-    var cos5 = 2 * cos * cos4 - cos3;
-    var kx = (111.41513 * cos - 0.09455 * cos3 + 0.00012 * cos5) * 1000;
-    var ky = (111.13209 - 0.56605 * cos2 + 0.0012 * cos4) * 1000;
-    var bearingRad = bearing * D2R;
-    var lat2 = lat + Math.cos(bearingRad) * meterDist / ky;
-    var lng2 = lng + Math.sin(bearingRad) * meterDist / kx;
-    return [lng2, lat2];
-  }
-
-
-  function wrap(deg) {
-    while (deg < -180) deg += 360;
-    while (deg > 180) deg -= 360;
-    return deg;
-  }
-
-  function fastGeodeticBearingFunction(lng1, lat1, lng2, lat2) {
-    var D2R = Math.PI / 180;
-    var f = 1 / 298.257223563;
-    var e2 = f * (2 - f);
-    var m = R$2 * D2R;
-    var coslat = Math.cos(lat1 * D2R);
-    var w2 = 1 / (1 - e2 * (1 - coslat * coslat));
-    var w = Math.sqrt(w2);
-    var kx = m * w * coslat;
-    var ky = m * w * w2 * (1 - e2);
-    var dx = wrap(lng2 - lng1) * kx;
-    var dy = (lat2 - lat1) * ky;
-    return Math.atan2(dx, dy) / D2R;
-  }
-
-  function getGeodeticSegmentFunction(P) {
-    if (!isLatLngCRS(P)) {
-      return getPlanarSegmentEndpoint;
-    }
-    var g = getGeodesic(P);
-    return function(lng, lat, bearing, meterDist) {
-      var o = g.Direct(lat, lng, bearing, meterDist);
-      var p = [o.lon2, o.lat2];
-      return p;
-    };
-  }
-
-  function getFastGeodeticSegmentFunction(P) {
-    // CAREFUL: this function has higher error at very large distances and at the poles
-    // also, it wouldn't work for other planets than Earth
-    return isLatLngCRS(P) ? fastGeodeticSegmentFunction : getPlanarSegmentEndpoint;
-  }
-
-  // return function to calculate bearing of a segment in degrees
-  function getBearingFunction(dataset) {
-    var P = getDatasetCRS(dataset);
-    // return isLatLngCRS(P) ? bearingDegrees : bearingDegrees2D;
-    return isLatLngCRS(P) ? fastGeodeticBearingFunction : bearingDegrees2D;
-  }
-
-  // get bearing in degrees from point ab to point cd
-  function bearingDegrees(a, b, c, d) {
-    return geom.bearing(a, b, c, d) * 180 / Math.PI;
-  }
-
-  function bearingDegrees2D(a, b, c, d) {
-    return geom.bearing2D(a, b, c, d) * 180 / Math.PI;
-  }
-
-  var Geodesic = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    bearingDegrees: bearingDegrees,
-    bearingDegrees2D: bearingDegrees2D,
-    getBearingFunction: getBearingFunction,
-    getFastGeodeticSegmentFunction: getFastGeodeticSegmentFunction,
-    getGeodesicDistanceFunction: getGeodesicDistanceFunction,
-    getGeodeticSegmentFunction: getGeodeticSegmentFunction,
-    getInterpolationFunction: getInterpolationFunction,
-    getPlanarSegmentEndpoint: getPlanarSegmentEndpoint,
-    interpolatePoint2D: interpolatePoint2D,
-    wrap: wrap
-  });
 
   function getJoinAngle(direction1, direction2) {
     var delta = direction2 - direction1;
@@ -79565,6 +81194,7 @@ ${css.join('\n')}
   // Dissolve polyline features
   function dissolvePolylineGeometry(lyr, getGroupId, arcs, opts) {
     var groups = getPolylineDissolveGroups(lyr.shapes, getGroupId);
+    if (groups.length === 0) return []; // arcs may be null if the layer is empty
     var dissolve = getPolylineDissolver(arcs);
     return groups.map(dissolve);
   }
@@ -84089,8 +85719,8 @@ ${css.join('\n')}
     var srcRecords = src.getRecords();
     var index = createTableIndex(srcRecords, srcKey);
     var srcType, destType;
-    if (srcRecords.length == 0) {
-      // allow empty external tables
+    if (srcRecords.length == 0 || destRecords.length == 0) {
+      // allow empty external tables and empty target layers
       return function(i) {return [];};
     }
     requireDataField(src, srcKey, 'External table is missing a field named:');
@@ -86131,7 +87761,9 @@ ${css.join('\n')}
   }
 
   function layerHasSymbols(lyr) {
-    return !!lyr.data && (lyr.data.fieldExists('svg-symbol') || lyr.data.fieldExists('r'));
+    var data = lyr.data;
+    return !!data && (data.fieldExists('svg-symbol') || data.fieldExists('r') ||
+      data.fieldExists('icon') || data.fieldExists('icon-size'));
   }
 
   function addLayerNodes(nodes, lyr, pixelsPerUnit, opts) {
@@ -86188,8 +87820,8 @@ ${css.join('\n')}
     };
   }
 
-  // Radii come from one of three places: an explicit radius= option, the
-  // svg-symbol field written by -symbols, or the r field written by -style.
+  // Radii come from an explicit radius= option, or from the symbol fields: icon
+  // fields, a circle's r, or a legacy svg-symbol.
   // Deliberately not using getSymbolRadius(), whose default of 5 would invent
   // radii for symbols that don't exist.
   function getRadiusAccessor(lyr, opts) {
@@ -86201,8 +87833,23 @@ ${css.join('\n')}
       var rec = records[i];
       if (!rec) return 0;
       if (rec['svg-symbol']) return getSymbolLayoutRadius(rec['svg-symbol']);
+      if (featureHasIcon(rec)) return getIconLayoutRadius(rec);
       return rec.r > 0 ? +rec.r : 0;
     };
+  }
+
+  // An arrow is drawn from its point outward, like a legacy polygon symbol, and
+  // a curve runs between several points, so neither has a layout radius.
+  function getIconLayoutRadius(rec) {
+    var sym, r;
+    if (rec.icon == 'arrow' || rec.icon == 'curve') {
+      stop$1('-repel is unable to size ' + (rec.icon == 'arrow' ? 'an arrow' : 'a curve') +
+        ' symbol; use a radius= option to give it a radius.');
+    }
+    sym = getIconSymbol(rec);
+    if (!sym) return getIconBoundingRadius(rec);
+    r = getSymbolBoundingRadius(sym);
+    return r === null ? getIconBoundingRadius(rec) : r;
   }
 
   // A symbol is laid out as the circle that covers it, so a symbol type is
@@ -88142,560 +89789,372 @@ ${css.join('\n')}
     stopJob(job);
   };
 
-  function getStickArrowCoords(d) {
-    return getArrowCoords(d, 'stick');
-  }
-
-  function getFilledArrowCoords(d) {
-    return getArrowCoords(d, 'standard');
-  }
-
-  function getArrowCoords(d, style) {
-    var stickArrow = style == 'stick',
-        // direction = d.rotation || d.direction || 0,
-        direction = d.direction || 0, // rotation is an independent parameter
-        stemTaper = d['stem-taper'] || 0,
-        curvature = d['stem-curve'] || 0,
-        size = calcArrowSize(d, stickArrow);
-    if (!size) return null;
-    var stemLen = size.stemLen,
-        headLen = size.headLen,
-        totalLen = stickArrow ? Math.max(stemLen, headLen) : stemLen + headLen,
-        headDx = size.headWidth / 2,
-        stemDx = size.stemWidth / 2,
-        baseDx = stemDx * (1 - stemTaper),
-        coords, dx, dy;
-
-    if (curvature) {
-      // make curved stem
-      if (direction > 0) curvature = -curvature;
-      var theta = Math.abs(curvature) / 180 * Math.PI;
-      var sign = curvature > 0 ? 1 : -1;
-      var ax = baseDx * Math.cos(theta); // rotate arrow base
-      var ay = baseDx * Math.sin(theta) * -sign;
-      dx = stemLen * Math.sin(theta / 2) * sign;
-      dy = stemLen * Math.cos(theta / 2);
-
-      if (stickArrow) {
-        coords = getCurvedStemCoords(-ax, -ay, dx, dy);
-      } else {
-        var leftStem = getCurvedStemCoords(-ax, -ay, -stemDx + dx, dy);
-        var rightStem = getCurvedStemCoords(ax, ay, stemDx + dx, dy);
-        coords = leftStem.concat(rightStem.reverse());
+  // -symbols writes each point's symbol as attribute fields: icon= and its
+  // icon-* and arrow-* parameters, or r= for a plain circle, which the GUI
+  // draws on the canvas like a circle styled with -style r=. See
+  // mapshaper-icon-symbols.mjs for the fields and how they are drawn.
+  //
+  // Option values are resolved for each feature and stored as they are, so a
+  // symbol can be redrawn when one of its fields changes. Options that are
+  // rules for making a symbol rather than properties of it are applied here:
+  // scale= multiplies the stored sizes, and rotated= (or flipped=) turns into
+  // part of icon-rotation.
+  //
+  // With ids=, only those points are given new symbols; the others keep the
+  // fields they have, so that some symbols in a layer can be restyled.
+  //
+  // The geographic option instead replaces each point with a polygon or line
+  // shape in map units.
+  cmd.symbols = function(inputLyr, dataset, opts) {
+    requirePointLayer$2(inputLyr);
+    if (opts.geographic) {
+      if (opts.ids) stop$1('The ids= option can not be combined with geographic');
+      return makeGeographicSymbols(inputLyr, dataset, opts);
+    }
+    var lyr = opts.no_replace ? copyLayer(inputLyr) : inputLyr;
+    var table = getLayerDataTable(lyr);
+    var records = table.getRecords();
+    var getSymbolData = getSymbolDataAccessor(lyr, opts);
+    var selected = opts.ids ? getIdFilter(opts.ids) : null;
+    var output = lyr.shapes.map(function(shp, i) {
+      if (selected && !selected(i)) return null;
+      return shp ? getSymbolFields(getSymbolData(i), records[i], opts) : null;
+    });
+    var outputFields = getOutputFieldNames(output);
+    var changedFields = utils.uniq(symbolFields.filter(function(field) {
+      return table.fieldExists(field);
+    }).concat(outputFields));
+    // listing the fields lets undo restore their values, not just the schema
+    table.captureSchemaBefore({operation: 'symbols', fields: changedFields});
+    output.forEach(function(o, i) {
+      var rec = records[i] || (records[i] = {});
+      if (!selected || selected(i)) {
+        symbolFields.forEach(function(field) {
+          delete rec[field];
+        });
       }
+      // Every record gets every field, so that the table has a single schema
+      // when features have different kinds of symbol. A style field like fill
+      // that this symbol doesn't use keeps the record's own value.
+      outputFields.forEach(function(field) {
+        if (o && field in o) {
+          rec[field] = o[field];
+        } else if (!(field in rec)) {
+          rec[field] = undefined;
+        }
+      });
+    });
+    table.markSchemaChanged({operation: 'symbols'});
+    return [lyr];
+  };
 
-    } else {
-      // make straight stem
-      dx = 0;
-      dy = stemLen;
-      if (stickArrow) {
-        coords = [[0, 0], [0, stemLen]];
-      } else {
-        coords = [[-baseDx, 0], [baseDx, 0]];
+  // -symbols coordinates= adds one symbol to the target layer, or to a new
+  // layer, like -labels coordinates=. One coordinate pair places a symbol; with
+  // several, type=curve draws a curve through them (a closed one if the last
+  // pair repeats the first), and any other type draws a symbol at each point.
+  //
+  // Option values are resolved as they are for a layer, against the new
+  // feature's properties= -- so they are mostly literal values.
+  cmd.addSymbol = function(targetLayers, targetDataset, opts) {
+    var targetLyr, coords, props, d, feature, outputLyr, merged;
+    if (targetLayers.length > 1) {
+      stop$1('Command expects a single target layer');
+    }
+    if (opts.geographic) {
+      stop$1('The geographic option can not be combined with coordinates=');
+    }
+    if (opts.ids) {
+      stop$1('The ids= option can not be combined with coordinates=');
+    }
+    targetLyr = targetLayers[0]; // may be undefined
+    if (targetLyr && !opts.no_replace && targetLyr.geometry_type &&
+        targetLyr.geometry_type != 'point') {
+      stop$1('Symbols can only be added to a point layer; target "' +
+        (targetLyr.name || '[unnamed]') + '" contains ' + targetLyr.geometry_type + 's. ' +
+        'Use no-replace to add a symbol as a new layer.');
+    }
+    coords = parseLabelCoords(opts.coordinates);
+    props = opts.properties ? parseJsonArg(opts.properties, 'properties') : {};
+    d = getSymbolDataAccessor({
+      geometry_type: 'point',
+      shapes: [coords],
+      data: new DataTable([props])
+    }, opts)(0);
+    if (d.type == 'curve') {
+      if (coords.length < 2) {
+        stop$1('A curve needs at least two points');
       }
+      warnIfCurveIsUnprojected(targetDataset, coords.length);
     }
-
-    if (stickArrow) {
-      // make stick arrow
-      coords = [coords]; // MultiLineString coords
-      if (headLen > 0) {
-        coords.push([[-headDx + dx, stemLen - headLen], [dx, stemLen], [headDx + dx, stemLen - headLen]]);
-      }
-    } else {
-      // make filled arrow
-      // coordinates go counter clockwise, starting from the leftmost head coordinate
-      coords.push([stemDx + dx, dy]);
-      if (headLen > 0) {
-        coords.push([headDx + dx, dy], [dx, headLen + dy], [-headDx + dx, dy]);
-      }
-      coords.push([-stemDx + dx, dy], coords[0].concat()); // close path
-      coords = [coords]; // Polygon coords
-    }
-
-    if (d.anchor == 'end') {
-      scaleAndShiftCoords(coords, 1, [-dx, -totalLen]);
-    } else if (d.anchor == 'middle') {
-      // shift midpoint away from the head a bit for a more balanced placement
-      scaleAndShiftCoords(coords, 1, [-dx * 0.5, -dy * 0.5 - totalLen * 0.25]);
-    }
-
-    rotateCoords(coords, direction);
-    if (d.flipped) {
-      flipY(coords);
-    }
-    return coords;
-  }
-
-  // function calcStraightArrowCoords(stemLen, headLen, stemDx, headDx, baseDx) {
-  //   return [[baseDx, 0], [stemDx, stemLen], [headDx, stemLen], [0, stemLen + headLen],
-  //         [-headDx, stemLen], [-stemDx, stemLen], [-baseDx, 0], [baseDx, 0]];
-  // }
-
-  function calcArrowSize(d, stickArrow) {
-    // don't display arrows with negative length
-    var o = initArrowSize(d), // calc several parameters
-        dataLen = Math.max(d.radius || d.length || d.r || 0),
-        totalLen = Math.max(dataLen, o.headLen, 0),
-        scale = 1;
-    if (totalLen >= 0) {
-      scale = calcScale(totalLen, o.headLen, d);
-      o.stemWidth *= scale;
-      o.headWidth *= scale;
-      o.headLen *= scale;
-      o.stemLen = stickArrow ? dataLen : totalLen - o.headLen;
-    }
-
-    if (o.headWidth < o.stemWidth && o.headWidth > 0) {
-      stop$1('Arrow head must be at least as wide as the stem.');
-    }
-    return o;
-  }
-
-  function calcScale(totalLen, headLen, d) {
-    var minStemRatio = d['min-stem-ratio'] >= 0 ? d['min-stem-ratio'] : 0;
-    var stemLen = d['stem-length'] || 0;
-    var maxHeadPct = 1 - minStemRatio;
-    var headPct = headLen / totalLen;
-    var scale = 1;
-
-    if (headPct > maxHeadPct) {
-      scale = maxHeadPct / headPct;
-    } else if (stemLen + headLen > totalLen) {
-      scale = totalLen / (stemLen + headLen);
-    }
-    return scale || 0;
-  }
-
-  function initArrowSize(d) {
-    var sizeRatio = getHeadSizeRatio(d['head-angle'] || 40); // length to width
-    var o = {
-      stemWidth: d['stem-width'] || 2,
-      stemLen: d['stem-length'] || 0,
-      headWidth: d['head-width'],
-      headLen: d['head-length']
+    feature = {
+      type: 'Feature',
+      properties: Object.assign(props, getSymbolFields(d, props, opts)),
+      geometry: coords.length == 1 ?
+        {type: 'Point', coordinates: coords[0]} :
+        {type: 'MultiPoint', coordinates: coords}
     };
-    if (o.headWidth === 0) {
-      o.headLen = 0;
-    } else if (o.headWidth > 0 === false) {
-      if (o.headLen > 0) {
-        o.headWidth = o.headLen / sizeRatio;
-      } else if (o.headLen === 0) {
-        o.headWidth = 0;
-      } else {
-        o.headWidth = o.stemWidth * 3; // assumes stemWidth has been set
-      }
+    if (!opts.no_replace) {
+      matchTargetFieldTypes(feature.properties, targetLyr);
     }
-    if (o.headLen >= 0 === false) {
-      o.headLen = o.headWidth * sizeRatio;
+    outputLyr = mergeDatasetsIntoDataset(targetDataset, [importGeoJSON(feature)])[0];
+    if (opts.no_replace || !targetLyr) {
+      setOutputLayerName(outputLyr, targetLyr && targetLyr.name, 'symbols', opts);
+      return [outputLyr];
     }
+    // verbose: false and force, because a new symbol rarely has the same fields
+    // as the layer it joins (see addLabel())
+    merged = cmd.mergeLayers([targetLyr, outputLyr], {force: true, verbose: false});
+    merged[0].name = targetLyr.name;
+    return merged;
+  };
+
+  var NYT_STAR_COLOR = '#cc0000';
+
+  var POLYGON_SIDES = {
+    triangle: 3,
+    pentagon: 5,
+    hexagon: 6,
+    heptagon: 7,
+    octagon: 8,
+    nonagon: 9,
+    decagon: 10
+  };
+
+  // Returns the fields for one feature's symbol
+  // d: the feature's resolved option values
+  // rec: the feature's record, or null
+  function getSymbolFields(d, rec, opts) {
+    var type = d.type || 'square';
+    var scale = +opts.scale || 1;
+    if (type == 'curve') return getCurveFields(d, scale);
+    if (type == 'circle') return getCircleFields(d, rec, scale);
+    if (type == 'arrow') return getArrowFields(d, opts, scale);
+    if (type == 'pie') return getPieFields(d, scale);
+    if (type == 'ring') return getRingFields(d, scale);
+    if (type == 'star') return getStarFields(d, scale);
+    if (type == 'nyt-star') return getNytStarFields(d, scale);
+    if (type == 'square' && !d.sides) return getSquareFields(d, scale);
+    if (type == 'polygon' || type == 'square' || type in POLYGON_SIDES) {
+      return getPolygonFields(d, type, scale);
+    }
+    stop$1('Unsupported symbol type:', type);
+  }
+
+  // A circle is r=, unless the feature is a label: a label's fill and opacity are
+  // its text's, so its circle is an icon.
+  function getCircleFields(d, rec, scale) {
+    var r = getSymbolRadius(d) * scale;
+    var o;
+    if (featureHasLabel(rec)) {
+      return addFilledStyle({icon: 'circle', 'icon-size': r * 2}, d);
+    }
+    o = {r: r, fill: getSymbolFillColor(d)};
+    addStroke(o, d);
+    if (hasValue(d.opacity)) o.opacity = d.opacity;
     return o;
   }
 
-  // Returns ratio of head length to head width
-  function getHeadSizeRatio(headAngle) {
-    return 1 / Math.tan(Math.PI * headAngle / 180 / 2) / 2;
+  function getSquareFields(d, scale) {
+    // the radius of a square symbol reaches its corners
+    var o = {icon: 'square', 'icon-size': roundToHundredths(getSymbolRadius(d) * Math.SQRT2 * scale)};
+    addRotation(o, getNumber(d.rotation) + getOrientationRotation(d, 4));
+    return addFilledStyle(o, d);
   }
 
-  // ax, ay: point on the base
-  // bx, by: point on the stem
-  function getCurvedStemCoords(ax, ay, bx, by) {
-    // case: curved side intrudes into head (because stem is too short)
-    if (ay > by) {
-      return [[ax * by / ay, by]];
-    }
-    var dx = bx - ax,
-        dy = by - ay,
-        dy1 = (dy * dy - dx * dx) / (2 * dy),
-        dy2 = dy - dy1,
-        dx2 = Math.sqrt(dx * dx + dy * dy) / 2,
-        theta = Math.PI - Math.asin(dx2 / dy2) * 2,
-        degrees = theta * 180 / Math.PI,
-        radius = dy2 / Math.tan(theta / 2),
-        leftBend = bx > ax,
-        sign = leftBend ? 1 : -1,
-        points = Math.round(degrees / 5) + 2,
-        increment = theta / (points + 1),
-        coords = [[bx, by]];
-
-    for (var i=1; i<= points; i++) {
-      var phi = i * increment / 2;
-      var sinPhi = Math.sin(phi);
-      var cosPhi = Math.cos(phi);
-      var c = sinPhi * radius * 2;
-      var a = sinPhi * c;
-      var b = cosPhi * c;
-      coords.push([bx - a * sign, by - b]);
-    }
-    coords.push([ax, ay]);
-    return coords;
-  }
-
-  function makeCircleSymbol(d, opts) {
-    var radius = getSymbolRadius(d);
-    // TODO: remove duplication with svg-symbols.js
-    if (+opts.scale) radius *= +opts.scale;
-    var sym = { type: 'circle', r: radius };
-    return applySymbolStyles(sym, d);
-  }
-
-  function getPolygonCoords(d) {
-    var radius = getSymbolRadius(d),
-        sides = +d.sides || getSidesByType(d.type),
-        rotated = sides % 2 == 1,
-        coords = [],
-        angle, b;
-
-    if (radius > 0 === false) return null;
+  function getPolygonFields(d, type, scale) {
+    var sides = +d.sides || POLYGON_SIDES[type] || 4;
+    var o;
     if (sides >= 3 === false) {
       stop$1(`Invalid number of sides (${sides})`);
     }
-    if (d.orientation == 'b' || d.flipped || d.rotated) {
-      rotated = !rotated;
-    }
-    b = rotated ? 0 : 0.5;
-    for (var i=0; i<sides; i++) {
-      angle = (i + b) / sides * 360;
-      coords.push(getPlanarSegmentEndpoint(0, 0, angle, radius));
-    }
-    coords.push(coords[0].concat());
-    return [coords];
+    o = {icon: 'polygon', 'icon-sides': sides, 'icon-size': getSymbolRadius(d) * 2 * scale};
+    addRotation(o, getNumber(d.rotation) + getOrientationRotation(d, sides));
+    return addFilledStyle(o, d);
   }
 
-  function getSidesByType(type) {
-    return {
-      circle: 72,
-      triangle: 3,
-      square: 4,
-      pentagon: 5,
-      hexagon: 6,
-      heptagon: 7,
-      octagon: 8,
-      nonagon: 9,
-      decagon: 10
-    }[type] || 4;
-  }
-
-  function getStarCoords(d) {
-    var radius = getSymbolRadius(d),
-        points = d.points || d.sides && d.sides / 2 || 5,
-        sides = points * 2,
-        minorRadius = getMinorRadius(points) * radius,
-        b = d.orientation == 'b' || d.flipped || d.rotated ? 0 : 1,
-        coords = [],
-        angle, len;
-
-    if (radius > 0 === false) return null;
+  function getStarFields(d, scale) {
+    var points = +d.points || d.sides && d.sides / 2 || 5;
+    var o;
     if (points < 5) {
       stop$1(`Invalid number of points for a star (${points})`);
     }
-    for (var i=0; i<sides; i++) {
-      len = i % 2 == 0 ? minorRadius : radius;
-      angle = (i + b) / sides * 360;
-      coords.push(getPlanarSegmentEndpoint(0, 0, angle, len));
-    }
-    coords.push(coords[0].concat());
-    return [coords];
+    o = {icon: 'star', 'icon-size': getSymbolRadius(d) * 2 * scale};
+    if (points != 5) o['icon-points'] = points;
+    addRotation(o, getNumber(d.rotation) + getOrientationRotation(d, points));
+    return addFilledStyle(o, d);
   }
 
-  function getMinorRadius(points) {
-    var innerAngle = 360 / points;
-    var pointAngle = getDefaultPointAngle(points);
-    var thetaA = Math.PI / 180 * innerAngle / 2;
-    var thetaB = Math.PI / 180 * pointAngle / 2;
-    var a = Math.tan(thetaB) / (Math.tan(thetaB) + Math.tan(thetaA));
-    var c = a / Math.cos(thetaA);
-    return c;
+  // Not advertised, like icon=nyt-star (see svg-icons.mjs): the web UI offers it
+  // only to some users. stroke= is its outline, NYT red unless given, at a width
+  // fixed by its size; fill= is its middle, white unless given. Not rotated.
+  function getNytStarFields(d, scale) {
+    var o = {icon: 'nyt-star', 'icon-size': getSymbolRadius(d) * 2 * scale,
+      'icon-stroke': hasValue(d.stroke) ? d.stroke : NYT_STAR_COLOR};
+    if (hasValue(d.fill)) o['icon-fill'] = d.fill;
+    if (hasValue(d.opacity)) o['icon-opacity'] = d.opacity;
+    return o;
   }
 
-  function getDefaultPointAngle(points) {
-    var minSkip = 1;
-    var maxSkip = Math.ceil(points / 2) - 2;
-    var skip = Math.floor((maxSkip + minSkip) / 2);
-    return getPointAngle(points, skip);
-  }
-
-  // skip: number of adjacent points to skip when drawing a segment
-  function getPointAngle(points, skip) {
-    var unitAngle = 360 / points;
-    var centerAngle = unitAngle * (skip + 1);
-    return 180 - centerAngle;
-  }
-
-  // Returns a svg-symbol object
-  function makeRingSymbol(d, opts) {
-    var scale = +opts.scale || 1;
-    var radii = parseRings(d.radii || '2').map(function(r) { return r * scale; });
-    var solidCenter = utils.isOdd(radii.length);
-    var color = getSymbolFillColor(d);
-    var opacity = opts.opacity || undefined;
-    var parts = [];
-    if (solidCenter) {
-      parts.push({
-        type: 'circle',
-        fill: color,
-        opacity: opacity,
-        r: radii.shift()
-      });
-    }
-    for (var i=0; i<radii.length; i+= 2) {
-      parts.push({
-        type: 'circle',
-        fill: 'none', // TODO remove default black fill so this is not needed
-        stroke: color,
-        opacity: opacity,
-        'stroke-width':  roundToTenths(radii[i+1] - radii[i]),
-        r: roundToTenths(radii[i+1] * 0.5 + radii[i] * 0.5)
-      });
-    }
-    return {
-      type: 'group',
-      parts: parts
-    };
-  }
-
-  // Returns GeoJSON MultiPolygon coords
-  function getRingCoords(d) {
-    var radii = parseRings(d.radii || '2');
-    var coords = [];
-    var solidCenter = utils.isOdd(radii.length);
-    var ring, hole;
-    for (var i=0; i<radii.length; i++) {
-      ring = getPolygonCoords({
-        type: 'circle',
-        radius: radii[i]
-      });
-      if (!solidCenter || i > 0) {
-        i++;
-        hole = ring;
-        ring = getPolygonCoords({
-          type: 'circle',
-          radius: radii[i]
-        });
-        ring.push(hole[0]);
+  // Without radii=, one ring reaching radius=, the stroked circle a label's
+  // icon=ring draws; with them, concentric rings. A ring is a stroke, so with no
+  // stroke= given, fill= is its color, as it always was.
+  function getRingFields(d, scale) {
+    var radii, o;
+    if (!hasValue(d.radii)) {
+      o = {icon: 'ring', 'icon-size': getSymbolRadius(d) * 2 * scale};
+      if (hasValue(d.stroke)) {
+        o['icon-stroke'] = d.stroke;
+        if (hasValue(d.fill)) o['icon-fill'] = d.fill;
+      } else {
+        o['icon-stroke'] = getSymbolFillColor(d);
       }
-      coords.push(ring);
+      if (hasValue(d['stroke-width'])) o['icon-stroke-width'] = d['stroke-width'];
+      if (hasValue(d.opacity)) o['icon-opacity'] = d.opacity;
+      return o;
     }
-    return coords;
-  }
-
-  function parseRings(arg) {
-    var arr = toNumberList(arg);
-    utils.genericSort(arr, true);
-    return utils.uniq(arr);
-  }
-
-  // Matches the vertex density of the 72-sided circle made by getPolygonCoords()
-  var DEGREES_PER_SEGMENT = 5;
-
-  // Returns an svg-symbol object containing one polygon part per wedge, or null
-  // if the symbol has nothing to draw.
-  function makePieSymbol(d, opts) {
-    var wedges = getPieWedges(d, +opts.scale || 1);
-    if (wedges.length === 0) return null;
-    var parts = wedges.map(function(wedge) {
-      flipY(wedge.coordinates); // the SVG y-axis points down
-      roundCoordsForSVG(wedge.coordinates);
-      var part = {
-        type: 'polygon',
-        coordinates: wedge.coordinates,
-        fill: wedge.fill
-      };
-      if (d.stroke) part.stroke = d.stroke;
-      if (d['stroke-width']) part['stroke-width'] = d['stroke-width'];
-      // opacity is applied per-part, not to the group: renderComplexSymbol()
-      // assumes a group symbol has a properties object, which group() only
-      // provides for single-part groups.
-      if (d.opacity) part.opacity = d.opacity;
-      return part;
+    radii = toNumberList(d.radii).filter(function(r) {
+      return r >= 0;
+    }).map(function(r) {
+      return r * scale;
     });
-    return {type: 'group', parts: parts};
+    utils.genericSort(radii, true);
+    o = {icon: 'ring', 'icon-radii': utils.uniq(radii).join(','), 'icon-color': getSymbolFillColor(d)};
+    if (hasValue(d.opacity)) o['icon-opacity'] = d.opacity;
+    return o;
   }
 
-  // Returns an array of {fill, coordinates} objects, in the y-up coordinate space
-  // shared by the symbol generators, centered on [0, 0]. Coordinates are an array
-  // of rings, like flattened GeoJSON MultiPolygon coordinates.
-  //
-  // The first wedge starts at the top of the symbol and the rest follow in
-  // clockwise order. A wedge with no value, or without a usable fill color, is
-  // left out -- an unfilled wedge becomes a gap in the pie without shifting the
-  // wedges that follow it.
-  function getPieWedges(d, scale) {
-    var values = getPieValues(d);
-    var fills = getPieFills(d);
-    var radii = getPieRadii(d, scale);
-    var rotation = +d.rotation || 0;
-    var total = sum(values);
-    var wedges = [];
-    var start = rotation;
-    var fill, end;
-    if (total > 0 === false || radii.outer > 0 === false) return wedges;
-    for (var i=0; i<values.length; i++) {
-      end = start + values[i] / total * 360;
-      fill = getWedgeFill(fills[i]);
-      if (fill && end > start) {
-        wedges.push({
-          fill: fill,
-          coordinates: getWedgeCoords(start, end, radii.inner, radii.outer)
-        });
-      }
-      start = end;
-    }
-    return wedges;
-  }
-
-  // Returns an array of rings outlining a wedge spanning two bearings.
-  function getWedgeCoords(startAngle, endAngle, inner, outer) {
-    var ring;
-    if (endAngle - startAngle >= 360) {
-      // A single non-zero value covers the whole symbol: a circle, or a pair of
-      // concentric rings if the symbol is a donut.
-      ring = closeRing(getArcCoords(startAngle, startAngle + 360, outer));
-      if (inner > 0) {
-        // wind the hole in the opposite direction from the outer ring
-        return [ring, closeRing(getArcCoords(startAngle + 360, startAngle, inner))];
-      }
-      return [ring];
-    }
-    ring = getArcCoords(startAngle, endAngle, outer);
-    if (inner > 0) {
-      // A wedge of a donut is a simple polygon, so the hole needs no ring of
-      // its own -- the inner arc doubles back inside the outer one.
-      ring = ring.concat(getArcCoords(endAngle, startAngle, inner));
-    } else {
-      ring.push([0, 0]);
-    }
-    ring.push(ring[0].concat());
-    return [ring];
-  }
-
-  // A 360 degree arc starts and ends at the same angle, but rounding leaves its
-  // endpoints a hair apart, so the ring is closed explicitly.
-  function closeRing(ring) {
-    ring[ring.length - 1] = ring[0].concat();
-    return ring;
-  }
-
-  // Returns points along an arc, including both endpoints. Angles are bearings,
-  // which run clockwise from the top of the symbol -- the same convention as
-  // rotateCoords(), so the rotation= option is just an offset to the first angle.
-  function getArcCoords(startAngle, endAngle, radius) {
-    var sweep = endAngle - startAngle;
-    var segments = Math.max(1, Math.ceil(Math.abs(sweep) / DEGREES_PER_SEGMENT));
-    var coords = [];
-    for (var i=0; i<=segments; i++) {
-      coords.push(getPlanarSegmentEndpoint(0, 0, startAngle + sweep * i / segments, radius));
-    }
-    return coords;
-  }
-
-  // Missing, non-numeric and negative values all count as zero.
-  function getPieValues(d) {
+  function getPieFields(d, scale) {
+    var o, hole;
     if (!d.values) {
       stop$1('A pie symbol requires a values= option.');
     }
-    return toNumberList(d.values).map(function(num) {
-      return num > 0 ? num : 0;
-    });
-  }
-
-  function getPieFills(d) {
     if (!d.fills) {
       stop$1('A pie symbol requires a fills= option.');
     }
-    return toItemList(d.fills);
-  }
-
-  // Returns the color to fill a wedge with, or null if the wedge should be left
-  // out of the symbol.
-  function getWedgeFill(val) {
-    var str = val === null || val === undefined ? '' : String(val).trim();
-    var name = str.toLowerCase();
-    var rgb;
-    if (!str || name == 'none' || name == 'transparent') {
-      return null;
-    }
-    rgb = parseColor(str);
-    if (!rgb || rgb.a === 0) return null;
-    return str;
-  }
-
-  // Returns {inner, outer} radii in pixels. The hole= option makes a donut. A
-  // negative hole is measured inward from the outer radius, which gives a band
-  // of wedges of a fixed width without having to repeat a data-driven radius=
-  // expression. A hole as wide as the symbol leaves a plain pie, and a
-  // non-positive outer radius is left for the caller to skip, like radius=0 on
-  // the other symbol types.
-  function getPieRadii(d, scale) {
-    var outer = getSymbolRadius(d);
-    var hole = +d.hole;
-    var inner = 0;
-    if (hole > 0) {
-      inner = hole;
-    } else if (hole < 0) {
-      inner = outer + hole;
-    }
-    if (!(inner > 0) || inner >= outer) inner = 0;
-    return {
-      inner: inner * scale,
-      outer: outer * scale
+    o = {
+      icon: 'pie',
+      'icon-size': getSymbolRadius(d) * 2 * scale,
+      // missing, non-numeric and negative values all count as zero
+      'icon-values': toNumberList(d.values).map(function(n) {
+        return n > 0 ? n : 0;
+      }).join(','),
+      // a missing color leaves a gap in the pie
+      'icon-fills': toItemList(d.fills).map(function(val) {
+        return hasValue(val) ? String(val).trim() : 'none';
+      }).join(',')
     };
+    hole = getNumber(d.hole);
+    if (hole) o['icon-hole'] = hole * scale;
+    addRotation(o, getNumber(d.rotation));
+    addStroke(o, d);
+    if (hasValue(d.opacity)) o['icon-opacity'] = d.opacity;
+    return o;
   }
 
-  function sum(arr) {
-    var total = 0;
-    for (var i=0; i<arr.length; i++) {
-      total += arr[i];
-    }
-    return total;
-  }
-
-  // Returns an svg-symbol data object for one symbol
-  function makePathSymbol(coords, properties, geojsonType) {
-    var sym;
-    if (geojsonType == 'MultiPolygon' || geojsonType == 'Polygon') {
-      sym = {
-        type: 'polygon',
-        coordinates: geojsonType == 'Polygon' ? coords : flattenMultiPolygonCoords(coords)
-      };
-    } else if (geojsonType == 'LineString' || geojsonType == 'MultiLineString') {
-      sym = {
-        type: 'polyline',
-        'stroke-width': properties['stroke-width'] || 2,
-        coordinates: geojsonType == 'LineString' ? [coords] : coords
-      };
+  function getArrowFields(d, opts, scale) {
+    var o = {icon: 'arrow'};
+    var len = (d.radius || d.length || d.r || 0) * scale;
+    var stick = opts.arrow_style == 'stick';
+    if (len > 0) o['icon-size'] = len;
+    addRotation(o, getNumber(d.direction) + getNumber(d.rotation));
+    if (stick) {
+      o['arrow-style'] = 'stick';
+      o['icon-color'] = getSymbolStrokeColor(d);
+      o['stroke-width'] = d['stroke-width'] || 2;
+      if (hasValue(d.opacity)) o['icon-opacity'] = d.opacity;
     } else {
-      error('Unsupported type:', geojsonType);
+      addFilledStyle(o, d);
     }
-    applySymbolStyles(sym, properties);
-    roundCoordsForSVG(sym.coordinates);
-    return sym;
+    ['stem-width', 'head-width', 'head-length', 'stem-length'].forEach(function(name) {
+      if (isNumber(d[name])) o['arrow-' + name] = d[name] * scale;
+    });
+    if (scale != 1 && !isNumber(d['stem-width'])) {
+      // the default stem width, which sets the default head size
+      o['arrow-stem-width'] = 2 * scale;
+    }
+    ['head-angle', 'stem-taper', 'stem-curve', 'min-stem-ratio'].forEach(function(name) {
+      if (isNumber(d[name])) o['arrow-' + name] = d[name];
+    });
+    if (hasValue(d.anchor)) o['arrow-anchor'] = d.anchor;
+    // reports an impossible arrow now, rather than leaving it to draw as nothing
+    getArrowCoords(getArrowParams(o), stick ? 'stick' : 'standard');
+    return o;
   }
 
-  // TODO: refactor to remove duplication in mapshaper-svg-style.js
-  cmd.symbols = function(inputLyr, dataset, opts) {
-    requirePointLayer$2(inputLyr);
+  // A curve through the feature's points. Whether it is open or closed comes
+  // from its points, so the fields can't tell: fill= is kept for a closed one,
+  // and with no color given at all, the stroke gets the default.
+  function getCurveFields(d, scale) {
+    var o = {icon: 'curve'};
+    if (hasValue(d.stroke)) o.stroke = d.stroke;
+    if (hasValue(d.fill)) o.fill = d.fill;
+    if (!hasValue(d.stroke) && !hasValue(d.fill)) o.stroke = getSymbolStrokeColor(d);
+    if (isNumber(d['stroke-width'])) o['stroke-width'] = d['stroke-width'] * scale;
+    if (isNumber(d['line-end-size'])) o['line-end-size'] = d['line-end-size'] * scale;
+    ['stroke-dasharray', 'stroke-opacity', 'opacity', 'line-start', 'line-end',
+      'line-fade'].forEach(function(name) {
+      if (hasValue(d[name])) o[name] = d[name];
+    });
+    return o;
+  }
+
+  function addFilledStyle(o, d) {
+    o['icon-fill'] = getSymbolFillColor(d);
+    if (hasValue(d.stroke)) o['icon-stroke'] = d.stroke;
+    if (hasValue(d['stroke-width'])) o['icon-stroke-width'] = d['stroke-width'];
+    if (hasValue(d.opacity)) o['icon-opacity'] = d.opacity;
+    return o;
+  }
+
+  function addStroke(o, d) {
+    if (hasValue(d.stroke)) o.stroke = d.stroke;
+    if (hasValue(d['stroke-width'])) o['stroke-width'] = d['stroke-width'];
+  }
+
+  function addRotation(o, rotation) {
+    if (rotation) o['icon-rotation'] = rotation;
+  }
+
+  // rotated= turns a polygon or star to its alternate orientation: a half step
+  // between two vertices (flipped= is an old name for it)
+  function getOrientationRotation(d, n) {
+    return d.rotated || d.flipped ? 180 / n : 0;
+  }
+
+  function getOutputFieldNames(output) {
+    var index = {};
+    var fields = [];
+    output.forEach(function(o) {
+      Object.keys(o || {}).forEach(function(field) {
+        if (field in index) return;
+        index[field] = true;
+        fields.push(field);
+      });
+    });
+    return fields;
+  }
+
+  // Replaces each point with a polygon (or for stick arrows, a line) in map
+  // units, scaled so that the symbol is the size it would be drawn at
+  function makeGeographicSymbols(inputLyr, dataset, opts) {
+    // Only the first point of each feature is used to place a generated shape,
+    // so the other points of a multi-point feature would be dropped.
+    requireSinglePointLayer(inputLyr);
+    requireProjectedDataset(dataset);
     var lyr = opts.no_replace ? copyLayer(inputLyr) : inputLyr;
-    var shapeMode = !!opts.geographic;
-    var metersPerPx;
-    if (shapeMode) {
-      // Only the first point of each feature is used to place a generated shape,
-      // so the other points of a multi-point feature would be dropped. In SVG
-      // mode geometry is untouched and every point gets a symbol, so multi-point
-      // features are fine.
-      requireSinglePointLayer(inputLyr);
-      requireProjectedDataset(dataset);
-      metersPerPx = opts.pixel_scale || getMetersPerPixel(lyr);
-    }
+    var metersPerPx = opts.pixel_scale || getMetersPerPixel(lyr);
     var table = getLayerDataTable(lyr);
-    var symbolFields = getSymbolOutputFields(shapeMode, opts);
-    var hasNewSymbolFields = symbolFields.some(function(field) {
+    var styleFields = ['fill', 'stroke', 'opacity'].filter(function(field) {
+      return field in opts;
+    });
+    var hasNewFields = styleFields.some(function(field) {
       return !table.fieldExists(field);
     });
-    if (symbolFields.length > 0) {
-      if (hasNewSymbolFields) {
-        table.captureSchemaBefore({operation: 'symbols', fields: symbolFields});
+    if (styleFields.length > 0) {
+      if (hasNewFields) {
+        table.captureSchemaBefore({operation: 'symbols', fields: styleFields});
       } else {
-        table.captureFieldsBefore(symbolFields, {operation: 'symbols'});
+        table.captureFieldsBefore(styleFields, {operation: 'symbols'});
       }
     }
     var records = table.getRecords();
@@ -88704,31 +90163,13 @@ ${css.join('\n')}
       if (!shp) return null;
       var d = getSymbolData(i);
       var rec = records[i] || {};
-
-      // A pie has a different fill for each of its wedges, which the single
-      // fill field of a generated shape can't express.
-      if (d.type == 'pie') {
-        if (shapeMode) {
-          stop$1('The pie symbol type does not support the geographic option.');
-        }
-        var pie = makePieSymbol(d, opts);
-        if (pie) rec['svg-symbol'] = pie;
-        return;
-      }
-
-      // non-polygon symbols
-      if (!shapeMode && d.type == 'circle') {
-        rec['svg-symbol'] = makeCircleSymbol(d, opts);
-        return;
-      }
-      if (!shapeMode && d.type == 'ring') {
-        rec['svg-symbol'] = makeRingSymbol(d, opts);
-        return;
-      }
-
       var geojsonType = 'Polygon';
       var coords;
-      // these symbols get converted to polygon shapes
+      if (d.type == 'pie') {
+        // a pie has a fill for each wedge, which a shape's single fill field
+        // can't express
+        stop$1('The pie symbol type does not support the geographic option.');
+      }
       if (d.type == 'arrow' && opts.arrow_style == 'stick') {
         coords = getStickArrowCoords(d);
         geojsonType = 'MultiLineString';
@@ -88744,69 +90185,37 @@ ${css.join('\n')}
       }
       if (!coords) return null;
       rotateCoords(coords, +d.rotation || 0);
-      if (!shapeMode) {
-        flipY(coords);
-      }
       if (+opts.scale) {
         scaleAndShiftCoords(coords, +opts.scale, [0, 0]);
       }
-      if (shapeMode) {
-        scaleAndShiftCoords(coords, metersPerPx, shp[0]);
-        if (d.fill) rec.fill = d.fill;
-        if (d.stroke) rec.stroke = d.stroke;
-        if (d.opacity) rec.opacity = d.opacity;
-        return createGeometry(coords, geojsonType);
-      } else {
-        rec['svg-symbol'] = makePathSymbol(coords, d, geojsonType);
-      }
+      scaleAndShiftCoords(coords, metersPerPx, shp[0]);
+      if (d.fill) rec.fill = d.fill;
+      if (d.stroke) rec.stroke = d.stroke;
+      if (d.opacity) rec.opacity = d.opacity;
+      return {type: geojsonType, coordinates: coords};
     });
-
-    var outputLyr, dataset2;
-    if (shapeMode) {
-      dataset2 = importGeometries(geometries, records);
-      outputLyr = mergeOutputLayerIntoDataset(inputLyr, dataset, dataset2, opts);
-      outputLyr.data = lyr.data;
-    } else {
-      outputLyr = lyr;
-    }
-    if (symbolFields.length > 0) {
-      if (hasNewSymbolFields) {
+    var dataset2 = importGeometries(geometries, records);
+    var outputLyr = mergeOutputLayerIntoDataset(inputLyr, dataset, dataset2, opts);
+    outputLyr.data = lyr.data;
+    if (styleFields.length > 0) {
+      if (hasNewFields) {
         table.markSchemaChanged({operation: 'symbols'});
       } else {
-        table.markFieldsChanged(symbolFields, {operation: 'symbols'});
+        table.markFieldsChanged(styleFields, {operation: 'symbols'});
       }
     }
     return [outputLyr];
-  };
-
-  function getSymbolOutputFields(shapeMode, opts) {
-    if (!shapeMode) return ['svg-symbol'];
-    return ['fill', 'stroke', 'opacity'].filter(function(field) {
-      return field in opts;
-    });
   }
 
   function importGeometries(geometries, records) {
     var features = geometries.map(function(geom, i) {
-      records[i];
       return {
         type: 'Feature',
         properties: records[i] || null,
         geometry: geom
       };
     });
-    var geojson = {
-      type: 'FeatureCollection',
-      features: features
-    };
-    return importGeoJSON(geojson);
-  }
-
-  function createGeometry(coords, type) {
-    return {
-      type: type,
-      coordinates: coords
-    };
+    return importGeoJSON({type: 'FeatureCollection', features: features});
   }
 
   function getMetersPerPixel(lyr, dataset) {
@@ -88816,8 +90225,26 @@ ${css.join('\n')}
     return extent / 800;
   }
 
+  function roundToHundredths(n) {
+    return Math.round(n * 100) / 100;
+  }
+
+  function getNumber(val) {
+    var num = Number(val);
+    return hasValue(val) && isFinite(num) ? num : 0;
+  }
+
+  function isNumber(val) {
+    return hasValue(val) && isFinite(val);
+  }
+
+  function hasValue(val) {
+    return val !== undefined && val !== null && val !== '';
+  }
+
   var Symbols = /*#__PURE__*/Object.freeze({
-    __proto__: null
+    __proto__: null,
+    getSymbolFields: getSymbolFields
   });
 
   cmd.target = function(catalog, opts) {
@@ -89274,7 +90701,7 @@ ${css.join('\n')}
     if (name == 'rectangle') {
       return !opts.source && !opts.bbox;
     }
-    if (name == 'labels') {
+    if (name == 'labels' || name == 'symbols') {
       return !('coordinates' in opts);
     }
     return [
@@ -89292,7 +90719,7 @@ ${css.join('\n')}
   }
 
   function commandAcceptsEmptyTarget(name, opts) {
-    if (name == 'labels') {
+    if (name == 'labels' || name == 'symbols') {
       return 'coordinates' in opts;
     }
     return name == 'graticule' || name == 'i' || name == 'help' ||
@@ -89439,6 +90866,12 @@ ${css.join('\n')}
 
       } else if (name == 'update-label') {
         cmd.updateLabel(targetLayers, targetDataset, opts);
+
+      } else if (name == 'update-symbol') {
+        cmd.updateSymbol(targetLayers, targetDataset, opts);
+
+      } else if (name == 'update-point') {
+        cmd.updatePoint(targetLayers, targetDataset, opts);
 
       } else if (name == 'affine') {
         cmd.affine(targetLayers, targetDataset, opts);
@@ -89735,6 +91168,14 @@ ${css.join('\n')}
       } else if (name == 'style') {
         applyCommandToEachLayer(cmd.svgStyle, targetLayers, targetDataset, opts);
 
+      } else if (name == 'symbols' && 'coordinates' in opts) {
+        if (!targetDataset) {
+          targetDataset = {info: {}, layers: []};
+          targetLayers = targetDataset.layers;
+          job.catalog.addDataset(targetDataset);
+        }
+        outputLayers = cmd.addSymbol(targetLayers, targetDataset, opts);
+
       } else if (name == 'symbols') {
         outputLayers = applyCommandToEachLayer(cmd.symbols, targetLayers, targetDataset, opts);
 
@@ -90001,7 +91442,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.83";
+  var version = "0.7.84";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -92402,7 +93843,8 @@ ${css.join('\n')}
     SvgFeatureUtils,
     SvgLabels, SvgSymbols, SvgLabelPaths, SvgLabelFit, SvgLabelAlign,
     SvgLabelMetrics, SvgLabelHalo, SvgLabelCallout, SvgLabelBox, SvgLabelBackground,
-    SvgLabelMarkup, SvgLineArrows, SvgGlow, SvgRasterize);
+    SvgLabelMarkup, SvgLineArrows, SvgCurveSymbols, SvgGlow, SvgLineCasing, SvgRasterize,
+    {getIconBoundingRadius});
 
   // Reached through the bundle rather than imported from source, unlike most of
   // what tests use, because these modules load fs and fontkit through the

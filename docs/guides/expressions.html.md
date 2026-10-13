@@ -253,6 +253,8 @@ These are always in scope inside feature expressions:
 - `format_dms(coord [, fmt])` &mdash; Format a number as a degrees/minutes/seconds string. Common formats: `'DD° MM′ SS.SSSSS″ [NS]'`, `'DdMmSs [EW]'`, `'[+-]DDDMM.MMMMM'`, `'[-]DD.DDDDD°'`.
 - `parse_dms(string [, fmt])` &mdash; Parse a DMS string back to a number.
 - `blend(c1, c2, ...)` &mdash; Mix CSS color strings together (returns a hex string).
+- `distance_lonlat(lon1, lat1, lon2, lat2)` &mdash; Distance in meters between two points given in decimal degrees, on the WGS84 ellipsoid. Returns `null` if a coordinate is missing or a latitude is outside the range -90 to 90.
+- `distance_xy(x1, y1, x2, y2)` &mdash; Straight-line (Euclidean) distance between two points in projected coordinates. Returns `null` if a coordinate is missing.
 - `console.log(...)` &mdash; Write to stderr.
 
 JavaScript's built-in `Math`, `JSON`, `Number`, `String`, `Array`, `Date`, `Object` etc. are all available. Node-specific globals like `process`, `require` and `setTimeout` are not.

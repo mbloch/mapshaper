@@ -250,7 +250,7 @@ The `html` format writes a map as an HTML fragment and an image, in the manner o
 
 `drop-table`  Remove attribute data from output.
 
-`precision=`  Round all coordinates to a specified precision, e.g. `precision=0.001`. Useful for reducing the size of GeoJSON files.
+`precision=`  Round all coordinates to a specified precision, e.g. `precision=0.001`. Useful for reducing the size of GeoJSON files. In quantized TopoJSON output, `precision=` sets the size of the quantization grid, which is anchored at the origin (0, 0). Files exported with the same precision share a grid, so the same point gets the same coordinates in each file &mdash; useful for map tiles. This option is ignored if `quantization=` or `topojson-precision=` is also given.
 
 `fix-geometry` Remove segment intersections caused by rounding (via the `precision=` option) or TopoJSON quantization, by reverting intersecting areas to the original coordinates. In the case of quantized TopoJSON output, this option produces delta-encoded arcs that contain some decimal numbers. Be sure to test your software for compatibility. Note that this option is only applied if the original paths are free of intersections. Also, some kinds of invalid geometry, like spikes, do not get fixed.
 
@@ -1926,17 +1926,17 @@ Example: `hatches 45deg 2px red 2px grey`
 
 `line-fade=`       Share of a line's length, from 0 to 1, that fades in from transparent at its tail (e.g. `line-fade=0.4`). The tail is the start of the line, unless only the start has a marker. The fade is a straight gradient, so it suits straight or gently curved lines best.
 
+`casing-color=`    Add a casing (an outline) of this color beneath each line. The casings of a layer are all drawn before any of its lines, so that lines join cleanly where they meet. A casing has the line's caps and joins, is solid under a dashed line, and stops at a line's arrowheads.
+
+`casing-width=`    How far the casing extends past each edge of the line, in pixels (default is 1). The casing's stroke is the line's `stroke-width` plus twice this width.
+
+`casing-opacity=`  Opacity of the casing, 0-1 (default is 1). A line's `opacity=` also fades its casing; its `stroke-opacity=` does not.
+
 `opacity=`         Symbol opacity (e.g. `opacity=0.5`)
 
 `r=`               Circle radius. Setting this exports points as SVG `<circle>` symbols, unless the `-o point-symbol=square` option is used.
 
-`icon=`            Point icon shape. Possible values are: circle, square, ring or star. Icons are rendered as SVG symbols and can be combined with labels on the same point layer.
-
-`icon-size=`       Point icon size in pixels. If `icon=` is missing, `icon-size=` creates circle icons.
-
-`icon-color=`      Point icon color. If missing, icons use the `fill=` color, or black if `fill=` is also missing. Ring icons use this color for the stroke.
-
-Label options such as `label-text=`, `font-size=` and `text-anchor=` have moved to [-labels](#-labels). `-style` still accepts them, so existing scripts keep working.
+Label options such as `label-text=`, `font-size=` and `text-anchor=` have moved to [-labels](#-labels), and point icons are made with [-symbols](#-symbols) (or `icon=` in `-labels`, for an icon at a label's anchor). `-style` still accepts the old options, including `icon=`, `icon-size=`, `icon-color=` and `icon-opacity=`, so existing scripts keep working.
 
 Common options: `target=`
 
@@ -1961,6 +1961,8 @@ Symbolize points as regular polygons, circles, stars, arrows, pies and donuts.
 A `pie` symbol is a pie or donut chart, sized by `radius=` and divided up by `values=` and `fills=`. Add `hole=` to make it a donut. Its first wedge starts at the top of the symbol and the rest follow in clockwise order. `rotation=` changes the origin.
 
 `type=`            Basic types: star, polygon, circle, arrow, ring, pie. Aliases: triangle, square, pentagon, etc.
+
+`ids=`             Comma-sep. list of ids of the points to symbolize. Other points keep the symbols they have, so this restyles some of a layer's symbols.
 
 `fill=`            Symbol fill color
 

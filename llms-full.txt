@@ -568,7 +568,7 @@ The `html` format writes a map as an HTML fragment and an image, in the manner o
 
 `drop-table`  Remove attribute data from output.
 
-`precision=`  Round all coordinates to a specified precision, e.g. `precision=0.001`. Useful for reducing the size of GeoJSON files.
+`precision=`  Round all coordinates to a specified precision, e.g. `precision=0.001`. Useful for reducing the size of GeoJSON files. In quantized TopoJSON output, `precision=` sets the size of the quantization grid, which is anchored at the origin (0, 0). Files exported with the same precision share a grid, so the same point gets the same coordinates in each file &mdash; useful for map tiles. This option is ignored if `quantization=` or `topojson-precision=` is also given.
 
 `fix-geometry` Remove segment intersections caused by rounding (via the `precision=` option) or TopoJSON quantization, by reverting intersecting areas to the original coordinates. In the case of quantized TopoJSON output, this option produces delta-encoded arcs that contain some decimal numbers. Be sure to test your software for compatibility. Note that this option is only applied if the original paths are free of intersections. Also, some kinds of invalid geometry, like spikes, do not get fixed.
 
@@ -2244,17 +2244,17 @@ Example: `hatches 45deg 2px red 2px grey`
 
 `line-fade=`       Share of a line's length, from 0 to 1, that fades in from transparent at its tail (e.g. `line-fade=0.4`). The tail is the start of the line, unless only the start has a marker. The fade is a straight gradient, so it suits straight or gently curved lines best.
 
+`casing-color=`    Add a casing (an outline) of this color beneath each line. The casings of a layer are all drawn before any of its lines, so that lines join cleanly where they meet. A casing has the line's caps and joins, is solid under a dashed line, and stops at a line's arrowheads.
+
+`casing-width=`    How far the casing extends past each edge of the line, in pixels (default is 1). The casing's stroke is the line's `stroke-width` plus twice this width.
+
+`casing-opacity=`  Opacity of the casing, 0-1 (default is 1). A line's `opacity=` also fades its casing; its `stroke-opacity=` does not.
+
 `opacity=`         Symbol opacity (e.g. `opacity=0.5`)
 
 `r=`               Circle radius. Setting this exports points as SVG `<circle>` symbols, unless the `-o point-symbol=square` option is used.
 
-`icon=`            Point icon shape. Possible values are: circle, square, ring or star. Icons are rendered as SVG symbols and can be combined with labels on the same point layer.
-
-`icon-size=`       Point icon size in pixels. If `icon=` is missing, `icon-size=` creates circle icons.
-
-`icon-color=`      Point icon color. If missing, icons use the `fill=` color, or black if `fill=` is also missing. Ring icons use this color for the stroke.
-
-Label options such as `label-text=`, `font-size=` and `text-anchor=` have moved to [-labels](#-labels). `-style` still accepts them, so existing scripts keep working.
+Label options such as `label-text=`, `font-size=` and `text-anchor=` have moved to [-labels](#-labels), and point icons are made with [-symbols](#-symbols) (or `icon=` in `-labels`, for an icon at a label's anchor). `-style` still accepts the old options, including `icon=`, `icon-size=`, `icon-color=` and `icon-opacity=`, so existing scripts keep working.
 
 Common options: `target=`
 
@@ -2279,6 +2279,8 @@ Symbolize points as regular polygons, circles, stars, arrows, pies and donuts.
 A `pie` symbol is a pie or donut chart, sized by `radius=` and divided up by `values=` and `fills=`. Add `hole=` to make it a donut. Its first wedge starts at the top of the symbol and the rest follow in clockwise order. `rotation=` changes the origin.
 
 `type=`            Basic types: star, polygon, circle, arrow, ring, pie. Aliases: triangle, square, pentagon, etc.
+
+`ids=`             Comma-sep. list of ids of the points to symbolize. Other points keep the symbols they have, so this restyles some of a layer's symbols.
 
 `fill=`            Symbol fill color
 
@@ -3706,10 +3708,10 @@ To make circles from a point layer, add a `r=` (for radius) property along with 
 
 ### Making point icons
 
-Use `icon=` with `icon-size=` to add circle, square, ring or star icons to a point layer. Icons use `icon-color=` when it is provided. Otherwise they use the layer's `fill=` color, falling back to black.
+Use [`-symbols`](/docs/reference.html.md#-symbols) to turn the points of a layer into squares, stars, triangles, rings and other icons. `radius=` sets their size.
 
 ```text
--style icon=star icon-size=10 fill="#333"
+-symbols type=star radius=5 fill="#333"
 ```
 
 ## Styling data layers with the `-classify` command
@@ -3822,10 +3824,10 @@ Use `dx=` together with `text-anchor=start` or `text-anchor=end` to place labels
 -style label-text=NAME dx=6 dy=3 font-size=12 text-anchor=start r=2
 ```
 
-For labeled point icons, use `icon=` on the same layer. In this example the icon and label both use `fill="#555"`.
+For labeled point icons, use the `icon=` option of [`-labels`](/docs/reference.html.md#-labels), which draws an icon at each label's anchor. The icon takes the text color, `fill="#555"` in this example, unless it is given a color of its own.
 
 ```text
--style label-text=NAME dx=8 dy=3 text-anchor=start \
+-labels text=NAME dx=8 dy=3 text-anchor=start \
   icon=circle icon-size=6 fill="#555"
 ```
 
@@ -4112,6 +4114,8 @@ These are always in scope inside feature expressions:
 - `format_dms(coord [, fmt])` &mdash; Format a number as a degrees/minutes/seconds string. Common formats: `'DD° MM′ SS.SSSSS″ [NS]'`, `'DdMmSs [EW]'`, `'[+-]DDDMM.MMMMM'`, `'[-]DD.DDDDD°'`.
 - `parse_dms(string [, fmt])` &mdash; Parse a DMS string back to a number.
 - `blend(c1, c2, ...)` &mdash; Mix CSS color strings together (returns a hex string).
+- `distance_lonlat(lon1, lat1, lon2, lat2)` &mdash; Distance in meters between two points given in decimal degrees, on the WGS84 ellipsoid. Returns `null` if a coordinate is missing or a latitude is outside the range -90 to 90.
+- `distance_xy(x1, y1, x2, y2)` &mdash; Straight-line (Euclidean) distance between two points in projected coordinates. Returns `null` if a coordinate is missing.
 - `console.log(...)` &mdash; Write to stderr.
 
 JavaScript's built-in `Math`, `JSON`, `Number`, `String`, `Array`, `Date`, `Object` etc. are all available. Node-specific globals like `process`, `require` and `setTimeout` are not.
@@ -4996,7 +5000,7 @@ Mapshaper exposes three top-level functions for running editing commands program
 Runs a command line against files on disk (or in-memory). The `-o` command(s) write their output to disk.
 
 - `commands` &mdash; a command-line string.
-- `input` (optional) &mdash; an object whose keys are filenames and whose values are file contents. Files referenced by `-i` are looked up here first, then on the filesystem.
+- `input` (optional) &mdash; an object whose keys are filenames and whose values are file contents. Files referenced by `-i` are looked up here first, then on the filesystem. GeoJSON and TopoJSON contents may be given as strings or as objects (see [Input objects are modified](#input-objects-are-modified)).
 - `callback` (optional) &mdash; a Node-style `function(err)`. Without a callback, `runCommands` returns a Promise.
 
 ```javascript
@@ -5028,6 +5032,16 @@ await mapshaper.runCommandsXL(commands, { xl: '16gb' });
 ```
 
 This function reads input only from the filesystem &mdash; there's no `input` argument as on `runCommands`/`applyCommands`.
+
+## Input objects are modified
+
+When GeoJSON or TopoJSON is passed to `runCommands` or `applyCommands` as an object rather than a string, Mapshaper uses the object's data without copying it, and the object may be modified. Commands that edit attribute data (like `-each`) can change the objects' `properties`, and coordinates can be changed during import and output; for example, the final `-o` command may overwrite point coordinates with quantized TopoJSON or SVG pixel coordinates.
+
+To keep using an object after passing it to Mapshaper, pass a copy or a JSON string instead:
+
+```javascript
+const output = await mapshaper.applyCommands(cmd, { 'input.json': structuredClone(geojson) });
+```
 
 ## Working with Shapefiles in `applyCommands`
 

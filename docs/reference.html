@@ -212,7 +212,7 @@ mapshaper states.geojson \
 mapshaper countries_wgs84.shp encoding=latin1 -info
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-o-output" data-name="-o (output)" data-options="format json html target force gzip zip cut-table drop-table precision fix-geometry bbox-index encoding field-order id-field bbox extension prettify singles quantization no-quantization presimplify topojson-precision ndjson gj2008 reverse-winding combine-layers geojson-type no-null-props hoist metadata crs id width height max-height margin pixels id-prefix svg-data svg-scale raster-res linked-images jpeg-quality responsiveness fixed dynamic image-format png jpg html-labels pixel-ratio delimiter decimal-comma compression snappy zstd none deflate level rowgroup show-all"><h3 id="-o-output">-o (output)</h3>
+<section class="cmd-section" data-id="-o-output" data-name="-o (output)" data-options="format json html target force gzip zip cut-table drop-table precision quantization topojson-precision fix-geometry bbox-index encoding field-order id-field bbox extension prettify singles no-quantization presimplify ndjson gj2008 reverse-winding combine-layers geojson-type no-null-props hoist metadata crs id width height max-height margin pixels id-prefix svg-data svg-scale raster-res linked-images jpeg-quality responsiveness fixed dynamic image-format png jpg html-labels pixel-ratio delimiter decimal-comma compression snappy zstd none deflate level rowgroup show-all"><h3 id="-o-output">-o (output)</h3>
 <p>Save content of the target layer(s) to a file or files.</p>
 <p><strong>Options</strong></p>
 <p><code>&lt;file&gt;|&lt;directory&gt;|-</code>  Name of output file or directory. Use <code>-</code> to export text-based formats to <code>/dev/stdout</code>.</p>
@@ -225,7 +225,7 @@ mapshaper countries_wgs84.shp encoding=latin1 -info
 <p><code>zip</code>  Save output files in a single .zip archive.</p>
 <p><code>cut-table</code>  Detach attribute data from shapes and save as a JSON file.</p>
 <p><code>drop-table</code>  Remove attribute data from output.</p>
-<p><code>precision=</code>  Round all coordinates to a specified precision, e.g. <code>precision=0.001</code>. Useful for reducing the size of GeoJSON files.</p>
+<p><code>precision=</code>  Round all coordinates to a specified precision, e.g. <code>precision=0.001</code>. Useful for reducing the size of GeoJSON files. In quantized TopoJSON output, <code>precision=</code> sets the size of the quantization grid, which is anchored at the origin (0, 0). Files exported with the same precision share a grid, so the same point gets the same coordinates in each file &mdash; useful for map tiles. This option is ignored if <code>quantization=</code> or <code>topojson-precision=</code> is also given.</p>
 <p><code>fix-geometry</code> Remove segment intersections caused by rounding (via the <code>precision=</code> option) or TopoJSON quantization, by reverting intersecting areas to the original coordinates. In the case of quantized TopoJSON output, this option produces delta-encoded arcs that contain some decimal numbers. Be sure to test your software for compatibility. Note that this option is only applied if the original paths are free of intersections. Also, some kinds of invalid geometry, like spikes, do not get fixed.</p>
 <p><code>bbox-index</code>  Export a JSON file containing bounding boxes of each output layer.</p>
 <p><code>encoding=</code> (Shapefile/CSV) Encoding of input text (by default, Shapefile encoding is auto-detected and CSV files are assumed to be UTF-8).</p>
@@ -1275,7 +1275,7 @@ mapshaper tracts.shp
   -o tract_groups.shp
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-style" data-name="-style" data-options="where clear class css style fill pink fill-pattern ortho npers outer-glow-color outer-glow-width outer-glow-opacity inner-glow-color inner-glow-width inner-glow-opacity stroke stroke-width stroke-dasharray stroke-linecap round butt square line-start arrow open-arrow dot none line-end line-end-size line-fade opacity icon icon-size icon-color label-text font-size text-anchor target"><h3 id="-style">-style</h3>
+<section class="cmd-section" data-id="-style" data-name="-style" data-options="where clear class css style fill pink fill-pattern ortho npers outer-glow-color outer-glow-width outer-glow-opacity inner-glow-color inner-glow-width inner-glow-opacity stroke stroke-width stroke-dasharray stroke-linecap round butt square line-start arrow open-arrow dot none line-end line-end-size line-fade casing-color casing-width casing-opacity opacity stroke-opacity label-text font-size text-anchor icon icon-size icon-color icon-opacity target"><h3 id="-style">-style</h3>
 <p>Add common SVG attributes for SVG export and display in the web UI. Attribute values take either a literal value or a JS expression. See <a href="/docs/guides/expressions.html">JavaScript expressions</a> for the available context. This command was named <code>-svg-style</code> in earlier versions of mapshaper.</p>
 <p><code>where=</code>           Boolean JS expression for targetting a subset of features.</p>
 <p><code>clear</code> Remove all style properties from a layer.</p>
@@ -1305,12 +1305,12 @@ mapshaper tracts.shp
 <p><code>line-end=</code>        Marker at the last vertex of a line: <code>arrow</code>, <code>open-arrow</code>, <code>dot</code> or <code>none</code>.</p>
 <p><code>line-end-size=</code>   Length of an arrowhead&#39;s sides in pixels, or the diameter of a dot, for both ends (an arrowhead&#39;s default is 7 plus three times the stroke width; a dot&#39;s is 0.6 of that)</p>
 <p><code>line-fade=</code>       Share of a line&#39;s length, from 0 to 1, that fades in from transparent at its tail (e.g. <code>line-fade=0.4</code>). The tail is the start of the line, unless only the start has a marker. The fade is a straight gradient, so it suits straight or gently curved lines best.</p>
+<p><code>casing-color=</code>    Add a casing (an outline) of this color beneath each line. The casings of a layer are all drawn before any of its lines, so that lines join cleanly where they meet. A casing has the line&#39;s caps and joins, is solid under a dashed line, and stops at a line&#39;s arrowheads.</p>
+<p><code>casing-width=</code>    How far the casing extends past each edge of the line, in pixels (default is 1). The casing&#39;s stroke is the line&#39;s <code>stroke-width</code> plus twice this width.</p>
+<p><code>casing-opacity=</code>  Opacity of the casing, 0-1 (default is 1). A line&#39;s <code>opacity=</code> also fades its casing; its <code>stroke-opacity=</code> does not.</p>
 <p><code>opacity=</code>         Symbol opacity (e.g. <code>opacity=0.5</code>)</p>
 <p><code>r=</code>               Circle radius. Setting this exports points as SVG <code>&lt;circle&gt;</code> symbols, unless the <code>-o point-symbol=square</code> option is used.</p>
-<p><code>icon=</code>            Point icon shape. Possible values are: circle, square, ring or star. Icons are rendered as SVG symbols and can be combined with labels on the same point layer.</p>
-<p><code>icon-size=</code>       Point icon size in pixels. If <code>icon=</code> is missing, <code>icon-size=</code> creates circle icons.</p>
-<p><code>icon-color=</code>      Point icon color. If missing, icons use the <code>fill=</code> color, or black if <code>fill=</code> is also missing. Ring icons use this color for the stroke.</p>
-<p>Label options such as <code>label-text=</code>, <code>font-size=</code> and <code>text-anchor=</code> have moved to <a href="#-labels">-labels</a>. <code>-style</code> still accepts them, so existing scripts keep working.</p>
+<p>Label options such as <code>label-text=</code>, <code>font-size=</code> and <code>text-anchor=</code> have moved to <a href="#-labels">-labels</a>, and point icons are made with <a href="#-symbols">-symbols</a> (or <code>icon=</code> in <code>-labels</code>, for an icon at a label&#39;s anchor). <code>-style</code> still accepts the old options, including <code>icon=</code>, <code>icon-size=</code>, <code>icon-color=</code> and <code>icon-opacity=</code>, so existing scripts keep working.</p>
 <p>Common options: <code>target=</code></p>
 <p><strong>Example</strong></p>
 <pre><code class="hljs language-bash"><span class="hljs-comment"># Apply a 2px grey stroke and no fill to a polygon layer</span>
@@ -1324,10 +1324,11 @@ mapshaper routes.geojson \
 -o out.svg
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-symbols" data-name="-symbols" data-options="pie radius values fills hole rotation type fill stroke stroke-width opacity geographic pixel-scale rotated scale sides points point-ratio radii none transparent length direction head-angle head-width head-length stem-width stem-length stem-taper stem-curve min-stem-ratio anchor name target"><h3 id="-symbols">-symbols</h3>
+<section class="cmd-section" data-id="-symbols" data-name="-symbols" data-options="pie radius values fills hole rotation type ids fill stroke stroke-width opacity geographic pixel-scale rotated scale sides points point-ratio radii none transparent length direction head-angle head-width head-length stem-width stem-length stem-taper stem-curve min-stem-ratio anchor name target"><h3 id="-symbols">-symbols</h3>
 <p>Symbolize points as regular polygons, circles, stars, arrows, pies and donuts.</p>
 <p>A <code>pie</code> symbol is a pie or donut chart, sized by <code>radius=</code> and divided up by <code>values=</code> and <code>fills=</code>. Add <code>hole=</code> to make it a donut. Its first wedge starts at the top of the symbol and the rest follow in clockwise order. <code>rotation=</code> changes the origin.</p>
 <p><code>type=</code>            Basic types: star, polygon, circle, arrow, ring, pie. Aliases: triangle, square, pentagon, etc.</p>
+<p><code>ids=</code>             Comma-sep. list of ids of the points to symbolize. Other points keep the symbols they have, so this restyles some of a layer&#39;s symbols.</p>
 <p><code>fill=</code>            Symbol fill color</p>
 <p><code>stroke=</code>          Symbol line color (linear symbols only)</p>
 <p><code>stroke-width=</code>    Symbol line width (linear symbols only)</p>
