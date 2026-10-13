@@ -156,17 +156,28 @@ var startEditing = function() {
   });
 
   // The layer list, opened beside the first data so that the user sees what
-  // was imported and where to go next -- once, and only for data: dismissing
-  // the splash popup without importing anything leaves the sidebar closed.
-  // Waits for any menu mode (the import dialog, while files are still loading)
-  // to close, since opening a panel would close it.
+  // was imported and where to go next, and when the splash popup is dismissed
+  // without importing anything, where its "Draw:" links start a map from
+  // scratch -- once for each. Waits for any menu mode (the import dialog,
+  // while files are still loading) to close, since opening a panel would
+  // close it.
   var layersShownForData = false;
-  gui.model.on('update', showLayersForFirstData);
-  gui.on('mode', showLayersForFirstData);
-  function showLayersForFirstData() {
+  var layersShownForSplash = false;
+  gui.model.on('update', function() {
+    showLayersOnce(false);
+  });
+  gui.on('mode', function() {
+    showLayersOnce(true);
+  });
+  function showLayersOnce(modeChanged) {
+    var empty = gui.model.isEmpty();
+    var firstData = !empty && !layersShownForData;
+    // an empty map with no mode is the splash popup's dismissal
+    var splashDismissed = empty && modeChanged && !layersShownForSplash;
     var panels;
-    if (layersShownForData || gui.model.isEmpty() || gui.getMode()) return;
-    layersShownForData = true;
+    if (gui.getMode() || !firstData && !splashDismissed) return;
+    layersShownForSplash = true;
+    if (firstData) layersShownForData = true;
     panels = gui.getSidebarPanels();
     if (!panels.includes('layers')) {
       gui.setSidebarPanels(panels.concat('layers').sort());
