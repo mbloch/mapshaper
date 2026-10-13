@@ -61,6 +61,9 @@ export function MshpMap(gui) {
   // Whether the content's bounds had no width or no height before they were
   // padded in calcFullBounds() -- see mapNeedsResetFromCollapsedBounds().
   var _boundsAreCollapsed = false;
+  // The model's layers and datasets as of the last update, so that the
+  // display data of any that leave the model can be released
+  var _modelLayers = [], _modelDatasets = [];
 
   var RESIZE_REDRAW_DELAY = 200;
 
@@ -334,6 +337,7 @@ export function MshpMap(gui) {
 
     if (!updated) {
       clearMapState();
+      releaseRemovedLayers();
       drawLayers();
       map.dispatchEvent('updated');
       return;
@@ -423,8 +427,29 @@ export function MshpMap(gui) {
       _ext.reset();
       gui?.basemap.refresh();
     }
+    releaseRemovedLayers();
     drawLayers();
     map.dispatchEvent('updated');
+  }
+
+  // A layer or dataset that has left the model can still be held by the undo
+  // history, so its display data -- with a basemap on, a reprojected copy of
+  // all its arcs -- is released, rather than kept for every undo state. One
+  // that comes back gets new display data from enhanceLayerForDisplay().
+  function releaseRemovedLayers() {
+    var layers = new Set(), datasets = new Set();
+    model.getLayers().forEach(function(o) {
+      layers.add(o.layer);
+      datasets.add(o.dataset);
+    });
+    _modelLayers.forEach(function(lyr) {
+      if (!layers.has(lyr) && lyr != _activeLyr) delete lyr.gui;
+    });
+    _modelDatasets.forEach(function(dataset) {
+      if (!datasets.has(dataset)) delete dataset.gui;
+    });
+    _modelLayers = Array.from(layers);
+    _modelDatasets = Array.from(datasets);
   }
 
   function clearMapState() {

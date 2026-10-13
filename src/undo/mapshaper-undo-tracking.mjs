@@ -120,6 +120,10 @@ export function noteArcsWillChange(arcs, detail) {
   notifyTransaction(activeTransaction, 'captureArcsBefore', arcs, detail || {});
 }
 
+export function noteArcsWillAppend(arcs, detail) {
+  notifyTransaction(activeTransaction, 'captureArcsAppendBefore', arcs, detail || {});
+}
+
 export function noteArcsSimplificationWillChange(arcs, detail) {
   notifyTransaction(activeTransaction, 'captureArcsSimplificationBefore', arcs, detail || {});
 }

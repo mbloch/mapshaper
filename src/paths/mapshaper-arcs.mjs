@@ -13,6 +13,7 @@ import {
   markArcsChanged,
   markArcsSimplificationChanged,
   noteArcsSimplificationWillChange,
+  noteArcsWillAppend,
   noteArcsWillChange
 } from '../undo/mapshaper-undo-tracking';
 
@@ -29,7 +30,11 @@ export function ArcCollection() {
       _ii, _nn,  // indexes, sizes
       _zz, _zlimit = 0, // simplification
       _bb, _allBounds, // bounding boxes
-      _arcIter, _filteredArcIter; // path iterators
+      _arcIter, _filteredArcIter, // path iterators
+      // Arrays with spare capacity, allocated by appendArcs(). Only these are
+      // written past the end of the current data: arrays received from
+      // elsewhere may be views into a buffer that holds other data.
+      _capNN = null, _capXX = null, _capYY = null;
 
   if (arguments.length == 1) {
     initLegacyArcs(arguments[0]);  // want to phase this out
@@ -126,10 +131,86 @@ export function ArcCollection() {
 
   this.updateVertexData = function(nn, xx, yy, zz) {
     this.captureArcsBefore({operation: 'updateVertexData'});
+    clearAppendCapacity();
     initXYData(nn, xx, yy);
     initZData(zz || null);
     this.markArcsChanged({operation: 'updateVertexData'});
   };
+
+  // Adds arcs to the end of the collection, leaving the ids of existing arcs
+  // unchanged. Unlike merging, this copies only the new vertices (most of the
+  // time), and undo takes it back by truncating the collection, without a
+  // copy of the existing arcs.
+  // nn, xx, yy: vertex data of the arcs to add
+  this.appendArcs = function(nn, xx, yy) {
+    var arcCount = _nn.length + nn.length,
+        pointCount = _xx.length + xx.length,
+        zlimit = _zlimit;
+    if (_zz) {
+      error('ArcCollection#appendArcs() Simplified arcs are not supported');
+    }
+    if (xx.length != yy.length) {
+      error('ArcCollection#appendArcs() Mismatched arrays');
+    }
+    noteArcsWillAppend(this, {operation: 'appendArcs'});
+    if (!hasAppendCapacity(arcCount, pointCount)) {
+      allocateAppendCapacity(arcCount, pointCount);
+    }
+    _capNN.set(nn, _nn.length);
+    _capXX.set(xx, _xx.length);
+    _capYY.set(yy, _yy.length);
+    initXYData(_capNN.subarray(0, arcCount), _capXX.subarray(0, pointCount),
+      _capYY.subarray(0, pointCount));
+    _zlimit = zlimit;
+    this.markArcsChanged({operation: 'appendArcs'});
+  };
+
+  // Removes arcs from the end of the collection, keeping the first @arcCount
+  // (used by undo to take back appendArcs()).
+  this.truncateArcs = function(arcCount) {
+    var zz = _zz,
+        zlimit = _zlimit,
+        pointCount;
+    if (!(arcCount >= 0 && arcCount <= _nn.length)) {
+      error('ArcCollection#truncateArcs() Invalid arc count:', arcCount);
+    }
+    pointCount = arcCount < _nn.length ? _ii[arcCount] : _xx.length;
+    this.captureArcsBefore({operation: 'truncateArcs'});
+    initXYData(_nn.subarray(0, arcCount), _xx.subarray(0, pointCount),
+      _yy.subarray(0, pointCount));
+    initZData(zz ? zz.subarray(0, pointCount) : null);
+    _zlimit = zlimit;
+    this.markArcsChanged({operation: 'truncateArcs'});
+  };
+
+  function hasAppendCapacity(arcCount, pointCount) {
+    return !!_capNN &&
+      _nn.buffer === _capNN.buffer && _capNN.length >= arcCount &&
+      _xx.buffer === _capXX.buffer && _capXX.length >= pointCount &&
+      _yy.buffer === _capYY.buffer && _capYY.length >= pointCount;
+  }
+
+  // Copies the current data into new arrays, with room for growth, so that
+  // a series of appends doesn't copy every vertex each time
+  function allocateAppendCapacity(arcCount, pointCount) {
+    var nn = new Uint32Array(arcCount + getSpareCapacity(arcCount)),
+        xx = new Float64Array(pointCount + getSpareCapacity(pointCount)),
+        yy = new Float64Array(xx.length);
+    nn.set(_nn);
+    xx.set(_xx);
+    yy.set(_yy);
+    _capNN = nn;
+    _capXX = xx;
+    _capYY = yy;
+  }
+
+  function getSpareCapacity(n) {
+    return Math.max(4096, Math.ceil(n * 0.1));
+  }
+
+  function clearAppendCapacity() {
+    _capNN = _capXX = _capYY = null;
+  }
 
   this.getUndoId = function() {
     return getUndoId(this);

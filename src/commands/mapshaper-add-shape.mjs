@@ -8,6 +8,7 @@ import { DataTable } from '../datatable/mapshaper-data-table';
 import { matchTargetFieldTypes } from '../datatable/mapshaper-match-field-types';
 import { isSupportedSvgStyleProperty, parseStyleLiteral } from '../svg/svg-properties';
 import { findLineEnds } from '../paths/mapshaper-path-endpoints';
+import { forEachArcId } from '../paths/mapshaper-path-utils';
 import { getDatasetCrsInfo, setDatasetCrsInfo } from '../crs/mapshaper-projections';
 
 cmd.addShape = addShape;
@@ -52,7 +53,7 @@ export function addShape(targetLayers, targetDataset, opts) {
   if (targetDataset) {
     setDatasetCrsInfo(dataset, getDatasetCrsInfo(targetDataset));
   }
-  outputLyr = mergeDatasetsIntoDataset(targetDataset, [dataset])[0];
+  outputLyr = mergeShapeIntoDataset(targetDataset, dataset)[0];
   if (opts.no_replace || !targetLyr) {
     // create new layer
     setOutputLayerName(outputLyr, targetLyr && targetLyr.name, null, opts);
@@ -99,7 +100,7 @@ function extendLine(targetLyr, targetDataset, opts) {
       coords[coords.length - 1].join(','));
   }
   feature.geometry = {type: 'LineString', coordinates: coords};
-  pathLyr = mergeDatasetsIntoDataset(targetDataset, [importGeoJSON(feature)])[0];
+  pathLyr = mergeShapeIntoDataset(targetDataset, importGeoJSON(feature))[0];
   pathIds = pathLyr.shapes[0][0];
   // The extended line goes in a copy of the target layer, which replaces it,
   // as a merged layer does: until the command is done, the GUI goes on drawing
@@ -134,6 +135,39 @@ function findLineEnd(lyr, arcs, p) {
     stop('More than one line ends at', p.join(',') + '; unable to extend');
   }
   return matches[0] || null;
+}
+
+// Adds the arcs of @dataset, holding the new shape, to @targetDataset, and
+// returns its layers. Where it can, this appends the arcs to the target's
+// arcs in place: merging would copy every vertex in the target dataset, and
+// an undo state would keep the copy, which adds up when shapes are drawn on
+// a large layer.
+function mergeShapeIntoDataset(targetDataset, dataset) {
+  var arcs = targetDataset && targetDataset.arcs;
+  var offset, data;
+  if (!canAppendArcs(arcs, dataset.arcs)) {
+    return mergeDatasetsIntoDataset(targetDataset, [dataset]);
+  }
+  offset = arcs.size();
+  dataset.layers.forEach(function(lyr) {
+    forEachArcId(lyr.shapes, function(id) {
+      return id < 0 ? id - offset : id + offset;
+    });
+  });
+  data = dataset.arcs.getVertexData();
+  arcs.appendArcs(data.nn, data.xx, data.yy);
+  return dataset.layers;
+}
+
+// Merging bakes in simplification and drops the thresholds, so simplified
+// arcs are merged, to keep that behavior.
+function canAppendArcs(arcs, src) {
+  return !!arcs && arcs.size() > 0 && isUnsimplified(arcs) &&
+    !!src && src.size() > 0 && isUnsimplified(src);
+}
+
+function isUnsimplified(arcs) {
+  return arcs.isFlat() && arcs.getRetainedInterval() === 0;
 }
 
 function reversePathIds(ids) {

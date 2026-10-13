@@ -122,6 +122,7 @@ UndoTransaction.prototype = {
 
   captureArcsBefore: function(arcs, detail) {
     var data, key;
+    promoteArcsAppendUnit(this, arcs);
     key = unitKey('arcs', arcs);
     if (this._captured[key]) return;
     this._captured[key] = true;
@@ -140,8 +141,29 @@ UndoTransaction.prototype = {
     });
   },
 
+  // Arcs that are only appended to are restored by truncating them, so the
+  // unit records just the arc count, not a copy of the arcs. If the arcs are
+  // changed in any other way in the same transaction, the unit is replaced by
+  // a full 'arcs' unit (see promoteArcsAppendUnit()).
+  captureArcsAppendBefore: function(arcs, detail) {
+    var key;
+    if (this._captured[unitKey('arcs', arcs)]) return;
+    key = unitKey('arcs-append', arcs);
+    if (this._captured[key]) return;
+    this._captured[key] = true;
+    this.units.push({
+      type: 'arcs-append',
+      target: arcs,
+      id: getUndoId(arcs),
+      revision: getUndoRevision(arcs),
+      detail: copyDetail(detail),
+      arcCount: arcs.size()
+    });
+  },
+
   captureArcsSimplificationBefore: function(arcs, detail) {
     var data, key;
+    promoteArcsAppendUnit(this, arcs);
     key = unitKey('arcs-simplification', arcs);
     if (this._captured[key]) return;
     this._captured[key] = true;
@@ -391,6 +413,8 @@ function captureCurrentUnit(unit) {
     return captureCurrentArcs(unit);
   } else if (unit.type == 'arcs-simplification') {
     return captureCurrentArcsSimplification(unit);
+  } else if (unit.type == 'arcs-append') {
+    return captureCurrentArcsAppend(unit);
   } else if (unit.type == 'catalog') {
     return captureCurrentCatalog(unit);
   } else if (unit.type == 'dataset') {
@@ -480,6 +504,56 @@ function captureCurrentArcsSimplification(unit) {
   });
 }
 
+// The arcs appended since the unit was captured, for redo
+function captureCurrentArcsAppend(unit) {
+  var data = unit.target.getVertexData();
+  var pointCount = getArcsPointOffset(data, unit.arcCount);
+  return Object.assign({}, unit, {
+    revision: getUndoRevision(unit.target),
+    nn: new Uint32Array(data.nn.subarray(unit.arcCount)),
+    xx: data.xx.slice(pointCount),
+    yy: data.yy.slice(pointCount)
+  });
+}
+
+// Index of the first vertex of arc @arcCount (the vertex count of the arcs
+// before it)
+function getArcsPointOffset(data, arcCount) {
+  if (arcCount > data.nn.length) {
+    throw new Error('Undo error: arcs were removed after being appended to');
+  }
+  return arcCount < data.nn.length ? data.ii[arcCount] : data.xx.length;
+}
+
+// Replaces the transaction's 'arcs-append' unit for @arcs, if it has one,
+// with an 'arcs' unit holding the arcs as they were before the transaction:
+// the arcs that the appends left in place.
+function promoteArcsAppendUnit(tx, arcs) {
+  var key = unitKey('arcs-append', arcs);
+  var i, unit, data, pointCount;
+  if (!tx._captured[key]) return;
+  delete tx._captured[key];
+  i = tx.units.findIndex(function(u) {
+    return u.type == 'arcs-append' && u.target === arcs;
+  });
+  unit = tx.units[i];
+  data = arcs.getVertexData();
+  pointCount = getArcsPointOffset(data, unit.arcCount);
+  tx.units[i] = {
+    type: 'arcs',
+    target: arcs,
+    id: unit.id,
+    revision: unit.revision,
+    detail: unit.detail,
+    nn: new Uint32Array(data.nn.subarray(0, unit.arcCount)),
+    xx: new Float64Array(data.xx.subarray(0, pointCount)),
+    yy: new Float64Array(data.yy.subarray(0, pointCount)),
+    zz: data.zz ? new Float64Array(data.zz.subarray(0, pointCount)) : null,
+    zlimit: arcs.getRetainedInterval()
+  };
+  tx._captured[unitKey('arcs', arcs)] = true;
+}
+
 function captureCurrentCatalog(unit) {
   return Object.assign({}, unit, {
     revision: getUndoRevision(unit.target),
@@ -545,6 +619,8 @@ function restoreUnit(unit) {
     restoreArcs(unit);
   } else if (unit.type == 'arcs-simplification') {
     restoreArcsSimplification(unit);
+  } else if (unit.type == 'arcs-append') {
+    restoreArcsAppend(unit);
   } else if (unit.type == 'catalog') {
     restoreCatalog(unit);
   } else if (unit.type == 'dataset') {
@@ -613,6 +689,18 @@ function restoreArcs(unit) {
 function restoreArcsSimplification(unit) {
   unit.target.setThresholds(unit.zz ? new Float64Array(unit.zz) : null);
   unit.target.setRetainedInterval(unit.zlimit);
+}
+
+// Undo truncates the arcs; redo (a unit from captureCurrentArcsAppend())
+// then appends the arcs it holds.
+function restoreArcsAppend(unit) {
+  if (unit.target.size() < unit.arcCount) {
+    throw new Error('Undo error: arcs were removed after being appended to');
+  }
+  unit.target.truncateArcs(unit.arcCount);
+  if (unit.nn && unit.nn.length > 0) {
+    unit.target.appendArcs(unit.nn, unit.xx, unit.yy);
+  }
 }
 
 function restoreCatalog(unit) {

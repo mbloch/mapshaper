@@ -245,6 +245,23 @@ export function createUndoTestApi(gui) {
     getViewBounds: function() {
       return gui.map.getExtent().getBounds().toArray();
     },
+    // e.g. 'webmercator', as a basemap sets it; null to clear
+    setDisplayCRS: function(str) {
+      gui.map.setDisplayCRS(str || null);
+    },
+    // Adds a line with the command the line tool runs
+    addLineToActiveLayer: function(coords) {
+      var target = gui.model.getActiveLayer();
+      if (!target || !target.layer || target.layer.geometry_type != 'polyline') {
+        throw new Error('Active layer is not a polyline layer');
+      }
+      return new Promise(function(resolve, reject) {
+        runGuiEditCommand(gui, getAddShapeCommand(coords, {geometryType: 'polyline'}), {
+          changesEditTarget: true,
+          onDone: function(err) { if (err) reject(err); else resolve(); }
+        });
+      });
+    },
     // Adds a point with the command the point tool runs
     addPointToActiveLayer: function(coords) {
       var target = gui.model.getActiveLayer();

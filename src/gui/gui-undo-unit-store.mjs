@@ -8,6 +8,7 @@ var PAYLOAD_FIELDS = {
   'table-schema': ['fields'],
   arcs: ['nn', 'xx', 'yy', 'zz', 'zlimit'],
   'arcs-simplification': ['zz'],
+  'arcs-append': ['nn', 'xx', 'yy'],
   layer: ['shapes', 'raster']
 };
 
@@ -49,7 +50,7 @@ export function getUndoRestoreFlags(units, baseFlags) {
   var flags = Object.assign({}, baseFlags || {}, {undo_restore: true});
   units.forEach(function(unit) {
     if (unit.type == 'changed') return;
-    if (unit.type == 'arcs') {
+    if (unit.type == 'arcs' || unit.type == 'arcs-append') {
       flags.arc_count = true;
     } else if (unit.type == 'arcs-simplification') {
       flags.simplify = true;
