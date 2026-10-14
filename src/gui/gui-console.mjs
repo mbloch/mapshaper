@@ -5,6 +5,7 @@ import { setDisplayProjection } from './gui-dynamic-crs';
 import { GUI } from './gui-lib';
 import { saveBlobToLocalFile2 } from './gui-save';
 import { stringifyRuntimeStateContext } from './gui-runtime-context';
+import { getArcRevisions, arcRevisionsHaveChanged } from './gui-arc-revisions';
 import {
   appUndoIsEnabled,
   getStoredUndoHistory,
@@ -612,6 +613,7 @@ export function Console(gui) {
         prevTable = active?.layer.data,
         prevTableSize = prevTable ? prevTable.size() : 0,
         prevArcCount = prevArcs ? prevArcs.size() : 0,
+        arcRevisions = getArcRevisions(model.getDatasets()),
         undoTransaction = session ? session.tx : createCommandUndoTransaction(commandString),
         job = new internal.Job(model),
         commandStart = Date.now();
@@ -651,7 +653,7 @@ export function Console(gui) {
       }
       // kludge to signal map that filtered arcs need refreshing
       // TODO: find a better solution, outside the console
-      if (!sameArcs) {
+      if (!sameArcs || arcRevisionsHaveChanged(arcRevisions)) {
         flags.arc_count = true;
       }
       if (sameTable) {
