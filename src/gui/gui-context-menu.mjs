@@ -2,6 +2,7 @@ import { internal, mapshaper, geom } from './gui-core';
 import { El } from './gui-el';
 import { saveFileContentToClipboard } from './gui-export-control';
 import { deleteFeature } from './gui-drawing-utils';
+import { getPointKind } from './gui-layer-contents';
 import { GUI } from './gui-lib';
 
 
@@ -298,9 +299,18 @@ export function ContextMenu(parentArg) {
       return { top: Math.round(top), left: Math.round(left) };
     }
 
+    // Named for the feature pointed at, the way the layer panel counts it: a
+    // numbered marker is a symbol, though it has label text, and so is a
+    // circle, the symbol tool's plainest icon.
+    // e.deleteId: the feature e.deleteFeature deletes, if not e.ids[0]
     function getDeleteLabel() {
-      if (internal.layerHasLabels(lyr)) return 'delete label';
-      return 'delete ' + (lyr.geometry_type == 'point' ? 'point' : 'shape');
+      var id = e.deleteId ?? e.ids?.[0] ?? -1;
+      var rec, kind;
+      if (lyr.geometry_type != 'point') return 'delete shape';
+      rec = lyr.data && id > -1 ? lyr.data.getRecords()[id] : null;
+      kind = getPointKind(rec);
+      if (kind == 'circle') kind = 'symbol';
+      return 'delete ' + kind;
     }
 
     // info: pixel data from internal.getRasterPixelAtMapXY()

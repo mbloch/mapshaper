@@ -187,7 +187,7 @@ export function SymbolPanel(gui, opts) {
 
   function initIconSection() {
     // Not "Symbol": icons and curves are both symbols
-    iconSection = makePanelSection(panel, 'Icon style');
+    iconSection = makePanelSection(panel, 'Icons');
     var shapeRow = El('div').addClass('label-style-row label-icon-shapes-row').appendTo(iconSection);
     var group = El('div').addClass('label-btn-group label-icon-buttons').appendTo(shapeRow);
     getShownShapes().forEach(function(item) {
@@ -255,7 +255,7 @@ export function SymbolPanel(gui, opts) {
   }
 
   function initCurveSection() {
-    curveSection = makePanelSection(panel, 'Curve style').addClass('symbol-curve-section');
+    curveSection = makePanelSection(panel, 'Curves').addClass('symbol-curve-section');
     // "Color", as a label callout's is: the line and its heads are drawn in it
     curveStroke = makeColorRow(curveSection, {
       label: 'Color',
@@ -411,7 +411,7 @@ export function SymbolPanel(gui, opts) {
     status.text(formatEditingStatus({
       selected: state.all ? 0 : state.ids.length,
       total: state.all ? state.ids.length : 0,
-      newShapes: armed ? 'symbols' : null
+      newShapes: armed == 'curve' ? 'curves' : armed ? 'icons' : null
     }));
     clearLink.classed('hidden', state.mode != 'selection' || state.all);
     toggle(iconSection, state.mode == 'selection' ? state.icons.length > 0 : armed != 'curve');

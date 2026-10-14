@@ -213,7 +213,7 @@ test('with no tool armed and nothing selected, the panel edits every symbol', as
   var errors = collectPageErrors(page);
   var status = page.locator('.symbol-style-panel .label-editing-status');
   await openTool(page);
-  await expect(status).toHaveText('Editing: new symbols');
+  await expect(status).toHaveText('Editing: new icons');
   await clickMap(page, 0.3, 0.5);
   await clickMap(page, 0.5, 0.5);
   await armTool(page, null);
@@ -224,7 +224,7 @@ test('with no tool armed and nothing selected, the panel edits every symbol', as
   // restyling them all does not select them
   expect(await getSelection(page)).toEqual([]);
   await armTool(page, 'curve');
-  await expect(status).toHaveText('Editing: new symbols');
+  await expect(status).toHaveText('Editing: new curves');
   expect(errors).toEqual([]);
 });
 

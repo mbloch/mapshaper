@@ -201,6 +201,47 @@ test('Cmd-A selects markers in the symbol tool and text labels in the label tool
   expect(errors).toEqual([]);
 });
 
+test('right-clicking a symbol or a marker offers to delete the symbol', async function({page}) {
+  var errors = collectPageErrors(page);
+  await openTool(page);
+  await clickMap(page, 0.3, 0.5);
+  await armTool(page, null);
+  // a layer of symbols alone
+  expect(await rightClickMenuItems(page, 0)).toContain('delete symbol');
+  await page.mouse.click(5, 5);
+
+  // and one with a marker in it, which has label text
+  await armTool(page, 'icon');
+  await openTextSection(page);
+  await setText(page, '1');
+  await clickMap(page, 0.5, 0.5);
+  await armTool(page, null);
+  for (var id = 0; id < 2; id++) {
+    await page.mouse.click(5, 5);
+    var items = await rightClickMenuItems(page, id);
+    expect(items).toContain('delete symbol');
+    expect(items).not.toContain('delete label');
+  }
+  expect(errors).toEqual([]);
+});
+
+async function rightClickMenuItems(page, id) {
+  var box = await page.locator('.mshp-main-map').boundingBox();
+  var p = (await page.evaluate(function() {
+    return window.mapshaper.undoTest.getLayerPointPixels('symbols');
+  }))[id];
+  // hovered first, from off the symbol, as a hand on the mouse would
+  await page.mouse.move(box.x + 5, box.y + 5);
+  await page.mouse.move(box.x + p[0], box.y + p[1], {steps: 3});
+  await page.waitForTimeout(150);
+  // the menu deletes the selected symbol
+  await page.mouse.click(box.x + p[0], box.y + p[1]);
+  await page.waitForTimeout(150);
+  await page.mouse.click(box.x + p[0], box.y + p[1], {button: 'right'});
+  await page.locator('.contextmenu-item').first().waitFor();
+  return (await page.locator('.contextmenu-item').allTextContents()).join('\n');
+}
+
 function collectPageErrors(page) {
   var errors = [];
   page.on('pageerror', function(err) {

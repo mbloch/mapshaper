@@ -408,7 +408,7 @@ export function initLabelTool(gui, ext, hit) {
   // The tool opens this menu itself, rather than leaving it to the inspection
   // control as the other non-drawing modes do, because deleting a label here
   // has to be a command like every other edit the tool makes -- the generic
-  // "delete point" item mutates the layer in place, which would leave the
+  // delete item mutates the layer in place, which would leave the
   // deletion out of the session history and out of step with undo.
   hit.on('contextmenu', function(e) {
     var target = hit.getHitTarget();
@@ -418,6 +418,7 @@ export function initLabelTool(gui, ext, hit) {
     if (target && id > -1) {
       e.selectActions = getSelectActions(target, id);
       e.deleteFeature = getDeleteAction(id);
+      e.deleteId = id;
       // Nobody guesses that text is dragged across its own curve, and there is
       // no bracket drawn to suggest it, so the gesture has a second way in.
       // Not on a label being typed into: its text is in the editor rather than
