@@ -12,13 +12,19 @@
 // the map. The column is too narrow to list them as well, so they go in a
 // tooltip with the full description.
 
+import { featureIsLabel, featureIsMarker, featureIsTextLabel } from '../svg/svg-feature-utils';
+
 var POINT_KINDS = ['label', 'symbol', 'circle', 'point'];
 
 // How a point feature is drawn, given its data record.
-// A label wins over any symbol or circle drawn with it.
+// A label wins over any symbol or circle drawn with it -- except a numbered
+// marker, a label with a circle or square behind it, which is made and edited
+// as a symbol. A symbol merged into a layer of labels has a label-text field
+// with nothing in it, which does not make it a label.
 export function getPointKind(d) {
   if (!d) return 'point';
-  if ('label-text' in d) return 'label';
+  if (featureIsMarker(d)) return 'symbol';
+  if (featureIsLabel(d)) return 'label';
   if (d['svg-symbol'] || d.icon) return 'symbol';
   if (d.r > 0) return 'circle';
   return 'point';
@@ -31,6 +37,19 @@ export function getPointLayerKind(fields) {
   if (fields.includes('svg-symbol') || fields.includes('icon')) return 'symbol';
   if (fields.includes('r')) return 'circle';
   return 'point';
+}
+
+// The tool that edits a point layer of annotations: 'label' for a layer with
+// text labels in it, or set up for them while it is empty; 'symbols' for one
+// of symbols and numbered markers, which have a label-text field too; null
+// for any other layer.
+//   hasLabelField: the layer has a label-text field
+//   hasSymbolFields: it has the fields of SVG symbols
+export function getAnnotationTool(records, hasLabelField, hasSymbolFields) {
+  var n = records ? records.length : 0;
+  if (hasLabelField && (n === 0 || records.some(featureIsTextLabel))) return 'label';
+  if (hasLabelField || hasSymbolFields) return 'symbols';
+  return null;
 }
 
 // Same test as the -info command's null shape count

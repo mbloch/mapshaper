@@ -3,13 +3,14 @@ import { getSvgHitTest } from './gui-svg-hit';
 import { internal, utils } from './gui-core';
 
 export function getPointerHitTest(mapLayer, ext, interactionMode, featureFilter) {
-  var shapeTest, targetLayer;
+  var shapeTest, ownerTest;
   // need hit test on empty layers, in case we are drawing shapes
   // if (!mapLayer || !internal.layerHasGeometry(mapLayer.gui?.displayLayer)) {
   if (!mapLayer || !mapLayer.gui?.displayLayer.geometry_type) {
     return function() {return {ids: []};};
   }
   shapeTest = getShapeHitTest(mapLayer, ext, interactionMode, featureFilter);
+  ownerTest = getOwnerTest(mapLayer, interactionMode);
 
   // e: pointer event
   return function(e) {
@@ -19,6 +20,10 @@ export function getPointerHitTest(mapLayer, ext, interactionMode, featureFilter)
     var svgTest = getSvgHitTest(mapLayer);
     var data = shapeTest(p[0], p[1]) || {ids:[]};
     var svgData = svgTest(e); // null or a data object
+    if (svgData && ownerTest && !ownerTest(svgData.targetId)) {
+      svgData = null;
+    }
+    if (ownerTest) data.ids = data.ids.filter(ownerTest);
     if (svgData) { // mouse is over an SVG symbol
       utils.extend(data, svgData);
       // placing symbol id in front of any other hits
@@ -26,5 +31,21 @@ export function getPointerHitTest(mapLayer, ext, interactionMode, featureFilter)
     }
     data.id = data.ids.length > 0 ? data.ids[0] : -1;
     return data;
+  };
+}
+
+// The label tool and the symbol tool share point layers, and each hits only
+// what it edits: a numbered marker is a label to the data and a symbol to the
+// GUI (see featureIsMarker()). Null in the other modes, which hit everything.
+function getOwnerTest(mapLayer, interactionMode) {
+  var svg = internal.svg;
+  var test = interactionMode == 'label' ? function(rec) { return !svg.featureIsMarker(rec); } :
+    interactionMode == 'symbols' ? function(rec) { return !svg.featureIsTextLabel(rec); } :
+    null;
+  if (!test) return null;
+  return function(id) {
+    var data = mapLayer.gui.displayLayer.data;
+    var records = data ? data.getRecords() : null;
+    return test(records ? records[id] : null);
   };
 }

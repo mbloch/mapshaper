@@ -4225,6 +4225,55 @@ body.dragging-color-picker * {
 	font-size: 12px;
 }
 
+/* The symbol panel's icon controls and curve controls, when it shows both,
+   are two groups rather than two sections of one. */
+.symbol-style-panel.label-style-panel .label-style-section.symbol-section-rule {
+	margin-top: 12px;
+	padding-top: 4px;
+	border-top: 1px solid #e4e4e4;
+}
+
+/* A marker's label: a field a few characters wide with its caption beside it,
+   and Auto at the right of the column. */
+.symbol-style-panel .label-split-cell.symbol-label-text-cell {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+/* Room for two characters, the widest a marker's label usually is. In em so
+   that it holds two at whatever size the panel's type is. */
+.symbol-style-panel .symbol-label-text-cell > input.symbol-label-text-input {
+	flex: none;
+	width: 2.4em;
+	padding: 0 2px;
+	text-align: center;
+}
+
+.symbol-style-panel .symbol-label-text-cell span {
+	margin-bottom: 0;
+	font-size: 11px;
+	color: #555;
+}
+
+.symbol-style-panel .symbol-label-auto {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-left: auto;
+}
+
+/* In the caption of a marker's Baseline, while it has one of its own: takes
+   the text back to where the font's capitals are centred. */
+.symbol-style-panel .label-style-row span.symbol-baseline-auto {
+	display: inline;
+	cursor: pointer;
+}
+
+.symbol-style-panel .label-style-row span.symbol-baseline-auto.hidden {
+	display: none;
+}
+
 .label-panel-btn.selected {
 	background-color: black;
 	border-color: black;

@@ -18,9 +18,37 @@ import { internal } from './gui-core';
 // See docs/development/label-tool-design.md.
 
 var measureSvg = null;
+var measureCanvas = null;
+// Large enough that the ascent, which canvas reports in whole pixels in some
+// browsers, is exact to a fraction of a percent
+var CAP_SAMPLE_SIZE = 200;
 
 export function initLabelMeasurement() {
   internal.svg.setTextMeasureFunction(measureLabelWidth);
+  internal.svg.setCapHeightFunction(measureCapHeight);
+}
+
+// The height of a capital H in @rec's face, as a fraction of the font size,
+// or null if the browser cannot say. A canvas rather than the offscreen <svg>,
+// because getBBox() reports the font's whole line box and not the glyph's.
+export function measureCapHeight(rec) {
+  var ctx = getMeasureContext();
+  var defaults = internal.getLabelTextDefaults();
+  var metrics;
+  if (!ctx) return null;
+  ctx.font = [rec && rec['font-style'] || 'normal', rec && rec['font-weight'] || 'normal',
+    CAP_SAMPLE_SIZE + 'px', rec && rec['font-family'] || defaults['font-family']].join(' ');
+  metrics = ctx.measureText('H');
+  return metrics.actualBoundingBoxAscent > 0 ?
+    metrics.actualBoundingBoxAscent / CAP_SAMPLE_SIZE : null;
+}
+
+function getMeasureContext() {
+  if (!measureCanvas) {
+    if (typeof document == 'undefined') return null;
+    measureCanvas = document.createElement('canvas');
+  }
+  return measureCanvas.getContext('2d');
 }
 
 // Width in px of the widest line of @rec's text, at its own font size, or null

@@ -1,6 +1,6 @@
 import assert from 'assert';
 import {
-  getPointKind, describeFeatureContents, formatCount
+  getPointKind, describeFeatureContents, formatCount, getAnnotationTool
 } from '../src/gui/gui-layer-contents';
 
 describe('gui layer contents', function() {
@@ -22,12 +22,39 @@ describe('gui layer contents', function() {
       assert.equal(getPointKind({'label-text': ''}), 'label');
     });
 
+    it('a numbered marker is a symbol', function() {
+      assert.equal(getPointKind({'label-text': '1', 'label-pos': 'c', icon: 'circle'}), 'symbol');
+    });
+
+    it('a symbol merged into a layer of labels is still a symbol', function() {
+      assert.equal(getPointKind({'label-text': undefined, icon: 'star'}), 'symbol');
+      assert.equal(getPointKind({'label-text': undefined, r: 3}), 'circle');
+    });
+
     it('tells symbols, circles and plain points apart', function() {
       assert.equal(getPointKind({'svg-symbol': {type: 'arrow'}}), 'symbol');
       assert.equal(getPointKind({r: 4}), 'circle');
       assert.equal(getPointKind({r: 0}), 'point');
       assert.equal(getPointKind({name: 'x'}), 'point');
       assert.equal(getPointKind(null), 'point');
+    });
+  });
+
+  describe('getAnnotationTool()', function() {
+    var marker = {'label-text': '1', 'label-pos': 'c', icon: 'circle'};
+
+    it('a layer with text labels goes to the label tool, and an empty label layer', function() {
+      assert.equal(getAnnotationTool([marker, {'label-text': 'Paris'}], true, true), 'label');
+      assert.equal(getAnnotationTool([], true, false), 'label');
+    });
+
+    it('a layer of symbols and markers goes to the symbol tool', function() {
+      assert.equal(getAnnotationTool([marker, {'label-text': undefined, r: 5}], true, true), 'symbols');
+      assert.equal(getAnnotationTool([{icon: 'star'}], false, true), 'symbols');
+    });
+
+    it('any other layer goes to neither', function() {
+      assert.equal(getAnnotationTool([{name: 'x'}], false, false), null);
     });
   });
 
@@ -51,6 +78,11 @@ describe('gui layer contents', function() {
       var mixed = [{icon: 'star'}, {icon: 'curve'}, {r: 2}];
       assert.equal(describeFeatureContents('point', [pt, pt, pt], mixed,
         ['icon', 'r']).text, '3 symbols');
+      // markers and circles from the symbol tool, in one layer
+      var markers = [{'label-text': '1', 'label-pos': 'c', icon: 'square'},
+        {'label-text': undefined, r: 5}, {'label-text': 'Paris'}];
+      assert.equal(describeFeatureContents('point', [pt, pt, pt], markers,
+        ['label-text', 'label-pos', 'icon', 'r']).text, '1 label, 2 symbols');
       assert.equal(describeFeatureContents('point', [pt, pt], [{r: 2}, {r: 3}],
         ['r']).text, '2 circles');
     });

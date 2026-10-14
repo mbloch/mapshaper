@@ -1,4 +1,4 @@
-import { setTextMeasureFunction } from '../svg/svg-label-metrics';
+import { setTextMeasureFunction, setCapHeightFunction } from '../svg/svg-label-metrics';
 import { splitLabelLineRuns, toLabelString, DEFAULT_LABEL_FONT_SIZE } from '../svg/svg-labels';
 import { LABEL_BOLD_WEIGHT } from '../svg/svg-label-markup';
 import { parseSvgMeasure } from '../svg/svg-properties';
@@ -37,7 +37,16 @@ var fontCache = {};
 export function initNodeTextMeasurement() {
   if (runningInBrowser()) return false;
   setTextMeasureFunction(measureLabelText);
+  setCapHeightFunction(measureCapHeight);
   return true;
+}
+
+// The height of @rec's capitals as a fraction of its font size, from the
+// font's OS/2 table, or null for a font without one (or that is not here)
+export function measureCapHeight(rec) {
+  var font = getFontForRecord(rec || {});
+  var ratio = font && font.unitsPerEm > 0 ? font.capHeight / font.unitsPerEm : 0;
+  return ratio > 0 ? ratio : null;
 }
 
 // The width of @rec's text in px, or null if it cannot be known -- an unusable

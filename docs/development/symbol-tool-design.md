@@ -91,6 +91,44 @@ optional fill). Data-driven symbol layers are a separate, later panel.
   styles: a box around an icon, a hairline along a curve, and rings on a
   selected curve's knots. A layer of canvas circles has no SVG, so its cues
   are drawn by the canvas overlay (`getOverlayLayers()`, `symbols` branch).
+- **Numbered markers** -- a number or letter in a circle or square -- are
+  made in the symbol tool, not the label tool: they are used as symbols, and
+  the symbol panel is short enough to take a Text section, where the label
+  panel is not. In the data a marker is one label record: `label-text`,
+  `label-pos=c`, the text's font fields and `fill=` (the text color), with
+  the symbol in `icon=circle|square`, `icon-size=`, `icon-fill=` and the
+  rest. `featureIsMarker()` (`svg-feature-utils.mjs`) is the test, and
+  `featureIsTextLabel()` is a label that is not one. The label tool leaves
+  markers alone: they are not hit, selected or counted in its "all", and
+  the symbol tool's Cmd-A selects them, which the hit test's per-mode owner
+  filter (`gui-hit-test.mjs`) keeps apart.
+  - **Commands** (`gui-marker-style.mjs`). A marker is placed with one
+    `-labels coordinates= text= ... icon= icon-size= icon-fill=`. Its symbol
+    is restyled with `-symbols ids=`, which keeps the text, and its text
+    with `-labels ids=`; a mixed selection runs both, as one undo step.
+    Text typed for a selected circle or square runs `-labels ids= text=`
+    first, so that the `-symbols ids=` after it reads the record as a label
+    and writes a circle as `icon=circle` + `icon-fill=` rather than as `r=`
+    + `fill=` (`fill` being the text color on a label); a circle's `stroke=`
+    comes off with `-style`, since it would outline the text. The × takes
+    the text off with `-each 'd["label-text"] = undefined'` -- `-style` keeps
+    an empty `label-text`, and a record with one is a label -- then clears
+    the text fields with `-style` and makes the symbol again with
+    `-symbols ids=`. A marker is moved with `-update-label`, since
+    `-update-symbol` refuses labels.
+  - **Panel.** Typing text turns it on, for the next symbol or the selected
+    ones; with Count up on, each click places the next number or letter.
+    While text is on, or a marker is selected, the shape buttons other than
+    circle and square are disabled. Text given to a symbol at the default
+    size grows it to 20px. The font controls are the label panel's
+    (`gui-font-controls.mjs`). Selected circles and squares with no text are
+    given it in the next marker's style.
+  - **Centering.** A `c` label with an icon and no `dy` of its own is
+    centered on its font's cap height (`getCapCentredOffset()` in
+    `svg-properties.mjs`): measured with fontkit in Node and on a canvas in
+    the GUI, or 0.35em without a measurement. Baseline sets `dy` to move it,
+    stored in em so that it scales with the font size; it is shown in px,
+    with the automatic value shown as a value until one is set.
 
 ## Known limitations
 
@@ -100,10 +138,13 @@ optional fill). Data-driven symbol layers are a separate, later panel.
   circle is a hit target.
 - A curve placed in unprojected data gets `-symbols`' warning about fitting
   curves to unprojected coordinates, as a path label does.
+- A label made in the label tool with `label-pos=c` and a circle or square
+  icon becomes a marker, and the symbol tool's to edit. The label tool moves
+  centered text to `ne` when it is given an icon, so this takes a command.
 
 ## Later
 
 - Data-driven symbol layers (radius by field, arrows by direction and
   length), in the point style panel.
-- More icons (numbered markers, shields), dashes for curves.
+- More icons (shields), dashes for curves.
 - Moving several selected symbols together.

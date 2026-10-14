@@ -6,6 +6,7 @@ import { parsePattern } from '../svg/svg-hatch';
 import { parseLabelAlign, getAlignmentAnchor } from '../svg/svg-label-align';
 import { parseLabelPadding, getLabelPadding, getPositionPaddingShift,
   addPixelsToMeasure } from '../svg/svg-label-box';
+import { getMeasuredCapHeight } from '../svg/svg-label-metrics';
 
 // parsing hints for -style command cli options
 // null values indicate the lack of a function for parsing/identifying this property
@@ -543,7 +544,8 @@ export function resolveLabelPosition(rec) {
       field = labelPositionDerivedFields[i];
       if (hasStyleValue(rec, field)) continue;
       if (!out) out = Object.assign({}, rec);
-      val = style[field];
+      val = field == 'dy' && style['label-pos'] == 'c' && rec.icon ?
+        getCapCentredOffset(rec) : style[field];
       if (field == 'dx' && shift[0] || field == 'dy' && shift[1]) {
         val = addPixelsToMeasure(val, field == 'dx' ? shift[0] : shift[1],
           rec['font-size']);
@@ -553,6 +555,18 @@ export function resolveLabelPosition(rec) {
   }
   out = resolveLabelAlignment(out || rec) || out;
   return out || rec;
+}
+
+// Text centred on a symbol -- a numbered marker -- is centred on its capitals,
+// which digits are as tall as: the eye judges it against the symbol's edges,
+// and the position's own 0.25em, which splits the difference between capitals
+// and lowercase, sets a number visibly high. Half of 0.7em, a typical cap
+// height, where the font cannot be measured.
+var DEFAULT_CAP_HEIGHT = 0.7;
+
+export function getCapCentredOffset(rec) {
+  var cap = getMeasuredCapHeight(rec) || DEFAULT_CAP_HEIGHT;
+  return Math.round(cap / 2 * 1000) / 1000 + 'em';
 }
 
 // label-align wins over both the position's justification and a text-anchor of

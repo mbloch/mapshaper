@@ -8,10 +8,15 @@ import {
   getSymbolTarget, getAddSymbolCommand, getUpdateSymbolCommand, getUpdatePointCommand,
   getSymbolDeleteCommand
 } from './gui-symbol-commands';
+import { getAddLabelCommand, getUpdateLabelCommand } from './gui-label-commands';
+import { getNewLabelFontName, getNearestFontStyleVariant } from './gui-label-fonts';
 import { pointIsUnstyled } from './gui-unstyled-points';
 import {
   getAddIconOptions, getAddCurveOptions, getDefaultIconStyle, getDefaultCurveStyle
 } from './gui-symbol-style';
+import {
+  getDefaultMarkerTextStyle, getAddMarkerFields, getNextMarkerText
+} from './gui-marker-style';
 import { SymbolSelection, getDisplayShapes } from './gui-symbol-selection';
 import { SymbolPanel } from './gui-symbol-panel';
 import { findNearestKnot, knotMoveIsValid } from './gui-label-knots';
@@ -44,7 +49,8 @@ export function initSymbolTool(gui, ext, hit) {
   var hoverPoint = null;
   // the style of the next symbol placed, which the panel sets while nothing
   // is selected
-  var newStyle = {icon: getDefaultIconStyle(), curve: getDefaultCurveStyle()};
+  var newStyle = {icon: getDefaultIconStyle(), curve: getDefaultCurveStyle(),
+    text: Object.assign(getDefaultMarkerTextStyle(), {autoNumber: false})};
   var toolbar, iconBtn, curveBtn, stylesBtn, alert;
   // the panel's toggle, kept from one session to the next, as the line and
   // polygon panels keep theirs
@@ -56,6 +62,7 @@ export function initSymbolTool(gui, ext, hit) {
     getAllIds: getAllSymbols,
     getArmed: function() { return armed; },
     getNewStyle: function() { return newStyle; },
+    getMarkerTextStyle: getMarkerTextStyle,
     isCurve: isCurve,
     deselect: deselect,
     close: function() { setPanelShown(false); }
@@ -217,12 +224,17 @@ export function initSymbolTool(gui, ext, hit) {
     return records ? records[id] : null;
   }
 
-  // Labels share point layers with symbols, and belong to the label tool.
+  // Labels share point layers with symbols, and belong to the label tool --
+  // except numbered markers, which are labels with a symbol behind them.
   function isSymbol(target, id) {
     var shp = target && target.shapes && target.shapes[id];
     var rec = getRecord(target, id);
     if (!shp) return false;
-    return !(rec && internal.svg.featureIsLabel(rec));
+    return !(rec && internal.svg.featureIsTextLabel(rec));
+  }
+
+  function isMarker(target, id) {
+    return internal.svg.featureIsMarker(getRecord(target, id));
   }
 
   function isCurve(target, id) {
@@ -416,11 +428,18 @@ export function initSymbolTool(gui, ext, hit) {
       return translateDisplayPoint(o.target, p);
     });
     shapes[o.id] = o.startShape;
-    runGuiEditCommand(gui, pointIsUnstyled(getRecord(o.target, o.id)) ?
-      getUpdatePointCommand(coords, o.id) : getUpdateSymbolCommand(coords, o.id), {
+    runGuiEditCommand(gui, getMoveCommand(o.target, o.id, coords), {
       title: o.kind == 'knot' ? 'Reshape curve' : 'Move symbol',
       onSuccess: function() { hit.setSelectionIds(ids); }
     });
+  }
+
+  // -update-symbol refuses to move a point with no symbol, and a marker, which
+  // the commands see as a label
+  function getMoveCommand(target, id, coords) {
+    if (isMarker(target, id)) return getUpdateLabelCommand(coords, id);
+    if (pointIsUnstyled(getRecord(target, id))) return getUpdatePointCommand(coords, id);
+    return getUpdateSymbolCommand(coords, id);
   }
 
   gui.keyboard.on('keydown', function(e) {
@@ -526,7 +545,46 @@ export function initSymbolTool(gui, ext, hit) {
 
   function placeIcon(p) {
     hideInstructions();
-    addSymbol([p], getAddIconOptions(newStyle.icon), 'Add symbol');
+    if (newStyle.text.text) {
+      placeMarker(p);
+    } else {
+      addSymbol([p], getAddIconOptions(newStyle.icon), 'Add symbol');
+    }
+  }
+
+  // A symbol with text on it is a label with an icon behind it, which -labels
+  // places in one command. The next one gets the next number, so that a row
+  // of clicks numbers a map.
+  function placeMarker(p) {
+    var target = getTarget();
+    var text = getMarkerTextStyle();
+    var coords = [target ? translateDisplayPoint(target, p) : p];
+    runGuiEditCommand(gui, getAddLabelCommand(coords, {
+      target: getSymbolTarget(target, isAnnotationLayer, null),
+      text: text.text,
+      style: getAddMarkerFields(newStyle.icon, text)
+    }), {
+      title: 'Add symbol',
+      onSuccess: function() {
+        if (!newStyle.text.autoNumber || newStyle.text.text != text.text) return;
+        newStyle.text.text = getNextMarkerText(text.text);
+        panel.update();
+      }
+    });
+  }
+
+  // The next marker's text style, with the font new labels get if the panel
+  // has not been given one, in the nearest face it has
+  function getMarkerTextStyle() {
+    var t = Object.assign({}, newStyle.text);
+    var variant;
+    t.font = t.font || getNewLabelFontName();
+    variant = getNearestFontStyleVariant(t.font, t.style, t.weight);
+    if (variant) {
+      t.style = variant.style;
+      t.weight = variant.weight;
+    }
+    return t;
   }
 
   function addSymbol(displayCoords, options, title) {

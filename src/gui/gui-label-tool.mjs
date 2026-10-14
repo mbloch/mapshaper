@@ -1,6 +1,7 @@
-import { getDefaultFontName, getFontStyleVariants, appendFontOptions,
-  getNearestFontStyleVariant, getNewLabelFontName,
-  variantIsRegular } from './gui-label-fonts';
+import { getDefaultFontName, getNewLabelFontName } from './gui-label-fonts';
+import {
+  FontControls, MIXED_TEXT, getFontChangeValues, getFontStyleValues
+} from './gui-font-controls';
 import { ColorPicker, isHexColor } from './gui-color-picker';
 import { StylePresetControl } from './gui-style-preset-control';
 import { SizeField } from './gui-size-field';
@@ -76,10 +77,6 @@ var defaultHaloColor = internal.svg.DEFAULT_HALO_COLOR;
 // multiple, which also says what a bare number typed here means: a multiple
 // of the font size, as in CSS, not px.
 var defaultLineHeight = internal.svg.DEFAULT_LINE_HEIGHT;
-// What a control shows for a selection whose labels disagree about it. One
-// word, used in every field and menu that can be in that state, in the
-// placeholder of a field emptied for it.
-var MIXED_TEXT = 'mixed';
 var labelStyleMode = 'label_style';
 var labelStylePanelMode = 'label_style_tool';
 var labelMode = 'label';
@@ -220,8 +217,7 @@ export function LabelTool(gui) {
   // label-style-panel carries the styling the point and layer panels share; the
   // second class is this panel's own, as theirs are
   var panel = El('div').addClass('label-style-panel text-style-panel rollover').appendTo(parent).hide();
-  var presetControl, fontSelect, fontStyleSelect, fontSizeInput, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, dragModeBtns, haloWidthInput, haloColorFieldBox, haloColorChit, haloColorInput, haloColorPicker, haloOpacityInput, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, iconStrokeFieldBox, iconStrokeChit, iconStrokeInput, iconStrokePicker, iconStrokeWidthInput, iconStrokeWidthCell, haloControl, iconControl, calloutControl, calloutShapeGroupEl, calloutShapeBtns, calloutEndGroupEl, calloutEndBtns, calloutColorFieldBox, calloutColorChit, calloutColorInput, calloutColorPicker, calloutOpacityInput, calloutWidthInput, calloutEndSizeInput, calloutGapInput, backgroundColorFieldBox, backgroundColorChit, backgroundColorInput, backgroundColorPicker, backgroundOpacityInput, paddingInput, editingStatus, clearLink, closeBtn, hit;
-  var fontOptionsRendered = false;
+  var presetControl, fontControls, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, dragModeBtns, haloWidthInput, haloColorFieldBox, haloColorChit, haloColorInput, haloColorPicker, haloOpacityInput, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, iconStrokeFieldBox, iconStrokeChit, iconStrokeInput, iconStrokePicker, iconStrokeWidthInput, iconStrokeWidthCell, haloControl, iconControl, calloutControl, calloutShapeGroupEl, calloutShapeBtns, calloutEndGroupEl, calloutEndBtns, calloutColorFieldBox, calloutColorChit, calloutColorInput, calloutColorPicker, calloutOpacityInput, calloutWidthInput, calloutEndSizeInput, calloutGapInput, backgroundColorFieldBox, backgroundColorChit, backgroundColorInput, backgroundColorPicker, backgroundOpacityInput, paddingInput, editingStatus, clearLink, closeBtn, hit;
   // The shape the symbol's size and colour defaults are shown for while there
   // is no symbol: the last one shown.
   var lastIconShape = defaultIconShape;
@@ -362,32 +358,17 @@ export function LabelTool(gui) {
     // as a variation on the first rather than as a different kind of control.
     var textSection = addSection('Text', {open: true}).section;
 
-    // The controls whose own contents say what they are -- a font name, a
-    // size beside a font style -- carry no label. The ones that would be a bare
-    // number otherwise keep theirs, and so does a colour field, because the
-    // field beside it has one and "Color" says the percentage is its opacity.
-    var fontRow = El('div').addClass('label-style-row').appendTo(textSection);
-    fontSelect = El('select').attr('aria-label', 'Font').addClass('font-menu').appendTo(fontRow).on('change', function() {
-      if (fontSelect.node().value) {
-        applyFont(fontSelect.node().value);
-      }
-    });
-
-    var styleSizeRow = El('div').addClass('label-style-row label-split-row').appendTo(textSection);
-    var fontStyleRow = El('div').addClass('label-split-cell label-font-style-row').appendTo(styleSizeRow);
-    fontStyleSelect = El('select').attr('aria-label', 'Font style').appendTo(fontStyleRow).on('change', function() {
-      if (fontStyleSelect.node().value) {
-        applyFontStyleVariant(fontStyleSelect.node().value);
-      }
-    });
-
-    var fontSizeRow = El('div').addClass('label-split-cell label-size-row').appendTo(styleSizeRow);
-    fontSizeInput = new SizeField(fontSizeRow, {
-      title: 'Font size in px',
-      onSet: function(value) {
+    // The font controls carry no label (see gui-font-controls.mjs). The ones
+    // that would be a bare number otherwise keep theirs, and so does a colour
+    // field, because the field beside it has one and "Color" says the
+    // percentage is its opacity.
+    fontControls = new FontControls(textSection, {
+      onFont: applyFont,
+      onFace: applyFontStyleVariant,
+      onSize: function(value) {
         applyStyleValues([[fontSizeField, value]]);
       },
-      onStep: nudgeFontSize,
+      onSizeStep: nudgeFontSize,
       onDone: releaseFocus
     });
 
@@ -855,7 +836,7 @@ export function LabelTool(gui) {
   // gui.state.label_style_panel_open says whether the panel is up, for the
   // label tool's Styles button, which follows 'label_style_panel_change'
   function showPanel() {
-    renderFontOptions();
+    fontControls.renderFontOptions();
     gui.state.label_style_panel_open = true;
     panel.show();
     closeBtn.show();
@@ -913,17 +894,6 @@ export function LabelTool(gui) {
     gui.model.selectLayer(lyr, dataset);
   }
 
-  function renderFontOptions() {
-    if (fontOptionsRendered) return;
-    fontOptionsRendered = true;
-    fontSelect.empty();
-    // No "Default font" entry: it named a font the user could not see and
-    // mapshaper could not measure. A label with no font-family of its own is
-    // shown in the font the browser draws it in, under that font's own name.
-    appendFontOptions(fontSelect.node());
-  }
-
-
   function clearSelection() {
     if (hit) hit.clearSelection();
     updateSelectionDisplay();
@@ -977,12 +947,16 @@ export function LabelTool(gui) {
     return getTargetIds().length > 0 || editingNewLabels();
   }
 
+  // The labels Cmd-A selects: not the layer's symbols or plain points, which
+  // the panel has nothing for, and not its numbered markers, which are the
+  // symbol panel's.
   function getAllLabelIds() {
     var lyr = getActiveLayer();
+    var records = lyr && lyr.data ? lyr.data.getRecords() : null;
     var ids = [];
-    if (!lyr) return ids;
+    if (!records) return ids;
     for (var i=0, n=internal.getFeatureCount(lyr); i<n; i++) {
-      ids.push(i);
+      if (internal.svg.featureIsTextLabel(records[i])) ids.push(i);
     }
     return ids;
   }
@@ -1020,10 +994,9 @@ export function LabelTool(gui) {
     var padding = getShownValue(ids, paddingField, {useDefault: true, defaultValue: 0});
     updateEditingStatus(manualIds.length, !!getLabelTextSession(gui));
     updateSavedStyleControls();
-    fontSelect.node().disabled = !showValues;
-    updateFontControl(font);
-    updateFontStyleControls(font.value, fontStyleVal, fontWeightVal);
-    updateFontSizeControls(fontSize);
+    fontControls.showFont(font, !showValues);
+    fontControls.showFace(font.value, fontStyleVal, fontWeightVal, !showValues);
+    fontControls.showSize(fontSize, !showValues);
     updateColorControls(fill);
     updateOpacityControl(opacityInput, opacity);
     updateMeasureControl(letterSpacingInput, letterSpacing);
@@ -1185,7 +1158,7 @@ export function LabelTool(gui) {
   function updateEditingStatus(count, editingText) {
     editingStatus.text(formatEditingStatus({
       selected: count,
-      total: getActiveLayer() ? internal.getFeatureCount(getActiveLayer()) : 0,
+      total: getAllLabelIds().length,
       newLabels: editingNewLabels(),
       editingText: editingText
     }));
@@ -1194,92 +1167,8 @@ export function LabelTool(gui) {
     clearLink.classed('hidden', count === 0 || editingText);
   }
 
-  function updateFontSizeControls(shown) {
-    fontSizeInput.setValue(shown.value || '');
-    fontSizeInput.setPlaceholder(shown.mixed ? MIXED_TEXT : '');
-    fontSizeInput.setDisabled(!controlsEnabled());
-  }
-
   function getFontNameForTarget(ids) {
     return ids.length === 0 ? getNewLabelFontName() : getDefaultFontName();
-  }
-
-  // A font the menu does not list still has to show, or the label would look
-  // as though it had no font: a file can name a font that is not installed
-  // here, and a project moves between machines. It is added to the menu as
-  // itself rather than replaced by an installed font, since the name is the
-  // user's data and choosing something else for them would restyle the label.
-  function updateFontControl(shown) {
-    var fontVal = shown.value;
-    // A font menu is a list of fonts, so "they are in different fonts" cannot
-    // be one of the fonts: it is an entry that appears only while it is true,
-    // and picking it does nothing (applyFont() ignores a blank value). The
-    // list stays live, so choosing a font is how the selection is brought into
-    // line -- as it is for the face menu below.
-    setMixedOption(fontSelect, shown.mixed);
-    fontSelect.node().value = fontVal || '';
-    if (fontVal && fontSelect.node().selectedIndex < 0) {
-      El('option').attr('value', fontVal).text(fontVal).appendTo(fontSelect);
-      fontSelect.node().value = fontVal;
-    }
-    // Nothing selected, rather than the first font in the list, for a target
-    // there is nothing to say about -- a disabled menu with no labels behind it.
-    if (!fontVal && !shown.mixed) fontSelect.node().selectedIndex = -1;
-  }
-
-  // Adds or removes a menu's "mixed" entry, which carries no value: a select
-  // showing nothing looks like a control that failed to load, and this is the
-  // one state the panel cannot express by lighting no button.
-  //
-  // First in the list, and removed as soon as the selection agrees, so that it
-  // is never an option among the real ones.
-  function setMixedOption(select, mixed) {
-    var el = select.node();
-    var first = el.options[0];
-    var has = !!first && first.value === '' && first.dataset.mixed == 'true';
-    if (mixed && !has) {
-      first = document.createElement('option');
-      first.value = '';
-      first.textContent = MIXED_TEXT;
-      first.dataset.mixed = 'true';
-      el.insertBefore(first, el.firstChild);
-    } else if (!mixed && has) {
-      el.removeChild(first);
-    }
-  }
-
-  // The faces the chosen font is installed with, and no entry for "whatever
-  // the font is set in by default": that is Regular, which is one of the faces
-  // and is named as one. With no font chosen the menu is empty and dead --
-  // there are no faces to list, and a face belongs to a font.
-  function updateFontStyleControls(fontName, fontStyleVal, fontWeightVal) {
-    var disabled = !controlsEnabled() || !fontName;
-    // Empty means the selection disagrees, here as everywhere in the panel;
-    // an unset style reads as Regular, because that is what it renders as.
-    var mixed = !!fontName && !(fontStyleVal && fontWeightVal);
-    var shown = mixed ? null :
-      getShownVariant(fontName, fontStyleVal, fontWeightVal);
-    fontStyleSelect.empty();
-    if (fontName) {
-      getFontStyleVariants(fontName).forEach(function(variant) {
-        El('option').attr('value', variant.value).appendTo(fontStyleSelect).text(variant.label);
-      });
-    }
-    // The faces are rebuilt above, so the "mixed" entry goes on afterwards.
-    setMixedOption(fontStyleSelect, mixed);
-    fontStyleSelect.node().disabled = disabled;
-    fontStyleSelect.node().value = shown ? shown.value : '';
-    // Nothing selected rather than the first face, for a menu with no font to
-    // list the faces of.
-    if (!shown && !mixed) fontStyleSelect.node().selectedIndex = -1;
-  }
-
-  // The face the panel shows for a label in @fontName. A font-style and
-  // font-weight the font has no face for still has to show as something, and
-  // the nearest face is what the browser is rendering it as anyway.
-  function getShownVariant(fontName, fontStyleVal, fontWeightVal) {
-    if (!fontName) return null;
-    return getNearestFontStyleVariant(fontName, fontStyleVal, fontWeightVal);
   }
 
   function updateColorControls(shown) {
@@ -1873,20 +1762,11 @@ export function LabelTool(gui) {
     return opts && opts.useDefault ? opts.defaultValue : '';
   }
 
-  // Changing the font carries the face across with it: a label in Bold Italic
-  // stays in Bold Italic, or in the nearest thing the new font is installed
-  // with. Both go in one command, so the change is one undo step and the label
-  // is never briefly in a face the font does not have.
   function applyFont(fontName) {
     var ids = getTargetIds();
     var style = getCommonValue(ids, fontStyleField, {useDefault: true, defaultValue: defaultFontStyle});
     var weight = getCommonValue(ids, fontWeightField, {useDefault: true, defaultValue: defaultFontWeight});
-    var values = [[fontField, fontName]];
-    var variant = getNearestFontStyleVariant(fontName, style, weight);
-    if (variant && !(variant.style == style && variant.weight == weight)) {
-      values = values.concat(getFontStyleValues(variant));
-    }
-    applyStyleValues(values);
+    applyStyleValues(getFontChangeValues(fontName, style, weight));
   }
 
   function nudgeFontSize(delta) {
@@ -1905,27 +1785,13 @@ export function LabelTool(gui) {
   // The font named is the one they are drawn in, not the tool's preferred
   // font: choosing Bold is not a request to change the typeface. A label that
   // does not exist yet is left alone here and given its font when it is made.
-  function applyFontStyleVariant(value) {
-    var variant = parseFontStyleVariant(value);
+  function applyFontStyleVariant(variant) {
     var ids = getTargetIds();
-    var values;
-    if (!variant) return;
-    values = getFontStyleValues(variant);
+    var values = getFontStyleValues(variant);
     if (ids.length > 0 && !getCommonValue(ids, fontField) && getDefaultFontName()) {
       values.unshift([fontField, getDefaultFontName()]);
     }
     applyStyleValues(values);
-  }
-
-  // Regular is stored as no face at all, for the same reason full opacity is
-  // stored as no opacity: normal 400 is what a font renders as when nothing
-  // says otherwise, and a column of them on every label the panel has touched
-  // is noise in the user's table.
-  function getFontStyleValues(variant) {
-    if (variantIsRegular(variant)) {
-      return [[fontStyleField, ''], [fontWeightField, '']];
-    }
-    return [[fontStyleField, variant.style], [fontWeightField, variant.weight]];
   }
 
   function applyLabelColor(color) {
@@ -1976,14 +1842,14 @@ export function LabelTool(gui) {
 
   function getCurrentStyle() {
     var style = {};
-    var fontStyle = parseFontStyleVariant(fontStyleSelect.node().value);
+    var fontStyle = fontControls.getFace();
     var icon = getSelectedIcon();
-    addStyleValue(style, fontField, fontSelect.node().value);
+    addStyleValue(style, fontField, fontControls.getFont());
     if (fontStyle) {
       style[fontStyleField] = fontStyle.style;
       style[fontWeightField] = fontStyle.weight;
     }
-    addStyleValue(style, fontSizeField, fontSizeInput.getValue());
+    addStyleValue(style, fontSizeField, fontControls.getSize());
     addStyleValue(style, fillField, colorInput.node().value.trim());
     addStyleValue(style, opacityField, getOpacityBelowFull(opacityInput));
     addStyleValue(style, letterSpacingField, letterSpacingInput.node().value.trim());
@@ -2097,15 +1963,6 @@ export function LabelTool(gui) {
       }
     });
     applyStyleValues(styles);
-  }
-
-  function parseFontStyleVariant(value) {
-    var parts = String(value).split('|');
-    if (parts.length != 2) return null;
-    return {
-      style: parts[0],
-      weight: parts[1]
-    };
   }
 
   function applyLabelPosition(pos) {

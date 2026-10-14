@@ -8,7 +8,7 @@ import {
 import { utils, internal } from './gui-core';
 import { El } from './gui-el';
 import { ClickText2 } from './gui-elements';
-import { describeFeatureContents, formatCount } from './gui-layer-contents';
+import { describeFeatureContents, formatCount, getAnnotationTool } from './gui-layer-contents';
 import { GUI } from './gui-lib';
 import { openContextMenu } from './gui-context-menu';
 import { runGuiEditCommand } from './gui-edit-command';
@@ -420,10 +420,18 @@ export function LayerControl(gui) {
       if (gui.frameTool) gui.frameTool.open();
     }
 
+    function getLayerAnnotationTool(lyr) {
+      var records = lyr.geometry_type == 'point' && lyr.data ? lyr.data.getRecords() : null;
+      return getAnnotationTool(records, internal.layerHasLabels(lyr),
+        internal.layerHasSvgSymbols(lyr));
+    }
+
     function styleLayer() {
       var target = findLayerById(id);
+      var tool;
       if (!target) return;
-      if (internal.layerHasLabels(target.layer)) {
+      tool = getLayerAnnotationTool(target.layer);
+      if (tool == 'label') {
         // The point style panel can only restyle a label layer; the label tool
         // styles labels and creates, moves and retypes them as well, so a
         // label layer goes there instead. The menu item is named for it.
@@ -432,7 +440,7 @@ export function LayerControl(gui) {
           model.selectLayer(target.layer, target.dataset);
         }
         gui.interaction.setMode('label');
-      } else if (internal.layerHasSvgSymbols(target.layer)) {
+      } else if (tool == 'symbols') {
         // Likewise a symbol layer, which the point style panel has no
         // controls for
         if (!map.isActiveLayer(target.layer)) {
@@ -475,9 +483,9 @@ export function LayerControl(gui) {
       }
       if (!isFrame && target && layerCanBeStyled(target.layer)) {
         menuEvent.styleLayer = styleLayer;
-        if (internal.layerHasLabels(target.layer)) {
+        if (getLayerAnnotationTool(target.layer) == 'label') {
           menuEvent.styleLayerName = 'edit labels';
-        } else if (internal.layerHasSvgSymbols(target.layer)) {
+        } else if (getLayerAnnotationTool(target.layer) == 'symbols') {
           menuEvent.styleLayerName = 'edit symbols';
         } else if (target.layer.geometry_type == 'point') {
           menuEvent.styleLayerName = 'edit points';

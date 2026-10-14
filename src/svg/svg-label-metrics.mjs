@@ -115,6 +115,40 @@ function toHashInput(val) {
 // For tests, and for a session that wants to measure again from scratch.
 export function clearTextWidthCache() {
   cache.clear();
+  capHeightCache.clear();
+}
+
+// How tall a font's capitals are, as a fraction of its size, which is what a
+// number centred on a symbol is centred by: digits are as tall as capitals
+// in nearly every font, and they are what a numbered marker holds. Measured
+// the same two ways as a width, and remembered per face -- the ratio does not
+// depend on the size or the text.
+var CAP_HEIGHT_PROPERTIES = ['font-family', 'font-weight', 'font-style', 'font-stretch'];
+var capHeightCache = new Map();
+var capHeightFn = null;
+
+// (rec) -> cap height as a fraction of the font size, or null
+export function setCapHeightFunction(fn) {
+  capHeightFn = fn || null;
+}
+
+// The cap height of @rec's font as a fraction of its size, or null if it
+// cannot be known
+export function getMeasuredCapHeight(rec) {
+  var key, ratio;
+  if (!capHeightFn) return null;
+  key = CAP_HEIGHT_PROPERTIES.map(function(name) {
+    return toHashInput(rec && rec[name]);
+  }).join('\n');
+  if (capHeightCache.has(key)) return capHeightCache.get(key);
+  try {
+    ratio = capHeightFn(rec);
+  } catch (e) {
+    ratio = null;
+  }
+  ratio = ratio > 0 && ratio < 2 ? ratio : null;
+  capHeightCache.set(key, ratio);
+  return ratio;
 }
 
 export function getTextWidthCacheSize() {

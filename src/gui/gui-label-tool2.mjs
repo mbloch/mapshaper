@@ -479,7 +479,7 @@ export function initLabelTool(gui, ext, hit) {
   // alone -- and running an item replaces the selection with what it matched.
   function getSelectActions(target, id) {
     var records = target.data ? target.data.getRecords() : null;
-    return getLabelSelectActions(records, id, internal.svg.featureIsLabel)
+    return getLabelSelectActions(records, id, internal.svg.featureIsTextLabel)
       .map(function(action) {
         return {
           label: action.label,
@@ -503,7 +503,7 @@ export function initLabelTool(gui, ext, hit) {
   function selectAllLabels() {
     var target = hit.getHitTarget();
     var records = target && target.data ? target.data.getRecords() : null;
-    var ids = getAllLabelIds(records, internal.svg.featureIsLabel);
+    var ids = getAllLabelIds(records, internal.svg.featureIsTextLabel);
     if (ids.length > 0) selectLabels(ids);
   }
 
@@ -641,9 +641,10 @@ export function initLabelTool(gui, ext, hit) {
     return target && target.shapes ? target.shapes.length : 0;
   }
 
+  // A numbered marker is a label in the data, and the symbol tool's to edit
   function isLabel(target, id) {
     var records = target.data ? target.data.getRecords() : null;
-    return !!(records && internal.svg.featureIsLabel(records[id]));
+    return !!(records && internal.svg.featureIsTextLabel(records[id]));
   }
 
   // A click position in the coordinate space the label's characters are laid

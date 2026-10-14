@@ -3,11 +3,15 @@ import { internal } from './gui-core';
 import {
   claimFieldKeys, isTextInput, opensAMenu, releasePanelFocus
 } from './gui-panel-focus';
-import { makeColorRow, makePanelButton, makePanelSection } from './gui-panel-controls';
+import {
+  makeColorRow, makeCollapsibleSection, makePanelButton, makePanelSection,
+  makePanelToggle, setPanelButtonDisabled
+} from './gui-panel-controls';
 import { SizeField } from './gui-size-field';
 import { formatEditingStatus } from './gui-editing-status';
 import { runGuiEditCommand } from './gui-edit-command';
 import { getSymbolStyleCommand, getRestyleSymbolCommand } from './gui-symbol-commands';
+import { getLabelStyleCommand } from './gui-label-commands';
 import {
   ARROWHEAD_POSITIONS, getShapeChangeStyle,
   getIconShape, getIconSize, getIconPaint, getIconRotation, getIconStyle,
@@ -15,13 +19,23 @@ import {
   getCurveStyle, getArrowheadFields, getArrowheadPosition, getArrowheadShape,
   shapeHasStrokeWidth, shapeHasRotation
 } from './gui-symbol-style';
+import {
+  getMarkerIconSize, getAutoNumberStart, shapeTakesText, getMarkerTextStyle, getBaselineEm,
+  getAddMarkerTextCommand, getRemoveMarkerTextCommand, groupRestyleOptions
+} from './gui-marker-style';
+import {
+  FontControls, MIXED_TEXT, getFontChangeValues, getFontStyleValues
+} from './gui-font-controls';
+import { getNearestFontStyleVariant } from './gui-label-fonts';
+import { encodeLabelText, decodeLabelText } from './gui-label-text';
 import { pointIsUnstyled } from './gui-unstyled-points';
 import { ARROWHEAD_SHAPES, getArrowheadGlyph } from './gui-arrowhead-shapes';
 import { getIconShapes, getIconShapeGlyph, getDefaultStrokeWidth } from './gui-icon-shapes';
 import { isNytUser } from './gui-nyt';
 
 // The symbol tool's panel. With symbols selected it restyles them: icons
-// through -symbols ids=, curves through -style ids=. With none, and a tool armed, it sets the style of the next
+// through -symbols ids=, curves through -style ids=, and the text on a
+// numbered marker through -labels ids= (see gui-marker-style.mjs). With none, and a tool armed, it sets the style of the next
 // symbol placed, and shows the section for the kind of symbol the toolbar is
 // ready to place; with no tool armed, it restyles every symbol in the layer,
 // as the label panel restyles every label.
@@ -31,8 +45,11 @@ import { isNytUser } from './gui-nyt';
 //   getSelectedIds()   the selected symbols
 //   getAllIds()        every symbol in the layer
 //   getArmed()         null, 'icon' or 'curve'
-//   getNewStyle()      {icon, curve}: the style of the next symbol, which the
-//                      panel changes in place
+//   getNewStyle()      {icon, curve, text}: the style of the next symbol, which
+//                      the panel changes in place. text is the text on it,
+//                      with autoNumber; its text is '' for a symbol with none.
+//   getMarkerTextStyle()  a copy of the next symbol's text style, with its
+//                      font and face filled in
 //   isCurve(lyr, id)
 //   deselect()
 //   close()            the close button: hides the panel, leaving the tool on
@@ -45,8 +62,12 @@ export function SymbolPanel(gui, opts) {
       iconStrokeWidthField, rotationRow, rotationField;
   var curveSection, curveStroke, curveWidthField, arrowShapeRow, arrowShapeBtns = {},
       arrowSizeField, arrowRow, arrowBtns = {}, fadeField, taperRow, taperField, curveFill;
+  var textSection, textInput, autoNumberCell, autoNumberToggle, fontControls,
+      textColor, baselineField, baselineAuto;
   // what the controls describe: {mode: 'new'|'selection', icons: [ids],
-  //   curves: [ids], records}
+  //   curves: [ids], markers: [ids], markable: [ids], records}, where markers
+  //   are the icons with text on them and markable the circles and squares
+  //   that could have
   var state = null;
   var shownShapes = null;
 
@@ -54,11 +75,12 @@ export function SymbolPanel(gui, opts) {
 
   this.show = function() {
     panel.show();
+    fontControls.renderFontOptions();
     this.update();
   };
 
   this.hide = function() {
-    [iconFill, iconStroke, curveStroke, curveFill].forEach(function(c) {
+    [iconFill, iconStroke, textColor, curveStroke, curveFill].forEach(function(c) {
       c.picker.hide();
     });
     releaseFocus();
@@ -84,11 +106,88 @@ export function SymbolPanel(gui, opts) {
       .text('deselect').on('click', opts.deselect);
 
     initIconSection();
+    initTextSection();
     initCurveSection();
   }
 
+  // A number or letter in a circle or square: a numbered marker. Typing text
+  // is what puts it on, as picking a color puts on a label's halo, and the ×
+  // takes it off.
+  function initTextSection() {
+    var o = makeCollapsibleSection(panel, 'Label', {
+      onRemove: removeText,
+      removeTitle: 'Remove label'
+    });
+    var section = o.section;
+    var row, cell;
+    textSection = o;
+
+    // A number or a letter, so the field is a few characters wide, captioned
+    // beside it rather than over it, with Auto at the far end of the column
+    row = El('div').addClass('label-style-row label-split-row').appendTo(section);
+    cell = El('div').addClass('label-split-cell symbol-label-text-cell').appendTo(row);
+    textInput = El('input').attr('type', 'text').attr('aria-label', 'Label text')
+      .addClass('symbol-label-text-input').appendTo(cell)
+      // The next symbol's text is what the field holds, as it is typed: there
+      // is no command to wait for, and a click on the map is the commit
+      .on('input', function() {
+        if (state && state.mode == 'new') applyText(getTypedText());
+      })
+      .on('change', function() {
+        if (state && state.mode != 'new') applyText(getTypedText());
+      });
+    El('span').appendTo(cell).text('Text');
+    // Each symbol placed takes the next number or letter
+    autoNumberCell = El('div').addClass('symbol-label-auto').appendTo(cell);
+    autoNumberToggle = makePanelToggle(autoNumberCell, {
+      title: 'Auto',
+      onChange: applyAutoNumber
+    });
+    El('span').appendTo(autoNumberCell).text('Auto');
+
+    fontControls = new FontControls(section, {
+      onFont: applyTextFont,
+      onFace: applyTextFace,
+      onSize: applyTextSize,
+      onSizeStep: function(delta) {
+        var size = Number(fontControls.getSize());
+        if (size > 0) applyTextSize(Math.max(1, size + delta));
+      },
+      onDone: releaseFocus
+    });
+
+    textColor = makeColorRow(section, {
+      label: 'Color',
+      ariaLabel: 'Text color',
+      noOpacity: true,
+      onColor: applyTextColor,
+      revert: update
+    });
+    // How far below the symbol's centre the text's baseline sits. Left alone,
+    // the font's capitals are centred, which a figure in a lining font fills;
+    // this is for the font that sits its figures differently.
+    cell = El('span').appendTo(textColor.aside).text('Baseline ');
+    baselineAuto = El('span').addClass('colored-text symbol-baseline-auto')
+      .attr('role', 'button').appendTo(cell).text('auto')
+      .on('click', function() { applyBaseline(''); });
+    baselineField = new SizeField(textColor.aside, {
+      min: -99,
+      max: 99,
+      step: 0.5,
+      bigStep: 2,
+      title: 'Baseline of the text below the center of the symbol, in px',
+      onSet: applyBaseline,
+      onStep: function(delta) {
+        var val = baselineField.getValue();
+        if (val !== null) applyBaseline(Math.round((val + delta) * 10) / 10);
+      },
+      onDone: releaseFocus
+    });
+  }
+
   function initIconSection() {
-    iconSection = makePanelSection(panel, 'Symbol');
+    // Not "Symbol": icons and curves are both symbols
+    iconSection = makePanelSection(panel, 'Icon style');
     var shapeRow = El('div').addClass('label-style-row label-icon-shapes-row').appendTo(iconSection);
     var group = El('div').addClass('label-btn-group label-icon-buttons').appendTo(shapeRow);
     getShownShapes().forEach(function(item) {
@@ -156,7 +255,7 @@ export function SymbolPanel(gui, opts) {
   }
 
   function initCurveSection() {
-    curveSection = makePanelSection(panel, 'Curve');
+    curveSection = makePanelSection(panel, 'Curve style').addClass('symbol-curve-section');
     // "Color", as a label callout's is: the line and its heads are drawn in it
     curveStroke = makeColorRow(curveSection, {
       label: 'Color',
@@ -286,10 +385,20 @@ export function SymbolPanel(gui, opts) {
       ids: ids,
       icons: [],
       curves: [],
+      markers: [],
+      markable: [],
       records: records
     };
     ids.forEach(function(id) {
       (opts.isCurve(lyr, id) ? o.curves : o.icons).push(id);
+    });
+    o.icons.forEach(function(id) {
+      var rec = records[id] || {};
+      if (internal.svg.featureIsMarker(rec)) {
+        o.markers.push(id);
+      } else if (!pointIsUnstyled(rec) && shapeTakesText(getIconShape(rec))) {
+        o.markable.push(id);
+      }
     });
     return o;
   }
@@ -307,8 +416,95 @@ export function SymbolPanel(gui, opts) {
     clearLink.classed('hidden', state.mode != 'selection' || state.all);
     toggle(iconSection, state.mode == 'selection' ? state.icons.length > 0 : armed != 'curve');
     toggle(curveSection, state.mode == 'selection' ? state.curves.length > 0 : armed == 'curve');
+    toggle(textSection.section, state.mode == 'selection' ?
+      state.markers.length + state.markable.length > 0 : armed != 'curve');
+    // A rule between the icon controls and the curve controls, when both show
+    curveSection.classed('symbol-section-rule', iconSection.visible() && curveSection.visible());
     updateIconControls();
+    updateTextControls();
     updateCurveControls();
+  }
+
+  // Text on the next symbol, or on any of the selected ones: their shape can
+  // only be one with room for it
+  function textLimitsShape() {
+    return state.mode == 'new' ? !!opts.getNewStyle().text.text : state.markers.length > 0;
+  }
+
+  // The style the Text controls show: the next marker's, or the selected
+  // markers' where they agree ('' where they do not). With no markers
+  // selected, the next marker's, which is what text typed for the selection
+  // is set in.
+  function getShownTextStyle() {
+    var o, keys;
+    if (state.mode == 'new' || state.markers.length === 0) {
+      o = opts.getMarkerTextStyle();
+      if (state.mode == 'selection') o.text = '';
+      return o;
+    }
+    o = {};
+    keys = ['text', 'font', 'style', 'weight', 'size', 'color', 'baseline'];
+    keys.forEach(function(key) {
+      var val = commonValue(state.markers, function(rec) { return getMarkerTextStyle(rec)[key]; });
+      o[key] = val === null ? '' : val;
+      o[key + 'Mixed'] = val === null;
+    });
+    return o;
+  }
+
+  function updateTextControls() {
+    var t = getShownTextStyle();
+    var noMarkers = state.mode == 'selection' && state.markers.length === 0;
+    var presence;
+    if (state.mode == 'new') {
+      presence = t.text ? 'on' : 'off';
+    } else {
+      presence = state.markers.length === 0 ? 'off' :
+        state.markable.length > 0 ? 'mixed' : 'on';
+    }
+    textSection.setPresence(presence);
+    showTypedText(decodeLabelText(t.text || ''));
+    autoNumberToggle.setState(opts.getNewStyle().text.autoNumber ? 'on' : 'off');
+    // Selected symbols with no text yet are given it in the next marker's
+    // style, which the selection has no say in until then
+    fontControls.showFont({value: t.font, mixed: !!t.fontMixed}, noMarkers);
+    fontControls.showFace(t.font, t.styleMixed ? '' : t.style || 'normal',
+      t.weightMixed ? '' : t.weight || '400', noMarkers);
+    fontControls.showSize({value: t.size, mixed: !!t.sizeMixed}, noMarkers);
+    textColor.showColor(t.color || '');
+    textColor.input.node().disabled = noMarkers;
+    // An automatic baseline shows where it is, as a value, as any unset
+    // property in the panels shows the one it is drawn with
+    baselineField.setValue(t.baseline === '' && !t.baselineMixed ? formatAutoBaseline(t) : t.baseline);
+    baselineField.setPlaceholder(t.baselineMixed ? MIXED_TEXT : '');
+    baselineField.setDisabled(noMarkers);
+    baselineAuto.classed('hidden', noMarkers || t.baseline === '' && !t.baselineMixed);
+  }
+
+  // The next symbol's text is applied as it is typed, so the field can always
+  // show it -- it is only rewritten when it says something else, which keeps
+  // the caret where it is. Typing for a selection is applied on Enter or
+  // when the field is left, and is not overwritten before then.
+  function showTypedText(str) {
+    var el = textInput.node();
+    if (state.mode != 'new' && document.activeElement === el) return;
+    if (state.mode == 'new' && getTypedText() == str) return;
+    el.value = str;
+  }
+
+  // Where the text's baseline goes with no baseline of its own, in px: the
+  // cap height centred, as svg-properties.mjs places it
+  function getAutoBaseline(t) {
+    var em, size = Number(t.size);
+    if (!(size > 0)) return null;
+    em = parseFloat(internal.getCapCentredOffset({'font-family': t.font,
+      'font-style': t.style, 'font-weight': t.weight}));
+    return isFinite(em) ? Math.round(em * size * 10) / 10 : null;
+  }
+
+  function formatAutoBaseline(t) {
+    var val = t.sizeMixed || t.fontMixed ? null : getAutoBaseline(t);
+    return val === null ? '' : String(val);
   }
 
   function toggle(el, visible) {
@@ -335,6 +531,7 @@ export function SymbolPanel(gui, opts) {
     }
     getShownShapes().forEach(function(item) {
       shapeBtns[item.name].classed('selected', shape == item.name);
+      setPanelButtonDisabled(shapeBtns[item.name], textLimitsShape() && !shapeTakesText(item.name));
     });
     iconFill.showColor(fill || '');
     iconSizeField.setValue(size === null ? '' : size);
@@ -437,6 +634,7 @@ export function SymbolPanel(gui, opts) {
 
   function applyIconShape(shape) {
     var style;
+    if (textLimitsShape() && !shapeTakesText(shape)) return;
     if (state.mode == 'new') {
       style = opts.getNewStyle().icon;
       Object.assign(style, getShapeChangeStyle(shape, style.shape, style));
@@ -514,6 +712,169 @@ export function SymbolPanel(gui, opts) {
       if (change(style) === false && !unstyled) return null;
       return getRestyleIconOptions(rec, style);
     }, title, getRestyleSymbolCommand);
+  }
+
+  function getTypedText() {
+    return textInput.node().value.trim();
+  }
+
+  // Auto with nothing typed starts the count at 1, which makes the next
+  // symbol a marker, as typing a 1 would; with a number or letter that a
+  // marker already has, at the next one none has. With symbols selected it is
+  // still the setting for the symbols placed next, and leaves the selection
+  // alone.
+  function applyAutoNumber(on) {
+    var t = opts.getNewStyle().text;
+    t.autoNumber = on;
+    if (on && state.mode == 'new') {
+      if (t.text) {
+        t.text = getAutoNumberStart(t.text, getMarkerTexts());
+      } else {
+        t.text = '1';
+        prepareMarkerIcon(opts.getNewStyle().icon);
+      }
+    }
+    update();
+  }
+
+  // The text of every marker in the layer, as it is now: a command may have
+  // replaced its records since the panel last read them
+  function getMarkerTexts() {
+    var lyr = opts.getTarget();
+    var records = lyr && lyr.data ? lyr.data.getRecords() : [];
+    return records.filter(internal.svg.featureIsMarker).map(function(rec) {
+      return String(rec['label-text']);
+    });
+  }
+
+  // Text typed for the next symbol makes it a marker. Typed for a selection,
+  // it replaces the markers' text and puts it on the circles and squares, in
+  // the next marker's style; emptied, it takes the text off.
+  function applyText(value) {
+    var cmds = [];
+    if (state.mode == 'new') {
+      opts.getNewStyle().text.text = value;
+      if (value) prepareMarkerIcon(opts.getNewStyle().icon);
+      return update();
+    }
+    if (!value) return removeText();
+    if (state.markers.length > 0) {
+      cmds.push(getLabelStyleCommand({text: encodeLabelText(value)}, state.markers.join(',')));
+    }
+    if (state.markable.length > 0) {
+      cmds.push(getAddMarkerTextCommand(Object.assign(opts.getMarkerTextStyle(), {text: value}),
+        groupRestyleOptions(state.records, state.markable, getIconStyle),
+        state.markable.filter(hasStroke)));
+    }
+    run(cmds.join(' '), state.markable.length > 0 ? 'Add text' : 'Edit text');
+  }
+
+  // The next symbol, given text: a shape and a size with room for it
+  function prepareMarkerIcon(icon) {
+    if (!shapeTakesText(icon.shape)) {
+      Object.assign(icon, getShapeChangeStyle('circle', icon.shape, icon));
+      icon.shape = 'circle';
+    }
+    icon.size = getMarkerIconSize(icon.size);
+  }
+
+  // A circle's stroke= outlines the text of a label, so it comes off
+  function hasStroke(id) {
+    var rec = state.records[id] || {};
+    return ['stroke', 'stroke-width'].some(function(name) {
+      return rec[name] !== undefined && rec[name] !== null && rec[name] !== '';
+    });
+  }
+
+  function removeText() {
+    if (state.mode == 'new') {
+      opts.getNewStyle().text.text = '';
+      return update();
+    }
+    if (state.markers.length === 0) return update();
+    run(getRemoveMarkerTextCommand(groupRestyleOptions(state.records, state.markers, getIconStyle)),
+      'Remove text');
+  }
+
+  function applyTextFont(fontName) {
+    var t = opts.getNewStyle().text;
+    var variant;
+    if (state.mode == 'new') {
+      t.font = fontName;
+      variant = getNearestFontStyleVariant(fontName, t.style, t.weight);
+      if (variant) {
+        t.style = variant.style;
+        t.weight = variant.weight;
+      }
+      return update();
+    }
+    applyPerMarker(function(rec) {
+      return getFontChangeValues(fontName, rec['font-style'] || 'normal',
+        String(rec['font-weight'] || '400'));
+    });
+  }
+
+  function applyTextFace(variant) {
+    var t = opts.getNewStyle().text;
+    if (state.mode == 'new') {
+      t.style = variant.style;
+      t.weight = variant.weight;
+      return update();
+    }
+    applyPerMarker(function() { return getFontStyleValues(variant); });
+  }
+
+  function applyTextSize(size) {
+    if (!(size > 0)) return update();
+    if (state.mode == 'new') {
+      opts.getNewStyle().text.size = size;
+      return update();
+    }
+    applyPerMarker(function() { return [['font-size', size]]; });
+  }
+
+  // '' gives the text back its default black
+  function applyTextColor(color) {
+    if (state.mode == 'new') {
+      opts.getNewStyle().text.color = color;
+      return update();
+    }
+    applyPerMarker(function() { return [['fill', color]]; });
+  }
+
+  // @px: the baseline in px, or '' for the automatic one. Stored in em, for
+  // each marker's own font size (see getMarkerTextFields()).
+  function applyBaseline(px) {
+    if (px !== '' && !isFinite(px)) return update();
+    if (state.mode == 'new') {
+      opts.getNewStyle().text.baseline = px;
+      return update();
+    }
+    applyPerMarker(function(rec) {
+      return [['dy', px === '' ? '' : getBaselineEm(px, getMarkerTextStyle(rec).size)]];
+    });
+  }
+
+  // Restyles the text of the selected markers with -labels ids=: one command
+  // per distinct set of [field, value] pairs @getValues(rec) gives, as one undo
+  // step. Selected symbols with no text are left alone.
+  function applyPerMarker(getValues) {
+    var groups = {};
+    var cmds = [];
+    state.markers.forEach(function(id) {
+      var values = {};
+      var key;
+      getValues(state.records[id] || {}).forEach(function(pair) {
+        values[pair[0]] = pair[1];
+      });
+      key = JSON.stringify(values);
+      (groups[key] = groups[key] || {values: values, ids: []}).ids.push(id);
+    });
+    Object.keys(groups).forEach(function(key) {
+      cmds.push(getLabelStyleCommand(groups[key].values, groups[key].ids.join(',')));
+    });
+    if (cmds.length === 0) return update();
+    run(cmds.join(' '), 'Style text');
   }
 
   // A shape for curves with no heads puts one at the end, as the layer panel
