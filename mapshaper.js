@@ -24966,10 +24966,30 @@
   // and nowhere to put a caret, so a label the user just made would be invisible
   // and unrecoverable. Export has no editor and drops the empty ones.
   //
-  // A curve symbol (icon=curve) without text is not a label, though merging it
-  // into a layer of labels gives it an empty label-text field.
+  // A label is created with its text, or with '' when the GUI is about to type
+  // into it. A symbol merged into a layer of labels is given the field with no
+  // value at all, which does not make it a label. A curve symbol (icon=curve)
+  // without text is not a label even with '' in the field, which a format with no
+  // way to leave a value out writes.
   function featureIsLabel(d) {
-    return !!d && 'label-text' in d && (d.icon != 'curve' || !!featureHasLabel(d));
+    var text = d ? d['label-text'] : undefined;
+    if (text === undefined || text === null) return false;
+    return d.icon != 'curve' || !!featureHasLabel(d);
+  }
+
+  // A numbered marker: a circle or a square with a number or a letter centred
+  // on it, as in "1, 2, 3" on a route map. It is a label to the commands and the
+  // renderer, and a symbol to the GUI, whose symbol tool edits it. Recognized by
+  // its fields rather than marked with a field of its own, so that a marker
+  // written by -labels on the command line is one too.
+  function featureIsMarker(d) {
+    return !!featureHasLabel(d) && d['label-pos'] == 'c' &&
+      (d.icon == 'circle' || d.icon == 'square');
+  }
+
+  // A label that the GUI's label tool edits: any label but a marker.
+  function featureIsTextLabel(d) {
+    return featureIsLabel(d) && !featureIsMarker(d);
   }
 
   // A curve symbol: a smooth path through the feature's points (its knots),
@@ -24983,7 +25003,9 @@
     featureHasLabel: featureHasLabel,
     featureHasSvgSymbol: featureHasSvgSymbol,
     featureIsCurve: featureIsCurve,
-    featureIsLabel: featureIsLabel
+    featureIsLabel: featureIsLabel,
+    featureIsMarker: featureIsMarker,
+    featureIsTextLabel: featureIsTextLabel
   });
 
   cmd.cleanLayers = cleanLayers;
@@ -27057,6 +27079,40 @@
   // For tests, and for a session that wants to measure again from scratch.
   function clearTextWidthCache() {
     cache.clear();
+    capHeightCache.clear();
+  }
+
+  // How tall a font's capitals are, as a fraction of its size, which is what a
+  // number centred on a symbol is centred by: digits are as tall as capitals
+  // in nearly every font, and they are what a numbered marker holds. Measured
+  // the same two ways as a width, and remembered per face -- the ratio does not
+  // depend on the size or the text.
+  var CAP_HEIGHT_PROPERTIES = ['font-family', 'font-weight', 'font-style', 'font-stretch'];
+  var capHeightCache = new Map();
+  var capHeightFn = null;
+
+  // (rec) -> cap height as a fraction of the font size, or null
+  function setCapHeightFunction(fn) {
+    capHeightFn = fn || null;
+  }
+
+  // The cap height of @rec's font as a fraction of its size, or null if it
+  // cannot be known
+  function getMeasuredCapHeight(rec) {
+    var key, ratio;
+    if (!capHeightFn) return null;
+    key = CAP_HEIGHT_PROPERTIES.map(function(name) {
+      return toHashInput(rec && rec[name]);
+    }).join('\n');
+    if (capHeightCache.has(key)) return capHeightCache.get(key);
+    try {
+      ratio = capHeightFn(rec);
+    } catch (e) {
+      ratio = null;
+    }
+    ratio = ratio > 0 && ratio < 2 ? ratio : null;
+    capHeightCache.set(key, ratio);
+    return ratio;
   }
 
   function getTextWidthCacheSize() {
@@ -27066,9 +27122,11 @@
   var SvgLabelMetrics = /*#__PURE__*/Object.freeze({
     __proto__: null,
     clearTextWidthCache: clearTextWidthCache,
+    getMeasuredCapHeight: getMeasuredCapHeight,
     getMeasuredTextWidth: getMeasuredTextWidth,
     getTextWidthCacheSize: getTextWidthCacheSize,
     getTextWidthKey: getTextWidthKey,
+    setCapHeightFunction: setCapHeightFunction,
     setTextMeasureFunction: setTextMeasureFunction
   });
 
@@ -27784,7 +27842,8 @@
         field = labelPositionDerivedFields[i];
         if (hasStyleValue(rec, field)) continue;
         if (!out) out = Object.assign({}, rec);
-        val = style[field];
+        val = field == 'dy' && style['label-pos'] == 'c' && rec.icon ?
+          getCapCentredOffset(rec) : style[field];
         if (field == 'dx' && shift[0] || field == 'dy' && shift[1]) {
           val = addPixelsToMeasure(val, field == 'dx' ? shift[0] : shift[1],
             rec['font-size']);
@@ -27794,6 +27853,18 @@
     }
     out = resolveLabelAlignment(out || rec) || out;
     return out || rec;
+  }
+
+  // Text centred on a symbol -- a numbered marker -- is centred on its capitals,
+  // which digits are as tall as: the eye judges it against the symbol's edges,
+  // and the position's own 0.25em, which splits the difference between capitals
+  // and lowercase, sets a number visibly high. Half of 0.7em, a typical cap
+  // height, where the font cannot be measured.
+  var DEFAULT_CAP_HEIGHT = 0.7;
+
+  function getCapCentredOffset(rec) {
+    var cap = getMeasuredCapHeight(rec) || DEFAULT_CAP_HEIGHT;
+    return Math.round(cap / 2 * 1000) / 1000 + 'em';
   }
 
   // label-align wins over both the position's justification and a text-anchor of
@@ -27845,6 +27916,7 @@
     emptyValueUnsetsProperty: emptyValueUnsetsProperty,
     findStylePropertiesBySymbolGeom: findStylePropertiesBySymbolGeom,
     formatPointPair: formatPointPair,
+    getCapCentredOffset: getCapCentredOffset,
     getLabelPositionAnchor: getLabelPositionAnchor,
     getLabelPositionStyle: getLabelPositionStyle,
     getPropertyAccessor: getPropertyAccessor,
@@ -28381,7 +28453,7 @@
   // narrow chevron drawn with a line reads as a thickened line more than as an
   // arrow. A wide arrow is a solid one with a blunter point.
   var ARROW_ANGLE = 35;
-  var WIDE_ARROW_ANGLE = 60;
+  var WIDE_ARROW_ANGLE = 55;
   var OPEN_ARROW_ANGLE = 70;
 
   // Whether an end type ('arrow', 'wide-arrow', ...) is a filled arrowhead
@@ -35003,7 +35075,16 @@ ${svg}
   function initNodeTextMeasurement() {
     if (runningInBrowser()) return false;
     setTextMeasureFunction(measureLabelText);
+    setCapHeightFunction(measureCapHeight);
     return true;
+  }
+
+  // The height of @rec's capitals as a fraction of its font size, from the
+  // font's OS/2 table, or null for a font without one (or that is not here)
+  function measureCapHeight(rec) {
+    var font = getFontForRecord(rec || {});
+    var ratio = font && font.unitsPerEm > 0 ? font.capHeight / font.unitsPerEm : 0;
+    return ratio > 0 ? ratio : null;
   }
 
   // The width of @rec's text in px, or null if it cannot be known -- an unusable
@@ -35192,6 +35273,7 @@ ${svg}
     getVariationSettings: getVariationSettings,
     initNodeTextMeasurement: initNodeTextMeasurement,
     isItalic: isItalic,
+    measureCapHeight: measureCapHeight,
     measureLabelText: measureLabelText
   });
 
@@ -92149,7 +92231,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.85";
+  var version = "0.7.86";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

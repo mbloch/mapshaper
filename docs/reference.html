@@ -827,7 +827,7 @@ mapshaper states.shp -filter <span class="hljs-string">&#x27;STATE==&quot;OR&quo
 <p><code>halo-color=</code>      Halo color (default is white)</p>
 <p><code>halo-opacity=</code>    Halo opacity, 0-1</p>
 <p><code>callout=</code>         A line from a label&#39;s anchor to its text: <code>line</code>, <code>elbow</code> or <code>curve</code></p>
-<p><code>callout-end=</code>     Marker at the anchor end of a callout: <code>arrow</code>, <code>wide-arrow</code> (a solid arrowhead with a blunter, 60° point), <code>open-arrow</code>, <code>ring</code> (a hollow circle around the anchor, drawn in the callout&#39;s width) or <code>none</code></p>
+<p><code>callout-end=</code>     Marker at the anchor end of a callout: <code>arrow</code>, <code>wide-arrow</code> (a solid arrowhead with a blunter, 55° point), <code>open-arrow</code>, <code>ring</code> (a hollow circle around the anchor, drawn in the callout&#39;s width) or <code>none</code></p>
 <p><code>callout-end-size=</code> Length of an arrowhead&#39;s sides, or a ring&#39;s diameter, in pixels (an arrowhead&#39;s default is 10 for a 1px line, and grows with the line; a ring&#39;s is twice that)</p>
 <p><code>callout-via=</code>     <code>x,y</code> of an elbow&#39;s corner or a point on a curve, in pixels from the anchor</p>
 <p><code>callout-attach=</code>  Where a callout meets its text, as <code>x,y</code> fractions of the text box</p>
@@ -1301,7 +1301,7 @@ mapshaper tracts.shp
 <p><code>stroke-width=</code>    Stroke width</p>
 <p><code>stroke-dasharray=</code> Dashes</p>
 <p><code>stroke-linecap=</code>  Line caps: <code>round</code> (the default), <code>butt</code> or <code>square</code>. Dashed lines default to <code>butt</code>.</p>
-<p><code>line-start=</code>      Marker at the first vertex of a line: <code>arrow</code>, <code>wide-arrow</code> (a solid arrowhead with a blunter, 60° point), <code>open-arrow</code>, <code>dot</code> or <code>none</code>. Each part of a multi-part line gets its own marker.</p>
+<p><code>line-start=</code>      Marker at the first vertex of a line: <code>arrow</code>, <code>wide-arrow</code> (a solid arrowhead with a blunter, 55° point), <code>open-arrow</code>, <code>dot</code> or <code>none</code>. Each part of a multi-part line gets its own marker.</p>
 <p><code>line-end=</code>        Marker at the last vertex of a line: <code>arrow</code>, <code>wide-arrow</code>, <code>open-arrow</code>, <code>dot</code> or <code>none</code>.</p>
 <p><code>line-end-size=</code>   Length of an arrowhead&#39;s sides in pixels, or the diameter of a dot, for both ends (an arrowhead&#39;s default is 7 plus three times the stroke width; a dot&#39;s is 0.6 of that)</p>
 <p><code>line-fade=</code>       Share of a line&#39;s length, from 0 to 1, that fades in from transparent at its tail (e.g. <code>line-fade=0.4</code>). The tail is the start of the line, unless only the start has a marker. The fade is a straight gradient, so it suits straight or gently curved lines best.</p>

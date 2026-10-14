@@ -3349,7 +3349,7 @@
     return str;
   }
 
-  function formatValue$3(val, matches) {
+  function formatValue$4(val, matches) {
     var flags = matches[1];
     var padding = matches[2];
     var decimals = matches[3] ? parseInt(matches[3].substr(1)) : void 0;
@@ -3445,7 +3445,7 @@
         error$1("[format()] Data does not match format string; format:", fmt, "data:", arguments);
       }
       for (var i=0; i<n; i++) {
-        str += formatValue$3(arguments[i], formatCodes[i]) + literals[i+1];
+        str += formatValue$4(arguments[i], formatCodes[i]) + literals[i+1];
       }
       return str;
     };
@@ -11168,6 +11168,59 @@
     };
   }
 
+  // Tiny predicates for inspecting SVG-bound feature records. Extracted so
+  // that svg-symbols.mjs can use them without having to import from the
+  // higher-level mapshaper-svg.mjs (which would otherwise form a cycle).
+
+  function featureHasSvgSymbol(d) {
+    return !!(d && (d['svg-symbol'] || d.r || d.icon || d['icon-size']));
+  }
+
+  function featureHasLabel(d) {
+    var text = d && d['label-text'];
+    return text || text === 0; // accept numerical 0 as label text
+  }
+
+  // Whether a feature is a label at all, including one whose text is still empty.
+  //
+  // The GUI needs this and export does not. A label is a label from the moment it
+  // is created, before anything has been typed into it, and the editor has to
+  // render a node for it: with no node there is nothing to see, nothing to click
+  // and nowhere to put a caret, so a label the user just made would be invisible
+  // and unrecoverable. Export has no editor and drops the empty ones.
+  //
+  // A label is created with its text, or with '' when the GUI is about to type
+  // into it. A symbol merged into a layer of labels is given the field with no
+  // value at all, which does not make it a label. A curve symbol (icon=curve)
+  // without text is not a label even with '' in the field, which a format with no
+  // way to leave a value out writes.
+  function featureIsLabel(d) {
+    var text = d ? d['label-text'] : undefined;
+    if (text === undefined || text === null) return false;
+    return d.icon != 'curve' || !!featureHasLabel(d);
+  }
+
+  // A numbered marker: a circle or a square with a number or a letter centred
+  // on it, as in "1, 2, 3" on a route map. It is a label to the commands and the
+  // renderer, and a symbol to the GUI, whose symbol tool edits it. Recognized by
+  // its fields rather than marked with a field of its own, so that a marker
+  // written by -labels on the command line is one too.
+  function featureIsMarker(d) {
+    return !!featureHasLabel(d) && d['label-pos'] == 'c' &&
+      (d.icon == 'circle' || d.icon == 'square');
+  }
+
+  // A label that the GUI's label tool edits: any label but a marker.
+  function featureIsTextLabel(d) {
+    return featureIsLabel(d) && !featureIsMarker(d);
+  }
+
+  // A curve symbol: a smooth path through the feature's points (its knots),
+  // rather than a symbol at each point. A curve with label text is a path label.
+  function featureIsCurve(d) {
+    return !!d && d.icon == 'curve' && !featureHasLabel(d);
+  }
+
   // Short descriptions of what a layer holds, for the contents column of the
   // layer panel: "6 polygons", "1 data record", "12 labels".
   //
@@ -11182,13 +11235,18 @@
   // the map. The column is too narrow to list them as well, so they go in a
   // tooltip with the full description.
 
+
   var POINT_KINDS = ['label', 'symbol', 'circle', 'point'];
 
   // How a point feature is drawn, given its data record.
-  // A label wins over any symbol or circle drawn with it.
+  // A label wins over any symbol or circle drawn with it -- except a numbered
+  // marker, a label with a circle or square behind it, which is made and edited
+  // as a symbol. A symbol merged into a layer of labels has a label-text field
+  // with nothing in it, which does not make it a label.
   function getPointKind(d) {
     if (!d) return 'point';
-    if ('label-text' in d) return 'label';
+    if (featureIsMarker(d)) return 'symbol';
+    if (featureIsLabel(d)) return 'label';
     if (d['svg-symbol'] || d.icon) return 'symbol';
     if (d.r > 0) return 'circle';
     return 'point';
@@ -11201,6 +11259,19 @@
     if (fields.includes('svg-symbol') || fields.includes('icon')) return 'symbol';
     if (fields.includes('r')) return 'circle';
     return 'point';
+  }
+
+  // The tool that edits a point layer of annotations: 'label' for a layer with
+  // text labels in it, or set up for them while it is empty; 'symbols' for one
+  // of symbols and numbered markers, which have a label-text field too; null
+  // for any other layer.
+  //   hasLabelField: the layer has a label-text field
+  //   hasSymbolFields: it has the fields of SVG symbols
+  function getAnnotationTool(records, hasLabelField, hasSymbolFields) {
+    var n = records ? records.length : 0;
+    if (hasLabelField && (n === 0 || records.some(featureIsTextLabel))) return 'label';
+    if (hasLabelField || hasSymbolFields) return 'symbols';
+    return null;
   }
 
   // Same test as the -info command's null shape count
@@ -12067,10 +12138,18 @@
         if (gui.frameTool) gui.frameTool.open();
       }
 
+      function getLayerAnnotationTool(lyr) {
+        var records = lyr.geometry_type == 'point' && lyr.data ? lyr.data.getRecords() : null;
+        return getAnnotationTool(records, internal.layerHasLabels(lyr),
+          internal.layerHasSvgSymbols(lyr));
+      }
+
       function styleLayer() {
         var target = findLayerById(id);
+        var tool;
         if (!target) return;
-        if (internal.layerHasLabels(target.layer)) {
+        tool = getLayerAnnotationTool(target.layer);
+        if (tool == 'label') {
           // The point style panel can only restyle a label layer; the label tool
           // styles labels and creates, moves and retypes them as well, so a
           // label layer goes there instead. The menu item is named for it.
@@ -12079,7 +12158,7 @@
             model.selectLayer(target.layer, target.dataset);
           }
           gui.interaction.setMode('label');
-        } else if (internal.layerHasSvgSymbols(target.layer)) {
+        } else if (tool == 'symbols') {
           // Likewise a symbol layer, which the point style panel has no
           // controls for
           if (!map.isActiveLayer(target.layer)) {
@@ -12122,9 +12201,9 @@
         }
         if (!isFrame && target && layerCanBeStyled(target.layer)) {
           menuEvent.styleLayer = styleLayer;
-          if (internal.layerHasLabels(target.layer)) {
+          if (getLayerAnnotationTool(target.layer) == 'label') {
             menuEvent.styleLayerName = 'edit labels';
-          } else if (internal.layerHasSvgSymbols(target.layer)) {
+          } else if (getLayerAnnotationTool(target.layer) == 'symbols') {
             menuEvent.styleLayerName = 'edit symbols';
           } else if (target.layer.geometry_type == 'point') {
             menuEvent.styleLayerName = 'edit points';
@@ -14711,6 +14790,9 @@
     var _prevMode;
     var _menuOpen = false;
     var _armedTool = null; // 'draw', 'reshape' or null
+    // the layer the label or symbol tool is editing, once it has one:
+    // {layer, name}
+    var _toolLayer = null;
 
     // The tool modes that 'line_style' and 'polygon_style' take on when one of
     // their toolbar's tools is armed
@@ -14996,9 +15078,44 @@
     // if current editing mode is not available, turn off the tool
     function updateCurrentMode() {
       var modes = getAvailableModes();
+      if (toolLayerWasRemoved()) {
+        setMode('off');
+        return;
+      }
       if (modes.indexOf(_editMode) == -1 && !inFrameMode() && !labelModeIsAvailable() && !labelStyleModeIsAvailable() && !layerStyleModeIsAvailable() && !pointStyleModeIsAvailable() && !symbolModeIsAvailable()) {
         setMode('off');
       }
+    }
+
+    // The label and symbol tools stay open with no layer, because entering them
+    // makes the layer they need -- but only on entering. A layer that goes away
+    // under them, deleted from the layer menu or undone out of existence, leaves
+    // a toolbar and a panel with nowhere to put anything, so the tool closes, as
+    // the line and polygon tools do when their layer goes. Selecting another
+    // layer the tool works on moves it to that layer instead.
+    //
+    // The layer is followed by name as well as by identity: a command that
+    // edits a layer can replace it with a new one, and undoing the command
+    // puts the old one back, so the layer the tool last saw can be gone from
+    // the model while its layer is still there.
+    function toolLayerWasRemoved() {
+      var o = gui.model.getActiveLayer();
+      if (_editMode != 'label' && _editMode != 'symbols') {
+        _toolLayer = null;
+        return false;
+      }
+      if (_toolLayer && !layerIsInModel(_toolLayer)) {
+        _toolLayer = null;
+        return true;
+      }
+      _toolLayer = o && o.layer ? {layer: o.layer, name: o.layer.name || ''} : null;
+      return false;
+    }
+
+    function layerIsInModel(tracked) {
+      return gui.model.getLayers().some(function(o) {
+        return o.layer == tracked.layer || (o.layer.name || '') == tracked.name;
+      });
     }
 
     // The frame modes are reached from the layer panel and the frame menu, never
@@ -15085,6 +15202,8 @@
         // mode opens in
         _armedTool = mode in drawingModes && (!!armed || layerIsEmpty()) ? 'draw' : null;
         onModeChange();
+        // after the tools have heard, since entering one can make its layer
+        toolLayerWasRemoved();
         updateArrowButton();
         updateSelectionHighlight();
       }
@@ -16819,29 +16938,6 @@
     return isFinite(val) ? Math.max(min, Math.min(max, val)) : min;
   }
 
-  function makeStylePresetId(styles, prefix, name) {
-    var base = prefix + '-' + makeSlug(name);
-    var ids = (styles || []).reduce(function(memo, item) {
-      if (item && item.id) memo[item.id] = true;
-      if (item && !item.id && item.name) memo[prefix + '-' + makeSlug(item.name)] = true;
-      return memo;
-    }, {});
-    var id = base;
-    var i = 2;
-    while (ids[id]) {
-      id = base + '-' + i++;
-    }
-    return id;
-  }
-
-  function makeSlug(str) {
-    var slug = String(str || '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-    return slug || 'style';
-  }
-
   // Conversions between what a style control displays and what the property
   // stores, for the ones more than one panel needs.
 
@@ -17285,6 +17381,401 @@
     });
   }
 
+  // A number field with a stepper attached to its right edge: type a size, click
+  // the stepper's arrows, or use the arrow keys while the field has focus. Each covers a
+  // different way a size is really chosen -- typed when it is known, stepped when
+  // it is being judged against the map, keyboard when the hand is already in the
+  // field. The panel's sizes were display-only spans with a −/+ pair, so the only
+  // route from 12 to 24 was twelve clicks.
+  //
+  // Blank is a state here, not a value: a size over a mixed selection has no
+  // number to show, and leaving the field must not invent one. That is why
+  // ClickText() is not wrapped, close as its parse/bounds/commit behaviour is --
+  // it holds a number at all times and reverts a blank field to it, which here
+  // would restyle labels the user never looked at.
+  //
+  // opts:
+  //   min, max      bounds, inclusive (default 1, 999)
+  //   step, bigStep arrow-key and button increments (default 1, 10)
+  //   onSet(value)  a size was typed into the field
+  //   onStep(delta) a step was asked for. The caller resolves what to step from,
+  //                 because the field may be blank while the labels are not.
+  //   onDone()      the user finished with the field, by pressing Enter or
+  //                 Escape. Whether that means giving up the keyboard is the
+  //                 caller's question: the field cannot know what else wants it.
+  //   decimals      how finely a typed size is kept (default 1)
+  //   title         the field's accessible name (not a tooltip)
+  function SizeField(parent, opts) {
+    var o = Object.assign({min: 1, max: 999, step: 1, bigStep: 10}, opts || {});
+    var box = El('div').addClass('size-field').appendTo(parent);
+    var input = El('input').attr('type', 'text').addClass('size-field-input').appendTo(box);
+    var stepper = El('div').addClass('size-field-stepper').appendTo(box);
+    // Up above down, the way a stepper is read
+    var plusBtn = makeStepButton(stepper, 1, 'size-field-up');
+    var minusBtn = makeStepButton(stepper, -1, 'size-field-down');
+    var shown = ''; // what the field was last told to display
+    var dirty = false; // holds typing that has not been committed
+    var disabled = false;
+
+    if (o.title) input.attr('aria-label', o.title);
+    selectOnFocus(input);
+
+    // While the caret is in this field the keyboard belongs to it. Without this
+    // the GUI's own handlers see the keystrokes: Escape would disarm the tool,
+    // Enter would finish a curve being drawn, Backspace would take back a knot.
+    input.on('keydown', function(e) {
+      var action = getSizeFieldKeyAction(e.key, e.shiftKey, o);
+      e.stopPropagation();
+      if (!action) return;
+      e.preventDefault();
+      if (action.type == 'step') {
+        // A step supersedes whatever was being typed, and its result has to
+        // reach the field: the value comes back through setValue().
+        dirty = false;
+        step(action.delta);
+      } else if (action.type == 'commit') {
+        commit();
+        done();
+      } else if (action.type == 'revert') {
+        setDisplay(shown);
+        done();
+      }
+    });
+
+    input.on('input', function() {
+      dirty = true;
+    });
+
+    // Fires on Enter and on blur-after-editing, which is the same commit point
+    // the panel's colour and CSS fields use.
+    input.on('change', commit);
+
+    // Keeps the caret where it is while a size is stepped -- in this field, or in
+    // the label being typed into. A click on a div blurs whatever has focus
+    // unless the default is refused, and the panel only refuses it during an
+    // editing session.
+    stepper.on('mousedown', function(e) {
+      e.preventDefault();
+    });
+
+    // Triangles rather than + and −, which read as arithmetic on the value:
+    // these step to the next size, and one of them is at the end of its range as
+    // often as not.
+    function makeStepButton(parent, dir, className) {
+      var arrow = dir > 0 ? 'M4.5 1.1L7.5 4.9H1.5z' : 'M4.5 4.9L1.5 1.1h6z';
+      return El('div')
+        .addClass('label-panel-btn size-field-btn')
+        .addClass(className)
+        .attr('role', 'button')
+        .appendTo(parent)
+        .html('<svg class="size-field-arrow" viewBox="0 0 9 6"><path d="' + arrow + '"></path></svg>');
+    }
+
+    function step(delta) {
+      if (disabled || !o.onStep) return;
+      o.onStep(delta);
+    }
+
+    function commit() {
+      var val = parseSizeValue(input.node().value, o.min, o.max, o.decimals);
+      if (disabled) return;
+      if (val === null) {
+        // Nothing usable typed, including nothing at all: put back what the
+        // field was showing rather than styling anything.
+        setDisplay(shown);
+        return;
+      }
+      var changed = String(val) !== shown;
+      setDisplay(String(val));
+      // Before onSet, which can take focus away: the blur fires 'change', and
+      // the commit it re-enters has to find this value already shown.
+      shown = String(val);
+      if (changed && o.onSet) o.onSet(val);
+    }
+
+    function setDisplay(str) {
+      input.node().value = str;
+      dirty = false;
+    }
+
+    function done() {
+      if (o.onDone) o.onDone();
+    }
+
+    minusBtn.on('click', function() { step(-o.step); });
+    plusBtn.on('click', function() { step(o.step); });
+
+    // '' for no common value. Skipped while the field holds typing that has not
+    // been committed, so that a refresh cannot overwrite a half-typed number --
+    // but not merely because the field has focus, or a size stepped from the
+    // keyboard would not appear in the field it was stepped in.
+    this.setValue = function(val) {
+      shown = val || val === 0 ? String(val) : '';
+      if (dirty && document.activeElement === input.node()) return;
+      setDisplay(shown);
+    };
+
+    // What the field shows while it is blank, or '' for nothing. The panel uses
+    // it to say that the selected features disagree about the size, which is one
+    // of the two reasons the field can be empty.
+    this.setPlaceholder = function(str) {
+      input.attr('placeholder', str || '');
+    };
+
+    this.setDisabled = function(off) {
+      disabled = !!off;
+      input.node().disabled = disabled;
+      box.classed('disabled', disabled);
+      [minusBtn, plusBtn].forEach(function(btn) {
+        btn.classed('disabled', disabled)
+          .attr('aria-disabled', disabled ? 'true' : 'false');
+      });
+    };
+
+    // The size the field is showing, or null if it is not showing one.
+    this.getValue = function() {
+      return parseSizeValue(input.node().value, o.min, o.max, o.decimals);
+    };
+
+    this.node = function() {
+      return box.node();
+    };
+  }
+
+  // What a keystroke in a size field means, or null for one it leaves alone.
+  // Shift multiplies the step, the convention for a coarse nudge.
+  function getSizeFieldKeyAction(key, shiftKey, opts) {
+    var o = opts || {};
+    var step = o.step > 0 ? o.step : 1;
+    var bigStep = o.bigStep > 0 ? o.bigStep : 10;
+    var delta = shiftKey ? bigStep : step;
+    if (key == 'ArrowUp') return {type: 'step', delta: delta};
+    if (key == 'ArrowDown') return {type: 'step', delta: -delta};
+    if (key == 'Enter') return {type: 'commit'};
+    if (key == 'Escape') return {type: 'revert'};
+    return null;
+  }
+
+  // The size a typed string means, clamped to the field's bounds, or null if it
+  // does not hold one -- which includes holding nothing.
+  //
+  // Trailing units are accepted because the panel displays plain numbers but
+  // users paste values from CSS: "14px" is a size, and refusing it would be
+  // pedantry. Rounded, so that a stepped value cannot accumulate float noise
+  // into the data -- to a tenth unless the caller asks for more, which a stroke
+  // width does: the useful hairlines are quarters of a pixel.
+  function parseSizeValue(str, min, max, decimals) {
+    var scale = Math.pow(10, decimals >= 1 ? decimals : 1);
+    var val = parseFloat(str === null || str === undefined ? '' : String(str).trim());
+    if (!isFinite(val)) return null;
+    val = Math.round(val * scale) / scale;
+    if (isFinite(min) && val < min) val = min;
+    if (isFinite(max) && val > max) val = max;
+    return val;
+  }
+
+  // The font menu, and the face menu and size field under it: the label panel's
+  // Text section and the symbol panel's marker text share them, so that a
+  // marker's number is set in type the way a label is.
+  //
+  // The controls whose own contents say what they are -- a font name, a size
+  // beside a font style -- carry no label.
+
+  // What a control shows for a selection whose features disagree about it. One
+  // word, used in every field and menu that can be in that state, in the
+  // placeholder of a field emptied for it.
+  var MIXED_TEXT = 'mixed';
+
+  // opts:
+  //   onFont(name)       a font was chosen from the menu
+  //   onFace(variant)    a face was chosen: {style, weight}
+  //   onSize(px)         a size was typed
+  //   onSizeStep(delta)  the size field's arrows or arrow keys
+  //   onDone()           the size field is finished with
+  function FontControls(parent, opts) {
+    var fontRow = El('div').addClass('label-style-row').appendTo(parent);
+    var fontSelect = El('select').attr('aria-label', 'Font').addClass('font-menu')
+      .appendTo(fontRow).on('change', function() {
+        if (fontSelect.node().value) opts.onFont(fontSelect.node().value);
+      });
+    var styleSizeRow = El('div').addClass('label-style-row label-split-row').appendTo(parent);
+    var faceCell = El('div').addClass('label-split-cell label-font-style-row').appendTo(styleSizeRow);
+    var faceSelect = El('select').attr('aria-label', 'Font style').appendTo(faceCell)
+      .on('change', function() {
+        var variant = parseFontStyleVariant(faceSelect.node().value);
+        if (variant) opts.onFace(variant);
+      });
+    var sizeCell = El('div').addClass('label-split-cell label-size-row').appendTo(styleSizeRow);
+    var sizeField = new SizeField(sizeCell, {
+      title: 'Font size in px',
+      onSet: opts.onSize,
+      onStep: opts.onSizeStep,
+      onDone: opts.onDone
+    });
+    var fontOptionsRendered = false;
+
+    // Detecting the installed fonts takes a moment, so the menu is filled the
+    // first time its panel is shown rather than when the panel is built.
+    //
+    // No "Default font" entry: it named a font the user could not see and
+    // mapshaper could not measure. A label with no font-family of its own is
+    // shown in the font the browser draws it in, under that font's own name.
+    this.renderFontOptions = function() {
+      if (fontOptionsRendered) return;
+      fontOptionsRendered = true;
+      fontSelect.empty();
+      appendFontOptions(fontSelect.node());
+    };
+
+    // A font the menu does not list still has to show, or the label would look
+    // as though it had no font: a file can name a font that is not installed
+    // here, and a project moves between machines. It is added to the menu as
+    // itself rather than replaced by an installed font, since the name is the
+    // user's data and choosing something else for them would restyle the label.
+    //
+    // shown: {value, mixed}
+    this.showFont = function(shown, disabled) {
+      var fontVal = shown.value;
+      fontSelect.node().disabled = !!disabled;
+      // A font menu is a list of fonts, so "they are in different fonts" cannot
+      // be one of the fonts: it is an entry that appears only while it is true,
+      // and picking it does nothing (the change handler ignores a blank value).
+      // The list stays live, so choosing a font is how the selection is brought
+      // into line -- as it is for the face menu below.
+      setMixedOption(fontSelect, shown.mixed);
+      fontSelect.node().value = fontVal || '';
+      if (fontVal && fontSelect.node().selectedIndex < 0) {
+        El('option').attr('value', fontVal).text(fontVal).appendTo(fontSelect);
+        fontSelect.node().value = fontVal;
+      }
+      // Nothing selected, rather than the first font in the list, for a target
+      // there is nothing to say about -- a disabled menu with nothing behind it.
+      if (!fontVal && !shown.mixed) fontSelect.node().selectedIndex = -1;
+    };
+
+    // The faces the chosen font is installed with, and no entry for "whatever
+    // the font is set in by default": that is Regular, which is one of the faces
+    // and is named as one. With no font chosen the menu is empty and dead --
+    // there are no faces to list, and a face belongs to a font.
+    //
+    // style, weight: what the features agree on, or '' if they disagree
+    this.showFace = function(fontName, style, weight, disabled) {
+      // Empty means the selection disagrees, here as everywhere in the panels;
+      // an unset style reads as Regular, because that is what it renders as.
+      var mixed = !!fontName && !(style && weight);
+      // A font-style and font-weight the font has no face for still has to
+      // show as something, and the nearest face is what the browser is
+      // rendering it as anyway.
+      var shown = mixed || !fontName ? null :
+        getNearestFontStyleVariant(fontName, style, weight);
+      faceSelect.empty();
+      if (fontName) {
+        getFontStyleVariants(fontName).forEach(function(variant) {
+          El('option').attr('value', variant.value).appendTo(faceSelect).text(variant.label);
+        });
+      }
+      // The faces are rebuilt above, so the "mixed" entry goes on afterwards.
+      setMixedOption(faceSelect, mixed);
+      faceSelect.node().disabled = !!disabled || !fontName;
+      faceSelect.node().value = shown ? shown.value : '';
+      // Nothing selected rather than the first face, for a menu with no font to
+      // list the faces of.
+      if (!shown && !mixed) faceSelect.node().selectedIndex = -1;
+    };
+
+    // shown: {value, mixed}
+    this.showSize = function(shown, disabled) {
+      sizeField.setValue(shown.value || '');
+      sizeField.setPlaceholder(shown.mixed ? MIXED_TEXT : '');
+      sizeField.setDisabled(!!disabled);
+    };
+
+    // What the controls are showing, for saving as a style
+    this.getFont = function() { return fontSelect.node().value; };
+    this.getFace = function() { return parseFontStyleVariant(faceSelect.node().value); };
+    this.getSize = function() { return sizeField.getValue(); };
+  }
+
+  // The [field, value] pairs that change a font to @fontName, carrying the face
+  // across with it: text in Bold Italic stays in Bold Italic, or in the nearest
+  // thing the new font is installed with. Both go in one command, so the change
+  // is one undo step and the text is never briefly in a face the font does not
+  // have.
+  //   style, weight: what the features are set in, with their defaults filled in
+  function getFontChangeValues(fontName, style, weight) {
+    var values = [['font-family', fontName]];
+    var variant = getNearestFontStyleVariant(fontName, style, weight);
+    if (variant && !(variant.style == style && variant.weight == weight)) {
+      values = values.concat(getFontStyleValues(variant));
+    }
+    return values;
+  }
+
+  // Regular is stored as no face at all, for the same reason full opacity is
+  // stored as no opacity: normal 400 is what a font renders as when nothing
+  // says otherwise, and a column of them on every feature a panel has touched
+  // is noise in the user's table.
+  function getFontStyleValues(variant) {
+    if (variantIsRegular(variant)) {
+      return [['font-style', ''], ['font-weight', '']];
+    }
+    return [['font-style', variant.style], ['font-weight', variant.weight]];
+  }
+
+  // A face menu's value is 'style|weight'
+  function parseFontStyleVariant(value) {
+    var parts = String(value).split('|');
+    if (parts.length != 2) return null;
+    return {
+      style: parts[0],
+      weight: parts[1]
+    };
+  }
+
+  // Adds or removes a menu's "mixed" entry, which carries no value: a select
+  // showing nothing looks like a control that failed to load, and this is the
+  // one state a panel cannot express by lighting no button.
+  //
+  // First in the list, and removed as soon as the selection agrees, so that it
+  // is never an option among the real ones.
+  function setMixedOption(select, mixed) {
+    var el = select.node();
+    var first = el.options[0];
+    var has = !!first && first.value === '' && first.dataset.mixed == 'true';
+    if (mixed && !has) {
+      first = document.createElement('option');
+      first.value = '';
+      first.textContent = MIXED_TEXT;
+      first.dataset.mixed = 'true';
+      el.insertBefore(first, el.firstChild);
+    } else if (!mixed && has) {
+      el.removeChild(first);
+    }
+  }
+
+  function makeStylePresetId(styles, prefix, name) {
+    var base = prefix + '-' + makeSlug(name);
+    var ids = (styles || []).reduce(function(memo, item) {
+      if (item && item.id) memo[item.id] = true;
+      if (item && !item.id && item.name) memo[prefix + '-' + makeSlug(item.name)] = true;
+      return memo;
+    }, {});
+    var id = base;
+    var i = 2;
+    while (ids[id]) {
+      id = base + '-' + i++;
+    }
+    return id;
+  }
+
+  function makeSlug(str) {
+    var slug = String(str || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    return slug || 'style';
+  }
+
   // Saved styles: a menu that applies one, and a button that saves the current
   // one. Shared by the label panel and the layer style panel.
   //
@@ -17542,199 +18033,6 @@
     var aName = String(a.name || '').toLowerCase();
     var bName = String(b.name || '').toLowerCase();
     return aName < bName ? -1 : aName > bName ? 1 : 0;
-  }
-
-  // A number field with a stepper attached to its right edge: type a size, click
-  // the stepper's arrows, or use the arrow keys while the field has focus. Each covers a
-  // different way a size is really chosen -- typed when it is known, stepped when
-  // it is being judged against the map, keyboard when the hand is already in the
-  // field. The panel's sizes were display-only spans with a −/+ pair, so the only
-  // route from 12 to 24 was twelve clicks.
-  //
-  // Blank is a state here, not a value: a size over a mixed selection has no
-  // number to show, and leaving the field must not invent one. That is why
-  // ClickText() is not wrapped, close as its parse/bounds/commit behaviour is --
-  // it holds a number at all times and reverts a blank field to it, which here
-  // would restyle labels the user never looked at.
-  //
-  // opts:
-  //   min, max      bounds, inclusive (default 1, 999)
-  //   step, bigStep arrow-key and button increments (default 1, 10)
-  //   onSet(value)  a size was typed into the field
-  //   onStep(delta) a step was asked for. The caller resolves what to step from,
-  //                 because the field may be blank while the labels are not.
-  //   onDone()      the user finished with the field, by pressing Enter or
-  //                 Escape. Whether that means giving up the keyboard is the
-  //                 caller's question: the field cannot know what else wants it.
-  //   decimals      how finely a typed size is kept (default 1)
-  //   title         the field's accessible name (not a tooltip)
-  function SizeField(parent, opts) {
-    var o = Object.assign({min: 1, max: 999, step: 1, bigStep: 10}, opts || {});
-    var box = El('div').addClass('size-field').appendTo(parent);
-    var input = El('input').attr('type', 'text').addClass('size-field-input').appendTo(box);
-    var stepper = El('div').addClass('size-field-stepper').appendTo(box);
-    // Up above down, the way a stepper is read
-    var plusBtn = makeStepButton(stepper, 1, 'size-field-up');
-    var minusBtn = makeStepButton(stepper, -1, 'size-field-down');
-    var shown = ''; // what the field was last told to display
-    var dirty = false; // holds typing that has not been committed
-    var disabled = false;
-
-    if (o.title) input.attr('aria-label', o.title);
-    selectOnFocus(input);
-
-    // While the caret is in this field the keyboard belongs to it. Without this
-    // the GUI's own handlers see the keystrokes: Escape would disarm the tool,
-    // Enter would finish a curve being drawn, Backspace would take back a knot.
-    input.on('keydown', function(e) {
-      var action = getSizeFieldKeyAction(e.key, e.shiftKey, o);
-      e.stopPropagation();
-      if (!action) return;
-      e.preventDefault();
-      if (action.type == 'step') {
-        // A step supersedes whatever was being typed, and its result has to
-        // reach the field: the value comes back through setValue().
-        dirty = false;
-        step(action.delta);
-      } else if (action.type == 'commit') {
-        commit();
-        done();
-      } else if (action.type == 'revert') {
-        setDisplay(shown);
-        done();
-      }
-    });
-
-    input.on('input', function() {
-      dirty = true;
-    });
-
-    // Fires on Enter and on blur-after-editing, which is the same commit point
-    // the panel's colour and CSS fields use.
-    input.on('change', commit);
-
-    // Keeps the caret where it is while a size is stepped -- in this field, or in
-    // the label being typed into. A click on a div blurs whatever has focus
-    // unless the default is refused, and the panel only refuses it during an
-    // editing session.
-    stepper.on('mousedown', function(e) {
-      e.preventDefault();
-    });
-
-    // Triangles rather than + and −, which read as arithmetic on the value:
-    // these step to the next size, and one of them is at the end of its range as
-    // often as not.
-    function makeStepButton(parent, dir, className) {
-      var arrow = dir > 0 ? 'M4.5 1.1L7.5 4.9H1.5z' : 'M4.5 4.9L1.5 1.1h6z';
-      return El('div')
-        .addClass('label-panel-btn size-field-btn')
-        .addClass(className)
-        .attr('role', 'button')
-        .appendTo(parent)
-        .html('<svg class="size-field-arrow" viewBox="0 0 9 6"><path d="' + arrow + '"></path></svg>');
-    }
-
-    function step(delta) {
-      if (disabled || !o.onStep) return;
-      o.onStep(delta);
-    }
-
-    function commit() {
-      var val = parseSizeValue(input.node().value, o.min, o.max, o.decimals);
-      if (disabled) return;
-      if (val === null) {
-        // Nothing usable typed, including nothing at all: put back what the
-        // field was showing rather than styling anything.
-        setDisplay(shown);
-        return;
-      }
-      var changed = String(val) !== shown;
-      setDisplay(String(val));
-      // Before onSet, which can take focus away: the blur fires 'change', and
-      // the commit it re-enters has to find this value already shown.
-      shown = String(val);
-      if (changed && o.onSet) o.onSet(val);
-    }
-
-    function setDisplay(str) {
-      input.node().value = str;
-      dirty = false;
-    }
-
-    function done() {
-      if (o.onDone) o.onDone();
-    }
-
-    minusBtn.on('click', function() { step(-o.step); });
-    plusBtn.on('click', function() { step(o.step); });
-
-    // '' for no common value. Skipped while the field holds typing that has not
-    // been committed, so that a refresh cannot overwrite a half-typed number --
-    // but not merely because the field has focus, or a size stepped from the
-    // keyboard would not appear in the field it was stepped in.
-    this.setValue = function(val) {
-      shown = val || val === 0 ? String(val) : '';
-      if (dirty && document.activeElement === input.node()) return;
-      setDisplay(shown);
-    };
-
-    // What the field shows while it is blank, or '' for nothing. The panel uses
-    // it to say that the selected features disagree about the size, which is one
-    // of the two reasons the field can be empty.
-    this.setPlaceholder = function(str) {
-      input.attr('placeholder', str || '');
-    };
-
-    this.setDisabled = function(off) {
-      disabled = !!off;
-      input.node().disabled = disabled;
-      box.classed('disabled', disabled);
-      [minusBtn, plusBtn].forEach(function(btn) {
-        btn.classed('disabled', disabled)
-          .attr('aria-disabled', disabled ? 'true' : 'false');
-      });
-    };
-
-    // The size the field is showing, or null if it is not showing one.
-    this.getValue = function() {
-      return parseSizeValue(input.node().value, o.min, o.max, o.decimals);
-    };
-
-    this.node = function() {
-      return box.node();
-    };
-  }
-
-  // What a keystroke in a size field means, or null for one it leaves alone.
-  // Shift multiplies the step, the convention for a coarse nudge.
-  function getSizeFieldKeyAction(key, shiftKey, opts) {
-    var o = opts || {};
-    var step = o.step > 0 ? o.step : 1;
-    var bigStep = o.bigStep > 0 ? o.bigStep : 10;
-    var delta = shiftKey ? bigStep : step;
-    if (key == 'ArrowUp') return {type: 'step', delta: delta};
-    if (key == 'ArrowDown') return {type: 'step', delta: -delta};
-    if (key == 'Enter') return {type: 'commit'};
-    if (key == 'Escape') return {type: 'revert'};
-    return null;
-  }
-
-  // The size a typed string means, clamped to the field's bounds, or null if it
-  // does not hold one -- which includes holding nothing.
-  //
-  // Trailing units are accepted because the panel displays plain numbers but
-  // users paste values from CSS: "14px" is a size, and refusing it would be
-  // pedantry. Rounded, so that a stepped value cannot accumulate float noise
-  // into the data -- to a tenth unless the caller asks for more, which a stroke
-  // width does: the useful hairlines are quarters of a pixel.
-  function parseSizeValue(str, min, max, decimals) {
-    var scale = Math.pow(10, decimals >= 1 ? decimals : 1);
-    var val = parseFloat(str === null || str === undefined ? '' : String(str).trim());
-    if (!isFinite(val)) return null;
-    val = Math.round(val * scale) / scale;
-    if (isFinite(min) && val < min) val = min;
-    if (isFinite(max) && val > max) val = max;
-    return val;
   }
 
   // Who owns the keyboard while a style panel is open, and what happens to a
@@ -18435,7 +18733,7 @@
 
   var ARROWHEAD_GLYPHS = {
     arrow: '<path d="M6.84 8H13"></path><path class="fill" d="M2.5 8L8.7 6.05V9.95Z"></path>',
-    'wide-arrow': '<path d="M6.44 8H13"></path><path class="fill" d="M2.5 8L8.13 4.75V11.25Z"></path>',
+    'wide-arrow': '<path d="M6.54 8H13"></path><path class="fill" d="M2.5 8L8.27 5V11Z"></path>',
     'open-arrow': '<path d="M3.2 8H13"></path><path d="M7.38 5.07L3.2 8L7.38 10.93"></path>',
     dot: '<path d="M5 8H13"></path><circle class="fill" cx="5" cy="8" r="2.6"></circle>'
   };
@@ -18743,10 +19041,6 @@
   // multiple, which also says what a bare number typed here means: a multiple
   // of the font size, as in CSS, not px.
   var defaultLineHeight = internal.svg.DEFAULT_LINE_HEIGHT;
-  // What a control shows for a selection whose labels disagree about it. One
-  // word, used in every field and menu that can be in that state, in the
-  // placeholder of a field emptied for it.
-  var MIXED_TEXT = 'mixed';
   var labelStyleMode = 'label_style';
   var labelStylePanelMode = 'label_style_tool';
   var labelMode = 'label';
@@ -18887,8 +19181,7 @@
     // label-style-panel carries the styling the point and layer panels share; the
     // second class is this panel's own, as theirs are
     var panel = El('div').addClass('label-style-panel text-style-panel rollover').appendTo(parent).hide();
-    var presetControl, fontSelect, fontStyleSelect, fontSizeInput, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, dragModeBtns, haloWidthInput, haloColorFieldBox, haloColorChit, haloColorInput, haloColorPicker, haloOpacityInput, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, iconStrokeFieldBox, iconStrokeChit, iconStrokeInput, iconStrokePicker, iconStrokeWidthInput, iconStrokeWidthCell, haloControl, iconControl, calloutControl, calloutShapeGroupEl, calloutShapeBtns, calloutEndGroupEl, calloutEndBtns, calloutColorFieldBox, calloutColorChit, calloutColorInput, calloutColorPicker, calloutOpacityInput, calloutWidthInput, calloutEndSizeInput, calloutGapInput, backgroundColorFieldBox, backgroundColorChit, backgroundColorInput, backgroundColorPicker, backgroundOpacityInput, paddingInput, editingStatus, clearLink, closeBtn, hit;
-    var fontOptionsRendered = false;
+    var presetControl, fontControls, colorFieldBox, colorChit, colorInput, colorPicker, opacityInput, letterSpacingInput, lineHeightInput, alignBtns, cssInput, posBtns, dragModeBtns, haloWidthInput, haloColorFieldBox, haloColorChit, haloColorInput, haloColorPicker, haloOpacityInput, iconGroupEl, iconBtns, iconSizeInput, iconColorFieldBox, iconColorChit, iconColorInput, iconColorPicker, iconOpacityInput, iconStrokeFieldBox, iconStrokeChit, iconStrokeInput, iconStrokePicker, iconStrokeWidthInput, iconStrokeWidthCell, haloControl, iconControl, calloutControl, calloutShapeGroupEl, calloutShapeBtns, calloutEndGroupEl, calloutEndBtns, calloutColorFieldBox, calloutColorChit, calloutColorInput, calloutColorPicker, calloutOpacityInput, calloutWidthInput, calloutEndSizeInput, calloutGapInput, backgroundColorFieldBox, backgroundColorChit, backgroundColorInput, backgroundColorPicker, backgroundOpacityInput, paddingInput, editingStatus, clearLink, closeBtn, hit;
     // The shape the symbol's size and colour defaults are shown for while there
     // is no symbol: the last one shown.
     var lastIconShape = defaultIconShape;
@@ -19029,32 +19322,17 @@
       // as a variation on the first rather than as a different kind of control.
       var textSection = addSection('Text', {open: true}).section;
 
-      // The controls whose own contents say what they are -- a font name, a
-      // size beside a font style -- carry no label. The ones that would be a bare
-      // number otherwise keep theirs, and so does a colour field, because the
-      // field beside it has one and "Color" says the percentage is its opacity.
-      var fontRow = El('div').addClass('label-style-row').appendTo(textSection);
-      fontSelect = El('select').attr('aria-label', 'Font').addClass('font-menu').appendTo(fontRow).on('change', function() {
-        if (fontSelect.node().value) {
-          applyFont(fontSelect.node().value);
-        }
-      });
-
-      var styleSizeRow = El('div').addClass('label-style-row label-split-row').appendTo(textSection);
-      var fontStyleRow = El('div').addClass('label-split-cell label-font-style-row').appendTo(styleSizeRow);
-      fontStyleSelect = El('select').attr('aria-label', 'Font style').appendTo(fontStyleRow).on('change', function() {
-        if (fontStyleSelect.node().value) {
-          applyFontStyleVariant(fontStyleSelect.node().value);
-        }
-      });
-
-      var fontSizeRow = El('div').addClass('label-split-cell label-size-row').appendTo(styleSizeRow);
-      fontSizeInput = new SizeField(fontSizeRow, {
-        title: 'Font size in px',
-        onSet: function(value) {
+      // The font controls carry no label (see gui-font-controls.mjs). The ones
+      // that would be a bare number otherwise keep theirs, and so does a colour
+      // field, because the field beside it has one and "Color" says the
+      // percentage is its opacity.
+      fontControls = new FontControls(textSection, {
+        onFont: applyFont,
+        onFace: applyFontStyleVariant,
+        onSize: function(value) {
           applyStyleValues([[fontSizeField, value]]);
         },
-        onStep: nudgeFontSize,
+        onSizeStep: nudgeFontSize,
         onDone: releaseFocus
       });
 
@@ -19522,7 +19800,7 @@
     // gui.state.label_style_panel_open says whether the panel is up, for the
     // label tool's Styles button, which follows 'label_style_panel_change'
     function showPanel() {
-      renderFontOptions();
+      fontControls.renderFontOptions();
       gui.state.label_style_panel_open = true;
       panel.show();
       closeBtn.show();
@@ -19580,17 +19858,6 @@
       gui.model.selectLayer(lyr, dataset);
     }
 
-    function renderFontOptions() {
-      if (fontOptionsRendered) return;
-      fontOptionsRendered = true;
-      fontSelect.empty();
-      // No "Default font" entry: it named a font the user could not see and
-      // mapshaper could not measure. A label with no font-family of its own is
-      // shown in the font the browser draws it in, under that font's own name.
-      appendFontOptions(fontSelect.node());
-    }
-
-
     function clearSelection() {
       if (hit) hit.clearSelection();
       updateSelectionDisplay();
@@ -19644,12 +19911,16 @@
       return getTargetIds().length > 0 || editingNewLabels();
     }
 
+    // The labels Cmd-A selects: not the layer's symbols or plain points, which
+    // the panel has nothing for, and not its numbered markers, which are the
+    // symbol panel's.
     function getAllLabelIds() {
       var lyr = getActiveLayer();
+      var records = lyr && lyr.data ? lyr.data.getRecords() : null;
       var ids = [];
-      if (!lyr) return ids;
+      if (!records) return ids;
       for (var i=0, n=internal.getFeatureCount(lyr); i<n; i++) {
-        ids.push(i);
+        if (internal.svg.featureIsTextLabel(records[i])) ids.push(i);
       }
       return ids;
     }
@@ -19687,10 +19958,9 @@
       var padding = getShownValue(ids, paddingField, {useDefault: true, defaultValue: 0});
       updateEditingStatus(manualIds.length, !!getLabelTextSession(gui));
       updateSavedStyleControls();
-      fontSelect.node().disabled = !showValues;
-      updateFontControl(font);
-      updateFontStyleControls(font.value, fontStyleVal, fontWeightVal);
-      updateFontSizeControls(fontSize);
+      fontControls.showFont(font, !showValues);
+      fontControls.showFace(font.value, fontStyleVal, fontWeightVal, !showValues);
+      fontControls.showSize(fontSize, !showValues);
       updateColorControls(fill);
       updateOpacityControl(opacityInput, opacity);
       updateMeasureControl(letterSpacingInput, letterSpacing);
@@ -19852,7 +20122,7 @@
     function updateEditingStatus(count, editingText) {
       editingStatus.text(formatEditingStatus({
         selected: count,
-        total: getActiveLayer() ? internal.getFeatureCount(getActiveLayer()) : 0,
+        total: getAllLabelIds().length,
         newLabels: editingNewLabels(),
         editingText: editingText
       }));
@@ -19861,92 +20131,8 @@
       clearLink.classed('hidden', count === 0 || editingText);
     }
 
-    function updateFontSizeControls(shown) {
-      fontSizeInput.setValue(shown.value || '');
-      fontSizeInput.setPlaceholder(shown.mixed ? MIXED_TEXT : '');
-      fontSizeInput.setDisabled(!controlsEnabled());
-    }
-
     function getFontNameForTarget(ids) {
       return ids.length === 0 ? getNewLabelFontName() : getDefaultFontName();
-    }
-
-    // A font the menu does not list still has to show, or the label would look
-    // as though it had no font: a file can name a font that is not installed
-    // here, and a project moves between machines. It is added to the menu as
-    // itself rather than replaced by an installed font, since the name is the
-    // user's data and choosing something else for them would restyle the label.
-    function updateFontControl(shown) {
-      var fontVal = shown.value;
-      // A font menu is a list of fonts, so "they are in different fonts" cannot
-      // be one of the fonts: it is an entry that appears only while it is true,
-      // and picking it does nothing (applyFont() ignores a blank value). The
-      // list stays live, so choosing a font is how the selection is brought into
-      // line -- as it is for the face menu below.
-      setMixedOption(fontSelect, shown.mixed);
-      fontSelect.node().value = fontVal || '';
-      if (fontVal && fontSelect.node().selectedIndex < 0) {
-        El('option').attr('value', fontVal).text(fontVal).appendTo(fontSelect);
-        fontSelect.node().value = fontVal;
-      }
-      // Nothing selected, rather than the first font in the list, for a target
-      // there is nothing to say about -- a disabled menu with no labels behind it.
-      if (!fontVal && !shown.mixed) fontSelect.node().selectedIndex = -1;
-    }
-
-    // Adds or removes a menu's "mixed" entry, which carries no value: a select
-    // showing nothing looks like a control that failed to load, and this is the
-    // one state the panel cannot express by lighting no button.
-    //
-    // First in the list, and removed as soon as the selection agrees, so that it
-    // is never an option among the real ones.
-    function setMixedOption(select, mixed) {
-      var el = select.node();
-      var first = el.options[0];
-      var has = !!first && first.value === '' && first.dataset.mixed == 'true';
-      if (mixed && !has) {
-        first = document.createElement('option');
-        first.value = '';
-        first.textContent = MIXED_TEXT;
-        first.dataset.mixed = 'true';
-        el.insertBefore(first, el.firstChild);
-      } else if (!mixed && has) {
-        el.removeChild(first);
-      }
-    }
-
-    // The faces the chosen font is installed with, and no entry for "whatever
-    // the font is set in by default": that is Regular, which is one of the faces
-    // and is named as one. With no font chosen the menu is empty and dead --
-    // there are no faces to list, and a face belongs to a font.
-    function updateFontStyleControls(fontName, fontStyleVal, fontWeightVal) {
-      var disabled = !controlsEnabled() || !fontName;
-      // Empty means the selection disagrees, here as everywhere in the panel;
-      // an unset style reads as Regular, because that is what it renders as.
-      var mixed = !!fontName && !(fontStyleVal && fontWeightVal);
-      var shown = mixed ? null :
-        getShownVariant(fontName, fontStyleVal, fontWeightVal);
-      fontStyleSelect.empty();
-      if (fontName) {
-        getFontStyleVariants(fontName).forEach(function(variant) {
-          El('option').attr('value', variant.value).appendTo(fontStyleSelect).text(variant.label);
-        });
-      }
-      // The faces are rebuilt above, so the "mixed" entry goes on afterwards.
-      setMixedOption(fontStyleSelect, mixed);
-      fontStyleSelect.node().disabled = disabled;
-      fontStyleSelect.node().value = shown ? shown.value : '';
-      // Nothing selected rather than the first face, for a menu with no font to
-      // list the faces of.
-      if (!shown && !mixed) fontStyleSelect.node().selectedIndex = -1;
-    }
-
-    // The face the panel shows for a label in @fontName. A font-style and
-    // font-weight the font has no face for still has to show as something, and
-    // the nearest face is what the browser is rendering it as anyway.
-    function getShownVariant(fontName, fontStyleVal, fontWeightVal) {
-      if (!fontName) return null;
-      return getNearestFontStyleVariant(fontName, fontStyleVal, fontWeightVal);
     }
 
     function updateColorControls(shown) {
@@ -20540,20 +20726,11 @@
       return opts && opts.useDefault ? opts.defaultValue : '';
     }
 
-    // Changing the font carries the face across with it: a label in Bold Italic
-    // stays in Bold Italic, or in the nearest thing the new font is installed
-    // with. Both go in one command, so the change is one undo step and the label
-    // is never briefly in a face the font does not have.
     function applyFont(fontName) {
       var ids = getTargetIds();
       var style = getCommonValue(ids, fontStyleField, {useDefault: true, defaultValue: defaultFontStyle});
       var weight = getCommonValue(ids, fontWeightField, {useDefault: true, defaultValue: defaultFontWeight});
-      var values = [[fontField, fontName]];
-      var variant = getNearestFontStyleVariant(fontName, style, weight);
-      if (variant && !(variant.style == style && variant.weight == weight)) {
-        values = values.concat(getFontStyleValues(variant));
-      }
-      applyStyleValues(values);
+      applyStyleValues(getFontChangeValues(fontName, style, weight));
     }
 
     function nudgeFontSize(delta) {
@@ -20572,27 +20749,13 @@
     // The font named is the one they are drawn in, not the tool's preferred
     // font: choosing Bold is not a request to change the typeface. A label that
     // does not exist yet is left alone here and given its font when it is made.
-    function applyFontStyleVariant(value) {
-      var variant = parseFontStyleVariant(value);
+    function applyFontStyleVariant(variant) {
       var ids = getTargetIds();
-      var values;
-      if (!variant) return;
-      values = getFontStyleValues(variant);
+      var values = getFontStyleValues(variant);
       if (ids.length > 0 && !getCommonValue(ids, fontField) && getDefaultFontName()) {
         values.unshift([fontField, getDefaultFontName()]);
       }
       applyStyleValues(values);
-    }
-
-    // Regular is stored as no face at all, for the same reason full opacity is
-    // stored as no opacity: normal 400 is what a font renders as when nothing
-    // says otherwise, and a column of them on every label the panel has touched
-    // is noise in the user's table.
-    function getFontStyleValues(variant) {
-      if (variantIsRegular(variant)) {
-        return [[fontStyleField, ''], [fontWeightField, '']];
-      }
-      return [[fontStyleField, variant.style], [fontWeightField, variant.weight]];
     }
 
     function applyLabelColor(color) {
@@ -20643,14 +20806,14 @@
 
     function getCurrentStyle() {
       var style = {};
-      var fontStyle = parseFontStyleVariant(fontStyleSelect.node().value);
+      var fontStyle = fontControls.getFace();
       var icon = getSelectedIcon();
-      addStyleValue(style, fontField, fontSelect.node().value);
+      addStyleValue(style, fontField, fontControls.getFont());
       if (fontStyle) {
         style[fontStyleField] = fontStyle.style;
         style[fontWeightField] = fontStyle.weight;
       }
-      addStyleValue(style, fontSizeField, fontSizeInput.getValue());
+      addStyleValue(style, fontSizeField, fontControls.getSize());
       addStyleValue(style, fillField, colorInput.node().value.trim());
       addStyleValue(style, opacityField, getOpacityBelowFull(opacityInput));
       addStyleValue(style, letterSpacingField, letterSpacingInput.node().value.trim());
@@ -20764,15 +20927,6 @@
         }
       });
       applyStyleValues(styles);
-    }
-
-    function parseFontStyleVariant(value) {
-      var parts = String(value).split('|');
-      if (parts.length != 2) return null;
-      return {
-        style: parts[0],
-        weight: parts[1]
-      };
     }
 
     function applyLabelPosition(pos) {
@@ -21126,9 +21280,37 @@
   // See docs/development/label-tool-design.md.
 
   var measureSvg = null;
+  var measureCanvas = null;
+  // Large enough that the ascent, which canvas reports in whole pixels in some
+  // browsers, is exact to a fraction of a percent
+  var CAP_SAMPLE_SIZE = 200;
 
   function initLabelMeasurement() {
     internal.svg.setTextMeasureFunction(measureLabelWidth);
+    internal.svg.setCapHeightFunction(measureCapHeight);
+  }
+
+  // The height of a capital H in @rec's face, as a fraction of the font size,
+  // or null if the browser cannot say. A canvas rather than the offscreen <svg>,
+  // because getBBox() reports the font's whole line box and not the glyph's.
+  function measureCapHeight(rec) {
+    var ctx = getMeasureContext();
+    var defaults = internal.getLabelTextDefaults();
+    var metrics;
+    if (!ctx) return null;
+    ctx.font = [rec && rec['font-style'] || 'normal', rec && rec['font-weight'] || 'normal',
+      CAP_SAMPLE_SIZE + 'px', rec && rec['font-family'] || defaults['font-family']].join(' ');
+    metrics = ctx.measureText('H');
+    return metrics.actualBoundingBoxAscent > 0 ?
+      metrics.actualBoundingBoxAscent / CAP_SAMPLE_SIZE : null;
+  }
+
+  function getMeasureContext() {
+    if (!measureCanvas) {
+      if (typeof document == 'undefined') return null;
+      measureCanvas = document.createElement('canvas');
+    }
+    return measureCanvas.getContext('2d');
   }
 
   // Width in px of the widest line of @rec's text, at its own font size, or null
@@ -27019,10 +27201,10 @@
     addSymbolOptions(parts, o.options);
     if (target.mode == 'new') {
       parts.push('no-replace');
-      parts.push('name=' + formatValue$2(target.newLayerName || DEFAULT_SYMBOL_LAYER_NAME));
+      parts.push('name=' + formatValue$3(target.newLayerName || DEFAULT_SYMBOL_LAYER_NAME));
     }
     if (target.target) {
-      parts.push('target=' + formatValue$2(target.target));
+      parts.push('target=' + formatValue$3(target.target));
     }
     return parts.join(' ');
   }
@@ -27031,7 +27213,7 @@
   // is released, so that a drag is one undo step.
   function getUpdateSymbolCommand(coords, id, target) {
     var parts = ['-update-symbol', 'ids=' + id, 'coordinates=' + formatCoords$1(coords)];
-    if (target) parts.push('target=' + formatValue$2(target));
+    if (target) parts.push('target=' + formatValue$3(target));
     return parts.join(' ');
   }
 
@@ -27039,7 +27221,7 @@
   // refuses to move
   function getUpdatePointCommand(coords, id, target) {
     var parts = ['-update-point', 'ids=' + id, 'coordinates=' + formatCoords$1(coords)];
-    if (target) parts.push('target=' + formatValue$2(target));
+    if (target) parts.push('target=' + formatValue$3(target));
     return parts.join(' ');
   }
 
@@ -27051,7 +27233,7 @@
     var parts = ['-symbols'];
     if (ids) parts.push('ids=' + ids.join(','));
     addSymbolOptions(parts, options);
-    if (target) parts.push('target=' + formatValue$2(target));
+    if (target) parts.push('target=' + formatValue$3(target));
     return parts.join(' ');
   }
 
@@ -27059,7 +27241,7 @@
     Object.keys(options || {}).forEach(function(name) {
       var val = options[name];
       if (val === undefined || val === null || val === '') return;
-      parts.push(name + '=' + formatValue$2(val));
+      parts.push(name + '=' + formatValue$3(val));
     });
   }
 
@@ -27072,10 +27254,10 @@
     Object.keys(values).forEach(function(name) {
       var val = values[name];
       parts.push(name + '=' + (val === '' || val === null || val === undefined ?
-        '' : formatValue$2(val)));
+        '' : formatValue$3(val)));
     });
     if (ids) parts.push('ids=' + ids.join(','));
-    if (target) parts.push('target=' + formatValue$2(target));
+    if (target) parts.push('target=' + formatValue$3(target));
     return parts.join(' ');
   }
 
@@ -27085,13 +27267,13 @@
     var expr = ids.length == 1 ? 'this.id !== ' + ids[0] :
       '[' + ids.join(',') + '].indexOf(this.id) == -1';
     var parts = ['-filter', quoteCommandValue(expr)];
-    if (target) parts.push('target=' + formatValue$2(target));
+    if (target) parts.push('target=' + formatValue$3(target));
     return parts.join(' ');
   }
 
   // A plain token -- a number, a name, a hex color -- needs no quotes, and
   // leaving them off keeps the session history readable.
-  function formatValue$2(val) {
+  function formatValue$3(val) {
     var str = String(val);
     return /^[A-Za-z0-9#._-]+$/.test(str) ? str : quoteCommandValue(str);
   }
@@ -28953,13 +29135,14 @@
   }
 
   function getPointerHitTest(mapLayer, ext, interactionMode, featureFilter) {
-    var shapeTest, targetLayer;
+    var shapeTest, ownerTest;
     // need hit test on empty layers, in case we are drawing shapes
     // if (!mapLayer || !internal.layerHasGeometry(mapLayer.gui?.displayLayer)) {
     if (!mapLayer || !mapLayer.gui?.displayLayer.geometry_type) {
       return function() {return {ids: []};};
     }
     shapeTest = getShapeHitTest(mapLayer, ext, interactionMode, featureFilter);
+    ownerTest = getOwnerTest(mapLayer, interactionMode);
 
     // e: pointer event
     return function(e) {
@@ -28969,6 +29152,10 @@
       var svgTest = getSvgHitTest(mapLayer);
       var data = shapeTest(p[0], p[1]) || {ids:[]};
       var svgData = svgTest(e); // null or a data object
+      if (svgData && ownerTest && !ownerTest(svgData.targetId)) {
+        svgData = null;
+      }
+      if (ownerTest) data.ids = data.ids.filter(ownerTest);
       if (svgData) { // mouse is over an SVG symbol
         utils$1.extend(data, svgData);
         // placing symbol id in front of any other hits
@@ -28976,6 +29163,22 @@
       }
       data.id = data.ids.length > 0 ? data.ids[0] : -1;
       return data;
+    };
+  }
+
+  // The label tool and the symbol tool share point layers, and each hits only
+  // what it edits: a numbered marker is a label to the data and a symbol to the
+  // GUI (see featureIsMarker()). Null in the other modes, which hit everything.
+  function getOwnerTest(mapLayer, interactionMode) {
+    var svg = internal.svg;
+    var test = interactionMode == 'label' ? function(rec) { return !svg.featureIsMarker(rec); } :
+      interactionMode == 'symbols' ? function(rec) { return !svg.featureIsTextLabel(rec); } :
+      null;
+    if (!test) return null;
+    return function(id) {
+      var data = mapLayer.gui.displayLayer.data;
+      var records = data ? data.getRecords() : null;
+      return test(records ? records[id] : null);
     };
   }
 
@@ -36637,7 +36840,7 @@
     // alone -- and running an item replaces the selection with what it matched.
     function getSelectActions(target, id) {
       var records = target.data ? target.data.getRecords() : null;
-      return getLabelSelectActions(records, id, internal.svg.featureIsLabel)
+      return getLabelSelectActions(records, id, internal.svg.featureIsTextLabel)
         .map(function(action) {
           return {
             label: action.label,
@@ -36661,7 +36864,7 @@
     function selectAllLabels() {
       var target = hit.getHitTarget();
       var records = target && target.data ? target.data.getRecords() : null;
-      var ids = getAllLabelIds(records, internal.svg.featureIsLabel);
+      var ids = getAllLabelIds(records, internal.svg.featureIsTextLabel);
       if (ids.length > 0) selectLabels(ids);
     }
 
@@ -36799,9 +37002,10 @@
       return target && target.shapes ? target.shapes.length : 0;
     }
 
+    // A numbered marker is a label in the data, and the symbol tool's to edit
     function isLabel(target, id) {
       var records = target.data ? target.data.getRecords() : null;
-      return !!(records && internal.svg.featureIsLabel(records[id]));
+      return !!(records && internal.svg.featureIsTextLabel(records[id]));
     }
 
     // A click position in the coordinate space the label's characters are laid
@@ -38086,6 +38290,230 @@
     }
   }
 
+  // A numbered marker -- a circle or square with a number or letter centred in
+  // it -- as the symbol panel models it. In the data it is one label record:
+  // label-text, label-pos=c and the text's font and fill, with the symbol behind
+  // it in icon=, icon-size=, icon-fill= and the rest. The symbol panel restyles
+  // its symbol with -symbols ids=, which keeps the text, and its text with
+  // -labels ids=. Pure functions, so that they can be tested without a map.
+  //
+  // See docs/development/symbol-tool-design.md.
+
+  // The shapes a marker can have: the ones with room in the middle for text
+  var MARKER_SHAPES = ['circle', 'square'];
+
+  // A symbol given text at a size too small for it -- the default 10px is --
+  // grows to this
+  var MARKER_SIZE = 20;
+  var MIN_MARKER_SIZE = 16;
+
+  function shapeTakesText(shape) {
+    return MARKER_SHAPES.indexOf(shape) > -1;
+  }
+
+  // The size a symbol of @size has once it is given text
+  function getMarkerIconSize(size) {
+    return size >= MIN_MARKER_SIZE ? size : MARKER_SIZE;
+  }
+
+  // The panel's text style: {text, font, style, weight, size, color, baseline},
+  // where text is '' for a symbol with no text, font is '' until the panel picks
+  // the font new labels get, and baseline is the text's baseline below the
+  // symbol's centre in px, or '' for where the font's capitals are centred.
+  function getDefaultMarkerTextStyle() {
+    return {text: '', font: '', style: 'normal', weight: '700', size: 12,
+      color: '#ffffff', baseline: ''};
+  }
+
+  // The record fields that put @text (a panel text style) on a symbol, apart
+  // from label-text itself. Regular is no face at all, as in the label panel.
+  //
+  // The baseline is stored in em, so that it scales with the type: a marker set
+  // a size larger keeps its number where it was in the symbol.
+  function getMarkerTextFields(text) {
+    var o = {'label-pos': 'c'};
+    if (text.font) o['font-family'] = text.font;
+    o['font-size'] = text.size;
+    if (!isRegular(text.style, text.weight)) {
+      o['font-style'] = text.style;
+      o['font-weight'] = text.weight;
+    }
+    o.fill = text.color || '#000000';
+    if (text.baseline !== '' && isFinite(text.baseline)) {
+      o.dy = getBaselineEm(text.baseline, text.size);
+    }
+    return o;
+  }
+
+  // The panel text style of the marker in @rec
+  function getMarkerTextStyle(rec) {
+    var size = Number(rec['font-size']) > 0 ? Number(rec['font-size']) : 12;
+    return {
+      text: String(rec['label-text'] || ''),
+      font: rec['font-family'] || '',
+      style: rec['font-style'] || 'normal',
+      weight: String(rec['font-weight'] || '400'),
+      size: size,
+      color: rec.fill || '',
+      baseline: parseBaseline(rec.dy, size)
+    };
+  }
+
+  // A baseline in px as dy= in em, to three places
+  function getBaselineEm(px, size) {
+    return Math.round(Number(px) / size * 1000) / 1000 + 'em';
+  }
+
+  // dy as a baseline in px, to a tenth: a number is px, and em is the font size.
+  // '' for no dy, or one in units the panel does not show.
+  function parseBaseline(dy, size) {
+    var str = dy === undefined || dy === null ? '' : String(dy).trim();
+    var m;
+    if (str === '') return '';
+    m = /^(-?[0-9.]+)(em|px)?$/.exec(str);
+    if (!m || !isFinite(Number(m[1]))) return '';
+    return Math.round(Number(m[1]) * (m[2] == 'em' ? size : 1) * 10) / 10;
+  }
+
+  // The -labels fields that place a marker of @icon (a panel symbol style) with
+  // @text on it: the symbol in the icon fields -symbols writes on a label.
+  function getAddMarkerFields(icon, text) {
+    var o = getMarkerTextFields(text);
+    o.icon = icon.shape;
+    o['icon-size'] = icon.size;
+    o['icon-fill'] = icon.fill || 'none';
+    if (icon.stroke && icon.strokeWidth > 0) {
+      o['icon-stroke'] = icon.stroke;
+      o['icon-stroke-width'] = icon.strokeWidth;
+    }
+    if (icon.shape == 'square' && icon.rotation) o['icon-rotation'] = icon.rotation;
+    return o;
+  }
+
+  // What auto-numbering puts on the next marker after one with @text: the next
+  // number, or the next letter. Other text, and a Z, repeats.
+  function getNextMarkerText(text) {
+    var str = String(text);
+    var code;
+    if (/^[0-9]+$/.test(str)) return String(Number(str) + 1);
+    if (/^[A-Ya-y]$/.test(str)) {
+      code = str.charCodeAt(0);
+      return String.fromCharCode(code + 1);
+    }
+    return str;
+  }
+
+  // Where counting starts when it is turned on with @text in the field: the
+  // text itself if no marker has it yet, otherwise the next number or letter
+  // that none has, so that the next symbol placed is not a second of one that
+  // was already placed. @used: the text of the markers in the layer.
+  function getAutoNumberStart(text, used) {
+    var str = String(text);
+    var next;
+    while (used.indexOf(str) > -1) {
+      next = getNextMarkerText(str);
+      if (next == str) break; // text that does not count up, and a Z
+      str = next;
+    }
+    return str;
+  }
+
+  // The command that puts text on symbols, as one undo step. Text styles go on
+  // first, so that -symbols, which follows, reads the records as labels and
+  // writes a circle as icon=circle and icon-fill= rather than as r= and fill= --
+  // fill= being the text's color, on a label. The symbol options are each
+  // symbol's own, read before the text changes them (see getRestyleIconOptions()).
+  //
+  // A circle's stroke= is the text's outline on a label, so a circle's stroke
+  // comes off with -style.
+  //
+  //   groups: [{options, ids}] from getRestyleIconOptions() for the symbols
+  //   stroked: ids of the symbols with a stroke= or stroke-width= field
+  function getAddMarkerTextCommand(text, groups, stroked) {
+    var ids = flattenIds(groups);
+    var parts = [formatFields('-labels', Object.assign(
+      {text: encodeLabelText(text.text)}, getMarkerTextFields(text)), ids)];
+    if (stroked.length > 0) {
+      parts.push(formatFields('-style', {stroke: '', 'stroke-width': ''}, stroked));
+    }
+    groups.forEach(function(g) {
+      parts.push(formatFields('-symbols', g.options, g.ids));
+    });
+    return parts.join(' ');
+  }
+
+  // The fields a marker's text puts on its record, which removing the text
+  // takes off. fill= goes too: -symbols writes a circle's own, and the text's
+  // would otherwise color a square's outline.
+  var TEXT_FIELDS = ['label-pos', 'font-family', 'font-size', 'font-style',
+    'font-weight', 'fill', 'dx', 'dy', 'text-anchor'];
+
+  // The command that takes the text off markers, leaving their symbols, as one
+  // undo step. label-text goes with -each because -style keeps an empty
+  // label-text -- a label being typed is empty -- and a record with one is a
+  // label. -symbols then writes each symbol as a symbol, a circle as r= again.
+  //
+  //   groups: [{options, ids}], as for getAddMarkerTextCommand()
+  function getRemoveMarkerTextCommand(groups) {
+    var ids = flattenIds(groups);
+    var cleared = {};
+    var parts = ['-each ' + quoteCommandValue('d["label-text"] = undefined') +
+      ' ids=' + ids.join(',')];
+    TEXT_FIELDS.forEach(function(name) { cleared[name] = ''; });
+    parts.push(formatFields('-style', cleared, ids));
+    groups.forEach(function(g) {
+      parts.push(formatFields('-symbols', g.options, g.ids));
+    });
+    return parts.join(' ');
+  }
+
+  // Groups symbols by the -symbols options that make each one again with its
+  // own style, for the commands above. @getStyle(rec) gives a symbol's panel
+  // style; @change(style), if given, edits it first.
+  function groupRestyleOptions(records, ids, getStyle, change) {
+    var groups = {};
+    var list = [];
+    ids.forEach(function(id) {
+      var rec = records[id] || {};
+      var style = getStyle(rec);
+      var options, key;
+      if (!style) return;
+      if (change) change(style);
+      options = getRestyleIconOptions(rec, style);
+      key = JSON.stringify(options);
+      if (!groups[key]) {
+        groups[key] = {options: options, ids: []};
+        list.push(groups[key]);
+      }
+      groups[key].ids.push(id);
+    });
+    return list;
+  }
+
+  function flattenIds(groups) {
+    return groups.reduce(function(memo, g) { return memo.concat(g.ids); }, [])
+      .sort(function(a, b) { return a - b; });
+  }
+
+  function formatFields(command, fields, ids) {
+    var parts = [command];
+    Object.keys(fields).forEach(function(name) {
+      var val = fields[name];
+      parts.push(name + '=' + (val === '' ? '' : formatValue$2(val)));
+    });
+    parts.push('ids=' + ids.join(','));
+    return parts.join(' ');
+  }
+
+  function formatValue$2(val) {
+    var str = String(val);
+    return /^[A-Za-z0-9#._-]+$/.test(str) ? str : quoteCommandValue(str);
+  }
+
+  function isRegular(style, weight) {
+    return (style || 'normal') == 'normal' && Number(weight || 400) == 400;
+  }
+
   // The symbol tool's hover and selection cues, drawn in the layer's SVG beside
   // each symbol: a halo like the one the line and polygon tools put around a
   // shape, and a ring on each knot of a selected curve.
@@ -38270,7 +38698,8 @@
   }
 
   // The symbol tool's panel. With symbols selected it restyles them: icons
-  // through -symbols ids=, curves through -style ids=. With none, and a tool armed, it sets the style of the next
+  // through -symbols ids=, curves through -style ids=, and the text on a
+  // numbered marker through -labels ids= (see gui-marker-style.mjs). With none, and a tool armed, it sets the style of the next
   // symbol placed, and shows the section for the kind of symbol the toolbar is
   // ready to place; with no tool armed, it restyles every symbol in the layer,
   // as the label panel restyles every label.
@@ -38280,8 +38709,11 @@
   //   getSelectedIds()   the selected symbols
   //   getAllIds()        every symbol in the layer
   //   getArmed()         null, 'icon' or 'curve'
-  //   getNewStyle()      {icon, curve}: the style of the next symbol, which the
-  //                      panel changes in place
+  //   getNewStyle()      {icon, curve, text}: the style of the next symbol, which
+  //                      the panel changes in place. text is the text on it,
+  //                      with autoNumber; its text is '' for a symbol with none.
+  //   getMarkerTextStyle()  a copy of the next symbol's text style, with its
+  //                      font and face filled in
   //   isCurve(lyr, id)
   //   deselect()
   //   close()            the close button: hides the panel, leaving the tool on
@@ -38294,8 +38726,12 @@
         iconStrokeWidthField, rotationRow, rotationField;
     var curveSection, curveStroke, curveWidthField, arrowShapeRow, arrowShapeBtns = {},
         arrowSizeField, arrowRow, arrowBtns = {}, fadeField, taperRow, taperField, curveFill;
+    var textSection, textInput, autoNumberCell, autoNumberToggle, fontControls,
+        textColor, baselineField, baselineAuto;
     // what the controls describe: {mode: 'new'|'selection', icons: [ids],
-    //   curves: [ids], records}
+    //   curves: [ids], markers: [ids], markable: [ids], records}, where markers
+    //   are the icons with text on them and markable the circles and squares
+    //   that could have
     var state = null;
     var shownShapes = null;
 
@@ -38303,11 +38739,12 @@
 
     this.show = function() {
       panel.show();
+      fontControls.renderFontOptions();
       this.update();
     };
 
     this.hide = function() {
-      [iconFill, iconStroke, curveStroke, curveFill].forEach(function(c) {
+      [iconFill, iconStroke, textColor, curveStroke, curveFill].forEach(function(c) {
         c.picker.hide();
       });
       releaseFocus();
@@ -38333,11 +38770,88 @@
         .text('deselect').on('click', opts.deselect);
 
       initIconSection();
+      initTextSection();
       initCurveSection();
     }
 
+    // A number or letter in a circle or square: a numbered marker. Typing text
+    // is what puts it on, as picking a color puts on a label's halo, and the ×
+    // takes it off.
+    function initTextSection() {
+      var o = makeCollapsibleSection(panel, 'Label', {
+        onRemove: removeText,
+        removeTitle: 'Remove label'
+      });
+      var section = o.section;
+      var row, cell;
+      textSection = o;
+
+      // A number or a letter, so the field is a few characters wide, captioned
+      // beside it rather than over it, with Auto at the far end of the column
+      row = El('div').addClass('label-style-row label-split-row').appendTo(section);
+      cell = El('div').addClass('label-split-cell symbol-label-text-cell').appendTo(row);
+      textInput = El('input').attr('type', 'text').attr('aria-label', 'Label text')
+        .addClass('symbol-label-text-input').appendTo(cell)
+        // The next symbol's text is what the field holds, as it is typed: there
+        // is no command to wait for, and a click on the map is the commit
+        .on('input', function() {
+          if (state && state.mode == 'new') applyText(getTypedText());
+        })
+        .on('change', function() {
+          if (state && state.mode != 'new') applyText(getTypedText());
+        });
+      El('span').appendTo(cell).text('Text');
+      // Each symbol placed takes the next number or letter
+      autoNumberCell = El('div').addClass('symbol-label-auto').appendTo(cell);
+      autoNumberToggle = makePanelToggle(autoNumberCell, {
+        title: 'Auto',
+        onChange: applyAutoNumber
+      });
+      El('span').appendTo(autoNumberCell).text('Auto');
+
+      fontControls = new FontControls(section, {
+        onFont: applyTextFont,
+        onFace: applyTextFace,
+        onSize: applyTextSize,
+        onSizeStep: function(delta) {
+          var size = Number(fontControls.getSize());
+          if (size > 0) applyTextSize(Math.max(1, size + delta));
+        },
+        onDone: releaseFocus
+      });
+
+      textColor = makeColorRow(section, {
+        label: 'Color',
+        ariaLabel: 'Text color',
+        noOpacity: true,
+        onColor: applyTextColor,
+        revert: update
+      });
+      // How far below the symbol's centre the text's baseline sits. Left alone,
+      // the font's capitals are centred, which a figure in a lining font fills;
+      // this is for the font that sits its figures differently.
+      cell = El('span').appendTo(textColor.aside).text('Baseline ');
+      baselineAuto = El('span').addClass('colored-text symbol-baseline-auto')
+        .attr('role', 'button').appendTo(cell).text('auto')
+        .on('click', function() { applyBaseline(''); });
+      baselineField = new SizeField(textColor.aside, {
+        min: -99,
+        max: 99,
+        step: 0.5,
+        bigStep: 2,
+        title: 'Baseline of the text below the center of the symbol, in px',
+        onSet: applyBaseline,
+        onStep: function(delta) {
+          var val = baselineField.getValue();
+          if (val !== null) applyBaseline(Math.round((val + delta) * 10) / 10);
+        },
+        onDone: releaseFocus
+      });
+    }
+
     function initIconSection() {
-      iconSection = makePanelSection(panel, 'Symbol');
+      // Not "Symbol": icons and curves are both symbols
+      iconSection = makePanelSection(panel, 'Icon style');
       var shapeRow = El('div').addClass('label-style-row label-icon-shapes-row').appendTo(iconSection);
       var group = El('div').addClass('label-btn-group label-icon-buttons').appendTo(shapeRow);
       getShownShapes().forEach(function(item) {
@@ -38405,7 +38919,7 @@
     }
 
     function initCurveSection() {
-      curveSection = makePanelSection(panel, 'Curve');
+      curveSection = makePanelSection(panel, 'Curve style').addClass('symbol-curve-section');
       // "Color", as a label callout's is: the line and its heads are drawn in it
       curveStroke = makeColorRow(curveSection, {
         label: 'Color',
@@ -38535,10 +39049,20 @@
         ids: ids,
         icons: [],
         curves: [],
+        markers: [],
+        markable: [],
         records: records
       };
       ids.forEach(function(id) {
         (opts.isCurve(lyr, id) ? o.curves : o.icons).push(id);
+      });
+      o.icons.forEach(function(id) {
+        var rec = records[id] || {};
+        if (internal.svg.featureIsMarker(rec)) {
+          o.markers.push(id);
+        } else if (!pointIsUnstyled(rec) && shapeTakesText(getIconShape(rec))) {
+          o.markable.push(id);
+        }
       });
       return o;
     }
@@ -38556,8 +39080,95 @@
       clearLink.classed('hidden', state.mode != 'selection' || state.all);
       toggle(iconSection, state.mode == 'selection' ? state.icons.length > 0 : armed != 'curve');
       toggle(curveSection, state.mode == 'selection' ? state.curves.length > 0 : armed == 'curve');
+      toggle(textSection.section, state.mode == 'selection' ?
+        state.markers.length + state.markable.length > 0 : armed != 'curve');
+      // A rule between the icon controls and the curve controls, when both show
+      curveSection.classed('symbol-section-rule', iconSection.visible() && curveSection.visible());
       updateIconControls();
+      updateTextControls();
       updateCurveControls();
+    }
+
+    // Text on the next symbol, or on any of the selected ones: their shape can
+    // only be one with room for it
+    function textLimitsShape() {
+      return state.mode == 'new' ? !!opts.getNewStyle().text.text : state.markers.length > 0;
+    }
+
+    // The style the Text controls show: the next marker's, or the selected
+    // markers' where they agree ('' where they do not). With no markers
+    // selected, the next marker's, which is what text typed for the selection
+    // is set in.
+    function getShownTextStyle() {
+      var o, keys;
+      if (state.mode == 'new' || state.markers.length === 0) {
+        o = opts.getMarkerTextStyle();
+        if (state.mode == 'selection') o.text = '';
+        return o;
+      }
+      o = {};
+      keys = ['text', 'font', 'style', 'weight', 'size', 'color', 'baseline'];
+      keys.forEach(function(key) {
+        var val = commonValue(state.markers, function(rec) { return getMarkerTextStyle(rec)[key]; });
+        o[key] = val === null ? '' : val;
+        o[key + 'Mixed'] = val === null;
+      });
+      return o;
+    }
+
+    function updateTextControls() {
+      var t = getShownTextStyle();
+      var noMarkers = state.mode == 'selection' && state.markers.length === 0;
+      var presence;
+      if (state.mode == 'new') {
+        presence = t.text ? 'on' : 'off';
+      } else {
+        presence = state.markers.length === 0 ? 'off' :
+          state.markable.length > 0 ? 'mixed' : 'on';
+      }
+      textSection.setPresence(presence);
+      showTypedText(decodeLabelText(t.text || ''));
+      autoNumberToggle.setState(opts.getNewStyle().text.autoNumber ? 'on' : 'off');
+      // Selected symbols with no text yet are given it in the next marker's
+      // style, which the selection has no say in until then
+      fontControls.showFont({value: t.font, mixed: !!t.fontMixed}, noMarkers);
+      fontControls.showFace(t.font, t.styleMixed ? '' : t.style || 'normal',
+        t.weightMixed ? '' : t.weight || '400', noMarkers);
+      fontControls.showSize({value: t.size, mixed: !!t.sizeMixed}, noMarkers);
+      textColor.showColor(t.color || '');
+      textColor.input.node().disabled = noMarkers;
+      // An automatic baseline shows where it is, as a value, as any unset
+      // property in the panels shows the one it is drawn with
+      baselineField.setValue(t.baseline === '' && !t.baselineMixed ? formatAutoBaseline(t) : t.baseline);
+      baselineField.setPlaceholder(t.baselineMixed ? MIXED_TEXT : '');
+      baselineField.setDisabled(noMarkers);
+      baselineAuto.classed('hidden', noMarkers || t.baseline === '' && !t.baselineMixed);
+    }
+
+    // The next symbol's text is applied as it is typed, so the field can always
+    // show it -- it is only rewritten when it says something else, which keeps
+    // the caret where it is. Typing for a selection is applied on Enter or
+    // when the field is left, and is not overwritten before then.
+    function showTypedText(str) {
+      var el = textInput.node();
+      if (state.mode != 'new' && document.activeElement === el) return;
+      if (state.mode == 'new' && getTypedText() == str) return;
+      el.value = str;
+    }
+
+    // Where the text's baseline goes with no baseline of its own, in px: the
+    // cap height centred, as svg-properties.mjs places it
+    function getAutoBaseline(t) {
+      var em, size = Number(t.size);
+      if (!(size > 0)) return null;
+      em = parseFloat(internal.getCapCentredOffset({'font-family': t.font,
+        'font-style': t.style, 'font-weight': t.weight}));
+      return isFinite(em) ? Math.round(em * size * 10) / 10 : null;
+    }
+
+    function formatAutoBaseline(t) {
+      var val = t.sizeMixed || t.fontMixed ? null : getAutoBaseline(t);
+      return val === null ? '' : String(val);
     }
 
     function toggle(el, visible) {
@@ -38584,6 +39195,7 @@
       }
       getShownShapes().forEach(function(item) {
         shapeBtns[item.name].classed('selected', shape == item.name);
+        setPanelButtonDisabled(shapeBtns[item.name], textLimitsShape() && !shapeTakesText(item.name));
       });
       iconFill.showColor(fill || '');
       iconSizeField.setValue(size === null ? '' : size);
@@ -38686,6 +39298,7 @@
 
     function applyIconShape(shape) {
       var style;
+      if (textLimitsShape() && !shapeTakesText(shape)) return;
       if (state.mode == 'new') {
         style = opts.getNewStyle().icon;
         Object.assign(style, getShapeChangeStyle(shape, style.shape, style));
@@ -38763,6 +39376,169 @@
         if (change(style) === false && !unstyled) return null;
         return getRestyleIconOptions(rec, style);
       }, title, getRestyleSymbolCommand);
+    }
+
+    function getTypedText() {
+      return textInput.node().value.trim();
+    }
+
+    // Auto with nothing typed starts the count at 1, which makes the next
+    // symbol a marker, as typing a 1 would; with a number or letter that a
+    // marker already has, at the next one none has. With symbols selected it is
+    // still the setting for the symbols placed next, and leaves the selection
+    // alone.
+    function applyAutoNumber(on) {
+      var t = opts.getNewStyle().text;
+      t.autoNumber = on;
+      if (on && state.mode == 'new') {
+        if (t.text) {
+          t.text = getAutoNumberStart(t.text, getMarkerTexts());
+        } else {
+          t.text = '1';
+          prepareMarkerIcon(opts.getNewStyle().icon);
+        }
+      }
+      update();
+    }
+
+    // The text of every marker in the layer, as it is now: a command may have
+    // replaced its records since the panel last read them
+    function getMarkerTexts() {
+      var lyr = opts.getTarget();
+      var records = lyr && lyr.data ? lyr.data.getRecords() : [];
+      return records.filter(internal.svg.featureIsMarker).map(function(rec) {
+        return String(rec['label-text']);
+      });
+    }
+
+    // Text typed for the next symbol makes it a marker. Typed for a selection,
+    // it replaces the markers' text and puts it on the circles and squares, in
+    // the next marker's style; emptied, it takes the text off.
+    function applyText(value) {
+      var cmds = [];
+      if (state.mode == 'new') {
+        opts.getNewStyle().text.text = value;
+        if (value) prepareMarkerIcon(opts.getNewStyle().icon);
+        return update();
+      }
+      if (!value) return removeText();
+      if (state.markers.length > 0) {
+        cmds.push(getLabelStyleCommand({text: encodeLabelText(value)}, state.markers.join(',')));
+      }
+      if (state.markable.length > 0) {
+        cmds.push(getAddMarkerTextCommand(Object.assign(opts.getMarkerTextStyle(), {text: value}),
+          groupRestyleOptions(state.records, state.markable, getIconStyle),
+          state.markable.filter(hasStroke)));
+      }
+      run(cmds.join(' '), state.markable.length > 0 ? 'Add text' : 'Edit text');
+    }
+
+    // The next symbol, given text: a shape and a size with room for it
+    function prepareMarkerIcon(icon) {
+      if (!shapeTakesText(icon.shape)) {
+        Object.assign(icon, getShapeChangeStyle('circle', icon.shape, icon));
+        icon.shape = 'circle';
+      }
+      icon.size = getMarkerIconSize(icon.size);
+    }
+
+    // A circle's stroke= outlines the text of a label, so it comes off
+    function hasStroke(id) {
+      var rec = state.records[id] || {};
+      return ['stroke', 'stroke-width'].some(function(name) {
+        return rec[name] !== undefined && rec[name] !== null && rec[name] !== '';
+      });
+    }
+
+    function removeText() {
+      if (state.mode == 'new') {
+        opts.getNewStyle().text.text = '';
+        return update();
+      }
+      if (state.markers.length === 0) return update();
+      run(getRemoveMarkerTextCommand(groupRestyleOptions(state.records, state.markers, getIconStyle)),
+        'Remove text');
+    }
+
+    function applyTextFont(fontName) {
+      var t = opts.getNewStyle().text;
+      var variant;
+      if (state.mode == 'new') {
+        t.font = fontName;
+        variant = getNearestFontStyleVariant(fontName, t.style, t.weight);
+        if (variant) {
+          t.style = variant.style;
+          t.weight = variant.weight;
+        }
+        return update();
+      }
+      applyPerMarker(function(rec) {
+        return getFontChangeValues(fontName, rec['font-style'] || 'normal',
+          String(rec['font-weight'] || '400'));
+      });
+    }
+
+    function applyTextFace(variant) {
+      var t = opts.getNewStyle().text;
+      if (state.mode == 'new') {
+        t.style = variant.style;
+        t.weight = variant.weight;
+        return update();
+      }
+      applyPerMarker(function() { return getFontStyleValues(variant); });
+    }
+
+    function applyTextSize(size) {
+      if (!(size > 0)) return update();
+      if (state.mode == 'new') {
+        opts.getNewStyle().text.size = size;
+        return update();
+      }
+      applyPerMarker(function() { return [['font-size', size]]; });
+    }
+
+    // '' gives the text back its default black
+    function applyTextColor(color) {
+      if (state.mode == 'new') {
+        opts.getNewStyle().text.color = color;
+        return update();
+      }
+      applyPerMarker(function() { return [['fill', color]]; });
+    }
+
+    // @px: the baseline in px, or '' for the automatic one. Stored in em, for
+    // each marker's own font size (see getMarkerTextFields()).
+    function applyBaseline(px) {
+      if (px !== '' && !isFinite(px)) return update();
+      if (state.mode == 'new') {
+        opts.getNewStyle().text.baseline = px;
+        return update();
+      }
+      applyPerMarker(function(rec) {
+        return [['dy', px === '' ? '' : getBaselineEm(px, getMarkerTextStyle(rec).size)]];
+      });
+    }
+
+    // Restyles the text of the selected markers with -labels ids=: one command
+    // per distinct set of [field, value] pairs @getValues(rec) gives, as one undo
+    // step. Selected symbols with no text are left alone.
+    function applyPerMarker(getValues) {
+      var groups = {};
+      var cmds = [];
+      state.markers.forEach(function(id) {
+        var values = {};
+        var key;
+        getValues(state.records[id] || {}).forEach(function(pair) {
+          values[pair[0]] = pair[1];
+        });
+        key = JSON.stringify(values);
+        (groups[key] = groups[key] || {values: values, ids: []}).ids.push(id);
+      });
+      Object.keys(groups).forEach(function(key) {
+        cmds.push(getLabelStyleCommand(groups[key].values, groups[key].ids.join(',')));
+      });
+      if (cmds.length === 0) return update();
+      run(cmds.join(' '), 'Style text');
     }
 
     // A shape for curves with no heads puts one at the end, as the layer panel
@@ -38901,7 +39677,8 @@
     var hoverPoint = null;
     // the style of the next symbol placed, which the panel sets while nothing
     // is selected
-    var newStyle = {icon: getDefaultIconStyle(), curve: getDefaultCurveStyle()};
+    var newStyle = {icon: getDefaultIconStyle(), curve: getDefaultCurveStyle(),
+      text: Object.assign(getDefaultMarkerTextStyle(), {autoNumber: false})};
     var toolbar, iconBtn, curveBtn, stylesBtn, alert;
     // the panel's toggle, kept from one session to the next, as the line and
     // polygon panels keep theirs
@@ -38913,6 +39690,7 @@
       getAllIds: getAllSymbols,
       getArmed: function() { return armed; },
       getNewStyle: function() { return newStyle; },
+      getMarkerTextStyle: getMarkerTextStyle,
       isCurve: isCurve,
       deselect: deselect,
       close: function() { setPanelShown(false); }
@@ -39074,12 +39852,17 @@
       return records ? records[id] : null;
     }
 
-    // Labels share point layers with symbols, and belong to the label tool.
+    // Labels share point layers with symbols, and belong to the label tool --
+    // except numbered markers, which are labels with a symbol behind them.
     function isSymbol(target, id) {
       var shp = target && target.shapes && target.shapes[id];
       var rec = getRecord(target, id);
       if (!shp) return false;
-      return !(rec && internal.svg.featureIsLabel(rec));
+      return !(rec && internal.svg.featureIsTextLabel(rec));
+    }
+
+    function isMarker(target, id) {
+      return internal.svg.featureIsMarker(getRecord(target, id));
     }
 
     function isCurve(target, id) {
@@ -39273,11 +40056,18 @@
         return translateDisplayPoint(o.target, p);
       });
       shapes[o.id] = o.startShape;
-      runGuiEditCommand(gui, pointIsUnstyled(getRecord(o.target, o.id)) ?
-        getUpdatePointCommand(coords, o.id) : getUpdateSymbolCommand(coords, o.id), {
+      runGuiEditCommand(gui, getMoveCommand(o.target, o.id, coords), {
         title: o.kind == 'knot' ? 'Reshape curve' : 'Move symbol',
         onSuccess: function() { hit.setSelectionIds(ids); }
       });
+    }
+
+    // -update-symbol refuses to move a point with no symbol, and a marker, which
+    // the commands see as a label
+    function getMoveCommand(target, id, coords) {
+      if (isMarker(target, id)) return getUpdateLabelCommand(coords, id);
+      if (pointIsUnstyled(getRecord(target, id))) return getUpdatePointCommand(coords, id);
+      return getUpdateSymbolCommand(coords, id);
     }
 
     gui.keyboard.on('keydown', function(e) {
@@ -39383,7 +40173,46 @@
 
     function placeIcon(p) {
       hideInstructions();
-      addSymbol([p], getAddIconOptions(newStyle.icon), 'Add symbol');
+      if (newStyle.text.text) {
+        placeMarker(p);
+      } else {
+        addSymbol([p], getAddIconOptions(newStyle.icon), 'Add symbol');
+      }
+    }
+
+    // A symbol with text on it is a label with an icon behind it, which -labels
+    // places in one command. The next one gets the next number, so that a row
+    // of clicks numbers a map.
+    function placeMarker(p) {
+      var target = getTarget();
+      var text = getMarkerTextStyle();
+      var coords = [target ? translateDisplayPoint(target, p) : p];
+      runGuiEditCommand(gui, getAddLabelCommand(coords, {
+        target: getSymbolTarget(target, isAnnotationLayer, null),
+        text: text.text,
+        style: getAddMarkerFields(newStyle.icon, text)
+      }), {
+        title: 'Add symbol',
+        onSuccess: function() {
+          if (!newStyle.text.autoNumber || newStyle.text.text != text.text) return;
+          newStyle.text.text = getNextMarkerText(text.text);
+          panel.update();
+        }
+      });
+    }
+
+    // The next marker's text style, with the font new labels get if the panel
+    // has not been given one, in the nearest face it has
+    function getMarkerTextStyle() {
+      var t = Object.assign({}, newStyle.text);
+      var variant;
+      t.font = t.font || getNewLabelFontName();
+      variant = getNearestFontStyleVariant(t.font, t.style, t.weight);
+      if (variant) {
+        t.style = variant.style;
+        t.weight = variant.weight;
+      }
+      return t;
     }
 
     function addSymbol(displayCoords, options, title) {
