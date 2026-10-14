@@ -14,4 +14,11 @@ if (memRxp.test(args[0])) {
   }
 }
 args = ['--max-old-space-size=' + Math.round(gb * 1000), mapshaper].concat(args);
-require('child_process').spawn(process.argv[0], args, {stdio: 'inherit'});
+var child = require('child_process').spawn(process.argv[0], args, {stdio: 'inherit'});
+child.on('error', function(err) {
+  console.error(err.message);
+  process.exit(1);
+});
+child.on('exit', function(code) {
+  process.exit(code === null ? 1 : code);
+});
