@@ -1,3 +1,8 @@
+v0.7.86
+* Added icon labels to the symbols panel.
+* `wide-arrow` arrowheads have a slightly narrower 55° point (was 60°).
+* [web] The label and symbol editing modes close when their layer is deleted, whether by undo or from the layer menu.
+
 v0.7.85
 * Added `line-taper=` (0-1) to `-style` and `-symbols type=curve`, which narrows a line toward its tail, to a point at `line-taper=1`, with or without arrowheads. Tapered lines can be dashed.
 * [web] Tapered lines and curves are drawn on the map. The line style panel and the symbol tool's curve section both have a Taper % control.

@@ -23,7 +23,7 @@ export var ARROWHEAD_SHAPES = [{
 
 export var ARROWHEAD_GLYPHS = {
   arrow: '<path d="M6.84 8H13"></path><path class="fill" d="M2.5 8L8.7 6.05V9.95Z"></path>',
-  'wide-arrow': '<path d="M6.44 8H13"></path><path class="fill" d="M2.5 8L8.13 4.75V11.25Z"></path>',
+  'wide-arrow': '<path d="M6.54 8H13"></path><path class="fill" d="M2.5 8L8.27 5V11Z"></path>',
   'open-arrow': '<path d="M3.2 8H13"></path><path d="M7.38 5.07L3.2 8L7.38 10.93"></path>',
   dot: '<path d="M5 8H13"></path><circle class="fill" cx="5" cy="8" r="2.6"></circle>'
 };

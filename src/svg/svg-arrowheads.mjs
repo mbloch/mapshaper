@@ -6,7 +6,7 @@
 // narrow chevron drawn with a line reads as a thickened line more than as an
 // arrow. A wide arrow is a solid one with a blunter point.
 export var ARROW_ANGLE = 35;
-export var WIDE_ARROW_ANGLE = 60;
+export var WIDE_ARROW_ANGLE = 55;
 export var OPEN_ARROW_ANGLE = 70;
 
 // Whether an end type ('arrow', 'wide-arrow', ...) is a filled arrowhead

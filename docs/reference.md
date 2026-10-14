@@ -1217,7 +1217,7 @@ With `coordinates=`, the command adds one label, either to the target point laye
 
 `callout=`         A line from a label's anchor to its text: `line`, `elbow` or `curve`
 
-`callout-end=`     Marker at the anchor end of a callout: `arrow`, `wide-arrow` (a solid arrowhead with a blunter, 60° point), `open-arrow`, `ring` (a hollow circle around the anchor, drawn in the callout's width) or `none`
+`callout-end=`     Marker at the anchor end of a callout: `arrow`, `wide-arrow` (a solid arrowhead with a blunter, 55° point), `open-arrow`, `ring` (a hollow circle around the anchor, drawn in the callout's width) or `none`
 
 `callout-end-size=` Length of an arrowhead's sides, or a ring's diameter, in pixels (an arrowhead's default is 10 for a 1px line, and grows with the line; a ring's is twice that)
 
@@ -1918,7 +1918,7 @@ Example: `hatches 45deg 2px red 2px grey`
 
 `stroke-linecap=`  Line caps: `round` (the default), `butt` or `square`. Dashed lines default to `butt`.
 
-`line-start=`      Marker at the first vertex of a line: `arrow`, `wide-arrow` (a solid arrowhead with a blunter, 60° point), `open-arrow`, `dot` or `none`. Each part of a multi-part line gets its own marker.
+`line-start=`      Marker at the first vertex of a line: `arrow`, `wide-arrow` (a solid arrowhead with a blunter, 55° point), `open-arrow`, `dot` or `none`. Each part of a multi-part line gets its own marker.
 
 `line-end=`        Marker at the last vertex of a line: `arrow`, `wide-arrow`, `open-arrow`, `dot` or `none`.
 

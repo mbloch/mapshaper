@@ -93,6 +93,9 @@ export function InteractionMode(gui) {
   var _prevMode;
   var _menuOpen = false;
   var _armedTool = null; // 'draw', 'reshape' or null
+  // the layer the label or symbol tool is editing, once it has one:
+  // {layer, name}
+  var _toolLayer = null;
 
   // The tool modes that 'line_style' and 'polygon_style' take on when one of
   // their toolbar's tools is armed
@@ -378,9 +381,44 @@ export function InteractionMode(gui) {
   // if current editing mode is not available, turn off the tool
   function updateCurrentMode() {
     var modes = getAvailableModes();
+    if (toolLayerWasRemoved()) {
+      setMode('off');
+      return;
+    }
     if (modes.indexOf(_editMode) == -1 && !inFrameMode() && !labelModeIsAvailable() && !labelStyleModeIsAvailable() && !layerStyleModeIsAvailable() && !pointStyleModeIsAvailable() && !symbolModeIsAvailable()) {
       setMode('off');
     }
+  }
+
+  // The label and symbol tools stay open with no layer, because entering them
+  // makes the layer they need -- but only on entering. A layer that goes away
+  // under them, deleted from the layer menu or undone out of existence, leaves
+  // a toolbar and a panel with nowhere to put anything, so the tool closes, as
+  // the line and polygon tools do when their layer goes. Selecting another
+  // layer the tool works on moves it to that layer instead.
+  //
+  // The layer is followed by name as well as by identity: a command that
+  // edits a layer can replace it with a new one, and undoing the command
+  // puts the old one back, so the layer the tool last saw can be gone from
+  // the model while its layer is still there.
+  function toolLayerWasRemoved() {
+    var o = gui.model.getActiveLayer();
+    if (_editMode != 'label' && _editMode != 'symbols') {
+      _toolLayer = null;
+      return false;
+    }
+    if (_toolLayer && !layerIsInModel(_toolLayer)) {
+      _toolLayer = null;
+      return true;
+    }
+    _toolLayer = o && o.layer ? {layer: o.layer, name: o.layer.name || ''} : null;
+    return false;
+  }
+
+  function layerIsInModel(tracked) {
+    return gui.model.getLayers().some(function(o) {
+      return o.layer == tracked.layer || (o.layer.name || '') == tracked.name;
+    });
   }
 
   // The frame modes are reached from the layer panel and the frame menu, never
@@ -467,6 +505,8 @@ export function InteractionMode(gui) {
       // mode opens in
       _armedTool = mode in drawingModes && (!!armed || layerIsEmpty()) ? 'draw' : null;
       onModeChange();
+      // after the tools have heard, since entering one can make its layer
+      toolLayerWasRemoved();
       updateArrowButton();
       updateSelectionHighlight();
     }

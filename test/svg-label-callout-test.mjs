@@ -220,11 +220,11 @@ describe('svg-label-callout.mjs', function () {
       near(angleAt(o.head[0], o.head[1], o.head[2]), 35);
     });
 
-    it('a wide arrowhead is solid, with a 60 degree point', function () {
+    it('a wide arrowhead is solid, with a 55 degree point', function () {
       var o = shape({box: {xmin: -10, xmax: 10, ymin: -120, ymax: -100, midline: -115},
         end: 'wide-arrow', endSize: 12});
       near(Math.hypot(o.head[1][0] - o.head[0][0], o.head[1][1] - o.head[0][1]), 12);
-      near(angleAt(o.head[0], o.head[1], o.head[2]), 60);
+      near(angleAt(o.head[0], o.head[1], o.head[2]), 55);
       assert.ok(!o.openHead);
       // the line stops inside the head
       assert.ok(o.coords[0][1] < 0 && o.coords[0][1] > o.head[1][1]);
