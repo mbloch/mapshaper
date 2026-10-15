@@ -1,3 +1,7 @@
+v0.7.87
+* Added a curve drawing tool to the line editing toolbar, similar to the curve tool on the symbol toolbar (but for creating curved polylines not symbols).
+* mapshaper-xl now exits with code 1 on errors, like the standard mapshaper program.
+
 v0.7.86
 * Added icon labels to the symbols panel.
 * `wide-arrow` arrowheads have a slightly narrower 55° point (was 60°).
