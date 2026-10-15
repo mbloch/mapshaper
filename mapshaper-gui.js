@@ -8449,6 +8449,45 @@
     }
   }
 
+  // Ids of the shapes with an arc containing one of vertices @vertexIds: the
+  // shapes that moving the vertices changes, including any that share an arc
+  function findShapesWithVertices(shapes, vertexIds, arcs) {
+    var ii = arcs.getVertexData().ii;
+    var arcIds = {};
+    var ids = [];
+    vertexIds.forEach(function(v) {
+      arcIds[internal.findArcIdFromVertexId(v, ii)] = true;
+    });
+    for (var i = 0; i < shapes.length; i++) {
+      if (shapeUsesArcs(shapes[i], arcIds)) ids.push(i);
+    }
+    return ids;
+  }
+
+  function shapeUsesArcs(shp, arcIds) {
+    var i, j;
+    for (i = 0; shp && i < shp.length; i++) {
+      for (j = 0; j < shp[i].length; j++) {
+        if (arcIds[internal.absArcId(shp[i][j])] === true) return true;
+      }
+    }
+    return false;
+  }
+
+  // The vertices of each part of shapes @ids, as [[x, y], ...] paths
+  function getShapePaths(shapes, ids, arcs) {
+    var paths = [];
+    ids.forEach(function(id) {
+      (shapes[id] || []).forEach(function(part) {
+        var iter = arcs.getShapeIter(part);
+        var path = [];
+        while (iter.hasNext()) path.push([iter.x, iter.y]);
+        if (path.length > 1) paths.push(path);
+      });
+    });
+    return paths;
+  }
+
   function appendNewDataRecord(layer) {
     if (!layer.data) return null;
     var fields = layer.data.getFields();
@@ -9181,6 +9220,34 @@
     return internal.formatOptionValue(internal.getLayerTargetId(gui.model, lyr));
   }
 
+  // The map keeps display copies of each dataset's arcs (reprojected for a
+  // basemap, or filtered for drawing large datasets at small scales), which go
+  // stale when a command rewrites the arcs in place.
+
+  // Returns a record of each dataset's arcs and their revision number.
+  // Reading the revision starts revision tracking for the arcs, so a snapshot
+  // must be taken before the commands run.
+  function getArcRevisions(datasets) {
+    return datasets.map(function(dataset) {
+      var arcs = dataset.arcs || null;
+      return {
+        dataset: dataset,
+        arcs: arcs,
+        revision: arcs ? arcs.getUndoRevision() : 0
+      };
+    });
+  }
+
+  // Returns true if a dataset in the snapshot has had its arcs replaced or
+  // modified since the snapshot was taken.
+  function arcRevisionsHaveChanged(snapshot) {
+    return snapshot.some(function(o) {
+      var arcs = o.dataset.arcs || null;
+      if (arcs != o.arcs) return true;
+      return !!arcs && arcs.getUndoRevision() != o.revision;
+    });
+  }
+
   function Console(gui) {
     var model = gui.model;
     var CURSOR = '> ';
@@ -9782,6 +9849,7 @@
           prevTable = active?.layer.data,
           prevTableSize = prevTable ? prevTable.size() : 0,
           prevArcCount = prevArcs ? prevArcs.size() : 0,
+          arcRevisions = getArcRevisions(model.getDatasets()),
           undoTransaction = session ? session.tx : createCommandUndoTransaction(commandString),
           job = new internal.Job(model),
           commandStart = Date.now();
@@ -9821,7 +9889,7 @@
         }
         // kludge to signal map that filtered arcs need refreshing
         // TODO: find a better solution, outside the console
-        if (!sameArcs) {
+        if (!sameArcs || arcRevisionsHaveChanged(arcRevisions)) {
           flags.arc_count = true;
         }
         if (sameTable) {
@@ -10309,7 +10377,8 @@
       var e = model.getActiveLayer();
       if (!_simplifiedXX || !e.dataset.arcs) return;
       noteArcsSimplificationWillChange(e.dataset.arcs, {operation: 'repairIntersections'});
-      _simplifiedXX = internal.repairIntersections(e.dataset.arcs, _simplifiedXX);
+      _simplifiedXX = internal.repairIntersections(e.dataset.arcs, _simplifiedXX,
+        internal.getUsedArcTest(e.dataset));
       markArcsSimplificationChanged(e.dataset.arcs, {operation: 'repairIntersections'});
       showIntersections(_simplifiedXX, e.layer, e.dataset.arcs);
       repairBtn.hide();
@@ -10387,7 +10456,8 @@
       }
       var intersectionOpts = {
         unique: true,
-        tolerance: 0
+        tolerance: 0,
+        arcFilter: internal.getUsedArcTest(e.dataset)
       };
       if (arcs.getRetainedInterval() > 0) {
         // simplification
@@ -11625,9 +11695,18 @@
         return { top: Math.round(top), left: Math.round(left) };
       }
 
+      // Named for the feature pointed at, the way the layer panel counts it: a
+      // numbered marker is a symbol, though it has label text, and so is a
+      // circle, the symbol tool's plainest icon.
+      // e.deleteId: the feature e.deleteFeature deletes, if not e.ids[0]
       function getDeleteLabel() {
-        if (internal.layerHasLabels(lyr)) return 'delete label';
-        return 'delete ' + (lyr.geometry_type == 'point' ? 'point' : 'shape');
+        var id = e.deleteId ?? e.ids?.[0] ?? -1;
+        var rec, kind;
+        if (lyr.geometry_type != 'point') return 'delete shape';
+        rec = lyr.data && id > -1 ? lyr.data.getRecords()[id] : null;
+        kind = getPointKind(rec);
+        if (kind == 'circle') kind = 'symbol';
+        return 'delete ' + kind;
       }
 
       // info: pixel data from internal.getRasterPixelAtMapXY()
@@ -14789,7 +14868,7 @@
     var _editMode = 'off';
     var _prevMode;
     var _menuOpen = false;
-    var _armedTool = null; // 'draw', 'reshape' or null
+    var _armedTool = null; // 'draw', 'reshape', 'curve' (lines only) or null
     // the layer the label or symbol tool is editing, once it has one:
     // {layer, name}
     var _toolLayer = null;
@@ -14797,7 +14876,7 @@
     // The tool modes that 'line_style' and 'polygon_style' take on when one of
     // their toolbar's tools is armed
     var drawingModes = {
-      line_style: {draw: 'edit_lines', reshape: 'reshape_lines'},
+      line_style: {draw: 'edit_lines', reshape: 'reshape_lines', curve: 'curve_lines'},
       polygon_style: {draw: 'edit_polygons', reshape: 'reshape_polygons'}
     };
     var drawingAliases = {edit_lines: 'line_style', edit_polygons: 'polygon_style',
@@ -14876,7 +14955,8 @@
     // tool armed from its toolbar. Drawing ('edit_lines', 'edit_polygons')
     // draws new shapes, and a click on a shape selects it for styling;
     // reshaping ('reshape_lines', 'reshape_polygons') drags, inserts and
-    // deletes vertices. The hit control, the overlay and the drawing tool go by
+    // deletes vertices; the curve tool ('curve_lines') draws lines as curves
+    // through clicked knots. The hit control, the overlay and the drawing tool go by
     // this; the panel, undo and the menu go by the mode, which arming does not
     // change.
     this.getToolMode = getToolMode;
@@ -14893,13 +14973,19 @@
       return _armedTool == 'reshape';
     };
 
+    // A tool that adds shapes is armed, so that with nothing selected, the
+    // style panel styles the next shape (see gui-layer-style-tool.mjs)
+    this.newShapesAreArmed = function() {
+      return _armedTool == 'draw' || _armedTool == 'curve';
+    };
+
     this.drawingCanBeArmed = function() {
       return _editMode in drawingModes;
     };
 
-    // tool: 'draw', 'reshape' or null
+    // tool: 'draw', 'reshape', 'curve' or null
     this.setArmedTool = function(tool) {
-      var next = tool && _editMode in drawingModes ? tool : null;
+      var next = tool && _editMode in drawingModes && tool in drawingModes[_editMode] ? tool : null;
       var prevToolMode;
       if (next == _armedTool) return;
       prevToolMode = getToolMode();
@@ -18307,8 +18393,9 @@
   // o.newLabels    (label panel) a placement tool is armed with nothing
   //                selected, so the controls set the style of the next label
   // o.editingText  (label panel) a label is open for typing
-  // o.newShapes    (line and polygon panel) drawing is armed, so the controls
-  //                set the style of the next shape: 'lines' or 'polygons'
+  // o.newShapes    (line, polygon and symbol panels) drawing is armed, so the
+  //                controls set the style of the next shape: 'lines',
+  //                'polygons', 'icons' or 'curves'
   function formatEditingStatus(o) {
     var what = o.editingText ? 'this label' :
       o.selected > 0 ? o.selected + ' selected' :
@@ -26015,6 +26102,7 @@
     // What a shape or an end gives lines that have no heads
     var lastArrow = {shape: 'arrow', position: 'end', fade: 0};
     var lineToolbar, polygonToolbar, drawLineBtn, drawPolygonBtn, reshapeLineBtn, reshapePolygonBtn;
+    var curveLineBtn;
     var lineStylesBtn, polygonStylesBtn;
     // The mode is on whether or not the panel is showing: the panel can be
     // hidden, for room to draw, and stays hidden for the rest of the session
@@ -26034,8 +26122,8 @@
       });
     }
 
-    // The toolbar arms drawing or reshaping. While drawing is armed and nothing
-    // is selected, the panel's controls set the style of the next shape drawn
+    // The toolbar arms drawing, reshaping or (for lines) drawing curves. While
+    // drawing or curves are armed and nothing is selected, the panel's controls set the style of the next shape drawn
     // rather than restyling the layer (see gui-shape-style-state.mjs); a click
     // on a shape selects it, and the controls style it, as when nothing is armed.
     gui.on('interaction_tool_change', function() {
@@ -26126,6 +26214,7 @@
       if (geom == 'polyline') {
         getLineToolbar().show();
         drawLineBtn.setSelected(tool == 'draw');
+        curveLineBtn.setSelected(tool == 'curve');
         reshapeLineBtn.setSelected(tool == 'reshape');
         updateStylesButton(lineStylesBtn);
       } else if (lineToolbar) {
@@ -26151,6 +26240,8 @@
         lineToolbar = new FloatingToolbar(gui, {name: 'line-draw-toolbar'});
         drawLineBtn = lineToolbar.addButton('#draw-line-icon', {tooltip: 'Draw lines'})
           .on('click', function() { toggleTool('draw'); });
+        curveLineBtn = lineToolbar.addButton('#curve-tool-icon', {tooltip: 'Draw curves'})
+          .on('click', function() { toggleTool('curve'); });
         reshapeLineBtn = lineToolbar.addButton('#reshape-icon', {tooltip: 'Reshape lines'})
           .on('click', function() { toggleTool('reshape'); });
         lineStylesBtn = addPanelButtons(lineToolbar);
@@ -26187,7 +26278,7 @@
 
     // The controls set the style of the next shape drawn
     function editingNewShapes() {
-      return !!targetLayer && gui.interaction.drawingIsArmed() && getSelectionIds().length === 0;
+      return !!targetLayer && gui.interaction.newShapesAreArmed() && getSelectionIds().length === 0;
     }
 
     function setNewShapeStyle(styles) {
@@ -29189,6 +29280,9 @@
     var transientIds = []; // e.g. hit ids while dragging a box
     var pendingPath = null; // display coords of a path being drawn (see setPendingPath())
     var pendingPathStyle = null;
+    var pendingKnots = null; // display coords of a curve's knots (see setPendingKnots())
+    var hiddenShapeIds = []; // see setHiddenShapes()
+    var hiddenShapePaths = null;
     var active = false;
     var targetLayer;
     var hitTest;
@@ -29269,6 +29363,9 @@
         hitTest = null;
         pinnedOn = false;
         pendingPath = null;
+        pendingKnots = null;
+        hiddenShapeIds = [];
+        hiddenShapePaths = null;
       }
     }
 
@@ -29294,11 +29391,14 @@
         mode == 'label' || mode == 'symbols' || lineToolMode(mode);
     }
 
+    // the modes that draw new shapes: the Draw tool's, and the curve tool's
+    // (gui-curve-lines.mjs)
     function drawingMode(mode) {
-      return mode == 'edit_lines' || mode == 'edit_polygons';
+      return mode == 'edit_lines' || mode == 'edit_polygons' || mode == 'curve_lines';
     }
 
-    // the modes of the line and polygon tools (gui-draw-lines2.mjs)
+    // the modes of the line and polygon tools (gui-draw-lines2.mjs,
+    // gui-curve-lines.mjs)
     function lineToolMode(mode) {
       return drawingMode(mode) || mode == 'reshape_lines' || mode == 'reshape_polygons';
     }
@@ -29372,6 +29472,36 @@
       pendingPath = coords && coords.length > 0 ? coords : null;
       pendingPathStyle = pendingPath && style || null;
       triggerChangeEvent();
+    };
+
+    // Shows handles on the knots of a curve, for the curve tool.
+    // knots: [[x, y], ...] display coordinates, or null to remove the handles
+    self.setPendingKnots = function(knots) {
+      if (!pendingKnots && !knots) return;
+      pendingKnots = knots && knots.length > 0 ? knots : null;
+      triggerChangeEvent();
+    };
+
+    // Shapes of the target layer that a tool is redrawing in the overlay while
+    // the user drags: a curve whose knot is being dragged, or the shapes that
+    // share a vertex being moved by the reshape tool. The layer is drawn without
+    // them, and the overlay draws their original geometry as a plain outline,
+    // without their style or selection highlight (see gui-overlay-styler.mjs).
+    // ids: feature ids, or [] for none
+    // paths: (optional) the shapes' original paths, [[x, y], ...] in display
+    //   coordinates, for a tool that edits the display geometry in place;
+    //   otherwise the outline is drawn from the layer
+    self.setHiddenShapes = function(ids, paths) {
+      var next = ids || [];
+      if (next.length === 0 && hiddenShapeIds.length === 0) return;
+      hiddenShapeIds = next.concat();
+      hiddenShapePaths = next.length > 0 && paths || null;
+      triggerChangeEvent();
+      gui.dispatchEvent('map-needs-refresh'); // the layer itself is redrawn
+    };
+
+    self.getHiddenShapeIds = function() {
+      return active ? hiddenShapeIds.concat() : [];
     };
 
     self.triggerChangeEvent = triggerChangeEvent;
@@ -29825,6 +29955,13 @@
       if (pendingPath) {
         data.pending_path = pendingPath;
         data.pending_path_style = pendingPathStyle;
+      }
+      if (pendingKnots) {
+        data.pending_knots = pendingKnots;
+      }
+      if (hiddenShapeIds.length > 0) {
+        data.hidden_ids = hiddenShapeIds;
+        if (hiddenShapePaths) data.hidden_paths = hiddenShapePaths;
       }
       if (pinnedOn) {
         data.pinned = true;
@@ -31457,7 +31594,7 @@
       // The editing modes open this menu themselves, adding the items that only
       // they can act on -- and the label tool deletes through a command, so it
       // must not be given the direct deletion below.
-      if (!e.overMap || e.mode == 'edit_lines' || e.mode == 'edit_polygons' ||
+      if (!e.overMap || e.mode == 'edit_lines' || e.mode == 'edit_polygons' || e.mode == 'curve_lines' ||
         e.mode == 'reshape_lines' || e.mode == 'reshape_polygons' || e.mode == 'edit_points' || e.mode == 'point_style' || e.mode == 'snip_lines' || e.mode == 'label') {
         return;
       }
@@ -32296,7 +32433,7 @@
   // Flattening tolerance as a fraction of the curve's own size, which keeps the
   // guide smooth at any zoom and, because it does not depend on the view, lets
   // the guide layers be cached across pan and zoom like other overlays.
-  var FLATTEN_RATIO = 0.002;
+  var FLATTEN_RATIO$1 = 0.002;
 
   // Knots of a curve the user is drawing, in display coordinates, or null. Held
   // here rather than in the data so that an abandoned curve leaves nothing
@@ -32368,6 +32505,12 @@
     }, new internal.ArcCollection(nn, xx, yy));
   }
 
+  // The handles alone, for a tool that draws the curve itself (see
+  // gui-curve-lines.mjs). Returns a layer, or null if there are no knots.
+  function getKnotHandleLayer(activeLyr, knots) {
+    return knots && knots.length > 0 ? buildKnotLayer(activeLyr, [{knots: knots}]) : null;
+  }
+
   function buildKnotLayer(activeLyr, curves) {
     var shapes = [];
     var curve, i, j;
@@ -32419,7 +32562,7 @@
       if (knots[i][1] > ymax) ymax = knots[i][1];
     }
     span = Math.max(xmax - xmin, ymax - ymin);
-    return span > 0 ? span * FLATTEN_RATIO : 0;
+    return span > 0 ? span * FLATTEN_RATIO$1 : 0;
   }
 
   var selectionFill = "rgba(237, 214, 0, 0.12)",
@@ -32535,9 +32678,10 @@
     }
     if (styleOpts.interactionMode == 'edit_lines' ||
       styleOpts.interactionMode == 'edit_polygons' ||
+      styleOpts.interactionMode == 'curve_lines' ||
       styleOpts.interactionMode == 'line_style' ||
       styleOpts.interactionMode == 'polygon_style') {
-      // with or without the Draw tool, the same selection and hover cues
+      // with or without the Draw or curve tool, the same selection and hover cues
       return getDrawingLayers(activeLyr, hitData, styleOpts);
     }
     if (styleOpts.interactionMode == 'reshape_lines' ||
@@ -32714,15 +32858,30 @@
   // it is shown as a layer of its own, without vertices, which are only of use
   // for reshaping a completed path. The hover markers go on the last layer, so
   // they are drawn on top.
+  //
+  // While the reshape tool drags a vertex, the shapes it moves are left out of
+  // the layer (hitData.hidden_ids): their original geometry is drawn as a plain
+  // outline, and the shapes as they are being reshaped in their own style, with
+  // only the vertex markers over them.
   function getShapeEditingLayers(activeLyr, hitData, styleOpts) {
     var ids = hitData.ids || [];
+    var redrawn = getRedrawnShapeIds(activeLyr, hitData);
     var layers = [];
     var dark = !!(styleOpts && styleOpts.darkMode);
+    var editingLyr;
+    if (redrawn.length > 0) {
+      layers.push(getHiddenShapeLayer(activeLyr, hitData, redrawn, dark));
+      layers.push(getRedrawnShapeLayer(activeLyr, redrawn));
+    }
     if (hitData.pending_path) {
       layers.push(getPendingPathLayer(activeLyr, hitData, dark));
     }
-    if (ids.length > 0 || layers.length === 0) {
-      layers.push(getShapeEditingLayer(activeLyr, hitData, ids, true, dark));
+    if (ids.length > 0 || layers.length === 0 || redrawn.length > 0) {
+      editingLyr = getShapeEditingLayer(activeLyr, hitData, ids, true, dark);
+      if (redrawn.length > 0) {
+        editingLyr.gui.style.verticesOnly = true;
+      }
+      layers.push(editingLyr);
     }
     layers.forEach(function(lyr, i) {
       if (i < layers.length - 1) {
@@ -32736,14 +32895,24 @@
   // The overlay of the line and polygon style modes and their Draw tool: the
   // selected shapes; the shape under the pointer, which a click would select;
   // the path being drawn; and, on top, the vertex a path would start from or
-  // snap to. A shape is not highlighted while a path is being drawn, since a
-  // click then adds a vertex.
+  // snap to, or the curve tool's knot handles. A shape is not highlighted while
+  // a path is being drawn, since a click then adds a vertex.
+  //
+  // A shape that a tool is redrawing as the pending path (hitData.hidden_ids,
+  // e.g. a curve whose knot is being dragged) is left out of the layer, and is
+  // drawn here as a plain outline, so that its stroke width, dashes and
+  // highlight are not seen twice.
   function getDrawingLayers(activeLyr, hitData, styleOpts) {
     var geomType = activeLyr.gui.displayLayer.geometry_type;
-    var selected = hitData.ids || [];
+    var hidden = hitData.hidden_ids || [];
+    var selected = (hitData.ids || []).filter(function(id) { return !hidden.includes(id); });
+    var redrawn = getRedrawnShapeIds(activeLyr, hitData);
     var dark = !!(styleOpts && styleOpts.darkMode);
     var layers = [];
-    var lyr;
+    var lyr, knotLyr;
+    if (redrawn.length > 0) {
+      layers.push(getHiddenShapeLayer(activeLyr, hitData, redrawn, dark));
+    }
     if (selected.length > 0) {
       lyr = getOverlayLayer(activeLyr, selected);
       lyr.gui.style = getOverlayStyle(activeLyr, selected,
@@ -32766,7 +32935,70 @@
     layers.forEach(function(lyr, i) {
       if (i < layers.length - 1) lyr.gui.style.vertex_overlay = null;
     });
+    knotLyr = getKnotHandleLayer(activeLyr, hitData.pending_knots);
+    if (knotLyr) layers.push(knotLyr);
     return layers;
+  }
+
+  // The hidden shapes that the overlay draws in place of the layer. A layer
+  // drawn as an outline draws them plainly already, and is not drawn without
+  // them (see drawStyledLayerToCanvas()).
+  function getRedrawnShapeIds(activeLyr, hitData) {
+    return hitData.hidden_ids && activeLyr.gui.style.type != 'outline' ?
+      hitData.hidden_ids : [];
+  }
+
+  // The shapes' original geometry, as the layer would draw it with no styles
+  // (see activeStyle in gui-layer-styler.mjs): from hitData.hidden_paths if the
+  // tool is moving the shapes' vertices, otherwise from the layer.
+  function getHiddenShapeLayer(activeLyr, hitData, ids, dark) {
+    var outline = getActiveLayerStyle(activeLyr.gui.displayLayer, {outlineMode: true, darkMode: dark});
+    var style = {
+      overlay: true,
+      strokeColor: outline.strokeColors[1],
+      strokeWidth: outline.strokeWidth,
+      fillColor: null
+    };
+    var lyr;
+    if (hitData.hidden_paths) {
+      return getPathsLayer(activeLyr, hitData.hidden_paths, style);
+    }
+    lyr = getOverlayLayer(activeLyr, ids);
+    lyr.gui.style = Object.assign(style, {ids: ids});
+    return lyr;
+  }
+
+  function getPathsLayer(activeLyr, paths, style) {
+    var nn = [], xx = [], yy = [], shapes = [];
+    paths.forEach(function(path, i) {
+      shapes.push([[i]]);
+      nn.push(path.length);
+      path.forEach(function(p) {
+        xx.push(p[0]);
+        yy.push(p[1]);
+      });
+    });
+    return wrapGuideLayer(activeLyr, {
+      name: 'hidden-shapes',
+      geometry_type: 'polyline',
+      shapes: shapes
+    }, style, new internal.ArcCollection(nn, xx, yy));
+  }
+
+  // The shapes in the layer's own style, from the layer's display geometry,
+  // which the reshape tool is editing
+  function getRedrawnShapeLayer(activeLyr, ids) {
+    var baseStyle = activeLyr.gui.style;
+    var baseStyler = baseStyle.styler || null;
+    var lyr = getOverlayLayer(activeLyr, ids);
+    var style = Object.assign({}, baseStyle, {ids: ids, overlay: true});
+    if (baseStyler) {
+      style.styler = function(style, i) {
+        baseStyler(style, ids[i]);
+      };
+    }
+    lyr.gui.style = style;
+    return lyr;
   }
 
   function getSymbolHaloLayers(activeLyr, hitData, styleOpts) {
@@ -32913,6 +33145,13 @@
       parts.push('target=' + quoteCommandValue(o.target));
     }
     return parts.join(' ');
+  }
+
+  // The command that replaces the path of line @id, as the curve tool does when
+  // a knot is dragged.
+  // coords: [[x, y], ...] the new path's vertices, in the layer's CRS
+  function getUpdateLineCommand(coords, id) {
+    return '-update-line ids=' + id + ' coordinates=' + formatCoords(coords);
   }
 
   // Whether a path drawn into a layer of @geometryType is complete enough to be
@@ -33266,14 +33505,16 @@
     function turnOff() {
       if (!active()) return;
       finishPath();
+      if (_dragging) hit.setHiddenShapes([]);
       hoverVertexInfo = null;
       prevVertexAddedEvent = null;
       lastHoverEvent = null;
       hideInstructions();
       _active = false;
-      if (gui.interaction.getArmedTool()) {
+      if (gui.interaction.getArmedTool() == 'draw' || gui.interaction.getArmedTool() == 'reshape') {
         // another GUI mode took over -- disarm, rather than leave the mode
-        // saying it is drawing with no tool to draw
+        // saying it is drawing with no tool to draw. The curve tool's mode
+        // takes over when it is armed, and is left armed.
         gui.interaction.setArmedTool(null);
       }
       updateCursor();
@@ -33332,8 +33573,23 @@
         insertVertex$1(hit.getHitTarget(), hoverVertexInfo.i, hoverVertexInfo.point);
         hoverVertexInfo.ids = [hoverVertexInfo.i];
       }
+      hideDraggedShapes(hit.getHitTarget(), hoverVertexInfo.ids);
       hit.setHoverVertex(hoverVertexInfo.displayPoint, hoverVertexInfo.type);
     });
+
+    // The shapes that the drag moves are drawn in the overlay, in their own
+    // style, as they are reshaped, and their original geometry as a plain
+    // outline (see setHiddenShapes() in gui-hit-control.mjs). A layer with no
+    // styles draws its shapes plainly already, and is left as it is.
+    function hideDraggedShapes(target, vertexIds) {
+      var arcs = target.gui.displayArcs;
+      var shapes = target.gui.displayLayer.shapes;
+      var ids;
+      if (target.gui.style.type == 'outline') return;
+      ids = findShapesWithVertices(shapes, vertexIds, arcs);
+      // the paths are copied now, because the drag moves the display geometry
+      hit.setHiddenShapes(ids, getShapePaths(shapes, ids, arcs));
+    }
 
     gui.map.getMouse().on('dragend', function(e) {
       finishStroke();
@@ -33484,6 +33740,7 @@
       target.gui.displayArcs.transformPoints(function() {});
       updateVertexCoords(target, hoverVertexInfo.ids);
       gui.dispatchEvent('vertex_dragend', hoverVertexInfo);
+      hit.setHiddenShapes([]);
       clearHoverVertex();
       gui.dispatchEvent('map-needs-refresh'); // redraw basemap
     });
@@ -33949,6 +34206,771 @@
       closest.type = 'interpolated';
       closest.target = target;
       return closest;
+    }
+  }
+
+  // State of a label curve being drawn, and the operations the curvature tool
+  // performs on it.
+  //
+  // Knots are held in the map's display coordinates, not in pixels, so that a
+  // half-drawn curve stays where the user put it across a pan or a zoom. They are
+  // converted to the layer's own coordinates once, when the command is emitted,
+  // and nothing is written until then: an abandoned curve leaves no data
+  // mutation, no undo entry and no session history entry.
+  //
+  // The distance thresholds are therefore the caller's to supply, in the same
+  // space as the knots -- the tool scales its pixel thresholds by the current
+  // pixel size. The defaults below are the pixel values, for callers working in
+  // screen space.
+  //
+  // Written as functions over a plain object rather than as a class, so that
+  // every transition can be tested without a map, a layer or a DOM.
+  //
+  // See docs/development/label-tool-design.md.
+
+  // A click closer than this to the previous knot is treated as a stray rather
+  // than a new knot. It also absorbs the second click of a double-click, which is
+  // how a curve is finished.
+  var MIN_KNOT_DISTANCE = 4;
+
+  // How close the pointer has to be to a placed knot to grab it.
+  var KNOT_HIT_THRESHOLD = 8;
+
+  function createCurveState() {
+    // justPlaced is the knot the current pointer gesture placed, or -1. A
+    // double-click arrives as clicks first, so the knot under the pointer during
+    // the dblclick is usually one that the same gesture just created; the two
+    // cases mean opposite things and this is what tells them apart.
+    return {knots: [], justPlaced: -1};
+  }
+
+  // Returns true if the knot was added. A click too close to the previous knot is
+  // rejected rather than producing a zero-length curve segment.
+  function addKnot(state, p, minDistance) {
+    var min = minDistance === undefined ? MIN_KNOT_DISTANCE : minDistance;
+    var last = lastKnot(state);
+    if (!isValidPoint(p)) return false;
+    if (last && distance(last, p) < min) return false;
+    state.knots.push([p[0], p[1]]);
+    return true;
+  }
+
+  function moveKnot(state, i, p) {
+    if (!isValidPoint(p) || !(i >= 0 && i < state.knots.length)) return false;
+    state.knots[i] = [p[0], p[1]];
+    return true;
+  }
+
+  function removeLastKnot(state) {
+    if (state.knots.length === 0) return false;
+    state.knots.pop();
+    return true;
+  }
+
+  // Index of the placed knot nearest @p within @threshold, or -1. Searches from
+  // the end, so the most recently placed of two overlapping knots wins.
+  function findKnotNear(state, p, threshold) {
+    var limit = threshold === undefined ? KNOT_HIT_THRESHOLD : threshold;
+    var best = -1;
+    var bestDist = limit;
+    var d, i;
+    if (!isValidPoint(p)) return -1;
+    for (i = state.knots.length - 1; i >= 0; i--) {
+      d = distance(state.knots[i], p);
+      if (d <= bestDist) {
+        bestDist = d;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  // Two knots make a straight label; one makes nothing worth keeping.
+  function curveIsComplete(state) {
+    return state.knots.length >= 2;
+  }
+
+  // What a click at @p does to the curve, and does to it here: 'added' if it
+  // placed a knot, 'ignored' if it landed on a knot that is already there or too
+  // close to the last one.
+  //
+  // A click on a placed knot must not leave a duplicate knot behind: the curve
+  // fitter would have a zero-length chord to find a direction along.
+  function handleClick(state, p, hitThreshold, minDistance) {
+    var near = findKnotNear(state, p, hitThreshold);
+    if (near > -1) {
+      // Clicking a knot this gesture did not place ends the gesture's claim on
+      // whatever it placed before, so that a double-click on an already-placed
+      // knot is not read as finishing.
+      if (near !== state.justPlaced) state.justPlaced = -1;
+      return 'ignored';
+    }
+    if (!addKnot(state, p, minDistance)) {
+      state.justPlaced = -1;
+      return 'ignored';
+    }
+    state.justPlaced = state.knots.length - 1;
+    return 'added';
+  }
+
+  // What a double-click at @p means: 'finish' to end the curve here, or 'none'.
+  //
+  // Double-clicking empty map finishes, and the knot the opening click placed
+  // counts as empty map -- that click is how the ordinary finishing gesture
+  // starts, so without the exception it would land on a knot every time.
+  //
+  // A double-click on a knot that was already there does nothing. It cannot add
+  // one, since the knot is in the way, and finishing on it would end the curve
+  // somewhere other than where the pointer was when the gesture began.
+  function getDblclickAction(state, p, hitThreshold) {
+    var near = findKnotNear(state, p, hitThreshold);
+    if (state.knots.length === 0) return {action: 'none'};
+    if (near > -1 && near !== state.justPlaced) return {action: 'none'};
+    return {action: 'finish'};
+  }
+
+  // Forgets which knot the current gesture placed, e.g. after a knot is removed
+  // and the indexes no longer line up.
+  function clearGesture(state) {
+    state.justPlaced = -1;
+  }
+
+  function lastKnot(state) {
+    return state.knots.length > 0 ? state.knots[state.knots.length - 1] : null;
+  }
+
+  function distance(a, b) {
+    return Math.sqrt(Math.pow(a[0] - b[0], 2) + Math.pow(a[1] - b[1], 2));
+  }
+
+  function isValidPoint(p) {
+    return !!p && p.length >= 2 && isFinite(p[0]) && isFinite(p[1]);
+  }
+
+  // The knots of curves drawn with the curve tool (gui-curve-lines.mjs).
+  //
+  // A curve is stored as an ordinary line. The knots it was fitted through are
+  // not in the data, and nothing outside the tool knows about them: the tool
+  // keeps them here while it is open, so that a curve can be reshaped by
+  // dragging its knots, and forgets them when it closes.
+  //
+  // Knots are found by geometry rather than by feature id. Each set of knots is
+  // kept with the path it produced, as read back from the layer, and a line has
+  // knots only while its path is exactly that path. Ids shift when features are
+  // deleted, and any command, or undo, can change a line; a line whose path has
+  // changed has no knots, rather than knots that would reshape it into something
+  // it no longer is. Undoing a knot drag restores the previous path, and with it
+  // the previous knots.
+  //
+  // Knots are in display coordinates, where the curve is fitted (see
+  // fitCurveThroughKnots()); paths are in the layer's CRS.
+
+  // The flattening tolerance of a curve, as a fraction of its size. The line is
+  // the curve's only record once the tool closes, so it is flattened more finely
+  // than the label tool's guide, which is redrawn from its knots.
+  var FLATTEN_RATIO = 0.0005;
+
+  function createKnotCache() {
+    return {versions: []};
+  }
+
+  // knots: [[x, y], ...] a closed curve repeats its first knot at the end
+  // coords: the line's path, [[x, y], ...], read back from the layer
+  function addKnotVersion(cache, knots, coords) {
+    if (!knots || !coords || coords.length < 2) return;
+    cache.versions.push({knots: copyPoints(knots), coords: coords});
+  }
+
+  // The knots of the curve whose path is @coords, or null
+  function findKnotVersion(cache, coords) {
+    if (!coords) return null;
+    for (var i = cache.versions.length - 1; i >= 0; i--) {
+      if (samePath(cache.versions[i].coords, coords)) {
+        return copyPoints(cache.versions[i].knots);
+      }
+    }
+    return null;
+  }
+
+  // The vertices of a line with a single part, or null. A curve is drawn as one
+  // part, so a line with more than one cannot be a curve's.
+  function getLinePathCoords(shp, arcs) {
+    var iter, coords;
+    if (!shp || shp.length != 1 || !arcs) return null;
+    iter = arcs.getShapeIter(shp[0]);
+    coords = [];
+    while (iter.hasNext()) {
+      coords.push([iter.x, iter.y]);
+    }
+    return coords;
+  }
+
+  // The knots after knot @index is moved to @p, or null if @p is closer than
+  // @minDistance to another knot, which would leave the fitter a zero-length
+  // chord. A closed curve's first knot is repeated at the end, and the two move
+  // together.
+  function moveCurveKnot(knots, index, p, minDistance) {
+    var n = knots.length;
+    var closed = curveKnotsAreClosed(knots);
+    var loopLen = closed ? n - 1 : n;
+    var i = closed && index == n - 1 ? 0 : index;
+    var min2 = minDistance * minDistance;
+    var out, dx, dy, j;
+    if (!(i >= 0 && i < loopLen)) return null;
+    for (j = 0; j < loopLen; j++) {
+      if (j == i) continue;
+      dx = knots[j][0] - p[0];
+      dy = knots[j][1] - p[1];
+      if (dx * dx + dy * dy < min2) return null;
+    }
+    out = copyPoints(knots);
+    out[i] = [p[0], p[1]];
+    if (closed && i === 0) out[n - 1] = [p[0], p[1]];
+    return out;
+  }
+
+  function curveKnotsAreClosed(knots) {
+    var n = knots ? knots.length : 0;
+    return n > 3 && knots[0][0] === knots[n - 1][0] && knots[0][1] === knots[n - 1][1];
+  }
+
+  function getCurveFlattenTolerance(knots) {
+    var xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
+    var span, i;
+    for (i = 0; i < knots.length; i++) {
+      if (knots[i][0] < xmin) xmin = knots[i][0];
+      if (knots[i][0] > xmax) xmax = knots[i][0];
+      if (knots[i][1] < ymin) ymin = knots[i][1];
+      if (knots[i][1] > ymax) ymax = knots[i][1];
+    }
+    span = Math.max(xmax - xmin, ymax - ymin);
+    return span > 0 ? span * FLATTEN_RATIO : 0;
+  }
+
+  function samePath(a, b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i][0] !== b[i][0] || a[i][1] !== b[i][1]) return false;
+    }
+    return true;
+  }
+
+  function copyPoints(points) {
+    return points.map(function(p) { return [p[0], p[1]]; });
+  }
+
+  // The curve tool, armed from the line style mode's toolbar ('curve_lines',
+  // see getToolMode() in gui-interaction-mode-control.mjs).
+  //
+  // Clicks place knots, and the line is a smooth curve through them (see
+  // fitCurveThroughKnots()). As in the Draw tool, the curve being drawn belongs
+  // to the tool until it is finished, and then becomes an ordinary line, added
+  // by an -add-shape command: one undo step and one line of session history.
+  // While it is being drawn, Undo and Redo take back and restore its knots.
+  //
+  // A line drawn with the tool can be reshaped by dragging its knots, which are
+  // shown while the line is selected. Each drag is an -update-line command. The
+  // knots are kept only while the tool is open, and only for a line whose path
+  // is still the one they produced (see gui-curve-line-knots.mjs); any other
+  // line is selected for styling, as in the Draw tool.
+  function initCurveLineTool(gui, ext, hit) {
+    var _active = false;
+    var curve = createCurveState(); // the curve being drawn
+    var redoKnots = []; // knots taken back by Undo while drawing
+    // the pointer's position while a curve is being drawn, which the curve is
+    // drawn through but which is not a knot yet
+    var previewPoint = null;
+    var knotCache = createKnotCache();
+    // the selected line whose knots are shown: {id, knots}, or null
+    var shown = null;
+    var shownKey = null; // the selection that @shown was found for
+    var hoverKnot = -1; // index of the knot of @shown under the pointer
+    var hoverPoint = null;
+    var overShape = false;
+    // a knot drag in progress: {id, index, knots, offset, moved}
+    var drag = null;
+    // the line whose knots were shown before an undo or redo, which clears the
+    // selection
+    var restoreId = -1;
+    var shownInstructions = false;
+    var alert = null;
+    var mouse = gui.map.getMouse();
+
+    gui.addMode('curve_tool', turnOn, turnOff);
+
+    // higher priority than hit control, so turnOff() has the correct hit target
+    gui.on('interaction_mode_change', onToolModeChange, null, 10);
+    gui.on('interaction_tool_change', onToolModeChange, null, 10);
+
+    function onToolModeChange(e) {
+      if (e.tool_mode == 'curve_lines') {
+        gui.enterMode('curve_tool');
+      } else if (gui.getMode() == 'curve_tool') {
+        gui.clearMode();
+      }
+    }
+
+    gui.on('new_shape_style_change', function() {
+      if (drawing()) refreshCurve();
+    });
+
+    gui.undo.addInterceptor({
+      undo: pendingUndo,
+      redo: pendingRedo
+    });
+
+    gui.on('undo_redo_pre', function() {
+      restoreId = _active && shown ? shown.id : -1;
+    }, null, 1); // before the hit control clears the selection
+
+    gui.on('undo_redo_post', function() {
+      var id = restoreId;
+      restoreId = -1;
+      if (_active && id > -1 && !drawing() && findKnots(id)) {
+        hit.setSelectionIds([id]);
+      }
+    });
+
+    gui.model.on('update', function() {
+      if (_active) refreshShownCurve(true);
+    }, null, -1); // after the hit control has the updated layer
+
+    function turnOn() {
+      if (_active) return;
+      _active = true;
+      showInstructions();
+      refreshShownCurve(true);
+      updateCursor();
+    }
+
+    function turnOff() {
+      if (!_active) return;
+      finishCurve(false);
+      drag = null;
+      knotCache = createKnotCache();
+      shown = null;
+      shownKey = null;
+      hoverKnot = -1;
+      hoverPoint = null;
+      hit.setPendingPath(null);
+      hit.setPendingKnots(null);
+      hit.setHiddenShapes([]);
+      hideInstructions();
+      _active = false;
+      if (gui.interaction.getArmedTool() == 'curve') {
+        // another GUI mode took over -- disarm (see turnOff() in
+        // gui-draw-lines2.mjs)
+        gui.interaction.setArmedTool(null);
+      }
+      updateCursor();
+    }
+
+    function drawing() {
+      return curve.knots.length > 0;
+    }
+
+    // shown the first time the tool is used
+    function showInstructions() {
+      if (shownInstructions) return;
+      shownInstructions = true;
+      alert = showPopupAlert('Click to place the points of a curve. Double-click or type Enter to finish, ' +
+        'or click the first point to close the curve. Backspace removes the last point. ' +
+        'Select a curve to drag its points.', null, {non_blocking: true, max_width: '350px'});
+    }
+
+    function hideInstructions() {
+      if (!alert) return;
+      alert.close('fade');
+      alert = null;
+    }
+
+    // --- events
+
+    hit.on('click', function(e) {
+      var p;
+      if (!_active || drag) return;
+      p = pixToMapCoords(e.x, e.y);
+      if (drawing()) {
+        if (curve.knots.length >= 3 && findKnotNear(curve, p, scaleThreshold(KNOT_HIT_THRESHOLD)) === 0) {
+          finishCurve(true);
+        } else {
+          extendCurve(p);
+        }
+        return;
+      }
+      hoverPoint = p;
+      updateHoverKnot();
+      if (hoverKnot > -1) {
+        // a press on a knot is the start of a drag, not a new curve
+      } else if (e.id > -1) {
+        selectShape(e.id);
+      } else if (hit.getSelectionIds().length > 0) {
+        // a click off the selection only deselects, as in the Draw tool
+        hit.setSelectionIds([], {keepHover: true});
+      } else {
+        startCurve(p);
+      }
+    });
+
+    hit.on('dblclick', function(e) {
+      var o;
+      if (!_active || !drawing()) return;
+      e.originalEvent.stopPropagation(); // prevent dblclick zoom
+      o = getDblclickAction(curve, pixToMapCoords(e.x, e.y), scaleThreshold(KNOT_HIT_THRESHOLD));
+      if (o.action == 'finish') finishCurve(false);
+    });
+
+    hit.on('hover', function(e) {
+      var p;
+      if (!_active || drag) return;
+      p = e.overMap ? pixToMapCoords(e.x, e.y) : null;
+      overShape = e.id > -1;
+      if (drawing()) {
+        if (!samePoint(p, previewPoint)) {
+          previewPoint = p;
+          refreshCurve();
+        }
+      } else {
+        hoverPoint = p;
+        updateHoverKnot();
+      }
+      updateCursor();
+    }, null, 100);
+
+    hit.on('change', function() {
+      if (_active) refreshShownCurve(false);
+    });
+
+    hit.on('contextmenu', function(e) {
+      if (!_active || drawing() || drag) return;
+      gui.contextMenu.open(e, hit.getHitTarget());
+    });
+
+    // Knot drags are taken from the map's mouse, ahead of the hit control
+    // (priority 3), because a knot handle can be beyond the reach of the hit
+    // test, which only reports a drag over a feature.
+    mouse.on('dragstart', function(e) {
+      if (!_active || drawing() || !shown || hoverKnot < 0 || !hoverPoint) return;
+      e.stopPropagation(); // prevent panning
+      drag = {
+        id: shown.id,
+        index: hoverKnot,
+        knots: shown.knots,
+        // the knot does not jump to the pointer on the first move
+        offset: [shown.knots[hoverKnot][0] - hoverPoint[0], shown.knots[hoverKnot][1] - hoverPoint[1]],
+        moved: false
+      };
+      // The line is drawn as the preview from the start of the drag, and the
+      // original as a plain outline (see setHiddenShapes())
+      showDragPreview(drag);
+      hit.setHiddenShapes([drag.id]);
+      hideInstructions();
+      updateCursor();
+    }, null, 3);
+
+    mouse.on('drag', function(e) {
+      var p, knots;
+      if (!drag) return;
+      e.stopPropagation();
+      p = pixToMapCoords(e.x, e.y);
+      p = [p[0] + drag.offset[0], p[1] + drag.offset[1]];
+      knots = moveCurveKnot(drag.knots, drag.index, p, scaleThreshold(MIN_KNOT_DISTANCE));
+      if (!knots) return;
+      drag.knots = knots;
+      drag.moved = true;
+      showDragPreview(drag);
+    }, null, 3);
+
+    mouse.on('dragend', function(e) {
+      var o = drag;
+      if (!o) return;
+      e.stopPropagation();
+      drag = null;
+      if (o.moved) {
+        commitKnotMove(o);
+      } else {
+        clearDragPreview();
+        hit.setPendingKnots(shown ? shown.knots : null);
+      }
+      updateCursor();
+    }, null, 3);
+
+    function showDragPreview(o) {
+      hit.setPendingPath(fitDisplayPath(o.knots),
+        getPendingPathStyle(getLineStyle(o.id), !!gui.state.dark_basemap));
+      hit.setPendingKnots(o.knots);
+    }
+
+    function clearDragPreview() {
+      hit.setPendingPath(null);
+      hit.setHiddenShapes([]);
+    }
+
+    gui.keyboard.on('keydown', function(e) {
+      if (_active && drawing() && e.keyName == 'space') {
+        e.stopPropagation(); // prevent console from opening if shift-panning
+      }
+    }, null, 1);
+
+    // Esc and Enter finish the curve being drawn; Backspace takes back its last
+    // knot
+    gui.keyboard.on('keydown', function(e) {
+      if (!_active || !drawing()) return;
+      if (e.keyName == 'esc' || e.keyName == 'enter') {
+        finishCurve(false);
+        consume(e);
+      } else if (e.keyName == 'delete') {
+        removeLastKnot(curve);
+        clearGesture(curve);
+        redoKnots = [];
+        if (drawing()) refreshCurve(); else abandonCurve();
+        consume(e);
+      }
+    }, null, 10);
+
+    // With no curve being drawn, Esc clears the selection, and then disarms the
+    // tool
+    gui.keyboard.on('keydown', function(e) {
+      if (e.keyName != 'esc' || !_active || drawing() || drag) return;
+      e.stopPropagation();
+      if (hit.getSelectionIds().length > 0) {
+        hit.setSelectionIds([], {keepHover: true});
+      } else {
+        gui.interaction.setArmedTool(null);
+      }
+    }, null, 9);
+
+    function consume(e) {
+      e.stopPropagation();
+      if (e.originalEvent) e.originalEvent.preventDefault();
+    }
+
+    // As in the Draw tool, shift-click adds to or removes from the selection
+    function selectShape(id) {
+      var ids = hit.getSelectionIds();
+      if (gui.keyboard.shiftIsPressed()) {
+        ids = ids.includes(id) ? ids.filter(function(id2) { return id2 != id; }) : ids.concat(id);
+      } else {
+        ids = [id];
+      }
+      hit.setSelectionIds(ids, {keepHover: true});
+    }
+
+    // --- the curve being drawn
+
+    function startCurve(p) {
+      hit.clearSelection();
+      extendCurve(p);
+    }
+
+    function extendCurve(p) {
+      if (handleClick(curve, p, scaleThreshold(KNOT_HIT_THRESHOLD),
+          scaleThreshold(MIN_KNOT_DISTANCE)) != 'added') return;
+      redoKnots = [];
+      hideInstructions();
+      refreshShownCurve(true);
+      refreshCurve();
+      updateCursor();
+    }
+
+    // Draws the curve through the pointer, as if it were the next knot. Near the
+    // first knot, the pointer closes the curve, as a click there would.
+    function refreshCurve() {
+      var knots = curve.knots;
+      var style = getPendingPathStyle(getNewCurveStyle(), !!gui.state.dark_basemap);
+      if (previewPoint && pointerClosesCurve(previewPoint)) {
+        knots = knots.concat([knots[0]]);
+      } else if (previewPoint) {
+        knots = knots.concat([previewPoint]);
+      }
+      hit.setPendingPath(knots.length > 1 ? fitDisplayPath(knots) : null, style);
+      hit.setPendingKnots(curve.knots);
+    }
+
+    function pointerClosesCurve(p) {
+      return curve.knots.length >= 3 &&
+        findKnotNear(curve, p, scaleThreshold(KNOT_HIT_THRESHOLD)) === 0;
+    }
+
+    function abandonCurve() {
+      curve = createCurveState();
+      redoKnots = [];
+      previewPoint = null;
+      hit.setPendingPath(null);
+      hit.setPendingKnots(null);
+      refreshShownCurve(true);
+      updateCursor();
+    }
+
+    // closed: end the curve where it began
+    function finishCurve(closed) {
+      var knots = curve.knots.slice();
+      var complete = curveIsComplete(curve);
+      var target = hit.getHitTarget();
+      var coords;
+      abandonCurve();
+      if (!complete || !target || target.geometry_type != 'polyline') return;
+      if (closed) knots.push(knots[0].slice());
+      coords = toDataCoords(target, fitDisplayPath(knots));
+      runGuiEditCommand(gui, getAddShapeCommand(coords, {
+        geometryType: 'polyline',
+        style: getNewCurveStyle()
+      }), {
+        title: 'Draw curve',
+        changesEditTarget: true,
+        onSuccess: function() {
+          var lyr = hit.getHitTarget();
+          if (lyr) recordKnots(internal.getFeatureCount(lyr) - 1, knots);
+        }
+      });
+    }
+
+    // Takes back the last knot of the curve being drawn. Taking back its first
+    // knot abandons the curve. Returns false if no curve is being drawn, so that
+    // Undo goes on to the undo history.
+    function pendingUndo() {
+      if (drag) return true;
+      if (!drawing()) return false;
+      redoKnots.push(curve.knots.pop());
+      clearGesture(curve);
+      if (drawing()) {
+        refreshCurve();
+      } else {
+        abandonCurve();
+      }
+      return true;
+    }
+
+    // Restores the last knot taken back. Redo does nothing else while a curve is
+    // being drawn (see pendingRedo() in gui-draw-lines2.mjs).
+    function pendingRedo() {
+      if (drag) return true;
+      if (!drawing()) return false;
+      if (redoKnots.length > 0) {
+        curve.knots.push(redoKnots.pop());
+        clearGesture(curve);
+        refreshCurve();
+      }
+      return true;
+    }
+
+    // The style the panel gives new shapes (see gui-shape-style-state.mjs)
+    function getNewCurveStyle() {
+      var target = hit.getHitTarget();
+      return getNewShapeCommandStyle(getNewShapeStyle(gui, 'polyline'),
+        layerHasDrawableStyle(target), !!gui.state.dark_basemap);
+    }
+
+    // --- knots of finished curves
+
+    // The knots of line @id, if its path is one the tool drew
+    function findKnots(id) {
+      var target = hit.getHitTarget();
+      if (!target || target.geometry_type != 'polyline' || !target.shapes) return null;
+      return findKnotVersion(knotCache, getLinePathCoords(target.shapes[id],
+        target.gui.source.dataset.arcs));
+    }
+
+    // Keeps @knots as the knots of line @id, as it now is
+    function recordKnots(id, knots) {
+      var target = hit.getHitTarget();
+      if (!_active || !target || !target.shapes) return;
+      addKnotVersion(knotCache, knots, getLinePathCoords(target.shapes[id],
+        target.gui.source.dataset.arcs));
+      refreshShownCurve(true);
+    }
+
+    // Shows the knots of the selected line, if one line is selected and it has
+    // knots
+    // force: look again even if the selection has not changed, e.g. after a
+    //   command has changed the line
+    function refreshShownCurve(force) {
+      var ids = hit.getSelectionIds();
+      var key = ids.join(',');
+      var knots;
+      if (drag || !force && key === shownKey) return;
+      shownKey = key;
+      knots = _active && !drawing() && ids.length == 1 ? findKnots(ids[0]) : null;
+      shown = knots ? {id: ids[0], knots: knots} : null;
+      updateHoverKnot();
+      if (!drawing()) hit.setPendingKnots(shown ? shown.knots : null);
+    }
+
+    // The knot under the pointer, found on hover rather than at dragstart:
+    // dragstart arrives after the pointer has moved, often off a small handle.
+    function updateHoverKnot() {
+      hoverKnot = shown && hoverPoint ?
+        findKnotNear(shown, hoverPoint, scaleThreshold(KNOT_HIT_THRESHOLD)) : -1;
+      updateCursor();
+    }
+
+    // The drag preview stands in for the line until the command replaces it,
+    // so the command is what changes the data, and undo has a step that undoes
+    // something.
+    function commitKnotMove(o) {
+      var target = hit.getHitTarget();
+      var coords = toDataCoords(target, fitDisplayPath(o.knots));
+      shown = {id: o.id, knots: o.knots};
+      hit.setPendingKnots(o.knots);
+      runGuiEditCommand(gui, getUpdateLineCommand(coords, o.id), {
+        title: 'Reshape curve',
+        changesEditTarget: true,
+        onSuccess: function() {
+          if (!_active) return;
+          hit.setSelectionIds([o.id]);
+          recordKnots(o.id, o.knots);
+        },
+        onError: function() {
+          refreshShownCurve(true);
+        },
+        onDone: function() {
+          if (!drag) clearDragPreview();
+        }
+      });
+    }
+
+    // The style of line @id, which a drag preview is drawn in
+    function getLineStyle(id) {
+      var target = hit.getHitTarget();
+      var records = target.data ? target.data.getRecords() : [];
+      return layerHasDrawableStyle(target) && records[id] || {};
+    }
+
+    // --- utilities
+
+    function fitDisplayPath(knots) {
+      return internal.fitCurveThroughKnots(knots, getCurveFlattenTolerance(knots),
+        curveKnotsAreClosed(knots));
+    }
+
+    function toDataCoords(target, displayCoords) {
+      return displayCoords.map(function(p) {
+        return translateDisplayPoint(target, p);
+      });
+    }
+
+    function updateCursor() {
+      var el = gui.container.findChild('.map-layers');
+      var onKnot = _active && !drawing() && (hoverKnot > -1 || !!drag);
+      el.classed('curve-tool', _active);
+      // a drag would move the knot
+      el.classed('curve-handle', onKnot);
+      // a click would select the line under the pointer
+      el.classed('curve-select', _active && !drawing() && !onKnot && overShape);
+      if (_active) el.classed('drawing', drawing());
+    }
+
+    function pixToMapCoords(x, y) {
+      return ext.pixCoordsToMapCoords(x, y);
+    }
+
+    function scaleThreshold(px) {
+      return px * ext.getPixelSize();
+    }
+
+    function samePoint(a, b) {
+      if (!a || !b) return a === b;
+      return a[0] === b[0] && a[1] === b[1];
     }
   }
 
@@ -36270,144 +37292,6 @@
     return !(val === undefined || val === null || val === '');
   }
 
-  // State of a label curve being drawn, and the operations the curvature tool
-  // performs on it.
-  //
-  // Knots are held in the map's display coordinates, not in pixels, so that a
-  // half-drawn curve stays where the user put it across a pan or a zoom. They are
-  // converted to the layer's own coordinates once, when the command is emitted,
-  // and nothing is written until then: an abandoned curve leaves no data
-  // mutation, no undo entry and no session history entry.
-  //
-  // The distance thresholds are therefore the caller's to supply, in the same
-  // space as the knots -- the tool scales its pixel thresholds by the current
-  // pixel size. The defaults below are the pixel values, for callers working in
-  // screen space.
-  //
-  // Written as functions over a plain object rather than as a class, so that
-  // every transition can be tested without a map, a layer or a DOM.
-  //
-  // See docs/development/label-tool-design.md.
-
-  // A click closer than this to the previous knot is treated as a stray rather
-  // than a new knot. It also absorbs the second click of a double-click, which is
-  // how a curve is finished.
-  var MIN_KNOT_DISTANCE = 4;
-
-  // How close the pointer has to be to a placed knot to grab it.
-  var KNOT_HIT_THRESHOLD = 8;
-
-  function createCurveState() {
-    // justPlaced is the knot the current pointer gesture placed, or -1. A
-    // double-click arrives as clicks first, so the knot under the pointer during
-    // the dblclick is usually one that the same gesture just created; the two
-    // cases mean opposite things and this is what tells them apart.
-    return {knots: [], justPlaced: -1};
-  }
-
-  // Returns true if the knot was added. A click too close to the previous knot is
-  // rejected rather than producing a zero-length curve segment.
-  function addKnot(state, p, minDistance) {
-    var min = minDistance === undefined ? MIN_KNOT_DISTANCE : minDistance;
-    var last = lastKnot(state);
-    if (!isValidPoint(p)) return false;
-    if (last && distance(last, p) < min) return false;
-    state.knots.push([p[0], p[1]]);
-    return true;
-  }
-
-  function moveKnot(state, i, p) {
-    if (!isValidPoint(p) || !(i >= 0 && i < state.knots.length)) return false;
-    state.knots[i] = [p[0], p[1]];
-    return true;
-  }
-
-  function removeLastKnot(state) {
-    if (state.knots.length === 0) return false;
-    state.knots.pop();
-    return true;
-  }
-
-  // Index of the placed knot nearest @p within @threshold, or -1. Searches from
-  // the end, so the most recently placed of two overlapping knots wins.
-  function findKnotNear(state, p, threshold) {
-    var limit = threshold === undefined ? KNOT_HIT_THRESHOLD : threshold;
-    var best = -1;
-    var bestDist = limit;
-    var d, i;
-    if (!isValidPoint(p)) return -1;
-    for (i = state.knots.length - 1; i >= 0; i--) {
-      d = distance(state.knots[i], p);
-      if (d <= bestDist) {
-        bestDist = d;
-        best = i;
-      }
-    }
-    return best;
-  }
-
-  // Two knots make a straight label; one makes nothing worth keeping.
-  function curveIsComplete(state) {
-    return state.knots.length >= 2;
-  }
-
-  // What a click at @p does to the curve, and does to it here: 'added' if it
-  // placed a knot, 'ignored' if it landed on a knot that is already there or too
-  // close to the last one.
-  //
-  // A click on a placed knot must not leave a duplicate knot behind: the curve
-  // fitter would have a zero-length chord to find a direction along.
-  function handleClick(state, p, hitThreshold, minDistance) {
-    var near = findKnotNear(state, p, hitThreshold);
-    if (near > -1) {
-      // Clicking a knot this gesture did not place ends the gesture's claim on
-      // whatever it placed before, so that a double-click on an already-placed
-      // knot is not read as finishing.
-      if (near !== state.justPlaced) state.justPlaced = -1;
-      return 'ignored';
-    }
-    if (!addKnot(state, p, minDistance)) {
-      state.justPlaced = -1;
-      return 'ignored';
-    }
-    state.justPlaced = state.knots.length - 1;
-    return 'added';
-  }
-
-  // What a double-click at @p means: 'finish' to end the curve here, or 'none'.
-  //
-  // Double-clicking empty map finishes, and the knot the opening click placed
-  // counts as empty map -- that click is how the ordinary finishing gesture
-  // starts, so without the exception it would land on a knot every time.
-  //
-  // A double-click on a knot that was already there does nothing. It cannot add
-  // one, since the knot is in the way, and finishing on it would end the curve
-  // somewhere other than where the pointer was when the gesture began.
-  function getDblclickAction(state, p, hitThreshold) {
-    var near = findKnotNear(state, p, hitThreshold);
-    if (state.knots.length === 0) return {action: 'none'};
-    if (near > -1 && near !== state.justPlaced) return {action: 'none'};
-    return {action: 'finish'};
-  }
-
-  // Forgets which knot the current gesture placed, e.g. after a knot is removed
-  // and the indexes no longer line up.
-  function clearGesture(state) {
-    state.justPlaced = -1;
-  }
-
-  function lastKnot(state) {
-    return state.knots.length > 0 ? state.knots[state.knots.length - 1] : null;
-  }
-
-  function distance(a, b) {
-    return Math.sqrt(Math.pow(a[0] - b[0], 2) + Math.pow(a[1] - b[1], 2));
-  }
-
-  function isValidPoint(p) {
-    return !!p && p.length >= 2 && isFinite(p[0]) && isFinite(p[1]);
-  }
-
   // The label tool: arming a label type, placing an anchor or a curve, turning
   // the result into a -labels coordinates= command, and handing the new label to the
   // in-place text editor.
@@ -36769,7 +37653,7 @@
     // The tool opens this menu itself, rather than leaving it to the inspection
     // control as the other non-drawing modes do, because deleting a label here
     // has to be a command like every other edit the tool makes -- the generic
-    // "delete point" item mutates the layer in place, which would leave the
+    // delete item mutates the layer in place, which would leave the
     // deletion out of the session history and out of step with undo.
     hit.on('contextmenu', function(e) {
       var target = hit.getHitTarget();
@@ -36779,6 +37663,7 @@
       if (target && id > -1) {
         e.selectActions = getSelectActions(target, id);
         e.deleteFeature = getDeleteAction(id);
+        e.deleteId = id;
         // Nobody guesses that text is dragged across its own curve, and there is
         // no bracket drawn to suggest it, so the gesture has a second way in.
         // Not on a label being typed into: its text is in the editor rather than
@@ -38851,7 +39736,7 @@
 
     function initIconSection() {
       // Not "Symbol": icons and curves are both symbols
-      iconSection = makePanelSection(panel, 'Icon style');
+      iconSection = makePanelSection(panel, 'Icons');
       var shapeRow = El('div').addClass('label-style-row label-icon-shapes-row').appendTo(iconSection);
       var group = El('div').addClass('label-btn-group label-icon-buttons').appendTo(shapeRow);
       getShownShapes().forEach(function(item) {
@@ -38919,7 +39804,7 @@
     }
 
     function initCurveSection() {
-      curveSection = makePanelSection(panel, 'Curve style').addClass('symbol-curve-section');
+      curveSection = makePanelSection(panel, 'Curves').addClass('symbol-curve-section');
       // "Color", as a label callout's is: the line and its heads are drawn in it
       curveStroke = makeColorRow(curveSection, {
         label: 'Color',
@@ -39075,7 +39960,7 @@
       status.text(formatEditingStatus({
         selected: state.all ? 0 : state.ids.length,
         total: state.all ? state.ids.length : 0,
-        newShapes: armed ? 'symbols' : null
+        newShapes: armed == 'curve' ? 'curves' : armed ? 'icons' : null
       }));
       clearLink.classed('hidden', state.mode != 'selection' || state.all);
       toggle(iconSection, state.mode == 'selection' ? state.icons.length > 0 : armed != 'curve');
@@ -40256,6 +41141,7 @@
   function initInteractiveEditing(gui, ext, hit) {
     initPointEditing(gui, ext, hit);
     initLineEditing(gui, ext, hit);
+    initCurveLineTool(gui, ext, hit);
     initSnipTool(gui, ext, hit);
     initLabelTool(gui, ext, hit);
     initLabelHitCues(gui, ext, hit);
@@ -41308,7 +42194,16 @@
     } else {
       arcs = getArcsForRendering(lyr, ext);
       filter = getShapeFilter(arcs, layer.shapes, ext, style.overlay ? 0 : style.glowReach);
-      canv.drawStyledPaths(layer.shapes, arcs, style, filter);
+      // Overlays copy the layer's style, hiddenIds included, but their shapes
+      // are a subset of the layer's, so the ids do not apply to them.
+      if (style.hiddenIds && style.hiddenIds.length > 0 && !style.overlay) {
+        filter = getShapeFilterWithout(filter, style.hiddenIds);
+      }
+      // verticesOnly: the vertex markers of an editing overlay, over shapes that
+      // another overlay layer draws
+      if (!style.verticesOnly) {
+        canv.drawStyledPaths(layer.shapes, arcs, style, filter);
+      }
       if (style.vertices || style.vertex_overlay || style.pending_snip) {
         canv.drawVertices(layer.shapes, arcs, style, filter);
       }
@@ -41362,6 +42257,16 @@
       b.empty();
       arcs.getMultiShapeBounds(shp, b);
       return view.intersects(b);
+    };
+  }
+
+  // A layer's shape filter that also leaves out shapes @ids, which a tool is
+  // drawing in the overlay instead (see setHiddenShapes() in gui-hit-control.mjs)
+  function getShapeFilterWithout(filter, ids) {
+    var hidden = {};
+    ids.forEach(function(id) { hidden[id] = true; });
+    return function(i) {
+      return hidden[i] !== true && (!filter || filter(i));
     };
   }
 
@@ -44984,6 +45889,7 @@
           // regenerating active style everytime, to support style change when
           // switching between outline and preview modes.
           style = getActiveLayerStyle(mapLayer.gui.displayLayer, getGlobalStyleOptions());
+          style.hiddenIds = _hit ? _hit.getHiddenShapeIds() : [];
         } else {
           if (mapLayer == _activeLyr) {
             console.error("Error: shared map layer");
@@ -47757,6 +48663,21 @@
         return coords ? coords.map(function(p) {
           return ext.translateCoords(p[0], p[1]);
         }) : null;
+      },
+      // The knot handles shown by the curve tool, in pixels as above; null if
+      // there are none
+      getPendingKnotPixels: function() {
+        var hit = gui.map && gui.map.getHitControl ? gui.map.getHitControl() : null;
+        var knots = hit ? hit.getHitState().pending_knots : null;
+        var ext = gui.map.getExtent();
+        return knots ? knots.map(function(p) {
+          return ext.translateCoords(p[0], p[1]);
+        }) : null;
+      },
+      // The features the layer is drawn without while a tool redraws them
+      getHiddenShapeIds: function() {
+        var hit = gui.map && gui.map.getHitControl ? gui.map.getHitControl() : null;
+        return hit ? hit.getHiddenShapeIds() : [];
       },
       // the vertex marked under the pointer (display coords), or null
       getHoverVertex: function() {

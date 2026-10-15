@@ -6082,6 +6082,27 @@
     };
   }
 
+  // Returns a test for arcs that are referenced by a path layer in @dataset, or
+  // null if every arc is referenced (or there are no path layers to refer to
+  // them). Arcs can be left unreferenced by commands like -filter, and by GUI
+  // edits that replace a path's arcs; code that reads all the arcs in a
+  // collection uses this to skip them.
+  function getUsedArcTest(dataset) {
+    var arcs = dataset.arcs;
+    var layers = dataset.layers || [];
+    var counts;
+    if (!arcs || !layers.some(layerHasPaths)) return null;
+    counts = countArcsInLayers(layers, arcs);
+    for (var i=0, n=counts.length; i<n; i++) {
+      if (counts[i] === 0) {
+        return function(arcId) {
+          return counts[absArcId(arcId)] > 0;
+        };
+      }
+    }
+    return null;
+  }
+
   // Count arcs in a collection of layers
   function countArcsInLayers(layers, arcs) {
     var counts = new Uint32Array(arcs.size());
@@ -6134,6 +6155,7 @@
     getLayerDataTable: getLayerDataTable,
     getLayerSourceFile: getLayerSourceFile,
     getOutputLayer: getOutputLayer,
+    getUsedArcTest: getUsedArcTest,
     initDataTable: initDataTable,
     insertFieldValues: insertFieldValues,
     isolateLayer: isolateLayer,
@@ -11957,10 +11979,359 @@
     return chainIds;
   }
 
+  // @arcs ArcCollection
+  // @filter Optional filter function, arcIds that return false are excluded
+  //
+  function NodeCollection(arcs, filter) {
+    if (Array.isArray(arcs)) {
+      arcs = new ArcCollection(arcs);
+    }
+    var arcData = arcs.getVertexData(),
+        nn = arcData.nn,
+        xx = arcData.xx,
+        yy = arcData.yy,
+        nodeData,
+        globalFilter;
+
+    // Accessor function for arcs
+    Object.defineProperty(this, 'arcs', {value: arcs});
+
+    this.setArcFilter = function(f) {
+      globalFilter = f;
+    };
+
+    this.toArray = function() {
+      var chains = getNodeChains(),
+          flags = new Uint8Array(chains.length),
+          arr = [];
+      utils.forEach(chains, function(nextIdx, thisIdx) {
+        var node, p;
+        if (flags[thisIdx] == 1) return;
+        p = getEndpoint(thisIdx);
+        if (!p) return; // endpoints of an excluded arc
+        node = {coordinates: p, arcs: []};
+        arr.push(node);
+        while (flags[thisIdx] != 1) {
+          node.arcs.push(chainToArcId(thisIdx));
+          flags[thisIdx] = 1;
+          thisIdx = chains[thisIdx];
+        }
+      });
+      return arr;
+    };
+
+    this.size = function() {
+      return this.toArray().length;
+    };
+
+    this.findDanglingEndpoints = function() {
+      var chains = getNodeChains(),
+          arr = [], p;
+      for (var i=0, n=chains.length; i<n; i++) {
+        if (chains[i] != i) continue; // endpoint attaches to a node
+        p = getEndpoint(i);
+        if (!p) continue; // endpoint belongs to an excluded arc
+        arr.push({
+          point: p,
+          arc: chainToArcId(i)
+        });
+      }
+      return arr;
+    };
+
+    this.detachAcyclicArcs = function() {
+      var chains = getNodeChains(),
+          count = 0,
+          fwd, rev;
+      for (var i=0, n=chains.length; i<n; i+= 2) {
+        fwd = i == chains[i];
+        rev = i + 1 == chains[i + 1];
+        // detach arcs that are disconnected at one end or the other
+        if ((fwd || rev) && !linkIsDetached(i)) {
+          this.detachArc(chainToArcId(i));
+          count++;
+        }
+      }
+      if (count > 0) {
+        // removing one acyclic arc could expose another -- need another pass
+        count += this.detachAcyclicArcs();
+      }
+      return count;
+    };
+
+    this.detachArc = function(arcId) {
+      unlinkDirectedArc(arcId);
+      unlinkDirectedArc(~arcId);
+    };
+
+    this.forEachConnectedArc = function(arcId, cb) {
+      var nextId = nextConnectedArc(arcId),
+          i = 0;
+      while (nextId != arcId) {
+        cb(nextId, i++);
+        nextId = nextConnectedArc(nextId);
+      }
+    };
+
+    // Receives an arc id for an arc that enters a node.
+    // Returns an array of ids of all other arcs that are connected to the same node.
+    //    Returned ids lead into the node (as opposed to outwards from it)
+    // An optional filter function receives the directed id (positive or negative)
+    //    of each connected arc and excludes arcs for which the filter returns false.
+    //    // removed: The filter is also applied to the initial arc; if false, no arcs are returned.
+    //
+    this.getConnectedArcs = function(arcId, localFilter) {
+      var ids = [];
+      var nextId = nextConnectedArc(arcId);
+      // kludge: return empty result if arc fails global test
+      // ... applying the local filter causes tests to fail
+      if (globalFilter && !globalFilter(arcId)) {
+        return [];
+      }
+      while (nextId != arcId) {
+        // if (!filtered || filter && filter(nextId) ) {
+        if ((!localFilter || localFilter(nextId)) && (!globalFilter || globalFilter(nextId))) {
+          ids.push(nextId);
+        }
+        nextId = nextConnectedArc(nextId);
+      }
+      return ids;
+    };
+
+    // Returns the id of the first identical arc or @arcId if none found
+    // TODO: find a better function name
+    this.findDuplicateArc = function(arcId) {
+      var nextId = nextConnectedArc(arcId),
+          match = arcId;
+      while (nextId != arcId) {
+        if (testArcMatch(arcId, nextId)) {
+          if (absArcId(nextId) < absArcId(match)) match = nextId;
+        }
+        nextId = nextConnectedArc(nextId);
+      }
+      return match;
+    };
+
+    // returns null if link has been removed from node collection
+    function getEndpoint(chainId) {
+      return linkIsDetached(chainId) ? null : [nodeData.xx[chainId], nodeData.yy[chainId]];
+    }
+
+    function linkIsDetached(chainId) {
+      return isNaN(nodeData.xx[chainId]);
+    }
+
+    function unlinkDirectedArc(arcId) {
+      var chainId = arcToChainId(arcId),
+          chains = getNodeChains(),
+          nextId = chains[chainId],
+          prevId = prevChainId(chainId);
+      nodeData.xx[chainId] = NaN;
+      nodeData.yy[chainId] = NaN;
+      chains[chainId] = chainId;
+      chains[prevId] = nextId;
+    }
+
+    function chainToArcId(chainId) {
+      var absId = chainId >> 1;
+      return chainId & 1 == 1 ? absId : ~absId;
+    }
+
+    function arcToChainId(arcId) {
+      var fw = arcId >= 0;
+      return fw ? arcId * 2 + 1 : (~arcId) * 2; // if fw, use end, if rev, use start
+    }
+
+    function getNodeChains() {
+      if (!nodeData) {
+        nodeData = findNodeTopology(arcs, filter);
+        if (nn.length * 2 != nodeData.chains.length) error("[NodeCollection] count error");
+      }
+      return nodeData.chains;
+    }
+
+    function testArcMatch(a, b) {
+      var absA = a >= 0 ? a : ~a,
+          absB = b >= 0 ? b : ~b,
+          lenA = nn[absA];
+      if (lenA < 2) {
+        // Don't throw error on collapsed arcs -- assume they will be handled
+        //   appropriately downstream.
+        // error("[testArcMatch() defective arc; len:", lenA);
+        return false;
+      }
+      if (lenA != nn[absB]) return false;
+      if (testVertexMatch(a, b, -1) &&
+          testVertexMatch(a, b, 1) &&
+          testVertexMatch(a, b, -2)) {
+        return true;
+      }
+      return false;
+    }
+
+    function testVertexMatch(a, b, i) {
+      var ai = arcs.indexOfVertex(a, i),
+          bi = arcs.indexOfVertex(b, i);
+      return xx[ai] == xx[bi] && yy[ai] == yy[bi];
+    }
+
+    // return arcId of next arc in the chain, pointed towards the shared vertex
+    function nextConnectedArc(arcId) {
+      var chainId = arcToChainId(arcId),
+          chains =  getNodeChains(),
+          nextChainId = chains[chainId];
+      if (!(nextChainId >= 0 && nextChainId < chains.length)) {
+        // console.log('arcId:', arcId, 'chainId:', chainId, 'next chain id:', nextChainId)
+        error("out-of-range chain id");
+      }
+      return chainToArcId(nextChainId);
+    }
+
+    function prevChainId(chainId) {
+      var chains = getNodeChains(),
+          prevId = chainId,
+          nextId = chains[chainId];
+      while (nextId != chainId) {
+        prevId = nextId;
+        nextId = chains[nextId];
+        if (nextId == prevId) error("Node indexing error");
+      }
+      return prevId;
+    }
+
+    // expose functions for testing
+    this.internal = {
+      testArcMatch: testArcMatch,
+      testVertexMatch: testVertexMatch
+    };
+  }
+
+  function findNodeTopology(arcs, filter) {
+    var n = arcs.size() * 2,
+        xx2 = new Float64Array(n),
+        yy2 = new Float64Array(n),
+        ids2 = new Int32Array(n);
+
+    arcs.forEach2(function(arcId, i, n, xx, yy, zz) {
+      var start = i,
+          end = i + n - 1,
+          start2 = arcId * 2,
+          end2 = start2 + 1,
+          ax = xx[start],
+          ay = yy[start],
+          bx = xx[end],
+          by = yy[end];
+      if (filter && !filter(arcId)) {
+        ax = ay = bx = by = NaN;
+      }
+
+      xx2[start2] = ax;
+      yy2[start2] = ay;
+      ids2[start2] = arcId;
+      xx2[end2] = bx;
+      yy2[end2] = by;
+      ids2[end2] = arcId;
+    });
+
+    var chains = initPointChains(xx2, yy2);
+    return {
+      xx: xx2,
+      yy: yy2,
+      ids: ids2,
+      chains: chains
+    };
+  }
+
+  // Remap any references to duplicate arcs in paths to use the same arcs
+  // Remove any unused arcs from the dataset's ArcCollection.
+  // Return a NodeCollection
+  function cleanArcReferences(dataset) {
+    profileStart('NodeCollection#1');
+    var nodes = new NodeCollection(dataset.arcs);
+    profileEnd('NodeCollection#1');
+    profileStart('findDuplicateArcs');
+    var map = findDuplicateArcs(nodes);
+    profileEnd('findDuplicateArcs');
+    var dropCount;
+    if (map) {
+      profileStart('replaceIndexedArcIds');
+      replaceIndexedArcIds(dataset, map);
+      profileEnd('replaceIndexedArcIds');
+    }
+    profileStart('deleteUnusedArcs');
+    dropCount = deleteUnusedArcs(dataset);
+    profileEnd('deleteUnusedArcs');
+    if (dropCount > 0) {
+      // rebuild nodes if arcs have changed
+      profileStart('NodeCollection#2');
+      nodes = new NodeCollection(dataset.arcs);
+      profileEnd('NodeCollection#2');
+    }
+    return nodes;
+  }
+
+  // Returns the number of arcs deleted. Arcs are condensed in place, so a dataset
+  // without unused arcs is left as it is.
+  function deleteUnusedArcs(dataset) {
+    var test = getArcPresenceTest2(dataset.layers, dataset.arcs);
+    var count1 = dataset.arcs.size();
+    var map = dataset.arcs.deleteArcs(test); // condenses arcs
+    var count2 = dataset.arcs.size();
+    var deleteCount = count1 - count2;
+    var pathLayers;
+    if (deleteCount > 0) {
+      pathLayers = dataset.layers.filter(layerHasPaths);
+      pathLayers.forEach(function(lyr) {
+        noteLayerWillChange(lyr, {operation: 'deleteUnusedArcs', unit: 'shapes'});
+      });
+      replaceIndexedArcIds(dataset, map);
+      pathLayers.forEach(function(lyr) {
+        markLayerChanged(lyr, {operation: 'deleteUnusedArcs', unit: 'shapes'});
+      });
+    }
+    return deleteCount;
+  }
+
+  // @map an Object mapping old to new ids
+  function replaceIndexedArcIds(dataset, map) {
+    var remapPath = function(ids) {
+      var arcId, absId, id2;
+      for (var i=0; i<ids.length; i++) {
+        arcId = ids[i];
+        absId = absArcId(arcId);
+        id2 = map[absId];
+        ids[i] = arcId == absId ? id2 : ~id2;
+      }
+      return ids;
+    };
+    dataset.layers.forEach(function(lyr) {
+      if (layerHasPaths(lyr)) {
+        editShapes(lyr.shapes, remapPath);
+      }
+    });
+  }
+
+  function findDuplicateArcs(nodes) {
+    var map = new Int32Array(nodes.arcs.size()),
+        count = 0,
+        i2;
+    for (var i=0, n=nodes.arcs.size(); i<n; i++) {
+      i2 = nodes.findDuplicateArc(i);
+      map[i] = i2;
+      if (i != i2) count++;
+    }
+    return count > 0 ? map : null;
+  }
+
   // Converts all polygon and polyline paths in a dataset to a topological format
   // (in-place)
   function buildTopology(dataset) {
     if (!dataset.arcs) return;
+    // An arc that no layer uses would share vertices with the arcs it touches,
+    // and split them into smaller arcs.
+    if ((dataset.layers || []).some(layerHasPaths)) {
+      deleteUnusedArcs(dataset);
+    }
     var raw = dataset.arcs.getVertexData(),
         cooked = buildPathTopology(raw.nn, raw.xx, raw.yy);
     dataset.arcs.updateVertexData(cooked.nn, cooked.xx, cooked.yy);
@@ -12487,269 +12858,6 @@
     findLineEnds: findLineEnds,
     getPathEndpointTest: getPathEndpointTest
   });
-
-  // @arcs ArcCollection
-  // @filter Optional filter function, arcIds that return false are excluded
-  //
-  function NodeCollection(arcs, filter) {
-    if (Array.isArray(arcs)) {
-      arcs = new ArcCollection(arcs);
-    }
-    var arcData = arcs.getVertexData(),
-        nn = arcData.nn,
-        xx = arcData.xx,
-        yy = arcData.yy,
-        nodeData,
-        globalFilter;
-
-    // Accessor function for arcs
-    Object.defineProperty(this, 'arcs', {value: arcs});
-
-    this.setArcFilter = function(f) {
-      globalFilter = f;
-    };
-
-    this.toArray = function() {
-      var chains = getNodeChains(),
-          flags = new Uint8Array(chains.length),
-          arr = [];
-      utils.forEach(chains, function(nextIdx, thisIdx) {
-        var node, p;
-        if (flags[thisIdx] == 1) return;
-        p = getEndpoint(thisIdx);
-        if (!p) return; // endpoints of an excluded arc
-        node = {coordinates: p, arcs: []};
-        arr.push(node);
-        while (flags[thisIdx] != 1) {
-          node.arcs.push(chainToArcId(thisIdx));
-          flags[thisIdx] = 1;
-          thisIdx = chains[thisIdx];
-        }
-      });
-      return arr;
-    };
-
-    this.size = function() {
-      return this.toArray().length;
-    };
-
-    this.findDanglingEndpoints = function() {
-      var chains = getNodeChains(),
-          arr = [], p;
-      for (var i=0, n=chains.length; i<n; i++) {
-        if (chains[i] != i) continue; // endpoint attaches to a node
-        p = getEndpoint(i);
-        if (!p) continue; // endpoint belongs to an excluded arc
-        arr.push({
-          point: p,
-          arc: chainToArcId(i)
-        });
-      }
-      return arr;
-    };
-
-    this.detachAcyclicArcs = function() {
-      var chains = getNodeChains(),
-          count = 0,
-          fwd, rev;
-      for (var i=0, n=chains.length; i<n; i+= 2) {
-        fwd = i == chains[i];
-        rev = i + 1 == chains[i + 1];
-        // detach arcs that are disconnected at one end or the other
-        if ((fwd || rev) && !linkIsDetached(i)) {
-          this.detachArc(chainToArcId(i));
-          count++;
-        }
-      }
-      if (count > 0) {
-        // removing one acyclic arc could expose another -- need another pass
-        count += this.detachAcyclicArcs();
-      }
-      return count;
-    };
-
-    this.detachArc = function(arcId) {
-      unlinkDirectedArc(arcId);
-      unlinkDirectedArc(~arcId);
-    };
-
-    this.forEachConnectedArc = function(arcId, cb) {
-      var nextId = nextConnectedArc(arcId),
-          i = 0;
-      while (nextId != arcId) {
-        cb(nextId, i++);
-        nextId = nextConnectedArc(nextId);
-      }
-    };
-
-    // Receives an arc id for an arc that enters a node.
-    // Returns an array of ids of all other arcs that are connected to the same node.
-    //    Returned ids lead into the node (as opposed to outwards from it)
-    // An optional filter function receives the directed id (positive or negative)
-    //    of each connected arc and excludes arcs for which the filter returns false.
-    //    // removed: The filter is also applied to the initial arc; if false, no arcs are returned.
-    //
-    this.getConnectedArcs = function(arcId, localFilter) {
-      var ids = [];
-      var nextId = nextConnectedArc(arcId);
-      // kludge: return empty result if arc fails global test
-      // ... applying the local filter causes tests to fail
-      if (globalFilter && !globalFilter(arcId)) {
-        return [];
-      }
-      while (nextId != arcId) {
-        // if (!filtered || filter && filter(nextId) ) {
-        if ((!localFilter || localFilter(nextId)) && (!globalFilter || globalFilter(nextId))) {
-          ids.push(nextId);
-        }
-        nextId = nextConnectedArc(nextId);
-      }
-      return ids;
-    };
-
-    // Returns the id of the first identical arc or @arcId if none found
-    // TODO: find a better function name
-    this.findDuplicateArc = function(arcId) {
-      var nextId = nextConnectedArc(arcId),
-          match = arcId;
-      while (nextId != arcId) {
-        if (testArcMatch(arcId, nextId)) {
-          if (absArcId(nextId) < absArcId(match)) match = nextId;
-        }
-        nextId = nextConnectedArc(nextId);
-      }
-      return match;
-    };
-
-    // returns null if link has been removed from node collection
-    function getEndpoint(chainId) {
-      return linkIsDetached(chainId) ? null : [nodeData.xx[chainId], nodeData.yy[chainId]];
-    }
-
-    function linkIsDetached(chainId) {
-      return isNaN(nodeData.xx[chainId]);
-    }
-
-    function unlinkDirectedArc(arcId) {
-      var chainId = arcToChainId(arcId),
-          chains = getNodeChains(),
-          nextId = chains[chainId],
-          prevId = prevChainId(chainId);
-      nodeData.xx[chainId] = NaN;
-      nodeData.yy[chainId] = NaN;
-      chains[chainId] = chainId;
-      chains[prevId] = nextId;
-    }
-
-    function chainToArcId(chainId) {
-      var absId = chainId >> 1;
-      return chainId & 1 == 1 ? absId : ~absId;
-    }
-
-    function arcToChainId(arcId) {
-      var fw = arcId >= 0;
-      return fw ? arcId * 2 + 1 : (~arcId) * 2; // if fw, use end, if rev, use start
-    }
-
-    function getNodeChains() {
-      if (!nodeData) {
-        nodeData = findNodeTopology(arcs, filter);
-        if (nn.length * 2 != nodeData.chains.length) error("[NodeCollection] count error");
-      }
-      return nodeData.chains;
-    }
-
-    function testArcMatch(a, b) {
-      var absA = a >= 0 ? a : ~a,
-          absB = b >= 0 ? b : ~b,
-          lenA = nn[absA];
-      if (lenA < 2) {
-        // Don't throw error on collapsed arcs -- assume they will be handled
-        //   appropriately downstream.
-        // error("[testArcMatch() defective arc; len:", lenA);
-        return false;
-      }
-      if (lenA != nn[absB]) return false;
-      if (testVertexMatch(a, b, -1) &&
-          testVertexMatch(a, b, 1) &&
-          testVertexMatch(a, b, -2)) {
-        return true;
-      }
-      return false;
-    }
-
-    function testVertexMatch(a, b, i) {
-      var ai = arcs.indexOfVertex(a, i),
-          bi = arcs.indexOfVertex(b, i);
-      return xx[ai] == xx[bi] && yy[ai] == yy[bi];
-    }
-
-    // return arcId of next arc in the chain, pointed towards the shared vertex
-    function nextConnectedArc(arcId) {
-      var chainId = arcToChainId(arcId),
-          chains =  getNodeChains(),
-          nextChainId = chains[chainId];
-      if (!(nextChainId >= 0 && nextChainId < chains.length)) {
-        // console.log('arcId:', arcId, 'chainId:', chainId, 'next chain id:', nextChainId)
-        error("out-of-range chain id");
-      }
-      return chainToArcId(nextChainId);
-    }
-
-    function prevChainId(chainId) {
-      var chains = getNodeChains(),
-          prevId = chainId,
-          nextId = chains[chainId];
-      while (nextId != chainId) {
-        prevId = nextId;
-        nextId = chains[nextId];
-        if (nextId == prevId) error("Node indexing error");
-      }
-      return prevId;
-    }
-
-    // expose functions for testing
-    this.internal = {
-      testArcMatch: testArcMatch,
-      testVertexMatch: testVertexMatch
-    };
-  }
-
-  function findNodeTopology(arcs, filter) {
-    var n = arcs.size() * 2,
-        xx2 = new Float64Array(n),
-        yy2 = new Float64Array(n),
-        ids2 = new Int32Array(n);
-
-    arcs.forEach2(function(arcId, i, n, xx, yy, zz) {
-      var start = i,
-          end = i + n - 1,
-          start2 = arcId * 2,
-          end2 = start2 + 1,
-          ax = xx[start],
-          ay = yy[start],
-          bx = xx[end],
-          by = yy[end];
-      if (filter && !filter(arcId)) {
-        ax = ay = bx = by = NaN;
-      }
-
-      xx2[start2] = ax;
-      yy2[start2] = ay;
-      ids2[start2] = arcId;
-      xx2[end2] = bx;
-      yy2[end2] = by;
-      ids2[end2] = arcId;
-    });
-
-    var chains = initPointChains(xx2, yy2);
-    return {
-      xx: xx2,
-      yy: yy2,
-      ids: ids2,
-      chains: chains
-    };
-  }
 
   // Dissolve arcs that can be merged without affecting topology of layers
   // remove arcs that are not referenced by any layer; remap arc ids
@@ -17530,8 +17638,11 @@
     return new Uint32Array(buf, 0, count);
   }
 
+  // opts.arcFilter (optional): function(arcId) returning false for arcs to skip,
+  //   e.g. arcs that no layer uses (see getUsedArcTest())
   function findSegmentIntersections(arcs, optArg) {
     var opts = utils.extend({}, optArg),
+        forEachSegment = getSegmentIterator(arcs, opts.arcFilter),
         bounds = arcs.getBounds();
         // TODO: handle spherical bounds
         !arcs.isPlanar() &&
@@ -17556,7 +17667,7 @@
     function singleStripeId(y) {return 0;}
     // Count segments in each stripe
     profileStart('stripeSetup');
-    arcs.forEachSegment(function(id1, id2, xx, yy) {
+    forEachSegment(function(id1, id2, xx, yy) {
       var s1 = stripeId(yy[id1]),
           s2 = stripeId(yy[id2]);
       while (true) {
@@ -17578,7 +17689,7 @@
     // Assign segment ids to each stripe
     utils.initializeArray(stripeSizes, 0);
 
-    arcs.forEachSegment(function(id1, id2, xx, yy) {
+    forEachSegment(function(id1, id2, xx, yy) {
       var s1 = stripeId(yy[id1]),
           s2 = stripeId(yy[id2]),
           count, stripe;
@@ -17615,6 +17726,19 @@
     var deduped = dedupIntersections(intersections, opts.unique ? getUniqueIntersectionKey : null);
     profileEnd('dedupIntersections');
     return deduped;
+  }
+
+  function getSegmentIterator(arcs, arcFilter) {
+    if (!arcFilter) {
+      return function(cb) {
+        arcs.forEachSegment(cb);
+      };
+    }
+    return function(cb) {
+      for (var i=0, n=arcs.size(); i<n; i++) {
+        if (arcFilter(i)) arcs.forEachArcSegment(i, cb);
+      }
+    };
   }
 
 
@@ -17809,30 +17933,33 @@
 
 
   // arcs: ArcCollection containing original coordinates
-  function getRepairFunction(arcs) {
+  // arcFilter (optional): returns false for arcs to leave out, see
+  //   findSegmentIntersections()
+  function getRepairFunction(arcs, arcFilter) {
     var arcsOrig = arcs.getCopy();
     // updatedArcs: same ArcCollection, with snapped or rounded coords
     return function(updatedArcs) {
-      repairSegmentIntersections(updatedArcs, arcsOrig);
+      repairSegmentIntersections(updatedArcs, arcsOrig, arcFilter);
     };
   }
 
   // TODO: test with duplicate coordinates
   // arcs: modified arcs (rounded coordinates)
   // arcsOrig: original, unmodified arcs
-  function repairSegmentIntersections(arcs, arcsOrig) {
+  function repairSegmentIntersections(arcs, arcsOrig, arcFilter) {
+    var opts = {arcFilter: arcFilter};
     // Check for intersections in the original data
-    var xxOrig = findSegmentIntersections(arcsOrig);
+    var xxOrig = findSegmentIntersections(arcsOrig, opts);
     if (xxOrig.length > 0) {
       message('Original layer contains intersections -- unable to repair.');
       return;
     }
-    var intersections = findSegmentIntersections(arcs);
+    var intersections = findSegmentIntersections(arcs, opts);
     var maxLoops = 10;
     var startCount = intersections.length;
     for (var i=0; i<maxLoops && intersections.length > 0; i++) {
       revertIntersectionCoordinates(intersections, arcs, arcsOrig);
-      intersections = findSegmentIntersections(arcs);
+      intersections = findSegmentIntersections(arcs, opts);
     }
     var finalCount = intersections.length;
     if (finalCount > 0) {
@@ -18056,7 +18183,8 @@
 
   function setCoordinatePrecision(dataset, precision, fixGeom) {
     var round = getRoundingFunction(precision);
-    var repairArcs = dataset.arcs && fixGeom ? getRepairFunction(dataset.arcs) : null;
+    var repairArcs = dataset.arcs && fixGeom ?
+      getRepairFunction(dataset.arcs, getUsedArcTest(dataset)) : null;
     transformPoints(dataset, function(x, y) {
       return [round(x), round(y)];
     });
@@ -21848,77 +21976,6 @@
     splitPathByIds: splitPathByIds
   });
 
-  // Remap any references to duplicate arcs in paths to use the same arcs
-  // Remove any unused arcs from the dataset's ArcCollection.
-  // Return a NodeCollection
-  function cleanArcReferences(dataset) {
-    profileStart('NodeCollection#1');
-    var nodes = new NodeCollection(dataset.arcs);
-    profileEnd('NodeCollection#1');
-    profileStart('findDuplicateArcs');
-    var map = findDuplicateArcs(nodes);
-    profileEnd('findDuplicateArcs');
-    var dropCount;
-    if (map) {
-      profileStart('replaceIndexedArcIds');
-      replaceIndexedArcIds(dataset, map);
-      profileEnd('replaceIndexedArcIds');
-    }
-    profileStart('deleteUnusedArcs');
-    dropCount = deleteUnusedArcs(dataset);
-    profileEnd('deleteUnusedArcs');
-    if (dropCount > 0) {
-      // rebuild nodes if arcs have changed
-      profileStart('NodeCollection#2');
-      nodes = new NodeCollection(dataset.arcs);
-      profileEnd('NodeCollection#2');
-    }
-    return nodes;
-  }
-
-  function deleteUnusedArcs(dataset) {
-    var test = getArcPresenceTest2(dataset.layers, dataset.arcs);
-    var count1 = dataset.arcs.size();
-    var map = dataset.arcs.deleteArcs(test); // condenses arcs
-    var count2 = dataset.arcs.size();
-    var deleteCount = count1 - count2;
-    if (deleteCount > 0) {
-      replaceIndexedArcIds(dataset, map);
-    }
-    return deleteCount;
-  }
-
-  // @map an Object mapping old to new ids
-  function replaceIndexedArcIds(dataset, map) {
-    var remapPath = function(ids) {
-      var arcId, absId, id2;
-      for (var i=0; i<ids.length; i++) {
-        arcId = ids[i];
-        absId = absArcId(arcId);
-        id2 = map[absId];
-        ids[i] = arcId == absId ? id2 : ~id2;
-      }
-      return ids;
-    };
-    dataset.layers.forEach(function(lyr) {
-      if (layerHasPaths(lyr)) {
-        editShapes(lyr.shapes, remapPath);
-      }
-    });
-  }
-
-  function findDuplicateArcs(nodes) {
-    var map = new Int32Array(nodes.arcs.size()),
-        count = 0,
-        i2;
-    for (var i=0, n=nodes.arcs.size(); i<n; i++) {
-      i2 = nodes.findDuplicateArc(i);
-      map[i] = i2;
-      if (i != i2) count++;
-    }
-    return count > 0 ? map : null;
-  }
-
   // Functions for dividing polygons and polygons at points where arc-segments intersect
 
   // TODO:
@@ -21934,8 +21991,11 @@
     profileStart('addIntersectionCuts');
     var opts = _opts || {};
     var arcs = dataset.arcs;
-    var arcBounds = arcs && arcs.getBounds();
-    var snapDist, nodes;
+    var arcBounds, snapDist, nodes;
+    // Arcs that no layer uses would otherwise be snapped and cut along with the
+    // rest, adding nodes and vertices to the arcs they touch.
+    if (arcs) deleteUnusedArcs(dataset);
+    arcBounds = arcs && arcs.getBounds();
     if (!arcBounds || !arcBounds.hasBounds()) {
       profileEnd('addIntersectionCuts');
       return new NodeCollection([]);
@@ -40773,7 +40833,7 @@ ${css.join('\n')}
     if (dataset.arcs && opts.fix_geometry) {
       // try to repair intersections caused by quantization
       dataset.arcs.transformPoints(quantizer.transform);
-      repairArcs = getRepairFunction(dataset.arcs);
+      repairArcs = getRepairFunction(dataset.arcs, getUsedArcTest(dataset));
       dataset.arcs.transformPoints(function(x, y) {
         return [Math.round(x), Math.round(y)];
       });
@@ -50463,6 +50523,17 @@ ${css.join('\n')}
       })
       .option('coordinates', {
         describe: 'x,y of the point'
+      })
+      .option('target', targetOpt);
+
+    parser.command('update-line')
+      // .describe('replace the path of an existing line')
+      .option('ids', {
+        describe: 'feature id of the line to update',
+        type: 'numbers'
+      })
+      .option('coordinates', {
+        describe: 'x,y,x,y,... of the new path'
       })
       .option('target', targetOpt);
 
@@ -60180,7 +60251,7 @@ ${css.join('\n')}
       stop$1('Command expects a single target layer');
     }
     lyr = targetLayers[0];
-    id = getTargetId(lyr, opts, kind);
+    id = getTargetId$1(lyr, opts, kind);
     coords = parseLabelCoords(opts.coordinates);
     rec = getLayerDataTable(lyr).getRecords()[id];
     if (!kind.test(rec)) {
@@ -60206,7 +60277,7 @@ ${css.join('\n')}
 
   // Which feature to move. One coordinate list can only describe one feature, so
   // this takes a single id rather than the ids= list that -style accepts.
-  function getTargetId(lyr, opts, kind) {
+  function getTargetId$1(lyr, opts, kind) {
     var ids = opts.ids;
     var id;
     requirePointLayer(lyr, kind);
@@ -60628,6 +60699,66 @@ ${css.join('\n')}
     }
 
     stop$1('Unable to import coordinates');
+  }
+
+  cmd.updateLine = updateLine;
+
+  // Replaces the path of one line, keeping its attributes. The GUI's curve tool
+  // emits it when a knot of a curve is dragged, so that reshaping a curve is a
+  // command, with undo and session history.
+  //
+  // The new path's arcs are appended to the dataset's arcs, as -add-shape
+  // appends them, and the line's old arcs are left in place, unreferenced. A
+  // curve dragged many times leaves many of them behind, but rewriting the arcs
+  // instead would copy every vertex in the dataset on every drag, and an undo
+  // state would keep each copy. Commands that rewrite arcs prune unreferenced
+  // arcs, and the rest ignore them.
+  //
+  // The line goes in a copy of the target layer, which replaces it (see
+  // extendLine() in mapshaper-add-shape.mjs): undo then restores the old layer,
+  // and the arcs it refers to are still there.
+  function updateLine(targetLayers, dataset, opts) {
+    var lyr, id, feature, imported, pathLyr, outputLyr;
+    if (targetLayers.length > 1) {
+      stop$1('Command expects a single target layer');
+    }
+    lyr = targetLayers[0];
+    id = getTargetId(lyr, opts);
+    feature = toFeature({coordinates: opts.coordinates}, 'polyline');
+    if (feature.geometry.type != 'LineString') {
+      stop$1('Command expects a single path');
+    }
+    imported = importGeoJSON(feature);
+    setDatasetCrsInfo(imported, getDatasetCrsInfo(dataset));
+    pathLyr = mergeShapeIntoDataset(dataset, imported)[0];
+    if (!pathLyr.shapes[0]) {
+      stop$1('Invalid path coordinates');
+    }
+    outputLyr = Object.assign({}, lyr, {shapes: lyr.shapes.concat()});
+    outputLyr.shapes[id] = pathLyr.shapes[0];
+    return [outputLyr];
+  }
+
+  function getTargetId(lyr, opts) {
+    var ids = opts.ids;
+    var id;
+    if (!lyr || lyr.geometry_type != 'polyline') {
+      stop$1('Command requires a polyline target layer');
+    }
+    if (!ids || ids.length === 0) {
+      stop$1('Missing required ids parameter (the feature id of the line to update)');
+    }
+    if (ids.length > 1) {
+      stop$1('Command expects a single feature id; received', ids.join(','));
+    }
+    id = ids[0];
+    if (id >= 0 === false || id >= getFeatureCount(lyr)) {
+      stop$1('Layer "' + (lyr.name || '[unnamed]') + '" has no feature with id', id);
+    }
+    if (!opts.coordinates) {
+      stop$1('Missing required coordinates parameter');
+    }
+    return id;
   }
 
   const epsilon = 1.1102230246251565e-16;
@@ -74973,6 +75104,7 @@ ${css.join('\n')}
       // a few floating-point units during projection, preventing topology from
       // joining polygon parts that were split at the source antimeridian.
       var arcs = dataset.arcs;
+      deleteUnusedArcs(dataset); // unused arcs would pull in the vertices near them
       var snapDist = getHighPrecisionSnapInterval(arcs.getBounds().toArray());
       if (snapCoordsByInterval(arcs, snapDist) > 0) {
         arcs.dedupCoords();
@@ -75187,7 +75319,7 @@ ${css.join('\n')}
     if (!dataset.arcs) return;
 
     // TODO: only check the target layer for intersections
-    var intersections = findSegmentIntersections(dataset.arcs);
+    var intersections = findSegmentIntersections(dataset.arcs, {arcFilter: getUsedArcTest(dataset)});
     if (intersections.length > 0) {
       handleError(`Found ${intersections.length} intersection${intersections.length > 1 ? 's' : ''}.`, opts);
     }
@@ -82410,7 +82542,10 @@ ${css.join('\n')}
   function detectAndWarnIntersections(dataset, opts) {
     if (opts.quiet || opts.silent) return;
     if (!dataset.arcs || dataset.arcs.size() === 0) return;
-    var sample = findSegmentIntersections(dataset.arcs, {limit: INTERSECTION_SAMPLE_LIMIT});
+    var sample = findSegmentIntersections(dataset.arcs, {
+      limit: INTERSECTION_SAMPLE_LIMIT,
+      arcFilter: getUsedArcTest(dataset)
+    });
     if (sample.length === 0) return;
     var atLeast = sample.length >= INTERSECTION_SAMPLE_LIMIT ? 'at least ' : '';
     message('Warning: found ' + atLeast + sample.length +
@@ -89681,9 +89816,11 @@ ${css.join('\n')}
   // in the original dataset.
   // TODO: don't roll back simplification for unrepairable intersections.
   //
-  function postSimplifyRepair(arcs) {
-    var intersections = findSegmentIntersections(arcs),
-        unfixable = repairIntersections(arcs, intersections),
+  // arcFilter (optional): returns false for arcs to leave out, see
+  //   findSegmentIntersections()
+  function postSimplifyRepair(arcs, arcFilter) {
+    var intersections = findSegmentIntersections(arcs, {arcFilter: arcFilter}),
+        unfixable = repairIntersections(arcs, intersections, arcFilter),
         countPre = intersections.length,
         countPost = unfixable.length,
         countFixed = countPre > countPost ? countPre - countPost : 0,
@@ -89702,9 +89839,9 @@ ${css.join('\n')}
   // @intersections (Array) Output from findSegmentIntersections()
   // Returns array of unresolved intersections, or empty array if none.
   // (export for GUI)
-  function repairIntersections(arcs, intersections) {
+  function repairIntersections(arcs, intersections, arcFilter) {
     while (unwindIntersections(arcs, intersections) > 0) {
-      intersections = findSegmentIntersections(arcs);
+      intersections = findSegmentIntersections(arcs, {arcFilter: arcFilter});
     }
     return intersections;
   }
@@ -90009,7 +90146,7 @@ ${css.join('\n')}
     }
 
     if (!opts.no_repair && arcs.getRetainedInterval() > 0) {
-      postSimplifyRepair(arcs);
+      postSimplifyRepair(arcs, getUsedArcTest(dataset));
     }
 
     if (opts.stats) {
@@ -90424,6 +90561,7 @@ ${css.join('\n')}
     }
 
     arcs.flatten(); // bake in any simplification
+    deleteUnusedArcs(dataset); // unused arcs would pull in the vertices near them
     if (opts.fix_geometry) {
       repairArcs = arcs && getRepairFunction(arcs);
     }
@@ -91662,6 +91800,9 @@ ${css.join('\n')}
       } else if (name == 'update-point') {
         cmd.updatePoint(targetLayers, targetDataset, opts);
 
+      } else if (name == 'update-line') {
+        outputLayers = cmd.updateLine(targetLayers, targetDataset, opts);
+
       } else if (name == 'affine') {
         cmd.affine(targetLayers, targetDataset, opts);
 
@@ -92231,7 +92372,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.86";
+  var version = "0.7.87";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
