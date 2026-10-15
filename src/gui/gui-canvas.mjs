@@ -67,7 +67,16 @@ export function drawStyledLayerToCanvas(lyr, canv, ext) {
   } else {
     arcs = getArcsForRendering(lyr, ext);
     filter = getShapeFilter(arcs, layer.shapes, ext, style.overlay ? 0 : style.glowReach);
-    canv.drawStyledPaths(layer.shapes, arcs, style, filter);
+    // Overlays copy the layer's style, hiddenIds included, but their shapes
+    // are a subset of the layer's, so the ids do not apply to them.
+    if (style.hiddenIds && style.hiddenIds.length > 0 && !style.overlay) {
+      filter = getShapeFilterWithout(filter, style.hiddenIds);
+    }
+    // verticesOnly: the vertex markers of an editing overlay, over shapes that
+    // another overlay layer draws
+    if (!style.verticesOnly) {
+      canv.drawStyledPaths(layer.shapes, arcs, style, filter);
+    }
     if (style.vertices || style.vertex_overlay || style.pending_snip) {
       canv.drawVertices(layer.shapes, arcs, style, filter);
     }
@@ -121,6 +130,16 @@ function getShapeFilter(arcs, shapes, ext, reach) {
     b.empty();
     arcs.getMultiShapeBounds(shp, b);
     return view.intersects(b);
+  };
+}
+
+// A layer's shape filter that also leaves out shapes @ids, which a tool is
+// drawing in the overlay instead (see setHiddenShapes() in gui-hit-control.mjs)
+function getShapeFilterWithout(filter, ids) {
+  var hidden = {};
+  ids.forEach(function(id) { hidden[id] = true; });
+  return function(i) {
+    return hidden[i] !== true && (!filter || filter(i));
   };
 }
 

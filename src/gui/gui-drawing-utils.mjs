@@ -20,6 +20,45 @@ export function updateZ(lyr) {
   }
 }
 
+// Ids of the shapes with an arc containing one of vertices @vertexIds: the
+// shapes that moving the vertices changes, including any that share an arc
+export function findShapesWithVertices(shapes, vertexIds, arcs) {
+  var ii = arcs.getVertexData().ii;
+  var arcIds = {};
+  var ids = [];
+  vertexIds.forEach(function(v) {
+    arcIds[internal.findArcIdFromVertexId(v, ii)] = true;
+  });
+  for (var i = 0; i < shapes.length; i++) {
+    if (shapeUsesArcs(shapes[i], arcIds)) ids.push(i);
+  }
+  return ids;
+}
+
+function shapeUsesArcs(shp, arcIds) {
+  var i, j;
+  for (i = 0; shp && i < shp.length; i++) {
+    for (j = 0; j < shp[i].length; j++) {
+      if (arcIds[internal.absArcId(shp[i][j])] === true) return true;
+    }
+  }
+  return false;
+}
+
+// The vertices of each part of shapes @ids, as [[x, y], ...] paths
+export function getShapePaths(shapes, ids, arcs) {
+  var paths = [];
+  ids.forEach(function(id) {
+    (shapes[id] || []).forEach(function(part) {
+      var iter = arcs.getShapeIter(part);
+      var path = [];
+      while (iter.hasNext()) path.push([iter.x, iter.y]);
+      if (path.length > 1) paths.push(path);
+    });
+  });
+  return paths;
+}
+
 export function appendNewDataRecord(layer) {
   if (!layer.data) return null;
   var fields = layer.data.getFields();

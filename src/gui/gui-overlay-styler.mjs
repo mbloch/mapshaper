@@ -1,10 +1,11 @@
 import { filterLayerByIds } from './gui-layer-utils';
-import { getCanvasDisplayStyle } from './gui-layer-styler';
+import { getCanvasDisplayStyle, getActiveLayerStyle } from './gui-layer-styler';
 import { utils, internal } from './gui-core';
 import { labelCuesApply } from './gui-label-hit-cues';
 import {
   getLabelPathGuideLayers,
   getPendingLabelPath,
+  getKnotHandleLayer,
   wrapGuideLayer
 } from './gui-label-path-guide';
 
@@ -121,9 +122,10 @@ export function getOverlayLayers(activeLyr, hitData, styleOpts) {
   }
   if (styleOpts.interactionMode == 'edit_lines' ||
     styleOpts.interactionMode == 'edit_polygons' ||
+    styleOpts.interactionMode == 'curve_lines' ||
     styleOpts.interactionMode == 'line_style' ||
     styleOpts.interactionMode == 'polygon_style') {
-    // with or without the Draw tool, the same selection and hover cues
+    // with or without the Draw or curve tool, the same selection and hover cues
     return getDrawingLayers(activeLyr, hitData, styleOpts);
   }
   if (styleOpts.interactionMode == 'reshape_lines' ||
@@ -300,15 +302,30 @@ function getVertexStyle(o) {
 // it is shown as a layer of its own, without vertices, which are only of use
 // for reshaping a completed path. The hover markers go on the last layer, so
 // they are drawn on top.
+//
+// While the reshape tool drags a vertex, the shapes it moves are left out of
+// the layer (hitData.hidden_ids): their original geometry is drawn as a plain
+// outline, and the shapes as they are being reshaped in their own style, with
+// only the vertex markers over them.
 function getShapeEditingLayers(activeLyr, hitData, styleOpts) {
   var ids = hitData.ids || [];
+  var redrawn = getRedrawnShapeIds(activeLyr, hitData);
   var layers = [];
   var dark = !!(styleOpts && styleOpts.darkMode);
+  var editingLyr;
+  if (redrawn.length > 0) {
+    layers.push(getHiddenShapeLayer(activeLyr, hitData, redrawn, dark));
+    layers.push(getRedrawnShapeLayer(activeLyr, redrawn));
+  }
   if (hitData.pending_path) {
     layers.push(getPendingPathLayer(activeLyr, hitData, dark));
   }
-  if (ids.length > 0 || layers.length === 0) {
-    layers.push(getShapeEditingLayer(activeLyr, hitData, ids, true, dark));
+  if (ids.length > 0 || layers.length === 0 || redrawn.length > 0) {
+    editingLyr = getShapeEditingLayer(activeLyr, hitData, ids, true, dark);
+    if (redrawn.length > 0) {
+      editingLyr.gui.style.verticesOnly = true;
+    }
+    layers.push(editingLyr);
   }
   layers.forEach(function(lyr, i) {
     if (i < layers.length - 1) {
@@ -322,14 +339,24 @@ function getShapeEditingLayers(activeLyr, hitData, styleOpts) {
 // The overlay of the line and polygon style modes and their Draw tool: the
 // selected shapes; the shape under the pointer, which a click would select;
 // the path being drawn; and, on top, the vertex a path would start from or
-// snap to. A shape is not highlighted while a path is being drawn, since a
-// click then adds a vertex.
+// snap to, or the curve tool's knot handles. A shape is not highlighted while
+// a path is being drawn, since a click then adds a vertex.
+//
+// A shape that a tool is redrawing as the pending path (hitData.hidden_ids,
+// e.g. a curve whose knot is being dragged) is left out of the layer, and is
+// drawn here as a plain outline, so that its stroke width, dashes and
+// highlight are not seen twice.
 function getDrawingLayers(activeLyr, hitData, styleOpts) {
   var geomType = activeLyr.gui.displayLayer.geometry_type;
-  var selected = hitData.ids || [];
+  var hidden = hitData.hidden_ids || [];
+  var selected = (hitData.ids || []).filter(function(id) { return !hidden.includes(id); });
+  var redrawn = getRedrawnShapeIds(activeLyr, hitData);
   var dark = !!(styleOpts && styleOpts.darkMode);
   var layers = [];
-  var lyr;
+  var lyr, knotLyr;
+  if (redrawn.length > 0) {
+    layers.push(getHiddenShapeLayer(activeLyr, hitData, redrawn, dark));
+  }
   if (selected.length > 0) {
     lyr = getOverlayLayer(activeLyr, selected);
     lyr.gui.style = getOverlayStyle(activeLyr, selected,
@@ -352,7 +379,70 @@ function getDrawingLayers(activeLyr, hitData, styleOpts) {
   layers.forEach(function(lyr, i) {
     if (i < layers.length - 1) lyr.gui.style.vertex_overlay = null;
   });
+  knotLyr = getKnotHandleLayer(activeLyr, hitData.pending_knots);
+  if (knotLyr) layers.push(knotLyr);
   return layers;
+}
+
+// The hidden shapes that the overlay draws in place of the layer. A layer
+// drawn as an outline draws them plainly already, and is not drawn without
+// them (see drawStyledLayerToCanvas()).
+function getRedrawnShapeIds(activeLyr, hitData) {
+  return hitData.hidden_ids && activeLyr.gui.style.type != 'outline' ?
+    hitData.hidden_ids : [];
+}
+
+// The shapes' original geometry, as the layer would draw it with no styles
+// (see activeStyle in gui-layer-styler.mjs): from hitData.hidden_paths if the
+// tool is moving the shapes' vertices, otherwise from the layer.
+function getHiddenShapeLayer(activeLyr, hitData, ids, dark) {
+  var outline = getActiveLayerStyle(activeLyr.gui.displayLayer, {outlineMode: true, darkMode: dark});
+  var style = {
+    overlay: true,
+    strokeColor: outline.strokeColors[1],
+    strokeWidth: outline.strokeWidth,
+    fillColor: null
+  };
+  var lyr;
+  if (hitData.hidden_paths) {
+    return getPathsLayer(activeLyr, hitData.hidden_paths, style);
+  }
+  lyr = getOverlayLayer(activeLyr, ids);
+  lyr.gui.style = Object.assign(style, {ids: ids});
+  return lyr;
+}
+
+function getPathsLayer(activeLyr, paths, style) {
+  var nn = [], xx = [], yy = [], shapes = [];
+  paths.forEach(function(path, i) {
+    shapes.push([[i]]);
+    nn.push(path.length);
+    path.forEach(function(p) {
+      xx.push(p[0]);
+      yy.push(p[1]);
+    });
+  });
+  return wrapGuideLayer(activeLyr, {
+    name: 'hidden-shapes',
+    geometry_type: 'polyline',
+    shapes: shapes
+  }, style, new internal.ArcCollection(nn, xx, yy));
+}
+
+// The shapes in the layer's own style, from the layer's display geometry,
+// which the reshape tool is editing
+function getRedrawnShapeLayer(activeLyr, ids) {
+  var baseStyle = activeLyr.gui.style;
+  var baseStyler = baseStyle.styler || null;
+  var lyr = getOverlayLayer(activeLyr, ids);
+  var style = Object.assign({}, baseStyle, {ids: ids, overlay: true});
+  if (baseStyler) {
+    style.styler = function(style, i) {
+      baseStyler(style, ids[i]);
+    };
+  }
+  lyr.gui.style = style;
+  return lyr;
 }
 
 function getSymbolHaloLayers(activeLyr, hitData, styleOpts) {

@@ -142,7 +142,7 @@ function findLineEnd(lyr, arcs, p) {
 // arcs in place: merging would copy every vertex in the target dataset, and
 // an undo state would keep the copy, which adds up when shapes are drawn on
 // a large layer.
-function mergeShapeIntoDataset(targetDataset, dataset) {
+export function mergeShapeIntoDataset(targetDataset, dataset) {
   var arcs = targetDataset && targetDataset.arcs;
   var offset, data;
   if (!canAppendArcs(arcs, dataset.arcs)) {

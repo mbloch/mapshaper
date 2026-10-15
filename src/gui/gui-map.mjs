@@ -638,6 +638,7 @@ export function MshpMap(gui) {
         // regenerating active style everytime, to support style change when
         // switching between outline and preview modes.
         style = getActiveLayerStyle(mapLayer.gui.displayLayer, getGlobalStyleOptions());
+        style.hiddenIds = _hit ? _hit.getHiddenShapeIds() : [];
       } else {
         if (mapLayer == _activeLyr) {
           console.error("Error: shared map layer");

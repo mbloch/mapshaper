@@ -2222,6 +2222,7 @@ div.basemap-style-btn.active {
 
 .map-layers.add-points,
 .map-layers.draw-tool,
+.map-layers.curve-tool,
 .map-layers.label-tool,
 .map-layers.symbol-tool,
 .map-layers.snip-tool,
@@ -2266,6 +2267,13 @@ div.basemap-style-btn.active {
 }
 
 .map-layers.draw-tool.draw-select {
+	cursor: pointer;
+}
+
+/* The curve tool: over a line, which a click selects, and over a knot of the
+   selected curve, which a drag moves. */
+.map-layers.curve-tool.curve-select,
+.map-layers.curve-tool.curve-handle {
 	cursor: pointer;
 }
 

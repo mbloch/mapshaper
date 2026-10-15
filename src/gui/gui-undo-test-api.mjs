@@ -145,6 +145,21 @@ export function createUndoTestApi(gui) {
         return ext.translateCoords(p[0], p[1]);
       }) : null;
     },
+    // The knot handles shown by the curve tool, in pixels as above; null if
+    // there are none
+    getPendingKnotPixels: function() {
+      var hit = gui.map && gui.map.getHitControl ? gui.map.getHitControl() : null;
+      var knots = hit ? hit.getHitState().pending_knots : null;
+      var ext = gui.map.getExtent();
+      return knots ? knots.map(function(p) {
+        return ext.translateCoords(p[0], p[1]);
+      }) : null;
+    },
+    // The features the layer is drawn without while a tool redraws them
+    getHiddenShapeIds: function() {
+      var hit = gui.map && gui.map.getHitControl ? gui.map.getHitControl() : null;
+      return hit ? hit.getHiddenShapeIds() : [];
+    },
     // the vertex marked under the pointer (display coords), or null
     getHoverVertex: function() {
       var hit = gui.map && gui.map.getHitControl ? gui.map.getHitControl() : null;

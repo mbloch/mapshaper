@@ -27,7 +27,7 @@ export function InspectionControl2(gui, hit) {
     // The editing modes open this menu themselves, adding the items that only
     // they can act on -- and the label tool deletes through a command, so it
     // must not be given the direct deletion below.
-    if (!e.overMap || e.mode == 'edit_lines' || e.mode == 'edit_polygons' ||
+    if (!e.overMap || e.mode == 'edit_lines' || e.mode == 'edit_polygons' || e.mode == 'curve_lines' ||
       e.mode == 'reshape_lines' || e.mode == 'reshape_polygons' || e.mode == 'edit_points' || e.mode == 'point_style' || e.mode == 'snip_lines' || e.mode == 'label') {
       return;
     }

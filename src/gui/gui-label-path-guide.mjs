@@ -96,6 +96,12 @@ function buildGuideLineLayer(activeLyr, curves) {
   }, new internal.ArcCollection(nn, xx, yy));
 }
 
+// The handles alone, for a tool that draws the curve itself (see
+// gui-curve-lines.mjs). Returns a layer, or null if there are no knots.
+export function getKnotHandleLayer(activeLyr, knots) {
+  return knots && knots.length > 0 ? buildKnotLayer(activeLyr, [{knots: knots}]) : null;
+}
+
 function buildKnotLayer(activeLyr, curves) {
   var shapes = [];
   var curve, i, j;

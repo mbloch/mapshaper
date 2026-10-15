@@ -3,7 +3,9 @@ import {
   updateVertexCoords,
   insertVertex,
   getVertexCoords,
-  deleteVertex
+  deleteVertex,
+  findShapesWithVertices,
+  getShapePaths
   } from './gui-drawing-utils';
 import { translateDisplayPoint } from './gui-display-utils';
 import { showPopupAlert } from './gui-alert';
@@ -181,14 +183,16 @@ export function initLineEditing(gui, ext, hit) {
   function turnOff() {
     if (!active()) return;
     finishPath();
+    if (_dragging) hit.setHiddenShapes([]);
     hoverVertexInfo = null;
     prevVertexAddedEvent = null;
     lastHoverEvent = null;
     hideInstructions();
     _active = false;
-    if (gui.interaction.getArmedTool()) {
+    if (gui.interaction.getArmedTool() == 'draw' || gui.interaction.getArmedTool() == 'reshape') {
       // another GUI mode took over -- disarm, rather than leave the mode
-      // saying it is drawing with no tool to draw
+      // saying it is drawing with no tool to draw. The curve tool's mode
+      // takes over when it is armed, and is left armed.
       gui.interaction.setArmedTool(null);
     }
     updateCursor();
@@ -247,8 +251,23 @@ export function initLineEditing(gui, ext, hit) {
       insertVertex(hit.getHitTarget(), hoverVertexInfo.i, hoverVertexInfo.point);
       hoverVertexInfo.ids = [hoverVertexInfo.i];
     }
+    hideDraggedShapes(hit.getHitTarget(), hoverVertexInfo.ids);
     hit.setHoverVertex(hoverVertexInfo.displayPoint, hoverVertexInfo.type);
   });
+
+  // The shapes that the drag moves are drawn in the overlay, in their own
+  // style, as they are reshaped, and their original geometry as a plain
+  // outline (see setHiddenShapes() in gui-hit-control.mjs). A layer with no
+  // styles draws its shapes plainly already, and is left as it is.
+  function hideDraggedShapes(target, vertexIds) {
+    var arcs = target.gui.displayArcs;
+    var shapes = target.gui.displayLayer.shapes;
+    var ids;
+    if (target.gui.style.type == 'outline') return;
+    ids = findShapesWithVertices(shapes, vertexIds, arcs);
+    // the paths are copied now, because the drag moves the display geometry
+    hit.setHiddenShapes(ids, getShapePaths(shapes, ids, arcs));
+  }
 
   gui.map.getMouse().on('dragend', function(e) {
     finishStroke();
@@ -399,6 +418,7 @@ export function initLineEditing(gui, ext, hit) {
     target.gui.displayArcs.transformPoints(function() {});
     updateVertexCoords(target, hoverVertexInfo.ids);
     gui.dispatchEvent('vertex_dragend', hoverVertexInfo);
+    hit.setHiddenShapes([]);
     clearHoverVertex();
     gui.dispatchEvent('map-needs-refresh'); // redraw basemap
   });

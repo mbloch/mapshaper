@@ -67,6 +67,7 @@ export function LayerStyleTool(gui) {
   // What a shape or an end gives lines that have no heads
   var lastArrow = {shape: 'arrow', position: 'end', fade: 0};
   var lineToolbar, polygonToolbar, drawLineBtn, drawPolygonBtn, reshapeLineBtn, reshapePolygonBtn;
+  var curveLineBtn;
   var lineStylesBtn, polygonStylesBtn;
   // The mode is on whether or not the panel is showing: the panel can be
   // hidden, for room to draw, and stays hidden for the rest of the session
@@ -86,8 +87,8 @@ export function LayerStyleTool(gui) {
     });
   }
 
-  // The toolbar arms drawing or reshaping. While drawing is armed and nothing
-  // is selected, the panel's controls set the style of the next shape drawn
+  // The toolbar arms drawing, reshaping or (for lines) drawing curves. While
+  // drawing or curves are armed and nothing is selected, the panel's controls set the style of the next shape drawn
   // rather than restyling the layer (see gui-shape-style-state.mjs); a click
   // on a shape selects it, and the controls style it, as when nothing is armed.
   gui.on('interaction_tool_change', function() {
@@ -178,6 +179,7 @@ export function LayerStyleTool(gui) {
     if (geom == 'polyline') {
       getLineToolbar().show();
       drawLineBtn.setSelected(tool == 'draw');
+      curveLineBtn.setSelected(tool == 'curve');
       reshapeLineBtn.setSelected(tool == 'reshape');
       updateStylesButton(lineStylesBtn);
     } else if (lineToolbar) {
@@ -203,6 +205,8 @@ export function LayerStyleTool(gui) {
       lineToolbar = new FloatingToolbar(gui, {name: 'line-draw-toolbar'});
       drawLineBtn = lineToolbar.addButton('#draw-line-icon', {tooltip: 'Draw lines'})
         .on('click', function() { toggleTool('draw'); });
+      curveLineBtn = lineToolbar.addButton('#curve-tool-icon', {tooltip: 'Draw curves'})
+        .on('click', function() { toggleTool('curve'); });
       reshapeLineBtn = lineToolbar.addButton('#reshape-icon', {tooltip: 'Reshape lines'})
         .on('click', function() { toggleTool('reshape'); });
       lineStylesBtn = addPanelButtons(lineToolbar);
@@ -239,7 +243,7 @@ export function LayerStyleTool(gui) {
 
   // The controls set the style of the next shape drawn
   function editingNewShapes() {
-    return !!targetLayer && gui.interaction.drawingIsArmed() && getSelectionIds().length === 0;
+    return !!targetLayer && gui.interaction.newShapesAreArmed() && getSelectionIds().length === 0;
   }
 
   function setNewShapeStyle(styles) {

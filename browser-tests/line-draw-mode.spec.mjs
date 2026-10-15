@@ -231,6 +231,8 @@ test('the reshape tool moves vertices and draws nothing', async function({page})
   await page.mouse.down();
   await page.mouse.move(b[0], b[1] + 20);
   await page.mouse.move(b2[0], b2[1]);
+  // an unstyled layer keeps drawing the line being reshaped
+  expect(await getHiddenShapeIds(page)).toEqual([]);
   await page.mouse.up();
   await page.waitForTimeout(150);
   var path = (await getPaths(page, 'lines'))[0][0];
@@ -262,6 +264,33 @@ test('the reshape tool moves vertices and draws nothing', async function({page})
   expect(await getModes(page)).toEqual({mode: 'line_style', tool: 'line_style'});
   expect(errors).toEqual([]);
 });
+
+test('in a styled layer, the reshape tool hides the lines it moves from the layer during the drag',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+    await clickNewLayerLink(page, 'lines');
+    var box = await getMapBox(page);
+    var a = mapPoint(box, 0.2, 0.6), b = mapPoint(box, 0.4, 0.6), c = mapPoint(box, 0.4, 0.3);
+    await drawLine(page, a, b);
+    await drawLine(page, mapPoint(box, 0.6, 0.6), mapPoint(box, 0.8, 0.6));
+    await expect.poll(() => getShapeCount(page, 'lines')).toBe(2);
+    await page.evaluate(() => window.mapshaper.undoTest.runCommand('-style stroke-width=6 stroke-dasharray="4 2"'));
+    await page.locator(RESHAPE_BUTTON).click();
+    await page.waitForTimeout(150);
+
+    await page.mouse.move(b[0] + 20, b[1] + 20);
+    await page.mouse.move(b[0], b[1], {steps: 4});
+    await expect.poll(() => getHoverVertex(page)).not.toBe(null);
+    await page.mouse.down();
+    await page.mouse.move(b[0], b[1] - 20);
+    await page.mouse.move(c[0], c[1]);
+    expect(await getHiddenShapeIds(page)).toEqual([0]);
+    await page.mouse.up();
+    await expect.poll(() => getHiddenShapeIds(page)).toEqual([]);
+    expectNear((await getPaths(page, 'lines'))[0][0][1], toMap(box, c));
+    expect(errors).toEqual([]);
+  });
 
 test('drawing polygons: a click inside a polygon starts a path, a click on its outline selects it',
   async function({page}) {
@@ -307,6 +336,12 @@ async function getSelectionIds(page) {
 async function getHoverVertex(page) {
   return page.evaluate(function() {
     return window.mapshaper.undoTest.getHoverVertex();
+  });
+}
+
+async function getHiddenShapeIds(page) {
+  return page.evaluate(function() {
+    return window.mapshaper.undoTest.getHiddenShapeIds();
   });
 }
 

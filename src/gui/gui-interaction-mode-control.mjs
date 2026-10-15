@@ -92,7 +92,7 @@ export function InteractionMode(gui) {
   var _editMode = 'off';
   var _prevMode;
   var _menuOpen = false;
-  var _armedTool = null; // 'draw', 'reshape' or null
+  var _armedTool = null; // 'draw', 'reshape', 'curve' (lines only) or null
   // the layer the label or symbol tool is editing, once it has one:
   // {layer, name}
   var _toolLayer = null;
@@ -100,7 +100,7 @@ export function InteractionMode(gui) {
   // The tool modes that 'line_style' and 'polygon_style' take on when one of
   // their toolbar's tools is armed
   var drawingModes = {
-    line_style: {draw: 'edit_lines', reshape: 'reshape_lines'},
+    line_style: {draw: 'edit_lines', reshape: 'reshape_lines', curve: 'curve_lines'},
     polygon_style: {draw: 'edit_polygons', reshape: 'reshape_polygons'}
   };
   var drawingAliases = {edit_lines: 'line_style', edit_polygons: 'polygon_style',
@@ -179,7 +179,8 @@ export function InteractionMode(gui) {
   // tool armed from its toolbar. Drawing ('edit_lines', 'edit_polygons')
   // draws new shapes, and a click on a shape selects it for styling;
   // reshaping ('reshape_lines', 'reshape_polygons') drags, inserts and
-  // deletes vertices. The hit control, the overlay and the drawing tool go by
+  // deletes vertices; the curve tool ('curve_lines') draws lines as curves
+  // through clicked knots. The hit control, the overlay and the drawing tool go by
   // this; the panel, undo and the menu go by the mode, which arming does not
   // change.
   this.getToolMode = getToolMode;
@@ -196,13 +197,19 @@ export function InteractionMode(gui) {
     return _armedTool == 'reshape';
   };
 
+  // A tool that adds shapes is armed, so that with nothing selected, the
+  // style panel styles the next shape (see gui-layer-style-tool.mjs)
+  this.newShapesAreArmed = function() {
+    return _armedTool == 'draw' || _armedTool == 'curve';
+  };
+
   this.drawingCanBeArmed = function() {
     return _editMode in drawingModes;
   };
 
-  // tool: 'draw', 'reshape' or null
+  // tool: 'draw', 'reshape', 'curve' or null
   this.setArmedTool = function(tool) {
-    var next = tool && _editMode in drawingModes ? tool : null;
+    var next = tool && _editMode in drawingModes && tool in drawingModes[_editMode] ? tool : null;
     var prevToolMode;
     if (next == _armedTool) return;
     prevToolMode = getToolMode();

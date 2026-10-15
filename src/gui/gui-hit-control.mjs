@@ -13,6 +13,9 @@ export function HitControl(gui, ext, mouse) {
   var transientIds = []; // e.g. hit ids while dragging a box
   var pendingPath = null; // display coords of a path being drawn (see setPendingPath())
   var pendingPathStyle = null;
+  var pendingKnots = null; // display coords of a curve's knots (see setPendingKnots())
+  var hiddenShapeIds = []; // see setHiddenShapes()
+  var hiddenShapePaths = null;
   var active = false;
   var targetLayer;
   var hitTest;
@@ -93,6 +96,9 @@ export function HitControl(gui, ext, mouse) {
       hitTest = null;
       pinnedOn = false;
       pendingPath = null;
+      pendingKnots = null;
+      hiddenShapeIds = [];
+      hiddenShapePaths = null;
     }
   }
 
@@ -118,11 +124,14 @@ export function HitControl(gui, ext, mouse) {
       mode == 'label' || mode == 'symbols' || lineToolMode(mode);
   }
 
+  // the modes that draw new shapes: the Draw tool's, and the curve tool's
+  // (gui-curve-lines.mjs)
   function drawingMode(mode) {
-    return mode == 'edit_lines' || mode == 'edit_polygons';
+    return mode == 'edit_lines' || mode == 'edit_polygons' || mode == 'curve_lines';
   }
 
-  // the modes of the line and polygon tools (gui-draw-lines2.mjs)
+  // the modes of the line and polygon tools (gui-draw-lines2.mjs,
+  // gui-curve-lines.mjs)
   function lineToolMode(mode) {
     return drawingMode(mode) || mode == 'reshape_lines' || mode == 'reshape_polygons';
   }
@@ -196,6 +205,36 @@ export function HitControl(gui, ext, mouse) {
     pendingPath = coords && coords.length > 0 ? coords : null;
     pendingPathStyle = pendingPath && style || null;
     triggerChangeEvent();
+  };
+
+  // Shows handles on the knots of a curve, for the curve tool.
+  // knots: [[x, y], ...] display coordinates, or null to remove the handles
+  self.setPendingKnots = function(knots) {
+    if (!pendingKnots && !knots) return;
+    pendingKnots = knots && knots.length > 0 ? knots : null;
+    triggerChangeEvent();
+  };
+
+  // Shapes of the target layer that a tool is redrawing in the overlay while
+  // the user drags: a curve whose knot is being dragged, or the shapes that
+  // share a vertex being moved by the reshape tool. The layer is drawn without
+  // them, and the overlay draws their original geometry as a plain outline,
+  // without their style or selection highlight (see gui-overlay-styler.mjs).
+  // ids: feature ids, or [] for none
+  // paths: (optional) the shapes' original paths, [[x, y], ...] in display
+  //   coordinates, for a tool that edits the display geometry in place;
+  //   otherwise the outline is drawn from the layer
+  self.setHiddenShapes = function(ids, paths) {
+    var next = ids || [];
+    if (next.length === 0 && hiddenShapeIds.length === 0) return;
+    hiddenShapeIds = next.concat();
+    hiddenShapePaths = next.length > 0 && paths || null;
+    triggerChangeEvent();
+    gui.dispatchEvent('map-needs-refresh'); // the layer itself is redrawn
+  };
+
+  self.getHiddenShapeIds = function() {
+    return active ? hiddenShapeIds.concat() : [];
   };
 
   self.triggerChangeEvent = triggerChangeEvent;
@@ -649,6 +688,13 @@ export function HitControl(gui, ext, mouse) {
     if (pendingPath) {
       data.pending_path = pendingPath;
       data.pending_path_style = pendingPathStyle;
+    }
+    if (pendingKnots) {
+      data.pending_knots = pendingKnots;
+    }
+    if (hiddenShapeIds.length > 0) {
+      data.hidden_ids = hiddenShapeIds;
+      if (hiddenShapePaths) data.hidden_paths = hiddenShapePaths;
     }
     if (pinnedOn) {
       data.pinned = true;

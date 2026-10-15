@@ -34,6 +34,13 @@ export function getAddShapeCommand(coords, opts) {
   return parts.join(' ');
 }
 
+// The command that replaces the path of line @id, as the curve tool does when
+// a knot is dragged.
+// coords: [[x, y], ...] the new path's vertices, in the layer's CRS
+export function getUpdateLineCommand(coords, id) {
+  return '-update-line ids=' + id + ' coordinates=' + formatCoords(coords);
+}
+
 // Whether a path drawn into a layer of @geometryType is complete enough to be
 // added to it: two vertices for a line, three for a polygon (not counting a
 // vertex that repeats the first one to close the ring).

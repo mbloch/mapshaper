@@ -2549,6 +2549,17 @@ export function getOptionParser() {
     })
     .option('target', targetOpt);
 
+  parser.command('update-line')
+    // .describe('replace the path of an existing line')
+    .option('ids', {
+      describe: 'feature id of the line to update',
+      type: 'numbers'
+    })
+    .option('coordinates', {
+      describe: 'x,y,x,y,... of the new path'
+    })
+    .option('target', targetOpt);
+
   parser.command('alpha-shapes')
     // .describe('convert points to alpha shapes (aka concave hulls)')
     .option('interval', {
