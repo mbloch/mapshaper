@@ -10,7 +10,7 @@ import { cleanShapes } from '../paths/mapshaper-path-repair-utils';
 import { buildTopology } from '../topology/mapshaper-topology';
 import { editShapes } from '../paths/mapshaper-shape-utils';
 import { findSegmentIntersections } from '../paths/mapshaper-segment-intersection';
-import { cleanArcReferences } from './mapshaper-arc-clean';
+import { cleanArcReferences, deleteUnusedArcs } from './mapshaper-arc-clean';
 import geom from '../geom/mapshaper-geom';
 import {
   markArcsChanged,
@@ -34,8 +34,11 @@ export function addIntersectionCuts(dataset, _opts) {
   profileStart('addIntersectionCuts');
   var opts = _opts || {};
   var arcs = dataset.arcs;
-  var arcBounds = arcs && arcs.getBounds();
-  var snapDist, nodes;
+  var arcBounds, snapDist, nodes;
+  // Arcs that no layer uses would otherwise be snapped and cut along with the
+  // rest, adding nodes and vertices to the arcs they touch.
+  if (arcs) deleteUnusedArcs(dataset);
+  arcBounds = arcs && arcs.getBounds();
   if (!arcBounds || !arcBounds.hasBounds()) {
     profileEnd('addIntersectionCuts');
     return new NodeCollection([]);

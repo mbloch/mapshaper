@@ -12,7 +12,7 @@ import Visvalingam from '../simplify/mapshaper-visvalingam';
 import DouglasPeucker from '../simplify/mapshaper-dp';
 import { keepEveryPolygon } from '../simplify/mapshaper-keep-shapes';
 import { getWorldBounds } from '../geom/mapshaper-latlon';
-import { layerHasPaths, getImplicitlyTargetedLayerNames } from '../dataset/mapshaper-layer-utils';
+import { layerHasPaths, getImplicitlyTargetedLayerNames, getUsedArcTest } from '../dataset/mapshaper-layer-utils';
 import {
   markArcsSimplificationChanged,
   markDatasetInfoChanged,
@@ -64,7 +64,7 @@ export function finalizeSimplification(dataset, opts) {
   }
 
   if (!opts.no_repair && arcs.getRetainedInterval() > 0) {
-    postSimplifyRepair(arcs);
+    postSimplifyRepair(arcs, getUsedArcTest(dataset));
   }
 
   if (opts.stats) {

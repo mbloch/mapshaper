@@ -4,6 +4,7 @@ import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { convertIntervalParam } from '../geom/mapshaper-units';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
 import { buildTopology } from '../topology/mapshaper-topology';
+import { deleteUnusedArcs } from '../paths/mapshaper-arc-clean';
 import { stop, message } from '../utils/mapshaper-logging';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
@@ -20,6 +21,7 @@ cmd.snap = function(target, opts) {
   }
 
   arcs.flatten(); // bake in any simplification
+  deleteUnusedArcs(dataset); // unused arcs would pull in the vertices near them
   if (opts.fix_geometry) {
     repairArcs = arcs && getRepairFunction(arcs);
   }

@@ -351,6 +351,27 @@ export function getArcPresenceTest2(layers, arcs) {
   };
 }
 
+// Returns a test for arcs that are referenced by a path layer in @dataset, or
+// null if every arc is referenced (or there are no path layers to refer to
+// them). Arcs can be left unreferenced by commands like -filter, and by GUI
+// edits that replace a path's arcs; code that reads all the arcs in a
+// collection uses this to skip them.
+export function getUsedArcTest(dataset) {
+  var arcs = dataset.arcs;
+  var layers = dataset.layers || [];
+  var counts;
+  if (!arcs || !layers.some(layerHasPaths)) return null;
+  counts = countArcsInLayers(layers, arcs);
+  for (var i=0, n=counts.length; i<n; i++) {
+    if (counts[i] === 0) {
+      return function(arcId) {
+        return counts[absArcId(arcId)] > 0;
+      };
+    }
+  }
+  return null;
+}
+
 // Count arcs in a collection of layers
 export function countArcsInLayers(layers, arcs) {
   var counts = new Uint32Array(arcs.size());

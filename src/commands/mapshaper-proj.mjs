@@ -14,6 +14,7 @@ import {
 import { preProjectionClip } from '../crs/mapshaper-spherical-clipping';
 import { cleanLayers } from '../commands/mapshaper-clean';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
+import { deleteUnusedArcs } from '../paths/mapshaper-arc-clean';
 import { projectAndDensifyArcs } from '../crs/mapshaper-densify';
 import { expandProjDefnForTargets } from '../crs/mapshaper-projection-params';
 import {
@@ -357,6 +358,7 @@ export function cleanProjectedPathLayers(dataset, opts) {
     // a few floating-point units during projection, preventing topology from
     // joining polygon parts that were split at the source antimeridian.
     var arcs = dataset.arcs;
+    deleteUnusedArcs(dataset); // unused arcs would pull in the vertices near them
     var snapDist = getHighPrecisionSnapInterval(arcs.getBounds().toArray());
     if (snapCoordsByInterval(arcs, snapDist) > 0) {
       arcs.dedupCoords();

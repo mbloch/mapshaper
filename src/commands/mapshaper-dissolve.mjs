@@ -1,4 +1,4 @@
-import { layerHasPaths, requireNotRasterLayer } from '../dataset/mapshaper-layer-utils';
+import { layerHasPaths, requireNotRasterLayer, getUsedArcTest } from '../dataset/mapshaper-layer-utils';
 import { cloneShapes } from '../paths/mapshaper-shape-utils';
 import { dissolvePointGeometry } from '../dissolve/mapshaper-point-dissolve';
 import { dissolvePolylineGeometry } from '../dissolve/mapshaper-polyline-dissolve';
@@ -147,7 +147,10 @@ function getLayerSelection(lyr, arcs, opts) {
 function detectAndWarnIntersections(dataset, opts) {
   if (opts.quiet || opts.silent) return;
   if (!dataset.arcs || dataset.arcs.size() === 0) return;
-  var sample = findSegmentIntersections(dataset.arcs, {limit: INTERSECTION_SAMPLE_LIMIT});
+  var sample = findSegmentIntersections(dataset.arcs, {
+    limit: INTERSECTION_SAMPLE_LIMIT,
+    arcFilter: getUsedArcTest(dataset)
+  });
   if (sample.length === 0) return;
   var atLeast = sample.length >= INTERSECTION_SAMPLE_LIMIT ? 'at least ' : '';
   message('Warning: found ' + atLeast + sample.length +

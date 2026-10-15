@@ -10,30 +10,33 @@ var MAX_REPAIR_PASSES = 10;
 
 
 // arcs: ArcCollection containing original coordinates
-export function getRepairFunction(arcs) {
+// arcFilter (optional): returns false for arcs to leave out, see
+//   findSegmentIntersections()
+export function getRepairFunction(arcs, arcFilter) {
   var arcsOrig = arcs.getCopy();
   // updatedArcs: same ArcCollection, with snapped or rounded coords
   return function(updatedArcs) {
-    repairSegmentIntersections(updatedArcs, arcsOrig);
+    repairSegmentIntersections(updatedArcs, arcsOrig, arcFilter);
   };
 }
 
 // TODO: test with duplicate coordinates
 // arcs: modified arcs (rounded coordinates)
 // arcsOrig: original, unmodified arcs
-export function repairSegmentIntersections(arcs, arcsOrig) {
+export function repairSegmentIntersections(arcs, arcsOrig, arcFilter) {
+  var opts = {arcFilter: arcFilter};
   // Check for intersections in the original data
-  var xxOrig = findSegmentIntersections(arcsOrig);
+  var xxOrig = findSegmentIntersections(arcsOrig, opts);
   if (xxOrig.length > 0) {
     message('Original layer contains intersections -- unable to repair.');
     return;
   }
-  var intersections = findSegmentIntersections(arcs);
+  var intersections = findSegmentIntersections(arcs, opts);
   var maxLoops = 10;
   var startCount = intersections.length;
   for (var i=0; i<maxLoops && intersections.length > 0; i++) {
     revertIntersectionCoordinates(intersections, arcs, arcsOrig);
-    intersections = findSegmentIntersections(arcs);
+    intersections = findSegmentIntersections(arcs, opts);
   }
   var finalCount = intersections.length;
   if (finalCount > 0) {

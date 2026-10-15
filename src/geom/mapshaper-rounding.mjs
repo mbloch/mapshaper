@@ -3,6 +3,7 @@ import { error } from '../utils/mapshaper-logging';
 import { forEachPoint } from '../points/mapshaper-point-utils';
 import utils from '../utils/mapshaper-utils';
 import { getRepairFunction } from '../paths/mapshaper-segment-intersection-repair';
+import { getUsedArcTest } from '../dataset/mapshaper-layer-utils';
 
 
 export function roundToSignificantDigits(n, d) {
@@ -99,7 +100,8 @@ export const fround = Math.fround || fround2;
 
 export function setCoordinatePrecision(dataset, precision, fixGeom) {
   var round = getRoundingFunction(precision);
-  var repairArcs = dataset.arcs && fixGeom ? getRepairFunction(dataset.arcs) : null;
+  var repairArcs = dataset.arcs && fixGeom ?
+    getRepairFunction(dataset.arcs, getUsedArcTest(dataset)) : null;
   transformPoints(dataset, function(x, y) {
     return [round(x), round(y)];
   });

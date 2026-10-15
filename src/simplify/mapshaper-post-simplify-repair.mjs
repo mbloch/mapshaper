@@ -11,9 +11,11 @@ import { findSegmentIntersections } from '../paths/mapshaper-segment-intersectio
 // in the original dataset.
 // TODO: don't roll back simplification for unrepairable intersections.
 //
-export function postSimplifyRepair(arcs) {
-  var intersections = findSegmentIntersections(arcs),
-      unfixable = repairIntersections(arcs, intersections),
+// arcFilter (optional): returns false for arcs to leave out, see
+//   findSegmentIntersections()
+export function postSimplifyRepair(arcs, arcFilter) {
+  var intersections = findSegmentIntersections(arcs, {arcFilter: arcFilter}),
+      unfixable = repairIntersections(arcs, intersections, arcFilter),
       countPre = intersections.length,
       countPost = unfixable.length,
       countFixed = countPre > countPost ? countPre - countPost : 0,
@@ -32,9 +34,9 @@ export function postSimplifyRepair(arcs) {
 // @intersections (Array) Output from findSegmentIntersections()
 // Returns array of unresolved intersections, or empty array if none.
 // (export for GUI)
-export function repairIntersections(arcs, intersections) {
+export function repairIntersections(arcs, intersections, arcFilter) {
   while (unwindIntersections(arcs, intersections) > 0) {
-    intersections = findSegmentIntersections(arcs);
+    intersections = findSegmentIntersections(arcs, {arcFilter: arcFilter});
   }
   return intersections;
 }

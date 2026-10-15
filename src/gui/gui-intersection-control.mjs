@@ -32,7 +32,8 @@ export function IntersectionControl(gui) {
     var e = model.getActiveLayer();
     if (!_simplifiedXX || !e.dataset.arcs) return;
     noteArcsSimplificationWillChange(e.dataset.arcs, {operation: 'repairIntersections'});
-    _simplifiedXX = internal.repairIntersections(e.dataset.arcs, _simplifiedXX);
+    _simplifiedXX = internal.repairIntersections(e.dataset.arcs, _simplifiedXX,
+      internal.getUsedArcTest(e.dataset));
     markArcsSimplificationChanged(e.dataset.arcs, {operation: 'repairIntersections'});
     showIntersections(_simplifiedXX, e.layer, e.dataset.arcs);
     repairBtn.hide();
@@ -110,7 +111,8 @@ export function IntersectionControl(gui) {
     }
     var intersectionOpts = {
       unique: true,
-      tolerance: 0
+      tolerance: 0,
+      arcFilter: internal.getUsedArcTest(e.dataset)
     };
     if (arcs.getRetainedInterval() > 0) {
       // simplification

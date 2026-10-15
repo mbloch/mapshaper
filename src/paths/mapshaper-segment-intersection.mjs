@@ -51,8 +51,11 @@ function getUint32Array(count) {
   return new Uint32Array(buf, 0, count);
 }
 
+// opts.arcFilter (optional): function(arcId) returning false for arcs to skip,
+//   e.g. arcs that no layer uses (see getUsedArcTest())
 export function findSegmentIntersections(arcs, optArg) {
   var opts = utils.extend({}, optArg),
+      forEachSegment = getSegmentIterator(arcs, opts.arcFilter),
       bounds = arcs.getBounds(),
       // TODO: handle spherical bounds
       spherical = !arcs.isPlanar() &&
@@ -77,7 +80,7 @@ export function findSegmentIntersections(arcs, optArg) {
   function singleStripeId(y) {return 0;}
   // Count segments in each stripe
   profileStart('stripeSetup');
-  arcs.forEachSegment(function(id1, id2, xx, yy) {
+  forEachSegment(function(id1, id2, xx, yy) {
     var s1 = stripeId(yy[id1]),
         s2 = stripeId(yy[id2]);
     while (true) {
@@ -99,7 +102,7 @@ export function findSegmentIntersections(arcs, optArg) {
   // Assign segment ids to each stripe
   utils.initializeArray(stripeSizes, 0);
 
-  arcs.forEachSegment(function(id1, id2, xx, yy) {
+  forEachSegment(function(id1, id2, xx, yy) {
     var s1 = stripeId(yy[id1]),
         s2 = stripeId(yy[id2]),
         count, stripe;
@@ -136,6 +139,19 @@ export function findSegmentIntersections(arcs, optArg) {
   var deduped = dedupIntersections(intersections, opts.unique ? getUniqueIntersectionKey : null);
   profileEnd('dedupIntersections');
   return deduped;
+}
+
+function getSegmentIterator(arcs, arcFilter) {
+  if (!arcFilter) {
+    return function(cb) {
+      arcs.forEachSegment(cb);
+    };
+  }
+  return function(cb) {
+    for (var i=0, n=arcs.size(); i<n; i++) {
+      if (arcFilter(i)) arcs.forEachArcSegment(i, cb);
+    }
+  };
 }
 
 

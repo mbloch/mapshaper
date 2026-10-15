@@ -2,13 +2,14 @@
 import cmd from '../mapshaper-cmd';
 import { stop, message } from '../utils/mapshaper-logging';
 import { findSegmentIntersections } from '../paths/mapshaper-segment-intersection';
+import { getUsedArcTest } from '../dataset/mapshaper-layer-utils';
 
 // currently undocumented, used in tests
 cmd.checkGeometry = function(targetLayer, dataset, opts) {
   if (!dataset.arcs) return;
 
   // TODO: only check the target layer for intersections
-  var intersections = findSegmentIntersections(dataset.arcs);
+  var intersections = findSegmentIntersections(dataset.arcs, {arcFilter: getUsedArcTest(dataset)});
   if (intersections.length > 0) {
     handleError(`Found ${intersections.length} intersection${intersections.length > 1 ? 's' : ''}.`, opts);
   }

@@ -4,6 +4,8 @@ import { initPointChains } from '../topology/mapshaper-topology-chains-v2';
 import { reversePath } from '../paths/mapshaper-path-utils';
 import { absArcId } from '../paths/mapshaper-arc-utils';
 import { error } from '../utils/mapshaper-logging';
+import { layerHasPaths } from '../dataset/mapshaper-layer-utils';
+import { deleteUnusedArcs } from '../paths/mapshaper-arc-clean';
 import {
   markLayerChanged,
   noteLayerWillChange
@@ -13,6 +15,11 @@ import {
 // (in-place)
 export function buildTopology(dataset) {
   if (!dataset.arcs) return;
+  // An arc that no layer uses would share vertices with the arcs it touches,
+  // and split them into smaller arcs.
+  if ((dataset.layers || []).some(layerHasPaths)) {
+    deleteUnusedArcs(dataset);
+  }
   var raw = dataset.arcs.getVertexData(),
       cooked = buildPathTopology(raw.nn, raw.xx, raw.yy);
   dataset.arcs.updateVertexData(cooked.nn, cooked.xx, cooked.yy);

@@ -8,7 +8,7 @@ import { Bounds } from '../geom/mapshaper-bounds';
 import { exportMetadata } from '../dataset/mapshaper-metadata';
 import { explodePolygon } from '../commands/mapshaper-explode';
 import { filterEmptyArcs, getAvgSegment2 } from '../paths/mapshaper-path-utils';
-import { getFeatureCount, transformPointsInLayer, layerHasPoints } from '../dataset/mapshaper-layer-utils';
+import { getFeatureCount, transformPointsInLayer, layerHasPoints, getUsedArcTest } from '../dataset/mapshaper-layer-utils';
 import { exportIds } from '../geojson/geojson-export';
 import { exportProperties } from '../geojson/geojson-export';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
@@ -117,7 +117,7 @@ function transformDataset(dataset, bounds, opts) {
   if (dataset.arcs && opts.fix_geometry) {
     // try to repair intersections caused by quantization
     dataset.arcs.transformPoints(quantizer.transform);
-    repairArcs = getRepairFunction(dataset.arcs);
+    repairArcs = getRepairFunction(dataset.arcs, getUsedArcTest(dataset));
     dataset.arcs.transformPoints(function(x, y) {
       return [Math.round(x), Math.round(y)];
     });
