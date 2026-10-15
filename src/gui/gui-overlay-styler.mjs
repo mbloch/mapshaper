@@ -5,7 +5,7 @@ import { labelCuesApply } from './gui-label-hit-cues';
 import {
   getLabelPathGuideLayers,
   getPendingLabelPath,
-  getKnotHandleLayer,
+  getKnotHandleLayers,
   wrapGuideLayer
 } from './gui-label-path-guide';
 
@@ -353,7 +353,7 @@ function getDrawingLayers(activeLyr, hitData, styleOpts) {
   var redrawn = getRedrawnShapeIds(activeLyr, hitData);
   var dark = !!(styleOpts && styleOpts.darkMode);
   var layers = [];
-  var lyr, knotLyr;
+  var lyr;
   if (redrawn.length > 0) {
     layers.push(getHiddenShapeLayer(activeLyr, hitData, redrawn, dark));
   }
@@ -379,9 +379,7 @@ function getDrawingLayers(activeLyr, hitData, styleOpts) {
   layers.forEach(function(lyr, i) {
     if (i < layers.length - 1) lyr.gui.style.vertex_overlay = null;
   });
-  knotLyr = getKnotHandleLayer(activeLyr, hitData.pending_knots);
-  if (knotLyr) layers.push(knotLyr);
-  return layers;
+  return layers.concat(getKnotHandleLayers(activeLyr, hitData.pending_knots));
 }
 
 // The hidden shapes that the overlay draws in place of the layer. A layer

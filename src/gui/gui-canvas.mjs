@@ -599,11 +599,14 @@ export function DisplayCanvas() {
   // TODO: consider using drawStyledPaths(), which draws paths in batches
   // for faster Canvas rendering. Downside: changes stacking order, which
   // is bad if circles are graduated.
+  // style.pointShape: 'square' draws squares @radius from center to side
+  //   (read once per call, not per point)
   _self.drawPoints = function(shapes, style) {
     var t = getScaledTransform(_ext),
         scale = GUI.getPixelRatio() * (_ext.getSymbolScale() || 1),
         startPath = getPathStart(_ext),
         styler = style.styler || null,
+        drawPoint = style.pointShape == 'square' ? drawSquarePath : drawCircle,
         shp, p,
         mx = t.mx,
         my = t.my,
@@ -617,7 +620,7 @@ export function DisplayCanvas() {
       if (!shp || style.radius > 0 === false) continue;
       for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
         p = shp[j];
-        drawCircle(p[0] * mx + bx, p[1] * my + by, style.radius * scale, _ctx);
+        drawPoint(p[0] * mx + bx, p[1] * my + by, style.radius * scale, _ctx);
       }
       endPath(_ctx, style);
     }
@@ -728,6 +731,13 @@ function drawCircle(x, y, radius, ctx) {
   if (radius > 0) {
     ctx.moveTo(x + radius, y);
     ctx.arc(x, y, radius, 0, Math.PI * 2, true);
+  }
+}
+
+// a square outline for a stroke and fill, like drawCircle()'s
+function drawSquarePath(x, y, radius, ctx) {
+  if (radius > 0) {
+    ctx.rect(x - radius, y - radius, radius * 2, radius * 2);
   }
 }
 

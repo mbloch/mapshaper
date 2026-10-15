@@ -73,6 +73,17 @@ describe('curve tool knot drag overlay', function() {
     var layers = getOverlayLayers(activeLineLayer(), hitData, opts);
     assert.deepEqual(layers[1].gui.style.ids, [1]);
   });
+
+  it('smooth knots are drawn as circles, and corners as squares', function() {
+    var hitData = {ids: [], id: -1, pending_knots: [[0, 0], [1, 1, true], [2, 0]]};
+    var layers = getOverlayLayers(activeLineLayer(), hitData, opts);
+    assert.equal(layers.length, 2);
+    assert.deepEqual(layers[0].gui.displayLayer.shapes, [[[0, 0]], [[2, 0]]]);
+    assert(!layers[0].gui.style.pointShape);
+    assert.equal(layers[1].gui.displayLayer.name, 'curve-corner-knots');
+    assert.deepEqual(layers[1].gui.displayLayer.shapes, [[[1, 1, true]]]);
+    assert.equal(layers[1].gui.style.pointShape, 'square');
+  });
 });
 
 describe('reshape tool vertex drag overlay', function() {

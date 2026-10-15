@@ -14,7 +14,10 @@
 // the previous knots.
 //
 // Knots are in display coordinates, where the curve is fitted (see
-// fitCurveThroughKnots()); paths are in the layer's CRS.
+// fitCurveThroughKnots()); paths are in the layer's CRS. A knot is [x, y], or
+// [x, y, true] for a corner, where the curve turns sharply rather than
+// passing smoothly through the knot. A closed curve's first knot is repeated
+// at the end, and the two are corners together.
 
 // The flattening tolerance of a curve, as a fraction of its size. The line is
 // the curve's only record once the tool closes, so it is flattened more finely
@@ -75,9 +78,37 @@ export function moveCurveKnot(knots, index, p, minDistance) {
     if (dx * dx + dy * dy < min2) return null;
   }
   out = copyPoints(knots);
-  out[i] = [p[0], p[1]];
-  if (closed && i === 0) out[n - 1] = [p[0], p[1]];
+  out[i] = makeKnot(p, knotIsCorner(knots[i]));
+  if (closed && i === 0) out[n - 1] = out[0].slice();
   return out;
+}
+
+export function makeKnot(p, corner) {
+  return corner ? [p[0], p[1], true] : [p[0], p[1]];
+}
+
+export function knotIsCorner(knot) {
+  return !!knot && knot[2] === true;
+}
+
+// The knots after knot @index is switched between a corner and a smooth knot,
+// or null for an end of an open curve, which a corner would not change
+export function toggleCurveKnotCorner(knots, index) {
+  var n = knots.length;
+  var closed = curveKnotsAreClosed(knots);
+  var i = closed && index == n - 1 ? 0 : index;
+  var out;
+  if (!(closed ? i >= 0 : i > 0 && i < n - 1)) return null;
+  out = copyPoints(knots);
+  out[i] = makeKnot(knots[i], !knotIsCorner(knots[i]));
+  if (closed && i === 0) out[n - 1] = out[0].slice();
+  return out;
+}
+
+// The corners argument of fitCurveThroughKnots(), or null if there are none
+export function getKnotCorners(knots) {
+  var corners = knots.map(knotIsCorner);
+  return corners.indexOf(true) > -1 ? corners : null;
 }
 
 export function curveKnotsAreClosed(knots) {
@@ -107,5 +138,5 @@ function samePath(a, b) {
 }
 
 function copyPoints(points) {
-  return points.map(function(p) { return [p[0], p[1]]; });
+  return points.map(function(p) { return makeKnot(p, knotIsCorner(p)); });
 }

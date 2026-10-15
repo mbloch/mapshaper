@@ -6,6 +6,15 @@ GUI.isActiveInstance = function(gui) {
   return gui == GUI.__active;
 };
 
+GUI.isMac = function() {
+  return navigator.userAgent.includes('Mac');
+};
+
+// What the Alt key is called on the user's keyboard, for help text
+GUI.getAltKeyName = function() {
+  return GUI.isMac() ? 'Option' : 'Alt';
+};
+
 GUI.getPixelRatio = function() {
   var deviceRatio = window.devicePixelRatio || window.webkitDevicePixelRatio || 1;
   return deviceRatio > 1 ? 2 : 1;

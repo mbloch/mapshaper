@@ -9,6 +9,7 @@ import {
   } from './gui-drawing-utils';
 import { translateDisplayPoint } from './gui-display-utils';
 import { showPopupAlert } from './gui-alert';
+import { GUI } from './gui-lib';
 import { runGuiEditCommand } from './gui-edit-command';
 import { getAddShapeCommand, drawnPathIsValid } from './gui-draw-commands';
 import {
@@ -169,7 +170,8 @@ export function initLineEditing(gui, ext, hit) {
       msg = 'Drag a vertex to move it, or drag a point between vertices to add one. Right-click a vertex to delete it.';
     } else {
       msg = 'Click to add points to a path or drag to draw a smooth line.' +
-        (polygonMode() ? '' : ' Draw from the end of a line to extend it; hold Alt to start a new line from any vertex.');
+        (polygonMode() ? '' : ' Draw from the end of a line to extend it; hold ' + GUI.getAltKeyName() +
+          ' to start a new line from any vertex.');
     }
     alert = showPopupAlert(msg, null, {non_blocking: true, max_width: '350px'});
   }

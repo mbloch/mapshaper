@@ -665,3 +665,88 @@ describe('mapshaper-curve-fit', function () {
     });
   });
 });
+
+describe('curve fit with corners', function () {
+  // direction the curve arrives at the end of @seg, and leaves the start
+  function arrival(seg) {
+    return Math.atan2(seg.p3[1] - seg.c2[1], seg.p3[0] - seg.c2[0]);
+  }
+  function departure(seg) {
+    return Math.atan2(seg.c1[1] - seg.p0[1], seg.c1[0] - seg.p0[0]);
+  }
+  function turn(a, b) {
+    var d = Math.abs(a - b) % (2 * Math.PI);
+    return d > Math.PI ? 2 * Math.PI - d : d;
+  }
+  function isStraight(seg) {
+    return turn(departure(seg), arrival(seg)) < 1e-9 &&
+      turn(departure(seg), Math.atan2(seg.p3[1] - seg.p0[1], seg.p3[0] - seg.p0[0])) < 1e-9;
+  }
+  var knots = [[0, 0], [10, 0], [20, 10], [30, 0], [40, 0]];
+
+  it('the curve turns at a corner, and is smooth through the other knots', function () {
+    var segs = getCurveSegments(knots, false, [false, false, true, false, false]);
+    assert.equal(segs.length, 4);
+    assert.ok(turn(arrival(segs[1]), departure(segs[2])) > 0.5);
+    assert.ok(turn(arrival(segs[0]), departure(segs[1])) < 1e-9);
+    assert.ok(turn(arrival(segs[2]), departure(segs[3])) < 1e-9);
+  });
+
+  it('each side of a corner is fitted as a curve of its own', function () {
+    var segs = getCurveSegments(knots, false, [false, false, true, false, false]);
+    var left = getCurveSegments(knots.slice(0, 3));
+    var right = getCurveSegments(knots.slice(2));
+    assert.deepEqual(segs, left.concat(right));
+  });
+
+  it('two corners side by side are joined by a straight segment', function () {
+    var segs = getCurveSegments(knots, false, [false, true, true, false, false]);
+    assert.ok(isStraight(segs[1]));
+    assert.ok(!isStraight(segs[2]));
+  });
+
+  it('no corners, or corners only at the ends, fit the curve as before', function () {
+    var plain = fitCurveThroughKnots(knots, 0.01);
+    assert.deepEqual(fitCurveThroughKnots(knots, 0.01, false, null), plain);
+    assert.deepEqual(fitCurveThroughKnots(knots, 0.01, false, [false, false, false, false, false]), plain);
+    assert.deepEqual(fitCurveThroughKnots(knots, 0.01, false, [true, false, false, false, true]), plain);
+  });
+
+  it('the flattened curve passes through a corner', function () {
+    var pts = fitCurveThroughKnots(knots, 0.01, false, [false, false, true, false, false]);
+    assert.ok(pts.some(function (p) { return p[0] === 20 && p[1] === 10; }));
+  });
+
+  it('a duplicated corner knot is still a corner', function () {
+    var a = getCurveSegments(knots, false, [false, false, true, false, false]);
+    var b = getCurveSegments([[0, 0], [10, 0], [20, 10], [20, 10], [30, 0], [40, 0]], false,
+      [false, false, false, true, false, false]);
+    assert.deepEqual(a, b);
+  });
+
+  describe('closed', function () {
+    var loop = [[0, 0], [10, 0], [12, 5], [3, 9], [0, 0]];
+
+    it('a corner in a loop: the curve turns there, starting at the first knot', function () {
+      var segs = getCurveSegments(loop, true, [false, false, true, false, false]);
+      assert.equal(segs.length, 4);
+      assert.deepEqual(segs[0].p0, [0, 0]);
+      assert.deepEqual(segs[3].p3, [0, 0]);
+      assert.ok(turn(arrival(segs[1]), departure(segs[2])) > 0.1);
+      assert.ok(turn(arrival(segs[3]), departure(segs[0])) < 1e-9);
+      assert.ok(turn(arrival(segs[0]), departure(segs[1])) < 1e-9);
+    });
+
+    it('a corner at the knot that closes the loop', function () {
+      var a = getCurveSegments(loop, true, [true, false, false, false, true]);
+      var b = getCurveSegments(loop, true, [false, false, false, false, true]);
+      assert.deepEqual(a, b);
+      assert.ok(turn(arrival(a[3]), departure(a[0])) > 0.1);
+    });
+
+    it('every knot a corner makes a polygon', function () {
+      var segs = getCurveSegments(loop, true, [true, true, true, true, true]);
+      assert.ok(segs.every(isStraight));
+    });
+  });
+});

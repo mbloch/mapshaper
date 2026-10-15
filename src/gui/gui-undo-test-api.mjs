@@ -155,6 +155,12 @@ export function createUndoTestApi(gui) {
         return ext.translateCoords(p[0], p[1]);
       }) : null;
     },
+    // which of the knots above are corners (see gui-curve-line-knots.mjs)
+    getPendingKnotCorners: function() {
+      var hit = gui.map && gui.map.getHitControl ? gui.map.getHitControl() : null;
+      var knots = hit ? hit.getHitState().pending_knots : null;
+      return knots ? knots.map(function(p) { return p[2] === true; }) : null;
+    },
     // The features the layer is drawn without while a tool redraws them
     getHiddenShapeIds: function() {
       var hit = gui.map && gui.map.getHitControl ? gui.map.getHitControl() : null;

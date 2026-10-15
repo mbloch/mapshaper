@@ -1,6 +1,7 @@
 import { internal } from './gui-core';
 import { translateDisplayPoint } from './gui-display-utils';
 import { showPopupAlert } from './gui-alert';
+import { GUI } from './gui-lib';
 import { runGuiEditCommand } from './gui-edit-command';
 import { getAddShapeCommand, getUpdateLineCommand } from './gui-draw-commands';
 import {
@@ -14,8 +15,11 @@ import {
 } from './gui-label-curve-state';
 import {
   createKnotCache, addKnotVersion, findKnotVersion, getLinePathCoords,
-  moveCurveKnot, curveKnotsAreClosed, getCurveFlattenTolerance
+  moveCurveKnot, curveKnotsAreClosed, getCurveFlattenTolerance,
+  makeKnot, toggleCurveKnotCorner, getKnotCorners
 } from './gui-curve-line-knots';
+
+var ALT_KEY_CODE = 18;
 
 // The curve tool, armed from the line style mode's toolbar ('curve_lines',
 // see getToolMode() in gui-interaction-mode-control.mjs).
@@ -31,6 +35,11 @@ import {
 // knots are kept only while the tool is open, and only for a line whose path
 // is still the one they produced (see gui-curve-line-knots.mjs); any other
 // line is selected for styling, as in the Draw tool.
+//
+// Alt-click (Option-click) places a corner knot, where the curve turns
+// sharply, and on a knot of a selected curve switches it between a corner and
+// a smooth knot, as another -update-line command. Corner knots are drawn as
+// squares.
 export function initCurveLineTool(gui, ext, hit) {
   var _active = false;
   var curve = createCurveState(); // the curve being drawn
@@ -131,9 +140,11 @@ export function initCurveLineTool(gui, ext, hit) {
   function showInstructions() {
     if (shownInstructions) return;
     shownInstructions = true;
-    alert = showPopupAlert('Click to place the points of a curve. Double-click or type Enter to finish, ' +
-      'or click the first point to close the curve. Backspace removes the last point. ' +
-      'Select a curve to drag its points.', null, {non_blocking: true, max_width: '350px'});
+    var alt = GUI.getAltKeyName();
+    alert = showPopupAlert('Click to place the nodes of a smooth curve; ' + alt +
+      '-click for a corner node. Select a curve to edit its nodes: drag a node to reshape the curve, or ' +
+      alt + '-click it to toggle between smooth and corner.',
+      null, {non_blocking: true, max_width: '350px'});
   }
 
   function hideInstructions() {
@@ -149,10 +160,12 @@ export function initCurveLineTool(gui, ext, hit) {
     if (!_active || drag) return;
     p = pixToMapCoords(e.x, e.y);
     if (drawing()) {
-      if (curve.knots.length >= 3 && findKnotNear(curve, p, scaleThreshold(KNOT_HIT_THRESHOLD)) === 0) {
+      if (pointerClosesCurve(p)) {
+        // the curve closes at a corner if the click that closes it is one
+        if (cornerKeyDown()) curve.knots[0] = makeKnot(curve.knots[0], true);
         finishCurve(true);
       } else {
-        extendCurve(p);
+        extendCurve(p, cornerKeyDown());
       }
       return;
     }
@@ -160,6 +173,7 @@ export function initCurveLineTool(gui, ext, hit) {
     updateHoverKnot();
     if (hoverKnot > -1) {
       // a press on a knot is the start of a drag, not a new curve
+      if (cornerKeyDown()) toggleCorner(hoverKnot);
     } else if (e.id > -1) {
       selectShape(e.id);
     } else if (hit.getSelectionIds().length > 0) {
@@ -172,7 +186,12 @@ export function initCurveLineTool(gui, ext, hit) {
 
   hit.on('dblclick', function(e) {
     var o;
-    if (!_active || !drawing()) return;
+    if (!_active) return;
+    if (!drawing()) {
+      // two quick clicks on a knot, e.g. toggling a corner twice, are not a zoom
+      if (hoverKnot > -1) e.originalEvent.stopPropagation();
+      return;
+    }
     e.originalEvent.stopPropagation(); // prevent dblclick zoom
     o = getDblclickAction(curve, pixToMapCoords(e.x, e.y), scaleThreshold(KNOT_HIT_THRESHOLD));
     if (o.action == 'finish') finishCurve(false);
@@ -270,6 +289,15 @@ export function initCurveLineTool(gui, ext, hit) {
     }
   }, null, 1);
 
+  // Alt draws the curve through the pointer as if a click there would place a
+  // corner, which it would
+  gui.keyboard.on('keydown', onAltKey);
+  gui.keyboard.on('keyup', onAltKey);
+
+  function onAltKey(e) {
+    if (_active && drawing() && e.keyCode == ALT_KEY_CODE) refreshCurve();
+  }
+
   // Esc and Enter finish the curve being drawn; Backspace takes back its last
   // knot
   gui.keyboard.on('keydown', function(e) {
@@ -321,9 +349,12 @@ export function initCurveLineTool(gui, ext, hit) {
     extendCurve(p);
   }
 
-  function extendCurve(p) {
+  function extendCurve(p, corner) {
+    var n;
     if (handleClick(curve, p, scaleThreshold(KNOT_HIT_THRESHOLD),
         scaleThreshold(MIN_KNOT_DISTANCE)) != 'added') return;
+    n = curve.knots.length;
+    if (corner) curve.knots[n - 1] = makeKnot(curve.knots[n - 1], true);
     redoKnots = [];
     hideInstructions();
     refreshShownCurve(true);
@@ -336,10 +367,13 @@ export function initCurveLineTool(gui, ext, hit) {
   function refreshCurve() {
     var knots = curve.knots;
     var style = getPendingPathStyle(getNewCurveStyle(), !!gui.state.dark_basemap);
+    var corner = cornerKeyDown();
+    var first;
     if (previewPoint && pointerClosesCurve(previewPoint)) {
-      knots = knots.concat([knots[0]]);
+      first = corner ? makeKnot(knots[0], true) : knots[0];
+      knots = [first].concat(knots.slice(1), [first]);
     } else if (previewPoint) {
-      knots = knots.concat([previewPoint]);
+      knots = knots.concat([makeKnot(previewPoint, corner)]);
     }
     hit.setPendingPath(knots.length > 1 ? fitDisplayPath(knots) : null, style);
     hit.setPendingKnots(curve.knots);
@@ -462,6 +496,11 @@ export function initCurveLineTool(gui, ext, hit) {
     updateCursor();
   }
 
+  function toggleCorner(index) {
+    var knots = toggleCurveKnotCorner(shown.knots, index);
+    if (knots) commitKnotMove({id: shown.id, knots: knots});
+  }
+
   // The drag preview stands in for the line until the command replaces it,
   // so the command is what changes the data, and undo has a step that undoes
   // something.
@@ -498,7 +537,11 @@ export function initCurveLineTool(gui, ext, hit) {
 
   function fitDisplayPath(knots) {
     return internal.fitCurveThroughKnots(knots, getCurveFlattenTolerance(knots),
-      curveKnotsAreClosed(knots));
+      curveKnotsAreClosed(knots), getKnotCorners(knots));
+  }
+
+  function cornerKeyDown() {
+    return gui.keyboard.altIsPressed();
   }
 
   function toDataCoords(target, displayCoords) {

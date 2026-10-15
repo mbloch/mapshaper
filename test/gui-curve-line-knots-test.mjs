@@ -2,7 +2,8 @@ import assert from 'assert';
 import api from '../mapshaper.js';
 import {
   createKnotCache, addKnotVersion, findKnotVersion, getLinePathCoords,
-  moveCurveKnot, curveKnotsAreClosed, getCurveFlattenTolerance
+  moveCurveKnot, curveKnotsAreClosed, getCurveFlattenTolerance,
+  makeKnot, knotIsCorner, toggleCurveKnotCorner, getKnotCorners
 } from '../src/gui/gui-curve-line-knots';
 import { getUpdateLineCommand } from '../src/gui/gui-draw-commands';
 
@@ -98,5 +99,48 @@ describe('gui curve line knots', function() {
   it('getUpdateLineCommand() writes coordinates at full precision', function() {
     assert.equal(getUpdateLineCommand([[0.5, 1.25], [3.1234567891, -2]], 4),
       '-update-line ids=4 coordinates=0.5,1.25,3.1234567891,-2');
+  });
+});
+
+describe('gui curve line corner knots', function() {
+  var open = [[0, 0], [10, 0, true], [20, 5]];
+  var closed = [[0, 0, true], [10, 0], [5, 5], [0, 0, true]];
+
+  it('toggleCurveKnotCorner() switches a knot, and leaves the knots it was given alone', function() {
+    assert.deepEqual(toggleCurveKnotCorner(open, 1), [[0, 0], [10, 0], [20, 5]]);
+    assert.deepEqual(open, [[0, 0], [10, 0, true], [20, 5]]);
+  });
+
+  it('the ends of an open curve are not made corners', function() {
+    assert.strictEqual(toggleCurveKnotCorner(open, 0), null);
+    assert.strictEqual(toggleCurveKnotCorner(open, 2), null);
+  });
+
+  it('the first and last knots of a closed curve switch together', function() {
+    assert.deepEqual(toggleCurveKnotCorner(closed, 3), [[0, 0], [10, 0], [5, 5], [0, 0]]);
+    assert.deepEqual(toggleCurveKnotCorner(closed, 0), [[0, 0], [10, 0], [5, 5], [0, 0]]);
+  });
+
+  it('a moved corner is still a corner', function() {
+    assert.deepEqual(moveCurveKnot(open, 1, [10, 3], 1), [[0, 0], [10, 3, true], [20, 5]]);
+    assert.deepEqual(moveCurveKnot(closed, 0, [1, 0], 1), [[1, 0, true], [10, 0], [5, 5], [1, 0, true]]);
+  });
+
+  it('getKnotCorners()', function() {
+    assert.deepEqual(getKnotCorners(open), [false, true, false]);
+    assert.strictEqual(getKnotCorners([[0, 0], [1, 1]]), null);
+  });
+
+  it('the knot cache keeps corners', function() {
+    var cache = createKnotCache();
+    addKnotVersion(cache, open, [[0, 0], [1, 1]]);
+    assert.deepEqual(findKnotVersion(cache, [[0, 0], [1, 1]]), open);
+  });
+
+  it('makeKnot() and knotIsCorner()', function() {
+    assert.deepEqual(makeKnot([1, 2, true], false), [1, 2]);
+    assert.deepEqual(makeKnot([1, 2], true), [1, 2, true]);
+    assert(knotIsCorner([1, 2, true]));
+    assert(!knotIsCorner([1, 2]));
   });
 });

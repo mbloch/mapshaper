@@ -136,6 +136,56 @@ test('while a knot is dragged, the layer is drawn without the curve, and the pre
     expect(errors).toEqual([]);
   });
 
+test('Alt-click places a corner, and Alt-click on a knot of a selected curve smooths it, in one undo step',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    var box = await openCurveTool(page);
+    var knots = [mapPoint(box, 0.2, 0.7), mapPoint(box, 0.35, 0.55), mapPoint(box, 0.5, 0.7)];
+    await clickAt(page, knots[0]);
+    await altClickAt(page, knots[1]);
+    await clickAt(page, knots[2]);
+    await page.keyboard.press('Enter');
+    await expect.poll(() => getShapeCount(page, 'lines')).toBe(1);
+    expect(turnAt((await getPaths(page, 'lines'))[0][0], toMap(box, knots[1]))).toBeGreaterThan(0.5);
+
+    await clickAt(page, knots[1]);
+    expect(await getSelectionIds(page)).toEqual([0]);
+    expect(await getPendingKnotCorners(page)).toEqual([false, true, false]);
+
+    await altClickAt(page, knots[1]);
+    await expect.poll(() => getPendingKnotCorners(page)).toEqual([false, false, false]);
+    await expect.poll(async () => turnAt((await getPaths(page, 'lines'))[0][0], toMap(box, knots[1])))
+      .toBeLessThan(0.2);
+    var commands = await getSessionCommands(page);
+    expect(commands[commands.length - 1]).toMatch(/^-update-line ids=0 /);
+    expect(await getSelectionIds(page)).toEqual([0]);
+
+    await undo(page);
+    await expect.poll(async () => turnAt((await getPaths(page, 'lines'))[0][0], toMap(box, knots[1])))
+      .toBeGreaterThan(0.5);
+    expect(await getPendingKnotCorners(page)).toEqual([false, true, false]);
+    expect(errors).toEqual([]);
+  });
+
+test('two quick clicks on a knot of a selected curve do not zoom the map', async function({page}) {
+  var errors = collectPageErrors(page);
+  var box = await openCurveTool(page);
+  var knots = [mapPoint(box, 0.2, 0.7), mapPoint(box, 0.35, 0.55), mapPoint(box, 0.5, 0.7)];
+  await drawCurve(page, knots);
+  await expect.poll(() => getShapeCount(page, 'lines')).toBe(1);
+  await clickAt(page, knots[1]);
+  expect(await getSelectionIds(page)).toEqual([0]);
+  var before = await getPaths(page, 'lines');
+  await page.keyboard.down('Alt');
+  await page.mouse.dblclick(knots[1][0], knots[1][1]);
+  await page.keyboard.up('Alt');
+  await page.waitForTimeout(500);
+  // the knots are where they were on screen, so the map did not zoom
+  expectSamePoints(await getPendingKnots(page), knots.map(p => toMap(box, p)));
+  expect((await getPaths(page, 'lines'))[0][0][0]).toEqual(before[0][0][0]);
+  expect(errors).toEqual([]);
+});
+
 test('a line that was not drawn as a curve has no knots, and is selected for styling',
   async function({page}) {
     var errors = collectPageErrors(page);
@@ -196,6 +246,24 @@ async function dragFrom(page, a, b) {
   await page.waitForTimeout(250);
 }
 
+async function altClickAt(page, p) {
+  await page.keyboard.down('Alt');
+  await clickAt(page, p);
+  await page.keyboard.up('Alt');
+}
+
+// how far the path turns, in radians, at its vertex nearest @p
+function turnAt(path, p) {
+  var i = 0, a, b, d;
+  path.forEach(function(q, j) {
+    if (Math.hypot(p[0] - q[0], p[1] - q[1]) < Math.hypot(p[0] - path[i][0], p[1] - path[i][1])) i = j;
+  });
+  a = Math.atan2(path[i][1] - path[i - 1][1], path[i][0] - path[i - 1][0]);
+  b = Math.atan2(path[i + 1][1] - path[i][1], path[i + 1][0] - path[i][0]);
+  d = Math.abs(a - b) % (2 * Math.PI);
+  return d > Math.PI ? 2 * Math.PI - d : d;
+}
+
 function expectOnPath(p, path) {
   var minDist = path.reduce(function(memo, q) {
     return Math.min(memo, Math.hypot(p[0] - q[0], p[1] - q[1]));
@@ -249,6 +317,12 @@ async function getHiddenShapeIds(page) {
 async function getPendingKnots(page) {
   return page.evaluate(function() {
     return window.mapshaper.undoTest.getPendingKnotPixels();
+  });
+}
+
+async function getPendingKnotCorners(page) {
+  return page.evaluate(function() {
+    return window.mapshaper.undoTest.getPendingKnotCorners();
   });
 }
 

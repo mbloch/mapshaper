@@ -1,4 +1,5 @@
 import { internal } from './gui-core';
+import { knotIsCorner } from './gui-curve-line-knots';
 
 // The visible guide for a label path being placed: a line along the curve the
 // text will follow, and a handle on each knot.
@@ -20,6 +21,9 @@ var violet = '#cc6acc';
 var white = '#ffffff';
 
 var KNOT_RADIUS = 3.2;
+// half the side of a corner knot's square, which looks about as big as a
+// smooth knot's circle
+var CORNER_KNOT_RADIUS = 2.8;
 
 // Flattening tolerance as a fraction of the curve's own size, which keeps the
 // guide smooth at any zoom and, because it does not depend on the view, lets
@@ -97,9 +101,24 @@ function buildGuideLineLayer(activeLyr, curves) {
 }
 
 // The handles alone, for a tool that draws the curve itself (see
-// gui-curve-lines.mjs). Returns a layer, or null if there are no knots.
-export function getKnotHandleLayer(activeLyr, knots) {
-  return knots && knots.length > 0 ? buildKnotLayer(activeLyr, [{knots: knots}]) : null;
+// gui-curve-lines.mjs): a layer of circles for the smooth knots and one of
+// squares for the corners, either of them left out if it would be empty.
+export function getKnotHandleLayers(activeLyr, knots) {
+  var smooth = (knots || []).filter(function(k) { return !knotIsCorner(k); });
+  var corners = (knots || []).filter(knotIsCorner);
+  var layers = [];
+  var lyr;
+  if (smooth.length > 0) {
+    layers.push(buildKnotLayer(activeLyr, [{knots: smooth}]));
+  }
+  if (corners.length > 0) {
+    lyr = buildKnotLayer(activeLyr, [{knots: corners}]);
+    lyr.gui.displayLayer.name = 'curve-corner-knots';
+    lyr.gui.style.pointShape = 'square';
+    lyr.gui.style.radius = CORNER_KNOT_RADIUS;
+    layers.push(lyr);
+  }
+  return layers;
 }
 
 function buildKnotLayer(activeLyr, curves) {

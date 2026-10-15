@@ -1,6 +1,7 @@
 import { FloatingToolbar, getVisibleFloatingToolbars, makeToolbarButton } from './gui-floating-toolbar';
 import { appUndoIsEnabled } from './gui-app-undo';
 import { El } from './gui-el';
+import { GUI } from './gui-lib';
 
 // Undo/redo while the user is in an editing interaction mode. The buttons are
 // a group that joins the start of the bottom tool toolbar when there is one,
@@ -11,7 +12,7 @@ import { El } from './gui-el';
 export function EditToolbar(gui) {
   var toolbar = new FloatingToolbar(gui, { name: 'edit-toolbar' });
   var group = El('div').addClass('undo-redo-buttons');
-  var isMac = navigator.userAgent.includes('Mac');
+  var isMac = GUI.isMac();
   var modKey = isMac ? '\u2318' : 'Ctrl+';
   var shiftKey = isMac ? '\u21e7' : 'Shift+';
   var wanted = false;

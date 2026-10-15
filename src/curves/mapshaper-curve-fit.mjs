@@ -79,10 +79,12 @@ export function curveIsClosed(knots) {
 // tolerance: max deviation of the output polyline from the true curve, in the
 //   same units as the knots
 // closed: fit a closed loop (see curveIsClosed()) rather than an open run
+// corners: (optional) an array of booleans, one per knot: true for a knot
+//   where the curve turns sharply rather than passing smoothly through it
 // Returns an array of [x, y] starting at the first knot, ending at the last,
 //   and passing through every knot in between.
-export function fitCurveThroughKnots(knots, tolerance, closed) {
-  var pts = dedupeKnots(knots || []),
+export function fitCurveThroughKnots(knots, tolerance, closed, corners) {
+  var pts = dedupeKnots(knots || [], corners),
       segments, out, i;
   if (pts.length < 2) return pts;
   if (tolerance > 0 === false) {
@@ -105,19 +107,54 @@ export function fitCurveThroughKnots(knots, tolerance, closed) {
 // true curves rather than a densified polyline.
 // Returns [{p0, c1, c2, p3}, ...], one per knot interval. A closed curve's
 // last segment ends at its first knot.
-export function getCurveSegments(knots, closed) {
-  var pts = dedupeKnots(knots || []);
+export function getCurveSegments(knots, closed, corners) {
+  var pts = dedupeKnots(knots || [], corners);
   if (pts.length < 2) return [];
   return fitKnots(pts, closed);
 }
 
+// @pts: deduplicated knots, with any corners as pts.corners
 function fitKnots(pts, closed) {
-  var loop;
+  var corners = pts.corners, loop;
   if (closed) {
     loop = getLoopKnots(pts);
-    return loop.length >= 3 ? fitLoop(loop) : fitRun(loop);
+    if (loop.length < 3) return fitRun(loop);
+    if (!corners) return fitLoop(loop);
+    // the knot that closes the loop is the first knot
+    corners = corners.slice(0, loop.length);
+    corners[0] = corners[0] || pts.corners[pts.length - 1];
+    return fitLoopWithCorners(loop, corners);
   }
-  return fitRun(pts);
+  return corners ? fitRunsBetweenCorners(pts, corners) : fitRun(pts);
+}
+
+// A corner ends one run of knots and starts the next, so the curve turns
+// there instead of passing smoothly through, and each run is fitted on its
+// own, with the ends of a run as it would have at the ends of a curve. Two
+// corners side by side are joined by a straight segment, since a run of two
+// knots is straight. A corner at either end of the curve changes nothing.
+function fitRunsBetweenCorners(pts, corners) {
+  var segments = [], start = 0, i;
+  for (i = 1; i < pts.length; i++) {
+    if (corners[i] || i == pts.length - 1) {
+      segments = segments.concat(fitRun(pts.slice(start, i + 1)));
+      start = i;
+    }
+  }
+  return segments;
+}
+
+// A loop with a corner is a run from the corner round to it again. The
+// segments are rotated back to start at the loop's first knot, as fitLoop()'s
+// do.
+function fitLoopWithCorners(loop, corners) {
+  var n = loop.length;
+  var c = corners.indexOf(true);
+  var pts = loop.slice(c).concat(loop.slice(0, c), [loop[c]]);
+  var flags = corners.slice(c).concat(corners.slice(0, c), [true]);
+  var segments = fitRunsBetweenCorners(pts, flags);
+  var k = (n - c) % n;
+  return segments.slice(k).concat(segments.slice(0, k));
 }
 
 // A closed curve's knots without the repeated last one
@@ -486,15 +523,23 @@ function getCubicLength(seg, depth) {
 // Removes non-finite and consecutively duplicated knots. A duplicate spans a
 // zero-length chord, which would leave the direction of the polyline there
 // undefined -- and double-clicking to finish a path is an easy way to make one.
-function dedupeKnots(knots) {
-  var points = [], i, p, prev;
+// With @corners, the result's corners property has a flag per point kept, and
+// a removed duplicate of a corner leaves the knot it duplicates a corner. With
+// no corners, there is no corners property.
+function dedupeKnots(knots, corners) {
+  var points = [], flags = [], i, p, prev;
   for (i = 0; i < knots.length; i++) {
     p = knots[i];
     if (!p || p.length < 2 || !isFiniteNumber(p[0]) || !isFiniteNumber(p[1])) continue;
-    if (prev && p[0] === prev[0] && p[1] === prev[1]) continue;
+    if (prev && p[0] === prev[0] && p[1] === prev[1]) {
+      if (corners && corners[i]) flags[flags.length - 1] = true;
+      continue;
+    }
     points.push([p[0], p[1]]);
+    flags.push(!!(corners && corners[i]));
     prev = p;
   }
+  if (flags.indexOf(true) > -1) points.corners = flags;
   return points;
 }
 
