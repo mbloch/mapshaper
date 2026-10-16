@@ -116,9 +116,9 @@ var startEditing = function() {
     gui.dispatchEvent('map-needs-refresh');
     return tension;
   };
-  // Extra tension at hairpins: mapshaper.setLabelCurveHairpin(3, 70) raises
-  // the tension toward 3 as the angle between a knot's two arms closes from 70
-  // degrees to 0. Omitted arguments reset to the defaults, 3 and 70;
+  // Extra tension at hairpins: mapshaper.setLabelCurveHairpin(2.5, 60) raises
+  // the tension toward 2.5 as the angle between a knot's two arms closes from
+  // 60 degrees to 0. Omitted arguments reset to the defaults, 2.5 and 60;
   // setLabelCurveHairpin(1) turns it off.
   window.mapshaper.setLabelCurveHairpin = function(tension, angle) {
     var out = {

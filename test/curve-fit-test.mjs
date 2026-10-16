@@ -175,6 +175,18 @@ describe('mapshaper-curve-fit', function () {
       assert.ok(tight < loose * 0.8, tight + ' vs ' + loose);
     });
 
+    it('a hairpin next to the end of a run does not hook into the end knot', function () {
+      // from a GUI session: the pointer is the last knot, just past a sharp
+      // tip. With the end knot slacker than the tip, the curve swung out and
+      // came into the pointer 69 degrees off the chord from the tip.
+      var knots = [[190, 355], [112, 263], [172, 87], [138, 255]];
+      var seg = getCurveSegments(knots)[2];
+      var chord = Math.atan2(seg.p3[1] - seg.p0[1], seg.p3[0] - seg.p0[0]);
+      var arrival = Math.atan2(seg.p3[1] - seg.c2[1], seg.p3[0] - seg.c2[0]);
+      var off = Math.abs(chord - arrival) * 180 / Math.PI;
+      assert.ok(off < 30, 'arrives ' + off.toFixed(0) + ' degrees off the chord');
+    });
+
     it('hairpin tension leaves a square loop alone', function () {
       var square = [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]];
       var after = getCurveSegments(square, true);
@@ -185,7 +197,7 @@ describe('mapshaper-curve-fit', function () {
     });
 
     it('hairpin tension barely touches an equilateral triangle loop', function () {
-      // its arms meet at 60 degrees, just inside the default ramp
+      // its arms meet at 60 degrees, the start of the default ramp
       var triangle = [[0, 0], [10, 0], [5, 5 * Math.sqrt(3)], [0, 0]];
       var c = [5, 5 / Math.sqrt(3)];
       function roundness() {
@@ -539,8 +551,9 @@ describe('mapshaper-curve-fit', function () {
       // ran nearly straight and hooked at the end, and curvature either side
       // of the knot differed by a factor of 14 on the first case below.
       // The first three are sharp hairpins, where the default hairpin tension
-      // shortens the tip's handles and leaves a mismatch of up to 4.8x; with
-      // hairpin tension off they stay within 1.4x.
+      // shortens the tip's handles, and the end knots take the tip's tension
+      // in the solve, leaving a mismatch of up to 4.4x; with hairpin tension
+      // off they stay within 1.4x.
       var paths = [
         [[62, 546], [99, 57], [82, 104]],
         [[397, 405], [397, 443], [275, 92]],
@@ -585,6 +598,20 @@ describe('mapshaper-curve-fit', function () {
             ': handles are ' + asym.toFixed(1) + ':1');
         });
       });
+    });
+
+    it('a short last chord does not reshape the curve knots away', function () {
+      // While a curve is drawn, the pointer is its last knot, and the chord to
+      // it is short. Moving the pointer away from the last placed knot swung
+      // the tangent at the second knot of this path (from a GUI session) by 15
+      // degrees, when the chord-ratio limit compounded along the path.
+      var knots = [[152, 425], [50, 253], [314, 103], [688, 199], [433, 247]];
+      function tangentAtSecondKnot(dist) {
+        var seg = getCurveSegments(knots.concat([[433 - dist, 247 - dist * 0.08]]))[1];
+        return Math.atan2(seg.c1[1] - seg.p0[1], seg.c1[0] - seg.p0[0]) * 180 / Math.PI;
+      }
+      var near = tangentAtSecondKnot(10), far = tangentAtSecondKnot(150);
+      assert.ok(Math.abs(far - near) < 0.5, near.toFixed(1) + ' vs ' + far.toFixed(1));
     });
 
     it('leaves an evenly spaced path alone', function () {

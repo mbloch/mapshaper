@@ -4,6 +4,7 @@ import { expect, test } from '@playwright/test';
 // reshapes them by dragging their knots while the tool is open.
 
 var FIXTURE = 'test/data/features/snip/ring_and_line.json';
+var LINE_BUTTON = '.floating-toolbar.line-draw-toolbar .floating-toolbar-btn[data-tooltip="Draw lines"]';
 var CURVE_BUTTON = '.floating-toolbar.line-draw-toolbar .floating-toolbar-btn[data-tooltip="Draw curves"]';
 
 test('the toolbar button arms the curve tool, and a curve is one -add-shape command',
@@ -186,6 +187,137 @@ test('two quick clicks on a knot of a selected curve do not zoom the map', async
   expect(errors).toEqual([]);
 });
 
+test('after an end knot is dragged, the Draw tool extends the curve from its other end',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    var box = await openCurveTool(page);
+    var knots = [mapPoint(box, 0.2, 0.7), mapPoint(box, 0.35, 0.55), mapPoint(box, 0.5, 0.7)];
+    await drawCurve(page, knots);
+    await expect.poll(() => getShapeCount(page, 'lines')).toBe(1);
+    await clickAt(page, knots[1]);
+    await dragFrom(page, knots[2], mapPoint(box, 0.55, 0.75));
+    await expect.poll(async () => {
+      var commands = await getSessionCommands(page);
+      return commands[commands.length - 1];
+    }).toMatch(/^-update-line /);
+
+    await page.locator(LINE_BUTTON).click();
+    await page.waitForTimeout(150);
+    // the end of the line that was not dragged, where the old arc also ends
+    await page.mouse.move(knots[0][0] + 10, knots[0][1] + 10);
+    await page.mouse.move(knots[0][0], knots[0][1], {steps: 4});
+    await expect.poll(() => getHoverVertex(page)).not.toBe(null);
+    await clickAt(page, knots[0]);
+    await clickAt(page, mapPoint(box, 0.1, 0.85));
+    await page.keyboard.press('Enter');
+    await expect.poll(async () => {
+      var commands = await getSessionCommands(page);
+      return commands[commands.length - 1];
+    }).toMatch(/ extend/);
+    expect(await getShapeCount(page, 'lines')).toBe(1);
+    expect(errors).toEqual([]);
+  });
+
+test('a click on the end of a curve extends it, as one -update-line command that undo takes back',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    var box = await openCurveTool(page);
+    var knots = [mapPoint(box, 0.2, 0.7), mapPoint(box, 0.35, 0.55), mapPoint(box, 0.5, 0.7)];
+    var added = mapPoint(box, 0.65, 0.55);
+    await drawCurve(page, knots);
+    await expect.poll(() => getShapeCount(page, 'lines')).toBe(1);
+    expect(await getSelectionIds(page)).toEqual([]);
+    var before = (await getPaths(page, 'lines'))[0][0];
+
+    // the end of the curve is marked when the pointer is over it
+    await hoverOnto(page, knots[2]);
+    await expect.poll(() => getHoverVertex(page)).not.toBe(null);
+    await clickAt(page, knots[2]);
+    expect(await getHoverVertex(page)).toBe(null);
+    expect(await getHiddenShapeIds(page)).toEqual([0]);
+    expect((await getPendingKnots(page)).length).toBe(3);
+    await clickAt(page, added);
+    await page.keyboard.press('Enter');
+    await expect.poll(async () => {
+      var commands = await getSessionCommands(page);
+      return commands[commands.length - 1];
+    }).toMatch(/^-update-line ids=0 coordinates=[-\d.e,]+$/);
+
+    var after = (await getPaths(page, 'lines'))[0][0];
+    expect(await getShapeCount(page, 'lines')).toBe(1);
+    knots.concat([added]).forEach(function(p) { expectOnPath(toMap(box, p), after); });
+    expectSamePoints([after[0], after[after.length - 1]], [knots[0], added].map(p => toMap(box, p)));
+    expect(await getHiddenShapeIds(page)).toEqual([]);
+    expect(await getSelectionIds(page)).toEqual([0]);
+    expectSamePoints(await getPendingKnots(page), knots.concat([added]).map(p => toMap(box, p)));
+
+    await undo(page);
+    await expect.poll(async () => (await getPaths(page, 'lines'))[0][0].length).toBe(before.length);
+    expect(errors).toEqual([]);
+  });
+
+test('the end of a curve is marked as far away as the line is hit', async function({page}) {
+  var errors = collectPageErrors(page);
+  var box = await openCurveTool(page);
+  var knots = [mapPoint(box, 0.2, 0.7), mapPoint(box, 0.35, 0.55), mapPoint(box, 0.5, 0.7)];
+  await drawCurve(page, knots);
+  await expect.poll(() => getShapeCount(page, 'lines')).toBe(1);
+  await page.mouse.move(knots[2][0] + 40, knots[2][1]);
+  await page.mouse.move(knots[2][0] + 12, knots[2][1], {steps: 4});
+  await expect.poll(() => getHoverVertex(page)).not.toBe(null);
+  expect(errors).toEqual([]);
+});
+
+test('a curve extended from its first knot keeps its direction', async function({page}) {
+  var errors = collectPageErrors(page);
+  var box = await openCurveTool(page);
+  var knots = [mapPoint(box, 0.2, 0.7), mapPoint(box, 0.35, 0.55), mapPoint(box, 0.5, 0.7)];
+  var added = mapPoint(box, 0.1, 0.5);
+  await drawCurve(page, knots);
+  await expect.poll(() => getShapeCount(page, 'lines')).toBe(1);
+  await clickAt(page, knots[1]);
+  expect(await getSelectionIds(page)).toEqual([0]);
+
+  await hoverOnto(page, knots[0]);
+  await expect.poll(() => getHoverVertex(page)).not.toBe(null);
+  await clickAt(page, knots[0]);
+  await clickAt(page, added);
+  await page.keyboard.press('Enter');
+  await expect.poll(async () => {
+    var commands = await getSessionCommands(page);
+    return commands[commands.length - 1];
+  }).toMatch(/^-update-line ids=0 /);
+  var after = (await getPaths(page, 'lines'))[0][0];
+  expectSamePoints([after[0], after[after.length - 1]], [added, knots[2]].map(p => toMap(box, p)));
+  expectSamePoints(await getPendingKnots(page), [added].concat(knots).map(p => toMap(box, p)));
+  expect(errors).toEqual([]);
+});
+
+test('undo takes back the knots added to a curve being extended, and then leaves the curve as it was',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    var box = await openCurveTool(page);
+    var knots = [mapPoint(box, 0.2, 0.7), mapPoint(box, 0.35, 0.55), mapPoint(box, 0.5, 0.7)];
+    await drawCurve(page, knots);
+    await expect.poll(() => getShapeCount(page, 'lines')).toBe(1);
+    var before = (await getPaths(page, 'lines'))[0][0];
+    var commandCount = (await getSessionCommands(page)).length;
+
+    await hoverOnto(page, knots[2]);
+    await expect.poll(() => getHoverVertex(page)).not.toBe(null);
+    await clickAt(page, knots[2]);
+    await clickAt(page, mapPoint(box, 0.65, 0.55));
+    expect((await getPendingKnots(page)).length).toBe(4);
+    await undo(page);
+    expect((await getPendingKnots(page)).length).toBe(3);
+    await undo(page);
+    expect(await getPendingKnots(page)).toBe(null);
+    expect(await getHiddenShapeIds(page)).toEqual([]);
+    expect((await getPaths(page, 'lines'))[0][0]).toEqual(before);
+    expect((await getSessionCommands(page)).length).toBe(commandCount);
+    expect(errors).toEqual([]);
+  });
+
 test('a line that was not drawn as a curve has no knots, and is selected for styling',
   async function({page}) {
     var errors = collectPageErrors(page);
@@ -244,6 +376,12 @@ async function dragFrom(page, a, b) {
   await page.mouse.move(b[0], b[1], {steps: 8});
   await page.mouse.up();
   await page.waitForTimeout(250);
+}
+
+// approaches @p in steps, so that the hover reaches it before a click does
+async function hoverOnto(page, p) {
+  await page.mouse.move(p[0] + 12, p[1] + 12);
+  await page.mouse.move(p[0], p[1], {steps: 4});
 }
 
 async function altClickAt(page, p) {
@@ -317,6 +455,12 @@ async function getHiddenShapeIds(page) {
 async function getPendingKnots(page) {
   return page.evaluate(function() {
     return window.mapshaper.undoTest.getPendingKnotPixels();
+  });
+}
+
+async function getHoverVertex(page) {
+  return page.evaluate(function() {
+    return window.mapshaper.undoTest.getHoverVertex();
   });
 }
 

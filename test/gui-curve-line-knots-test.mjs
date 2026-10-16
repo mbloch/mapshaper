@@ -3,7 +3,8 @@ import api from '../mapshaper.js';
 import {
   createKnotCache, addKnotVersion, findKnotVersion, getLinePathCoords,
   moveCurveKnot, curveKnotsAreClosed, getCurveFlattenTolerance,
-  makeKnot, knotIsCorner, toggleCurveKnotCorner, getKnotCorners
+  makeKnot, knotIsCorner, toggleCurveKnotCorner, getKnotCorners,
+  findCurveEndNear, knotIsCurveEnd, reverseCurveKnots
 } from '../src/gui/gui-curve-line-knots';
 import { getUpdateLineCommand } from '../src/gui/gui-draw-commands';
 
@@ -142,5 +143,35 @@ describe('gui curve line corner knots', function() {
     assert.deepEqual(makeKnot([1, 2], true), [1, 2, true]);
     assert(knotIsCorner([1, 2, true]));
     assert(!knotIsCorner([1, 2]));
+  });
+});
+
+describe('gui curve line ends', function() {
+  var open = [[0, 0], [10, 0, true], [20, 5]];
+  var closed = [[0, 0], [10, 0], [5, 5], [0, 0]];
+
+  it('findCurveEndNear() finds the nearer end within the threshold', function() {
+    assert.equal(findCurveEndNear(open, [1, 1], 2), 0);
+    assert.equal(findCurveEndNear(open, [19, 5], 2), 2);
+    assert.equal(findCurveEndNear(open, [10, 0], 2), -1);
+    assert.equal(findCurveEndNear(open, [5, 0], 2), -1);
+    assert.equal(findCurveEndNear([[0, 0], [2, 0]], [1.2, 0], 2), 1);
+  });
+
+  it('a closed curve has no ends', function() {
+    assert.equal(findCurveEndNear(closed, [0, 0], 2), -1);
+    assert(!knotIsCurveEnd(closed, 0));
+    assert(!knotIsCurveEnd(closed, 3));
+  });
+
+  it('knotIsCurveEnd()', function() {
+    assert(knotIsCurveEnd(open, 0));
+    assert(knotIsCurveEnd(open, 2));
+    assert(!knotIsCurveEnd(open, 1));
+  });
+
+  it('reverseCurveKnots() keeps corners, and leaves the knots it was given alone', function() {
+    assert.deepEqual(reverseCurveKnots(open), [[20, 5], [10, 0, true], [0, 0]]);
+    assert.deepEqual(open, [[0, 0], [10, 0, true], [20, 5]]);
   });
 });

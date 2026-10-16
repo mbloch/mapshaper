@@ -5,7 +5,8 @@ import {
   getVertexCoords,
   deleteVertex,
   findShapesWithVertices,
-  getShapePaths
+  getShapePaths,
+  removeUnusedArcVertices
   } from './gui-drawing-utils';
 import { translateDisplayPoint } from './gui-display-utils';
 import { showPopupAlert } from './gui-alert';
@@ -837,7 +838,8 @@ export function initLineEditing(gui, ext, hit) {
     var target = hit.getHitTarget();
     var shp = target.shapes[e.id];
     var p = ext.pixCoordsToMapCoords(e.x, e.y);
-    var ids = internal.findNearestVertices(p, shp, target.gui.displayArcs);
+    var ids = removeUnusedArcVertices(internal.findNearestVertices(p, shp, target.gui.displayArcs),
+      target.gui.displayArcs, target.gui.source.dataset.layers);
     var p2 = target.gui.displayArcs.getVertex2(ids[0]);
     var dist = geom.distance2D(p[0], p[1], p2[0], p2[1]);
     var pixelDist = dist / ext.getPixelSize();

@@ -1,7 +1,7 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
 import { getOverlayLayers } from '../src/gui/gui-overlay-styler';
-import { findShapesWithVertices, getShapePaths } from '../src/gui/gui-drawing-utils';
+import { findShapesWithVertices, getShapePaths, removeUnusedArcVertices } from '../src/gui/gui-drawing-utils';
 
 var internal = api.internal;
 
@@ -149,5 +149,40 @@ describe('findShapesWithVertices() and getShapePaths()', function() {
   it('copies the paths of the shapes', function() {
     assert.deepEqual(getShapePaths(shapes, [0, 2], arcs),
       [[[0, 0], [1, 0], [2, 0], [3, 0]], [[3, 0], [3, 3]]]);
+  });
+});
+
+describe('removeUnusedArcVertices()', function() {
+  // a line reshaped with -update-line, moving its last vertex: the old arc is
+  // left in the arc collection, unused, with a vertex where the line starts
+  function reshapedLine() {
+    var lyr = {geometry_type: 'polyline', name: 'lines', shapes: []};
+    var dataset = {layers: [lyr], arcs: new internal.ArcCollection([[[50, 50], [60, 60]]]), info: {}};
+    lyr = api.cmd.addShape([lyr], dataset, {coordinates: [0, 0, 5, 5, 10, 0]})[0];
+    lyr = api.cmd.updateLine([lyr], dataset, {ids: [0], coordinates: [0, 0, 5, 5, 12, 0]})[0];
+    dataset.layers = [lyr];
+    return dataset;
+  }
+
+  it('the start of a reshaped line is not taken for a junction with the old arc', function() {
+    var dataset = reshapedLine();
+    var lyr = dataset.layers[0];
+    var ids = internal.findNearestVertices([0, 0], lyr.shapes[0], dataset.arcs);
+    assert.equal(ids.length, 2);
+    ids = removeUnusedArcVertices(ids, dataset.arcs, dataset.layers);
+    assert.equal(ids.length, 1);
+    assert(internal.vertexIsArcEndpoint(ids[0], dataset.arcs));
+  });
+
+  it('a vertex shared by two lines in use is kept', function() {
+    var arcs = new internal.ArcCollection([[[0, 0], [1, 0]], [[1, 0], [2, 0]]]);
+    var layers = [{geometry_type: 'polyline', shapes: [[[0]], [[1]]]}];
+    assert.deepEqual(removeUnusedArcVertices([1, 2], arcs, layers), [1, 2]);
+  });
+
+  it('point layers are not read as paths', function() {
+    var arcs = new internal.ArcCollection([[[0, 0], [1, 0]], [[1, 0], [2, 0]]]);
+    var layers = [{geometry_type: 'polyline', shapes: [[[0]]]}, {geometry_type: 'point', shapes: [[[1, 0]]]}];
+    assert.deepEqual(removeUnusedArcVertices([1, 2], arcs, layers), [1]);
   });
 });

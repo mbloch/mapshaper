@@ -723,6 +723,20 @@ Two limits hold it in, both inert when the chords are of comparable length:
   It is what improves paths of four or more knots, taking the hairpin from 1.4
   to 0.87 units past the knots.
 
+  The cap applies to the pair of chords in each knot's own equation, not to
+  the chord lengths along the path. It was first written the other way, with
+  each chord shortened to within 1.5× of its neighbour's *shortened* length,
+  which compounds: a 20-pixel chord to the pointer while drawing capped the
+  chords beyond it at 30, 45, 67 and 101 pixels, reaching about
+  log<sub>1.5</sub>(long / short) knots back. Moving the pointer then let
+  distant chords in and out of the cap and swung their tangents, by 15° at
+  the second knot of a five-knot path in one session, and by 11° on average
+  and up to 43° at knots four or more back on random paths of six to eight
+  knots. Capped per knot, the same measure is 0.01° on average (0.1° at
+  worst), below even an uncapped fit's 0.08°, while the mean and worst
+  excursion are unchanged (7.4% and 22% of the diagonal, against 7.5% and
+  21%). On three- and four-knot paths the two forms give the same curve.
+
 Together these take the hairpin to about one gap past the knots (−1.05..2.05,
 against κ-curves' −0.97..1.97), the 161° case to 1.8 leg-lengths, and the drag
 response to under 2× the knot's own movement. Across bend angles from 30° to
@@ -763,7 +777,9 @@ Hobby's **curl** parameter sets how the curve behaves at the two ends of a run:
 0 leaves it straight there, 1 (Metafont's default) makes it approach a circular
 arc. Label paths are short, so the end segments are most of the curve, and
 Metafont's default throws a wide loop past the last knot on a path that turns
-hard near its end. The default here is **0.15**.
+hard near its end. The default here is **0.1**, chosen by eye. It was 0.15;
+0 flattens the hook described under "End knots next to a hairpin" below
+further, but leaves callout arrows too straight at their ends.
 
 This is still being judged by eye. `mapshaper.setLabelCurveCurl(v)` in the
 browser console sets it and redraws; it is expected to go away once a default
@@ -780,10 +796,10 @@ Raising the base tension sharpens hairpins but also squares off the circle a
 loop of three or four evenly placed knots should make. **Hairpin tension**
 separates the two: a knot's tension rises, along a smoothstep, from the base
 tension to a hairpin tension as the angle between its two arms closes from a
-start angle to 0. The defaults are a hairpin tension of **3** and a start
-angle of **70 degrees**, chosen by eye. A square's arms meet at 90 degrees and
-are untouched; an equilateral triangle's meet at 60, just inside the ramp,
-which moves its roundness (smallest radius over largest) from 0.779 to 0.781.
+start angle to 0. The defaults are a hairpin tension of **2.5** and a start
+angle of **60 degrees**, chosen by eye (3 and 70 were tried first, and eased
+once the end-knot hook below was fixed). A square's arms meet at 90 degrees
+and an equilateral triangle's at 60, so both are untouched.
 The solve carries a tension per knot for this (mf.web's equations with each
 knot's two tensions equal); a knot's own tension cancels from its own row and
 acts through its handle lengths and its neighbours' rows.
@@ -792,10 +808,27 @@ turns it off.
 
 The cost is curvature continuity at a sharp, lopsided tip. On the three
 lopsided hairpins in the curvature test, the curvature either side of the tip
-differs by 4.5 to 4.8 times at the defaults, against 1.4 with hairpin tension
-off (and 2.5 to 2.7 at a hairpin tension of 2). Direction stays continuous, so
+differs by 3.9 to 4.4 times at the defaults, including the end-knot change
+below, against 1.4 with hairpin tension off. (At 3 and 70 degrees it was 4.5
+to 4.8, and 6.6 with the end-knot change.) Direction stays continuous, so
 there is no corner; a hairpin with even arms stays at 1.1. This was accepted
 for the tighter tips.
+
+**End knots next to a hairpin.** An end knot has no angle, so it kept the base
+tension, and a taut tip beside a slack end hooked the curve into the end
+knot — which while drawing is the pointer. On one path the curve came into
+the pointer 69° off the chord from the tip. The cause is the end condition:
+Metafont's curl ratio grows when the end knot is slacker than its neighbour
+(0.76 here, against 0.6 with equal tensions), steepening the angle the curve
+arrives at. So in the solve an end knot takes its neighbour's tension when
+that is higher, which brings the case to 18°. Its handle keeps the base
+tension: matching the handle as well barely changed the hook, and took the
+worst drag response on the arm-and-leg sweep from 2.7× to 3.6× the knot's
+movement, where solve-only matching brings it down to 1.8×. The cost is more
+curvature mismatch at a lopsided tip (6.6× at worst against 4.8×, at the
+hairpin settings of the time). Lowering
+the curl also flattens the hook, but for every path, not only those that end
+at a hairpin; the default curl was later lowered from 0.15 to 0.1.
 
 This is the angle-dependent tension rejected above as a fix for bulging, and
 it is kept here because the goal is different: there the bulge depended on

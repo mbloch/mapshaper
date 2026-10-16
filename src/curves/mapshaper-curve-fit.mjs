@@ -39,8 +39,10 @@ import { pointSegDistSq2, distance2D } from '../geom/mapshaper-basic-geom';
 // circular arc, which on a path that turns hard near its end throws the curve
 // into a wide loop beyond the last knot. Label paths are short enough that the
 // end segments are most of the curve, so they want a much flatter end than
-// Metafont does.
-var DEFAULT_CURL = 0.15;
+// Metafont does. Lower values also keep a path that ends just past a sharp
+// turn from hooking into its last knot, but 0 leaves callout arrows too
+// straight at their ends.
+var DEFAULT_CURL = 0.1;
 var curl = DEFAULT_CURL;
 
 // Temporary knob for judging the end behavior by eye; see
@@ -77,12 +79,12 @@ export function getCurveTension() {
 // knot's tension rises from the base tension above to hairpinTension as the
 // angle between the path's two arms at the knot closes from hairpinAngle to 0
 // degrees, following a smoothstep so that dragging a knot through the band
-// changes the curve gradually. A square's arms meet at 90 degrees, outside the
-// ramp; an equilateral triangle's meet at 60, just inside it, where the
-// smoothstep has barely begun to rise. Ends of an open run keep the base
-// tension; they have no angle.
-var DEFAULT_HAIRPIN_TENSION = 3;
-var DEFAULT_HAIRPIN_ANGLE = 70;
+// changes the curve gradually. A square's arms meet at 90 degrees and an
+// equilateral triangle's at 60, the start of the ramp, so neither is affected.
+// The end knots of an open run have no angle; they keep the base tension,
+// except in the solve (see fitRun()).
+var DEFAULT_HAIRPIN_TENSION = 2.5;
+var DEFAULT_HAIRPIN_ANGLE = 60;
 var hairpinTension = DEFAULT_HAIRPIN_TENSION;
 var hairpinAngle = DEFAULT_HAIRPIN_ANGLE;
 
@@ -233,7 +235,7 @@ function getLoopKnots(pts) {
 function fitLoop(pts) {
   var n = pts.length, // segment count = knot count
       dd = [], om = [], psi = [], lo = [], di = [], up = [], r = [],
-      tau = [], segments = [], ee, theta, phi, i, prev, next, j;
+      tau = [], segments = [], theta, phi, i, prev, next, j;
   for (i = 0; i < n; i++) {
     j = (i + 1) % n;
     dd.push(distance2D(pts[i][0], pts[i][1], pts[j][0], pts[j][1]));
@@ -242,12 +244,11 @@ function fitLoop(pts) {
   for (i = 0; i < n; i++) {
     psi.push(wrapAngle(om[i] - om[(i + n - 1) % n]));
   }
-  ee = evenOutLoopChords(dd, n);
   for (i = 0; i < n; i++) tau.push(getKnotTension(psi[i]));
   for (i = 0; i < n; i++) {
     prev = (i + n - 1) % n;
     next = (i + 1) % n;
-    pushCurvatureRow(lo, di, up, r, ee[prev], ee[i], 1 / tau[prev],
+    pushCurvatureRow(lo, di, up, r, dd[prev], dd[i], 1 / tau[prev],
       1 / tau[next], psi[i], psi[next]);
   }
   theta = solveCyclicTridiagonal(lo, di, up, r);
@@ -261,24 +262,6 @@ function fitLoop(pts) {
       handleLimit(dd[i], dd[j])));
   }
   return segments;
-}
-
-// evenOutChords() round a loop. A pass in each direction settles an open run;
-// round a loop a chord's limit can come from either side, so the passes repeat
-// until nothing changes -- n passes at most, since each settles a chord.
-function evenOutLoopChords(dd, n) {
-  var out = dd.concat(), changed = true, passes = 0, i, j, max;
-  while (changed && passes++ <= n) {
-    changed = false;
-    for (i = 0; i < n; i++) {
-      j = (i + 1) % n;
-      max = out[i] * MAX_CHORD_RATIO;
-      if (out[j] > max) { out[j] = max; changed = true; }
-      max = out[j] * MAX_CHORD_RATIO;
-      if (out[i] > max) { out[i] = max; changed = true; }
-    }
-  }
-  return out;
 }
 
 // Arc length of the fitted curve, in the same units as the knots. Export uses
@@ -359,13 +342,24 @@ var MAX_HANDLE = 0.4;
 // carries a lot of curvature, so without this a short segment dictates a wide
 // arc to a long one. Capping the ratio limits how far that reaches without
 // moving any knot or touching the curve where the chords are even.
+//
+// The cap is applied to the two chords of each knot's own row, not to the
+// chord lengths themselves. Capping the lengths -- shortening each chord to
+// within the ratio of its neighbour's capped length -- compounds along the
+// path, so that a short chord shortens every chord within log1.5(long/short)
+// knots of it. While a curve is being drawn the chord to the pointer is
+// short, and moving the pointer then swung the tangents four or more knots
+// back by up to 43 degrees; per row, a short chord reaches only the knots at
+// its ends.
+// Only the tangent directions are affected. The curve is still built on the
+// true chord lengths.
 var MAX_CHORD_RATIO = 1.5;
 
 // Fits a run of knots, returning a cubic per interval.
 function fitRun(pts) {
   var n = pts.length - 1, // segment count
       dd = [], om = [], psi = [], tau = [], segments = [],
-      theta, phi, i;
+      solveTau, theta, phi, i;
   if (n < 1) return [];
   // two knots have no interior knot to bend around
   if (n === 1) return [straightSegment(pts[0], pts[1])];
@@ -380,8 +374,16 @@ function fitRun(pts) {
   for (i = 1; i < n; i++) tau.push(getKnotTension(psi[i]));
   tau.push(tension);
 
-  theta = solveDepartureAngles(evenOutChords(dd, n), psi, tau, n);
-  phi = getArrivalAngles(theta, psi, tau, n);
+  // In the solve, an end knot takes its neighbour's tension when that is
+  // higher. Next to a taut hairpin, a slack end raises the curl ratio, and the
+  // curve hooks into the end knot -- 69 degrees off the chord in one case, 18
+  // with this. The handles at the ends keep the base tension: matching those
+  // too barely changes the hook and doubles the curve's response to a drag.
+  solveTau = tau.concat();
+  solveTau[0] = Math.max(tension, tau[1]);
+  solveTau[n] = Math.max(tension, tau[n - 1]);
+  theta = solveDepartureAngles(dd, psi, solveTau, n);
+  phi = getArrivalAngles(theta, psi, solveTau, n);
 
   for (i = 0; i < n; i++) {
     segments.push(buildSegment(pts[i], pts[i + 1], dd[i], om[i],
@@ -408,24 +410,6 @@ function fitRun(pts) {
 // leaves on an ordinary path anyway -- for two points of extra bulge.
 function handleLimit(own, neighbor) {
   return MAX_HANDLE * Math.sqrt(own * Math.min(own, neighbor));
-}
-
-// The chord lengths the solve sees, with the ratio between neighbours held to
-// MAX_CHORD_RATIO. Each length becomes the smallest that any chord permits it
-// to be, allowing for a factor of MAX_CHORD_RATIO per step -- a forward pass
-// and a backward pass compute that exactly, so this needs no iteration.
-//
-// Only the tangent directions are affected. The curve is still built on the
-// true chord lengths.
-function evenOutChords(dd, n) {
-  var out = dd.concat(), i;
-  for (i = 1; i < n; i++) {
-    if (out[i] > out[i - 1] * MAX_CHORD_RATIO) out[i] = out[i - 1] * MAX_CHORD_RATIO;
-  }
-  for (i = n - 2; i >= 0; i--) {
-    if (out[i] > out[i + 1] * MAX_CHORD_RATIO) out[i] = out[i + 1] * MAX_CHORD_RATIO;
-  }
-  return out;
 }
 
 // The tridiagonal system of Hobby's mock-curvature conditions, in the
@@ -457,11 +441,15 @@ function solveDepartureAngles(dd, psi, tau, n) {
 
 // The mock-curvature condition at a knot, in the departure angles at it and
 // its two neighbours, scaled by the product of the chords either side of it
-// (@dPrev arriving, @dNext leaving). @aPrev and @aNext are the reciprocal
+// (@dPrev arriving, @dNext leaving), with the longer of the two held to
+// MAX_CHORD_RATIO times the shorter. @aPrev and @aNext are the reciprocal
 // tensions at the neighbours; the knot's own tension cancels out of its row,
 // and acts only through its neighbours' rows and its handle lengths. At unit
 // tension the coefficients are Hobby's 1, 2, 2, 1 times the chord lengths.
 function pushCurvatureRow(lo, di, up, r, dPrev, dNext, aPrev, aNext, psi, psiNext) {
+  var d0 = Math.min(dPrev, dNext * MAX_CHORD_RATIO);
+  dNext = Math.min(dNext, dPrev * MAX_CHORD_RATIO);
+  dPrev = d0;
   lo.push(aPrev * dNext);
   di.push((3 - aPrev) * dNext + (3 - aNext) * dPrev);
   up.push(aNext * dPrev);

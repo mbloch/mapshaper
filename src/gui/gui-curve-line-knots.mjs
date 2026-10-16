@@ -105,6 +105,29 @@ export function toggleCurveKnotCorner(knots, index) {
   return out;
 }
 
+// Index of the end knot of an open curve nearest @p within @threshold (0 or
+// the last index), or -1. A closed curve has no ends.
+export function findCurveEndNear(knots, p, threshold) {
+  var n = knots ? knots.length : 0;
+  var d0, d1;
+  if (n < 2 || !p || curveKnotsAreClosed(knots)) return -1;
+  d0 = Math.hypot(knots[0][0] - p[0], knots[0][1] - p[1]);
+  d1 = Math.hypot(knots[n - 1][0] - p[0], knots[n - 1][1] - p[1]);
+  if (d1 <= d0 && d1 <= threshold) return n - 1;
+  return d0 <= threshold ? 0 : -1;
+}
+
+export function knotIsCurveEnd(knots, index) {
+  return !curveKnotsAreClosed(knots) && (index === 0 || index == knots.length - 1);
+}
+
+// The knots in the opposite order, which fit the same curve drawn the other
+// way. A curve is extended from its last knot, so a curve extended from its
+// first knot is reversed while it is extended, and reversed back after.
+export function reverseCurveKnots(knots) {
+  return copyPoints(knots).reverse();
+}
+
 // The corners argument of fitCurveThroughKnots(), or null if there are none
 export function getKnotCorners(knots) {
   var corners = knots.map(knotIsCorner);

@@ -1,6 +1,10 @@
 import { utils, geom, internal, error } from './gui-core';
 import { absArcId } from '../paths/mapshaper-arc-utils';
 
+// How far from a line, in pixels, the pointer hits it (less when zoomed out
+// beyond the full extent)
+export var POLYLINE_HIT_DISTANCE = 15;
+
 // featureFilter: optional test function, accepts feature id
 //
 export function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
@@ -84,7 +88,7 @@ export function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
   }
 
   function polylineTest(x, y, bufArg) {
-    var maxDist = getZoomAdjustedHitBuffer(15, 2),
+    var maxDist = getZoomAdjustedHitBuffer(POLYLINE_HIT_DISTANCE, 2),
         bufPix = bufArg >= 0 ? bufArg : 0.05, // tiny threshold for hitting almost-identical lines
         bufDist = getZoomAdjustedHitBuffer(bufPix),
         cands = findHitCandidates(x, y, maxDist);

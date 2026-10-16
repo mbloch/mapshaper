@@ -8,6 +8,7 @@ import {
   getNewShapeStyle, getNewShapeCommandStyle, getPendingPathStyle
 } from './gui-shape-style-state';
 import { layerHasDrawableStyle } from './gui-layer-styler';
+import { POLYLINE_HIT_DISTANCE } from './gui-shape-hit';
 import {
   createCurveState, removeLastKnot, curveIsComplete, findKnotNear,
   handleClick, getDblclickAction, clearGesture,
@@ -16,7 +17,8 @@ import {
 import {
   createKnotCache, addKnotVersion, findKnotVersion, getLinePathCoords,
   moveCurveKnot, curveKnotsAreClosed, getCurveFlattenTolerance,
-  makeKnot, toggleCurveKnotCorner, getKnotCorners
+  makeKnot, knotIsCorner, toggleCurveKnotCorner, getKnotCorners,
+  findCurveEndNear, knotIsCurveEnd, reverseCurveKnots
 } from './gui-curve-line-knots';
 
 var ALT_KEY_CODE = 18;
@@ -40,9 +42,17 @@ var ALT_KEY_CODE = 18;
 // sharply, and on a knot of a selected curve switches it between a corner and
 // a smooth knot, as another -update-line command. Corner knots are drawn as
 // squares.
+//
+// A click on an end knot of an open curve with knots, which is marked as the
+// Draw tool marks the end of a line it would extend, goes on drawing that
+// curve: the clicks after it add knots, and the curve is refitted through
+// all of them, as one -update-line command when it is finished.
 export function initCurveLineTool(gui, ext, hit) {
   var _active = false;
   var curve = createCurveState(); // the curve being drawn
+  // the curve being drawn is an existing curve being extended: {id, reversed,
+  // baseCount}, where @baseCount is the number of knots it had
+  var extending = null;
   var redoKnots = []; // knots taken back by Undo while drawing
   // the pointer's position while a curve is being drawn, which the curve is
   // drawn through but which is not a knot yet
@@ -53,6 +63,9 @@ export function initCurveLineTool(gui, ext, hit) {
   var shownKey = null; // the selection that @shown was found for
   var hoverKnot = -1; // index of the knot of @shown under the pointer
   var hoverPoint = null;
+  var hoverId = -1; // the line under the pointer
+  // the end of a curve that a click would extend: {id, knots, index}, or null
+  var extendTarget = null;
   var overShape = false;
   // a knot drag in progress: {id, index, knots, offset, moved}
   var drag = null;
@@ -119,6 +132,8 @@ export function initCurveLineTool(gui, ext, hit) {
     shownKey = null;
     hoverKnot = -1;
     hoverPoint = null;
+    hoverId = -1;
+    setExtendTarget(null);
     hit.setPendingPath(null);
     hit.setPendingKnots(null);
     hit.setHiddenShapes([]);
@@ -170,8 +185,11 @@ export function initCurveLineTool(gui, ext, hit) {
       return;
     }
     hoverPoint = p;
+    hoverId = e.id;
     updateHoverKnot();
-    if (hoverKnot > -1) {
+    if (extendTarget) {
+      startExtension(extendTarget, cornerKeyDown());
+    } else if (hoverKnot > -1) {
       // a press on a knot is the start of a drag, not a new curve
       if (cornerKeyDown()) toggleCorner(hoverKnot);
     } else if (e.id > -1) {
@@ -209,13 +227,22 @@ export function initCurveLineTool(gui, ext, hit) {
       }
     } else {
       hoverPoint = p;
+      hoverId = e.id;
       updateHoverKnot();
     }
     updateCursor();
   }, null, 100);
 
-  hit.on('change', function() {
-    if (_active) refreshShownCurve(false);
+  hit.on('change', function(e) {
+    if (!_active) return;
+    refreshShownCurve(false);
+    // The hit id is one event behind on 'hover' -- the control dispatches the
+    // event and then tests the new position -- so the end of a curve under
+    // the pointer is settled here, before the line under it is highlighted.
+    if (!drawing() && !drag && e.id !== hoverId) {
+      hoverId = e.id;
+      updateHoverKnot();
+    }
   });
 
   hit.on('contextmenu', function(e) {
@@ -237,6 +264,7 @@ export function initCurveLineTool(gui, ext, hit) {
       offset: [shown.knots[hoverKnot][0] - hoverPoint[0], shown.knots[hoverKnot][1] - hoverPoint[1]],
       moved: false
     };
+    setExtendTarget(null);
     // The line is drawn as the preview from the start of the drag, and the
     // original as a plain outline (see setHiddenShapes())
     showDragPreview(drag);
@@ -306,10 +334,14 @@ export function initCurveLineTool(gui, ext, hit) {
       finishCurve(false);
       consume(e);
     } else if (e.keyName == 'delete') {
-      removeLastKnot(curve);
-      clearGesture(curve);
-      redoKnots = [];
-      if (drawing()) refreshCurve(); else abandonCurve();
+      if (atExtensionStart()) {
+        abandonCurve();
+      } else {
+        removeLastKnot(curve);
+        clearGesture(curve);
+        redoKnots = [];
+        if (drawing()) refreshCurve(); else abandonCurve();
+      }
       consume(e);
     }
   }, null, 10);
@@ -349,6 +381,34 @@ export function initCurveLineTool(gui, ext, hit) {
     extendCurve(p);
   }
 
+  // Goes on drawing curve @t.id from its end knot @t.index. The end becomes a
+  // knot inside the curve, a corner if @corner (or if it was one already).
+  function startExtension(t, corner) {
+    var reversed = t.index === 0;
+    var knots = reversed ? reverseCurveKnots(t.knots) : t.knots.map(function(k) {
+      return makeKnot(k, knotIsCorner(k));
+    });
+    var n = knots.length;
+    if (corner) knots[n - 1] = makeKnot(knots[n - 1], true);
+    setExtendTarget(null);
+    hit.clearSelection();
+    curve = createCurveState();
+    curve.knots = knots;
+    extending = {id: t.id, reversed: reversed, baseCount: n};
+    redoKnots = [];
+    previewPoint = hoverPoint;
+    // the curve is drawn as the preview, and the original as a plain outline
+    hit.setHiddenShapes([t.id]);
+    hideInstructions();
+    refreshCurve();
+    updateCursor();
+  }
+
+  // Taking back a knot now would take back one of the curve's own knots
+  function atExtensionStart() {
+    return !!extending && curve.knots.length <= extending.baseCount;
+  }
+
   function extendCurve(p, corner) {
     var n;
     if (handleClick(curve, p, scaleThreshold(KNOT_HIT_THRESHOLD),
@@ -366,7 +426,8 @@ export function initCurveLineTool(gui, ext, hit) {
   // first knot, the pointer closes the curve, as a click there would.
   function refreshCurve() {
     var knots = curve.knots;
-    var style = getPendingPathStyle(getNewCurveStyle(), !!gui.state.dark_basemap);
+    var style = getPendingPathStyle(extending ? getLineStyle(extending.id) : getNewCurveStyle(),
+      !!gui.state.dark_basemap);
     var corner = cornerKeyDown();
     var first;
     if (previewPoint && pointerClosesCurve(previewPoint)) {
@@ -385,13 +446,19 @@ export function initCurveLineTool(gui, ext, hit) {
   }
 
   function abandonCurve() {
-    curve = createCurveState();
-    redoKnots = [];
-    previewPoint = null;
+    clearCurve();
     hit.setPendingPath(null);
     hit.setPendingKnots(null);
+    hit.setHiddenShapes([]);
     refreshShownCurve(true);
     updateCursor();
+  }
+
+  function clearCurve() {
+    curve = createCurveState();
+    extending = null;
+    redoKnots = [];
+    previewPoint = null;
   }
 
   // closed: end the curve where it began
@@ -400,6 +467,10 @@ export function initCurveLineTool(gui, ext, hit) {
     var complete = curveIsComplete(curve);
     var target = hit.getHitTarget();
     var coords;
+    if (extending) {
+      finishExtension(closed);
+      return;
+    }
     abandonCurve();
     if (!complete || !target || target.geometry_type != 'polyline') return;
     if (closed) knots.push(knots[0].slice());
@@ -417,12 +488,34 @@ export function initCurveLineTool(gui, ext, hit) {
     });
   }
 
+  // A curve that no knots were added to is left as it was
+  function finishExtension(closed) {
+    var o = extending;
+    var knots = curve.knots.slice();
+    if (knots.length <= o.baseCount || !hit.getHitTarget()) {
+      abandonCurve();
+      return;
+    }
+    clearCurve();
+    if (closed) knots.push(knots[0].slice());
+    if (o.reversed) knots = reverseCurveKnots(knots);
+    // the preview stands in for the line until the command replaces it
+    showDragPreview({id: o.id, knots: knots});
+    commitKnotMove({id: o.id, knots: knots}, 'Extend curve');
+    updateCursor();
+  }
+
   // Takes back the last knot of the curve being drawn. Taking back its first
-  // knot abandons the curve. Returns false if no curve is being drawn, so that
+  // knot abandons the curve, as does taking back the last knot added to a
+  // curve being extended. Returns false if no curve is being drawn, so that
   // Undo goes on to the undo history.
   function pendingUndo() {
     if (drag) return true;
     if (!drawing()) return false;
+    if (atExtensionStart()) {
+      abandonCurve();
+      return true;
+    }
     redoKnots.push(curve.knots.pop());
     clearGesture(curve);
     if (drawing()) {
@@ -493,7 +586,42 @@ export function initCurveLineTool(gui, ext, hit) {
   function updateHoverKnot() {
     hoverKnot = shown && hoverPoint ?
       findKnotNear(shown, hoverPoint, scaleThreshold(KNOT_HIT_THRESHOLD)) : -1;
+    setExtendTarget(findExtendTarget());
     updateCursor();
+  }
+
+  // The end knot under the pointer of the selected curve, or of the curve
+  // under the pointer. An end is found as far away as the line is, so that
+  // the pointer approaching it does not highlight the line on the way.
+  function findExtendTarget() {
+    var threshold = scaleThreshold(POLYLINE_HIT_DISTANCE);
+    var id, knots, i;
+    if (!_active || drawing() || drag || !hoverPoint) return null;
+    if (shown && hoverKnot > -1 && !knotIsCurveEnd(shown.knots, hoverKnot)) {
+      return null; // a knot to drag
+    }
+    if (shown) {
+      id = shown.id;
+      knots = shown.knots;
+      i = findCurveEndNear(knots, hoverPoint, threshold);
+    }
+    if (!(i > -1) && hoverId > -1 && !(shown && hoverId == shown.id)) {
+      id = hoverId;
+      knots = findKnots(id);
+      i = knots ? findCurveEndNear(knots, hoverPoint, threshold) : -1;
+    }
+    return i > -1 ? {id: id, knots: knots, index: i} : null;
+  }
+
+  // The end is marked as the Draw tool marks the end of a line it would extend
+  function setExtendTarget(t) {
+    var marked = !!extendTarget;
+    extendTarget = t;
+    if (t) {
+      hit.setHoverVertex(t.knots[t.index], 'vertex');
+    } else if (marked) {
+      hit.clearHoverVertex();
+    }
   }
 
   function toggleCorner(index) {
@@ -504,13 +632,13 @@ export function initCurveLineTool(gui, ext, hit) {
   // The drag preview stands in for the line until the command replaces it,
   // so the command is what changes the data, and undo has a step that undoes
   // something.
-  function commitKnotMove(o) {
+  function commitKnotMove(o, title) {
     var target = hit.getHitTarget();
     var coords = toDataCoords(target, fitDisplayPath(o.knots));
     shown = {id: o.id, knots: o.knots};
     hit.setPendingKnots(o.knots);
     runGuiEditCommand(gui, getUpdateLineCommand(coords, o.id), {
-      title: 'Reshape curve',
+      title: title || 'Reshape curve',
       changesEditTarget: true,
       onSuccess: function() {
         if (!_active) return;
@@ -557,7 +685,7 @@ export function initCurveLineTool(gui, ext, hit) {
     // a drag would move the knot
     el.classed('curve-handle', onKnot);
     // a click would select the line under the pointer
-    el.classed('curve-select', _active && !drawing() && !onKnot && overShape);
+    el.classed('curve-select', _active && !drawing() && !onKnot && !extendTarget && overShape);
     if (_active) el.classed('drawing', drawing());
   }
 

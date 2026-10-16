@@ -45,6 +45,27 @@ function shapeUsesArcs(shp, arcIds) {
   return false;
 }
 
+// Vertex ids @ids, found by position, without those on arcs that no path layer
+// in @layers uses -- such as the arc a line reshaped with -update-line leaves
+// behind, which is still in the arc collection, and which would otherwise
+// make the end of the reshaped line look like a junction. Arcs are only
+// counted for more than one id, which is the only case they can change.
+export function removeUnusedArcVertices(ids, arcs, layers) {
+  var counts, ii, used;
+  if (ids.length < 2) return ids;
+  counts = new Uint32Array(arcs.size());
+  ii = arcs.getVertexData().ii;
+  layers.forEach(function(lyr) {
+    if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
+      internal.countArcsInShapes(lyr.shapes, counts);
+    }
+  });
+  used = ids.filter(function(id) {
+    return counts[internal.findArcIdFromVertexId(id, ii)] > 0;
+  });
+  return used.length > 0 ? used : ids;
+}
+
 // The vertices of each part of shapes @ids, as [[x, y], ...] paths
 export function getShapePaths(shapes, ids, arcs) {
   var paths = [];
