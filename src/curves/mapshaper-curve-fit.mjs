@@ -55,6 +55,67 @@ export function getCurveCurl() {
   return curl;
 }
 
+// Tension, applied uniformly at every knot.
+// Higher values pull the curve toward the polyline between the knots; 1 is
+// Metafont's default.
+var DEFAULT_TENSION = 1;
+var MIN_TENSION = 0.75;
+var tension = DEFAULT_TENSION;
+
+// Temporary knob, like setCurveCurl(); see window.mapshaper.setLabelCurveTension().
+export function setCurveTension(val) {
+  tension = val >= MIN_TENSION ? +val : DEFAULT_TENSION;
+  return tension;
+}
+
+export function getCurveTension() {
+  return tension;
+}
+
+// Extra tension at knots where the path doubles back, so that a hairpin turns
+// tightly while a loop of three or four evenly placed knots stays round. A
+// knot's tension rises from the base tension above to hairpinTension as the
+// angle between the path's two arms at the knot closes from hairpinAngle to 0
+// degrees, following a smoothstep so that dragging a knot through the band
+// changes the curve gradually. A square's arms meet at 90 degrees, outside the
+// ramp; an equilateral triangle's meet at 60, just inside it, where the
+// smoothstep has barely begun to rise. Ends of an open run keep the base
+// tension; they have no angle.
+var DEFAULT_HAIRPIN_TENSION = 3;
+var DEFAULT_HAIRPIN_ANGLE = 70;
+var hairpinTension = DEFAULT_HAIRPIN_TENSION;
+var hairpinAngle = DEFAULT_HAIRPIN_ANGLE;
+
+// Temporary knobs, like setCurveCurl(); see
+// window.mapshaper.setLabelCurveHairpin() in the GUI.
+export function setCurveHairpinTension(val) {
+  hairpinTension = val >= MIN_TENSION ? +val : DEFAULT_HAIRPIN_TENSION;
+  return hairpinTension;
+}
+
+export function setCurveHairpinAngle(deg) {
+  hairpinAngle = deg > 0 && deg <= 180 ? +deg : DEFAULT_HAIRPIN_ANGLE;
+  return hairpinAngle;
+}
+
+export function getCurveHairpinTension() {
+  return hairpinTension;
+}
+
+export function getCurveHairpinAngle() {
+  return hairpinAngle;
+}
+
+// Tension at a knot where the polyline turns by @psi radians, so that its
+// arms meet at PI - |psi|
+function getKnotTension(psi) {
+  var start = hairpinAngle * Math.PI / 180,
+      x = (start - (Math.PI - Math.abs(psi))) / start;
+  if (x <= 0) return tension;
+  if (x > 1) x = 1;
+  return tension + (hairpinTension - tension) * x * x * (3 - 2 * x);
+}
+
 // Cap on subdivision levels per curve segment, bounding output at 2^8 = 256
 // vertices per segment if a pathological input (e.g. knots far enough apart to
 // exhaust float precision) never satisfies the flatness test.
@@ -172,7 +233,7 @@ function getLoopKnots(pts) {
 function fitLoop(pts) {
   var n = pts.length, // segment count = knot count
       dd = [], om = [], psi = [], lo = [], di = [], up = [], r = [],
-      segments = [], ee, theta, phi, i, prev, next, j;
+      tau = [], segments = [], ee, theta, phi, i, prev, next, j;
   for (i = 0; i < n; i++) {
     j = (i + 1) % n;
     dd.push(distance2D(pts[i][0], pts[i][1], pts[j][0], pts[j][1]));
@@ -182,13 +243,12 @@ function fitLoop(pts) {
     psi.push(wrapAngle(om[i] - om[(i + n - 1) % n]));
   }
   ee = evenOutLoopChords(dd, n);
+  for (i = 0; i < n; i++) tau.push(getKnotTension(psi[i]));
   for (i = 0; i < n; i++) {
     prev = (i + n - 1) % n;
     next = (i + 1) % n;
-    lo.push(ee[i]);
-    di.push(2 * (ee[i] + ee[prev]));
-    up.push(ee[prev]);
-    r.push(-2 * ee[i] * psi[i] - ee[prev] * psi[next]);
+    pushCurvatureRow(lo, di, up, r, ee[prev], ee[i], 1 / tau[prev],
+      1 / tau[next], psi[i], psi[next]);
   }
   theta = solveCyclicTridiagonal(lo, di, up, r);
   phi = [];
@@ -196,6 +256,7 @@ function fitLoop(pts) {
   for (i = 0; i < n; i++) {
     j = (i + 1) % n;
     segments.push(buildSegment(pts[i], pts[j], dd[i], om[i], theta[i], phi[j],
+      tau[i], tau[j],
       handleLimit(dd[i], dd[(i + n - 1) % n]),
       handleLimit(dd[i], dd[j])));
   }
@@ -303,7 +364,7 @@ var MAX_CHORD_RATIO = 1.5;
 // Fits a run of knots, returning a cubic per interval.
 function fitRun(pts) {
   var n = pts.length - 1, // segment count
-      dd = [], om = [], psi = [], segments = [],
+      dd = [], om = [], psi = [], tau = [], segments = [],
       theta, phi, i;
   if (n < 1) return [];
   // two knots have no interior knot to bend around
@@ -315,13 +376,16 @@ function fitRun(pts) {
   // psi[i] is how far the polyline turns at knot i
   psi.push(0);
   for (i = 1; i < n; i++) psi.push(wrapAngle(om[i] - om[i - 1]));
+  tau.push(tension);
+  for (i = 1; i < n; i++) tau.push(getKnotTension(psi[i]));
+  tau.push(tension);
 
-  theta = solveDepartureAngles(evenOutChords(dd, n), psi, n);
-  phi = getArrivalAngles(theta, psi, n);
+  theta = solveDepartureAngles(evenOutChords(dd, n), psi, tau, n);
+  phi = getArrivalAngles(theta, psi, tau, n);
 
   for (i = 0; i < n; i++) {
     segments.push(buildSegment(pts[i], pts[i + 1], dd[i], om[i],
-      theta[i], phi[i + 1],
+      theta[i], phi[i + 1], tau[i], tau[i + 1],
       handleLimit(dd[i], i > 0 ? dd[i - 1] : Infinity),
       handleLimit(dd[i], i < n - 1 ? dd[i + 1] : Infinity)));
   }
@@ -365,55 +429,78 @@ function evenOutChords(dd, n) {
 }
 
 // The tridiagonal system of Hobby's mock-curvature conditions, in the
-// departure angle at each knot measured from the chord leaving it. Written for
-// unit tension throughout; the general form carries a tension per knot, which
-// the label tool has no use for.
+// departure angle at each knot measured from the chord leaving it, with a
+// tension per knot (@tau) shared by both sides of the knot. This is mf.web
+// §274-§295 with each knot's left and right tensions equal; the label tool
+// has no use for asymmetric ones (see "Bulging" in the design doc).
 //
 // The interior rows come from equalizing mock curvature across knot i; the
 // first and last rows are the curl conditions that close the system at the
 // ends of an open run.
-function solveDepartureAngles(dd, psi, n) {
-  var lo = [], di = [], up = [], r = [], i;
+function solveDepartureAngles(dd, psi, tau, n) {
+  var lo = [], di = [], up = [], r = [],
+      c = getCurlRatio(1 / tau[0], 1 / tau[1]), i;
   lo.push(0);
-  di.push(2 + curl);
-  up.push(1 + 2 * curl);
-  r.push(-(1 + 2 * curl) * psi[1]);
-  for (i = 1; i < n - 1; i++) {
-    lo.push(dd[i]);
-    di.push(2 * (dd[i] + dd[i - 1]));
-    up.push(dd[i - 1]);
-    r.push(-2 * dd[i] * psi[i] - dd[i - 1] * psi[i + 1]);
+  di.push(c.den);
+  up.push(c.num);
+  r.push(-c.num * psi[1]);
+  for (i = 1; i < n; i++) {
+    pushCurvatureRow(lo, di, up, r, dd[i - 1], dd[i], 1 / tau[i - 1],
+      1 / tau[i + 1], psi[i], i < n - 1 ? psi[i + 1] : 0);
   }
-  if (n > 1) {
-    lo.push(dd[n - 1]);
-    di.push(2 * (dd[n - 1] + dd[n - 2]) -
-      dd[n - 2] * (1 + 2 * curl) / (2 + curl));
-    up.push(0);
-    r.push(-2 * dd[n - 1] * psi[n - 1]);
-  }
+  // the last row's next angle is fixed by the curl condition at the end
+  c = getCurlRatio(1 / tau[n], 1 / tau[n - 1]);
+  di[n - 1] -= up[n - 1] * c.num / c.den;
+  up[n - 1] = 0;
   return solveTridiagonal(lo, di, up, r);
+}
+
+// The mock-curvature condition at a knot, in the departure angles at it and
+// its two neighbours, scaled by the product of the chords either side of it
+// (@dPrev arriving, @dNext leaving). @aPrev and @aNext are the reciprocal
+// tensions at the neighbours; the knot's own tension cancels out of its row,
+// and acts only through its neighbours' rows and its handle lengths. At unit
+// tension the coefficients are Hobby's 1, 2, 2, 1 times the chord lengths.
+function pushCurvatureRow(lo, di, up, r, dPrev, dNext, aPrev, aNext, psi, psiNext) {
+  lo.push(aPrev * dNext);
+  di.push((3 - aPrev) * dNext + (3 - aNext) * dPrev);
+  up.push(aNext * dPrev);
+  r.push(-(3 - aPrev) * dNext * psi - aNext * dPrev * psiNext);
+}
+
+// Metafont's curl_ratio(): at the end knot of a run, whose reciprocal tension
+// is @a, with its neighbour's being @b, the angle on the far side of the end
+// segment is num / den times the angle at the end. At unit tension this is
+// (1 + 2 * curl) / (2 + curl).
+function getCurlRatio(a, b) {
+  return {
+    num: curl * a * a * (3 - a) + b * b * b,
+    den: curl * a * a * a + (3 - b) * b * b
+  };
 }
 
 // The angle at which the curve arrives at each knot, again measured from the
 // chord. At an interior knot the departure and arrival angles have to account
 // between them for the whole turn in the polyline; at the far end of the run
 // the curl condition fixes it.
-function getArrivalAngles(theta, psi, n) {
-  var phi = [0], i;
+function getArrivalAngles(theta, psi, tau, n) {
+  var c = getCurlRatio(1 / tau[n], 1 / tau[n - 1]),
+      phi = [0], i;
   for (i = 1; i < n; i++) phi.push(-psi[i] - theta[i]);
-  phi.push((1 + 2 * curl) * theta[n - 1] / (2 + curl));
+  phi.push(c.num * theta[n - 1] / c.den);
   return phi;
 }
 
 // Turns a pair of angles into a cubic, by way of Hobby's velocity functions --
 // how far along each tangent the control point sits, as a multiple of a third
-// of the chord -- with each distance held to the caller's limit.
+// of the chord, divided by the tension -- with each distance held to the
+// caller's limit.
 //
 // Shortening a handle leaves its direction alone, so the tangent the two
 // segments share at a knot is untouched and the curve stays smooth through it.
 // What it gives up is Hobby's mock-curvature match across that knot, and only
 // at a knot lopsided enough for the limit to bite.
-function buildSegment(p0, p1, d, om, theta, phi, maxOut, maxIn) {
+function buildSegment(p0, p1, d, om, theta, phi, tauOut, tauIn, maxOut, maxIn) {
   var alpha = VEL_A * (Math.sin(theta) - VEL_B * Math.sin(phi)) *
         (Math.sin(phi) - VEL_B * Math.sin(theta)) *
         (Math.cos(theta) - Math.cos(phi)),
@@ -421,8 +508,8 @@ function buildSegment(p0, p1, d, om, theta, phi, maxOut, maxIn) {
         (1 + (1 - VEL_C) * Math.cos(theta) + VEL_C * Math.cos(phi)),
       sigma = (2 - alpha) /
         (1 + (1 - VEL_C) * Math.cos(phi) + VEL_C * Math.cos(theta)),
-      out = d * rho / 3,
-      arr = d * sigma / 3;
+      out = d * rho / (3 * tauOut),
+      arr = d * sigma / (3 * tauIn);
   if (out > maxOut) out = maxOut;
   if (arr > maxIn) arr = maxIn;
   return {

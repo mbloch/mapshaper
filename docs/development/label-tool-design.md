@@ -735,7 +735,7 @@ direction the curve leaves a knot is exactly the direction it arrived by: the
 fit is G1 to machine precision, whatever the limits do, and a baseline never
 acquires a visible corner. Curvature (G2) is where a cost could land, and with
 the geometric-mean scale it is small — a factor of 1.4 at worst on a
-pathological path, against the 1.1 that Hobby's mock-curvature approximation
+pathological path (with hairpin tension off; see below), against the 1.1 that Hobby's mock-curvature approximation
 leaves on an ordinary one.
 
 C1 in the sense of matching derivative *vectors* has never held here and is not
@@ -768,6 +768,44 @@ hard near its end. The default here is **0.15**.
 This is still being judged by eye. `mapshaper.setLabelCurveCurl(v)` in the
 browser console sets it and redraws; it is expected to go away once a default
 is settled on.
+
+**Tension** (Metafont's `..tension t..`) is tunable the same way, with
+`mapshaper.setLabelCurveTension(v)`. It applies uniformly at every knot; the
+default is 1, higher values pull the curve toward the polyline, and values
+below 0.75 are refused, as Metafont refuses them. The handle cap
+(`MAX_HANDLE`) still applies, so tension below 1 mostly shows where the cap
+doesn't bite.
+
+Raising the base tension sharpens hairpins but also squares off the circle a
+loop of three or four evenly placed knots should make. **Hairpin tension**
+separates the two: a knot's tension rises, along a smoothstep, from the base
+tension to a hairpin tension as the angle between its two arms closes from a
+start angle to 0. The defaults are a hairpin tension of **3** and a start
+angle of **70 degrees**, chosen by eye. A square's arms meet at 90 degrees and
+are untouched; an equilateral triangle's meet at 60, just inside the ramp,
+which moves its roundness (smallest radius over largest) from 0.779 to 0.781.
+The solve carries a tension per knot for this (mf.web's equations with each
+knot's two tensions equal); a knot's own tension cancels from its own row and
+acts through its handle lengths and its neighbours' rows.
+`mapshaper.setLabelCurveHairpin(tension, angle)` sets both; a tension of 1
+turns it off.
+
+The cost is curvature continuity at a sharp, lopsided tip. On the three
+lopsided hairpins in the curvature test, the curvature either side of the tip
+differs by 4.5 to 4.8 times at the defaults, against 1.4 with hairpin tension
+off (and 2.5 to 2.7 at a hairpin tension of 2). Direction stays continuous, so
+there is no corner; a hairpin with even arms stays at 1.1. This was accepted
+for the tighter tips.
+
+This is the angle-dependent tension rejected above as a fix for bulging, and
+it is kept here because the goal is different: there the bulge depended on
+spacing, so any angle band missed cases, whereas here the angle is the thing
+being targeted. One property carries over. Swinging an arm from a 90-degree
+turn round to 178 degrees on a five-knot path, the curve's greatest
+deviation from its polyline rises to 0.88 at the start of the band and then
+falls to 0.59 as the hairpin closes (against a steady rise to 1.08 without),
+so the curve tightens while the knot is still being dragged. It changes
+smoothly, but is not monotonic.
 
 #### Why not κ-curves
 

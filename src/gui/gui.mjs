@@ -108,6 +108,26 @@ var startEditing = function() {
     gui.dispatchEvent('map-needs-refresh');
     return curl;
   };
+  // Same idea for Hobby's tension: mapshaper.setLabelCurveTension(1.5). 1 is
+  // Metafont's default, higher values pull the paths toward their polylines,
+  // and anything below 0.75 resets it to 1.
+  window.mapshaper.setLabelCurveTension = function(val) {
+    var tension = internal.setCurveTension(val);
+    gui.dispatchEvent('map-needs-refresh');
+    return tension;
+  };
+  // Extra tension at hairpins: mapshaper.setLabelCurveHairpin(3, 70) raises
+  // the tension toward 3 as the angle between a knot's two arms closes from 70
+  // degrees to 0. Omitted arguments reset to the defaults, 3 and 70;
+  // setLabelCurveHairpin(1) turns it off.
+  window.mapshaper.setLabelCurveHairpin = function(tension, angle) {
+    var out = {
+      tension: internal.setCurveHairpinTension(tension),
+      angle: internal.setCurveHairpinAngle(angle)
+    };
+    gui.dispatchEvent('map-needs-refresh');
+    return out;
+  };
   if (isUndoTestApiEnabled()) {
     window.mapshaper.undoTest = createUndoTestApi(gui);
   }

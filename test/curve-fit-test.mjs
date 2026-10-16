@@ -1,5 +1,5 @@
 
-import { fitCurveThroughKnots, getCurveSegments, getCurveLength, setCurveCurl, curveIsClosed } from '../src/curves/mapshaper-curve-fit';
+import { fitCurveThroughKnots, getCurveSegments, getCurveLength, setCurveCurl, setCurveTension, setCurveHairpinTension, curveIsClosed } from '../src/curves/mapshaper-curve-fit';
 import assert from 'assert';
 
 // max distance from p to the polyline pts
@@ -146,6 +146,66 @@ describe('mapshaper-curve-fit', function () {
         var r = Math.hypot(p[0], p[1]);
         assert.ok(Math.abs(r - R) < 0.02, 'radius stays ' + R + ', got ' + r);
       });
+    });
+
+    it('higher tension pulls the curve toward the polyline', function () {
+      var knots = [[0, 0], [10, 8], [22, 3], [30, 14]];
+      function maxDev(out) {
+        return out.reduce(function(max, p) {
+          return Math.max(max, maxDeviation(knots, p));
+        }, 0);
+      }
+      var loose = maxDev(fitCurveThroughKnots(knots, 0.01));
+      assert.equal(setCurveTension(2), 2);
+      var tight = maxDev(fitCurveThroughKnots(knots, 0.01));
+      setCurveTension(undefined);
+      assert.ok(tight < loose * 0.75, tight + ' vs ' + loose);
+    });
+
+    it('hairpin tension tightens a hairpin', function () {
+      var knots = [[0, 0], [6, 0], [10, 0.5], [6, 1], [0, 1]];
+      function width(out) {
+        var ys = out.map(function(p) { return p[1]; });
+        return Math.max.apply(null, ys) - Math.min.apply(null, ys);
+      }
+      setCurveHairpinTension(1);
+      var loose = width(fitCurveThroughKnots(knots, 0.001));
+      setCurveHairpinTension(undefined);
+      var tight = width(fitCurveThroughKnots(knots, 0.001));
+      assert.ok(tight < loose * 0.8, tight + ' vs ' + loose);
+    });
+
+    it('hairpin tension leaves a square loop alone', function () {
+      var square = [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]];
+      var after = getCurveSegments(square, true);
+      setCurveHairpinTension(1);
+      var before = getCurveSegments(square, true);
+      setCurveHairpinTension(undefined);
+      assert.deepEqual(after, before);
+    });
+
+    it('hairpin tension barely touches an equilateral triangle loop', function () {
+      // its arms meet at 60 degrees, just inside the default ramp
+      var triangle = [[0, 0], [10, 0], [5, 5 * Math.sqrt(3)], [0, 0]];
+      var c = [5, 5 / Math.sqrt(3)];
+      function roundness() {
+        var r = fitCurveThroughKnots(triangle, 0.0005, true).map(function(p) {
+          return Math.hypot(p[0] - c[0], p[1] - c[1]);
+        });
+        return Math.min.apply(null, r) / Math.max.apply(null, r);
+      }
+      var after = roundness();
+      setCurveHairpinTension(1);
+      var before = roundness();
+      setCurveHairpinTension(undefined);
+      assert.ok(Math.abs(after - before) < 0.01, after + ' vs ' + before);
+    });
+
+    it('setCurveTension() refuses values Metafont refuses', function () {
+      assert.equal(setCurveTension(0.5), 1);
+      assert.equal(setCurveTension(-1), 1);
+      assert.equal(setCurveTension(0.75), 0.75);
+      assert.equal(setCurveTension(undefined), 1);
     });
 
     it('knot order is preserved along the output', function () {
@@ -478,22 +538,35 @@ describe('mapshaper-curve-fit', function () {
       // keeps a handle in proportion. Against the shorter chord alone, the arm
       // ran nearly straight and hooked at the end, and curvature either side
       // of the knot differed by a factor of 14 on the first case below.
-      [
+      // The first three are sharp hairpins, where the default hairpin tension
+      // shortens the tip's handles and leaves a mismatch of up to 4.8x; with
+      // hairpin tension off they stay within 1.4x.
+      var paths = [
         [[62, 546], [99, 57], [82, 104]],
         [[397, 405], [397, 443], [275, 92]],
         [[0, 0], [300, 0], [300 - 28, 10]],
         [[0, 0], [10, 0], [10, 1], [0, 1]]
-      ].forEach(function(knots, c) {
-        var segs = getCurveSegments(knots);
-        for (var i = 1; i < segs.length; i++) {
-          var a = Math.abs(endCurvature(segs[i - 1], 1));
-          var b = Math.abs(endCurvature(segs[i], 0));
-          if (!(a > 0 && b > 0)) continue;
-          var ratio = Math.max(a, b) / Math.min(a, b);
-          assert.ok(ratio < 2.5, 'path ' + c + ' knot ' + i +
-            ': curvature differs by ' + ratio.toFixed(1) + 'x');
-        }
-      });
+      ];
+      function check(maxRatio) {
+        paths.forEach(function(knots, c) {
+          var segs = getCurveSegments(knots);
+          for (var i = 1; i < segs.length; i++) {
+            var a = Math.abs(endCurvature(segs[i - 1], 1));
+            var b = Math.abs(endCurvature(segs[i], 0));
+            if (!(a > 0 && b > 0)) continue;
+            var ratio = Math.max(a, b) / Math.min(a, b);
+            assert.ok(ratio < maxRatio, 'path ' + c + ' knot ' + i +
+              ': curvature differs by ' + ratio.toFixed(1) + 'x');
+          }
+        });
+      }
+      check(5.5);
+      setCurveHairpinTension(1);
+      try {
+        check(2.5);
+      } finally {
+        setCurveHairpinTension(undefined);
+      }
     });
 
     it('does not spend a long segment\'s shape at one end', function () {
