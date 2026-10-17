@@ -15,7 +15,7 @@ import {
 export function Console(gui) {
   var model = gui.model;
   var CURSOR = '> ';
-  var PROMPT = 'Enter mapshaper commands or type "tips" for console help.';
+  var PROMPT = 'Enter commands or type "tips" for help.';
   var el = gui.container.findChild('.console').hide();
   var content = el.findChild('.console-buffer');
   var log = El('div').appendTo(content);

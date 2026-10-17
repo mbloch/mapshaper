@@ -367,9 +367,10 @@ export var ExportControl = function(gui) {
     var box = El('input').attr('type', 'checkbox').appendTo(label);
     El('span').addClass('export-frame-name')
       .text(name).appendTo(label);
-    var count = El('span').addClass('export-frame-count').appendTo(row);
     var toggle = El('span').addClass('export-frame-toggle')
-      .attr('role', 'button').attr('aria-label', 'Show or hide layers').appendTo(row);
+      .attr('role', 'button').attr('tabindex', '0')
+      .attr('aria-label', 'Show or hide layers').appendTo(row);
+    var count = El('span').addClass('export-frame-count').appendTo(toggle);
     var members = El('div').addClass('export-frame-members').appendTo(el);
     var group = {frame: frame, el: el, checkbox: box.node(), count: count, items: []};
     group.items = layers.map(function(o, i) {
@@ -384,8 +385,15 @@ export var ExportControl = function(gui) {
       selectionTouched = true;
       updateToggleBtn();
     });
-    toggle.on('click', function() {
+    function toggleMembers() {
       el.classed('closed', !el.hasClass('closed'));
+    }
+    toggle.on('click', toggleMembers);
+    toggle.on('keydown', function(e) {
+      if (e.key == 'Enter' || e.key == ' ') {
+        e.preventDefault();
+        toggleMembers();
+      }
     });
     frameGroups.push(group);
     return group;
