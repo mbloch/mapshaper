@@ -386,7 +386,9 @@ export function CommandParser() {
     var lines = [];
     var description = opt.describe;
     var label;
-    if (!description) {
+    if (opt.group) {
+      lines.push('', '  ' + opt.group);
+    } else if (!description) {
       // empty
     } else if (opt.label) {
       lines.push([opt.label, description]);
@@ -532,6 +534,12 @@ function CommandOptions(name) {
     Object.keys(o).forEach(function(key) {
       this.option(key, o[key]);
     }, this);
+    return this;
+  };
+
+  // A heading for the options that follow, in the help output
+  this.group = function(title) {
+    _command.options.push({name: '', group: title});
     return this;
   };
 

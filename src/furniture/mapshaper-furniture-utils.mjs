@@ -4,7 +4,7 @@
 // scalebar-aware renderer registry that lives in furniture.mjs.
 
 // Must match the renderers registered in mapshaper-furniture.mjs
-var furnitureTypes = ['scalebar'];
+var furnitureTypes = ['scalebar', 'overlay'];
 
 // @lyr dataset layer
 export function getFurnitureLayerType(lyr) {

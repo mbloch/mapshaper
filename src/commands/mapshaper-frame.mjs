@@ -1,9 +1,26 @@
 import {
   demoteFrameLayer,
-  getActiveFrame,
+  findFrameLayerInDataset,
   getFrameSize,
+  isFrameComponentLayer,
+  isFrameLayer,
   parseFrameSize
 } from '../furniture/mapshaper-frame-utils';
+import {
+  getDefaultFrame,
+  getFrameByName,
+  getFrameForDataset,
+  getFrameMemberLayers,
+  getFrameMembers,
+  getFrames
+} from '../furniture/mapshaper-frame-resolver';
+import { moveLayersToFrame, requireSameCoordinateSpace } from '../furniture/mapshaper-frame-members';
+import { setFrameRef } from '../dataset/mapshaper-frame-membership';
+import { getStackedLayers, moveLayersInStack, setFrameHidden } from '../dataset/mapshaper-layer-stacking';
+import { createDatasetId } from '../dataset/mapshaper-dataset-ids';
+import { copyDataset } from '../dataset/mapshaper-dataset-utils';
+import { markLayerMetadataChanged, noteLayerMetadataWillChange } from '../undo/mapshaper-undo-tracking';
+import { updateFrame } from './mapshaper-update-frame';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { message, stop } from '../utils/mapshaper-logging';
 import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
@@ -16,17 +33,325 @@ import utils from '../utils/mapshaper-utils';
 import { convertFourSides, parseSizeParam } from '../geom/mapshaper-units';
 import { bboxToPolygon } from '../commands/mapshaper-rectangle';
 import { expandCommandTargets } from '../dataset/mapshaper-target-utils';
-import { requireDatasetsHaveCompatibleCRS } from '../crs/mapshaper-projections';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { layerHasGeometry } from '../dataset/mapshaper-layer-type-utils';
 import { roundToDigits } from '../geom/mapshaper-rounding';
 import { parsePercent } from '../cli/mapshaper-option-parsing-utils';
 import { moveFrameFurniture } from '../furniture/mapshaper-furniture-cmd';
+import { findOverlayLayer, overlayFrameOnHost, retargetOverlayPlacements,
+  setOverlayPlacement } from '../furniture/mapshaper-overlays';
 
+// -frame has two modes, chosen by its target. Given content layers (or no
+// layers and bbox=), it creates a frame, and the layers become the frame's
+// members. Given one frame, it changes that frame: its members, their order
+// and visibility, its page and extent, its name; or it copies or demotes it.
 cmd.frame = function(catalog, targets, opts) {
+  var items = expandCommandTargets(targets);
+  var frames = items.filter(function(o) { return isFrameLayer(o.layer, o.dataset.arcs); });
+  if (frames.length > 0 && frames.length < items.length) {
+    stop('-frame target= names either layers to frame or one frame to change, not both');
+  }
+  if (frames.length > 0 && !opts.replace) {
+    if (frames.length > 1) {
+      stop('-frame changes one frame at a time. Found:', frames.map(getLayerName).join(', '));
+    }
+    validateModeOptions(opts, CREATE_ONLY_OPTIONS, 'when creating a frame');
+    if (!opts.target) {
+      message('Changing map frame', getLayerName(frames[0]) +
+        '. Use target= to frame other layers in a new frame.');
+    }
+    modifyFrame(catalog, frames[0], opts);
+  } else {
+    validateModeOptions(opts, MODIFY_ONLY_OPTIONS, 'when changing a frame (target=<frame>)');
+    createFrame(catalog, targets, items, opts, frames[0] || null);
+  }
+};
+
+var CREATE_ONLY_OPTIONS = ['replace'];
+var MODIFY_ONLY_OPTIONS = ['fit', 'auto_aspect', 'fix_scale', 'remove', 'add_layers',
+  'order_layers', 'remove_layers', 'hide_layers', 'show_layers', 'above', 'below', 'top', 'bottom',
+  'reproject', 'no_replace', 'overlay', 'overlay_position', 'overlay_margin', 'remove_overlay'];
+var PAGE_OPTIONS = ['bbox', 'fit', 'width', 'height', 'aspect_ratio', 'auto_aspect',
+  'fix_scale', 'margin', 'offset', 'offsets'];
+
+function validateModeOptions(opts, names, modeLabel) {
+  var found = names.filter(function(name) { return name in opts; });
+  if (found.length > 0) {
+    stop('Option' + utils.pluralSuffix(found.length) + ' only used',
+      modeLabel + ':', found.map(formatOptionName).join(', '));
+  }
+}
+
+function formatOptionName(name) {
+  return name == 'no_replace' ? '+' : name.replace(/_/g, '-');
+}
+
+function getLayerName(o) {
+  return o.layer.name || '[unnamed]';
+}
+
+function modifyFrame(catalog, frame, opts) {
+  var operation = 'frame';
+  var pageOpts;
+  if (opts.no_replace) {
+    frame = copyFrame(catalog, frame, opts.name);
+  }
+  if (opts.remove) {
+    if (Object.keys(opts).some(function(k) { return k != 'remove' && k != 'target'; })) {
+      stop('The remove option cannot be combined with other frame options');
+    }
+    removeFrame(catalog, frame);
+    return;
+  }
+  if (!opts.no_replace && !Object.keys(opts).some(function(k) { return k != 'target'; })) {
+    stop('Missing options for changing frame', getLayerName(frame));
+  }
+
+  // 1. members, their order and visibility
+  if (opts.add_layers && opts.order_layers) {
+    stop('add-layers= and order-layers= cannot be used together');
+  }
+  if (opts.add_layers) {
+    addLayersToFrame(catalog, frame, opts);
+  } else if (opts.order_layers) {
+    orderFrameLayers(catalog, frame, opts);
+  } else if (opts.above || opts.below || opts.top || opts.bottom) {
+    stop('above=, below=, top and bottom are used with add-layers= or order-layers=');
+  }
+  if (opts.reproject && !opts.add_layers) {
+    stop('reproject is used with add-layers=');
+  }
+  if (opts.remove_layers) {
+    moveLayersToFrame(catalog, findFrameMembers(catalog, frame, opts.remove_layers), null);
+  }
+  if (opts.hide_layers) {
+    findFrameMembers(catalog, frame, opts.hide_layers).forEach(function(o) {
+      setFrameHidden(o.layer, true, operation);
+    });
+  }
+  if (opts.show_layers) {
+    findFrameMembers(catalog, frame, opts.show_layers).forEach(function(o) {
+      setFrameHidden(o.layer, false, operation);
+    });
+  }
+
+  // 2. page and extent
+  pageOpts = PAGE_OPTIONS.concat('ignore_symbols').reduce(function(memo, name) {
+    if (name in opts) memo[name] = opts[name];
+    return memo;
+  }, {});
+  if (PAGE_OPTIONS.some(function(name) { return name in opts; })) {
+    updateFrame([frame.layer], frame.dataset, pageOpts,
+      opts.fit ? findLayers(catalog, opts.fit) : null);
+  }
+
+  // 3. overlays
+  if ((opts.overlay_position || opts.overlay_margin !== undefined) && !opts.overlay) {
+    stop('overlay-position= and overlay-margin= are used with overlay=');
+  }
+  if (opts.remove_overlay) {
+    removeOverlay(catalog, frame, opts.remove_overlay);
+  }
+  if (opts.overlay) {
+    overlayFrameOnHost(catalog, frame, findOverlayFrame(catalog, opts.overlay), opts);
+  }
+
+  // 4. name (a copy is named when it is made)
+  if (opts.name && !opts.no_replace) {
+    renameFrame(catalog, frame, opts.name);
+  }
+  catalog.setDefaultTarget([frame.layer], frame.dataset);
+}
+
+function findLayers(catalog, pattern) {
+  return catalog.findLayers(pattern);
+}
+
+// Layers in the frame that match @pattern. Names are matched only among the
+// members, so a layer of the same name outside the frame is never selected,
+// and numbers count the members from 1 (as in frame1:2).
+function findFrameMembers(catalog, frame, pattern) {
+  var members = getFrameMemberLayers(catalog, frame);
+  return findListedLayers(catalog, pattern, function(subpattern) {
+    var found = catalog.findLayers(subpattern, members, true);
+    if (found.length === 0) {
+      stop('Frame', getLayerName(frame), 'has no layer matching', subpattern);
+    }
+    return found;
+  });
+}
+
+// Layers outside the frame that match @pattern (unframed or in other frames).
+// Members are skipped, so a member never shadows a layer of the same name
+// outside the frame.
+function findLayersOutsideFrame(catalog, frame, pattern) {
+  var members = utils.pluck(getFrameMemberLayers(catalog, frame), 'layer');
+  return findListedLayers(catalog, pattern, function(subpattern) {
+    var found = findLayers(catalog, subpattern);
+    var outside = found.filter(function(o) { return !members.includes(o.layer); });
+    if (outside.length === 0) {
+      stop(subpattern, 'is already in frame', getLayerName(frame) + '.',
+        'Use order-layers= to restack layers in a frame');
+    }
+    return outside;
+  });
+}
+
+// Layers matched by each comma-separated part of @pattern, in list order and
+// without repeats. The layers that one part matches (e.g. a wildcard) are in
+// stacking order.
+// @find function(subpattern) -> [{layer, dataset}]
+function findListedLayers(catalog, pattern, find) {
+  var stack = getStackedLayers(catalog).map(function(o) { return o.layer; });
+  return String(pattern).split(',').reduce(function(memo, subpattern) {
+    var found = find(subpattern).filter(function(o) {
+      return !memo.some(function(o2) { return o2.layer == o.layer; });
+    });
+    found.sort(function(a, b) { return stack.indexOf(a.layer) - stack.indexOf(b.layer); });
+    return memo.concat(found);
+  }, []);
+}
+
+// add-layers= brings layers into the frame, stacked in list order, first at
+// the bottom, on top of the frame's other layers unless a position is given
+function addLayersToFrame(catalog, frame, opts) {
+  var items = findLayersOutsideFrame(catalog, frame, opts.add_layers);
+  moveLayersToFrame(catalog, items, frame, {
+    position: getStackPosition(catalog, frame, opts, items) || {top: true},
+    ordered: true,
+    reproject: opts.reproject
+  });
+}
+
+// order-layers= restacks layers in the frame, in list order, first at the
+// bottom. Without a position, the layers are restacked in place, starting
+// where the lowest of them was.
+function orderFrameLayers(catalog, frame, opts) {
+  var items = findFrameMembers(catalog, frame, opts.order_layers);
+  moveLayersInStack(catalog, utils.pluck(items, 'layer'),
+    getStackPosition(catalog, frame, opts, items) || {in_place: true}, {
+      group: utils.pluck(getFrameMemberLayers(catalog, frame), 'layer'),
+      ordered: true,
+      operation: 'frame'
+    });
+}
+
+// Returns null if no position option is given
+// @items the layers being moved, which the anchor of above= or below= must
+//   not be one of
+function getStackPosition(catalog, frame, opts, items) {
+  var given = ['above', 'below', 'top', 'bottom'].filter(function(name) { return opts[name]; });
+  var anchor;
+  if (given.length > 1) {
+    stop(given.join(', ') + ' are mutually exclusive');
+  }
+  if (opts.above || opts.below) {
+    anchor = findFrameMembers(catalog, frame, opts.above || opts.below);
+    if (anchor.length != 1) {
+      stop((opts.above ? 'above=' : 'below=') + ' names more than one layer');
+    }
+    if (items.some(function(o) { return o.layer == anchor[0].layer; })) {
+      stop((opts.above ? 'above=' : 'below=') + ' names a layer that is being moved:',
+        getLayerName(anchor[0]));
+    }
+    return opts.above ? {above: anchor[0].layer} : {below: anchor[0].layer};
+  }
+  if (opts.bottom) return {bottom: true};
+  if (opts.top) return {top: true};
+  return null;
+}
+
+function findOverlayFrame(catalog, name) {
+  var frame = getFrameByName(catalog, name);
+  if (!frame) {
+    stop('Unknown frame:', name);
+  }
+  return frame;
+}
+
+function removeOverlay(catalog, host, name) {
+  var overlay = findOverlayFrame(catalog, name);
+  if (!findOverlayLayer(host.dataset, overlay.dataset.id)) {
+    stop('Frame', name, 'is not an overlay on frame', getLayerName(host));
+  }
+  setOverlayPlacement(host.dataset, overlay.dataset.id, null);
+}
+
+function renameFrame(catalog, frame, name) {
+  var detail = {operation: 'frame', unit: 'name'};
+  if (frame.layer.name == name) return;
+  requireUnusedFrameName(catalog, name);
+  noteLayerMetadataWillChange(frame.layer, detail);
+  frame.layer.name = name;
+  markLayerMetadataChanged(frame.layer, detail);
+}
+
+function requireUnusedFrameName(catalog, name) {
+  if (getFrameByName(catalog, name)) {
+    stop('A map frame named', name, 'already exists. Use target=' + name,
+      'to change it, or choose another name.');
+  }
+}
+
+// frame, frame2, frame3, ...
+function getUnusedFrameName(catalog) {
+  var name = 'frame';
+  for (var i = 2; getFrameByName(catalog, name); i++) {
+    name = 'frame' + i;
+  }
+  return name;
+}
+
+// The frame layer becomes an ordinary rectangle; its members become unframed
+function removeFrame(catalog, frame) {
+  var operation = 'frame';
+  getFrameMemberLayers(catalog, frame).forEach(function(o) {
+    setFrameHidden(o.layer, false, operation);
+  });
+  getFrameMembers(catalog, frame).forEach(function(dataset) {
+    setFrameRef(dataset, null);
+  });
+  demoteFrameLayer(frame.layer, operation);
+}
+
+// Copies the frame dataset and its member datasets. Copies get new IDs;
+// members that share an ID (one lineage) share a new one.
+function copyFrame(catalog, frame, name) {
+  var members = getFrameMembers(catalog, frame);
+  var ids = {};
+  var copy, frameLyr;
+  if (!name) {
+    stop('Use name= to name the copy of frame', getLayerName(frame));
+  }
+  requireUnusedFrameName(catalog, name);
+  copy = copyDataset(frame.dataset);
+  copy.info = utils.extend({}, frame.dataset.info);
+  frameLyr = findFrameLayerInDataset(copy);
+  frameLyr.name = name;
+  catalog.insertDatasetAfter(copy, null);
+  members.forEach(function(dataset) {
+    var member = copyDataset(dataset);
+    member.info = utils.extend({}, dataset.info, {frame: copy.id});
+    if (dataset.id) {
+      member.id = ids[dataset.id] || (ids[dataset.id] = createDatasetId());
+    }
+    catalog.insertDatasetAfter(member, null);
+  });
+  return {layer: frameLyr, dataset: copy};
+}
+
+function createFrame(catalog, targets, items, opts, frameTarget) {
   var widthPx, heightPx, bbox;
-  var existingFrame = getActiveFrame(catalog);
+  var replaced = opts.replace ? frameTarget || getReplacedFrame(catalog, items) : null;
+  var contentItems = items.filter(function(o) {
+    return !isFrameComponentLayer(o.layer, o.dataset);
+  });
+  var name = opts.name || replaced && replaced.layer.name || getUnusedFrameName(catalog);
+  var hadFrames = getFrames(catalog).length > 0;
   var offsets = parseFrameOffsets(opts);
+  if (getFrameByName(catalog, name) && (!replaced || replaced.layer.name != name)) {
+    requireUnusedFrameName(catalog, name);
+  }
   if (opts.width) {
     widthPx = parseFrameSize(opts.width).valuePx;
     if (widthPx > 0 === false) {
@@ -60,7 +385,9 @@ cmd.frame = function(catalog, targets, opts) {
     // TODO: validate
   } else {
     var datasets = utils.pluck(targets, 'dataset');
-    requireDatasetsHaveCompatibleCRS(datasets, 'Targets include both projected and unprojected coordinates');
+    requireSameCoordinateSpace(datasets, 'Unable to frame layers in different coordinate ' +
+      'systems: targets include both projected and lat-long coordinates. Use -proj to project ' +
+      'the lat-long layers, or frame them separately.');
     bbox = getFrameContentBbox(expandCommandTargets(targets), function(contentBbox) {
       var extent = getFrameExtent(contentBbox, widthPx, heightPx, offsets);
       return getFrameScale(extent.bbox, extent.width, getFixedAspect(extent, opts));
@@ -94,17 +421,46 @@ cmd.frame = function(catalog, targets, opts) {
     setDatasetCrsInfo(frameDataset, crsInfo);
   }
   var frameLyr = frameDataset.layers[0];
-  frameLyr.name = opts.name || 'frame';
-  if (existingFrame) {
-    if (!opts.replace) {
-      stop('A map frame already exists:', existingFrame.layer.name || '[unnamed frame]');
-    }
-    moveFrameFurniture(existingFrame.dataset, frameDataset);
-    demoteFrameLayer(existingFrame.layer);
+  var frame = {layer: frameLyr, dataset: frameDataset};
+  var members = replaced ? getFrameMembers(catalog, replaced) : [];
+  frameLyr.name = name;
+  if (replaced) {
+    moveFrameFurniture(replaced.dataset, frameDataset);
+    demoteFrameLayer(replaced.layer);
   }
   // target the frame, not any furniture that came with it
   catalog.setDefaultTarget([frameLyr], frameDataset);
-};
+  members.forEach(function(dataset) {
+    setFrameRef(dataset, frameDataset.id);
+  });
+  if (replaced) {
+    retargetOverlayPlacements(catalog, replaced.dataset.id, frameDataset.id);
+  }
+  // With bbox= and no target=, the frame does not need content, and the
+  // current target does not become a member
+  if (contentItems.length > 0 && (opts.target || !opts.bbox)) {
+    moveLayersToFrame(catalog, contentItems, frame);
+  }
+  if (hadFrames && !opts.target && !replaced) {
+    message('Created map frame', name + '. To change an existing frame, use target=<frame>.');
+  }
+}
+
+// The frame that -frame replace replaces: the frame of the targets, or the
+// session's frame if it has only one
+function getReplacedFrame(catalog, items) {
+  var frames = items.reduce(function(memo, o) {
+    var frame = getFrameForDataset(catalog, o.dataset);
+    if (frame && !memo.some(function(f) { return f.dataset == frame.dataset; })) {
+      memo.push(frame);
+    }
+    return memo;
+  }, []);
+  if (frames.length > 1) {
+    stop('The targets are in more than one frame; unable to tell which frame to replace');
+  }
+  return frames[0] || getDefaultFrame(catalog);
+}
 
 // The frame's extent and nominal size, from the extent of its content and the
 // size options. Pure, so that fitting to symbols can ask what scale an extent

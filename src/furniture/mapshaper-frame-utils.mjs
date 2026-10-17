@@ -17,9 +17,9 @@ import utils from '../utils/mapshaper-utils';
 */
 
 
+// @dataset the (merged) dataset being exported
 export function getFrameData(dataset, exportOpts) {
-  var frameTarget = resolveExportFrame({targetDataset: dataset, mode: 'cli'});
-  var frameLyr = frameTarget && frameTarget.layer;
+  var frameLyr = findFrameLayerInDataset(dataset);
   var data;
   if (exportOpts.gui_frame?.data) {
     data = Object.assign({}, exportOpts.gui_frame.data, {
@@ -223,81 +223,36 @@ export function isFrameComponentLayer(lyr, dataset) {
   return layerIsFurniture(lyr) && !!findFrameLayerInDataset(dataset);
 }
 
-export function findFrames(catalog) {
-  return catalog.getLayers().filter(function(o) {
-    return isFrameLayer(o.layer, o.dataset.arcs);
-  });
-}
-
-// Remembers the frame conflict that was last reported, so that resolving the
-// frame on every map render does not repeat the same warning. Unlike
-// warnOnce(), this resets when the conflict clears, so a long-lived GUI session
-// warns again if the user undoes the change and then repeats it.
-var reportedFrameConflict = null;
-
-// Generic field commands can promote an ordinary rectangle into a second frame
-// (e.g. -each 'type="frame", width=400'), and the GUI resolves the frame on
-// every render, so this has to degrade to a deterministic choice rather than an
-// error. Rejecting the change outright is assertSingleFrameUpdate()'s job,
-// where it can still be refused before it is committed.
-export function getActiveFrame(catalog) {
-  var frames = findFrames(catalog);
-  var key;
-  if (frames.length > 1) {
-    key = frames.map(getFrameName).join(', ');
-    if (key !== reportedFrameConflict) {
-      reportedFrameConflict = key;
-      warn('Multiple map frames are not supported; using',
-        getFrameName(frames[0]) + '. Ignoring:',
-        frames.slice(1).map(getFrameName).join(', '));
-    }
-  } else {
-    reportedFrameConflict = null;
-  }
-  return frames[0] || null;
-}
-
-export function findFrameDataset(catalog) {
-  var target = getActiveFrame(catalog);
-  return target && target.dataset || null;
-}
-
-export function findFrameLayer(catalog) {
-  var target = getActiveFrame(catalog);
-  return target && target.layer || null;
-}
-
-export function findFrame(catalog) {
-  return getActiveFrame(catalog);
-}
-
-export function resolveExportFrame(opts) {
-  if (opts.explicitFrame) return opts.explicitFrame;
-  if (opts.targetDataset) {
-    var lyr = findFrameLayerInDataset(opts.targetDataset);
-    return lyr ? {layer: lyr, dataset: opts.targetDataset} : null;
-  }
-  return opts.mode == 'gui' && opts.catalog ? getActiveFrame(opts.catalog) : null;
-}
-
-export function assertSingleFrameUpdate(catalog, additions, removals) {
+// Checks the frames that the catalog would hold after adding layers and
+// removing others, so that a change can be refused before it is made:
+// a dataset holds at most one frame, and frame names are unique.
+// @additions [{layer, dataset}] layers about to be added
+// @removals layers about to be removed
+export function assertFrameUpdateIsValid(catalog, additions, removals) {
   var removed = removals || [];
-  var frames = catalog.getLayers().filter(function(o) {
+  var frames = catalog.getLayers().concat(additions || []).filter(function(o) {
     return !removed.includes(o.layer) && isFrameLayer(o.layer, o.dataset.arcs);
-  });
-  (additions || []).forEach(function(o) {
-    if (!removed.includes(o.layer) && isFrameLayer(o.layer, o.dataset.arcs)) {
-      frames.push(o);
-    }
   });
   frames = frames.filter(function(o, i) {
     return frames.findIndex(function(o2) {
       return o2.layer == o.layer;
     }) == i;
   });
-  if (frames.length > 1) {
-    stop('Multiple map frames are not supported:', frames.map(getFrameName).join(', '));
-  }
+  assertValidFrames(frames);
+}
+
+export function assertValidFrames(frames) {
+  var names = [];
+  frames.forEach(function(o, i) {
+    var name = o.layer.name;
+    if (frames.findIndex(function(o2) { return o2.dataset == o.dataset; }) < i) {
+      stop('A dataset can contain only one map frame:', getFrameName(o));
+    }
+    if (name && names.includes(name)) {
+      stop('Map frame names must be unique. Use name= to give the new frame a different name:', name);
+    }
+    names.push(name);
+  });
 }
 
 export function assertCatalogCanAddDatasets(catalog, datasets, removals) {
@@ -309,7 +264,7 @@ export function assertCatalogCanAddDatasets(catalog, datasets, removals) {
       additions.push({layer: lyr, dataset: dataset});
     });
   });
-  assertSingleFrameUpdate(catalog, additions, removals);
+  assertFrameUpdateIsValid(catalog, additions, removals);
 }
 
 function getFrameName(o) {

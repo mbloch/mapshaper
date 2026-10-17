@@ -13,16 +13,24 @@ import {
 
 // Converts all polygon and polyline paths in a dataset to a topological format
 // (in-place)
-export function buildTopology(dataset) {
+// opts.preserve_simplification: keep simplification thresholds and the
+//   retained interval (by default, the arcs come out unsimplified). Where
+//   duplicate arcs are merged, the thresholds of the first one are kept.
+export function buildTopology(dataset, opts) {
   if (!dataset.arcs) return;
   // An arc that no layer uses would share vertices with the arcs it touches,
   // and split them into smaller arcs.
   if ((dataset.layers || []).some(layerHasPaths)) {
     deleteUnusedArcs(dataset);
   }
-  var raw = dataset.arcs.getVertexData(),
-      cooked = buildPathTopology(raw.nn, raw.xx, raw.yy);
-  dataset.arcs.updateVertexData(cooked.nn, cooked.xx, cooked.yy);
+  var keepZ = !!(opts && opts.preserve_simplification),
+      interval = dataset.arcs.getRetainedInterval(),
+      raw = dataset.arcs.getVertexData(),
+      cooked = buildPathTopology(raw.nn, raw.xx, raw.yy, keepZ ? raw.zz : null);
+  dataset.arcs.updateVertexData(cooked.nn, cooked.xx, cooked.yy, cooked.zz);
+  if (cooked.zz) {
+    dataset.arcs.setRetainedInterval(interval);
+  }
   dataset.layers.forEach(function(lyr) {
     if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
       noteLayerWillChange(lyr, {operation: 'buildTopology', unit: 'shapes'});
@@ -42,16 +50,19 @@ export function buildTopology(dataset) {
 //
 // (x- and y-coords of all paths are concatenated into two arrays)
 //
+//    zz: [Float64Array] (optional) simplification thresholds of each point
+//
 // Returns:
 // {
 //    xx, yy (array)   // coordinate data
+//    zz (array|null)  // thresholds, if zz was given
 //    nn: (array)      // points in each arc
 //    paths: (array)   // Paths are arrays of one or more arc id.
 // }
 //
 // Negative arc ids in the paths array indicate a reversal of arc -(id + 1)
 //
-export function buildPathTopology(nn, xx, yy) {
+export function buildPathTopology(nn, xx, yy, zz) {
   var pointCount = xx.length,
       chainIds = initPointChains(xx, yy),
       pathIds = initPathIds(pointCount, nn),
@@ -161,8 +172,9 @@ export function buildPathTopology(nn, xx, yy) {
       // slice of xx/yy, so we build a standalone buffer and hand it to the
       // index as the arc's source.
       var mx = mergeArcParts(xx, start1, end1, start2, end2),
-          my = mergeArcParts(yy, start1, end1, start2, end2);
-      arcId = index.addArc(mx, my, 0, mx.length - 1);
+          my = mergeArcParts(yy, start1, end1, start2, end2),
+          mz = zz ? mergeArcParts(zz, start1, end1, start2, end2) : null;
+      arcId = index.addArc(mx, my, 0, mx.length - 1, mz);
     }
     return arcId;
   }
@@ -171,7 +183,7 @@ export function buildPathTopology(nn, xx, yy) {
     // search for a matching edge that has already been generated
     var arcId = index.findDuplicateArc(xx, yy, start, end, nextPoint, prevPoint);
     if (arcId === null) {
-      arcId = index.addArc(xx, yy, start, end);
+      arcId = index.addArc(xx, yy, start, end, zz);
     }
     return arcId;
   }

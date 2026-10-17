@@ -15,7 +15,7 @@ export function FrameProperties(gui) {
   gui.frameProperties = this;
 
   this.open = function(targetArg) {
-    target = targetArg || internal.getActiveFrame(gui.model);
+    target = targetArg || gui.model.getActiveFrame();
     if (!target) return;
     var popup = showPopupAlert('', 'Frame properties');
     popup.container().addClass('frame-properties-popup');

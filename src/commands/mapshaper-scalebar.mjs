@@ -1,4 +1,5 @@
-import { getMapFrameMetersPerPixel, getActiveFrame } from '../furniture/mapshaper-frame-utils';
+import { getMapFrameMetersPerPixel } from '../furniture/mapshaper-frame-utils';
+import { resolveFrameForDataset } from '../furniture/mapshaper-frame-resolver';
 import { addFurnitureLayer, setFrameFurnitureLayer } from '../furniture/mapshaper-furniture-cmd';
 import cmd from '../mapshaper-cmd';
 import { DataTable } from '../datatable/mapshaper-data-table';
@@ -14,8 +15,9 @@ var scalebarFields = ['label', 'units', 'style', 'font_size', 'font_family',
 // With a map frame, the scalebar belongs to the frame, and running the
 // command again replaces it. Without a frame, each run adds a standalone
 // scalebar layer, which is exported if it is included in the output layers.
-cmd.scalebar = function(catalog, opts) {
-  var frame = getActiveFrame(catalog);
+// @targetDataset (optional) the frame is the one this dataset belongs to
+cmd.scalebar = function(catalog, targetDataset, opts) {
+  var frame = resolveFrameForDataset(catalog, targetDataset || null);
   if (opts.remove) {
     if (!frame || !setFrameFurnitureLayer(frame.dataset, 'scalebar', null)) {
       stop('The map frame has no scalebar to remove');

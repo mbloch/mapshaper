@@ -15,9 +15,10 @@ test('the frame menu adds a scale bar that shows in preview', async function({pa
   }).not.toBeNull();
   await expect(page.locator('.mapshaper-svg-furniture text')).toHaveCount(1);
   // part of the frame, not a layer of its own
-  await expect(page.locator('.map-frame-list .layer-item')).toHaveCount(1);
-  await expect(page.locator('.map-frame-list .layer-item')).not.toContainText('scale');
-  await expect(page.locator('.layer-list .layer-item')).not.toContainText('scalebar');
+  await expect(page.locator('.map-frame-list .frame-item')).toHaveCount(1);
+  await expect(page.locator('.map-frame-list .frame-item')).not.toContainText('scale');
+  await expect(page.locator('.layer-control .layer-item')
+    .filter({hasText: 'scalebar'})).toHaveCount(0);
   expect((await getSessionCommands(page)).pop()).toBe('-scalebar');
 
   await setPreviewMode(page, false);
@@ -187,8 +188,8 @@ test('undoing a frame deletion restores its scale bar', async function({page}) {
     var rec = await getScalebarRecord(page);
     return rec && rec.label;
   }).toBe('50 km');
-  await expect(page.locator('.map-frame-list .layer-item')).toHaveCount(1);
-  await expect(page.locator('.layer-list .layer-item')).toHaveCount(1);
+  await expect(page.locator('.map-frame-list .frame-item')).toHaveCount(1);
+  await expect(page.locator('.layer-list .layer-item, .frame-members .layer-item')).toHaveCount(1);
 });
 
 test('SVG export includes the scale bar but the layer list does not', async function({page}) {
@@ -316,8 +317,8 @@ async function openScalebarPanel(page) {
 }
 
 async function openFrameMenu(page) {
-  await page.locator('.map-frame-list .layer-item').hover();
-  await page.locator('.map-frame-list .layer-item .more-btn').click();
+  await page.locator('.map-frame-list .frame-item').hover();
+  await page.locator('.map-frame-list .frame-item .more-btn').click();
 }
 
 async function runCommand(page, cmd) {

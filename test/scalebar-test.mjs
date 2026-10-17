@@ -95,7 +95,7 @@ describe('mapshaper-scalebar.js', function () {
 
     it('the scalebar is added to the frame dataset, not the default target', async function() {
       var job = await runJob(`${framed} -target two_states -scalebar`);
-      var frame = api.internal.getActiveFrame(job.catalog);
+      var frame = api.internal.getDefaultFrame(job.catalog);
       assert.deepEqual(frame.dataset.layers.map(lyr => lyr.name), ['frame', 'scalebar']);
       assert.equal(job.catalog.getActiveLayer().layer.name, 'two_states');
       var scalebar = frame.dataset.layers[1];
@@ -114,7 +114,7 @@ describe('mapshaper-scalebar.js', function () {
 
     it('-scalebar remove removes the scalebar', async function() {
       var job = await runJob(`${framed} -scalebar -scalebar remove`);
-      var frame = api.internal.getActiveFrame(job.catalog);
+      var frame = api.internal.getDefaultFrame(job.catalog);
       assert.deepEqual(frame.dataset.layers.map(lyr => lyr.name), ['frame']);
     });
 
@@ -124,7 +124,7 @@ describe('mapshaper-scalebar.js', function () {
 
     it('-frame replace keeps the scalebar', async function() {
       var job = await runJob(`${framed} -scalebar "100 km" -frame width=400 replace`);
-      var frame = api.internal.getActiveFrame(job.catalog);
+      var frame = api.internal.getDefaultFrame(job.catalog);
       var scalebar = api.internal.findFrameFurnitureLayer(frame.dataset, 'scalebar');
       assert.equal(scalebar.data.getRecordAt(0).label, '100 km');
       assert.equal(job.catalog.getActiveLayer().layer, frame.layer);

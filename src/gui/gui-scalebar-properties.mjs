@@ -43,7 +43,7 @@ export function ScalebarProperties(gui) {
 
   // Adds a scalebar to the frame if it doesn't have one
   this.open = function(frameTarget) {
-    var frame = frameTarget || internal.getActiveFrame(gui.model);
+    var frame = frameTarget || gui.model.getActiveFrame();
     if (!frame) return;
     if (getScalebarRecord()) {
       showPanel();
@@ -315,7 +315,7 @@ export function ScalebarProperties(gui) {
   }
 
   function getFrameProblem() {
-    var frame = internal.getActiveFrame(gui.model);
+    var frame = gui.model.getActiveFrame();
     var crs, data;
     if (!frame) return 'there is no map frame';
     crs = frame.layer.gui && frame.layer.gui.dynamic_crs ||
@@ -325,7 +325,7 @@ export function ScalebarProperties(gui) {
   }
 
   function getScalebarRecord() {
-    var frame = internal.getActiveFrame(gui.model);
+    var frame = gui.model.getActiveFrame();
     var lyr = frame && internal.findFrameFurnitureLayer(frame.dataset, 'scalebar');
     return lyr ? lyr.data.getReadOnlyRecordAt(0) : null;
   }

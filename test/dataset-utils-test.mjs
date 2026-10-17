@@ -65,6 +65,80 @@ describe('mapshaper-dataset-utils.js', function () {
     })
   })
 
+  describe('replaceLayers() stacking handover', function () {
+    it('replacement takes the menu_order and pinned state of the replaced layer', function () {
+      var a = {name: 'a', menu_order: 2, pinned: false};
+      var b = {name: 'b', menu_order: 1, pinned: true};
+      var a2 = {name: 'a2'};
+      var dataset = {layers: [a, b], info: {}};
+      replaceLayers(dataset, [a], [a2]);
+      assert.deepEqual(dataset.layers, [a2, b]);
+      assert.equal(a2.menu_order, 2);
+      assert.strictEqual(a2.pinned, false);
+    })
+
+    it('extra new layers are stacked directly above the last replaced layer, in order', function () {
+      var a = {name: 'a', menu_order: 3, pinned: true};
+      var parts = [{name: 'p1'}, {name: 'p2'}, {name: 'p3'}];
+      var dataset = {layers: [a], info: {}};
+      replaceLayers(dataset, [a], parts);
+      assert.equal(parts[0].menu_order, 3);
+      assert(parts[1].menu_order > 3 && parts[1].menu_order < 4);
+      assert(parts[2].menu_order > parts[1].menu_order && parts[2].menu_order < 4);
+      parts.forEach(function(lyr) { assert.strictEqual(lyr.pinned, true); });
+    })
+
+    it('values already on a new layer are kept', function () {
+      var a = {name: 'a', menu_order: 3, pinned: true};
+      var a2 = {name: 'a2', menu_order: 5, pinned: false};
+      replaceLayers({layers: [a], info: {}}, [a], [a2]);
+      assert.equal(a2.menu_order, 5);
+      assert.strictEqual(a2.pinned, false);
+    })
+
+    it('layers without stacking state hand over nothing', function () {
+      var a = {name: 'a'};
+      var a2 = {name: 'a2'};
+      replaceLayers({layers: [a], info: {}}, [a], [a2]);
+      assert(!('menu_order' in a2));
+      assert(!('pinned' in a2));
+    })
+
+    async function runInMemory(cmdStr, setup) {
+      var job = new api.internal.Job();
+      await api.internal.runParsedCommands(api.internal.parseCommands(
+        '-i test/data/geojson/two_states.json name=states'), job);
+      setup(job.catalog);
+      await api.internal.runParsedCommands(api.internal.parseCommands(cmdStr), job);
+      return job.catalog;
+    }
+
+    it('-dissolve keeps the layer\'s stacking position and visibility', async function () {
+      var catalog = await runInMemory('-dissolve target=states', function(catalog) {
+        var lyr = catalog.getLayers()[0].layer;
+        lyr.menu_order = 4;
+        lyr.pinned = false;
+      });
+      var lyr = catalog.getLayers()[0].layer;
+      assert.equal(lyr.shapes.length, 1);
+      assert.equal(lyr.menu_order, 4);
+      assert.strictEqual(lyr.pinned, false);
+    })
+
+    it('-split stacks the parts where the source layer was', async function () {
+      var catalog = await runInMemory('-split target=states', function(catalog) {
+        var lyr = catalog.getLayers()[0].layer;
+        lyr.menu_order = 4;
+        lyr.pinned = true;
+      });
+      var layers = catalog.getLayers().map(function(o) { return o.layer; });
+      assert.equal(layers.length, 2);
+      assert.equal(layers[0].menu_order, 4);
+      assert(layers[1].menu_order > 4 && layers[1].menu_order < 5);
+      layers.forEach(function(lyr) { assert.strictEqual(lyr.pinned, true); });
+    })
+  })
+
   describe('undo tracking hooks', function () {
     afterEach(function() {
       clearActiveUndoTransaction();

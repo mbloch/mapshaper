@@ -2644,7 +2644,14 @@ export function getOptionParser() {
     });
 
   parser.command('frame')
-    .describe('create a rectangular map frame layer at a given display width')
+    .describe('create a map frame for some layers, or change a frame')
+    .option('target', {
+      describe: 'layers to frame, or the name of a frame to change'
+    })
+    .option('name', {
+      describe: 'name of a new frame, or a new name for a frame'
+    })
+    .group('Page and extent')
     .option('width', {
       describe: 'width of frame (e.g. 5in, 10cm, 600px; default is 800px)'
     })
@@ -2659,6 +2666,9 @@ export function getOptionParser() {
       describe: 'frame coordinates (xmin,ymin,xmax,ymax)',
       type: 'bbox'
     })
+    .option('fit', {
+      describe: '(changing a frame) layer(s) to fit the frame to'
+    })
     .option('margin', frameMarginOpt)
     .option('offset', frameOffsetOpt)
     .option('offsets', frameOffsetOpt)
@@ -2666,12 +2676,76 @@ export function getOptionParser() {
       describe: 'fit to coordinates, not the extent of symbols, labels and strokes',
       type: 'flag'
     })
-    .option('name', nameOpt)
-    .option('replace', {
-      describe: 'replace the existing map frame',
+    .option('auto-aspect', {
+      describe: '(changing a frame) derive page height from the frame extent',
       type: 'flag'
     })
-    .option('target', targetOpt);
+    .option('fix-scale', {
+      describe: '(changing a frame) hold the map scale; derive the size from the new extent',
+      type: 'flag'
+    })
+    .group('Layers in a frame (target= names the frame)')
+    .option('add-layers', {
+      describe: 'move layers from outside into the frame (on top, in list order)'
+    })
+    .option('order-layers', {
+      describe: 'restack layers in the frame, in list order (first at bottom)'
+    })
+    .option('above', {
+      describe: 'with add-layers= or order-layers=, stack the layers above this one'
+    })
+    .option('below', {
+      describe: 'with add-layers= or order-layers=, stack the layers below this one'
+    })
+    .option('top', {
+      describe: 'with add-layers= or order-layers=, stack the layers on top',
+      type: 'flag'
+    })
+    .option('bottom', {
+      describe: 'with add-layers= or order-layers=, stack the layers at the bottom',
+      type: 'flag'
+    })
+    .option('reproject', {
+      describe: 'with add-layers=, reproject layers into the frame\'s coordinate system',
+      type: 'flag'
+    })
+    .option('remove-layers', {
+      describe: 'move layers out of the frame'
+    })
+    .option('hide-layers', {
+      describe: 'keep layers in the frame, but leave them off the map'
+    })
+    .option('show-layers', {
+      describe: 'show hidden layers in the frame'
+    })
+    .group('Overlays (target= names the host frame)')
+    .option('overlay', {
+      describe: 'draw another frame on this frame\'s page (e.g. an inset map)'
+    })
+    .option('overlay-position', {
+      describe: 'with overlay=, corner of the page: top-left, top-right, bottom-left, bottom-right'
+    })
+    .option('overlay-margin', {
+      describe: 'with overlay=, distance from the corner\'s edges (e.g. 10 or 10,20)'
+    })
+    .option('remove-overlay', {
+      describe: 'remove an overlay frame from this frame\'s page'
+    })
+    .group('Other')
+    .option('no-replace', {
+      alias: '+',
+      type: 'flag',
+      label: '+, no-replace',
+      describe: '(changing a frame) copy the frame and its layers; name= names the copy'
+    })
+    .option('replace', {
+      describe: '(creating a frame) replace the frame of the targets',
+      type: 'flag'
+    })
+    .option('remove', {
+      describe: '(changing a frame) demote the frame to an ordinary rectangle layer',
+      type: 'flag'
+    });
 
     // .option('height', {
     //   describe: 'pixel height of output (may be a range)'

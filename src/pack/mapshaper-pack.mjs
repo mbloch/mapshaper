@@ -72,6 +72,7 @@ export async function exportDataset(dataset, opts) {
   }
   var layers = dataset.layers.map(lyr => exportLayer(lyr, opts));
   return {
+    id: dataset.id || null,
     arcs: arcData,
     info: dataset.info ? exportInfo(dataset.info) : null,
     layers: await Promise.all(layers)
@@ -147,10 +148,11 @@ function typedArrayToBuffer(arr) {
 
 async function exportLayer(lyr, opts) {
   var data = null;
+  var obj;
   if (lyr.data) {
     data = await exportTable2(lyr.data);
   }
-  return {
+  obj = {
     name: lyr.name || null,
     geometry_type: lyr.geometry_type || null,
     shapes: lyr.shapes || null,
@@ -161,6 +163,8 @@ async function exportLayer(lyr, opts) {
     pinned: lyr.pinned || opts.show_all || false,
     active: !!(lyr.active || lyr == opts.active_layer) // lyr.active: deprecated
   };
+  if (lyr.frame_hidden) obj.frame_hidden = true;
+  return obj;
 }
 
 function exportRasterData(raster) {

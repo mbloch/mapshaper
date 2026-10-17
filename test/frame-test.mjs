@@ -236,10 +236,18 @@ describe('mapshaper-frame.js', function () {
       assert(neatline > content);
     });
 
-    it('rejects a second frame', async function() {
+    it('changes the frame when the frame is the current target', async function() {
+      var out = await api.applyCommands(
+        '-frame bbox=0,0,2,1 width=800 -frame bbox=0,0,1,1 width=400 -o out.svg'
+      );
+      assert(String(out['out.svg']).includes('width="400" height="400"'));
+    });
+
+    it('rejects a second frame with the same name', async function() {
       await assert.rejects(
-        api.applyCommands('-frame bbox=0,0,2,1 width=800 -frame bbox=0,0,1,1 width=400'),
-        /A map frame already exists/
+        api.applyCommands('-rectangle bbox=0,0,1,1 name=a -rectangle bbox=0,0,2,2 name=b ' +
+          '-frame target=a name=main -frame target=b name=main'),
+        /A map frame named main already exists/
       );
     });
 
@@ -253,7 +261,7 @@ describe('mapshaper-frame.js', function () {
     it('rejects duplicating a frame layer', async function() {
       await assert.rejects(
         api.applyCommands('-frame bbox=0,0,2,1 width=800 -filter true +'),
-        /Multiple map frames are not supported/
+        /A dataset can contain only one map frame/
       );
     });
 

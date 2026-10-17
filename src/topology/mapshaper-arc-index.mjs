@@ -16,21 +16,26 @@ export function ArcIndex(pointCount) {
       chainIds = [],
       arcSrcXX = [],
       arcSrcYY = [],
+      arcSrcZZ = [],
       arcStart = [],
       arcEnd = [],
-      arcPoints = 0;
+      arcPoints = 0,
+      hasZ = false;
 
   initializeArray(hashTable, -1);
 
   // Register an arc whose coordinates are `srcXX[start..end]`, `srcYY[start..end]`
   // (inclusive). Returns the new arc id.
-  this.addArc = function(srcXX, srcYY, start, end) {
+  // @srcZZ (optional) simplification thresholds, indexed like srcXX
+  this.addArc = function(srcXX, srcYY, start, end, srcZZ) {
     var arcId = arcSrcXX.length,
         key = hash(srcXX[end], srcYY[end]);
     chainIds.push(hashTable[key]);
     hashTable[key] = arcId;
     arcSrcXX.push(srcXX);
     arcSrcYY.push(srcYY);
+    arcSrcZZ.push(srcZZ || null);
+    if (srcZZ) hasZ = true;
     arcStart.push(start);
     arcEnd.push(end);
     arcPoints += end - start + 1;
@@ -73,13 +78,17 @@ export function ArcIndex(pointCount) {
     return null;
   }
 
+  // Returns {xx, yy, nn}, plus zz if any arc was added with thresholds. Arc
+  // endpoints get an infinite threshold, so simplification never removes a
+  // node; vertices of arcs added without thresholds are never removed either.
   this.getVertexData = function() {
     var arcCount = arcSrcXX.length,
         destXX = new Float64Array(arcPoints),
         destYY = new Float64Array(arcPoints),
+        destZZ = hasZ ? new Float64Array(arcPoints) : null,
         nn = new Uint32Array(arcCount),
         copied = 0,
-        sx, sy, s, e, len, i;
+        sx, sy, sz, s, e, len, i;
     for (i = 0; i < arcCount; i++) {
       sx = arcSrcXX[i]; sy = arcSrcYY[i];
       s = arcStart[i];  e = arcEnd[i];
@@ -93,12 +102,21 @@ export function ArcIndex(pointCount) {
           destYY[copied + k] = sy[s + k];
         }
       }
+      if (destZZ) {
+        sz = arcSrcZZ[i];
+        for (var j = 0; j < len; j++) {
+          destZZ[copied + j] = sz ? sz[s + j] : Infinity;
+        }
+        destZZ[copied] = Infinity;
+        destZZ[copied + len - 1] = Infinity;
+      }
       nn[i] = len;
       copied += len;
     }
     return {
       xx: destXX,
       yy: destYY,
+      zz: destZZ,
       nn: nn
     };
   };

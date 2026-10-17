@@ -145,6 +145,13 @@ export function crsHaveSameTransform(a, b) {
   return !!str && str == crsToNormalizedProj4(b);
 }
 
+// True only if both CRSs can be compared and they differ
+export function crsTransformsDiffer(a, b) {
+  var strA = crsToNormalizedProj4(a);
+  var strB = crsToNormalizedProj4(b);
+  return !!strA && !!strB && strA != strB;
+}
+
 function crsToNormalizedProj4(P) {
   var normalizer = mproj.internal && mproj.internal.get_normalized_proj_defn;
   return P && normalizer ? normalizer(P) : null;
@@ -308,6 +315,18 @@ export function requireDatasetsHaveCompatibleCRS(arr, msg) {
     }
     return P || memo;
   }, null);
+}
+
+// Overlay sources (-clip, -erase, -join, ...) are stricter than merging:
+// projected data must also be in the same projection. (Lat-long data in
+// different datums can still be combined.)
+export function requireOverlaySourceCRS(targetDataset, sourceDataset) {
+  var P = getDatasetCRS(targetDataset);
+  var Q = getDatasetCRS(sourceDataset);
+  requireDatasetsHaveCompatibleCRS([targetDataset, sourceDataset]);
+  if (P && Q && !isLatLngCRS(P) && !isLatLngCRS(Q) && crsTransformsDiffer(P, Q)) {
+    stop("Unable to combine datasets that use different projections");
+  }
 }
 
 // Assumes conformal projections; consider returning average of vertical and

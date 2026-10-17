@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { clickAddLayerLink } from './sidebar-helpers.mjs';
 
 // The curve tool draws lines as smooth curves through clicked knots, and
 // reshapes them by dragging their knots while the tool is open.
@@ -507,12 +508,12 @@ async function getSessionCommands(page) {
 }
 
 async function clickNewLayerLink(page, kind) {
-  var links = page.locator('.new-layer-links');
+  var links = page.locator('.layer-add-links');
   if (!await links.isVisible()) {
     await page.locator('.layer-tab:visible').click();
     await links.waitFor({state: 'visible'});
   }
-  await page.locator('.new-layer-links .layer-menu-link[data-kind="' + kind + '"]').click();
+  await clickAddLayerLink(page, kind);
   await page.waitForTimeout(250);
 }
 

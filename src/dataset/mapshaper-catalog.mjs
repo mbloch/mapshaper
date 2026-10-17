@@ -2,6 +2,12 @@
 import { findCommandTargets, findMatchingLayers } from '../dataset/mapshaper-target-utils';
 import { stop } from '../utils/mapshaper-logging';
 import { assertCatalogCanAddDatasets } from '../furniture/mapshaper-frame-utils';
+import { ensureDatasetId, rekeyIncomingDatasets } from '../dataset/mapshaper-dataset-ids';
+import {
+  getFrameByName,
+  getFrameForDataset,
+  getFrameMemberLayers
+} from '../furniture/mapshaper-frame-resolver';
 import {
   getUndoId,
   getUndoRevision,
@@ -83,11 +89,39 @@ export function Catalog() {
 
   this.findCommandTargets = function(pattern, type) {
     if (!pattern) return this.getDefaultTargets() || [];
-    return findCommandTargets(this.getLayers(), pattern, type);
+    return findCommandTargets(this.getLayers(), pattern, type, getQualifiedLayers.bind(this));
   };
 
+  // Layers matching a target= style pattern, as [{layer, dataset}]. Unlike
+  // findCommandTargets(), does not mark the layers' order for export.
+  // @layers (optional) layers to search, as [{layer, dataset}] (default: all);
+  //   layer numbers in the pattern count from 1 in this list
+  // @optional return [] instead of stopping if a part of the pattern is unmatched
+  this.findLayers = function(pattern, layers, optional) {
+    return findMatchingLayers(layers || this.getLayers(), pattern, !optional,
+      getQualifiedLayers.bind(this));
+  };
+
+  // frame1:roads, if lyr is in frame1 and no other layer in frame1 is named roads
+  this.getQualifiedLayerName = function(lyr) {
+    var o = this.findLayer(lyr);
+    var frame = o ? getFrameForDataset(this, o.dataset) : null;
+    var members = frame ? getFrameMemberLayers(this, frame) : [];
+    var count = members.filter(function(m) { return m.layer.name == lyr.name; }).length;
+    if (!lyr.name || !frame || !frame.layer.name || count != 1 ||
+        members.every(function(m) { return m.layer != lyr; })) {
+      return null;
+    }
+    return frame.layer.name + ':' + lyr.name;
+  };
+
+  function getQualifiedLayers(frameName) {
+    var frame = getFrameByName(this, frameName);
+    return frame ? getFrameMemberLayers(this, frame) : null;
+  }
+
   this.findSingleLayer = function(pattern) {
-    var matches = findMatchingLayers(this.getLayers(), pattern);
+    var matches = findMatchingLayers(this.getLayers(), pattern, false, getQualifiedLayers.bind(this));
     if (matches.length > 1) {
       stop('Ambiguous pattern (multiple layers were matched):', pattern);
     }
@@ -111,6 +145,47 @@ export function Catalog() {
     return datasets;
   };
 
+  // Adds a dataset next to another one, so that a dataset split off from
+  // another keeps its place in catalog order (which sets the order of layers
+  // matched by a target= pattern), or at the end if @neighbor is null. Does
+  // not change the default target.
+  this.insertDatasetAfter = function(dataset, neighbor, before) {
+    var i = datasets.indexOf(neighbor);
+    if (datasets.includes(dataset)) return;
+    assertCatalogCanAddDatasets(this, [dataset]);
+    this.captureCatalogBefore({operation: 'insertDataset'});
+    ensureDatasetId(dataset);
+    datasets.splice(i == -1 ? datasets.length : before ? i : i + 1, 0, dataset);
+    this.markCatalogChanged({operation: 'insertDataset'});
+  };
+
+  // Puts @replacement in the place of the first of @arr and removes the
+  // others, e.g. when datasets are merged. Default targets follow.
+  this.replaceDatasets = function(arr, replacement) {
+    var i = datasets.findIndex(function(d) { return arr.includes(d); });
+    var merged = null;
+    if (i == -1) return;
+    this.captureCatalogBefore({operation: 'replaceDatasets'});
+    ensureDatasetId(replacement);
+    datasets = datasets.map(function(d, j) {
+      return j == i ? replacement : d;
+    }).filter(function(d, j) {
+      return j == i || !arr.includes(d) && d != replacement;
+    });
+    defaultTargets = defaultTargets.reduce(function(memo, targ) {
+      if (!arr.includes(targ.dataset)) {
+        memo.push(targ);
+      } else if (merged) {
+        merged.layers = merged.layers.concat(targ.layers);
+      } else {
+        merged = {dataset: replacement, layers: targ.layers.concat()};
+        memo.push(merged);
+      }
+      return memo;
+    }, []);
+    this.markCatalogChanged({operation: 'replaceDatasets'});
+  };
+
   this.getLayers = function() {
     var layers = [];
     this.forEachLayer(function(lyr, dataset) {
@@ -124,8 +199,10 @@ export function Catalog() {
     return this;
   };
 
+  // for loading datasets from files and snapshots
   this.addDatasets = function(datasets) {
     assertCatalogCanAddDatasets(this, datasets);
+    rekeyIncomingDatasets(datasets, this.getDatasets());
     datasets.forEach(function(dataset) {
       this.addDataset(dataset);
     }, this);
@@ -178,6 +255,7 @@ export function Catalog() {
     this.captureCatalogBefore({operation: 'setDefaultTargets'});
     arr.forEach(function(target) {
       if (datasets.indexOf(target.dataset) == -1) {
+        ensureDatasetId(target.dataset);
         datasets.push(target.dataset);
       }
     });

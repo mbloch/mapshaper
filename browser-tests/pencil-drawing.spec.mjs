@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { clickAddLayerLink } from './sidebar-helpers.mjs';
 
 var FIXTURE = 'test/data/features/snip/ring_and_line.json';
 
@@ -303,12 +304,12 @@ async function clickToolButton(page, tooltip) {
 }
 
 async function clickNewLayerLink(page, kind) {
-  var links = page.locator('.new-layer-links');
+  var links = page.locator('.layer-add-links');
   if (!await links.isVisible()) {
     await page.locator('.layer-tab:visible').click();
     await links.waitFor({state: 'visible'});
   }
-  await page.locator('.new-layer-links .layer-menu-link[data-kind="' + kind + '"]').click();
+  await clickAddLayerLink(page, kind);
   await page.waitForTimeout(250);
 }
 

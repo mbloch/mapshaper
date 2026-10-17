@@ -9,7 +9,11 @@ import { getFurnitureLayerType, getFurnitureLayerData, layerIsFurniture } from '
 export { getFurnitureLayerType, getFurnitureLayerData, layerIsFurniture };
 
 var furnitureRenderers = {
-  scalebar: renderScalebar
+  scalebar: renderScalebar,
+  // An overlay draws another frame's map, which map export renders from the
+  // catalog (see renderOverlayExports() in mapshaper-export.mjs); alone, it
+  // draws nothing
+  overlay: function() { return []; }
   // frame: renderFrame
 };
 

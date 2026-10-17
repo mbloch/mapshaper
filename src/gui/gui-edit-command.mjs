@@ -16,7 +16,7 @@ export function runGuiEditCommand(gui, cmd, optsArg) {
 
   function onDone(err, flags) {
     if (err) {
-      showPopupAlert(err.message || String(err), opts.title || 'Command error');
+      showCommandError(gui, err.message || String(err), opts.title || 'Command error');
       if (opts.onError) opts.onError(err);
     } else if (opts.onSuccess) {
       opts.onSuccess(flags);
@@ -24,5 +24,15 @@ export function runGuiEditCommand(gui, cmd, optsArg) {
     if (opts.onDone) {
       opts.onDone(err, flags);
     }
+  }
+}
+
+// stop() has already shown the message in an alert without a title;
+// gui.alert() replaces that alert instead of stacking a second one on it
+function showCommandError(gui, msg, title) {
+  if (gui.alert) {
+    gui.alert(msg, title);
+  } else {
+    showPopupAlert(msg, title);
   }
 }

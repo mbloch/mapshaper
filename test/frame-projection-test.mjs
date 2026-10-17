@@ -30,6 +30,20 @@ describe('map frame projection', function() {
     assert(bounds.width() > cornerBounds.width());
   });
 
+  it('a world frame projected to ortho covers the visible hemisphere', function() {
+    var ortho = api.internal.getProjTransform2(src, api.internal.parseCrsString('+proj=ortho'));
+    var bounds = getProjectedFrameBounds([-180, -90, 180, 90], ortho, true);
+    assert.deepEqual(bounds.toArray().map(Math.round), [-6378137, -6378137, 6378137, 6378137]);
+  });
+
+  it('-proj ortho gives a world frame a normal page size', async function() {
+    var out = await api.applyCommands('-rectangle bbox=-180,-90,180,90 name=world ' +
+      '-frame target=world width=800 name=f -proj +proj=ortho -o target=f format=geojson');
+    var rec = JSON.parse(out['f.json']).features[0].properties;
+    assert.equal(rec.width, 800);
+    assert.equal(rec.height, 800);
+  });
+
   it('rebuilds a frame safely in a dataset with other path layers', function() {
     var contentDataset = importRectangle([-20, -10, 20, 10], {});
     var frameDataset = importRectangle(bbox, {type: 'frame', width: 800, height: 467});
@@ -195,13 +209,27 @@ describe('map frame projection (frame in its own dataset)', function() {
   it('names layers that the command did not project', async function() {
     var captured = await captureLogCallsAsync(function() {
       return api.applyCommands(
-        '-i a.json -i b.json -frame width=600 target=a,b -target a -proj merc ' +
+        '-i a.json -i b.json -frame width=600 target=a -target a -proj merc ' +
         '-o out.json target=a', files);
     });
     assert(captured.log.some(function(str) {
       return str.includes('Layer not projected by this command: b') &&
         str.includes('target=*');
     }));
+  });
+
+  it('names the other members of the frame, which it also projects', async function() {
+    var captured = await captureLogCallsAsync(function() {
+      return api.applyCommands(
+        '-i a.json -i b.json -frame width=600 target=a,b -target a -proj merc ' +
+        '-o out.json target=a', files);
+    });
+    assert(captured.log.some(function(str) {
+      return str.includes('Also projected layer in the same frame: b');
+    }));
+    assert.equal(captured.log.some(function(str) {
+      return str.includes('not projected by this command');
+    }), false);
   });
 
   it('survives a round trip back to lat-long', async function() {
@@ -223,9 +251,9 @@ describe('map frame projection (frame in its own dataset)', function() {
   });
 
   // A generic field command can promote an ordinary rectangle into a second
-  // frame. The GUI resolves the frame on every render, so the resolver has to
-  // choose one rather than throw.
-  it('resolves one frame when a second has been promoted', function() {
+  // frame. Unframed layers are composed in the session's frame only while it
+  // has exactly one.
+  it('has no default frame once a second frame has been promoted', function() {
     var catalog = new api.internal.Catalog();
     var frameDataset = importRectangle([0, 0, 2, 1],
       {type: 'frame', width: 600, height: 300});
@@ -235,11 +263,11 @@ describe('map frame projection (frame in its own dataset)', function() {
     catalog.addDataset(frameDataset);
     catalog.addDataset(otherDataset);
     var rec = otherDataset.layers[0].data.getRecords()[0];
+    assert.equal(api.internal.getDefaultFrame(catalog).layer.name, 'frame');
     rec.type = 'frame';
     rec.width = 400;
-
-    assert.equal(api.internal.findFrames(catalog).length, 2);
-    assert.equal(api.internal.getActiveFrame(catalog).layer.name, 'frame');
+    assert.equal(api.internal.getFrames(catalog).length, 2);
+    assert.equal(api.internal.getDefaultFrame(catalog), null);
   });
 });
 

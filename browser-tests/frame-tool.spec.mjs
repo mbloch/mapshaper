@@ -7,7 +7,7 @@ test('layer panel creates a frame from the visible layers', async function({page
   await loadFixture(page);
 
   await openLayersPanel(page);
-  await page.locator('.map-frame-empty').click();
+  await page.locator('.map-frame-add').click();
   await expect(page.locator('.frame-create-popup')).toBeVisible();
   await page.locator('.frame-create-popup .dialog-btn')
     .filter({hasText: 'Fit visible layers'}).click();
@@ -23,15 +23,36 @@ test('layer panel creates a frame from the visible layers', async function({page
   expect(await page.evaluate(function() {
     return window.mapshaper.undoTest.getPreviewMode();
   })).toBe(true);
-  await expect(page.locator('.map-frame-list .layer-item')).toContainText(
+  await expect(page.locator('.map-frame-list .frame-item')).toContainText(
     /\d+ × \d+ px/
   );
+});
+
+test('a hidden selected layer is left out of a new frame', async function({page}) {
+  await loadFixture(page);
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand('-rectangle bbox=0,0,1,1 name=r1');
+  });
+  await openLayersPanel(page);
+  var row = page.locator('.layer-list .layer-item').filter({hasText: 'r1'});
+  await expect(row).toHaveClass(/active/);
+  await row.hover();
+  await row.locator('img.black-eye').click();
+  await expect(row).toHaveClass(/invisible/);
+  await page.locator('.map-frame-add').click();
+  await page.locator('.frame-create-popup .dialog-btn')
+    .filter({hasText: 'Fit visible layers'}).click();
+  await expect.poll(async function() {
+    return page.evaluate(function() {
+      return window.mapshaper.undoTest.getSessionHistory().commands.pop();
+    });
+  }).toMatch(/^-frame .*target=three_points$/);
 });
 
 test('fitting visible layers includes a raster layer', async function({page}) {
   await loadFixture(page, 'test/data/geotiff/wgs84-geographic-epsg4326.tif');
   await openLayersPanel(page);
-  await page.locator('.map-frame-empty').click();
+  await page.locator('.map-frame-add').click();
   await expect(page.locator('.frame-create-popup')).toBeVisible();
   await page.locator('.frame-create-popup .dialog-btn')
     .filter({hasText: 'Fit visible layers'}).click();
@@ -49,7 +70,7 @@ test('fitting visible layers includes a raster layer', async function({page}) {
 test('a data-only layer gets a clear message instead of a frame', async function({page}) {
   await loadFixture(page, 'test/data/text/states.csv');
   await openLayersPanel(page);
-  await page.locator('.map-frame-empty').click();
+  await page.locator('.map-frame-add').click();
   await expect(page.locator('.alert-box')).toContainText('only attribute data');
   await expect(page.locator('.frame-create-popup')).toHaveCount(0);
   expect(await getFrameInfo(page)).toBeNull();
@@ -58,7 +79,7 @@ test('a data-only layer gets a clear message instead of a frame', async function
 test('fitting visible layers applies the aspect ratio and margin', async function({page}) {
   await loadFixture(page);
   await openLayersPanel(page);
-  await page.locator('.map-frame-empty').click();
+  await page.locator('.map-frame-add').click();
   await setInput(page, '.frame-create-aspect-input', '5:4');
   await setInput(page, '.frame-create-margin input', '10%');
   await page.locator('.frame-create-popup .dialog-btn')
@@ -78,7 +99,7 @@ test('fitting visible layers applies the aspect ratio and margin', async functio
 test('a drawn frame takes the aspect ratio but no margin', async function({page}) {
   await loadFixture(page);
   await openLayersPanel(page);
-  await page.locator('.map-frame-empty').click();
+  await page.locator('.map-frame-add').click();
   await setInput(page, '.frame-create-aspect-input', '1');
   await page.locator('.frame-create-popup .dialog-btn')
     .filter({hasText: 'Draw on the map'}).click();
@@ -108,7 +129,7 @@ test('a drawn frame takes the aspect ratio but no margin', async function({page}
 test('a set aspect ratio constrains the box being drawn', async function({page}) {
   await loadFixture(page);
   await openLayersPanel(page);
-  await page.locator('.map-frame-empty').click();
+  await page.locator('.map-frame-add').click();
   await setInput(page, '.frame-create-aspect-input', '2:1');
   await page.locator('.frame-create-popup .dialog-btn')
     .filter({hasText: 'Draw on the map'}).click();
@@ -141,7 +162,7 @@ test('a set aspect ratio constrains the box being drawn', async function({page})
 test('a blank aspect ratio sends no aspect-ratio option', async function({page}) {
   await loadFixture(page);
   await openLayersPanel(page);
-  await page.locator('.map-frame-empty').click();
+  await page.locator('.map-frame-add').click();
   await expect(page.locator('.frame-create-aspect-input')).toHaveValue('');
   await page.locator('.frame-create-popup .dialog-btn')
     .filter({hasText: 'Fit visible layers'}).click();
@@ -169,7 +190,7 @@ test('frame creation preserves the active content and console target', async fun
   await openLayersPanel(page);
   await expect(page.locator('.layer-list .layer-item')).toHaveClass(/active/);
   await expect(page.locator('.layer-list .layer-item')).not.toHaveClass(/invisible/);
-  await expect(page.locator('.map-frame-list .layer-item')).not.toHaveClass(/active/);
+  await expect(page.locator('.map-frame-list .frame-item')).not.toHaveClass(/active/);
 
   await page.evaluate(function() {
     return window.mapshaper.undoTest.runCommand('-each gui_target_test=1');
@@ -192,7 +213,7 @@ test('frame properties edits output size through an undoable command', async fun
     );
   });
   await openLayersPanel(page);
-  await page.locator('.map-frame-list .layer-item').click();
+  await openFrameProperties(page);
   await expect(page.locator('.frame-properties-popup')).toBeVisible();
   await expect(page.locator('.frame-properties-popup')).toContainText('Background');
   await expect(page.locator('.frame-properties-popup')).toContainText('Neatline');
@@ -229,7 +250,7 @@ test('frame properties rescales the frame without moving its extent',
       );
     });
     await openLayersPanel(page);
-    await page.locator('.map-frame-list .layer-item').click();
+    await openFrameProperties(page);
     await expect(page.locator('.frame-properties-popup')).toBeVisible();
 
     await setInput(page, '.frame-width-input', '300');
@@ -428,7 +449,7 @@ test('the resize tool closes when the frame is deleted', async function({page}) 
   });
   await expect(page.locator('.frame-toolbar')).toBeVisible();
 
-  await page.locator('.map-frame-list .more-btn').click();
+  await page.locator('.map-frame-list .frame-item .more-btn').click();
   await page.locator('.contextmenu-item').filter({hasText: 'delete frame'}).click();
   await expect.poll(function() {
     return getFrameInfo(page);
@@ -491,7 +512,7 @@ test('export treats the frame as output settings, not a selectable layer', async
 test('Fit re-fits the frame after the points are styled', async function({page}) {
   await loadFixture(page);
   await openLayersPanel(page);
-  await page.locator('.map-frame-empty').click();
+  await page.locator('.map-frame-add').click();
   await page.locator('.frame-create-popup .dialog-btn')
     .filter({hasText: 'Fit visible layers'}).click();
   await expect.poll(function() {
@@ -581,4 +602,9 @@ async function dragLeftHandle(page, dx) {
       bubbles: true, button: 0, clientX: x - delta, clientY: y
     }));
   }, dx);
+}
+
+async function openFrameProperties(page) {
+  await page.locator('.map-frame-list .frame-item .more-btn').click();
+  await page.locator('.contextmenu-item').filter({hasText: 'frame properties'}).click();
 }

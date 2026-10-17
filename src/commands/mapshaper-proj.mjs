@@ -30,7 +30,9 @@ import { importFile } from '../io/mapshaper-file-import';
 import { buildTopology } from '../topology/mapshaper-topology';
 import {
   markDatasetChanged,
+  markDatasetInfoChanged,
   markLayerChanged,
+  noteDatasetInfoWillChange,
   noteDatasetWillChange,
   noteLayerWillChange,
   withActiveUndoTransaction
@@ -45,7 +47,13 @@ import {
   getFrameProjectionSnapshots,
   rebuildProjectedFrameLayer
 } from '../furniture/mapshaper-frame-projection';
-import { getActiveFrame } from '../furniture/mapshaper-frame-utils';
+import {
+  getFrameForDataset,
+  getFrameMembers,
+  resolveFrameForDataset
+} from '../furniture/mapshaper-frame-resolver';
+import { getFrameCrsInfo } from '../furniture/mapshaper-frame-members';
+import { isFrameComponentLayer } from '../furniture/mapshaper-frame-utils';
 
 // Run -proj over all the targets of a single command.
 // The destination CRS is resolved once here rather than separately for each
@@ -55,6 +63,7 @@ import { getActiveFrame } from '../furniture/mapshaper-frame-utils';
 // same CRS as the content instead of re-deriving parameters from its own extent.
 cmd.projTargets = function(targets, catalog, opts) {
   var destInfo;
+  targets = expandFrameTargets(targets, catalog, opts);
   targets.forEach(function(targ) {
     applyProjInit(targ.dataset, catalog, opts);
   });
@@ -106,15 +115,96 @@ function resolveProjDestInfo(targets, catalog, opts) {
   return getCrsInfo(expandProjDefnForTargets(opts.crs, targets));
 }
 
+// A frame's members share its coordinate system, so targeting a frame or any of
+// its members projects the whole frame: the frame dataset and every member
+// dataset, with all their layers. Members without CRS metadata are read in the
+// frame's coordinate system, the only reading under which they were drawn
+// correctly in the frame.
+function expandFrameTargets(targets, catalog, opts) {
+  var expanded = [];
+  var implicitNames = [];
+  var frames = [];
+  if (!catalog) return targets;
+  targets.forEach(function(targ) {
+    addTarget(targ.dataset, targ.layers);
+  });
+  targets.forEach(function(targ) {
+    var frame = getFrameForDataset(catalog, targ.dataset);
+    if (!frame || frames.includes(frame.dataset)) return;
+    frames.push(frame.dataset);
+    if (!targets.some(function(o) { return o.dataset == frame.dataset; })) {
+      message('Also reprojected the map frame:', frame.layer.name);
+    }
+    [frame.dataset].concat(getFrameMembers(catalog, frame)).forEach(function(dataset) {
+      addTarget(dataset, dataset.layers.filter(function(lyr) {
+        return dataset != frame.dataset || !isFrameComponentLayer(lyr, dataset);
+      }), true);
+      addTarget(dataset, dataset.layers);
+      if (!opts.init) assumeFrameCrs(catalog, frame, dataset);
+    });
+  });
+  if (implicitNames.length > 0) {
+    message('Also projected', implicitNames.length == 1 ? 'layer' : 'layers',
+      'in the same frame:', implicitNames.join(', '));
+  }
+  return expanded;
+
+  function addTarget(dataset, layers, implicit) {
+    var target = expanded.find(function(o) { return o.dataset == dataset; });
+    if (!target) {
+      target = {dataset: dataset, layers: []};
+      expanded.push(target);
+    }
+    layers.forEach(function(lyr) {
+      if (target.layers.includes(lyr)) return;
+      target.layers.push(lyr);
+      if (implicit && layerHasGeometry(lyr)) implicitNames.push(lyr.name || '[unnamed layer]');
+    });
+  }
+}
+
+function assumeFrameCrs(catalog, frame, dataset) {
+  var info = dataset.info || {};
+  var frameInfo, guessed;
+  if (info.crs || info.crs_string || info.wkt1 || info.geopackage_crs || info.flatgeobuf_crs) return;
+  frameInfo = getFrameCrsInfo(catalog, frame);
+  if (!frameInfo || !frameInfo.crs) return;
+  guessed = getDatasetCrsInfo(dataset).crs;
+  if (guessed && crsAreEqual(guessed, frameInfo.crs)) return;
+  noteDatasetInfoWillChange(dataset, {operation: 'proj'});
+  setDatasetCrsInfo(dataset, frameInfo);
+  markDatasetInfoChanged(dataset, {operation: 'proj'});
+  message('Assumed that', formatLayerNames(dataset.layers), 'use the coordinate system of frame',
+    frame.layer.name);
+}
+
+function formatLayerNames(layers) {
+  return layers.map(function(lyr) { return lyr.name || '[unnamed layer]'; }).join(', ');
+}
+
 // A map frame is composition state, not content: its rectangle describes a
 // region of the map's coordinate space, so it has to follow the map's CRS even
 // when the command targeted only a data layer. The GUI deliberately keeps the
-// frame out of default targets, so nothing else reaches it.
+// frame out of default targets, so nothing else reaches it. Each targeted
+// dataset's frame is projected (see resolveFrameForDataset()). A frame with
+// members is projected only with its members (see expandFrameTargets()).
 function projectMapFrame(targets, catalog, opts, destInfo) {
-  var frame = catalog ? getActiveFrame(catalog) : null;
+  if (!catalog) return;
+  targets.reduce(function(memo, targ) {
+    var frame = resolveFrameForDataset(catalog, targ.dataset);
+    if (frame && getFrameMembers(catalog, frame).length > 0) return memo;
+    if (frame && !memo.some(function(o) { return o.dataset == frame.dataset; })) {
+      memo.push(frame);
+    }
+    return memo;
+  }, []).forEach(function(frame) {
+    projectFrameDataset(frame, targets, catalog, opts, destInfo);
+  });
+}
+
+function projectFrameDataset(frame, targets, catalog, opts, destInfo) {
   var frameOpts = opts;
   var frameCrs;
-  if (!frame) return;
   if (targets.some(function(targ) { return targ.dataset == frame.dataset; })) {
     return; // already projected as an ordinary target
   }

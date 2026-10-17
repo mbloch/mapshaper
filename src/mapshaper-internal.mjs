@@ -149,6 +149,11 @@ import * as FileTypes from './io/mapshaper-file-types';
 import * as FilterGeom from './commands/mapshaper-filter-geom';
 import * as Frame from './commands/mapshaper-frame';
 import * as FrameProjection from './furniture/mapshaper-frame-projection';
+import * as FrameResolver from './furniture/mapshaper-frame-resolver';
+import * as FrameMembers from './furniture/mapshaper-frame-members';
+import * as FrameExport from './furniture/mapshaper-frame-export';
+import * as Overlays from './furniture/mapshaper-overlays';
+import * as LayerStacking from './dataset/mapshaper-layer-stacking';
 import * as FrameUtils from './furniture/mapshaper-frame-utils';
 import * as Furniture from './furniture/mapshaper-furniture';
 import * as Geodesic from './geom/mapshaper-geodesic';
@@ -301,6 +306,11 @@ Object.assign(internal,
   FilterGeom,
   Frame,
   FrameProjection,
+  FrameResolver,
+  FrameMembers,
+  FrameExport,
+  Overlays,
+  LayerStacking,
   FrameUtils,
   Furniture,
   Geodesic,

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { clickAddLayerLink } from './sidebar-helpers.mjs';
 
 // A polygon layer: the target the "Draw" links are most often clicked
 // beside, and one that can hold neither a label nor a drawn point.
@@ -133,17 +134,29 @@ test('the links work in a session that has imported nothing',
     expect(errors).toEqual([]);
   });
 
-// Clicks one of the "Draw" links in the layer panel, the way a user does.
+test('the Draw menu works in a session that has imported nothing',
+  async function({page}) {
+    await loadEmpty(page);
+    await openLayerPanel(page);
+    await page.locator('.draw-menu-btn').click();
+    await page.locator('.draw-menu .draw-menu-item[data-kind="points"]').click();
+    await expect.poll(async function() {
+      return (await getLayerInfo(page, 'points'))?.geometry_type;
+    }).toBe('point');
+    expect(await getInteractionMode(page)).toBe('point_style');
+  });
+
+// Clicks one of the "Add labels" or "Draw" links in the layer panel, the way a
+// user does.
 async function clickNewLayerLink(page, kind) {
   await openLayerPanel(page);
-  await page.locator('.new-layer-links .layer-menu-link[data-kind="' + kind + '"]')
-    .click();
+  await clickAddLayerLink(page, kind);
   await page.waitForTimeout(250);
 }
 
 // The panel stays open after a link is clicked, so a second link is one click.
 async function openLayerPanel(page) {
-  var links = page.locator('.new-layer-links');
+  var links = page.locator('.layer-add-links');
   if (await links.isVisible()) return;
   // the sidebar tab is there whether or not anything has been loaded, unlike
   // the header button, which appears with the first layer

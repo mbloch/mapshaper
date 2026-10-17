@@ -32,6 +32,8 @@ export function addEmptyLayer(gui, name, type) {
   if (crsInfo) {
     internal.setDatasetCrsInfo(dataset, crsInfo);
   }
+  // as -add-layer does: the layer joins the frame of the layer it is made beside
+  internal.inheritFrameRef(dataset, targ ? [targ.dataset] : []);
   if (undoTransaction) {
     undoTransaction.captureCatalogBefore(gui.model, {operation: 'addEmptyLayer'});
   }

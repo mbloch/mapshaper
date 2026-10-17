@@ -21,6 +21,19 @@ export async function closeSidebarAfterImport(page) {
   });
 }
 
+// Clicks the layer panel link that creates a layer of a kind ('labels',
+// 'symbols', 'points', 'lines' or 'polygons'), with the panel already open.
+// "Add labels" is in the row of links; the others are in the menu opened from
+// "Draw".
+export async function clickAddLayerLink(page, kind) {
+  var link = page.locator('.layer-add-links .layer-menu-link[data-kind="' + kind + '"]:visible');
+  if (await link.count() === 0) {
+    await page.locator('.draw-menu-btn').click();
+    link = page.locator('.draw-menu .draw-menu-item[data-kind="' + kind + '"]');
+  }
+  await link.click();
+}
+
 async function layersPanelOpensWithin(page, ms) {
   return page.locator('body.layers-open').waitFor({timeout: ms})
     .then(function() { return true; }, function() { return false; });

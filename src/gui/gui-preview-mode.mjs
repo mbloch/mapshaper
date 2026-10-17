@@ -122,7 +122,7 @@ export function PreviewMode(gui) {
   refreshControls();
 
   function hasFrame() {
-    return !!internal.getActiveFrame(gui.model);
+    return !!gui.model.getActiveFrame();
   }
 
   function refreshControls() {
@@ -131,7 +131,7 @@ export function PreviewMode(gui) {
     toggle.classed('selected', available && self.isOn());
     // data-tooltip, not title: the CSS label in .nav-btn[data-tooltip] appears
     // without the browser's delay and matches the arrow menu's type.
-    var label = available ? 'Toggle map preview' : 'Add map frame';
+    var label = available ? 'Toggle map preview' : 'New map frame';
     toggle.attr('data-tooltip', label);
     toggle.attr('aria-label', label);
     toggle.attr('aria-disabled', 'false');
@@ -204,7 +204,7 @@ export function PreviewMode(gui) {
   }
 
   function getFrameStyle() {
-    var target = internal.getActiveFrame(gui.model);
+    var target = gui.model.getActiveFrame();
     return target && target.layer.data ?
       target.layer.data.getReadOnlyRecordAt(0) || {} : {};
   }

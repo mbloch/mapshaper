@@ -177,8 +177,8 @@ var startEditing = function() {
 
   // The layer list, opened beside the first data so that the user sees what
   // was imported and where to go next, and when the splash popup is dismissed
-  // without importing anything, where its "Draw:" links start a map from
-  // scratch -- once for each. Waits for any menu mode (the import dialog,
+  // without importing anything, where its "Add labels" and "Draw" links start
+  // a map from scratch -- once for each. Waits for any menu mode (the import dialog,
   // while files are still loading) to close, since opening a panel would
   // close it.
   var layersShownForData = false;

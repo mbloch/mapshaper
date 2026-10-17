@@ -1,12 +1,13 @@
 import { exportDatasetAsGeoJSON } from '../geojson/geojson-export';
-import { getFurnitureLayerData, layerHasFurniture, renderFurnitureLayer } from '../furniture/mapshaper-furniture';
+import { getFurnitureLayerData, getFurnitureLayerType, layerHasFurniture, renderFurnitureLayer } from '../furniture/mapshaper-furniture';
+import { getOverlayBox } from '../furniture/mapshaper-overlays';
 import { getFrameData, fitDatasetToFrame, isFrameLayer } from '../furniture/mapshaper-frame-utils';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
 import { getScalebarLayer } from '../commands/mapshaper-scalebar';
 import { copyDataset } from '../dataset/mapshaper-dataset-utils';
 import utils from '../utils/mapshaper-utils';
 import { message, warn, error, stop } from '../utils/mapshaper-logging';
-import { stringify } from '../svg/svg-stringify';
+import { stringify, stringifyProperties } from '../svg/svg-stringify';
 import { convertPropertiesToDefinitions } from '../svg/svg-definitions';
 import { getOutputFileBase } from '../utils/mapshaper-filename-utils';
 import { importGeoJSONFeatures } from '../svg/geojson-to-svg';
@@ -64,9 +65,7 @@ export function prepareDatasetForSVG(dataset, opts) {
 // prepareDatasetForSVG(), as an SVG document.
 export function renderSVGDocument(dataset, frame, layers, opts) {
   var namespace = 'xmlns="http://www.w3.org/2000/svg"';
-  var defs = [];
-  var frameLyr, frameBackground, frameNeatline;
-  var svg, metadataJSON;
+  var svg = renderSVGContent(dataset, frame, layers, opts);
   var style = '';
 
   // kludge for map keys
@@ -78,8 +77,37 @@ export function renderSVGDocument(dataset, frame, layers, opts) {
   }
 
   if (opts.metadata) {
-    metadataJSON = JSON.stringify(getGeospatialMetadata(dataset, frame));
+    svg = getMetadataBlock(JSON.stringify(getGeospatialMetadata(dataset, frame)),
+      [0, 0, frame.width, frame.height]) + svg;
   }
+
+  if (svg.includes('xlink:')) {
+    namespace += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
+  }
+
+  // default line style properties
+  var capStyle = opts.default_linecap || 'round';
+  var lineProps = `stroke-linecap="${capStyle}" stroke-linejoin="round"`;
+  if (svg.includes('stroke-linejoin="miter"')) {
+    // the default limit in Illustrator seems to be 10 -- too large for mapping
+    // (Mapbox uses 2 as the default in their styles)
+    lineProps += ' stroke-miterlimit="2"';
+  }
+  var template = `<?xml version="1.0"?>
+<svg ${namespace} version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" ${lineProps}>${style}
+${svg}
+</svg>`;
+  return utils.format(template, frame.width, frame.height, 0, 0, frame.width, frame.height);
+}
+
+// The contents of a map's <svg> element: its definitions, the frame's
+// background, the layers and the frame's neatline. An overlay frame's map is
+// rendered this way and placed in a nested <svg> element (see
+// opts.svg_overlays).
+export function renderSVGContent(dataset, frame, layers, opts) {
+  var defs = [];
+  var frameLyr, frameBackground, frameNeatline;
+  var svg;
 
   if (opts.scalebar) {
     layers = layers.concat(getScalebarLayer({})); // default options
@@ -101,6 +129,9 @@ export function renderSVGDocument(dataset, frame, layers, opts) {
   }
   svg = layers.map(function(lyr) {
     var obj;
+    if (getFurnitureLayerType(lyr) == 'overlay' && !lyr.geometry_type) {
+      return renderOverlayForSVG(lyr, frame, opts);
+    }
     if (layerHasFurniture(lyr)) {
       obj = exportFurnitureLayerForSVG(lyr, frame, opts);
     } else if (layerHasRaster(lyr)) {
@@ -110,35 +141,35 @@ export function renderSVGDocument(dataset, frame, layers, opts) {
     }
     convertPropertiesToDefinitions(obj, defs);
     return stringify(obj);
-  }).join('\n');
+  }).filter(Boolean).join('\n');
   if (frameBackground) svg = frameBackground + '\n' + svg;
   if (frameNeatline) svg += '\n' + frameNeatline;
-
-  if (metadataJSON) {
-    svg = getMetadataBlock(metadataJSON, [0, 0, frame.width, frame.height]) + svg;
-  }
 
   if (defs.length > 0) {
     svg = '<defs>\n' + utils.pluck(defs, 'svg').join('') + '</defs>\n' + svg;
   }
+  return svg;
+}
 
-  if (svg.includes('xlink:')) {
-    namespace += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
-  }
-
-  // default line style properties
-  var capStyle = opts.default_linecap || 'round';
-  var lineProps = `stroke-linecap="${capStyle}" stroke-linejoin="round"`;
-  if (svg.includes('stroke-linejoin="miter"')) {
-    // the default limit in Illustrator seems to be 10 -- too large for mapping
-    // (Mapbox uses 2 as the default in their styles)
-    lineProps += ' stroke-miterlimit="2"';
-  }
-  var template = `<?xml version="1.0"?>
-<svg ${namespace} version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" ${lineProps}>${style}
-${svg}
-</svg>`;
-  return utils.format(template, frame.width, frame.height, 0, 0, frame.width, frame.height);
+// An overlay frame's map, placed on the host page in a nested <svg> element,
+// which clips it to the overlay's page
+// opts.svg_overlays: rendered overlay maps, by frame ID
+//   {name, width, height, content}
+function renderOverlayForSVG(lyr, frame, opts) {
+  var rec = getFurnitureLayerData(lyr);
+  var o = opts.svg_overlays && opts.svg_overlays[rec.frame];
+  var box;
+  if (!o) return '';
+  box = getOverlayBox(rec, frame, o);
+  return '<svg' + stringifyProperties({
+    id: (opts.id_prefix || '') + o.name,
+    x: box.x,
+    y: box.y,
+    width: box.width,
+    height: box.height,
+    viewBox: [0, 0, o.width, o.height].join(' '),
+    overflow: 'hidden'
+  }) + '>\n' + o.content + '\n</svg>';
 }
 
 function exportFrameStylePhase(lyr, dataset, opts, phase) {

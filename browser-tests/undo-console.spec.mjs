@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openLayersPanel } from './sidebar-helpers.mjs';
+import { clickAddLayerLink, openLayersPanel } from './sidebar-helpers.mjs';
 
 var POINT_FIXTURE = 'test/data/geojson/three_points.geojson';
 var LINE_FIXTURE = 'test/data/features/clean/ex20_ogc_line.json';
@@ -911,12 +911,11 @@ async function getMainCanvasPixelCount(page) {
   });
 }
 
-// Makes an empty point layer the way the layer panel does, with the "Draw:
-// points" link. The layer is named for the link that made it.
+// Makes an empty point layer the way the layer panel does, with the "Draw"
+// menu's "points" item. The layer is named for the item that made it.
 async function addEmptyPointLayer(page) {
   await openLayersPanel(page);
-  await page.locator('.new-layer-links .layer-menu-link[data-kind="points"]')
-    .click();
+  await clickAddLayerLink(page, 'points');
   await page.waitForTimeout(250);
 }
 

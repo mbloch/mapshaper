@@ -17,7 +17,7 @@ export function Model(gui) {
     setDefaultTargets.call(self, targets, opts);
     if (countTargetLayers(requestedContent) < countTargetLayers(targets)) {
       var contentTargets = requestedContent.length ?
-        requestedContent : previousContent;
+        requestedContent : relocateTargets(previousContent);
       if (!contentTargets.length) {
         contentTargets = getFirstContentTarget();
       }
@@ -49,9 +49,24 @@ export function Model(gui) {
     }
   };
 
+  // The frame shown by the map, preview mode and the frame tools: the frame of
+  // the selected layer. Null in the unframed view. This is GUI state, derived
+  // from the selection so that it needs no undo or session handling of its
+  // own; core code resolves frames from datasets instead.
+  self.getActiveFrame = function() {
+    var active = self.getActiveLayer();
+    return active ? internal.getDisplayFrameForDataset(self, active.dataset) : null;
+  };
+
   self.updated = function(flags) {
     var targets = self.getDefaultTargets();
-    var active = self.getActiveLayer();
+    var active, relocated;
+    if (targetsAreStale(targets)) {
+      relocated = relocateTargets(targets);
+      setDefaultTargets.call(self, relocated.length ? relocated : getFirstContentTarget());
+      targets = self.getDefaultTargets();
+    }
+    active = self.getActiveLayer();
     if (internal.countTargetLayers(targets) > 1) {
       self.setDefaultTarget([active.layer], active.dataset);
       gui.session.setTargetLayer(active.layer); // add -target command to target single layer
@@ -106,6 +121,35 @@ export function Model(gui) {
       };
     }).filter(function(target) {
       return target.layers.length > 0;
+    });
+  }
+
+  // A command can move a layer to another dataset (a move into or out of a
+  // frame splits datasets and joins them), so a target from before the command
+  // is looked up again. Layers that are gone are dropped.
+  function relocateTargets(targets) {
+    var relocated = [];
+    targets.forEach(function(target) {
+      target.layers.forEach(function(lyr) {
+        var o = self.findLayer(lyr);
+        var match = o && relocated.find(function(t) { return t.dataset == o.dataset; });
+        if (match) {
+          match.layers.push(lyr);
+        } else if (o) {
+          relocated.push({dataset: o.dataset, layers: [lyr]});
+        }
+      });
+    });
+    return relocated;
+  }
+
+  // -frame sets its targets before it splits datasets, so a target can name a
+  // layer that has since moved to another dataset
+  function targetsAreStale(targets) {
+    return targets.some(function(target) {
+      return target.layers.some(function(lyr) {
+        return !target.dataset.layers.includes(lyr);
+      });
     });
   }
 

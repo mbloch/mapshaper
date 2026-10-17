@@ -8,7 +8,7 @@ import cmd from '../mapshaper-cmd';
 import { joinTableToLayer, validateFieldNames } from '../join/mapshaper-join-tables';
 import { joinPointsToPolygons, joinPolygonsToPoints } from '../join/mapshaper-point-polygon-join';
 import { joinPointsToPoints } from '../join/mapshaper-point-point-join';
-import { requireDatasetsHaveCompatibleCRS, getDatasetCRS } from '../crs/mapshaper-projections';
+import { requireOverlaySourceCRS, getDatasetCRS } from '../crs/mapshaper-projections';
 import { initDataTable } from '../dataset/mapshaper-layer-utils';
 
 cmd.join = function(targetLyr, targetDataset, src, opts) {
@@ -36,7 +36,7 @@ cmd.join = function(targetLyr, targetDataset, src, opts) {
       // to add an empty data table to the source layer
       initDataTable(src.layer);
     }
-    requireDatasetsHaveCompatibleCRS([targetDataset, src.dataset]);
+    requireOverlaySourceCRS(targetDataset, src.dataset);
     srcType = src.layer.geometry_type;
     targetType = targetLyr.geometry_type;
     if (srcType == 'point' && targetType == 'polygon') {

@@ -46,19 +46,31 @@ describe('map frame contract', function() {
     frame.layers[0].name = 'frame';
     catalog.addDatasets([content, frame]);
 
-    var target = api.internal.getActiveFrame(catalog);
+    var target = api.internal.getDefaultFrame(catalog);
     assert.equal(target.layer, frame.layers[0]);
     assert.equal(target.dataset, frame);
   });
 
-  it('rejects multiple frames before adding any datasets', function() {
+  it('accepts several frames with different names', function() {
     var catalog = new api.internal.Catalog();
     var frame1 = importRectangle([0, 0, 1, 1], {type: 'frame', width: 800});
     var frame2 = importRectangle([0, 0, 2, 1], {type: 'frame', width: 800});
+    frame1.layers[0].name = 'a';
+    frame2.layers[0].name = 'b';
+    catalog.addDatasets([frame1, frame2]);
+    assert.equal(api.internal.getFrames(catalog).length, 2);
+  });
+
+  it('rejects frames with the same name before adding any datasets', function() {
+    var catalog = new api.internal.Catalog();
+    var frame1 = importRectangle([0, 0, 1, 1], {type: 'frame', width: 800});
+    var frame2 = importRectangle([0, 0, 2, 1], {type: 'frame', width: 800});
+    frame1.layers[0].name = 'frame';
+    frame2.layers[0].name = 'frame';
 
     assert.throws(function() {
       catalog.addDatasets([frame1, frame2]);
-    }, /Multiple map frames are not supported/);
+    }, /Map frame names must be unique/);
     assert.equal(catalog.isEmpty(), true);
   });
 

@@ -44,7 +44,7 @@ export function InteractionMode(gui) {
     symbols: ['info', 'symbols', 'selection', 'box', 'ruler'],
     points: ['info', 'point_style', 'selection', 'box', 'ruler'],
     circles: ['info', 'point_style', 'symbols', 'selection', 'box', 'ruler'],
-    // An empty point layer is the layer the "Draw: labels" link creates,
+    // An empty point layer is the layer the "Add labels" link creates,
     // and a label goes into it rather than beside it (see labelWouldJoin), so
     // the label tool belongs in its menu as well as the point tools: it is the
     // way back into a labels layer that has no label in it yet.

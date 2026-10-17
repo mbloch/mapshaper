@@ -43,11 +43,14 @@ async function importDataset(obj) {
     return null;
   }
 
-  return {
+  var dataset = {
     info: await importInfo(obj.info || {}),
     layers: layers,
     arcs: arcs
   };
+  // snapshots from before dataset IDs are given an ID by the catalog
+  if (obj.id) dataset.id = obj.id;
+  return dataset;
 }
 
 function bufferToDataView(buf, constructor) {

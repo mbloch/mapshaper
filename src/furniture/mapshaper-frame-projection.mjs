@@ -44,10 +44,49 @@ export function getProjectedFrameBounds(bbox, project, srcIsLatLng) {
   ]);
   projectAndDensifyArcs(arcs, project);
   var projected = arcs.getBounds();
-  if (!projected.hasBounds() || projected.area() > 0 === false) {
+  // Where part of the boundary is outside the projection's domain (e.g. the
+  // far side of the globe in an orthographic projection), the boundary's arcs
+  // with unprojectable points are dropped, and what is left can collapse to a
+  // sliver. The frame then covers whatever part of its extent does project.
+  if (!boundaryIsProjectable(b, project)) {
+    projected.mergeBounds(getProjectedInteriorBounds(b, project));
+  }
+  if (!projected.hasBounds() || boundsAreDegenerate(projected)) {
     error('Unable to project map frame');
   }
   return projected;
+}
+
+var FRAME_SAMPLE_STEPS = 200;
+
+function boundaryIsProjectable(b, project) {
+  for (var i = 0; i <= FRAME_SAMPLE_STEPS; i++) {
+    var t = i / FRAME_SAMPLE_STEPS;
+    var x = b.xmin + b.width() * t;
+    var y = b.ymin + b.height() * t;
+    if (!project(x, b.ymin) || !project(x, b.ymax) ||
+        !project(b.xmin, y) || !project(b.xmax, y)) return false;
+  }
+  return true;
+}
+
+function getProjectedInteriorBounds(b, project) {
+  var bounds = new Bounds();
+  var p;
+  for (var i = 0; i <= FRAME_SAMPLE_STEPS; i++) {
+    for (var j = 0; j <= FRAME_SAMPLE_STEPS; j++) {
+      p = project(b.xmin + b.width() * i / FRAME_SAMPLE_STEPS,
+        b.ymin + b.height() * j / FRAME_SAMPLE_STEPS);
+      if (p && isFinite(p[0]) && isFinite(p[1])) bounds.mergePoint(p[0], p[1]);
+    }
+  }
+  return bounds;
+}
+
+// A frame needs a usable shape; a sliver would give an absurd page size
+function boundsAreDegenerate(b) {
+  var w = b.width(), h = b.height();
+  return w > 0 === false || h > 0 === false || w / h < 1e-6 || h / w < 1e-6;
 }
 
 // Snapshot frame bounds before the dataset arcs are projected.

@@ -15,7 +15,11 @@ import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 import { stashVar, clearStash } from '../mapshaper-stash';
 import { applyCommandToEachLayer, applyCommandToEachTarget } from '../cli/mapshaper-command-utils';
-import { assertSingleFrameUpdate } from '../furniture/mapshaper-frame-utils';
+import { assertFrameUpdateIsValid } from '../furniture/mapshaper-frame-utils';
+import { inheritFrameRef, repairFrameReferences } from '../furniture/mapshaper-frame-resolver';
+import { repairOverlayReferences } from '../furniture/mapshaper-overlays';
+import { getFrameForMerge, getMergedMemberId, splitOffMergeTargets } from '../furniture/mapshaper-frame-members';
+import { setFrameRef } from '../dataset/mapshaper-frame-membership';
 import { expandCommandTargets } from '../dataset/mapshaper-target-utils';
 import {
   markDatasetChanged,
@@ -222,7 +226,17 @@ export async function runCommand(command, job) {
       // special case to allow -merge-layers and -union to combine layers from multiple datasets
       // TODO: support multi-dataset targets for other commands
       if (targets.length > 1 && (name == 'merge-layers' || name == 'union')) {
+        let mergeFrame = getFrameForMerge(job.catalog, targets, name);
+        let memberId;
+        if (mergeFrame) {
+          targets = splitOffMergeTargets(job.catalog, targets, mergeFrame, name);
+          memberId = getMergedMemberId(targets, mergeFrame);
+        }
         targets = mergeCommandTargets(targets, job.catalog);
+        if (mergeFrame) {
+          setFrameRef(targets[0].dataset, mergeFrame.dataset.id);
+          if (memberId) targets[0].dataset.id = memberId;
+        }
       }
 
       if (targets.length == 1) {
@@ -283,7 +297,9 @@ export async function runCommand(command, job) {
       // change; addDataset() marks the change itself. Both are no-ops in the
       // CLI, where nothing is listening.
       job.catalog.captureCatalogBefore({operation: 'addLayer'});
-      job.catalog.addDataset(cmd.addLayer(targetDataset, opts));
+      let addedDataset = cmd.addLayer(targetDataset, opts);
+      inheritFrameRef(addedDataset, targetDataset ? [targetDataset] : []);
+      job.catalog.addDataset(addedDataset);
 
     } else if (name == 'update-frame') {
       cmd.updateFrame(targetLayers, targetDataset, opts,
@@ -523,7 +539,10 @@ export async function runCommand(command, job) {
 
     } else if (name == 'rectangle') {
       if (source || opts.bbox || targets.length === 0) {
-        job.catalog.addDataset(cmd.rectangle(source || targets?.[0], opts));
+        let rectSource = source || targets?.[0];
+        let rectDataset = cmd.rectangle(rectSource, opts);
+        inheritFrameRef(rectDataset, rectSource ? [rectSource.dataset] : []);
+        job.catalog.addDataset(rectDataset);
       } else {
         outputLayers = cmd.rectangle2(targets[0], opts);
       }
@@ -553,7 +572,7 @@ export async function runCommand(command, job) {
       await cmd.run(job, targets, opts);
 
     } else if (name == 'scalebar') {
-      cmd.scalebar(job.catalog, opts);
+      cmd.scalebar(job.catalog, targetDataset, opts);
 
     } else if (name == 'shape') {
       job.catalog.addDataset(cmd.shape(targetDataset, opts));
@@ -634,7 +653,8 @@ export async function runCommand(command, job) {
 
     if (outputDataset) {
       var removedLayers = targetLayers && !opts.no_replace ? targetLayers : [];
-      assertSingleFrameUpdate(
+      inheritFrameRef(outputDataset, utils.pluck(targets || [], 'dataset'));
+      assertFrameUpdateIsValid(
         job.catalog,
         outputDataset.layers.map(function(lyr) {
           return {layer: lyr, dataset: outputDataset};
@@ -651,7 +671,7 @@ export async function runCommand(command, job) {
       }
     } else if (outputLayers && targetDataset && outputLayers != targetDataset.layers) {
       // integrate output layers into the target dataset
-      assertSingleFrameUpdate(
+      assertFrameUpdateIsValid(
         job.catalog,
         outputLayers.map(function(lyr) {
           return {layer: lyr, dataset: targetDataset};
@@ -696,6 +716,9 @@ export async function runCommand(command, job) {
     if (targetDataset) {
       cleanupArcs(targetDataset);
     }
+
+    repairFrameReferences(job.catalog);
+    repairOverlayReferences(job.catalog);
 
   } catch(e) {
     return done(e);

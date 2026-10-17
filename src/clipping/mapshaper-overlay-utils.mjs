@@ -6,6 +6,7 @@ import { stop, error } from '../utils/mapshaper-logging';
 import { buildTopology } from '../topology/mapshaper-topology';
 import utils from '../utils/mapshaper-utils';
 import { ArcCollection } from '../paths/mapshaper-arcs';
+import { requireOverlaySourceCRS } from '../crs/mapshaper-projections';
 
 // Convert a source parameter (which can take several forms) into
 // a dataset with a single layer.
@@ -48,6 +49,7 @@ export function mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset)
   var clipLyr = clipDataset.layers[0];
   if (targetDataset.arcs != clipDataset.arcs) {
     // using external dataset -- need to merge arcs
+    requireOverlaySourceCRS(targetDataset, clipDataset);
     if (!clipDataset.disposable) {
       // copy overlay layer shapes because arc ids will be reindexed during merging
       clipDataset.layers[0] = copyLayerShapes(clipDataset.layers[0]);

@@ -252,15 +252,13 @@ UndoTransaction.prototype = {
     var key = unitKey('layer-metadata', layer, detail && detail.unit || '');
     if (this._captured[key]) return;
     this._captured[key] = true;
-    this.units.push({
+    this.units.push(Object.assign({
       type: 'layer-metadata',
       target: layer,
       id: getUndoId(layer),
       revision: getUndoRevision(layer),
-      detail: copyDetail(detail),
-      name: layer.name,
-      geometry_type: layer.geometry_type
-    });
+      detail: copyDetail(detail)
+    }, copyLayerMetadata(layer)));
   },
 
   captureLayerOrderBefore: function(layer, detail) {
@@ -596,11 +594,20 @@ function captureCurrentLayer(unit) {
 }
 
 function captureCurrentLayerMetadata(unit) {
-  return Object.assign({}, unit, {
-    revision: getUndoRevision(unit.target),
-    name: unit.target.name,
-    geometry_type: unit.target.geometry_type
-  });
+  var copy = Object.assign({}, unit, {revision: getUndoRevision(unit.target)});
+  LAYER_METADATA_FIELDS.forEach(function(key) { delete copy[key]; });
+  return Object.assign(copy, copyLayerMetadata(unit.target));
+}
+
+// Layer properties that are not layer content: the name, and the layer's
+// place in the stack and visibility, which -frame changes
+var LAYER_METADATA_FIELDS = ['name', 'geometry_type', 'menu_order', 'pinned', 'frame_hidden'];
+
+function copyLayerMetadata(layer) {
+  return LAYER_METADATA_FIELDS.reduce(function(memo, key) {
+    if (key in layer) memo[key] = layer[key];
+    return memo;
+  }, {});
 }
 
 function restoreUnit(unit) {
@@ -737,8 +744,13 @@ function restoreLayer(unit) {
 }
 
 function restoreLayerMetadata(unit) {
-  unit.target.name = unit.name;
-  unit.target.geometry_type = unit.geometry_type;
+  LAYER_METADATA_FIELDS.forEach(function(key) {
+    if (key in unit) {
+      unit.target[key] = unit[key];
+    } else {
+      delete unit.target[key];
+    }
+  });
 }
 
 function restoreLayerOrder(unit) {

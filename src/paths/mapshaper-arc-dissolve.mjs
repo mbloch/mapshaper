@@ -64,7 +64,9 @@ export function dissolveArcs(dataset) {
       absId = absArcId(arcId);
       fw = arcId === absId;
 
-      if (arcs.arcIsDegenerate(arcId)) {
+      // An arc that only collapses at the current simplification level is kept;
+      // dropping it would delete vertices that a higher level would show
+      if (arcs.arcIsDegenerate(arcId, true)) {
         // arc has collapsed -- skip
       } else if (arcStatus[absId] !== 0) {
         // arc has already been translated -- skip

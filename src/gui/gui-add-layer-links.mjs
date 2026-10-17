@@ -1,11 +1,11 @@
 import { El } from './gui-el';
 import { runGuiEditCommand } from './gui-edit-command';
 import {
-  DRAW_KINDS, getAddLayerCommand, getNewLayerName, kindFitsLayer
+  DRAW_KINDS, findDrawKind, getAddLayerCommand, getNewLayerName, kindFitsLayer
 } from './gui-add-layer-commands';
 
-// The "Draw" links in the layer panel: one click creates a layer and opens the
-// tool that draws into it.
+// The "Add labels" and "Draw" links in the layer panel: one click creates a
+// layer and opens the tool that draws into it.
 //
 // They replace "Add empty layer", which created an inert layer of a geometry
 // type chosen in a popup -- the user then had to find the tool that draws into
@@ -17,38 +17,104 @@ import {
 // The links are named for the drawing rather than for the layer, because the
 // drawing is what the user came to do; that a layer is created is in the tip on
 // each link, and in the layer list directly below them.
+//
+// Labels have a link of their own, because placing labels by hand is more
+// common than drawing, and is not quite drawing. The other kinds are in a menu
+// opened from "Draw".
 export function AddLayerLinks(gui) {
-  var container = gui.container.findChild('.new-layer-links');
-  if (!container.node()) return;
-  DRAW_KINDS.forEach(function(kind, i) {
-    if (i > 0) {
-      // A breaking space after the dot, so that a sidebar too narrow for the
-      // whole list wraps it between links, and never inside one.
-      El('span').addClass('layer-menu-link-separator').html('&nbsp;· ')
-        .appendTo(container);
-    }
-    El('span').addClass('layer-menu-link').attr('data-kind', kind.kind)
-      .attr('title', kind.tip).text(kind.kind).appendTo(container)
-      .on('click', function() {
-        startDrawing(gui, kind);
-      });
+  var row = gui.container.findChild('.layer-add-links');
+  if (!row.node()) return;
+  var drawKinds = DRAW_KINDS.filter(function(kind) {
+    return kind.kind != 'labels';
   });
+  var menuBtn = row.findChild('.draw-menu-btn');
+  var menu = El('div').addClass('draw-menu').attr('role', 'menu')
+    .appendTo('body').hide();
 
-  function startDrawing(gui, kind) {
+  initLink(row.findChild('.add-labels-link').attr('title', findDrawKind('labels').tip),
+    findDrawKind('labels'));
+  initMenu();
+  gui.on('sidebar', closeMenu);
+
+  function initMenu() {
+    drawKinds.forEach(function(kind) {
+      El('div').addClass('draw-menu-item').attr('role', 'menuitem')
+        .attr('data-kind', kind.kind).attr('title', kind.tip).text(kind.kind)
+        .appendTo(menu)
+        .on('click', function() {
+          closeMenu();
+          startDrawing(kind);
+        });
+    });
+    menuBtn.on('click', toggleMenu).on('keydown', function(e) {
+      if (e.key == 'Enter' || e.key == ' ') {
+        e.preventDefault();
+        toggleMenu();
+      }
+    });
+    document.addEventListener('mousedown', function(e) {
+      if (!menuIsOpen() || menu.node().contains(e.target) ||
+          menuBtn.node().contains(e.target)) return;
+      closeMenu();
+    });
+    document.addEventListener('keydown', function(e) {
+      if (e.key == 'Escape' && menuIsOpen()) closeMenu();
+    });
+  }
+
+  function initLink(link, kind) {
+    link.on('click', function() {
+      startDrawing(kind);
+    }).on('keydown', function(e) {
+      if (e.key == 'Enter' || e.key == ' ') {
+        e.preventDefault();
+        startDrawing(kind);
+      }
+    });
+  }
+
+  function menuIsOpen() {
+    return menu.node().style.display != 'none';
+  }
+
+  function toggleMenu() {
+    if (menuIsOpen()) {
+      closeMenu();
+    } else {
+      openMenu();
+    }
+  }
+
+  // Below the button, left-aligned with it. The menu is attached to the body,
+  // because the row of links hides its overflow.
+  function openMenu() {
+    var rect = menuBtn.node().getBoundingClientRect();
+    menu.css('left', rect.left + window.pageXOffset - 4 + 'px');
+    menu.css('top', rect.bottom + window.pageYOffset + 4 + 'px');
+    menu.show();
+    menuBtn.addClass('open');
+  }
+
+  function closeMenu() {
+    menu.hide();
+    menuBtn.removeClass('open');
+  }
+
+  function startDrawing(kind) {
     var active = gui.model.getActiveLayer();
     gui.clearMode(); // close the import dialog, if it is open
     if (active && kindFitsLayer(kind, active.layer)) {
-      openTool(gui, kind.mode);
+      openTool(kind.mode);
       return;
     }
     runGuiEditCommand(gui, getAddLayerCommand(kind.geometryType,
-      getNewLayerName(kind, getLayerNames(gui))), {
+      getNewLayerName(kind, getLayerNames())), {
       title: 'Add layer error',
       onSuccess: function() {
         // The tool opens after the command has run, because it reads the active
         // layer as it opens: the label tool arms a tool according to it, and the
         // drawing tools append to it.
-        openTool(gui, kind.mode);
+        openTool(kind.mode);
       }
     });
   }
@@ -57,14 +123,14 @@ export function AddLayerLinks(gui) {
   // the mode has not changed, which would leave the tool that clearMode() just
   // closed shut, with the arrow menu still saying it was on -- the state two
   // clicks on one link used to end in.
-  function openTool(gui, mode) {
+  function openTool(mode) {
     if (gui.interaction.getMode() == mode) {
       gui.interaction.setMode('off');
     }
     gui.interaction.setMode(mode);
   }
 
-  function getLayerNames(gui) {
+  function getLayerNames() {
     return gui.model.getLayers().map(function(o) {
       return o.layer.name;
     });

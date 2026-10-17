@@ -7,7 +7,7 @@ import require from '../mapshaper-require';
 export function setLoggingForGUI(gui) {
   function stop() {
     // Show a popup error message, then throw an error
-    var msg = GUI.formatMessageArgs(arguments);
+    var msg = formatPopupMessage(arguments);
     gui.alert(msg);
     throw new internal.UserError(msg);
   }
@@ -20,7 +20,7 @@ export function setLoggingForGUI(gui) {
   }
 
   function message() {
-    var msg = GUI.formatMessageArgs(arguments);
+    var msg = formatPopupMessage(arguments);
     if (gui.notify && messageShouldGoToInbox(msg)) {
       gui.notify({
         severity: 'info',
@@ -39,7 +39,7 @@ export function setLoggingForGUI(gui) {
   // and replace any previous popup. They now go to the Messages inbox so
   // they can accumulate non-disruptively.
   function warn() {
-    var msg = GUI.formatMessageArgs(arguments);
+    var msg = formatPopupMessage(arguments);
     if (gui.notify) {
       gui.notify({severity: 'warn', body: msg, dedupKey: 'warn:' + msg});
     } else {
@@ -48,6 +48,12 @@ export function setLoggingForGUI(gui) {
   }
 
   internal.setLoggingFunctions(message, error, stop, warn);
+}
+
+// Drops the "[command]" prefix that stop(), message() and warn() add for
+// CLI output; the console keeps it
+export function formatPopupMessage(args) {
+  return GUI.formatMessageArgs(args).replace(/^\[[^\]]+\] /, '');
 }
 
 // The raster importers' notes that a CRS-less raster was taken for lat-long
@@ -121,6 +127,7 @@ export function ImportFileProxy(gui) {
     // dataset through shared layers, tables, arcs or metadata.
     var copy = internal.copyDataset(dataset);
     copy.info = internal.copyDatasetInfo(dataset.info || {});
+    delete copy.info.frame; // imported data starts out unframed
     return copy;
   });
 }

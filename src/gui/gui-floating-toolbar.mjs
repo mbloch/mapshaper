@@ -19,6 +19,7 @@ import { GUI } from './gui-lib';
 //   toolbar.addSegmentedControl(caption, items, opts) -> ToolbarSegmentedControl
 //   toolbar.addTextField(caption, opts) -> ToolbarTextField
 //   toolbar.addSeparator()
+//   toolbar.addLabel(text) -> El
 //   toolbar.dock(el)    puts a group of controls kept by another toolbar first
 //   toolbar.show()
 //   toolbar.hide()
@@ -74,6 +75,11 @@ export function FloatingToolbar(gui, opts) {
 
   this.addSeparator = function() {
     return El('div').addClass('floating-toolbar-separator').appendTo(content);
+  };
+
+  // Text that names what the toolbar is acting on, e.g. a layer
+  this.addLabel = function(text) {
+    return El('span').addClass('floating-toolbar-label').appendTo(content).text(text || '');
   };
 
   this.dock = function(groupEl) {

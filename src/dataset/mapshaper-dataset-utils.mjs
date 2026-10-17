@@ -52,13 +52,20 @@ export function mergeDatasetInfo(dest, src) {
   // Preserved GeoJSON metadata stays with the dataset it was imported into; it
   // is never inherited from a merged-in source (e.g. a -join / clip / erase
   // source), which would otherwise leak that source's metadata into the output.
+  // The same goes for a frame reference.
   var destMetadata = destInfo.input_geojson_metadata;
+  var destFrame = destInfo.frame;
   // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
   utils.defaults(destInfo, srcInfo);
   if (destMetadata) {
     destInfo.input_geojson_metadata = destMetadata;
   } else {
     delete destInfo.input_geojson_metadata;
+  }
+  if (destFrame) {
+    destInfo.frame = destFrame;
+  } else {
+    delete destInfo.frame;
   }
   markDatasetInfoChanged(dest, {operation: 'mergeDatasetInfo'});
 }
@@ -98,8 +105,10 @@ export function splitApartLayers(dataset, layers) {
 }
 
 // clone all layers, make a filtered copy of arcs
+// (the copy gets its own ID when it is added to a catalog)
 export function copyDataset(dataset) {
   var d2 = utils.extend({}, dataset);
+  delete d2.id;
   d2.layers = d2.layers.map(copyLayer);
   if (d2.arcs) {
     d2.arcs = d2.arcs.getFilteredCopy();
@@ -184,6 +193,7 @@ export function replaceLayers(dataset, cutLayers, newLayers) {
   // modify a copy in case cutLayers == dataset.layers
   var currLayers = dataset.layers.concat();
   noteDatasetWillChange(dataset, {operation: 'replaceLayers', unit: 'layers'});
+  handOverLayerStacking(cutLayers, newLayers);
   utils.repeat(Math.max(cutLayers.length, newLayers.length), function(i) {
     var cutLyr = cutLayers[i],
         newLyr = newLayers[i],
@@ -198,6 +208,31 @@ export function replaceLayers(dataset, cutLayers, newLayers) {
   });
   dataset.layers = currLayers;
   markDatasetChanged(dataset, {operation: 'replaceLayers', unit: 'layers'});
+}
+
+// A replacement layer takes over the stacking position (menu_order) and
+// visibility (pinned, frame_hidden) of the layer it replaces, so that a
+// command like -dissolve does not move a layer to the top of the stack or show
+// a hidden layer. Extra new layers are stacked directly above the last
+// replaced layer, in order. Values that a new layer already has are kept.
+export function handOverLayerStacking(cutLayers, newLayers) {
+  var n = Math.min(cutLayers.length, newLayers.length);
+  var src = n > 0 ? cutLayers[n - 1] : null;
+  var extras = newLayers.length - n;
+  newLayers.forEach(function(newLyr, i) {
+    var cutLyr = i < n ? cutLayers[i] : src;
+    if (!cutLyr || !newLyr || newLyr == cutLyr) return;
+    if (!(newLyr.menu_order > 0) && cutLyr.menu_order > 0) {
+      newLyr.menu_order = i < n ? cutLyr.menu_order :
+        cutLyr.menu_order + (i - n + 1) / (extras + 1);
+    }
+    if (newLyr.pinned === undefined && cutLyr.pinned !== undefined) {
+      newLyr.pinned = cutLyr.pinned;
+    }
+    if (newLyr.frame_hidden === undefined && cutLyr.frame_hidden) {
+      newLyr.frame_hidden = true;
+    }
+  });
 }
 
 // Replace a layer with a layer from a second dataset

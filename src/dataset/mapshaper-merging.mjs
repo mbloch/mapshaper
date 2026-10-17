@@ -11,6 +11,7 @@ import utils from '../utils/mapshaper-utils';
 import { verbose, stop, error } from '../utils/mapshaper-logging';
 import { ArcCollection } from '../paths/mapshaper-arcs';
 import { buildTopology } from '../topology/mapshaper-topology';
+import { getSharedFrameRef } from '../dataset/mapshaper-frame-membership';
 
 // Merge arcs from one or more source datasets into target dataset
 // return array of layers from the source dataset (instead of adding them to the target dataset)
@@ -67,11 +68,39 @@ export function mergeCommandTargets(targets, catalog) {
   }];
 }
 
+// Rejoin datasets that were split apart from one dataset, so that boundaries
+// that are still identical are shared again. Simplification thresholds are
+// kept, so callers should first check that the datasets have the same
+// simplification state (see haveSameSimplification()). The output keeps the
+// ID of the first dataset.
+export function rejoinDatasets(arr) {
+  var merged = mergeDatasets(arr, {preserve_simplification: true});
+  buildTopology(merged, {preserve_simplification: true});
+  if (arr[0].id) merged.id = arr[0].id;
+  return merged;
+}
+
+// True if the datasets all have no simplification thresholds, or all have
+// thresholds and the same retained interval
+export function haveSameSimplification(datasets) {
+  var states = datasets.filter(function(dataset) {
+    return dataset.arcs && dataset.arcs.size() > 0; // datasets without paths don't count
+  }).map(function(dataset) {
+    return dataset.arcs.isFlat() ? null : dataset.arcs.getRetainedInterval();
+  });
+  return states.every(function(state) {
+    return state === states[0];
+  });
+}
+
 // Combine multiple datasets into one using concatenation
 // (any shared topology is ignored)
-export function mergeDatasets(arr) {
+// opts.preserve_simplification: keep simplification thresholds (by default,
+//   the current simplification is baked in)
+export function mergeDatasets(arr, opts) {
   var arcSources = [],
       arcCount = 0,
+      frameRef,
       merged = {
         info: {},
         layers: []
@@ -104,8 +133,15 @@ export function mergeDatasets(arr) {
     arcCount += n;
   });
 
+  // the merged dataset stays in a frame only if every part was in it
+  frameRef = getSharedFrameRef(arr);
+  if (frameRef) {
+    merged.info.frame = frameRef;
+  }
+
   if (arcSources.length > 0) {
-    merged.arcs = mergeArcs(arcSources);
+    merged.arcs = opts && opts.preserve_simplification ?
+      mergeArcsKeepingThresholds(arcSources) : mergeArcs(arcSources);
     if (merged.arcs.size() != arcCount) {
       error("[mergeDatasets()] Arc indexing error");
     }
@@ -119,8 +155,15 @@ export function mergeDatasetInfo(merged, dataset) {
   var dest = merged.info || (merged.info = {});
   dest.input_files = utils.uniq((dest.input_files || []).concat(src.input_files || []));
   dest.input_formats = utils.uniq((dest.input_formats || []).concat(src.input_formats || []));
+  // A frame reference is never inherited from a merged-in dataset
+  var destFrame = dest.frame;
   // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
   utils.defaults(dest, src);
+  if (destFrame) {
+    dest.frame = destFrame;
+  } else {
+    delete dest.frame;
+  }
 }
 
 export function mergeArcs(arr) {
@@ -138,6 +181,31 @@ export function mergeArcs(arr) {
       nn = mergeArrays(utils.pluck(dataArr, 'nn'), Int32Array);
 
   return new ArcCollection(nn, xx, yy);
+}
+
+// Like mergeArcs(), but keeps simplification thresholds instead of baking in
+// the current simplification, and leaves the source arcs unchanged. Vertices
+// of arcs without thresholds are never removed by simplification. All the
+// arcs with thresholds must have the same retained interval.
+export function mergeArcsKeepingThresholds(arr) {
+  var simplified = arr.filter(function(arcs) { return !arcs.isFlat(); });
+  var interval = simplified.length > 0 ? simplified[0].getRetainedInterval() : 0;
+  var dataArr = arr.map(function(arcs) { return arcs.getVertexData(); });
+  var merged, zz;
+  if (simplified.some(function(arcs) { return arcs.getRetainedInterval() !== interval; })) {
+    error('[mergeArcsKeepingThresholds()] Arcs have different simplification intervals');
+  }
+  merged = new ArcCollection(
+    mergeArrays(utils.pluck(dataArr, 'nn'), Int32Array),
+    mergeArrays(utils.pluck(dataArr, 'xx'), Float64Array),
+    mergeArrays(utils.pluck(dataArr, 'yy'), Float64Array));
+  if (simplified.length > 0) {
+    zz = mergeArrays(dataArr.map(function(data) {
+      return data.zz || new Float64Array(data.xx.length).fill(Infinity);
+    }), Float64Array);
+    merged.setThresholds(zz).setRetainedInterval(interval);
+  }
+  return merged;
 }
 
 function countElements(arrays) {

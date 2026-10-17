@@ -32,7 +32,7 @@ test('drawing on the empty map keeps its tool', async function({page}) {
   });
   await page.locator('#import-options .cancel-btn').click();
   await page.locator('body.layers-open').waitFor();
-  await page.locator('.new-layer-links .layer-menu-link[data-kind="labels"]').click();
+  await page.locator('.add-labels-link').click();
   await expect.poll(function() {
     return page.evaluate(function() {
       return window.mapshaper.undoTest.getInteractionMode();

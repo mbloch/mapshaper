@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { closeSidebarAfterImport } from './sidebar-helpers.mjs';
+import { clickAddLayerLink, closeSidebarAfterImport } from './sidebar-helpers.mjs';
 
 // The handles on a selected anchored label -- its width, and its callout's
 // bend, attachment and gap -- the text drag that carries a callout along, and
@@ -171,12 +171,12 @@ async function getCueBoxes(page) {
 }
 
 async function clickNewLayerLink(page, kind) {
-  var links = page.locator('.new-layer-links');
+  var links = page.locator('.layer-add-links');
   if (!(await links.isVisible())) {
     await page.locator('.layer-tab:visible').click();
     await links.waitFor({state: 'visible'});
   }
-  await page.locator('.new-layer-links .layer-menu-link[data-kind="' + kind + '"]').click();
+  await clickAddLayerLink(page, kind);
   await page.waitForTimeout(250);
   if (await links.isVisible()) {
     await page.locator('.layer-tab:visible').click();

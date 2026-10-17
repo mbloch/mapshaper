@@ -41,6 +41,50 @@ export function sortLayersForMenuDisplay(layers) {
   return layers.reverse();
 }
 
+// The groups of the layers menu: unframed layers, then each frame (in catalog
+// order) with its members. Layers are in menu order, top of the stack first.
+// A frame's furniture is left out; it is part of the frame's entry.
+// Returns {unframed: [{layer, dataset}], frames: [{frame, members: [{layer, dataset}]}]}
+export function getLayerMenuGroups(catalog) {
+  var frames = internal.getFrames(catalog).map(function(frame) {
+    return {frame: frame, members: []};
+  });
+  var unframed = [];
+  sortLayersForMenuDisplay(catalog.getLayers()).forEach(function(o) {
+    var frame, group;
+    if (internal.isFrameComponentLayer(o.layer, o.dataset)) return;
+    frame = internal.getFrameForDataset(catalog, o.dataset);
+    group = frame && frames.find(function(g) { return g.frame.dataset == frame.dataset; });
+    if (group) {
+      group.members.push(o);
+    } else {
+      unframed.push(o);
+    }
+  });
+  return {unframed: unframed, frames: frames};
+}
+
+// Frames made in the GUI are numbered: "Frame 1", "Frame 2"... (the CLI's
+// default names are left alone)
+export function getNewFrameName(catalog) {
+  var i = internal.getFrames(catalog).length + 1;
+  while (internal.getFrameByName(catalog, 'Frame ' + i)) i++;
+  return 'Frame ' + i;
+}
+
+// A copy of a numbered frame takes the next number; a copy of a renamed
+// frame keeps its name, plus "copy"
+export function getFrameCopyName(catalog, name) {
+  var base, copyName;
+  if (!name || /^Frame \d+$/.test(name)) return getNewFrameName(catalog);
+  base = name + ' copy';
+  copyName = base;
+  for (var i = 2; internal.getFrameByName(catalog, copyName); i++) {
+    copyName = base + ' ' + i;
+  }
+  return copyName;
+}
+
 export function setLayerPinning(lyr, pinned) {
   lyr.pinned = !!pinned;
 }

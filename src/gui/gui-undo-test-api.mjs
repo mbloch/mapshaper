@@ -252,14 +252,30 @@ export function createUndoTestApi(gui) {
       if (gui.frameTool) gui.frameTool.open();
     },
     getFrameInfo: function() {
-      var target = internal.getActiveFrame(gui.model);
+      var target = gui.model.getActiveFrame();
       if (!target) return null;
       return Object.assign({
         name: target.layer.name || ''
       }, internal.getFrameLayerData(target.layer, target.dataset.arcs));
     },
+    // Names of the layers the map can show in the current view (frame view or
+    // unframed view), in catalog order. Layers are drawn to canvas, so there is
+    // no DOM state to assert on.
+    getVisibleLayerNames: function() {
+      return gui.model.getLayers().filter(function(o) {
+        return gui.map.isVisibleLayer(o.layer, o.dataset) &&
+          !internal.isFrameComponentLayer(o.layer, o.dataset);
+      }).map(function(o) { return getLayerName(o.layer); });
+    },
     setFrameLockSize: function(on) {
       if (gui.frameTool) gui.frameTool.setLockSize(on);
+    },
+    // The placement record of an overlay frame on a host frame, or null
+    getOverlayPlacement: function(hostName, overlayName) {
+      var host = internal.getFrameByName(gui.model, hostName);
+      var overlay = internal.getFrameByName(gui.model, overlayName);
+      var lyr = host && overlay ? internal.findOverlayLayer(host.dataset, overlay.dataset.id) : null;
+      return lyr ? Object.assign({}, lyr.data.getReadOnlyRecordAt(0)) : null;
     },
     // The map's current view, in display CRS coordinates, for a test that an
     // edit leaves the view where the user put it.
@@ -385,7 +401,8 @@ function getDatasetSummary(dataset) {
         geometry_type: lyr.geometry_type || null,
         shapeCount: lyr.shapes ? lyr.shapes.length : 0,
         recordCount: lyr.data ? lyr.data.size() : 0,
-        fields: lyr.data ? lyr.data.getFields() : []
+        fields: lyr.data ? lyr.data.getFields() : [],
+        menu_order: lyr.menu_order || null
       };
     })
   };
@@ -400,13 +417,15 @@ function getDatasetSignature(dataset) {
 }
 
 function getLayerSignature(lyr) {
-  return {
+  var sig = {
     name: getLayerName(lyr),
     geometry_type: lyr.geometry_type || null,
     shapes: lyr.shapes || null,
     fields: lyr.data ? lyr.data.getFields() : [],
     records: lyr.data ? lyr.data.getRecords() : null
   };
+  if (lyr.frame_hidden) sig.frame_hidden = true;
+  return sig;
 }
 
 function getArcsSignature(arcs) {

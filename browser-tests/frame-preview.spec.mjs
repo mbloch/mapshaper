@@ -41,13 +41,17 @@ test('table view suspends preview without clearing its state', async function({p
 test('the map frame row has frame-specific menu actions', async function({page}) {
   await loadPreviewSession(page);
   await openLayersPanel(page);
-  await page.locator('.map-frame-list .more-btn').click();
+  await page.locator('.map-frame-list .frame-item .more-btn').click();
 
   await expect(page.locator('.contextmenu')).toBeVisible();
   expect(await page.locator('.contextmenu-item').allInnerTexts()).toEqual([
     'frame properties',
+    'rename frame',
     'add scale bar',
     'resize frame',
+    'copy frame',
+    // a frame without members, made with bbox=
+    'move visible layers into frame',
     'delete frame',
   ]);
 
@@ -56,7 +60,7 @@ test('the map frame row has frame-specific menu actions', async function({page})
   await expect(page.locator('.frame-width-input')).toHaveValue('600');
   await page.locator('.alert-wrapper .close2-btn').click();
 
-  await page.locator('.map-frame-list .more-btn').click();
+  await page.locator('.map-frame-list .frame-item .more-btn').click();
   await page.locator('.contextmenu-item').filter({hasText: 'resize frame'}).click();
   expect(await page.evaluate(function() {
     return window.mapshaper.undoTest.getInteractionMode();
@@ -69,6 +73,52 @@ test('the map frame row has frame-specific menu actions', async function({page})
   expect(await page.evaluate(function() {
     return window.mapshaper.undoTest.getInteractionMode();
   })).toBe('off');
+});
+
+test('selecting a layer in another frame fits that frame\'s page to the map',
+    async function({page}) {
+  await loadFixture(page, POINT_FIXTURE);
+  // f2's coordinates span millions of units, f1's thousands; f1 lies inside f2
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand(
+      '-rectangle bbox=0,0,4000,2500 name=small ' +
+      '-rectangle bbox=-6000000,-6000000,6000000,6000000 name=big ' +
+      '-proj init=EPSG:3857 target=small,big ' +
+      '-frame target=small width=800 name=f1 -frame target=big width=150 name=f2');
+  });
+  await selectLayer(page, 'big');
+  await setPreviewMode(page, true);
+  var mapWidth = (await page.locator('.mshp-main-map').boundingBox()).width;
+  await expect.poll(async function() {
+    return await getSymbolScale(page) * 150 / mapWidth;
+  }).toBeGreaterThan(0.5);
+
+  await selectLayer(page, 'small');
+  await expect.poll(async function() {
+    return await getSymbolScale(page) * 800 / mapWidth;
+  }).toBeGreaterThan(0.5);
+});
+
+test('selecting an unframed layer after a frame fits the unframed layers to the map',
+    async function({page}) {
+  await loadFixture(page, POINT_FIXTURE);
+  // the unframed layer lies inside the frame's much larger extent, so it
+  // would be in view, but tiny, without a reset
+  await page.evaluate(function() {
+    return window.mapshaper.undoTest.runCommand(
+      '-rectangle bbox=0,0,4000,2500 name=small ' +
+      '-rectangle bbox=-6000000,-6000000,6000000,6000000 name=big ' +
+      '-proj init=EPSG:3857 target=small,big -frame target=big width=150 name=f2');
+  });
+  await selectLayer(page, 'big');
+  await setPreviewMode(page, true);
+  await selectLayer(page, 'small');
+  await expect.poll(async function() {
+    var b = await page.evaluate(function() {
+      return window.mapshaper.undoTest.getViewBounds();
+    });
+    return b[2] - b[0];
+  }).toBeLessThan(20000);
 });
 
 async function loadPreviewSession(page, files) {

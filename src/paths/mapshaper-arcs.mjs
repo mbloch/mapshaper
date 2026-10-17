@@ -410,6 +410,8 @@ export function ArcCollection() {
     var goodPoints = 0,
         goodArcs = 0,
         copyElements = utils.copyElements,
+        zz = _zz, // initXYData() clears simplification data
+        zlimit = _zlimit,
         k, arcLen;
     for (var i=0, n=map.length; i<n; i++) {
       k = map[i];
@@ -417,7 +419,7 @@ export function ArcCollection() {
       if (k > -1) {
         copyElements(_xx, _ii[i], _xx, goodPoints, arcLen);
         copyElements(_yy, _ii[i], _yy, goodPoints, arcLen);
-        if (_zz) copyElements(_zz, _ii[i], _zz, goodPoints, arcLen);
+        if (zz) copyElements(zz, _ii[i], zz, goodPoints, arcLen);
         _nn[k] = arcLen;
         goodPoints += arcLen;
         goodArcs++;
@@ -426,7 +428,10 @@ export function ArcCollection() {
 
     initXYData(_nn.subarray(0, goodArcs), _xx.subarray(0, goodPoints),
         _yy.subarray(0, goodPoints));
-    if (_zz) initZData(_zz.subarray(0, goodPoints));
+    if (zz) {
+      initZData(zz.subarray(0, goodPoints));
+      _zlimit = zlimit;
+    }
   }
 
   this.dedupCoords = function() {
@@ -494,13 +499,16 @@ export function ArcCollection() {
     return _xx[i] == _xx[j] && _yy[i] == _yy[j];
   };
 
-  this.arcIsDegenerate = function(arcId) {
-    return this.arcHasZeroLength(arcId) || this.arcIsSpike(arcId) || this.arcIsSpike_v1(arcId);
+  // @unfiltered test all of the arc's vertices, not just the ones that are
+  //   retained at the current simplification level
+  this.arcIsDegenerate = function(arcId, unfiltered) {
+    return this.arcHasZeroLength(arcId, unfiltered) || this.arcIsSpike(arcId) ||
+      this.arcIsSpike_v1(arcId, unfiltered);
   };
 
   // only finds two-segment spikes
-  this.arcIsSpike_v1 = function(arcId) {
-    var iter = this.getArcIter(arcId);
+  this.arcIsSpike_v1 = function(arcId, unfiltered) {
+    var iter = unfiltered ? getUnfilteredArcIter(arcId) : this.getArcIter(arcId);
     var x0, y0;
     if (iter.hasNext()) {
       x0 = iter.x;
@@ -532,8 +540,8 @@ export function ArcCollection() {
   };
 
 
-  this.arcHasZeroLength = function(arcId) {
-    var iter = this.getArcIter(arcId);
+  this.arcHasZeroLength = function(arcId, unfiltered) {
+    var iter = unfiltered ? getUnfilteredArcIter(arcId) : this.getArcIter(arcId);
     var i = 0,
         x, y;
     while (iter.hasNext()) {
@@ -560,6 +568,12 @@ export function ArcCollection() {
     }
     return iter.init(_ii[i], _nn[i], fw, _zlimit);
   };
+
+  function getUnfilteredArcIter(arcId) {
+    var fw = arcId >= 0,
+        i = fw ? arcId : ~arcId;
+    return _arcIter.init(_ii[i], _nn[i], fw);
+  }
 
   this.getShapeIter = function(ids) {
     return new ShapeIter(this).init(ids);

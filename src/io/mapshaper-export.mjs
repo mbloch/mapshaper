@@ -1,5 +1,5 @@
 import { getLayerBounds, layerHasRaster } from '../dataset/mapshaper-layer-utils';
-import { exportSVG } from '../svg/mapshaper-svg';
+import { exportSVG, prepareDatasetForSVG, renderSVGContent } from '../svg/mapshaper-svg';
 import { exportHTML } from '../html/mapshaper-html-export';
 import { exportMapImage } from '../svg/mapshaper-map-image-export';
 import { exportKML } from '../kml/kml-export';
@@ -25,7 +25,11 @@ import { runningInBrowser } from '../mapshaper-env';
 import { getFileBase, layerNameIsUnsafeFilename } from '../utils/mapshaper-filename-utils';
 import { gzipSync } from '../io/mapshaper-gzip';
 import { getRasterBBox, getRasterGrid, getRasterPreview } from '../rasters/mapshaper-raster-utils';
-import { layerIsFurniture } from '../furniture/mapshaper-furniture-utils';
+import { getFurnitureLayerData, layerIsFurniture } from '../furniture/mapshaper-furniture-utils';
+import { layerIsOverlay } from '../furniture/mapshaper-overlays';
+import { getFrameById } from '../furniture/mapshaper-frame-resolver';
+import { getFrameExportFilename, getMapExportGroups } from '../furniture/mapshaper-frame-export';
+import { getStackedLayers } from '../dataset/mapshaper-layer-stacking';
 
 // @targets - non-empty output from Catalog#findCommandTargets()
 //
@@ -37,8 +41,17 @@ export async function exportTargetLayers(catalog, targets, opts) {
     opts = Object.assign({svg_bbox: bounds.toArray()}, opts);
   }
   var format = getOutputFormat(targets[0].dataset, opts);
-  var datasets;
-  if (format == PACKAGE_EXT && !runningInBrowser()) {
+  var datasets, groups;
+  // The web UI's export dialog composes its own map (gui_frame)
+  if (isRenderedMapFormat(format) && !opts.gui_frame) {
+    groups = getMapExportGroups(catalog, targets);
+  }
+  if (groups && groups.length > 1) {
+    return exportFrameMaps(catalog, groups, format, opts);
+  }
+  if (groups) {
+    datasets = groups[0].datasets;
+  } else if (format == PACKAGE_EXT && !runningInBrowser()) {
     // CLI .msx export captures the whole session: every dataset/layer in the
     // catalog ships in the snapshot, not just the -target subset. Targeted
     // layers come back visible (pinned) and stacked in the order matched by
@@ -52,7 +65,82 @@ export async function exportTargetLayers(catalog, targets, opts) {
       return utils.defaults({layers: target.layers}, target.dataset);
     });
   }
+  if (isRenderedMapFormat(format)) {
+    opts = addOverlayExports(catalog, datasets, opts);
+  }
   return exportDatasets(datasets, opts);
+}
+
+// One map per frame, named after the frame
+async function exportFrameMaps(catalog, groups, format, opts) {
+  var files = [];
+  for (var group of groups) {
+    var groupOpts = Object.assign({}, opts, {
+      file: getFrameExportFilename(group.frame, opts.file, format)
+    });
+    groupOpts = addOverlayExports(catalog, group.datasets, groupOpts);
+    files = files.concat(await exportDatasets(group.datasets, groupOpts));
+  }
+  return files;
+}
+
+// Renders the maps of the overlay frames placed on the map being exported,
+// for the SVG renderer to place on the page (opts.svg_overlays)
+// @datasets the datasets of the map being exported
+function addOverlayExports(catalog, datasets, opts, visited) {
+  var overlays = renderOverlayExports(catalog, datasets, opts, visited || []);
+  return overlays ? Object.assign({}, opts, {svg_overlays: overlays}) : opts;
+}
+
+function renderOverlayExports(catalog, datasets, opts, visited) {
+  var ids = [];
+  var overlays = {};
+  datasets.forEach(function(dataset) {
+    dataset.layers.filter(layerIsOverlay).forEach(function(lyr) {
+      var id = getFurnitureLayerData(lyr).frame;
+      if (!ids.includes(id)) ids.push(id);
+    });
+  });
+  ids.forEach(function(id) {
+    var frame = getFrameById(catalog, id);
+    if (frame && !visited.includes(id)) {
+      overlays[id] = renderOverlayMap(catalog, frame, opts, visited.concat(id));
+    }
+  });
+  return ids.length > 0 ? overlays : null;
+}
+
+// An overlay frame's map, drawn the way an export of the frame would draw it.
+// Rasters are embedded, and element ids are prefixed with the frame's name so
+// they don't collide with the host's.
+function renderOverlayMap(catalog, frame, hostOpts, visited) {
+  var group = getMapExportGroups(catalog, [{layers: [frame.layer], dataset: frame.dataset}])[0];
+  var datasets = group.datasets;
+  var name = frame.layer.name || 'overlay';
+  var opts = {
+    id_prefix: (hostOpts.id_prefix || '') + name + '-',
+    precision: hostOpts.precision,
+    raster_res: hostOpts.raster_res,
+    svg_raster_format: hostOpts.svg_raster_format,
+    jpeg_quality: hostOpts.jpeg_quality,
+    default_linecap: hostOpts.default_linecap
+  };
+  var dataset, o;
+  opts = addOverlayExports(catalog, datasets, opts, visited);
+  if (datasets.length > 1) {
+    dataset = mergeDatasetsForExport(datasets);
+    opts.final = true;
+  } else {
+    dataset = datasets[0];
+  }
+  utils.sortOn(dataset.layers, 'target_id', true); // drawing order, from getMapExportGroups()
+  o = prepareDatasetForSVG(copyDatasetForRenderedExport(dataset), opts);
+  return {
+    name: name,
+    width: o.frame.width,
+    height: o.frame.height,
+    content: renderSVGContent(o.dataset, o.frame, o.dataset.layers, o.opts)
+  };
 }
 
 //
@@ -417,50 +505,25 @@ function sortExportLayers(dataset) {
 //   - every dataset and every layer in the catalog is present, not just the
 //     -target subset, so .msx round-trips the entire working session;
 //   - layers matched by -target are marked `pinned: true` so the GUI shows
-//     them on load (no `&display-all` URL flag needed);
-//   - those targeted layers get menu_order values that follow the linear
-//     -target list (first targeted = bottom of the stack, last = top),
-//     matching the SVG draw order from the same -target line;
-//   - untargeted layers get menu_order values below every targeted layer,
-//     so they sit at the bottom of the GUI panel out of the way (they're
-//     hidden, but if the user pins one later it doesn't pop above the
-//     intended stack).
+//     them on load (no `&display-all` URL flag needed), and other layers
+//     are hidden;
+//   - menu_order is the session's stacking order (see getStackedLayers()),
+//     numbered from 1, so the target list doesn't restack frame members.
 //
 // Intra-dataset array order is preserved so re-importing with `mapshaper
 // foo.msx -target * -o bar.svg` still iterates layers in the order they
 // appeared during the original run.
 function prepareCatalogForCliPackExport(catalog, targets) {
   var targeted = new Set();
+  var stack = getStackedLayers(catalog).map(function(o) { return o.layer; });
   targets.forEach(function(t) {
     t.layers.forEach(function(lyr) { targeted.add(lyr); });
   });
-  var datasets = catalog.getDatasets();
-  // Count untargeted layers globally so we can offset targeted layers'
-  // menu_order to sit above them in a single consecutive range.
-  var untargetedCount = 0;
-  datasets.forEach(function(d) {
-    d.layers.forEach(function(lyr) {
-      if (!targeted.has(lyr)) untargetedCount++;
-    });
-  });
-  var untargetedSeq = 0;
-  return datasets.map(function(dataset) {
+  return catalog.getDatasets().map(function(dataset) {
     var layers = dataset.layers.map(function(lyr) {
-      var isTargeted = targeted.has(lyr);
-      var menuOrder;
-      if (isTargeted && lyr.target_id != null && lyr.target_id >= 0) {
-        // target_id is 0-based across the whole -target list; offset past
-        // the untargeted block so targeted layers occupy [untargetedCount+1
-        // .. untargetedCount+N].
-        menuOrder = untargetedCount + lyr.target_id + 1;
-      } else {
-        // Untargeted (or untargeted-shaped target_id): pack into the bottom
-        // of the global stack, in catalog walk order.
-        menuOrder = ++untargetedSeq;
-      }
       return utils.defaults({
-        pinned: isTargeted,
-        menu_order: menuOrder
+        pinned: targeted.has(lyr),
+        menu_order: stack.indexOf(lyr) + 1
       }, lyr);
     });
     return utils.defaults({layers: layers}, dataset);

@@ -61,6 +61,9 @@ export function MshpMap(gui) {
   // Whether the content's bounds had no width or no height before they were
   // padded in calcFullBounds() -- see mapNeedsResetFromCollapsedBounds().
   var _boundsAreCollapsed = false;
+  // The view shown as of the last update: the ID of the active frame's
+  // dataset, '' for the unframed layers, or null before the first update
+  var _viewKey = null;
   // The model's layers and datasets as of the last update, so that the
   // display data of any that leave the model can be released
   var _modelLayers = [], _modelDatasets = [];
@@ -192,11 +195,12 @@ export function MshpMap(gui) {
   this.getSvgRoot = function() { return _renderer ? _renderer.getSvgRoot() : null; };
   this.getActiveLayer = function() { return _activeLyr; };
   this.getHitControl = function() { return _hit; };
-  this.getCompositionLayers = function() { return getContentLayers().slice(); };
+  // what is drawn: the selected layer counts only when its eye is on
+  this.getCompositionLayers = function() { return getDrawableContentLayers().slice(); };
   this.getPreviewFrameData = getFrameLayerData;
   this.isPreviewView = isPreviewView;
   this.setPreviewMode = function(on, fitPage) {
-    var hasFrame = !!internal.getActiveFrame(model);
+    var hasFrame = !!model.getActiveFrame();
     var next = !!on && hasFrame;
     var changed = gui.state.preview_mode != next;
     gui.state.preview_mode = next;
@@ -241,7 +245,7 @@ export function MshpMap(gui) {
     getContentLayers().concat(_intersectionLyr || []).concat(_compareLyr || []).forEach(function(lyr) {
       projectLayerForDisplay(lyr, newCRS);
     });
-    var frameTarget = internal.getActiveFrame(model);
+    var frameTarget = model.getActiveFrame();
     if (frameTarget) {
       if (!frameTarget.layer.gui) {
         enhanceLayerForDisplay(frameTarget.layer, frameTarget.dataset, getDisplayOptions());
@@ -334,6 +338,7 @@ export function MshpMap(gui) {
     var prevBoundsWereCollapsed = _boundsAreCollapsed;
     var fullBounds;
     var needReset;
+    var prevViewKey;
 
     if (!updated) {
       clearMapState();
@@ -356,17 +361,16 @@ export function MshpMap(gui) {
       }
     }
     // The frame's display copy is built from its coordinates, so it has to go
-    // whenever those can have moved. -update-frame is the obvious case; -proj
+    // whenever those can have moved. -frame and -update-frame are the obvious cases; -proj
     // is the one that was missed, because it rewrites the frame through the
     // same sweep that projects the data, and the display copy left behind
     // still held the pre-projection rectangle. findFrameLayer() rebuilds it on
     // demand and it is one rectangle, so discarding it freely costs nothing.
-    if (e.flags['update-frame'] || arcsChanged) {
-      var frameTarget = internal.getActiveFrame(model);
-      if (frameTarget) {
-        delete frameTarget.layer.gui;
-        delete frameTarget.dataset.gui;
-      }
+    if (e.flags.frame || e.flags['update-frame'] || arcsChanged) {
+      internal.getFrames(model).forEach(function(frame) {
+        delete frame.layer.gui;
+        delete frame.dataset.gui;
+      });
     }
 
     if (e.flags.simplify_method) { // no redraw needed
@@ -398,8 +402,17 @@ export function MshpMap(gui) {
 
     updateVisibleMapLayers();
     fullBounds = calcFullBounds();
+    prevViewKey = _viewKey;
+    _viewKey = getViewKey();
 
     if (prevLyr?.gui.tabular || _activeLyr?.gui.tabular) {
+      needReset = true;
+    } else if (prevLyr && prevLyr != _activeLyr && prevViewKey !== null &&
+        prevViewKey != _viewKey) {
+      // Selecting a layer in another frame, or in the unframed layers, shows
+      // different content, which mapNeedsReset() can't judge from bounds
+      // alone: frames may use units millions of times apart, so the new
+      // content can be in view but tiny.
       needReset = true;
     } else if (_activeLyr && internal.layerIsEmpty(_activeLyr)) {
       needReset = false;
@@ -454,6 +467,7 @@ export function MshpMap(gui) {
 
   function clearMapState() {
     _activeLyr = null;
+    _viewKey = null;
     _visibleLayers = [];
     _intersectionLyr = null;
     _overlayLayers = null;
@@ -529,8 +543,37 @@ export function MshpMap(gui) {
     return _activeLyr && lyr == _activeLyr || false;
   }
 
-  function isVisibleLayer(lyr) {
-    return isActiveLayer(lyr) || lyr.pinned;
+  // @dataset is optional; it is looked up if missing
+  function isVisibleLayer(lyr, dataset) {
+    var o = dataset ? null : model.findLayer(lyr);
+    return layerIsInView(lyr, dataset || o && o.dataset, getMapView());
+  }
+
+  // Which layers the map can show. In a frame view (the selected layer belongs
+  // to a frame that has members), the selected layer and the frame's layers
+  // that are not hidden in it are drawn; hiding in a frame works like
+  // unpinning, and pinning does not apply. In the unframed view, the selected
+  // layer and pinned layers are drawn, but never a layer in a frame.
+  // A frame without members (from before frames had them) composes the
+  // unframed layers, so its view works like the unframed view.
+  function getMapView() {
+    var frame = model.getActiveFrame();
+    var members = frame ? internal.getFrameMemberLayers(model, frame) : [];
+    var framed = new Set(model.getDatasets().filter(function(dataset) {
+      return !!internal.getFrameForDataset(model, dataset);
+    }));
+    return {
+      members: new Set(members.map(function(o) { return o.layer; })),
+      framed: framed
+    };
+  }
+
+  function layerIsInView(lyr, dataset, view) {
+    if (view.members.size > 0) {
+      return view.members.has(lyr) && (isActiveLayer(lyr) || !lyr.frame_hidden);
+    }
+    if (view.framed.has(dataset)) return false;
+    return isActiveLayer(lyr) || !!lyr.pinned;
   }
 
   function isTableView() {
@@ -538,7 +581,7 @@ export function MshpMap(gui) {
   }
 
   function findFrameLayer() {
-    var target = internal.getActiveFrame(model);
+    var target = model.getActiveFrame();
     if (!target) return null;
     if (!target.layer.gui) {
       enhanceLayerForDisplay(target.layer, target.dataset, getDisplayOptions());
@@ -549,6 +592,11 @@ export function MshpMap(gui) {
   // Preview view: symbols are scaled based on display size of frame layer
   function isPreviewView() {
     return !isTableView() && !!gui.state.preview_mode && !!getFrameLayerData();
+  }
+
+  function getViewKey() {
+    var frame = model.getActiveFrame();
+    return frame ? frame.dataset.id : '';
   }
 
   function getFrameLayerData() {
@@ -573,8 +621,9 @@ export function MshpMap(gui) {
 
   function updateVisibleMapLayers() {
     var layers = [];
+    var view = getMapView();
     model.getLayers().forEach(function(o) {
-      if (!isVisibleLayer(o.layer)) return;
+      if (!layerIsInView(o.layer, o.dataset, view)) return;
       if (isActiveLayer(o.layer)) {
         layers.push(_activeLyr);
       } else if (!isTableView()) {
@@ -620,7 +669,7 @@ export function MshpMap(gui) {
   // The active frame's furniture, plus any visible standalone furniture layers
   // (e.g. from -scalebar run before a frame was created)
   function getDrawableFurnitureLayers() {
-    var frame = isPreviewView() ? internal.getActiveFrame(model) : null;
+    var frame = isPreviewView() ? model.getActiveFrame() : null;
     if (!frame) return [];
     var layers = internal.getFrameFurnitureLayers(frame.dataset);
     getVisibleMapLayers().forEach(function(lyr) {
@@ -675,6 +724,11 @@ export function MshpMap(gui) {
   function drawLayers2(action) {
     if (--skipCounts[action] > 0) {
       // skip redraw if more draws are queued up
+      return;
+    }
+    if (action == 'nav' && skipCounts.redraw > 0) {
+      // a 'nav' draw reuses the styles from the last redraw, so it can't run
+      // ahead of a queued redraw (layers that just became visible are unstyled)
       return;
     }
     // sometimes styles need to be regenerated with 'hover' action (when?)

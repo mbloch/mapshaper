@@ -5,6 +5,7 @@ import utils from '../utils/mapshaper-utils';
 import cli from '../cli/mapshaper-cli-utils';
 import { CommandParser } from '../cli/mapshaper-command-parser';
 import require from '../mapshaper-require';
+import { inheritFrameRef } from '../furniture/mapshaper-frame-resolver';
 
 var externalCommands = {};
 
@@ -84,6 +85,7 @@ function integrateOutput(output, input, catalog, opts) {
       catalog.deleteLayer(lyr, input.dataset);
     });
   }
+  inheritFrameRef(output.dataset, [input.dataset]);
   catalog.addDataset(output.dataset);
 }
 

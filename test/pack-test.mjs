@@ -51,11 +51,10 @@ describe('mapshaper-pack.mjs', function () {
 
   });
 
-  it('CLI .msx export pins targeted layers and assigns menu_order from -target order', async function() {
+  it('CLI .msx export pins targeted layers and keeps the session stacking order', async function() {
     // Three layers in a single dataset, all targeted in the order c,a,b.
-    // Layer-array order is preserved (a,b,c, the import order), but
-    // menu_order encodes the -target stack: c=1 (bottom), a=2, b=3 (top).
-    // All three layers should be pinned visible.
+    // The target list only decides which layers are pinned; with no
+    // stacking set in the session, menu_order follows the catalog.
     var cmd = '-i a.json b.json c.json combine-files ' +
               '-o target=c,a,b out.msx';
     var inputs = {
@@ -68,19 +67,18 @@ describe('mapshaper-pack.mjs', function () {
     var layers = obj.datasets[0].layers;
     assert.deepEqual(layers.map(function(l) { return l.name; }), ['a', 'b', 'c']);
     var byName = Object.fromEntries(layers.map(function(l) { return [l.name, l]; }));
-    assert.equal(byName.c.menu_order, 1, 'c was targeted first -> bottom of stack');
-    assert.equal(byName.a.menu_order, 2);
-    assert.equal(byName.b.menu_order, 3, 'b was targeted last -> top of stack');
+    assert.equal(byName.a.menu_order, 1);
+    assert.equal(byName.b.menu_order, 2);
+    assert.equal(byName.c.menu_order, 3);
     layers.forEach(function(lyr) {
       assert.equal(lyr.pinned, true,
         'targeted layer "' + lyr.name + '" should be pinned visible');
     });
   });
 
-  it('CLI .msx export keeps untargeted layers, unpinned, ranked below targeted', async function() {
+  it('CLI .msx export keeps untargeted layers, unpinned, in their stacking position', async function() {
     // The whole catalog ships in the snapshot, not just the -target subset.
-    // Untargeted "extras" come along hidden and parked at the bottom of the
-    // GUI stack so they don't get in the way.
+    // Untargeted "extras" come along hidden.
     var cmd = '-i a.json b.json c.json combine-files ' +
               '-o target=a,b out.msx';
     var inputs = {
@@ -96,16 +94,14 @@ describe('mapshaper-pack.mjs', function () {
     assert.equal(byName.a.pinned, true, 'targeted -> pinned');
     assert.equal(byName.b.pinned, true, 'targeted -> pinned');
     assert.equal(byName.c.pinned, false, 'untargeted -> hidden');
-    // 1 untargeted layer, so targeted layers occupy menu_order 2..3
-    // and untargeted gets menu_order 1.
-    assert.equal(byName.c.menu_order, 1, 'untargeted layer slots below targeted ones');
-    assert.equal(byName.a.menu_order, 2, 'first targeted -> just above untargeted block');
-    assert.equal(byName.b.menu_order, 3, 'last targeted -> top');
+    assert.equal(byName.a.menu_order, 1);
+    assert.equal(byName.b.menu_order, 2);
+    assert.equal(byName.c.menu_order, 3);
   });
 
   it('CLI .msx export preserves untargeted *datasets*, not just untargeted layers', async function() {
     // Multi-dataset case: -target a only -> dataset b should still appear
-    // in the snapshot (hidden), with its layer ranked below targeted a.
+    // in the snapshot (hidden).
     var cmd = '-i a.json -i b.json -o target=a out.msx';
     var inputs = {
       'a.json': [{name: 'a'}],
@@ -118,35 +114,22 @@ describe('mapshaper-pack.mjs', function () {
     var byName = Object.fromEntries(allLayers.map(function(l) { return [l.name, l]; }));
     assert.equal(byName.a.pinned, true);
     assert.equal(byName.b.pinned, false);
-    assert.equal(byName.b.menu_order, 1, 'untargeted layer at bottom');
-    assert.equal(byName.a.menu_order, 2, 'targeted layer above untargeted block');
+    assert.equal(byName.a.menu_order, 1);
+    assert.equal(byName.b.menu_order, 2);
   });
 
-  it('CLI .msx export menu_order follows -target list when it interleaves datasets', async function() {
-    // Regression: snapshot writer groups layers by source dataset, so a
-    // -target list like a1,b1,a2,b2 (alternating across two datasets) ends
-    // up clumped as [[a1,a2],[b1,b2]]. menu_order must still reflect the
-    // *linear* target order so the GUI restacks them as the user asked,
-    // not in dataset-grouping order.
-    var cmd = '-i a1.json a2.json combine-files ' +
-              '-i b1.json b2.json combine-files ' +
-              '-o target=a1,b1,a2,b2 out.msx';
-    var inputs = {
-      'a1.json': [{val: 1}],
-      'a2.json': [{val: 2}],
-      'b1.json': [{val: 3}],
-      'b2.json': [{val: 4}]
-    };
-    var out = await api.applyCommands(cmd, inputs);
-    var obj = await unpackSessionData(out['out.msx']);
-    var pairs = obj.datasets.flatMap(function(d) {
-      return d.layers.map(function(l) { return [l.name, l.menu_order]; });
-    });
-    var byName = Object.fromEntries(pairs);
-    assert.equal(byName.a1, 1, 'a1 -> menu_order 1 (bottom)');
-    assert.equal(byName.b1, 2, 'b1 -> menu_order 2');
-    assert.equal(byName.a2, 3, 'a2 -> menu_order 3');
-    assert.equal(byName.b2, 4, 'b2 -> menu_order 4 (top)');
+  it('CLI .msx export keeps the stacking order set with -frame', async function() {
+    var cmd = '-rectangle bbox=0,0,10,10 name=a -rectangle bbox=2,2,8,8 name=b ' +
+      '-frame target=a,b width=200 name=f1 -frame order-layers=a top -o target=b out.msx';
+    var out = await api.applyCommands(cmd);
+    // (the bundle's unpacker, whose projection library is initialized)
+    var obj = await api.internal.unpackSessionData(out['out.msx']);
+    var byName = Object.fromEntries(obj.datasets.flatMap(function(d) {
+      return d.layers.map(function(l) { return [l.name, l]; });
+    }));
+    assert(byName.a.menu_order > byName.b.menu_order, 'a was moved above b');
+    assert.equal(byName.b.pinned, true);
+    assert.equal(byName.a.pinned, false);
   });
 
   it('CLI .msx export with no explicit target pins every layer (default-target case)', async function() {

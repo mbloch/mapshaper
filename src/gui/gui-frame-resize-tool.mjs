@@ -8,6 +8,7 @@ import { HighlightBox } from './gui-highlight-box';
 import { FloatingToolbar } from './gui-floating-toolbar';
 import { makeFieldTip, makePanelSection } from './gui-panel-controls';
 import { parseFrameAspectRatio, formatFrameAspectRatio } from './gui-frame-aspect';
+import { getNewFrameName } from './gui-layer-utils';
 
 export function FrameResizeTool(gui) {
   var ext = gui.map.getExtent();
@@ -138,7 +139,7 @@ export function FrameResizeTool(gui) {
       gui.interaction.turnOff();
       e.stopPropagation();
     }
-  }, 10);
+  }, null, 10);
 
   function turnOn() {
     if (drawingRequested) {
@@ -169,6 +170,7 @@ export function FrameResizeTool(gui) {
       on = false;
       frameBox.turnOff();
       toolbar.hide();
+      clearResizePreview();
       if (gui.previewMode) gui.previewMode.clearTemporaryReadout();
     }
     if (drawing) {
@@ -214,6 +216,11 @@ export function FrameResizeTool(gui) {
       temporaryFrame,
       getPixelWidth(e.map_bbox) / width
     );
+    gui.dispatchEvent('frame_resize_preview', {frame: temporaryFrame});
+  }
+
+  function clearResizePreview() {
+    gui.dispatchEvent('frame_resize_preview', {frame: null});
   }
 
   function commitFrameDrag(e) {
@@ -221,6 +228,7 @@ export function FrameResizeTool(gui) {
     var displayFrame = gui.map.getPreviewFrameData();
     var width = null;
     var targetScale = null;
+    clearResizePreview();
     if (!target || !displayFrame || !e.map_bbox) return;
     if (e.handle?.type != 'center' && !lockSize) {
       var frame = internal.getFrameLayerData(target.layer, target.dataset.arcs);
@@ -340,7 +348,7 @@ export function FrameResizeTool(gui) {
       showPopupAlert(getNoSourceMessage(), 'Map frame');
       return;
     }
-    var popup = showPopupAlert('', 'Add map frame', {classname: 'frame-create-box'});
+    var popup = showPopupAlert('', 'New map frame', {classname: 'frame-create-box'});
     // label-style-panel is where the flat field look lives -- no bezel, and a
     // focus ring that is a border rather than a glow. frame-create-form turns
     // off the chrome the class also carries, as the properties panel does.
@@ -472,12 +480,18 @@ export function FrameResizeTool(gui) {
     var parts = [
       '-frame',
       'bbox=' + quoteCommandValue(bbox.join(',')),
-      'width=' + quoteCommandValue(drawWidth)
+      'width=' + quoteCommandValue(drawWidth),
+      getFrameNameOption()
     ];
     if (drawAspect) parts.push('aspect-ratio=' + drawAspect);
-    parts.push('name=frame');
-    parts.push('target=' +
-      internal.formatOptionValue(internal.getLayerTargetId(gui.model, source)));
+    // The box is in the source layer's CRS, so the source is listed first;
+    // the other visible layers become members too
+    var members = [source].concat(getCompositionEntries().map(function(o) {
+      return o.layer;
+    }).filter(function(lyr) { return lyr != source; }));
+    parts.push('target=' + internal.formatOptionValue(members.map(function(lyr) {
+      return internal.getLayerTargetId(gui.model, lyr);
+    }).join(',')));
     runCreateCommand(parts.join(' '));
   }
 
@@ -490,12 +504,15 @@ export function FrameResizeTool(gui) {
     var ids = entries.map(function(o) {
       return internal.getLayerTargetId(gui.model, o.layer);
     });
-    var parts = ['-frame', 'width=' + quoteCommandValue(width)];
+    var parts = ['-frame', 'width=' + quoteCommandValue(width), getFrameNameOption()];
     if (aspect) parts.push('aspect-ratio=' + aspect);
     if (margin) parts.push('margin=' + quoteCommandValue(margin));
-    parts.push('name=frame');
     parts.push('target=' + internal.formatOptionValue(ids.join(',')));
     runCreateCommand(parts.join(' '));
+  }
+
+  function getFrameNameOption() {
+    return 'name=' + internal.formatOptionValue(getNewFrameName(gui.model));
   }
 
   function runCreateCommand(cmd) {
@@ -517,7 +534,7 @@ export function FrameResizeTool(gui) {
   }
 
   function getFrameTarget() {
-    return internal.getActiveFrame(gui.model);
+    return gui.model.getActiveFrame();
   }
 
   function getTargetOption(target) {
@@ -527,7 +544,7 @@ export function FrameResizeTool(gui) {
 
   function getSourceLayer() {
     var active = gui.model.getActiveLayer();
-    if (active && active.layer && active.layer.geometry_type &&
+    if (active && active.layer && active.layer.geometry_type && !active.layer.hidden &&
         !internal.isFrameLayer(active.layer, active.dataset.arcs)) {
       return active.layer;
     }

@@ -1,5 +1,7 @@
 import { DomCache } from './gui-dom-cache';
 import {
+  getLayerMenuGroups,
+  getFrameCopyName,
   sortLayersForMenuDisplay,
   formatLayerNameForDisplay,
   setLayerPinning,
@@ -12,6 +14,7 @@ import { describeFeatureContents, formatCount, getAnnotationTool } from './gui-l
 import { GUI } from './gui-lib';
 import { openContextMenu } from './gui-context-menu';
 import { runGuiEditCommand } from './gui-edit-command';
+import { runPlacementCommand, runRemoveOverlayCommand } from './gui-frame-overlays';
 import { showPopupAlert } from './gui-alert';
 import {
   addUndoTransactionToHistory,
@@ -27,7 +30,9 @@ export function LayerControl(gui) {
   var isOpen = false;
   var cache = new DomCache();
   var pinAll = el.findChild('.pin-all'); // button for toggling layer visibility
-  var frameEmpty = el.findChild('.map-frame-empty')
+  var unframedSection = el.findChild('.unframed-section');
+  var frameAddGroup = el.findChild('.map-frame-add-group');
+  el.findChild('.map-frame-add')
     .on('click', openFrameCreateDialog)
     .on('keydown', function(e) {
       if (e.key == 'Enter' || e.key == ' ') {
@@ -35,15 +40,35 @@ export function LayerControl(gui) {
         openFrameCreateDialog();
       }
     });
+  GUI.onClick(unframedSection.findChild('.section-toggle'), function(e) {
+    e.stopPropagation();
+    toggleSection('');
+  });
+  GUI.onClick(unframedSection.findChild('.layer-section-heading'), activateUnframedView);
 
+  // A new frame is made from the layers of the unframed view
   function openFrameCreateDialog() {
+    var unframed = getLayerMenuGroups(model).unframed;
+    if (model.getActiveFrame() && unframed.length > 0) {
+      model.selectLayer(unframed[0].layer, unframed[0].dataset);
+    }
     if (gui.frameTool) gui.frameTool.openCreateDialog();
+  }
+
+  // Sections that have been closed: '' for the Layers section, otherwise by
+  // frame dataset ID. GUI state only.
+  var closedSections = {};
+
+  function toggleSection(key) {
+    closedSections[key] = !closedSections[key];
+    renderLayerList();
   }
 
   // layer repositioning
   var dragTargetId = null;
   var dragging = false;
   var layerOrderSlug;
+  var pendingMove = null; // {drag, drop, above}: a drop in another section
 
   headerBtn.on('click', function() {
     toggle();
@@ -89,18 +114,26 @@ export function LayerControl(gui) {
     if (isOpen) render();
   });
 
-  el.on('mouseup', stopDragging);
+  el.on('mouseup', function() {
+    var move = pendingMove;
+    stopDragging();
+    if (move) commitDrop(move);
+  });
   el.on('mouseleave', stopDragging);
 
-  // init show/hide all button
-  pinAll.on('click', function() {
+  // init show/hide all button, which pins the unframed layers (a frame's
+  // layers are shown or hidden with -frame instead)
+  pinAll.on('click', function(e) {
     var allOn = testAllLayersPinned();
-    model.getLayers().forEach(function(target) {
+    e.stopPropagation();
+    if (unframedSection.hasClass('inactive-section')) return;
+    getLayerMenuGroups(model).unframed.forEach(function(target) {
       setLayerPinning(target.layer, !allOn);
     });
-    El.findAll('.pinnable', el.node()).forEach(function(item) {
+    El.findAll('.layer-list .pinnable', el.node()).forEach(function(item) {
       El(item).classed('pinned', !allOn);
     });
+    updatePinAllButton();
     map.redraw();
   });
 
@@ -109,13 +142,15 @@ export function LayerControl(gui) {
   }
 
   function testAllLayersPinned() {
-    var allPinned = true;
-    model.forEachLayer(function(lyr, dataset) {
-      if (isPinnable(lyr, dataset) && !lyr.pinned) {
-        allPinned = false;
-      }
+    return getLayerMenuGroups(model).unframed.every(function(o) {
+      return !isPinnable(o.layer, o.dataset) || o.layer.pinned;
     });
-    return allPinned;
+  }
+
+  // a frame's dataset ID, or '' for unframed layers
+  function getMenuGroupKey(o) {
+    var frame = internal.getFrameForDataset(model, o.dataset);
+    return frame ? frame.dataset.id : '';
   }
 
   function findLayerById(id) {
@@ -140,18 +175,73 @@ export function LayerControl(gui) {
     clearClass('drag-target');
     clearClass('insert-above');
     clearClass('insert-below');
-    dragTargetId = layerOrderSlug = null;
+    dragTargetId = layerOrderSlug = pendingMove = null;
     if (dragging) {
       renderLayerList(); // in case menu changed...
       dragging = false;
     }
   }
 
-  function insertLayer(dragId, dropId, above) {
-    var dragLyr = findLayerById(dragId);
-    var dropLyr = findLayerById(dropId);
+  // In the Layers section, a drag restacks layers as it goes. Restacking a
+  // frame's layers, or moving a layer into or out of a frame, is part of the
+  // map, so it is a command, run when the mouse button is released.
+  function dragOver(dragId, dropId, above) {
+    var drag = findLayerById(dragId);
+    var drop = findLayerById(dropId);
+    var key;
+    pendingMove = null;
+    if (!drag || !drop || dragId == dropId) return;
+    key = getMenuGroupKey(drag);
+    if (isFrameEntry(drop) || key !== '' || key != getMenuGroupKey(drop)) {
+      pendingMove = {drag: drag, drop: drop, above: above};
+    } else {
+      insertLayer(drag, drop, above);
+    }
+  }
+
+  function isFrameEntry(o) {
+    return internal.isFrameLayer(o.layer, o.dataset.arcs);
+  }
+
+  // Into a frame, or within one: next to the layer it was dropped on, or on
+  // top when dropped on the frame's heading. Out of a frame: the layer goes
+  // where it was dropped among the unframed layers once the command has run.
+  function commitDrop(move) {
+    var drag = move.drag, drop = move.drop;
+    var fromFrame = internal.getFrameForDataset(model, drag.dataset);
+    var toFrame = isFrameEntry(drop) ? drop : internal.getFrameForDataset(model, drop.dataset);
+    var position;
+    if (toFrame) {
+      position = isFrameEntry(drop) ? 'top' :
+        (move.above ? 'above=' : 'below=') + getMemberRef(toFrame, drop.layer);
+      if (fromFrame && fromFrame.dataset == toFrame.dataset) {
+        if (dropLeavesOrder(toFrame, move)) return;
+        runFrameCommand(toFrame, 'order-layers=' + getMemberRef(toFrame, drag.layer) + ' ' + position);
+      } else {
+        runFrameCommand(toFrame, 'add-layers=' + formatLayerList([drag]) + ' ' + position);
+      }
+    } else if (fromFrame) {
+      runFrameCommand(fromFrame, 'remove-layers=' + getMemberRef(fromFrame, drag.layer), function() {
+        insertLayer(drag, drop, move.above);
+        renderLayerList();
+      });
+    }
+  }
+
+  // A drop next to the layer's own position, which would add a command to the
+  // history that changes nothing
+  function dropLeavesOrder(frame, move) {
+    var members = getLayerMenuGroups(model).frames.find(function(g) {
+      return g.frame.dataset == frame.dataset;
+    }).members.map(function(o) { return o.layer; });
+    var i = members.indexOf(move.drag.layer);
+    if (isFrameEntry(move.drop)) return i === 0;
+    // members are listed top first, so "above" is the previous entry
+    return members[move.above ? i + 1 : i - 1] == move.drop.layer;
+  }
+
+  function insertLayer(dragLyr, dropLyr, above) {
     var slug;
-    if (dragId == dropId) return;
     dragLyr.layer.menu_order = dropLyr.layer.menu_order + (above ? 0.5 : -0.5);
     slug = getLayerOrderSlug();
     if (slug != layerOrderSlug) {
@@ -192,19 +282,13 @@ export function LayerControl(gui) {
 
   function renderLayerList() {
     var list = el.findChild('.layer-list');
-    var frameSection = el.findChild('.map-frame-section');
     var frameList = el.findChild('.map-frame-list');
     var uniqIds = {};
     var pinnableCount = 0;
     var layerCount = 0;
-    var frameCount = 0;
+    var groups, activeFrame, viewFrame, hasLegacyFrame;
     list.empty();
     frameList.empty();
-    // A frame entry has been seen outside the frame list, where emptying the
-    // list leaves it on show as a second frame
-    El.findAll('.map-frame-section > .layer-item', el.node()).forEach(function(node) {
-      node.remove();
-    });
     model.forEachLayer(function(lyr, dataset) {
       // Assign a unique id to each layer, so html strings
       // can be used as unique identifiers for caching rendered HTML, and as
@@ -213,9 +297,13 @@ export function LayerControl(gui) {
         lyr.menu_id = utils.getUniqueName();
       }
       uniqIds[lyr.menu_id] = true;
-      if (isPinnable(lyr, dataset)) pinnableCount++;
       layerCount++;
     });
+    groups = getLayerMenuGroups(model);
+    activeFrame = model.getActiveFrame();
+    pinnableCount = groups.unframed.filter(function(o) {
+      return isPinnable(o.layer, o.dataset);
+    }).length;
 
     // Shown for a single layer too: it says whether the next layer made or
     // imported will be drawn over this one or replace it on the map.
@@ -226,49 +314,118 @@ export function LayerControl(gui) {
       updatePinAllButton();
     }
 
-    sortLayersForMenuDisplay(model.getLayers()).forEach(function(o) {
-      var lyr = o.layer;
-      var isFrame = internal.isFrameLayer(lyr, o.dataset.arcs);
-      // furniture is shown as part of its frame's entry
-      if (!isFrame && internal.isFrameComponentLayer(lyr, o.dataset)) return;
-      var opts = {
-        show_source: layerCount < 5,
-        pinnable: pinnableCount > 0 && isPinnable(lyr, o.dataset)
-      };
-      var html, element;
-      html = renderLayer(lyr, o.dataset, opts);
-      if (cache.contains(html)) {
-        element = cache.use(html);
-      } else {
-        element = El('div').html(html).firstChild();
-        initMouseEvents(element, lyr.menu_id, opts.pinnable, !isFrame);
-        cache.add(html, element);
-      }
-      if (isFrame) {
-        frameList.appendChild(element);
-        frameCount++;
-      } else {
-        list.appendChild(element);
-      }
+    // The section whose layers are on the map is the only one whose eye
+    // icons work: the active frame's, or the Layers section in the unframed
+    // view (a frame without members shows the unframed layers)
+    viewFrame = activeFrame && groups.frames.some(function(g) {
+      return g.frame.dataset == activeFrame.dataset && g.members.length > 0;
+    }) ? activeFrame : null;
+    unframedSection
+      .classed('closed', !!closedSections[''])
+      .classed('active-section', !viewFrame)
+      .classed('inactive-section', !!viewFrame);
+
+    groups.unframed.forEach(function(o) {
+      list.appendChild(getLayerEntry(o, {
+        pinnable: isPinnable(o.layer, o.dataset)
+      }));
     });
-    frameSection.classed('hidden', layerCount === 0);
-    frameEmpty.classed('hidden', frameCount > 0);
+
+    // Each frame has a section of its own, after the Layers section
+    groups.frames.forEach(function(g) {
+      var id = g.frame.dataset.id;
+      var inView = !!viewFrame && viewFrame.dataset == g.frame.dataset;
+      var section = El('div').addClass('layer-section frame-section')
+        .classed('closed', !!closedSections[id])
+        .classed('active-section', inView)
+        .classed('inactive-section', !inView)
+        .appendTo(frameList);
+      var members = El('div').addClass('frame-members');
+      section.appendChild(getLayerEntry(g.frame, {
+        frame: true,
+        pinnable: g.members.length > 0,
+        all_visible: g.members.every(function(o) { return !o.layer.frame_hidden; }),
+        active_frame: !!activeFrame && activeFrame.dataset == g.frame.dataset
+      }));
+      section.appendChild(members);
+      g.members.forEach(function(o) {
+        members.appendChild(getLayerEntry(o, {
+          member: true,
+          pinnable: isPinnable(o.layer, o.dataset)
+        }));
+      });
+    });
+
+    // A frame without members composes the unframed layers; it is given
+    // members from its menu rather than by making another frame
+    hasLegacyFrame = groups.frames.length == 1 && groups.frames[0].members.length === 0;
+    unframedSection.findChild('.unframed-empty-note')
+      .classed('hidden', layerCount === 0 || groups.unframed.length > 0);
+    frameAddGroup.classed('hidden', layerCount === 0 || hasLegacyFrame ||
+      groups.frames.length > 0 && groups.unframed.length === 0);
+  }
+
+  // Switch to the unframed view by selecting the top unframed layer
+  function activateUnframedView() {
+    var unframed = getLayerMenuGroups(model).unframed;
+    var active = model.getActiveLayer();
+    if (!unframed.length || unframed.some(function(o) {
+      return active && o.layer == active.layer;
+    })) return;
+    model.selectLayer(unframed[0].layer, unframed[0].dataset);
+  }
+
+  function getLayerEntry(o, opts) {
+    var html = renderLayer(o.layer, o.dataset, opts);
+    var element;
+    if (cache.contains(html)) {
+      element = cache.use(html);
+    } else {
+      element = El('div').html(html).firstChild();
+      // A frame is not in the layer stack, so its entry can't be dragged
+      initMouseEvents(element, o.layer.menu_id, opts.pinnable, !opts.frame);
+      cache.add(html, element);
+    }
+    return element;
   }
 
   cache.cleanup();
 
+  // opts.pinnable: has an eye icon
+  // opts.member: belongs to a frame; the eye icon shows whether the layer is
+  //   hidden in the frame (which works like unpinning), not whether it is pinned
+  // opts.frame: a frame's section heading, with opts.active_frame; its eye icon
+  //   shows whether all the frame's layers are visible (opts.all_visible)
   function renderLayer(lyr, dataset, opts) {
     var classes = 'layer-item';
+    var nameHtml;
     var html;
 
     if (opts.pinnable) classes += ' pinnable';
     if (map.isActiveLayer(lyr)) classes += ' active';
-    if (lyr.hidden) classes += ' invisible';
-    if (lyr.pinned) classes += ' pinned';
+    if (opts.member) {
+      classes += ' frame-member';
+      if (!lyr.frame_hidden) classes += ' pinned';
+      if (map.isActiveLayer(lyr) ? lyr.hidden : lyr.frame_hidden) classes += ' invisible';
+    } else if (opts.frame) {
+      if (opts.all_visible) classes += ' pinned';
+    } else {
+      if (lyr.hidden) classes += ' invisible';
+      if (lyr.pinned) classes += ' pinned';
+    }
+    if (opts.frame) {
+      classes += ' frame-item layer-section-heading';
+      if (opts.active_frame) classes += ' current-frame';
+      nameHtml = '<h3><span class="section-arrow section-toggle" role="button" ' +
+        'aria-label="Open or close this section"></span>' +
+        '<span class="frame-name section-title">' + formatLayerNameForDisplay(lyr.name) + '</span></h3>';
+    } else {
+      nameHtml = '<span class="layer-name colored-text dot-underline">' +
+        formatLayerNameForDisplay(lyr.name) + '</span>';
+    }
 
     html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
-    html += '<div class="layer-row"><div class="layer-name-col">' +
-      '<span class="layer-name colored-text dot-underline">' + formatLayerNameForDisplay(lyr.name) + '</span></div>' +
+    html += '<div class="layer-row"><div class="layer-name-col">' + nameHtml + '</div>' +
       renderContents(lyr, dataset) + '</div>';
     html += '<span class="more-btn layer-btn" role="button" aria-label="More layer options"></span>';
     if (opts.pinnable) {
@@ -290,14 +447,18 @@ export function LayerControl(gui) {
     }
   }
 
-  function initLayerDragging(entry, id) {
+  // A frame's heading can't be dragged, but a layer can be dropped on it,
+  // which puts the layer on top of the frame's layers
+  function initLayerDragging(entry, id, isFrameHeading) {
 
     // support layer drag-drop
     // A drag starts with a press on a layer row, not with a held button
     // entering one, so a press elsewhere (e.g. on the frame) can't reorder layers
-    entry.on('mousedown', function(e) {
-      if (e.button === 0) dragTargetId = id;
-    });
+    if (!isFrameHeading) {
+      entry.on('mousedown', function(e) {
+        if (e.button === 0) dragTargetId = id;
+      });
+    }
     entry.on('mousemove', function(e) {
       var rect, insertionClass;
       // stop dragging when mouse button is released
@@ -315,21 +476,22 @@ export function LayerControl(gui) {
         dragging = true;
       }
       rect = entry.node().getBoundingClientRect();
-      insertionClass = e.pageY - rect.top < rect.height / 2 ? 'insert-above' : 'insert-below';
+      insertionClass = !isFrameHeading && e.pageY - rect.top < rect.height / 2 ?
+        'insert-above' : 'insert-below';
       if (!entry.hasClass(insertionClass)) {
         clearClass('dragging');
         clearClass('insert-above');
         clearClass('insert-below');
         entry.addClass('dragging');
         entry.addClass(insertionClass);
-        insertLayer(dragTargetId, id, insertionClass == 'insert-above');
+        dragOver(dragTargetId, id, insertionClass == 'insert-above');
       }
     });
   }
 
   function initMouseEvents2(entry, id, pinnable, draggable) {
     var moreBtn = entry.findChild('.more-btn');
-    if (draggable) initLayerDragging(entry, id);
+    initLayerDragging(entry, id, !draggable);
 
     function deleteLayer() {
       var target = findLayerById(id);
@@ -360,11 +522,6 @@ export function LayerControl(gui) {
         });
         model.deleteLayer(target.layer, target.dataset);
       }
-    }
-
-    function openScalebarProperties() {
-      var target = findLayerById(id);
-      if (target && gui.scalebarProperties) gui.scalebarProperties.open(target);
     }
 
     // Duplicate a layer by running an equivalent command, so the copy is
@@ -417,6 +574,8 @@ export function LayerControl(gui) {
     }
 
     function resizeFrame() {
+      var target = findLayerById(id);
+      if (target) activateFrame(target);
       if (gui.frameTool) gui.frameTool.open();
     }
 
@@ -470,13 +629,15 @@ export function LayerControl(gui) {
         internal.isFrameLayer(target.layer, target.dataset.arcs);
       if (isFrame) {
         menuEvent.frameProperties = openFrameProperties;
-        menuEvent.scalebarProperties = openScalebarProperties;
-        menuEvent.scalebarLabel =
-          internal.findFrameFurnitureLayer(target.dataset, 'scalebar') ?
-            'scale bar' : 'add scale bar';
+        // after the menu has closed, which would take the focus back
+        menuEvent.renameFrame = function() {
+          setTimeout(function() { editFrameName(entry, target); }, 0);
+        };
         menuEvent.resizeFrame = resizeFrame;
+        menuEvent.frameActions = getFrameMenuActions(target);
         menuEvent.deleteFrame = deleteLayer;
-      } else {
+      } else if (target) {
+        menuEvent.frameActions = getMembershipMenuActions(target);
         menuEvent.deleteLayer = deleteLayer;
         menuEvent.duplicateLayer = duplicateLayer;
         menuEvent.showLayerInfo = showLayerInfo;
@@ -484,11 +645,11 @@ export function LayerControl(gui) {
       if (!isFrame && target && layerCanBeStyled(target.layer)) {
         menuEvent.styleLayer = styleLayer;
         if (getLayerAnnotationTool(target.layer) == 'label') {
-          menuEvent.styleLayerName = 'edit labels';
+          menuEvent.styleLayerName = 'style/edit labels';
         } else if (getLayerAnnotationTool(target.layer) == 'symbols') {
-          menuEvent.styleLayerName = 'edit symbols';
+          menuEvent.styleLayerName = 'style/edit symbols';
         } else if (target.layer.geometry_type == 'point') {
-          menuEvent.styleLayerName = 'edit points';
+          menuEvent.styleLayerName = 'style/edit points';
         }
       }
       menuEvent.contextMenuId = 'layer-' + id;
@@ -502,10 +663,28 @@ export function LayerControl(gui) {
         var target = findLayerById(id);
         var lyr = target.layer;
         var active = map.isActiveLayer(lyr);
+        var frame = internal.getFrameForDataset(model, target.dataset);
         var hidden = false; // active && lyr.hidden || false;
         var pinned = false;
         var unpinned = false;
         e.stopPropagation();
+        if (entry.node().closest('.inactive-section')) return;
+        if (internal.isFrameLayer(lyr, target.dataset.arcs)) {
+          toggleAllFrameLayers(target);
+          return;
+        }
+        if (frame && active) {
+          // as in the Layers section, the selected layer is hidden from the
+          // map for the moment, without changing the frame
+          lyr.hidden = !lyr.hidden;
+          entry.classed('invisible', lyr.hidden);
+          map.redraw();
+          return;
+        }
+        if (frame) {
+          toggleFrameVisibility(target, frame);
+          return;
+        }
         if (active) {
           hidden = !lyr.hidden;
           pinned = !hidden && lyr.unpinned;
@@ -528,14 +707,16 @@ export function LayerControl(gui) {
       });
     }
 
-    // init name editor
-    new ClickText2(entry.findChild('.layer-name'))
-      .on('change', function(e) {
-        var target = findLayerById(id);
-        var str = cleanLayerName(this.value());
-        this.value(formatLayerNameForDisplay(str));
-        renameLayer(target, str);
-      });
+    // init name editor (a frame is renamed from its menu)
+    if (entry.findChild('.layer-name')) {
+      new ClickText2(entry.findChild('.layer-name'))
+        .on('change', function(e) {
+          var target = findLayerById(id);
+          var str = cleanLayerName(this.value());
+          this.value(formatLayerNameForDisplay(str));
+          renameLayer(target, str);
+        });
+    }
 
     moreBtn.on('mousedown', function(e) {
       e.stopPropagation();
@@ -548,17 +729,191 @@ export function LayerControl(gui) {
       }
     });
 
-    // init click-to-select
+    var sectionToggle = entry.findChild('.section-toggle');
+    if (sectionToggle) {
+      sectionToggle.on('mousedown', function(e) {
+        e.stopPropagation();
+      });
+      GUI.onClick(sectionToggle, function(e) {
+        var target = findLayerById(id);
+        e.stopPropagation();
+        if (target) toggleSection(target.dataset.id);
+      });
+    }
+
+    // init click-to-select; clicking a frame's heading shows the frame
     GUI.onClick(entry, function() {
       var target = findLayerById(id);
-      if (target && internal.isFrameLayer(target.layer, target.dataset.arcs) &&
-          gui.frameProperties) {
-        gui.frameProperties.open(target);
+      if (entry.node().querySelector('.frame-name[contenteditable="true"]')) return;
+      if (target && internal.isFrameLayer(target.layer, target.dataset.arcs)) {
+        activateFrame(target);
       } else {
         selectLayer();
       }
     });
 
+  }
+
+  // The name is edited in place in the heading; Enter or leaving the field
+  // renames the frame with -frame, and Escape cancels
+  function editFrameName(entry, frame) {
+    var node = entry.findChild('.frame-name').node();
+    var oldName = frame.layer.name || '';
+    var done = false;
+    node.contentEditable = 'true';
+    node.spellcheck = false;
+    node.classList.add('editing');
+    node.addEventListener('keydown', onKey);
+    node.addEventListener('blur', onBlur);
+    node.focus();
+    GUI.selectElement(node);
+
+    function onKey(e) {
+      e.stopPropagation();
+      if (e.key == 'Enter') {
+        e.preventDefault();
+        finish(true);
+      } else if (e.key == 'Escape') {
+        e.preventDefault();
+        finish(false);
+      }
+    }
+
+    function onBlur() {
+      finish(true);
+    }
+
+    // The heading goes back to the old name either way; a rename redraws the
+    // list with the new one
+    function finish(commit) {
+      var name = cleanLayerName(node.textContent);
+      if (done) return;
+      done = true;
+      node.removeEventListener('keydown', onKey);
+      node.removeEventListener('blur', onBlur);
+      node.contentEditable = 'false';
+      node.classList.remove('editing');
+      window.getSelection().removeAllRanges();
+      node.textContent = formatLayerNameForDisplay(oldName);
+      if (commit && name && name != oldName) {
+        runFrameCommand(frame, 'name=' + internal.formatOptionValue(name));
+      }
+    }
+  }
+
+  // The frame's eye shows all its layers if any is hidden, and otherwise hides
+  // them all. As with the Layers section's eye, the selected layer stays on
+  // the map either way.
+  function toggleAllFrameLayers(frame) {
+    var anyHidden = internal.getFrameMemberLayers(model, frame).some(function(o) {
+      return o.layer.frame_hidden;
+    });
+    runFrameCommand(frame, (anyHidden ? 'show-layers=' : 'hide-layers=') + '*');
+  }
+
+  // Hiding a frame's layer is part of the map, so it is a command, recorded
+  // in the session and undoable, unlike pinning
+  function toggleFrameVisibility(target, frame) {
+    var option = target.layer.frame_hidden ? 'show-layers=' : 'hide-layers=';
+    runFrameCommand(frame, option + getMemberRef(frame, target.layer));
+  }
+
+  // Items for a frame's menu: copy the frame; and for a frame without
+  // members, which composes the visible unframed layers, make those layers
+  // its members
+  function getFrameMenuActions(frame) {
+    var group = getLayerMenuGroups(model).frames.find(function(g) {
+      return g.frame.dataset == frame.dataset;
+    });
+    var visible = getVisibleUnframedLayers();
+    var actions = [{label: 'copy frame', run: function() {
+      runFrameCommand(frame, '+ name=' +
+        internal.formatOptionValue(getFrameCopyName(model, frame.layer.name)));
+    }}];
+    if (group && group.members.length === 0 && visible.length > 0) {
+      actions.push({label: 'move visible layers into frame', run: function() {
+        // listed bottom to top, so that they keep their stacking order
+        runFrameCommand(frame, 'add-layers=' + formatLayerList(visible.reverse()));
+      }});
+    }
+    return actions.concat(getOverlayMenuActions(frame));
+  }
+
+  // Placing this frame on another frame's page as an overlay, or taking it off
+  function getOverlayMenuActions(frame) {
+    var hosts = internal.getOverlayHosts(model, frame);
+    var guests = internal.getHostOverlays(model, frame).map(function(o) { return o.frame.dataset; });
+    var actions = [];
+    internal.getFrames(model).forEach(function(host) {
+      var name = utils.htmlEscape(host.layer.name || '');
+      if (host.dataset == frame.dataset || guests.includes(host.dataset)) return;
+      if (hosts.some(function(o) { return o.dataset == host.dataset; })) {
+        actions.push({label: 'remove overlay from: ' + name, run: function() {
+          runRemoveOverlayCommand(gui, host, frame);
+        }});
+      } else {
+        actions.push({label: 'overlay on frame: ' + name, run: function() {
+          runPlacementCommand(gui, host, frame, null, 'Overlay frame');
+        }});
+      }
+    });
+    return actions;
+  }
+
+  // Items for a layer's menu: move it out of its frame, or into a frame
+  function getMembershipMenuActions(target) {
+    var frame = internal.getFrameForDataset(model, target.dataset);
+    if (frame) {
+      return [{label: 'move out of frame', run: function() {
+        runFrameCommand(frame, 'remove-layers=' + getMemberRef(frame, target.layer));
+      }}];
+    }
+    return internal.getFrames(model).map(function(f) {
+      return {
+        label: 'move into frame: ' + utils.htmlEscape(f.layer.name || ''),
+        run: function() {
+          runFrameCommand(f, 'add-layers=' + formatLayerList([target]));
+        }
+      };
+    });
+  }
+
+  // Unframed layers on show, top of the stack first
+  function getVisibleUnframedLayers() {
+    return getLayerMenuGroups(model).unframed.filter(function(o) {
+      var active = map.isActiveLayer(o.layer);
+      return isPinnable(o.layer, o.dataset) &&
+        (active ? !o.layer.hidden : !!o.layer.pinned);
+    });
+  }
+
+  function getMemberRef(frame, lyr) {
+    return internal.formatOptionValue(internal.getFrameMemberRef(model, frame, lyr));
+  }
+
+  function formatLayerList(targets) {
+    return internal.formatOptionValue(targets.map(function(o) {
+      return internal.getLayerTargetId(model, o.layer);
+    }).join(','));
+  }
+
+  function runFrameCommand(frame, options, onSuccess) {
+    var cmd = '-frame target=' +
+      internal.formatOptionValue(internal.getLayerTargetId(model, frame.layer)) + ' ' + options;
+    runGuiEditCommand(gui, cmd, {title: 'Map frame', onSuccess: onSuccess});
+  }
+
+  // The active frame follows the selected layer, so a frame is shown by
+  // selecting one of its layers: the top one that is not hidden
+  function activateFrame(frame) {
+    var active = model.getActiveFrame();
+    var members, pick;
+    if (active && active.dataset == frame.dataset) return;
+    members = getLayerMenuGroups(model).frames.find(function(g) {
+      return g.frame.dataset == frame.dataset;
+    }).members;
+    pick = members.find(function(o) { return !o.layer.frame_hidden; }) || members[0];
+    if (pick) model.selectLayer(pick.layer, pick.dataset);
   }
 
   // Returns {text, title}; title is a tooltip, or null

@@ -5,6 +5,7 @@ import { internal } from './gui-core';
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
 import { showPopupAlert } from './gui-alert';
+import { getNewFrameName } from './gui-layer-utils';
 
 // Controls the shift-drag box editing tool
 //
@@ -57,17 +58,19 @@ export function BoxTool(gui, ext, nav) {
     runCommand(cmd);
   });
 
-  new SimpleButton(popup.findChild('.frame-btn')).on('click', function() {
+  var frameBtn = popup.findChild('.frame-btn');
+  new SimpleButton(frameBtn).on('click', function() {
     openAddFramePopup(gui, box.getDataCoords());
   });
 
+  // Only a box (or its options) on the map takes the key, so that Escape
+  // still reaches other tools' handlers
   gui.keyboard.on('keydown', function(e) {
-    if (e.keyName == 'esc') {
+    if (e.keyName == 'esc' && (box.getDisplayCoords() || popup.visible())) {
       reset();
       e.stopPropagation();
     }
-
-  }, 10);
+  }, null, 10);
 
   gui.addMode('box_tool', turnOn, turnOff);
 
@@ -170,6 +173,20 @@ export function BoxTool(gui, ext, nav) {
     setButtonVisible(selectBtn, !raster);
     setButtonVisible(clipBtn, true);
     setButtonVisible(eraseBtn, !raster);
+    // a frame is made from the layers of the unframed view
+    setButtonVisible(frameBtn, !gui.model.getActiveFrame());
+  }
+
+  // The box is in the selected layer's CRS, so that layer is listed first; the
+  // other visible layers become members too
+  function getFrameTargetOption() {
+    var active = gui.model.getActiveLayer().layer;
+    var layers = [active].concat(gui.map.getCompositionLayers().filter(function(lyr) {
+      return lyr != active;
+    }));
+    return 'target=' + internal.formatOptionValue(layers.map(function(lyr) {
+      return internal.getLayerTargetId(gui.model, lyr);
+    }).join(','));
   }
 
   function activeLayerIsRaster() {
@@ -202,7 +219,8 @@ export function BoxTool(gui, ext, nav) {
         input.node().value = '';
         return;
       }
-      var cmd = `-frame name=frame bbox='${bbox.join(',')}' width='${widthStr}'`;
+      var name = internal.formatOptionValue(getNewFrameName(gui.model));
+      var cmd = `-frame bbox='${bbox.join(',')}' width='${widthStr}' name=${name} ${getFrameTargetOption()}`;
       runCommand(cmd, function() {
         if (gui.frameTool) gui.frameTool.open();
       });

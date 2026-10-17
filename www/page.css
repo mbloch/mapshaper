@@ -410,6 +410,47 @@ body.map-view {
 	white-space: nowrap;
 }
 
+.info-box .export-layer-list input[type="checkbox"] {
+	margin-right: 8px;
+}
+
+.export-group-label {
+	color: #777;
+}
+
+.export-frame-row {
+	white-space: nowrap;
+}
+
+.export-frame-toggle {
+	display: inline-block;
+	width: 12px;
+	margin-left: 4px;
+	cursor: pointer;
+	color: #777;
+}
+
+.export-frame-toggle::before {
+	content: "\25BE";
+}
+
+.export-frame-group.closed .export-frame-toggle::before {
+	content: "\25B8";
+}
+
+.export-frame-count {
+	margin-left: 8px;
+	color: #777;
+}
+
+.export-frame-members {
+	padding-left: 18px;
+}
+
+.export-frame-group.closed .export-frame-members {
+	display: none;
+}
+
 .gpkg-layer-list .gpkg-layer-item {
 	display: block;
 	white-space: nowrap;
@@ -658,7 +699,8 @@ textarea:focus {
 	padding-left: 12px;
 }
 
-.contextmenu {
+.contextmenu,
+.draw-menu {
 	position: absolute;
 	border-radius: 6px;
 	border: 1px solid #d5d5d5;
@@ -1157,6 +1199,10 @@ body.sidebar-open .sidebar-panels {
 	overflow-wrap: anywhere;
 }
 
+.console-info {
+	font-size: 13px;
+}
+
 .console-help-line,
 .console-info-title,
 .console-info-subtitle {
@@ -1347,13 +1393,13 @@ body.simplify .layer-control-btn {
 	font-size: 13px;
 }
 
-/* "Add files" and "Draw: labels · points · ..." are two groups, and a narrow
-   sidebar wraps between them, so the second line starts with "Draw:". The dot
+/* "Add files", "Add labels" and "Draw" are separate groups, and a narrow
+   sidebar wraps between them, never inside one. The dot
    between them is each group's ::before, hung to the group's left: a group that
    starts a line has its dot pushed past the left edge of the row and clipped,
    so no line ends or begins with a stray dot. */
 .layer-add-links {
-	margin: 4px 0 8px 0;
+	margin: 0 0 12px 0;
 	font-size: 13px;
 	line-height: 1.2;
 	overflow: hidden;
@@ -1394,14 +1440,35 @@ body.simplify .layer-control-btn {
 	text-decoration: underline;
 }
 
-.layer-menu-link-separator {
-	color: #777;
-	font-weight: bold;
+.draw-menu-arrow {
+	display: inline-block;
+	margin-left: 4px;
+	vertical-align: 1px;
+	border-left: 3.5px solid transparent;
+	border-right: 3.5px solid transparent;
+	border-top: 4px solid currentColor;
 }
 
-/* "Draw:", which labels the links that follow it rather than being one */
-.new-layer-label {
-	color: #777;
+.draw-menu-btn.open {
+	text-decoration: underline;
+}
+
+/* "+ New frame", below the frame sections and a rule like theirs: a new frame
+   is added at the end of the list */
+.map-frame-add-group {
+	border-top: 1px solid #ddd;
+	margin: 8px 0 6px 0;
+	padding-top: 7px;
+	line-height: 1.2;
+	font-size: 13px;
+}
+
+.layer-add-links .layer-menu-link {
+	font-size: 12px;
+}
+
+.draw-menu-item {
+	font-size: 12px;
 }
 
 .layer-menu .layer-list {
@@ -1416,35 +1483,115 @@ body.simplify .layer-control-btn {
 	width: 100%;
 }
 
-.layer-menu .layer-list .layer-item {
+.layer-menu .layer-list .layer-item,
+.layer-menu .frame-members .layer-item {
 	cursor: pointer;
-	padding: 6px 14px;
+	padding: 3px 14px;
 }
 
-.map-frame-section {
+/* The Layers section, then one section per frame, each below a rule */
+.frame-section {
 	border-top: 1px solid #ddd;
 	margin-top: 8px;
 	padding-top: 7px;
 }
 
-.map-frame-heading h3 {
-	margin: 0 0 1px 0;
+.layer-section.closed > .layer-list,
+.layer-section.closed > .frame-members,
+.layer-section.closed > .unframed-empty-note {
+	display: none;
 }
 
-.map-frame-list .layer-item {
+.unframed-empty-note {
+	color: #777;
+	font-size: 13px;
+	padding: 2px 0 6px;
+}
+
+/* The Layers heading and each frame heading share the same type and height.
+   The bottom padding also keeps the first row in a frame on the same vertical
+   rhythm as the rows that follow it. */
+.layer-menu .layer-section-heading {
+	padding-bottom: 3px;
+}
+
+.layer-menu .layer-section.closed > .layer-section-heading {
+	padding-bottom: 0;
+}
+
+.layer-menu .layer-section-heading h3 {
+	display: inline;
+	font-size: 14px;
+	line-height: 17px;
+	margin: 0;
+}
+
+/* A frame's size and menu sit on the same line as its name */
+.layer-menu .frame-item {
 	cursor: pointer;
 }
 
-/* frame rows have no vertical padding, so the 5px offset for layer rows,
-   which have 6px, puts the button below the text */
-.map-frame-list .layer-item .layer-btn {
-	top: -1px;
+.layer-menu .frame-item .layer-row {
+	align-items: baseline;
+	line-height: 17px;
 }
 
-.map-frame-empty {
+.layer-menu .frame-item .layer-btn {
+	top: 0;
+}
+
+.frame-members .layer-item:hover:not(.active):not(.dragging) {
+	background-color: #f7f7f7;
+}
+
+/* The chevron of the style panels' sections, pointing right when closed and
+   down when open */
+.layer-menu .section-arrow {
+	position: relative;
+	display: inline-block;
+	box-sizing: border-box;
+	width: 6px;
+	height: 6px;
+	margin-left: 1px;
+	margin-right: 9px;
+	vertical-align: middle;
+	border-right: 1.5px solid #222;
+	border-bottom: 1.5px solid #222;
+	transform: translateY(-3px) rotate(45deg);
+	transition: transform 0.12s;
 	cursor: pointer;
-	font-size: 12px;
-	padding: 4px 0;
+}
+
+/* a wider target than the chevron itself */
+.layer-menu .section-arrow::before {
+	content: "";
+	position: absolute;
+	inset: -6px;
+}
+
+.layer-section.closed .section-arrow {
+	transform: translate(-1px, -2px) rotate(-45deg);
+}
+
+.layer-menu .section-title {
+	cursor: pointer;
+}
+
+.frame-name.editing {
+	outline: 1px solid #aaa;
+	padding: 0 2px;
+	cursor: text;
+}
+
+/* Only the section on the map has working eye icons; the others show which
+   layers are visible in pale grey */
+.inactive-section img.eye-btn {
+	opacity: 0 !important;
+	cursor: default;
+}
+
+.inactive-section .pinnable.pinned img.black-eye {
+	opacity: 0.15 !important;
 }
 
 .pin-all img,
@@ -1565,7 +1712,7 @@ img.eye-btn {
 	flex: none;
 	width: 9em;
 	white-space: normal;
-	font-size: 12.5px;
+	font-size: 12px;
 	color: #666;
 }
 
@@ -1594,6 +1741,7 @@ img.eye-btn {
 	min-height: 14px; /* For FF when content is empty */
 	min-width: 2px;
 	outline: none;
+	font-size: 13px;
 }
 
 .layer-item .row.layer-problems {
@@ -4452,7 +4600,8 @@ body.dragging-color-picker * {
 }
 
 .nav-menu-item,
-.contextmenu-item {
+.contextmenu-item,
+.draw-menu-item {
 	background-color: #fff;
 	white-space: nowrap;
 	/* padding: 3px 10px 4px 10px; */
@@ -4497,6 +4646,7 @@ body.dragging-color-picker * {
 
 .nav-menu-item:hover,
 .contextmenu-item:hover,
+.draw-menu-item:hover,
 .nav-btn:hover .nav-sub-menu:not(.active):not(:hover) .nav-menu-item[data-name=info] {
 	color: black;
 	background: var(--lt-theme-col);
@@ -4793,6 +4943,15 @@ body.dragging-color-picker * {
 	user-select: none;
 }
 
+.floating-toolbar-label {
+	font-size: 12px;
+	font-weight: 600;
+	color: #333;
+	white-space: nowrap;
+	user-select: none;
+	padding: 0 4px;
+}
+
 /* Both modes stay visible inside a single outlined well, so the lit one reads
    as the current state rather than as the result of clicking. */
 .floating-toolbar-segments {
@@ -4889,6 +5048,44 @@ body.dragging-color-picker * {
 
 .zoom-box.hittable .handle {
 	pointer-events: all;
+}
+
+/* Overlay frames on the previewed page; below the frame editor's handles */
+.frame-overlay-box {
+	position: absolute;
+	box-sizing: border-box;
+	z-index: 14;
+	border: 1px dashed #555;
+	background: rgba(255, 255, 255, 0.55);
+	cursor: move;
+	overflow: hidden;
+}
+
+.frame-overlay-box:hover,
+.frame-overlay-box.dragging {
+	border-style: solid;
+	background: rgba(255, 255, 255, 0.75);
+}
+
+.overlay-corner-control .floating-toolbar-btn.text-btn {
+	font-size: 16px;
+	/* min-width: 24px; */
+	justify-content: center;
+}
+
+/* the overlay whose placement the overlay toolbar is showing */
+.frame-overlay-box.selected {
+	border: 1px solid var(--colored-text);
+}
+
+.frame-overlay-box-label {
+	display: block;
+	padding: 3px 5px;
+	font-size: 11px;
+	color: #333;
+	white-space: nowrap;
+	pointer-events: none;
+	user-select: none;
 }
 
 /* Simplification control ------------ */

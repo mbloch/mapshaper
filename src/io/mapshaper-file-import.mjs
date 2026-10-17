@@ -121,7 +121,7 @@ function classifyInlineData(str) {
 async function importMshpFile(file, catalog, opts) {
   var buf = cli.readFile(file, null, opts.input);
   var obj = await unpackSessionData(buf);
-  obj.datasets.forEach(catalog.addDataset, catalog);
+  catalog.addDatasets(obj.datasets);
   return obj.target;
 }
 

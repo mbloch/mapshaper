@@ -13,7 +13,8 @@ import { getSymbolBoundingRadius } from '../symbols/mapshaper-symbol-utils';
 import { getIconSymbol } from '../symbols/mapshaper-icon-symbols';
 import { featureHasIcon } from '../svg/svg-symbols';
 import { getIconBoundingRadius } from '../svg/svg-symbol-bounds';
-import { findFrameLayerInDataset, getActiveFrame, getFrameLayerData } from '../furniture/mapshaper-frame-utils';
+import { findFrameLayerInDataset, getFrameLayerData } from '../furniture/mapshaper-frame-utils';
+import { resolveFrameForDataset } from '../furniture/mapshaper-frame-resolver';
 import { noteLayerWillChange, markLayerChanged } from '../undo/mapshaper-undo-tracking';
 import {
   resolveSymbolCollisions,
@@ -306,9 +307,8 @@ function findRepelFrame(dataset, catalog) {
   var lyr = findFrameLayerInDataset(dataset);
   var target;
   if (lyr) return getFrameLayerData(lyr, dataset.arcs);
-  // -frame adds the frame it creates to the catalog as a separate dataset, so a
-  // catalog-wide search is needed to find it (-scalebar does the same).
-  target = catalog ? getActiveFrame(catalog) : null;
+  // -frame adds the frame it creates to the catalog as a separate dataset
+  target = catalog ? resolveFrameForDataset(catalog, dataset) : null;
   return target ? getFrameLayerData(target.layer, target.dataset.arcs) : null;
 }
 

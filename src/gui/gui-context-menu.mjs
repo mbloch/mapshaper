@@ -172,28 +172,30 @@ export function ContextMenu(parentArg) {
     if (e.frameProperties) {
       addMenuItem('frame properties', e.frameProperties, '');
     }
-    if (e.scalebarProperties) {
-      addMenuItem(e.scalebarLabel || 'scale bar', e.scalebarProperties, '');
+    if (e.renameFrame) {
+      addMenuItem('rename frame', e.renameFrame, '');
     }
     if (e.resizeFrame) {
       addMenuItem('resize frame', e.resizeFrame, '');
     }
+    if (e.styleLayer) {
+     addMenuItem(e.styleLayerName || 'style/edit layer', e.styleLayer, '');
+    }
+    if (e.showLayerInfo) {
+     addMenuItem('show info', e.showLayerInfo, '');
+    }
+    if (e.duplicateLayer) {
+     addMenuItem('duplicate layer', e.duplicateLayer, '');
+    }
+    // [{label, run}]: copying a frame, moving layers into or out of frames
+    (e.frameActions || []).forEach(function(action) {
+      addMenuItem(action.label, action.run, '');
+    });
     if (e.deleteFrame) {
       addMenuItem('delete frame', e.deleteFrame, '');
     }
     if (e.deleteLayer) {
      addMenuItem('delete layer', e.deleteLayer, '');
-    }
-    if (e.duplicateLayer) {
-     addMenuItem('duplicate layer', e.duplicateLayer, '');
-    }
-    if (e.styleLayer) {
-     // named by the caller when the layer opens something other than a style
-     // panel -- a label layer opens the label tool, which does more than style
-     addMenuItem(e.styleLayerName || 'style layer', e.styleLayer, '');
-    }
-    if (e.showLayerInfo) {
-     addMenuItem('show info', e.showLayerInfo, '');
     }
 
     if (lyr && lyr.gui.geographic) {

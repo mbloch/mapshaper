@@ -14,9 +14,10 @@ export function expandCommandTargets(targets) {
 
 
 
-export function findCommandTargets(layers, pattern, type) {
-  var targets = [];
-  var matches = findMatchingLayers(layers, pattern, true);
+// @getQualifiedLayers (optional) function for resolving qualified patterns
+//   (see findMatchingLayers())
+export function findCommandTargets(layers, pattern, type, getQualifiedLayers) {
+  var matches = findMatchingLayers(layers, pattern, true, getQualifiedLayers);
   if (type) {
     matches = matches.filter(function(o) {return o.layer.geometry_type == type;});
   }
@@ -46,17 +47,31 @@ export function groupLayersByDataset(arr) {
 // layers: array of {layer: <>, dataset: <>} objects
 // pattern: is a layer identifier or a comma-sep. list of identifiers.
 // An identifier is a literal name, a pattern containing "*" wildcard or
-// a 1-based index (1..n)
-export function findMatchingLayers(layers, pattern, throws) {
+// a 1-based index (1..n). A qualified identifier, like frame1:roads, is
+// matched among the layers of a group, here the members of a map frame:
+// getQualifiedLayers('frame1') returns that group's layers, or null if there
+// is no such group, in which case the identifier is read as a plain name.
+export function findMatchingLayers(layers, pattern, throws, getQualifiedLayers) {
   var matchedLayers = [];
   var unmatchedIds = [];
   var index = {};
   pattern.split(',').forEach(function(subpattern, i) {
-    var test = getLayerMatch(subpattern);
+    var qualified = getQualifiedLayers ? parseQualifiedPattern(subpattern, getQualifiedLayers) : null;
+    var test = getLayerMatch(qualified ? qualified.pattern : subpattern);
     var matched = false;
     layers.forEach(function(o, layerId) {
+      var groupId;
       // if (matchedLayers.indexOf(lyr) > -1) return; // performance bottleneck with 1000s of layers
-      if (layerId in index) {
+      if (qualified) {
+        groupId = qualified.layers.indexOf(o.layer);
+        if (groupId > -1 && test(o.layer, groupId + 1)) {
+          if (!(layerId in index)) {
+            matchedLayers.push(o);
+            index[layerId] = true;
+          }
+          matched = true;
+        }
+      } else if (layerId in index) {
         matched = true;
       } else if (test(o.layer, layerId + 1)) {  // layers are 1-indexed
         matchedLayers.push(o);
@@ -74,6 +89,15 @@ export function findMatchingLayers(layers, pattern, throws) {
   return matchedLayers;
 }
 
+function parseQualifiedPattern(subpattern, getQualifiedLayers) {
+  var i = subpattern.indexOf(':');
+  var layers = i > 0 ? getQualifiedLayers(subpattern.slice(0, i)) : null;
+  return layers ? {
+    layers: layers.map(function(o) { return o.layer; }),
+    pattern: subpattern.slice(i + 1)
+  } : null;
+}
+
 export function getLayerMatch(pattern) {
   var isIndex = utils.isInteger(Number(pattern));
   var nameRxp = isIndex ? null : utils.wildcardToRegExp(pattern);
@@ -89,15 +113,19 @@ export function countTargetLayers(targets) {
 }
 
 // get an identifier for a layer that can be used in a target= option
-// (returns name if layer has a unique name, or a numerical id)
+// (returns name if layer has a unique name, a qualified name like frame1:roads
+// if its name is unique in its frame, or else a numerical id, which can
+// change as layers are added and moved)
 export function getLayerTargetId(catalog, lyr) {
   var nameCount = 0,
-      name = lyr.name,
-      id;
+      id, qualified;
   catalog.getLayers().forEach(function(o, i) {
     if (lyr.name && o.layer.name == lyr.name) nameCount++;
     if (lyr == o.layer) id = String(i + 1);
   });
   if (!id) error('Layer not found');
-  return nameCount == 1 ? lyr.name : id;
+  if (nameCount == 1) return lyr.name;
+  qualified = nameCount > 1 && catalog.getQualifiedLayerName ?
+    catalog.getQualifiedLayerName(lyr) : null;
+  return qualified || id;
 }
