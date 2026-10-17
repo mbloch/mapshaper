@@ -10454,6 +10454,13 @@
     return !!str && str == crsToNormalizedProj4(b);
   }
 
+  // True only if both CRSs can be compared and they differ
+  function crsTransformsDiffer(a, b) {
+    var strA = crsToNormalizedProj4(a);
+    var strB = crsToNormalizedProj4(b);
+    return !!strA && !!strB && strA != strB;
+  }
+
   function crsToNormalizedProj4(P) {
     var normalizer = mproj$1.internal && mproj$1.internal.get_normalized_proj_defn;
     return P && normalizer ? normalizer(P) : null;
@@ -10619,6 +10626,18 @@
     }, null);
   }
 
+  // Overlay sources (-clip, -erase, -join, ...) are stricter than merging:
+  // projected data must also be in the same projection. (Lat-long data in
+  // different datums can still be combined.)
+  function requireOverlaySourceCRS(targetDataset, sourceDataset) {
+    var P = getDatasetCRS(targetDataset);
+    var Q = getDatasetCRS(sourceDataset);
+    requireDatasetsHaveCompatibleCRS([targetDataset, sourceDataset]);
+    if (P && Q && !isLatLngCRS(P) && !isLatLngCRS(Q) && crsTransformsDiffer(P, Q)) {
+      stop$1("Unable to combine datasets that use different projections");
+    }
+  }
+
   // Assumes conformal projections; consider returning average of vertical and
   // horizontal scale factors.
   // x, y: a point location in projected coordinates
@@ -10778,6 +10797,7 @@
     crsToPrj: crsToPrj,
     crsToProj4: crsToProj4,
     crsToWkt2: crsToWkt2,
+    crsTransformsDiffer: crsTransformsDiffer,
     findProjLibs: findProjLibs,
     getCrsInfo: getCrsInfo,
     getDatasetCRS: getDatasetCRS,
@@ -10804,6 +10824,7 @@
     printProjections: printProjections,
     projectPoint: projectPoint,
     requireDatasetsHaveCompatibleCRS: requireDatasetsHaveCompatibleCRS,
+    requireOverlaySourceCRS: requireOverlaySourceCRS,
     requireProjectedDataset: requireProjectedDataset,
     setDatasetCrsInfo: setDatasetCrsInfo,
     setProjectionLoader: setProjectionLoader,
@@ -11422,6 +11443,8 @@
       var goodPoints = 0,
           goodArcs = 0,
           copyElements = utils.copyElements,
+          zz = _zz, // initXYData() clears simplification data
+          zlimit = _zlimit,
           k, arcLen;
       for (var i=0, n=map.length; i<n; i++) {
         k = map[i];
@@ -11429,7 +11452,7 @@
         if (k > -1) {
           copyElements(_xx, _ii[i], _xx, goodPoints, arcLen);
           copyElements(_yy, _ii[i], _yy, goodPoints, arcLen);
-          if (_zz) copyElements(_zz, _ii[i], _zz, goodPoints, arcLen);
+          if (zz) copyElements(zz, _ii[i], zz, goodPoints, arcLen);
           _nn[k] = arcLen;
           goodPoints += arcLen;
           goodArcs++;
@@ -11438,7 +11461,10 @@
 
       initXYData(_nn.subarray(0, goodArcs), _xx.subarray(0, goodPoints),
           _yy.subarray(0, goodPoints));
-      if (_zz) initZData(_zz.subarray(0, goodPoints));
+      if (zz) {
+        initZData(zz.subarray(0, goodPoints));
+        _zlimit = zlimit;
+      }
     }
 
     this.dedupCoords = function() {
@@ -11506,13 +11532,16 @@
       return _xx[i] == _xx[j] && _yy[i] == _yy[j];
     };
 
-    this.arcIsDegenerate = function(arcId) {
-      return this.arcHasZeroLength(arcId) || this.arcIsSpike(arcId) || this.arcIsSpike_v1(arcId);
+    // @unfiltered test all of the arc's vertices, not just the ones that are
+    //   retained at the current simplification level
+    this.arcIsDegenerate = function(arcId, unfiltered) {
+      return this.arcHasZeroLength(arcId, unfiltered) || this.arcIsSpike(arcId) ||
+        this.arcIsSpike_v1(arcId, unfiltered);
     };
 
     // only finds two-segment spikes
-    this.arcIsSpike_v1 = function(arcId) {
-      var iter = this.getArcIter(arcId);
+    this.arcIsSpike_v1 = function(arcId, unfiltered) {
+      var iter = unfiltered ? getUnfilteredArcIter(arcId) : this.getArcIter(arcId);
       var x0, y0;
       if (iter.hasNext()) {
         x0 = iter.x;
@@ -11544,8 +11573,8 @@
     };
 
 
-    this.arcHasZeroLength = function(arcId) {
-      var iter = this.getArcIter(arcId);
+    this.arcHasZeroLength = function(arcId, unfiltered) {
+      var iter = unfiltered ? getUnfilteredArcIter(arcId) : this.getArcIter(arcId);
       var i = 0,
           x, y;
       while (iter.hasNext()) {
@@ -11572,6 +11601,12 @@
       }
       return iter.init(_ii[i], _nn[i], fw, _zlimit);
     };
+
+    function getUnfilteredArcIter(arcId) {
+      var fw = arcId >= 0,
+          i = fw ? arcId : ~arcId;
+      return _arcIter.init(_ii[i], _nn[i], fw);
+    }
 
     this.getShapeIter = function(ids) {
       return new ShapeIter(this).init(ids);
@@ -11835,21 +11870,26 @@
         chainIds = [],
         arcSrcXX = [],
         arcSrcYY = [],
+        arcSrcZZ = [],
         arcStart = [],
         arcEnd = [],
-        arcPoints = 0;
+        arcPoints = 0,
+        hasZ = false;
 
     initializeArray(hashTable, -1);
 
     // Register an arc whose coordinates are `srcXX[start..end]`, `srcYY[start..end]`
     // (inclusive). Returns the new arc id.
-    this.addArc = function(srcXX, srcYY, start, end) {
+    // @srcZZ (optional) simplification thresholds, indexed like srcXX
+    this.addArc = function(srcXX, srcYY, start, end, srcZZ) {
       var arcId = arcSrcXX.length,
           key = hash(srcXX[end], srcYY[end]);
       chainIds.push(hashTable[key]);
       hashTable[key] = arcId;
       arcSrcXX.push(srcXX);
       arcSrcYY.push(srcYY);
+      arcSrcZZ.push(srcZZ || null);
+      if (srcZZ) hasZ = true;
       arcStart.push(start);
       arcEnd.push(end);
       arcPoints += end - start + 1;
@@ -11892,13 +11932,17 @@
       return null;
     }
 
+    // Returns {xx, yy, nn}, plus zz if any arc was added with thresholds. Arc
+    // endpoints get an infinite threshold, so simplification never removes a
+    // node; vertices of arcs added without thresholds are never removed either.
     this.getVertexData = function() {
       var arcCount = arcSrcXX.length,
           destXX = new Float64Array(arcPoints),
           destYY = new Float64Array(arcPoints),
+          destZZ = hasZ ? new Float64Array(arcPoints) : null,
           nn = new Uint32Array(arcCount),
           copied = 0,
-          sx, sy, s, e, len, i;
+          sx, sy, sz, s, e, len, i;
       for (i = 0; i < arcCount; i++) {
         sx = arcSrcXX[i]; sy = arcSrcYY[i];
         s = arcStart[i];  e = arcEnd[i];
@@ -11912,12 +11956,21 @@
             destYY[copied + k] = sy[s + k];
           }
         }
+        if (destZZ) {
+          sz = arcSrcZZ[i];
+          for (var j = 0; j < len; j++) {
+            destZZ[copied + j] = sz ? sz[s + j] : Infinity;
+          }
+          destZZ[copied] = Infinity;
+          destZZ[copied + len - 1] = Infinity;
+        }
         nn[i] = len;
         copied += len;
       }
       return {
         xx: destXX,
         yy: destYY,
+        zz: destZZ,
         nn: nn
       };
     };
@@ -12325,16 +12378,24 @@
 
   // Converts all polygon and polyline paths in a dataset to a topological format
   // (in-place)
-  function buildTopology(dataset) {
+  // opts.preserve_simplification: keep simplification thresholds and the
+  //   retained interval (by default, the arcs come out unsimplified). Where
+  //   duplicate arcs are merged, the thresholds of the first one are kept.
+  function buildTopology(dataset, opts) {
     if (!dataset.arcs) return;
     // An arc that no layer uses would share vertices with the arcs it touches,
     // and split them into smaller arcs.
     if ((dataset.layers || []).some(layerHasPaths)) {
       deleteUnusedArcs(dataset);
     }
-    var raw = dataset.arcs.getVertexData(),
-        cooked = buildPathTopology(raw.nn, raw.xx, raw.yy);
-    dataset.arcs.updateVertexData(cooked.nn, cooked.xx, cooked.yy);
+    var keepZ = !!(opts && opts.preserve_simplification),
+        interval = dataset.arcs.getRetainedInterval(),
+        raw = dataset.arcs.getVertexData(),
+        cooked = buildPathTopology(raw.nn, raw.xx, raw.yy, keepZ ? raw.zz : null);
+    dataset.arcs.updateVertexData(cooked.nn, cooked.xx, cooked.yy, cooked.zz);
+    if (cooked.zz) {
+      dataset.arcs.setRetainedInterval(interval);
+    }
     dataset.layers.forEach(function(lyr) {
       if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
         noteLayerWillChange(lyr, {operation: 'buildTopology', unit: 'shapes'});
@@ -12354,16 +12415,19 @@
   //
   // (x- and y-coords of all paths are concatenated into two arrays)
   //
+  //    zz: [Float64Array] (optional) simplification thresholds of each point
+  //
   // Returns:
   // {
   //    xx, yy (array)   // coordinate data
+  //    zz (array|null)  // thresholds, if zz was given
   //    nn: (array)      // points in each arc
   //    paths: (array)   // Paths are arrays of one or more arc id.
   // }
   //
   // Negative arc ids in the paths array indicate a reversal of arc -(id + 1)
   //
-  function buildPathTopology(nn, xx, yy) {
+  function buildPathTopology(nn, xx, yy, zz) {
     var pointCount = xx.length,
         chainIds = initPointChains(xx, yy),
         pathIds = initPathIds(pointCount, nn),
@@ -12473,8 +12537,9 @@
         // slice of xx/yy, so we build a standalone buffer and hand it to the
         // index as the arc's source.
         var mx = mergeArcParts(xx, start1, end1, start2, end2),
-            my = mergeArcParts(yy, start1, end1, start2, end2);
-        arcId = index.addArc(mx, my, 0, mx.length - 1);
+            my = mergeArcParts(yy, start1, end1, start2, end2),
+            mz = zz ? mergeArcParts(zz, start1, end1, start2, end2) : null;
+        arcId = index.addArc(mx, my, 0, mx.length - 1, mz);
       }
       return arcId;
     }
@@ -12483,7 +12548,7 @@
       // search for a matching edge that has already been generated
       var arcId = index.findDuplicateArc(xx, yy, start, end, nextPoint, prevPoint);
       if (arcId === null) {
-        arcId = index.addArc(xx, yy, start, end);
+        arcId = index.addArc(xx, yy, start, end, zz);
       }
       return arcId;
     }
@@ -12643,6 +12708,40 @@
     buildTopology: buildTopology
   });
 
+  // Frame membership
+  //
+  // A content dataset belongs to a frame if dataset.info.frame holds the ID of
+  // the frame's dataset (see mapshaper-dataset-ids.mjs). The reference is kept
+  // in info so that it travels with derived data: copyDatasetInfo() and
+  // splitApartLayers() copy it. It is never inherited from a dataset that is
+  // merged into another one (see mergeDatasetInfo()).
+
+  function getFrameRef(dataset) {
+    return dataset && dataset.info && dataset.info.frame || null;
+  }
+
+  // @id ID of a frame dataset, or null to make the dataset unframed
+  function setFrameRef(dataset, id) {
+    var info = dataset.info || (dataset.info = {});
+    if (getFrameRef(dataset) == (id || null)) return;
+    noteDatasetInfoWillChange(dataset, {operation: 'setFrameRef'});
+    if (id) {
+      info.frame = id;
+    } else {
+      delete info.frame;
+    }
+    markDatasetInfoChanged(dataset, {operation: 'setFrameRef'});
+  }
+
+  // The frame reference that all of @datasets share, or null if they don't
+  // all share one
+  function getSharedFrameRef(datasets) {
+    var ref = datasets.length > 0 ? getFrameRef(datasets[0]) : null;
+    return datasets.every(function(dataset) {
+      return getFrameRef(dataset) == ref;
+    }) ? ref : null;
+  }
+
   // Merge arcs from one or more source datasets into target dataset
   // return array of layers from the source dataset (instead of adding them to the target dataset)
   function mergeDatasetsIntoDataset(dataset, datasets) {
@@ -12698,11 +12797,39 @@
     }];
   }
 
+  // Rejoin datasets that were split apart from one dataset, so that boundaries
+  // that are still identical are shared again. Simplification thresholds are
+  // kept, so callers should first check that the datasets have the same
+  // simplification state (see haveSameSimplification()). The output keeps the
+  // ID of the first dataset.
+  function rejoinDatasets(arr) {
+    var merged = mergeDatasets(arr, {preserve_simplification: true});
+    buildTopology(merged, {preserve_simplification: true});
+    if (arr[0].id) merged.id = arr[0].id;
+    return merged;
+  }
+
+  // True if the datasets all have no simplification thresholds, or all have
+  // thresholds and the same retained interval
+  function haveSameSimplification(datasets) {
+    var states = datasets.filter(function(dataset) {
+      return dataset.arcs && dataset.arcs.size() > 0; // datasets without paths don't count
+    }).map(function(dataset) {
+      return dataset.arcs.isFlat() ? null : dataset.arcs.getRetainedInterval();
+    });
+    return states.every(function(state) {
+      return state === states[0];
+    });
+  }
+
   // Combine multiple datasets into one using concatenation
   // (any shared topology is ignored)
-  function mergeDatasets(arr) {
+  // opts.preserve_simplification: keep simplification thresholds (by default,
+  //   the current simplification is baked in)
+  function mergeDatasets(arr, opts) {
     var arcSources = [],
         arcCount = 0,
+        frameRef,
         merged = {
           info: {},
           layers: []
@@ -12735,8 +12862,15 @@
       arcCount += n;
     });
 
+    // the merged dataset stays in a frame only if every part was in it
+    frameRef = getSharedFrameRef(arr);
+    if (frameRef) {
+      merged.info.frame = frameRef;
+    }
+
     if (arcSources.length > 0) {
-      merged.arcs = mergeArcs(arcSources);
+      merged.arcs = opts && opts.preserve_simplification ?
+        mergeArcsKeepingThresholds(arcSources) : mergeArcs(arcSources);
       if (merged.arcs.size() != arcCount) {
         error("[mergeDatasets()] Arc indexing error");
       }
@@ -12750,8 +12884,15 @@
     var dest = merged.info || (merged.info = {});
     dest.input_files = utils.uniq((dest.input_files || []).concat(src.input_files || []));
     dest.input_formats = utils.uniq((dest.input_formats || []).concat(src.input_formats || []));
+    // A frame reference is never inherited from a merged-in dataset
+    var destFrame = dest.frame;
     // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
     utils.defaults(dest, src);
+    if (destFrame) {
+      dest.frame = destFrame;
+    } else {
+      delete dest.frame;
+    }
   }
 
   function mergeArcs(arr) {
@@ -12769,6 +12910,31 @@
         nn = mergeArrays(utils.pluck(dataArr, 'nn'), Int32Array);
 
     return new ArcCollection(nn, xx, yy);
+  }
+
+  // Like mergeArcs(), but keeps simplification thresholds instead of baking in
+  // the current simplification, and leaves the source arcs unchanged. Vertices
+  // of arcs without thresholds are never removed by simplification. All the
+  // arcs with thresholds must have the same retained interval.
+  function mergeArcsKeepingThresholds(arr) {
+    var simplified = arr.filter(function(arcs) { return !arcs.isFlat(); });
+    var interval = simplified.length > 0 ? simplified[0].getRetainedInterval() : 0;
+    var dataArr = arr.map(function(arcs) { return arcs.getVertexData(); });
+    var merged, zz;
+    if (simplified.some(function(arcs) { return arcs.getRetainedInterval() !== interval; })) {
+      error('[mergeArcsKeepingThresholds()] Arcs have different simplification intervals');
+    }
+    merged = new ArcCollection(
+      mergeArrays(utils.pluck(dataArr, 'nn'), Int32Array),
+      mergeArrays(utils.pluck(dataArr, 'xx'), Float64Array),
+      mergeArrays(utils.pluck(dataArr, 'yy'), Float64Array));
+    if (simplified.length > 0) {
+      zz = mergeArrays(dataArr.map(function(data) {
+        return data.zz || new Float64Array(data.xx.length).fill(Infinity);
+      }), Float64Array);
+      merged.setThresholds(zz).setRetainedInterval(interval);
+    }
+    return merged;
   }
 
   function countElements(arrays) {
@@ -12794,12 +12960,15 @@
 
   var Merging = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    haveSameSimplification: haveSameSimplification,
     mergeArcs: mergeArcs,
+    mergeArcsKeepingThresholds: mergeArcsKeepingThresholds,
     mergeCommandTargets: mergeCommandTargets,
     mergeDatasetInfo: mergeDatasetInfo$1,
     mergeDatasets: mergeDatasets,
     mergeDatasetsForExport: mergeDatasetsForExport,
-    mergeDatasetsIntoDataset: mergeDatasetsIntoDataset
+    mergeDatasetsIntoDataset: mergeDatasetsIntoDataset,
+    rejoinDatasets: rejoinDatasets
   });
 
   // Test if the second endpoint of an arc is the endpoint of any path in any layer
@@ -12907,7 +13076,9 @@
         absId = absArcId(arcId);
         fw = arcId === absId;
 
-        if (arcs.arcIsDegenerate(arcId)) ; else if (arcStatus[absId] !== 0) {
+        // An arc that only collapses at the current simplification level is kept;
+        // dropping it would delete vertices that a higher level would show
+        if (arcs.arcIsDegenerate(arcId, true)) ; else if (arcStatus[absId] !== 0) {
           // arc has already been translated -- skip
           newArc = null;
         } else {
@@ -13073,13 +13244,20 @@
     // Preserved GeoJSON metadata stays with the dataset it was imported into; it
     // is never inherited from a merged-in source (e.g. a -join / clip / erase
     // source), which would otherwise leak that source's metadata into the output.
+    // The same goes for a frame reference.
     var destMetadata = destInfo.input_geojson_metadata;
+    var destFrame = destInfo.frame;
     // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
     utils.defaults(destInfo, srcInfo);
     if (destMetadata) {
       destInfo.input_geojson_metadata = destMetadata;
     } else {
       delete destInfo.input_geojson_metadata;
+    }
+    if (destFrame) {
+      destInfo.frame = destFrame;
+    } else {
+      delete destInfo.frame;
     }
     markDatasetInfoChanged(dest, {operation: 'mergeDatasetInfo'});
   }
@@ -13119,8 +13297,10 @@
   }
 
   // clone all layers, make a filtered copy of arcs
+  // (the copy gets its own ID when it is added to a catalog)
   function copyDataset(dataset) {
     var d2 = utils.extend({}, dataset);
+    delete d2.id;
     d2.layers = d2.layers.map(copyLayer);
     if (d2.arcs) {
       d2.arcs = d2.arcs.getFilteredCopy();
@@ -13205,6 +13385,7 @@
     // modify a copy in case cutLayers == dataset.layers
     var currLayers = dataset.layers.concat();
     noteDatasetWillChange(dataset, {operation: 'replaceLayers', unit: 'layers'});
+    handOverLayerStacking(cutLayers, newLayers);
     utils.repeat(Math.max(cutLayers.length, newLayers.length), function(i) {
       var cutLyr = cutLayers[i],
           newLyr = newLayers[i],
@@ -13219,6 +13400,31 @@
     });
     dataset.layers = currLayers;
     markDatasetChanged(dataset, {operation: 'replaceLayers', unit: 'layers'});
+  }
+
+  // A replacement layer takes over the stacking position (menu_order) and
+  // visibility (pinned, frame_hidden) of the layer it replaces, so that a
+  // command like -dissolve does not move a layer to the top of the stack or show
+  // a hidden layer. Extra new layers are stacked directly above the last
+  // replaced layer, in order. Values that a new layer already has are kept.
+  function handOverLayerStacking(cutLayers, newLayers) {
+    var n = Math.min(cutLayers.length, newLayers.length);
+    var src = n > 0 ? cutLayers[n - 1] : null;
+    var extras = newLayers.length - n;
+    newLayers.forEach(function(newLyr, i) {
+      var cutLyr = i < n ? cutLayers[i] : src;
+      if (!cutLyr || !newLyr || newLyr == cutLyr) return;
+      if (!(newLyr.menu_order > 0) && cutLyr.menu_order > 0) {
+        newLyr.menu_order = i < n ? cutLyr.menu_order :
+          cutLyr.menu_order + (i - n + 1) / (extras + 1);
+      }
+      if (newLyr.pinned === undefined && cutLyr.pinned !== undefined) {
+        newLyr.pinned = cutLyr.pinned;
+      }
+      if (newLyr.frame_hidden === undefined && cutLyr.frame_hidden) {
+        newLyr.frame_hidden = true;
+      }
+    });
   }
 
   // Replace a layer with a layer from a second dataset
@@ -13292,6 +13498,7 @@
     datasetHasRaster: datasetHasRaster,
     datasetIsEmpty: datasetIsEmpty,
     getDatasetBounds: getDatasetBounds,
+    handOverLayerStacking: handOverLayerStacking,
     mergeDatasetInfo: mergeDatasetInfo,
     mergeOutputLayerIntoDataset: mergeOutputLayerIntoDataset,
     mergeOutputLayersIntoDataset: mergeOutputLayersIntoDataset,
@@ -20309,8 +20516,10 @@
 
 
 
-  function findCommandTargets(layers, pattern, type) {
-    var matches = findMatchingLayers(layers, pattern, true);
+  // @getQualifiedLayers (optional) function for resolving qualified patterns
+  //   (see findMatchingLayers())
+  function findCommandTargets(layers, pattern, type, getQualifiedLayers) {
+    var matches = findMatchingLayers(layers, pattern, true, getQualifiedLayers);
     if (type) {
       matches = matches.filter(function(o) {return o.layer.geometry_type == type;});
     }
@@ -20340,17 +20549,31 @@
   // layers: array of {layer: <>, dataset: <>} objects
   // pattern: is a layer identifier or a comma-sep. list of identifiers.
   // An identifier is a literal name, a pattern containing "*" wildcard or
-  // a 1-based index (1..n)
-  function findMatchingLayers(layers, pattern, throws) {
+  // a 1-based index (1..n). A qualified identifier, like frame1:roads, is
+  // matched among the layers of a group, here the members of a map frame:
+  // getQualifiedLayers('frame1') returns that group's layers, or null if there
+  // is no such group, in which case the identifier is read as a plain name.
+  function findMatchingLayers(layers, pattern, throws, getQualifiedLayers) {
     var matchedLayers = [];
     var unmatchedIds = [];
     var index = {};
     pattern.split(',').forEach(function(subpattern, i) {
-      var test = getLayerMatch(subpattern);
+      var qualified = getQualifiedLayers ? parseQualifiedPattern(subpattern, getQualifiedLayers) : null;
+      var test = getLayerMatch(qualified ? qualified.pattern : subpattern);
       var matched = false;
       layers.forEach(function(o, layerId) {
+        var groupId;
         // if (matchedLayers.indexOf(lyr) > -1) return; // performance bottleneck with 1000s of layers
-        if (layerId in index) {
+        if (qualified) {
+          groupId = qualified.layers.indexOf(o.layer);
+          if (groupId > -1 && test(o.layer, groupId + 1)) {
+            if (!(layerId in index)) {
+              matchedLayers.push(o);
+              index[layerId] = true;
+            }
+            matched = true;
+          }
+        } else if (layerId in index) {
           matched = true;
         } else if (test(o.layer, layerId + 1)) {  // layers are 1-indexed
           matchedLayers.push(o);
@@ -20368,6 +20591,15 @@
     return matchedLayers;
   }
 
+  function parseQualifiedPattern(subpattern, getQualifiedLayers) {
+    var i = subpattern.indexOf(':');
+    var layers = i > 0 ? getQualifiedLayers(subpattern.slice(0, i)) : null;
+    return layers ? {
+      layers: layers.map(function(o) { return o.layer; }),
+      pattern: subpattern.slice(i + 1)
+    } : null;
+  }
+
   function getLayerMatch(pattern) {
     var isIndex = utils.isInteger(Number(pattern));
     var nameRxp = isIndex ? null : utils.wildcardToRegExp(pattern);
@@ -20383,17 +20615,21 @@
   }
 
   // get an identifier for a layer that can be used in a target= option
-  // (returns name if layer has a unique name, or a numerical id)
+  // (returns name if layer has a unique name, a qualified name like frame1:roads
+  // if its name is unique in its frame, or else a numerical id, which can
+  // change as layers are added and moved)
   function getLayerTargetId(catalog, lyr) {
-    var nameCount = 0;
-        lyr.name;
-        var id;
+    var nameCount = 0,
+        id, qualified;
     catalog.getLayers().forEach(function(o, i) {
       if (lyr.name && o.layer.name == lyr.name) nameCount++;
       if (lyr == o.layer) id = String(i + 1);
     });
     if (!id) error('Layer not found');
-    return nameCount == 1 ? lyr.name : id;
+    if (nameCount == 1) return lyr.name;
+    qualified = nameCount > 1 && catalog.getQualifiedLayerName ?
+      catalog.getQualifiedLayerName(lyr) : null;
+    return qualified || id;
   }
 
   var TargetUtils = /*#__PURE__*/Object.freeze({
@@ -25860,7 +26096,7 @@
   // scalebar-aware renderer registry that lives in furniture.mjs.
 
   // Must match the renderers registered in mapshaper-furniture.mjs
-  var furnitureTypes = ['scalebar'];
+  var furnitureTypes = ['scalebar', 'overlay'];
 
   // @lyr dataset layer
   function getFurnitureLayerType(lyr) {
@@ -25888,9 +26124,9 @@
   */
 
 
+  // @dataset the (merged) dataset being exported
   function getFrameData(dataset, exportOpts) {
-    var frameTarget = resolveExportFrame({targetDataset: dataset, mode: 'cli'});
-    var frameLyr = frameTarget && frameTarget.layer;
+    var frameLyr = findFrameLayerInDataset(dataset);
     var data;
     if (exportOpts.gui_frame?.data) {
       data = Object.assign({}, exportOpts.gui_frame.data, {
@@ -26094,81 +26330,36 @@
     return layerIsFurniture(lyr) && !!findFrameLayerInDataset(dataset);
   }
 
-  function findFrames(catalog) {
-    return catalog.getLayers().filter(function(o) {
-      return isFrameLayer(o.layer, o.dataset.arcs);
-    });
-  }
-
-  // Remembers the frame conflict that was last reported, so that resolving the
-  // frame on every map render does not repeat the same warning. Unlike
-  // warnOnce(), this resets when the conflict clears, so a long-lived GUI session
-  // warns again if the user undoes the change and then repeats it.
-  var reportedFrameConflict = null;
-
-  // Generic field commands can promote an ordinary rectangle into a second frame
-  // (e.g. -each 'type="frame", width=400'), and the GUI resolves the frame on
-  // every render, so this has to degrade to a deterministic choice rather than an
-  // error. Rejecting the change outright is assertSingleFrameUpdate()'s job,
-  // where it can still be refused before it is committed.
-  function getActiveFrame(catalog) {
-    var frames = findFrames(catalog);
-    var key;
-    if (frames.length > 1) {
-      key = frames.map(getFrameName).join(', ');
-      if (key !== reportedFrameConflict) {
-        reportedFrameConflict = key;
-        warn('Multiple map frames are not supported; using',
-          getFrameName(frames[0]) + '. Ignoring:',
-          frames.slice(1).map(getFrameName).join(', '));
-      }
-    } else {
-      reportedFrameConflict = null;
-    }
-    return frames[0] || null;
-  }
-
-  function findFrameDataset(catalog) {
-    var target = getActiveFrame(catalog);
-    return target && target.dataset || null;
-  }
-
-  function findFrameLayer(catalog) {
-    var target = getActiveFrame(catalog);
-    return target && target.layer || null;
-  }
-
-  function findFrame(catalog) {
-    return getActiveFrame(catalog);
-  }
-
-  function resolveExportFrame(opts) {
-    if (opts.explicitFrame) return opts.explicitFrame;
-    if (opts.targetDataset) {
-      var lyr = findFrameLayerInDataset(opts.targetDataset);
-      return lyr ? {layer: lyr, dataset: opts.targetDataset} : null;
-    }
-    return opts.mode == 'gui' && opts.catalog ? getActiveFrame(opts.catalog) : null;
-  }
-
-  function assertSingleFrameUpdate(catalog, additions, removals) {
+  // Checks the frames that the catalog would hold after adding layers and
+  // removing others, so that a change can be refused before it is made:
+  // a dataset holds at most one frame, and frame names are unique.
+  // @additions [{layer, dataset}] layers about to be added
+  // @removals layers about to be removed
+  function assertFrameUpdateIsValid(catalog, additions, removals) {
     var removed = removals || [];
-    var frames = catalog.getLayers().filter(function(o) {
+    var frames = catalog.getLayers().concat(additions || []).filter(function(o) {
       return !removed.includes(o.layer) && isFrameLayer(o.layer, o.dataset.arcs);
-    });
-    (additions || []).forEach(function(o) {
-      if (!removed.includes(o.layer) && isFrameLayer(o.layer, o.dataset.arcs)) {
-        frames.push(o);
-      }
     });
     frames = frames.filter(function(o, i) {
       return frames.findIndex(function(o2) {
         return o2.layer == o.layer;
       }) == i;
     });
-    if (frames.length > 1) {
-      stop$1('Multiple map frames are not supported:', frames.map(getFrameName).join(', '));
-    }
+    assertValidFrames(frames);
+  }
+
+  function assertValidFrames(frames) {
+    var names = [];
+    frames.forEach(function(o, i) {
+      var name = o.layer.name;
+      if (frames.findIndex(function(o2) { return o2.dataset == o.dataset; }) < i) {
+        stop$1('A dataset can contain only one map frame:', getFrameName(o));
+      }
+      if (name && names.includes(name)) {
+        stop$1('Map frame names must be unique. Use name= to give the new frame a different name:', name);
+      }
+      names.push(name);
+    });
   }
 
   function assertCatalogCanAddDatasets(catalog, datasets, removals) {
@@ -26180,7 +26371,7 @@
         additions.push({layer: lyr, dataset: dataset});
       });
     });
-    assertSingleFrameUpdate(catalog, additions, removals);
+    assertFrameUpdateIsValid(catalog, additions, removals);
   }
 
   function getFrameName(o) {
@@ -26314,20 +26505,16 @@
   var FrameUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
     assertCatalogCanAddDatasets: assertCatalogCanAddDatasets,
-    assertSingleFrameUpdate: assertSingleFrameUpdate,
+    assertFrameUpdateIsValid: assertFrameUpdateIsValid,
+    assertValidFrames: assertValidFrames,
     calcFrameData: calcFrameData,
     calcOutputBounds: calcOutputBounds,
     demoteFrameLayer: demoteFrameLayer,
-    findFrame: findFrame,
-    findFrameDataset: findFrameDataset,
     findFrameFurnitureLayer: findFrameFurnitureLayer,
-    findFrameLayer: findFrameLayer,
     findFrameLayerInDataset: findFrameLayerInDataset,
-    findFrames: findFrames,
     fitDatasetToFrame: fitDatasetToFrame,
     formatFrameSizeForDisplay: formatFrameSizeForDisplay,
     frameReservedFields: frameReservedFields,
-    getActiveFrame: getActiveFrame,
     getFrameData: getFrameData,
     getFrameFurnitureLayers: getFrameFurnitureLayers,
     getFrameLayerBounds: getFrameLayerBounds,
@@ -26339,8 +26526,144 @@
     isFrameLayer: isFrameLayer,
     isFrameReservedField: isFrameReservedField,
     parseFrameSize: parseFrameSize,
-    parseMarginOption: parseMarginOption,
-    resolveExportFrame: resolveExportFrame
+    parseMarginOption: parseMarginOption
+  });
+
+  // Frame resolution
+  //
+  // A frame is a frame layer, alone in its dataset with any furniture; the ID of
+  // that dataset identifies the frame. A content dataset belongs to a frame if
+  // its info.frame property holds the frame's ID. Frames are returned as
+  // {layer, dataset} pairs.
+
+  // All frames, in catalog order
+  function getFrames(catalog) {
+    return catalog.getLayers().filter(function(o) {
+      return isFrameLayer(o.layer, o.dataset.arcs);
+    });
+  }
+
+  function getFrameById(catalog, id) {
+    if (!id) return null;
+    return getFrames(catalog).find(function(o) {
+      return o.dataset.id == id;
+    }) || null;
+  }
+
+  function getFrameByName(catalog, name) {
+    return getFrames(catalog).find(function(o) {
+      return o.layer.name == name;
+    }) || null;
+  }
+
+  // The frame that a dataset belongs to: the frame it contains, if it is a frame
+  // dataset, or the frame named by its reference. Null for unframed datasets.
+  function getFrameForDataset(catalog, dataset) {
+    var lyr = dataset ? findFrameLayerInDataset(dataset) : null;
+    if (lyr) return {layer: lyr, dataset: dataset};
+    return getFrameById(catalog, getFrameRef(dataset));
+  }
+
+  // The content datasets that belong to a frame (not including the frame dataset)
+  function getFrameMembers(catalog, frame) {
+    var id = frame && frame.dataset.id;
+    if (!id) return [];
+    return catalog.getDatasets().filter(function(dataset) {
+      return dataset != frame.dataset && getFrameRef(dataset) == id;
+    });
+  }
+
+  // The frame's content layers, as [{layer, dataset}] in catalog order: the
+  // layers of its member datasets, and any content that shares the frame's own
+  // dataset (from before frames had members)
+  function getFrameMemberLayers(catalog, frame) {
+    var datasets = [frame.dataset].concat(getFrameMembers(catalog, frame));
+    return catalog.getLayers().filter(function(o) {
+      return datasets.includes(o.dataset) && !isFrameComponentLayer(o.layer, o.dataset);
+    });
+  }
+
+  // The rule for datasets that commands create from other datasets: the output
+  // belongs to the frame of its sources if they all have the same one, and is
+  // unframed otherwise. A frame dataset's frame is the frame itself, so a grid
+  // made over a frame, for example, belongs to that frame. Datasets made from
+  // nothing (-i, -graticule, -shape) are unframed. -add-layer counts its target
+  // as the source, so a layer created beside a member joins the member's frame.
+  // @output a dataset that a command has just created (not yet in the catalog)
+  // @sources the datasets it was created from
+  function inheritFrameRef(output, sources) {
+    var refs = sources.map(getDerivedFrameRef);
+    var ref = refs.length > 0 && refs.every(function(r) { return r == refs[0]; }) ?
+      refs[0] : null;
+    var info = output.info || (output.info = {});
+    if (ref) {
+      info.frame = ref;
+    } else {
+      delete info.frame;
+    }
+  }
+
+  function getDerivedFrameRef(dataset) {
+    return findFrameLayerInDataset(dataset) ? dataset.id || null : getFrameRef(dataset);
+  }
+
+  // The frame that a command operating on @dataset should use: the dataset's own
+  // frame, or else the default frame (the single-frame compatibility rule).
+  function resolveFrameForDataset(catalog, dataset) {
+    return getFrameForDataset(catalog, dataset) || getDefaultFrame(catalog);
+  }
+
+  // The frame that unframed layers are composed in: the session's frame, if it
+  // has exactly one. This keeps scripts and sessions made before frames had
+  // members working. With several frames, unframed layers belong to none.
+  function getDefaultFrame(catalog) {
+    var frames = getFrames(catalog);
+    return frames.length == 1 ? frames[0] : null;
+  }
+
+  // The frame that the web UI shows a dataset's layers in: the dataset's own
+  // frame, or for an unframed dataset, the session's only frame if it has no
+  // content (a frame from before frames had members, which composes the
+  // unframed layers until layers are moved into it). Null if the dataset is
+  // shown in the unframed view.
+  function getDisplayFrameForDataset(catalog, dataset) {
+    var frame = getFrameForDataset(catalog, dataset);
+    if (frame) return frame;
+    frame = getDefaultFrame(catalog);
+    return frame && getFrameMemberLayers(catalog, frame).length === 0 ? frame : null;
+  }
+
+  // Keeps frame references valid after a command: a reference to a frame that
+  // no longer exists is cleared, so deleting a frame leaves its members unframed
+  // in the same command, and a frame dataset belongs to no other frame. Also
+  // catches frame names made non-unique by commands that edit names in place.
+  function repairFrameReferences(catalog) {
+    var frames = getFrames(catalog);
+    assertValidFrames(frames);
+    catalog.getDatasets().forEach(function(dataset) {
+      var ref = getFrameRef(dataset);
+      if (!ref) return;
+      if (findFrameLayerInDataset(dataset) || !frames.some(function(o) {
+        return o.dataset.id == ref;
+      })) {
+        setFrameRef(dataset, null);
+      }
+    });
+  }
+
+  var FrameResolver = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getDefaultFrame: getDefaultFrame,
+    getDisplayFrameForDataset: getDisplayFrameForDataset,
+    getFrameById: getFrameById,
+    getFrameByName: getFrameByName,
+    getFrameForDataset: getFrameForDataset,
+    getFrameMemberLayers: getFrameMemberLayers,
+    getFrameMembers: getFrameMembers,
+    getFrames: getFrames,
+    inheritFrameRef: inheritFrameRef,
+    repairFrameReferences: repairFrameReferences,
+    resolveFrameForDataset: resolveFrameForDataset
   });
 
   // Adds a furniture layer as a standalone dataset, without changing the
@@ -30660,8 +30983,9 @@
   // With a map frame, the scalebar belongs to the frame, and running the
   // command again replaces it. Without a frame, each run adds a standalone
   // scalebar layer, which is exported if it is included in the output layers.
-  cmd.scalebar = function(catalog, opts) {
-    var frame = getActiveFrame(catalog);
+  // @targetDataset (optional) the frame is the one this dataset belongs to
+  cmd.scalebar = function(catalog, targetDataset, opts) {
+    var frame = resolveFrameForDataset(catalog, targetDataset || null);
     if (opts.remove) {
       if (!frame || !setFrameFurnitureLayer(frame.dataset, 'scalebar', null)) {
         stop$1('The map frame has no scalebar to remove');
@@ -31090,7 +31414,11 @@
   });
 
   var furnitureRenderers = {
-    scalebar: renderScalebar
+    scalebar: renderScalebar,
+    // An overlay draws another frame's map, which map export renders from the
+    // catalog (see renderOverlayExports() in mapshaper-export.mjs); alone, it
+    // draws nothing
+    overlay: function() { return []; }
     // frame: renderFrame
   };
 
@@ -31136,6 +31464,279 @@
     layerHasFurniture: layerHasFurniture,
     layerIsFurniture: layerIsFurniture,
     renderFurnitureLayer: renderFurnitureLayer
+  });
+
+  // Overlay frames
+  //
+  // An overlay is a frame drawn at 1:1 on another frame's page (an inset or
+  // locator map). The placement belongs to the host: a furniture layer in the
+  // host frame's dataset holds {type: 'overlay', frame: <ID of the overlay
+  // frame>, position, margin_x, margin_y}. The overlay frame stays an ordinary
+  // frame, and one frame can be overlaid on several hosts, each with its own
+  // placement. Placements are anchored to a corner of the host page, like a
+  // scalebar; a margin is the distance from the box to the corner's two edges
+  // (negative margins put the box partly off the page).
+
+  var OVERLAY_CORNERS = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
+  var DEFAULT_OVERLAY_MARGIN = 10;
+  var DEFAULT_CORNER_ORDER = ['bottom-right', 'bottom-left', 'top-right', 'top-left'];
+
+  function layerIsOverlay(lyr) {
+    return !!lyr && !lyr.geometry_type && getFurnitureLayerType(lyr) == 'overlay';
+  }
+
+  // The overlay layers of a frame dataset
+  function getFrameOverlayLayers(frameDataset) {
+    if (!frameDataset || !findFrameLayerInDataset(frameDataset)) return [];
+    return frameDataset.layers.filter(layerIsOverlay);
+  }
+
+  function findOverlayLayer(frameDataset, overlayId) {
+    return getFrameOverlayLayers(frameDataset).find(function(lyr) {
+      return getFurnitureLayerData(lyr).frame == overlayId;
+    }) || null;
+  }
+
+  // The frames that @frame is overlaid on
+  function getOverlayHosts(catalog, frame) {
+    return getFrames(catalog).filter(function(host) {
+      return !!findOverlayLayer(host.dataset, frame.dataset.id);
+    });
+  }
+
+  function isOverlayFrame(catalog, frame) {
+    return getOverlayHosts(catalog, frame).length > 0;
+  }
+
+  // The frames overlaid on @host, as [{frame, record}], in drawing order
+  function getHostOverlays(catalog, host) {
+    return getFrameOverlayLayers(host.dataset).map(function(lyr) {
+      var rec = getFurnitureLayerData(lyr);
+      return {frame: getFrameById(catalog, rec.frame), record: rec};
+    }).filter(function(o) { return !!o.frame; });
+  }
+
+  // Adds, updates or (given null) removes the placement of an overlay frame on
+  // a host. A new placement is drawn on top of the host's other overlays.
+  // @placement {position, margin_x, margin_y}
+  function setOverlayPlacement(hostDataset, overlayId, placement) {
+    var layers = hostDataset.layers;
+    var prev = findOverlayLayer(hostDataset, overlayId);
+    var idx = layers.indexOf(prev);
+    var detail = {operation: 'setFrameOverlay', unit: 'layers'};
+    if (!prev && !placement) return;
+    noteDatasetWillChange(hostDataset, detail);
+    layers = layers.slice();
+    if (placement) {
+      var lyr = {
+        name: prev ? prev.name : 'overlay',
+        data: new DataTable([{
+          type: 'overlay',
+          frame: overlayId,
+          position: placement.position,
+          margin_x: placement.margin_x,
+          margin_y: placement.margin_y
+        }])
+      };
+      if (prev) {
+        layers[idx] = lyr;
+      } else {
+        layers.push(lyr);
+      }
+    } else {
+      layers.splice(idx, 1);
+    }
+    hostDataset.layers = layers;
+    markDatasetChanged(hostDataset, detail);
+  }
+
+  // Applies -frame overlay=, overlay-position= and overlay-margin= to a host:
+  // adds a placement, or updates an existing one (options that are not given
+  // keep their values)
+  function overlayFrameOnHost(catalog, host, overlay, opts) {
+    var rec, placement;
+    if (overlay.dataset == host.dataset) {
+      stop$1('A frame cannot be overlaid on itself');
+    }
+    if (frameOverlaysHost(catalog, overlay, host)) {
+      stop$1('Frame', overlay.layer.name, 'already contains', host.layer.name,
+        'as an overlay; overlays cannot contain each other');
+    }
+    rec = getOverlayRecord(host.dataset, overlay.dataset.id);
+    placement = rec ? {
+      position: rec.position,
+      margin_x: rec.margin_x,
+      margin_y: rec.margin_y
+    } : {
+      position: getFreeOverlayCorner(host.dataset),
+      margin_x: DEFAULT_OVERLAY_MARGIN,
+      margin_y: DEFAULT_OVERLAY_MARGIN
+    };
+    if (opts.overlay_position) {
+      placement.position = parseOverlayPosition(opts.overlay_position);
+    }
+    if (opts.overlay_margin !== undefined) {
+      Object.assign(placement, parseOverlayMargin(opts.overlay_margin));
+    }
+    setOverlayPlacement(host.dataset, overlay.dataset.id, placement);
+  }
+
+  function getOverlayRecord(hostDataset, overlayId) {
+    var lyr = findOverlayLayer(hostDataset, overlayId);
+    return lyr ? getFurnitureLayerData(lyr) : null;
+  }
+
+  // True if @host is drawn inside @frame, directly or through other overlays
+  function frameOverlaysHost(catalog, frame, host, visited) {
+    visited = visited || [];
+    if (visited.includes(frame.dataset)) return false;
+    visited.push(frame.dataset);
+    return getHostOverlays(catalog, frame).some(function(o) {
+      return o.frame.dataset == host.dataset ||
+        frameOverlaysHost(catalog, o.frame, host, visited);
+    });
+  }
+
+  // The first corner not taken by another overlay or the host's scalebar
+  function getFreeOverlayCorner(hostDataset) {
+    var used = getFrameOverlayLayers(hostDataset).map(function(lyr) {
+      return getFurnitureLayerData(lyr).position;
+    });
+    var scalebar = hostDataset.layers.find(function(lyr) {
+      return !lyr.geometry_type && getFurnitureLayerType(lyr) == 'scalebar';
+    });
+    if (scalebar) {
+      used.push(normalizeCorner(getFurnitureLayerData(scalebar).position || 'top-left'));
+    }
+    return DEFAULT_CORNER_ORDER.find(function(corner) {
+      return !used.includes(corner);
+    }) || DEFAULT_CORNER_ORDER[0];
+  }
+
+  function parseOverlayPosition(str) {
+    var corner = normalizeCorner(str);
+    if (!corner) {
+      stop$1('Unsupported overlay-position:', str, '(expected ' + OVERLAY_CORNERS.join(', ') + ')');
+    }
+    return corner;
+  }
+
+  // Accepts "top-left", "left-top", "topleft", etc.
+  function normalizeCorner(str) {
+    var s = String(str || '').toLowerCase();
+    var y = /top/.test(s) ? 'top' : /bottom/.test(s) ? 'bottom' : '';
+    var x = /left/.test(s) ? 'left' : /right/.test(s) ? 'right' : '';
+    return x && y ? y + '-' + x : '';
+  }
+
+  // "10" -> both margins; "10,20" -> horizontal, vertical. Values take the units
+  // of size options (e.g. 0.2in); negative values are allowed.
+  function parseOverlayMargin(str) {
+    var parts = String(str).split(',').map(function(s) { return s.trim(); });
+    if (parts.length < 1 || parts.length > 2 || parts.includes('')) {
+      stop$1('Invalid overlay-margin:', str);
+    }
+    var values = parts.map(parseSignedSize);
+    return {margin_x: values[0], margin_y: values.length > 1 ? values[1] : values[0]};
+  }
+
+  function parseSignedSize(str) {
+    var neg = str.charAt(0) == '-';
+    var px = parseSizeParam(neg ? str.slice(1) : str);
+    return roundPx$1(neg ? -px : px);
+  }
+
+  function roundPx$1(val) {
+    return Math.round(val * 100) / 100 || 0;
+  }
+
+  // The nominal page size of a frame, in pixels
+  function getFramePageSize(frame) {
+    var data = getFrameLayerData(frame.layer, frame.dataset.arcs);
+    return {width: data.width, height: data.height};
+  }
+
+  // The overlay's box on the host page, in host page pixels (top-left origin)
+  // @host, @overlay {width, height}
+  function getOverlayBox(rec, host, overlay) {
+    var corner = normalizeCorner(rec.position) || DEFAULT_CORNER_ORDER[0];
+    var mx = isFinite(rec.margin_x) ? +rec.margin_x : DEFAULT_OVERLAY_MARGIN;
+    var my = isFinite(rec.margin_y) ? +rec.margin_y : DEFAULT_OVERLAY_MARGIN;
+    return {
+      x: /right/.test(corner) ? host.width - overlay.width - mx : mx,
+      y: /bottom/.test(corner) ? host.height - overlay.height - my : my,
+      width: overlay.width,
+      height: overlay.height
+    };
+  }
+
+  // The inverse of getOverlayBox(): a placement anchored to the corner nearest
+  // to the center of the box
+  function getOverlayPlacementFromBox(box, host) {
+    var right = box.x + box.width / 2 > host.width / 2;
+    var bottom = box.y + box.height / 2 > host.height / 2;
+    return {
+      position: (bottom ? 'bottom' : 'top') + '-' + (right ? 'right' : 'left'),
+      margin_x: roundPx$1(right ? host.width - box.x - box.width : box.x),
+      margin_y: roundPx$1(bottom ? host.height - box.y - box.height : box.y)
+    };
+  }
+
+  // When a frame is replaced (-frame replace), its placements on other frames
+  // move to the frame replacing it
+  function retargetOverlayPlacements(catalog, fromId, toId) {
+    getFrames(catalog).forEach(function(host) {
+      var rec = getOverlayRecord(host.dataset, fromId);
+      if (!rec || host.dataset.id == toId) return;
+      setOverlayPlacement(host.dataset, fromId, null);
+      setOverlayPlacement(host.dataset, toId, rec);
+    });
+  }
+
+  // Keeps placements valid after a command: a placement of a frame that no
+  // longer exists is removed, so deleting a frame removes it from its hosts in
+  // the same command; so is a placement in a dataset that is no longer a frame.
+  function repairOverlayReferences(catalog) {
+    var ids = getFrames(catalog).map(function(o) { return o.dataset.id; });
+    catalog.getDatasets().forEach(function(dataset) {
+      var isFrame = !!findFrameLayerInDataset(dataset);
+      dataset.layers.filter(layerIsOverlay).forEach(function(lyr) {
+        var id = getFurnitureLayerData(lyr).frame;
+        if (!isFrame) {
+          removeLayer(dataset, lyr);
+        } else if (!ids.includes(id) || id == dataset.id) {
+          setOverlayPlacement(dataset, id, null);
+        }
+      });
+    });
+  }
+
+  function removeLayer(dataset, lyr) {
+    var detail = {operation: 'setFrameOverlay', unit: 'layers'};
+    noteDatasetWillChange(dataset, detail);
+    dataset.layers = dataset.layers.filter(function(o) { return o != lyr; });
+    markDatasetChanged(dataset, detail);
+  }
+
+  var Overlays = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    DEFAULT_OVERLAY_MARGIN: DEFAULT_OVERLAY_MARGIN,
+    OVERLAY_CORNERS: OVERLAY_CORNERS,
+    findOverlayLayer: findOverlayLayer,
+    getFrameOverlayLayers: getFrameOverlayLayers,
+    getFramePageSize: getFramePageSize,
+    getHostOverlays: getHostOverlays,
+    getOverlayBox: getOverlayBox,
+    getOverlayHosts: getOverlayHosts,
+    getOverlayPlacementFromBox: getOverlayPlacementFromBox,
+    isOverlayFrame: isOverlayFrame,
+    layerIsOverlay: layerIsOverlay,
+    overlayFrameOnHost: overlayFrameOnHost,
+    parseOverlayMargin: parseOverlayMargin,
+    parseOverlayPosition: parseOverlayPosition,
+    repairOverlayReferences: repairOverlayReferences,
+    retargetOverlayPlacements: retargetOverlayPlacements,
+    setOverlayPlacement: setOverlayPlacement
   });
 
   // Tags whose content is rendered text, where whitespace added for legibility
@@ -31248,8 +31849,10 @@
   // circular arc, which on a path that turns hard near its end throws the curve
   // into a wide loop beyond the last knot. Label paths are short enough that the
   // end segments are most of the curve, so they want a much flatter end than
-  // Metafont does.
-  var DEFAULT_CURL = 0.15;
+  // Metafont does. Lower values also keep a path that ends just past a sharp
+  // turn from hooking into its last knot, but 0 leaves callout arrows too
+  // straight at their ends.
+  var DEFAULT_CURL = 0.1;
   var curl = DEFAULT_CURL;
 
   // Temporary knob for judging the end behavior by eye; see
@@ -31262,6 +31865,67 @@
 
   function getCurveCurl() {
     return curl;
+  }
+
+  // Tension, applied uniformly at every knot.
+  // Higher values pull the curve toward the polyline between the knots; 1 is
+  // Metafont's default.
+  var DEFAULT_TENSION = 1;
+  var MIN_TENSION = 0.75;
+  var tension = DEFAULT_TENSION;
+
+  // Temporary knob, like setCurveCurl(); see window.mapshaper.setLabelCurveTension().
+  function setCurveTension(val) {
+    tension = val >= MIN_TENSION ? +val : DEFAULT_TENSION;
+    return tension;
+  }
+
+  function getCurveTension() {
+    return tension;
+  }
+
+  // Extra tension at knots where the path doubles back, so that a hairpin turns
+  // tightly while a loop of three or four evenly placed knots stays round. A
+  // knot's tension rises from the base tension above to hairpinTension as the
+  // angle between the path's two arms at the knot closes from hairpinAngle to 0
+  // degrees, following a smoothstep so that dragging a knot through the band
+  // changes the curve gradually. A square's arms meet at 90 degrees and an
+  // equilateral triangle's at 60, the start of the ramp, so neither is affected.
+  // The end knots of an open run have no angle; they keep the base tension,
+  // except in the solve (see fitRun()).
+  var DEFAULT_HAIRPIN_TENSION = 2.5;
+  var DEFAULT_HAIRPIN_ANGLE = 60;
+  var hairpinTension = DEFAULT_HAIRPIN_TENSION;
+  var hairpinAngle = DEFAULT_HAIRPIN_ANGLE;
+
+  // Temporary knobs, like setCurveCurl(); see
+  // window.mapshaper.setLabelCurveHairpin() in the GUI.
+  function setCurveHairpinTension(val) {
+    hairpinTension = val >= MIN_TENSION ? +val : DEFAULT_HAIRPIN_TENSION;
+    return hairpinTension;
+  }
+
+  function setCurveHairpinAngle(deg) {
+    hairpinAngle = deg > 0 && deg <= 180 ? +deg : DEFAULT_HAIRPIN_ANGLE;
+    return hairpinAngle;
+  }
+
+  function getCurveHairpinTension() {
+    return hairpinTension;
+  }
+
+  function getCurveHairpinAngle() {
+    return hairpinAngle;
+  }
+
+  // Tension at a knot where the polyline turns by @psi radians, so that its
+  // arms meet at PI - |psi|
+  function getKnotTension(psi) {
+    var start = hairpinAngle * Math.PI / 180,
+        x = (start - (Math.PI - Math.abs(psi))) / start;
+    if (x <= 0) return tension;
+    if (x > 1) x = 1;
+    return tension + (hairpinTension - tension) * x * x * (3 - 2 * x);
   }
 
   // Cap on subdivision levels per curve segment, bounding output at 2^8 = 256
@@ -31288,10 +31952,12 @@
   // tolerance: max deviation of the output polyline from the true curve, in the
   //   same units as the knots
   // closed: fit a closed loop (see curveIsClosed()) rather than an open run
+  // corners: (optional) an array of booleans, one per knot: true for a knot
+  //   where the curve turns sharply rather than passing smoothly through it
   // Returns an array of [x, y] starting at the first knot, ending at the last,
   //   and passing through every knot in between.
-  function fitCurveThroughKnots(knots, tolerance, closed) {
-    var pts = dedupeKnots(knots || []),
+  function fitCurveThroughKnots(knots, tolerance, closed, corners) {
+    var pts = dedupeKnots(knots || [], corners),
         segments, out, i;
     if (pts.length < 2) return pts;
     if (tolerance > 0 === false) {
@@ -31314,19 +31980,54 @@
   // true curves rather than a densified polyline.
   // Returns [{p0, c1, c2, p3}, ...], one per knot interval. A closed curve's
   // last segment ends at its first knot.
-  function getCurveSegments(knots, closed) {
-    var pts = dedupeKnots(knots || []);
+  function getCurveSegments(knots, closed, corners) {
+    var pts = dedupeKnots(knots || [], corners);
     if (pts.length < 2) return [];
     return fitKnots(pts, closed);
   }
 
+  // @pts: deduplicated knots, with any corners as pts.corners
   function fitKnots(pts, closed) {
-    var loop;
+    var corners = pts.corners, loop;
     if (closed) {
       loop = getLoopKnots(pts);
-      return loop.length >= 3 ? fitLoop(loop) : fitRun(loop);
+      if (loop.length < 3) return fitRun(loop);
+      if (!corners) return fitLoop(loop);
+      // the knot that closes the loop is the first knot
+      corners = corners.slice(0, loop.length);
+      corners[0] = corners[0] || pts.corners[pts.length - 1];
+      return fitLoopWithCorners(loop, corners);
     }
-    return fitRun(pts);
+    return corners ? fitRunsBetweenCorners(pts, corners) : fitRun(pts);
+  }
+
+  // A corner ends one run of knots and starts the next, so the curve turns
+  // there instead of passing smoothly through, and each run is fitted on its
+  // own, with the ends of a run as it would have at the ends of a curve. Two
+  // corners side by side are joined by a straight segment, since a run of two
+  // knots is straight. A corner at either end of the curve changes nothing.
+  function fitRunsBetweenCorners(pts, corners) {
+    var segments = [], start = 0, i;
+    for (i = 1; i < pts.length; i++) {
+      if (corners[i] || i == pts.length - 1) {
+        segments = segments.concat(fitRun(pts.slice(start, i + 1)));
+        start = i;
+      }
+    }
+    return segments;
+  }
+
+  // A loop with a corner is a run from the corner round to it again. The
+  // segments are rotated back to start at the loop's first knot, as fitLoop()'s
+  // do.
+  function fitLoopWithCorners(loop, corners) {
+    var n = loop.length;
+    var c = corners.indexOf(true);
+    var pts = loop.slice(c).concat(loop.slice(0, c), [loop[c]]);
+    var flags = corners.slice(c).concat(corners.slice(0, c), [true]);
+    var segments = fitRunsBetweenCorners(pts, flags);
+    var k = (n - c) % n;
+    return segments.slice(k).concat(segments.slice(0, k));
   }
 
   // A closed curve's knots without the repeated last one
@@ -31344,7 +32045,7 @@
   function fitLoop(pts) {
     var n = pts.length, // segment count = knot count
         dd = [], om = [], psi = [], lo = [], di = [], up = [], r = [],
-        segments = [], ee, theta, phi, i, prev, next, j;
+        tau = [], segments = [], theta, phi, i, prev, next, j;
     for (i = 0; i < n; i++) {
       j = (i + 1) % n;
       dd.push(distance2D$1(pts[i][0], pts[i][1], pts[j][0], pts[j][1]));
@@ -31353,14 +32054,12 @@
     for (i = 0; i < n; i++) {
       psi.push(wrapAngle(om[i] - om[(i + n - 1) % n]));
     }
-    ee = evenOutLoopChords(dd, n);
+    for (i = 0; i < n; i++) tau.push(getKnotTension(psi[i]));
     for (i = 0; i < n; i++) {
       prev = (i + n - 1) % n;
       next = (i + 1) % n;
-      lo.push(ee[i]);
-      di.push(2 * (ee[i] + ee[prev]));
-      up.push(ee[prev]);
-      r.push(-2 * ee[i] * psi[i] - ee[prev] * psi[next]);
+      pushCurvatureRow(lo, di, up, r, dd[prev], dd[i], 1 / tau[prev],
+        1 / tau[next], psi[i], psi[next]);
     }
     theta = solveCyclicTridiagonal(lo, di, up, r);
     phi = [];
@@ -31368,28 +32067,11 @@
     for (i = 0; i < n; i++) {
       j = (i + 1) % n;
       segments.push(buildSegment(pts[i], pts[j], dd[i], om[i], theta[i], phi[j],
+        tau[i], tau[j],
         handleLimit(dd[i], dd[(i + n - 1) % n]),
         handleLimit(dd[i], dd[j])));
     }
     return segments;
-  }
-
-  // evenOutChords() round a loop. A pass in each direction settles an open run;
-  // round a loop a chord's limit can come from either side, so the passes repeat
-  // until nothing changes -- n passes at most, since each settles a chord.
-  function evenOutLoopChords(dd, n) {
-    var out = dd.concat(), changed = true, passes = 0, i, j, max;
-    while (changed && passes++ <= n) {
-      changed = false;
-      for (i = 0; i < n; i++) {
-        j = (i + 1) % n;
-        max = out[i] * MAX_CHORD_RATIO;
-        if (out[j] > max) { out[j] = max; changed = true; }
-        max = out[j] * MAX_CHORD_RATIO;
-        if (out[i] > max) { out[i] = max; changed = true; }
-      }
-    }
-    return out;
   }
 
   // Arc length of the fitted curve, in the same units as the knots. Export uses
@@ -31470,13 +32152,24 @@
   // carries a lot of curvature, so without this a short segment dictates a wide
   // arc to a long one. Capping the ratio limits how far that reaches without
   // moving any knot or touching the curve where the chords are even.
+  //
+  // The cap is applied to the two chords of each knot's own row, not to the
+  // chord lengths themselves. Capping the lengths -- shortening each chord to
+  // within the ratio of its neighbour's capped length -- compounds along the
+  // path, so that a short chord shortens every chord within log1.5(long/short)
+  // knots of it. While a curve is being drawn the chord to the pointer is
+  // short, and moving the pointer then swung the tangents four or more knots
+  // back by up to 43 degrees; per row, a short chord reaches only the knots at
+  // its ends.
+  // Only the tangent directions are affected. The curve is still built on the
+  // true chord lengths.
   var MAX_CHORD_RATIO = 1.5;
 
   // Fits a run of knots, returning a cubic per interval.
   function fitRun(pts) {
     var n = pts.length - 1, // segment count
-        dd = [], om = [], psi = [], segments = [],
-        theta, phi, i;
+        dd = [], om = [], psi = [], tau = [], segments = [],
+        solveTau, theta, phi, i;
     if (n < 1) return [];
     // two knots have no interior knot to bend around
     if (n === 1) return [straightSegment(pts[0], pts[1])];
@@ -31487,13 +32180,24 @@
     // psi[i] is how far the polyline turns at knot i
     psi.push(0);
     for (i = 1; i < n; i++) psi.push(wrapAngle(om[i] - om[i - 1]));
+    tau.push(tension);
+    for (i = 1; i < n; i++) tau.push(getKnotTension(psi[i]));
+    tau.push(tension);
 
-    theta = solveDepartureAngles(evenOutChords(dd, n), psi, n);
-    phi = getArrivalAngles(theta, psi, n);
+    // In the solve, an end knot takes its neighbour's tension when that is
+    // higher. Next to a taut hairpin, a slack end raises the curl ratio, and the
+    // curve hooks into the end knot -- 69 degrees off the chord in one case, 18
+    // with this. The handles at the ends keep the base tension: matching those
+    // too barely changes the hook and doubles the curve's response to a drag.
+    solveTau = tau.concat();
+    solveTau[0] = Math.max(tension, tau[1]);
+    solveTau[n] = Math.max(tension, tau[n - 1]);
+    theta = solveDepartureAngles(dd, psi, solveTau, n);
+    phi = getArrivalAngles(theta, psi, solveTau, n);
 
     for (i = 0; i < n; i++) {
       segments.push(buildSegment(pts[i], pts[i + 1], dd[i], om[i],
-        theta[i], phi[i + 1],
+        theta[i], phi[i + 1], tau[i], tau[i + 1],
         handleLimit(dd[i], i > 0 ? dd[i - 1] : Infinity),
         handleLimit(dd[i], i < n - 1 ? dd[i + 1] : Infinity)));
     }
@@ -31518,74 +32222,83 @@
     return MAX_HANDLE * Math.sqrt(own * Math.min(own, neighbor));
   }
 
-  // The chord lengths the solve sees, with the ratio between neighbours held to
-  // MAX_CHORD_RATIO. Each length becomes the smallest that any chord permits it
-  // to be, allowing for a factor of MAX_CHORD_RATIO per step -- a forward pass
-  // and a backward pass compute that exactly, so this needs no iteration.
-  //
-  // Only the tangent directions are affected. The curve is still built on the
-  // true chord lengths.
-  function evenOutChords(dd, n) {
-    var out = dd.concat(), i;
-    for (i = 1; i < n; i++) {
-      if (out[i] > out[i - 1] * MAX_CHORD_RATIO) out[i] = out[i - 1] * MAX_CHORD_RATIO;
-    }
-    for (i = n - 2; i >= 0; i--) {
-      if (out[i] > out[i + 1] * MAX_CHORD_RATIO) out[i] = out[i + 1] * MAX_CHORD_RATIO;
-    }
-    return out;
-  }
-
   // The tridiagonal system of Hobby's mock-curvature conditions, in the
-  // departure angle at each knot measured from the chord leaving it. Written for
-  // unit tension throughout; the general form carries a tension per knot, which
-  // the label tool has no use for.
+  // departure angle at each knot measured from the chord leaving it, with a
+  // tension per knot (@tau) shared by both sides of the knot. This is mf.web
+  // §274-§295 with each knot's left and right tensions equal; the label tool
+  // has no use for asymmetric ones (see "Bulging" in the design doc).
   //
   // The interior rows come from equalizing mock curvature across knot i; the
   // first and last rows are the curl conditions that close the system at the
   // ends of an open run.
-  function solveDepartureAngles(dd, psi, n) {
-    var lo = [], di = [], up = [], r = [], i;
+  function solveDepartureAngles(dd, psi, tau, n) {
+    var lo = [], di = [], up = [], r = [],
+        c = getCurlRatio(1 / tau[0], 1 / tau[1]), i;
     lo.push(0);
-    di.push(2 + curl);
-    up.push(1 + 2 * curl);
-    r.push(-(1 + 2 * curl) * psi[1]);
-    for (i = 1; i < n - 1; i++) {
-      lo.push(dd[i]);
-      di.push(2 * (dd[i] + dd[i - 1]));
-      up.push(dd[i - 1]);
-      r.push(-2 * dd[i] * psi[i] - dd[i - 1] * psi[i + 1]);
+    di.push(c.den);
+    up.push(c.num);
+    r.push(-c.num * psi[1]);
+    for (i = 1; i < n; i++) {
+      pushCurvatureRow(lo, di, up, r, dd[i - 1], dd[i], 1 / tau[i - 1],
+        1 / tau[i + 1], psi[i], i < n - 1 ? psi[i + 1] : 0);
     }
-    if (n > 1) {
-      lo.push(dd[n - 1]);
-      di.push(2 * (dd[n - 1] + dd[n - 2]) -
-        dd[n - 2] * (1 + 2 * curl) / (2 + curl));
-      up.push(0);
-      r.push(-2 * dd[n - 1] * psi[n - 1]);
-    }
+    // the last row's next angle is fixed by the curl condition at the end
+    c = getCurlRatio(1 / tau[n], 1 / tau[n - 1]);
+    di[n - 1] -= up[n - 1] * c.num / c.den;
+    up[n - 1] = 0;
     return solveTridiagonal(lo, di, up, r);
+  }
+
+  // The mock-curvature condition at a knot, in the departure angles at it and
+  // its two neighbours, scaled by the product of the chords either side of it
+  // (@dPrev arriving, @dNext leaving), with the longer of the two held to
+  // MAX_CHORD_RATIO times the shorter. @aPrev and @aNext are the reciprocal
+  // tensions at the neighbours; the knot's own tension cancels out of its row,
+  // and acts only through its neighbours' rows and its handle lengths. At unit
+  // tension the coefficients are Hobby's 1, 2, 2, 1 times the chord lengths.
+  function pushCurvatureRow(lo, di, up, r, dPrev, dNext, aPrev, aNext, psi, psiNext) {
+    var d0 = Math.min(dPrev, dNext * MAX_CHORD_RATIO);
+    dNext = Math.min(dNext, dPrev * MAX_CHORD_RATIO);
+    dPrev = d0;
+    lo.push(aPrev * dNext);
+    di.push((3 - aPrev) * dNext + (3 - aNext) * dPrev);
+    up.push(aNext * dPrev);
+    r.push(-(3 - aPrev) * dNext * psi - aNext * dPrev * psiNext);
+  }
+
+  // Metafont's curl_ratio(): at the end knot of a run, whose reciprocal tension
+  // is @a, with its neighbour's being @b, the angle on the far side of the end
+  // segment is num / den times the angle at the end. At unit tension this is
+  // (1 + 2 * curl) / (2 + curl).
+  function getCurlRatio(a, b) {
+    return {
+      num: curl * a * a * (3 - a) + b * b * b,
+      den: curl * a * a * a + (3 - b) * b * b
+    };
   }
 
   // The angle at which the curve arrives at each knot, again measured from the
   // chord. At an interior knot the departure and arrival angles have to account
   // between them for the whole turn in the polyline; at the far end of the run
   // the curl condition fixes it.
-  function getArrivalAngles(theta, psi, n) {
-    var phi = [0], i;
+  function getArrivalAngles(theta, psi, tau, n) {
+    var c = getCurlRatio(1 / tau[n], 1 / tau[n - 1]),
+        phi = [0], i;
     for (i = 1; i < n; i++) phi.push(-psi[i] - theta[i]);
-    phi.push((1 + 2 * curl) * theta[n - 1] / (2 + curl));
+    phi.push(c.num * theta[n - 1] / c.den);
     return phi;
   }
 
   // Turns a pair of angles into a cubic, by way of Hobby's velocity functions --
   // how far along each tangent the control point sits, as a multiple of a third
-  // of the chord -- with each distance held to the caller's limit.
+  // of the chord, divided by the tension -- with each distance held to the
+  // caller's limit.
   //
   // Shortening a handle leaves its direction alone, so the tangent the two
   // segments share at a knot is untouched and the curve stays smooth through it.
   // What it gives up is Hobby's mock-curvature match across that knot, and only
   // at a knot lopsided enough for the limit to bite.
-  function buildSegment(p0, p1, d, om, theta, phi, maxOut, maxIn) {
+  function buildSegment(p0, p1, d, om, theta, phi, tauOut, tauIn, maxOut, maxIn) {
     var alpha = VEL_A * (Math.sin(theta) - VEL_B * Math.sin(phi)) *
           (Math.sin(phi) - VEL_B * Math.sin(theta)) *
           (Math.cos(theta) - Math.cos(phi)),
@@ -31593,8 +32306,8 @@
           (1 + (1 - VEL_C) * Math.cos(theta) + VEL_C * Math.cos(phi)),
         sigma = (2 - alpha) /
           (1 + (1 - VEL_C) * Math.cos(phi) + VEL_C * Math.cos(theta)),
-        out = d * rho / 3,
-        arr = d * sigma / 3;
+        out = d * rho / (3 * tauOut),
+        arr = d * sigma / (3 * tauIn);
     if (out > maxOut) out = maxOut;
     if (arr > maxIn) arr = maxIn;
     return {
@@ -31695,15 +32408,23 @@
   // Removes non-finite and consecutively duplicated knots. A duplicate spans a
   // zero-length chord, which would leave the direction of the polyline there
   // undefined -- and double-clicking to finish a path is an easy way to make one.
-  function dedupeKnots(knots) {
-    var points = [], i, p, prev;
+  // With @corners, the result's corners property has a flag per point kept, and
+  // a removed duplicate of a corner leaves the knot it duplicates a corner. With
+  // no corners, there is no corners property.
+  function dedupeKnots(knots, corners) {
+    var points = [], flags = [], i, p, prev;
     for (i = 0; i < knots.length; i++) {
       p = knots[i];
       if (!p || p.length < 2 || !isFiniteNumber$1(p[0]) || !isFiniteNumber$1(p[1])) continue;
-      if (prev && p[0] === prev[0] && p[1] === prev[1]) continue;
+      if (prev && p[0] === prev[0] && p[1] === prev[1]) {
+        if (corners && corners[i]) flags[flags.length - 1] = true;
+        continue;
+      }
       points.push([p[0], p[1]]);
+      flags.push(!!(corners && corners[i]));
       prev = p;
     }
+    if (flags.indexOf(true) > -1) points.corners = flags;
     return points;
   }
 
@@ -31757,10 +32478,16 @@
     curveIsClosed: curveIsClosed,
     fitCurveThroughKnots: fitCurveThroughKnots,
     getCurveCurl: getCurveCurl,
+    getCurveHairpinAngle: getCurveHairpinAngle,
+    getCurveHairpinTension: getCurveHairpinTension,
     getCurveLength: getCurveLength,
     getCurveSegments: getCurveSegments,
+    getCurveTension: getCurveTension,
     getPointAtCurveLength: getPointAtCurveLength,
-    setCurveCurl: setCurveCurl
+    setCurveCurl: setCurveCurl,
+    setCurveHairpinAngle: setCurveHairpinAngle,
+    setCurveHairpinTension: setCurveHairpinTension,
+    setCurveTension: setCurveTension
   });
 
   var roundCoord$2 = getRoundingFunction(0.01);
@@ -33858,9 +34585,7 @@
   // prepareDatasetForSVG(), as an SVG document.
   function renderSVGDocument(dataset, frame, layers, opts) {
     var namespace = 'xmlns="http://www.w3.org/2000/svg"';
-    var defs = [];
-    var frameLyr, frameBackground, frameNeatline;
-    var svg, metadataJSON;
+    var svg = renderSVGContent(dataset, frame, layers, opts);
     var style = '';
 
     // kludge for map keys
@@ -33872,8 +34597,37 @@
     }
 
     if (opts.metadata) {
-      metadataJSON = JSON.stringify(getGeospatialMetadata(dataset, frame));
+      svg = getMetadataBlock(JSON.stringify(getGeospatialMetadata(dataset, frame)),
+        [0, 0, frame.width, frame.height]) + svg;
     }
+
+    if (svg.includes('xlink:')) {
+      namespace += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
+    }
+
+    // default line style properties
+    var capStyle = opts.default_linecap || 'round';
+    var lineProps = `stroke-linecap="${capStyle}" stroke-linejoin="round"`;
+    if (svg.includes('stroke-linejoin="miter"')) {
+      // the default limit in Illustrator seems to be 10 -- too large for mapping
+      // (Mapbox uses 2 as the default in their styles)
+      lineProps += ' stroke-miterlimit="2"';
+    }
+    var template = `<?xml version="1.0"?>
+<svg ${namespace} version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" ${lineProps}>${style}
+${svg}
+</svg>`;
+    return utils.format(template, frame.width, frame.height, 0, 0, frame.width, frame.height);
+  }
+
+  // The contents of a map's <svg> element: its definitions, the frame's
+  // background, the layers and the frame's neatline. An overlay frame's map is
+  // rendered this way and placed in a nested <svg> element (see
+  // opts.svg_overlays).
+  function renderSVGContent(dataset, frame, layers, opts) {
+    var defs = [];
+    var frameLyr, frameBackground, frameNeatline;
+    var svg;
 
     if (opts.scalebar) {
       layers = layers.concat(getScalebarLayer({})); // default options
@@ -33895,6 +34649,9 @@
     }
     svg = layers.map(function(lyr) {
       var obj;
+      if (getFurnitureLayerType(lyr) == 'overlay' && !lyr.geometry_type) {
+        return renderOverlayForSVG(lyr, frame, opts);
+      }
       if (layerHasFurniture(lyr)) {
         obj = exportFurnitureLayerForSVG(lyr, frame, opts);
       } else if (layerHasRaster(lyr)) {
@@ -33904,35 +34661,35 @@
       }
       convertPropertiesToDefinitions(obj, defs);
       return stringify(obj);
-    }).join('\n');
+    }).filter(Boolean).join('\n');
     if (frameBackground) svg = frameBackground + '\n' + svg;
     if (frameNeatline) svg += '\n' + frameNeatline;
-
-    if (metadataJSON) {
-      svg = getMetadataBlock(metadataJSON, [0, 0, frame.width, frame.height]) + svg;
-    }
 
     if (defs.length > 0) {
       svg = '<defs>\n' + utils.pluck(defs, 'svg').join('') + '</defs>\n' + svg;
     }
+    return svg;
+  }
 
-    if (svg.includes('xlink:')) {
-      namespace += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
-    }
-
-    // default line style properties
-    var capStyle = opts.default_linecap || 'round';
-    var lineProps = `stroke-linecap="${capStyle}" stroke-linejoin="round"`;
-    if (svg.includes('stroke-linejoin="miter"')) {
-      // the default limit in Illustrator seems to be 10 -- too large for mapping
-      // (Mapbox uses 2 as the default in their styles)
-      lineProps += ' stroke-miterlimit="2"';
-    }
-    var template = `<?xml version="1.0"?>
-<svg ${namespace} version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" ${lineProps}>${style}
-${svg}
-</svg>`;
-    return utils.format(template, frame.width, frame.height, 0, 0, frame.width, frame.height);
+  // An overlay frame's map, placed on the host page in a nested <svg> element,
+  // which clips it to the overlay's page
+  // opts.svg_overlays: rendered overlay maps, by frame ID
+  //   {name, width, height, content}
+  function renderOverlayForSVG(lyr, frame, opts) {
+    var rec = getFurnitureLayerData(lyr);
+    var o = opts.svg_overlays && opts.svg_overlays[rec.frame];
+    var box;
+    if (!o) return '';
+    box = getOverlayBox(rec, frame, o);
+    return '<svg' + stringifyProperties({
+      id: (opts.id_prefix || '') + o.name,
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height,
+      viewBox: [0, 0, o.width, o.height].join(' '),
+      overflow: 'hidden'
+    }) + '>\n' + o.content + '\n</svg>';
   }
 
   function exportFrameStylePhase(lyr, dataset, opts, phase) {
@@ -34506,6 +35263,7 @@ ${svg}
     layerHasLabels: layerHasLabels,
     layerHasSvgSymbols: layerHasSvgSymbols,
     prepareDatasetForSVG: prepareDatasetForSVG,
+    renderSVGContent: renderSVGContent,
     renderSVGDocument: renderSVGDocument,
     validateSvgDataFields: validateSvgDataFields
   });
@@ -39944,6 +40702,7 @@ ${css.join('\n')}
     }
     var layers = dataset.layers.map(lyr => exportLayer(lyr, opts));
     return {
+      id: dataset.id || null,
       arcs: arcData,
       info: dataset.info ? exportInfo(dataset.info) : null,
       layers: await Promise.all(layers)
@@ -40019,10 +40778,11 @@ ${css.join('\n')}
 
   async function exportLayer(lyr, opts) {
     var data = null;
+    var obj;
     if (lyr.data) {
       data = await exportTable2(lyr.data);
     }
-    return {
+    obj = {
       name: lyr.name || null,
       geometry_type: lyr.geometry_type || null,
       shapes: lyr.shapes || null,
@@ -40033,6 +40793,8 @@ ${css.join('\n')}
       pinned: lyr.pinned || opts.show_all || false,
       active: !!(lyr.active || lyr == opts.active_layer) // lyr.active: deprecated
     };
+    if (lyr.frame_hidden) obj.frame_hidden = true;
+    return obj;
   }
 
   function exportRasterData(raster) {
@@ -45423,6 +46185,481 @@ ${css.join('\n')}
     inferOutputFormat: inferOutputFormat
   });
 
+  // Layer stacking order and visibility in frames
+  //
+  // lyr.menu_order is a layer's place in the stack (higher draws on top), shared
+  // by the CLI and the GUI and saved in .msx files. Layers without a value sit
+  // above the ones that have one, in catalog order, which is also how the GUI's
+  // layers menu numbers them. Only the order within a frame, or within the
+  // unframed layers, means anything; the numbers are global for simplicity.
+  //
+  // lyr.frame_hidden marks a frame member that stays in its frame but is left
+  // off the map. Unframed layers use the GUI's own pinning instead.
+
+  // All the catalog's layers, as [{layer, dataset}], from bottom to top
+  function getStackedLayers(catalog) {
+    return catalog.getLayers().map(function(o, i) {
+      var order = o.layer.menu_order;
+      return {o: o, i: i, key: order > 0 ? order : 1e6 + i};
+    }).sort(function(a, b) {
+      return a.key - b.key || a.i - b.i;
+    }).map(function(e) {
+      return e.o;
+    });
+  }
+
+  // Puts @layers at a place in the stack, and numbers every layer in the
+  // catalog from 1.
+  // @position {above: <layer>}, {below: <layer>}, {top: true}, {bottom: true}
+  //   or {in_place: true} (where the lowest of @layers is); the anchor layer
+  //   must not be one of @layers
+  // @opts.group layers that top and bottom refer to (e.g. a frame's members);
+  //   the top or bottom of an empty group is the top of the stack
+  // @opts.ordered stack @layers in the given order, first at the bottom
+  //   (otherwise they keep their order in the stack)
+  // @opts.operation undo operation name
+  function moveLayersInStack(catalog, layers, position, opts) {
+    var stack = getStackedLayers(catalog).map(function(o) { return o.layer; });
+    var group = opts && opts.group || [];
+    var moving = opts && opts.ordered ?
+      layers.filter(function(lyr, i) { return stack.includes(lyr) && layers.indexOf(lyr) == i; }) :
+      stack.filter(function(lyr) { return layers.includes(lyr); });
+    var rest = stack.filter(function(lyr) { return !layers.includes(lyr); });
+    var groupRest = rest.filter(function(lyr) { return group.includes(lyr); });
+    var idx;
+    if (position.in_place) {
+      idx = stack.findIndex(function(lyr) { return layers.includes(lyr); });
+      idx = idx == -1 ? rest.length : stack.slice(0, idx).filter(function(lyr) {
+        return !layers.includes(lyr);
+      }).length;
+    } else if (position.above) {
+      idx = rest.indexOf(position.above) + 1;
+    } else if (position.below) {
+      idx = rest.indexOf(position.below);
+    } else if (groupRest.length === 0) {
+      idx = rest.length;
+    } else if (position.bottom) {
+      idx = rest.indexOf(groupRest[0]);
+    } else {
+      idx = rest.indexOf(groupRest[groupRest.length - 1]) + 1;
+    }
+    setStackOrder(rest.slice(0, idx).concat(moving, rest.slice(idx)), opts && opts.operation);
+  }
+
+  // @layers every layer, from bottom to top
+  function setStackOrder(layers, operation) {
+    layers.forEach(function(lyr, i) {
+      setLayerMetadata(lyr, 'menu_order', i + 1, operation);
+    });
+  }
+
+  function setFrameHidden(lyr, hidden, operation) {
+    setLayerMetadata(lyr, 'frame_hidden', hidden ? true : undefined, operation);
+  }
+
+  function setLayerMetadata(lyr, key, value, operation) {
+    var detail = {operation: operation || 'stacking', unit: 'stacking'};
+    if (lyr[key] === value) return;
+    noteLayerMetadataWillChange(lyr, detail);
+    if (value === undefined) {
+      delete lyr[key];
+    } else {
+      lyr[key] = value;
+    }
+    markLayerMetadataChanged(lyr, detail);
+  }
+
+  var LayerStacking = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getStackedLayers: getStackedLayers,
+    moveLayersInStack: moveLayersInStack,
+    setFrameHidden: setFrameHidden,
+    setStackOrder: setStackOrder
+  });
+
+  // Moving layers between frames
+  //
+  // Membership belongs to datasets, so moving some of a dataset's layers splits
+  // them off into a dataset of their own. The new dataset keeps the source's ID,
+  // recording that the two have one lineage: when a dataset arrives where a
+  // dataset with its ID already is, the two are rejoined, so that boundaries
+  // that are still identical are shared again (see rejoinDatasets()).
+
+  // A frame's member layers (not the frame or its furniture), bottom to top
+  function getFrameStack(catalog, frame) {
+    var members = getFrameMemberLayers(catalog, frame).map(function(o) { return o.layer; });
+    return getStackedLayers(catalog).filter(function(o) {
+      return members.includes(o.layer);
+    });
+  }
+
+  // How a -frame option that lists layers of @frame (hide-layers=, order-layers=,
+  // ...) refers to member @lyr: by name if that is unambiguous among the members,
+  // otherwise by its number among them, counting from 1 in catalog order.
+  function getFrameMemberRef(catalog, frame, lyr) {
+    var members = getFrameMemberLayers(catalog, frame);
+    var name = lyr.name;
+    var nameIsUsable = !!name && !/^[0-9]+$/.test(name) && !/[,*?:]/.test(name) &&
+      members.filter(function(o) { return o.layer.name == name; }).length == 1;
+    if (nameIsUsable) return name;
+    return String(members.findIndex(function(o) { return o.layer == lyr; }) + 1);
+  }
+
+  // The frame's coordinate system: the first one that is known (from metadata,
+  // not guessed from coordinates) among the frame dataset and its members
+  function getFrameCrsInfo(catalog, frame) {
+    var dataset = [frame.dataset].concat(getFrameMembers(catalog, frame)).find(datasetHasCrsMetadata);
+    return dataset ? getDatasetCrsInfo(dataset) : null;
+  }
+
+  // Moves layers into @frame, or out of their frames if @frame is null. Layers
+  // already in @frame are only restacked.
+  // @items [{layer, dataset}]
+  // @opts.position where moved layers go in the frame's stack: {above: <layer>},
+  //   {below: <layer>}, {top: true} (default) or {bottom: true}
+  // @opts.ordered stack the layers in the order of @items, first at the bottom
+  //   (otherwise they keep their order in the stack)
+  // @opts.reproject reproject layers whose coordinate system clearly differs from
+  //   the frame's, instead of stopping
+  function moveLayersToFrame(catalog, items, frame, opts) {
+    var operation = 'frame';
+    var groups, projections;
+    opts = opts || {};
+    items.forEach(function(o) {
+      if (isFrameComponentLayer(o.layer, o.dataset)) {
+        stop$1('A map frame or its furniture cannot be moved into a frame:', o.layer.name || '[unnamed layer]');
+      }
+    });
+    groups = groupLayersByDataset(items);
+    // check coordinate systems before anything changes
+    projections = groups.map(function(g) {
+      return frame && !isInDestination(g.dataset, frame) ?
+        getProjectionForJoin(catalog, frame, g.dataset, opts.reproject) : null;
+    });
+    groups.forEach(function(g, i) {
+      var prevFrame = getFrameForDataset(catalog, g.dataset);
+      var moved;
+      if (isInDestination(g.dataset, frame)) return;
+      moved = g.layers.length == g.dataset.layers.length && !findFrameLayerInDataset(g.dataset) ?
+        g.dataset : splitLayersOff(catalog, g.dataset, g.layers);
+      if (projections[i]) {
+        cmd.proj(moved, catalog, {}, moved.layers, projections[i]);
+        message('Reprojected', formatLayerNames$1(moved.layers), 'to the coordinate system of',
+          frame.layer.name);
+      }
+      setFrameRef(moved, frame ? frame.dataset.id : null);
+      if (prevFrame) {
+        moved.layers.forEach(function(lyr) { setFrameHidden(lyr, false, operation); });
+      }
+      rejoinByLineage(catalog, moved);
+    });
+    if (frame) {
+      moveLayersInStack(catalog, utils.pluck(items, 'layer'), opts.position || {}, {
+        group: getFrameMemberLayers(catalog, frame).map(function(o) { return o.layer; }),
+        ordered: opts.ordered,
+        operation: operation
+      });
+    }
+  }
+
+  // -merge-layers and -union combine layers from several datasets. Returns the
+  // frame of the target datasets, or null if none are in a frame. Layers in
+  // different frames cannot be combined.
+  function getFrameForMerge(catalog, targets, commandName) {
+    var frames = targets.reduce(function(memo, target) {
+      var frame = getFrameForDataset(catalog, target.dataset);
+      if (frame && !memo.some(function(f) { return f.dataset == frame.dataset; })) {
+        memo.push(frame);
+      }
+      return memo;
+    }, []);
+    if (frames.length > 1) {
+      stop$1('-' + commandName, 'cannot combine layers from different map frames:',
+        utils.pluck(utils.pluck(frames, 'layer'), 'name').join(', '));
+    }
+    return frames[0] || null;
+  }
+
+  // Prepares the targets of a -merge-layers or -union whose output goes into
+  // @frame: targeted layers are split off from untargeted layers in the same
+  // dataset, so that only the targeted layers move. Coordinate systems of
+  // unframed layers are checked before anything changes.
+  function splitOffMergeTargets(catalog, targets, frame, commandName) {
+    var arriving = [];
+    targets.forEach(function(target) {
+      target.layers.forEach(function(lyr) {
+        if (isFrameComponentLayer(lyr, target.dataset)) {
+          stop$1('-' + commandName, 'cannot combine a map frame or its furniture with other layers');
+        }
+      });
+      if (!isInDestination(target.dataset, frame)) {
+        getProjectionForJoin(catalog, frame, target.dataset, false);
+        arriving = arriving.concat(target.layers);
+      }
+    });
+    if (arriving.length > 0) {
+      message('Moved', formatLayerNames$1(arriving), 'into frame', frame.layer.name);
+    }
+    return targets.map(function(target) {
+      var whole = target.layers.length == target.dataset.layers.length &&
+        !findFrameLayerInDataset(target.dataset);
+      return whole ? target : {
+        layers: target.layers,
+        dataset: splitLayersOff(catalog, target.dataset, target.layers)
+      };
+    });
+  }
+
+  // The ID that the output of a -merge-layers or -union in @frame keeps: the ID
+  // of a member dataset, so that later moves can still rejoin the output
+  function getMergedMemberId(targets, frame) {
+    var member = targets.find(function(target) {
+      return getFrameRef(target.dataset) == frame.dataset.id;
+    });
+    return member ? member.dataset.id : null;
+  }
+
+  function isInDestination(dataset, frame) {
+    if (frame) {
+      return dataset == frame.dataset || getFrameRef(dataset) == frame.dataset.id;
+    }
+    return !getFrameRef(dataset) && !findFrameLayerInDataset(dataset);
+  }
+
+  // Returns CRS info to reproject the dataset with, or null if it can join as is
+  function getProjectionForJoin(catalog, frame, dataset, reproject) {
+    var frameInfo = getFrameCrsInfo(catalog, frame);
+    var frameCrs = frameInfo ? frameInfo.crs : getDatasetCRS(frame.dataset);
+    var known = datasetHasCrsMetadata(dataset) ? getDatasetCRS(dataset) : null;
+    var names = formatLayerNames$1(dataset.layers);
+    // Two known projected systems must be the same projection. Lat-long data is
+    // only kept apart from projected data, as everywhere else in mapshaper, so
+    // that data in a different datum (or without metadata) can still join.
+    var frameSpace = frameInfo ?
+      {space: isLatLngCRS(frameCrs) ? 'latlong' : 'projected', known: true} :
+      getCoordinateSpace(frame.dataset);
+    if (known && frameInfo && !isLatLngCRS(known) && !isLatLngCRS(frameCrs) &&
+        crsTransformsDiffer(known, frameCrs) ||
+        coordinateSpacesConflict(getCoordinateSpace(dataset), frameSpace)) {
+      if (reproject && frameInfo) return frameInfo;
+      stop$1(names, 'and frame', frame.layer.name, 'have different coordinate systems.',
+        frameInfo ? 'Use the reproject option to reproject the layers into the frame.' : '');
+    }
+    return null;
+  }
+
+  // {space: 'latlong' or 'projected', known: true if from CRS metadata}, or
+  // null if a dataset has no CRS and no coordinates. A dataset without CRS
+  // metadata whose coordinates are not lat-long counts as projected.
+  function getCoordinateSpace(dataset) {
+    var crs = getDatasetCRS(dataset);
+    var known = datasetHasCrsMetadata(dataset);
+    if (crs) return {space: isLatLngCRS(crs) ? 'latlong' : 'projected', known: known};
+    return getDatasetBounds(dataset).hasBounds() ? {space: 'projected', known: false} : null;
+  }
+
+  // Two guesses from coordinates can be wrong (small projected coordinates look
+  // like degrees), so data is kept apart only if one side has CRS metadata
+  function coordinateSpacesConflict(a, b) {
+    return !!a && !!b && a.space != b.space && (a.known || b.known);
+  }
+
+  // Layers drawn on one page have to be in one kind of coordinate space
+  function requireSameCoordinateSpace(datasets, msg) {
+    var spaces = datasets.map(getCoordinateSpace);
+    if (spaces.some(function(a) {
+      return spaces.some(function(b) { return coordinateSpacesConflict(a, b); });
+    })) {
+      stop$1(msg || 'Unable to combine projected and unprojected datasets');
+    }
+  }
+
+  function datasetHasCrsMetadata(dataset) {
+    var info = dataset.info || {};
+    return !!(info.crs || info.crs_string || info.wkt1 || info.geopackage_crs || info.flatgeobuf_crs);
+  }
+
+  // Moves @layers into a new dataset with the same ID, placed next to @dataset
+  // in the catalog (before it, if the moved layers came first). Content in a
+  // frame dataset (from before frames had members) gets an ID of its own,
+  // because a frame dataset's ID identifies the frame.
+  function splitLayersOff(catalog, dataset, layers) {
+    var part = {
+      info: utils.extend({}, dataset.info),
+      layers: dataset.layers.filter(function(lyr) { return layers.includes(lyr); }),
+      arcs: dataset.arcs
+    };
+    var rest = dataset.layers.filter(function(lyr) { return !layers.includes(lyr); });
+    var before = dataset.layers.indexOf(part.layers[0]) < dataset.layers.indexOf(rest[0]);
+    if (!findFrameLayerInDataset(dataset)) part.id = dataset.id;
+    if (layersShareArcs(dataset.arcs, part.layers, rest)) {
+      message('Separated', formatLayerNames$1(part.layers), 'from', formatLayerNames$1(rest),
+        '(they shared boundaries). Editing them separately can open gaps between them.');
+    }
+    noteDatasetWillChange(dataset, {operation: 'splitLayersOff', unit: 'layers'});
+    dataset.layers = rest;
+    dissolveArcs(part);
+    dissolveArcs(dataset);
+    markDatasetChanged(dataset, {operation: 'splitLayersOff', unit: 'layers'});
+    catalog.insertDatasetAfter(part, dataset, before);
+    return part;
+  }
+
+  function layersShareArcs(arcs, a, b) {
+    var used, shared = false;
+    if (!arcs) return false;
+    used = new Uint8Array(arcs.size());
+    a.filter(layerHasPaths).forEach(function(lyr) {
+      forEachArcId(lyr.shapes, function(id) { used[absArcId(id)] = 1; });
+    });
+    b.filter(layerHasPaths).forEach(function(lyr) {
+      forEachArcId(lyr.shapes, function(id) {
+        if (used[absArcId(id)]) shared = true;
+      });
+    });
+    return shared;
+  }
+
+  // Rejoins @dataset with a dataset of the same lineage in the same frame (or
+  // among unframed datasets), if both have the same simplification state and
+  // coordinate system
+  function rejoinByLineage(catalog, dataset) {
+    var ref = getFrameRef(dataset);
+    var candidates = catalog.getDatasets().filter(function(d) {
+      return d != dataset && !!d.id && d.id == dataset.id && getFrameRef(d) == ref &&
+        !findFrameLayerInDataset(d) && haveSameCRS(d, dataset);
+    });
+    var match = candidates.find(function(d) {
+      return haveSameSimplification([d, dataset]);
+    });
+    if (candidates.length > 0 && !match) {
+      message('Kept', formatLayerNames$1(dataset.layers), 'separate from',
+        formatLayerNames$1(candidates[0].layers), 'because they are simplified differently');
+    }
+    if (match) {
+      catalog.replaceDatasets([match, dataset], rejoinDatasets([match, dataset]));
+    }
+  }
+
+  function haveSameCRS(a, b) {
+    var P = getDatasetCRS(a), Q = getDatasetCRS(b);
+    return !P || !Q || crsHaveSameTransform(P, Q);
+  }
+
+  function formatLayerNames$1(layers) {
+    return layers.map(function(lyr) { return lyr.name || '[unnamed layer]'; }).join(', ');
+  }
+
+  var FrameMembers = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getCoordinateSpace: getCoordinateSpace,
+    getFrameCrsInfo: getFrameCrsInfo,
+    getFrameForMerge: getFrameForMerge,
+    getFrameMemberRef: getFrameMemberRef,
+    getFrameStack: getFrameStack,
+    getMergedMemberId: getMergedMemberId,
+    moveLayersToFrame: moveLayersToFrame,
+    requireSameCoordinateSpace: requireSameCoordinateSpace,
+    splitOffMergeTargets: splitOffMergeTargets
+  });
+
+  // What a map export (SVG, HTML, PNG, JPG) draws, by frame
+  //
+  // A frame in the targets stands for the whole map: the frame, its furniture
+  // and its members that are not hidden, in stacking order. A member layer is
+  // drawn on its frame's page. Layers in no frame are drawn in the frame if just
+  // one frame is involved (as before frames had members); with several frames,
+  // they are left out.
+  //
+  // Returns null if no frame is involved, so that the export works as it did
+  // before frames had members. Otherwise returns one group per frame:
+  // [{frame, datasets}], where the datasets hold shallow copies of the layers,
+  // numbered in drawing order (target_id, which sorts layers for CLI export).
+  // Explicitly targeted layers keep the order of the target list.
+  function getMapExportGroups(catalog, targets) {
+    var items = expandCommandTargets(targets).map(function(o, i) {
+      return {layer: o.layer, dataset: o.dataset, frame: getFrameForDataset(catalog, o.dataset), i: i};
+    }).sort(function(a, b) {
+      return getTargetOrder(a) - getTargetOrder(b) || a.i - b.i;
+    });
+    var frames = items.reduce(function(memo, o) {
+      if (o.frame && !memo.some(function(f) { return f.dataset == o.frame.dataset; })) {
+        memo.push(o.frame);
+      }
+      return memo;
+    }, []);
+    var unframed = items.filter(function(o) { return !o.frame; });
+    if (frames.length === 0) return null;
+    if (unframed.length > 0 && frames.length > 1) {
+      warn('Left out layers that are in no frame:', formatNames(unframed));
+    } else if (unframed.length > 0) {
+      message('Drawing layers that are in no frame in frame', frames[0].layer.name + ':',
+        formatNames(unframed));
+    }
+    return frames.map(function(frame) {
+      return {
+        frame: frame,
+        datasets: getFrameExportDatasets(catalog, frame, items.filter(function(o) {
+          return o.frame ? o.frame.dataset == frame.dataset : frames.length == 1;
+        }))
+      };
+    });
+  }
+
+  // The file name of a frame's map, when an export writes one map per frame:
+  // the frame's name, after any name given to -o (map.svg -> map-frame1.svg)
+  function getFrameExportFilename(frame, file, ext) {
+    var name = frame.layer.name || 'frame';
+    if (layerNameIsUnsafeFilename(name)) {
+      stop$1('Frame name cannot be used as an output filename:', name);
+    }
+    return file ? file.replace(/(\.[^.]*)?$/, '-' + name + '$1') : name + '.' + ext;
+  }
+
+  function getFrameExportDatasets(catalog, frame, items) {
+    var explicit = utils.pluck(items, 'layer');
+    var ordered = [];
+    var stack = getFrameStack(catalog, frame).filter(function(o) {
+      return !o.layer.frame_hidden && !explicit.includes(o.layer);
+    });
+    var add = function(o) {
+      if (!ordered.some(function(o2) { return o2.layer == o.layer; })) {
+        ordered.push({layer: o.layer, dataset: o.dataset});
+      }
+    };
+    if (!explicit.includes(frame.layer)) {
+      add(frame);
+    }
+    items.forEach(function(o) {
+      add(o);
+      if (o.layer == frame.layer) {
+        stack.forEach(add);
+      }
+    });
+    getFrameFurnitureLayers(frame.dataset).forEach(function(lyr) {
+      add({layer: lyr, dataset: frame.dataset});
+    });
+    return groupLayersByDataset(ordered.map(function(o, i) {
+      return {layer: utils.defaults({target_id: i}, o.layer), dataset: o.dataset};
+    })).map(function(target) {
+      return utils.defaults({layers: target.layers}, target.dataset);
+    });
+  }
+
+  function getTargetOrder(o) {
+    return o.layer.target_id >= 0 ? o.layer.target_id : Infinity;
+  }
+
+  function formatNames(items) {
+    return items.map(function(o) { return o.layer.name || '[unnamed layer]'; }).join(', ');
+  }
+
+  var FrameExport = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getFrameExportFilename: getFrameExportFilename,
+    getMapExportGroups: getMapExportGroups
+  });
+
   // @targets - non-empty output from Catalog#findCommandTargets()
   //
   async function exportTargetLayers(catalog, targets, opts) {
@@ -45433,8 +46670,17 @@ ${css.join('\n')}
       opts = Object.assign({svg_bbox: bounds.toArray()}, opts);
     }
     var format = getOutputFormat(targets[0].dataset, opts);
-    var datasets;
-    if (format == PACKAGE_EXT && !runningInBrowser()) {
+    var datasets, groups;
+    // The web UI's export dialog composes its own map (gui_frame)
+    if (isRenderedMapFormat(format) && !opts.gui_frame) {
+      groups = getMapExportGroups(catalog, targets);
+    }
+    if (groups && groups.length > 1) {
+      return exportFrameMaps(catalog, groups, format, opts);
+    }
+    if (groups) {
+      datasets = groups[0].datasets;
+    } else if (format == PACKAGE_EXT && !runningInBrowser()) {
       // CLI .msx export captures the whole session: every dataset/layer in the
       // catalog ships in the snapshot, not just the -target subset. Targeted
       // layers come back visible (pinned) and stacked in the order matched by
@@ -45448,7 +46694,82 @@ ${css.join('\n')}
         return utils.defaults({layers: target.layers}, target.dataset);
       });
     }
+    if (isRenderedMapFormat(format)) {
+      opts = addOverlayExports(catalog, datasets, opts);
+    }
     return exportDatasets(datasets, opts);
+  }
+
+  // One map per frame, named after the frame
+  async function exportFrameMaps(catalog, groups, format, opts) {
+    var files = [];
+    for (var group of groups) {
+      var groupOpts = Object.assign({}, opts, {
+        file: getFrameExportFilename(group.frame, opts.file, format)
+      });
+      groupOpts = addOverlayExports(catalog, group.datasets, groupOpts);
+      files = files.concat(await exportDatasets(group.datasets, groupOpts));
+    }
+    return files;
+  }
+
+  // Renders the maps of the overlay frames placed on the map being exported,
+  // for the SVG renderer to place on the page (opts.svg_overlays)
+  // @datasets the datasets of the map being exported
+  function addOverlayExports(catalog, datasets, opts, visited) {
+    var overlays = renderOverlayExports(catalog, datasets, opts, visited || []);
+    return overlays ? Object.assign({}, opts, {svg_overlays: overlays}) : opts;
+  }
+
+  function renderOverlayExports(catalog, datasets, opts, visited) {
+    var ids = [];
+    var overlays = {};
+    datasets.forEach(function(dataset) {
+      dataset.layers.filter(layerIsOverlay).forEach(function(lyr) {
+        var id = getFurnitureLayerData(lyr).frame;
+        if (!ids.includes(id)) ids.push(id);
+      });
+    });
+    ids.forEach(function(id) {
+      var frame = getFrameById(catalog, id);
+      if (frame && !visited.includes(id)) {
+        overlays[id] = renderOverlayMap(catalog, frame, opts, visited.concat(id));
+      }
+    });
+    return ids.length > 0 ? overlays : null;
+  }
+
+  // An overlay frame's map, drawn the way an export of the frame would draw it.
+  // Rasters are embedded, and element ids are prefixed with the frame's name so
+  // they don't collide with the host's.
+  function renderOverlayMap(catalog, frame, hostOpts, visited) {
+    var group = getMapExportGroups(catalog, [{layers: [frame.layer], dataset: frame.dataset}])[0];
+    var datasets = group.datasets;
+    var name = frame.layer.name || 'overlay';
+    var opts = {
+      id_prefix: (hostOpts.id_prefix || '') + name + '-',
+      precision: hostOpts.precision,
+      raster_res: hostOpts.raster_res,
+      svg_raster_format: hostOpts.svg_raster_format,
+      jpeg_quality: hostOpts.jpeg_quality,
+      default_linecap: hostOpts.default_linecap
+    };
+    var dataset, o;
+    opts = addOverlayExports(catalog, datasets, opts, visited);
+    if (datasets.length > 1) {
+      dataset = mergeDatasetsForExport(datasets);
+      opts.final = true;
+    } else {
+      dataset = datasets[0];
+    }
+    utils.sortOn(dataset.layers, 'target_id', true); // drawing order, from getMapExportGroups()
+    o = prepareDatasetForSVG(copyDatasetForRenderedExport(dataset), opts);
+    return {
+      name: name,
+      width: o.frame.width,
+      height: o.frame.height,
+      content: renderSVGContent(o.dataset, o.frame, o.dataset.layers, o.opts)
+    };
   }
 
   //
@@ -45813,50 +47134,25 @@ ${css.join('\n')}
   //   - every dataset and every layer in the catalog is present, not just the
   //     -target subset, so .msx round-trips the entire working session;
   //   - layers matched by -target are marked `pinned: true` so the GUI shows
-  //     them on load (no `&display-all` URL flag needed);
-  //   - those targeted layers get menu_order values that follow the linear
-  //     -target list (first targeted = bottom of the stack, last = top),
-  //     matching the SVG draw order from the same -target line;
-  //   - untargeted layers get menu_order values below every targeted layer,
-  //     so they sit at the bottom of the GUI panel out of the way (they're
-  //     hidden, but if the user pins one later it doesn't pop above the
-  //     intended stack).
+  //     them on load (no `&display-all` URL flag needed), and other layers
+  //     are hidden;
+  //   - menu_order is the session's stacking order (see getStackedLayers()),
+  //     numbered from 1, so the target list doesn't restack frame members.
   //
   // Intra-dataset array order is preserved so re-importing with `mapshaper
   // foo.msx -target * -o bar.svg` still iterates layers in the order they
   // appeared during the original run.
   function prepareCatalogForCliPackExport(catalog, targets) {
     var targeted = new Set();
+    var stack = getStackedLayers(catalog).map(function(o) { return o.layer; });
     targets.forEach(function(t) {
       t.layers.forEach(function(lyr) { targeted.add(lyr); });
     });
-    var datasets = catalog.getDatasets();
-    // Count untargeted layers globally so we can offset targeted layers'
-    // menu_order to sit above them in a single consecutive range.
-    var untargetedCount = 0;
-    datasets.forEach(function(d) {
-      d.layers.forEach(function(lyr) {
-        if (!targeted.has(lyr)) untargetedCount++;
-      });
-    });
-    var untargetedSeq = 0;
-    return datasets.map(function(dataset) {
+    return catalog.getDatasets().map(function(dataset) {
       var layers = dataset.layers.map(function(lyr) {
-        var isTargeted = targeted.has(lyr);
-        var menuOrder;
-        if (isTargeted && lyr.target_id != null && lyr.target_id >= 0) {
-          // target_id is 0-based across the whole -target list; offset past
-          // the untargeted block so targeted layers occupy [untargetedCount+1
-          // .. untargetedCount+N].
-          menuOrder = untargetedCount + lyr.target_id + 1;
-        } else {
-          // Untargeted (or untargeted-shaped target_id): pack into the bottom
-          // of the global stack, in catalog walk order.
-          menuOrder = ++untargetedSeq;
-        }
         return utils.defaults({
-          pinned: isTargeted,
-          menu_order: menuOrder
+          pinned: targeted.has(lyr),
+          menu_order: stack.indexOf(lyr) + 1
         }, lyr);
       });
       return utils.defaults({layers: layers}, dataset);
@@ -47461,7 +48757,9 @@ ${css.join('\n')}
       var lines = [];
       var description = opt.describe;
       var label;
-      if (!description) ; else if (opt.label) {
+      if (opt.group) {
+        lines.push('', '  ' + opt.group);
+      } else if (!description) ; else if (opt.label) {
         lines.push([opt.label, description]);
       } else if (opt.DEFAULT) {
         label = opt.name + '=';
@@ -47605,6 +48903,12 @@ ${css.join('\n')}
       Object.keys(o).forEach(function(key) {
         this.option(key, o[key]);
       }, this);
+      return this;
+    };
+
+    // A heading for the options that follow, in the help output
+    this.group = function(title) {
+      _command.options.push({name: '', group: title});
       return this;
     };
 
@@ -50621,7 +51925,14 @@ ${css.join('\n')}
       });
 
     parser.command('frame')
-      .describe('create a rectangular map frame layer at a given display width')
+      .describe('create a map frame for some layers, or change a frame')
+      .option('target', {
+        describe: 'layers to frame, or the name of a frame to change'
+      })
+      .option('name', {
+        describe: 'name of a new frame, or a new name for a frame'
+      })
+      .group('Page and extent')
       .option('width', {
         describe: 'width of frame (e.g. 5in, 10cm, 600px; default is 800px)'
       })
@@ -50636,6 +51947,9 @@ ${css.join('\n')}
         describe: 'frame coordinates (xmin,ymin,xmax,ymax)',
         type: 'bbox'
       })
+      .option('fit', {
+        describe: '(changing a frame) layer(s) to fit the frame to'
+      })
       .option('margin', frameMarginOpt)
       .option('offset', frameOffsetOpt)
       .option('offsets', frameOffsetOpt)
@@ -50643,12 +51957,76 @@ ${css.join('\n')}
         describe: 'fit to coordinates, not the extent of symbols, labels and strokes',
         type: 'flag'
       })
-      .option('name', nameOpt)
-      .option('replace', {
-        describe: 'replace the existing map frame',
+      .option('auto-aspect', {
+        describe: '(changing a frame) derive page height from the frame extent',
         type: 'flag'
       })
-      .option('target', targetOpt);
+      .option('fix-scale', {
+        describe: '(changing a frame) hold the map scale; derive the size from the new extent',
+        type: 'flag'
+      })
+      .group('Layers in a frame (target= names the frame)')
+      .option('add-layers', {
+        describe: 'move layers from outside into the frame (on top, in list order)'
+      })
+      .option('order-layers', {
+        describe: 'restack layers in the frame, in list order (first at bottom)'
+      })
+      .option('above', {
+        describe: 'with add-layers= or order-layers=, stack the layers above this one'
+      })
+      .option('below', {
+        describe: 'with add-layers= or order-layers=, stack the layers below this one'
+      })
+      .option('top', {
+        describe: 'with add-layers= or order-layers=, stack the layers on top',
+        type: 'flag'
+      })
+      .option('bottom', {
+        describe: 'with add-layers= or order-layers=, stack the layers at the bottom',
+        type: 'flag'
+      })
+      .option('reproject', {
+        describe: 'with add-layers=, reproject layers into the frame\'s coordinate system',
+        type: 'flag'
+      })
+      .option('remove-layers', {
+        describe: 'move layers out of the frame'
+      })
+      .option('hide-layers', {
+        describe: 'keep layers in the frame, but leave them off the map'
+      })
+      .option('show-layers', {
+        describe: 'show hidden layers in the frame'
+      })
+      .group('Overlays (target= names the host frame)')
+      .option('overlay', {
+        describe: 'draw another frame on this frame\'s page (e.g. an inset map)'
+      })
+      .option('overlay-position', {
+        describe: 'with overlay=, corner of the page: top-left, top-right, bottom-left, bottom-right'
+      })
+      .option('overlay-margin', {
+        describe: 'with overlay=, distance from the corner\'s edges (e.g. 10 or 10,20)'
+      })
+      .option('remove-overlay', {
+        describe: 'remove an overlay frame from this frame\'s page'
+      })
+      .group('Other')
+      .option('no-replace', {
+        alias: '+',
+        type: 'flag',
+        label: '+, no-replace',
+        describe: '(changing a frame) copy the frame and its layers; name= names the copy'
+      })
+      .option('replace', {
+        describe: '(creating a frame) replace the frame of the targets',
+        type: 'flag'
+      })
+      .option('remove', {
+        describe: '(changing a frame) demote the frame to an ordinary rectangle layer',
+        type: 'flag'
+      });
 
       // .option('height', {
       //   describe: 'pixel height of output (may be a range)'
@@ -56774,11 +58152,14 @@ ${css.join('\n')}
       return null;
     }
 
-    return {
+    var dataset = {
       info: await importInfo(obj.info || {}),
       layers: layers,
       arcs: arcs
     };
+    // snapshots from before dataset IDs are given an ID by the catalog
+    if (obj.id) dataset.id = obj.id;
+    return dataset;
   }
 
   function bufferToDataView(buf, constructor) {
@@ -56996,7 +58377,7 @@ ${css.join('\n')}
   async function importMshpFile(file, catalog, opts) {
     var buf = cli.readFile(file, null, opts.input);
     var obj = await unpackSessionData(buf);
-    obj.datasets.forEach(catalog.addDataset, catalog);
+    catalog.addDatasets(obj.datasets);
     return obj.target;
   }
 
@@ -57454,6 +58835,70 @@ ${css.join('\n')}
     findCommandSourceAsync: findCommandSourceAsync
   });
 
+  // Dataset IDs
+  //
+  // Every dataset in a catalog has a random ID (dataset.id), assigned when the
+  // dataset enters the catalog or is created by a split that records lineage.
+  // The ID never changes. It lives on the dataset rather than in dataset.info,
+  // so the many places that copy info cannot copy it by accident.
+  //
+  // IDs are not unique by rule: the parts of a dataset that is split to move
+  // layers between frames keep the original ID, so they can be rejoined later.
+  // The ID of a frame dataset identifies the frame (see dataset.info.frame).
+
+  var ID_CHARS = 10; // ~51 bits
+
+  function createDatasetId() {
+    var str = '';
+    while (str.length < ID_CHARS) {
+      str += Math.random().toString(36).slice(2);
+    }
+    return str.slice(0, ID_CHARS);
+  }
+
+  function ensureDatasetId(dataset) {
+    if (!dataset.id) {
+      dataset.id = createDatasetId();
+    }
+    return dataset.id;
+  }
+
+  // Give fresh IDs to incoming datasets whose IDs are already used by datasets
+  // in the catalog (e.g. a snapshot imported twice), and update references to
+  // those IDs among the incoming datasets. Incoming datasets that share an ID
+  // keep sharing one, so lineage within the import is preserved.
+  function rekeyIncomingDatasets(incoming, existing) {
+    var used = {};
+    var changed = {};
+    existing.forEach(function(dataset) {
+      if (dataset.id) used[dataset.id] = true;
+    });
+    incoming.forEach(function(dataset) {
+      var id = dataset.id;
+      if (!id || !used[id] || existing.includes(dataset)) return;
+      if (!changed[id]) {
+        changed[id] = createUnusedId(used);
+      }
+      dataset.id = changed[id];
+    });
+    incoming.forEach(function(dataset) {
+      var ref = dataset.info && dataset.info.frame;
+      if (ref && changed[ref] && !existing.includes(dataset)) {
+        dataset.info.frame = changed[ref];
+      }
+    });
+    return changed;
+  }
+
+  function createUnusedId(used) {
+    var id;
+    do {
+      id = createDatasetId();
+    } while (used[id]);
+    used[id] = true;
+    return id;
+  }
+
   // Catalog contains zero or more multi-layer datasets
   // One layer is always "active", corresponding to the currently selected
   //   layer in the GUI or the current target in the CLI
@@ -57526,11 +58971,39 @@ ${css.join('\n')}
 
     this.findCommandTargets = function(pattern, type) {
       if (!pattern) return this.getDefaultTargets() || [];
-      return findCommandTargets(this.getLayers(), pattern, type);
+      return findCommandTargets(this.getLayers(), pattern, type, getQualifiedLayers.bind(this));
     };
 
+    // Layers matching a target= style pattern, as [{layer, dataset}]. Unlike
+    // findCommandTargets(), does not mark the layers' order for export.
+    // @layers (optional) layers to search, as [{layer, dataset}] (default: all);
+    //   layer numbers in the pattern count from 1 in this list
+    // @optional return [] instead of stopping if a part of the pattern is unmatched
+    this.findLayers = function(pattern, layers, optional) {
+      return findMatchingLayers(layers || this.getLayers(), pattern, !optional,
+        getQualifiedLayers.bind(this));
+    };
+
+    // frame1:roads, if lyr is in frame1 and no other layer in frame1 is named roads
+    this.getQualifiedLayerName = function(lyr) {
+      var o = this.findLayer(lyr);
+      var frame = o ? getFrameForDataset(this, o.dataset) : null;
+      var members = frame ? getFrameMemberLayers(this, frame) : [];
+      var count = members.filter(function(m) { return m.layer.name == lyr.name; }).length;
+      if (!lyr.name || !frame || !frame.layer.name || count != 1 ||
+          members.every(function(m) { return m.layer != lyr; })) {
+        return null;
+      }
+      return frame.layer.name + ':' + lyr.name;
+    };
+
+    function getQualifiedLayers(frameName) {
+      var frame = getFrameByName(this, frameName);
+      return frame ? getFrameMemberLayers(this, frame) : null;
+    }
+
     this.findSingleLayer = function(pattern) {
-      var matches = findMatchingLayers(this.getLayers(), pattern);
+      var matches = findMatchingLayers(this.getLayers(), pattern, false, getQualifiedLayers.bind(this));
       if (matches.length > 1) {
         stop$1('Ambiguous pattern (multiple layers were matched):', pattern);
       }
@@ -57554,6 +59027,47 @@ ${css.join('\n')}
       return datasets;
     };
 
+    // Adds a dataset next to another one, so that a dataset split off from
+    // another keeps its place in catalog order (which sets the order of layers
+    // matched by a target= pattern), or at the end if @neighbor is null. Does
+    // not change the default target.
+    this.insertDatasetAfter = function(dataset, neighbor, before) {
+      var i = datasets.indexOf(neighbor);
+      if (datasets.includes(dataset)) return;
+      assertCatalogCanAddDatasets(this, [dataset]);
+      this.captureCatalogBefore({operation: 'insertDataset'});
+      ensureDatasetId(dataset);
+      datasets.splice(i == -1 ? datasets.length : before ? i : i + 1, 0, dataset);
+      this.markCatalogChanged({operation: 'insertDataset'});
+    };
+
+    // Puts @replacement in the place of the first of @arr and removes the
+    // others, e.g. when datasets are merged. Default targets follow.
+    this.replaceDatasets = function(arr, replacement) {
+      var i = datasets.findIndex(function(d) { return arr.includes(d); });
+      var merged = null;
+      if (i == -1) return;
+      this.captureCatalogBefore({operation: 'replaceDatasets'});
+      ensureDatasetId(replacement);
+      datasets = datasets.map(function(d, j) {
+        return j == i ? replacement : d;
+      }).filter(function(d, j) {
+        return j == i || !arr.includes(d) && d != replacement;
+      });
+      defaultTargets = defaultTargets.reduce(function(memo, targ) {
+        if (!arr.includes(targ.dataset)) {
+          memo.push(targ);
+        } else if (merged) {
+          merged.layers = merged.layers.concat(targ.layers);
+        } else {
+          merged = {dataset: replacement, layers: targ.layers.concat()};
+          memo.push(merged);
+        }
+        return memo;
+      }, []);
+      this.markCatalogChanged({operation: 'replaceDatasets'});
+    };
+
     this.getLayers = function() {
       var layers = [];
       this.forEachLayer(function(lyr, dataset) {
@@ -57567,8 +59081,10 @@ ${css.join('\n')}
       return this;
     };
 
+    // for loading datasets from files and snapshots
     this.addDatasets = function(datasets) {
       assertCatalogCanAddDatasets(this, datasets);
+      rekeyIncomingDatasets(datasets, this.getDatasets());
       datasets.forEach(function(dataset) {
         this.addDataset(dataset);
       }, this);
@@ -57621,6 +59137,7 @@ ${css.join('\n')}
       this.captureCatalogBefore({operation: 'setDefaultTargets'});
       arr.forEach(function(target) {
         if (datasets.indexOf(target.dataset) == -1) {
+          ensureDatasetId(target.dataset);
           datasets.push(target.dataset);
         }
       });
@@ -59592,10 +61109,317 @@ ${css.join('\n')}
       bbox[2], bbox[3], pad, pad, pad, pad);
   }
 
+  // -frame has two modes, chosen by its target. Given content layers (or no
+  // layers and bbox=), it creates a frame, and the layers become the frame's
+  // members. Given one frame, it changes that frame: its members, their order
+  // and visibility, its page and extent, its name; or it copies or demotes it.
   cmd.frame = function(catalog, targets, opts) {
+    var items = expandCommandTargets(targets);
+    var frames = items.filter(function(o) { return isFrameLayer(o.layer, o.dataset.arcs); });
+    if (frames.length > 0 && frames.length < items.length) {
+      stop$1('-frame target= names either layers to frame or one frame to change, not both');
+    }
+    if (frames.length > 0 && !opts.replace) {
+      if (frames.length > 1) {
+        stop$1('-frame changes one frame at a time. Found:', frames.map(getLayerName).join(', '));
+      }
+      validateModeOptions(opts, CREATE_ONLY_OPTIONS, 'when creating a frame');
+      if (!opts.target) {
+        message('Changing map frame', getLayerName(frames[0]) +
+          '. Use target= to frame other layers in a new frame.');
+      }
+      modifyFrame(catalog, frames[0], opts);
+    } else {
+      validateModeOptions(opts, MODIFY_ONLY_OPTIONS, 'when changing a frame (target=<frame>)');
+      createFrame(catalog, targets, items, opts, frames[0] || null);
+    }
+  };
+
+  var CREATE_ONLY_OPTIONS = ['replace'];
+  var MODIFY_ONLY_OPTIONS = ['fit', 'auto_aspect', 'fix_scale', 'remove', 'add_layers',
+    'order_layers', 'remove_layers', 'hide_layers', 'show_layers', 'above', 'below', 'top', 'bottom',
+    'reproject', 'no_replace', 'overlay', 'overlay_position', 'overlay_margin', 'remove_overlay'];
+  var PAGE_OPTIONS = ['bbox', 'fit', 'width', 'height', 'aspect_ratio', 'auto_aspect',
+    'fix_scale', 'margin', 'offset', 'offsets'];
+
+  function validateModeOptions(opts, names, modeLabel) {
+    var found = names.filter(function(name) { return name in opts; });
+    if (found.length > 0) {
+      stop$1('Option' + utils.pluralSuffix(found.length) + ' only used',
+        modeLabel + ':', found.map(formatOptionName).join(', '));
+    }
+  }
+
+  function formatOptionName(name) {
+    return name == 'no_replace' ? '+' : name.replace(/_/g, '-');
+  }
+
+  function getLayerName(o) {
+    return o.layer.name || '[unnamed]';
+  }
+
+  function modifyFrame(catalog, frame, opts) {
+    var operation = 'frame';
+    var pageOpts;
+    if (opts.no_replace) {
+      frame = copyFrame(catalog, frame, opts.name);
+    }
+    if (opts.remove) {
+      if (Object.keys(opts).some(function(k) { return k != 'remove' && k != 'target'; })) {
+        stop$1('The remove option cannot be combined with other frame options');
+      }
+      removeFrame(catalog, frame);
+      return;
+    }
+    if (!opts.no_replace && !Object.keys(opts).some(function(k) { return k != 'target'; })) {
+      stop$1('Missing options for changing frame', getLayerName(frame));
+    }
+
+    // 1. members, their order and visibility
+    if (opts.add_layers && opts.order_layers) {
+      stop$1('add-layers= and order-layers= cannot be used together');
+    }
+    if (opts.add_layers) {
+      addLayersToFrame(catalog, frame, opts);
+    } else if (opts.order_layers) {
+      orderFrameLayers(catalog, frame, opts);
+    } else if (opts.above || opts.below || opts.top || opts.bottom) {
+      stop$1('above=, below=, top and bottom are used with add-layers= or order-layers=');
+    }
+    if (opts.reproject && !opts.add_layers) {
+      stop$1('reproject is used with add-layers=');
+    }
+    if (opts.remove_layers) {
+      moveLayersToFrame(catalog, findFrameMembers(catalog, frame, opts.remove_layers), null);
+    }
+    if (opts.hide_layers) {
+      findFrameMembers(catalog, frame, opts.hide_layers).forEach(function(o) {
+        setFrameHidden(o.layer, true, operation);
+      });
+    }
+    if (opts.show_layers) {
+      findFrameMembers(catalog, frame, opts.show_layers).forEach(function(o) {
+        setFrameHidden(o.layer, false, operation);
+      });
+    }
+
+    // 2. page and extent
+    pageOpts = PAGE_OPTIONS.concat('ignore_symbols').reduce(function(memo, name) {
+      if (name in opts) memo[name] = opts[name];
+      return memo;
+    }, {});
+    if (PAGE_OPTIONS.some(function(name) { return name in opts; })) {
+      updateFrame([frame.layer], frame.dataset, pageOpts,
+        opts.fit ? findLayers(catalog, opts.fit) : null);
+    }
+
+    // 3. overlays
+    if ((opts.overlay_position || opts.overlay_margin !== undefined) && !opts.overlay) {
+      stop$1('overlay-position= and overlay-margin= are used with overlay=');
+    }
+    if (opts.remove_overlay) {
+      removeOverlay(catalog, frame, opts.remove_overlay);
+    }
+    if (opts.overlay) {
+      overlayFrameOnHost(catalog, frame, findOverlayFrame(catalog, opts.overlay), opts);
+    }
+
+    // 4. name (a copy is named when it is made)
+    if (opts.name && !opts.no_replace) {
+      renameFrame(catalog, frame, opts.name);
+    }
+    catalog.setDefaultTarget([frame.layer], frame.dataset);
+  }
+
+  function findLayers(catalog, pattern) {
+    return catalog.findLayers(pattern);
+  }
+
+  // Layers in the frame that match @pattern. Names are matched only among the
+  // members, so a layer of the same name outside the frame is never selected,
+  // and numbers count the members from 1 (as in frame1:2).
+  function findFrameMembers(catalog, frame, pattern) {
+    var members = getFrameMemberLayers(catalog, frame);
+    return findListedLayers(catalog, pattern, function(subpattern) {
+      var found = catalog.findLayers(subpattern, members, true);
+      if (found.length === 0) {
+        stop$1('Frame', getLayerName(frame), 'has no layer matching', subpattern);
+      }
+      return found;
+    });
+  }
+
+  // Layers outside the frame that match @pattern (unframed or in other frames).
+  // Members are skipped, so a member never shadows a layer of the same name
+  // outside the frame.
+  function findLayersOutsideFrame(catalog, frame, pattern) {
+    var members = utils.pluck(getFrameMemberLayers(catalog, frame), 'layer');
+    return findListedLayers(catalog, pattern, function(subpattern) {
+      var found = findLayers(catalog, subpattern);
+      var outside = found.filter(function(o) { return !members.includes(o.layer); });
+      if (outside.length === 0) {
+        stop$1(subpattern, 'is already in frame', getLayerName(frame) + '.',
+          'Use order-layers= to restack layers in a frame');
+      }
+      return outside;
+    });
+  }
+
+  // Layers matched by each comma-separated part of @pattern, in list order and
+  // without repeats. The layers that one part matches (e.g. a wildcard) are in
+  // stacking order.
+  // @find function(subpattern) -> [{layer, dataset}]
+  function findListedLayers(catalog, pattern, find) {
+    var stack = getStackedLayers(catalog).map(function(o) { return o.layer; });
+    return String(pattern).split(',').reduce(function(memo, subpattern) {
+      var found = find(subpattern).filter(function(o) {
+        return !memo.some(function(o2) { return o2.layer == o.layer; });
+      });
+      found.sort(function(a, b) { return stack.indexOf(a.layer) - stack.indexOf(b.layer); });
+      return memo.concat(found);
+    }, []);
+  }
+
+  // add-layers= brings layers into the frame, stacked in list order, first at
+  // the bottom, on top of the frame's other layers unless a position is given
+  function addLayersToFrame(catalog, frame, opts) {
+    var items = findLayersOutsideFrame(catalog, frame, opts.add_layers);
+    moveLayersToFrame(catalog, items, frame, {
+      position: getStackPosition(catalog, frame, opts, items) || {top: true},
+      ordered: true,
+      reproject: opts.reproject
+    });
+  }
+
+  // order-layers= restacks layers in the frame, in list order, first at the
+  // bottom. Without a position, the layers are restacked in place, starting
+  // where the lowest of them was.
+  function orderFrameLayers(catalog, frame, opts) {
+    var items = findFrameMembers(catalog, frame, opts.order_layers);
+    moveLayersInStack(catalog, utils.pluck(items, 'layer'),
+      getStackPosition(catalog, frame, opts, items) || {in_place: true}, {
+        group: utils.pluck(getFrameMemberLayers(catalog, frame), 'layer'),
+        ordered: true,
+        operation: 'frame'
+      });
+  }
+
+  // Returns null if no position option is given
+  // @items the layers being moved, which the anchor of above= or below= must
+  //   not be one of
+  function getStackPosition(catalog, frame, opts, items) {
+    var given = ['above', 'below', 'top', 'bottom'].filter(function(name) { return opts[name]; });
+    var anchor;
+    if (given.length > 1) {
+      stop$1(given.join(', ') + ' are mutually exclusive');
+    }
+    if (opts.above || opts.below) {
+      anchor = findFrameMembers(catalog, frame, opts.above || opts.below);
+      if (anchor.length != 1) {
+        stop$1((opts.above ? 'above=' : 'below=') + ' names more than one layer');
+      }
+      if (items.some(function(o) { return o.layer == anchor[0].layer; })) {
+        stop$1((opts.above ? 'above=' : 'below=') + ' names a layer that is being moved:',
+          getLayerName(anchor[0]));
+      }
+      return opts.above ? {above: anchor[0].layer} : {below: anchor[0].layer};
+    }
+    if (opts.bottom) return {bottom: true};
+    if (opts.top) return {top: true};
+    return null;
+  }
+
+  function findOverlayFrame(catalog, name) {
+    var frame = getFrameByName(catalog, name);
+    if (!frame) {
+      stop$1('Unknown frame:', name);
+    }
+    return frame;
+  }
+
+  function removeOverlay(catalog, host, name) {
+    var overlay = findOverlayFrame(catalog, name);
+    if (!findOverlayLayer(host.dataset, overlay.dataset.id)) {
+      stop$1('Frame', name, 'is not an overlay on frame', getLayerName(host));
+    }
+    setOverlayPlacement(host.dataset, overlay.dataset.id, null);
+  }
+
+  function renameFrame(catalog, frame, name) {
+    var detail = {operation: 'frame', unit: 'name'};
+    if (frame.layer.name == name) return;
+    requireUnusedFrameName(catalog, name);
+    noteLayerMetadataWillChange(frame.layer, detail);
+    frame.layer.name = name;
+    markLayerMetadataChanged(frame.layer, detail);
+  }
+
+  function requireUnusedFrameName(catalog, name) {
+    if (getFrameByName(catalog, name)) {
+      stop$1('A map frame named', name, 'already exists. Use target=' + name,
+        'to change it, or choose another name.');
+    }
+  }
+
+  // frame, frame2, frame3, ...
+  function getUnusedFrameName(catalog) {
+    var name = 'frame';
+    for (var i = 2; getFrameByName(catalog, name); i++) {
+      name = 'frame' + i;
+    }
+    return name;
+  }
+
+  // The frame layer becomes an ordinary rectangle; its members become unframed
+  function removeFrame(catalog, frame) {
+    var operation = 'frame';
+    getFrameMemberLayers(catalog, frame).forEach(function(o) {
+      setFrameHidden(o.layer, false, operation);
+    });
+    getFrameMembers(catalog, frame).forEach(function(dataset) {
+      setFrameRef(dataset, null);
+    });
+    demoteFrameLayer(frame.layer, operation);
+  }
+
+  // Copies the frame dataset and its member datasets. Copies get new IDs;
+  // members that share an ID (one lineage) share a new one.
+  function copyFrame(catalog, frame, name) {
+    var members = getFrameMembers(catalog, frame);
+    var ids = {};
+    var copy, frameLyr;
+    if (!name) {
+      stop$1('Use name= to name the copy of frame', getLayerName(frame));
+    }
+    requireUnusedFrameName(catalog, name);
+    copy = copyDataset(frame.dataset);
+    copy.info = utils.extend({}, frame.dataset.info);
+    frameLyr = findFrameLayerInDataset(copy);
+    frameLyr.name = name;
+    catalog.insertDatasetAfter(copy, null);
+    members.forEach(function(dataset) {
+      var member = copyDataset(dataset);
+      member.info = utils.extend({}, dataset.info, {frame: copy.id});
+      if (dataset.id) {
+        member.id = ids[dataset.id] || (ids[dataset.id] = createDatasetId());
+      }
+      catalog.insertDatasetAfter(member, null);
+    });
+    return {layer: frameLyr, dataset: copy};
+  }
+
+  function createFrame(catalog, targets, items, opts, frameTarget) {
     var widthPx, heightPx, bbox;
-    var existingFrame = getActiveFrame(catalog);
+    var replaced = opts.replace ? frameTarget || getReplacedFrame(catalog, items) : null;
+    var contentItems = items.filter(function(o) {
+      return !isFrameComponentLayer(o.layer, o.dataset);
+    });
+    var name = opts.name || replaced && replaced.layer.name || getUnusedFrameName(catalog);
+    var hadFrames = getFrames(catalog).length > 0;
     var offsets = parseFrameOffsets(opts);
+    if (getFrameByName(catalog, name) && (!replaced || replaced.layer.name != name)) {
+      requireUnusedFrameName(catalog, name);
+    }
     if (opts.width) {
       widthPx = parseFrameSize(opts.width).valuePx;
       if (widthPx > 0 === false) {
@@ -59629,7 +61453,9 @@ ${css.join('\n')}
       // TODO: validate
     } else {
       var datasets = utils.pluck(targets, 'dataset');
-      requireDatasetsHaveCompatibleCRS(datasets, 'Targets include both projected and unprojected coordinates');
+      requireSameCoordinateSpace(datasets, 'Unable to frame layers in different coordinate ' +
+        'systems: targets include both projected and lat-long coordinates. Use -proj to project ' +
+        'the lat-long layers, or frame them separately.');
       bbox = getFrameContentBbox(expandCommandTargets(targets), function(contentBbox) {
         var extent = getFrameExtent(contentBbox, widthPx, heightPx, offsets);
         return getFrameScale(extent.bbox, extent.width, getFixedAspect$1(extent, opts));
@@ -59663,17 +61489,46 @@ ${css.join('\n')}
       setDatasetCrsInfo(frameDataset, crsInfo);
     }
     var frameLyr = frameDataset.layers[0];
-    frameLyr.name = opts.name || 'frame';
-    if (existingFrame) {
-      if (!opts.replace) {
-        stop$1('A map frame already exists:', existingFrame.layer.name || '[unnamed frame]');
-      }
-      moveFrameFurniture(existingFrame.dataset, frameDataset);
-      demoteFrameLayer(existingFrame.layer);
+    var frame = {layer: frameLyr, dataset: frameDataset};
+    var members = replaced ? getFrameMembers(catalog, replaced) : [];
+    frameLyr.name = name;
+    if (replaced) {
+      moveFrameFurniture(replaced.dataset, frameDataset);
+      demoteFrameLayer(replaced.layer);
     }
     // target the frame, not any furniture that came with it
     catalog.setDefaultTarget([frameLyr], frameDataset);
-  };
+    members.forEach(function(dataset) {
+      setFrameRef(dataset, frameDataset.id);
+    });
+    if (replaced) {
+      retargetOverlayPlacements(catalog, replaced.dataset.id, frameDataset.id);
+    }
+    // With bbox= and no target=, the frame does not need content, and the
+    // current target does not become a member
+    if (contentItems.length > 0 && (opts.target || !opts.bbox)) {
+      moveLayersToFrame(catalog, contentItems, frame);
+    }
+    if (hadFrames && !opts.target && !replaced) {
+      message('Created map frame', name + '. To change an existing frame, use target=<frame>.');
+    }
+  }
+
+  // The frame that -frame replace replaces: the frame of the targets, or the
+  // session's frame if it has only one
+  function getReplacedFrame(catalog, items) {
+    var frames = items.reduce(function(memo, o) {
+      var frame = getFrameForDataset(catalog, o.dataset);
+      if (frame && !memo.some(function(f) { return f.dataset == frame.dataset; })) {
+        memo.push(frame);
+      }
+      return memo;
+    }, []);
+    if (frames.length > 1) {
+      stop$1('The targets are in more than one frame; unable to tell which frame to replace');
+    }
+    return frames[0] || getDefaultFrame(catalog);
+  }
 
   // The frame's extent and nominal size, from the extent of its content and the
   // size options. Pure, so that fitting to symbols can ask what scale an extent
@@ -59892,10 +61747,49 @@ ${css.join('\n')}
     ]);
     projectAndDensifyArcs(arcs, project);
     var projected = arcs.getBounds();
-    if (!projected.hasBounds() || projected.area() > 0 === false) {
+    // Where part of the boundary is outside the projection's domain (e.g. the
+    // far side of the globe in an orthographic projection), the boundary's arcs
+    // with unprojectable points are dropped, and what is left can collapse to a
+    // sliver. The frame then covers whatever part of its extent does project.
+    if (!boundaryIsProjectable(b, project)) {
+      projected.mergeBounds(getProjectedInteriorBounds(b, project));
+    }
+    if (!projected.hasBounds() || boundsAreDegenerate(projected)) {
       error('Unable to project map frame');
     }
     return projected;
+  }
+
+  var FRAME_SAMPLE_STEPS = 200;
+
+  function boundaryIsProjectable(b, project) {
+    for (var i = 0; i <= FRAME_SAMPLE_STEPS; i++) {
+      var t = i / FRAME_SAMPLE_STEPS;
+      var x = b.xmin + b.width() * t;
+      var y = b.ymin + b.height() * t;
+      if (!project(x, b.ymin) || !project(x, b.ymax) ||
+          !project(b.xmin, y) || !project(b.xmax, y)) return false;
+    }
+    return true;
+  }
+
+  function getProjectedInteriorBounds(b, project) {
+    var bounds = new Bounds();
+    var p;
+    for (var i = 0; i <= FRAME_SAMPLE_STEPS; i++) {
+      for (var j = 0; j <= FRAME_SAMPLE_STEPS; j++) {
+        p = project(b.xmin + b.width() * i / FRAME_SAMPLE_STEPS,
+          b.ymin + b.height() * j / FRAME_SAMPLE_STEPS);
+        if (p && isFinite(p[0]) && isFinite(p[1])) bounds.mergePoint(p[0], p[1]);
+      }
+    }
+    return bounds;
+  }
+
+  // A frame needs a usable shape; a sliver would give an absurd page size
+  function boundsAreDegenerate(b) {
+    var w = b.width(), h = b.height();
+    return w > 0 === false || h > 0 === false || w / h < 1e-6 || h / w < 1e-6;
   }
 
   // Snapshot frame bounds before the dataset arcs are projected.
@@ -68976,6 +70870,7 @@ ${css.join('\n')}
     var clipLyr = clipDataset.layers[0];
     if (targetDataset.arcs != clipDataset.arcs) {
       // using external dataset -- need to merge arcs
+      requireOverlaySourceCRS(targetDataset, clipDataset);
       if (!clipDataset.disposable) {
         // copy overlay layer shapes because arc ids will be reindexed during merging
         clipDataset.layers[0] = copyLayerShapes(clipDataset.layers[0]);
@@ -74801,6 +76696,7 @@ ${css.join('\n')}
   // same CRS as the content instead of re-deriving parameters from its own extent.
   cmd.projTargets = function(targets, catalog, opts) {
     var destInfo;
+    targets = expandFrameTargets(targets, catalog, opts);
     targets.forEach(function(targ) {
       applyProjInit(targ.dataset, catalog, opts);
     });
@@ -74852,15 +76748,96 @@ ${css.join('\n')}
     return getCrsInfo(expandProjDefnForTargets(opts.crs, targets));
   }
 
+  // A frame's members share its coordinate system, so targeting a frame or any of
+  // its members projects the whole frame: the frame dataset and every member
+  // dataset, with all their layers. Members without CRS metadata are read in the
+  // frame's coordinate system, the only reading under which they were drawn
+  // correctly in the frame.
+  function expandFrameTargets(targets, catalog, opts) {
+    var expanded = [];
+    var implicitNames = [];
+    var frames = [];
+    if (!catalog) return targets;
+    targets.forEach(function(targ) {
+      addTarget(targ.dataset, targ.layers);
+    });
+    targets.forEach(function(targ) {
+      var frame = getFrameForDataset(catalog, targ.dataset);
+      if (!frame || frames.includes(frame.dataset)) return;
+      frames.push(frame.dataset);
+      if (!targets.some(function(o) { return o.dataset == frame.dataset; })) {
+        message('Also reprojected the map frame:', frame.layer.name);
+      }
+      [frame.dataset].concat(getFrameMembers(catalog, frame)).forEach(function(dataset) {
+        addTarget(dataset, dataset.layers.filter(function(lyr) {
+          return dataset != frame.dataset || !isFrameComponentLayer(lyr, dataset);
+        }), true);
+        addTarget(dataset, dataset.layers);
+        if (!opts.init) assumeFrameCrs(catalog, frame, dataset);
+      });
+    });
+    if (implicitNames.length > 0) {
+      message('Also projected', implicitNames.length == 1 ? 'layer' : 'layers',
+        'in the same frame:', implicitNames.join(', '));
+    }
+    return expanded;
+
+    function addTarget(dataset, layers, implicit) {
+      var target = expanded.find(function(o) { return o.dataset == dataset; });
+      if (!target) {
+        target = {dataset: dataset, layers: []};
+        expanded.push(target);
+      }
+      layers.forEach(function(lyr) {
+        if (target.layers.includes(lyr)) return;
+        target.layers.push(lyr);
+        if (implicit && layerHasGeometry$1(lyr)) implicitNames.push(lyr.name || '[unnamed layer]');
+      });
+    }
+  }
+
+  function assumeFrameCrs(catalog, frame, dataset) {
+    var info = dataset.info || {};
+    var frameInfo, guessed;
+    if (info.crs || info.crs_string || info.wkt1 || info.geopackage_crs || info.flatgeobuf_crs) return;
+    frameInfo = getFrameCrsInfo(catalog, frame);
+    if (!frameInfo || !frameInfo.crs) return;
+    guessed = getDatasetCrsInfo(dataset).crs;
+    if (guessed && crsAreEqual(guessed, frameInfo.crs)) return;
+    noteDatasetInfoWillChange(dataset, {operation: 'proj'});
+    setDatasetCrsInfo(dataset, frameInfo);
+    markDatasetInfoChanged(dataset, {operation: 'proj'});
+    message('Assumed that', formatLayerNames(dataset.layers), 'use the coordinate system of frame',
+      frame.layer.name);
+  }
+
+  function formatLayerNames(layers) {
+    return layers.map(function(lyr) { return lyr.name || '[unnamed layer]'; }).join(', ');
+  }
+
   // A map frame is composition state, not content: its rectangle describes a
   // region of the map's coordinate space, so it has to follow the map's CRS even
   // when the command targeted only a data layer. The GUI deliberately keeps the
-  // frame out of default targets, so nothing else reaches it.
+  // frame out of default targets, so nothing else reaches it. Each targeted
+  // dataset's frame is projected (see resolveFrameForDataset()). A frame with
+  // members is projected only with its members (see expandFrameTargets()).
   function projectMapFrame(targets, catalog, opts, destInfo) {
-    var frame = catalog ? getActiveFrame(catalog) : null;
+    if (!catalog) return;
+    targets.reduce(function(memo, targ) {
+      var frame = resolveFrameForDataset(catalog, targ.dataset);
+      if (frame && getFrameMembers(catalog, frame).length > 0) return memo;
+      if (frame && !memo.some(function(o) { return o.dataset == frame.dataset; })) {
+        memo.push(frame);
+      }
+      return memo;
+    }, []).forEach(function(frame) {
+      projectFrameDataset(frame, targets, catalog, opts, destInfo);
+    });
+  }
+
+  function projectFrameDataset(frame, targets, catalog, opts, destInfo) {
     var frameOpts = opts;
     var frameCrs;
-    if (!frame) return;
     if (targets.some(function(targ) { return targ.dataset == frame.dataset; })) {
       return; // already projected as an ordinary target
     }
@@ -84184,6 +86161,7 @@ ${css.join('\n')}
         catalog.deleteLayer(lyr, input.dataset);
       });
     }
+    inheritFrameRef(output.dataset, [input.dataset]);
     catalog.addDataset(output.dataset);
   }
 
@@ -86591,7 +88569,7 @@ ${css.join('\n')}
         // to add an empty data table to the source layer
         initDataTable(src.layer);
       }
-      requireDatasetsHaveCompatibleCRS([targetDataset, src.dataset]);
+      requireOverlaySourceCRS(targetDataset, src.dataset);
       srcType = src.layer.geometry_type;
       targetType = targetLyr.geometry_type;
       if (srcType == 'point' && targetType == 'polygon') {
@@ -88824,9 +90802,8 @@ ${css.join('\n')}
     var lyr = findFrameLayerInDataset(dataset);
     var target;
     if (lyr) return getFrameLayerData(lyr, dataset.arcs);
-    // -frame adds the frame it creates to the catalog as a separate dataset, so a
-    // catalog-wide search is needed to find it (-scalebar does the same).
-    target = catalog ? getActiveFrame(catalog) : null;
+    // -frame adds the frame it creates to the catalog as a separate dataset
+    target = catalog ? resolveFrameForDataset(catalog, dataset) : null;
     return target ? getFrameLayerData(target.layer, target.dataset.arcs) : null;
   }
 
@@ -91724,7 +93701,17 @@ ${css.join('\n')}
         // special case to allow -merge-layers and -union to combine layers from multiple datasets
         // TODO: support multi-dataset targets for other commands
         if (targets.length > 1 && (name == 'merge-layers' || name == 'union')) {
+          let mergeFrame = getFrameForMerge(job.catalog, targets, name);
+          let memberId;
+          if (mergeFrame) {
+            targets = splitOffMergeTargets(job.catalog, targets, mergeFrame, name);
+            memberId = getMergedMemberId(targets, mergeFrame);
+          }
           targets = mergeCommandTargets(targets, job.catalog);
+          if (mergeFrame) {
+            setFrameRef(targets[0].dataset, mergeFrame.dataset.id);
+            if (memberId) targets[0].dataset.id = memberId;
+          }
         }
 
         if (targets.length == 1) {
@@ -91785,7 +93772,9 @@ ${css.join('\n')}
         // change; addDataset() marks the change itself. Both are no-ops in the
         // CLI, where nothing is listening.
         job.catalog.captureCatalogBefore({operation: 'addLayer'});
-        job.catalog.addDataset(cmd.addLayer(targetDataset, opts));
+        let addedDataset = cmd.addLayer(targetDataset, opts);
+        inheritFrameRef(addedDataset, targetDataset ? [targetDataset] : []);
+        job.catalog.addDataset(addedDataset);
 
       } else if (name == 'update-frame') {
         cmd.updateFrame(targetLayers, targetDataset, opts,
@@ -92025,7 +94014,10 @@ ${css.join('\n')}
 
       } else if (name == 'rectangle') {
         if (source || opts.bbox || targets.length === 0) {
-          job.catalog.addDataset(cmd.rectangle(source || targets?.[0], opts));
+          let rectSource = source || targets?.[0];
+          let rectDataset = cmd.rectangle(rectSource, opts);
+          inheritFrameRef(rectDataset, rectSource ? [rectSource.dataset] : []);
+          job.catalog.addDataset(rectDataset);
         } else {
           outputLayers = cmd.rectangle2(targets[0], opts);
         }
@@ -92055,7 +94047,7 @@ ${css.join('\n')}
         await cmd.run(job, targets, opts);
 
       } else if (name == 'scalebar') {
-        cmd.scalebar(job.catalog, opts);
+        cmd.scalebar(job.catalog, targetDataset, opts);
 
       } else if (name == 'shape') {
         job.catalog.addDataset(cmd.shape(targetDataset, opts));
@@ -92136,7 +94128,8 @@ ${css.join('\n')}
 
       if (outputDataset) {
         var removedLayers = targetLayers && !opts.no_replace ? targetLayers : [];
-        assertSingleFrameUpdate(
+        inheritFrameRef(outputDataset, utils.pluck(targets || [], 'dataset'));
+        assertFrameUpdateIsValid(
           job.catalog,
           outputDataset.layers.map(function(lyr) {
             return {layer: lyr, dataset: outputDataset};
@@ -92153,7 +94146,7 @@ ${css.join('\n')}
         }
       } else if (outputLayers && targetDataset && outputLayers != targetDataset.layers) {
         // integrate output layers into the target dataset
-        assertSingleFrameUpdate(
+        assertFrameUpdateIsValid(
           job.catalog,
           outputLayers.map(function(lyr) {
             return {layer: lyr, dataset: targetDataset};
@@ -92198,6 +94191,9 @@ ${css.join('\n')}
       if (targetDataset) {
         cleanupArcs(targetDataset);
       }
+
+      repairFrameReferences(job.catalog);
+      repairOverlayReferences(job.catalog);
 
     } catch(e) {
       return done(e);
@@ -92372,7 +94368,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.87";
+  var version = "0.7.88";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -94006,15 +96002,13 @@ ${css.join('\n')}
       var key = unitKey('layer-metadata', layer, detail && detail.unit || '');
       if (this._captured[key]) return;
       this._captured[key] = true;
-      this.units.push({
+      this.units.push(Object.assign({
         type: 'layer-metadata',
         target: layer,
         id: getUndoId(layer),
         revision: getUndoRevision(layer),
-        detail: copyDetail(detail),
-        name: layer.name,
-        geometry_type: layer.geometry_type
-      });
+        detail: copyDetail(detail)
+      }, copyLayerMetadata(layer)));
     },
 
     captureLayerOrderBefore: function(layer, detail) {
@@ -94350,11 +96344,20 @@ ${css.join('\n')}
   }
 
   function captureCurrentLayerMetadata(unit) {
-    return Object.assign({}, unit, {
-      revision: getUndoRevision(unit.target),
-      name: unit.target.name,
-      geometry_type: unit.target.geometry_type
-    });
+    var copy = Object.assign({}, unit, {revision: getUndoRevision(unit.target)});
+    LAYER_METADATA_FIELDS.forEach(function(key) { delete copy[key]; });
+    return Object.assign(copy, copyLayerMetadata(unit.target));
+  }
+
+  // Layer properties that are not layer content: the name, and the layer's
+  // place in the stack and visibility, which -frame changes
+  var LAYER_METADATA_FIELDS = ['name', 'geometry_type', 'menu_order', 'pinned', 'frame_hidden'];
+
+  function copyLayerMetadata(layer) {
+    return LAYER_METADATA_FIELDS.reduce(function(memo, key) {
+      if (key in layer) memo[key] = layer[key];
+      return memo;
+    }, {});
   }
 
   function restoreUnit(unit) {
@@ -94491,8 +96494,13 @@ ${css.join('\n')}
   }
 
   function restoreLayerMetadata(unit) {
-    unit.target.name = unit.name;
-    unit.target.geometry_type = unit.geometry_type;
+    LAYER_METADATA_FIELDS.forEach(function(key) {
+      if (key in unit) {
+        unit.target[key] = unit[key];
+      } else {
+        delete unit.target[key];
+      }
+    });
   }
 
   function restoreLayerOrder(unit) {
@@ -94950,6 +96958,11 @@ ${css.join('\n')}
     FilterGeom,
     Frame,
     FrameProjection,
+    FrameResolver,
+    FrameMembers,
+    FrameExport,
+    Overlays,
+    LayerStacking,
     FrameUtils,
     Furniture,
     Geodesic,

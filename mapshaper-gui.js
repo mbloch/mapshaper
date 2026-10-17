@@ -700,6 +700,15 @@
     return gui == GUI.__active;
   };
 
+  GUI.isMac = function() {
+    return navigator.userAgent.includes('Mac');
+  };
+
+  // What the Alt key is called on the user's keyboard, for help text
+  GUI.getAltKeyName = function() {
+    return GUI.isMac() ? 'Option' : 'Alt';
+  };
+
   GUI.getPixelRatio = function() {
     var deviceRatio = window.devicePixelRatio || window.webkitDevicePixelRatio || 1;
     return deviceRatio > 1 ? 2 : 1;
@@ -6093,15 +6102,13 @@
       var key = unitKey('layer-metadata', layer, detail && detail.unit || '');
       if (this._captured[key]) return;
       this._captured[key] = true;
-      this.units.push({
+      this.units.push(Object.assign({
         type: 'layer-metadata',
         target: layer,
         id: getUndoId(layer),
         revision: getUndoRevision(layer),
-        detail: copyDetail(detail),
-        name: layer.name,
-        geometry_type: layer.geometry_type
-      });
+        detail: copyDetail(detail)
+      }, copyLayerMetadata(layer)));
     },
 
     captureLayerOrderBefore: function(layer, detail) {
@@ -6437,11 +6444,20 @@
   }
 
   function captureCurrentLayerMetadata(unit) {
-    return Object.assign({}, unit, {
-      revision: getUndoRevision(unit.target),
-      name: unit.target.name,
-      geometry_type: unit.target.geometry_type
-    });
+    var copy = Object.assign({}, unit, {revision: getUndoRevision(unit.target)});
+    LAYER_METADATA_FIELDS.forEach(function(key) { delete copy[key]; });
+    return Object.assign(copy, copyLayerMetadata(unit.target));
+  }
+
+  // Layer properties that are not layer content: the name, and the layer's
+  // place in the stack and visibility, which -frame changes
+  var LAYER_METADATA_FIELDS = ['name', 'geometry_type', 'menu_order', 'pinned', 'frame_hidden'];
+
+  function copyLayerMetadata(layer) {
+    return LAYER_METADATA_FIELDS.reduce(function(memo, key) {
+      if (key in layer) memo[key] = layer[key];
+      return memo;
+    }, {});
   }
 
   function restoreUnit(unit) {
@@ -6578,8 +6594,13 @@
   }
 
   function restoreLayerMetadata(unit) {
-    unit.target.name = unit.name;
-    unit.target.geometry_type = unit.geometry_type;
+    LAYER_METADATA_FIELDS.forEach(function(key) {
+      if (key in unit) {
+        unit.target[key] = unit[key];
+      } else {
+        delete unit.target[key];
+      }
+    });
   }
 
   function restoreLayerOrder(unit) {
@@ -8244,7 +8265,7 @@
   function setLoggingForGUI(gui) {
     function stop() {
       // Show a popup error message, then throw an error
-      var msg = GUI.formatMessageArgs(arguments);
+      var msg = formatPopupMessage(arguments);
       gui.alert(msg);
       throw new internal.UserError(msg);
     }
@@ -8257,7 +8278,7 @@
     }
 
     function message() {
-      var msg = GUI.formatMessageArgs(arguments);
+      var msg = formatPopupMessage(arguments);
       if (gui.notify && messageShouldGoToInbox(msg)) {
         gui.notify({
           severity: 'info',
@@ -8276,7 +8297,7 @@
     // and replace any previous popup. They now go to the Messages inbox so
     // they can accumulate non-disruptively.
     function warn() {
-      var msg = GUI.formatMessageArgs(arguments);
+      var msg = formatPopupMessage(arguments);
       if (gui.notify) {
         gui.notify({severity: 'warn', body: msg, dedupKey: 'warn:' + msg});
       } else {
@@ -8285,6 +8306,12 @@
     }
 
     internal.setLoggingFunctions(message, error, stop, warn);
+  }
+
+  // Drops the "[command]" prefix that stop(), message() and warn() add for
+  // CLI output; the console keeps it
+  function formatPopupMessage(args) {
+    return GUI.formatMessageArgs(args).replace(/^\[[^\]]+\] /, '');
   }
 
   // The raster importers' notes that a CRS-less raster was taken for lat-long
@@ -8358,6 +8385,7 @@
       // dataset through shared layers, tables, arcs or metadata.
       var copy = internal.copyDataset(dataset);
       copy.info = internal.copyDatasetInfo(dataset.info || {});
+      delete copy.info.frame; // imported data starts out unframed
       return copy;
     });
   }
@@ -8472,6 +8500,27 @@
       }
     }
     return false;
+  }
+
+  // Vertex ids @ids, found by position, without those on arcs that no path layer
+  // in @layers uses -- such as the arc a line reshaped with -update-line leaves
+  // behind, which is still in the arc collection, and which would otherwise
+  // make the end of the reshaped line look like a junction. Arcs are only
+  // counted for more than one id, which is the only case they can change.
+  function removeUnusedArcVertices(ids, arcs, layers) {
+    var counts, ii, used;
+    if (ids.length < 2) return ids;
+    counts = new Uint32Array(arcs.size());
+    ii = arcs.getVertexData().ii;
+    layers.forEach(function(lyr) {
+      if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
+        internal.countArcsInShapes(lyr.shapes, counts);
+      }
+    });
+    used = ids.filter(function(id) {
+      return counts[internal.findArcIdFromVertexId(id, ii)] > 0;
+    });
+    return used.length > 0 ? used : ids;
   }
 
   // The vertices of each part of shapes @ids, as [[x, y], ...] paths
@@ -10661,6 +10710,50 @@
     return layers.reverse();
   }
 
+  // The groups of the layers menu: unframed layers, then each frame (in catalog
+  // order) with its members. Layers are in menu order, top of the stack first.
+  // A frame's furniture is left out; it is part of the frame's entry.
+  // Returns {unframed: [{layer, dataset}], frames: [{frame, members: [{layer, dataset}]}]}
+  function getLayerMenuGroups(catalog) {
+    var frames = internal.getFrames(catalog).map(function(frame) {
+      return {frame: frame, members: []};
+    });
+    var unframed = [];
+    sortLayersForMenuDisplay(catalog.getLayers()).forEach(function(o) {
+      var frame, group;
+      if (internal.isFrameComponentLayer(o.layer, o.dataset)) return;
+      frame = internal.getFrameForDataset(catalog, o.dataset);
+      group = frame && frames.find(function(g) { return g.frame.dataset == frame.dataset; });
+      if (group) {
+        group.members.push(o);
+      } else {
+        unframed.push(o);
+      }
+    });
+    return {unframed: unframed, frames: frames};
+  }
+
+  // Frames made in the GUI are numbered: "Frame 1", "Frame 2"... (the CLI's
+  // default names are left alone)
+  function getNewFrameName(catalog) {
+    var i = internal.getFrames(catalog).length + 1;
+    while (internal.getFrameByName(catalog, 'Frame ' + i)) i++;
+    return 'Frame ' + i;
+  }
+
+  // A copy of a numbered frame takes the next number; a copy of a renamed
+  // frame keeps its name, plus "copy"
+  function getFrameCopyName(catalog, name) {
+    var base, copyName;
+    if (!name || /^Frame \d+$/.test(name)) return getNewFrameName(catalog);
+    base = name + ' copy';
+    copyName = base;
+    for (var i = 2; internal.getFrameByName(catalog, copyName); i++) {
+      copyName = base + ' ' + i;
+    }
+    return copyName;
+  }
+
   function setLayerPinning(lyr, pinned) {
     lyr.pinned = !!pinned;
   }
@@ -10748,6 +10841,12 @@
     var unsupportedMsg = "Exporting is not supported in this browser";
     var menu = gui.container.findChild('.export-options').on('click', GUI.handleDirectEvent(gui.clearMode));
     var layersArr = [];
+    // With frames, the checklist has an unframed group and a group per frame:
+    // [{frame, el, checkbox, count, items}]
+    var frameGroups = [];
+    var selectionTouched = false; // the user has checked or unchecked a layer
+    var selectionFormatClass = null; // the kind of format the selection was made for
+    var sessionFormat = null; // the format last picked by the user, for this session
     var menuFormats = null; // formats the format menu was built with
     var formatPickedByUser = false;
     var toggleBtn = null; // checkbox <input> for toggling layer selection
@@ -10819,15 +10918,87 @@
     function turnOn() {
       layersArr = initLayerMenu();
       formatPickedByUser = false;
+      selectionTouched = false;
+      selectionFormatClass = null;
       // initZipOption();
-      initFormatMenu();
-      updateExportCheckboxes();
+      initFormatMenu(sessionFormat);
+      formatPickedByUser = !!sessionFormat && getSelectedFormat() == sessionFormat;
+      syncSelectionWithFormat();
+      updateToggleBtn();
       menu.show();
     }
 
     function turnOff() {
       layersArr = [];
+      frameGroups = [];
       menu.hide();
+    }
+
+    // Frames with members change the checklist: it is grouped by frame, and
+    // what starts checked depends on the format
+    function hasFrameGroups() {
+      return internal.getFrames(model).some(function(frame) {
+        return internal.getFrameMemberLayers(model, frame).length > 0;
+      });
+    }
+
+    // 'map' for formats that draw the map, 'package' for .msx, else 'data'
+    function getFormatClass(fmt) {
+      if (isRenderedMapFormat(fmt)) return 'map';
+      return fmt == internal.PACKAGE_EXT ? 'package' : 'data';
+    }
+
+    // A snapshot of a session with frames holds the whole project, since a
+    // partial one could leave layers pointing at frames that aren't in it
+    function exportsWholeProject(fmt) {
+      return fmt == internal.PACKAGE_EXT && hasFrameGroups();
+    }
+
+    function syncSelectionWithFormat() {
+      var fmt = getSelectedFormat();
+      var cls = getFormatClass(fmt);
+      menu.findChild('.export-layers').classed('hidden', exportsWholeProject(fmt));
+      if (cls != selectionFormatClass && !selectionTouched) {
+        selectionFormatClass = cls;
+        applyDefaultSelection(cls);
+      }
+      updateFrameGroups();
+    }
+
+    // Without frames, every layer starts checked. With frames, a map format
+    // exports each frame with the layers that are shown in it (and no unframed
+    // layers), and a data format exports the layers on show in the current
+    // view: the active frame's, or the visible unframed layers. In both, the
+    // selected layer counts as shown, as it is on the map, unless it has been
+    // hidden from the map.
+    function applyDefaultSelection(formatClass) {
+      var activeFrame = model.getActiveFrame();
+      if (frameGroups.length === 0) return;
+      layersArr.forEach(function(item) {
+        var lyr = item.source;
+        var active = gui.map.isActiveLayer(lyr);
+        var on;
+        if (item.frame) {
+          // an overlay frame is drawn in its hosts' maps, so its own map starts
+          // unchecked
+          on = (active ? !lyr.hidden : !lyr.frame_hidden) && (formatClass == 'map' ?
+            !internal.isOverlayFrame(model, item.frame) :
+            !!activeFrame && activeFrame.dataset == item.frame.dataset);
+        } else {
+          on = formatClass != 'map' && !activeFrame &&
+            (active ? !lyr.hidden : !!lyr.pinned);
+        }
+        item.checkbox.checked = on;
+      });
+    }
+
+    function updateFrameGroups() {
+      frameGroups.forEach(function(g) {
+        var n = g.items.filter(function(item) { return item.checkbox.checked; }).length;
+        g.checkbox.checked = n == g.items.length;
+        g.checkbox.indeterminate = n > 0 && n < g.items.length;
+        g.count.text(n + ' of ' + g.items.length + (g.items.length == 1 ? ' layer' : ' layers'));
+      });
     }
 
     function getSelectedLayerEntries() {
@@ -10842,13 +11013,15 @@
 
     function onExportClick() {
       var targets = getExportTargets();
-      if (targets.length === 0) {
+      if (targets.length === 0 && !exportsWholeProject(getSelectedFormat())) {
         return gui.alert('No layers were selected');
       }
+      // read before clearMode(), which closes the dialog and discards its checklist
+      var selection = getExportSelection();
       gui.clearMode();
       gui.showProgressMessage('Exporting');
       setTimeout(function() {
-        exportMenuSelection(targets).catch(function(err) {
+        exportMenuSelection(selection).catch(function(err) {
           if (utils$1.isString(err)) {
             gui.alert(err);
           } else {
@@ -10882,10 +11055,29 @@
       return freeform.trim();
     }
 
+    // The checked layers, as {items: [{target, source, frame}], grouped}.
+    // target: the layer as exported (renamed in the dialog, perhaps)
+    // source: the layer in the model
+    // frame: the layer's frame, if the checklist is grouped by frame
+    // grouped: whether the checklist is grouped by frame
+    function getExportSelection() {
+      return {
+        items: layersArr.filter(function(item) {
+          return item.checkbox.checked;
+        }).map(function(item) {
+          return {target: item.target, source: item.source, frame: item.frame};
+        }),
+        grouped: frameGroups.length > 0
+      };
+    }
+
     // done: function(string|Error|null)
-    async function exportMenuSelection(targets) {
+    async function exportMenuSelection(selection) {
       // note: command line "target" option gets ignored
       var opts = getExportOpts();
+      var targets = internal.groupLayersByDataset(utils$1.pluck(selection.items, 'target'));
+      var exportedLayers = utils$1.pluck(selection.items, 'source');
+      var frame;
       if (opts.format == 'geopackage') {
         await loadGeopackageLib();
       } else if (opts.format == 'geoparquet') {
@@ -10902,21 +11094,32 @@
         var snapshot = gui.session.getHistorySnapshot();
         snapshot.savedAtIndex = snapshot.commands.length;
         opts.history = snapshot;
-        targets = addFrameTarget(targets);
-      }
-      if (isRenderedMapFormat(opts.format) || opts.format == 'topojson') {
-        opts.gui_frame = getGuiFrameContext();
-      }
-      if (isRenderedMapFormat(opts.format)) {
-        targets = addFrameFurnitureTargets(targets, opts.gui_frame);
+        if (selection.grouped) {
+          targets = getProjectTargets();
+          exportedLayers = getContentLayers();
+        } else {
+          targets = addFrameTarget(targets);
+        }
       }
       try {
-        var files = await internal.exportTargetLayers(model, targets, opts);
+        var files;
+        if (isRenderedMapFormat(opts.format) && selection.grouped) {
+          files = await exportFrameMaps(selection.items, opts);
+        } else {
+          frame = getSelectionFrame(selection);
+          if (isRenderedMapFormat(opts.format) || opts.format == 'topojson') {
+            opts.gui_frame = getGuiFrameContext(frame);
+          }
+          if (isRenderedMapFormat(opts.format)) {
+            targets = addFrameFurnitureTargets(targets, opts.gui_frame, frame);
+          }
+          files = await internal.exportTargetLayers(model, targets, opts);
+        }
       } catch(e) {
         console.error(e);
         throw e;
       }
-      gui.session.layersExported(getTargetLayerIds(), getExportOptsAsString());
+      gui.session.layersExported(getLayerIds(exportedLayers), getExportOptsAsString());
       if (files.length == 1 && checkboxOn(clipboardCheckbox)) {
         await saveFileContentToClipboard(files[0].content);
       } else {
@@ -10925,7 +11128,7 @@
     }
 
     function initLayerItem(o, i) {
-      var template = '<input type="checkbox" value="%s" checked> <span class="layer-name dot-underline-black">%s</span>';
+      var template = '<input type="checkbox" value="%s" checked><span class="layer-name dot-underline-black">%s</span>';
       var target = {
         dataset: o.dataset,
         // shallow-copy layer, so it can be renamed in the export dialog
@@ -10936,7 +11139,10 @@
       // return {layer: o.layer, html: html};
       var el = El('div').html(html).addClass('layer-item');
       var box = el.findChild('input').node();
-      box.addEventListener('click', updateToggleBtn);
+      box.addEventListener('click', function() {
+        selectionTouched = true;
+        updateToggleBtn();
+      });
 
       new ClickText2(el.findChild('.layer-name'))
         .on('change', function(e) {
@@ -10949,13 +11155,68 @@
 
       return {
         target: target,
+        source: o.layer,
+        frame: null,
         el: el,
         checkbox: box
       };
     }
 
+    // The layers menu's groups: unframed layers, then each frame with its
+    // layers. Each row has a checkbox for all of its layers and a count of the
+    // checked ones, so it says what will be exported while it is closed.
+    function initGroupedLayerItems(list) {
+      var groups = getLayerMenuGroups(model);
+      var items = [];
+      if (groups.unframed.length > 0) {
+        var unframedGroup = initLayerGroup(
+          'Unframed layers', groups.unframed, items.length, null);
+        list.appendChild(unframedGroup.el);
+        items = items.concat(unframedGroup.items);
+      }
+      groups.frames.forEach(function(g) {
+        if (g.members.length === 0) return;
+        var group = initLayerGroup(
+          g.frame.layer.name || '[unnamed frame]', g.members, items.length, g.frame);
+        list.appendChild(group.el);
+        items = items.concat(group.items);
+      });
+      return items;
+    }
+
+    function initLayerGroup(name, layers, offset, frame) {
+      var el = El('div').addClass('export-frame-group closed');
+      var row = El('div').addClass('export-frame-row').appendTo(el);
+      var label = El('label').appendTo(row);
+      var box = El('input').attr('type', 'checkbox').appendTo(label);
+      El('span').addClass('export-frame-name')
+        .text(name).appendTo(label);
+      var count = El('span').addClass('export-frame-count').appendTo(row);
+      var toggle = El('span').addClass('export-frame-toggle')
+        .attr('role', 'button').attr('aria-label', 'Show or hide layers').appendTo(row);
+      var members = El('div').addClass('export-frame-members').appendTo(el);
+      var group = {frame: frame, el: el, checkbox: box.node(), count: count, items: []};
+      group.items = layers.map(function(o, i) {
+        var item = initLayerItem(o, offset + i);
+        item.frame = frame;
+        members.appendChild(item.el);
+        return item;
+      });
+      box.on('click', function() {
+        var checked = box.node().checked;
+        group.items.forEach(function(item) { item.checkbox.checked = checked; });
+        selectionTouched = true;
+        updateToggleBtn();
+      });
+      toggle.on('click', function() {
+        el.classed('closed', !el.hasClass('closed'));
+      });
+      frameGroups.push(group);
+      return group;
+    }
+
     function initSelectAll() {
-      var toggleHtml = '<label><input type="checkbox" value="toggle" checked> Select All</label>';
+      var toggleHtml = '<label><input type="checkbox" value="toggle" checked><span>Select all</span></label>';
       var el = El('div').html(toggleHtml);
       var btn = el.findChild('input').node();
       toggleBtn = btn;
@@ -10967,6 +11228,7 @@
         } else {
           setLayerSelection(true);
         }
+        selectionTouched = true;
         updateToggleBtn();
       });
       return el;
@@ -10977,7 +11239,10 @@
       var layers = model.getLayers().filter(function(o) {
         return !internal.isFrameComponentLayer(o.layer, o.dataset);
       });
+      var objects;
       sortLayersForMenuDisplay(layers);
+      frameGroups = [];
+      toggleBtn = null;
 
       if (layers.length > 2) {
         // add select all toggle
@@ -10985,19 +11250,20 @@
       }
 
       // add layers to menu
-      var objects = layers.map(function(target, i) {
-        var o = initLayerItem(target, i);
-        list.appendChild(o.el);
-        return o;
-      });
+      if (hasFrameGroups()) {
+        objects = initGroupedLayerItems(list);
+      } else {
+        objects = layers.map(function(target, i) {
+          var o = initLayerItem(target, i);
+          list.appendChild(o.el);
+          return o;
+        });
+      }
 
       // hide checkbox if only one layer
       if (layers.length < 2) {
         menu.findChild('.export-layers input').css('display', 'none');
       }
-
-      // update menu title
-      gui.container.findChild('.export-layers .menu-title').html(layers.length == 1 ? 'Layer name' : 'Layers');
 
       return objects;
     }
@@ -11010,6 +11276,7 @@
 
     function updateToggleBtn() {
       refreshFormatMenu(); // the layer selection decides which formats apply
+      updateFrameGroups();
       updateExportCheckboxes(); // checkbox visibility is affected by number of export layers
       if (!toggleBtn) return;
       var state = getSelectionState();
@@ -11037,6 +11304,8 @@
       var dataset = active.dataset;
       var inputFmt = dataset.info && dataset.info.input_formats &&
           dataset.info.input_formats[0];
+      // A session with frames is taken to be making maps
+      if (internal.getFrames(model).length > 0) return 'svg';
       // Rasters and nothing else can only go to GeoTIFF, the one format that
       // takes their pixels.
       if (layers.length > 0 && layers.every(hasRaster)) return 'geotiff';
@@ -11100,8 +11369,10 @@
 
     function onFormatChange() {
       // A format the user picked is theirs to keep, however the layer selection
-      // changes afterwards.
+      // changes afterwards, and is the one offered next time.
       formatPickedByUser = true;
+      sessionFormat = getSelectedFormat();
+      syncSelectionWithFormat();
       updateExportCheckboxes();
     }
 
@@ -11120,6 +11391,7 @@
       } else if (!formatPickedByUser) {
         setSelectedFormat(getDefaultExportFormat());
       }
+      syncSelectionWithFormat();
     }
 
 
@@ -11151,8 +11423,70 @@
       }, []);
     }
 
-    function getGuiFrameContext() {
-      var target = internal.getActiveFrame(model);
+    // Positions of layers in the model, as session history refers to them
+    function getLayerIds(layers) {
+      var all = utils$1.pluck(model.getLayers(), 'layer');
+      return layers.map(function(lyr) {
+        return all.indexOf(lyr) + 1;
+      }).filter(function(id) { return id > 0; });
+    }
+
+    function getContentLayers() {
+      return model.getLayers().filter(function(o) {
+        return !internal.isFrameComponentLayer(o.layer, o.dataset);
+      }).map(function(o) { return o.layer; });
+    }
+
+    // Every layer, frames and furniture included
+    function getProjectTargets() {
+      return model.getDatasets().map(function(dataset) {
+        return {dataset: dataset, layers: dataset.layers.slice()};
+      });
+    }
+
+    // The frame that a single-file export is composed in: without frame
+    // groups, the active frame (which may be a frame without members, composing
+    // the unframed layers); with them, the frame of the checked layers if they
+    // are all in one
+    function getSelectionFrame(selection) {
+      var frame;
+      if (!selection.grouped) return model.getActiveFrame();
+      frame = selection.items.length > 0 ? selection.items[0].frame : null;
+      return frame && selection.items.every(function(item) {
+        return item.frame && item.frame.dataset == frame.dataset;
+      }) ? frame : null;
+    }
+
+    // One map per frame with checked layers, and one frameless map of any
+    // checked unframed layers. When there are several files, each frame's is
+    // named after the frame.
+    async function exportFrameMaps(items, opts) {
+      var parts = [];
+      var files = [];
+      items.forEach(function(item) {
+        var key = item.frame ? item.frame.dataset : null;
+        var part = parts.find(function(p) { return p.key == key; });
+        if (!part) {
+          parts.push(part = {key: key, frame: item.frame, entries: []});
+        }
+        part.entries.push(item.target);
+      });
+      for (var part of parts) {
+        var partOpts = Object.assign({}, opts);
+        var targets = internal.groupLayersByDataset(part.entries);
+        if (part.frame) {
+          partOpts.gui_frame = getGuiFrameContext(part.frame);
+          targets = addFrameFurnitureTargets(targets, partOpts.gui_frame, part.frame);
+          if (parts.length > 1) {
+            partOpts.file = internal.getFrameExportFilename(part.frame, opts.file, opts.format);
+          }
+        }
+        files = files.concat(await internal.exportTargetLayers(model, targets, partOpts));
+      }
+      return files;
+    }
+
+    function getGuiFrameContext(target) {
       var rec, style;
       if (!target) return null;
       rec = target.layer.data.getReadOnlyRecordAt(0) || {};
@@ -11177,21 +11511,23 @@
 
     // Snapshots keep the frame and its furniture
     function addFrameTarget(targets) {
-      var frame = internal.getActiveFrame(model);
+      var frame = model.getActiveFrame();
       if (!frame) return targets;
       return addDatasetTargets(targets, frame.dataset,
         [frame.layer].concat(internal.getFrameFurnitureLayers(frame.dataset)));
     }
 
     // The frame's furniture is drawn in SVG output, the way it is in preview.
-    // An unprojected frame can't show a scalebar, so it doesn't block the export.
-    function addFrameFurnitureTargets(targets, frameContext) {
-      var frame = internal.getActiveFrame(model);
+    // An unprojected frame can't show a scalebar, so it doesn't block the export
+    // (overlay frames don't depend on the host's projection).
+    function addFrameFurnitureTargets(targets, frameContext, frame) {
       var furniture = frame ? internal.getFrameFurnitureLayers(frame.dataset) : [];
       if (furniture.length === 0) return targets;
       if (internal.getFurnitureFrameProblem(frameContext && frameContext.data)) {
-        console.warn('Map furniture was not exported: the map frame is unprojected');
-        return targets;
+        if (furniture.some(function(lyr) { return !internal.layerIsOverlay(lyr); })) {
+          console.warn('Map furniture was not exported: the map frame is unprojected');
+        }
+        furniture = furniture.filter(internal.layerIsOverlay);
       }
       return addDatasetTargets(targets, frame.dataset, furniture);
     }
@@ -11568,28 +11904,30 @@
       if (e.frameProperties) {
         addMenuItem('frame properties', e.frameProperties, '');
       }
-      if (e.scalebarProperties) {
-        addMenuItem(e.scalebarLabel || 'scale bar', e.scalebarProperties, '');
+      if (e.renameFrame) {
+        addMenuItem('rename frame', e.renameFrame, '');
       }
       if (e.resizeFrame) {
         addMenuItem('resize frame', e.resizeFrame, '');
       }
+      if (e.styleLayer) {
+       addMenuItem(e.styleLayerName || 'style/edit layer', e.styleLayer, '');
+      }
+      if (e.showLayerInfo) {
+       addMenuItem('show info', e.showLayerInfo, '');
+      }
+      if (e.duplicateLayer) {
+       addMenuItem('duplicate layer', e.duplicateLayer, '');
+      }
+      // [{label, run}]: copying a frame, moving layers into or out of frames
+      (e.frameActions || []).forEach(function(action) {
+        addMenuItem(action.label, action.run, '');
+      });
       if (e.deleteFrame) {
         addMenuItem('delete frame', e.deleteFrame, '');
       }
       if (e.deleteLayer) {
        addMenuItem('delete layer', e.deleteLayer, '');
-      }
-      if (e.duplicateLayer) {
-       addMenuItem('duplicate layer', e.duplicateLayer, '');
-      }
-      if (e.styleLayer) {
-       // named by the caller when the layer opens something other than a style
-       // panel -- a label layer opens the label tool, which does more than style
-       addMenuItem(e.styleLayerName || 'style layer', e.styleLayer, '');
-      }
-      if (e.showLayerInfo) {
-       addMenuItem('show info', e.showLayerInfo, '');
       }
 
       if (lyr && lyr.gui.geographic) {
@@ -11804,7 +12142,7 @@
 
     function onDone(err, flags) {
       if (err) {
-        showPopupAlert(err.message || String(err), opts.title || 'Command error');
+        showCommandError(gui, err.message || String(err), opts.title || 'Command error');
         if (opts.onError) opts.onError(err);
       } else if (opts.onSuccess) {
         opts.onSuccess(flags);
@@ -11813,6 +12151,634 @@
         opts.onDone(err, flags);
       }
     }
+  }
+
+  // stop() has already shown the message in an alert without a title;
+  // gui.alert() replaces that alert instead of stacking a second one on it
+  function showCommandError(gui, msg, title) {
+    if (gui.alert) {
+      gui.alert(msg, title);
+    } else {
+      showPopupAlert(msg, title);
+    }
+  }
+
+  // A reusable floating toolbar anchored at the bottom-center of the map area.
+  //
+  // Multiple toolbars stack vertically inside a shared container, so additional
+  // per-mode toolbars (e.g. feature styling) can coexist with the edit toolbar.
+  //
+  // The DOM is structured to leave room for a future drag handle without
+  // requiring rework: the toolbar element is a flex row with a content slot,
+  // and a sibling drag-handle slot can be added later.
+  //
+  // Constructor options:
+  //   name:       optional CSS class added to the toolbar element
+  //
+  // API:
+  //   toolbar.addButton(iconRef, opts) -> ToolbarButton
+  //   toolbar.addTextButton(label, opts) -> ToolbarButton
+  //   toolbar.addSegmentedControl(caption, items, opts) -> ToolbarSegmentedControl
+  //   toolbar.addTextField(caption, opts) -> ToolbarTextField
+  //   toolbar.addSeparator()
+  //   toolbar.addLabel(text) -> El
+  //   toolbar.dock(el)    puts a group of controls kept by another toolbar first
+  //   toolbar.show()
+  //   toolbar.hide()
+  //   toolbar.visible()
+  //   toolbar.node()
+  //
+  // Showing or hiding a toolbar fires 'floating_toolbar_change' on the gui.
+  // getVisibleFloatingToolbars(gui) lists the visible ones, bottom first.
+
+  function FloatingToolbar(gui, opts) {
+    opts = opts || {};
+    var root = gui.container.findChild('.mshp-main-map');
+    var stack = root.findChild('.floating-toolbar-stack');
+    if (!stack) {
+      stack = El('div').addClass('floating-toolbar-stack').appendTo(root);
+    }
+    var el = El('div').addClass('floating-toolbar');
+    if (opts.name) el.addClass(opts.name);
+    var content = El('div').addClass('floating-toolbar-content').appendTo(el);
+    var visible = false;
+
+    el.appendTo(stack);
+    el.css('display', 'none');
+    if (!gui.floatingToolbars) gui.floatingToolbars = [];
+    gui.floatingToolbars.push(this);
+
+    // Hide when this gui instance becomes inactive (e.g. multi-instance mode)
+    gui.on('active', updateVisibility);
+    gui.on('inactive', updateVisibility);
+
+    this.addButton = function(iconRef, btnOpts) {
+      return new ToolbarButton(content, iconRef, btnOpts || {});
+    };
+
+    this.addTextButton = function(label, btnOpts) {
+      var button = new ToolbarButton(content, null, btnOpts || {});
+      button.setText(label);
+      return button;
+    };
+
+    // A choice between modes with every label visible and the active one lit.
+    // Preferred over a button that rewrites its own label, which leaves no way
+    // to tell the mode you are in from the mode a click would put you in.
+    // items: [{value, label, tooltip}]
+    this.addSegmentedControl = function(caption, items, ctrlOpts) {
+      return new ToolbarSegmentedControl(content, caption, items, ctrlOpts || {});
+    };
+
+    // A short typed value, committed on Enter or on leaving the field.
+    this.addTextField = function(caption, fieldOpts) {
+      return new ToolbarTextField(content, caption, fieldOpts || {});
+    };
+
+    this.addSeparator = function() {
+      return El('div').addClass('floating-toolbar-separator').appendTo(content);
+    };
+
+    // Text that names what the toolbar is acting on, e.g. a layer
+    this.addLabel = function(text) {
+      return El('span').addClass('floating-toolbar-label').appendTo(content).text(text || '');
+    };
+
+    this.dock = function(groupEl) {
+      var node = groupEl.node();
+      var parent = content.node();
+      if (parent.firstChild != node) {
+        parent.insertBefore(node, parent.firstChild);
+      }
+    };
+
+    this.show = function() {
+      if (visible) return;
+      visible = true;
+      updateVisibility();
+      gui.dispatchEvent('floating_toolbar_change');
+    };
+
+    this.hide = function() {
+      if (!visible) return;
+      visible = false;
+      updateVisibility();
+      gui.dispatchEvent('floating_toolbar_change');
+    };
+
+    this.visible = function() {
+      return visible;
+    };
+
+    this.node = function() {
+      return el.node();
+    };
+
+    // Shown and hidden at once, without a fade: one toolbar often replaces
+    // another (the undo buttons move between a mode's toolbar and their own),
+    // and a toolbar fading out keeps its place in the stack, so a fade made the
+    // toolbars around it jump.
+    function updateVisibility() {
+      var shouldShow = visible && GUI.isActiveInstance(gui);
+      el.css('display', shouldShow ? 'flex' : 'none');
+      el.classed('visible', shouldShow);
+    }
+  }
+
+  // The stack is a reversed column, so the first toolbar in the DOM is the
+  // bottom one.
+  function getVisibleFloatingToolbars(gui) {
+    return (gui.floatingToolbars || []).filter(function(toolbar) {
+      return toolbar.visible();
+    }).sort(function(a, b) {
+      return a.node().compareDocumentPosition(b.node()) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+    });
+  }
+
+  function makeToolbarButton(parent, iconRef, opts) {
+    return new ToolbarButton(parent, iconRef, opts || {});
+  }
+
+  function ToolbarSegmentedControl(parent, caption, items, opts) {
+    var el = El('div').addClass('floating-toolbar-group').appendTo(parent);
+    var changeHandlers = [];
+    var value = null;
+    var segments;
+    if (caption) {
+      El('span').addClass('floating-toolbar-caption').appendTo(el).text(caption);
+    }
+    if (opts.classname) el.addClass(opts.classname);
+    var group = El('div').addClass('floating-toolbar-segments').appendTo(el);
+    segments = items.map(function(item) {
+      var button = new ToolbarButton(group, null, {tooltip: item.tooltip});
+      button.setText(item.label);
+      button.on('click', function() {
+        if (value === item.value) return;
+        setValue(item.value);
+        changeHandlers.forEach(function(fn) { fn(value); });
+      });
+      return {value: item.value, button: button};
+    });
+
+    function setValue(val) {
+      value = val;
+      segments.forEach(function(o) {
+        o.button.setSelected(o.value === val);
+      });
+    }
+
+    // Sets the lit segment without firing 'change', for syncing to outside state.
+    this.setValue = function(val) {
+      setValue(val);
+      return this;
+    };
+
+    this.getValue = function() {
+      return value;
+    };
+
+    this.on = function(event, fn) {
+      if (event == 'change') changeHandlers.push(fn);
+      return this;
+    };
+
+    this.node = function() {
+      return el.node();
+    };
+  }
+
+  function ToolbarTextField(parent, caption, opts) {
+    var el = El('label').addClass('floating-toolbar-group')
+      .addClass('floating-toolbar-field').appendTo(parent);
+    var changeHandlers = [];
+    var committed = '';
+    var input;
+    if (caption) {
+      El('span').addClass('floating-toolbar-caption').appendTo(el).text(caption);
+    }
+    input = El('input').attr('type', 'text').appendTo(el);
+    if (opts.classname) input.addClass(opts.classname);
+    if (opts.placeholder) input.attr('placeholder', opts.placeholder);
+    if (opts.width) input.css('width', opts.width);
+    if (opts.tooltip) el.attr('data-tooltip', opts.tooltip);
+
+    // Keyboard events reach gui.keyboard through the document, so map shortcuts
+    // would fire while the field has focus. Enter commits, Escape abandons the
+    // edit and leaves the field rather than closing the tool around it.
+    input.on('keydown', function(e) {
+      e.stopPropagation();
+      if (e.keyCode == 13) {
+        input.node().blur();
+      } else if (e.keyCode == 27) {
+        input.node().value = committed;
+        input.node().blur();
+      }
+    });
+
+    // Native change fires on Enter and on leaving an edited field, and not when
+    // Escape has put the original value back.
+    input.on('change', function() {
+      var value = input.node().value.trim();
+      committed = value;
+      changeHandlers.forEach(function(fn) { fn(value); });
+    });
+
+    // Sets the displayed value without firing 'change'.
+    this.setValue = function(value) {
+      committed = value == null ? '' : String(value);
+      input.node().value = committed;
+      return this;
+    };
+
+    this.getValue = function() {
+      return input.node().value.trim();
+    };
+
+    this.on = function(event, fn) {
+      if (event == 'change') changeHandlers.push(fn);
+      return this;
+    };
+
+    this.node = function() {
+      return input.node();
+    };
+  }
+
+  function ToolbarButton(parent, iconRef, opts) {
+    var btn = El('div').addClass('floating-toolbar-btn').appendTo(parent);
+    if (iconRef) {
+      var iconNode = El('body').findChild(iconRef);
+      if (iconNode) {
+        var icon = iconNode.node().cloneNode(true);
+        if (icon.hasAttribute('id')) icon.removeAttribute('id');
+        btn.node().appendChild(icon);
+      }
+    }
+    var enabled = true;
+    var selected = false;
+    var clickHandlers = [];
+
+    if (opts.tooltip) setTooltip(opts.tooltip);
+
+    // Block native dblclick to avoid the map's double-click zoom
+    btn.on('dblclick', function(e) { e.stopPropagation(); });
+
+    btn.on('click', function(e) {
+      if (!enabled) return;
+      for (var i = 0; i < clickHandlers.length; i++) {
+        clickHandlers[i](e);
+      }
+    });
+
+    this.on = function(event, fn) {
+      if (event == 'click') {
+        clickHandlers.push(fn);
+      } else {
+        btn.on(event, fn);
+      }
+      return this;
+    };
+
+    this.enable = function() { return this.setEnabled(true); };
+    this.disable = function() { return this.setEnabled(false); };
+
+    this.setEnabled = function(b) {
+      enabled = !!b;
+      btn.classed('disabled', !enabled);
+      return this;
+    };
+
+    // A button that stays lit to show which of several tools is armed, e.g. the
+    // label tool's anchored/path creation toggles.
+    this.setSelected = function(b) {
+      selected = !!b;
+      btn.classed('selected', selected);
+      return this;
+    };
+
+    this.selected = function() {
+      return selected;
+    };
+
+    this.setTooltip = setTooltip;
+
+    this.setText = function(text) {
+      btn.addClass('text-btn').text(text);
+      return this;
+    };
+
+    this.node = function() {
+      return btn.node();
+    };
+
+    function setTooltip(text) {
+      btn.attr('data-tooltip', text);
+    }
+  }
+
+  // Returns the -frame command that places an overlay frame on a host frame.
+  // The command adds the placement, or updates it if the overlay is already on
+  // the host, so every placement gesture is one replayable command.
+  // @hostRef, @overlayRef frame references, formatted as option values
+  // @placement {position, margin_x, margin_y}
+  function getOverlayPlacementCommand(hostRef, overlayRef, placement) {
+    var parts = ['-frame', 'target=' + hostRef, 'overlay=' + overlayRef];
+    if (placement) {
+      parts.push('overlay-position=' + placement.position);
+      parts.push('overlay-margin=' + formatMargin(placement.margin_x) + ',' +
+        formatMargin(placement.margin_y));
+    }
+    return parts.join(' ');
+  }
+
+  function getRemoveOverlayCommand(hostRef, overlayRef) {
+    return '-frame target=' + hostRef + ' remove-overlay=' + overlayRef;
+  }
+
+  function formatMargin(val) {
+    return String(Math.round((+val || 0) * 100) / 100);
+  }
+
+  // [position, segment label, tooltip]
+  var cornerOptions = [
+    ['top-left', '↖', 'Top left corner'],
+    ['top-right', '↗', 'Top right corner'],
+    ['bottom-left', '↙', 'Bottom left corner'],
+    ['bottom-right', '↘', 'Bottom right corner']
+  ];
+
+  // Below this distance in screen pixels, a press on an overlay box is a click
+  var DRAG_THRESHOLD = 3;
+
+  // The overlay frames placed on the frame being previewed, drawn as labeled
+  // boxes on its page. Dragging a box moves the overlay; on release, the
+  // placement is re-expressed as the nearest corner and two margins and saved
+  // with one -frame command. Clicking a box opens a toolbar with the same
+  // settings as numbers.
+  function FrameOverlays(gui) {
+    var ext = gui.map.getExtent();
+    var container = El('div').addClass('frame-overlay-boxes').appendTo('body');
+    var boxes = [];
+    var drag = null;
+    // The host page while its frame is being resized, so the boxes follow the
+    // corners they are anchored to
+    var resizePreview = null;
+    var panel = new OverlayToolbar(gui, render);
+
+    gui.frameOverlays = this;
+
+    gui.on('map_rendered', render);
+    gui.on('preview_mode_change', render);
+    gui.on('undo_redo_post', render);
+    gui.model.on('update', render);
+    gui.on('frame_resize_preview', function(e) {
+      resizePreview = e.frame || null;
+      render();
+    });
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+
+    this.getBoxes = function() {
+      return boxes.map(function(o) {
+        return {name: o.frame.layer.name, box: Object.assign({}, o.box)};
+      });
+    };
+
+    function getHost() {
+      return gui.map.isPreviewView() ? gui.model.getActiveFrame() : null;
+    }
+
+    // The host page on the screen: {left, top, kx, ky}, where k is screen
+    // pixels per page pixel
+    function getPageTransform() {
+      var frame = resizePreview || gui.map.getPreviewFrameData();
+      var pos = ext.position();
+      var p1, p2;
+      if (!frame || !(frame.width > 0) || !(frame.height > 0)) return null;
+      p1 = ext.translateCoords(frame.bbox[0], frame.bbox[3]);
+      p2 = ext.translateCoords(frame.bbox[2], frame.bbox[1]);
+      return {
+        left: Math.min(p1[0], p2[0]) + pos.pageX,
+        top: Math.min(p1[1], p2[1]) + pos.pageY,
+        kx: Math.abs(p2[0] - p1[0]) / frame.width,
+        ky: Math.abs(p2[1] - p1[1]) / frame.height,
+        size: {width: frame.width, height: frame.height}
+      };
+    }
+
+    function render() {
+      var host = getHost();
+      var page = host ? getPageTransform() : null;
+      if (drag) return; // the box being dragged is positioned by the drag
+      container.empty();
+      boxes = [];
+      if (!page) return;
+      internal.getHostOverlays(gui.model, host).forEach(function(o) {
+        var size = internal.getFramePageSize(o.frame);
+        var item = {
+          host: host,
+          frame: o.frame,
+          box: internal.getOverlayBox(o.record, page.size, size),
+          el: El('div').addClass('frame-overlay-box').appendTo(container)
+        };
+        El('span').addClass('frame-overlay-box-label').appendTo(item.el)
+          .text(o.frame.layer.name || '');
+        item.el.attr('data-overlay', o.frame.layer.name || '');
+        item.el.classed('selected', panel.isEditing(o.frame));
+        item.el.on('mousedown', function(e) { onMouseDown(e, item); });
+        positionBox(item, page);
+        boxes.push(item);
+      });
+    }
+
+    function positionBox(item, page) {
+      item.el.css({
+        left: page.left + item.box.x * page.kx,
+        top: page.top + item.box.y * page.ky,
+        width: Math.max(item.box.width * page.kx, 1),
+        height: Math.max(item.box.height * page.ky, 1)
+      });
+    }
+
+    function onMouseDown(e, item) {
+      var page = getPageTransform();
+      if (e.button !== 0 || !page) return;
+      e.preventDefault();
+      e.stopPropagation();
+      drag = {
+        item: item,
+        page: page,
+        x: e.pageX,
+        y: e.pageY,
+        box: Object.assign({}, item.box),
+        moved: false
+      };
+    }
+
+    function onMouseMove(e) {
+      var dx, dy;
+      if (!drag) return;
+      dx = e.pageX - drag.x;
+      dy = e.pageY - drag.y;
+      if (!drag.moved && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+      drag.moved = true;
+      drag.item.el.addClass('dragging');
+      drag.item.box.x = drag.box.x + dx / drag.page.kx;
+      drag.item.box.y = drag.box.y + dy / drag.page.ky;
+      positionBox(drag.item, drag.page);
+    }
+
+    function onMouseUp() {
+      var o = drag;
+      if (!o) return;
+      drag = null;
+      o.item.el.removeClass('dragging');
+      if (!o.moved) {
+        panel.open(o.item.host, o.item.frame);
+        return;
+      }
+      runPlacementCommand(gui, o.item.host, o.item.frame,
+        internal.getOverlayPlacementFromBox(o.item.box, o.page.size), 'Move overlay', render);
+    }
+  }
+
+  function getFrameRef(gui, frame) {
+    return internal.formatOptionValue(internal.getLayerTargetId(gui.model, frame.layer));
+  }
+
+  function getOverlayRef(frame) {
+    return internal.formatOptionValue(frame.layer.name || '');
+  }
+
+  function runPlacementCommand(gui, host, overlay, placement, title, onError) {
+    runGuiEditCommand(gui, getOverlayPlacementCommand(getFrameRef(gui, host),
+      getOverlayRef(overlay), placement), {title: title || 'Place overlay', onError: onError});
+  }
+
+  function runRemoveOverlayCommand(gui, host, overlay, onSuccess) {
+    runGuiEditCommand(gui, getRemoveOverlayCommand(getFrameRef(gui, host),
+      getOverlayRef(overlay)), {title: 'Remove overlay', onSuccess: onSuccess});
+  }
+
+  // The placement of one overlay as numbers, in a toolbar below the map like
+  // the frame resize tool's: a corner of the host page and the distances from
+  // its two edges, in the host's page pixels. Opened by clicking an overlay box.
+  function OverlayToolbar(gui, onChange) {
+    var toolbar = new FloatingToolbar(gui, {name: 'overlay-toolbar'});
+    // frames are looked up by ID, since an undo can replace their objects
+    var hostId = null, overlayId = null;
+    var nameLabel = toolbar.addLabel('');
+    var cornerControl = toolbar.addSegmentedControl('Corner', cornerOptions.map(function(o) {
+      return {value: o[0], label: o[1], tooltip: o[2]};
+    }), {classname: 'overlay-corner-control'}).on('change', commit);
+    var marginField = toolbar.addTextField('Margin', {
+      classname: 'overlay-toolbar-margin-input',
+      tooltip: 'Distance from the corner in pixels: one value, or horizontal,vertical'
+    }).on('change', commit);
+    toolbar.addSeparator();
+    toolbar.addTextButton('Remove', {
+      tooltip: 'Remove this overlay from the frame'
+    }).on('click', function() {
+      if (getRecord()) runRemoveOverlayCommand(gui, getHost(), getOverlay(), close);
+    });
+    toolbar.addSeparator();
+    toolbar.addTextButton('Done', {
+      tooltip: 'Finish placing the overlay'
+    }).on('click', close);
+
+    gui.model.on('update', function(e) {
+      var flags = e.flags || {};
+      if (!isOpen() || flags.simplify_amount || flags.redraw_only) return;
+      refreshOrClose();
+    });
+    gui.on('undo_redo_post', function() {
+      if (isOpen()) refreshOrClose();
+    });
+    gui.on('preview_mode_change', function(e) {
+      if (!e.enabled) close();
+    });
+    gui.on('interaction_mode_change', close);
+    gui.keyboard.on('keydown', function(e) {
+      if (isOpen() && e.keyName == 'esc') {
+        close();
+        e.stopPropagation();
+      }
+    }, null, 11);
+
+    this.open = function(hostFrame, overlayFrame) {
+      hostId = hostFrame.dataset.id;
+      overlayId = overlayFrame.dataset.id;
+      updateControls();
+      toolbar.show();
+      onChange();
+    };
+
+    // overlayFrame: the frame of an overlay box
+    this.isEditing = function(overlayFrame) {
+      return isOpen() && overlayFrame.dataset.id == overlayId;
+    };
+
+    function isOpen() {
+      return toolbar.visible();
+    }
+
+    function close() {
+      if (!isOpen()) return;
+      toolbar.hide();
+      hostId = overlayId = null;
+      onChange();
+    }
+
+    function refreshOrClose() {
+      if (getRecord()) updateControls(); else close();
+    }
+
+    function updateControls() {
+      var rec = getRecord();
+      if (!rec) return;
+      nameLabel.text(getOverlay().layer.name || '');
+      cornerControl.setValue(rec.position);
+      marginField.setValue(rec.margin_x == rec.margin_y ?
+        String(rec.margin_x) : rec.margin_x + ',' + rec.margin_y);
+    }
+
+    function commit() {
+      var margins = parseMargins(marginField.getValue());
+      if (!margins || !getRecord()) {
+        updateControls();
+        return;
+      }
+      runPlacementCommand(gui, getHost(), getOverlay(), {
+        position: cornerControl.getValue(),
+        margin_x: margins[0],
+        margin_y: margins[1]
+      }, 'Place overlay', updateControls);
+    }
+
+    function getHost() {
+      return internal.getFrameById(gui.model, hostId);
+    }
+
+    function getOverlay() {
+      return internal.getFrameById(gui.model, overlayId);
+    }
+
+    // The placement, looked up afresh, since commands replace the record
+    function getRecord() {
+      var host = hostId ? getHost() : null;
+      var lyr = host && getOverlay() ? internal.findOverlayLayer(host.dataset, overlayId) : null;
+      return lyr ? lyr.data.getReadOnlyRecordAt(0) : null;
+    }
+  }
+
+  // "10" or "10,20" (horizontal, vertical) -> [x, y], or null
+  function parseMargins(str) {
+    var parts = String(str).split(/\s*[, ]\s*/).map(function(s) {
+      return s === '' ? NaN : Number(s);
+    });
+    if (parts.length > 2 || !parts.every(isFinite)) return null;
+    return [parts[0], parts.length > 1 ? parts[1] : parts[0]];
   }
 
   function LayerControl(gui) {
@@ -11824,7 +12790,9 @@
     var isOpen = false;
     var cache = new DomCache();
     var pinAll = el.findChild('.pin-all'); // button for toggling layer visibility
-    var frameEmpty = el.findChild('.map-frame-empty')
+    var unframedSection = el.findChild('.unframed-section');
+    var frameAddGroup = el.findChild('.map-frame-add-group');
+    el.findChild('.map-frame-add')
       .on('click', openFrameCreateDialog)
       .on('keydown', function(e) {
         if (e.key == 'Enter' || e.key == ' ') {
@@ -11832,15 +12800,35 @@
           openFrameCreateDialog();
         }
       });
+    GUI.onClick(unframedSection.findChild('.section-toggle'), function(e) {
+      e.stopPropagation();
+      toggleSection('');
+    });
+    GUI.onClick(unframedSection.findChild('.layer-section-heading'), activateUnframedView);
 
+    // A new frame is made from the layers of the unframed view
     function openFrameCreateDialog() {
+      var unframed = getLayerMenuGroups(model).unframed;
+      if (model.getActiveFrame() && unframed.length > 0) {
+        model.selectLayer(unframed[0].layer, unframed[0].dataset);
+      }
       if (gui.frameTool) gui.frameTool.openCreateDialog();
+    }
+
+    // Sections that have been closed: '' for the Layers section, otherwise by
+    // frame dataset ID. GUI state only.
+    var closedSections = {};
+
+    function toggleSection(key) {
+      closedSections[key] = !closedSections[key];
+      renderLayerList();
     }
 
     // layer repositioning
     var dragTargetId = null;
     var dragging = false;
     var layerOrderSlug;
+    var pendingMove = null; // {drag, drop, above}: a drop in another section
 
     headerBtn.on('click', function() {
       toggle();
@@ -11886,18 +12874,26 @@
       if (isOpen) render();
     });
 
-    el.on('mouseup', stopDragging);
+    el.on('mouseup', function() {
+      var move = pendingMove;
+      stopDragging();
+      if (move) commitDrop(move);
+    });
     el.on('mouseleave', stopDragging);
 
-    // init show/hide all button
-    pinAll.on('click', function() {
+    // init show/hide all button, which pins the unframed layers (a frame's
+    // layers are shown or hidden with -frame instead)
+    pinAll.on('click', function(e) {
       var allOn = testAllLayersPinned();
-      model.getLayers().forEach(function(target) {
+      e.stopPropagation();
+      if (unframedSection.hasClass('inactive-section')) return;
+      getLayerMenuGroups(model).unframed.forEach(function(target) {
         setLayerPinning(target.layer, !allOn);
       });
-      El.findAll('.pinnable', el.node()).forEach(function(item) {
+      El.findAll('.layer-list .pinnable', el.node()).forEach(function(item) {
         El(item).classed('pinned', !allOn);
       });
+      updatePinAllButton();
       map.redraw();
     });
 
@@ -11906,13 +12902,15 @@
     }
 
     function testAllLayersPinned() {
-      var allPinned = true;
-      model.forEachLayer(function(lyr, dataset) {
-        if (isPinnable(lyr, dataset) && !lyr.pinned) {
-          allPinned = false;
-        }
+      return getLayerMenuGroups(model).unframed.every(function(o) {
+        return !isPinnable(o.layer, o.dataset) || o.layer.pinned;
       });
-      return allPinned;
+    }
+
+    // a frame's dataset ID, or '' for unframed layers
+    function getMenuGroupKey(o) {
+      var frame = internal.getFrameForDataset(model, o.dataset);
+      return frame ? frame.dataset.id : '';
     }
 
     function findLayerById(id) {
@@ -11937,18 +12935,73 @@
       clearClass('drag-target');
       clearClass('insert-above');
       clearClass('insert-below');
-      dragTargetId = layerOrderSlug = null;
+      dragTargetId = layerOrderSlug = pendingMove = null;
       if (dragging) {
         renderLayerList(); // in case menu changed...
         dragging = false;
       }
     }
 
-    function insertLayer(dragId, dropId, above) {
-      var dragLyr = findLayerById(dragId);
-      var dropLyr = findLayerById(dropId);
+    // In the Layers section, a drag restacks layers as it goes. Restacking a
+    // frame's layers, or moving a layer into or out of a frame, is part of the
+    // map, so it is a command, run when the mouse button is released.
+    function dragOver(dragId, dropId, above) {
+      var drag = findLayerById(dragId);
+      var drop = findLayerById(dropId);
+      var key;
+      pendingMove = null;
+      if (!drag || !drop || dragId == dropId) return;
+      key = getMenuGroupKey(drag);
+      if (isFrameEntry(drop) || key !== '' || key != getMenuGroupKey(drop)) {
+        pendingMove = {drag: drag, drop: drop, above: above};
+      } else {
+        insertLayer(drag, drop, above);
+      }
+    }
+
+    function isFrameEntry(o) {
+      return internal.isFrameLayer(o.layer, o.dataset.arcs);
+    }
+
+    // Into a frame, or within one: next to the layer it was dropped on, or on
+    // top when dropped on the frame's heading. Out of a frame: the layer goes
+    // where it was dropped among the unframed layers once the command has run.
+    function commitDrop(move) {
+      var drag = move.drag, drop = move.drop;
+      var fromFrame = internal.getFrameForDataset(model, drag.dataset);
+      var toFrame = isFrameEntry(drop) ? drop : internal.getFrameForDataset(model, drop.dataset);
+      var position;
+      if (toFrame) {
+        position = isFrameEntry(drop) ? 'top' :
+          (move.above ? 'above=' : 'below=') + getMemberRef(toFrame, drop.layer);
+        if (fromFrame && fromFrame.dataset == toFrame.dataset) {
+          if (dropLeavesOrder(toFrame, move)) return;
+          runFrameCommand(toFrame, 'order-layers=' + getMemberRef(toFrame, drag.layer) + ' ' + position);
+        } else {
+          runFrameCommand(toFrame, 'add-layers=' + formatLayerList([drag]) + ' ' + position);
+        }
+      } else if (fromFrame) {
+        runFrameCommand(fromFrame, 'remove-layers=' + getMemberRef(fromFrame, drag.layer), function() {
+          insertLayer(drag, drop, move.above);
+          renderLayerList();
+        });
+      }
+    }
+
+    // A drop next to the layer's own position, which would add a command to the
+    // history that changes nothing
+    function dropLeavesOrder(frame, move) {
+      var members = getLayerMenuGroups(model).frames.find(function(g) {
+        return g.frame.dataset == frame.dataset;
+      }).members.map(function(o) { return o.layer; });
+      var i = members.indexOf(move.drag.layer);
+      if (isFrameEntry(move.drop)) return i === 0;
+      // members are listed top first, so "above" is the previous entry
+      return members[move.above ? i + 1 : i - 1] == move.drop.layer;
+    }
+
+    function insertLayer(dragLyr, dropLyr, above) {
       var slug;
-      if (dragId == dropId) return;
       dragLyr.layer.menu_order = dropLyr.layer.menu_order + (above ? 0.5 : -0.5);
       slug = getLayerOrderSlug();
       if (slug != layerOrderSlug) {
@@ -11989,19 +13042,13 @@
 
     function renderLayerList() {
       var list = el.findChild('.layer-list');
-      var frameSection = el.findChild('.map-frame-section');
       var frameList = el.findChild('.map-frame-list');
       var uniqIds = {};
       var pinnableCount = 0;
       var layerCount = 0;
-      var frameCount = 0;
+      var groups, activeFrame, viewFrame, hasLegacyFrame;
       list.empty();
       frameList.empty();
-      // A frame entry has been seen outside the frame list, where emptying the
-      // list leaves it on show as a second frame
-      El.findAll('.map-frame-section > .layer-item', el.node()).forEach(function(node) {
-        node.remove();
-      });
       model.forEachLayer(function(lyr, dataset) {
         // Assign a unique id to each layer, so html strings
         // can be used as unique identifiers for caching rendered HTML, and as
@@ -12010,9 +13057,13 @@
           lyr.menu_id = utils$1.getUniqueName();
         }
         uniqIds[lyr.menu_id] = true;
-        if (isPinnable(lyr, dataset)) pinnableCount++;
         layerCount++;
       });
+      groups = getLayerMenuGroups(model);
+      activeFrame = model.getActiveFrame();
+      pinnableCount = groups.unframed.filter(function(o) {
+        return isPinnable(o.layer, o.dataset);
+      }).length;
 
       // Shown for a single layer too: it says whether the next layer made or
       // imported will be drawn over this one or replace it on the map.
@@ -12023,49 +13074,118 @@
         updatePinAllButton();
       }
 
-      sortLayersForMenuDisplay(model.getLayers()).forEach(function(o) {
-        var lyr = o.layer;
-        var isFrame = internal.isFrameLayer(lyr, o.dataset.arcs);
-        // furniture is shown as part of its frame's entry
-        if (!isFrame && internal.isFrameComponentLayer(lyr, o.dataset)) return;
-        var opts = {
-          show_source: layerCount < 5,
-          pinnable: pinnableCount > 0 && isPinnable(lyr, o.dataset)
-        };
-        var html, element;
-        html = renderLayer(lyr, o.dataset, opts);
-        if (cache.contains(html)) {
-          element = cache.use(html);
-        } else {
-          element = El('div').html(html).firstChild();
-          initMouseEvents(element, lyr.menu_id, opts.pinnable, !isFrame);
-          cache.add(html, element);
-        }
-        if (isFrame) {
-          frameList.appendChild(element);
-          frameCount++;
-        } else {
-          list.appendChild(element);
-        }
+      // The section whose layers are on the map is the only one whose eye
+      // icons work: the active frame's, or the Layers section in the unframed
+      // view (a frame without members shows the unframed layers)
+      viewFrame = activeFrame && groups.frames.some(function(g) {
+        return g.frame.dataset == activeFrame.dataset && g.members.length > 0;
+      }) ? activeFrame : null;
+      unframedSection
+        .classed('closed', !!closedSections[''])
+        .classed('active-section', !viewFrame)
+        .classed('inactive-section', !!viewFrame);
+
+      groups.unframed.forEach(function(o) {
+        list.appendChild(getLayerEntry(o, {
+          pinnable: isPinnable(o.layer, o.dataset)
+        }));
       });
-      frameSection.classed('hidden', layerCount === 0);
-      frameEmpty.classed('hidden', frameCount > 0);
+
+      // Each frame has a section of its own, after the Layers section
+      groups.frames.forEach(function(g) {
+        var id = g.frame.dataset.id;
+        var inView = !!viewFrame && viewFrame.dataset == g.frame.dataset;
+        var section = El('div').addClass('layer-section frame-section')
+          .classed('closed', !!closedSections[id])
+          .classed('active-section', inView)
+          .classed('inactive-section', !inView)
+          .appendTo(frameList);
+        var members = El('div').addClass('frame-members');
+        section.appendChild(getLayerEntry(g.frame, {
+          frame: true,
+          pinnable: g.members.length > 0,
+          all_visible: g.members.every(function(o) { return !o.layer.frame_hidden; }),
+          active_frame: !!activeFrame && activeFrame.dataset == g.frame.dataset
+        }));
+        section.appendChild(members);
+        g.members.forEach(function(o) {
+          members.appendChild(getLayerEntry(o, {
+            member: true,
+            pinnable: isPinnable(o.layer, o.dataset)
+          }));
+        });
+      });
+
+      // A frame without members composes the unframed layers; it is given
+      // members from its menu rather than by making another frame
+      hasLegacyFrame = groups.frames.length == 1 && groups.frames[0].members.length === 0;
+      unframedSection.findChild('.unframed-empty-note')
+        .classed('hidden', layerCount === 0 || groups.unframed.length > 0);
+      frameAddGroup.classed('hidden', layerCount === 0 || hasLegacyFrame ||
+        groups.frames.length > 0 && groups.unframed.length === 0);
+    }
+
+    // Switch to the unframed view by selecting the top unframed layer
+    function activateUnframedView() {
+      var unframed = getLayerMenuGroups(model).unframed;
+      var active = model.getActiveLayer();
+      if (!unframed.length || unframed.some(function(o) {
+        return active && o.layer == active.layer;
+      })) return;
+      model.selectLayer(unframed[0].layer, unframed[0].dataset);
+    }
+
+    function getLayerEntry(o, opts) {
+      var html = renderLayer(o.layer, o.dataset, opts);
+      var element;
+      if (cache.contains(html)) {
+        element = cache.use(html);
+      } else {
+        element = El('div').html(html).firstChild();
+        // A frame is not in the layer stack, so its entry can't be dragged
+        initMouseEvents(element, o.layer.menu_id, opts.pinnable, !opts.frame);
+        cache.add(html, element);
+      }
+      return element;
     }
 
     cache.cleanup();
 
+    // opts.pinnable: has an eye icon
+    // opts.member: belongs to a frame; the eye icon shows whether the layer is
+    //   hidden in the frame (which works like unpinning), not whether it is pinned
+    // opts.frame: a frame's section heading, with opts.active_frame; its eye icon
+    //   shows whether all the frame's layers are visible (opts.all_visible)
     function renderLayer(lyr, dataset, opts) {
       var classes = 'layer-item';
+      var nameHtml;
       var html;
 
       if (opts.pinnable) classes += ' pinnable';
       if (map.isActiveLayer(lyr)) classes += ' active';
-      if (lyr.hidden) classes += ' invisible';
-      if (lyr.pinned) classes += ' pinned';
+      if (opts.member) {
+        classes += ' frame-member';
+        if (!lyr.frame_hidden) classes += ' pinned';
+        if (map.isActiveLayer(lyr) ? lyr.hidden : lyr.frame_hidden) classes += ' invisible';
+      } else if (opts.frame) {
+        if (opts.all_visible) classes += ' pinned';
+      } else {
+        if (lyr.hidden) classes += ' invisible';
+        if (lyr.pinned) classes += ' pinned';
+      }
+      if (opts.frame) {
+        classes += ' frame-item layer-section-heading';
+        if (opts.active_frame) classes += ' current-frame';
+        nameHtml = '<h3><span class="section-arrow section-toggle" role="button" ' +
+          'aria-label="Open or close this section"></span>' +
+          '<span class="frame-name section-title">' + formatLayerNameForDisplay(lyr.name) + '</span></h3>';
+      } else {
+        nameHtml = '<span class="layer-name colored-text dot-underline">' +
+          formatLayerNameForDisplay(lyr.name) + '</span>';
+      }
 
       html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
-      html += '<div class="layer-row"><div class="layer-name-col">' +
-        '<span class="layer-name colored-text dot-underline">' + formatLayerNameForDisplay(lyr.name) + '</span></div>' +
+      html += '<div class="layer-row"><div class="layer-name-col">' + nameHtml + '</div>' +
         renderContents(lyr, dataset) + '</div>';
       html += '<span class="more-btn layer-btn" role="button" aria-label="More layer options"></span>';
       if (opts.pinnable) {
@@ -12087,14 +13207,18 @@
       }
     }
 
-    function initLayerDragging(entry, id) {
+    // A frame's heading can't be dragged, but a layer can be dropped on it,
+    // which puts the layer on top of the frame's layers
+    function initLayerDragging(entry, id, isFrameHeading) {
 
       // support layer drag-drop
       // A drag starts with a press on a layer row, not with a held button
       // entering one, so a press elsewhere (e.g. on the frame) can't reorder layers
-      entry.on('mousedown', function(e) {
-        if (e.button === 0) dragTargetId = id;
-      });
+      if (!isFrameHeading) {
+        entry.on('mousedown', function(e) {
+          if (e.button === 0) dragTargetId = id;
+        });
+      }
       entry.on('mousemove', function(e) {
         var rect, insertionClass;
         // stop dragging when mouse button is released
@@ -12112,21 +13236,22 @@
           dragging = true;
         }
         rect = entry.node().getBoundingClientRect();
-        insertionClass = e.pageY - rect.top < rect.height / 2 ? 'insert-above' : 'insert-below';
+        insertionClass = !isFrameHeading && e.pageY - rect.top < rect.height / 2 ?
+          'insert-above' : 'insert-below';
         if (!entry.hasClass(insertionClass)) {
           clearClass('dragging');
           clearClass('insert-above');
           clearClass('insert-below');
           entry.addClass('dragging');
           entry.addClass(insertionClass);
-          insertLayer(dragTargetId, id, insertionClass == 'insert-above');
+          dragOver(dragTargetId, id, insertionClass == 'insert-above');
         }
       });
     }
 
     function initMouseEvents2(entry, id, pinnable, draggable) {
       var moreBtn = entry.findChild('.more-btn');
-      if (draggable) initLayerDragging(entry, id);
+      initLayerDragging(entry, id, !draggable);
 
       function deleteLayer() {
         var target = findLayerById(id);
@@ -12157,11 +13282,6 @@
           });
           model.deleteLayer(target.layer, target.dataset);
         }
-      }
-
-      function openScalebarProperties() {
-        var target = findLayerById(id);
-        if (target && gui.scalebarProperties) gui.scalebarProperties.open(target);
       }
 
       // Duplicate a layer by running an equivalent command, so the copy is
@@ -12214,6 +13334,8 @@
       }
 
       function resizeFrame() {
+        var target = findLayerById(id);
+        if (target) activateFrame(target);
         if (gui.frameTool) gui.frameTool.open();
       }
 
@@ -12267,13 +13389,15 @@
           internal.isFrameLayer(target.layer, target.dataset.arcs);
         if (isFrame) {
           menuEvent.frameProperties = openFrameProperties;
-          menuEvent.scalebarProperties = openScalebarProperties;
-          menuEvent.scalebarLabel =
-            internal.findFrameFurnitureLayer(target.dataset, 'scalebar') ?
-              'scale bar' : 'add scale bar';
+          // after the menu has closed, which would take the focus back
+          menuEvent.renameFrame = function() {
+            setTimeout(function() { editFrameName(entry, target); }, 0);
+          };
           menuEvent.resizeFrame = resizeFrame;
+          menuEvent.frameActions = getFrameMenuActions(target);
           menuEvent.deleteFrame = deleteLayer;
-        } else {
+        } else if (target) {
+          menuEvent.frameActions = getMembershipMenuActions(target);
           menuEvent.deleteLayer = deleteLayer;
           menuEvent.duplicateLayer = duplicateLayer;
           menuEvent.showLayerInfo = showLayerInfo;
@@ -12281,11 +13405,11 @@
         if (!isFrame && target && layerCanBeStyled(target.layer)) {
           menuEvent.styleLayer = styleLayer;
           if (getLayerAnnotationTool(target.layer) == 'label') {
-            menuEvent.styleLayerName = 'edit labels';
+            menuEvent.styleLayerName = 'style/edit labels';
           } else if (getLayerAnnotationTool(target.layer) == 'symbols') {
-            menuEvent.styleLayerName = 'edit symbols';
+            menuEvent.styleLayerName = 'style/edit symbols';
           } else if (target.layer.geometry_type == 'point') {
-            menuEvent.styleLayerName = 'edit points';
+            menuEvent.styleLayerName = 'style/edit points';
           }
         }
         menuEvent.contextMenuId = 'layer-' + id;
@@ -12299,10 +13423,28 @@
           var target = findLayerById(id);
           var lyr = target.layer;
           var active = map.isActiveLayer(lyr);
+          var frame = internal.getFrameForDataset(model, target.dataset);
           var hidden = false; // active && lyr.hidden || false;
           var pinned = false;
           var unpinned = false;
           e.stopPropagation();
+          if (entry.node().closest('.inactive-section')) return;
+          if (internal.isFrameLayer(lyr, target.dataset.arcs)) {
+            toggleAllFrameLayers(target);
+            return;
+          }
+          if (frame && active) {
+            // as in the Layers section, the selected layer is hidden from the
+            // map for the moment, without changing the frame
+            lyr.hidden = !lyr.hidden;
+            entry.classed('invisible', lyr.hidden);
+            map.redraw();
+            return;
+          }
+          if (frame) {
+            toggleFrameVisibility(target, frame);
+            return;
+          }
           if (active) {
             hidden = !lyr.hidden;
             pinned = !hidden && lyr.unpinned;
@@ -12325,14 +13467,16 @@
         });
       }
 
-      // init name editor
-      new ClickText2(entry.findChild('.layer-name'))
-        .on('change', function(e) {
-          var target = findLayerById(id);
-          var str = cleanLayerName(this.value());
-          this.value(formatLayerNameForDisplay(str));
-          renameLayer(target, str);
-        });
+      // init name editor (a frame is renamed from its menu)
+      if (entry.findChild('.layer-name')) {
+        new ClickText2(entry.findChild('.layer-name'))
+          .on('change', function(e) {
+            var target = findLayerById(id);
+            var str = cleanLayerName(this.value());
+            this.value(formatLayerNameForDisplay(str));
+            renameLayer(target, str);
+          });
+      }
 
       moreBtn.on('mousedown', function(e) {
         e.stopPropagation();
@@ -12345,17 +13489,191 @@
         }
       });
 
-      // init click-to-select
+      var sectionToggle = entry.findChild('.section-toggle');
+      if (sectionToggle) {
+        sectionToggle.on('mousedown', function(e) {
+          e.stopPropagation();
+        });
+        GUI.onClick(sectionToggle, function(e) {
+          var target = findLayerById(id);
+          e.stopPropagation();
+          if (target) toggleSection(target.dataset.id);
+        });
+      }
+
+      // init click-to-select; clicking a frame's heading shows the frame
       GUI.onClick(entry, function() {
         var target = findLayerById(id);
-        if (target && internal.isFrameLayer(target.layer, target.dataset.arcs) &&
-            gui.frameProperties) {
-          gui.frameProperties.open(target);
+        if (entry.node().querySelector('.frame-name[contenteditable="true"]')) return;
+        if (target && internal.isFrameLayer(target.layer, target.dataset.arcs)) {
+          activateFrame(target);
         } else {
           selectLayer();
         }
       });
 
+    }
+
+    // The name is edited in place in the heading; Enter or leaving the field
+    // renames the frame with -frame, and Escape cancels
+    function editFrameName(entry, frame) {
+      var node = entry.findChild('.frame-name').node();
+      var oldName = frame.layer.name || '';
+      var done = false;
+      node.contentEditable = 'true';
+      node.spellcheck = false;
+      node.classList.add('editing');
+      node.addEventListener('keydown', onKey);
+      node.addEventListener('blur', onBlur);
+      node.focus();
+      GUI.selectElement(node);
+
+      function onKey(e) {
+        e.stopPropagation();
+        if (e.key == 'Enter') {
+          e.preventDefault();
+          finish(true);
+        } else if (e.key == 'Escape') {
+          e.preventDefault();
+          finish(false);
+        }
+      }
+
+      function onBlur() {
+        finish(true);
+      }
+
+      // The heading goes back to the old name either way; a rename redraws the
+      // list with the new one
+      function finish(commit) {
+        var name = cleanLayerName(node.textContent);
+        if (done) return;
+        done = true;
+        node.removeEventListener('keydown', onKey);
+        node.removeEventListener('blur', onBlur);
+        node.contentEditable = 'false';
+        node.classList.remove('editing');
+        window.getSelection().removeAllRanges();
+        node.textContent = formatLayerNameForDisplay(oldName);
+        if (commit && name && name != oldName) {
+          runFrameCommand(frame, 'name=' + internal.formatOptionValue(name));
+        }
+      }
+    }
+
+    // The frame's eye shows all its layers if any is hidden, and otherwise hides
+    // them all. As with the Layers section's eye, the selected layer stays on
+    // the map either way.
+    function toggleAllFrameLayers(frame) {
+      var anyHidden = internal.getFrameMemberLayers(model, frame).some(function(o) {
+        return o.layer.frame_hidden;
+      });
+      runFrameCommand(frame, (anyHidden ? 'show-layers=' : 'hide-layers=') + '*');
+    }
+
+    // Hiding a frame's layer is part of the map, so it is a command, recorded
+    // in the session and undoable, unlike pinning
+    function toggleFrameVisibility(target, frame) {
+      var option = target.layer.frame_hidden ? 'show-layers=' : 'hide-layers=';
+      runFrameCommand(frame, option + getMemberRef(frame, target.layer));
+    }
+
+    // Items for a frame's menu: copy the frame; and for a frame without
+    // members, which composes the visible unframed layers, make those layers
+    // its members
+    function getFrameMenuActions(frame) {
+      var group = getLayerMenuGroups(model).frames.find(function(g) {
+        return g.frame.dataset == frame.dataset;
+      });
+      var visible = getVisibleUnframedLayers();
+      var actions = [{label: 'copy frame', run: function() {
+        runFrameCommand(frame, '+ name=' +
+          internal.formatOptionValue(getFrameCopyName(model, frame.layer.name)));
+      }}];
+      if (group && group.members.length === 0 && visible.length > 0) {
+        actions.push({label: 'move visible layers into frame', run: function() {
+          // listed bottom to top, so that they keep their stacking order
+          runFrameCommand(frame, 'add-layers=' + formatLayerList(visible.reverse()));
+        }});
+      }
+      return actions.concat(getOverlayMenuActions(frame));
+    }
+
+    // Placing this frame on another frame's page as an overlay, or taking it off
+    function getOverlayMenuActions(frame) {
+      var hosts = internal.getOverlayHosts(model, frame);
+      var guests = internal.getHostOverlays(model, frame).map(function(o) { return o.frame.dataset; });
+      var actions = [];
+      internal.getFrames(model).forEach(function(host) {
+        var name = utils$1.htmlEscape(host.layer.name || '');
+        if (host.dataset == frame.dataset || guests.includes(host.dataset)) return;
+        if (hosts.some(function(o) { return o.dataset == host.dataset; })) {
+          actions.push({label: 'remove overlay from: ' + name, run: function() {
+            runRemoveOverlayCommand(gui, host, frame);
+          }});
+        } else {
+          actions.push({label: 'overlay on frame: ' + name, run: function() {
+            runPlacementCommand(gui, host, frame, null, 'Overlay frame');
+          }});
+        }
+      });
+      return actions;
+    }
+
+    // Items for a layer's menu: move it out of its frame, or into a frame
+    function getMembershipMenuActions(target) {
+      var frame = internal.getFrameForDataset(model, target.dataset);
+      if (frame) {
+        return [{label: 'move out of frame', run: function() {
+          runFrameCommand(frame, 'remove-layers=' + getMemberRef(frame, target.layer));
+        }}];
+      }
+      return internal.getFrames(model).map(function(f) {
+        return {
+          label: 'move into frame: ' + utils$1.htmlEscape(f.layer.name || ''),
+          run: function() {
+            runFrameCommand(f, 'add-layers=' + formatLayerList([target]));
+          }
+        };
+      });
+    }
+
+    // Unframed layers on show, top of the stack first
+    function getVisibleUnframedLayers() {
+      return getLayerMenuGroups(model).unframed.filter(function(o) {
+        var active = map.isActiveLayer(o.layer);
+        return isPinnable(o.layer, o.dataset) &&
+          (active ? !o.layer.hidden : !!o.layer.pinned);
+      });
+    }
+
+    function getMemberRef(frame, lyr) {
+      return internal.formatOptionValue(internal.getFrameMemberRef(model, frame, lyr));
+    }
+
+    function formatLayerList(targets) {
+      return internal.formatOptionValue(targets.map(function(o) {
+        return internal.getLayerTargetId(model, o.layer);
+      }).join(','));
+    }
+
+    function runFrameCommand(frame, options, onSuccess) {
+      var cmd = '-frame target=' +
+        internal.formatOptionValue(internal.getLayerTargetId(model, frame.layer)) + ' ' + options;
+      runGuiEditCommand(gui, cmd, {title: 'Map frame', onSuccess: onSuccess});
+    }
+
+    // The active frame follows the selected layer, so a frame is shown by
+    // selecting one of its layers: the top one that is not hidden
+    function activateFrame(frame) {
+      var active = model.getActiveFrame();
+      var members, pick;
+      if (active && active.dataset == frame.dataset) return;
+      members = getLayerMenuGroups(model).frames.find(function(g) {
+        return g.frame.dataset == frame.dataset;
+      }).members;
+      pick = members.find(function(o) { return !o.layer.frame_hidden; }) || members[0];
+      if (pick) model.selectLayer(pick.layer, pick.dataset);
     }
 
     // Returns {text, title}; title is a tooltip, or null
@@ -12676,8 +13994,8 @@
     return 0;
   }
 
-  // The "Draw" links in the layer panel: one click creates a layer and opens the
-  // tool that draws into it.
+  // The "Add labels" and "Draw" links in the layer panel: one click creates a
+  // layer and opens the tool that draws into it.
   //
   // They replace "Add empty layer", which created an inert layer of a geometry
   // type chosen in a popup -- the user then had to find the tool that draws into
@@ -12689,38 +14007,104 @@
   // The links are named for the drawing rather than for the layer, because the
   // drawing is what the user came to do; that a layer is created is in the tip on
   // each link, and in the layer list directly below them.
+  //
+  // Labels have a link of their own, because placing labels by hand is more
+  // common than drawing, and is not quite drawing. The other kinds are in a menu
+  // opened from "Draw".
   function AddLayerLinks(gui) {
-    var container = gui.container.findChild('.new-layer-links');
-    if (!container.node()) return;
-    DRAW_KINDS.forEach(function(kind, i) {
-      if (i > 0) {
-        // A breaking space after the dot, so that a sidebar too narrow for the
-        // whole list wraps it between links, and never inside one.
-        El('span').addClass('layer-menu-link-separator').html('&nbsp;· ')
-          .appendTo(container);
-      }
-      El('span').addClass('layer-menu-link').attr('data-kind', kind.kind)
-        .attr('title', kind.tip).text(kind.kind).appendTo(container)
-        .on('click', function() {
-          startDrawing(gui, kind);
-        });
+    var row = gui.container.findChild('.layer-add-links');
+    if (!row.node()) return;
+    var drawKinds = DRAW_KINDS.filter(function(kind) {
+      return kind.kind != 'labels';
     });
+    var menuBtn = row.findChild('.draw-menu-btn');
+    var menu = El('div').addClass('draw-menu').attr('role', 'menu')
+      .appendTo('body').hide();
 
-    function startDrawing(gui, kind) {
+    initLink(row.findChild('.add-labels-link').attr('title', findDrawKind('labels').tip),
+      findDrawKind('labels'));
+    initMenu();
+    gui.on('sidebar', closeMenu);
+
+    function initMenu() {
+      drawKinds.forEach(function(kind) {
+        El('div').addClass('draw-menu-item').attr('role', 'menuitem')
+          .attr('data-kind', kind.kind).attr('title', kind.tip).text(kind.kind)
+          .appendTo(menu)
+          .on('click', function() {
+            closeMenu();
+            startDrawing(kind);
+          });
+      });
+      menuBtn.on('click', toggleMenu).on('keydown', function(e) {
+        if (e.key == 'Enter' || e.key == ' ') {
+          e.preventDefault();
+          toggleMenu();
+        }
+      });
+      document.addEventListener('mousedown', function(e) {
+        if (!menuIsOpen() || menu.node().contains(e.target) ||
+            menuBtn.node().contains(e.target)) return;
+        closeMenu();
+      });
+      document.addEventListener('keydown', function(e) {
+        if (e.key == 'Escape' && menuIsOpen()) closeMenu();
+      });
+    }
+
+    function initLink(link, kind) {
+      link.on('click', function() {
+        startDrawing(kind);
+      }).on('keydown', function(e) {
+        if (e.key == 'Enter' || e.key == ' ') {
+          e.preventDefault();
+          startDrawing(kind);
+        }
+      });
+    }
+
+    function menuIsOpen() {
+      return menu.node().style.display != 'none';
+    }
+
+    function toggleMenu() {
+      if (menuIsOpen()) {
+        closeMenu();
+      } else {
+        openMenu();
+      }
+    }
+
+    // Below the button, left-aligned with it. The menu is attached to the body,
+    // because the row of links hides its overflow.
+    function openMenu() {
+      var rect = menuBtn.node().getBoundingClientRect();
+      menu.css('left', rect.left + window.pageXOffset - 4 + 'px');
+      menu.css('top', rect.bottom + window.pageYOffset + 4 + 'px');
+      menu.show();
+      menuBtn.addClass('open');
+    }
+
+    function closeMenu() {
+      menu.hide();
+      menuBtn.removeClass('open');
+    }
+
+    function startDrawing(kind) {
       var active = gui.model.getActiveLayer();
       gui.clearMode(); // close the import dialog, if it is open
       if (active && kindFitsLayer(kind, active.layer)) {
-        openTool(gui, kind.mode);
+        openTool(kind.mode);
         return;
       }
       runGuiEditCommand(gui, getAddLayerCommand(kind.geometryType,
-        getNewLayerName(kind, getLayerNames(gui))), {
+        getNewLayerName(kind, getLayerNames())), {
         title: 'Add layer error',
         onSuccess: function() {
           // The tool opens after the command has run, because it reads the active
           // layer as it opens: the label tool arms a tool according to it, and the
           // drawing tools append to it.
-          openTool(gui, kind.mode);
+          openTool(kind.mode);
         }
       });
     }
@@ -12729,14 +14113,14 @@
     // the mode has not changed, which would leave the tool that clearMode() just
     // closed shut, with the arrow menu still saying it was on -- the state two
     // clicks on one link used to end in.
-    function openTool(gui, mode) {
+    function openTool(mode) {
       if (gui.interaction.getMode() == mode) {
         gui.interaction.setMode('off');
       }
       gui.interaction.setMode(mode);
     }
 
-    function getLayerNames(gui) {
+    function getLayerNames() {
       return gui.model.getLayers().map(function(o) {
         return o.layer.name;
       });
@@ -14769,6 +16153,8 @@
     if (crsInfo) {
       internal.setDatasetCrsInfo(dataset, crsInfo);
     }
+    // as -add-layer does: the layer joins the frame of the layer it is made beside
+    internal.inheritFrameRef(dataset, targ ? [targ.dataset] : []);
     if (undoTransaction) {
       undoTransaction.captureCatalogBefore(gui.model, {operation: 'addEmptyLayer'});
     }
@@ -14820,7 +16206,7 @@
       symbols: ['info', 'symbols', 'selection', 'box', 'ruler'],
       points: ['info', 'point_style', 'selection', 'box', 'ruler'],
       circles: ['info', 'point_style', 'symbols', 'selection', 'box', 'ruler'],
-      // An empty point layer is the layer the "Draw: labels" link creates,
+      // An empty point layer is the layer the "Add labels" link creates,
       // and a label goes into it rather than beside it (see labelWouldJoin), so
       // the label tool belongs in its menu as well as the point tools: it is the
       // way back into a labels layer that has no label in it yet.
@@ -15323,313 +16709,6 @@
     }
   }
 
-  // A reusable floating toolbar anchored at the bottom-center of the map area.
-  //
-  // Multiple toolbars stack vertically inside a shared container, so additional
-  // per-mode toolbars (e.g. feature styling) can coexist with the edit toolbar.
-  //
-  // The DOM is structured to leave room for a future drag handle without
-  // requiring rework: the toolbar element is a flex row with a content slot,
-  // and a sibling drag-handle slot can be added later.
-  //
-  // Constructor options:
-  //   name:       optional CSS class added to the toolbar element
-  //
-  // API:
-  //   toolbar.addButton(iconRef, opts) -> ToolbarButton
-  //   toolbar.addTextButton(label, opts) -> ToolbarButton
-  //   toolbar.addSegmentedControl(caption, items, opts) -> ToolbarSegmentedControl
-  //   toolbar.addTextField(caption, opts) -> ToolbarTextField
-  //   toolbar.addSeparator()
-  //   toolbar.dock(el)    puts a group of controls kept by another toolbar first
-  //   toolbar.show()
-  //   toolbar.hide()
-  //   toolbar.visible()
-  //   toolbar.node()
-  //
-  // Showing or hiding a toolbar fires 'floating_toolbar_change' on the gui.
-  // getVisibleFloatingToolbars(gui) lists the visible ones, bottom first.
-
-  function FloatingToolbar(gui, opts) {
-    opts = opts || {};
-    var root = gui.container.findChild('.mshp-main-map');
-    var stack = root.findChild('.floating-toolbar-stack');
-    if (!stack) {
-      stack = El('div').addClass('floating-toolbar-stack').appendTo(root);
-    }
-    var el = El('div').addClass('floating-toolbar');
-    if (opts.name) el.addClass(opts.name);
-    var content = El('div').addClass('floating-toolbar-content').appendTo(el);
-    var visible = false;
-
-    el.appendTo(stack);
-    el.css('display', 'none');
-    if (!gui.floatingToolbars) gui.floatingToolbars = [];
-    gui.floatingToolbars.push(this);
-
-    // Hide when this gui instance becomes inactive (e.g. multi-instance mode)
-    gui.on('active', updateVisibility);
-    gui.on('inactive', updateVisibility);
-
-    this.addButton = function(iconRef, btnOpts) {
-      return new ToolbarButton(content, iconRef, btnOpts || {});
-    };
-
-    this.addTextButton = function(label, btnOpts) {
-      var button = new ToolbarButton(content, null, btnOpts || {});
-      button.setText(label);
-      return button;
-    };
-
-    // A choice between modes with every label visible and the active one lit.
-    // Preferred over a button that rewrites its own label, which leaves no way
-    // to tell the mode you are in from the mode a click would put you in.
-    // items: [{value, label, tooltip}]
-    this.addSegmentedControl = function(caption, items, ctrlOpts) {
-      return new ToolbarSegmentedControl(content, caption, items, ctrlOpts || {});
-    };
-
-    // A short typed value, committed on Enter or on leaving the field.
-    this.addTextField = function(caption, fieldOpts) {
-      return new ToolbarTextField(content, caption, fieldOpts || {});
-    };
-
-    this.addSeparator = function() {
-      return El('div').addClass('floating-toolbar-separator').appendTo(content);
-    };
-
-    this.dock = function(groupEl) {
-      var node = groupEl.node();
-      var parent = content.node();
-      if (parent.firstChild != node) {
-        parent.insertBefore(node, parent.firstChild);
-      }
-    };
-
-    this.show = function() {
-      if (visible) return;
-      visible = true;
-      updateVisibility();
-      gui.dispatchEvent('floating_toolbar_change');
-    };
-
-    this.hide = function() {
-      if (!visible) return;
-      visible = false;
-      updateVisibility();
-      gui.dispatchEvent('floating_toolbar_change');
-    };
-
-    this.visible = function() {
-      return visible;
-    };
-
-    this.node = function() {
-      return el.node();
-    };
-
-    // Shown and hidden at once, without a fade: one toolbar often replaces
-    // another (the undo buttons move between a mode's toolbar and their own),
-    // and a toolbar fading out keeps its place in the stack, so a fade made the
-    // toolbars around it jump.
-    function updateVisibility() {
-      var shouldShow = visible && GUI.isActiveInstance(gui);
-      el.css('display', shouldShow ? 'flex' : 'none');
-      el.classed('visible', shouldShow);
-    }
-  }
-
-  // The stack is a reversed column, so the first toolbar in the DOM is the
-  // bottom one.
-  function getVisibleFloatingToolbars(gui) {
-    return (gui.floatingToolbars || []).filter(function(toolbar) {
-      return toolbar.visible();
-    }).sort(function(a, b) {
-      return a.node().compareDocumentPosition(b.node()) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
-    });
-  }
-
-  function makeToolbarButton(parent, iconRef, opts) {
-    return new ToolbarButton(parent, iconRef, opts || {});
-  }
-
-  function ToolbarSegmentedControl(parent, caption, items, opts) {
-    var el = El('div').addClass('floating-toolbar-group').appendTo(parent);
-    var changeHandlers = [];
-    var value = null;
-    var segments;
-    if (caption) {
-      El('span').addClass('floating-toolbar-caption').appendTo(el).text(caption);
-    }
-    if (opts.classname) el.addClass(opts.classname);
-    var group = El('div').addClass('floating-toolbar-segments').appendTo(el);
-    segments = items.map(function(item) {
-      var button = new ToolbarButton(group, null, {tooltip: item.tooltip});
-      button.setText(item.label);
-      button.on('click', function() {
-        if (value === item.value) return;
-        setValue(item.value);
-        changeHandlers.forEach(function(fn) { fn(value); });
-      });
-      return {value: item.value, button: button};
-    });
-
-    function setValue(val) {
-      value = val;
-      segments.forEach(function(o) {
-        o.button.setSelected(o.value === val);
-      });
-    }
-
-    // Sets the lit segment without firing 'change', for syncing to outside state.
-    this.setValue = function(val) {
-      setValue(val);
-      return this;
-    };
-
-    this.getValue = function() {
-      return value;
-    };
-
-    this.on = function(event, fn) {
-      if (event == 'change') changeHandlers.push(fn);
-      return this;
-    };
-
-    this.node = function() {
-      return el.node();
-    };
-  }
-
-  function ToolbarTextField(parent, caption, opts) {
-    var el = El('label').addClass('floating-toolbar-group')
-      .addClass('floating-toolbar-field').appendTo(parent);
-    var changeHandlers = [];
-    var committed = '';
-    var input;
-    if (caption) {
-      El('span').addClass('floating-toolbar-caption').appendTo(el).text(caption);
-    }
-    input = El('input').attr('type', 'text').appendTo(el);
-    if (opts.classname) input.addClass(opts.classname);
-    if (opts.placeholder) input.attr('placeholder', opts.placeholder);
-    if (opts.width) input.css('width', opts.width);
-    if (opts.tooltip) el.attr('data-tooltip', opts.tooltip);
-
-    // Keyboard events reach gui.keyboard through the document, so map shortcuts
-    // would fire while the field has focus. Enter commits, Escape abandons the
-    // edit and leaves the field rather than closing the tool around it.
-    input.on('keydown', function(e) {
-      e.stopPropagation();
-      if (e.keyCode == 13) {
-        input.node().blur();
-      } else if (e.keyCode == 27) {
-        input.node().value = committed;
-        input.node().blur();
-      }
-    });
-
-    // Native change fires on Enter and on leaving an edited field, and not when
-    // Escape has put the original value back.
-    input.on('change', function() {
-      var value = input.node().value.trim();
-      committed = value;
-      changeHandlers.forEach(function(fn) { fn(value); });
-    });
-
-    // Sets the displayed value without firing 'change'.
-    this.setValue = function(value) {
-      committed = value == null ? '' : String(value);
-      input.node().value = committed;
-      return this;
-    };
-
-    this.getValue = function() {
-      return input.node().value.trim();
-    };
-
-    this.on = function(event, fn) {
-      if (event == 'change') changeHandlers.push(fn);
-      return this;
-    };
-
-    this.node = function() {
-      return input.node();
-    };
-  }
-
-  function ToolbarButton(parent, iconRef, opts) {
-    var btn = El('div').addClass('floating-toolbar-btn').appendTo(parent);
-    if (iconRef) {
-      var iconNode = El('body').findChild(iconRef);
-      if (iconNode) {
-        var icon = iconNode.node().cloneNode(true);
-        if (icon.hasAttribute('id')) icon.removeAttribute('id');
-        btn.node().appendChild(icon);
-      }
-    }
-    var enabled = true;
-    var selected = false;
-    var clickHandlers = [];
-
-    if (opts.tooltip) setTooltip(opts.tooltip);
-
-    // Block native dblclick to avoid the map's double-click zoom
-    btn.on('dblclick', function(e) { e.stopPropagation(); });
-
-    btn.on('click', function(e) {
-      if (!enabled) return;
-      for (var i = 0; i < clickHandlers.length; i++) {
-        clickHandlers[i](e);
-      }
-    });
-
-    this.on = function(event, fn) {
-      if (event == 'click') {
-        clickHandlers.push(fn);
-      } else {
-        btn.on(event, fn);
-      }
-      return this;
-    };
-
-    this.enable = function() { return this.setEnabled(true); };
-    this.disable = function() { return this.setEnabled(false); };
-
-    this.setEnabled = function(b) {
-      enabled = !!b;
-      btn.classed('disabled', !enabled);
-      return this;
-    };
-
-    // A button that stays lit to show which of several tools is armed, e.g. the
-    // label tool's anchored/path creation toggles.
-    this.setSelected = function(b) {
-      selected = !!b;
-      btn.classed('selected', selected);
-      return this;
-    };
-
-    this.selected = function() {
-      return selected;
-    };
-
-    this.setTooltip = setTooltip;
-
-    this.setText = function(text) {
-      btn.addClass('text-btn').text(text);
-      return this;
-    };
-
-    this.node = function() {
-      return btn.node();
-    };
-
-    function setTooltip(text) {
-      btn.attr('data-tooltip', text);
-    }
-  }
-
   // Undo/redo while the user is in an editing interaction mode. The buttons are
   // a group that joins the start of the bottom tool toolbar when there is one,
   // ahead of a separator, so that a tool and undo take one row rather than two
@@ -15639,7 +16718,7 @@
   function EditToolbar(gui) {
     var toolbar = new FloatingToolbar(gui, { name: 'edit-toolbar' });
     var group = El('div').addClass('undo-redo-buttons');
-    var isMac = navigator.userAgent.includes('Mac');
+    var isMac = GUI.isMac();
     var modKey = isMac ? '\u2318' : 'Ctrl+';
     var shiftKey = isMac ? '\u21e7' : 'Shift+';
     var wanted = false;
@@ -28220,7 +29299,7 @@
       setDefaultTargets.call(self, targets, opts);
       if (countTargetLayers(requestedContent) < countTargetLayers(targets)) {
         var contentTargets = requestedContent.length ?
-          requestedContent : previousContent;
+          requestedContent : relocateTargets(previousContent);
         if (!contentTargets.length) {
           contentTargets = getFirstContentTarget();
         }
@@ -28252,9 +29331,24 @@
       }
     };
 
+    // The frame shown by the map, preview mode and the frame tools: the frame of
+    // the selected layer. Null in the unframed view. This is GUI state, derived
+    // from the selection so that it needs no undo or session handling of its
+    // own; core code resolves frames from datasets instead.
+    self.getActiveFrame = function() {
+      var active = self.getActiveLayer();
+      return active ? internal.getDisplayFrameForDataset(self, active.dataset) : null;
+    };
+
     self.updated = function(flags) {
       var targets = self.getDefaultTargets();
-      var active = self.getActiveLayer();
+      var active, relocated;
+      if (targetsAreStale(targets)) {
+        relocated = relocateTargets(targets);
+        setDefaultTargets.call(self, relocated.length ? relocated : getFirstContentTarget());
+        targets = self.getDefaultTargets();
+      }
+      active = self.getActiveLayer();
       if (internal.countTargetLayers(targets) > 1) {
         self.setDefaultTarget([active.layer], active.dataset);
         gui.session.setTargetLayer(active.layer); // add -target command to target single layer
@@ -28309,6 +29403,35 @@
         };
       }).filter(function(target) {
         return target.layers.length > 0;
+      });
+    }
+
+    // A command can move a layer to another dataset (a move into or out of a
+    // frame splits datasets and joins them), so a target from before the command
+    // is looked up again. Layers that are gone are dropped.
+    function relocateTargets(targets) {
+      var relocated = [];
+      targets.forEach(function(target) {
+        target.layers.forEach(function(lyr) {
+          var o = self.findLayer(lyr);
+          var match = o && relocated.find(function(t) { return t.dataset == o.dataset; });
+          if (match) {
+            match.layers.push(lyr);
+          } else if (o) {
+            relocated.push({dataset: o.dataset, layers: [lyr]});
+          }
+        });
+      });
+      return relocated;
+    }
+
+    // -frame sets its targets before it splits datasets, so a target can name a
+    // layer that has since moved to another dataset
+    function targetsAreStale(targets) {
+      return targets.some(function(target) {
+        return target.layers.some(function(lyr) {
+          return !target.dataset.layers.includes(lyr);
+        });
       });
     }
 
@@ -28542,6 +29665,10 @@
     };
   }
 
+  // How far from a line, in pixels, the pointer hits it (less when zoomed out
+  // beyond the full extent)
+  var POLYLINE_HIT_DISTANCE = 15;
+
   // featureFilter: optional test function, accepts feature id
   //
   function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
@@ -28625,7 +29752,7 @@
     }
 
     function polylineTest(x, y, bufArg) {
-      var maxDist = getZoomAdjustedHitBuffer(15, 2),
+      var maxDist = getZoomAdjustedHitBuffer(POLYLINE_HIT_DISTANCE, 2),
           bufPix = bufArg >= 0 ? bufArg : 0.05, // tiny threshold for hitting almost-identical lines
           bufDist = getZoomAdjustedHitBuffer(bufPix),
           cands = findHitCandidates(x, y, maxDist);
@@ -32409,6 +33536,172 @@
     };
   }
 
+  // The knots of curves drawn with the curve tool (gui-curve-lines.mjs).
+  //
+  // A curve is stored as an ordinary line. The knots it was fitted through are
+  // not in the data, and nothing outside the tool knows about them: the tool
+  // keeps them here while it is open, so that a curve can be reshaped by
+  // dragging its knots, and forgets them when it closes.
+  //
+  // Knots are found by geometry rather than by feature id. Each set of knots is
+  // kept with the path it produced, as read back from the layer, and a line has
+  // knots only while its path is exactly that path. Ids shift when features are
+  // deleted, and any command, or undo, can change a line; a line whose path has
+  // changed has no knots, rather than knots that would reshape it into something
+  // it no longer is. Undoing a knot drag restores the previous path, and with it
+  // the previous knots.
+  //
+  // Knots are in display coordinates, where the curve is fitted (see
+  // fitCurveThroughKnots()); paths are in the layer's CRS. A knot is [x, y], or
+  // [x, y, true] for a corner, where the curve turns sharply rather than
+  // passing smoothly through the knot. A closed curve's first knot is repeated
+  // at the end, and the two are corners together.
+
+  // The flattening tolerance of a curve, as a fraction of its size. The line is
+  // the curve's only record once the tool closes, so it is flattened more finely
+  // than the label tool's guide, which is redrawn from its knots.
+  var FLATTEN_RATIO$1 = 0.0005;
+
+  function createKnotCache() {
+    return {versions: []};
+  }
+
+  // knots: [[x, y], ...] a closed curve repeats its first knot at the end
+  // coords: the line's path, [[x, y], ...], read back from the layer
+  function addKnotVersion(cache, knots, coords) {
+    if (!knots || !coords || coords.length < 2) return;
+    cache.versions.push({knots: copyPoints(knots), coords: coords});
+  }
+
+  // The knots of the curve whose path is @coords, or null
+  function findKnotVersion(cache, coords) {
+    if (!coords) return null;
+    for (var i = cache.versions.length - 1; i >= 0; i--) {
+      if (samePath(cache.versions[i].coords, coords)) {
+        return copyPoints(cache.versions[i].knots);
+      }
+    }
+    return null;
+  }
+
+  // The vertices of a line with a single part, or null. A curve is drawn as one
+  // part, so a line with more than one cannot be a curve's.
+  function getLinePathCoords(shp, arcs) {
+    var iter, coords;
+    if (!shp || shp.length != 1 || !arcs) return null;
+    iter = arcs.getShapeIter(shp[0]);
+    coords = [];
+    while (iter.hasNext()) {
+      coords.push([iter.x, iter.y]);
+    }
+    return coords;
+  }
+
+  // The knots after knot @index is moved to @p, or null if @p is closer than
+  // @minDistance to another knot, which would leave the fitter a zero-length
+  // chord. A closed curve's first knot is repeated at the end, and the two move
+  // together.
+  function moveCurveKnot(knots, index, p, minDistance) {
+    var n = knots.length;
+    var closed = curveKnotsAreClosed(knots);
+    var loopLen = closed ? n - 1 : n;
+    var i = closed && index == n - 1 ? 0 : index;
+    var min2 = minDistance * minDistance;
+    var out, dx, dy, j;
+    if (!(i >= 0 && i < loopLen)) return null;
+    for (j = 0; j < loopLen; j++) {
+      if (j == i) continue;
+      dx = knots[j][0] - p[0];
+      dy = knots[j][1] - p[1];
+      if (dx * dx + dy * dy < min2) return null;
+    }
+    out = copyPoints(knots);
+    out[i] = makeKnot(p, knotIsCorner(knots[i]));
+    if (closed && i === 0) out[n - 1] = out[0].slice();
+    return out;
+  }
+
+  function makeKnot(p, corner) {
+    return corner ? [p[0], p[1], true] : [p[0], p[1]];
+  }
+
+  function knotIsCorner(knot) {
+    return !!knot && knot[2] === true;
+  }
+
+  // The knots after knot @index is switched between a corner and a smooth knot,
+  // or null for an end of an open curve, which a corner would not change
+  function toggleCurveKnotCorner(knots, index) {
+    var n = knots.length;
+    var closed = curveKnotsAreClosed(knots);
+    var i = closed && index == n - 1 ? 0 : index;
+    var out;
+    if (!(closed ? i >= 0 : i > 0 && i < n - 1)) return null;
+    out = copyPoints(knots);
+    out[i] = makeKnot(knots[i], !knotIsCorner(knots[i]));
+    if (closed && i === 0) out[n - 1] = out[0].slice();
+    return out;
+  }
+
+  // Index of the end knot of an open curve nearest @p within @threshold (0 or
+  // the last index), or -1. A closed curve has no ends.
+  function findCurveEndNear(knots, p, threshold) {
+    var n = knots ? knots.length : 0;
+    var d0, d1;
+    if (n < 2 || !p || curveKnotsAreClosed(knots)) return -1;
+    d0 = Math.hypot(knots[0][0] - p[0], knots[0][1] - p[1]);
+    d1 = Math.hypot(knots[n - 1][0] - p[0], knots[n - 1][1] - p[1]);
+    if (d1 <= d0 && d1 <= threshold) return n - 1;
+    return d0 <= threshold ? 0 : -1;
+  }
+
+  function knotIsCurveEnd(knots, index) {
+    return !curveKnotsAreClosed(knots) && (index === 0 || index == knots.length - 1);
+  }
+
+  // The knots in the opposite order, which fit the same curve drawn the other
+  // way. A curve is extended from its last knot, so a curve extended from its
+  // first knot is reversed while it is extended, and reversed back after.
+  function reverseCurveKnots(knots) {
+    return copyPoints(knots).reverse();
+  }
+
+  // The corners argument of fitCurveThroughKnots(), or null if there are none
+  function getKnotCorners(knots) {
+    var corners = knots.map(knotIsCorner);
+    return corners.indexOf(true) > -1 ? corners : null;
+  }
+
+  function curveKnotsAreClosed(knots) {
+    var n = knots ? knots.length : 0;
+    return n > 3 && knots[0][0] === knots[n - 1][0] && knots[0][1] === knots[n - 1][1];
+  }
+
+  function getCurveFlattenTolerance(knots) {
+    var xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
+    var span, i;
+    for (i = 0; i < knots.length; i++) {
+      if (knots[i][0] < xmin) xmin = knots[i][0];
+      if (knots[i][0] > xmax) xmax = knots[i][0];
+      if (knots[i][1] < ymin) ymin = knots[i][1];
+      if (knots[i][1] > ymax) ymax = knots[i][1];
+    }
+    span = Math.max(xmax - xmin, ymax - ymin);
+    return span > 0 ? span * FLATTEN_RATIO$1 : 0;
+  }
+
+  function samePath(a, b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i][0] !== b[i][0] || a[i][1] !== b[i][1]) return false;
+    }
+    return true;
+  }
+
+  function copyPoints(points) {
+    return points.map(function(p) { return makeKnot(p, knotIsCorner(p)); });
+  }
+
   // The visible guide for a label path being placed: a line along the curve the
   // text will follow, and a handle on each knot.
   //
@@ -32429,11 +33722,14 @@
   var white$1 = '#ffffff';
 
   var KNOT_RADIUS$1 = 3.2;
+  // half the side of a corner knot's square, which looks about as big as a
+  // smooth knot's circle
+  var CORNER_KNOT_RADIUS = 2.8;
 
   // Flattening tolerance as a fraction of the curve's own size, which keeps the
   // guide smooth at any zoom and, because it does not depend on the view, lets
   // the guide layers be cached across pan and zoom like other overlays.
-  var FLATTEN_RATIO$1 = 0.002;
+  var FLATTEN_RATIO = 0.002;
 
   // Knots of a curve the user is drawing, in display coordinates, or null. Held
   // here rather than in the data so that an abandoned curve leaves nothing
@@ -32506,9 +33802,24 @@
   }
 
   // The handles alone, for a tool that draws the curve itself (see
-  // gui-curve-lines.mjs). Returns a layer, or null if there are no knots.
-  function getKnotHandleLayer(activeLyr, knots) {
-    return knots && knots.length > 0 ? buildKnotLayer(activeLyr, [{knots: knots}]) : null;
+  // gui-curve-lines.mjs): a layer of circles for the smooth knots and one of
+  // squares for the corners, either of them left out if it would be empty.
+  function getKnotHandleLayers(activeLyr, knots) {
+    var smooth = (knots || []).filter(function(k) { return !knotIsCorner(k); });
+    var corners = (knots || []).filter(knotIsCorner);
+    var layers = [];
+    var lyr;
+    if (smooth.length > 0) {
+      layers.push(buildKnotLayer(activeLyr, [{knots: smooth}]));
+    }
+    if (corners.length > 0) {
+      lyr = buildKnotLayer(activeLyr, [{knots: corners}]);
+      lyr.gui.displayLayer.name = 'curve-corner-knots';
+      lyr.gui.style.pointShape = 'square';
+      lyr.gui.style.radius = CORNER_KNOT_RADIUS;
+      layers.push(lyr);
+    }
+    return layers;
   }
 
   function buildKnotLayer(activeLyr, curves) {
@@ -32562,7 +33873,7 @@
       if (knots[i][1] > ymax) ymax = knots[i][1];
     }
     span = Math.max(xmax - xmin, ymax - ymin);
-    return span > 0 ? span * FLATTEN_RATIO$1 : 0;
+    return span > 0 ? span * FLATTEN_RATIO : 0;
   }
 
   var selectionFill = "rgba(237, 214, 0, 0.12)",
@@ -32909,7 +34220,7 @@
     var redrawn = getRedrawnShapeIds(activeLyr, hitData);
     var dark = !!(styleOpts && styleOpts.darkMode);
     var layers = [];
-    var lyr, knotLyr;
+    var lyr;
     if (redrawn.length > 0) {
       layers.push(getHiddenShapeLayer(activeLyr, hitData, redrawn, dark));
     }
@@ -32935,9 +34246,7 @@
     layers.forEach(function(lyr, i) {
       if (i < layers.length - 1) lyr.gui.style.vertex_overlay = null;
     });
-    knotLyr = getKnotHandleLayer(activeLyr, hitData.pending_knots);
-    if (knotLyr) layers.push(knotLyr);
-    return layers;
+    return layers.concat(getKnotHandleLayers(activeLyr, hitData.pending_knots));
   }
 
   // The hidden shapes that the overlay draws in place of the layer. A layer
@@ -33491,7 +34800,8 @@
         msg = 'Drag a vertex to move it, or drag a point between vertices to add one. Right-click a vertex to delete it.';
       } else {
         msg = 'Click to add points to a path or drag to draw a smooth line.' +
-          (polygonMode() ? '' : ' Draw from the end of a line to extend it; hold Alt to start a new line from any vertex.');
+          (polygonMode() ? '' : ' Draw from the end of a line to extend it; hold ' + GUI.getAltKeyName() +
+            ' to start a new line from any vertex.');
       }
       alert = showPopupAlert(msg, null, {non_blocking: true, max_width: '350px'});
     }
@@ -34157,7 +35467,8 @@
       var target = hit.getHitTarget();
       var shp = target.shapes[e.id];
       var p = ext.pixCoordsToMapCoords(e.x, e.y);
-      var ids = internal.findNearestVertices(p, shp, target.gui.displayArcs);
+      var ids = removeUnusedArcVertices(internal.findNearestVertices(p, shp, target.gui.displayArcs),
+        target.gui.displayArcs, target.gui.source.dataset.layers);
       var p2 = target.gui.displayArcs.getVertex2(ids[0]);
       var dist = geom.distance2D(p[0], p[1], p2[0], p2[1]);
       var pixelDist = dist / ext.getPixelSize();
@@ -34347,117 +35658,7 @@
     return !!p && p.length >= 2 && isFinite(p[0]) && isFinite(p[1]);
   }
 
-  // The knots of curves drawn with the curve tool (gui-curve-lines.mjs).
-  //
-  // A curve is stored as an ordinary line. The knots it was fitted through are
-  // not in the data, and nothing outside the tool knows about them: the tool
-  // keeps them here while it is open, so that a curve can be reshaped by
-  // dragging its knots, and forgets them when it closes.
-  //
-  // Knots are found by geometry rather than by feature id. Each set of knots is
-  // kept with the path it produced, as read back from the layer, and a line has
-  // knots only while its path is exactly that path. Ids shift when features are
-  // deleted, and any command, or undo, can change a line; a line whose path has
-  // changed has no knots, rather than knots that would reshape it into something
-  // it no longer is. Undoing a knot drag restores the previous path, and with it
-  // the previous knots.
-  //
-  // Knots are in display coordinates, where the curve is fitted (see
-  // fitCurveThroughKnots()); paths are in the layer's CRS.
-
-  // The flattening tolerance of a curve, as a fraction of its size. The line is
-  // the curve's only record once the tool closes, so it is flattened more finely
-  // than the label tool's guide, which is redrawn from its knots.
-  var FLATTEN_RATIO = 0.0005;
-
-  function createKnotCache() {
-    return {versions: []};
-  }
-
-  // knots: [[x, y], ...] a closed curve repeats its first knot at the end
-  // coords: the line's path, [[x, y], ...], read back from the layer
-  function addKnotVersion(cache, knots, coords) {
-    if (!knots || !coords || coords.length < 2) return;
-    cache.versions.push({knots: copyPoints(knots), coords: coords});
-  }
-
-  // The knots of the curve whose path is @coords, or null
-  function findKnotVersion(cache, coords) {
-    if (!coords) return null;
-    for (var i = cache.versions.length - 1; i >= 0; i--) {
-      if (samePath(cache.versions[i].coords, coords)) {
-        return copyPoints(cache.versions[i].knots);
-      }
-    }
-    return null;
-  }
-
-  // The vertices of a line with a single part, or null. A curve is drawn as one
-  // part, so a line with more than one cannot be a curve's.
-  function getLinePathCoords(shp, arcs) {
-    var iter, coords;
-    if (!shp || shp.length != 1 || !arcs) return null;
-    iter = arcs.getShapeIter(shp[0]);
-    coords = [];
-    while (iter.hasNext()) {
-      coords.push([iter.x, iter.y]);
-    }
-    return coords;
-  }
-
-  // The knots after knot @index is moved to @p, or null if @p is closer than
-  // @minDistance to another knot, which would leave the fitter a zero-length
-  // chord. A closed curve's first knot is repeated at the end, and the two move
-  // together.
-  function moveCurveKnot(knots, index, p, minDistance) {
-    var n = knots.length;
-    var closed = curveKnotsAreClosed(knots);
-    var loopLen = closed ? n - 1 : n;
-    var i = closed && index == n - 1 ? 0 : index;
-    var min2 = minDistance * minDistance;
-    var out, dx, dy, j;
-    if (!(i >= 0 && i < loopLen)) return null;
-    for (j = 0; j < loopLen; j++) {
-      if (j == i) continue;
-      dx = knots[j][0] - p[0];
-      dy = knots[j][1] - p[1];
-      if (dx * dx + dy * dy < min2) return null;
-    }
-    out = copyPoints(knots);
-    out[i] = [p[0], p[1]];
-    if (closed && i === 0) out[n - 1] = [p[0], p[1]];
-    return out;
-  }
-
-  function curveKnotsAreClosed(knots) {
-    var n = knots ? knots.length : 0;
-    return n > 3 && knots[0][0] === knots[n - 1][0] && knots[0][1] === knots[n - 1][1];
-  }
-
-  function getCurveFlattenTolerance(knots) {
-    var xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
-    var span, i;
-    for (i = 0; i < knots.length; i++) {
-      if (knots[i][0] < xmin) xmin = knots[i][0];
-      if (knots[i][0] > xmax) xmax = knots[i][0];
-      if (knots[i][1] < ymin) ymin = knots[i][1];
-      if (knots[i][1] > ymax) ymax = knots[i][1];
-    }
-    span = Math.max(xmax - xmin, ymax - ymin);
-    return span > 0 ? span * FLATTEN_RATIO : 0;
-  }
-
-  function samePath(a, b) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i][0] !== b[i][0] || a[i][1] !== b[i][1]) return false;
-    }
-    return true;
-  }
-
-  function copyPoints(points) {
-    return points.map(function(p) { return [p[0], p[1]]; });
-  }
+  var ALT_KEY_CODE = 18;
 
   // The curve tool, armed from the line style mode's toolbar ('curve_lines',
   // see getToolMode() in gui-interaction-mode-control.mjs).
@@ -34473,9 +35674,22 @@
   // knots are kept only while the tool is open, and only for a line whose path
   // is still the one they produced (see gui-curve-line-knots.mjs); any other
   // line is selected for styling, as in the Draw tool.
+  //
+  // Alt-click (Option-click) places a corner knot, where the curve turns
+  // sharply, and on a knot of a selected curve switches it between a corner and
+  // a smooth knot, as another -update-line command. Corner knots are drawn as
+  // squares.
+  //
+  // A click on an end knot of an open curve with knots, which is marked as the
+  // Draw tool marks the end of a line it would extend, goes on drawing that
+  // curve: the clicks after it add knots, and the curve is refitted through
+  // all of them, as one -update-line command when it is finished.
   function initCurveLineTool(gui, ext, hit) {
     var _active = false;
     var curve = createCurveState(); // the curve being drawn
+    // the curve being drawn is an existing curve being extended: {id, reversed,
+    // baseCount}, where @baseCount is the number of knots it had
+    var extending = null;
     var redoKnots = []; // knots taken back by Undo while drawing
     // the pointer's position while a curve is being drawn, which the curve is
     // drawn through but which is not a knot yet
@@ -34486,6 +35700,9 @@
     var shownKey = null; // the selection that @shown was found for
     var hoverKnot = -1; // index of the knot of @shown under the pointer
     var hoverPoint = null;
+    var hoverId = -1; // the line under the pointer
+    // the end of a curve that a click would extend: {id, knots, index}, or null
+    var extendTarget = null;
     var overShape = false;
     // a knot drag in progress: {id, index, knots, offset, moved}
     var drag = null;
@@ -34552,6 +35769,8 @@
       shownKey = null;
       hoverKnot = -1;
       hoverPoint = null;
+      hoverId = -1;
+      setExtendTarget(null);
       hit.setPendingPath(null);
       hit.setPendingKnots(null);
       hit.setHiddenShapes([]);
@@ -34573,9 +35792,11 @@
     function showInstructions() {
       if (shownInstructions) return;
       shownInstructions = true;
-      alert = showPopupAlert('Click to place the points of a curve. Double-click or type Enter to finish, ' +
-        'or click the first point to close the curve. Backspace removes the last point. ' +
-        'Select a curve to drag its points.', null, {non_blocking: true, max_width: '350px'});
+      var alt = GUI.getAltKeyName();
+      alert = showPopupAlert('Click to place the nodes of a smooth curve; ' + alt +
+        '-click for a corner node. Select a curve to edit its nodes: drag a node to reshape the curve, or ' +
+        alt + '-click it to toggle between smooth and corner.',
+        null, {non_blocking: true, max_width: '350px'});
     }
 
     function hideInstructions() {
@@ -34591,17 +35812,23 @@
       if (!_active || drag) return;
       p = pixToMapCoords(e.x, e.y);
       if (drawing()) {
-        if (curve.knots.length >= 3 && findKnotNear(curve, p, scaleThreshold(KNOT_HIT_THRESHOLD)) === 0) {
+        if (pointerClosesCurve(p)) {
+          // the curve closes at a corner if the click that closes it is one
+          if (cornerKeyDown()) curve.knots[0] = makeKnot(curve.knots[0], true);
           finishCurve(true);
         } else {
-          extendCurve(p);
+          extendCurve(p, cornerKeyDown());
         }
         return;
       }
       hoverPoint = p;
+      hoverId = e.id;
       updateHoverKnot();
-      if (hoverKnot > -1) {
+      if (extendTarget) {
+        startExtension(extendTarget, cornerKeyDown());
+      } else if (hoverKnot > -1) {
         // a press on a knot is the start of a drag, not a new curve
+        if (cornerKeyDown()) toggleCorner(hoverKnot);
       } else if (e.id > -1) {
         selectShape(e.id);
       } else if (hit.getSelectionIds().length > 0) {
@@ -34614,7 +35841,12 @@
 
     hit.on('dblclick', function(e) {
       var o;
-      if (!_active || !drawing()) return;
+      if (!_active) return;
+      if (!drawing()) {
+        // two quick clicks on a knot, e.g. toggling a corner twice, are not a zoom
+        if (hoverKnot > -1) e.originalEvent.stopPropagation();
+        return;
+      }
       e.originalEvent.stopPropagation(); // prevent dblclick zoom
       o = getDblclickAction(curve, pixToMapCoords(e.x, e.y), scaleThreshold(KNOT_HIT_THRESHOLD));
       if (o.action == 'finish') finishCurve(false);
@@ -34632,13 +35864,22 @@
         }
       } else {
         hoverPoint = p;
+        hoverId = e.id;
         updateHoverKnot();
       }
       updateCursor();
     }, null, 100);
 
-    hit.on('change', function() {
-      if (_active) refreshShownCurve(false);
+    hit.on('change', function(e) {
+      if (!_active) return;
+      refreshShownCurve(false);
+      // The hit id is one event behind on 'hover' -- the control dispatches the
+      // event and then tests the new position -- so the end of a curve under
+      // the pointer is settled here, before the line under it is highlighted.
+      if (!drawing() && !drag && e.id !== hoverId) {
+        hoverId = e.id;
+        updateHoverKnot();
+      }
     });
 
     hit.on('contextmenu', function(e) {
@@ -34660,6 +35901,7 @@
         offset: [shown.knots[hoverKnot][0] - hoverPoint[0], shown.knots[hoverKnot][1] - hoverPoint[1]],
         moved: false
       };
+      setExtendTarget(null);
       // The line is drawn as the preview from the start of the drag, and the
       // original as a plain outline (see setHiddenShapes())
       showDragPreview(drag);
@@ -34712,6 +35954,15 @@
       }
     }, null, 1);
 
+    // Alt draws the curve through the pointer as if a click there would place a
+    // corner, which it would
+    gui.keyboard.on('keydown', onAltKey);
+    gui.keyboard.on('keyup', onAltKey);
+
+    function onAltKey(e) {
+      if (_active && drawing() && e.keyCode == ALT_KEY_CODE) refreshCurve();
+    }
+
     // Esc and Enter finish the curve being drawn; Backspace takes back its last
     // knot
     gui.keyboard.on('keydown', function(e) {
@@ -34720,10 +35971,14 @@
         finishCurve(false);
         consume(e);
       } else if (e.keyName == 'delete') {
-        removeLastKnot(curve);
-        clearGesture(curve);
-        redoKnots = [];
-        if (drawing()) refreshCurve(); else abandonCurve();
+        if (atExtensionStart()) {
+          abandonCurve();
+        } else {
+          removeLastKnot(curve);
+          clearGesture(curve);
+          redoKnots = [];
+          if (drawing()) refreshCurve(); else abandonCurve();
+        }
         consume(e);
       }
     }, null, 10);
@@ -34763,9 +36018,40 @@
       extendCurve(p);
     }
 
-    function extendCurve(p) {
+    // Goes on drawing curve @t.id from its end knot @t.index. The end becomes a
+    // knot inside the curve, a corner if @corner (or if it was one already).
+    function startExtension(t, corner) {
+      var reversed = t.index === 0;
+      var knots = reversed ? reverseCurveKnots(t.knots) : t.knots.map(function(k) {
+        return makeKnot(k, knotIsCorner(k));
+      });
+      var n = knots.length;
+      if (corner) knots[n - 1] = makeKnot(knots[n - 1], true);
+      setExtendTarget(null);
+      hit.clearSelection();
+      curve = createCurveState();
+      curve.knots = knots;
+      extending = {id: t.id, reversed: reversed, baseCount: n};
+      redoKnots = [];
+      previewPoint = hoverPoint;
+      // the curve is drawn as the preview, and the original as a plain outline
+      hit.setHiddenShapes([t.id]);
+      hideInstructions();
+      refreshCurve();
+      updateCursor();
+    }
+
+    // Taking back a knot now would take back one of the curve's own knots
+    function atExtensionStart() {
+      return !!extending && curve.knots.length <= extending.baseCount;
+    }
+
+    function extendCurve(p, corner) {
+      var n;
       if (handleClick(curve, p, scaleThreshold(KNOT_HIT_THRESHOLD),
           scaleThreshold(MIN_KNOT_DISTANCE)) != 'added') return;
+      n = curve.knots.length;
+      if (corner) curve.knots[n - 1] = makeKnot(curve.knots[n - 1], true);
       redoKnots = [];
       hideInstructions();
       refreshShownCurve(true);
@@ -34777,11 +36063,15 @@
     // first knot, the pointer closes the curve, as a click there would.
     function refreshCurve() {
       var knots = curve.knots;
-      var style = getPendingPathStyle(getNewCurveStyle(), !!gui.state.dark_basemap);
+      var style = getPendingPathStyle(extending ? getLineStyle(extending.id) : getNewCurveStyle(),
+        !!gui.state.dark_basemap);
+      var corner = cornerKeyDown();
+      var first;
       if (previewPoint && pointerClosesCurve(previewPoint)) {
-        knots = knots.concat([knots[0]]);
+        first = corner ? makeKnot(knots[0], true) : knots[0];
+        knots = [first].concat(knots.slice(1), [first]);
       } else if (previewPoint) {
-        knots = knots.concat([previewPoint]);
+        knots = knots.concat([makeKnot(previewPoint, corner)]);
       }
       hit.setPendingPath(knots.length > 1 ? fitDisplayPath(knots) : null, style);
       hit.setPendingKnots(curve.knots);
@@ -34793,13 +36083,19 @@
     }
 
     function abandonCurve() {
-      curve = createCurveState();
-      redoKnots = [];
-      previewPoint = null;
+      clearCurve();
       hit.setPendingPath(null);
       hit.setPendingKnots(null);
+      hit.setHiddenShapes([]);
       refreshShownCurve(true);
       updateCursor();
+    }
+
+    function clearCurve() {
+      curve = createCurveState();
+      extending = null;
+      redoKnots = [];
+      previewPoint = null;
     }
 
     // closed: end the curve where it began
@@ -34808,6 +36104,10 @@
       var complete = curveIsComplete(curve);
       var target = hit.getHitTarget();
       var coords;
+      if (extending) {
+        finishExtension(closed);
+        return;
+      }
       abandonCurve();
       if (!complete || !target || target.geometry_type != 'polyline') return;
       if (closed) knots.push(knots[0].slice());
@@ -34825,12 +36125,34 @@
       });
     }
 
+    // A curve that no knots were added to is left as it was
+    function finishExtension(closed) {
+      var o = extending;
+      var knots = curve.knots.slice();
+      if (knots.length <= o.baseCount || !hit.getHitTarget()) {
+        abandonCurve();
+        return;
+      }
+      clearCurve();
+      if (closed) knots.push(knots[0].slice());
+      if (o.reversed) knots = reverseCurveKnots(knots);
+      // the preview stands in for the line until the command replaces it
+      showDragPreview({id: o.id, knots: knots});
+      commitKnotMove({id: o.id, knots: knots}, 'Extend curve');
+      updateCursor();
+    }
+
     // Takes back the last knot of the curve being drawn. Taking back its first
-    // knot abandons the curve. Returns false if no curve is being drawn, so that
+    // knot abandons the curve, as does taking back the last knot added to a
+    // curve being extended. Returns false if no curve is being drawn, so that
     // Undo goes on to the undo history.
     function pendingUndo() {
       if (drag) return true;
       if (!drawing()) return false;
+      if (atExtensionStart()) {
+        abandonCurve();
+        return true;
+      }
       redoKnots.push(curve.knots.pop());
       clearGesture(curve);
       if (drawing()) {
@@ -34901,19 +36223,59 @@
     function updateHoverKnot() {
       hoverKnot = shown && hoverPoint ?
         findKnotNear(shown, hoverPoint, scaleThreshold(KNOT_HIT_THRESHOLD)) : -1;
+      setExtendTarget(findExtendTarget());
       updateCursor();
+    }
+
+    // The end knot under the pointer of the selected curve, or of the curve
+    // under the pointer. An end is found as far away as the line is, so that
+    // the pointer approaching it does not highlight the line on the way.
+    function findExtendTarget() {
+      var threshold = scaleThreshold(POLYLINE_HIT_DISTANCE);
+      var id, knots, i;
+      if (!_active || drawing() || drag || !hoverPoint) return null;
+      if (shown && hoverKnot > -1 && !knotIsCurveEnd(shown.knots, hoverKnot)) {
+        return null; // a knot to drag
+      }
+      if (shown) {
+        id = shown.id;
+        knots = shown.knots;
+        i = findCurveEndNear(knots, hoverPoint, threshold);
+      }
+      if (!(i > -1) && hoverId > -1 && !(shown && hoverId == shown.id)) {
+        id = hoverId;
+        knots = findKnots(id);
+        i = knots ? findCurveEndNear(knots, hoverPoint, threshold) : -1;
+      }
+      return i > -1 ? {id: id, knots: knots, index: i} : null;
+    }
+
+    // The end is marked as the Draw tool marks the end of a line it would extend
+    function setExtendTarget(t) {
+      var marked = !!extendTarget;
+      extendTarget = t;
+      if (t) {
+        hit.setHoverVertex(t.knots[t.index], 'vertex');
+      } else if (marked) {
+        hit.clearHoverVertex();
+      }
+    }
+
+    function toggleCorner(index) {
+      var knots = toggleCurveKnotCorner(shown.knots, index);
+      if (knots) commitKnotMove({id: shown.id, knots: knots});
     }
 
     // The drag preview stands in for the line until the command replaces it,
     // so the command is what changes the data, and undo has a step that undoes
     // something.
-    function commitKnotMove(o) {
+    function commitKnotMove(o, title) {
       var target = hit.getHitTarget();
       var coords = toDataCoords(target, fitDisplayPath(o.knots));
       shown = {id: o.id, knots: o.knots};
       hit.setPendingKnots(o.knots);
       runGuiEditCommand(gui, getUpdateLineCommand(coords, o.id), {
-        title: 'Reshape curve',
+        title: title || 'Reshape curve',
         changesEditTarget: true,
         onSuccess: function() {
           if (!_active) return;
@@ -34940,7 +36302,11 @@
 
     function fitDisplayPath(knots) {
       return internal.fitCurveThroughKnots(knots, getCurveFlattenTolerance(knots),
-        curveKnotsAreClosed(knots));
+        curveKnotsAreClosed(knots), getKnotCorners(knots));
+    }
+
+    function cornerKeyDown() {
+      return gui.keyboard.altIsPressed();
     }
 
     function toDataCoords(target, displayCoords) {
@@ -34956,7 +36322,7 @@
       // a drag would move the knot
       el.classed('curve-handle', onKnot);
       // a click would select the line under the pointer
-      el.classed('curve-select', _active && !drawing() && !onKnot && overShape);
+      el.classed('curve-select', _active && !drawing() && !onKnot && !extendTarget && overShape);
       if (_active) el.classed('drawing', drawing());
     }
 
@@ -42726,11 +44092,14 @@
     // TODO: consider using drawStyledPaths(), which draws paths in batches
     // for faster Canvas rendering. Downside: changes stacking order, which
     // is bad if circles are graduated.
+    // style.pointShape: 'square' draws squares @radius from center to side
+    //   (read once per call, not per point)
     _self.drawPoints = function(shapes, style) {
       var t = getScaledTransform(_ext),
           scale = GUI.getPixelRatio() * (_ext.getSymbolScale() || 1),
           startPath = getPathStart(_ext),
           styler = style.styler || null,
+          drawPoint = style.pointShape == 'square' ? drawSquarePath : drawCircle,
           shp, p,
           mx = t.mx,
           my = t.my,
@@ -42744,7 +44113,7 @@
         if (!shp || style.radius > 0 === false) continue;
         for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
           p = shp[j];
-          drawCircle(p[0] * mx + bx, p[1] * my + by, style.radius * scale, _ctx);
+          drawPoint(p[0] * mx + bx, p[1] * my + by, style.radius * scale, _ctx);
         }
         endPath(_ctx, style);
       }
@@ -42855,6 +44224,13 @@
     if (radius > 0) {
       ctx.moveTo(x + radius, y);
       ctx.arc(x, y, radius, 0, Math.PI * 2, true);
+    }
+  }
+
+  // a square outline for a stroke and fill, like drawCircle()'s
+  function drawSquarePath(x, y, radius, ctx) {
+    if (radius > 0) {
+      ctx.rect(x - radius, y - radius, radius * 2, radius * 2);
     }
   }
 
@@ -43900,17 +45276,19 @@
       runCommand(cmd);
     });
 
-    new SimpleButton(popup.findChild('.frame-btn')).on('click', function() {
+    var frameBtn = popup.findChild('.frame-btn');
+    new SimpleButton(frameBtn).on('click', function() {
       openAddFramePopup(gui, box.getDataCoords());
     });
 
+    // Only a box (or its options) on the map takes the key, so that Escape
+    // still reaches other tools' handlers
     gui.keyboard.on('keydown', function(e) {
-      if (e.keyName == 'esc') {
+      if (e.keyName == 'esc' && (box.getDisplayCoords() || popup.visible())) {
         reset();
         e.stopPropagation();
       }
-
-    }, 10);
+    }, null, 10);
 
     gui.addMode('box_tool', turnOn, turnOff);
 
@@ -43946,8 +45324,6 @@
     });
 
     function showInstructions() {
-      var isMac = navigator.userAgent.includes('Mac');
-      var symbol = isMac ? '⌘' : '^';
       var msg = `Click to start a rectangle. Drag handles to resize. Press shift key to resize symmetrically.`;
       alert = showPopupAlert(msg, null, { non_blocking: true, max_width: '360px'});
     }
@@ -44015,6 +45391,20 @@
       setButtonVisible(selectBtn, !raster);
       setButtonVisible(clipBtn, true);
       setButtonVisible(eraseBtn, !raster);
+      // a frame is made from the layers of the unframed view
+      setButtonVisible(frameBtn, !gui.model.getActiveFrame());
+    }
+
+    // The box is in the selected layer's CRS, so that layer is listed first; the
+    // other visible layers become members too
+    function getFrameTargetOption() {
+      var active = gui.model.getActiveLayer().layer;
+      var layers = [active].concat(gui.map.getCompositionLayers().filter(function(lyr) {
+        return lyr != active;
+      }));
+      return 'target=' + internal.formatOptionValue(layers.map(function(lyr) {
+        return internal.getLayerTargetId(gui.model, lyr);
+      }).join(','));
     }
 
     function activeLayerIsRaster() {
@@ -44047,7 +45437,8 @@
           input.node().value = '';
           return;
         }
-        var cmd = `-frame name=frame bbox='${bbox.join(',')}' width='${widthStr}'`;
+        var name = internal.formatOptionValue(getNewFrameName(gui.model));
+        var cmd = `-frame bbox='${bbox.join(',')}' width='${widthStr}' name=${name} ${getFrameTargetOption()}`;
         runCommand(cmd, function() {
           if (gui.frameTool) gui.frameTool.open();
         });
@@ -45312,6 +46703,9 @@
     // Whether the content's bounds had no width or no height before they were
     // padded in calcFullBounds() -- see mapNeedsResetFromCollapsedBounds().
     var _boundsAreCollapsed = false;
+    // The view shown as of the last update: the ID of the active frame's
+    // dataset, '' for the unframed layers, or null before the first update
+    var _viewKey = null;
     // The model's layers and datasets as of the last update, so that the
     // display data of any that leave the model can be released
     var _modelLayers = [], _modelDatasets = [];
@@ -45443,11 +46837,12 @@
     this.getSvgRoot = function() { return _renderer ? _renderer.getSvgRoot() : null; };
     this.getActiveLayer = function() { return _activeLyr; };
     this.getHitControl = function() { return _hit; };
-    this.getCompositionLayers = function() { return getContentLayers().slice(); };
+    // what is drawn: the selected layer counts only when its eye is on
+    this.getCompositionLayers = function() { return getDrawableContentLayers().slice(); };
     this.getPreviewFrameData = getFrameLayerData;
     this.isPreviewView = isPreviewView;
     this.setPreviewMode = function(on, fitPage) {
-      var hasFrame = !!internal.getActiveFrame(model);
+      var hasFrame = !!model.getActiveFrame();
       var next = !!on && hasFrame;
       var changed = gui.state.preview_mode != next;
       gui.state.preview_mode = next;
@@ -45492,7 +46887,7 @@
       getContentLayers().concat(_intersectionLyr || []).concat(_compareLyr || []).forEach(function(lyr) {
         projectLayerForDisplay(lyr, newCRS);
       });
-      var frameTarget = internal.getActiveFrame(model);
+      var frameTarget = model.getActiveFrame();
       if (frameTarget) {
         if (!frameTarget.layer.gui) {
           enhanceLayerForDisplay(frameTarget.layer, frameTarget.dataset, getDisplayOptions());
@@ -45585,6 +46980,7 @@
       var prevBoundsWereCollapsed = _boundsAreCollapsed;
       var fullBounds;
       var needReset;
+      var prevViewKey;
 
       if (!updated) {
         clearMapState();
@@ -45607,17 +47003,16 @@
         }
       }
       // The frame's display copy is built from its coordinates, so it has to go
-      // whenever those can have moved. -update-frame is the obvious case; -proj
+      // whenever those can have moved. -frame and -update-frame are the obvious cases; -proj
       // is the one that was missed, because it rewrites the frame through the
       // same sweep that projects the data, and the display copy left behind
       // still held the pre-projection rectangle. findFrameLayer() rebuilds it on
       // demand and it is one rectangle, so discarding it freely costs nothing.
-      if (e.flags['update-frame'] || arcsChanged) {
-        var frameTarget = internal.getActiveFrame(model);
-        if (frameTarget) {
-          delete frameTarget.layer.gui;
-          delete frameTarget.dataset.gui;
-        }
+      if (e.flags.frame || e.flags['update-frame'] || arcsChanged) {
+        internal.getFrames(model).forEach(function(frame) {
+          delete frame.layer.gui;
+          delete frame.dataset.gui;
+        });
       }
 
       if (e.flags.simplify_method) { // no redraw needed
@@ -45649,8 +47044,17 @@
 
       updateVisibleMapLayers();
       fullBounds = calcFullBounds();
+      prevViewKey = _viewKey;
+      _viewKey = getViewKey();
 
       if (prevLyr?.gui.tabular || _activeLyr?.gui.tabular) {
+        needReset = true;
+      } else if (prevLyr && prevLyr != _activeLyr && prevViewKey !== null &&
+          prevViewKey != _viewKey) {
+        // Selecting a layer in another frame, or in the unframed layers, shows
+        // different content, which mapNeedsReset() can't judge from bounds
+        // alone: frames may use units millions of times apart, so the new
+        // content can be in view but tiny.
         needReset = true;
       } else if (_activeLyr && internal.layerIsEmpty(_activeLyr)) {
         needReset = false;
@@ -45705,6 +47109,7 @@
 
     function clearMapState() {
       _activeLyr = null;
+      _viewKey = null;
       _visibleLayers = [];
       _intersectionLyr = null;
       _overlayLayers = null;
@@ -45780,8 +47185,37 @@
       return _activeLyr && lyr == _activeLyr || false;
     }
 
-    function isVisibleLayer(lyr) {
-      return isActiveLayer(lyr) || lyr.pinned;
+    // @dataset is optional; it is looked up if missing
+    function isVisibleLayer(lyr, dataset) {
+      var o = dataset ? null : model.findLayer(lyr);
+      return layerIsInView(lyr, dataset || o && o.dataset, getMapView());
+    }
+
+    // Which layers the map can show. In a frame view (the selected layer belongs
+    // to a frame that has members), the selected layer and the frame's layers
+    // that are not hidden in it are drawn; hiding in a frame works like
+    // unpinning, and pinning does not apply. In the unframed view, the selected
+    // layer and pinned layers are drawn, but never a layer in a frame.
+    // A frame without members (from before frames had them) composes the
+    // unframed layers, so its view works like the unframed view.
+    function getMapView() {
+      var frame = model.getActiveFrame();
+      var members = frame ? internal.getFrameMemberLayers(model, frame) : [];
+      var framed = new Set(model.getDatasets().filter(function(dataset) {
+        return !!internal.getFrameForDataset(model, dataset);
+      }));
+      return {
+        members: new Set(members.map(function(o) { return o.layer; })),
+        framed: framed
+      };
+    }
+
+    function layerIsInView(lyr, dataset, view) {
+      if (view.members.size > 0) {
+        return view.members.has(lyr) && (isActiveLayer(lyr) || !lyr.frame_hidden);
+      }
+      if (view.framed.has(dataset)) return false;
+      return isActiveLayer(lyr) || !!lyr.pinned;
     }
 
     function isTableView() {
@@ -45789,7 +47223,7 @@
     }
 
     function findFrameLayer() {
-      var target = internal.getActiveFrame(model);
+      var target = model.getActiveFrame();
       if (!target) return null;
       if (!target.layer.gui) {
         enhanceLayerForDisplay(target.layer, target.dataset, getDisplayOptions());
@@ -45800,6 +47234,11 @@
     // Preview view: symbols are scaled based on display size of frame layer
     function isPreviewView() {
       return !isTableView() && !!gui.state.preview_mode && !!getFrameLayerData();
+    }
+
+    function getViewKey() {
+      var frame = model.getActiveFrame();
+      return frame ? frame.dataset.id : '';
     }
 
     function getFrameLayerData() {
@@ -45824,8 +47263,9 @@
 
     function updateVisibleMapLayers() {
       var layers = [];
+      var view = getMapView();
       model.getLayers().forEach(function(o) {
-        if (!isVisibleLayer(o.layer)) return;
+        if (!layerIsInView(o.layer, o.dataset, view)) return;
         if (isActiveLayer(o.layer)) {
           layers.push(_activeLyr);
         } else if (!isTableView()) {
@@ -45871,7 +47311,7 @@
     // The active frame's furniture, plus any visible standalone furniture layers
     // (e.g. from -scalebar run before a frame was created)
     function getDrawableFurnitureLayers() {
-      var frame = isPreviewView() ? internal.getActiveFrame(model) : null;
+      var frame = isPreviewView() ? model.getActiveFrame() : null;
       if (!frame) return [];
       var layers = internal.getFrameFurnitureLayers(frame.dataset);
       getVisibleMapLayers().forEach(function(lyr) {
@@ -45926,6 +47366,11 @@
     function drawLayers2(action) {
       if (--skipCounts[action] > 0) {
         // skip redraw if more draws are queued up
+        return;
+      }
+      if (action == 'nav' && skipCounts.redraw > 0) {
+        // a 'nav' draw reuses the styles from the last redraw, so it can't run
+        // ahead of a queued redraw (layers that just became visible are unstyled)
         return;
       }
       // sometimes styles need to be regenerated with 'hover' action (when?)
@@ -46101,7 +47546,7 @@
     refreshControls();
 
     function hasFrame() {
-      return !!internal.getActiveFrame(gui.model);
+      return !!gui.model.getActiveFrame();
     }
 
     function refreshControls() {
@@ -46110,7 +47555,7 @@
       toggle.classed('selected', available && self.isOn());
       // data-tooltip, not title: the CSS label in .nav-btn[data-tooltip] appears
       // without the browser's delay and matches the arrow menu's type.
-      var label = available ? 'Toggle map preview' : 'Add map frame';
+      var label = available ? 'Toggle map preview' : 'New map frame';
       toggle.attr('data-tooltip', label);
       toggle.attr('aria-label', label);
       toggle.attr('aria-disabled', 'false');
@@ -46183,7 +47628,7 @@
     }
 
     function getFrameStyle() {
-      var target = internal.getActiveFrame(gui.model);
+      var target = gui.model.getActiveFrame();
       return target && target.layer.data ?
         target.layer.data.getReadOnlyRecordAt(0) || {} : {};
     }
@@ -46363,7 +47808,7 @@
         gui.interaction.turnOff();
         e.stopPropagation();
       }
-    }, 10);
+    }, null, 10);
 
     function turnOn() {
       if (drawingRequested) {
@@ -46394,6 +47839,7 @@
         on = false;
         frameBox.turnOff();
         toolbar.hide();
+        clearResizePreview();
         if (gui.previewMode) gui.previewMode.clearTemporaryReadout();
       }
       if (drawing) {
@@ -46439,6 +47885,11 @@
         temporaryFrame,
         getPixelWidth(e.map_bbox) / width
       );
+      gui.dispatchEvent('frame_resize_preview', {frame: temporaryFrame});
+    }
+
+    function clearResizePreview() {
+      gui.dispatchEvent('frame_resize_preview', {frame: null});
     }
 
     function commitFrameDrag(e) {
@@ -46446,6 +47897,7 @@
       var displayFrame = gui.map.getPreviewFrameData();
       var width = null;
       var targetScale = null;
+      clearResizePreview();
       if (!target || !displayFrame || !e.map_bbox) return;
       if (e.handle?.type != 'center' && !lockSize) {
         var frame = internal.getFrameLayerData(target.layer, target.dataset.arcs);
@@ -46565,7 +48017,7 @@
         showPopupAlert(getNoSourceMessage(), 'Map frame');
         return;
       }
-      var popup = showPopupAlert('', 'Add map frame', {classname: 'frame-create-box'});
+      var popup = showPopupAlert('', 'New map frame', {classname: 'frame-create-box'});
       // label-style-panel is where the flat field look lives -- no bezel, and a
       // focus ring that is a border rather than a glow. frame-create-form turns
       // off the chrome the class also carries, as the properties panel does.
@@ -46697,12 +48149,18 @@
       var parts = [
         '-frame',
         'bbox=' + quoteCommandValue(bbox.join(',')),
-        'width=' + quoteCommandValue(drawWidth)
+        'width=' + quoteCommandValue(drawWidth),
+        getFrameNameOption()
       ];
       if (drawAspect) parts.push('aspect-ratio=' + drawAspect);
-      parts.push('name=frame');
-      parts.push('target=' +
-        internal.formatOptionValue(internal.getLayerTargetId(gui.model, source)));
+      // The box is in the source layer's CRS, so the source is listed first;
+      // the other visible layers become members too
+      var members = [source].concat(getCompositionEntries().map(function(o) {
+        return o.layer;
+      }).filter(function(lyr) { return lyr != source; }));
+      parts.push('target=' + internal.formatOptionValue(members.map(function(lyr) {
+        return internal.getLayerTargetId(gui.model, lyr);
+      }).join(',')));
       runCreateCommand(parts.join(' '));
     }
 
@@ -46715,12 +48173,15 @@
       var ids = entries.map(function(o) {
         return internal.getLayerTargetId(gui.model, o.layer);
       });
-      var parts = ['-frame', 'width=' + quoteCommandValue(width)];
+      var parts = ['-frame', 'width=' + quoteCommandValue(width), getFrameNameOption()];
       if (aspect) parts.push('aspect-ratio=' + aspect);
       if (margin) parts.push('margin=' + quoteCommandValue(margin));
-      parts.push('name=frame');
       parts.push('target=' + internal.formatOptionValue(ids.join(',')));
       runCreateCommand(parts.join(' '));
+    }
+
+    function getFrameNameOption() {
+      return 'name=' + internal.formatOptionValue(getNewFrameName(gui.model));
     }
 
     function runCreateCommand(cmd) {
@@ -46742,7 +48203,7 @@
     }
 
     function getFrameTarget() {
-      return internal.getActiveFrame(gui.model);
+      return gui.model.getActiveFrame();
     }
 
     function getTargetOption(target) {
@@ -46752,7 +48213,7 @@
 
     function getSourceLayer() {
       var active = gui.model.getActiveLayer();
-      if (active && active.layer && active.layer.geometry_type &&
+      if (active && active.layer && active.layer.geometry_type && !active.layer.hidden &&
           !internal.isFrameLayer(active.layer, active.dataset.arcs)) {
         return active.layer;
       }
@@ -46838,7 +48299,7 @@
     gui.frameProperties = this;
 
     this.open = function(targetArg) {
-      target = targetArg || internal.getActiveFrame(gui.model);
+      target = targetArg || gui.model.getActiveFrame();
       if (!target) return;
       var popup = showPopupAlert('', 'Frame properties');
       popup.container().addClass('frame-properties-popup');
@@ -47142,7 +48603,7 @@
 
     // Adds a scalebar to the frame if it doesn't have one
     this.open = function(frameTarget) {
-      var frame = frameTarget || internal.getActiveFrame(gui.model);
+      var frame = frameTarget || gui.model.getActiveFrame();
       if (!frame) return;
       if (getScalebarRecord()) {
         showPanel();
@@ -47414,7 +48875,7 @@
     }
 
     function getFrameProblem() {
-      var frame = internal.getActiveFrame(gui.model);
+      var frame = gui.model.getActiveFrame();
       var crs, data;
       if (!frame) return 'there is no map frame';
       crs = frame.layer.gui && frame.layer.gui.dynamic_crs ||
@@ -47424,7 +48885,7 @@
     }
 
     function getScalebarRecord() {
-      var frame = internal.getActiveFrame(gui.model);
+      var frame = gui.model.getActiveFrame();
       var lyr = frame && internal.findFrameFurnitureLayer(frame.dataset, 'scalebar');
       return lyr ? lyr.data.getReadOnlyRecordAt(0) : null;
     }
@@ -48318,6 +49779,7 @@
     new FrameResizeTool(gui);
     new FrameProperties(gui);
     new ScalebarProperties(gui);
+    new FrameOverlays(gui);
     gui.editToolbar = new EditToolbar(gui);
     gui.labelTool = new LabelTool(gui);
     gui.layerStyleTool = new LayerStyleTool(gui);
@@ -48674,6 +50136,12 @@
           return ext.translateCoords(p[0], p[1]);
         }) : null;
       },
+      // which of the knots above are corners (see gui-curve-line-knots.mjs)
+      getPendingKnotCorners: function() {
+        var hit = gui.map && gui.map.getHitControl ? gui.map.getHitControl() : null;
+        var knots = hit ? hit.getHitState().pending_knots : null;
+        return knots ? knots.map(function(p) { return p[2] === true; }) : null;
+      },
       // The features the layer is drawn without while a tool redraws them
       getHiddenShapeIds: function() {
         var hit = gui.map && gui.map.getHitControl ? gui.map.getHitControl() : null;
@@ -48765,14 +50233,30 @@
         if (gui.frameTool) gui.frameTool.open();
       },
       getFrameInfo: function() {
-        var target = internal.getActiveFrame(gui.model);
+        var target = gui.model.getActiveFrame();
         if (!target) return null;
         return Object.assign({
           name: target.layer.name || ''
         }, internal.getFrameLayerData(target.layer, target.dataset.arcs));
       },
+      // Names of the layers the map can show in the current view (frame view or
+      // unframed view), in catalog order. Layers are drawn to canvas, so there is
+      // no DOM state to assert on.
+      getVisibleLayerNames: function() {
+        return gui.model.getLayers().filter(function(o) {
+          return gui.map.isVisibleLayer(o.layer, o.dataset) &&
+            !internal.isFrameComponentLayer(o.layer, o.dataset);
+        }).map(function(o) { return getLayerName(o.layer); });
+      },
       setFrameLockSize: function(on) {
         if (gui.frameTool) gui.frameTool.setLockSize(on);
+      },
+      // The placement record of an overlay frame on a host frame, or null
+      getOverlayPlacement: function(hostName, overlayName) {
+        var host = internal.getFrameByName(gui.model, hostName);
+        var overlay = internal.getFrameByName(gui.model, overlayName);
+        var lyr = host && overlay ? internal.findOverlayLayer(host.dataset, overlay.dataset.id) : null;
+        return lyr ? Object.assign({}, lyr.data.getReadOnlyRecordAt(0)) : null;
       },
       // The map's current view, in display CRS coordinates, for a test that an
       // edit leaves the view where the user put it.
@@ -48898,7 +50382,8 @@
           geometry_type: lyr.geometry_type || null,
           shapeCount: lyr.shapes ? lyr.shapes.length : 0,
           recordCount: lyr.data ? lyr.data.size() : 0,
-          fields: lyr.data ? lyr.data.getFields() : []
+          fields: lyr.data ? lyr.data.getFields() : [],
+          menu_order: lyr.menu_order || null
         };
       })
     };
@@ -48913,13 +50398,15 @@
   }
 
   function getLayerSignature(lyr) {
-    return {
+    var sig = {
       name: getLayerName(lyr),
       geometry_type: lyr.geometry_type || null,
       shapes: lyr.shapes || null,
       fields: lyr.data ? lyr.data.getFields() : [],
       records: lyr.data ? lyr.data.getRecords() : null
     };
+    if (lyr.frame_hidden) sig.frame_hidden = true;
+    return sig;
   }
 
   function getArcsSignature(arcs) {
@@ -49077,6 +50564,26 @@
       gui.dispatchEvent('map-needs-refresh');
       return curl;
     };
+    // Same idea for Hobby's tension: mapshaper.setLabelCurveTension(1.5). 1 is
+    // Metafont's default, higher values pull the paths toward their polylines,
+    // and anything below 0.75 resets it to 1.
+    window.mapshaper.setLabelCurveTension = function(val) {
+      var tension = internal.setCurveTension(val);
+      gui.dispatchEvent('map-needs-refresh');
+      return tension;
+    };
+    // Extra tension at hairpins: mapshaper.setLabelCurveHairpin(2.5, 60) raises
+    // the tension toward 2.5 as the angle between a knot's two arms closes from
+    // 60 degrees to 0. Omitted arguments reset to the defaults, 2.5 and 60;
+    // setLabelCurveHairpin(1) turns it off.
+    window.mapshaper.setLabelCurveHairpin = function(tension, angle) {
+      var out = {
+        tension: internal.setCurveHairpinTension(tension),
+        angle: internal.setCurveHairpinAngle(angle)
+      };
+      gui.dispatchEvent('map-needs-refresh');
+      return out;
+    };
     if (isUndoTestApiEnabled()) {
       window.mapshaper.undoTest = createUndoTestApi(gui);
     }
@@ -49126,8 +50633,8 @@
 
     // The layer list, opened beside the first data so that the user sees what
     // was imported and where to go next, and when the splash popup is dismissed
-    // without importing anything, where its "Draw:" links start a map from
-    // scratch -- once for each. Waits for any menu mode (the import dialog,
+    // without importing anything, where its "Add labels" and "Draw" links start
+    // a map from scratch -- once for each. Waits for any menu mode (the import dialog,
     // while files are still loading) to close, since opening a panel would
     // close it.
     var layersShownForData = false;
