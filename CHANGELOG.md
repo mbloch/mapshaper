@@ -1,3 +1,8 @@
+v0.7.88
+* Added support for multiple map frames. Frames can be overlaid on other frames to make locators or insets.
+* Added corners to the curve drawing tool (Option-click creates a corner knot or toggles a knot between smooth and corner).
+* Improved curve interpolation.
+
 v0.7.87
 * Added a curve drawing tool to the line editing toolbar, similar to the curve tool on the symbol toolbar (but for creating curved polylines not symbols).
 * mapshaper-xl now exits with code 1 on errors, like the standard mapshaper program.
