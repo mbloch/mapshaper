@@ -62,9 +62,8 @@ test('a layer of plain points has one point mode in the arrow menu', async funct
   await page.locator('.pointer-btn').hover();
   await page.locator('.nav-sub-menu .nav-menu-item').first().waitFor();
   var items = await page.locator('.nav-sub-menu .nav-menu-item').allInnerTexts();
-  expect(items.filter(function(s) { return s == 'edit points'; }).length).toBe(1);
-  expect(items).not.toContain('style points');
-  expect(items).not.toContain('edit symbols');
+  expect(items.filter(function(s) { return s == 'style/edit points'; }).length).toBe(1);
+  expect(items).not.toContain('style/edit symbols');
 });
 
 test('Convert to symbols gives every point the default symbol and opens the symbol tool', async function({page}) {

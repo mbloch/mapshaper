@@ -68,7 +68,7 @@ test("a label layer's menu opens the label tool rather than a style panel",
     expect(await getInteractionMode(page)).toBe('info');
 
     await openLayerMenu(page, 'labels');
-    var item = page.locator('.contextmenu-item').filter({hasText: 'edit labels'});
+    var item = page.locator('.contextmenu-item').filter({hasText: 'style/edit labels'});
     await expect(item).toBeVisible();
     await expect(page.locator('.contextmenu-item')
       .filter({hasText: 'style layer'})).toHaveCount(0);

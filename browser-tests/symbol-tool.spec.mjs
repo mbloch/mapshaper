@@ -237,16 +237,15 @@ test('a symbol layer opens the symbol tool from the layer menu, and has no point
   await page.locator('.pointer-btn').hover();
   await page.locator('.nav-sub-menu .nav-menu-item').first().waitFor();
   var items = await page.locator('.nav-sub-menu .nav-menu-item').allInnerTexts();
-  expect(items).toContain('edit symbols');
-  expect(items).not.toContain('style points');
-  expect(items).not.toContain('edit points');
+  expect(items).toContain('style/edit symbols');
+  expect(items).not.toContain('style/edit points');
   await page.mouse.move(0, 0);
 
   await openLayersPanel(page);
   var item = page.locator('.layer-list .layer-item').filter({hasText: 'symbols'}).first();
   await item.hover();
   await item.locator('.more-btn').click();
-  await page.locator('.contextmenu-item').filter({hasText: 'edit symbols'}).click();
+  await page.locator('.contextmenu-item').filter({hasText: 'style/edit symbols'}).click();
   expect(await page.evaluate(function() {
     return window.mapshaper.undoTest.getInteractionMode();
   })).toBe('symbols');

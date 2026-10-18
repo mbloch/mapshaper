@@ -650,6 +650,10 @@ export function LayerControl(gui) {
           menuEvent.styleLayerName = 'style/edit symbols';
         } else if (target.layer.geometry_type == 'point') {
           menuEvent.styleLayerName = 'style/edit points';
+        } else if (target.layer.geometry_type == 'polyline') {
+          menuEvent.styleLayerName = 'style/edit lines';
+        } else if (target.layer.geometry_type == 'polygon') {
+          menuEvent.styleLayerName = 'style/edit polygons';
         }
       }
       menuEvent.contextMenuId = 'layer-' + id;
