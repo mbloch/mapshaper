@@ -12572,16 +12572,17 @@
   var DRAG_THRESHOLD = 3;
 
   // The overlay frames placed on the frame being previewed, drawn as labeled
-  // boxes on its page. Dragging a box moves the overlay; on release, the
-  // placement is re-expressed as the nearest corner and two margins and saved
-  // with one -frame command. Clicking a box opens a toolbar with the same
-  // settings as numbers. Each box can also proof the overlay's export-composed
-  // content in a pointer-events-free SVG layer below the placement chrome.
+  // boxes on its page. Clicking a box opens a toolbar; while that toolbar is
+  // open, dragging the box moves the overlay. On release, the placement is
+  // re-expressed as the nearest corner and two margins and saved with one -frame
+  // command. Otherwise, drag and wheel gestures on a box reach the map. Each box
+  // can also proof the overlay's export-composed content in a pointer-events-free
+  // SVG layer below the placement chrome.
   function FrameOverlays(gui) {
     var ext = gui.map.getExtent();
-    var container = El('div').addClass('frame-overlay-boxes').appendTo('body');
-    var previewRoot = document.createElementNS(SVG_NS$5, 'svg');
     var mapLayers = gui.container.findChild('.map-layers').node();
+    var container = El('div').addClass('frame-overlay-boxes').appendTo(mapLayers);
+    var previewRoot = document.createElementNS(SVG_NS$5, 'svg');
     var boxes = [];
     var drag = null;
     var shownPreviews = new Set(); // host dataset ID + overlay dataset ID
@@ -12629,18 +12630,15 @@
       return gui.map.isPreviewView() ? gui.model.getActiveFrame() : null;
     }
 
-    // The host page on the screen: {left, top, kx, ky}, where k is screen
-    // pixels per page pixel
+    // The host page in map-local screen coordinates, where k is screen pixels
+    // per page pixel
     function getPageTransform() {
       var frame = resizePreview || gui.map.getPreviewFrameData();
-      var pos = ext.position();
       var p1, p2;
       if (!frame || !(frame.width > 0) || !(frame.height > 0)) return null;
       p1 = ext.translateCoords(frame.bbox[0], frame.bbox[3]);
       p2 = ext.translateCoords(frame.bbox[2], frame.bbox[1]);
       return {
-        left: Math.min(p1[0], p2[0]) + pos.pageX,
-        top: Math.min(p1[1], p2[1]) + pos.pageY,
         mapLeft: Math.min(p1[0], p2[0]),
         mapTop: Math.min(p1[1], p2[1]),
         kx: Math.abs(p2[0] - p1[0]) / frame.width,
@@ -12679,6 +12677,12 @@
         item.el.classed('full-page-overlay', item.fullPage);
         item.el.classed('showing-content', item.showingContent);
         item.el.on('mousedown', function(e) { onMouseDown(e, item); });
+        item.el.on('click', function(e) {
+          if (panel.isEditing(item.frame)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          panel.open(item.host, item.frame);
+        });
         if (item.showingContent) {
           wantedPreviews.add(key);
           item.previewEl = getPreviewNode(item);
@@ -12711,8 +12715,8 @@
 
     function positionBox(item, page) {
       item.el.css({
-        left: page.left + item.box.x * page.kx,
-        top: page.top + item.box.y * page.ky,
+        left: page.mapLeft + item.box.x * page.kx,
+        top: page.mapTop + item.box.y * page.ky,
         width: Math.max(item.box.width * page.kx, 1),
         height: Math.max(item.box.height * page.ky, 1)
       });
@@ -12810,7 +12814,7 @@
 
     function onMouseDown(e, item) {
       var page = getPageTransform();
-      if (e.button !== 0 || !page) return;
+      if (e.button !== 0 || !page || !panel.isEditing(item.frame)) return;
       e.preventDefault();
       e.stopPropagation();
       drag = {
@@ -13199,7 +13203,7 @@
           if (dropLeavesOrder(toFrame, move)) return;
           runFrameCommand(toFrame, 'order-layers=' + getMemberRef(toFrame, drag.layer) + ' ' + position);
         } else {
-          runFrameCommand(toFrame, 'add-layers=' + formatLayerList([drag]) + ' ' + position);
+          addLayersToFrame(toFrame, [drag], position);
         }
       } else if (fromFrame) {
         runFrameCommand(fromFrame, 'remove-layers=' + getMemberRef(fromFrame, drag.layer), function() {
@@ -13301,6 +13305,9 @@
       viewFrame = activeFrame && groups.frames.some(function(g) {
         return g.frame.dataset == activeFrame.dataset && g.members.length > 0;
       }) ? activeFrame : null;
+      // The active section is marked only when there is another one to select
+      el.classed('several-sections', (groups.unframed.length > 0 ? 1 : 0) +
+        groups.frames.filter(function(g) { return g.members.length > 0; }).length > 1);
       unframedSection
         .classed('closed', !!closedSections[''])
         .classed('active-section', !viewFrame)
@@ -13818,7 +13825,7 @@
       if (group && group.members.length === 0 && visible.length > 0) {
         actions.push({label: 'move visible layers into frame', run: function() {
           // listed bottom to top, so that they keep their stacking order
-          runFrameCommand(frame, 'add-layers=' + formatLayerList(visible.reverse()));
+          addLayersToFrame(frame, visible.reverse());
         }});
       }
       return actions.concat(getOverlayMenuActions(frame));
@@ -13857,7 +13864,7 @@
         return {
           label: 'move into frame: ' + utils$1.htmlEscape(f.layer.name || ''),
           run: function() {
-            runFrameCommand(f, 'add-layers=' + formatLayerList([target]));
+            addLayersToFrame(f, [target]);
           }
         };
       });
@@ -13880,6 +13887,27 @@
       return internal.formatOptionValue(targets.map(function(o) {
         return internal.getLayerTargetId(model, o.layer);
       }).join(','));
+    }
+
+    // Layers in a different coordinate system can join the frame only if they
+    // are reprojected, which is offered first. If the frame's coordinate system
+    // is unknown, the command runs and reports why the layers cannot join.
+    async function addLayersToFrame(frame, targets, position) {
+      var options = 'add-layers=' + formatLayerList(targets) + (position ? ' ' + position : '');
+      var check = internal.findLayersNeedingReprojection(model, targets, frame);
+      var n = check.layers.length;
+      var names, msg;
+      if (check.reprojectable) {
+        names = check.layers.map(function(lyr) {
+          return utils$1.htmlEscape(lyr.name || '[unnamed layer]');
+        }).join(', ');
+        msg = names + (n == 1 ? ' has' : ' have') + ' a different coordinate system from frame ' +
+          utils$1.htmlEscape(frame.layer.name || '') + '. Would you like to reproject ' +
+          (n == 1 ? 'it' : 'them') + ' to match?';
+        if (!await showPrompt(msg, n == 1 ? 'Reproject layer?' : 'Reproject layers?')) return;
+        options += ' reproject';
+      }
+      runFrameCommand(frame, options);
     }
 
     function runFrameCommand(frame, options, onSuccess) {

@@ -46361,7 +46361,7 @@ ${css.join('\n')}
     // check coordinate systems before anything changes
     projections = groups.map(function(g) {
       return frame && !isInDestination(g.dataset, frame) ?
-        getProjectionForJoin(catalog, frame, g.dataset, opts.reproject) : null;
+        getProjectionForJoin(catalog, frame, g.dataset, g.layers, opts.reproject) : null;
     });
     groups.forEach(function(g, i) {
       var prevFrame = getFrameForDataset(catalog, g.dataset);
@@ -46420,7 +46420,7 @@ ${css.join('\n')}
         }
       });
       if (!isInDestination(target.dataset, frame)) {
-        getProjectionForJoin(catalog, frame, target.dataset, false);
+        getProjectionForJoin(catalog, frame, target.dataset, target.layers, false);
         arriving = arriving.concat(target.layers);
       }
     });
@@ -46453,26 +46453,45 @@ ${css.join('\n')}
     return !getFrameRef(dataset) && !findFrameLayerInDataset(dataset);
   }
 
-  // Returns CRS info to reproject the dataset with, or null if it can join as is
-  function getProjectionForJoin(catalog, frame, dataset, reproject) {
+  // The layers among @items that cannot join @frame without being reprojected,
+  // as {layers, reprojectable}. reprojectable is false if the frame's coordinate
+  // system is unknown, so that the layers cannot join it at all.
+  function findLayersNeedingReprojection(catalog, items, frame) {
+    var layers = [];
+    groupLayersByDataset(items).forEach(function(g) {
+      if (!isInDestination(g.dataset, frame) && coordinateSystemsConflict(catalog, frame, g.dataset)) {
+        layers = layers.concat(g.layers);
+      }
+    });
+    return {layers: layers, reprojectable: layers.length > 0 && !!getFrameCrsInfo(catalog, frame)};
+  }
+
+  // Returns CRS info to reproject @layers of @dataset with, or null if they can
+  // join as is
+  function getProjectionForJoin(catalog, frame, dataset, layers, reproject) {
+    var frameInfo, names;
+    if (!coordinateSystemsConflict(catalog, frame, dataset)) return null;
+    frameInfo = getFrameCrsInfo(catalog, frame);
+    if (reproject && frameInfo) return frameInfo;
+    names = formatLayerNames$1(layers);
+    stop$1(names, 'and frame', frame.layer.name, 'have different coordinate systems.',
+      frameInfo ? 'Add the reproject flag to -frame to reproject ' +
+        (layers.length == 1 ? 'the layer' : 'the layers') + ' into the frame.' : '');
+  }
+
+  // Two known projected systems must be the same projection. Lat-long data is
+  // only kept apart from projected data, as everywhere else in mapshaper, so
+  // that data in a different datum (or without metadata) can still join.
+  function coordinateSystemsConflict(catalog, frame, dataset) {
     var frameInfo = getFrameCrsInfo(catalog, frame);
     var frameCrs = frameInfo ? frameInfo.crs : getDatasetCRS(frame.dataset);
     var known = datasetHasCrsMetadata(dataset) ? getDatasetCRS(dataset) : null;
-    var names = formatLayerNames$1(dataset.layers);
-    // Two known projected systems must be the same projection. Lat-long data is
-    // only kept apart from projected data, as everywhere else in mapshaper, so
-    // that data in a different datum (or without metadata) can still join.
     var frameSpace = frameInfo ?
       {space: isLatLngCRS(frameCrs) ? 'latlong' : 'projected', known: true} :
       getCoordinateSpace(frame.dataset);
-    if (known && frameInfo && !isLatLngCRS(known) && !isLatLngCRS(frameCrs) &&
-        crsTransformsDiffer(known, frameCrs) ||
-        coordinateSpacesConflict(getCoordinateSpace(dataset), frameSpace)) {
-      if (reproject && frameInfo) return frameInfo;
-      stop$1(names, 'and frame', frame.layer.name, 'have different coordinate systems.',
-        frameInfo ? 'Use the reproject option to reproject the layers into the frame.' : '');
-    }
-    return null;
+    return !!(known && frameInfo && !isLatLngCRS(known) && !isLatLngCRS(frameCrs) &&
+        crsTransformsDiffer(known, frameCrs)) ||
+      coordinateSpacesConflict(getCoordinateSpace(dataset), frameSpace);
   }
 
   // {space: 'latlong' or 'projected', known: true if from CRS metadata}, or
@@ -46579,6 +46598,7 @@ ${css.join('\n')}
 
   var FrameMembers = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    findLayersNeedingReprojection: findLayersNeedingReprojection,
     getCoordinateSpace: getCoordinateSpace,
     getFrameCrsInfo: getFrameCrsInfo,
     getFrameForMerge: getFrameForMerge,
@@ -94398,7 +94418,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.88";
+  var version = "0.7.89";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
