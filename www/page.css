@@ -444,6 +444,19 @@ body.map-view {
 	color: #777;
 }
 
+.export-layers.all-content-included .export-layer-list {
+	color: #999;
+}
+
+.export-layers.all-content-included .export-frame-count {
+	color: #aaa;
+}
+
+.export-layers.all-content-included .layer-name {
+	border-bottom-color: transparent;
+	pointer-events: none;
+}
+
 .export-frame-members {
 	padding-left: 18px;
 }
@@ -5053,6 +5066,18 @@ body.dragging-color-picker * {
 }
 
 /* Overlay frames on the previewed page; below the frame editor's handles */
+.map-layers > svg.frame-overlay-previews {
+	top: 0;
+	left: 0;
+	z-index: 10;
+	pointer-events: none;
+	overflow: hidden;
+}
+
+.frame-overlay-preview {
+	pointer-events: none;
+}
+
 .frame-overlay-box {
 	position: absolute;
 	box-sizing: border-box;
@@ -5069,10 +5094,31 @@ body.dragging-color-picker * {
 	background: rgba(255, 255, 255, 0.75);
 }
 
+.frame-overlay-box.showing-content {
+	border-color: transparent;
+	background: transparent;
+}
+
+.frame-overlay-box.showing-content:hover,
+.frame-overlay-box.showing-content.dragging,
+.frame-overlay-box.showing-content.selected {
+	border-color: transparent;
+	background: transparent;
+}
+
+.frame-overlay-box.full-page-overlay {
+	cursor: default;
+}
+
 .overlay-corner-control .floating-toolbar-btn.text-btn {
 	font-size: 16px;
 	/* min-width: 24px; */
 	justify-content: center;
+}
+
+.overlay-full-page-label {
+	color: #808080;
+	font-weight: normal;
 }
 
 /* the overlay whose placement the overlay toolbar is showing */
@@ -5081,13 +5127,42 @@ body.dragging-color-picker * {
 }
 
 .frame-overlay-box-label {
-	display: block;
+	display: flex;
+	box-sizing: border-box;
+	justify-content: center;
+	width: 100%;
+	max-width: 100%;
 	padding: 3px 5px;
 	font-size: 11px;
 	color: #333;
 	white-space: nowrap;
 	pointer-events: none;
 	user-select: none;
+}
+
+.frame-overlay-box.showing-content .frame-overlay-box-label {
+	background: rgba(255, 255, 255, 0.82);
+	opacity: 0;
+}
+
+.frame-overlay-box.showing-content:hover .frame-overlay-box-label,
+.frame-overlay-box.showing-content .frame-overlay-box-label:focus-within {
+	opacity: 1;
+}
+
+.frame-overlay-preview-toggle {
+	flex: none;
+	border: 0;
+	padding: 0;
+	background: transparent;
+	color: var(--colored-text);
+	font: inherit;
+	cursor: pointer;
+	pointer-events: auto;
+}
+
+.frame-overlay-preview-toggle:hover {
+	text-decoration: underline;
 }
 
 /* Simplification control ------------ */

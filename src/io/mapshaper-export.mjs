@@ -104,7 +104,7 @@ function renderOverlayExports(catalog, datasets, opts, visited) {
   ids.forEach(function(id) {
     var frame = getFrameById(catalog, id);
     if (frame && !visited.includes(id)) {
-      overlays[id] = renderOverlayMap(catalog, frame, opts, visited.concat(id));
+      overlays[id] = renderOverlayFrameMap(catalog, frame, opts, visited.concat(id));
     }
   });
   return ids.length > 0 ? overlays : null;
@@ -113,7 +113,9 @@ function renderOverlayExports(catalog, datasets, opts, visited) {
 // An overlay frame's map, drawn the way an export of the frame would draw it.
 // Rasters are embedded, and element ids are prefixed with the frame's name so
 // they don't collide with the host's.
-function renderOverlayMap(catalog, frame, hostOpts, visited) {
+// Exported so the GUI proofing layer can show the same content as map export.
+export function renderOverlayFrameMap(catalog, frame, hostOpts, visited) {
+  visited = visited || [frame.dataset.id];
   var group = getMapExportGroups(catalog, [{layers: [frame.layer], dataset: frame.dataset}])[0];
   var datasets = group.datasets;
   var name = frame.layer.name || 'overlay';

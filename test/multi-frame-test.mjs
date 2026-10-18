@@ -584,6 +584,39 @@ describe('multiple map frames', function() {
         ['bottom-right', 'bottom-left']);
     });
 
+    it('same-sized overlays fill the page with zero margins', async function() {
+      var catalog = await run(
+        '-rectangle bbox=0,0,10,10 name=a -rectangle bbox=0,0,10,10 name=b ' +
+        '-frame target=a width=200 name=host -frame target=b width=200 name=overlay ' +
+        '-frame target=host overlay=overlay'
+      );
+      var host = I.getFrameByName(catalog, 'host');
+      var overlay = I.getFrameByName(catalog, 'overlay');
+      var p = placements(catalog, 'host')[0];
+      assert.equal(p.position, 'top-left');
+      assert.equal(p.margin_x, 0);
+      assert.equal(p.margin_y, 0);
+      assert.equal(I.framesHaveSamePageSize(host, overlay), true);
+      assert.equal(I.frameCanContainOverlay(host, overlay), true);
+      assert.deepEqual(I.getOverlayBox(p, I.getFramePageSize(host), I.getFramePageSize(overlay)),
+        {x: 0, y: 0, width: 200, height: 200});
+    });
+
+    it('only frames at least as wide and tall can contain an overlay', async function() {
+      var catalog = await run(
+        '-rectangle bbox=0,0,1,1 name=a -rectangle bbox=0,0,1,1 name=b ' +
+        '-rectangle bbox=0,0,2,1 name=c -rectangle bbox=0,0,1,2 name=d ' +
+        '-frame target=a width=100 name=source -frame target=b width=100 name=same ' +
+        '-frame target=c width=120 name=too-short -frame target=d width=60 name=too-narrow'
+      );
+      var source = I.getFrameByName(catalog, 'source');
+      assert.equal(I.frameCanContainOverlay(I.getFrameByName(catalog, 'same'), source), true);
+      assert.equal(I.frameCanContainOverlay(I.getFrameByName(catalog, 'too-short'), source), false);
+      assert.equal(I.frameCanContainOverlay(I.getFrameByName(catalog, 'too-narrow'), source), false);
+      assert.equal(I.framesHaveSamePageSize(I.getFrameByName(catalog, 'same'), source), true);
+      assert.equal(I.framesHaveSamePageSize(I.getFrameByName(catalog, 'too-short'), source), false);
+    });
+
     it('overlay= on an overlay updates its placement, keeping other settings', async function() {
       var catalog = await run(frames + '-frame target=main overlay=inset overlay-margin=5,8 ' +
         '-frame target=main overlay=inset overlay-position=top-left');
@@ -704,6 +737,9 @@ describe('multiple map frames', function() {
         {position: 'bottom-right', margin_x: 10, margin_y: 10});
       assert.deepEqual(I.getOverlayPlacementFromBox({x: -5, y: 3, width: 40, height: 20}, host),
         {position: 'top-left', margin_x: -5, margin_y: 3});
+      assert.deepEqual(I.getOverlayPlacementFromBox(
+        {x: 7.86, y: 10.17, width: 40, height: 20}, host
+      ), {position: 'top-left', margin_x: 8, margin_y: 10});
       var box = I.getOverlayBox({position: 'bottom-right', margin_x: 10, margin_y: 10}, host,
         {width: 40, height: 20});
       assert.deepEqual(box, {x: 150, y: 70, width: 40, height: 20});

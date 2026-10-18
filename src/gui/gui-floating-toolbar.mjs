@@ -175,6 +175,16 @@ function ToolbarSegmentedControl(parent, caption, items, opts) {
     return value;
   };
 
+  this.show = function() {
+    el.show();
+    return this;
+  };
+
+  this.hide = function() {
+    el.hide();
+    return this;
+  };
+
   this.on = function(event, fn) {
     if (event == 'change') changeHandlers.push(fn);
     return this;
@@ -230,6 +240,16 @@ function ToolbarTextField(parent, caption, opts) {
 
   this.getValue = function() {
     return input.node().value.trim();
+  };
+
+  this.show = function() {
+    el.show();
+    return this;
+  };
+
+  this.hide = function() {
+    el.hide();
+    return this;
   };
 
   this.on = function(event, fn) {

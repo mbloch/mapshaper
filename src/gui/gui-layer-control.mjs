@@ -855,7 +855,7 @@ export function LayerControl(gui) {
         actions.push({label: 'remove overlay from: ' + name, run: function() {
           runRemoveOverlayCommand(gui, host, frame);
         }});
-      } else {
+      } else if (internal.frameCanContainOverlay(host, frame)) {
         actions.push({label: 'overlay on frame: ' + name, run: function() {
           runPlacementCommand(gui, host, frame, null, 'Overlay frame');
         }});

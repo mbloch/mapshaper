@@ -22,6 +22,7 @@ export var ExportControl = function(gui) {
   var frameGroups = [];
   var selectionTouched = false; // the user has checked or unchecked a layer
   var selectionFormatClass = null; // the kind of format the selection was made for
+  var selectionBeforeSnapshot = null; // checked states before the whole-project view
   var sessionFormat = null; // the format last picked by the user, for this session
   var menuFormats = null; // formats the format menu was built with
   var formatPickedByUser = false;
@@ -96,6 +97,7 @@ export var ExportControl = function(gui) {
     formatPickedByUser = false;
     selectionTouched = false;
     selectionFormatClass = null;
+    selectionBeforeSnapshot = null;
     // initZipOption();
     initFormatMenu(sessionFormat);
     formatPickedByUser = !!sessionFormat && getSelectedFormat() == sessionFormat;
@@ -107,6 +109,7 @@ export var ExportControl = function(gui) {
   function turnOff() {
     layersArr = [];
     frameGroups = [];
+    selectionBeforeSnapshot = null;
     menu.hide();
   }
 
@@ -133,12 +136,36 @@ export var ExportControl = function(gui) {
   function syncSelectionWithFormat() {
     var fmt = getSelectedFormat();
     var cls = getFormatClass(fmt);
-    menu.findChild('.export-layers').classed('hidden', exportsWholeProject(fmt));
+    var wholeProject = exportsWholeProject(fmt);
+    if (wholeProject && !selectionBeforeSnapshot) {
+      selectionBeforeSnapshot = layersArr.map(function(item) {
+        return item.checkbox.checked;
+      });
+    } else if (!wholeProject && selectionBeforeSnapshot) {
+      layersArr.forEach(function(item, i) {
+        item.checkbox.checked = selectionBeforeSnapshot[i];
+      });
+      selectionBeforeSnapshot = null;
+    }
     if (cls != selectionFormatClass && !selectionTouched) {
       selectionFormatClass = cls;
       applyDefaultSelection(cls);
     }
+    if (wholeProject) setLayerSelection(true);
+    setContentSelectionDisabled(wholeProject);
     updateFrameGroups();
+    updateToggleCheckbox();
+  }
+
+  function setContentSelectionDisabled(disabled) {
+    menu.findChild('.export-layers').classed('all-content-included', disabled);
+    layersArr.forEach(function(item) {
+      item.checkbox.disabled = disabled;
+    });
+    frameGroups.forEach(function(group) {
+      group.checkbox.disabled = disabled;
+    });
+    if (toggleBtn) toggleBtn.disabled = disabled;
   }
 
   // Without frames, every layer starts checked. With frames, a map format
@@ -462,6 +489,10 @@ export var ExportControl = function(gui) {
     refreshFormatMenu(); // the layer selection decides which formats apply
     updateFrameGroups();
     updateExportCheckboxes(); // checkbox visibility is affected by number of export layers
+    updateToggleCheckbox();
+  }
+
+  function updateToggleCheckbox() {
     if (!toggleBtn) return;
     var state = getSelectionState();
     // style of intermediate checkbox state doesn't look right in Chrome --

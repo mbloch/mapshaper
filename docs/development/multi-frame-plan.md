@@ -463,6 +463,11 @@ placement):
 A placement that would push the overlay partly off the host page is
 allowed, as with scalebars.
 
+The GUI only offers hosts whose page is at least as wide and tall as the
+overlay page. Equal-sized frames are treated as full-page overlays: they use
+zero margins, cannot be dragged, and the placement toolbar replaces its corner
+and margin controls with a "Full page" label.
+
 **Export.** Overlay frames are listed in the export dialog with the other
 frames but start unchecked; checking one exports it as its own file as
 well. Host and other primary frames start checked.
@@ -1007,7 +1012,9 @@ resizing the host.
   overlay is drawn at its nominal size even when `-o width=` resizes the
   host.
 - GUI: in preview, the active frame's overlays are boxes labeled with the
-  overlay's name (`gui-frame-overlays.mjs`). Dragging one runs one `-frame
+  overlay's name (`gui-frame-overlays.mjs`). A `show` / `hide` link in each
+  label toggles proofing of that overlay's exported content; the box remains
+  the draggable placement chrome. Dragging one runs one `-frame
   overlay=` command on release. Clicking one selects it and opens a toolbar
   below the map, like the resize tool's: the overlay's name, the corner (four
   arrow segments), one Margin field (`10` or `10,20`, as in
@@ -1038,9 +1045,23 @@ resizing the host.
   Escape; it now takes the key only while a box or its options are on the
   map, at the priority it asked for.
 
-**6. Proofing mode (deferred).** Render overlay contents in place in the
-GUI. Needs a second transform and clip in the renderer and must stay out of
-per-shape hot loops.
+**6. Proofing mode.** Render overlay contents in place in the GUI.
+
+*Status: done.* Notes:
+- Placeholder boxes are the default. Each box has a transient `show` /
+  `hide` link; the choice is per host-overlay placement and is not written
+  to commands, history or snapshots.
+- Proofing reuses `renderOverlayFrameMap()`, the same nested SVG composition
+  as rendered export. It therefore includes the overlay frame's visible
+  members, stacking, background, neatline, rasters, furniture and nested
+  overlays.
+- Rendered content is cached by overlay frame and mounted in a
+  pointer-events-free SVG layer under the preview mask. Navigation,
+  placement dragging and host resizing only reposition it; model changes
+  invalidate the cache, and hidden overlays are not rendered.
+- Proofed content is not interactive. The box remains above it for
+  selection and placement, and the overlay frame's features are edited in
+  that frame's own view.
 
 **7. HTML variants and grids; PDF pages.** Responsive variants from
 different-sized primary frames; same-size stacks and grids.

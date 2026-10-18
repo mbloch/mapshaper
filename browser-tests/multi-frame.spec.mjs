@@ -467,9 +467,22 @@ test.describe('export dialog with frames', function() {
     await expect(group.locator('.export-frame-count')).toHaveText('2 of 2 layers');
   });
 
-  test('a snapshot holds the whole project, with no checklist', async function({page}) {
+  test('a snapshot shows that the whole project is included', async function({page}) {
+    var content = page.locator('.export-layers');
+    var checkboxes = content.locator('input[type="checkbox"]');
+    await expect(exportRow(page, 'r2').locator('input')).not.toBeChecked();
     await page.locator('.export-formats input[value="msx"]').check();
-    await expect(page.locator('.export-layers')).toBeHidden();
+    await expect(content).toBeVisible();
+    await expect(content).toHaveClass(/all-content-included/);
+    expect(await checkboxes.count()).toBeGreaterThan(0);
+    expect(await checkboxes.evaluateAll(function(nodes) {
+      return nodes.every(function(node) { return node.checked && node.disabled; });
+    })).toBe(true);
+    await page.locator('.export-formats input[value="svg"]').check();
+    await expect(exportRow(page, 'r2').locator('input')).not.toBeChecked();
+    expect(await checkboxes.evaluateAll(function(nodes) {
+      return nodes.every(function(node) { return !node.disabled; });
+    })).toBe(true);
   });
 });
 

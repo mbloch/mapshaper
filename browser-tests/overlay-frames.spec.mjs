@@ -24,7 +24,10 @@ test.describe('overlay frames', function() {
     await showHost(page, SETUP + ' -frame target=f1 overlay=f2');
     var box = page.locator('.frame-overlay-box');
     await expect(box).toHaveCount(1);
-    await expect(box).toHaveText('f2');
+    await expect(box).toHaveAttribute('data-overlay', 'f2');
+    await expect(box).not.toContainText('f2');
+    await expect(box.locator('.frame-overlay-preview-toggle')).toHaveText('show');
+    await expect(page.locator('.frame-overlay-preview')).toHaveCount(0);
     var page1 = await page.locator('.preview-page-border').boundingBox();
     var b = await box.boundingBox();
     // a quarter of the page's width, 10px (scaled) from the right and bottom
@@ -37,9 +40,16 @@ test.describe('overlay frames', function() {
   test('dragging a box saves the nearest corner and margins in one command; undo restores',
       async function({page}) {
     await showHost(page, SETUP + ' -frame target=f1 overlay=f2');
+    await page.locator('.frame-overlay-preview-toggle').click();
+    var preview = page.locator('.frame-overlay-preview');
+    await expect(preview).toHaveCount(1);
+    await expect(preview.locator('path')).not.toHaveCount(0);
     var before = await getSignature(page);
     var page1 = await page.locator('.preview-page-border').boundingBox();
     var b = await page.locator('.frame-overlay-box').boundingBox();
+    var previewBefore = await preview.boundingBox();
+    expect(Math.abs(previewBefore.x - b.x)).toBeLessThan(1.5);
+    expect(Math.abs(previewBefore.y - b.y)).toBeLessThan(1.5);
     var k = page1.width / 400;
     // to 20,30 page pixels from the top-left corner
     var dx = page1.x + 20 * k - b.x;
@@ -56,6 +66,11 @@ test.describe('overlay frames', function() {
     expect(rec.position).toBe('top-left');
     expect(rec.margin_x).toBeCloseTo(20, -0.5);
     expect(rec.margin_y).toBeCloseTo(30, -0.5);
+    var previewAfter = await preview.boundingBox();
+    expect(Math.abs(previewAfter.x - (b.x + dx))).toBeLessThan(1.5);
+    expect(Math.abs(previewAfter.y - (b.y + dy))).toBeLessThan(1.5);
+    await page.locator('.frame-overlay-preview-toggle').click();
+    await expect(preview).toHaveCount(0);
     await page.evaluate(function() { return window.mapshaper.undoTest.undo(); });
     await expect.poll(function() { return getSignature(page); }).toBe(before);
     expect((await getPlacement(page)).position).toBe('bottom-right');
@@ -70,7 +85,7 @@ test.describe('overlay frames', function() {
     };
     var margin = toolbar.locator('.overlay-toolbar-margin-input');
     await expect(toolbar).toBeVisible();
-    await expect(toolbar.locator('.floating-toolbar-label')).toHaveText('f2');
+    await expect(toolbar.locator('.overlay-frame-name')).toHaveText('f2');
     await expect(page.locator('.frame-overlay-box')).toHaveClass(/selected/);
     await expect(corner('Bottom right')).toHaveClass(/selected/);
     await expect(margin).toHaveValue('10');
