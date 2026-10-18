@@ -18,16 +18,17 @@ var cornerOptions = [
 var DRAG_THRESHOLD = 3;
 
 // The overlay frames placed on the frame being previewed, drawn as labeled
-// boxes on its page. Dragging a box moves the overlay; on release, the
-// placement is re-expressed as the nearest corner and two margins and saved
-// with one -frame command. Clicking a box opens a toolbar with the same
-// settings as numbers. Each box can also proof the overlay's export-composed
-// content in a pointer-events-free SVG layer below the placement chrome.
+// boxes on its page. Clicking a box opens a toolbar; while that toolbar is
+// open, dragging the box moves the overlay. On release, the placement is
+// re-expressed as the nearest corner and two margins and saved with one -frame
+// command. Otherwise, drag and wheel gestures on a box reach the map. Each box
+// can also proof the overlay's export-composed content in a pointer-events-free
+// SVG layer below the placement chrome.
 export function FrameOverlays(gui) {
   var ext = gui.map.getExtent();
-  var container = El('div').addClass('frame-overlay-boxes').appendTo('body');
-  var previewRoot = document.createElementNS(SVG_NS, 'svg');
   var mapLayers = gui.container.findChild('.map-layers').node();
+  var container = El('div').addClass('frame-overlay-boxes').appendTo(mapLayers);
+  var previewRoot = document.createElementNS(SVG_NS, 'svg');
   var boxes = [];
   var drag = null;
   var shownPreviews = new Set(); // host dataset ID + overlay dataset ID
@@ -75,18 +76,15 @@ export function FrameOverlays(gui) {
     return gui.map.isPreviewView() ? gui.model.getActiveFrame() : null;
   }
 
-  // The host page on the screen: {left, top, kx, ky}, where k is screen
-  // pixels per page pixel
+  // The host page in map-local screen coordinates, where k is screen pixels
+  // per page pixel
   function getPageTransform() {
     var frame = resizePreview || gui.map.getPreviewFrameData();
-    var pos = ext.position();
     var p1, p2;
     if (!frame || !(frame.width > 0) || !(frame.height > 0)) return null;
     p1 = ext.translateCoords(frame.bbox[0], frame.bbox[3]);
     p2 = ext.translateCoords(frame.bbox[2], frame.bbox[1]);
     return {
-      left: Math.min(p1[0], p2[0]) + pos.pageX,
-      top: Math.min(p1[1], p2[1]) + pos.pageY,
       mapLeft: Math.min(p1[0], p2[0]),
       mapTop: Math.min(p1[1], p2[1]),
       kx: Math.abs(p2[0] - p1[0]) / frame.width,
@@ -125,6 +123,12 @@ export function FrameOverlays(gui) {
       item.el.classed('full-page-overlay', item.fullPage);
       item.el.classed('showing-content', item.showingContent);
       item.el.on('mousedown', function(e) { onMouseDown(e, item); });
+      item.el.on('click', function(e) {
+        if (panel.isEditing(item.frame)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        panel.open(item.host, item.frame);
+      });
       if (item.showingContent) {
         wantedPreviews.add(key);
         item.previewEl = getPreviewNode(item);
@@ -157,8 +161,8 @@ export function FrameOverlays(gui) {
 
   function positionBox(item, page) {
     item.el.css({
-      left: page.left + item.box.x * page.kx,
-      top: page.top + item.box.y * page.ky,
+      left: page.mapLeft + item.box.x * page.kx,
+      top: page.mapTop + item.box.y * page.ky,
       width: Math.max(item.box.width * page.kx, 1),
       height: Math.max(item.box.height * page.ky, 1)
     });
@@ -256,7 +260,7 @@ export function FrameOverlays(gui) {
 
   function onMouseDown(e, item) {
     var page = getPageTransform();
-    if (e.button !== 0 || !page) return;
+    if (e.button !== 0 || !page || !panel.isEditing(item.frame)) return;
     e.preventDefault();
     e.stopPropagation();
     drag = {

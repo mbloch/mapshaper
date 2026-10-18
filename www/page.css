@@ -5084,8 +5084,12 @@ body.dragging-color-picker * {
 	z-index: 14;
 	border: 1px dashed #555;
 	background: rgba(255, 255, 255, 0.55);
-	cursor: move;
+	cursor: inherit;
 	overflow: hidden;
+}
+
+.frame-overlay-box.selected {
+	cursor: move;
 }
 
 .frame-overlay-box:hover,
@@ -5133,7 +5137,7 @@ body.dragging-color-picker * {
 	width: 100%;
 	max-width: 100%;
 	padding: 3px 5px;
-	font-size: 11px;
+	font-size: 12px;
 	color: #333;
 	white-space: nowrap;
 	pointer-events: none;
@@ -5141,7 +5145,7 @@ body.dragging-color-picker * {
 }
 
 .frame-overlay-box.showing-content .frame-overlay-box-label {
-	background: rgba(255, 255, 255, 0.82);
+	background: rgba(255, 255, 255, 0.7);
 	opacity: 0;
 }
 

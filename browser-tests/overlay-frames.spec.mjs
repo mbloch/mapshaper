@@ -40,13 +40,29 @@ test.describe('overlay frames', function() {
   test('dragging a box saves the nearest corner and margins in one command; undo restores',
       async function({page}) {
     await showHost(page, SETUP + ' -frame target=f1 overlay=f2');
+    var box = page.locator('.frame-overlay-box');
+    var pageBeforePan = await page.locator('.preview-page-border').boundingBox();
+    var boxBeforePan = await box.boundingBox();
+    await page.mouse.move(boxBeforePan.x + 10, boxBeforePan.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(boxBeforePan.x + 30, boxBeforePan.y + 25, {steps: 4});
+    await page.mouse.up();
+    var pageAfterPan = await page.locator('.preview-page-border').boundingBox();
+    var boxAfterPan = await box.boundingBox();
+    expect(Math.abs(pageAfterPan.x - pageBeforePan.x)).toBeGreaterThan(5);
+    expect(Math.abs(pageAfterPan.y - pageBeforePan.y)).toBeGreaterThan(5);
+    expect(boxAfterPan.x - boxBeforePan.x).toBeCloseTo(pageAfterPan.x - pageBeforePan.x, 0);
+    expect(boxAfterPan.y - boxBeforePan.y).toBeCloseTo(pageAfterPan.y - pageBeforePan.y, 0);
+    expect((await getPlacement(page)).position).toBe('bottom-right');
+    await box.click();
+    await expect(page.locator('.overlay-toolbar')).toBeVisible();
     await page.locator('.frame-overlay-preview-toggle').click();
     var preview = page.locator('.frame-overlay-preview');
     await expect(preview).toHaveCount(1);
     await expect(preview.locator('path')).not.toHaveCount(0);
     var before = await getSignature(page);
     var page1 = await page.locator('.preview-page-border').boundingBox();
-    var b = await page.locator('.frame-overlay-box').boundingBox();
+    var b = await box.boundingBox();
     var previewBefore = await preview.boundingBox();
     expect(Math.abs(previewBefore.x - b.x)).toBeLessThan(1.5);
     expect(Math.abs(previewBefore.y - b.y)).toBeLessThan(1.5);
@@ -74,6 +90,14 @@ test.describe('overlay frames', function() {
     await page.evaluate(function() { return window.mapshaper.undoTest.undo(); });
     await expect.poll(function() { return getSignature(page); }).toBe(before);
     expect((await getPlacement(page)).position).toBe('bottom-right');
+    await page.locator('.overlay-toolbar').getByText('Done').click();
+    var pageBeforeZoom = await page.locator('.preview-page-border').boundingBox();
+    var boxBeforeZoom = await box.boundingBox();
+    await page.mouse.move(boxBeforeZoom.x + 10, boxBeforeZoom.y + 10);
+    await page.mouse.wheel(0, -100);
+    await expect.poll(async function() {
+      return (await page.locator('.preview-page-border').boundingBox()).width;
+    }).not.toBeCloseTo(pageBeforeZoom.width, 0);
   });
 
   test('clicking a box opens its placement as numbers', async function({page}) {
