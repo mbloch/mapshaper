@@ -31567,6 +31567,10 @@
       position: rec.position,
       margin_x: rec.margin_x,
       margin_y: rec.margin_y
+    } : framesHaveSamePageSize(host, overlay) ? {
+      position: 'top-left',
+      margin_x: 0,
+      margin_y: 0
     } : {
       position: getFreeOverlayCorner(host.dataset),
       margin_x: DEFAULT_OVERLAY_MARGIN,
@@ -31656,18 +31660,37 @@
     return {width: data.width, height: data.height};
   }
 
+  function frameCanContainOverlay(host, overlay) {
+    var hostSize = getFramePageSize(host);
+    var overlaySize = getFramePageSize(overlay);
+    return overlaySize.width <= hostSize.width + 1e-9 &&
+      overlaySize.height <= hostSize.height + 1e-9;
+  }
+
+  function framesHaveSamePageSize(a, b) {
+    return pageSizesAreEqual(getFramePageSize(a), getFramePageSize(b));
+  }
+
   // The overlay's box on the host page, in host page pixels (top-left origin)
   // @host, @overlay {width, height}
   function getOverlayBox(rec, host, overlay) {
     var corner = normalizeCorner(rec.position) || DEFAULT_CORNER_ORDER[0];
     var mx = isFinite(rec.margin_x) ? +rec.margin_x : DEFAULT_OVERLAY_MARGIN;
     var my = isFinite(rec.margin_y) ? +rec.margin_y : DEFAULT_OVERLAY_MARGIN;
+    if (pageSizesAreEqual(host, overlay)) {
+      return {x: 0, y: 0, width: overlay.width, height: overlay.height};
+    }
     return {
       x: /right/.test(corner) ? host.width - overlay.width - mx : mx,
       y: /bottom/.test(corner) ? host.height - overlay.height - my : my,
       width: overlay.width,
       height: overlay.height
     };
+  }
+
+  function pageSizesAreEqual(a, b) {
+    return Math.abs(a.width - b.width) < 1e-9 &&
+      Math.abs(a.height - b.height) < 1e-9;
   }
 
   // The inverse of getOverlayBox(): a placement anchored to the corner nearest
@@ -31677,8 +31700,10 @@
     var bottom = box.y + box.height / 2 > host.height / 2;
     return {
       position: (bottom ? 'bottom' : 'top') + '-' + (right ? 'right' : 'left'),
-      margin_x: roundPx$1(right ? host.width - box.x - box.width : box.x),
-      margin_y: roundPx$1(bottom ? host.height - box.y - box.height : box.y)
+      // A drag starts in screen pixels and is converted back to page pixels;
+      // don't preserve conversion noise in the placement command.
+      margin_x: Math.round(right ? host.width - box.x - box.width : box.x),
+      margin_y: Math.round(bottom ? host.height - box.y - box.height : box.y)
     };
   }
 
@@ -31723,6 +31748,8 @@
     DEFAULT_OVERLAY_MARGIN: DEFAULT_OVERLAY_MARGIN,
     OVERLAY_CORNERS: OVERLAY_CORNERS,
     findOverlayLayer: findOverlayLayer,
+    frameCanContainOverlay: frameCanContainOverlay,
+    framesHaveSamePageSize: framesHaveSamePageSize,
     getFrameOverlayLayers: getFrameOverlayLayers,
     getFramePageSize: getFramePageSize,
     getHostOverlays: getHostOverlays,
@@ -46733,7 +46760,7 @@ ${css.join('\n')}
     ids.forEach(function(id) {
       var frame = getFrameById(catalog, id);
       if (frame && !visited.includes(id)) {
-        overlays[id] = renderOverlayMap(catalog, frame, opts, visited.concat(id));
+        overlays[id] = renderOverlayFrameMap(catalog, frame, opts, visited.concat(id));
       }
     });
     return ids.length > 0 ? overlays : null;
@@ -46742,7 +46769,9 @@ ${css.join('\n')}
   // An overlay frame's map, drawn the way an export of the frame would draw it.
   // Rasters are embedded, and element ids are prefixed with the frame's name so
   // they don't collide with the host's.
-  function renderOverlayMap(catalog, frame, hostOpts, visited) {
+  // Exported so the GUI proofing layer can show the same content as map export.
+  function renderOverlayFrameMap(catalog, frame, hostOpts, visited) {
+    visited = visited || [frame.dataset.id];
     var group = getMapExportGroups(catalog, [{layers: [frame.layer], dataset: frame.dataset}])[0];
     var datasets = group.datasets;
     var name = frame.layer.name || 'overlay';
@@ -47165,7 +47194,8 @@ ${css.join('\n')}
     assignUniqueLayerNames: assignUniqueLayerNames,
     exportFileContent: exportFileContent,
     exportTargetLayers: exportTargetLayers,
-    formatVersionedFileName: formatVersionedFileName
+    formatVersionedFileName: formatVersionedFileName,
+    renderOverlayFrameMap: renderOverlayFrameMap
   });
 
   function detectEncodingFromBOM(bytes) {
