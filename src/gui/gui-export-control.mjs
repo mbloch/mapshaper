@@ -674,7 +674,8 @@ export var ExportControl = function(gui) {
 
   // One map per frame with checked layers, and one frameless map of any
   // checked unframed layers. When there are several files, each frame's is
-  // named after the frame.
+  // named after the frame. HTML maps of frames of different widths share a
+  // file (see combineHtmlMaps()).
   async function exportFrameMaps(items, opts) {
     var parts = [];
     var files = [];
@@ -694,11 +695,13 @@ export var ExportControl = function(gui) {
         targets = addFrameFurnitureTargets(targets, partOpts.gui_frame, part.frame);
         if (parts.length > 1) {
           partOpts.file = internal.getFrameExportFilename(part.frame, opts.file, opts.format);
+          partOpts.html_artboards = opts.format == 'html';
+          partOpts.html_artboard_name = part.frame.layer.name;
         }
       }
       files = files.concat(await internal.exportTargetLayers(model, targets, partOpts));
     }
-    return files;
+    return opts.format == 'html' ? internal.combineHtmlMaps(files, opts) : files;
   }
 
   function getGuiFrameContext(target) {

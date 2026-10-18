@@ -524,6 +524,28 @@ describe('multiple map frames', function() {
     });
   });
 
+  describe('-graticule', function() {
+    var projected = '-rectangle bbox=-20,-10,20,10 name=a -rectangle bbox=0,0,1,1 name=c ' +
+      '-proj target=a robinson -frame target=a width=200 name=f1 ';
+
+    it('a graticule of a member joins its frame, in the frame\'s projection', async function() {
+      var catalog = await run(projected + '-graticule target=f1:a');
+      var grat = findLayer(catalog, 'graticule');
+      assert.equal(frameOf(catalog, 'graticule'), 'f1');
+      assert(I.getDatasetBounds(grat.dataset).xmax > 1000);
+    });
+
+    it('a graticule of a frame joins that frame', async function() {
+      var catalog = await run(projected + '-graticule target=f1');
+      assert.equal(frameOf(catalog, 'graticule'), 'f1');
+    });
+
+    it('a graticule of an unframed layer is unframed', async function() {
+      var catalog = await run(projected + '-graticule target=c');
+      assert.equal(frameOf(catalog, 'graticule'), null);
+    });
+  });
+
   describe('getFrameMemberRef()', function() {
     function refOf(catalog, frameName, index) {
       var frame = I.getFrameByName(catalog, frameName);

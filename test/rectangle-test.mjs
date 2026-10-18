@@ -8,6 +8,18 @@ var captureLogCallsAsync = helpers.captureLogCallsAsync;
 
 describe('mapshaper-rectangle.js', function () {
 
+  it('-rectangle + names the new layer "rectangle"', async function() {
+    var out = await api.applyCommands('-rectangle bbox=0,0,10,10 name=a ' +
+      '-rectangle + -o target=* format=geojson');
+    assert.deepEqual(Object.keys(out).sort(), ['a.json', 'rectangle.json']);
+  });
+
+  it('-rectangle without + keeps the target layer\'s name', async function() {
+    var out = await api.applyCommands('-rectangle bbox=0,0,10,10 name=a ' +
+      '-rectangle -o target=* format=geojson');
+    assert.deepEqual(Object.keys(out), ['a.json']);
+  });
+
   describe('-rectangles command with bbox= option', async function() {
     var csv = 'bbox\n"[0,0,1,1]"\n"[2,0,3,1]"';
     var cmd = '-i data.csv -rectangles bbox="JSON.parse(bbox)" -o data.json';

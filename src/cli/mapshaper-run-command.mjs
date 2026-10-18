@@ -346,6 +346,8 @@ export async function runCommand(command, job) {
 
     } else if (name == 'calc') {
       outputDataset = cmd.calc(targetLayers, arcs, opts);
+      // + (to-layer) saves the results beside the target layers, not in place of them
+      if (opts.to_layer) opts = Object.assign({}, opts, {no_replace: true});
 
     } else if (name == 'check-geometry') {
       applyCommandToEachLayer(cmd.checkGeometry, targetLayers, targetDataset, opts);
@@ -443,7 +445,9 @@ export async function runCommand(command, job) {
       applyCommandToEachLayer(cmd.fuzzyJoin, targetLayers, arcs, source, opts);
 
     } else if (name == 'graticule') {
-      job.catalog.addDataset(cmd.graticule(targetDataset, opts));
+      let graticule = cmd.graticule(targetDataset, opts);
+      inheritFrameRef(graticule, targetDataset ? [targetDataset] : []);
+      job.catalog.addDataset(graticule);
 
     } else if (name == 'grid') {
       outputDataset = cmd.polygonGrid(targetLayers, targetDataset, opts);

@@ -152,6 +152,7 @@ import * as FrameProjection from './furniture/mapshaper-frame-projection';
 import * as FrameResolver from './furniture/mapshaper-frame-resolver';
 import * as FrameMembers from './furniture/mapshaper-frame-members';
 import * as FrameExport from './furniture/mapshaper-frame-export';
+import * as HtmlExport from './html/mapshaper-html-export';
 import * as Overlays from './furniture/mapshaper-overlays';
 import * as LayerStacking from './dataset/mapshaper-layer-stacking';
 import * as FrameUtils from './furniture/mapshaper-frame-utils';
@@ -309,6 +310,7 @@ Object.assign(internal,
   FrameResolver,
   FrameMembers,
   FrameExport,
+  HtmlExport,
   Overlays,
   LayerStacking,
   FrameUtils,

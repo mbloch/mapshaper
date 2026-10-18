@@ -186,10 +186,10 @@ describe('frame membership', function() {
       });
     });
 
-    it('-graticule is unframed even when the target is a member', async function() {
+    it('-graticule joins the frame of a target that is a member', async function() {
       var catalog = await runWithMembership('-i test/data/geojson/two_states.json name=states',
         [true], '-graticule');
-      assert.equal(getFrameRef(findDataset(catalog, 'graticule')), null);
+      assert.equal(getFrameRef(findDataset(catalog, 'graticule')), f1(catalog));
     });
 
     it('commands that replace layers keep the dataset in its frame', async function() {

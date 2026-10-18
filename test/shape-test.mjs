@@ -4,6 +4,12 @@ import api from '../mapshaper.js';
 
 describe('mapshaper-shape.js', function () {
 
+  it('+ is accepted, and the shape keeps its default name', async function() {
+    var out = await api.applyCommands('-rectangle bbox=0,0,10,10 name=a ' +
+      '-shape coordinates=0,0,1,1,1,0,0,0 + -o target=* format=geojson');
+    assert.deepEqual(Object.keys(out).sort(), ['a.json', 'shape.json']);
+  });
+
   it ('create a polyline', function(done) {
     api.applyCommands('-shape coordinates=10,10 offsets=0,10,10,0,0,-10 -o out.json', {}, function(err, output) {
       var line = JSON.parse(output['out.json']).geometries[0];

@@ -178,9 +178,12 @@ sites in `mapshaper-run-command.mjs`, plus `mergeCommandTargets()`,
 `-target` combine, `-external` and `mapshaper-command-utils.mjs`. Apply one
 central rule: an output dataset derived from target datasets inherits their
 frame if they all share one, and is unframed otherwise. Datasets made from
-nothing (`-i`, `-graticule`, `-shape`, `-add-layer`) are unframed unless the
-command is given a destination (GUI imports and draw links pass the active
-frame; see below).
+nothing (`-i`, `-shape`) are unframed unless the command is given a
+destination (GUI imports and draw links pass the active frame; see below).
+`-add-layer` and `-graticule` count their target as the source: a graticule
+is drawn in its target's coordinate system, so it joins the target's frame.
+`-shape` stays unframed until it projects its coordinates to the target's
+coordinate system.
 
 **`info` propagation.** `mergeDatasetInfo()` (both versions) uses
 `utils.defaults()`, so a merged-in source can leak its reference into an
@@ -1065,6 +1068,26 @@ resizing the host.
 
 **7. HTML variants and grids; PDF pages.** Responsive variants from
 different-sized primary frames; same-size stacks and grids.
+
+*Responsive variants: done.* Notes:
+- A map export of several frames to HTML writes one file when the frames'
+  widths differ, following ai2html: each frame's map is shown from its own
+  width up to one pixel below the next wider frame's, and the narrowest at
+  any smaller width. CSS container queries on a wrapper div do the
+  switching (ai2html's default); without support, only the narrowest map is
+  shown. Frames of the same width keep one file each, with a message.
+- With `responsiveness=fixed`, the narrowest map shrinks below its width
+  instead of overflowing, as in ai2html; a single-frame fixed map does too.
+- Each frame is rendered by `exportHTML()` with `html_artboards`, which
+  returns the map with a placeholder id; `combineHtmlMaps()` puts the maps
+  together for both the CLI (`exportFrameMaps()`) and the export dialog.
+- Several maps on one page: ids are `ms-<file>-<hash of the HTML>`, each
+  frame's map is `<id>-<frame>`, and ids in each overlay's `<defs>` (label
+  paths, patterns, numbered glow and line-fade filters) begin with the map's
+  id, so a reference never resolves to another map or to a hidden frame.
+  Layer and feature ids in the overlays are not prefixed.
+- Hidden maps' images use `loading="lazy"`, so they load when shown.
+- Still to do: same-size stacks and grids; PDF pages.
 
 **8. Container frames (future).**
 

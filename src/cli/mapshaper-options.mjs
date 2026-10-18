@@ -547,7 +547,7 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('responsiveness', {
-      describe: '[HTML] fixed or dynamic (resizes to fill its container)'
+      describe: '[HTML] fixed (shrinks to fit) or dynamic (resizes to fill its container)'
     })
     .option('image-format', {
       describe: '[HTML] format of the map image: png or jpg (default is png)'
@@ -1502,7 +1502,13 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('name', nameOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', {
+      alias: '+',
+      type: 'flag',
+      label: '+, no-replace',
+      describe: 'add the graticule as a new layer (the default; never replaces the target)'
+    });
 
 
   // for testing grid update
@@ -2941,7 +2947,13 @@ export function getOptionParser() {
       // describe: 'two or three angles of rotation',
       type: 'numbers'
     })
-    .option('name', nameOpt);
+    .option('name', nameOpt)
+    .option('no-replace', {
+      alias: '+',
+      type: 'flag',
+      label: '+, no-replace',
+      describe: 'add the shape as a new layer (the default; never replaces the target)'
+    });
 
   parser.command('subdivide')
     .describe('recursively split a layer using a JS expression')

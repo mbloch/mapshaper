@@ -135,6 +135,14 @@ describe('mapshaper-graticule.js', function () {
     });
   });
 
+  it('+ is accepted, and the target layer is kept either way', async function() {
+    var cmd = '-rectangle bbox=0,0,10,10 name=a -graticule ';
+    var withPlus = await api.applyCommands(cmd + '+ -o target=* format=geojson');
+    var without = await api.applyCommands(cmd + '-o target=* format=geojson');
+    assert.deepEqual(Object.keys(withPlus).sort(), ['a.json', 'graticule.json']);
+    assert.deepEqual(Object.keys(without).sort(), ['a.json', 'graticule.json']);
+  });
+
   it('create latlong graticule if no data has been loaded', function(done) {
 
     api.internal.testCommands('-graticule', function(err, dataset) {

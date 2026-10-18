@@ -13,9 +13,14 @@ async function exportHTML(cmd, outOpts) {
   return api.applyCommands(cmd + ' -o target=* out.html ' + (outOpts || ''));
 }
 
+// The map's id, ms-out-<hash>, is written as ms-out
 async function html(cmd, outOpts) {
   var out = await exportHTML(cmd, outOpts);
-  return String(out['out.html']);
+  return removeIdHash(String(out['out.html']));
+}
+
+function removeIdHash(str) {
+  return str.replace(/(ms-\w+)-[0-9a-f]{6}\b/g, '$1');
 }
 
 function anchors(str) {
@@ -124,9 +129,9 @@ describe('HTML output', function () {
   });
 
   describe('responsiveness', function () {
-    it('fixed is the default, and sizes the map in pixels', async function () {
+    it('fixed is the default, and sizes the map in pixels, shrinking it to fit a narrower container', async function () {
       var str = await html(FRAME);
-      assert.ok(str.includes('#ms-out {position:relative;overflow:hidden;width:200px;height:100px;}'));
+      assert.ok(str.includes('#ms-out {position:relative;overflow:hidden;width:100%;max-width:200px;aspect-ratio:200 / 100;}'));
     });
 
     it('dynamic fills the width of the container, keeping the aspect ratio', async function () {
@@ -136,6 +141,86 @@ describe('HTML output', function () {
 
     it('rejects other values', async function () {
       await assert.rejects(exportHTML(FRAME, 'responsiveness=fluid'), /responsiveness/);
+    });
+  });
+
+  describe('frames of different widths', function () {
+    function frame(name, width) {
+      return ` -rectangle bbox=0,0,200,100 name=${name}-box -frame target=${name}-box width=${width} name=${name}`;
+    }
+    var TWO = frame('small', 300) + frame('large', 600);
+
+    async function exportFrames(cmd, outOpts) {
+      return api.applyCommands(cmd + ' -o target=small,large,mid map.html ' + (outOpts || ''));
+    }
+
+    // the CSS of each map in the file, by name
+    function mapCss(str) {
+      var o = {};
+      str.replace(/<div id="ms-map-(\w+)" class="ms-map"[^]*?<\/style>/g, function(s, name) {
+        o[name] = s;
+      });
+      return o;
+    }
+
+    it('share one file, which shows the widest map that fits the container', async function () {
+      var out = await exportFrames(TWO);
+      var str = removeIdHash(String(out['map.html']));
+      var css = mapCss(str);
+      assert.deepEqual(Object.keys(out).sort(), ['map-large.png', 'map-small.png', 'map.html']);
+      assert.ok(str.startsWith('<div id="ms-map" class="ms-maps">\n<style>\n#ms-map {container-type:inline-size;container-name:ms-map;}'));
+      // the narrowest map is shown by default, and shrinks to fit a narrower container
+      assert.ok(css.small.includes('#ms-map-small {position:relative;overflow:hidden;width:100%;max-width:300px;aspect-ratio:300 / 150;}'));
+      assert.ok(css.small.includes('@container ms-map (width >= 600px) {#ms-map-small {display:none;}}'));
+      assert.ok(css.large.includes('#ms-map-large {position:relative;overflow:hidden;width:600px;height:300px;display:none;}'));
+      assert.ok(css.large.includes('@container ms-map (width >= 600px) {#ms-map-large {display:block;}}'));
+      assert.ok(str.includes('src="map-small.png" width="300" height="150" alt="" loading="lazy"'));
+    });
+
+    it('are ordered by width, and a middle map is shown up to the next width', async function () {
+      var out = await exportFrames(frame('large', 600) + frame('small', 300) + frame('mid', 450));
+      var str = removeIdHash(String(out['map.html']));
+      assert.deepEqual(str.match(/<div id="ms-map-\w+"/g),
+        ['<div id="ms-map-small"', '<div id="ms-map-mid"', '<div id="ms-map-large"']);
+      assert.ok(mapCss(str).mid.includes('@container ms-map (width >= 450px) and (width < 600px) {#ms-map-mid {display:block;}}'));
+    });
+
+    it('fill the container with responsiveness=dynamic', async function () {
+      var css = mapCss(removeIdHash(String((await exportFrames(TWO, 'responsiveness=dynamic'))['map.html'])));
+      assert.ok(css.small.includes('#ms-map-small {position:relative;overflow:hidden;width:100%;aspect-ratio:300 / 150;}'));
+      assert.ok(css.large.includes('#ms-map-large {position:relative;overflow:hidden;width:100%;aspect-ratio:600 / 300;display:none;}'));
+    });
+
+    it('frames of the same width are written to separate files', async function () {
+      var out = await exportFrames(frame('small', 300) + frame('large', 300));
+      assert.deepEqual(Object.keys(out).sort(),
+        ['map-large.html', 'map-large.png', 'map-small.html', 'map-small.png']);
+      assert.ok(!String(out['map-small.html']).includes('@container'));
+    });
+
+    it('each map\'s definitions have ids of their own, which its references use', async function () {
+      var label = function(name) {
+        return ` -add-label target=${name}-box + name=${name}-label coordinates=0,50,100,90,200,50 text=Curve`;
+      };
+      var str = String((await exportFrames(frame('small', 300) + label('small') + frame('large', 600) + label('large')))['map.html']);
+      var maps = str.split('<div id="').slice(2);
+      assert.equal(maps.length, 2);
+      maps.forEach(function(map) {
+        var mapId = map.slice(0, map.indexOf('"'));
+        var href = /xlink:href="#([^"]+)"/.exec(map)[1];
+        assert.ok(href.startsWith(mapId + '-label-path-'), href);
+        assert.ok(map.includes(`id="${href}"`));
+      });
+    });
+
+    it('maps with the same file name get different ids, and a map exported again the same id', async function () {
+      var a = String((await exportFrames(TWO))['map.html']);
+      var b = String((await exportFrames(TWO + ' -add-label target=small-box + coordinates=50,50 text=A'))['map.html']);
+      var a2 = String((await exportFrames(TWO))['map.html']);
+      var id = function(str) { return /^<div id="([^"]+)"/.exec(str)[1]; };
+      assert.notEqual(id(a), id(b));
+      assert.equal(a, a2);
+      assert.ok(/^ms-map-[0-9a-f]{6}$/.test(id(a)));
     });
   });
 
@@ -195,8 +280,8 @@ describe('HTML output', function () {
     it('are anchored where their text attaches, with the path relative to the anchor', async function () {
       var str = await html(CURVE);
       assert.deepEqual(anchors(str), [['50%', '10%']]);
-      assert.ok(/<path id="label-path-\w+" d="M -100 40 C [^"]* 0 0 C [^"]* 100 40"\/>/.test(str));
-      assert.ok(str.includes('<textPath startOffset="50%" xlink:href="#label-path-'));
+      assert.ok(/<path id="ms-out-label-path-\w+" d="M -100 40 C [^"]* 0 0 C [^"]* 100 40"\/>/.test(str));
+      assert.ok(str.includes('<textPath startOffset="50%" xlink:href="#ms-out-label-path-'));
     });
 
     it('text-anchor=start anchors a label at the start of its path', async function () {

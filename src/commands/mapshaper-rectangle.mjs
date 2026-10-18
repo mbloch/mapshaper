@@ -106,7 +106,7 @@ cmd.rectangle2 = function(target, opts) {
   }
   var datasets = target.layers.map(function(lyr) {
     var dataset = cmd.rectangle({layer: lyr, dataset: target.dataset}, opts);
-    setOutputLayerName(dataset.layers[0], lyr, null, opts);
+    setOutputLayerName(dataset.layers[0], lyr, 'rectangle', opts);
     if (!opts.no_replace) {
       dataset.layers[0].name = lyr.name || dataset.layers[0].name;
     }

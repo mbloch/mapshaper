@@ -1,3 +1,11 @@
+v0.7.90
+* HTML output of several frames of different widths is one file that shows the frame that fits the width of its container (like ai2html's artboards), using CSS container queries. A page can embed several HTML maps.
+* HTML output with `responsiveness=fixed` (the default) shrinks to fit a container narrower than the map.
+* `-graticule` adds its output to the frame of its target layer, and accepts the `+` option (it always creates a new layer).
+* `-shape` accepts the `+` option (before, `+` was used as the layer name).
+* Fixed: `-calc +` deleted its target layer.
+* `-rectangle +` names its output layer `rectangle` (before, the layer was unnamed).
+
 v0.7.89
 * [web] Added previews of overlay frames (before they only appeared as rectangles overlaid on the main frame).
 * [web] Various UI improvements to support multiple frames.

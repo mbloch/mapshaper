@@ -16,7 +16,9 @@ import { convertTextStylesToClasses, formatTextClassesAsCss } from './html-text-
 import { applyWebFonts } from './html-font-stacks';
 import { HtmlLabelClasses, renderHtmlLabelBox, labelHasHtmlText,
   getHtmlLabelCss } from './html-labels';
-import { stop, warn } from '../utils/mapshaper-logging';
+import { message, stop, warn } from '../utils/mapshaper-logging';
+import { sha1 } from '../utils/mapshaper-sha1';
+import { gzipSync } from '../io/mapshaper-gzip';
 import utils from '../utils/mapshaper-utils';
 
 // HTML output, modeled on the ai2html script for Adobe Illustrator: the map's
@@ -31,8 +33,21 @@ import utils from '../utils/mapshaper-utils';
 // With html-labels, anchored labels and text blocks are written as HTML text
 // instead, above the SVG overlay -- see html-labels.mjs. Their callouts and
 // icons, and path labels, stay in the overlay.
+//
+// The maps of several frames of different widths can share a file, as
+// ai2html's artboards do: a container query shows the map whose width is the
+// widest that fits the container (see combineHtmlMaps()).
+//
+// Several maps can be embedded in one page. Their CSS is scoped to an id made
+// from the file name and a hash of the map, and the ids in each map's <defs>
+// begin with the map's id, so a reference can't find another map's
+// definition (or one in a map that is hidden, which browsers don't draw).
 
 var CLASS_PREFIX = 'ms-';
+
+// Stands in for a map's id until the file is put together. It can't occur in
+// content from data, in which "<" is escaped.
+var ID_TOKEN = '<ms-id>';
 
 export async function exportHTML(dataset, opts) {
   var responsiveness = getResponsiveness(opts);
@@ -46,7 +61,7 @@ export async function exportHTML(dataset, opts) {
     seam_stroke_width: 1 / pixelRatio
   }));
   var frame = o.frame;
-  var base = getHtmlFileBase(o.dataset, opts);
+  var base = opts.file ? getHtmlFileBase(opts.file) : getOutputFileBase(o.dataset);
   var layers = splitLayersForHTML(o.dataset.layers, o.dataset);
   var imageFile = base + (imageFormat == 'jpeg' ? '.jpg' : '.png');
   var image = await rasterizeSVG(renderSVGDocument(o.dataset, frame, layers.image, o.opts), {
@@ -56,20 +71,75 @@ export async function exportHTML(dataset, opts) {
     format: imageFormat,
     quality: getJpegQuality(opts)
   });
-  var html = renderHtmlFragment({
-    id: getContainerId(base),
+  var artboard = renderArtboard({
+    name: opts.html_artboard_name || base,
+    datasetBase: getOutputFileBase(o.dataset),
     frame: frame,
     responsiveness: responsiveness,
     imageFile: imageFile,
     overlay: renderOverlay(o.dataset, frame, layers.overlay, o.opts)
   });
-  return [{
+  var htmlFile = {
     filename: opts.file || base + '.html',
-    content: html
-  }, {
+    content: formatHtmlMaps([artboard], base)
+  };
+  if (opts.html_artboards) {
+    htmlFile.html_artboard = artboard; // for combineHtmlMaps()
+  }
+  return [htmlFile, {
     filename: imageFile,
     content: image
   }];
+}
+
+// Puts the maps of several frames, exported with the html_artboards option,
+// into one HTML file that shows the map that fits its container, like
+// ai2html's artboards: each map from its own width up to the width of the next
+// wider map, and the narrowest one at any smaller width. Maps of the same
+// width can't take turns, so they are left in files of their own.
+// @files output of exportHTML() for each map, and other files
+export function combineHtmlMaps(files, opts) {
+  var parts = files.filter(function(o) { return !!o.html_artboard; });
+  var artboards = parts.map(function(o) { return o.html_artboard; });
+  var widths = utils.pluck(artboards, 'width');
+  var base, htmlFile;
+  parts.forEach(function(o) { delete o.html_artboard; });
+  if (artboards.length < 2) return files;
+  if (utils.uniq(widths).length < widths.length) {
+    message('Wrote each frame to its own HTML file: frames of the same width (' +
+      formatArtboardNames(artboards) + ') can\'t share a file that switches between them by width');
+    return files;
+  }
+  base = opts.file ? getHtmlFileBase(opts.file) : artboards[0].datasetBase;
+  htmlFile = {
+    filename: opts.file || base + '.html',
+    content: formatHtmlMaps(artboards, base)
+  };
+  if (opts.gzip) {
+    htmlFile.filename += '.gz';
+    htmlFile.content = gzipSync(htmlFile.content);
+  }
+  message('Wrote frames to one HTML file, showing each at container widths of ' +
+    formatArtboardRanges(artboards));
+  return [htmlFile].concat(files.filter(function(o) { return !parts.includes(o); }));
+}
+
+function formatArtboardNames(artboards) {
+  return utils.pluck(artboards, 'name').join(', ');
+}
+
+function formatArtboardRanges(artboards) {
+  var sorted = sortArtboards(artboards);
+  return sorted.map(function(ab, i) {
+    var next = sorted[i + 1];
+    var range = next ? (i === 0 ? '0' : ab.width) + '-' + (next.width - 1) + 'px' :
+      ab.width + 'px and up';
+    return ab.name + ' (' + range + ')';
+  }).join(', ');
+}
+
+function sortArtboards(artboards) {
+  return artboards.slice().sort(function(a, b) { return a.width - b.width; });
 }
 
 // Point layers go in the overlay; everything else is drawn in the image,
@@ -256,37 +326,138 @@ export function formatPct(val, total) {
   return String(Math.round(pct * 1000) / 1000) + '%';
 }
 
-function renderHtmlFragment(o) {
-  var id = o.id;
-  var w = o.frame.width;
-  var h = o.frame.height;
+// A frame's map, with ID_TOKEN in place of its id, for formatHtmlMaps().
+// Its size and visibility depend on the other maps in the file, so they are
+// left out of its CSS.
+function renderArtboard(o) {
   var overlay = o.overlay;
-  var selector = '#' + id;
-  var boxCss = o.responsiveness == 'dynamic' ?
-    `width:100%;aspect-ratio:${w} / ${h};` :
-    `width:${w}px;height:${h}px;`;
+  var selector = '#' + ID_TOKEN;
   var css = [
-    `${selector} {position:relative;overflow:hidden;${boxCss}}`,
     `${selector} .${CLASS_PREFIX}image {position:absolute;top:0;left:0;width:100%;height:100%;max-width:none;margin:0;display:block;}`,
     `${selector} .${CLASS_PREFIX}overlay {position:absolute;top:0;left:0;width:100%;height:100%;overflow:visible;}`
   ];
+  var body = [];
   if (overlay.labelLayers.length > 0) css.push(getHtmlLabelCss(selector));
   var classCss = formatTextClassesAsCss(overlay.classes, selector);
   if (classCss) css.push(classCss);
+  if (overlayHasSvg(overlay)) {
+    body.push(renderOverlaySvg(overlay));
+  }
+  if (overlay.labelLayers.length > 0) {
+    body.push(renderHtmlLabels(overlay.labelLayers));
+  }
+  return {
+    name: o.name,
+    datasetBase: o.datasetBase,
+    width: o.frame.width,
+    height: o.frame.height,
+    responsiveness: o.responsiveness,
+    imageFile: o.imageFile,
+    css: css.join('\n'),
+    body: body.join('\n')
+  };
+}
+
+// The HTML of one map, or of several maps of different widths in a container
+// that shows one of them at a time.
+// @base the name of the file, without extension
+export function formatHtmlMaps(artboards, base) {
+  var sorted = sortArtboards(artboards);
+  var id = getContainerId(base, sorted);
+  var ids, html;
+  if (sorted.length == 1) {
+    return formatArtboard(sorted[0], id, null);
+  }
+  ids = getArtboardIds(sorted, id);
+  html = `<div id="${id}" class="${CLASS_PREFIX}maps">
+<style>
+#${id} {container-type:inline-size;container-name:${id};}
+</style>
+`;
+  html += sorted.map(function(ab, i) {
+    return formatArtboard(ab, ids[i], {
+      container: id,
+      min: i === 0 ? 0 : ab.width,
+      next: i < sorted.length - 1 ? sorted[i + 1].width : Infinity
+    });
+  }).join('');
+  return html + '</div>\n';
+}
+
+// @range: the container widths at which the map is shown, as
+//   {container, min, next}, or null for a map on its own
+function formatArtboard(ab, id, range) {
+  var selector = '#' + id;
+  var w = ab.width;
+  var h = ab.height;
+  var narrowest = !range || range.min === 0;
+  var size;
+  // A fixed-size map that is the narrowest one shrinks to fit a narrower
+  // container, keeping its aspect ratio, instead of overflowing it
+  if (ab.responsiveness == 'dynamic') {
+    size = `width:100%;aspect-ratio:${w} / ${h};`;
+  } else if (narrowest) {
+    size = `width:100%;max-width:${w}px;aspect-ratio:${w} / ${h};`;
+  } else {
+    size = `width:${w}px;height:${h}px;`;
+  }
+  var css = [`${selector} {position:relative;overflow:hidden;${size}${narrowest ? '' : 'display:none;'}}`];
+  if (range) {
+    css.push(getContainerQueryCss(selector, range));
+  }
+  css.push(ab.css);
   // Hidden from screen readers, which would otherwise read the labels as a
-  // list of unrelated words, and each halo'd label twice
-  var html = `<div id="${stringEscape(id)}" class="${CLASS_PREFIX}map" aria-hidden="true">
+  // list of unrelated words, and each halo'd label twice. In a file of several
+  // maps, the hidden maps' images are loaded when they are shown.
+  var html = `<div id="${id}" class="${CLASS_PREFIX}map" aria-hidden="true">
 <style>
 ${css.join('\n')}
 </style>
-<img class="${CLASS_PREFIX}image" src="${stringEscape(o.imageFile)}" width="${w}" height="${h}" alt="">`;
-  if (overlayHasSvg(overlay)) {
-    html += '\n' + renderOverlaySvg(overlay);
+<img class="${CLASS_PREFIX}image" src="${stringEscape(ab.imageFile)}" width="${w}" height="${h}" alt=""${range ? ' loading="lazy"' : ''}>`;
+  if (ab.body) {
+    html += '\n' + ab.body;
   }
-  if (overlay.labelLayers.length > 0) {
-    html += '\n' + renderHtmlLabels(overlay.labelLayers);
+  return (html + '\n</div>\n').split(ID_TOKEN).join(id);
+}
+
+// Without container query support, only the narrowest map is shown
+function getContainerQueryCss(selector, range) {
+  var query;
+  if (range.min === 0) {
+    return `@container ${range.container} (width >= ${range.next}px) {${selector} {display:none;}}`;
   }
-  return html + '\n</div>\n';
+  query = `(width >= ${range.min}px)`;
+  if (range.next < Infinity) {
+    query += ` and (width < ${range.next}px)`;
+  }
+  return `@container ${range.container} ${query} {${selector} {display:block;}}`;
+}
+
+// The id of a map in a file of several maps: the file's id and the map's name
+function getArtboardIds(artboards, containerId) {
+  var ids = [];
+  artboards.forEach(function(ab) {
+    var id = containerId + '-' + formatIdPart(ab.name);
+    var n = 1;
+    while (ids.includes(id + (n > 1 ? '-' + n : ''))) n++;
+    ids.push(id + (n > 1 ? '-' + n : ''));
+  });
+  return ids;
+}
+
+// Several maps in a page need different ids, even if their files have the same
+// name, so the id includes a hash of the maps' HTML. Maps whose HTML is
+// identical share an id, which is harmless, and exporting a map again gives
+// the same output.
+function getContainerId(base, artboards) {
+  var content = artboards.map(function(ab) {
+    return [ab.name, ab.width, ab.height, ab.responsiveness, ab.imageFile, ab.css, ab.body].join('\n');
+  }).join('\n');
+  return CLASS_PREFIX + formatIdPart(base) + '-' + sha1(content).substr(0, 6);
+}
+
+function formatIdPart(str) {
+  return String(str).replace(/[^\w-]+/g, '-');
 }
 
 // An overlay whose layers are all HTML labels has nothing to draw in SVG
@@ -309,15 +480,24 @@ function renderOverlaySvg(overlay) {
     svg += '<defs>\n' + utils.pluck(overlay.defs, 'svg').join('') + '</defs>\n';
   }
   svg += overlay.layers.map(stringify).join('\n');
-  return svg + '\n</svg>';
+  return prefixDefinitionIds(svg + '\n</svg>', overlay.defs, ID_TOKEN + '-');
 }
 
-function getHtmlFileBase(dataset, opts) {
-  return opts.file ? opts.file.replace(/\.html?$/i, '') : getOutputFileBase(dataset);
+// Definition ids are only unique within a map (some are numbered: glow-1,
+// line-fade-1), so they are given the map's id
+function prefixDefinitionIds(svg, defs, prefix) {
+  defs.forEach(function(item) {
+    var id = item.id;
+    if (!id) return;
+    svg = svg.split(`id="${id}"`).join(`id="${prefix}${id}"`)
+      .split(`"#${id}"`).join(`"#${prefix}${id}"`)
+      .split(`url(#${id})`).join(`url(#${prefix}${id})`);
+  });
+  return svg;
 }
 
-function getContainerId(base) {
-  return CLASS_PREFIX + base.replace(/[^\w-]+/g, '-');
+function getHtmlFileBase(file) {
+  return file.replace(/\.html?$/i, '');
 }
 
 function getResponsiveness(opts) {

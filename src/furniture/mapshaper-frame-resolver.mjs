@@ -64,8 +64,9 @@ export function getFrameMemberLayers(catalog, frame) {
 // belongs to the frame of its sources if they all have the same one, and is
 // unframed otherwise. A frame dataset's frame is the frame itself, so a grid
 // made over a frame, for example, belongs to that frame. Datasets made from
-// nothing (-i, -graticule, -shape) are unframed. -add-layer counts its target
-// as the source, so a layer created beside a member joins the member's frame.
+// nothing (-i, -shape) are unframed. -add-layer counts its target as the
+// source, so a layer created beside a member joins the member's frame, and so
+// does -graticule, which is drawn in its target's coordinate system.
 // @output a dataset that a command has just created (not yet in the catalog)
 // @sources the datasets it was created from
 export function inheritFrameRef(output, sources) {

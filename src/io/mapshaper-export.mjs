@@ -1,6 +1,6 @@
 import { getLayerBounds, layerHasRaster } from '../dataset/mapshaper-layer-utils';
 import { exportSVG, prepareDatasetForSVG, renderSVGContent } from '../svg/mapshaper-svg';
-import { exportHTML } from '../html/mapshaper-html-export';
+import { exportHTML, combineHtmlMaps } from '../html/mapshaper-html-export';
 import { exportMapImage } from '../svg/mapshaper-map-image-export';
 import { exportKML } from '../kml/kml-export';
 import { exportDbf } from '../shapefile/dbf-export';
@@ -71,17 +71,22 @@ export async function exportTargetLayers(catalog, targets, opts) {
   return exportDatasets(datasets, opts);
 }
 
-// One map per frame, named after the frame
+// One map per frame, named after the frame. HTML maps of different widths
+// share a file (see combineHtmlMaps()).
 async function exportFrameMaps(catalog, groups, format, opts) {
   var files = [];
   for (var group of groups) {
     var groupOpts = Object.assign({}, opts, {
       file: getFrameExportFilename(group.frame, opts.file, format)
     });
+    if (format == 'html') {
+      groupOpts.html_artboards = true;
+      groupOpts.html_artboard_name = group.frame.layer.name;
+    }
     groupOpts = addOverlayExports(catalog, group.datasets, groupOpts);
     files = files.concat(await exportDatasets(group.datasets, groupOpts));
   }
-  return files;
+  return format == 'html' ? combineHtmlMaps(files, opts) : files;
 }
 
 // Renders the maps of the overlay frames placed on the map being exported,

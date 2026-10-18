@@ -23,6 +23,14 @@ describe('mapshaper-calc.js', function () {
       var out = await api.applyCommands(cmd, {'data.json': data});
       assert.equal(out['out.csv'], 'expression,value,layer_name\nsum(a),4,data')
     })
+
+    it('+ option keeps the target layer', async function() {
+      var data = [{a: 1}, {a: 3}];
+      var cmd = 'data.json -calc + "sum(a)" name=stats -o target=* format=csv';
+      var out = await api.applyCommands(cmd, {'data.json': data});
+      assert.deepEqual(Object.keys(out).sort(), ['data.csv', 'stats.csv']);
+      assert.equal(String(out['data.csv']), 'a\n1\n3');
+    })
   });
 
   describe('evalCalcExpression()', function () {
