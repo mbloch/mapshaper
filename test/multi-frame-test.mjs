@@ -473,6 +473,41 @@ describe('multiple map frames', function() {
       assert.equal(frameOf(catalog, 'b'), 'f1');
       assert(I.getDatasetBounds(b.dataset).xmax > 1000);
     });
+
+    it('the error names only the layers being moved, and suggests the reproject flag',
+        async function() {
+      var setup = '-rectangle bbox=0,0,1,1 name=b -filter true + name=b2 target=b ' +
+        '-rectangle bbox=0,0,10,10 name=a -proj target=a EPSG:3857 ' +
+        '-frame target=a width=200 name=f1 ';
+      await assert.rejects(run(setup + '-frame target=f1 add-layers=b'), function(e) {
+        assert.match(e.message, /(^|\] )b and frame f1 have different coordinate systems/);
+        assert.match(e.message, /reproject flag to -frame to reproject the layer into the frame/);
+        return true;
+      });
+    });
+
+    it('findLayersNeedingReprojection() lists layers whose coordinate system differs',
+        async function() {
+      var catalog = await run(mixed + '-rectangle bbox=0,0,20,20 name=c target=a');
+      var frame = I.getFrameByName(catalog, 'f1');
+      var b = findLayer(catalog, 'b'), c = findLayer(catalog, 'c');
+      var result = I.findLayersNeedingReprojection(catalog, [b, c], frame);
+      assert.deepEqual(result.layers.map(function(lyr) { return lyr.name; }), ['b']);
+      assert.equal(result.reprojectable, true);
+      result = I.findLayersNeedingReprojection(catalog, [c], frame);
+      assert.deepEqual(result, {layers: [], reprojectable: false});
+    });
+
+    it('findLayersNeedingReprojection() says when a frame\'s coordinate system is unknown',
+        async function() {
+      var catalog = await run('-rectangle bbox=0,0,2000000,1000000 name=xy ' +
+        '-rectangle bbox=-100,30,-90,40 name=ll -proj init=wgs84 target=ll ' +
+        '-frame target=xy width=200 name=f1');
+      var result = I.findLayersNeedingReprojection(catalog, [findLayer(catalog, 'll')],
+        I.getFrameByName(catalog, 'f1'));
+      assert.deepEqual(result.layers.map(function(lyr) { return lyr.name; }), ['ll']);
+      assert.equal(result.reprojectable, false);
+    });
   });
 
   describe('-add-layer', function() {

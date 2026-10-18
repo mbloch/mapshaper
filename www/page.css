@@ -5095,7 +5095,7 @@ body.dragging-color-picker * {
 .frame-overlay-box:hover,
 .frame-overlay-box.dragging {
 	border-style: solid;
-	background: rgba(255, 255, 255, 0.75);
+	/* background: rgba(255, 255, 255, 0.75); */
 }
 
 .frame-overlay-box.showing-content {
@@ -5108,6 +5108,12 @@ body.dragging-color-picker * {
 .frame-overlay-box.showing-content.selected {
 	border-color: transparent;
 	background: transparent;
+}
+
+body.pan .frame-overlay-box:hover:not(.selected):not(.showing-content),
+body.panning .frame-overlay-box:hover:not(.selected):not(.showing-content) {
+	border-style: dashed;
+	background: rgba(255, 255, 255, 0.55);
 }
 
 .frame-overlay-box.full-page-overlay {
@@ -5138,8 +5144,6 @@ body.dragging-color-picker * {
 	max-width: 100%;
 	padding: 3px 5px;
 	font-size: 12px;
-	color: #333;
-	white-space: nowrap;
 	pointer-events: none;
 	user-select: none;
 }
@@ -5152,6 +5156,11 @@ body.dragging-color-picker * {
 .frame-overlay-box.showing-content:hover .frame-overlay-box-label,
 .frame-overlay-box.showing-content .frame-overlay-box-label:focus-within {
 	opacity: 1;
+}
+
+body.pan .frame-overlay-box.showing-content .frame-overlay-box-label,
+body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
+	opacity: 0;
 }
 
 .frame-overlay-preview-toggle {

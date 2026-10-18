@@ -15,7 +15,7 @@ import { GUI } from './gui-lib';
 import { openContextMenu } from './gui-context-menu';
 import { runGuiEditCommand } from './gui-edit-command';
 import { runPlacementCommand, runRemoveOverlayCommand } from './gui-frame-overlays';
-import { showPopupAlert } from './gui-alert';
+import { showPopupAlert, showPrompt } from './gui-alert';
 import {
   addUndoTransactionToHistory,
   createUndoTransaction
@@ -218,7 +218,7 @@ export function LayerControl(gui) {
         if (dropLeavesOrder(toFrame, move)) return;
         runFrameCommand(toFrame, 'order-layers=' + getMemberRef(toFrame, drag.layer) + ' ' + position);
       } else {
-        runFrameCommand(toFrame, 'add-layers=' + formatLayerList([drag]) + ' ' + position);
+        addLayersToFrame(toFrame, [drag], position);
       }
     } else if (fromFrame) {
       runFrameCommand(fromFrame, 'remove-layers=' + getMemberRef(fromFrame, drag.layer), function() {
@@ -837,7 +837,7 @@ export function LayerControl(gui) {
     if (group && group.members.length === 0 && visible.length > 0) {
       actions.push({label: 'move visible layers into frame', run: function() {
         // listed bottom to top, so that they keep their stacking order
-        runFrameCommand(frame, 'add-layers=' + formatLayerList(visible.reverse()));
+        addLayersToFrame(frame, visible.reverse());
       }});
     }
     return actions.concat(getOverlayMenuActions(frame));
@@ -876,7 +876,7 @@ export function LayerControl(gui) {
       return {
         label: 'move into frame: ' + utils.htmlEscape(f.layer.name || ''),
         run: function() {
-          runFrameCommand(f, 'add-layers=' + formatLayerList([target]));
+          addLayersToFrame(f, [target]);
         }
       };
     });
@@ -899,6 +899,27 @@ export function LayerControl(gui) {
     return internal.formatOptionValue(targets.map(function(o) {
       return internal.getLayerTargetId(model, o.layer);
     }).join(','));
+  }
+
+  // Layers in a different coordinate system can join the frame only if they
+  // are reprojected, which is offered first. If the frame's coordinate system
+  // is unknown, the command runs and reports why the layers cannot join.
+  async function addLayersToFrame(frame, targets, position) {
+    var options = 'add-layers=' + formatLayerList(targets) + (position ? ' ' + position : '');
+    var check = internal.findLayersNeedingReprojection(model, targets, frame);
+    var n = check.layers.length;
+    var names, msg;
+    if (check.reprojectable) {
+      names = check.layers.map(function(lyr) {
+        return utils.htmlEscape(lyr.name || '[unnamed layer]');
+      }).join(', ');
+      msg = names + (n == 1 ? ' has' : ' have') + ' a different coordinate system from frame ' +
+        utils.htmlEscape(frame.layer.name || '') + '. Would you like to reproject ' +
+        (n == 1 ? 'it' : 'them') + ' to match?';
+      if (!await showPrompt(msg, n == 1 ? 'Reproject layer?' : 'Reproject layers?')) return;
+      options += ' reproject';
+    }
+    runFrameCommand(frame, options);
   }
 
   function runFrameCommand(frame, options, onSuccess) {
