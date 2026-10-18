@@ -1,3 +1,7 @@
+v0.7.89
+* [web] Added previews of overlay frames (before they only appeared as rectangles overlaid on the main frame).
+* [web] Various UI improvements to support multiple frames.
+
 v0.7.88
 * Added support for multiple map frames. Frames can be overlaid on other frames to make locators or insets.
 * Added corners to the curve drawing tool (Option-click creates a corner knot or toggles a knot between smooth and corner).

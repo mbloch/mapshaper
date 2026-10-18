@@ -320,6 +320,9 @@ export function LayerControl(gui) {
     viewFrame = activeFrame && groups.frames.some(function(g) {
       return g.frame.dataset == activeFrame.dataset && g.members.length > 0;
     }) ? activeFrame : null;
+    // The active section is marked only when there is another one to select
+    el.classed('several-sections', (groups.unframed.length > 0 ? 1 : 0) +
+      groups.frames.filter(function(g) { return g.members.length > 0; }).length > 1);
     unframedSection
       .classed('closed', !!closedSections[''])
       .classed('active-section', !viewFrame)

@@ -1505,10 +1505,31 @@ body.simplify .layer-control-btn {
 }
 
 /* The Layers section, then one section per frame, each below a rule */
+.layer-section {
+	position: relative;
+}
+
 .frame-section {
 	border-top: 1px solid #ddd;
 	margin-top: 8px;
 	padding-top: 7px;
+}
+
+/* A bar down the left edge of the section whose layers are on the map, from
+   its heading to its last layer, at the left edge of the rows */
+.several-sections .layer-section.active-section::before {
+	content: "";
+	position: absolute;
+	left: -14px;
+	top: 0;
+	bottom: 0;
+	width: 4px;
+	background-color: var(--theme-col);
+	z-index: 1; /* over the active row's background */
+}
+
+.several-sections .frame-section.active-section::before {
+	top: 7px;
 }
 
 .layer-section.closed > .layer-list,
@@ -1588,7 +1609,8 @@ body.simplify .layer-control-btn {
 	transform: translate(-1px, -2px) rotate(-45deg);
 }
 
-.layer-menu .section-title {
+/* The whole heading switches to its section, as a frame's heading does */
+.layer-menu .unframed-section > .layer-section-heading {
 	cursor: pointer;
 }
 
@@ -1729,12 +1751,6 @@ img.eye-btn {
 	white-space: normal;
 	font-size: 12px;
 	color: #666;
-}
-
-/* bar on the left edge of the active layer; a shadow rather than a border, so
-   the row's text keeps its alignment with the other rows */
-.layer-menu .layer-item.active {
-	box-shadow: inset 5px 0 0 var(--theme-col);
 }
 
 /* hints at a tooltip that counts the features with null geometry */
