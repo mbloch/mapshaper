@@ -68,6 +68,10 @@ test('each shape starts at its own size, and the NYT star in its own red',
     expect(await getLabelField(page, 0, 'icon-stroke')).toBe('#cc0000');
     // its outline has the logo's weight
     expect(await page.locator('.text-style-panel .label-icon-stroke-width-row').isVisible()).toBe(false);
+    // another NYT icon swaps the star's red for its own color
+    await clickShape(page, 'nyt-target');
+    expect(await getLabelField(page, 0, 'icon-stroke')).toBe('#e0553b');
+    await clickShape(page, 'nyt-star');
     // the red was the shape's, not the user's, so it goes with the shape
     await clickShape(page, 'circle');
     expect(String(await getLabelField(page, 0, 'icon-size'))).toBe('5');
@@ -178,9 +182,15 @@ async function getSelectedShape(page) {
     .getAttribute('data-icon');
 }
 
+// The NYT icons are in a menu at the end of the buttons
 async function clickShape(page, name) {
-  await page.locator('.text-style-panel .label-icon-buttons ' +
-    '[data-icon="' + name + '"]').click();
+  if (/^nyt-/.test(name)) {
+    await page.locator('.text-style-panel .label-icon-buttons .icon-shape-more-btn').click();
+    await page.locator('.icon-shape-menu:visible [data-icon="' + name + '"]').click();
+  } else {
+    await page.locator('.text-style-panel .label-icon-buttons ' +
+      '[data-icon="' + name + '"]').click();
+  }
   await page.waitForTimeout(250);
 }
 

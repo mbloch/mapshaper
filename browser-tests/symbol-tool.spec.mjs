@@ -56,12 +56,14 @@ test('a ring is a stroke, as wide as the panel says, and can take a fill', async
   expect(errors).toEqual([]);
 });
 
-test('NYT users are offered the NYT star, which is placed in its red', async function({page}) {
+test('NYT users are offered the NYT icons in a menu, each placed in its color', async function({page}) {
   var errors = collectPageErrors(page);
   await openTool(page, 'nyt=on');
-  var star = page.locator('.symbol-style-panel .label-icon-buttons [data-icon="nyt-star"]');
-  expect(await star.count()).toBe(1);
-  await star.click();
+  var more = page.locator('.symbol-style-panel .label-icon-buttons .icon-shape-more-btn');
+  await more.click();
+  await page.locator('.icon-shape-menu:visible [data-icon="nyt-star"]').click();
+  await expect(page.locator('.icon-shape-menu:visible')).toHaveCount(0);
+  await expect(more).toHaveClass(/selected/);
   await clickMap(page, 0.3, 0.5);
   var rec = (await getSymbolLayer(page)).records[0];
   expect(rec.icon).toBe('nyt-star');
@@ -70,7 +72,22 @@ test('NYT users are offered the NYT star, which is placed in its red', async fun
   // its outline has the logo's weight
   expect(await page.locator('.symbol-style-panel .label-split-cell:has(.size-field-input) >> nth=1').isVisible()).toBe(false);
   expect(await page.locator('.mapshaper-svg-symbol[data-id="0"]').count()).toBe(1);
+
+  // a target comes in its own color, with nothing behind its rings
+  await more.click();
+  await page.locator('.icon-shape-menu:visible [data-icon="nyt-target"]').click();
+  await clickMap(page, 0.6, 0.5);
+  rec = (await getSymbolLayer(page)).records[1];
+  expect(rec.icon).toBe('nyt-target');
+  expect(rec['icon-stroke']).toBe('#e0553b');
+  expect(rec['icon-fill']).toBe('none');
+  expect(await page.locator('.mapshaper-svg-symbol[data-id="1"] circle').count()).toBe(2);
   expect(errors).toEqual([]);
+});
+
+test('without NYT, the icon buttons have no menu', async function({page}) {
+  await openTool(page, 'nyt=off');
+  expect(await page.locator('.symbol-style-panel .icon-shape-more-btn').count()).toBe(0);
 });
 
 test('a curve is drawn by clicking and finished with Enter', async function({page}) {

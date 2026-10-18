@@ -5,7 +5,7 @@ import {
 } from './gui-panel-focus';
 import {
   makeColorRow, makeCollapsibleSection, makePanelButton, makePanelSection,
-  makePanelToggle, setPanelButtonDisabled
+  makePanelToggle
 } from './gui-panel-controls';
 import { SizeField } from './gui-size-field';
 import { formatEditingStatus } from './gui-editing-status';
@@ -30,7 +30,8 @@ import { getNearestFontStyleVariant } from './gui-label-fonts';
 import { encodeLabelText, decodeLabelText } from './gui-label-text';
 import { pointIsUnstyled } from './gui-unstyled-points';
 import { ARROWHEAD_SHAPES, getArrowheadGlyph } from './gui-arrowhead-shapes';
-import { getIconShapes, getIconShapeGlyph, getDefaultStrokeWidth } from './gui-icon-shapes';
+import { getIconShapes, getDefaultStrokeWidth } from './gui-icon-shapes';
+import { IconShapeButtons } from './gui-icon-shape-buttons';
 import { isNytUser } from './gui-nyt';
 
 // The symbol tool's panel. With symbols selected it restyles them: icons
@@ -58,7 +59,7 @@ export function SymbolPanel(gui, opts) {
   var panel = El('div').addClass('label-style-panel symbol-style-panel rollover')
     .appendTo(parent).hide();
   var status, clearLink;
-  var iconSection, shapeBtns = {}, iconFill, iconSizeField, iconStroke,
+  var iconSection, shapeBtns, iconFill, iconSizeField, iconStroke,
       iconStrokeWidthField, rotationRow, rotationField;
   var curveSection, curveStroke, curveWidthField, arrowShapeRow, arrowShapeBtns = {},
       arrowSizeField, arrowRow, arrowBtns = {}, fadeField, taperRow, taperField, curveFill;
@@ -83,6 +84,7 @@ export function SymbolPanel(gui, opts) {
     [iconFill, iconStroke, textColor, curveStroke, curveFill].forEach(function(c) {
       c.picker.hide();
     });
+    shapeBtns.closeMenu();
     releaseFocus();
     panel.hide();
   };
@@ -190,13 +192,7 @@ export function SymbolPanel(gui, opts) {
     iconSection = makePanelSection(panel, 'Icons');
     var shapeRow = El('div').addClass('label-style-row label-icon-shapes-row').appendTo(iconSection);
     var group = El('div').addClass('label-btn-group label-icon-buttons').appendTo(shapeRow);
-    getShownShapes().forEach(function(item) {
-      var btn = makePanelButton(group, '', function() {
-        applyIconShape(item.name);
-      }).attr('data-icon', item.name).attr('aria-label', item.title);
-      El(getIconShapeGlyph(item.name)).appendTo(btn);
-      shapeBtns[item.name] = btn;
-    });
+    shapeBtns = new IconShapeButtons(group, getShownShapes(), applyIconShape);
 
     // Every shape has a fill and a stroke; a shape only decides which it
     // starts with -- a ring a stroke, the rest a fill.
@@ -358,7 +354,7 @@ export function SymbolPanel(gui, opts) {
     });
   }
 
-  // Read once, when first asked: whether the NYT star is offered does not
+  // Read once, when first asked: whether the NYT icons are offered does not
   // change during a session.
   function getShownShapes() {
     if (!shownShapes) shownShapes = getIconShapes('symbol', {nyt: isNytUser()});
@@ -529,9 +525,8 @@ export function SymbolPanel(gui, opts) {
       width = commonValue(state.icons, function(rec) { return getIconPaint(rec).strokeWidth; });
       rotation = commonValue(state.icons, getIconRotation);
     }
-    getShownShapes().forEach(function(item) {
-      shapeBtns[item.name].classed('selected', shape == item.name);
-      setPanelButtonDisabled(shapeBtns[item.name], textLimitsShape() && !shapeTakesText(item.name));
+    shapeBtns.update(shape || '', function(name) {
+      return textLimitsShape() && !shapeTakesText(name);
     });
     iconFill.showColor(fill || '');
     iconSizeField.setValue(size === null ? '' : size);

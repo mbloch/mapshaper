@@ -15,10 +15,14 @@ describe('gui-icon-shapes.mjs', function () {
     assert.deepEqual(names(getIconShapes('symbol')), names(getIconShapes('label')));
   });
 
-  it('the NYT star is offered to both, but only when asked for', function () {
-    assert.ok(names(getIconShapes('label', {nyt: true})).indexOf('nyt-star') > -1);
-    assert.ok(names(getIconShapes('symbol', {nyt: true})).indexOf('nyt-star') > -1);
-    assert.equal(names(getIconShapes('symbol')).indexOf('nyt-star'), -1);
+  it('the NYT icons are offered to both, but only when asked for', function () {
+    var nyt = ['nyt-star', 'nyt-target', 'nyt-target2'];
+    assert.deepEqual(names(getIconShapes('label', {nyt: true})).slice(5), nyt);
+    assert.deepEqual(names(getIconShapes('symbol', {nyt: true})).slice(5), nyt);
+    assert.deepEqual(names(getIconShapes('symbol')).filter(function(name) {
+      return nyt.includes(name);
+    }), []);
+    assert.equal(getIconShapeName({icon: 'nyt-target2'}), 'nyt-target2');
   });
 
   it('getIconShapeName() reads the shape from the fields', function () {
@@ -115,6 +119,17 @@ describe('gui-icon-shapes.mjs', function () {
       assert.deepEqual(getIconPaintChange('circle', 'nyt-star',
         vals({'icon-stroke': '#cc0000', 'icon-fill': '#ffffff'}), '#333333'),
         {'icon-fill': '#333333', 'icon-stroke': ''});
+    });
+
+    it('swaps one NYT icon\'s color for another\'s, unless the color was chosen', function () {
+      assert.deepEqual(getIconPaintChange('nyt-target', 'nyt-star', vals({'icon-stroke': '#cc0000'}), ''),
+        {'icon-stroke': '#e0553b'});
+      assert.deepEqual(getIconPaintChange('nyt-target', 'nyt-star', vals({'icon-stroke': '#0000ff'}), ''),
+        {'icon-stroke': '#0000ff'});
+      // the targets share a color, and paint alike
+      assert.deepEqual(getIconPaintChange('nyt-target2', 'nyt-target', vals({'icon-stroke': '#e0553b'}), ''), {});
+      assert.deepEqual(getIconPaintChange('nyt-target', 'circle', vals({}), ''),
+        {'icon-stroke': '#e0553b'});
     });
 
     it('leaves a color the icons disagree on alone', function () {

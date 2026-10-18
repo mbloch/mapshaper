@@ -140,7 +140,12 @@ cmd.addSymbol = function(targetLayers, targetDataset, opts) {
   return merged;
 };
 
-var NYT_STAR_COLOR = '#cc0000';
+// The colors of the NYT icons, from their artwork (see gui-icon-shapes.mjs)
+var NYT_ICON_COLORS = {
+  'nyt-star': '#cc0000',
+  'nyt-target': '#e0553b',
+  'nyt-target2': '#e0553b'
+};
 
 var POLYGON_SIDES = {
   triangle: 3,
@@ -164,7 +169,7 @@ export function getSymbolFields(d, rec, opts) {
   if (type == 'pie') return getPieFields(d, scale);
   if (type == 'ring') return getRingFields(d, scale);
   if (type == 'star') return getStarFields(d, scale);
-  if (type == 'nyt-star') return getNytStarFields(d, scale);
+  if (type in NYT_ICON_COLORS) return getNytIconFields(type, d, scale);
   if (type == 'square' && !d.sides) return getSquareFields(d, scale);
   if (type == 'polygon' || type == 'square' || type in POLYGON_SIDES) {
     return getPolygonFields(d, type, scale);
@@ -216,12 +221,13 @@ function getStarFields(d, scale) {
   return addFilledStyle(o, d);
 }
 
-// Not advertised, like icon=nyt-star (see svg-icons.mjs): the web UI offers it
-// only to some users. stroke= is its outline, NYT red unless given, at a width
-// fixed by its size; fill= is its middle, white unless given. Not rotated.
-function getNytStarFields(d, scale) {
-  var o = {icon: 'nyt-star', 'icon-size': getSymbolRadius(d) * 2 * scale,
-    'icon-stroke': hasValue(d.stroke) ? d.stroke : NYT_STAR_COLOR};
+// Not advertised, like icon=nyt-star (see svg-icons.mjs): the web UI offers
+// them only to some users. stroke= is the icon's color, its NYT color unless
+// given, at line widths fixed by its size; fill= is the star's middle (white
+// unless given) or a disc behind a target (none unless given). Not rotated.
+function getNytIconFields(type, d, scale) {
+  var o = {icon: type, 'icon-size': getSymbolRadius(d) * 2 * scale,
+    'icon-stroke': hasValue(d.stroke) ? d.stroke : NYT_ICON_COLORS[type]};
   if (hasValue(d.fill)) o['icon-fill'] = d.fill;
   if (hasValue(d.opacity)) o['icon-opacity'] = d.opacity;
   return o;

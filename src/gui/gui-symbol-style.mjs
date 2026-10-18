@@ -38,14 +38,14 @@ export function getDefaultCurveStyle() {
 }
 
 // Whether a shape takes a stroke width and a rotation. A circle or a ring
-// looks the same however it is turned. The NYT star is a logo, drawn upright
-// with an outline of its own weight.
+// looks the same however it is turned. The NYT icons are drawn as their
+// artwork is, upright, with lines of their own weight.
 export function shapeHasStrokeWidth(shape) {
-  return shape != 'nyt-star';
+  return getIconShapePaint(shape) != 'nyt';
 }
 
 export function shapeHasRotation(shape) {
-  return shape != 'circle' && shape != 'ring' && shape != 'nyt-star';
+  return shape != 'circle' && shape != 'ring' && getIconShapePaint(shape) != 'nyt';
 }
 
 // The paint a symbol of @shape shows after changing from @prevShape, from
@@ -61,7 +61,7 @@ export function getShapeChangeStyle(shape, prevShape, paint) {
 //
 // A missing fill or stroke is whatever the shape has without one: -symbols
 // fills a filled shape with a default color, so its "none" is said; a ring
-// has no fill, and a ring or NYT star given no stroke= would be drawn in its
+// has no fill, and a ring or NYT icon given no stroke= would be drawn in its
 // fill, so their "none" is said too.
 export function getAddIconOptions(style) {
   var o = {};

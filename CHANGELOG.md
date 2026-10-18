@@ -5,6 +5,8 @@ v0.7.90
 * `-shape` accepts the `+` option (before, `+` was used as the layer name).
 * Fixed: `-calc +` deleted its target layer.
 * `-rectangle +` names its output layer `rectangle` (before, the layer was unnamed).
+* Added the NYT dot-and-ring icons `nyt-target` and `nyt-target2` (`icon=` and `-symbols type=`).
+* [web] The NYT icons are in a "more" menu beside the other icon buttons.
 
 v0.7.89
 * [web] Added previews of overlay frames (before they only appeared as rectangles overlaid on the main frame).

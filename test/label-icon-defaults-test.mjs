@@ -77,3 +77,38 @@ describe('icon=nyt-star', function () {
     assert.equal(iconNames.indexOf('nyt-star'), -1);
   });
 });
+
+describe('icon=nyt-target and icon=nyt-target2', function () {
+  function circles(svg) {
+    return svg.match(/<circle [^>]*>/g) || [];
+  }
+
+  it('draw a dot inside a ring, in the icon colour, with nothing behind them', async function () {
+    var c = circles(await renderSvg('icon=nyt-target icon-size=40 icon-color=#e0553b'));
+    assert.deepEqual(c, [
+      '<circle cx="0" cy="0" fill="none" stroke="#e0553b" stroke-width="4" r="18"/>',
+      '<circle cx="0" cy="0" fill="#e0553b" r="9.2"/>'
+    ]);
+  });
+
+  it('draw a dot inside two rings', async function () {
+    var c = circles(await renderSvg('icon=nyt-target2 icon-size=100 icon-color=red'));
+    assert.equal(c.length, 3);
+    assert(/stroke-width="8" r="29.5"/.test(c[0]), c[0]);
+    assert(/stroke-width="4.5" r="47.75"/.test(c[1]), c[1]);
+    assert(/fill="red" r="15"/.test(c[2]), c[2]);
+  });
+
+  it('-symbols gives them their NYT color, a fill behind them, and opacity on the whole icon', async function () {
+    var svg = await renderSvg('type=nyt-target radius=20 fill=white opacity=0.5', 'symbols');
+    var c = circles(svg);
+    assert.equal(c[0], '<circle cx="0" cy="0" fill="white" r="20"/>');
+    assert(/stroke="#e0553b"/.test(c[1]), c[1]);
+    assert(/<g [^>]*opacity="0.5"/.test(svg), svg);
+  });
+
+  it('are supported names without being listed among the icon names', function () {
+    assert(isSupportedIconName('nyt-target') && isSupportedIconName('nyt-target2'));
+    assert.equal(iconNames.indexOf('nyt-target'), -1);
+  });
+});

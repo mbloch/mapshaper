@@ -7,7 +7,9 @@ var iconDefaults = {
   triangle: {size: 8},
   star: {size: 8},
   ring: {size: 8},
-  'nyt-star': {size: 14}
+  'nyt-star': {size: 14},
+  'nyt-target': {size: 14},
+  'nyt-target2': {size: 16}
 };
 var fallbackSize = 5;
 

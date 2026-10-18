@@ -151,6 +151,7 @@ function renderComplexSymbol(sym, x, y) {
   }
   var o = renderer(sym, x || 0, y || 0);
   if (sym.opacity) {
+    if (!o.properties) o.properties = {}; // a group of several parts has none
     o.properties.opacity = sym.opacity;
   }
   return o;

@@ -54,12 +54,22 @@ var arrowParams = {
 var shapeStyleFields = ['stroke', 'stroke-width', 'stroke-dasharray',
   'stroke-opacity', 'fill-opacity'];
 
+// NYT targets: a dot inside one or two rings, drawn in the icon's stroke color
+// over its fill (none unless icon-fill gives one). Radii are fractions of the
+// outer radius, measured from the NYT artwork.
+var NYT_TARGETS = {
+  'nyt-target': {dot: 0.46, rings: [[0.8, 1]]},
+  'nyt-target2': {dot: 0.3, rings: [[0.51, 0.67], [0.91, 1]]}
+};
+
 // Which paint carries an icon's color by default: a ring is a stroke with no
-// fill, the NYT star a stroke around a white middle, and the rest are filled.
+// fill, and the rest are filled. The NYT icons are drawn in their stroke
+// color, at line widths fixed by their size: the star around a white middle,
+// the targets over no fill.
 // 'fill', 'stroke' or 'nyt'
 export function getIconPaintKind(type) {
   if (type == 'ring') return 'stroke';
-  if (type == 'nyt-star') return 'nyt';
+  if (type == 'nyt-star' || type in NYT_TARGETS) return 'nyt';
   return 'fill';
 }
 
@@ -80,7 +90,7 @@ export function getIconPaint(d, type) {
     stroke = d.stroke;
     width = d['stroke-width'];
   } else {
-    fill = kind == 'nyt' ? NYT_STAR_FILL : 'none';
+    fill = type == 'nyt-star' ? NYT_STAR_FILL : 'none';
     stroke = color;
     width = kind == 'stroke' ? d['stroke-width'] : null;
   }
@@ -131,6 +141,7 @@ export function getIconSymbol(d) {
   if (type == 'arrow') return getArrowIcon(d, rotation);
   if (type == 'pie') return getPieIcon(d, rotation);
   if (type == 'ring' && hasValue(d['icon-radii'])) return getRingsIcon(d);
+  if (type in NYT_TARGETS) return getNytTargetIcon(d);
   if (type == 'star' && (getNumber(d['icon-points']) > 0 || rotation)) {
     return getStarIcon(d, rotation);
   }
@@ -248,6 +259,38 @@ function getPieIcon(d, rotation) {
 function getRingsIcon(d) {
   return makeRingSymbol({radii: d['icon-radii'], fill: getIconFill(d)},
     {opacity: getIconOpacity(d)});
+}
+
+// The fill is a disc under the whole icon. Opacity goes on the group, so that
+// the parts don't show through each other.
+function getNytTargetIcon(d) {
+  var spec = NYT_TARGETS[d.icon];
+  var r = getIconSize(d) / 2;
+  var paint = getIconPaint(d, d.icon);
+  var parts = [];
+  var sym;
+  if (paint.fill != 'none') {
+    parts.push({type: 'circle', fill: paint.fill, r: roundToHundredths(r)});
+  }
+  if (paint.stroke != 'none') {
+    spec.rings.forEach(function(ring) {
+      parts.push({
+        type: 'circle',
+        fill: 'none',
+        stroke: paint.stroke,
+        'stroke-width': roundToHundredths((ring[1] - ring[0]) * r),
+        r: roundToHundredths((ring[0] + ring[1]) / 2 * r)
+      });
+    });
+    parts.push({type: 'circle', fill: paint.stroke, r: roundToHundredths(spec.dot * r)});
+  }
+  sym = {type: 'group', parts: parts};
+  if (parts.length > 0) addOpacity(sym, d);
+  return sym;
+}
+
+function roundToHundredths(n) {
+  return Math.round(n * 100) / 100;
 }
 
 function getFilledShape(d, coords) {

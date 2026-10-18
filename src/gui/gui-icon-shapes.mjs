@@ -11,9 +11,13 @@
 // write it. Pure, so that it can be tested without a map.
 //
 // paint: which of the icon's fill and stroke carries its color by default --
-// 'fill', 'stroke' (a ring) or 'nyt' (the NYT star: a stroke of fixed width
-// around a white middle). Both panels offer a Fill and a Stroke for every
-// shape; this is only where a shape starts.
+// 'fill', 'stroke' (a ring) or 'nyt' (an NYT icon: drawn in its stroke, at
+// line widths fixed by its size, in its own color, over a fill that is white
+// for the star and none for the targets). Both panels offer a Fill and a
+// Stroke for every shape; this is only where a shape starts.
+//
+// nytOnly: offered only to NYT users, in a menu of their own (see
+// gui-icon-shape-buttons.mjs)
 
 export var ICON_SHAPES = [{
   name: 'circle',
@@ -55,10 +59,33 @@ export var ICON_SHAPES = [{
   name: 'nyt-star',
   title: 'NYT star',
   paint: 'nyt',
+  color: '#cc0000',
+  fill: '#ffffff',
   icon: 'nyt-star',
   contexts: ['label', 'symbol'],
   nytOnly: true,
   glyph: '<polygon transform="scale(0.4)" points="19.98 5.72 23.15 11.76 29.45 9.15 27.99 15.82 34.5 17.86 29.1 22.03 32.76 27.78 25.95 27.5 25.06 34.27 20.01 29.67 14.98 34.28 14.08 27.52 7.26 27.82 10.92 22.06 5.5 17.9 12 15.84 10.53 9.18 16.84 11.77"></polygon>'
+}, {
+  name: 'nyt-target',
+  title: 'dot and ring',
+  paint: 'nyt',
+  color: '#e0553b',
+  icon: 'nyt-target',
+  contexts: ['label', 'symbol'],
+  nytOnly: true,
+  glyph: '<circle cx="8" cy="8" r="5.9" fill="none" stroke="currentColor" stroke-width="1.4"></circle>' +
+    '<circle cx="8" cy="8" r="3"></circle>'
+}, {
+  name: 'nyt-target2',
+  title: 'dot and two rings',
+  paint: 'nyt',
+  color: '#e0553b',
+  icon: 'nyt-target2',
+  contexts: ['label', 'symbol'],
+  nytOnly: true,
+  glyph: '<circle cx="8" cy="8" r="6.6" fill="none" stroke="currentColor" stroke-width="1"></circle>' +
+    '<circle cx="8" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.2"></circle>' +
+    '<circle cx="8" cy="8" r="1.9"></circle>'
 }];
 
 // The fields that select a shape, apart from icon itself
@@ -124,14 +151,18 @@ export var ICON_PAINT_FIELDS = ['icon-fill', 'icon-stroke', 'icon-stroke-width']
 export var ICON_FIELDS = ['icon', 'icon-size', 'icon-color', 'icon-opacity']
   .concat(ICON_PAINT_FIELDS, SHAPE_FIELDS);
 
-export var NYT_STAR_COLOR = '#cc0000';
-var NYT_STAR_FILL = '#ffffff';
 var NYT_STAR_STROKE_RATIO = 5 / 40;
 var RING_STROKE_WIDTH = 1.5;
 
 export function getIconShapePaint(name) {
   var shape = findIconShape(name);
   return shape ? shape.paint : 'fill';
+}
+
+// The color an NYT icon comes in, or '' for other shapes
+function getNytColor(name) {
+  var shape = findIconShape(name);
+  return shape && shape.paint == 'nyt' ? shape.color : '';
 }
 
 // The width a stroke is given when it is added to a shape without one
@@ -156,7 +187,7 @@ export function getShownIconPaint(rec, shape, defaultColor) {
     stroke = rec.stroke;
     width = rec['stroke-width'];
   } else {
-    fill = kind == 'nyt' ? NYT_STAR_FILL : '';
+    fill = kind == 'nyt' && findIconShape(shape).fill || '';
     stroke = color;
     width = kind == 'stroke' ? rec['stroke-width'] : null;
   }
@@ -179,8 +210,8 @@ export function getShownIconPaint(rec, shape, defaultColor) {
 // disagree. Between shapes that paint alike (a circle and a square) nothing
 // changes. Otherwise the color moves to where the new shape carries it -- a
 // circle's fill becomes a ring's stroke -- and the rest goes back to the new
-// shape's defaults. The NYT star brings its red, and takes it away again,
-// unless the color was chosen by hand.
+// shape's defaults. An NYT icon brings its color, and takes it away again (or
+// swaps it for another NYT icon's), unless the color was chosen by hand.
 //   defaultColor: the color a panel gives a symbol it hasn't been told one for
 //     ('' for a label's, which takes the text color)
 // Returns {field: value}, with '' to clear a field. A field is only cleared
@@ -188,16 +219,18 @@ export function getShownIconPaint(rec, shape, defaultColor) {
 export function getIconPaintChange(shape, prevShape, vals, defaultColor) {
   var from = getIconShapePaint(prevShape);
   var to = getIconShapePaint(shape);
+  var fromColor = getNytColor(prevShape);
+  var toColor = getNytColor(shape);
   var out = {};
   var main;
-  if (from == to) return out;
+  if (from == to && fromColor == toColor) return out;
   main = from == 'fill' ? firstSet(vals['icon-fill'], vals['icon-color']) :
     firstSet(vals['icon-stroke'], vals['icon-color']);
   if (main == 'none') main = '';
-  if (main !== null && from == 'nyt' && sameColor(main, NYT_STAR_COLOR)) {
-    main = defaultColor || '';
-  } else if (main !== null && to == 'nyt' && (!main || sameColor(main, defaultColor))) {
-    main = NYT_STAR_COLOR;
+  if (main !== null && fromColor && sameColor(main, fromColor)) {
+    main = toColor || defaultColor || '';
+  } else if (main !== null && toColor && (!main || sameColor(main, defaultColor))) {
+    main = toColor;
   }
   set('icon-fill', to == 'fill' ? main : '');
   set('icon-stroke', to == 'fill' ? '' : main);
@@ -226,8 +259,8 @@ export function getShapeChangePaint(shape, prevShape, paint, defaultColor) {
 
 export function getIconShapeGlyph(name) {
   var shape = findIconShape(name);
-  return '<svg class="label-icon-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
-    (shape ? shape.glyph : '') + '</svg>';
+  return '<svg class="label-icon-symbol" data-shape="' + (shape ? shape.name : '') +
+    '" viewBox="0 0 16 16" aria-hidden="true">' + (shape ? shape.glyph : '') + '</svg>';
 }
 
 function firstSet(a, b) {

@@ -7,7 +7,7 @@ export var iconNames = ['circle', 'square', 'ring', 'star', 'polygon', 'arrow', 
 // Icons that render everywhere but are not advertised: the GUI offers them only
 // to some users (see gui-nyt.mjs), and a map made with one has to draw the same
 // for anyone who opens it.
-var unlistedIconNames = ['nyt-star'];
+var unlistedIconNames = ['nyt-star', 'nyt-target', 'nyt-target2'];
 
 export function isSupportedIconName(name) {
   return iconNames.indexOf(name) > -1 || unlistedIconNames.indexOf(name) > -1;

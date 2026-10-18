@@ -27,9 +27,10 @@ import { WRAP_FIELDS, rewrapLabelValue } from './gui-label-wrap';
 import { getLabelTextCommand } from './gui-label-commands';
 import { getDefaultIconSize, getIconShapeChange } from './gui-label-icons';
 import { isNytUser } from './gui-nyt';
+import { IconShapeButtons } from './gui-icon-shape-buttons';
 import { ARROWHEAD_GLYPHS } from './gui-arrowhead-shapes';
 import {
-  getIconShapes, getIconShapeName, getIconShapeValues, getIconShapeGlyph, ICON_FIELDS,
+  getIconShapes, getIconShapeName, getIconShapeValues, ICON_FIELDS,
   getShownIconPaint, getIconPaintChange, getIconShapePaint
 } from './gui-icon-shapes';
 
@@ -526,17 +527,8 @@ export function LabelTool(gui) {
     // The shapes have the whole row, so there is room for more of them, and
     // the size sits beside the colour below, as the halo's width does.
     var iconRow = El('div').addClass('label-style-row label-icon-shapes-row').appendTo(iconSection);
-    var iconGroup = iconGroupEl = El('div').addClass('label-btn-group label-icon-buttons').appendTo(iconRow);
-    iconBtns = {};
-    getShownIconTypes().forEach(function(icon) {
-      var btn = makePanelButton(iconGroup, '', function() {
-          applyIcon(icon.name);
-        })
-        .attr('data-icon', icon.name)
-        .attr('aria-label', icon.title || icon.name);
-      iconBtns[icon.name] = btn;
-      appendIconButtonSymbol(btn, icon.name);
-    });
+    iconGroupEl = El('div').addClass('label-btn-group label-icon-buttons').appendTo(iconRow);
+    iconBtns = new IconShapeButtons(iconGroupEl, getShownIconTypes(), applyIcon);
 
     // Every shape has a fill and a stroke, as a symbol does in the symbol
     // tool; a shape only decides which it starts with -- a ring a stroke, the
@@ -754,10 +746,6 @@ export function LabelTool(gui) {
     return btn;
   }
 
-  function appendIconButtonSymbol(btn, iconName) {
-    El(getIconShapeGlyph(iconName)).appendTo(btn);
-  }
-
   function appendAlignButtonSymbol(btn, anchor) {
     var svg = '<svg class="label-align-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
       alignButtonSymbols[anchor] + '</svg>';
@@ -849,6 +837,7 @@ export function LabelTool(gui) {
   function hidePanel() {
     panel.hide();
     hideColorPicker();
+    iconBtns.closeMenu();
     haloPending = {};
     gui.state.label_style_panel_open = false;
     textBtn.removeClass('selected');
@@ -1233,10 +1222,7 @@ export function LabelTool(gui) {
     // border the buttons share fades with them -- a live border around dead
     // buttons is the one part of a disabled control that still looks usable.
     iconGroupEl.classed('disabled', !enabled);
-    getShownIconTypes().forEach(function(icon) {
-      iconBtns[icon.name].classed('selected', !off && icon.name == iconVal);
-      setPanelButtonDisabled(iconBtns[icon.name], !enabled);
-    });
+    iconBtns.update(off ? '' : iconVal || '', function() { return !enabled; });
     return off;
   }
 
@@ -1939,14 +1925,10 @@ export function LabelTool(gui) {
   }
 
   function getSelectedIcon() {
-    var out = '';
-    getShownIconTypes().forEach(function(icon) {
-      if (iconBtns[icon.name].hasClass('selected')) out = icon.name;
-    });
-    return out;
+    return iconBtns.getSelected();
   }
 
-  // A label that already has an NYT star keeps it without the button: it is
+  // A label that already has an NYT icon keeps it without the menu: it is
   // drawn for everyone, and only choosing one is gated.
   function getShownIconTypes() {
     if (!shownIconTypes) {
