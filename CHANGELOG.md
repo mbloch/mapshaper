@@ -6,7 +6,8 @@ v0.7.90
 * Fixed: `-calc +` deleted its target layer.
 * `-rectangle +` names its output layer `rectangle` (before, the layer was unnamed).
 * Added the NYT dot-and-ring icons `nyt-target` and `nyt-target2` (`icon=` and `-symbols type=`).
-* [web] The NYT icons are in a "more" menu beside the other icon buttons.
+* Added two-hemisphere world projections: `-proj hemispheres` (Lambert Azimuthal Equal-Area) and `-proj hemispheres2` (orthographic). The hemispheres are stacked vertically (or side by side with `+horizontal`) and can have separate centers (`+lon_0 +lat_0`, `+lon_1 +lat_1`) and a gap or overlap (`+gap=`; with a negative gap, the lower or right disk overlaps the other). Each disk shows a whole hemisphere, so when the centers are not opposite each other, the places visible from both centers appear in both disks (vector and raster layers). `-graticule outline` and `-graticule polygon` follow the two disks.
+* `-projections` lists the projections that only mapshaper supports (e.g. `dymaxion`, `cupola`, `hemispheres`) separately from the PROJ projections.
 
 v0.7.89
 * [web] Added previews of overlay frames (before they only appeared as rectangles overlaid on the main frame).

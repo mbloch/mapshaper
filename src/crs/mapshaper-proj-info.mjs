@@ -14,6 +14,11 @@ export function isRotatedNormalProjection(P) {
 
 // Projection is vertically aligned to earth's axis
 export function isAxisAligned(P) {
+  // Projections that publish their own topology are assembled from rotated
+  // parts (polyhedral faces, hemispheres)
+  if (P.__projection_topology) {
+    return false;
+  }
   // TODO: consider projections that may or may not be aligned,
   // depending on parameters
   if (inList(P, 'cassini,gnom,bertin1953,chamb,ob_tran,tpeqd,healpix,rhealpix,' +

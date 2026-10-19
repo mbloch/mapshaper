@@ -423,9 +423,18 @@ function samplePieceRegions(context, ids, x0, y0, x1, y1) {
       var py = y0 + (y1 - y0) * iy / PIECE_SAMPLE_STEPS;
       var xy = rasterPixelToMapXY(context.grid, px, py);
       var lonlat = context.toGeographic(xy[0], xy[1]);
-      var id = lonlat && context.findRegion(lonlat[0], lonlat[1]);
-      if (id != null && id !== -1 && ids.indexOf(id) == -1) ids.push(id);
+      addPieceRegions(ids, lonlat && context.findRegion(lonlat[0], lonlat[1]));
     }
+  }
+}
+
+// @id: a region id, or an array of ids for a place that the projection shows
+//   more than once
+function addPieceRegions(ids, id) {
+  if (Array.isArray(id)) {
+    id.forEach(function(id) { addPieceRegions(ids, id); });
+  } else if (id != null && id !== -1 && ids.indexOf(id) == -1) {
+    ids.push(id);
   }
 }
 

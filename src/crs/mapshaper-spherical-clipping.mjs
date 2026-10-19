@@ -103,7 +103,7 @@ export function insertProjectionTopologyCuts(dataset, dest) {
     // Polyhedral cut masks meet and overlap at facet vertices. Union them before
     // clipping so overlapping source polygons are not interpreted as holes.
     addIntersectionCuts(clip, {quiet: true});
-    clip.layers[0] = dissolvePolygonLayer2(clip.layers[0], clip, {quiet: true});
+    clip.layers[0] = dissolvePolygonLayer2(clip.layers[0], clip, {quiet: true, silent: true});
   }
   clipLayersInPlace(pathLayers, clip, dataset, 'erase', getInternalClipOpts());
   return true;

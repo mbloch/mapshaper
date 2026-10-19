@@ -57,6 +57,21 @@ export function getProjectedFrameBounds(bbox, project, srcIsLatLng) {
   return projected;
 }
 
+// A view may show none of the frame's extent
+function getProjectedFrameBoundsInViews(bbox, transforms, srcIsLatLng) {
+  var bounds = new Bounds();
+  var failure = null;
+  transforms.forEach(function(project) {
+    try {
+      bounds.mergeBounds(getProjectedFrameBounds(bbox, project, srcIsLatLng));
+    } catch(e) {
+      failure = e;
+    }
+  });
+  if (!bounds.hasBounds()) throw failure;
+  return bounds;
+}
+
 var FRAME_SAMPLE_STEPS = 200;
 
 function boundaryIsProjectable(b, project) {
@@ -104,8 +119,13 @@ export function getFrameProjectionSnapshots(dataset) {
 
 // Rebuild a projected frame through the normal topology-aware replacement
 // path. This is safe when the frame shares an ArcCollection with other layers.
+// @project: a transform, or an array of transforms for a projection that shows
+//   some places more than once (one for each view). The frame covers the extent
+//   in all of the views.
 export function rebuildProjectedFrameLayer(snapshot, dataset, project, srcIsLatLng) {
-  var bounds = getProjectedFrameBounds(snapshot.bbox, project, srcIsLatLng);
+  var bounds = Array.isArray(project) ?
+    getProjectedFrameBoundsInViews(snapshot.bbox, project, srcIsLatLng) :
+    getProjectedFrameBounds(snapshot.bbox, project, srcIsLatLng);
   var rec = getSingleFrameRecord(snapshot.layer) || {};
   var fixedAspect = utils.isFiniteNumber(rec.frame_aspect_ratio) &&
     rec.frame_aspect_ratio > 0 ? rec.frame_aspect_ratio : null;

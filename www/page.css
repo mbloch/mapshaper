@@ -741,7 +741,7 @@ textarea:focus {
 	min-width: 230px;
 	word-wrap: break-word;
 	text-align: left;
-	margin-top: 7px;
+	margin-top: 9px;
 	/* padding: 14px 16px 13px 18px; */
 	padding: 12px 14px 12px 16px;
 	vertical-align: top;

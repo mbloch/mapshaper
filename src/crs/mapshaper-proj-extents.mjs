@@ -84,24 +84,50 @@ export function getOutlineDataset(src, dest, opts) {
   return dataset || null;
 }
 
+// Optional companions of P.__projected_outline (the outer boundary of the map):
+//   P.__projected_footprint: [{properties, rings}, ...] polygon features to use
+//     instead of the outline when a polygon is requested
+//   P.__projected_outline_lines: open paths to add to the outline when a
+//     polyline is requested (e.g. a rim inside the map)
 function getCustomProjectedOutline(P, geometryType) {
-  var rings = P.__projected_outline.map(function(ring) {
-    return ring.map(function(p) {
+  var rings = P.__projected_outline.map(scalePath);
+  var dataset;
+  if (geometryType == 'polygon' && P.__projected_footprint) {
+    dataset = importGeoJSON({
+      type: 'FeatureCollection',
+      features: P.__projected_footprint.map(function(o) {
+        return {
+          type: 'Feature',
+          properties: Object.assign({}, o.properties),
+          geometry: {type: 'Polygon', coordinates: o.rings.map(scalePath)}
+        };
+      })
+    });
+  } else if (geometryType == 'polyline' && P.__projected_outline_lines) {
+    dataset = importGeoJSON({
+      type: 'MultiLineString',
+      coordinates: rings.concat(P.__projected_outline_lines.map(scalePath))
+    });
+  } else {
+    dataset = importGeoJSON({
+      type: rings.length == 1 ? 'Polygon' : 'MultiPolygon',
+      coordinates: rings.length == 1 ? rings : rings.map(function(ring) {
+        return [ring];
+      })
+    });
+  }
+  dataset.layers[0].geometry_type = geometryType;
+  dataset.info.crs = P;
+  return dataset;
+
+  function scalePath(path) {
+    return path.map(function(p) {
       return [
         P.fr_meter * (P.a * p[0] + P.x0),
         P.fr_meter * (P.a * p[1] + P.y0)
       ];
     });
-  });
-  var dataset = importGeoJSON({
-    type: rings.length == 1 ? 'Polygon' : 'MultiPolygon',
-    coordinates: rings.length == 1 ? rings : rings.map(function(ring) {
-      return [ring];
-    })
-  });
-  dataset.layers[0].geometry_type = geometryType;
-  dataset.info.crs = P;
-  return dataset;
+  }
 }
 
 // Narrow pre-projection gutters can leave zero-area rings after a rotated

@@ -18,9 +18,11 @@ import { deleteUnusedArcs } from '../paths/mapshaper-arc-clean';
 import { projectAndDensifyArcs } from '../crs/mapshaper-densify';
 import { expandProjDefnForTargets } from '../crs/mapshaper-projection-params';
 import {
-  layerHasPoints, layerHasGeometry, layerHasRaster, copyLayerShapes,
+  layerHasPoints, layerHasPaths, layerHasGeometry, layerHasRaster, copyLayerShapes,
   getImplicitlyTargetedLayerNames
 } from '../dataset/mapshaper-layer-utils';
+import { mergeArcs } from '../dataset/mapshaper-merging';
+import { DataTable } from '../datatable/mapshaper-data-table';
 import { datasetHasGeometry, datasetHasRaster } from '../dataset/mapshaper-dataset-utils';
 import { createRasterPreview } from '../rasters/mapshaper-raster-utils';
 import { projectRasterGridForward } from '../rasters/mapshaper-raster-reprojection';
@@ -40,7 +42,7 @@ import {
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
-import { isInterruptedProjection } from '../crs/mapshaper-projection-topology';
+import { getProjectionTopology, isInterruptedProjection } from '../crs/mapshaper-projection-topology';
 import { splitPolygonFrameChords } from '../crs/mapshaper-projection-frame-cuts';
 import { getHighPrecisionSnapInterval, snapCoordsByInterval } from '../paths/mapshaper-snapping';
 import {
@@ -362,13 +364,21 @@ export function projectDataset(dataset, src, dest, opts) {
   if (isProjectedCRS(src) && !isInvertibleCRS(src)) {
     stop('Unable to project from a coordinate system that has no inverse transform');
   }
+  if (dest.__projection_views && isLatLngCRS(src) && !opts.no_clip) {
+    projectDatasetViews(dataset, src, dest, opts);
+    return;
+  }
   var proj = getProjTransform2(src, dest); // v2 returns null points instead of throwing an error
   var frameSnapshots = getFrameProjectionSnapshots(dataset);
   var badArcs = 0;
   var badPoints = 0;
+  var topology = getProjectionTopology(dest);
+  // Arcs and points in parts of the globe that the projection does not show
+  // are removed by design, so they are not reported as projection failures
+  var hidesAreas = !!(topology && topology.hidden_areas);
   var healAntimeridian = isLatLngCRS(src) &&
     isInterruptedProjection(dest) &&
-    Math.abs(dest.lam0) > 1e-12;
+    (Math.abs(dest.lam0) > 1e-12 || !!(topology && topology.heal_antimeridian));
   var clipped = preProjectionClip(dataset, src, dest, opts);
   dataset.layers.forEach(function(lyr) {
     if (layerHasPoints(lyr)) {
@@ -401,13 +411,107 @@ export function projectDataset(dataset, src, dest, opts) {
     rebuildProjectedFrameLayer(snapshot, dataset, proj, isLatLngCRS(src));
   });
 
-  if (badArcs > 0 && !opts.quiet) {
+  if (badArcs > 0 && !opts.quiet && !hidesAreas) {
     message(`Removed ${badArcs} ${badArcs == 1 ? 'path' : 'paths'} containing unprojectable vertices.`);
   }
-  if (badPoints > 0 && !opts.quiet) {
+  if (badPoints > 0 && !opts.quiet && hidesAreas) {
+    message(`Removed ${badPoints} ${badPoints == 1 ? 'point' : 'points'} in areas that the projection does not show.`);
+  } else if (badPoints > 0 && !opts.quiet) {
     message(`Removed ${badPoints} unprojectable ${badPoints == 1 ? 'point' : 'points'}.`);
   }
   dataset.info.crs = dest;
+}
+
+// A projection that shows some places more than once (like two hemispheres
+// that share a region) has a CRS for each of its views. A copy of the vector
+// layers is projected with each view, and each feature gets the parts from all
+// of the views. Rasters and frames are projected with the CRS of the whole map.
+function projectDatasetViews(dataset, src, dest, opts) {
+  var frameSnapshots = getFrameProjectionSnapshots(dataset);
+  var frameLayers = frameSnapshots.map(function(o) { return o.layer; });
+  var layers = dataset.layers.filter(function(lyr) {
+    return layerHasGeometry(lyr) && !frameLayers.includes(lyr);
+  });
+  var views = dest.__projection_views.map(function(view) {
+    var copy = {
+      arcs: dataset.arcs ? dataset.arcs.getCopy() : null,
+      layers: layers.map(function(lyr) {
+        var data = new DataTable(lyr.shapes.length);
+        data.getRecords().forEach(function(rec, i) { rec.id = i; });
+        return {geometry_type: lyr.geometry_type, shapes: cloneShapes(lyr.shapes), data: data};
+      }),
+      info: {}
+    };
+    projectDataset(copy, src, view, Object.assign({}, opts, {quiet: true}));
+    return copy;
+  });
+  var arcOffsets = [];
+  var arcCount = 0;
+  // a view can remove all of the arcs
+  var viewArcs = views.map(function(view) { return view.arcs; }).filter(Boolean);
+  views.forEach(function(view) {
+    arcOffsets.push(arcCount);
+    arcCount += view.arcs ? view.arcs.size() : 0;
+  });
+  if (dataset.arcs) {
+    dataset.arcs = viewArcs.length > 0 ? mergeArcs(viewArcs) : null;
+  }
+  layers.forEach(function(lyr, i) {
+    mergeProjectedViewLayers(lyr, views.map(function(view, j) {
+      var viewLyr = view.layers[i];
+      if (arcOffsets[j] > 0 && layerHasPaths(viewLyr)) {
+        offsetArcIds(viewLyr.shapes, arcOffsets[j]);
+      }
+      return viewLyr;
+    }));
+  });
+  dataset.layers.forEach(function(lyr) {
+    if (layerHasRaster(lyr)) {
+      projectRasterLayer(lyr, src, dest, opts);
+    }
+  });
+  frameSnapshots.forEach(function(snapshot) {
+    // the frame's old arcs are not in the merged arcs
+    snapshot.layer.shapes = snapshot.layer.shapes.map(function() { return null; });
+    rebuildProjectedFrameLayer(snapshot, dataset, dest.__projection_views.map(function(view) {
+      return getProjTransform2(src, view);
+    }), true);
+  });
+  dataset.info.crs = dest;
+}
+
+// Features that were removed from every view are removed
+function mergeProjectedViewLayers(lyr, viewLayers) {
+  var n = lyr.shapes.length;
+  var shapes = new Array(n).fill(null);
+  var kept = new Array(n).fill(false);
+  viewLayers.forEach(function(viewLyr) {
+    viewLyr.data.getRecords().forEach(function(rec, i) {
+      var shp = viewLyr.shapes[i];
+      kept[rec.id] = true;
+      if (shp && shp.length > 0) {
+        shapes[rec.id] = shapes[rec.id] ? shapes[rec.id].concat(shp) : shp;
+      }
+    });
+  });
+  if (kept.includes(false)) {
+    shapes = shapes.filter(function(shp, i) { return kept[i]; });
+    if (lyr.data) {
+      lyr.data = new DataTable(lyr.data.getRecords().filter(function(rec, i) { return kept[i]; }));
+    }
+  }
+  lyr.shapes = shapes;
+}
+
+function offsetArcIds(shapes, offset) {
+  shapes.forEach(function(shp) {
+    if (!shp) return;
+    shp.forEach(function(path) {
+      for (var i = 0; i < path.length; i++) {
+        path[i] = path[i] < 0 ? path[i] - offset : path[i] + offset;
+      }
+    });
+  });
 }
 
 function scaleProjectionFrameBounds(bounds, crs) {

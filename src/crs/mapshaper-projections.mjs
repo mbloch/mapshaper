@@ -10,12 +10,20 @@ import { registerDymaxionProjections } from './mapshaper-dymaxion';
 import { registerButterflyProjections } from './mapshaper-butterfly-projections';
 import { registerNarukawa2022Projection } from './mapshaper-narukawa2022';
 import { registerLeeTetrahedralProjections } from './mapshaper-lee-tetrahedral';
+import { registerHemisphereProjections } from './mapshaper-hemispheres';
 
 var mproj = req('mproj');
+// Projections that mapshaper registers are not in this list
+var mprojIds = mproj ? Object.keys(mproj.internal.pj_list) : [];
+// Projections in mproj that are not in PROJ
+var MPROJ_ONLY_IDS = ['cupola', 'gilbert', 'hill'];
+// Used internally (e.g. by albersusa)
+var HIDDEN_IDS = ['mixed'];
 registerDymaxionProjections(mproj);
 registerButterflyProjections(mproj);
 registerNarukawa2022Projection(mproj);
 registerLeeTetrahedralProjections(mproj);
+registerHemisphereProjections(mproj);
 
 var asyncLoader = null;
 
@@ -24,6 +32,11 @@ var projectionAliases = {
   webmercator: '+proj=merc +a=6378137 +b=6378137',
   wgs84: '+proj=longlat +datum=WGS84',
   albersusa: AlbersUSA
+};
+
+// Aliases of mapshaper-only projections that are not in mproj
+var compositeProjectionNames = {
+  albersusa: 'U.S. composite (Albers Equal Area, with Alaska and Hawaii insets)'
 };
 
 export async function initProjLibrary(opts) {
@@ -375,15 +388,39 @@ export function isLatLngDataset(dataset) {
 
 export function printProjections() {
   var index = mproj.internal.pj_list;
-  var msg = 'Proj4 projections\n';
-  Object.keys(index).sort().forEach(function(id) {
-    msg += '  ' + utils.rpad(id, 7, ' ') + '  ' + index[id].name + '\n';
-  });
-  msg += '\nAliases';
+  var lists = getProjectionCodeLists();
+  var msg = formatProjectionList('Projection codes (PROJ)', lists.proj) + '\n' +
+    formatProjectionList('Projection codes (mapshaper only)', lists.mapshaper) + '\n' +
+    'Aliases';
   Object.keys(projectionAliases).sort().forEach(function(n) {
+    if (n in compositeProjectionNames) return;
     msg += '\n  ' + n;
   });
   print(msg);
+
+  function formatProjectionList(title, ids) {
+    var width = Math.max.apply(null, ids.map(function(id) { return id.length; }));
+    return ids.reduce(function(memo, id) {
+      var name = index[id] ? index[id].name : compositeProjectionNames[id];
+      return memo + '  ' + utils.rpad(id, width, ' ') + '  ' + name + '\n';
+    }, title + '\n');
+  }
+}
+
+// Returns sorted lists of the projection codes that PROJ also supports and the
+// ones that only mapshaper supports
+export function getProjectionCodeLists() {
+  var lists = {proj: [], mapshaper: []};
+  var ids = Object.keys(mproj.internal.pj_list).concat(Object.keys(compositeProjectionNames));
+  ids.sort().forEach(function(id) {
+    if (HIDDEN_IDS.includes(id)) return;
+    if (MPROJ_ONLY_IDS.includes(id) || !mprojIds.includes(id)) {
+      lists.mapshaper.push(id);
+    } else {
+      lists.proj.push(id);
+    }
+  });
+  return lists;
 }
 
 export function wkt1ToProj(str) {

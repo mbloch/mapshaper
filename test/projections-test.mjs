@@ -33,6 +33,20 @@ describe('mapshaper-projections.js', function() {
     invalid('-proj merc +ellps=sphere');
   })
 
+  describe('getProjectionCodeLists()', function () {
+    it('lists the projections that PROJ does not have separately', function() {
+      api.internal.parseCrsString('albersusa'); // registers an internal projection
+      var lists = api.internal.getProjectionCodeLists();
+      assert.deepEqual(lists.mapshaper, ['albersusa', 'butterfly', 'butterfly2', 'cahill_keyes',
+        'calm', 'cupola', 'dymaxion', 'dymaxion2', 'gilbert', 'hemispheres',
+        'hemispheres2', 'hill', 'markley', 'narukawa2022']);
+      assert(lists.proj.includes('merc'));
+      assert(lists.proj.includes('imoll_o'));
+      assert(!lists.proj.includes('dymaxion'));
+      assert(!lists.proj.includes('mixed'));
+    });
+  })
+
   describe('getProjDefn()', function () {
     test('merc', '+proj=merc');
     test('merc +lon_0=60', '+proj=merc +lon_0=60');

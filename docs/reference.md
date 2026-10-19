@@ -1446,7 +1446,28 @@ mapshaper countries.geojson \
 mapshaper us_states.shp \
   -proj albersusa +PR +VI +AK.lon_0=-141 +AK.scale=0.4 \
   -o out.shp
+
+# Show the world as two orthographic hemispheres, one above the other, with the
+# lower disk overlapping the upper disk
+mapshaper countries.geojson \
+  -proj hemispheres2 +lon_0=65 +lat_0=15 +lon_1=-95 +lat_1=8 +gap=-0.3 densify \
+  -graticule outline name=neatline \
+  -o target="*" output/
 ```
+
+`+proj=hemispheres` (Lambert Azimuthal Equal-Area) and `+proj=hemispheres2`
+(orthographic) show the world as two hemispheres, one above the other, or side
+by side with `+horizontal`. `+lon_0` and `+lat_0` set the center of the upper
+(or left) hemisphere (default 70°E, so the hemispheres meet at 20°W and
+160°E); `+lon_1` and `+lat_1` set the center of the lower (or right)
+hemisphere (default `lon_0 + 180` and `lat_0`). `+gap` sets the space between
+the disks as a fraction of a disk's radius (default `0`); a negative gap
+makes the lower (or right) disk overlap the other disk. Each disk shows the
+whole hemisphere around its center, so places within 90° of both centers
+appear in both disks; shapes in areas that neither hemisphere shows are
+removed. `-graticule polygon` creates one polygon per disk, with a
+`hemisphere` field (`back` for the upper or left disk, `front` for the
+overlapping one).
 
 Interrupted Goode Homolosine (`+proj=igh`, `+proj=igh_o`), Interrupted
 Mollweide (`+proj=imoll`, `+proj=imoll_o`), rectangular tetrahedral
@@ -2258,7 +2279,7 @@ mapshaper cities.json \
 
 ### -projections
 
-Print list of supported proj4 projection ids and projection aliases.
+Print list of supported proj4 projection ids and projection aliases. Projections that PROJ does not support (such as `dymaxion` and `hemispheres`) are listed separately, after the PROJ projections.
 
 ### -quiet
 
