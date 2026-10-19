@@ -741,7 +741,7 @@ textarea:focus {
 	min-width: 230px;
 	word-wrap: break-word;
 	text-align: left;
-	margin-top: 7px;
+	margin-top: 9px;
 	/* padding: 14px 16px 13px 18px; */
 	padding: 12px 14px 12px 16px;
 	vertical-align: top;
@@ -4481,7 +4481,7 @@ body.dragging-color-picker * {
 	stroke: none;
 }
 
-.label-icon-buttons .label-panel-btn[data-icon="ring"] .label-icon-symbol {
+.label-icon-symbol[data-shape="ring"] {
 	fill: none;
 	stroke: currentColor;
 	stroke-width: 1.8;
@@ -4489,18 +4489,56 @@ body.dragging-color-picker * {
 	stroke-linejoin: round;
 }
 
-.label-icon-buttons .label-panel-btn[data-icon="star"] .label-icon-symbol {
+.label-icon-symbol[data-shape="star"] {
 	transform: scale(1.4);
 }
 
 /* Drawn as the symbol is, an outline around a hollow star, in the artwork's
    own 40-unit coordinates -- so the stroke width is in those units too. */
-.label-icon-buttons .label-panel-btn[data-icon="nyt-star"] .label-icon-symbol {
+.label-icon-symbol[data-shape="nyt-star"] {
 	fill: none;
 	stroke: currentColor;
 	stroke-width: 5;
 	stroke-miterlimit: 10;
 	transform: scale(0.95);
+}
+
+/* The NYT icons, in a menu opened from the end of the icon buttons */
+.icon-shape-menu {
+	position: fixed;
+	z-index: 1000;
+	padding: 4px 0;
+	border: 1px solid #d5d5d5;
+	border-radius: 6px;
+	background-color: #fff;
+	box-shadow: 0 1px 7px rgba(0,0,0,0.18);
+	font-size: 12px;
+}
+
+.icon-shape-menu-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 12px 4px 10px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.icon-shape-menu-item:hover {
+	background-color: #f0f0f0;
+}
+
+.icon-shape-menu-item.selected {
+	font-weight: bold;
+}
+
+.icon-shape-menu-item.disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+
+.icon-shape-menu-item.disabled:hover {
+	background-color: transparent;
 }
 
 .label-align-buttons .label-panel-btn,

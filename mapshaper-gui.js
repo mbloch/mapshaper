@@ -11498,7 +11498,8 @@
 
     // One map per frame with checked layers, and one frameless map of any
     // checked unframed layers. When there are several files, each frame's is
-    // named after the frame.
+    // named after the frame. HTML maps of frames of different widths share a
+    // file (see combineHtmlMaps()).
     async function exportFrameMaps(items, opts) {
       var parts = [];
       var files = [];
@@ -11518,11 +11519,13 @@
           targets = addFrameFurnitureTargets(targets, partOpts.gui_frame, part.frame);
           if (parts.length > 1) {
             partOpts.file = internal.getFrameExportFilename(part.frame, opts.file, opts.format);
+            partOpts.html_artboards = opts.format == 'html';
+            partOpts.html_artboard_name = part.frame.layer.name;
           }
         }
         files = files.concat(await internal.exportTargetLayers(model, targets, partOpts));
       }
-      return files;
+      return opts.format == 'html' ? internal.combineHtmlMaps(files, opts) : files;
     }
 
     function getGuiFrameContext(target) {
@@ -20081,7 +20084,9 @@
     triangle: {size: 8},
     star: {size: 8},
     ring: {size: 8},
-    'nyt-star': {size: 14}
+    'nyt-star': {size: 14},
+    'nyt-target': {size: 14},
+    'nyt-target2': {size: 16}
   };
   var fallbackSize = 5;
 
@@ -20127,41 +20132,6 @@
     return isInstalledFont(NYT_FONT);
   }
 
-  // The heads a line can end in, and their button glyphs: shared by the label
-  // callout's End buttons, the layer panel's Arrowheads section and the symbol
-  // tool's curve section, so that a head looks the same wherever it is chosen.
-  //
-  // The glyphs point left, the way a line's start head and a callout's anchor
-  // end do, and are drawn to the renderer's angles, with sides the same visible
-  // length -- the open one's stroke included -- so that they compare as the
-  // drawn heads do. The dot's left edge is where the arrows' tips are.
-
-  var ARROWHEAD_SHAPES = [{
-    name: 'arrow',
-    title: 'solid arrowheads'
-  }, {
-    name: 'wide-arrow',
-    title: 'wide solid arrowheads'
-  }, {
-    name: 'open-arrow',
-    title: 'open arrowheads'
-  }, {
-    name: 'dot',
-    title: 'dots'
-  }];
-
-  var ARROWHEAD_GLYPHS = {
-    arrow: '<path d="M6.84 8H13"></path><path class="fill" d="M2.5 8L8.7 6.05V9.95Z"></path>',
-    'wide-arrow': '<path d="M6.54 8H13"></path><path class="fill" d="M2.5 8L8.27 5V11Z"></path>',
-    'open-arrow': '<path d="M3.2 8H13"></path><path d="M7.38 5.07L3.2 8L7.38 10.93"></path>',
-    dot: '<path d="M5 8H13"></path><circle class="fill" cx="5" cy="8" r="2.6"></circle>'
-  };
-
-  function getArrowheadGlyph(name) {
-    return '<svg class="label-callout-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
-      (ARROWHEAD_GLYPHS[name] || '') + '</svg>';
-  }
-
   // The icon shapes the label panel and the symbol panel offer, and how each is
   // recognized in and written to a record. One list, so that a label's icon and
   // a hand-placed symbol are chosen from the same shapes, drawn the same way on
@@ -20175,9 +20145,13 @@
   // write it. Pure, so that it can be tested without a map.
   //
   // paint: which of the icon's fill and stroke carries its color by default --
-  // 'fill', 'stroke' (a ring) or 'nyt' (the NYT star: a stroke of fixed width
-  // around a white middle). Both panels offer a Fill and a Stroke for every
-  // shape; this is only where a shape starts.
+  // 'fill', 'stroke' (a ring) or 'nyt' (an NYT icon: drawn in its stroke, at
+  // line widths fixed by its size, in its own color, over a fill that is white
+  // for the star and none for the targets). Both panels offer a Fill and a
+  // Stroke for every shape; this is only where a shape starts.
+  //
+  // nytOnly: offered only to NYT users, in a menu of their own (see
+  // gui-icon-shape-buttons.mjs)
 
   var ICON_SHAPES = [{
     name: 'circle',
@@ -20219,10 +20193,33 @@
     name: 'nyt-star',
     title: 'NYT star',
     paint: 'nyt',
+    color: '#cc0000',
+    fill: '#ffffff',
     icon: 'nyt-star',
     contexts: ['label', 'symbol'],
     nytOnly: true,
     glyph: '<polygon transform="scale(0.4)" points="19.98 5.72 23.15 11.76 29.45 9.15 27.99 15.82 34.5 17.86 29.1 22.03 32.76 27.78 25.95 27.5 25.06 34.27 20.01 29.67 14.98 34.28 14.08 27.52 7.26 27.82 10.92 22.06 5.5 17.9 12 15.84 10.53 9.18 16.84 11.77"></polygon>'
+  }, {
+    name: 'nyt-target',
+    title: 'dot and ring',
+    paint: 'nyt',
+    color: '#e0553b',
+    icon: 'nyt-target',
+    contexts: ['label', 'symbol'],
+    nytOnly: true,
+    glyph: '<circle cx="8" cy="8" r="5.9" fill="none" stroke="currentColor" stroke-width="1.4"></circle>' +
+      '<circle cx="8" cy="8" r="3"></circle>'
+  }, {
+    name: 'nyt-target2',
+    title: 'dot and two rings',
+    paint: 'nyt',
+    color: '#e0553b',
+    icon: 'nyt-target2',
+    contexts: ['label', 'symbol'],
+    nytOnly: true,
+    glyph: '<circle cx="8" cy="8" r="6.6" fill="none" stroke="currentColor" stroke-width="1"></circle>' +
+      '<circle cx="8" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.2"></circle>' +
+      '<circle cx="8" cy="8" r="1.9"></circle>'
   }];
 
   // The fields that select a shape, apart from icon itself
@@ -20288,14 +20285,18 @@
   var ICON_FIELDS$1 = ['icon', 'icon-size', 'icon-color', 'icon-opacity']
     .concat(ICON_PAINT_FIELDS, SHAPE_FIELDS);
 
-  var NYT_STAR_COLOR = '#cc0000';
-  var NYT_STAR_FILL = '#ffffff';
   var NYT_STAR_STROKE_RATIO = 5 / 40;
   var RING_STROKE_WIDTH = 1.5;
 
   function getIconShapePaint(name) {
     var shape = findIconShape(name);
     return shape ? shape.paint : 'fill';
+  }
+
+  // The color an NYT icon comes in, or '' for other shapes
+  function getNytColor(name) {
+    var shape = findIconShape(name);
+    return shape && shape.paint == 'nyt' ? shape.color : '';
   }
 
   // The width a stroke is given when it is added to a shape without one
@@ -20320,7 +20321,7 @@
       stroke = rec.stroke;
       width = rec['stroke-width'];
     } else {
-      fill = kind == 'nyt' ? NYT_STAR_FILL : '';
+      fill = kind == 'nyt' && findIconShape(shape).fill || '';
       stroke = color;
       width = kind == 'stroke' ? rec['stroke-width'] : null;
     }
@@ -20343,8 +20344,8 @@
   // disagree. Between shapes that paint alike (a circle and a square) nothing
   // changes. Otherwise the color moves to where the new shape carries it -- a
   // circle's fill becomes a ring's stroke -- and the rest goes back to the new
-  // shape's defaults. The NYT star brings its red, and takes it away again,
-  // unless the color was chosen by hand.
+  // shape's defaults. An NYT icon brings its color, and takes it away again (or
+  // swaps it for another NYT icon's), unless the color was chosen by hand.
   //   defaultColor: the color a panel gives a symbol it hasn't been told one for
   //     ('' for a label's, which takes the text color)
   // Returns {field: value}, with '' to clear a field. A field is only cleared
@@ -20352,16 +20353,18 @@
   function getIconPaintChange(shape, prevShape, vals, defaultColor) {
     var from = getIconShapePaint(prevShape);
     var to = getIconShapePaint(shape);
+    var fromColor = getNytColor(prevShape);
+    var toColor = getNytColor(shape);
     var out = {};
     var main;
-    if (from == to) return out;
+    if (from == to && fromColor == toColor) return out;
     main = from == 'fill' ? firstSet(vals['icon-fill'], vals['icon-color']) :
       firstSet(vals['icon-stroke'], vals['icon-color']);
     if (main == 'none') main = '';
-    if (main !== null && from == 'nyt' && sameColor$1(main, NYT_STAR_COLOR)) {
-      main = defaultColor || '';
-    } else if (main !== null && to == 'nyt' && (!main || sameColor$1(main, defaultColor))) {
-      main = NYT_STAR_COLOR;
+    if (main !== null && fromColor && sameColor$1(main, fromColor)) {
+      main = toColor || defaultColor || '';
+    } else if (main !== null && toColor && (!main || sameColor$1(main, defaultColor))) {
+      main = toColor;
     }
     set('icon-fill', to == 'fill' ? main : '');
     set('icon-stroke', to == 'fill' ? '' : main);
@@ -20390,8 +20393,8 @@
 
   function getIconShapeGlyph(name) {
     var shape = findIconShape(name);
-    return '<svg class="label-icon-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
-      (shape ? shape.glyph : '') + '</svg>';
+    return '<svg class="label-icon-symbol" data-shape="' + (shape ? shape.name : '') +
+      '" viewBox="0 0 16 16" aria-hidden="true">' + (shape ? shape.glyph : '') + '</svg>';
   }
 
   function firstSet(a, b) {
@@ -20414,6 +20417,161 @@
 
   function isNumber$2(val) {
     return hasValue$1(val) && isFinite(Number(val));
+  }
+
+  var MORE_GLYPH = '<svg class="label-icon-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
+    '<circle cx="3" cy="8" r="1.5"></circle><circle cx="8" cy="8" r="1.5"></circle>' +
+    '<circle cx="13" cy="8" r="1.5"></circle></svg>';
+
+  // The icon shape buttons of the label and symbol panels: a button for each
+  // shape, and the NYT icons in a menu opened by a "more" button at the end of
+  // the row. While one of the menu's icons is the selected shape, the button
+  // shows it.
+  //   parent: the button group
+  //   shapes: from getIconShapes()
+  //   onSelect(name)
+  function IconShapeButtons(parent, shapes, onSelect) {
+    var mainShapes = shapes.filter(function(o) { return !o.nytOnly; });
+    var menuShapes = shapes.filter(function(o) { return o.nytOnly; });
+    var btns = {};
+    var menuItems = {};
+    var moreBtn = null;
+    var menu = null;
+    var selected = '';
+
+    mainShapes.forEach(function(item) {
+      btns[item.name] = makePanelButton(parent, '', function() {
+        onSelect(item.name);
+      }).attr('data-icon', item.name).attr('aria-label', item.title);
+      El(getIconShapeGlyph(item.name)).appendTo(btns[item.name]);
+    });
+    if (menuShapes.length > 0) {
+      initMenu();
+    }
+
+    // @name: the selected shape, or '' for none
+    // @isDisabled(name): whether a shape can't be chosen
+    this.update = function(name, isDisabled) {
+      var menuShape = findMenuShape(name);
+      selected = name || '';
+      mainShapes.forEach(function(item) {
+        btns[item.name].classed('selected', item.name == selected);
+        setPanelButtonDisabled(btns[item.name], isDisabled(item.name));
+      });
+      if (!moreBtn) return;
+      menuShapes.forEach(function(item) {
+        menuItems[item.name].classed('selected', item.name == selected);
+        menuItems[item.name].classed('disabled', isDisabled(item.name));
+      });
+      moreBtn.classed('selected', !!menuShape);
+      moreBtn.empty();
+      El(menuShape ? getIconShapeGlyph(menuShape.name) : MORE_GLYPH).appendTo(moreBtn);
+      setPanelButtonDisabled(moreBtn, menuShapes.every(function(item) {
+        return isDisabled(item.name);
+      }));
+    };
+
+    this.getSelected = function() {
+      return selected;
+    };
+
+    this.closeMenu = closeMenu;
+
+    function findMenuShape(name) {
+      return menuShapes.find(function(o) { return o.name == name; }) || null;
+    }
+
+    function initMenu() {
+      moreBtn = makePanelButton(parent, '', toggleMenu)
+        .addClass('icon-shape-more-btn').attr('aria-label', 'More icons');
+      El(MORE_GLYPH).appendTo(moreBtn);
+      // In the page rather than the panel, so that the panel's edges don't clip it
+      menu = El('div').addClass('icon-shape-menu').appendTo(document.body).hide();
+      // Keeps the focus where it is: a label being typed into would otherwise
+      // be saved and closed before the item's click
+      menu.on('mousedown', function(e) { e.preventDefault(); });
+      menuShapes.forEach(function(item) {
+        var row = El('div').addClass('icon-shape-menu-item').attr('role', 'button')
+          .attr('data-icon', item.name).appendTo(menu)
+          .on('click', function() {
+            if (row.hasClass('disabled')) return;
+            closeMenu();
+            onSelect(item.name);
+          });
+        El(getIconShapeGlyph(item.name)).appendTo(row);
+        El('span').text(item.title).appendTo(row);
+        menuItems[item.name] = row;
+      });
+    }
+
+    function toggleMenu() {
+      if (menu.visible()) closeMenu(); else openMenu();
+    }
+
+    function openMenu() {
+      var rect = moreBtn.node().getBoundingClientRect();
+      menu.css('top', Math.round(rect.bottom + 4) + 'px');
+      menu.css('right', Math.round(window.innerWidth - rect.right) + 'px');
+      menu.show();
+      document.addEventListener('mousedown', onDocumentMouseDown, true);
+      document.addEventListener('keydown', onKeyDown, true);
+    }
+
+    function closeMenu() {
+      if (!menu || !menu.visible()) return;
+      menu.hide();
+      document.removeEventListener('mousedown', onDocumentMouseDown, true);
+      document.removeEventListener('keydown', onKeyDown, true);
+    }
+
+    function onDocumentMouseDown(e) {
+      if (menu.node().contains(e.target) || moreBtn.node().contains(e.target)) return;
+      closeMenu();
+    }
+
+    // Escape closes the menu, and nothing else: it would otherwise disarm the
+    // tool too
+    function onKeyDown(e) {
+      if (e.key != 'Escape') return;
+      e.stopPropagation();
+      e.preventDefault();
+      closeMenu();
+    }
+  }
+
+  // The heads a line can end in, and their button glyphs: shared by the label
+  // callout's End buttons, the layer panel's Arrowheads section and the symbol
+  // tool's curve section, so that a head looks the same wherever it is chosen.
+  //
+  // The glyphs point left, the way a line's start head and a callout's anchor
+  // end do, and are drawn to the renderer's angles, with sides the same visible
+  // length -- the open one's stroke included -- so that they compare as the
+  // drawn heads do. The dot's left edge is where the arrows' tips are.
+
+  var ARROWHEAD_SHAPES = [{
+    name: 'arrow',
+    title: 'solid arrowheads'
+  }, {
+    name: 'wide-arrow',
+    title: 'wide solid arrowheads'
+  }, {
+    name: 'open-arrow',
+    title: 'open arrowheads'
+  }, {
+    name: 'dot',
+    title: 'dots'
+  }];
+
+  var ARROWHEAD_GLYPHS = {
+    arrow: '<path d="M6.84 8H13"></path><path class="fill" d="M2.5 8L8.7 6.05V9.95Z"></path>',
+    'wide-arrow': '<path d="M6.54 8H13"></path><path class="fill" d="M2.5 8L8.27 5V11Z"></path>',
+    'open-arrow': '<path d="M3.2 8H13"></path><path d="M7.38 5.07L3.2 8L7.38 10.93"></path>',
+    dot: '<path d="M5 8H13"></path><circle class="fill" cx="5" cy="8" r="2.6"></circle>'
+  };
+
+  function getArrowheadGlyph(name) {
+    return '<svg class="label-callout-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
+      (ARROWHEAD_GLYPHS[name] || '') + '</svg>';
   }
 
   var fontField = 'font-family';
@@ -20909,17 +21067,8 @@
       // The shapes have the whole row, so there is room for more of them, and
       // the size sits beside the colour below, as the halo's width does.
       var iconRow = El('div').addClass('label-style-row label-icon-shapes-row').appendTo(iconSection);
-      var iconGroup = iconGroupEl = El('div').addClass('label-btn-group label-icon-buttons').appendTo(iconRow);
-      iconBtns = {};
-      getShownIconTypes().forEach(function(icon) {
-        var btn = makePanelButton(iconGroup, '', function() {
-            applyIcon(icon.name);
-          })
-          .attr('data-icon', icon.name)
-          .attr('aria-label', icon.title || icon.name);
-        iconBtns[icon.name] = btn;
-        appendIconButtonSymbol(btn, icon.name);
-      });
+      iconGroupEl = El('div').addClass('label-btn-group label-icon-buttons').appendTo(iconRow);
+      iconBtns = new IconShapeButtons(iconGroupEl, getShownIconTypes(), applyIcon);
 
       // Every shape has a fill and a stroke, as a symbol does in the symbol
       // tool; a shape only decides which it starts with -- a ring a stroke, the
@@ -21137,10 +21286,6 @@
       return btn;
     }
 
-    function appendIconButtonSymbol(btn, iconName) {
-      El(getIconShapeGlyph(iconName)).appendTo(btn);
-    }
-
     function appendAlignButtonSymbol(btn, anchor) {
       var svg = '<svg class="label-align-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
         alignButtonSymbols[anchor] + '</svg>';
@@ -21232,6 +21377,7 @@
     function hidePanel() {
       panel.hide();
       hideColorPicker();
+      iconBtns.closeMenu();
       haloPending = {};
       gui.state.label_style_panel_open = false;
       textBtn.removeClass('selected');
@@ -21616,10 +21762,7 @@
       // border the buttons share fades with them -- a live border around dead
       // buttons is the one part of a disabled control that still looks usable.
       iconGroupEl.classed('disabled', !enabled);
-      getShownIconTypes().forEach(function(icon) {
-        iconBtns[icon.name].classed('selected', !off && icon.name == iconVal);
-        setPanelButtonDisabled(iconBtns[icon.name], !enabled);
-      });
+      iconBtns.update(off ? '' : iconVal || '', function() { return !enabled; });
       return off;
     }
 
@@ -22322,14 +22465,10 @@
     }
 
     function getSelectedIcon() {
-      var out = '';
-      getShownIconTypes().forEach(function(icon) {
-        if (iconBtns[icon.name].hasClass('selected')) out = icon.name;
-      });
-      return out;
+      return iconBtns.getSelected();
     }
 
-    // A label that already has an NYT star keeps it without the button: it is
+    // A label that already has an NYT icon keeps it without the menu: it is
     // drawn for everyone, and only choosing one is gated.
     function getShownIconTypes() {
       if (!shownIconTypes) {
@@ -28754,14 +28893,14 @@
   }
 
   // Whether a shape takes a stroke width and a rotation. A circle or a ring
-  // looks the same however it is turned. The NYT star is a logo, drawn upright
-  // with an outline of its own weight.
+  // looks the same however it is turned. The NYT icons are drawn as their
+  // artwork is, upright, with lines of their own weight.
   function shapeHasStrokeWidth(shape) {
-    return shape != 'nyt-star';
+    return getIconShapePaint(shape) != 'nyt';
   }
 
   function shapeHasRotation(shape) {
-    return shape != 'circle' && shape != 'ring' && shape != 'nyt-star';
+    return shape != 'circle' && shape != 'ring' && getIconShapePaint(shape) != 'nyt';
   }
 
   // The paint a symbol of @shape shows after changing from @prevShape, from
@@ -28777,7 +28916,7 @@
   //
   // A missing fill or stroke is whatever the shape has without one: -symbols
   // fills a filled shape with a default color, so its "none" is said; a ring
-  // has no fill, and a ring or NYT star given no stroke= would be drawn in its
+  // has no fill, and a ring or NYT icon given no stroke= would be drawn in its
   // fill, so their "none" is said too.
   function getAddIconOptions(style) {
     var o = {};
@@ -41226,7 +41365,7 @@
     var panel = El('div').addClass('label-style-panel symbol-style-panel rollover')
       .appendTo(parent).hide();
     var status, clearLink;
-    var iconSection, shapeBtns = {}, iconFill, iconSizeField, iconStroke,
+    var iconSection, shapeBtns, iconFill, iconSizeField, iconStroke,
         iconStrokeWidthField, rotationRow, rotationField;
     var curveSection, curveStroke, curveWidthField, arrowShapeRow, arrowShapeBtns = {},
         arrowSizeField, arrowRow, arrowBtns = {}, fadeField, taperRow, taperField, curveFill;
@@ -41251,6 +41390,7 @@
       [iconFill, iconStroke, textColor, curveStroke, curveFill].forEach(function(c) {
         c.picker.hide();
       });
+      shapeBtns.closeMenu();
       releaseFocus();
       panel.hide();
     };
@@ -41358,13 +41498,7 @@
       iconSection = makePanelSection(panel, 'Icons');
       var shapeRow = El('div').addClass('label-style-row label-icon-shapes-row').appendTo(iconSection);
       var group = El('div').addClass('label-btn-group label-icon-buttons').appendTo(shapeRow);
-      getShownShapes().forEach(function(item) {
-        var btn = makePanelButton(group, '', function() {
-          applyIconShape(item.name);
-        }).attr('data-icon', item.name).attr('aria-label', item.title);
-        El(getIconShapeGlyph(item.name)).appendTo(btn);
-        shapeBtns[item.name] = btn;
-      });
+      shapeBtns = new IconShapeButtons(group, getShownShapes(), applyIconShape);
 
       // Every shape has a fill and a stroke; a shape only decides which it
       // starts with -- a ring a stroke, the rest a fill.
@@ -41526,7 +41660,7 @@
       });
     }
 
-    // Read once, when first asked: whether the NYT star is offered does not
+    // Read once, when first asked: whether the NYT icons are offered does not
     // change during a session.
     function getShownShapes() {
       if (!shownShapes) shownShapes = getIconShapes('symbol', {nyt: isNytUser()});
@@ -41697,9 +41831,8 @@
         width = commonValue(state.icons, function(rec) { return getIconPaint(rec).strokeWidth; });
         rotation = commonValue(state.icons, getIconRotation);
       }
-      getShownShapes().forEach(function(item) {
-        shapeBtns[item.name].classed('selected', shape == item.name);
-        setPanelButtonDisabled(shapeBtns[item.name], textLimitsShape() && !shapeTakesText(item.name));
+      shapeBtns.update(shape || '', function(name) {
+        return textLimitsShape() && !shapeTakesText(name);
       });
       iconFill.showColor(fill || '');
       iconSizeField.setValue(size === null ? '' : size);

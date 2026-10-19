@@ -217,6 +217,29 @@ mapshaper world.geojson \
   -o neatline-markley.geojson
 ```
 
+### Two-hemisphere projections
+
+These projections show the whole world as two hemispheres, one above the other
+— a layout that suits world maps on phones in portrait orientation.
+
+- `hemispheres` — two Lambert Azimuthal Equal-Area (`laea`) hemispheres
+- `hemispheres2` — two orthographic (`ortho`) hemispheres
+
+Parameters:
+
+- `+lon_0=` `+lat_0=` — the center of the upper hemisphere. By default the
+  upper hemisphere is centered on 70°E, so the hemispheres meet along the 20°W
+  and 160°E meridians, like traditional Eastern and Western Hemisphere maps.
+- `+lon_1=` `+lat_1=` — the center of the lower hemisphere. The defaults are
+  `lon_0 + 180` and `lat_0`.
+- `+gap=` — the space between the two disks, as a fraction of a disk's radius
+  (default `0`, so the disks touch). A negative value makes the lower disk overlap the upper
+  disk, hiding part of it.
+- `+horizontal` — places the hemispheres side by side, with the `lon_0`
+  hemisphere on the left. The right disk overlaps the left one.
+
+Use `-graticule polygon` to create background polygons for the hemispheres and `-graticule outline` to create a neatline.
+
 ## Finding CRS definitions
 
 Several websites provide PROJ strings and EPSG codes for coordinate systems worldwide:
@@ -230,7 +253,7 @@ Several websites provide PROJ strings and EPSG codes for coordinate systems worl
 - GeoJSON and TopoJSON files are assumed to use WGS84 when their bounding boxes fall within the normal range for decimal degree coordinates.
 - Mapshaper does not support coordinate transformations that require grid-shift files (for example, NAD27 → WGS84). If a transformation silently fails, this is the likely cause.
 - Projections that can only represent part of the globe — including orthographic (`ortho`), near-side perspective (`nsper`, `geos`), gnomonic (`gnom`), stereographic (`stere`), and Lambert Azimuthal Equal-Area (`laea`) — automatically clip input data to the projection's valid extent before projecting. This prevents distorted or invalid geometry from coordinates outside the visible area.
-- Interrupted and polyhedral projections (`igh`, `imoll`, `igh_o`, `imoll_o`, `narukawa2022`, `markley`, `calm`, `dymaxion`, `dymaxion2`, `butterfly`, `butterfly2`, `cahill_keyes`) can be used as destinations for vector and raster layers, but cannot be used as source CRSs.
+- Interrupted and polyhedral projections (`igh`, `imoll`, `igh_o`, `imoll_o`, `narukawa2022`, `markley`, `calm`, `dymaxion`, `dymaxion2`, `butterfly`, `butterfly2`, `cahill_keyes`) can be used as destinations for vector and raster layers, but cannot be used as source CRSs. The two-hemisphere projections (`hemispheres`, `hemispheres2`) can be reprojected back to other CRSs, but cannot be read from `.prj` files.
 - For projections that introduce significant curvature along straight lines, add the `densify` option to interpolate extra vertices along long segments:
 
   ```bash

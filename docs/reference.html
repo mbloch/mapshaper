@@ -259,7 +259,8 @@ mapshaper countries_wgs84.shp encoding=latin1 -info
 <p><code>raster-res=</code> (SVG) Resolution of embedded raster images, in raster pixels per SVG pixel. The default is <code>1</code>; larger values produce higher-resolution embedded images, up to the resolution of the source raster.</p>
 <p><code>linked-images</code> (SVG) Output raster images as separate JPEG or PNG files and link to them from SVG <code>&lt;image&gt;</code> elements instead of embedding them as data URIs.</p>
 <p><code>jpeg-quality=</code> (SVG/HTML/JPEG) JPEG quality for embedded or linked raster images, for the image of HTML output, or for JPEG output, from <code>1</code> to <code>100</code>. The default is <code>85</code>.</p>
-<p><code>responsiveness=</code> (HTML) <code>fixed</code> (the default) gives the map a fixed size in pixels. <code>dynamic</code> makes the map fill the width of its container, keeping its aspect ratio.</p>
+<p><code>responsiveness=</code> (HTML) <code>fixed</code> (the default) gives the map a fixed size in pixels, shrinking it to fit a narrower container (keeping its aspect ratio). <code>dynamic</code> makes the map fill the width of its container, keeping its aspect ratio.</p>
+<p>HTML output of several frames of different widths is one file that shows one frame&#39;s map at a time, like ai2html&#39;s artboards: each map is shown from its own width up to the width of the next wider map, and the narrowest map at any smaller width. The switching is done with CSS container queries, so it follows the width of the map&#39;s container rather than the window, and needs no JavaScript. With <code>responsiveness=fixed</code>, only the narrowest map shrinks. Frames of the same width are written to separate files. A page can embed several HTML maps: element ids include a hash of the map, so maps exported to files of the same name don&#39;t collide.</p>
 <p><code>image-format=</code> (HTML) Format of the map image: <code>png</code> (the default) or <code>jpg</code>.</p>
 <p><code>html-labels</code> (HTML) Write anchored labels and text blocks as HTML text instead of SVG, placed where the SVG text would be. Their backgrounds and padding are drawn with CSS, and so fit the text as the browser lays it out. Lines break where they do in SVG. Callouts, icons and labels along paths stay in the SVG overlay, and the HTML labels are drawn above it.</p>
 <p><code>pixel-ratio=</code> (HTML/PNG/JPEG) Resolution of the map image, in image pixels per CSS pixel. The default is <code>2</code>, for sharp images on high-density displays.</p>
@@ -932,7 +933,7 @@ mapshaper counties.shp \
 <p><code>from-rings</code>  Convert a layer of closed polyline rings into polygons. Nested rings in multipart features are converted into holes.</p>
 <p>Common options: <code>target=</code></p>
 </section>
-<section class="cmd-section" data-id="-proj" data-name="-proj" data-options="crs densify match init nodata-color transparent background bilinear nearest target narukawa2022 markley calm dymaxion dymaxion2 butterfly butterfly2 cahill_keyes"><h3 id="-proj">-proj</h3>
+<section class="cmd-section" data-id="-proj" data-name="-proj" data-options="crs densify match init nodata-color transparent background bilinear nearest target lat_0 narukawa2022 markley calm dymaxion dymaxion2 butterfly butterfly2 cahill_keyes"><h3 id="-proj">-proj</h3>
 <p>Project a dataset using a PROJ string, EPSG code or alias. This command affects all layers in the dataset(s) containing the targeted layer or layers. Information on PROJ string syntax can be found on the <a href="https://proj.org/usage/index.html">PROJ website</a>.</p>
 <p><code>&lt;crs&gt;</code> or <code>crs=</code>  Target CRS, given as a Proj.4 definition or an alias. Use the <a href="#-projections"><code>-projections</code></a> command to list available projections and aliases. In some projections that require additional parameters, Mapshaper can fit parameters automatically from the data extent, for example <code>crs=utm</code> selects a UTM zone. You can also pass a Proj4 string enclosed in quotes, for example <code>crs=&#39;+proj=utm +zone=27&#39;</code>.</p>
 <p><code>densify</code> Interpolate vertices along long line segments as needed to approximate curved lines.</p>
@@ -979,7 +980,22 @@ mapshaper countries.geojson \
 mapshaper us_states.shp \
   -proj albersusa +PR +VI +AK.lon_0=-141 +AK.scale=0.4 \
   -o out.shp
+
+<span class="hljs-comment"># Show the world as two orthographic hemispheres, one above the other, with the</span>
+<span class="hljs-comment"># lower disk overlapping the upper disk</span>
+mapshaper countries.geojson \
+  -proj hemispheres2 +lon_0=65 +lat_0=15 +lon_1=-95 +lat_1=8 +gap=-0.3 densify \
+  -graticule outline name=neatline \
+  -o target=<span class="hljs-string">&quot;*&quot;</span> output/
 </code></pre>
+<p><code>+proj=hemispheres</code> (Lambert Azimuthal Equal-Area) and <code>+proj=hemispheres2</code>
+(orthographic) show the world as two hemispheres, one above the other, or side
+by side with <code>+horizontal</code>. <code>+lon_0</code> and <code>+lat_0</code> set the center of the upper
+(or left) hemisphere (default 70°E, so the hemispheres meet at 20°W and
+160°E); <code>+lon_1</code> and <code>+lat_1</code> set the center of the lower (or right)
+hemisphere (default <code>lon_0 + 180</code> and <code>lat_0</code>). <code>+gap</code> sets the space between
+the disks as a fraction of a disk&#39;s radius (default <code>0</code>); a negative gap
+makes the lower (or right) disk overlap the other disk.</p>
 <p>Interrupted Goode Homolosine (<code>+proj=igh</code>, <code>+proj=igh_o</code>), Interrupted
 Mollweide (<code>+proj=imoll</code>, <code>+proj=imoll_o</code>), rectangular tetrahedral
 projections (<code>+proj=narukawa2022</code>, <code>+proj=markley</code>, <code>+proj=calm</code>), Dymaxion
@@ -1588,8 +1604,8 @@ mapshaper cities.json \
 -<span class="hljs-built_in">print</span> FILE IS EMPTY
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-projections" data-name="-projections" data-options=""><h3 id="-projections">-projections</h3>
-<p>Print list of supported proj4 projection ids and projection aliases.</p>
+<section class="cmd-section" data-id="-projections" data-name="-projections" data-options="dymaxion hemispheres"><h3 id="-projections">-projections</h3>
+<p>Print list of supported proj4 projection ids and projection aliases. Projections that PROJ does not support (such as <code>dymaxion</code> and <code>hemispheres</code>) are listed separately, after the PROJ projections.</p>
 </section>
 <section class="cmd-section" data-id="-quiet" data-name="-quiet" data-options=""><h3 id="-quiet">-quiet</h3>
 <p>Inhibit console messages.</p>

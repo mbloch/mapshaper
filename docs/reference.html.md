@@ -318,7 +318,9 @@ The `html` format writes a map as an HTML fragment and an image, in the manner o
 
 `jpeg-quality=` (SVG/HTML/JPEG) JPEG quality for embedded or linked raster images, for the image of HTML output, or for JPEG output, from `1` to `100`. The default is `85`.
 
-`responsiveness=` (HTML) `fixed` (the default) gives the map a fixed size in pixels. `dynamic` makes the map fill the width of its container, keeping its aspect ratio.
+`responsiveness=` (HTML) `fixed` (the default) gives the map a fixed size in pixels, shrinking it to fit a narrower container (keeping its aspect ratio). `dynamic` makes the map fill the width of its container, keeping its aspect ratio.
+
+HTML output of several frames of different widths is one file that shows one frame's map at a time, like ai2html's artboards: each map is shown from its own width up to the width of the next wider map, and the narrowest map at any smaller width. The switching is done with CSS container queries, so it follows the width of the map's container rather than the window, and needs no JavaScript. With `responsiveness=fixed`, only the narrowest map shrinks. Frames of the same width are written to separate files. A page can embed several HTML maps: element ids include a hash of the map, so maps exported to files of the same name don't collide.
 
 `image-format=` (HTML) Format of the map image: `png` (the default) or `jpg`.
 
@@ -1444,7 +1446,23 @@ mapshaper countries.geojson \
 mapshaper us_states.shp \
   -proj albersusa +PR +VI +AK.lon_0=-141 +AK.scale=0.4 \
   -o out.shp
+
+# Show the world as two orthographic hemispheres, one above the other, with the
+# lower disk overlapping the upper disk
+mapshaper countries.geojson \
+  -proj hemispheres2 +lon_0=65 +lat_0=15 +lon_1=-95 +lat_1=8 +gap=-0.3 densify \
+  -graticule outline name=neatline \
+  -o target="*" output/
 ```
+
+`+proj=hemispheres` (Lambert Azimuthal Equal-Area) and `+proj=hemispheres2`
+(orthographic) show the world as two hemispheres, one above the other, or side
+by side with `+horizontal`. `+lon_0` and `+lat_0` set the center of the upper
+(or left) hemisphere (default 70°E, so the hemispheres meet at 20°W and
+160°E); `+lon_1` and `+lat_1` set the center of the lower (or right)
+hemisphere (default `lon_0 + 180` and `lat_0`). `+gap` sets the space between
+the disks as a fraction of a disk's radius (default `0`); a negative gap
+makes the lower (or right) disk overlap the other disk.
 
 Interrupted Goode Homolosine (`+proj=igh`, `+proj=igh_o`), Interrupted
 Mollweide (`+proj=imoll`, `+proj=imoll_o`), rectangular tetrahedral
@@ -2256,7 +2274,7 @@ mapshaper cities.json \
 
 ### -projections
 
-Print list of supported proj4 projection ids and projection aliases.
+Print list of supported proj4 projection ids and projection aliases. Projections that PROJ does not support (such as `dymaxion` and `hemispheres`) are listed separately, after the PROJ projections.
 
 ### -quiet
 

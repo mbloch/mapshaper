@@ -223,6 +223,27 @@ form a rectangular world map:</p>
   -graticule outline \
   -o neatline-markley.geojson
 </code></pre>
+<h3 id="two-hemisphere-projections">Two-hemisphere projections</h3>
+<p>These projections show the whole world as two hemispheres, one above the other
+— a layout that suits world maps on phones in portrait orientation.</p>
+<ul>
+<li><code>hemispheres</code> — two Lambert Azimuthal Equal-Area (<code>laea</code>) hemispheres</li>
+<li><code>hemispheres2</code> — two orthographic (<code>ortho</code>) hemispheres</li>
+</ul>
+<p>Parameters:</p>
+<ul>
+<li><code>+lon_0=</code> <code>+lat_0=</code> — the center of the upper hemisphere. By default the
+upper hemisphere is centered on 70°E, so the hemispheres meet along the 20°W
+and 160°E meridians, like traditional Eastern and Western Hemisphere maps.</li>
+<li><code>+lon_1=</code> <code>+lat_1=</code> — the center of the lower hemisphere. The defaults are
+<code>lon_0 + 180</code> and <code>lat_0</code>.</li>
+<li><code>+gap=</code> — the space between the two disks, as a fraction of a disk&#39;s radius
+(default <code>0</code>, so the disks touch). A negative value makes the lower disk overlap the upper
+disk, hiding part of it.</li>
+<li><code>+horizontal</code> — places the hemispheres side by side, with the <code>lon_0</code>
+hemisphere on the left. The right disk overlaps the left one.</li>
+</ul>
+<p>Use <code>-graticule polygon</code> to create background polygons for the hemispheres and <code>-graticule outline</code> to create a neatline.</p>
 <h2 id="finding-crs-definitions">Finding CRS definitions</h2>
 <p>Several websites provide PROJ strings and EPSG codes for coordinate systems worldwide:</p>
 <ul>
@@ -238,7 +259,7 @@ form a rectangular world map:</p>
 </li>
 <li><p>Projections that can only represent part of the globe — including orthographic (<code>ortho</code>), near-side perspective (<code>nsper</code>, <code>geos</code>), gnomonic (<code>gnom</code>), stereographic (<code>stere</code>), and Lambert Azimuthal Equal-Area (<code>laea</code>) — automatically clip input data to the projection&#39;s valid extent before projecting. This prevents distorted or invalid geometry from coordinates outside the visible area.</p>
 </li>
-<li><p>Interrupted and polyhedral projections (<code>igh</code>, <code>imoll</code>, <code>igh_o</code>, <code>imoll_o</code>, <code>narukawa2022</code>, <code>markley</code>, <code>calm</code>, <code>dymaxion</code>, <code>dymaxion2</code>, <code>butterfly</code>, <code>butterfly2</code>, <code>cahill_keyes</code>) can be used as destinations for vector and raster layers, but cannot be used as source CRSs.</p>
+<li><p>Interrupted and polyhedral projections (<code>igh</code>, <code>imoll</code>, <code>igh_o</code>, <code>imoll_o</code>, <code>narukawa2022</code>, <code>markley</code>, <code>calm</code>, <code>dymaxion</code>, <code>dymaxion2</code>, <code>butterfly</code>, <code>butterfly2</code>, <code>cahill_keyes</code>) can be used as destinations for vector and raster layers, but cannot be used as source CRSs. The two-hemisphere projections (<code>hemispheres</code>, <code>hemispheres2</code>) can be reprojected back to other CRSs, but cannot be read from <code>.prj</code> files.</p>
 </li>
 <li><p>For projections that introduce significant curvature along straight lines, add the <code>densify</code> option to interpolate extra vertices along long segments:</p>
 <pre><code class="hljs language-bash">mapshaper data.shp -proj +proj=ortho +lat_0=45 +lon_0=-100 densify -o
@@ -257,7 +278,7 @@ form a rectangular world map:</p>
   </main>
 
   <aside class="docs-toc">
-    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#forms-of-crs-notation">Forms of CRS notation</a></li><li class="lvl-2"><a href="#auto-fitted-parameters">Auto-fitted parameters</a></li><li class="lvl-2"><a href="#albersusa">albersusa</a></li><li class="lvl-2"><a href="#interrupted-and-polyhedral-world-projections">Interrupted and polyhedral world projections</a></li><li class="lvl-3"><a href="#goode-homolosine-and-mollweide-projections">Goode Homolosine and Mollweide projections</a></li><li class="lvl-3"><a href="#dymaxion-projections">Dymaxion projections</a></li><li class="lvl-3"><a href="#butterfly-and-cahill-keyes-projections">Butterfly and Cahill-Keyes projections</a></li><li class="lvl-3"><a href="#tetrahedral-projections">Tetrahedral projections</a></li><li class="lvl-2"><a href="#finding-crs-definitions">Finding CRS definitions</a></li><li class="lvl-2"><a href="#coordinate-system-quirks-and-limitations">Coordinate system quirks and limitations</a></li></ul>
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#forms-of-crs-notation">Forms of CRS notation</a></li><li class="lvl-2"><a href="#auto-fitted-parameters">Auto-fitted parameters</a></li><li class="lvl-2"><a href="#albersusa">albersusa</a></li><li class="lvl-2"><a href="#interrupted-and-polyhedral-world-projections">Interrupted and polyhedral world projections</a></li><li class="lvl-3"><a href="#goode-homolosine-and-mollweide-projections">Goode Homolosine and Mollweide projections</a></li><li class="lvl-3"><a href="#dymaxion-projections">Dymaxion projections</a></li><li class="lvl-3"><a href="#butterfly-and-cahill-keyes-projections">Butterfly and Cahill-Keyes projections</a></li><li class="lvl-3"><a href="#tetrahedral-projections">Tetrahedral projections</a></li><li class="lvl-3"><a href="#two-hemisphere-projections">Two-hemisphere projections</a></li><li class="lvl-2"><a href="#finding-crs-definitions">Finding CRS definitions</a></li><li class="lvl-2"><a href="#coordinate-system-quirks-and-limitations">Coordinate system quirks and limitations</a></li></ul>
   </aside>
 
 </div>
