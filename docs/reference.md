@@ -1462,12 +1462,7 @@ by side with `+horizontal`. `+lon_0` and `+lat_0` set the center of the upper
 160°E); `+lon_1` and `+lat_1` set the center of the lower (or right)
 hemisphere (default `lon_0 + 180` and `lat_0`). `+gap` sets the space between
 the disks as a fraction of a disk's radius (default `0`); a negative gap
-makes the lower (or right) disk overlap the other disk. Each disk shows the
-whole hemisphere around its center, so places within 90° of both centers
-appear in both disks; shapes in areas that neither hemisphere shows are
-removed. `-graticule polygon` creates one polygon per disk, with a
-`hemisphere` field (`back` for the upper or left disk, `front` for the
-overlapping one).
+makes the lower (or right) disk overlap the other disk.
 
 Interrupted Goode Homolosine (`+proj=igh`, `+proj=igh_o`), Interrupted
 Mollweide (`+proj=imoll`, `+proj=imoll_o`), rectangular tetrahedral
