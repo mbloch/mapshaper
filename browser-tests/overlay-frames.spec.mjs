@@ -37,6 +37,20 @@ test.describe('overlay frames', function() {
     expect(Math.abs(page1.y + page1.height - (b.y + b.height) - 10 * k)).toBeLessThan(1.5);
   });
 
+  test('a shown overlay is drawn again after its frame is edited, and after undo', async function({page}) {
+    await showHost(page, SETUP + ' -frame target=f1 overlay=f2');
+    await page.locator('.frame-overlay-preview-toggle').click();
+    var preview = page.locator('.frame-overlay-preview');
+    await expect(preview.locator('path[fill="#ff0000"]')).toHaveCount(0);
+    // edited in the overlay's own view, then back to the host
+    await page.evaluate(function() { window.mapshaper.undoTest.selectLayer('r4'); });
+    await runCommand(page, '-style fill=#ff0000', await getSignature(page));
+    await page.evaluate(function() { window.mapshaper.undoTest.selectLayer('r1'); });
+    await expect(preview.locator('path[fill="#ff0000"]')).toHaveCount(1);
+    await page.evaluate(function() { return window.mapshaper.undoTest.undo(); });
+    await expect(preview.locator('path[fill="#ff0000"]')).toHaveCount(0);
+  });
+
   test('dragging a box saves the nearest corner and margins in one command; undo restores',
       async function({page}) {
     await showHost(page, SETUP + ' -frame target=f1 overlay=f2');

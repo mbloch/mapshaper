@@ -33,8 +33,7 @@ export function FrameOverlays(gui) {
   var drag = null;
   var shownPreviews = new Set(); // host dataset ID + overlay dataset ID
   var previewCache = new Map(); // overlay dataset ID -> rendered map
-  var previewNodes = new Map(); // placement key -> nested SVG
-  var previewGeneration = 0;
+  var previewNodes = new Map(); // placement key -> {node: nested SVG, rendered}
   // The host page while its frame is being resized, so the boxes follow the
   // corners they are anchored to
   var resizePreview = null;
@@ -201,14 +200,14 @@ export function FrameOverlays(gui) {
       node.setAttribute('data-overlay', item.frame.layer.name || '');
       node.setAttribute('overflow', 'hidden');
       previewRoot.appendChild(node);
-      entry = {node: node, generation: -1};
+      entry = {node: node, rendered: null};
       previewNodes.set(item.key, entry);
     }
     node = entry.node;
-    if (entry.generation != previewGeneration) {
+    if (entry.rendered != rendered) {
       node.setAttribute('viewBox', '0 0 ' + rendered.width + ' ' + rendered.height);
       node.innerHTML = rendered.content;
-      entry.generation = previewGeneration;
+      entry.rendered = rendered;
     }
     return node;
   }
@@ -229,21 +228,20 @@ export function FrameOverlays(gui) {
     return previewCache.get(id);
   }
 
+  // Previews are rendered again when next shown. Updates with the select flag
+  // follow edits too (most commands set it), so only a change of selection
+  // keeps them all.
   function invalidatePreviewCache(flags) {
-    var frame, id;
-    if (flags.select) return;
+    var frame;
+    if (flags.selection_only) return;
     if (flags.simplify_amount || flags.redraw_only) {
-      // Slider and live-style updates apply to the active frame. Invalidate
-      // only that frame if it has been used as an overlay, so editing a host
-      // does not rebuild every proofed overlay on every tick.
+      // Slider and live-style updates apply to the active frame, so editing
+      // a host does not rebuild every proofed overlay on every tick
       frame = gui.model.getActiveFrame();
-      id = frame && frame.dataset.id;
-      if (!id || !previewCache.has(id)) return;
-      previewCache.delete(id);
+      if (frame) previewCache.delete(frame.dataset.id);
     } else {
       previewCache.clear();
     }
-    previewGeneration++;
   }
 
   function removeUnusedPreviewNodes(wanted) {

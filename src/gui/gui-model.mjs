@@ -85,7 +85,9 @@ export function Model(gui) {
       return;
     }
     self.setDefaultTarget([lyr], dataset);
-    self.updated({select: true});
+    // selection_only: nothing but the selection changed, unlike the other
+    // updates with the select flag, which follow edits
+    self.updated({select: true, selection_only: true});
     gui.session.setTargetLayer(lyr);
   };
 
