@@ -56,10 +56,15 @@ export function LayerControl(gui) {
   }
 
   // Sections that have been closed: '' for the Layers section, otherwise by
-  // frame dataset ID. GUI state only.
-  var closedSections = {};
+  // frame dataset ID. GUI state only, kept in gui.state so that snapshots
+  // can save and restore it.
+  function getClosedSections() {
+    if (!gui.state.closed_layer_sections) gui.state.closed_layer_sections = {};
+    return gui.state.closed_layer_sections;
+  }
 
   function toggleSection(key) {
+    var closedSections = getClosedSections();
     closedSections[key] = !closedSections[key];
     renderLayerList();
   }
@@ -286,6 +291,7 @@ export function LayerControl(gui) {
     var uniqIds = {};
     var pinnableCount = 0;
     var layerCount = 0;
+    var closedSections = getClosedSections();
     var groups, activeFrame, viewFrame, hasLegacyFrame;
     list.empty();
     frameList.empty();

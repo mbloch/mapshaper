@@ -1,3 +1,6 @@
+v0.7.91
+* [web] A snapshot (.msx) that starts a session restores the same preview setting and layers panel settings as when it was saved.
+
 v0.7.90
 * HTML output of several frames of different widths is one file that shows the frame that fits the width of its container (like ai2html's artboards), using CSS container queries. A page can embed several HTML maps.
 * HTML output with `responsiveness=fixed` (the default) shrinks to fit a container narrower than the map.

@@ -16,6 +16,19 @@ describe('mapshaper-pack.mjs', function () {
     assert.deepEqual(obj.datasets[0].layers[0].data.getRecords(), [{foo: 'bar'}]);
   });
 
+  it('saves the GUI\'s view settings in the gui field, and only when given', async function () {
+    var I = api.internal;
+    var job = new I.Job();
+    await I.runParsedCommands(I.parseCommands('-rectangle bbox=0,0,1,1'), job);
+    var datasets = job.catalog.getDatasets();
+    var gui = {preview_mode: true, closed_layer_sections: ['']};
+    var obj = await I.unpackSessionData(I.pack(
+      await I.exportDatasetsToPack(datasets, {gui_state: gui})));
+    assert.deepEqual(obj.gui, gui);
+    obj = await I.unpackSessionData(I.pack(await I.exportDatasetsToPack(datasets, {})));
+    assert.equal('gui' in obj, false);
+  });
+
   it('read from a .msx snapshot file', async function() {
     var cmd = '-i test/data/msx/mapshaper_snapshot.msx -o format=geojson';
     var out = await api.applyCommands(cmd);

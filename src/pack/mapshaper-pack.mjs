@@ -21,7 +21,7 @@ import utils from '../utils/mapshaper-utils';
   version: 1,
   created: 'YYYY-MM-DDTHH:mm:ss.sssZ', // ISO string
   datasets: [],
-  gui: {}, // see gui-session-snapshot-control.mjs
+  gui: {}, // optional; the GUI's view settings, see getSnapshotGuiState() in gui-session-snapshot-control.mjs
   history: { // optional; only present in snapshots created by the GUI
     commands: ['-i foo.shp', '-simplify 10%', ...],
     savedAtIndex: 0 // index of the first command after the last save boundary
@@ -50,6 +50,7 @@ export function pack(obj) {
 //    exporting from gui export menu: {compact: true, format: 'msx'}
 //    saving gui temp snapshot: {compact: false}
 // opts.history: optional GUI session history captured by SessionHistory#getHistorySnapshot
+// opts.gui_state: optional GUI view settings, saved as the snapshot's gui field
 export async function exportDatasetsToPack(datasets, opts) {
   var obj = {
     version: 1,
@@ -58,6 +59,9 @@ export async function exportDatasetsToPack(datasets, opts) {
   };
   if (opts.history) {
     obj.history = opts.history;
+  }
+  if (opts.gui_state) {
+    obj.gui = opts.gui_state;
   }
   return obj;
 }

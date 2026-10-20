@@ -2,6 +2,7 @@ import { El } from './gui-el';
 import { internal, stop } from './gui-core';
 import { saveBlobToLocalFile2 } from './gui-save';
 import { logStartupCleanup, formatCleanupSize } from './gui-startup-cleanup-report';
+import { formatSnapshotGuiState, parseSnapshotGuiState } from './gui-snapshot-view-state';
 import require from '../mapshaper-require';
 
 var idb = require('idb-keyval');
@@ -191,28 +192,46 @@ async function restoreLatestSnapshot(gui) {
 // Returns true if a full restore occurred, false if a merge occurred. The
 // caller uses this to decide whether to record an additional -i command in
 // the current session's history (see gui-import-control.mjs).
-// TODO: figure out if interface data should be imported (e.g. should
-//   visibility flag of imported layers be imported)
+// A full restore also restores the view settings saved in the snapshot's gui
+// field; a merge leaves the current view alone.
 export async function importSessionData(buf, gui) {
   if (buf instanceof ArrayBuffer) {
     buf = new Uint8Array(buf);
   }
   var data = await internal.unpackSessionData(buf);
   var fullRestore = gui.model.isEmpty();
-  importDatasets(data.datasets, gui);
+  importDatasets(data.datasets, gui, fullRestore ? parseSnapshotGuiState(data.gui) : null);
   if (fullRestore) {
     gui.session.restoreHistorySnapshot(data.history);
   }
   return fullRestore;
 }
 
-function importDatasets(datasets, gui) {
+// The view settings to save with a snapshot of the current session
+export function getSnapshotGuiState(gui) {
+  var active = gui.model.getActiveLayer();
+  return formatSnapshotGuiState({
+    previewMode: !!gui.state.preview_mode,
+    activeLayerHidden: !!(active && active.layer.hidden),
+    closedSections: gui.state.closed_layer_sections
+  });
+}
+
+// view: (optional) view settings from parseSnapshotGuiState()
+function importDatasets(datasets, gui, view) {
   regenerateRasterPreviews(datasets);
   gui.model.addDatasets(datasets);
   var target = findTargetLayer(datasets);
   delete target.layers[0].active; // kludge, active flag only used in snapshots now
+  if (view) {
+    target.layers[0].hidden = view.activeLayerHidden || undefined;
+    gui.state.closed_layer_sections = view.closedSections;
+  }
   gui.model.setDefaultTarget(target.layers, target.dataset);
   gui.model.updated({select: true, arc_count: true}); // arc_count to refresh display shapes
+  if (view && view.previewMode && gui.previewMode) {
+    gui.previewMode.setOn(true);
+  }
 }
 
 function regenerateRasterPreviews(datasets) {
@@ -236,17 +255,11 @@ async function captureSnapshot(gui) {
   var opts = {
     compact: false,
     active_layer: lyr,
-    history: gui.session.getHistorySnapshot()
+    history: gui.session.getHistorySnapshot(),
+    gui_state: getSnapshotGuiState(gui)
   };
   var datasets = gui.model.getDatasets();
-  var obj = await internal.exportDatasetsToPack(datasets, opts);
-  obj.gui = getGuiState(gui);
-  return obj;
-}
-
-// TODO: capture gui state information to allow restoring more of the UI
-function getGuiState(gui) {
-  return null;
+  return internal.exportDatasetsToPack(datasets, opts);
 }
 
 async function fetchIndex() {

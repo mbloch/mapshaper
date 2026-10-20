@@ -486,6 +486,63 @@ test.describe('export dialog with frames', function() {
   });
 });
 
+test.describe('snapshot view settings', function() {
+  test.beforeEach(async function({page}) {
+    await page.goto('/?undo=on&undo-test=on&files=' +
+      encodeURIComponent('test/data/geojson/three_points.geojson'));
+    await page.waitForFunction(function() {
+      return window.mapshaper && window.mapshaper.undoTest &&
+        window.mapshaper.undoTest.getState().model.datasetCount > 0;
+    });
+    await runCommand(page, TWO_FRAMES, null);
+    await openLayersPanel(page);
+    // f1 in preview, its selected layer's eye off, and f2's section closed
+    await selectLayer(page, 'r1');
+    await memberRow(page, 'r1').locator('.eye-btn').first().click({force: true});
+    await page.locator('.frame-section').filter({hasText: 'f2'}).locator('.section-toggle').click();
+    await page.locator('.preview-toggle').click();
+  });
+
+  test('a snapshot that starts a session opens with the view it was saved with', async function({page}) {
+    var file = await saveSnapshotFile(page, test.info());
+    await page.goto('/?undo=on&undo-test=on');
+    await page.waitForFunction(function() { return window.mapshaper && window.mapshaper.undoTest; });
+    await page.locator('input[type="file"]').last().setInputFiles(file);
+    await page.waitForFunction(function() {
+      return window.mapshaper.undoTest.getState().model.datasetCount > 0;
+    });
+    await openLayersPanel(page);
+    expect(await getView(page)).toEqual({frame: 'f1', layers: ['r1', 'r3']});
+    await expect(page.locator('.preview-toggle')).toHaveClass(/selected/);
+    await expect(memberRow(page, 'r1')).toHaveClass(/invisible/);
+    await expect(page.locator('.frame-section.closed')).toHaveText(/f2/);
+    await expect(page.locator('.frame-section.closed')).toHaveCount(1);
+  });
+
+  test('a snapshot opened partway through a session leaves the view alone', async function({page}) {
+    var file = await saveSnapshotFile(page, test.info());
+    await page.locator('.preview-toggle').click();
+    await page.locator('.frame-section.closed .section-toggle').click();
+    await page.locator('input[type="file"]').last().setInputFiles(file);
+    await expect.poll(function() {
+      return page.evaluate(function() {
+        return window.mapshaper.undoTest.getState().model.datasetCount;
+      });
+    }).toBeGreaterThan(5);
+    await expect(page.locator('.preview-toggle')).not.toHaveClass(/selected/);
+    await expect(page.locator('.frame-section.closed')).toHaveCount(0);
+  });
+});
+
+async function saveSnapshotFile(page, info) {
+  await page.locator('.export-btn').click();
+  await page.locator('.export-formats input[value="msx"]').check();
+  var download = await exportDownload(page);
+  var file = info.outputPath('snapshot.msx');
+  await download.saveAs(file);
+  return file;
+}
+
 function exportRow(page, name) {
   return page.locator('.export-layer-list .layer-item').filter({hasText: name});
 }

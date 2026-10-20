@@ -5,6 +5,7 @@ import { El } from './gui-el';
 import { GUI } from './gui-lib';
 import { ClickText2 } from './gui-elements';
 import { loadGeopackageLib, loadGeoParquetLib } from './gui-import-utils';
+import { getSnapshotGuiState } from './gui-session-snapshot-control';
 
 export async function saveFileContentToClipboard(content) {
   var str = utils.isString(content) ? content : content.toString();
@@ -297,6 +298,7 @@ export var ExportControl = function(gui) {
       var snapshot = gui.session.getHistorySnapshot();
       snapshot.savedAtIndex = snapshot.commands.length;
       opts.history = snapshot;
+      opts.gui_state = getSnapshotGuiState(gui);
       if (selection.grouped) {
         targets = getProjectTargets();
         exportedLayers = getContentLayers();
