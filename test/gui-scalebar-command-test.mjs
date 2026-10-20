@@ -28,8 +28,10 @@ describe('gui-scalebar-command.mjs', function() {
   it('round-trips through the command parser', function() {
     var settings = {
       label: "5 miles",
+      style: 'c',
       position: 'top-center',
       label_position: 'bottom',
+      align: 'right',
       font_family: "Gill Sans, sans-serif",
       font_weight: 'bold',
       bar_width: 2,
@@ -39,8 +41,10 @@ describe('gui-scalebar-command.mjs', function() {
     var opts = parseCommands(getScalebarCommand(settings))[0].options;
     assert.deepEqual(opts, {
       label: '5 miles',
+      style: 'c',
       position: 'top-center',
       label_position: 'bottom',
+      align: 'right',
       font_family: 'Gill Sans, sans-serif',
       font_weight: 'bold',
       bar_width: 2,

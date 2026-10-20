@@ -1,6 +1,7 @@
 import { El } from './gui-el';
-import { utils } from './gui-core';
+import { utils, internal } from './gui-core';
 import { parseColorInput, formatColorInput, colorInputFormats } from './gui-color-input';
+import { parseOpacityValue } from './gui-style-values';
 
 export var grayscaleColorPresets = [
   '#000000', '#111111', '#222222', '#333333',
@@ -40,6 +41,11 @@ var openPickers = [];
 // is shared by every picker, so it carries over from one to the next.
 var colorFieldFormat = 'hex';
 
+// The hue and opacity strips. positionMarker() adds half a pixel, so the
+// middle row puts a marker at the strip's center.
+var SLIDER_HEIGHT = 15;
+var SLIDER_MIDDLE = Math.floor(SLIDER_HEIGHT / 2);
+
 function closeOpenPickers(except) {
   openPickers.slice().forEach(function(picker) {
     if (picker !== except) picker.hide();
@@ -48,11 +54,18 @@ function closeOpenPickers(except) {
 
 // opts.presetRows   rows of preset colors; [] for none
 // opts.onPreview(hex), opts.onChange(hex), opts.onHide()
+// opts.opacityInput the opacity field beside the color, if it has one. The
+//                   picker gets a slider for it, which shows the field's value
+//                   and writes to it: a drag shows its percentage in the field
+//                   and fires the field's change event where it ends, so the
+//                   field's own handler applies it.
 export function ColorPicker(parent, opts) {
   opts = opts || {};
   var self = this;
   var colorPicker = El('div').addClass('label-color-picker').appendTo(parent).hide();
   var sbCanvas, hueCanvas, sbMarker, hueMarker, colorInput, formatTabs;
+  var opacityInput = opts.opacityInput || null;
+  var alphaCanvas, alphaMarker;
   var pickerColor = {h: 0, s: 0, b: 0};
   // The hex value the picker was set to, until it is moved off it. HSB is
   // held in bytes, which cannot represent every RGB colour, so a colour that
@@ -145,8 +158,9 @@ export function ColorPicker(parent, opts) {
     sbCanvas = El('canvas').attr('width', '256').attr('height', '256').appendTo(sbWrap);
     sbMarker = makePickerMarker().appendTo(sbWrap);
     var hueWrap = El('div').addClass('label-color-canvas-wrap').appendTo(colorPicker);
-    hueCanvas = El('canvas').attr('width', '256').attr('height', '18').appendTo(hueWrap);
+    hueCanvas = El('canvas').attr('width', '256').attr('height', String(SLIDER_HEIGHT)).appendTo(hueWrap);
     hueMarker = makePickerMarker().appendTo(hueWrap);
+    if (opacityInput) initAlphaSlider();
     if (presetRows.length > 0) renderPresetRows(colorPicker);
     // a field for a typed or pasted color, with tabs for the format it shows
     // colors in
@@ -163,6 +177,35 @@ export function ColorPicker(parent, opts) {
       startCanvasDrag(e, updateHueFromEvent);
     });
     setPickerColor(pickerColor);
+  }
+
+  function initAlphaSlider() {
+    var wrap = El('div').addClass('label-color-canvas-wrap').appendTo(colorPicker);
+    alphaCanvas = El('canvas').attr('width', '256').attr('height', String(SLIDER_HEIGHT))
+      .attr('aria-label', 'Opacity').appendTo(wrap);
+    alphaMarker = makePickerMarker().appendTo(wrap);
+    alphaCanvas.on('mousedown', function(e) {
+      if (unset || opacityInput.node().disabled) return;
+      startCanvasDrag(e, updateAlphaFromEvent, commitOpacity);
+    });
+    // a typed opacity moves the slider
+    opacityInput.on('change', drawAlphaCanvas);
+  }
+
+  // A blank field is drawn as opaque, which is how an unset opacity renders
+  function getOpacity() {
+    var val = parseOpacityValue(opacityInput.node().value);
+    return val === null ? 1 : val;
+  }
+
+  function updateAlphaFromEvent(evt) {
+    var p = getCanvasPoint(alphaCanvas.node(), evt);
+    opacityInput.node().value = Math.round((1 - p.x / 255) * 100) + '%';
+    drawAlphaCanvas();
+  }
+
+  function commitOpacity() {
+    opacityInput.node().dispatchEvent(new Event('change'));
   }
 
   function renderPresetRows(parent) {
@@ -233,8 +276,9 @@ export function ColorPicker(parent, opts) {
     commitPickerColor();
   }
 
-  function startCanvasDrag(e, update) {
+  function startCanvasDrag(e, update, commit) {
     var evt = e.originalEvent || e;
+    commit = commit || commitPickerColor;
     colorPicker.addClass('dragging-color');
     El('body').addClass('dragging-color-picker');
     update(evt);
@@ -249,7 +293,7 @@ export function ColorPicker(parent, opts) {
       document.removeEventListener('mouseup', onup);
       colorPicker.removeClass('dragging-color');
       El('body').removeClass('dragging-color-picker');
-      commitPickerColor();
+      commit();
     }
   }
 
@@ -310,6 +354,7 @@ export function ColorPicker(parent, opts) {
     if (!sbCanvas) return;
     drawSaturationBrightnessCanvas();
     drawHueCanvas();
+    drawAlphaCanvas();
   }
 
   function drawSaturationBrightnessCanvas() {
@@ -331,16 +376,16 @@ export function ColorPicker(parent, opts) {
       }
     }
     ctx.putImageData(image, 0, 0);
-    positionMarker(sbMarker, pickerColor.s, 255 - pickerColor.b, pickerColor);
+    positionMarker(sbMarker, pickerColor.s, 255 - pickerColor.b, hsbToRgb(pickerColor));
     sbMarker.node().style.display = unset ? 'none' : '';
   }
 
   function drawHueCanvas() {
     var ctx = hueCanvas.node().getContext('2d');
-    var image = ctx.createImageData(256, 18);
+    var image = ctx.createImageData(256, SLIDER_HEIGHT);
     var data = image.data;
     var i = 0;
-    for (var y=0; y<18; y++) {
+    for (var y=0; y<SLIDER_HEIGHT; y++) {
       for (var x=0; x<256; x++) {
         var rgb = hsbToRgb({h: x, s: 255, b: 255});
         data[i++] = rgb.r;
@@ -350,7 +395,43 @@ export function ColorPicker(parent, opts) {
       }
     }
     ctx.putImageData(image, 0, 0);
-    positionMarker(hueMarker, pickerColor.h, 9, {h: pickerColor.h, s: 255, b: 255});
+    positionMarker(hueMarker, pickerColor.h, SLIDER_MIDDLE, hsbToRgb({h: pickerColor.h, s: 255, b: 255}));
+  }
+
+  // The picked color over a checkerboard, opaque at the left and clear at the
+  // right. With no color picked there is no opacity to set, so no marker.
+  function drawAlphaCanvas() {
+    if (!alphaCanvas) return;
+    var ctx = alphaCanvas.node().getContext('2d');
+    var image = ctx.createImageData(256, SLIDER_HEIGHT);
+    var data = image.data;
+    var rgb = internal.parseHexColor(getPickerHex() || hsbToHex(pickerColor));
+    var i = 0;
+    var x, y, a, bg, markerX, markerBg;
+    for (y=0; y<SLIDER_HEIGHT; y++) {
+      for (x=0; x<256; x++) {
+        a = 1 - x / 255;
+        bg = getCheckerValue(x, y);
+        data[i++] = Math.round(rgb.r * a + bg * (1 - a));
+        data[i++] = Math.round(rgb.g * a + bg * (1 - a));
+        data[i++] = Math.round(rgb.b * a + bg * (1 - a));
+        data[i++] = 255;
+      }
+    }
+    ctx.putImageData(image, 0, 0);
+    a = getOpacity();
+    markerX = Math.round((1 - a) * 255);
+    markerBg = getCheckerValue(markerX, SLIDER_MIDDLE);
+    positionMarker(alphaMarker, markerX, SLIDER_MIDDLE, {
+      r: rgb.r * a + markerBg * (1 - a),
+      g: rgb.g * a + markerBg * (1 - a),
+      b: rgb.b * a + markerBg * (1 - a)
+    });
+    alphaMarker.node().style.display = unset ? 'none' : '';
+  }
+
+  function getCheckerValue(x, y) {
+    return (Math.floor(x / 6) + Math.floor(y / 6)) % 2 ? 204 : 255;
   }
 
   function commitPickerColor() {
@@ -367,8 +448,7 @@ export function ColorPicker(parent, opts) {
     return El('<svg class="label-color-marker" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle></svg>');
   }
 
-  function positionMarker(marker, x, y, hsb) {
-    var rgb = hsbToRgb(hsb);
+  function positionMarker(marker, x, y, rgb) {
     x = utils.clamp(x, 1, 254);
     y = utils.clamp(y, 1, 254) + 0.5;
     marker.css({

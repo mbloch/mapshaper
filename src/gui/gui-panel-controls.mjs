@@ -315,6 +315,7 @@ export function makeColorRow(parent, opts) {
   }
   control.picker = new ColorPicker(colorCell, {
     presetRows: layerColorPresetRows,
+    opacityInput: control.opacity,
     // A drag in the picker shows on the map's own terms -- the swatch and the
     // hex value -- and only the colour the drag ends on is applied.
     onPreview: control.setColor,

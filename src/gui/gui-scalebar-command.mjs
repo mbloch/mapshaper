@@ -1,7 +1,7 @@
 import { quoteCommandValue } from './gui-command-utils';
 
 // Record fields of a scalebar, in the order they are written as options
-var scalebarOptions = ['units', 'style', 'position', 'label_position',
+var scalebarOptions = ['units', 'style', 'position', 'label_position', 'align', 'label_case',
   'font_size', 'font_family', 'font_style', 'font_weight', 'color', 'bar_width',
   'tic_length', 'label_offset', 'margin'];
 

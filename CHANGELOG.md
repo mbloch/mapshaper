@@ -1,6 +1,8 @@
 v0.7.93
-* Fixed: projecting a world map frame to an orthographic projection could fail with "Densification error".
-* `-proj` no longer reports that it reprojected a map frame, which always follows its layers' projection.
+* [web] Scale bar UI improvements
+* Added `-scalebar style=c`, a bar of segments with alternating fill, with an optional metric bar above an imperial bar (`dual-units`) and an `align=` option for lining up the two bars.
+* `-scalebar style=a` supports `dual-units`: a second, shorter bar below the first.
+* Fixed: projecting a world map frame to some projections could fail with "Densification error".
 
 v0.7.92
 * Scalebar fixes and UI improvements.

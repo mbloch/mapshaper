@@ -397,7 +397,7 @@ export function LabelTool(gui) {
       if (isHexColor(color)) colorPicker.setColor(color);
       applyLabelColor(color);
     });
-    colorPicker = initColorPicker(textColorCell, colorChit, colorInput, applyLabelColor);
+    colorPicker = initColorPicker(textColorCell, colorChit, colorInput, applyLabelColor, opacityInput);
 
     var letterCell = El('div').addClass('label-split-cell label-spacing-row').appendTo(colorRow);
     El('span').appendTo(letterCell).text('Letter spacing');
@@ -444,7 +444,7 @@ export function LabelTool(gui) {
       applyBackgroundColor(color);
     });
     backgroundColorPicker = initColorPicker(backgroundColorCell, backgroundColorChit,
-      backgroundColorInput, applyBackgroundColor);
+      backgroundColorInput, applyBackgroundColor, backgroundOpacityInput);
 
     var paddingCell = El('div').addClass('label-split-cell label-spacing-row label-padding-row').appendTo(backgroundRow);
     El('span').appendTo(paddingCell).text('Padding');
@@ -497,7 +497,7 @@ export function LabelTool(gui) {
       if (isHexColor(color)) haloColorPicker.setColor(color);
       applyHaloColor(color);
     });
-    haloColorPicker = initColorPicker(haloColorCell, haloColorChit, haloColorInput, applyHaloColor);
+    haloColorPicker = initColorPicker(haloColorCell, haloColorChit, haloColorInput, applyHaloColor, haloOpacityInput);
 
     var haloWidthCell = El('div').addClass('label-split-cell label-spacing-row').appendTo(haloColorRow);
     El('span').appendTo(haloWidthCell).text('Width');
@@ -550,7 +550,7 @@ export function LabelTool(gui) {
       if (isHexColor(color)) iconColorPicker.setColor(color);
       applyIconColor(color);
     });
-    iconColorPicker = initColorPicker(iconColorCell, iconColorChit, iconColorInput, applyIconColor);
+    iconColorPicker = initColorPicker(iconColorCell, iconColorChit, iconColorInput, applyIconColor, iconOpacityInput);
 
     var sizeRow = El('div').addClass('label-split-cell label-icon-size-row').appendTo(iconColorRow);
     El('span').appendTo(sizeRow).text('Size');
@@ -720,7 +720,7 @@ export function LabelTool(gui) {
       if (isHexColor(color)) calloutColorPicker.setColor(color);
       applyCalloutColor(color);
     });
-    calloutColorPicker = initColorPicker(colorCell, calloutColorChit, calloutColorInput, applyCalloutColor);
+    calloutColorPicker = initColorPicker(colorCell, calloutColorChit, calloutColorInput, applyCalloutColor, calloutOpacityInput);
 
     // The gap in the narrow column, under the sizes. Unset, it is worked out
     // from the anchor's symbol, which it clears, and it shows what that comes
@@ -2134,8 +2134,9 @@ export function LabelTool(gui) {
     return isFinite(val) && val > 0 ? val : defaultValue;
   }
 
-  function initColorPicker(parent, chit, input, onChange) {
+  function initColorPicker(parent, chit, input, onChange, opacityInput) {
     return new ColorPicker(parent, {
+      opacityInput: opacityInput,
       onPreview: function(hex) {
         input.node().value = hex;
         chit.css('background-color', hex);

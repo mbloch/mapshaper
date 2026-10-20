@@ -5,7 +5,7 @@ import { showPopupAlert } from './gui-alert';
 import { makePanelSection, makeColorField, makePanelActionButton } from './gui-panel-controls';
 import { ColorPicker, isHexColor } from './gui-color-picker';
 import { getScalebarCommand } from './gui-scalebar-command';
-import { appendSizeFieldStepper } from './gui-size-field';
+import { appendSizeFieldStepper, parseSizeValue, getSizeFieldKeyAction } from './gui-size-field';
 import { getDefaultFontName, getFontStyleVariants, appendFontOptions,
   getNearestFontStyleVariant, variantIsRegular } from './gui-label-fonts';
 
@@ -27,8 +27,18 @@ var labelPositionOptions = {
     ['bottom-center', 'Bottom center'],
     ['bottom-right', 'Bottom right']
   ],
-  b: [['top', 'Above'], ['bottom', 'Below']]
+  b: [['top', 'Above'], ['bottom', 'Below']],
+  c: [['top', 'Above'], ['bottom', 'Below']]
 };
+
+// The bars of a dual-unit style c scalebar have their labels on the outside,
+// so the labels menu sets how the bars line up instead
+var alignOptions = [['left', 'Left'], ['center', 'Center'], ['right', 'Right']];
+
+// The labels of a dual-unit style a scalebar are above the top bar and below
+// the bottom one, so only their horizontal position can be chosen
+var dualBarLabelOptions = [['top-left', 'Left'], ['top-center', 'Center'],
+  ['top-right', 'Right']];
 
 // What the scalebar is drawn in when it has no color of its own
 var defaultColor = '#000000';
@@ -39,8 +49,8 @@ var defaultColor = '#000000';
 export function ScalebarProperties(gui) {
   var popup, form, note;
   var stopPanelDrag = null;
-  var labelInput, unitsSelect, styleSelect, dualUnitsBox, positionSelect,
-    labelPositionSelect, fontSizeInput, barWidthInput, marginInput,
+  var labelInput, unitsSelect, styleSelect, labelCaseSelect, positionSelect,
+    labelPositionSelect, labelPositionTitle, labelPositionField, fontSizeInput, barWidthInput, marginInput,
     fontSelect, fontStyleSelect, colorChit, colorInput, colorPicker;
 
   gui.scalebarProperties = this;
@@ -127,23 +137,25 @@ export function ScalebarProperties(gui) {
         update({label: labelInput.node().value.trim()});
       });
     unitsSelect = makeSelect(makeCell(row, 'Units'), 'scalebar-units-select',
-      [['miles', 'Miles'], ['km', 'Kilometers']])
+      [['miles', 'Miles'], ['km', 'Kilometers'], ['dual', 'Dual']])
       .on('change', function() {
-        var changes = {units: unitsSelect.node().value};
-        var bare = getBareDistance(getScalebarRecord().label);
-        if (bare) changes.label = bare;
-        update(changes);
+        var value = unitsSelect.node().value;
+        if (value == 'dual') {
+          update({dual_units: true});
+        } else {
+          update(getSingleUnitChanges(getScalebarRecord(), value));
+        }
       });
 
     row = makeRow(form);
     styleSelect = makeSelect(makeCell(row, 'Style'), 'scalebar-style-select',
-      [['a', 'Bar'], ['b', 'Ticks']])
+      [['a', 'Bar'], ['b', 'Ticks'], ['c', 'Segments']])
       .on('change', function() {
         update({style: styleSelect.node().value});
       });
-    dualUnitsBox = makeCheckbox(row, 'Metric + imperial', 'scalebar-dual-units')
+    labelCaseSelect = makeSelect(makeCell(row, 'Label format'), 'scalebar-label-case-select', [])
       .on('change', function() {
-        update({dual_units: dualUnitsBox.node().checked});
+        update({label_case: labelCaseSelect.node().value});
       });
 
     row = makeRow(form);
@@ -152,10 +164,14 @@ export function ScalebarProperties(gui) {
       .on('change', function() {
         update({position: positionSelect.node().value});
       });
-    labelPositionSelect = makeSelect(makeCell(row, 'Labels'),
+    var labelPositionCell = makeCell(row, 'Labels');
+    labelPositionTitle = labelPositionCell.findChild('span');
+    labelPositionSelect = makeSelect(labelPositionCell,
       'scalebar-label-position-select', [])
       .on('change', function() {
-        update({label_position: labelPositionSelect.node().value});
+        var changes = {};
+        changes[labelPositionField] = labelPositionSelect.node().value;
+        update(changes);
       });
 
     var appearance = makePanelSection(form, 'Appearance');
@@ -203,12 +219,14 @@ export function ScalebarProperties(gui) {
         update({color: hex});
       }
     });
-    fontSizeInput = makeNumberInput(makeCell(row, 'Font size'), 'font_size',
-      'scalebar-font-size');
+    fontSizeInput = makeSteppedNumberInput(makeCell(row, 'Font size', 'div'), 'font_size',
+      'scalebar-font-size', {step: 1, bigStep: 10})
+      .attr('aria-label', 'Font size');
 
     row = makeRow(appearance);
-    barWidthInput = makeNumberInput(makeCell(row, 'Bar width'), 'bar_width',
-      'scalebar-bar-width');
+    barWidthInput = makeSteppedNumberInput(makeCell(row, 'Bar width', 'div'), 'bar_width',
+      'scalebar-bar-width', {step: 1, bigStep: 5})
+      .attr('aria-label', 'Bar width');
     marginInput = makeNumberInput(makeCell(row, 'Inset'), 'margin',
       'scalebar-margin')
       .attr('aria-label', 'Distance from the edges of the frame, in pixels');
@@ -223,19 +241,38 @@ export function ScalebarProperties(gui) {
 
   function updateControls() {
     var d = getScalebarRecord();
-    var problem, style;
+    var problem, style, unitsValue;
     if (!d || !form) return;
     labelInput.node().value = d.label || '';
-    setSelectValue(unitsSelect, getUnitsMenuValue(d.units ||
-      internal.parseScalebarUnits(d.label || '')));
-    style = d.style == 'b' || d.style == 'B' ||
-      !d.style && d.dual_units ? 'b' : 'a';
+    style = internal.getScalebarStyle(d);
+    unitsValue = isDualUnit(d) ? 'dual' :
+      getUnitsMenuValue(d.units || internal.parseScalebarUnits(d.label || ''));
+    setSelectValue(unitsSelect, unitsValue);
     setSelectValue(styleSelect, style);
-    dualUnitsBox.node().checked = !!d.dual_units;
+    labelCaseSelect.empty();
+    appendSelectOptions(labelCaseSelect, getLabelCaseOptions(unitsValue));
+    setSelectValue(labelCaseSelect, internal.getScalebarLabelCase(d) || 'upper');
     setSelectValue(positionSelect, d.position || 'top-left');
-    renderLabelPositionOptions(style);
-    setSelectValue(labelPositionSelect,
-      getLabelPositionMenuValue(d.label_position, style));
+    if (style == 'c' && isDualUnit(d)) {
+      labelPositionField = 'align';
+      labelPositionTitle.text('Align');
+      labelPositionSelect.empty();
+      appendSelectOptions(labelPositionSelect, alignOptions);
+      setSelectValue(labelPositionSelect, d.align || 'center');
+    } else if (style == 'a' && isDualUnit(d)) {
+      labelPositionField = 'label_position';
+      labelPositionTitle.text('Labels');
+      labelPositionSelect.empty();
+      appendSelectOptions(labelPositionSelect, dualBarLabelOptions);
+      setSelectValue(labelPositionSelect,
+        'top-' + getLabelPositionMenuValue(d.label_position, style).split('-')[1]);
+    } else {
+      labelPositionField = 'label_position';
+      labelPositionTitle.text('Labels');
+      renderLabelPositionOptions(style);
+      setSelectValue(labelPositionSelect,
+        getLabelPositionMenuValue(d.label_position, style));
+    }
     fontSizeInput.node().value = formatValue(d.font_size);
     barWidthInput.node().value = formatValue(d.bar_width);
     marginInput.node().value = formatValue(d.margin);
@@ -319,9 +356,10 @@ export function ScalebarProperties(gui) {
   // units menu always applies, so it is written even when it shows the default.
   function update(changes) {
     var d = Object.assign({}, getScalebarRecord(), changes);
-    if (changes.style == 'a') d.dual_units = false;
-    if (changes.dual_units) d.style = 'b';
-    if (!d.units) d.units = unitsSelect.node().value;
+    if (changes.style && changes.style != 'c') d.align = '';
+    // a dual-unit scalebar with no style is style b, not the style a shown
+    if (changes.dual_units && !d.style) d.style = 'a';
+    if (!d.units) d.units = unitsSelect.node().value == 'dual' ? 'miles' : unitsSelect.node().value;
     runCommand(getScalebarCommand(d), 'Update scale bar', updateControls);
   }
 
@@ -356,16 +394,45 @@ export function ScalebarProperties(gui) {
     if (label) update({label: label});
   }
 
+  // A number field with a stepper. Blank means the style's default, which a
+  // step starts from. Steps don't go below one step.
+  function makeSteppedNumberInput(cell, field, className, opts) {
+    var box = El('div').addClass('size-field scalebar-stepper-field').appendTo(cell);
+    var input = makeNumberInput(box, field, className + ' size-field-input');
+    var buttons = appendSizeFieldStepper(box);
+    input.on('keydown', function(e) {
+      var action = getSizeFieldKeyAction(e.key, e.shiftKey, opts);
+      if (!action || action.type != 'step') return;
+      e.preventDefault();
+      e.stopPropagation();
+      step(action.delta);
+    });
+    buttons.up.on('click', function() { step(opts.step); });
+    buttons.down.on('click', function() { step(-opts.step); });
+    return input;
+
+    function step(delta) {
+      var d = getScalebarRecord();
+      var val = parseSizeValue(input.node().value, NaN, NaN, 2);
+      var o = {};
+      if (!d) return;
+      if (val === null) val = internal.getScalebarOpts(d)[field];
+      o[field] = parseSizeValue(val + delta, opts.step, NaN, 2);
+      update(o);
+    }
+  }
+
   function makeNumberInput(cell, field, className) {
     var input = makeInput(cell, className).attr('placeholder', 'auto');
     input.on('change', function() {
       var str = input.node().value.trim();
+      var val = str === '' ? '' : parseSizeValue(str, NaN, NaN, 2);
       var o = {};
-      if (str !== '' && !(Number(str) >= 0)) {
+      if (val === null || val < 0) {
         updateControls();
         return;
       }
-      o[field] = str === '' ? '' : Number(str);
+      o[field] = val;
       update(o);
     });
     return input;
@@ -485,14 +552,6 @@ function appendSelectOptions(select, options) {
   });
 }
 
-function makeCheckbox(parent, label, className) {
-  var box = El('input').attr('type', 'checkbox').addClass(className);
-  var wrapper = El('label').addClass('scalebar-checkbox').appendTo(parent);
-  box.appendTo(wrapper);
-  El('span').appendTo(wrapper).text(label);
-  return box;
-}
-
 // Shows a value that came from the command line even if the menu lacks it
 function setSelectValue(select, value) {
   var node = select.node();
@@ -512,6 +571,35 @@ function getBareDistance(label) {
   return match ? match[1].trim() : '';
 }
 
+// Leaving dual units keeps the distance in the chosen units, if the label has
+// one, as a bare number in those units. A lower-case label stays lower case
+// when its units are dropped.
+function getSingleUnitChanges(d, unitsValue) {
+  var changes = {units: unitsValue, dual_units: false};
+  var parts = internal.splitScalebarLabel(d.label || '');
+  var metric = unitsValue == 'km' || unitsValue == 'meters';
+  var label = parts.find(function(str) {
+    var units = internal.parseScalebarUnits(str);
+    return units && (units == 'km' || units == 'm') == metric;
+  }) || parts[0] || '';
+  var bare = getBareDistance(label);
+  if (bare || label != (d.label || '')) changes.label = bare || label;
+  if (bare && !d.label_case && internal.getScalebarLabelCase(d) == 'lower') {
+    changes.label_case = 'lower';
+  }
+  return changes;
+}
+
+// Menu items show the units in each case
+function getLabelCaseOptions(unitsValue) {
+  var name = unitsValue == 'dual' ? 'miles/km' : unitsValue;
+  return [['upper', name.toUpperCase()], ['lower', name.toLowerCase()]];
+}
+
+function isDualUnit(d) {
+  return !!d.dual_units || internal.splitScalebarLabel(d.label || '').length > 1;
+}
+
 function getUnitsMenuValue(units) {
   var parsed = internal.parseLabelUnits(units);
   return parsed == 'mile' || !parsed ? 'miles' :
@@ -525,7 +613,7 @@ function getLabelPositionMenuValue(position, style) {
   var pos = String(position || 'top');
   var vertical = pos.includes('bottom') ? 'bottom' : 'top';
   var horizontal;
-  if (style == 'b') return vertical;
+  if (style != 'a') return vertical;
   horizontal = pos.includes('center') ? 'center' :
     pos.includes('right') ? 'right' : 'left';
   return vertical + '-' + horizontal;

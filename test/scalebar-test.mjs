@@ -163,7 +163,7 @@ describe('mapshaper-scalebar.js', function () {
     it('a units-only label gets an automatic length', async function() {
       var svg = String((await api.applyCommands(
         `${framed} -scalebar km -o target=* map.svg`))['map.svg']);
-      assert(/\d KM</.test(svg));
+      assert(/\d km</.test(svg));
     });
 
     it('dual-units shows metric and imperial distances', async function() {
@@ -171,6 +171,19 @@ describe('mapshaper-scalebar.js', function () {
         `${framed} -scalebar dual-units -o target=* map.svg`))['map.svg']);
       assert(/MILES?</.test(svg));
       assert(/\d KM</.test(svg));
+    });
+
+    it('style a with dual units has a shorter second bar below the first', async function() {
+      var svg = await exportSvg(`${framed} -scalebar "100 km" style=a dual-units label-position=top-right`);
+      var bars = /<path d="M 0 0 ([\d.]+) 0 M 0 ([\d.]+) ([\d.]+) [\d.]+"/.exec(svg).slice(1).map(Number);
+      var texts = Array.from(svg.matchAll(/<text[^>]*transform="translate\(([\d.]+) ([\d.-]+)\)"[^>]*>([^<]*)</g),
+        m => ({x: Number(m[1]), y: Number(m[2]), text: m[3]}));
+      assert(bars[2] < bars[0]);
+      assert(bars[1] > 0);
+      assert.deepEqual(texts.map(o => o.text), ['100 km', '50 miles']);
+      assert.equal(texts[0].x, bars[0]);
+      assert.equal(texts[1].x, bars[2]);
+      assert(texts[0].y < 0 && texts[1].y > bars[1]);
     });
 
     it('drops a zero label that is too close to the distance label', async function() {
@@ -234,7 +247,30 @@ describe('mapshaper-scalebar.js', function () {
     it('a bare second distance gets the other unit system', async function() {
       var svg = await exportSvg(`${framed} -scalebar "100 km,50" style=b`);
       assert(svg.includes('>100 km<'));
-      assert(svg.includes('>50 MILES<'));
+      assert(svg.includes('>50 miles<'));
+    });
+
+    it('label-case= sets the case of every label', async function() {
+      var svg = await exportSvg(`${framed} -scalebar "100 km" dual-units style=b label-case=upper`);
+      assert(svg.includes('>100 KM<'));
+      assert(/>\d+ MILES</.test(svg));
+      svg = await exportSvg(`${framed} -scalebar dual-units label-case=lower`);
+      assert(/>[\d,]+ km</.test(svg));
+      assert(/>[\d,]+ miles?</.test(svg));
+      svg = await exportSvg(`${framed} -scalebar "400 km" style=c dual-units label-case=upper`);
+      assert(svg.includes('>400 KM<'));
+      assert(svg.includes('>200 MILES<'));
+    });
+
+    it('a label in lower case gives lower case to the distances generated for it', async function() {
+      var svg = await exportSvg(`${framed} -scalebar "100 km" dual-units style=b`);
+      assert(svg.includes('>100 km<'));
+      assert(/>\d+ miles</.test(svg));
+      assert.equal(getSteppedScalebarLabel({label: '100 km', label_case: 'upper'}, null, 1), '150 KM');
+    });
+
+    it('rejects an unsupported label case', async function() {
+      await assert.rejects(runJob(`${framed} -scalebar label-case=title`), /label case/);
     });
 
     it('a comma inside a number does not split the label', async function() {
@@ -251,11 +287,11 @@ describe('mapshaper-scalebar.js', function () {
     var step = getSteppedScalebarLabel;
 
     it('steps a given length to the next automatic length', function() {
-      assert.equal(step({label: '100 km'}, null, 1), '150 KM');
-      assert.equal(step({label: '100 km'}, null, -1), '75 KM');
-      assert.equal(step({label: '120 km'}, null, 1), '150 KM');
-      assert.equal(step({label: '120 km'}, null, -1), '100 KM');
-      assert.equal(step({label: '1 mile'}, null, -1), '1/2 MILE');
+      assert.equal(step({label: '100 km'}, null, 1), '150 km');
+      assert.equal(step({label: '100 km'}, null, -1), '75 km');
+      assert.equal(step({label: '120 km'}, null, 1), '150 km');
+      assert.equal(step({label: '120 km'}, null, -1), '100 km');
+      assert.equal(step({label: '1 mile'}, null, -1), '1/2 mile');
     });
 
     it('a bare number is in the units option', function() {
@@ -264,10 +300,10 @@ describe('mapshaper-scalebar.js', function () {
     });
 
     it('steps across units in the same system', function() {
-      assert.equal(step({label: '1 km'}, null, -1), '500 METERS');
-      assert.equal(step({label: '500 m'}, null, 1), '1 KM');
-      assert.equal(step({label: '1/8 mile'}, null, -1), '500 FEET');
-      assert.equal(step({label: '500 feet'}, null, 1), '1/8 MILE');
+      assert.equal(step({label: '1 km'}, null, -1), '500 meters');
+      assert.equal(step({label: '500 m'}, null, 1), '1 km');
+      assert.equal(step({label: '1/8 mile'}, null, -1), '500 feet');
+      assert.equal(step({label: '500 feet'}, null, 1), '1/8 mile');
     });
 
     it('returns null past the ends of the list', function() {
@@ -276,8 +312,8 @@ describe('mapshaper-scalebar.js', function () {
     });
 
     it('keeps a second distance that is still shorter', function() {
-      assert.equal(step({label: '100 km,50 miles'}, null, 1), '150 KM,50 miles');
-      assert.equal(step({label: '100 km,50 miles'}, null, -1), '75 KM');
+      assert.equal(step({label: '100 km,50 miles'}, null, 1), '150 km,50 miles');
+      assert.equal(step({label: '100 km,50 miles'}, null, -1), '75 km');
     });
 
     it('steps from the automatic length', async function() {
@@ -295,6 +331,99 @@ describe('mapshaper-scalebar.js', function () {
       assert(parseScalebarLabelToKm(down) < parseScalebarLabelToKm(auto));
       assert.equal(step({label: up}, null, -1), auto);
       assert.strictEqual(step({}, null, 1), null);
+    });
+  });
+
+  describe('style c', function() {
+    var framed = '-i test/data/geojson/two_states.json -proj lcc -frame width=600';
+
+    function getTexts(svg) {
+      return Array.from(svg.matchAll(/<text[^>]*>([^<]*)</g), m => m[1]);
+    }
+
+    // [x1, x2] of each bar's outline, from top to bottom
+    function getBars(svg) {
+      return Array.from(svg.matchAll(/<path d="M ([\d.-]+) [\d.-]+ ([\d.-]+) [^"]*" fill="white"/g),
+        m => [Number(m[1]), Number(m[2])]);
+    }
+
+    // the number of filled segments in each bar
+    function getFilledCounts(svg) {
+      return Array.from(svg.matchAll(/<path d="([^"]*)"[^>]* fill="black"/g),
+        m => m[1].split('Z').length - 1);
+    }
+
+    it('a single bar has two segments, labeled at each division', async function() {
+      var svg = await exportSvg(`${framed} -scalebar "50 miles" style=c`);
+      assert.deepEqual(getTexts(svg), ['0', '25', '50 miles']);
+      assert.deepEqual(getFilledCounts(svg), [1]);
+    });
+
+    it('a metric distance gets four segments over an imperial bar of two', async function() {
+      var svg = await exportSvg(`${framed} -scalebar "400 km" style=c dual-units`);
+      var bars = getBars(svg);
+      var km = bars[0][1] - bars[0][0], mi = bars[1][1] - bars[1][0];
+      assert.deepEqual(getTexts(svg), ['0', '100', '200', '300', '400 km', '0', '100', '200 miles']);
+      assert.deepEqual(getFilledCounts(svg), [2, 1]);
+      assert(Math.abs(mi / km - 200 * 1.60934 / 400) < 0.01);
+      assert(Math.abs(bars[1][0] - (km - mi) / 2) <= 0.5); // centered
+    });
+
+    it('an imperial distance gets the same interval in km', async function() {
+      var svg = await exportSvg(`${framed} -scalebar "100 miles" style=c dual-units`);
+      var bars = getBars(svg);
+      assert.deepEqual(getTexts(svg), ['0', '50', '100 km', '0', '50', '100 miles']);
+      assert.deepEqual(getFilledCounts(svg), [1, 1]);
+      assert(bars[0][1] - bars[0][0] < bars[1][1] - bars[1][0]);
+    });
+
+    it('align= lines up the shorter bar with the longer one', async function() {
+      var left = getBars(await exportSvg(`${framed} -scalebar "400 km" style=c dual-units align=left`));
+      var right = getBars(await exportSvg(`${framed} -scalebar "400 km" style=c dual-units align=right`));
+      assert.equal(left[1][0], left[0][0]);
+      assert.equal(right[1][1], right[0][1]);
+    });
+
+    it('rejects an unsupported alignment', async function() {
+      await assert.rejects(runJob(`${framed} -scalebar style=c dual-units align=middle`), /alignment/);
+    });
+
+    it('dual-unit lengths get longer at every step, alternating four and two metric segments', function() {
+      var d = {style: 'c', dual_units: true, label: '0.02 MILE,0.02 KM'};
+      var labels = [d.label];
+      var label;
+      while ((label = getSteppedScalebarLabel(d, null, 1))) {
+        labels.push(label);
+        d = Object.assign({}, d, {label: label});
+      }
+      var split = api.internal.splitScalebarLabel;
+      var getLongest = function(label) {
+        return Math.max.apply(null, split(label).map(parseScalebarLabelToKm));
+      };
+      assert.equal(labels.length, 36);
+      labels.forEach(function(label, i) {
+        assert.equal(/KM$/.test(split(label)[0]), i % 2 == 1, label);
+        if (i > 0) {
+          assert(getLongest(label) > getLongest(labels[i - 1]), `${labels[i - 1]} -> ${label}`);
+        }
+      });
+      assert.equal(getSteppedScalebarLabel({style: 'c', dual_units: true, label: '400 km'}, null, 1),
+        '500 miles,500 km');
+      assert.equal(getSteppedScalebarLabel({style: 'c', dual_units: true, label: '400 km'}, null, -1),
+        '200 miles,200 km');
+    });
+
+    it('a single bar steps through twice the intervals', function() {
+      assert.equal(getSteppedScalebarLabel({style: 'c', label: '100 km'}, null, 1), '200 km');
+      assert.equal(getSteppedScalebarLabel({style: 'c', label: '100 km'}, null, -1), '50 km');
+      assert.equal(getSteppedScalebarLabel({style: 'c', label: '1 mile'}, null, -1), '0.4 mile');
+    });
+
+    it('an automatic length fits within 20% of the frame width', async function() {
+      var svg = await exportSvg(`${framed} -scalebar style=c dual-units`);
+      var bars = getBars(svg);
+      var longest = Math.max(bars[0][1] - bars[0][0], bars[1][1] - bars[1][0]);
+      assert(longest <= 120 && longest >= 70, String(longest));
     });
   });
 

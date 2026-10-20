@@ -2859,7 +2859,7 @@ export function getOptionParser() {
       describe: 'units of a bare-number or automatic label: km, meters, miles or feet (default is miles)'
     })
     .option('style', {
-      describe: 'two options: a or b'
+      describe: 'a (bar), b (ticks) or c (segments of alternating fill)'
     })
     .option('font-size', {
       type: 'number'
@@ -2881,7 +2881,7 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('bar-width', {
-      describe: 'line width of bar',
+      describe: 'line width of bar (height of bar in style c)',
       type: 'number'
     })
     .option('label-offset', {
@@ -2894,8 +2894,14 @@ export function getOptionParser() {
       describe: 'top, bottom, top-center (style a), etc'
     })
     .option('dual-units', {
-      describe: 'show both metric and imperial units (style b)',
+      describe: 'show both metric and imperial units (default style is b)',
       type: 'flag'
+    })
+    .option('align', {
+      describe: 'alignment of the two bars of style c: left, center (default) or right'
+    })
+    .option('label-case', {
+      describe: 'case of units in labels: upper or lower (default follows the label)'
     })
     .option('margin', {
       describe: 'offset in pixels from edge of map',
