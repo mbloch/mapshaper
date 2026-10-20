@@ -1,3 +1,7 @@
+v0.7.93
+* Fixed: projecting a world map frame to an orthographic projection could fail with "Densification error".
+* `-proj` no longer reports that it reprojected a map frame, which always follows its layers' projection.
+
 v0.7.92
 * Scalebar fixes and UI improvements.
 

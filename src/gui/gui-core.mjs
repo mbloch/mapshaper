@@ -11,3 +11,8 @@ export var mapshaper = api,
   error = internal.error;
 
 api.enableLogging();
+
+// Returns a dependency bundled in modules.js, which loads before this bundle.
+export function require(name) {
+  return window.modules ? window.modules[name] : undefined;
+}

@@ -1,5 +1,4 @@
 import { utils, geom, internal, error } from './gui-core';
-import { absArcId } from '../paths/mapshaper-arc-utils';
 
 // How far from a line, in pixels, the pointer hits it (less when zoomed out
 // beyond the full extent)

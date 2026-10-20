@@ -6,10 +6,7 @@ import {
   restoreStoredUndoUnits,
   storeUndoUnits
 } from './gui-undo-unit-store';
-import {
-  captureCurrentUnits,
-  filterUnchangedRestoreUnits
-} from '../undo/mapshaper-undo-transaction';
+import { internal } from './gui-core';
 
 export function createStoredUndoHistory(gui) {
   var undoEntryId = 0;
@@ -24,7 +21,7 @@ export function createStoredUndoHistory(gui) {
         storedRedoUnits, storeStart, storeMillis = 0, evictToken = {};
     opts = opts || {};
     if (!tx || opts.error) return {skipped: true};
-    undoUnits = filterUnchangedRestoreUnits(tx.getCapturedUnits());
+    undoUnits = internal.filterUnchangedRestoreUnits(tx.getCapturedUnits());
     if (!undoUnits.some(isRestoreUnit)) return {
       skipped: true,
       unitCount: undoUnits.length,
@@ -92,7 +89,7 @@ export function createStoredUndoHistory(gui) {
   }
 
   async function captureAndStoreRedoUnits(captureUnits, store, entryId, evictToken) {
-    var redoUnits = captureCurrentUnits(captureUnits);
+    var redoUnits = internal.captureCurrentUnits(captureUnits);
     return storeUndoUnitsWithEviction(redoUnits, store, entryId, 'redo', evictToken);
   }
 

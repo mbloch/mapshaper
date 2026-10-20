@@ -1,5 +1,4 @@
-import require from '../mapshaper-require';
-import { internal } from './gui-core';
+import { internal, require } from './gui-core';
 import { createTempSessionLifecycle } from './gui-temp-session-lifecycle';
 import { logStartupCleanup } from './gui-startup-cleanup-report';
 

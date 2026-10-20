@@ -32,29 +32,30 @@ function clampLatLngBbox(bbox) {
 // corners, so a corner-only bbox can crop content that was inside the frame.
 export function getProjectedFrameBounds(bbox, project, srcIsLatLng) {
   var b = new Bounds(srcIsLatLng ? clampLatLngBbox(bbox) : bbox);
-  var xmin = b.xmin;
-  var ymin = b.ymin;
-  var xmax = b.xmax;
-  var ymax = b.ymax;
-  var arcs = new ArcCollection([
-    [[xmin, ymin], [xmax, ymin]],
-    [[xmax, ymin], [xmax, ymax]],
-    [[xmax, ymax], [xmin, ymax]],
-    [[xmin, ymax], [xmin, ymin]]
-  ]);
-  projectAndDensifyArcs(arcs, project);
-  var projected = arcs.getBounds();
   // Where part of the boundary is outside the projection's domain (e.g. the
-  // far side of the globe in an orthographic projection), the boundary's arcs
-  // with unprojectable points are dropped, and what is left can collapse to a
-  // sliver. The frame then covers whatever part of its extent does project.
-  if (!boundaryIsProjectable(b, project)) {
-    projected.mergeBounds(getProjectedInteriorBounds(b, project));
-  }
+  // far side of the globe in an orthographic projection), the frame covers
+  // whatever part of its extent does project. Densifying such a boundary would
+  // drop its arcs with unprojectable points, and can fail outright when the
+  // points it probes for an interval don't project; the sampled interior
+  // includes the boundary, at the same spacing.
+  var projected = boundaryIsProjectable(b, project) ?
+    getProjectedBoundaryBounds(b, project) :
+    getProjectedInteriorBounds(b, project);
   if (!projected.hasBounds() || boundsAreDegenerate(projected)) {
     error('Unable to project map frame');
   }
   return projected;
+}
+
+function getProjectedBoundaryBounds(b, project) {
+  var arcs = new ArcCollection([
+    [[b.xmin, b.ymin], [b.xmax, b.ymin]],
+    [[b.xmax, b.ymin], [b.xmax, b.ymax]],
+    [[b.xmax, b.ymax], [b.xmin, b.ymax]],
+    [[b.xmin, b.ymax], [b.xmin, b.ymin]]
+  ]);
+  projectAndDensifyArcs(arcs, project);
+  return arcs.getBounds();
 }
 
 // A view may show none of the frame's extent

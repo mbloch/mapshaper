@@ -1,8 +1,7 @@
 import { repositionSymbols, renderSymbols, updateLabelPaths, markLabelPathScale } from './gui-svg-symbols';
 import { renderFurniture, repositionFurniture } from './gui-svg-furniture';
 import { El } from './gui-el';
-import { utils } from './gui-core';
-import { error } from '../utils/mapshaper-logging';
+import { utils, error } from './gui-core';
 
 export function SvgDisplayLayer(gui, ext, mouse) {
   var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

@@ -122,7 +122,9 @@ function resolveProjDestInfo(targets, catalog, opts) {
 
 // A frame's members share its coordinate system, so targeting a frame or any of
 // its members projects the whole frame: the frame dataset and every member
-// dataset, with all their layers. Members without CRS metadata are read in the
+// dataset, with all their layers. Other content layers projected this way are
+// named; the frame itself always follows its layers, so it isn't. Members
+// without CRS metadata are read in the
 // frame's coordinate system, the only reading under which they were drawn
 // correctly in the frame.
 function expandFrameTargets(targets, catalog, opts) {
@@ -137,9 +139,6 @@ function expandFrameTargets(targets, catalog, opts) {
     var frame = getFrameForDataset(catalog, targ.dataset);
     if (!frame || frames.includes(frame.dataset)) return;
     frames.push(frame.dataset);
-    if (!targets.some(function(o) { return o.dataset == frame.dataset; })) {
-      message('Also reprojected the map frame:', frame.layer.name);
-    }
     [frame.dataset].concat(getFrameMembers(catalog, frame)).forEach(function(dataset) {
       addTarget(dataset, dataset.layers.filter(function(lyr) {
         return dataset != frame.dataset || !isFrameComponentLayer(lyr, dataset);
@@ -227,7 +226,6 @@ function projectFrameDataset(frame, targets, catalog, opts, destInfo) {
     delete frameOpts.init;
   }
   cmd.proj(frame.dataset, catalog, frameOpts, frame.dataset.layers, destInfo);
-  message('Also reprojected the map frame.');
 }
 
 // -proj only applies to the command's targets, so layers in other datasets are

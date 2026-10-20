@@ -12,7 +12,7 @@
 // the map. The column is too narrow to list them as well, so they go in a
 // tooltip with the full description.
 
-import { featureIsLabel, featureIsMarker, featureIsTextLabel } from '../svg/svg-feature-utils';
+import { internal } from './gui-core';
 
 var POINT_KINDS = ['label', 'symbol', 'circle', 'point'];
 
@@ -23,8 +23,8 @@ var POINT_KINDS = ['label', 'symbol', 'circle', 'point'];
 // with nothing in it, which does not make it a label.
 export function getPointKind(d) {
   if (!d) return 'point';
-  if (featureIsMarker(d)) return 'symbol';
-  if (featureIsLabel(d)) return 'label';
+  if (internal.svg.featureIsMarker(d)) return 'symbol';
+  if (internal.svg.featureIsLabel(d)) return 'label';
   if (d['svg-symbol'] || d.icon) return 'symbol';
   if (d.r > 0) return 'circle';
   return 'point';
@@ -47,7 +47,7 @@ export function getPointLayerKind(fields) {
 //   hasSymbolFields: it has the fields of SVG symbols
 export function getAnnotationTool(records, hasLabelField, hasSymbolFields) {
   var n = records ? records.length : 0;
-  if (hasLabelField && (n === 0 || records.some(featureIsTextLabel))) return 'label';
+  if (hasLabelField && (n === 0 || records.some(internal.svg.featureIsTextLabel))) return 'label';
   if (hasLabelField || hasSymbolFields) return 'symbols';
   return null;
 }

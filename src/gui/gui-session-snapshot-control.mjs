@@ -1,9 +1,8 @@
 import { El } from './gui-el';
-import { internal, stop } from './gui-core';
+import { internal, stop, require } from './gui-core';
 import { saveBlobToLocalFile2 } from './gui-save';
 import { logStartupCleanup, formatCleanupSize } from './gui-startup-cleanup-report';
 import { formatSnapshotGuiState, parseSnapshotGuiState } from './gui-snapshot-view-state';
-import require from '../mapshaper-require';
 
 var idb = require('idb-keyval');
 // https://github.com/jakearchibald/idb

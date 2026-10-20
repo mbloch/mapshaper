@@ -36,6 +36,15 @@ describe('map frame projection', function() {
     assert.deepEqual(bounds.toArray().map(Math.round), [-6378137, -6378137, 6378137, 6378137]);
   });
 
+  it('a world frame projected to an off-center ortho covers the visible hemisphere', function() {
+    // none of the points that densification probes for an interval project
+    var ortho = api.internal.getProjTransform2(src,
+      api.internal.parseCrsString('+proj=ortho +lat_0=-3.2'));
+    var bounds = getProjectedFrameBounds([-180, -90, 180, 90], ortho, true);
+    assert.deepEqual(bounds.toArray().map(function(n) { return Math.round(n / 1000); }),
+      [-6378, -6378, 6378, 6378]);
+  });
+
   it('-proj ortho gives a world frame a normal page size', async function() {
     var out = await api.applyCommands('-rectangle bbox=-180,-90,180,90 name=world ' +
       '-frame target=world width=800 name=f -proj +proj=ortho -o target=f format=geojson');
@@ -168,14 +177,14 @@ describe('map frame projection (frame in its own dataset)', function() {
     assert.equal(rec.height, Math.round(600 / getAspect(coords)));
   });
 
-  it('reports that the frame was projected', async function() {
+  it('says nothing about projecting the frame, which always follows its layers', async function() {
     var captured = await captureLogCallsAsync(function() {
       return api.applyCommands(
         '-i a.json -frame width=600 target=a -target a -proj merc -o out.json target=a', files);
     });
-    assert(captured.log.some(function(str) {
-      return str.includes('Also reprojected the map frame');
-    }));
+    assert.equal(captured.log.some(function(str) {
+      return /frame/i.test(str);
+    }), false);
   });
 
   it('says nothing when the frame is already in the destination CRS', async function() {
@@ -185,8 +194,7 @@ describe('map frame projection (frame in its own dataset)', function() {
         '-i b.json -target b -proj merc -o out.json target=b', files);
     });
     assert.equal(captured.log.some(function(str) {
-      return str.includes('Also reprojected the map frame') ||
-        str.includes('Source and destination CRS are the same');
+      return str.includes('Source and destination CRS are the same');
     }), false);
   });
 
@@ -201,9 +209,6 @@ describe('map frame projection (frame in its own dataset)', function() {
       return str.includes('Converted "lcc"');
     });
     assert.equal(expansions.length, 1);
-    assert(captured.log.some(function(str) {
-      return str.includes('Also reprojected the map frame');
-    }));
   });
 
   it('names layers that the command did not project', async function() {
