@@ -73,6 +73,10 @@ export function renderScalebar(d, frame) {
 
   var opts = getScalebarOpts(d);
   var metersPerPx = getMapFrameMetersPerPixel(frame);
+  if (metersPerPx > 0 === false) {
+    message(`Unable to render scalebar: ${getScalebarScaleProblem(frame)}.`);
+    return [];
+  }
   var frameWidthPx = frame.width;
   var labels = d.label ? splitScalebarLabel(d.label) : [];
   var units = parseLabelUnits(d.units) || 'mile';
@@ -88,7 +92,10 @@ export function renderScalebar(d, frame) {
 
   var length1 = Math.round(props1.km / metersPerPx * 1000);
   if (length1 > 0 === false) {
-    stop("Null scalebar length");
+    // A valid distance can be less than half a pixel at the current map
+    // scale. There is no bar to draw, but this is not an error: resizing the
+    // frame or stepping to a longer distance can make it visible again.
+    return [];
   }
 
   if (opts.style == 'b' && labels[1]) {
@@ -126,6 +133,14 @@ export function renderScalebar(d, frame) {
   };
 
   return [g];
+}
+
+// Returns a reason why a scalebar can't be sized in a projected frame, or null.
+// The GUI checks this before drawing, so that a redraw doesn't repeat the
+// message renderScalebar() prints.
+export function getScalebarScaleProblem(frame) {
+  return getMapFrameMetersPerPixel(frame) > 0 ? null :
+    'the map scale could not be calculated at the center of the map';
 }
 
 var styleOpts = {
@@ -277,17 +292,17 @@ var unitSizes = {
 };
 
 // Candidate lengths for automatic labels, in ascending order of distance
+var integers = '1 2 3 4 5 8 10 15 20 25 30 40 50 75 100 150 200 250 300 350' +
+  ' 400 500 750 1,000 1,500 2,000 2,500 3,000 4,000 5,000 7,500 10,000';
 var autoLengths = {
   imperial: [
     ['ft', '10 20 25 50 100 200 250 500'],
     // note: removed 1.5 12 and 1,200
-    ['mile', '1/8 1/5 1/4 1/2 1 2 3 4 5 8 10 15 20 25 30 40 50 75 100 150 200 250 ' +
-      '300 350 400 500 750 1,000 1,500 2,000 2,500 3,000 4,000 5,000']
+    ['mile', '1/8 1/5 1/4 1/2 ' + integers]
   ],
   metric: [
     ['m', '5 10 20 25 50 100 200 250 500'],
-    ['km', '1 2 3 4 5 8 10 15 20 25 30 40 50 75 100 150 200 250 300 350 ' +
-      '400 500 750 1,000 1,500 2,000 2,500 3,000 4,000 5,000']
+    ['km', integers]
   ]
 };
 
@@ -365,6 +380,44 @@ function getAutoScalebarLabel(mapWidth, metersPerPx, unit) {
   return longest || labels.find(function(label) {
     return parseScalebarLabelToKm(label) >= minKm;
   }) || '';
+}
+
+// The label of a scalebar whose length is stepped to the next longer
+// (@direction > 0) or shorter of the automatic lengths, from the length it
+// has now, whether that was given or automatic. A second distance is kept if
+// it is still the shorter one. Returns null if there is no next length, or
+// if the current length is automatic and @frame can't give the map scale.
+// @d scalebar data record
+// @frame frame data, as passed to renderScalebar()
+export function getSteppedScalebarLabel(d, frame, direction) {
+  var labels = d.label ? splitScalebarLabel(d.label) : [];
+  var units = parseLabelUnits(d.units) || 'mile';
+  var label1 = getCurrentScalebarLabel(labels[0], frame, units);
+  var km = label1 ? parseScalebarLabelToKm(label1) : NaN;
+  var candidates, next, nextKm, label2;
+  if (km > 0 === false) return null;
+  candidates = getAutoLabels(getUnitSystem(parseScalebarUnits(label1)));
+  if (direction < 0) candidates.reverse();
+  next = candidates.find(function(label) {
+    var km2 = parseScalebarLabelToKm(label);
+    return direction > 0 ? km2 > km * (1 + 1e-9) : km2 < km * (1 - 1e-9);
+  });
+  if (!next) return null;
+  nextKm = parseScalebarLabelToKm(next);
+  label2 = labels[1] ? completeLabel(labels[1], getOtherUnits(parseScalebarUnits(next))) : null;
+  if (label2 && parseScalebarLabelToKm(label2) < nextKm) {
+    return next + ',' + labels[1];
+  }
+  return next;
+}
+
+function getCurrentScalebarLabel(label, frame, units) {
+  var metersPerPx;
+  if (label && parseScalebarNumber(label) > 0) return completeLabel(label, units);
+  if (!frame || !frame.crs || frame.width > 0 === false) return null;
+  metersPerPx = getMapFrameMetersPerPixel(frame);
+  if (metersPerPx > 0 === false) return null;
+  return getScalebarLabel(label, frame.width, metersPerPx, units);
 }
 
 // The longest automatic length in the given units that fits within the

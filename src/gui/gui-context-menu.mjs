@@ -172,8 +172,8 @@ export function ContextMenu(parentArg) {
     if (e.frameProperties) {
       addMenuItem('frame properties', e.frameProperties, '');
     }
-    if (e.renameFrame) {
-      addMenuItem('rename frame', e.renameFrame, '');
+    if (e.scalebarProperties) {
+      addMenuItem(e.scalebarLabel, e.scalebarProperties, '');
     }
     if (e.resizeFrame) {
       addMenuItem('resize frame', e.resizeFrame, '');

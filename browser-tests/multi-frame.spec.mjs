@@ -199,13 +199,12 @@ test.describe('layers menu with frames', function() {
     await expect(page.locator('.frame-section').nth(0)).toHaveClass(/active-section/);
   });
 
-  test('a frame is renamed from its menu', async function({page}) {
+  test('a frame is renamed in its properties panel', async function({page}) {
     await openRowMenu(page, page.locator('.frame-item').filter({hasText: 'f1'}));
-    await page.locator('.contextmenu-item').filter({hasText: 'rename frame'}).click();
-    var name = page.locator('.frame-item .frame-name.editing');
-    await expect(name).toBeFocused();
-    await page.keyboard.type('Main map');
-    await page.keyboard.press('Enter');
+    await page.locator('.contextmenu-item').filter({hasText: 'frame properties'}).click();
+    var name = page.locator('.frame-properties-popup .frame-name-input');
+    await name.fill('Main map');
+    await name.press('Enter');
     await expect.poll(async function() {
       return (await getSessionCommands(page)).pop();
     }).toBe('-frame target=f1 name="Main map"');

@@ -29,10 +29,9 @@ export function SizeField(parent, opts) {
   var o = Object.assign({min: 1, max: 999, step: 1, bigStep: 10}, opts || {});
   var box = El('div').addClass('size-field').appendTo(parent);
   var input = El('input').attr('type', 'text').addClass('size-field-input').appendTo(box);
-  var stepper = El('div').addClass('size-field-stepper').appendTo(box);
-  // Up above down, the way a stepper is read
-  var plusBtn = makeStepButton(stepper, 1, 'size-field-up');
-  var minusBtn = makeStepButton(stepper, -1, 'size-field-down');
+  var buttons = appendSizeFieldStepper(box);
+  var plusBtn = buttons.up;
+  var minusBtn = buttons.down;
   var shown = ''; // what the field was last told to display
   var dirty = false; // holds typing that has not been committed
   var disabled = false;
@@ -69,27 +68,6 @@ export function SizeField(parent, opts) {
   // Fires on Enter and on blur-after-editing, which is the same commit point
   // the panel's colour and CSS fields use.
   input.on('change', commit);
-
-  // Keeps the caret where it is while a size is stepped -- in this field, or in
-  // the label being typed into. A click on a div blurs whatever has focus
-  // unless the default is refused, and the panel only refuses it during an
-  // editing session.
-  stepper.on('mousedown', function(e) {
-    e.preventDefault();
-  });
-
-  // Triangles rather than + and −, which read as arithmetic on the value:
-  // these step to the next size, and one of them is at the end of its range as
-  // often as not.
-  function makeStepButton(parent, dir, className) {
-    var arrow = dir > 0 ? 'M4.5 1.1L7.5 4.9H1.5z' : 'M4.5 4.9L1.5 1.1h6z';
-    return El('div')
-      .addClass('label-panel-btn size-field-btn')
-      .addClass(className)
-      .attr('role', 'button')
-      .appendTo(parent)
-      .html('<svg class="size-field-arrow" viewBox="0 0 9 6"><path d="' + arrow + '"></path></svg>');
-  }
 
   function step(delta) {
     if (disabled || !o.onStep) return;
@@ -160,6 +138,38 @@ export function SizeField(parent, opts) {
   this.node = function() {
     return box.node();
   };
+}
+
+// The up and down arrows of a size field, appended to @box (a .size-field).
+// Also used by fields that step through values other than plain numbers.
+// Returns {up, down}; the caller handles their clicks.
+export function appendSizeFieldStepper(box) {
+  var stepper = El('div').addClass('size-field-stepper').appendTo(box);
+  // Keeps the caret where it is while a size is stepped -- in this field, or in
+  // the label being typed into. A click on a div blurs whatever has focus
+  // unless the default is refused, and the panel only refuses it during an
+  // editing session.
+  stepper.on('mousedown', function(e) {
+    e.preventDefault();
+  });
+  // Up above down, the way a stepper is read
+  return {
+    up: makeStepButton(stepper, 1, 'size-field-up'),
+    down: makeStepButton(stepper, -1, 'size-field-down')
+  };
+}
+
+// Triangles rather than + and −, which read as arithmetic on the value:
+// these step to the next size, and one of them is at the end of its range as
+// often as not.
+function makeStepButton(parent, dir, className) {
+  var arrow = dir > 0 ? 'M4.5 1.1L7.5 4.9H1.5z' : 'M4.5 4.9L1.5 1.1h6z';
+  return El('div')
+    .addClass('label-panel-btn size-field-btn')
+    .addClass(className)
+    .attr('role', 'button')
+    .appendTo(parent)
+    .html('<svg class="size-field-arrow" viewBox="0 0 9 6"><path d="' + arrow + '"></path></svg>');
 }
 
 // What a keystroke in a size field means, or null for one it leaves alone.

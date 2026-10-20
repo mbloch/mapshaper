@@ -2,6 +2,7 @@ import api from '../mapshaper.js';
 import assert from 'assert';
 import {
   formatDistanceLabel,
+  getSteppedScalebarLabel,
   parseScalebarLabelToKm
 } from '../src/commands/mapshaper-scalebar';
 
@@ -154,6 +155,11 @@ describe('mapshaper-scalebar.js', function () {
       assert(/>\d+ FEET</.test(svg2));
     });
 
+    it('does not render a distance that rounds to zero pixels', async function() {
+      var svg = await exportSvg(`${framed} -scalebar "0.001 m"`);
+      assert(/<g id="scalebar"[^>]*>\s*<\/g>/.test(svg));
+    });
+
     it('a units-only label gets an automatic length', async function() {
       var svg = String((await api.applyCommands(
         `${framed} -scalebar km -o target=* map.svg`))['map.svg']);
@@ -213,6 +219,108 @@ describe('mapshaper-scalebar.js', function () {
 
     it('rejects labels without usable units', async function() {
       await assert.rejects(runJob(`${framed} -scalebar "100 leagues"`), /Expected a distance or units/);
+    });
+  });
+
+  describe('getSteppedScalebarLabel()', function() {
+    var step = getSteppedScalebarLabel;
+
+    it('steps a given length to the next automatic length', function() {
+      assert.equal(step({label: '100 km'}, null, 1), '150 KM');
+      assert.equal(step({label: '100 km'}, null, -1), '75 KM');
+      assert.equal(step({label: '120 km'}, null, 1), '150 KM');
+      assert.equal(step({label: '120 km'}, null, -1), '100 KM');
+      assert.equal(step({label: '1 mile'}, null, -1), '1/2 MILE');
+    });
+
+    it('a bare number is in the units option', function() {
+      assert.equal(step({label: '150', units: 'km'}, null, 1), '200 KM');
+      assert.equal(step({label: '150'}, null, 1), '200 MILES');
+    });
+
+    it('steps across units in the same system', function() {
+      assert.equal(step({label: '1 km'}, null, -1), '500 METERS');
+      assert.equal(step({label: '500 m'}, null, 1), '1 KM');
+      assert.equal(step({label: '1/8 mile'}, null, -1), '500 FEET');
+      assert.equal(step({label: '500 feet'}, null, 1), '1/8 MILE');
+    });
+
+    it('returns null past the ends of the list', function() {
+      assert.strictEqual(step({label: '10,000 km'}, null, 1), null);
+      assert.strictEqual(step({label: '5 m'}, null, -1), null);
+    });
+
+    it('keeps a second distance that is still shorter', function() {
+      assert.equal(step({label: '100 km,50 miles'}, null, 1), '150 KM,50 miles');
+      assert.equal(step({label: '100 km,50 miles'}, null, -1), '75 KM');
+    });
+
+    it('steps from the automatic length', async function() {
+      // the bundle's copy, which has the projection library
+      var step = api.internal.getSteppedScalebarLabel;
+      var job = await runJob('-i test/data/geojson/two_states.json -proj lcc -frame width=600 -scalebar');
+      var frame = api.internal.getDefaultFrame(job.catalog);
+      var data = api.internal.getFrameLayerData(frame.layer, frame.dataset.arcs,
+        api.internal.getDatasetCRS(frame.dataset));
+      var svg = await exportSvg('-i test/data/geojson/two_states.json -proj lcc -frame width=600 -scalebar');
+      var auto = /<text[^>]*>([^<]+ MILES)</.exec(svg)[1];
+      var up = step({}, data, 1);
+      var down = step({}, data, -1);
+      assert(parseScalebarLabelToKm(up) > parseScalebarLabelToKm(auto));
+      assert(parseScalebarLabelToKm(down) < parseScalebarLabelToKm(auto));
+      assert.equal(step({label: up}, null, -1), auto);
+      assert.strictEqual(step({}, null, 1), null);
+    });
+  });
+
+  describe('projections without an inverse', function() {
+    it('the numerical scale factor matches the inverse projection', function() {
+      ['+proj=robin', '+proj=moll +lon_0=90', '+proj=robin +units=km'].forEach(function(str) {
+        var P = api.internal.parseCrsString(str);
+        var forwardOnly = Object.assign(Object.create(Object.getPrototypeOf(P)), P, {inv: null});
+        [[0, 0], [3e6, 4e6], [-1.2e7, -5e6]].forEach(function(xy) {
+          var x = xy[0] / P.to_meter, y = xy[1] / P.to_meter;
+          var k = api.internal.getScaleFactorAtXY(x, y, P);
+          var k2 = api.internal.getScaleFactorAtXY(x, y, forwardOnly);
+          assert(Math.abs(k2 / k - 1) < 1e-4, `${str} ${xy}: ${k} ${k2}`);
+        });
+      });
+    });
+
+    it('tolerates noise in the forward projection', function() {
+      // Markley's forward projection is off by up to half a meter in places;
+      // this is several times that, and varies between calls
+      var R = 6378137;
+      var P = api.internal.parseCrsString('+proj=markley +ellps=WGS84');
+      var fwd = P.fwd;
+      var seed = 1;
+      var noise = function() {
+        seed = (seed * 16807) % 2147483647;
+        return (seed / 2147483647 - 0.5) * 4 / R;
+      };
+      P.fwd = function(lp, xy) {
+        fwd(lp, xy);
+        xy.x += noise();
+        xy.y += noise();
+      };
+      [[0, 0], [1e6, 2e6], [-8e6, 3e6]].forEach(function(xy, i) {
+        var k = api.internal.getScaleFactorAtXY(xy[0], xy[1], P);
+        assert(Math.abs(k / [1.25145, 1.25881, 1.55863][i] - 1) < 1e-3, `${xy}: ${k}`);
+      });
+    });
+
+    it('inverts points beside the seam at the center of the Markley projection', function() {
+      // the nearest round-numbered location, 20,0, is on the seam
+      var P = api.internal.parseCrsString('+proj=markley +ellps=WGS84');
+      [[0.039, 0], [-0.039, 0], [0.039, -0.033]].forEach(function(xy) {
+        var k = api.internal.getScaleFactorAtXY(xy[0] * 6378137, xy[1] * 6378137, P);
+        assert(k > 1.2 && k < 1.3, `${xy}: ${k}`);
+      });
+    });
+
+    it('a world map in the Markley projection gets an automatic scalebar', async function() {
+      var svg = await exportSvg('-i test/data/geojson/world_land.json -proj markley -frame width=800 -scalebar');
+      assert(/>[\d,]+ MILES</.test(svg));
     });
   });
 })

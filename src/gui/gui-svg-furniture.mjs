@@ -21,6 +21,8 @@ export function renderFurniture(lyr, ext) {
   var frame = ext.getFrameData();
   var obj;
   if (internal.getFurnitureFrameProblem(frame)) return '';
+  if (internal.getFurnitureLayerType(lyr) == 'scalebar' &&
+    internal.getScalebarScaleProblem(frame)) return '';
   obj = internal.getEmptyLayerForSVG(lyr, {});
   obj.properties.transform = getSvgFurnitureTransform(ext);
   obj.properties.class = 'mapshaper-svg-furniture';

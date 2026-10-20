@@ -1614,12 +1614,6 @@ body.simplify .layer-control-btn {
 	cursor: pointer;
 }
 
-.frame-name.editing {
-	outline: 1px solid #aaa;
-	padding: 0 2px;
-	cursor: text;
-}
-
 /* Only the section on the map has working eye icons; the others show which
    layers are visible in pale grey */
 .inactive-section img.eye-btn {
@@ -3129,6 +3123,11 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .scalebar-row > * {
 	min-width: 0;
+}
+
+.frame-input-cell > .scalebar-distance-field {
+	display: flex;
+	width: 100%;
 }
 
 /* The bottom padding puts the text on the baseline of the menu beside it.
@@ -4662,6 +4661,14 @@ body.dragging-color-picker * {
 	height: 5px;
 	fill: #444;
 	stroke: none;
+}
+
+/* Popups mark their contents .selectable, which gives everything in them a
+   text cursor */
+.size-field .size-field-stepper,
+.size-field .size-field-stepper * {
+	cursor: default;
+	user-select: none;
 }
 
 .size-field .size-field-btn:hover:not(.disabled) {

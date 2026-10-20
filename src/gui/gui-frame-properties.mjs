@@ -6,9 +6,10 @@ import { showPopupAlert } from './gui-alert';
 import { makeColorRow, makePanelSection } from './gui-panel-controls';
 import { formatColorOpacityPct } from './gui-style-values';
 import { formatFrameAspectRatio } from './gui-frame-aspect';
+import { cleanLayerName } from './gui-layer-utils';
 
 export function FrameProperties(gui) {
-  var target, form, widthInput, heightInput, unitsSelect, aspectValue;
+  var target, popup, form, nameInput, widthInput, heightInput, unitsSelect, aspectValue;
   var backgroundControl, neatlineControl, neatlineWidthInput;
   var boundsValue, crsValue, scalebarButton;
 
@@ -17,7 +18,10 @@ export function FrameProperties(gui) {
   this.open = function(targetArg) {
     target = targetArg || gui.model.getActiveFrame();
     if (!target) return;
-    var popup = showPopupAlert('', 'Frame properties');
+    popup = showPopupAlert('', 'Frame properties');
+    popup.onClose(function() {
+      popup = null;
+    });
     popup.container().addClass('frame-properties-popup');
     form = El('div')
       .addClass('label-style-panel frame-properties-form')
@@ -27,6 +31,10 @@ export function FrameProperties(gui) {
   };
 
   function initForm() {
+    var nameRow = El('div').addClass('label-style-row frame-name-row').appendTo(form);
+    nameInput = makeLabeledInput(nameRow, 'Name')
+      .addClass('frame-name-input').on('change', updateName);
+
     // Width and height are two ways of writing one thing: either one rescales
     // the frame and the other follows, because the frame's extent is not what
     // this panel changes. Shown side by side so that they read as a pair.
@@ -87,7 +95,9 @@ export function FrameProperties(gui) {
       .addClass('label-style-row label-panel-button-row')
       .appendTo(elements);
     scalebarButton = makeActionButton(elementsRow, '', function() {
-      if (gui.scalebarProperties) gui.scalebarProperties.open(target);
+      var frame = target;
+      if (popup) popup.close();
+      if (gui.scalebarProperties) gui.scalebarProperties.open(frame);
     }).addClass('frame-scalebar-btn');
 
     var details = makePanelSection(form, 'Details');
@@ -102,6 +112,7 @@ export function FrameProperties(gui) {
     var units = frame.units || 'px';
     var factor = getUnitFactor(units);
     var info = internal.getLayerInfo(target.layer, target.dataset);
+    nameInput.node().value = target.layer.name || '';
     widthInput.node().value = formatNumber(frame.width / factor);
     heightInput.node().value = formatNumber(frame.height / factor);
     unitsSelect.node().value = units;
@@ -116,6 +127,17 @@ export function FrameProperties(gui) {
       'Edit scale bar' : 'Add scale bar');
     boundsValue.text(frame.bbox.map(formatCoordinate).join(', '));
     crsValue.text(info.proj4 || '[unknown]');
+  }
+
+  // A frame always has a name, so an emptied field puts the old one back
+  function updateName() {
+    var name = cleanLayerName(nameInput.node().value);
+    if (!name || name == target.layer.name) {
+      updateControls();
+      return;
+    }
+    runCommand('-frame ' + getTargetOption() + ' name=' +
+      internal.formatOptionValue(name), 'Rename map frame');
   }
 
   function updateWidth() {

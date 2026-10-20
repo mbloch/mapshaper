@@ -5,6 +5,7 @@ import { showPopupAlert } from './gui-alert';
 import { makePanelSection, makeColorField, makePanelActionButton } from './gui-panel-controls';
 import { ColorPicker, isHexColor } from './gui-color-picker';
 import { getScalebarCommand } from './gui-scalebar-command';
+import { appendSizeFieldStepper } from './gui-size-field';
 import { getDefaultFontName, getFontStyleVariants, appendFontOptions,
   getNearestFontStyleVariant, variantIsRegular } from './gui-label-fonts';
 
@@ -103,8 +104,7 @@ export function ScalebarProperties(gui) {
     note = El('div').addClass('scalebar-properties-note').appendTo(form).hide();
 
     row = makeRow(form);
-    labelInput = makeInput(makeCell(row, 'Distance'), 'scalebar-label-input')
-      .attr('placeholder', 'Automatic')
+    labelInput = makeDistanceField(makeCell(row, 'Distance', 'div'))
       .on('change', function() {
         update({label: labelInput.node().value.trim()});
       });
@@ -299,6 +299,37 @@ export function ScalebarProperties(gui) {
     runCommand(getScalebarCommand(d), 'Update scale bar', updateControls);
   }
 
+  // The arrows and the arrow keys step through the lengths that automatic
+  // sizing chooses from, starting from the current length
+  function makeDistanceField(cell) {
+    var box = El('div').addClass('size-field scalebar-distance-field').appendTo(cell);
+    var input = makeInput(box, 'size-field-input scalebar-label-input')
+      .attr('placeholder', 'Automatic')
+      .attr('aria-label', 'Distance');
+    var buttons = appendSizeFieldStepper(box);
+    input.on('keydown', function(e) {
+      if (e.key != 'ArrowUp' && e.key != 'ArrowDown') return;
+      e.preventDefault();
+      e.stopPropagation();
+      stepDistance(e.key == 'ArrowUp' ? 1 : -1);
+    });
+    [[buttons.up, 1], [buttons.down, -1]].forEach(function(o) {
+      o[0].on('click', function() {
+        stepDistance(o[1]);
+      });
+    });
+    return input;
+  }
+
+  function stepDistance(direction) {
+    var d = getScalebarRecord();
+    // the frame as the map draws it, so an automatic length starts from the
+    // one on the screen
+    var data = gui.map.getPreviewFrameData() || getFrameData();
+    var label = d && data ? internal.getSteppedScalebarLabel(d, data, direction) : null;
+    if (label) update({label: label});
+  }
+
   function makeNumberInput(cell, field, className) {
     var input = makeInput(cell, className).attr('placeholder', 'auto');
     input.on('change', function() {
@@ -315,13 +346,19 @@ export function ScalebarProperties(gui) {
   }
 
   function getFrameProblem() {
+    var data = getFrameData();
+    if (!data) return 'there is no map frame';
+    return internal.getFurnitureFrameProblem(data) ||
+      internal.getScalebarScaleProblem(data);
+  }
+
+  function getFrameData() {
     var frame = gui.model.getActiveFrame();
-    var crs, data;
-    if (!frame) return 'there is no map frame';
+    var crs;
+    if (!frame) return null;
     crs = frame.layer.gui && frame.layer.gui.dynamic_crs ||
       internal.getDatasetCRS(frame.dataset);
-    data = internal.getFrameLayerData(frame.layer, frame.dataset.arcs, crs);
-    return internal.getFurnitureFrameProblem(data);
+    return internal.getFrameLayerData(frame.layer, frame.dataset.arcs, crs);
   }
 
   function getScalebarRecord() {
@@ -344,8 +381,10 @@ function makeRow(parent, className) {
     .addClass(className || 'scalebar-two-col').appendTo(parent);
 }
 
-function makeCell(row, label) {
-  var cell = El('label').addClass('frame-input-cell').appendTo(row);
+// @tagName 'label' by default; a field with buttons beside it uses a div, so
+// that a click that misses a button doesn't put the caret in the field
+function makeCell(row, label, tagName) {
+  var cell = El(tagName || 'label').addClass('frame-input-cell').appendTo(row);
   El('span').appendTo(cell).text(label);
   return cell;
 }

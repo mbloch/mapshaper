@@ -582,6 +582,14 @@ export function LayerControl(gui) {
       if (target && gui.frameProperties) gui.frameProperties.open(target);
     }
 
+    // The scale bar panel edits the active frame's scale bar
+    function openScalebarProperties() {
+      var target = findLayerById(id);
+      if (!target || !gui.scalebarProperties) return;
+      activateFrame(target);
+      gui.scalebarProperties.open(target);
+    }
+
     function resizeFrame() {
       var target = findLayerById(id);
       if (target) activateFrame(target);
@@ -638,10 +646,10 @@ export function LayerControl(gui) {
         internal.isFrameLayer(target.layer, target.dataset.arcs);
       if (isFrame) {
         menuEvent.frameProperties = openFrameProperties;
-        // after the menu has closed, which would take the focus back
-        menuEvent.renameFrame = function() {
-          setTimeout(function() { editFrameName(entry, target); }, 0);
-        };
+        menuEvent.scalebarProperties = openScalebarProperties;
+        menuEvent.scalebarLabel =
+          internal.findFrameFurnitureLayer(target.dataset, 'scalebar') ?
+            'scale bar' : 'add scale bar';
         menuEvent.resizeFrame = resizeFrame;
         menuEvent.frameActions = getFrameMenuActions(target);
         menuEvent.deleteFrame = deleteLayer;
@@ -720,7 +728,7 @@ export function LayerControl(gui) {
       });
     }
 
-    // init name editor (a frame is renamed from its menu)
+    // init name editor (a frame is renamed in its properties panel)
     if (entry.findChild('.layer-name')) {
       new ClickText2(entry.findChild('.layer-name'))
         .on('change', function(e) {
@@ -757,7 +765,6 @@ export function LayerControl(gui) {
     // init click-to-select; clicking a frame's heading shows the frame
     GUI.onClick(entry, function() {
       var target = findLayerById(id);
-      if (entry.node().querySelector('.frame-name[contenteditable="true"]')) return;
       if (target && internal.isFrameLayer(target.layer, target.dataset.arcs)) {
         activateFrame(target);
       } else {
@@ -765,53 +772,6 @@ export function LayerControl(gui) {
       }
     });
 
-  }
-
-  // The name is edited in place in the heading; Enter or leaving the field
-  // renames the frame with -frame, and Escape cancels
-  function editFrameName(entry, frame) {
-    var node = entry.findChild('.frame-name').node();
-    var oldName = frame.layer.name || '';
-    var done = false;
-    node.contentEditable = 'true';
-    node.spellcheck = false;
-    node.classList.add('editing');
-    node.addEventListener('keydown', onKey);
-    node.addEventListener('blur', onBlur);
-    node.focus();
-    GUI.selectElement(node);
-
-    function onKey(e) {
-      e.stopPropagation();
-      if (e.key == 'Enter') {
-        e.preventDefault();
-        finish(true);
-      } else if (e.key == 'Escape') {
-        e.preventDefault();
-        finish(false);
-      }
-    }
-
-    function onBlur() {
-      finish(true);
-    }
-
-    // The heading goes back to the old name either way; a rename redraws the
-    // list with the new one
-    function finish(commit) {
-      var name = cleanLayerName(node.textContent);
-      if (done) return;
-      done = true;
-      node.removeEventListener('keydown', onKey);
-      node.removeEventListener('blur', onBlur);
-      node.contentEditable = 'false';
-      node.classList.remove('editing');
-      window.getSelection().removeAllRanges();
-      node.textContent = formatLayerNameForDisplay(oldName);
-      if (commit && name && name != oldName) {
-        runFrameCommand(frame, 'name=' + internal.formatOptionValue(name));
-      }
-    }
   }
 
   // The frame's eye shows all its layers if any is hidden, and otherwise hides

@@ -346,12 +346,114 @@ export function requireOverlaySourceCRS(targetDataset, sourceDataset) {
 // horizontal scale factors.
 // x, y: a point location in projected coordinates
 // Returns k, the ratio of coordinate distance to distance on the ground
+// Returns NaN if the scale factor can't be calculated, e.g. if a CRS without
+// an inverse has no location at x, y (such as a gap in an interrupted projection)
 export function getScaleFactorAtXY(x, y, crs) {
-  var dist = 1 / crs.to_meter;
-  var lp = mproj.pj_inv_deg({x: x, y: y}, crs);
-  var lp2 = mproj.pj_inv_deg({x: x + dist, y: y}, crs);
-  var k = 1 / geom.greatCircleDistance(lp.lam, lp.phi, lp2.lam, lp2.phi);
-  return k;
+  var meters = 1;
+  var lp, lp2, k;
+  if (isInvertibleCRS(crs)) {
+    lp = mproj.pj_inv_deg({x: x, y: y}, crs);
+    lp2 = mproj.pj_inv_deg({x: x + meters / crs.to_meter, y: y}, crs);
+  } else if (numericScaleCache.crs == crs && numericScaleCache.x === x && numericScaleCache.y === y) {
+    return numericScaleCache.k;
+  } else {
+    // Forward projections can be noisy at the scale of centimeters (Markley's
+    // is off by up to half a meter), so the numerical inverse is only asked
+    // to be accurate to a meter, over a 10 km step: k is good to about 1e-4.
+    meters = 10000;
+    lp = invertNumerically(x, y, crs, null, 1 / crs.to_meter);
+    lp2 = lp && invertNumerically(x + meters / crs.to_meter, y, crs, lp, 1 / crs.to_meter);
+    k = lp2 ? meters / geom.greatCircleDistance(lp.lam, lp.phi, lp2.lam, lp2.phi) : NaN;
+    // the GUI asks again on every redraw of the map
+    numericScaleCache = {crs: crs, x: x, y: y, k: k};
+    return k;
+  }
+  return meters / geom.greatCircleDistance(lp.lam, lp.phi, lp2.lam, lp2.phi);
+}
+
+var numericScaleCache = {};
+
+// Finds the lng/lat location of projected point x, y using only the forward
+// projection, for a CRS that has no inverse.
+// guess (optional): {lam, phi} of a nearby location, in degrees
+// tolerance (optional): how far from x, y the location may project, in CRS
+//   units. Should be well above the noise in the forward projection.
+// Returns {lam, phi} in degrees, or null if no location was found
+export function invertNumerically(x, y, crs, guess, tolerance) {
+  var starts = guess ? [guess] : findNearestGridLocations(x, y, crs, 4);
+  var p = null;
+  if (tolerance > 0 === false) tolerance = 0.01 / crs.to_meter;
+  for (var i = 0; i < starts.length && !p; i++) {
+    p = refineInverse(x, y, crs, starts[i], tolerance);
+  }
+  return p;
+}
+
+// Newton's method, starting from location @p
+function refineInverse(x, y, crs, p, tolerance) {
+  var xy = forwardOrNull(p.lam, p.phi, crs);
+  var err = xy ? Math.hypot(xy.x - x, xy.y - y) : Infinity;
+  var i, j, hlam, hphi, xyLam, xyPhi, dxdlam, dydlam, dxdphi, dydphi,
+      det, dlam, dphi, p2, xy2, err2;
+  for (i = 0; i < 50 && err > tolerance; i++) {
+    // Finite-difference steps (in degrees) point away from the poles
+    // and the antimeridian, to stay inside the projection's domain. About
+    // 100 m, so that noise in the forward projection barely affects the
+    // derivatives; an approximate derivative only slows convergence.
+    hlam = p.lam > 0 ? -1e-3 : 1e-3;
+    hphi = p.phi > 0 ? -1e-3 : 1e-3;
+    xyLam = forwardOrNull(p.lam + hlam, p.phi, crs);
+    xyPhi = forwardOrNull(p.lam, p.phi + hphi, crs);
+    if (!xyLam || !xyPhi) return null;
+    dxdlam = (xyLam.x - xy.x) / hlam;
+    dydlam = (xyLam.y - xy.y) / hlam;
+    dxdphi = (xyPhi.x - xy.x) / hphi;
+    dydphi = (xyPhi.y - xy.y) / hphi;
+    det = dxdlam * dydphi - dxdphi * dydlam;
+    if (!det) return null;
+    dlam = ((x - xy.x) * dydphi - dxdphi * (y - xy.y)) / det;
+    dphi = (dxdlam * (y - xy.y) - (x - xy.x) * dydlam) / det;
+    // halve the Newton step until it reduces the error
+    for (j = 0; j < 20; j++) {
+      p2 = {lam: p.lam + dlam, phi: Math.max(-90, Math.min(90, p.phi + dphi))};
+      xy2 = forwardOrNull(p2.lam, p2.phi, crs);
+      err2 = xy2 ? Math.hypot(xy2.x - x, xy2.y - y) : Infinity;
+      if (err2 < err) break;
+      dlam /= 2;
+      dphi /= 2;
+    }
+    if (err2 < err === false) return null;
+    p = p2;
+    xy = xy2;
+    err = err2;
+  }
+  return err > tolerance ? null : p;
+}
+
+// Starting points for invertNumerically(): the @n grid locations that project
+// nearest to x, y. Newton's method can fail from a start beside a seam, and
+// seams, poles and central meridians tend to fall on round-numbered
+// coordinates, so the grid is offset from them.
+function findNearestGridLocations(x, y, crs, n) {
+  var found = [];
+  var lam, phi, xy;
+  for (lam = -177.5; lam < 180; lam += 5) {
+    for (phi = -87.5; phi < 90; phi += 5) {
+      xy = forwardOrNull(lam, phi, crs);
+      if (xy) found.push({lam: lam, phi: phi, dist: Math.hypot(xy.x - x, xy.y - y)});
+    }
+  }
+  return found.sort(function(a, b) { return a.dist - b.dist; }).slice(0, n);
+}
+
+function forwardOrNull(lam, phi, crs) {
+  var xy;
+  try {
+    xy = mproj.pj_fwd_deg({lam: lam, phi: phi}, crs);
+  } catch(e) {
+    return null;
+  }
+  return xy && isFinite(xy.x) && isFinite(xy.y) ? xy : null;
 }
 
 export function isProjectedCRS(P) {

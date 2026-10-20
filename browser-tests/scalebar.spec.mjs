@@ -80,6 +80,29 @@ test('a bare distance uses the units menu', async function({page}) {
   await expect(page.locator('.mapshaper-svg-furniture text')).toHaveText('80 MILES');
 });
 
+test('the distance stepper steps through the automatic lengths', async function({page}) {
+  await loadProjectedFrame(page);
+  await runCommand(page, '-scalebar "100 km"');
+  var popup = await openScalebarPanel(page);
+  var text = page.locator('.mapshaper-svg-furniture text');
+  await popup.locator('.size-field-up').click();
+  await expect(text).toHaveText('150 KM');
+  expect((await getSessionCommands(page)).pop()).toBe("-scalebar '150 KM' units=km");
+  await popup.locator('.scalebar-label-input').press('ArrowDown');
+  await popup.locator('.scalebar-label-input').press('ArrowDown');
+  await expect(text).toHaveText('75 KM');
+  await undo(page);
+  await expect(text).toHaveText('100 KM');
+
+  // from an automatic length
+  await runCommand(page, '-scalebar');
+  popup = await openScalebarPanel(page);
+  var auto = await text.textContent();
+  await popup.locator('.size-field-down').click();
+  await expect(text).not.toHaveText(auto);
+  await expect(popup.locator('.scalebar-label-input')).toHaveValue(await text.textContent());
+});
+
 test('scale bar edits interleave with point edits in the undo history', async function({page}) {
   await loadProjectedFrame(page);
   await runCommand(page, '-scalebar');
