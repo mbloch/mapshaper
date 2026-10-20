@@ -1,3 +1,5 @@
+v0.7.92
+
 v0.7.91
 * [web] A snapshot (.msx) that starts a session restores the same preview setting and layers panel settings as when it was saved.
 * [web] UI updates.

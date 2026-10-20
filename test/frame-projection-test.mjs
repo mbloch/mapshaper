@@ -208,14 +208,38 @@ describe('map frame projection (frame in its own dataset)', function() {
 
   it('names layers that the command did not project', async function() {
     var captured = await captureLogCallsAsync(function() {
-      return api.applyCommands(
-        '-i a.json -i b.json -frame width=600 target=a -target a -proj merc ' +
-        '-o out.json target=a', files);
+      return api.applyCommands('-i a.json -i b.json -target a -proj merc -o out.json target=a', files);
     });
     assert(captured.log.some(function(str) {
       return str.includes('Layer not projected by this command: b') &&
         str.includes('target=*');
     }));
+  });
+
+  it('names only the unprojected layers in the same group as the targets', async function() {
+    // b and c are unframed; a and its frame are in another group
+    var captured = await captureLogCallsAsync(function() {
+      return api.applyCommands(
+        '-i a.json -i b.json -i c.json -frame width=600 target=a -target b -proj merc ' +
+        '-o out.json target=b', Object.assign({'c.json': files['b.json']}, files));
+    });
+    var warnings = captured.log.filter(function(str) {
+      return str.includes('not projected by this command');
+    });
+    assert.equal(warnings.length, 1);
+    assert(warnings[0].includes('Layer not projected by this command: c. ' +
+      'To project it with this command, use target=b,c.'), warnings[0]);
+  });
+
+  it('says nothing about a frame with another projection', async function() {
+    var captured = await captureLogCallsAsync(function() {
+      return api.applyCommands(
+        '-i a.json -i b.json -frame width=600 target=a -target b -proj merc ' +
+        '-o out.json target=b', files);
+    });
+    assert.equal(captured.log.some(function(str) {
+      return str.includes('not projected by this command');
+    }), false);
   });
 
   it('names the other members of the frame, which it also projects', async function() {

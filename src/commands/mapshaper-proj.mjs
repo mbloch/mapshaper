@@ -52,10 +52,13 @@ import {
 import {
   getFrameForDataset,
   getFrameMembers,
+  getFrames,
   resolveFrameForDataset
 } from '../furniture/mapshaper-frame-resolver';
 import { getFrameCrsInfo } from '../furniture/mapshaper-frame-members';
 import { isFrameComponentLayer } from '../furniture/mapshaper-frame-utils';
+import { getLayerTargetId } from '../dataset/mapshaper-target-utils';
+import { formatOptionValue } from '../cli/mapshaper-option-parsing-utils';
 
 // Run -proj over all the targets of a single command.
 // The destination CRS is resolved once here rather than separately for each
@@ -75,7 +78,7 @@ cmd.projTargets = function(targets, catalog, opts) {
   });
   if (destInfo && destInfo.crs) {
     projectMapFrame(targets, catalog, opts, destInfo);
-    warnAboutUnprojectedLayers(catalog, destInfo);
+    warnAboutUnprojectedLayers(catalog, targets, destInfo);
   }
 };
 
@@ -230,20 +233,51 @@ function projectFrameDataset(frame, targets, catalog, opts, destInfo) {
 // -proj only applies to the command's targets, so layers in other datasets are
 // left behind in the old CRS. That usually surfaces much later as a blank
 // export or an "unable to combine" error, so name them while the cause is clear.
-function warnAboutUnprojectedLayers(catalog, destInfo) {
-  var names = [];
+// Only layers in the same group as the targets are named: frames often have
+// different projections, and a frame is always projected whole (see
+// expandFrameTargets()), so in practice these are unframed layers.
+function warnAboutUnprojectedLayers(catalog, targets, destInfo) {
+  var groups, missed, hint;
   if (!catalog) return;
-  catalog.getLayers().forEach(function(o) {
+  groups = targets.map(function(targ) { return getLayerGroup(catalog, targ.dataset); });
+  missed = catalog.getLayers().filter(function(o) {
     var crs;
-    if (!layerHasGeometry(o.layer) && !layerHasRaster(o.layer)) return;
+    if (!layerHasGeometry(o.layer) && !layerHasRaster(o.layer)) return false;
+    if (isFrameComponentLayer(o.layer, o.dataset)) return false;
+    if (!groups.includes(getLayerGroup(catalog, o.dataset))) return false;
     crs = getDatasetCrsInfo(o.dataset).crs;
-    if (crs && !crsAreEqual(crs, destInfo.crs)) {
-      names.push(o.layer.name || '[unnamed]');
-    }
+    return !!crs && !crsAreEqual(crs, destInfo.crs);
   });
-  if (names.length === 0) return;
-  warn(`Layer${utils.pluralSuffix(names.length)} not projected by this command: ` +
-    names.join(', ') + '. Use target=* to project all layers.');
+  if (missed.length === 0) return;
+  // target=* would also project every frame, so with frames the hint lists
+  // the layers of the group to target
+  hint = getFrames(catalog).length > 0 ?
+    `To project ${missed.length == 1 ? 'it' : 'them'} with this command, use target=` +
+      getGroupTargetIds(catalog, targets, missed).join(',') + '.' :
+    'Use target=* to project all layers.';
+  warn(`Layer${utils.pluralSuffix(missed.length)} not projected by this command: ` +
+    missed.map(function(o) { return o.layer.name || '[unnamed]'; }).join(', ') + '. ' + hint);
+}
+
+// The target ids of the layers left behind and of the targeted layers in
+// their groups, in catalog order
+function getGroupTargetIds(catalog, targets, missed) {
+  var groups = missed.map(function(o) { return getLayerGroup(catalog, o.dataset); });
+  var missedLayers = missed.map(function(o) { return o.layer; });
+  return catalog.getLayers().filter(function(o) {
+    if (missedLayers.includes(o.layer)) return true;
+    return groups.includes(getLayerGroup(catalog, o.dataset)) && targets.some(function(targ) {
+      return targ.layers.includes(o.layer);
+    });
+  }).map(function(o) {
+    return formatOptionValue(getLayerTargetId(catalog, o.layer));
+  });
+}
+
+// The frame dataset of a dataset's frame, or null for an unframed dataset
+function getLayerGroup(catalog, dataset) {
+  var frame = getFrameForDataset(catalog, dataset);
+  return frame ? frame.dataset : null;
 }
 
 function projCmd(dataset, destInfo, opts) {
