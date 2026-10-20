@@ -32,8 +32,10 @@ export function FrameProperties(gui) {
 
   function initForm() {
     var nameRow = El('div').addClass('label-style-row frame-name-row').appendTo(form);
-    nameInput = makeLabeledInput(nameRow, 'Name')
-      .addClass('frame-name-input').on('change', updateName);
+    nameInput = makeLabeledInput(nameRow, 'Na&#8203;me') // block LastPass
+      .addClass('frame-name-input')
+      .attr('autocomplete', 'off')
+      .on('change', updateName);
 
     // Width and height are two ways of writing one thing: either one rescales
     // the frame and the other follows, because the frame's extent is not what
@@ -232,7 +234,7 @@ function makeTextInput(parent) {
 
 function makeLabeledInput(parent, label) {
   var cell = El('label').addClass('frame-input-cell').appendTo(parent);
-  El('span').appendTo(cell).text(label);
+  El('span').appendTo(cell).html(label);
   return makeTextInput(cell);
 }
 

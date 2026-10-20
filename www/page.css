@@ -2382,6 +2382,9 @@ div.basemap-style-btn.active {
 }
 
 .mshp-main-map {
+	/* Floating editing panels and popup panels that align with them */
+	--map-panel-top: 7px;
+	--map-panel-right: 36px;
 	/* background-color: #fff; */
 }
 
@@ -3015,8 +3018,8 @@ body.pan.panning .map-layers:not(.drawing) {
 	--label-menu-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath fill='none' stroke='%23666' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round' d='M1 1.5l4 4 4-4'/%3E%3C/svg%3E");
 	position: absolute;
 	z-index: 21;
-	top: 7px;
-	right: 36px;
+	top: var(--map-panel-top);
+	right: var(--map-panel-right);
 	/* Wide enough for a pair of controls side by side, which is what these
 	   panels are mostly made of: at 185px the narrow column of a pair was too
 	   narrow for its own caption, and "Letter spacing" was clipped. */
@@ -3090,6 +3093,12 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .scalebar-properties-popup {
 	width: 264px;
+}
+
+.scalebar-properties-box .alert-title {
+	cursor: move;
+	user-select: none;
+	touch-action: none;
 }
 
 .scalebar-properties-form.label-style-panel {

@@ -2888,7 +2888,7 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('position', {
-      describe: 'top-left (default), top-right, bottom-left or bottom-right'
+      describe: 'top-left (default), top-center, top-right, bottom-left, bottom-center or bottom-right'
     })
     .option('label-position', {
       describe: 'top, bottom, top-center (style a), etc'

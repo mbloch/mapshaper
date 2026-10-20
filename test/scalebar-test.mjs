@@ -173,6 +173,14 @@ describe('mapshaper-scalebar.js', function () {
       assert(/\d KM</.test(svg));
     });
 
+    it('drops a zero label that is too close to the distance label', async function() {
+      var world = '-i test/data/geojson/world_land.json -proj markley -frame width=800';
+      var short = await exportSvg(`${world} -scalebar "100 miles" style=b`);
+      var long = await exportSvg(`${world} -scalebar "5,000 miles" style=b`);
+      assert(!short.includes('>0</text>'));
+      assert(long.includes('>0</text>'));
+    });
+
     it('color, font and corner position options', async function() {
       var svg = String((await api.applyCommands(
         `${framed} -scalebar "100 km" position=bottom-right color=#c00 font-family=Georgia font-style=italic font-weight=bold -o target=* map.svg`))['map.svg']);
@@ -182,6 +190,20 @@ describe('mapshaper-scalebar.js', function () {
       assert(svg.includes('font-style="italic"'));
       assert(svg.includes('font-weight="bold"'));
       assert(dx > 300);
+    });
+
+    it('supports top-center and bottom-center positions', async function() {
+      var getPosition = async function(position) {
+        var svg = await exportSvg(`${framed} -scalebar "100 km" position=${position}`);
+        var transform = /<g transform="translate\(([\d.]+) ([\d.]+)\)/.exec(svg);
+        var length = Number(/<path d="M 0 0 ([\d.]+) 0"/.exec(svg)[1]);
+        return {x: Number(transform[1]), y: Number(transform[2]), length: length};
+      };
+      var top = await getPosition('top-center');
+      var bottom = await getPosition('bottom-center');
+      assert.equal(top.x, (600 - top.length) / 2);
+      assert.equal(bottom.x, (600 - bottom.length) / 2);
+      assert(bottom.y > top.y);
     });
 
     it('an automatic length is up to 20% of the frame width, and at least 70px', async function() {

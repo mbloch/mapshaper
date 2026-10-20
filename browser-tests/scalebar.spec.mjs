@@ -64,7 +64,7 @@ test('a bare distance uses the units menu', async function({page}) {
   await loadProjectedFrame(page);
   await runCommand(page, '-scalebar');
   var popup = await openScalebarPanel(page);
-  await expect(popup.locator('.scalebar-position-select option')).toHaveCount(4);
+  await expect(popup.locator('.scalebar-position-select option')).toHaveCount(6);
 
   await popup.locator('.scalebar-units-select').selectOption('km');
   await popup.locator('.scalebar-label-input').fill('150');

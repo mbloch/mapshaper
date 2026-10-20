@@ -6,6 +6,7 @@ import { DataTable } from '../datatable/mapshaper-data-table';
 import { stop, message } from '../utils/mapshaper-logging';
 import { symbolRenderers } from '../svg/svg-symbols';
 import { importMultiLineString } from '../svg/svg-geom-primitives';
+import { getMeasuredTextWidth } from '../svg/svg-label-metrics';
 
 // Command options that are stored in the scalebar's data record
 var scalebarFields = ['label', 'units', 'style', 'font_size', 'font_family',
@@ -113,7 +114,8 @@ export function renderScalebar(d, frame) {
 
   var barPos = getScalebarPosition(opts);
   var labelPos = getLabelPosition(opts);
-  var dx = barPos.xpos == 'right' ? frameWidthPx - length1 - opts.margin : opts.margin;
+  var dx = barPos.xpos == 'right' ? frameWidthPx - length1 - opts.margin :
+    barPos.xpos == 'center' ? (frameWidthPx - length1) / 2 : opts.margin;
   var dy = barPos.ypos == 'bottom' ? frame.height - opts.margin : opts.margin;
 
   // vshift to adjust for height above or below the baseline
@@ -174,12 +176,16 @@ function getScalebarOpts(d) {
 
 function renderAsSvg(length, text, length2, text2, opts) {
   var labelPart = renderLabel(text, length, opts);
-  var zeroLabelPart = renderLabel('0', length, Object.assign({flipx: true}, opts));
   var barPart = renderBar(length, length2, opts);
-  var parts = opts.style == 'b' ? [zeroLabelPart, labelPart, barPart] : [labelPart, barPart];
+  var parts = [labelPart, barPart];
+  if (opts.style == 'b' && labelsHaveRoomForZero(text, length, opts)) {
+    parts.unshift(renderLabel('0', length, Object.assign({flipx: true}, opts)));
+  }
   if (text2) {
     parts.push(renderLabel(text2, length2, Object.assign({flipy: true}, opts)));
-    parts.push(renderLabel('0', length2, Object.assign({flipx: true, flipy: true}, opts)));
+    if (labelsHaveRoomForZero(text2, length2, opts)) {
+      parts.push(renderLabel('0', length2, Object.assign({flipx: true, flipy: true}, opts)));
+    }
   }
   return {
     tag: 'g',
@@ -187,11 +193,34 @@ function renderAsSvg(length, text, length2, text2, opts) {
   };
 }
 
+// In style b, the zero starts just left of x=0 and the distance ends just
+// right of x=length. Drop the zero if their measured text boxes overlap or
+// come within a quarter of the font size. If metrics are unavailable, retain
+// the zero as before.
+function labelsHaveRoomForZero(text, length, opts) {
+  var zeroWidth = getScalebarTextWidth('0', opts);
+  var textWidth = getScalebarTextWidth(text, opts);
+  var gap = length + opts.font_size / 2 - zeroWidth - textWidth;
+  return !zeroWidth || !textWidth || gap >= Math.max(2, opts.font_size / 4);
+}
+
+function getScalebarTextWidth(text, opts) {
+  var rec = {
+    'label-text': text,
+    'font-size': opts.font_size
+  };
+  ['font_family', 'font_style', 'font_weight'].forEach(function(k) {
+    if (opts[k]) rec[k.replace('_', '-')] = opts[k];
+  });
+  return getMeasuredTextWidth(rec);
+}
+
 function getScalebarPosition(opts) {
   var pos = opts.position || 'top-left';
   return {
     ypos: pos.includes('bottom') ? 'bottom' : 'top',
-    xpos: pos.includes('right') ? 'right' : 'left'
+    xpos: pos.includes('center') ? 'center' :
+      pos.includes('right') ? 'right' : 'left'
   };
 }
 

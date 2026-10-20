@@ -11,10 +11,24 @@ import { getDefaultFontName, getFontStyleVariants, appendFontOptions,
 
 var positionOptions = [
   ['top-left', 'Top left'],
+  ['top-center', 'Top center'],
   ['top-right', 'Top right'],
   ['bottom-left', 'Bottom left'],
+  ['bottom-center', 'Bottom center'],
   ['bottom-right', 'Bottom right']
 ];
+
+var labelPositionOptions = {
+  a: [
+    ['top-left', 'Top left'],
+    ['top-center', 'Top center'],
+    ['top-right', 'Top right'],
+    ['bottom-left', 'Bottom left'],
+    ['bottom-center', 'Bottom center'],
+    ['bottom-right', 'Bottom right']
+  ],
+  b: [['top', 'Above'], ['bottom', 'Below']]
+};
 
 // What the scalebar is drawn in when it has no color of its own
 var defaultColor = '#000000';
@@ -24,6 +38,7 @@ var defaultColor = '#000000';
 // like any other command.
 export function ScalebarProperties(gui) {
   var popup, form, note;
+  var stopPanelDrag = null;
   var labelInput, unitsSelect, styleSelect, dualUnitsBox, positionSelect,
     labelPositionSelect, fontSizeInput, barWidthInput, marginInput,
     fontSelect, fontStyleSelect, colorChit, colorInput, colorPicker;
@@ -57,8 +72,8 @@ export function ScalebarProperties(gui) {
     return !!popup;
   };
 
-  // The map stays live, so the panel is placed where it is least likely to
-  // hide the scalebar: at the top of the map, on the side away from it
+  // Opens where the editing panels do. A drag lasts only for this opening;
+  // closing discards the moved position.
   function showPanel() {
     var d = getScalebarRecord();
     if (!d) return;
@@ -68,6 +83,8 @@ export function ScalebarProperties(gui) {
       classname: 'scalebar-properties-box'
     });
     popup.onClose(function() {
+      if (stopPanelDrag) stopPanelDrag();
+      stopPanelDrag = null;
       popup = form = null;
     });
     popup.container().addClass('scalebar-properties-popup');
@@ -76,27 +93,28 @@ export function ScalebarProperties(gui) {
       .appendTo(popup.container());
     initForm();
     updateControls();
-    placePanel(/right/.test(d.position || '') ? 'left' : 'right');
+    placePanel();
   }
 
   function closePanel() {
     if (popup) popup.close();
   }
 
-  function placePanel(side) {
+  function placePanel() {
     var box = popup.container().node().parentNode;
-    var map = gui.container.findChild('.map-layers').node().getBoundingClientRect();
-    // clears the zoom buttons on the right edge of the map
-    var rightInset = 58;
-    var leftInset = 16;
+    var mapNode = gui.container.findChild('.mshp-main-map').node();
+    var map = mapNode.getBoundingClientRect();
+    var style = window.getComputedStyle(mapNode);
+    var top = parseFloat(style.getPropertyValue('--map-panel-top'));
+    var right = parseFloat(style.getPropertyValue('--map-panel-right'));
+    if (!isFinite(top)) top = 7;
+    if (!isFinite(right)) right = 36;
     box.style.position = 'absolute';
     box.style.marginTop = '0';
-    box.style.top = Math.round(map.top + 12) + 'px';
-    if (side == 'left') {
-      box.style.left = Math.round(map.left + leftInset) + 'px';
-    } else {
-      box.style.right = Math.round(window.innerWidth - map.right + rightInset) + 'px';
-    }
+    box.style.left = 'auto';
+    box.style.right = Math.round(window.innerWidth - map.right + right) + 'px';
+    box.style.top = Math.round(map.top + top) + 'px';
+    stopPanelDrag = makePanelDraggable(box);
   }
 
   function initForm() {
@@ -135,7 +153,7 @@ export function ScalebarProperties(gui) {
         update({position: positionSelect.node().value});
       });
     labelPositionSelect = makeSelect(makeCell(row, 'Labels'),
-      'scalebar-label-position-select', [['top', 'Above'], ['bottom', 'Below']])
+      'scalebar-label-position-select', [])
       .on('change', function() {
         update({label_position: labelPositionSelect.node().value});
       });
@@ -205,16 +223,19 @@ export function ScalebarProperties(gui) {
 
   function updateControls() {
     var d = getScalebarRecord();
-    var problem;
+    var problem, style;
     if (!d || !form) return;
     labelInput.node().value = d.label || '';
     setSelectValue(unitsSelect, getUnitsMenuValue(d.units ||
       internal.parseScalebarUnits(d.label || '')));
-    setSelectValue(styleSelect, d.style == 'b' || d.style == 'B' ||
-      !d.style && d.dual_units ? 'b' : 'a');
+    style = d.style == 'b' || d.style == 'B' ||
+      !d.style && d.dual_units ? 'b' : 'a';
+    setSelectValue(styleSelect, style);
     dualUnitsBox.node().checked = !!d.dual_units;
     setSelectValue(positionSelect, d.position || 'top-left');
-    setSelectValue(labelPositionSelect, d.label_position || 'top');
+    renderLabelPositionOptions(style);
+    setSelectValue(labelPositionSelect,
+      getLabelPositionMenuValue(d.label_position, style));
     fontSizeInput.node().value = formatValue(d.font_size);
     barWidthInput.node().value = formatValue(d.bar_width);
     marginInput.node().value = formatValue(d.margin);
@@ -233,6 +254,11 @@ export function ScalebarProperties(gui) {
 
   function renderFontOptions() {
     appendFontOptions(fontSelect.node());
+  }
+
+  function renderLabelPositionOptions(style) {
+    labelPositionSelect.empty();
+    appendSelectOptions(labelPositionSelect, labelPositionOptions[style]);
   }
 
   // A scalebar with no font of its own is shown in the font it is drawn in
@@ -376,6 +402,60 @@ export function ScalebarProperties(gui) {
   }
 }
 
+// Makes the popup title a drag handle. Coordinates live only on @box, which is
+// removed when the popup closes, so every opening starts from placePanel().
+function makePanelDraggable(box) {
+  var handle = box.querySelector('.alert-title');
+  var dragging = false;
+  var startX, startY, startLeft, startTop, width, height;
+  if (!handle) return function() {};
+  handle.addEventListener('pointerdown', onDown);
+
+  function onDown(e) {
+    var rect;
+    if (e.button !== 0) return;
+    rect = box.getBoundingClientRect();
+    dragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    startLeft = rect.left;
+    startTop = rect.top;
+    width = rect.width;
+    height = rect.height;
+    box.style.left = Math.round(startLeft) + 'px';
+    box.style.right = 'auto';
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onUp);
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function onMove(e) {
+    var left, top;
+    if (!dragging) return;
+    left = startLeft + e.clientX - startX;
+    top = startTop + e.clientY - startY;
+    left = Math.max(0, Math.min(window.innerWidth - width, left));
+    top = Math.max(0, Math.min(window.innerHeight - height, top));
+    box.style.left = Math.round(left) + 'px';
+    box.style.top = Math.round(top) + 'px';
+    e.preventDefault();
+  }
+
+  function onUp() {
+    dragging = false;
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    document.removeEventListener('pointercancel', onUp);
+  }
+
+  return function() {
+    onUp();
+    handle.removeEventListener('pointerdown', onDown);
+  };
+}
+
 function makeRow(parent, className) {
   return El('div').addClass('label-style-row scalebar-row')
     .addClass(className || 'scalebar-two-col').appendTo(parent);
@@ -395,10 +475,14 @@ function makeInput(parent, className) {
 
 function makeSelect(parent, className, options) {
   var select = El('select').addClass(className).appendTo(parent);
+  appendSelectOptions(select, options);
+  return select;
+}
+
+function appendSelectOptions(select, options) {
   options.forEach(function(o) {
     El('option').attr('value', o[0]).appendTo(select).text(o[1]);
   });
-  return select;
 }
 
 function makeCheckbox(parent, label, className) {
@@ -433,6 +517,18 @@ function getUnitsMenuValue(units) {
   return parsed == 'mile' || !parsed ? 'miles' :
     parsed == 'm' ? 'meters' :
     parsed == 'ft' ? 'feet' : 'km';
+}
+
+// Older scale bars use "top" and "bottom". For style a, these mean left
+// aligned; for style b, horizontal alignment is not supported.
+function getLabelPositionMenuValue(position, style) {
+  var pos = String(position || 'top');
+  var vertical = pos.includes('bottom') ? 'bottom' : 'top';
+  var horizontal;
+  if (style == 'b') return vertical;
+  horizontal = pos.includes('center') ? 'center' :
+    pos.includes('right') ? 'right' : 'left';
+  return vertical + '-' + horizontal;
 }
 
 function formatValue(val) {
