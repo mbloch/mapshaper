@@ -2010,11 +2010,15 @@ Scale bars appear only in SVG output; they are skipped when exporting other form
 
 `units=` Units of a bare-number label or an automatically chosen length: `km`, `meters`, `miles` or `feet` (default is `miles`). Automatic lengths are given in meters or feet when kilometers or miles would be too long.
 
-`style=` Scalebar style, `a` or `b`. Style `b` has tic marks.
+`style=` Scalebar style, `a`, `b` or `c`. Style `b` has tic marks. Style `c` is a bar divided into segments of alternating fill, labeled at each division. A single style `c` bar has two segments. With `dual-units`, a metric bar is drawn above an imperial bar, and both bars use the same interval: either four segments over two (e.g. `400 km` gives 4 × 100 km over 2 × 100 miles) or two over two (e.g. `50 miles` gives 2 × 25 km over 2 × 25 miles). Automatic lengths alternate between the two arrangements.
 
-`dual-units` (style b) Show both metric and imperial distances. Implies `style=b`.
+`dual-units` Show both metric and imperial distances. Implies `style=b` if no style is given. In style `a`, the second distance is a shorter bar below the first, with its label below it.
 
-`bar-width=` Line width of bar.
+`align=` (style c with dual units) Alignment of the shorter bar with the longer one: `left`, `center` (default) or `right`.
+
+`label-case=` Case of the units in labels, `upper` or `lower`. By default, a label written in lower case (e.g. `"100 km"`) gives lower-case units to any distances generated for it, such as the second distance of a dual-unit scalebar; other labels are drawn as written, and generated distances are in upper case.
+
+`bar-width=` Line width of bar (the height of the bar, in style c).
 
 `tic-length=` (style b) length of tic marks.
 
@@ -2024,7 +2028,7 @@ Scale bars appear only in SVG output; they are skipped when exporting other form
 
 `label-position=` Position of labels relative to the bar (`top` or `bottom`).
 
-`position=` Position of the scalebar on the map: `top-left` (default), `top-right`, `bottom-left` or `bottom-right`.
+`position=` Position of the scalebar on the map: `top-left` (default), `top-center`, `top-right`, `bottom-left`, `bottom-center` or `bottom-right`.
 
 `margin=` Offset in pixels from edge of map.
 

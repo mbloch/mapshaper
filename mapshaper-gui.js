@@ -2,17 +2,22 @@
 
   var api = window.mapshaper; // assuming mapshaper is in global scope
   var mapshaper = api,
-    utils$1 = api.utils,
+    utils = api.utils,
     cli = api.cli,
     geom = api.geom,
     internal = api.internal,
-    Bounds$1 = internal.Bounds,
-    UserError$1 = internal.UserError,
-    message$1 = internal.message, // stop, error and message are overridden in gui-proxy.js
-    stop$1 = internal.stop,
-    error$2 = internal.error;
+    Bounds = internal.Bounds,
+    UserError = internal.UserError,
+    message = internal.message, // stop, error and message are overridden in gui-proxy.js
+    stop = internal.stop,
+    error = internal.error;
 
   api.enableLogging();
+
+  // Returns a dependency bundled in modules.js, which loads before this bundle.
+  function require$1(name) {
+    return window.modules ? window.modules[name] : undefined;
+  }
 
   function CatalogControl(gui, catalog, onSelect) {
     var self = this,
@@ -46,7 +51,7 @@
 
     html = '<table>';
     if (catalog.title) {
-      html += utils$1.format('<tr><th colspan="%d"><h4>%s</h4></th></tr>', cols, catalog.title);
+      html += utils.format('<tr><th colspan="%d"><h4>%s</h4></th></tr>', cols, catalog.title);
     }
     while (row < rows) {
       html += renderRow(items.slice(row * cols, row * cols + cols));
@@ -111,7 +116,7 @@
 
     function renderCell(item, i) {
       var template = '<td data-id="%d"><h4 class="title">%s</h4><div class="subtitle">%s</div></td>';
-      return utils$1.format(template, i, item.title, item.subtitle || '');
+      return utils.format(template, i, item.title, item.subtitle || '');
     }
 
   }
@@ -129,7 +134,7 @@
       evt = new EventData(this.type);
       evt.target = this.target;
     } else if (evt.target != this.target || evt.type != this.type) {
-      error$2("[Handler] event target/type have changed.");
+      error("[Handler] event target/type have changed.");
     }
     this.callback.call(this.listener, evt);
   };
@@ -138,7 +143,7 @@
     this.type = type;
     this.target = target;
     if (data) {
-      utils$1.defaults(this, data);
+      utils.defaults(this, data);
       this.data = data;
     }
   }
@@ -378,12 +383,12 @@
       try {
         els = root.querySelectorAll(selector);
       } catch (e) {
-        error$2("Invalid selector:", selector);
+        error("Invalid selector:", selector);
       }
     } else {
-      error$2("This browser doesn't support CSS query selectors");
+      error("This browser doesn't support CSS query selectors");
     }
-    return utils$1.toArray(els);
+    return utils.toArray(els);
   };
 
   // Converts dash-separated names (e.g. background-color) to camelCase (e.g. backgroundColor)
@@ -419,7 +424,7 @@
   };
 
   function El(ref) {
-    if (!ref) error$2("Element() needs a reference");
+    if (!ref) error("Element() needs a reference");
     if (ref instanceof El) {
       return ref;
     }
@@ -428,7 +433,7 @@
     }
 
     var node;
-    if (utils$1.isString(ref)) {
+    if (utils.isString(ref)) {
       if (ref[0] == '<') {
         var parent = El('div').html(ref).node();
         node = parent.childNodes.length  == 1 ? parent.childNodes[0] : parent;
@@ -440,13 +445,13 @@
     } else if (ref.tagName) {
       node = ref;
     }
-    if (!node) error$2("Unmatched element selector:", ref);
+    if (!node) error("Unmatched element selector:", ref);
     this.el = node;
   }
 
-  utils$1.inherit(El, EventDispatcher);
+  utils.inherit(El, EventDispatcher);
 
-  utils$1.extend(El.prototype, {
+  utils.extend(El.prototype, {
 
     clone: function() {
       var el = this.el.cloneNode(true);
@@ -455,7 +460,7 @@
         //    can ...
         el = El('div').addClass(el.className).html(el.innerHTML).node();
       }
-      el.id = utils$1.getUniqueName();
+      el.id = utils.getUniqueName();
       this.el = el;
       return this;
     },
@@ -482,8 +487,8 @@
 
     // Apply inline css styles to this Element, either as string or object.
     css: function(css, val) {
-      if (utils$1.isObject(css)) {
-        utils$1.forEachProperty(css, function(val, key) {
+      if (utils.isObject(css)) {
+        utils.forEachProperty(css, function(val, key) {
           El.setStyle(this.el, key, val);
         }, this);
       } else if (val === void 0) {
@@ -495,7 +500,7 @@
     },
 
     attr: function(obj, value) {
-      if (utils$1.isString(obj)) {
+      if (utils.isString(obj)) {
         if (arguments.length == 1) {
           return this.el.getAttribute(obj);
         }
@@ -587,7 +592,7 @@
       if (arguments.length == 0) {
         return this.el.innerText;
       }
-      this.html(utils$1.htmlEscape(str));
+      this.html(utils.htmlEscape(str));
       return this;
     },
 
@@ -864,7 +869,7 @@
     }
     parsed =  internal.parseCommands(str);
     if (!parsed.length || parsed[0].name != cmd) {
-      stop$1("Unable to parse command line options");
+      stop("Unable to parse command line options");
     }
     return parsed[0].options;
   };
@@ -929,7 +934,7 @@
     }
 
     this.value = function(str) {
-      if (utils$1.isString(str)) {
+      if (utils.isString(str)) {
         el.node().textContent = str;
       } else {
         return el.node().textContent;
@@ -937,7 +942,7 @@
     };
   }
 
-  utils$1.inherit(ClickText2, EventDispatcher);
+  utils.inherit(ClickText2, EventDispatcher);
 
   // @ref reference to a text input element
   function ClickText(ref) {
@@ -1008,9 +1013,9 @@
         // return _parser ? _parser(valStr) : parseFloat(valStr);
         return _value;
       }
-      var val = utils$1.clamp(arg, _min, _max);
+      var val = utils.clamp(arg, _min, _max);
       if (!_validator(val)) {
-        error$2("ClickText#value() invalid value:", arg);
+        error("ClickText#value() invalid value:", arg);
       } else {
         _value = val;
       }
@@ -1019,14 +1024,14 @@
     };
   }
 
-  utils$1.inherit(ClickText, EventDispatcher);
+  utils.inherit(ClickText, EventDispatcher);
 
 
   function Checkbox(ref) {
     var _el = El(ref);
   }
 
-  utils$1.inherit(Checkbox, EventDispatcher);
+  utils.inherit(Checkbox, EventDispatcher);
 
   function SimpleButton(ref) {
     var _el = El(ref),
@@ -1402,22 +1407,6 @@
     return view;
   }
 
-  // Several dependencies are loaded via require()
-  var f;
-  if (typeof require == 'function') {
-    // Node.js context: native require() function
-    f = require;
-  } else if (typeof window == 'object' && window.modules) {
-    // running in web GUI
-    f = function(name) {
-      return window.modules[name];
-    };
-  } else {
-    // stub to avoid runtime error in a handful of tests
-    f = function() {};
-  }
-  var require$1 = f;
-
   var idb$2 = require$1('idb-keyval');
   // https://github.com/jakearchibald/idb
   // https://github.com/jakearchibald/idb-keyval
@@ -1572,7 +1561,7 @@
       data = await internal.restoreSessionData(await idb$2.get(id));
     } catch(e) {
       console.error(e);
-      stop$1('Snapshot is not available');
+      stop('Snapshot is not available');
     }
     gui.model.clear();
     importDatasets(data.datasets, gui);
@@ -2639,4113 +2628,6 @@
     return bytes;
   }
 
-  // Fall back to browserify's Buffer polyfill
-  var B = typeof Buffer != 'undefined' ? Buffer : require$1('buffer').Buffer;
-
-  // We do NOT import from mapshaper-logging here to avoid a circular dependency
-  function error$1() {
-    throw new Error(Array.prototype.slice.call(arguments).join(' '));
-  }
-
-  var uniqCount = 0;
-  function getUniqueName(prefix) {
-    return (prefix || "__id_") + (++uniqCount);
-  }
-
-  function isFunction(obj) {
-    return typeof obj == 'function';
-  }
-
-  function isPromise(arg) {
-    return arg ? isFunction(arg.then) : false;
-  }
-
-  function isObject(obj) {
-    return obj === Object(obj); // via underscore
-  }
-
-  function clamp$7(val, min, max) {
-    return val < min ? min : (val > max ? max : val);
-  }
-
-  function isArray(obj) {
-    return Array.isArray(obj);
-  }
-
-  // Is obj a valid number or NaN? (test if obj is type number)
-  function isNumber$3(obj) {
-    return obj != null && obj.constructor == Number;
-  }
-
-  function isValidNumber(val) {
-    return isNumber$3(val) && !isNaN(val);
-  }
-
-  // Similar to isFinite() but does not coerce strings or other types
-  function isFiniteNumber$1(val) {
-    return isValidNumber(val) && val !== Infinity && val !== -Infinity;
-  }
-
-  // This uses type conversion
-  // export function isFiniteNumber(val) {
-  //   return val > -Infinity && val < Infinity;
-  // }
-
-  function isNonNegNumber(val) {
-    return isNumber$3(val) && val >= 0;
-  }
-
-  function isInteger(obj) {
-    return isNumber$3(obj) && ((obj | 0) === obj);
-  }
-
-  function isEven(obj) {
-    return (obj % 2) === 0;
-  }
-
-  function isOdd(obj) {
-    return (obj % 2) === 1;
-  }
-
-  function isString(obj) {
-    return obj != null && obj.toString === String.prototype.toString;
-    // TODO: replace w/ something better.
-  }
-
-  function isDate(obj) {
-    return !!obj && obj.getTime === Date.prototype.getTime;
-  }
-
-  function isBoolean(obj) {
-    return obj === true || obj === false;
-  }
-
-  function formatDateISO(d) {
-    if (!isDate(d)) return '';
-    return d.toISOString().replace(':00.000Z', 'Z');
-  }
-
-  // Convert an array-like object to an Array, or make a copy if @obj is an Array
-  function toArray(obj) {
-    var arr;
-    if (!isArrayLike(obj)) error$1("toArray() requires an array-like object");
-    try {
-      arr = Array.prototype.slice.call(obj, 0); // breaks in ie8
-    } catch(e) {
-      // support ie8
-      arr = [];
-      for (var i=0, n=obj.length; i<n; i++) {
-        arr[i] = obj[i];
-      }
-    }
-    return arr;
-  }
-
-  // Array like: has length property, is numerically indexed and mutable.
-  // TODO: try to detect objects with length property but no indexed data elements
-  function isArrayLike(obj) {
-    if (!obj) return false;
-    if (isArray(obj)) return true;
-    if (isString(obj)) return false;
-    if (obj.length === 0 || obj.length > 0) return true;
-    return false;
-  }
-
-  // See https://raw.github.com/kvz/phpjs/master/functions/strings/addslashes.js
-  function addslashes(str) {
-    return (str + '').replace(/[\\"']/g, '\\$&').replace(/\u0000/g, '\\0');
-  }
-
-  // Escape a literal string to use in a regexp.
-  // Ref.: http://simonwillison.net/2006/Jan/20/escape/
-  function regexEscape(str) {
-    return str.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
-  }
-
-
-  // See https://github.com/janl/mustache.js/blob/master/mustache.js
-  var entityMap = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-    '/': '&#x2F;'
-  };
-  function htmlEscape(s) {
-    return String(s).replace(/[&<>"'/]/g, function(s) {
-      return entityMap[s];
-    });
-  }
-
-
-  function defaults(dest) {
-    for (var i=1, n=arguments.length; i<n; i++) {
-      var src = arguments[i] || {};
-      for (var key in src) {
-        if (key in dest === false && src.hasOwnProperty(key)) {
-          dest[key] = src[key];
-        }
-      }
-    }
-    return dest;
-  }
-
-  function extend(o) {
-    var dest = o || {},
-        n = arguments.length,
-        key, i, src;
-    for (i=1; i<n; i++) {
-      src = arguments[i] || {};
-      for (key in src) {
-        if (src.hasOwnProperty(key)) {
-          dest[key] = src[key];
-        }
-      }
-    }
-    return dest;
-  }
-
-  // Pseudoclassical inheritance
-  //
-  // Inherit from a Parent function:
-  //    inherit(Child, Parent);
-  // Call parent's constructor (inside child constructor):
-  //    this.__super__([args...]);
-  function inherit(targ, src) {
-    var f = function() {
-      if (this.__super__ == f) {
-        // add __super__ of parent to front of lookup chain
-        // so parent class constructor can call its parent using this.__super__
-        this.__super__ = src.prototype.__super__;
-        // call parent constructor function. this.__super__ now points to parent-of-parent
-        src.apply(this, arguments);
-        // remove temp __super__, expose targ.prototype.__super__ again
-        delete this.__super__;
-      }
-    };
-
-    f.prototype = src.prototype || src; // added || src to allow inheriting from objects as well as functions
-    // Extend targ prototype instead of wiping it out --
-    //   in case inherit() is called after targ.prototype = {stuff}; statement
-    targ.prototype = extend(new f(), targ.prototype); //
-    targ.prototype.constructor = targ;
-    targ.prototype.__super__ = f;
-  }
-
-  function promisify(asyncFn) {
-    return function() {
-      var args = toArray(arguments);
-      return new Promise((resolve, reject) => {
-        var cb = function(err, data) {
-          if (err) reject(err);
-          else resolve(data);
-        };
-        args.push(cb);
-        asyncFn.apply(this, args);
-      });
-    };
-  }
-
-   function runAsync(fn, arg) {
-      return new Promise((resolve, reject) => {
-        fn(arg, function(err, data) {
-          return err ? reject(err) : resolve(data);
-        });
-      });
-    }
-
-  // Append elements of @src array to @dest array
-  function merge(dest, src) {
-    if (!isArray(dest) || !isArray(src)) {
-      error$1("Usage: merge(destArray, srcArray);");
-    }
-    for (var i=0, n=src.length; i<n; i++) {
-      dest.push(src[i]);
-    }
-    return dest;
-  }
-
-  // Returns elements in arr and not in other
-  // (similar to underscore diff)
-  function difference(arr, other) {
-    var index = arrayToIndex(other);
-    return arr.filter(function(el) {
-      return !Object.prototype.hasOwnProperty.call(index, el);
-    });
-  }
-
-  // Return the intersection of two arrays
-  function intersection(a, b) {
-    return a.filter(function(el) {
-      return b.includes(el);
-    });
-  }
-
-  function indexOf(arr, item) {
-    var nan = item !== item;
-    for (var i = 0, len = arr.length || 0; i < len; i++) {
-      if (arr[i] === item) return i;
-      if (nan && arr[i] !== arr[i]) return i;
-    }
-    return -1;
-  }
-
-  // Test a string or array-like object for existence of substring or element
-  function contains(container, item) {
-    if (isString(container)) {
-      return container.indexOf(item) != -1;
-    }
-    else if (isArrayLike(container)) {
-      return indexOf(container, item) != -1;
-    }
-    error$1("Expected Array or String argument");
-  }
-
-  function some(arr, test) {
-    return arr.reduce(function(val, item) {
-      return val || test(item); // TODO: short-circuit?
-    }, false);
-  }
-
-  function every(arr, test) {
-    return arr.reduce(function(val, item) {
-      return val && test(item);
-    }, true);
-  }
-
-  function find(arr, test, ctx) {
-    var matches = arr.filter(test, ctx);
-    return matches.length === 0 ? null : matches[0];
-  }
-
-  function range(len, start, inc) {
-    var arr = [],
-        v = start === void 0 ? 0 : start,
-        i = inc === void 0 ? 1 : inc;
-    while(len--) {
-      arr.push(v);
-      v += i;
-    }
-    return arr;
-  }
-
-  function repeat(times, func) {
-    var values = [],
-        val;
-    for (var i=0; i<times; i++) {
-      val = func(i);
-      if (val !== void 0) {
-        values[i] = val;
-      }
-    }
-    return values.length > 0 ? values : void 0;
-  }
-
-  // Calc sum, skip falsy and NaN values
-  // Assumes: no other non-numeric objects in array
-  //
-  function sum(arr, info) {
-    if (!isArrayLike(arr)) error$1 ("sum() expects an array, received:", arr);
-    var tot = 0,
-        nan = 0,
-        val;
-    for (var i=0, n=arr.length; i<n; i++) {
-      val = arr[i];
-      if (val) {
-        tot += val;
-      } else if (isNaN(val)) {
-        nan++;
-      }
-    }
-    if (info) {
-      info.nan = nan;
-    }
-    return tot;
-  }
-
-  // Calculate min and max values of an array, ignoring NaN values
-  function getArrayBounds(arr) {
-    var min = Infinity,
-      max = -Infinity,
-      nan = 0, val;
-    for (var i=0, len=arr.length; i<len; i++) {
-      val = arr[i];
-      if (val !== val) nan++;
-      if (val < min) min = val;
-      if (val > max) max = val;
-    }
-    return {
-      min: min,
-      max: max,
-      nan: nan
-    };
-  }
-
-  // export function uniq(src) {
-  //   var index = {};
-  //   return src.reduce(function(memo, el) {
-  //     if (el in index === false) {
-  //       index[el] = true;
-  //       memo.push(el);
-  //     }
-  //     return memo;
-  //   }, []);
-  // }
-
-  function uniq(src) {
-    var index = new Set();
-    var arr = [];
-    var item;
-    for (var i=0, n=src.length; i<n; i++) {
-      item = src[i];
-      if (!index.has(item)) {
-        arr.push(item);
-        index.add(item);
-      }
-    }
-    return arr;
-  }
-
-  function pluck(arr, key) {
-    return arr.map(function(obj) {
-      return obj[key];
-    });
-  }
-
-  function countValues(arr) {
-    return arr.reduce(function(memo, val) {
-      memo[val] = (val in memo) ? memo[val] + 1 : 1;
-      return memo;
-    }, {});
-  }
-
-  function indexOn(arr, k) {
-    return arr.reduce(function(index, o) {
-      index[o[k]] = o;
-      return index;
-    }, {});
-  }
-
-  function groupBy(arr, k) {
-    return arr.reduce(function(index, o) {
-      var keyval = o[k];
-      if (keyval in index) {
-        index[keyval].push(o);
-      } else {
-        index[keyval] = [o];
-      }
-      return index;
-    }, {});
-  }
-
-  function arrayToIndex(arr, val) {
-    var init = arguments.length > 1;
-    return arr.reduce(function(index, key) {
-      index[key] = init ? val : true;
-      return index;
-    }, {});
-  }
-
-  // Support for iterating over array-like objects, like typed arrays
-  function forEach(arr, func, ctx) {
-    if (!isArrayLike(arr)) {
-      throw new Error("#forEach() takes an array-like argument. " + arr);
-    }
-    for (var i=0, n=arr.length; i < n; i++) {
-      func.call(ctx, arr[i], i);
-    }
-  }
-
-  function forEachProperty(o, func, ctx) {
-    Object.keys(o).forEach(function(key) {
-      func.call(ctx, o[key], key);
-    });
-  }
-
-  function initializeArray(arr, init) {
-    for (var i=0, len=arr.length; i<len; i++) {
-      arr[i] = init;
-    }
-    return arr;
-  }
-
-  function replaceArray(arr, arr2) {
-    arr.splice(0, arr.length);
-    for (var i=0, n=arr2.length; i<n; i++) {
-      arr.push(arr2[i]);
-    }
-  }
-
-  function repeatString(src, n) {
-    var str = "";
-    for (var i=0; i<n; i++)
-      str += src;
-    return str;
-  }
-
-  function splitLines(str) {
-    return str.split(/\r?\n/);
-  }
-
-  function pluralSuffix(count) {
-    return count != 1 ? 's' : '';
-  }
-
-  function endsWith(str, ending) {
-      return str.indexOf(ending, str.length - ending.length) !== -1;
-  }
-
-  function lpad(str, size, pad) {
-    pad = pad || ' ';
-    str = String(str);
-    return repeatString(pad, size - str.length) + str;
-  }
-
-  function rpad(str, size, pad) {
-    pad = pad || ' ';
-    str = String(str);
-    return str + repeatString(pad, size - str.length);
-  }
-
-  function trim$2(str) {
-    return ltrim(rtrim(str));
-  }
-
-  var ltrimRxp = /^\s+/;
-  function ltrim(str) {
-    return str.replace(ltrimRxp, '');
-  }
-
-  var rtrimRxp = /\s+$/;
-  function rtrim(str) {
-    return str.replace(rtrimRxp, '');
-  }
-
-  function addThousandsSep(str) {
-    var fmt = '',
-        start = str[0] == '-' ? 1 : 0,
-        dec = str.indexOf('.'),
-        end = str.length,
-        ins = (dec == -1 ? end : dec) - 3;
-    while (ins > start) {
-      fmt = ',' + str.substring(ins, end) + fmt;
-      end = ins;
-      ins -= 3;
-    }
-    return str.substring(0, end) + fmt;
-  }
-
-  function numToStr(num, decimals) {
-    return decimals >= 0 ? num.toFixed(decimals) : String(num);
-  }
-
-  function formatNumber$5(val) {
-    return val + '';
-  }
-
-  function formatIntlNumber(val) {
-    var str = formatNumber$5(val);
-    return '"' + str.replace('.', ',') + '"'; // need to quote if comma-delimited
-  }
-
-  function formatNumberForDisplay(num, decimals, nullStr, showPos) {
-    var fmt;
-    if (isNaN(num)) {
-      fmt = nullStr || '-';
-    } else {
-      fmt = numToStr(num, decimals);
-      fmt = addThousandsSep(fmt);
-      if (showPos && parseFloat(fmt) > 0) {
-        fmt = "+" + fmt;
-      }
-    }
-    return fmt;
-  }
-
-  function shuffle$1(arr) {
-    var tmp, i, j;
-    for (i = arr.length - 1; i > 0; i--) {
-      j = Math.floor(Math.random() * (i + 1));
-      tmp = arr[i];
-      arr[i] = arr[j];
-      arr[j] = tmp;
-    }
-  }
-
-  function pickOne(arr) {
-    return arr[Math.floor(Math.random() * arr.length)];
-  }
-
-  // Sort an array of objects based on one or more properties.
-  // Usage: sortOn(array, key1, asc?[, key2, asc? ...])
-  //
-  function sortOn(arr) {
-    var comparators = [];
-    for (var i=1; i<arguments.length; i+=2) {
-      comparators.push(getKeyComparator(arguments[i], arguments[i+1]));
-    }
-    arr.sort(function(a, b) {
-      var cmp = 0,
-          i = 0,
-          n = comparators.length;
-      while (i < n && cmp === 0) {
-        cmp = comparators[i](a, b);
-        i++;
-      }
-      return cmp;
-    });
-    return arr;
-  }
-
-  // Sort array of values that can be compared with < > operators (strings, numbers)
-  // null, undefined and NaN are sorted to the end of the array
-  // default order is ascending
-  //
-  function genericSort(arr, ascending) {
-    var compare = getGenericComparator(ascending);
-    Array.prototype.sort.call(arr, compare);
-    return arr;
-  }
-
-  function getSortedIds(arr, asc) {
-    var ids = range(arr.length);
-    sortArrayIndex(ids, arr, asc);
-    return ids;
-  }
-
-  function sortArrayIndex(ids, arr, asc) {
-    var compare = getGenericComparator(asc);
-    ids.sort(function(i, j) {
-      // added i, j comparison to guarantee that sort is stable
-      var cmp = compare(arr[i], arr[j]);
-      return cmp > 0 || cmp === 0 && i > j ? 1 : -1;
-    });
-  }
-
-  function reorderArray$1(arr, idxs) {
-    var len = idxs.length;
-    var arr2 = [];
-    for (var i=0; i<len; i++) {
-      var idx = idxs[i];
-      if (idx < 0 || idx >= len) error$1("Out-of-bounds array idx");
-      arr2[i] = arr[idx];
-    }
-    replaceArray(arr, arr2);
-  }
-
-  function getKeyComparator(key, asc) {
-    var compare = getGenericComparator(asc);
-    return function(a, b) {
-      return compare(a[key], b[key]);
-    };
-  }
-
-  function getGenericComparator(asc) {
-    asc = asc !== false && asc != 'descending'; // ascending is the default
-    return function(a, b) {
-      var retn = 0;
-      if (b == null) {
-        retn = a == null ? 0 : -1;
-      } else if (a == null) {
-        retn = 1;
-      } else if (a < b) {
-        retn = asc ? -1 : 1;
-      } else if (a > b) {
-        retn = asc ? 1 : -1;
-      } else if (a !== a) {
-        retn = 1;
-      } else if (b !== b) {
-        retn = -1;
-      }
-      return retn;
-    };
-  }
-
-
-  // Generic in-place sort (null, NaN, undefined not handled)
-  function quicksort(arr, asc) {
-    quicksortPartition(arr, 0, arr.length-1);
-    if (asc === false) Array.prototype.reverse.call(arr); // Works with typed arrays
-    return arr;
-  }
-
-  // Moved out of quicksort() (saw >100% speedup in Chrome with deep recursion)
-  function quicksortPartition (a, lo, hi) {
-    var i = lo,
-        j = hi,
-        pivot, tmp;
-    while (i < hi) {
-      pivot = a[lo + hi >> 1]; // avoid n^2 performance on sorted arrays
-      while (i <= j) {
-        while (a[i] < pivot) i++;
-        while (a[j] > pivot) j--;
-        if (i <= j) {
-          tmp = a[i];
-          a[i] = a[j];
-          a[j] = tmp;
-          i++;
-          j--;
-        }
-      }
-      if (lo < j) quicksortPartition(a, lo, j);
-      lo = i;
-      j = hi;
-    }
-  }
-
-
-  function findRankByValue(arr, value) {
-    if (isNaN(value)) return arr.length;
-    var rank = 1;
-    for (var i=0, n=arr.length; i<n; i++) {
-      if (value > arr[i]) rank++;
-    }
-    return rank;
-  }
-
-  function findValueByPct(arr, pct) {
-    var rank = Math.ceil((1-pct) * (arr.length));
-    return findValueByRank(arr, rank);
-  }
-
-  // See http://ndevilla.free.fr/median/median/src/wirth.c
-  // Elements of @arr are reordered
-  //
-  function findValueByRank(arr, rank) {
-    if (!arr.length || rank < 1 || rank > arr.length) error$1("[findValueByRank()] invalid input");
-
-    rank = clamp$7(rank | 0, 1, arr.length);
-    var k = rank - 1, // conv. rank to array index
-        n = arr.length,
-        l = 0,
-        m = n - 1,
-        i, j, val, tmp;
-
-    while (l < m) {
-      val = arr[k];
-      i = l;
-      j = m;
-      do {
-        while (arr[i] < val) {i++;}
-        while (val < arr[j]) {j--;}
-        if (i <= j) {
-          tmp = arr[i];
-          arr[i] = arr[j];
-          arr[j] = tmp;
-          i++;
-          j--;
-        }
-      } while (i <= j);
-      if (j < k) l = i;
-      if (k < i) m = j;
-    }
-    return arr[k];
-  }
-
-  function findMedian(arr) {
-    return findQuantile(arr, 0.5);
-  }
-
-  function findQuantile(arr, k) {
-    var n = arr.length,
-        i1 = Math.floor((n - 1) * k),
-        i2 = Math.ceil((n - 1) * k);
-    if (i1 < 0 || i2 >= n) return NaN;
-    var v1 = findValueByRank(arr, i1 + 1);
-    if (i1 == i2) return v1;
-    var v2 = findValueByRank(arr, i2 + 1);
-    // use linear interpolation
-    var w1 = i2 / (n - 1) - k;
-    var w2 = k - i1 / (n - 1);
-    var v = (v1 * w1 + v2 * w2) * (n - 1);
-    return v;
-  }
-
-  function mean(arr) {
-    var count = 0,
-        avg = NaN,
-        val;
-    for (var i=0, n=arr.length; i<n; i++) {
-      val = arr[i];
-      if (isNaN(val)) continue;
-      avg = ++count == 1 ? val : val / count + (count - 1) / count * avg;
-    }
-    return avg;
-  }
-
-
-  /*
-  A simplified version of printf formatting
-  Format codes: %[flags][width][.precision]type
-
-  supported flags:
-    +   add '+' before positive numbers
-    0   left-pad with '0'
-    '   Add thousands separator
-  width: 1 to many
-  precision: .(1 to many)
-  type:
-    s     string
-    di    integers
-    f     decimal numbers
-    xX    hexidecimal (unsigned)
-    %     literal '%'
-
-  Examples:
-    code    val    formatted
-    %+d     1      '+1'
-    %4i     32     '  32'
-    %04i    32     '0032'
-    %x      255    'ff'
-    %.2f    0.125  '0.13'
-    %'f     1000   '1,000'
-  */
-
-  // Usage: format(formatString, [values])
-  // Tip: When reusing the same format many times, use formatter() for 5x - 10x better performance
-  //
-  function format(fmt) {
-    var fn = formatter(fmt);
-    var str = fn.apply(null, Array.prototype.slice.call(arguments, 1));
-    return str;
-  }
-
-  function formatValue$4(val, matches) {
-    var flags = matches[1];
-    var padding = matches[2];
-    var decimals = matches[3] ? parseInt(matches[3].substr(1)) : void 0;
-    var type = matches[4];
-    var isString = type == 's',
-        isHex = type == 'x' || type == 'X',
-        // isInt = type == 'd' || type == 'i',
-        // isFloat = type == 'f',
-        isNumber = !isString;
-
-    var sign = "",
-        padDigits = 0,
-        isZero = false,
-        isNeg = false;
-
-    var str, padChar, padStr;
-    if (isString) {
-      str = String(val);
-    }
-    else if (isHex) {
-      str = val.toString(16);
-      if (type == 'X')
-        str = str.toUpperCase();
-    }
-    else if (isNumber) {
-      // str = formatNumberForDisplay(val, isInt ? 0 : decimals);
-      str = numToStr(val, decimals);
-      if (str[0] == '-') {
-        isNeg = true;
-        str = str.substr(1);
-      }
-      isZero = parseFloat(str) == 0;
-      if (flags.indexOf("'") != -1 || flags.indexOf(',') != -1) {
-        str = addThousandsSep(str);
-      }
-      if (!isZero) { // BUG: sign is added when num rounds to 0
-        if (isNeg) {
-          sign = "\u2212"; // U+2212
-        } else if (flags.indexOf('+') != -1) {
-          sign = '+';
-        }
-      }
-    }
-
-    if (padding) {
-      var strLen = str.length + sign.length;
-      var minWidth = parseInt(padding, 10);
-      if (strLen < minWidth) {
-        padDigits = minWidth - strLen;
-        padChar = flags.indexOf('0') == -1 ? ' ' : '0';
-        padStr = repeatString(padChar, padDigits);
-      }
-    }
-
-    if (padDigits == 0) {
-      str = sign + str;
-    } else if (padChar == '0') {
-      str = sign + padStr + str;
-    } else {
-      str = padStr + sign + str;
-    }
-    return str;
-  }
-
-  // Get a function for interpolating formatted values into a string.
-  function formatter(fmt) {
-    var codeRxp = /%([',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
-    var literals = [],
-        formatCodes = [],
-        startIdx = 0,
-        prefix = "",
-        matches = codeRxp.exec(fmt),
-        literal;
-
-    while (matches) {
-      literal = fmt.substring(startIdx, codeRxp.lastIndex - matches[0].length);
-      if (matches[0] == '%%') {
-        prefix += literal + '%';
-      } else {
-        literals.push(prefix + literal);
-        prefix = '';
-        formatCodes.push(matches);
-      }
-      startIdx = codeRxp.lastIndex;
-      matches = codeRxp.exec(fmt);
-    }
-    literals.push(prefix + fmt.substr(startIdx));
-
-    return function() {
-      var str = literals[0],
-          n = arguments.length;
-      if (n != formatCodes.length) {
-        error$1("[format()] Data does not match format string; format:", fmt, "data:", arguments);
-      }
-      for (var i=0; i<n; i++) {
-        str += formatValue$4(arguments[i], formatCodes[i]) + literals[i+1];
-      }
-      return str;
-    };
-  }
-
-  function wildcardToRegExp(name) {
-    var rxp = name.split('*').map(function(str) {
-      return regexEscape(str);
-    }).join('.*');
-    return new RegExp('^' + rxp + '$');
-  }
-
-  function createBuffer(arg, arg2) {
-    if (isInteger(arg)) {
-      return B.allocUnsafe ? B.allocUnsafe(arg) : new B(arg);
-    } else {
-      // check allocUnsafe to make sure Buffer.from() will accept strings (it didn't before Node v5.10)
-      return B.from && B.allocUnsafe ? B.from(arg, arg2) : new B(arg, arg2);
-    }
-  }
-
-  function toBuffer(src) {
-    if (src instanceof B) return src;
-    if (src instanceof ArrayBuffer) return B.from(src);
-    if (src instanceof Uint8Array) {
-      return B.from(src.buffer, src.byteOffset, src.byteLength);
-    }
-    error$1('Unexpected argument type');
-  }
-
-  function expandoBuffer(constructor, rate) {
-    var capacity = 0,
-        k = rate >= 1 ? rate : 1.2,
-        buf;
-    return function(size) {
-      if (size > capacity) {
-        capacity = Math.ceil(size * k);
-        buf = constructor ? new constructor(capacity) : createBuffer(capacity);
-      }
-      return buf;
-    };
-  }
-
-  function copyElements(src, i, dest, j, n, rev) {
-    var same = src == dest || src.buffer && src.buffer == dest.buffer;
-    var inc = 1,
-        offs = 0,
-        k;
-    if (rev) {
-      if (same) error$1('copy error');
-      inc = -1;
-      offs = n - 1;
-    }
-    if (same && j > i) {
-      for (k=n-1; k>=0; k--) {
-        dest[j + k] = src[i + k];
-      }
-    } else {
-      for (k=0; k<n; k++, offs += inc) {
-        dest[k + j] = src[i + offs];
-      }
-    }
-  }
-
-  function extendBuffer(src, newLen, copyLen) {
-    var len = Math.max(src.length, newLen);
-    var n = copyLen || src.length;
-    var dest = new src.constructor(len);
-    copyElements(src, 0, dest, 0, n);
-    return dest;
-  }
-
-  function mergeNames(name1, name2) {
-    var merged;
-    if (name1 && name2) {
-      merged = findStringPrefix(name1, name2).replace(/[-_]$/, '');
-    }
-    return merged || '';
-  }
-
-  function findStringPrefix(a, b) {
-    var i = 0;
-    for (var n=a.length; i<n; i++) {
-      if (a[i] !== b[i]) break;
-    }
-    return a.substr(0, i);
-  }
-
-  function formatVersionedName(name, i) {
-    var suffix = String(i);
-    if (/[0-9]$/.test(name)) {
-      suffix = '-' + suffix;
-    }
-    return name + suffix;
-  }
-
-  function uniqifyNames(names, formatter) {
-    var counts = countValues(names),
-        format = formatter || formatVersionedName,
-        names2 = [];
-
-    names.forEach(function(name) {
-      var i = 0,
-          candidate = name,
-          versionedName;
-      while (
-          names2.indexOf(candidate) > -1 || // candidate name has already been used
-          candidate == name && counts[candidate] > 1 || // duplicate unversioned names
-          candidate != name && counts[candidate] > 0) { // versioned name is a preexisting name
-        i++;
-        versionedName = format(name, i);
-        if (!versionedName || versionedName == candidate) {
-          throw new Error("Naming error"); // catch buggy versioning function
-        }
-        candidate = versionedName;
-      }
-      names2.push(candidate);
-    });
-    return names2;
-  }
-
-
-  // Assume: @raw is string, undefined or null
-  function parseString(raw) {
-    return raw ? raw : "";
-  }
-
-  // Assume: @raw is string, undefined or null
-  // Use null instead of NaN for unparsable values
-  // (in part because if NaN is used, empty strings get converted to "NaN"
-  // when re-exported).
-  function parseNumber(raw) {
-    return parseToNum(raw, cleanNumericString);
-  }
-
-  function parseIntlNumber(raw) {
-    return parseToNum(raw, convertIntlNumString);
-  }
-
-  function parseToNum(raw, clean) {
-    var str = String(raw).trim();
-    var parsed = str ? Number(clean(str)) : NaN;
-    return isNaN(parsed) ? null : parsed;
-  }
-
-  // Remove comma separators from strings
-  function cleanNumericString(str) {
-    return (str.indexOf(',') > 0) ? str.replace(/,([0-9]{3})/g, '$1') : str;
-  }
-
-  function convertIntlNumString(str) {
-    str = str.replace(/[ .]([0-9]{3})/g, '$1');
-    return str.replace(',', '.');
-  }
-
-  function trimQuotes(str) {
-    var len = str.length, first, last;
-    if (len >= 2) {
-      first = str.charAt(0);
-      last = str.charAt(len-1);
-      // if (first == '"' && last == '"' && !str.includes('","') ||
-      //     first == "'" && last == "'" && !str.includes("','")) {
-      // don't strip if there are unescaped quotes
-      // e.g. expressions that start and end with quotes
-      // e.g. comma-separated list of quoted values
-      if (first == '"' && last == '"' && !/[^\\]"./.test(str) ||
-          first == "'" && last == "'" && !/[^\\]'./.test(str)) {
-        str = str.substr(1, len-2);
-        // remove string escapes
-        str = str.replace(first == '"' ? /\\(?=")/g : /\\(?=')/g, '');
-      }
-    }
-    return str;
-  }
-
-  // Default export so consumers can do `import utils from './mapshaper-utils'`
-  // and call `utils.isObject(x)` etc. Listing the names explicitly (instead
-  // of using `import * as utils from './mapshaper-utils'`) avoids a
-  // self-import and the resulting Rollup circular-dependency warning.
-  var utils = {
-    addThousandsSep, addslashes, arrayToIndex,
-    clamp: clamp$7, cleanNumericString, contains, copyElements, countValues, createBuffer,
-    defaults, difference,
-    endsWith, every, expandoBuffer, extend, extendBuffer,
-    find, findMedian, findQuantile, findRankByValue, findStringPrefix,
-    findValueByPct, findValueByRank, forEach, forEachProperty, format,
-    formatDateISO, formatIntlNumber, formatNumber: formatNumber$5, formatNumberForDisplay,
-    formatVersionedName, formatter,
-    genericSort, getArrayBounds, getGenericComparator, getKeyComparator,
-    getSortedIds, getUniqueName, groupBy,
-    htmlEscape,
-    indexOf, indexOn, inherit, initializeArray, intersection,
-    isArray, isArrayLike, isBoolean, isDate, isEven, isFiniteNumber: isFiniteNumber$1, isFunction,
-    isInteger, isNonNegNumber, isNumber: isNumber$3, isObject, isOdd, isPromise, isString,
-    isValidNumber,
-    lpad, ltrim,
-    mean, merge, mergeNames,
-    numToStr,
-    parseIntlNumber, parseNumber, parseString, pickOne, pluck,
-    pluralSuffix, promisify,
-    quicksort, quicksortPartition,
-    range, regexEscape, reorderArray: reorderArray$1, repeat, repeatString,
-    replaceArray, rpad, rtrim,
-    shuffle: shuffle$1, some, sortArrayIndex, sortOn, splitLines, sum,
-    toArray, toBuffer, trim: trim$2, trimQuotes,
-    uniq, uniqifyNames,
-    wildcardToRegExp
-  };
-
-  // This module provides a way for multiple jobs to run together asynchronously
-  // while keeping job-level context variables (like "defs") separate.
-  //
-  // We deliberately do NOT import from mapshaper-logging here -- the logging
-  // module imports from this one, and avoiding the back-edge keeps the
-  // foundational dependency graph acyclic. (The single error path below is
-  // an internal-bug guard, not a user-facing message, so a plain Error is
-  // adequate.)
-
-  var stash = {};
-
-  function stashVar(key, val) {
-    if (key in stash) {
-      throw new Error('Tried to replace a stashed variable: ' + key);
-    }
-    stash[key] = val;
-  }
-
-  function getStashedVar(key) {
-    if (key in stash === false) {
-      return undefined; // to support running commands in tests
-      // error('Tried to read a nonexistent variable from the stash:', key);
-    }
-    return stash[key];
-  }
-
-  function clearStash() {
-    stash = {};
-  }
-
-  var LOGGING = false;
-  var STDOUT = false; // use stdout for status messages
-  var _error, _stop, _message, _warn;
-
-  var _interrupt = function() {
-    throw new NonFatalError(formatLogArgs(arguments));
-  };
-
-  var onceMessages = [];
-
-  setLoggingForCLI();
-
-  function getLoggingSetter() {
-    var e = _error, s = _stop, m = _message, w = _warn;
-    return function() {
-      setLoggingFunctions(m, e, s, w);
-    };
-  }
-
-  function setLoggingForCLI() {
-    function stop() {
-      throw new UserError(formatLogArgs(arguments));
-    }
-
-    function error() {
-      var msg = utils.toArray(arguments).join(' ');
-      throw new Error(msg);
-    }
-
-    function message() {
-      logArgs(arguments);
-    }
-
-    // CLI warning is just a message (GUI behaves differently)
-    var warn = message;
-
-    setLoggingFunctions(message, error, stop, warn);
-  }
-
-  function enableLogging() {
-    LOGGING = true;
-  }
-
-  function disableLogging() {
-    LOGGING = false;
-  }
-
-  function loggingEnabled() {
-    return !!LOGGING;
-  }
-
-  // Handle an unexpected condition (internal error)
-  function error() {
-    _error.apply(null, utils.toArray(arguments));
-  }
-
-  // Handle an error caused by invalid input or misuse of API
-  function stop() {
-    // _stop.apply(null, utils.toArray(arguments));
-    _stop.apply(null, messageArgs(arguments));
-  }
-
-  function interrupt() {
-    _interrupt.apply(null, utils.toArray(arguments));
-  }
-
-  // Print a status message
-  function message() {
-    _message.apply(null, messageArgs(arguments));
-  }
-
-  function warn() {
-    _warn.apply(null, messageArgs(arguments));
-  }
-
-  function warnOnce() {
-    var str = formatLogArgs(arguments);
-    if (onceMessages.includes(str)) return;
-    onceMessages.push(str);
-    _warn.apply(null, messageArgs(arguments));
-  }
-
-  // A way for the GUI to replace the CLI logging functions
-  function setLoggingFunctions(message, error, stop, warn) {
-    _message = message;
-    _error = error;
-    _stop = stop;
-    _warn = warn;
-  }
-
-  // get detailed error information from error stack (if available)
-  // Example stack string (Node.js):
-  /*
-  /Users/someuser/somescript.js:226
-      opacity: Math.round(weight * 5 / 5 // 0.2 0.4 0.6 etc
-                                       ^
-
-  SyntaxError: missing ) after argument list
-      at internalCompileFunction (node:internal/vm:73:18)
-      at wrapSafe (node:internal/modules/cjs/loader:1149:20)
-      at Module._compile (node:internal/modules/cjs/loader:1190:27)
-      ...
-  */
-  function getErrorDetail(e) {
-    var parts = (typeof e.stack == 'string') ? e.stack.split(/\n\s*\n/) : [];
-    if (parts.length > 1 || true) {
-      return '\nError details:\n' + parts[0];
-    }
-    return '';
-  }
-
-  // print a message to stdout
-  function print() {
-    STDOUT = true; // tell logArgs() to print to stdout, not stderr
-    // calling message() adds the "[command name]" prefix
-    _message(utils.toArray(arguments));
-    STDOUT = false;
-  }
-
-  function verbose() {
-    // verbose can be set globally with the -verbose command or separately for each command
-    if (useVerbose()) {
-      message.apply(null, arguments);
-    }
-  }
-
-  function useVerbose() {
-    return getStashedVar('VERBOSE');
-  }
-
-  function useDebug() {
-    return getStashedVar('DEBUG');
-  }
-
-  function debug() {
-    if (useDebug()) {
-      logArgs(arguments);
-    }
-  }
-
-  function time(slug) {
-    if (useDebug()) {
-      console.time(slug);
-    }
-  }
-
-  function timeEnd(slug) {
-    if (useDebug()) {
-      console.timeEnd(slug);
-    }
-  }
-
-  function printError(err) {
-    var msg;
-    if (!LOGGING) return;
-    if (utils.isString(err)) {
-      err = new UserError(err);
-    }
-    if (err.name == 'NonFatalError') {
-      console.error(messageArgs([err.message]).join(' '));
-    } else if (err.name == 'UserError') {
-      msg = err.message;
-      if (!/Error/.test(msg)) {
-        msg = "Error: " + msg;
-      }
-      console.error(messageArgs([msg]).join(' '));
-      console.error("Run mapshaper -h to view help");
-    } else {
-      // not a user error (i.e. a bug in mapshaper)
-      console.error(err);
-      // throw err;
-    }
-  }
-
-  function UserError(msg) {
-    var err = new Error(msg);
-    err.name = 'UserError';
-    return err;
-  }
-
-  function NonFatalError(msg) {
-    var err = new Error(msg);
-    err.name = 'NonFatalError';
-    return err;
-  }
-
-  function formatColumns(arr, alignments) {
-    var widths = arr.reduce(function(memo, line) {
-      return line.map(function(str, i) {
-        return memo ? Math.max(memo[i], str.length) : str.length;
-      });
-    }, null);
-    return arr.map(function(line) {
-      line = line.map(function(str, i) {
-        var rt = alignments && alignments[i] == 'right';
-        var pad = (rt ? str.padStart : str.padEnd).bind(str);
-        return pad(widths[i], ' ');
-      });
-      return '  ' + line.join(' ');
-    }).join('\n');
-  }
-
-  // Format an array of (preferably short) strings in columns for console logging.
-  function formatStringsAsGrid(arr, width) {
-    // TODO: variable column width
-    var longest = arr.reduce(function(len, str) {
-          return Math.max(len, str.length);
-        }, 0),
-        colWidth = longest + 2,
-        perLine = Math.floor((width || 80) / colWidth) || 1;
-    return arr.reduce(function(memo, name, i) {
-      var col = i % perLine;
-      if (i > 0 && col === 0) memo += '\n';
-      if (col < perLine - 1) { // right-pad all but rightmost column
-        name = utils.rpad(name, colWidth - 2, ' ');
-      }
-      return memo +  '  ' + name;
-    }, '');
-  }
-
-  // expose so GUI can use it
-  function formatLogArgs(args) {
-    return utils.toArray(args).join(' ');
-  }
-
-  function messageArgs(args) {
-    var arr = utils.toArray(args);
-    var cmd = getStashedVar('current_command');
-    if (cmd && cmd != 'help') {
-      arr.unshift('[' + cmd + ']');
-    }
-    return arr;
-  }
-
-  function logArgs(args) {
-    if (!LOGGING || getStashedVar('QUIET') || !utils.isArrayLike(args)) return;
-    var msg = formatLogArgs(args);
-    if (STDOUT) console.log(msg);
-    else console.error(msg);
-  }
-
-  function truncateString(str, maxLen) {
-    maxLen = maxLen || 80;
-    if (str.length > maxLen) {
-      str = str.substring(0, maxLen - 3).trimEnd() + '...';
-    }
-    return str;
-  }
-
-  var iconv = require$1('iconv-lite');
-
-  // import iconv from 'iconv-lite';
-  // import * as iconv from 'iconv-lite';
-  // import * as iconv from '../../node_modules/iconv-lite/lib/index.js';
-
-  // List of encodings supported by iconv-lite:
-  // https://github.com/ashtuchkin/iconv-lite/wiki/Supported-Encodings
-
-  var toUtf8 = getNativeEncoder('utf8');
-  var fromUtf8 = getNativeDecoder('utf8');
-
-  // Return list of supported encodings
-  function getEncodings() {
-    iconv.encodingExists('ascii'); // make iconv load its encodings
-    return Object.keys(iconv.encodings);
-  }
-
-  function validateEncoding(enc) {
-    if (!encodingIsSupported(enc)) {
-      stop("Unknown encoding:", enc, "\nRun the -encodings command see a list of supported encodings");
-    }
-    return enc;
-  }
-
-  function stringsAreAscii(arr) {
-    return stringIsAscii(arr.join(''));
-  }
-
-  function stringIsAscii(str) {
-    var c;
-    for (var i=0, n=str.length; i<n; i++) {
-      c = str.charCodeAt(i);
-      if (c >= 128) return false;
-    }
-    return true;
-  }
-
-  function encodingIsUtf8(enc) {
-    // treating utf-8 as default
-    return !enc || /^utf-?8$/i.test(String(enc));
-  }
-
-  // Identify the most common encodings that are supersets of ascii at the
-  // single-byte level (meaning that bytes in 0 - 0x7f range must be ascii)
-  // (this allows identifying line breaks and other ascii patterns in buffers)
-  function encodingIsAsciiCompat(enc) {
-    enc = standardizeEncodingName(enc);
-    // gb.* selects the Guo Biao encodings
-    // big5 in not compatible -- second byte starts at 0x40
-    return !enc || /^(win|latin|utf8|ascii|iso88|gb)/.test(enc);
-  }
-
-  // Identify single-byte encodings that are supersets of ascii (text in these
-  // encodings can be parsed byte-by-byte and decoded one value at a time)
-  function isSingleByteAsciiEncoding(enc) {
-    return /^(ascii|latin[0-9]+|iso8859[0-9]+|(win|windows|cp)125[0-9])$/.test(standardizeEncodingName(enc));
-  }
-
-  // Returns a decoder for converting a sequence of buffers to text.
-  // decoder.write(buf) returns a string; decoder.end() returns any remaining text.
-  // Characters that span buffers are handled, and a BOM is removed.
-  function getStreamingDecoder(enc) {
-    return iconv.getDecoder(enc);
-  }
-
-  // Ex. convert UTF-8 to utf8
-  function standardizeEncodingName(enc) {
-    return (enc || '').toLowerCase().replace(/[_-]/g, '');
-  }
-
-  // Similar to Buffer#toString(); tries to speed up utf8 conversion in
-  // web browser (when using browserify Buffer shim)
-  function bufferToString(buf, enc, start, end) {
-    if (start >= 0) {
-      buf = buf.slice(start, end);
-    }
-    return decodeString(buf, enc);
-  }
-
-  function getNativeEncoder(enc) {
-    var encoder = null;
-    enc = standardizeEncodingName(enc);
-    if (enc != 'utf8') {
-      // TODO: support more encodings if TextEncoder is available
-      return null;
-    }
-    if (typeof TextEncoder != 'undefined') {
-      encoder = new TextEncoder(enc);
-    }
-    return function(str) {
-      // Convert Uint8Array from encoder to Buffer (fix for issue #216)
-      return encoder ? B.from(encoder.encode(str).buffer) : utils.createBuffer(str, enc);
-    };
-  }
-
-  function encodeString(str, enc) {
-    // TODO: faster ascii encoding?
-    var buf;
-    if (encodingIsUtf8(enc)) {
-      buf = toUtf8(str);
-    } else {
-      buf = iconv.encode(str, enc);
-    }
-    return buf;
-  }
-
-  function getNativeDecoder(enc) {
-    var decoder = null;
-    enc = standardizeEncodingName(enc);
-    if (enc != 'utf8') {
-      // TODO: support more encodings if TextDecoder is available
-      return null;
-    }
-    if (typeof TextDecoder != 'undefined') {
-      decoder = new TextDecoder(enc);
-    }
-    return function(buf) {
-      return decoder ? decoder.decode(buf) : buf.toString(enc);
-    };
-  }
-
-  // @buf a Node Buffer
-  function decodeString(buf, enc) {
-    var str;
-    if (encodingIsUtf8(enc)) {
-      str = fromUtf8(buf);
-    } else {
-      str = iconv.decode(buf, enc);
-    }
-    return str;
-  }
-
-  function encodingIsSupported(raw) {
-    var enc = standardizeEncodingName(raw);
-    return getEncodings().includes(enc);
-  }
-
-  function trimBOM(str) {
-    // remove BOM if present
-    if (str.charCodeAt(0) == 0xfeff) {
-      str = str.substr(1);
-    }
-    return str;
-  }
-
-  function printEncodings() {
-    var encodings = getEncodings().filter(function(name) {
-      // filter out some aliases and non-applicable encodings
-      return !/^(_|cs|internal|ibm|isoir|singlebyte|table|[0-9]|l[0-9]|windows)/.test(name);
-    });
-    encodings.sort();
-    print("Supported encodings:\n" + formatStringsAsGrid(encodings));
-  }
-
-  // Not a general-purpose deep copy function
-  function copyRecord$1(o) {
-    var o2 = {}, key, val;
-    if (!o) return null;
-    for (key in o) {
-      if (o.hasOwnProperty(key)) {
-        val = o[key];
-        if (val == o) {
-          // avoid infinite recursion if val is a circular reference, by copying all properties except key
-          val = utils.extend({}, val);
-          delete val[key];
-        }
-        o2[key] = val && val.constructor === Object ? copyRecord$1(val) : val;
-      }
-    }
-    return o2;
-  }
-
-  function getValueType(val) {
-    var type = null;
-    if (val === null || val === undefined) {
-      // optimization, when scanning columns containing mostly null values
-      type = null;
-    } else if (utils.isString(val)) {
-      type = 'string';
-    } else if (utils.isNumber(val)) {
-      type = 'number';
-    } else if (utils.isBoolean(val)) {
-      type = 'boolean';
-    } else if (utils.isDate(val)) {
-      type = 'date';
-    } else if (utils.isObject(val)) {
-      type = 'object';
-    }
-    return type;
-  }
-
-  // Fill out a data table with undefined values
-  // The undefined members will disappear when records are exported as JSON,
-  // but will show up when fields are listed using Object.keys()
-  function fixInconsistentFields(records) {
-    var fields = findIncompleteFields(records);
-    patchMissingFields(records, fields);
-  }
-
-  function findIncompleteFields(records) {
-    var counts = {},
-        i, j, keys;
-    for (i=0; i<records.length; i++) {
-      keys = Object.keys(records[i] || {});
-      for (j=0; j<keys.length; j++) {
-        counts[keys[j]] = (counts[keys[j]] | 0) + 1;
-      }
-    }
-    return Object.keys(counts).filter(function(k) {return counts[k] < records.length;});
-  }
-
-  function patchMissingFields(records, fields) {
-    var rec, i, j, f;
-    for (i=0; i<records.length; i++) {
-      rec = records[i] || (records[i] = {});
-      for (j=0; j<fields.length; j++) {
-        f = fields[j];
-        if (f in rec === false) {
-          rec[f] = undefined;
-        }
-      }
-    }
-  }
-
-  function fieldListContainsAll(list, fields) {
-    return list.indexOf('*') > -1 || utils.difference(fields, list).length === 0;
-  }
-
-  function getColumnType(key, records) {
-    var type = null,
-        rec;
-    for (var i=0, n=records.length; i<n; i++) {
-      rec = records[i];
-      type = rec ? getValueType(rec[key]) : null;
-      if (type) break;
-    }
-    return type;
-  }
-
-  function deleteFields(table, test) {
-    table.getFields().forEach(function(name) {
-      if (test(name)) {
-        table.deleteField(name);
-      }
-    });
-  }
-
-  function isInvalidFieldName(f) {
-    // Reject empty and all-whitespace strings. TODO: consider other criteria
-    return /^\s*$/.test(f);
-  }
-
-  // Resolve name conflicts in field names by appending numbers
-  // @fields Array of field names
-  // @maxLen (optional) Maximum chars in name
-  //
-  function getUniqFieldNames(fields, maxLen, encoding) {
-    var used = {};
-    return fields.map(function(name) {
-      var i = 0,
-          validName;
-      do {
-        validName = encoding && encoding != 'ascii' ?
-          adjustEncodedFieldName(name, maxLen, i, encoding) :
-          adjustFieldName(name, maxLen, i);
-        i++;
-      } while ((validName in used) ||
-        // don't replace an existing valid field name with a truncated name
-        name != validName && utils.contains(fields, validName));
-      used[validName] = true;
-      return validName;
-    });
-  }
-
-  function getFieldValues(records, field) {
-    return records.map(function(rec) {
-      return rec ? rec[field] : undefined;
-    });
-  }
-
-  function getUniqFieldValues(records, field) {
-    var index = {};
-    var values = [];
-    records.forEach(function(rec) {
-      var val = rec[field];
-      if (val in index === false) {
-        index[val] = true;
-        values.push(val);
-      }
-    });
-    return values;
-  }
-
-  // Truncate and/or uniqify a name (if relevant params are present)
-  function adjustFieldName(name, maxLen, i) {
-    var name2, suff;
-    maxLen = maxLen || 256;
-    if (!i) {
-      name2 = name.substr(0, maxLen);
-    } else {
-      suff = String(i);
-      if (suff.length == 1) {
-        suff = '_' + suff;
-      }
-      name2 = name.substr(0, maxLen - suff.length) + suff;
-    }
-    return name2;
-  }
-
-  // Truncate and/or uniqify a name (if relevant params are present)
-  function adjustEncodedFieldName(name, maxLen, i, encoding) {
-    var suff = i ? String(i) : '';
-    var name2 = name + suff;
-    var buf = encodeString(name2, encoding);
-    if (buf.length > (maxLen || 256)) {
-      name = name.substr(0, name.length - 1);
-      return adjustEncodedFieldName(name, maxLen, i, encoding);
-    }
-    return name2;
-  }
-
-  function applyFieldOrder(arr, option) {
-    if (option == 'ascending') {
-      arr.sort(function(a, b) {
-        return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
-      });
-    }
-    return arr;
-  }
-
-  function getFirstNonEmptyRecord(records) {
-    for (var i=0, n=records ? records.length : 0; i<n; i++) {
-      if (records[i]) return records[i];
-    }
-    return null;
-  }
-
-  function findFieldNames(records, order) {
-    var first = getFirstNonEmptyRecord(records);
-    var names = first ? Object.keys(first) : [];
-    return applyFieldOrder(names, order);
-  }
-
-
-  function parseUnknownType(str) {
-    var val = getInputParser('number')(str);
-    if (val !== null) return val;
-    val = getInputParser('object')(str);
-    if (val !== null) return val;
-    return str;
-  }
-
-  // used by GUI data editing
-  function getInputParser(type) {
-    return inputParsers[type || 'multiple'];
-  }
-
-  var inputParsers = {
-    date: function(raw) {
-      var d = new Date(raw);
-      return isNaN(+d) ? null : d;
-    },
-    string: function(raw) {
-      return raw;
-    },
-    number: function(raw) {
-      var val = Number(raw);
-      if (raw == 'NaN') {
-        val = NaN;
-      } else if (isNaN(val)) {
-        val = null;
-      }
-      return val;
-    },
-    object: function(raw) {
-      var val = null;
-      try {
-        val = JSON.parse(raw);
-      } catch(e) {}
-      return val;
-    },
-    boolean: function(raw) {
-      var val = null;
-      if (raw == 'true') {
-        val = true;
-      } else if (raw == 'false') {
-        val = false;
-      }
-      return val;
-    },
-    multiple: function(raw) {
-      var val = Number(raw);
-      return isNaN(val) ? raw : val;
-    }
-  };
-
-  // Utility functions for both paths and points
-
-  // @shp An element of the layer.shapes array
-  //   (may be null, or, depending on layer type, an array of points or an array of arrays of arc ids)
-  function cloneShape(shp) {
-    if (!shp) return null;
-    return shp.map(function(part) {
-      return part.concat();
-    });
-  }
-
-  function cloneShapes(arr) {
-    return utils.isArray(arr) ? arr.map(cloneShape) : null;
-  }
-
-  function forEachShapePart(paths, cb) {
-    editShapeParts(paths, cb);
-  }
-
-  // Updates shapes array in-place.
-  // editPart: callback function
-  function editShapes(shapes, editPart) {
-    for (var i=0, n=shapes.length; i<n; i++) {
-      shapes[i] = editShapeParts(shapes[i], editPart, i);
-    }
-  }
-
-  // @parts: geometry of a feature (array of paths, array of points or null)
-  // @cb: function(part, i, parts)
-  //    If @cb returns an array, it replaces the existing value
-  //    If @cb returns null, the path is removed from the feature
-  // @shpId: (optional) id of shape
-  //
-  function editShapeParts(parts, cb, shpId) {
-    if (!parts) return null; // null geometry not edited
-    if (!utils.isArray(parts)) error("Expected an array, received:", parts);
-    var nulls = 0,
-        n = parts.length,
-        retn;
-
-    for (var i=0; i<n; i++) {
-      retn = cb(parts[i], i, parts, shpId);
-      if (retn === null) {
-        parts[i] = null;
-      } else if (utils.isArray(retn)) {
-        parts[i] = retn.length > 0 ? retn : null;
-      }
-      if (parts[i] === null) {
-        nulls++;
-      }
-    }
-    if (nulls == n) {
-      return null;
-    } else if (nulls > 0) {
-      return parts.filter(function(part) {return !!part;});
-    } else {
-      return parts;
-    }
-  }
-
-  // Get max number of parts in a single shape from an array of shapes.
-  // Caveat: polygon holes are counted as separate parts.
-  function findMaxPartCount(shapes) {
-    var maxCount = 0, shp;
-    for (var i=0, n=shapes.length; i<n; i++) {
-      shp = shapes[i];
-      if (shp && shp.length > maxCount) {
-        maxCount = shp.length;
-      }
-    }
-    return maxCount;
-  }
-
-  function Transform() {
-    this.mx = this.my = 1;
-    this.bx = this.by = 0;
-  }
-
-  Transform.prototype.isNull = function() {
-    return !this.mx || !this.my || isNaN(this.bx) || isNaN(this.by);
-  };
-
-  Transform.prototype.invert = function() {
-    var inv = new Transform();
-    inv.mx = 1 / this.mx;
-    inv.my = 1 / this.my;
-    //inv.bx = -this.bx * inv.mx;
-    //inv.by = -this.by * inv.my;
-    inv.bx = -this.bx / this.mx;
-    inv.by = -this.by / this.my;
-    return inv;
-  };
-
-
-  Transform.prototype.transform = function(x, y, xy) {
-    xy = xy || [];
-    xy[0] = x * this.mx + this.bx;
-    xy[1] = y * this.my + this.by;
-    return xy;
-  };
-
-  Transform.prototype.toString = function() {
-    return JSON.stringify(Object.assign({}, this));
-  };
-
-  function Bounds() {
-    if (arguments.length > 0) {
-      this.setBounds.apply(this, arguments);
-    }
-  }
-
-  Bounds.from = function() {
-    var b = new Bounds();
-    return b.setBounds.apply(b, arguments);
-  };
-
-  Bounds.prototype.toString = function() {
-    return JSON.stringify({
-      xmin: this.xmin,
-      xmax: this.xmax,
-      ymin: this.ymin,
-      ymax: this.ymax
-    });
-  };
-
-  Bounds.prototype.toArray = function() {
-    return this.hasBounds() ? [this.xmin, this.ymin, this.xmax, this.ymax] : [];
-  };
-
-  Bounds.prototype.hasBounds = function() {
-    return this.xmin <= this.xmax && this.ymin <= this.ymax;
-  };
-
-  Bounds.prototype.sameBounds =
-  Bounds.prototype.equals = function(bb) {
-    return bb && this.xmin === bb.xmin && this.xmax === bb.xmax &&
-      this.ymin === bb.ymin && this.ymax === bb.ymax;
-  };
-
-  Bounds.prototype.width = function() {
-    return (this.xmax - this.xmin) || 0;
-  };
-
-  Bounds.prototype.height = function() {
-    return (this.ymax - this.ymin) || 0;
-  };
-
-  Bounds.prototype.area = function() {
-    return this.width() * this.height() || 0;
-  };
-
-  Bounds.prototype.empty = function() {
-    this.xmin = this.ymin = this.xmax = this.ymax = void 0;
-    return this;
-  };
-
-  Bounds.prototype.setBounds = function(a, b, c, d) {
-    if (arguments.length == 1) {
-      // assume first arg is a Bounds or array
-      if (utils.isArrayLike(a)) {
-        b = a[1];
-        c = a[2];
-        d = a[3];
-        a = a[0];
-      } else {
-        b = a.ymin;
-        c = a.xmax;
-        d = a.ymax;
-        a = a.xmin;
-      }
-    }
-
-    this.xmin = a;
-    this.ymin = b;
-    this.xmax = c;
-    this.ymax = d;
-    if (a > c || b > d) this.update();
-    return this;
-  };
-
-
-  Bounds.prototype.centerX = function() {
-    var x = (this.xmin + this.xmax) * 0.5;
-    return x;
-  };
-
-  Bounds.prototype.centerY = function() {
-    var y = (this.ymax + this.ymin) * 0.5;
-    return y;
-  };
-
-  Bounds.prototype.containsPoint = function(x, y) {
-    if (x >= this.xmin && x <= this.xmax &&
-      y <= this.ymax && y >= this.ymin) {
-      return true;
-    }
-    return false;
-  };
-
-  // intended to speed up slightly bubble symbol detection; could use intersects() instead
-  // TODO: fix false positive where circle is just outside a corner of the box
-  Bounds.prototype.containsBufferedPoint =
-  Bounds.prototype.containsCircle = function(x, y, buf) {
-    if ( x + buf > this.xmin && x - buf < this.xmax ) {
-      if ( y - buf < this.ymax && y + buf > this.ymin ) {
-        return true;
-      }
-    }
-    return false;
-  };
-
-  Bounds.prototype.intersects = function(bb) {
-    if (bb.xmin <= this.xmax && bb.xmax >= this.xmin &&
-      bb.ymax >= this.ymin && bb.ymin <= this.ymax) {
-      return true;
-    }
-    return false;
-  };
-
-  Bounds.prototype.contains = function(bb) {
-    if (bb.xmin >= this.xmin && bb.ymax <= this.ymax &&
-      bb.xmax <= this.xmax && bb.ymin >= this.ymin) {
-      return true;
-    }
-    return false;
-  };
-
-  Bounds.prototype.shift = function(x, y) {
-    this.setBounds(this.xmin + x,
-      this.ymin + y, this.xmax + x, this.ymax + y);
-  };
-
-  Bounds.prototype.padBounds = function(a, b, c, d) {
-    this.xmin -= a;
-    this.ymin -= b;
-    this.xmax += c;
-    this.ymax += d;
-  };
-
-  // Rescale the bounding box by a fraction. TODO: implement focus.
-  // @param {number} pct Fraction of original extents
-  // @param {number} pctY Optional amount to scale Y
-  //
-  Bounds.prototype.scale = function(pct, pctY) { /*, focusX, focusY*/
-    var halfWidth = (this.xmax - this.xmin) * 0.5;
-    var halfHeight = (this.ymax - this.ymin) * 0.5;
-    var kx = pct - 1;
-    var ky = pctY === undefined ? kx : pctY - 1;
-    this.xmin -= halfWidth * kx;
-    this.ymin -= halfHeight * ky;
-    this.xmax += halfWidth * kx;
-    this.ymax += halfHeight * ky;
-    return this;
-  };
-
-  // Return a bounding box with the same extent as this one.
-  Bounds.prototype.cloneBounds = // alias so child classes can override clone()
-  Bounds.prototype.clone = function() {
-    return new Bounds(this.xmin, this.ymin, this.xmax, this.ymax);
-  };
-
-  Bounds.prototype.clearBounds = function() {
-    this.setBounds(new Bounds());
-  };
-
-  Bounds.prototype.mergePoint = function(x, y) {
-    if (this.xmin === void 0) {
-      this.setBounds(x, y, x, y);
-    } else {
-      // this works even if x,y are NaN
-      if (x < this.xmin)  this.xmin = x;
-      else if (x > this.xmax)  this.xmax = x;
-
-      if (y < this.ymin) this.ymin = y;
-      else if (y > this.ymax) this.ymax = y;
-    }
-  };
-
-  // expands either x or y dimension to match @aspect (width/height ratio)
-  // @focusX, @focusY (optional): expansion focus, as a fraction of width and height
-  Bounds.prototype.fillOut = function(aspect, focusX, focusY) {
-    if (arguments.length < 3) {
-      focusX = 0.5;
-      focusY = 0.5;
-    }
-    var w = this.width(),
-        h = this.height(),
-        currAspect = w / h,
-        pad;
-    if (isNaN(aspect) || aspect <= 0) {
-      // error condition; don't pad
-    } else if (currAspect < aspect) { // fill out x dimension
-      pad = h * aspect - w;
-      this.xmin -= (1 - focusX) * pad;
-      this.xmax += focusX * pad;
-    } else {
-      pad = w / aspect - h;
-      this.ymin -= (1 - focusY) * pad;
-      this.ymax += focusY * pad;
-    }
-    return this;
-  };
-
-  Bounds.prototype.update = function() {
-    var tmp;
-    if (this.xmin > this.xmax) {
-      tmp = this.xmin;
-      this.xmin = this.xmax;
-      this.xmax = tmp;
-    }
-    if (this.ymin > this.ymax) {
-      tmp = this.ymin;
-      this.ymin = this.ymax;
-      this.ymax = tmp;
-    }
-  };
-
-  Bounds.prototype.transform = function(t) {
-    this.xmin = this.xmin * t.mx + t.bx;
-    this.xmax = this.xmax * t.mx + t.bx;
-    this.ymin = this.ymin * t.my + t.by;
-    this.ymax = this.ymax * t.my + t.by;
-    this.update();
-    return this;
-  };
-
-  // Returns a Transform object for mapping this onto Bounds @b2
-  // @flipY (optional) Flip y-axis coords, for converting to/from pixel coords
-  //
-  Bounds.prototype.getTransform = function(b2, flipY) {
-    var t = new Transform();
-    t.mx = b2.width() / this.width() || 1; // TODO: better handling of 0 w,h
-    t.bx = b2.xmin - t.mx * this.xmin;
-    if (flipY) {
-      t.my = -b2.height() / this.height() || 1;
-      t.by = b2.ymax - t.my * this.ymin;
-    } else {
-      t.my = b2.height() / this.height() || 1;
-      t.by = b2.ymin - t.my * this.ymin;
-    }
-    return t;
-  };
-
-  Bounds.prototype.mergeCircle = function(x, y, r) {
-    if (r < 0) r = -r;
-    this.mergeBounds([x - r, y - r, x + r, y + r]);
-  };
-
-  Bounds.prototype.mergeBounds = function(bb) {
-    var a, b, c, d;
-    if (bb instanceof Bounds) {
-      a = bb.xmin;
-      b = bb.ymin;
-      c = bb.xmax;
-      d = bb.ymax;
-    } else if (arguments.length == 4) {
-      a = arguments[0];
-      b = arguments[1];
-      c = arguments[2];
-      d = arguments[3];
-    } else if (bb.length == 4) {
-      // assume array: [xmin, ymin, xmax, ymax]
-      a = bb[0];
-      b = bb[1];
-      c = bb[2];
-      d = bb[3];
-    } else {
-      error("Bounds#mergeBounds() invalid argument:", bb);
-    }
-
-    if (this.xmin === void 0) {
-      this.setBounds(a, b, c, d);
-    } else {
-      if (a < this.xmin) this.xmin = a;
-      if (b < this.ymin) this.ymin = b;
-      if (c > this.xmax) this.xmax = c;
-      if (d > this.ymax) this.ymax = d;
-    }
-    return this;
-  };
-
-  // Low-level access to raster grid samples, shared by the code that reads or
-  // rewrites pixels (-proj, -blur, clipping and preview rendering). These used
-  // to be reimplemented per module, which let the nodata and coverage rules
-  // drift apart.
-  //
-  // Samples are band-interleaved: pixel i occupies
-  // samples[i * bands] through samples[i * bands + bands - 1].
-
-  // A pixel is nodata only when every one of its color-carrying bands matches
-  // the nodata value. An alpha band is ignored, so a transparent pixel whose
-  // color channels hold real values is still treated as data.
-  function samplesAreNodataAtOffset(samples, offset, bands, nodata) {
-    var n = Math.min(bands, 3);
-    if (nodata === null || nodata === undefined) return false;
-    for (var i = 0; i < n; i++) {
-      if (samples[offset + i] != nodata) return false;
-    }
-    return true;
-  }
-
-  function rasterPixelIsNodata(grid, pixelId) {
-    return samplesAreNodataAtOffset(grid.samples, pixelId * grid.bands, grid.bands, grid.nodata);
-  }
-
-  // The coverage mask is set by reprojection to record which output pixels
-  // received source content, independently of the nodata fill value.
-  function rasterPixelIsCovered(grid, pixelId) {
-    return !grid.coverage || grid.coverage[pixelId] > 0;
-  }
-
-  function rasterPixelIsValid(grid, pixelId) {
-    return rasterPixelIsCovered(grid, pixelId) && !rasterPixelIsNodata(grid, pixelId);
-  }
-
-  // False when every pixel is known to be valid, so callers can skip
-  // per-pixel validity testing entirely.
-  function rasterGridHasInvalidPixels(grid) {
-    return !!grid.coverage || grid.nodata !== null && grid.nodata !== undefined;
-  }
-
-  // One byte per pixel, so that code sampling a grid repeatedly can test
-  // validity with a single lookup instead of re-reading every band. Returns
-  // the coverage mask itself when there is no nodata value to fold in, and
-  // null when every pixel is valid.
-  function getRasterValidityMask(grid) {
-    var n = grid.width * grid.height;
-    var mask, i;
-    if (grid.nodata === null || grid.nodata === undefined) return grid.coverage || null;
-    mask = new Uint8Array(n);
-    for (i = 0; i < n; i++) {
-      mask[i] = rasterPixelIsValid(grid, i) ? 1 : 0;
-    }
-    return mask;
-  }
-
-  function rasterSamplesAreFloat(samples) {
-    return samples instanceof Float32Array || samples instanceof Float64Array;
-  }
-
-  // Value range of a sample array, used to clamp computed values before
-  // writing them back into an integer array.
-  function getSampleArrayRange(samples) {
-    if (samples instanceof Uint8Array || samples instanceof Uint8ClampedArray) return {min: 0, max: 255};
-    if (samples instanceof Int8Array) return {min: -128, max: 127};
-    if (samples instanceof Uint16Array) return {min: 0, max: 65535};
-    if (samples instanceof Int16Array) return {min: -32768, max: 32767};
-    if (samples instanceof Uint32Array) return {min: 0, max: 4294967295};
-    if (samples instanceof Int32Array) return {min: -2147483648, max: 2147483647};
-    return {min: -Infinity, max: Infinity};
-  }
-
-  function runningInBrowser() {
-    return typeof window !== 'undefined' && typeof window.document !== 'undefined';
-  }
-
-  // Lightweight hooks that make in-place mutations observable to GUI undo.
-  // Normal CLI runs leave activeTransaction unset, so capture hooks are no-ops.
-
-  var activeTransaction = null;
-  var nextUndoId = 1;
-  var objectMetadata = new WeakMap();
-
-  function getActiveUndoTransaction() {
-    return activeTransaction;
-  }
-
-  function setActiveUndoTransaction(tx) {
-    activeTransaction = tx || null;
-  }
-
-  function clearActiveUndoTransaction(tx) {
-    if (!tx || activeTransaction == tx) {
-      activeTransaction = null;
-    }
-  }
-
-  function withActiveUndoTransaction(tx, cb) {
-    var prev = activeTransaction;
-    activeTransaction = tx || null;
-    try {
-      return cb();
-    } finally {
-      activeTransaction = prev;
-    }
-  }
-
-  function getUndoMetadata(obj) {
-    var meta = objectMetadata.get(obj);
-    if (!meta) {
-      meta = {
-        id: 'u' + nextUndoId++,
-        revision: 0
-      };
-      objectMetadata.set(obj, meta);
-    }
-    return meta;
-  }
-
-  function getUndoId(obj) {
-    return getUndoMetadata(obj).id;
-  }
-
-  function getUndoRevision(obj) {
-    return getUndoMetadata(obj).revision;
-  }
-
-  function markChanged(obj, detail) {
-    var tx = activeTransaction;
-    var meta = objectMetadata.get(obj);
-    if (!tx && !meta) return 0;
-    if (!meta) meta = getUndoMetadata(obj);
-    meta.revision++;
-    notifyTransaction(tx, 'markChanged', obj, detail);
-    return meta.revision;
-  }
-
-  function noteTableWillChange(table, detail) {
-    notifyTransaction(activeTransaction, 'captureTableBefore', table, detail || {});
-  }
-
-  function noteTableRecordsWillChange(table, ids, detail) {
-    notifyTransaction(activeTransaction, 'captureTableRecordsBefore', table, Object.assign({
-      ids: normalizeIds(ids)
-    }, detail || {}));
-  }
-
-  function noteTableFieldsWillChange(table, fields, detail) {
-    notifyTransaction(activeTransaction, 'captureTableFieldsBefore', table, Object.assign({
-      fields: normalizeStrings(fields)
-    }, detail || {}));
-  }
-
-  function noteTableOrderWillChange(table, ids, detail) {
-    notifyTransaction(activeTransaction, 'captureTableOrderBefore', table, Object.assign({
-      ids: normalizeIds(ids)
-    }, detail || {}));
-  }
-
-  function noteTableSchemaWillChange(table, detail) {
-    notifyTransaction(activeTransaction, 'captureTableSchemaBefore', table, detail || {});
-  }
-
-  function markTableChanged(table, detail) {
-    return markChanged(table, Object.assign({type: 'table'}, detail || {}));
-  }
-
-  function markTableRecordsChanged(table, ids, detail) {
-    return markTableChanged(table, Object.assign({
-      granularity: 'records',
-      ids: normalizeIds(ids)
-    }, detail || {}));
-  }
-
-  function markTableFieldsChanged(table, fields, detail) {
-    return markTableChanged(table, Object.assign({
-      granularity: 'fields',
-      fields: normalizeStrings(fields)
-    }, detail || {}));
-  }
-
-  function markTableSchemaChanged(table, detail) {
-    return markTableChanged(table, Object.assign({
-      granularity: 'schema'
-    }, detail || {}));
-  }
-
-  function markTableOrderChanged(table, ids, detail) {
-    return markTableChanged(table, Object.assign({
-      granularity: 'order',
-      ids: normalizeIds(ids)
-    }, detail || {}));
-  }
-
-  function noteArcsWillChange(arcs, detail) {
-    notifyTransaction(activeTransaction, 'captureArcsBefore', arcs, detail || {});
-  }
-
-  function noteArcsWillAppend(arcs, detail) {
-    notifyTransaction(activeTransaction, 'captureArcsAppendBefore', arcs, detail || {});
-  }
-
-  function noteArcsSimplificationWillChange$1(arcs, detail) {
-    notifyTransaction(activeTransaction, 'captureArcsSimplificationBefore', arcs, detail || {});
-  }
-
-  function markArcsChanged(arcs, detail) {
-    return markChanged(arcs, Object.assign({type: 'arcs'}, detail || {}));
-  }
-
-  function markArcsSimplificationChanged$1(arcs, detail) {
-    return markArcsChanged(arcs, Object.assign({granularity: 'simplification'}, detail || {}));
-  }
-
-  function noteCatalogWillChange(catalog, detail) {
-    notifyTransaction(activeTransaction, 'captureCatalogBefore', catalog, detail || {});
-  }
-
-  function markCatalogChanged(catalog, detail) {
-    return markChanged(catalog, Object.assign({type: 'catalog'}, detail || {}));
-  }
-
-  function noteDatasetWillChange(dataset, detail) {
-    notifyTransaction(activeTransaction, 'captureDatasetBefore', dataset, detail || {});
-  }
-
-  function noteDatasetInfoWillChange(dataset, detail) {
-    notifyTransaction(activeTransaction, 'captureDatasetInfoBefore', dataset, detail || {});
-  }
-
-  function markDatasetChanged(dataset, detail) {
-    return markChanged(dataset, Object.assign({type: 'dataset'}, detail || {}));
-  }
-
-  function markDatasetInfoChanged(dataset, detail) {
-    return markDatasetChanged(dataset, Object.assign({granularity: 'info'}, detail || {}));
-  }
-
-  function noteLayerWillChange(layer, detail) {
-    notifyTransaction(activeTransaction, 'captureLayerBefore', layer, detail || {});
-  }
-
-  function noteLayerMetadataWillChange(layer, detail) {
-    notifyTransaction(activeTransaction, 'captureLayerMetadataBefore', layer, detail || {});
-  }
-
-  function noteLayerOrderWillChange(layer, ids, detail) {
-    notifyTransaction(activeTransaction, 'captureLayerOrderBefore', layer, Object.assign({
-      ids: normalizeIds(ids)
-    }, detail || {}));
-  }
-
-  function markLayerChanged(layer, detail) {
-    return markChanged(layer, Object.assign({type: 'layer'}, detail || {}));
-  }
-
-  function markLayerMetadataChanged(layer, detail) {
-    return markLayerChanged(layer, Object.assign({granularity: 'metadata'}, detail || {}));
-  }
-
-  function markLayerOrderChanged(layer, ids, detail) {
-    return markLayerChanged(layer, Object.assign({
-      granularity: 'order',
-      ids: normalizeIds(ids)
-    }, detail || {}));
-  }
-
-  function notifyTransaction(tx, method, obj, detail) {
-    if (tx && typeof tx[method] == 'function') {
-      tx[method](obj, detail || {});
-    }
-  }
-
-  function normalizeIds(ids) {
-    if (ids == null) return [];
-    return Array.isArray(ids) ? ids.slice() : [ids];
-  }
-
-  function normalizeStrings(arr) {
-    if (arr == null) return [];
-    return Array.isArray(arr) ? arr.slice() : [arr];
-  }
-
-  var DEFAULT_MAX_PREVIEW_PIXELS = 4e6;
-  var MAX_EXACT_AVERAGE_PIXELS = 256;
-  var MAX_APPROX_AVERAGE_STEPS = 16;
-
-  function getRasterGrid(raster) {
-    return raster && (raster.grid || raster);
-  }
-
-  function getRasterView(raster) {
-    return raster && (raster.view || raster);
-  }
-
-  function getRasterPreview(raster) {
-    var view = getRasterView(raster);
-    return view && (view.preview || raster.preview);
-  }
-
-  function getRasterBBox(raster) {
-    var grid = getRasterGrid(raster);
-    return grid && grid.bbox || raster && raster.bbox || null;
-  }
-
-  function getRasterTransform(raster) {
-    var grid = getRasterGrid(raster);
-    return grid && grid.transform || raster && raster.transform || null;
-  }
-
-  function getRasterWidth(raster) {
-    var grid = getRasterGrid(raster);
-    return grid && grid.width || 0;
-  }
-
-  function getRasterHeight(raster) {
-    var grid = getRasterGrid(raster);
-    return grid && grid.height || 0;
-  }
-
-  function getRasterBandCount(raster) {
-    var grid = getRasterGrid(raster);
-    return grid && grid.bands || 0;
-  }
-
-  function getRasterPixelType(raster) {
-    var grid = getRasterGrid(raster);
-    return grid && grid.pixelType || null;
-  }
-
-  function copyRasterData(raster) {
-    var copy = utils.extend({}, raster);
-    if (raster.grid) {
-      copy.grid = copyRasterGrid(raster.grid);
-    }
-    if (raster.view) {
-      copy.view = copyRasterView(raster.view);
-    }
-    if (raster.derivation) {
-      copy.derivation = utils.extend({}, raster.derivation);
-      if (raster.derivation.bands) copy.derivation.bands = copyObjectOrArray(raster.derivation.bands);
-    }
-    if (raster.source) copy.source = utils.extend({}, raster.source);
-
-    // Back-compat for the first raster model.
-    if (raster.pixels) copy.pixels = copyTypedArray(raster.pixels);
-    if (raster.preview) copy.preview = copyRasterPreview(raster.preview);
-    if (raster.bbox) copy.bbox = raster.bbox.concat();
-    if (raster.transform) copy.transform = copyObjectOrArray(raster.transform);
-    return copy;
-  }
-
-  function copyRasterGrid(grid) {
-    var copy = utils.extend({}, grid);
-    if (grid.samples) copy.samples = copyTypedArray(grid.samples);
-    // The coverage mask is mutated in place by the reprojection code, so an
-    // undo snapshot that shared it would track later edits.
-    if (grid.coverage) copy.coverage = copyTypedArray(grid.coverage);
-    if (grid.sampleBands) copy.sampleBands = grid.sampleBands.concat();
-    if (grid.bbox) copy.bbox = grid.bbox.concat();
-    if (grid.transform) copy.transform = copyObjectOrArray(grid.transform);
-    return copy;
-  }
-
-  function copyRasterView(view) {
-    var copy = utils.extend({}, view);
-    if (view.recipe) copy.recipe = copyObjectOrArray(view.recipe);
-    if (view.preview) copy.preview = copyRasterPreview(view.preview);
-    if (view.scalingStats) copy.scalingStats = copyObjectOrArray(view.scalingStats);
-    return copy;
-  }
-
-  function copyRasterPreview(preview) {
-    var copy = utils.extend({}, preview);
-    delete copy.canvas;
-    if (preview.pixels) copy.pixels = copyTypedArray(preview.pixels);
-    return copy;
-  }
-
-  function copyTypedArray(arr) {
-    if (Array.isArray(arr)) return arr.map(copyTypedArray);
-    return arr && arr.slice ? arr.slice() : arr;
-  }
-
-  function createRasterPreview(raster, opts) {
-    opts = opts || {};
-    var grid = getRasterGrid(raster);
-    var recipe = getRasterViewRecipe(grid, raster.view && raster.view.recipe, opts);
-    var stats = getRasterViewScalingStats(raster, recipe);
-    var maxPixels = opts.maxPixels || opts.raster_max_pixels || opts.rasterMaxPixels || DEFAULT_MAX_PREVIEW_PIXELS;
-    var scale = Math.min(1, Math.sqrt(maxPixels / (grid.width * grid.height)));
-    var width = Math.max(1, Math.round(grid.width * scale));
-    var height = Math.max(1, Math.round(grid.height * scale));
-    return renderRasterPreview(grid, recipe, width, height, stats);
-  }
-
-  function getRasterViewRecipe(grid, recipeArg, opts) {
-    var recipe = Object.assign({}, recipeArg || {});
-    var scaling = opts && opts.scaling || recipe.scaling || getDefaultRasterScaling(grid, recipe);
-    var scaleRange = opts && (opts.scale_range || opts.scaleRange) || recipe.scaleRange;
-    var percentileRange = opts && (opts.percentile_range || opts.percentileRange) || recipe.percentileRange;
-    if (scaling != 'none' && scaling != 'minmax' && scaling != 'percentile') {
-      stop('Unsupported raster scaling method:', scaling);
-    }
-    return Object.assign(recipe, {
-      type: recipe.type || (grid.bands >= 3 ? 'rgb' : 'gray'),
-      bands: recipe.bands || grid.sampleBands || null,
-      scaling: scaling,
-      scaleRange: parseRangeOption(scaleRange, [0, 100], 'scale-range'),
-      percentileRange: parseRangeOption(percentileRange, [2, 98], 'percentile-range')
-    });
-  }
-
-  function renderRasterPreview(grid, recipe, width, height, statsArg) {
-    recipe = getRasterViewRecipe(grid, recipe);
-    if (useFastRawEightBitRendering(grid, recipe)) {
-      return renderRawEightBitPreview(grid, width, height, null);
-    }
-    return renderRasterGridPreview(grid, recipe, width, height, statsArg || getRasterScalingStats(grid, recipe), null);
-  }
-
-  function renderRasterViewportPreview(grid, recipe, bbox, width, height, statsArg) {
-    recipe = getRasterViewRecipe(grid, recipe);
-    if (!intersectBboxes(grid.bbox, bbox)) return null;
-    if (useFastRawEightBitRendering(grid, recipe)) {
-      return Object.assign(renderRawEightBitPreview(grid, width, height, bbox), {
-        bbox: bbox.concat()
-      });
-    }
-    return Object.assign(renderRasterGridPreview(grid, recipe, width, height, statsArg || getRasterScalingStats(grid, recipe), bbox), {
-      bbox: bbox.concat()
-    });
-  }
-
-  function renderRasterExportPreview(raster, bbox, width, height, opts) {
-    var grid = getRasterGrid(raster);
-    var recipe = getRasterViewRecipe(grid, raster.view && raster.view.recipe, opts);
-    var stats = getRasterViewScalingStats(raster, recipe);
-    return renderRasterGridPreview(grid, recipe, width, height, stats, bbox, getRasterExportResamplingMethod(grid, bbox, width, height));
-  }
-
-  function getRasterScalingStats(grid, recipe) {
-    recipe = getRasterViewRecipe(grid, recipe);
-    return getScalingStats(grid.samples, grid.bands, grid.nodata, recipe);
-  }
-
-  function getRasterViewScalingStats(raster, recipeArg) {
-    var grid = getRasterGrid(raster);
-    var view = getRasterView(raster);
-    var recipe = getRasterViewRecipe(grid, recipeArg || view && view.recipe);
-    var key, cached, stats;
-    if (recipe.scaling == 'none') return null;
-    key = getRasterScalingStatsKey(grid, recipe);
-    cached = view && view.scalingStats;
-    if (cached && cached.key == key) return cached.stats;
-    stats = getRasterScalingStats(grid, recipe);
-    if (view) {
-      view.scalingStats = {
-        key: key,
-        stats: stats
-      };
-    }
-    return stats;
-  }
-
-  // Returns the band values and display color of the pixel containing a map
-  // coordinate, for readouts like the GUI's right-click menu, or null if the point
-  // falls outside the raster. Rotated grids are not supported, because pixels can
-  // only be located through the axis-aligned bbox.
-  // x, y: a point in the coordinate system of the raster's bbox
-  function getRasterPixelAtMapXY(raster, x, y) {
-    var grid = getRasterGrid(raster);
-    var col, row, pixelId, offset, values, valid, isColor, band;
-    if (!grid || !grid.samples || !grid.bbox || rasterGridIsRotated(grid)) return null;
-    col = Math.floor(mapXToRasterPixel(grid, x));
-    row = Math.floor(mapYToRasterPixel(grid, y));
-    if (col < 0 || col >= grid.width || row < 0 || row >= grid.height) return null;
-    pixelId = row * grid.width + col;
-    offset = pixelId * grid.bands;
-    values = [];
-    for (band = 0; band < grid.bands; band++) {
-      values.push(grid.samples[offset + band]);
-    }
-    // The renderer reads interleaved bands in display order, so three or more
-    // bands are shown as R, G, B and (if present) alpha.
-    isColor = grid.bands >= 3;
-    valid = rasterPixelIsValid(grid, pixelId);
-    return {
-      col: col,
-      row: row,
-      values: values,
-      isColor: isColor,
-      isFloat: rasterSamplesAreFloat(grid.samples),
-      valid: valid,
-      // Only color images get a color, so that inspecting a measurement raster
-      // does not trigger a scaling-stats scan of the whole grid.
-      // [r, g, b, a] in the 0-255 range, for formatColor() or a canvas.
-      color: isColor && valid ? getRasterPixelDisplayColor(raster, grid, pixelId) : null
-    };
-  }
-
-  // Returns [r, g, b, a] in the 0-255 range, using the same recipe and scaling as
-  // the preview renderer, so that a readout agrees with how the pixel is drawn.
-  function getRasterPixelDisplayColor(raster, grid, pixelId) {
-    var view = getRasterView(raster);
-    var recipe = getRasterViewRecipe(grid, view && view.recipe);
-    var stats = getRasterViewScalingStats(raster, recipe);
-    var sourceRange = recipe.scaling == 'none' ? getPixelTypeRange(grid.pixelType) : null;
-    var displayRange = getDisplayRange$1(recipe.scaleRange);
-    var offset = pixelId * grid.bands;
-    var color = [0, 1, 2].map(function(band) {
-      return scaleSample(grid.samples[offset + band], stats && stats[band], sourceRange, displayRange);
-    });
-    color.push(grid.bands >= 4 ?
-      scaleSample(grid.samples[offset + 3], stats && stats[3], sourceRange, [0, 255]) : 255);
-    return color;
-  }
-
-  // Float samples print with binary noise at full precision (a Float32 holding
-  // 1234.5678 prints as 1234.5677490234375), so they are rounded to the number of
-  // digits that the type can actually represent.
-  function formatRasterSampleValue(val, isFloat) {
-    if (val === null || val === undefined) return '';
-    if (!isFinite(val)) return String(val); // NaN, Infinity
-    if (!isFloat) return String(val);
-    return String(+val.toPrecision(7));
-  }
-
-  function renderRasterGridPreview(grid, recipe, width, height, statsArg, sourceBbox, resamplingMethod) {
-    var samples = grid.samples;
-    var bands = grid.bands;
-    var noData = grid.nodata;
-    var pixels = new Uint8ClampedArray(width * height * 4);
-    var stats = statsArg || getScalingStats(samples, bands, noData, recipe);
-    var sourceRange = recipe.scaling == 'none' ? getPixelTypeRange(grid.pixelType) : null;
-    var displayRange = getDisplayRange$1(recipe.scaleRange);
-    var src, dest, val, isNoData, j, sample;
-    for (var y = 0; y < height; y++) {
-      for (var x = 0; x < width; x++) {
-        dest = (y * width + x) * 4;
-        if (resamplingMethod) {
-          sample = getResampledRasterSample(grid, sourceBbox, x, y, width, height, resamplingMethod);
-          isNoData = !sample.valid;
-        } else {
-          src = getPreviewSourceOffset(grid, sourceBbox, x, y, width, height, bands);
-          sample = null;
-          isNoData = noData !== null && noData !== undefined && allSamplesAreNoData(samples, src, bands, noData);
-        }
-        if (bands == 1) {
-          val = scaleSample(sample ? sample.values[0] : samples[src], stats && stats[0], sourceRange, displayRange);
-          pixels[dest] = val;
-          pixels[dest + 1] = val;
-          pixels[dest + 2] = val;
-          pixels[dest + 3] = isNoData ? 0 : 255;
-        } else {
-          for (j = 0; j < 3; j++) {
-            pixels[dest + j] = scaleSample(sample ? sample.values[j] : samples[src + j], stats && stats[j], sourceRange, displayRange);
-          }
-          pixels[dest + 3] = isNoData ? 0 : bands >= 4 ? scaleSample(sample ? sample.values[3] : samples[src + 3], stats && stats[3], sourceRange, [0, 255]) : 255;
-        }
-      }
-    }
-    return {
-      width: width,
-      height: height,
-      bands: 4,
-      pixelType: 'uint8',
-      colorModel: 'rgba',
-      pixels: pixels
-    };
-  }
-
-  function getRasterExportResamplingMethod(grid, bbox, width, height) {
-    var srcSize = getRasterSourcePixelSize$1(grid, bbox);
-    return width < srcSize.width || height < srcSize.height ? 'average' : 'bilinear';
-  }
-
-  function getRasterSourcePixelSize$1(grid, bbox) {
-    var rb = grid.bbox;
-    return {
-      width: Math.abs((bbox[2] - bbox[0]) / (rb[2] - rb[0]) * grid.width),
-      height: Math.abs((bbox[3] - bbox[1]) / (rb[3] - rb[1]) * grid.height)
-    };
-  }
-
-  function getResampledRasterSample(grid, bbox, x, y, width, height, method) {
-    return method == 'average' ?
-      getAverageRasterSample(grid, bbox, x, y, width, height) :
-      getBilinearRasterSample(grid, bbox, x, y, width, height);
-  }
-
-  function getAverageRasterSample(grid, bbox, x, y, width, height) {
-    var bounds = getRasterSourcePixelBounds(grid, bbox, x, y, width, height);
-    if (getSourcePixelBoundsArea(bounds) > MAX_EXACT_AVERAGE_PIXELS) {
-      return getApproxAverageRasterSample(grid, bounds);
-    }
-    var samples = grid.samples;
-    var bands = grid.bands;
-    var values = new Array(bands).fill(0);
-    var total = 0;
-    var src, weight;
-    var x0 = Math.max(0, Math.floor(bounds.x0));
-    var x1 = Math.min(grid.width, Math.ceil(bounds.x1));
-    var y0 = Math.max(0, Math.floor(bounds.y0));
-    var y1 = Math.min(grid.height, Math.ceil(bounds.y1));
-    for (var sy = y0; sy < y1; sy++) {
-      for (var sx = x0; sx < x1; sx++) {
-        weight = getIntervalOverlap(bounds.x0, bounds.x1, sx, sx + 1) *
-          getIntervalOverlap(bounds.y0, bounds.y1, sy, sy + 1);
-        if (weight <= 0) continue;
-        src = (sy * grid.width + sx) * bands;
-        if (sampleIsNoData(samples, src, bands, grid.nodata)) continue;
-        for (var band = 0; band < bands; band++) {
-          values[band] += samples[src + band] * weight;
-        }
-        total += weight;
-      }
-    }
-    if (total <= 0) return {valid: false, values: values};
-    for (var i = 0; i < bands; i++) values[i] /= total;
-    return {valid: true, values: values};
-  }
-
-  function getApproxAverageRasterSample(grid, bounds) {
-    var samples = grid.samples;
-    var bands = grid.bands;
-    var values = new Array(bands).fill(0);
-    var xSteps = Math.min(MAX_APPROX_AVERAGE_STEPS, Math.max(1, Math.ceil(Math.abs(bounds.x1 - bounds.x0))));
-    var ySteps = Math.min(MAX_APPROX_AVERAGE_STEPS, Math.max(1, Math.ceil(Math.abs(bounds.y1 - bounds.y0))));
-    var count = 0;
-    var sx, sy, src;
-    for (var y = 0; y < ySteps; y++) {
-      for (var x = 0; x < xSteps; x++) {
-        sx = Math.max(0, Math.min(grid.width - 1, Math.floor(bounds.x0 + (x + 0.5) / xSteps * (bounds.x1 - bounds.x0))));
-        sy = Math.max(0, Math.min(grid.height - 1, Math.floor(bounds.y0 + (y + 0.5) / ySteps * (bounds.y1 - bounds.y0))));
-        src = (sy * grid.width + sx) * bands;
-        if (sampleIsNoData(samples, src, bands, grid.nodata)) continue;
-        for (var band = 0; band < bands; band++) {
-          values[band] += samples[src + band];
-        }
-        count++;
-      }
-    }
-    if (count === 0) return {valid: false, values: values};
-    for (var i = 0; i < bands; i++) values[i] /= count;
-    return {valid: true, values: values};
-  }
-
-  function getBilinearRasterSample(grid, bbox, x, y, width, height) {
-    var p = getRasterSourcePixelCenter(grid, bbox, x, y, width, height);
-    var x0 = Math.max(0, Math.min(grid.width - 1, Math.floor(p.x)));
-    var y0 = Math.max(0, Math.min(grid.height - 1, Math.floor(p.y)));
-    var x1 = Math.max(0, Math.min(grid.width - 1, x0 + 1));
-    var y1 = Math.max(0, Math.min(grid.height - 1, y0 + 1));
-    var tx = Math.max(0, Math.min(1, p.x - x0));
-    var ty = Math.max(0, Math.min(1, p.y - y0));
-    var samples = grid.samples;
-    var bands = grid.bands;
-    var values = new Array(bands).fill(0);
-    var offsets = [
-      (y0 * grid.width + x0) * bands,
-      (y0 * grid.width + x1) * bands,
-      (y1 * grid.width + x0) * bands,
-      (y1 * grid.width + x1) * bands
-    ];
-    var weights = [
-      (1 - tx) * (1 - ty),
-      tx * (1 - ty),
-      (1 - tx) * ty,
-      tx * ty
-    ];
-    var total = 0;
-    offsets.forEach(function(src, i) {
-      if (weights[i] <= 0 || sampleIsNoData(samples, src, bands, grid.nodata)) return;
-      for (var band = 0; band < bands; band++) {
-        values[band] += samples[src + band] * weights[i];
-      }
-      total += weights[i];
-    });
-    if (total <= 0) return {valid: false, values: values};
-    for (var j = 0; j < bands; j++) values[j] /= total;
-    return {valid: true, values: values};
-  }
-
-  function getRasterSourcePixelBounds(grid, bbox, x, y, width, height) {
-    return {
-      x0: mapXToRasterPixel(grid, bbox[0] + x / width * (bbox[2] - bbox[0])),
-      x1: mapXToRasterPixel(grid, bbox[0] + (x + 1) / width * (bbox[2] - bbox[0])),
-      y0: mapYToRasterPixel(grid, bbox[3] - y / height * (bbox[3] - bbox[1])),
-      y1: mapYToRasterPixel(grid, bbox[3] - (y + 1) / height * (bbox[3] - bbox[1]))
-    };
-  }
-
-  function getRasterSourcePixelCenter(grid, bbox, x, y, width, height) {
-    var mapX = bbox[0] + (x + 0.5) / width * (bbox[2] - bbox[0]);
-    var mapY = bbox[3] - (y + 0.5) / height * (bbox[3] - bbox[1]);
-    return {
-      x: mapXToRasterPixel(grid, mapX) - 0.5,
-      y: mapYToRasterPixel(grid, mapY) - 0.5
-    };
-  }
-
-  function mapXToRasterPixel(grid, x) {
-    return (x - grid.bbox[0]) / (grid.bbox[2] - grid.bbox[0]) * grid.width;
-  }
-
-  function mapYToRasterPixel(grid, y) {
-    return (grid.bbox[3] - y) / (grid.bbox[3] - grid.bbox[1]) * grid.height;
-  }
-
-  function getIntervalOverlap(a0, a1, b0, b1) {
-    return Math.max(0, Math.min(Math.max(a0, a1), b1) - Math.max(Math.min(a0, a1), b0));
-  }
-
-  function getSourcePixelBoundsArea(bounds) {
-    return Math.abs((bounds.x1 - bounds.x0) * (bounds.y1 - bounds.y0));
-  }
-
-  function sampleIsNoData(samples, offset, bands, noData) {
-    return noData !== null && noData !== undefined && allSamplesAreNoData(samples, offset, bands, noData);
-  }
-
-  function renderRawEightBitPreview(grid, width, height, sourceBbox) {
-    var samples = grid.samples;
-    var bands = grid.bands;
-    var pixels = new Uint8ClampedArray(width * height * 4);
-    var src, dest, val;
-    for (var y = 0; y < height; y++) {
-      for (var x = 0; x < width; x++) {
-        src = getPreviewSourceOffset(grid, sourceBbox, x, y, width, height, bands);
-        dest = (y * width + x) * 4;
-        if (bands == 1) {
-          val = samples[src];
-          pixels[dest] = val;
-          pixels[dest + 1] = val;
-          pixels[dest + 2] = val;
-          pixels[dest + 3] = 255;
-        } else {
-          pixels[dest] = samples[src];
-          pixels[dest + 1] = samples[src + 1];
-          pixels[dest + 2] = samples[src + 2];
-          pixels[dest + 3] = bands >= 4 ? samples[src + 3] : 255;
-        }
-      }
-    }
-    return {
-      width: width,
-      height: height,
-      bands: 4,
-      pixelType: 'uint8',
-      colorModel: 'rgba',
-      pixels: pixels
-    };
-  }
-
-  function getPreviewSourceOffset(grid, sourceBbox, x, y, width, height, bands) {
-    var sx, sy, mapX, mapY, rb;
-    if (!sourceBbox) {
-      sy = Math.min(grid.height - 1, Math.floor((y + 0.5) * grid.height / height));
-      sx = Math.min(grid.width - 1, Math.floor((x + 0.5) * grid.width / width));
-    } else {
-      rb = grid.bbox;
-      mapX = sourceBbox[0] + (x + 0.5) / width * (sourceBbox[2] - sourceBbox[0]);
-      mapY = sourceBbox[3] - (y + 0.5) / height * (sourceBbox[3] - sourceBbox[1]);
-      sx = Math.max(0, Math.min(grid.width - 1, Math.floor((mapX - rb[0]) / (rb[2] - rb[0]) * grid.width)));
-      sy = Math.max(0, Math.min(grid.height - 1, Math.floor((rb[3] - mapY) / (rb[3] - rb[1]) * grid.height)));
-    }
-    return (sy * grid.width + sx) * bands;
-  }
-
-  // A grid is north-up when its affine transform has no rotation/skew terms.
-  // Cropping and reprojection both index pixels through the axis-aligned bbox,
-  // so they can only handle north-up grids.
-  function rasterGridIsRotated(grid) {
-    var t = grid && grid.transform;
-    return !!t && (t[1] !== 0 || t[3] !== 0);
-  }
-
-  function clipRasterToBBox(lyr, bbox, opts) {
-    var raster = lyr.raster;
-    var grid = getRasterGrid(raster);
-    var clipBbox;
-    if (rasterGridIsRotated(grid)) {
-      stop('Clipping a rotated or skewed raster is not supported');
-    }
-    clipBbox = intersectBboxes(grid.bbox, bbox);
-    if (!clipBbox) {
-      warn('Raster clipping rectangle does not intersect the raster layer');
-      return false;
-    }
-    var crop = getRasterCrop(grid, clipBbox);
-    if (crop.width === 0 || crop.height === 0) {
-      warn('Raster clipping rectangle does not intersect the raster layer');
-      return false;
-    }
-    noteLayerWillChange(lyr, {operation: 'clipRasterToBBox', unit: 'raster'});
-    raster.grid = cropRasterGrid(grid, crop, clipBbox);
-    raster.view = raster.view || {};
-    delete raster.view.scalingStats;
-    if (runningInBrowser()) {
-      raster.view.preview = createRasterPreview(raster, opts || {});
-    } else {
-      delete raster.view.preview;
-    }
-    clearLegacyRasterFields(raster);
-    markLayerChanged(lyr, {operation: 'clipRasterToBBox', unit: 'raster'});
-    return true;
-  }
-
-  function intersectBboxes(a, b) {
-    var bbox = [
-      Math.max(a[0], b[0]),
-      Math.max(a[1], b[1]),
-      Math.min(a[2], b[2]),
-      Math.min(a[3], b[3])
-    ];
-    return bbox[2] <= bbox[0] || bbox[3] <= bbox[1] ? null : bbox;
-  }
-
-  function getRasterCrop(grid, bbox) {
-    var rb = grid.bbox;
-    var x0 = Math.max(0, Math.floor((bbox[0] - rb[0]) / (rb[2] - rb[0]) * grid.width));
-    var x1 = Math.min(grid.width, Math.ceil((bbox[2] - rb[0]) / (rb[2] - rb[0]) * grid.width));
-    var y0 = Math.max(0, Math.floor((rb[3] - bbox[3]) / (rb[3] - rb[1]) * grid.height));
-    var y1 = Math.min(grid.height, Math.ceil((rb[3] - bbox[1]) / (rb[3] - rb[1]) * grid.height));
-    return {
-      x: x0,
-      y: y0,
-      width: Math.max(0, x1 - x0),
-      height: Math.max(0, y1 - y0)
-    };
-  }
-
-  function cropRasterGrid(grid, crop, bbox) {
-    var samples = new grid.samples.constructor(crop.width * crop.height * grid.bands);
-    var rowCount = crop.width * grid.bands;
-    var src, dest;
-    for (var y = 0; y < crop.height; y++) {
-      src = ((crop.y + y) * grid.width + crop.x) * grid.bands;
-      dest = y * rowCount;
-      samples.set(grid.samples.subarray(src, src + rowCount), dest);
-    }
-    return Object.assign({}, grid, {
-      width: crop.width,
-      height: crop.height,
-      samples: samples,
-      coverage: cropRasterCoverage(grid, crop),
-      bbox: bbox,
-      transform: updateTransformForBBox(grid.transform, bbox, crop.width, crop.height)
-    });
-  }
-
-  // The coverage mask is one byte per pixel (not per sample), and must be
-  // cropped alongside the samples -- consumers index it with the cropped
-  // grid's dimensions.
-  function cropRasterCoverage(grid, crop) {
-    var coverage = grid.coverage;
-    var cropped, src, dest, x, y;
-    if (!coverage) return coverage;
-    cropped = new Uint8Array(crop.width * crop.height);
-    for (y = 0; y < crop.height; y++) {
-      src = (crop.y + y) * grid.width + crop.x;
-      dest = y * crop.width;
-      for (x = 0; x < crop.width; x++) {
-        cropped[dest + x] = coverage[src + x];
-      }
-    }
-    return cropped;
-  }
-
-  function getRasterLayerBounds(lyr) {
-    var bbox = lyr.raster && getRasterBBox(lyr.raster);
-    return bbox && bbox.length == 4 ? new Bounds(bbox) : null;
-  }
-
-  function requireRasterLayer(lyr) {
-    if (!lyr || !lyr.raster_type || !lyr.raster) {
-      stop('Expected a raster layer');
-    }
-  }
-
-  function clearLegacyRasterFields(raster) {
-    delete raster.width;
-    delete raster.height;
-    delete raster.bands;
-    delete raster.pixelType;
-    delete raster.nodata;
-    delete raster.bbox;
-    delete raster.transform;
-    delete raster.colorModel;
-    delete raster.preview;
-    delete raster.pixels;
-  }
-
-  function updateTransformForBBox(transform, bbox, width, height) {
-    if (!transform) return null;
-    return [
-      (bbox[2] - bbox[0]) / width,
-      0,
-      bbox[0],
-      0,
-      -(bbox[3] - bbox[1]) / height,
-      bbox[3]
-    ];
-  }
-
-  function getBandStats(data, bands, noData) {
-    var stats = [];
-    for (var band = 0; band < bands; band++) {
-      stats[band] = getSingleBandStats(data, bands, band, noData);
-    }
-    return stats;
-  }
-
-  function getSingleBandStats(data, bands, band, noData) {
-    var min = Infinity;
-    var max = -Infinity;
-    var val;
-    for (var i = band; i < data.length; i += bands) {
-      val = data[i];
-      if (!isValidBandValue(val, noData)) continue;
-      if (val < min) min = val;
-      if (val > max) max = val;
-    }
-    return min < Infinity && max > min ? {min: min, max: max} : {min: 0, max: 255};
-  }
-
-  function getSharedBandStats(data, bands, noData) {
-    var stats = getBandStats(data, bands, noData);
-    var min = Math.min(stats[0].min, stats[1].min, stats[2].min);
-    var max = Math.max(stats[0].max, stats[1].max, stats[2].max);
-    var shared = max > min ? {min: min, max: max} : {min: 0, max: 255};
-    stats[0] = stats[1] = stats[2] = shared;
-    return stats;
-  }
-
-  function getScalingStats(data, bands, noData, recipe) {
-    var shared = recipe.type == 'rgb' && bands >= 3;
-    if (recipe.scaling == 'minmax') {
-      return shared ? getSharedBandStats(data, bands, noData) : getBandStats(data, bands, noData);
-    }
-    if (recipe.scaling == 'percentile') {
-      return shared ? getSharedPercentileStats(data, bands, noData, recipe.percentileRange) :
-        getBandPercentileStats(data, bands, noData, recipe.percentileRange);
-    }
-    return null;
-  }
-
-  function scaleSample(val, stats, sourceRange, displayRange) {
-    var range = stats || sourceRange || {min: 0, max: 255};
-    var pct = range.max > range.min ? (val - range.min) / (range.max - range.min) : 0;
-    var scaled = displayRange[0] + pct * (displayRange[1] - displayRange[0]);
-    return Math.max(0, Math.min(255, Math.round(scaled)));
-  }
-
-  function getDefaultRasterScaling(grid, recipe) {
-    return isEightBitPixelType(grid.pixelType) ? 'none' : 'percentile';
-  }
-
-  function parseRangeOption(val, def, name) {
-    var range;
-    if (val == null || val === '') return def;
-    range = Array.isArray(val) ? val : String(val).split(',');
-    if (range.length != 2) {
-      stop('Expected ' + name + '= to contain two comma-separated numbers');
-    }
-    range = range.map(Number);
-    if (!isFinite(range[0]) || !isFinite(range[1]) || range[0] < 0 || range[1] > 100 || range[1] < range[0]) {
-      stop('Expected ' + name + '= values between 0 and 100');
-    }
-    return range;
-  }
-
-  function getDisplayRange$1(scaleRange) {
-    return [
-      scaleRange[0] / 100 * 255,
-      scaleRange[1] / 100 * 255
-    ];
-  }
-
-  function getPixelTypeRange(pixelType) {
-    switch (pixelType) {
-      case 'uint8': return {min: 0, max: 255};
-      case 'uint16': return {min: 0, max: 65535};
-      case 'uint32': return {min: 0, max: 4294967295};
-      case 'int8': return {min: -128, max: 127};
-      case 'int16': return {min: -32768, max: 32767};
-      case 'int32': return {min: -2147483648, max: 2147483647};
-    }
-    return null;
-  }
-
-  function isEightBitPixelType(pixelType) {
-    return pixelType == 'uint8' || pixelType == 'int8';
-  }
-
-  function useFastRawEightBitRendering(grid, recipe) {
-    return grid.pixelType == 'uint8' &&
-      recipe.scaling == 'none' &&
-      recipe.scaleRange[0] === 0 &&
-      recipe.scaleRange[1] === 100 &&
-      (recipe.type == 'gray' && grid.bands == 1 || recipe.type == 'rgb' && grid.bands >= 3) &&
-      (grid.nodata === null || grid.nodata === undefined);
-  }
-
-  function getRasterScalingStatsKey(grid, recipe) {
-    return [
-      grid.width,
-      grid.height,
-      grid.bands,
-      grid.pixelType,
-      grid.samples && grid.samples.length,
-      grid.nodata,
-      recipe.type,
-      recipe.scaling,
-      recipe.scaleRange && recipe.scaleRange.join(','),
-      recipe.percentileRange && recipe.percentileRange.join(',')
-    ].join('|');
-  }
-
-  function getBandPercentileStats(data, bands, noData, range) {
-    var stats = [];
-    for (var band = 0; band < bands; band++) {
-      stats[band] = getPercentileStats(data, bands, [band], noData, range);
-    }
-    return stats;
-  }
-
-  function getSharedPercentileStats(data, bands, noData, range) {
-    var stats = getBandPercentileStats(data, bands, noData, range);
-    var shared = getPercentileStats(data, bands, [0, 1, 2], noData, range);
-    stats[0] = stats[1] = stats[2] = shared;
-    return stats;
-  }
-
-  function getPercentileStats(data, bands, bandIds, noData, range) {
-    var integerRange = getSmallIntegerRange(data);
-    return integerRange ?
-      getHistogramPercentileStats(data, bands, bandIds, noData, range, integerRange) :
-      getApproxHistogramPercentileStats(data, bands, bandIds, noData, range);
-  }
-
-  function getSmallIntegerRange(data) {
-    if (data instanceof Uint8Array || data instanceof Uint8ClampedArray) return {min: 0, max: 255};
-    if (data instanceof Int8Array) return {min: -128, max: 127};
-    if (data instanceof Uint16Array) return {min: 0, max: 65535};
-    if (data instanceof Int16Array) return {min: -32768, max: 32767};
-    return null;
-  }
-
-  function getHistogramPercentileStats(data, bands, bandIds, noData, range, integerRange) {
-    var counts = new Uint32Array(integerRange.max - integerRange.min + 1);
-    var count = 0, val;
-    forEachBandValue(data, bands, bandIds, noData, function(v) {
-      val = v - integerRange.min;
-      counts[val]++;
-      count++;
-    });
-    return count > 0 ? {
-      min: getHistogramPercentileValue(counts, integerRange.min, count, range[0]),
-      max: getHistogramPercentileValue(counts, integerRange.min, count, range[1])
-    } : {min: 0, max: 255};
-  }
-
-  function getApproxHistogramPercentileStats(data, bands, bandIds, noData, range) {
-    var bounds = getBandValueBounds(data, bands, bandIds, noData);
-    var binCount = 65536;
-    var counts, count, scale, maxBin;
-    if (!bounds || bounds.max <= bounds.min) {
-      return bounds || {min: 0, max: 255};
-    }
-    counts = new Uint32Array(binCount);
-    count = 0;
-    scale = (binCount - 1) / (bounds.max - bounds.min);
-    maxBin = binCount - 1;
-    forEachBandValue(data, bands, bandIds, noData, function(val) {
-      counts[Math.max(0, Math.min(maxBin, Math.floor((val - bounds.min) * scale)))]++;
-      count++;
-    });
-    return count > 0 ? {
-      min: getApproxHistogramPercentileValue(counts, bounds, count, range[0]),
-      max: getApproxHistogramPercentileValue(counts, bounds, count, range[1])
-    } : {min: 0, max: 255};
-  }
-
-  function getBandValueBounds(data, bands, bandIds, noData) {
-    var min = Infinity;
-    var max = -Infinity;
-    forEachBandValue(data, bands, bandIds, noData, function(val) {
-      if (val < min) min = val;
-      if (val > max) max = val;
-    });
-    return min < Infinity ? {min: min, max: max} : null;
-  }
-
-  function getHistogramPercentileValue(counts, offset, count, pct) {
-    var target = getPercentileRank(count, pct);
-    var sum = 0;
-    for (var i = 0; i < counts.length; i++) {
-      sum += counts[i];
-      if (sum > target) return i + offset;
-    }
-    return counts.length - 1 + offset;
-  }
-
-  function getApproxHistogramPercentileValue(counts, bounds, count, pct) {
-    var bin = getHistogramPercentileValue(counts, 0, count, pct);
-    return bounds.min + bin / (counts.length - 1) * (bounds.max - bounds.min);
-  }
-
-  function forEachBandValue(data, bands, bandIds, noData, cb) {
-    var val;
-    for (var i = 0; i < data.length; i += bands) {
-      for (var j = 0; j < bandIds.length; j++) {
-        val = data[i + bandIds[j]];
-        if (!isValidBandValue(val, noData)) continue;
-        cb(val);
-      }
-    }
-  }
-
-  function isValidBandValue(val, noData) {
-    return isFinite(val) && (noData === null || noData === undefined || val != noData);
-  }
-
-  function getPercentileRank(count, pct) {
-    return Math.max(0, Math.min(count - 1, Math.floor((count - 1) * pct / 100)));
-  }
-
-  function allSamplesAreNoData(data, offset, bands, noData) {
-    return samplesAreNodataAtOffset(data, offset, bands, noData);
-  }
-
-  function copyObjectOrArray(obj) {
-    return obj && obj.concat ? obj.concat() : utils.extend({}, obj);
-  }
-
-  function UndoTransaction(label) {
-    this.label = label || '';
-    this.units = [];
-    this._captured = {};
-  }
-
-  UndoTransaction.prototype = {
-    run: function(cb) {
-      return withActiveUndoTransaction(this, cb);
-    },
-
-    getCapturedUnits: function() {
-      return this.units.slice();
-    },
-
-    restore: function() {
-      restoreCapturedUnits(this.units);
-    },
-
-    captureCurrentState: function() {
-      return captureCurrentUnits(this.units);
-    },
-
-    captureTableBefore: function(table, detail) {
-      var key = unitKey('table', table);
-      if (this._captured[key]) return;
-      this._captured[key] = true;
-      this.units.push({
-        type: 'table',
-        target: table,
-        id: getUndoId(table),
-        revision: getUndoRevision(table),
-        detail: copyDetail(detail),
-        records: table.getRecords().map(copyRecord$1)
-      });
-    },
-
-    captureTableRecordsBefore: function(table, detail) {
-      var ids = uniqueNumbers(detail.ids);
-      var captured = [];
-      var records = table.getRecords();
-      ids.forEach(function(id) {
-        var key = unitKey('table-record', table, id);
-        if (this._captured[key]) return;
-        this._captured[key] = true;
-        captured.push({
-          id: id,
-          record: copyRecord$1(records[id])
-        });
-      }, this);
-      if (captured.length > 0) {
-        this.units.push({
-          type: 'table-records',
-          target: table,
-          id: getUndoId(table),
-          revision: getUndoRevision(table),
-          detail: copyDetail(detail),
-          records: captured
-        });
-      }
-    },
-
-    captureTableFieldsBefore: function(table, detail) {
-      var fields = uniqueStrings(detail.fields);
-      var records = table.getRecords();
-      var columns = [];
-      fields.forEach(function(field) {
-        var key = unitKey('table-field', table, field);
-        if (this._captured[key]) return;
-        this._captured[key] = true;
-        columns.push({
-          field: field,
-          values: records.map(function(rec) {
-            return rec ? rec[field] : undefined;
-          })
-        });
-      }, this);
-      if (columns.length > 0) {
-        this.units.push({
-          type: 'table-fields',
-          target: table,
-          id: getUndoId(table),
-          revision: getUndoRevision(table),
-          detail: copyDetail(detail),
-          columns: columns
-        });
-      }
-    },
-
-    captureTableOrderBefore: function(table, detail) {
-      captureOrderUnit(this, 'table-order', table, detail);
-    },
-
-    captureTableSchemaBefore: function(table, detail) {
-      var key = unitKey('table-schema', table);
-      if (this._captured[key]) return;
-      this._captured[key] = true;
-      this.units.push({
-        type: 'table-schema',
-        target: table,
-        id: getUndoId(table),
-        revision: getUndoRevision(table),
-        detail: copyDetail(detail),
-        fields: table.getFields()
-      });
-      if (detail && (detail.field || detail.fields)) {
-        this.captureTableFieldsBefore(table, {
-          fields: detail.fields || [detail.field],
-          operation: detail.operation
-        });
-      }
-    },
-
-    captureArcsBefore: function(arcs, detail) {
-      var data, key;
-      promoteArcsAppendUnit(this, arcs);
-      key = unitKey('arcs', arcs);
-      if (this._captured[key]) return;
-      this._captured[key] = true;
-      data = arcs.getVertexData();
-      this.units.push({
-        type: 'arcs',
-        target: arcs,
-        id: getUndoId(arcs),
-        revision: getUndoRevision(arcs),
-        detail: copyDetail(detail),
-        nn: new Uint32Array(data.nn),
-        xx: new Float64Array(data.xx),
-        yy: new Float64Array(data.yy),
-        zz: data.zz ? new Float64Array(data.zz) : null,
-        zlimit: arcs.getRetainedInterval()
-      });
-    },
-
-    // Arcs that are only appended to are restored by truncating them, so the
-    // unit records just the arc count, not a copy of the arcs. If the arcs are
-    // changed in any other way in the same transaction, the unit is replaced by
-    // a full 'arcs' unit (see promoteArcsAppendUnit()).
-    captureArcsAppendBefore: function(arcs, detail) {
-      var key;
-      if (this._captured[unitKey('arcs', arcs)]) return;
-      key = unitKey('arcs-append', arcs);
-      if (this._captured[key]) return;
-      this._captured[key] = true;
-      this.units.push({
-        type: 'arcs-append',
-        target: arcs,
-        id: getUndoId(arcs),
-        revision: getUndoRevision(arcs),
-        detail: copyDetail(detail),
-        arcCount: arcs.size()
-      });
-    },
-
-    captureArcsSimplificationBefore: function(arcs, detail) {
-      var data, key;
-      promoteArcsAppendUnit(this, arcs);
-      key = unitKey('arcs-simplification', arcs);
-      if (this._captured[key]) return;
-      this._captured[key] = true;
-      data = arcs.getVertexData();
-      this.units.push({
-        type: 'arcs-simplification',
-        target: arcs,
-        id: getUndoId(arcs),
-        revision: getUndoRevision(arcs),
-        detail: copyDetail(detail),
-        zz: data.zz ? new Float64Array(data.zz) : null,
-        zlimit: arcs.getRetainedInterval()
-      });
-    },
-
-    captureCatalogBefore: function(catalog, detail) {
-      var key = unitKey('catalog', catalog);
-      if (this._captured[key]) return;
-      this._captured[key] = true;
-      this.units.push({
-        type: 'catalog',
-        target: catalog,
-        id: getUndoId(catalog),
-        revision: getUndoRevision(catalog),
-        detail: copyDetail(detail),
-        datasets: catalog.getDatasets().slice(),
-        targets: catalog.getDefaultTargets().map(function(target) {
-          return {
-            dataset: target.dataset,
-            layers: target.layers.slice()
-          };
-        })
-      });
-    },
-
-    captureDatasetBefore: function(dataset, detail) {
-      var key = unitKey('dataset', dataset, detail && detail.unit || '');
-      if (this._captured[key]) return;
-      this._captured[key] = true;
-      this.units.push({
-        type: 'dataset',
-        target: dataset,
-        id: getUndoId(dataset),
-        revision: getUndoRevision(dataset),
-        detail: copyDetail(detail),
-        layers: dataset.layers ? dataset.layers.slice() : null,
-        arcs: dataset.arcs || null,
-        info: dataset.info ? copyRecord$1(dataset.info) : null
-      });
-    },
-
-    captureDatasetInfoBefore: function(dataset, detail) {
-      var key = unitKey('dataset-info', dataset);
-      if (this._captured[key]) return;
-      this._captured[key] = true;
-      this.units.push({
-        type: 'dataset-info',
-        target: dataset,
-        id: getUndoId(dataset),
-        revision: getUndoRevision(dataset),
-        detail: copyDetail(detail),
-        info: dataset.info ? copyRecord$1(dataset.info) : null
-      });
-    },
-
-    captureLayerBefore: function(layer, detail) {
-      var key = unitKey('layer', layer, detail && detail.unit || '');
-      if (this._captured[key]) return;
-      this._captured[key] = true;
-      this.units.push({
-        type: 'layer',
-        target: layer,
-        id: getUndoId(layer),
-        revision: getUndoRevision(layer),
-        detail: copyDetail(detail),
-        name: layer.name,
-        geometry_type: layer.geometry_type,
-        raster_type: layer.raster_type || null,
-        raster: layer.raster ? copyRasterData(layer.raster) : null,
-        shapes: layer.shapes ? cloneShapes(layer.shapes) : null,
-        data: layer.data || null
-      });
-    },
-
-    captureLayerMetadataBefore: function(layer, detail) {
-      var key = unitKey('layer-metadata', layer, detail && detail.unit || '');
-      if (this._captured[key]) return;
-      this._captured[key] = true;
-      this.units.push(Object.assign({
-        type: 'layer-metadata',
-        target: layer,
-        id: getUndoId(layer),
-        revision: getUndoRevision(layer),
-        detail: copyDetail(detail)
-      }, copyLayerMetadata(layer)));
-    },
-
-    captureLayerOrderBefore: function(layer, detail) {
-      captureOrderUnit(this, 'layer-order', layer, detail);
-    },
-
-    markChanged: function(obj, detail) {
-      this.units.push({
-        type: 'changed',
-        id: getUndoId(obj),
-        revision: getUndoRevision(obj),
-        detail: copyDetail(detail)
-      });
-    }
-  };
-
-  function restoreCapturedUnits(units) {
-    for (var i = units.length - 1; i >= 0; i--) {
-      restoreUnit(units[i]);
-    }
-  }
-
-  function captureCurrentUnits(units) {
-    var captured = [];
-    units.forEach(function(unit) {
-      var current = captureCurrentUnit(unit);
-      if (current) captured.push(current);
-    });
-    return captured;
-  }
-
-  function filterUnchangedRestoreUnits(units) {
-    var arcChanges = getArcsUnitChangeIndex(units);
-    var normalized = units.map(function(unit) {
-      return normalizeUnchangedDatasetArcs(unit, arcChanges);
-    });
-    var protectedArcs = getDatasetRestoreArcsIndex(normalized);
-    var protectedSimplification = getArcsRestoreIndex(normalized);
-    return normalized.filter(function(unit) {
-      return unit.type == 'changed' ||
-        restoreUnitHasChanged(unit, protectedArcs, protectedSimplification);
-    });
-  }
-
-  function normalizeUnchangedDatasetArcs(unit, arcChanges) {
-    var arcsId = unit.arcs && getUndoId(unit.arcs);
-    if (unit.type == 'dataset' &&
-        unit.arcs &&
-        unit.target.arcs &&
-        unit.arcs !== unit.target.arcs &&
-        arcChanges[arcsId] === false &&
-        arcCollectionsAreEqual(unit.arcs, unit.target.arcs)) {
-      return Object.assign({}, unit, {arcs: unit.target.arcs});
-    }
-    return unit;
-  }
-
-  function restoreUnitHasChanged(unit, protectedArcs, protectedSimplification) {
-    if (unit.type == 'arcs') {
-      if (protectedArcs[getUndoId(unit.target)]) return true;
-      return arcsUnitHasChanged(unit);
-    } else if (unit.type == 'arcs-simplification') {
-      if (protectedSimplification[getUndoId(unit.target)]) return true;
-      return arcsSimplificationUnitHasChanged(unit);
-    }
-    return true;
-  }
-
-  function getArcsUnitChangeIndex(units) {
-    var index = {};
-    units.forEach(function(unit) {
-      if (unit.type == 'arcs') {
-        index[getUndoId(unit.target)] = arcsUnitHasChanged(unit);
-      }
-    });
-    return index;
-  }
-
-  function getDatasetRestoreArcsIndex(units) {
-    var index = {};
-    units.forEach(function(unit) {
-      if (unit.type == 'dataset' && unit.arcs && unit.target.arcs !== unit.arcs) {
-        index[getUndoId(unit.arcs)] = true;
-      }
-    });
-    return index;
-  }
-
-  function getArcsRestoreIndex(units) {
-    var index = {};
-    units.forEach(function(unit) {
-      if (unit.type == 'arcs') {
-        index[getUndoId(unit.target)] = true;
-      }
-    });
-    return index;
-  }
-
-  function arcCollectionsAreEqual(a, b) {
-    var dataA, dataB;
-    if (a === b) return true;
-    if (!a || !b) return !a && !b;
-    dataA = a.getVertexData();
-    dataB = b.getVertexData();
-    return a.getRetainedInterval() == b.getRetainedInterval() &&
-      arrayLikeDataIsEqual(dataA.nn, dataB.nn) &&
-      arrayLikeDataIsEqual(dataA.xx, dataB.xx) &&
-      arrayLikeDataIsEqual(dataA.yy, dataB.yy) &&
-      arrayLikeDataIsEqual(dataA.zz, dataB.zz);
-  }
-
-  function arcsUnitHasChanged(unit) {
-    var data = unit.target.getVertexData();
-    return unit.zlimit != unit.target.getRetainedInterval() ||
-      !arrayLikeDataIsEqual(unit.nn, data.nn) ||
-      !arrayLikeDataIsEqual(unit.xx, data.xx) ||
-      !arrayLikeDataIsEqual(unit.yy, data.yy) ||
-      !arrayLikeDataIsEqual(unit.zz, data.zz);
-  }
-
-  function arcsSimplificationUnitHasChanged(unit) {
-    var data = unit.target.getVertexData();
-    return unit.zlimit != unit.target.getRetainedInterval() ||
-      !arrayLikeDataIsEqual(unit.zz, data.zz);
-  }
-
-  function arrayLikeDataIsEqual(a, b) {
-    if (a === b) return true;
-    if (!a || !b) return !a && !b;
-    if (a.length !== b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i] !== b[i]) return false;
-    }
-    return true;
-  }
-
-  function captureCurrentUnit(unit) {
-    if (unit.type == 'changed') return null;
-    if (unit.type == 'table') {
-      return captureCurrentTable(unit);
-    } else if (unit.type == 'table-records') {
-      return captureCurrentTableRecords(unit);
-    } else if (unit.type == 'table-fields') {
-      return captureCurrentTableFields(unit);
-    } else if (unit.type == 'table-order') {
-      return captureCurrentOrder(unit);
-    } else if (unit.type == 'table-schema') {
-      return captureCurrentTableSchema(unit);
-    } else if (unit.type == 'arcs') {
-      return captureCurrentArcs(unit);
-    } else if (unit.type == 'arcs-simplification') {
-      return captureCurrentArcsSimplification(unit);
-    } else if (unit.type == 'arcs-append') {
-      return captureCurrentArcsAppend(unit);
-    } else if (unit.type == 'catalog') {
-      return captureCurrentCatalog(unit);
-    } else if (unit.type == 'dataset') {
-      return captureCurrentDataset(unit);
-    } else if (unit.type == 'dataset-info') {
-      return captureCurrentDatasetInfo(unit);
-    } else if (unit.type == 'layer') {
-      return captureCurrentLayer(unit);
-    } else if (unit.type == 'layer-metadata') {
-      return captureCurrentLayerMetadata(unit);
-    } else if (unit.type == 'layer-order') {
-      return captureCurrentOrder(unit);
-    }
-    return null;
-  }
-
-  function captureCurrentTable(unit) {
-    return Object.assign({}, unit, {
-      revision: getUndoRevision(unit.target),
-      records: unit.target.getRecords().map(copyRecord$1)
-    });
-  }
-
-  function captureCurrentTableRecords(unit) {
-    var records = unit.target.getRecords();
-    return Object.assign({}, unit, {
-      revision: getUndoRevision(unit.target),
-      records: unit.records.map(function(item) {
-        return {
-          id: item.id,
-          record: copyRecord$1(records[item.id])
-        };
-      })
-    });
-  }
-
-  function captureCurrentTableFields(unit) {
-    var records = unit.target.getRecords();
-    var fields = unit.detail && unit.detail.schema_transform ?
-      unit.target.getFields() :
-      unit.columns.map(function(column) { return column.field; });
-    return Object.assign({}, unit, {
-      revision: getUndoRevision(unit.target),
-      columns: fields.map(function(field) {
-        return {
-          field: field,
-          values: records.map(function(rec) {
-            return rec ? rec[field] : undefined;
-          })
-        };
-      })
-    });
-  }
-
-  function captureCurrentOrder(unit) {
-    return Object.assign({}, unit, {
-      revision: getUndoRevision(unit.target),
-      ids: invertIds(unit.ids)
-    });
-  }
-
-  function captureCurrentTableSchema(unit) {
-    return Object.assign({}, unit, {
-      revision: getUndoRevision(unit.target),
-      fields: unit.target.getFields()
-    });
-  }
-
-  function captureCurrentArcs(unit) {
-    var data = unit.target.getVertexData();
-    return Object.assign({}, unit, {
-      revision: getUndoRevision(unit.target),
-      nn: new Uint32Array(data.nn),
-      xx: new Float64Array(data.xx),
-      yy: new Float64Array(data.yy),
-      zz: data.zz ? new Float64Array(data.zz) : null,
-      zlimit: unit.target.getRetainedInterval()
-    });
-  }
-
-  function captureCurrentArcsSimplification(unit) {
-    var data = unit.target.getVertexData();
-    return Object.assign({}, unit, {
-      revision: getUndoRevision(unit.target),
-      zz: data.zz ? new Float64Array(data.zz) : null,
-      zlimit: unit.target.getRetainedInterval()
-    });
-  }
-
-  // The arcs appended since the unit was captured, for redo
-  function captureCurrentArcsAppend(unit) {
-    var data = unit.target.getVertexData();
-    var pointCount = getArcsPointOffset(data, unit.arcCount);
-    return Object.assign({}, unit, {
-      revision: getUndoRevision(unit.target),
-      nn: new Uint32Array(data.nn.subarray(unit.arcCount)),
-      xx: data.xx.slice(pointCount),
-      yy: data.yy.slice(pointCount)
-    });
-  }
-
-  // Index of the first vertex of arc @arcCount (the vertex count of the arcs
-  // before it)
-  function getArcsPointOffset(data, arcCount) {
-    if (arcCount > data.nn.length) {
-      throw new Error('Undo error: arcs were removed after being appended to');
-    }
-    return arcCount < data.nn.length ? data.ii[arcCount] : data.xx.length;
-  }
-
-  // Replaces the transaction's 'arcs-append' unit for @arcs, if it has one,
-  // with an 'arcs' unit holding the arcs as they were before the transaction:
-  // the arcs that the appends left in place.
-  function promoteArcsAppendUnit(tx, arcs) {
-    var key = unitKey('arcs-append', arcs);
-    var i, unit, data, pointCount;
-    if (!tx._captured[key]) return;
-    delete tx._captured[key];
-    i = tx.units.findIndex(function(u) {
-      return u.type == 'arcs-append' && u.target === arcs;
-    });
-    unit = tx.units[i];
-    data = arcs.getVertexData();
-    pointCount = getArcsPointOffset(data, unit.arcCount);
-    tx.units[i] = {
-      type: 'arcs',
-      target: arcs,
-      id: unit.id,
-      revision: unit.revision,
-      detail: unit.detail,
-      nn: new Uint32Array(data.nn.subarray(0, unit.arcCount)),
-      xx: new Float64Array(data.xx.subarray(0, pointCount)),
-      yy: new Float64Array(data.yy.subarray(0, pointCount)),
-      zz: data.zz ? new Float64Array(data.zz.subarray(0, pointCount)) : null,
-      zlimit: arcs.getRetainedInterval()
-    };
-    tx._captured[unitKey('arcs', arcs)] = true;
-  }
-
-  function captureCurrentCatalog(unit) {
-    return Object.assign({}, unit, {
-      revision: getUndoRevision(unit.target),
-      datasets: unit.target.getDatasets().slice(),
-      targets: unit.target.getDefaultTargets().map(function(target) {
-        return {
-          dataset: target.dataset,
-          layers: target.layers.slice()
-        };
-      })
-    });
-  }
-
-  function captureCurrentDataset(unit) {
-    return Object.assign({}, unit, {
-      revision: getUndoRevision(unit.target),
-      layers: unit.target.layers ? unit.target.layers.slice() : null,
-      arcs: unit.target.arcs || null,
-      info: unit.target.info ? copyRecord$1(unit.target.info) : null
-    });
-  }
-
-  function captureCurrentDatasetInfo(unit) {
-    return Object.assign({}, unit, {
-      revision: getUndoRevision(unit.target),
-      info: unit.target.info ? copyRecord$1(unit.target.info) : null
-    });
-  }
-
-  function captureCurrentLayer(unit) {
-    return Object.assign({}, unit, {
-      revision: getUndoRevision(unit.target),
-      name: unit.target.name,
-      geometry_type: unit.target.geometry_type,
-      raster_type: unit.target.raster_type || null,
-      raster: unit.target.raster ? copyRasterData(unit.target.raster) : null,
-      shapes: unit.target.shapes ? cloneShapes(unit.target.shapes) : null,
-      data: unit.target.data || null
-    });
-  }
-
-  function captureCurrentLayerMetadata(unit) {
-    var copy = Object.assign({}, unit, {revision: getUndoRevision(unit.target)});
-    LAYER_METADATA_FIELDS.forEach(function(key) { delete copy[key]; });
-    return Object.assign(copy, copyLayerMetadata(unit.target));
-  }
-
-  // Layer properties that are not layer content: the name, and the layer's
-  // place in the stack and visibility, which -frame changes
-  var LAYER_METADATA_FIELDS = ['name', 'geometry_type', 'menu_order', 'pinned', 'frame_hidden'];
-
-  function copyLayerMetadata(layer) {
-    return LAYER_METADATA_FIELDS.reduce(function(memo, key) {
-      if (key in layer) memo[key] = layer[key];
-      return memo;
-    }, {});
-  }
-
-  function restoreUnit(unit) {
-    if (unit.type == 'changed') return;
-    if (unit.type == 'table') {
-      restoreTable(unit);
-    } else if (unit.type == 'table-records') {
-      restoreTableRecords(unit);
-    } else if (unit.type == 'table-fields') {
-      restoreTableFields(unit);
-    } else if (unit.type == 'table-order') {
-      restoreTableOrder(unit);
-    } else if (unit.type == 'table-schema') {
-      restoreTableSchema(unit);
-    } else if (unit.type == 'arcs') {
-      restoreArcs(unit);
-    } else if (unit.type == 'arcs-simplification') {
-      restoreArcsSimplification(unit);
-    } else if (unit.type == 'arcs-append') {
-      restoreArcsAppend(unit);
-    } else if (unit.type == 'catalog') {
-      restoreCatalog(unit);
-    } else if (unit.type == 'dataset') {
-      restoreDataset(unit);
-    } else if (unit.type == 'dataset-info') {
-      restoreDatasetInfo(unit);
-    } else if (unit.type == 'layer') {
-      restoreLayer(unit);
-    } else if (unit.type == 'layer-metadata') {
-      restoreLayerMetadata(unit);
-    } else if (unit.type == 'layer-order') {
-      restoreLayerOrder(unit);
-    }
-  }
-
-  function restoreTable(unit) {
-    var records = unit.target.getRecords();
-    records.splice(0, records.length);
-    unit.records.forEach(function(rec) {
-      records.push(copyRecord$1(rec));
-    });
-  }
-
-  function restoreTableRecords(unit) {
-    var records = unit.target.getRecords();
-    unit.records.forEach(function(item) {
-      records[item.id] = copyRecord$1(item.record);
-    });
-  }
-
-  function restoreTableFields(unit) {
-    var records = unit.target.getRecords();
-    unit.columns.forEach(function(column) {
-      column.values.forEach(function(val, i) {
-        if (!records[i]) records[i] = {};
-        records[i][column.field] = val;
-      });
-    });
-  }
-
-  function restoreTableOrder(unit) {
-    reorderArray(unit.target.getRecords(), unit.ids);
-  }
-
-  function restoreTableSchema(unit) {
-    var records = unit.target.getRecords();
-    records.forEach(function(rec, i) {
-      var reordered = {};
-      unit.fields.forEach(function(field) {
-        reordered[field] = rec ? rec[field] : undefined;
-      });
-      records[i] = reordered;
-    });
-  }
-
-  function restoreArcs(unit) {
-    unit.target.updateVertexData(
-      new Uint32Array(unit.nn),
-      new Float64Array(unit.xx),
-      new Float64Array(unit.yy),
-      unit.zz ? new Float64Array(unit.zz) : null
-    );
-    unit.target.setRetainedInterval(unit.zlimit);
-  }
-
-  function restoreArcsSimplification(unit) {
-    unit.target.setThresholds(unit.zz ? new Float64Array(unit.zz) : null);
-    unit.target.setRetainedInterval(unit.zlimit);
-  }
-
-  // Undo truncates the arcs; redo (a unit from captureCurrentArcsAppend())
-  // then appends the arcs it holds.
-  function restoreArcsAppend(unit) {
-    if (unit.target.size() < unit.arcCount) {
-      throw new Error('Undo error: arcs were removed after being appended to');
-    }
-    unit.target.truncateArcs(unit.arcCount);
-    if (unit.nn && unit.nn.length > 0) {
-      unit.target.appendArcs(unit.nn, unit.xx, unit.yy);
-    }
-  }
-
-  function restoreCatalog(unit) {
-    var datasets = unit.target.getDatasets();
-    datasets.splice(0, datasets.length);
-    unit.datasets.forEach(function(dataset) {
-      datasets.push(dataset);
-    });
-    unit.target.setDefaultTargets(unit.targets.map(function(target) {
-      return {
-        dataset: target.dataset,
-        layers: target.layers.slice()
-      };
-    }));
-  }
-
-  function restoreDataset(unit) {
-    unit.target.layers = unit.layers ? unit.layers.slice() : null;
-    unit.target.arcs = unit.arcs;
-    unit.target.info = unit.info ? copyRecord$1(unit.info) : null;
-  }
-
-  function restoreDatasetInfo(unit) {
-    unit.target.info = unit.info ? copyRecord$1(unit.info) : null;
-  }
-
-  function restoreLayer(unit) {
-    unit.target.name = unit.name;
-    unit.target.geometry_type = unit.geometry_type;
-    unit.target.raster_type = unit.raster_type || null;
-    unit.target.raster = unit.raster ? copyRasterData(unit.raster) : null;
-    unit.target.shapes = unit.shapes ? cloneShapes(unit.shapes) : null;
-    unit.target.data = unit.data;
-  }
-
-  function restoreLayerMetadata(unit) {
-    LAYER_METADATA_FIELDS.forEach(function(key) {
-      if (key in unit) {
-        unit.target[key] = unit[key];
-      } else {
-        delete unit.target[key];
-      }
-    });
-  }
-
-  function restoreLayerOrder(unit) {
-    reorderArray(unit.target.shapes, unit.ids);
-  }
-
-  function unitKey(type, obj, extra) {
-    return type + ':' + getUndoId(obj) + (extra == null ? '' : ':' + extra);
-  }
-
-  function captureOrderUnit(tx, type, target, detail) {
-    var unit = findOrderUnit(tx.units, type, target);
-    var ids = uniquePermutation(detail.ids);
-    if (unit) {
-      unit.ids = composeIds(ids, unit.ids);
-      unit.detail = copyDetail(detail);
-      return;
-    }
-    tx.units.push({
-      type: type,
-      target: target,
-      id: getUndoId(target),
-      revision: getUndoRevision(target),
-      detail: copyDetail(detail),
-      ids: ids
-    });
-  }
-
-  function findOrderUnit(units, type, target) {
-    for (var i = units.length - 1; i >= 0; i--) {
-      if (units[i].type == type && units[i].target == target) {
-        return units[i];
-      }
-    }
-    return null;
-  }
-
-  function reorderArray(arr, ids) {
-    var copy = ids.map(function(id) {
-      return arr[id];
-    });
-    arr.splice.apply(arr, [0, arr.length].concat(copy));
-  }
-
-  function composeIds(a, b) {
-    return b.map(function(id) {
-      return a[id];
-    });
-  }
-
-  function invertIds(ids) {
-    var inverse = [];
-    ids.forEach(function(id, i) {
-      inverse[id] = i;
-    });
-    return inverse;
-  }
-
-  function uniquePermutation(ids) {
-    var index = {};
-    ids = ids || [];
-    ids.forEach(function(id) {
-      if (id < 0 || id >= ids.length || index[id]) {
-        throw new Error('Invalid undo order permutation');
-      }
-      index[id] = true;
-    });
-    return ids.slice();
-  }
-
-  function copyDetail(detail) {
-    return Object.assign({}, detail || {});
-  }
-
-  function uniqueNumbers(ids) {
-    var index = {};
-    ids = ids || [];
-    ids.forEach(function(id) {
-      if (id >= 0) index[id] = true;
-    });
-    return Object.keys(index).map(Number);
-  }
-
-  function uniqueStrings(fields) {
-    var index = {};
-    fields = fields || [];
-    fields.forEach(function(field) {
-      index[field] = true;
-    });
-    return Object.keys(index);
-  }
-
   var PAYLOAD_FIELDS = {
     table: ['records'],
     'table-records': ['records'],
@@ -6772,7 +2654,7 @@
 
   async function restoreStoredUndoUnits(units, store) {
     var hydrated = await hydrateStoredUndoUnits(units, store);
-    restoreCapturedUnits(hydrated);
+    internal.restoreCapturedUnits(hydrated);
   }
 
   async function hydrateStoredUndoUnits(units, store) {
@@ -6911,7 +2793,7 @@
     if (raster.view) {
       copy.view = Object.assign({}, raster.view);
       if (raster.view.preview && !raster.view.preview.pixels && raster.grid && raster.grid.samples) {
-        copy.view.preview = renderRasterPreview(raster.grid, raster.view.recipe, raster.view.preview.width, raster.view.preview.height);
+        copy.view.preview = internal.renderRasterPreview(raster.grid, raster.view.recipe, raster.view.preview.width, raster.view.preview.height);
       }
     }
     return copy;
@@ -6986,7 +2868,7 @@
           storedRedoUnits, storeStart, storeMillis = 0, evictToken = {};
       opts = opts || {};
       if (!tx || opts.error) return {skipped: true};
-      undoUnits = filterUnchangedRestoreUnits(tx.getCapturedUnits());
+      undoUnits = internal.filterUnchangedRestoreUnits(tx.getCapturedUnits());
       if (!undoUnits.some(isRestoreUnit)) return {
         skipped: true,
         unitCount: undoUnits.length,
@@ -7054,7 +2936,7 @@
     }
 
     async function captureAndStoreRedoUnits(captureUnits, store, entryId, evictToken) {
-      var redoUnits = captureCurrentUnits(captureUnits);
+      var redoUnits = internal.captureCurrentUnits(captureUnits);
       return storeUndoUnitsWithEviction(redoUnits, store, entryId, 'redo', evictToken);
     }
 
@@ -7594,7 +3476,7 @@
     }
 
     function receiveDroppedItems(arr) {
-      if (utils$1.isString(arr[0])) { // assume array of URLs
+      if (utils.isString(arr[0])) { // assume array of URLs
         downloadFiles(arr);
       } else { // assume array of Files
         receiveFilesWithOption(arr);
@@ -7721,7 +3603,7 @@
     }
 
     function decodeCommandFileContent(content) {
-      if (utils$1.isString(content)) return content;
+      if (utils.isString(content)) return content;
       return internal.decodeString(new Uint8Array(content), 'utf8');
     }
 
@@ -7797,7 +3679,7 @@
 
 
     function filesMayContainPaths(files) {
-      return utils$1.some(files, function(f) {
+      return utils.some(files, function(f) {
           var type = internal.guessInputFileType(f.name);
           return type == 'shp' || type == 'json' || type == 'gpkg' || type == 'parquet' ||
               type == 'png' || type == 'jpeg' || internal.isZipFile(f.name);
@@ -8078,7 +3960,7 @@
     async function readZipFile(file) {
       // Async is up to twice as fast unzipping large files
       // var index = internal.unzipSync(file.content);
-      var index = await utils$1.promisify(internal.unzipAsync)(file.content);
+      var index = await utils.promisify(internal.unzipAsync)(file.content);
       return Object.keys(index).reduce(function(memo, filename) {
         if (!/\.txt$/i.test(filename)) {
           memo.push({
@@ -8112,7 +3994,7 @@
 
     async function readFileData(file) {
       try {
-        var content = await utils$1.promisify(readContentFileAsync)(file);
+        var content = await utils.promisify(readContentFileAsync)(file);
         return {
           content: content,
           name: file.name
@@ -8244,7 +4126,7 @@
     var defaults = {
       space: 7
     };
-    opts = utils$1.extend(defaults, opts);
+    opts = utils.extend(defaults, opts);
 
     var _pct = 0;
     var _track,
@@ -8297,7 +4179,7 @@
     };
 
     function setHandlePos(x) {
-      x = utils$1.clamp(x, 0, size());
+      x = utils.clamp(x, 0, size());
       var pct = x / size();
       if (pct != _pct) {
         _pct = pct;
@@ -8312,7 +4194,7 @@
     }
   }
 
-  utils$1.inherit(Slider, EventDispatcher);
+  utils.inherit(Slider, EventDispatcher);
 
   // replace default error, stop and message functions
   function setLoggingForGUI(gui) {
@@ -8377,14 +4259,14 @@
     // replace CLI version of writeFiles()
     internal.replaceWriteFiles(async function(files, opts) {
       var filename;
-      if (!utils$1.isArray(files) || files.length === 0) {
+      if (!utils.isArray(files) || files.length === 0) {
         throw Error("Nothing to export");
       } else if (GUI.canSaveToServer() && !opts.save_to_download_folder) {
-        var paths = internal.getOutputPaths(utils$1.pluck(files, 'filename'), opts);
-        var data = utils$1.pluck(files, 'content');
+        var paths = internal.getOutputPaths(utils.pluck(files, 'filename'), opts);
+        var data = utils.pluck(files, 'content');
         var msg;
         try {
-          await utils$1.promisify(saveFilesToServer)(paths, data);
+          await utils.promisify(saveFilesToServer)(paths, data);
           if (files.length >= 1) {
             if (gui.notify) {
               gui.notify({severity: 'info', title: 'Saved', body: paths.join('\n')});
@@ -8400,10 +4282,10 @@
           await internal.writeFiles(files, {save_to_download_folder: true});
         }
       } else if (files.length == 1) {
-        await utils$1.promisify(saveBlobToLocalFile)(files[0].filename, new Blob([files[0].content]));
+        await utils.promisify(saveBlobToLocalFile)(files[0].filename, new Blob([files[0].content]));
       } else {
-        filename = internal.getCommonFileBase(utils$1.pluck(files, 'filename')) || "output";
-        await utils$1.promisify(saveZipFile)(filename + ".zip", files);
+        filename = internal.getCommonFileBase(utils.pluck(files, 'filename')) || "output";
+        await utils.promisify(saveZipFile)(filename + ".zip", files);
       }
     });
   }
@@ -8424,10 +4306,10 @@
         // try to match import filename of this dataset
         if (d.info?.input_files?.[0] == src) return d;
         // try to match name of a layer in this dataset
-        lyr = utils$1.find(d.layers, function(lyr) {return lyr.name == src;});
+        lyr = utils.find(d.layers, function(lyr) {return lyr.name == src;});
         return lyr ? internal.isolateLayer(lyr, d) : null;
       }, null);
-      if (!retn) stop$1("Missing data layer [" + src + "]");
+      if (!retn) stop("Missing data layer [" + src + "]");
       return retn;
     }
 
@@ -8455,7 +4337,7 @@
     libs = libs.filter(function(name) {return !mproj.internal.mproj_search_libcache(name);}); // skip loaded libs
     for (var libName of libs) {
       var content = await fetch('assets/' + libName).then(resp => resp.ok ? resp.text() : null);
-      if (!content) stop$1(`Unable to load projection resource [${libName}]`);
+      if (!content) stop(`Unable to load projection resource [${libName}]`);
       mproj.internal.mproj_insert_libcache(libName, content);
     }
   }
@@ -8636,7 +4518,7 @@
       internal.appendEmptyArc(lyr.gui.source.dataset.arcs);
     }
     points.forEach(function(p) {
-      appendVertex$1(lyr, p);
+      appendVertex(lyr, p);
     });
     appendNewDataRecord(lyr);
   }
@@ -8702,25 +4584,25 @@
   }
 
   // p: point in source data CRS coords.
-  function insertVertex$1(lyr, id, p) {
+  function insertVertex(lyr, id, p) {
     internal.insertVertex(lyr.gui.source.dataset.arcs, id, p);
     if (isProjectedLayer(lyr)) {
       internal.insertVertex(lyr.gui.displayArcs, id, lyr.gui.projectPoint(p[0], p[1]));
     }
   }
 
-  function appendVertex$1(lyr, p) {
+  function appendVertex(lyr, p) {
     var n = lyr.gui.source.dataset.arcs.getPointCount();
-    insertVertex$1(lyr, n, p);
+    insertVertex(lyr, n, p);
   }
 
   // TODO: make sure we're not also removing an entire arc
   function deleteLastVertex(lyr) {
-    deleteVertex$1(lyr, lyr.gui.displayArcs.getPointCount() - 1);
+    deleteVertex(lyr, lyr.gui.displayArcs.getPointCount() - 1);
   }
 
 
-  function deleteVertex$1(lyr, id) {
+  function deleteVertex(lyr, id) {
     internal.deleteVertex(lyr.gui.displayArcs, id);
     if (isProjectedLayer(lyr)) {
       internal.deleteVertex(lyr.gui.source.dataset.arcs, id);
@@ -8870,7 +4752,7 @@
       else if (pct < 0.01) decimals = 3;
       else if (pct < 1) decimals = 2;
       else if (pct < 100) decimals = 1;
-      return utils$1.formatNumberForDisplay(pct, decimals) + "%";
+      return utils.formatNumberForDisplay(pct, decimals) + "%";
     });
 
     text.parser(function(s) {
@@ -9143,7 +5025,7 @@
   }
 
   function projectPointsForDisplay(lyr, src, dest) {
-    var copy = utils$1.extend({}, lyr);
+    var copy = utils.extend({}, lyr);
     var proj = internal.getProjTransform2(src, dest);
     copy.shapes = internal.cloneShapes(lyr.shapes);
     internal.projectPointLayer(copy, proj);
@@ -9446,7 +5328,7 @@
     }
 
     function getStructuredConsoleMessage(args) {
-      var arr = utils$1.toArray(args);
+      var arr = utils.toArray(args);
       var msg;
       // print() sends its arguments as one array argument.
       if (arr.length == 1 && Array.isArray(arr[0])) {
@@ -9750,7 +5632,7 @@
         } else if (cmd == 'history') {
           toLog(gui.session.toCommandLineString());
         } else if (cmd == 'layers') {
-          message$1("Available layers:",
+          message("Available layers:",
             internal.getFormattedLayerList(model));
         } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
           turnOff();
@@ -10163,7 +6045,7 @@
     }
 
     function onError(err) {
-      if (utils$1.isString(err)) {
+      if (utils.isString(err)) {
         consoleStop(err);
       } else if (err.name == 'UserError' ) {
         // stop() has already been called, don't need to log
@@ -10178,7 +6060,7 @@
     function consoleStop() {
       var msg = GUI.formatMessageArgs(arguments);
       consoleWarning(msg);
-      throw new UserError$1(msg);
+      throw new UserError(msg);
     }
 
     function consoleWarning() {
@@ -10296,13 +6178,13 @@
         ['Type', info.raster_type ? 'raster data' : info.geometry_type || 'tabular data']
       ];
       if (info.raster_type) {
-        rows.push(['Size', utils$1.format('%,d x %,d x %,d', info.raster_width, info.raster_height, info.raster_bands)]);
+        rows.push(['Size', utils.format('%,d x %,d x %,d', info.raster_width, info.raster_height, info.raster_bands)]);
         rows.push(['Data', info.raster_pixel_type || 'unknown']);
       } else {
-        rows.push(['Records', utils$1.format('%,d', info.feature_count)]);
+        rows.push(['Records', utils.format('%,d', info.feature_count)]);
       }
       if (info.null_shape_count > 0) {
-        rows.push(['Nulls', utils$1.format("%'d", info.null_shape_count)]);
+        rows.push(['Nulls', utils.format("%'d", info.null_shape_count)]);
       }
       if (info.raster_type || info.geometry_type && info.feature_count > info.null_shape_count) {
         rows.push(['Bounds', info.bbox.join(',')]);
@@ -10359,12 +6241,12 @@
 
     function formatInfoValue(val) {
       if (val === null || val === undefined) return '';
-      if (utils$1.isString(val)) {
+      if (utils.isString(val)) {
         return "'" + val.replace(/[\r\t\n]/g, function(c) {
           return c == '\n' ? '\\n' : c == '\r' ? '\\r' : '\\t';
         }) + "'";
       }
-      if (utils$1.isNumber(val) || val === true || val === false) {
+      if (utils.isNumber(val) || val === true || val === false) {
         return String(val);
       }
       return JSON.stringify(val);
@@ -10447,7 +6329,7 @@
   }
 
   function getBoundsIntersection(a, b) {
-    var c = new Bounds$1();
+    var c = new Bounds();
     if (a.intersects(b)) {
       c.setBounds(Math.max(a.xmin, b.xmin), Math.max(a.ymin, b.ymin),
       Math.min(a.xmax, b.xmax), Math.min(a.ymax, b.ymax));
@@ -10597,14 +6479,14 @@
         html = '<span class="icon black"></span>No self-intersections';
       } else {
         map.setIntersectionLayer(pointLyr, {layers:[pointLyr]});
-        html = utils$1.format('<span class="icon"></span>%s line intersection%s', count, utils$1.pluralSuffix(count));
+        html = utils.format('<span class="icon"></span>%s line intersection%s', count, utils.pluralSuffix(count));
       }
       readout.html(html);
       updateRepairBtn();
     }
   }
 
-  utils$1.inherit(IntersectionControl, EventDispatcher);
+  utils.inherit(IntersectionControl, EventDispatcher);
 
   function noteArcsSimplificationWillChange(arcs, detail) {
     if (internal.UndoTracking && internal.UndoTracking.noteArcsSimplificationWillChange) {
@@ -10734,7 +6616,7 @@
       shapes = ids.map(function(id) {
         return lyr.shapes[id];
       });
-      return utils$1.defaults({shapes: shapes, data: null}, lyr);
+      return utils.defaults({shapes: shapes, data: null}, lyr);
     }
     return lyr;
   }
@@ -10855,7 +6737,7 @@
       count += countPoints(lyr.gui.displayLayer.shapes, topTier, bbox);
     });
     count = Math.min(topTier, count) || 1;
-    var k = Math.pow(5 - utils$1.clamp(Math.log10(count), 1, 4), 1.25);
+    var k = Math.pow(5 - utils.clamp(Math.log10(count), 1, 4), 1.25);
 
     // zoom adjustments
     var mapScale = ext.scale();
@@ -10869,7 +6751,7 @@
 
     // scale down when map is small
     var smallSide = Math.min(ext.width(), ext.height());
-    k *= utils$1.clamp(smallSide / 500, 0.5, 1);
+    k *= utils.clamp(smallSide / 500, 0.5, 1);
     return k;
   }
 
@@ -10890,7 +6772,7 @@
   }
 
   async function saveFileContentToClipboard(content) {
-    var str = utils$1.isString(content) ? content : content.toString();
+    var str = utils.isString(content) ? content : content.toString();
     await navigator.clipboard.writeText(str);
   }
 
@@ -10920,7 +6802,7 @@
       });
 
       internal.writeFiles = function() {
-        error$2(unsupportedMsg);
+        error(unsupportedMsg);
       };
       return;
     }
@@ -11108,7 +6990,7 @@
       gui.showProgressMessage('Exporting');
       setTimeout(function() {
         exportMenuSelection(selection).catch(function(err) {
-          if (utils$1.isString(err)) {
+          if (utils.isString(err)) {
             gui.alert(err);
           } else {
             // stack seems to change if Error is logged directly
@@ -11161,8 +7043,8 @@
     async function exportMenuSelection(selection) {
       // note: command line "target" option gets ignored
       var opts = getExportOpts();
-      var targets = internal.groupLayersByDataset(utils$1.pluck(selection.items, 'target'));
-      var exportedLayers = utils$1.pluck(selection.items, 'source');
+      var targets = internal.groupLayersByDataset(utils.pluck(selection.items, 'target'));
+      var exportedLayers = utils.pluck(selection.items, 'source');
       var frame;
       if (opts.format == 'geopackage') {
         await loadGeopackageLib();
@@ -11222,7 +7104,7 @@
         // without changing its name elsewhere
         layer: Object.assign({}, o.layer)
       };
-      var html = utils$1.format(template, i + 1, target.layer.name || '[unnamed layer]');
+      var html = utils.format(template, i + 1, target.layer.name || '[unnamed layer]');
       // return {layer: o.layer, html: html};
       var el = El('div').html(html).addClass('layer-item');
       var box = el.findChild('input').node();
@@ -11448,7 +7330,7 @@
     function initFormatMenu(preferredFmt) {
       var formats = getExportFormats();
       var items = formats.map(function(fmt) {
-        return utils$1.format('<td><label><input type="radio" name="format" value="%s"' +
+        return utils.format('<td><label><input type="radio" name="format" value="%s"' +
           ' class="radio">%s</label></td>', fmt, internal.getFormatName(fmt));
       });
       var table = '<table>';
@@ -11524,7 +7406,7 @@
 
     // Positions of layers in the model, as session history refers to them
     function getLayerIds(layers) {
-      var all = utils$1.pluck(model.getLayers(), 'layer');
+      var all = utils.pluck(model.getLayers(), 'layer');
       return layers.map(function(lyr) {
         return all.indexOf(lyr) + 1;
       }).filter(function(id) { return id > 0; });
@@ -11676,59 +7558,6 @@
     };
   }
 
-  // Tiny predicates for inspecting SVG-bound feature records. Extracted so
-  // that svg-symbols.mjs can use them without having to import from the
-  // higher-level mapshaper-svg.mjs (which would otherwise form a cycle).
-
-  function featureHasSvgSymbol(d) {
-    return !!(d && (d['svg-symbol'] || d.r || d.icon || d['icon-size']));
-  }
-
-  function featureHasLabel(d) {
-    var text = d && d['label-text'];
-    return text || text === 0; // accept numerical 0 as label text
-  }
-
-  // Whether a feature is a label at all, including one whose text is still empty.
-  //
-  // The GUI needs this and export does not. A label is a label from the moment it
-  // is created, before anything has been typed into it, and the editor has to
-  // render a node for it: with no node there is nothing to see, nothing to click
-  // and nowhere to put a caret, so a label the user just made would be invisible
-  // and unrecoverable. Export has no editor and drops the empty ones.
-  //
-  // A label is created with its text, or with '' when the GUI is about to type
-  // into it. A symbol merged into a layer of labels is given the field with no
-  // value at all, which does not make it a label. A curve symbol (icon=curve)
-  // without text is not a label even with '' in the field, which a format with no
-  // way to leave a value out writes.
-  function featureIsLabel(d) {
-    var text = d ? d['label-text'] : undefined;
-    if (text === undefined || text === null) return false;
-    return d.icon != 'curve' || !!featureHasLabel(d);
-  }
-
-  // A numbered marker: a circle or a square with a number or a letter centred
-  // on it, as in "1, 2, 3" on a route map. It is a label to the commands and the
-  // renderer, and a symbol to the GUI, whose symbol tool edits it. Recognized by
-  // its fields rather than marked with a field of its own, so that a marker
-  // written by -labels on the command line is one too.
-  function featureIsMarker(d) {
-    return !!featureHasLabel(d) && d['label-pos'] == 'c' &&
-      (d.icon == 'circle' || d.icon == 'square');
-  }
-
-  // A label that the GUI's label tool edits: any label but a marker.
-  function featureIsTextLabel(d) {
-    return featureIsLabel(d) && !featureIsMarker(d);
-  }
-
-  // A curve symbol: a smooth path through the feature's points (its knots),
-  // rather than a symbol at each point. A curve with label text is a path label.
-  function featureIsCurve(d) {
-    return !!d && d.icon == 'curve' && !featureHasLabel(d);
-  }
-
   // Short descriptions of what a layer holds, for the contents column of the
   // layer panel: "6 polygons", "1 data record", "12 labels".
   //
@@ -11753,8 +7582,8 @@
   // with nothing in it, which does not make it a label.
   function getPointKind(d) {
     if (!d) return 'point';
-    if (featureIsMarker(d)) return 'symbol';
-    if (featureIsLabel(d)) return 'label';
+    if (internal.svg.featureIsMarker(d)) return 'symbol';
+    if (internal.svg.featureIsLabel(d)) return 'label';
     if (d['svg-symbol'] || d.icon) return 'symbol';
     if (d.r > 0) return 'circle';
     return 'point';
@@ -11777,7 +7606,7 @@
   //   hasSymbolFields: it has the fields of SVG symbols
   function getAnnotationTool(records, hasLabelField, hasSymbolFields) {
     var n = records ? records.length : 0;
-    if (hasLabelField && (n === 0 || records.some(featureIsTextLabel))) return 'label';
+    if (hasLabelField && (n === 0 || records.some(internal.svg.featureIsTextLabel))) return 'label';
     if (hasLabelField || hasSymbolFields) return 'symbols';
     return null;
   }
@@ -13346,7 +9175,7 @@
         // can be used as unique identifiers for caching rendered HTML, and as
         // an id for layer menu event handlers
         if (!lyr.menu_id || uniqIds[lyr.menu_id]) {
-          lyr.menu_id = utils$1.getUniqueName();
+          lyr.menu_id = utils.getUniqueName();
         }
         uniqIds[lyr.menu_id] = true;
         layerCount++;
@@ -13864,7 +9693,7 @@
       var guests = internal.getHostOverlays(model, frame).map(function(o) { return o.frame.dataset; });
       var actions = [];
       internal.getFrames(model).forEach(function(host) {
-        var name = utils$1.htmlEscape(host.layer.name || '');
+        var name = utils.htmlEscape(host.layer.name || '');
         if (host.dataset == frame.dataset || guests.includes(host.dataset)) return;
         if (hosts.some(function(o) { return o.dataset == host.dataset; })) {
           actions.push({label: 'remove overlay from: ' + name, run: function() {
@@ -13889,7 +9718,7 @@
       }
       return internal.getFrames(model).map(function(f) {
         return {
-          label: 'move into frame: ' + utils$1.htmlEscape(f.layer.name || ''),
+          label: 'move into frame: ' + utils.htmlEscape(f.layer.name || ''),
           run: function() {
             addLayersToFrame(f, [target]);
           }
@@ -13926,10 +9755,10 @@
       var names, msg;
       if (check.reprojectable) {
         names = check.layers.map(function(lyr) {
-          return utils$1.htmlEscape(lyr.name || '[unnamed layer]');
+          return utils.htmlEscape(lyr.name || '[unnamed layer]');
         }).join(', ');
         msg = names + (n == 1 ? ' has' : ' have') + ' a different coordinate system from frame ' +
-          utils$1.htmlEscape(frame.layer.name || '') + '. Would you like to reproject ' +
+          utils.htmlEscape(frame.layer.name || '') + '. Would you like to reproject ' +
           (n == 1 ? 'it' : 'them') + ' to match?';
         if (!await showPrompt(msg, n == 1 ? 'Reproject layer?' : 'Reproject layers?')) return;
         options += ' reproject';
@@ -13964,7 +9793,7 @@
         ), title: null};
       }
       if (internal.layerHasRaster(lyr)) {
-        return {text: utils$1.format('%,d x %,d raster', internal.getRasterWidth(lyr.raster),
+        return {text: utils.format('%,d x %,d raster', internal.getRasterWidth(lyr.raster),
           internal.getRasterHeight(lyr.raster)), title: null};
       }
       if (lyr.data && !lyr.shapes) {
@@ -14005,13 +9834,13 @@
         ['Type', info.raster_type ? 'raster data' : info.geometry_type || 'tabular data']
       ];
       if (info.raster_type) {
-        rows.push(['Size', utils$1.format('%,d x %,d x %,d', info.raster_width, info.raster_height, info.raster_bands)]);
+        rows.push(['Size', utils.format('%,d x %,d x %,d', info.raster_width, info.raster_height, info.raster_bands)]);
         rows.push(['Data', info.raster_pixel_type || 'unknown']);
       } else {
-        rows.push(['Records', utils$1.format('%,d', info.feature_count)]);
+        rows.push(['Records', utils.format('%,d', info.feature_count)]);
       }
       if (info.null_shape_count > 0) {
-        rows.push(['Nulls', utils$1.format("%'d", info.null_shape_count)]);
+        rows.push(['Nulls', utils.format("%'d", info.null_shape_count)]);
       }
       if (info.raster_type || info.geometry_type && info.feature_count > info.null_shape_count) {
         rows.push(['Bounds', info.bbox.join(',')]);
@@ -14068,12 +9897,12 @@
 
     function formatInfoValue(val) {
       if (val === null || val === undefined) return '';
-      if (utils$1.isString(val)) {
+      if (utils.isString(val)) {
         return "'" + val.replace(/[\r\t\n]/g, function(c) {
           return c == '\n' ? '\\n' : c == '\r' ? '\\r' : '\\t';
         }) + "'";
       }
-      if (utils$1.isNumber(val) || val === true || val === false) {
+      if (utils.isNumber(val) || val === true || val === false) {
         return String(val);
       }
       return JSON.stringify(val);
@@ -15211,14 +11040,14 @@
       var endPoint = getVertexCoords(target, e.ids[0]);
       var undo = function() {
         if (e.data.type == 'interpolated') {
-          deleteVertex$1(target, e.ids[0]);
+          deleteVertex(target, e.ids[0]);
         } else {
           setVertexCoords(target, e.ids, startPoint);
         }
       };
       var redo = function() {
         if (e.insertion) {
-          insertVertex$1(target, e.ids[0], endPoint);
+          insertVertex(target, e.ids[0], endPoint);
         }
         setVertexCoords(target, e.ids, endPoint);
       };
@@ -15229,10 +11058,10 @@
       // get vertex coords in data coordinates (not display coordinates);
       var p = getVertexCoords(e.data.target, e.vertex_id);
       var redo = function() {
-        deleteVertex$1(e.data.target, e.vertex_id);
+        deleteVertex(e.data.target, e.vertex_id);
       };
       var undo = function() {
-        insertVertex$1(e.data.target, e.vertex_id, p);
+        insertVertex(e.data.target, e.vertex_id, p);
       };
       addHistoryState(undo, redo);
     });
@@ -15758,7 +11587,7 @@
     };
   }
 
-  utils$1.inherit(ModeSwitcher, EventDispatcher);
+  utils.inherit(ModeSwitcher, EventDispatcher);
 
   // export var ESC = 27;
   var SPACE = 32;
@@ -15838,7 +11667,7 @@
     return {originalEvent, keyCode, keyName};
   }
 
-  utils$1.inherit(KeyboardEvents, EventDispatcher);
+  utils.inherit(KeyboardEvents, EventDispatcher);
 
   // Moving label text between the three forms it takes: the string the user
   // edits, the value stored in the data table, and the lines that get rendered.
@@ -17930,6 +13759,75 @@
     return Math.max(min, Math.min(max, val));
   }
 
+  // Conversions between what a style control displays and what the property
+  // stores, for the ones more than one panel needs.
+
+  // The fraction an opacity control's contents mean ("50%", " 50 " -> 0.5), or
+  // null if it is not holding a number. Out-of-range values are clamped rather
+  // than refused: a pasted 150% is an intent, not a mistake. A blank field is
+  // null, not zero: it is what a colour with no value shows beside it.
+  function parseOpacityValue(str) {
+    var txt = String(str).replace('%', '').trim();
+    var pct = Number(txt);
+    if (txt === '' || !isFinite(pct)) return null;
+    return Math.max(0, Math.min(100, pct)) / 100;
+  }
+
+  // A typed dash pattern in the form -style stroke-dasharray= takes: lengths
+  // separated by single spaces. Commas and runs of whitespace are accepted
+  // because SVG accepts them, and a pasted "4, 2" means the same as "4 2".
+  // Returns '' for a blank field. Does not check that the lengths are numbers.
+  function normalizeDashArrayInput(str) {
+    return String(str).trim().split(/[\s,]+/).filter(Boolean).join(' ');
+  }
+
+  // A stored fraction as the percentage a control shows, or '' for no value --
+  // which is how a control over a selection that does not agree shows.
+  function formatOpacityPct(val) {
+    if (isUnsetValue(val)) return '';
+    val = Number(val);
+    return isFinite(val) ? Math.round(Math.max(0, Math.min(1, val)) * 100) + '%' : '';
+  }
+
+  // The opacity shown beside a colour. A colour with no opacity of its own is
+  // drawn opaque, and says so; with no colour either, there is nothing for an
+  // opacity to apply to, and the field is blank like the colour.
+  function formatColorOpacityPct(opacity, hasColor) {
+    if (isUnsetValue(opacity)) return hasColor ? '100%' : '';
+    return formatOpacityPct(opacity);
+  }
+
+  // The stroke width a spinner step goes to from @value, up (@direction > 0) or
+  // down. The useful widths are close together at the hairline end and far
+  // apart above 2px.
+  var STROKE_WIDTH_STEPS = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
+
+  function getNextStrokeWidth(value, direction) {
+    return getNextLadderValue(STROKE_WIDTH_STEPS, value, direction);
+  }
+
+  // The value a spinner step goes to from @value, through @steps (ascending);
+  // above the last one, steps are whole numbers both ways.
+  function getNextLadderValue(steps, value, direction) {
+    var top = steps[steps.length - 1];
+    var i;
+    if (direction > 0) {
+      for (i=0; i<steps.length; i++) {
+        if (value < steps[i]) return steps[i];
+      }
+      return Math.floor(value) + 1;
+    }
+    if (value > top) return Math.max(top, Math.ceil(value) - 1);
+    for (i=steps.length - 1; i>=0; i--) {
+      if (value > steps[i]) return steps[i];
+    }
+    return steps[0];
+  }
+
+  function isUnsetValue(val) {
+    return val === undefined || val === null || val === '';
+  }
+
   var grayscaleColorPresets = [
     '#000000', '#111111', '#222222', '#333333',
     '#444444', '#555555', '#666666', '#777777',
@@ -17968,6 +13866,11 @@
   // is shared by every picker, so it carries over from one to the next.
   var colorFieldFormat = 'hex';
 
+  // The hue and opacity strips. positionMarker() adds half a pixel, so the
+  // middle row puts a marker at the strip's center.
+  var SLIDER_HEIGHT = 15;
+  var SLIDER_MIDDLE = Math.floor(SLIDER_HEIGHT / 2);
+
   function closeOpenPickers(except) {
     openPickers.slice().forEach(function(picker) {
       if (picker !== except) picker.hide();
@@ -17976,11 +13879,18 @@
 
   // opts.presetRows   rows of preset colors; [] for none
   // opts.onPreview(hex), opts.onChange(hex), opts.onHide()
+  // opts.opacityInput the opacity field beside the color, if it has one. The
+  //                   picker gets a slider for it, which shows the field's value
+  //                   and writes to it: a drag shows its percentage in the field
+  //                   and fires the field's change event where it ends, so the
+  //                   field's own handler applies it.
   function ColorPicker(parent, opts) {
     opts = opts || {};
     var self = this;
     var colorPicker = El('div').addClass('label-color-picker').appendTo(parent).hide();
     var sbCanvas, hueCanvas, sbMarker, hueMarker, colorInput, formatTabs;
+    var opacityInput = opts.opacityInput || null;
+    var alphaCanvas, alphaMarker;
     var pickerColor = {h: 0, s: 0, b: 0};
     // The hex value the picker was set to, until it is moved off it. HSB is
     // held in bytes, which cannot represent every RGB colour, so a colour that
@@ -18073,8 +13983,9 @@
       sbCanvas = El('canvas').attr('width', '256').attr('height', '256').appendTo(sbWrap);
       sbMarker = makePickerMarker().appendTo(sbWrap);
       var hueWrap = El('div').addClass('label-color-canvas-wrap').appendTo(colorPicker);
-      hueCanvas = El('canvas').attr('width', '256').attr('height', '18').appendTo(hueWrap);
+      hueCanvas = El('canvas').attr('width', '256').attr('height', String(SLIDER_HEIGHT)).appendTo(hueWrap);
       hueMarker = makePickerMarker().appendTo(hueWrap);
+      if (opacityInput) initAlphaSlider();
       if (presetRows.length > 0) renderPresetRows(colorPicker);
       // a field for a typed or pasted color, with tabs for the format it shows
       // colors in
@@ -18091,6 +14002,35 @@
         startCanvasDrag(e, updateHueFromEvent);
       });
       setPickerColor(pickerColor);
+    }
+
+    function initAlphaSlider() {
+      var wrap = El('div').addClass('label-color-canvas-wrap').appendTo(colorPicker);
+      alphaCanvas = El('canvas').attr('width', '256').attr('height', String(SLIDER_HEIGHT))
+        .attr('aria-label', 'Opacity').appendTo(wrap);
+      alphaMarker = makePickerMarker().appendTo(wrap);
+      alphaCanvas.on('mousedown', function(e) {
+        if (unset || opacityInput.node().disabled) return;
+        startCanvasDrag(e, updateAlphaFromEvent, commitOpacity);
+      });
+      // a typed opacity moves the slider
+      opacityInput.on('change', drawAlphaCanvas);
+    }
+
+    // A blank field is drawn as opaque, which is how an unset opacity renders
+    function getOpacity() {
+      var val = parseOpacityValue(opacityInput.node().value);
+      return val === null ? 1 : val;
+    }
+
+    function updateAlphaFromEvent(evt) {
+      var p = getCanvasPoint(alphaCanvas.node(), evt);
+      opacityInput.node().value = Math.round((1 - p.x / 255) * 100) + '%';
+      drawAlphaCanvas();
+    }
+
+    function commitOpacity() {
+      opacityInput.node().dispatchEvent(new Event('change'));
     }
 
     function renderPresetRows(parent) {
@@ -18161,8 +14101,9 @@
       commitPickerColor();
     }
 
-    function startCanvasDrag(e, update) {
+    function startCanvasDrag(e, update, commit) {
       var evt = e.originalEvent || e;
+      commit = commit || commitPickerColor;
       colorPicker.addClass('dragging-color');
       El('body').addClass('dragging-color-picker');
       update(evt);
@@ -18177,7 +14118,7 @@
         document.removeEventListener('mouseup', onup);
         colorPicker.removeClass('dragging-color');
         El('body').removeClass('dragging-color-picker');
-        commitPickerColor();
+        commit();
       }
     }
 
@@ -18238,6 +14179,7 @@
       if (!sbCanvas) return;
       drawSaturationBrightnessCanvas();
       drawHueCanvas();
+      drawAlphaCanvas();
     }
 
     function drawSaturationBrightnessCanvas() {
@@ -18259,16 +14201,16 @@
         }
       }
       ctx.putImageData(image, 0, 0);
-      positionMarker(sbMarker, pickerColor.s, 255 - pickerColor.b, pickerColor);
+      positionMarker(sbMarker, pickerColor.s, 255 - pickerColor.b, hsbToRgb(pickerColor));
       sbMarker.node().style.display = unset ? 'none' : '';
     }
 
     function drawHueCanvas() {
       var ctx = hueCanvas.node().getContext('2d');
-      var image = ctx.createImageData(256, 18);
+      var image = ctx.createImageData(256, SLIDER_HEIGHT);
       var data = image.data;
       var i = 0;
-      for (var y=0; y<18; y++) {
+      for (var y=0; y<SLIDER_HEIGHT; y++) {
         for (var x=0; x<256; x++) {
           var rgb = hsbToRgb({h: x, s: 255, b: 255});
           data[i++] = rgb.r;
@@ -18278,7 +14220,43 @@
         }
       }
       ctx.putImageData(image, 0, 0);
-      positionMarker(hueMarker, pickerColor.h, 9, {h: pickerColor.h, s: 255, b: 255});
+      positionMarker(hueMarker, pickerColor.h, SLIDER_MIDDLE, hsbToRgb({h: pickerColor.h, s: 255, b: 255}));
+    }
+
+    // The picked color over a checkerboard, opaque at the left and clear at the
+    // right. With no color picked there is no opacity to set, so no marker.
+    function drawAlphaCanvas() {
+      if (!alphaCanvas) return;
+      var ctx = alphaCanvas.node().getContext('2d');
+      var image = ctx.createImageData(256, SLIDER_HEIGHT);
+      var data = image.data;
+      var rgb = internal.parseHexColor(getPickerHex() || hsbToHex(pickerColor));
+      var i = 0;
+      var x, y, a, bg, markerX, markerBg;
+      for (y=0; y<SLIDER_HEIGHT; y++) {
+        for (x=0; x<256; x++) {
+          a = 1 - x / 255;
+          bg = getCheckerValue(x, y);
+          data[i++] = Math.round(rgb.r * a + bg * (1 - a));
+          data[i++] = Math.round(rgb.g * a + bg * (1 - a));
+          data[i++] = Math.round(rgb.b * a + bg * (1 - a));
+          data[i++] = 255;
+        }
+      }
+      ctx.putImageData(image, 0, 0);
+      a = getOpacity();
+      markerX = Math.round((1 - a) * 255);
+      markerBg = getCheckerValue(markerX, SLIDER_MIDDLE);
+      positionMarker(alphaMarker, markerX, SLIDER_MIDDLE, {
+        r: rgb.r * a + markerBg * (1 - a),
+        g: rgb.g * a + markerBg * (1 - a),
+        b: rgb.b * a + markerBg * (1 - a)
+      });
+      alphaMarker.node().style.display = unset ? 'none' : '';
+    }
+
+    function getCheckerValue(x, y) {
+      return (Math.floor(x / 6) + Math.floor(y / 6)) % 2 ? 204 : 255;
     }
 
     function commitPickerColor() {
@@ -18295,10 +14273,9 @@
       return El('<svg class="label-color-marker" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle></svg>');
     }
 
-    function positionMarker(marker, x, y, hsb) {
-      var rgb = hsbToRgb(hsb);
-      x = utils$1.clamp(x, 1, 254);
-      y = utils$1.clamp(y, 1, 254) + 0.5;
+    function positionMarker(marker, x, y, rgb) {
+      x = utils.clamp(x, 1, 254);
+      y = utils.clamp(y, 1, 254) + 0.5;
       marker.css({
         left: x - 8,
         top: y - 8
@@ -18381,75 +14358,6 @@
 
   function clamp$5(val, min, max) {
     return isFinite(val) ? Math.max(min, Math.min(max, val)) : min;
-  }
-
-  // Conversions between what a style control displays and what the property
-  // stores, for the ones more than one panel needs.
-
-  // The fraction an opacity control's contents mean ("50%", " 50 " -> 0.5), or
-  // null if it is not holding a number. Out-of-range values are clamped rather
-  // than refused: a pasted 150% is an intent, not a mistake. A blank field is
-  // null, not zero: it is what a colour with no value shows beside it.
-  function parseOpacityValue(str) {
-    var txt = String(str).replace('%', '').trim();
-    var pct = Number(txt);
-    if (txt === '' || !isFinite(pct)) return null;
-    return Math.max(0, Math.min(100, pct)) / 100;
-  }
-
-  // A typed dash pattern in the form -style stroke-dasharray= takes: lengths
-  // separated by single spaces. Commas and runs of whitespace are accepted
-  // because SVG accepts them, and a pasted "4, 2" means the same as "4 2".
-  // Returns '' for a blank field. Does not check that the lengths are numbers.
-  function normalizeDashArrayInput(str) {
-    return String(str).trim().split(/[\s,]+/).filter(Boolean).join(' ');
-  }
-
-  // A stored fraction as the percentage a control shows, or '' for no value --
-  // which is how a control over a selection that does not agree shows.
-  function formatOpacityPct(val) {
-    if (isUnsetValue(val)) return '';
-    val = Number(val);
-    return isFinite(val) ? Math.round(Math.max(0, Math.min(1, val)) * 100) + '%' : '';
-  }
-
-  // The opacity shown beside a colour. A colour with no opacity of its own is
-  // drawn opaque, and says so; with no colour either, there is nothing for an
-  // opacity to apply to, and the field is blank like the colour.
-  function formatColorOpacityPct(opacity, hasColor) {
-    if (isUnsetValue(opacity)) return hasColor ? '100%' : '';
-    return formatOpacityPct(opacity);
-  }
-
-  // The stroke width a spinner step goes to from @value, up (@direction > 0) or
-  // down. The useful widths are close together at the hairline end and far
-  // apart above 2px.
-  var STROKE_WIDTH_STEPS = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
-
-  function getNextStrokeWidth(value, direction) {
-    return getNextLadderValue(STROKE_WIDTH_STEPS, value, direction);
-  }
-
-  // The value a spinner step goes to from @value, through @steps (ascending);
-  // above the last one, steps are whole numbers both ways.
-  function getNextLadderValue(steps, value, direction) {
-    var top = steps[steps.length - 1];
-    var i;
-    if (direction > 0) {
-      for (i=0; i<steps.length; i++) {
-        if (value < steps[i]) return steps[i];
-      }
-      return Math.floor(value) + 1;
-    }
-    if (value > top) return Math.max(top, Math.ceil(value) - 1);
-    for (i=steps.length - 1; i>=0; i--) {
-      if (value > steps[i]) return steps[i];
-    }
-    return steps[0];
-  }
-
-  function isUnsetValue(val) {
-    return val === undefined || val === null || val === '';
   }
 
   // The parts the style panels are built from. They were the label panel's, and
@@ -18765,6 +14673,7 @@
     }
     control.picker = new ColorPicker(colorCell, {
       presetRows: layerColorPresetRows,
+      opacityInput: control.opacity,
       // A drag in the picker shows on the map's own terms -- the swatch and the
       // hex value -- and only the colour the drag ends on is applied.
       onPreview: control.setColor,
@@ -20971,7 +16880,7 @@
         if (isHexColor(color)) colorPicker.setColor(color);
         applyLabelColor(color);
       });
-      colorPicker = initColorPicker(textColorCell, colorChit, colorInput, applyLabelColor);
+      colorPicker = initColorPicker(textColorCell, colorChit, colorInput, applyLabelColor, opacityInput);
 
       var letterCell = El('div').addClass('label-split-cell label-spacing-row').appendTo(colorRow);
       El('span').appendTo(letterCell).text('Letter spacing');
@@ -21018,7 +16927,7 @@
         applyBackgroundColor(color);
       });
       backgroundColorPicker = initColorPicker(backgroundColorCell, backgroundColorChit,
-        backgroundColorInput, applyBackgroundColor);
+        backgroundColorInput, applyBackgroundColor, backgroundOpacityInput);
 
       var paddingCell = El('div').addClass('label-split-cell label-spacing-row label-padding-row').appendTo(backgroundRow);
       El('span').appendTo(paddingCell).text('Padding');
@@ -21071,7 +16980,7 @@
         if (isHexColor(color)) haloColorPicker.setColor(color);
         applyHaloColor(color);
       });
-      haloColorPicker = initColorPicker(haloColorCell, haloColorChit, haloColorInput, applyHaloColor);
+      haloColorPicker = initColorPicker(haloColorCell, haloColorChit, haloColorInput, applyHaloColor, haloOpacityInput);
 
       var haloWidthCell = El('div').addClass('label-split-cell label-spacing-row').appendTo(haloColorRow);
       El('span').appendTo(haloWidthCell).text('Width');
@@ -21124,7 +17033,7 @@
         if (isHexColor(color)) iconColorPicker.setColor(color);
         applyIconColor(color);
       });
-      iconColorPicker = initColorPicker(iconColorCell, iconColorChit, iconColorInput, applyIconColor);
+      iconColorPicker = initColorPicker(iconColorCell, iconColorChit, iconColorInput, applyIconColor, iconOpacityInput);
 
       var sizeRow = El('div').addClass('label-split-cell label-icon-size-row').appendTo(iconColorRow);
       El('span').appendTo(sizeRow).text('Size');
@@ -21294,7 +17203,7 @@
         if (isHexColor(color)) calloutColorPicker.setColor(color);
         applyCalloutColor(color);
       });
-      calloutColorPicker = initColorPicker(colorCell, calloutColorChit, calloutColorInput, applyCalloutColor);
+      calloutColorPicker = initColorPicker(colorCell, calloutColorChit, calloutColorInput, applyCalloutColor, calloutOpacityInput);
 
       // The gap in the narrow column, under the sizes. Unset, it is worked out
       // from the anchor's symbol, which it clears, and it shows what that comes
@@ -22708,8 +18617,9 @@
       return isFinite(val) && val > 0 ? val : defaultValue;
     }
 
-    function initColorPicker(parent, chit, input, onChange) {
+    function initColorPicker(parent, chit, input, onChange, opacityInput) {
       return new ColorPicker(parent, {
+        opacityInput: opacityInput,
         onPreview: function(hex) {
           input.node().value = hex;
           chit.css('background-color', hex);
@@ -29714,7 +25624,7 @@
     var self = new internal.Catalog();
     var deleteLayer = self.deleteLayer;
     var setDefaultTargets = self.setDefaultTargets;
-    utils$1.extend(self, EventDispatcher.prototype);
+    utils.extend(self, EventDispatcher.prototype);
 
     // A map frame (and its furniture) is composition state, not editable content. Commands may
     // explicitly target it, but it must not replace the GUI's active content
@@ -29877,222 +25787,6 @@
     }
   }
 
-  function absArcId(arcId) {
-    return arcId >= 0 ? arcId : ~arcId;
-  }
-
-  function calcArcBounds(xx, yy, start, len) {
-    var i = start | 0,
-        n = isNaN(len) ? xx.length - i : len + i,
-        x, y, xmin, ymin, xmax, ymax;
-    if (n > 0) {
-      xmin = xmax = xx[i];
-      ymin = ymax = yy[i];
-    }
-    for (i++; i<n; i++) {
-      x = xx[i];
-      y = yy[i];
-      if (x < xmin) xmin = x;
-      if (x > xmax) xmax = x;
-      if (y < ymin) ymin = y;
-      if (y > ymax) ymax = y;
-    }
-    return [xmin, ymin, xmax, ymax];
-  }
-
-  function getUnfilteredArcLength(arcId, arcs) {
-    var data = arcs.getVertexData();
-    return data.nn[arcId];
-  }
-
-  function getUnfilteredArcCoords(arcId, arcs) {
-    var data = arcs.getVertexData();
-    var coords = [];
-    var start = data.ii[arcId];
-    var n = data.nn[arcId];
-    for (var i=0; i<n; i++) {
-      coords.push([data.xx[start + i], data.yy[start + i]]);
-    }
-    return coords;
-  }
-
-  function findArcIdFromVertexId(i, ii) {
-    // binary search
-    // possible optimization: use interpolation to find a better partition value.
-    var lower = 0, upper = ii.length - 1;
-    var middle;
-    while (lower < upper) {
-      middle = Math.ceil((lower + upper) / 2);
-      if (i < ii[middle]) {
-        upper = middle - 1;
-      } else {
-        lower = middle;
-      }
-    }
-    return lower; // assumes dataset is not empty
-  }
-
-  function deleteLastArc(arcs) {
-    var data = arcs.getVertexData();
-    var arcId = arcs.size() - 1;
-    var arcLen = data.nn[arcId];
-    var n = data.xx.length;
-    var z = arcs.getRetainedInterval();
-    var xx2 = new Float64Array(data.xx.buffer, 0, n-arcLen);
-    var yy2 = new Float64Array(data.yy.buffer, 0, n-arcLen);
-    var nn2 = new Int32Array(data.nn.buffer, 0, arcs.size() - 1);
-    var zz2 = arcs.isFlat() ?
-      null :
-      new Float64Array(data.zz.buffer, 0, n-arcLen);
-    arcs.updateVertexData(nn2, xx2, yy2, zz2);
-    arcs.setRetainedInterval(z);
-  }
-
-  function deleteVertex(arcs, i) {
-    var data = arcs.getVertexData();
-    var nn = data.nn;
-    var n = data.xx.length;
-    // avoid re-allocating memory
-    var xx2 = new Float64Array(data.xx.buffer, 0, n-1);
-    var yy2 = new Float64Array(data.yy.buffer, 0, n-1);
-    var zz2 = arcs.isFlat() ? null : new Float64Array(data.zz.buffer, 0, n-1);
-    var z = arcs.getRetainedInterval();
-    var count = 0;
-    var found = false;
-    for (var j=0; j<nn.length; j++) {
-      count += nn[j];
-      if (count >= i && !found) { // TODO: confirm this
-        nn[j] = nn[j] - 1;
-        found = true;
-      }
-    }
-    utils.copyElements(data.xx, 0, xx2, 0, i);
-    utils.copyElements(data.yy, 0, yy2, 0, i);
-    utils.copyElements(data.xx, i+1, xx2, i, n-i-1);
-    utils.copyElements(data.yy, i+1, yy2, i, n-i-1);
-    if (zz2) {
-      utils.copyElements(data.zz, 0, zz2, 0, i);
-      utils.copyElements(data.zz, i+1, zz2, i, n-i-1);
-    }
-    arcs.updateVertexData(nn, xx2, yy2, zz2);
-    arcs.setRetainedInterval(z);
-  }
-
-  function appendEmptyArc(arcs) {
-    var data = arcs.getVertexData();
-    var nn = utils.extendBuffer(data.nn, data.nn.length + 1, data.nn.length);
-    arcs.updateVertexData(nn, data.xx, data.yy, data.zz);
-  }
-
-  // adds vertex to last arc
-  // (used when adding lines in the GUI)
-  // p: [x, y] point in display coordinates
-  function appendVertex(arcs, p) {
-    var i = arcs.getPointCount(); // one past the last idx
-    insertVertex(arcs, i, p);
-  }
-
-  function insertVertex(arcs, i, p) {
-    var data = arcs.getVertexData();
-    var nn = data.nn;
-    var n = data.xx.length;
-    var count = 0;
-    var xx2, yy2, zz2;
-    // avoid re-allocating memory on each insertion
-    if (data.xx.buffer.byteLength >= data.xx.length * 8 + 8) {
-      xx2 = new Float64Array(data.xx.buffer, 0, n+1);
-      yy2 = new Float64Array(data.yy.buffer, 0, n+1);
-    } else {
-      xx2 = new Float64Array(new ArrayBuffer((n + 50) * 8), 0, n+1);
-      yy2 = new Float64Array(new ArrayBuffer((n + 50) * 8), 0, n+1);
-    }
-    if (!arcs.isFlat()) {
-      zz2 = new Float64Array(new ArrayBuffer((n + 1) * 8), 0, n+1);
-    }
-    if (i < 0 || i > n) {
-      error('Out-of-range vertex insertion index:', i);
-    } else if (i == n) {
-      // appending vertex to last arc
-      nn[nn.length - 1]++;
-    } else {
-      for (var j=0; j<nn.length; j++) {
-        count += nn[j];
-        if (count >= i) { // TODO: confirm this
-          nn[j] = nn[j] + 1;
-          break;
-        }
-      }
-    }
-
-    utils.copyElements(data.xx, 0, xx2, 0, i);
-    utils.copyElements(data.yy, 0, yy2, 0, i);
-    utils.copyElements(data.xx, i, xx2, i+1, n-i);
-    utils.copyElements(data.yy, i, yy2, i+1, n-i);
-    xx2[i] = p[0];
-    yy2[i] = p[1];
-    if (zz2) {
-      zz2[i] = Infinity;
-      utils.copyElements(data.zz, 0, zz2, 0, i);
-      utils.copyElements(data.zz, i, zz2, i+1, n-i);
-    }
-    arcs.updateVertexData(nn, xx2, yy2, zz2);
-  }
-
-  function countFilteredVertices(zz, zlimit) {
-    var count = 0;
-    for (var i=0, n = zz.length; i<n; i++) {
-      if (zz[i] >= zlimit) count++;
-    }
-    return count;
-  }
-
-  function filterVertexData(o, zlimit) {
-    if (!o.zz) error('Expected simplification data');
-    var xx = o.xx,
-        yy = o.yy,
-        zz = o.zz,
-        len2 = countFilteredVertices(zz, zlimit),
-        arcCount = o.nn.length,
-        xx2 = new Float64Array(len2),
-        yy2 = new Float64Array(len2),
-        zz2 = new Float64Array(len2),
-        nn2 = new Int32Array(arcCount),
-        i = 0, i2 = 0,
-        n, n2;
-
-    for (var arcId=0; arcId < arcCount; arcId++) {
-      n2 = 0;
-      n = o.nn[arcId];
-      for (var end = i+n; i < end; i++) {
-        if (zz[i] >= zlimit) {
-          xx2[i2] = xx[i];
-          yy2[i2] = yy[i];
-          zz2[i2] = zz[i];
-          i2++;
-          n2++;
-        }
-      }
-      if (n2 == 1) {
-        error("Collapsed arc");
-        // This should not happen (endpoints should be z == Infinity)
-        // Could handle like this, instead of throwing an error:
-        // n2 = 0;
-        // xx2.pop();
-        // yy2.pop();
-        // zz2.pop();
-      } else if (n2 === 0) {
-        // collapsed arc... ignoring
-      }
-      nn2[arcId] = n2;
-    }
-    return {
-      xx: xx2,
-      yy: yy2,
-      zz: zz2,
-      nn: nn2
-    };
-  }
-
   // How far from a line, in pixels, the pointer hits it (less when zoomed out
   // beyond the full extent)
   var POLYLINE_HIT_DISTANCE = 15;
@@ -30123,7 +25817,7 @@
     } else if (geoType == 'polygon') {
       test = polygonTest;
     } else {
-      error$2("Unexpected geometry type:", geoType);
+      error("Unexpected geometry type:", geoType);
     }
     return test;
 
@@ -30159,7 +25853,7 @@
         hits = pickNearestCandidates(cands, 0, maxDist);
       }
       return {
-        ids: utils$1.pluck(hits, 'id')
+        ids: utils.pluck(hits, 'id')
       };
     }
 
@@ -30167,7 +25861,7 @@
       var a = polygonTest(x, y);
       var b = polylineTest(x, y, 5);
       return {
-        ids: utils$1.uniq(b.ids.concat(a.ids))
+        ids: utils.uniq(b.ids.concat(a.ids))
       };
     }
 
@@ -30187,7 +25881,7 @@
       sortByDistance(x, y, cands, layer.gui.displayArcs);
       cands = pickNearestCandidates(cands, bufDist, maxDist);
       return {
-        ids: utils$1.pluck(cands, 'id')
+        ids: utils.pluck(cands, 'id')
       };
     }
 
@@ -30215,7 +25909,7 @@
         cand.info = geom.getPointToShapeInfo(x, y, cands[i].shape, arcs);
         cand.dist = cand.info.distance;
       }
-      utils$1.sortOn(cands, 'dist');
+      utils.sortOn(cands, 'dist');
     }
 
     function pointTest(x, y) {
@@ -30243,7 +25937,7 @@
       });
       // TODO: add info on what part of a shape gets hit?
       return {
-        ids: utils$1.uniq(hits) // multipoint features can register multiple hits
+        ids: utils.uniq(hits) // multipoint features can register multiple hits
       };
     }
 
@@ -30332,7 +26026,7 @@
           }
         });
         return {
-          ids: utils$1.uniq(hits)
+          ids: utils.uniq(hits)
         };
       };
     }
@@ -30701,7 +26395,7 @@
   // on the map. Export drops empty labels rather than doing this.
   function withPlaceholderText(d) {
     if (!internal.svg.featureIsLabel(d) || internal.svg.featureHasLabel(d)) return d;
-    return utils$1.defaults({'label-text': TEXT_PLACEHOLDER}, d);
+    return utils.defaults({'label-text': TEXT_PLACEHOLDER}, d);
   }
 
   function addClass(existing, name) {
@@ -30803,9 +26497,9 @@
       }
       if (ownerTest) data.ids = data.ids.filter(ownerTest);
       if (svgData) { // mouse is over an SVG symbol
-        utils$1.extend(data, svgData);
+        utils.extend(data, svgData);
         // placing symbol id in front of any other hits
-        data.ids = utils$1.uniq([svgData.targetId].concat(data.ids));
+        data.ids = utils.uniq([svgData.targetId].concat(data.ids));
       }
       data.id = data.ids.length > 0 ? data.ids[0] : -1;
       return data;
@@ -30988,8 +26682,8 @@
 
     self.addSelectionIds = function(ids) {
       turnOn('selection');
-      selectionIds = utils$1.uniq(selectionIds.concat(ids));
-      ids = utils$1.uniq(storedData.ids.concat(ids));
+      selectionIds = utils.uniq(selectionIds.concat(ids));
+      ids = utils.uniq(storedData.ids.concat(ids));
       updateSelectionState({ids: ids});
     };
 
@@ -31000,7 +26694,7 @@
     // the selection with a click and reads the hovered feature on the next one
     self.setSelectionIds = function(ids, opts) {
       var hoverId = opts && opts.keepHover && !storedData.pinned ? storedData.id : -1;
-      selectionIds = utils$1.uniq(ids || []);
+      selectionIds = utils.uniq(ids || []);
       updateSelectionState({ids: selectionIds.concat(), id: hoverId, pinned: false});
     };
 
@@ -31308,7 +27002,7 @@
         return [id];
       }
       if (selectionIds.includes(id)) {
-        return utils$1.difference(selectionIds, [id]);
+        return utils.difference(selectionIds, [id]);
       }
       return [id];
     }
@@ -31352,7 +27046,7 @@
 
     function toggleId(id, ids) {
       if (ids.indexOf(id) > -1) {
-        return utils$1.difference(ids, [id]);
+        return utils.difference(ids, [id]);
       }
       return [id].concat(ids);
     }
@@ -31490,9 +27184,9 @@
         }
         eventData.originalEvent = evt;
         eventData.overMap = isOverMap(evt);
-        utils$1.defaults(eventData, evt.data);
+        utils.defaults(eventData, evt.data);
       }
-      if (extra) utils$1.extend(eventData, extra);
+      if (extra) utils.extend(eventData, extra);
       // utils.defaults(eventData, evt && evt.data || {}, storedData);
       self.dispatchEvent(type, eventData);
     }
@@ -31502,10 +27196,10 @@
         mode: interactionMode()
       };
       // Merge stored hit data into the event data
-      utils$1.defaults(data, storedData);
+      utils.defaults(data, storedData);
       if (transientIds.length) {
         // add transient ids to any other hit ids
-        data.ids = utils$1.uniq(transientIds.concat(data.ids || []));
+        data.ids = utils.uniq(transientIds.concat(data.ids || []));
       }
       if (pendingPath) {
         data.pending_path = pendingPath;
@@ -31596,7 +27290,7 @@
     }
   }
 
-  utils$1.inherit(Timer, EventDispatcher);
+  utils.inherit(Timer, EventDispatcher);
 
   function Tween(ease) {
     var self = this,
@@ -31621,7 +27315,7 @@
     }
   }
 
-  utils$1.inherit(Tween, EventDispatcher);
+  utils.inherit(Tween, EventDispatcher);
 
   Tween.sineInOut = function(n) {
     return 0.5 - Math.cos(n * Math.PI) / 2;
@@ -31689,7 +27383,7 @@
     update();
   }
 
-  utils$1.inherit(ElementPosition, EventDispatcher);
+  utils.inherit(ElementPosition, EventDispatcher);
 
   function MouseWheelDirection() {
     var prevTime = 0;
@@ -31788,13 +27482,13 @@
           // Decelerate towards the end of the sustain interval (for smoother zooming)
           multiplier *= Tween.quadraticOut(1 - fadeFactor);
         }
-        obj = utils$1.extend({direction: wheelDirection, multiplier: multiplier}, mouse.mouseData());
+        obj = utils.extend({direction: wheelDirection, multiplier: multiplier}, mouse.mouseData());
         self.dispatchEvent('mousewheel', obj);
       }
     }
   }
 
-  utils$1.inherit(MouseWheel, EventDispatcher);
+  utils.inherit(MouseWheel, EventDispatcher);
 
 
   function MouseArea(element, pos) {
@@ -31858,7 +27552,7 @@
     };
 
     this.mouseData = function() {
-      return utils$1.extend({}, _prevEvt);
+      return utils.extend({}, _prevEvt);
     };
 
     function onAreaDown(e) {
@@ -31931,7 +27625,7 @@
           dragX: evt.pageX - _downEvt.pageX,
           dragY: evt.pageY - _downEvt.pageY
         };
-        _self.dispatchEvent('drag', utils$1.extend(obj, evt));
+        _self.dispatchEvent('drag', utils.extend(obj, evt));
       } else {
         _self.dispatchEvent('hover', evt);
       }
@@ -31963,7 +27657,7 @@
     }
   }
 
-  utils$1.inherit(MouseArea, EventDispatcher);
+  utils.inherit(MouseArea, EventDispatcher);
 
   function initVariableClick(node, cb) {
     var downEvent = null;
@@ -32623,7 +28317,7 @@
           maxScale = 4,
           minTime = 100,
           maxTime = 800,
-          time = utils$1.clamp(clickTime || 200, minTime, maxTime),
+          time = utils.clamp(clickTime || 200, minTime, maxTime),
           k = (time - minTime) / (maxTime - minTime),
           scale = minScale + k * (maxScale - minScale);
       return 1 + scale * zoomScaleMultiplier;
@@ -32631,7 +28325,7 @@
 
     // @box Bounds with pixels from t,l corner of map area.
     function zoomToBbox(bbox) {
-      var bounds = new Bounds$1(bbox),
+      var bounds = new Bounds(bbox),
           pct = Math.max(bounds.width() / ext.width(), bounds.height() / ext.height()),
           fx = bounds.centerX() / ext.width() * (1 + pct) - pct / 2,
           fy = bounds.centerY() / ext.height() * (1 + pct) - pct / 2;
@@ -32979,7 +28673,7 @@
         // Some individual features can have undefined values for some or all of
         // their data properties (properties are set to undefined when an input JSON file
         // has inconsistent fields, or after force-merging layers with inconsistent fields).
-        el.html(utils$1.format('<div class="note">This %s is missing attribute data.</div>',
+        el.html(utils.format('<div class="note">This %s is missing attribute data.</div>',
             table && table.getFields().length > 0 ? 'feature': 'layer'));
       }
 
@@ -33010,7 +28704,7 @@
         rec = getMultiRecord(recIds, table);
       }
       rec = rec || {};
-      utils$1.forEachProperty(rec, function(v, k) {
+      utils.forEachProperty(rec, function(v, k) {
         // missing GeoJSON fields are set to undefined on import; skip these
         if (v === undefined) return;
         if (isFrame && internal.isFrameReservedField(k)) return;
@@ -33051,7 +28745,7 @@
     function renderRow(key, val, recIds, table, editable) {
       var type = getFieldType(val, key, table);
       var str = formatInspectorValue(val, type);
-      var rowHtml = `<td class="field-name">${key}</td><td><span class="value">${utils$1.htmlEscape(str)}</span> </td>`;
+      var rowHtml = `<td class="field-name">${key}</td><td><span class="value">${utils.htmlEscape(str)}</span> </td>`;
       var rowEl = El('tr').html(rowHtml);
       var cellEl = rowEl.findChild('.value');
       setFieldClass(cellEl, val, type);
@@ -33062,7 +28756,7 @@
     }
 
     function setFieldClass(el, val, type) {
-      var isNum = type ? type == 'number' : utils$1.isNumber(val);
+      var isNum = type ? type == 'number' : utils.isNumber(val);
       var isNully = val === undefined || val === null || val !== val;
       var isEmpty = val === '';
       el.classed('num-field', isNum);
@@ -33110,7 +28804,7 @@
   function formatInspectorValue(val, type) {
     var str;
     if (type == 'date') {
-      str = utils$1.formatDateISO(val);
+      str = utils.formatDateISO(val);
     } else if (type == 'object') {
       str = val ? JSON.stringify(val) : "";
     } else {
@@ -33425,7 +29119,7 @@
         return field == 'fill' || field == 'r';
       }); // support colored squares
     } else {
-      fields = utils$1.difference(fields, ['opacity', 'class']);
+      fields = utils.difference(fields, ['opacity', 'class']);
     }
     return layerHasStyleValues(lyr, fields) ||
       layerHasStyleValues(lyr, getLineArrowFields(lyr)) ||
@@ -34505,7 +30199,7 @@
       hitData = withoutLabelledFeatures(displayLyr, hitData);
     }
     // layer containing selected features, not including hover or pinned feature
-    ids = utils$1.difference(hitData.ids || [], [hitData.id]);
+    ids = utils.difference(hitData.ids || [], [hitData.id]);
     if (ids.length > 0) {
       lyr = getOverlayLayer(activeLyr, ids);
       outlineStyle = getSelectionStyle(displayLyr.geometry_type, styleOpts);
@@ -35338,7 +31032,7 @@
       _dragging = true;
       updateCursor();
       if (hoverVertexInfo.type == 'interpolated') {
-        insertVertex$1(hit.getHitTarget(), hoverVertexInfo.i, hoverVertexInfo.point);
+        insertVertex(hit.getHitTarget(), hoverVertexInfo.i, hoverVertexInfo.point);
         hoverVertexInfo.ids = [hoverVertexInfo.i];
       }
       hideDraggedShapes(hit.getHitTarget(), hoverVertexInfo.ids);
@@ -35679,7 +31373,7 @@
         target: target,
         vertex_id: vId
       });
-      deleteVertex$1(target, vId);
+      deleteVertex(target, vId);
       clearHoverVertex();
       gui.dispatchEvent('map-needs-refresh');
     }
@@ -43076,7 +38770,7 @@
     // Get params for converting geographic coords to pixel coords
     this.getTransform = function(pixScale) {
       // get transform (y-flipped);
-      var viewBounds = new Bounds$1(0, 0, _position.width(), _position.height());
+      var viewBounds = new Bounds(0, 0, _position.width(), _position.height());
       if (pixScale) {
         viewBounds.xmax *= pixScale;
         viewBounds.ymax *= pixScale;
@@ -43086,7 +38780,7 @@
 
     // k scales the size of the bbox (used by gui to control fp error when zoomed very far)
     this.getBounds = function(k) {
-      if (!_fullBounds) return new Bounds$1();
+      if (!_fullBounds) return new Bounds();
       return calcBounds(_cx, _cy, _scale / (k || 1));
     };
 
@@ -43101,7 +38795,7 @@
       var b = _fullBounds = fullBounds;
       if (!b.hasBounds()) return; // kludge
       if (strictBounds) {
-        _strictBounds = Array.isArray(strictBounds) ? new Bounds$1(strictBounds) : strictBounds;
+        _strictBounds = Array.isArray(strictBounds) ? new Bounds(strictBounds) : strictBounds;
       } else {
         _strictBounds = null;
       }
@@ -43131,7 +38825,7 @@
 
     this.getSymbolScale = function() {
       if (!_frame) return 1;
-      var bounds = new Bounds$1(_frame.bbox);
+      var bounds = new Bounds(_frame.bbox);
       var bounds2 = bounds.clone().transform(this.getTransform());
       return bounds2.width() / _frame.width;
     };
@@ -43139,7 +38833,7 @@
     this.zoomToFrameMagnification = function(targetScale) {
       if (!_frame || !(targetScale > 0)) return;
       var currentScale = this.getSymbolScale();
-      var frameBounds = new Bounds$1(_frame.bbox);
+      var frameBounds = new Bounds(_frame.bbox);
       var p = this.translateCoords(frameBounds.centerX(), frameBounds.centerY());
       this.zoomByPct(
         targetScale / currentScale,
@@ -43200,7 +38894,7 @@
     }
 
     function maxAbs() {
-      return Math.max.apply(null, utils$1.toArray(arguments).map(Math.abs));
+      return Math.max.apply(null, utils.toArray(arguments).map(Math.abs));
     }
 
     function limitScale(scale) {
@@ -43214,12 +38908,12 @@
       }
       var w = full.width() / scale;
       var h = full.height() / scale;
-      return new Bounds$1(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
+      return new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
     }
 
     // Calculate viewport bounds from frame data
     function fillOutFrameBounds(frame) {
-      var bounds = new Bounds$1(frame.bbox);
+      var bounds = new Bounds(frame.bbox);
       var kx = _position.width() / frame.width;
       var ky = _position.height() / frame.height;
       bounds.scale(kx, ky);
@@ -43231,7 +38925,7 @@
           hpix = _position.height() - 2 * marginpix,
           xpad, ypad, b2;
       if (wpix <= 0 || hpix <= 0) {
-        return new Bounds$1(0, 0, 0, 0);
+        return new Bounds(0, 0, 0, 0);
       }
       b = b.clone();
       b2 = b.clone();
@@ -43267,7 +38961,7 @@
     }
   }
 
-  utils$1.inherit(MapExtent, EventDispatcher);
+  utils.inherit(MapExtent, EventDispatcher);
 
   // Rules for drawing a raster that is being displayed larger than its data.
   // Kept free of browser and mapshaper dependencies so they can be tested
@@ -44083,11 +39777,11 @@
   function getShapeFilter(arcs, shapes, ext, reach) {
     if (ext.scale() < 1.1) return null;
     var view = ext.getBounds();
-    var b = new Bounds$1();
+    var b = new Bounds();
     var pad;
     if (reach > 0) {
       pad = reach * (ext.getSymbolScale() || 1) * ext.getPixelSize();
-      view = new Bounds$1(view.toArray());
+      view = new Bounds(view.toArray());
       view.padBounds(pad, pad, pad, pad);
     }
     return function(i) {
@@ -44262,7 +39956,7 @@
       var arrowPencil = null;
       var key, item, shp;
       var styler = style.styler || null;
-      var drawStyle = styler ? utils$1.defaults({}, style) : style;
+      var drawStyle = styler ? utils.defaults({}, style) : style;
       // Hover and selection overlays copy the layer's style; they do not glow.
       var glows = !style.overlay;
       var glowScale = getCanvasStrokeScale(GUI.getPixelRatio(), lineScale);
@@ -44311,7 +40005,7 @@
           key = getStyleKey(drawStyle);
           if (key in styleIndex === false) {
             styleIndex[key] = {
-              style: utils$1.defaults({}, drawStyle),
+              style: utils.defaults({}, drawStyle),
               shapes: []
             };
           }
@@ -44361,7 +40055,7 @@
           casingKey = getCasingStyleKey(casingStyle);
           batch = batches[casingKey];
           if (!batch) {
-            batch = batches[casingKey] = {style: utils$1.defaults({}, casingStyle), shapes: []};
+            batch = batches[casingKey] = {style: utils.defaults({}, casingStyle), shapes: []};
           }
           batch.shapes.push(shp);
           if (batch.shapes.length >= batchSize) {
@@ -44426,7 +40120,7 @@
     // reach of its glows, cut down to the part that can be seen.
     function getGlowShapePencil(arcs, startPath, draw, pxScale) {
       var t = getScaledTransform(_ext);
-      var b = new Bounds$1();
+      var b = new Bounds();
       return function(shp, style) {
         var outer = style.outerGlow, inner = style.innerGlow;
         var margin = getGlowMargin(outer, inner, pxScale) +
@@ -45341,7 +41035,7 @@
       var html = '';
       // generate a unique id so layer can be identified when symbols are repositioned
       // use it as a class name to avoid id collisions
-      var id = utils$1.getUniqueName();
+      var id = utils.getUniqueName();
       var classNames = [id, 'mapshaper-svg-layer', 'mapshaper-' + type + '-layer'];
       g.setAttribute('class', classNames.join(' '));
       lyr.gui.svg_id = id;
@@ -47008,7 +42702,7 @@
     }
     var gui = lyr.gui;
     enhanceLayerForDisplay(lyr, lyr.gui.source.dataset, {crs: displayCRS});
-    utils$1.defaults(lyr.gui, gui); // re-apply any properties that were lost (e.g. svg_id)
+    utils.defaults(lyr.gui, gui); // re-apply any properties that were lost (e.g. svg_id)
     if (lyr.gui.style?.ids) {
       // re-apply layer filter
       lyr.gui.displayLayer = filterLayerByIds(lyr.gui.displayLayer, lyr.gui.style.ids);
@@ -47129,11 +42823,11 @@
 
   function getProjectedRasterDisplayBounds(layer, sourceCRS, displayCRS) {
     var bbox = internal.getProjectedRasterGridBBox(layer.raster, sourceCRS, displayCRS, {raster_mesh_interval: 32});
-    return bbox ? new Bounds$1(bbox) : new Bounds$1();
+    return bbox ? new Bounds(bbox) : new Bounds();
   }
 
   function getDisplayBounds(lyr, arcs) {
-    var bounds = internal.getLayerBounds(lyr, arcs) || new Bounds$1();
+    var bounds = internal.getLayerBounds(lyr, arcs) || new Bounds();
     if (lyr.geometry_type == 'point' && arcs && bounds.hasBounds() && bounds.area() > 0 === false) {
       // if a point layer has no extent (e.g. contains only a single point),
       // then merge with arc bounds, to place the point in context.
@@ -47154,7 +42848,7 @@
     return ids;
   }
 
-  utils$1.inherit(MshpMap, EventDispatcher);
+  utils.inherit(MshpMap, EventDispatcher);
 
   function MshpMap(gui) {
     var opts = gui.options,
@@ -47350,7 +43044,7 @@
     // crs: a CRS object or string, or null to clear the current setting
     this.setDisplayCRS = function(crs) {
       var oldCRS = this.getDisplayCRS();
-      var newCRS = utils$1.isString(crs) ? internal.parseCrsString(crs) : crs;
+      var newCRS = utils.isString(crs) ? internal.parseCrsString(crs) : crs;
       // TODO: handle case that old and new CRS are the same
       _dynamicCRS = newCRS;
       // if (!_activeLyr) return; // stop here if no layers have been selected
@@ -47614,7 +43308,7 @@
     }
 
     function getContentLayerBounds() {
-      var b = new Bounds$1();
+      var b = new Bounds();
       var layers = getContentLayers();
       layers.forEach(function(lyr) {
         b.mergeBounds(lyr.gui.bounds);
@@ -47632,7 +43326,7 @@
     function calcFullBounds() {
       var b;
       if (isPreviewView()) {
-        b = new Bounds$1(getFrameLayerData().bbox);
+        b = new Bounds(getFrameLayerData().bbox);
         _boundsArePlaceholder = false; // a frame is real content
       } else {
         b = getContentLayerBounds(); // sets _boundsArePlaceholder
@@ -49033,7 +44727,7 @@
   }
 
   // Record fields of a scalebar, in the order they are written as options
-  var scalebarOptions = ['units', 'style', 'position', 'label_position',
+  var scalebarOptions = ['units', 'style', 'position', 'label_position', 'align', 'label_case',
     'font_size', 'font_family', 'font_style', 'font_weight', 'color', 'bar_width',
     'tic_length', 'label_offset', 'margin'];
 
@@ -49084,8 +44778,18 @@
       ['bottom-center', 'Bottom center'],
       ['bottom-right', 'Bottom right']
     ],
-    b: [['top', 'Above'], ['bottom', 'Below']]
+    b: [['top', 'Above'], ['bottom', 'Below']],
+    c: [['top', 'Above'], ['bottom', 'Below']]
   };
+
+  // The bars of a dual-unit style c scalebar have their labels on the outside,
+  // so the labels menu sets how the bars line up instead
+  var alignOptions = [['left', 'Left'], ['center', 'Center'], ['right', 'Right']];
+
+  // The labels of a dual-unit style a scalebar are above the top bar and below
+  // the bottom one, so only their horizontal position can be chosen
+  var dualBarLabelOptions = [['top-left', 'Left'], ['top-center', 'Center'],
+    ['top-right', 'Right']];
 
   // What the scalebar is drawn in when it has no color of its own
   var defaultColor = '#000000';
@@ -49096,8 +44800,8 @@
   function ScalebarProperties(gui) {
     var popup, form, note;
     var stopPanelDrag = null;
-    var labelInput, unitsSelect, styleSelect, dualUnitsBox, positionSelect,
-      labelPositionSelect, fontSizeInput, barWidthInput, marginInput,
+    var labelInput, unitsSelect, styleSelect, labelCaseSelect, positionSelect,
+      labelPositionSelect, labelPositionTitle, labelPositionField, fontSizeInput, barWidthInput, marginInput,
       fontSelect, fontStyleSelect, colorChit, colorInput, colorPicker;
 
     gui.scalebarProperties = this;
@@ -49184,23 +44888,25 @@
           update({label: labelInput.node().value.trim()});
         });
       unitsSelect = makeSelect(makeCell(row, 'Units'), 'scalebar-units-select',
-        [['miles', 'Miles'], ['km', 'Kilometers']])
+        [['miles', 'Miles'], ['km', 'Kilometers'], ['dual', 'Dual']])
         .on('change', function() {
-          var changes = {units: unitsSelect.node().value};
-          var bare = getBareDistance(getScalebarRecord().label);
-          if (bare) changes.label = bare;
-          update(changes);
+          var value = unitsSelect.node().value;
+          if (value == 'dual') {
+            update({dual_units: true});
+          } else {
+            update(getSingleUnitChanges(getScalebarRecord(), value));
+          }
         });
 
       row = makeRow(form);
       styleSelect = makeSelect(makeCell(row, 'Style'), 'scalebar-style-select',
-        [['a', 'Bar'], ['b', 'Ticks']])
+        [['a', 'Bar'], ['b', 'Ticks'], ['c', 'Segments']])
         .on('change', function() {
           update({style: styleSelect.node().value});
         });
-      dualUnitsBox = makeCheckbox(row, 'Metric + imperial', 'scalebar-dual-units')
+      labelCaseSelect = makeSelect(makeCell(row, 'Label format'), 'scalebar-label-case-select', [])
         .on('change', function() {
-          update({dual_units: dualUnitsBox.node().checked});
+          update({label_case: labelCaseSelect.node().value});
         });
 
       row = makeRow(form);
@@ -49209,10 +44915,14 @@
         .on('change', function() {
           update({position: positionSelect.node().value});
         });
-      labelPositionSelect = makeSelect(makeCell(row, 'Labels'),
+      var labelPositionCell = makeCell(row, 'Labels');
+      labelPositionTitle = labelPositionCell.findChild('span');
+      labelPositionSelect = makeSelect(labelPositionCell,
         'scalebar-label-position-select', [])
         .on('change', function() {
-          update({label_position: labelPositionSelect.node().value});
+          var changes = {};
+          changes[labelPositionField] = labelPositionSelect.node().value;
+          update(changes);
         });
 
       var appearance = makePanelSection(form, 'Appearance');
@@ -49260,12 +44970,14 @@
           update({color: hex});
         }
       });
-      fontSizeInput = makeNumberInput(makeCell(row, 'Font size'), 'font_size',
-        'scalebar-font-size');
+      fontSizeInput = makeSteppedNumberInput(makeCell(row, 'Font size', 'div'), 'font_size',
+        'scalebar-font-size', {step: 1, bigStep: 10})
+        .attr('aria-label', 'Font size');
 
       row = makeRow(appearance);
-      barWidthInput = makeNumberInput(makeCell(row, 'Bar width'), 'bar_width',
-        'scalebar-bar-width');
+      barWidthInput = makeSteppedNumberInput(makeCell(row, 'Bar width', 'div'), 'bar_width',
+        'scalebar-bar-width', {step: 1, bigStep: 5})
+        .attr('aria-label', 'Bar width');
       marginInput = makeNumberInput(makeCell(row, 'Inset'), 'margin',
         'scalebar-margin')
         .attr('aria-label', 'Distance from the edges of the frame, in pixels');
@@ -49280,19 +44992,38 @@
 
     function updateControls() {
       var d = getScalebarRecord();
-      var problem, style;
+      var problem, style, unitsValue;
       if (!d || !form) return;
       labelInput.node().value = d.label || '';
-      setSelectValue(unitsSelect, getUnitsMenuValue(d.units ||
-        internal.parseScalebarUnits(d.label || '')));
-      style = d.style == 'b' || d.style == 'B' ||
-        !d.style && d.dual_units ? 'b' : 'a';
+      style = internal.getScalebarStyle(d);
+      unitsValue = isDualUnit(d) ? 'dual' :
+        getUnitsMenuValue(d.units || internal.parseScalebarUnits(d.label || ''));
+      setSelectValue(unitsSelect, unitsValue);
       setSelectValue(styleSelect, style);
-      dualUnitsBox.node().checked = !!d.dual_units;
+      labelCaseSelect.empty();
+      appendSelectOptions(labelCaseSelect, getLabelCaseOptions(unitsValue));
+      setSelectValue(labelCaseSelect, internal.getScalebarLabelCase(d) || 'upper');
       setSelectValue(positionSelect, d.position || 'top-left');
-      renderLabelPositionOptions(style);
-      setSelectValue(labelPositionSelect,
-        getLabelPositionMenuValue(d.label_position, style));
+      if (style == 'c' && isDualUnit(d)) {
+        labelPositionField = 'align';
+        labelPositionTitle.text('Align');
+        labelPositionSelect.empty();
+        appendSelectOptions(labelPositionSelect, alignOptions);
+        setSelectValue(labelPositionSelect, d.align || 'center');
+      } else if (style == 'a' && isDualUnit(d)) {
+        labelPositionField = 'label_position';
+        labelPositionTitle.text('Labels');
+        labelPositionSelect.empty();
+        appendSelectOptions(labelPositionSelect, dualBarLabelOptions);
+        setSelectValue(labelPositionSelect,
+          'top-' + getLabelPositionMenuValue(d.label_position, style).split('-')[1]);
+      } else {
+        labelPositionField = 'label_position';
+        labelPositionTitle.text('Labels');
+        renderLabelPositionOptions(style);
+        setSelectValue(labelPositionSelect,
+          getLabelPositionMenuValue(d.label_position, style));
+      }
       fontSizeInput.node().value = formatValue(d.font_size);
       barWidthInput.node().value = formatValue(d.bar_width);
       marginInput.node().value = formatValue(d.margin);
@@ -49376,9 +45107,10 @@
     // units menu always applies, so it is written even when it shows the default.
     function update(changes) {
       var d = Object.assign({}, getScalebarRecord(), changes);
-      if (changes.style == 'a') d.dual_units = false;
-      if (changes.dual_units) d.style = 'b';
-      if (!d.units) d.units = unitsSelect.node().value;
+      if (changes.style && changes.style != 'c') d.align = '';
+      // a dual-unit scalebar with no style is style b, not the style a shown
+      if (changes.dual_units && !d.style) d.style = 'a';
+      if (!d.units) d.units = unitsSelect.node().value == 'dual' ? 'miles' : unitsSelect.node().value;
       runCommand(getScalebarCommand(d), 'Update scale bar', updateControls);
     }
 
@@ -49413,16 +45145,45 @@
       if (label) update({label: label});
     }
 
+    // A number field with a stepper. Blank means the style's default, which a
+    // step starts from. Steps don't go below one step.
+    function makeSteppedNumberInput(cell, field, className, opts) {
+      var box = El('div').addClass('size-field scalebar-stepper-field').appendTo(cell);
+      var input = makeNumberInput(box, field, className + ' size-field-input');
+      var buttons = appendSizeFieldStepper(box);
+      input.on('keydown', function(e) {
+        var action = getSizeFieldKeyAction(e.key, e.shiftKey, opts);
+        if (!action || action.type != 'step') return;
+        e.preventDefault();
+        e.stopPropagation();
+        step(action.delta);
+      });
+      buttons.up.on('click', function() { step(opts.step); });
+      buttons.down.on('click', function() { step(-opts.step); });
+      return input;
+
+      function step(delta) {
+        var d = getScalebarRecord();
+        var val = parseSizeValue(input.node().value, NaN, NaN, 2);
+        var o = {};
+        if (!d) return;
+        if (val === null) val = internal.getScalebarOpts(d)[field];
+        o[field] = parseSizeValue(val + delta, opts.step, NaN, 2);
+        update(o);
+      }
+    }
+
     function makeNumberInput(cell, field, className) {
       var input = makeInput(cell, className).attr('placeholder', 'auto');
       input.on('change', function() {
         var str = input.node().value.trim();
+        var val = str === '' ? '' : parseSizeValue(str, NaN, NaN, 2);
         var o = {};
-        if (str !== '' && !(Number(str) >= 0)) {
+        if (val === null || val < 0) {
           updateControls();
           return;
         }
-        o[field] = str === '' ? '' : Number(str);
+        o[field] = val;
         update(o);
       });
       return input;
@@ -49542,14 +45303,6 @@
     });
   }
 
-  function makeCheckbox(parent, label, className) {
-    var box = El('input').attr('type', 'checkbox').addClass(className);
-    var wrapper = El('label').addClass('scalebar-checkbox').appendTo(parent);
-    box.appendTo(wrapper);
-    El('span').appendTo(wrapper).text(label);
-    return box;
-  }
-
   // Shows a value that came from the command line even if the menu lacks it
   function setSelectValue(select, value) {
     var node = select.node();
@@ -49569,6 +45322,35 @@
     return match ? match[1].trim() : '';
   }
 
+  // Leaving dual units keeps the distance in the chosen units, if the label has
+  // one, as a bare number in those units. A lower-case label stays lower case
+  // when its units are dropped.
+  function getSingleUnitChanges(d, unitsValue) {
+    var changes = {units: unitsValue, dual_units: false};
+    var parts = internal.splitScalebarLabel(d.label || '');
+    var metric = unitsValue == 'km' || unitsValue == 'meters';
+    var label = parts.find(function(str) {
+      var units = internal.parseScalebarUnits(str);
+      return units && (units == 'km' || units == 'm') == metric;
+    }) || parts[0] || '';
+    var bare = getBareDistance(label);
+    if (bare || label != (d.label || '')) changes.label = bare || label;
+    if (bare && !d.label_case && internal.getScalebarLabelCase(d) == 'lower') {
+      changes.label_case = 'lower';
+    }
+    return changes;
+  }
+
+  // Menu items show the units in each case
+  function getLabelCaseOptions(unitsValue) {
+    var name = unitsValue == 'dual' ? 'miles/km' : unitsValue;
+    return [['upper', name.toUpperCase()], ['lower', name.toLowerCase()]];
+  }
+
+  function isDualUnit(d) {
+    return !!d.dual_units || internal.splitScalebarLabel(d.label || '').length > 1;
+  }
+
   function getUnitsMenuValue(units) {
     var parsed = internal.parseLabelUnits(units);
     return parsed == 'mile' || !parsed ? 'miles' :
@@ -49582,7 +45364,7 @@
     var pos = String(position || 'top');
     var vertical = pos.includes('bottom') ? 'bottom' : 'top';
     var horizontal;
-    if (style == 'b') return vertical;
+    if (style != 'a') return vertical;
     horizontal = pos.includes('center') ? 'center' :
       pos.includes('right') ? 'right' : 'left';
     return vertical + '-' + horizontal;
@@ -49878,7 +45660,7 @@
           ]
         });
       } else {
-        error$2('unsupported map style:', style);
+        error('unsupported map style:', style);
       }
     }
 
@@ -50358,7 +46140,7 @@
 
   function GuiInstance(container, opts) {
     var gui = new ModeSwitcher();
-    opts = utils$1.extend({
+    opts = utils.extend({
       // defaults
       homeControl: true,
       zoomControl: true,

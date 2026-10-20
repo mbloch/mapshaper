@@ -3134,29 +3134,10 @@ body.pan.panning .map-layers:not(.drawing) {
 	min-width: 0;
 }
 
-.frame-input-cell > .scalebar-distance-field {
+.frame-input-cell > .scalebar-distance-field,
+.frame-input-cell > .scalebar-stepper-field {
 	display: flex;
 	width: 100%;
-}
-
-/* The bottom padding puts the text on the baseline of the menu beside it.
-   Baseline alignment doesn't: Chrome puts a select's baseline 2px above the
-   text it shows. */
-.scalebar-checkbox {
-	align-items: center;
-	display: flex;
-	padding-bottom: 2px;
-	font-size: 12px;
-	gap: 4px;
-	white-space: nowrap;
-}
-
-/* centered on the menu, which the text's baseline alignment leaves it below */
-.scalebar-checkbox input {
-	margin: 0;
-	position: relative;
-	top: -2px;
-	width: auto;
 }
 
 .scalebar-properties-note {
