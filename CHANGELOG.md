@@ -1,4 +1,5 @@
 v0.7.93
+* [web] Added an opacity slider to color pickers.
 * [web] Scale bar UI improvements
 * Added `-scalebar style=c`, a bar of segments with alternating fill, with an optional metric bar above an imperial bar (`dual-units`) and an `align=` option for lining up the two bars.
 * `-scalebar style=a` supports `dual-units`: a second, shorter bar below the first.
