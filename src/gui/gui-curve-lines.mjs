@@ -1,5 +1,5 @@
 import { internal } from './gui-core';
-import { translateDisplayPoint } from './gui-display-utils';
+import { translateDisplayPoint, projectDataPoint } from './gui-display-utils';
 import { showPopupAlert } from './gui-alert';
 import { GUI } from './gui-lib';
 import { runGuiEditCommand } from './gui-edit-command';
@@ -34,9 +34,9 @@ var ALT_KEY_CODE = 18;
 //
 // A line drawn with the tool can be reshaped by dragging its knots, which are
 // shown while the line is selected. Each drag is an -update-line command. The
-// knots are kept only while the tool is open, and only for a line whose path
-// is still the one they produced (see gui-curve-line-knots.mjs); any other
-// line is selected for styling, as in the Draw tool.
+// knots are kept after the tool closes, but only for a line whose path is
+// still the one they produced (see gui-curve-line-knots.mjs); any other line
+// is selected for styling, as in the Draw tool.
 //
 // Alt-click (Option-click) places a corner knot, where the curve turns
 // sharply, and on a knot of a selected curve switches it between a corner and
@@ -127,7 +127,6 @@ export function initCurveLineTool(gui, ext, hit) {
     if (!_active) return;
     finishCurve(false);
     drag = null;
-    knotCache = createKnotCache();
     shown = null;
     shownKey = null;
     hoverKnot = -1;
@@ -548,21 +547,44 @@ export function initCurveLineTool(gui, ext, hit) {
 
   // --- knots of finished curves
 
-  // The knots of line @id, if its path is one the tool drew
+  // The knots of line @id, if its path is one the tool drew, in display
+  // coordinates
   function findKnots(id) {
     var target = hit.getHitTarget();
+    var knots;
     if (!target || target.geometry_type != 'polyline' || !target.shapes) return null;
-    return findKnotVersion(knotCache, getLinePathCoords(target.shapes[id],
+    knots = findKnotVersion(knotCache, getLinePathCoords(target.shapes[id],
       target.gui.source.dataset.arcs));
+    return knots ? toDisplayKnots(target, knots) : null;
   }
 
-  // Keeps @knots as the knots of line @id, as it now is
+  // Keeps @knots as the knots of line @id, as it now is. A command that
+  // finishes after the tool has closed still records them.
   function recordKnots(id, knots) {
     var target = hit.getHitTarget();
-    if (!_active || !target || !target.shapes) return;
-    addKnotVersion(knotCache, knots, getLinePathCoords(target.shapes[id],
-      target.gui.source.dataset.arcs));
-    refreshShownCurve(true);
+    if (!target || !target.shapes) return;
+    addKnotVersion(knotCache, toDataKnots(target, knots),
+      getLinePathCoords(target.shapes[id], target.gui.source.dataset.arcs));
+    if (_active) refreshShownCurve(true);
+  }
+
+  function toDataKnots(target, knots) {
+    return knots.map(function(k) {
+      return makeKnot(translateDisplayPoint(target, k), knotIsCorner(k));
+    });
+  }
+
+  // null if a knot does not project, e.g. after the display projection has
+  // changed to one that does not show it
+  function toDisplayKnots(target, knots) {
+    var out = [];
+    var p;
+    for (var i = 0; i < knots.length; i++) {
+      p = projectDataPoint(target, knots[i]);
+      if (!p || !isFinite(p[0]) || !isFinite(p[1])) return null;
+      out.push(makeKnot(p, knotIsCorner(knots[i])));
+    }
+    return out;
   }
 
   // Shows the knots of the selected line, if one line is selected and it has
@@ -641,8 +663,7 @@ export function initCurveLineTool(gui, ext, hit) {
       title: title || 'Reshape curve',
       changesEditTarget: true,
       onSuccess: function() {
-        if (!_active) return;
-        hit.setSelectionIds([o.id]);
+        if (_active) hit.setSelectionIds([o.id]);
         recordKnots(o.id, o.knots);
       },
       onError: function() {

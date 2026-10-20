@@ -1,7 +1,7 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
 import {
-  createKnotCache, addKnotVersion, findKnotVersion, getLinePathCoords,
+  createKnotCache, addKnotVersion, findKnotVersion, getKnotVersionCount, getLinePathCoords,
   moveCurveKnot, curveKnotsAreClosed, getCurveFlattenTolerance,
   makeKnot, knotIsCorner, toggleCurveKnotCorner, getKnotCorners,
   findCurveEndNear, knotIsCurveEnd, reverseCurveKnots
@@ -46,6 +46,27 @@ describe('gui curve line knots', function() {
       addKnotVersion(cache, [[0, 0], [1, 1]], [[0, 0], [1, 1]]);
       addKnotVersion(cache, [[0, 0], [2, 2]], [[0, 0], [2, 2]]);
       assert.deepEqual(findKnotVersion(cache, [[0, 0], [1, 1]]), [[0, 0], [1, 1]]);
+    });
+
+    it('keeps a path drawn twice once', function() {
+      var cache = createKnotCache();
+      var path = [[0, 0], [1, 1]];
+      addKnotVersion(cache, [[0, 0], [1, 1]], path);
+      addKnotVersion(cache, [[0, 0], [2, 2]], [[0, 0], [2, 2]]);
+      addKnotVersion(cache, [[0, 0], [0.5, 0.5], [1, 1]], path);
+      assert.equal(getKnotVersionCount(cache), 2);
+      assert.equal(findKnotVersion(cache, path).length, 3);
+    });
+
+    it('drops the oldest versions beyond 500', function() {
+      var cache = createKnotCache();
+      for (var i = 0; i < 501; i++) {
+        addKnotVersion(cache, [[0, 0], [i, 1]], [[0, 0], [i, 1]]);
+      }
+      assert.equal(getKnotVersionCount(cache), 500);
+      assert.equal(findKnotVersion(cache, [[0, 0], [0, 1]]), null);
+      assert.deepEqual(findKnotVersion(cache, [[0, 0], [1, 1]]), [[0, 0], [1, 1]]);
+      assert.deepEqual(findKnotVersion(cache, [[0, 0], [500, 1]]), [[0, 0], [500, 1]]);
     });
   });
 

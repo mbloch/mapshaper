@@ -43,6 +43,12 @@ export function translateDisplayPoint(lyr, p) {
   return isProjectedLayer(lyr) ? lyr.gui.invertPoint(p[0], p[1]) : p;
 }
 
+// The reverse of translateDisplayPoint(): from data coordinates to display CRS
+// coordinates. Returns null if the point can not be projected.
+export function projectDataPoint(lyr, p) {
+  return isProjectedLayer(lyr) ? lyr.gui.projectPoint(p[0], p[1]) : p;
+}
+
 export function isProjectedLayer(lyr) {
   return !!lyr?.gui.invertPoint;
 }

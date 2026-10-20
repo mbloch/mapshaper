@@ -319,6 +319,33 @@ test('undo takes back the knots added to a curve being extended, and then leaves
     expect(errors).toEqual([]);
   });
 
+test('knots are kept after the tool is closed, and follow the curve when the display projection changes',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    var box = await openCurveTool(page);
+    var knots = [mapPoint(box, 0.2, 0.7), mapPoint(box, 0.35, 0.55), mapPoint(box, 0.5, 0.7)];
+    var path, mid, shownKnots;
+    await drawCurve(page, knots);
+    await expect.poll(() => getShapeCount(page, 'lines')).toBe(1);
+    await page.locator(LINE_BUTTON).click();
+    await page.waitForTimeout(150);
+    expect((await getModes(page)).tool).toBe('edit_lines');
+    await page.evaluate(function() { window.mapshaper.undoTest.setDisplayCRS('webmercator'); });
+    await page.waitForTimeout(300);
+    await page.locator(CURVE_BUTTON).click();
+    await page.waitForTimeout(150);
+
+    path = (await getPaths(page, 'lines'))[0][0];
+    mid = path[Math.floor(path.length / 2)];
+    await clickAt(page, [mid[0] + box.x, mid[1] + box.y]);
+    expect(await getSelectionIds(page)).toEqual([0]);
+    shownKnots = await getPendingKnots(page);
+    expect(shownKnots.length).toBe(3);
+    shownKnots.forEach(function(p) { expectOnPath(p, path); });
+    expectSamePoints([shownKnots[0], shownKnots[2]], [path[0], path[path.length - 1]]);
+    expect(errors).toEqual([]);
+  });
+
 test('a line that was not drawn as a curve has no knots, and is selected for styling',
   async function({page}) {
     var errors = collectPageErrors(page);

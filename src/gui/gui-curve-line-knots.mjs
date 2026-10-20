@@ -2,8 +2,9 @@
 //
 // A curve is stored as an ordinary line. The knots it was fitted through are
 // not in the data, and nothing outside the tool knows about them: the tool
-// keeps them here while it is open, so that a curve can be reshaped by
-// dragging its knots, and forgets them when it closes.
+// keeps them here, for as long as the page is open, so that a curve can be
+// reshaped by dragging its knots, including after the tool has been closed
+// and opened again.
 //
 // Knots are found by geometry rather than by feature id. Each set of knots is
 // kept with the path it produced, as read back from the layer, and a line has
@@ -13,16 +14,23 @@
 // it no longer is. Undoing a knot drag restores the previous path, and with it
 // the previous knots.
 //
-// Knots are in display coordinates, where the curve is fitted (see
-// fitCurveThroughKnots()); paths are in the layer's CRS. A knot is [x, y], or
-// [x, y, true] for a corner, where the curve turns sharply rather than
-// passing smoothly through the knot. A closed curve's first knot is repeated
-// at the end, and the two are corners together.
+// The curve is fitted in display coordinates (see fitCurveThroughKnots()),
+// but the cache keeps knots and paths in the layer's CRS, so that they stay
+// where they belong when the display projection changes; the tool converts
+// knots on the way in and out. A knot is [x, y], or [x, y, true] for a
+// corner, where the curve turns sharply rather than passing smoothly through
+// the knot. A closed curve's first knot is repeated at the end, and the two
+// are corners together.
 
 // The flattening tolerance of a curve, as a fraction of its size. The line is
 // the curve's only record once the tool closes, so it is flattened more finely
 // than the label tool's guide, which is redrawn from its knots.
 var FLATTEN_RATIO = 0.0005;
+
+// The oldest versions are dropped beyond this many. A curve flattens to about
+// ten vertices per knot, kept as 16 bytes each, so a version of a ten-knot
+// curve takes about 2.5 KB, knots included.
+var MAX_KNOT_VERSIONS = 500;
 
 export function createKnotCache() {
   return {versions: []};
@@ -31,19 +39,40 @@ export function createKnotCache() {
 // knots: [[x, y], ...] a closed curve repeats its first knot at the end
 // coords: the line's path, [[x, y], ...], read back from the layer
 export function addKnotVersion(cache, knots, coords) {
+  var path;
   if (!knots || !coords || coords.length < 2) return;
-  cache.versions.push({knots: copyPoints(knots), coords: coords});
+  path = packPath(coords);
+  // a path that was drawn before, e.g. by toggling a corner twice, is kept
+  // once, with its newest knots
+  cache.versions = cache.versions.filter(function(v) { return !samePath(v.path, coords); });
+  cache.versions.push({knots: copyPoints(knots), path: path});
+  if (cache.versions.length > MAX_KNOT_VERSIONS) {
+    cache.versions.splice(0, cache.versions.length - MAX_KNOT_VERSIONS);
+  }
 }
 
 // The knots of the curve whose path is @coords, or null
 export function findKnotVersion(cache, coords) {
   if (!coords) return null;
   for (var i = cache.versions.length - 1; i >= 0; i--) {
-    if (samePath(cache.versions[i].coords, coords)) {
+    if (samePath(cache.versions[i].path, coords)) {
       return copyPoints(cache.versions[i].knots);
     }
   }
   return null;
+}
+
+export function getKnotVersionCount(cache) {
+  return cache.versions.length;
+}
+
+function packPath(coords) {
+  var path = new Float64Array(coords.length * 2);
+  for (var i = 0; i < coords.length; i++) {
+    path[i * 2] = coords[i][0];
+    path[i * 2 + 1] = coords[i][1];
+  }
+  return path;
 }
 
 // The vertices of a line with a single part, or null. A curve is drawn as one
@@ -152,10 +181,11 @@ export function getCurveFlattenTolerance(knots) {
   return span > 0 ? span * FLATTEN_RATIO : 0;
 }
 
-function samePath(a, b) {
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i++) {
-    if (a[i][0] !== b[i][0] || a[i][1] !== b[i][1]) return false;
+// path: a packed path (see packPath()); coords: [[x, y], ...]
+function samePath(path, coords) {
+  if (path.length != coords.length * 2) return false;
+  for (var i = 0; i < coords.length; i++) {
+    if (path[i * 2] !== coords[i][0] || path[i * 2 + 1] !== coords[i][1]) return false;
   }
   return true;
 }
