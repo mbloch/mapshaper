@@ -41579,7 +41579,7 @@ ${css.join('\n')}
     version: 1,
     created: 'YYYY-MM-DDTHH:mm:ss.sssZ', // ISO string
     datasets: [],
-    gui: {}, // see gui-session-snapshot-control.mjs
+    gui: {}, // optional; the GUI's view settings, see getSnapshotGuiState() in gui-session-snapshot-control.mjs
     history: { // optional; only present in snapshots created by the GUI
       commands: ['-i foo.shp', '-simplify 10%', ...],
       savedAtIndex: 0 // index of the first command after the last save boundary
@@ -41608,6 +41608,7 @@ ${css.join('\n')}
   //    exporting from gui export menu: {compact: true, format: 'msx'}
   //    saving gui temp snapshot: {compact: false}
   // opts.history: optional GUI session history captured by SessionHistory#getHistorySnapshot
+  // opts.gui_state: optional GUI view settings, saved as the snapshot's gui field
   async function exportDatasetsToPack(datasets, opts) {
     var obj = {
       version: 1,
@@ -41616,6 +41617,9 @@ ${css.join('\n')}
     };
     if (opts.history) {
       obj.history = opts.history;
+    }
+    if (opts.gui_state) {
+      obj.gui = opts.gui_state;
     }
     return obj;
   }
@@ -95508,7 +95512,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.90";
+  var version = "0.7.91";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

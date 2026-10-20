@@ -1361,6 +1361,47 @@
     return mb + 'MB';
   }
 
+  // The view settings a snapshot saves in its gui field, so that a snapshot
+  // that starts a session opens as it was saved. The layers that are shown and
+  // the selected layer are saved with the layers themselves (see exportLayer()).
+  //
+  // gui: {
+  //   preview_mode: true,             // the preview toggle is on
+  //   active_layer_hidden: true,      // the selected layer's eye is off
+  //   closed_layer_sections: ['', 'd2'] // closed sections of the Layers panel:
+  //                                   // '' for the Layers section, otherwise
+  //                                   // a frame's dataset ID
+  // }
+  // Settings at their defaults are left out, and a snapshot with none of them
+  // has no gui field (as in snapshots from before these settings were saved).
+
+  // view: {previewMode, activeLayerHidden, closedSections: {<key>: true}}
+  function formatSnapshotGuiState(view) {
+    var state = {};
+    var closed = Object.keys(view.closedSections || {}).filter(function(key) {
+      return !!view.closedSections[key];
+    });
+    if (view.previewMode) state.preview_mode = true;
+    if (view.activeLayerHidden) state.active_layer_hidden = true;
+    if (closed.length > 0) state.closed_layer_sections = closed;
+    return Object.keys(state).length > 0 ? state : null;
+  }
+
+  // Returns the settings of a snapshot's gui field, as formatSnapshotGuiState()
+  // takes them; anything missing or malformed is left at its default
+  function parseSnapshotGuiState(state) {
+    var view = {previewMode: false, activeLayerHidden: false, closedSections: {}};
+    if (!state || typeof state != 'object') return view;
+    view.previewMode = state.preview_mode === true;
+    view.activeLayerHidden = state.active_layer_hidden === true;
+    if (Array.isArray(state.closed_layer_sections)) {
+      state.closed_layer_sections.forEach(function(key) {
+        if (typeof key == 'string') view.closedSections[key] = true;
+      });
+    }
+    return view;
+  }
+
   // Several dependencies are loaded via require()
   var f;
   if (typeof require == 'function') {
@@ -1564,28 +1605,46 @@
   // Returns true if a full restore occurred, false if a merge occurred. The
   // caller uses this to decide whether to record an additional -i command in
   // the current session's history (see gui-import-control.mjs).
-  // TODO: figure out if interface data should be imported (e.g. should
-  //   visibility flag of imported layers be imported)
+  // A full restore also restores the view settings saved in the snapshot's gui
+  // field; a merge leaves the current view alone.
   async function importSessionData(buf, gui) {
     if (buf instanceof ArrayBuffer) {
       buf = new Uint8Array(buf);
     }
     var data = await internal.unpackSessionData(buf);
     var fullRestore = gui.model.isEmpty();
-    importDatasets(data.datasets, gui);
+    importDatasets(data.datasets, gui, fullRestore ? parseSnapshotGuiState(data.gui) : null);
     if (fullRestore) {
       gui.session.restoreHistorySnapshot(data.history);
     }
     return fullRestore;
   }
 
-  function importDatasets(datasets, gui) {
+  // The view settings to save with a snapshot of the current session
+  function getSnapshotGuiState(gui) {
+    var active = gui.model.getActiveLayer();
+    return formatSnapshotGuiState({
+      previewMode: !!gui.state.preview_mode,
+      activeLayerHidden: !!(active && active.layer.hidden),
+      closedSections: gui.state.closed_layer_sections
+    });
+  }
+
+  // view: (optional) view settings from parseSnapshotGuiState()
+  function importDatasets(datasets, gui, view) {
     regenerateRasterPreviews(datasets);
     gui.model.addDatasets(datasets);
     var target = findTargetLayer(datasets);
     delete target.layers[0].active; // kludge, active flag only used in snapshots now
+    if (view) {
+      target.layers[0].hidden = view.activeLayerHidden || undefined;
+      gui.state.closed_layer_sections = view.closedSections;
+    }
     gui.model.setDefaultTarget(target.layers, target.dataset);
     gui.model.updated({select: true, arc_count: true}); // arc_count to refresh display shapes
+    if (view && view.previewMode && gui.previewMode) {
+      gui.previewMode.setOn(true);
+    }
   }
 
   function regenerateRasterPreviews(datasets) {
@@ -1609,17 +1668,11 @@
     var opts = {
       compact: false,
       active_layer: lyr,
-      history: gui.session.getHistorySnapshot()
+      history: gui.session.getHistorySnapshot(),
+      gui_state: getSnapshotGuiState(gui)
     };
     var datasets = gui.model.getDatasets();
-    var obj = await internal.exportDatasetsToPack(datasets, opts);
-    obj.gui = getGuiState(gui);
-    return obj;
-  }
-
-  // TODO: capture gui state information to allow restoring more of the UI
-  function getGuiState(gui) {
-    return null;
+    return internal.exportDatasetsToPack(datasets, opts);
   }
 
   async function fetchIndex() {
@@ -8453,6 +8506,12 @@
     return isProjectedLayer(lyr) ? lyr.gui.invertPoint(p[0], p[1]) : p;
   }
 
+  // The reverse of translateDisplayPoint(): from data coordinates to display CRS
+  // coordinates. Returns null if the point can not be projected.
+  function projectDataPoint(lyr, p) {
+    return isProjectedLayer(lyr) ? lyr.gui.projectPoint(p[0], p[1]) : p;
+  }
+
   function isProjectedLayer(lyr) {
     return !!lyr?.gui.invertPoint;
   }
@@ -11121,6 +11180,7 @@
         var snapshot = gui.session.getHistorySnapshot();
         snapshot.savedAtIndex = snapshot.commands.length;
         opts.history = snapshot;
+        opts.gui_state = getSnapshotGuiState(gui);
         if (selection.grouped) {
           targets = getProjectTargets();
           exportedLayers = getContentLayers();
@@ -12590,8 +12650,7 @@
     var drag = null;
     var shownPreviews = new Set(); // host dataset ID + overlay dataset ID
     var previewCache = new Map(); // overlay dataset ID -> rendered map
-    var previewNodes = new Map(); // placement key -> nested SVG
-    var previewGeneration = 0;
+    var previewNodes = new Map(); // placement key -> {node: nested SVG, rendered}
     // The host page while its frame is being resized, so the boxes follow the
     // corners they are anchored to
     var resizePreview = null;
@@ -12758,14 +12817,14 @@
         node.setAttribute('data-overlay', item.frame.layer.name || '');
         node.setAttribute('overflow', 'hidden');
         previewRoot.appendChild(node);
-        entry = {node: node, generation: -1};
+        entry = {node: node, rendered: null};
         previewNodes.set(item.key, entry);
       }
       node = entry.node;
-      if (entry.generation != previewGeneration) {
+      if (entry.rendered != rendered) {
         node.setAttribute('viewBox', '0 0 ' + rendered.width + ' ' + rendered.height);
         node.innerHTML = rendered.content;
-        entry.generation = previewGeneration;
+        entry.rendered = rendered;
       }
       return node;
     }
@@ -12786,21 +12845,20 @@
       return previewCache.get(id);
     }
 
+    // Previews are rendered again when next shown. Updates with the select flag
+    // follow edits too (most commands set it), so only a change of selection
+    // keeps them all.
     function invalidatePreviewCache(flags) {
-      var frame, id;
-      if (flags.select) return;
+      var frame;
+      if (flags.selection_only) return;
       if (flags.simplify_amount || flags.redraw_only) {
-        // Slider and live-style updates apply to the active frame. Invalidate
-        // only that frame if it has been used as an overlay, so editing a host
-        // does not rebuild every proofed overlay on every tick.
+        // Slider and live-style updates apply to the active frame, so editing
+        // a host does not rebuild every proofed overlay on every tick
         frame = gui.model.getActiveFrame();
-        id = frame && frame.dataset.id;
-        if (!id || !previewCache.has(id)) return;
-        previewCache.delete(id);
+        if (frame) previewCache.delete(frame.dataset.id);
       } else {
         previewCache.clear();
       }
-      previewGeneration++;
     }
 
     function removeUnusedPreviewNodes(wanted) {
@@ -13044,10 +13102,15 @@
     }
 
     // Sections that have been closed: '' for the Layers section, otherwise by
-    // frame dataset ID. GUI state only.
-    var closedSections = {};
+    // frame dataset ID. GUI state only, kept in gui.state so that snapshots
+    // can save and restore it.
+    function getClosedSections() {
+      if (!gui.state.closed_layer_sections) gui.state.closed_layer_sections = {};
+      return gui.state.closed_layer_sections;
+    }
 
     function toggleSection(key) {
+      var closedSections = getClosedSections();
       closedSections[key] = !closedSections[key];
       renderLayerList();
     }
@@ -13274,6 +13337,7 @@
       var uniqIds = {};
       var pinnableCount = 0;
       var layerCount = 0;
+      var closedSections = getClosedSections();
       var groups, activeFrame, viewFrame, hasLegacyFrame;
       list.empty();
       frameList.empty();
@@ -29759,7 +29823,9 @@
         return;
       }
       self.setDefaultTarget([lyr], dataset);
-      self.updated({select: true});
+      // selection_only: nothing but the selection changed, unlike the other
+      // updates with the select flag, which follow edits
+      self.updated({select: true, selection_only: true});
       gui.session.setTargetLayer(lyr);
     };
 
@@ -33932,8 +33998,9 @@
   //
   // A curve is stored as an ordinary line. The knots it was fitted through are
   // not in the data, and nothing outside the tool knows about them: the tool
-  // keeps them here while it is open, so that a curve can be reshaped by
-  // dragging its knots, and forgets them when it closes.
+  // keeps them here, for as long as the page is open, so that a curve can be
+  // reshaped by dragging its knots, including after the tool has been closed
+  // and opened again.
   //
   // Knots are found by geometry rather than by feature id. Each set of knots is
   // kept with the path it produced, as read back from the layer, and a line has
@@ -33943,16 +34010,23 @@
   // it no longer is. Undoing a knot drag restores the previous path, and with it
   // the previous knots.
   //
-  // Knots are in display coordinates, where the curve is fitted (see
-  // fitCurveThroughKnots()); paths are in the layer's CRS. A knot is [x, y], or
-  // [x, y, true] for a corner, where the curve turns sharply rather than
-  // passing smoothly through the knot. A closed curve's first knot is repeated
-  // at the end, and the two are corners together.
+  // The curve is fitted in display coordinates (see fitCurveThroughKnots()),
+  // but the cache keeps knots and paths in the layer's CRS, so that they stay
+  // where they belong when the display projection changes; the tool converts
+  // knots on the way in and out. A knot is [x, y], or [x, y, true] for a
+  // corner, where the curve turns sharply rather than passing smoothly through
+  // the knot. A closed curve's first knot is repeated at the end, and the two
+  // are corners together.
 
   // The flattening tolerance of a curve, as a fraction of its size. The line is
   // the curve's only record once the tool closes, so it is flattened more finely
   // than the label tool's guide, which is redrawn from its knots.
   var FLATTEN_RATIO$1 = 0.0005;
+
+  // The oldest versions are dropped beyond this many. A curve flattens to about
+  // ten vertices per knot, kept as 16 bytes each, so a version of a ten-knot
+  // curve takes about 2.5 KB, knots included.
+  var MAX_KNOT_VERSIONS = 500;
 
   function createKnotCache() {
     return {versions: []};
@@ -33961,19 +34035,40 @@
   // knots: [[x, y], ...] a closed curve repeats its first knot at the end
   // coords: the line's path, [[x, y], ...], read back from the layer
   function addKnotVersion(cache, knots, coords) {
+    var path;
     if (!knots || !coords || coords.length < 2) return;
-    cache.versions.push({knots: copyPoints(knots), coords: coords});
+    path = packPath(coords);
+    // a path that was drawn before, e.g. by toggling a corner twice, is kept
+    // once, with its newest knots
+    cache.versions = cache.versions.filter(function(v) { return !samePath(v.path, coords); });
+    cache.versions.push({knots: copyPoints(knots), path: path});
+    if (cache.versions.length > MAX_KNOT_VERSIONS) {
+      cache.versions.splice(0, cache.versions.length - MAX_KNOT_VERSIONS);
+    }
   }
 
   // The knots of the curve whose path is @coords, or null
   function findKnotVersion(cache, coords) {
     if (!coords) return null;
     for (var i = cache.versions.length - 1; i >= 0; i--) {
-      if (samePath(cache.versions[i].coords, coords)) {
+      if (samePath(cache.versions[i].path, coords)) {
         return copyPoints(cache.versions[i].knots);
       }
     }
     return null;
+  }
+
+  function getKnotVersionCount(cache) {
+    return cache.versions.length;
+  }
+
+  function packPath(coords) {
+    var path = new Float64Array(coords.length * 2);
+    for (var i = 0; i < coords.length; i++) {
+      path[i * 2] = coords[i][0];
+      path[i * 2 + 1] = coords[i][1];
+    }
+    return path;
   }
 
   // The vertices of a line with a single part, or null. A curve is drawn as one
@@ -34082,10 +34177,11 @@
     return span > 0 ? span * FLATTEN_RATIO$1 : 0;
   }
 
-  function samePath(a, b) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i][0] !== b[i][0] || a[i][1] !== b[i][1]) return false;
+  // path: a packed path (see packPath()); coords: [[x, y], ...]
+  function samePath(path, coords) {
+    if (path.length != coords.length * 2) return false;
+    for (var i = 0; i < coords.length; i++) {
+      if (path[i * 2] !== coords[i][0] || path[i * 2 + 1] !== coords[i][1]) return false;
     }
     return true;
   }
@@ -36063,9 +36159,9 @@
   //
   // A line drawn with the tool can be reshaped by dragging its knots, which are
   // shown while the line is selected. Each drag is an -update-line command. The
-  // knots are kept only while the tool is open, and only for a line whose path
-  // is still the one they produced (see gui-curve-line-knots.mjs); any other
-  // line is selected for styling, as in the Draw tool.
+  // knots are kept after the tool closes, but only for a line whose path is
+  // still the one they produced (see gui-curve-line-knots.mjs); any other line
+  // is selected for styling, as in the Draw tool.
   //
   // Alt-click (Option-click) places a corner knot, where the curve turns
   // sharply, and on a knot of a selected curve switches it between a corner and
@@ -36156,7 +36252,6 @@
       if (!_active) return;
       finishCurve(false);
       drag = null;
-      knotCache = createKnotCache();
       shown = null;
       shownKey = null;
       hoverKnot = -1;
@@ -36577,21 +36672,44 @@
 
     // --- knots of finished curves
 
-    // The knots of line @id, if its path is one the tool drew
+    // The knots of line @id, if its path is one the tool drew, in display
+    // coordinates
     function findKnots(id) {
       var target = hit.getHitTarget();
+      var knots;
       if (!target || target.geometry_type != 'polyline' || !target.shapes) return null;
-      return findKnotVersion(knotCache, getLinePathCoords(target.shapes[id],
+      knots = findKnotVersion(knotCache, getLinePathCoords(target.shapes[id],
         target.gui.source.dataset.arcs));
+      return knots ? toDisplayKnots(target, knots) : null;
     }
 
-    // Keeps @knots as the knots of line @id, as it now is
+    // Keeps @knots as the knots of line @id, as it now is. A command that
+    // finishes after the tool has closed still records them.
     function recordKnots(id, knots) {
       var target = hit.getHitTarget();
-      if (!_active || !target || !target.shapes) return;
-      addKnotVersion(knotCache, knots, getLinePathCoords(target.shapes[id],
-        target.gui.source.dataset.arcs));
-      refreshShownCurve(true);
+      if (!target || !target.shapes) return;
+      addKnotVersion(knotCache, toDataKnots(target, knots),
+        getLinePathCoords(target.shapes[id], target.gui.source.dataset.arcs));
+      if (_active) refreshShownCurve(true);
+    }
+
+    function toDataKnots(target, knots) {
+      return knots.map(function(k) {
+        return makeKnot(translateDisplayPoint(target, k), knotIsCorner(k));
+      });
+    }
+
+    // null if a knot does not project, e.g. after the display projection has
+    // changed to one that does not show it
+    function toDisplayKnots(target, knots) {
+      var out = [];
+      var p;
+      for (var i = 0; i < knots.length; i++) {
+        p = projectDataPoint(target, knots[i]);
+        if (!p || !isFinite(p[0]) || !isFinite(p[1])) return null;
+        out.push(makeKnot(p, knotIsCorner(knots[i])));
+      }
+      return out;
     }
 
     // Shows the knots of the selected line, if one line is selected and it has
@@ -36670,8 +36788,7 @@
         title: title || 'Reshape curve',
         changesEditTarget: true,
         onSuccess: function() {
-          if (!_active) return;
-          hit.setSelectionIds([o.id]);
+          if (_active) hit.setSelectionIds([o.id]);
           recordKnots(o.id, o.knots);
         },
         onError: function() {
