@@ -12006,8 +12006,8 @@
       if (e.frameProperties) {
         addMenuItem('frame properties', e.frameProperties, '');
       }
-      if (e.renameFrame) {
-        addMenuItem('rename frame', e.renameFrame, '');
+      if (e.scalebarProperties) {
+        addMenuItem(e.scalebarLabel, e.scalebarProperties, '');
       }
       if (e.resizeFrame) {
         addMenuItem('resize frame', e.resizeFrame, '');
@@ -13628,6 +13628,14 @@
         if (target && gui.frameProperties) gui.frameProperties.open(target);
       }
 
+      // The scale bar panel edits the active frame's scale bar
+      function openScalebarProperties() {
+        var target = findLayerById(id);
+        if (!target || !gui.scalebarProperties) return;
+        activateFrame(target);
+        gui.scalebarProperties.open(target);
+      }
+
       function resizeFrame() {
         var target = findLayerById(id);
         if (target) activateFrame(target);
@@ -13684,10 +13692,10 @@
           internal.isFrameLayer(target.layer, target.dataset.arcs);
         if (isFrame) {
           menuEvent.frameProperties = openFrameProperties;
-          // after the menu has closed, which would take the focus back
-          menuEvent.renameFrame = function() {
-            setTimeout(function() { editFrameName(entry, target); }, 0);
-          };
+          menuEvent.scalebarProperties = openScalebarProperties;
+          menuEvent.scalebarLabel =
+            internal.findFrameFurnitureLayer(target.dataset, 'scalebar') ?
+              'scale bar' : 'add scale bar';
           menuEvent.resizeFrame = resizeFrame;
           menuEvent.frameActions = getFrameMenuActions(target);
           menuEvent.deleteFrame = deleteLayer;
@@ -13766,7 +13774,7 @@
         });
       }
 
-      // init name editor (a frame is renamed from its menu)
+      // init name editor (a frame is renamed in its properties panel)
       if (entry.findChild('.layer-name')) {
         new ClickText2(entry.findChild('.layer-name'))
           .on('change', function(e) {
@@ -13803,7 +13811,6 @@
       // init click-to-select; clicking a frame's heading shows the frame
       GUI.onClick(entry, function() {
         var target = findLayerById(id);
-        if (entry.node().querySelector('.frame-name[contenteditable="true"]')) return;
         if (target && internal.isFrameLayer(target.layer, target.dataset.arcs)) {
           activateFrame(target);
         } else {
@@ -13811,53 +13818,6 @@
         }
       });
 
-    }
-
-    // The name is edited in place in the heading; Enter or leaving the field
-    // renames the frame with -frame, and Escape cancels
-    function editFrameName(entry, frame) {
-      var node = entry.findChild('.frame-name').node();
-      var oldName = frame.layer.name || '';
-      var done = false;
-      node.contentEditable = 'true';
-      node.spellcheck = false;
-      node.classList.add('editing');
-      node.addEventListener('keydown', onKey);
-      node.addEventListener('blur', onBlur);
-      node.focus();
-      GUI.selectElement(node);
-
-      function onKey(e) {
-        e.stopPropagation();
-        if (e.key == 'Enter') {
-          e.preventDefault();
-          finish(true);
-        } else if (e.key == 'Escape') {
-          e.preventDefault();
-          finish(false);
-        }
-      }
-
-      function onBlur() {
-        finish(true);
-      }
-
-      // The heading goes back to the old name either way; a rename redraws the
-      // list with the new one
-      function finish(commit) {
-        var name = cleanLayerName(node.textContent);
-        if (done) return;
-        done = true;
-        node.removeEventListener('keydown', onKey);
-        node.removeEventListener('blur', onBlur);
-        node.contentEditable = 'false';
-        node.classList.remove('editing');
-        window.getSelection().removeAllRanges();
-        node.textContent = formatLayerNameForDisplay(oldName);
-        if (commit && name && name != oldName) {
-          runFrameCommand(frame, 'name=' + internal.formatOptionValue(name));
-        }
-      }
     }
 
     // The frame's eye shows all its layers if any is hidden, and otherwise hides
@@ -18894,10 +18854,9 @@
     var o = Object.assign({min: 1, max: 999, step: 1, bigStep: 10}, opts || {});
     var box = El('div').addClass('size-field').appendTo(parent);
     var input = El('input').attr('type', 'text').addClass('size-field-input').appendTo(box);
-    var stepper = El('div').addClass('size-field-stepper').appendTo(box);
-    // Up above down, the way a stepper is read
-    var plusBtn = makeStepButton(stepper, 1, 'size-field-up');
-    var minusBtn = makeStepButton(stepper, -1, 'size-field-down');
+    var buttons = appendSizeFieldStepper(box);
+    var plusBtn = buttons.up;
+    var minusBtn = buttons.down;
     var shown = ''; // what the field was last told to display
     var dirty = false; // holds typing that has not been committed
     var disabled = false;
@@ -18934,27 +18893,6 @@
     // Fires on Enter and on blur-after-editing, which is the same commit point
     // the panel's colour and CSS fields use.
     input.on('change', commit);
-
-    // Keeps the caret where it is while a size is stepped -- in this field, or in
-    // the label being typed into. A click on a div blurs whatever has focus
-    // unless the default is refused, and the panel only refuses it during an
-    // editing session.
-    stepper.on('mousedown', function(e) {
-      e.preventDefault();
-    });
-
-    // Triangles rather than + and −, which read as arithmetic on the value:
-    // these step to the next size, and one of them is at the end of its range as
-    // often as not.
-    function makeStepButton(parent, dir, className) {
-      var arrow = dir > 0 ? 'M4.5 1.1L7.5 4.9H1.5z' : 'M4.5 4.9L1.5 1.1h6z';
-      return El('div')
-        .addClass('label-panel-btn size-field-btn')
-        .addClass(className)
-        .attr('role', 'button')
-        .appendTo(parent)
-        .html('<svg class="size-field-arrow" viewBox="0 0 9 6"><path d="' + arrow + '"></path></svg>');
-    }
 
     function step(delta) {
       if (disabled || !o.onStep) return;
@@ -19025,6 +18963,38 @@
     this.node = function() {
       return box.node();
     };
+  }
+
+  // The up and down arrows of a size field, appended to @box (a .size-field).
+  // Also used by fields that step through values other than plain numbers.
+  // Returns {up, down}; the caller handles their clicks.
+  function appendSizeFieldStepper(box) {
+    var stepper = El('div').addClass('size-field-stepper').appendTo(box);
+    // Keeps the caret where it is while a size is stepped -- in this field, or in
+    // the label being typed into. A click on a div blurs whatever has focus
+    // unless the default is refused, and the panel only refuses it during an
+    // editing session.
+    stepper.on('mousedown', function(e) {
+      e.preventDefault();
+    });
+    // Up above down, the way a stepper is read
+    return {
+      up: makeStepButton(stepper, 1, 'size-field-up'),
+      down: makeStepButton(stepper, -1, 'size-field-down')
+    };
+  }
+
+  // Triangles rather than + and −, which read as arithmetic on the value:
+  // these step to the next size, and one of them is at the end of its range as
+  // often as not.
+  function makeStepButton(parent, dir, className) {
+    var arrow = dir > 0 ? 'M4.5 1.1L7.5 4.9H1.5z' : 'M4.5 4.9L1.5 1.1h6z';
+    return El('div')
+      .addClass('label-panel-btn size-field-btn')
+      .addClass(className)
+      .attr('role', 'button')
+      .appendTo(parent)
+      .html('<svg class="size-field-arrow" viewBox="0 0 9 6"><path d="' + arrow + '"></path></svg>');
   }
 
   // What a keystroke in a size field means, or null for one it leaves alone.
@@ -45319,6 +45289,8 @@
     var frame = ext.getFrameData();
     var obj;
     if (internal.getFurnitureFrameProblem(frame)) return '';
+    if (internal.getFurnitureLayerType(lyr) == 'scalebar' &&
+      internal.getScalebarScaleProblem(frame)) return '';
     obj = internal.getEmptyLayerForSVG(lyr, {});
     obj.properties.transform = getSvgFurnitureTransform(ext);
     obj.properties.class = 'mapshaper-svg-furniture';
@@ -48795,7 +48767,7 @@
   }
 
   function FrameProperties(gui) {
-    var target, form, widthInput, heightInput, unitsSelect, aspectValue;
+    var target, popup, form, nameInput, widthInput, heightInput, unitsSelect, aspectValue;
     var backgroundControl, neatlineControl, neatlineWidthInput;
     var boundsValue, crsValue, scalebarButton;
 
@@ -48804,7 +48776,10 @@
     this.open = function(targetArg) {
       target = targetArg || gui.model.getActiveFrame();
       if (!target) return;
-      var popup = showPopupAlert('', 'Frame properties');
+      popup = showPopupAlert('', 'Frame properties');
+      popup.onClose(function() {
+        popup = null;
+      });
       popup.container().addClass('frame-properties-popup');
       form = El('div')
         .addClass('label-style-panel frame-properties-form')
@@ -48814,6 +48789,12 @@
     };
 
     function initForm() {
+      var nameRow = El('div').addClass('label-style-row frame-name-row').appendTo(form);
+      nameInput = makeLabeledInput(nameRow, 'Na&#8203;me') // block LastPass
+        .addClass('frame-name-input')
+        .attr('autocomplete', 'off')
+        .on('change', updateName);
+
       // Width and height are two ways of writing one thing: either one rescales
       // the frame and the other follows, because the frame's extent is not what
       // this panel changes. Shown side by side so that they read as a pair.
@@ -48874,7 +48855,9 @@
         .addClass('label-style-row label-panel-button-row')
         .appendTo(elements);
       scalebarButton = makeActionButton(elementsRow, '', function() {
-        if (gui.scalebarProperties) gui.scalebarProperties.open(target);
+        var frame = target;
+        if (popup) popup.close();
+        if (gui.scalebarProperties) gui.scalebarProperties.open(frame);
       }).addClass('frame-scalebar-btn');
 
       var details = makePanelSection(form, 'Details');
@@ -48889,6 +48872,7 @@
       var units = frame.units || 'px';
       var factor = getUnitFactor(units);
       var info = internal.getLayerInfo(target.layer, target.dataset);
+      nameInput.node().value = target.layer.name || '';
       widthInput.node().value = formatNumber(frame.width / factor);
       heightInput.node().value = formatNumber(frame.height / factor);
       unitsSelect.node().value = units;
@@ -48903,6 +48887,17 @@
         'Edit scale bar' : 'Add scale bar');
       boundsValue.text(frame.bbox.map(formatCoordinate).join(', '));
       crsValue.text(info.proj4 || '[unknown]');
+    }
+
+    // A frame always has a name, so an emptied field puts the old one back
+    function updateName() {
+      var name = cleanLayerName(nameInput.node().value);
+      if (!name || name == target.layer.name) {
+        updateControls();
+        return;
+      }
+      runCommand('-frame ' + getTargetOption() + ' name=' +
+        internal.formatOptionValue(name), 'Rename map frame');
     }
 
     function updateWidth() {
@@ -48997,7 +48992,7 @@
 
   function makeLabeledInput(parent, label) {
     var cell = El('label').addClass('frame-input-cell').appendTo(parent);
-    El('span').appendTo(cell).text(label);
+    El('span').appendTo(cell).html(label);
     return makeTextInput(cell);
   }
 
@@ -49073,10 +49068,24 @@
 
   var positionOptions = [
     ['top-left', 'Top left'],
+    ['top-center', 'Top center'],
     ['top-right', 'Top right'],
     ['bottom-left', 'Bottom left'],
+    ['bottom-center', 'Bottom center'],
     ['bottom-right', 'Bottom right']
   ];
+
+  var labelPositionOptions = {
+    a: [
+      ['top-left', 'Top left'],
+      ['top-center', 'Top center'],
+      ['top-right', 'Top right'],
+      ['bottom-left', 'Bottom left'],
+      ['bottom-center', 'Bottom center'],
+      ['bottom-right', 'Bottom right']
+    ],
+    b: [['top', 'Above'], ['bottom', 'Below']]
+  };
 
   // What the scalebar is drawn in when it has no color of its own
   var defaultColor = '#000000';
@@ -49086,6 +49095,7 @@
   // like any other command.
   function ScalebarProperties(gui) {
     var popup, form, note;
+    var stopPanelDrag = null;
     var labelInput, unitsSelect, styleSelect, dualUnitsBox, positionSelect,
       labelPositionSelect, fontSizeInput, barWidthInput, marginInput,
       fontSelect, fontStyleSelect, colorChit, colorInput, colorPicker;
@@ -49119,8 +49129,8 @@
       return !!popup;
     };
 
-    // The map stays live, so the panel is placed where it is least likely to
-    // hide the scalebar: at the top of the map, on the side away from it
+    // Opens where the editing panels do. A drag lasts only for this opening;
+    // closing discards the moved position.
     function showPanel() {
       var d = getScalebarRecord();
       if (!d) return;
@@ -49130,6 +49140,8 @@
         classname: 'scalebar-properties-box'
       });
       popup.onClose(function() {
+        if (stopPanelDrag) stopPanelDrag();
+        stopPanelDrag = null;
         popup = form = null;
       });
       popup.container().addClass('scalebar-properties-popup');
@@ -49138,27 +49150,28 @@
         .appendTo(popup.container());
       initForm();
       updateControls();
-      placePanel(/right/.test(d.position || '') ? 'left' : 'right');
+      placePanel();
     }
 
     function closePanel() {
       if (popup) popup.close();
     }
 
-    function placePanel(side) {
+    function placePanel() {
       var box = popup.container().node().parentNode;
-      var map = gui.container.findChild('.map-layers').node().getBoundingClientRect();
-      // clears the zoom buttons on the right edge of the map
-      var rightInset = 58;
-      var leftInset = 16;
+      var mapNode = gui.container.findChild('.mshp-main-map').node();
+      var map = mapNode.getBoundingClientRect();
+      var style = window.getComputedStyle(mapNode);
+      var top = parseFloat(style.getPropertyValue('--map-panel-top'));
+      var right = parseFloat(style.getPropertyValue('--map-panel-right'));
+      if (!isFinite(top)) top = 7;
+      if (!isFinite(right)) right = 36;
       box.style.position = 'absolute';
       box.style.marginTop = '0';
-      box.style.top = Math.round(map.top + 12) + 'px';
-      if (side == 'left') {
-        box.style.left = Math.round(map.left + leftInset) + 'px';
-      } else {
-        box.style.right = Math.round(window.innerWidth - map.right + rightInset) + 'px';
-      }
+      box.style.left = 'auto';
+      box.style.right = Math.round(window.innerWidth - map.right + right) + 'px';
+      box.style.top = Math.round(map.top + top) + 'px';
+      stopPanelDrag = makePanelDraggable(box);
     }
 
     function initForm() {
@@ -49166,8 +49179,7 @@
       note = El('div').addClass('scalebar-properties-note').appendTo(form).hide();
 
       row = makeRow(form);
-      labelInput = makeInput(makeCell(row, 'Distance'), 'scalebar-label-input')
-        .attr('placeholder', 'Automatic')
+      labelInput = makeDistanceField(makeCell(row, 'Distance', 'div'))
         .on('change', function() {
           update({label: labelInput.node().value.trim()});
         });
@@ -49198,7 +49210,7 @@
           update({position: positionSelect.node().value});
         });
       labelPositionSelect = makeSelect(makeCell(row, 'Labels'),
-        'scalebar-label-position-select', [['top', 'Above'], ['bottom', 'Below']])
+        'scalebar-label-position-select', [])
         .on('change', function() {
           update({label_position: labelPositionSelect.node().value});
         });
@@ -49268,16 +49280,19 @@
 
     function updateControls() {
       var d = getScalebarRecord();
-      var problem;
+      var problem, style;
       if (!d || !form) return;
       labelInput.node().value = d.label || '';
       setSelectValue(unitsSelect, getUnitsMenuValue(d.units ||
         internal.parseScalebarUnits(d.label || '')));
-      setSelectValue(styleSelect, d.style == 'b' || d.style == 'B' ||
-        !d.style && d.dual_units ? 'b' : 'a');
+      style = d.style == 'b' || d.style == 'B' ||
+        !d.style && d.dual_units ? 'b' : 'a';
+      setSelectValue(styleSelect, style);
       dualUnitsBox.node().checked = !!d.dual_units;
       setSelectValue(positionSelect, d.position || 'top-left');
-      setSelectValue(labelPositionSelect, d.label_position || 'top');
+      renderLabelPositionOptions(style);
+      setSelectValue(labelPositionSelect,
+        getLabelPositionMenuValue(d.label_position, style));
       fontSizeInput.node().value = formatValue(d.font_size);
       barWidthInput.node().value = formatValue(d.bar_width);
       marginInput.node().value = formatValue(d.margin);
@@ -49296,6 +49311,11 @@
 
     function renderFontOptions() {
       appendFontOptions(fontSelect.node());
+    }
+
+    function renderLabelPositionOptions(style) {
+      labelPositionSelect.empty();
+      appendSelectOptions(labelPositionSelect, labelPositionOptions[style]);
     }
 
     // A scalebar with no font of its own is shown in the font it is drawn in
@@ -49362,6 +49382,37 @@
       runCommand(getScalebarCommand(d), 'Update scale bar', updateControls);
     }
 
+    // The arrows and the arrow keys step through the lengths that automatic
+    // sizing chooses from, starting from the current length
+    function makeDistanceField(cell) {
+      var box = El('div').addClass('size-field scalebar-distance-field').appendTo(cell);
+      var input = makeInput(box, 'size-field-input scalebar-label-input')
+        .attr('placeholder', 'Automatic')
+        .attr('aria-label', 'Distance');
+      var buttons = appendSizeFieldStepper(box);
+      input.on('keydown', function(e) {
+        if (e.key != 'ArrowUp' && e.key != 'ArrowDown') return;
+        e.preventDefault();
+        e.stopPropagation();
+        stepDistance(e.key == 'ArrowUp' ? 1 : -1);
+      });
+      [[buttons.up, 1], [buttons.down, -1]].forEach(function(o) {
+        o[0].on('click', function() {
+          stepDistance(o[1]);
+        });
+      });
+      return input;
+    }
+
+    function stepDistance(direction) {
+      var d = getScalebarRecord();
+      // the frame as the map draws it, so an automatic length starts from the
+      // one on the screen
+      var data = gui.map.getPreviewFrameData() || getFrameData();
+      var label = d && data ? internal.getSteppedScalebarLabel(d, data, direction) : null;
+      if (label) update({label: label});
+    }
+
     function makeNumberInput(cell, field, className) {
       var input = makeInput(cell, className).attr('placeholder', 'auto');
       input.on('change', function() {
@@ -49378,13 +49429,19 @@
     }
 
     function getFrameProblem() {
+      var data = getFrameData();
+      if (!data) return 'there is no map frame';
+      return internal.getFurnitureFrameProblem(data) ||
+        internal.getScalebarScaleProblem(data);
+    }
+
+    function getFrameData() {
       var frame = gui.model.getActiveFrame();
-      var crs, data;
-      if (!frame) return 'there is no map frame';
+      var crs;
+      if (!frame) return null;
       crs = frame.layer.gui && frame.layer.gui.dynamic_crs ||
         internal.getDatasetCRS(frame.dataset);
-      data = internal.getFrameLayerData(frame.layer, frame.dataset.arcs, crs);
-      return internal.getFurnitureFrameProblem(data);
+      return internal.getFrameLayerData(frame.layer, frame.dataset.arcs, crs);
     }
 
     function getScalebarRecord() {
@@ -49402,13 +49459,69 @@
     }
   }
 
+  // Makes the popup title a drag handle. Coordinates live only on @box, which is
+  // removed when the popup closes, so every opening starts from placePanel().
+  function makePanelDraggable(box) {
+    var handle = box.querySelector('.alert-title');
+    var dragging = false;
+    var startX, startY, startLeft, startTop, width, height;
+    if (!handle) return function() {};
+    handle.addEventListener('pointerdown', onDown);
+
+    function onDown(e) {
+      var rect;
+      if (e.button !== 0) return;
+      rect = box.getBoundingClientRect();
+      dragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      startLeft = rect.left;
+      startTop = rect.top;
+      width = rect.width;
+      height = rect.height;
+      box.style.left = Math.round(startLeft) + 'px';
+      box.style.right = 'auto';
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+      document.addEventListener('pointercancel', onUp);
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    function onMove(e) {
+      var left, top;
+      if (!dragging) return;
+      left = startLeft + e.clientX - startX;
+      top = startTop + e.clientY - startY;
+      left = Math.max(0, Math.min(window.innerWidth - width, left));
+      top = Math.max(0, Math.min(window.innerHeight - height, top));
+      box.style.left = Math.round(left) + 'px';
+      box.style.top = Math.round(top) + 'px';
+      e.preventDefault();
+    }
+
+    function onUp() {
+      dragging = false;
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+    }
+
+    return function() {
+      onUp();
+      handle.removeEventListener('pointerdown', onDown);
+    };
+  }
+
   function makeRow(parent, className) {
     return El('div').addClass('label-style-row scalebar-row')
       .addClass(className || 'scalebar-two-col').appendTo(parent);
   }
 
-  function makeCell(row, label) {
-    var cell = El('label').addClass('frame-input-cell').appendTo(row);
+  // @tagName 'label' by default; a field with buttons beside it uses a div, so
+  // that a click that misses a button doesn't put the caret in the field
+  function makeCell(row, label, tagName) {
+    var cell = El(tagName || 'label').addClass('frame-input-cell').appendTo(row);
     El('span').appendTo(cell).text(label);
     return cell;
   }
@@ -49419,10 +49532,14 @@
 
   function makeSelect(parent, className, options) {
     var select = El('select').addClass(className).appendTo(parent);
+    appendSelectOptions(select, options);
+    return select;
+  }
+
+  function appendSelectOptions(select, options) {
     options.forEach(function(o) {
       El('option').attr('value', o[0]).appendTo(select).text(o[1]);
     });
-    return select;
   }
 
   function makeCheckbox(parent, label, className) {
@@ -49457,6 +49574,18 @@
     return parsed == 'mile' || !parsed ? 'miles' :
       parsed == 'm' ? 'meters' :
       parsed == 'ft' ? 'feet' : 'km';
+  }
+
+  // Older scale bars use "top" and "bottom". For style a, these mean left
+  // aligned; for style b, horizontal alignment is not supported.
+  function getLabelPositionMenuValue(position, style) {
+    var pos = String(position || 'top');
+    var vertical = pos.includes('bottom') ? 'bottom' : 'top';
+    var horizontal;
+    if (style == 'b') return vertical;
+    horizontal = pos.includes('center') ? 'center' :
+      pos.includes('right') ? 'right' : 'left';
+    return vertical + '-' + horizontal;
   }
 
   function formatValue(val) {

@@ -11286,12 +11286,114 @@
   // horizontal scale factors.
   // x, y: a point location in projected coordinates
   // Returns k, the ratio of coordinate distance to distance on the ground
+  // Returns NaN if the scale factor can't be calculated, e.g. if a CRS without
+  // an inverse has no location at x, y (such as a gap in an interrupted projection)
   function getScaleFactorAtXY(x, y, crs) {
-    var dist = 1 / crs.to_meter;
-    var lp = mproj$1.pj_inv_deg({x: x, y: y}, crs);
-    var lp2 = mproj$1.pj_inv_deg({x: x + dist, y: y}, crs);
-    var k = 1 / geom.greatCircleDistance(lp.lam, lp.phi, lp2.lam, lp2.phi);
-    return k;
+    var meters = 1;
+    var lp, lp2, k;
+    if (isInvertibleCRS(crs)) {
+      lp = mproj$1.pj_inv_deg({x: x, y: y}, crs);
+      lp2 = mproj$1.pj_inv_deg({x: x + meters / crs.to_meter, y: y}, crs);
+    } else if (numericScaleCache.crs == crs && numericScaleCache.x === x && numericScaleCache.y === y) {
+      return numericScaleCache.k;
+    } else {
+      // Forward projections can be noisy at the scale of centimeters (Markley's
+      // is off by up to half a meter), so the numerical inverse is only asked
+      // to be accurate to a meter, over a 10 km step: k is good to about 1e-4.
+      meters = 10000;
+      lp = invertNumerically(x, y, crs, null, 1 / crs.to_meter);
+      lp2 = lp && invertNumerically(x + meters / crs.to_meter, y, crs, lp, 1 / crs.to_meter);
+      k = lp2 ? meters / geom.greatCircleDistance(lp.lam, lp.phi, lp2.lam, lp2.phi) : NaN;
+      // the GUI asks again on every redraw of the map
+      numericScaleCache = {crs: crs, x: x, y: y, k: k};
+      return k;
+    }
+    return meters / geom.greatCircleDistance(lp.lam, lp.phi, lp2.lam, lp2.phi);
+  }
+
+  var numericScaleCache = {};
+
+  // Finds the lng/lat location of projected point x, y using only the forward
+  // projection, for a CRS that has no inverse.
+  // guess (optional): {lam, phi} of a nearby location, in degrees
+  // tolerance (optional): how far from x, y the location may project, in CRS
+  //   units. Should be well above the noise in the forward projection.
+  // Returns {lam, phi} in degrees, or null if no location was found
+  function invertNumerically(x, y, crs, guess, tolerance) {
+    var starts = guess ? [guess] : findNearestGridLocations(x, y, crs, 4);
+    var p = null;
+    if (tolerance > 0 === false) tolerance = 0.01 / crs.to_meter;
+    for (var i = 0; i < starts.length && !p; i++) {
+      p = refineInverse(x, y, crs, starts[i], tolerance);
+    }
+    return p;
+  }
+
+  // Newton's method, starting from location @p
+  function refineInverse(x, y, crs, p, tolerance) {
+    var xy = forwardOrNull(p.lam, p.phi, crs);
+    var err = xy ? Math.hypot(xy.x - x, xy.y - y) : Infinity;
+    var i, j, hlam, hphi, xyLam, xyPhi, dxdlam, dydlam, dxdphi, dydphi,
+        det, dlam, dphi, p2, xy2, err2;
+    for (i = 0; i < 50 && err > tolerance; i++) {
+      // Finite-difference steps (in degrees) point away from the poles
+      // and the antimeridian, to stay inside the projection's domain. About
+      // 100 m, so that noise in the forward projection barely affects the
+      // derivatives; an approximate derivative only slows convergence.
+      hlam = p.lam > 0 ? -1e-3 : 1e-3;
+      hphi = p.phi > 0 ? -1e-3 : 1e-3;
+      xyLam = forwardOrNull(p.lam + hlam, p.phi, crs);
+      xyPhi = forwardOrNull(p.lam, p.phi + hphi, crs);
+      if (!xyLam || !xyPhi) return null;
+      dxdlam = (xyLam.x - xy.x) / hlam;
+      dydlam = (xyLam.y - xy.y) / hlam;
+      dxdphi = (xyPhi.x - xy.x) / hphi;
+      dydphi = (xyPhi.y - xy.y) / hphi;
+      det = dxdlam * dydphi - dxdphi * dydlam;
+      if (!det) return null;
+      dlam = ((x - xy.x) * dydphi - dxdphi * (y - xy.y)) / det;
+      dphi = (dxdlam * (y - xy.y) - (x - xy.x) * dydlam) / det;
+      // halve the Newton step until it reduces the error
+      for (j = 0; j < 20; j++) {
+        p2 = {lam: p.lam + dlam, phi: Math.max(-90, Math.min(90, p.phi + dphi))};
+        xy2 = forwardOrNull(p2.lam, p2.phi, crs);
+        err2 = xy2 ? Math.hypot(xy2.x - x, xy2.y - y) : Infinity;
+        if (err2 < err) break;
+        dlam /= 2;
+        dphi /= 2;
+      }
+      if (err2 < err === false) return null;
+      p = p2;
+      xy = xy2;
+      err = err2;
+    }
+    return err > tolerance ? null : p;
+  }
+
+  // Starting points for invertNumerically(): the @n grid locations that project
+  // nearest to x, y. Newton's method can fail from a start beside a seam, and
+  // seams, poles and central meridians tend to fall on round-numbered
+  // coordinates, so the grid is offset from them.
+  function findNearestGridLocations(x, y, crs, n) {
+    var found = [];
+    var lam, phi, xy;
+    for (lam = -177.5; lam < 180; lam += 5) {
+      for (phi = -87.5; phi < 90; phi += 5) {
+        xy = forwardOrNull(lam, phi, crs);
+        if (xy) found.push({lam: lam, phi: phi, dist: Math.hypot(xy.x - x, xy.y - y)});
+      }
+    }
+    return found.sort(function(a, b) { return a.dist - b.dist; }).slice(0, n);
+  }
+
+  function forwardOrNull(lam, phi, crs) {
+    var xy;
+    try {
+      xy = mproj$1.pj_fwd_deg({lam: lam, phi: phi}, crs);
+    } catch(e) {
+      return null;
+    }
+    return xy && isFinite(xy.x) && isFinite(xy.y) ? xy : null;
   }
 
   function isProjectedCRS(P) {
@@ -11477,6 +11579,7 @@
     getProjectionCodeLists: getProjectionCodeLists,
     getScaleFactorAtXY: getScaleFactorAtXY,
     initProjLibrary: initProjLibrary,
+    invertNumerically: invertNumerically,
     isInvertibleCRS: isInvertibleCRS,
     isLatLngCRS: isLatLngCRS,
     isLatLngDataset: isLatLngDataset,
@@ -31755,6 +31858,10 @@
 
     var opts = getScalebarOpts(d);
     var metersPerPx = getMapFrameMetersPerPixel(frame);
+    if (metersPerPx > 0 === false) {
+      message(`Unable to render scalebar: ${getScalebarScaleProblem(frame)}.`);
+      return [];
+    }
     var frameWidthPx = frame.width;
     var labels = d.label ? splitScalebarLabel(d.label) : [];
     var units = parseLabelUnits(d.units) || 'mile';
@@ -31770,7 +31877,10 @@
 
     var length1 = Math.round(props1.km / metersPerPx * 1000);
     if (length1 > 0 === false) {
-      stop$1("Null scalebar length");
+      // A valid distance can be less than half a pixel at the current map
+      // scale. There is no bar to draw, but this is not an error: resizing the
+      // frame or stepping to a longer distance can make it visible again.
+      return [];
     }
 
     if (opts.style == 'b' && labels[1]) {
@@ -31788,7 +31898,8 @@
 
     var barPos = getScalebarPosition(opts);
     var labelPos = getLabelPosition(opts);
-    var dx = barPos.xpos == 'right' ? frameWidthPx - length1 - opts.margin : opts.margin;
+    var dx = barPos.xpos == 'right' ? frameWidthPx - length1 - opts.margin :
+      barPos.xpos == 'center' ? (frameWidthPx - length1) / 2 : opts.margin;
     var dy = barPos.ypos == 'bottom' ? frame.height - opts.margin : opts.margin;
 
     // vshift to adjust for height above or below the baseline
@@ -31808,6 +31919,14 @@
     };
 
     return [g];
+  }
+
+  // Returns a reason why a scalebar can't be sized in a projected frame, or null.
+  // The GUI checks this before drawing, so that a redraw doesn't repeat the
+  // message renderScalebar() prints.
+  function getScalebarScaleProblem(frame) {
+    return getMapFrameMetersPerPixel(frame) > 0 ? null :
+      'the map scale could not be calculated at the center of the map';
   }
 
   var styleOpts = {
@@ -31841,12 +31960,16 @@
 
   function renderAsSvg(length, text, length2, text2, opts) {
     var labelPart = renderLabel(text, length, opts);
-    var zeroLabelPart = renderLabel('0', length, Object.assign({flipx: true}, opts));
     var barPart = renderBar(length, length2, opts);
-    var parts = opts.style == 'b' ? [zeroLabelPart, labelPart, barPart] : [labelPart, barPart];
+    var parts = [labelPart, barPart];
+    if (opts.style == 'b' && labelsHaveRoomForZero(text, length, opts)) {
+      parts.unshift(renderLabel('0', length, Object.assign({flipx: true}, opts)));
+    }
     if (text2) {
       parts.push(renderLabel(text2, length2, Object.assign({flipy: true}, opts)));
-      parts.push(renderLabel('0', length2, Object.assign({flipx: true, flipy: true}, opts)));
+      if (labelsHaveRoomForZero(text2, length2, opts)) {
+        parts.push(renderLabel('0', length2, Object.assign({flipx: true, flipy: true}, opts)));
+      }
     }
     return {
       tag: 'g',
@@ -31854,11 +31977,34 @@
     };
   }
 
+  // In style b, the zero starts just left of x=0 and the distance ends just
+  // right of x=length. Drop the zero if their measured text boxes overlap or
+  // come within a quarter of the font size. If metrics are unavailable, retain
+  // the zero as before.
+  function labelsHaveRoomForZero(text, length, opts) {
+    var zeroWidth = getScalebarTextWidth('0', opts);
+    var textWidth = getScalebarTextWidth(text, opts);
+    var gap = length + opts.font_size / 2 - zeroWidth - textWidth;
+    return !zeroWidth || !textWidth || gap >= Math.max(2, opts.font_size / 4);
+  }
+
+  function getScalebarTextWidth(text, opts) {
+    var rec = {
+      'label-text': text,
+      'font-size': opts.font_size
+    };
+    ['font_family', 'font_style', 'font_weight'].forEach(function(k) {
+      if (opts[k]) rec[k.replace('_', '-')] = opts[k];
+    });
+    return getMeasuredTextWidth(rec);
+  }
+
   function getScalebarPosition(opts) {
     var pos = opts.position || 'top-left';
     return {
       ypos: pos.includes('bottom') ? 'bottom' : 'top',
-      xpos: pos.includes('right') ? 'right' : 'left'
+      xpos: pos.includes('center') ? 'center' :
+        pos.includes('right') ? 'right' : 'left'
     };
   }
 
@@ -31959,17 +32105,17 @@
   };
 
   // Candidate lengths for automatic labels, in ascending order of distance
+  var integers = '1 2 3 4 5 8 10 15 20 25 30 40 50 75 100 150 200 250 300 350' +
+    ' 400 500 750 1,000 1,500 2,000 2,500 3,000 4,000 5,000 7,500 10,000';
   var autoLengths = {
     imperial: [
       ['ft', '10 20 25 50 100 200 250 500'],
       // note: removed 1.5 12 and 1,200
-      ['mile', '1/8 1/5 1/4 1/2 1 2 3 4 5 8 10 15 20 25 30 40 50 75 100 150 200 250 ' +
-        '300 350 400 500 750 1,000 1,500 2,000 2,500 3,000 4,000 5,000']
+      ['mile', '1/8 1/5 1/4 1/2 ' + integers]
     ],
     metric: [
       ['m', '5 10 20 25 50 100 200 250 500'],
-      ['km', '1 2 3 4 5 8 10 15 20 25 30 40 50 75 100 150 200 250 300 350 ' +
-        '400 500 750 1,000 1,500 2,000 2,500 3,000 4,000 5,000']
+      ['km', integers]
     ]
   };
 
@@ -32049,6 +32195,44 @@
     }) || '';
   }
 
+  // The label of a scalebar whose length is stepped to the next longer
+  // (@direction > 0) or shorter of the automatic lengths, from the length it
+  // has now, whether that was given or automatic. A second distance is kept if
+  // it is still the shorter one. Returns null if there is no next length, or
+  // if the current length is automatic and @frame can't give the map scale.
+  // @d scalebar data record
+  // @frame frame data, as passed to renderScalebar()
+  function getSteppedScalebarLabel(d, frame, direction) {
+    var labels = d.label ? splitScalebarLabel(d.label) : [];
+    var units = parseLabelUnits(d.units) || 'mile';
+    var label1 = getCurrentScalebarLabel(labels[0], frame, units);
+    var km = label1 ? parseScalebarLabelToKm(label1) : NaN;
+    var candidates, next, nextKm, label2;
+    if (km > 0 === false) return null;
+    candidates = getAutoLabels(getUnitSystem(parseScalebarUnits(label1)));
+    if (direction < 0) candidates.reverse();
+    next = candidates.find(function(label) {
+      var km2 = parseScalebarLabelToKm(label);
+      return direction > 0 ? km2 > km * (1 + 1e-9) : km2 < km * (1 - 1e-9);
+    });
+    if (!next) return null;
+    nextKm = parseScalebarLabelToKm(next);
+    label2 = labels[1] ? completeLabel(labels[1], getOtherUnits(parseScalebarUnits(next))) : null;
+    if (label2 && parseScalebarLabelToKm(label2) < nextKm) {
+      return next + ',' + labels[1];
+    }
+    return next;
+  }
+
+  function getCurrentScalebarLabel(label, frame, units) {
+    var metersPerPx;
+    if (label && parseScalebarNumber(label) > 0) return completeLabel(label, units);
+    if (!frame || !frame.crs || frame.width > 0 === false) return null;
+    metersPerPx = getMapFrameMetersPerPixel(frame);
+    if (metersPerPx > 0 === false) return null;
+    return getScalebarLabel(label, frame.width, metersPerPx, units);
+  }
+
   // The longest automatic length in the given units that fits within the
   // first part of a dual-unit scalebar
   function getAutoSecondLabel(maxPx, metersPerPx, unit) {
@@ -32119,6 +32303,8 @@
     __proto__: null,
     formatDistanceLabel: formatDistanceLabel,
     getScalebarLayer: getScalebarLayer,
+    getScalebarScaleProblem: getScalebarScaleProblem,
+    getSteppedScalebarLabel: getSteppedScalebarLabel,
     parseLabelUnits: parseLabelUnits,
     parseScalebarLabelToKm: parseScalebarLabelToKm,
     parseScalebarUnits: parseScalebarUnits,
@@ -53129,7 +53315,7 @@ ${css.join('\n')}
         type: 'number'
       })
       .option('position', {
-        describe: 'top-left (default), top-right, bottom-left or bottom-right'
+        describe: 'top-left (default), top-center, top-right, bottom-left, bottom-center or bottom-right'
       })
       .option('label-position', {
         describe: 'top, bottom, top-center (style a), etc'
@@ -77738,7 +77924,7 @@ ${css.join('\n')}
     });
     if (destInfo && destInfo.crs) {
       projectMapFrame(targets, catalog, opts, destInfo);
-      warnAboutUnprojectedLayers(catalog, destInfo);
+      warnAboutUnprojectedLayers(catalog, targets, destInfo);
     }
   };
 
@@ -77893,20 +78079,51 @@ ${css.join('\n')}
   // -proj only applies to the command's targets, so layers in other datasets are
   // left behind in the old CRS. That usually surfaces much later as a blank
   // export or an "unable to combine" error, so name them while the cause is clear.
-  function warnAboutUnprojectedLayers(catalog, destInfo) {
-    var names = [];
+  // Only layers in the same group as the targets are named: frames often have
+  // different projections, and a frame is always projected whole (see
+  // expandFrameTargets()), so in practice these are unframed layers.
+  function warnAboutUnprojectedLayers(catalog, targets, destInfo) {
+    var groups, missed, hint;
     if (!catalog) return;
-    catalog.getLayers().forEach(function(o) {
+    groups = targets.map(function(targ) { return getLayerGroup(catalog, targ.dataset); });
+    missed = catalog.getLayers().filter(function(o) {
       var crs;
-      if (!layerHasGeometry$1(o.layer) && !layerHasRaster(o.layer)) return;
+      if (!layerHasGeometry$1(o.layer) && !layerHasRaster(o.layer)) return false;
+      if (isFrameComponentLayer(o.layer, o.dataset)) return false;
+      if (!groups.includes(getLayerGroup(catalog, o.dataset))) return false;
       crs = getDatasetCrsInfo(o.dataset).crs;
-      if (crs && !crsAreEqual(crs, destInfo.crs)) {
-        names.push(o.layer.name || '[unnamed]');
-      }
+      return !!crs && !crsAreEqual(crs, destInfo.crs);
     });
-    if (names.length === 0) return;
-    warn(`Layer${utils.pluralSuffix(names.length)} not projected by this command: ` +
-      names.join(', ') + '. Use target=* to project all layers.');
+    if (missed.length === 0) return;
+    // target=* would also project every frame, so with frames the hint lists
+    // the layers of the group to target
+    hint = getFrames(catalog).length > 0 ?
+      `To project ${missed.length == 1 ? 'it' : 'them'} with this command, use target=` +
+        getGroupTargetIds(catalog, targets, missed).join(',') + '.' :
+      'Use target=* to project all layers.';
+    warn(`Layer${utils.pluralSuffix(missed.length)} not projected by this command: ` +
+      missed.map(function(o) { return o.layer.name || '[unnamed]'; }).join(', ') + '. ' + hint);
+  }
+
+  // The target ids of the layers left behind and of the targeted layers in
+  // their groups, in catalog order
+  function getGroupTargetIds(catalog, targets, missed) {
+    var groups = missed.map(function(o) { return getLayerGroup(catalog, o.dataset); });
+    var missedLayers = missed.map(function(o) { return o.layer; });
+    return catalog.getLayers().filter(function(o) {
+      if (missedLayers.includes(o.layer)) return true;
+      return groups.includes(getLayerGroup(catalog, o.dataset)) && targets.some(function(targ) {
+        return targ.layers.includes(o.layer);
+      });
+    }).map(function(o) {
+      return formatOptionValue(getLayerTargetId(catalog, o.layer));
+    });
+  }
+
+  // The frame dataset of a dataset's frame, or null for an unframed dataset
+  function getLayerGroup(catalog, dataset) {
+    var frame = getFrameForDataset(catalog, dataset);
+    return frame ? frame.dataset : null;
   }
 
   function projCmd(dataset, destInfo, opts) {
@@ -95512,7 +95729,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.91";
+  var version = "0.7.92";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

@@ -1614,12 +1614,6 @@ body.simplify .layer-control-btn {
 	cursor: pointer;
 }
 
-.frame-name.editing {
-	outline: 1px solid #aaa;
-	padding: 0 2px;
-	cursor: text;
-}
-
 /* Only the section on the map has working eye icons; the others show which
    layers are visible in pale grey */
 .inactive-section img.eye-btn {
@@ -2388,6 +2382,9 @@ div.basemap-style-btn.active {
 }
 
 .mshp-main-map {
+	/* Floating editing panels and popup panels that align with them */
+	--map-panel-top: 7px;
+	--map-panel-right: 36px;
 	/* background-color: #fff; */
 }
 
@@ -3021,8 +3018,8 @@ body.pan.panning .map-layers:not(.drawing) {
 	--label-menu-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath fill='none' stroke='%23666' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round' d='M1 1.5l4 4 4-4'/%3E%3C/svg%3E");
 	position: absolute;
 	z-index: 21;
-	top: 7px;
-	right: 36px;
+	top: var(--map-panel-top);
+	right: var(--map-panel-right);
 	/* Wide enough for a pair of controls side by side, which is what these
 	   panels are mostly made of: at 185px the narrow column of a pair was too
 	   narrow for its own caption, and "Letter spacing" was clipped. */
@@ -3098,6 +3095,12 @@ body.pan.panning .map-layers:not(.drawing) {
 	width: 264px;
 }
 
+.scalebar-properties-box .alert-title {
+	cursor: move;
+	user-select: none;
+	touch-action: none;
+}
+
 .scalebar-properties-form.label-style-panel {
 	background: transparent;
 	border: 0;
@@ -3129,6 +3132,11 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .scalebar-row > * {
 	min-width: 0;
+}
+
+.frame-input-cell > .scalebar-distance-field {
+	display: flex;
+	width: 100%;
 }
 
 /* The bottom padding puts the text on the baseline of the menu beside it.
@@ -4662,6 +4670,14 @@ body.dragging-color-picker * {
 	height: 5px;
 	fill: #444;
 	stroke: none;
+}
+
+/* Popups mark their contents .selectable, which gives everything in them a
+   text cursor */
+.size-field .size-field-stepper,
+.size-field .size-field-stepper * {
+	cursor: default;
+	user-select: none;
 }
 
 .size-field .size-field-btn:hover:not(.disabled) {
