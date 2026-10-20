@@ -23,7 +23,7 @@
     "node": ">=20.11.0"
   },
   "scripts": {
-    "test": "mocha --require test/mocha-hooks.mjs test",
+    "test": "mocha test",
     "build": "rollup --config",
     "docs": "node build-docs.mjs",
     "roadmap": "node build-roadmap.mjs",
@@ -98,6 +98,9 @@
   },
   "mocha": {
     "reporter": "dot",
+    "require": [
+      "test/mocha-hooks.mjs"
+    ],
     "node-option": [
       "import=./test/_register.mjs"
     ],

@@ -174,6 +174,9 @@ describe('mapshaper-scalebar.js', function () {
     });
 
     it('drops a zero label that is too close to the distance label', async function() {
+      // Other test files in this worker may replace the bundle's measurer.
+      api.internal.fonts.initNodeTextMeasurement();
+      api.internal.svg.clearTextWidthCache();
       var world = '-i test/data/geojson/world_land.json -proj markley -frame width=800';
       var short = await exportSvg(`${world} -scalebar "100 miles" style=b`);
       var long = await exportSvg(`${world} -scalebar "5,000 miles" style=b`);
