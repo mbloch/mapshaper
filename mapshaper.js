@@ -6865,9 +6865,11 @@
           );
           return [normalizeLongitude$1(q[0] * R2D$8 + lon0), q[1] * R2D$8];
         });
-        var paths = splitPathAtAntimeridian$3(
+        var paths = splitPathsAtPoles(
           interpolateGreatCircle(endpoints[0], endpoints[1], 0.05)
-        );
+        ).reduce(function(memo, path) {
+          return memo.concat(splitPathAtAntimeridian$3(path));
+        }, []);
         paths.forEach(function(path) {
           // The mask must be wider than the tiny chord error between samples.
           path.mask_width = 4e-5;
@@ -7187,6 +7189,34 @@
       points.push(vectorToDegrees$2(normalizeVector$3(p)));
     }
     return points;
+  }
+
+  // A pole has no longitude of its own (vectorToDegrees() returns an arbitrary
+  // one), so a seam vertex at a pole takes the longitude of its neighbor. A seam
+  // that passes through a pole is split there, into two meridians.
+  function splitPathsAtPoles(path) {
+    var paths = [];
+    var part = [];
+    path.forEach(function(p, i) {
+      var next = path[i + 1];
+      var lat;
+      if (!isPolarPoint(p)) {
+        part.push(p);
+        return;
+      }
+      lat = p[1] > 0 ? 90 : -90;
+      if (part.length > 0) {
+        part.push([part[part.length - 1][0], lat]);
+        paths.push(part);
+      }
+      part = next && !isPolarPoint(next) ? [[next[0], lat]] : [];
+    });
+    if (part.length > 1) paths.push(part);
+    return paths;
+  }
+
+  function isPolarPoint(p) {
+    return Math.abs(p[1]) > 90 - 1e-9;
   }
 
   function splitPathAtAntimeridian$3(path) {
@@ -78604,6 +78634,7 @@ ${css.join('\n')}
     if (isProjectedCRS(src) && !isInvertibleCRS(src)) {
       stop$1('Unable to project from a coordinate system that has no inverse transform');
     }
+    removeRedundantGraticuleMeridians(dataset, src, dest);
     if (dest.__projection_views && isLatLngCRS(src) && !opts.no_clip) {
       projectDatasetViews(dataset, src, dest, opts);
       return;
@@ -78660,6 +78691,37 @@ ${css.join('\n')}
       message(`Removed ${badPoints} unprojectable ${badPoints == 1 ? 'point' : 'points'}.`);
     }
     dataset.info.crs = dest;
+  }
+
+  // A lat-long graticule (see -graticule) has meridians at both -180 and 180,
+  // the left and right edges of the map. A projection that is not bounded by the
+  // antimeridian draws them on top of each other, which shows when the lines are
+  // translucent, so the -180 meridian is removed. Interrupted projections are
+  // left alone, because the antimeridian may lie along one of their cuts.
+  function removeRedundantGraticuleMeridians(dataset, src, dest) {
+    if (!isLatLngCRS(src) || Math.abs(src.lam0) > 0 || isInterruptedProjection(dest) ||
+        isMeridianBounded(dest) && getBoundingMeridian(dest) == 180) {
+      return;
+    }
+    dataset.layers.forEach(function(lyr) {
+      var records, keep;
+      if (lyr.geometry_type != 'polyline' || !isGraticuleLayer(lyr)) return;
+      records = lyr.data.getRecords();
+      keep = records.map(function(rec) {
+        return rec.type != 'meridian' || rec.value != -180;
+      });
+      if (!keep.includes(false)) return;
+      lyr.shapes = lyr.shapes.filter(function(shp, i) { return keep[i]; });
+      lyr.data = new DataTable(records.filter(function(rec, i) { return keep[i]; }));
+    });
+  }
+
+  function isGraticuleLayer(lyr) {
+    var records = lyr.data ? lyr.data.getRecords() : [];
+    return records.length > 0 && records.every(function(rec) {
+      return rec && (rec.type == 'meridian' || rec.type == 'parallel' ||
+        rec.type == 'outline') && 'value' in rec;
+    });
   }
 
   // A projection that shows some places more than once (like two hemispheres
@@ -96089,7 +96151,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.93";
+  var version = "0.7.94";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
