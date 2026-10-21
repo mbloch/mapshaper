@@ -13998,10 +13998,39 @@
       sbCanvas.on('mousedown', function(e) {
         startCanvasDrag(e, updateSbFromEvent);
       });
+      colorPicker.node().addEventListener('pointerdown', startPickerMove);
       hueCanvas.on('mousedown', function(e) {
         startCanvasDrag(e, updateHueFromEvent);
       });
       setPickerColor(pickerColor);
+    }
+
+    // The picker can be dragged out of the way by any part of it that isn't a
+    // control. Like the scale bar panel, it goes back beside its field the next
+    // time it opens (see positionPicker()).
+    function startPickerMove(e) {
+      var node = colorPicker.node();
+      var startX = e.clientX, startY = e.clientY;
+      var rect = node.getBoundingClientRect();
+      if (e.button !== 0 || e.target.closest('canvas, input, button, [role="button"]')) return;
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+      document.addEventListener('pointercancel', onUp);
+      e.preventDefault();
+
+      function onMove(e) {
+        var left = clamp$5(rect.left + e.clientX - startX, 0, window.innerWidth - rect.width);
+        var top = clamp$5(rect.top + e.clientY - startY, 0, window.innerHeight - rect.height);
+        colorPicker.css('left', Math.round(left) + 'px');
+        colorPicker.css('top', Math.round(top) + 'px');
+        e.preventDefault();
+      }
+
+      function onUp() {
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        document.removeEventListener('pointercancel', onUp);
+      }
     }
 
     function initAlphaSlider() {
@@ -14224,7 +14253,7 @@
     }
 
     // The picked color over a checkerboard, opaque at the left and clear at the
-    // right. With no color picked there is no opacity to set, so no marker.
+    // right. A blank opacity field puts the marker at 100%.
     function drawAlphaCanvas() {
       if (!alphaCanvas) return;
       var ctx = alphaCanvas.node().getContext('2d');
@@ -14252,11 +14281,10 @@
         g: rgb.g * a + markerBg * (1 - a),
         b: rgb.b * a + markerBg * (1 - a)
       });
-      alphaMarker.node().style.display = unset ? 'none' : '';
     }
 
     function getCheckerValue(x, y) {
-      return (Math.floor(x / 6) + Math.floor(y / 6)) % 2 ? 204 : 255;
+      return (Math.floor(x / 5) + Math.floor(y / 5)) % 2 ? 204 : 255;
     }
 
     function commitPickerColor() {
@@ -23365,17 +23393,15 @@
     'fill-pattern', 'outer-glow-color', 'outer-glow-opacity', 'outer-glow-width',
     'inner-glow-color', 'inner-glow-opacity', 'inner-glow-width', 'opacity'];
 
-  // The colors of the outline a layer with no style is drawn with (see
-  // gui-layer-styler.mjs), which a shape with no stroke of its own is drawn with
-  // while it is being drawn.
-  var DEFAULT_STROKE = '#334';
-  var DEFAULT_STROKE_DARK = 'white';
+  // The color a shape with a style but no stroke of its own is drawn with
+  // while it is being drawn: black, as the layer styler draws it once it is
+  // finished (see getCanvasDisplayStyle())
+  var DEFAULT_STROKE = 'black';
 
   // The stroke written to a shape that needs one: the style panel's default
   // stroke color, which its other controls add (see gui-layer-style-tool.mjs),
   // in the six-digit form its color field and picker take.
   var DEFAULT_SHAPE_STROKE = '#000000';
-  var DEFAULT_SHAPE_STROKE_DARK = '#ffffff';
 
   // The style properties a shape of @geometryType can be drawn with
   function getNewShapeStyleFields(geometryType) {
@@ -23422,15 +23448,18 @@
   }
 
   // The style a path is drawn with while it is being drawn: the stroke the shape
-  // will have, or the outline of a layer with no style when it has none. The
-  // path is open until it is finished, so a polygon's fill is not shown.
-  function getPendingPathStyle(style, darkMode) {
+  // will have, or null if it will have no style, in which case the path is
+  // drawn as the outline of a layer with no style (see getPendingPathLayer() in
+  // gui-overlay-styler.mjs), which does not scale with a preview. The path is
+  // open until it is finished, so a polygon's fill is not shown.
+  function getPendingPathStyle(style) {
     var out = {};
     LINE_FIELDS.forEach(function(field) {
       if (style && field in style) out[field] = style[field];
     });
+    if (Object.keys(out).length === 0) return null;
     if (!out.stroke) {
-      out.stroke = darkMode ? DEFAULT_STROKE_DARK : DEFAULT_STROKE;
+      out.stroke = DEFAULT_STROKE;
     }
     if (!out['stroke-width'] && out['stroke-width'] !== 0) {
       out['stroke-width'] = 1;
@@ -23445,10 +23474,10 @@
   // it does not change color when it is finished.
   //
   // layerIsStyled: the layer has style fields (see layerHasDrawableStyle())
-  function getNewShapeCommandStyle(style, layerIsStyled, darkMode) {
+  function getNewShapeCommandStyle(style, layerIsStyled) {
     var out = Object.assign({}, style);
     if (layerIsStyled && !out.stroke && !out.fill) {
-      out.stroke = darkMode ? DEFAULT_SHAPE_STROKE_DARK : DEFAULT_SHAPE_STROKE;
+      out.stroke = DEFAULT_SHAPE_STROKE;
     }
     return out;
   }
@@ -28895,13 +28924,6 @@
         dotColor: "#223",
         dotSize: 1
       },
-      activeStyleDarkMode = {
-        type: 'outline',
-        strokeColors: [null, 'white'],
-        strokeWidth: 0.9,
-        dotColor: 'white',
-        dotSize: 1
-      },
       activeStyleForLabels = {
         dotColor: "rgba(250, 0, 250, 0.45)", // violet dot with transparency
         dotSize: 1
@@ -28958,8 +28980,6 @@
       style = {dotSize: 0};
     } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
       style = copyBaseStyle(activeStyleForLabels);
-    } else if (opts.darkMode) {
-      style = copyBaseStyle(activeStyleDarkMode);
     } else {
       style = copyBaseStyle(activeStyle);
     }
@@ -29658,6 +29678,38 @@
     };
   }
 
+  // Hover and selection highlights (see getOverlayStyle() in
+  // gui-overlay-styler.mjs) are sized in CSS pixels from the width of the
+  // feature as it is drawn, at whatever scale it is drawn: a fine line or a
+  // small symbol is widened by enough to be seen, and one that is already wide,
+  // such as a line in a preview at a large scale, by not much more.
+
+  // A feature up to this wide (px) is widened by the highlight's extraWidth;
+  // a wider one by more, growing slowly with its width
+  var HIGHLIGHT_REFERENCE_WIDTH = 4;
+  var HIGHLIGHT_GROWTH = 0.3;
+  // How much wider than its line a handle on the line is drawn (px)
+  var HANDLE_EXTRA_WIDTH = 4;
+
+  // Width in px of the highlight of a feature @width px wide: a line's stroke,
+  // or the diameter of a circle with its stroke.
+  // o.minWidth: the narrowest the highlight is drawn
+  // o.extraWidth: how much wider than the feature the highlight is drawn
+  function getHighlightWidth(width, o) {
+    var w = width > 0 ? width : 0;
+    var k = Math.pow(Math.max(1, w / HIGHLIGHT_REFERENCE_WIDTH), HIGHLIGHT_GROWTH);
+    return Math.max(o.minWidth || 0, w + (o.extraWidth || 0) * k);
+  }
+
+  // Radius in px of a handle on a line @lineWidth px wide, such as a curve's
+  // knot: @radius, or enough to be wider than the line, by a margin that grows
+  // slowly with the line's width, up to @maxRadius (if given)
+  function getHandleRadius(radius, lineWidth, maxRadius) {
+    var r = getHighlightWidth(lineWidth, {extraWidth: HANDLE_EXTRA_WIDTH}) / 2;
+    if (maxRadius > 0) r = Math.min(r, maxRadius);
+    return Math.max(radius, r);
+  }
+
   // The knots of curves drawn with the curve tool (gui-curve-lines.mjs).
   //
   // A curve is stored as an ordinary line. The knots it was fitted through are
@@ -29854,6 +29906,144 @@
     return points.map(function(p) { return makeKnot(p, knotIsCorner(p)); });
   }
 
+  // State of a label curve being drawn, and the operations the curvature tool
+  // performs on it.
+  //
+  // Knots are held in the map's display coordinates, not in pixels, so that a
+  // half-drawn curve stays where the user put it across a pan or a zoom. They are
+  // converted to the layer's own coordinates once, when the command is emitted,
+  // and nothing is written until then: an abandoned curve leaves no data
+  // mutation, no undo entry and no session history entry.
+  //
+  // The distance thresholds are therefore the caller's to supply, in the same
+  // space as the knots -- the tool scales its pixel thresholds by the current
+  // pixel size. The defaults below are the pixel values, for callers working in
+  // screen space.
+  //
+  // Written as functions over a plain object rather than as a class, so that
+  // every transition can be tested without a map, a layer or a DOM.
+  //
+  // See docs/development/label-tool-design.md.
+
+  // A click closer than this to the previous knot is treated as a stray rather
+  // than a new knot. It also absorbs the second click of a double-click, which is
+  // how a curve is finished.
+  var MIN_KNOT_DISTANCE = 4;
+
+  // How close the pointer has to be to a placed knot to grab it.
+  var KNOT_HIT_THRESHOLD = 8;
+
+  function createCurveState() {
+    // justPlaced is the knot the current pointer gesture placed, or -1. A
+    // double-click arrives as clicks first, so the knot under the pointer during
+    // the dblclick is usually one that the same gesture just created; the two
+    // cases mean opposite things and this is what tells them apart.
+    return {knots: [], justPlaced: -1};
+  }
+
+  // Returns true if the knot was added. A click too close to the previous knot is
+  // rejected rather than producing a zero-length curve segment.
+  function addKnot(state, p, minDistance) {
+    var min = minDistance === undefined ? MIN_KNOT_DISTANCE : minDistance;
+    var last = lastKnot(state);
+    if (!isValidPoint(p)) return false;
+    if (last && distance(last, p) < min) return false;
+    state.knots.push([p[0], p[1]]);
+    return true;
+  }
+
+  function moveKnot(state, i, p) {
+    if (!isValidPoint(p) || !(i >= 0 && i < state.knots.length)) return false;
+    state.knots[i] = [p[0], p[1]];
+    return true;
+  }
+
+  function removeLastKnot(state) {
+    if (state.knots.length === 0) return false;
+    state.knots.pop();
+    return true;
+  }
+
+  // Index of the placed knot nearest @p within @threshold, or -1. Searches from
+  // the end, so the most recently placed of two overlapping knots wins.
+  function findKnotNear(state, p, threshold) {
+    var limit = threshold === undefined ? KNOT_HIT_THRESHOLD : threshold;
+    var best = -1;
+    var bestDist = limit;
+    var d, i;
+    if (!isValidPoint(p)) return -1;
+    for (i = state.knots.length - 1; i >= 0; i--) {
+      d = distance(state.knots[i], p);
+      if (d <= bestDist) {
+        bestDist = d;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  // Two knots make a straight label; one makes nothing worth keeping.
+  function curveIsComplete(state) {
+    return state.knots.length >= 2;
+  }
+
+  // What a click at @p does to the curve, and does to it here: 'added' if it
+  // placed a knot, 'ignored' if it landed on a knot that is already there or too
+  // close to the last one.
+  //
+  // A click on a placed knot must not leave a duplicate knot behind: the curve
+  // fitter would have a zero-length chord to find a direction along.
+  function handleClick(state, p, hitThreshold, minDistance) {
+    var near = findKnotNear(state, p, hitThreshold);
+    if (near > -1) {
+      // Clicking a knot this gesture did not place ends the gesture's claim on
+      // whatever it placed before, so that a double-click on an already-placed
+      // knot is not read as finishing.
+      if (near !== state.justPlaced) state.justPlaced = -1;
+      return 'ignored';
+    }
+    if (!addKnot(state, p, minDistance)) {
+      state.justPlaced = -1;
+      return 'ignored';
+    }
+    state.justPlaced = state.knots.length - 1;
+    return 'added';
+  }
+
+  // What a double-click at @p means: 'finish' to end the curve here, or 'none'.
+  //
+  // Double-clicking empty map finishes, and the knot the opening click placed
+  // counts as empty map -- that click is how the ordinary finishing gesture
+  // starts, so without the exception it would land on a knot every time.
+  //
+  // A double-click on a knot that was already there does nothing. It cannot add
+  // one, since the knot is in the way, and finishing on it would end the curve
+  // somewhere other than where the pointer was when the gesture began.
+  function getDblclickAction(state, p, hitThreshold) {
+    var near = findKnotNear(state, p, hitThreshold);
+    if (state.knots.length === 0) return {action: 'none'};
+    if (near > -1 && near !== state.justPlaced) return {action: 'none'};
+    return {action: 'finish'};
+  }
+
+  // Forgets which knot the current gesture placed, e.g. after a knot is removed
+  // and the indexes no longer line up.
+  function clearGesture(state) {
+    state.justPlaced = -1;
+  }
+
+  function lastKnot(state) {
+    return state.knots.length > 0 ? state.knots[state.knots.length - 1] : null;
+  }
+
+  function distance(a, b) {
+    return Math.sqrt(Math.pow(a[0] - b[0], 2) + Math.pow(a[1] - b[1], 2));
+  }
+
+  function isValidPoint(p) {
+    return !!p && p.length >= 2 && isFinite(p[0]) && isFinite(p[1]);
+  }
+
   // The visible guide for a label path being placed: a line along the curve the
   // text will follow, and a handle on each knot.
   //
@@ -29956,7 +30146,9 @@
   // The handles alone, for a tool that draws the curve itself (see
   // gui-curve-lines.mjs): a layer of circles for the smooth knots and one of
   // squares for the corners, either of them left out if it would be empty.
-  function getKnotHandleLayers(activeLyr, knots) {
+  // lineWidth: the width of the curve's stroke, which the handles are drawn
+  // wider than (0 for a line that is not scaled, e.g. in an unstyled layer)
+  function getKnotHandleLayers(activeLyr, knots, lineWidth) {
     var smooth = (knots || []).filter(function(k) { return !knotIsCorner(k); });
     var corners = (knots || []).filter(knotIsCorner);
     var layers = [];
@@ -29969,8 +30161,12 @@
       lyr.gui.displayLayer.name = 'curve-corner-knots';
       lyr.gui.style.pointShape = 'square';
       lyr.gui.style.radius = CORNER_KNOT_RADIUS;
+      lyr.gui.style.maxRadius = KNOT_HIT_THRESHOLD * CORNER_KNOT_RADIUS / KNOT_RADIUS$1;
       layers.push(lyr);
     }
+    layers.forEach(function(lyr) {
+      lyr.gui.style.lineWidth = lineWidth > 0 ? lineWidth : 0;
+    });
     return layers;
   }
 
@@ -29992,7 +30188,12 @@
     }, {
       // type: 'styled' is what gets these drawn as circles.
       type: 'styled',
+      // Handles are sized in screen px, not by a preview's scale, so that one
+      // can be grabbed at any scale (see getHandleRadius()). They grow on a wide
+      // line, but not past the distance a knot is grabbed from.
+      fixedRadius: true,
       radius: KNOT_RADIUS$1,
+      maxRadius: KNOT_HIT_THRESHOLD,
       strokeColor: violet$1,
       strokeWidth: 1.5,
       fillColor: white$1
@@ -30031,50 +30232,68 @@
   var selectionFill = "rgba(237, 214, 0, 0.12)",
       // hoverFill = "rgba(255, 120, 255, 0.12)",
       hoverFill = "rgba(0, 0, 0, 0.08)",
-      hoverFillDark = "rgba(255, 255, 255, 0.12)",
-      white = 'white',
       grey = "#888",
       orange = "#f28100",
       violet = "#cc6acc",
       black = 'black',
       violetFill = "rgba(249, 120, 249, 0.25)",
+      drawingExtraWidth = 5,
+      pointExtraWidth = 1.6,
+      lineExtraWidth = 1,
+      polygonExtraWidth = 0.8,
+      // Highlight widths are in px, at any scale (see gui-highlight-width.mjs):
+      //   minWidth: the narrowest a line or a shape's outline is drawn
+      //   extraWidth: how much wider than the feature it is drawn (for a
+      //     circle, how much larger its diameter is)
+      //   strokeOverlay: a translucent halo around the feature, beneath which
+      //     the feature is seen in its own style, rather than an outline over it
+      //   dotSize: the size of a point drawn as a square dot, which does not scale
       hoverStyles = {
         polygon: {
           fillColor: hoverFill,
           strokeColor: black,
-          strokeWidth: 1.2
+          minWidth: 1.2,
+          extraWidth: polygonExtraWidth
         }, point:  {
           dotColor: black, // violet, // black,
-          dotSize: 2.5
+          dotSize: 2.5,
+          extraWidth: pointExtraWidth
         }, polyline: {
           strokeColor: black,
-          strokeWidth: 2,
+          minWidth: 2,
+          extraWidth: lineExtraWidth
         }
       },
       unselectedHoverStyles = {
         polygon: {
           fillColor: 'rgba(0,0,0,0)',
           strokeColor: black,
-          strokeWidth: 1.2
+          minWidth: 1.2,
+          extraWidth: polygonExtraWidth
         }, point:  {
           dotColor: black, // grey,
-          dotSize: 2
+          dotSize: 2,
+          extraWidth: pointExtraWidth
         }, polyline:  {
           strokeColor: black, // grey,
-          strokeWidth: 2.5
+          minWidth: 2.5,
+          extraWidth: lineExtraWidth
         }
       },
       selectionStyles = {
         polygon: {
           fillColor: hoverFill,
           strokeColor: black,
-          strokeWidth: 1.2
+          minWidth: 1.2,
+          extraWidth: polygonExtraWidth
         }, point:  {
           dotColor: violet, // black,
-          dotSize: 1.5
+          dotSize: 1.5,
+          extraWidth: pointExtraWidth
         }, polyline:  {
           strokeColor: violet, //  black,
-          strokeWidth: 2.5
+          minWidth: 2.5,
+          extraWidth: lineExtraWidth
         }
       },
       styleSelectionStyles = {
@@ -30082,21 +30301,48 @@
           fillColor: null,
           strokeColor: 'rgb(255, 198, 0)',
           strokeOpacity: 0.18,
-          strokeWidth: 5,
+          extraWidth: drawingExtraWidth,
           strokeOverlay: true,
           batchOverlay: true
         }, polyline:  {
           fillColor: null,
           strokeColor: 'rgb(255, 198, 0)',
           strokeOpacity: 0.18,
-          strokeWidth: 5,
+          extraWidth: drawingExtraWidth,
           strokeOverlay: true,
           batchOverlay: true
         }, point:  {
           fillColor: null,
           strokeColor: 'rgb(255, 198, 0)',
           strokeOpacity: 0.25,
-          strokeWidth: 5,
+          extraWidth: drawingExtraWidth * 2,
+          strokeOverlay: true,
+          batchOverlay: true
+        }
+      },
+      // The halo around the shape under the pointer in the style and drawing
+      // tools: fainter than the selection's, so that the shape is still seen in
+      // its own style, and reaching as far past the shape
+      drawingHoverStyles = {
+        polygon: {
+          fillColor: null,
+          strokeColor: black,
+          strokeOpacity: 0.1,
+          extraWidth: drawingExtraWidth,
+          strokeOverlay: true,
+          batchOverlay: true
+        }, polyline: {
+          fillColor: null,
+          strokeColor: black,
+          strokeOpacity: 0.1,
+          extraWidth: drawingExtraWidth,
+          strokeOverlay: true,
+          batchOverlay: true
+        }, point: {
+          fillColor: null,
+          strokeColor: black,
+          strokeOpacity: 0.1,
+          extraWidth: drawingExtraWidth * 2,
           strokeOverlay: true,
           batchOverlay: true
         }
@@ -30106,26 +30352,32 @@
         polygon: {
           fillColor: selectionFill,
           strokeColor: black,
-          strokeWidth: 1.2
+          minWidth: 1.2,
+          extraWidth: polygonExtraWidth
         }, point:  {
           dotColor: black,
-          dotSize: 1.5
+          dotSize: 1.5,
+          extraWidth: pointExtraWidth
         }, polyline:  {
           strokeColor: black,
-          strokeWidth: 2
+          minWidth: 2,
+          extraWidth: lineExtraWidth
         }
       },
       pinnedStyles = {
         polygon: {
           fillColor: violetFill,
           strokeColor: violet,
-          strokeWidth: 1.8
+          minWidth: 1.8,
+          extraWidth: polygonExtraWidth + 0.2
         }, point:  {
           dotColor: violet,
-          dotSize: 3
+          dotSize: 3,
+          extraWidth: pointExtraWidth
         }, polyline:  {
           strokeColor: violet,
-          strokeWidth: 2.4
+          minWidth: 2.4,
+          extraWidth: lineExtraWidth + 0.2
         }
       };
 
@@ -30145,13 +30397,13 @@
       styleOpts.interactionMode == 'line_style' ||
       styleOpts.interactionMode == 'polygon_style') {
       // with or without the Draw or curve tool, the same selection and hover cues
-      return getDrawingLayers(activeLyr, hitData, styleOpts);
+      return getDrawingLayers(activeLyr, hitData);
     }
     if (styleOpts.interactionMode == 'reshape_lines' ||
       styleOpts.interactionMode == 'reshape_polygons' ||
       styleOpts.interactionMode == 'snip_lines') {
       // special overlay: shape editing mode
-      return getShapeEditingLayers(activeLyr, hitData, styleOpts);
+      return getShapeEditingLayers(activeLyr, hitData);
     }
     layers = [];
     if (styleOpts.interactionMode == 'label') {
@@ -30181,7 +30433,7 @@
       pending = getPendingLabelPath();
       layers = getLabelPathGuideLayers$1(activeLyr, pending ? [pending] : []);
       if (!internal.layerHasSvgSymbols(activeLyr) && !internal.layerHasLabels(activeLyr)) {
-        layers = layers.concat(getSymbolHaloLayers(activeLyr, hitData, styleOpts));
+        layers = layers.concat(getSymbolHaloLayers(activeLyr, hitData));
       }
       return layers;
     }
@@ -30236,55 +30488,55 @@
     return Object.assign({}, activeLyr, {gui});
   }
 
+  // The highlight is sized by the canvas, in px at the scale the feature is
+  // drawn (see getHighlightWidth()), from style.featureWidth: the feature's own
+  // stroke width, or for a point, the width of the stroke around its circle.
+  // style.strokeWidth is the highlight's width at 100%, which says there is a
+  // stroke to draw.
   function getOverlayStyle(baseLyr, ids, outlineStyle) {
     var geomType = baseLyr.gui.displayLayer.geometry_type;
     var baseStyle = baseLyr.gui.style;
     var baseStyler = baseStyle.styler || null;
+    var highlight = {
+      minWidth: outlineStyle.minWidth || 0,
+      extraWidth: outlineStyle.extraWidth || 0,
+      halo: !!outlineStyle.strokeOverlay
+    };
     var styler = function(style, i) {
+      // The style object is reused from one shape to the next, and a base
+      // styler leaves a stroke width that the layer sets for all its shapes as
+      // it finds it, so the previous shape's highlight width is undone first.
+      if ('featureWidth' in style) style.strokeWidth = style.featureWidth;
       if (!baseStyler) {
-        // e.g. polygons in 'outline' mode
+        // e.g. polygons in 'outline' mode, whose lines are not scaled
         Object.assign(style, outlineStyle);
+        style.featureWidth = 0;
+        style.strokeWidth = getHighlightWidth(0, highlight);
         return;
       }
-      var idx = ids[i];
-      if (outlineStyle.strokeOverlay) {
-        delete style.strokeWidth;
-        delete style.strokeColor;
-      }
-      baseStyler(style, idx);
+      baseStyler(style, ids[i]);
+      style.featureWidth = style.strokeWidth > 0 ? style.strokeWidth : 0;
       if (geomType == 'point') {
-        if (outlineStyle.strokeOverlay) {
-          if (style.radius > 0) {
-            style.radius += (style.strokeWidth || 0) / 2 + outlineStyle.strokeWidth / 2;
-          }
+        if (highlight.halo) {
           style.fillColor = null;
           style.strokeColor = outlineStyle.strokeColor;
-          style.strokeWidth = outlineStyle.strokeWidth;
+          style.strokeWidth = highlight.extraWidth;
         } else {
-          if (style.radius > 0) {
-            style.radius += 0.8;
-            if (style.strokeWidth > 0) {
-              style.strokeColor = outlineStyle.dotColor;
-            }
+          if (style.strokeWidth > 0) {
+            style.strokeColor = outlineStyle.dotColor;
           }
           style.fillColor = outlineStyle.dotColor;
         }
       } else {
         style.strokeColor = outlineStyle.strokeColor;
         style.fillColor = outlineStyle.fillColor;
-        style.strokeWidth = outlineStyle.strokeOverlay ?
-          (style.strokeWidth || 0) + outlineStyle.strokeWidth :
-          Math.max(outlineStyle.strokeWidth, style.strokeWidth || 0);
-        // How much of strokeWidth is halo, so that the canvas can size a line's
-        // arrowheads by the line's own width (see getArrowLinePencil()). Set
-        // for every shape, since the style object is reused.
-        style.haloWidth = outlineStyle.strokeOverlay ? outlineStyle.strokeWidth : 0;
+        style.strokeWidth = getHighlightWidth(style.featureWidth, highlight);
       }
       style.opacity = 1;
       style.fillOpacity = 1;
       style.strokeOpacity = outlineStyle.strokeOpacity >= 0 ? outlineStyle.strokeOpacity : 1;
     };
-    var style = Object.assign({}, baseStyle, {ids, overlay: true, type: 'styled', styler});
+    var style = Object.assign({}, baseStyle, {ids, overlay: true, type: 'styled', styler, highlight});
     if (outlineStyle.batchOverlay) {
       style.batchOverlay = true;
     }
@@ -30326,21 +30578,20 @@
   // the layer (hitData.hidden_ids): their original geometry is drawn as a plain
   // outline, and the shapes as they are being reshaped in their own style, with
   // only the vertex markers over them.
-  function getShapeEditingLayers(activeLyr, hitData, styleOpts) {
+  function getShapeEditingLayers(activeLyr, hitData) {
     var ids = hitData.ids || [];
     var redrawn = getRedrawnShapeIds(activeLyr, hitData);
     var layers = [];
-    var dark = !!(styleOpts && styleOpts.darkMode);
     var editingLyr;
     if (redrawn.length > 0) {
-      layers.push(getHiddenShapeLayer(activeLyr, hitData, redrawn, dark));
+      layers.push(getHiddenShapeLayer(activeLyr, hitData, redrawn));
       layers.push(getRedrawnShapeLayer(activeLyr, redrawn));
     }
     if (hitData.pending_path) {
-      layers.push(getPendingPathLayer(activeLyr, hitData, dark));
+      layers.push(getPendingPathLayer(activeLyr, hitData));
     }
     if (ids.length > 0 || layers.length === 0 || redrawn.length > 0) {
-      editingLyr = getShapeEditingLayer(activeLyr, hitData, ids, true, dark);
+      editingLyr = getShapeEditingLayer(activeLyr, hitData, ids, true);
       if (redrawn.length > 0) {
         editingLyr.gui.style.verticesOnly = true;
       }
@@ -30365,16 +30616,15 @@
   // e.g. a curve whose knot is being dragged) is left out of the layer, and is
   // drawn here as a plain outline, so that its stroke width, dashes and
   // highlight are not seen twice.
-  function getDrawingLayers(activeLyr, hitData, styleOpts) {
+  function getDrawingLayers(activeLyr, hitData) {
     var geomType = activeLyr.gui.displayLayer.geometry_type;
     var hidden = hitData.hidden_ids || [];
     var selected = (hitData.ids || []).filter(function(id) { return !hidden.includes(id); });
     var redrawn = getRedrawnShapeIds(activeLyr, hitData);
-    var dark = !!(styleOpts && styleOpts.darkMode);
     var layers = [];
     var lyr;
     if (redrawn.length > 0) {
-      layers.push(getHiddenShapeLayer(activeLyr, hitData, redrawn, dark));
+      layers.push(getHiddenShapeLayer(activeLyr, hitData, redrawn));
     }
     if (selected.length > 0) {
       lyr = getOverlayLayer(activeLyr, selected);
@@ -30385,20 +30635,38 @@
     if (hitData.id > -1 && !hitData.pending_path && !hitData.hit_coordinates &&
         !selected.includes(hitData.id)) {
       lyr = getOverlayLayer(activeLyr, [hitData.id]);
-      lyr.gui.style = getOverlayStyle(activeLyr, [hitData.id], getDrawingHoverStyle(dark));
+      lyr.gui.style = getOverlayStyle(activeLyr, [hitData.id], drawingHoverStyles[geomType]);
       layers.push(lyr);
     }
     if (hitData.pending_path) {
-      layers.push(getPendingPathLayer(activeLyr, hitData, dark));
+      layers.push(getPendingPathLayer(activeLyr, hitData));
     }
     if (hitData.hit_coordinates) {
       // carries the vertex marker, which is drawn with the layer
-      layers.push(getShapeEditingLayer(activeLyr, hitData, [], false, dark));
+      layers.push(getShapeEditingLayer(activeLyr, hitData, [], false));
     }
     layers.forEach(function(lyr, i) {
       if (i < layers.length - 1) lyr.gui.style.vertex_overlay = null;
     });
-    return layers.concat(getKnotHandleLayers(activeLyr, hitData.pending_knots));
+    return layers.concat(getKnotHandleLayers(activeLyr, hitData.pending_knots,
+      hitData.pending_knots ? getKnotLineWidth(activeLyr, hitData) : 0));
+  }
+
+  // The stroke width of the curve whose knots are shown: the path being drawn
+  // or dragged, or else the selected line. A line in a layer with no style has
+  // no width of its own, and is not scaled in a preview.
+  function getKnotLineWidth(activeLyr, hitData) {
+    var pathStyle = hitData.pending_path_style;
+    var baseStyle = activeLyr.gui.style;
+    var ids = hitData.ids || [];
+    var style;
+    if (hitData.pending_path) {
+      return pathStyle ? Number(pathStyle['stroke-width']) || 0 : 0;
+    }
+    if (ids.length != 1 || !baseStyle.styler) return 0;
+    style = Object.assign({}, baseStyle);
+    baseStyle.styler(style, ids[0]);
+    return style.strokeWidth > 0 ? style.strokeWidth : 0;
   }
 
   // The hidden shapes that the overlay draws in place of the layer. A layer
@@ -30412,8 +30680,8 @@
   // The shapes' original geometry, as the layer would draw it with no styles
   // (see activeStyle in gui-layer-styler.mjs): from hitData.hidden_paths if the
   // tool is moving the shapes' vertices, otherwise from the layer.
-  function getHiddenShapeLayer(activeLyr, hitData, ids, dark) {
-    var outline = getActiveLayerStyle(activeLyr.gui.displayLayer, {outlineMode: true, darkMode: dark});
+  function getHiddenShapeLayer(activeLyr, hitData, ids) {
+    var outline = getActiveLayerStyle(activeLyr.gui.displayLayer, {outlineMode: true});
     var style = {
       overlay: true,
       strokeColor: outline.strokeColors[1],
@@ -30462,14 +30730,13 @@
     return lyr;
   }
 
-  function getSymbolHaloLayers(activeLyr, hitData, styleOpts) {
+  function getSymbolHaloLayers(activeLyr, hitData) {
     var selected = hitData.ids || [];
-    var dark = !!(styleOpts && styleOpts.darkMode);
     var layers = [];
     var lyr;
     if (hitData.id > -1 && !selected.includes(hitData.id)) {
       lyr = getOverlayLayer(activeLyr, [hitData.id]);
-      lyr.gui.style = getOverlayStyle(activeLyr, [hitData.id], getDrawingHoverStyle(dark));
+      lyr.gui.style = getOverlayStyle(activeLyr, [hitData.id], drawingHoverStyles.point);
       layers.push(lyr);
     }
     if (selected.length > 0) {
@@ -30480,23 +30747,11 @@
     return layers;
   }
 
-  // A halo around the shape under the pointer, fainter than the selection's, so
-  // that the shape is still seen in its own style
-  function getDrawingHoverStyle(dark) {
-    return {
-      fillColor: null,
-      strokeColor: dark ? white : black,
-      strokeOpacity: dark ? 0.25 : 0.1,
-      strokeWidth: 5,
-      strokeOverlay: true,
-      batchOverlay: true
-    };
-  }
-
   // The path is drawn in the style the shape will have when it is finished
-  // (hitData.pending_path_style, from gui-shape-style-state.mjs), so that what
-  // is drawn on a dark basemap can be seen while it is being drawn.
-  function getPendingPathLayer(activeLyr, hitData, dark) {
+  // (hitData.pending_path_style, from gui-shape-style-state.mjs). A shape with
+  // no style is drawn as the outline of a layer with no style, which a preview
+  // does not scale.
+  function getPendingPathLayer(activeLyr, hitData) {
     var coords = hitData.pending_path;
     var xx = coords.map(function(p) { return p[0]; });
     var yy = coords.map(function(p) { return p[1]; });
@@ -30506,9 +30761,14 @@
       shapes: [[[0]]],
       data: new internal.DataTable([Object.assign({}, hitData.pending_path_style)])
     };
-    var style = getLineEditingStyle(hitData, [0], false, dark);
+    var style = getLineEditingStyle(hitData, [0], false);
+    var outline;
     if (hitData.pending_path_style) {
       Object.assign(style, getCanvasDisplayStyle(displayLayer));
+    } else {
+      outline = getActiveLayerStyle(activeLyr.gui.displayLayer, {outlineMode: true});
+      style.strokeColor = outline.strokeColors[1];
+      style.strokeWidth = outline.strokeWidth;
     }
     // The end of a path being drawn has closely spaced vertices, and pixel
     // rounding would show as a staircase.
@@ -30517,26 +30777,25 @@
       new internal.ArcCollection([coords.length], xx, yy));
   }
 
-  function getShapeEditingLayer(activeLyr, hitData, ids, showVertices, dark) {
+  function getShapeEditingLayer(activeLyr, hitData, ids, showVertices) {
     var lyr = getOverlayLayer(activeLyr, ids);
-    lyr.gui.style = getLineEditingStyle(hitData, ids, showVertices, dark);
+    lyr.gui.style = getLineEditingStyle(hitData, ids, showVertices);
     if (activeLyr.geometry_type == 'polygon') {
-      lyr.gui.style.fillColor = dark ? hoverFillDark : hoverFill;
+      lyr.gui.style.fillColor = hoverFill;
     }
     return lyr;
   }
 
   // style for vertex edit mode
-  // dark: the basemap is dark, so the outline and markers are drawn in white
-  function getLineEditingStyle(o, ids, showVertices, dark) {
+  function getLineEditingStyle(o, ids, showVertices) {
     var isVertex = o.hit_type == 'vertex' || o.hit_type == 'disabled';
     return {
       ids: ids,
       overlay: true,
-      strokeColor: dark ? white : black,
+      strokeColor: black,
       strokeWidth: 1.2,
       vertices: showVertices,
-      vertex_overlay_color: getVertexOverlayColor(o.hit_type, dark),
+      vertex_overlay_color: getVertexOverlayColor(o.hit_type),
       vertex_overlay_scale: isVertex ? 2.5 : 2,
       vertex_overlay: o.hit_coordinates || null,
       pending_snip: o.snip_coordinates || null,
@@ -30546,11 +30805,11 @@
     };
   }
 
-  function getVertexOverlayColor(hitType, dark) {
+  function getVertexOverlayColor(hitType) {
     if (hitType == 'vertex') return violet;
     // a muted dot marks a vertex that the current tool can not act on
     if (hitType == 'disabled') return grey;
-    return dark ? white : black;
+    return black;
   }
 
   function getSelectedFeatureStyle(lyr, o, opts) {
@@ -31554,7 +31813,7 @@
       var extend = extendId >= 0;
       // an extension takes on the style of the line it extends
       var style = extend ? null : getNewShapeCommandStyle(getNewShapeStyle(gui, target.geometry_type),
-        layerHasDrawableStyle(target), !!gui.state.dark_basemap);
+        layerHasDrawableStyle(target));
       var cmd = getAddShapeCommand(coords, {
         geometryType: target.geometry_type,
         style: style,
@@ -31577,7 +31836,7 @@
         coords = coords.concat(stroke.preview);
       }
       if (pointer) coords.push(pointer);
-      hit.setPendingPath(coords, getPendingPathStyle(getPathStyle(), !!gui.state.dark_basemap));
+      hit.setPendingPath(coords, getPendingPathStyle(getPathStyle()));
     }
 
     // The style the finished path will be drawn with: the one createShape() will
@@ -31589,7 +31848,7 @@
         return layerHasDrawableStyle(target) && records[pending.extendId] || {};
       }
       return getNewShapeCommandStyle(getNewShapeStyle(gui, target.geometry_type),
-        layerHasDrawableStyle(target), !!gui.state.dark_basemap);
+        layerHasDrawableStyle(target));
     }
 
     // Hover info for the first vertex of the path being drawn, if the pointer is
@@ -31670,144 +31929,6 @@
       closest.target = target;
       return closest;
     }
-  }
-
-  // State of a label curve being drawn, and the operations the curvature tool
-  // performs on it.
-  //
-  // Knots are held in the map's display coordinates, not in pixels, so that a
-  // half-drawn curve stays where the user put it across a pan or a zoom. They are
-  // converted to the layer's own coordinates once, when the command is emitted,
-  // and nothing is written until then: an abandoned curve leaves no data
-  // mutation, no undo entry and no session history entry.
-  //
-  // The distance thresholds are therefore the caller's to supply, in the same
-  // space as the knots -- the tool scales its pixel thresholds by the current
-  // pixel size. The defaults below are the pixel values, for callers working in
-  // screen space.
-  //
-  // Written as functions over a plain object rather than as a class, so that
-  // every transition can be tested without a map, a layer or a DOM.
-  //
-  // See docs/development/label-tool-design.md.
-
-  // A click closer than this to the previous knot is treated as a stray rather
-  // than a new knot. It also absorbs the second click of a double-click, which is
-  // how a curve is finished.
-  var MIN_KNOT_DISTANCE = 4;
-
-  // How close the pointer has to be to a placed knot to grab it.
-  var KNOT_HIT_THRESHOLD = 8;
-
-  function createCurveState() {
-    // justPlaced is the knot the current pointer gesture placed, or -1. A
-    // double-click arrives as clicks first, so the knot under the pointer during
-    // the dblclick is usually one that the same gesture just created; the two
-    // cases mean opposite things and this is what tells them apart.
-    return {knots: [], justPlaced: -1};
-  }
-
-  // Returns true if the knot was added. A click too close to the previous knot is
-  // rejected rather than producing a zero-length curve segment.
-  function addKnot(state, p, minDistance) {
-    var min = minDistance === undefined ? MIN_KNOT_DISTANCE : minDistance;
-    var last = lastKnot(state);
-    if (!isValidPoint(p)) return false;
-    if (last && distance(last, p) < min) return false;
-    state.knots.push([p[0], p[1]]);
-    return true;
-  }
-
-  function moveKnot(state, i, p) {
-    if (!isValidPoint(p) || !(i >= 0 && i < state.knots.length)) return false;
-    state.knots[i] = [p[0], p[1]];
-    return true;
-  }
-
-  function removeLastKnot(state) {
-    if (state.knots.length === 0) return false;
-    state.knots.pop();
-    return true;
-  }
-
-  // Index of the placed knot nearest @p within @threshold, or -1. Searches from
-  // the end, so the most recently placed of two overlapping knots wins.
-  function findKnotNear(state, p, threshold) {
-    var limit = threshold === undefined ? KNOT_HIT_THRESHOLD : threshold;
-    var best = -1;
-    var bestDist = limit;
-    var d, i;
-    if (!isValidPoint(p)) return -1;
-    for (i = state.knots.length - 1; i >= 0; i--) {
-      d = distance(state.knots[i], p);
-      if (d <= bestDist) {
-        bestDist = d;
-        best = i;
-      }
-    }
-    return best;
-  }
-
-  // Two knots make a straight label; one makes nothing worth keeping.
-  function curveIsComplete(state) {
-    return state.knots.length >= 2;
-  }
-
-  // What a click at @p does to the curve, and does to it here: 'added' if it
-  // placed a knot, 'ignored' if it landed on a knot that is already there or too
-  // close to the last one.
-  //
-  // A click on a placed knot must not leave a duplicate knot behind: the curve
-  // fitter would have a zero-length chord to find a direction along.
-  function handleClick(state, p, hitThreshold, minDistance) {
-    var near = findKnotNear(state, p, hitThreshold);
-    if (near > -1) {
-      // Clicking a knot this gesture did not place ends the gesture's claim on
-      // whatever it placed before, so that a double-click on an already-placed
-      // knot is not read as finishing.
-      if (near !== state.justPlaced) state.justPlaced = -1;
-      return 'ignored';
-    }
-    if (!addKnot(state, p, minDistance)) {
-      state.justPlaced = -1;
-      return 'ignored';
-    }
-    state.justPlaced = state.knots.length - 1;
-    return 'added';
-  }
-
-  // What a double-click at @p means: 'finish' to end the curve here, or 'none'.
-  //
-  // Double-clicking empty map finishes, and the knot the opening click placed
-  // counts as empty map -- that click is how the ordinary finishing gesture
-  // starts, so without the exception it would land on a knot every time.
-  //
-  // A double-click on a knot that was already there does nothing. It cannot add
-  // one, since the knot is in the way, and finishing on it would end the curve
-  // somewhere other than where the pointer was when the gesture began.
-  function getDblclickAction(state, p, hitThreshold) {
-    var near = findKnotNear(state, p, hitThreshold);
-    if (state.knots.length === 0) return {action: 'none'};
-    if (near > -1 && near !== state.justPlaced) return {action: 'none'};
-    return {action: 'finish'};
-  }
-
-  // Forgets which knot the current gesture placed, e.g. after a knot is removed
-  // and the indexes no longer line up.
-  function clearGesture(state) {
-    state.justPlaced = -1;
-  }
-
-  function lastKnot(state) {
-    return state.knots.length > 0 ? state.knots[state.knots.length - 1] : null;
-  }
-
-  function distance(a, b) {
-    return Math.sqrt(Math.pow(a[0] - b[0], 2) + Math.pow(a[1] - b[1], 2));
-  }
-
-  function isValidPoint(p) {
-    return !!p && p.length >= 2 && isFinite(p[0]) && isFinite(p[1]);
   }
 
   var ALT_KEY_CODE = 18;
@@ -32089,8 +32210,7 @@
     }, null, 3);
 
     function showDragPreview(o) {
-      hit.setPendingPath(fitDisplayPath(o.knots),
-        getPendingPathStyle(getLineStyle(o.id), !!gui.state.dark_basemap));
+      hit.setPendingPath(fitDisplayPath(o.knots), getPendingPathStyle(getLineStyle(o.id)));
       hit.setPendingKnots(o.knots);
     }
 
@@ -32214,8 +32334,7 @@
     // first knot, the pointer closes the curve, as a click there would.
     function refreshCurve() {
       var knots = curve.knots;
-      var style = getPendingPathStyle(extending ? getLineStyle(extending.id) : getNewCurveStyle(),
-        !!gui.state.dark_basemap);
+      var style = getPendingPathStyle(extending ? getLineStyle(extending.id) : getNewCurveStyle());
       var corner = cornerKeyDown();
       var first;
       if (previewPoint && pointerClosesCurve(previewPoint)) {
@@ -32331,7 +32450,7 @@
     function getNewCurveStyle() {
       var target = hit.getHitTarget();
       return getNewShapeCommandStyle(getNewShapeStyle(gui, 'polyline'),
-        layerHasDrawableStyle(target), !!gui.state.dark_basemap);
+        layerHasDrawableStyle(target));
     }
 
     // --- knots of finished curves
@@ -36954,8 +37073,7 @@
   var HALO_SHAPES = 'circle,ellipse,rect,path,polygon,polyline,line';
   var haloStyles = {
     selected: {color: 'rgb(255, 198, 0)', opacity: 0.25},
-    hovered: {color: 'black', opacity: 0.1},
-    hoveredDark: {color: 'white', opacity: 0.25}
+    hovered: {color: 'black', opacity: 0.1}
   };
 
   // getState: function returning {selected: [ids], hoverId}
@@ -37017,8 +37135,7 @@
     }
 
     function getHaloStyle(selected) {
-      if (selected) return haloStyles.selected;
-      return gui.state.dark_basemap ? haloStyles.hoveredDark : haloStyles.hovered;
+      return selected ? haloStyles.selected : haloStyles.hovered;
     }
 
     // In the coordinates inside the symbol's group, mapped the way the
@@ -40262,8 +40379,12 @@
     // style.pointShape: 'square' draws squares @radius from center to side
     //   (read once per call, not per point)
     _self.drawPoints = function(shapes, style) {
+      if (style.highlight) {
+        drawHighlightPoints(shapes, style);
+        return;
+      }
       var t = getScaledTransform(_ext),
-          scale = GUI.getPixelRatio() * (_ext.getSymbolScale() || 1),
+          scale = GUI.getPixelRatio() * (style.fixedRadius ? getFixedRadiusScale(style) : _ext.getSymbolScale() || 1),
           startPath = getPathStart(_ext),
           styler = style.styler || null,
           drawPoint = style.pointShape == 'square' ? drawSquarePath : drawCircle,
@@ -40285,6 +40406,56 @@
         endPath(_ctx, style);
       }
     };
+
+    // style.fixedRadius: the radius of handles such as a curve's knots, which is
+    // in screen px, grown if need be to be wider than the line they are on,
+    // style.lineWidth (as the layer's lines are scaled in a preview), up to
+    // style.maxRadius. The radius is the same for every point, which no styler
+    // changes.
+    function getFixedRadiusScale(style) {
+      var lineWidth = (style.lineWidth || 0) * (_ext.getSymbolScale() || 1);
+      return style.radius > 0 ?
+        getHandleRadius(style.radius, lineWidth, style.maxRadius) / style.radius : 1;
+    }
+
+    // Hover and selection markers (see getOverlayStyle() in
+    // gui-overlay-styler.mjs): each circle grown by the highlight, or ringed by
+    // a halo just outside its edge, sized in px from the circle as drawPoints()
+    // draws it, with a radius that follows the symbol scale and a stroke that
+    // does not.
+    function drawHighlightPoints(shapes, style) {
+      var t = getScaledTransform(_ext),
+          pixRatio = GUI.getPixelRatio(),
+          pixScale = getCanvasStrokeScale(pixRatio, 1),
+          symbolScale = _ext.getSymbolScale() || 1,
+          startPath = getPathStart(_ext),
+          styler = style.styler || null,
+          drawPoint = style.pointShape == 'square' ? drawSquarePath : drawCircle,
+          highlight = style.highlight,
+          shp, p, r, sw, d, extra, radius;
+      for (var i=0, n=shapes.length; i<n; i++) {
+        shp = shapes[i];
+        if (styler) styler(style, i);
+        if (!shp || style.radius > 0 === false) continue;
+        r = style.radius * symbolScale;
+        sw = style.featureWidth > 0 ? style.featureWidth : 0;
+        d = r * 2 + sw;
+        extra = getHighlightWidth(d, highlight) - d;
+        startPath(_ctx, style);
+        if (highlight.halo) {
+          radius = r + sw / 2 + extra / 4;
+          _ctx.lineWidth = extra / 2 * pixScale;
+        } else {
+          radius = r + extra / 2;
+          _ctx.lineWidth = sw * pixScale;
+        }
+        for (var j=0; j<shp.length; j++) {
+          p = shp[j];
+          drawPoint(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius * pixRatio, _ctx);
+        }
+        endPath(_ctx, style);
+      }
+    }
 
     _self.drawArcs = function(arcs, style, filter) {
       var startPath = getPathStart(_ext, getLineScale(_ext)),
@@ -40312,7 +40483,9 @@
 
     function getStyleKey(style) {
       return (style.strokeWidth > 0 ? style.strokeColor + '~' + style.strokeWidth +
-        '~' + (style.lineDash ? style.lineDash + '~' : '') : '') +
+        '~' + (style.lineDash ? style.lineDash + '~' : '') +
+        // a highlight is drawn from the feature's width, at the drawing scale
+        (style.highlight ? style.featureWidth + '~' : '') : '') +
         (style.fillColor || '') +
         // styles with <1 opacity are no longer batch-rendered, not relevent to key
         // (style.strokeOpacity >= 0 ? style.strokeOpacity + '~' : '') : '') +
@@ -40325,15 +40498,16 @@
 
   function getScaledLineScale(ext, style) {
     var previewScale = ext.getSymbolScale();
-    var k = 1;
-    if (previewScale == 1 || style.type != 'styled' || style.baseStyle && style.baseStyle.type != 'styled') {
+    if (previewScale == 1 || style.type != 'styled') {
       return getLineScale(ext);
     }
-    if (style.baseStyle?.type == 'styled') {
-      // bump up overlay line width in preview mode
-      k = previewScale < 2 && 2 || previewScale < 5 && 1.5 || previewScale < 10 && 1.25 || 1.1;
-    }
-    return previewScale * k;
+    return previewScale;
+  }
+
+  // Width in CSS px of a hover or selection line (see getOverlayStyle() in
+  // gui-overlay-styler.mjs), over or around a feature drawn with @lineScale
+  function getHighlightLineWidth(style, lineScale) {
+    return getHighlightWidth(style.featureWidth * lineScale, style.highlight);
   }
 
   // Vary line width according to zoom ratio.
@@ -40512,12 +40686,13 @@
   //
   // A faded part is stroked on its own, with its own gradient, as in SVG.
   //
-  // A hover or selection halo (style.haloWidth > 0; see getOverlayStyle() in
-  // gui-overlay-styler.mjs) is the line's width plus the halo's. Its heads are
-  // made for the line's own width, so that they have the line's heads' size, tip
-  // and angle, and are grown by half the halo's width all round, as the line
-  // is. The halo is translucent, so the line is clipped out of its heads rather
-  // than drawn over them.
+  // A hover or selection halo (style.highlight.halo; see getOverlayStyle() in
+  // gui-overlay-styler.mjs) is wider than the line by the halo's width. Its
+  // heads are made for the line's own width, so that they have the line's
+  // heads' size, tip and angle, and are grown by half the halo's width all
+  // round, as the line is. The halo is translucent, so the line is clipped out
+  // of its heads rather than drawn over them. A highlight that is not a halo is
+  // a line of its own width, with heads to match.
   //
   // A tapered line is filled, at any scale: its outline is built from the whole
   // line, whose ends set its widths, and clipped to the view (see
@@ -40526,14 +40701,24 @@
     var t = getScaledTransform(ext);
     var iter = new internal.ShapeIter(arcs);
     var strokeScale = getCanvasStrokeScale(GUI.getPixelRatio(), lineScale);
+    var pixScale = getCanvasStrokeScale(GUI.getPixelRatio(), 1);
     var clipped = ext.scale() > 100;
     return function(shp, ctx, style, startPath, draw) {
-      var halo = style.haloWidth > 0 ? style.haloWidth : 0;
-      var lineWidth = style.strokeWidth - halo;
-      var opts = internal.svg.makeLineArrowOpts(style.lineStart, style.lineEnd,
+      var lineWidth = style.strokeWidth;
+      var grow = 0;
+      var highlightWidth, opts, fadeColors;
+      if (style.highlight) {
+        highlightWidth = getHighlightLineWidth(style, lineScale);
+        if (style.highlight.halo) {
+          lineWidth = style.featureWidth;
+          grow = (highlightWidth - style.featureWidth * lineScale) * pixScale / 2;
+        } else {
+          lineWidth = highlightWidth / lineScale;
+        }
+      }
+      opts = internal.svg.makeLineArrowOpts(style.lineStart, style.lineEnd,
         style.lineEndSize, lineWidth, strokeScale, style.lineFade, style.lineTaper);
-      var fadeColors = opts.fade > 0 ? internal.svg.getLineFadeColors(style.strokeColor) : null;
-      var grow = halo * strokeScale / 2;
+      fadeColors = opts.fade > 0 ? internal.svg.getLineFadeColors(style.strokeColor) : null;
       var heads = [];
       var parts = [];
       var plain = [];
@@ -40905,21 +41090,22 @@
     // the stroke. In preview that factor includes the symbol scale; without it
     // the pattern stays a fixed screen size while the line grows.
     var strokeScale = getCanvasStrokeScale(pixRatio, lineScale);
-    // The symbol scale itself, not lineScale: lineScale adds a bump to widen
-    // hover outlines, which a fill has no reason to follow.
+    // The symbol scale itself, not lineScale, which an outline layer does not
+    // follow in preview
     var patternScale = ext.getSymbolScale() || 1;
+    var pixScale = getCanvasStrokeScale(pixRatio, 1);
     // Page corner in preview, so the pattern is fixed to the page the way the
     // exported SVG is. With no frame, the geographic origin, which is enough
     // for panning: the pattern is not scaled by the geographic zoom then.
     var patternAnchor = getPatternAnchor(ext);
     return function(ctx, style) {
-      var strokeWidth;
       ctx.beginPath();
       if (style.strokeWidth > 0) {
-        strokeWidth = style.strokeWidth;
         ctx.lineCap = style.lineCap || 'round';
         ctx.lineJoin = style.lineJoin || 'round';
-        ctx.lineWidth = strokeWidth * strokeScale;
+        ctx.lineWidth = style.highlight ?
+          getHighlightLineWidth(style, lineScale) * pixScale :
+          style.strokeWidth * strokeScale;
         ctx.strokeStyle = style.strokeColor;
         if (style.lineDash){
           ctx.lineCap = style.lineCap || 'butt';
@@ -43133,7 +43319,6 @@
       var mode = gui.interaction && gui.interaction.getToolMode ?
         gui.interaction.getToolMode() : gui.state.interaction_mode;
       return Object.assign({
-        darkMode: !!gui.state.dark_basemap,
         outlineMode: mode == 'vertices',
         interactionMode: mode
       }, opts, gui.display.getOptions()); // intersectionsOn, compareOn
