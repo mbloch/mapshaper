@@ -173,10 +173,39 @@ export function ColorPicker(parent, opts) {
     sbCanvas.on('mousedown', function(e) {
       startCanvasDrag(e, updateSbFromEvent);
     });
+    colorPicker.node().addEventListener('pointerdown', startPickerMove);
     hueCanvas.on('mousedown', function(e) {
       startCanvasDrag(e, updateHueFromEvent);
     });
     setPickerColor(pickerColor);
+  }
+
+  // The picker can be dragged out of the way by any part of it that isn't a
+  // control. Like the scale bar panel, it goes back beside its field the next
+  // time it opens (see positionPicker()).
+  function startPickerMove(e) {
+    var node = colorPicker.node();
+    var startX = e.clientX, startY = e.clientY;
+    var rect = node.getBoundingClientRect();
+    if (e.button !== 0 || e.target.closest('canvas, input, button, [role="button"]')) return;
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onUp);
+    e.preventDefault();
+
+    function onMove(e) {
+      var left = clamp(rect.left + e.clientX - startX, 0, window.innerWidth - rect.width);
+      var top = clamp(rect.top + e.clientY - startY, 0, window.innerHeight - rect.height);
+      colorPicker.css('left', Math.round(left) + 'px');
+      colorPicker.css('top', Math.round(top) + 'px');
+      e.preventDefault();
+    }
+
+    function onUp() {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+    }
   }
 
   function initAlphaSlider() {
@@ -399,7 +428,7 @@ export function ColorPicker(parent, opts) {
   }
 
   // The picked color over a checkerboard, opaque at the left and clear at the
-  // right. With no color picked there is no opacity to set, so no marker.
+  // right. A blank opacity field puts the marker at 100%.
   function drawAlphaCanvas() {
     if (!alphaCanvas) return;
     var ctx = alphaCanvas.node().getContext('2d');
@@ -427,11 +456,10 @@ export function ColorPicker(parent, opts) {
       g: rgb.g * a + markerBg * (1 - a),
       b: rgb.b * a + markerBg * (1 - a)
     });
-    alphaMarker.node().style.display = unset ? 'none' : '';
   }
 
   function getCheckerValue(x, y) {
-    return (Math.floor(x / 6) + Math.floor(y / 6)) % 2 ? 204 : 255;
+    return (Math.floor(x / 5) + Math.floor(y / 5)) % 2 ? 204 : 255;
   }
 
   function commitPickerColor() {
