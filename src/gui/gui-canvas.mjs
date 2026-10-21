@@ -10,7 +10,7 @@ import {
   scheduleRasterReprojectedPreview
 } from './gui-raster-reprojected-preview';
 import { getCanvasFillPattern, getCanvasFillEffect } from './gui-canvas-patterns';
-import { compositeGlows, getGlowMargin, getGlowSourceCanvas } from './gui-canvas-glow';
+import { compositeGlows, getGlowMargin, getGlowSourceCanvas, MAX_GLOW_MARGIN } from './gui-canvas-glow';
 import { getHighlightWidth, getHandleRadius } from './gui-highlight-width';
 import {
   previewHasSourcePixels,
@@ -435,11 +435,13 @@ export function DisplayCanvas() {
   // canvas is larger than this one by the reach of the glow, so that shapes
   // just outside the view still cast theirs into it.
   function startLayerGlow(glow, pxScale) {
-    var margin = getGlowMargin(glow, null, pxScale);
+    var margin = Math.min(getGlowMargin(glow, null, pxScale), MAX_GLOW_MARGIN);
     var w = _canvas.width + margin * 2;
     var h = _canvas.height + margin * 2;
     var src = getGlowSourceCanvas('layer', w, h);
-    var o = {glow: glow, pxScale: pxScale, margin: margin, w: w, h: h,
+    var o;
+    if (!src) return null;
+    o = {glow: glow, pxScale: pxScale, margin: margin, w: w, h: h,
       src: src, ctx: _ctx};
     src.ctx.setTransform(1, 0, 0, 1, margin, margin);
     _ctx = src.ctx;
@@ -466,7 +468,7 @@ export function DisplayCanvas() {
       var outer = style.outerGlow, inner = style.innerGlow;
       var margin = getGlowMargin(outer, inner, pxScale) +
         Math.ceil((style.strokeWidth > 0 ? style.strokeWidth * pxScale : 0) / 2);
-      var viewMargin = margin * 2;
+      var viewMargin = Math.min(margin * 2, MAX_GLOW_MARGIN);
       var x0, y0, x1, y1, src;
       b.empty();
       arcs.getMultiShapeBounds(shp, b);
@@ -477,6 +479,10 @@ export function DisplayCanvas() {
       y1 = Math.ceil(Math.min(b.ymin * t.my + t.by + margin, _canvas.height + viewMargin));
       if (x1 <= x0 || y1 <= y0) return;
       src = getGlowSourceCanvas('shape', x1 - x0, y1 - y0);
+      if (!src) {
+        drawPaths([shp], startPath, draw, style);
+        return;
+      }
       src.ctx.setTransform(1, 0, 0, 1, -x0, -y0);
       drawPaths([shp], startPath, draw, style, src.ctx);
       src.ctx.setTransform(1, 0, 0, 1, 0, 0);
