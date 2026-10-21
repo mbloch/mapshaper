@@ -16,17 +16,15 @@ var POLYGON_FIELDS = ['stroke', 'stroke-width', 'stroke-opacity', 'fill', 'fill-
   'fill-pattern', 'outer-glow-color', 'outer-glow-opacity', 'outer-glow-width',
   'inner-glow-color', 'inner-glow-opacity', 'inner-glow-width', 'opacity'];
 
-// The colors of the outline a layer with no style is drawn with (see
-// gui-layer-styler.mjs), which a shape with no stroke of its own is drawn with
-// while it is being drawn.
-var DEFAULT_STROKE = '#334';
-var DEFAULT_STROKE_DARK = 'white';
+// The color a shape with a style but no stroke of its own is drawn with
+// while it is being drawn: black, as the layer styler draws it once it is
+// finished (see getCanvasDisplayStyle())
+var DEFAULT_STROKE = 'black';
 
 // The stroke written to a shape that needs one: the style panel's default
 // stroke color, which its other controls add (see gui-layer-style-tool.mjs),
 // in the six-digit form its color field and picker take.
 var DEFAULT_SHAPE_STROKE = '#000000';
-var DEFAULT_SHAPE_STROKE_DARK = '#ffffff';
 
 // The style properties a shape of @geometryType can be drawn with
 export function getNewShapeStyleFields(geometryType) {
@@ -73,15 +71,18 @@ export function clearNewShapeStyle(gui, geometryType) {
 }
 
 // The style a path is drawn with while it is being drawn: the stroke the shape
-// will have, or the outline of a layer with no style when it has none. The
-// path is open until it is finished, so a polygon's fill is not shown.
-export function getPendingPathStyle(style, darkMode) {
+// will have, or null if it will have no style, in which case the path is
+// drawn as the outline of a layer with no style (see getPendingPathLayer() in
+// gui-overlay-styler.mjs), which does not scale with a preview. The path is
+// open until it is finished, so a polygon's fill is not shown.
+export function getPendingPathStyle(style) {
   var out = {};
   LINE_FIELDS.forEach(function(field) {
     if (style && field in style) out[field] = style[field];
   });
+  if (Object.keys(out).length === 0) return null;
   if (!out.stroke) {
-    out.stroke = darkMode ? DEFAULT_STROKE_DARK : DEFAULT_STROKE;
+    out.stroke = DEFAULT_STROKE;
   }
   if (!out['stroke-width'] && out['stroke-width'] !== 0) {
     out['stroke-width'] = 1;
@@ -96,10 +97,10 @@ export function getPendingPathStyle(style, darkMode) {
 // it does not change color when it is finished.
 //
 // layerIsStyled: the layer has style fields (see layerHasDrawableStyle())
-export function getNewShapeCommandStyle(style, layerIsStyled, darkMode) {
+export function getNewShapeCommandStyle(style, layerIsStyled) {
   var out = Object.assign({}, style);
   if (layerIsStyled && !out.stroke && !out.fill) {
-    out.stroke = darkMode ? DEFAULT_SHAPE_STROKE_DARK : DEFAULT_SHAPE_STROKE;
+    out.stroke = DEFAULT_SHAPE_STROKE;
   }
   return out;
 }

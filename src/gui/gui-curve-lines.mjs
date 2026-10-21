@@ -300,8 +300,7 @@ export function initCurveLineTool(gui, ext, hit) {
   }, null, 3);
 
   function showDragPreview(o) {
-    hit.setPendingPath(fitDisplayPath(o.knots),
-      getPendingPathStyle(getLineStyle(o.id), !!gui.state.dark_basemap));
+    hit.setPendingPath(fitDisplayPath(o.knots), getPendingPathStyle(getLineStyle(o.id)));
     hit.setPendingKnots(o.knots);
   }
 
@@ -425,8 +424,7 @@ export function initCurveLineTool(gui, ext, hit) {
   // first knot, the pointer closes the curve, as a click there would.
   function refreshCurve() {
     var knots = curve.knots;
-    var style = getPendingPathStyle(extending ? getLineStyle(extending.id) : getNewCurveStyle(),
-      !!gui.state.dark_basemap);
+    var style = getPendingPathStyle(extending ? getLineStyle(extending.id) : getNewCurveStyle());
     var corner = cornerKeyDown();
     var first;
     if (previewPoint && pointerClosesCurve(previewPoint)) {
@@ -542,7 +540,7 @@ export function initCurveLineTool(gui, ext, hit) {
   function getNewCurveStyle() {
     var target = hit.getHitTarget();
     return getNewShapeCommandStyle(getNewShapeStyle(gui, 'polyline'),
-      layerHasDrawableStyle(target), !!gui.state.dark_basemap);
+      layerHasDrawableStyle(target));
   }
 
   // --- knots of finished curves

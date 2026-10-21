@@ -51,27 +51,31 @@ describe('gui shape style state', function() {
   });
 
   describe('getPendingPathStyle()', function() {
-    it('draws an unstyled path with the default outline, white on a dark basemap', function() {
-      assert.deepEqual(getPendingPathStyle({}, false), {stroke: '#334', 'stroke-width': 1});
-      assert.deepEqual(getPendingPathStyle({}, true), {stroke: 'white', 'stroke-width': 1});
+    it('a shape with no style has none, and is drawn as the layer outline', function() {
+      assert.strictEqual(getPendingPathStyle({}), null);
+      assert.strictEqual(getPendingPathStyle(null), null);
+      assert.strictEqual(getPendingPathStyle({fill: 'pink'}), null);
+    });
+
+    it('a shape with a width but no stroke is drawn in black', function() {
+      assert.deepEqual(getPendingPathStyle({'stroke-width': 2}), {stroke: 'black', 'stroke-width': 2});
     });
 
     it('draws the stroke the shape will have, but not its fill', function() {
-      assert.deepEqual(getPendingPathStyle({stroke: 'red', 'stroke-width': 3, fill: 'pink'}, true),
+      assert.deepEqual(getPendingPathStyle({stroke: 'red', 'stroke-width': 3, fill: 'pink'}),
         {stroke: 'red', 'stroke-width': 3});
     });
   });
 
   describe('getNewShapeCommandStyle()', function() {
     it('leaves an unstyled shape unstyled in an unstyled layer', function() {
-      assert.deepEqual(getNewShapeCommandStyle({}, false, false), {});
+      assert.deepEqual(getNewShapeCommandStyle({}, false), {});
     });
 
     it('gives a shape with no stroke or fill the panel\'s default stroke in a styled layer', function() {
       // six-digit hex, which the panel's color field and picker can show
-      assert.deepEqual(getNewShapeCommandStyle({}, true, false), {stroke: '#000000'});
-      assert.deepEqual(getNewShapeCommandStyle({}, true, true), {stroke: '#ffffff'});
-      assert.deepEqual(getNewShapeCommandStyle({fill: 'pink'}, true, false), {fill: 'pink'});
+      assert.deepEqual(getNewShapeCommandStyle({}, true), {stroke: '#000000'});
+      assert.deepEqual(getNewShapeCommandStyle({fill: 'pink'}, true), {fill: 'pink'});
     });
   });
 });

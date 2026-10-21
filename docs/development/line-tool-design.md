@@ -125,9 +125,9 @@ in the data or the history.
 
 The pending path is drawn in the stroke of the new-shape style
 (`getPendingPathStyle()`), converted for the canvas by `getCanvasDisplayStyle()`.
-With no stroke set, it is drawn like an unstyled layer: dark gray, or white over
-a dark basemap. The vertex markers are white over a dark basemap too. A
-polygon's fill is not shown until the ring is finished.
+With no style set, it is drawn like an unstyled layer, in dark gray, which a
+preview does not scale; with a width but no stroke, in black. A polygon's fill
+is not shown until the ring is finished.
 
 While a path is being drawn, Undo takes back its last edit -- a click's vertex,
 or a whole stroke -- and Redo restores it. The tool registers these with

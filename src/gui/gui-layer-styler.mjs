@@ -9,13 +9,6 @@ var darkStroke = "#334",
       dotColor: "#223",
       dotSize: 1
     },
-    activeStyleDarkMode = {
-      type: 'outline',
-      strokeColors: [null, 'white'],
-      strokeWidth: 0.9,
-      dotColor: 'white',
-      dotSize: 1
-    },
     activeStyleForLabels = {
       dotColor: "rgba(250, 0, 250, 0.45)", // violet dot with transparency
       dotSize: 1
@@ -72,8 +65,6 @@ export function getActiveLayerStyle(lyr, opts) {
     style = {dotSize: 0};
   } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
     style = copyBaseStyle(activeStyleForLabels);
-  } else if (opts.darkMode) {
-    style = copyBaseStyle(activeStyleDarkMode);
   } else {
     style = copyBaseStyle(activeStyle);
   }

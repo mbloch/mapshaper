@@ -55,13 +55,6 @@ describe('curve tool knot drag overlay', function() {
     assert.equal(layers.length, 2);
   });
 
-  it('on a dark basemap, the outline is white', function() {
-    var hitData = {ids: [0], id: -1, hidden_ids: [0], pending_path: [[0, 0], [1, 2]]};
-    var layers = getOverlayLayers(activeLineLayer(), hitData,
-      {interactionMode: 'curve_lines', darkMode: true});
-    assert.equal(layers[0].gui.style.strokeColor, 'white');
-  });
-
   it('a layer drawn as an outline draws the line itself, so no outline is added', function() {
     var hitData = {ids: [0], id: -1, hidden_ids: [0], pending_path: [[0, 0], [1, 2]]};
     var layers = getOverlayLayers(activeLineLayer('outline'), hitData, opts).map(layerSummary);

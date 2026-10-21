@@ -773,7 +773,7 @@ export function initLineEditing(gui, ext, hit) {
     var extend = extendId >= 0;
     // an extension takes on the style of the line it extends
     var style = extend ? null : getNewShapeCommandStyle(getNewShapeStyle(gui, target.geometry_type),
-      layerHasDrawableStyle(target), !!gui.state.dark_basemap);
+      layerHasDrawableStyle(target));
     var cmd = getAddShapeCommand(coords, {
       geometryType: target.geometry_type,
       style: style,
@@ -796,7 +796,7 @@ export function initLineEditing(gui, ext, hit) {
       coords = coords.concat(stroke.preview);
     }
     if (pointer) coords.push(pointer);
-    hit.setPendingPath(coords, getPendingPathStyle(getPathStyle(), !!gui.state.dark_basemap));
+    hit.setPendingPath(coords, getPendingPathStyle(getPathStyle()));
   }
 
   // The style the finished path will be drawn with: the one createShape() will
@@ -808,7 +808,7 @@ export function initLineEditing(gui, ext, hit) {
       return layerHasDrawableStyle(target) && records[pending.extendId] || {};
     }
     return getNewShapeCommandStyle(getNewShapeStyle(gui, target.geometry_type),
-      layerHasDrawableStyle(target), !!gui.state.dark_basemap);
+      layerHasDrawableStyle(target));
   }
 
   // Hover info for the first vertex of the path being drawn, if the pointer is

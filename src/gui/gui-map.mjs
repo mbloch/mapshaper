@@ -322,7 +322,6 @@ export function MshpMap(gui) {
     var mode = gui.interaction && gui.interaction.getToolMode ?
       gui.interaction.getToolMode() : gui.state.interaction_mode;
     return Object.assign({
-      darkMode: !!gui.state.dark_basemap,
       outlineMode: mode == 'vertices',
       interactionMode: mode
     }, opts, gui.display.getOptions()); // intersectionsOn, compareOn

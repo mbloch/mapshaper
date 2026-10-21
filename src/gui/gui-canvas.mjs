@@ -11,6 +11,7 @@ import {
 } from './gui-raster-reprojected-preview';
 import { getCanvasFillPattern, getCanvasFillEffect } from './gui-canvas-patterns';
 import { compositeGlows, getGlowMargin, getGlowSourceCanvas } from './gui-canvas-glow';
+import { getHighlightWidth, getHandleRadius } from './gui-highlight-width';
 import {
   previewHasSourcePixels,
   rasterPreviewIsSmoothed
@@ -602,8 +603,12 @@ export function DisplayCanvas() {
   // style.pointShape: 'square' draws squares @radius from center to side
   //   (read once per call, not per point)
   _self.drawPoints = function(shapes, style) {
+    if (style.highlight) {
+      drawHighlightPoints(shapes, style);
+      return;
+    }
     var t = getScaledTransform(_ext),
-        scale = GUI.getPixelRatio() * (_ext.getSymbolScale() || 1),
+        scale = GUI.getPixelRatio() * (style.fixedRadius ? getFixedRadiusScale(style) : _ext.getSymbolScale() || 1),
         startPath = getPathStart(_ext),
         styler = style.styler || null,
         drawPoint = style.pointShape == 'square' ? drawSquarePath : drawCircle,
@@ -625,6 +630,56 @@ export function DisplayCanvas() {
       endPath(_ctx, style);
     }
   };
+
+  // style.fixedRadius: the radius of handles such as a curve's knots, which is
+  // in screen px, grown if need be to be wider than the line they are on,
+  // style.lineWidth (as the layer's lines are scaled in a preview), up to
+  // style.maxRadius. The radius is the same for every point, which no styler
+  // changes.
+  function getFixedRadiusScale(style) {
+    var lineWidth = (style.lineWidth || 0) * (_ext.getSymbolScale() || 1);
+    return style.radius > 0 ?
+      getHandleRadius(style.radius, lineWidth, style.maxRadius) / style.radius : 1;
+  }
+
+  // Hover and selection markers (see getOverlayStyle() in
+  // gui-overlay-styler.mjs): each circle grown by the highlight, or ringed by
+  // a halo just outside its edge, sized in px from the circle as drawPoints()
+  // draws it, with a radius that follows the symbol scale and a stroke that
+  // does not.
+  function drawHighlightPoints(shapes, style) {
+    var t = getScaledTransform(_ext),
+        pixRatio = GUI.getPixelRatio(),
+        pixScale = getCanvasStrokeScale(pixRatio, 1),
+        symbolScale = _ext.getSymbolScale() || 1,
+        startPath = getPathStart(_ext),
+        styler = style.styler || null,
+        drawPoint = style.pointShape == 'square' ? drawSquarePath : drawCircle,
+        highlight = style.highlight,
+        shp, p, r, sw, d, extra, radius;
+    for (var i=0, n=shapes.length; i<n; i++) {
+      shp = shapes[i];
+      if (styler) styler(style, i);
+      if (!shp || style.radius > 0 === false) continue;
+      r = style.radius * symbolScale;
+      sw = style.featureWidth > 0 ? style.featureWidth : 0;
+      d = r * 2 + sw;
+      extra = getHighlightWidth(d, highlight) - d;
+      startPath(_ctx, style);
+      if (highlight.halo) {
+        radius = r + sw / 2 + extra / 4;
+        _ctx.lineWidth = extra / 2 * pixScale;
+      } else {
+        radius = r + extra / 2;
+        _ctx.lineWidth = sw * pixScale;
+      }
+      for (var j=0; j<shp.length; j++) {
+        p = shp[j];
+        drawPoint(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius * pixRatio, _ctx);
+      }
+      endPath(_ctx, style);
+    }
+  }
 
   _self.drawArcs = function(arcs, style, filter) {
     var startPath = getPathStart(_ext, getLineScale(_ext)),
@@ -652,7 +707,9 @@ export function DisplayCanvas() {
 
   function getStyleKey(style) {
     return (style.strokeWidth > 0 ? style.strokeColor + '~' + style.strokeWidth +
-      '~' + (style.lineDash ? style.lineDash + '~' : '') : '') +
+      '~' + (style.lineDash ? style.lineDash + '~' : '') +
+      // a highlight is drawn from the feature's width, at the drawing scale
+      (style.highlight ? style.featureWidth + '~' : '') : '') +
       (style.fillColor || '') +
       // styles with <1 opacity are no longer batch-rendered, not relevent to key
       // (style.strokeOpacity >= 0 ? style.strokeOpacity + '~' : '') : '') +
@@ -665,15 +722,16 @@ export function DisplayCanvas() {
 
 function getScaledLineScale(ext, style) {
   var previewScale = ext.getSymbolScale();
-  var k = 1;
-  if (previewScale == 1 || style.type != 'styled' || style.baseStyle && style.baseStyle.type != 'styled') {
+  if (previewScale == 1 || style.type != 'styled') {
     return getLineScale(ext);
   }
-  if (style.baseStyle?.type == 'styled') {
-    // bump up overlay line width in preview mode
-    k = previewScale < 2 && 2 || previewScale < 5 && 1.5 || previewScale < 10 && 1.25 || 1.1;
-  }
-  return previewScale * k;
+  return previewScale;
+}
+
+// Width in CSS px of a hover or selection line (see getOverlayStyle() in
+// gui-overlay-styler.mjs), over or around a feature drawn with @lineScale
+function getHighlightLineWidth(style, lineScale) {
+  return getHighlightWidth(style.featureWidth * lineScale, style.highlight);
 }
 
 // Vary line width according to zoom ratio.
@@ -852,12 +910,13 @@ function getShapePencil(arcs, ext) {
 //
 // A faded part is stroked on its own, with its own gradient, as in SVG.
 //
-// A hover or selection halo (style.haloWidth > 0; see getOverlayStyle() in
-// gui-overlay-styler.mjs) is the line's width plus the halo's. Its heads are
-// made for the line's own width, so that they have the line's heads' size, tip
-// and angle, and are grown by half the halo's width all round, as the line
-// is. The halo is translucent, so the line is clipped out of its heads rather
-// than drawn over them.
+// A hover or selection halo (style.highlight.halo; see getOverlayStyle() in
+// gui-overlay-styler.mjs) is wider than the line by the halo's width. Its
+// heads are made for the line's own width, so that they have the line's
+// heads' size, tip and angle, and are grown by half the halo's width all
+// round, as the line is. The halo is translucent, so the line is clipped out
+// of its heads rather than drawn over them. A highlight that is not a halo is
+// a line of its own width, with heads to match.
 //
 // A tapered line is filled, at any scale: its outline is built from the whole
 // line, whose ends set its widths, and clipped to the view (see
@@ -866,14 +925,24 @@ function getArrowLinePencil(arcs, ext, lineScale) {
   var t = getScaledTransform(ext);
   var iter = new internal.ShapeIter(arcs);
   var strokeScale = getCanvasStrokeScale(GUI.getPixelRatio(), lineScale);
+  var pixScale = getCanvasStrokeScale(GUI.getPixelRatio(), 1);
   var clipped = ext.scale() > 100;
   return function(shp, ctx, style, startPath, draw) {
-    var halo = style.haloWidth > 0 ? style.haloWidth : 0;
-    var lineWidth = style.strokeWidth - halo;
-    var opts = internal.svg.makeLineArrowOpts(style.lineStart, style.lineEnd,
+    var lineWidth = style.strokeWidth;
+    var grow = 0;
+    var highlightWidth, opts, fadeColors;
+    if (style.highlight) {
+      highlightWidth = getHighlightLineWidth(style, lineScale);
+      if (style.highlight.halo) {
+        lineWidth = style.featureWidth;
+        grow = (highlightWidth - style.featureWidth * lineScale) * pixScale / 2;
+      } else {
+        lineWidth = highlightWidth / lineScale;
+      }
+    }
+    opts = internal.svg.makeLineArrowOpts(style.lineStart, style.lineEnd,
       style.lineEndSize, lineWidth, strokeScale, style.lineFade, style.lineTaper);
-    var fadeColors = opts.fade > 0 ? internal.svg.getLineFadeColors(style.strokeColor) : null;
-    var grow = halo * strokeScale / 2;
+    fadeColors = opts.fade > 0 ? internal.svg.getLineFadeColors(style.strokeColor) : null;
     var heads = [];
     var parts = [];
     var plain = [];
@@ -1245,21 +1314,22 @@ function getPathStart(ext, lineScale) {
   // the stroke. In preview that factor includes the symbol scale; without it
   // the pattern stays a fixed screen size while the line grows.
   var strokeScale = getCanvasStrokeScale(pixRatio, lineScale);
-  // The symbol scale itself, not lineScale: lineScale adds a bump to widen
-  // hover outlines, which a fill has no reason to follow.
+  // The symbol scale itself, not lineScale, which an outline layer does not
+  // follow in preview
   var patternScale = ext.getSymbolScale() || 1;
+  var pixScale = getCanvasStrokeScale(pixRatio, 1);
   // Page corner in preview, so the pattern is fixed to the page the way the
   // exported SVG is. With no frame, the geographic origin, which is enough
   // for panning: the pattern is not scaled by the geographic zoom then.
   var patternAnchor = getPatternAnchor(ext);
   return function(ctx, style) {
-    var strokeWidth;
     ctx.beginPath();
     if (style.strokeWidth > 0) {
-      strokeWidth = style.strokeWidth;
       ctx.lineCap = style.lineCap || 'round';
       ctx.lineJoin = style.lineJoin || 'round';
-      ctx.lineWidth = strokeWidth * strokeScale;
+      ctx.lineWidth = style.highlight ?
+        getHighlightLineWidth(style, lineScale) * pixScale :
+        style.strokeWidth * strokeScale;
       ctx.strokeStyle = style.strokeColor;
       if (style.lineDash){
         ctx.lineCap = style.lineCap || 'butt';

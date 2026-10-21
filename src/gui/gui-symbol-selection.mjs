@@ -16,8 +16,7 @@ var CURVE_HALO = 2.5;
 var HALO_SHAPES = 'circle,ellipse,rect,path,polygon,polyline,line';
 var haloStyles = {
   selected: {color: 'rgb(255, 198, 0)', opacity: 0.25},
-  hovered: {color: 'black', opacity: 0.1},
-  hoveredDark: {color: 'white', opacity: 0.25}
+  hovered: {color: 'black', opacity: 0.1}
 };
 
 // getState: function returning {selected: [ids], hoverId}
@@ -79,8 +78,7 @@ export function SymbolSelection(gui, ext, hit, getState, isSymbol) {
   }
 
   function getHaloStyle(selected) {
-    if (selected) return haloStyles.selected;
-    return gui.state.dark_basemap ? haloStyles.hoveredDark : haloStyles.hovered;
+    return selected ? haloStyles.selected : haloStyles.hovered;
   }
 
   // In the coordinates inside the symbol's group, mapped the way the

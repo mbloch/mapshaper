@@ -1,5 +1,6 @@
 import { internal } from './gui-core';
 import { knotIsCorner } from './gui-curve-line-knots';
+import { KNOT_HIT_THRESHOLD } from './gui-label-curve-state';
 
 // The visible guide for a label path being placed: a line along the curve the
 // text will follow, and a handle on each knot.
@@ -103,7 +104,9 @@ function buildGuideLineLayer(activeLyr, curves) {
 // The handles alone, for a tool that draws the curve itself (see
 // gui-curve-lines.mjs): a layer of circles for the smooth knots and one of
 // squares for the corners, either of them left out if it would be empty.
-export function getKnotHandleLayers(activeLyr, knots) {
+// lineWidth: the width of the curve's stroke, which the handles are drawn
+// wider than (0 for a line that is not scaled, e.g. in an unstyled layer)
+export function getKnotHandleLayers(activeLyr, knots, lineWidth) {
   var smooth = (knots || []).filter(function(k) { return !knotIsCorner(k); });
   var corners = (knots || []).filter(knotIsCorner);
   var layers = [];
@@ -116,8 +119,12 @@ export function getKnotHandleLayers(activeLyr, knots) {
     lyr.gui.displayLayer.name = 'curve-corner-knots';
     lyr.gui.style.pointShape = 'square';
     lyr.gui.style.radius = CORNER_KNOT_RADIUS;
+    lyr.gui.style.maxRadius = KNOT_HIT_THRESHOLD * CORNER_KNOT_RADIUS / KNOT_RADIUS;
     layers.push(lyr);
   }
+  layers.forEach(function(lyr) {
+    lyr.gui.style.lineWidth = lineWidth > 0 ? lineWidth : 0;
+  });
   return layers;
 }
 
@@ -139,7 +146,12 @@ function buildKnotLayer(activeLyr, curves) {
   }, {
     // type: 'styled' is what gets these drawn as circles.
     type: 'styled',
+    // Handles are sized in screen px, not by a preview's scale, so that one
+    // can be grabbed at any scale (see getHandleRadius()). They grow on a wide
+    // line, but not past the distance a knot is grabbed from.
+    fixedRadius: true,
     radius: KNOT_RADIUS,
+    maxRadius: KNOT_HIT_THRESHOLD,
     strokeColor: violet,
     strokeWidth: 1.5,
     fillColor: white
