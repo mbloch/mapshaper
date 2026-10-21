@@ -1,3 +1,7 @@
+v0.7.94
+* [web] Interface improvements
+* Fixed: clipping bug in butterfly projections
+
 v0.7.93
 * [web] Added an opacity slider to color pickers.
 * [web] Scale bar UI improvements
