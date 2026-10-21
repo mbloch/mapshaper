@@ -162,5 +162,29 @@ describe('mapshaper-graticule.js', function () {
       done();
     });
   })
+
+  describe('projecting a lat-long graticule', function() {
+    async function getAntimeridianValues(proj) {
+      var out = await api.applyCommands(`-graticule -proj ${proj} -o graticule.json`);
+      var json = JSON.parse(out['graticule.json']);
+      var values = json.features.filter(feat => {
+        return feat.properties.type == 'meridian' && Math.abs(feat.properties.value) == 180;
+      }).map(feat => feat.properties.value);
+      return sorted(Array.from(new Set(values)));
+    }
+
+    it('a tilted globe gets one antimeridian, not two on top of each other', async function() {
+      assert.deepEqual(await getAntimeridianValues('+proj=ortho +lat_0=50'), [180]);
+      assert.deepEqual(await getAntimeridianValues('+proj=nsper +h=3000000 +lat_0=50'), [180]);
+    });
+
+    it('a rotated world projection gets one antimeridian', async function() {
+      assert.deepEqual(await getAntimeridianValues('+proj=robin +lon_0=90'), [180]);
+    });
+
+    it('a world projection bounded by the antimeridian keeps both edges', async function() {
+      assert.deepEqual(await getAntimeridianValues('+proj=robin'), [-180, 180]);
+    });
+  });
 });
 

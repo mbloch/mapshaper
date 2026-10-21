@@ -43,6 +43,7 @@ import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
 import { getProjectionTopology, isInterruptedProjection } from '../crs/mapshaper-projection-topology';
+import { isMeridianBounded, getBoundingMeridian } from '../crs/mapshaper-proj-info';
 import { splitPolygonFrameChords } from '../crs/mapshaper-projection-frame-cuts';
 import { getHighPrecisionSnapInterval, snapCoordsByInterval } from '../paths/mapshaper-snapping';
 import {
@@ -396,6 +397,7 @@ export function projectDataset(dataset, src, dest, opts) {
   if (isProjectedCRS(src) && !isInvertibleCRS(src)) {
     stop('Unable to project from a coordinate system that has no inverse transform');
   }
+  removeRedundantGraticuleMeridians(dataset, src, dest);
   if (dest.__projection_views && isLatLngCRS(src) && !opts.no_clip) {
     projectDatasetViews(dataset, src, dest, opts);
     return;
@@ -452,6 +454,37 @@ export function projectDataset(dataset, src, dest, opts) {
     message(`Removed ${badPoints} unprojectable ${badPoints == 1 ? 'point' : 'points'}.`);
   }
   dataset.info.crs = dest;
+}
+
+// A lat-long graticule (see -graticule) has meridians at both -180 and 180,
+// the left and right edges of the map. A projection that is not bounded by the
+// antimeridian draws them on top of each other, which shows when the lines are
+// translucent, so the -180 meridian is removed. Interrupted projections are
+// left alone, because the antimeridian may lie along one of their cuts.
+function removeRedundantGraticuleMeridians(dataset, src, dest) {
+  if (!isLatLngCRS(src) || Math.abs(src.lam0) > 0 || isInterruptedProjection(dest) ||
+      isMeridianBounded(dest) && getBoundingMeridian(dest) == 180) {
+    return;
+  }
+  dataset.layers.forEach(function(lyr) {
+    var records, keep;
+    if (lyr.geometry_type != 'polyline' || !isGraticuleLayer(lyr)) return;
+    records = lyr.data.getRecords();
+    keep = records.map(function(rec) {
+      return rec.type != 'meridian' || rec.value != -180;
+    });
+    if (!keep.includes(false)) return;
+    lyr.shapes = lyr.shapes.filter(function(shp, i) { return keep[i]; });
+    lyr.data = new DataTable(records.filter(function(rec, i) { return keep[i]; }));
+  });
+}
+
+function isGraticuleLayer(lyr) {
+  var records = lyr.data ? lyr.data.getRecords() : [];
+  return records.length > 0 && records.every(function(rec) {
+    return rec && (rec.type == 'meridian' || rec.type == 'parallel' ||
+      rec.type == 'outline') && 'value' in rec;
+  });
 }
 
 // A projection that shows some places more than once (like two hemispheres

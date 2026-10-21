@@ -233,9 +233,11 @@ export function createPolyhedralProjection(config) {
         );
         return [normalizeLongitude(q[0] * R2D + lon0), q[1] * R2D];
       });
-      var paths = splitPathAtAntimeridian(
+      var paths = splitPathsAtPoles(
         interpolateGreatCircle(endpoints[0], endpoints[1], 0.05)
-      );
+      ).reduce(function(memo, path) {
+        return memo.concat(splitPathAtAntimeridian(path));
+      }, []);
       paths.forEach(function(path) {
         // The mask must be wider than the tiny chord error between samples.
         path.mask_width = 4e-5;
@@ -555,6 +557,34 @@ function interpolateGreatCircle(a, b, interval) {
     points.push(vectorToDegrees(normalizeVector(p)));
   }
   return points;
+}
+
+// A pole has no longitude of its own (vectorToDegrees() returns an arbitrary
+// one), so a seam vertex at a pole takes the longitude of its neighbor. A seam
+// that passes through a pole is split there, into two meridians.
+function splitPathsAtPoles(path) {
+  var paths = [];
+  var part = [];
+  path.forEach(function(p, i) {
+    var next = path[i + 1];
+    var lat;
+    if (!isPolarPoint(p)) {
+      part.push(p);
+      return;
+    }
+    lat = p[1] > 0 ? 90 : -90;
+    if (part.length > 0) {
+      part.push([part[part.length - 1][0], lat]);
+      paths.push(part);
+    }
+    part = next && !isPolarPoint(next) ? [[next[0], lat]] : [];
+  });
+  if (part.length > 1) paths.push(part);
+  return paths;
+}
+
+function isPolarPoint(p) {
+  return Math.abs(p[1]) > 90 - 1e-9;
 }
 
 function splitPathAtAntimeridian(path) {

@@ -285,6 +285,41 @@ describe('Butterfly projections', function() {
     }
   });
 
+  it('runs polar seams along their meridian all the way to the pole', function() {
+    for (var id of ['butterfly', 'butterfly2', 'cahill_keyes']) {
+      var polarPaths = getTopology(id).seams.reduce(function(memo, seam) {
+        return memo.concat(seam.paths);
+      }, []).filter(function(path) {
+        return path.some(function(p) { return Math.abs(p[1]) == 90; });
+      });
+      assert.equal(polarPaths.length, 8, id);
+      polarPaths.forEach(function(path) {
+        path.forEach(function(p) {
+          almostEqual(p[0], path[0][0], 1e-9);
+        });
+      });
+    }
+  });
+
+  it('splits a polygon covering the south pole into four lobes', async function() {
+    var ring = [[-180, -90], [-90, -90], [0, -90], [90, -90], [180, -90]];
+    for (var lon = 180; lon >= -180; lon--) {
+      ring.push([lon, -80]);
+    }
+    ring.push([-180, -90]);
+    var cap = {type: 'Polygon', coordinates: [ring]};
+    for (var id of ['butterfly', 'butterfly2', 'cahill_keyes']) {
+      var out = await api.applyCommands(
+        '-i cap.json -proj ' + id + ' -o out.json',
+        {'cap.json': cap}
+      );
+      var geom = JSON.parse(out['out.json']).geometries[0];
+      assert.equal(geom.type, 'MultiPolygon', id);
+      assert.equal(geom.coordinates.length, 4, id);
+      assert(maxSegmentLength(geom.coordinates) < 600000, id);
+    }
+  });
+
   it('rotates topology and forward coordinates with lon_0', function() {
     var src = api.internal.parseCrsString('wgs84');
     for (var id of ['butterfly', 'butterfly2', 'cahill_keyes']) {
