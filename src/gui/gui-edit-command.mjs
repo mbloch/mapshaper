@@ -29,7 +29,7 @@ export function runGuiEditCommand(gui, cmd, optsArg) {
 
 // stop() has already shown the message in an alert without a title;
 // gui.alert() replaces that alert instead of stacking a second one on it
-function showCommandError(gui, msg, title) {
+export function showCommandError(gui, msg, title) {
   if (gui.alert) {
     gui.alert(msg, title);
   } else {

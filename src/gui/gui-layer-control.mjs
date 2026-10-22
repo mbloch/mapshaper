@@ -13,7 +13,7 @@ import { ClickText2 } from './gui-elements';
 import { describeFeatureContents, formatCount, getAnnotationTool } from './gui-layer-contents';
 import { GUI } from './gui-lib';
 import { openContextMenu } from './gui-context-menu';
-import { runGuiEditCommand } from './gui-edit-command';
+import { runGuiEditCommand, showCommandError } from './gui-edit-command';
 import { runPlacementCommand, runRemoveOverlayCommand } from './gui-frame-overlays';
 import { showPopupAlert, showPrompt } from './gui-alert';
 import {
@@ -122,7 +122,7 @@ export function LayerControl(gui) {
   el.on('mouseup', function() {
     var move = pendingMove;
     stopDragging();
-    if (move) commitDrop(move);
+    if (move) runDrop(move);
   });
   el.on('mouseleave', stopDragging);
 
@@ -208,6 +208,19 @@ export function LayerControl(gui) {
     return internal.isFrameLayer(o.layer, o.dataset.arcs);
   }
 
+  function runDrop(move) {
+    try {
+      Promise.resolve(commitDrop(move)).catch(showDropError);
+    } catch (e) {
+      showDropError(e);
+    }
+  }
+
+  function showDropError(e) {
+    console.error(e);
+    showCommandError(gui, e.message || String(e), 'Map frame');
+  }
+
   // Into a frame, or within one: next to the layer it was dropped on, or on
   // top when dropped on the frame's heading. Out of a frame: the layer goes
   // where it was dropped among the unframed layers once the command has run.
@@ -223,7 +236,7 @@ export function LayerControl(gui) {
         if (dropLeavesOrder(toFrame, move)) return;
         runFrameCommand(toFrame, 'order-layers=' + getMemberRef(toFrame, drag.layer) + ' ' + position);
       } else {
-        addLayersToFrame(toFrame, [drag], position);
+        return addLayersToFrame(toFrame, [drag], position);
       }
     } else if (fromFrame) {
       runFrameCommand(fromFrame, 'remove-layers=' + getMemberRef(fromFrame, drag.layer), function() {

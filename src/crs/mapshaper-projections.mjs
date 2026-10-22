@@ -36,7 +36,7 @@ var projectionAliases = {
 
 // Aliases of mapshaper-only projections that are not in mproj
 var compositeProjectionNames = {
-  albersusa: 'U.S. composite (Albers Equal Area, with Alaska and Hawaii insets)'
+  albersusa: 'U.S. composite (Albers Equal Area)'
 };
 
 export async function initProjLibrary(opts) {

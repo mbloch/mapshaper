@@ -1,3 +1,6 @@
+v0.7.96
+* [web] Fixed a bug that could cause layer dragging to fail.
+
 v0.7.95
 * [web] Added zoom-to-layer to context menus in the layers panel.
 * [web] UI improvements for line drawing and layer styling
