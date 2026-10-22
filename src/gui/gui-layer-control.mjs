@@ -566,6 +566,34 @@ export function LayerControl(gui) {
       }
     }
 
+    // A layer in a section whose layers are not on the map is selected, which
+    // shows its section; otherwise a hidden layer is shown as its eye icon
+    // would show it
+    function zoomToLayer() {
+      var target = findLayerById(id);
+      var lyr, frame, viewFrame;
+      if (!target) return;
+      lyr = target.layer;
+      frame = internal.getFrameForDataset(model, target.dataset);
+      viewFrame = getViewFrame();
+      if (frame ? !viewFrame || viewFrame.dataset != frame.dataset : !!viewFrame) {
+        lyr.hidden = false;
+        model.selectLayer(lyr, target.dataset);
+      } else if (map.isActiveLayer(lyr)) {
+        lyr.hidden = false;
+      } else if (frame && lyr.frame_hidden) {
+        runFrameCommand(frame, 'show-layers=' + getMemberRef(frame, lyr), function() {
+          map.zoomToLayer(lyr);
+        });
+        return;
+      } else if (!frame) {
+        setLayerPinning(lyr, true);
+      }
+      renderLayerList();
+      map.redraw();
+      map.zoomToLayer(lyr);
+    }
+
     function showLayerInfo() {
       var target = findLayerById(id);
       var popup, content;
@@ -658,6 +686,9 @@ export function LayerControl(gui) {
         menuEvent.deleteLayer = deleteLayer;
         menuEvent.duplicateLayer = duplicateLayer;
         menuEvent.showLayerInfo = showLayerInfo;
+        if (layerHasViewableContent(target.layer)) {
+          menuEvent.zoomToLayer = zoomToLayer;
+        }
       }
       if (!isFrame && target && layerCanBeStyled(target.layer)) {
         menuEvent.styleLayer = styleLayer;
@@ -1060,6 +1091,17 @@ export function LayerControl(gui) {
 
   function isPinnable(lyr, dataset) {
     return layerIsPinnable(lyr, dataset);
+  }
+
+  function layerHasViewableContent(lyr) {
+    return internal.layerHasGeometry(lyr) || internal.layerHasRaster(lyr);
+  }
+
+  // The frame whose layers are on the map, or null in the unframed view (a
+  // frame without members composes the unframed layers)
+  function getViewFrame() {
+    var frame = model.getActiveFrame();
+    return frame && internal.getFrameMemberLayers(model, frame).length > 0 ? frame : null;
   }
 
   function layerCanBeStyled(lyr) {

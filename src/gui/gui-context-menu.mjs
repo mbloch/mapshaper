@@ -181,6 +181,9 @@ export function ContextMenu(parentArg) {
     if (e.styleLayer) {
      addMenuItem(e.styleLayerName || 'style/edit layer', e.styleLayer, '');
     }
+    if (e.zoomToLayer) {
+     addMenuItem('zoom to layer', e.zoomToLayer, '');
+    }
     if (e.showLayerInfo) {
      addMenuItem('show info', e.showLayerInfo, '');
     }

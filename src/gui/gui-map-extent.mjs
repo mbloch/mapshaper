@@ -64,6 +64,19 @@ export function MapExtent(_position) {
     triggerChangeEvent();
   };
 
+  // Fit the view to @bounds (display CRS coords), without animation; bounds
+  // with no extent are centered at the current scale
+  this.zoomToBounds = function(bounds) {
+    if (!ready()) return;
+    var w = fillOut(bounds).width();
+    var full = fillOut(_fullBounds);
+    if (_strictBounds) {
+      full = fitIn(full, _strictBounds);
+    }
+    recenter(bounds.centerX(), bounds.centerY(), w > 0 ? full.width() / w : null);
+    triggerChangeEvent();
+  };
+
   this.zoomByPct = function(pct, xpct, ypct) {
     if (!ready()) return;
     this.zoomToExtent(this.getBounds().width() / pct, xpct, ypct);

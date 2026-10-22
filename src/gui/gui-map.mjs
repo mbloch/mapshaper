@@ -192,6 +192,7 @@ export function MshpMap(gui) {
   this.getOverlayLayers = function() {return _overlayLayers || [];};
   this.isActiveLayer = isActiveLayer;
   this.isVisibleLayer = isVisibleLayer;
+  this.zoomToLayer = zoomToLayer;
   this.getSvgRoot = function() { return _renderer ? _renderer.getSvgRoot() : null; };
   this.getActiveLayer = function() { return _activeLyr; };
   this.getHitControl = function() { return _hit; };
@@ -521,9 +522,7 @@ export function MshpMap(gui) {
     }
 
     // add margin
-    // use larger margin for small sizes
-    var widthPx = _ext.width();
-    var marginPct = widthPx < 700 && 4.5 || widthPx < 800 && 4 || 3.5;
+    var marginPct = getContentMarginPct();
     if (isTableView()) {
       var n = internal.getFeatureCount(_activeLyr);
       marginPct = n < 5 && 20 || n < 100 && 10 || 4;
@@ -536,6 +535,27 @@ export function MshpMap(gui) {
       b.padBounds(1e-4, 1e-4, 1e-4, 1e-4);
     }
     return b;
+  }
+
+  // use larger margin for small sizes
+  function getContentMarginPct() {
+    var widthPx = _ext.width();
+    return widthPx < 700 && 4.5 || widthPx < 800 && 4 || 3.5;
+  }
+
+  // Fit the view to a layer that is on the map, with the margin used for the
+  // full extent. The layer's own extent is used, not lyr.gui.bounds, which
+  // widens a point layer without area to its dataset's extent.
+  function zoomToLayer(lyr) {
+    var b;
+    updateVisibleMapLayers();
+    if (!lyr.gui || !lyr.gui.geographic) return;
+    b = internal.layerHasRaster(lyr) ? lyr.gui.bounds :
+      internal.getLayerBounds(lyr.gui.displayLayer, lyr.gui.displayArcs);
+    if (!_renderer || !b || !b.hasBounds()) return;
+    updateFullBounds();
+    _ext.zoomToBounds(b.clone().scale(1 + getContentMarginPct() / 100 * 2));
+    gui.dispatchEvent('map_interaction_end');
   }
 
   function isActiveLayer(lyr) {
