@@ -21,6 +21,11 @@ import { layerHasDrawableStyle } from './gui-layer-styler';
 // pixel distance threshold for hovering near a vertex or segment midpoint
 var HOVER_THRESHOLD = 10;
 
+// How close an angle-snapped endpoint has to be to a missing corner that
+// would make both it and a segment back to the first vertex follow 45-degree
+// increments.
+var ANGLE_CLOSURE_SNAP_THRESHOLD = 9;
+
 // How far the pointer has to move from where the mouse was pressed before a
 // drag draws a stroke. This matches the distance under which gui-mouse treats
 // a press as a click, so a press that stays this close adds only a click vertex.
@@ -680,7 +685,16 @@ export function initLineEditing(gui, ext, hit) {
     thisEvt.x = x0 + snapped.dx;
     thisEvt.y = y0 + snapped.dy;
 
-    return null;
+    if (pending && pending.display.length > 1) {
+      var first = pending.display[0];
+      var firstPix = ext.translateCoords(first[0], first[1]);
+      var closingSnap = getClosingAngleSnap(
+        [thisEvt.x, thisEvt.y], [x0, y0], firstPix, ANGLE_CLOSURE_SNAP_THRESHOLD);
+      if (closingSnap) {
+        thisEvt.x = closingSnap[0];
+        thisEvt.y = closingSnap[1];
+      }
+    }
   }
 
   // v: the first vertex, {data, display}
@@ -732,6 +746,7 @@ export function initLineEditing(gui, ext, hit) {
     if (pending.data.length === 0) {
       cancelPath();
     } else {
+      syncPrevVertexAddedEvent();
       refreshPath();
     }
     return true;
@@ -744,9 +759,19 @@ export function initLineEditing(gui, ext, hit) {
     if (!pathDrawing()) return false;
     if (pending.redo.length > 0) {
       appendVertices(pending.redo.pop());
+      syncPrevVertexAddedEvent();
       refreshPath();
     }
     return true;
+  }
+
+  // Angle snapping starts at the last committed vertex. Clicks and strokes
+  // normally keep this event in sync; undo and redo change that vertex without
+  // producing a pointer event, so reconstruct its pixel position.
+  function syncPrevVertexAddedEvent() {
+    var p = pending.display[pending.display.length - 1];
+    var pix = ext.translateCoords(p[0], p[1]);
+    prevVertexAddedEvent = {x: pix[0], y: pix[1]};
   }
 
   // Ends the path being drawn and creates its shape, if it has enough vertices
@@ -910,4 +935,40 @@ export function initLineEditing(gui, ext, hit) {
     closest.target = target;
     return closest;
   }
+}
+
+// The nearest point to @point where a segment from @current and one from
+// @first can both follow a 45-degree increment, or null outside @maxDistance.
+// Four undirected lines through each vertex cover the eight possible rays.
+export function getClosingAngleSnap(point, current, first, maxDistance) {
+  var dirs = [[1, 0], [0, 1], [1, 1], [1, -1]];
+  var best = null;
+  var bestDistance = maxDistance;
+  dirs.forEach(function(a) {
+    dirs.forEach(function(b) {
+      var denominator = cross2D(a, b);
+      if (denominator === 0) return;
+      var offset = [first[0] - current[0], first[1] - current[1]];
+      var t = cross2D(offset, b) / denominator;
+      var candidate = [current[0] + t * a[0], current[1] + t * a[1]];
+      // The first and current vertices are already available snap targets;
+      // this helper is for the missing corner between them.
+      if (pointDistance(candidate, current) < 1 ||
+          pointDistance(candidate, first) < 1) return;
+      var distance = pointDistance(candidate, point);
+      if (distance <= bestDistance) {
+        best = candidate;
+        bestDistance = distance;
+      }
+    });
+  });
+  return best;
+}
+
+function cross2D(a, b) {
+  return a[0] * b[1] - a[1] * b[0];
+}
+
+function pointDistance(a, b) {
+  return Math.hypot(a[0] - b[0], a[1] - b[1]);
 }

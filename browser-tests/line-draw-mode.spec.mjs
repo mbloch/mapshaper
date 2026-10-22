@@ -88,6 +88,69 @@ test('shift-click commits the angle-snapped vertex for lines and polygons',
     expect(errors).toEqual([]);
   });
 
+test('shift-drawing snaps to a corner that closes on 45-degree increments',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+
+    for (var kind of ['lines', 'polygons']) {
+      await clickNewLayerLink(page, kind);
+      var box = await getMapBox(page);
+      var a = mapPoint(box, 0.25, 0.55);
+      await clickAt(page, a);
+      await page.keyboard.down('Shift');
+      await clickAt(page, [a[0] + 100, a[1] + 3]);
+      await clickAt(page, [a[0] + 97, a[1] + 83]);
+      await clickAt(page, [a[0] + 6, a[1] + 78]);
+      await page.keyboard.up('Shift');
+
+      var path = await getPendingPath(page);
+      expect(path).toHaveLength(5); // four vertices and the pointer preview
+      expect(Math.abs(path[1][1] - path[0][1])).toBeLessThan(1);
+      expect(Math.abs(path[2][0] - path[1][0])).toBeLessThan(1);
+      expect(Math.abs(path[3][1] - path[2][1])).toBeLessThan(1);
+      // The fourth point is pulled six pixels from the pointer onto the
+      // vertical 45-degree ray through the first point.
+      expect(Math.abs(path[3][0] - path[0][0])).toBeLessThan(1);
+      expect(Math.abs(path[3][0] - toMap(box, [a[0] + 6, a[1] + 78])[0]))
+        .toBeGreaterThan(4);
+      await page.keyboard.press('Escape');
+    }
+    expect(errors).toEqual([]);
+  });
+
+test('angle snapping continues from the remaining vertex after undo',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+
+    for (var kind of ['lines', 'polygons']) {
+      await clickNewLayerLink(page, kind);
+      var box = await getMapBox(page);
+      var a = mapPoint(box, 0.25, 0.55);
+      await clickAt(page, a);
+      await page.keyboard.down('Shift');
+      await clickAt(page, [a[0] + 100, a[1] + 30]);
+      await clickAt(page, [a[0] + 100, a[1] + 100]);
+      await page.keyboard.up('Shift');
+      await undo(page);
+
+      var path = await getPendingPath(page);
+      var b = path[1];
+      await page.keyboard.down('Shift');
+      await page.mouse.move(box.x + b[0] + 50, box.y + b[1] + 20, {steps: 3});
+      await page.keyboard.up('Shift');
+
+      path = await getPendingPath(page);
+      expect(path).toHaveLength(3); // two vertices and the pointer preview
+      // The pointer is closest to a horizontal extension from the vertex that
+      // remains after undo.
+      expect(Math.abs(path[2][1] - path[1][1])).toBeLessThan(1);
+      await page.keyboard.press('Escape');
+    }
+    expect(errors).toEqual([]);
+  });
+
 test('the style panel sets the style of new lines while drawing is armed',
   async function({page}) {
     var errors = collectPageErrors(page);
