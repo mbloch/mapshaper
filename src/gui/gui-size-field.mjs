@@ -186,6 +186,25 @@ export function getSizeFieldKeyAction(key, shiftKey, opts) {
   return null;
 }
 
+// The most frequent value, or the lower median of the values tied for most
+// frequent. This gives a mixed size field a representative value to step from.
+export function getLowerModeValue(values) {
+  var counts = {};
+  var modes = [];
+  var maxCount = 0;
+  values.forEach(function(val) {
+    var key = String(val);
+    var count = (counts[key] || 0) + 1;
+    counts[key] = count;
+    if (count > maxCount) maxCount = count;
+  });
+  Object.keys(counts).forEach(function(key) {
+    if (counts[key] == maxCount) modes.push(Number(key));
+  });
+  modes.sort(function(a, b) { return a - b; });
+  return modes.length > 0 ? modes[Math.floor((modes.length - 1) / 2)] : null;
+}
+
 // The size a typed string means, clamped to the field's bounds, or null if it
 // does not hold one -- which includes holding nothing.
 //

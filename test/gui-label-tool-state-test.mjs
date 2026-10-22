@@ -14,7 +14,9 @@ import {
   getMatchingLabelIds, getLabelSelectActions, getAllLabelIds, TEXT_STYLE_FIELDS
 } from '../src/gui/gui-label-select-matchers';
 import { getOptionParser } from '../src/cli/mapshaper-options';
-import { parseSizeValue, getSizeFieldKeyAction } from '../src/gui/gui-size-field';
+import {
+  parseSizeValue, getSizeFieldKeyAction, getLowerModeValue
+} from '../src/gui/gui-size-field';
 import { quoteCommandValue } from '../src/gui/gui-command-utils';
 import { chooseNewLabelFont, getNearestVariant,
   variantIsRegular } from '../src/gui/gui-label-fonts';
@@ -447,6 +449,22 @@ describe('gui label tool state', function() {
         ['1', 'x', 'Backspace', 'Tab', 'ArrowLeft'].forEach(function(key) {
           assert.strictEqual(getSizeFieldKeyAction(key, false), null);
         });
+      });
+    });
+
+    describe('getLowerModeValue()', function() {
+      it('returns the most frequent value', function() {
+        assert.strictEqual(getLowerModeValue([8, 12, 12, 20]), 12);
+      });
+
+      it('returns the lower median when modes are tied', function() {
+        assert.strictEqual(getLowerModeValue([2, 4, 6, 8]), 4);
+        assert.strictEqual(getLowerModeValue([8, 8, 12, 12]), 8);
+        assert.strictEqual(getLowerModeValue([4, 8, 12]), 8);
+      });
+
+      it('returns null for an empty set', function() {
+        assert.strictEqual(getLowerModeValue([]), null);
       });
     });
   });

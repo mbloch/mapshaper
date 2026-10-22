@@ -7,7 +7,7 @@ import {
   makeColorRow, makeCollapsibleSection, makePanelButton, makePanelSection,
   makePanelToggle
 } from './gui-panel-controls';
-import { SizeField } from './gui-size-field';
+import { SizeField, getLowerModeValue } from './gui-size-field';
 import { formatEditingStatus } from './gui-editing-status';
 import { runGuiEditCommand } from './gui-edit-command';
 import { getSymbolStyleCommand, getRestyleSymbolCommand } from './gui-symbol-commands';
@@ -210,7 +210,7 @@ export function SymbolPanel(gui, opts) {
       title: 'Symbol size in px',
       onSet: applyIconSize,
       onStep: function(delta) {
-        applyIconSize(Math.max(1, (getShownIconSize() || 0) + delta));
+        applyIconSize(Math.max(1, getIconSizeStepBase() + delta));
       },
       onDone: releaseFocus
     });
@@ -623,6 +623,14 @@ export function SymbolPanel(gui, opts) {
   function getShownIconSize() {
     var v = Number(iconSizeField.getValue());
     return v > 0 ? v : null;
+  }
+
+  function getIconSizeStepBase() {
+    var shown = getShownIconSize();
+    if (shown !== null) return shown;
+    return getLowerModeValue(state.icons.map(function(id) {
+      return getIconSize(state.records[id] || {});
+    })) || 0;
   }
 
   // --- applying

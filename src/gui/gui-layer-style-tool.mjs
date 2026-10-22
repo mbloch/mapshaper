@@ -7,7 +7,7 @@ import {
 } from './gui-panel-controls';
 import { ARROWHEAD_SHAPES, getArrowheadGlyph } from './gui-arrowhead-shapes';
 import { formatEditingStatus } from './gui-editing-status';
-import { SizeField } from './gui-size-field';
+import { SizeField, getLowerModeValue } from './gui-size-field';
 import {
   parseOpacityValue, formatOpacityPct, formatColorOpacityPct, normalizeDashArrayInput,
   getNextStrokeWidth
@@ -862,10 +862,11 @@ export function LayerStyleTool(gui) {
   }
 
   function updateStrokeWidthControl() {
-    var value = getCommonStyleValue('stroke-width');
-    strokeWidthField.setValue(
-      formatNumberValue(value === '' || value === undefined || value === null ?
-        getDefaultStrokeWidth() : value));
+    var values = getTargetStrokeWidths();
+    var value = values.length > 0 && values.every(function(val) {
+      return val === values[0];
+    }) ? values[0] : '';
+    strokeWidthField.setValue(value === '' ? '' : formatNumberValue(value));
   }
 
   function updateDashArrayControl() {
@@ -874,9 +875,20 @@ export function LayerStyleTool(gui) {
   }
 
   function nudgeStrokeWidth(direction) {
-    var value = Number(getCommonStyleValue('stroke-width'));
-    if (!isFinite(value)) value = getDefaultStrokeWidth();
+    var value = getLowerModeValue(getTargetStrokeWidths());
+    if (value === null) value = getDefaultStrokeWidth();
     applyStrokeWidthStyle(getNextStrokeWidth(value, direction));
+  }
+
+  function getTargetStrokeWidths() {
+    var records = getTargetRecords();
+    var defaultWidth = getDefaultStrokeWidth();
+    return getTargetIds().map(function(id) {
+      var value = records[id] && records[id]['stroke-width'];
+      if (value === undefined || value === null || value === '') return defaultWidth;
+      value = Number(value);
+      return isFinite(value) ? value : defaultWidth;
+    });
   }
 
   function applyLayerStyle(field, value) {
