@@ -5697,18 +5697,20 @@
             return;
           }
           queued = {cmd: cmd, callbacks: [done]};
+          // busy must settle and never reject: finish() waits on it, and every
+          // other command waits on finish() while this session is active
           busy = busy.then(function() {
             var job = queued;
             queued = null;
             return new Promise(function(resolve) {
               runMapshaperCommands(job.cmd, function(err, flags) {
                 job.callbacks.forEach(function(cb) {
-                  if (cb) cb(err, flags);
+                  callSafely(cb, err, flags);
                 });
                 resolve();
               }, {session: session});
             });
-          });
+          }).catch(reportUnexpectedError);
         },
         finish: function() {
           return busy.then(commit);
@@ -5776,21 +5778,19 @@
       var changesEditTarget = !!(runOpts && runOpts.changesEditTarget) || !!session;
       var commands, checkpoint;
       if (activeSession && activeSession != session) {
-        activeSession.finish().then(function() {
-          runMapshaperCommands(str, done, runOpts);
-        });
+        // the session's commit clears activeSession before anything in it can
+        // fail, so running again after a failure does not loop
+        runAfter(activeSession.finish());
         return;
       }
       checkpoint = gui.undo && gui.undo.checkpointEditSession ?
         gui.undo.checkpointEditSession(changesEditTarget) : null;
       if (checkpoint) {
-        checkpoint.then(function() {
-          runMapshaperCommands(str, done, runOpts);
-        });
+        runAfter(checkpoint);
         return;
       }
-      if (session) session.activate();
       try {
+        if (session) session.activate();
         commands = internal.parseConsoleCommands(str);
         // don't add info commands to console history
         // (for one thing, they interfere with target resetting)
@@ -5800,19 +5800,47 @@
         return finish(e, {});
       }
       if (commands.length === 0) return finish();
-      applyParsedCommands(commands, str, session, quiet, changesEditTarget, function(err, flags) {
-        if (flags) {
-          model.updated(flags); // info commands do not return flags
-        }
-        finish(err, flags);
-      });
+      try {
+        applyParsedCommands(commands, str, session, quiet, changesEditTarget, function(err, flags) {
+          if (flags) {
+            callSafely(function() { model.updated(flags); }); // info commands do not return flags
+          }
+          finish(err, flags);
+        });
+      } catch (e) {
+        finish(e, {});
+      }
+
+      function runAfter(promise) {
+        promise.catch(reportUnexpectedError).then(function() {
+          runMapshaperCommands(str, done, runOpts);
+        });
+      }
 
       function finish(err, flags) {
         if (gui.undo && gui.undo.restartEditSession) {
-          gui.undo.restartEditSession();
+          callSafely(function() { gui.undo.restartEditSession(); });
         }
-        done(err, flags);
+        callSafely(done, err, flags);
       }
+    }
+
+    // An exception thrown by a command's callback, or by the map update after the
+    // command, would otherwise be lost in a promise, and a session's queue (see
+    // createCommandSession()) would never be released
+    function callSafely(fn) {
+      var args = Array.prototype.slice.call(arguments, 1);
+      if (!fn) return;
+      try {
+        fn.apply(null, args);
+      } catch (e) {
+        reportUnexpectedError(e);
+      }
+    }
+
+    function reportUnexpectedError(e) {
+      console.error(e);
+      if (gui.alert) gui.alert(e.message || String(e), 'Error');
     }
 
     function prepareRunCommands(commands) {
@@ -9000,7 +9028,7 @@
     el.on('mouseup', function() {
       var move = pendingMove;
       stopDragging();
-      if (move) commitDrop(move);
+      if (move) runDrop(move);
     });
     el.on('mouseleave', stopDragging);
 
@@ -9086,6 +9114,19 @@
       return internal.isFrameLayer(o.layer, o.dataset.arcs);
     }
 
+    function runDrop(move) {
+      try {
+        Promise.resolve(commitDrop(move)).catch(showDropError);
+      } catch (e) {
+        showDropError(e);
+      }
+    }
+
+    function showDropError(e) {
+      console.error(e);
+      showCommandError(gui, e.message || String(e), 'Map frame');
+    }
+
     // Into a frame, or within one: next to the layer it was dropped on, or on
     // top when dropped on the frame's heading. Out of a frame: the layer goes
     // where it was dropped among the unframed layers once the command has run.
@@ -9101,7 +9142,7 @@
           if (dropLeavesOrder(toFrame, move)) return;
           runFrameCommand(toFrame, 'order-layers=' + getMemberRef(toFrame, drag.layer) + ' ' + position);
         } else {
-          addLayersToFrame(toFrame, [drag], position);
+          return addLayersToFrame(toFrame, [drag], position);
         }
       } else if (fromFrame) {
         runFrameCommand(fromFrame, 'remove-layers=' + getMemberRef(fromFrame, drag.layer), function() {

@@ -11006,7 +11006,7 @@
 
   // Aliases of mapshaper-only projections that are not in mproj
   var compositeProjectionNames = {
-    albersusa: 'U.S. composite (Albers Equal Area, with Alaska and Hawaii insets)'
+    albersusa: 'U.S. composite (Albers Equal Area)'
   };
 
   async function initProjLibrary(opts) {
@@ -96151,7 +96151,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.95";
+  var version = "0.7.96";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
