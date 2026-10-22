@@ -55,6 +55,39 @@ test('Esc finishes the path being drawn, and a second Esc stops drawing',
     expect(errors).toEqual([]);
   });
 
+test('shift-click commits the angle-snapped vertex for lines and polygons',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+
+    for (var kind of ['lines', 'polygons']) {
+      await clickNewLayerLink(page, kind);
+      var box = await getMapBox(page);
+      var a = mapPoint(box, 0.25, 0.55);
+      var b = [a[0] + 100, a[1] + 35];
+      await clickAt(page, a);
+      await page.keyboard.down('Shift');
+      await clickAt(page, b);
+      await page.keyboard.up('Shift');
+
+      var path = await getPendingPath(page);
+      // The pending overlay ends with the pointer preview after its committed
+      // vertices. It immediately continues from the snapped vertex toward the
+      // pointer, with that next segment snapped as well.
+      expect(path).toHaveLength(3);
+      // This pointer direction is closest to horizontal. The committed point
+      // must be the end of the horizontal preview, not the pointer itself.
+      expect(Math.abs(path[1][1] - path[0][1])).toBeLessThan(1);
+      expect(Math.hypot(path[1][0] - toMap(box, b)[0],
+        path[1][1] - toMap(box, b)[1])).toBeGreaterThan(10);
+      // From that new point, the same pointer is closest to vertical.
+      expect(Math.abs(path[2][0] - path[1][0])).toBeLessThan(1);
+      expect(Math.abs(path[2][1] - path[1][1])).toBeGreaterThan(20);
+      await page.keyboard.press('Escape');
+    }
+    expect(errors).toEqual([]);
+  });
+
 test('the style panel sets the style of new lines while drawing is armed',
   async function({page}) {
     var errors = collectPageErrors(page);

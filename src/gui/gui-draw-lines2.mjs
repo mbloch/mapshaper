@@ -55,6 +55,7 @@ export function initLineEditing(gui, ext, hit) {
   //   extends: (drawing) a path started here extends the line, featureId
   var hoverVertexInfo;
   var prevVertexAddedEvent;
+  var prevClickEvent;
   var lastHoverEvent = null; // for redoing the hover when Alt is pressed or released
   var _active = false;
   var shownInstructions = {};
@@ -189,6 +190,7 @@ export function initLineEditing(gui, ext, hit) {
     if (_dragging) hit.setHiddenShapes([]);
     hoverVertexInfo = null;
     prevVertexAddedEvent = null;
+    prevClickEvent = null;
     lastHoverEvent = null;
     hideInstructions();
     _active = false;
@@ -508,17 +510,28 @@ export function initLineEditing(gui, ext, hit) {
   }
 
   hit.on('click', function(e) {
+    var vertexEvent = e;
+    var nextPointerEvent = null;
     if (!drawMode()) return;
     if (detectDoubleClick(e)) return; // ignore second click of a dblclick
     if (pathDrawing()) {
+      // The hover preview is angle-snapped, but a click is a separate event
+      // with the pointer's unsnapped coordinates. Snap it as well so the
+      // committed vertex, and the anchor for the next segment, match the
+      // preview.
+      if (gui.keyboard.shiftIsPressed()) {
+        vertexEvent = Object.assign({}, e);
+        nextPointerEvent = Object.assign({}, e);
+        alignPointerPosition(vertexEvent, prevVertexAddedEvent);
+      }
       if (hoverVertexInfo?.closesPath && polygonMode()) {
         finishPath(true);
       } else {
-        addVertices([getClickVertex(e)]);
+        addVertices([getClickVertex(vertexEvent)]);
       }
     } else if (hoverVertexInfo || altKeyDown()) {
       // the end of a line, or with Alt, any vertex (or anywhere)
-      startPath(getClickVertex(e), getExtendId());
+      startPath(getClickVertex(vertexEvent), getExtendId());
     } else if (e.id > -1) {
       selectShape(e.id);
     } else if (hit.getSelectionIds().length > 0) {
@@ -526,9 +539,17 @@ export function initLineEditing(gui, ext, hit) {
       // by a click meant to deselect
       hit.setSelectionIds([], {keepHover: true});
     } else {
-      startPath(getClickVertex(e), -1);
+      startPath(getClickVertex(vertexEvent), -1);
     }
-    prevVertexAddedEvent = e;
+    prevVertexAddedEvent = vertexEvent;
+    prevClickEvent = e;
+    if (nextPointerEvent && pathDrawing()) {
+      // Immediately draw the next segment from the snapped vertex toward the
+      // pointer. Without this, the preview waits for another mousemove.
+      alignPointerPosition(nextPointerEvent, prevVertexAddedEvent);
+      lastHoverEvent = nextPointerEvent;
+      updateHover(nextPointerEvent);
+    }
   });
 
   // The style panel styles the selected shapes (see gui-layer-style-tool.mjs).
@@ -554,10 +575,10 @@ export function initLineEditing(gui, ext, hit) {
 
   // detect second 'click' event of a double-click action
   function detectDoubleClick(evt) {
-    if (!prevVertexAddedEvent) return false;
-    var elapsed = evt.time - prevVertexAddedEvent.time;
-    var dx = Math.abs(evt.x - prevVertexAddedEvent.x);
-    var dy = Math.abs(evt.y - prevVertexAddedEvent.y);
+    if (!prevClickEvent) return false;
+    var elapsed = evt.time - prevClickEvent.time;
+    var dx = Math.abs(evt.x - prevClickEvent.x);
+    var dy = Math.abs(evt.y - prevClickEvent.y);
     var dbl = elapsed < 500 && dx <= 2 && dy <= 2;
     return dbl;
   }
