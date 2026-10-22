@@ -1,6 +1,10 @@
+v0.7.95
+* [web] Added zoom-to-layer to context menus in the layers panel.
+* [web] UI improvements for line drawing and layer styling
+
 v0.7.94
 * [web] Interface improvements
-* Fixed: clipping bug in butterfly projections
+* Fixed: clipping bug in butterfly projections.
 
 v0.7.93
 * [web] Added an opacity slider to color pickers.
@@ -17,7 +21,7 @@ v0.7.91
 * [web] UI updates.
 
 v0.7.90
-* HTML output of several frames of different widths is one file that shows the frame that fits the width of its container (like ai2html's artboards), using CSS container queries. A page can embed several HTML maps.
+* Exporting multiple frames of different widths to HTML creates one HTML file that shows the frame that fits the width of its container (like ai2html's artboards).
 * HTML output with `responsiveness=fixed` (the default) shrinks to fit a container narrower than the map.
 * `-graticule` adds its output to the frame of its target layer, and accepts the `+` option (it always creates a new layer).
 * `-shape` accepts the `+` option (before, `+` was used as the layer name).
