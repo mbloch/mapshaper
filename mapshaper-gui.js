@@ -7844,6 +7844,9 @@
       if (e.styleLayer) {
        addMenuItem(e.styleLayerName || 'style/edit layer', e.styleLayer, '');
       }
+      if (e.zoomToLayer) {
+       addMenuItem('zoom to layer', e.zoomToLayer, '');
+      }
       if (e.showLayerInfo) {
        addMenuItem('show info', e.showLayerInfo, '');
       }
@@ -9441,6 +9444,34 @@
         }
       }
 
+      // A layer in a section whose layers are not on the map is selected, which
+      // shows its section; otherwise a hidden layer is shown as its eye icon
+      // would show it
+      function zoomToLayer() {
+        var target = findLayerById(id);
+        var lyr, frame, viewFrame;
+        if (!target) return;
+        lyr = target.layer;
+        frame = internal.getFrameForDataset(model, target.dataset);
+        viewFrame = getViewFrame();
+        if (frame ? !viewFrame || viewFrame.dataset != frame.dataset : !!viewFrame) {
+          lyr.hidden = false;
+          model.selectLayer(lyr, target.dataset);
+        } else if (map.isActiveLayer(lyr)) {
+          lyr.hidden = false;
+        } else if (frame && lyr.frame_hidden) {
+          runFrameCommand(frame, 'show-layers=' + getMemberRef(frame, lyr), function() {
+            map.zoomToLayer(lyr);
+          });
+          return;
+        } else if (!frame) {
+          setLayerPinning(lyr, true);
+        }
+        renderLayerList();
+        map.redraw();
+        map.zoomToLayer(lyr);
+      }
+
       function showLayerInfo() {
         var target = findLayerById(id);
         var popup, content;
@@ -9533,6 +9564,9 @@
           menuEvent.deleteLayer = deleteLayer;
           menuEvent.duplicateLayer = duplicateLayer;
           menuEvent.showLayerInfo = showLayerInfo;
+          if (layerHasViewableContent(target.layer)) {
+            menuEvent.zoomToLayer = zoomToLayer;
+          }
         }
         if (!isFrame && target && layerCanBeStyled(target.layer)) {
           menuEvent.styleLayer = styleLayer;
@@ -9935,6 +9969,17 @@
 
     function isPinnable(lyr, dataset) {
       return layerIsPinnable(lyr, dataset);
+    }
+
+    function layerHasViewableContent(lyr) {
+      return internal.layerHasGeometry(lyr) || internal.layerHasRaster(lyr);
+    }
+
+    // The frame whose layers are on the map, or null in the unframed view (a
+    // frame without members composes the unframed layers)
+    function getViewFrame() {
+      var frame = model.getActiveFrame();
+      return frame && internal.getFrameMemberLayers(model, frame).length > 0 ? frame : null;
     }
 
     function layerCanBeStyled(lyr) {
@@ -14946,6 +14991,25 @@
     if (key == 'Enter') return {type: 'commit'};
     if (key == 'Escape') return {type: 'revert'};
     return null;
+  }
+
+  // The most frequent value, or the lower median of the values tied for most
+  // frequent. This gives a mixed size field a representative value to step from.
+  function getLowerModeValue(values) {
+    var counts = {};
+    var modes = [];
+    var maxCount = 0;
+    values.forEach(function(val) {
+      var key = String(val);
+      var count = (counts[key] || 0) + 1;
+      counts[key] = count;
+      if (count > maxCount) maxCount = count;
+    });
+    Object.keys(counts).forEach(function(key) {
+      if (counts[key] == maxCount) modes.push(Number(key));
+    });
+    modes.sort(function(a, b) { return a - b; });
+    return modes.length > 0 ? modes[Math.floor((modes.length - 1) / 2)] : null;
   }
 
   // The size a typed string means, clamped to the field's bounds, or null if it
@@ -24341,10 +24405,11 @@
     }
 
     function updateStrokeWidthControl() {
-      var value = getCommonStyleValue('stroke-width');
-      strokeWidthField.setValue(
-        formatNumberValue(value === '' || value === undefined || value === null ?
-          getDefaultStrokeWidth() : value));
+      var values = getTargetStrokeWidths();
+      var value = values.length > 0 && values.every(function(val) {
+        return val === values[0];
+      }) ? values[0] : '';
+      strokeWidthField.setValue(value === '' ? '' : formatNumberValue(value));
     }
 
     function updateDashArrayControl() {
@@ -24353,9 +24418,20 @@
     }
 
     function nudgeStrokeWidth(direction) {
-      var value = Number(getCommonStyleValue('stroke-width'));
-      if (!isFinite(value)) value = getDefaultStrokeWidth();
+      var value = getLowerModeValue(getTargetStrokeWidths());
+      if (value === null) value = getDefaultStrokeWidth();
       applyStrokeWidthStyle(getNextStrokeWidth(value, direction));
+    }
+
+    function getTargetStrokeWidths() {
+      var records = getTargetRecords();
+      var defaultWidth = getDefaultStrokeWidth();
+      return getTargetIds().map(function(id) {
+        var value = records[id] && records[id]['stroke-width'];
+        if (value === undefined || value === null || value === '') return defaultWidth;
+        value = Number(value);
+        return isFinite(value) ? value : defaultWidth;
+      });
     }
 
     function applyLayerStyle(field, value) {
@@ -31061,6 +31137,11 @@
   // pixel distance threshold for hovering near a vertex or segment midpoint
   var HOVER_THRESHOLD$1 = 10;
 
+  // How close an angle-snapped endpoint has to be to a missing corner that
+  // would make both it and a segment back to the first vertex follow 45-degree
+  // increments.
+  var ANGLE_CLOSURE_SNAP_THRESHOLD = 9;
+
   // How far the pointer has to move from where the mouse was pressed before a
   // drag draws a stroke. This matches the distance under which gui-mouse treats
   // a press as a click, so a press that stays this close adds only a click vertex.
@@ -31095,6 +31176,7 @@
     //   extends: (drawing) a path started here extends the line, featureId
     var hoverVertexInfo;
     var prevVertexAddedEvent;
+    var prevClickEvent;
     var lastHoverEvent = null; // for redoing the hover when Alt is pressed or released
     var _active = false;
     var shownInstructions = {};
@@ -31229,6 +31311,7 @@
       if (_dragging) hit.setHiddenShapes([]);
       hoverVertexInfo = null;
       prevVertexAddedEvent = null;
+      prevClickEvent = null;
       lastHoverEvent = null;
       hideInstructions();
       _active = false;
@@ -31548,17 +31631,28 @@
     }
 
     hit.on('click', function(e) {
+      var vertexEvent = e;
+      var nextPointerEvent = null;
       if (!drawMode()) return;
       if (detectDoubleClick(e)) return; // ignore second click of a dblclick
       if (pathDrawing()) {
+        // The hover preview is angle-snapped, but a click is a separate event
+        // with the pointer's unsnapped coordinates. Snap it as well so the
+        // committed vertex, and the anchor for the next segment, match the
+        // preview.
+        if (gui.keyboard.shiftIsPressed()) {
+          vertexEvent = Object.assign({}, e);
+          nextPointerEvent = Object.assign({}, e);
+          alignPointerPosition(vertexEvent, prevVertexAddedEvent);
+        }
         if (hoverVertexInfo?.closesPath && polygonMode()) {
           finishPath(true);
         } else {
-          addVertices([getClickVertex(e)]);
+          addVertices([getClickVertex(vertexEvent)]);
         }
       } else if (hoverVertexInfo || altKeyDown()) {
         // the end of a line, or with Alt, any vertex (or anywhere)
-        startPath(getClickVertex(e), getExtendId());
+        startPath(getClickVertex(vertexEvent), getExtendId());
       } else if (e.id > -1) {
         selectShape(e.id);
       } else if (hit.getSelectionIds().length > 0) {
@@ -31566,9 +31660,17 @@
         // by a click meant to deselect
         hit.setSelectionIds([], {keepHover: true});
       } else {
-        startPath(getClickVertex(e), -1);
+        startPath(getClickVertex(vertexEvent), -1);
       }
-      prevVertexAddedEvent = e;
+      prevVertexAddedEvent = vertexEvent;
+      prevClickEvent = e;
+      if (nextPointerEvent && pathDrawing()) {
+        // Immediately draw the next segment from the snapped vertex toward the
+        // pointer. Without this, the preview waits for another mousemove.
+        alignPointerPosition(nextPointerEvent, prevVertexAddedEvent);
+        lastHoverEvent = nextPointerEvent;
+        updateHover(nextPointerEvent);
+      }
     });
 
     // The style panel styles the selected shapes (see gui-layer-style-tool.mjs).
@@ -31594,10 +31696,10 @@
 
     // detect second 'click' event of a double-click action
     function detectDoubleClick(evt) {
-      if (!prevVertexAddedEvent) return false;
-      var elapsed = evt.time - prevVertexAddedEvent.time;
-      var dx = Math.abs(evt.x - prevVertexAddedEvent.x);
-      var dy = Math.abs(evt.y - prevVertexAddedEvent.y);
+      if (!prevClickEvent) return false;
+      var elapsed = evt.time - prevClickEvent.time;
+      var dx = Math.abs(evt.x - prevClickEvent.x);
+      var dy = Math.abs(evt.y - prevClickEvent.y);
       var dbl = elapsed < 500 && dx <= 2 && dy <= 2;
       return dbl;
     }
@@ -31699,7 +31801,16 @@
       thisEvt.x = x0 + snapped.dx;
       thisEvt.y = y0 + snapped.dy;
 
-      return null;
+      if (pending && pending.display.length > 1) {
+        var first = pending.display[0];
+        var firstPix = ext.translateCoords(first[0], first[1]);
+        var closingSnap = getClosingAngleSnap(
+          [thisEvt.x, thisEvt.y], [x0, y0], firstPix, ANGLE_CLOSURE_SNAP_THRESHOLD);
+        if (closingSnap) {
+          thisEvt.x = closingSnap[0];
+          thisEvt.y = closingSnap[1];
+        }
+      }
     }
 
     // v: the first vertex, {data, display}
@@ -31751,6 +31862,7 @@
       if (pending.data.length === 0) {
         cancelPath();
       } else {
+        syncPrevVertexAddedEvent();
         refreshPath();
       }
       return true;
@@ -31763,9 +31875,19 @@
       if (!pathDrawing()) return false;
       if (pending.redo.length > 0) {
         appendVertices(pending.redo.pop());
+        syncPrevVertexAddedEvent();
         refreshPath();
       }
       return true;
+    }
+
+    // Angle snapping starts at the last committed vertex. Clicks and strokes
+    // normally keep this event in sync; undo and redo change that vertex without
+    // producing a pointer event, so reconstruct its pixel position.
+    function syncPrevVertexAddedEvent() {
+      var p = pending.display[pending.display.length - 1];
+      var pix = ext.translateCoords(p[0], p[1]);
+      prevVertexAddedEvent = {x: pix[0], y: pix[1]};
     }
 
     // Ends the path being drawn and creates its shape, if it has enough vertices
@@ -31929,6 +32051,42 @@
       closest.target = target;
       return closest;
     }
+  }
+
+  // The nearest point to @point where a segment from @current and one from
+  // @first can both follow a 45-degree increment, or null outside @maxDistance.
+  // Four undirected lines through each vertex cover the eight possible rays.
+  function getClosingAngleSnap(point, current, first, maxDistance) {
+    var dirs = [[1, 0], [0, 1], [1, 1], [1, -1]];
+    var best = null;
+    var bestDistance = maxDistance;
+    dirs.forEach(function(a) {
+      dirs.forEach(function(b) {
+        var denominator = cross2D(a, b);
+        if (denominator === 0) return;
+        var offset = [first[0] - current[0], first[1] - current[1]];
+        var t = cross2D(offset, b) / denominator;
+        var candidate = [current[0] + t * a[0], current[1] + t * a[1]];
+        // The first and current vertices are already available snap targets;
+        // this helper is for the missing corner between them.
+        if (pointDistance(candidate, current) < 1 ||
+            pointDistance(candidate, first) < 1) return;
+        var distance = pointDistance(candidate, point);
+        if (distance <= bestDistance) {
+          best = candidate;
+          bestDistance = distance;
+        }
+      });
+    });
+    return best;
+  }
+
+  function cross2D(a, b) {
+    return a[0] * b[1] - a[1] * b[0];
+  }
+
+  function pointDistance(a, b) {
+    return Math.hypot(a[0] - b[0], a[1] - b[1]);
   }
 
   var ALT_KEY_CODE = 18;
@@ -37414,7 +37572,7 @@
         title: 'Symbol size in px',
         onSet: applyIconSize,
         onStep: function(delta) {
-          applyIconSize(Math.max(1, (getShownIconSize() || 0) + delta));
+          applyIconSize(Math.max(1, getIconSizeStepBase() + delta));
         },
         onDone: releaseFocus
       });
@@ -37827,6 +37985,14 @@
     function getShownIconSize() {
       var v = Number(iconSizeField.getValue());
       return v > 0 ? v : null;
+    }
+
+    function getIconSizeStepBase() {
+      var shown = getShownIconSize();
+      if (shown !== null) return shown;
+      return getLowerModeValue(state.icons.map(function(id) {
+        return getIconSize(state.records[id] || {});
+      })) || 0;
     }
 
     // --- applying
@@ -38858,6 +39024,19 @@
           cx = fx + dx2,
           cy = fy + dy2;
       recenter(cx, cy, scale);
+      triggerChangeEvent();
+    };
+
+    // Fit the view to @bounds (display CRS coords), without animation; bounds
+    // with no extent are centered at the current scale
+    this.zoomToBounds = function(bounds) {
+      if (!ready()) return;
+      var w = fillOut(bounds).width();
+      var full = fillOut(_fullBounds);
+      if (_strictBounds) {
+        full = fitIn(full, _strictBounds);
+      }
+      recenter(bounds.centerX(), bounds.centerY(), w > 0 ? full.width() / w : null);
       triggerChangeEvent();
     };
 
@@ -43261,6 +43440,7 @@
     this.getOverlayLayers = function() {return _overlayLayers || [];};
     this.isActiveLayer = isActiveLayer;
     this.isVisibleLayer = isVisibleLayer;
+    this.zoomToLayer = zoomToLayer;
     this.getSvgRoot = function() { return _renderer ? _renderer.getSvgRoot() : null; };
     this.getActiveLayer = function() { return _activeLyr; };
     this.getHitControl = function() { return _hit; };
@@ -43590,9 +43770,7 @@
       }
 
       // add margin
-      // use larger margin for small sizes
-      var widthPx = _ext.width();
-      var marginPct = widthPx < 700 && 4.5 || widthPx < 800 && 4 || 3.5;
+      var marginPct = getContentMarginPct();
       if (isTableView()) {
         var n = internal.getFeatureCount(_activeLyr);
         marginPct = n < 5 && 20 || n < 100 && 10 || 4;
@@ -43605,6 +43783,27 @@
         b.padBounds(1e-4, 1e-4, 1e-4, 1e-4);
       }
       return b;
+    }
+
+    // use larger margin for small sizes
+    function getContentMarginPct() {
+      var widthPx = _ext.width();
+      return widthPx < 700 && 4.5 || widthPx < 800 && 4 || 3.5;
+    }
+
+    // Fit the view to a layer that is on the map, with the margin used for the
+    // full extent. The layer's own extent is used, not lyr.gui.bounds, which
+    // widens a point layer without area to its dataset's extent.
+    function zoomToLayer(lyr) {
+      var b;
+      updateVisibleMapLayers();
+      if (!lyr.gui || !lyr.gui.geographic) return;
+      b = internal.layerHasRaster(lyr) ? lyr.gui.bounds :
+        internal.getLayerBounds(lyr.gui.displayLayer, lyr.gui.displayArcs);
+      if (!_renderer || !b || !b.hasBounds()) return;
+      updateFullBounds();
+      _ext.zoomToBounds(b.clone().scale(1 + getContentMarginPct() / 100 * 2));
+      gui.dispatchEvent('map_interaction_end');
     }
 
     function isActiveLayer(lyr) {
