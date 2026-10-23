@@ -1,6 +1,6 @@
 import { EventDispatcher } from './gui-events';
 import { internal, utils } from './gui-core';
-import { showNewLayers } from './gui-layer-utils';
+import { showNewLayers, getLayerMenuGroups } from './gui-layer-utils';
 
 export function Model(gui) {
   var self = new internal.Catalog();
@@ -91,24 +91,26 @@ export function Model(gui) {
     gui.session.setTargetLayer(lyr);
   };
 
+  // Layers are stepped through in the layers panel's order, which dragging
+  // changes without changing the catalog's order. The next layer is the one
+  // above in the panel, as it was before layers could be dragged.
   self.selectNextLayer = function() {
-    var next = findContentLayer(self.findNextLayer);
-    if (next) self.selectLayer(next.layer, next.dataset);
+    selectMenuLayer(-1);
   };
 
   self.selectPrevLayer = function() {
-    var prev = findContentLayer(self.findPrevLayer);
-    if (prev) self.selectLayer(prev.layer, prev.dataset);
+    selectMenuLayer(1);
   };
 
-  // step past the frame and its furniture, which can't be selected
-  function findContentLayer(step) {
-    var start = self.getActiveLayer().layer;
-    var o = step.call(self, start);
-    while (o && o.layer != start && internal.isFrameComponentLayer(o.layer, o.dataset)) {
-      o = step.call(self, o.layer);
-    }
-    return o;
+  function selectMenuLayer(step) {
+    var groups = getLayerMenuGroups(self);
+    var layers = groups.frames.reduce(function(memo, g) {
+      return memo.concat(g.members);
+    }, groups.unframed);
+    var active = self.getActiveLayer();
+    var i = layers.findIndex(function(o) { return active && o.layer == active.layer; });
+    var o = layers[(i + step + layers.length) % layers.length];
+    if (o) self.selectLayer(o.layer, o.dataset);
   }
 
   return self;

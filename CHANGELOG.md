@@ -1,3 +1,7 @@
+v0.7.97
+* [web] Fixed: the left and right arrow keys selected layers in their original order instead of the order shown in the layers panel.
+* [web] Another robustness fix for layer menu UI.
+
 v0.7.96
 * [web] Fixed a bug that could cause layer dragging to fail.
 

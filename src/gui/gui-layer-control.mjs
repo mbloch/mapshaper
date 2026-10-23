@@ -478,14 +478,19 @@ export function LayerControl(gui) {
     // entering one, so a press elsewhere (e.g. on the frame) can't reorder layers
     if (!isFrameHeading) {
       entry.on('mousedown', function(e) {
-        if (e.button === 0) dragTargetId = id;
+        if (e.button !== 0) return;
+        if (pendingMove) stopDragging(); // its mouseup was missed
+        dragTargetId = id;
       });
     }
     entry.on('mousemove', function(e) {
       var rect, insertionClass;
-      // stop dragging when mouse button is released
-      if (!e.buttons && (dragging || dragTargetId)) {
-        stopDragging();
+      // A move without the button pressed ends a drag whose mouseup was
+      // missed. macOS can send one just before the mouseup that ends a drag,
+      // so a drop that is ready is left for the mouseup.
+      if (!e.buttons) {
+        if (!pendingMove && (dragging || dragTargetId)) stopDragging();
+        return;
       }
       if (!dragTargetId) {
         return;
