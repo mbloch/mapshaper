@@ -7906,11 +7906,20 @@
         }
 
         if (e.deleteVertex || e.deletePoint || copyable || e.deleteFeature ||
-            e.flipLabel || e.boldText) {
+            e.flipLabel || e.boldText || e.copyStyle || e.pasteStyle) {
 
           addMenuLabel('actions');
           if (e.boldText) {
             addMenuItem(e.boldText.label, e.boldText.run);
+          }
+          if (e.copyStyle) {
+            addMenuItem('copy style', e.copyStyle);
+          }
+          // the count says how many objects the paste reaches, when it is more
+          // than the one pointed at
+          if (e.pasteStyle) {
+            addMenuItem('paste style' + (e.pasteStyle.count > 1 ?
+              getCountHtml(e.pasteStyle.count) : ''), e.pasteStyle.run);
           }
           if (e.deleteVertex) {
             addMenuItem('delete vertex', e.deleteVertex);
@@ -11715,7 +11724,15 @@
       if (!GUI.isActiveInstance(gui) || e.repeat && e.keyCode == SPACE) return;
       updateControlKeys(e, 'keydown');
       self.dispatchEvent('keydown', getEventData(e));
+      // The editing tools that have something to select take Cmd-A first. Anywhere
+      // else, the browser's own select-all would select the text of the whole
+      // page -- panels, menus, the console -- which is never what it means here.
+      // In a text field it selects the field's text, as it does everywhere.
+      if (isSelectAllKey(e) && !e.defaultPrevented && !focusIsInTextField()) {
+        e.preventDefault();
+      }
     });
+
 
     document.addEventListener('mousemove', function(e) {
       // refreshing these here to prevent problems when context menu opens
@@ -11751,6 +11768,30 @@
     39: 'right',
     40: 'down'
   };
+
+  // Cmd-A on a Mac, Ctrl-A elsewhere. Read from the key rather than the keyCode,
+  // as undo and redo are.
+  //   evt: a native keyboard event
+  function isSelectAllKey(evt) {
+    if (!evt || !(evt.metaKey || evt.ctrlKey) || evt.shiftKey || evt.altKey) return false;
+    return (evt.key || '').toLowerCase() == 'a';
+  }
+
+  // Whether the keyboard is typing into a text field -- the console's command
+  // line, a panel's field, a label being edited -- where Cmd-A selects the
+  // field's text, as it does anywhere else
+  function focusIsInTextField() {
+    var el = document.activeElement;
+    if (!el) return false;
+    if (el.isContentEditable || el.nodeName == 'TEXTAREA') return true;
+    return el.nodeName == 'INPUT' &&
+      !/^(button|checkbox|radio|submit|range|color|file)$/.test(el.type);
+  }
+
+  // Cmd-A that selects objects in an editing tool, rather than text in a field
+  function isSelectAllObjectsKey(evt) {
+    return isSelectAllKey(evt) && !focusIsInTextField();
+  }
 
   function getEventData(originalEvent) {
     var keyCode = originalEvent.keyCode;
@@ -15602,617 +15643,6 @@
     return true;
   }
 
-  // The style the label tool gives to the next label it creates.
-  //
-  // The style panel is worth having open before there is anything to point it at:
-  // pick a font, then place labels in it. Values set with nothing selected are
-  // held here rather than written to a layer, and -labels coordinates= writes them when a
-  // label finally exists -- so this is a tool default, not data, and it never
-  // needs its own undo step.
-  //
-  // See docs/development/label-tool-design.md.
-
-  // The style properties -labels accepts. A panel control whose property is
-  // missing from this list would appear to do nothing when set with no selection,
-  // so the list is checked rather than assumed.
-  var NEW_LABEL_STYLE_FIELDS = [
-    'font-family', 'font-size', 'font-style', 'font-weight', 'font-stretch',
-    'letter-spacing', 'line-height', 'text-anchor', 'label-align',
-    'dominant-baseline',
-    'label-pos', 'label-side', 'label-start-offset', 'dx', 'dy',
-    'fill', 'opacity', 'css', 'class',
-    'label-background', 'label-background-opacity', 'label-padding',
-    'halo-width', 'halo-color', 'halo-opacity',
-    'icon', 'icon-size', 'icon-sides', 'icon-color', 'icon-fill', 'icon-stroke',
-    'icon-stroke-width', 'icon-opacity',
-    // not callout-via or callout-attach, which are placed for one label's
-    // surroundings rather than chosen as a style
-    'callout', 'callout-end', 'callout-end-size', 'callout-color', 'callout-opacity', 'callout-width',
-    'callout-gap'
-  ];
-
-  // values: [[field, value], ...], the form the panel's controls produce
-  // Returns a new object, leaving the original alone.
-  //
-  // A blank or zero value removes the field instead of setting it: that is how
-  // the panel says "no icon" (icon='', icon-size=0) and "no inline css", and
-  // carrying those through to -labels would write properties that mean
-  // nothing.
-  function mergeStyleValues(style, values) {
-    var out = Object.assign({}, style);
-    (values || []).forEach(function(pair) {
-      var field = pair[0];
-      var value = pair[1];
-      if (NEW_LABEL_STYLE_FIELDS.indexOf(field) == -1) return;
-      if (!value && value !== false) {
-        delete out[field];
-      } else {
-        out[field] = value;
-      }
-    });
-    return out;
-  }
-
-  // What the tool gives a label before anything has been chosen for it.
-  //
-  // A label with no position at all sits with its baseline on its anchor point,
-  // so the point lands at the foot of the text rather than in it: click a spot,
-  // type, and the words appear above the place they are about to be read as
-  // marking. 'c' centres the text on the anchor instead, which is what clicking
-  // somewhere and typing looks like it should do, and it is the position an icon
-  // is drawn to sit behind.
-  //
-  // Only the tool defaults this. -labels coordinates= with no position still creates a
-  // label without one, so the default is a choice this tool makes and passes on
-  // explicitly, not a meaning the command gives to its absence.
-  var DEFAULT_NEW_LABEL_STYLE = {'label-pos': 'c'};
-
-  function getNewLabelStyle(gui) {
-    if (!gui.state.new_label_style) {
-      gui.state.new_label_style = Object.assign({}, DEFAULT_NEW_LABEL_STYLE);
-    }
-    return gui.state.new_label_style;
-  }
-
-  function updateNewLabelStyle(gui, values) {
-    gui.state.new_label_style = mergeStyleValues(getNewLabelStyle(gui), values);
-    return gui.state.new_label_style;
-  }
-
-  function clearNewLabelStyle(gui) {
-    gui.state.new_label_style = null;
-  }
-
-  // What a two-state control shows for a group of labels: 'on', 'off', or
-  // 'mixed' when they disagree.
-  //
-  // The panel's other controls say "they disagree" by showing nothing -- an empty
-  // select, an unlit button, a blank field. A switch has no empty state to fall
-  // back on, so it needs a third one named here.
-  //
-  // flags: one truthy/falsy value per label, in any order
-  function getToggleState(flags) {
-    var on = 0;
-    var i;
-    for (i = 0; i < flags.length; i++) {
-      if (flags[i]) on++;
-    }
-    if (on === 0) return 'off';
-    return on == flags.length ? 'on' : 'mixed';
-  }
-
-  // What a drag on a label's glyphs means: 'fixed' moves the label, anchor and
-  // text together, and 'draggable' leaves the anchor where it is and offsets the
-  // text from it.
-  //
-  // A question that has to be answered somewhere, and answering it with a mode
-  // rather than by hit priority is what keeps a centred label -- whose text sits
-  // on top of its own anchor -- grabbable at all.
-  //
-  // It belongs to the tool and not to the label. Which segment is lit cannot be
-  // derived from a record: a label with label-pos=ne can be dragged or not, and
-  // one that has been dragged stays dragged when the toggle goes back to Fixed.
-  // A per-label "locked" flag would be a field nothing else reads and one more
-  // column in -o out.csv.
-  //
-  // Fixed on entry, so that a stray drag cannot displace text in a session that
-  // never asked for it, and remembered while the tool stays on.
-  //
-  // Text blocks keep a mode of their own, which starts out Draggable. A block is
-  // usually an annotation set off from the point it is about, and is placed by
-  // dragging it away from its anchor; point text more often sits where its
-  // position puts it and is moved as a whole.
-  //
-  // @kind: 'point' (the default) or 'block' -- see getLabelPositionKind()
-  var LABEL_POSITION_MODES = ['fixed', 'draggable'];
-
-  var DEFAULT_POSITION_MODES = {point: 'fixed', block: 'draggable'};
-
-  function getLabelPositionMode(gui, kind) {
-    var k = kind == 'block' ? 'block' : 'point';
-    var modes = gui.state.label_position_modes || {};
-    return modes[k] || DEFAULT_POSITION_MODES[k];
-  }
-
-  // With no @kind, sets both kinds: 'fixed' puts point text in Fixed mode and
-  // blocks back to their own default, which is what the tool does on entry.
-  function setLabelPositionMode(gui, mode, kind) {
-    var modes = gui.state.label_position_modes || {};
-    var val = LABEL_POSITION_MODES.indexOf(mode) > -1 ? mode : 'fixed';
-    if (kind) {
-      modes[kind == 'block' ? 'block' : 'point'] = val;
-    } else {
-      modes = {point: val, block: DEFAULT_POSITION_MODES.block};
-    }
-    gui.state.label_position_modes = modes;
-    // The panel's toggle and the tool's drag both read this, and neither owns the
-    // other; the panel also has to relight the grid, whose cells mean something
-    // different in each mode.
-    gui.dispatchEvent('label_position_mode_change');
-  }
-
-  function labelTextIsDraggable(gui, kind) {
-    return getLabelPositionMode(gui, kind) == 'draggable';
-  }
-
-  // Which position mode governs a label: 'block' for a text block (a label with
-  // a wrap width), 'point' for any other.
-  function getLabelPositionKind(rec) {
-    var w = rec ? Number(rec['label-width']) : 0;
-    return w > 0 && isFinite(w) ? 'block' : 'point';
-  }
-
-  // The label currently open for text editing, or null: {id, refocus}.
-  //
-  // Two modules need it and neither owns the other. The editor needs to say
-  // which label the caret is in, because a label is usually styled while it is
-  // being typed into -- you place one, then set its font and position with the
-  // text still empty -- and the panel would otherwise be pointed at "the next
-  // label" and leave the one on screen unstyled. The panel needs @refocus to put
-  // the caret back after a control that takes focus, such as the font menu, so
-  // that typing carries on where it left off.
-  //
-  // This is the live session only, set when it opens and cleared when it closes.
-  // It is not a memory of the last label edited: a panel that keeps acting on a
-  // label the user has finished with is the bug this replaced.
-  function setLabelTextSession(gui, session) {
-    gui.state.label_text_session = session || null;
-    // The panel's controls and its "Editing:" line both read the session, so it
-    // has to hear about one opening or closing -- neither is a map redraw or a
-    // selection change, which are the events it already watches.
-    gui.dispatchEvent('label_text_session_change');
-  }
-
-  function getLabelTextSession(gui) {
-    return gui.state.label_text_session || null;
-  }
-
-  // The label tool's armed placement tool: 'anchor', 'block', 'path' or null.
-  // The tool owns it; the panel reads it, because an armed tool with nothing
-  // selected is what points the panel at new labels rather than at all of them.
-  function setLabelToolArmed(gui, mode) {
-    var val = mode || null;
-    if ((gui.state.label_tool_armed || null) === val) return;
-    gui.state.label_tool_armed = val;
-    gui.dispatchEvent('label_tool_armed_change');
-  }
-
-  function getLabelToolArmed(gui) {
-    return gui.state.label_tool_armed || null;
-  }
-
-  // The "Editing:" line at the top of the style panels, which says what a
-  // change to the panel's controls will act on. One wording for every panel.
-  //
-  // o.selected     how many features are selected
-  // o.total        how many features the layer has
-  // o.newLabels    (label panel) a placement tool is armed with nothing
-  //                selected, so the controls set the style of the next label
-  // o.editingText  (label panel) a label is open for typing
-  // o.newShapes    (line, polygon and symbol panels) drawing is armed, so the
-  //                controls set the style of the next shape: 'lines',
-  //                'polygons', 'icons' or 'curves'
-  function formatEditingStatus(o) {
-    var what = o.editingText ? 'this label' :
-      o.selected > 0 ? o.selected + ' selected' :
-      o.newLabels ? 'new labels' :
-      o.newShapes ? 'new ' + o.newShapes :
-      o.total > 0 ? 'all' : 'none (empty layer)';
-    return 'Editing: ' + what;
-  }
-
-  // Dragging an anchored label's text away from its anchor: what the drag
-  // writes, and which of the nine positions it ends up nearest.
-  //
-  // A drag does not store a delta. resolveLabelPosition() falls back per
-  // property rather than summing, so `label-pos=e dx=3` means "east's dy and
-  // justification, with dx overridden to 3px" and not "3px east of east" -- a
-  // bare delta would teleport the text to its anchor on the first pixel of
-  // movement. So a drag materializes the offsets the label is drawn with, adds
-  // its own movement to them, and drops the position: from then on the label
-  // carries the numbers rather than a name for them.
-  //
-  // The awkward part is text-anchor, which decides both where the block of text
-  // sits relative to dx and how a moving label reads. Text dragged to the left
-  // of its anchor should be right-justified, so that growing the font or the
-  // text extends it away from the point it labels rather than across it -- which
-  // is what the legacy positioning mode did, and the reason the export font not
-  // being the browser's does not pull the label back over its symbol. Changing
-  // the anchor moves the block by half or all of its own width, so dx has to be
-  // re-expressed against the new anchor in the same breath, which is what makes
-  // this arithmetic rather than a rule.
-  //
-  // Everything here works in the label's own coordinate space -- the space
-  // inside its symbol group, which is what dx and dy are measured in -- so the
-  // caller divides pointer movement by the symbol scale on the way in.
-  //
-  // See docs/development/label-tool-design.md.
-
-  // How far to the left of x the block of text sits, as a fraction of its width.
-  var anchorOffsets = {start: 0, middle: 0.5, end: 1};
-
-  // How far the text's centre has to be from the anchor, as a fraction of the
-  // text's own width, before it counts as being to one side of it. A quarter of
-  // the width is the legacy mode's threshold: the middle band is wide enough
-  // that text dragged straight up or down stays centred, which is the thing a
-  // user placing a label above a dot is most likely to be doing.
-  var SIDE_THRESHOLD = 0.25;
-
-  // Tenths of a pixel. A drag produces an offset per mouse move and the
-  // serializer prints what it is given, so a label dragged by hand would
-  // otherwise carry -12.699999999999999 into the user's data. A tenth of a pixel
-  // is finer than the gesture can resolve and finer than the map can draw.
-  var PRECISION = 10;
-
-  // The offset and justification a drag writes.
-  //
-  // start: {dx, dy, anchor, width, aligned}
-  //   dx, dy:  the offsets the label is drawn at, in px
-  //   anchor:  the justification it is drawn with
-  //   width:   the width of its text, in the same space; 0 if unmeasurable
-  //   aligned: whether it carries a label-align (see below)
-  //   keepAnchor: (optional) leave the justification alone, for a text block:
-  //     its lines are laid out within a column, and re-justifying them as the
-  //     block passes its anchor would rearrange the text rather than move it
-  // delta: {dx, dy} -- how far the pointer has moved, in the same space.
-  //
-  // Returns two descriptions of the same placement:
-  //
-  //   dx, dy, text-anchor:  what the drag writes to the record. The three have to
-  //     be written together: applying dx without its text-anchor moves the text
-  //     by half its own width or by all of it.
-  //   x, anchor:  where the text sits and how it is justified while it is drawn,
-  //     which is what the preview writes onto the rendered label. The same as
-  //     dx and text-anchor except on an aligned label, whose stored offset is
-  //     measured against a justification it is not drawn with.
-  function getOffsetDragValues(start, delta) {
-    var width = start.width > 0 ? start.width : 0;
-    var drawnAnchor = normalizeAnchor(start.anchor);
-    // The left edge of the text is what the pointer is actually moving, and the
-    // one part of the block that does not depend on the anchor. Working from it
-    // is what lets the anchor change mid-drag without the text jumping: the edge
-    // stays where the pointer put it, and dx is whatever expresses that edge
-    // against the anchor the text has ended up with.
-    var left = start.dx + delta.dx - anchorOffsets[drawnAnchor] * width;
-    // A label that carries a label-align has already answered the justification
-    // question, and text-anchor is not the drag's to change: the renderer honours
-    // the alignment over any text-anchor on the record, and corrects x by the
-    // width of the block to hold it still while its lines re-justify. Against
-    // that correction, 'start' is the one text-anchor whose dx is the left edge
-    // itself -- which is also the value that would leave the label where it is
-    // if the alignment were later removed.
-    var anchor = start.aligned ? 'start' : start.keepAnchor ? drawnAnchor :
-      width > 0 ? getAnchorForCentre(left + width / 2, width) : drawnAnchor;
-    // An aligned label goes on being drawn with the anchor its alignment gives
-    // it, whatever the drag writes: the alignment is unchanged, so the renderer
-    // will justify it the same way afterwards. Drawing it as 'start' instead
-    // would slide the text right by half its width or by all of it for the
-    // length of the drag, and drop it back on release.
-    var drawn = start.aligned ? drawnAnchor : anchor;
-    return {
-      dx: round$2(left + anchorOffsets[anchor] * width),
-      dy: round$2(start.dy + delta.dy),
-      'text-anchor': anchor,
-      x: round$2(left + anchorOffsets[drawn] * width),
-      anchor: drawn
-    };
-  }
-
-  // Which side of its anchor the text has ended up on, by where its centre is.
-  // @centre and @width are in the same units; @width is known to be non-zero.
-  function getAnchorForCentre(centre, width) {
-    var pct = centre / width;
-    if (pct < -SIDE_THRESHOLD) return 'end';
-    if (pct > SIDE_THRESHOLD) return 'start';
-    return 'middle';
-  }
-
-  // Where the middle of a label's text sits relative to its anchor, given the
-  // offset and justification it is drawn with. Two offsets are only comparable
-  // through this: dx=-5 means the text is left of the anchor when it is
-  // right-justified and right of it when it is not.
-  function getTextCentreOffset(dx, anchor, width) {
-    return dx + (0.5 - anchorOffsets[normalizeAnchor(anchor)]) * (width > 0 ? width : 0);
-  }
-
-  // The name of the nearest candidate to @point, or '' if there are none.
-  //
-  // candidates: [{name, x, y}, ...]
-  // point: {x, y}
-  //
-  // Used for the position the grid marks faintly under a label that has been
-  // dragged: no cell is lit, because the label carries offsets rather than a
-  // position, but one of the nine is roughly where it is and clicking it is the
-  // way back.
-  function getNearestPosition(point, candidates) {
-    var best = '';
-    var bestDist = Infinity;
-    (candidates || []).forEach(function(o) {
-      var dx = o.x - point.x;
-      var dy = o.y - point.y;
-      var dist = dx * dx + dy * dy;
-      if (dist < bestDist) {
-        bestDist = dist;
-        best = o.name;
-      }
-    });
-    return best;
-  }
-
-  // An unset text-anchor is 'start', which is both the SVG default and what an
-  // unpositioned label is drawn with.
-  function normalizeAnchor(anchor) {
-    return anchor in anchorOffsets ? anchor : 'start';
-  }
-
-  function round$2(px) {
-    return Math.round(px * PRECISION) / PRECISION;
-  }
-
-  // Wrapping a text block to its label-width, with the browser's own line
-  // breaker.
-  //
-  // There is no API that reports where a browser breaks lines, so the text is
-  // laid out in an offscreen <div> at the label's width and font, and read back:
-  // Range.getClientRects() gives each character's line box, and a character
-  // sitting lower than the one before it starts a line. Everything the browser
-  // knows about line breaking -- UAX #14 classes, breaks after hyphens, none at
-  // no-break spaces, CJK, dictionary breaking for Thai -- comes with it.
-  //
-  // The font is read back from a rendered sample of the label rather than
-  // assembled from the record, so that the layer's defaults and any inline css
-  // apply exactly as they do on the map.
-  //
-  // See docs/development/text-annotation-design.md.
-
-  // Properties that change where lines break, and so the ones a change to which
-  // has to rewrap a text block.
-  var WRAP_FIELDS = ['label-width', 'font-family', 'font-size',
-    'font-weight', 'font-style', 'font-stretch', 'letter-spacing', 'css'];
-
-  var COPIED_STYLES = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle',
-    'fontStretch', 'fontVariant', 'fontKerning', 'fontFeatureSettings',
-    'fontVariationSettings', 'letterSpacing', 'wordSpacing', 'textTransform'];
-
-  // Lines are laid out far apart, so that a character in a fallback font sitting
-  // a little higher or lower than its neighbours is not mistaken for a new line.
-  var LINE_HEIGHT = 3;
-
-  var CACHE_LIMIT = 2000;
-  var cache$2 = new Map();
-  var wrapper = null;
-
-  // The label's width in px, or 0 for a label that does not wrap.
-  function getLabelWrapWidth(rec) {
-    var w = rec ? Number(rec['label-width']) : 0;
-    return w > 0 && isFinite(w) ? w : 0;
-  }
-
-  // Offsets into @text (real newlines, no soft breaks) where a line starts
-  // because it was wrapped, in ascending order.
-  //
-  // @bold: the text's bold stretches, as [start, end) offsets into it. A bold
-  // word is wider, so it moves the breaks.
-  function getSoftBreaks(text, rec, bold) {
-    var width = getLabelWrapWidth(rec);
-    var key, breaks;
-    if (!width || !text) return [];
-    bold = bold || [];
-    key = getWrapKey(text, rec, bold);
-    if (cache$2.has(key)) return cache$2.get(key);
-    breaks = measureSoftBreaks(text, rec, width, bold);
-    if (cache$2.size >= CACHE_LIMIT) cache$2.clear();
-    cache$2.set(key, breaks);
-    return breaks;
-  }
-
-  // A stored label-text value, rewrapped for @rec's width and font. Returned
-  // unchanged when neither the old value nor the new one has a soft break, so
-  // that a label that does not wrap keeps the line breaks it was written with.
-  function rewrapLabelValue(value, rec) {
-    var o = readLabelValue(value);
-    var breaks = getSoftBreaks(o.text, rec, o.bold);
-    if (sameSoftBreaks(o.breaks, breaks)) return value;
-    return encodeLabelText(writeLabelValue(o.text, breaks, o.bold));
-  }
-
-  function clearWrapCache() {
-    cache$2.clear();
-  }
-
-  function getWrapKey(text, rec, bold) {
-    var parts = [text];
-    WRAP_FIELDS.forEach(function(name) {
-      var val = rec[name];
-      parts.push(val === null || val === undefined ? '' : String(val));
-    });
-    parts.push(rec['class'] || '');
-    parts.push(bold.join(';'));
-    return parts.join('\u0000');
-  }
-
-  function measureSoftBreaks(text, rec, width, bold) {
-    var w = getWrapper();
-    var style, fontSize, pieces, range;
-    if (!w) return [];
-    style = getLabelFontStyle(w, rec);
-    if (!style) return [];
-    COPIED_STYLES.forEach(function(name) {
-      w.div.style[name] = style[name] || '';
-    });
-    w.div.style.width = width + 'px';
-    pieces = writeRuns(w.div, text, bold);
-    fontSize = parseFloat(style.fontSize) || 12;
-    range = document.createRange();
-    var breaks = findSoftBreaks(text, function(i) {
-      var piece = findPiece(pieces, i);
-      var end = isHighSurrogate(text.charCodeAt(i)) ? i + 2 : i + 1;
-      var r;
-      range.setStart(piece.node, i - piece.start);
-      range.setEnd(piece.node, Math.min(end, piece.end) - piece.start);
-      r = range.getBoundingClientRect();
-      return r.height > 0 ? r.top : null;
-    }, fontSize * LINE_HEIGHT / 2);
-    w.div.textContent = '';
-    return breaks;
-  }
-
-  // Lays @text out in @div a run at a time, the bold ones in bold spans, and
-  // returns each run's text node with the offsets it covers: [{node, start,
-  // end}]. Offsets in the text become offsets in one of these nodes.
-  function writeRuns(div, text, bold) {
-    var pos = 0;
-    div.textContent = '';
-    return internal.svg.getBoldRuns(text, bold, 0, text.length).map(function(run) {
-      var node = document.createTextNode(run.text);
-      var span;
-      if (run.bold) {
-        span = document.createElement('span');
-        span.style.fontWeight = internal.svg.LABEL_BOLD_WEIGHT;
-        span.appendChild(node);
-        div.appendChild(span);
-      } else {
-        div.appendChild(node);
-      }
-      pos += run.text.length;
-      return {node: node, start: pos - run.text.length, end: pos};
-    });
-  }
-
-  function findPiece(pieces, i) {
-    for (var j = 0; j < pieces.length; j++) {
-      if (i < pieces[j].end) return pieces[j];
-    }
-    return pieces[pieces.length - 1];
-  }
-
-  function isHighSurrogate(c) {
-    return c >= 0xD800 && c <= 0xDBFF;
-  }
-
-  // The computed font of @rec's label, from a sample rendered by the same code
-  // as the map, inside the defaults a label inherits from its layer's group.
-  function getLabelFontStyle(w, rec) {
-    var sample = Object.assign({}, rec, {'label-text': 'x'});
-    var node, cs, out;
-    delete sample['label-align'];
-    w.svg.innerHTML = internal.svg.stringify({
-      tag: 'g',
-      properties: internal.getLabelTextDefaults(),
-      children: [internal.svg.renderStyledLabel(sample)]
-    });
-    node = w.svg.querySelector('text');
-    if (!node) return null;
-    cs = window.getComputedStyle(node);
-    out = {};
-    COPIED_STYLES.forEach(function(name) {
-      out[name] = cs[name];
-    });
-    w.svg.innerHTML = '';
-    return out;
-  }
-
-  // Positioned off the page rather than hidden with display:none, which gives an
-  // element no layout and its text no lines.
-  function getWrapper() {
-    var box, div, svg;
-    if (wrapper) return wrapper;
-    if (typeof document == 'undefined') return null;
-    box = document.createElement('div');
-    box.setAttribute('class', 'label-wrap-measure');
-    box.setAttribute('aria-hidden', 'true');
-    div = document.createElement('div');
-    div.style.whiteSpace = 'pre-wrap';
-    div.style.overflowWrap = 'break-word';
-    div.style.lineHeight = String(LINE_HEIGHT);
-    div.style.padding = '0';
-    div.style.border = '0';
-    div.style.boxSizing = 'content-box';
-    svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    box.appendChild(div);
-    box.appendChild(svg);
-    document.body.appendChild(box);
-    wrapper = {div: div, svg: svg};
-    return wrapper;
-  }
-
-  // Default sizes of the label tool's anchor symbols, which differ by shape: a
-  // star or a ring at the size of a circle reads as smaller. Colors follow the
-  // shape through getIconPaintChange() in gui-icon-shapes.mjs.
-  var iconDefaults = {
-    circle: {size: 5},
-    square: {size: 5},
-    triangle: {size: 8},
-    star: {size: 8},
-    ring: {size: 8},
-    'nyt-star': {size: 14},
-    'nyt-target': {size: 14},
-    'nyt-target2': {size: 16}
-  };
-  var fallbackSize = 5;
-
-  function getDefaultIconSize(shape) {
-    var o = iconDefaults[shape];
-    return o ? o.size : fallbackSize;
-  }
-
-  // The icon-size to write when labels whose symbol is @prevShape ('' for none,
-  // or for a selection of mixed shapes) are given @shape, from the @size they
-  // share. A missing size is '' or 0.
-  //
-  // A size that is the old shape's default follows the shape to its own
-  // default, and a size the user chose is kept -- so switching shapes resizes a
-  // symbol nobody sized, and never undoes a size somebody set.
-  function getIconShapeChange(shape, prevShape, size) {
-    var sizeVal = Number(size);
-    if (!(sizeVal > 0) || prevShape && sizeVal == getDefaultIconSize(prevShape)) {
-      return {size: getDefaultIconSize(shape)};
-    }
-    return {size: sizeVal};
-  }
-
-  // Features offered only to people at The New York Times, who are the ones with
-  // its NYTFranklin typeface installed. This is a convenience, not access
-  // control: anything gated here must still render for everyone, because a map
-  // made with it can be opened anywhere.
-  //
-  // ?nyt=on or ?nyt=off in the page URL overrides the check, so that the gated
-  // features can be tested (and hidden) on any machine.
-  var NYT_FONT = 'NYTFranklin';
-  var cached;
-
-  function isNytUser() {
-    if (cached === undefined) cached = detectNytUser();
-    return cached;
-  }
-
-  function detectNytUser() {
-    var flag = GUI.getUrlVars().nyt;
-    if (flag == 'on' || flag === true) return true;
-    if (flag == 'off' || flag === false) return false;
-    return isInstalledFont(NYT_FONT);
-  }
-
   // The icon shapes the label panel and the symbol panel offer, and how each is
   // recognized in and written to a record. One list, so that a label's icon and
   // a hand-placed symbol are chosen from the same shapes, drawn the same way on
@@ -16498,6 +15928,1181 @@
 
   function isNumber$2(val) {
     return hasValue$1(val) && isFinite(Number(val));
+  }
+
+  // The symbol panel's model of a symbol's style, and how it maps to the fields
+  // -symbols writes. Pure functions, so that they can be tested without a map.
+  //
+  // The shapes are the label panel's (gui-icon-shapes.mjs), and a symbol's size
+  // is its icon-size, as it is a label icon's -- except for a circle, which is
+  // drawn by r= so that a layer of circles takes the fast canvas path, and
+  // whose size is 2r.
+  //
+  // See docs/development/symbol-tool-design.md.
+
+  // Which ends of a curve have a head. The heads themselves are the ones the
+  // layer panel gives lines (see gui-arrowhead-shapes.mjs): one shape for both
+  // ends, as there.
+  var ARROWHEAD_POSITIONS = [
+    {name: 'none', label: 'None', title: 'no arrowheads'},
+    {name: 'start', label: 'Start', title: 'an arrowhead at the start of the curve'},
+    {name: 'end', label: 'End', title: 'an arrowhead at the end of the curve'},
+    {name: 'both', label: 'Both', title: 'arrowheads at both ends of the curve'}
+  ];
+
+  // The color a symbol is placed in until the panel is given another
+  var DEFAULT_SYMBOL_COLOR = '#333333';
+
+  // A symbol's paint is {fill, stroke, strokeWidth}: colors, '' for none, and a
+  // width that only counts with a stroke (see getShownIconPaint()).
+  function getDefaultIconStyle() {
+    return {shape: 'circle', size: 10, fill: DEFAULT_SYMBOL_COLOR, stroke: '',
+      strokeWidth: 0, rotation: 0};
+  }
+
+  function getDefaultCurveStyle() {
+    // arrowSize: '' for the size the stroke width gives a head; fade, taper: 0-1
+    return {stroke: DEFAULT_SYMBOL_COLOR, strokeWidth: 1.5, arrowheads: 'end',
+      arrowShape: 'arrow', arrowSize: '', fade: 0, taper: 0, fill: ''};
+  }
+
+  // Whether a shape takes a stroke width and a rotation. A circle or a ring
+  // looks the same however it is turned. The NYT icons are drawn as their
+  // artwork is, upright, with lines of their own weight.
+  function shapeHasStrokeWidth(shape) {
+    return getIconShapePaint(shape) != 'nyt';
+  }
+
+  function shapeHasRotation(shape) {
+    return shape != 'circle' && shape != 'ring' && getIconShapePaint(shape) != 'nyt';
+  }
+
+  // The paint a symbol of @shape shows after changing from @prevShape, from
+  // @paint (see getShapeChangePaint())
+  function getShapeChangeStyle(shape, prevShape, paint) {
+    return getShapeChangePaint(shape, prevShape, paint, DEFAULT_SYMBOL_COLOR);
+  }
+
+  // -symbols options for an icon placed with @style. -symbols radius= reaches
+  // a square's corners, so a square's is its side over root 2 -- to four
+  // places, which -symbols' own rounding of the side to hundredths brings back
+  // to the size asked for.
+  //
+  // A missing fill or stroke is whatever the shape has without one: -symbols
+  // fills a filled shape with a default color, so its "none" is said; a ring
+  // has no fill, and a ring or NYT icon given no stroke= would be drawn in its
+  // fill, so their "none" is said too.
+  function getAddIconOptions(style) {
+    var o = {};
+    var shape = style.shape || 'circle';
+    var kind = getIconShapePaint(shape);
+    var stroked = !!style.stroke && (kind == 'nyt' || style.strokeWidth > 0);
+    if (shape == 'triangle') {
+      o.type = 'polygon';
+      o.sides = 3;
+    } else {
+      o.type = shape;
+    }
+    o.radius = shape == 'square' ? Math.round(style.size / Math.SQRT2 * 1e4) / 1e4 :
+      round$2(style.size / 2);
+    if (style.fill) {
+      o.fill = style.fill;
+    } else if (kind != 'stroke') {
+      o.fill = 'none';
+    }
+    if (stroked) {
+      o.stroke = style.stroke;
+      if (kind != 'nyt') o['stroke-width'] = style.strokeWidth;
+    } else if (kind != 'fill') {
+      o.stroke = 'none';
+    }
+    if (style.rotation && shapeHasRotation(shape)) o.rotation = style.rotation;
+    return o;
+  }
+
+  // -symbols options for a curve drawn with @style.
+  function getAddCurveOptions(style, closed) {
+    var o = {type: 'curve'};
+    var heads = getArrowheadFields(closed ? 'none' : style.arrowheads, style.arrowShape);
+    if (style.stroke) o.stroke = style.stroke;
+    if (style.strokeWidth >= 0) o['stroke-width'] = style.strokeWidth;
+    if (heads['line-start']) o['line-start'] = heads['line-start'];
+    if (heads['line-end']) o['line-end'] = heads['line-end'];
+    if ((heads['line-start'] || heads['line-end']) && style.arrowSize > 0) {
+      o['line-end-size'] = style.arrowSize;
+    }
+    if (!closed && style.fade > 0) o['line-fade'] = style.fade;
+    if (!closed && style.taper > 0) o['line-taper'] = style.taper;
+    if (closed && style.fill) o.fill = style.fill;
+    return o;
+  }
+
+  // The panel's shape for a symbol's record, or null for a symbol whose shape
+  // the panel does not offer (a pie, a hexagon, concentric rings).
+  function getIconShape(rec) {
+    return getIconShapeName(rec);
+  }
+
+  function getIconSize(rec) {
+    if (!getIconShape(rec)) return null;
+    if (!rec.icon) return round$2(Number(rec.r) * 2);
+    return isNumber$1(rec['icon-size']) ? round$2(Number(rec['icon-size'])) : null;
+  }
+
+  function getIconPaint(rec) {
+    return getShownIconPaint(rec || {}, getIconShape(rec), '#000000');
+  }
+
+  function getIconRotation(rec) {
+    return rec && isNumber$1(rec['icon-rotation']) ? Number(rec['icon-rotation']) : 0;
+  }
+
+  // The panel style ({shape, size, fill, stroke, strokeWidth, rotation}) of the
+  // symbol in @rec, or null for a symbol whose shape the panel does not offer
+  function getIconStyle(rec) {
+    var shape = getIconShape(rec);
+    var paint;
+    if (!shape) return null;
+    paint = getIconPaint(rec);
+    return {shape: shape, size: getIconSize(rec) || getDefaultIconStyle().size,
+      fill: paint.fill, stroke: paint.stroke, strokeWidth: paint.strokeWidth,
+      rotation: getIconRotation(rec)};
+  }
+
+  // -symbols options that make the symbol in @rec again with the panel style
+  // @style: the panel restyles a symbol with -symbols ids=, which replaces all
+  // of a symbol's fields.
+  //
+  // -symbols leaves a circle's stroke= on a point that becomes another shape,
+  // and the icon's stroke falls back to it, so no stroke is said, as "none".
+  // What the panel has no control for is carried over: an icon's opacity, and a
+  // star's number of points.
+  function getRestyleIconOptions(rec, style) {
+    var o = getAddIconOptions(style);
+    if (!('stroke' in o)) o.stroke = 'none';
+    if (style.shape == 'star' && isNumber$1(rec['icon-points'])) o.points = Number(rec['icon-points']);
+    if (isNumber$1(rec['icon-opacity'])) o.opacity = Number(rec['icon-opacity']);
+    return o;
+  }
+
+  function getCurveStyle(rec) {
+    return {
+      stroke: rec.stroke || '',
+      strokeWidth: isNumber$1(rec['stroke-width']) ? Number(rec['stroke-width']) : 1,
+      arrowheads: getArrowheadPosition(rec),
+      arrowShape: getArrowheadShape(rec),
+      arrowSize: isNumber$1(rec['line-end-size']) && rec['line-end-size'] > 0 ?
+        Number(rec['line-end-size']) : '',
+      fade: isNumber$1(rec['line-fade']) && rec['line-fade'] > 0 ? Math.min(Number(rec['line-fade']), 1) : 0,
+      taper: isNumber$1(rec['line-taper']) && rec['line-taper'] > 0 ? Math.min(Number(rec['line-taper']), 1) : 0,
+      fill: rec.fill || ''
+    };
+  }
+
+  // Whether a curve's shape ends where it began, which closes it
+  function curveShapeIsClosed(shp) {
+    var last = shp ? shp.length - 1 : 0;
+    return last > 2 && shp[0][0] == shp[last][0] && shp[0][1] == shp[last][1];
+  }
+
+  // 'none', 'start', 'end' or 'both'
+  function getArrowheadPosition(rec) {
+    var start = hasMarker(rec['line-start']);
+    var end = hasMarker(rec['line-end']);
+    if (start && end) return 'both';
+    if (start) return 'start';
+    if (end) return 'end';
+    return 'none';
+  }
+
+  // The shape of a curve's heads -- the start's, if the ends differ -- or ''
+  // for none
+  function getArrowheadShape(rec) {
+    var start = rec['line-start'];
+    var end = rec['line-end'];
+    return hasMarker(start) ? start : hasMarker(end) ? end : '';
+  }
+
+  // line-start= and line-end= for an arrowhead position and shape (default
+  // 'arrow'), with '' for no marker
+  function getArrowheadFields(position, shape) {
+    var head = shape || 'arrow';
+    return {
+      'line-start': position == 'start' || position == 'both' ? head : '',
+      'line-end': position == 'end' || position == 'both' ? head : ''
+    };
+  }
+
+  function hasMarker(val) {
+    return !!val && val != 'none';
+  }
+
+  function isNumber$1(val) {
+    return val !== '' && val !== null && val !== undefined && isFinite(Number(val));
+  }
+
+  function round$2(n) {
+    return Math.round(n * 100) / 100;
+  }
+
+  // A numbered marker -- a circle or square with a number or letter centred in
+  // it -- as the symbol panel models it. In the data it is one label record:
+  // label-text, label-pos=c and the text's font and fill, with the symbol behind
+  // it in icon=, icon-size=, icon-fill= and the rest. The symbol panel restyles
+  // its symbol with -symbols ids=, which keeps the text, and its text with
+  // -labels ids=. Pure functions, so that they can be tested without a map.
+  //
+  // See docs/development/symbol-tool-design.md.
+
+  // The shapes a marker can have: the ones with room in the middle for text
+  var MARKER_SHAPES = ['circle', 'square'];
+
+  // A symbol given text at a size too small for it -- the default 10px is --
+  // grows to this
+  var MARKER_SIZE = 20;
+  var MIN_MARKER_SIZE = 16;
+
+  function shapeTakesText(shape) {
+    return MARKER_SHAPES.indexOf(shape) > -1;
+  }
+
+  // The size a symbol of @size has once it is given text
+  function getMarkerIconSize(size) {
+    return size >= MIN_MARKER_SIZE ? size : MARKER_SIZE;
+  }
+
+  // The panel's text style: {text, font, style, weight, size, color, baseline},
+  // where text is '' for a symbol with no text, font is '' until the panel picks
+  // the font new labels get, and baseline is the text's baseline below the
+  // symbol's centre in px, or '' for where the font's capitals are centred.
+  function getDefaultMarkerTextStyle() {
+    return {text: '', font: '', style: 'normal', weight: '700', size: 12,
+      color: '#ffffff', baseline: ''};
+  }
+
+  // The record fields that put @text (a panel text style) on a symbol, apart
+  // from label-text itself. Regular is no face at all, as in the label panel.
+  //
+  // The baseline is stored in em, so that it scales with the type: a marker set
+  // a size larger keeps its number where it was in the symbol.
+  function getMarkerTextFields(text) {
+    var o = {'label-pos': 'c'};
+    if (text.font) o['font-family'] = text.font;
+    o['font-size'] = text.size;
+    if (!isRegular(text.style, text.weight)) {
+      o['font-style'] = text.style;
+      o['font-weight'] = text.weight;
+    }
+    o.fill = text.color || '#000000';
+    if (text.baseline !== '' && isFinite(text.baseline)) {
+      o.dy = getBaselineEm(text.baseline, text.size);
+    }
+    return o;
+  }
+
+  // The panel text style of the marker in @rec
+  function getMarkerTextStyle(rec) {
+    var size = Number(rec['font-size']) > 0 ? Number(rec['font-size']) : 12;
+    return {
+      text: String(rec['label-text'] || ''),
+      font: rec['font-family'] || '',
+      style: rec['font-style'] || 'normal',
+      weight: String(rec['font-weight'] || '400'),
+      size: size,
+      color: rec.fill || '',
+      baseline: parseBaseline(rec.dy, size)
+    };
+  }
+
+  // A baseline in px as dy= in em, to three places
+  function getBaselineEm(px, size) {
+    return Math.round(Number(px) / size * 1000) / 1000 + 'em';
+  }
+
+  // dy as a baseline in px, to a tenth: a number is px, and em is the font size.
+  // '' for no dy, or one in units the panel does not show.
+  function parseBaseline(dy, size) {
+    var str = dy === undefined || dy === null ? '' : String(dy).trim();
+    var m;
+    if (str === '') return '';
+    m = /^(-?[0-9.]+)(em|px)?$/.exec(str);
+    if (!m || !isFinite(Number(m[1]))) return '';
+    return Math.round(Number(m[1]) * (m[2] == 'em' ? size : 1) * 10) / 10;
+  }
+
+  // The -labels fields that place a marker of @icon (a panel symbol style) with
+  // @text on it: the symbol in the icon fields -symbols writes on a label.
+  function getAddMarkerFields(icon, text) {
+    var o = getMarkerTextFields(text);
+    o.icon = icon.shape;
+    o['icon-size'] = icon.size;
+    o['icon-fill'] = icon.fill || 'none';
+    if (icon.stroke && icon.strokeWidth > 0) {
+      o['icon-stroke'] = icon.stroke;
+      o['icon-stroke-width'] = icon.strokeWidth;
+    }
+    if (icon.shape == 'square' && icon.rotation) o['icon-rotation'] = icon.rotation;
+    return o;
+  }
+
+  // What auto-numbering puts on the next marker after one with @text: the next
+  // number, or the next letter. Other text, and a Z, repeats.
+  function getNextMarkerText(text) {
+    var str = String(text);
+    var code;
+    if (/^[0-9]+$/.test(str)) return String(Number(str) + 1);
+    if (/^[A-Ya-y]$/.test(str)) {
+      code = str.charCodeAt(0);
+      return String.fromCharCode(code + 1);
+    }
+    return str;
+  }
+
+  // Where counting starts when it is turned on with @text in the field: the
+  // text itself if no marker has it yet, otherwise the next number or letter
+  // that none has, so that the next symbol placed is not a second of one that
+  // was already placed. @used: the text of the markers in the layer.
+  function getAutoNumberStart(text, used) {
+    var str = String(text);
+    var next;
+    while (used.indexOf(str) > -1) {
+      next = getNextMarkerText(str);
+      if (next == str) break; // text that does not count up, and a Z
+      str = next;
+    }
+    return str;
+  }
+
+  // The command that puts text on symbols, as one undo step. Text styles go on
+  // first, so that -symbols, which follows, reads the records as labels and
+  // writes a circle as icon=circle and icon-fill= rather than as r= and fill= --
+  // fill= being the text's color, on a label. The symbol options are each
+  // symbol's own, read before the text changes them (see getRestyleIconOptions()).
+  //
+  // A circle's stroke= is the text's outline on a label, so a circle's stroke
+  // comes off with -style.
+  //
+  //   groups: [{options, ids}] from getRestyleIconOptions() for the symbols
+  //   stroked: ids of the symbols with a stroke= or stroke-width= field
+  function getAddMarkerTextCommand(text, groups, stroked) {
+    var ids = flattenIds(groups);
+    var parts = [formatFields('-labels', Object.assign(
+      {text: encodeLabelText(text.text)}, getMarkerTextFields(text)), ids)];
+    if (stroked.length > 0) {
+      parts.push(formatFields('-style', {stroke: '', 'stroke-width': ''}, stroked));
+    }
+    groups.forEach(function(g) {
+      parts.push(formatFields('-symbols', g.options, g.ids));
+    });
+    return parts.join(' ');
+  }
+
+  // The fields a marker's text puts on its record, which removing the text
+  // takes off. fill= goes too: -symbols writes a circle's own, and the text's
+  // would otherwise color a square's outline.
+  var TEXT_FIELDS = ['label-pos', 'font-family', 'font-size', 'font-style',
+    'font-weight', 'fill', 'dx', 'dy', 'text-anchor'];
+
+  // The command that takes the text off markers, leaving their symbols, as one
+  // undo step. label-text goes with -each because -style keeps an empty
+  // label-text -- a label being typed is empty -- and a record with one is a
+  // label. -symbols then writes each symbol as a symbol, a circle as r= again.
+  //
+  //   groups: [{options, ids}], as for getAddMarkerTextCommand()
+  function getRemoveMarkerTextCommand(groups) {
+    var ids = flattenIds(groups);
+    var cleared = {};
+    var parts = ['-each ' + quoteCommandValue('d["label-text"] = undefined') +
+      ' ids=' + ids.join(',')];
+    TEXT_FIELDS.forEach(function(name) { cleared[name] = ''; });
+    parts.push(formatFields('-style', cleared, ids));
+    groups.forEach(function(g) {
+      parts.push(formatFields('-symbols', g.options, g.ids));
+    });
+    return parts.join(' ');
+  }
+
+  // Groups symbols by the -symbols options that make each one again with its
+  // own style, for the commands above. @getStyle(rec) gives a symbol's panel
+  // style; @change(style), if given, edits it first.
+  function groupRestyleOptions(records, ids, getStyle, change) {
+    var groups = {};
+    var list = [];
+    ids.forEach(function(id) {
+      var rec = records[id] || {};
+      var style = getStyle(rec);
+      var options, key;
+      if (!style) return;
+      if (change) change(style);
+      options = getRestyleIconOptions(rec, style);
+      key = JSON.stringify(options);
+      if (!groups[key]) {
+        groups[key] = {options: options, ids: []};
+        list.push(groups[key]);
+      }
+      groups[key].ids.push(id);
+    });
+    return list;
+  }
+
+  function flattenIds(groups) {
+    return groups.reduce(function(memo, g) { return memo.concat(g.ids); }, [])
+      .sort(function(a, b) { return a - b; });
+  }
+
+  function formatFields(command, fields, ids) {
+    var parts = [command];
+    Object.keys(fields).forEach(function(name) {
+      var val = fields[name];
+      parts.push(name + '=' + (val === '' ? '' : formatValue$3(val)));
+    });
+    parts.push('ids=' + ids.join(','));
+    return parts.join(' ');
+  }
+
+  function formatValue$3(val) {
+    var str = String(val);
+    return /^[A-Za-z0-9#._-]+$/.test(str) ? str : quoteCommandValue(str);
+  }
+
+  function isRegular(style, weight) {
+    return (style || 'normal') == 'normal' && Number(weight || 400) == 400;
+  }
+
+  // The style that new objects take from a selection.
+  //
+  // The editing tools give a new object the style of the objects last selected,
+  // as a drawing program does: what the panel shows for a selection is what
+  // the next object gets, and selecting an object is the way to draw another in
+  // its style. A selection whose objects disagree about a property says nothing
+  // about it, so only the properties they agree on are taken, and the new
+  // object keeps whatever it had for the rest.
+  //
+  // Only a selection counts. With nothing selected the panels show every object
+  // in the layer, and leaving a drawing tool would otherwise replace the style
+  // just set for the next object with the layer's.
+
+  // The values that every record in @records agrees on, for each of @fields, as
+  // [[field, value], ...] -- the form the panels' controls produce. A field that
+  // none of them has is ['field', ''], which the style mergers take as "unset";
+  // a field they disagree about is left out. Values are compared as strings, so
+  // that 3 and '3' agree, as they do on the map.
+  function getSharedStyleValues(records, fields) {
+    var out = [];
+    if (!records || records.length === 0) return out;
+    fields.forEach(function(field) {
+      var first = getStyleValue(records[0], field);
+      for (var i = 1; i < records.length; i++) {
+        if (String(getStyleValue(records[i], field)) !== String(first)) return;
+      }
+      out.push([field, first]);
+    });
+    return out;
+  }
+
+  // The symbol tool's new-symbol style is the panel's own model of a style
+  // ({icon, curve, text}, see gui-symbol-tool.mjs) rather than record fields, so
+  // it is set key by key from the values the panel shows for the selection.
+  // Changes @style in place.
+  //
+  // sel: records of the selected symbols, as the panel divides them:
+  //   icons: symbols in a shape the panel offers (markers included)
+  //   openCurves, closedCurves
+  //   markers: the icons with text on them, whose text style -- but not text --
+  //     is taken
+  function syncSymbolStyle(style, sel) {
+    var icons = sel.icons || [];
+    var curves = (sel.openCurves || []).concat(sel.closedCurves || []);
+    var open = sel.openCurves || [];
+    syncKeys(style.icon, icons, ['shape', 'size'], getIconStyle);
+    syncKeys(style.icon, icons, ['fill', 'stroke'], getIconPaint);
+    // as the panel shows them: the shapes that have them
+    syncKeys(style.icon, icons.filter(function(rec) {
+      return shapeHasStrokeWidth(getIconShape(rec));
+    }), ['strokeWidth'], getIconPaint);
+    syncKeys(style.icon, icons.filter(function(rec) {
+      return shapeHasRotation(getIconShape(rec));
+    }), ['rotation'], getIconStyle);
+    syncKeys(style.curve, curves, ['stroke', 'strokeWidth'], getCurveStyle);
+    // the ends, from the open curves: a closed one has none
+    syncKeys(style.curve, open, ['arrowheads', 'fade', 'taper'], getCurveStyle);
+    // a shape and size only where there are heads, which a curve with none
+    // says nothing about
+    open = open.filter(function(rec) { return getArrowheadPosition(rec) != 'none'; });
+    syncKeys(style.curve, open, ['arrowShape', 'arrowSize'], getCurveStyle);
+    syncKeys(style.curve, sel.closedCurves || [], ['fill'], getCurveStyle);
+    syncKeys(style.text, sel.markers || [],
+      ['font', 'style', 'weight', 'size', 'color', 'baseline'], getMarkerTextStyle);
+    return style;
+  }
+
+  // Sets each of @keys of @target to the value @read(rec) gives it for every
+  // record in @records, where they agree
+  function syncKeys(target, records, keys, read) {
+    var styles = records.map(read);
+    keys.forEach(function(key) {
+      var val;
+      if (styles.length === 0) return;
+      val = styles[0][key];
+      for (var i = 1; i < styles.length; i++) {
+        if (styles[i][key] !== val) return;
+      }
+      target[key] = val;
+    });
+  }
+
+  // The keys of @values (an object) whose value differs from @style's, as the
+  // changes that would make @style agree with them
+  function getChangedStyleKeys(style, values) {
+    return Object.keys(values).filter(function(key) {
+      return !sameValue(style[key], values[key]);
+    });
+  }
+
+  function sameValue(a, b) {
+    return String(isUnset(a) ? '' : a) === String(isUnset(b) ? '' : b);
+  }
+
+  function getStyleValue(rec, field) {
+    var val = rec ? rec[field] : undefined;
+    return isUnset(val) ? '' : val;
+  }
+
+  function isUnset(val) {
+    return val === undefined || val === null || val === '';
+  }
+
+  // The style the label tool gives to the next label it creates.
+  //
+  // The style panel is worth having open before there is anything to point it at:
+  // pick a font, then place labels in it. Values set with nothing selected are
+  // held here rather than written to a layer, and -labels coordinates= writes them when a
+  // label finally exists -- so this is a tool default, not data, and it never
+  // needs its own undo step. Selecting labels also sets it, to the properties
+  // the selection agrees on (see syncNewLabelStyle()), so that the next label is
+  // made in the style the panel was showing.
+  //
+  // See docs/development/label-tool-design.md.
+
+  // The style properties -labels accepts. A panel control whose property is
+  // missing from this list would appear to do nothing when set with no selection,
+  // so the list is checked rather than assumed.
+  var NEW_LABEL_STYLE_FIELDS = [
+    'font-family', 'font-size', 'font-style', 'font-weight', 'font-stretch',
+    'letter-spacing', 'line-height', 'text-anchor', 'label-align',
+    'dominant-baseline',
+    'label-pos', 'label-side', 'label-start-offset', 'dx', 'dy',
+    'fill', 'opacity', 'css', 'class',
+    'label-background', 'label-background-opacity', 'label-padding',
+    'halo-width', 'halo-color', 'halo-opacity',
+    'icon', 'icon-size', 'icon-sides', 'icon-color', 'icon-fill', 'icon-stroke',
+    'icon-stroke-width', 'icon-opacity',
+    // not callout-via or callout-attach, which are placed for one label's
+    // surroundings rather than chosen as a style
+    'callout', 'callout-end', 'callout-end-size', 'callout-color', 'callout-opacity', 'callout-width',
+    'callout-gap'
+  ];
+
+  // values: [[field, value], ...], the form the panel's controls produce
+  // Returns a new object, leaving the original alone.
+  //
+  // A blank or zero value removes the field instead of setting it: that is how
+  // the panel says "no icon" (icon='', icon-size=0) and "no inline css", and
+  // carrying those through to -labels would write properties that mean
+  // nothing.
+  function mergeStyleValues(style, values) {
+    var out = Object.assign({}, style);
+    (values || []).forEach(function(pair) {
+      var field = pair[0];
+      var value = pair[1];
+      if (NEW_LABEL_STYLE_FIELDS.indexOf(field) == -1) return;
+      if (!value && value !== false) {
+        delete out[field];
+      } else {
+        out[field] = value;
+      }
+    });
+    return out;
+  }
+
+  // What the tool gives a label before anything has been chosen for it.
+  //
+  // A label with no position at all sits with its baseline on its anchor point,
+  // so the point lands at the foot of the text rather than in it: click a spot,
+  // type, and the words appear above the place they are about to be read as
+  // marking. 'c' centres the text on the anchor instead, which is what clicking
+  // somewhere and typing looks like it should do, and it is the position an icon
+  // is drawn to sit behind.
+  //
+  // Only the tool defaults this. -labels coordinates= with no position still creates a
+  // label without one, so the default is a choice this tool makes and passes on
+  // explicitly, not a meaning the command gives to its absence.
+  var DEFAULT_NEW_LABEL_STYLE = {'label-pos': 'c'};
+
+  function getNewLabelStyle(gui) {
+    if (!gui.state.new_label_style) {
+      gui.state.new_label_style = Object.assign({}, DEFAULT_NEW_LABEL_STYLE);
+    }
+    return gui.state.new_label_style;
+  }
+
+  function updateNewLabelStyle(gui, values) {
+    gui.state.new_label_style = mergeStyleValues(getNewLabelStyle(gui), values);
+    return gui.state.new_label_style;
+  }
+
+  // Where a label sits, which a drag writes for the one label dragged -- offsets,
+  // the side of its anchor the text runs from, and on a path, its place along
+  // it. They say where that label is, not what style it is in, so the next label
+  // does not take them from a selection.
+  var PLACEMENT_FIELDS = ['dx', 'dy', 'text-anchor', 'label-side', 'label-start-offset'];
+
+  // Sets the new-label style to the properties that @records, the selected
+  // labels, agree on (see gui-selection-style.mjs). A position is taken only
+  // where they have one: a dragged label has none, and the next label is
+  // centred on its point without one (see DEFAULT_NEW_LABEL_STYLE).
+  function syncNewLabelStyle(gui, records) {
+    var fields = NEW_LABEL_STYLE_FIELDS.filter(function(field) {
+      return PLACEMENT_FIELDS.indexOf(field) == -1;
+    });
+    var values = getSharedStyleValues(records, fields).filter(function(pair) {
+      return pair[0] != 'label-pos' || pair[1] !== '';
+    });
+    return updateNewLabelStyle(gui, values);
+  }
+
+  function clearNewLabelStyle(gui) {
+    gui.state.new_label_style = null;
+  }
+
+  // What a two-state control shows for a group of labels: 'on', 'off', or
+  // 'mixed' when they disagree.
+  //
+  // The panel's other controls say "they disagree" by showing nothing -- an empty
+  // select, an unlit button, a blank field. A switch has no empty state to fall
+  // back on, so it needs a third one named here.
+  //
+  // flags: one truthy/falsy value per label, in any order
+  function getToggleState(flags) {
+    var on = 0;
+    var i;
+    for (i = 0; i < flags.length; i++) {
+      if (flags[i]) on++;
+    }
+    if (on === 0) return 'off';
+    return on == flags.length ? 'on' : 'mixed';
+  }
+
+  // What a drag on a label's glyphs means: 'fixed' moves the label, anchor and
+  // text together, and 'draggable' leaves the anchor where it is and offsets the
+  // text from it.
+  //
+  // A question that has to be answered somewhere, and answering it with a mode
+  // rather than by hit priority is what keeps a centred label -- whose text sits
+  // on top of its own anchor -- grabbable at all.
+  //
+  // It belongs to the tool and not to the label. Which segment is lit cannot be
+  // derived from a record: a label with label-pos=ne can be dragged or not, and
+  // one that has been dragged stays dragged when the toggle goes back to Fixed.
+  // A per-label "locked" flag would be a field nothing else reads and one more
+  // column in -o out.csv.
+  //
+  // Fixed on entry, so that a stray drag cannot displace text in a session that
+  // never asked for it, and remembered while the tool stays on.
+  //
+  // Text blocks keep a mode of their own, which starts out Draggable. A block is
+  // usually an annotation set off from the point it is about, and is placed by
+  // dragging it away from its anchor; point text more often sits where its
+  // position puts it and is moved as a whole.
+  //
+  // @kind: 'point' (the default) or 'block' -- see getLabelPositionKind()
+  var LABEL_POSITION_MODES = ['fixed', 'draggable'];
+
+  var DEFAULT_POSITION_MODES = {point: 'fixed', block: 'draggable'};
+
+  function getLabelPositionMode(gui, kind) {
+    var k = kind == 'block' ? 'block' : 'point';
+    var modes = gui.state.label_position_modes || {};
+    return modes[k] || DEFAULT_POSITION_MODES[k];
+  }
+
+  // With no @kind, sets both kinds: 'fixed' puts point text in Fixed mode and
+  // blocks back to their own default, which is what the tool does on entry.
+  function setLabelPositionMode(gui, mode, kind) {
+    var modes = gui.state.label_position_modes || {};
+    var val = LABEL_POSITION_MODES.indexOf(mode) > -1 ? mode : 'fixed';
+    if (kind) {
+      modes[kind == 'block' ? 'block' : 'point'] = val;
+    } else {
+      modes = {point: val, block: DEFAULT_POSITION_MODES.block};
+    }
+    gui.state.label_position_modes = modes;
+    // The panel's toggle and the tool's drag both read this, and neither owns the
+    // other; the panel also has to relight the grid, whose cells mean something
+    // different in each mode.
+    gui.dispatchEvent('label_position_mode_change');
+  }
+
+  function labelTextIsDraggable(gui, kind) {
+    return getLabelPositionMode(gui, kind) == 'draggable';
+  }
+
+  // Which position mode governs a label: 'block' for a text block (a label with
+  // a wrap width), 'point' for any other.
+  function getLabelPositionKind(rec) {
+    var w = rec ? Number(rec['label-width']) : 0;
+    return w > 0 && isFinite(w) ? 'block' : 'point';
+  }
+
+  // The label currently open for text editing, or null: {id, refocus}.
+  //
+  // Two modules need it and neither owns the other. The editor needs to say
+  // which label the caret is in, because a label is usually styled while it is
+  // being typed into -- you place one, then set its font and position with the
+  // text still empty -- and the panel would otherwise be pointed at "the next
+  // label" and leave the one on screen unstyled. The panel needs @refocus to put
+  // the caret back after a control that takes focus, such as the font menu, so
+  // that typing carries on where it left off.
+  //
+  // This is the live session only, set when it opens and cleared when it closes.
+  // It is not a memory of the last label edited: a panel that keeps acting on a
+  // label the user has finished with is the bug this replaced.
+  function setLabelTextSession(gui, session) {
+    gui.state.label_text_session = session || null;
+    // The panel's controls and its "Editing:" line both read the session, so it
+    // has to hear about one opening or closing -- neither is a map redraw or a
+    // selection change, which are the events it already watches.
+    gui.dispatchEvent('label_text_session_change');
+  }
+
+  function getLabelTextSession(gui) {
+    return gui.state.label_text_session || null;
+  }
+
+  // The label tool's armed placement tool: 'anchor', 'block', 'path' or null.
+  // The tool owns it; the panel reads it, because an armed tool with nothing
+  // selected is what points the panel at new labels rather than at all of them.
+  function setLabelToolArmed(gui, mode) {
+    var val = mode || null;
+    if ((gui.state.label_tool_armed || null) === val) return;
+    gui.state.label_tool_armed = val;
+    gui.dispatchEvent('label_tool_armed_change');
+  }
+
+  function getLabelToolArmed(gui) {
+    return gui.state.label_tool_armed || null;
+  }
+
+  // The "Editing:" line at the top of the style panels, which says what a
+  // change to the panel's controls will act on. One wording for every panel.
+  //
+  // o.selected     how many features are selected
+  // o.total        how many features the layer has
+  // o.newLabels    (label panel) a placement tool is armed with nothing
+  //                selected, so the controls set the style of the next label
+  // o.editingText  (label panel) a label is open for typing
+  // o.newShapes    (line, polygon and symbol panels) drawing is armed, so the
+  //                controls set the style of the next shape: 'lines',
+  //                'polygons', 'icons' or 'curves'
+  function formatEditingStatus(o) {
+    var what = o.editingText ? 'this label' :
+      o.selected > 0 ? o.selected + ' selected' :
+      o.newLabels ? 'new labels' :
+      o.newShapes ? 'new ' + o.newShapes :
+      o.total > 0 ? 'all' : 'none (empty layer)';
+    return 'Editing: ' + what;
+  }
+
+  // Dragging an anchored label's text away from its anchor: what the drag
+  // writes, and which of the nine positions it ends up nearest.
+  //
+  // A drag does not store a delta. resolveLabelPosition() falls back per
+  // property rather than summing, so `label-pos=e dx=3` means "east's dy and
+  // justification, with dx overridden to 3px" and not "3px east of east" -- a
+  // bare delta would teleport the text to its anchor on the first pixel of
+  // movement. So a drag materializes the offsets the label is drawn with, adds
+  // its own movement to them, and drops the position: from then on the label
+  // carries the numbers rather than a name for them.
+  //
+  // The awkward part is text-anchor, which decides both where the block of text
+  // sits relative to dx and how a moving label reads. Text dragged to the left
+  // of its anchor should be right-justified, so that growing the font or the
+  // text extends it away from the point it labels rather than across it -- which
+  // is what the legacy positioning mode did, and the reason the export font not
+  // being the browser's does not pull the label back over its symbol. Changing
+  // the anchor moves the block by half or all of its own width, so dx has to be
+  // re-expressed against the new anchor in the same breath, which is what makes
+  // this arithmetic rather than a rule.
+  //
+  // Everything here works in the label's own coordinate space -- the space
+  // inside its symbol group, which is what dx and dy are measured in -- so the
+  // caller divides pointer movement by the symbol scale on the way in.
+  //
+  // See docs/development/label-tool-design.md.
+
+  // How far to the left of x the block of text sits, as a fraction of its width.
+  var anchorOffsets = {start: 0, middle: 0.5, end: 1};
+
+  // How far the text's centre has to be from the anchor, as a fraction of the
+  // text's own width, before it counts as being to one side of it. A quarter of
+  // the width is the legacy mode's threshold: the middle band is wide enough
+  // that text dragged straight up or down stays centred, which is the thing a
+  // user placing a label above a dot is most likely to be doing.
+  var SIDE_THRESHOLD = 0.25;
+
+  // Tenths of a pixel. A drag produces an offset per mouse move and the
+  // serializer prints what it is given, so a label dragged by hand would
+  // otherwise carry -12.699999999999999 into the user's data. A tenth of a pixel
+  // is finer than the gesture can resolve and finer than the map can draw.
+  var PRECISION = 10;
+
+  // The offset and justification a drag writes.
+  //
+  // start: {dx, dy, anchor, width, aligned}
+  //   dx, dy:  the offsets the label is drawn at, in px
+  //   anchor:  the justification it is drawn with
+  //   width:   the width of its text, in the same space; 0 if unmeasurable
+  //   aligned: whether it carries a label-align (see below)
+  //   keepAnchor: (optional) leave the justification alone, for a text block:
+  //     its lines are laid out within a column, and re-justifying them as the
+  //     block passes its anchor would rearrange the text rather than move it
+  // delta: {dx, dy} -- how far the pointer has moved, in the same space.
+  //
+  // Returns two descriptions of the same placement:
+  //
+  //   dx, dy, text-anchor:  what the drag writes to the record. The three have to
+  //     be written together: applying dx without its text-anchor moves the text
+  //     by half its own width or by all of it.
+  //   x, anchor:  where the text sits and how it is justified while it is drawn,
+  //     which is what the preview writes onto the rendered label. The same as
+  //     dx and text-anchor except on an aligned label, whose stored offset is
+  //     measured against a justification it is not drawn with.
+  function getOffsetDragValues(start, delta) {
+    var width = start.width > 0 ? start.width : 0;
+    var drawnAnchor = normalizeAnchor(start.anchor);
+    // The left edge of the text is what the pointer is actually moving, and the
+    // one part of the block that does not depend on the anchor. Working from it
+    // is what lets the anchor change mid-drag without the text jumping: the edge
+    // stays where the pointer put it, and dx is whatever expresses that edge
+    // against the anchor the text has ended up with.
+    var left = start.dx + delta.dx - anchorOffsets[drawnAnchor] * width;
+    // A label that carries a label-align has already answered the justification
+    // question, and text-anchor is not the drag's to change: the renderer honours
+    // the alignment over any text-anchor on the record, and corrects x by the
+    // width of the block to hold it still while its lines re-justify. Against
+    // that correction, 'start' is the one text-anchor whose dx is the left edge
+    // itself -- which is also the value that would leave the label where it is
+    // if the alignment were later removed.
+    var anchor = start.aligned ? 'start' : start.keepAnchor ? drawnAnchor :
+      width > 0 ? getAnchorForCentre(left + width / 2, width) : drawnAnchor;
+    // An aligned label goes on being drawn with the anchor its alignment gives
+    // it, whatever the drag writes: the alignment is unchanged, so the renderer
+    // will justify it the same way afterwards. Drawing it as 'start' instead
+    // would slide the text right by half its width or by all of it for the
+    // length of the drag, and drop it back on release.
+    var drawn = start.aligned ? drawnAnchor : anchor;
+    return {
+      dx: round$1(left + anchorOffsets[anchor] * width),
+      dy: round$1(start.dy + delta.dy),
+      'text-anchor': anchor,
+      x: round$1(left + anchorOffsets[drawn] * width),
+      anchor: drawn
+    };
+  }
+
+  // Which side of its anchor the text has ended up on, by where its centre is.
+  // @centre and @width are in the same units; @width is known to be non-zero.
+  function getAnchorForCentre(centre, width) {
+    var pct = centre / width;
+    if (pct < -SIDE_THRESHOLD) return 'end';
+    if (pct > SIDE_THRESHOLD) return 'start';
+    return 'middle';
+  }
+
+  // Where the middle of a label's text sits relative to its anchor, given the
+  // offset and justification it is drawn with. Two offsets are only comparable
+  // through this: dx=-5 means the text is left of the anchor when it is
+  // right-justified and right of it when it is not.
+  function getTextCentreOffset(dx, anchor, width) {
+    return dx + (0.5 - anchorOffsets[normalizeAnchor(anchor)]) * (width > 0 ? width : 0);
+  }
+
+  // The name of the nearest candidate to @point, or '' if there are none.
+  //
+  // candidates: [{name, x, y}, ...]
+  // point: {x, y}
+  //
+  // Used for the position the grid marks faintly under a label that has been
+  // dragged: no cell is lit, because the label carries offsets rather than a
+  // position, but one of the nine is roughly where it is and clicking it is the
+  // way back.
+  function getNearestPosition(point, candidates) {
+    var best = '';
+    var bestDist = Infinity;
+    (candidates || []).forEach(function(o) {
+      var dx = o.x - point.x;
+      var dy = o.y - point.y;
+      var dist = dx * dx + dy * dy;
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = o.name;
+      }
+    });
+    return best;
+  }
+
+  // An unset text-anchor is 'start', which is both the SVG default and what an
+  // unpositioned label is drawn with.
+  function normalizeAnchor(anchor) {
+    return anchor in anchorOffsets ? anchor : 'start';
+  }
+
+  function round$1(px) {
+    return Math.round(px * PRECISION) / PRECISION;
+  }
+
+  // Wrapping a text block to its label-width, with the browser's own line
+  // breaker.
+  //
+  // There is no API that reports where a browser breaks lines, so the text is
+  // laid out in an offscreen <div> at the label's width and font, and read back:
+  // Range.getClientRects() gives each character's line box, and a character
+  // sitting lower than the one before it starts a line. Everything the browser
+  // knows about line breaking -- UAX #14 classes, breaks after hyphens, none at
+  // no-break spaces, CJK, dictionary breaking for Thai -- comes with it.
+  //
+  // The font is read back from a rendered sample of the label rather than
+  // assembled from the record, so that the layer's defaults and any inline css
+  // apply exactly as they do on the map.
+  //
+  // See docs/development/text-annotation-design.md.
+
+  // Properties that change where lines break, and so the ones a change to which
+  // has to rewrap a text block.
+  var WRAP_FIELDS = ['label-width', 'font-family', 'font-size',
+    'font-weight', 'font-style', 'font-stretch', 'letter-spacing', 'css'];
+
+  var COPIED_STYLES = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle',
+    'fontStretch', 'fontVariant', 'fontKerning', 'fontFeatureSettings',
+    'fontVariationSettings', 'letterSpacing', 'wordSpacing', 'textTransform'];
+
+  // Lines are laid out far apart, so that a character in a fallback font sitting
+  // a little higher or lower than its neighbours is not mistaken for a new line.
+  var LINE_HEIGHT = 3;
+
+  var CACHE_LIMIT = 2000;
+  var cache$2 = new Map();
+  var wrapper = null;
+
+  // The label's width in px, or 0 for a label that does not wrap.
+  function getLabelWrapWidth(rec) {
+    var w = rec ? Number(rec['label-width']) : 0;
+    return w > 0 && isFinite(w) ? w : 0;
+  }
+
+  // Offsets into @text (real newlines, no soft breaks) where a line starts
+  // because it was wrapped, in ascending order.
+  //
+  // @bold: the text's bold stretches, as [start, end) offsets into it. A bold
+  // word is wider, so it moves the breaks.
+  function getSoftBreaks(text, rec, bold) {
+    var width = getLabelWrapWidth(rec);
+    var key, breaks;
+    if (!width || !text) return [];
+    bold = bold || [];
+    key = getWrapKey(text, rec, bold);
+    if (cache$2.has(key)) return cache$2.get(key);
+    breaks = measureSoftBreaks(text, rec, width, bold);
+    if (cache$2.size >= CACHE_LIMIT) cache$2.clear();
+    cache$2.set(key, breaks);
+    return breaks;
+  }
+
+  // A stored label-text value, rewrapped for @rec's width and font. Returned
+  // unchanged when neither the old value nor the new one has a soft break, so
+  // that a label that does not wrap keeps the line breaks it was written with.
+  function rewrapLabelValue(value, rec) {
+    var o = readLabelValue(value);
+    var breaks = getSoftBreaks(o.text, rec, o.bold);
+    if (sameSoftBreaks(o.breaks, breaks)) return value;
+    return encodeLabelText(writeLabelValue(o.text, breaks, o.bold));
+  }
+
+  function clearWrapCache() {
+    cache$2.clear();
+  }
+
+  function getWrapKey(text, rec, bold) {
+    var parts = [text];
+    WRAP_FIELDS.forEach(function(name) {
+      var val = rec[name];
+      parts.push(val === null || val === undefined ? '' : String(val));
+    });
+    parts.push(rec['class'] || '');
+    parts.push(bold.join(';'));
+    return parts.join('\u0000');
+  }
+
+  function measureSoftBreaks(text, rec, width, bold) {
+    var w = getWrapper();
+    var style, fontSize, pieces, range;
+    if (!w) return [];
+    style = getLabelFontStyle(w, rec);
+    if (!style) return [];
+    COPIED_STYLES.forEach(function(name) {
+      w.div.style[name] = style[name] || '';
+    });
+    w.div.style.width = width + 'px';
+    pieces = writeRuns(w.div, text, bold);
+    fontSize = parseFloat(style.fontSize) || 12;
+    range = document.createRange();
+    var breaks = findSoftBreaks(text, function(i) {
+      var piece = findPiece(pieces, i);
+      var end = isHighSurrogate(text.charCodeAt(i)) ? i + 2 : i + 1;
+      var r;
+      range.setStart(piece.node, i - piece.start);
+      range.setEnd(piece.node, Math.min(end, piece.end) - piece.start);
+      r = range.getBoundingClientRect();
+      return r.height > 0 ? r.top : null;
+    }, fontSize * LINE_HEIGHT / 2);
+    w.div.textContent = '';
+    return breaks;
+  }
+
+  // Lays @text out in @div a run at a time, the bold ones in bold spans, and
+  // returns each run's text node with the offsets it covers: [{node, start,
+  // end}]. Offsets in the text become offsets in one of these nodes.
+  function writeRuns(div, text, bold) {
+    var pos = 0;
+    div.textContent = '';
+    return internal.svg.getBoldRuns(text, bold, 0, text.length).map(function(run) {
+      var node = document.createTextNode(run.text);
+      var span;
+      if (run.bold) {
+        span = document.createElement('span');
+        span.style.fontWeight = internal.svg.LABEL_BOLD_WEIGHT;
+        span.appendChild(node);
+        div.appendChild(span);
+      } else {
+        div.appendChild(node);
+      }
+      pos += run.text.length;
+      return {node: node, start: pos - run.text.length, end: pos};
+    });
+  }
+
+  function findPiece(pieces, i) {
+    for (var j = 0; j < pieces.length; j++) {
+      if (i < pieces[j].end) return pieces[j];
+    }
+    return pieces[pieces.length - 1];
+  }
+
+  function isHighSurrogate(c) {
+    return c >= 0xD800 && c <= 0xDBFF;
+  }
+
+  // The computed font of @rec's label, from a sample rendered by the same code
+  // as the map, inside the defaults a label inherits from its layer's group.
+  function getLabelFontStyle(w, rec) {
+    var sample = Object.assign({}, rec, {'label-text': 'x'});
+    var node, cs, out;
+    delete sample['label-align'];
+    w.svg.innerHTML = internal.svg.stringify({
+      tag: 'g',
+      properties: internal.getLabelTextDefaults(),
+      children: [internal.svg.renderStyledLabel(sample)]
+    });
+    node = w.svg.querySelector('text');
+    if (!node) return null;
+    cs = window.getComputedStyle(node);
+    out = {};
+    COPIED_STYLES.forEach(function(name) {
+      out[name] = cs[name];
+    });
+    w.svg.innerHTML = '';
+    return out;
+  }
+
+  // Positioned off the page rather than hidden with display:none, which gives an
+  // element no layout and its text no lines.
+  function getWrapper() {
+    var box, div, svg;
+    if (wrapper) return wrapper;
+    if (typeof document == 'undefined') return null;
+    box = document.createElement('div');
+    box.setAttribute('class', 'label-wrap-measure');
+    box.setAttribute('aria-hidden', 'true');
+    div = document.createElement('div');
+    div.style.whiteSpace = 'pre-wrap';
+    div.style.overflowWrap = 'break-word';
+    div.style.lineHeight = String(LINE_HEIGHT);
+    div.style.padding = '0';
+    div.style.border = '0';
+    div.style.boxSizing = 'content-box';
+    svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    box.appendChild(div);
+    box.appendChild(svg);
+    document.body.appendChild(box);
+    wrapper = {div: div, svg: svg};
+    return wrapper;
+  }
+
+  // Default sizes of the label tool's anchor symbols, which differ by shape: a
+  // star or a ring at the size of a circle reads as smaller. Colors follow the
+  // shape through getIconPaintChange() in gui-icon-shapes.mjs.
+  var iconDefaults = {
+    circle: {size: 5},
+    square: {size: 5},
+    triangle: {size: 8},
+    star: {size: 8},
+    ring: {size: 8},
+    'nyt-star': {size: 14},
+    'nyt-target': {size: 14},
+    'nyt-target2': {size: 16}
+  };
+  var fallbackSize = 5;
+
+  function getDefaultIconSize(shape) {
+    var o = iconDefaults[shape];
+    return o ? o.size : fallbackSize;
+  }
+
+  // The icon-size to write when labels whose symbol is @prevShape ('' for none,
+  // or for a selection of mixed shapes) are given @shape, from the @size they
+  // share. A missing size is '' or 0.
+  //
+  // A size that is the old shape's default follows the shape to its own
+  // default, and a size the user chose is kept -- so switching shapes resizes a
+  // symbol nobody sized, and never undoes a size somebody set.
+  function getIconShapeChange(shape, prevShape, size) {
+    var sizeVal = Number(size);
+    if (!(sizeVal > 0) || prevShape && sizeVal == getDefaultIconSize(prevShape)) {
+      return {size: getDefaultIconSize(shape)};
+    }
+    return {size: sizeVal};
+  }
+
+  // Features offered only to people at The New York Times, who are the ones with
+  // its NYTFranklin typeface installed. This is a convenience, not access
+  // control: anything gated here must still render for everyone, because a map
+  // made with it can be opened anywhere.
+  //
+  // ?nyt=on or ?nyt=off in the page URL overrides the check, so that the gated
+  // features can be tested (and hidden) on any machine.
+  var NYT_FONT = 'NYTFranklin';
+  var cached;
+
+  function isNytUser() {
+    if (cached === undefined) cached = detectNytUser();
+    return cached;
+  }
+
+  function detectNytUser() {
+    var flag = GUI.getUrlVars().nyt;
+    if (flag == 'on' || flag === true) return true;
+    if (flag == 'off' || flag === false) return false;
+    return isInstalledFont(NYT_FONT);
   }
 
   var MORE_GLYPH = '<svg class="label-icon-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
@@ -16866,10 +17471,12 @@
     });
     gui.model.on('update', updateVisibility);
     gui.model.on('update', function() {
+      syncNewLabelStyleToSelection();
       if (panel.visible()) updateControls();
       setTimeout(updateSelectionDisplay, 0);
     });
     gui.on('undo_redo_post', function() {
+      syncNewLabelStyleToSelection();
       if (panel.visible()) {
         updateControls();
         updateSelectionDisplay();
@@ -16877,6 +17484,7 @@
     });
     gui.on('label_text_session_change', function() {
       // a label opened for typing becomes what the controls act on
+      syncNewLabelStyleToSelection();
       if (panel.visible()) updateControls();
     });
     gui.on('label_tool_armed_change', function() {
@@ -16901,10 +17509,28 @@
     if (hit) {
       hit.on('change', function(e) {
         if (e.mode == labelStyleMode || e.mode == labelMode) {
+          syncNewLabelStyleToSelection();
           updateSelectionDisplay();
           updateControls();
         }
       });
+    }
+
+    // The next label is made in the style of the labels last selected, or of the
+    // label being typed into, whether or not the panel is showing. With nothing
+    // selected the panel describes the whole layer, which says nothing about
+    // the next label.
+    function syncNewLabelStyleToSelection() {
+      var mode = gui.interaction && gui.interaction.getMode();
+      var session = getLabelTextSession(gui);
+      var table = getActiveTable();
+      var ids;
+      if (mode != labelStyleMode && mode != labelMode || !table) return;
+      ids = session && session.id > -1 ? [session.id] : getSelectionIds();
+      if (ids.length === 0) return;
+      syncNewLabelStyle(gui, ids.map(function(id) {
+        return table.getRecordAt(id) || {};
+      }));
     }
 
     updateVisibility();
@@ -21995,7 +22621,7 @@
       return tok.replace(/^["'“”‘’[\]]+|["'“”‘’[\]]+$/g, '');
     }).filter(Boolean);
     var colors = tokens.map(function(tok) {
-      return isNumber$1(tok) ? null : internal.parseColor(tok);
+      return isNumber(tok) ? null : internal.parseColor(tok);
     });
     if (colors.length === 0 || !colors.every(Boolean)) return null;
     return {kind: 'colors', colors: colors.map(internal.formatColor)};
@@ -22036,7 +22662,7 @@
       if (tokens.length > 2 && /^[LUB]$/i.test(tokens[tokens.length - 1])) tokens.pop();
       if (isRangeLine(tokens)) {
         classes.push(readRangeLine(tokens, model, i));
-      } else if (tokens.length == 2 || tokens.length == 4 && tokens.slice(1).every(isNumber$1)) {
+      } else if (tokens.length == 2 || tokens.length == 4 && tokens.slice(1).every(isNumber)) {
         categories.push({key: tokens[0], label: label || tokens[0], color: readColor(tokens.slice(1), model, i)});
       } else if (classes.length === 0 && categories.length === 0) {
         throw new Error('This isn\'t a GMT color palette table, a JSON palette or a list of colors.');
@@ -22062,9 +22688,9 @@
   // z0 color0 z1 color1, with each color as one word or three or four numbers
   function isRangeLine(tokens) {
     var n = tokens.length;
-    if (n != 4 && n != 8 && n != 10 || !isNumber$1(tokens[0]) || !isNumber$1(tokens[n / 2])) return false;
+    if (n != 4 && n != 8 && n != 10 || !isNumber(tokens[0]) || !isNumber(tokens[n / 2])) return false;
     // four numbers that go down are a key and an r g b color
-    return n != 4 || !tokens.every(isNumber$1) || +tokens[2] > +tokens[0];
+    return n != 4 || !tokens.every(isNumber) || +tokens[2] > +tokens[0];
   }
 
   function readRangeLine(tokens, model, i) {
@@ -22080,8 +22706,8 @@
 
   function readColor(tokens, model, i) {
     var color = tokens.length == 1 ? parseGmtColor(tokens[0]) :
-      tokens.length == 3 && tokens.every(isNumber$1) ? fromModel(tokens.map(Number), model) :
-      tokens.length == 4 && tokens.every(isNumber$1) ? fromCMYK(tokens.map(Number)) : null;
+      tokens.length == 3 && tokens.every(isNumber) ? fromModel(tokens.map(Number), model) :
+      tokens.length == 4 && tokens.every(isNumber) ? fromCMYK(tokens.map(Number)) : null;
     if (!color) throw lineError(i, 'has a color that can\'t be read: ' + tokens.join(' '));
     return color;
   }
@@ -22089,12 +22715,12 @@
   function parseGmtColor(tok) {
     var parts, rgb;
     tok = tok.replace(/@[\d.]+$/, ''); // transparency
-    if (isNumber$1(tok)) return fromRGB([+tok, +tok, +tok]);
+    if (isNumber(tok)) return fromRGB([+tok, +tok, +tok]);
     parts = tok.split('/');
-    if (parts.length == 3 && parts.every(isNumber$1)) return fromRGB(parts.map(Number));
-    if (parts.length == 4 && parts.every(isNumber$1)) return fromCMYK(parts.map(Number));
+    if (parts.length == 3 && parts.every(isNumber)) return fromRGB(parts.map(Number));
+    if (parts.length == 4 && parts.every(isNumber)) return fromCMYK(parts.map(Number));
     parts = tok.split('-');
-    if (parts.length == 3 && parts.every(isNumber$1)) return fromHSV(parts.map(Number));
+    if (parts.length == 3 && parts.every(isNumber)) return fromHSV(parts.map(Number));
     rgb = internal.parseColor(tok);
     return rgb ? internal.formatColor(rgb) : null;
   }
@@ -22128,7 +22754,7 @@
     return new Error('Line ' + (i + 1) + ' of the table ' + msg);
   }
 
-  function isNumber$1(tok) {
+  function isNumber(tok) {
     return /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(tok);
   }
 
@@ -22183,7 +22809,7 @@
       scheme.baseMethod = 'quantile';
     }
     if (type == 'sequential') return scheme;
-    pivot = isNumber$1(String(o.pivot)) ? +o.pivot : String(o.pivot);
+    pivot = isNumber(String(o.pivot)) ? +o.pivot : String(o.pivot);
     Object.assign(scheme, {
       pivot: pivot,
       split: o.classes && o.classes.length == 2 ? 'count' : 'size',
@@ -23491,7 +24117,9 @@
   // of running -style, and the -add-shape command that creates a shape writes it
   // (see getAddShapeCommand() in gui-draw-commands.mjs). So, as with the label
   // tool's new-label style, it is a tool default rather than data, and setting it
-  // is not an undo step.
+  // is not an undo step. Selecting shapes also sets it, to the properties the
+  // selection agrees on (see gui-selection-style.mjs), so that the next shape
+  // is drawn in the style the panel was showing.
   //
   // See docs/development/line-tool-design.md.
 
@@ -23548,6 +24176,18 @@
     gui.state.new_shape_styles = styles;
     gui.dispatchEvent('new_shape_style_change', {geometry_type: geometryType});
     return styles[getKey(geometryType)];
+  }
+
+  // Sets the new-shape style to the properties that @records, the selected
+  // shapes, agree on. Returns true if that changed it.
+  function syncNewShapeStyle(gui, geometryType, records) {
+    var prev = getNewShapeStyle(gui, geometryType);
+    var values = getSharedStyleValues(records, getNewShapeStyleFields(geometryType));
+    var next = mergeShapeStyleValues(prev, values, geometryType);
+    if (getChangedStyleKeys(prev, next).length === 0 &&
+        getChangedStyleKeys(next, prev).length === 0) return false;
+    updateNewShapeStyle(gui, geometryType, values);
+    return true;
   }
 
   function clearNewShapeStyle(gui, geometryType) {
@@ -23675,6 +24315,22 @@
         }
       });
     }
+
+    // Cmd-A selects every shape in the layer, as it selects every label and
+    // symbol in those tools. Not while a path is being drawn: that gesture owns
+    // the keyboard.
+    gui.keyboard.on('keydown', function(e) {
+      var ids;
+      if (!active || !hit || !isSelectAllObjectsKey(e.originalEvent) || hit.hasPendingPath()) return;
+      syncTargetLayer();
+      if (!targetLayer) return;
+      ids = getAllFeatureIds(targetLayer).filter(function(id) {
+        return !!targetLayer.shapes[id];
+      });
+      hit.setSelectionIds(ids);
+      e.stopPropagation();
+      e.originalEvent.preventDefault();
+    }, null, 5);
 
     // The toolbar arms drawing, reshaping or (for lines) drawing curves. While
     // drawing or curves are armed and nothing is selected, the panel's controls set the style of the next shape drawn
@@ -24410,6 +25066,7 @@
       var geom = targetLayer && targetLayer.geometry_type;
       var manualIds = getSelectionIds();
       if (!targetLayer) return;
+      syncNewShapeStyleToSelection(manualIds);
       title.text(geom == 'polygon' ? 'Polygon styles' : 'Line styles');
       updateEditingStatus(manualIds.length);
       strokeControl.row.show();
@@ -24433,6 +25090,17 @@
       if (geom == 'polygon') glowControl.update();
       presetControl.render();
       updateSavedStyleControls();
+    }
+
+    // The next shape is drawn in the style of the shapes last selected. This
+    // runs whenever the panel is refreshed -- after a selection, a restyle, or an
+    // undo -- whether or not the panel is showing.
+    function syncNewShapeStyleToSelection(ids) {
+      var records = targetLayer.data ? targetLayer.data.getRecords() : [];
+      if (ids.length === 0) return;
+      syncNewShapeStyle(gui, targetLayer.geometry_type, ids.map(function(id) {
+        return records[id] || {};
+      }));
     }
 
     function updateColorControl(control) {
@@ -24858,10 +25526,10 @@
     addSymbolOptions(parts, o.options);
     if (target.mode == 'new') {
       parts.push('no-replace');
-      parts.push('name=' + formatValue$3(target.newLayerName || DEFAULT_SYMBOL_LAYER_NAME));
+      parts.push('name=' + formatValue$2(target.newLayerName || DEFAULT_SYMBOL_LAYER_NAME));
     }
     if (target.target) {
-      parts.push('target=' + formatValue$3(target.target));
+      parts.push('target=' + formatValue$2(target.target));
     }
     return parts.join(' ');
   }
@@ -24870,7 +25538,7 @@
   // is released, so that a drag is one undo step.
   function getUpdateSymbolCommand(coords, id, target) {
     var parts = ['-update-symbol', 'ids=' + id, 'coordinates=' + formatCoords$1(coords)];
-    if (target) parts.push('target=' + formatValue$3(target));
+    if (target) parts.push('target=' + formatValue$2(target));
     return parts.join(' ');
   }
 
@@ -24878,7 +25546,7 @@
   // refuses to move
   function getUpdatePointCommand(coords, id, target) {
     var parts = ['-update-point', 'ids=' + id, 'coordinates=' + formatCoords$1(coords)];
-    if (target) parts.push('target=' + formatValue$3(target));
+    if (target) parts.push('target=' + formatValue$2(target));
     return parts.join(' ');
   }
 
@@ -24890,7 +25558,7 @@
     var parts = ['-symbols'];
     if (ids) parts.push('ids=' + ids.join(','));
     addSymbolOptions(parts, options);
-    if (target) parts.push('target=' + formatValue$3(target));
+    if (target) parts.push('target=' + formatValue$2(target));
     return parts.join(' ');
   }
 
@@ -24898,7 +25566,7 @@
     Object.keys(options || {}).forEach(function(name) {
       var val = options[name];
       if (val === undefined || val === null || val === '') return;
-      parts.push(name + '=' + formatValue$3(val));
+      parts.push(name + '=' + formatValue$2(val));
     });
   }
 
@@ -24911,10 +25579,10 @@
     Object.keys(values).forEach(function(name) {
       var val = values[name];
       parts.push(name + '=' + (val === '' || val === null || val === undefined ?
-        '' : formatValue$3(val)));
+        '' : formatValue$2(val)));
     });
     if (ids) parts.push('ids=' + ids.join(','));
-    if (target) parts.push('target=' + formatValue$3(target));
+    if (target) parts.push('target=' + formatValue$2(target));
     return parts.join(' ');
   }
 
@@ -24924,13 +25592,13 @@
     var expr = ids.length == 1 ? 'this.id !== ' + ids[0] :
       '[' + ids.join(',') + '].indexOf(this.id) == -1';
     var parts = ['-filter', quoteCommandValue(expr)];
-    if (target) parts.push('target=' + formatValue$3(target));
+    if (target) parts.push('target=' + formatValue$2(target));
     return parts.join(' ');
   }
 
   // A plain token -- a number, a name, a hex color -- needs no quotes, and
   // leaving them off keeps the session history readable.
-  function formatValue$3(val) {
+  function formatValue$2(val) {
     var str = String(val);
     return /^[A-Za-z0-9#._-]+$/.test(str) ? str : quoteCommandValue(str);
   }
@@ -24949,215 +25617,6 @@
     if (lyr.shapes) return lyr.shapes.length;
     if (lyr.data) return lyr.data.size();
     return 0;
-  }
-
-  // The symbol panel's model of a symbol's style, and how it maps to the fields
-  // -symbols writes. Pure functions, so that they can be tested without a map.
-  //
-  // The shapes are the label panel's (gui-icon-shapes.mjs), and a symbol's size
-  // is its icon-size, as it is a label icon's -- except for a circle, which is
-  // drawn by r= so that a layer of circles takes the fast canvas path, and
-  // whose size is 2r.
-  //
-  // See docs/development/symbol-tool-design.md.
-
-  // Which ends of a curve have a head. The heads themselves are the ones the
-  // layer panel gives lines (see gui-arrowhead-shapes.mjs): one shape for both
-  // ends, as there.
-  var ARROWHEAD_POSITIONS = [
-    {name: 'none', label: 'None', title: 'no arrowheads'},
-    {name: 'start', label: 'Start', title: 'an arrowhead at the start of the curve'},
-    {name: 'end', label: 'End', title: 'an arrowhead at the end of the curve'},
-    {name: 'both', label: 'Both', title: 'arrowheads at both ends of the curve'}
-  ];
-
-  // The color a symbol is placed in until the panel is given another
-  var DEFAULT_SYMBOL_COLOR = '#333333';
-
-  // A symbol's paint is {fill, stroke, strokeWidth}: colors, '' for none, and a
-  // width that only counts with a stroke (see getShownIconPaint()).
-  function getDefaultIconStyle() {
-    return {shape: 'circle', size: 10, fill: DEFAULT_SYMBOL_COLOR, stroke: '',
-      strokeWidth: 0, rotation: 0};
-  }
-
-  function getDefaultCurveStyle() {
-    // arrowSize: '' for the size the stroke width gives a head; fade, taper: 0-1
-    return {stroke: DEFAULT_SYMBOL_COLOR, strokeWidth: 1.5, arrowheads: 'end',
-      arrowShape: 'arrow', arrowSize: '', fade: 0, taper: 0, fill: ''};
-  }
-
-  // Whether a shape takes a stroke width and a rotation. A circle or a ring
-  // looks the same however it is turned. The NYT icons are drawn as their
-  // artwork is, upright, with lines of their own weight.
-  function shapeHasStrokeWidth(shape) {
-    return getIconShapePaint(shape) != 'nyt';
-  }
-
-  function shapeHasRotation(shape) {
-    return shape != 'circle' && shape != 'ring' && getIconShapePaint(shape) != 'nyt';
-  }
-
-  // The paint a symbol of @shape shows after changing from @prevShape, from
-  // @paint (see getShapeChangePaint())
-  function getShapeChangeStyle(shape, prevShape, paint) {
-    return getShapeChangePaint(shape, prevShape, paint, DEFAULT_SYMBOL_COLOR);
-  }
-
-  // -symbols options for an icon placed with @style. -symbols radius= reaches
-  // a square's corners, so a square's is its side over root 2 -- to four
-  // places, which -symbols' own rounding of the side to hundredths brings back
-  // to the size asked for.
-  //
-  // A missing fill or stroke is whatever the shape has without one: -symbols
-  // fills a filled shape with a default color, so its "none" is said; a ring
-  // has no fill, and a ring or NYT icon given no stroke= would be drawn in its
-  // fill, so their "none" is said too.
-  function getAddIconOptions(style) {
-    var o = {};
-    var shape = style.shape || 'circle';
-    var kind = getIconShapePaint(shape);
-    var stroked = !!style.stroke && (kind == 'nyt' || style.strokeWidth > 0);
-    if (shape == 'triangle') {
-      o.type = 'polygon';
-      o.sides = 3;
-    } else {
-      o.type = shape;
-    }
-    o.radius = shape == 'square' ? Math.round(style.size / Math.SQRT2 * 1e4) / 1e4 :
-      round$1(style.size / 2);
-    if (style.fill) {
-      o.fill = style.fill;
-    } else if (kind != 'stroke') {
-      o.fill = 'none';
-    }
-    if (stroked) {
-      o.stroke = style.stroke;
-      if (kind != 'nyt') o['stroke-width'] = style.strokeWidth;
-    } else if (kind != 'fill') {
-      o.stroke = 'none';
-    }
-    if (style.rotation && shapeHasRotation(shape)) o.rotation = style.rotation;
-    return o;
-  }
-
-  // -symbols options for a curve drawn with @style.
-  function getAddCurveOptions(style, closed) {
-    var o = {type: 'curve'};
-    var heads = getArrowheadFields(closed ? 'none' : style.arrowheads, style.arrowShape);
-    if (style.stroke) o.stroke = style.stroke;
-    if (style.strokeWidth >= 0) o['stroke-width'] = style.strokeWidth;
-    if (heads['line-start']) o['line-start'] = heads['line-start'];
-    if (heads['line-end']) o['line-end'] = heads['line-end'];
-    if ((heads['line-start'] || heads['line-end']) && style.arrowSize > 0) {
-      o['line-end-size'] = style.arrowSize;
-    }
-    if (!closed && style.fade > 0) o['line-fade'] = style.fade;
-    if (!closed && style.taper > 0) o['line-taper'] = style.taper;
-    if (closed && style.fill) o.fill = style.fill;
-    return o;
-  }
-
-  // The panel's shape for a symbol's record, or null for a symbol whose shape
-  // the panel does not offer (a pie, a hexagon, concentric rings).
-  function getIconShape(rec) {
-    return getIconShapeName(rec);
-  }
-
-  function getIconSize(rec) {
-    if (!getIconShape(rec)) return null;
-    if (!rec.icon) return round$1(Number(rec.r) * 2);
-    return isNumber(rec['icon-size']) ? round$1(Number(rec['icon-size'])) : null;
-  }
-
-  function getIconPaint(rec) {
-    return getShownIconPaint(rec || {}, getIconShape(rec), '#000000');
-  }
-
-  function getIconRotation(rec) {
-    return rec && isNumber(rec['icon-rotation']) ? Number(rec['icon-rotation']) : 0;
-  }
-
-  // The panel style ({shape, size, fill, stroke, strokeWidth, rotation}) of the
-  // symbol in @rec, or null for a symbol whose shape the panel does not offer
-  function getIconStyle(rec) {
-    var shape = getIconShape(rec);
-    var paint;
-    if (!shape) return null;
-    paint = getIconPaint(rec);
-    return {shape: shape, size: getIconSize(rec) || getDefaultIconStyle().size,
-      fill: paint.fill, stroke: paint.stroke, strokeWidth: paint.strokeWidth,
-      rotation: getIconRotation(rec)};
-  }
-
-  // -symbols options that make the symbol in @rec again with the panel style
-  // @style: the panel restyles a symbol with -symbols ids=, which replaces all
-  // of a symbol's fields.
-  //
-  // -symbols leaves a circle's stroke= on a point that becomes another shape,
-  // and the icon's stroke falls back to it, so no stroke is said, as "none".
-  // What the panel has no control for is carried over: an icon's opacity, and a
-  // star's number of points.
-  function getRestyleIconOptions(rec, style) {
-    var o = getAddIconOptions(style);
-    if (!('stroke' in o)) o.stroke = 'none';
-    if (style.shape == 'star' && isNumber(rec['icon-points'])) o.points = Number(rec['icon-points']);
-    if (isNumber(rec['icon-opacity'])) o.opacity = Number(rec['icon-opacity']);
-    return o;
-  }
-
-  function getCurveStyle(rec) {
-    return {
-      stroke: rec.stroke || '',
-      strokeWidth: isNumber(rec['stroke-width']) ? Number(rec['stroke-width']) : 1,
-      arrowheads: getArrowheadPosition(rec),
-      arrowShape: getArrowheadShape(rec),
-      arrowSize: isNumber(rec['line-end-size']) && rec['line-end-size'] > 0 ?
-        Number(rec['line-end-size']) : '',
-      fade: isNumber(rec['line-fade']) && rec['line-fade'] > 0 ? Math.min(Number(rec['line-fade']), 1) : 0,
-      taper: isNumber(rec['line-taper']) && rec['line-taper'] > 0 ? Math.min(Number(rec['line-taper']), 1) : 0,
-      fill: rec.fill || ''
-    };
-  }
-
-  // 'none', 'start', 'end' or 'both'
-  function getArrowheadPosition(rec) {
-    var start = hasMarker(rec['line-start']);
-    var end = hasMarker(rec['line-end']);
-    if (start && end) return 'both';
-    if (start) return 'start';
-    if (end) return 'end';
-    return 'none';
-  }
-
-  // The shape of a curve's heads -- the start's, if the ends differ -- or ''
-  // for none
-  function getArrowheadShape(rec) {
-    var start = rec['line-start'];
-    var end = rec['line-end'];
-    return hasMarker(start) ? start : hasMarker(end) ? end : '';
-  }
-
-  // line-start= and line-end= for an arrowhead position and shape (default
-  // 'arrow'), with '' for no marker
-  function getArrowheadFields(position, shape) {
-    var head = shape || 'arrow';
-    return {
-      'line-start': position == 'start' || position == 'both' ? head : '',
-      'line-end': position == 'end' || position == 'both' ? head : ''
-    };
-  }
-
-  function hasMarker(val) {
-    return !!val && val != 'none';
-  }
-
-  function isNumber(val) {
-    return val !== '' && val !== null && val !== undefined && isFinite(Number(val));
-  }
-
-  function round$1(n) {
-    return Math.round(n * 100) / 100;
   }
 
   var defaultCircleRadius = 0;
@@ -26874,6 +27333,11 @@
       pendingPath = coords && coords.length > 0 ? coords : null;
       pendingPathStyle = pendingPath && style || null;
       triggerChangeEvent();
+    };
+
+    // Whether a path is being drawn or previewed (see setPendingPath())
+    self.hasPendingPath = function() {
+      return !!pendingPath;
     };
 
     // Shows handles on the knots of a curve, for the curve tool.
@@ -28972,6 +29436,328 @@
     return internal.getValueType(val) || internal.getColumnType(key, table.getRecords()) ;
   }
 
+  // Copying one object's style and pasting it onto others, from the map's
+  // right-click menu (see gui-style-clipboard-menu.mjs). Pure functions, so that
+  // they can be tested without a map.
+  //
+  // A style is the properties the new-object rule takes from a selection (see
+  // gui-selection-style.mjs): a label's style leaves out where it sits, and a
+  // numbered marker's leaves out its text. Pasting makes each target look like
+  // the object copied, so a property the source has no value for is unset on
+  // the target. Lines and polygons share their stroke, which is all that goes
+  // from one to the other; any other pairing of kinds is not offered.
+  //
+  // An object is described as {id, kind, rec, closed, pathLabel, marker}, where
+  // kind is 'line', 'polygon', 'label', 'icon' (a symbol in a shape the symbol
+  // panel offers, numbered markers included) or 'curve' (a symbol curve).
+
+  var LABEL_FIELDS = NEW_LABEL_STYLE_FIELDS.filter(function(field) {
+    return PLACEMENT_FIELDS.indexOf(field) == -1;
+  });
+
+  var CURVE_END_FIELDS = ['line-start', 'line-end', 'line-end-size', 'line-fade', 'line-taper'];
+  var CURVE_FILL_FIELDS = ['fill', 'fill-opacity'];
+  var CURVE_FIELDS = ['stroke', 'stroke-width', 'stroke-opacity', 'opacity']
+    .concat(CURVE_END_FIELDS, CURVE_FILL_FIELDS);
+
+  // The text style of a numbered marker, as the symbol panel writes it (see
+  // getMarkerTextFields()). dy is in em, so it goes with the font size.
+  var MARKER_TEXT_FIELDS = ['font-family', 'font-size', 'font-style', 'font-weight',
+    'fill', 'dy'];
+
+  // The style of @obj, or null for an object with none that can be pasted
+  function copyObjectStyle(obj) {
+    var rec = obj && obj.rec || {};
+    var icon;
+    if (!obj) return null;
+    if (obj.kind == 'line' || obj.kind == 'polygon') {
+      return {kind: obj.kind, values: readFields(rec, getShapeFields(obj.kind))};
+    }
+    if (obj.kind == 'label') {
+      return {kind: 'label', values: readFields(rec, LABEL_FIELDS)};
+    }
+    if (obj.kind == 'curve') {
+      return {kind: 'curve', values: readFields(rec, CURVE_FIELDS)};
+    }
+    if (obj.kind == 'icon') {
+      icon = getIconStyle(rec);
+      if (!icon) return null;
+      // -symbols makes a symbol again from these, so they are the whole symbol
+      return {kind: 'icon', shape: icon.shape, options: getRestyleIconOptions(rec, icon),
+        text: obj.marker ? readFields(rec, MARKER_TEXT_FIELDS) : null};
+    }
+    return null;
+  }
+
+  // Whether @style can be pasted onto @obj. A marker's text needs a shape with
+  // room for it, so a marker takes only the shapes a marker can have.
+  function canPasteStyle(style, obj) {
+    if (!style || !obj) return false;
+    if (style.kind == 'line' || style.kind == 'polygon') {
+      return obj.kind == 'line' || obj.kind == 'polygon';
+    }
+    if (style.kind == 'icon') {
+      return obj.kind == 'icon' && (!obj.marker || shapeTakesText(style.shape));
+    }
+    return style.kind == obj.kind;
+  }
+
+  // The command string that pastes @style onto @targets, as one undo step, or
+  // '' if they all have it already. Targets it can not be pasted onto are
+  // skipped.
+  //
+  // opts.getRewrappedText(obj, values): the text a label block breaks into
+  //   with @values applied, or null if its lines stay as they are. A block's
+  //   breaks are only right for the font they were found with, so a new font
+  //   rewraps it in the same command, as in the label panel.
+  function getPasteStyleCommand(style, targets, opts) {
+    var objects = (targets || []).filter(function(obj) {
+      return canPasteStyle(style, obj);
+    });
+    var cmds = style && style.kind == 'icon' ?
+      getIconPasteCommands(style, objects) :
+      getFieldPasteCommands(style, objects, opts || {});
+    return cmds.join(' ');
+  }
+
+  function getIconPasteCommands(style, objects) {
+    var key = JSON.stringify(style.options);
+    var cmds = [];
+    var ids = objects.filter(function(obj) {
+      var icon = getIconStyle(obj.rec || {});
+      return !icon || JSON.stringify(getRestyleIconOptions(obj.rec || {}, icon)) != key;
+    }).map(getId);
+    if (ids.length > 0) {
+      cmds.push(getRestyleSymbolCommand(style.options, ids));
+    }
+    // -symbols keeps a marker's text, which the text style is written to after
+    if (style.text) {
+      groupValues(objects.filter(function(obj) { return obj.marker; }), function(obj) {
+        return getChangedValues(style.text, obj.rec);
+      }).forEach(function(group) {
+        cmds.push(formatFieldCommand('-labels', group.values, group.ids));
+      });
+    }
+    return cmds;
+  }
+
+  function getFieldPasteCommands(style, objects, opts) {
+    var cmds = [];
+    var groups = groupValues(objects, function(obj) {
+      return getChangedValues(getPasteValues(style, obj), obj.rec);
+    });
+    groups.forEach(function(group) {
+      cmds.push(formatFieldCommand(style.kind == 'label' ? '-labels' : '-style',
+        group.values, group.ids));
+    });
+    if (style.kind == 'label' && opts.getRewrappedText) {
+      groups.forEach(function(group) {
+        group.objects.forEach(function(obj) {
+          var text = opts.getRewrappedText(obj, group.values);
+          if (typeof text == 'string') cmds.push(getLabelTextCommand(text, obj.id, null));
+        });
+      });
+    }
+    return cmds;
+  }
+
+  // The fields of @style that apply to @obj
+  function getPasteValues(style, obj) {
+    var values = Object.assign({}, style.values);
+    var fields;
+    if (style.kind == 'line' || style.kind == 'polygon') {
+      fields = getShapeFields(obj.kind);
+      return pick(values, function(field) { return fields.indexOf(field) > -1; });
+    }
+    if (style.kind == 'label') {
+      // A position is taken only from a label that has one (see
+      // syncNewLabelStyle()), and a path label has neither a position nor a box.
+      return pick(values, function(field) {
+        if (field == 'label-pos' && (values[field] === '' || obj.pathLabel)) return false;
+        return !(obj.pathLabel && ANCHORED_ONLY_FIELDS.indexOf(field) > -1);
+      });
+    }
+    if (style.kind == 'curve') {
+      // A closed curve has no ends, and an open one no fill
+      return pick(values, function(field) {
+        return (obj.closed ? CURVE_END_FIELDS : CURVE_FILL_FIELDS).indexOf(field) == -1;
+      });
+    }
+    return values;
+  }
+
+  // Groups @objects by the values @getValues(obj) gives them, leaving out the
+  // ones with none: [{values, ids, objects}]
+  function groupValues(objects, getValues) {
+    var index = {};
+    var groups = [];
+    objects.forEach(function(obj) {
+      var values = getValues(obj);
+      var key;
+      if (Object.keys(values).length === 0) return;
+      key = JSON.stringify(values);
+      if (!index[key]) {
+        index[key] = {values: values, ids: [], objects: []};
+        groups.push(index[key]);
+      }
+      index[key].ids.push(obj.id);
+      index[key].objects.push(obj);
+    });
+    return groups;
+  }
+
+  // The values that differ from @rec's. Only these are written, so that unsetting
+  // a property that a target has no value for does not add an empty column.
+  function getChangedValues(values, rec) {
+    return pick(values, function(field) {
+      return String(normalize$1(values[field])) !== String(normalize$1(rec && rec[field]));
+    });
+  }
+
+  // A number is written bare and anything else quoted, so that each value is
+  // stored as the type it had on the object copied: a quoted value is a string.
+  function formatFieldCommand(name, values, ids) {
+    var parts = [name];
+    Object.keys(values).forEach(function(field) {
+      var val = values[field];
+      parts.push(field + '=' + (val === '' ? '' :
+        typeof val == 'number' ? String(val) : quoteCommandValue(val)));
+    });
+    parts.push('ids=' + ids.join(','));
+    return parts.join(' ');
+  }
+
+  function getShapeFields(kind) {
+    return getNewShapeStyleFields(kind == 'polygon' ? 'polygon' : 'polyline');
+  }
+
+  function readFields(rec, fields) {
+    var o = {};
+    fields.forEach(function(field) {
+      o[field] = normalize$1(rec[field]);
+    });
+    return o;
+  }
+
+  function pick(values, test) {
+    var o = {};
+    Object.keys(values).forEach(function(field) {
+      if (test(field)) o[field] = values[field];
+    });
+    return o;
+  }
+
+  function normalize$1(val) {
+    return val === undefined || val === null ? '' : val;
+  }
+
+  function getId(obj) {
+    return obj.id;
+  }
+
+  // "copy style" and "paste style" in the map's right-click menu, in the tools
+  // that style objects. The copied style is held for the session in
+  // gui.state.style_clipboard; see gui-style-clipboard.mjs for what a style is
+  // and how it is pasted.
+  //
+  // A paste goes to the selection when the object right-clicked is part of it,
+  // and otherwise to that object alone -- or, with nothing under the pointer, to
+  // the selection.
+
+  var STYLE_MODES = ['line_style', 'polygon_style', 'edit_lines', 'edit_polygons',
+    'reshape_lines', 'reshape_polygons', 'curve_lines', 'label', 'label_style', 'symbols'];
+
+  // Adds e.copyStyle and e.pasteStyle to the event that opens the menu
+  //   lyr: the layer the menu is opened on
+  //   clickedId: (optional) the object right-clicked, if not e.id
+  function addStyleClipboardItems(gui, e, lyr, clickedId) {
+    var hit = gui.map.getHitControl && gui.map.getHitControl();
+    var id = clickedId === undefined ? e.id : clickedId;
+    var style, copied, ids, count;
+    if (!lyr || !hit || STYLE_MODES.indexOf(gui.interaction.getMode()) == -1) return;
+    if (id > -1) {
+      style = copyObjectStyle(getStyleObject(lyr, id));
+    }
+    if (style) {
+      e.copyStyle = function() {
+        gui.state.style_clipboard = style;
+      };
+    }
+    copied = gui.state.style_clipboard;
+    if (!copied) return;
+    ids = getPasteIds(hit.getSelectionIds(), id);
+    count = getPasteTargets(lyr, ids, copied).length;
+    if (count === 0) return;
+    e.pasteStyle = {
+      count: count,
+      run: function() {
+        pasteStyle(gui, hit, lyr, ids, copied);
+      }
+    };
+  }
+
+  function getPasteIds(selection, id) {
+    if (id > -1 && selection.indexOf(id) == -1) return [id];
+    return selection;
+  }
+
+  function getPasteTargets(lyr, ids, style) {
+    return ids.map(function(id) {
+      return getStyleObject(lyr, id);
+    }).filter(function(obj) {
+      return canPasteStyle(style, obj);
+    });
+  }
+
+  function pasteStyle(gui, hit, lyr, ids, style) {
+    var selection = hit.getSelectionIds();
+    var cmd = getPasteStyleCommand(style, getPasteTargets(lyr, ids, style), {
+      getRewrappedText: getRewrappedText
+    });
+    if (!cmd) return;
+    runGuiEditCommand(gui, cmd, {
+      title: 'Paste style',
+      changesEditTarget: true,
+      onSuccess: function() {
+        // -symbols makes the symbols again, which the selection does not survive
+        if (selection.length > 0) hit.setSelectionIds(selection);
+      }
+    });
+  }
+
+  function getRewrappedText(obj, values) {
+    var text = obj.rec && obj.rec['label-text'];
+    var wrapped;
+    if (!text || obj.pathLabel) return null;
+    if (!WRAP_FIELDS.some(function(field) { return field in values; })) return null;
+    wrapped = rewrapLabelValue(text, Object.assign({}, obj.rec, values));
+    return wrapped !== text ? wrapped : null;
+  }
+
+  // The object @id in @lyr, as gui-style-clipboard.mjs describes one, or null
+  // for one with no style that can be copied or pasted: a plain point, or a
+  // symbol in a shape the symbol panel does not offer.
+  function getStyleObject(lyr, id) {
+    var rec = lyr.data ? lyr.data.getRecords()[id] : null;
+    var shp = lyr.shapes ? lyr.shapes[id] : null;
+    var kind;
+    if (!shp) return null;
+    if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
+      return {id: id, kind: lyr.geometry_type == 'polygon' ? 'polygon' : 'line', rec: rec || {}};
+    }
+    if (lyr.geometry_type != 'point' || !rec) return null;
+    kind = getPointKind(rec);
+    if (kind == 'label') {
+      return {id: id, kind: 'label', rec: rec, pathLabel: internal.svg.shapeIsPathLabel(shp, rec)};
+    }
+    if (kind != 'symbol' && kind != 'circle') return null;
+    if (internal.svg.shapeIsCurve(shp, rec)) {
+      return {id: id, kind: 'curve', rec: rec, closed: curveShapeIsClosed(shp)};
+    }
+    if (!getIconShape(rec)) return null;
+    return {id: id, kind: 'icon', rec: rec, marker: internal.svg.featureIsMarker(rec)};
+  }
+
   function InspectionControl2(gui, hit) {
     var _popup = new Popup(gui, hit.getSwitchTrigger(1), hit.getSwitchTrigger(-1));
     var _self = new EventDispatcher();
@@ -29007,6 +29793,7 @@
           gui.model.updated({filter:true});
         };
       }
+      addStyleClipboardItems(gui, e, target);
       gui.contextMenu.open(e, target);
     });
 
@@ -31410,6 +32197,7 @@
         };
       }
 
+      addStyleClipboardItems(gui, e, target);
       // don't allow copying of open paths as geojson in polygon mode
       gui.contextMenu.open(e, target);
     });
@@ -32362,6 +33150,7 @@
 
     hit.on('contextmenu', function(e) {
       if (!_active || drawing() || drag) return;
+      addStyleClipboardItems(gui, e, hit.getHitTarget());
       gui.contextMenu.open(e, hit.getHitTarget());
     });
 
@@ -32444,7 +33233,9 @@
     // knot
     gui.keyboard.on('keydown', function(e) {
       if (!_active || !drawing()) return;
-      if (e.keyName == 'esc' || e.keyName == 'enter') {
+      if (isSelectAllObjectsKey(e.originalEvent)) {
+        consume(e); // selecting the layer is not part of placing knots
+      } else if (e.keyName == 'esc' || e.keyName == 'enter') {
         finishCurve(false);
         consume(e);
       } else if (e.keyName == 'delete') {
@@ -35539,6 +36330,7 @@
       if (target && editor.isOpen() && clickIsOnEditedLabel(e)) {
         addBoldAction(e, target);
       }
+      addStyleClipboardItems(gui, e, target, id);
       gui.contextMenu.open(e, target);
     });
 
@@ -36907,14 +37699,8 @@
       }
     }, null, 10);
 
-    // Cmd-A on a Mac, Ctrl-A elsewhere. Read from the key rather than the
-    // keyCode, as undo and redo are.
     function isSelectAll(e) {
-      var evt = e.originalEvent;
-      if (!evt || !(evt.metaKey || evt.ctrlKey) || evt.shiftKey || evt.altKey) {
-        return false;
-      }
-      return (evt.key || '').toLowerCase() == 'a';
+      return isSelectAllObjectsKey(e.originalEvent);
     }
 
     // Suppresses the key's default action as well as the rest of the GUI's
@@ -37037,230 +37823,6 @@
     function scaleThreshold(px) {
       return px * ext.getPixelSize();
     }
-  }
-
-  // A numbered marker -- a circle or square with a number or letter centred in
-  // it -- as the symbol panel models it. In the data it is one label record:
-  // label-text, label-pos=c and the text's font and fill, with the symbol behind
-  // it in icon=, icon-size=, icon-fill= and the rest. The symbol panel restyles
-  // its symbol with -symbols ids=, which keeps the text, and its text with
-  // -labels ids=. Pure functions, so that they can be tested without a map.
-  //
-  // See docs/development/symbol-tool-design.md.
-
-  // The shapes a marker can have: the ones with room in the middle for text
-  var MARKER_SHAPES = ['circle', 'square'];
-
-  // A symbol given text at a size too small for it -- the default 10px is --
-  // grows to this
-  var MARKER_SIZE = 20;
-  var MIN_MARKER_SIZE = 16;
-
-  function shapeTakesText(shape) {
-    return MARKER_SHAPES.indexOf(shape) > -1;
-  }
-
-  // The size a symbol of @size has once it is given text
-  function getMarkerIconSize(size) {
-    return size >= MIN_MARKER_SIZE ? size : MARKER_SIZE;
-  }
-
-  // The panel's text style: {text, font, style, weight, size, color, baseline},
-  // where text is '' for a symbol with no text, font is '' until the panel picks
-  // the font new labels get, and baseline is the text's baseline below the
-  // symbol's centre in px, or '' for where the font's capitals are centred.
-  function getDefaultMarkerTextStyle() {
-    return {text: '', font: '', style: 'normal', weight: '700', size: 12,
-      color: '#ffffff', baseline: ''};
-  }
-
-  // The record fields that put @text (a panel text style) on a symbol, apart
-  // from label-text itself. Regular is no face at all, as in the label panel.
-  //
-  // The baseline is stored in em, so that it scales with the type: a marker set
-  // a size larger keeps its number where it was in the symbol.
-  function getMarkerTextFields(text) {
-    var o = {'label-pos': 'c'};
-    if (text.font) o['font-family'] = text.font;
-    o['font-size'] = text.size;
-    if (!isRegular(text.style, text.weight)) {
-      o['font-style'] = text.style;
-      o['font-weight'] = text.weight;
-    }
-    o.fill = text.color || '#000000';
-    if (text.baseline !== '' && isFinite(text.baseline)) {
-      o.dy = getBaselineEm(text.baseline, text.size);
-    }
-    return o;
-  }
-
-  // The panel text style of the marker in @rec
-  function getMarkerTextStyle(rec) {
-    var size = Number(rec['font-size']) > 0 ? Number(rec['font-size']) : 12;
-    return {
-      text: String(rec['label-text'] || ''),
-      font: rec['font-family'] || '',
-      style: rec['font-style'] || 'normal',
-      weight: String(rec['font-weight'] || '400'),
-      size: size,
-      color: rec.fill || '',
-      baseline: parseBaseline(rec.dy, size)
-    };
-  }
-
-  // A baseline in px as dy= in em, to three places
-  function getBaselineEm(px, size) {
-    return Math.round(Number(px) / size * 1000) / 1000 + 'em';
-  }
-
-  // dy as a baseline in px, to a tenth: a number is px, and em is the font size.
-  // '' for no dy, or one in units the panel does not show.
-  function parseBaseline(dy, size) {
-    var str = dy === undefined || dy === null ? '' : String(dy).trim();
-    var m;
-    if (str === '') return '';
-    m = /^(-?[0-9.]+)(em|px)?$/.exec(str);
-    if (!m || !isFinite(Number(m[1]))) return '';
-    return Math.round(Number(m[1]) * (m[2] == 'em' ? size : 1) * 10) / 10;
-  }
-
-  // The -labels fields that place a marker of @icon (a panel symbol style) with
-  // @text on it: the symbol in the icon fields -symbols writes on a label.
-  function getAddMarkerFields(icon, text) {
-    var o = getMarkerTextFields(text);
-    o.icon = icon.shape;
-    o['icon-size'] = icon.size;
-    o['icon-fill'] = icon.fill || 'none';
-    if (icon.stroke && icon.strokeWidth > 0) {
-      o['icon-stroke'] = icon.stroke;
-      o['icon-stroke-width'] = icon.strokeWidth;
-    }
-    if (icon.shape == 'square' && icon.rotation) o['icon-rotation'] = icon.rotation;
-    return o;
-  }
-
-  // What auto-numbering puts on the next marker after one with @text: the next
-  // number, or the next letter. Other text, and a Z, repeats.
-  function getNextMarkerText(text) {
-    var str = String(text);
-    var code;
-    if (/^[0-9]+$/.test(str)) return String(Number(str) + 1);
-    if (/^[A-Ya-y]$/.test(str)) {
-      code = str.charCodeAt(0);
-      return String.fromCharCode(code + 1);
-    }
-    return str;
-  }
-
-  // Where counting starts when it is turned on with @text in the field: the
-  // text itself if no marker has it yet, otherwise the next number or letter
-  // that none has, so that the next symbol placed is not a second of one that
-  // was already placed. @used: the text of the markers in the layer.
-  function getAutoNumberStart(text, used) {
-    var str = String(text);
-    var next;
-    while (used.indexOf(str) > -1) {
-      next = getNextMarkerText(str);
-      if (next == str) break; // text that does not count up, and a Z
-      str = next;
-    }
-    return str;
-  }
-
-  // The command that puts text on symbols, as one undo step. Text styles go on
-  // first, so that -symbols, which follows, reads the records as labels and
-  // writes a circle as icon=circle and icon-fill= rather than as r= and fill= --
-  // fill= being the text's color, on a label. The symbol options are each
-  // symbol's own, read before the text changes them (see getRestyleIconOptions()).
-  //
-  // A circle's stroke= is the text's outline on a label, so a circle's stroke
-  // comes off with -style.
-  //
-  //   groups: [{options, ids}] from getRestyleIconOptions() for the symbols
-  //   stroked: ids of the symbols with a stroke= or stroke-width= field
-  function getAddMarkerTextCommand(text, groups, stroked) {
-    var ids = flattenIds(groups);
-    var parts = [formatFields('-labels', Object.assign(
-      {text: encodeLabelText(text.text)}, getMarkerTextFields(text)), ids)];
-    if (stroked.length > 0) {
-      parts.push(formatFields('-style', {stroke: '', 'stroke-width': ''}, stroked));
-    }
-    groups.forEach(function(g) {
-      parts.push(formatFields('-symbols', g.options, g.ids));
-    });
-    return parts.join(' ');
-  }
-
-  // The fields a marker's text puts on its record, which removing the text
-  // takes off. fill= goes too: -symbols writes a circle's own, and the text's
-  // would otherwise color a square's outline.
-  var TEXT_FIELDS = ['label-pos', 'font-family', 'font-size', 'font-style',
-    'font-weight', 'fill', 'dx', 'dy', 'text-anchor'];
-
-  // The command that takes the text off markers, leaving their symbols, as one
-  // undo step. label-text goes with -each because -style keeps an empty
-  // label-text -- a label being typed is empty -- and a record with one is a
-  // label. -symbols then writes each symbol as a symbol, a circle as r= again.
-  //
-  //   groups: [{options, ids}], as for getAddMarkerTextCommand()
-  function getRemoveMarkerTextCommand(groups) {
-    var ids = flattenIds(groups);
-    var cleared = {};
-    var parts = ['-each ' + quoteCommandValue('d["label-text"] = undefined') +
-      ' ids=' + ids.join(',')];
-    TEXT_FIELDS.forEach(function(name) { cleared[name] = ''; });
-    parts.push(formatFields('-style', cleared, ids));
-    groups.forEach(function(g) {
-      parts.push(formatFields('-symbols', g.options, g.ids));
-    });
-    return parts.join(' ');
-  }
-
-  // Groups symbols by the -symbols options that make each one again with its
-  // own style, for the commands above. @getStyle(rec) gives a symbol's panel
-  // style; @change(style), if given, edits it first.
-  function groupRestyleOptions(records, ids, getStyle, change) {
-    var groups = {};
-    var list = [];
-    ids.forEach(function(id) {
-      var rec = records[id] || {};
-      var style = getStyle(rec);
-      var options, key;
-      if (!style) return;
-      if (change) change(style);
-      options = getRestyleIconOptions(rec, style);
-      key = JSON.stringify(options);
-      if (!groups[key]) {
-        groups[key] = {options: options, ids: []};
-        list.push(groups[key]);
-      }
-      groups[key].ids.push(id);
-    });
-    return list;
-  }
-
-  function flattenIds(groups) {
-    return groups.reduce(function(memo, g) { return memo.concat(g.ids); }, [])
-      .sort(function(a, b) { return a - b; });
-  }
-
-  function formatFields(command, fields, ids) {
-    var parts = [command];
-    Object.keys(fields).forEach(function(name) {
-      var val = fields[name];
-      parts.push(name + '=' + (val === '' ? '' : formatValue$2(val)));
-    });
-    parts.push('ids=' + ids.join(','));
-    return parts.join(' ');
-  }
-
-  function formatValue$2(val) {
-    var str = String(val);
-    return /^[A-Za-z0-9#._-]+$/.test(str) ? str : quoteCommandValue(str);
-  }
-
-  function isRegular(style, weight) {
-    return (style || 'normal') == 'normal' && Number(weight || 400) == 400;
   }
 
   // The symbol tool's hover and selection cues, drawn in the layer's SVG beside
@@ -38014,9 +38576,7 @@
     }
 
     function curveIsClosed(id) {
-      var shp = state.target.shapes[id];
-      var last = shp ? shp.length - 1 : 0;
-      return last > 2 && shp[0][0] == shp[last][0] && shp[0][1] == shp[last][1];
+      return curveShapeIsClosed(state.target.shapes[id]);
     }
 
     // The value @fn reads from every record in @ids, or null if they disagree
@@ -38679,10 +39239,40 @@
 
     hit.on('change', function(e) {
       if (!active()) return;
+      syncNewStyleToSelection();
       selection.refresh();
       updateCursor();
       panel.update();
     });
+
+    // A restyle or an undo changes the records of the selection
+    gui.model.on('update', function() {
+      if (active()) syncNewStyleToSelection();
+    });
+
+    gui.on('undo_redo_post', function() {
+      if (active()) syncNewStyleToSelection();
+    });
+
+    // The next symbol is placed in the style of the symbols last selected,
+    // whether or not the panel is showing. With nothing selected the panel
+    // describes every symbol in the layer, which says nothing about the next.
+    function syncNewStyleToSelection() {
+      var target = getTarget();
+      var ids = getSelectedSymbols();
+      var sel = {icons: [], openCurves: [], closedCurves: [], markers: []};
+      if (ids.length === 0) return;
+      ids.forEach(function(id) {
+        var rec = getRecord(target, id) || {};
+        if (isCurve(target, id)) {
+          (curveShapeIsClosed(target.shapes[id]) ? sel.closedCurves : sel.openCurves).push(rec);
+        } else if (!pointIsUnstyled(rec) && getIconShape(rec)) {
+          sel.icons.push(rec);
+          if (internal.svg.featureIsMarker(rec)) sel.markers.push(rec);
+        }
+      });
+      syncSymbolStyle(newStyle, sel);
+    }
 
     gui.on('map_rendered', function(e) {
       if (!active()) return;
@@ -38867,11 +39457,8 @@
       return ids;
     }
 
-    // Cmd-A on a Mac, Ctrl-A elsewhere
     function isSelectAll(e) {
-      var evt = e.originalEvent;
-      if (!evt || !(evt.metaKey || evt.ctrlKey) || evt.shiftKey || evt.altKey) return false;
-      return (evt.key || '').toLowerCase() == 'a';
+      return isSelectAllObjectsKey(e.originalEvent);
     }
 
     function consume(e) {
