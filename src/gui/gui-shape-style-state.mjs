@@ -4,9 +4,12 @@
 // of running -style, and the -add-shape command that creates a shape writes it
 // (see getAddShapeCommand() in gui-draw-commands.mjs). So, as with the label
 // tool's new-label style, it is a tool default rather than data, and setting it
-// is not an undo step.
+// is not an undo step. Selecting shapes also sets it, to the properties the
+// selection agrees on (see gui-selection-style.mjs), so that the next shape
+// is drawn in the style the panel was showing.
 //
 // See docs/development/line-tool-design.md.
+import { getSharedStyleValues, getChangedStyleKeys } from './gui-selection-style';
 
 var LINE_FIELDS = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray',
   'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'line-fade', 'line-taper',
@@ -61,6 +64,18 @@ export function updateNewShapeStyle(gui, geometryType, values) {
   gui.state.new_shape_styles = styles;
   gui.dispatchEvent('new_shape_style_change', {geometry_type: geometryType});
   return styles[getKey(geometryType)];
+}
+
+// Sets the new-shape style to the properties that @records, the selected
+// shapes, agree on. Returns true if that changed it.
+export function syncNewShapeStyle(gui, geometryType, records) {
+  var prev = getNewShapeStyle(gui, geometryType);
+  var values = getSharedStyleValues(records, getNewShapeStyleFields(geometryType));
+  var next = mergeShapeStyleValues(prev, values, geometryType);
+  if (getChangedStyleKeys(prev, next).length === 0 &&
+      getChangedStyleKeys(next, prev).length === 0) return false;
+  updateNewShapeStyle(gui, geometryType, values);
+  return true;
 }
 
 export function clearNewShapeStyle(gui, geometryType) {

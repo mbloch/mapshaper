@@ -189,6 +189,32 @@ test('the style panel sets the style of new lines while drawing is armed',
     expect(errors).toEqual([]);
   });
 
+test('a line is drawn in the style of the line last selected, and restyled', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  await clickNewLayerLink(page, 'lines');
+  var box = await getMapBox(page);
+  await drawLine(page, mapPoint(box, 0.2, 0.6), mapPoint(box, 0.4, 0.6));
+  await expect.poll(() => getShapeCount(page, 'lines')).toBe(1);
+  expect(await getRecords(page, 'lines')).toEqual([{}]);
+
+  // select the unstyled line and style it
+  await clickAt(page, mapPoint(box, 0.3, 0.6));
+  expect(await getSelectionIds(page)).toEqual([0]);
+  await setField(colorRow(page, 'Stroke').locator('.label-color-input'), '#ff0000');
+  await setField(colorRow(page, 'Stroke').locator('.size-field-input'), '4');
+  expect(await getRecords(page, 'lines')).toEqual([{stroke: '#ff0000', 'stroke-width': 4}]);
+
+  // a click off the line deselects it, and the next one is drawn to match
+  await clickAt(page, mapPoint(box, 0.6, 0.85));
+  expect(await getSelectionIds(page)).toEqual([]);
+  expect(await getNewShapeStyle(page, 'polyline')).toEqual({stroke: '#ff0000', 'stroke-width': 4});
+  await drawLine(page, mapPoint(box, 0.2, 0.8), mapPoint(box, 0.4, 0.8));
+  await expect.poll(() => getShapeCount(page, 'lines')).toBe(2);
+  expect((await getRecords(page, 'lines'))[1]).toEqual({stroke: '#ff0000', 'stroke-width': 4});
+  expect(errors).toEqual([]);
+});
+
 test('a line drawn with no stroke in a styled layer gets the panel\'s default stroke, which the swatch shows',
   async function({page}) {
     var errors = collectPageErrors(page);

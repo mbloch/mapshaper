@@ -24,7 +24,7 @@ import { ColorSchemePanel, getSchemeStripBackground } from './gui-color-scheme-p
 import { getLayerScheme } from './gui-color-scheme-model';
 import { FloatingToolbar } from './gui-floating-toolbar';
 import {
-  getNewShapeStyle, updateNewShapeStyle, clearNewShapeStyle
+  getNewShapeStyle, updateNewShapeStyle, clearNewShapeStyle, syncNewShapeStyle
 } from './gui-shape-style-state';
 import { getSelectionChangeTest } from './gui-selection-change';
 
@@ -821,6 +821,7 @@ export function LayerStyleTool(gui) {
     var geom = targetLayer && targetLayer.geometry_type;
     var manualIds = getSelectionIds();
     if (!targetLayer) return;
+    syncNewShapeStyleToSelection(manualIds);
     title.text(geom == 'polygon' ? 'Polygon styles' : 'Line styles');
     updateEditingStatus(manualIds.length);
     strokeControl.row.show();
@@ -844,6 +845,17 @@ export function LayerStyleTool(gui) {
     if (geom == 'polygon') glowControl.update();
     presetControl.render();
     updateSavedStyleControls();
+  }
+
+  // The next shape is drawn in the style of the shapes last selected. This
+  // runs whenever the panel is refreshed -- after a selection, a restyle, or an
+  // undo -- whether or not the panel is showing.
+  function syncNewShapeStyleToSelection(ids) {
+    var records = targetLayer.data ? targetLayer.data.getRecords() : [];
+    if (ids.length === 0) return;
+    syncNewShapeStyle(gui, targetLayer.geometry_type, ids.map(function(id) {
+      return records[id] || {};
+    }));
   }
 
   function updateColorControl(control) {

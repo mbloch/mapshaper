@@ -4,9 +4,12 @@
 // pick a font, then place labels in it. Values set with nothing selected are
 // held here rather than written to a layer, and -labels coordinates= writes them when a
 // label finally exists -- so this is a tool default, not data, and it never
-// needs its own undo step.
+// needs its own undo step. Selecting labels also sets it, to the properties
+// the selection agrees on (see syncNewLabelStyle()), so that the next label is
+// made in the style the panel was showing.
 //
 // See docs/development/label-tool-design.md.
+import { getSharedStyleValues } from './gui-selection-style';
 
 // The style properties -labels accepts. A panel control whose property is
 // missing from this list would appear to do nothing when set with no selection,
@@ -73,6 +76,26 @@ export function getNewLabelStyle(gui) {
 export function updateNewLabelStyle(gui, values) {
   gui.state.new_label_style = mergeStyleValues(getNewLabelStyle(gui), values);
   return gui.state.new_label_style;
+}
+
+// Where a label sits, which a drag writes for the one label dragged -- offsets,
+// the side of its anchor the text runs from, and on a path, its place along
+// it. They say where that label is, not what style it is in, so the next label
+// does not take them from a selection.
+var PLACEMENT_FIELDS = ['dx', 'dy', 'text-anchor', 'label-side', 'label-start-offset'];
+
+// Sets the new-label style to the properties that @records, the selected
+// labels, agree on (see gui-selection-style.mjs). A position is taken only
+// where they have one: a dragged label has none, and the next label is
+// centred on its point without one (see DEFAULT_NEW_LABEL_STYLE).
+export function syncNewLabelStyle(gui, records) {
+  var fields = NEW_LABEL_STYLE_FIELDS.filter(function(field) {
+    return PLACEMENT_FIELDS.indexOf(field) == -1;
+  });
+  var values = getSharedStyleValues(records, fields).filter(function(pair) {
+    return pair[0] != 'label-pos' || pair[1] !== '';
+  });
+  return updateNewLabelStyle(gui, values);
 }
 
 export function clearNewLabelStyle(gui) {

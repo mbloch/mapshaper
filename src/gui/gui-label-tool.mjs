@@ -18,7 +18,7 @@ import { internal } from './gui-core';
 import { runGuiEditCommand } from './gui-edit-command';
 import { quoteCommandValue } from './gui-command-utils';
 import {
-  getNewLabelStyle, updateNewLabelStyle, getLabelTextSession, getLabelToolArmed,
+  getNewLabelStyle, updateNewLabelStyle, syncNewLabelStyle, getLabelTextSession, getLabelToolArmed,
   getLabelPositionMode, setLabelPositionMode, getLabelPositionKind, getToggleState
 } from './gui-label-style-state';
 import { formatEditingStatus } from './gui-editing-status';
@@ -245,10 +245,12 @@ export function LabelTool(gui) {
   });
   gui.model.on('update', updateVisibility);
   gui.model.on('update', function() {
+    syncNewLabelStyleToSelection();
     if (panel.visible()) updateControls();
     setTimeout(updateSelectionDisplay, 0);
   });
   gui.on('undo_redo_post', function() {
+    syncNewLabelStyleToSelection();
     if (panel.visible()) {
       updateControls();
       updateSelectionDisplay();
@@ -256,6 +258,7 @@ export function LabelTool(gui) {
   });
   gui.on('label_text_session_change', function() {
     // a label opened for typing becomes what the controls act on
+    syncNewLabelStyleToSelection();
     if (panel.visible()) updateControls();
   });
   gui.on('label_tool_armed_change', function() {
@@ -280,10 +283,28 @@ export function LabelTool(gui) {
   if (hit) {
     hit.on('change', function(e) {
       if (e.mode == labelStyleMode || e.mode == labelMode) {
+        syncNewLabelStyleToSelection();
         updateSelectionDisplay();
         updateControls();
       }
     });
+  }
+
+  // The next label is made in the style of the labels last selected, or of the
+  // label being typed into, whether or not the panel is showing. With nothing
+  // selected the panel describes the whole layer, which says nothing about
+  // the next label.
+  function syncNewLabelStyleToSelection() {
+    var mode = gui.interaction && gui.interaction.getMode();
+    var session = getLabelTextSession(gui);
+    var table = getActiveTable();
+    var ids;
+    if (mode != labelStyleMode && mode != labelMode || !table) return;
+    ids = session && session.id > -1 ? [session.id] : getSelectionIds();
+    if (ids.length === 0) return;
+    syncNewLabelStyle(gui, ids.map(function(id) {
+      return table.getRecordAt(id) || {};
+    }));
   }
 
   updateVisibility();

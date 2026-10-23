@@ -170,6 +170,12 @@ export function getCurveStyle(rec) {
   };
 }
 
+// Whether a curve's shape ends where it began, which closes it
+export function curveShapeIsClosed(shp) {
+  var last = shp ? shp.length - 1 : 0;
+  return last > 2 && shp[0][0] == shp[last][0] && shp[0][1] == shp[last][1];
+}
+
 // 'none', 'start', 'end' or 'both'
 export function getArrowheadPosition(rec) {
   var start = hasMarker(rec['line-start']);

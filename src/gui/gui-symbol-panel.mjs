@@ -17,7 +17,7 @@ import {
   getIconShape, getIconSize, getIconPaint, getIconRotation, getIconStyle,
   getRestyleIconOptions,
   getCurveStyle, getArrowheadFields, getArrowheadPosition, getArrowheadShape,
-  shapeHasStrokeWidth, shapeHasRotation
+  shapeHasStrokeWidth, shapeHasRotation, curveShapeIsClosed
 } from './gui-symbol-style';
 import {
   getMarkerIconSize, getAutoNumberStart, shapeTakesText, getMarkerTextStyle, getBaselineEm,
@@ -604,9 +604,7 @@ export function SymbolPanel(gui, opts) {
   }
 
   function curveIsClosed(id) {
-    var shp = state.target.shapes[id];
-    var last = shp ? shp.length - 1 : 0;
-    return last > 2 && shp[0][0] == shp[last][0] && shp[0][1] == shp[last][1];
+    return curveShapeIsClosed(state.target.shapes[id]);
   }
 
   // The value @fn reads from every record in @ids, or null if they disagree

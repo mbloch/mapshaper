@@ -12,8 +12,10 @@ import { getAddLabelCommand, getUpdateLabelCommand } from './gui-label-commands'
 import { getNewLabelFontName, getNearestFontStyleVariant } from './gui-label-fonts';
 import { pointIsUnstyled } from './gui-unstyled-points';
 import {
-  getAddIconOptions, getAddCurveOptions, getDefaultIconStyle, getDefaultCurveStyle
+  getAddIconOptions, getAddCurveOptions, getDefaultIconStyle, getDefaultCurveStyle,
+  getIconShape, curveShapeIsClosed
 } from './gui-symbol-style';
+import { syncSymbolStyle } from './gui-selection-style';
 import {
   getDefaultMarkerTextStyle, getAddMarkerFields, getNextMarkerText
 } from './gui-marker-style';
@@ -302,10 +304,40 @@ export function initSymbolTool(gui, ext, hit) {
 
   hit.on('change', function(e) {
     if (!active()) return;
+    syncNewStyleToSelection();
     selection.refresh();
     updateCursor();
     panel.update();
   });
+
+  // A restyle or an undo changes the records of the selection
+  gui.model.on('update', function() {
+    if (active()) syncNewStyleToSelection();
+  });
+
+  gui.on('undo_redo_post', function() {
+    if (active()) syncNewStyleToSelection();
+  });
+
+  // The next symbol is placed in the style of the symbols last selected,
+  // whether or not the panel is showing. With nothing selected the panel
+  // describes every symbol in the layer, which says nothing about the next.
+  function syncNewStyleToSelection() {
+    var target = getTarget();
+    var ids = getSelectedSymbols();
+    var sel = {icons: [], openCurves: [], closedCurves: [], markers: []};
+    if (ids.length === 0) return;
+    ids.forEach(function(id) {
+      var rec = getRecord(target, id) || {};
+      if (isCurve(target, id)) {
+        (curveShapeIsClosed(target.shapes[id]) ? sel.closedCurves : sel.openCurves).push(rec);
+      } else if (!pointIsUnstyled(rec) && getIconShape(rec)) {
+        sel.icons.push(rec);
+        if (internal.svg.featureIsMarker(rec)) sel.markers.push(rec);
+      }
+    });
+    syncSymbolStyle(newStyle, sel);
+  }
 
   gui.on('map_rendered', function(e) {
     if (!active()) return;

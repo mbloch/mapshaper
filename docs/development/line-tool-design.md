@@ -50,6 +50,16 @@ Draw: the shape under the pointer is highlighted, a click selects it alone
   not an undo step: like the label tool's new-label style, it is a tool default,
   not data. With a selection, or with Draw disarmed, the panel styles the
   layer's features again.
+- **Selecting sets the new-shape style.** As in a drawing program, the next
+  shape is drawn in the style of the shapes last selected, so that selecting a
+  shape is how another is drawn to match it. Each property the selection
+  agrees on, including being unset, goes into the new-shape style; a property
+  it disagrees about leaves the new-shape style's alone
+  (`syncNewShapeStyle()`, `gui-selection-style.mjs`). The panel does this
+  whenever it refreshes with shapes selected -- after the selection changes, a
+  restyle, or an undo -- whether or not it is showing. With nothing selected it
+  does not: the panel then describes the whole layer, and disarming Draw would
+  otherwise replace a style just set for the next shape with the layer's.
 - **Writing the style.** `createShape()` passes the new-shape style to
   `getAddShapeCommand()`, which writes each field as a style option. Plain
   numbers are written without quotes. In a layer that has a style of its own, a

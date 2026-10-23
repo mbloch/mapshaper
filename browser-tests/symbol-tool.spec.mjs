@@ -385,6 +385,29 @@ test('the panel restyles the selected symbol', async function({page}) {
   expect(errors).toEqual([]);
 });
 
+test('the next symbol is placed in the style of the symbol last selected', async function({page}) {
+  var errors = collectPageErrors(page);
+  await openTool(page);
+  await clickMap(page, 0.3, 0.5);
+  await armTool(page, null);
+  await clickMap(page, 0.3, 0.5);
+  expect(await getSelection(page)).toEqual([0]);
+  await page.locator('.symbol-style-panel .label-icon-buttons [data-icon="square"]').click();
+  await page.waitForTimeout(200);
+  await setColor(page, 'Fill', '#00aa00');
+  await setSize(page, '16');
+
+  await page.keyboard.press('Escape'); // deselects
+  await page.waitForTimeout(60);
+  expect(await getSelection(page)).toEqual([]);
+  await armTool(page, 'icon');
+  await clickMap(page, 0.6, 0.5);
+  var recs = (await getSymbolLayer(page)).records;
+  expect(recs.length).toBe(2);
+  expect(recs[1]).toMatchObject({icon: 'square', 'icon-size': 16, 'icon-fill': '#00aa00'});
+  expect(errors).toEqual([]);
+});
+
 test('Delete removes the selected symbols, and undo brings them back', async function({page}) {
   var errors = collectPageErrors(page);
   await openTool(page);

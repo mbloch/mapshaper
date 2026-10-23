@@ -530,6 +530,44 @@ test('styling a selected label restyles it rather than the whole layer', async f
   expect(errors).toEqual([]);
 });
 
+test('the next label is made in the style of the label last selected', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  var defaultFont = await getDefaultFont(page);
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.35, 0.4);
+  await page.keyboard.type('A');
+  await clickMap(page, 0.6, 0.7); // finishes label A
+  await clickMap(page, 0.65, 0.6);
+  await page.keyboard.type('B');
+  await clickMap(page, 0.15, 0.85); // finishes label B
+  await disarmTool(page);
+  await page.waitForTimeout(200);
+
+  await clickLabel(page, 0);
+  await page.locator('.text-style-panel select').first().selectOption('Georgia');
+  await page.waitForTimeout(200);
+  expect((await getNewLabelStyle(page))['font-family']).toBe('Georgia');
+
+  // selecting B, which is in the default font, is what the next label follows
+  await clickLabel(page, 1);
+  expect((await getNewLabelStyle(page))['font-family']).toBe(defaultFont);
+
+  // and selecting A again matches A
+  await clickLabel(page, 0);
+  expect((await getNewLabelStyle(page))['font-family']).toBe('Georgia');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.3, 0.65);
+  await writeLabel(page, 'C');
+  var records = (await getLabelLayer(page)).records;
+  expect(records.length).toBe(3);
+  expect(records[2]['font-family']).toBe('Georgia');
+  expect(records[2]['label-pos']).toBe('c');
+  expect(errors).toEqual([]);
+});
+
 test('a new label names the font it is drawn in', async function({page}) {
   // "Default font" named nothing: an unfonted label is drawn in whatever this
   // browser resolves sans-serif to, which is a different face on the next

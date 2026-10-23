@@ -42,6 +42,20 @@ optional fill). Data-driven symbol layers are a separate, later panel.
   glyphs shared through `gui-arrowhead-shapes.mjs`; fill for closed curves). With a selection, the sections for the kinds selected are
   shown and edits restyle it. With nothing selected, the panel sets the
   style of the next symbol placed, and shows the section of the armed tool.
+- **Selecting sets the next symbol's style.** As in a drawing program, the
+  next icon, curve or marker text is in the style of the symbols last
+  selected, so that selecting a symbol is how another is placed to match it.
+  Each value the panel shows for the selection goes into the new style; a
+  value the selection disagrees about leaves the new style's alone
+  (`syncSymbolStyle()` in `gui-selection-style.mjs`). Icons, curves and
+  marker text are kept apart, and each is taken only from the symbols that
+  have it: curve ends from open curves, a closed curve's fill from closed
+  ones, rotation and stroke width from the shapes that take them, and a
+  marker's text style from markers. A marker's text is not taken, so the next
+  symbol is a marker only with text typed or Auto on. The tool does this
+  whenever the selection or its records change, whether or not the panel is
+  showing, and not with nothing selected, when the panel describes every
+  symbol in the layer.
 - **Shapes** are shared with label icons (`gui-icon-shapes.mjs`): circle,
   square, triangle, star and ring in both panels, and the NYT star in both
   for NYT users only (`isNytUser()`; `-symbols type=nyt-star` is accepted

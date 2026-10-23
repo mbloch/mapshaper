@@ -3946,6 +3946,19 @@ the next label placed. Without this, the default stopped following the panel the
 moment the first label existed, and only the very first label of a session came
 out styled.
 
+**Selecting labels also sets the default**, as selecting an object does in a
+drawing program: the next label is made in the style of the labels last
+selected (or of the label being typed into), so that selecting a label is how
+another is made to match it. `syncNewLabelStyle()` takes each property the
+selection agrees on, including being unset, and leaves the default's own value
+for a property the selection disagrees about (`gui-selection-style.mjs`). It
+runs whenever the selection, its records, or the typing session changes,
+whether or not the panel is showing, and not with nothing selected, when the
+panel describes the whole layer. Placement is not taken: `dx`, `dy`,
+`text-anchor`, `label-side` and `label-start-offset` say where one label was
+dragged, and `label-pos` is taken only where the labels have one, since a
+dragged label has none and the next label would lose its centred default.
+
 Case 2 is what makes the panel useful before there is a label at all: pick a
 font, then place labels in it. The values go into GUI state rather than into a
 layer — there is no layer to write them to — and `-add-label` writes them when a
