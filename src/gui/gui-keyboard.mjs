@@ -37,7 +37,15 @@ export function KeyboardEvents(gui) {
     if (!GUI.isActiveInstance(gui) || e.repeat && e.keyCode == SPACE) return;
     updateControlKeys(e, 'keydown');
     self.dispatchEvent('keydown', getEventData(e));
+    // The editing tools that have something to select take Cmd-A first. Anywhere
+    // else, the browser's own select-all would select the text of the whole
+    // page -- panels, menus, the console -- which is never what it means here.
+    // In a text field it selects the field's text, as it does everywhere.
+    if (isSelectAllKey(e) && !e.defaultPrevented && !focusIsInTextField()) {
+      e.preventDefault();
+    }
   });
+
 
   document.addEventListener('mousemove', function(e) {
     // refreshing these here to prevent problems when context menu opens
@@ -73,6 +81,30 @@ var names = {
   39: 'right',
   40: 'down'
 };
+
+// Cmd-A on a Mac, Ctrl-A elsewhere. Read from the key rather than the keyCode,
+// as undo and redo are.
+//   evt: a native keyboard event
+export function isSelectAllKey(evt) {
+  if (!evt || !(evt.metaKey || evt.ctrlKey) || evt.shiftKey || evt.altKey) return false;
+  return (evt.key || '').toLowerCase() == 'a';
+}
+
+// Whether the keyboard is typing into a text field -- the console's command
+// line, a panel's field, a label being edited -- where Cmd-A selects the
+// field's text, as it does anywhere else
+export function focusIsInTextField() {
+  var el = document.activeElement;
+  if (!el) return false;
+  if (el.isContentEditable || el.nodeName == 'TEXTAREA') return true;
+  return el.nodeName == 'INPUT' &&
+    !/^(button|checkbox|radio|submit|range|color|file)$/.test(el.type);
+}
+
+// Cmd-A that selects objects in an editing tool, rather than text in a field
+export function isSelectAllObjectsKey(evt) {
+  return isSelectAllKey(evt) && !focusIsInTextField();
+}
 
 function getEventData(originalEvent) {
   var keyCode = originalEvent.keyCode;

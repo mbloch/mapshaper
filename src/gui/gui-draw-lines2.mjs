@@ -17,6 +17,7 @@ import {
   getNewShapeStyle, getNewShapeCommandStyle, getPendingPathStyle
 } from './gui-shape-style-state';
 import { layerHasDrawableStyle } from './gui-layer-styler';
+import { addStyleClipboardItems } from './gui-style-clipboard-menu';
 
 // pixel distance threshold for hovering near a vertex or segment midpoint
 var HOVER_THRESHOLD = 10;
@@ -246,6 +247,7 @@ export function initLineEditing(gui, ext, hit) {
       };
     }
 
+    addStyleClipboardItems(gui, e, target);
     // don't allow copying of open paths as geojson in polygon mode
     gui.contextMenu.open(e, target);
   });

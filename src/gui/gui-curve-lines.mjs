@@ -9,6 +9,8 @@ import {
 } from './gui-shape-style-state';
 import { layerHasDrawableStyle } from './gui-layer-styler';
 import { POLYLINE_HIT_DISTANCE } from './gui-shape-hit';
+import { addStyleClipboardItems } from './gui-style-clipboard-menu';
+import { isSelectAllObjectsKey } from './gui-keyboard';
 import {
   createCurveState, removeLastKnot, curveIsComplete, findKnotNear,
   handleClick, getDblclickAction, clearGesture,
@@ -246,6 +248,7 @@ export function initCurveLineTool(gui, ext, hit) {
 
   hit.on('contextmenu', function(e) {
     if (!_active || drawing() || drag) return;
+    addStyleClipboardItems(gui, e, hit.getHitTarget());
     gui.contextMenu.open(e, hit.getHitTarget());
   });
 
@@ -328,7 +331,9 @@ export function initCurveLineTool(gui, ext, hit) {
   // knot
   gui.keyboard.on('keydown', function(e) {
     if (!_active || !drawing()) return;
-    if (e.keyName == 'esc' || e.keyName == 'enter') {
+    if (isSelectAllObjectsKey(e.originalEvent)) {
+      consume(e); // selecting the layer is not part of placing knots
+    } else if (e.keyName == 'esc' || e.keyName == 'enter') {
       finishCurve(false);
       consume(e);
     } else if (e.keyName == 'delete') {

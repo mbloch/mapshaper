@@ -215,11 +215,20 @@ export function ContextMenu(parentArg) {
       }
 
       if (e.deleteVertex || e.deletePoint || copyable || e.deleteFeature ||
-          e.flipLabel || e.boldText) {
+          e.flipLabel || e.boldText || e.copyStyle || e.pasteStyle) {
 
         addMenuLabel('actions');
         if (e.boldText) {
           addMenuItem(e.boldText.label, e.boldText.run);
+        }
+        if (e.copyStyle) {
+          addMenuItem('copy style', e.copyStyle);
+        }
+        // the count says how many objects the paste reaches, when it is more
+        // than the one pointed at
+        if (e.pasteStyle) {
+          addMenuItem('paste style' + (e.pasteStyle.count > 1 ?
+            getCountHtml(e.pasteStyle.count) : ''), e.pasteStyle.run);
         }
         if (e.deleteVertex) {
           addMenuItem('delete vertex', e.deleteVertex);

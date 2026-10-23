@@ -215,6 +215,61 @@ test('a line is drawn in the style of the line last selected, and restyled', asy
   expect(errors).toEqual([]);
 });
 
+test('a line\'s style is copied and pasted from the right-click menu, as one undo step',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+    await clickNewLayerLink(page, 'lines');
+    var box = await getMapBox(page);
+    await drawLine(page, mapPoint(box, 0.2, 0.6), mapPoint(box, 0.4, 0.6));
+    await drawLine(page, mapPoint(box, 0.2, 0.8), mapPoint(box, 0.4, 0.8));
+    await expect.poll(() => getShapeCount(page, 'lines')).toBe(2);
+    await page.evaluate(() => window.mapshaper.undoTest.runCommand(
+      "-style stroke='#ff0000' stroke-width=4 ids=0 target=lines"));
+    await page.waitForTimeout(250);
+
+    await rightClickMenuItem(page, mapPoint(box, 0.3, 0.6), 'copy style');
+    await rightClickMenuItem(page, mapPoint(box, 0.3, 0.8), 'paste style');
+    await expect.poll(async () => (await getRecords(page, 'lines'))[1])
+      .toEqual({stroke: '#ff0000', 'stroke-width': 4});
+    expect((await getSessionCommands(page)).pop()).toContain("-style stroke='#ff0000' stroke-width=4 ids=1");
+
+    await undo(page);
+    await expect.poll(async () => (await getRecords(page, 'lines'))[1].stroke).toBeFalsy();
+    expect(errors).toEqual([]);
+  });
+
+test('Cmd-A selects every line in the layer, but not while a path is being drawn',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+    await clickNewLayerLink(page, 'lines');
+    var box = await getMapBox(page);
+    await drawLine(page, mapPoint(box, 0.2, 0.6), mapPoint(box, 0.4, 0.6));
+    await drawLine(page, mapPoint(box, 0.2, 0.8), mapPoint(box, 0.4, 0.8));
+    await expect.poll(() => getShapeCount(page, 'lines')).toBe(2);
+
+    await clickAt(page, mapPoint(box, 0.6, 0.7));
+    await page.keyboard.press('ControlOrMeta+a');
+    expect(await getSelectionIds(page)).toEqual([]);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
+
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.waitForTimeout(150);
+    expect((await getSelectionIds(page)).sort()).toEqual([0, 1]);
+    expect(await page.evaluate(() => String(window.getSelection()))).toBe('');
+    expect(errors).toEqual([]);
+  });
+
+async function rightClickMenuItem(page, p, label) {
+  await page.mouse.move(p[0], p[1]);
+  await page.waitForTimeout(120);
+  await page.mouse.click(p[0], p[1], {button: 'right'});
+  await page.locator('.contextmenu-item').filter({hasText: label}).click();
+  await page.waitForTimeout(250);
+}
+
 test('a line drawn with no stroke in a styled layer gets the panel\'s default stroke, which the swatch shows',
   async function({page}) {
     var errors = collectPageErrors(page);

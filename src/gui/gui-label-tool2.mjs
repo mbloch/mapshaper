@@ -29,6 +29,8 @@ import { getLabelPathNode, replaceAnchoredSymbol } from './gui-svg-symbols';
 import { findNearestKnot, knotMoveIsValid } from './gui-label-knots';
 import { LabelEditor } from './gui-label-editor';
 import { LabelSelection, BOX_PADDING, getCuePadding } from './gui-label-selection';
+import { addStyleClipboardItems } from './gui-style-clipboard-menu';
+import { isSelectAllObjectsKey } from './gui-keyboard';
 import {
   getLabelSelectActions, getAllLabelIds
 } from './gui-label-select-matchers';
@@ -430,6 +432,7 @@ export function initLabelTool(gui, ext, hit) {
     if (target && editor.isOpen() && clickIsOnEditedLabel(e)) {
       addBoldAction(e, target);
     }
+    addStyleClipboardItems(gui, e, target, id);
     gui.contextMenu.open(e, target);
   });
 
@@ -1798,14 +1801,8 @@ export function initLabelTool(gui, ext, hit) {
     }
   }, null, 10);
 
-  // Cmd-A on a Mac, Ctrl-A elsewhere. Read from the key rather than the
-  // keyCode, as undo and redo are.
   function isSelectAll(e) {
-    var evt = e.originalEvent;
-    if (!evt || !(evt.metaKey || evt.ctrlKey) || evt.shiftKey || evt.altKey) {
-      return false;
-    }
-    return (evt.key || '').toLowerCase() == 'a';
+    return isSelectAllObjectsKey(e.originalEvent);
   }
 
   // Suppresses the key's default action as well as the rest of the GUI's

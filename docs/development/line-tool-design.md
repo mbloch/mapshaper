@@ -67,6 +67,18 @@ Draw: the shape under the pointer is highlighted, a click selects it alone
   stroke (`getNewShapeCommandStyle()`): `#000000`, the color the panel's other
   controls add when they need a stroke. The path being drawn uses the same
   style, so it doesn't change color when the shape is finished.
+- **Copy and paste style.** Right-clicking a shape offers "copy style", and
+  once a style has been copied, "paste style". The same items appear in the
+  label and symbol tools (`gui-style-clipboard-menu.mjs`). A paste goes to the
+  selection if the shape right-clicked is part of it, otherwise to that shape
+  alone, and with nothing under the pointer it goes to the selection. A style is
+  the set of fields the new-shape style is taken from. Pasting makes each target
+  look like the source, so a field the source lacks is unset. Lines and
+  polygons share only their stroke fields, and other pairings of object types
+  aren't offered. A label's placement and a numbered marker's text are not
+  copied. The paste is one command string (`getPasteStyleCommand()` in
+  `gui-style-clipboard.mjs`), so it is one undo step. It writes only the fields
+  that differ, so unsetting a field doesn't add an empty column.
 
 ## Starting from an existing vertex
 

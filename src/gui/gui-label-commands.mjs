@@ -91,7 +91,7 @@ export function getAddLabelCommand(coords, opts) {
 // not have -- its text runs along the curve. Writing it there would put a
 // property on the feature that nothing reads. label-width is the same: a path
 // label is one line. And a path label has no box to pad or fill.
-var ANCHORED_ONLY_FIELDS = ['label-pos', 'label-width', 'label-padding',
+export var ANCHORED_ONLY_FIELDS = ['label-pos', 'label-width', 'label-padding',
   'label-background', 'label-background-opacity'];
 
 function getStyleFields(style, isPathLabel) {

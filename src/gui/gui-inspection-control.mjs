@@ -2,6 +2,7 @@ import { Popup } from './gui-popup';
 import { EventDispatcher } from './gui-events';
 import { internal } from './gui-core';
 import { deleteFeature } from './gui-drawing-utils';
+import { addStyleClipboardItems } from './gui-style-clipboard-menu';
 
 export function InspectionControl2(gui, hit) {
   var _popup = new Popup(gui, hit.getSwitchTrigger(1), hit.getSwitchTrigger(-1));
@@ -38,6 +39,7 @@ export function InspectionControl2(gui, hit) {
         gui.model.updated({filter:true});
       };
     }
+    addStyleClipboardItems(gui, e, target);
     gui.contextMenu.open(e, target);
   });
 

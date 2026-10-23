@@ -207,6 +207,11 @@ export function HitControl(gui, ext, mouse) {
     triggerChangeEvent();
   };
 
+  // Whether a path is being drawn or previewed (see setPendingPath())
+  self.hasPendingPath = function() {
+    return !!pendingPath;
+  };
+
   // Shows handles on the knots of a curve, for the curve tool.
   // knots: [[x, y], ...] display coordinates, or null to remove the handles
   self.setPendingKnots = function(knots) {

@@ -82,7 +82,7 @@ export function updateNewLabelStyle(gui, values) {
 // the side of its anchor the text runs from, and on a path, its place along
 // it. They say where that label is, not what style it is in, so the next label
 // does not take them from a selection.
-var PLACEMENT_FIELDS = ['dx', 'dy', 'text-anchor', 'label-side', 'label-start-offset'];
+export var PLACEMENT_FIELDS = ['dx', 'dy', 'text-anchor', 'label-side', 'label-start-offset'];
 
 // Sets the new-label style to the properties that @records, the selected
 // labels, agree on (see gui-selection-style.mjs). A position is taken only

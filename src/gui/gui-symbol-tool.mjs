@@ -21,6 +21,7 @@ import {
 } from './gui-marker-style';
 import { SymbolSelection, getDisplayShapes } from './gui-symbol-selection';
 import { SymbolPanel } from './gui-symbol-panel';
+import { isSelectAllObjectsKey } from './gui-keyboard';
 import { findNearestKnot, knotMoveIsValid } from './gui-label-knots';
 import {
   setPendingLabelPath, clearPendingLabelPath, getPendingLabelPath
@@ -522,11 +523,8 @@ export function initSymbolTool(gui, ext, hit) {
     return ids;
   }
 
-  // Cmd-A on a Mac, Ctrl-A elsewhere
   function isSelectAll(e) {
-    var evt = e.originalEvent;
-    if (!evt || !(evt.metaKey || evt.ctrlKey) || evt.shiftKey || evt.altKey) return false;
-    return (evt.key || '').toLowerCase() == 'a';
+    return isSelectAllObjectsKey(e.originalEvent);
   }
 
   function consume(e) {

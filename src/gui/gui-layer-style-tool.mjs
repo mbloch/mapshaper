@@ -27,6 +27,7 @@ import {
   getNewShapeStyle, updateNewShapeStyle, clearNewShapeStyle, syncNewShapeStyle
 } from './gui-shape-style-state';
 import { getSelectionChangeTest } from './gui-selection-change';
+import { isSelectAllObjectsKey } from './gui-keyboard';
 
 var savedStylesKey = 'layer_style_presets';
 var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'stroke-linecap', 'line-start', 'line-end', 'line-end-size', 'line-fade', 'line-taper', 'fill', 'fill-opacity', 'fill-pattern'].concat(internal.svg.glowFields, internal.svg.casingFields);
@@ -86,6 +87,22 @@ export function LayerStyleTool(gui) {
       }
     });
   }
+
+  // Cmd-A selects every shape in the layer, as it selects every label and
+  // symbol in those tools. Not while a path is being drawn: that gesture owns
+  // the keyboard.
+  gui.keyboard.on('keydown', function(e) {
+    var ids;
+    if (!active || !hit || !isSelectAllObjectsKey(e.originalEvent) || hit.hasPendingPath()) return;
+    syncTargetLayer();
+    if (!targetLayer) return;
+    ids = getAllFeatureIds(targetLayer).filter(function(id) {
+      return !!targetLayer.shapes[id];
+    });
+    hit.setSelectionIds(ids);
+    e.stopPropagation();
+    e.originalEvent.preventDefault();
+  }, null, 5);
 
   // The toolbar arms drawing, reshaping or (for lines) drawing curves. While
   // drawing or curves are armed and nothing is selected, the panel's controls set the style of the next shape drawn

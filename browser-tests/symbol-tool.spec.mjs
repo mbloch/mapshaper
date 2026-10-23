@@ -408,6 +408,41 @@ test('the next symbol is placed in the style of the symbol last selected', async
   expect(errors).toEqual([]);
 });
 
+test('a symbol\'s style is pasted onto the selection from the right-click menu', async function({page}) {
+  var errors = collectPageErrors(page);
+  await openTool(page);
+  await clickMap(page, 0.2, 0.5);
+  await clickMap(page, 0.4, 0.5);
+  await clickMap(page, 0.6, 0.5);
+  await page.evaluate(() => window.mapshaper.undoTest.runCommand(
+    "-symbols type=square radius=8 fill='#00aa00' ids=0"));
+  await page.waitForTimeout(250);
+  await armTool(page, null);
+
+  await rightClickMenuItem(page, 0.2, 0.5, 'copy style');
+  await clickMap(page, 0.4, 0.5);
+  await page.keyboard.down('Shift');
+  await clickMap(page, 0.6, 0.5);
+  await page.keyboard.up('Shift');
+  expect((await getSelection(page)).sort()).toEqual([1, 2]);
+  await rightClickMenuItem(page, 0.6, 0.5, 'paste style');
+  var recs = (await getSymbolLayer(page)).records;
+  expect(recs[1]).toMatchObject({icon: 'square', 'icon-fill': '#00aa00'});
+  expect(recs[2]).toMatchObject({icon: 'square', 'icon-fill': '#00aa00'});
+  expect((await getSelection(page)).sort()).toEqual([1, 2]);
+  expect(errors).toEqual([]);
+});
+
+async function rightClickMenuItem(page, fx, fy, label) {
+  var box = await page.locator('.mshp-main-map').boundingBox();
+  var x = box.x + box.width * fx, y = box.y + box.height * fy;
+  await page.mouse.move(x, y);
+  await page.waitForTimeout(120);
+  await page.mouse.click(x, y, {button: 'right'});
+  await page.locator('.contextmenu-item').filter({hasText: label}).click();
+  await page.waitForTimeout(250);
+}
+
 test('Delete removes the selected symbols, and undo brings them back', async function({page}) {
   var errors = collectPageErrors(page);
   await openTool(page);
