@@ -1,3 +1,7 @@
+v0.7.98
+* [web] Add copy style and paste style to context menus while editing symbols, labels and shapes.
+* [web] Style editing UI improvements
+
 v0.7.97
 * [web] Fixed: the left and right arrow keys selected layers in their original order instead of the order shown in the layers panel.
 * [web] Another robustness fix for layer menu UI.
