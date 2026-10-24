@@ -28,18 +28,18 @@ export function AddLayerLinks(gui) {
     return kind.kind != 'labels';
   });
   var menuBtn = row.findChild('.draw-menu-btn');
-  var menu = El('div').addClass('draw-menu').attr('role', 'menu')
+  var menu = El('div').addClass('draw-menu')
     .appendTo('body').hide();
 
-  initLink(row.findChild('.add-labels-link').attr('title', findDrawKind('labels').tip),
+  initLink(row.findChild('.add-labels-link'),
     findDrawKind('labels'));
   initMenu();
   gui.on('sidebar', closeMenu);
 
   function initMenu() {
     drawKinds.forEach(function(kind) {
-      El('div').addClass('draw-menu-item').attr('role', 'menuitem')
-        .attr('data-kind', kind.kind).attr('title', kind.tip).text(kind.kind)
+      El('div').addClass('draw-menu-item')
+        .attr('data-kind', kind.kind).text(kind.kind)
         .appendTo(menu)
         .on('click', function() {
           closeMenu();
