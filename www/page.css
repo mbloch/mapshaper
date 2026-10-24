@@ -1402,19 +1402,13 @@ body.simplify .layer-control-btn {
 	border-radius: 0;
 }
 
-.layer-control .no-layer-note {
-	color: #777;
-	margin: 0 0 5px 0;
-	font-size: 13px;
-}
-
 /* "Add files", "Add labels" and "Draw" are separate groups, and a narrow
    sidebar wraps between them, never inside one. The dot
    between them is each group's ::before, hung to the group's left: a group that
    starts a line has its dot pushed past the left edge of the row and clipped,
    so no line ends or begins with a stray dot. */
 .layer-add-links {
-	margin: 0 0 12px 0;
+	margin: 5px 0 8px 0;
 	font-size: 13px;
 	line-height: 1.2;
 	overflow: hidden;
@@ -1538,10 +1532,11 @@ body.simplify .layer-control-btn {
 	display: none;
 }
 
-.unframed-empty-note {
-	color: #777;
-	font-size: 13px;
-	padding: 2px 0 6px;
+.unframed-empty-note,
+.no-layer-note {
+	color: #999;
+	font-size: 12px;
+	padding: 2px 0 0;
 }
 
 /* The Layers heading and each frame heading share the same type and height.
