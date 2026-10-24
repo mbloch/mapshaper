@@ -21,8 +21,8 @@ export function InteractionMode(gui) {
   // 'line_style' and 'polygon_style', with drawing or reshaping armed from the
   // mode's toolbar (see setArmedTool()). 'edit_lines' and 'edit_polygons' are not modes of their
   // own: setMode() takes them as "open the mode with drawing armed", creating
-  // a layer to draw in if there is none, which is what the menu for an empty
-  // session and the layer panel's "Draw" links ask for.
+  // a layer to draw in if there is none, which is what the layer panel's
+  // "Draw" links ask for.
   //
   // Points are added and moved in 'point_style'. On a layer of plain points
   // a click on empty map always adds one, so the tool mode there is
@@ -33,7 +33,9 @@ export function InteractionMode(gui) {
   // symbols.
   var menus = {
     standard: ['info', 'selection', 'box', 'ruler'],
-    empty: [ 'label', 'symbols', 'edit_points', 'edit_lines',  'edit_polygons','box', 'ruler'],
+    // With no data, the layer panel's links are the way into the editing
+    // tools, so the menu offers only the tools that need no layer
+    empty: ['box', 'ruler'],
     polygons: ['info', 'polygon_style', 'selection', 'box', 'ruler'],
     rectangles: ['info', 'selection', 'polygon_style', 'rectangles', 'box', 'ruler'],
     lines: ['info', 'line_style', 'snip_lines', 'selection', 'box', 'ruler'],

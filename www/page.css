@@ -4191,7 +4191,7 @@ body.pan.panning .map-layers:not(.drawing) {
 .label-color-picker {
 	position: fixed;
 	z-index: 25;
-	padding: 8px;
+	padding: 11px;
 	background: white;
 	border: 1px solid #ddd;
 	border-radius: 6px;
@@ -4218,8 +4218,6 @@ body.pan.panning .map-layers:not(.drawing) {
 .label-color-picker canvas {
 	display: block;
 	width: 256px;
-	margin: 0 0 6px 0;
-	cursor: crosshair;
 }
 
 .label-color-presets {
@@ -4259,12 +4257,23 @@ body.dragging-color-picker * {
 	cursor: none !important;
 }
 
+/* The gaps put the handles 20px apart, center to center, when the square's is
+   on its bottom edge: half a pixel, 12px and half the hue strip down to the
+   hue handle, then half a strip, 5px and half a strip to the opacity one. */
 .label-color-canvas-wrap {
 	position: relative;
 	width: 256px;
+	margin: 0 0 5px 0;
 	overflow: visible;
+	cursor: crosshair;
 }
 
+.label-color-sb-wrap {
+	margin-bottom: 12px;
+}
+
+/* The whole circle can be grabbed, including the part off the canvas, and
+   the middle of an unfilled one */
 .label-color-marker {
 	position: absolute;
 	pointer-events: none;
@@ -4273,7 +4282,8 @@ body.dragging-color-picker * {
 
 .label-color-marker circle {
 	fill: none;
-	stroke-width: 1.5;
+	stroke-width: 1.7;
+	pointer-events: all;
 }
 
 .label-color-picker-fields {
