@@ -1408,7 +1408,7 @@ body.simplify .layer-control-btn {
    starts a line has its dot pushed past the left edge of the row and clipped,
    so no line ends or begins with a stray dot. */
 .layer-add-links {
-	margin: 5px 0 8px 0;
+	margin: 4px 0 8px 0;
 	font-size: 13px;
 	line-height: 1.2;
 	overflow: hidden;

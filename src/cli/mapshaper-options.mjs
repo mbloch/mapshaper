@@ -2631,6 +2631,43 @@ export function getOptionParser() {
       describe: 'use field values to calculate data island weights'
     });
 
+  parser.command('fetch')
+    .describe('download elevation tiles for the area of a map frame')
+    .option('source', {
+      DEFAULT: true,
+      describe: 'name of a data source (tilezen, mapterhorn) or URL template of a tile service'
+    })
+    .option('encoding', {
+      describe: 'how elevation is encoded in tile images: terrarium or mapbox'
+    })
+    .option('scheme', {
+      describe: 'tile numbering scheme: xyz (default) or tms'
+    })
+    .option('zoom', {
+      describe: 'tile zoom level (default matches the resolution of the output)',
+      type: 'integer'
+    })
+    .option('raster-res', {
+      describe: 'raster pixels per frame pixel (default is 2)',
+      type: 'number'
+    })
+    .option('margin', {
+      describe: 'extra area around the frame, in frame pixels (default is 10)',
+      type: 'number'
+    })
+    .option('bbox', {
+      describe: 'area to fetch (xmin,ymin,xmax,ymax), instead of the frame',
+      type: 'bbox'
+    })
+    .option('max-tiles', {
+      describe: 'maximum number of tiles to download (default is 500)',
+      type: 'integer'
+    })
+    .option('name', {
+      describe: 'name of the new layer (default is elevation)'
+    })
+    .option('target', targetOpt);
+
   // replaced by -require
   // parser.command('external')
   //   .option('module', {
@@ -2787,6 +2824,78 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('target', targetOpt);
+
+  parser.command('hillshade')
+    .describe('convert an elevation raster to shaded relief')
+    .option('azimuth', {
+      describe: 'direction of the main light, in degrees (default is 315)',
+      type: 'number'
+    })
+    .option('altitude', {
+      describe: 'height of the light above the horizon, in degrees (default is 45)',
+      type: 'number'
+    })
+    .option('single-light', {
+      describe: 'use one light instead of a blend of lights from several directions',
+      type: 'flag'
+    })
+    .option('exaggeration', {
+      describe: 'vertical exaggeration (default depends on the map scale)',
+      type: 'number'
+    })
+    .option('generalize', {
+      describe: 'amount of terrain smoothing (default is 3 rounds, 0 is off)',
+      type: 'number'
+    })
+    .option('smoothing', {
+      describe: 'fps (feature-preserving, the default) or lowpass'
+    })
+    .option('fps-threshold', {
+      describe: 'FPS keeps slope changes sharper than this angle (default is 20)',
+      type: 'number'
+    })
+    .option('fps-radius', {
+      describe: 'FPS smoothing window radius, in pixels (default is 4)',
+      type: 'integer'
+    })
+    .option('maximum-change', {
+      describe: 'limit how far FPS can move an elevation, in meters (default is no limit)',
+      type: 'number'
+    })
+    .option('light-adjust', {
+      describe: 'turn the light up to this many degrees to suit landform orientation (0-60)',
+      type: 'number'
+    })
+    .option('ambient', {
+      describe: 'weight of ambient light from the open sky, 0-1 (default is 0)',
+      type: 'number'
+    })
+    .option('aerial', {
+      describe: 'aerial perspective: reduce contrast at low elevations, 0-1 (default is 0)',
+      type: 'number'
+    })
+    .option('min-elevation', {
+      describe: 'raise lower elevations to this value (0 flattens the sea floor)',
+      type: 'number'
+    })
+    .option('style', {
+      describe: 'shadow (transparent shadows, the default) or gray (opaque)'
+    })
+    .option('max-opacity', {
+      describe: 'opacity of the darkest shadows, 0-1 (default is 0.55)',
+      type: 'number'
+    })
+    .option('gamma', {
+      describe: 'shape of the tone curve; below 1 strengthens faint shading (default is 0.5)',
+      type: 'number'
+    })
+    .option('band', {
+      describe: 'band containing elevation values (default is 0)',
+      type: 'integer'
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('point-to-grid')
     .option('interval', {

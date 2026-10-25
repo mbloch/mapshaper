@@ -58,6 +58,7 @@ import '../commands/mapshaper-dots';
 import '../commands/mapshaper-drop';
 import '../commands/mapshaper-each';
 import '../commands/mapshaper-explode';
+import { addFetchedDataset } from '../commands/mapshaper-fetch';
 import '../io/mapshaper-export';
 import '../commands/mapshaper-external';
 import '../commands/mapshaper-frame';
@@ -72,6 +73,7 @@ import '../commands/mapshaper-filter-slivers';
 import '../commands/mapshaper-fuzzy-join';
 import '../commands/mapshaper-graticule';
 import '../commands/mapshaper-help';
+import '../commands/mapshaper-hillshade';
 import { skipCommand } from '../commands/mapshaper-if-elif-else-endif';
 import '../commands/mapshaper-ignore';
 import '../commands/mapshaper-include';
@@ -119,7 +121,7 @@ function commandAcceptsMultipleTargetDatasets(name) {
     name == 'require' || name == 'drop' || name == 'target' ||
     name == 'if' || name == 'elif' || name == 'else' || name == 'endif' ||
     name == 'run' || name == 'i' || name == 'snap' || name == 'frame' ||
-    name == 'comment' || name == 'rename-layers';
+    name == 'comment' || name == 'rename-layers' || name == 'fetch';
 }
 
 // Commands in this group keep datasets separate and run once for each grouped
@@ -140,7 +142,7 @@ function commandRunsPerTargetDataset(name, opts) {
     'explode', 'filter',
     'filter-detail', 'filter-fields', 'filter-geom', 'filter-islands',
     'filter-islands2', 'filter-points', 'filter-slivers', 'grid', 'grid2',
-    'fuzzy-join', 'ignore', 'inlay', 'innerlines', 'inspect', 'join',
+    'fuzzy-join', 'hillshade', 'ignore', 'inlay', 'innerlines', 'inspect', 'join',
     'lines', 'mosaic', 'points', 'polygons', 'rectangles', 'rename-fields',
     'repel', 'shapes', 'simplify', 'slice', 'smooth', 'sort', 'split',
     'split-on-grid', 'stitch', 'style', 'subdivide', 'symbols', 'uniq'
@@ -157,7 +159,7 @@ function commandAcceptsEmptyTarget(name, opts) {
     name == 'include' || name == 'print' || name == 'comment' || name == 'if' || name == 'elif' ||
     name == 'else' || name == 'endif' || name == 'stop' || name == 'add-shape' ||
     name == 'add-label' || name == 'add-layer' ||
-    name == 'scalebar' || name == 'vars' || name == 'defaults';
+    name == 'scalebar' || name == 'vars' || name == 'defaults' || name == 'fetch';
 }
 
 export async function runCommand(command, job) {
@@ -263,7 +265,7 @@ export async function runCommand(command, job) {
 
     if (Object.prototype.hasOwnProperty.call(command, '_sourceOverride')) {
       source = command._sourceOverride;
-    } else if (opts.source) {
+    } else if (opts.source && name != 'fetch') {
       source = await findCommandSourceAsync(convertSourceName(opts.source, targets), job.catalog, opts);
     }
 
@@ -369,6 +371,14 @@ export async function runCommand(command, job) {
 
     } else if (name == 'contours') {
       outputLayers = applyCommandToEachLayer(cmd.contours, targetLayers, targetDataset, opts);
+
+    } else if (name == 'fetch') {
+      let fetched = await cmd.fetch(job.catalog, targets, opts);
+      job.resumeCommand();
+      addFetchedDataset(job.catalog, fetched);
+
+    } else if (name == 'hillshade') {
+      outputLayers = applyCommandToEachLayer(cmd.hillshade, targetLayers, targetDataset, opts);
 
     } else if (name == 'dashlines') {
       applyCommandToEachLayer(cmd.dashlines, targetLayers, targetDataset, opts);

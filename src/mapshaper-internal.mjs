@@ -183,6 +183,15 @@ import * as RasterBlur from './rasters/mapshaper-raster-blur';
 import * as RasterContourBands from './rasters/mapshaper-raster-contour-bands';
 import * as RasterContours from './rasters/mapshaper-raster-contours';
 import * as RasterGrid from './rasters/mapshaper-raster-grid';
+import * as Hillshade from './rasters/mapshaper-hillshade';
+import * as HillshadeCommand from './commands/mapshaper-hillshade';
+import * as TerrainSmoothing from './rasters/mapshaper-terrain-smoothing';
+import * as WebPDecoder from './fetch/mapshaper-webp-decoder';
+import * as Fetch from './commands/mapshaper-fetch';
+import * as FetchSources from './fetch/mapshaper-fetch-sources';
+import * as TileFetch from './fetch/mapshaper-tile-fetch';
+import * as TileMath from './fetch/mapshaper-tile-math';
+import * as ElevationDecoding from './fetch/mapshaper-elevation-decoding';
 import * as RasterReprojection from './rasters/mapshaper-raster-reprojection';
 import * as RasterUtils from './rasters/mapshaper-raster-utils';
 import * as Merging from './dataset/mapshaper-merging';
@@ -341,6 +350,15 @@ Object.assign(internal,
   RasterContourBands,
   RasterContours,
   RasterGrid,
+  Hillshade,
+  HillshadeCommand,
+  TerrainSmoothing,
+  WebPDecoder,
+  Fetch,
+  FetchSources,
+  TileFetch,
+  TileMath,
+  ElevationDecoding,
   RasterReprojection,
   RasterUtils,
   Merging,

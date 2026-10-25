@@ -37,6 +37,16 @@ export function blurRasterGrid(raster, optsArg, crs) {
   });
 }
 
+// Gaussian-like blur of a single Float32 channel, in place.
+// @weights optional per-pixel weights (0 for invalid pixels), or null
+// @sigma standard deviation in pixels
+export function blurFloatChannel(channel, weights, width, height, sigma) {
+  if (!(sigma > 0)) return channel;
+  var tmp = new Float32Array(width * height);
+  blurChannel(channel, tmp, weights, width, height, getGaussianBoxWidths(sigma, BOX_BLUR_PASSES));
+  return channel;
+}
+
 // The blur kernel works in pixels, but the radius may be given either in pixels
 // (a bare number or a px suffix) or as a real-world distance (e.g. 20m), which
 // is converted using the size of a pixel on the ground.
