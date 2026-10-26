@@ -224,7 +224,7 @@ same pattern as other mapshaper commands.
 - `lowpass-radius=` blur radius of `smoothing=lowpass`, in pixels (default 1).
 - FPS settings with `smoothing=off` or `lowpass`, and `lowpass-radius=` without
   `smoothing=lowpass`, are errors rather than being silently ignored.
-- `light-adjust=`, `ambient=`, `aerial=` (experimental) lighting refinements,
+- `light-adjust=`, `ambient=`, `texture=`, `aerial=` (experimental) lighting refinements,
   described under Lighting experiments. `ambient=` defaults to 0.5, the
   others to 0 (off).
 - `style=` `shadow` (default) or `opaque` (`gray` and `grey` are accepted as
@@ -443,6 +443,49 @@ good values are known.
   0.5, chosen in manual testing for the sense of depth it adds. With
   `min-elevation=`, pixels at or below the minimum are left out, so a
   flattened sea stays transparent instead of darkening along the coast.
+- `texture=o` (0-1, default 0) darkens drainages using texture shading after
+  Leland Brown (2010), as a shadow layer whose maximum opacity is `o`:
+  `a = o * tanh(-T)` where `T < 0`, and `T` is a fractional Laplacian of the
+  elevations, positive on ridges and negative in drainages. Ridges are left
+  alone. The layer is combined with the hillshade's signed tones after the
+  tone curve and sharpening, `tone -= a * (1 + min(tone, 0))`, so
+  `max-opacity=` and `gamma=` lighten the directional hillshade without
+  affecting the texture (`max-opacity=0` shows the texture alone). Over
+  shadows this is exact compositing of two shadow layers; over a highlight
+  it cancels the highlight, then darkens.
+  - `texture-highlights=r` (default 0) lightens ridges with the positive half
+    of `T`, as a highlight layer of up to `min(1, o * r)` opacity in
+    `highlight-color=`: `tone += a * (1 - max(tone, 0))`, the mirror of the
+    shadow rule. Alps with `texture=0.5`: shadow/highlight 19.8%/2.7% at
+    `r=0`, 17.7%/3.9% at 0.5, 16.3%/5.7% at 1. Over light backgrounds, most
+    of the visible effect is cancelling shadow on the shaded sides of crests.
+  - Earlier versions multiplied the shade value before the tone curve, so
+    `max-opacity=` scaled both together. That version first brightened ridges
+    too, with the full signed form; it was then changed to darken drainages
+    only, and `texture-highlights=` brings back the ridge half as a separate
+    control. Brown filters
+  in the frequency domain (spectrum × |k|^α); we approximate that with a sum
+  of differences of Gaussians at half-octave scales, weighted by σ^-α, which
+  needs no FFT and reuses the nodata-aware box blur. `texture-detail=` is α
+  (default 0.5); higher values favor smaller landforms. Compared with
+  ambient, it carves the whole valley hierarchy. Alps (France, zoom 7), with
+  default ambient: 14.8% shadow and 2.9% highlight; adding `texture=0.5`
+  gives 19.8% and 2.7%; `texture=0.5 max-opacity=0.3` gives 13.9% and 1.4%;
+  the texture alone (`max-opacity=0`) is 6.9% shadow.
+  - Brown's scales are unbounded, so a plain ringed by mountains reads as a
+    giant drainage. Uncapped, shadow on the flat Po plain rose from 3.1% to
+    11.1%. Scales are capped at 24 pixels (4.1%; a 48-pixel cap gave 5.5%,
+    96 gave 8.1%), which keeps nearly all of the ridge carving.
+  - Brown stretches the result by percentiles of the extent, which would
+    make adjacent extents render differently. Instead the differences are
+    divided by the pixel size and multiplied by the exaggeration, like a
+    slope, and scaled by a fixed factor (1/8) that brings France at zoom 7 to
+    about 1 at the 98th percentile. Rugged terrain at high zoom saturates
+    more (the Bernese Oberland's 98th percentile is about 2.4).
+  - With `min-elevation=`, the flattened sea is excluded from the blurs as
+    well as from the result. Otherwise it acts as a deep basin, and coastal
+    land got bright, banded halos.
+  - It costs about 0.45 s on a 2400 × 2000 grid.
 - `aerial=k` (0-1) reduces contrast at low elevations:
   `shade = 1 + (shade - 1) * (1 - k * (1 - t))`, where `t` is elevation
   normalized between its 2nd and 98th percentiles. High mountains keep full

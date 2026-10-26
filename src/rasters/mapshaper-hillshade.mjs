@@ -518,6 +518,60 @@ export function applyAerialPerspective(shade, elev, valid, strength) {
   return shade;
 }
 
+// Texture shading (Leland Brown 2010): a fractional Laplacian of the
+// elevations, positive on ridges and negative in drainages at every scale.
+// Brown filters in the frequency domain (spectrum times |k|^alpha); this
+// approximates it as a sum of differences of Gaussians, using
+// |k|^a = C * integral (1 - exp(-t k^2)) t^(-1-a/2) dt, sampled at
+// half-octave scales up to @maxSigma pixels. Brown's unbounded scales make
+// plains ringed by mountains read as giant drainages.
+// Elevation differences are divided by the pixel size, like a slope, so the
+// result does not depend on the extent or (with automatic exaggeration) the
+// zoom level.
+// @cellSizes ground size of a pixel in each row
+export function computeTextureShading(elev, valid, width, height, cellSizes, exaggeration, alpha, maxSigma) {
+  var n = width * height;
+  var out = new Float32Array(n);
+  var blurred = new Float32Array(n);
+  var weights = valid ? toWeights(valid) : null;
+  var sigma, w, x, y, i, k;
+  for (sigma = 0.7; sigma <= maxSigma; sigma *= Math.SQRT2) {
+    blurred.set(elev);
+    blurFloatChannel(blurred, weights, width, height, sigma);
+    w = Math.pow(sigma, -alpha) * TEXTURE_SCALE * exaggeration;
+    for (y = 0, i = 0; y < height; y++) {
+      k = w / cellSizes[y];
+      for (x = 0; x < width; x++, i++) {
+        out[i] += (elev[i] - blurred[i]) * k;
+      }
+    }
+  }
+  return out;
+}
+
+// brings typical relief (France at zoom 7) to about 1 at the 98th percentile
+var TEXTURE_SCALE = 0.125;
+
+// Darkens drainages and lightens ridges, as shadow and highlight layers of up
+// to @opacity and @highlightOpacity over the hillshade's signed tones. Over a
+// tone of the same sign this is exact compositing; over the opposite tone it
+// cancels that tone first.
+export function applyTextureTones(tones, texture, valid, opacity, highlightOpacity) {
+  var a, t, i;
+  for (i = 0; i < tones.length; i++) {
+    if (valid && !valid[i] || texture[i] === 0) continue;
+    t = tones[i];
+    if (texture[i] < 0) {
+      a = opacity * -Math.tanh(texture[i]);
+      tones[i] = t - a * (1 + Math.min(t, 0));
+    } else if (highlightOpacity > 0) {
+      a = highlightOpacity * Math.tanh(texture[i]);
+      tones[i] = t + a * (1 - Math.max(t, 0));
+    }
+  }
+  return tones;
+}
+
 function getElevationPercentiles(elev, valid, lo, hi) {
   var stride = Math.max(1, Math.floor(elev.length / 100000));
   var values = [];

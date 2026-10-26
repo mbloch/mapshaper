@@ -6,7 +6,9 @@ import { createRasterPreview, getRasterGrid, getRasterViewRecipe, rasterGridIsRo
 import { featurePreservingSmooth, twoLevelSmooth } from '../rasters/mapshaper-terrain-smoothing';
 import {
   applyAerialPerspective,
+  applyTextureTones,
   blendAmbientLight,
+  computeTextureShading,
   computeHillshade,
   computeLightAdjustment,
   computeOpenness,
@@ -48,6 +50,14 @@ var OPENNESS_RADIUS = 24;
 var DEFAULT_SHARPEN_RADIUS = 3;
 var DEFAULT_SHARPENING = 0.25;
 var DEFAULT_AMBIENT = 0.5;
+var DEFAULT_TEXTURE_DETAIL = 0.5;
+var TEXTURE_MAX_SCALE = 24;
+
+function getRowCellSizes(cells) {
+  return cells.widths.map(function(w, y) {
+    return Math.sqrt(w * cells.heights[y]);
+  });
+}
 
 function getAboveMinimumMask(elev, valid, min) {
   var mask = new Uint8Array(elev.length);
@@ -125,7 +135,7 @@ function getSmoothingParams(method, opts) {
 // Returns a new layer; -hillshade replaces the target unless + is used
 cmd.hillshade = function(lyr, dataset, opts) {
   var grid, cells, elev, valid, shade, altitude, exaggeration, style, out;
-  var hasMin, raised, toneOpts, tones, azimuth, offsets, colors, smoothing, params, sharpening, ambient;
+  var hasMin, raised, toneOpts, tones, azimuth, offsets, colors, smoothing, params, sharpening, ambient, land;
   if (!layerHasRaster(lyr)) {
     stop('Command requires a raster layer');
   }
@@ -161,7 +171,11 @@ cmd.hillshade = function(lyr, dataset, opts) {
     base_color: colors.base ? opts.base_color || formatColor(colors.base) : null,
     min_elevation: hasMin ? opts.min_elevation : null},
   getSmoothingParams(smoothing, opts), {
-    light_adjust: opts.light_adjust || 0, ambient: ambient, aerial: opts.aerial || 0,
+    light_adjust: opts.light_adjust || 0, ambient: ambient,
+    texture: opts.texture || 0,
+    texture_detail: opts.texture > 0 ? opts.texture_detail || DEFAULT_TEXTURE_DETAIL : null,
+    texture_highlights: opts.texture > 0 ? opts.texture_highlights || 0 : null,
+    aerial: opts.aerial || 0,
     sharpening: sharpening,
     sharpen_radius: sharpening > 0 ? opts.sharpen_radius || DEFAULT_SHARPEN_RADIUS : null,
     sharpen_threshold: sharpening > 0 ? opts.sharpen_threshold || 0 : null,
@@ -184,11 +198,12 @@ cmd.hillshade = function(lyr, dataset, opts) {
   }
   shade = computeHillshade(elev, valid, grid.width, grid.height, cells.widths, cells.heights,
     getHillshadeLights(azimuth, altitude, opts.single_light), exaggeration, offsets);
+  // a flattened sea stays flat, rather than shading along the coast
+  land = hasMin && (ambient > 0 || opts.texture > 0) ?
+    getAboveMinimumMask(elev, valid, opts.min_elevation) : valid;
   if (ambient > 0) {
-    // a flattened sea stays flat, rather than darkening along the coast
     blendAmbientLight(shade, computeOpenness(elev, valid, grid.width, grid.height,
-      cells.widths, cells.heights, exaggeration, OPENNESS_RADIUS),
-      hasMin ? getAboveMinimumMask(elev, valid, opts.min_elevation) : valid, ambient);
+      cells.widths, cells.heights, exaggeration, OPENNESS_RADIUS), land, ambient);
   }
   if (opts.aerial > 0) {
     applyAerialPerspective(shade, elev, valid, opts.aerial);
@@ -197,6 +212,12 @@ cmd.hillshade = function(lyr, dataset, opts) {
   if (sharpening > 0) {
     sharpenTones(tones, valid, grid.width, grid.height, sharpening,
       opts.sharpen_radius || DEFAULT_SHARPEN_RADIUS, opts.sharpen_threshold || 0);
+  }
+  // after the tone curve, so max-opacity= and gamma= don't affect it
+  if (opts.texture > 0) {
+    applyTextureTones(tones, computeTextureShading(elev, land, grid.width, grid.height,
+      getRowCellSizes(cells), exaggeration, params.texture_detail, TEXTURE_MAX_SCALE), land,
+      opts.texture, Math.min(1, opts.texture * params.texture_highlights));
   }
   out = {
     raster_type: 'grid',
@@ -279,7 +300,16 @@ function validateHillshadeGrid(grid, opts) {
   if (opts.sharpen_radius != null && !(opts.sharpen_radius > 0 && opts.sharpen_radius <= 20)) {
     stop('sharpen-radius= should be a number of pixels, up to 20');
   }
-  ['ambient', 'aerial'].forEach(function(name) {
+  if (opts.texture_detail != null && !(opts.texture_detail > 0 && opts.texture_detail <= 2)) {
+    stop('texture-detail= should be from 0 to 2');
+  }
+  if (opts.texture_highlights != null && !(opts.texture_highlights >= 0)) {
+    stop('texture-highlights= should be 0 or more');
+  }
+  if ((opts.texture_detail != null || opts.texture_highlights != null) && !(opts.texture > 0)) {
+    stop('texture-detail= and texture-highlights= require texture=');
+  }
+  ['ambient', 'aerial', 'texture'].forEach(function(name) {
     if (opts[name] != null && !(opts[name] >= 0 && opts[name] <= 1)) {
       stop(name + '= should be from 0 to 1');
     }

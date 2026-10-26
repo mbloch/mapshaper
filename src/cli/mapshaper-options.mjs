@@ -2878,6 +2878,18 @@ export function getOptionParser() {
       describe: 'darkening of terrain hidden from the open sky, 0-1 (default is 0.5)',
       type: 'number'
     })
+    .option('texture', {
+      describe: 'texture shading (after Leland Brown): max opacity of drainage shadows, 0-1 (default is 0)',
+      type: 'number'
+    })
+    .option('texture-highlights', {
+      describe: 'opacity of ridge highlights from texture shading, relative to texture= (default is 0)',
+      type: 'number'
+    })
+    .option('texture-detail', {
+      describe: 'texture shading exponent; higher values favor smaller landforms (default is 0.5)',
+      type: 'number'
+    })
     .option('aerial', {
       describe: 'aerial perspective: reduce contrast at low elevations, 0-1 (default is 0)',
       type: 'number'
