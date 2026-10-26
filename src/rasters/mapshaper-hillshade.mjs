@@ -10,9 +10,8 @@ import { blurFloatChannel } from './mapshaper-raster-blur';
 export var DEFAULT_AZIMUTH = 315;
 export var DEFAULT_ALTITUDE = 45;
 export var DEFAULT_MAX_OPACITY = 0.55;
-export var DEFAULT_GAMMA = 0.5;
-// Highlights stay fainter than shadows, so lit slopes are not blown out
-var HIGHLIGHT_RATIO = 0.6;
+export var DEFAULT_GAMMA = 0.75;
+export var DEFAULT_HIGHLIGHT_RATIO = 1;
 
 // Relative azimuths and weights of the default light blend: a main light,
 // plus fainter lights on either side of it.
@@ -120,44 +119,114 @@ export function computeHillshade(elev, valid, width, height, cellWidths, cellHei
 }
 
 // Writes shading as RGBA bytes. Invalid pixels are transparent.
-// Tones follow a power curve: tone = t ^ gamma, where t is 0 on flat ground
-// and 1 in full shadow (or, for highlights, on a slope facing the light).
-// Gamma below 1 strengthens faint shading and eases off the extremes.
-// @style 'shadow': black shadows and white highlights with alpha; flat
-//          ground is clear
-//        'gray': opaque gray, flat ground at the light's brightness
-// @opts.maxOpacity 0-1, opacity of the darkest shadows ('shadow' style);
-//   highlights are capped at a fraction of this
+// See getHillshadeTones() for @style and @opts, writeHillshadeRgba() for @colors.
+export function renderHillshadeRgba(shade, valid, style, opts, colors) {
+  return writeHillshadeRgba(getHillshadeTones(shade, valid, style, opts), valid, style, colors);
+}
+
+// Default opacities of the styles: transparent shadows stay translucent, so
+// the map shows through; opaque shading runs from black to white.
+export function getDefaultMaxOpacity(style) {
+  return style == 'opaque' ? 1 : DEFAULT_MAX_OPACITY;
+}
+
+export function getDefaultHighlightRatio() {
+  return DEFAULT_HIGHLIGHT_RATIO;
+}
+
+// Applies the tone curve to shading. Tones are signed opacities: negative for
+// shadows, positive for highlights, 0 on flat ground. They follow a power
+// curve: tone = t ^ gamma, where t is 0 on flat ground and 1 in full shadow
+// (or, for highlights, on a slope facing the light). Gamma below 1
+// strengthens faint shading and eases off the extremes.
+// @style 'shadow' or 'opaque'; sets the default opacities
+// @opts.maxOpacity 0-1, opacity of the darkest shadows
+// @opts.highlightRatio opacity of the brightest highlights, as a fraction of
+//   maxOpacity; the result is capped at 1
 // @opts.gamma exponent of the tone curve
 // @opts.flatBrightness brightness of flat ground relative to a slope facing
 //   the light: the sine of the light's altitude
-export function renderHillshadeRgba(shade, valid, style, opts) {
+export function getHillshadeTones(shade, valid, style, opts) {
   var o = opts || {};
   var n = shade.length;
-  var out = new Uint8Array(n * 4);
-  var maxOpacity = o.maxOpacity >= 0 ? Math.min(1, o.maxOpacity) : DEFAULT_MAX_OPACITY;
-  var maxHighlight = maxOpacity * HIGHLIGHT_RATIO;
+  var tones = new Float32Array(n);
+  var maxOpacity = o.maxOpacity >= 0 ? Math.min(1, o.maxOpacity) : getDefaultMaxOpacity(style);
+  var ratio = o.highlightRatio >= 0 ? o.highlightRatio : getDefaultHighlightRatio(style);
+  var maxHighlight = Math.min(1, maxOpacity * ratio);
   var gamma = o.gamma > 0 ? o.gamma : DEFAULT_GAMMA;
   var flatValue = o.flatBrightness > 0 ? Math.min(1, o.flatBrightness) : 1;
   // shade of a slope facing the light (flat ground is 1)
   var litRange = flatValue < 1 ? 1 / flatValue - 1 : 0;
   var curve = getToneCurve(gamma);
-  var i, j, s, v;
-  for (i = 0, j = 0; i < n; i++, j += 4) {
+  var i, s;
+  for (i = 0; i < n; i++) {
     if (valid && !valid[i]) continue;
     s = shade[i];
-    if (style == 'gray') {
-      v = s < 1 ? flatValue * (1 - curve(1 - s)) : Math.min(1, s * flatValue);
-      out[j] = out[j + 1] = out[j + 2] = Math.round(v * 255);
-      out[j + 3] = 255;
-    } else if (s < 1) {
-      out[j + 3] = Math.round(curve(1 - s) * maxOpacity * 255);
+    if (s < 1) {
+      tones[i] = -curve(1 - s) * maxOpacity;
     } else if (s > 1 && litRange > 0) {
-      out[j] = out[j + 1] = out[j + 2] = 255;
-      out[j + 3] = Math.round(curve((s - 1) / litRange) * maxHighlight * 255);
+      tones[i] = curve((s - 1) / litRange) * maxHighlight;
+    }
+  }
+  return tones;
+}
+
+// @tones from getHillshadeTones(), clamped to the 0-1 range of opacity
+// @style 'shadow': shadows and highlights with alpha; flat ground is clear
+//        'opaque': shadows and highlights blended over @colors.base
+// @colors optional {shadow, highlight, base} colors, as {r, g, b, a} objects
+//   from parseColor(). Defaults are black, white and the gray of
+//   getDefaultBaseColor(). The alpha of the shadow and highlight colors scales
+//   the opacity of their tones; the base color's alpha is ignored.
+export function writeHillshadeRgba(tones, valid, style, colors) {
+  var n = tones.length;
+  var out = new Uint8Array(n * 4);
+  var dark = getToneColor(colors && colors.shadow, 0);
+  var light = getToneColor(colors && colors.highlight, 255);
+  var opaque = style == 'opaque';
+  var base = opaque ? colors && colors.base || getDefaultBaseColor() : null;
+  var i, j, t, c, a;
+  for (i = 0, j = 0; i < n; i++, j += 4) {
+    if (valid && !valid[i]) continue;
+    t = tones[i];
+    c = t < 0 ? dark : light;
+    a = clamp01(t < 0 ? -t : t) * c.a;
+    if (opaque) {
+      out[j] = Math.round(base.r + (c.r - base.r) * a);
+      out[j + 1] = Math.round(base.g + (c.g - base.g) * a);
+      out[j + 2] = Math.round(base.b + (c.b - base.b) * a);
+      out[j + 3] = 255;
+    } else if (t !== 0) {
+      out[j] = c.r;
+      out[j + 1] = c.g;
+      out[j + 2] = c.b;
+      out[j + 3] = Math.round(a * 255);
     }
   }
   return out;
+}
+
+// The brightness of flat ground under the light, which is the sine of its
+// altitude, as a gray; with full-strength shading, this gives the
+// conventional Lambertian hillshade
+export function getDefaultBaseColor(altitude) {
+  var alt = altitude >= 0 ? altitude : DEFAULT_ALTITUDE;
+  var v = Math.sin(alt * Math.PI / 180) * 255;
+  return {r: v, g: v, b: v, a: 1};
+}
+
+function getToneColor(color, defaultValue) {
+  if (!color) return {r: defaultValue, g: defaultValue, b: defaultValue, a: 1};
+  return {
+    r: Math.round(color.r),
+    g: Math.round(color.g),
+    b: Math.round(color.b),
+    a: color.a >= 0 ? color.a : 1
+  };
+}
+
+function clamp01(v) {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
 // Returns a function mapping 0-1 to 0-1. The curve is tabulated because
@@ -398,11 +467,15 @@ function getOpennessSteps(radius) {
   return steps;
 }
 
-// Combines directional shading with openness: @weight 0 is directional only
+// Darkens directional shading where the sky is hidden: @weight 0 is
+// directional only, 1 scales shading by openness. Openness is 1 on flat ground
+// and on planar slopes, so these keep their shading; valleys darken and
+// ridges brighten. Blending the two additively instead would halve
+// directional contrast everywhere, including highlights.
 export function blendAmbientLight(shade, openness, valid, weight) {
   for (var i = 0; i < shade.length; i++) {
     if (valid && !valid[i]) continue;
-    shade[i] = shade[i] * (1 - weight) + openness[i] * weight;
+    shade[i] *= 1 - weight * (1 - openness[i]);
   }
   return shade;
 }
@@ -411,6 +484,27 @@ export function blendAmbientLight(shade, openness, valid, weight) {
 // elevation, so lowland texture recedes and mountains stand out.
 // @strength 0-1; at 1 the lowest terrain gets no shading at all
 // Elevations are normalized between the 2nd and 98th percentiles.
+// Unsharp mask of tones from getHillshadeTones(), in place:
+// tone += amount * (tone - blurred tone). Differences smaller than @threshold
+// (in tone units) are ignored, and larger ones reduced by it (a soft
+// threshold), so faint texture can be left alone. Areas of constant tone are
+// unchanged, so flat ground stays transparent in the shadow style.
+export function sharpenTones(tones, valid, width, height, amount, sigma, threshold) {
+  var blurred = Float32Array.from(tones);
+  var t = threshold > 0 ? threshold : 0;
+  var i, d;
+  blurFloatChannel(blurred, valid, width, height, sigma);
+  for (i = 0; i < tones.length; i++) {
+    // flat ground (e.g. sea, with min-elevation=) would get halos along coasts
+    if (valid && !valid[i] || tones[i] === 0) continue;
+    d = tones[i] - blurred[i];
+    if (d > t) d -= t;
+    else if (d < -t) d += t;
+    else continue;
+    tones[i] += amount * d;
+  }
+}
+
 export function applyAerialPerspective(shade, elev, valid, strength) {
   var range = getElevationPercentiles(elev, valid, 0.02, 0.98);
   var span = range[1] - range[0];

@@ -143,17 +143,24 @@ test.describe('layers menu with frames', function() {
     await expect(memberRow(page, 'r3')).toHaveClass(/pinned/);
   });
 
-  test('the selected layer\'s eye hides it from the map without changing the frame', async function({page}) {
+  test('the selected layer\'s eye hides it in the frame, so it stays hidden when deselected', async function({page}) {
     var row = memberRow(page, 'r1');
-    var count;
     await selectLayer(page, 'r1');
-    count = (await getSessionCommands(page)).length;
     await row.hover();
     await row.locator('img.black-eye').click();
     await expect(row).toHaveClass(/invisible/);
-    await expect(row).toHaveClass(/pinned/); // still shown in the frame
-    expect((await getSessionCommands(page)).length).toBe(count);
+    await expect.poll(async function() {
+      return (await getSessionCommands(page)).pop();
+    }).toBe('-frame target=f1 hide-layers=r1');
+    await selectLayer(page, 'r3');
+    expect(await getView(page)).toEqual({frame: 'f1', layers: ['r3']});
+    await expect(row).toHaveClass(/invisible/);
+    await selectLayer(page, 'r1');
+    await row.hover();
     await row.locator('img.black-eye').click();
+    await expect.poll(async function() {
+      return (await getSessionCommands(page)).pop();
+    }).toBe('-frame target=f1 show-layers=r1');
     await expect(row).not.toHaveClass(/invisible/);
   });
 

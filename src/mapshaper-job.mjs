@@ -46,11 +46,12 @@ export function Job(catalog, seed) {
 }
 
 function stashVars(job, cmd) {
+  var opts = cmd.options || {};
   clearStash();  // prevent errors from overwriting stash
   stashVar('current_command', cmd.name);
-  stashVar('DEBUG', job.settings.DEBUG || cmd.debug);
-  stashVar('VERBOSE', job.settings.VERBOSE || cmd.verbose);
-  stashVar('QUIET', job.settings.QUIET || cmd.quiet);
+  stashVar('DEBUG', job.settings.DEBUG || !!opts.debug);
+  stashVar('VERBOSE', job.settings.VERBOSE || !!opts.verbose);
+  stashVar('QUIET', job.settings.QUIET || !!opts.quiet);
   stashVar('defs', job.defs);
   stashVar('vars', job.vars);
   stashVar('input_files', job.input_files);

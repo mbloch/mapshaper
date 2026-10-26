@@ -116,8 +116,19 @@ export function LayerControl(gui) {
     // re-render is wasteful and makes the panel's icons flicker.
     var flags = e.flags || {};
     if (flags.simplify_amount || flags.redraw_only) return;
+    showSelectedLayerIfShownInFrame();
     if (isOpen) render();
   });
+
+  // Hiding the selected layer in a frame also hides it in the frame; if the
+  // frame shows it again (e.g. after undo), so does the map
+  function showSelectedLayerIfShownInFrame() {
+    var active = model.getActiveLayer();
+    if (!active || !active.layer.hidden || active.layer.frame_hidden) return;
+    if (!internal.getFrameForDataset(model, active.dataset)) return;
+    active.layer.hidden = false;
+    map.redraw();
+  }
 
   el.on('mouseup', function() {
     var move = pendingMove;
@@ -744,11 +755,14 @@ export function LayerControl(gui) {
           return;
         }
         if (frame && active) {
-          // as in the Layers section, the selected layer is hidden from the
-          // map for the moment, without changing the frame
+          // The selected layer is always drawn, so it is hidden from the map
+          // with lyr.hidden; it is also hidden in the frame, so it stays hidden
+          // after another layer is selected (like unpinning in the Layers
+          // section)
           lyr.hidden = !lyr.hidden;
           entry.classed('invisible', lyr.hidden);
           map.redraw();
+          if (lyr.hidden != !!lyr.frame_hidden) toggleFrameVisibility(target, frame);
           return;
         }
         if (frame) {

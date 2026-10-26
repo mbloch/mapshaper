@@ -2843,15 +2843,19 @@ export function getOptionParser() {
       describe: 'vertical exaggeration (default depends on the map scale)',
       type: 'number'
     })
-    .option('generalize', {
-      describe: 'amount of terrain smoothing (default is 3 rounds, 0 is off)',
-      type: 'number'
-    })
     .option('smoothing', {
-      describe: 'fps (feature-preserving, the default) or lowpass'
+      describe: 'terrain smoothing: off, low, medium, high, lowpass or auto (default)'
+    })
+    .option('fps-passes', {
+      describe: 'passes of feature-preserving smoothing (low 1, medium and high 3)',
+      type: 'integer'
+    })
+    .option('fps-levels', {
+      describe: '2: run FPS passes on a 2x downsampled copy, then once at full resolution (high is 2)',
+      type: 'integer'
     })
     .option('fps-threshold', {
-      describe: 'FPS keeps slope changes sharper than this angle (default is 20)',
+      describe: 'FPS keeps slope changes sharper than this angle (low 15, medium and high 20)',
       type: 'number'
     })
     .option('fps-radius', {
@@ -2862,16 +2866,32 @@ export function getOptionParser() {
       describe: 'limit how far FPS can move an elevation, in meters (default is no limit)',
       type: 'number'
     })
+    .option('lowpass-radius', {
+      describe: 'blur radius of smoothing=lowpass, in pixels (default is 1)',
+      type: 'number'
+    })
     .option('light-adjust', {
       describe: 'turn the light up to this many degrees to suit landform orientation (0-60)',
       type: 'number'
     })
     .option('ambient', {
-      describe: 'weight of ambient light from the open sky, 0-1 (default is 0)',
+      describe: 'darkening of terrain hidden from the open sky, 0-1 (default is 0.5)',
       type: 'number'
     })
     .option('aerial', {
       describe: 'aerial perspective: reduce contrast at low elevations, 0-1 (default is 0)',
+      type: 'number'
+    })
+    .option('sharpening', {
+      describe: 'unsharp mask amount, 0-3 (default is 0.25; 0 is off)',
+      type: 'number'
+    })
+    .option('sharpen-radius', {
+      describe: 'unsharp mask radius, in pixels (default is 3)',
+      type: 'number'
+    })
+    .option('sharpen-threshold', {
+      describe: 'skip tonal differences smaller than this, 0-1 (default is 0)',
       type: 'number'
     })
     .option('min-elevation', {
@@ -2879,15 +2899,32 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('style', {
-      describe: 'shadow (transparent shadows, the default) or gray (opaque)'
+      describe: 'shadow (transparent shading, the default) or opaque (gray or grey also work)'
+    })
+    .option('base-color', {
+      describe: 'color of flat ground; implies style=opaque (default is a gray set by altitude=)'
     })
     .option('max-opacity', {
-      describe: 'opacity of the darkest shadows, 0-1 (default is 0.55)',
+      describe: 'opacity of the darkest shadows, 0-1 (default is 0.55, or 1 if opaque)',
       type: 'number'
     })
-    .option('gamma', {
-      describe: 'shape of the tone curve; below 1 strengthens faint shading (default is 0.5)',
+    .option('highlights', {
+      describe: 'opacity of the brightest highlights, relative to max-opacity (default is 1)',
       type: 'number'
+    })
+    .option('shadow-color', {
+      describe: 'color of shadows (default is black)'
+    })
+    .option('highlight-color', {
+      describe: 'color of highlights (default is white)'
+    })
+    .option('gamma', {
+      describe: 'shape of the tone curve; below 1 strengthens faint shading (default is 0.75)',
+      type: 'number'
+    })
+    .option('verbose', {
+      describe: 'print the settings used, including automatic ones',
+      type: 'flag'
     })
     .option('band', {
       describe: 'band containing elevation values (default is 0)',

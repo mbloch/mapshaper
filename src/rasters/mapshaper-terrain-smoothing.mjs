@@ -49,6 +49,143 @@ export function featurePreservingSmooth(elev, valid, width, height, cellWidths, 
   return z;
 }
 
+// Stronger generalization: FPS on a copy of the grid averaged down 2x, which
+// removes landforms smaller than about two pixels and doubles the ground reach
+// of the window. The result is upsampled (Catmull-Rom), then given a
+// full-resolution FPS pass, which re-sharpens crests that upsampling leaves
+// jagged. Costs about as much as two full-resolution rounds.
+// @coarseOpts, @fineOpts options for featurePreservingSmooth(); maxChange (from
+//   either) is applied to the final result
+// Returns a new Float32Array of elevations
+export function twoLevelSmooth(elev, valid, width, height, cellWidths, cellHeights, exaggeration, coarseOpts, fineOpts) {
+  var maxChange = coarseOpts.maxChange || fineOpts.maxChange;
+  var c = downsampleElevations(elev, valid, width, height, cellWidths, cellHeights);
+  var z = featurePreservingSmooth(c.elev, c.valid, c.width, c.height, c.cellWidths, c.cellHeights,
+    exaggeration, Object.assign({}, coarseOpts, {maxChange: null}));
+  z = upsampleElevations(z, c, elev, valid, width, height);
+  z = featurePreservingSmooth(z, valid, width, height, cellWidths, cellHeights, exaggeration,
+    Object.assign({}, fineOpts, {maxChange: null}));
+  if (maxChange > 0) limitChange(z, elev, maxChange, 1);
+  return z;
+}
+
+// Averages 2x2 blocks of valid pixels. Blocks past the last row or column of
+// an odd-sized grid are completed by linear extrapolation, so that each average
+// stays centered on its block.
+function downsampleElevations(elev, valid, width, height, cellWidths, cellHeights) {
+  var w = Math.ceil(width / 2), h = Math.ceil(height / 2);
+  var out = new Float32Array(w * h);
+  var outValid = new Uint8Array(w * h);
+  var widths = new Float64Array(h), heights = new Float64Array(h);
+  var x, y, xx, yy, y0, v, sum, n;
+  for (y = 0; y < h; y++) {
+    y0 = y * 2;
+    widths[y] = 2 * cellWidths[y0];
+    heights[y] = 2 * cellHeights[y0];
+    for (x = 0; x < w; x++) {
+      sum = 0;
+      n = 0;
+      for (yy = y0; yy <= y0 + 1; yy++) {
+        for (xx = x * 2; xx <= x * 2 + 1; xx++) {
+          v = getBlockSample(elev, valid, width, height, xx, yy);
+          if (v !== v) continue;
+          sum += v;
+          n++;
+        }
+      }
+      if (n > 0) {
+        out[y * w + x] = sum / n;
+        outValid[y * w + x] = 1;
+      }
+    }
+  }
+  return {elev: out, valid: outValid, width: w, height: h, cellWidths: widths, cellHeights: heights};
+}
+
+// Returns NaN for pixels without data
+function getBlockSample(elev, valid, width, height, x, y) {
+  if (y == height) {
+    return height > 1 ? extrapolate(getBlockSample(elev, valid, width, height, x, y - 1),
+      getBlockSample(elev, valid, width, height, x, y - 2), 1) : NaN;
+  }
+  if (x == width) {
+    return width > 1 ? extrapolate(getBlockSample(elev, valid, width, height, x - 1, y),
+      getBlockSample(elev, valid, width, height, x - 2, y), 1) : NaN;
+  }
+  return valid && !valid[y * width + x] ? NaN : elev[y * width + x];
+}
+
+// Catmull-Rom interpolation of a 2x downsampled grid, aligned on pixel
+// centers. Beyond the grid edges, values are extrapolated linearly, so tilted
+// planes stay planar. Where the 4x4 neighborhood includes pixels without data,
+// the value of the enclosing coarse pixel is used.
+function upsampleElevations(z, coarse, elev, valid, width, height) {
+  var cw = coarse.width, ch = coarse.height;
+  var out = new Float32Array(width * height);
+  var cols = new Int32Array(width), tx = new Float32Array(width);
+  var r0, r1, r2, r3, x, y, i, u, v, iy, ty;
+  for (x = 0; x < width; x++) {
+    u = (x + 0.5) / 2 - 0.5;
+    cols[x] = Math.floor(u);
+    tx[x] = u - cols[x];
+  }
+  for (y = 0; y < height; y++) {
+    v = (y + 0.5) / 2 - 0.5;
+    iy = Math.floor(v);
+    ty = v - iy;
+    for (x = 0; x < width; x++) {
+      i = y * width + x;
+      if (valid && !valid[i]) {
+        out[i] = elev[i];
+        continue;
+      }
+      r0 = interpolateRow(z, coarse.valid, cw, ch, cols[x], iy - 1, tx[x]);
+      r1 = interpolateRow(z, coarse.valid, cw, ch, cols[x], iy, tx[x]);
+      r2 = interpolateRow(z, coarse.valid, cw, ch, cols[x], iy + 1, tx[x]);
+      r3 = interpolateRow(z, coarse.valid, cw, ch, cols[x], iy + 2, tx[x]);
+      out[i] = r0 === r0 && r1 === r1 && r2 === r2 && r3 === r3 ?
+        catmullRom(r0, r1, r2, r3, ty) : z[(y >> 1) * cw + (x >> 1)];
+    }
+  }
+  return out;
+}
+
+// Returns NaN if a pixel has no data
+function interpolateRow(z, valid, w, h, x, y, t) {
+  var a, b;
+  if (h > 1 && (y < 0 || y >= h)) {
+    a = y < 0 ? 0 : h - 1;
+    b = y < 0 ? 1 : h - 2;
+    return extrapolate(interpolateRow(z, valid, w, h, x, a, t),
+      interpolateRow(z, valid, w, h, x, b, t), y < 0 ? -y : y - h + 1);
+  }
+  y = y < 0 ? 0 : y >= h ? h - 1 : y;
+  return catmullRom(sampleRow(z, valid, w, y, x - 1), sampleRow(z, valid, w, y, x),
+    sampleRow(z, valid, w, y, x + 1), sampleRow(z, valid, w, y, x + 2), t);
+}
+
+function sampleRow(z, valid, w, y, x) {
+  var row = y * w, a, b;
+  if (w > 1 && (x < 0 || x >= w)) {
+    a = x < 0 ? 0 : w - 1;
+    b = x < 0 ? 1 : w - 2;
+    if (!valid[row + a] || !valid[row + b]) return NaN;
+    return extrapolate(z[row + a], z[row + b], x < 0 ? -x : x - w + 1);
+  }
+  x = x < 0 ? 0 : x >= w ? w - 1 : x;
+  return valid[row + x] ? z[row + x] : NaN;
+}
+
+// @edge value at the grid edge, @inner value one pixel inside it
+function extrapolate(edge, inner, dist) {
+  return edge + (edge - inner) * dist;
+}
+
+function catmullRom(p0, p1, p2, p3, t) {
+  return p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 +
+    t * (3 * (p1 - p2) + p3 - p0)));
+}
+
 function limitChange(z, elev, maxChange, zf) {
   var i, orig;
   for (i = 0; i < z.length; i++) {
@@ -67,12 +204,13 @@ function computeNormals(z, valid, width, height, cellWidths, cellHeights) {
     ym = (y > 0 ? y - 1 : 0) * width;
     yp = (y < height - 1 ? y + 1 : y) * width;
     row = y * width;
-    sx = 8 * cellWidths[y];
-    sy = 8 * cellHeights[y];
+    // edge pixels use one-sided differences, over a span of one pixel
+    sy = 4 * cellHeights[y] * ((yp - ym) / width || 1);
     for (x = 0; x < width; x++) {
       i = row + x;
       xm = x > 0 ? x - 1 : 0;
       xp = x < width - 1 ? x + 1 : x;
+      sx = 4 * cellWidths[y] * (xp - xm || 1);
       c = z[i];
       dzdx = (sample(z, valid, ym + xp, c) + 2 * sample(z, valid, row + xp, c) + sample(z, valid, yp + xp, c) -
         sample(z, valid, ym + xm, c) - 2 * sample(z, valid, row + xm, c) - sample(z, valid, yp + xm, c)) / sx;

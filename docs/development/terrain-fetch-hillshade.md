@@ -208,38 +208,74 @@ same pattern as other mapshaper commands.
 - `exaggeration=` vertical exaggeration. The default increases with the map's
   ground pixel size (1 at 50 m per pixel and below, about 4.5 at 1 km, capped at
   10), because relief flattens out at small scales.
-- `generalize=` amount of terrain smoothing: rounds of feature-preserving
-  smoothing (default 3), or the blur radius in pixels with `smoothing=lowpass`
-  (default 1). 0 turns smoothing off. See below.
-- `smoothing=` (experimental) `fps` (default) or `lowpass`.
+- `smoothing=` terrain smoothing, described under Generalization:
+  - `low`, `medium`, `high`: feature-preserving smoothing (FPS) presets; see
+    Generalization for their settings.
+  - `auto` (default): currently `medium`; it may later depend on the map scale.
+  - `off` or `none`: no smoothing.
+  - `lowpass` (experimental): the earlier blur-and-restore method.
+- `fps-passes=` (1-20) overrides the preset number of FPS passes.
+- `fps-levels=` 1 (single-level FPS) or 2 (two-level smoothing, as in
+  `high`; see Generalization) overrides the preset. With 2, `fps-passes=`,
+  `fps-threshold=` and `fps-radius=` apply to the downsampled level; the
+  full-resolution pass that follows always uses 1 pass, 20° and radius 4.
 - `fps-threshold=`, `fps-radius=`, `maximum-change=` (experimental) FPS
-  settings, described under Generalization. These may later be replaced by
-  presets such as `generalization=off|low|medium|high`.
+  settings, described under Generalization. They refine any FPS preset.
+- `lowpass-radius=` blur radius of `smoothing=lowpass`, in pixels (default 1).
+- FPS settings with `smoothing=off` or `lowpass`, and `lowpass-radius=` without
+  `smoothing=lowpass`, are errors rather than being silently ignored.
 - `light-adjust=`, `ambient=`, `aerial=` (experimental) lighting refinements,
-  described under Lighting experiments. All default to 0 (off).
-- `style=` `shadow` (default) or `gray`.
+  described under Lighting experiments. `ambient=` defaults to 0.5, the
+  others to 0 (off).
+- `style=` `shadow` (default) or `opaque` (`gray` and `grey` are accepted as
+  earlier names).
   - `shadow` is black shadows and white highlights with transparency: flat
     ground is fully transparent, shaded slopes get darker and lit slopes
     lighter. It uses ordinary compositing, so it looks the same in the GUI,
-    SVG, PNG and graphics editors. Highlights are capped at 0.6 times
-    `max-opacity=`, so lit slopes are not blown out; they double the contrast
+    SVG, PNG and graphics editors. By default the brightest highlights get
+    the same opacity as the darkest shadows; highlights double the contrast
     across ridgelines, which makes ridges read much more crisply than shadows
     alone.
-  - `gray` is a conventional opaque gray hillshade.
+  - `opaque` blends the same shadows and highlights over `base-color=`, so
+    every pixel is opaque. Its defaults are `max-opacity=1` and a gray base at
+    the brightness of flat ground under the light (sin(altitude) × 255,
+    `#b4b4b4` at 45°). With `gamma=1 sharpening=0` that is the conventional
+    Lambertian gray hillshade; the default gamma also shapes highlights,
+    which the earlier gray style didn't.
+- `base-color=` color of flat ground in the opaque style, e.g. a land tint;
+  it implies `style=opaque` and is an error with `style=shadow`. Shadow and
+  highlight colors and opacities apply over it as in the shadow style.
 - `min-elevation=` raises lower elevations to this value; `min-elevation=0`
   flattens the sea floor, which the shadow style then leaves transparent.
   Raising (rather than masking as nodata) keeps coastal slopes shading
   naturally and keeps land below sea level. It is applied before
   generalization, so the sea floor is not blurred into coastal land, and again
   after, resetting raised pixels so blurred land does not shade a flat sea.
-- `max-opacity=` 0-1 opacity of the darkest shadows (default 0.55; shadow
-  style only).
+- `max-opacity=` 0-1 opacity of the darkest shadows (default 0.55, or 1 in
+  the opaque style).
+- `highlights=` opacity of the brightest highlights (a slope facing the light),
+  as a ratio of `max-opacity=` (default 1; it was 0.6 until manual testing
+  favored stronger highlights). The highlight
+  range is scaled to this maximum, not clipped; the product is capped at 1.
+  A white overlay can only lighten a background by its distance from white, so
+  on light backgrounds a higher ratio adds little; `highlight-color=` helps
+  more there.
+- `shadow-color=`, `highlight-color=` replace black shadows and white
+  highlights, in both styles. A warm highlight such as `#fff0b4` stays
+  visible on white or cream backgrounds through its hue, after Imhof's warm
+  light and cool shadow. The alpha of an rgba() color scales the opacity of its
+  tones.
 - `gamma=` exponent of the tone curve: tone = darkness ^ gamma, where
-  darkness is 0 on flat ground and 1 in full shadow (default 0.5). Values
+  darkness is 0 on flat ground and 1 in full shadow (default 0.75). Values
   below 1 strengthen faint shading and ease off the darkest shadows; values
-  above 1 do the opposite. Applies to both styles. 0.5 was chosen by comparing
-  renderings of France (zoom 7) and Mount Rainier (zoom 11); 1 left gentle
-  terrain such as the Massif Central nearly invisible.
+  above 1 do the opposite. Applies to both styles. 0.5 was first chosen by
+  comparing renderings of France (zoom 7) and Mount Rainier (zoom 11), since
+  1 left gentle terrain such as the Massif Central nearly invisible; manual
+  testing then settled on 0.75 together with default sharpening, which
+  restores local contrast that the lower gamma had flattened.
+- `verbose` prints the settings used, including automatic ones such as
+  `exaggeration=`, as command options that can be pasted back into a command,
+  plus the ground pixel size. The global `-verbose` command prints them too.
 - `band=` band to read elevations from (default 0).
 - `name=`, `target=`, `+`.
 
@@ -274,7 +310,7 @@ transparency in SVG export (PNG is chosen automatically for images with alpha).
 
 The default is feature-preserving smoothing (FPS; Sun et al. 2007, as adapted
 for DEMs by Lindsay et al. 2019), in `src/rasters/mapshaper-terrain-smoothing.mjs`.
-Each round:
+Each pass (called a round in the code):
 
 1. Compute surface normals of the exaggerated surface.
 2. Smooth the normals over a 9x9 window, weighting neighbors by
@@ -286,18 +322,76 @@ Each round:
 
 Settings:
 
-- `fps-threshold=` (default 20°): lower values preserve more slope changes as
+- `fps-threshold=` (20° in the default preset): lower values preserve more slope changes as
   features, keeping ridges sharper but also more small-scale texture; higher
   values approach a blur. Normals are measured on the exaggerated surface, so
   higher exaggeration has a similar effect to lowering the threshold.
-- `fps-radius=` (default 4, a 9x9 window): the size of bumps averaged away.
+- `fps-radius=` (4 in the default preset, a 9x9 window): the size of bumps averaged away.
   Cost per round grows with the square of the window width.
 - `maximum-change=` (default off): after each round, elevations are clamped
   to within this many meters of their original values, protecting summits and
   narrow gorges from being shaved down.
 
-Windows of entirely flat ground are skipped. On a 1640x1477 map of France,
-three rounds take about 2 seconds. FPS must run on unblurred data: low-pass
+Presets (`smoothing=low|medium|high`); `fps-passes=`, `fps-threshold=` and
+`fps-radius=` override their values (for `high`, the values of the coarse
+level):
+
+| Preset | Levels | Passes | Threshold | Radius |
+|---|---|---|---|---|
+| `low` | 1 | 1 | 15° | 4 |
+| `medium` (`auto`) | 1 | 3 | 20° | 4 |
+| `high` | 2 | 3 | 20° | 4 |
+
+`low` and `medium` were chosen from a grid of passes (1, 3, 6) and thresholds
+(15-35°), rendered on the Bernese Oberland (Mapterhorn zoom 12) and France
+(zoom 7), and measured by mean absolute Laplacian of the shading (fine detail)
+and its standard deviation (contrast):
+
+- Raising the threshold removes small landforms: detail falls steadily from
+  15° to 35° at every pass count, in both regions, while contrast and the main
+  crests are kept.
+- Passes give diminishing, then negative, returns. One pass removes most data
+  noise; three give chiseled ridges. In the Oberland six passes have more fine
+  detail than three at every threshold, because slopes break into flat facets
+  with sharp creases (the glassy look also seen on Mount Rainier).
+
+`high` uses two-level smoothing (`twoLevelSmooth()`):
+
+1. Average the elevations down 2x. This removes landforms smaller than about
+   two pixels, and each FPS window then covers four times the ground area.
+2. Run the FPS passes on the coarse grid.
+3. Upsample with Catmull-Rom interpolation, extrapolating linearly past the
+   grid edges (and completing partial blocks of odd-sized grids) so that
+   tilted planes stay planar.
+4. Run one FPS pass at full resolution (20°, radius 4). Without it, upsampled
+   crests are jagged.
+5. `maximum-change=` is applied to the result.
+
+It is roughly one zoom level more generalized than single-level FPS with a
+high threshold (4 passes, 30°, radius 5, the earlier `high`), and faster than
+`medium`: on France (1640x1477), smoothing takes 1.3 s against 2.1 s for
+`medium` and 3.4 s for the earlier `high`. Steep one-pixel features that
+single-level FPS keeps as ridges are removed. Relief also flattens: shading
+contrast in France fell about 25%, since averaging lowers peaks and fills
+valleys, so more exaggeration may suit it.
+
+Shading at half resolution and upsampling the shading with directional cubic
+convolution interpolation (DCCI, a cheaper relative of NEDI) was also tried. It
+was faster still (0.8 s through shading) and DCCI kept crests cleaner than
+bicubic upsampling, but ambient light, aerial perspective and the tone input
+run at half resolution, and the result looked slightly softer than two-level
+smoothing. The prototype is `/tmp/hillshade-proto/multires.mjs`.
+
+FPS normals at the grid edges use one-sided differences over the actual span.
+Dividing by the full two-pixel span, as before, halved edge slopes, and the
+refit then tilted whole planes by up to half a meter in tests.
+
+Normals are measured on the exaggerated surface, so automatic exaggeration
+effectively lowers the threshold at small scales, where more generalization is
+wanted. A scale-aware `auto` could raise the threshold with exaggeration.
+
+Windows of entirely flat ground are skipped. On a 1600x1436 map of France,
+each pass takes about a second. FPS must run on unblurred data: low-pass
 filtering first turns valleys into worm-like grooves, and sharpening first
 leaves halos that FPS preserves as false ridges.
 
@@ -305,7 +399,7 @@ The earlier method (`smoothing=lowpass`) follows the approach of Terrain
 Sculptor (Leonowicz, Jenny and Hurni, 2010): low-pass filter the terrain, then
 restore major ridges and valleys by blending toward local maximum and minimum
 filters, weighted by curvature measured at a broader scale. It is faster but
-softens ridges. With `generalize=g` (Gaussian sigma in pixels):
+softens ridges. With `lowpass-radius=g` (Gaussian sigma in pixels):
 
 - `low` = blur(elevation, g)
 - `broad` = blur(elevation, 2.5g)
@@ -333,17 +427,38 @@ good values are known.
   turning either way is equally valid, so the turn fades to 0 there to keep
   neighboring pixels consistent. Works best with `single-light`, since the
   four-light blend already reduces the problem.
-- `ambient=w` mixes in sky-view (openness) lighting with weight `w` (0-1):
-  `shade = (1 - w) * shade + w * openness`, where openness is
+- `ambient=w` darkens shading where the sky is hidden, with weight `w` (0-1):
+  `shade = shade * (1 - w * (1 - openness))`, where openness is
   `1 - mean(sin(horizon angle))` over 8 directions within about 24 pixels.
-  Deep valleys darken and sunlit faces lose some glare, at the cost of
-  directional contrast.
+  Openness is 1 on flat ground and on planar slopes (uphill and downhill
+  horizons cancel), below 1 in valleys and above 1 on ridges, so deep valleys
+  darken and crests brighten. The first version blended additively,
+  `(1 - w) * shade + w * openness`, which pulls every pixel toward flat
+  brightness: at `w=0.5` it halved directional contrast everywhere, cutting
+  highlight coverage in the Alps (France, zoom 7) from 7.8% to 1.1% and
+  fading the Massif Central. The multiplicative form keeps gentle terrain
+  nearly unchanged; in the Alps highlights still fall to 2.9% (lit faces
+  inside valleys see less sky) while shadows rise from 11.8% to 14.8%,
+  adding depth. It costs about 0.5 s on a 2400 × 2000 grid. The default is
+  0.5, chosen in manual testing for the sense of depth it adds. With
+  `min-elevation=`, pixels at or below the minimum are left out, so a
+  flattened sea stays transparent instead of darkening along the coast.
 - `aerial=k` (0-1) reduces contrast at low elevations:
   `shade = 1 + (shade - 1) * (1 - k * (1 - t))`, where `t` is elevation
   normalized between its 2nd and 98th percentiles. High mountains keep full
   contrast and lowlands fade.
 - `altitude=` (existing) lower values give longer, darker shadows and fewer
   highlights.
+- `sharpening=a` (0-3, default 0.25; 0 is off) applies an unsharp mask after the tone
+  curve, to signed tones (shadow opacity negative, highlight opacity
+  positive, flat ground 0): `tone += a * (tone - blur(tone))`, with a Gaussian
+  of `sharpen-radius=` pixels (default 3). `sharpen-threshold=` (default 0,
+  in opacity units) ignores smaller differences and reduces larger ones by
+  it. Flat ground (a tone of exactly 0) is left alone, so a sea flattened by
+  `min-elevation=` gets no halo along the coast; overshoot is clipped only by the 0-1
+  range of opacity, not by the shadow and highlight caps. Unlike sharpening
+  the elevations before smoothing, which leaves halos that FPS preserves as
+  false grooves, this only adds tonal contrast.
 
 The window sizes are fixed in pixels, so they cover more ground on
 small-scale maps.
