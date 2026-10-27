@@ -23097,12 +23097,14 @@
     var cutOpts = snapDist > 0 ? {tolerance: snapDist} : {tolerance: 0};
 
     // Probe for intersections before any modification. If the input has none,
-    // every pass of the loop below is provably a no-op: snap() can only
-    // consolidate FP noise around intersection points, cutPathsAtIntersections
-    // inserts cut points only where segments cross, and buildTopology is gated
-    // on coordsHaveChanged. So we can return early and skip a ~O(V log V) snap
-    // that would snap zero points, which is the dominant cost of robust
-    // dissolve on already-clean polygon input.
+    // only the snap can change anything: cutPathsAtIntersections inserts cut
+    // points only where segments cross. The snap is still needed, because
+    // intersection detection misses vertices that are within the snap distance
+    // of each other without any segments crossing, as when two rings follow the
+    // same boundary and one ring's coordinates differ by FP noise (e.g. after a
+    // projection round trip). Left unsnapped, the nearly coincident arcs leave
+    // dead ends in the mosaic and whole tiles are lost. If the snap moves
+    // nothing, we can return early and skip the cutting passes.
     //
     // limit=1 makes the probe cheap on dirty input too — it stops the stripe
     // scan after the first hit, so the probe's full cost is only paid on
@@ -23112,14 +23114,23 @@
     profileStart('probeIntersections');
     var probe = findSegmentIntersections(arcs, probeOpts);
     profileEnd('probeIntersections');
+    var preSnapCount = 0;
     if (probe.length === 0) {
-      debug('[snapAndCut] skipped (no intersections)');
-      profileEnd('snapAndCut');
-      return false;
+      if (snapDist > 0) {
+        profileStart('snap');
+        preSnapCount = snapCoordsByInterval(arcs, snapDist);
+        profileEnd('snap');
+      }
+      if (preSnapCount === 0) {
+        debug('[snapAndCut] skipped (no intersections)');
+        profileEnd('snapAndCut');
+        return false;
+      }
+      debug('[snapAndCut] no intersections, but snapped', preSnapCount, 'points');
     }
 
-    var coordsHaveChanged = false;
-    var snapCount = 0, dupeCount, cutCount;
+    var coordsHaveChanged = preSnapCount > 0;
+    var snapCount = preSnapCount, dupeCount, cutCount;
     var maxLoops = 4, loopCount = 0;
     // After pass 1, snap & dedup can be skipped IF pass 1 snap moved nothing:
     // cuts inserted exact intersection coordinates that match either an existing
@@ -23133,7 +23144,9 @@
       loopCount++;
       cutCount = 0;
       skipFollowupSnap = loopCount > 1 && snapCount === 0;
-      if (!skipFollowupSnap) {
+      if (loopCount == 1 && preSnapCount > 0) {
+        dupeCount = arcs.dedupCoords();
+      } else if (!skipFollowupSnap) {
         profileStart('snap');
         snapCount = snapCoordsByInterval(arcs, snapDist);
         profileEnd('snap');
@@ -96151,7 +96164,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.98";
+  var version = "0.7.99";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

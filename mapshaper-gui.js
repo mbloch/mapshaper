@@ -10227,18 +10227,18 @@
       return kind.kind != 'labels';
     });
     var menuBtn = row.findChild('.draw-menu-btn');
-    var menu = El('div').addClass('draw-menu').attr('role', 'menu')
+    var menu = El('div').addClass('draw-menu')
       .appendTo('body').hide();
 
-    initLink(row.findChild('.add-labels-link').attr('title', findDrawKind('labels').tip),
+    initLink(row.findChild('.add-labels-link'),
       findDrawKind('labels'));
     initMenu();
     gui.on('sidebar', closeMenu);
 
     function initMenu() {
       drawKinds.forEach(function(kind) {
-        El('div').addClass('draw-menu-item').attr('role', 'menuitem')
-          .attr('data-kind', kind.kind).attr('title', kind.tip).text(kind.kind)
+        El('div').addClass('draw-menu-item')
+          .attr('data-kind', kind.kind).text(kind.kind)
           .appendTo(menu)
           .on('click', function() {
             closeMenu();
@@ -12424,8 +12424,8 @@
     // 'line_style' and 'polygon_style', with drawing or reshaping armed from the
     // mode's toolbar (see setArmedTool()). 'edit_lines' and 'edit_polygons' are not modes of their
     // own: setMode() takes them as "open the mode with drawing armed", creating
-    // a layer to draw in if there is none, which is what the menu for an empty
-    // session and the layer panel's "Draw" links ask for.
+    // a layer to draw in if there is none, which is what the layer panel's
+    // "Draw" links ask for.
     //
     // Points are added and moved in 'point_style'. On a layer of plain points
     // a click on empty map always adds one, so the tool mode there is
@@ -12436,7 +12436,9 @@
     // symbols.
     var menus = {
       standard: ['info', 'selection', 'box', 'ruler'],
-      empty: [ 'label', 'symbols', 'edit_points', 'edit_lines',  'edit_polygons','box', 'ruler'],
+      // With no data, the layer panel's links are the way into the editing
+      // tools, so the menu offers only the tools that need no layer
+      empty: ['box', 'ruler'],
       polygons: ['info', 'polygon_style', 'selection', 'box', 'ruler'],
       rectangles: ['info', 'selection', 'polygon_style', 'rectangles', 'box', 'ruler'],
       lines: ['info', 'line_style', 'snip_lines', 'selection', 'box', 'ruler'],
@@ -14003,6 +14005,14 @@
   var SLIDER_HEIGHT = 15;
   var SLIDER_MIDDLE = Math.floor(SLIDER_HEIGHT / 2);
 
+  // How far a handle reaches from its center: the circle's radius plus half
+  // its ring (see .label-color-marker circle in page.css)
+  var MARKER_REACH = 8 + 1.7 / 2;
+
+  // the opacity strip's checkerboard
+  var CHECKER_LIGHT = 255;
+  var CHECKER_DARK = 204;
+
   function closeOpenPickers(except) {
     openPickers.slice().forEach(function(picker) {
       if (picker !== except) picker.hide();
@@ -14111,7 +14121,7 @@
     }
 
     function init() {
-      var sbWrap = El('div').addClass('label-color-canvas-wrap').appendTo(colorPicker);
+      var sbWrap = El('div').addClass('label-color-canvas-wrap label-color-sb-wrap').appendTo(colorPicker);
       sbCanvas = El('canvas').attr('width', '256').attr('height', '256').appendTo(sbWrap);
       sbMarker = makePickerMarker().appendTo(sbWrap);
       var hueWrap = El('div').addClass('label-color-canvas-wrap').appendTo(colorPicker);
@@ -14127,13 +14137,15 @@
       El('button').appendTo(fieldRow).text('Close').on('click', function() {
         self.hide();
       });
-      sbCanvas.on('mousedown', function(e) {
+      // The handles hang off the edges of their canvases, so a canvas's
+      // wrapper, which holds its handle too, takes the press.
+      sbWrap.on('mousedown', function(e) {
         startCanvasDrag(e, updateSbFromEvent);
       });
-      colorPicker.node().addEventListener('pointerdown', startPickerMove);
-      hueCanvas.on('mousedown', function(e) {
+      hueWrap.on('mousedown', function(e) {
         startCanvasDrag(e, updateHueFromEvent);
       });
+      colorPicker.node().addEventListener('pointerdown', startPickerMove);
       setPickerColor(pickerColor);
     }
 
@@ -14144,7 +14156,7 @@
       var node = colorPicker.node();
       var startX = e.clientX, startY = e.clientY;
       var rect = node.getBoundingClientRect();
-      if (e.button !== 0 || e.target.closest('canvas, input, button, [role="button"]')) return;
+      if (e.button !== 0 || e.target.closest('.label-color-canvas-wrap, input, button, [role="button"]')) return;
       document.addEventListener('pointermove', onMove);
       document.addEventListener('pointerup', onUp);
       document.addEventListener('pointercancel', onUp);
@@ -14170,8 +14182,8 @@
       alphaCanvas = El('canvas').attr('width', '256').attr('height', String(SLIDER_HEIGHT))
         .attr('aria-label', 'Opacity').appendTo(wrap);
       alphaMarker = makePickerMarker().appendTo(wrap);
-      alphaCanvas.on('mousedown', function(e) {
-        if (unset || opacityInput.node().disabled) return;
+      wrap.on('mousedown', function(e) {
+        if (opacityInput.node().disabled) return;
         startCanvasDrag(e, updateAlphaFromEvent, commitOpacity);
       });
       // a typed opacity moves the slider
@@ -14262,17 +14274,26 @@
       commitPickerColor();
     }
 
+    // A handle is dragged from wherever it was grabbed, rather than jumping to
+    // put its center under the pointer.
     function startCanvasDrag(e, update, commit) {
       var evt = e.originalEvent || e;
+      var marker = evt.target.closest && evt.target.closest('.label-color-marker');
+      var dx = 0, dy = 0, rect;
+      if (marker) {
+        rect = marker.getBoundingClientRect();
+        dx = evt.clientX - (rect.left + rect.width / 2);
+        dy = evt.clientY - (rect.top + rect.height / 2);
+      }
       commit = commit || commitPickerColor;
       colorPicker.addClass('dragging-color');
       El('body').addClass('dragging-color-picker');
-      update(evt);
+      onmove(evt);
       document.addEventListener('mousemove', onmove);
       document.addEventListener('mouseup', onup);
       evt.preventDefault();
       function onmove(evt) {
-        update(evt);
+        update({clientX: evt.clientX - dx, clientY: evt.clientY - dy});
       }
       function onup() {
         document.removeEventListener('mousemove', onmove);
@@ -14362,7 +14383,8 @@
         }
       }
       ctx.putImageData(image, 0, 0);
-      positionMarker(sbMarker, pickerColor.s, 255 - pickerColor.b, hsbToRgb(pickerColor));
+      positionMarker(sbMarker, pickerColor.s, 255 - pickerColor.b,
+        internal.parseHexColor(getPickerHex() || hsbToHex(pickerColor)), true);
       sbMarker.node().style.display = unset ? 'none' : '';
     }
 
@@ -14381,11 +14403,14 @@
         }
       }
       ctx.putImageData(image, 0, 0);
-      positionMarker(hueMarker, pickerColor.h, SLIDER_MIDDLE, hsbToRgb({h: pickerColor.h, s: 255, b: 255}));
+      positionMarker(hueMarker, pickerColor.h, SLIDER_MIDDLE, hsbToRgb({h: pickerColor.h, s: 255, b: 255}), true);
     }
 
     // The picked color over a checkerboard, opaque at the left and clear at the
-    // right. A blank opacity field puts the marker at 100%.
+    // right. A blank opacity field puts the marker at 100%. The handle is
+    // filled with the opaque color while it overhangs the strip's left end, so
+    // that it doesn't look cut off; once it is wholly over the strip it is a
+    // ring, because a solid fill would hide the fade it is showing.
     function drawAlphaCanvas() {
       if (!alphaCanvas) return;
       var ctx = alphaCanvas.node().getContext('2d');
@@ -14407,16 +14432,22 @@
       ctx.putImageData(image, 0, 0);
       a = getOpacity();
       markerX = Math.round((1 - a) * 255);
-      markerBg = getCheckerValue(markerX, SLIDER_MIDDLE);
+      if (markerX + 0.5 < MARKER_REACH) {
+        positionMarker(alphaMarker, markerX, SLIDER_MIDDLE, rgb, true);
+        return;
+      }
+      // the checkerboard's average shade rather than the square under the
+      // handle, which would flip the ring back and forth near the threshold
+      markerBg = (CHECKER_LIGHT + CHECKER_DARK) / 2;
       positionMarker(alphaMarker, markerX, SLIDER_MIDDLE, {
         r: rgb.r * a + markerBg * (1 - a),
         g: rgb.g * a + markerBg * (1 - a),
         b: rgb.b * a + markerBg * (1 - a)
-      });
+      }, false);
     }
 
     function getCheckerValue(x, y) {
-      return (Math.floor(x / 5) + Math.floor(y / 5)) % 2 ? 204 : 255;
+      return (Math.floor(x / 5) + Math.floor(y / 5)) % 2 ? CHECKER_DARK : CHECKER_LIGHT;
     }
 
     function commitPickerColor() {
@@ -14430,17 +14461,21 @@
     }
 
     function makePickerMarker() {
-      return El('<svg class="label-color-marker" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle></svg>');
+      return El('<svg class="label-color-marker" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8"></circle></svg>');
     }
 
-    function positionMarker(marker, x, y, rgb) {
-      x = utils.clamp(x, 1, 254);
-      y = utils.clamp(y, 1, 254) + 0.5;
+    // Centered on pixel (@x, @y) of its canvas, so a handle at the end of a
+    // strip hangs halfway off it.
+    // @rgb: the color under the handle, which its ring has to stand out from
+    // @filled: whether the handle is filled with @rgb
+    function positionMarker(marker, x, y, rgb, filled) {
+      var circle = marker.findChild('circle');
       marker.css({
-        left: x - 8,
-        top: y - 8
+        left: x + 0.5 - 10,
+        top: y + 0.5 - 10
       });
-      marker.findChild('circle').attr('stroke', getMarkerColor(rgb));
+      circle.attr('stroke', getMarkerColor(rgb));
+      circle.css('fill', filled ? 'rgb(' + [rgb.r, rgb.g, rgb.b].map(Math.round).join(',') + ')' : 'none');
     }
   }
 

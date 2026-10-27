@@ -1402,19 +1402,13 @@ body.simplify .layer-control-btn {
 	border-radius: 0;
 }
 
-.layer-control .no-layer-note {
-	color: #777;
-	margin: 0 0 5px 0;
-	font-size: 13px;
-}
-
 /* "Add files", "Add labels" and "Draw" are separate groups, and a narrow
    sidebar wraps between them, never inside one. The dot
    between them is each group's ::before, hung to the group's left: a group that
    starts a line has its dot pushed past the left edge of the row and clipped,
    so no line ends or begins with a stray dot. */
 .layer-add-links {
-	margin: 0 0 12px 0;
+	margin: 5px 0 8px 0;
 	font-size: 13px;
 	line-height: 1.2;
 	overflow: hidden;
@@ -1538,10 +1532,11 @@ body.simplify .layer-control-btn {
 	display: none;
 }
 
-.unframed-empty-note {
-	color: #777;
-	font-size: 13px;
-	padding: 2px 0 6px;
+.unframed-empty-note,
+.no-layer-note {
+	color: #999;
+	font-size: 12px;
+	padding: 2px 0 0;
 }
 
 /* The Layers heading and each frame heading share the same type and height.
@@ -4191,7 +4186,7 @@ body.pan.panning .map-layers:not(.drawing) {
 .label-color-picker {
 	position: fixed;
 	z-index: 25;
-	padding: 8px;
+	padding: 11px;
 	background: white;
 	border: 1px solid #ddd;
 	border-radius: 6px;
@@ -4218,8 +4213,6 @@ body.pan.panning .map-layers:not(.drawing) {
 .label-color-picker canvas {
 	display: block;
 	width: 256px;
-	margin: 0 0 6px 0;
-	cursor: crosshair;
 }
 
 .label-color-presets {
@@ -4259,12 +4252,23 @@ body.dragging-color-picker * {
 	cursor: none !important;
 }
 
+/* The gaps put the handles 20px apart, center to center, when the square's is
+   on its bottom edge: half a pixel, 12px and half the hue strip down to the
+   hue handle, then half a strip, 5px and half a strip to the opacity one. */
 .label-color-canvas-wrap {
 	position: relative;
 	width: 256px;
+	margin: 0 0 5px 0;
 	overflow: visible;
+	cursor: crosshair;
 }
 
+.label-color-sb-wrap {
+	margin-bottom: 12px;
+}
+
+/* The whole circle can be grabbed, including the part off the canvas, and
+   the middle of an unfilled one */
 .label-color-marker {
 	position: absolute;
 	pointer-events: none;
@@ -4273,7 +4277,8 @@ body.dragging-color-picker * {
 
 .label-color-marker circle {
 	fill: none;
-	stroke-width: 1.5;
+	stroke-width: 1.7;
+	pointer-events: all;
 }
 
 .label-color-picker-fields {
