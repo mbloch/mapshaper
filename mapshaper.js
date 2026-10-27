@@ -45655,7 +45655,7 @@ ${css.join('\n')}
     targetSrs = getExportSrs(dataset);
     await ensureSrsExists(gpkg, targetSrs);
     // createFeatureTableFromProperties() hardcodes EPSG:4326
-    await gpkg.createFeatureTable(tableName, null, columns, undefined, targetSrs.srs_id);
+    await gpkg.createFeatureTable(tableName, null, columns, getLayerBoundingBox(lyr, dataset), targetSrs.srs_id);
     var featureDao = gpkg.getFeatureDao(tableName);
     // addGeoJSONFeatureToGeoPackageWithFeatureDaoAndSrs() assumes source
     // GeoJSON is EPSG:4326 and reprojects unless given EPSG:4326 metadata.
@@ -45681,6 +45681,15 @@ ${css.join('\n')}
       }
       featureIndex++;
     }
+  }
+
+  // Returns undefined for a layer without bounds, so the library falls back to
+  // its default (whole-world) extent.
+  function getLayerBoundingBox(lyr, dataset) {
+    var bounds = getLayerBounds(lyr, dataset.arcs);
+    if (!bounds || !bounds.hasBounds()) return undefined;
+    var geopackage = require$1('@ngageoint/geopackage');
+    return new geopackage.BoundingBox(bounds.xmin, bounds.xmax, bounds.ymin, bounds.ymax);
   }
 
   async function exportGeoPackageBytes(gpkg) {
@@ -45839,7 +45848,8 @@ ${css.join('\n')}
     }
     var parsed = parseCrsString(info.crs_string);
     if (parsed) {
-      if (info.wkt1) parsed.definition = info.wkt1;
+      // -proj sets crs_string and crs but not wkt1
+      parsed.definition = info.wkt1 || getWktFromDatasetCrs(dataset);
       return parsed;
     }
     var fromWkt = parseWktAuthority(info.wkt1);
@@ -45876,13 +45886,14 @@ ${css.join('\n')}
   }
 
   function getWktFromDatasetCrs(dataset) {
-    // Only derive from an explicitly-set CRS object (e.g. from -proj).
-    // This avoids building a custom SRS for lat/lon datasets that were
-    // auto-defaulted to WGS84 by getDatasetCRS().
+    // Only derive from an explicitly-set CRS (e.g. from -proj, or a crs_string
+    // set by an importer such as FlatGeobuf). This avoids building a custom SRS
+    // for lat/lon datasets that were auto-defaulted to WGS84 by getDatasetCRS().
     var info = dataset && dataset.info;
-    if (!info || !info.crs) return null;
+    var crs = info && (info.crs || info.crs_string && tryParseCrsString(info.crs_string));
+    if (!crs) return null;
     try {
-      return crsToPrj(info.crs) || null;
+      return crsToPrj(crs) || null;
     } catch (e) {
       return null;
     }
@@ -96164,7 +96175,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.99";
+  var version = "0.7.100";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
