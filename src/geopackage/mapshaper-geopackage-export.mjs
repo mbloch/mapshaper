@@ -5,6 +5,7 @@ import { getFileExtension } from '../utils/mapshaper-filename-utils';
 import { runningInBrowser } from '../mapshaper-env';
 import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
+import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
 import { crsToPrj, tryParseCrsString } from '../crs/mapshaper-projections';
 
 export async function exportGeoPackage(dataset, opts) {
@@ -58,7 +59,7 @@ async function exportLayerToGeoPackage(lyr, dataset, gpkg, opts) {
   targetSrs = getExportSrs(dataset);
   await ensureSrsExists(gpkg, targetSrs);
   // createFeatureTableFromProperties() hardcodes EPSG:4326
-  await gpkg.createFeatureTable(tableName, null, columns, undefined, targetSrs.srs_id);
+  await gpkg.createFeatureTable(tableName, null, columns, getLayerBoundingBox(lyr, dataset), targetSrs.srs_id);
   var featureDao = gpkg.getFeatureDao(tableName);
   // addGeoJSONFeatureToGeoPackageWithFeatureDaoAndSrs() assumes source
   // GeoJSON is EPSG:4326 and reprojects unless given EPSG:4326 metadata.
@@ -84,6 +85,15 @@ async function exportLayerToGeoPackage(lyr, dataset, gpkg, opts) {
     }
     featureIndex++;
   }
+}
+
+// Returns undefined for a layer without bounds, so the library falls back to
+// its default (whole-world) extent.
+function getLayerBoundingBox(lyr, dataset) {
+  var bounds = getLayerBounds(lyr, dataset.arcs);
+  if (!bounds || !bounds.hasBounds()) return undefined;
+  var geopackage = require('@ngageoint/geopackage');
+  return new geopackage.BoundingBox(bounds.xmin, bounds.xmax, bounds.ymin, bounds.ymax);
 }
 
 async function exportGeoPackageBytes(gpkg) {
