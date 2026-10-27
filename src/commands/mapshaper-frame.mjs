@@ -314,6 +314,13 @@ function removeFrame(catalog, frame) {
   demoteFrameLayer(frame.layer, operation);
 }
 
+// -copy target=<frame> name=<name>: the copy becomes the target
+export function copyFrameAndMembers(catalog, frame, name) {
+  var copy = copyFrame(catalog, frame, name);
+  catalog.setDefaultTarget([copy.layer], copy.dataset);
+  return copy;
+}
+
 // Copies the frame dataset and its member datasets. Copies get new IDs;
 // members that share an ID (one lineage) share a new one.
 function copyFrame(catalog, frame, name) {

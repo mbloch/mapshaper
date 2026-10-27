@@ -83,9 +83,12 @@ export function LayerRenderer(gui, container) {
     }
     var startTime = performance.now();
     var needSvgRedraw = action != 'nav' && action != 'hover';
+    // a 'nav' render of a raster only rescales its previous preview, so it
+    // doesn't satisfy a pending settle the way a vector render does
+    var settleRaster = action == 'nav' && _settleRequested && _rasterNavRefreshPending;
     cancelSettle();
     _redrawPending = false;
-    _settleRequested = false; // a full render satisfies any pending settle
+    _settleRequested = false;
     clearFastTransform();
     _mainCanv.prep(_ext);
     if (needSvgRedraw) {
@@ -107,8 +110,7 @@ export function LayerRenderer(gui, container) {
     flushCanvas(_mainCanv);
     _lastFrameMs = performance.now() - startTime;
     captureSnapshot();
-    if (action == 'nav' && _settleRequested && _rasterNavRefreshPending) {
-      _settleRequested = false;
+    if (settleRaster) {
       settleRasterNow();
     }
   };

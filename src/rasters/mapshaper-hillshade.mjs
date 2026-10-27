@@ -206,13 +206,11 @@ export function writeHillshadeRgba(tones, valid, style, colors) {
   return out;
 }
 
-// The brightness of flat ground under the light, which is the sine of its
-// altitude, as a gray; with full-strength shading, this gives the
-// conventional Lambertian hillshade
-export function getDefaultBaseColor(altitude) {
-  var alt = altitude >= 0 ? altitude : DEFAULT_ALTITUDE;
-  var v = Math.sin(alt * Math.PI / 180) * 255;
-  return {r: v, g: v, b: v, a: 1};
+// #b4b4b4: flat ground in a conventional Lambertian hillshade with the sun at
+// 45 degrees (sin(45) * 255). Constant, so altitude= changes the relief but
+// not the overall tone of the map.
+export function getDefaultBaseColor() {
+  return {r: 180, g: 180, b: 180, a: 1};
 }
 
 function getToneColor(color, defaultValue) {
@@ -257,13 +255,18 @@ export function raiseLowElevations(elev, valid, min) {
   return raised;
 }
 
-// After generalization: resets raised pixels to @min (blurring spreads land
-// into them, which would shade a flat sea), and raises any other values that
-// the filter pushed below @min.
-export function restoreLowElevations(elev, valid, raised, min) {
+// After smoothing: resets pixels that were at @min before smoothing (smoothing
+// spreads land into them, which would shade a flat sea). Other pixels may
+// sink at most halfway to @min, so the coastline stays put: FPS can carry a
+// coastal slope down past sea level, and clamping those pixels to @min made
+// the sea spread over low-lying land.
+// @before elevations before smoothing, after raiseLowElevations()
+export function restoreLowElevations(elev, before, valid, min) {
+  var b;
   for (var i = 0; i < elev.length; i++) {
     if (valid && !valid[i]) continue;
-    if (raised && raised[i] || elev[i] < min) elev[i] = min;
+    b = before[i];
+    elev[i] = b <= min ? min : Math.max(elev[i], min + (b - min) / 2);
   }
 }
 

@@ -237,11 +237,15 @@ same pattern as other mapshaper commands.
     across ridgelines, which makes ridges read much more crisply than shadows
     alone.
   - `opaque` blends the same shadows and highlights over `base-color=`, so
-    every pixel is opaque. Its defaults are `max-opacity=1` and a gray base at
-    the brightness of flat ground under the light (sin(altitude) × 255,
-    `#b4b4b4` at 45°). With `gamma=1 sharpening=0` that is the conventional
-    Lambertian gray hillshade; the default gamma also shapes highlights,
-    which the earlier gray style didn't.
+    every pixel is opaque: the shadow style flattened onto the base. Its
+    defaults are `max-opacity=1` and a `#b4b4b4` base, the brightness of flat
+    ground in a conventional Lambertian hillshade lit from 45°. The base is
+    constant, so `altitude=` changes the relief but not the overall tone of
+    the map. (It first followed the formula used by GDAL and Esri,
+    sin(altitude) × 255, which made a low sun darken the whole map, e.g.
+    `#808080` at 30°.) To match that formula at another altitude, set
+    `base-color=` to that gray; with `gamma=1 sharpening=0 ambient=0
+    single-light` the result is then the conventional gray hillshade.
 - `base-color=` color of flat ground in the opaque style, e.g. a land tint;
   it implies `style=opaque` and is an error with `style=shadow`. Shadow and
   highlight colors and opacities apply over it as in the shadow style.
@@ -251,6 +255,14 @@ same pattern as other mapshaper commands.
   naturally and keeps land below sea level. It is applied before
   generalization, so the sea floor is not blurred into coastal land, and again
   after, resetting raised pixels so blurred land does not shade a flat sea.
+  After smoothing, land may sink at most halfway to the minimum. FPS can
+  carry a coastal slope down past sea level, and clamping those pixels to the
+  minimum made the sea spread over low-lying land: with `smoothing=high`,
+  0.75% of land pixels in France at zoom 7 went flat (`medium`: 0.57%),
+  mostly within a few pixels of the coast and starting below 10 m, with
+  visible patches around the Rhône delta and in southern Brittany. Leaving
+  the sea out of smoothing, the way nodata is, barely helped (0.65%), since
+  the cause is FPS refitting rather than averaging with the sea.
 - `max-opacity=` 0-1 opacity of the darkest shadows (default 0.55, or 1 in
   the opaque style).
 - `highlights=` opacity of the brightest highlights (a slope facing the light),

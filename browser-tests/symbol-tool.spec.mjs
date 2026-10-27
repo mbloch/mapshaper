@@ -277,7 +277,7 @@ test('a symbol in a layer that shares its name with another can be edited', asyn
   await clickMap(page, 0.3, 0.5);
   // the layer menu's "duplicate layer", which keeps the name
   await page.evaluate(function() {
-    return window.mapshaper.undoTest.runCommand('-filter true + name=symbols');
+    return window.mapshaper.undoTest.runCommand('-copy');
   });
   await page.waitForTimeout(250);
   await page.evaluate(function() {

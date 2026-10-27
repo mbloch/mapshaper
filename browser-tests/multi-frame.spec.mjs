@@ -316,7 +316,7 @@ test.describe('frame actions in the layers menu', function() {
     await page.locator('.contextmenu-item').filter({hasText: 'copy frame'}).click();
     await expect.poll(async function() {
       return (await getSessionCommands(page)).pop();
-    }).toBe('-frame target=f1 + name="f1 copy"');
+    }).toBe('-copy target=f1 name="f1 copy"');
     await expect(page.locator('.map-frame-list .frame-section')).toHaveCount(3);
   });
 
@@ -327,7 +327,7 @@ test.describe('frame actions in the layers menu', function() {
     await page.locator('.contextmenu-item').filter({hasText: 'copy frame'}).click();
     await expect.poll(async function() {
       return (await getSessionCommands(page)).pop();
-    }).toBe('-frame target="Frame 1" + name="Frame 2"');
+    }).toBe('-copy target="Frame 1" name="Frame 2"');
   });
 
   test('a new frame is made from the unframed layers, even in frame view', async function({page}) {

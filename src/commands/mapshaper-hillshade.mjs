@@ -149,7 +149,7 @@ cmd.hillshade = function(lyr, dataset, opts) {
     shadow: readToneColor(opts.shadow_color, 'shadow-color'),
     highlight: readToneColor(opts.highlight_color, 'highlight-color'),
     base: style == 'opaque' ? readToneColor(opts.base_color, 'base-color') ||
-      getDefaultBaseColor(altitude) : null
+      getDefaultBaseColor() : null
   };
   cells = getHillshadeCellSizes(grid, getDatasetCRS(dataset));
   // rounded like the printed settings, so that pasting them reproduces the output
@@ -186,11 +186,12 @@ cmd.hillshade = function(lyr, dataset, opts) {
   elev = readElevationBand(grid, opts.band || 0);
   valid = getRasterValidityMask(grid);
   if (hasMin) {
-    raised = raiseLowElevations(elev, valid, opts.min_elevation);
+    raiseLowElevations(elev, valid, opts.min_elevation);
   }
   if (smoothing != 'none') {
+    raised = hasMin ? Float32Array.from(elev) : null;
     elev = smoothElevations(elev, valid, grid, cells, exaggeration, smoothing, opts);
-    if (hasMin) restoreLowElevations(elev, valid, raised, opts.min_elevation);
+    if (hasMin) restoreLowElevations(elev, raised, valid, opts.min_elevation);
   }
   if (opts.light_adjust > 0) {
     offsets = computeLightAdjustment(elev, valid, grid.width, grid.height, azimuth,

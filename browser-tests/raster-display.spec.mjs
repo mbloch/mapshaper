@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openLayersPanel } from './sidebar-helpers.mjs';
 
 // A 3x3 RGB image with a differently colored pixel in each cell. Fitted to the
 // map, each of its pixels is well over a hundred screen pixels wide.
@@ -17,8 +18,29 @@ test('a raster magnified past its resolution is drawn as its own pixels',
     expect(colors.longestRun).toBeGreaterThan(100);
   });
 
+test('"duplicate layer" copies a raster', async function({page}) {
+  var rows = page.locator('.layer-list .layer-item');
+  await loadFixture(page, RGB_FIXTURE);
+  await openLayersPanel(page);
+  await expect(rows).toHaveCount(1);
+  await rows.first().hover();
+  await rows.first().locator('.more-btn').click();
+  await page.locator('.contextmenu-item').filter({hasText: 'duplicate layer'}).click();
+  await expect.poll(function() {
+    return page.evaluate(function() {
+      return window.mapshaper.undoTest.getSessionHistory().commands.slice(-1)[0];
+    });
+  }).toBe('-copy');
+  await expect(rows).toHaveCount(2);
+  await expect.poll(function() {
+    return readMapRowColors(page, 0.25).then(function(colors) { return colors.distinct; });
+  }).toEqual(['#0000ff', '#00ff00', '#ff0000']);
+  await page.evaluate(function() { return window.mapshaper.undoTest.undo(); });
+  await expect(rows).toHaveCount(1);
+});
+
 async function loadFixture(page, files) {
-  await page.goto('/?files=' + encodeURIComponent(files));
+  await page.goto('/?undo=on&undo-test=on&files=' + encodeURIComponent(files));
   await expect(page.locator('body.map-view')).toHaveCount(1);
   await expect.poll(function() {
     return readMapRowColors(page, 0.25).then(function(colors) {

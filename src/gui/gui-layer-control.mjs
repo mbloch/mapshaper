@@ -563,18 +563,14 @@ export function LayerControl(gui) {
     }
 
     // Duplicate a layer by running an equivalent command, so the copy is
-    // recorded in session history and can be undone. Uses '-filter true +'
-    // to append a copy without replacing the source, keeps the same name
-    // (if any), and targets the source layer explicitly so the menu works on
-    // layers that aren't currently active. The '+' output becomes the new
-    // default target, which selects the copy as the active layer.
+    // recorded in session history and can be undone. Targets the source layer
+    // explicitly so the menu works on layers that aren't currently active.
+    // The copy becomes the new default target, which selects it as the
+    // active layer.
     function duplicateLayer() {
       var target = findLayerById(id);
-      var parts = ['-filter true +'];
+      var parts = ['-copy'];
       if (!target) return;
-      if (target.layer.name) {
-        parts.push('name=' + internal.formatOptionValue(target.layer.name));
-      }
       if (!map.isActiveLayer(target.layer)) {
         parts.push('target=' +
           internal.formatOptionValue(internal.getLayerTargetId(model, target.layer)));
@@ -863,8 +859,10 @@ export function LayerControl(gui) {
     });
     var visible = getVisibleUnframedLayers();
     var actions = [{label: 'copy frame', run: function() {
-      runFrameCommand(frame, '+ name=' +
-        internal.formatOptionValue(getFrameCopyName(model, frame.layer.name)));
+      runGuiEditCommand(gui, '-copy target=' +
+        internal.formatOptionValue(internal.getLayerTargetId(model, frame.layer)) +
+        ' name=' + internal.formatOptionValue(getFrameCopyName(model, frame.layer.name)),
+        {title: 'Copy frame'});
     }}];
     if (group && group.members.length === 0 && visible.length > 0) {
       actions.push({label: 'move visible layers into frame', run: function() {

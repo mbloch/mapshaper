@@ -28,6 +28,7 @@ import { getRasterBBox, getRasterGrid, getRasterPreview } from '../rasters/mapsh
 import { getFurnitureLayerData, layerIsFurniture } from '../furniture/mapshaper-furniture-utils';
 import { layerIsOverlay } from '../furniture/mapshaper-overlays';
 import { getFrameById } from '../furniture/mapshaper-frame-resolver';
+import { isFrameLayer } from '../furniture/mapshaper-frame-utils';
 import { getFrameExportFilename, getMapExportGroups } from '../furniture/mapshaper-frame-export';
 import { getStackedLayers } from '../dataset/mapshaper-layer-stacking';
 
@@ -42,6 +43,10 @@ export async function exportTargetLayers(catalog, targets, opts) {
   }
   var format = getOutputFormat(targets[0].dataset, opts);
   var datasets, groups;
+  if (!format && targetsIncludeFrame(targets)) {
+    format = 'svg';
+    opts = Object.assign({}, opts, {format: format});
+  }
   // The web UI's export dialog composes its own map (gui_frame)
   if (isRenderedMapFormat(format) && !opts.gui_frame) {
     groups = getMapExportGroups(catalog, targets);
@@ -69,6 +74,14 @@ export async function exportTargetLayers(catalog, targets, opts) {
     opts = addOverlayExports(catalog, datasets, opts);
   }
   return exportDatasets(datasets, opts);
+}
+
+function targetsIncludeFrame(targets) {
+  return targets.some(function(target) {
+    return target.layers.some(function(lyr) {
+      return isFrameLayer(lyr, target.dataset.arcs);
+    });
+  });
 }
 
 // One map per frame, named after the frame. HTML maps of different widths

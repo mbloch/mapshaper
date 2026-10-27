@@ -206,10 +206,13 @@ describe('mapshaper-hillshade.mjs', function () {
       assert.deepEqual(Array.from(rgba), [200, 180, 140, 255, 100, 90, 120, 255, 228, 218, 198, 255]);
     })
 
-    it('getDefaultBaseColor() is the brightness of flat ground', function () {
-      var c = internal.getDefaultBaseColor(30);
-      assert(Math.abs(c.r - 127.5) < 1e-6);
-      assert.equal(c.r, c.b);
+    it('the default base color is #b4b4b4 at any altitude', async function () {
+      function flatPixel(catalog) {
+        return Array.from(catalog.getLayers()[0].layer.raster.grid.samples.subarray(0, 4));
+      }
+      var flat = function() { return makeElevationDataset(10, 10, function() { return 100; }); };
+      assert.deepEqual(flatPixel(await runOnDataset(flat(), '-hillshade style=opaque')), [180, 180, 180, 255]);
+      assert.deepEqual(flatPixel(await runOnDataset(flat(), '-hillshade style=opaque altitude=20')), [180, 180, 180, 255]);
     })
   })
 
@@ -600,9 +603,11 @@ describe('mapshaper-hillshade.mjs', function () {
       var raised = internal.raiseLowElevations(elev, valid, 0);
       assert.deepEqual(Array.from(elev), [0, 3, -2, 10]);
       assert.deepEqual(Array.from(raised), [1, 0, 0, 0]);
+      var before = Float32Array.from(elev);
       elev.set([1.5, -0.5, -2, 9]);
-      internal.restoreLowElevations(elev, valid, raised, 0);
-      assert.deepEqual(Array.from(elev), [0, 0, -2, 9]);
+      internal.restoreLowElevations(elev, before, valid, 0);
+      // sea reset; land sinks at most halfway to the minimum
+      assert.deepEqual(Array.from(elev), [0, 1.5, -2, 9]);
     })
 
     it('rejects out-of-range max-opacity= and gamma=', async function () {

@@ -46,6 +46,7 @@ import '../commands/mapshaper-cluster';
 import '../commands/mapshaper-colorizer';
 import '../commands/mapshaper-comment';
 import '../commands/mapshaper-contours';
+import '../commands/mapshaper-copy';
 import '../commands/mapshaper-dashlines';
 import '../commands/mapshaper-data-fill';
 import '../commands/mapshaper-define';
@@ -137,7 +138,7 @@ function commandRunsPerTargetDataset(name, opts) {
   }
   return [
     'affine', 'alpha-shapes', 'blur', 'buffer', 'calc', 'check-geometry',
-    'classify', 'clean', 'clip', 'cluster', 'contours', 'dashlines', 'data-fill',
+    'classify', 'clean', 'clip', 'cluster', 'contours', 'copy', 'dashlines', 'data-fill',
     'densify', 'dissolve', 'dissolve2', 'divide', 'dots', 'each', 'erase',
     'explode', 'filter',
     'filter-detail', 'filter-fields', 'filter-geom', 'filter-islands',
@@ -365,6 +366,15 @@ export async function runCommand(command, job) {
 
     } else if (name == 'colorizer') {
       outputLayers = cmd.colorizer(opts);
+
+    } else if (name == 'copy') {
+      if (opts.name && targetLayers.length > 1) {
+        stop('name= can only be used when copying a single layer');
+      }
+      if (!cmd.copyFrame(job.catalog, targetLayers, targetDataset, opts)) {
+        opts = Object.assign({}, opts, {no_replace: true});
+        outputLayers = cmd.copyLayers(targetLayers);
+      }
 
     // } else if (name == 'comment') {
     //   // no-op
@@ -880,6 +890,9 @@ function validatePerDatasetTargets(name, targets, opts) {
     return target.layers.length != 1;
   })) {
     stop('Interpolated names are not compatible with multiple targets.');
+  }
+  if (name == 'copy' && opts.name) {
+    stop('name= can only be used when copying a single layer');
   }
   if (name == 'mosaic' && targets.some(function(target) {
     return target.layers.length != 1;

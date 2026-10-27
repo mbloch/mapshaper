@@ -57,6 +57,7 @@ mapshaper states.geojson \
 [-clean](#-clean)
 [-clip](#-clip)
 [-colorizer](#-colorizer)
+[-copy](#-copy)
 [-dashlines](#-dashlines)
 [-densify](#-densify)
 [-dissolve](#-dissolve)
@@ -232,7 +233,7 @@ Save content of the target layer(s) to a file or files.
 
 `<file>|<directory>|-`  Name of output file or directory. Use `-` to export text-based formats to `/dev/stdout`.
 
-`format=shapefile|geojson|topojson|flatgeobuf|geopackage|geoparquet|geotiff|json|dbf|csv|tsv|svg|html` Specify output format. If the `format=` option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper exports to the same format as the input format.
+`format=shapefile|geojson|topojson|flatgeobuf|geopackage|geoparquet|geotiff|json|dbf|csv|tsv|svg|html` Specify output format. If the `format=` option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper exports to the same format as the input format. A frame, which has no input format, is exported as SVG.
 
 The `json` format is an array of objects containing data properties for each feature.
 
@@ -712,6 +713,25 @@ mapshaper dem.tif -contours interval=100 closed -o bands.json
 mapshaper dem.tif -contours interval=100 no-smoothing \
   -smooth 40 no-corners no-prefilter \
   -o contours.json
+```
+
+### -copy
+
+Copy the target layer or layers, of any kind: vector, raster or data-only. Each copy is added to the same dataset as its original, and the copies become the target of the next command. Copying a frame copies the layers in the frame as well.
+
+`name=`  Name of the copy. By default, a copy has the same name as its original. Can only be used when copying a single layer. Required when copying a frame, because frames have unique names.
+
+[`target=`](#common-options)
+
+```bash
+# Keep the states, and make a layer of the borders between them
+mapshaper states.json -copy name=borders -innerlines -o output.svg
+
+# Make a second map from the same layers, at a smaller size
+mapshaper -i states.json -frame width=800 name=main \
+  -copy target=main name=small \
+  -frame target=small width=300 \
+  -o maps/ target=main,small
 ```
 
 ### -dashlines

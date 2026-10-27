@@ -178,6 +178,19 @@ describe('mapshaper-frame.js', function () {
       }));
     });
 
+    it('a frame target is exported as SVG by default', async function() {
+      var out = await api.applyCommands('-rectangle bbox=0,0,2,1 name=box ' +
+        '-frame target=box width=800 name=main -o');
+      assert.deepEqual(Object.keys(out), ['output.svg']);
+    });
+
+    it('frame targets exported together give one SVG each', async function() {
+      var out = await api.applyCommands('-rectangle bbox=0,0,2,1 name=box ' +
+        '-frame target=box width=800 name=main -copy target=main name=small ' +
+        '-frame target=small width=300 -o target=main,small');
+      assert.deepEqual(Object.keys(out).sort(), ['main.svg', 'small.svg']);
+    });
+
     it('does not export unstyled frame geometry', async function() {
       var out = await api.applyCommands('-frame bbox=0,0,2,1 width=800 -o out.svg');
       var svg = String(out['out.svg']);

@@ -1042,6 +1042,14 @@ export function getOptionParser() {
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
 
+  parser.command('copy')
+    .describe('copy layer(s), or a frame and its contents')
+    .option('name', {
+      describe: 'name of the copy (default is the name of the original);\n' +
+        'required when copying a frame'
+    })
+    .option('target', targetOpt);
+
   parser.command('colorizer')
     .describe('define a function to convert data values to color classes')
     .option('colors', {
@@ -2851,11 +2859,11 @@ export function getOptionParser() {
       type: 'integer'
     })
     .option('fps-levels', {
-      describe: '2: run FPS passes on a 2x downsampled copy, then once at full resolution (high is 2)',
+      describe: '1 or 2; if 2, run FPS on a downsampled copy, then once at full resolution',
       type: 'integer'
     })
     .option('fps-threshold', {
-      describe: 'FPS keeps slope changes sharper than this angle (low 15, medium and high 20)',
+      describe: 'FPS keeps slope changes sharper than this angle',
       type: 'number'
     })
     .option('fps-radius', {
@@ -2863,11 +2871,11 @@ export function getOptionParser() {
       type: 'integer'
     })
     .option('maximum-change', {
-      describe: 'limit how far FPS can move an elevation, in meters (default is no limit)',
+      // describe: 'limit how far FPS can move an elevation, in meters (off by default)',
       type: 'number'
     })
     .option('lowpass-radius', {
-      describe: 'blur radius of smoothing=lowpass, in pixels (default is 1)',
+      // describe: 'blur radius of smoothing=lowpass, in pixels (default is 1)',
       type: 'number'
     })
     .option('light-adjust', {
@@ -2879,15 +2887,15 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('texture', {
-      describe: 'texture shading (after Leland Brown): max opacity of drainage shadows, 0-1 (default is 0)',
+      describe: 'max opacity of texture shading (after Leland Brown), 0-1 (default is 0)',
       type: 'number'
     })
     .option('texture-highlights', {
-      describe: 'opacity of ridge highlights from texture shading, relative to texture= (default is 0)',
+      describe: 'opacity of texture shading highlights, relative to texture= (default is 0)',
       type: 'number'
     })
     .option('texture-detail', {
-      describe: 'texture shading exponent; higher values favor smaller landforms (default is 0.5)',
+      describe: 'texture shading exponent; higher values keep more detail (default is 0.5)',
       type: 'number'
     })
     .option('aerial', {
@@ -2911,10 +2919,10 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('style', {
-      describe: 'shadow (transparent shading, the default) or opaque (gray or grey also work)'
+      describe: 'shadow (transparent shading, the default) or opaque'
     })
     .option('base-color', {
-      describe: 'color of flat ground; implies style=opaque (default is a gray set by altitude=)'
+      describe: 'color of flat ground; implies style=opaque (default is #b4b4b4)'
     })
     .option('max-opacity', {
       describe: 'opacity of the darkest shadows, 0-1 (default is 0.55, or 1 if opaque)',
