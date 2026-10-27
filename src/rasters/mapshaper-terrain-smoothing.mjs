@@ -32,17 +32,33 @@ export function featurePreservingSmooth(elev, valid, width, height, cellWidths, 
   var rounds = o.rounds >= 0 ? o.rounds : 3;
   var radius = o.radius > 0 ? Math.round(o.radius) : DEFAULT_RADIUS;
   var cosT = Math.cos((o.threshold > 0 ? o.threshold : DEFAULT_THRESHOLD) * Math.PI / 180);
+  if (o.thresholds) cosT = toCosines(o.thresholds); // PROTOTYPE: per-pixel thresholds
   var iterations = o.iterations > 0 ? o.iterations : DEFAULT_ITERATIONS;
   var zf = exaggeration > 0 ? exaggeration : 1;
   var z = new Float32Array(elev.length);
   var i, r, normals;
   for (i = 0; i < z.length; i++) z[i] = elev[i] * zf;
+  // PROTOTYPE: per-pixel (fractional) numbers of rounds, by blending successive rounds
+  var roundsMap = o.roundsMap || null, res = null, prev, f;
+  if (roundsMap) {
+    rounds = 0;
+    for (i = 0; i < roundsMap.length; i++) rounds = Math.max(rounds, Math.ceil(roundsMap[i]));
+    res = Float32Array.from(z);
+  }
   for (r = 0; r < rounds; r++) {
+    prev = roundsMap ? Float32Array.from(z) : null;
     normals = computeNormals(z, valid, width, height, cellWidths, cellHeights);
     normals = smoothNormals(normals, valid, width, height, radius, cosT);
     z = refitElevations(z, valid, width, height, cellWidths, cellHeights, normals, cosT, iterations);
     if (o.maxChange > 0) limitChange(z, elev, o.maxChange * zf, zf);
+    if (roundsMap) {
+      for (i = 0; i < z.length; i++) {
+        f = Math.min(1, roundsMap[i] - r);
+        if (f > 0) res[i] = prev[i] + f * (z[i] - prev[i]);
+      }
+    }
   }
+  if (roundsMap) z = res;
   for (i = 0; i < z.length; i++) {
     z[i] = valid && !valid[i] ? elev[i] : z[i] / zf;
   }
@@ -60,11 +76,17 @@ export function featurePreservingSmooth(elev, valid, width, height, cellWidths, 
 export function twoLevelSmooth(elev, valid, width, height, cellWidths, cellHeights, exaggeration, coarseOpts, fineOpts) {
   var maxChange = coarseOpts.maxChange || fineOpts.maxChange;
   var c = downsampleElevations(elev, valid, width, height, cellWidths, cellHeights);
+  var thresholds = coarseOpts.thresholds || null; // PROTOTYPE
   var z = featurePreservingSmooth(c.elev, c.valid, c.width, c.height, c.cellWidths, c.cellHeights,
-    exaggeration, Object.assign({}, coarseOpts, {maxChange: null}));
+    exaggeration, Object.assign({}, coarseOpts, {maxChange: null,
+      thresholds: thresholds ? downsampleElevations(thresholds, valid, width, height, cellWidths, cellHeights).elev : null}));
   z = upsampleElevations(z, c, elev, valid, width, height);
   z = featurePreservingSmooth(z, valid, width, height, cellWidths, cellHeights, exaggeration,
-    Object.assign({}, fineOpts, {maxChange: null}));
+    Object.assign({}, fineOpts, {maxChange: null, thresholds: thresholds}));
+  if (thresholds && coarseOpts.blendRange) {
+    blendWithSingleLevel(z, elev, valid, width, height, cellWidths, cellHeights, exaggeration,
+      coarseOpts, thresholds);
+  }
   if (maxChange > 0) limitChange(z, elev, maxChange, 1);
   return z;
 }
@@ -186,6 +208,27 @@ function catmullRom(p0, p1, p2, p3, t) {
     t * (3 * (p1 - p2) + p3 - p0)));
 }
 
+// PROTOTYPE: in gentle terrain (thresholds below blendRange[0]) use one level
+// of FPS; in steep terrain (above blendRange[1]) the two-level result
+function blendWithSingleLevel(z, elev, valid, width, height, cellWidths, cellHeights, exaggeration, opts, thresholds) {
+  var lo = opts.blendRange[0], hi = opts.blendRange[1];
+  var single = featurePreservingSmooth(elev, valid, width, height, cellWidths, cellHeights,
+    exaggeration, Object.assign({}, opts, {maxChange: null}));
+  var t;
+  for (var i = 0; i < z.length; i++) {
+    t = Math.max(0, Math.min(1, (thresholds[i] - lo) / (hi - lo)));
+    t = t * t * (3 - 2 * t);
+    z[i] = single[i] + t * (z[i] - single[i]);
+  }
+}
+
+// PROTOTYPE
+function toCosines(degrees) {
+  var out = new Float32Array(degrees.length);
+  for (var i = 0; i < degrees.length; i++) out[i] = Math.cos(degrees[i] * Math.PI / 180);
+  return out;
+}
+
 function limitChange(z, elev, maxChange, zf) {
   var i, orig;
   for (i = 0; i < z.length; i++) {
@@ -238,7 +281,9 @@ function smoothNormals(normals, valid, width, height, radius, cosT) {
   var ox = new Float32Array(n), oy = new Float32Array(n), oz = new Float32Array(n);
   var counts = getNonFlatCounts(nz, width, height);
   var sw = width + 1;
-  var x, y, i, j, xx, yy, x0, x1, y0, y1, ax, ay, az, tx, ty, tz, dot, wt, len;
+  var x, y, i, j, xx, yy, x0, x1, y0, y1, ax, ay, az, tx, ty, tz, dot, wt, len, c;
+  var cosArr = typeof cosT == 'number' ? null : cosT;
+  c = cosT;
   for (y = 0; y < height; y++) {
     y0 = Math.max(0, y - radius);
     y1 = Math.min(height - 1, y + radius);
@@ -255,13 +300,14 @@ function smoothNormals(normals, valid, width, height, radius, cosT) {
       ax = nx[i];
       ay = ny[i];
       az = nz[i];
+      if (cosArr) c = cosArr[i];
       tx = ty = tz = 0;
       for (yy = y0; yy <= y1; yy++) {
         for (xx = x0, j = yy * width + x0; xx <= x1; xx++, j++) {
           if (valid && !valid[j]) continue;
           dot = ax * nx[j] + ay * ny[j] + az * nz[j];
-          if (dot <= cosT) continue;
-          wt = (dot - cosT) * (dot - cosT);
+          if (dot <= c) continue;
+          wt = (dot - c) * (dot - c);
           tx += wt * nx[j];
           ty += wt * ny[j];
           tz += wt * nz[j];
@@ -304,10 +350,13 @@ function refitElevations(z, valid, width, height, cellWidths, cellHeights, norma
   var cur = Float32Array.from(z);
   var next = new Float32Array(n);
   var x, y, i, j, k, b, xx, yy, dot, wt, wsum, osum, ex, ey, s, it, tmp;
+  var cosArr = typeof cosT == 'number' ? null : cosT;
+  var c = cosT;
   for (y = 0; y < height; y++) {
     for (x = 0; x < width; x++) {
       i = y * width + x;
       if (valid && !valid[i]) continue;
+      if (cosArr) c = cosArr[i];
       b = i * 8;
       wsum = 0;
       osum = 0;
@@ -318,8 +367,8 @@ function refitElevations(z, valid, width, height, cellWidths, cellHeights, norma
         j = yy * width + xx;
         if (valid && !valid[j]) continue;
         dot = nx[i] * nx[j] + ny[i] * ny[j] + nz[i] * nz[j];
-        if (dot <= cosT) continue;
-        wt = (dot - cosT) * (dot - cosT);
+        if (dot <= c) continue;
+        wt = (dot - c) * (dot - c);
         // offset from the neighbor to this pixel (x east, y south)
         ex = -DX[k] * cellWidths[y];
         ey = -DY[k] * cellHeights[y];

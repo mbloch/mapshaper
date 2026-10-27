@@ -4,6 +4,7 @@ import { layerHasRaster, setOutputLayerName } from '../dataset/mapshaper-layer-u
 import { getRasterValidityMask } from '../rasters/mapshaper-raster-grid';
 import { createRasterPreview, getRasterGrid, getRasterViewRecipe, rasterGridIsRotated } from '../rasters/mapshaper-raster-utils';
 import { featurePreservingSmooth, twoLevelSmooth } from '../rasters/mapshaper-terrain-smoothing';
+import { blurFloatChannel } from '../rasters/mapshaper-raster-blur';
 import {
   applyAerialPerspective,
   applyTextureTones,
@@ -96,12 +97,82 @@ function smoothElevations(elev, valid, grid, cells, exaggeration, method, opts) 
     return generalizeTerrain(elev, valid, grid.width, grid.height, getLowpassRadius(opts));
   }
   var fpsOpts = getFpsOptions(method, opts);
+  if (process.env.MS_DFPS) {
+    fpsOpts.thresholds = getSlopeThresholds(elev, valid, grid.width, grid.height, cells, exaggeration);
+    if (process.env.MS_DFPS_ROUNDS) {
+      fpsOpts.roundsMap = getSlopeRounds(elev, valid, grid.width, grid.height, cells, exaggeration);
+    }
+    if (process.env.MS_DFPS_FIXED_THRESHOLD) delete fpsOpts.thresholds;
+    if (process.env.MS_DFPS_BLEND) fpsOpts.blendRange = process.env.MS_DFPS_BLEND.split(',').map(Number);
+  }
   if (fpsOpts.levels == 2) {
     return twoLevelSmooth(elev, valid, grid.width, grid.height, cells.widths, cells.heights,
       exaggeration, fpsOpts, FPS_REFINEMENT);
   }
   return featurePreservingSmooth(elev, valid, grid.width, grid.height, cells.widths, cells.heights,
     exaggeration, fpsOpts);
+}
+
+// PROTOTYPE: FPS angle thresholds that rise with the mean local slope of the
+// exaggerated surface: threshold = clamp(min + k * slope, min, max), in degrees
+function getSlopeThresholds(elev, valid, width, height, cells, exaggeration) {
+  var env = process.env;
+  var tmin = +(env.MS_DFPS_MIN || 8), tmax = +(env.MS_DFPS_MAX || 40);
+  var k = +(env.MS_DFPS_K || 1);
+  var slope = getMeanSlope(elev, valid, width, height, cells, exaggeration);
+  var out = new Float32Array(width * height);
+  for (var i = 0; i < out.length; i++) {
+    out[i] = Math.max(tmin, Math.min(tmax, tmin + k * slope[i]));
+  }
+  logPercentiles('[dfps] mean slope', slope, valid);
+  logPercentiles('[dfps] threshold', out, valid);
+  return out;
+}
+
+// PROTOTYPE: rounds = clamp(rmin + kr * slope, rmin, rmax)
+function getSlopeRounds(elev, valid, width, height, cells, exaggeration) {
+  var env = process.env;
+  var rmin = +(env.MS_DFPS_RMIN || 1), rmax = +(env.MS_DFPS_RMAX || 4);
+  var kr = +(env.MS_DFPS_RK || 0.5);
+  var slope = getMeanSlope(elev, valid, width, height, cells, exaggeration);
+  var out = new Float32Array(width * height);
+  for (var i = 0; i < out.length; i++) {
+    out[i] = Math.max(rmin, Math.min(rmax, rmin + kr * slope[i]));
+  }
+  logPercentiles('[dfps] rounds', out, valid);
+  return out;
+}
+
+function getMeanSlope(elev, valid, width, height, cells, exaggeration) {
+  var sigma = +(process.env.MS_DFPS_SIGMA || 10);
+  var slope = new Float32Array(width * height);
+  var weights = new Float32Array(width * height);
+  var x, y, i, dx, dy, xm, xp, ym, yp;
+  for (y = 0; y < height; y++) {
+    ym = y > 0 ? y - 1 : y;
+    yp = y < height - 1 ? y + 1 : y;
+    for (x = 0; x < width; x++) {
+      i = y * width + x;
+      if (valid && !valid[i]) continue;
+      xm = x > 0 ? x - 1 : x;
+      xp = x < width - 1 ? x + 1 : x;
+      dx = (elev[y * width + xp] - elev[y * width + xm]) / ((xp - xm || 1) * cells.widths[y]);
+      dy = (elev[yp * width + x] - elev[ym * width + x]) / ((yp - ym || 1) * cells.heights[y]);
+      slope[i] = Math.atan(exaggeration * Math.sqrt(dx * dx + dy * dy)) * 180 / Math.PI;
+      weights[i] = 1;
+    }
+  }
+  blurFloatChannel(slope, weights, width, height, sigma);
+  return slope;
+}
+
+function logPercentiles(label, arr, valid) {
+  var v = [];
+  for (var i = 0; i < arr.length; i += 37) if (!valid || valid[i]) v.push(arr[i]);
+  v.sort(function(a, b) { return a - b; });
+  console.error(label + ': ' + [0.1, 0.5, 0.9, 0.98].map(function(p) {
+    return 'p' + Math.round(p * 100) + ' ' + v[Math.floor(p * (v.length - 1))].toFixed(1);
+  }).join(' '));
 }
 
 function getLowpassRadius(opts) {
