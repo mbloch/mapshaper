@@ -1,3 +1,7 @@
+v0.7.99
+* [web] UI updates
+* Improved robustness of -clip and -dissolve.
+
 v0.7.98
 * [web] Add copy style and paste style to context menus while editing symbols, labels and shapes.
 * [web] Style editing UI improvements
