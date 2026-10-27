@@ -5,7 +5,7 @@ import { getFileExtension } from '../utils/mapshaper-filename-utils';
 import { runningInBrowser } from '../mapshaper-env';
 import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
-import { crsToPrj } from '../crs/mapshaper-projections';
+import { crsToPrj, tryParseCrsString } from '../crs/mapshaper-projections';
 
 export async function exportGeoPackage(dataset, opts) {
   var geopackage = require('@ngageoint/geopackage');
@@ -242,7 +242,8 @@ function getExportSrs(dataset) {
   }
   var parsed = parseCrsString(info.crs_string);
   if (parsed) {
-    if (info.wkt1) parsed.definition = info.wkt1;
+    // -proj sets crs_string and crs but not wkt1
+    parsed.definition = info.wkt1 || getWktFromDatasetCrs(dataset);
     return parsed;
   }
   var fromWkt = parseWktAuthority(info.wkt1);
@@ -279,13 +280,14 @@ function getExportSrs(dataset) {
 }
 
 function getWktFromDatasetCrs(dataset) {
-  // Only derive from an explicitly-set CRS object (e.g. from -proj).
-  // This avoids building a custom SRS for lat/lon datasets that were
-  // auto-defaulted to WGS84 by getDatasetCRS().
+  // Only derive from an explicitly-set CRS (e.g. from -proj, or a crs_string
+  // set by an importer such as FlatGeobuf). This avoids building a custom SRS
+  // for lat/lon datasets that were auto-defaulted to WGS84 by getDatasetCRS().
   var info = dataset && dataset.info;
-  if (!info || !info.crs) return null;
+  var crs = info && (info.crs || info.crs_string && tryParseCrsString(info.crs_string));
+  if (!crs) return null;
   try {
-    return crsToPrj(info.crs) || null;
+    return crsToPrj(crs) || null;
   } catch (e) {
     return null;
   }

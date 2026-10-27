@@ -199,6 +199,40 @@ describe('geopackage export', function () {
       'round-tripped wkt1 should contain Robinson projection metadata');
   });
 
+  it('exports a dataset projected with -proj epsg:<code>', async function () {
+    var input = fs.readFileSync(fixPath('data/geojson/world_land.json'));
+    var output = await api.applyCommands(
+      '-i world_land.json -clip bbox=-75,40,-73,41 -proj epsg:2263 -o format=geopackage',
+      {'world_land.json': input}
+    );
+    var names = Object.keys(output);
+    var info = await readGeoPackageTableInfo(output, names[0], 'epsg2263');
+    var dataset = await importGeoPackageOutput(output, names[0], 'epsg2263');
+
+    assert.equal(info.length, 1);
+    assert.equal(info[0].srsId, 2263);
+    assert.equal(dataset.info.geopackage_crs.organization, 'EPSG');
+    assert(/Lambert_Conformal_Conic/.test(dataset.info.wkt1));
+  });
+
+  it('exports FlatGeobuf input with EPSG and custom CRS metadata', async function () {
+    var input = fs.readFileSync(fixPath('data/geojson/world_land.json'));
+    var shpPath = fixPath('data/geopackage/Oregon_customCRS.shp');
+    var epsgFgb = await api.applyCommands(
+      '-i world_land.json -clip bbox=-75,40,-73,41 -proj epsg:2263 -o out.fgb',
+      {'world_land.json': input}
+    );
+    var customFgb = await api.applyCommands('-i "' + shpPath + '" -o out.fgb', {});
+    var epsgOut = await api.applyCommands('-i in.fgb -o format=geopackage', {'in.fgb': epsgFgb['out.fgb']});
+    var customOut = await api.applyCommands('-i in.fgb -o format=geopackage', {'in.fgb': customFgb['out.fgb']});
+    var epsgInfo = await readGeoPackageTableInfo(epsgOut, Object.keys(epsgOut)[0], 'fgb-epsg');
+    var customDataset = await importGeoPackageOutput(customOut, Object.keys(customOut)[0], 'fgb-custom');
+
+    assert.equal(epsgInfo[0].srsId, 2263);
+    assert.equal(customDataset.info.geopackage_crs.organization, 'NONE');
+    assert(/Lambert_Conformal_Conic/.test(customDataset.info.wkt1));
+  });
+
   it('uses undefined cartesian CRS for projected data without CRS metadata', async function () {
     var input = {
       type: 'FeatureCollection',
