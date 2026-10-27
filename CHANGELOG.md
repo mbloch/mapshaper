@@ -1,3 +1,6 @@
+v0.7.100
+* Improved CRS support when exporting GeoPackage files.
+
 v0.7.99
 * [web] UI updates
 * Improved robustness of -clip and -dissolve.
