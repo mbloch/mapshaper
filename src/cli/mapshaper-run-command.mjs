@@ -445,7 +445,7 @@ export async function runCommand(command, job) {
       applyCommandToEachLayer(cmd.fuzzyJoin, targetLayers, arcs, source, opts);
 
     } else if (name == 'graticule') {
-      let graticule = cmd.graticule(targetDataset, opts);
+      let graticule = cmd.graticule(targetDataset, opts, job.catalog);
       inheritFrameRef(graticule, targetDataset ? [targetDataset] : []);
       job.catalog.addDataset(graticule);
 

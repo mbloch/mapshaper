@@ -1501,6 +1501,10 @@ export function getOptionParser() {
       describe: 'create a polyline matching the outline of the graticule',
       type: 'flag'
     })
+    .option('bleed', {
+      describe: 'extra area around the map frame the graticule is clipped to, in frame pixels (default is 0)',
+      type: 'number'
+    })
     .option('name', nameOpt)
     .option('target', targetOpt)
     .option('no-replace', {
