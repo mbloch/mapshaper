@@ -64,10 +64,10 @@ describe('mapshaper-pack.mjs', function () {
 
   });
 
-  it('CLI .msx export pins targeted layers and keeps the session stacking order', async function() {
+  it('CLI .msx export pins targeted layers and assigns menu_order from -target order', async function() {
     // Three layers in a single dataset, all targeted in the order c,a,b.
-    // The target list only decides which layers are pinned; with no
-    // stacking set in the session, menu_order follows the catalog.
+    // With no stacking set in the session, menu_order follows the target
+    // list, as in SVG output: c=1 (bottom), a=2, b=3 (top).
     var cmd = '-i a.json b.json c.json combine-files ' +
               '-o target=c,a,b out.msx';
     var inputs = {
@@ -80,9 +80,9 @@ describe('mapshaper-pack.mjs', function () {
     var layers = obj.datasets[0].layers;
     assert.deepEqual(layers.map(function(l) { return l.name; }), ['a', 'b', 'c']);
     var byName = Object.fromEntries(layers.map(function(l) { return [l.name, l]; }));
-    assert.equal(byName.a.menu_order, 1);
-    assert.equal(byName.b.menu_order, 2);
-    assert.equal(byName.c.menu_order, 3);
+    assert.equal(byName.c.menu_order, 1);
+    assert.equal(byName.a.menu_order, 2);
+    assert.equal(byName.b.menu_order, 3);
     layers.forEach(function(lyr) {
       assert.equal(lyr.pinned, true,
         'targeted layer "' + lyr.name + '" should be pinned visible');
@@ -131,6 +131,47 @@ describe('mapshaper-pack.mjs', function () {
     assert.equal(byName.b.menu_order, 2);
   });
 
+  it('CLI .msx export menu_order follows -target list when it interleaves datasets', async function() {
+    var cmd = '-i a1.json a2.json combine-files ' +
+              '-i b1.json b2.json combine-files ' +
+              '-o target=a1,b1,a2,b2 out.msx';
+    var inputs = {
+      'a1.json': [{val: 1}],
+      'a2.json': [{val: 2}],
+      'b1.json': [{val: 3}],
+      'b2.json': [{val: 4}]
+    };
+    var out = await api.applyCommands(cmd, inputs);
+    var obj = await unpackSessionData(out['out.msx']);
+    var byName = Object.fromEntries(obj.datasets.flatMap(function(d) {
+      return d.layers.map(function(l) { return [l.name, l.menu_order]; });
+    }));
+    assert.deepEqual(byName, {a1: 1, b1: 2, a2: 3, b2: 4});
+  });
+
+  it('CLI .msx export stacks layers like SVG output when -target reorders them', async function() {
+    // Like docs/examples/data/globe.txt: a layer made later is targeted first,
+    // so it has to end up below the layers made before it.
+    var cmd = '-i a.json b.json c.json combine-files ' +
+              '-target c,a,b -o out.svg -o out.msx';
+    var inputs = {
+      'a.json': [{name: 'a'}],
+      'b.json': [{name: 'b'}],
+      'c.json': [{name: 'c'}]
+    };
+    var out = await api.applyCommands(cmd, inputs);
+    var svg = String(out['out.svg']);
+    var svgOrder = ['a', 'b', 'c'].sort(function(x, y) {
+      return svg.indexOf('id="' + x + '"') - svg.indexOf('id="' + y + '"');
+    });
+    var obj = await unpackSessionData(out['out.msx']);
+    var msxOrder = obj.datasets[0].layers.slice().sort(function(x, y) {
+      return x.menu_order - y.menu_order;
+    }).map(function(l) { return l.name; });
+    assert.deepEqual(svgOrder, ['c', 'a', 'b']);
+    assert.deepEqual(msxOrder, svgOrder);
+  });
+
   it('CLI .msx export keeps the stacking order set with -frame', async function() {
     var cmd = '-rectangle bbox=0,0,10,10 name=a -rectangle bbox=2,2,8,8 name=b ' +
       '-frame target=a,b width=200 name=f1 -frame order-layers=a top -o target=b out.msx';
@@ -143,6 +184,17 @@ describe('mapshaper-pack.mjs', function () {
     assert(byName.a.menu_order > byName.b.menu_order, 'a was moved above b');
     assert.equal(byName.b.pinned, true);
     assert.equal(byName.a.pinned, false);
+  });
+
+  it('CLI .msx export: the target list does not restack layers stacked by -frame', async function() {
+    var cmd = '-rectangle bbox=0,0,10,10 name=a -rectangle bbox=2,2,8,8 name=b ' +
+      '-frame target=a,b width=200 name=f1 -frame order-layers=a top -o target=a,b out.msx';
+    var out = await api.applyCommands(cmd);
+    var obj = await api.internal.unpackSessionData(out['out.msx']);
+    var byName = Object.fromEntries(obj.datasets.flatMap(function(d) {
+      return d.layers.map(function(l) { return [l.name, l]; });
+    }));
+    assert(byName.a.menu_order > byName.b.menu_order, 'a stays above b');
   });
 
   it('CLI .msx export with no explicit target pins every layer (default-target case)', async function() {

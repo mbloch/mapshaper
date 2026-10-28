@@ -30,6 +30,7 @@ import { layerIsOverlay } from '../furniture/mapshaper-overlays';
 import { getFrameById } from '../furniture/mapshaper-frame-resolver';
 import { getFrameExportFilename, getMapExportGroups } from '../furniture/mapshaper-frame-export';
 import { getStackedLayers } from '../dataset/mapshaper-layer-stacking';
+import { expandCommandTargets } from '../dataset/mapshaper-target-utils';
 
 // @targets - non-empty output from Catalog#findCommandTargets()
 //
@@ -55,8 +56,8 @@ export async function exportTargetLayers(catalog, targets, opts) {
     // CLI .msx export captures the whole session: every dataset/layer in the
     // catalog ships in the snapshot, not just the -target subset. Targeted
     // layers come back visible (pinned) and stacked in the order matched by
-    // -target; untargeted layers come along for the ride, hidden and parked
-    // at the bottom of the GUI stack. This matches GUI snapshot semantics
+    // -target; untargeted layers come along for the ride, hidden, in their
+    // place in the stack. This matches GUI snapshot semantics
     // and lets `mapshaper a.shp b.shp -target a -o foo.msx` produce a
     // shareable bundle without losing b.shp.
     datasets = prepareCatalogForCliPackExport(catalog, targets);
@@ -515,7 +516,9 @@ function sortExportLayers(dataset) {
 //     them on load (no `&display-all` URL flag needed), and other layers
 //     are hidden;
 //   - menu_order is the session's stacking order (see getStackedLayers()),
-//     numbered from 1, so the target list doesn't restack frame members.
+//     numbered from 1, except that targeted layers without a place in the
+//     stack (no menu_order, e.g. not moved by -frame) are stacked in the
+//     order of the target list, as in SVG output, in the slots they hold.
 //
 // Intra-dataset array order is preserved so re-importing with `mapshaper
 // foo.msx -target * -o bar.svg` still iterates layers in the order they
@@ -523,8 +526,23 @@ function sortExportLayers(dataset) {
 function prepareCatalogForCliPackExport(catalog, targets) {
   var targeted = new Set();
   var stack = getStackedLayers(catalog).map(function(o) { return o.layer; });
-  targets.forEach(function(t) {
-    t.layers.forEach(function(lyr) { targeted.add(lyr); });
+  var expanded = expandCommandTargets(targets);
+  var isUnstacked = function(lyr) {
+    return targeted.has(lyr) && !(lyr.menu_order > 0);
+  };
+  var unstacked;
+  expanded.forEach(function(o) { targeted.add(o.layer); });
+  unstacked = expanded.map(function(o, i) {
+    return {layer: o.layer, i: i};
+  }).filter(function(o) {
+    return isUnstacked(o.layer);
+  }).sort(function(a, b) {
+    return getTargetOrder(a.layer) - getTargetOrder(b.layer) || a.i - b.i;
+  }).map(function(o) {
+    return o.layer;
+  });
+  stack = stack.map(function(lyr) {
+    return isUnstacked(lyr) ? unstacked.shift() : lyr;
   });
   return catalog.getDatasets().map(function(dataset) {
     var layers = dataset.layers.map(function(lyr) {
@@ -535,4 +553,8 @@ function prepareCatalogForCliPackExport(catalog, targets) {
     });
     return utils.defaults({layers: layers}, dataset);
   });
+}
+
+function getTargetOrder(lyr) {
+  return lyr.target_id >= 0 ? lyr.target_id : Infinity;
 }
