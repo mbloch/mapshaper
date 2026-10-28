@@ -2659,7 +2659,7 @@ export function getOptionParser() {
       describe: 'raster pixels per frame pixel (default is 2)',
       type: 'number'
     })
-    .option('margin', {
+    .option('bleed', {
       describe: 'extra area around the frame, in frame pixels (default is 10)',
       type: 'number'
     })

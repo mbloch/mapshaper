@@ -88,9 +88,11 @@ preset's.
   so a raster at 1 is blurred by upsampling; comparisons showed resolution was
   the largest single cause of soft, rounded ridges. The name matches
   `-o raster-res=`.
-- `margin=` extra border around the frame, in frame pixels (default 10). Keeps
+- `bleed=` extra border around the frame, in frame pixels (default 10). Keeps
   hillshading and generalization filters from producing artifacts at the frame
-  edge. SVG export crops rasters to the frame, so the margin never shows.
+  edge. SVG export crops rasters to the frame, so the bleed never shows. The
+  name and units match `-graticule bleed=` (default 0); `margin=` would be
+  confused with `-frame margin=`, which is inside the frame.
 - `bbox=` extent to fetch (in the target's coordinate system, or lat-long when
   there is no target).
 - `max-tiles=` safety cap on the number of tiles (default 500).
@@ -102,7 +104,7 @@ preset's.
 - **Frame:** the target layer's frame, or the session's only frame. Without a
   frame, the target layers' extent and coordinate system are used, at a
   nominal width of 800 pixels; without targets, `bbox=` is required.
-- **Extent:** the frame's bbox, expanded by `margin=`.
+- **Extent:** the frame's bbox, expanded by `bleed=`.
 - **Coordinate system:** the frame's.
 - **Resolution:** the frame's ground meters per pixel, divided by `raster-res=`.
 

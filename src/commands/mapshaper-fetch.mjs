@@ -44,7 +44,7 @@ import {
 import { runningInBrowser } from '../mapshaper-env';
 import { message, stop, warn } from '../utils/mapshaper-logging';
 
-var DEFAULT_MARGIN = 10; // frame pixels
+var DEFAULT_BLEED = 10; // frame pixels
 var DEFAULT_WIDTH = 800; // nominal width of a map without a frame
 // The GUI on high-density screens and PNG output draw two device pixels per
 // frame pixel; a coarser raster would be blurred by upsampling.
@@ -73,7 +73,7 @@ export function getFetchExtent(catalog, targets, opts) {
   var targetDataset = target ? target.dataset : null;
   var frame = targetDataset ? resolveFrameForDataset(catalog, targetDataset) : getDefaultFrame(catalog);
   var res = opts.raster_res > 0 ? opts.raster_res : DEFAULT_RASTER_RES;
-  var margin = opts.margin >= 0 ? opts.margin : DEFAULT_MARGIN;
+  var bleed = opts.bleed >= 0 ? opts.bleed : DEFAULT_BLEED;
   var crsInfo, bbox, widthPx, frameData, unitsPerPx, expanded, width, height;
   if (frame && !opts.bbox) {
     crsInfo = getFrameCrsInfo(catalog, frame) || getDatasetCrsInfo(frame.dataset);
@@ -99,10 +99,10 @@ export function getFetchExtent(catalog, targets, opts) {
   }
   unitsPerPx = (bbox[2] - bbox[0]) / widthPx;
   expanded = [
-    bbox[0] - margin * unitsPerPx,
-    bbox[1] - margin * unitsPerPx,
-    bbox[2] + margin * unitsPerPx,
-    bbox[3] + margin * unitsPerPx
+    bbox[0] - bleed * unitsPerPx,
+    bbox[1] - bleed * unitsPerPx,
+    bbox[2] + bleed * unitsPerPx,
+    bbox[3] + bleed * unitsPerPx
   ];
   width = Math.max(1, Math.round((expanded[2] - expanded[0]) / unitsPerPx * res));
   height = Math.max(1, Math.round((expanded[3] - expanded[1]) / unitsPerPx * res));
@@ -236,7 +236,7 @@ async function fetchElevationDataset(source, extent, opts) {
         width: extent.width,
         height: extent.height,
         raster_res: extent.rasterRes,
-        margin: opts.margin >= 0 ? opts.margin : DEFAULT_MARGIN
+        bleed: opts.bleed >= 0 ? opts.bleed : DEFAULT_BLEED
       }]
     },
     layers: [lyr]

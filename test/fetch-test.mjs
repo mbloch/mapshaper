@@ -213,7 +213,7 @@ describe('mapshaper-fetch.mjs', function () {
       });
       assert.equal(internal.getDatasetCrsInfo(elev.dataset).crs_string,
         internal.getDatasetCrsInfo(box.dataset).crs_string);
-      // 200px frame plus a 10px margin on each side, at 2 raster pixels per frame pixel
+      // 200px frame plus a 10px bleed on each side, at 2 raster pixels per frame pixel
       assert.equal(grid.width, 440);
       assert.equal(elev.dataset.info.raster_sources[0].raster_res, 2);
       for (var i = 0; i < grid.samples.length; i++) {
@@ -252,7 +252,7 @@ describe('mapshaper-fetch.mjs', function () {
 
     it('raster-res= and name=', async function () {
       stub = stubFetch(function() { return makeTerrariumTile(10); });
-      var catalog = await runCommands(RAINIER + ' -fetch tilezen raster-res=0.5 margin=0 name=dem');
+      var catalog = await runCommands(RAINIER + ' -fetch tilezen raster-res=0.5 bleed=0 name=dem');
       assert.equal(findLayer(catalog, 'dem').layer.raster.grid.width, 100);
     })
 
