@@ -1717,26 +1717,31 @@ img.eye-btn {
 	z-index: 1;
 }
 
-/* Name and contents on one line. The contents column has a fixed width, so it
-   lines up from row to row, and the name takes the rest, truncated if long. */
+/* Name and contents side by side. The contents column has a fixed width, so it
+   lines up from row to row, and the name takes the rest, wrapping if long. */
 .layer-item .layer-row {
 	display: flex;
 	align-items: baseline;
-	gap: 12px;
-	margin-right: 44px; /* room for row controls */
+	gap: 7px;
+	margin-right: 38px; /* room for row controls */
 	line-height: 17px;
 	white-space: nowrap;
 }
 
+/* In a narrow sidebar the contents column gives up its space first, so that
+   names stay legible. The column widths depend only on the row's width (the
+   name's flex-basis is 0), which keeps the contents column lined up from row
+   to row. */
 .layer-item .layer-name-col {
-	flex: 1 1 auto;
-	min-width: 0;
+	flex: 1 1 0;
+	min-width: min(7em, 50%);
 }
 
 /* wraps a point layer that lists several kinds of feature */
 .layer-item .layer-contents {
-	flex: none;
-	width: 9em;
+	flex: 0 1 7em;
+	min-width: 0;
+	overflow: hidden;
 	white-space: normal;
 	font-size: 12px;
 	color: #666;
@@ -1745,11 +1750,6 @@ img.eye-btn {
 /* hints at a tooltip that counts the features with null geometry */
 .layer-item .layer-contents.has-nulls span {
 	border-bottom: 1px dotted #999;
-}
-
-/* a name being edited is shown in full, over the contents column */
-.layer-item:has(.layer-name.editing) .layer-contents {
-	visibility: hidden;
 }
 
 .layer-item .layer-name {
@@ -1768,12 +1768,26 @@ img.eye-btn {
 	color: #f93b00;
 }
 
+/* Inline, so that each line of a wrapped name gets the dotted underline. An
+   empty inline element can lose the caret, so a name being edited is a block
+   again. (The export dialog's list shares .layer-name and stays on one line.) */
+.layer-row .layer-name {
+	display: inline;
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+
 .layer-item .layer-name.editing {
 	border-bottom: 1px solid transparent;
 	max-width: none;
 	overflow: visible;
 	position: relative;
 	z-index: 3;
+}
+
+.layer-row .layer-name.editing {
+	display: inline-block;
+	max-width: 100%;
 }
 
 .layer-item .layer-name::selection {
