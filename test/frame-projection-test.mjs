@@ -301,23 +301,44 @@ describe('map frame projection (frame in its own dataset)', function() {
 });
 
 describe('-proj with several target datasets', function() {
-  it('resolves one destination CRS for the whole command', async function() {
-    var west = JSON.stringify({type: 'Feature', properties: {}, geometry: {
-      type: 'Polygon',
-      coordinates: [[[-120, 30], [-100, 30], [-100, 50], [-120, 50], [-120, 30]]]}});
-    var east = JSON.stringify({type: 'Feature', properties: {}, geometry: {
-      type: 'Polygon',
-      coordinates: [[[-80, 25], [-60, 25], [-60, 40], [-80, 40], [-80, 25]]]}});
+  var west = JSON.stringify({type: 'Feature', properties: {}, geometry: {
+    type: 'Polygon',
+    coordinates: [[[-120, 30], [-100, 30], [-100, 50], [-120, 50], [-120, 30]]]}});
+  var east = JSON.stringify({type: 'Feature', properties: {}, geometry: {
+    type: 'Polygon',
+    coordinates: [[[-80, 25], [-60, 25], [-60, 40], [-80, 40], [-80, 25]]]}});
+
+  async function runProj(cmd) {
     var captured = await captureLogCallsAsync(function() {
-      return api.applyCommands('-i west.json -i east.json -proj lcc target=* -o out.json target=west',
+      return api.applyCommands('-i west.json -i east.json ' + cmd + ' -o out.json target=west',
         {'west.json': west, 'east.json': east});
     });
-    var expansions = captured.log.filter(function(str) {
-      return str.includes('Converted "lcc"');
-    });
-    assert.equal(expansions.length, 1);
-    // fitted to the combined extent of both targets, not to either one alone
-    assert(expansions[0].includes('+lon_0=-90'));
+    return {
+      expansions: captured.log.filter(str => str.includes('Converted "lcc"')),
+      fittedSeparately: captured.log.some(str => str.includes('Fitted the projection separately'))
+    };
+  }
+
+  it('fits unframed datasets separately, and says so', async function() {
+    var o = await runProj('-proj lcc target=*');
+    assert.equal(o.expansions.length, 2);
+    assert(o.expansions[0].includes('+lon_0=-110'));
+    assert(o.expansions[1].includes('+lon_0=-70'));
+    assert(o.fittedSeparately);
+  });
+
+  it('fits the members of a frame together', async function() {
+    var o = await runProj('-frame target=west,east name=f -proj lcc target=west');
+    assert.equal(o.expansions.length, 1);
+    // fitted to the combined extent of both members, not to either one alone
+    assert(o.expansions[0].includes('+lon_0=-90'));
+    assert(!o.fittedSeparately);
+  });
+
+  it('fits separate frames separately', async function() {
+    var o = await runProj('-frame target=west name=fw -frame target=east name=fe -proj lcc target=*');
+    assert.equal(o.expansions.length, 2);
+    assert(o.fittedSeparately);
   });
 });
 

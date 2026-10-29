@@ -583,10 +583,14 @@ Two conditions on the rule:
   re-derived from its own extent. `expandProjDefn()` fits `lcc`, `aea`, `tmerc`,
   `etmerc` and `utm` parameters to the bounds of the dataset being projected, so
   a frame that resolved its own would land in a different projection of the same
-  family. This requires resolving the destination CRS once per command rather
-  than once per target dataset — which also fixes the pre-existing case where
-  `-proj lcc target=*` across several datasets produced a different projection
-  for each one.
+  family. So the destination CRS is resolved once for each group of targets
+  that must share a CRS: a frame with all its members (or the session frame
+  with the unframed layers it composes, while it has no members), or else a
+  single unframed dataset. Separate groups are fitted separately, as datasets
+  were before frames existed: `-proj lcc target=*` over states imported as
+  separate files, or over inset frames, fits each one to its own extent. When
+  one command produces more than one CRS this way, it says so, because
+  unframed datasets meant to be drawn together end up out of register.
 
 The rule deliberately stops at the frame. Content layers in other datasets still
 need `target=*` or an explicit list, because which content to reproject is a real

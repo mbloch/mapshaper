@@ -1,3 +1,7 @@
+v0.7.101
+* Graticules created in a frame are automatically clipped to the frame extent, with new bleed= option for adding a buffer around the frame.
+* Revert breaking changes to the way auto-fitted projections are fitted to multiple targets and to the way layers are ordered in snapshots.
+
 v0.7.100
 * Improved CRS support when exporting GeoPackage files.
 
@@ -7,7 +11,7 @@ v0.7.99
 
 v0.7.98
 * [web] Add copy style and paste style to context menus while editing symbols, labels and shapes.
-* [web] Style editing UI improvements
+* [web] Style-editing UI improvements
 
 v0.7.97
 * [web] Fixed: the left and right arrow keys selected layers in their original order instead of the order shown in the layers panel.
