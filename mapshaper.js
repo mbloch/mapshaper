@@ -48127,7 +48127,7 @@ ${css.join('\n')}
     var items = expandCommandTargets(targets).map(function(o, i) {
       return {layer: o.layer, dataset: o.dataset, frame: getFrameForDataset(catalog, o.dataset), i: i};
     }).sort(function(a, b) {
-      return getTargetOrder(a) - getTargetOrder(b) || a.i - b.i;
+      return getTargetOrder$1(a) - getTargetOrder$1(b) || a.i - b.i;
     });
     var frames = items.reduce(function(memo, o) {
       if (o.frame && !memo.some(function(f) { return f.dataset == o.frame.dataset; })) {
@@ -48193,7 +48193,7 @@ ${css.join('\n')}
     });
   }
 
-  function getTargetOrder(o) {
+  function getTargetOrder$1(o) {
     return o.layer.target_id >= 0 ? o.layer.target_id : Infinity;
   }
 
@@ -48231,8 +48231,8 @@ ${css.join('\n')}
       // CLI .msx export captures the whole session: every dataset/layer in the
       // catalog ships in the snapshot, not just the -target subset. Targeted
       // layers come back visible (pinned) and stacked in the order matched by
-      // -target; untargeted layers come along for the ride, hidden and parked
-      // at the bottom of the GUI stack. This matches GUI snapshot semantics
+      // -target; untargeted layers come along for the ride, hidden, in their
+      // place in the stack. This matches GUI snapshot semantics
       // and lets `mapshaper a.shp b.shp -target a -o foo.msx` produce a
       // shareable bundle without losing b.shp.
       datasets = prepareCatalogForCliPackExport(catalog, targets);
@@ -48691,7 +48691,9 @@ ${css.join('\n')}
   //     them on load (no `&display-all` URL flag needed), and other layers
   //     are hidden;
   //   - menu_order is the session's stacking order (see getStackedLayers()),
-  //     numbered from 1, so the target list doesn't restack frame members.
+  //     numbered from 1, except that targeted layers without a place in the
+  //     stack (no menu_order, e.g. not moved by -frame) are stacked in the
+  //     order of the target list, as in SVG output, in the slots they hold.
   //
   // Intra-dataset array order is preserved so re-importing with `mapshaper
   // foo.msx -target * -o bar.svg` still iterates layers in the order they
@@ -48699,8 +48701,23 @@ ${css.join('\n')}
   function prepareCatalogForCliPackExport(catalog, targets) {
     var targeted = new Set();
     var stack = getStackedLayers(catalog).map(function(o) { return o.layer; });
-    targets.forEach(function(t) {
-      t.layers.forEach(function(lyr) { targeted.add(lyr); });
+    var expanded = expandCommandTargets(targets);
+    var isUnstacked = function(lyr) {
+      return targeted.has(lyr) && !(lyr.menu_order > 0);
+    };
+    var unstacked;
+    expanded.forEach(function(o) { targeted.add(o.layer); });
+    unstacked = expanded.map(function(o, i) {
+      return {layer: o.layer, i: i};
+    }).filter(function(o) {
+      return isUnstacked(o.layer);
+    }).sort(function(a, b) {
+      return getTargetOrder(a.layer) - getTargetOrder(b.layer) || a.i - b.i;
+    }).map(function(o) {
+      return o.layer;
+    });
+    stack = stack.map(function(lyr) {
+      return isUnstacked(lyr) ? unstacked.shift() : lyr;
     });
     return catalog.getDatasets().map(function(dataset) {
       var layers = dataset.layers.map(function(lyr) {
@@ -48711,6 +48728,10 @@ ${css.join('\n')}
       });
       return utils.defaults({layers: layers}, dataset);
     });
+  }
+
+  function getTargetOrder(lyr) {
+    return lyr.target_id >= 0 ? lyr.target_id : Infinity;
   }
 
   var Export = /*#__PURE__*/Object.freeze({
@@ -52336,6 +52357,10 @@ ${css.join('\n')}
       .option('outline', {
         describe: 'create a polyline matching the outline of the graticule',
         type: 'flag'
+      })
+      .option('bleed', {
+        describe: 'extra area around the map frame the graticule is clipped to, in frame pixels (default is 0)',
+        type: 'number'
       })
       .option('name', nameOpt)
       .option('target', targetOpt)
@@ -78323,26 +78348,67 @@ ${css.join('\n')}
   }
 
   // Run -proj over all the targets of a single command.
-  // The destination CRS is resolved once here rather than separately for each
-  // target, for two reasons. Auto-fitted parameters (e.g. the standard parallels
-  // that "lcc" expands to) must describe the whole command target, not whichever
-  // dataset happens to be projected first. And the map frame must receive the
-  // same CRS as the content instead of re-deriving parameters from its own extent.
+  // The destination CRS is resolved once for each group of targets that has to
+  // share a coordinate system: a frame with its members, or an unframed dataset
+  // (see getProjGroups()). Auto-fitted parameters (e.g. the standard parallels
+  // that "lcc" expands to) describe the whole group, so a frame receives the
+  // same CRS as its content, and separate frames or datasets (e.g. insets, or
+  // states imported as separate files) are each fitted to their own extent.
   cmd.projTargets = function(targets, catalog, opts) {
-    var destInfo;
+    var groups, fitted;
     targets = expandFrameTargets(targets, catalog, opts);
     targets.forEach(function(targ) {
       applyProjInit(targ.dataset, catalog, opts);
     });
-    destInfo = resolveProjDestInfo(targets, catalog, opts);
-    targets.forEach(function(targ) {
-      projectTarget(targ.dataset, opts, targ.layers, destInfo);
+    groups = getProjGroups(targets, catalog);
+    fitted = groups.map(function(group) {
+      var destInfo = resolveProjDestInfo(group.targets, catalog, opts);
+      group.targets.forEach(function(targ) {
+        projectTarget(targ.dataset, opts, targ.layers, destInfo);
+      });
+      if (destInfo && destInfo.crs) {
+        projectMapFrame(group.targets, catalog, opts, destInfo);
+      }
+      return destInfo;
     });
-    if (destInfo && destInfo.crs) {
-      projectMapFrame(targets, catalog, opts, destInfo);
-      warnAboutUnprojectedLayers(catalog, targets, destInfo);
+    fitted = fitted.filter(function(info) { return info && info.crs; });
+    if (fitted.length > 0) {
+      warnAboutUnprojectedLayers(catalog, targets, fitted);
     }
+    reportSeparateFits(groups, fitted);
   };
+
+  // Targets grouped by the frame they are drawn in: a dataset's own frame, or the
+  // session frame if it has no members yet (see getDisplayFrameForDataset());
+  // unframed datasets form groups of their own.
+  // Returns [{key, targets}], in target order
+  function getProjGroups(targets, catalog) {
+    var groups = [];
+    targets.forEach(function(targ) {
+      var frame = catalog ? getDisplayFrameForDataset(catalog, targ.dataset) : null;
+      var key = frame ? frame.dataset : targ.dataset;
+      var group = groups.find(function(o) { return o.key == key; });
+      if (!group) {
+        group = {key: key, frame: frame, targets: []};
+        groups.push(group);
+      }
+      group.targets.push(targ);
+    });
+    return groups;
+  }
+
+  // Fitting groups separately is the point of auto-fitted projections, but data
+  // meant to be drawn together can end up out of register, so say so.
+  function reportSeparateFits(groups, fitted) {
+    var defns = fitted.map(function(info) { return info.crs_string; });
+    var distinct = defns.filter(function(str, i) { return defns.indexOf(str) == i; });
+    if (distinct.length < 2) return;
+    message('Fitted the projection separately to ' + groups.length + ' groups of layers: ' +
+      groups.map(function(group) {
+        return group.frame ? 'frame ' + (group.frame.layer.name || '[unnamed]') :
+          formatLayerNames(group.targets[0].dataset.layers);
+      }).join('; '));
+  }
 
   cmd.proj = function(dataset, catalog, opts, targetLayers, destInfo) {
     applyProjInit(dataset, catalog, opts);
@@ -78496,7 +78562,8 @@ ${css.join('\n')}
   // Only layers in the same group as the targets are named: frames often have
   // different projections, and a frame is always projected whole (see
   // expandFrameTargets()), so in practice these are unframed layers.
-  function warnAboutUnprojectedLayers(catalog, targets, destInfo) {
+  // @destInfos the CRS info of each group of targets (see getProjGroups())
+  function warnAboutUnprojectedLayers(catalog, targets, destInfos) {
     var groups, missed, hint;
     if (!catalog) return;
     groups = targets.map(function(targ) { return getLayerGroup(catalog, targ.dataset); });
@@ -78504,9 +78571,10 @@ ${css.join('\n')}
       var crs;
       if (!layerHasGeometry$1(o.layer) && !layerHasRaster(o.layer)) return false;
       if (isFrameComponentLayer(o.layer, o.dataset)) return false;
+      if (targets.some(function(targ) { return targ.dataset == o.dataset; })) return false;
       if (!groups.includes(getLayerGroup(catalog, o.dataset))) return false;
       crs = getDatasetCrsInfo(o.dataset).crs;
-      return !!crs && !crsAreEqual(crs, destInfo.crs);
+      return !!crs && !destInfos.some(function(info) { return crsAreEqual(crs, info.crs); });
     });
     if (missed.length === 0) return;
     // target=* would also project every frame, so with frames the hint lists
@@ -88867,7 +88935,7 @@ ${css.join('\n')}
     return maxValue;
   }
 
-  cmd.graticule = function(dataset, opts) {
+  cmd.graticule = function(dataset, opts, catalog) {
     if (opts.polygon && opts.outline) {
       stop$1('The polygon and outline options cannot be used together');
     }
@@ -88893,9 +88961,30 @@ ${css.join('\n')}
     if (opts.outline) {
       graticule.layers[0].geometry_type = 'polyline';
     }
+    if (catalog) {
+      clipGraticuleToFrame(graticule, catalog, dataset, opts);
+    }
     graticule.layers[0].name = name;
     return graticule;
   };
+
+  // Clips the graticule to the frame of the target dataset, expanded by bleed=
+  // (in frame pixels). The graticule is left whole if there is no frame or the
+  // frame uses a different coordinate system.
+  function clipGraticuleToFrame(graticule, catalog, dataset, opts) {
+    var frame = resolveFrameForDataset(catalog, dataset || null);
+    if (!frame) return;
+    var frameCrs = getFrameCrsInfo(catalog, frame);
+    var graticuleCrs = getDatasetCrsInfo(graticule).crs;
+    if (frameCrs && frameCrs.crs && !crsAreEqual(frameCrs.crs, graticuleCrs)) return;
+    var frameData = getFrameLayerData(frame.layer, frame.dataset.arcs);
+    var bleed = opts.bleed > 0 ? opts.bleed : 0;
+    var bbox = frameData.bbox;
+    var pad = bleed * (bbox[2] - bbox[0]) / frameData.width;
+    clipLayersInPlace(graticule.layers, null, graticule, 'clip', {
+      bbox: [bbox[0] - pad, bbox[1] - pad, bbox[2] + pad, bbox[3] + pad]
+    });
+  }
 
   function createUnprojectedPolygon(opts) {
     var crs = parseCrsString$1('wgs84');
@@ -95723,7 +95812,7 @@ ${css.join('\n')}
         applyCommandToEachLayer(cmd.fuzzyJoin, targetLayers, arcs, source, opts);
 
       } else if (name == 'graticule') {
-        let graticule = cmd.graticule(targetDataset, opts);
+        let graticule = cmd.graticule(targetDataset, opts, job.catalog);
         inheritFrameRef(graticule, targetDataset ? [targetDataset] : []);
         job.catalog.addDataset(graticule);
 
@@ -96175,7 +96264,7 @@ ${css.join('\n')}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.100";
+  var version = "0.7.101";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

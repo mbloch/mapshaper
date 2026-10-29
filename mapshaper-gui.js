@@ -438,7 +438,9 @@
         var parent = El('div').html(ref).node();
         node = parent.childNodes.length  == 1 ? parent.childNodes[0] : parent;
       } else if (tagOrIdSelectorRE.test(ref)) {
-        node = getElement(ref) || document.createElement(ref); // TODO: detect type of argument
+        // A bare name is a tag, never an id: the map's SVG has elements with
+        // ids taken from layer names (e.g. <g id="label">)
+        node = ref[0] == '#' || ref == 'body' ? getElement(ref) : document.createElement(ref);
       } else {
         node = El.__select(ref)[0];
       }
