@@ -323,6 +323,73 @@ describe('mapshaper-hillshade.mjs', function () {
     })
   })
 
+  describe('getSlopeThresholds()', function () {
+    var w = 20, h = 12;
+    var cells = constantCells(h, 10);
+    function thresholds(fn, o, valid) {
+      return internal.getSlopeThresholds(makeElevation(w, h, fn), valid || null, w, h, cells, cells, 1,
+        Object.assign({min: 1, max: 20, slopeFactor: 3, slopeRadius: 0}, o));
+    }
+
+    it('flat terrain gets the minimum', function () {
+      thresholds(function() { return 50; }).forEach(function(t) { assert.equal(t, 1); });
+    })
+
+    it('rises with slope, up to the maximum', function () {
+      // a 10-degree slope
+      var plane = function(x) { return x * 10 * Math.tan(10 * Math.PI / 180); };
+      var t = thresholds(plane, {max: 40});
+      assert(Math.abs(t[5 * w + 10] - 31) < 1e-3);
+      assert.equal(thresholds(plane)[5 * w + 10], 20);
+    })
+
+    it('averages slope over slopeRadius', function () {
+      // a single steep step: next to it, slope is averaged with flat ground
+      var step = function(x) { return x < 10 ? 0 : 50; };
+      var sharp = thresholds(step, {max: 90});
+      var averaged = thresholds(step, {max: 90, slopeRadius: 3});
+      assert(averaged[5 * w + 10] < sharp[5 * w + 10]);
+      assert(averaged[5 * w + 6] > sharp[5 * w + 6]);
+    })
+
+    it('ignores pixels without data', function () {
+      var valid = new Uint8Array(w * h);
+      var t;
+      for (var i = 0; i < valid.length; i++) valid[i] = i % w < 10 ? 0 : 1;
+      t = thresholds(function(x) { return x < 10 ? -9999 : 50; }, {}, valid);
+      assert.equal(t[5 * w + 10], 1);
+    })
+  })
+
+  describe('dynamic FPS thresholds', function () {
+    var w = 31, h = 21, c = 15;
+    var cells = constantCells(h, 10);
+    // a shallow V-shaped drainage, its sides about 3 degrees steep
+    var elev = makeElevation(w, h, function(x, y) { return 0.5 * Math.abs(x - c) + 0.1 * y; });
+    function depth(z) {
+      var i = 10 * w + c;
+      return (z[i - 3] + z[i + 3]) / 2 - z[i];
+    }
+
+    it('keep a shallow drainage that a fixed threshold rounds off', function () {
+      var low = new Float32Array(w * h).fill(1);
+      var fixed = internal.featurePreservingSmooth(elev, null, w, h, cells, cells, 1, {rounds: 3, threshold: 20});
+      var dynamic = internal.featurePreservingSmooth(elev, null, w, h, cells, cells, 1,
+        {rounds: 3, threshold: 20, thresholds: low});
+      assert(depth(fixed) < depth(elev) * 0.9);
+      assert(depth(dynamic) > depth(elev) * 0.99);
+    })
+
+    it('two-level smoothing of gentle terrain is single-level smoothing', function () {
+      var low = new Float32Array(w * h).fill(1);
+      var opts = {rounds: 3, threshold: 20, thresholds: low};
+      var single = internal.featurePreservingSmooth(elev, null, w, h, cells, cells, 1, opts);
+      var two = internal.twoLevelSmooth(elev, null, w, h, cells, cells, 1,
+        Object.assign({blendRange: [5, 15]}, opts), {rounds: 1, threshold: 20});
+      assert.deepEqual(Array.from(two), Array.from(single));
+    })
+  })
+
   describe('twoLevelSmooth()', function () {
     // odd dimensions, so the coarse grid has partial blocks
     var w = 41, h = 31;
@@ -800,6 +867,45 @@ describe('mapshaper-hillshade.mjs', function () {
         await assert.rejects(runOnDataset(dem(), '-hillshade lowpass-radius=2'), /lowpass-radius/);
         await assert.rejects(runOnDataset(dem(), '-hillshade smoothing=lowpass fps-passes=2'), /FPS settings/);
         await assert.rejects(runOnDataset(dem(), '-hillshade smoothing=off fps-radius=3'), /FPS settings/);
+      })
+
+      it('fps-min-threshold= turns on dynamic smoothing, with default settings', async function () {
+        var d = await getDerivation('-hillshade smoothing=high fps-min-threshold=1');
+        assert.deepEqual([d.fps_min_threshold, d.fps_slope_factor, d.fps_slope_radius, d.fps_blend],
+          [1, 3, 10, '5,15']);
+        assert.equal((await getDerivation('-hillshade fps-min-threshold=1')).fps_blend, null);
+        assert.equal((await getDerivation('-hillshade')).fps_min_threshold, null);
+      })
+
+      it('dynamic smoothing changes gentle terrain, but not steep terrain', async function () {
+        var gentle = function() {
+          return makeElevationDataset(20, 20, function(x, y) { return 2 * Math.sin(x / 2) + y * 0.5; });
+        };
+        assert.notDeepEqual(getAlpha(await runOnDataset(gentle(), '-hillshade fps-min-threshold=1')),
+          getAlpha(await runOnDataset(gentle(), '-hillshade')));
+        assert.deepEqual(getAlpha(await runOnDataset(dem(), '-hillshade fps-min-threshold=1')),
+          getAlpha(await runOnDataset(dem(), '-hillshade')));
+      })
+
+      it('dynamic smoothing settings can be set, and pasted', async function () {
+        var cmd = '-hillshade smoothing=high fps-min-threshold=2 fps-slope-factor=4 fps-slope-radius=5 fps-blend=3,12';
+        var first = await runOnDataset(dem(), cmd);
+        var d = first.getLayers()[0].layer.raster.derivation;
+        var second = await runOnDataset(dem(), '-hillshade ' + internal.formatHillshadeSettings(d));
+        assert.deepEqual([d.fps_min_threshold, d.fps_slope_factor, d.fps_slope_radius, d.fps_blend],
+          [2, 4, 5, '3,12']);
+        assert.deepEqual(getAlpha(second), getAlpha(first));
+        assert.equal((await getDerivation('-hillshade smoothing=high fps-min-threshold=1 fps-blend=off')).fps_blend, 'off');
+      })
+
+      it('rejects dynamic smoothing settings that don\'t apply', async function () {
+        await assert.rejects(runOnDataset(dem(), '-hillshade fps-slope-factor=2'), /need fps-min-threshold/);
+        await assert.rejects(runOnDataset(dem(), '-hillshade fps-min-threshold=25'), /not be larger/);
+        await assert.rejects(runOnDataset(dem(), '-hillshade fps-min-threshold=1 fps-blend=5,15'), /two-level/);
+        await assert.rejects(runOnDataset(dem(), '-hillshade smoothing=high fps-min-threshold=1 fps-blend=15,5'),
+          /fps-blend/);
+        await assert.rejects(runOnDataset(dem(), '-hillshade smoothing=lowpass fps-min-threshold=1'), /FPS settings/);
+        await assert.rejects(runOnDataset(dem(), '-hillshade fps-min-threshold=0'), /fps-min-threshold/);
       })
 
       it('generalize= is no longer an option', async function () {

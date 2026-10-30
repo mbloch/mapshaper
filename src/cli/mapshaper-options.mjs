@@ -1045,8 +1045,7 @@ export function getOptionParser() {
   parser.command('copy')
     .describe('copy layer(s), or a frame and its contents')
     .option('name', {
-      describe: 'name of the copy (default is the name of the original);\n' +
-        'required when copying a frame'
+      describe: 'name of the copy (default is the original name; required for frames)'
     })
     .option('target', targetOpt);
 
@@ -2863,12 +2862,27 @@ export function getOptionParser() {
       type: 'integer'
     })
     .option('fps-threshold', {
-      describe: 'FPS keeps slope changes sharper than this angle',
+      describe: 'FPS keeps slope changes sharper than this angle (the maximum, with dynamic smoothing)',
       type: 'number'
     })
     .option('fps-radius', {
       describe: 'FPS smoothing window radius, in pixels (default is 4)',
       type: 'integer'
+    })
+    .option('fps-min-threshold', {
+      describe: 'turns on dynamic smoothing: FPS threshold in flat terrain (e.g. 1), rising with slope',
+      type: 'number'
+    })
+    .option('fps-slope-factor', {
+      describe: 'dynamic smoothing: threshold degrees per degree of mean slope (default is 3)',
+      type: 'number'
+    })
+    .option('fps-slope-radius', {
+      describe: 'dynamic smoothing: radius for averaging slope, in pixels (default is 10)',
+      type: 'number'
+    })
+    .option('fps-blend', {
+      describe: 'dynamic two-level smoothing: thresholds blending one level into two (default is 5,15)'
     })
     .option('maximum-change', {
       // describe: 'limit how far FPS can move an elevation, in meters (off by default)',

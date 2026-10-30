@@ -223,6 +223,9 @@ same pattern as other mapshaper commands.
   full-resolution pass that follows always uses 1 pass, 20° and radius 4.
 - `fps-threshold=`, `fps-radius=`, `maximum-change=` (experimental) FPS
   settings, described under Generalization. They refine any FPS preset.
+- `fps-min-threshold=` (experimental) turns on dynamic smoothing, with
+  `fps-slope-factor=`, `fps-slope-radius=` and, for two-level smoothing,
+  `fps-blend=`; see Dynamic smoothing under Generalization.
 - `lowpass-radius=` blur radius of `smoothing=lowpass`, in pixels (default 1).
 - FPS settings with `smoothing=off` or `lowpass`, and `lowpass-radius=` without
   `smoothing=lowpass`, are errors rather than being silently ignored.
@@ -427,6 +430,63 @@ All steps are linear-time filters over the output grid; on a 1600x1200 map they
 take a few hundred milliseconds in plain JavaScript. They are written as small
 pure functions over typed arrays so they can be unit-tested and later moved into
 a Web Worker.
+
+#### Dynamic smoothing
+
+A fixed threshold is too high for gentle terrain. In the plains of northern
+Botswana (Tilezen zoom 9, 400 m pixels, automatic exaggeration 2.8), the
+median slope of the exaggerated surface, averaged over 10 pixels, is under 1°,
+so the two sides of a shallow drainage differ by only a few degrees. `medium`
+averages them away, while steep ridges, whose faces differ by tens of
+degrees, stay sharp. `fps-min-threshold=` gives each pixel its own threshold
+(`getSlopeThresholds()`):
+
+    threshold = min(fps-threshold, fps-min-threshold + fps-slope-factor * mean slope)
+
+Slope is in degrees on the exaggerated surface, measured at each pixel and
+averaged with a Gaussian blur of `fps-slope-radius=` pixels (default 10).
+Averaging slope magnitudes, rather than taking the slope of blurred
+elevations, keeps a mountain's opposing slopes from canceling out. The
+default slope factor is 3. With `fps-min-threshold=1`, thresholds in that area
+range from about 2° (10th percentile) through 3.4° (median) to 11° (90th
+percentile); `-verbose` prints these percentiles.
+
+The threshold never rises above the preset's (or `fps-threshold=`), so steep
+terrain gets exactly the preset's smoothing, and the dynamic part only reduces
+smoothing where the terrain is gentle. Letting it rise further (up to 40°)
+generalized mountains more, but they looked smeared next to `medium`.
+Thresholds from 5-8° in the plains looked no different from `medium`; 1-2°
+kept drainages about as crisp as `low`. Varying the number of passes with
+slope (1 in the plains to 4 in the mountains) made little difference, with or
+without dynamic thresholds.
+
+In two-level smoothing, the threshold map is averaged down for the coarse
+pass and capped at 20° for the full-resolution pass. That alone barely helps
+gentle terrain, because the 2x averaging removes drainages a few pixels wide
+before any threshold can protect them. So with `fps-blend=lo,hi` (default
+5,15), gentle terrain takes single-level FPS (with the same dynamic
+thresholds) instead: the result blends from single-level, where the threshold
+is below `lo`, to two-level, above `hi`, with a smoothstep weight. Both
+surfaces are smoothed consistently and the weight changes gradually, so the
+blend shows no seams. In the plains `high` then looks like dynamic `medium`,
+and in the mountains like `high`. The extra single-level pass makes `high`
+take about twice as long: on the Botswana grid (3240x1997), the whole
+`-hillshade` run went from 6.3 s to 12.5 s, against 8.2 s for `medium` and
+8.6 s for dynamic `medium`. `fps-blend=off` uses the two-level result
+everywhere.
+
+Earlier attempts to restore drainages after smoothing failed. Blending the
+original elevations back into channels, found with the texture-shading
+signal, cut narrow grooves into the broad troughs that smoothing makes, and
+brought back noise pits and gully texture in the mountains. Restoring whole
+valley cross-sections toward `low` smoothing looked coherent, but amounted to
+`low` in valleys and `medium` elsewhere. The lesson that carried over: a sharp
+feature placed into a smoother surface looks pasted on, while two surfaces
+that are each smoothed consistently blend well under a gradual mask.
+
+Untested so far: other landscapes (the slope factor and minimum were tuned on
+one flat region), and whether dynamic smoothing should become part of the
+presets.
 
 ### Lighting experiments
 

@@ -13,6 +13,8 @@
 //
 // @valid optional Uint8Array, 0 for pixels without an elevation
 
+import { blurFloatChannel } from './mapshaper-raster-blur';
+
 var DEFAULT_RADIUS = 4;
 var DEFAULT_THRESHOLD = 20; // degrees
 var DEFAULT_ITERATIONS = 5;
@@ -24,6 +26,8 @@ var DY = [-1, -1, -1, 0, 0, 1, 1, 1];
 // @opts.radius half-width of the normal-smoothing window, in pixels (default 4)
 // @opts.threshold neighbors whose normals differ by more than this many
 //   degrees are not averaged (default 20)
+// @opts.thresholds optional Float32Array of per-pixel thresholds, in degrees,
+//   used instead of @opts.threshold (see getSlopeThresholds())
 // @opts.maxChange optional limit on how far any elevation can move from its
 //   original value, in elevation units (not exaggerated)
 // Returns a new Float32Array of elevations
@@ -31,38 +35,67 @@ export function featurePreservingSmooth(elev, valid, width, height, cellWidths, 
   var o = opts || {};
   var rounds = o.rounds >= 0 ? o.rounds : 3;
   var radius = o.radius > 0 ? Math.round(o.radius) : DEFAULT_RADIUS;
-  var cosT = Math.cos((o.threshold > 0 ? o.threshold : DEFAULT_THRESHOLD) * Math.PI / 180);
-  if (o.thresholds) cosT = toCosines(o.thresholds); // PROTOTYPE: per-pixel thresholds
+  var cosT = o.thresholds ? toCosines(o.thresholds) :
+    Math.cos((o.threshold > 0 ? o.threshold : DEFAULT_THRESHOLD) * Math.PI / 180);
   var iterations = o.iterations > 0 ? o.iterations : DEFAULT_ITERATIONS;
   var zf = exaggeration > 0 ? exaggeration : 1;
   var z = new Float32Array(elev.length);
   var i, r, normals;
   for (i = 0; i < z.length; i++) z[i] = elev[i] * zf;
-  // PROTOTYPE: per-pixel (fractional) numbers of rounds, by blending successive rounds
-  var roundsMap = o.roundsMap || null, res = null, prev, f;
-  if (roundsMap) {
-    rounds = 0;
-    for (i = 0; i < roundsMap.length; i++) rounds = Math.max(rounds, Math.ceil(roundsMap[i]));
-    res = Float32Array.from(z);
-  }
   for (r = 0; r < rounds; r++) {
-    prev = roundsMap ? Float32Array.from(z) : null;
     normals = computeNormals(z, valid, width, height, cellWidths, cellHeights);
     normals = smoothNormals(normals, valid, width, height, radius, cosT);
     z = refitElevations(z, valid, width, height, cellWidths, cellHeights, normals, cosT, iterations);
     if (o.maxChange > 0) limitChange(z, elev, o.maxChange * zf, zf);
-    if (roundsMap) {
-      for (i = 0; i < z.length; i++) {
-        f = Math.min(1, roundsMap[i] - r);
-        if (f > 0) res[i] = prev[i] + f * (z[i] - prev[i]);
-      }
-    }
   }
-  if (roundsMap) z = res;
   for (i = 0; i < z.length; i++) {
     z[i] = valid && !valid[i] ? elev[i] : z[i] / zf;
   }
   return z;
+}
+
+// Per-pixel FPS thresholds for dynamic smoothing: low in gentle terrain, where
+// a shallow drainage's sides differ by only a few degrees, rising with the
+// mean local slope to @o.max in steep terrain.
+//   threshold = min(o.max, o.min + o.slopeFactor * mean slope)
+// Slope is in degrees on the exaggerated surface, which is what the threshold
+// is compared with, averaged by a Gaussian blur of @o.slopeRadius pixels.
+// Averaging slope magnitudes, not elevations, keeps a mountain's opposing
+// slopes from canceling out.
+// Returns a Float32Array of thresholds in degrees
+export function getSlopeThresholds(elev, valid, width, height, cellWidths, cellHeights, exaggeration, o) {
+  var slope = getMeanSlope(elev, valid, width, height, cellWidths, cellHeights, exaggeration, o.slopeRadius);
+  for (var i = 0; i < slope.length; i++) {
+    slope[i] = Math.min(o.max, o.min + o.slopeFactor * slope[i]);
+  }
+  return slope;
+}
+
+function getMeanSlope(elev, valid, width, height, cellWidths, cellHeights, exaggeration, sigma) {
+  var n = width * height;
+  var slope = new Float32Array(n);
+  var weights = new Float32Array(n);
+  var toDegrees = 180 / Math.PI;
+  var x, y, i, dx, dy, xm, xp, ym, yp, row;
+  for (y = 0; y < height; y++) {
+    ym = y > 0 ? y - 1 : y;
+    yp = y < height - 1 ? y + 1 : y;
+    row = y * width;
+    for (x = 0; x < width; x++) {
+      i = row + x;
+      if (valid && !valid[i]) continue;
+      xm = x > 0 ? x - 1 : x;
+      xp = x < width - 1 ? x + 1 : x;
+      dx = (sample(elev, valid, row + xp, elev[i]) - sample(elev, valid, row + xm, elev[i])) /
+        ((xp - xm || 1) * cellWidths[y]);
+      dy = (sample(elev, valid, yp * width + x, elev[i]) - sample(elev, valid, ym * width + x, elev[i])) /
+        ((yp - ym || 1) * cellHeights[y]);
+      slope[i] = Math.atan(exaggeration * Math.sqrt(dx * dx + dy * dy)) * toDegrees;
+      weights[i] = 1;
+    }
+  }
+  if (sigma > 0) blurFloatChannel(slope, weights, width, height, sigma);
+  return slope;
 }
 
 // Stronger generalization: FPS on a copy of the grid averaged down 2x, which
@@ -71,18 +104,23 @@ export function featurePreservingSmooth(elev, valid, width, height, cellWidths, 
 // full-resolution FPS pass, which re-sharpens crests that upsampling leaves
 // jagged. Costs about as much as two full-resolution rounds.
 // @coarseOpts, @fineOpts options for featurePreservingSmooth(); maxChange (from
-//   either) is applied to the final result
+//   either) is applied to the final result. Per-pixel coarseOpts.thresholds
+//   are averaged down for the coarse pass and capped at fineOpts.threshold for
+//   the full-resolution pass.
+// @coarseOpts.blendRange optional [lo, hi]: where the per-pixel threshold is
+//   below lo, use single-level FPS instead; above hi, the two-level result
 // Returns a new Float32Array of elevations
 export function twoLevelSmooth(elev, valid, width, height, cellWidths, cellHeights, exaggeration, coarseOpts, fineOpts) {
   var maxChange = coarseOpts.maxChange || fineOpts.maxChange;
   var c = downsampleElevations(elev, valid, width, height, cellWidths, cellHeights);
-  var thresholds = coarseOpts.thresholds || null; // PROTOTYPE
+  var thresholds = coarseOpts.thresholds || null;
   var z = featurePreservingSmooth(c.elev, c.valid, c.width, c.height, c.cellWidths, c.cellHeights,
     exaggeration, Object.assign({}, coarseOpts, {maxChange: null,
       thresholds: thresholds ? downsampleElevations(thresholds, valid, width, height, cellWidths, cellHeights).elev : null}));
   z = upsampleElevations(z, c, elev, valid, width, height);
   z = featurePreservingSmooth(z, valid, width, height, cellWidths, cellHeights, exaggeration,
-    Object.assign({}, fineOpts, {maxChange: null, thresholds: thresholds}));
+    Object.assign({}, fineOpts, {maxChange: null,
+      thresholds: thresholds ? capThresholds(thresholds, fineOpts.threshold) : null}));
   if (thresholds && coarseOpts.blendRange) {
     blendWithSingleLevel(z, elev, valid, width, height, cellWidths, cellHeights, exaggeration,
       coarseOpts, thresholds);
@@ -208,21 +246,29 @@ function catmullRom(p0, p1, p2, p3, t) {
     t * (3 * (p1 - p2) + p3 - p0)));
 }
 
-// PROTOTYPE: in gentle terrain (thresholds below blendRange[0]) use one level
-// of FPS; in steep terrain (above blendRange[1]) the two-level result
+// Two-level smoothing averages away landforms a few pixels wide before any
+// threshold can protect them, so gentle terrain, where thresholds are low,
+// takes single-level FPS instead. The weight changes smoothly with the
+// threshold, so the two results blend without seams.
 function blendWithSingleLevel(z, elev, valid, width, height, cellWidths, cellHeights, exaggeration, opts, thresholds) {
   var lo = opts.blendRange[0], hi = opts.blendRange[1];
   var single = featurePreservingSmooth(elev, valid, width, height, cellWidths, cellHeights,
     exaggeration, Object.assign({}, opts, {maxChange: null}));
   var t;
   for (var i = 0; i < z.length; i++) {
-    t = Math.max(0, Math.min(1, (thresholds[i] - lo) / (hi - lo)));
+    t = hi > lo ? (thresholds[i] - lo) / (hi - lo) : thresholds[i] >= hi ? 1 : 0;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
     t = t * t * (3 - 2 * t);
     z[i] = single[i] + t * (z[i] - single[i]);
   }
 }
 
-// PROTOTYPE
+function capThresholds(thresholds, max) {
+  var out = new Float32Array(thresholds.length);
+  for (var i = 0; i < out.length; i++) out[i] = Math.min(thresholds[i], max);
+  return out;
+}
+
 function toCosines(degrees) {
   var out = new Float32Array(degrees.length);
   for (var i = 0; i < degrees.length; i++) out[i] = Math.cos(degrees[i] * Math.PI / 180);

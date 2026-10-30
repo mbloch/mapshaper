@@ -3,8 +3,7 @@ import { getDatasetCRS, getScaleFactorAtXY, isLatLngCRS } from '../crs/mapshaper
 import { layerHasRaster, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { getRasterValidityMask } from '../rasters/mapshaper-raster-grid';
 import { createRasterPreview, getRasterGrid, getRasterViewRecipe, rasterGridIsRotated } from '../rasters/mapshaper-raster-utils';
-import { featurePreservingSmooth, twoLevelSmooth } from '../rasters/mapshaper-terrain-smoothing';
-import { blurFloatChannel } from '../rasters/mapshaper-raster-blur';
+import { featurePreservingSmooth, getSlopeThresholds, twoLevelSmooth } from '../rasters/mapshaper-terrain-smoothing';
 import {
   applyAerialPerspective,
   applyTextureTones,
@@ -42,6 +41,10 @@ var FPS_PRESETS = {
 };
 // the full-resolution pass of two-level smoothing
 var FPS_REFINEMENT = {rounds: 1, threshold: 20, radius: 4};
+// dynamic smoothing (fps-min-threshold=)
+var DEFAULT_FPS_SLOPE_FACTOR = 3;
+var DEFAULT_FPS_SLOPE_RADIUS = 10;
+var DEFAULT_FPS_BLEND = [5, 15];
 var AUTO_SMOOTHING = 'medium';
 var DEFAULT_LOWPASS_RADIUS = 1;
 var METERS_PER_DEGREE = 6371008.8 * Math.PI / 180;
@@ -81,8 +84,13 @@ function getSmoothingMethod(opts) {
     stop('Unsupported smoothing method:', method + '. Use off, low, medium, high, lowpass or auto');
   }
   if (!isFpsSmoothing(method) && (opts.fps_passes != null || opts.fps_radius != null ||
-      opts.fps_threshold != null || opts.fps_levels != null || opts.maximum_change != null)) {
+      opts.fps_threshold != null || opts.fps_levels != null || opts.maximum_change != null ||
+      opts.fps_min_threshold != null)) {
     stop('FPS settings need smoothing=low, medium, high or auto');
+  }
+  if (opts.fps_min_threshold == null && (opts.fps_slope_factor != null ||
+      opts.fps_slope_radius != null || opts.fps_blend != null)) {
+    stop('fps-slope-factor=, fps-slope-radius= and fps-blend= need fps-min-threshold=');
   }
   if (method != 'lowpass' && opts.lowpass_radius != null) {
     stop('lowpass-radius= needs smoothing=lowpass');
@@ -97,13 +105,15 @@ function smoothElevations(elev, valid, grid, cells, exaggeration, method, opts) 
     return generalizeTerrain(elev, valid, grid.width, grid.height, getLowpassRadius(opts));
   }
   var fpsOpts = getFpsOptions(method, opts);
-  if (process.env.MS_DFPS) {
-    fpsOpts.thresholds = getSlopeThresholds(elev, valid, grid.width, grid.height, cells, exaggeration);
-    if (process.env.MS_DFPS_ROUNDS) {
-      fpsOpts.roundsMap = getSlopeRounds(elev, valid, grid.width, grid.height, cells, exaggeration);
-    }
-    if (process.env.MS_DFPS_FIXED_THRESHOLD) delete fpsOpts.thresholds;
-    if (process.env.MS_DFPS_BLEND) fpsOpts.blendRange = process.env.MS_DFPS_BLEND.split(',').map(Number);
+  if (fpsOpts.minThreshold > 0) {
+    fpsOpts.thresholds = getSlopeThresholds(elev, valid, grid.width, grid.height,
+      cells.widths, cells.heights, exaggeration, {
+        min: fpsOpts.minThreshold,
+        max: fpsOpts.threshold,
+        slopeFactor: fpsOpts.slopeFactor,
+        slopeRadius: fpsOpts.slopeRadius
+      });
+    verbose('FPS thresholds:', formatThresholdRange(fpsOpts.thresholds, valid));
   }
   if (fpsOpts.levels == 2) {
     return twoLevelSmooth(elev, valid, grid.width, grid.height, cells.widths, cells.heights,
@@ -113,66 +123,18 @@ function smoothElevations(elev, valid, grid, cells, exaggeration, method, opts) 
     exaggeration, fpsOpts);
 }
 
-// PROTOTYPE: FPS angle thresholds that rise with the mean local slope of the
-// exaggerated surface: threshold = clamp(min + k * slope, min, max), in degrees
-function getSlopeThresholds(elev, valid, width, height, cells, exaggeration) {
-  var env = process.env;
-  var tmin = +(env.MS_DFPS_MIN || 8), tmax = +(env.MS_DFPS_MAX || 40);
-  var k = +(env.MS_DFPS_K || 1);
-  var slope = getMeanSlope(elev, valid, width, height, cells, exaggeration);
-  var out = new Float32Array(width * height);
-  for (var i = 0; i < out.length; i++) {
-    out[i] = Math.max(tmin, Math.min(tmax, tmin + k * slope[i]));
+// e.g. "2.1 (10th percentile), 3.4 (median), 11.3 (90th percentile) degrees"
+function formatThresholdRange(thresholds, valid) {
+  var stride = Math.max(1, Math.floor(thresholds.length / 100000));
+  var values = [];
+  for (var i = 0; i < thresholds.length; i += stride) {
+    if (!valid || valid[i]) values.push(thresholds[i]);
   }
-  logPercentiles('[dfps] mean slope', slope, valid);
-  logPercentiles('[dfps] threshold', out, valid);
-  return out;
-}
-
-// PROTOTYPE: rounds = clamp(rmin + kr * slope, rmin, rmax)
-function getSlopeRounds(elev, valid, width, height, cells, exaggeration) {
-  var env = process.env;
-  var rmin = +(env.MS_DFPS_RMIN || 1), rmax = +(env.MS_DFPS_RMAX || 4);
-  var kr = +(env.MS_DFPS_RK || 0.5);
-  var slope = getMeanSlope(elev, valid, width, height, cells, exaggeration);
-  var out = new Float32Array(width * height);
-  for (var i = 0; i < out.length; i++) {
-    out[i] = Math.max(rmin, Math.min(rmax, rmin + kr * slope[i]));
-  }
-  logPercentiles('[dfps] rounds', out, valid);
-  return out;
-}
-
-function getMeanSlope(elev, valid, width, height, cells, exaggeration) {
-  var sigma = +(process.env.MS_DFPS_SIGMA || 10);
-  var slope = new Float32Array(width * height);
-  var weights = new Float32Array(width * height);
-  var x, y, i, dx, dy, xm, xp, ym, yp;
-  for (y = 0; y < height; y++) {
-    ym = y > 0 ? y - 1 : y;
-    yp = y < height - 1 ? y + 1 : y;
-    for (x = 0; x < width; x++) {
-      i = y * width + x;
-      if (valid && !valid[i]) continue;
-      xm = x > 0 ? x - 1 : x;
-      xp = x < width - 1 ? x + 1 : x;
-      dx = (elev[y * width + xp] - elev[y * width + xm]) / ((xp - xm || 1) * cells.widths[y]);
-      dy = (elev[yp * width + x] - elev[ym * width + x]) / ((yp - ym || 1) * cells.heights[y]);
-      slope[i] = Math.atan(exaggeration * Math.sqrt(dx * dx + dy * dy)) * 180 / Math.PI;
-      weights[i] = 1;
-    }
-  }
-  blurFloatChannel(slope, weights, width, height, sigma);
-  return slope;
-}
-
-function logPercentiles(label, arr, valid) {
-  var v = [];
-  for (var i = 0; i < arr.length; i += 37) if (!valid || valid[i]) v.push(arr[i]);
-  v.sort(function(a, b) { return a - b; });
-  console.error(label + ': ' + [0.1, 0.5, 0.9, 0.98].map(function(p) {
-    return 'p' + Math.round(p * 100) + ' ' + v[Math.floor(p * (v.length - 1))].toFixed(1);
-  }).join(' '));
+  if (values.length === 0) return 'none';
+  values.sort(function(a, b) { return a - b; });
+  return [[0.1, '10th percentile'], [0.5, 'median'], [0.9, '90th percentile']].map(function(o) {
+    return values[Math.floor(o[0] * (values.length - 1))].toFixed(1) + ' (' + o[1] + ')';
+  }).join(', ') + ' degrees';
 }
 
 function getLowpassRadius(opts) {
@@ -181,23 +143,53 @@ function getLowpassRadius(opts) {
 
 function getFpsOptions(method, opts) {
   var preset = FPS_PRESETS[method];
+  var levels = opts.fps_levels || preset.levels;
+  var threshold = opts.fps_threshold || preset.threshold;
+  var dynamic = opts.fps_min_threshold > 0;
+  if (dynamic && opts.fps_min_threshold > threshold) {
+    stop('fps-min-threshold= should not be larger than the FPS threshold (' + threshold + ' degrees)');
+  }
+  if (opts.fps_blend != null && levels != 2) {
+    stop('fps-blend= applies to two-level smoothing (smoothing=high or fps-levels=2)');
+  }
   return {
     rounds: opts.fps_passes || preset.rounds,
     radius: opts.fps_radius || preset.radius,
-    threshold: opts.fps_threshold || preset.threshold,
+    threshold: threshold,
     maxChange: opts.maximum_change || null,
-    levels: opts.fps_levels || preset.levels
+    levels: levels,
+    minThreshold: dynamic ? opts.fps_min_threshold : null,
+    slopeFactor: dynamic ? (opts.fps_slope_factor >= 0 ? opts.fps_slope_factor : DEFAULT_FPS_SLOPE_FACTOR) : null,
+    slopeRadius: dynamic ? (opts.fps_slope_radius >= 0 ? opts.fps_slope_radius : DEFAULT_FPS_SLOPE_RADIUS) : null,
+    blendRange: dynamic && levels == 2 ? parseFpsBlend(opts.fps_blend) : null
   };
+}
+
+// Returns [lo, hi] in degrees, or null for off
+function parseFpsBlend(str) {
+  var range;
+  if (str == null) return DEFAULT_FPS_BLEND.concat();
+  if (String(str).toLowerCase() == 'off') return null;
+  range = String(str).split(',').map(Number);
+  if (range.length != 2 || !(range[0] >= 0 && range[1] >= range[0] && range[1] < 90)) {
+    stop('fps-blend= takes two angles, low to high (e.g. 5,15), or off');
+  }
+  return range;
 }
 
 function getSmoothingParams(method, opts) {
   var fps = isFpsSmoothing(method) ? getFpsOptions(method, opts) : null;
+  var dynamic = fps && fps.minThreshold > 0;
   return {
     smoothing: method,
     fps_levels: fps ? fps.levels : null,
     fps_passes: fps ? fps.rounds : null,
     fps_radius: fps ? fps.radius : null,
     fps_threshold: fps ? fps.threshold : null,
+    fps_min_threshold: dynamic ? fps.minThreshold : null,
+    fps_slope_factor: dynamic ? fps.slopeFactor : null,
+    fps_slope_radius: dynamic ? fps.slopeRadius : null,
+    fps_blend: dynamic && fps.levels == 2 ? (fps.blendRange ? fps.blendRange.join(',') : 'off') : null,
     maximum_change: fps ? fps.maxChange : null,
     lowpass_radius: method == 'lowpass' ? getLowpassRadius(opts) : null
   };
@@ -347,6 +339,15 @@ function validateHillshadeGrid(grid, opts) {
   }
   if (opts.fps_threshold != null && !(opts.fps_threshold > 0 && opts.fps_threshold < 90)) {
     stop('fps-threshold= should be an angle between 0 and 90 degrees');
+  }
+  if (opts.fps_min_threshold != null && !(opts.fps_min_threshold > 0 && opts.fps_min_threshold < 90)) {
+    stop('fps-min-threshold= should be an angle between 0 and 90 degrees');
+  }
+  if (opts.fps_slope_factor != null && !(opts.fps_slope_factor >= 0 && opts.fps_slope_factor <= 20)) {
+    stop('fps-slope-factor= should be from 0 to 20');
+  }
+  if (opts.fps_slope_radius != null && !(opts.fps_slope_radius >= 0 && opts.fps_slope_radius <= 50)) {
+    stop('fps-slope-radius= should be from 0 to 50 pixels');
   }
   if (opts.fps_passes != null && !(opts.fps_passes >= 1 && opts.fps_passes <= 20)) {
     stop('fps-passes= should be from 1 to 20');
