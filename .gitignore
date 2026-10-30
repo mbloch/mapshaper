@@ -8,6 +8,7 @@ npm-debug.log
 /www/geopackage.js
 /www/geoparquet.js
 /www/geotiff.js
+/www/hillshade-worker.js
 /www/mapshaper-gui.js
 /www/mapshaper.js
 /www/modules.js

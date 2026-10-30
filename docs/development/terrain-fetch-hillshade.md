@@ -294,6 +294,10 @@ same pattern as other mapshaper commands.
   `exaggeration=`, as command options that can be pasted back into a command,
   plus the ground pixel size. The global `-verbose` command prints them too.
 - `band=` band to read elevations from (default 0).
+- `workers=` number of worker threads; 0 runs everything in the main thread.
+  By default, rasters of at least 500,000 pixels use one worker per CPU core,
+  up to 16, and smaller rasters none. The output is the same either way, so
+  the setting is not recorded in the derivation. See Workers.
 - `name=`, `target=`, `+`.
 
 ### Cell size
@@ -580,6 +584,60 @@ good values are known.
 The window sizes are fixed in pixels, so they cover more ground on
 small-scale maps.
 
+### Workers
+
+Smoothing and shading take nearly all of the time, and every step of both
+depends only on pixels within a fixed distance (its reach). So the grid is
+split into overlapping tiles, which workers process separately: each tile's
+core gets the same values as processing the whole grid, bit for bit, as long
+as the margin around it covers the reach. There are two stages, each a
+round trip to the workers, because the reach of the whole pipeline in one
+stage (about 100 pixels with `medium` smoothing and `texture=`) would mean
+much more duplicated work. Margins, including 2 spare pixels:
+
+1. Smoothing (`smoothTerrain()`): 32 pixels for `medium`, 78 for `high`, and
+   29 more with dynamic smoothing. Two-level smoothing works on 2x2 blocks, so
+   its tiles start on even rows and columns.
+2. Shading to signed tones (`shadeTerrain()`): 28 pixels by default (openness
+   and sharpening), or 68 with `texture=`.
+
+The main thread reads the elevations, computes the two values that need the
+whole grid (the elevation range of `aerial=`; `smoothing=lowpass`, whose
+curvature scale is a mean over the grid, runs as a single tile), and writes
+the RGBA output.
+
+The reach of each algorithm is computed from its settings, next to it
+(`getFpsReach()`, `getOpennessReach()` and so on). Two kinds of mocha tests
+check it, so a change to an algorithm that widens its reach fails a test
+instead of leaving seams. One compares tiled and whole results for each
+option. The other changes one pixel and checks that the result changes no
+farther away than the reach, without the spare pixels. This one is stricter:
+when a reach was set one pixel too short, only it failed. For shading, the
+measured spread equals the computed reach; for smoothing it can fall short,
+because smoothing ignores neighbors whose slopes differ too much (`high`
+measured 60 pixels, against 76 computed). So a reach can't be measured
+instead of computed: on other terrain, changes may spread farther.
+
+The layout is the split into up to one tile per worker whose largest tile,
+margins included, is smallest, since the slowest tile sets the running time.
+Tiles beat strips: on a 3000 x 2000 grid with 16 workers, horizontal strips
+duplicated 51% of the pixels and 4 x 4 tiles 18%. The shape of the tile
+made no difference to the speed of the algorithms themselves.
+
+On that grid (an 18-core Mac, 16 workers), the whole command took 0.8 s
+instead of 5.9 s with default settings, 0.7 s instead of 4.9 s with
+`smoothing=high`, and 1.0 s instead of 7.8 s with `texture=0.5`. In the GUI,
+the main thread also stays responsive while workers run.
+
+Workers load `www/hillshade-worker.js`, a separate bundle of about 50 KB
+built from the pure raster modules; loading `mapshaper.js` in each worker
+would add about 29 MB of memory per worker. In Node the script is found next
+to `mapshaper.js`; in the browser, relative to the page. The browser can't
+share memory between workers without cross-origin isolation headers, which
+GitHub Pages can't send, so tiles are copied and the results transferred.
+If workers can't be started (the script is missing, or mapshaper's source
+modules are loaded directly), the command runs in the main thread.
+
 ## Implementation layout
 
 - `src/fetch/mapshaper-tile-math.mjs` — tile coordinates, ground resolution,
@@ -594,6 +652,18 @@ small-scale maps.
   low-pass generalization (pure).
 - `src/rasters/mapshaper-terrain-smoothing.mjs` — feature-preserving
   smoothing (pure).
+- `src/rasters/mapshaper-box-blur.mjs` — the blur used by both (pure, no
+  imports).
+- `src/rasters/mapshaper-hillshade-stages.mjs` — the smoothing and shading
+  stages and their reach (pure; what workers run).
+- `src/rasters/mapshaper-raster-tiles.mjs` — tile layouts, copying tiles out
+  and their cores back (pure).
+- `src/rasters/mapshaper-hillshade-runner.mjs` — runs the stages in this
+  thread or in workers.
+- `src/utils/mapshaper-worker-pool.mjs`, `mapshaper-worker-messages.mjs` —
+  starting Node and browser workers, and the messages they exchange.
+- `src/mapshaper-hillshade-worker.mjs` — entry point of
+  `www/hillshade-worker.js`.
 - `src/commands/mapshaper-hillshade.mjs` — the command.
 
 ## Testing

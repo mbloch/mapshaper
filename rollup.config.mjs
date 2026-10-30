@@ -149,6 +149,16 @@ export default [{
     nodePolyfills()
   ]
 }, {
+  // tree-shaken, so that the raster modules' unused imports stay out of a
+  // script that every worker loads
+  treeshake: true,
+  input: 'src/mapshaper-hillshade-worker.mjs',
+  output: {
+    strict: false,
+    format: 'iife',
+    file: 'www/hillshade-worker.js'
+  }
+}, {
   treeshake: true,
   context: 'null', // prevent a Rollup warning from msgpack
   input: 'src/mapshaper.mjs',

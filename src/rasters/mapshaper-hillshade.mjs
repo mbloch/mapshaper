@@ -1,8 +1,9 @@
-import { blurFloatChannel } from './mapshaper-raster-blur';
+import { blurFloatChannel, getBlurReach } from './mapshaper-box-blur';
 
 // Shaded relief from an elevation grid, and the terrain generalization that
 // goes with it. Everything here works on plain typed arrays, one value per
-// pixel, so it can be tested directly and moved to a worker later.
+// pixel, so it can be tested directly and run in workers (see
+// mapshaper-hillshade-stages.mjs).
 //
 // @valid  optional Uint8Array, 0 for pixels without an elevation; null when
 //   every pixel is valid
@@ -406,6 +407,13 @@ export function computeLightAdjustment(elev, valid, width, height, azimuth, maxA
   return out;
 }
 
+// How far, in pixels, values travel in computeLightAdjustment(): the
+// gradient's differences, then the blur of the structure tensor (see
+// getFpsReach() for how reach is used)
+export function getLightAdjustmentReach(sigma) {
+  return 1 + getBlurReach(sigma);
+}
+
 function elevAt(elev, valid, width, height, x, y, fallback) {
   var i;
   if (x < 0 || y < 0 || x >= width || y >= height) return fallback;
@@ -458,6 +466,12 @@ export function computeOpenness(elev, valid, width, height, cellWidths, cellHeig
   return out;
 }
 
+// How far, in pixels, computeOpenness() looks
+export function getOpennessReach(radius) {
+  var steps = getOpennessSteps(radius);
+  return steps.length > 0 ? steps[steps.length - 1] : 0;
+}
+
 // Distances to sample along each direction: every pixel nearby, then
 // increasingly sparse
 function getOpennessSteps(radius) {
@@ -508,8 +522,10 @@ export function sharpenTones(tones, valid, width, height, amount, sigma, thresho
   }
 }
 
-export function applyAerialPerspective(shade, elev, valid, strength) {
-  var range = getElevationPercentiles(elev, valid, 0.02, 0.98);
+// @range optional [low, high] elevations from getAerialRange(), for applying
+//   this to part of a grid
+export function applyAerialPerspective(shade, elev, valid, strength, range) {
+  range = range || getAerialRange(elev, valid);
   var span = range[1] - range[0];
   var i, t;
   if (!(span > 0)) return shade;
@@ -519,6 +535,11 @@ export function applyAerialPerspective(shade, elev, valid, strength) {
     shade[i] = 1 + (shade[i] - 1) * (1 - strength * (1 - t));
   }
   return shade;
+}
+
+// The elevations that applyAerialPerspective() normalizes between
+export function getAerialRange(elev, valid) {
+  return getElevationPercentiles(elev, valid, 0.02, 0.98);
 }
 
 // Texture shading (Leland Brown 2010): a fractional Laplacian of the
@@ -538,7 +559,7 @@ export function computeTextureShading(elev, valid, width, height, cellSizes, exa
   var blurred = new Float32Array(n);
   var weights = valid ? toWeights(valid) : null;
   var sigma, w, x, y, i, k;
-  for (sigma = 0.7; sigma <= maxSigma; sigma *= Math.SQRT2) {
+  for (sigma = TEXTURE_MIN_SCALE; sigma <= maxSigma; sigma *= Math.SQRT2) {
     blurred.set(elev);
     blurFloatChannel(blurred, weights, width, height, sigma);
     w = Math.pow(sigma, -alpha) * TEXTURE_SCALE * exaggeration;
@@ -552,6 +573,17 @@ export function computeTextureShading(elev, valid, width, height, cellSizes, exa
   return out;
 }
 
+// How far, in pixels, values travel in computeTextureShading(): the reach of
+// its widest blur
+export function getTextureShadingReach(maxSigma) {
+  var reach = 0;
+  for (var sigma = TEXTURE_MIN_SCALE; sigma <= maxSigma; sigma *= Math.SQRT2) {
+    reach = Math.max(reach, getBlurReach(sigma));
+  }
+  return reach;
+}
+
+var TEXTURE_MIN_SCALE = 0.7;
 // brings typical relief (France at zoom 7) to about 1 at the 98th percentile
 var TEXTURE_SCALE = 0.125;
 

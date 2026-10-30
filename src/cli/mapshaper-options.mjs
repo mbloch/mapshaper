@@ -2964,6 +2964,10 @@ export function getOptionParser() {
       describe: 'band containing elevation values (default is 0)',
       type: 'integer'
     })
+    .option('workers', {
+      describe: 'number of worker threads (default depends on raster size and CPU; 0 is off)',
+      type: 'integer'
+    })
     .option('name', nameOpt)
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);

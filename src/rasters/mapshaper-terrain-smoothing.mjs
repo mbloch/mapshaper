@@ -13,13 +13,47 @@
 //
 // @valid optional Uint8Array, 0 for pixels without an elevation
 
-import { blurFloatChannel } from './mapshaper-raster-blur';
+import { blurFloatChannel, getBlurReach } from './mapshaper-box-blur';
 
+var DEFAULT_ROUNDS = 3;
 var DEFAULT_RADIUS = 4;
 var DEFAULT_THRESHOLD = 20; // degrees
 var DEFAULT_ITERATIONS = 5;
 var DX = [-1, 0, 1, -1, 1, -1, 0, 1];
 var DY = [-1, -1, -1, 0, 0, 1, 1, 1];
+
+// The reach functions give how far, in pixels, values travel in each kind of
+// smoothing: a result depends on input pixels up to this distance away. Tiles
+// of a grid that overlap by this much can be smoothed separately, with the
+// same result as smoothing the whole grid. Update them along with the
+// algorithms.
+
+// Each round: normals reach 1 pixel, smoothing them @radius more, the refit's
+// weights 1 more (neighboring normals), and its iterations 1 each, of which
+// the last needs weights only at the pixel itself.
+export function getFpsReach(opts) {
+  var o = opts || {};
+  var rounds = o.rounds >= 0 ? o.rounds : DEFAULT_ROUNDS;
+  var radius = o.radius > 0 ? Math.round(o.radius) : DEFAULT_RADIUS;
+  var iterations = o.iterations > 0 ? o.iterations : DEFAULT_ITERATIONS;
+  return rounds * (radius + iterations + 1);
+}
+
+// Coarse pixels count double; downsampling adds 1 coarse pixel and
+// Catmull-Rom upsampling 2. Tiles must start on even rows and columns, so
+// that their 2x2 blocks match the whole grid's.
+export function getTwoLevelReach(coarseOpts, fineOpts) {
+  var reach = 2 * (getFpsReach(coarseOpts) + 3) + getFpsReach(fineOpts);
+  if (coarseOpts.blendRange) {
+    reach = Math.max(reach, getFpsReach(coarseOpts));
+  }
+  return reach;
+}
+
+// Reach of getSlopeThresholds(): the slope's differences, then the blur
+export function getSlopeThresholdReach(slopeRadius) {
+  return 1 + getBlurReach(slopeRadius);
+}
 
 // @cellWidths, @cellHeights per-row ground size of a pixel, in elevation units
 // @opts.rounds number of rounds (default 3)
@@ -33,7 +67,7 @@ var DY = [-1, -1, -1, 0, 0, 1, 1, 1];
 // Returns a new Float32Array of elevations
 export function featurePreservingSmooth(elev, valid, width, height, cellWidths, cellHeights, exaggeration, opts) {
   var o = opts || {};
-  var rounds = o.rounds >= 0 ? o.rounds : 3;
+  var rounds = o.rounds >= 0 ? o.rounds : DEFAULT_ROUNDS;
   var radius = o.radius > 0 ? Math.round(o.radius) : DEFAULT_RADIUS;
   var cosT = o.thresholds ? toCosines(o.thresholds) :
     Math.cos((o.threshold > 0 ? o.threshold : DEFAULT_THRESHOLD) * Math.PI / 180);

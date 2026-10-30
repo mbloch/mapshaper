@@ -3,30 +3,19 @@ import { getDatasetCRS, getScaleFactorAtXY, isLatLngCRS } from '../crs/mapshaper
 import { layerHasRaster, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { getRasterValidityMask } from '../rasters/mapshaper-raster-grid';
 import { createRasterPreview, getRasterGrid, getRasterViewRecipe, rasterGridIsRotated } from '../rasters/mapshaper-raster-utils';
-import { featurePreservingSmooth, getSlopeThresholds, twoLevelSmooth } from '../rasters/mapshaper-terrain-smoothing';
 import {
-  applyAerialPerspective,
-  applyTextureTones,
-  blendAmbientLight,
-  computeTextureShading,
-  computeHillshade,
-  computeLightAdjustment,
-  computeOpenness,
   getDefaultBaseColor,
   getDefaultHighlightRatio,
   getDefaultMaxOpacity,
-  getHillshadeTones,
-  sharpenTones,
   writeHillshadeRgba,
   DEFAULT_ALTITUDE,
   DEFAULT_AZIMUTH,
   DEFAULT_GAMMA,
-  generalizeTerrain,
   getAutoExaggeration,
   getHillshadeLights,
-  raiseLowElevations,
-  restoreLowElevations
+  raiseLowElevations
 } from '../rasters/mapshaper-hillshade';
+import { runHillshadeStages } from '../rasters/mapshaper-hillshade-runner';
 import { formatColor, parseColor } from '../color/color-utils';
 import { runningInBrowser } from '../mapshaper-env';
 import { stop, verbose, warnOnce } from '../utils/mapshaper-logging';
@@ -48,28 +37,10 @@ var DEFAULT_FPS_BLEND = [5, 15];
 var AUTO_SMOOTHING = 'medium';
 var DEFAULT_LOWPASS_RADIUS = 1;
 var METERS_PER_DEGREE = 6371008.8 * Math.PI / 180;
-// Experimental lighting parameters, in raster pixels
-var LIGHT_ADJUSTMENT_SIGMA = 10;
-var OPENNESS_RADIUS = 24;
 var DEFAULT_SHARPEN_RADIUS = 3;
 var DEFAULT_SHARPENING = 0.25;
 var DEFAULT_AMBIENT = 0.5;
 var DEFAULT_TEXTURE_DETAIL = 0.5;
-var TEXTURE_MAX_SCALE = 24;
-
-function getRowCellSizes(cells) {
-  return cells.widths.map(function(w, y) {
-    return Math.sqrt(w * cells.heights[y]);
-  });
-}
-
-function getAboveMinimumMask(elev, valid, min) {
-  var mask = new Uint8Array(elev.length);
-  for (var i = 0; i < elev.length; i++) {
-    mask[i] = (!valid || valid[i]) && elev[i] > min ? 1 : 0;
-  }
-  return mask;
-}
 
 function isFpsSmoothing(method) {
   return method == 'low' || method == 'medium' || method == 'high';
@@ -98,29 +69,19 @@ function getSmoothingMethod(opts) {
   return method;
 }
 
+// Settings for smoothTerrain(), or null for no smoothing
 // FPS presets: feature-preserving smoothing, with preset settings
 // lowpass: the earlier blur-and-restore method
-function smoothElevations(elev, valid, grid, cells, exaggeration, method, opts) {
-  if (method == 'lowpass') {
-    return generalizeTerrain(elev, valid, grid.width, grid.height, getLowpassRadius(opts));
-  }
-  var fpsOpts = getFpsOptions(method, opts);
-  if (fpsOpts.minThreshold > 0) {
-    fpsOpts.thresholds = getSlopeThresholds(elev, valid, grid.width, grid.height,
-      cells.widths, cells.heights, exaggeration, {
-        min: fpsOpts.minThreshold,
-        max: fpsOpts.threshold,
-        slopeFactor: fpsOpts.slopeFactor,
-        slopeRadius: fpsOpts.slopeRadius
-      });
-    verbose('FPS thresholds:', formatThresholdRange(fpsOpts.thresholds, valid));
-  }
-  if (fpsOpts.levels == 2) {
-    return twoLevelSmooth(elev, valid, grid.width, grid.height, cells.widths, cells.heights,
-      exaggeration, fpsOpts, FPS_REFINEMENT);
-  }
-  return featurePreservingSmooth(elev, valid, grid.width, grid.height, cells.widths, cells.heights,
-    exaggeration, fpsOpts);
+function getSmoothingSettings(method, opts, exaggeration) {
+  if (method == 'none') return null;
+  return {
+    method: method,
+    fps: isFpsSmoothing(method) ? getFpsOptions(method, opts) : null,
+    refinement: FPS_REFINEMENT,
+    lowpassRadius: getLowpassRadius(opts),
+    exaggeration: exaggeration,
+    minElevation: opts.min_elevation != null ? opts.min_elevation : null
+  };
 }
 
 // e.g. "2.1 (10th percentile), 3.4 (median), 11.3 (90th percentile) degrees"
@@ -196,9 +157,11 @@ function getSmoothingParams(method, opts) {
 }
 
 // Returns a new layer; -hillshade replaces the target unless + is used
-cmd.hillshade = function(lyr, dataset, opts) {
-  var grid, cells, elev, valid, shade, altitude, exaggeration, style, out;
-  var hasMin, raised, toneOpts, tones, azimuth, offsets, colors, smoothing, params, sharpening, ambient, land;
+// @resume optional function to call after each wait for workers
+//   (job.resumeCommand())
+cmd.hillshade = async function(lyr, dataset, opts, resume) {
+  var grid, cells, elev, valid, altitude, exaggeration, style, out, result;
+  var hasMin, toneOpts, azimuth, colors, smoothing, params, sharpening, ambient;
   if (!layerHasRaster(lyr)) {
     stop('Command requires a raster layer');
   }
@@ -251,42 +214,40 @@ cmd.hillshade = function(lyr, dataset, opts) {
   if (hasMin) {
     raiseLowElevations(elev, valid, opts.min_elevation);
   }
-  if (smoothing != 'none') {
-    raised = hasMin ? Float32Array.from(elev) : null;
-    elev = smoothElevations(elev, valid, grid, cells, exaggeration, smoothing, opts);
-    if (hasMin) restoreLowElevations(elev, raised, valid, opts.min_elevation);
+  result = await runHillshadeStages({
+    elev: elev,
+    valid: valid,
+    width: grid.width,
+    height: grid.height,
+    cellWidths: cells.widths,
+    cellHeights: cells.heights
+  }, getSmoothingSettings(smoothing, opts, exaggeration), {
+    lights: getHillshadeLights(azimuth, altitude, opts.single_light),
+    azimuth: azimuth,
+    exaggeration: exaggeration,
+    lightAdjust: opts.light_adjust || 0,
+    ambient: ambient,
+    aerial: opts.aerial || 0,
+    texture: opts.texture || 0,
+    textureDetail: params.texture_detail,
+    textureHighlights: params.texture_highlights,
+    minElevation: hasMin ? opts.min_elevation : null,
+    style: style,
+    toneOpts: toneOpts,
+    sharpening: sharpening,
+    sharpenRadius: opts.sharpen_radius || DEFAULT_SHARPEN_RADIUS,
+    sharpenThreshold: opts.sharpen_threshold || 0
+  }, {workers: opts.workers, resume: resume});
+  if (result.workers > 0) {
+    verbose('Workers:', result.workers);
   }
-  if (opts.light_adjust > 0) {
-    offsets = computeLightAdjustment(elev, valid, grid.width, grid.height, azimuth,
-      opts.light_adjust, LIGHT_ADJUSTMENT_SIGMA);
-  }
-  shade = computeHillshade(elev, valid, grid.width, grid.height, cells.widths, cells.heights,
-    getHillshadeLights(azimuth, altitude, opts.single_light), exaggeration, offsets);
-  // a flattened sea stays flat, rather than shading along the coast
-  land = hasMin && (ambient > 0 || opts.texture > 0) ?
-    getAboveMinimumMask(elev, valid, opts.min_elevation) : valid;
-  if (ambient > 0) {
-    blendAmbientLight(shade, computeOpenness(elev, valid, grid.width, grid.height,
-      cells.widths, cells.heights, exaggeration, OPENNESS_RADIUS), land, ambient);
-  }
-  if (opts.aerial > 0) {
-    applyAerialPerspective(shade, elev, valid, opts.aerial);
-  }
-  tones = getHillshadeTones(shade, valid, style, toneOpts);
-  if (sharpening > 0) {
-    sharpenTones(tones, valid, grid.width, grid.height, sharpening,
-      opts.sharpen_radius || DEFAULT_SHARPEN_RADIUS, opts.sharpen_threshold || 0);
-  }
-  // after the tone curve, so max-opacity= and gamma= don't affect it
-  if (opts.texture > 0) {
-    applyTextureTones(tones, computeTextureShading(elev, land, grid.width, grid.height,
-      getRowCellSizes(cells), exaggeration, params.texture_detail, TEXTURE_MAX_SCALE), land,
-      opts.texture, Math.min(1, opts.texture * params.texture_highlights));
+  if (result.thresholds) {
+    verbose('FPS thresholds:', formatThresholdRange(result.thresholds, valid));
   }
   out = {
     raster_type: 'grid',
     raster: getHillshadeRaster(lyr.raster, grid,
-      writeHillshadeRgba(tones, valid, style, colors), params)
+      writeHillshadeRgba(result.tones, valid, style, colors), params)
   };
   setOutputLayerName(out, lyr, 'hillshade', opts);
   return [out];
@@ -381,6 +342,9 @@ function validateHillshadeGrid(grid, opts) {
   }
   if ((opts.texture_detail != null || opts.texture_highlights != null) && !(opts.texture > 0)) {
     stop('texture-detail= and texture-highlights= require texture=');
+  }
+  if (opts.workers != null && !(opts.workers >= 0 && opts.workers <= 64)) {
+    stop('workers= should be from 0 to 64');
   }
   ['ambient', 'aerial', 'texture'].forEach(function(name) {
     if (opts[name] != null && !(opts[name] >= 0 && opts[name] <= 1)) {

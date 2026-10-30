@@ -680,7 +680,54 @@ describe('mapshaper-hillshade.mjs', function () {
     it('rejects out-of-range max-opacity= and gamma=', async function () {
       await assert.rejects(runOnDataset(makeElevationDataset(5, 5, slope), '-hillshade max-opacity=2'), /max-opacity/);
       await assert.rejects(runOnDataset(makeElevationDataset(5, 5, slope), '-hillshade gamma=0'), /gamma/);
+      await assert.rejects(runOnDataset(makeElevationDataset(5, 5, slope), '-hillshade workers=-1'), /workers/);
     })
+
+    describe('workers=', function () {
+      this.timeout(20000);
+      function ridges(x, y) {
+        return 300 * Math.sin(x / 9) * Math.cos(y / 13) + 80 * Math.sin((x * 3 + y) / 4) - 60;
+      }
+      async function hillshadeSamples(options) {
+        var catalog = await runOnDataset(makeElevationDataset(240, 180, ridges), '-hillshade ' + options);
+        return Buffer.from(catalog.getLayers()[0].layer.raster.grid.samples);
+      }
+
+      ['', 'smoothing=high fps-min-threshold=1 texture=0.5 aerial=0.4 min-elevation=0',
+        'smoothing=lowpass light-adjust=20 single-light style=opaque'].forEach(function(options) {
+        it('workers give the same output as the main thread: ' + (options || 'defaults'), async function () {
+          var main = await hillshadeSamples(options + ' workers=0');
+          var workers = await hillshadeSamples(options + ' workers=3');
+          assert(main.equals(workers));
+        });
+      });
+
+      it('starts workers (the tests above would pass in the main thread too)', async function () {
+        var w = 200, h = 150;
+        var r = await internal.runHillshadeStages({
+          elev: makeElevation(w, h, ridges),
+          valid: null,
+          width: w,
+          height: h,
+          cellWidths: constantCells(h, 100),
+          cellHeights: constantCells(h, 100)
+        }, null, {lights: internal.getHillshadeLights(315, 45), exaggeration: 1, style: 'shadow',
+          toneOpts: {}}, {workers: 2});
+        assert.equal(r.workers, 2);
+        assert.equal(r.tones.length, w * h);
+      });
+
+      it('is not recorded in the derivation', async function () {
+        var catalog = await runOnDataset(makeElevationDataset(20, 20, slope), '-hillshade workers=2');
+        assert(!('workers' in catalog.getLayers()[0].layer.raster.derivation));
+      });
+
+      it('automatic: none for small rasters', function () {
+        assert.equal(internal.getHillshadeWorkerCount(null, 1000), 0);
+        assert.equal(internal.getHillshadeWorkerCount(2, 1000), 2);
+        assert.equal(internal.getHillshadeWorkerCount(0, 1e8), 0);
+      });
+    });
 
     it('records lighting and smoothing options in the derivation', async function () {
       var catalog = await runOnDataset(makeElevationDataset(30, 30, function(x, y) {

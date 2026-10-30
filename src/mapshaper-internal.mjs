@@ -183,9 +183,14 @@ import * as RasterBlur from './rasters/mapshaper-raster-blur';
 import * as RasterContourBands from './rasters/mapshaper-raster-contour-bands';
 import * as RasterContours from './rasters/mapshaper-raster-contours';
 import * as RasterGrid from './rasters/mapshaper-raster-grid';
+import * as BoxBlur from './rasters/mapshaper-box-blur';
 import * as Hillshade from './rasters/mapshaper-hillshade';
 import * as HillshadeCommand from './commands/mapshaper-hillshade';
+import * as HillshadeRunner from './rasters/mapshaper-hillshade-runner';
+import * as HillshadeStages from './rasters/mapshaper-hillshade-stages';
+import * as RasterTiles from './rasters/mapshaper-raster-tiles';
 import * as TerrainSmoothing from './rasters/mapshaper-terrain-smoothing';
+import * as WorkerPool from './utils/mapshaper-worker-pool';
 import * as WebPDecoder from './fetch/mapshaper-webp-decoder';
 import * as Fetch from './commands/mapshaper-fetch';
 import * as FetchSources from './fetch/mapshaper-fetch-sources';
@@ -350,9 +355,14 @@ Object.assign(internal,
   RasterContourBands,
   RasterContours,
   RasterGrid,
+  BoxBlur,
   Hillshade,
   HillshadeCommand,
+  HillshadeRunner,
+  HillshadeStages,
+  RasterTiles,
   TerrainSmoothing,
+  WorkerPool,
   WebPDecoder,
   Fetch,
   FetchSources,

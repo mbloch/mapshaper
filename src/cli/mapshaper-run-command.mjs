@@ -388,7 +388,11 @@ export async function runCommand(command, job) {
       addFetchedDataset(job.catalog, fetched);
 
     } else if (name == 'hillshade') {
-      outputLayers = applyCommandToEachLayer(cmd.hillshade, targetLayers, targetDataset, opts);
+      outputLayers = [];
+      for (let lyr of targetLayers) {
+        outputLayers = outputLayers.concat(await cmd.hillshade(lyr, targetDataset, opts, job.resumeCommand));
+      }
+      job.resumeCommand();
 
     } else if (name == 'dashlines') {
       applyCommandToEachLayer(cmd.dashlines, targetLayers, targetDataset, opts);
