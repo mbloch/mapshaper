@@ -11,11 +11,18 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
+**Curve drawing tool.** The line drawing toolbar in the web UI has a curve tool for drawing smooth lines. Click to place points, and the line is drawn as a smooth curve through them. Option-click (Alt-click) places a corner point where the line turns sharply. After a curve is drawn, its points can be dragged to reshape it, and clicking an end point continues the curve.
+
+</div>
+
+<div class="whats-new-entry">
+
 **New style effects in the web UI.**
 
 - Inner and outer glows.
 - Dashed lines.
-- Arrowheads or dots at the ends of lines, with an optional fade-in along the line's tail.
+- Cased lines.
+- Arrowheads or dots at the ends of lines, with optional fade and taper effects along the line's tail.
 - Pattern fills: hatches, dots, squares and dashes.
 
 → See [`-style`](/docs/reference.html#-style) to create the same effects on the command line.
@@ -38,6 +45,8 @@ This is a curated list of recently added features. For the full list of changes,
 **HTML, PNG and JPEG output**
 
 Maps can now be exported as an HTML fragment plus an image, in the manner of the [ai2html](https://github.com/newsdev/ai2html) script for Adobe Illustrator. Options control the image format and resolution, whether the map has a fixed size or fills the width of its container, and whether labels are rendered in SVG or HTML.
+
+Exporting several map frames of different widths creates a single HTML file that displays whichever frame best fits the width of its container, like ai2html's artboards.
 
 Maps can also be exported as PNG or JPEG images, labels included.
 

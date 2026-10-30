@@ -1014,7 +1014,7 @@ body.sidebar-panels-resizing .sidebar-panels-resize-handle::before,
 	top: 35px; /* 29px header + the 6px offset of .nav-buttons */
 	left: 0;
 	z-index: 40;
-	padding: 3px;
+	padding: 2px;
 	background-color: white;
 	border-radius: 7px;
 	pointer-events: auto;
@@ -1052,12 +1052,10 @@ body:not(.sidebar-open) .intersection-display {
 	fill: var(--theme-col);
 }
 
-.sidebar-tab.layer-tab {
-	padding-bottom: 6px;
-}
-
+.sidebar-tab.layer-tab,
 .sidebar-tab.console-tab {
-	padding-top: 7px;
+	padding-top: 5px;
+	padding-bottom: 7px;
 }
 
 .sidebar-tab:hover .sidebar-icon * {
@@ -2822,7 +2820,7 @@ body.pan.panning .map-layers:not(.drawing) {
 	text-align: center;
 	top: 6px;
 	right: 0;
-	padding: 3px; 
+	padding: 2px; 
 	background-color: rgba(255, 255, 255, 1);
 	border-radius: 7px;
 }
