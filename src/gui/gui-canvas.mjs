@@ -12,6 +12,7 @@ import {
 import { getCanvasFillPattern, getCanvasFillEffect } from './gui-canvas-patterns';
 import { compositeGlows, getGlowMargin, getGlowSourceCanvas, MAX_GLOW_MARGIN } from './gui-canvas-glow';
 import { getHighlightWidth, getHandleRadius } from './gui-highlight-width';
+import { getRasterTonePreview, getTonedRasterCanvas } from './gui-raster-tone-preview';
 import {
   previewHasSourcePixels,
   rasterPreviewIsSmoothed
@@ -191,6 +192,7 @@ export function DisplayCanvas() {
     var raster = layer.raster;
     var options = opts || {};
     var preview = null;
+    var tone = getRasterTonePreview(layer);
     var bbox, grid, sourcePixels;
     if (layer.gui && layer.gui.dynamic_crs) {
       preview = getCachedRasterReprojectedPreview(layer, _ext);
@@ -202,7 +204,7 @@ export function DisplayCanvas() {
       }
       bbox = preview.bbox;
       if (!preview.pixels || !bbox) return;
-      drawRasterPreview(preview, bbox, preview.sourcePixels);
+      drawRasterPreview(preview, bbox, preview.sourcePixels, tone);
       if (options.action != 'nav' && options.onViewportPreviewReady) {
         scheduleRasterReprojectedPreview(layer, _ext, options.onViewportPreviewReady);
       }
@@ -224,7 +226,7 @@ export function DisplayCanvas() {
       }
     }
     if (!preview || !preview.pixels || !bbox) return;
-    drawRasterPreview(preview, bbox, sourcePixels);
+    drawRasterPreview(preview, bbox, sourcePixels, tone);
   };
 
   /*
@@ -593,8 +595,9 @@ export function DisplayCanvas() {
   // sourcePixels: true if one pixel of the preview is one pixel of the raster,
   // so that drawing it as squares shows the data rather than an artifact of
   // whatever it was scaled down to.
-  function drawRasterPreview(preview, bbox, sourcePixels) {
-    var img = getRasterCanvas(preview);
+  // tone: settings previewed by the tone panel (see gui-raster-tone-preview)
+  function drawRasterPreview(preview, bbox, sourcePixels, tone) {
+    var img = tone ? getTonedRasterCanvas(preview, tone) : getRasterCanvas(preview);
     var t = _ext.getTransform(GUI.getPixelRatio());
     var p1 = t.transform(bbox[0], bbox[3]);
     var p2 = t.transform(bbox[2], bbox[1]);

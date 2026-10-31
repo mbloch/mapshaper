@@ -33,7 +33,7 @@ cmd.tone = function(lyr, opts) {
   huePivot = getHuePivot(opts.hue_pivot);
   opacity = getRasterOpacity(opts);
   background = getRasterBackground(opts);
-  pivots = gamma == 1 && contrast == 1 ? null : getPivots(grid);
+  pivots = gamma == 1 && contrast == 1 ? null : getTonePivots(grid);
   samples = saturation == 1 && lightness == 1 && !pivots && hueShift === 0 ? grid.samples :
     toneRgbPixels(grid.samples, grid.bands, {saturation: saturation, lightness: lightness,
       gamma: gamma, contrast: contrast, pivots: pivots, hueShift: hueShift, huePivot: huePivot});
@@ -79,7 +79,7 @@ function getHuePivot(arg) {
 
 // The image's 1st and 99th percentile lightness, the pivots of contrast= and
 // gamma= (the extremes are usually a few clouds or shadows)
-function getPivots(grid) {
+export function getTonePivots(grid) {
   var range = getImageLightnessPercentiles(grid.samples, grid.bands,
     getRasterValidityMask(grid), PIVOT_PERCENTILES, PIVOT_SAMPLES);
   return range && range[1] > range[0] ? range.map(roundLightness) : null;
@@ -87,6 +87,13 @@ function getPivots(grid) {
 
 function roundLightness(L) {
   return Math.round(L * 1000) / 1000;
+}
+
+export function rasterCanBeToned(raster) {
+  var grid = getRasterGrid(raster);
+  return !!(grid && grid.samples && grid.bbox && grid.bands >= 3 && grid.bands <= 4 &&
+    (grid.samples instanceof Uint8Array || grid.samples instanceof Uint8ClampedArray) &&
+    grid.colorModel != 'palette');
 }
 
 function validateToneGrid(grid) {

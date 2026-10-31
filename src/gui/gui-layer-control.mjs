@@ -659,6 +659,14 @@ export function LayerControl(gui) {
       var target = findLayerById(id);
       var tool;
       if (!target) return;
+      if (layerCanBeToned(target.layer)) {
+        if (!map.isActiveLayer(target.layer)) {
+          target.layer.hidden = false;
+          model.selectLayer(target.layer, target.dataset);
+        }
+        gui.interaction.setMode('tone');
+        return;
+      }
       tool = getLayerAnnotationTool(target.layer);
       if (tool == 'label') {
         // The point style panel can only restyle a label layer; the label tool
@@ -715,9 +723,11 @@ export function LayerControl(gui) {
           menuEvent.zoomToLayer = zoomToLayer;
         }
       }
-      if (!isFrame && target && layerCanBeStyled(target.layer)) {
+      if (!isFrame && target && (layerCanBeStyled(target.layer) || layerCanBeToned(target.layer))) {
         menuEvent.styleLayer = styleLayer;
-        if (getLayerAnnotationTool(target.layer) == 'label') {
+        if (layerCanBeToned(target.layer)) {
+          menuEvent.styleLayerName = 'adjust colors';
+        } else if (getLayerAnnotationTool(target.layer) == 'label') {
           menuEvent.styleLayerName = 'style/edit labels';
         } else if (getLayerAnnotationTool(target.layer) == 'symbols') {
           menuEvent.styleLayerName = 'style/edit symbols';
@@ -1115,6 +1125,10 @@ export function LayerControl(gui) {
 
   function layerCanBeStyled(lyr) {
     return !!(lyr && (lyr.geometry_type == 'point' || lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon'));
+  }
+
+  function layerCanBeToned(lyr) {
+    return !!(lyr && internal.layerHasRaster(lyr) && internal.rasterCanBeToned(lyr.raster));
   }
 
 }

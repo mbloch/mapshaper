@@ -5631,22 +5631,25 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
    track goes. The handle is a 12px box, which sets how far it travels, drawn
    as a 16px circle by its box-shadow rings, so that at either end it covers
    the end of the track. */
-.color-scheme-slider-row input[type=range] {
+.color-scheme-slider-row input[type=range],
+.raster-tone-slider-row input[type=range] {
 	-webkit-appearance: none;
 	appearance: none;
 	flex: 1;
 	min-width: 0;
 	height: 18px;
-	margin: 0 7px 0 4px;
+	margin: 0;
 	background: transparent;
 	cursor: pointer;
 }
 
-.color-scheme-slider-row input[type=range]:focus {
+.color-scheme-slider-row input[type=range]:focus,
+.raster-tone-slider-row input[type=range]:focus {
 	outline: none;
 }
 
-.color-scheme-slider-row input[type=range]::-webkit-slider-runnable-track {
+.color-scheme-slider-row input[type=range]::-webkit-slider-runnable-track,
+.raster-tone-slider-row input[type=range]::-webkit-slider-runnable-track {
 	box-sizing: border-box;
 	height: 7px;
 	border: 1px solid var(--label-field-border);
@@ -5654,7 +5657,8 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	background: linear-gradient(to right, #dadada var(--fill, 0%), white var(--fill, 0%));
 }
 
-.color-scheme-slider-row input[type=range]::-moz-range-track {
+.color-scheme-slider-row input[type=range]::-moz-range-track,
+.raster-tone-slider-row input[type=range]::-moz-range-track {
 	box-sizing: border-box;
 	height: 7px;
 	border: 1px solid var(--label-field-border);
@@ -5662,13 +5666,15 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	background: white;
 }
 
-.color-scheme-slider-row input[type=range]::-moz-range-progress {
+.color-scheme-slider-row input[type=range]::-moz-range-progress,
+.raster-tone-slider-row input[type=range]::-moz-range-progress {
 	height: 5px;
 	border-radius: 3.5px 0 0 3.5px;
 	background: #dadada;
 }
 
-.color-scheme-slider-row input[type=range]::-webkit-slider-thumb {
+.color-scheme-slider-row input[type=range]::-webkit-slider-thumb,
+.raster-tone-slider-row input[type=range]::-webkit-slider-thumb {
 	-webkit-appearance: none;
 	width: 12px;
 	height: 12px;
@@ -5679,7 +5685,8 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	box-shadow: 0 0 0 1px white, 0 0 0 2px #888;
 }
 
-.color-scheme-slider-row input[type=range]::-moz-range-thumb {
+.color-scheme-slider-row input[type=range]::-moz-range-thumb,
+.raster-tone-slider-row input[type=range]::-moz-range-thumb {
 	width: 12px;
 	height: 12px;
 	border: none;
@@ -5688,12 +5695,40 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	box-shadow: 0 0 0 1px white, 0 0 0 2px #888;
 }
 
-.color-scheme-slider-row input[type=range]:focus-visible::-webkit-slider-thumb {
+.color-scheme-slider-row input[type=range]:focus-visible::-webkit-slider-thumb,
+.raster-tone-slider-row input[type=range]:focus-visible::-webkit-slider-thumb {
 	box-shadow: 0 0 0 1px white, 0 0 0 2px #888, 0 0 0 4px var(--theme-col);
 }
 
-.color-scheme-slider-row input[type=range]:focus-visible::-moz-range-thumb {
+.color-scheme-slider-row input[type=range]:focus-visible::-moz-range-thumb,
+.raster-tone-slider-row input[type=range]:focus-visible::-moz-range-thumb {
 	box-shadow: 0 0 0 1px white, 0 0 0 2px #888, 0 0 0 4px var(--theme-col);
+}
+
+/* Tone panel (gui-raster-tone-tool.mjs): a caption, the slider and its value
+   on one line, the captions in a column so the sliders line up */
+.raster-tone-slider-row {
+	display: flex;
+	align-items: center;
+}
+
+.label-style-panel .label-style-row .raster-tone-slider-label {
+	flex: none;
+	width: 62px;
+	font-size: 12px;
+}
+
+.label-style-panel .label-style-row .raster-tone-slider-value {
+	flex: none;
+	width: 28px;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	font-size: 12px;
+}
+
+.raster-tone-buttons {
+	justify-content: flex-end;
+	margin-top: 8px;
 }
 
 /* Presets have only the reverse button in the vibrance row, and sequential

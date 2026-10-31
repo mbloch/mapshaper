@@ -7,6 +7,7 @@ import { parseColor } from '../color/color-utils';
 
 var SEGMENT_SIZE = 256; // color ramp table entries between two breaks
 var ENCODE_SIZE = 65536; // linear-to-sRGB table entries; fine enough to round-trip dark values exactly
+var TONE_TABLE_STEPS = 51; // lattice intervals per channel in getToneColorTable() (divides 255)
 var LIGHTNESS_STEPS = 4096; // lightness curve table intervals, interpolated linearly
 // Default hue-pivot=: OKLCH yellow-tan (ochre). Pure yellow (about 110°)
 // would shift tan rock and dry grass toward yellow-green.
@@ -161,6 +162,61 @@ export function getContrastPivots(pivots, contrast) {
   var span = Math.min(1, (hi - lo) * contrast);
   var below = room > 0 ? lo / room : 0.5;
   return [(1 - span) * below, 1 - (1 - span) * (1 - below)];
+}
+
+// A 3D lookup table of toneRgbPixels() results for a lattice of RGB colors,
+// for applying the same settings to many pixels quickly (e.g. a GUI preview).
+// Lattice colors are whole bytes, so TONE_TABLE_STEPS divides 255.
+// Returns {size, data}, where data has size^3 RGB triplets, blue varying fastest
+export function getToneColorTable(opts) {
+  var size = TONE_TABLE_STEPS + 1;
+  var step = 255 / TONE_TABLE_STEPS;
+  var samples = new Uint8Array(size * size * size * 3);
+  var i = 0, r, g, b;
+  for (r = 0; r < size; r++) {
+    for (g = 0; g < size; g++) {
+      for (b = 0; b < size; b++) {
+        samples[i++] = r * step;
+        samples[i++] = g * step;
+        samples[i++] = b * step;
+      }
+    }
+  }
+  return {size: size, data: toneRgbPixels(samples, 3, opts)};
+}
+
+// Applies a table from getToneColorTable() to RGBA pixels, interpolating
+// between lattice colors (trilinear); alpha is copied
+// @src, @dst arrays of RGBA bytes (may be the same array)
+export function applyToneColorTable(table, src, dst) {
+  var size = table.size, data = table.data;
+  var steps = size - 1;
+  var f = steps / 255;
+  var sb = 3, sg = size * 3, sr = size * size * 3;
+  var i, c, fr, fg, fb, ir, ig, ib, dr, dg, db, k, v00, v01, v10, v11, v0, v1;
+  for (i = 0; i < src.length; i += 4) {
+    fr = src[i] * f;
+    fg = src[i + 1] * f;
+    fb = src[i + 2] * f;
+    ir = fr < steps ? fr | 0 : steps - 1;
+    ig = fg < steps ? fg | 0 : steps - 1;
+    ib = fb < steps ? fb | 0 : steps - 1;
+    dr = fr - ir;
+    dg = fg - ig;
+    db = fb - ib;
+    k = ir * sr + ig * sg + ib * sb;
+    for (c = 0; c < 3; c++) {
+      v00 = data[k + c] + (data[k + c + sb] - data[k + c]) * db;
+      v01 = data[k + c + sg] + (data[k + c + sg + sb] - data[k + c + sg]) * db;
+      v10 = data[k + c + sr] + (data[k + c + sr + sb] - data[k + c + sr]) * db;
+      v11 = data[k + c + sr + sg] + (data[k + c + sr + sg + sb] - data[k + c + sr + sg]) * db;
+      v0 = v00 + (v01 - v00) * dg;
+      v1 = v10 + (v11 - v10) * dg;
+      dst[i + c] = Math.round(v0 + (v1 - v0) * dr);
+    }
+    dst[i + 3] = src[i + 3];
+  }
+  return dst;
 }
 
 // Lightnesses of an RGB or RGBA image at percentiles @pcts (0-100), from a

@@ -41,6 +41,8 @@ export function InteractionMode(gui) {
     lines: ['info', 'line_style', 'snip_lines', 'selection', 'box', 'ruler'],
     table: ['info', 'selection'],
     raster: ['box', 'ruler'],
+    // an RGB image, which -tone can adjust
+    image: ['tone', 'box', 'ruler'],
     labels: ['info', 'label', 'symbols', 'selection', 'box', 'ruler'],
     // a layer of symbols, which the point tools have no controls for
     symbols: ['info', 'symbols', 'selection', 'box', 'ruler'],
@@ -74,6 +76,7 @@ export function InteractionMode(gui) {
     point_style: 'style/edit points',
     line_style: 'style/edit lines',
     polygon_style: 'style/edit polygons',
+    tone: 'adjust colors',
     edit_points: 'style/edit points',
     edit_lines: 'draw lines',
     edit_polygons: 'draw polygons',
@@ -269,7 +272,7 @@ export function InteractionMode(gui) {
     return _editMode == 'frame' || _editMode == 'frame_draw' ||
       _editMode == 'label' || _editMode == 'label_style' || _editMode == 'symbols' ||
       _editMode == 'point_style' || _editMode == 'line_style' ||
-      _editMode == 'polygon_style';
+      _editMode == 'polygon_style' || _editMode == 'tone';
   }
 
   function getAvailableModes() {
@@ -278,7 +281,7 @@ export function InteractionMode(gui) {
       return menus.empty; // TODO: more sensible handling of missing layer
     }
     if (internal.layerHasRaster(o.layer)) {
-      return menus.raster;
+      return internal.rasterCanBeToned(o.layer.raster) ? menus.image : menus.raster;
     }
     if (!o.layer.geometry_type) {
       return menus.table;

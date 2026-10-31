@@ -218,6 +218,67 @@ describe('mapshaper-raster-color.mjs', function () {
     })
   })
 
+  describe('getToneColorTable(), applyToneColorTable()', function () {
+    // Colors near a random gray, like the colors of imagery. The table is
+    // least accurate at the edge of the gamut, where gamut fitting bends the
+    // mapping between lattice colors.
+    function randomRgba(n, seed) {
+      var out = new Uint8ClampedArray(n * 4);
+      var x = seed;
+      var i, c, base;
+      function rand() {
+        x = (x * 1103515245 + 12345) % 2147483648;
+        return x >> 16 & 255;
+      }
+      for (i = 0; i < out.length; i += 4) {
+        base = rand();
+        for (c = 0; c < 3; c++) out[i + c] = base + rand() % 81 - 40;
+        out[i + 3] = rand();
+      }
+      return out;
+    }
+
+    function rgbOnly(rgba) {
+      var out = new Uint8Array(rgba.length / 4 * 3);
+      for (var i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
+        out[j] = rgba[i]; out[j + 1] = rgba[i + 1]; out[j + 2] = rgba[i + 2];
+      }
+      return out;
+    }
+
+    [
+      {saturation: 1.4, lightness: 1},
+      {saturation: 0.6, lightness: 1.4, contrast: 1.5, gamma: 1.3, pivots: [0.2, 0.8]},
+      {saturation: 1, lightness: 0.7, contrast: 0.6, gamma: 0.7, pivots: [0.3, 0.6]}
+    ].forEach(function(opts) {
+      it('matches toneRgbPixels() ' + JSON.stringify(opts), function () {
+        var src = randomRgba(20000, 7);
+        var table = internal.getToneColorTable(opts);
+        var out = internal.applyToneColorTable(table, src, new Uint8ClampedArray(src.length));
+        var exact = internal.toneRgbPixels(rgbOnly(src), 3, opts);
+        var far = 0, sumErr = 0, err;
+        for (var i = 0, j = 0; i < src.length; i += 4, j += 3) {
+          for (var c = 0; c < 3; c++) {
+            err = Math.abs(out[i + c] - exact[j + c]);
+            if (err > 2) far++;
+            sumErr += err;
+          }
+          assert.equal(out[i + 3], src[i + 3]);
+        }
+        assert(sumErr / exact.length < 0.3, 'mean error ' + sumErr / exact.length);
+        assert(far / exact.length < 0.01, 'more than 2 levels off: ' + far);
+      })
+    })
+
+    it('lattice colors are exact', function () {
+      var opts = {saturation: 1.3, lightness: 1.2};
+      var src = new Uint8ClampedArray([0, 0, 0, 255, 255, 255, 255, 255, 5, 100, 250, 9]);
+      var out = internal.applyToneColorTable(internal.getToneColorTable(opts), src, new Uint8ClampedArray(src.length));
+      var exact = internal.toneRgbPixels(rgbOnly(src), 3, opts);
+      assert.deepEqual(Array.from(rgbOnly(out)), Array.from(exact));
+    })
+  })
+
   describe('getTrimmedRange()', function () {
     it('ignores the extreme 0.1% and invalid pixels', function () {
       var values = new Float64Array(10000);

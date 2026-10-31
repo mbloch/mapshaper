@@ -88,6 +88,19 @@ Because the math isn't the same as CSS filters, a GUI preview can't use CSS
 `filter` and has to run the same computation, perhaps on a reduced preview
 image.
 
+The GUI's tone panel ("adjust colors" in the arrow menu and the layer menu of
+an RGB image; `src/gui/gui-raster-tone-tool.mjs`) does that. It tones a copy
+of the preview the map is drawing, never the raster, so moving a slider back
+and forth doesn't degrade the image: every setting is applied to the original
+colors. While a slider is dragged, the copy is made with a 52³ lookup table of
+`toneRgbPixels()` results (`getToneColorTable()`), interpolated between
+lattice colors, which is several times faster and within a level or two except
+for very saturated colors at the edge of the gamut. When the slider is let go,
+the preview is redone exactly. The pivots come from the whole raster, as
+`-tone` computes them, so the preview matches the result. Apply runs `-tone`
+with the slider settings, which goes into the session history and the undo
+stack; Cancel, the ×, or leaving the mode drops the preview.
+
 ## -tone
 
 ```
