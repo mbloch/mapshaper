@@ -8,6 +8,12 @@ import { parseColor } from '../color/color-utils';
 var SEGMENT_SIZE = 256; // color ramp table entries between two breaks
 var ENCODE_SIZE = 65536; // linear-to-sRGB table entries; fine enough to round-trip dark values exactly
 var LIGHTNESS_STEPS = 4096; // lightness curve table intervals, interpolated linearly
+// Default hue-pivot=: OKLCH yellow-tan (ochre). Pure yellow (about 110°)
+// would shift tan rock and dry grass toward yellow-green.
+export var DEFAULT_HUE_PIVOT_DEGREES = 85;
+var DEFAULT_HUE_PIVOT = DEFAULT_HUE_PIVOT_DEGREES * Math.PI / 180;
+var HUE_SHIFT_MIN_CHROMA = 0.005;
+var HUE_SHIFT_FULL_CHROMA = 0.03;
 var GAMUT_STEPS = 12; // bisection steps when reducing chroma to fit the gamut
 
 var decodeTable = null; // sRGB byte -> linear
@@ -32,20 +38,29 @@ function encodeChannel(c) {
   return encodeTable[c <= 0 ? 0 : c >= 1 ? ENCODE_SIZE - 1 : Math.round(c * (ENCODE_SIZE - 1))];
 }
 
-// Adjusts the OKLCH lightness and chroma of each pixel of an RGB or RGBA
-// image, keeping hue. Chroma is multiplied by opts.saturation. Between the
-// lightnesses in opts.gammaRange [lo, hi], lightness follows a gamma curve
-// that keeps lo and hi fixed (opts.gamma above 1 lightens midtones); outside
-// that range it is unchanged. Lightness then moves toward black by
+// Adjusts the OKLCH lightness, chroma and hue of each pixel of an RGB or RGBA
+// image. Chroma is multiplied by opts.saturation. Lightness follows a curve
+// through black, the pivot lightnesses opts.pivots [lo, hi], and white:
+// opts.contrast moves the pivots (see getContrastPivots()); between them,
+// lightness is interpolated linearly, or along a gamma curve (opts.gamma above
+// 1 lightens midtones); below and above them, it is scaled into the room
+// that is left, so nothing clips. Lightness then moves toward black by
 // 1 - opts.lightness (below 1) or toward white by opts.lightness - 1 (above 1,
 // up to 2), so light colors never clip. Colors that end up outside the sRGB
-// gamut lose chroma until they fit, at the same lightness and hue.
+// gamut lose chroma until they fit, at the same lightness and hue. Hues move
+// toward opts.huePivot (degrees) by opts.hueShift (see getHueShiftRotation()).
 // @samples interleaved uint8 samples with @bands (3 or 4) per pixel; alpha
 //   is copied
 // Returns a new array of the same layout
 export function toneRgbPixels(samples, bands, opts) {
   var sat = opts.saturation;
-  var curve = getLightnessCurve(opts.lightness, opts.gamma > 0 ? opts.gamma : 1, opts.gammaRange || [0, 1]);
+  var hueShift = opts.hueShift || 0;
+  var pivot = opts.huePivot == null ? DEFAULT_HUE_PIVOT : opts.huePivot * Math.PI / 180;
+  var theta, cosT, sinT, A0;
+  var pivots = opts.pivots || [0, 1];
+  var contrast = opts.contrast == null ? 1 : opts.contrast;
+  var curve = getLightnessCurve(opts.lightness, opts.gamma > 0 ? opts.gamma : 1, pivots,
+    getContrastPivots(pivots, contrast));
   var curveMax = LIGHTNESS_STEPS - 1e-9;
   var out = new Uint8Array(samples.length);
   var rgb = [0, 0, 0];
@@ -64,6 +79,16 @@ export function toneRgbPixels(samples, bands, opts) {
     L = curve[j] + (curve[j + 1] - curve[j]) * (L - j);
     A = (1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s) * sat;
     B = (0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s) * sat;
+    if (hueShift !== 0) {
+      theta = getHueShiftRotation(A, B, hueShift, pivot);
+      if (theta !== 0) {
+        cosT = Math.cos(theta);
+        sinT = Math.sin(theta);
+        A0 = A;
+        A = A0 * cosT - B * sinT;
+        B = A0 * sinT + B * cosT;
+      }
+    }
     if (!oklabToLinear(L, A, B, rgb)) {
       fitChroma(L, A, B, rgb);
     }
@@ -75,20 +100,67 @@ export function toneRgbPixels(samples, bands, opts) {
   return out;
 }
 
-function getLightnessCurve(lightness, gamma, range) {
+// Hue rotation (radians) for hue-shift=: hues move toward @pivot (radians) by
+// @shift times their distance from it, fading out toward the opposite hue
+// and for near-gray colors (whose hue is unstable). The rotation never passes
+// the pivot, so hues keep their order for shifts up to 1.
+function getHueShiftRotation(A, B, shift, pivot) {
+  var C = Math.sqrt(A * A + B * B);
+  var weight, delta;
+  if (C <= HUE_SHIFT_MIN_CHROMA) return 0;
+  weight = C >= HUE_SHIFT_FULL_CHROMA ? 1 : (C - HUE_SHIFT_MIN_CHROMA) / (HUE_SHIFT_FULL_CHROMA - HUE_SHIFT_MIN_CHROMA);
+  delta = pivot - Math.atan2(B, A);
+  if (delta > Math.PI) delta -= 2 * Math.PI;
+  if (delta < -Math.PI) delta += 2 * Math.PI;
+  return shift * weight * delta * Math.cos(delta / 2);
+}
+
+// OKLCH hue of a color, in degrees, or null for a gray
+export function getOklchHue(r, g, b) {
+  var lab = [0, 0, 0];
+  var h;
+  srgbToOklab(r, g, b, lab);
+  if (Math.sqrt(lab[1] * lab[1] + lab[2] * lab[2]) < 0.01) return null;
+  h = Math.atan2(lab[2], lab[1]) * 180 / Math.PI;
+  return h < 0 ? h + 360 : h;
+}
+
+function getLightnessCurve(lightness, gamma, pivots, contrastPivots) {
   var lighten = Math.max(0, lightness - 1);
   var scale = Math.min(1, lightness);
-  var lo = range[0], span = range[1] - range[0];
+  var lo = pivots[0], hi = pivots[1], span = hi - lo;
+  var lo2 = contrastPivots[0], hi2 = contrastPivots[1];
   var curve = new Float64Array(LIGHTNESS_STEPS + 1);
-  var i, L;
+  var i, L, t;
   for (i = 0; i <= LIGHTNESS_STEPS; i++) {
     L = i / LIGHTNESS_STEPS;
-    if (gamma != 1 && span > 0 && L > lo && L < lo + span) {
-      L = lo + span * Math.pow((L - lo) / span, 1 / gamma);
+    if (span > 0) {
+      if (L <= lo) {
+        L = lo > 0 ? L * lo2 / lo : lo2;
+      } else if (L >= hi) {
+        L = hi < 1 ? hi2 + (L - hi) * (1 - hi2) / (1 - hi) : hi2;
+      } else {
+        t = (L - lo) / span;
+        if (gamma != 1) t = Math.pow(t, 1 / gamma);
+        L = lo2 + (hi2 - lo2) * t;
+      }
     }
     curve[i] = L * scale + (1 - L) * lighten;
   }
   return curve;
+}
+
+// Where contrast= moves the pivot lightnesses [lo, hi]: the range between
+// them is multiplied by @contrast, up to the full range from black to white,
+// and the room below and above them keeps its ratio. So the lightness that
+// divides black to white in that ratio stays fixed, and a contrast change is
+// undone by its reciprocal.
+export function getContrastPivots(pivots, contrast) {
+  var lo = pivots[0], hi = pivots[1];
+  var room = lo + (1 - hi);
+  var span = Math.min(1, (hi - lo) * contrast);
+  var below = room > 0 ? lo / room : 0.5;
+  return [(1 - span) * below, 1 - (1 - span) * (1 - below)];
 }
 
 // Lightnesses of an RGB or RGBA image at percentiles @pcts (0-100), from a
@@ -116,7 +188,15 @@ export function getImageLightnessPercentiles(samples, bands, valid, pcts, maxSam
 
 // Writes the OKLCH lightness and chroma of an sRGB color (bytes) to @out
 export function getOklchLightnessChroma(r, g, b, out) {
-  var l, m, s, A, B;
+  var lab = [0, 0, 0];
+  srgbToOklab(r, g, b, lab);
+  out[0] = Math.min(1, Math.max(0, lab[0]));
+  out[1] = Math.sqrt(lab[1] * lab[1] + lab[2] * lab[2]);
+}
+
+// Writes the OKLab L, a, b of an sRGB color (bytes) to @out
+function srgbToOklab(r, g, b, out) {
+  var l, m, s;
   initTables();
   r = decodeTable[r];
   g = decodeTable[g];
@@ -124,10 +204,9 @@ export function getOklchLightnessChroma(r, g, b, out) {
   l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
   m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
   s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
-  A = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s;
-  B = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
-  out[0] = Math.min(1, Math.max(0, 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s));
-  out[1] = Math.sqrt(A * A + B * B);
+  out[0] = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s;
+  out[1] = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s;
+  out[2] = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
 }
 
 // Writes linear RGB to @rgb; returns false if the color is outside the gamut

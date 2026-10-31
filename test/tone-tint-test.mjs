@@ -45,6 +45,12 @@ function oklabL(r, g, b) {
   return internal.rgbToOklab({r: r, g: g, b: b}).l;
 }
 
+function oklabHue(r, g, b) {
+  var o = internal.rgbToOklab({r: r, g: g, b: b});
+  var h = Math.atan2(o.b, o.a) * 180 / Math.PI;
+  return h < 0 ? h + 360 : h;
+}
+
 var COLORS = [
   [0, 0, 0], [255, 255, 255], [128, 128, 128], [255, 0, 0], [0, 255, 0], [0, 0, 255],
   [60, 90, 40], [200, 180, 120], [20, 40, 90], [250, 240, 10], [3, 2, 1]
@@ -113,15 +119,25 @@ describe('mapshaper-raster-color.mjs', function () {
       assert(Math.abs(oklabL(out[3], out[4], out[5]) - Math.sqrt(L)) < 0.005);
     })
 
-    it('the gamma curve runs between the ends of gammaRange', function () {
+    it('the gamma curve runs between the pivots', function () {
       var src = [[40, 40, 40], [90, 110, 70], [180, 180, 180], [240, 240, 240]];
       var lo = oklabL(40, 40, 40), hi = oklabL(180, 180, 180);
-      var out = internal.toneRgbPixels(colorSamples(src), 3, {saturation: 1, lightness: 1, gamma: 2, gammaRange: [lo, hi]});
+      var out = internal.toneRgbPixels(colorSamples(src), 3, {saturation: 1, lightness: 1, gamma: 2, pivots: [lo, hi]});
       var L = oklabL(90, 110, 70);
       var expected = lo + (hi - lo) * Math.sqrt((L - lo) / (hi - lo));
       assert.deepEqual(Array.from(out.subarray(0, 3)), [40, 40, 40]);
       assert(Math.abs(oklabL(out[3], out[4], out[5]) - expected) < 0.005);
       assert.deepEqual(Array.from(out.subarray(6, 12)), [180, 180, 180, 240, 240, 240]);
+    })
+
+    it('hue-shift= moves greens toward the default pivot, keeping grays and blues', function () {
+      var src = [[60, 120, 50], [128, 128, 128], [40, 70, 160]];
+      var out = internal.toneRgbPixels(colorSamples(src), 3, {saturation: 1, lightness: 1, hueShift: 0.5});
+      var hueBefore = oklabHue(60, 120, 50), hueAfter = oklabHue(out[0], out[1], out[2]);
+      assert(hueBefore - hueAfter > 15 && hueAfter > 85);
+      assert(Math.abs(oklabL(out[0], out[1], out[2]) - oklabL(60, 120, 50)) < 0.005);
+      assert.deepEqual(Array.from(out.subarray(3, 6)), [128, 128, 128]);
+      assert(Math.abs(oklabHue(out[6], out[7], out[8]) - oklabHue(40, 70, 160)) < 5);
     })
 
     it('gamma= is applied before lightness=', function () {
@@ -245,8 +261,53 @@ describe('-tone', function () {
     assert.deepEqual(Array.from(s.subarray(0, 3)), [40, 40, 40]);
     assert.deepEqual(Array.from(s.subarray(s.length - 3)), [200, 200, 200]);
     assert(s[mid * 3] > grays[mid][0] + 10);
-    assert.equal(lyr.raster.derivation.gamma_range.length, 2);
+    assert.equal(lyr.raster.derivation.pivots.length, 2);
   })
+
+  function grayRamp() {
+    var grays = [];
+    for (var v = 40; v <= 200; v += 2) grays.push([v, v, v]);
+    return makeCatalog(colorSamples(grays), grays.length, 1, 3);
+  }
+
+  it('contrast= multiplies the range between the pivots, keeping the ratio of the room outside them', async function () {
+    var catalog = await run(grayRamp(), '-tone contrast=1.5');
+    var d = findLayer(catalog, 'img').raster.derivation;
+    var s = findLayer(catalog, 'img').raster.grid.samples;
+    var lo = d.pivots[0], hi = d.pivots[1], lo2 = d.contrast_pivots[0], hi2 = d.contrast_pivots[1];
+    assert(Math.abs((hi2 - lo2) - (hi - lo) * 1.5) < 0.002);
+    assert(Math.abs(lo2 / (lo2 + 1 - hi2) - lo / (lo + 1 - hi)) < 0.005);
+    assert(s[0] < 40 && s[0] > 0);
+    assert(s[s.length - 1] > 200 && s[s.length - 1] < 255);
+    for (var i = 3; i < s.length; i += 3) assert(s[i] >= s[i - 3]);
+  })
+
+  it('contrast= is undone by its reciprocal', async function () {
+    var src = grayRamp();
+    var orig = Array.from(findLayer(src, 'img').raster.grid.samples);
+    var catalog = await run(src, '-tone contrast=1.5 -tone contrast=0.6667');
+    var s = findLayer(catalog, 'img').raster.grid.samples;
+    for (var i = 0; i < s.length; i++) assert(Math.abs(s[i] - orig[i]) <= 2, i + ': ' + s[i] + ' vs ' + orig[i]);
+  })
+
+  it('contrast= stops at black to white, and 0 is flat', async function () {
+    var high = findLayer(await run(grayRamp(), '-tone contrast=100'), 'img').raster.derivation;
+    var flat = findLayer(await run(grayRamp(), '-tone contrast=0'), 'img').raster.derivation;
+    assert.deepEqual(high.contrast_pivots, [0, 1]);
+    assert.equal(flat.contrast_pivots[0], flat.contrast_pivots[1]);
+  })
+  it('hue-pivot= takes a color or a hue angle', async function () {
+    var green = [[60, 120, 50]];
+    var byColor = await run(makeCatalog(colorSamples(green), 1, 1, 3), '-tone hue-shift=0.5 hue-pivot=#4a6fa5');
+    var byAngle = await run(makeCatalog(colorSamples(green), 1, 1, 3), '-tone hue-shift=0.5 hue-pivot=200');
+    var lyr = findLayer(byColor, 'img');
+    var s = lyr.raster.grid.samples;
+    var s2 = findLayer(byAngle, 'img').raster.grid.samples;
+    assert(oklabHue(s[0], s[1], s[2]) > oklabHue(60, 120, 50) + 15);
+    assert(oklabHue(s2[0], s2[1], s2[2]) > oklabHue(60, 120, 50) + 15);
+    assert(Math.abs(lyr.raster.derivation.hue_pivot - oklabHue(0x4a, 0x6f, 0xa5)) < 0.1);
+  })
+
   it('opacity= and background=', async function () {
     var catalog = await run(makeCatalog(colorSamples([[0, 100, 200]]), 1, 1, 3), '-tone opacity=0.4 background=white');
     var grid = findLayer(catalog, 'img').raster.grid;
@@ -267,6 +328,10 @@ describe('-tone', function () {
     await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone saturation=-1'), /saturation= should be 0 or more/);
     await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone lightness=2.5'), /lightness= should be from 0 to 2/);
     await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone gamma=0'), /gamma= should be a positive number/);
+    await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone contrast=-1'), /contrast= should be 0 or more/);
+    await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone hue-shift=2'), /hue-shift= should be from -1 to 1/);
+    await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone hue-shift=0.5 hue-pivot=gray'), /needs a color with a hue/);
+    await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone hue-shift=0.5 hue-pivot=nocolor'), /Unsupported hue-pivot=/);
     await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone background=nocolor'), /background=/);
   })
 })

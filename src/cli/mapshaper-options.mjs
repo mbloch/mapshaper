@@ -3204,9 +3204,20 @@ export function getOptionParser() {
       describe: '0-2: below 1 darkens toward black, above 1 lightens toward white (default is 1)',
       type: 'number'
     })
+    .option('contrast', {
+      describe: 'multiply the lightness range between the image\'s darks and lights (1st and 99th percentile), up to black to white; 0 is flat (default is 1)',
+      type: 'number'
+    })
     .option('gamma', {
       describe: 'tone curve between the image\'s darks and lights (1st and 99th percentile lightness); above 1 lightens midtones (default is 1)',
       type: 'number'
+    })
+    .option('hue-shift', {
+      describe: '-1 to 1: move hues toward the pivot hue by this fraction of their distance from it, or away (e.g. 0.4 turns greens olive)',
+      type: 'number'
+    })
+    .option('hue-pivot', {
+      describe: 'hue that hue-shift= moves toward: a color or an OKLCH hue angle (default is 85, yellow-tan)'
     })
     .option('opacity', rasterOpacityOpt)
     .option('background', rasterBackgroundOpt)

@@ -1,19 +1,20 @@
 import cmd from '../mapshaper-cmd';
 import { parseColor } from '../color/color-utils';
 import { layerHasRaster, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
-import { applyOpacityAndBackground, getImageLightnessPercentiles, toneRgbPixels } from '../rasters/mapshaper-raster-color';
+import { applyOpacityAndBackground, DEFAULT_HUE_PIVOT_DEGREES, getContrastPivots, getImageLightnessPercentiles,
+  getOklchHue, toneRgbPixels } from '../rasters/mapshaper-raster-color';
 import { getRasterValidityMask } from '../rasters/mapshaper-raster-grid';
 import { createRasterPreview, getRasterGrid, getRasterViewRecipe } from '../rasters/mapshaper-raster-utils';
 import { runningInBrowser } from '../mapshaper-env';
 import { stop } from '../utils/mapshaper-logging';
 
-var GAMMA_PERCENTILES = [1, 99];
-var GAMMA_SAMPLES = 1e6;
+var PIVOT_PERCENTILES = [1, 99];
+var PIVOT_SAMPLES = 1e6;
 
 // Adjusts the colors of an RGB image (see docs/development/raster-tone-tint.md)
 // Returns a new layer; -tone replaces the target unless + is used
 cmd.tone = function(lyr, opts) {
-  var grid, saturation, lightness, gamma, gammaRange, opacity, background, samples, result, out;
+  var grid, saturation, lightness, gamma, contrast, pivots, hueShift, huePivot, opacity, background, samples, result, out;
   if (!layerHasRaster(lyr)) {
     stop('Command requires a raster layer');
   }
@@ -25,12 +26,17 @@ cmd.tone = function(lyr, opts) {
   if (!(lightness >= 0 && lightness <= 2)) stop('lightness= should be from 0 to 2');
   gamma = opts.gamma == null ? 1 : opts.gamma;
   if (!(gamma > 0)) stop('gamma= should be a positive number');
+  contrast = opts.contrast == null ? 1 : opts.contrast;
+  if (!(contrast >= 0)) stop('contrast= should be 0 or more');
+  hueShift = opts.hue_shift == null ? 0 : opts.hue_shift;
+  if (!(hueShift >= -1 && hueShift <= 1)) stop('hue-shift= should be from -1 to 1');
+  huePivot = getHuePivot(opts.hue_pivot);
   opacity = getRasterOpacity(opts);
   background = getRasterBackground(opts);
-  gammaRange = gamma == 1 ? null : getGammaRange(grid);
-  samples = saturation == 1 && lightness == 1 && !gammaRange ? grid.samples :
+  pivots = gamma == 1 && contrast == 1 ? null : getPivots(grid);
+  samples = saturation == 1 && lightness == 1 && !pivots && hueShift === 0 ? grid.samples :
     toneRgbPixels(grid.samples, grid.bands, {saturation: saturation, lightness: lightness,
-      gamma: gamma, gammaRange: gammaRange});
+      gamma: gamma, contrast: contrast, pivots: pivots, hueShift: hueShift, huePivot: huePivot});
   result = applyOpacityAndBackground(samples, grid.bands, opacity, background);
   if (result.samples == grid.samples) {
     result.samples = grid.samples.slice();
@@ -42,7 +48,11 @@ cmd.tone = function(lyr, opts) {
       saturation: saturation,
       lightness: lightness,
       gamma: gamma,
-      gamma_range: gammaRange,
+      contrast: contrast,
+      pivots: pivots,
+      contrast_pivots: pivots ? getContrastPivots(pivots, contrast).map(roundLightness) : null,
+      hue_shift: hueShift,
+      hue_pivot: huePivot,
       opacity: opacity,
       background: opts.background || null
     })
@@ -51,14 +61,32 @@ cmd.tone = function(lyr, opts) {
   return [out];
 };
 
-// The image's 1st and 99th percentile lightness, which gamma= keeps fixed
-// (the extremes are usually a few clouds or shadows)
-function getGammaRange(grid) {
+// @arg a hue angle in degrees, or a color whose OKLCH hue is used
+// Returns degrees
+function getHuePivot(arg) {
+  var color, hue;
+  if (arg == null || arg === '') return DEFAULT_HUE_PIVOT_DEGREES;
+  if (/^-?[0-9.]+$/.test(String(arg))) {
+    hue = Number(arg) % 360;
+    return hue < 0 ? hue + 360 : hue;
+  }
+  color = parseColor(String(arg));
+  if (!color) stop('Unsupported hue-pivot=', arg);
+  hue = getOklchHue(color.r, color.g, color.b);
+  if (hue === null) stop('hue-pivot= needs a color with a hue (not a gray)');
+  return Math.round(hue * 10) / 10;
+}
+
+// The image's 1st and 99th percentile lightness, the pivots of contrast= and
+// gamma= (the extremes are usually a few clouds or shadows)
+function getPivots(grid) {
   var range = getImageLightnessPercentiles(grid.samples, grid.bands,
-    getRasterValidityMask(grid), GAMMA_PERCENTILES, GAMMA_SAMPLES);
-  return range && range[1] > range[0] ? range.map(function(L) {
-    return Math.round(L * 1000) / 1000;
-  }) : null;
+    getRasterValidityMask(grid), PIVOT_PERCENTILES, PIVOT_SAMPLES);
+  return range && range[1] > range[0] ? range.map(roundLightness) : null;
+}
+
+function roundLightness(L) {
+  return Math.round(L * 1000) / 1000;
 }
 
 function validateToneGrid(grid) {
