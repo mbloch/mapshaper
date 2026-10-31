@@ -104,7 +104,7 @@ image.
 | `background=` | 1 | Composites the result over this color, making it opaque. |
 | `+`, `name=`, `target=` | 1 | As for other commands. |
 | `contrast=` | Later | Undecided (see [Open questions](#open-questions)); to be designed after testing the Phase 1 options on real imagery. |
-| `gamma=` | 1 | Lightness tone curve, L′ = L^(1/gamma): above 1 lightens midtones and shadows, keeping black and white (the same direction as in `-hillshade`). |
+| `gamma=` | 1 | Lightness tone curve between the image's 1st and 99th percentile lightness, which stay fixed: above 1 lightens midtones and shadows (the same direction as in `-hillshade`). See [gamma=](#gamma). |
 | `colors=` | Later | Maps lightness onto a color ramp, dark to light (duotone or more colors). Replaces saturation and hue, so it can't be combined with `saturation=`. |
 | `range=` | Later | Input lightness range mapped onto `colors=`: `auto` or two numbers, e.g. `0.2,0.65`. Default is 0 to 1. |
 | `interpolation=` | Later | `oklch` (default) or `rgb`, for `colors=`. |
@@ -121,6 +121,30 @@ image.
    on `lightness=`. The two are combined into one lookup table over lightness.
 3. `saturation=` (chroma), or `colors=` (lightness to ramp color).
 4. Convert back to sRGB.
+
+### gamma=
+
+The curve runs between the image's own darks and lights, the 1st and 99th
+percentiles of its lightness (lo and hi, from a sample of at most a million
+visible pixels):
+
+L′ = lo + (hi − lo) × ((L − lo) / (hi − lo))^(1/gamma)
+
+Pixels outside lo to hi are unchanged. Imagery rarely reaches black or
+white, so a curve over the full 0-1 scale moved the image's whole range as
+well as its midtones: on EOX imagery (0.25-0.61), `gamma=1.6` moved the
+darks to 0.42 and the lights to 0.73, and getting both the curve and the
+overall lightness right meant alternating between `gamma=` and `lightness=`.
+With the curve on the image's range, `gamma=` only shapes the midtones
+(EOX, `gamma=1.6`: median 0.39 to 0.45, with the 1st and 99th percentiles
+unchanged), and `lightness=` sets the overall lightness. Percentiles rather
+than the minimum and maximum, because the extremes are a few clouds or
+shadows (EOX: 0.08-0.99), which would make the curve nearly absolute again.
+
+The range found is recorded in the layer's derivation as `gamma_range`.
+Like `range=auto`, it depends on the frame, so adjacent map sheets can get
+slightly different curves. If that matters, `range=lo,hi` (later) could also
+pin the gamma range, and `verbose` print the range found.
 5. `opacity=`, then `background=`.
 
 ### opacity= and background=

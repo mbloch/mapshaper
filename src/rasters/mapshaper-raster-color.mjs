@@ -33,18 +33,19 @@ function encodeChannel(c) {
 }
 
 // Adjusts the OKLCH lightness and chroma of each pixel of an RGB or RGBA
-// image, keeping hue. Chroma is multiplied by opts.saturation. Lightness is
-// raised to 1 / opts.gamma (above 1 lightens midtones), then moves toward
-// black by 1 - opts.lightness (below 1) or toward white by
-// opts.lightness - 1 (above 1, up to 2), so light colors never clip. Colors
-// that end up outside the sRGB gamut lose chroma until they fit, at the same
-// lightness and hue.
+// image, keeping hue. Chroma is multiplied by opts.saturation. Between the
+// lightnesses in opts.gammaRange [lo, hi], lightness follows a gamma curve
+// that keeps lo and hi fixed (opts.gamma above 1 lightens midtones); outside
+// that range it is unchanged. Lightness then moves toward black by
+// 1 - opts.lightness (below 1) or toward white by opts.lightness - 1 (above 1,
+// up to 2), so light colors never clip. Colors that end up outside the sRGB
+// gamut lose chroma until they fit, at the same lightness and hue.
 // @samples interleaved uint8 samples with @bands (3 or 4) per pixel; alpha
 //   is copied
 // Returns a new array of the same layout
 export function toneRgbPixels(samples, bands, opts) {
   var sat = opts.saturation;
-  var curve = getLightnessCurve(opts.lightness, opts.gamma > 0 ? opts.gamma : 1);
+  var curve = getLightnessCurve(opts.lightness, opts.gamma > 0 ? opts.gamma : 1, opts.gammaRange || [0, 1]);
   var curveMax = LIGHTNESS_STEPS - 1e-9;
   var out = new Uint8Array(samples.length);
   var rgb = [0, 0, 0];
@@ -74,16 +75,59 @@ export function toneRgbPixels(samples, bands, opts) {
   return out;
 }
 
-function getLightnessCurve(lightness, gamma) {
+function getLightnessCurve(lightness, gamma, range) {
   var lighten = Math.max(0, lightness - 1);
   var scale = Math.min(1, lightness);
+  var lo = range[0], span = range[1] - range[0];
   var curve = new Float64Array(LIGHTNESS_STEPS + 1);
   var i, L;
   for (i = 0; i <= LIGHTNESS_STEPS; i++) {
-    L = Math.pow(i / LIGHTNESS_STEPS, 1 / gamma);
+    L = i / LIGHTNESS_STEPS;
+    if (gamma != 1 && span > 0 && L > lo && L < lo + span) {
+      L = lo + span * Math.pow((L - lo) / span, 1 / gamma);
+    }
     curve[i] = L * scale + (1 - L) * lighten;
   }
   return curve;
+}
+
+// Lightnesses of an RGB or RGBA image at percentiles @pcts (0-100), from a
+// sample of at most @maxSamples visible pixels
+// @valid optional validity mask; pixels with alpha 0 are also skipped
+// Returns an array of values, or null if no pixels are visible
+export function getImageLightnessPercentiles(samples, bands, valid, pcts, maxSamples) {
+  var n = samples.length / bands;
+  var step = Math.max(1, Math.floor(n / maxSamples));
+  var values = [];
+  var lc = [0, 0];
+  var i, j;
+  for (i = 0; i < n; i += step) {
+    j = i * bands;
+    if (valid && !valid[i] || bands == 4 && samples[j + 3] === 0) continue;
+    getOklchLightnessChroma(samples[j], samples[j + 1], samples[j + 2], lc);
+    values.push(lc[0]);
+  }
+  if (values.length === 0) return null;
+  values = Float64Array.from(values).sort();
+  return pcts.map(function(pct) {
+    return values[Math.round((values.length - 1) * pct / 100)];
+  });
+}
+
+// Writes the OKLCH lightness and chroma of an sRGB color (bytes) to @out
+export function getOklchLightnessChroma(r, g, b, out) {
+  var l, m, s, A, B;
+  initTables();
+  r = decodeTable[r];
+  g = decodeTable[g];
+  b = decodeTable[b];
+  l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  A = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s;
+  B = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
+  out[0] = Math.min(1, Math.max(0, 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s));
+  out[1] = Math.sqrt(A * A + B * B);
 }
 
 // Writes linear RGB to @rgb; returns false if the color is outside the gamut

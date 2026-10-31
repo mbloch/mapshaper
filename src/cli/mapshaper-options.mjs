@@ -3205,7 +3205,7 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('gamma', {
-      describe: 'tone curve; above 1 lightens midtones, keeping black and white (default is 1)',
+      describe: 'tone curve between the image\'s darks and lights (1st and 99th percentile lightness); above 1 lightens midtones (default is 1)',
       type: 'number'
     })
     .option('opacity', rasterOpacityOpt)

@@ -5,6 +5,7 @@ import { getLayerBounds, getFeatureCount, getLayerSourceFile, layerHasRaster } f
 import { getRasterBandCount, getRasterHeight, getRasterPixelType, getRasterWidth } from '../rasters/mapshaper-raster-utils';
 import { getRasterValidityMask } from '../rasters/mapshaper-raster-grid';
 import { getHillshadeCellSizes } from './mapshaper-hillshade';
+import { getOklchLightnessChroma } from '../rasters/mapshaper-raster-color';
 import { expandCommandTargets } from '../dataset/mapshaper-target-utils';
 import { writeFiles } from '../io/mapshaper-file-export';
 import { runningInBrowser } from '../mapshaper-env';
@@ -71,6 +72,8 @@ export function getLayerInfo(lyr, dataset) {
     o.proj4 = getProjInfo(dataset);
     if (rasterLooksLikeElevation(lyr.raster)) {
       o.elevation = getElevationInfo(lyr.raster.grid, getDatasetCRS(dataset));
+    } else if (rasterLooksLikeImage(lyr.raster)) {
+      o.image = getImageInfo(lyr.raster.grid);
     }
   }
   if (lyr.shapes && lyr.shapes.length > 0) {
@@ -85,6 +88,9 @@ export function getLayerInfo(lyr, dataset) {
 
 var ELEVATION_PERCENTILES = [1, 25, 50, 75, 99];
 var ELEVATION_SAMPLES = 1e6;
+var IMAGE_PERCENTILES = [1, 25, 50, 75, 99];
+var IMAGE_CHROMA_PERCENTILES = [50, 99];
+var IMAGE_SAMPLES = 1e6;
 
 // Single-band numeric rasters (e.g. GeoTIFF DEMs) and rasters imported with
 // raster-type=continuous; 8-bit single-band rasters are usually grayscale images
@@ -136,6 +142,98 @@ export function getElevationInfo(grid, crs) {
     }, {});
   }
   return o;
+}
+
+// 8-bit grayscale, RGB and RGBA images (not palette images, or 8-bit rasters
+// imported as continuous or categorical data)
+export function rasterLooksLikeImage(raster) {
+  var grid = raster && raster.grid;
+  if (!grid || !grid.samples || raster.interpretation == 'categorical' ||
+      raster.interpretation == 'continuous' || grid.colorModel == 'palette') return false;
+  return /^uint8$/.test(grid.pixelType || '') && (grid.bands == 1 || grid.bands == 3 || grid.bands == 4);
+}
+
+// OKLCH lightness and chroma of the visible pixels of an 8-bit image, from a
+// sample of at most IMAGE_SAMPLES pixels
+export function getImageInfo(grid) {
+  var n = grid.width * grid.height;
+  var bands = grid.bands;
+  var valid = getRasterValidityMask(grid);
+  var step = Math.max(1, Math.floor(n / IMAGE_SAMPLES));
+  var lightness = [], chroma = [];
+  var lc = [0, 0];
+  var transparent = 0, sum = 0;
+  var i, j, o;
+  for (i = 0; i < n; i++) {
+    j = i * bands;
+    if (valid && !valid[i] || bands == 4 && grid.samples[j + 3] === 0) {
+      transparent++;
+      continue;
+    }
+    if (i % step !== 0) continue;
+    if (bands == 1) {
+      getOklchLightnessChroma(grid.samples[j], grid.samples[j], grid.samples[j], lc);
+    } else {
+      getOklchLightnessChroma(grid.samples[j], grid.samples[j + 1], grid.samples[j + 2], lc);
+    }
+    lightness.push(lc[0]);
+    chroma.push(lc[1]);
+    sum += lc[0];
+  }
+  o = {
+    pixel_count: n,
+    transparent_count: transparent,
+    has_alpha: bands == 4 || !!valid,
+    lightness: null,
+    chroma: null
+  };
+  if (lightness.length > 0) {
+    lightness = Float64Array.from(lightness).sort();
+    chroma = Float64Array.from(chroma).sort();
+    o.lightness = {
+      min: roundImageValue(lightness[0]),
+      max: roundImageValue(lightness[lightness.length - 1]),
+      mean: roundImageValue(sum / lightness.length),
+      percentiles: getSortedPercentiles(lightness, IMAGE_PERCENTILES, roundImageValue)
+    };
+    o.chroma = bands == 1 ? null : getSortedPercentiles(chroma, IMAGE_CHROMA_PERCENTILES, roundImageValue);
+  }
+  return o;
+}
+
+function getSortedPercentiles(sorted, percentiles, round) {
+  return percentiles.reduce(function(memo, pct) {
+    memo[pct] = round(sorted[Math.round((sorted.length - 1) * pct / 100)]);
+    return memo;
+  }, {});
+}
+
+function roundImageValue(val) {
+  return Math.round(val * 1000) / 1000;
+}
+
+function getImageInfoRows(o) {
+  var rows = [];
+  var fmt = function(val) { return val.toFixed(2); };
+  if (o.has_alpha) {
+    rows.push(['Transparent', utils.format('%,d', o.transparent_count) +
+      (o.transparent_count == 1 ? ' pixel (' : ' pixels (') + formatPercent(o.transparent_count, o.pixel_count) + ')']);
+  }
+  if (!o.lightness) {
+    rows.push(['Lightness', 'no visible pixels']);
+    return rows;
+  }
+  rows.push(['Lightness', fmt(o.lightness.min) + ' to ' + fmt(o.lightness.max) +
+    ' (mean ' + fmt(o.lightness.mean) + ', OKLCH 0-1)']);
+  rows.push(['Percentiles', IMAGE_PERCENTILES.map(function(pct) {
+    return pct + '%: ' + fmt(o.lightness.percentiles[pct]);
+  }).join(' | ')]);
+  if (o.chroma) {
+    rows.push(['Chroma', IMAGE_CHROMA_PERCENTILES.map(function(pct) {
+      return (pct == 50 ? 'median ' : pct + '%: ') + o.chroma[pct].toFixed(3);
+    }).join(' | ') + ' (OKLCH; 0 is gray)']);
+  }
+  return rows;
 }
 
 // Median ground width and height of a pixel, in meters
@@ -204,6 +302,8 @@ export function getLayerInfoRows(info) {
     rows.push(['Data', info.raster_pixel_type || 'unknown']);
     if (info.elevation) {
       rows = rows.concat(getElevationInfoRows(info.elevation));
+    } else if (info.image) {
+      rows = rows.concat(getImageInfoRows(info.image));
     }
   } else {
     rows.push(['Records', utils.format('%,d', info.feature_count)]);

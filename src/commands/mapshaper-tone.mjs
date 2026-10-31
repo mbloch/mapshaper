@@ -1,15 +1,19 @@
 import cmd from '../mapshaper-cmd';
 import { parseColor } from '../color/color-utils';
 import { layerHasRaster, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
-import { applyOpacityAndBackground, toneRgbPixels } from '../rasters/mapshaper-raster-color';
+import { applyOpacityAndBackground, getImageLightnessPercentiles, toneRgbPixels } from '../rasters/mapshaper-raster-color';
+import { getRasterValidityMask } from '../rasters/mapshaper-raster-grid';
 import { createRasterPreview, getRasterGrid, getRasterViewRecipe } from '../rasters/mapshaper-raster-utils';
 import { runningInBrowser } from '../mapshaper-env';
 import { stop } from '../utils/mapshaper-logging';
 
+var GAMMA_PERCENTILES = [1, 99];
+var GAMMA_SAMPLES = 1e6;
+
 // Adjusts the colors of an RGB image (see docs/development/raster-tone-tint.md)
 // Returns a new layer; -tone replaces the target unless + is used
 cmd.tone = function(lyr, opts) {
-  var grid, saturation, lightness, gamma, opacity, background, samples, result, out;
+  var grid, saturation, lightness, gamma, gammaRange, opacity, background, samples, result, out;
   if (!layerHasRaster(lyr)) {
     stop('Command requires a raster layer');
   }
@@ -23,8 +27,10 @@ cmd.tone = function(lyr, opts) {
   if (!(gamma > 0)) stop('gamma= should be a positive number');
   opacity = getRasterOpacity(opts);
   background = getRasterBackground(opts);
-  samples = saturation == 1 && lightness == 1 && gamma == 1 ? grid.samples :
-    toneRgbPixels(grid.samples, grid.bands, {saturation: saturation, lightness: lightness, gamma: gamma});
+  gammaRange = gamma == 1 ? null : getGammaRange(grid);
+  samples = saturation == 1 && lightness == 1 && !gammaRange ? grid.samples :
+    toneRgbPixels(grid.samples, grid.bands, {saturation: saturation, lightness: lightness,
+      gamma: gamma, gammaRange: gammaRange});
   result = applyOpacityAndBackground(samples, grid.bands, opacity, background);
   if (result.samples == grid.samples) {
     result.samples = grid.samples.slice();
@@ -36,6 +42,7 @@ cmd.tone = function(lyr, opts) {
       saturation: saturation,
       lightness: lightness,
       gamma: gamma,
+      gamma_range: gammaRange,
       opacity: opacity,
       background: opts.background || null
     })
@@ -43,6 +50,16 @@ cmd.tone = function(lyr, opts) {
   setOutputLayerName(out, lyr, 'tone', opts);
   return [out];
 };
+
+// The image's 1st and 99th percentile lightness, which gamma= keeps fixed
+// (the extremes are usually a few clouds or shadows)
+function getGammaRange(grid) {
+  var range = getImageLightnessPercentiles(grid.samples, grid.bands,
+    getRasterValidityMask(grid), GAMMA_PERCENTILES, GAMMA_SAMPLES);
+  return range && range[1] > range[0] ? range.map(function(L) {
+    return Math.round(L * 1000) / 1000;
+  }) : null;
+}
 
 function validateToneGrid(grid) {
   if (!grid || !grid.samples || !grid.bbox) {

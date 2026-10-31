@@ -113,6 +113,17 @@ describe('mapshaper-raster-color.mjs', function () {
       assert(Math.abs(oklabL(out[3], out[4], out[5]) - Math.sqrt(L)) < 0.005);
     })
 
+    it('the gamma curve runs between the ends of gammaRange', function () {
+      var src = [[40, 40, 40], [90, 110, 70], [180, 180, 180], [240, 240, 240]];
+      var lo = oklabL(40, 40, 40), hi = oklabL(180, 180, 180);
+      var out = internal.toneRgbPixels(colorSamples(src), 3, {saturation: 1, lightness: 1, gamma: 2, gammaRange: [lo, hi]});
+      var L = oklabL(90, 110, 70);
+      var expected = lo + (hi - lo) * Math.sqrt((L - lo) / (hi - lo));
+      assert.deepEqual(Array.from(out.subarray(0, 3)), [40, 40, 40]);
+      assert(Math.abs(oklabL(out[3], out[4], out[5]) - expected) < 0.005);
+      assert.deepEqual(Array.from(out.subarray(6, 12)), [180, 180, 180, 240, 240, 240]);
+    })
+
     it('gamma= is applied before lightness=', function () {
       var out = internal.toneRgbPixels(colorSamples([[90, 110, 70]]), 3, {saturation: 1, lightness: 1.5, gamma: 2});
       var L = Math.sqrt(oklabL(90, 110, 70));
@@ -224,6 +235,18 @@ describe('-tone', function () {
     assert(findLayer(catalog, 'gray'));
   })
 
+  it('gamma= keeps the darkest and lightest grays of the image', async function () {
+    var grays = [];
+    for (var v = 40; v <= 200; v += 2) grays.push([v, v, v]);
+    var catalog = await run(makeCatalog(colorSamples(grays), grays.length, 1, 3), '-tone gamma=1.8');
+    var lyr = findLayer(catalog, 'img');
+    var s = lyr.raster.grid.samples;
+    var mid = grays.length >> 1;
+    assert.deepEqual(Array.from(s.subarray(0, 3)), [40, 40, 40]);
+    assert.deepEqual(Array.from(s.subarray(s.length - 3)), [200, 200, 200]);
+    assert(s[mid * 3] > grays[mid][0] + 10);
+    assert.equal(lyr.raster.derivation.gamma_range.length, 2);
+  })
   it('opacity= and background=', async function () {
     var catalog = await run(makeCatalog(colorSamples([[0, 100, 200]]), 1, 1, 3), '-tone opacity=0.4 background=white');
     var grid = findLayer(catalog, 'img').raster.grid;
