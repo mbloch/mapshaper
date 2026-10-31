@@ -33,7 +33,8 @@ import {
   parseTilezenSourcesHeader,
   resolveFetchSource
 } from '../fetch/mapshaper-fetch-sources';
-import { fetchElevationMosaic } from '../fetch/mapshaper-tile-fetch';
+import { fetchTileMosaic } from '../fetch/mapshaper-tile-fetch';
+import { downsampleRgba } from '../rasters/mapshaper-image-import';
 import {
   chooseTileZoom,
   countTiles,
@@ -61,7 +62,7 @@ var METERS_PER_DEGREE = 6371008.8 * Math.PI / 180;
 cmd.fetch = async function(catalog, targets, opts) {
   var source = resolveFetchSource(opts);
   var extent = getFetchExtent(catalog, targets, opts);
-  var dataset = await fetchElevationDataset(source, extent, opts);
+  var dataset = await fetchTileDataset(source, extent, opts);
   return {dataset: dataset, extent: extent};
 };
 
@@ -168,11 +169,11 @@ export function getExtentLonLatBounds(bbox, crs) {
   ];
 }
 
-async function fetchElevationDataset(source, extent, opts) {
+async function fetchTileDataset(source, extent, opts) {
   var lonLatBbox = getExtentLonLatBounds(extent.bbox, extent.crsInfo.crs);
   var centerLat = (lonLatBbox[1] + lonLatBbox[3]) / 2;
   var maxTiles = opts.max_tiles > 0 ? opts.max_tiles : DEFAULT_MAX_TILES;
-  var z, range, tileCount, mosaic, grid, raster, dataset, lyr;
+  var z, range, tileCount, mosaic, raster, dataset, lyr;
   if (!(lonLatBbox[3] > lonLatBbox[1])) {
     stop('The area to fetch is outside the latitude range of the tiles');
   }
@@ -190,7 +191,7 @@ async function fetchElevationDataset(source, extent, opts) {
   }
   message('Fetching ' + tileCount + ' tile' + (tileCount == 1 ? '' : 's') + ' at zoom ' + z +
     ' from ' + (source.title || source.url));
-  mosaic = await fetchElevationMosaic(source, range);
+  mosaic = await fetchTileMosaic(source, range);
   if (mosaic.missing == tileCount) {
     stop('No tiles were found for this area');
   }
@@ -198,21 +199,10 @@ async function fetchElevationDataset(source, extent, opts) {
     message(mosaic.missing + ' of ' + tileCount + ' tiles were not available; those areas have no data');
   }
   checkTileLicensing(source, mosaic.headerValues);
-  grid = averageGridPixels(projectRasterGridForward({grid: mosaic.grid, interpretation: 'continuous'},
-    parseCrsString('webmercator'), extent.crsInfo.crs, {
-      output_bbox: extent.bbox,
-      output_width: extent.width * SUPERSAMPLING,
-      output_height: extent.height * SUPERSAMPLING,
-      sample_method: 'bilinear'
-    }), SUPERSAMPLING);
-  raster = {
-    sourceId: source.id,
-    interpretation: 'continuous',
-    grid: grid,
-    derivation: {type: 'gray', sourceId: source.id, bands: [0]},
-    view: {recipe: {type: 'gray', bands: [0]}}
-  };
-  raster.view.recipe = getRasterViewRecipe(grid, raster.view.recipe, {});
+  raster = source.encoding == 'rgb' ?
+    getImageryRaster(source, mosaic.grid, extent) :
+    getElevationRaster(source, mosaic.grid, extent);
+  raster.view.recipe = getRasterViewRecipe(raster.grid, raster.view.recipe, {});
   if (runningInBrowser()) {
     raster.view.preview = createRasterPreview(raster, {});
   }
@@ -230,6 +220,7 @@ async function fetchElevationDataset(source, extent, opts) {
         url: source.url,
         encoding: source.encoding,
         scheme: source.scheme,
+        year: source.year || null,
         zoom: z,
         tiles: tileCount,
         bbox: extent.bbox.concat(),
@@ -243,6 +234,80 @@ async function fetchElevationDataset(source, extent, opts) {
   };
   setDatasetCrsInfo(dataset, extent.crsInfo);
   return dataset;
+}
+
+function getElevationRaster(source, mosaicGrid, extent) {
+  var grid = averageGridPixels(projectMosaic(mosaicGrid, 'continuous', extent, {}), SUPERSAMPLING);
+  return {
+    sourceId: source.id,
+    interpretation: 'continuous',
+    grid: grid,
+    derivation: {type: 'gray', sourceId: source.id, bands: [0]},
+    view: {recipe: {type: 'gray', bands: [0]}}
+  };
+}
+
+// Pixels outside the tiles' coverage are transparent; an image without any
+// transparent pixels is kept as RGB.
+function getImageryRaster(source, mosaicGrid, extent) {
+  var projected = projectMosaic(mosaicGrid, 'image', extent, {nodata_color: 'transparent'});
+  var samples = downsampleRgba(projected.samples, projected.width, projected.height,
+    extent.width, extent.height, true);
+  var bands = 4;
+  if (isOpaque(samples)) {
+    samples = rgbaToRgb(samples);
+    bands = 3;
+  }
+  var sampleBands = bands == 4 ? [0, 1, 2, 3] : [0, 1, 2];
+  var bbox = projected.bbox;
+  return {
+    sourceId: source.id,
+    interpretation: 'image',
+    grid: {
+      width: extent.width,
+      height: extent.height,
+      bands: bands,
+      pixelType: 'uint8',
+      samples: samples,
+      sampleBands: sampleBands,
+      nodata: null,
+      bbox: bbox,
+      transform: [
+        (bbox[2] - bbox[0]) / extent.width, 0, bbox[0],
+        0, -(bbox[3] - bbox[1]) / extent.height, bbox[3]
+      ]
+    },
+    derivation: {type: 'rgb', sourceId: source.id, bands: sampleBands},
+    view: {recipe: {type: 'rgb', bands: sampleBands}}
+  };
+}
+
+function projectMosaic(grid, interpretation, extent, opts) {
+  return projectRasterGridForward({grid: grid, interpretation: interpretation},
+    parseCrsString('webmercator'), extent.crsInfo.crs, Object.assign({
+      output_bbox: extent.bbox,
+      output_width: extent.width * SUPERSAMPLING,
+      output_height: extent.height * SUPERSAMPLING,
+      sample_method: 'bilinear'
+    }, opts));
+}
+
+function isOpaque(rgba) {
+  for (var i = 3; i < rgba.length; i += 4) {
+    if (rgba[i] < 255) return false;
+  }
+  return true;
+}
+
+function rgbaToRgb(rgba) {
+  var n = rgba.length / 4;
+  var out = new Uint8Array(n * 3);
+  for (var i = 0, j = 0; i < n; i++, j += 4) {
+    out[i * 3] = rgba[j];
+    out[i * 3 + 1] = rgba[j + 1];
+    out[i * 3 + 2] = rgba[j + 2];
+  }
+  return out;
 }
 
 // Averages blocks of @f x @f pixels of a one-band grid, skipping invalid
@@ -296,6 +361,12 @@ function checkTileLicensing(source, headerValues) {
   var names, restricted;
   if (source.attribution) {
     warn('This data requires attribution: ' + source.attribution + '. See ' + source.info);
+  }
+  if (source.non_commercial) {
+    warn('This data is licensed for non-commercial use only (' + source.license + ')');
+  }
+  if (source.credit) {
+    message('Please credit: ' + source.credit);
   }
   if (!source.sources_header) return;
   names = headerValues.reduce(function(memo, str) {

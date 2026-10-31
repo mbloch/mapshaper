@@ -55,6 +55,9 @@ are sized in output pixels, which is only possible after reprojection.
 argument is the source, so `-fetch tilezen` and `-fetch source=tilezen` are
 equivalent.
 
+Elevation presets: `tilezen`, `mapterhorn`. Imagery presets: `bluemarble`,
+`blackmarble`, `usgs`, `eox` (see [Imagery](#imagery)).
+
 ### Scope
 
 `-fetch` is defined by being frame-aware, not by format: it works out what to
@@ -68,6 +71,7 @@ adapters, so other kinds of source can be added without changing the command:
 | Adapter | Status | Examples |
 | --- | --- | --- |
 | XYZ/TMS tiles with an elevation encoding | Phase 1 | Tilezen (Terrarium), Mapbox Terrain-RGB |
+| XYZ/TMS imagery tiles | Done | NASA GIBS, USGS, EOxCloudless |
 | Cloud-Optimized GeoTIFF (windowed reads) | Planned | OpenTopography SRTM |
 | ArcGIS ImageServer bbox export | Planned | USGS 3DEP |
 | Vector tiles / PMTiles | Later | see `future-directions.md` |
@@ -79,8 +83,10 @@ preset's.
 ### Options
 
 - `source=` preset name or URL template containing `{z}`, `{x}` and `{y}`.
-- `encoding=` elevation encoding of custom tiles: `terrarium` (default) or
-  `mapbox`.
+- `year=` edition of a preset that has several (`blackmarble`, `eox`);
+  defaults to the latest. An error for other sources.
+- `encoding=` encoding of custom tiles: `terrarium` (default) or `mapbox`
+  for elevation, `rgb` for imagery.
 - `scheme=` `xyz` (default) or `tms` for custom tiles.
 - `zoom=` tile zoom level, overriding automatic selection.
 - `raster-res=` raster pixels per frame pixel (default 2). The GUI on
@@ -96,7 +102,8 @@ preset's.
 - `bbox=` extent to fetch (in the target's coordinate system, or lat-long when
   there is no target).
 - `max-tiles=` safety cap on the number of tiles (default 500).
-- `name=` name of the new layer (default `elevation`).
+- `name=` name of the new layer (default `elevation`; for imagery, the preset
+  name, or `imagery` for a URL).
 - `target=` layer or frame whose extent to use.
 
 ### Defaults derived from the frame
@@ -181,9 +188,48 @@ more detailed: three times the surface roughness, and peaks within a few
 meters of their true height. It is also faster: about a quarter as many
 tiles at the same resolution, served from a CDN.
 
+### Imagery
+
+Presets with `encoding: 'rgb'` keep tile colors instead of decoding
+elevations. Tiles (JPEG, decoded in Node with `jpeg-js`, or PNG) are
+composited into an RGB mosaic with a coverage mask, so missing tiles and
+transparent pixels are excluded from bilinear sampling rather than blended in.
+The mosaic is reprojected at twice the output resolution, with uncovered
+pixels transparent, and averaged down 2x2 with alpha weighting
+(`downsampleRgba()`). The result is an `image` raster with an `rgb` recipe:
+RGB if every pixel is opaque, else RGBA.
+
+| Preset | Layer | Zooms | License |
+| --- | --- | --- | --- |
+| `bluemarble` | GIBS `BlueMarble_NextGeneration` (no relief shading) | 0-8 | NASA, no restrictions |
+| `blackmarble` | GIBS `VIIRS_Black_Marble`, `year=` 2012 or 2016 | 0-8 | NASA, no restrictions |
+| `usgs` | The National Map `USGSImageryOnly` | 0-16 | Public domain |
+| `eox` | EOxCloudless Sentinel-2 mosaics, `year=` 2016, 2018-2025 | 0-16 (auto to 14) | 2016 CC BY 4.0; 2018+ CC BY-NC-SA 4.0 |
+
+Notes:
+
+- None of these need a key. GIBS and EOX use `{z}/{y}/{x}` (row before
+  column) URLs.
+- `usgs` covers the world at low zooms and the United States at higher zooms;
+  elsewhere the server answers 404, so those tiles are transparent.
+- Sentinel-2 pixels are 10 m, about a zoom 14 pixel; zooms 15-16 are
+  enlarged, so automatic selection stops at 14.
+- A preset with editions lists them in `years`, each with the settings that
+  differ (URL, title, attribution, license). EOX's 2016 layer is named
+  `s2cloudless_3857`, without the year, and its 2018 mosaic credits
+  "2017 & 2018" data.
+- Licensing messages: GIBS and USGS print a requested credit; `eox` warns with
+  its required attribution for the year, and for 2018 and later that the
+  data is for non-commercial use only. Using EOX's public endpoints in
+  commercial production apps is prohibited by its terms.
+- GIBS daily layers (MODIS, VIIRS true color) and a generic `gibs layer=`
+  source were considered and left out for now: daily imagery is cloudy and
+  has swath gaps, and a generic source would need each layer's zoom range and
+  format from the 5.8 MB capabilities document.
+
 ### Provenance
 
-The new dataset's `info.raster_sources` records the preset, URL, zoom, tile
+The new dataset's `info.raster_sources` records the preset, URL, year, zoom, tile
 count and the parameters used. This is what a later "re-fetch for the current
 frame" action in the GUI would need. A fetched raster is a snapshot of the frame
 at fetch time: running `-proj` or resizing the frame afterwards leaves it at

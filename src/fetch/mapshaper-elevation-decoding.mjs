@@ -5,6 +5,15 @@ import { stop } from '../utils/mapshaper-logging';
 
 export var ELEVATION_ENCODINGS = ['terrarium', 'mapbox'];
 
+// "rgb" tiles are imagery, kept as colors
+export var TILE_ENCODINGS = ELEVATION_ENCODINGS.concat('rgb');
+
+export function validateTileEncoding(encoding) {
+  if (!TILE_ENCODINGS.includes(encoding)) {
+    stop('Unsupported tile encoding:', encoding + '.', 'Use one of:', TILE_ENCODINGS.join(', '));
+  }
+}
+
 export function validateElevationEncoding(encoding) {
   if (!ELEVATION_ENCODINGS.includes(encoding)) {
     stop('Unsupported tile encoding:', encoding + '.', 'Use one of:', ELEVATION_ENCODINGS.join(', '));

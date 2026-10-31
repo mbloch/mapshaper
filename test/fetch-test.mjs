@@ -1,6 +1,7 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
 import { PNG } from 'pngjs';
+import jpeg from 'jpeg-js';
 
 var internal = api.internal;
 
@@ -18,6 +19,19 @@ function makeTerrariumTile(elevation, size) {
     png.data[i + 3] = 255;
   }
   return PNG.sync.write(png);
+}
+
+// A JPEG imagery tile of one color
+function makeImageTile(r, g, b) {
+  var size = 256;
+  var data = Buffer.alloc(size * size * 4);
+  for (var i = 0; i < data.length; i += 4) {
+    data[i] = r;
+    data[i + 1] = g;
+    data[i + 2] = b;
+    data[i + 3] = 255;
+  }
+  return jpeg.encode({data: data, width: size, height: size}, 95).data;
 }
 
 // Replaces global fetch() with a tile server
@@ -130,6 +144,42 @@ describe('mapshaper-fetch.mjs', function () {
       assert.throws(function() { internal.resolveFetchSource({source: 'nope'}); }, /Unknown source/);
       assert.throws(function() { internal.resolveFetchSource({source: 'https://example.com/{z}/{x}.png'}); }, /\{y\}/);
       assert.throws(function() { internal.resolveFetchSource({source: 'tilezen', encoding: 'foo'}); }, /encoding/);
+    })
+
+    it('imagery presets', function () {
+      var bluemarble = internal.resolveFetchSource({source: 'bluemarble'});
+      var usgs = internal.resolveFetchSource({source: 'usgs'});
+      assert.equal(bluemarble.encoding, 'rgb');
+      assert.equal(bluemarble.max_zoom, 8);
+      assert.equal(internal.getTileUrl(bluemarble, 3, 4, 2),
+        'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_NextGeneration/default/GoogleMapsCompatible_Level8/3/2/4.jpeg');
+      assert.equal(usgs.encoding, 'rgb');
+      assert(usgs.credit);
+    })
+
+    it('year= chooses an edition, and defaults to the latest', function () {
+      var black = internal.resolveFetchSource({source: 'blackmarble'});
+      var black2012 = internal.resolveFetchSource({source: 'blackmarble', year: 2012});
+      var eox = internal.resolveFetchSource({source: 'eox'});
+      var eox2016 = internal.resolveFetchSource({source: 'eox', year: 2016});
+      var eox2020 = internal.resolveFetchSource({source: 'eox', year: 2020});
+      assert.equal(black.year, 2016);
+      assert(/\/2016-01-01\//.test(black.url));
+      assert(/\/2012-01-01\//.test(black2012.url));
+      assert.equal(eox.year, 2025);
+      assert(/s2cloudless-2025_3857/.test(eox.url));
+      assert(eox.non_commercial);
+      assert(/Sentinel data 2025\)/.test(eox.attribution));
+      assert(/\/s2cloudless_3857\//.test(eox2016.url));
+      assert(!eox2016.non_commercial);
+      assert(/s2cloudless-2020_3857/.test(eox2020.url));
+      assert.equal(eox.years, undefined);
+    })
+
+    it('year= errors', function () {
+      assert.throws(function() { internal.resolveFetchSource({source: 'eox', year: 2017}); }, /Available years: 2016, 2018/);
+      assert.throws(function() { internal.resolveFetchSource({source: 'tilezen', year: 2020}); }, /year= is not available/);
+      assert.throws(function() { internal.resolveFetchSource({source: 'https://example.com/{z}/{x}/{y}.png', year: 2020}); }, /year= is not available/);
     })
   })
 
@@ -280,6 +330,52 @@ describe('mapshaper-fetch.mjs', function () {
       var grid = findLayer(catalog, 'elevation').layer.raster.grid;
       assert(stub.urls.length > 1);
       assert(internal.getRasterValidityMask(grid).some(function(v) { return v === 0; }));
+    })
+
+    it('imagery: JPEG tiles become an RGB raster in the frame', async function () {
+      var tile = makeImageTile(200, 120, 40);
+      stub = stubFetch(function() { return tile; });
+      var catalog = await runCommands(RAINIER + ' -fetch bluemarble');
+      var lyr = findLayer(catalog, 'bluemarble');
+      var grid = lyr.layer.raster.grid;
+      var i;
+      assert(stub.urls.every(function(url) { return /BlueMarble_NextGeneration\/.*\.jpeg$/.test(url); }));
+      assert.equal(lyr.layer.raster.interpretation, 'image');
+      assert.equal(lyr.layer.raster.view.recipe.type, 'rgb');
+      assert.equal(grid.bands, 3);
+      assert(grid.samples instanceof Uint8Array);
+      assert.equal(grid.width, 440);
+      for (i = 0; i < grid.width * grid.height; i += 997) {
+        assert(Math.abs(grid.samples[i * 3] - 200) <= 3);
+        assert(Math.abs(grid.samples[i * 3 + 1] - 120) <= 3);
+        assert(Math.abs(grid.samples[i * 3 + 2] - 40) <= 3);
+      }
+      assert.equal(findLayer(catalog, 'box').dataset.info.frame, lyr.dataset.info.frame);
+    })
+
+    it('imagery: missing tiles are transparent', async function () {
+      var tile = makeImageTile(50, 100, 150);
+      var first;
+      stub = stubFetch(function(url) {
+        if (!first) first = url;
+        return url == first ? null : tile;
+      });
+      var catalog = await runCommands(RAINIER + ' -fetch usgs zoom=10');
+      var grid = findLayer(catalog, 'usgs').layer.raster.grid;
+      var transparent = 0, opaque = 0;
+      assert.equal(grid.bands, 4);
+      for (var i = 3; i < grid.samples.length; i += 4) {
+        if (grid.samples[i] === 0) transparent++;
+        if (grid.samples[i] == 255) opaque++;
+      }
+      assert(transparent > 0);
+      assert(opaque > 0);
+    })
+
+    it('imagery from a URL with encoding=rgb', async function () {
+      stub = stubFetch(function() { return makeImageTile(10, 20, 30); });
+      var catalog = await runCommands(RAINIER + ' -fetch https://example.com/{z}/{x}/{y}.jpg encoding=rgb zoom=8');
+      assert.equal(findLayer(catalog, 'imagery').layer.raster.grid.bands, 3);
     })
 
     it('fails when no tiles are found', async function () {

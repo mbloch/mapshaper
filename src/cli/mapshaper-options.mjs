@@ -2639,13 +2639,17 @@ export function getOptionParser() {
     });
 
   parser.command('fetch')
-    .describe('download elevation tiles for the area of a map frame')
+    .describe('download elevation or imagery tiles for the area of a map frame')
     .option('source', {
       DEFAULT: true,
-      describe: 'name of a data source (tilezen, mapterhorn) or URL template of a tile service'
+      describe: 'name of a data source (tilezen, mapterhorn, bluemarble, blackmarble, usgs, eox) or URL template of a tile service'
+    })
+    .option('year', {
+      describe: 'edition of a source with several (blackmarble: 2012, 2016; eox: 2016, 2018-2025; default is the latest)',
+      type: 'integer'
     })
     .option('encoding', {
-      describe: 'how elevation is encoded in tile images: terrarium or mapbox'
+      describe: 'how tile images encode their data: terrarium or mapbox (elevation), or rgb (imagery)'
     })
     .option('scheme', {
       describe: 'tile numbering scheme: xyz (default) or tms'
@@ -2671,7 +2675,7 @@ export function getOptionParser() {
       type: 'integer'
     })
     .option('name', {
-      describe: 'name of the new layer (default is elevation)'
+      describe: 'name of the new layer (default is elevation; for imagery, the preset name or imagery)'
     })
     .option('target', targetOpt);
 

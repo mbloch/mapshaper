@@ -10,16 +10,20 @@ export var ELEVATION_NODATA = -32768;
 var CONCURRENCY = 6;
 var RETRIES = 2;
 
-// Fetches the tiles in @range and composites their elevations into one
-// Float32 grid in Web Mercator.
+// Fetches the tiles in @range and composites them into one grid in Web
+// Mercator: a Float32 grid of elevations, or for imagery (encoding "rgb") an
+// RGB grid whose coverage mask excludes missing tiles and transparent pixels.
 // Returns {grid, missing, headerValues}
-export async function fetchElevationMosaic(source, range) {
+export async function fetchTileMosaic(source, range) {
   var tileSize = source.tile_size;
   var cols = range.x1 - range.x0 + 1;
   var rows = range.y1 - range.y0 + 1;
   var width = cols * tileSize;
   var height = rows * tileSize;
-  var samples = new Float32Array(width * height).fill(ELEVATION_NODATA);
+  var imagery = source.encoding == 'rgb';
+  var samples = imagery ? new Uint8Array(width * height * 3) :
+    new Float32Array(width * height).fill(ELEVATION_NODATA);
+  var coverage = imagery ? new Uint8Array(width * height) : null;
   var bbox = getTileRangeMercatorBBox(range);
   var jobs = [];
   var missing = 0;
@@ -33,7 +37,7 @@ export async function fetchElevationMosaic(source, range) {
   await runWithConcurrency(jobs, CONCURRENCY, async function(job) {
     var url = getTileUrl(source, range.z, wrapTileX(job.x, range.z), job.y);
     var tile = await fetchTile(url, source);
-    var elev;
+    var x0, y0;
     if (!tile) {
       missing++;
       return;
@@ -43,18 +47,24 @@ export async function fetchElevationMosaic(source, range) {
       stop('Expected ' + tileSize + 'x' + tileSize + ' pixel tiles, received ' +
         tile.width + 'x' + tile.height + ' from', url);
     }
-    elev = decodeElevationPixels(tile.rgba, source.encoding, ELEVATION_NODATA);
-    copyTile(elev, tileSize, samples, width, (job.x - range.x0) * tileSize, (job.y - range.y0) * tileSize);
+    x0 = (job.x - range.x0) * tileSize;
+    y0 = (job.y - range.y0) * tileSize;
+    if (imagery) {
+      copyImageTile(tile.rgba, tileSize, samples, coverage, width, x0, y0);
+    } else {
+      copyTile(decodeElevationPixels(tile.rgba, source.encoding, ELEVATION_NODATA), tileSize, samples, width, x0, y0);
+    }
   });
   return {
     grid: {
       width: width,
       height: height,
-      bands: 1,
-      pixelType: 'float32',
+      bands: imagery ? 3 : 1,
+      pixelType: imagery ? 'uint8' : 'float32',
       samples: samples,
-      sampleBands: [0],
-      nodata: ELEVATION_NODATA,
+      sampleBands: imagery ? [0, 1, 2] : [0],
+      nodata: imagery ? null : ELEVATION_NODATA,
+      coverage: coverage,
       bbox: bbox,
       transform: [
         (bbox[2] - bbox[0]) / width, 0, bbox[0],
@@ -64,6 +74,21 @@ export async function fetchElevationMosaic(source, range) {
     missing: missing,
     headerValues: headerValues
   };
+}
+
+function copyImageTile(rgba, tileSize, dest, coverage, destWidth, x0, y0) {
+  var x, y, src, i;
+  for (y = 0; y < tileSize; y++) {
+    src = y * tileSize * 4;
+    i = (y0 + y) * destWidth + x0;
+    for (x = 0; x < tileSize; x++, src += 4, i++) {
+      if (rgba[src + 3] === 0) continue;
+      dest[i * 3] = rgba[src];
+      dest[i * 3 + 1] = rgba[src + 1];
+      dest[i * 3 + 2] = rgba[src + 2];
+      coverage[i] = 1;
+    }
+  }
 }
 
 export function getTileUrl(source, z, x, y) {
@@ -102,10 +127,18 @@ async function fetchTile(url, source) {
 }
 
 async function decodeTileImage(buf) {
-  var webp = isWebP(new Uint8Array(buf, 0, Math.min(buf.byteLength, 16)));
-  var png;
-  if (runningInBrowser()) return decodeImageInBrowser(buf, webp ? 'image/webp' : 'image/png');
+  var head = new Uint8Array(buf, 0, Math.min(buf.byteLength, 16));
+  var webp = isWebP(head);
+  var jpeg = head[0] == 0xFF && head[1] == 0xD8;
+  var png, image;
+  if (runningInBrowser()) {
+    return decodeImageInBrowser(buf, webp ? 'image/webp' : jpeg ? 'image/jpeg' : 'image/png');
+  }
   if (webp) return decodeWebP(buf);
+  if (jpeg) {
+    image = require('jpeg-js').decode(Buffer.from(buf), {useTArray: true});
+    return {rgba: image.data, width: image.width, height: image.height};
+  }
   png = require('pngjs').PNG.sync.read(Buffer.from(buf));
   return {rgba: png.data, width: png.width, height: png.height};
 }
