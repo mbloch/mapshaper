@@ -37,8 +37,8 @@ keep the same vocabulary.
 - **Option names follow `-classify` and the color model.** Color ramps use
   `-classify`'s `colors=`, `breaks=`, `interpolation=` and `invert`, so a ramp
   written for polygons can be pasted into `-tint`. Adjustments are named after
-  what they change, `lightness=` and `saturation=`, and are multipliers, so 1
-  is unchanged (as in CSS filters, though the color math is different; see
+  what they change, `lightness=` and `saturation=`, and 1 is unchanged (as in
+  CSS filters, though the color math is different; see
   [Color model](#color-model)).
 - **Opacity and background come last.** `opacity=` and `background=` are
   applied after every color adjustment, so the background is the paper the
@@ -58,8 +58,10 @@ All of `-tone`'s adjustments work in OKLCH: lightness (L), chroma (C) and hue
 
 - `saturation=` scales chroma, keeping lightness and hue. `saturation=0` gives
   a gray of the same perceived lightness as the original color.
-- `lightness=` multiplies lightness, keeping chroma and hue; black stays
-  black. `gamma=`, `colors=` and a future contrast adjustment also work on
+- `lightness=` moves lightness toward black or white, keeping chroma and
+  hue. Below 1, L′ = L × k, a blend with black by 1 − k. Above 1,
+  L′ = L + (k − 1)(1 − L), a blend with white by k − 1. So 0.5 is halfway to
+  black, 1.5 halfway to white, and 2 is white. `gamma=`, `colors=` and a future contrast adjustment also work on
   lightness only, so they don't shift hues or saturation.
 
 Why not HSL: HSL's lightness and saturation are not perceptual. Pure yellow
@@ -74,7 +76,7 @@ Gamut: lowering chroma at constant lightness and hue stays inside the sRGB
 gamut, so `saturation=` from 0 to 1 needs no gamut mapping. `saturation=`
 above 1, and `lightness=` above 1, can leave the gamut; those colors are
 clipped to the gamut at the same lightness and hue (as `oklchToRgb()` does).
-Lightness itself is capped at 1 (white).
+Lightness itself never clips: only white stays at 1.
 
 Speed: converting to OKLab needs a table lookup (sRGB to linear, 256 entries),
 a 3x3 matrix and three cube roots per pixel, then the inverse (with a
@@ -97,12 +99,12 @@ image.
 | Option | Phase | Description |
 | --- | --- | --- |
 | `saturation=` | 1 | Chroma multiplier: 0 is gray, 1 is unchanged, above 1 more vivid. |
-| `lightness=` | 1 | Lightness multiplier: below 1 darker, above 1 lighter, 1 is unchanged. |
+| `lightness=` | 1 | 0-2. Below 1 blends lightness toward black, above 1 toward white; 1 is unchanged. |
 | `opacity=` | 1 | 0-1. Without `background=`, multiplies each pixel's alpha. |
 | `background=` | 1 | Composites the result over this color, making it opaque. |
 | `+`, `name=`, `target=` | 1 | As for other commands. |
 | `contrast=` | Later | Undecided (see [Open questions](#open-questions)); to be designed after testing the Phase 1 options on real imagery. |
-| `gamma=` | Later | Lightness tone curve; above 1 lightens midtones (as in `-hillshade`). |
+| `gamma=` | 1 | Lightness tone curve, L′ = L^(1/gamma): above 1 lightens midtones and shadows, keeping black and white (the same direction as in `-hillshade`). |
 | `colors=` | Later | Maps lightness onto a color ramp, dark to light (duotone or more colors). Replaces saturation and hue, so it can't be combined with `saturation=`. |
 | `range=` | Later | Input lightness range mapped onto `colors=`: `auto` or two numbers, e.g. `0.2,0.65`. Default is 0 to 1. |
 | `interpolation=` | Later | `oklch` (default) or `rgb`, for `colors=`. |
@@ -112,8 +114,11 @@ image.
 ### Order of operations
 
 1. Convert each pixel to OKLCH.
-2. Lightness: a contrast adjustment (later), then `lightness=`, then
-   `gamma=` (later).
+2. Lightness: a contrast adjustment (later), then `gamma=`, then
+   `lightness=`. Gamma shapes the image's own tone curve, and `lightness=`
+   then fades the result evenly toward black or white. Applied after a lift,
+   gamma would act on an already compressed band, and its effect would depend
+   on `lightness=`. The two are combined into one lookup table over lightness.
 3. `saturation=` (chroma), or `colors=` (lightness to ramp color).
 4. Convert back to sRGB.
 5. `opacity=`, then `background=`.
@@ -287,9 +292,16 @@ new commands have no compatibility to keep. The cost is that the same
   which describe the same blend in familiar terms (`fade=0.6` is
   `opacity=0.4 background=white`) and also cover real transparency.
 - **lightness=, not brightness=.** Named after the OKLCH dimension it
-  changes, alongside `saturation=`. It multiplies lightness, which keeps black
-  black (like CSS `brightness()`), rather than adding to it, which would keep
-  contrast but lift the darks.
+  changes, alongside `saturation=`.
+- **lightness= blends toward white rather than multiplying above 1.**
+  Multiplying (like CSS `brightness()`) clips the lights before the darks
+  come up much: EOX imagery, with lightness 0.26-0.61, goes to 0.42-0.98 at
+  1.6. A blend with white lifts the darks most and never clips (0.63-0.81 at
+  1.5), which suits a light base layer. In both directions `lightness=`
+  compresses the lightness range and never adds contrast; stretching is left
+  to `range=` and a future contrast adjustment. A two-value output range
+  (`lightness=0.5,0.92`) was considered and dropped: `lightness=1.5` is the
+  0.5-1 case, and `gamma=` can shape the lift.
 - **contrast= deferred.** How contrast should work (pivot, curve shape, or
   something like a levels adjustment) is to be decided after testing
   `saturation=`, `lightness=` and `opacity=` on real imagery.

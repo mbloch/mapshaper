@@ -9,7 +9,7 @@ import { stop } from '../utils/mapshaper-logging';
 // Adjusts the colors of an RGB image (see docs/development/raster-tone-tint.md)
 // Returns a new layer; -tone replaces the target unless + is used
 cmd.tone = function(lyr, opts) {
-  var grid, saturation, lightness, opacity, background, samples, result, out;
+  var grid, saturation, lightness, gamma, opacity, background, samples, result, out;
   if (!layerHasRaster(lyr)) {
     stop('Command requires a raster layer');
   }
@@ -18,11 +18,13 @@ cmd.tone = function(lyr, opts) {
   saturation = opts.saturation == null ? 1 : opts.saturation;
   lightness = opts.lightness == null ? 1 : opts.lightness;
   if (!(saturation >= 0)) stop('saturation= should be 0 or more');
-  if (!(lightness >= 0)) stop('lightness= should be 0 or more');
+  if (!(lightness >= 0 && lightness <= 2)) stop('lightness= should be from 0 to 2');
+  gamma = opts.gamma == null ? 1 : opts.gamma;
+  if (!(gamma > 0)) stop('gamma= should be a positive number');
   opacity = getRasterOpacity(opts);
   background = getRasterBackground(opts);
-  samples = saturation == 1 && lightness == 1 ? grid.samples :
-    toneRgbPixels(grid.samples, grid.bands, {saturation: saturation, lightness: lightness});
+  samples = saturation == 1 && lightness == 1 && gamma == 1 ? grid.samples :
+    toneRgbPixels(grid.samples, grid.bands, {saturation: saturation, lightness: lightness, gamma: gamma});
   result = applyOpacityAndBackground(samples, grid.bands, opacity, background);
   if (result.samples == grid.samples) {
     result.samples = grid.samples.slice();
@@ -33,6 +35,7 @@ cmd.tone = function(lyr, opts) {
       type: 'tone',
       saturation: saturation,
       lightness: lightness,
+      gamma: gamma,
       opacity: opacity,
       background: opts.background || null
     })

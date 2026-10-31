@@ -7,6 +7,7 @@ import { parseColor } from '../color/color-utils';
 
 var SEGMENT_SIZE = 256; // color ramp table entries between two breaks
 var ENCODE_SIZE = 65536; // linear-to-sRGB table entries; fine enough to round-trip dark values exactly
+var LIGHTNESS_STEPS = 4096; // lightness curve table intervals, interpolated linearly
 var GAMUT_STEPS = 12; // bisection steps when reducing chroma to fit the gamut
 
 var decodeTable = null; // sRGB byte -> linear
@@ -31,18 +32,23 @@ function encodeChannel(c) {
   return encodeTable[c <= 0 ? 0 : c >= 1 ? ENCODE_SIZE - 1 : Math.round(c * (ENCODE_SIZE - 1))];
 }
 
-// Multiplies the OKLCH lightness and chroma of each pixel of an RGB or RGBA
-// image, keeping hue. Lightness is capped at 1; colors that end up outside the
-// sRGB gamut lose chroma until they fit, at the same lightness and hue.
+// Adjusts the OKLCH lightness and chroma of each pixel of an RGB or RGBA
+// image, keeping hue. Chroma is multiplied by opts.saturation. Lightness is
+// raised to 1 / opts.gamma (above 1 lightens midtones), then moves toward
+// black by 1 - opts.lightness (below 1) or toward white by
+// opts.lightness - 1 (above 1, up to 2), so light colors never clip. Colors
+// that end up outside the sRGB gamut lose chroma until they fit, at the same
+// lightness and hue.
 // @samples interleaved uint8 samples with @bands (3 or 4) per pixel; alpha
 //   is copied
 // Returns a new array of the same layout
 export function toneRgbPixels(samples, bands, opts) {
   var sat = opts.saturation;
-  var lightness = opts.lightness;
+  var curve = getLightnessCurve(opts.lightness, opts.gamma > 0 ? opts.gamma : 1);
+  var curveMax = LIGHTNESS_STEPS - 1e-9;
   var out = new Uint8Array(samples.length);
   var rgb = [0, 0, 0];
-  var i, r, g, b, l, m, s, L, A, B;
+  var i, j, r, g, b, l, m, s, L, A, B;
   initTables();
   for (i = 0; i < samples.length; i += bands) {
     r = decodeTable[samples[i]];
@@ -51,7 +57,10 @@ export function toneRgbPixels(samples, bands, opts) {
     l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
     m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
     s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
-    L = Math.min(1, (0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s) * lightness);
+    L = (0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s) * LIGHTNESS_STEPS;
+    L = L <= 0 ? 0 : L >= curveMax ? curveMax : L;
+    j = L | 0;
+    L = curve[j] + (curve[j + 1] - curve[j]) * (L - j);
     A = (1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s) * sat;
     B = (0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s) * sat;
     if (!oklabToLinear(L, A, B, rgb)) {
@@ -63,6 +72,18 @@ export function toneRgbPixels(samples, bands, opts) {
     if (bands > 3) out[i + 3] = samples[i + 3];
   }
   return out;
+}
+
+function getLightnessCurve(lightness, gamma) {
+  var lighten = Math.max(0, lightness - 1);
+  var scale = Math.min(1, lightness);
+  var curve = new Float64Array(LIGHTNESS_STEPS + 1);
+  var i, L;
+  for (i = 0; i <= LIGHTNESS_STEPS; i++) {
+    L = Math.pow(i / LIGHTNESS_STEPS, 1 / gamma);
+    curve[i] = L * scale + (1 - L) * lighten;
+  }
+  return curve;
 }
 
 // Writes linear RGB to @rgb; returns false if the color is outside the gamut

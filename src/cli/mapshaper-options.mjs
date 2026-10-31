@@ -3201,7 +3201,11 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('lightness', {
-      describe: 'multiply the lightness (default is 1)',
+      describe: '0-2: below 1 darkens toward black, above 1 lightens toward white (default is 1)',
+      type: 'number'
+    })
+    .option('gamma', {
+      describe: 'tone curve; above 1 lightens midtones, keeping black and white (default is 1)',
       type: 'number'
     })
     .option('opacity', rasterOpacityOpt)

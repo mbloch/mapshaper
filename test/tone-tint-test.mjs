@@ -84,14 +84,39 @@ describe('mapshaper-raster-color.mjs', function () {
       assert(Math.abs(lab2.b / lab1.b - 0.5) < 0.05);
     })
 
-    it('lightness= multiplies lightness, and stops at white', function () {
+    it('lightness= below 1 moves lightness toward black', function () {
       var out = internal.toneRgbPixels(colorSamples([[200, 180, 120], [255, 255, 255]]), 3,
         {saturation: 1, lightness: 0.5});
-      var out2 = internal.toneRgbPixels(colorSamples([[255, 255, 255], [128, 128, 128]]), 3,
-        {saturation: 1, lightness: 3});
       assert(Math.abs(oklabL(out[0], out[1], out[2]) - oklabL(200, 180, 120) * 0.5) < 0.005);
       assert(Math.abs(oklabL(out[3], out[4], out[5]) - 0.5) < 0.005);
-      assert.deepEqual(Array.from(out2), [255, 255, 255, 255, 255, 255]);
+    })
+
+    it('lightness= above 1 moves lightness toward white, without clipping', function () {
+      var src = [[0, 0, 0], [200, 180, 120], [230, 230, 230], [255, 255, 255]];
+      var out = internal.toneRgbPixels(colorSamples(src), 3, {saturation: 1, lightness: 1.5});
+      var white = internal.toneRgbPixels(colorSamples(src), 3, {saturation: 1, lightness: 2});
+      src.forEach(function (c, i) {
+        var L = oklabL(c[0], c[1], c[2]);
+        var L2 = oklabL(out[i * 3], out[i * 3 + 1], out[i * 3 + 2]);
+        assert(Math.abs(L2 - (L + (1 - L) * 0.5)) < 0.005);
+      });
+      assert(oklabL(out[6], out[7], out[8]) < 0.99);
+      assert.deepEqual(Array.from(white), new Array(12).fill(255));
+    })
+
+    it('gamma= bends lightness, keeping black and white', function () {
+      var src = [[0, 0, 0], [90, 110, 70], [255, 255, 255]];
+      var out = internal.toneRgbPixels(colorSamples(src), 3, {saturation: 1, lightness: 1, gamma: 2});
+      var L = oklabL(90, 110, 70);
+      assert.deepEqual(Array.from(out.subarray(0, 3)), [0, 0, 0]);
+      assert.deepEqual(Array.from(out.subarray(6, 9)), [255, 255, 255]);
+      assert(Math.abs(oklabL(out[3], out[4], out[5]) - Math.sqrt(L)) < 0.005);
+    })
+
+    it('gamma= is applied before lightness=', function () {
+      var out = internal.toneRgbPixels(colorSamples([[90, 110, 70]]), 3, {saturation: 1, lightness: 1.5, gamma: 2});
+      var L = Math.sqrt(oklabL(90, 110, 70));
+      assert(Math.abs(oklabL(out[0], out[1], out[2]) - (L + (1 - L) * 0.5)) < 0.005);
     })
 
     it('colors outside the gamut lose chroma, keeping lightness', function () {
@@ -217,6 +242,8 @@ describe('-tone', function () {
     await assert.rejects(run(makeCatalog(new Float32Array([1, 2]), 2, 1, 1, {interpretation: 'continuous'}), '-tone saturation=0'), /use -tint or -hillshade/);
     await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone opacity=2'), /opacity= should be from 0 to 1/);
     await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone saturation=-1'), /saturation= should be 0 or more/);
+    await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone lightness=2.5'), /lightness= should be from 0 to 2/);
+    await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone gamma=0'), /gamma= should be a positive number/);
     await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone background=nocolor'), /background=/);
   })
 })
