@@ -3158,6 +3158,54 @@ export function getOptionParser() {
     })
     .option('target', targetOpt);
 
+  var rasterOpacityOpt = {
+    describe: 'opacity of the result, 0-1 (default is 1)',
+    type: 'number'
+  };
+  var rasterBackgroundOpt = {
+    describe: 'color to place the result over, making it opaque'
+  };
+
+  parser.command('tint')
+    .describe('color an elevation raster with hypsometric tints')
+    .option('colors', {
+      describe: 'colors from low to high elevation, or a color scheme name (see -colors)',
+      type: 'colors'
+    })
+    .option('breaks', {
+      describe: 'elevation of each color, as values or % of the range (default spreads them evenly)',
+      type: 'strings'
+    })
+    .option('opacity', rasterOpacityOpt)
+    .option('background', rasterBackgroundOpt)
+    .option('band', {
+      describe: 'band containing elevation values (default is 0)',
+      type: 'integer'
+    })
+    .option('verbose', {
+      describe: 'print the elevation of each break',
+      type: 'flag'
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
+
+  parser.command('tone')
+    .describe('adjust the colors of an RGB image')
+    .option('saturation', {
+      describe: 'multiply the colorfulness (chroma); 0 is gray (default is 1)',
+      type: 'number'
+    })
+    .option('lightness', {
+      describe: 'multiply the lightness (default is 1)',
+      type: 'number'
+    })
+    .option('opacity', rasterOpacityOpt)
+    .option('background', rasterBackgroundOpt)
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
+
   parser.section('Control flow commands');
 
   var ifOpts = {

@@ -75,6 +75,8 @@ import '../commands/mapshaper-fuzzy-join';
 import '../commands/mapshaper-graticule';
 import '../commands/mapshaper-help';
 import '../commands/mapshaper-hillshade';
+import '../commands/mapshaper-tint';
+import '../commands/mapshaper-tone';
 import { skipCommand } from '../commands/mapshaper-if-elif-else-endif';
 import '../commands/mapshaper-ignore';
 import '../commands/mapshaper-include';
@@ -146,7 +148,7 @@ function commandRunsPerTargetDataset(name, opts) {
     'fuzzy-join', 'hillshade', 'ignore', 'inlay', 'innerlines', 'inspect', 'join',
     'lines', 'mosaic', 'points', 'polygons', 'rectangles', 'rename-fields',
     'repel', 'shapes', 'simplify', 'slice', 'smooth', 'sort', 'split',
-    'split-on-grid', 'stitch', 'style', 'subdivide', 'symbols', 'uniq'
+    'split-on-grid', 'stitch', 'style', 'subdivide', 'symbols', 'tint', 'tone', 'uniq'
   ].indexOf(name) > -1;
 }
 
@@ -393,6 +395,12 @@ export async function runCommand(command, job) {
         outputLayers = outputLayers.concat(await cmd.hillshade(lyr, targetDataset, opts, job.resumeCommand));
       }
       job.resumeCommand();
+
+    } else if (name == 'tint' || name == 'tone') {
+      outputLayers = [];
+      for (let lyr of targetLayers) {
+        outputLayers = outputLayers.concat(cmd[name](lyr, opts));
+      }
 
     } else if (name == 'dashlines') {
       applyCommandToEachLayer(cmd.dashlines, targetLayers, targetDataset, opts);
