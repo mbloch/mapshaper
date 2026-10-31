@@ -25,6 +25,27 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
     })
   })
 
+  describe('boundaries that differ by FP noise', function () {
+    // The second ring follows the same border as the first, but some of its
+    // coordinates are off by one or two ulps (as after a projection round trip).
+    // No segments cross, so the vertices are only merged by snapping.
+    it('dissolving the two rings gives the area of the larger ring', async function () {
+      var inner = [[-92.056461,40.603063],[-92.055973,40.603076],[-92.055478,40.603078],[-92.05524,40.603089],[-92.05481,40.603085],[-92.054386,40.603101],[-92.054386,40.613101],[-92.056461,40.613063],[-92.056461,40.603063]];
+      var outer = [[-92.056461,40.603063],[-92.055973,40.603076],[-92.055478,40.603078],[-92.05524,40.603089],[-92.05480999999999,40.603085],[-92.054386,40.603100999999995],[-92.04438599999999,40.623101],[-92.066461,40.623063],[-92.056461,40.603063]];
+      var input = {
+        type: 'FeatureCollection',
+        features: [inner, outer].map(function(ring, i) {
+          return {type: 'Feature', properties: {id: i}, geometry: {type: 'Polygon', coordinates: [ring]}};
+        })
+      };
+      var cmd = '-i in.json -dissolve2 -each "AREA = round(this.area)" -o out.json';
+      var out = await api.applyCommands(cmd, {'in.json': input});
+      var features = JSON.parse(out['out.json']).features;
+      assert.equal(features.length, 1);
+      assert.equal(features[0].properties.AREA, 2271821);
+    });
+  });
+
   describe('gap-fill-area= option tests', function () {
 
     function test(input, args, expect, done) {

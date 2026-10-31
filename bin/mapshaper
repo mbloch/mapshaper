@@ -3,6 +3,10 @@
 var mapshaper = require('../mapshaper.js');
 mapshaper.enableLogging();
 mapshaper.runCommands(process.argv.slice(2), done);
+// Setting exitCode lets Node exit normally. Calling process.exit() here can
+// hang: Node shuts down V8's worker threads before disposing of the heap, which
+// deadlocks if a background compile job is waiting for a garbage collection.
+// (seen with Node 24). A normal exit also finishes writing piped output.
 function done(err) {
-  process.exit(err ? 1 : 0);
+  process.exitCode = err ? 1 : 0;
 }

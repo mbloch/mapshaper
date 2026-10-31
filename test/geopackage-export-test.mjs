@@ -33,7 +33,8 @@ async function readGeoPackageTableInfo(output, filename, name) {
         var contents = gpkg.getTableContents(table);
         return {
           table: table,
-          srsId: contents && (contents.srs_id ?? contents.srsId)
+          srsId: contents && (contents.srs_id ?? contents.srsId),
+          bbox: contents && [contents.min_x, contents.min_y, contents.max_x, contents.max_y]
         };
       });
     } finally {
@@ -197,6 +198,68 @@ describe('geopackage export', function () {
     assert.notEqual(info[0].srsId, -1, 'srs_id should not be the undefined cartesian SRS');
     assert(dataset.info.wkt1 && /Robinson/i.test(dataset.info.wkt1),
       'round-tripped wkt1 should contain Robinson projection metadata');
+  });
+
+  it('exports a dataset projected with -proj epsg:<code>', async function () {
+    var input = fs.readFileSync(fixPath('data/geojson/world_land.json'));
+    var output = await api.applyCommands(
+      '-i world_land.json -clip bbox=-75,40,-73,41 -proj epsg:2263 -o format=geopackage',
+      {'world_land.json': input}
+    );
+    var names = Object.keys(output);
+    var info = await readGeoPackageTableInfo(output, names[0], 'epsg2263');
+    var dataset = await importGeoPackageOutput(output, names[0], 'epsg2263');
+
+    assert.equal(info.length, 1);
+    assert.equal(info[0].srsId, 2263);
+    assert.equal(dataset.info.geopackage_crs.organization, 'EPSG');
+    assert(/Lambert_Conformal_Conic/.test(dataset.info.wkt1));
+  });
+
+  it('writes layer extents to gpkg_contents', async function () {
+    var points = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: {name: 'a'},
+        geometry: {type: 'Point', coordinates: [1, 2]}
+      }, {
+        type: 'Feature',
+        properties: {name: 'b'},
+        geometry: {type: 'Point', coordinates: [3, -4]}
+      }]
+    };
+    var pointsOut = await api.applyCommands('-i in.json -o format=geopackage', {'in.json': points});
+    var pointsInfo = await readGeoPackageTableInfo(pointsOut, Object.keys(pointsOut)[0], 'extent-points');
+    assert.deepEqual(pointsInfo[0].bbox, [1, -4, 3, 2]);
+
+    var land = fs.readFileSync(fixPath('data/geojson/world_land.json'));
+    var projOut = await api.applyCommands(
+      '-i world_land.json -clip bbox=-75,40,-73,41 -proj epsg:2263 -o format=geopackage',
+      {'world_land.json': land}
+    );
+    var projInfo = await readGeoPackageTableInfo(projOut, Object.keys(projOut)[0], 'extent-proj');
+    var bbox = projInfo[0].bbox;
+    assert(bbox[0] > 100000 && bbox[2] > bbox[0] && bbox[3] > bbox[1],
+      'extent should be in projected units: ' + bbox);
+  });
+
+  it('exports FlatGeobuf input with EPSG and custom CRS metadata', async function () {
+    var input = fs.readFileSync(fixPath('data/geojson/world_land.json'));
+    var shpPath = fixPath('data/geopackage/Oregon_customCRS.shp');
+    var epsgFgb = await api.applyCommands(
+      '-i world_land.json -clip bbox=-75,40,-73,41 -proj epsg:2263 -o out.fgb',
+      {'world_land.json': input}
+    );
+    var customFgb = await api.applyCommands('-i "' + shpPath + '" -o out.fgb', {});
+    var epsgOut = await api.applyCommands('-i in.fgb -o format=geopackage', {'in.fgb': epsgFgb['out.fgb']});
+    var customOut = await api.applyCommands('-i in.fgb -o format=geopackage', {'in.fgb': customFgb['out.fgb']});
+    var epsgInfo = await readGeoPackageTableInfo(epsgOut, Object.keys(epsgOut)[0], 'fgb-epsg');
+    var customDataset = await importGeoPackageOutput(customOut, Object.keys(customOut)[0], 'fgb-custom');
+
+    assert.equal(epsgInfo[0].srsId, 2263);
+    assert.equal(customDataset.info.geopackage_crs.organization, 'NONE');
+    assert(/Lambert_Conformal_Conic/.test(customDataset.info.wkt1));
   });
 
   it('uses undefined cartesian CRS for projected data without CRS metadata', async function () {

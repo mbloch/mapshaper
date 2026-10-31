@@ -143,6 +143,41 @@ describe('mapshaper-graticule.js', function () {
     assert.deepEqual(Object.keys(without).sort(), ['a.json', 'graticule.json']);
   });
 
+  describe('clipping to a map frame', function() {
+    var input = {
+      type: 'Feature',
+      properties: {},
+      geometry: {type: 'Polygon', coordinates: [[[-10, 40], [-10, 50], [10, 50], [10, 40], [-10, 40]]]}
+    };
+
+    async function getBboxes(cmd) {
+      var out = await api.applyCommands('-i in.json -proj +proj=merc ' + cmd +
+        ' -target graticule -o graticule.json bbox -target f -o f.json bbox', {'in.json': input});
+      return {
+        graticule: JSON.parse(out['graticule.json']).bbox,
+        frame: JSON.parse(out['f.json']).bbox
+      };
+    }
+
+    it('is clipped to the frame of its target', async function() {
+      var o = await getBboxes('-frame width=400px name=f -target in -graticule');
+      o.graticule.forEach((val, i) => assert.ok(Math.abs(val - o.frame[i]) < 1));
+    });
+
+    it('bleed= expands the clipping area, in frame pixels', async function() {
+      var o = await getBboxes('-frame width=400px name=f -target in -graticule bleed=10');
+      var pad = 10 * (o.frame[2] - o.frame[0]) / 400;
+      var expected = [o.frame[0] - pad, o.frame[1] - pad, o.frame[2] + pad, o.frame[3] + pad];
+      o.graticule.forEach((val, i) => assert.ok(Math.abs(val - expected[i]) < 1));
+    });
+
+    it('is not clipped without a frame', async function() {
+      var out = await api.applyCommands('-i in.json -proj +proj=merc -graticule -o graticule.json bbox',
+        {'in.json': input});
+      assert.ok(JSON.parse(out['graticule.json']).bbox[2] > 1e7);
+    });
+  });
+
   it('create latlong graticule if no data has been loaded', function(done) {
 
     api.internal.testCommands('-graticule', function(err, dataset) {

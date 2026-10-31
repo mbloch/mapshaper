@@ -51,6 +51,7 @@ import {
   rebuildProjectedFrameLayer
 } from '../furniture/mapshaper-frame-projection';
 import {
+  getDisplayFrameForDataset,
   getFrameForDataset,
   getFrameMembers,
   getFrames,
@@ -62,26 +63,67 @@ import { getLayerTargetId } from '../dataset/mapshaper-target-utils';
 import { formatOptionValue } from '../cli/mapshaper-option-parsing-utils';
 
 // Run -proj over all the targets of a single command.
-// The destination CRS is resolved once here rather than separately for each
-// target, for two reasons. Auto-fitted parameters (e.g. the standard parallels
-// that "lcc" expands to) must describe the whole command target, not whichever
-// dataset happens to be projected first. And the map frame must receive the
-// same CRS as the content instead of re-deriving parameters from its own extent.
+// The destination CRS is resolved once for each group of targets that has to
+// share a coordinate system: a frame with its members, or an unframed dataset
+// (see getProjGroups()). Auto-fitted parameters (e.g. the standard parallels
+// that "lcc" expands to) describe the whole group, so a frame receives the
+// same CRS as its content, and separate frames or datasets (e.g. insets, or
+// states imported as separate files) are each fitted to their own extent.
 cmd.projTargets = function(targets, catalog, opts) {
-  var destInfo;
+  var groups, fitted;
   targets = expandFrameTargets(targets, catalog, opts);
   targets.forEach(function(targ) {
     applyProjInit(targ.dataset, catalog, opts);
   });
-  destInfo = resolveProjDestInfo(targets, catalog, opts);
-  targets.forEach(function(targ) {
-    projectTarget(targ.dataset, opts, targ.layers, destInfo);
+  groups = getProjGroups(targets, catalog);
+  fitted = groups.map(function(group) {
+    var destInfo = resolveProjDestInfo(group.targets, catalog, opts);
+    group.targets.forEach(function(targ) {
+      projectTarget(targ.dataset, opts, targ.layers, destInfo);
+    });
+    if (destInfo && destInfo.crs) {
+      projectMapFrame(group.targets, catalog, opts, destInfo);
+    }
+    return destInfo;
   });
-  if (destInfo && destInfo.crs) {
-    projectMapFrame(targets, catalog, opts, destInfo);
-    warnAboutUnprojectedLayers(catalog, targets, destInfo);
+  fitted = fitted.filter(function(info) { return info && info.crs; });
+  if (fitted.length > 0) {
+    warnAboutUnprojectedLayers(catalog, targets, fitted);
   }
+  reportSeparateFits(groups, fitted);
 };
+
+// Targets grouped by the frame they are drawn in: a dataset's own frame, or the
+// session frame if it has no members yet (see getDisplayFrameForDataset());
+// unframed datasets form groups of their own.
+// Returns [{key, targets}], in target order
+function getProjGroups(targets, catalog) {
+  var groups = [];
+  targets.forEach(function(targ) {
+    var frame = catalog ? getDisplayFrameForDataset(catalog, targ.dataset) : null;
+    var key = frame ? frame.dataset : targ.dataset;
+    var group = groups.find(function(o) { return o.key == key; });
+    if (!group) {
+      group = {key: key, frame: frame, targets: []};
+      groups.push(group);
+    }
+    group.targets.push(targ);
+  });
+  return groups;
+}
+
+// Fitting groups separately is the point of auto-fitted projections, but data
+// meant to be drawn together can end up out of register, so say so.
+function reportSeparateFits(groups, fitted) {
+  var defns = fitted.map(function(info) { return info.crs_string; });
+  var distinct = defns.filter(function(str, i) { return defns.indexOf(str) == i; });
+  if (distinct.length < 2) return;
+  message('Fitted the projection separately to ' + groups.length + ' groups of layers: ' +
+    groups.map(function(group) {
+      return group.frame ? 'frame ' + (group.frame.layer.name || '[unnamed]') :
+        formatLayerNames(group.targets[0].dataset.layers);
+    }).join('; '));
+}
 
 cmd.proj = function(dataset, catalog, opts, targetLayers, destInfo) {
   applyProjInit(dataset, catalog, opts);
@@ -235,7 +277,8 @@ function projectFrameDataset(frame, targets, catalog, opts, destInfo) {
 // Only layers in the same group as the targets are named: frames often have
 // different projections, and a frame is always projected whole (see
 // expandFrameTargets()), so in practice these are unframed layers.
-function warnAboutUnprojectedLayers(catalog, targets, destInfo) {
+// @destInfos the CRS info of each group of targets (see getProjGroups())
+function warnAboutUnprojectedLayers(catalog, targets, destInfos) {
   var groups, missed, hint;
   if (!catalog) return;
   groups = targets.map(function(targ) { return getLayerGroup(catalog, targ.dataset); });
@@ -243,9 +286,10 @@ function warnAboutUnprojectedLayers(catalog, targets, destInfo) {
     var crs;
     if (!layerHasGeometry(o.layer) && !layerHasRaster(o.layer)) return false;
     if (isFrameComponentLayer(o.layer, o.dataset)) return false;
+    if (targets.some(function(targ) { return targ.dataset == o.dataset; })) return false;
     if (!groups.includes(getLayerGroup(catalog, o.dataset))) return false;
     crs = getDatasetCrsInfo(o.dataset).crs;
-    return !!crs && !crsAreEqual(crs, destInfo.crs);
+    return !!crs && !destInfos.some(function(info) { return crsAreEqual(crs, info.crs); });
   });
   if (missed.length === 0) return;
   // target=* would also project every frame, so with frames the hint lists

@@ -1,6 +1,10 @@
 import { importGeoJSON } from '../geojson/geojson-import';
 import { projectDataset } from '../commands/mapshaper-proj';
-import { getDatasetCrsInfo, setDatasetCrsInfo, getCrsInfo, parseCrsString, isLatLngDataset } from '../crs/mapshaper-projections';
+import { getDatasetCrsInfo, setDatasetCrsInfo, getCrsInfo, parseCrsString, isLatLngDataset, crsAreEqual } from '../crs/mapshaper-projections';
+import { resolveFrameForDataset } from '../furniture/mapshaper-frame-resolver';
+import { getFrameCrsInfo } from '../furniture/mapshaper-frame-members';
+import { getFrameLayerData } from '../furniture/mapshaper-frame-utils';
+import { clipLayersInPlace } from '../commands/mapshaper-clip-erase';
 import { isMeridianBounded, getBoundingMeridian } from '../crs/mapshaper-proj-info';
 import { getAntimeridian } from '../geom/mapshaper-latlon';
 import { getOutlineDataset, getPolygonDataset } from '../crs/mapshaper-proj-extents';
@@ -15,7 +19,7 @@ import { cleanLayers } from '../commands/mapshaper-clean';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { isInterruptedProjection } from '../crs/mapshaper-projection-topology';
 
-cmd.graticule = function(dataset, opts) {
+cmd.graticule = function(dataset, opts, catalog) {
   if (opts.polygon && opts.outline) {
     stop('The polygon and outline options cannot be used together');
   }
@@ -41,9 +45,30 @@ cmd.graticule = function(dataset, opts) {
   if (opts.outline) {
     graticule.layers[0].geometry_type = 'polyline';
   }
+  if (catalog) {
+    clipGraticuleToFrame(graticule, catalog, dataset, opts);
+  }
   graticule.layers[0].name = name;
   return graticule;
 };
+
+// Clips the graticule to the frame of the target dataset, expanded by bleed=
+// (in frame pixels). The graticule is left whole if there is no frame or the
+// frame uses a different coordinate system.
+function clipGraticuleToFrame(graticule, catalog, dataset, opts) {
+  var frame = resolveFrameForDataset(catalog, dataset || null);
+  if (!frame) return;
+  var frameCrs = getFrameCrsInfo(catalog, frame);
+  var graticuleCrs = getDatasetCrsInfo(graticule).crs;
+  if (frameCrs && frameCrs.crs && !crsAreEqual(frameCrs.crs, graticuleCrs)) return;
+  var frameData = getFrameLayerData(frame.layer, frame.dataset.arcs);
+  var bleed = opts.bleed > 0 ? opts.bleed : 0;
+  var bbox = frameData.bbox;
+  var pad = bleed * (bbox[2] - bbox[0]) / frameData.width;
+  clipLayersInPlace(graticule.layers, null, graticule, 'clip', {
+    bbox: [bbox[0] - pad, bbox[1] - pad, bbox[2] + pad, bbox[3] + pad]
+  });
+}
 
 function createUnprojectedPolygon(opts) {
   var crs = parseCrsString('wgs84');
