@@ -1008,32 +1008,11 @@ export function LayerControl(gui) {
     title.className = 'console-info-title';
     title.textContent = 'Layer: ' + (info.layer_name || '[unnamed layer]');
     container.appendChild(title);
-    container.appendChild(renderKeyValueTable(getInfoRows(info), 'console-info-table'));
+    container.appendChild(renderKeyValueTable(internal.getLayerInfoRows(info), 'console-info-table'));
     if (!info.raster_type) {
       container.appendChild(renderAttributeInfoTable(info.attribute_data));
     }
     return container;
-  }
-
-  function getInfoRows(info) {
-    var rows = [
-      ['Type', info.raster_type ? 'raster data' : info.geometry_type || 'tabular data']
-    ];
-    if (info.raster_type) {
-      rows.push(['Size', utils.format('%,d x %,d x %,d', info.raster_width, info.raster_height, info.raster_bands)]);
-      rows.push(['Data', info.raster_pixel_type || 'unknown']);
-    } else {
-      rows.push(['Records', utils.format('%,d', info.feature_count)]);
-    }
-    if (info.null_shape_count > 0) {
-      rows.push(['Nulls', utils.format("%'d", info.null_shape_count)]);
-    }
-    if (info.raster_type || info.geometry_type && info.feature_count > info.null_shape_count) {
-      rows.push(['Bounds', info.bbox.join(',')]);
-      rows.push(['CRS', info.proj4]);
-    }
-    rows.push(['Source', info.source_file || 'n/a']);
-    return rows;
   }
 
   function renderAttributeInfoTable(fields) {

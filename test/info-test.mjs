@@ -1,9 +1,78 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
-import { formatTableValue } from '../src/commands/mapshaper-info';
+import { formatTableValue, getElevationInfo, getLayerInfoRows,
+  rasterLooksLikeElevation } from '../src/commands/mapshaper-info';
 
+function makeGrid(values, opts) {
+  var o = opts || {};
+  return {
+    width: o.width || values.length,
+    height: o.height || 1,
+    bands: 1,
+    pixelType: o.pixelType || 'float32',
+    samples: Float32Array.from(values),
+    sampleBands: [0],
+    nodata: 'nodata' in o ? o.nodata : null,
+    bbox: o.bbox || [0, 0, values.length, 1],
+    transform: [1, 0, 0, 0, -1, 1]
+  };
+}
 
 describe('mapshaper-info.js', function () {
+  describe('elevation rasters', function() {
+    it('recognizes single-band numeric rasters', function() {
+      assert(rasterLooksLikeElevation({interpretation: 'image', grid: makeGrid([1])}));
+      assert(rasterLooksLikeElevation({interpretation: 'image', grid: makeGrid([1], {pixelType: 'int16'})}));
+      assert(rasterLooksLikeElevation({interpretation: 'continuous', grid: makeGrid([1], {pixelType: 'uint8'})}));
+      assert(!rasterLooksLikeElevation({interpretation: 'image', grid: makeGrid([1], {pixelType: 'uint8'})}));
+      assert(!rasterLooksLikeElevation({interpretation: 'categorical', grid: makeGrid([1])}));
+      var rgb = makeGrid([1, 2, 3]);
+      rgb.bands = 3;
+      assert(!rasterLooksLikeElevation({interpretation: 'image', grid: rgb}));
+    });
+
+    it('summarizes valid values, ignoring nodata', function() {
+      var grid = makeGrid([-9999, 0, 10, 20, 30, 40, -9999, 50], {nodata: -9999});
+      var o = getElevationInfo(grid, null);
+      assert.equal(o.nodata, -9999);
+      assert.equal(o.pixel_count, 8);
+      assert.equal(o.nodata_count, 2);
+      assert.equal(o.min, 0);
+      assert.equal(o.max, 50);
+      assert.equal(o.mean, 25);
+      assert.equal(o.percentiles[1], 0);
+      assert.equal(o.percentiles[50], 30);
+      assert.equal(o.percentiles[99], 50);
+      assert.strictEqual(o.pixel_size, null);
+    });
+
+    it('reports the ground size of pixels in lat-long rasters', function() {
+      var grid = makeGrid([1, 2], {width: 2, bbox: [0, -0.5, 2, 0.5]});
+      var o = getElevationInfo(grid, api.internal.parseCrsString('wgs84'));
+      assert.equal(Math.round(o.pixel_size[0] / 1000), 111);
+      assert.equal(Math.round(o.pixel_size[1] / 1000), 111);
+    });
+
+    it('handles rasters with no valid pixels', function() {
+      var o = getElevationInfo(makeGrid([-1, -1], {nodata: -1}), null);
+      assert.strictEqual(o.min, null);
+      assert.strictEqual(o.percentiles, null);
+    });
+
+    it('formats elevation rows', function() {
+      var grid = makeGrid([-9999, 0, 1000, 2000, 3000], {nodata: -9999});
+      var rows = getLayerInfoRows({
+        raster_type: 'grid', raster_width: 5, raster_height: 1, raster_bands: 1,
+        raster_pixel_type: 'float32', bbox: [0, 0, 5, 1], proj4: '',
+        elevation: getElevationInfo(grid, null)
+      });
+      var lookup = Object.fromEntries(rows);
+      assert.equal(lookup.Nodata, '-9999 (1 pixel, 20%)');
+      assert.equal(lookup.Elevation, '0 to 3,000 (mean 1,500)');
+      assert.equal(lookup.Percentiles, '1%: 0 | 25%: 1,000 | 50%: 2,000 | 75%: 2,000 | 99%: 3,000');
+    });
+  });
+
   describe('+ option', function() {
     it('simple table', async function() {
       var data = [{foo: 'bar'}, {foo: 'baz'}];

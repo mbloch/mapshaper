@@ -1,8 +1,10 @@
 import { applyFieldOrder } from '../datatable/mapshaper-data-utils';
 import { editShapes } from '../paths/mapshaper-shape-utils';
-import { getProjInfo } from '../crs/mapshaper-projections';
+import { getDatasetCRS, getProjInfo } from '../crs/mapshaper-projections';
 import { getLayerBounds, getFeatureCount, getLayerSourceFile, layerHasRaster } from '../dataset/mapshaper-layer-utils';
 import { getRasterBandCount, getRasterHeight, getRasterPixelType, getRasterWidth } from '../rasters/mapshaper-raster-utils';
+import { getRasterValidityMask } from '../rasters/mapshaper-raster-grid';
+import { getHillshadeCellSizes } from './mapshaper-hillshade';
 import { expandCommandTargets } from '../dataset/mapshaper-target-utils';
 import { writeFiles } from '../io/mapshaper-file-export';
 import { runningInBrowser } from '../mapshaper-env';
@@ -67,6 +69,9 @@ export function getLayerInfo(lyr, dataset) {
     o.raster_pixel_type = getRasterPixelType(lyr.raster);
     o.bbox = getLayerBounds(lyr, dataset.arcs).toArray();
     o.proj4 = getProjInfo(dataset);
+    if (rasterLooksLikeElevation(lyr.raster)) {
+      o.elevation = getElevationInfo(lyr.raster.grid, getDatasetCRS(dataset));
+    }
   }
   if (lyr.shapes && lyr.shapes.length > 0) {
     o.null_shape_count = countNullShapes(lyr.shapes);
@@ -76,6 +81,142 @@ export function getLayerInfo(lyr, dataset) {
   o.source_file = getLayerSourceFile(lyr, dataset) || null;
   o.attribute_data = getAttributeTableInfo(lyr);
   return o;
+}
+
+var ELEVATION_PERCENTILES = [1, 25, 50, 75, 99];
+var ELEVATION_SAMPLES = 1e6;
+
+// Single-band numeric rasters (e.g. GeoTIFF DEMs) and rasters imported with
+// raster-type=continuous; 8-bit single-band rasters are usually grayscale images
+export function rasterLooksLikeElevation(raster) {
+  var grid = raster && raster.grid;
+  if (!grid || !grid.samples || raster.interpretation == 'categorical' ||
+      grid.colorModel == 'palette') return false;
+  if (raster.interpretation == 'continuous') return true;
+  return grid.bands == 1 && !/^u?int8$/.test(grid.pixelType || '');
+}
+
+// Statistics for the values in the first band of @grid
+export function getElevationInfo(grid, crs) {
+  var n = grid.width * grid.height;
+  var valid = getRasterValidityMask(grid);
+  var bands = grid.bands || 1;
+  var step = Math.max(1, Math.floor(n / ELEVATION_SAMPLES));
+  var sample = [];
+  var count = 0, sum = 0, min = Infinity, max = -Infinity;
+  var i, val, o;
+  for (i = 0; i < n; i++) {
+    if (valid && !valid[i]) continue;
+    val = grid.samples[i * bands];
+    if (!isFinite(val)) continue;
+    count++;
+    sum += val;
+    if (val < min) min = val;
+    if (val > max) max = val;
+    if (i % step === 0) sample.push(val);
+  }
+  o = {
+    nodata: grid.nodata === undefined ? null : grid.nodata,
+    pixel_count: n,
+    nodata_count: n - count,
+    min: null,
+    max: null,
+    mean: null,
+    percentiles: null,
+    pixel_size: crs ? getGroundPixelSize(grid, crs) : null
+  };
+  if (count > 0) {
+    sample = Float64Array.from(sample).sort();
+    o.min = roundElevation(min);
+    o.max = roundElevation(max);
+    o.mean = roundElevation(sum / count);
+    o.percentiles = ELEVATION_PERCENTILES.reduce(function(memo, pct) {
+      memo[pct] = roundElevation(sample[Math.round((sample.length - 1) * pct / 100)]);
+      return memo;
+    }, {});
+  }
+  return o;
+}
+
+// Median ground width and height of a pixel, in meters
+function getGroundPixelSize(grid, crs) {
+  var cells = getHillshadeCellSizes(grid, crs);
+  var heights = Float64Array.from(cells.heights).sort();
+  var size = [cells.median, heights[Math.floor(heights.length / 2)]];
+  return size.every(isFinite) ? size.map(function(m) { return +m.toPrecision(4); }) : null;
+}
+
+function roundElevation(val) {
+  return Math.round(val * 1000) / 1000;
+}
+
+// Decimal places to show, based on the range of values
+function getElevationDecimals(o) {
+  var span = o.max - o.min;
+  return span >= 100 ? 0 : span >= 1 ? 1 : 3;
+}
+
+function formatElevation(val, decimals) {
+  return (+val.toFixed(decimals) || 0).toLocaleString('en-US', {maximumFractionDigits: decimals});
+}
+
+function formatPercent(n, total) {
+  var pct = n / total * 100;
+  return (pct > 0 && pct < 0.1 ? '<0.1' : +pct.toFixed(1)) + '%';
+}
+
+function formatGroundPixelSize(size) {
+  var w = size[0], h = size[1];
+  var fmt = function(m) { return m >= 100 ? String(Math.round(m)) : String(+m.toFixed(1)); };
+  return (Math.abs(w - h) / Math.max(w, h) < 0.02 ? fmt(w) : fmt(w) + ' x ' + fmt(h)) + ' m';
+}
+
+function getElevationInfoRows(o) {
+  var rows = [];
+  var decimals;
+  if (o.nodata !== null || o.nodata_count > 0) {
+    rows.push(['Nodata', (o.nodata === null ? 'none' : String(o.nodata)) + ' (' +
+      utils.format('%,d', o.nodata_count) + (o.nodata_count == 1 ? ' pixel, ' : ' pixels, ') + formatPercent(o.nodata_count, o.pixel_count) + ')']);
+  }
+  if (o.min === null) {
+    rows.push(['Elevation', 'no valid pixels']);
+  } else {
+    decimals = getElevationDecimals(o);
+    rows.push(['Elevation', formatElevation(o.min, decimals) + ' to ' + formatElevation(o.max, decimals) +
+      ' (mean ' + formatElevation(o.mean, decimals) + ')']);
+    rows.push(['Percentiles', ELEVATION_PERCENTILES.map(function(pct) {
+      return pct + '%: ' + formatElevation(o.percentiles[pct], decimals);
+    }).join(' | ')]);
+  }
+  if (o.pixel_size) {
+    rows.push(['Pixel size', formatGroundPixelSize(o.pixel_size)]);
+  }
+  return rows;
+}
+
+// [label, value] rows summarizing a layer, shared by the CLI and the GUI
+export function getLayerInfoRows(info) {
+  var rows = [
+    ['Type', info.raster_type ? 'raster data' : info.geometry_type || 'tabular data']
+  ];
+  if (info.raster_type) {
+    rows.push(['Size', utils.format('%,d x %,d x %,d', info.raster_width, info.raster_height, info.raster_bands)]);
+    rows.push(['Data', info.raster_pixel_type || 'unknown']);
+    if (info.elevation) {
+      rows = rows.concat(getElevationInfoRows(info.elevation));
+    }
+  } else {
+    rows.push(['Records', utils.format('%,d', info.feature_count)]);
+  }
+  if (info.null_shape_count > 0) {
+    rows.push(['Nulls', utils.format("%'d", info.null_shape_count)]);
+  }
+  if (info.raster_type || info.geometry_type && info.feature_count > info.null_shape_count) {
+    rows.push(['Bounds', info.bbox.join(',')]);
+    rows.push(['CRS', info.proj4]);
+  }
+  rows.push(['Source', info.source_file || 'n/a']);
+  return rows;
 }
 
 // i: (optional) record index
@@ -111,23 +252,13 @@ function formatInfo(arr) {
 }
 
 function formatLayerInfo(data) {
-  var str = '';
-  str += "Type:     " + (data.raster_type ? "raster data" : data.geometry_type || "tabular data") + "\n";
-  if (data.raster_type) {
-    str += utils.format("Size:     %,d x %,d x %,d\n", data.raster_width, data.raster_height, data.raster_bands);
-    str += "Data:     " + (data.raster_pixel_type || 'unknown') + "\n";
-  } else {
-    str += utils.format("Records:  %,d\n",data.feature_count);
-  }
-  if (data.null_shape_count > 0) {
-    str += utils.format("Nulls:     %'d", data.null_shape_count) + "\n";
-  }
-  if (data.raster_type || data.geometry_type && data.feature_count > data.null_shape_count) {
-    str += "Bounds:   " + data.bbox.join(',') + "\n";
-    str += "CRS:      " + data.proj4 + "\n";
-  }
-  str += "Source:   " + (data.source_file || 'n/a') + "\n";
-  return str;
+  var rows = getLayerInfoRows(data);
+  var labelLen = rows.reduce(function(memo, row) {
+    return Math.max(memo, row[0].length + 2);
+  }, 10);
+  return rows.map(function(row) {
+    return utils.rpad(row[0] + ':', labelLen, ' ') + row[1] + '\n';
+  }).join('');
 }
 
 export function formatAttributeTableInfo(arr) {

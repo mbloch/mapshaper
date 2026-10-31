@@ -2263,6 +2263,8 @@ Print usage tips and a list of commands.
 
 Print information about a dataset. Useful for seeing the fields in a layer's attribute data table. Also useful for summarizing the result of a series of commands, or for debugging unexpected output.
 
+For elevation rasters (single-band numeric rasters, and rasters imported with `raster-type=continuous`), `-info` also shows the nodata value and the number of nodata pixels, the range, mean and percentiles of the valid values, and the ground size of a pixel in meters.
+
 ```bash
 # Example: Get information about an unknown GeoJSON or TopoJSON dataset
 mapshaper mystery_file.json -info
