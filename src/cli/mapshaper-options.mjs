@@ -2944,10 +2944,10 @@ export function getOptionParser() {
       describe: 'shadow (transparent shading, the default) or opaque'
     })
     .option('base-color', {
-      describe: 'color of flat ground; implies style=opaque (default is #b4b4b4)'
+      describe: 'color of flat ground with style=opaque (default is #dfdfdf)'
     })
     .option('max-opacity', {
-      describe: 'opacity of the darkest shadows, 0-1 (default is 0.55, or 1 if opaque)',
+      describe: 'opacity of the darkest shadows with style=shadow; 0-1 (default is 0.55)',
       type: 'number'
     })
     .option('highlights', {
@@ -2955,7 +2955,7 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('shadow-color', {
-      describe: 'color of shadows (default is black)'
+      describe: 'color of shadows (default is black, or variable if style=opaque)'
     })
     .option('highlight-color', {
       describe: 'color of highlights (default is white)'

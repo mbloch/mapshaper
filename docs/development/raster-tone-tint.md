@@ -97,7 +97,10 @@ colors. While a slider is dragged, the copy is made with a 52³ lookup table of
 lattice colors, which is several times faster and within a level or two except
 for very saturated colors at the edge of the gamut. When the slider is let go,
 the preview is redone exactly. The pivots come from the whole raster, as
-`-tone` computes them, so the preview matches the result. Apply runs `-tone`
+`-tone` computes them, so the preview matches the result. The Opacity slider
+is `-tone opacity=`, which multiplies each pixel's alpha; the preview draws
+the copy with the canvas's global alpha, which does the same, and needs no
+copy at all if the colors are unchanged. Apply runs `-tone`
 with the slider settings, which goes into the session history and the undo
 stack; Cancel, the ×, or leaving the mode drops the preview.
 

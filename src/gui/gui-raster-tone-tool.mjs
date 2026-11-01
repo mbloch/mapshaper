@@ -6,7 +6,7 @@ import { runGuiEditCommand } from './gui-edit-command';
 import { clearRasterTonePreview, setRasterTonePreview } from './gui-raster-tone-preview';
 import {
   TONE_SLIDERS, getDefaultToneSettings, getToneCommand, getToneSliderRange,
-  sliderPosToToneValue, toneSettingsAreDefault, toneValueToSliderPos
+  sliderPosToToneValue, toneColorsAreDefault, toneSettingsAreDefault, toneValueToSliderPos
 } from './gui-tone-settings';
 
 // The 'tone' mode: sliders that preview -tone settings on an RGB image. The
@@ -77,8 +77,8 @@ export function RasterToneTool(gui) {
         schedulePreview(true);
         releaseFocus();
       });
-    // A double-click puts the slider back in the middle, which is hard to
-    // find by dragging on the log sliders
+    // A double-click puts the slider back at 1, which is hard to find by
+    // dragging on the log sliders
     input.on('dblclick', function() {
       settings[slider.name] = 1;
       updateSlider(slider);
@@ -183,13 +183,13 @@ export function RasterToneTool(gui) {
     if (toneSettingsAreDefault(settings)) {
       clearRasterTonePreview(targetLayer);
     } else {
-      setRasterTonePreview(targetLayer, {
+      setRasterTonePreview(targetLayer, toneColorsAreDefault(settings) ? null : {
         lightness: settings.lightness,
         saturation: settings.saturation,
         contrast: settings.contrast,
         gamma: settings.gamma,
         pivots: getPivots()
-      }, exact);
+      }, settings.opacity, exact);
     }
     gui.dispatchEvent('map-needs-refresh');
   }

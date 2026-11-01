@@ -597,13 +597,15 @@ export function DisplayCanvas() {
   // whatever it was scaled down to.
   // tone: settings previewed by the tone panel (see gui-raster-tone-preview)
   function drawRasterPreview(preview, bbox, sourcePixels, tone) {
-    var img = tone ? getTonedRasterCanvas(preview, tone) : getRasterCanvas(preview);
+    var img = tone && tone.opts ? getTonedRasterCanvas(preview, tone) : getRasterCanvas(preview);
     var t = _ext.getTransform(GUI.getPixelRatio());
     var p1 = t.transform(bbox[0], bbox[3]);
     var p2 = t.transform(bbox[2], bbox[1]);
     var magnification = Math.abs(p2[0] - p1[0]) / img.width / GUI.getPixelRatio();
     _ctx.imageSmoothingEnabled = rasterPreviewIsSmoothed(sourcePixels, magnification);
+    if (tone && tone.opacity < 1) _ctx.globalAlpha = tone.opacity;
     _ctx.drawImage(img, p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
+    _ctx.globalAlpha = 1;
   }
 
   // TODO: consider using drawStyledPaths(), which draws paths in batches

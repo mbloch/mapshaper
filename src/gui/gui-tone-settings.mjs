@@ -10,11 +10,12 @@ export var TONE_SLIDERS = [
   {name: 'lightness', label: 'Lightness', scale: 'linear', min: 0, max: 2},
   {name: 'saturation', label: 'Saturation', scale: 'linear', min: 0, max: 2},
   {name: 'contrast', label: 'Contrast', scale: 'log'},
-  {name: 'gamma', label: 'Gamma', scale: 'log'}
+  {name: 'gamma', label: 'Gamma', scale: 'log'},
+  {name: 'opacity', label: 'Opacity', scale: 'linear', min: 0, max: 1}
 ];
 
 export function getDefaultToneSettings() {
-  return {lightness: 1, saturation: 1, contrast: 1, gamma: 1};
+  return {lightness: 1, saturation: 1, contrast: 1, gamma: 1, opacity: 1};
 }
 
 // The range input's min and max, in slider units
@@ -41,6 +42,13 @@ export function roundToneValue(val) {
 export function toneSettingsAreDefault(settings) {
   return TONE_SLIDERS.every(function(slider) {
     return settings[slider.name] == 1;
+  });
+}
+
+// True if the settings leave the colors alone (opacity aside)
+export function toneColorsAreDefault(settings) {
+  return TONE_SLIDERS.every(function(slider) {
+    return slider.name == 'opacity' || settings[slider.name] == 1;
   });
 }
 

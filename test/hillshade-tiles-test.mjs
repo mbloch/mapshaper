@@ -100,7 +100,7 @@ function shadingSettings(o) {
     textureHighlights: 0,
     minElevation: null,
     style: 'shadow',
-    toneOpts: {maxOpacity: 0.55, highlightRatio: 1, gamma: 0.75, flatBrightness: Math.SQRT1_2},
+    toneOpts: {maxOpacity: 0.55, highlightRatio: 1, gamma: 0.75, maxShade: Math.SQRT2},
     sharpening: 0.25,
     sharpenRadius: 3,
     sharpenThreshold: 0

@@ -1,4 +1,4 @@
-import { getOklchInterpolator } from '../color/oklab';
+import { getOklchInterpolator, oklabToOklch, oklchToRgb, rgbToOklab } from '../color/oklab';
 import { parseColor } from '../color/color-utils';
 
 // Pixel operations for -tone and -tint. Colors are adjusted in OKLab
@@ -322,6 +322,75 @@ export function getColorRampTable(colors, breaks) {
     }
   }
   return {r: r, g: g, b: b, breaks: breaks};
+}
+
+// The colors of opaque shaded relief: a ramp from the shadow color (tone -1,
+// full shadow) through the base color (tone 0, flat ground) to the highlight
+// color (tone 1, the brightest slope), interpolated in OKLCH.
+// @stops from getHillshadeRampColors()
+// Returns {r, g, b, steps}: tone t is at index Math.round((t + 1) * steps)
+export function getHillshadeColorRamp(stops) {
+  var steps = SEGMENT_SIZE;
+  var r = new Uint8Array(steps * 2 + 1), g = new Uint8Array(steps * 2 + 1), b = new Uint8Array(steps * 2 + 1);
+  var toBase = getOklchInterpolator(formatRgb(stops.shadow), formatRgb(stops.base));
+  var toHighlight = getOklchInterpolator(formatRgb(stops.base), formatRgb(stops.highlight));
+  var i, rgb;
+  for (i = 0; i <= steps * 2; i++) {
+    rgb = parseColor(i <= steps ? toBase(i / steps).color : toHighlight(i / steps - 1).color);
+    r[i] = rgb.r;
+    g[i] = rgb.g;
+    b[i] = rgb.b;
+  }
+  return {r: r, g: g, b: b, steps: steps};
+}
+
+// Where the base color is on the ramp from the shadow color to the
+// highlight color, when one of them is derived. A slope tilted a little
+// toward the light then gets as much lighter as one tilted away gets darker:
+// with the default lights the brightest slope is 1.25 times as bright as flat
+// ground, so highlight tones are scaled four times as much as shadow tones,
+// and the shadow half of the ramp gets four times the lightness range. (The
+// weight is 1 / getHillshadeMaxShade(); it is fixed rather than following the
+// lights so that altitude= doesn't change the colors.)
+var HILLSHADE_BASE_WEIGHT = 0.8;
+var DEFAULT_HILLSHADE_BASE = {r: 223, g: 223, b: 223};
+var DEFAULT_HILLSHADE_HIGHLIGHT = {r: 255, g: 255, b: 255};
+
+// The three colors of opaque shading. The highlight color defaults to white.
+// A missing base color is HILLSHADE_BASE_WEIGHT of the way from the shadow
+// color to the highlight color, or #dfdfdf if the shadow color is missing
+// too. A missing shadow color is extrapolated from the base and highlight
+// colors (see getDerivedShadowColor()).
+// @shadow, @base, @highlight {r, g, b} or null
+// Returns {shadow, base, highlight}, as {r, g, b} objects
+export function getHillshadeRampColors(shadow, base, highlight) {
+  var light = toRgb(highlight || DEFAULT_HILLSHADE_HIGHLIGHT);
+  var mid = base ? toRgb(base) : shadow ?
+    parseColor(getOklchInterpolator(formatRgb(shadow), formatRgb(light))(HILLSHADE_BASE_WEIGHT).color) :
+    toRgb(DEFAULT_HILLSHADE_BASE);
+  var dark = shadow ? toRgb(shadow) : getDerivedShadowColor(mid, light);
+  return {shadow: dark, base: mid, highlight: light};
+}
+
+// The shadow color that puts @base HILLSHADE_BASE_WEIGHT of the way to
+// @highlight in lightness. It has the base color's hue and chroma (as much
+// as the gamut has room for): extrapolating them as well would multiply
+// small differences between the base and highlight colors into a strong,
+// unrelated color. Black if the base is too dark for the extrapolation.
+function getDerivedShadowColor(base, highlight) {
+  var lch = oklabToOklch(rgbToOklab(base));
+  var w = HILLSHADE_BASE_WEIGHT;
+  var l = (lch.l - w * rgbToOklab(highlight).l) / (1 - w);
+  if (l <= 0) return {r: 0, g: 0, b: 0};
+  return toRgb(oklchToRgb({l: l, c: lch.c, h: lch.h}));
+}
+
+function toRgb(o) {
+  return {r: Math.round(o.r), g: Math.round(o.g), b: Math.round(o.b)};
+}
+
+function formatRgb(o) {
+  return 'rgb(' + Math.round(o.r) + ',' + Math.round(o.g) + ',' + Math.round(o.b) + ')';
 }
 
 // Values below the first break get the first color, values above the last

@@ -5,14 +5,16 @@ import { internal } from './gui-core';
 // whichever preview of the raster it is drawing.
 var tonePreviews = new WeakMap();
 
-// @opts toneRgbPixels() options
+// @opts toneRgbPixels() options, or null to leave the colors alone
+// @opacity 0-1, multiplies the alpha of each pixel when the preview is drawn
 // @exact tone each pixel as -tone does, rather than with a lookup table,
 //   which is a few times faster and close but not exact at the edge of the
 //   gamut -- good enough while a slider is being dragged
-export function setRasterTonePreview(layer, opts, exact) {
+export function setRasterTonePreview(layer, opts, opacity, exact) {
   tonePreviews.set(layer, {
     opts: opts,
-    table: exact ? null : internal.getToneColorTable(opts),
+    opacity: opacity,
+    table: opts && !exact ? internal.getToneColorTable(opts) : null,
     canvases: new WeakMap() // preview -> toned canvas
   });
 }

@@ -4,7 +4,6 @@ import { layerHasRaster, setOutputLayerName } from '../dataset/mapshaper-layer-u
 import { getRasterValidityMask } from '../rasters/mapshaper-raster-grid';
 import { createRasterPreview, getRasterGrid, getRasterViewRecipe, rasterGridIsRotated } from '../rasters/mapshaper-raster-utils';
 import {
-  getDefaultBaseColor,
   getDefaultHighlightRatio,
   getDefaultMaxOpacity,
   writeHillshadeRgba,
@@ -13,10 +12,12 @@ import {
   DEFAULT_GAMMA,
   getAutoExaggeration,
   getHillshadeLights,
+  getHillshadeMaxShade,
   raiseLowElevations
 } from '../rasters/mapshaper-hillshade';
 import { runHillshadeStages } from '../rasters/mapshaper-hillshade-runner';
 import { formatColor, parseColor } from '../color/color-utils';
+import { getHillshadeColorRamp, getHillshadeRampColors } from '../rasters/mapshaper-raster-color';
 import { runningInBrowser } from '../mapshaper-env';
 import { stop, verbose, warnOnce } from '../utils/mapshaper-logging';
 
@@ -161,7 +162,7 @@ function getSmoothingParams(method, opts) {
 //   (job.resumeCommand())
 cmd.hillshade = async function(lyr, dataset, opts, resume) {
   var grid, cells, elev, valid, altitude, exaggeration, style, out, result;
-  var hasMin, toneOpts, azimuth, colors, smoothing, params, sharpening, ambient;
+  var hasMin, toneOpts, azimuth, colors, smoothing, params, sharpening, ambient, lights, stops = null;
   if (!layerHasRaster(lyr)) {
     stop('Command requires a raster layer');
   }
@@ -174,27 +175,36 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
   colors = {
     shadow: readToneColor(opts.shadow_color, 'shadow-color'),
     highlight: readToneColor(opts.highlight_color, 'highlight-color'),
-    base: style == 'opaque' ? readToneColor(opts.base_color, 'base-color') ||
-      getDefaultBaseColor() : null
+    ramp: null
   };
+  if (style == 'opaque') {
+    stops = getHillshadeRampColors(colors.shadow, readToneColor(opts.base_color, 'base-color'),
+      colors.highlight);
+    colors.ramp = getHillshadeColorRamp(stops);
+  }
   cells = getHillshadeCellSizes(grid, getDatasetCRS(dataset));
   // rounded like the printed settings, so that pasting them reproduces the output
   exaggeration = opts.exaggeration > 0 ? opts.exaggeration : +getAutoExaggeration(cells.median).toFixed(3);
   azimuth = opts.azimuth == null ? DEFAULT_AZIMUTH : opts.azimuth;
   sharpening = opts.sharpening >= 0 ? opts.sharpening : DEFAULT_SHARPENING;
   ambient = opts.ambient >= 0 ? opts.ambient : DEFAULT_AMBIENT;
+  lights = getHillshadeLights(azimuth, altitude, opts.single_light);
   toneOpts = {
     maxOpacity: opts.max_opacity >= 0 ? opts.max_opacity : getDefaultMaxOpacity(style),
     highlightRatio: opts.highlights >= 0 ? opts.highlights : getDefaultHighlightRatio(),
     gamma: opts.gamma > 0 ? opts.gamma : DEFAULT_GAMMA,
-    flatBrightness: Math.sin(altitude * Math.PI / 180)
+    maxShade: getHillshadeMaxShade(lights)
   };
   hasMin = opts.min_elevation != null;
   params = Object.assign({style: style, azimuth: azimuth, altitude: altitude,
     single_light: !!opts.single_light, exaggeration: exaggeration,
-    max_opacity: toneOpts.maxOpacity, highlights: toneOpts.highlightRatio, gamma: toneOpts.gamma,
-    shadow_color: opts.shadow_color || null, highlight_color: opts.highlight_color || null,
-    base_color: colors.base ? opts.base_color || formatColor(colors.base) : null,
+    max_opacity: stops ? null : toneOpts.maxOpacity,
+    highlights: stops ? null : toneOpts.highlightRatio,
+    gamma: toneOpts.gamma,
+    // the opaque style's colors as used, including derived ones
+    shadow_color: stops ? opts.shadow_color || formatColor(stops.shadow) : opts.shadow_color || null,
+    highlight_color: stops ? opts.highlight_color || formatColor(stops.highlight) : opts.highlight_color || null,
+    base_color: stops ? opts.base_color || formatColor(stops.base) : null,
     min_elevation: hasMin ? opts.min_elevation : null},
   getSmoothingParams(smoothing, opts), {
     light_adjust: opts.light_adjust || 0, ambient: ambient,
@@ -222,7 +232,7 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
     cellWidths: cells.widths,
     cellHeights: cells.heights
   }, getSmoothingSettings(smoothing, opts, exaggeration), {
-    lights: getHillshadeLights(azimuth, altitude, opts.single_light),
+    lights: lights,
     azimuth: azimuth,
     exaggeration: exaggeration,
     lightAdjust: opts.light_adjust || 0,
@@ -362,6 +372,9 @@ function getHillshadeStyle(opts) {
   }
   if (style == 'shadow' && opts.base_color) {
     stop('base-color= needs style=opaque');
+  }
+  if (style == 'opaque' && (opts.max_opacity != null || opts.highlights != null)) {
+    stop('max-opacity= and highlights= are for style=shadow. With style=opaque, use shadow-color=, base-color= and highlight-color=');
   }
   return style;
 }

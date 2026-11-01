@@ -78,6 +78,42 @@ describe('mapshaper-hillshade.mjs', function () {
     })
   })
 
+  describe('getHillshadeMaxShade()', function () {
+    // a plane rising @slopeDeg toward @riseDeg (math angle in grid
+    // coordinates, where y increases southward); 45 rises toward the
+    // southeast, so it faces a northwest light
+    function planeShade(slopeDeg, lights, riseDeg) {
+      var t = Math.tan(slopeDeg * Math.PI / 180);
+      var r = (riseDeg == null ? 45 : riseDeg) * Math.PI / 180;
+      var elev = makeElevation(5, 5, function(x, y) { return (x * Math.cos(r) + y * Math.sin(r)) * t; });
+      return internal.computeHillshade(elev, null, 5, 5, constantCells(5, 1), constantCells(5, 1), lights, 1)[12];
+    }
+
+    it('is 1 / sin(altitude) for a single light', function () {
+      assert(Math.abs(internal.getHillshadeMaxShade(internal.getHillshadeLights(315, 45, true)) - Math.SQRT2) < 1e-9);
+      assert(Math.abs(internal.getHillshadeMaxShade(internal.getHillshadeLights(315, 30, true)) - 2) < 1e-9);
+    })
+
+    it('is the brightest any slope gets under the default blend of lights', function () {
+      var lights = internal.getHillshadeLights();
+      var max = internal.getHillshadeMaxShade(lights);
+      var brightest = 0;
+      for (var deg = 0; deg <= 60; deg++) {
+        for (var rise = 0; rise < 90; rise += 2) {
+          brightest = Math.max(brightest, planeShade(deg, lights, rise));
+        }
+      }
+      assert(max < Math.SQRT2);
+      assert(Math.abs(brightest - max) < 0.005);
+    })
+
+    it('a slope facing the blend of lights gets the full highlight', async function () {
+      var tones = internal.getHillshadeTones(Float32Array.from([1.249]), null, 'opaque',
+        {gamma: 0.75, maxShade: internal.getHillshadeMaxShade(internal.getHillshadeLights())});
+      assert(tones[0] > 0.99);
+    })
+  })
+
   describe('getAutoExaggeration()', function () {
     it('is 1 at large scales and grows with pixel size, up to 10', function () {
       assert.equal(internal.getAutoExaggeration(10), 1);
@@ -152,7 +188,7 @@ describe('mapshaper-hillshade.mjs', function () {
       var flat = Math.sin(Math.PI / 4);
       var facing = 1.01 / flat; // just past a slope facing the light, to avoid float32 rounding
       var rgba = internal.renderHillshadeRgba(Float32Array.from([facing, 1, 0]), null, 'shadow',
-        {maxOpacity: 0.5, gamma: 1, flatBrightness: flat, highlightRatio: 0.6});
+        {maxOpacity: 0.5, gamma: 1, maxShade: 1 / flat, highlightRatio: 0.6});
       assert.deepEqual(Array.from(rgba.subarray(0, 4)), [255, 255, 255, Math.round(0.5 * 0.6 * 255)]);
       assert.equal(rgba[7], 0);
       assert.equal(rgba[11], 128);
@@ -165,12 +201,12 @@ describe('mapshaper-hillshade.mjs', function () {
       var half = 1 + 0.5 * (1 / flat - 1);
       var shade = Float32Array.from([facing, half, 0]);
       var rgba = internal.renderHillshadeRgba(shade, null, 'shadow',
-        {maxOpacity: 0.5, gamma: 1, flatBrightness: flat, highlightRatio: 1});
+        {maxOpacity: 0.5, gamma: 1, maxShade: 1 / flat, highlightRatio: 1});
       assert.equal(rgba[3], 128);
       assert(Math.abs(rgba[7] - 64) <= 1);
       assert.equal(rgba[11], 128);
       rgba = internal.renderHillshadeRgba(shade, null, 'shadow',
-        {maxOpacity: 0.5, gamma: 1, flatBrightness: flat, highlightRatio: 4});
+        {maxOpacity: 0.5, gamma: 1, maxShade: 1 / flat, highlightRatio: 4});
       assert.equal(rgba[3], 255);
       assert(Math.abs(rgba[7] - 128) <= 1); // scaled, not clipped
     })
@@ -187,32 +223,99 @@ describe('mapshaper-hillshade.mjs', function () {
       assert.equal(rgba[7], Math.round(Math.pow(0.25, 0.75) * 0.55 * 255));
     })
 
-    it('opaque style blends full-strength shading over the base color', function () {
-      var base = {r: 178.5, g: 178.5, b: 178.5, a: 1};
-      var rgba = internal.renderHillshadeRgba(shade, valid, 'opaque', {gamma: 1, flatBrightness: 0.7},
-        {base: base});
-      // with gamma=1, this is the Lambertian brightness: 0.7 * shade
-      assert(Math.abs(rgba[0] - 178.5) < 1);
+    function oklch(rgba, i) {
+      var o = internal.rgbToOklab({r: rgba[i], g: rgba[i + 1], b: rgba[i + 2]});
+      return {l: o.l, c: Math.hypot(o.a, o.b)};
+    }
+
+    function rampColors(shadow, highlight, base) {
+      return internal.getHillshadeRampColors(shadow && internal.parseColor(shadow),
+        base && internal.parseColor(base), highlight && internal.parseColor(highlight));
+    }
+
+    function opaqueColors(shadow, highlight, base) {
+      return {ramp: internal.getHillshadeColorRamp(rampColors(shadow, highlight, base))};
+    }
+
+    function hex(rgb) {
+      return internal.formatColor(rgb);
+    }
+
+    it('opaque style: tones run from the shadow color through the base to the highlight color', function () {
+      var colors = opaqueColors('#305440', '#fcffe7', '#9dba98');
+      var rgba = internal.writeHillshadeRgba(Float32Array.from([-1, 0, 1, -0.5, 0.5]), null, 'opaque', colors);
+      var shadowL = oklch(rgba, 0).l, baseL = oklch(rgba, 4).l, highlightL = oklch(rgba, 8).l;
+      assert.deepEqual(Array.from(rgba.subarray(0, 12)), [0x30, 0x54, 0x40, 255, 0x9d, 0xba, 0x98, 255, 0xfc, 0xff, 0xe7, 255]);
+      // lightness in equal steps (OKLCH), not sRGB values
+      assert(Math.abs(oklch(rgba, 12).l - (shadowL + baseL) / 2) < 0.01);
+      assert(Math.abs(oklch(rgba, 16).l - (baseL + highlightL) / 2) < 0.01);
+    })
+
+    it('opaque style keeps chroma between colors of different hues', function () {
+      // a blend in sRGB or OKLab passes close to gray between yellow and blue
+      var colors = opaqueColors('#3c4f6e', '#fff4c8', '#9aa8a0');
+      var rgba = internal.writeHillshadeRgba(Float32Array.from([-0.5]), null, 'opaque', colors);
+      assert(oklch(rgba, 0).c > 0.03);
+    })
+
+    it('opaque style: tones beyond -1 and 1 get the end colors', function () {
+      var colors = opaqueColors('#305440', '#fcffe7', '#9dba98');
+      var rgba = internal.writeHillshadeRgba(Float32Array.from([-1.5, 1.5]), null, 'opaque', colors);
+      assert.deepEqual(Array.from(rgba), [0x30, 0x54, 0x40, 255, 0xfc, 0xff, 0xe7, 255]);
+    })
+
+    it('opaque colors: given colors are used as they are', function () {
+      var stops = rampColors('#305440', '#fcffe7', '#9dba98');
+      assert.deepEqual([hex(stops.shadow), hex(stops.base), hex(stops.highlight)],
+        ['#305440', '#9dba98', '#fcffe7']);
+    })
+
+    it('opaque colors: by default, the base is #dfdfdf and the highlight white', function () {
+      var stops = rampColors();
+      assert.equal(hex(stops.base), '#dfdfdf');
+      assert.equal(hex(stops.highlight), '#ffffff');
+    })
+
+    it('opaque colors: a missing base is 80% of the lightness from shadow to highlight', function () {
+      var stops = rampColors('#305440', '#fcffe7');
+      var l = function(rgb) { return internal.rgbToOklab(rgb).l; };
+      assert(Math.abs(l(stops.base) - (0.2 * l(stops.shadow) + 0.8 * l(stops.highlight))) < 0.005);
+      assert.equal(hex(rampColors('#000000').base), hex(rampColors('#000000', '#ffffff').base));
+    })
+
+    it('opaque colors: a missing shadow puts the base 80% of the way to the highlight, with the base\'s hue', function () {
+      var l = function(rgb) { return internal.rgbToOklab(rgb).l; };
+      [[null, null], ['#e0d8c0', null], ['#c8dcc0', '#fcffe7'], ['#c8d8e8', '#fff8e0']].forEach(function(pair) {
+        var stops = rampColors(null, pair[1], pair[0]);
+        var base = internal.oklabToOklch(internal.rgbToOklab(stops.base));
+        var shadow = internal.oklabToOklch(internal.rgbToOklab(stops.shadow));
+        assert(Math.abs(l(stops.base) - (0.2 * l(stops.shadow) + 0.8 * l(stops.highlight))) < 0.005, pair);
+        if (base.c > 0.02) assert(Math.abs(shadow.h - base.h) < 3, pair);
+      });
+      // too dark a base for the extrapolation gives black
+      assert.equal(hex(rampColors(null, null, '#808080').shadow), '#000000');
+    })
+
+    it('opaque style: invalid pixels are clear', function () {
+      var rgba = internal.renderHillshadeRgba(shade, valid, 'opaque', {gamma: 1, maxShade: 1 / 0.7},
+        opaqueColors());
       assert.equal(rgba[3], 255);
-      assert.equal(rgba[4], 89);
-      assert.equal(rgba[8], 250);
+      assert(oklch(rgba, 4).l < oklch(rgba, 0).l);
+      assert(oklch(rgba, 8).l > oklch(rgba, 0).l);
       assert.deepEqual(Array.from(rgba.subarray(12, 16)), [0, 0, 0, 0]);
     })
 
-    it('opaque style: shadow and highlight colors blend over a colored base', function () {
-      var colors = {base: {r: 200, g: 180, b: 140, a: 1}, shadow: {r: 0, g: 0, b: 100, a: 1},
-        highlight: {r: 255, g: 255, b: 255, a: 1}};
-      var rgba = internal.writeHillshadeRgba(Float32Array.from([0, -0.5, 0.5]), null, 'opaque', colors);
-      assert.deepEqual(Array.from(rgba), [200, 180, 140, 255, 100, 90, 120, 255, 228, 218, 198, 255]);
-    })
-
-    it('the default base color is #b4b4b4 at any altitude', async function () {
+    it('without base-color, flat ground is #dfdfdf, or 80% of the way from shadow to highlight, at any altitude', async function () {
       function flatPixel(catalog) {
         return Array.from(catalog.getLayers()[0].layer.raster.grid.samples.subarray(0, 4));
       }
       var flat = function() { return makeElevationDataset(10, 10, function() { return 100; }); };
-      assert.deepEqual(flatPixel(await runOnDataset(flat(), '-hillshade style=opaque')), [180, 180, 180, 255]);
-      assert.deepEqual(flatPixel(await runOnDataset(flat(), '-hillshade style=opaque altitude=20')), [180, 180, 180, 255]);
+      var gray = flatPixel(await runOnDataset(flat(), '-hillshade style=opaque'));
+      var base = rampColors('#305440', '#fcffe7').base;
+      assert.deepEqual(gray, [223, 223, 223, 255]);
+      assert.deepEqual(flatPixel(await runOnDataset(flat(), '-hillshade style=opaque altitude=20')), gray);
+      assert.deepEqual(flatPixel(await runOnDataset(flat(), '-hillshade style=opaque shadow-color=#305440 highlight-color=#fcffe7')),
+        [base.r, base.g, base.b, 255]);
     })
   })
 
@@ -1028,12 +1131,22 @@ describe('mapshaper-hillshade.mjs', function () {
         /base-color/);
     })
 
-    it('opaque style records its default base color and opacities', async function () {
+    it('opaque style records the colors it used, and no opacities', async function () {
       var d = (await runOnDataset(makeElevationDataset(10, 10, slope), '-hillshade style=opaque'))
         .getLayers()[0].layer.raster.derivation;
-      assert.equal(d.base_color, '#b4b4b4');
-      assert.equal(d.max_opacity, 1);
-      assert.equal(d.highlights, 1);
+      var stops = internal.getHillshadeRampColors(null, null, null);
+      assert.equal(d.base_color, '#dfdfdf');
+      assert.equal(d.highlight_color, '#ffffff');
+      assert.equal(d.shadow_color, internal.formatColor(stops.shadow));
+      assert.equal(d.max_opacity, null);
+      assert.equal(d.highlights, null);
+    })
+
+    it('opaque style rejects max-opacity= and highlights=', async function () {
+      await assert.rejects(runOnDataset(makeElevationDataset(5, 5, slope), '-hillshade style=opaque max-opacity=0.8'),
+        /max-opacity/);
+      await assert.rejects(runOnDataset(makeElevationDataset(5, 5, slope), '-hillshade base-color=#e0d8c0 highlights=0.5'),
+        /highlights/);
     })
 
     it('rejects an unknown style', async function () {

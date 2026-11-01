@@ -32,6 +32,31 @@ export function getHillshadeLights(azimuth, altitude, singleLight) {
 
 // Relief flattens out as pixels grow, so small-scale maps need more vertical
 // exaggeration to read: none at 50 m per pixel, about 4.5 at 1 km.
+// The shade of the brightest slope, the one facing the blend of @lights
+// (flat ground is 1): 1 / sin(altitude) for a single light. A blend lights
+// no slope as fully as one light can, so the default blend at 45 degrees
+// tops out at about 1.25 rather than 1.41.
+export function getHillshadeMaxShade(lights) {
+  var vec = [0, 0, 0], flat = 0, len, sum = 0;
+  var dirs = lights.map(function(light) {
+    var alt = light.altitude * Math.PI / 180;
+    var az = (360 - light.azimuth + 90) * Math.PI / 180;
+    var dir = [Math.cos(alt) * Math.cos(az), Math.cos(alt) * Math.sin(az), Math.sin(alt)];
+    vec[0] += dir[0] * light.weight;
+    vec[1] += dir[1] * light.weight;
+    vec[2] += dir[2] * light.weight;
+    flat += Math.sin(alt) * light.weight;
+    return dir;
+  });
+  len = Math.sqrt(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]);
+  if (!(flat > 0) || !(len > 0)) return 1;
+  // a surface does not take negative light from a light behind it
+  dirs.forEach(function(dir, i) {
+    sum += Math.max(0, (dir[0] * vec[0] + dir[1] * vec[1] + dir[2] * vec[2]) / len) * lights[i].weight;
+  });
+  return Math.max(1, sum / flat);
+}
+
 export function getAutoExaggeration(metersPerPixel) {
   if (!(metersPerPixel > 0)) return 1;
   return Math.max(1, Math.min(10, Math.sqrt(metersPerPixel / 50)));
@@ -125,8 +150,8 @@ export function renderHillshadeRgba(shade, valid, style, opts, colors) {
   return writeHillshadeRgba(getHillshadeTones(shade, valid, style, opts), valid, style, colors);
 }
 
-// Default opacities of the styles: transparent shadows stay translucent, so
-// the map shows through; opaque shading runs from black to white.
+// Transparent shadows stay translucent, so the map shows through; opaque
+// shading runs the full length of its color ramp.
 export function getDefaultMaxOpacity(style) {
   return style == 'opaque' ? 1 : DEFAULT_MAX_OPACITY;
 }
@@ -140,24 +165,24 @@ export function getDefaultHighlightRatio() {
 // curve: tone = t ^ gamma, where t is 0 on flat ground and 1 in full shadow
 // (or, for highlights, on a slope facing the light). Gamma below 1
 // strengthens faint shading and eases off the extremes.
-// @style 'shadow' or 'opaque'; sets the default opacities
+// @style 'shadow' or 'opaque'; opaque tones run from -1 to 1, the ends of the
+//   color ramp, and ignore the opacities
 // @opts.maxOpacity 0-1, opacity of the darkest shadows
 // @opts.highlightRatio opacity of the brightest highlights, as a fraction of
 //   maxOpacity; the result is capped at 1
 // @opts.gamma exponent of the tone curve
-// @opts.flatBrightness brightness of flat ground relative to a slope facing
-//   the light: the sine of the light's altitude
+// @opts.maxShade shade of the brightest slope, which gets the full highlight
+//   (see getHillshadeMaxShade()); without it there are no highlights
 export function getHillshadeTones(shade, valid, style, opts) {
   var o = opts || {};
   var n = shade.length;
   var tones = new Float32Array(n);
-  var maxOpacity = o.maxOpacity >= 0 ? Math.min(1, o.maxOpacity) : getDefaultMaxOpacity(style);
-  var ratio = o.highlightRatio >= 0 ? o.highlightRatio : getDefaultHighlightRatio(style);
+  var opaque = style == 'opaque';
+  var maxOpacity = opaque ? 1 : o.maxOpacity >= 0 ? Math.min(1, o.maxOpacity) : getDefaultMaxOpacity(style);
+  var ratio = opaque ? 1 : o.highlightRatio >= 0 ? o.highlightRatio : getDefaultHighlightRatio(style);
   var maxHighlight = Math.min(1, maxOpacity * ratio);
   var gamma = o.gamma > 0 ? o.gamma : DEFAULT_GAMMA;
-  var flatValue = o.flatBrightness > 0 ? Math.min(1, o.flatBrightness) : 1;
-  // shade of a slope facing the light (flat ground is 1)
-  var litRange = flatValue < 1 ? 1 / flatValue - 1 : 0;
+  var litRange = o.maxShade > 1 ? o.maxShade - 1 : 0;
   var curve = getToneCurve(gamma);
   var i, s;
   for (i = 0; i < n; i++) {
@@ -172,32 +197,32 @@ export function getHillshadeTones(shade, valid, style, opts) {
   return tones;
 }
 
-// @tones from getHillshadeTones(), clamped to the 0-1 range of opacity
+// @tones from getHillshadeTones(), clamped to the -1 to 1 range
 // @style 'shadow': shadows and highlights with alpha; flat ground is clear
-//        'opaque': shadows and highlights blended over @colors.base
-// @colors optional {shadow, highlight, base} colors, as {r, g, b, a} objects
-//   from parseColor(). Defaults are black, white and the gray of
-//   getDefaultBaseColor(). The alpha of the shadow and highlight colors scales
-//   the opacity of their tones; the base color's alpha is ignored.
+//        'opaque': each tone's color in @colors.ramp
+// @colors optional {shadow, highlight, ramp}: for the shadow style, shadow
+//   and highlight colors as {r, g, b, a} objects from parseColor() (default
+//   black and white), whose alpha scales the opacity of their tones; for the
+//   opaque style, the colors of getHillshadeColorRamp() (required).
 export function writeHillshadeRgba(tones, valid, style, colors) {
   var n = tones.length;
   var out = new Uint8Array(n * 4);
   var dark = getToneColor(colors && colors.shadow, 0);
   var light = getToneColor(colors && colors.highlight, 255);
-  var opaque = style == 'opaque';
-  var base = opaque ? colors && colors.base || getDefaultBaseColor() : null;
-  var i, j, t, c, a;
+  var ramp = style == 'opaque' ? colors.ramp : null;
+  var i, j, t, c, a, k;
   for (i = 0, j = 0; i < n; i++, j += 4) {
     if (valid && !valid[i]) continue;
     t = tones[i];
-    c = t < 0 ? dark : light;
-    a = clamp01(t < 0 ? -t : t) * c.a;
-    if (opaque) {
-      out[j] = Math.round(base.r + (c.r - base.r) * a);
-      out[j + 1] = Math.round(base.g + (c.g - base.g) * a);
-      out[j + 2] = Math.round(base.b + (c.b - base.b) * a);
+    if (ramp) {
+      k = Math.round((1 + (t < -1 ? -1 : t > 1 ? 1 : t)) * ramp.steps);
+      out[j] = ramp.r[k];
+      out[j + 1] = ramp.g[k];
+      out[j + 2] = ramp.b[k];
       out[j + 3] = 255;
     } else if (t !== 0) {
+      c = t < 0 ? dark : light;
+      a = clamp01(t < 0 ? -t : t) * c.a;
       out[j] = c.r;
       out[j + 1] = c.g;
       out[j + 2] = c.b;
@@ -205,13 +230,6 @@ export function writeHillshadeRgba(tones, valid, style, colors) {
     }
   }
   return out;
-}
-
-// #b4b4b4: flat ground in a conventional Lambertian hillshade with the sun at
-// 45 degrees (sin(45) * 255). Constant, so altitude= changes the relief but
-// not the overall tone of the map.
-export function getDefaultBaseColor() {
-  return {r: 180, g: 180, b: 180, a: 1};
 }
 
 function getToneColor(color, defaultValue) {

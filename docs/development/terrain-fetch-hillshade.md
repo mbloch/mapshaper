@@ -287,19 +287,59 @@ same pattern as other mapshaper commands.
     the same opacity as the darkest shadows; highlights double the contrast
     across ridgelines, which makes ridges read much more crisply than shadows
     alone.
-  - `opaque` blends the same shadows and highlights over `base-color=`, so
-    every pixel is opaque: the shadow style flattened onto the base. Its
-    defaults are `max-opacity=1` and a `#b4b4b4` base, the brightness of flat
-    ground in a conventional Lambertian hillshade lit from 45°. The base is
-    constant, so `altitude=` changes the relief but not the overall tone of
-    the map. (It first followed the formula used by GDAL and Esri,
-    sin(altitude) × 255, which made a low sun darken the whole map, e.g.
-    `#808080` at 30°.) To match that formula at another altitude, set
-    `base-color=` to that gray; with `gamma=1 sharpening=0 ambient=0
-    single-light` the result is then the conventional gray hillshade.
+  - `opaque` colors every pixel from a ramp that runs from `shadow-color=`
+    (full shadow) through `base-color=` (flat ground) to `highlight-color=`
+    (the brightest slope), so every pixel is opaque. The tones are the
+    shadow style's at full strength: a shadow tone is how far the pixel is
+    from the base toward the shadow color, and a highlight tone how far
+    toward the highlight color, so full shadow is the shadow color itself.
+    `max-opacity=` and `highlights=` are errors in this style; the colors
+    set the contrast instead. (They used to scale the tones, with the alpha
+    of the colors, which made the ends of the ramp unreachable without
+    saying so: with `max-opacity=1`, full shadow was black, while with less
+    the shadow color was never shown.) The ramp is interpolated in OKLCH,
+    as `-tint` ramps are (`getHillshadeColorRamp()`), so lightness changes
+    in perceptually even steps and colors of different hues keep their
+    chroma between them: a teal shadow and a pale yellow highlight pass
+    through green rather than gray, the look of Swiss-style relief. Hue takes
+    the shorter way around the color wheel, so colors of nearly opposite
+    hues (navy and orange) pass through a third hue (purple); a base color
+    sets the middle. The ramp was first blended in sRGB over a `#b4b4b4`
+    base (the GDAL/Esri sin(altitude) × 255 at 45°).
 - `base-color=` color of flat ground in the opaque style, e.g. a land tint;
-  it implies `style=opaque` and is an error with `style=shadow`. Shadow and
-  highlight colors and opacities apply over it as in the shadow style.
+  it implies `style=opaque` and is an error with `style=shadow`. The three
+  colors are tied by a weight of 0.8: the base is 80% of the lightness from
+  the shadow color to the highlight color (`getHillshadeRampColors()`). The
+  highlight color defaults to white. A missing base color is 80% of the way
+  from the shadow color to the highlight color (in OKLCH), or `#dfdfdf` if
+  the shadow color is missing too. A missing shadow color gets the
+  lightness that puts the base at 80%, with the base's hue and chroma
+  (reduced to fit the sRGB gamut), or black if the base is too dark for
+  that (darker than `#bebebe` with a white highlight). Extrapolating the
+  hue and chroma as well would multiply small differences between the base
+  and highlight colors into a strong, unrelated color. With all three
+  colors given nothing is derived. The defaults give `#686868` →
+  `#dfdfdf` → `#ffffff`; `base-color=#e0d8c0` gives a `#514a36` shadow.
+  The weight 0.8 is 1 / `getHillshadeMaxShade()` with the default lights
+  (the brightest slope is 1.25 times as bright as flat ground), which gives
+  the shadow half of the ramp four times the lightness range of the
+  highlight half, as the highlight tones are scaled four times as much:
+  slopes tilted a little toward and away from the light change lightness
+  equally. It is fixed rather than following the lights, so `altitude=`
+  changes the relief but not the colors. Earlier versions blended a black
+  shadow and a white highlight with a base at a fixed position on that
+  ramp: first 71% (`#a1a1a1`), the position of flat ground in Lambertian
+  shading lit from 45° (sin 45° of full illumination), then 87%
+  (`#d3d3d3`), because even OKLab lightness steps make partial shadows
+  darker than the sRGB blending the conventional `#b4b4b4` was paired with
+  (a shadow tone of 0.5 was 90 with sRGB over `#b4b4b4`, 60 with OKLab over
+  `#a1a1a1`, 80 over `#d3d3d3`), and mountain relief went nearly black; but
+  full shadow was still black. The `#dfdfdf` base was chosen by eye. The
+  two-color forms are a quick way to color relief; matching a reference map
+  usually takes all three colors, because a reference's midtones are often
+  more saturated than any blend of its extremes (a Swiss relief measured
+  had chroma 0.06 in its midtones against 0.03-0.05 for blends of its
+  darkest and lightest colors).
 - `min-elevation=` raises lower elevations to this value; `min-elevation=0`
   flattens the sea floor, which the shadow style then leaves transparent.
   Raising (rather than masking as nodata) keeps coastal slopes shading
@@ -314,20 +354,28 @@ same pattern as other mapshaper commands.
   visible patches around the Rhône delta and in southern Brittany. Leaving
   the sea out of smoothing, the way nodata is, barely helped (0.65%), since
   the cause is FPS refitting rather than averaging with the sea.
-- `max-opacity=` 0-1 opacity of the darkest shadows (default 0.55, or 1 in
-  the opaque style).
+- `max-opacity=` 0-1 opacity of the darkest shadows (default 0.55; shadow
+  style only).
 - `highlights=` opacity of the brightest highlights (a slope facing the light),
-  as a ratio of `max-opacity=` (default 1; it was 0.6 until manual testing
+  as a ratio of `max-opacity=` (shadow style only; default 1; it was 0.6 until manual testing
   favored stronger highlights). The highlight
   range is scaled to this maximum, not clipped; the product is capped at 1.
+  The brightest highlight goes to the slope facing the blend of lights
+  (`getHillshadeMaxShade()`), which is 1.25 times as bright as flat ground
+  with the default lights at 45°. The range was first scaled to a single
+  light's 1.41, which no slope reaches under the blend: highlights topped out
+  at about 0.65 of full strength, and in the opaque style sunny slopes stayed
+  near the base color (median 0.37 of the way to the highlight color on
+  mountain relief, 0.54 after the fix).
   A white overlay can only lighten a background by its distance from white, so
   on light backgrounds a higher ratio adds little; `highlight-color=` helps
   more there.
 - `shadow-color=`, `highlight-color=` replace black shadows and white
   highlights, in both styles. A warm highlight such as `#fff0b4` stays
   visible on white or cream backgrounds through its hue, after Imhof's warm
-  light and cool shadow. The alpha of an rgba() color scales the opacity of its
-  tones.
+  light and cool shadow. In the shadow style, the alpha of an rgba() color
+  scales the opacity of its tones; the opaque style ignores alpha. The
+  defaults differ in the opaque style (see `base-color=`).
 - `gamma=` exponent of the tone curve: tone = darkness ^ gamma, where
   darkness is 0 on flat ground and 1 in full shadow (default 0.75). Values
   below 1 strengthen faint shading and ease off the darkest shadows; values
