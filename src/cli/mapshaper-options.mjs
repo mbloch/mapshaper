@@ -2951,7 +2951,7 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('highlights', {
-      describe: 'opacity of the brightest highlights, relative to max-opacity (default is 1)',
+      describe: 'opacity of the brightest highlights, relative to max-opacity (default is 0.6)',
       type: 'number'
     })
     .option('shadow-color', {

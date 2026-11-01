@@ -12,7 +12,7 @@ export var DEFAULT_AZIMUTH = 315;
 export var DEFAULT_ALTITUDE = 45;
 export var DEFAULT_MAX_OPACITY = 0.55;
 export var DEFAULT_GAMMA = 0.75;
-export var DEFAULT_HIGHLIGHT_RATIO = 1;
+export var DEFAULT_HIGHLIGHT_RATIO = 0.6;
 
 // Relative azimuths and weights of the default light blend: a main light,
 // plus fainter lights on either side of it.

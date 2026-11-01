@@ -935,12 +935,12 @@ describe('mapshaper-hillshade.mjs', function () {
         });
       }
 
-      it('auto (the default) is medium: three FPS passes', async function () {
+      it('auto (the default) is low: one FPS pass', async function () {
         var d = await getDerivation('-hillshade');
-        assert.equal(d.smoothing, 'medium');
-        assert.equal(d.fps_passes, 3);
+        assert.equal(d.smoothing, 'low');
+        assert.equal(d.fps_passes, 1);
         assert.equal(d.lowpass_radius, null);
-        assert.equal((await getDerivation('-hillshade smoothing=auto')).smoothing, 'medium');
+        assert.equal((await getDerivation('-hillshade smoothing=auto')).smoothing, 'low');
       })
 
       it('presets set FPS passes, threshold, radius and levels', async function () {
@@ -1098,8 +1098,8 @@ describe('mapshaper-hillshade.mjs', function () {
       var exaggeration = +d.exaggeration.toFixed(3);
       assert(exaggeration > 1); // automatic, from about 111 m pixels
       assert.equal(str, 'style=shadow azimuth=315 altitude=45 single-light exaggeration=' + exaggeration +
-        ' max-opacity=0.55 highlights=1 gamma=0.75 highlight-color=#fff0b4 smoothing=medium' +
-        ' fps-levels=1 fps-passes=3 fps-radius=4 fps-threshold=20 light-adjust=0 ambient=0.5 texture=0 aerial=0' +
+        ' max-opacity=0.55 highlights=0.6 gamma=0.75 highlight-color=#fff0b4 smoothing=low' +
+        ' fps-levels=1 fps-passes=1 fps-radius=4 fps-threshold=15 light-adjust=0 ambient=0.5 texture=0 aerial=0' +
         ' sharpening=0.5 sharpen-radius=3 sharpen-threshold=0');
     })
 

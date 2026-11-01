@@ -259,7 +259,9 @@ same pattern as other mapshaper commands.
 - `smoothing=` terrain smoothing, described under Generalization:
   - `low`, `medium`, `high`: feature-preserving smoothing (FPS) presets; see
     Generalization for their settings.
-  - `auto` (default): currently `medium`; it may later depend on the map scale.
+  - `auto` (default): currently `low` (it was `medium` until manual testing
+    favored keeping more terrain detail); it may later depend on the map
+    scale.
   - `off` or `none`: no smoothing.
   - `lowpass` (experimental): the earlier blur-and-restore method.
 - `fps-passes=` (1-20) overrides the preset number of FPS passes.
@@ -357,8 +359,10 @@ same pattern as other mapshaper commands.
 - `max-opacity=` 0-1 opacity of the darkest shadows (default 0.55; shadow
   style only).
 - `highlights=` opacity of the brightest highlights (a slope facing the light),
-  as a ratio of `max-opacity=` (shadow style only; default 1; it was 0.6 until manual testing
-  favored stronger highlights). The highlight
+  as a ratio of `max-opacity=` (shadow style only; default 0.6). It was
+  raised from 0.6 to 1 while highlights were scaled to a single light's
+  brightest slope, which no slope reaches under the blend of lights (see
+  below), and returned to 0.6 once highlights reached full strength. The highlight
   range is scaled to this maximum, not clipped; the product is capped at 1.
   The brightest highlight goes to the slope facing the blend of lights
   (`getHillshadeMaxShade()`), which is 1.25 times as bright as flat ground
@@ -453,8 +457,8 @@ level):
 
 | Preset | Levels | Passes | Threshold | Radius |
 |---|---|---|---|---|
-| `low` | 1 | 1 | 15° | 4 |
-| `medium` (`auto`) | 1 | 3 | 20° | 4 |
+| `low` (`auto`) | 1 | 1 | 15° | 4 |
+| `medium` | 1 | 3 | 20° | 4 |
 | `high` | 2 | 3 | 20° | 4 |
 
 `low` and `medium` were chosen from a grid of passes (1, 3, 6) and thresholds
