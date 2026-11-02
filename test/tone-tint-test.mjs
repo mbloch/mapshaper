@@ -62,6 +62,19 @@ function colorSamples(colors) {
   return out;
 }
 
+// @n colors around the hue circle (HSV, moderately saturated), in order of
+// OKLab hue
+function hueCircle(n) {
+  var colors = [];
+  for (var i = 0; i < n; i++) {
+    var h = i * 6 / n, x = 1 - Math.abs(h % 2 - 1), rgb;
+    rgb = h < 1 ? [1, x, 0] : h < 2 ? [x, 1, 0] : h < 3 ? [0, 1, x] :
+      h < 4 ? [0, x, 1] : h < 5 ? [x, 0, 1] : [1, 0, x];
+    colors.push(rgb.map(function(c) { return Math.round(255 * (0.25 + 0.6 * c)); }));
+  }
+  return colors.sort(function(a, b) { return oklabHue(a[0], a[1], a[2]) - oklabHue(b[0], b[1], b[2]); });
+}
+
 describe('mapshaper-raster-color.mjs', function () {
 
   describe('toneRgbPixels()', function () {
@@ -132,12 +145,26 @@ describe('mapshaper-raster-color.mjs', function () {
 
     it('hue-shift= moves greens toward the default pivot, keeping grays and blues', function () {
       var src = [[60, 120, 50], [128, 128, 128], [40, 70, 160]];
-      var out = internal.toneRgbPixels(colorSamples(src), 3, {saturation: 1, lightness: 1, hueShift: 0.5});
+      var out = internal.toneRgbPixels(colorSamples(src), 3, {saturation: 1, lightness: 1, hueShift: 1});
       var hueBefore = oklabHue(60, 120, 50), hueAfter = oklabHue(out[0], out[1], out[2]);
       assert(hueBefore - hueAfter > 15 && hueAfter > 85);
       assert(Math.abs(oklabL(out[0], out[1], out[2]) - oklabL(60, 120, 50)) < 0.005);
       assert.deepEqual(Array.from(out.subarray(3, 6)), [128, 128, 128]);
       assert(Math.abs(oklabHue(out[6], out[7], out[8]) - oklabHue(40, 70, 160)) < 5);
+    })
+
+    it('hue-shift= keeps hues in order, from -1 to 1', function () {
+      var colors = hueCircle(72);
+      [-1, 1].forEach(function(shift) {
+        var out = internal.toneRgbPixels(colorSamples(colors), 3, {saturation: 1, lightness: 1, hueShift: shift});
+        var hues = [];
+        for (var j = 0; j < out.length; j += 3) hues.push(oklabHue(out[j], out[j + 1], out[j + 2]));
+        var turn = 0;
+        for (j = 0; j < hues.length; j++) {
+          turn += ((hues[(j + 1) % hues.length] - hues[j]) % 360 + 360) % 360;
+        }
+        assert(Math.abs(turn - 360) < 1e-6, 'hues wrap around once at hue-shift=' + shift);
+      });
     })
 
     it('gamma= is applied before lightness=', function () {
@@ -158,6 +185,14 @@ describe('mapshaper-raster-color.mjs', function () {
     it('copies alpha', function () {
       var out = internal.toneRgbPixels(new Uint8Array([60, 90, 40, 77]), 4, {saturation: 0, lightness: 1});
       assert.equal(out[3], 77);
+    })
+
+    it('writes to an output array, if given one', function () {
+      var src = new Uint8Array([60, 90, 40, 77, 200, 30, 90, 255]);
+      var opts = {saturation: 0.5, lightness: 1.2};
+      var dst = new Uint8ClampedArray(src.length);
+      assert.strictEqual(internal.toneRgbPixels(src, 4, opts, dst), dst);
+      assert.deepEqual(Array.from(dst), Array.from(internal.toneRgbPixels(src, 4, opts)));
     })
   })
 
@@ -359,8 +394,8 @@ describe('-tone', function () {
   })
   it('hue-pivot= takes a color or a hue angle', async function () {
     var green = [[60, 120, 50]];
-    var byColor = await run(makeCatalog(colorSamples(green), 1, 1, 3), '-tone hue-shift=0.5 hue-pivot=#4a6fa5');
-    var byAngle = await run(makeCatalog(colorSamples(green), 1, 1, 3), '-tone hue-shift=0.5 hue-pivot=200');
+    var byColor = await run(makeCatalog(colorSamples(green), 1, 1, 3), '-tone hue-shift=1 hue-pivot=#4a6fa5');
+    var byAngle = await run(makeCatalog(colorSamples(green), 1, 1, 3), '-tone hue-shift=1 hue-pivot=200');
     var lyr = findLayer(byColor, 'img');
     var s = lyr.raster.grid.samples;
     var s2 = findLayer(byAngle, 'img').raster.grid.samples;

@@ -597,14 +597,17 @@ export function DisplayCanvas() {
   // whatever it was scaled down to.
   // tone: settings previewed by the tone panel (see gui-raster-tone-preview)
   function drawRasterPreview(preview, bbox, sourcePixels, tone) {
-    var img = tone && tone.opts ? getTonedRasterCanvas(preview, tone) : getRasterCanvas(preview);
+    var img = tone && tone.opts ? getTonedRasterCanvas(preview, tone) :
+      {canvas: getRasterCanvas(preview), width: preview.width, height: preview.height};
     var t = _ext.getTransform(GUI.getPixelRatio());
+    if (img.width < preview.width) sourcePixels = false; // a reduced copy, while dragging
     var p1 = t.transform(bbox[0], bbox[3]);
     var p2 = t.transform(bbox[2], bbox[1]);
     var magnification = Math.abs(p2[0] - p1[0]) / img.width / GUI.getPixelRatio();
     _ctx.imageSmoothingEnabled = rasterPreviewIsSmoothed(sourcePixels, magnification);
     if (tone && tone.opacity < 1) _ctx.globalAlpha = tone.opacity;
-    _ctx.drawImage(img, p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
+    _ctx.drawImage(img.canvas, 0, 0, img.width, img.height,
+      p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
     _ctx.globalAlpha = 1;
   }
 

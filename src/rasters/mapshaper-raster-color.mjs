@@ -52,8 +52,9 @@ function encodeChannel(c) {
 // toward opts.huePivot (degrees) by opts.hueShift (see getHueShiftRotation()).
 // @samples interleaved uint8 samples with @bands (3 or 4) per pixel; alpha
 //   is copied
-// Returns a new array of the same layout
-export function toneRgbPixels(samples, bands, opts) {
+// @out optional array of the same layout to write to (e.g. a canvas's pixels)
+// Returns @out, or a new Uint8Array
+export function toneRgbPixels(samples, bands, opts, out) {
   var sat = opts.saturation;
   var hueShift = opts.hueShift || 0;
   var pivot = opts.huePivot == null ? DEFAULT_HUE_PIVOT : opts.huePivot * Math.PI / 180;
@@ -63,9 +64,9 @@ export function toneRgbPixels(samples, bands, opts) {
   var curve = getLightnessCurve(opts.lightness, opts.gamma > 0 ? opts.gamma : 1, pivots,
     getContrastPivots(pivots, contrast));
   var curveMax = LIGHTNESS_STEPS - 1e-9;
-  var out = new Uint8Array(samples.length);
   var rgb = [0, 0, 0];
   var i, j, r, g, b, l, m, s, L, A, B;
+  out = out || new Uint8Array(samples.length);
   initTables();
   for (i = 0; i < samples.length; i += bands) {
     r = decodeTable[samples[i]];
@@ -102,9 +103,10 @@ export function toneRgbPixels(samples, bands, opts) {
 }
 
 // Hue rotation (radians) for hue-shift=: hues move toward @pivot (radians) by
-// @shift times their distance from it, fading out toward the opposite hue
-// and for near-gray colors (whose hue is unstable). The rotation never passes
-// the pivot, so hues keep their order for shifts up to 1.
+// @shift times half their distance from it, fading out toward the opposite
+// hue and for near-gray colors (whose hue is unstable). From -1 to 1, the
+// rotation never passes the pivot and hues keep their order; below about
+// -1.2, hues pushed away from the pivot would cross near the opposite hue.
 function getHueShiftRotation(A, B, shift, pivot) {
   var C = Math.sqrt(A * A + B * B);
   var weight, delta;
@@ -113,7 +115,7 @@ function getHueShiftRotation(A, B, shift, pivot) {
   delta = pivot - Math.atan2(B, A);
   if (delta > Math.PI) delta -= 2 * Math.PI;
   if (delta < -Math.PI) delta += 2 * Math.PI;
-  return shift * weight * delta * Math.cos(delta / 2);
+  return 0.5 * shift * weight * delta * Math.cos(delta / 2);
 }
 
 // OKLCH hue of a color, in degrees, or null for a gray

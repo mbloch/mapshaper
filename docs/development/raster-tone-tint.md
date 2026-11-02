@@ -121,7 +121,7 @@ stack; Cancel, the ×, or leaving the mode drops the preview.
 | `+`, `name=`, `target=` | 1 | As for other commands. |
 | `contrast=` | 1 | Multiplies the lightness range between the image's 1st and 99th percentiles, up to black to white, keeping the ratio of the room outside them; 0 is flat. Reversible by the reciprocal. See [contrast= and gamma=](#contrast-and-gamma). |
 | `gamma=` | 1 | Lightness tone curve between the image's 1st and 99th percentile lightness, or between where `contrast=` moves them: above 1 lightens midtones and shadows (the same direction as in `-hillshade`). See [contrast= and gamma=](#contrast-and-gamma). |
-| `hue-shift=` | 1 | -1 to 1. Moves hues toward the pivot hue by this fraction of their distance from it, or away; see [hue-shift= and hue-pivot=](#hue-shift-and-hue-pivot). |
+| `hue-shift=` | 1 | -1 to 1. Moves hues toward the pivot hue by up to half their distance from it (at 1), or away; see [hue-shift= and hue-pivot=](#hue-shift-and-hue-pivot). |
 | `hue-pivot=` | 1 | The hue `hue-shift=` moves toward: a color, or an OKLCH hue angle. Default 85° (yellow-tan). |
 | `colors=` | Later | Maps lightness onto a color ramp, dark to light (duotone or more colors). Replaces saturation and hue, so it can't be combined with `saturation=`. |
 | `range=` | Later | Input lightness range mapped onto `colors=`: `auto` or two numbers, e.g. `0.2,0.65`. Default is 0 to 1. |
@@ -220,24 +220,30 @@ were not much more saturated than the rest; per-hue saturation would work
 but is complicated to use.
 
 `hue-shift=` rotates each color's hue toward the pivot hue by `hue-shift`
-times its distance from it, times cos(distance / 2), so the rotation never
-passes the pivot and fades to nothing at the opposite hue. It also fades out
-below chroma 0.03 (to nothing at 0.005), so snow, white and gray rock stay
-neutral. Lightness and chroma are unchanged. Negative values push hues away
-from the pivot.
+times half its distance from it, times cos(distance / 2), so the rotation
+never passes the pivot and fades to nothing at the opposite hue. It also
+fades out below chroma 0.03 (to nothing at 0.005), so snow, white and gray
+rock stay neutral. Lightness and chroma are unchanged. Negative values push
+hues away from the pivot.
+
+The half is there so that the range from -1 to 1 is all useful. Without it,
+values above 0.5 collapsed greens and oranges onto the pivot, and values
+below about -0.6 pushed hues far enough that they crossed near the opposite
+hue, swapping colors and banding; with it, hues keep their order across the
+whole range.
 
 `hue-pivot=` takes a color (its OKLCH hue is used; grays are an error) or a
 hue angle in degrees. The default, 85°, is a yellow-tan (ochre) rather than
 pure yellow (about 110°): with a yellow pivot, greens would move about half
 as far, and tan rock and dry grass, near 85°, would shift toward
 yellow-green. With the default, hues near the pivot barely move, greens move
-most (138° to about 112° at 0.5), and blue water, near the opposite hue
+most (138° to about 112° at 1), and blue water, near the opposite hue
 (265°), stays blue.
 
 ```
--tone hue-shift=0.4                        # toward ochre: greens to olive
--tone hue-shift=0.3 hue-pivot=orange       # warmer: toward orange-brown
--tone hue-shift=0.3 hue-pivot=#4a6fa5      # cooler: toward a slate blue
+-tone hue-shift=0.8                        # toward ochre: greens to olive
+-tone hue-shift=0.6 hue-pivot=orange       # warmer: toward orange-brown
+-tone hue-shift=0.6 hue-pivot=#4a6fa5      # cooler: toward a slate blue
 ```
 
 A pivot pulls every hue within 180° of it, so a cool pivot also moves reds

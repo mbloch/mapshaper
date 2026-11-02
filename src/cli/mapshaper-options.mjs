@@ -3222,7 +3222,7 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('hue-shift', {
-      describe: '-1 to 1: move hues toward the pivot hue by this fraction of their distance from it, or away (e.g. 0.4 turns greens olive)',
+      describe: '-1 to 1: move hues toward the pivot hue by up to half their distance from it, or away (e.g. 0.8 turns greens olive)',
       type: 'number'
     })
     .option('hue-pivot', {
