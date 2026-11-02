@@ -312,6 +312,25 @@ describe('mapshaper-raster-color.mjs', function () {
       var exact = internal.toneRgbPixels(rgbOnly(src), 3, opts);
       assert.deepEqual(Array.from(rgbOnly(out)), Array.from(exact));
     })
+
+    it('a coarser table (steps=17) is exact at its lattice and close between', function () {
+      var opts = {saturation: 0.6, lightness: 1.4, contrast: 1.5, gamma: 1.3, pivots: [0.2, 0.8]};
+      var table = internal.getToneColorTable(opts, 17);
+      var lattice = new Uint8ClampedArray([0, 15, 255, 255, 120, 240, 45, 255]);
+      var src = randomRgba(20000, 7);
+      var out = internal.applyToneColorTable(table, lattice, new Uint8ClampedArray(lattice.length));
+      var exact = internal.toneRgbPixels(rgbOnly(lattice), 3, opts);
+      var sumErr = 0;
+      assert.equal(table.size, 18);
+      assert.deepEqual(Array.from(rgbOnly(out)), Array.from(exact));
+      out = internal.applyToneColorTable(table, src, new Uint8ClampedArray(src.length));
+      exact = internal.toneRgbPixels(rgbOnly(src), 3, opts);
+      for (var i = 0, j = 0; i < src.length; i += 4, j += 3) {
+        for (var c = 0; c < 3; c++) sumErr += Math.abs(out[i + c] - exact[j + c]);
+      }
+      assert(sumErr / exact.length < 0.6, 'mean error ' + sumErr / exact.length);
+      assert.throws(function() { internal.getToneColorTable(opts, 16); });
+    })
   })
 
   describe('getTrimmedRange()', function () {

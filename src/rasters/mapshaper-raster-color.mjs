@@ -1,5 +1,6 @@
 import { getOklchInterpolator, oklabToOklch, oklchToRgb, rgbToOklab } from '../color/oklab';
 import { parseColor } from '../color/color-utils';
+import { error } from '../utils/mapshaper-logging';
 
 // Pixel operations for -tone and -tint. Colors are adjusted in OKLab
 // (https://bottosson.github.io/posts/oklab/); see
@@ -168,11 +169,17 @@ export function getContrastPivots(pivots, contrast) {
 
 // A 3D lookup table of toneRgbPixels() results for a lattice of RGB colors,
 // for applying the same settings to many pixels quickly (e.g. a GUI preview).
-// Lattice colors are whole bytes, so TONE_TABLE_STEPS divides 255.
+// Lattice colors are whole bytes, so the number of steps divides 255.
+// @steps optional lattice intervals per channel (default TONE_TABLE_STEPS);
+//   17 is about 25 times faster to build, but less accurate where colors
+//   are pushed outside the gamut
 // Returns {size, data}, where data has size^3 RGB triplets, blue varying fastest
-export function getToneColorTable(opts) {
-  var size = TONE_TABLE_STEPS + 1;
-  var step = 255 / TONE_TABLE_STEPS;
+export function getToneColorTable(opts, steps) {
+  var size, step;
+  steps = steps || TONE_TABLE_STEPS;
+  if (255 % steps !== 0) error('Tone table steps should divide 255');
+  size = steps + 1;
+  step = 255 / steps;
   var samples = new Uint8Array(size * size * size * 3);
   var i = 0, r, g, b;
   for (r = 0; r < size; r++) {

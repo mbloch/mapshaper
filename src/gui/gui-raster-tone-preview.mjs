@@ -10,6 +10,7 @@ import { getShrinkFactor, shrinkRgbaPixels } from './gui-raster-shrink';
 // setting to the next, and a large preview is toned at a reduced size until
 // the slider is let go of.
 var DRAG_MAX_PIXELS = 1e6;
+var DRAG_TABLE_STEPS = 17; // a coarse lookup table, as it is rebuilt for every setting
 var tonePreviews = new WeakMap();
 var shrunkPreviews = new WeakMap(); // preview -> reduced copy, made once
 
@@ -28,7 +29,7 @@ export function setRasterTonePreview(layer, opts, opacity, exact) {
   tone.opts = opts;
   tone.opacity = opacity;
   tone.exact = !!exact;
-  tone.table = opts && !exact ? internal.getToneColorTable(opts) : null;
+  tone.table = opts && !exact ? internal.getToneColorTable(opts, DRAG_TABLE_STEPS) : null;
   tone.version++;
 }
 
