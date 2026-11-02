@@ -5,7 +5,7 @@ import { makePanelActionButton } from './gui-panel-controls';
 import { runGuiEditCommand } from './gui-edit-command';
 import { clearRasterTonePreview, setRasterTonePreview } from './gui-raster-tone-preview';
 import {
-  TONE_SLIDERS, getDefaultToneSettings, getToneCommand, getToneSliderRange,
+  TONE_SLIDERS, getDefaultToneSettings, getDefaultToneValue, getToneCommand, getToneSliderRange,
   sliderPosToToneValue, toneColorsAreDefault, toneSettingsAreDefault, toneValueToSliderPos
 } from './gui-tone-settings';
 
@@ -77,10 +77,10 @@ export function RasterToneTool(gui) {
         schedulePreview(true);
         releaseFocus();
       });
-    // A double-click puts the slider back at 1, which is hard to find by
-    // dragging on the log sliders
+    // A double-click puts the slider back at its default, which is hard to
+    // find by dragging on the log sliders
     input.on('dblclick', function() {
-      settings[slider.name] = 1;
+      settings[slider.name] = getDefaultToneValue(slider);
       updateSlider(slider);
       schedulePreview(true);
     });
@@ -188,6 +188,7 @@ export function RasterToneTool(gui) {
         saturation: settings.saturation,
         contrast: settings.contrast,
         gamma: settings.gamma,
+        hueShift: settings.hue_shift,
         pivots: getPivots()
       }, settings.opacity, exact);
     }

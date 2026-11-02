@@ -36,8 +36,16 @@ describe('gui-tone-settings.mjs', function () {
     assert(!toneColorsAreDefault(settings));
   })
 
+  it('hue is 0 by default, and is in the command as hue-shift=', function () {
+    var settings = getDefaultToneSettings();
+    assert.equal(settings.hue_shift, 0);
+    settings.hue_shift = 0.4;
+    assert(!toneColorsAreDefault(settings));
+    assert.equal(getToneCommand(settings), '-tone hue-shift=0.4');
+  })
+
   it('the command parses', function () {
-    var settings = {lightness: 0.9, saturation: 1.2, contrast: 1.5, gamma: 1.1, opacity: 0.75};
+    var settings = {lightness: 0.9, saturation: 1.2, contrast: 1.5, gamma: 1.1, hue_shift: -0.3, opacity: 0.75};
     var cmd = internal.parseCommands(getToneCommand(settings))[0];
     assert.equal(cmd.name, 'tone');
     assert.deepEqual(cmd.options, settings);
@@ -54,7 +62,9 @@ describe('gui-tone-settings.mjs', function () {
 
   it('slider positions and values round-trip', function () {
     TONE_SLIDERS.forEach(function(slider) {
-      (slider.name == 'opacity' ? [0, 0.35, 1] : [0.5, 1, 1.5]).forEach(function(val) {
+      var vals = slider.name == 'opacity' ? [0, 0.35, 1] :
+        slider.name == 'hue_shift' ? [-0.5, 0, 0.5] : [0.5, 1, 1.5];
+      vals.forEach(function(val) {
         assert.equal(sliderPosToToneValue(slider, toneValueToSliderPos(slider, val)), val);
       });
     });
