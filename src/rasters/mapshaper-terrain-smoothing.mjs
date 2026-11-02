@@ -105,6 +105,41 @@ export function getSlopeThresholds(elev, valid, width, height, cellWidths, cellH
   return slope;
 }
 
+// Reach of getSpreadThresholds(): the normals, then the blur
+export function getSpreadThresholdReach(spreadRadius) {
+  return 1 + getBlurReach(spreadRadius);
+}
+
+// Per-pixel FPS thresholds from how much the surface normals vary nearby:
+//   threshold = clamp(o.factor * spread, o.min, o.max)
+// where spread is the angle whose cosine is the length of the mean unit
+// normal, in a Gaussian window of @o.spreadRadius pixels. Two flat faces
+// meeting at a crease of angle A have a spread of A/2, so a factor below 2
+// keeps them from being averaged together, while each face gets the whole
+// window. On a surface that curves evenly, the same threshold covers only
+// part of the window's range of normals, which narrows the window
+// that FPS averages over, so rounded landforms are blurred less.
+// Returns a Float32Array of thresholds in degrees
+export function getSpreadThresholds(elev, valid, width, height, cellWidths, cellHeights, exaggeration, o) {
+  var n = width * height;
+  var zf = exaggeration > 0 ? exaggeration : 1;
+  var z = new Float32Array(n);
+  var out = new Float32Array(n);
+  var weights = valid ? Float32Array.from(valid) : null;
+  var toDegrees = 180 / Math.PI;
+  var i, normals, len, nx, ny, nz;
+  for (i = 0; i < n; i++) z[i] = elev[i] * zf;
+  normals = computeNormals(z, valid, width, height, cellWidths, cellHeights);
+  nx = blurFloatChannel(normals.nx, weights, width, height, o.spreadRadius);
+  ny = blurFloatChannel(normals.ny, weights, width, height, o.spreadRadius);
+  nz = blurFloatChannel(normals.nz, weights, width, height, o.spreadRadius);
+  for (i = 0; i < n; i++) {
+    len = Math.sqrt(nx[i] * nx[i] + ny[i] * ny[i] + nz[i] * nz[i]);
+    out[i] = Math.min(o.max, Math.max(o.min, o.factor * Math.acos(Math.min(1, len)) * toDegrees));
+  }
+  return out;
+}
+
 function getMeanSlope(elev, valid, width, height, cellWidths, cellHeights, exaggeration, sigma) {
   var n = width * height;
   var slope = new Float32Array(n);

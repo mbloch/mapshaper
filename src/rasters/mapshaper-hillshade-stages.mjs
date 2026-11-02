@@ -20,6 +20,8 @@ import {
   getFpsReach,
   getSlopeThresholdReach,
   getSlopeThresholds,
+  getSpreadThresholdReach,
+  getSpreadThresholds,
   getTwoLevelReach,
   twoLevelSmooth
 } from './mapshaper-terrain-smoothing';
@@ -61,7 +63,16 @@ export function smoothTerrain(grid, s) {
     out = generalizeTerrain(elev, valid, w, h, s.lowpassRadius);
   } else {
     fps = s.fps;
-    if (fps.minThreshold > 0) {
+    if (fps.spread > 0) {
+      thresholds = getSpreadThresholds(elev, valid, w, h, grid.cellWidths, grid.cellHeights,
+        s.exaggeration, {
+          min: fps.minThreshold,
+          max: fps.threshold,
+          factor: fps.spread,
+          spreadRadius: fps.spreadRadius
+        });
+      fps = Object.assign({}, fps, {thresholds: thresholds});
+    } else if (fps.minThreshold > 0) {
       thresholds = getSlopeThresholds(elev, valid, w, h, grid.cellWidths, grid.cellHeights,
         s.exaggeration, {
           min: fps.minThreshold,
@@ -88,7 +99,9 @@ export function getSmoothingReach(s) {
   var reach;
   if (s.method == 'lowpass') return Infinity;
   reach = fps.levels == 2 ? getTwoLevelReach(fps, s.refinement) : getFpsReach(fps);
-  if (fps.minThreshold > 0) {
+  if (fps.spread > 0) {
+    reach += getSpreadThresholdReach(fps.spreadRadius);
+  } else if (fps.minThreshold > 0) {
     reach += getSlopeThresholdReach(fps.slopeRadius);
   }
   return reach + REACH_MARGIN;

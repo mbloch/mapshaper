@@ -35,6 +35,9 @@ var FPS_REFINEMENT = {rounds: 1, threshold: 20, radius: 4};
 var DEFAULT_FPS_SLOPE_FACTOR = 3;
 var DEFAULT_FPS_SLOPE_RADIUS = 10;
 var DEFAULT_FPS_BLEND = [5, 15];
+// spread-based dynamic smoothing (fps-spread=)
+var DEFAULT_FPS_SPREAD_RADIUS = 3;
+var DEFAULT_SPREAD_MIN_THRESHOLD = 1;
 var AUTO_SMOOTHING = 'low';
 var DEFAULT_LOWPASS_RADIUS = 1;
 var METERS_PER_DEGREE = 6371008.8 * Math.PI / 180;
@@ -57,8 +60,14 @@ function getSmoothingMethod(opts) {
   }
   if (!isFpsSmoothing(method) && (opts.fps_passes != null || opts.fps_radius != null ||
       opts.fps_threshold != null || opts.fps_levels != null || opts.maximum_change != null ||
-      opts.fps_min_threshold != null)) {
+      opts.fps_min_threshold != null || opts.fps_spread != null)) {
     stop('FPS settings need smoothing=low, medium, high or auto');
+  }
+  if (opts.fps_spread != null && (opts.fps_slope_factor != null || opts.fps_slope_radius != null)) {
+    stop('fps-slope-factor= and fps-slope-radius= do not apply with fps-spread=');
+  }
+  if (opts.fps_spread_radius != null && opts.fps_spread == null) {
+    stop('fps-spread-radius= needs fps-spread=');
   }
   if (opts.fps_min_threshold == null && (opts.fps_slope_factor != null ||
       opts.fps_slope_radius != null || opts.fps_blend != null)) {
@@ -107,8 +116,11 @@ function getFpsOptions(method, opts) {
   var preset = FPS_PRESETS[method];
   var levels = opts.fps_levels || preset.levels;
   var threshold = opts.fps_threshold || preset.threshold;
-  var dynamic = opts.fps_min_threshold > 0;
-  if (dynamic && opts.fps_min_threshold > threshold) {
+  var spread = opts.fps_spread > 0;
+  var minThreshold = opts.fps_min_threshold > 0 ? opts.fps_min_threshold :
+    spread ? Math.min(DEFAULT_SPREAD_MIN_THRESHOLD, threshold) : null;
+  var dynamic = minThreshold > 0;
+  if (dynamic && minThreshold > threshold) {
     stop('fps-min-threshold= should not be larger than the FPS threshold (' + threshold + ' degrees)');
   }
   if (opts.fps_blend != null && levels != 2) {
@@ -120,9 +132,11 @@ function getFpsOptions(method, opts) {
     threshold: threshold,
     maxChange: opts.maximum_change || null,
     levels: levels,
-    minThreshold: dynamic ? opts.fps_min_threshold : null,
-    slopeFactor: dynamic ? (opts.fps_slope_factor >= 0 ? opts.fps_slope_factor : DEFAULT_FPS_SLOPE_FACTOR) : null,
-    slopeRadius: dynamic ? (opts.fps_slope_radius >= 0 ? opts.fps_slope_radius : DEFAULT_FPS_SLOPE_RADIUS) : null,
+    minThreshold: dynamic ? minThreshold : null,
+    spread: spread ? opts.fps_spread : null,
+    spreadRadius: spread ? (opts.fps_spread_radius > 0 ? opts.fps_spread_radius : DEFAULT_FPS_SPREAD_RADIUS) : null,
+    slopeFactor: dynamic && !spread ? (opts.fps_slope_factor >= 0 ? opts.fps_slope_factor : DEFAULT_FPS_SLOPE_FACTOR) : null,
+    slopeRadius: dynamic && !spread ? (opts.fps_slope_radius >= 0 ? opts.fps_slope_radius : DEFAULT_FPS_SLOPE_RADIUS) : null,
     blendRange: dynamic && levels == 2 ? parseFpsBlend(opts.fps_blend) : null
   };
 }
@@ -149,6 +163,8 @@ function getSmoothingParams(method, opts) {
     fps_radius: fps ? fps.radius : null,
     fps_threshold: fps ? fps.threshold : null,
     fps_min_threshold: dynamic ? fps.minThreshold : null,
+    fps_spread: dynamic ? fps.spread : null,
+    fps_spread_radius: dynamic ? fps.spreadRadius : null,
     fps_slope_factor: dynamic ? fps.slopeFactor : null,
     fps_slope_radius: dynamic ? fps.slopeRadius : null,
     fps_blend: dynamic && fps.levels == 2 ? (fps.blendRange ? fps.blendRange.join(',') : 'off') : null,

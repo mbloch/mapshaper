@@ -2842,6 +2842,10 @@ export function getOptionParser() {
 
   parser.command('hillshade')
     .describe('convert an elevation raster to shaded relief')
+    .option('style', {
+      DEFAULT: true,
+      describe: 'shadow (transparent shading, the default) or opaque'
+    })
     .option('azimuth', {
       describe: 'direction of the main light, in degrees (default is 315)',
       type: 'number'
@@ -2892,6 +2896,14 @@ export function getOptionParser() {
     .option('fps-blend', {
       describe: 'dynamic two-level smoothing: thresholds blending one level into two (default is 5,15)'
     })
+    .option('fps-spread', {
+      describe: '(experimental) FPS threshold as this multiple of the local spread of slope directions',
+      type: 'number'
+    })
+    .option('fps-spread-radius', {
+      describe: '(experimental) radius for measuring the spread, in pixels (default is 3)',
+      type: 'number'
+    })
     .option('maximum-change', {
       // describe: 'limit how far FPS can move an elevation, in meters (off by default)',
       type: 'number'
@@ -2939,9 +2951,6 @@ export function getOptionParser() {
     .option('min-elevation', {
       describe: 'raise lower elevations to this value (0 flattens the sea floor)',
       type: 'number'
-    })
-    .option('style', {
-      describe: 'shadow (transparent shading, the default) or opaque'
     })
     .option('base-color', {
       describe: 'color of flat ground with style=opaque (default is #dfdfdf)'
