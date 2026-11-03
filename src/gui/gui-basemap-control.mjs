@@ -6,6 +6,7 @@ import { setLoggingForGUI } from './gui-proxy';
 import { getDatasetCrsInfo } from './gui-display-utils';
 import { GUI } from './gui-lib';
 import { loadScript } from './dom-utils';
+import { PlaceSearch } from './gui-place-search';
 
 var EMPTY_STYLE = {
     version: 8,
@@ -49,6 +50,7 @@ export function Basemap(gui) {
   // var fadeBtn, clearBtn; // not in use
   var addBtn, addLayerBtn, cancelBtn;
   var customStyles = [];
+  var placeSearch;
 
   if (params) {
     //  TODO: check page URL for compatibility with mapbox key
@@ -159,6 +161,13 @@ export function Basemap(gui) {
         updateButtons();
       }
     });
+
+    placeSearch = new PlaceSearch(gui, overlayButtons, getDefaultAccessToken);
+  }
+
+  function getDefaultAccessToken() {
+    return (window.location.hostname == 'localhost' ?
+      params.localhost_key : params.production_key) || params.key;
   }
 
   // close and turn off mode
@@ -232,8 +241,7 @@ export function Basemap(gui) {
 
   function setStyle(style) {
     // update mapbox access token (user-defined styles may have a different key)
-    window.mapboxgl.accessToken = style.key || (window.location.hostname == 'localhost' ?
-      params.localhost_key : params.production_key) || params.key;
+    window.mapboxgl.accessToken = style.key || getDefaultAccessToken();
 
     if (style.type == 'mapbox' || !style.type) {
       map.setStyle(style.url);
@@ -271,6 +279,8 @@ export function Basemap(gui) {
     menuWrapper.findChildren('.basemap-list-item').forEach(function(el, i) {
       el.classed('active', el.node().getAttribute('data-slug') == (activeStyle ? getStyleId(activeStyle) : ''));
     });
+
+    placeSearch?.setEnabled(!!activeStyle && !overlayButtons.hasClass('disabled'));
   }
 
   function onUpdate() {

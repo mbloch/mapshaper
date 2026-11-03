@@ -1348,6 +1348,10 @@ body.simplify .layer-control-btn {
 	.mshp-main-map .basemap-overlay-buttons {
 		bottom: 58px;
 	}
+
+	.mshp-main-map .place-search-input {
+		width: 140px;
+	}
 }
 
 .layer-control .info-box {
@@ -2325,6 +2329,103 @@ div.basemap-style-btn.active {
 	margin-left: -22px;
 	margin-top: -4px;
 	width: 65px;
+}
+
+/* Place search, at the left end of the basemap buttons; the text field opens
+   to the left of the magnifier and the results open above the buttons. */
+.place-search {
+	display: inline-block;
+	vertical-align: top;
+	height: 28px;
+	margin-right: 4px;
+	padding-right: 4px;
+	border-right: 1px solid #e3e3e3;
+	line-height: normal;
+}
+
+.place-search-btn {
+	display: inline-block;
+	vertical-align: top;
+	box-sizing: border-box;
+	width: 12px;
+	height: 28px;
+	padding-top: 7px;
+	text-align: center;
+	color: var(--theme-col);
+	cursor: pointer;
+	border-radius: 5px;
+}
+
+.place-search-btn:hover {
+	color: #166689;
+}
+
+.place-search-input {
+	display: none;
+	vertical-align: top;
+	box-sizing: border-box;
+	width: 200px;
+	height: 26px;
+	margin: 1px 0 0 2px;
+	padding: 0 6px;
+	font-size: 13px;
+	border: 1px solid #ddd;
+	border-radius: 5px;
+	outline: none;
+}
+
+.place-search input.place-search-input:focus {
+	border-color: #d3aa00;
+	box-shadow: none;
+	outline: none;
+}
+
+.place-search.open .place-search-input {
+	display: inline-block;
+}
+
+.place-search-results {
+	position: absolute;
+	right: -1px;
+	bottom: calc(100% + 6px);
+	min-width: 100%;
+	max-width: 320px;
+	box-sizing: border-box;
+	padding: 4px 0;
+	background-color: rgba(255, 255, 255, 0.98);
+	border: 1px solid #ddd;
+	border-radius: 8px;
+	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+	font-size: 13px;
+	line-height: 1.3;
+	text-align: left;
+}
+
+.place-search-result {
+	padding: 5px 10px;
+	cursor: pointer;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.place-search-result.selected {
+	background-color: #eef3fb;
+}
+
+.place-search-name {
+	font-weight: bold;
+	color: #222;
+}
+
+.place-search-detail {
+	margin-left: 6px;
+	color: #888;
+}
+
+.place-search-message {
+	padding: 5px 10px;
+	color: #888;
 }
 
 .add-basemap-menu input[type=text] {
