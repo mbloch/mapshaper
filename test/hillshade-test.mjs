@@ -728,6 +728,69 @@ describe('mapshaper-hillshade.mjs', function () {
       assert(catalog.getLayers().some(function(o) { return o.layer.name == 'relief'; }));
     })
 
+    it('converts elevations in feet to meters', async function () {
+      var ft = makeElevationDataset(20, 20, slope);
+      var m = makeElevationDataset(20, 20, function(x, y) { return slope(x, y) * 0.3048; });
+      var unconverted = makeElevationDataset(20, 20, slope);
+      var cmd = '-hillshade style=opaque min-elevation=200';
+      ft.layers[0].raster.grid.verticalUnits = 'ft';
+      m.layers[0].raster.grid.verticalUnits = 'm';
+      function samples(catalog) {
+        return Array.from(catalog.getLayers()[0].layer.raster.grid.samples);
+      }
+      var ftOut = samples(await runOnDataset(ft, cmd));
+      // min-elevation= is in the raster's units
+      assert.deepEqual(ftOut, samples(await runOnDataset(m, '-hillshade style=opaque min-elevation=' + 200 * 0.3048)));
+      assert.notDeepEqual(ftOut, samples(await runOnDataset(unconverted, cmd)));
+    })
+
+    it('getFittedVerticalScale() scales the median slope to a typical steepness', function () {
+      var w = 10, h = 10;
+      var elev = makeElevation(w, h, function(x) { return x * 50; });
+      var scale = internal.getFittedVerticalScale(elev, null, w, h, constantCells(h, 1), constantCells(h, 1));
+      assert(Math.abs(Math.atan(50 * scale) * 180 / Math.PI - internal.FITTED_MEDIAN_SLOPE) < 1e-9);
+      assert.equal(internal.getFittedVerticalScale(new Float32Array(w * h), null, w, h,
+        constantCells(h, 1), constantCells(h, 1)), 1);
+    })
+
+    // e.g. a DEM saved from an image editor, its values stretched to the pixel type's range
+    describe('a DEM in pixel coordinates', function () {
+      function bumps(x, y) { return 40 * Math.sin(x / 3) * Math.cos(y / 4) + x * 5; }
+      function pixelDem(fn) {
+        var dataset = makeElevationDataset(20, 20, fn);
+        var grid = dataset.layers[0].raster.grid;
+        dataset.info = {};
+        grid.bbox = [0, 0, 20, 20];
+        grid.transform = [1, 0, 0, 0, -1, 20];
+        grid.pixelCoordinates = true;
+        return dataset;
+      }
+      function samples(catalog) {
+        return catalog.getLayers()[0].layer.raster.grid.samples;
+      }
+
+      it('is shaded the same however its values are stretched', async function () {
+        var a = samples(await runOnDataset(pixelDem(bumps), '-hillshade style=opaque'));
+        var b = samples(await runOnDataset(pixelDem(function(x, y) { return bumps(x, y) * 1000; }),
+          '-hillshade style=opaque'));
+        assert(new Set(a).size > 10);
+        for (var i = 0; i < a.length; i++) {
+          assert(Math.abs(a[i] - b[i]) <= 1, 'pixel ' + i);
+        }
+      })
+
+      it('is shaded to scale given the ground size of a pixel', async function () {
+        var scaled = pixelDem(bumps);
+        var meters = pixelDem(bumps);
+        scaled.layers[0].raster.grid.horizontalUnitMeters = 30;
+        // the same DEM with its coordinates in meters (and no CRS)
+        delete meters.layers[0].raster.grid.pixelCoordinates;
+        meters.layers[0].raster.grid.bbox = [0, 0, 600, 600];
+        assert.deepEqual(samples(await runOnDataset(scaled, '-hillshade style=opaque')),
+          samples(await runOnDataset(meters, '-hillshade style=opaque')));
+      })
+    })
+
     it('nodata pixels are transparent', async function () {
       var dataset = makeElevationDataset(10, 10, function(x, y) { return y < 2 ? -9999 : slope(x, y); },
         {nodata: -9999});

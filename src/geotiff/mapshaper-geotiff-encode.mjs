@@ -46,6 +46,7 @@ var TAGS = {
   ModelTiepoint: 33922,
   GeoKeyDirectory: 34735,
   GeoDoubleParams: 34736,
+  GDAL_METADATA: 42112,
   GDAL_NODATA: 42113
 };
 
@@ -85,7 +86,9 @@ var GEO_KEYS = {
   ProjScaleAtCenterGeoKey: [3093, 'double'],
   ProjAzimuthAngleGeoKey: [3094, 'double'],
   ProjStraightVertPoleLongGeoKey: [3095, 'double'],
-  ProjRectifiedGridAngleGeoKey: [3096, 'double']
+  ProjRectifiedGridAngleGeoKey: [3096, 'double'],
+  VerticalCSTypeGeoKey: [4096, 'short'],
+  VerticalUnitsGeoKey: [4099, 'short']
 };
 
 var COMPRESSION_NONE = 1;
@@ -108,6 +111,8 @@ var TARGET_STRIP_BYTES = 256 * 1024;
 // grid: a mapshaper raster grid (width, height, bands, samples, bbox, nodata)
 // opts.geoKeys: GeoTIFF geo keys to write, e.g. {ProjectedCSTypeGeoKey: 32615}
 // opts.compress: false to store samples uncompressed
+// opts.gdalMetadata: band metadata for GDAL's metadata tag, as
+//   [{band: <0-based index>, name: 'UNITTYPE', role: 'unittype', value: 'ft'}]
 // Returns a Uint8Array holding the whole file.
 export function encodeGeoTIFF(grid, opts) {
   opts = opts || {};
@@ -115,6 +120,10 @@ export function encodeGeoTIFF(grid, opts) {
   var rowsPerStrip = getRowsPerStrip(grid);
   var strips = encodeStrips(grid, rowsPerStrip, compress);
   var entries = getTagEntries(grid, strips, rowsPerStrip, compress, opts.geoKeys);
+  if (opts.gdalMetadata && opts.gdalMetadata.length > 0) {
+    entries = entries.concat(ascii(TAGS.GDAL_METADATA, formatGdalMetadata(opts.gdalMetadata)))
+      .sort(function(a, b) { return a.tag - b.tag; });
+  }
   var layout = getFileLayout(entries, strips);
   var bytes = new Uint8Array(layout.fileSize);
   var view = new DataView(bytes.buffer);
@@ -392,6 +401,19 @@ function getGeoKeyEntries(geoKeys) {
     entries.push(double(TAGS.GeoDoubleParams, doubles));
   }
   return entries;
+}
+
+function formatGdalMetadata(items) {
+  return '<GDALMetadata>\n' + items.map(function(o) {
+    return '  <Item name="' + escapeXml(o.name) + '" sample="' + o.band + '"' +
+      (o.role ? ' role="' + escapeXml(o.role) + '"' : '') + '>' +
+      escapeXml(String(o.value)) + '</Item>\n';
+  }).join('') + '</GDALMetadata>';
+}
+
+function escapeXml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function repeat(val, count) {

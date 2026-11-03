@@ -5,6 +5,7 @@ import {
   samplesAreNodataAtOffset
 } from './mapshaper-raster-grid';
 import utils from '../utils/mapshaper-utils';
+import { formatVerticalUnits } from './mapshaper-vertical-units';
 import { stop, warn } from '../utils/mapshaper-logging';
 import { runningInBrowser } from '../mapshaper-env';
 import {
@@ -223,6 +224,8 @@ export function getRasterPixelAtMapXY(raster, x, y) {
     isColor: isColor,
     isFloat: rasterSamplesAreFloat(grid.samples),
     valid: valid,
+    // e.g. 'ft', for the values of an elevation raster
+    units: !isColor && grid.verticalUnits ? formatVerticalUnits(grid.verticalUnits) : null,
     // Only color images get a color, so that inspecting a measurement raster
     // does not trigger a scaling-stats scan of the whole grid.
     // [r, g, b, a] in the 0-255 range, for formatColor() or a canvas.

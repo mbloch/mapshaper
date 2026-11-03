@@ -215,6 +215,10 @@ mapshaper -i 'lat,lon,label\n48.86,2.35,Paris\n51.51,-0.13,London' \
 
 `resolution=` [Raster] Width in pixels to import a GeoTIFF, PNG or JPEG raster at (e.g. `resolution=2000` or `resolution=2000px`), or `full` to import at full resolution. The height follows from the raster's aspect ratio, and a raster is never enlarged. By default, rasters larger than 16 million pixels are reduced to fit that size. A GeoTIFF is read from the smallest internal overview that is at least as wide as the requested width.
 
+`vertical-units=` [Raster] Units of an elevation raster's values: `m`, `ft`, `us-ft`, `cm`, `mm` or `km`. This overrides any units given in a GeoTIFF's metadata. Without either, elevations are taken to be in meters.
+
+`pixel-size=` [Raster] Ground size of a pixel, for a raster with no CRS (e.g. `pixel-size=30m` or `pixel-size=100ft`; a number without units is in meters). This lets `-hillshade` shade a DEM to scale when it was saved without georeferencing, for example from an image editor. Without it, `-hillshade` scales the relief of such a DEM to a typical steepness.
+
 `name=`  Rename the imported layer (or layers).
 
 **Example** 

@@ -316,6 +316,12 @@ export function getOptionParser() {
     .option('resolution', {
       describe: '[raster] import width in pixels, or full (default reduces large rasters)'
     })
+    .option('vertical-units', {
+      describe: '[raster] units of elevation values: m, ft, us-ft, cm, mm or km'
+    })
+    .option('pixel-size', {
+      describe: '[raster] ground size of a pixel, for a raster with no CRS (e.g. 30m)'
+    })
     .option('geometry-type', {
       // undocumented; GeoJSON import rejects all but one kind of geometry
       // describe: '[GeoJSON] Import one kind of geometry (point|polygon|polyline)'
@@ -3214,7 +3220,7 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('contrast', {
-      describe: 'multiply the lightness range between the image\'s darks and lights (1st and 99th percentile), up to black to white; 0 is flat (default is 1)',
+      describe: 'spread (above 1) or flatten (below 1) lightness around the image\'s median, without clipping; 0 is flat (default is 1)',
       type: 'number'
     })
     .option('gamma', {

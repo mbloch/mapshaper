@@ -4,6 +4,7 @@ import { getDatasetCRS, getProjInfo } from '../crs/mapshaper-projections';
 import { getLayerBounds, getFeatureCount, getLayerSourceFile, layerHasRaster } from '../dataset/mapshaper-layer-utils';
 import { getRasterBandCount, getRasterHeight, getRasterPixelType, getRasterWidth } from '../rasters/mapshaper-raster-utils';
 import { getRasterValidityMask } from '../rasters/mapshaper-raster-grid';
+import { formatVerticalUnits } from '../rasters/mapshaper-vertical-units';
 import { getHillshadeCellSizes } from './mapshaper-hillshade';
 import { getOklchLightnessChroma } from '../rasters/mapshaper-raster-color';
 import { expandCommandTargets } from '../dataset/mapshaper-target-utils';
@@ -122,6 +123,7 @@ export function getElevationInfo(grid, crs) {
     if (i % step === 0) sample.push(val);
   }
   o = {
+    units: grid.verticalUnits || null,
     nodata: grid.nodata === undefined ? null : grid.nodata,
     pixel_count: n,
     nodata_count: n - count,
@@ -129,7 +131,7 @@ export function getElevationInfo(grid, crs) {
     max: null,
     mean: null,
     percentiles: null,
-    pixel_size: crs ? getGroundPixelSize(grid, crs) : null
+    pixel_size: crs || grid.horizontalUnitMeters ? getGroundPixelSize(grid, crs) : null
   };
   if (count > 0) {
     sample = Float64Array.from(sample).sort();
@@ -271,7 +273,7 @@ function formatGroundPixelSize(size) {
 
 function getElevationInfoRows(o) {
   var rows = [];
-  var decimals;
+  var decimals, units;
   if (o.nodata !== null || o.nodata_count > 0) {
     rows.push(['Nodata', (o.nodata === null ? 'none' : String(o.nodata)) + ' (' +
       utils.format('%,d', o.nodata_count) + (o.nodata_count == 1 ? ' pixel, ' : ' pixels, ') + formatPercent(o.nodata_count, o.pixel_count) + ')']);
@@ -280,8 +282,9 @@ function getElevationInfoRows(o) {
     rows.push(['Elevation', 'no valid pixels']);
   } else {
     decimals = getElevationDecimals(o);
+    units = o.units ? ' ' + formatVerticalUnits(o.units) : '';
     rows.push(['Elevation', formatElevation(o.min, decimals) + ' to ' + formatElevation(o.max, decimals) +
-      ' (mean ' + formatElevation(o.mean, decimals) + ')']);
+      units + ' (mean ' + formatElevation(o.mean, decimals) + ')']);
     rows.push(['Percentiles', ELEVATION_PERCENTILES.map(function(pct) {
       return pct + '%: ' + formatElevation(o.percentiles[pct], decimals);
     }).join(' | ')]);

@@ -64,6 +64,8 @@ export async function fetchTileMosaic(source, range) {
       samples: samples,
       sampleBands: imagery ? [0, 1, 2] : [0],
       nodata: imagery ? null : ELEVATION_NODATA,
+      // elevation tiles are decoded to meters
+      verticalUnits: imagery ? undefined : 'm',
       coverage: coverage,
       bbox: bbox,
       transform: [

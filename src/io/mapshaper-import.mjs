@@ -15,6 +15,7 @@ import { importGeoParquet } from '../geoparquet/mapshaper-geoparquet-import';
 import { auxCrsIsWkt, parseAuxCrsString } from '../geotiff/mapshaper-geotiff-aux';
 import { importGeoTIFF } from '../geotiff/mapshaper-geotiff-import';
 import { importImageRaster } from '../rasters/mapshaper-image-import';
+import { applyRasterUnitOptions } from '../rasters/mapshaper-raster-import-units';
 import { importSVG } from '../svg/mapshaper-svg-import';
 
 // Parse content of one or more input files and return a dataset
@@ -108,10 +109,12 @@ export async function importDatasetsFromContent(obj, opts) {
     dataFmt = 'geotiff';
     data = obj.geotiff;
     dataset = await importGeoTIFF(data, opts, obj.aux, obj.world);
+    applyRasterUnitOptions(dataset, opts);
   } else if (obj.png || obj.jpeg) {
     dataFmt = obj.png ? 'png' : 'jpeg';
     data = obj[dataFmt];
     dataset = await importImageRaster(obj, opts);
+    applyRasterUnitOptions(dataset, opts);
   } else {
     return normalizeImportedDatasets(importContent(obj, opts));
   }

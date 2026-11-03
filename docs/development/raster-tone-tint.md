@@ -119,8 +119,8 @@ stack; Cancel, the ×, or leaving the mode drops the preview.
 | `opacity=` | 1 | 0-1. Without `background=`, multiplies each pixel's alpha. |
 | `background=` | 1 | Composites the result over this color, making it opaque. |
 | `+`, `name=`, `target=` | 1 | As for other commands. |
-| `contrast=` | 1 | Multiplies the lightness range between the image's 1st and 99th percentiles, up to black to white, keeping the ratio of the room outside them; 0 is flat. Reversible by the reciprocal. See [contrast= and gamma=](#contrast-and-gamma). |
-| `gamma=` | 1 | Lightness tone curve between the image's 1st and 99th percentile lightness, or between where `contrast=` moves them: above 1 lightens midtones and shadows (the same direction as in `-hillshade`). See [contrast= and gamma=](#contrast-and-gamma). |
+| `contrast=` | 1 | Spreads (above 1) or flattens (below 1) lightness around the image's median, without clipping; 0 is flat. See [contrast= and gamma=](#contrast-and-gamma). |
+| `gamma=` | 1 | Lightness tone curve between the image's 1st and 99th percentile lightness: above 1 lightens midtones and shadows (the same direction as in `-hillshade`). See [contrast= and gamma=](#contrast-and-gamma). |
 | `hue-shift=` | 1 | -1 to 1. Moves hues toward the pivot hue by up to half their distance from it (at 1), or away; see [hue-shift= and hue-pivot=](#hue-shift-and-hue-pivot). |
 | `hue-pivot=` | 1 | The hue `hue-shift=` moves toward: a color, or an OKLCH hue angle. Default 85° (yellow-tan). |
 | `colors=` | Later | Maps lightness onto a color ramp, dark to light (duotone or more colors). Replaces saturation and hue, so it can't be combined with `saturation=`. |
@@ -132,8 +132,8 @@ stack; Cancel, the ×, or leaving the mode drops the preview.
 ### Order of operations
 
 1. Convert each pixel to OKLCH.
-2. Lightness: the `contrast=` and `gamma=` curve, then `lightness=`.
-   `contrast=` sets the image's range, `gamma=` its shape, and `lightness=`
+2. Lightness: `gamma=`, then `contrast=`, then `lightness=`.
+   `gamma=` shapes the midtones, `contrast=` spreads them, and `lightness=`
    then fades the result evenly toward black or white. Applied after a lift,
    the curve would act on an already compressed band, and its effect would
    depend on `lightness=`. All three are combined into one lookup table over
@@ -145,57 +145,55 @@ stack; Cancel, the ×, or leaving the mode drops the preview.
 
 ### contrast= and gamma=
 
-Both work on a curve through four points: black, the image's own darks and
-lights (the 1st and 99th percentiles of its lightness, lo and hi, from a
-sample of at most a million visible pixels), and white.
+Both use levels found in the image's own lightness, from a sample of at
+most a million visible pixels: the 1st and 99th percentiles (lo and hi),
+between which `gamma=` curves, and the median, which `contrast=` centers on.
+`gamma=` is applied first, then `contrast=`.
 
-`contrast=` (k, 0 or more) moves the pivots. It multiplies the range between
-them, hi − lo, by k, up to the full range from black to white, and the room
-below and above them keeps its ratio, lo : (1 − hi). So the lightness
+`contrast=` (k, 0 or more) works around a center c, the median kept within
+0.25-0.75, and leaves c where it is:
 
-p = lo / (lo + 1 − hi)
+- Below 1, every lightness moves toward c in proportion,
+  L′ = c + (L − c) × k, black and white included. 0 gives a flat image at
+  c.
+- Above 1, each side of c bends toward black or white. With u the distance
+  from c as a fraction of the room on that side (c below, 1 − c above),
+  the new distance is k u / (1 + (k − 1) u). The slope at c is k, so the
+  midtones spread by about k; black and white stay put, and the slope there
+  is 1 / k, so the extremes are compressed, never clipped.
 
-which divides black to white in that ratio, never moves: between the pivots,
-contrast is a zoom centered on p. With span′ = min(1, k × (hi − lo)):
-lo′ = (1 − span′) × p and hi′ = 1 − (1 − span′) × (1 − p). 0 gives a flat
-image at p.
+Why the median, clamped: contrast should be steepest where the image's
+tones are. On EOX imagery the median, 0.39, is also where the earlier
+version's fixed point fell. The clamp keeps room on both sides when most of
+the image is snow or deep shadow, where the median would be at one end.
 
-Contrast changes are reversible: `contrast=1.5` followed by
-`contrast=0.6667` gives back the original image (up to 8-bit rounding).
-Because the curve keeps lightnesses in order, the second command finds the
-moved pivots as its own percentiles, and the same p. On EOX imagery, p is
-0.39, which is also the median.
+An earlier version moved the 1st and 99th percentile pivots: it multiplied
+hi − lo by k, up to black to white, with the room outside them keeping its
+ratio, and the tails scaled into what was left. That was reversible by the
+reciprocal, but it had two problems:
 
-Between the pivots, lightness is interpolated from lo-hi onto lo′-hi′,
-linearly or along a gamma curve:
+- Lowering contrast kept black and white fixed while the pivots moved
+  toward each other, so the 1% of pixels at each end were stretched across
+  a wide range (a slope near 4 at `contrast=0.33` on a photo with lo at
+  0.15). Pure black and white pixels stayed put among them, and dark
+  shadows turned into black specks.
+- Raising contrast did nothing more once the pivots reached black and white,
+  at k = 1 / (hi − lo). On a snow scene with pivots at 0.02 and 0.98, that
+  was 1.04.
 
-L′ = lo′ + (hi′ − lo′) × ((L − lo) / (hi − lo))^(1/gamma)
+The new curve can't be undone by the reciprocal: once lowering contrast has
+lifted black, raising it can't bring black back down without clipping.
+(Before that, a version that blended the pivots toward black and white
+above 1 and toward their midpoint below 1 lightened dark images when
+contrast was raised and then lowered.)
 
-Below and above the pivots, lightness is scaled into the room that is left
-(0-lo onto 0-lo′, hi-1 onto hi′-1), so nothing clips, except once the
-pivots reach black and white (k = 1 / (hi − lo), about 2.8 for EOX). Larger
-values change nothing more; the 1% of pixels at each end collapse onto black
-and white (a classic 1-99% stretch). On EOX imagery (0.25-0.61),
-`contrast=1.5` moves the pivots to 0.18 and 0.73; `contrast=0.6` to 0.30 and
-0.53.
+Between the pivots, `gamma=` follows
 
-- The midpoint between the pivots can move, but p doesn't: on dark imagery,
-  which has more room above, raising contrast moves the lights up more than
-  the darks down. On the Glacier frame, whose 99th percentile is snow at
-  0.98, contrast mostly deepens the darks.
-- An earlier version blended the pivots toward black and white above 1 and
-  toward their midpoint below 1, with 2 as a fixed full stretch. Below 1 it
-  widened both gaps by the same amount rather than in proportion, so raising
-  and then lowering contrast lightened dark images.
-- The slope changes at the pivots. With straight segments that affects only
-  the 1% of pixels at each end, and no banding was visible at
-  `contrast=1.5`; a smooth curve through the same four points is the fix if
-  it shows in smooth gradients (haze, water).
+L′ = lo + (hi − lo) × ((L − lo) / (hi − lo))^(1/gamma)
 
-With `contrast=1`, the pivots stay fixed and the curve is the gamma curve
-alone. Imagery rarely reaches black or
-white, so a curve over the full 0-1 scale moved the image's whole range as
-well as its midtones: on EOX imagery (0.25-0.61), `gamma=1.6` moved the
+and leaves lightness below lo and above hi alone. Imagery rarely reaches
+black or white, so a curve over the full 0-1 scale moved the image's whole
+range as well as its midtones: on EOX imagery (0.25-0.61), `gamma=1.6` moved the
 darks to 0.42 and the lights to 0.73, and getting both the curve and the
 overall lightness right meant alternating between `gamma=` and `lightness=`.
 With the curve on the image's range, `gamma=` only shapes the midtones
@@ -204,8 +202,9 @@ unchanged), and `lightness=` sets the overall lightness. Percentiles rather
 than the minimum and maximum, because the extremes are a few clouds or
 shadows (EOX: 0.08-0.99), which would make the curve nearly absolute again.
 
-The pivots found are recorded in the layer's derivation as `pivots`, and
-where `contrast=` moved them as `contrast_pivots`. Like `range=auto`, they
+The levels found are recorded in the layer's derivation as `pivots`
+([lo, hi, median]), and the center `contrast=` used as `contrast_center`.
+Like `range=auto`, they
 depend on the frame, so adjacent map sheets can get slightly different
 curves. If that matters, `range=lo,hi` (later) could also pin the pivots,
 and `verbose` print the pivots found.
@@ -440,12 +439,10 @@ new commands have no compatibility to keep. The cost is that the same
   to `contrast=`. A two-value output range
   (`lightness=0.5,0.92`) was considered and dropped: `lightness=1.5` is the
   0.5-1 case, and `gamma=` can shape the lift.
-- **contrast= multiplies the range between percentile pivots.** A plain
-  multiplier around one lightness clips at both ends. Multiplying the range
-  between the 1st and 99th percentiles, with the tails scaled into the room
-  left, never clips before the full stretch, keeps the gap ratio (so it is
-  reversible by the reciprocal, with no lightness drift), and shares the
-  pivots and the curve with `gamma=`.
+- **contrast= is a line below 1 and a soft S-curve above 1, around the
+  median.** A plain multiplier around one lightness clips at both ends; see
+  [contrast= and gamma=](#contrast-and-gamma) for the earlier pivot-based
+  version and why it was replaced.
 - **No curve option in -tint.** Linear interpolation between breaks;
   automatic breaks may come later instead.
 - **vibrance=** (from `-classify`) was left out. It mainly helps colored

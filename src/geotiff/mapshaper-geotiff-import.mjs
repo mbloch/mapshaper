@@ -1,5 +1,7 @@
 import { initProjLibrary, setDatasetCrsInfo, tryParseCrsString, tryParseWktToProj } from '../crs/mapshaper-projections';
-import { AUX_EXT, auxCrsIsWkt, parseAuxCrsString } from '../geotiff/mapshaper-geotiff-aux';
+import { AUX_EXT, auxCrsIsWkt, parseAuxBandInfo, parseAuxCrsString } from '../geotiff/mapshaper-geotiff-aux';
+import { samplesAreNodataAtOffset } from '../rasters/mapshaper-raster-grid';
+import { getVerticalUnitsFromMeters, parseVerticalUnits } from '../rasters/mapshaper-vertical-units';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
 import { getGeoKeyProjection, replaceProj4Projection } from '../geotiff/mapshaper-geotiff-geokeys';
@@ -26,7 +28,7 @@ export async function importGeoTIFF(input, optsArg, aux, world) {
   var sourceImage = await tiff.getImage();
   var georef = getGeoTIFFGeoreferencing(sourceImage, world);
   var importImage = await selectGeoTIFFImportImage(tiff, sourceImage, opts);
-  var imported = await importGeoTIFFImage(importImage, input, opts, sourceImage, georef);
+  var imported = await importGeoTIFFImage(importImage, input, opts, sourceImage, georef, aux);
   var dataset = {
     info: {
       raster_sources: [imported.source]
@@ -110,7 +112,7 @@ function getGeoTIFFSource(input) {
   return content.buffer.slice(content.byteOffset || 0, (content.byteOffset || 0) + content.byteLength);
 }
 
-async function importGeoTIFFImage(importImage, input, opts, sourceImage, georef) {
+async function importGeoTIFFImage(importImage, input, opts, sourceImage, georef, aux) {
   var image = importImage.image;
   var width = importImage.width;
   var height = importImage.height;
@@ -120,15 +122,26 @@ async function importGeoTIFFImage(importImage, input, opts, sourceImage, georef)
   repairDeferredOffsetArrays(image);
   var data = await readGeoTIFFSamples(image, samples, width, height);
   var noData = getNoDataValue(image);
+  var pixelType = getPixelType(image);
+  var bandInfo = await readBandValueInfo(sourceImage, samples, aux);
+  var scaled = applyBandScaling(data, samples.length, bandInfo, noData);
+  var verticalUnits = parseVerticalUnits(bandInfo[0].units) ||
+    await readGeoKeyVerticalUnits(sourceImage);
   var sourceId = getSourceId(input);
-  var raster = {
+  var raster;
+  if (scaled) {
+    data = scaled.samples;
+    noData = scaled.nodata;
+    pixelType = 'float32';
+  }
+  raster = {
     sourceId: sourceId,
     interpretation: getRasterInterpretation(opts),
     grid: {
       width: width,
       height: height,
       bands: samples.length,
-      pixelType: getPixelType(image),
+      pixelType: pixelType,
       samples: data,
       sampleBands: samples,
       nodata: noData,
@@ -150,6 +163,12 @@ async function importGeoTIFFImage(importImage, input, opts, sourceImage, georef)
       }
     }
   };
+  if (verticalUnits) {
+    raster.grid.verticalUnits = verticalUnits;
+  }
+  if (georef.type == 'pixels') {
+    raster.grid.pixelCoordinates = true;
+  }
   raster.view.recipe = getRasterViewRecipe(raster.grid, raster.view.recipe, opts);
   if (runningInBrowser()) {
     raster.view.preview = createRasterPreview(raster, opts);
@@ -158,6 +177,95 @@ async function importGeoTIFFImage(importImage, input, opts, sourceImage, georef)
     raster: raster,
     source: getSourceInfo(input, sourceId, sourceImage, georef)
   };
+}
+
+// How to read the values of each imported band: [{units, scale, offset}].
+// GDAL keeps these in its metadata tag, or in a .aux.xml sidecar, which
+// takes precedence, as it does in GDAL.
+// @bands: source band indexes
+async function readBandValueInfo(image, bands, aux) {
+  var info = [];
+  var fromAux, md;
+  for (var i = 0; i < bands.length; i++) {
+    fromAux = aux ? parseAuxBandInfo(aux.content, bands[i]) : {};
+    md = await readGDALBandMetadata(image, bands[i]);
+    info.push({
+      units: fromAux.units || md.UNITTYPE || null,
+      scale: fromAux.scale != null ? fromAux.scale : readMetadataNumber(md.SCALE),
+      offset: fromAux.offset != null ? fromAux.offset : readMetadataNumber(md.OFFSET)
+    });
+  }
+  return info;
+}
+
+async function readGDALBandMetadata(image, band) {
+  var md = null;
+  try {
+    md = image.getGDALMetadata ? await image.getGDALMetadata(band) : null;
+  } catch(e) {
+    // an unreadable metadata tag is treated like a missing one
+  }
+  return md || {};
+}
+
+function readMetadataNumber(str) {
+  var val = str == null ? NaN : parseFloat(str);
+  return isFinite(val) ? val : null;
+}
+
+// Stored values are often scaled to fit a smaller integer type, with GDAL's
+// SCALE and OFFSET giving the real value: raw * scale + offset. These are
+// applied here, so that elevation commands, -info and pixel readouts all see
+// real values. Returns {samples, nodata} with Float32 samples, or null if no
+// band is scaled.
+// Nodata pixels are given the scaled nodata value, rounded to Float32 so that
+// testing samples against it is exact.
+function applyBandScaling(data, bandCount, bandInfo, nodata) {
+  var scales = bandInfo.map(function(o) { return o.scale != null ? o.scale : 1; });
+  var offsets = bandInfo.map(function(o) { return o.offset != null ? o.offset : 0; });
+  var hasNodata = nodata !== null && nodata !== undefined;
+  var colorBands = Math.min(bandCount, 3);
+  var out, newNodata, i, j;
+  if (scales.every(function(s) { return s == 1; }) && offsets.every(function(o) { return o === 0; })) {
+    return null;
+  }
+  out = new Float32Array(data.length);
+  newNodata = hasNodata ? Math.fround(nodata * scales[0] + offsets[0]) : null;
+  for (i = 0; i < data.length; i += bandCount) {
+    if (hasNodata && samplesAreNodataAtOffset(data, i, bandCount, nodata)) {
+      for (j = 0; j < colorBands; j++) out[i + j] = newNodata;
+      j = colorBands;
+    } else {
+      j = 0;
+    }
+    for (; j < bandCount; j++) {
+      out[i + j] = data[i + j] * scales[j] + offsets[j];
+    }
+  }
+  return {samples: out, nodata: newNodata};
+}
+
+// Units from the vertical CRS in the file's geo keys, or null. A vertical CRS
+// is named by an EPSG code, which the geokeys-to-proj4 library can look up.
+async function readGeoKeyVerticalUnits(image) {
+  var keys = image.getGeoKeys && image.getGeoKeys() || {};
+  var vertical = {};
+  var lib, result, z;
+  ['VerticalGeoKey', 'VerticalCSTypeGeoKey', 'VerticalUnitsGeoKey'].forEach(function(name) {
+    if (keys[name] > 0) vertical[name] = keys[name];
+  });
+  if (Object.keys(vertical).length === 0) return null;
+  try {
+    lib = await loadGeoKeysToProj4Lib();
+    result = lib.toProj4(vertical);
+  } catch(e) {
+    return null;
+  }
+  if (!result || result.errors && (result.errors.verticalCsNotSupported ||
+      result.errors.verticalCsUnitsNotSupported)) return null;
+  z = result.coordinatesConversionParameters && result.coordinatesConversionParameters.z;
+  // a number when read from a vertical CRS, {m: <meters>} from a unit code
+  return getVerticalUnitsFromMeters(typeof z == 'number' ? z : z && z.m);
 }
 
 function getRasterInterpretation(opts) {

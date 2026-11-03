@@ -376,7 +376,7 @@ describe('-tone', function () {
     assert.deepEqual(Array.from(s.subarray(0, 3)), [40, 40, 40]);
     assert.deepEqual(Array.from(s.subarray(s.length - 3)), [200, 200, 200]);
     assert(s[mid * 3] > grays[mid][0] + 10);
-    assert.equal(lyr.raster.derivation.pivots.length, 2);
+    assert.equal(lyr.raster.derivation.pivots.length, 3);
   })
 
   function grayRamp() {
@@ -385,31 +385,75 @@ describe('-tone', function () {
     return makeCatalog(colorSamples(grays), grays.length, 1, 3);
   }
 
-  it('contrast= multiplies the range between the pivots, keeping the ratio of the room outside them', async function () {
-    var catalog = await run(grayRamp(), '-tone contrast=1.5');
-    var d = findLayer(catalog, 'img').raster.derivation;
-    var s = findLayer(catalog, 'img').raster.grid.samples;
-    var lo = d.pivots[0], hi = d.pivots[1], lo2 = d.contrast_pivots[0], hi2 = d.contrast_pivots[1];
-    assert(Math.abs((hi2 - lo2) - (hi - lo) * 1.5) < 0.002);
-    assert(Math.abs(lo2 / (lo2 + 1 - hi2) - lo / (lo + 1 - hi)) < 0.005);
-    assert(s[0] < 40 && s[0] > 0);
-    assert(s[s.length - 1] > 200 && s[s.length - 1] < 255);
+  // grays from @from to @to by @step, with @nBlack black and @nWhite white pixels
+  function grayImage(from, to, step, nBlack, nWhite) {
+    var grays = [];
+    for (var i = 0; i < nBlack; i++) grays.push([0, 0, 0]);
+    for (var v = from; v <= to; v += step) grays.push([v, v, v]);
+    for (i = 0; i < nWhite; i++) grays.push([255, 255, 255]);
+    return makeCatalog(colorSamples(grays), grays.length, 1, 3);
+  }
+
+  it('applyContrast() keeps the center, has slope k there, and stays in 0-1', function () {
+    [0.3, 0.5, 0.75].forEach(function(c) {
+      [0, 0.33, 1, 2, 5].forEach(function(k) {
+        var d = 1e-6, prev = -1;
+        assert(Math.abs(internal.applyContrast(c, k, c) - c) < 1e-12);
+        assert(Math.abs((internal.applyContrast(c + d, k, c) - internal.applyContrast(c - d, k, c)) / (2 * d) - k) < 1e-4);
+        for (var L = 0; L <= 1; L += 0.01) {
+          var L2 = internal.applyContrast(L, k, c);
+          assert(L2 >= 0 && L2 <= 1 + 1e-12 && L2 >= prev - 1e-12);
+          prev = L2;
+        }
+        if (k > 1) {
+          assert(Math.abs(internal.applyContrast(0, k, c)) < 1e-12);
+          assert(Math.abs(internal.applyContrast(1, k, c) - 1) < 1e-12);
+        }
+      });
+    });
+  })
+
+  it('contrast= centers on the median, kept within 0.25-0.75', function () {
+    assert.equal(internal.getContrastCenter([0.1, 0.9, 0.4]), 0.4);
+    assert.equal(internal.getContrastCenter([0.1, 0.99, 0.95]), 0.75);
+    assert.equal(internal.getContrastCenter([0.01, 0.6, 0.05]), 0.25);
+    assert.equal(internal.getContrastCenter([0.2, 0.8]), 0.5);
+  })
+
+  it('contrast= below 1 moves black and white toward the center too', async function () {
+    var catalog = await run(grayImage(40, 200, 2, 3, 3), '-tone contrast=0.5');
+    var lyr = findLayer(catalog, 'img');
+    var d = lyr.raster.derivation, s = lyr.raster.grid.samples;
+    var c = d.contrast_center;
+    assert.equal(d.pivots.length, 3);
+    assert.equal(c, internal.getContrastCenter(d.pivots));
+    assert(Math.abs(oklabL(s[0], s[1], s[2]) - c * 0.5) < 0.005); // black
+    assert(Math.abs(oklabL(s[s.length - 3], s[s.length - 2], s[s.length - 1]) - (c + (1 - c) * 0.5)) < 0.005); // white
     for (var i = 3; i < s.length; i += 3) assert(s[i] >= s[i - 3]);
   })
 
-  it('contrast= is undone by its reciprocal', async function () {
-    var src = grayRamp();
-    var orig = Array.from(findLayer(src, 'img').raster.grid.samples);
-    var catalog = await run(src, '-tone contrast=1.5 -tone contrast=0.6667');
-    var s = findLayer(catalog, 'img').raster.grid.samples;
-    for (var i = 0; i < s.length; i++) assert(Math.abs(s[i] - orig[i]) <= 2, i + ': ' + s[i] + ' vs ' + orig[i]);
+  it('contrast= above 1 spreads midtones when the pivots are at black and white', async function () {
+    // like a snow scene: the 1st and 99th percentiles are black and white
+    var src = grayImage(100, 140, 2, 30, 30);
+    var s0 = findLayer(src, 'img').raster.grid.samples.slice();
+    var catalog = await run(src, '-tone contrast=2');
+    var lyr = findLayer(catalog, 'img');
+    var s = lyr.raster.grid.samples;
+    var first = 30 * 3, last = s.length - 31 * 3;
+    var before = oklabL(s0[last], s0[last], s0[last]) - oklabL(s0[first], s0[first], s0[first]);
+    var after = oklabL(s[last], s[last], s[last]) - oklabL(s[first], s[first], s[first]);
+    assert.deepEqual(lyr.raster.derivation.pivots.slice(0, 2), [0, 1]);
+    // 2x at the center, easing off toward the ends of the ramp
+    assert(after > before * 1.6, before + ' -> ' + after);
+    assert.deepEqual(Array.from(s.subarray(0, 3)), [0, 0, 0]);
+    assert.deepEqual(Array.from(s.subarray(s.length - 3)), [255, 255, 255]);
+    for (var i = 3; i < s.length; i += 3) assert(s[i] >= s[i - 3]);
   })
 
-  it('contrast= stops at black to white, and 0 is flat', async function () {
-    var high = findLayer(await run(grayRamp(), '-tone contrast=100'), 'img').raster.derivation;
-    var flat = findLayer(await run(grayRamp(), '-tone contrast=0'), 'img').raster.derivation;
-    assert.deepEqual(high.contrast_pivots, [0, 1]);
-    assert.equal(flat.contrast_pivots[0], flat.contrast_pivots[1]);
+  it('contrast=0 is flat at the center', async function () {
+    var lyr = findLayer(await run(grayImage(40, 200, 2, 3, 3), '-tone contrast=0'), 'img');
+    var s = lyr.raster.grid.samples;
+    for (var i = 3; i < s.length; i++) assert(Math.abs(s[i] - s[0]) <= 1);
   })
   it('hue-pivot= takes a color or a hue angle', async function () {
     var green = [[60, 120, 50]];

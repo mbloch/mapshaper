@@ -27,7 +27,9 @@ export function getWorldTransform(world) {
 }
 
 // For an image with no georeferencing: one unit per pixel, with the origin at
-// the bottom-left corner, so the image is the right way up on the map
+// the bottom-left corner, so the image is the right way up on the map.
+// A grid placed this way is marked with grid.pixelCoordinates, so that its
+// coordinates are not mistaken for lat-long or for meters.
 export function getPixelTransform(height) {
   return [1, 0, 0, 0, -1, height];
 }

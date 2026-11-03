@@ -62,6 +62,40 @@ export function getAutoExaggeration(metersPerPixel) {
   return Math.max(1, Math.min(10, Math.sqrt(metersPerPixel / 50)));
 }
 
+// Slope of the median pixel of a DEM fitted with getFittedVerticalScale()
+export var FITTED_MEDIAN_SLOPE = 20;
+var FIT_SAMPLES = 1e6;
+
+// For a DEM whose values are in no known relation to its pixel size (e.g. one
+// saved from an image editor, its values stretched to fill the pixel type's
+// range): the factor to multiply its values by so that its median slope is
+// FITTED_MEDIAN_SLOPE degrees, or 1 if the DEM is flat. A rougher DEM keeps
+// steeper slopes than a smoother one, so the relief still looks like its own.
+// @cellWidths, @cellHeights per-row size of a pixel, in any unit
+export function getFittedVerticalScale(elev, valid, width, height, cellWidths, cellHeights) {
+  var step = Math.max(1, Math.ceil(Math.sqrt(width * height / FIT_SAMPLES)));
+  var grads = [];
+  var x, y, i, dx, dy, g;
+  for (y = 1; y < height - 1; y += step) {
+    for (x = 1; x < width - 1; x += step) {
+      i = y * width + x;
+      if (valid && !(valid[i] && valid[i - 1] && valid[i + 1] && valid[i - width] && valid[i + width])) {
+        continue;
+      }
+      dx = (elev[i + 1] - elev[i - 1]) / (2 * cellWidths[y]);
+      dy = (elev[i + width] - elev[i - width]) / (2 * cellHeights[y]);
+      g = Math.sqrt(dx * dx + dy * dy);
+      if (isFinite(g)) grads.push(g);
+    }
+  }
+  if (grads.length === 0) return 1;
+  grads = Float64Array.from(grads).sort();
+  // the median of a DEM with large flat areas is 0; a higher percentile still
+  // describes its slopes
+  g = grads[Math.floor(grads.length / 2)] || grads[Math.floor(grads.length * 0.9)];
+  return g > 0 ? Math.tan(FITTED_MEDIAN_SLOPE * Math.PI / 180) / g : 1;
+}
+
 // Returns brightness values, scaled so that flat ground is 1, lit slopes are
 // brighter and shaded slopes darker (0 is fully shaded).
 // @elev Float32Array of elevations

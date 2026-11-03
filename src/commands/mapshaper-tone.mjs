@@ -1,14 +1,14 @@
 import cmd from '../mapshaper-cmd';
 import { parseColor } from '../color/color-utils';
 import { layerHasRaster, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
-import { applyOpacityAndBackground, DEFAULT_HUE_PIVOT_DEGREES, getContrastPivots, getImageLightnessPercentiles,
+import { applyOpacityAndBackground, DEFAULT_HUE_PIVOT_DEGREES, getContrastCenter, getImageLightnessPercentiles,
   getOklchHue, toneRgbPixels } from '../rasters/mapshaper-raster-color';
 import { getRasterValidityMask } from '../rasters/mapshaper-raster-grid';
 import { createRasterPreview, getRasterGrid, getRasterViewRecipe } from '../rasters/mapshaper-raster-utils';
 import { runningInBrowser } from '../mapshaper-env';
 import { stop } from '../utils/mapshaper-logging';
 
-var PIVOT_PERCENTILES = [1, 99];
+var PIVOT_PERCENTILES = [1, 99, 50];
 var PIVOT_SAMPLES = 1e6;
 
 // Adjusts the colors of an RGB image (see docs/development/raster-tone-tint.md)
@@ -50,7 +50,7 @@ cmd.tone = function(lyr, opts) {
       gamma: gamma,
       contrast: contrast,
       pivots: pivots,
-      contrast_pivots: pivots ? getContrastPivots(pivots, contrast).map(roundLightness) : null,
+      contrast_center: pivots && contrast != 1 ? getContrastCenter(pivots) : null,
       hue_shift: hueShift,
       hue_pivot: huePivot,
       opacity: opacity,
@@ -77,12 +77,14 @@ function getHuePivot(arg) {
   return Math.round(hue * 10) / 10;
 }
 
-// The image's 1st and 99th percentile lightness, the pivots of contrast= and
-// gamma= (the extremes are usually a few clouds or shadows)
+// The image's 1st and 99th percentile lightness, between which gamma= curves
+// (the extremes are usually a few clouds or shadows), and its median, which
+// contrast= centers on
+// Returns [lo, hi, median], or null if no pixels are visible
 export function getTonePivots(grid) {
-  var range = getImageLightnessPercentiles(grid.samples, grid.bands,
+  var levels = getImageLightnessPercentiles(grid.samples, grid.bands,
     getRasterValidityMask(grid), PIVOT_PERCENTILES, PIVOT_SAMPLES);
-  return range && range[1] > range[0] ? range.map(roundLightness) : null;
+  return levels ? levels.map(roundLightness) : null;
 }
 
 function roundLightness(L) {

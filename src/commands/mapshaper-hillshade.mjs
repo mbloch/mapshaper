@@ -11,15 +11,17 @@ import {
   DEFAULT_AZIMUTH,
   DEFAULT_GAMMA,
   getAutoExaggeration,
+  getFittedVerticalScale,
   getHillshadeLights,
   getHillshadeMaxShade,
   raiseLowElevations
 } from '../rasters/mapshaper-hillshade';
 import { runHillshadeStages } from '../rasters/mapshaper-hillshade-runner';
+import { formatVerticalUnits, getVerticalUnitMeters } from '../rasters/mapshaper-vertical-units';
 import { formatColor, parseColor } from '../color/color-utils';
 import { getHillshadeColorRamp, getHillshadeRampColors } from '../rasters/mapshaper-raster-color';
 import { runningInBrowser } from '../mapshaper-env';
-import { stop, verbose, warnOnce } from '../utils/mapshaper-logging';
+import { message, stop, verbose, warnOnce } from '../utils/mapshaper-logging';
 
 // More passes don't generalize much more: beyond three or four, FPS facets
 // slopes instead of removing small landforms. high smooths a 2x downsampled
@@ -82,7 +84,8 @@ function getSmoothingMethod(opts) {
 // Settings for smoothTerrain(), or null for no smoothing
 // FPS presets: feature-preserving smoothing, with preset settings
 // lowpass: the earlier blur-and-restore method
-function getSmoothingSettings(method, opts, exaggeration) {
+// @minElevation: min-elevation= in meters, or null
+function getSmoothingSettings(method, opts, exaggeration, minElevation) {
   if (method == 'none') return null;
   return {
     method: method,
@@ -90,7 +93,7 @@ function getSmoothingSettings(method, opts, exaggeration) {
     refinement: FPS_REFINEMENT,
     lowpassRadius: getLowpassRadius(opts),
     exaggeration: exaggeration,
-    minElevation: opts.min_elevation != null ? opts.min_elevation : null
+    minElevation: minElevation
   };
 }
 
@@ -179,6 +182,7 @@ function getSmoothingParams(method, opts) {
 cmd.hillshade = async function(lyr, dataset, opts, resume) {
   var grid, cells, elev, valid, altitude, exaggeration, style, out, result;
   var hasMin, toneOpts, azimuth, colors, smoothing, params, sharpening, ambient, lights, stops = null;
+  var unitMeters, minElevation;
   if (!layerHasRaster(lyr)) {
     stop('Command requires a raster layer');
   }
@@ -212,6 +216,14 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
     maxShade: getHillshadeMaxShade(lights)
   };
   hasMin = opts.min_elevation != null;
+  valid = getRasterValidityMask(grid);
+  // In pixel coordinates, the ratio of a DEM's values to its pixel size is
+  // unknown, whatever units the values are in, so the ratio is fitted instead.
+  unitMeters = cells.unknown ?
+    getFittedElevationScale(lyr, grid, opts.band || 0, valid, cells) :
+    getElevationUnitMeters(grid);
+  // min-elevation= is in the raster's own units, like the values -info shows
+  minElevation = hasMin ? opts.min_elevation * unitMeters : null;
   params = Object.assign({style: style, azimuth: azimuth, altitude: altitude,
     single_light: !!opts.single_light, exaggeration: exaggeration,
     max_opacity: stops ? null : toneOpts.maxOpacity,
@@ -233,12 +245,16 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
     sharpen_threshold: sharpening > 0 ? opts.sharpen_threshold || 0 : null,
     band: opts.band || 0});
   verbose('Settings:', formatHillshadeSettings(params));
-  verbose('Ground pixel size:', formatPixelSize(cells.median) +
-    (opts.exaggeration > 0 ? '' : ' (sets the automatic exaggeration)'));
-  elev = readElevationBand(grid, opts.band || 0);
-  valid = getRasterValidityMask(grid);
+  if (!cells.unknown) {
+    verbose('Ground pixel size:', formatPixelSize(cells.median) +
+      (opts.exaggeration > 0 ? '' : ' (sets the automatic exaggeration)'));
+    if (grid.verticalUnits) {
+      verbose('Elevation units:', formatVerticalUnits(grid.verticalUnits));
+    }
+  }
+  elev = readElevationBand(grid, opts.band || 0, unitMeters);
   if (hasMin) {
-    raiseLowElevations(elev, valid, opts.min_elevation);
+    raiseLowElevations(elev, valid, minElevation);
   }
   result = await runHillshadeStages({
     elev: elev,
@@ -247,7 +263,7 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
     height: grid.height,
     cellWidths: cells.widths,
     cellHeights: cells.heights
-  }, getSmoothingSettings(smoothing, opts, exaggeration), {
+  }, getSmoothingSettings(smoothing, opts, exaggeration, minElevation), {
     lights: lights,
     azimuth: azimuth,
     exaggeration: exaggeration,
@@ -257,7 +273,7 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
     texture: opts.texture || 0,
     textureDetail: params.texture_detail,
     textureHighlights: params.texture_highlights,
-    minElevation: hasMin ? opts.min_elevation : null,
+    minElevation: hasMin ? minElevation : null,
     style: style,
     toneOpts: toneOpts,
     sharpening: sharpening,
@@ -403,18 +419,45 @@ function readToneColor(str, optionName) {
   return color;
 }
 
-function readElevationBand(grid, band) {
+// Returns elevations in meters
+// @metersPerUnit: the length of the raster's vertical unit in meters
+function readElevationBand(grid, band, metersPerUnit) {
   var n = grid.width * grid.height;
   var out = new Float32Array(n);
   for (var i = 0, j = band; i < n; i++, j += grid.bands) {
-    out[i] = grid.samples[j];
+    out[i] = grid.samples[j] * metersPerUnit;
   }
   return out;
 }
 
+// The factor that scales a DEM in pixel coordinates to a typical steepness,
+// with pixels taken to be 1 m across
+function getFittedElevationScale(lyr, grid, band, valid, cells) {
+  var raw = readElevationBand(grid, band, 1);
+  var scale = getFittedVerticalScale(raw, valid, grid.width, grid.height, cells.widths, cells.heights);
+  message((lyr.name || 'This raster') + ' has no ground scale (it is in pixel' +
+    ' coordinates), so its relief was scaled to a typical steepness (vertical scale ' +
+    +scale.toPrecision(3) + '). To adjust it, use exaggeration=. To shade it to' +
+    ' scale, import it with pixel-size= (and vertical-units=, if not meters).');
+  return scale;
+}
+
+// Meters per vertical unit of the raster. A raster in unknown units is taken
+// to be in meters, as most DEMs are.
+function getElevationUnitMeters(grid) {
+  var units = grid.verticalUnits;
+  var meters = getVerticalUnitMeters(units);
+  if (units && !meters) {
+    warnOnce('Unknown elevation units (' + units + '); assuming meters');
+  }
+  return meters || 1;
+}
+
 // Ground size of a pixel in meters, for each row: the size in map units,
-// converted to meters and corrected by the projection's scale factor
-// Returns {widths, heights, median}
+// converted to meters and corrected by the projection's scale factor.
+// A size given with pixel-size= at import takes the place of a CRS.
+// Returns {widths, heights, median, unknown}; unknown is true for a raster in
+// pixel coordinates, whose sizes are in pixels.
 export function getHillshadeCellSizes(grid, crs) {
   var h = grid.height;
   var bbox = grid.bbox;
@@ -423,13 +466,18 @@ export function getHillshadeCellSizes(grid, crs) {
   var widths = new Float64Array(h);
   var heights = new Float64Array(h);
   var centerX = (bbox[0] + bbox[2]) / 2;
+  var unitMeters = grid.horizontalUnitMeters > 0 ? grid.horizontalUnitMeters : null;
+  var unknown = !crs && !unitMeters && !!grid.pixelCoordinates;
   var y, rowY, k, lastK, kx;
-  if (!crs) {
+  if (!crs && !unitMeters && !unknown) {
     warnOnce('The raster\'s coordinate system is unknown; assuming that its coordinates are in meters');
   }
   for (y = 0; y < h; y++) {
     rowY = bbox[3] - (y + 0.5) * unitsY;
-    if (!crs) {
+    if (unitMeters) {
+      widths[y] = unitsX * unitMeters;
+      heights[y] = unitsY * unitMeters;
+    } else if (!crs) {
       widths[y] = unitsX;
       heights[y] = unitsY;
     } else if (isLatLngCRS(crs)) {
@@ -444,7 +492,7 @@ export function getHillshadeCellSizes(grid, crs) {
       heights[y] = unitsY * crs.to_meter / k;
     }
   }
-  return {widths: widths, heights: heights, median: getMedian(widths)};
+  return {widths: widths, heights: heights, median: getMedian(widths), unknown: unknown};
 }
 
 function getMedian(arr) {

@@ -334,7 +334,8 @@ export function ContextMenu(parentArg) {
       });
       var valueStr = values.join(', ');
       addMenuLabel(getBandLabel(info.values.length) +
-        (info.valid ? '' : ' (no data)'));
+        (info.valid ? '' : ' (no data)') +
+        (info.valid && info.units ? ' (' + info.units + ')' : ''));
       addCopyItem(valueStr, valueStr);
       if (info.color) {
         addColor(getColorString(info.color));

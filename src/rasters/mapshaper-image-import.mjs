@@ -68,6 +68,7 @@ export async function importImageRaster(input, optsArg) {
   if (world) {
     importImageCrs(dataset, input.prj, imageInput.filename);
   } else {
+    raster.grid.pixelCoordinates = true;
     // A .prj says nothing useful about coordinates that are pixels
     warn(getPixelCoordinatesWarning(imageInput.filename || 'This image'));
   }
