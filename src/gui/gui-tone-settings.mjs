@@ -1,9 +1,8 @@
 // The tone panel's sliders (gui-raster-tone-tool.mjs) and the -tone command
 // they add up to.
 //
-// contrast= and gamma= are multipliers that are undone by their reciprocals,
-// so their sliders are logarithmic: the middle is 1, and a step either way
-// is the same factor.
+// contrast= and gamma= are multipliers, so their sliders are logarithmic:
+// the middle is 1, and a step either way is the same factor.
 //
 // A slider's name is its key in the settings object, which is the parsed
 // name of its -tone option; @option is the option as typed, if different.

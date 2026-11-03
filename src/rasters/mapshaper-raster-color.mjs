@@ -10,6 +10,8 @@ var SEGMENT_SIZE = 256; // color ramp table entries between two breaks
 var ENCODE_SIZE = 65536; // linear-to-sRGB table entries; fine enough to round-trip dark values exactly
 var TONE_TABLE_STEPS = 51; // lattice intervals per channel in getToneColorTable() (divides 255)
 var LIGHTNESS_STEPS = 4096; // lightness curve table intervals, interpolated linearly
+var CONTRAST_CENTER_MIN = 0.25;
+var CONTRAST_CENTER_MAX = 0.75;
 // Default hue-pivot=: OKLCH yellow-tan (ochre). Pure yellow (about 110°)
 // would shift tan rock and dry grass toward yellow-green.
 export var DEFAULT_HUE_PIVOT_DEGREES = 85;
@@ -41,12 +43,11 @@ function encodeChannel(c) {
 }
 
 // Adjusts the OKLCH lightness, chroma and hue of each pixel of an RGB or RGBA
-// image. Chroma is multiplied by opts.saturation. Lightness follows a curve
-// through black, the pivot lightnesses opts.pivots [lo, hi], and white:
-// opts.contrast moves the pivots (see getContrastPivots()); between them,
-// lightness is interpolated linearly, or along a gamma curve (opts.gamma above
-// 1 lightens midtones); below and above them, it is scaled into the room
-// that is left, so nothing clips. Lightness then moves toward black by
+// image. Chroma is multiplied by opts.saturation. opts.pivots are the
+// image's [lo, hi, median] lightness: between lo and hi, lightness follows a
+// gamma curve (opts.gamma above 1 lightens midtones); then opts.contrast
+// spreads or flattens lightness around the median (see applyContrast()),
+// without clipping. Lightness then moves toward black by
 // 1 - opts.lightness (below 1) or toward white by opts.lightness - 1 (above 1,
 // up to 2), so light colors never clip. Colors that end up outside the sRGB
 // gamut lose chroma until they fit, at the same lightness and hue. Hues move
@@ -62,8 +63,7 @@ export function toneRgbPixels(samples, bands, opts, out) {
   var theta, cosT, sinT, A0;
   var pivots = opts.pivots || [0, 1];
   var contrast = opts.contrast == null ? 1 : opts.contrast;
-  var curve = getLightnessCurve(opts.lightness, opts.gamma > 0 ? opts.gamma : 1, pivots,
-    getContrastPivots(pivots, contrast));
+  var curve = getLightnessCurve(opts.lightness, opts.gamma > 0 ? opts.gamma : 1, contrast, pivots);
   var curveMax = LIGHTNESS_STEPS - 1e-9;
   var rgb = [0, 0, 0];
   var i, j, r, g, b, l, m, s, L, A, B;
@@ -129,42 +129,49 @@ export function getOklchHue(r, g, b) {
   return h < 0 ? h + 360 : h;
 }
 
-function getLightnessCurve(lightness, gamma, pivots, contrastPivots) {
+// Gamma, then contrast, then lightness= (see toneRgbPixels())
+function getLightnessCurve(lightness, gamma, contrast, pivots) {
   var lighten = Math.max(0, lightness - 1);
   var scale = Math.min(1, lightness);
   var lo = pivots[0], hi = pivots[1], span = hi - lo;
-  var lo2 = contrastPivots[0], hi2 = contrastPivots[1];
+  var center = getContrastCenter(pivots);
   var curve = new Float64Array(LIGHTNESS_STEPS + 1);
-  var i, L, t;
+  var i, L;
   for (i = 0; i <= LIGHTNESS_STEPS; i++) {
     L = i / LIGHTNESS_STEPS;
-    if (span > 0) {
-      if (L <= lo) {
-        L = lo > 0 ? L * lo2 / lo : lo2;
-      } else if (L >= hi) {
-        L = hi < 1 ? hi2 + (L - hi) * (1 - hi2) / (1 - hi) : hi2;
-      } else {
-        t = (L - lo) / span;
-        if (gamma != 1) t = Math.pow(t, 1 / gamma);
-        L = lo2 + (hi2 - lo2) * t;
-      }
+    if (gamma != 1 && span > 0 && L > lo && L < hi) {
+      L = lo + span * Math.pow((L - lo) / span, 1 / gamma);
     }
+    if (contrast != 1) L = applyContrast(L, contrast, center);
     curve[i] = L * scale + (1 - L) * lighten;
   }
   return curve;
 }
 
-// Where contrast= moves the pivot lightnesses [lo, hi]: the range between
-// them is multiplied by @contrast, up to the full range from black to white,
-// and the room below and above them keeps its ratio. So the lightness that
-// divides black to white in that ratio stays fixed, and a contrast change is
-// undone by its reciprocal.
-export function getContrastPivots(pivots, contrast) {
-  var lo = pivots[0], hi = pivots[1];
-  var room = lo + (1 - hi);
-  var span = Math.min(1, (hi - lo) * contrast);
-  var below = room > 0 ? lo / room : 0.5;
-  return [(1 - span) * below, 1 - (1 - span) * (1 - below)];
+// The lightness contrast= centers on: the image's median lightness, kept
+// away from black and white so that a mostly dark or mostly snowy image
+// still has room on both sides for its midtones to spread
+// @pivots [lo, hi, median], from getImageLightnessPercentiles()
+export function getContrastCenter(pivots) {
+  var median = pivots && pivots.length > 2 ? pivots[2] : 0.5;
+  return Math.max(CONTRAST_CENTER_MIN, Math.min(CONTRAST_CENTER_MAX, median));
+}
+
+// Lightness @L after contrast @k around @center. Below 1, every lightness
+// moves toward the center in proportion (black and white too, so that dark
+// and light pixels are not left behind as specks); 0 is flat. Above 1, the
+// slope at the center is @k, and each side bends toward black or white
+// (k u / (1 + (k - 1) u) of the distance), so midtones spread by about @k
+// for any image, and the extremes are compressed rather than clipped.
+export function applyContrast(L, k, center) {
+  var u;
+  if (k <= 1) return center + (L - center) * k;
+  if (L >= center) {
+    u = (L - center) / (1 - center);
+    return center + (1 - center) * k * u / (1 + (k - 1) * u);
+  }
+  u = (center - L) / center;
+  return center - center * k * u / (1 + (k - 1) * u);
 }
 
 // A 3D lookup table of toneRgbPixels() results for a lattice of RGB colors,
