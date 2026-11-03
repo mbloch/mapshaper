@@ -6,7 +6,9 @@ import { getGeoKeyProjection, replaceProj4Projection } from '../geotiff/mapshape
 import { runningInBrowser } from '../mapshaper-env';
 import { getFileBase } from '../utils/mapshaper-filename-utils';
 import require from '../mapshaper-require';
-import { message, stop, warnOnce } from '../utils/mapshaper-logging';
+import { getPixelCoordinatesWarning, getPixelTransform, getWorldFileBBox, getWorldTransform,
+  parseWorldFile, scaleWorldTransform } from '../rasters/mapshaper-world-file';
+import { message, stop, warn, warnOnce } from '../utils/mapshaper-logging';
 import { createRasterPreview, getRasterViewRecipe } from '../rasters/mapshaper-raster-utils';
 import { FULL_RESOLUTION_HINT, getMaxImportPixels, getRasterImportSize, parseImportResolution } from '../rasters/mapshaper-raster-import-size';
 
@@ -15,14 +17,16 @@ var geoKeysToProj4Promise = null;
 var dynamicImportModule = Function('id', 'return import(id)');
 
 // aux: contents of the file's .aux.xml sidecar, if it has one
-export async function importGeoTIFF(input, optsArg, aux) {
+// world: contents of the file's world file (e.g. .tfw), if it has one
+export async function importGeoTIFF(input, optsArg, aux, world) {
   var opts = optsArg || {};
   var geotiff = await loadGeoTIFFLib();
   var source = getGeoTIFFSource(input);
   var tiff = await openGeoTIFF(source, geotiff);
   var sourceImage = await tiff.getImage();
+  var georef = getGeoTIFFGeoreferencing(sourceImage, world);
   var importImage = await selectGeoTIFFImportImage(tiff, sourceImage, opts);
-  var imported = await importGeoTIFFImage(importImage, input, opts, sourceImage);
+  var imported = await importGeoTIFFImage(importImage, input, opts, sourceImage, georef);
   var dataset = {
     info: {
       raster_sources: [imported.source]
@@ -33,8 +37,35 @@ export async function importGeoTIFF(input, optsArg, aux) {
       raster: imported.raster
     }]
   };
-  await importGeoTIFFCrs(dataset, sourceImage, aux);
+  if (georef.type == 'pixels') {
+    // A CRS says nothing useful about coordinates that are pixels
+    warn(getPixelCoordinatesWarning(input && input.filename || 'This GeoTIFF'));
+  } else {
+    await importGeoTIFFCrs(dataset, sourceImage, aux);
+  }
   return dataset;
+}
+
+// Where the image sits on the map, read the way GDAL reads it: from the file's
+// own tags, else from a world file, else (like a plain TIFF from an image
+// editor) in pixel coordinates.
+// Returns {type, bbox, transform, worldFile}, where the transform is for the
+// full-size image.
+function getGeoTIFFGeoreferencing(image, world) {
+  var bbox = readImageBoundingBox(image);
+  var transform;
+  if (bbox) {
+    return {type: 'tags', bbox: bbox, transform: getImageTransform(image)};
+  }
+  transform = world ?
+    getWorldTransform(parseWorldFile(world.content)) :
+    getPixelTransform(image.getHeight());
+  return {
+    type: world ? 'world' : 'pixels',
+    worldFile: world && world.filename || null,
+    bbox: getWorldFileBBox(transform, image.getWidth(), image.getHeight()),
+    transform: transform
+  };
 }
 
 async function loadGeoTIFFLib() {
@@ -79,13 +110,13 @@ function getGeoTIFFSource(input) {
   return content.buffer.slice(content.byteOffset || 0, (content.byteOffset || 0) + content.byteLength);
 }
 
-async function importGeoTIFFImage(importImage, input, opts, sourceImage) {
+async function importGeoTIFFImage(importImage, input, opts, sourceImage, georef) {
   var image = importImage.image;
   var width = importImage.width;
   var height = importImage.height;
   var samplesPerPixel = image.getSamplesPerPixel();
   var samples = getDisplaySamples(samplesPerPixel);
-  var imageBbox = getImageBoundingBox(sourceImage);
+  var imageBbox = georef.bbox;
   repairDeferredOffsetArrays(image);
   var data = await readGeoTIFFSamples(image, samples, width, height);
   var noData = getNoDataValue(image);
@@ -102,7 +133,10 @@ async function importGeoTIFFImage(importImage, input, opts, sourceImage) {
       sampleBands: samples,
       nodata: noData,
       bbox: imageBbox,
-      transform: getImageTransformForSize(sourceImage, width, height, imageBbox)
+      transform: georef.type == 'tags' ?
+        getImageTransformForSize(width, height, imageBbox) :
+        scaleWorldTransform(georef.transform,
+          sourceImage.getWidth() / width, sourceImage.getHeight() / height)
     },
     derivation: {
       type: samples.length >= 3 ? 'rgb' : 'gray',
@@ -122,7 +156,7 @@ async function importGeoTIFFImage(importImage, input, opts, sourceImage) {
   }
   return {
     raster: raster,
-    source: getSourceInfo(input, sourceId, sourceImage)
+    source: getSourceInfo(input, sourceId, sourceImage, georef)
   };
 }
 
@@ -298,16 +332,16 @@ function getPixelType(image) {
   return bits ? type + bits : type;
 }
 
-function getImageBoundingBox(image) {
+// Returns null if the file has no tiepoint, pixel scale or transformation tags
+function readImageBoundingBox(image) {
   try {
     return image.getBoundingBox().map(Number);
   } catch(e) {
-    stop('GeoTIFF is missing georeferencing metadata');
+    return null;
   }
 }
 
-function getImageTransformForSize(image, width, height, bbox) {
-  var sourceBbox = bbox || getImageBoundingBox(image);
+function getImageTransformForSize(width, height, sourceBbox) {
   return [
     (sourceBbox[2] - sourceBbox[0]) / width,
     0,
@@ -376,7 +410,7 @@ function getSourceId(input) {
   return input && input.filename ? getFileBase(input.filename) : 'geotiff-source';
 }
 
-function getSourceInfo(input, sourceId, image) {
+function getSourceInfo(input, sourceId, image, georef) {
   var content = input && input.content;
   return {
     id: sourceId,
@@ -387,8 +421,9 @@ function getSourceInfo(input, sourceId, image) {
     height: image.getHeight(),
     bands: image.getSamplesPerPixel(),
     pixelType: getPixelType(image),
-    bbox: getImageBoundingBox(image),
-    transform: getImageTransform(image)
+    worldFile: georef.worldFile || null,
+    bbox: georef.bbox,
+    transform: georef.transform
   };
 }
 

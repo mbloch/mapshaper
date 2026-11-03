@@ -107,7 +107,7 @@ export async function importDatasetsFromContent(obj, opts) {
   } else if (obj.geotiff) {
     dataFmt = 'geotiff';
     data = obj.geotiff;
-    dataset = await importGeoTIFF(data, opts, obj.aux);
+    dataset = await importGeoTIFF(data, opts, obj.aux, obj.world);
   } else if (obj.png || obj.jpeg) {
     dataFmt = obj.png ? 'png' : 'jpeg';
     data = obj[dataFmt];

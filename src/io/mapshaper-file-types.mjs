@@ -46,7 +46,7 @@ export function isRasterImageInputType(type) {
 }
 
 export function isWorldFileExtension(ext) {
-  return /^(tfw|pgw|pngw|jgw|jpw|jpgw|jpegw|wld)$/i.test(ext || '');
+  return /^(tfw|tifw|tiffw|pgw|pngw|jgw|jpw|jpgw|jpegw|wld)$/i.test(ext || '');
 }
 
 export function guessInputContentType(content) {

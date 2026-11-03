@@ -15,6 +15,7 @@ var LARGE_YCBCR_FIXTURE = '/Users/matthewbloch/nytweb/2026/mapshaper/rasters/f5a
 var USER_DEFINED_CRS_FIXTURE = '/Users/matthewbloch/nytweb/2026/mapshaper/rasters/usa-relief.tif';
 var WGS84_GEOTIFF_FIXTURE = 'test/data/geotiff/wgs84-geographic-epsg4326.tif';
 var NO_CRS_GEOTIFF_FIXTURE = 'test/data/geotiff/no-crs-rgb-3x3.tif';
+var NO_GEOREF_TIFF_FIXTURE = 'test/data/geotiff/no-georef-gray-3x2.tif';
 
 describe('raster layers', function () {
   it('exports raster previews as embedded SVG images', function () {
@@ -369,6 +370,70 @@ describe('raster layers', function () {
     assert.equal(lyr.raster.grid.height, 1);
     assert.equal(lyr.raster.grid.bands, 3);
     assert.deepEqual(lyr.raster.grid.bbox, [100, 190, 120, 200]);
+  });
+
+  describe('rasters without georeferencing', function () {
+    it('imports a PNG without a world file in pixel coordinates', async function () {
+      var group = getPngImportGroup();
+      delete group.world;
+      var dataset = await api.internal.importContentAsync(group, {});
+      var grid = dataset.layers[0].raster.grid;
+      assert.deepEqual(grid.bbox, [0, 0, 2, 1]);
+      assert.deepEqual(grid.transform, [1, 0, 0, 0, -1, 1]);
+      // a .prj can't describe pixel coordinates
+      assert.equal(dataset.info.wkt1, undefined);
+    });
+
+    it('imports a JPEG without a world file in pixel coordinates', async function () {
+      var group = getJpegImportGroup();
+      delete group.world;
+      var dataset = await api.internal.importContentAsync(group, {});
+      assert.deepEqual(dataset.layers[0].raster.grid.bbox, [0, 0, 2, 1]);
+    });
+
+    it('imports a TIFF without georeferencing tags in pixel coordinates', async function () {
+      var dataset = await api.internal.importFileAsync(NO_GEOREF_TIFF_FIXTURE, {});
+      var grid = dataset.layers[0].raster.grid;
+      assert.equal(dataset.info.input_formats[0], 'geotiff');
+      assert.deepEqual(grid.bbox, [0, 0, 3, 2]);
+      assert.deepEqual(grid.transform, [1, 0, 0, 0, -1, 2]);
+      assert.deepEqual(Array.from(grid.samples), [7, 7, 7, 7, 7, 7]);
+    });
+
+    it('georeferences a TIFF from a .tfw world file', async function () {
+      var dataset = await api.internal.importFileAsync('plain.tif', {
+        input: {
+          'plain.tif': fs.readFileSync(NO_GEOREF_TIFF_FIXTURE),
+          'plain.tfw': WORLD_FILE
+        }
+      });
+      var lyr = dataset.layers[0];
+      assert.deepEqual(lyr.raster.grid.bbox, [100, 180, 130, 200]);
+      assert.equal(dataset.info.raster_sources[0].worldFile, 'plain.tfw');
+    });
+
+    it('prefers a GeoTIFF\'s own tags to a world file', async function () {
+      var bytes = api.internal.encodeGeoTIFF(makeTestGrid([500000, 4000000, 502000, 4002000]), {});
+      var dataset = await api.internal.importFileAsync('local.tif', {
+        input: {'local.tif': Buffer.from(bytes), 'local.tfw': WORLD_FILE}
+      });
+      assert.deepEqual(dataset.layers[0].raster.grid.bbox, [500000, 4000000, 502000, 4002000]);
+    });
+
+    it('does not import a TIFF\'s world file as a separate layer', async function () {
+      var dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mapshaper-raster-'));
+      try {
+        fs.copyFileSync(NO_GEOREF_TIFF_FIXTURE, path.join(dir, 'plain.tif'));
+        fs.writeFileSync(path.join(dir, 'plain.tfw'), WORLD_FILE);
+        var out = await api.applyCommands('-i combine-files "' + path.join(dir, 'plain.tif') +
+          '" "' + path.join(dir, 'plain.tfw') + '" -info save-to=info.json');
+        var info = JSON.parse(out['info.json']);
+        assert.equal(info.length, 1);
+        assert.deepEqual(info[0].bbox, [100, 180, 130, 200]);
+      } finally {
+        fs.rmSync(dir, {recursive: true, force: true});
+      }
+    });
   });
 
   it('parses resolution= as a pixel width, with or without px, or full', function () {

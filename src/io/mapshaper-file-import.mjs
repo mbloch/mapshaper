@@ -444,8 +444,12 @@ function readShapefileAuxFiles(path, obj, cache) {
 
 function readGeoTIFFAuxFiles(path, obj, cache) {
   var auxPath = getAuxFilename(path);
+  var worldPath = findWorldFile(path, cache);
   if (cli.isFile(auxPath, cache)) {
     obj.aux = {filename: auxPath, content: cli.readFile(auxPath, 'utf-8', cache)};
+  }
+  if (worldPath) {
+    obj.world = {filename: worldPath, content: cli.readFile(worldPath, 'utf-8', cache)};
   }
 }
 
@@ -480,12 +484,19 @@ function getWorldFileCandidates(path) {
       replaceFileExtension(path, 'jpgw'),
       replaceFileExtension(path, 'jpegw')
     );
+  } else if (ext == 'tif' || ext == 'tiff') {
+    candidates.unshift(
+      replaceFileExtension(path, 'tfw'),
+      replaceFileExtension(path, 'tifw'),
+      replaceFileExtension(path, 'tiffw')
+    );
   }
   return utils.uniq(candidates);
 }
 
 function removeRasterImageSidecars(files) {
   var imageBases = {};
+  var rasterBases = {};
   var rasterPaths = {};
   files.forEach(function(file) {
     var type = guessInputFileType(file);
@@ -493,6 +504,7 @@ function removeRasterImageSidecars(files) {
       imageBases[getFileBase(file).toLowerCase()] = true;
     }
     if (isRasterImageInputType(type) || type == 'geotiff') {
+      rasterBases[getFileBase(file).toLowerCase()] = true;
       rasterPaths[file.toLowerCase()] = true;
     }
   });
@@ -500,7 +512,7 @@ function removeRasterImageSidecars(files) {
     var ext = getFileExtension(file).toLowerCase();
     var type = guessInputFileType(file);
     var base = getFileBase(file).toLowerCase();
-    if ((type == 'prj' || isWorldFileExtension(ext)) && imageBases[base]) {
+    if (type == 'prj' && imageBases[base] || isWorldFileExtension(ext) && rasterBases[base]) {
       return false;
     }
     // A sidecar is read along with the raster it names, so importing it
