@@ -30,6 +30,7 @@ import { getRasterValidityMask } from '../rasters/mapshaper-raster-grid';
 import { createRasterPreview, getRasterViewRecipe } from '../rasters/mapshaper-raster-utils';
 import {
   findRestrictedTilezenSources,
+  formatFetchSourceList,
   getFetchSourceList,
   parseTilezenSourcesHeader,
   resolveFetchSource
@@ -64,7 +65,11 @@ var METERS_PER_DEGREE = 6371008.8 * Math.PI / 180;
 // "-fetch sources" lists the presets and returns null
 cmd.fetch = async function(catalog, targets, opts) {
   if (String(opts.source).toLowerCase() == 'sources') {
-    print(getFetchSourceList().join('\n'));
+    if (runningInBrowser()) {
+      message({type: 'mapshaper-console-help', lines: getFetchSourceList()});
+    } else {
+      print(formatFetchSourceList(getFetchSourceList()));
+    }
     return null;
   }
   var source = resolveFetchSource(opts);

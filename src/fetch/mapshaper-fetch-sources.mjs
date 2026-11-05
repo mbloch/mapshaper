@@ -294,23 +294,32 @@ export function getFetchPresetNames() {
   return Object.keys(PRESETS);
 }
 
-// Lines listing the presets for "-fetch sources"
+// The presets for "-fetch sources", as help lines: a string is a line of
+// text, and [name, text] is a row of a two-column table (see -help)
 export function getFetchSourceList() {
   var names = getFetchPresetNames();
-  var width = Math.max.apply(null, names.map(function(name) { return name.length; })) + 2;
-  var indent = '  ' + ' '.repeat(width);
   var lines = [];
-  [['Elevation', false], ['Imagery', true]].forEach(function(group) {
+  [['ELEVATION', false], ['IMAGERY', true]].forEach(function(group, i) {
+    if (i > 0) lines.push('');
     lines.push(group[0]);
     names.forEach(function(name) {
       var preset = PRESETS[name];
       if ((preset.encoding == 'rgb') != group[1]) return;
-      lines.push('  ' + name.padEnd(width) + (preset.description || preset.title));
-      lines.push(indent + getPresetDetails(preset).join('; '));
+      lines.push([name, preset.description || preset.title]);
+      lines.push(['', getPresetDetails(preset).join('; ')]);
     });
   });
-  lines.push('Use -fetch <name>, or a URL template with {z}, {x} and {y}');
+  lines.push('', 'Use -fetch <name>, or a URL template with {z}, {x} and {y}');
   return lines;
+}
+
+export function formatFetchSourceList(lines) {
+  var width = lines.reduce(function(memo, line) {
+    return Array.isArray(line) ? Math.max(memo, line[0].length) : memo;
+  }, 0);
+  return lines.map(function(line) {
+    return Array.isArray(line) ? line[0].padEnd(width + 2) + line[1] : line;
+  }).join('\n');
 }
 
 function getPresetDetails(preset) {

@@ -179,16 +179,18 @@ describe('mapshaper-fetch.mjs', function () {
       assert.equal(internal.resolveFetchSource({source: 'landsat'}).encoding, 'rgb');
     })
 
-    it('getFetchSourceList() lists every preset under Elevation or Imagery', function () {
+    it('getFetchSourceList() lists every preset under ELEVATION or IMAGERY', function () {
       var lines = internal.getFetchSourceList();
-      var text = lines.join('\n');
-      var imagery = lines.indexOf('Imagery');
-      assert.equal(lines[0], 'Elevation');
+      var text = internal.formatFetchSourceList(lines);
+      var imagery = lines.indexOf('IMAGERY');
+      var rowIndex = function(name) { return lines.findIndex(function(o) { return o[0] === name; }); };
+      assert.equal(lines[0], 'ELEVATION');
       internal.getFetchPresetNames().forEach(function(name) {
-        assert(new RegExp('^  ' + name + ' ', 'm').test(text), name);
+        assert(new RegExp('^' + name + ' ', 'm').test(text), name);
+        assert.equal(lines[rowIndex(name) + 1][0], '');
       });
-      assert(lines.findIndex(function(s) { return s.startsWith('  copernicus '); }) < imagery);
-      assert(lines.findIndex(function(s) { return s.startsWith('  naip '); }) > imagery);
+      assert(rowIndex('copernicus') < imagery);
+      assert(rowIndex('naip') > imagery);
       assert(!/undefined|\{year\}|\{season\}/.test(text));
       assert(/Conterminous United States, 0\.3-1 m; year= 2010 and later \(default: newest\); zoom 11 and up; public domain/.test(text));
       assert(/year= 2012, 2016 \(default: 2016\)/.test(text));
