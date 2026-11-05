@@ -74,6 +74,7 @@ import '../commands/mapshaper-filter-slivers';
 import '../commands/mapshaper-fuzzy-join';
 import '../commands/mapshaper-graticule';
 import '../commands/mapshaper-help';
+import '../commands/mapshaper-blend';
 import '../commands/mapshaper-hillshade';
 import '../commands/mapshaper-tint';
 import '../commands/mapshaper-tone';
@@ -139,7 +140,7 @@ function commandRunsPerTargetDataset(name, opts) {
     return !('coordinates' in opts);
   }
   return [
-    'affine', 'alpha-shapes', 'blur', 'buffer', 'calc', 'check-geometry',
+    'affine', 'alpha-shapes', 'blend', 'blur', 'buffer', 'calc', 'check-geometry',
     'classify', 'clean', 'clip', 'cluster', 'contours', 'copy', 'dashlines', 'data-fill',
     'densify', 'dissolve', 'dissolve2', 'divide', 'dots', 'each', 'erase',
     'explode', 'filter',
@@ -400,6 +401,16 @@ export async function runCommand(command, job) {
       outputLayers = [];
       for (let lyr of targetLayers) {
         outputLayers = outputLayers.concat(cmd[name](lyr, opts));
+      }
+
+    } else if (name == 'blend') {
+      if (!source) stop('-blend requires the name of a hillshade layer');
+      outputLayers = [];
+      for (let lyr of targetLayers) {
+        outputLayers = outputLayers.concat(cmd.blend(lyr, targetDataset, source, opts));
+      }
+      if (!opts.no_replace) {
+        removeBlendSource(job.catalog, source);
       }
 
     } else if (name == 'dashlines') {
@@ -822,6 +833,14 @@ async function runCommandOnEachTarget(command, job, targets) {
 async function findRepelPolygons(opts, catalog, targets) {
   if (!opts.polygons) return null;
   return await findCommandSourceAsync(convertSourceName(opts.polygons, targets), catalog, opts);
+}
+
+// -blend merges the hillshade into the target, so the hillshade layer is
+// removed (unless + is used). A source read from a file isn't in the catalog,
+// and with targets in several datasets the layer is gone after the first.
+function removeBlendSource(catalog, source) {
+  var found = catalog.findLayer(source.layer);
+  if (found) catalog.deleteLayer(found.layer, found.dataset);
 }
 
 async function resolveSourceForTargets(command, job, targets) {

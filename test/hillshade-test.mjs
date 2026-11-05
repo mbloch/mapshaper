@@ -118,7 +118,9 @@ describe('mapshaper-hillshade.mjs', function () {
     it('is 1 at large scales and grows with pixel size, up to 10', function () {
       assert.equal(internal.getAutoExaggeration(10), 1);
       assert.equal(internal.getAutoExaggeration(50), 1);
-      assert(Math.abs(internal.getAutoExaggeration(1000) - Math.sqrt(20)) < 1e-9);
+      assert.equal(internal.getAutoExaggeration(1000), 4.5); // sqrt(20) = 4.47
+      assert.equal(internal.getAutoExaggeration(380), 2.75); // 2.76
+      assert.equal(internal.getAutoExaggeration(450), 3); // 3.0
       assert.equal(internal.getAutoExaggeration(1e6), 10);
     })
   })
@@ -1158,9 +1160,8 @@ describe('mapshaper-hillshade.mjs', function () {
         '-hillshade verbose single-light sharpening=0.5 highlight-color=#fff0b4');
       var d = catalog.getLayers()[0].layer.raster.derivation;
       var str = internal.formatHillshadeSettings(d);
-      var exaggeration = +d.exaggeration.toFixed(3);
-      assert(exaggeration > 1); // automatic, from about 111 m pixels
-      assert.equal(str, 'style=shadow azimuth=315 altitude=45 single-light exaggeration=' + exaggeration +
+      assert.equal(d.exaggeration, 1.5); // automatic, from about 111 m pixels
+      assert.equal(str, 'style=shadow azimuth=315 altitude=45 single-light exaggeration=1.5' +
         ' max-opacity=0.55 highlights=0.6 gamma=0.75 highlight-color=#fff0b4 smoothing=low' +
         ' fps-levels=1 fps-passes=1 fps-radius=4 fps-threshold=15 light-adjust=0 ambient=0.5 texture=0 aerial=0' +
         ' sharpening=0.5 sharpen-radius=3 sharpen-threshold=0');

@@ -57,9 +57,11 @@ export function getHillshadeMaxShade(lights) {
   return Math.max(1, sum / flat);
 }
 
+// Rounded to a multiple of 0.25, so that the printed value is easy to read
+// and to adjust
 export function getAutoExaggeration(metersPerPixel) {
   if (!(metersPerPixel > 0)) return 1;
-  return Math.max(1, Math.min(10, Math.sqrt(metersPerPixel / 50)));
+  return Math.round(Math.max(1, Math.min(10, Math.sqrt(metersPerPixel / 50))) * 4) / 4;
 }
 
 // Slope of the median pixel of a DEM fitted with getFittedVerticalScale()

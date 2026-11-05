@@ -255,7 +255,10 @@ same pattern as other mapshaper commands.
   landforms facing away from the main light legible.
 - `exaggeration=` vertical exaggeration. The default increases with the map's
   ground pixel size (1 at 50 m per pixel and below, about 4.5 at 1 km, capped at
-  10), because relief flattens out at small scales.
+  10), because relief flattens out at small scales. It is the square root of
+  the pixel size over 50 m, rounded to a multiple of 0.25 so that it is easy
+  to read and adjust, and is printed when it is chosen automatically (e.g.
+  `Exaggeration: 4.25 (automatic, for 934 m pixels)`).
 - `smoothing=` terrain smoothing, described under Generalization:
   - `low`, `medium`, `high`: feature-preserving smoothing (FPS) presets; see
     Generalization for their settings.

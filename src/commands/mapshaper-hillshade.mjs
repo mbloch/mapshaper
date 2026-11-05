@@ -203,8 +203,11 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
     colors.ramp = getHillshadeColorRamp(stops);
   }
   cells = getHillshadeCellSizes(grid, getDatasetCRS(dataset));
-  // rounded like the printed settings, so that pasting them reproduces the output
-  exaggeration = opts.exaggeration > 0 ? opts.exaggeration : +getAutoExaggeration(cells.median).toFixed(3);
+  exaggeration = opts.exaggeration > 0 ? opts.exaggeration : getAutoExaggeration(cells.median);
+  if (!(opts.exaggeration > 0)) {
+    message('Exaggeration:', formatExaggeration(exaggeration) +
+      (cells.unknown ? ' (automatic)' : ' (automatic, for ' + formatPixelSize(cells.median) + ' pixels)'));
+  }
   azimuth = opts.azimuth == null ? DEFAULT_AZIMUTH : opts.azimuth;
   sharpening = opts.sharpening >= 0 ? opts.sharpening : DEFAULT_SHARPENING;
   ambient = opts.ambient >= 0 ? opts.ambient : DEFAULT_AMBIENT;
@@ -246,8 +249,7 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
     band: opts.band || 0});
   verbose('Settings:', formatHillshadeSettings(params));
   if (!cells.unknown) {
-    verbose('Ground pixel size:', formatPixelSize(cells.median) +
-      (opts.exaggeration > 0 ? '' : ' (sets the automatic exaggeration)'));
+    verbose('Ground pixel size:', formatPixelSize(cells.median));
     if (grid.verticalUnits) {
       verbose('Elevation units:', formatVerticalUnits(grid.verticalUnits));
     }
@@ -311,6 +313,11 @@ export function formatHillshadeSettings(params) {
     if (val === true) return name;
     return name + '=' + (typeof val == 'number' ? +val.toFixed(3) : val);
   }).join(' ');
+}
+
+// e.g. 3.0, 2.75
+function formatExaggeration(val) {
+  return val % 1 === 0 ? val.toFixed(1) : String(val);
 }
 
 function formatPixelSize(meters) {

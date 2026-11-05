@@ -3240,6 +3240,24 @@ export function getOptionParser() {
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
 
+  parser.command('blend')
+    .describe('apply a hillshade\'s shadows and highlights to a raster layer')
+    .option('source', {
+      DEFAULT: true,
+      describe: 'hillshade layer to blend (made by -hillshade); removed unless + is used'
+    })
+    .option('strength', {
+      describe: 'multiply the shading\'s opacity: one value, or shadows,highlights (default is 1)',
+      type: 'numbers'
+    })
+    .option('chroma', {
+      describe: 'share of the layer\'s color kept under the shading: 0 is plain stacking, 1 keeps the color; one value, or shadows,highlights (default is 0,1)',
+      type: 'numbers'
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
+
   parser.section('Control flow commands');
 
   var ifOpts = {

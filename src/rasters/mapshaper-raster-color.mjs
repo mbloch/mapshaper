@@ -103,6 +103,80 @@ export function toneRgbPixels(samples, bands, opts, out) {
   return out;
 }
 
+// Applies shading to an RGB or RGBA image (see docs/development/raster-blend.md)
+// @amounts one signed amount per pixel: below 0, the opacity of opts.shadow
+//   stacked on the pixel; above 0, the opacity of opts.highlight
+// The result has the lightness of the stacked pixel. Its OKLab a and b move
+// from the stacked pixel's toward the image's by opts.shadowChroma or
+// opts.highlightChroma: 0 is plain stacking, 1 keeps the image's color.
+// opts:
+//   shadow, highlight  {r, g, b} bytes
+//   shadowChroma, highlightChroma  0 or more
+// Where the image is partly or fully transparent, the shading is stacked on
+// nothing, so the output alpha can exceed the image's.
+// Returns a new Uint8Array of @samples' layout
+export function blendShadingPixels(samples, bands, amounts, opts) {
+  var out = new Uint8Array(samples.length);
+  var shadow = opts.shadow, highlight = opts.highlight;
+  var rgb = [0, 0, 0];
+  var lab = [0, 0, 0];
+  var i, k, a, ta, oa, K, q, r, g, b, sr, sg, sb, A, B, w;
+  initTables();
+  for (i = 0, k = 0; i < samples.length; i += bands, k++) {
+    a = amounts[k];
+    r = samples[i];
+    g = samples[i + 1];
+    b = samples[i + 2];
+    ta = bands > 3 ? samples[i + 3] / 255 : 1;
+    if (a === 0 || a !== a) {
+      out[i] = r;
+      out[i + 1] = g;
+      out[i + 2] = b;
+      if (bands > 3) out[i + 3] = samples[i + 3];
+      continue;
+    }
+    K = a < 0 ? shadow : highlight;
+    q = a < 0 ? opts.shadowChroma : opts.highlightChroma;
+    a = a < 0 ? (a < -1 ? 1 : -a) : (a > 1 ? 1 : a);
+    sr = r + (K.r - r) * a;
+    sg = g + (K.g - g) * a;
+    sb = b + (K.b - b) * a;
+    if (q !== 0 && ta > 0) {
+      srgbToOklab(r, g, b, lab);
+      A = lab[1];
+      B = lab[2];
+      srgbToOklab(Math.round(sr), Math.round(sg), Math.round(sb), lab);
+      A = lab[1] + (A - lab[1]) * q;
+      B = lab[2] + (B - lab[2]) * q;
+      if (!oklabToLinear(lab[0], A, B, rgb)) {
+        fitChroma(lab[0], A, B, rgb);
+      }
+      sr = encodeChannel(rgb[0]);
+      sg = encodeChannel(rgb[1]);
+      sb = encodeChannel(rgb[2]);
+    }
+    if (ta == 1) {
+      out[i] = Math.round(sr);
+      out[i + 1] = Math.round(sg);
+      out[i + 2] = Math.round(sb);
+      if (bands > 3) out[i + 3] = 255;
+      continue;
+    }
+    // the blended image over the shading alone (with chroma 0, the same as
+    // the shading stacked on the partly transparent image)
+    oa = ta + (1 - ta) * a;
+    w = ta / oa;
+    sr = sr * w + K.r * (1 - w);
+    sg = sg * w + K.g * (1 - w);
+    sb = sb * w + K.b * (1 - w);
+    out[i] = Math.round(sr);
+    out[i + 1] = Math.round(sg);
+    out[i + 2] = Math.round(sb);
+    out[i + 3] = Math.round(oa * 255);
+  }
+  return out;
+}
+
 // Hue rotation (radians) for hue-shift=: hues move toward @pivot (radians) by
 // @shift times half their distance from it, fading out toward the opposite
 // hue and for near-gray colors (whose hue is unstable). From -1 to 1, the

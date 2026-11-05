@@ -22,7 +22,8 @@ mapshaper -i states.shp -proj albersusa -frame width=1200 \
 
 `-fetch` adds each new layer at the bottom of the stack, so the hillshade ends
 up above the toned imagery. Terrain is combined with imagery by stacking a
-transparent hillshade on top of it rather than by an option of `-tone`:
+transparent hillshade on top of it, or with `-blend` (see
+[`raster-blend.md`](raster-blend.md)), rather than by an option of `-tone`:
 fading imagery after shading would fade the shadows too.
 
 This document lists every option discussed. The first implementation adds only
