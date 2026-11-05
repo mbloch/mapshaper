@@ -388,7 +388,7 @@ export async function runCommand(command, job) {
     } else if (name == 'fetch') {
       let fetched = await cmd.fetch(job.catalog, targets, opts);
       job.resumeCommand();
-      addFetchedDataset(job.catalog, fetched);
+      if (fetched) addFetchedDataset(job.catalog, fetched);
 
     } else if (name == 'hillshade') {
       outputLayers = [];

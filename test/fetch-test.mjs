@@ -21,9 +21,9 @@ function makeTerrariumTile(elevation, size) {
   return PNG.sync.write(png);
 }
 
-// A JPEG imagery tile of one color
-function makeImageTile(r, g, b) {
-  var size = 256;
+// A JPEG imagery tile of one color (256px by default)
+function makeImageTile(r, g, b, size) {
+  size = size || 256;
   var data = Buffer.alloc(size * size * 4);
   for (var i = 0; i < data.length; i += 4) {
     data[i] = r;
@@ -35,17 +35,19 @@ function makeImageTile(r, g, b) {
 }
 
 // Replaces global fetch() with a tile server
-// @getTile function(url) returning PNG bytes, or null for a 404
+// @getTile function(url, init) returning image bytes, a JSON object, or null
+//   for a 404
 function stubFetch(getTile, header) {
   var original = globalThis.fetch;
   var urls = [];
-  globalThis.fetch = async function(url) {
-    var buf = getTile(url);
+  globalThis.fetch = async function(url, init) {
+    var buf = getTile(url, init);
     urls.push(url);
     return {
       status: buf ? 200 : 404,
       ok: !!buf,
       headers: {get: function() { return header || null; }},
+      json: async function() { return buf; },
       arrayBuffer: async function() {
         return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
       }
@@ -157,6 +159,63 @@ describe('mapshaper-fetch.mjs', function () {
       assert(usgs.credit);
     })
 
+    it('Planetary Computer presets', function () {
+      var naip = internal.resolveFetchSource({source: 'naip'});
+      var naip2021 = internal.resolveFetchSource({source: 'naip', year: 2021});
+      var cir = internal.resolveFetchSource({source: 'naip-cir'});
+      var s2 = internal.resolveFetchSource({source: 'sentinel2'});
+      var s2y = internal.resolveFetchSource({source: 'sentinel2', year: 2020});
+      var cop = internal.resolveFetchSource({source: 'copernicus'});
+      assert.equal(naip.adapter, 'planetary-computer');
+      assert.equal(naip.tile_size, 512);
+      assert.equal(naip.year, null);
+      assert.equal(naip2021.year, 2021);
+      assert(decodeURIComponent(cir.tile_params).includes('image|4,1,2'));
+      assert.equal(cir.layer_name, 'naip_cir');
+      assert.equal(s2.year, internal.getCurrentYear() - 1);
+      assert.equal(s2y.attribution, 'Contains modified Copernicus Sentinel data 2020');
+      assert.equal(cop.encoding, 'terrarium');
+      assert.equal(internal.resolveFetchSource({source: '3dep'}).layer_name, 'elevation');
+      assert.equal(internal.resolveFetchSource({source: 'landsat'}).encoding, 'rgb');
+    })
+
+    it('getFetchSourceList() lists every preset under Elevation or Imagery', function () {
+      var lines = internal.getFetchSourceList();
+      var text = lines.join('\n');
+      var imagery = lines.indexOf('Imagery');
+      assert.equal(lines[0], 'Elevation');
+      internal.getFetchPresetNames().forEach(function(name) {
+        assert(new RegExp('^  ' + name + ' ', 'm').test(text), name);
+      });
+      assert(lines.findIndex(function(s) { return s.startsWith('  copernicus '); }) < imagery);
+      assert(lines.findIndex(function(s) { return s.startsWith('  naip '); }) > imagery);
+      assert(!/undefined|\{year\}|\{season\}/.test(text));
+      assert(/Conterminous United States, 0\.3-1 m; year= 2010 and later \(default: newest\); zoom 11 and up; public domain/.test(text));
+      assert(/year= 2012, 2016 \(default: 2016\)/.test(text));
+    })
+
+    it('-fetch sources prints the list without fetching', async function () {
+      var stub = stubFetch(function() { return null; });
+      try {
+        var catalog = await runCommands('-fetch sources');
+        assert.equal(stub.urls.length, 0);
+        assert.equal(catalog.getLayers().length, 0);
+      } finally {
+        stub.restore();
+      }
+    })
+
+    it('Planetary Computer year= errors', function () {
+      assert.throws(function() { internal.resolveFetchSource({source: 'sentinel2', year: 2012}); }, /Available years: 2016-/);
+      assert.throws(function() { internal.resolveFetchSource({source: 'naip', year: internal.getCurrentYear() + 1}); }, /not available/);
+      assert.throws(function() { internal.resolveFetchSource({source: 'copernicus', year: 2020}); }, /year= is not available/);
+    })
+
+    it('a custom URL can use {bbox-epsg-3857} instead of {z}/{x}/{y}', function () {
+      var source = internal.resolveFetchSource({source: 'https://example.com/wms?BBOX={bbox-epsg-3857}&WIDTH=256', encoding: 'rgb'});
+      assert.equal(internal.getTileUrl(source, 1, 0, 1), 'https://example.com/wms?BBOX=-20037508.342789244,-20037508.342789244,0,0&WIDTH=256');
+    })
+
     it('year= chooses an edition, and defaults to the latest', function () {
       var black = internal.resolveFetchSource({source: 'blackmarble'});
       var black2012 = internal.resolveFetchSource({source: 'blackmarble', year: 2012});
@@ -188,6 +247,120 @@ describe('mapshaper-fetch.mjs', function () {
       var names = internal.parseTilezenSourcesHeader('srtm/N46W122.tif, eudem/x.tif,gmted/y.tif');
       assert.deepEqual(names, ['srtm', 'eudem', 'gmted']);
       assert.deepEqual(internal.findRestrictedTilezenSources(names), ['eudem']);
+    })
+  })
+
+  describe('Planetary Computer', function () {
+    var stub;
+    afterEach(function() {
+      if (stub) stub.restore();
+      stub = null;
+    })
+
+    var NAIP_ITEMS = [
+      {'naip:state': 'wa', 'naip:year': 2021, datetime: '2021-07-20T16:00:00Z', gsd: 0.6},
+      {'naip:state': 'wa', 'naip:year': 2023, datetime: '2023-08-02T16:00:00Z', gsd: 0.3},
+      {'naip:state': 'wa', 'naip:year': 2023, datetime: '2023-08-19T16:00:00Z', gsd: 0.3},
+      {'naip:state': 'or', 'naip:year': 2022, datetime: '2022-06-30T16:00:00Z', gsd: 0.6}
+    ];
+
+    // Stands in for the mosaic registration, the item search and the tiles
+    function stubPlanetaryComputer(items, tile) {
+      var searches = [];
+      stub = stubFetch(function(url, init) {
+        if (/\/mosaic\/register$/.test(url)) {
+          searches.push(JSON.parse(init.body));
+          return {searchid: 'abc'};
+        }
+        if (/\/stac\/v1\/search$/.test(url)) {
+          return items ? {features: items.map(function(o) { return {properties: o}; }), links: []} : null;
+        }
+        return tile;
+      });
+      return searches;
+    }
+
+    it('mosaic searches', function () {
+      var bbox = [-122, 46.6, -121.4, 47];
+      var naip = internal.getMosaicSearch(internal.resolveFetchSource({source: 'naip', year: 2021}), bbox);
+      var s2 = internal.getMosaicSearch(internal.resolveFetchSource({source: 'sentinel2', year: 2024}), bbox);
+      var s2south = internal.getMosaicSearch(internal.resolveFetchSource({source: 'sentinel2', year: 2024}), [170, -44, 171, -43]);
+      var landsat = internal.getMosaicSearch(internal.resolveFetchSource({source: 'landsat', year: 2024}), bbox);
+      var dep = internal.getMosaicSearch(internal.resolveFetchSource({source: '3dep'}), bbox);
+      assert.deepEqual(naip, {
+        collections: ['naip'],
+        sortby: [{field: 'datetime', direction: 'desc'}],
+        'filter-lang': 'cql2-json',
+        filter: {op: '=', args: [{property: 'naip:year'}, '2021']}
+      });
+      assert.deepEqual(s2.filter.args[0].args[1].interval, ['2024-06-01T00:00:00Z', '2024-09-30T23:59:59Z']);
+      assert.deepEqual(s2.filter.args[1], {op: '<=', args: [{property: 'eo:cloud_cover'}, 10]});
+      assert.deepEqual(s2.sortby, [{field: 'eo:cloud_cover', direction: 'asc'}]);
+      assert.deepEqual(s2south.filter.args[0].args[1].interval, ['2023-12-01T00:00:00Z', '2024-03-31T23:59:59Z']);
+      assert.equal(landsat.filter.args[0].args[0].property, 'platform');
+      assert(!landsat.filter.args[0].args[1].includes('landsat-7'));
+      assert.deepEqual(dep.filter, {op: '=', args: [{property: 'gsd'}, 10]});
+      assert.equal(internal.getSeason(2024, 5).label, '2024');
+    })
+
+    it('summaries', function () {
+      var states = internal.summarizeByState(NAIP_ITEMS, true);
+      var scenes = internal.summarizeScenes([{datetime: '2024-07-03T18:00:00Z'}, {datetime: '2024-06-10T18:00:00Z'}], false);
+      assert.deepEqual(states.groups[0], {state: 'WA', year: 2021, start: '2021-07-20', end: '2021-07-20', images: 1, resolution: 0.6});
+      assert.deepEqual(internal.formatAcquisitions(states), [
+        '2021 (WA, 0.6 m): 2021-07-20',
+        '2022 (OR, 0.6 m): 2022-06-30',
+        '2023 (WA, 0.3 m): 2023-08-02 to 2023-08-19'
+      ]);
+      assert.deepEqual(internal.formatAcquisitions(scenes), [
+        '2 (or more) scenes with 10% cloud cover or less, acquired 2024-06-10 to 2024-07-03; the least cloudy are drawn first'
+      ]);
+    })
+
+    it('-fetch naip: newest imagery of each state, from a registered mosaic', async function () {
+      var searches = stubPlanetaryComputer(NAIP_ITEMS, makeImageTile(60, 90, 50, 512));
+      var catalog = await runCommands(RAINIER + ' -fetch naip zoom=11');
+      var info = findLayer(catalog, 'naip').dataset.info.raster_sources[0];
+      var tileUrls = stub.urls.filter(function(url) { return /\/tiles\//.test(url); });
+      assert.equal(searches[0].filter, undefined);
+      assert(tileUrls.length > 0);
+      assert(tileUrls.every(function(url) {
+        return url.startsWith('https://planetarycomputer.microsoft.com/api/data/v1/mosaic/abc/tiles/WebMercatorQuad/11/') &&
+          url.includes('@2x?collection=naip&assets=image');
+      }));
+      assert.equal(info.collection, 'naip');
+      assert.deepEqual(info.acquisitions.groups.map(function(g) { return g.state + g.year; }), ['OR2022', 'WA2023']);
+    })
+
+    it('-fetch naip year= with no imagery lists the years available', async function () {
+      stubPlanetaryComputer(NAIP_ITEMS, makeImageTile(60, 90, 50, 512));
+      await assert.rejects(runCommands(RAINIER + ' -fetch naip year=2019 zoom=11'), /Years available here: 2021, 2022, 2023/);
+      stub.restore();
+      stubPlanetaryComputer([], makeImageTile(60, 90, 50, 512));
+      await assert.rejects(runCommands(RAINIER + ' -fetch naip zoom=11'), /Conterminous United States/);
+    })
+
+    it('-fetch sentinel2 continues if the item search fails, and stops if no scenes are found', async function () {
+      var searches = stubPlanetaryComputer(null, makeImageTile(60, 90, 50, 512));
+      var catalog = await runCommands(RAINIER + ' -fetch sentinel2 year=2024 zoom=9');
+      assert.equal(findLayer(catalog, 'sentinel2').dataset.info.raster_sources[0].acquisitions, undefined);
+      assert.equal(searches[0].sortby[0].field, 'eo:cloud_cover');
+      stub.restore();
+      stubPlanetaryComputer([], makeImageTile(60, 90, 50, 512));
+      await assert.rejects(runCommands(RAINIER + ' -fetch sentinel2 year=2024 zoom=9'), /No Sentinel-2 scenes .* June-September 2024/);
+    })
+
+    it('-fetch copernicus: Terrarium elevation tiles', async function () {
+      stubPlanetaryComputer(null, makeTerrariumTile(1200, 512));
+      var catalog = await runCommands(RAINIER + ' -fetch copernicus zoom=9');
+      var grid = findLayer(catalog, 'elevation').layer.raster.grid;
+      assert(stub.urls.some(function(url) { return url.includes('collection=cop-dem-glo-30&assets=data&algorithm=terrarium'); }));
+      assert(Math.abs(grid.samples[5000] - 1200) < 0.01);
+    })
+
+    it('a source whose lowest zoom needs too many tiles', async function () {
+      stubPlanetaryComputer(null, makeImageTile(60, 90, 50, 512));
+      await assert.rejects(runCommands('-fetch naip bbox=-110,35,-100,45'), /starts at zoom 11/);
     })
   })
 

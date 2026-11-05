@@ -199,6 +199,7 @@ import * as WebPDecoder from './fetch/mapshaper-webp-decoder';
 import * as Fetch from './commands/mapshaper-fetch';
 import * as FetchSources from './fetch/mapshaper-fetch-sources';
 import * as TileFetch from './fetch/mapshaper-tile-fetch';
+import * as PlanetaryComputer from './fetch/mapshaper-planetary-computer';
 import * as TileMath from './fetch/mapshaper-tile-math';
 import * as ElevationDecoding from './fetch/mapshaper-elevation-decoding';
 import * as RasterReprojection from './rasters/mapshaper-raster-reprojection';
@@ -375,6 +376,7 @@ Object.assign(internal,
   Fetch,
   FetchSources,
   TileFetch,
+  PlanetaryComputer,
   TileMath,
   ElevationDecoding,
   RasterReprojection,

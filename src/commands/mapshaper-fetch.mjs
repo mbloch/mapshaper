@@ -30,10 +30,12 @@ import { getRasterValidityMask } from '../rasters/mapshaper-raster-grid';
 import { createRasterPreview, getRasterViewRecipe } from '../rasters/mapshaper-raster-utils';
 import {
   findRestrictedTilezenSources,
+  getFetchSourceList,
   parseTilezenSourcesHeader,
   resolveFetchSource
 } from '../fetch/mapshaper-fetch-sources';
 import { fetchTileMosaic } from '../fetch/mapshaper-tile-fetch';
+import { preparePlanetaryComputerSource, reportAcquisitions } from '../fetch/mapshaper-planetary-computer';
 import { downsampleRgba } from '../rasters/mapshaper-image-import';
 import {
   chooseTileZoom,
@@ -43,7 +45,7 @@ import {
   WEB_MERCATOR_MAX_LAT
 } from '../fetch/mapshaper-tile-math';
 import { runningInBrowser } from '../mapshaper-env';
-import { message, stop, warn } from '../utils/mapshaper-logging';
+import { message, print, stop, warn } from '../utils/mapshaper-logging';
 
 var DEFAULT_BLEED = 10; // frame pixels
 var DEFAULT_WIDTH = 800; // nominal width of a map without a frame
@@ -59,7 +61,12 @@ var METERS_PER_DEGREE = 6371008.8 * Math.PI / 180;
 
 // Fetches data for the target frame and returns a new dataset; the caller
 // adds it to the catalog (see addFetchedDataset()).
+// "-fetch sources" lists the presets and returns null
 cmd.fetch = async function(catalog, targets, opts) {
+  if (String(opts.source).toLowerCase() == 'sources') {
+    print(getFetchSourceList().join('\n'));
+    return null;
+  }
   var source = resolveFetchSource(opts);
   var extent = getFetchExtent(catalog, targets, opts);
   var dataset = await fetchTileDataset(source, extent, opts);
@@ -173,7 +180,7 @@ async function fetchTileDataset(source, extent, opts) {
   var lonLatBbox = getExtentLonLatBounds(extent.bbox, extent.crsInfo.crs);
   var centerLat = (lonLatBbox[1] + lonLatBbox[3]) / 2;
   var maxTiles = opts.max_tiles > 0 ? opts.max_tiles : DEFAULT_MAX_TILES;
-  var z, range, tileCount, mosaic, raster, dataset, lyr;
+  var z, range, tileCount, mosaic, raster, dataset, lyr, prepared, acquisitions;
   if (!(lonLatBbox[3] > lonLatBbox[1])) {
     stop('The area to fetch is outside the latitude range of the tiles');
   }
@@ -185,9 +192,18 @@ async function fetchTileDataset(source, extent, opts) {
   }
   range = getTileRange(lonLatBbox, z);
   tileCount = countTiles(range);
+  if (tileCount > maxTiles && z == source.min_zoom && source.min_zoom > 0 && !(opts.zoom >= 0)) {
+    stop('This source starts at zoom ' + z + ', which would take ' + tileCount + ' tiles for this area' +
+      ' (the limit is ' + maxTiles + '). Fetch a smaller area, or raise max-tiles=');
+  }
   if (tileCount > maxTiles) {
     stop('This would fetch ' + tileCount + ' tiles at zoom ' + z + ', more than the limit of ' + maxTiles +
       '. Use a lower raster-res= or zoom= value, or raise max-tiles=');
+  }
+  if (source.adapter == 'planetary-computer') {
+    prepared = await preparePlanetaryComputerSource(source, lonLatBbox);
+    source = prepared.source;
+    acquisitions = prepared.acquisitions;
   }
   message('Fetching ' + tileCount + ' tile' + (tileCount == 1 ? '' : 's') + ' at zoom ' + z +
     ' from ' + (source.title || source.url));
@@ -195,9 +211,17 @@ async function fetchTileDataset(source, extent, opts) {
   if (mosaic.missing == tileCount) {
     stop('No tiles were found for this area');
   }
+  if (mosaic.grid.coverage && mosaic.grid.coverage.indexOf(1) == -1) {
+    stop('No imagery was found for this area');
+  }
   if (mosaic.missing > 0) {
     message(mosaic.missing + ' of ' + tileCount + ' tiles were not available; those areas have no data');
   }
+  if (mosaic.failed > 0) {
+    warn(mosaic.failed + ' of ' + tileCount + ' tiles could not be fetched (' + mosaic.failure.error +
+      '); those areas have no data. The server may be busy; try again later');
+  }
+  if (acquisitions) reportAcquisitions(acquisitions);
   checkTileLicensing(source, mosaic.headerValues);
   raster = source.encoding == 'rgb' ?
     getImageryRaster(source, mosaic.grid, extent) :
@@ -232,6 +256,8 @@ async function fetchTileDataset(source, extent, opts) {
     },
     layers: [lyr]
   };
+  if (source.collection) dataset.info.raster_sources[0].collection = source.collection;
+  if (acquisitions) dataset.info.raster_sources[0].acquisitions = acquisitions;
   setDatasetCrsInfo(dataset, extent.crsInfo);
   return dataset;
 }

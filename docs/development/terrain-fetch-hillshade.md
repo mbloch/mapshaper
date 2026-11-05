@@ -53,10 +53,15 @@ are sized in output pixels, which is only possible after reprojection.
 
 `source` is a preset name (`tilezen`) or a URL template. The first bare
 argument is the source, so `-fetch tilezen` and `-fetch source=tilezen` are
-equivalent.
+equivalent. `-fetch sources` prints the presets, grouped into elevation and
+imagery, with each one's coverage, resolution, years, lowest zoom and license
+terms (from the presets' `coverage`, `resolution` and `terms` fields), and
+fetches nothing.
 
-Elevation presets: `tilezen`, `mapterhorn`. Imagery presets: `bluemarble`,
-`blackmarble`, `usgs`, `eox` (see [Imagery](#imagery)).
+Elevation presets: `tilezen`, `mapterhorn`, `copernicus`, `3dep`. Imagery
+presets: `bluemarble`, `blackmarble`, `usgs`, `naip`, `naip-cir`, `sentinel2`,
+`landsat`, `eox` (see [Imagery](#imagery) and
+[Planetary Computer](#planetary-computer)).
 
 ### Scope
 
@@ -73,7 +78,8 @@ adapters, so other kinds of source can be added without changing the command:
 | XYZ/TMS tiles with an elevation encoding | Phase 1 | Tilezen (Terrarium), Mapbox Terrain-RGB |
 | XYZ/TMS imagery tiles | Done | NASA GIBS, USGS, EOxCloudless |
 | Cloud-Optimized GeoTIFF (windowed reads) | Planned | OpenTopography SRTM |
-| ArcGIS ImageServer bbox export | Planned | USGS 3DEP |
+| Planetary Computer mosaics (registered search, then XYZ tiles) | Done | NAIP, Sentinel-2, Landsat, Copernicus DEM, 3DEP |
+| Bbox requests (`{bbox-epsg-3857}`: ArcGIS exportImage, WMS) | Custom URLs | any WMS or ArcGIS `exportImage` URL |
 | Vector tiles / PMTiles | Later | see `future-directions.md` |
 
 A preset is data: a named bundle of adapter options plus metadata (license,
@@ -82,9 +88,13 @@ preset's.
 
 ### Options
 
-- `source=` preset name or URL template containing `{z}`, `{x}` and `{y}`.
-- `year=` edition of a preset that has several (`blackmarble`, `eox`);
-  defaults to the latest. An error for other sources.
+- `source=` preset name or URL template containing `{z}`, `{x}` and `{y}`,
+  or `{bbox-epsg-3857}` (replaced by each tile's Web Mercator bounds, as in
+  MapLibre), which lets WMS and ArcGIS export URLs act as tile URLs.
+- `year=` edition of a preset that has several (`blackmarble`, `eox`;
+  default the latest), or year of imagery (`naip`, default the newest of each
+  state; `sentinel2` and `landsat`, default last year). An error for other
+  sources.
 - `encoding=` encoding of custom tiles: `terrarium` (default) or `mapbox`
   for elevation, `rgb` for imagery.
 - `scheme=` `xyz` (default) or `tms` for custom tiles.
@@ -212,6 +222,12 @@ Notes:
   column) URLs.
 - `usgs` covers the world at low zooms and the United States at higher zooms;
   elsewhere the server answers 404, so those tiles are transparent.
+- `usgs` is a cached tile service, mostly NAIP at 1 m from 2017-2021; `naip`
+  has newer and sharper NAIP.
+- Failed requests are retried three times, waiting 1, 2 and 4 seconds, with a
+  60 second timeout per request. A tile that still fails becomes a gap with a
+  warning; the command stops only if every tile fails, or if the fetched
+  imagery is entirely transparent.
 - Sentinel-2 pixels are 10 m, about a zoom 14 pixel; zooms 15-16 are
   enlarged, so automatic selection stops at 14.
 - A preset with editions lists them in `years`, each with the settings that
@@ -226,6 +242,64 @@ Notes:
   source were considered and left out for now: daily imagery is cloudy and
   has swath gaps, and a generic source would need each layer's zoom range and
   format from the 5.8 MB capabilities document.
+
+### Planetary Computer
+
+Six presets use the Microsoft Planetary Computer data API, which needs no key
+and allows cross-origin requests. A mosaic is a registered item search: `-fetch`
+posts the search (collection, filters and drawing order) to
+`/api/data/v1/mosaic/register`, then fetches ordinary 512px tiles from
+`/mosaic/{id}/tiles/WebMercatorQuad/{z}/{x}/{y}@2x`. Elevation is served as
+Terrarium (`algorithm=terrarium`, bilinear resampling), so it goes through the
+same decoding and `-hillshade` as the other elevation presets.
+
+| Preset | Collection | Search | Zooms | License |
+| --- | --- | --- | --- | --- |
+| `naip` | `naip`, bands 1,2,3 | `year=` (2010-), else newest first | 11-18 | Public domain |
+| `naip-cir` | `naip`, bands 4,1,2 (color infrared) | as `naip` | 11-18 | Public domain |
+| `sentinel2` | `sentinel-2-l2a`, `visual` (true color) | season of `year=`, cloud cover <= 10%, least cloudy first | 9-16 (auto to 13) | Copernicus, attribution |
+| `landsat` | `landsat-c2-l2`, red/green/blue | as `sentinel2`; Landsat 4, 5, 8 and 9 | 8-14 (auto to 11) | Public domain |
+| `copernicus` | `cop-dem-glo-30` | | 8-14 (auto to 12) | Copernicus DEM, attribution |
+| `3dep` | `3dep-seamless`, 10 m items | | 8-16 (auto to 13) | Public domain |
+
+Notes:
+
+- The zoom ranges start where the server does: below them it refuses the
+  request (NAIP) or returns empty tiles (HTTP 204, treated as missing), since
+  a tile would need too many items. When the lowest zoom would take more than
+  `max-tiles=`, the error says so rather than suggesting a lower
+  `raster-res=`.
+- NAIP: each state is flown in one year, every two or three years. Without
+  `year=` the mosaic draws the newest items first, so it shows the newest
+  imagery of each state. Recent years of some states are 0.3 m (Colorado
+  2023; the USGS image service has Colorado 2019 at 0.6 m). Tiles are PNG, so
+  areas outside the coverage are transparent; JPEG would make them black.
+- Seasons: `sentinel2` and `landsat` search June-September of `year=` north
+  of the Tropic of Cancer, December-March (ending in `year=`) south of the
+  Tropic of Capricorn, and the whole year in between. The default is last
+  year, the most recent complete season.
+- These are mosaics of whole scenes, not cloud-free composites: the least
+  cloudy scene covering each pixel is drawn, so a scene's clouds and the
+  edges between scenes can show (more often with Landsat). EOxCloudless is a
+  true composite, but non-commercial since 2018.
+- Landsat 7 is excluded: its images since 2003 have gaps in stripes. 2012
+  has only Landsat 7, so `landsat year=2012` finds nothing.
+- Before fetching, `-fetch` searches the STAC API (`/api/stac/v1/search`)
+  for the items in the area, using the `fields` extension to get only their
+  dates, states and resolutions. It prints a summary, e.g. "Imagery: 2023
+  (CO, 0.3 m): 2023-09-25" for NAIP, or the number of scenes and their date
+  range for Sentinel-2 and Landsat, and stores it in
+  `raster_sources[0].acquisitions`. If no items match, it stops with a
+  message (for NAIP, the years available in the area). If the search fails,
+  it warns and fetches anyway.
+- Comparisons: `3dep` matches `tilezen` (same 10 m data). `copernicus`
+  matches `mapterhorn` where Mapterhorn uses GLO-30 (Himalaya); where
+  Mapterhorn has national lidar (Switzerland), it is smoother.
+- Other Microsoft imagery: Bing Maps aerial imagery and Azure Maps'
+  `microsoft.imagery` tiles need a key and are billed; Azure Maps can be used
+  with a custom URL. Planet-NICFI (4.77 m, tropics) is non-commercial and
+  needs approval. The Planetary Computer's GeoTIFFs (and the requester-pays
+  `naip-*` buckets on AWS) would need a COG adapter.
 
 ### Provenance
 

@@ -2652,10 +2652,10 @@ export function getOptionParser() {
     .describe('download elevation or imagery tiles for the area of a map frame')
     .option('source', {
       DEFAULT: true,
-      describe: 'name of a data source (tilezen, mapterhorn, bluemarble, blackmarble, usgs, eox) or URL template of a tile service'
+      describe: 'name of a data source (elevation: tilezen, mapterhorn, copernicus, 3dep; imagery: bluemarble, blackmarble, usgs, naip, naip-cir, sentinel2, landsat, eox) or URL template of a tile service; "sources" lists the sources'
     })
     .option('year', {
-      describe: 'edition of a source with several (blackmarble: 2012, 2016; eox: 2016, 2018-2025; default is the latest)',
+      describe: 'year of imagery (blackmarble: 2012, 2016; eox: 2016, 2018-2025; naip: 2010-; sentinel2: 2016-; landsat: 1982-; default is the latest, or last year)',
       type: 'integer'
     })
     .option('encoding', {
