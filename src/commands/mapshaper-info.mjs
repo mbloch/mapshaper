@@ -1,6 +1,6 @@
 import { applyFieldOrder } from '../datatable/mapshaper-data-utils';
 import { editShapes } from '../paths/mapshaper-shape-utils';
-import { getDatasetCRS, getProjInfo } from '../crs/mapshaper-projections';
+import { getDatasetCRS, getProjInfo, isLatLngCRS } from '../crs/mapshaper-projections';
 import { getLayerBounds, getFeatureCount, getLayerSourceFile, layerHasRaster } from '../dataset/mapshaper-layer-utils';
 import { getRasterBandCount, getRasterHeight, getRasterPixelType, getRasterWidth } from '../rasters/mapshaper-raster-utils';
 import { getRasterValidityMask } from '../rasters/mapshaper-raster-grid';
@@ -69,6 +69,7 @@ export function getLayerInfo(lyr, dataset) {
     o.raster_height = getRasterHeight(lyr.raster);
     o.raster_bands = getRasterBandCount(lyr.raster);
     o.raster_pixel_type = getRasterPixelType(lyr.raster);
+    o.raster_pixel_size = getRasterPixelSize(lyr.raster.grid, getDatasetCRS(dataset));
     o.bbox = getLayerBounds(lyr, dataset.arcs).toArray();
     o.proj4 = getProjInfo(dataset);
     if (rasterLooksLikeElevation(lyr.raster)) {
@@ -239,6 +240,54 @@ function getImageInfoRows(o) {
 }
 
 // Median ground width and height of a pixel, in meters
+// Width and height of a pixel in the raster's coordinates: degrees if
+// unprojected, otherwise meters
+// Returns {size: [w, h], units}, or {size: null, reason} if the size is unknown
+export function getRasterPixelSize(grid, crs) {
+  var bbox = grid && grid.bbox;
+  var k, units;
+  if (!bbox || !(grid.width > 0) || !(grid.height > 0)) {
+    return {size: null, reason: 'the raster has no extent'};
+  }
+  if (grid.horizontalUnitMeters > 0) {
+    k = grid.horizontalUnitMeters;
+    units = 'meters';
+  } else if (crs && isLatLngCRS(crs)) {
+    k = 1;
+    units = 'degrees';
+  } else if (crs) {
+    k = crs.to_meter || 1;
+    units = 'meters';
+  } else {
+    return {size: null, reason: grid.pixelCoordinates ?
+      'the raster has no geographic coordinates' : 'the coordinate system is unknown'};
+  }
+  return {
+    size: [(bbox[2] - bbox[0]) / grid.width * k, (bbox[3] - bbox[1]) / grid.height * k].map(function(v) {
+      return +v.toPrecision(4);
+    }),
+    units: units
+  };
+}
+
+function formatRasterPixelSize(o) {
+  var w, h, fmt, units;
+  if (!o.size) return 'unknown (' + o.reason + ')';
+  w = o.size[0];
+  h = o.size[1];
+  fmt = o.units == 'degrees' ? String : function(m) { return m >= 100 ? String(Math.round(m)) : String(+m.toFixed(1)); };
+  units = o.units == 'degrees' ? ' degrees' : ' m';
+  return (Math.abs(w - h) / Math.max(w, h) < 0.02 ? fmt(w) : fmt(w) + ' x ' + fmt(h)) + units;
+}
+
+// The ground size differs from the size in map units for lat-long rasters,
+// and for projections with a scale factor away from 1 (e.g. Mercator)
+function groundSizeDiffers(ground, mapSize) {
+  if (!mapSize || !mapSize.size || mapSize.units != 'meters') return true;
+  return Math.abs(ground[0] - mapSize.size[0]) / mapSize.size[0] > 0.02 ||
+    Math.abs(ground[1] - mapSize.size[1]) / mapSize.size[1] > 0.02;
+}
+
 function getGroundPixelSize(grid, crs) {
   var cells = getHillshadeCellSizes(grid, crs);
   var heights = Float64Array.from(cells.heights).sort();
@@ -289,9 +338,6 @@ function getElevationInfoRows(o) {
       return pct + '%: ' + formatElevation(o.percentiles[pct], decimals);
     }).join(' | ')]);
   }
-  if (o.pixel_size) {
-    rows.push(['Pixel size', formatGroundPixelSize(o.pixel_size)]);
-  }
   return rows;
 }
 
@@ -303,6 +349,13 @@ export function getLayerInfoRows(info) {
   if (info.raster_type) {
     rows.push(['Size', utils.format('%,d x %,d x %,d', info.raster_width, info.raster_height, info.raster_bands)]);
     rows.push(['Data', info.raster_pixel_type || 'unknown']);
+    if (info.raster_pixel_size) {
+      rows.push(['Pixel size', formatRasterPixelSize(info.raster_pixel_size)]);
+    }
+    if (info.elevation && info.elevation.pixel_size &&
+        groundSizeDiffers(info.elevation.pixel_size, info.raster_pixel_size)) {
+      rows.push(['Ground pixel size', formatGroundPixelSize(info.elevation.pixel_size)]);
+    }
     if (info.elevation) {
       rows = rows.concat(getElevationInfoRows(info.elevation));
     } else if (info.image) {

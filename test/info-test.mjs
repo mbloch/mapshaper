@@ -53,6 +53,33 @@ describe('mapshaper-info.js', function () {
       assert.equal(Math.round(o.pixel_size[1] / 1000), 111);
     });
 
+    it('reports the pixel size in degrees, meters, or as unknown', function() {
+      var getSize = api.internal.getRasterPixelSize;
+      var grid = makeGrid([1, 2], {width: 2, bbox: [0, 0, 0.02, 0.01]});
+      assert.deepEqual(getSize(grid, api.internal.parseCrsString('wgs84')), {size: [0.01, 0.01], units: 'degrees'});
+      assert.deepEqual(getSize(grid, api.internal.parseCrsString('EPSG:3857')), {size: [0.01, 0.01], units: 'meters'});
+      assert.deepEqual(getSize(grid, null), {size: null, reason: 'the coordinate system is unknown'});
+    });
+
+    it('formats the pixel size, adding the ground size where it differs', function() {
+      var grid = makeGrid([1, 2], {width: 2, bbox: [0, -0.005, 0.02, 0.005]});
+      var crs = api.internal.parseCrsString('wgs84');
+      var lookup = Object.fromEntries(getLayerInfoRows({
+        raster_type: 'grid', raster_width: 2, raster_height: 1, raster_bands: 1,
+        raster_pixel_type: 'float32', bbox: grid.bbox, proj4: '',
+        raster_pixel_size: api.internal.getRasterPixelSize(grid, crs),
+        elevation: getElevationInfo(grid, crs)
+      }));
+      assert.equal(lookup['Pixel size'], '0.01 degrees');
+      assert.equal(lookup['Ground pixel size'], '1112 m');
+      lookup = Object.fromEntries(getLayerInfoRows({
+        raster_type: 'grid', raster_width: 2, raster_height: 1, raster_bands: 1,
+        raster_pixel_type: 'float32', bbox: grid.bbox, proj4: '',
+        raster_pixel_size: api.internal.getRasterPixelSize(grid, null)
+      }));
+      assert.equal(lookup['Pixel size'], 'unknown (the coordinate system is unknown)');
+    });
+
     it('handles rasters with no valid pixels', function() {
       var o = getElevationInfo(makeGrid([-1, -1], {nodata: -1}), null);
       assert.strictEqual(o.min, null);

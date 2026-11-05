@@ -1,4 +1,5 @@
 import cmd from '../mapshaper-cmd';
+import { parseColor } from '../color/color-utils';
 import { layerHasRaster, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { requireOverlaySourceCRS } from '../crs/mapshaper-projections';
 import { blendShadingPixels } from '../rasters/mapshaper-raster-color';
@@ -20,7 +21,7 @@ cmd.blend = function(lyr, dataset, source, opts) {
     stop('-blend requires a raster target layer');
   }
   if (!source || !layerHasRaster(source.layer)) {
-    stop('source= should name a hillshade layer');
+    stop('source= should name a hillshade raster');
   }
   if (source.layer == lyr) {
     stop('source= names the target layer');
@@ -31,7 +32,7 @@ cmd.blend = function(lyr, dataset, source, opts) {
     stop('-blend does not support rotated rasters');
   }
   settings = getBlendSettings(opts);
-  shading = getShadingAmounts(source.layer.raster);
+  shading = getShadingAmounts(source.layer.raster, readBaseColor(opts.base_color));
   amounts = resampleShadingAmounts(shading, grid);
   if (amounts == shading.amounts) amounts = amounts.slice();
   scaleShadingAmounts(amounts, settings.strength[0], settings.strength[1]);
@@ -54,8 +55,17 @@ cmd.blend = function(lyr, dataset, source, opts) {
 function getBlendSettings(opts) {
   return {
     strength: readShadowHighlightPair(opts.strength, DEFAULT_STRENGTH, 'strength'),
-    chroma: readShadowHighlightPair(opts.chroma, DEFAULT_CHROMA, 'chroma')
+    chroma: readShadowHighlightPair(opts.chroma, DEFAULT_CHROMA, 'chroma'),
+    base_color: opts.base_color || null
   };
+}
+
+function readBaseColor(str) {
+  var color;
+  if (!str) return null;
+  color = parseColor(str);
+  if (!color) stop('Unsupported base-color=', str);
+  return color;
 }
 
 // One value for both shadows and highlights, or shadow,highlight

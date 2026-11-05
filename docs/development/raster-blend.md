@@ -111,12 +111,27 @@ exact: stacking black at \(a_s\) over the base color reproduces the pixel.
 The base color comes from the derivation (`base_color` is recorded with the
 colors actually used, including derived ones).
 
-**Hillshades from elsewhere** (a GDAL hillshade GeoTIFF, or a hillshade
-whose derivation no longer describes its pixels, e.g. after `-tone`) are
-read as opaque. `base-color=` gives the flat-ground color. Without it, the
-most common lightness in the image is used, with a message, since flat
-ground is usually the largest tone class. One-band hillshades are read
-through their view, like any raster.
+**Hillshades from elsewhere** (a GDAL hillshade GeoTIFF, or a mapshaper
+hillshade written to a file and read back) have no recorded settings:
+
+- With `base-color=`, the source is read as opaque, with that color as flat
+  ground. `base-color=` also overrides the recorded base of an opaque
+  `-hillshade` layer, and is refused for a transparent one.
+- Without it, a source in which at least 1% of the visible pixels are partly
+  transparent is read as a transparent hillshade, with black shadows and
+  white highlights.
+- Otherwise it's read as opaque, and flat ground is guessed as the most
+  common gray level (the peak of a lightly smoothed histogram; black is
+  skipped, since it's more likely a nodata border). A message gives the
+  color it chose. Flat ground is usually the largest tone class; in rugged
+  terrain with little flat ground, the guess can land on a common slope
+  tone, and `base-color=` fixes it.
+- One-band 8-bit hillshades are read as gray values rather than through
+  their view, which may stretch them. Other one-band rasters are refused as
+  elevation data.
+
+A mapshaper opaque hillshade written to GeoTIFF and read back blends
+identically to the original: the guess finds its base color exactly.
 
 **Grid alignment.** The amounts are computed on the hillshade's own grid and
 then resampled to the output grid as floats. Resampling the RGBA image
@@ -316,8 +331,9 @@ rounding of the alpha channel.
 
 1. Raster targets; shadow-style and opaque hillshades read from their
    derivations; same or resampled grids; `strength=` and `chroma=`.
-2. Vector targets; `base-color=` and automatic base detection for
-   hillshades from elsewhere; `shadow-tint=` and `highlight-tint=`.
+2. Vector targets; `shadow-tint=` and `highlight-tint=` if the hillshade's
+   own colors aren't enough. (`base-color=` and the guess for hillshades
+   from elsewhere are done.)
 3. GUI panel; standard modes for opaque hillshades; a `-composite` command
    if chaining isn't enough.
 

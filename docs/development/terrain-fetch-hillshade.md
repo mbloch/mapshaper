@@ -258,7 +258,7 @@ same pattern as other mapshaper commands.
   10), because relief flattens out at small scales. It is the square root of
   the pixel size over 50 m, rounded to a multiple of 0.25 so that it is easy
   to read and adjust, and is printed when it is chosen automatically (e.g.
-  `Exaggeration: 4.25 (automatic, for 934 m pixels)`).
+  `Exaggeration: 4.25 (automatic)`; `-info` shows the pixel size).
 - `smoothing=` terrain smoothing, described under Generalization:
   - `low`, `medium`, `high`: feature-preserving smoothing (FPS) presets; see
     Generalization for their settings.

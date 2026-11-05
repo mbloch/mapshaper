@@ -205,8 +205,7 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
   cells = getHillshadeCellSizes(grid, getDatasetCRS(dataset));
   exaggeration = opts.exaggeration > 0 ? opts.exaggeration : getAutoExaggeration(cells.median);
   if (!(opts.exaggeration > 0)) {
-    message('Exaggeration:', formatExaggeration(exaggeration) +
-      (cells.unknown ? ' (automatic)' : ' (automatic, for ' + formatPixelSize(cells.median) + ' pixels)'));
+    message('Exaggeration:', formatExaggeration(exaggeration) + ' (automatic)');
   }
   azimuth = opts.azimuth == null ? DEFAULT_AZIMUTH : opts.azimuth;
   sharpening = opts.sharpening >= 0 ? opts.sharpening : DEFAULT_SHARPENING;

@@ -3254,6 +3254,9 @@ export function getOptionParser() {
       describe: 'share of the layer\'s color kept under the shading: 0 is plain stacking, 1 keeps the color; one value, or shadows,highlights (default is 0,1)',
       type: 'numbers'
     })
+    .option('base-color', {
+      describe: 'color of flat ground in an opaque hillshade not made by -hillshade (default is its most common color)'
+    })
     .option('name', nameOpt)
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);

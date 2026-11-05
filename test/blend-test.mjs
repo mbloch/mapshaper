@@ -147,6 +147,23 @@ describe('mapshaper-blend.mjs', function () {
     });
   });
 
+  describe('guessBaseColor()', function () {
+    it('finds the most common gray, skipping black', function () {
+      var px = [];
+      var add = function(v, a, n) { for (var i = 0; i < n; i++) px.push(v, v, v, a); };
+      add(0, 255, 50);
+      add(180, 255, 20);
+      add(181, 255, 5);
+      add(120, 255, 10);
+      add(60, 0, 100);
+      assert.deepEqual(internal.guessBaseColor(new Uint8Array(px)), {r: 180, g: 180, b: 180});
+    });
+
+    it('returns null with no visible pixels', function () {
+      assert.strictEqual(internal.guessBaseColor(new Uint8Array([9, 9, 9, 0])), null);
+    });
+  });
+
   describe('resampleShadingAmounts()', function () {
     var shading = {amounts: new Float32Array([0, 1, 0, 1]), width: 2, height: 2, bbox: [0, 0, 2, 2]};
 
@@ -184,7 +201,7 @@ describe('mapshaper-blend.mjs', function () {
       var lyr = findLayer(catalog, 'img');
       assert.deepEqual(catalog.getLayers().map(function(o) { return o.layer.name; }), ['img']);
       assert.deepEqual(lyr.raster.derivation, {sourceId: 'img', type: 'blend', source: 'hs',
-        strength: [1, 1], chroma: [0.5, 0.5]});
+        strength: [1, 1], chroma: [0.5, 0.5], base_color: null});
     });
 
     it('+ keeps the target and the hillshade', async function () {
@@ -234,9 +251,71 @@ describe('mapshaper-blend.mjs', function () {
       assert.deepEqual(findLayer(a, 'img').raster.grid.samples, findLayer(b, 'img').raster.grid.samples);
     });
 
-    it('needs a hillshade', async function () {
+    it('refuses an elevation raster', async function () {
       await assert.rejects(run(makeDataset(10, 10, ridge, [40, 160, 60]), '-blend source=dem target=img'),
-        /source= should name a hillshade/);
+        /looks like an elevation raster/);
+    });
+
+    // a 10 x 10 one-band 8-bit hillshade: flat 180, with a shadow (90) and a
+    // highlight (230) pixel
+    function addGrayHillshade(dataset) {
+      var samples = new Uint8Array(100).fill(180);
+      samples[11] = 90;
+      samples[12] = 230;
+      addRaster(dataset, 'gdal', samples, 1);
+      return dataset;
+    }
+
+    function addRaster(dataset, name, samples, bands) {
+      var img = dataset.layers[1].raster.grid;
+      dataset.layers.push({
+        name: name,
+        raster_type: 'grid',
+        raster: {
+          sourceId: name,
+          interpretation: 'continuous',
+          grid: {width: img.width, height: img.height, bands: bands, pixelType: 'uint8', samples: samples,
+            sampleBands: Array.from({length: bands}, function(v, i) { return i; }), nodata: null,
+            bbox: img.bbox.concat(), transform: img.transform.concat()}
+        }
+      });
+    }
+
+    it('guesses the flat-ground color of a hillshade from elsewhere', async function () {
+      var catalog = await run(addGrayHillshade(makeDataset(10, 10, ridge, [40, 160, 60])),
+        '-blend gdal target=img chroma=0');
+      var out = findLayer(catalog, 'img').raster.grid.samples;
+      assert.deepEqual(Array.from(out.subarray(0, 3)), [40, 160, 60]);
+      assert.deepEqual(Array.from(out.subarray(33, 36)), [20, 80, 30]);
+      assert(out[37] > 160);
+    });
+
+    it('uses base-color= for a hillshade from elsewhere', async function () {
+      var catalog = await run(addGrayHillshade(makeDataset(10, 10, ridge, [40, 160, 60])),
+        '-blend gdal target=img chroma=0 base-color=#5a5a5a');
+      var out = findLayer(catalog, 'img').raster.grid.samples;
+      // with 90 as flat ground, the shadow pixel is unshaded and flat 180 is a highlight
+      assert.deepEqual(Array.from(out.subarray(33, 36)), [40, 160, 60]);
+      assert(out[0] > 40);
+      assert.equal(findLayer(catalog, 'img').raster.derivation.base_color, '#5a5a5a');
+    });
+
+    it('reads a partly transparent image from elsewhere as a transparent hillshade', async function () {
+      var dataset = makeDataset(10, 10, ridge, [40, 160, 60]);
+      var samples = new Uint8Array(400);
+      samples.set([0, 0, 0, 128], 44);
+      samples.set([255, 255, 255, 64], 48);
+      addRaster(dataset, 'shade', samples, 4);
+      var out = findLayer(await run(dataset, '-blend shade target=img chroma=0'), 'img').raster.grid.samples;
+      assert.deepEqual(Array.from(out.subarray(0, 3)), [40, 160, 60]);
+      assert.deepEqual(Array.from(out.subarray(33, 36)), [20, 80, 30]);
+      assert(out[36] > 40);
+    });
+
+    it('refuses base-color= with a transparent hillshade', async function () {
+      await assert.rejects(run(makeDataset(10, 10, ridge, [40, 160, 60]),
+        '-hillshade target=dem name=hs -blend hs target=img base-color=#ccc'),
+        /base-color= is for opaque hillshades/);
     });
 
     it('rejects more than two values', async function () {
