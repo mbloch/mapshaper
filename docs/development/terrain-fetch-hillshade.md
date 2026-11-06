@@ -58,7 +58,7 @@ imagery, with each one's coverage, resolution, years, lowest zoom and license
 terms (from the presets' `coverage`, `resolution` and `terms` fields), and
 fetches nothing.
 
-Elevation presets: `tilezen`, `mapterhorn`, `copernicus`, `3dep`. Imagery
+Elevation presets: `tilezen`, `mapterhorn`, `copernicus`, `3dep`, `3dep-1m`. Imagery
 presets: `bluemarble`, `blackmarble`, `usgs`, `naip`, `naip-cir`, `sentinel2`,
 `landsat`, `eox` (see [Imagery](#imagery) and
 [Planetary Computer](#planetary-computer)).
@@ -96,7 +96,9 @@ preset's.
   state; `sentinel2` and `landsat`, default last year). An error for other
   sources.
 - `encoding=` encoding of custom tiles: `terrarium` (default) or `mapbox`
-  for elevation, `rgb` for imagery.
+  for elevation, `rgb` for imagery, or `bsq` for float32 elevation from an
+  ArcGIS ImageServer `exportImage` URL with `format=bsq&pixelType=F32` (and
+  `size=256,256`, the tile size of custom sources).
 - `scheme=` `xyz` (default) or `tms` for custom tiles.
 - `zoom=` tile zoom level, overriding automatic selection.
 - `raster-res=` raster pixels per frame pixel (default 2). The GUI on
@@ -292,6 +294,18 @@ Notes:
   `raster_sources[0].acquisitions`. If no items match, it stops with a
   message (for NAIP, the years available in the area). If the search fails,
   it warns and fetches anyway.
+- `3dep-1m` is not a Planetary Computer mosaic (its 3DEP collections are 10
+  and 30 m, and the lidar-derived ones 2 m): it requests each 512px tile's
+  bounds from the USGS 3DEPElevation ImageServer (`exportImage`, bilinear),
+  which serves the best available DEM: 1 m where there is lidar, 1/3
+  arc-second elsewhere. Tiles come as `format=bsq&pixelType=F32`: raw
+  little-endian float32 values by row, then a validity bitmask (one bit per
+  pixel, first pixel in the high bit); errors come as JSON with HTTP status
+  200. Uncached tiles take 3-7 seconds, and the server answers 502 for spells
+  of 10-15 seconds, so the preset retries 5 times (up to about 30 seconds).
+  An area of 6 x 4 km at zoom 16 (about 1 m) takes 120 tiles and about 100
+  seconds. Near Sedona it matches the USGS 1 m DEM product within 0.2 m on
+  average (the 10 m `3dep`: 2.8 m).
 - Comparisons: `3dep` matches `tilezen` (same 10 m data). `copernicus`
   matches `mapterhorn` where Mapterhorn uses GLO-30 (Himalaya); where
   Mapterhorn has national lidar (Switzerland), it is smoother.

@@ -1,7 +1,7 @@
 import { runningInBrowser } from '../mapshaper-env';
 import require from '../mapshaper-require';
 import { stop } from '../utils/mapshaper-logging';
-import { decodeElevationPixels } from './mapshaper-elevation-decoding';
+import { decodeBsqTile, decodeElevationPixels } from './mapshaper-elevation-decoding';
 import { usesBBoxToken } from './mapshaper-fetch-sources';
 import { getTileRangeMercatorBBox, wrapTileX } from './mapshaper-tile-math';
 import { decodeWebP, isWebP } from './mapshaper-webp-decoder';
@@ -61,7 +61,8 @@ export async function fetchTileMosaic(source, range) {
     if (imagery) {
       copyImageTile(tile.rgba, tileSize, samples, coverage, width, x0, y0);
     } else {
-      copyTile(decodeElevationPixels(tile.rgba, source.encoding, ELEVATION_NODATA), tileSize, samples, width, x0, y0);
+      copyTile(tile.elevations || decodeElevationPixels(tile.rgba, source.encoding, ELEVATION_NODATA),
+        tileSize, samples, width, x0, y0);
     }
   });
   if (failed == jobs.length) {
@@ -123,14 +124,15 @@ function copyTile(elev, tileSize, dest, destWidth, x0, y0) {
   }
 }
 
-// Returns {rgba, width, height, header}, null if the tile does not exist, or
-// {url, error} if it could not be fetched
+// Returns {rgba, width, height, header} ({elevations, ...} for bsq tiles),
+// null if the tile does not exist, or {url, error} if it could not be fetched
 async function fetchTile(url, source) {
   var resp, buf, decoded, err, controller, timer;
+  var retries = source.retries >= 0 ? source.retries : RETRIES;
   if (typeof fetch != 'function') {
     stop('Fetching data requires a JavaScript runtime with fetch() (Node 18 or later)');
   }
-  for (var attempt = 0; attempt <= RETRIES; attempt++) {
+  for (var attempt = 0; attempt <= retries; attempt++) {
     if (attempt > 0) await delay(RETRY_DELAY * Math.pow(2, attempt - 1));
     controller = typeof AbortController == 'function' ? new AbortController() : null;
     timer = controller ? setTimeout(function() { controller.abort(); }, TIMEOUT) : null;
@@ -140,7 +142,9 @@ async function fetchTile(url, source) {
       if (resp.status == 404 || resp.status == 403 || resp.status == 204) return null;
       if (!resp.ok) throw new Error('HTTP status ' + resp.status);
       buf = await resp.arrayBuffer();
-      decoded = await decodeTileImage(buf);
+      decoded = source.encoding == 'bsq' ?
+        decodeBsqTile(buf, source.tile_size, ELEVATION_NODATA) :
+        await decodeTileImage(buf);
       decoded.header = source.sources_header && resp.headers && resp.headers.get ?
         resp.headers.get(source.sources_header) : null;
       return decoded;

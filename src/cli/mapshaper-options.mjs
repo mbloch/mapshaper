@@ -2652,14 +2652,14 @@ export function getOptionParser() {
     .describe('download elevation or imagery tiles for the area of a map frame')
     .option('source', {
       DEFAULT: true,
-      describe: 'name of a data source (elevation: tilezen, mapterhorn, copernicus, 3dep; imagery: bluemarble, blackmarble, usgs, naip, naip-cir, sentinel2, landsat, eox) or URL template of a tile service; "sources" lists the sources'
+      describe: 'name of a data source (elevation: tilezen, mapterhorn, copernicus, 3dep, 3dep-1m; imagery: bluemarble, blackmarble, usgs, naip, naip-cir, sentinel2, landsat, eox) or URL template of a tile service; "sources" lists the sources'
     })
     .option('year', {
       describe: 'year of imagery (blackmarble: 2012, 2016; eox: 2016, 2018-2025; naip: 2010-; sentinel2: 2016-; landsat: 1982-; default is the latest, or last year)',
       type: 'integer'
     })
     .option('encoding', {
-      describe: 'how tile images encode their data: terrarium or mapbox (elevation), or rgb (imagery)'
+      describe: 'how tile images encode their data: terrarium or mapbox (elevation), rgb (imagery), or bsq (float32 elevation from an ArcGIS exportImage URL with format=bsq&pixelType=F32&size=256,256)'
     })
     .option('scheme', {
       describe: 'tile numbering scheme: xyz (default) or tms'
@@ -3256,6 +3256,22 @@ export function getOptionParser() {
     })
     .option('base-color', {
       describe: 'color of flat ground in an opaque hillshade not made by -hillshade (default is its most common color)'
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
+
+  parser.command('deshadow')
+    .describe('(experimental) brighten shadows cast by terrain in aerial imagery')
+    .option('dem', {
+      DEFAULT: true,
+      describe: 'elevation layer covering the image (e.g. from -fetch 3dep, or 3dep-1m for 1 m lidar); the sun position is fitted to its shadows'
+    })
+    .option('nir', {
+      describe: 'near-infrared layer on band 1, e.g. from -fetch naip-cir; keeps dark tree canopy from being brightened'
+    })
+    .option('date', {
+      describe: 'date of the imagery (e.g. 2023-06-15), to fit the sun along its path that day; default is the dates of imagery from -fetch naip (up to three months apart)'
     })
     .option('name', nameOpt)
     .option('target', targetOpt)

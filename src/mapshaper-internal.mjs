@@ -190,6 +190,7 @@ import * as HillshadeRunner from './rasters/mapshaper-hillshade-runner';
 import * as HillshadeStages from './rasters/mapshaper-hillshade-stages';
 import * as RasterColor from './rasters/mapshaper-raster-color';
 import * as RasterBlend from './rasters/mapshaper-raster-blend';
+import * as Deshadow from './rasters/mapshaper-deshadow';
 import * as TintCommand from './commands/mapshaper-tint';
 import * as ToneCommand from './commands/mapshaper-tone';
 import * as RasterTiles from './rasters/mapshaper-raster-tiles';
@@ -367,6 +368,7 @@ Object.assign(internal,
   HillshadeStages,
   RasterColor,
   RasterBlend,
+  Deshadow,
   TintCommand,
   ToneCommand,
   RasterTiles,

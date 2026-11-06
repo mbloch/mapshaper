@@ -75,6 +75,7 @@ import '../commands/mapshaper-fuzzy-join';
 import '../commands/mapshaper-graticule';
 import '../commands/mapshaper-help';
 import '../commands/mapshaper-blend';
+import '../commands/mapshaper-deshadow';
 import '../commands/mapshaper-hillshade';
 import '../commands/mapshaper-tint';
 import '../commands/mapshaper-tone';
@@ -142,7 +143,7 @@ function commandRunsPerTargetDataset(name, opts) {
   return [
     'affine', 'alpha-shapes', 'blend', 'blur', 'buffer', 'calc', 'check-geometry',
     'classify', 'clean', 'clip', 'cluster', 'contours', 'copy', 'dashlines', 'data-fill',
-    'densify', 'dissolve', 'dissolve2', 'divide', 'dots', 'each', 'erase',
+    'densify', 'deshadow', 'dissolve', 'dissolve2', 'divide', 'dots', 'each', 'erase',
     'explode', 'filter',
     'filter-detail', 'filter-fields', 'filter-geom', 'filter-islands',
     'filter-islands2', 'filter-points', 'filter-slivers', 'grid', 'grid2',
@@ -412,6 +413,19 @@ export async function runCommand(command, job) {
       if (!opts.no_replace) {
         removeBlendSource(job.catalog, source);
       }
+
+    } else if (name == 'deshadow') {
+      let dem = await findLayerOption(opts.dem, job.catalog, targets, opts);
+      let nir = await findLayerOption(opts.nir, job.catalog, targets, opts);
+      if (!dem) stop('-deshadow requires the name of an elevation layer (dem=)');
+      // images that couldn't be relit are left in place
+      outputLayers = [];
+      targetLayers = targetLayers.filter(function(lyr) {
+        let out = cmd.deshadow(lyr, targetDataset, dem, nir, opts);
+        outputLayers = outputLayers.concat(out);
+        return out.length > 0;
+      });
+      if (outputLayers.length === 0) outputLayers = null;
 
     } else if (name == 'dashlines') {
       applyCommandToEachLayer(cmd.dashlines, targetLayers, targetDataset, opts);
@@ -831,8 +845,13 @@ async function runCommandOnEachTarget(command, job, targets) {
 // only read (never merged into the target's topology), so it needs neither a
 // topology merge nor the per-target copies that clip and erase require.
 async function findRepelPolygons(opts, catalog, targets) {
-  if (!opts.polygons) return null;
-  return await findCommandSourceAsync(convertSourceName(opts.polygons, targets), catalog, opts);
+  return await findLayerOption(opts.polygons, catalog, targets, opts);
+}
+
+// A layer named by an option other than source= (a layer or a file), only read
+async function findLayerOption(name, catalog, targets, opts) {
+  if (!name) return null;
+  return await findCommandSourceAsync(convertSourceName(name, targets), catalog, opts);
 }
 
 // -blend merges the hillshade into the target, so the hillshade layer is

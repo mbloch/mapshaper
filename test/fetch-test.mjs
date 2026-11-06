@@ -21,6 +21,18 @@ function makeTerrariumTile(elevation, size) {
   return PNG.sync.write(png);
 }
 
+// A tile in the ArcGIS exportImage bsq format: float32 values, then a
+// validity bitmask
+function makeBsqTile(valueFn, size, validFn) {
+  var n = size * size;
+  var buf = Buffer.alloc(n * 4 + Math.ceil(n / 8));
+  for (var i = 0; i < n; i++) {
+    buf.writeFloatLE(valueFn(i), i * 4);
+    if (!validFn || validFn(i)) buf[n * 4 + (i >> 3)] |= 128 >> (i & 7);
+  }
+  return buf;
+}
+
 // A JPEG imagery tile of one color (256px by default)
 function makeImageTile(r, g, b, size) {
   size = size || 256;
@@ -118,6 +130,23 @@ describe('mapshaper-fetch.mjs', function () {
     })
   })
 
+  describe('decodeBsqTile()', function () {
+    it('reads float32 values and the validity mask, first pixel in the high bit', function () {
+      var tile = makeBsqTile(function(i) { return i + 0.5; }, 4, function(i) { return i != 1 && i != 9; });
+      var out = internal.decodeBsqTile(tile.buffer, 4, -1);
+      assert.equal(out.width, 4);
+      assert.deepEqual(Array.from(out.elevations).slice(0, 4), [0.5, -1, 2.5, 3.5]);
+      assert.equal(out.elevations[9], -1);
+      assert.equal(out.elevations[15], 15.5);
+    })
+
+    it('throws the error message the server sends instead of a tile', function () {
+      var buf = new TextEncoder().encode('{"error":{"code":400,"message":"Invalid or missing input parameters."}}');
+      assert.throws(function() { internal.decodeBsqTile(buf.buffer, 4, -1); }, /Invalid or missing input parameters/);
+      assert.throws(function() { internal.decodeBsqTile(new ArrayBuffer(10), 4, -1); }, /4x4 float32 tile/);
+    })
+  })
+
   describe('resolveFetchSource()', function () {
     it('tilezen preset', function () {
       var source = internal.resolveFetchSource({source: 'tilezen'});
@@ -176,6 +205,7 @@ describe('mapshaper-fetch.mjs', function () {
       assert.equal(s2y.attribution, 'Contains modified Copernicus Sentinel data 2020');
       assert.equal(cop.encoding, 'terrarium');
       assert.equal(internal.resolveFetchSource({source: '3dep'}).layer_name, 'elevation');
+      assert.equal(internal.resolveFetchSource({source: '3dep-1m'}).encoding, 'bsq');
       assert.equal(internal.resolveFetchSource({source: 'landsat'}).encoding, 'rgb');
     })
 
@@ -465,6 +495,18 @@ describe('mapshaper-fetch.mjs', function () {
       });
       assert.equal(zooms[0], 12);
       assert(Math.abs(findLayer(catalog, 'elevation').layer.raster.grid.samples[5000] - 800) < 0.01);
+    })
+
+    it('3dep-1m preset: float32 tiles requested by bounding box', async function () {
+      var tile = makeBsqTile(function() { return 1234.5; }, 512);
+      stub = stubFetch(function() { return tile; });
+      var catalog = await runCommands('-rectangle bbox=-111.79,34.83,-111.78,34.84 name=box ' +
+        '-proj +proj=tmerc +lon_0=-111.785 +lat_0=34.835 -frame width=400 -fetch 3dep-1m');
+      var grid = findLayer(catalog, 'elevation').layer.raster.grid;
+      stub.urls.forEach(function(url) {
+        assert(/^https:\/\/elevation\.nationalmap\.gov\/.*exportImage\?bbox=-?[\d.]+,-?[\d.]+,-?[\d.]+,-?[\d.]+&.*format=bsq/.test(url), url);
+      });
+      assert(Math.abs(grid.samples[Math.floor(grid.samples.length / 2)] - 1234.5) < 0.01);
     })
 
     it('-fetch then -hillshade', async function () {

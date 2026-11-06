@@ -11,7 +11,10 @@ var GIBS_URL = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/';
 var GIBS_CREDIT = 'NASA Global Imagery Browse Services (GIBS), part of NASA\'s Earth Science Data and Information System (ESDIS)';
 var GIBS_INFO = 'https://nasa-gibs.github.io/gibs-api-docs/';
 var PC_DATASETS = 'https://planetarycomputer.microsoft.com/dataset/';
-var PC_ELEVATION_TILES = 'assets=data&algorithm=terrarium&resampling=bilinear&format=png';
+var USGS_ELEVATION_URL = 'https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer';
+// The server reprojects with reproject= (nearest-neighbor by default, which
+// stripes hillshades of lat-long DEMs); resampling= only applies to overviews
+var PC_ELEVATION_TILES = 'assets=data&algorithm=terrarium&resampling=bilinear&reproject=bilinear&format=png';
 var LANDSAT_TILES = 'assets=red&assets=green&assets=blue&nodata=0&format=png&color_formula=' +
   encodeURIComponent('gamma RGB 2.7, saturation 1.5, sigmoidal RGB 15 0.55');
 
@@ -90,6 +93,29 @@ var PRESETS = {
     credit: 'USGS 3D Elevation Program',
     license: 'Public domain.',
     info: PC_DATASETS + '3dep-seamless'
+  },
+  '3dep-1m': {
+    coverage: 'United States',
+    resolution: '1 m where there is lidar, 10 m or coarser elsewhere',
+    terms: 'public domain',
+    adapter: 'xyz',
+    title: 'USGS 3DEP best available elevation (The National Map)',
+    // the server resamples the best available DEM to each tile's bounds
+    url: USGS_ELEVATION_URL + '/exportImage?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857' +
+      '&size=512,512&format=bsq&pixelType=F32&interpolation=RSP_BilinearInterpolation&f=image',
+    encoding: 'bsq',
+    scheme: 'xyz',
+    tile_size: 512,
+    min_zoom: 0,
+    max_zoom: 18,
+    // about 1 m pixels
+    auto_max_zoom: 16,
+    // the server answers 502 for spells of 10-15 seconds
+    retries: 5,
+    layer_name: 'elevation',
+    credit: 'USGS 3D Elevation Program',
+    license: 'Public domain.',
+    info: USGS_ELEVATION_URL
   },
   bluemarble: {
     coverage: 'World',
