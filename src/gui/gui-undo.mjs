@@ -35,6 +35,7 @@ export function Undo(gui) {
   var history, offset, stashedUndo, editSession;
   var pendingCommits = [];
   var interceptors = [];
+  var stateId = 0;
   var self = this;
   editSession = createEditSessionUndo();
   reset();
@@ -279,6 +280,53 @@ export function Undo(gui) {
     return evictOldestHistoryState(opts || {});
   };
 
+  // The id of a state that can be undone, @depth states below the last one
+  // (0 for the last), or null
+  this.getDoneStateId = function(depth) {
+    var item = history[history.length - offset - 1 - (depth || 0)];
+    return item ? item.id : null;
+  };
+
+  // Makes the last @count states one, which undoes and redoes them together.
+  // Only with nothing to redo, so that they are the last in the history.
+  // afterRedo: called after the combined state is redone
+  // Returns the new state's id
+  this.combineDoneStates = function(count, afterRedo) {
+    var items;
+    if (offset > 0 || count < 2 || count > history.length) return null;
+    items = history.splice(-count);
+    history.push(Object.assign({}, items[items.length - 1], {
+      id: ++stateId,
+      undo: function() {
+        return items.slice().reverse().reduce(function(memo, item) {
+          return memo.then(function() { return item.undo(); });
+        }, Promise.resolve());
+      },
+      redo: function() {
+        return items.reduce(function(memo, item) {
+          return memo.then(function() { return item.redo(); });
+        }, Promise.resolve()).then(function() {
+          if (afterRedo) afterRedo();
+        });
+      },
+      cleanup: function() {
+        return Promise.all(items.map(disposeHistoryItem));
+      },
+      preserveOnModeChange: items.every(function(item) { return item.preserveOnModeChange; }),
+      changesEditTarget: items.some(function(item) { return item.changesEditTarget; })
+    }));
+    fireHistoryChange();
+    return stateId;
+  };
+
+  // Removes the last @count states, whose changes have been taken back by
+  // other means (only with nothing to redo)
+  this.discardDoneStates = function(count) {
+    if (offset > 0 || count > history.length) return;
+    disposeHistoryItems(history.splice(-count));
+    fireHistoryChange();
+  };
+
   function addHistoryState(undo, redo, cleanup, opts) {
     var preserveOnModeChange = !!(opts && opts.preserveOnModeChange);
     if (offset > 0) {
@@ -286,6 +334,7 @@ export function Undo(gui) {
       offset = 0;
     }
     history.push({
+      id: ++stateId,
       undo: undo,
       redo: redo,
       cleanup: cleanup,

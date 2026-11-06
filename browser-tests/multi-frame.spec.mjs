@@ -137,9 +137,11 @@ test.describe('layers menu with frames', function() {
     await expect(heading).not.toHaveClass(/pinned/);
     await heading.hover();
     await heading.locator('img.black-eye').click();
+    // showing them again takes back the change, so neither is in the history
+    await expect(memberRow(page, 'r1')).toHaveClass(/pinned/);
     await expect.poll(async function() {
-      return (await getSessionCommands(page)).pop();
-    }).toBe('-frame target=f1 show-layers=*');
+      return getVisibilityCommands(page);
+    }).toEqual([]);
     await expect(memberRow(page, 'r3')).toHaveClass(/pinned/);
   });
 
@@ -158,10 +160,33 @@ test.describe('layers menu with frames', function() {
     await selectLayer(page, 'r1');
     await row.hover();
     await row.locator('img.black-eye').click();
-    await expect.poll(async function() {
-      return (await getSessionCommands(page)).pop();
-    }).toBe('-frame target=f1 show-layers=r1');
     await expect(row).not.toHaveClass(/invisible/);
+    await expect.poll(async function() {
+      return getVisibilityCommands(page);
+    }).toEqual([]);
+  });
+
+  test('a run of visibility changes is one command and one undo state, with selection in between',
+      async function({page}) {
+    var before = await getSignature(page);
+    await selectLayer(page, 'r1');
+    await memberRow(page, 'r3').hover();
+    await memberRow(page, 'r3').locator('img.black-eye').click();
+    await expect(memberRow(page, 'r3')).toHaveClass(/invisible/);
+    await selectLayer(page, 'r3');
+    await selectLayer(page, 'r1');
+    await memberRow(page, 'r1').hover();
+    await memberRow(page, 'r1').locator('img.black-eye').click();
+    await expect.poll(async function() {
+      return getVisibilityCommands(page);
+    }).toEqual(['-frame target=f1 hide-layers=*']);
+    await page.evaluate(function() { return window.mapshaper.undoTest.undo(); });
+    await expect.poll(function() { return getSignature(page); }).toBe(before);
+    expect(await getVisibilityCommands(page)).toEqual([]);
+    await page.evaluate(function() { return window.mapshaper.undoTest.redo(); });
+    await expect.poll(async function() {
+      return getVisibilityCommands(page);
+    }).toEqual(['-frame target=f1 hide-layers=*']);
   });
 
   test('clicking a frame\'s heading selects its top layer', async function({page}) {
@@ -590,6 +615,12 @@ async function waitForDraw(page) {
 async function getSessionCommands(page) {
   return page.evaluate(function() {
     return window.mapshaper.undoTest.getSessionHistory().commands;
+  });
+}
+
+async function getVisibilityCommands(page) {
+  return (await getSessionCommands(page)).filter(function(cmd) {
+    return /(hide|show)-layers=/.test(cmd);
   });
 }
 

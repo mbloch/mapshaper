@@ -92,6 +92,9 @@ test('drawing a line, reshaping it and drawing another are undone in order',
     await clickToolButton(page, 'Reshape lines');
     await page.mouse.move(b[0] + 20, b[1] + 20);
     await page.mouse.move(b[0], b[1], {steps: 4});
+    // a hover event carries the hit found at the previous pointer position
+    await page.mouse.move(b[0] + 1, b[1]);
+    await page.mouse.move(b[0], b[1]);
     await dragThrough(page, [b, [b[0], b[1] + 20], b2]);
     var reshaped = (await getPaths(page, 'lines'))[0][0];
     expectNear(reshaped[1], toMap(box, b2));

@@ -20,10 +20,12 @@ import {
   addUndoTransactionToHistory,
   createUndoTransaction
 } from './gui-app-undo';
+import { FrameVisibilityRuns } from './gui-frame-visibility-runs';
 
 export function LayerControl(gui) {
   var model = gui.model;
   var map = gui.map;
+  var frameVisibility = new FrameVisibilityRuns(gui);
   var el = gui.container.findChild(".layer-control").hide();
   var btn = gui.container.findChild('.layer-control-btn');
   var headerBtn = btn.findChild('.active-layer-label');
@@ -607,7 +609,7 @@ export function LayerControl(gui) {
       } else if (map.isActiveLayer(lyr)) {
         lyr.hidden = false;
       } else if (frame && lyr.frame_hidden) {
-        runFrameCommand(frame, 'show-layers=' + getMemberRef(frame, lyr), function() {
+        frameVisibility.setLayersHidden(frame, [lyr], false, function() {
           map.zoomToLayer(lyr);
         });
         return;
@@ -847,17 +849,17 @@ export function LayerControl(gui) {
   // them all. As with the Layers section's eye, the selected layer stays on
   // the map either way.
   function toggleAllFrameLayers(frame) {
-    var anyHidden = internal.getFrameMemberLayers(model, frame).some(function(o) {
+    var members = internal.getFrameMemberLayers(model, frame);
+    var anyHidden = members.some(function(o) {
       return o.layer.frame_hidden;
     });
-    runFrameCommand(frame, (anyHidden ? 'show-layers=' : 'hide-layers=') + '*');
+    frameVisibility.setLayersHidden(frame, members.map(function(o) { return o.layer; }), !anyHidden);
   }
 
   // Hiding a frame's layer is part of the map, so it is a command, recorded
-  // in the session and undoable, unlike pinning
+  // in the session and undoable, unlike pinning (see FrameVisibilityRuns)
   function toggleFrameVisibility(target, frame) {
-    var option = target.layer.frame_hidden ? 'show-layers=' : 'hide-layers=';
-    runFrameCommand(frame, option + getMemberRef(frame, target.layer));
+    frameVisibility.setLayersHidden(frame, [target.layer], !target.layer.frame_hidden);
   }
 
   // Items for a frame's menu: copy the frame; and for a frame without

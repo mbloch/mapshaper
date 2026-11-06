@@ -88,6 +88,29 @@ export function SessionHistory(gui) {
     });
   };
 
+  // The id of the last command in effect, not counting -target commands (which
+  // record selection), or null
+  this.getLastEditId = function() {
+    for (var i = commands.length - 1; i >= 0; i--) {
+      if (!commandIsActive(commands[i])) continue;
+      if (getCommandName(getCommandString(commands[i])) == 'target') continue;
+      return commands[i].id;
+    }
+    return null;
+  };
+
+  // Rewrites a command as one with the same effect, or removes it if @cmd is
+  // empty (as a command that has been undone, so that redo can restore it)
+  this.replaceCommand = function(id, cmd) {
+    var entry = commands.find(function(entry) { return entry && entry.id === id; });
+    if (!entry) return;
+    if (cmd) {
+      entry.command = cmd;
+    } else {
+      entry.active = false;
+    }
+  };
+
   this.simplificationApplied = function(optStr) {
     addCommand('-simplify ' + optStr);
   };

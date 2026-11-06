@@ -35,7 +35,11 @@ test('a hidden selected layer is left out of a new frame', async function({page}
   });
   await openLayersPanel(page);
   var row = page.locator('.layer-list .layer-item').filter({hasText: 'r1'});
+  var pointsRow = page.locator('.layer-list .layer-item').filter({hasText: 'three_points'});
   await expect(row).toHaveClass(/active/);
+  await pointsRow.hover();
+  await pointsRow.locator('img.black-eye').click();
+  await expect(pointsRow).toHaveClass(/pinned/);
   await row.hover();
   await row.locator('img.black-eye').click();
   await expect(row).toHaveClass(/invisible/);

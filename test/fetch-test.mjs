@@ -200,11 +200,13 @@ describe('mapshaper-fetch.mjs', function () {
       assert.equal(naip.year, null);
       assert.equal(naip2021.year, 2021);
       assert(decodeURIComponent(cir.tile_params).includes('image|4,1,2'));
-      assert.equal(cir.layer_name, 'naip_cir');
+      assert.equal(cir.layer_name, 'naip-cir');
       assert.equal(s2.year, internal.getCurrentYear() - 1);
       assert.equal(s2y.attribution, 'Contains modified Copernicus Sentinel data 2020');
       assert.equal(cop.encoding, 'terrarium');
-      assert.equal(internal.resolveFetchSource({source: '3dep'}).layer_name, 'elevation');
+      assert.equal(internal.resolveFetchSource({source: '3dep'}).layer_name, '3dep');
+      assert.equal(internal.resolveFetchSource({source: 'https://example.com/{z}/{x}/{y}.png'}).layer_name, 'elevation');
+      assert.equal(internal.resolveFetchSource({source: 'https://example.com/{z}/{x}/{y}.jpg', encoding: 'rgb'}).layer_name, 'imagery');
       assert.equal(internal.resolveFetchSource({source: '3dep-1m'}).encoding, 'bsq');
       assert.equal(internal.resolveFetchSource({source: 'landsat'}).encoding, 'rgb');
     })
@@ -385,7 +387,7 @@ describe('mapshaper-fetch.mjs', function () {
     it('-fetch copernicus: Terrarium elevation tiles', async function () {
       stubPlanetaryComputer(null, makeTerrariumTile(1200, 512));
       var catalog = await runCommands(RAINIER + ' -fetch copernicus zoom=9');
-      var grid = findLayer(catalog, 'elevation').layer.raster.grid;
+      var grid = findLayer(catalog, 'copernicus').layer.raster.grid;
       assert(stub.urls.some(function(url) { return url.includes('collection=cop-dem-glo-30&assets=data&algorithm=terrarium'); }));
       assert(Math.abs(grid.samples[5000] - 1200) < 0.01);
     })
@@ -457,7 +459,7 @@ describe('mapshaper-fetch.mjs', function () {
       var tile = makeTerrariumTile(500);
       stub = stubFetch(function() { return tile; }, 'srtm/N46W122.tif');
       var catalog = await runCommands(RAINIER + ' -fetch tilezen');
-      var elev = findLayer(catalog, 'elevation');
+      var elev = findLayer(catalog, 'tilezen');
       var box = findLayer(catalog, 'box');
       var grid = elev.layer.raster.grid;
       var mask = internal.getRasterValidityMask(grid);
@@ -494,7 +496,7 @@ describe('mapshaper-fetch.mjs', function () {
         return +url.split('/')[3];
       });
       assert.equal(zooms[0], 12);
-      assert(Math.abs(findLayer(catalog, 'elevation').layer.raster.grid.samples[5000] - 800) < 0.01);
+      assert(Math.abs(findLayer(catalog, 'mapterhorn').layer.raster.grid.samples[5000] - 800) < 0.01);
     })
 
     it('3dep-1m preset: float32 tiles requested by bounding box', async function () {
@@ -502,7 +504,7 @@ describe('mapshaper-fetch.mjs', function () {
       stub = stubFetch(function() { return tile; });
       var catalog = await runCommands('-rectangle bbox=-111.79,34.83,-111.78,34.84 name=box ' +
         '-proj +proj=tmerc +lon_0=-111.785 +lat_0=34.835 -frame width=400 -fetch 3dep-1m');
-      var grid = findLayer(catalog, 'elevation').layer.raster.grid;
+      var grid = findLayer(catalog, '3dep-1m').layer.raster.grid;
       stub.urls.forEach(function(url) {
         assert(/^https:\/\/elevation\.nationalmap\.gov\/.*exportImage\?bbox=-?[\d.]+,-?[\d.]+,-?[\d.]+,-?[\d.]+&.*format=bsq/.test(url), url);
       });
@@ -513,7 +515,7 @@ describe('mapshaper-fetch.mjs', function () {
       var tile = makeTerrariumTile(500);
       stub = stubFetch(function() { return tile; });
       var catalog = await runCommands(RAINIER + ' -fetch tilezen -hillshade +');
-      assert(findLayer(catalog, 'elevation'));
+      assert(findLayer(catalog, 'tilezen'));
       assert.equal(findLayer(catalog, 'hillshade').layer.raster.grid.bands, 4);
     })
 
@@ -532,7 +534,7 @@ describe('mapshaper-fetch.mjs', function () {
     it('bbox= works without any layers', async function () {
       stub = stubFetch(function() { return makeTerrariumTile(10); });
       var catalog = await runCommands('-fetch tilezen bbox=-122,46.7,-121.5,47 zoom=8');
-      var elev = findLayer(catalog, 'elevation');
+      var elev = findLayer(catalog, 'tilezen');
       assert(internal.isLatLngCRS(internal.getDatasetCRS(elev.dataset)));
     })
 
@@ -544,7 +546,7 @@ describe('mapshaper-fetch.mjs', function () {
         return url == first ? null : tile;
       });
       var catalog = await runCommands(RAINIER + ' -fetch tilezen zoom=10');
-      var grid = findLayer(catalog, 'elevation').layer.raster.grid;
+      var grid = findLayer(catalog, 'tilezen').layer.raster.grid;
       assert(stub.urls.length > 1);
       assert(internal.getRasterValidityMask(grid).some(function(v) { return v === 0; }));
     })

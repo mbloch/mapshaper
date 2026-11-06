@@ -114,8 +114,8 @@ preset's.
 - `bbox=` extent to fetch (in the target's coordinate system, or lat-long when
   there is no target).
 - `max-tiles=` safety cap on the number of tiles (default 500).
-- `name=` name of the new layer (default `elevation`; for imagery, the preset
-  name, or `imagery` for a URL).
+- `name=` name of the new layer (default is the preset name, or `elevation` or
+  `imagery` for a URL).
 - `target=` layer or frame whose extent to use.
 
 ### Defaults derived from the frame

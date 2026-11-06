@@ -2685,7 +2685,7 @@ export function getOptionParser() {
       type: 'integer'
     })
     .option('name', {
-      describe: 'name of the new layer (default is elevation; for imagery, the preset name or imagery)'
+      describe: 'name of the new layer (default is the source name, or for a URL, elevation or imagery)'
     })
     .option('target', targetOpt);
 

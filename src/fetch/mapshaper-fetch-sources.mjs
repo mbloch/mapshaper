@@ -31,7 +31,6 @@ var PRESETS = {
     tile_size: 256,
     min_zoom: 0,
     max_zoom: 15,
-    layer_name: 'elevation',
     // Each tile lists the datasets it was made from in this response header
     sources_header: 'x-amz-meta-x-imagery-sources',
     license: 'Mixed. Public domain in most of the world; some national datasets require attribution.',
@@ -52,7 +51,6 @@ var PRESETS = {
     // Zooms 13-17 only cover areas with high-resolution national data;
     // elsewhere they are missing, so they are only used if requested with zoom=
     auto_max_zoom: 12,
-    layer_name: 'elevation',
     attribution: '© Mapterhorn',
     license: 'Open data from various sources, most of which require attribution.',
     info: 'https://mapterhorn.com/attribution'
@@ -70,7 +68,6 @@ var PRESETS = {
     max_zoom: 14,
     // 30 m cells
     auto_max_zoom: 12,
-    layer_name: 'elevation',
     attribution: '© DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved',
     license: 'Copernicus DEM license: free, including commercial use, with attribution.',
     info: PC_DATASETS + 'cop-dem-glo-30'
@@ -89,7 +86,6 @@ var PRESETS = {
     max_zoom: 16,
     // 10 m cells
     auto_max_zoom: 13,
-    layer_name: 'elevation',
     credit: 'USGS 3D Elevation Program',
     license: 'Public domain.',
     info: PC_DATASETS + '3dep-seamless'
@@ -112,7 +108,6 @@ var PRESETS = {
     auto_max_zoom: 16,
     // the server answers 502 for spells of 10-15 seconds
     retries: 5,
-    layer_name: 'elevation',
     credit: 'USGS 3D Elevation Program',
     license: 'Public domain.',
     info: USGS_ELEVATION_URL
@@ -129,7 +124,6 @@ var PRESETS = {
     tile_size: 256,
     min_zoom: 0,
     max_zoom: 8,
-    layer_name: 'bluemarble',
     credit: GIBS_CREDIT,
     license: 'NASA data, free of restrictions.',
     info: GIBS_INFO
@@ -145,7 +139,6 @@ var PRESETS = {
     tile_size: 256,
     min_zoom: 0,
     max_zoom: 8,
-    layer_name: 'blackmarble',
     credit: GIBS_CREDIT,
     license: 'NASA data, free of restrictions.',
     info: GIBS_INFO,
@@ -169,13 +162,12 @@ var PRESETS = {
     // Imagery covers the world at low zooms and the United States at higher
     // zooms; tiles outside the coverage are missing
     max_zoom: 16,
-    layer_name: 'usgs',
     credit: 'USGS The National Map: Orthoimagery',
     license: 'Public domain.',
     info: 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer'
   },
-  naip: getNaipPreset('NAIP {year}aerial imagery', 'NAIP aerial imagery', '1,2,3', 'naip'),
-  'naip-cir': getNaipPreset('NAIP {year}color-infrared imagery', 'NAIP color-infrared imagery', '4,1,2', 'naip_cir'),
+  naip: getNaipPreset('NAIP {year}aerial imagery', 'NAIP aerial imagery', '1,2,3'),
+  'naip-cir': getNaipPreset('NAIP {year}color-infrared imagery', 'NAIP color-infrared imagery', '4,1,2'),
   sentinel2: {
     description: 'Sentinel-2 imagery, least cloudy scenes of a summer (Microsoft Planetary Computer)',
     coverage: 'World',
@@ -196,7 +188,6 @@ var PRESETS = {
     max_zoom: 16,
     // 10 m pixels
     auto_max_zoom: 13,
-    layer_name: 'sentinel2',
     attribution: 'Contains modified Copernicus Sentinel data {year}',
     license: 'Copernicus Sentinel data terms: free, including commercial use, with attribution.',
     info: PC_DATASETS + 'sentinel-2-l2a'
@@ -222,7 +213,6 @@ var PRESETS = {
     max_zoom: 14,
     // 30 m pixels
     auto_max_zoom: 11,
-    layer_name: 'landsat',
     credit: 'Landsat imagery courtesy of the U.S. Geological Survey',
     license: 'Public domain.',
     info: PC_DATASETS + 'landsat-c2-l2'
@@ -241,7 +231,6 @@ var PRESETS = {
     // Sentinel-2 imagery has 10m pixels, about the size of a zoom 14 pixel;
     // higher zooms are enlarged
     auto_max_zoom: 14,
-    layer_name: 'eox',
     info: 'https://cloudless.eox.at/documentation/license',
     default_year: 2025,
     years: getEoxYears([2016, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025])
@@ -263,8 +252,7 @@ var CUSTOM_DEFAULTS = {
   scheme: 'xyz',
   tile_size: 256,
   min_zoom: 0,
-  max_zoom: 22,
-  layer_name: 'elevation'
+  max_zoom: 22
 };
 
 function getBlackMarbleYear(year) {
@@ -276,7 +264,7 @@ function getBlackMarbleYear(year) {
 
 // Without year=, the newest imagery of each state. PNG rather than JPEG
 // tiles, so areas outside the coverage are transparent.
-function getNaipPreset(title, description, bands, layerName) {
+function getNaipPreset(title, description, bands) {
   return {
     adapter: 'planetary-computer',
     title: title + ' (Microsoft Planetary Computer)',
@@ -294,7 +282,6 @@ function getNaipPreset(title, description, bands, layerName) {
     min_zoom: 11,
     // 0.3-1 m pixels
     max_zoom: 18,
-    layer_name: layerName,
     credit: 'USDA Farm Production and Conservation Business Center (NAIP)',
     license: 'Public domain.',
     info: PC_DATASETS + 'naip'
@@ -408,7 +395,8 @@ export function resolveFetchSource(opts) {
   if (opts.encoding) source.encoding = opts.encoding;
   if (opts.scheme) source.scheme = opts.scheme;
   validateTileEncoding(source.encoding);
-  if (source.id == 'custom' && source.encoding == 'rgb') source.layer_name = 'imagery';
+  // layers are named after their preset, or for a URL, after their contents
+  source.layer_name = source.id != 'custom' ? source.id : source.encoding == 'rgb' ? 'imagery' : 'elevation';
   if (source.scheme != 'xyz' && source.scheme != 'tms') {
     stop('Unsupported tile scheme:', source.scheme + '.', 'Use xyz or tms');
   }
