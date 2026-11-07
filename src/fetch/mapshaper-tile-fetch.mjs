@@ -1,6 +1,6 @@
 import { runningInBrowser } from '../mapshaper-env';
 import require from '../mapshaper-require';
-import { stop } from '../utils/mapshaper-logging';
+import { endProgress, progress, stop } from '../utils/mapshaper-logging';
 import { decodeBsqTile, decodeElevationPixels } from './mapshaper-elevation-decoding';
 import { usesBBoxToken } from './mapshaper-fetch-sources';
 import { getTileRangeMercatorBBox, wrapTileX } from './mapshaper-tile-math';
@@ -38,33 +38,11 @@ export async function fetchTileMosaic(source, range) {
     }
   }
   var failed = 0, failure = null;
-  await runWithConcurrency(jobs, CONCURRENCY, async function(job) {
-    var url = getTileUrl(source, range.z, wrapTileX(job.x, range.z), job.y);
-    var tile = await fetchTile(url, source);
-    var x0, y0;
-    if (!tile) {
-      missing++;
-      return;
-    }
-    if (tile.error) {
-      failed++;
-      failure = failure || tile;
-      return;
-    }
-    if (tile.header) headerValues.push(tile.header);
-    if (tile.width != tileSize || tile.height != tileSize) {
-      stop('Expected ' + tileSize + 'x' + tileSize + ' pixel tiles, received ' +
-        tile.width + 'x' + tile.height + ' from', url);
-    }
-    x0 = (job.x - range.x0) * tileSize;
-    y0 = (job.y - range.y0) * tileSize;
-    if (imagery) {
-      copyImageTile(tile.rgba, tileSize, samples, coverage, width, x0, y0);
-    } else {
-      copyTile(tile.elevations || decodeElevationPixels(tile.rgba, source.encoding, ELEVATION_NODATA),
-        tileSize, samples, width, x0, y0);
-    }
-  });
+  try {
+    await runWithConcurrency(jobs, CONCURRENCY, fetchJob);
+  } finally {
+    endProgress();
+  }
   if (failed == jobs.length) {
     stop('Unable to fetch', failure.url + ' (' + failure.error + ')' +
       (runningInBrowser() ? '. Possible causes include no network connection, or a server that does not allow cross-domain requests (CORS).' : ''));
@@ -92,6 +70,35 @@ export async function fetchTileMosaic(source, range) {
     failure: failure,
     headerValues: headerValues
   };
+
+  async function fetchJob(job) {
+    var url = getTileUrl(source, range.z, wrapTileX(job.x, range.z), job.y);
+    var tile = await fetchTile(url, source);
+    var x0, y0;
+    progress('.');
+    if (!tile) {
+      missing++;
+      return;
+    }
+    if (tile.error) {
+      failed++;
+      failure = failure || tile;
+      return;
+    }
+    if (tile.header) headerValues.push(tile.header);
+    if (tile.width != tileSize || tile.height != tileSize) {
+      stop('Expected ' + tileSize + 'x' + tileSize + ' pixel tiles, received ' +
+        tile.width + 'x' + tile.height + ' from', url);
+    }
+    x0 = (job.x - range.x0) * tileSize;
+    y0 = (job.y - range.y0) * tileSize;
+    if (imagery) {
+      copyImageTile(tile.rgba, tileSize, samples, coverage, width, x0, y0);
+    } else {
+      copyTile(tile.elevations || decodeElevationPixels(tile.rgba, source.encoding, ELEVATION_NODATA),
+        tileSize, samples, width, x0, y0);
+    }
+  }
 }
 
 function copyImageTile(rgba, tileSize, dest, coverage, destWidth, x0, y0) {

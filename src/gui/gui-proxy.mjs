@@ -19,7 +19,10 @@ export function setLoggingForGUI(gui) {
   }
 
   function message() {
-    var msg = formatPopupMessage(arguments);
+    var last = arguments[arguments.length - 1];
+    var msg;
+    if (last && last.type == 'mapshaper-console-progress') return;
+    msg = formatPopupMessage(arguments);
     if (gui.notify && messageShouldGoToInbox(msg)) {
       gui.notify({
         severity: 'info',

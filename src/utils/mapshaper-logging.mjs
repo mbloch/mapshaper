@@ -1,9 +1,11 @@
 
 import { getStashedVar } from '../mapshaper-stash';
+import { runningInBrowser } from '../mapshaper-env';
 import utils from '../utils/mapshaper-utils';
 
 var LOGGING = false;
 var STDOUT = false; // use stdout for status messages
+var progressLineOpen = false; // CLI: progress glyphs printed without a newline
 var _error, _stop, _message, _warn;
 
 var _interrupt = function() {
@@ -75,6 +77,31 @@ export function message() {
 
 export function warn() {
   _warn.apply(null, messageArgs(arguments));
+}
+
+// Print a progress glyph (e.g. one "." per downloaded tile). Glyphs accumulate
+// on their own line, which the next message, or endProgress(), terminates.
+export function progress(glyph) {
+  if (runningInBrowser()) {
+    _message({type: 'mapshaper-console-progress', glyph: glyph || '.'});
+  } else if (LOGGING && !getStashedVar('QUIET') && typeof process != 'undefined' && process.stderr) {
+    process.stderr.write(glyph || '.');
+    progressLineOpen = true;
+  }
+}
+
+export function endProgress() {
+  if (runningInBrowser()) {
+    _message({type: 'mapshaper-console-progress', done: true});
+  } else {
+    closeProgressLine();
+  }
+}
+
+function closeProgressLine() {
+  if (!progressLineOpen) return;
+  progressLineOpen = false;
+  process.stderr.write('\n');
 }
 
 export function warnOnce() {
@@ -157,6 +184,7 @@ export function timeEnd(slug) {
 export function printError(err) {
   var msg;
   if (!LOGGING) return;
+  closeProgressLine();
   if (utils.isString(err)) {
     err = new UserError(err);
   }
@@ -239,6 +267,7 @@ function messageArgs(args) {
 export function logArgs(args) {
   if (!LOGGING || getStashedVar('QUIET') || !utils.isArrayLike(args)) return;
   var msg = formatLogArgs(args);
+  closeProgressLine();
   if (STDOUT) console.log(msg);
   else console.error(msg);
 }

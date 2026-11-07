@@ -31,6 +31,8 @@ export function Console(gui) {
   var history = [];
   var historyId = 0;
   var _isOpen = false;
+  var _isRunning = false; // a typed command is running (the command line is hidden)
+  var progressLine = null; // log line receiving progress glyphs
   var globals = {}; // share user-defined globals (job.defs) between runs
   var sharedVars = {}; // share -vars / -defaults templating scope between runs
 
@@ -86,6 +88,7 @@ export function Console(gui) {
 
   function toLog(str, cname) {
     var msg = El('div').text(str).appendTo(log);
+    progressLine = null;
     if (cname) {
       msg.addClass(cname);
     }
@@ -94,6 +97,7 @@ export function Console(gui) {
 
   function toLogNode(node, cname) {
     var msg = El('div').appendTo(log);
+    progressLine = null;
     if (cname) {
       msg.addClass(cname);
     }
@@ -229,7 +233,9 @@ export function Console(gui) {
       // which is irksome...
       // // gui.clearMode(); // close any panels that  might be open
       //
-      if (kc == 13) { // enter
+      if (_isRunning && (kc == 13 || kc == 9 || kc == 38 || kc == 40)) {
+        // the command line is hidden until the running command finishes
+      } else if (kc == 13) { // enter
         onEnter();
       } else if (kc == 9) { // tab
         tabComplete();
@@ -415,11 +421,13 @@ export function Console(gui) {
         setDisplayProjection(gui, cmd);
       } else {
         line.hide(); // hide cursor while command is being run
+        _isRunning = true;
         // quit certain edit modes
         if (!gui.interaction.modeWorksWithConsole(gui.interaction.getMode())) {
           gui.interaction.turnOff();
         }
         runMapshaperCommands(cmd, function(err, flags) {
+          _isRunning = false;
           if (flags) {
             gui.clearMode();
           }
@@ -886,7 +894,9 @@ export function Console(gui) {
     var msg;
     if (internal.getStashedVar('QUIET')) return;
     if (internal.loggingEnabled()) {
-      if (structured) {
+      if (structured && structured.type == 'mapshaper-console-progress') {
+        showProgress(structured);
+      } else if (structured) {
         toLogNode(renderStructuredConsoleMessage(structured), 'console-message');
       } else {
         msg = GUI.formatMessageArgs(arguments);
@@ -898,6 +908,20 @@ export function Console(gui) {
   function consoleError() {
     var msg = GUI.formatMessageArgs(arguments);
     throw new Error(msg);
+  }
+
+  // Glyphs from internal.progress() accumulate on one line, which ends at the
+  // next message or at internal.endProgress()
+  function showProgress(msg) {
+    if (msg.done) {
+      progressLine = null;
+      return;
+    }
+    if (!progressLine) {
+      progressLine = El('div').addClass('console-message').appendTo(log);
+    }
+    progressLine.node().textContent += msg.glyph;
+    scrollDown();
   }
 
   function printExample(comment, command) {
