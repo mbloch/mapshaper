@@ -3262,13 +3262,13 @@ export function getOptionParser() {
     .option('no-replace', noReplaceOpt);
 
   parser.command('deshadow')
-    .describe('(experimental) brighten shadows cast by terrain in aerial imagery')
+    .describe('(experimental) remove the sun\'s shading of terrain from aerial imagery (brighten shadows and slopes facing away from the sun), e.g. before applying a hillshade')
     .option('dem', {
       DEFAULT: true,
-      describe: 'elevation layer covering the image (e.g. from -fetch 3dep, or 3dep-1m for 1 m lidar); the sun position is fitted to its shadows'
+      describe: 'elevation layer covering the image (e.g. from -fetch 3dep, or 3dep-1m for 1 m lidar); the sun position is fitted to the image\'s lighting of it, region by region in a mosaic of images taken at different times'
     })
     .option('nir', {
-      describe: 'near-infrared layer on band 1, e.g. from -fetch naip-cir; keeps dark tree canopy from being brightened'
+      describe: 'near-infrared layer on band 1, e.g. from -fetch naip-cir; keeps dark tree canopy from being taken for shadow'
     })
     .option('date', {
       describe: 'date of the imagery (e.g. 2023-06-15), to fit the sun along its path that day; default is the dates of imagery from -fetch naip (up to three months apart)'

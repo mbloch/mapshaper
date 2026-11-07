@@ -30,8 +30,6 @@ function mesas(x, y) {
 // @cell optional cell size in degrees (default about 1.1 m)
 function makeDataset(w, h, elevFn, sun, gains, surfaceFn, cell) {
   cell = cell || 0.00001;
-  var bbox = [0, 0, w * cell, h * cell];
-  var transform = [cell, 0, 0, 0, -cell, bbox[3]];
   var Z = flatGrid(w, h, elevFn);
   var cellM = cell * 6371008.8 * Math.PI / 180;
   var shadow = sun ? internal.castTerrainShadow(Z, w, h, cellM, cellM, sun) : new Uint8Array(w * h);
@@ -44,9 +42,56 @@ function makeDataset(w, h, elevFn, sun, gains, surfaceFn, cell) {
       img[i * 3 + k] = Math.round(shadow[i] ? v / s.gains[k] : v);
     }
   }
+  var dataset = gridDataset(w, h, Z, img, cell);
+  dataset.shadow = shadow;
+  return dataset;
+}
+
+// bilinear interpolation of fn's values at every fx-th column and fy-th row
+function stretch(fn, fx, fy) {
+  return function(x, y) {
+    var u = x / fx, v = y / fy, x0 = Math.floor(u), y0 = Math.floor(v), s = u - x0, t = v - y0;
+    return (fn(x0, y0) * (1 - s) + fn(x0 + 1, y0) * s) * (1 - t) +
+      (fn(x0, y0 + 1) * (1 - s) + fn(x0 + 1, y0 + 1) * s) * t;
+  };
+}
+
+// noise at several scales, with relief growing with scale as in real terrain
+function hills(x, y) {
+  return [2, 4, 8, 16].reduce(function(z, scale) {
+    return z + 60 * scale * stretch(function(i, j) { return noise(j * 1000 + i + 7 * scale); }, scale, scale)(x, y);
+  }, 0);
+}
+
+// Hills lit by the sun of @sunFn(x, y), with the image's brightness following
+// the model in mapshaper-deshadow.mjs (c of 0.35, 0.45, 0.6), on @cell degree
+// pixels
+function makeLitDataset(w, h, sunFn, cell) {
+  var Z = flatGrid(w, h, hills);
+  var cellM = cell * 6371008.8 * Math.PI / 180;
+  var nrm = internal.getNormals(Z, w, h, cellM, cellM);
+  var shadows = new Map();
+  var img = new Uint8Array(w * h * 3), lit = [0.3, 0.25, 0.2], c = [0.35, 0.45, 0.6];
+  for (var i = 0; i < w * h; i++) {
+    var sun = sunFn(i % w, Math.floor(i / w));
+    if (!shadows.has(sun)) shadows.set(sun, internal.castTerrainShadow(Z, w, h, cellM, cellM, sun));
+    var I = shadows.get(sun)[i] ? 0 : Math.max(0, nrm.x[i] * Math.sin(sun.azimuth) * Math.cos(sun.altitude) +
+      nrm.y[i] * Math.cos(sun.azimuth) * Math.cos(sun.altitude) + nrm.z[i] * Math.sin(sun.altitude));
+    if (I !== I) I = Math.sin(sun.altitude);
+    for (var k = 0; k < 3; k++) {
+      var v = lit[k] * (I + c[k]) / (Math.sin(sun.altitude) + c[k]) * (1 + 0.1 * noise(i * 3 + k));
+      img[i * 3 + k] = Math.round(255 * Math.min(1, Math.pow(v, 1 / 2.2)));
+    }
+  }
+  return gridDataset(w, h, Z, img, cell);
+}
+
+// A lat-long dataset with an elevation layer and an RGB image of the same grid
+function gridDataset(w, h, Z, img, cell) {
+  var bbox = [0, 0, w * cell, h * cell];
+  var transform = [cell, 0, 0, 0, -cell, bbox[3]];
   return {
     info: {crs_string: 'wgs84'},
-    shadow: shadow,
     layers: [{
       name: 'elev',
       raster_type: 'grid',
@@ -81,6 +126,11 @@ async function run(dataset, commands) {
 function findLayer(catalog, name) {
   var o = catalog.getLayers().find(function(o) { return o.layer.name == name; });
   return o && o.layer;
+}
+
+// Brightness of sunlit and shadowed cells (shadows lit by the sky), with noise
+function shadowBrightness(shadow) {
+  return Float32Array.from(shadow, function(s, i) { return (s ? 0.2 : 1) * (1 + 0.1 * noise(i)); });
 }
 
 function meanColor(samples, select) {
@@ -168,7 +218,7 @@ describe('mapshaper-deshadow.mjs', function () {
       var pos = internal.getSunPosition(35, -8, -35);
       var shadow = internal.castTerrainShadow(Z, w, h, 1, 1,
         {azimuth: pos.azimuth * deg, altitude: pos.altitude * deg});
-      var fit = internal.fitSunPosition(Z, Float32Array.from(shadow), w, h, 1, 1,
+      var fit = internal.fitSunPosition(Z, shadowBrightness(shadow), w, h, 1, 1,
         {x0: 0, y0: 0, x1: w, y1: h}, null, path);
       assert(Math.abs(fit.hour + 35) < 2, 'hour ' + fit.hour);
       assert(Math.abs(fit.azimuth / deg - pos.azimuth) < 3);
@@ -181,7 +231,7 @@ describe('mapshaper-deshadow.mjs', function () {
       var pos = internal.getSunPosition(35, 12, -35);
       var shadow = internal.castTerrainShadow(Z, w, h, 1, 1,
         {azimuth: pos.azimuth * deg, altitude: pos.altitude * deg});
-      var fit = internal.fitSunPosition(Z, Float32Array.from(shadow), w, h, 1, 1,
+      var fit = internal.fitSunPosition(Z, shadowBrightness(shadow), w, h, 1, 1,
         {x0: 0, y0: 0, x1: w, y1: h}, null, {latitude: 35, declinations: [0, 20]});
       assert(fit.declination >= 0 && fit.declination <= 20);
       assert(Math.abs(fit.azimuth / deg - pos.azimuth) < 3, 'azimuth ' + fit.azimuth / deg);
@@ -193,8 +243,7 @@ describe('mapshaper-deshadow.mjs', function () {
       var Z = flatGrid(w, h, mesas);
       var sun = {azimuth: 150 * deg, altitude: 35 * deg};
       var shadow = internal.castTerrainShadow(Z, w, h, 1, 1, sun);
-      var darkness = Float32Array.from(shadow);
-      var fit = internal.fitSunPosition(Z, darkness, w, h, 1, 1, {x0: 0, y0: 0, x1: w, y1: h});
+      var fit = internal.fitSunPosition(Z, shadowBrightness(shadow), w, h, 1, 1, {x0: 0, y0: 0, x1: w, y1: h});
       assert(Math.abs(fit.azimuth / deg - 150) < 4, 'azimuth ' + fit.azimuth / deg);
       assert(Math.abs(fit.altitude / deg - 35) < 4, 'altitude ' + fit.altitude / deg);
       assert(fit.score > 0.8);
@@ -283,37 +332,115 @@ describe('mapshaper-deshadow.mjs', function () {
     });
   });
 
-  describe('isCoarseTerrain()', function () {
-    var W = 120, H = 120;
-    // bilinear interpolation of fn's values at every fx-th column and fy-th row
-    function stretch(fn, fx, fy) {
-      return function(x, y) {
-        var u = x / fx, v = y / fy, x0 = Math.floor(u), y0 = Math.floor(v), s = u - x0, t = v - y0;
-        return (fn(x0, y0) * (1 - s) + fn(x0 + 1, y0) * s) * (1 - t) +
-          (fn(x0, y0 + 1) * (1 - s) + fn(x0 + 1, y0 + 1) * s) * t;
-      };
-    }
-    // noise at several scales, with relief growing with scale as in real terrain
-    function terrain(x, y) {
-      return [1, 2, 4, 8, 16, 32].reduce(function(z, scale) {
-        return z + Math.pow(scale, 1.5) * stretch(function(i, j) { return noise(j * 1000 + i + 7); }, scale, scale)(x + 50, y + 50);
-      }, 0);
-    }
-    function isCoarse(fn) {
-      return internal.isCoarseTerrain({Z: flatGrid(W, H, fn), width: W, height: H});
+  describe('getEdgeAltitude()', function () {
+    var w = 150, h = 150, region = {x0: 0, y0: 0, x1: w, y1: h}, azimuth = 150 * deg;
+    function edgeAltitude(Z, altitude) {
+      var shadow = internal.castTerrainShadow(Z, w, h, 1, 1, {azimuth: azimuth, altitude: altitude * deg});
+      var level = internal.getFitLevel(Z, shadowBrightness(shadow), w, h, 1, 1, region, w * h, 60);
+      return internal.getEdgeAltitude(level, azimuth);
     }
 
-    it('is false for a DEM with detail at the scale of its cells', function () {
-      assert.equal(isCoarse(terrain), false);
+    it('finds the altitude at which the edges of cast shadows are the most distinct', function () {
+      var Z = flatGrid(w, h, mesas);
+      assert.equal(edgeAltitude(Z, 35), 35);
+      assert.equal(edgeAltitude(Z, 50), 50);
     });
 
-    it('is true for a DEM resampled from larger cells', function () {
-      assert.equal(isCoarse(stretch(terrain, 3, 3)), true);
+    it('is null when the terrain casts no shadows', function () {
+      assert.strictEqual(edgeAltitude(flatGrid(w, h), 35), null);
+    });
+  });
+
+  describe('labelTiles()', function () {
+    // 6 x 6 tiles: the second sun matches the left half slightly better than
+    // the first sun, and the right half slightly worse
+    var tw = 6, th = 6;
+    function tileScores(left, right) {
+      return Float32Array.from({length: tw * th}, function(v, t) { return t % tw < 3 ? left : right; });
+    }
+
+    it('keeps the first sun unless another matches by the margin', function () {
+      var tileR = [tileScores(0.5, 0.5), tileScores(0.52, 0.48)];
+      assert.deepEqual(Array.from(internal.labelTiles(tileR, tw, th)), new Array(tw * th).fill(0));
     });
 
-    it('is true for a DEM with rows repeated by nearest-neighbor resampling', function () {
-      var rowsRepeated = stretch(terrain, 3, 1);
-      assert.equal(isCoarse(function(x, y) { return rowsRepeated(x, Math.floor(y / 3)); }), true);
+    it('gives each tile the best-matching sun with a margin of 0', function () {
+      var tileR = [tileScores(0.5, 0.5), tileScores(0.52, 0.48)];
+      var labels = internal.labelTiles(tileR, tw, th, 0);
+      assert.deepEqual(Array.from(labels), Array.from(tileScores(1, 0)));
+    });
+
+    it('gives a small area the label of the tiles around it', function () {
+      var tileR = [tileScores(0.5, 0.5), tileScores(0.4, 0.4)];
+      tileR[1][2 * tw + 2] = tileR[1][2 * tw + 3] = 0.9;
+      assert.deepEqual(Array.from(internal.labelTiles(tileR, tw, th, 0)), new Array(tw * th).fill(0));
+    });
+  });
+
+  describe('addDemShadows()', function () {
+    // the DEM's shadow is a 60 x 60 square; the mask misses its outer 3
+    // pixels (the DEM's shadows are a few pixels off) and a bright patch
+    // inside it (e.g. snow)
+    var W = 100, H = 100;
+    function scene() {
+      var predicted = new Uint8Array(W * H), hard = new Uint8Array(W * H);
+      for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
+        var i = y * W + x;
+        predicted[i] = x >= 20 && x < 80 && y >= 20 && y < 80 ? 1 : 0;
+        hard[i] = x >= 23 && x < 77 && y >= 23 && y < 77 && !(x >= 45 && x < 55 && y >= 45 && y < 55) ? 1 : 0;
+      }
+      return {predicted: predicted, mask: {hard: hard}, valid: new Uint8Array(W * H).fill(1)};
+    }
+
+    it('adds the DEM\'s shadows away from their edges', function () {
+      var s = scene();
+      internal.addDemShadows(s.mask, s.predicted, s.valid, W, H);
+      assert.equal(s.mask.hard[50 * W + 50], 1);
+      assert.equal(s.mask.dem[50 * W + 50], 1);
+      assert.equal(s.mask.dem[50 * W + 30], 0);
+    });
+
+    it('marks the DEM\'s shadows near their edges as uncertain', function () {
+      var s = scene();
+      internal.addDemShadows(s.mask, s.predicted, s.valid, W, H);
+      assert.equal(s.mask.hard[50 * W + 21], 0);
+      assert.equal(s.mask.uncertain[50 * W + 21], 1);
+      assert.equal(s.mask.uncertain[50 * W + 10], 0);
+    });
+
+    it('adds nothing when the mask mostly misses the DEM\'s shadows', function () {
+      var s = scene();
+      s.mask.hard.fill(0);
+      for (var x = 23; x < 77; x++) s.mask.hard[50 * W + x] = 1;
+      internal.addDemShadows(s.mask, s.predicted, s.valid, W, H);
+      assert(!s.mask.dem);
+      assert.equal(s.mask.hard[40 * W + 40], 0);
+    });
+  });
+
+  describe('excludeUncertain()', function () {
+    it('sets uncertain sunlit and shadow samples between them', function () {
+      var gap = Float32Array.from([0, 1, 0.3, 0, 1]);
+      var out = internal.excludeUncertain(gap, Uint8Array.from([1, 1, 1, 0, 0]));
+      assert.deepEqual(Array.from(out), [0.5, 0.5, Math.fround(0.3), 0, 1]);
+      assert.equal(gap[0], 0);
+    });
+  });
+
+  describe('fillEmptyCells()', function () {
+    it('fills empty cells outward from the cells that have values', function () {
+      var grid = Float32Array.from([2, NaN, NaN, NaN, NaN, NaN]);
+      internal.fillEmptyCells(grid, 3, 2, 0);
+      assert.deepEqual(Array.from(grid), [2, 2, 2, 2, 2, 2]);
+      grid = Float32Array.from([1, NaN, 3]);
+      internal.fillEmptyCells(grid, 3, 1, 0);
+      assert.deepEqual(Array.from(grid), [1, 2, 3]);
+    });
+
+    it('uses the fallback when no cell has a value', function () {
+      var grid = new Float32Array(4).fill(NaN);
+      internal.fillEmptyCells(grid, 2, 2, 7);
+      assert.deepEqual(Array.from(grid), [7, 7, 7, 7]);
     });
   });
 
@@ -376,6 +503,35 @@ describe('mapshaper-deshadow.mjs', function () {
       assert.equal(out.derivation.date, '2013-08-06/2013-09-14');
       assert(Math.abs(out.derivation.sun_azimuth - pos.azimuth) < 4);
       assert(Math.abs(out.derivation.sun_altitude - pos.altitude) < 4);
+    });
+
+    describe('mosaics', function () {
+      // 40 km of hills on 250 m pixels, enough tiles to be fitted in regions
+      var w = 160, h = 160, cell = 0.00225;
+      var east = {azimuth: 120 * deg, altitude: 40 * deg}, west = {azimuth: 220 * deg, altitude: 40 * deg};
+
+      it('fits the sun of each region of an image taken at different times', async function () {
+        var dataset = makeLitDataset(w, h, function(x) { return x < w / 2 ? east : west; }, cell);
+        var catalog = await run(dataset, '-deshadow elev target=img');
+        var suns = findLayer(catalog, 'img').raster.derivation.region_suns;
+        assert.equal(suns.length, 2);
+        suns.sort(function(a, b) { return a.sun_azimuth - b.sun_azimuth; });
+        // tiles next to the seam are labeled from their neighbors too
+        assert(Math.abs(suns[0].sun_azimuth - 120) < 10, 'azimuth ' + suns[0].sun_azimuth);
+        assert(Math.abs(suns[1].sun_azimuth - 220) < 10, 'azimuth ' + suns[1].sun_azimuth);
+        suns.forEach(function(s) {
+          assert(Math.abs(s.sun_altitude - 40) < 5, 'altitude ' + s.sun_altitude);
+          assert(Math.abs(s.share - 0.5) < 0.1, 'share ' + s.share);
+        });
+      });
+
+      it('fits one sun to an image lit by one sun', async function () {
+        var dataset = makeLitDataset(w, h, function() { return east; }, cell);
+        var catalog = await run(dataset, '-deshadow elev target=img');
+        var out = findLayer(catalog, 'img').raster.derivation;
+        assert(!out.region_suns);
+        assert(Math.abs(out.sun_azimuth - 120) < 3, 'azimuth ' + out.sun_azimuth);
+      });
     });
 
     it('brightens shadows on each kind of ground by its own amount', async function () {

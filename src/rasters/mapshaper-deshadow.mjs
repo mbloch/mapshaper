@@ -23,7 +23,7 @@
 
 // Tiles that the sun's position is fitted in (cells at the fit level), and
 // the fewest cells a tile is scored with
-var FIT_TILE = globalThis.DSTILE || 4000;
+var FIT_TILE = 4000;
 var MIN_FIT_TILE = 16;
 var MIN_TILE_CELLS = 50;
 // lowest sun altitude fitted, in degrees
@@ -34,7 +34,7 @@ export var MIN_SUN_FIT = 0.1;
 var DECLINATION_STEP = 2;
 // The sun is fitted on up to this many cells, no larger than MAX_FIT_CELL
 // meters (with a first search on coarser cells)
-var FIT_CELLS = globalThis.DSFITCELLS || 120000;
+var FIT_CELLS = 120000;
 var MAX_FIT_CELL = 60;
 var COARSE_FIT_CELLS = 25000;
 var MAX_COARSE_FIT_CELL = 120;
@@ -47,7 +47,7 @@ var MAX_COARSE_FIT_CELL = 120;
 // and the tiles labeled again, up to MAX_REFITS times. Positions within
 // SAME_SUN degrees are merged.
 var MAX_BLOCKS = 4;
-var BLOCK_TILES = globalThis.DSBT || 15;
+var BLOCK_TILES = 15;
 var REGION_GAIN = 0.04;
 var LABEL_MARGIN = 0.03;
 var MIN_REGION_TILES = 9;
@@ -92,7 +92,7 @@ var BAND_DEM_PIXELS = 2.4;
 // shadows, and of their lengthening by the lower sun the mask is made from
 // (see lowerSunAltitude()); larger means it has taken in other dark areas,
 // e.g. forest
-export var MAX_MASK_RATIO = globalThis.DSMMR || 1.5;
+export var MAX_MASK_RATIO = 1.5;
 // see addDemShadows()
 var DEM_EDGE_AGREEMENT = 0.95;
 var MIN_DEM_AGREEMENT = 0.5;
@@ -113,14 +113,12 @@ var MIN_C_PIXELS = 64;
 // Classes of ground, by color; a class's own c gets half the weight with this
 // many tiles, and classes are blended over CLASS_RADIUS meters
 var GROUND_CLASSES = 6;
-var CLASS_PRIOR = globalThis.DSCP || 20;
+var CLASS_PRIOR = 20;
 var CLASS_LUMA_WEIGHT = 0.5;
-var CLASS_PRIOR_PIXELS = globalThis.DSCPP || 1000;
+var CLASS_PRIOR_PIXELS = 1000;
 var CLASS_ROUNDS = 3;
 var SHADOW_CLASSES = 8;
 var LUMA_WEIGHTS = [0.2126, 0.7152, 0.0722];
-var MIN_HAZE_TILES = 10;
-var HAZE_DARK_QUANTILE = 0.002;
 var ALTITUDE_TOLERANCE = 0.02;
 var MIN_ALTITUDE_SPAN = 10; // degrees
 var EDGE_STEP = 2; // cells
@@ -128,13 +126,16 @@ var EDGE_FACING = 0.3;
 var MIN_EDGE_CELLS = 30;
 // see getEdgeAltitude()
 var EDGE_ALTITUDE_RANGE = [MIN_ALTITUDE, 70];
-var EDGE_Z = globalThis.DSEZ || 3;
+var EDGE_Z = 3;
 var EDGE_ALTITUDE_STEP = 2;
 var LOG_EPSILON = 0.005;
+// the sun's position is fitted by correlating log(I + FIT_DIFFUSE) with log
+// brightness (plus LOG_EPSILON)
+var FIT_DIFFUSE = 0.3;
 // sunlit pixels are lit at least this share of flat ground's I (a DEM
 // smoothes cliffs into slopes lit at a lower angle)
-var LIT_CAP_QUANTILE = globalThis.DSLCQ || 0.98;
-var LIT_FLOOR = globalThis.DSLF === undefined ? 0.25 : globalThis.DSLF;
+var LIT_CAP_QUANTILE = 0.98;
+var LIT_FLOOR = 0.25;
 // Brightened pixels (by at least BOOSTED_GAIN) are kept within the colors of
 // sunlit ground (lit at least LIT_SHARE of flat ground) of similar luma (in
 // bins of COLOR_LUMA_STEP, log scale, with the bins next to them), within
@@ -145,13 +146,13 @@ var LIT_FLOOR = globalThis.DSLF === undefined ? 0.25 : globalThis.DSLF;
 // of COLOR_RANGE / COLOR_BINS
 var BOOSTED_GAIN = 1.15;
 var LIT_SHARE = 0.5;
-var COLOR_TILE = globalThis.DSCTL || 1500;
+var COLOR_TILE = 1500;
 var MAX_COLOR_TILES = 1000;
 var COLOR_LUMA_STEP = Math.LN2 / 2;
 var COLOR_LUMA_BINS = 20;
 var COLOR_RANGE = 1.5;
 var COLOR_BINS = 12;
-var COLOR_COVERAGE = globalThis.DSCCOV || 0.95;
+var COLOR_COVERAGE = 0.95;
 var MIN_COLOR_SAMPLES = 100;
 var EDGE_RADIUS = 1.8;
 var BLOCK_SIZE = 18;
@@ -167,24 +168,23 @@ var VEG_SHARE_FULL = 0.1;
 var VEG_CELL = 100;
 var BARE_TILE_PRIOR = 10;
 // see measureRankGains()
-var RANK_BINS = globalThis.DSRB || 8;
+var RANK_BINS = 8;
 var MIN_RANK_SAMPLES = 10;
-var RANK_PRIOR = globalThis.DSRP || 200;
+var RANK_PRIOR = 200;
 var RANK_MAX_RADIUS = 3;
-var CLASS_NIR_WEIGHT = 1;
 var CLASS_RADIUS = 2.4;
 // meters; the share of the DEM's lighting of sunlit ground that the image
 // shows is measured within this distance (see getLightingResponse())
-var RESPONSE_RADIUS = globalThis.DSRR || 100;
-var RESPONSE_SMOOTHING = globalThis.DSRS || 20;
+var RESPONSE_RADIUS = 100;
+var RESPONSE_SMOOTHING = 20;
 // Elevations are smoothed over this many DEM pixels for the slopes that are
 // lit, so that the facets of a DEM resampled to a finer grid don't show
-var NORMAL_SMOOTHING = globalThis.DSNS || 1;
+var NORMAL_SMOOTHING = 1;
 // meters; DEMs are often resampled from coarser ones (e.g. 1/9 arc-second
 // DEMs from 10 m data), which leaves steps in their slopes
-var MIN_NORMAL_SMOOTHING = globalThis.DSMNS === undefined ? 10 : globalThis.DSMNS;
+var MIN_NORMAL_SMOOTHING = 10;
 // largest gain applied to a linear value
-var MAX_GAIN = globalThis.DSMG || 25;
+var MAX_GAIN = 25;
 // Shadows are lit by blue skylight, so they need more red gain than blue
 // (measured as 8-bit values); dark slopes that don't are probably something
 // else, e.g. forest
@@ -381,7 +381,6 @@ function refineAltitude(level, sun) {
       best = {altitude: alt, contrast: c.contrast};
     }
   }
-  if (globalThis.DSCLOG) console.log('altitude range', lo, hi, 'edges', best && best.altitude, best && best.contrast.toFixed(3));
   if (!best) return sun;
   return {azimuth: sun.azimuth, altitude: best.altitude * deg,
     score: scoreSun(level, sun.azimuth, best.altitude * deg)};
@@ -437,7 +436,7 @@ function getShadowEdgeContrast(level, H, azimuth, altitude) {
 // distinct, if their contrast there exceeds the contrast MIN_ALTITUDE_SPAN
 // degrees higher and lower (with at least MIN_EDGE_CELLS cells each) by
 // EDGE_Z standard errors; otherwise null
-function getEdgeAltitude(level, azimuth) {
+export function getEdgeAltitude(level, azimuth) {
   var lo = EDGE_ALTITUDE_RANGE[0], hi = EDGE_ALTITUDE_RANGE[1];
   var cache = [], best = -1, alt, c, z, k, other;
   // searched every EDGE_ALTITUDE_STEP degrees, then refined
@@ -463,7 +462,6 @@ function getEdgeAltitude(level, azimuth) {
     z = Math.min(z, (c.contrast - other.contrast) /
       Math.sqrt(c.variance / c.count + other.variance / other.count));
   }
-  if (globalThis.DSSUNLOG) console.log('  edge altitude', best, 'contrast', c.contrast.toFixed(2), 'n', c.count, 'z', z.toFixed(1));
   return z >= EDGE_Z ? best : null;
 }
 
@@ -521,14 +519,7 @@ function scoreSun(level, azimuth, altitude, tileR) {
   var sz = Math.sin(altitude);
   var acc = new Float64Array(tw * 6), total = 0, wsum = 0;
   var tx, ty, x, y, y1, i, k, a, b, n, cov, va, vb, rr;
-  if (globalThis.DSSCORE == 'grad') return scoreGradients(level, P, sx, sy, sz, tileR);
-  if (globalThis.DSSCORE == 'partial') return scorePartial(level, P, sx, sy, sz, tileR);
-  var LOG = globalThis.DSSCORE != "lin", LC = globalThis.DSC || 0.3, LE = globalThis.DSEPS || 0.005;
-  if (LOG && !level.LB) {
-    level.LB = new Float32Array(B.length);
-    for (i = 0; i < B.length; i++) level.LB[i] = Math.log(B[i] + LE);
-  }
-  if (LOG) B = level.LB;
+  B = getLevelLogBrightness(level);
   for (ty = 0; ty < th; ty++) {
     acc.fill(0);
     y1 = Math.min(r.y1, r.y0 + (ty + 1) * T);
@@ -538,8 +529,7 @@ function scoreSun(level, azimuth, altitude, tileR) {
         b = B[i];
         if (b !== b || NZ[i] !== NZ[i]) continue;
         a = P[i] ? 0 : NX[i] * sx + NY[i] * sy + NZ[i] * sz;
-        if (a < 0) a = 0;
-        if (LOG) a = Math.log(a + LC);
+        a = Math.log((a > 0 ? a : 0) + FIT_DIFFUSE);
         k = ((x - r.x0) / T | 0) * 6;
         acc[k]++;
         acc[k + 1] += a;
@@ -569,123 +559,10 @@ function scoreSun(level, azimuth, altitude, tileR) {
   return wsum > 0 ? total / wsum : -1;
 }
 
-function scorePartial(level, P, sx, sy, sz, tileR) {
-  var r = level.region, w = level.w, B = level.B, T = level.tile, Z = level.Z;
-  var tw = Math.ceil((r.x1 - r.x0) / T), th = Math.ceil((r.y1 - r.y0) / T);
-  var nrm = getLevelNormals(level), NX = nrm.x, NY = nrm.y, NZ = nrm.z;
-  var LC = globalThis.DSC || 0.3, LE = globalThis.DSEPS || 0.005, CTRL = globalThis.DSCTRL || 'nz';
-  var D = CTRL == 'nz,z' ? 4 : 3, M = D * (D + 3) / 2 + 1;
-  var acc = new Float64Array(tw * th * M), v = new Float64Array(D);
-  var x, y, i, a, k, o, p, q, j, total = 0, wsum = 0;
-  for (y = r.y0; y < r.y1; y++) {
-    for (x = r.x0; x < r.x1; x++) {
-      i = y * w + x;
-      if (B[i] !== B[i] || NZ[i] !== NZ[i]) continue;
-      a = P[i] ? 0 : NX[i] * sx + NY[i] * sy + NZ[i] * sz;
-      v[0] = Math.log((a > 0 ? a : 0) + LC);
-      v[1] = Math.log(B[i] + LE);
-      v[2] = NZ[i];
-      if (D == 4) v[3] = Z[i];
-      o = (Math.floor((y - r.y0) / T) * tw + Math.floor((x - r.x0) / T)) * M;
-      acc[o]++;
-      for (p = 0, j = o + 1; p < D; p++) acc[j++] += v[p];
-      for (p = 0; p < D; p++) for (q = p; q < D; q++) acc[j++] += v[p] * v[q];
-    }
-  }
-  for (k = 0; k < tw * th; k++) {
-    o = k * M;
-    var n = acc[o], rr = NaN;
-    if (n >= MIN_TILE_CELLS) {
-      var C = [], mean = [];
-      for (p = 0; p < D; p++) mean.push(acc[o + 1 + p] / n);
-      for (p = 0; p < D; p++) C.push(new Float64Array(D));
-      for (p = 0, j = o + 1 + D; p < D; p++) {
-        for (q = p; q < D; q++, j++) C[p][q] = C[q][p] = acc[j] / n - mean[p] * mean[q];
-      }
-      var Pm = invertMatrix(C);
-      if (Pm && Pm[0][0] > 0 && Pm[1][1] > 0) {
-        rr = -Pm[0][1] / Math.sqrt(Pm[0][0] * Pm[1][1]);
-        total += n * rr;
-        wsum += n;
-      }
-    }
-    if (tileR) tileR[k] = rr;
-  }
-  return wsum > 0 ? total / wsum : -1;
-}
-
-function invertMatrix(A) {
-  var n = A.length, M = A.map(function(row, i) {
-    var r = Array.from(row);
-    for (var j = 0; j < n; j++) r.push(i == j ? 1 : 0);
-    return r;
-  });
-  for (var c = 0; c < n; c++) {
-    var best = c;
-    for (var r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[best][c])) best = r;
-    if (Math.abs(M[best][c]) < 1e-12) return null;
-    var t = M[c]; M[c] = M[best]; M[best] = t;
-    var d = M[c][c];
-    for (var j = 0; j < 2 * n; j++) M[c][j] /= d;
-    for (r = 0; r < n; r++) {
-      if (r == c) continue;
-      var f = M[r][c];
-      if (f) for (j = 0; j < 2 * n; j++) M[r][j] -= f * M[c][j];
-    }
-  }
-  return M.map(function(row) { return row.slice(n); });
-}
-
-function scoreGradients(level, P, sx, sy, sz, tileR) {
-  var r = level.region, w = level.w, B = level.B, T = level.tile;
-  var tw = Math.ceil((r.x1 - r.x0) / T), th = Math.ceil((r.y1 - r.y0) / T);
-  var nrm = getLevelNormals(level), NX = nrm.x, NY = nrm.y, NZ = nrm.z;
-  var c = globalThis.DSC || 0.3, eps = globalThis.DSEPS || 0.005;
-  var LI = new Float32Array(level.w * level.h).fill(NaN), LB = new Float32Array(level.w * level.h).fill(NaN);
-  var x, y, i, a, j, d1, d2, n = 0, s1 = 0, s2 = 0, s11 = 0, s22 = 0, s12 = 0;
-  var acc = new Float64Array(tw * th * 6);
-  for (y = r.y0; y < r.y1; y++) {
-    for (x = r.x0; x < r.x1; x++) {
-      i = y * w + x;
-      if (B[i] !== B[i] || NZ[i] !== NZ[i]) continue;
-      a = P[i] ? 0 : NX[i] * sx + NY[i] * sy + NZ[i] * sz;
-      LI[i] = Math.log((a > 0 ? a : 0) + c);
-      LB[i] = Math.log(B[i] + eps);
-    }
-  }
-  for (y = r.y0; y < r.y1; y++) {
-    for (x = r.x0; x < r.x1; x++) {
-      i = y * w + x;
-      if (LI[i] !== LI[i]) continue;
-      for (j of [x + 1 < r.x1 ? i + 1 : -1, y + 1 < r.y1 ? i + w : -1]) {
-        if (j < 0 || LI[j] !== LI[j]) continue;
-        d1 = LI[j] - LI[i];
-        d2 = LB[j] - LB[i];
-        n++; s1 += d1; s2 += d2; s11 += d1 * d1; s22 += d2 * d2; s12 += d1 * d2;
-        if (tileR) {
-          var k = (((y - r.y0) / T | 0) * tw + ((x - r.x0) / T | 0)) * 6;
-          acc[k]++; acc[k + 1] += d1; acc[k + 2] += d2; acc[k + 3] += d1 * d1; acc[k + 4] += d2 * d2; acc[k + 5] += d1 * d2;
-        }
-      }
-    }
-  }
-  if (tileR) {
-    for (var t = 0; t < tw * th; t++) {
-      var k2 = t * 6, m = acc[k2];
-      var cv = acc[k2 + 5] / m - acc[k2 + 1] / m * acc[k2 + 2] / m;
-      var v1 = acc[k2 + 3] / m - (acc[k2 + 1] / m) ** 2, v2 = acc[k2 + 4] / m - (acc[k2 + 2] / m) ** 2;
-      tileR[t] = m >= MIN_TILE_CELLS && v1 > 1e-9 && v2 > 0 ? cv / Math.sqrt(v1 * v2) : NaN;
-    }
-  }
-  if (n < 2) return -1;
-  var cov = s12 / n - s1 / n * s2 / n, v11 = s11 / n - (s1 / n) ** 2, v22 = s22 / n - (s2 / n) ** 2;
-  return v11 > 1e-9 && v22 > 0 ? cov / Math.sqrt(v11 * v22) : -1;
-}
-
 // The grids reduced by an integer factor, to have up to @maxCells cells in the
 // region (means, ignoring NaN), with cells no larger than @maxCell meters
 // Returns {Z, B, w, h, cellW, cellH, region, factor}
-function getFitLevel(Z, B, w, h, cellW, cellH, region, maxCells, maxCell) {
+export function getFitLevel(Z, B, w, h, cellW, cellH, region, maxCells, maxCell) {
   var cells = (region.x1 - region.x0) * (region.y1 - region.y0);
   var f = Math.min(Math.ceil(Math.sqrt(cells / maxCells)),
     Math.floor(maxCell / Math.max(cellW, cellH)));
@@ -778,8 +655,7 @@ function fitRegionSuns(level, sun, path) {
   var blocks = Math.min(MAX_BLOCKS, Math.floor(Math.sqrt(tw * th / BLOCK_TILES)));
   var margin = Math.ceil(BLOCK_MARGIN / Math.max(level.cellW, level.cellH));
   var suns = [sun], single = {suns: suns, labels: null, tw: tw, th: th};
-  var bx, by, region, sub, fit, tileR, labels;
-  if (globalThis.DSSUNLOG) console.log('fitRegionSuns tiles', tw, th, 'tile', T, 'cells', level.cellW.toFixed(0), 'level', level.w, level.h, 'blocks', blocks);
+  var bx, by, region, sub, fit, out, iter, prev;
   if (blocks < 2) return single;
   for (by = 0; by < blocks; by++) {
     for (bx = 0; bx < blocks; bx++) {
@@ -789,7 +665,6 @@ function fitRegionSuns(level, sun, path) {
       };
       sub = cropLevel(level, region, margin);
       fit = fitRegionSun(sub, sun, path, false);
-      if (globalThis.DSSUNLOG) console.log('block', bx, by, 'az', (fit.azimuth * 180 / Math.PI).toFixed(0), 'alt', (fit.altitude * 180 / Math.PI).toFixed(0), 'score', fit.score.toFixed(3), 'image sun score', scoreSun(sub, sun.azimuth, sun.altitude).toFixed(3));
       if (fit.score > scoreSun(sub, sun.azimuth, sun.altitude) + REGION_GAIN &&
           !suns.some(function(s) { return isSameSun(s, fit); })) {
         suns.push(fit);
@@ -797,23 +672,20 @@ function fitRegionSuns(level, sun, path) {
     }
   }
   if (suns.length == 1) return single;
-  labels = labelSuns(level, suns, tw, th);
-  if (globalThis.DSSUNLOG) for (var yy = 0; yy < th; yy++) console.log('first', Array.from(labels.subarray(yy * tw, (yy + 1) * tw)).join(''));
-  var out = compactSuns(suns, labels, tw, th), iter, prev;
-  for (iter = 0; iter < MAX_REFITS && out.labels && !globalThis.DSNOREFIT; iter++) {
+  out = compactSuns(suns, labelSuns(level, suns, tw, th), tw, th);
+  for (iter = 0; iter < MAX_REFITS && out.labels; iter++) {
     suns = out.suns.map(function(s, k) {
-      return refitSun(level, out.labels, k, tw, th, margin, s, path, !globalThis.DSNOREFITEDGES);
+      return refitSun(level, out.labels, k, tw, th, margin, s, path, true);
     });
-    if (globalThis.DSSUNLOG) console.log('refit', iter, suns.map(function(s) { return (s.azimuth * 180 / Math.PI).toFixed(0) + '/' + (s.altitude * 180 / Math.PI).toFixed(0); }).join(' '));
     suns = suns.filter(function(s, k) {
       return k === 0 || !suns.slice(0, k).some(function(s2) { return isSameSun(s, s2); });
     });
     prev = out.labels;
     // once the image is a mosaic, its own sun is just one of the candidates
-    out = compactSuns(suns, labelSuns(level, suns, tw, th, globalThis.DSRM !== undefined ? globalThis.DSRM : 0), tw, th);
+    out = compactSuns(suns, labelSuns(level, suns, tw, th, 0), tw, th);
     if (out.labels && out.suns.length == suns.length && out.labels.every(function(l, t) { return l == prev[t]; })) break;
   }
-  if (out.labels && !globalThis.DSNOAREAFIT) out = fitAreaSuns(level, out, margin, path);
+  if (out.labels) out = fitAreaSuns(level, out, margin, path);
   return out;
 }
 
@@ -831,14 +703,12 @@ function fitAreaSuns(level, regions, margin, path) {
     var start = regions.suns[regions.labels[area[0]]];
     var sun = refitSun(level, areaLabels, a, tw, th, margin, start, path, true);
     var k = suns.findIndex(function(s) { return isSameSun(s, sun); });
-    if (globalThis.DSSUNLOG) console.log('area', a, 'tiles', area.length, (sun.azimuth * 180 / Math.PI).toFixed(0) + '/' + (sun.altitude * 180 / Math.PI).toFixed(0));
     if (k < 0) {
       k = suns.length;
       suns.push(sun);
     }
     area.forEach(function(t) { labels[t] = k; });
   });
-  if (globalThis.DSSUNLOG) for (var y = 0; y < th; y++) console.log('labels', Array.from(labels.subarray(y * tw, (y + 1) * tw)).join(''), ' before', Array.from(regions.labels.subarray(y * tw, (y + 1) * tw)).join(''));
   return {suns: suns, labels: suns.length > 1 ? labels : null, tw: tw, th: th};
 }
 
@@ -1191,44 +1061,17 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
   var sun = path ? fitSunPath(level, path) : fitFreeSun(level, getFitLevel(level.Z, level.B,
     level.w, level.h, level.cellW, level.cellH, level.region,
     COARSE_FIT_CELLS, MAX_COARSE_FIT_CELL), null);
-  if (!path && sun.score > -1 && !globalThis.DSNOREFINE) sun = refineAltitude(level, sun);
+  if (!path && sun.score > -1) sun = refineAltitude(level, sun);
   var regions, light, tile, margin, all, classes, ratios, litRatios, pixelI, gains, inShadow, i, byShadows = true;
-  var flat, direct, hardI, predicted, shadows, haze;
-  if (globalThis.DSPROBE) {
-    var Yl = getLinearLuma(lin, N), ys = [];
-    for (i = 0; i < N; i += 7) if (valid[i]) ys.push(Yl[i]);
-    ys.sort(function(a, b) { return a - b; });
-    var q = ys[Math.floor(ys.length * 0.06)], dark = new Float32Array(N);
-    for (i = 0; i < N; i++) dark[i] = Yl[i] <= q ? 1 : 0;
-    var dl = getFitLevel(terrain.Z, getCellMeans(dark, W, H, terrain, valid),
-      terrain.width, terrain.height, terrain.cellWidth, terrain.cellHeight, region, FIT_CELLS, MAX_FIT_CELL);
-    for (i = 0; i < globalThis.DSPROBE.length; i += 2) {
-      var Pp = castTerrainShadow(dl.Z, dl.w, dl.h, dl.cellW, dl.cellH, {azimuth: globalThis.DSPROBE[i] * Math.PI / 180, altitude: globalThis.DSPROBE[i + 1] * Math.PI / 180}, dl.region);
-      var n0 = 0, sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0;
-      for (var yy = dl.region.y0; yy < dl.region.y1; yy++) for (var xx = dl.region.x0; xx < dl.region.x1; xx++) {
-        var ii = yy * dl.w + xx, bb = dl.B[ii], aa = Pp[ii];
-        if (bb !== bb) continue;
-        n0++; sa += aa; sb += bb; saa += aa * aa; sbb += bb * bb; sab += aa * bb;
-      }
-      var cv = sab / n0 - sa / n0 * sb / n0;
-      console.log('old-score', globalThis.DSPROBE[i], globalThis.DSPROBE[i + 1],
-        (cv / Math.sqrt((saa / n0 - (sa / n0) ** 2) * (sbb / n0 - (sb / n0) ** 2))).toFixed(3),
-        'shadow share', (sa / n0).toFixed(3));
-      console.log('probe', globalThis.DSPROBE[i], globalThis.DSPROBE[i + 1],
-        scoreSun(level, globalThis.DSPROBE[i] * Math.PI / 180, globalThis.DSPROBE[i + 1] * Math.PI / 180).toFixed(3));
-    }
-    console.log('level', level.w, level.h, level.cellW.toFixed(1), level.factor);
-  }
+  var flat, direct, hardI, predicted, shadows;
   result.sun = sun;
   if (!(sun.score >= MIN_SUN_FIT)) {
     result.failure = 'fit';
     return result;
   }
-  if (globalThis.DSFNS) globalThis.DSFNS = {level: level, sun: sun, scoreSun: scoreSun, fitFreeSun: fitFreeSun, refineAltitude: refineAltitude, cropLevel: cropLevel, getFitLevel: getFitLevel, getHorizonAngles: getHorizonAngles, getShadowEdgeContrast: getShadowEdgeContrast};
   regions = fitRegionSuns(level, sun, path);
   light = getCellLighting(terrain, region, demPixelSize, regions, level);
   result.suns = getSunShares(regions, level, light, cells, terrain.width, valid, N);
-  if (globalThis.DSDEBUG) globalThis.DSDEBUG = {regions: regions, light: light, level: level, terrain: terrain, lin: lin, valid: valid, cells: cells, W: W, H: H, pixelSize: pixelSize};
   tile = Math.max(MIN_C_TILE, Math.round(C_TILE / pixelSize), Math.ceil(Math.sqrt(N / MAX_C_TILES)));
   margin = Math.max(1, Math.round(SHADOW_MARGIN * Math.max(demPixelSize, pixelSize) / pixelSize));
   flat = getPixelValues(light.flat, cells, Float32Array);
@@ -1242,15 +1085,12 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
   if (shadows.masked) {
     for (i = 0; i < N; i++) hardI[i] = (1 - shadows.shadow[i]) * direct[i];
   }
-  haze = !globalThis.DSHAZE ? null : fitHazeOffsets(image, valid, hardI, flat, W, H, tile, margin);
-  if (globalThis.DSCLOG) console.log('haze', haze && haze.map(function(v) { return v.toFixed(4); }).join(' '));
-  all = fitShadowRatios(image, valid, hardI, flat, W, H, null, 1, tile, margin, haze)[0];
-  if (globalThis.DSREGRESS || !all.c.every(function(c) { return c > 0; })) {
+  all = fitShadowRatios(image, valid, hardI, flat, W, H, null, 1, tile, margin)[0];
+  if (!all.c.every(function(c) { return c > 0; })) {
     all = fitDiffuseRatios(lin, valid, hardI, W, H, null, 1, tile)[0];
     byShadows = false;
   }
   result.diffuse = all.c;
-  if (globalThis.DSPROBE || globalThis.DSCLOG) console.log('c', all.c.map(function(c) { return c.toFixed(3); }).join(' '), 'tiles', all.tiles.join(' '));
   if (!all.c.every(function(c) { return c > 0; })) {
     result.failure = 'diffuse';
     return result;
@@ -1262,25 +1102,17 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
     result.failure = 'color';
     return result;
   }
-  if (globalThis.DSOLDCLASS) {
-    classes = classifyGround(lin, valid, hardI, flat, all.c, nir, N);
-    ratios = (byShadows ? fitShadowRatios(image, valid, hardI, flat, W, H, classes.labels, classes.K, tile, margin) :
-      fitDiffuseRatios(lin, valid, hardI, W, H, classes.labels, classes.K, tile))
-      .map(function(o) { return blendDiffuseRatios(o, all); });
-  } else if (byShadows) {
-    classes = fitGroundClasses(image, lin, valid, hardI, flat, all.c, W, H, margin, haze);
+  if (byShadows) {
+    classes = fitGroundClasses(image, lin, valid, hardI, flat, all.c, W, H, margin);
     ratios = classes.ratios;
-    litRatios = fitSlopeRatios(lin, valid, hardI, W, H, classes.labels, ratios.length, tile, margin);
-    if (globalThis.DSCLOG) console.log('slope fit', litRatios.map(function(o) { return o.c.map(function(c) { return c.toFixed(2); }).join('/') + ' n' + o.tiles.join('/') + ' sd' + o.spread.map(function(v) { return v.toFixed(2); }).join('/'); }).join('  '));
-    litRatios = litRatios.map(function(o) { return blendDiffuseRatios(o, {c: getNeutralRatios(all.c)}); });
+    litRatios = fitSlopeRatios(lin, valid, hardI, W, H, classes.labels, ratios.length, tile, margin)
+      .map(function(o) { return blendDiffuseRatios(o, {c: getNeutralRatios(all.c)}); });
   } else {
     classes = {labels: new Uint8Array(N)};
     ratios = [all.c];
+    litRatios = ratios;
   }
-  if (globalThis.DSCLOG && litRatios) console.log('slope c', litRatios.map(function(r) { return r.map(function(c) { return c.toFixed(2); }).join('/'); }).join('  '));
-  if (globalThis.DSNOSLOPE || !litRatios) litRatios = ratios;
-  if (globalThis.DSCLOG) console.log('class c', ratios.map(function(r) { return r.map(function(c) { return c.toFixed(2); }).join('/'); }).join('  '), 'masked', shadows.masked, shadows.ratio.toFixed(2));
-  if (shadows.masked && !globalThis.DSMODELONLY) {
+  if (shadows.masked) {
     var relit = relightMaskedImage(image, lin, valid, classes.labels, ratios, litRatios, flat, direct, hardI,
       shadows, W, H, pixelSize, margin);
     if (relit && relit.samples) {
@@ -1298,14 +1130,13 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
   pixelI = shadows.masked ? softenShadows(shadows.shadow, direct, W, H, toPixels(EDGE_BLUR_RADIUS, pixelSize)) :
     getPixelLighting(lin, valid, hardI, W, H, margin);
   gains = getPixelGains(lin, classes.labels, ratios, litRatios, flat, direct, pixelI, valid, W, H, pixelSize);
-  if (!globalThis.DSNOCAP) limitBrightness(lin, gains, valid, getLitCap(lin, valid, pixelI, flat, null), haze);
-  if (!globalThis.DSNORECT) rectifyColors(lin, gains, valid, hardI, pixelI, flat, W, H, pixelSize, margin, haze);
-  if (globalThis.DSDEBUG) Object.assign(globalThis.DSDEBUG, {pixelI: pixelI, gains: gains, labels: classes.labels});
+  limitBrightness(lin, gains, valid, getLitCap(lin, valid, pixelI, flat, null));
+  rectifyColors(lin, gains, valid, hardI, pixelI, flat, W, H, pixelSize, margin);
   for (i = 0, inShadow = 0; i < N; i++) {
     if (valid[i] && pixelI[i] < flat[i] * 0.5) inShadow++;
   }
   result.shadowShare = inShadow / N;
-  result.samples = writeCorrectedSamples(image, lin, gains, valid, haze);
+  result.samples = writeCorrectedSamples(image, lin, gains, valid);
   return result;
 }
 
@@ -1334,7 +1165,7 @@ function relightMaskedImage(image, lin, valid, labels, ratios, litRatios, flat, 
   limitBrightness(lin, gains, valid, getLitCap(lin, valid, direct, flat, hard));
   lit = Object.assign({}, image, {samples: writeCorrectedSamples(image, lin, gains, valid)});
   relit = relightShadows(lit, getLuma(lit.samples, lit.bands, N), valid, shadows.mask, pixelSize, shadows.sun);
-  if (relit && relit.samples && !globalThis.DSNORECT) {
+  if (relit && relit.samples) {
     relit.samples = rectifySamples(image, lin, relit.samples, valid, I, flat, pixelSize, margin);
   }
   return relit;
@@ -1392,14 +1223,13 @@ function getLitCap(lin, valid, I, flat, shadow) {
 // of pixels they would make brighter than @cap: brightened ground brighter
 // than sunlit flat ground is likely lit more than the DEM shows (e.g. a cliff
 // smoothed into a slope)
-// @haze optional P of each band (see applyGain())
-function limitBrightness(lin, gains, valid, cap, haze) {
-  var N = lin[0].length, P = haze || [0, 0, 0], i, b, y, yg, t, g;
+function limitBrightness(lin, gains, valid, cap) {
+  var N = lin[0].length, i, b, y, yg, t, g;
   for (i = 0; i < N; i++) {
     if (!valid[i] || !(gains[0][i] > 1 || gains[1][i] > 1 || gains[2][i] > 1)) continue;
     y = 0.2126 * lin[0][i] + 0.7152 * lin[1][i] + 0.0722 * lin[2][i];
-    yg = 0.2126 * applyGain(lin[0][i], gains[0][i], P[0]) + 0.7152 * applyGain(lin[1][i], gains[1][i], P[1]) +
-      0.0722 * applyGain(lin[2][i], gains[2][i], P[2]);
+    yg = 0.2126 * applyGain(lin[0][i], gains[0][i]) + 0.7152 * applyGain(lin[1][i], gains[1][i]) +
+      0.0722 * applyGain(lin[2][i], gains[2][i]);
     if (!(yg > cap && yg > y && y > 0)) continue;
     t = Math.log(Math.max(cap, y) / y) / Math.log(yg / y);
     for (b = 0; b < 3; b++) {
@@ -1419,9 +1249,8 @@ function limitBrightness(lin, gains, valid, cap, haze) {
 // wrong class.)
 // @hardI, @pixelI I of each pixel, from the DEM and refined
 // @margin pixels within this many pixels of the DEM's shadows aren't sunlit
-// @haze optional P of each band (see applyGain())
-function rectifyColors(lin, gains, valid, hardI, pixelI, flat, W, H, pixelSize, margin, haze) {
-  var N = W * H, P = haze || [0, 0, 0], nc = COLOR_BINS * 2, cells = nc * nc;
+function rectifyColors(lin, gains, valid, hardI, pixelI, flat, W, H, pixelSize, margin) {
+  var N = W * H, nc = COLOR_BINS * 2, cells = nc * nc;
   var size = COLOR_LUMA_BINS * cells, step = COLOR_RANGE / COLOR_BINS, LB = COLOR_LUMA_BINS;
   var T = Math.max(toPixels(COLOR_TILE, pixelSize), Math.ceil(Math.sqrt(N / MAX_COLOR_TILES)));
   var tw = Math.ceil(W / T), th = Math.ceil(H / T);
@@ -1452,7 +1281,7 @@ function rectifyColors(lin, gains, valid, hardI, pixelI, flat, W, H, pixelSize, 
 
   // luma bin, color bin and log color ratios of the corrected color of pixel i
   function measure(i) {
-    for (b = 0; b < 3; b++) out[b] = applyGain(lin[b][i], gains[b][i], P[b]);
+    for (b = 0; b < 3; b++) out[b] = applyGain(lin[b][i], gains[b][i]);
     y1 = LUMA_WEIGHTS[0] * out[0] + LUMA_WEIGHTS[1] * out[1] + LUMA_WEIGHTS[2] * out[2];
     l = Math.max(0, Math.min(LB - 1, Math.floor(-Math.log(y1 + 1e-6) / COLOR_LUMA_STEP)));
     cr = Math.log((out[0] + 1e-3) / (out[1] + 1e-3));
@@ -1536,8 +1365,8 @@ function rectifyColors(lin, gains, valid, hardI, pixelI, flat, W, H, pixelSize, 
           f[2] = Math.exp(Math.max(v, Math.min(v + step, cb)));
           sc = y1 / (LUMA_WEIGHTS[0] * f[0] + LUMA_WEIGHTS[1] + LUMA_WEIGHTS[2] * f[2]);
           for (b = 0; b < 3; b++) {
-            o = lin[b][i] - P[b];
-            if (o > 0) gains[b][i] = Math.min(MAX_GAIN, (f[b] * sc - P[b]) / o);
+            o = lin[b][i];
+            if (o > 0) gains[b][i] = Math.min(MAX_GAIN, f[b] * sc / o);
           }
         }
       }
@@ -1565,24 +1394,22 @@ function getSunShares(regions, level, light, cells, w, valid, N) {
 }
 
 // c of each band for each class, from the ratio of sunlit to shadowed values
-// in tiles of @tile pixels: (v_lit - P) / (v_shadow - P) = (I_lit + c) / c,
-// from medians of pixels at least @margin pixels inside shadows (I = 0) and
-// inside sunlit ground lit like flat ground (I within FLAT_RANGE of it)
+// in tiles of @tile pixels: v_lit / v_shadow = (I_lit + c) / c, from medians
+// of pixels at least @margin pixels inside shadows (I = 0) and inside sunlit
+// ground lit like flat ground (I within FLAT_RANGE of it)
 // @I, @flat I and I of flat ground, of each pixel
 // @labels optional class of each pixel (0 to @K - 1)
-// @haze optional P of each band (see fitHazeOffsets())
 // Returns an array of {c, tiles} for each class (see fitDiffuseRatios())
-export function fitShadowRatios(image, valid, I, flat, W, H, labels, K, tile, margin, haze) {
+export function fitShadowRatios(image, valid, I, flat, W, H, labels, K, tile, margin) {
   var tiles = getTileMedians(image, valid, I, flat, W, H, labels, K, tile, margin);
-  var nt = tiles.length / K, out = [], ratios, k, t, b, m, med, P;
+  var nt = tiles.length / K, out = [], ratios, k, t, b, m, med;
   for (k = 0; k < K; k++) {
     ratios = [[], [], []];
     for (t = 0; t < nt; t++) {
       m = tiles[k * nt + t];
       if (!m) continue;
       for (b = 0; b < 3; b++) {
-        P = haze ? haze[b] : 0;
-        med = m.shadow[b] > P ? (m.lit[b] - P) / (m.shadow[b] - P) : 0;
+        med = m.shadow[b] > 0 ? m.lit[b] / m.shadow[b] : 0;
         if (med > 1) ratios[b].push(m.I / (med - 1));
       }
     }
@@ -1594,43 +1421,10 @@ export function fitShadowRatios(image, valid, I, flat, W, H, labels, K, tile, ma
   return out;
 }
 
-// Offsets P of each band's linear values that don't depend on lighting (haze,
-// which brightens shadows as much as sunlit ground): v = A (I + c) + P. In
-// tiles with sunlit and shadowed ground of different brightness (e.g. snow and
-// forest), v_shadow = s v_lit + (1 - s) P, so P is from the intercept of a
-// regression of the tiles' shadow medians on their sunlit medians. P is kept
-// below the band's HAZE_DARK_QUANTILE (the darkest ground can't be darker than
-// haze), and is 0 if there are fewer than MIN_HAZE_TILES tiles.
-// Returns [P_red, P_green, P_blue]
-export function fitHazeOffsets(image, valid, I, flat, W, H, tile, margin) {
-  var tiles = getTileMedians(image, valid, I, flat, W, H, null, 1, tile, margin).filter(Boolean);
-  var dark = getBandQuantiles(image, valid, HAZE_DARK_QUANTILE);
-  return [0, 1, 2].map(function(b) {
-    var n = tiles.length, w = 0, mx = 0, my = 0, sxx = 0, sxy = 0, s, P;
-    if (n < MIN_HAZE_TILES) return 0;
-    tiles.forEach(function(m) {
-      w += m.weight;
-      mx += m.weight * m.lit[b];
-      my += m.weight * m.shadow[b];
-    });
-    mx /= w;
-    my /= w;
-    tiles.forEach(function(m) {
-      sxx += m.weight * (m.lit[b] - mx) * (m.lit[b] - mx);
-      sxy += m.weight * (m.lit[b] - mx) * (m.shadow[b] - my);
-    });
-    s = sxy / sxx;
-    if (!(s > 0 && s < 1)) return 0;
-    P = (my - s * mx) / (1 - s);
-    return Math.max(0, Math.min(dark[b], P));
-  });
-}
-
 // Medians (linear) of each band in each tile of each class, of shadowed and
 // sunlit pixels (see fitShadowRatios())
-// Returns an array (K x tiles) of {shadow, lit, I, weight} (null for tiles with
-//   fewer than MIN_GROUP_PIXELS of either): I is the mean I of the sunlit
-//   pixels; weight is the smaller count
+// Returns an array (K x tiles) of {shadow, lit, I} (null for tiles with fewer
+//   than MIN_GROUP_PIXELS of either): I is the mean I of the sunlit pixels
 function getTileMedians(image, valid, I, flat, W, H, labels, K, tile, margin) {
   var N = W * H, src = image.samples, bands = image.bands, decode = getDecodeTable();
   var tw = Math.ceil(W / tile), th = Math.ceil(H / tile), nt = tw * th;
@@ -1668,29 +1462,10 @@ function getTileMedians(image, valid, I, flat, W, H, labels, K, tile, margin) {
     out.push({
       shadow: [0, 1, 2].map(function(b) { return decode[getHistogramMedian(hist, (o + b) * 256, n)]; }),
       lit: [0, 1, 2].map(function(b) { return decode[getHistogramMedian(hist, (o + 3 + b) * 256, nl)]; }),
-      I: isum[k] / nl,
-      weight: Math.min(n, nl)
+      I: isum[k] / nl
     });
   }
   return out;
-}
-
-// The @q quantile (linear) of each band of the valid pixels
-function getBandQuantiles(image, valid, q) {
-  var src = image.samples, bands = image.bands, decode = getDecodeTable();
-  var hist = new Float64Array(3 * 256), n = 0, i, b;
-  for (i = 0; i < valid.length; i++) {
-    if (!valid[i]) continue;
-    n++;
-    for (b = 0; b < 3; b++) hist[b * 256 + src[i * bands + b]]++;
-  }
-  return [0, 1, 2].map(function(b) {
-    for (var v = 0, t = 0; v < 256; v++) {
-      t += hist[b * 256 + v];
-      if (t >= n * q) return decode[v];
-    }
-    return decode[255];
-  });
 }
 
 function countHistogram(hist, o) {
@@ -1749,7 +1524,7 @@ export function fitDiffuseRatios(lin, valid, I, W, H, labels, K, tile) {
         cov = acc[o + 9 + b] / n - mx * my;
         if (!(vy > 0)) continue;
         var rr = cov / Math.sqrt(va * vy);
-        if (globalThis.DSCT ? rr * Math.sqrt((n - 2) / Math.max(1e-9, 1 - rr * rr)) < globalThis.DSCT : rr < MIN_C_FIT) continue;
+        if (rr < MIN_C_FIT) continue;
         slope = cov / va;
         icpt = my - slope * mx;
         if (icpt > 0) ratios[b].push(icpt / slope);
@@ -1818,16 +1593,14 @@ function blendDiffuseRatios(cls, all) {
 // Classes are assigned and fitted CLASS_ROUNDS times.
 // @I, @flat I and I of flat ground, of each pixel
 // @all c of the whole image
-// @haze optional P of each band (see fitHazeOffsets())
 // Returns {labels, ratios}: ratios has c of each class
-export function fitGroundClasses(image, lin, valid, I, flat, all, W, H, margin, haze) {
+export function fitGroundClasses(image, lin, valid, I, flat, all, W, H, margin) {
   var N = W * H, src = image.samples, bands = image.bands, decode = getDecodeTable();
   var group = getRatioGroups(valid, I, flat, W, H, margin);
   var labels = new Uint8Array(N), step = Math.max(1, Math.floor(N / 20000));
   var samples = [], f = new Float64Array(3), centers, K, m, ratios, round, i, k, b, hist, counts;
-  var P = haze || [0, 0, 0];
   function logColor(i, out) {
-    for (var b = 0; b < 3; b++) out[b] = Math.log(Math.max(0, lin[b][i] - P[b]) + 1e-4);
+    for (var b = 0; b < 3; b++) out[b] = Math.log(Math.max(0, lin[b][i]) + 1e-4);
     return out;
   }
   for (i = 0; i < N; i += step) {
@@ -1863,8 +1636,8 @@ export function fitGroundClasses(image, lin, valid, I, flat, all, W, H, margin, 
       if (n < MIN_GROUP_PIXELS || nl < MIN_GROUP_PIXELS) return all.slice();
       var logK = 0;
       all.forEach(function(c, b) {
-        var sh = decode[getHistogramMedian(hist, (k * 6 + b) * 256, n)] - P[b];
-        var ratio = sh > 0 ? (decode[getHistogramMedian(hist, (k * 6 + 3 + b) * 256, nl)] - P[b]) / sh : 0;
+        var sh = decode[getHistogramMedian(hist, (k * 6 + b) * 256, n)];
+        var ratio = sh > 0 ? decode[getHistogramMedian(hist, (k * 6 + 3 + b) * 256, nl)] / sh : 0;
         var ck = ratio > 1 ? counts[k * 2 + 1] / nl / (ratio - 1) : c;
         logK += LUMA_WEIGHTS[b] * Math.log(ck / c);
       });
@@ -1928,10 +1701,9 @@ function relightShadows(image, L, valid, mask, pixelSize, sun) {
   var imageCap = getBrightnessCap(L, valid, edge, mask);
   var maxDist = Math.max(8, toPixels(BLOCK_SIZE, pixelSize));
   var near = boxMean(toFloat(hard), W, H, maxDist);
-  var pairs = findEdgePairs(valid, hard, edge, gap, near, W, H, maxDist, sun, globalThis.DSPAIRDARK ? mask.dem : null);
+  var pairs = findEdgePairs(valid, hard, edge, gap, near, W, H, maxDist, sun);
   var classes = measureClassGains(src, bands, L, valid, hard, edge, pairs, W, H, gains, pixelSize);
   var bare = getBareShare(src, bands, valid, hard, gap, near, W, H, pixelSize);
-  if (globalThis.DSDEBUG) Object.assign(globalThis.DSDEBUG, {rsHard: hard, rsGap: gap, rsNear: near, rsSrc: src, rsBands: bands, rsW: W, rsPairs: pairs, rsCls: classes.cls});
   var bareGains = measureBareGains(src, bands, pairs, W, H, gains, pixelSize);
   var range = getShadowLightnessRange(L, valid, edge, hard, gains);
   var cls = classes.cls, alpha = new Float32Array(N), wt = new Float32Array(N);
@@ -1949,7 +1721,7 @@ function relightShadows(image, L, valid, mask, pixelSize, sun) {
     if (b > 0) la = (1 - b) * la + b * getLightnessAlpha(L[i], range[0], range[1]);
     if (mask.dem && mask.dem[i]) alpha[i] = 1;
     else if (edge[i] > 0 && edge[i] < 1) alpha[i] = la;
-    else if (hard[i]) alpha[i] = globalThis.DSHA ? 1 : Math.min(1, la * 1.5);
+    else if (hard[i]) alpha[i] = Math.min(1, la * 1.5);
     wt[i] = 1;
     for (k = 0; k < 3; k++) {
       logG[k][i] = getTileLogGain(classes, s, x, y, k);
@@ -1959,9 +1731,8 @@ function relightShadows(image, L, valid, mask, pixelSize, sun) {
   // gains are smoothed, as neighboring pixels can be in different classes
   var r = toPixels(CHROMA_RADIUS, pixelSize), mw = boxMean(wt, W, H, r);
   logG = logG.map(function(arr) { return boxMean(arr, W, H, r); });
-  if (!globalThis.DSNOQM) {
-    applyRankGains(logG, mw, measureRankGains(src, bands, L, valid, hard, edge, gap, ring, litT, W, H, pixelSize), L, cls, bare, W, H);
-  }
+  applyRankGains(logG, mw, measureRankGains(src, bands, L, valid, hard, edge, gap, ring, litT, W, H, pixelSize),
+    L, cls, bare, W, H);
   relit = [0, 1, 2].map(function() { return new Float32Array(N); });
   for (i = 0; i < N; i++) {
     a = alpha[i];
@@ -1978,18 +1749,7 @@ function relightShadows(image, L, valid, mask, pixelSize, sun) {
       for (k = 0; k < 3; k++) relit[k][i] *= f;
     }
   }
-  if (globalThis.DSRSP) globalThis.DSRSP.forEach(function(q) {
-    var j = q[1] * W + q[0], c = cls[j];
-    console.log('rsp', q.join(','), 'cls', c, 'alpha', alpha[j].toFixed(2), 'bare', bare[j].toFixed(2), 'L', L[j].toFixed(0),
-      'gain', [0, 1, 2].map(function(k) { return Math.exp(logG[k][j] / mw[j]).toFixed(2); }).join('/'),
-      'cap', c >= 0 ? Math.min(imageCap, classes.cap[c]).toFixed(0) : '-', 'imageCap', imageCap.toFixed(0), 'lo/hi', c >= 0 ? classes.lo[c].toFixed(0) + '/' + classes.hi[c].toFixed(0) : '-',
-      'relit', [0, 1, 2].map(function(k) { return relit[k][j].toFixed(0); }).join('/'), 'global', gains.map(function(g) { return g.toFixed(2); }).join('/'));
-  });
-  if (!globalThis.DSNOCC) compressContrast(relit, alpha, W, H, toPixels(CONTRAST_RADIUS, pixelSize));
-  if (globalThis.DSRSP) globalThis.DSRSP.forEach(function(q) {
-    var j = q[1] * W + q[0];
-    console.log('rsp after contrast', q.join(','), [0, 1, 2].map(function(k) { return relit[k][j].toFixed(0); }).join('/'));
-  });
+  compressContrast(relit, alpha, W, H, toPixels(CONTRAST_RADIUS, pixelSize));
   return {
     samples: writeRelitSamples(src, bands, relit, alpha, edge, W, H, pixelSize),
     gains: gains
@@ -1998,7 +1758,7 @@ function relightShadows(image, L, valid, mask, pixelSize, sun) {
 
 // A copy of @gap (share of shadow pixels nearby: 0 for sunlit samples, 1 for
 // shadow samples) with @uncertain pixels set between
-function excludeUncertain(gap, uncertain) {
+export function excludeUncertain(gap, uncertain) {
   var out = gap.slice();
   for (var i = 0; i < out.length; i++) {
     if (uncertain[i] && (out[i] === 0 || out[i] > 0.999)) out[i] = 0.5;
@@ -2012,7 +1772,7 @@ function excludeUncertain(gap, uncertain) {
 // ground is likely to continue (on the sun's side is whatever casts the
 // shadow, e.g. a pale cliff).
 // Returns {lit, shadow}: the pairs' pixels
-function findEdgePairs(valid, hard, edge, gap, near, W, H, maxDist, sun, dem) {
+function findEdgePairs(valid, hard, edge, gap, near, W, H, maxDist, sun) {
   var dx = Math.sin(sun.azimuth), dy = -Math.cos(sun.azimuth);
   var lit = [], shadow = [], i, j, d, x, y, px, py;
   for (i = 0; i < W * H; i++) {
@@ -2025,7 +1785,6 @@ function findEdgePairs(valid, hard, edge, gap, near, W, H, maxDist, sun, dem) {
       if (px < 0 || py < 0 || px >= W || py >= H) break;
       j = py * W + px;
       if (hard[j] && edge[j] > 0.999 && valid[j]) {
-        if (dem && dem[j]) break;
         lit.push(i);
         shadow.push(j);
         break;
@@ -2262,7 +2021,7 @@ function getBareShare(src, bands, valid, hard, gap, near, W, H, pixelSize) {
 
 // Sets NaN cells of a grid to the mean of their neighbors, working outward
 // from the cells that have values (or to @fallback, if none do)
-function fillEmptyCells(grid, gw, gh, fallback) {
+export function fillEmptyCells(grid, gw, gh, fallback) {
   var empty = 0, next, i, x, y, sx, sy, s, n, v;
   for (i = 0; i < grid.length; i++) if (grid[i] !== grid[i]) empty++;
   if (empty == grid.length) grid.fill(fallback);
@@ -2345,18 +2104,10 @@ function measureRankGains(src, bands, L, valid, hard, edge, gap, ring, litT, W, 
     ns = count(sh, tx, ty, r);
     nl = count(lit, tx, ty, r);
     m = Math.min(ns, nl);
-    if (globalThis.DSRGT && getTileIndex(globalThis.DSRGT[1] * W + globalThis.DSRGT[0], W, tileSize, tw) == t) console.log('rank tile', t, 'tileSize', tileSize, 'r', r, 'ns', ns, 'nl', nl);
     if (m < B * MIN_RANK_SAMPLES) continue;
     s = gather(sh, tx, ty, r);
     l = gather(lit, tx, ty, r);
     out.weights[t] = m / (m + RANK_PRIOR);
-    if (globalThis.DSRGT && getTileIndex(globalThis.DSRGT[1] * W + globalThis.DSRGT[0], W, tileSize, tw) == t) {
-      console.log('rank tile', t, 'ns', ns, 'nl', nl, 'w', out.weights[t].toFixed(2));
-      for (b = 0; b < B; b++) {
-        console.log(' bin', b, 'shadow', [0, 1, 2].map(function(k) { return getSliceMean(src, bands, s, Math.floor(b * ns / B), Math.floor((b + 1) * ns / B), k).toFixed(0); }).join('/'),
-          'lit', [0, 1, 2].map(function(k) { return getSliceMean(src, bands, l, Math.floor(b * nl / B), Math.floor((b + 1) * nl / B), k).toFixed(0); }).join('/'));
-      }
-    }
     for (b = 0; b < B; b++) {
       out.centers[t * B + b] = L[s[Math.floor((b + 0.5) * ns / B)]];
       for (k = 0; k < 3; k++) {
@@ -2558,30 +2309,6 @@ function nearestLitClass(m, ratios, f, I, flat) {
   return best;
 }
 
-// Classes of ground, by color after correcting the image with @c (and by
-// near-infrared, if given)
-// Returns {labels, K}: labels has the class of each pixel
-function classifyGround(lin, valid, I, flat, c, nir, N) {
-  var f = new Float64Array(nir ? 4 : 3), samples = [], labels = new Uint8Array(N);
-  var step = Math.max(1, Math.floor(N / 20000)), i, centers;
-  function features(i) {
-    var a = I[i];
-    var v = [0, 1, 2].map(function(b) {
-      return lin[b][i] * (a === a ? (flat[i] + c[b]) / (a + c[b]) : 1) + 1e-3;
-    });
-    f[0] = Math.log(v[0] / v[1]);
-    f[1] = Math.log(v[2] / v[1]);
-    f[2] = CLASS_LUMA_WEIGHT * Math.log(0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]);
-    if (nir) f[3] = nir[i] === nir[i] ? CLASS_NIR_WEIGHT * Math.log((nir[i] + 1) / (lin[0][i] * 255 + 1)) : 0;
-    return f;
-  }
-  for (i = 0; i < N; i += step) if (valid[i]) samples.push(Array.from(features(i)));
-  centers = kMeans(samples, GROUND_CLASSES);
-  if (centers.length < 2) return {labels: labels, K: 1};
-  for (i = 0; i < N; i++) if (valid[i]) labels[i] = nearestCenter(centers, features(i));
-  return {labels: labels, K: centers.length};
-}
-
 // Gain of each band of each pixel, from its class's c in shadow and on sunlit
 // ground (blended over CLASS_RADIUS, log scale). A pixel's share s of shadow
 // is from its I and its I if it were sunlit, I_lit (I = (1 - s) I_lit): its I
@@ -2618,8 +2345,7 @@ function getPixelGains(lin, labels, ratios, litRatios, flat, direct, pixelI, val
     share[i] = d > 0 ? 1 - p / d : 1;
     for (b = 0, cy[i] = 0; b < 3; b++) cy[i] += LUMA_WEIGHTS[b] * Math.exp(logL[b][i]);
   }
-  k = globalThis.DSNORESPONSE ? null : getLightingResponse(lin, valid, litI, share, flat, cy, W, H, pixelSize);
-  if (globalThis.DSDEBUG) globalThis.DSDEBUG.k = k;
+  k = getLightingResponse(lin, valid, litI, share, flat, cy, W, H, pixelSize);
   return [0, 1, 2].map(function(b) {
     var out = new Float32Array(N), c, cl, s, g, R;
     for (i = 0; i < N; i++) {
@@ -2631,8 +2357,7 @@ function getPixelGains(lin, labels, ratios, litRatios, flat, direct, pixelI, val
       c = Math.exp(logC[b][i]);
       cl = Math.exp(logL[b][i]);
       s = share[i];
-      R = (litI[i] + cl) / (flat[i] + cl);
-      if (k) R = Math.pow(R, k[i]);
+      R = Math.pow((litI[i] + cl) / (flat[i] + cl), k[i]);
       g = 1 / ((1 - s) * R + s * c / (flat[i] + c));
       out[i] = g < MAX_GAIN ? g : MAX_GAIN;
     }
@@ -2700,9 +2425,8 @@ function getLightingResponse(lin, valid, I, share, flat, cy, W, H, pixelSize) {
   return k;
 }
 
-// @haze optional P of each band (see applyGain())
-function writeCorrectedSamples(image, lin, gains, valid, haze) {
-  var src = image.samples, bands = image.bands, N = image.width * image.height, P = haze || [0, 0, 0];
+function writeCorrectedSamples(image, lin, gains, valid) {
+  var src = image.samples, bands = image.bands, N = image.width * image.height;
   var out = new Uint8Array(src.length), encode = getEncodeTable();
   var scale = encode.length - 1, i, b, g, v, same;
   out.set(src);
@@ -2716,17 +2440,16 @@ function writeCorrectedSamples(image, lin, gains, valid, haze) {
     if (same) continue;
     for (b = 0; b < 3; b++) {
       g = gains[b][i];
-      v = g === g ? applyGain(lin[b][i], g, P[b]) : lin[b][i];
+      v = applyGain(lin[b][i], g);
       out[i * bands + b] = v >= 1 ? 255 : encode[Math.round(Math.sqrt(v) * scale)];
     }
   }
   return out;
 }
 
-// A linear value @v brightened by gain @g: haze (@P, see fitHazeOffsets())
-// doesn't depend on lighting, so only the rest is brightened
-function applyGain(v, g, P) {
-  return g === g ? (v > P ? (v - P) * g + P : v) : v;
+// A linear value @v brightened by gain @g (unchanged if @g is NaN)
+function applyGain(v, g) {
+  return g === g ? v * g : v;
 }
 
 var decodeTable = null, encodeTable = null;
@@ -2850,12 +2573,10 @@ function getPixelShadows(image, nir, valid, predicted, cells, terrain, region, r
     lowered = getPixelValues(castTerrainShadow(terrain.Z, terrain.width, terrain.height,
       terrain.cellWidth, terrain.cellHeight, maskSun, region), cells, Uint8Array);
     stretch = Math.tan(regions.suns[0].altitude) / Math.tan(maskSun.altitude);
-    if (globalThis.DSDEMLOG) console.log('mask sun', (maskSun.altitude * 180 / Math.PI).toFixed(1), 'fitted', (regions.suns[0].altitude * 180 / Math.PI).toFixed(1), 'band m', band, 'dem px', demPixelSize, 'px', pixelSize);
   }
-  if (globalThis.DSDEBUG) Object.assign(globalThis.DSDEBUG, {actual: predicted, band: band, L: L});
   mask = n > 0 ? getShadowMask(L, nir, valid, lowered || predicted, W, H, pixelSize, band) : null;
   if (mask && mask.count > 0 && mask.count <= n * MAX_MASK_RATIO * stretch) {
-    if (!globalThis.DSNODEM) addDemShadows(mask, predicted, valid, W, H);
+    addDemShadows(mask, predicted, valid, W, H);
     for (i = 0; i < N; i++) shadow[i] = mask.hard[i];
     return {shadow: shadow, masked: true, count: mask.count, ratio: mask.count / n, mask: mask,
       sun: maskSun || regions.suns[0]};
@@ -2872,7 +2593,7 @@ function getPixelShadows(image, nir, valid, predicted, cells, terrain, region, r
 // the shadows are added only if most of them deeper inside are in the mask.
 // Sets mask.dem to 1 for the added pixels, and mask.uncertain to 1 for those
 // near the edges that aren't in the mask (they're often shadowed)
-function addDemShadows(mask, predicted, valid, W, H) {
+export function addDemShadows(mask, predicted, valid, W, H) {
   var N = W * H, outside = new Uint8Array(N), maxD = 64, i, d, depth, n, m;
   for (i = 0; i < N; i++) outside[i] = predicted[i] ? 0 : 1;
   depth = chamferDistance(outside, W, H);
@@ -2903,7 +2624,6 @@ function addDemShadows(mask, predicted, valid, W, H) {
       mask.uncertain[i] = 1;
     }
   }
-  if (globalThis.DSDEMLOG) console.log('dem shadows: edge', d, 'px, agreement', (m[d] / n[d]).toFixed(2));
 }
 
 function getPixelValues(cellValues, cells, ArrayType) {
@@ -2947,8 +2667,7 @@ export function lowerSunAltitude(Z, darkness, w, h, cellW, cellH, region, sun) {
           sum += D[i];
         }
       }
-      if (globalThis.DSDEMLOG) console.log('lower', alt, 'added', n, 'dark', (sum / n).toFixed(2));
-      if (n > 0 && sum / n < 0.5 && !globalThis.DSLOWERALL) break;
+      if (n > 0 && sum / n < 0.5) break;
       best = alt;
     }
     prev = P;
@@ -2979,7 +2698,6 @@ export function getShadowMask(L, nir, valid, predicted, W, H, pixelSize, band) {
   var regionR = toPixels(REGION_RADIUS, pixelSize);
   var share, region, dist, grow, count = 0;
   region = new Uint8Array(N);
-  if (globalThis.DSDEBUG) Object.assign(globalThis.DSDEBUG, {mW: W, mT: T, mDark: dark.slice(), mBoth: darkBoth.slice(), mPred: predicted});
   for (i = 0; i < N; i++) majBoth[i] = majBoth[i] > 0.5 ? 1 : 0;
   share = boxMean(majBoth, W, H, regionR);
   for (i = 0; i < N; i++) region[i] = share[i] > REGION_SHARE ? 1 : 0;
@@ -2991,7 +2709,6 @@ export function getShadowMask(L, nir, valid, predicted, W, H, pixelSize, band) {
   dist = maj = null;
   removeUnmatchedAreas(hard, predicted, W, H, SMALL_AREA / (pixelSize * pixelSize));
   for (i = 0; i < N; i++) count += hard[i];
-  if (globalThis.DSDEBUG) globalThis.DSDEBUG.mHard = hard.slice();
   return {hard: hard, near: inc, threshold: T, count: count};
 }
 
