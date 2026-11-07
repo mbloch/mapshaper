@@ -1,7 +1,7 @@
 import cmd from '../mapshaper-cmd';
 import { crsTransformsDiffer, getDatasetCRS, isLatLngCRS, toLngLat } from '../crs/mapshaper-projections';
 import { layerHasRaster, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
-import { deshadowImage, getSolarDeclination, resampleGridBand, MAX_MASK_RATIO, MIN_ALTITUDE, MIN_SUN_FIT } from '../rasters/mapshaper-deshadow';
+import { deshadowImage, getSolarDeclination, resampleGridBand, MIN_SUN_FIT } from '../rasters/mapshaper-deshadow';
 import { getRasterGrid, rasterGridIsRotated } from '../rasters/mapshaper-raster-utils';
 import { getVerticalUnitMeters } from '../rasters/mapshaper-vertical-units';
 import { getHillshadeCellSizes } from './mapshaper-hillshade';
@@ -63,12 +63,18 @@ cmd.deshadow = function(lyr, dataset, dem, nirSource, opts) {
   if (result.sun.score >= MIN_SUN_FIT) {
     message(formatSun(result.sun, path));
   }
+  if (result.suns && result.suns.length > 1) {
+    message('The image is a mosaic; its regions are lit by the sun at ' + result.suns.map(function(s) {
+      return 'azimuth ' + formatDegrees(s.azimuth) + ', altitude ' + formatDegrees(s.altitude) +
+        ' (' + formatPercent(s.share) + ')';
+    }).join('; '));
+  }
   if (!result.samples) {
     message(getFailureMessage(result, !!nir));
     return [];
   }
-  message('Shadows: ' + formatPercent(result.shadowShare) + ' of the image, brightened ' +
-    result.gains.map(function(g) { return g.toFixed(1) + 'x'; }).join(', ') + ' (red, green, blue)');
+  message('Shaded areas: ' + formatPercent(result.shadowShare) + ' of the image; shadows on flat ground brightened ' +
+    formatGains(result.shadowGains) + ' (red, green, blue)');
   out = {
     raster_type: 'grid',
     raster: getColoredRaster(lyr.raster, grid,
@@ -78,9 +84,16 @@ cmd.deshadow = function(lyr, dataset, dem, nirSource, opts) {
         nir: nirSource && nirSource.layer.name || null,
         date: path ? path.date : null,
         sun_azimuth: +(result.sun.azimuth * 180 / Math.PI).toFixed(1),
-        sun_altitude: +(result.sun.altitude * 180 / Math.PI).toFixed(1)
+        sun_altitude: +(result.sun.altitude * 180 / Math.PI).toFixed(1),
+        diffuse: result.diffuse.map(function(c) { return +c.toFixed(3); })
       })
   };
+  if (result.suns.length > 1) {
+    out.raster.derivation.region_suns = result.suns.map(function(s) {
+      return {sun_azimuth: +(s.azimuth * 180 / Math.PI).toFixed(1),
+        sun_altitude: +(s.altitude * 180 / Math.PI).toFixed(1), share: +s.share.toFixed(3)};
+    });
+  }
   setOutputLayerName(out, lyr, 'deshadow', opts);
   return [out];
 };
@@ -171,39 +184,25 @@ function getCenterLatitude(grid, crs) {
 
 function getFailureMessage(result, nirUsed) {
   if (result.sun.score <= -1) {
-    return 'The DEM casts no shadows at any sun position; the image is unchanged';
+    return 'The terrain is too flat to tell where the sun was; the image is unchanged';
   }
   if (result.sun.score < MIN_SUN_FIT) {
-    return 'The DEM\'s shadows don\'t match the image\'s dark areas at any sun position (best match ' +
+    return 'The image\'s brightness doesn\'t follow the lighting of the terrain at any sun position (best match ' +
       result.sun.score.toFixed(2) + '); the image is unchanged';
   }
-  if (result.lowSun) {
-    return 'The best match is with the sun at the lowest altitude tried (' + MIN_ALTITUDE +
-      '°), which usually means dark slopes facing away from the sun (e.g. forest) matched' +
-      ' better than shadows, or that the image has few terrain shadows (e.g. summer' +
-      ' imagery, with the sun high). The image is unchanged';
+  if (result.failure == 'color') {
+    return 'The slopes facing away from the sun aren\'t colored like shadows (brightening them would take ' +
+      formatGains([result.shadowGains[0]]) + ' red and ' + formatGains([result.shadowGains[2]]) +
+      ' blue; shadows, lit by the blue sky, need more red), so the image\'s dark areas are probably' +
+      ' mostly something else (e.g. forest' + (nirUsed ? ')' : '; nir= can tell them apart)') +
+      '. The image is unchanged';
   }
-  if (result.shadowShare === 0) {
-    return 'No terrain shadows were found; the image is unchanged';
-  }
-  if (result.maskRatio > MAX_MASK_RATIO && result.coarseDem) {
-    return 'The dark areas near the DEM\'s shadows cover ' + formatPercent(result.shadowShare) +
-      ' of the image, ' + result.maskRatio.toFixed(1) + ' times as much as the shadows. The DEM is' +
-      ' less detailed than the image, so it is probably missing many of the cliffs and ledges that' +
-      ' cast them; try a more detailed DEM (e.g. -fetch 3dep-1m, in the US). The image is unchanged';
-  }
-  if (result.maskRatio > MAX_MASK_RATIO) {
-    return 'The dark areas near the DEM\'s shadows cover ' + formatPercent(result.shadowShare) +
-      ' of the image, much more than the shadows, so they are probably mostly something else' +
-      ' (e.g. forest' + (nirUsed ? ')' : '; nir= can tell them apart)') + '. The image is unchanged';
-  }
-  if (result.gains) {
-    return 'The dark areas near the DEM\'s shadows aren\'t colored like shadows (brightening them would take ' +
-      result.gains[0].toFixed(1) + 'x red and ' + result.gains[2].toFixed(1) + 'x blue; shadows, lit by the' +
-      ' blue sky, need more red), so they are probably mostly something else (e.g. forest' +
-      (nirUsed ? ')' : '; nir= can tell them apart)') + '. The image is unchanged';
-  }
-  return 'There isn\'t enough sunlit ground next to the shadows to measure their color; the image is unchanged';
+  return 'The image\'s brightness doesn\'t vary enough with the lighting of the terrain to measure the' +
+    ' share of light from the sky; the image is unchanged';
+}
+
+function formatGains(gains) {
+  return gains.map(function(g) { return g.toFixed(1) + 'x'; }).join(', ');
 }
 
 // The grids are combined cell by cell, so both need the same coordinates
