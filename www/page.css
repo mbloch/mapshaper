@@ -1611,15 +1611,15 @@ body.simplify .layer-control-btn {
 	cursor: pointer;
 }
 
-/* Only the section on the map has working eye icons; the others show which
-   layers are visible in pale grey */
+/* Only the section on the map has working eye icons; the others show every
+   eye in the same faint grey, whether or not the layer is visible */
 .inactive-section img.eye-btn {
 	opacity: 0 !important;
 	cursor: default;
 }
 
-.inactive-section .pinnable.pinned img.black-eye {
-	opacity: 0.15 !important;
+.inactive-section .pinnable img.black-eye {
+	opacity: 0.1 !important;
 }
 
 .pin-all img,
@@ -1696,13 +1696,19 @@ img.eye-btn {
 	opacity: 0;
 }
 
-.pinnable:not(.pinned):not(.active) img.black-eye,
-.pinnable.active.invisible img.black-eye {
+.pinnable:not(.pinned):not(.active) img.black-eye {
 	opacity: 0.2;
 }
 
 .pinnable:not(.pinned) img.black-eye:hover {
 	opacity: 0.3;
+}
+
+/* the selected layer, hidden from the map, in the faint grey of the eyes in
+   sections that are not on the map, hovered or not */
+.pinnable.active.invisible img.black-eye,
+.pinnable.active.invisible img.black-eye:hover {
+	opacity: 0.1;
 }
 
 /*.pinnable.pinned.active img.black-eye {

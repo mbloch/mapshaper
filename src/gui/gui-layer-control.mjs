@@ -971,7 +971,9 @@ export function LayerControl(gui) {
   }
 
   // The active frame follows the selected layer, so a frame is shown by
-  // selecting one of its layers: the top one that is not hidden
+  // selecting one of its layers: the top one that is on the map, or else one
+  // that could be. A data-only layer is picked last, since selecting it shows
+  // its table instead of the frame.
   function activateFrame(frame) {
     var active = model.getActiveFrame();
     var members, pick;
@@ -979,7 +981,9 @@ export function LayerControl(gui) {
     members = getLayerMenuGroups(model).frames.find(function(g) {
       return g.frame.dataset == frame.dataset;
     }).members;
-    pick = members.find(function(o) { return !o.layer.frame_hidden; }) || members[0];
+    pick = members.find(function(o) { return layerHasViewableContent(o.layer) && !o.layer.frame_hidden; }) ||
+      members.find(function(o) { return layerHasViewableContent(o.layer); }) ||
+      members.find(function(o) { return !o.layer.frame_hidden; }) || members[0];
     if (pick) model.selectLayer(pick.layer, pick.dataset);
   }
 

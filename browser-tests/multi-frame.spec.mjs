@@ -198,6 +198,23 @@ test.describe('layers menu with frames', function() {
     await expect(page.locator('.frame-properties-popup')).toHaveCount(0);
   });
 
+  test('clicking a frame\'s heading selects a map layer before a data layer', async function({page}) {
+    // a copy of r3 is in r3's frame; d1 has no geometry, and is on top
+    await runCommand(page, '-copy target=r3 name=d1 -drop geometry target=d1',
+      await getSignature(page));
+    await expect(page.locator('.map-frame-list .frame-section').nth(0)
+      .locator('.frame-members .layer-name').first()).toHaveText('d1');
+    await selectLayer(page, 'r2');
+    await page.locator('.frame-item').filter({hasText: 'f1'}).click();
+    expect(await getActiveLayerName(page)).toBe('r3');
+
+    // with every layer hidden, still a map layer rather than d1's table
+    await runCommand(page, '-frame target=f1 hide-layers=*', await getSignature(page));
+    await selectLayer(page, 'r2');
+    await page.locator('.frame-item').filter({hasText: 'f1'}).click();
+    expect(await getActiveLayerName(page)).toBe('r3');
+  });
+
   test('clicking the Layers heading switches to the unframed view', async function({page}) {
     await selectLayer(page, 'r1');
     await page.locator('.unframed-section .section-title').click();
@@ -628,6 +645,12 @@ async function selectLayer(page, name) {
   await page.evaluate(function(name) {
     window.mapshaper.undoTest.selectLayer(name);
   }, name);
+}
+
+async function getActiveLayerName(page) {
+  return page.evaluate(function() {
+    return window.mapshaper.undoTest.getState().model.activeLayer;
+  });
 }
 
 async function getView(page) {
