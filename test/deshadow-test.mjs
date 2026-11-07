@@ -427,6 +427,94 @@ describe('mapshaper-deshadow.mjs', function () {
     });
   });
 
+  describe('fitGaussianMixture()', function () {
+    var d = 3, n = 1000, X = new Float32Array(2 * n * d), A = [], B = [];
+    for (var i = 0; i < 2 * n; i++) {
+      for (var k = 0; k < d; k++) X[i * d + k] = (i < n ? 0 : 3) + 0.3 * noise(i * d + k);
+      (i < n ? A : B).push(i);
+    }
+
+    it('scores rows higher under the mixture fitted to their own cluster', function () {
+      var a = internal.getMixtureScorer(internal.fitGaussianMixture(X, d, A, 2), d);
+      var b = internal.getMixtureScorer(internal.fitGaussianMixture(X, d, B, 2), d);
+      assert(A.every(function(i) { return a(X, i) > b(X, i); }));
+      assert(B.every(function(i) { return b(X, i) > a(X, i); }));
+    });
+
+    it('is deterministic', function () {
+      assert.deepEqual(internal.fitGaussianMixture(X, d, A, 3), internal.fitGaussianMixture(X, d, A, 3));
+    });
+  });
+
+  // 10 m walls running north-south at @walls (x); 1 m cells
+  function wallTerrain(w, h, walls) {
+    return {Z: flatGrid(w, h, function(x) { return walls.indexOf(x) > -1 ? 10 : 0; }),
+      width: w, height: h, cellWidth: 1, cellHeight: 1};
+  }
+
+  describe('getPlausibleShadows()', function () {
+    it('includes ground shadowed only by a lower sun, and no farther', function () {
+      var w = 100, h = 40, t = wallTerrain(w, h, [60]), region = {x0: 0, y0: 0, x1: w, y1: h};
+      // at 45 degrees the shadow is 10 m long; down to 30 degrees, 17 m
+      var P = internal.getPlausibleShadows(t, region, [{azimuth: 90 * deg, altitude: 45 * deg}]);
+      var row = 20 * w;
+      assert.equal(P[row + 52], 1);
+      assert.equal(P[row + 45], 1);
+      assert.equal(P[row + 35], 0);
+      assert.equal(P[row + 70], 0);
+    });
+  });
+
+  describe('addSignatureShadows()', function () {
+    // walls whose shadows at the fitted sun are in the mask; the two eastern
+    // walls' shadows are longer, as if that part of the image were taken at a
+    // lower sun
+    var w = 240, h = 120, N = w * h, walls = [60, 120, 180, 230];
+    var fitted = {azimuth: 90 * deg, altitude: 45 * deg}, lower = {azimuth: 90 * deg, altitude: 32 * deg};
+    var t = wallTerrain(w, h, walls), region = {x0: 0, y0: 0, x1: w, y1: h};
+    var predicted = internal.castTerrainShadow(t.Z, w, h, 1, 1, fitted);
+    var low = internal.castTerrainShadow(t.Z, w, h, 1, 1, lower);
+    var lit = [150, 120, 90], shade = [43, 43, 45], forest = [40, 62, 34];
+    var missed = new Uint8Array(N), decoy = new Uint8Array(N), woods = new Uint8Array(N);
+    var samples = new Uint8Array(N * 3), cells = new Int32Array(N), valid = new Uint8Array(N).fill(1);
+    for (var i = 0; i < N; i++) {
+      var x = i % w, y = Math.floor(i / w), c = lit;
+      cells[i] = i;
+      missed[i] = x > 150 && low[i] && !predicted[i] ? 1 : 0;
+      // shadow-colored ground that no plausible sun shadows
+      decoy[i] = x >= 85 && x < 100 && y >= 40 && y < 80 ? 1 : 0;
+      // forest in the sun, both where no plausible sun shadows it and where one could
+      woods[i] = x >= 104 && x < 108 && y >= 30 && y < 90 ? 1 : 0;
+      if (predicted[i] || missed[i] || decoy[i]) c = shade;
+      else if (woods[i] || x < 30) c = forest;
+      for (var k = 0; k < 3; k++) samples[i * 3 + k] = Math.round(c[k] * (1 + 0.1 * noise(i * 3 + k)));
+    }
+    var image = {samples: samples, bands: 3, width: w, height: h};
+
+    it('adds shadows a plausible sun explains, and not dark ground it doesn\'t', function () {
+      var mask = {hard: predicted.slice()};
+      var added = internal.addSignatureShadows(mask, image, valid, predicted, cells, t, region, [fitted],
+        w, h, 4);
+      var nMissed = 0, nFound = 0, wrong = 0;
+      for (var i = 0; i < N; i++) {
+        if (missed[i]) nMissed++;
+        if (missed[i] && mask.hard[i]) nFound++;
+        if (!missed[i] && !predicted[i] && mask.hard[i]) wrong++;
+      }
+      assert(nFound >= nMissed * 0.9, nFound + ' of ' + nMissed);
+      assert(decoy.every(function(v, i) { return !v || !mask.hard[i]; }));
+      assert(woods.every(function(v, i) { return !v || !mask.hard[i]; }));
+      assert(wrong <= added * 0.05, wrong + ' of ' + added);
+    });
+
+    it('adds nothing without enough sunlit ground to learn from', function () {
+      var mask = {hard: predicted.slice()};
+      var allValid = valid.map(function(v, i) { return i % w < 150 ? 0 : 1; });
+      assert.equal(internal.addSignatureShadows(mask, image, allValid, predicted, cells, t, region, [fitted],
+        w, h, 40), 0);
+    });
+  });
+
   describe('fillEmptyCells()', function () {
     it('fills empty cells outward from the cells that have values', function () {
       var grid = Float32Array.from([2, NaN, NaN, NaN, NaN, NaN]);

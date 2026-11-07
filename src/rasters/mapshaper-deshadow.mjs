@@ -185,6 +185,20 @@ var NORMAL_SMOOTHING = 1;
 var MIN_NORMAL_SMOOTHING = 10;
 // largest gain applied to a linear value
 var MAX_GAIN = 25;
+// shadows from their colors (see addSignatureShadows())
+var PLAUSIBLE_AZIMUTH = 30; // degrees
+var PLAUSIBLE_DROP = 15; // degrees
+var PLAUSIBLE_STEP = 10; // degrees
+var SIGNATURE_LLR = Math.log(8);
+var AREA_SUN_MATCH = 0.6;
+var MIN_SUNLIT_SHARE = 0.25;
+var MIN_SIGNATURE_PIXELS = 1000;
+var SIGNATURE_SAMPLES = 50000;
+var SHADOW_COMPONENTS = 6;
+var LIT_COMPONENTS = 12;
+var KMEANS_ROUNDS = 20;
+var MIXTURE_VARIANCE = 0.01;
+var SIGNATURE_EPSILON = 1e-3;
 // Shadows are lit by blue skylight, so they need more red gain than blue
 // (measured as 8-bit values); dark slopes that don't are probably something
 // else, e.g. forest
@@ -2577,12 +2591,311 @@ function getPixelShadows(image, nir, valid, predicted, cells, terrain, region, r
   mask = n > 0 ? getShadowMask(L, nir, valid, lowered || predicted, W, H, pixelSize, band) : null;
   if (mask && mask.count > 0 && mask.count <= n * MAX_MASK_RATIO * stretch) {
     addDemShadows(mask, predicted, valid, W, H);
+    addSignatureShadows(mask, image, valid, predicted, cells, terrain, region, regions.suns, W, H,
+      band / pixelSize);
     for (i = 0; i < N; i++) shadow[i] = mask.hard[i];
     return {shadow: shadow, masked: true, count: mask.count, ratio: mask.count / n, mask: mask,
       sun: maskSun || regions.suns[0]};
   }
   for (i = 0; i < N; i++) shadow[i] = predicted[i];
   return {shadow: shadow, masked: false, count: n, ratio: mask ? mask.count / Math.max(1, n) : 0};
+}
+
+// Adds shadows that the DEM's shadows at the fitted sun don't explain (e.g. in
+// parts of an image taken at a lower sun), from how shadows look in the
+// image. Each pixel's log luma and log blue/red and green/red ratios are
+// scored by mixtures of Gaussians fitted to shadows where the mask and the
+// DEM agree and to ground that no plausible sun shadows (see
+// getPlausibleShadows()). Connected areas of pixels that are more likely
+// shadow than sunlit, and that a plausible sun shadows, are added if their
+// mean log likelihood ratio is at least SIGNATURE_LLR (a pixel's color alone
+// is weak evidence, especially at edges and in small shadows) and a single
+// plausible sun explains them (see matchAreaSuns()). Nothing is added unless
+// the sunlit samples are at least MIN_SUNLIT_SHARE of the image: in steep
+// terrain, where a plausible sun shadows most of the ground, they leave out
+// kinds of sunlit ground (e.g. forest on slopes facing away from the sun),
+// which can then look like shadow.
+// @bandPx distance (pixels) around the DEM's shadows that the mask searches
+// Returns the number of pixels added
+export function addSignatureShadows(mask, image, valid, predicted, cells, terrain, region, suns, W, H, bandPx) {
+  var N = W * H, hard = mask.hard, d = 3;
+  var plausible = getPixelValues(getPlausibleShadows(terrain, region, suns), cells, Uint8Array);
+  var agreed = new Float32Array(N), pred = new Float32Array(N), inMask = new Float32Array(N);
+  var shadowIdx = [], litIdx = [], nValid = 0, added = 0, core, near, nearMask, X, S, L, llr, cand, areas, i;
+  for (i = 0; i < N; i++) {
+    agreed[i] = hard[i] && predicted[i] && !(mask.dem && mask.dem[i]) ? 1 : 0;
+    pred[i] = predicted[i] ? 1 : 0;
+    inMask[i] = hard[i] ? 1 : 0;
+  }
+  core = boxMean(agreed, W, H, 1);
+  near = boxMean(pred, W, H, Math.max(1, Math.round(bandPx)));
+  nearMask = boxMean(inMask, W, H, 2);
+  agreed = pred = inMask = null;
+  for (i = 0; i < N; i++) {
+    if (!valid[i]) continue;
+    nValid++;
+    if (core[i] > 0.999) shadowIdx.push(i);
+    else if (near[i] === 0 && nearMask[i] === 0 && !plausible[i]) litIdx.push(i);
+  }
+  core = near = nearMask = null;
+  if (shadowIdx.length < MIN_SIGNATURE_PIXELS || litIdx.length < MIN_SIGNATURE_PIXELS ||
+      litIdx.length < nValid * MIN_SUNLIT_SHARE) return 0;
+  X = getSignatureFeatures(image, N, shadowIdx.concat(litIdx));
+  S = fitGaussianMixture(X, d, shadowIdx, SHADOW_COMPONENTS);
+  L = fitGaussianMixture(X, d, litIdx, LIT_COMPONENTS);
+  if (S.length === 0 || L.length === 0) return 0;
+  S = getMixtureScorer(S, d);
+  L = getMixtureScorer(L, d);
+  llr = new Float32Array(N);
+  cand = new Uint8Array(N);
+  for (i = 0; i < N; i++) {
+    if (!valid[i] || hard[i] || !plausible[i]) continue;
+    llr[i] = S(X, i) - L(X, i);
+    if (llr[i] > 0) cand[i] = 1;
+  }
+  areas = getCandidateAreas(cand, llr, W, H);
+  matchAreaSuns(areas, hard, cells, terrain, region, suns, W, H,
+    Math.max(1, Math.round(bandPx * SHADOW_REFERENCE)));
+  areas.forEach(function(a) {
+    if (a.match < AREA_SUN_MATCH) return;
+    for (var k = 0; k < a.pixels.length; k++) hard[a.pixels[k]] = 1;
+    added += a.pixels.length;
+  });
+  return added;
+}
+
+// 8-connected areas of @cand whose mean @llr is at least SIGNATURE_LLR
+// Returns [{pixels, x0, y0, x1, y1}]
+function getCandidateAreas(cand, llr, W, H) {
+  var N = W * H, seen = new Uint8Array(N), queue = new Int32Array(N), areas = [];
+  var i, j, k, n, x, y, dx, dy, X, Y, sum, x0, y0, x1, y1;
+  for (i = 0; i < N; i++) {
+    if (!cand[i] || seen[i]) continue;
+    seen[i] = 1;
+    queue[0] = i;
+    x0 = y0 = Infinity;
+    x1 = y1 = -1;
+    for (n = 1, k = 0, sum = 0; k < n; k++) {
+      j = queue[k];
+      sum += llr[j];
+      x = j % W;
+      y = (j - x) / W;
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x);
+      y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+      for (dy = -1; dy <= 1; dy++) {
+        for (dx = -1; dx <= 1; dx++) {
+          X = x + dx;
+          Y = y + dy;
+          if (X < 0 || Y < 0 || X >= W || Y >= H || !cand[Y * W + X] || seen[Y * W + X]) continue;
+          seen[Y * W + X] = 1;
+          queue[n++] = Y * W + X;
+        }
+      }
+    }
+    if (sum / n >= SIGNATURE_LLR) {
+      areas.push({pixels: queue.slice(0, n), x0: x0, y0: y0, x1: x1 + 1, y1: y1 + 1});
+    }
+  }
+  return areas;
+}
+
+// Sets each area's match to how well the best single plausible sun (see
+// getPlausibleShadows()) explains it: the smaller of the share of the area
+// in that sun's shadows and the share of that sun's shadows around the area
+// (within @margin pixels) that are in the area or in @mask; a sun that
+// shadows dark ground (e.g. a lake in a deep valley) also shadows the ground
+// around it, which isn't. Other candidate areas don't count, or dark ground
+// that's all around (e.g. forest) would explain itself.
+function matchAreaSuns(areas, mask, cells, terrain, region, suns, W, H, margin) {
+  var w = terrain.width, h = terrain.height, deg = Math.PI / 180;
+  var nrm = getNormals(terrain.Z, w, h, terrain.cellWidth, terrain.cellHeight);
+  var shade = new Uint8Array(w * h), areaId = new Int32Array(W * H).fill(-1);
+  areas.forEach(function(a, id) {
+    a.match = 0;
+    for (var k = 0; k < a.pixels.length; k++) areaId[a.pixels[k]] = id;
+  });
+  if (areas.length === 0) return;
+  suns.forEach(function(s) {
+    var da, drop, az, alt, P, vx, vy, vz, c;
+    for (da = -PLAUSIBLE_AZIMUTH; da <= PLAUSIBLE_AZIMUTH; da += PLAUSIBLE_STEP) {
+      for (drop = 0; drop <= PLAUSIBLE_DROP; drop += PLAUSIBLE_STEP / 2) {
+        az = s.azimuth + da * deg;
+        alt = Math.max(MIN_ALTITUDE * deg, s.altitude - drop * deg);
+        P = castTerrainShadow(terrain.Z, w, h, terrain.cellWidth, terrain.cellHeight,
+          {azimuth: az, altitude: alt}, region);
+        vx = Math.sin(az) * Math.cos(alt);
+        vy = Math.cos(az) * Math.cos(alt);
+        vz = Math.sin(alt);
+        for (c = 0; c < shade.length; c++) {
+          shade[c] = P[c] || nrm.x[c] * vx + nrm.y[c] * vy + nrm.z[c] * vz <= 0 ? 1 : 0;
+        }
+        areas.forEach(function(a, id) {
+          var inside = 0, n = 0, dark = 0, k, x, y, i, m;
+          for (k = 0; k < a.pixels.length; k++) inside += shade[cells[a.pixels[k]]];
+          if (inside < a.pixels.length * a.match) return;
+          for (y = Math.max(0, a.y0 - margin); y < Math.min(H, a.y1 + margin); y++) {
+            for (x = Math.max(0, a.x0 - margin); x < Math.min(W, a.x1 + margin); x++) {
+              i = y * W + x;
+              if (!shade[cells[i]]) continue;
+              n++;
+              if (mask[i] || areaId[i] === id) dark++;
+            }
+          }
+          m = Math.min(inside / a.pixels.length, n > 0 ? dark / n : 0);
+          if (m > a.match) a.match = m;
+        });
+      }
+    }
+  });
+}
+
+// Terrain cells that a plausible sun shadows (cast shadow, or facing away):
+// one whose azimuth is within PLAUSIBLE_AZIMUTH degrees of one of @suns', and
+// whose altitude is up to PLAUSIBLE_DROP degrees lower (at the same azimuth,
+// a higher sun shadows only part of what a lower one does)
+export function getPlausibleShadows(terrain, region, suns) {
+  var w = terrain.width, h = terrain.height, deg = Math.PI / 180;
+  var nrm = getNormals(terrain.Z, w, h, terrain.cellWidth, terrain.cellHeight);
+  var out = new Uint8Array(w * h);
+  suns.forEach(function(s) {
+    var alt = Math.max(MIN_ALTITUDE * deg, s.altitude - PLAUSIBLE_DROP * deg), da, az, P, vx, vy, vz, i;
+    for (da = -PLAUSIBLE_AZIMUTH; da <= PLAUSIBLE_AZIMUTH; da += PLAUSIBLE_STEP) {
+      az = s.azimuth + da * deg;
+      P = castTerrainShadow(terrain.Z, w, h, terrain.cellWidth, terrain.cellHeight,
+        {azimuth: az, altitude: alt}, region);
+      vx = Math.sin(az) * Math.cos(alt);
+      vy = Math.cos(az) * Math.cos(alt);
+      vz = Math.sin(alt);
+      for (i = 0; i < out.length; i++) {
+        if (P[i] || nrm.x[i] * vx + nrm.y[i] * vy + nrm.z[i] * vz <= 0) out[i] = 1;
+      }
+    }
+  });
+  return out;
+}
+
+// Log luma, log blue/red and log green/red of each pixel (linear values),
+// standardized over the pixels in @idx; d = 3 values per pixel
+function getSignatureFeatures(image, N, idx) {
+  var lin = getLinearBands(image.samples, image.bands, N), X = new Float32Array(N * 3);
+  var mean = [0, 0, 0], sq = [0, 0, 0], i, k, r, g, b, v, sd;
+  for (i = 0; i < N; i++) {
+    r = lin[0][i] + SIGNATURE_EPSILON;
+    g = lin[1][i] + SIGNATURE_EPSILON;
+    b = lin[2][i] + SIGNATURE_EPSILON;
+    X[i * 3] = Math.log(0.2126 * r + 0.7152 * g + 0.0722 * b);
+    X[i * 3 + 1] = Math.log(b / r);
+    X[i * 3 + 2] = Math.log(g / r);
+  }
+  for (i = 0; i < idx.length; i++) {
+    for (k = 0; k < 3; k++) {
+      v = X[idx[i] * 3 + k];
+      mean[k] += v;
+      sq[k] += v * v;
+    }
+  }
+  for (k = 0; k < 3; k++) {
+    mean[k] /= idx.length;
+    sd = Math.sqrt(Math.max(1e-12, sq[k] / idx.length - mean[k] * mean[k]));
+    for (i = 0; i < N; i++) X[i * 3 + k] = (X[i * 3 + k] - mean[k]) / sd;
+  }
+  return X;
+}
+
+// Gaussian mixture from k-means clusters of up to SIGNATURE_SAMPLES of the
+// rows of @X (@d values each) in @idx (deterministic)
+// Returns [{mean, chol, c}]: chol is the Cholesky factor of the covariance;
+//   c is the log of the weight and normalizing constant
+export function fitGaussianMixture(X, d, idx, K) {
+  var n = Math.min(idx.length, SIGNATURE_SAMPLES), step = idx.length / n, seed = 1;
+  var S = new Int32Array(n), centers = [], asg = new Int32Array(n), dist = new Float64Array(n);
+  var j, c, k, a, b, i, best, bestD, v, total, r, sums, counts, out = [];
+  function rand() {
+    seed = (seed * 16807) % 2147483647;
+    return seed / 2147483647;
+  }
+  function dist2(i, m) {
+    for (var k = 0, s = 0, t; k < d; k++) {
+      t = X[i * d + k] - m[k];
+      s += t * t;
+    }
+    return s;
+  }
+  for (j = 0; j < n; j++) S[j] = idx[Math.floor(j * step)];
+  centers.push(Array.from(X.subarray(S[0] * d, S[0] * d + d)));
+  dist.fill(Infinity);
+  while (centers.length < Math.min(K, n)) {
+    for (j = 0, total = 0; j < n; j++) {
+      dist[j] = Math.min(dist[j], dist2(S[j], centers[centers.length - 1]));
+      total += dist[j];
+    }
+    for (j = 0, r = rand() * total; j < n - 1 && r > dist[j]; j++) r -= dist[j];
+    centers.push(Array.from(X.subarray(S[j] * d, S[j] * d + d)));
+  }
+  K = centers.length;
+  for (i = 0; i < KMEANS_ROUNDS; i++) {
+    sums = new Float64Array(K * d);
+    counts = new Float64Array(K);
+    for (j = 0; j < n; j++) {
+      for (c = 0, best = 0, bestD = Infinity; c < K; c++) {
+        v = dist2(S[j], centers[c]);
+        if (v < bestD) {
+          bestD = v;
+          best = c;
+        }
+      }
+      asg[j] = best;
+      counts[best]++;
+      for (k = 0; k < d; k++) sums[best * d + k] += X[S[j] * d + k];
+    }
+    for (c = 0; c < K; c++) {
+      if (counts[c] > 0) for (k = 0; k < d; k++) centers[c][k] = sums[c * d + k] / counts[c];
+    }
+  }
+  for (c = 0; c < K; c++) {
+    var cov = new Float64Array(d * d), m = centers[c], L, logdet, cnt = 0, s;
+    for (j = 0; j < n; j++) {
+      if (asg[j] != c) continue;
+      cnt++;
+      for (a = 0; a < d; a++) {
+        for (b = 0; b <= a; b++) cov[a * d + b] += (X[S[j] * d + a] - m[a]) * (X[S[j] * d + b] - m[b]);
+      }
+    }
+    if (cnt < 2 * d + 2) continue;
+    L = new Float64Array(d * d);
+    for (a = 0, logdet = 0; a < d; a++) {
+      for (b = 0; b <= a; b++) {
+        s = cov[a * d + b] / cnt + (a == b ? MIXTURE_VARIANCE : 0);
+        for (k = 0; k < b; k++) s -= L[a * d + k] * L[b * d + k];
+        L[a * d + b] = a == b ? Math.sqrt(s) : s / L[b * d + b];
+      }
+      logdet += 2 * Math.log(L[a * d + a]);
+    }
+    out.push({mean: m, chol: L, c: Math.log(cnt / n) - 0.5 * (d * Math.log(2 * Math.PI) + logdet)});
+  }
+  return out;
+}
+
+// Returns a function of (@X, i) giving the log density of row i of @X (@d
+// values each) under @mixture (see fitGaussianMixture())
+export function getMixtureScorer(mixture, d) {
+  var lp = new Float64Array(mixture.length), z = new Float64Array(d);
+  return function(X, i) {
+    var max = -Infinity, sum = 0, g, a, k, s, q, m;
+    for (m = 0; m < mixture.length; m++) {
+      g = mixture[m];
+      for (a = 0, q = 0; a < d; a++) {
+        s = X[i * d + a] - g.mean[a];
+        for (k = 0; k < a; k++) s -= g.chol[a * d + k] * z[k];
+        z[a] = s / g.chol[a * d + a];
+        q += z[a] * z[a];
+      }
+      lp[m] = g.c - 0.5 * q;
+      if (lp[m] > max) max = lp[m];
+    }
+    for (m = 0; m < mixture.length; m++) sum += Math.exp(lp[m] - max);
+    return max + Math.log(sum);
+  };
 }
 
 // Adds the DEM's shadows to the mask, except near their edges, which may be a
