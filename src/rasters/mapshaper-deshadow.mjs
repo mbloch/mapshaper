@@ -172,6 +172,8 @@ var RANK_BINS = 8;
 var MIN_RANK_SAMPLES = 10;
 var RANK_PRIOR = 200;
 var RANK_MAX_RADIUS = 3;
+var RANK_PAIR_DIFF = 0.15; // log luma (see weighRankGains())
+var RANK_PAIR_PRIOR = 20;
 var CLASS_RADIUS = 2.4;
 // meters; the share of the DEM's lighting of sunlit ground that the image
 // shows is measured within this distance (see getLightingResponse())
@@ -1179,7 +1181,9 @@ function relightMaskedImage(image, lin, valid, labels, ratios, litRatios, flat, 
   limitBrightness(lin, gains, valid, getLitCap(lin, valid, direct, flat, hard));
   lit = Object.assign({}, image, {samples: writeCorrectedSamples(image, lin, gains, valid)});
   relit = relightShadows(lit, getLuma(lit.samples, lit.bands, N), valid, shadows.mask, pixelSize, shadows.sun);
+  if (globalThis.__ds) globalThis.__ds.lit = lit.samples;
   if (relit && relit.samples) {
+    if (globalThis.__ds) globalThis.__ds.relit = relit.samples.slice();
     relit.samples = rectifySamples(image, lin, relit.samples, valid, I, flat, pixelSize, margin);
   }
   return relit;
@@ -1716,9 +1720,10 @@ function relightShadows(image, L, valid, mask, pixelSize, sun) {
   var maxDist = Math.max(8, toPixels(BLOCK_SIZE, pixelSize));
   var near = boxMean(toFloat(hard), W, H, maxDist);
   var pairs = findEdgePairs(valid, hard, edge, gap, near, W, H, maxDist, sun);
+  if (globalThis.__ds) Object.assign(globalThis.__ds, {pairs: pairs, Lrelit: L});
   var classes = measureClassGains(src, bands, L, valid, hard, edge, pairs, W, H, gains, pixelSize);
   var bare = getBareShare(src, bands, valid, hard, gap, near, W, H, pixelSize);
-  var bareGains = measureBareGains(src, bands, pairs, W, H, gains, pixelSize);
+  var bareGains = measureBareGains(src, bands, pairs, classes.cls, classes.lo.length, W, H, gains, pixelSize);
   var range = getShadowLightnessRange(L, valid, edge, hard, gains);
   var cls = classes.cls, alpha = new Float32Array(N), wt = new Float32Array(N);
   var logG = [0, 1, 2].map(function() { return new Float32Array(N); });
@@ -1739,14 +1744,15 @@ function relightShadows(image, L, valid, mask, pixelSize, sun) {
     wt[i] = 1;
     for (k = 0; k < 3; k++) {
       logG[k][i] = getTileLogGain(classes, s, x, y, k);
-      if (b > 0) logG[k][i] = (1 - b) * logG[k][i] + b * getTileLogGain(bareGains, 0, x, y, k);
+      if (b > 0) logG[k][i] = (1 - b) * logG[k][i] + b * getTileLogGain(bareGains, s, x, y, k);
     }
   }
   // gains are smoothed, as neighboring pixels can be in different classes
   var r = toPixels(CHROMA_RADIUS, pixelSize), mw = boxMean(wt, W, H, r);
   logG = logG.map(function(arr) { return boxMean(arr, W, H, r); });
-  applyRankGains(logG, mw, measureRankGains(src, bands, L, valid, hard, edge, gap, ring, litT, W, H, pixelSize),
-    L, cls, bare, W, H);
+  var rg = measureRankGains(src, bands, L, valid, hard, edge, gap, ring, litT, W, H, pixelSize);
+  if (!globalThis.DSNOAGREE) weighRankGains(rg, pairs, L, W);
+  applyRankGains(logG, mw, rg, L, cls, bare, W, H);
   relit = [0, 1, 2].map(function() { return new Float32Array(N); });
   for (i = 0; i < N; i++) {
     a = alpha[i];
@@ -1763,6 +1769,8 @@ function relightShadows(image, L, valid, mask, pixelSize, sun) {
       for (k = 0; k < 3; k++) relit[k][i] *= f;
     }
   }
+  if (globalThis.__ds) Object.assign(globalThis.__ds, {alpha: alpha, bare: bare, cls: cls, logG: logG, mw: mw, gains0: gains, classes: classes, litT: litT, edge: edge});
+  if (globalThis.__ds) globalThis.__ds.relit0 = relit.map(function(a) { return a.slice(); });
   compressContrast(relit, alpha, W, H, toPixels(CONTRAST_RADIUS, pixelSize));
   return {
     samples: writeRelitSamples(src, bands, relit, alpha, edge, W, H, pixelSize),
@@ -2091,7 +2099,7 @@ function measureRankGains(src, bands, L, valid, hard, edge, gap, ring, litT, W, 
   var byLuma = function(a, b) { return L[a] - L[b]; };
   var sh = groupIndexes(shGroup, nt), lit = groupIndexes(litGroup, nt);
   var out = {centers: new Float32Array(nt * B), logs: new Float32Array(nt * B * 3),
-    weights: new Float32Array(nt), tileSize: tileSize, tw: tw, th: th};
+    weights: new Float32Array(nt), litMedians: new Float32Array(nt), tileSize: tileSize, tw: tw, th: th};
   var t, b, k, ns, nl, s, l, m, r, tx, ty;
   var count = function(g, x0, y0, r) {
     for (var y = Math.max(0, y0 - r), n = 0, x; y <= Math.min(th - 1, y0 + r); y++) {
@@ -2122,6 +2130,7 @@ function measureRankGains(src, bands, L, valid, hard, edge, gap, ring, litT, W, 
     s = gather(sh, tx, ty, r);
     l = gather(lit, tx, ty, r);
     out.weights[t] = m / (m + RANK_PRIOR);
+    out.litMedians[t] = L[l[Math.floor(nl / 2)]];
     for (b = 0; b < B; b++) {
       out.centers[t * B + b] = L[s[Math.floor((b + 0.5) * ns / B)]];
       for (k = 0; k < 3; k++) {
@@ -2132,6 +2141,38 @@ function measureRankGains(src, bands, L, valid, hard, edge, gap, ring, litT, W, 
     }
   }
   return out;
+}
+
+// Lowers the weights of the rank gains of tiles where the sunlit ground they
+// match the shadows with is brighter than the sunlit ground next to the
+// shadows (the sunlit pixels of the @pairs, mostly the same ground as the
+// shadows): the shadows are then of darker ground than the ground around
+// them, which isn't vegetation by its color but can still be of different
+// kinds (e.g. forest and gravel, in imagery with little color). The median
+// luma of the pairs in each tile and the tiles around it is compared with the
+// median of the tile's sunlit samples (log ratio), and the weights are scaled
+// by how little brighter those are, with RANK_PAIR_PRIOR pairs of no
+// difference.
+function weighRankGains(rg, pairs, L, W) {
+  var T = rg.tileSize, tw = rg.tw, th = rg.th, nt = tw * th;
+  var lit = [], p, i, t, x, y, tx, ty, n, d;
+  for (t = 0; t < nt; t++) lit.push([]);
+  for (p = 0; p < pairs.lit.length; p++) {
+    i = pairs.shadow[p];
+    x = Math.floor((i % W) / T);
+    y = Math.floor(Math.floor(i / W) / T);
+    for (ty = Math.max(0, y - 1); ty <= Math.min(th - 1, y + 1); ty++) {
+      for (tx = Math.max(0, x - 1); tx <= Math.min(tw - 1, x + 1); tx++) {
+        if (rg.weights[ty * tw + tx] > 0) lit[ty * tw + tx].push(L[pairs.lit[p]]);
+      }
+    }
+  }
+  for (t = 0; t < nt; t++) {
+    n = lit[t].length;
+    if (n === 0) continue;
+    d = Math.max(0, Math.log((rg.litMedians[t] + 1) / (getMedian(lit[t]) + 1))) / RANK_PAIR_DIFF;
+    rg.weights[t] *= (n * Math.exp(-d * d) + RANK_PAIR_PRIOR) / (n + RANK_PAIR_PRIOR);
+  }
 }
 
 // Indexes of the elements of @group in each of its @n groups (-1 for none)
@@ -2191,25 +2232,41 @@ function applyRankGains(logG, mw, rg, L, cls, bare, W, H) {
   }
 }
 
-// Gains of the ground that isn't vegetation in each tile, from the @pairs
-// whose sunlit pixel isn't vegetation, blended with the image's @gains
-// Returns {tileLog, tileSize, tw, th}, as from measureClassGains() for one class
-function measureBareGains(src, bands, pairs, W, H, gains, pixelSize) {
+// Gains of the ground that isn't vegetation, for each class of shadowed
+// ground (see measureClassGains()) in each tile, from the @pairs whose sunlit
+// pixel isn't vegetation: ground that isn't vegetation by its color can still
+// be of different kinds (e.g. gravel and forest in imagery with little
+// color). A class's gains are blended with the image's @gains, and a tile's
+// with its class's.
+// @cls class of each pixel (see measureClassGains()), of @K classes
+// Returns {tileLog, tileSize, tw, th}, as from measureClassGains()
+function measureBareGains(src, bands, pairs, cls, K, W, H, gains, pixelSize) {
   var tileSize = Math.max(8, Math.round(CLASS_TILE / pixelSize));
   var tw = Math.ceil(W / tileSize), th = Math.ceil(H / tileSize), nt = tw * th;
-  var np = pairs.lit.length, keys = new Int32Array(np), tileLog = new Float32Array(nt * 3);
-  var p, k, t, m, g, w, lv, sv;
+  var np = pairs.lit.length, keys = new Int32Array(np), classOf = new Int32Array(np);
+  var tileLog = new Float32Array(K * nt * 3), classLog = new Float64Array(K * 3);
+  var p, k, s, t, m, g, w, lv, sv;
   for (p = 0; p < np; p++) {
-    keys[p] = isVegetation(src, bands, pairs.lit[p]) ? -1 : getTileIndex(pairs.shadow[p], W, tileSize, tw);
+    classOf[p] = isVegetation(src, bands, pairs.lit[p]) ? -1 : cls[pairs.shadow[p]];
+    keys[p] = classOf[p] < 0 ? -1 : classOf[p] * nt + getTileIndex(pairs.shadow[p], W, tileSize, tw);
   }
   for (k = 0; k < 3; k++) {
-    lv = groupValues(keys, nt, function(p) { return src[pairs.lit[p] * bands + k]; });
-    sv = groupValues(keys, nt, function(p) { return src[pairs.shadow[p] * bands + k]; });
-    for (t = 0; t < nt; t++) {
+    lv = groupValues(classOf, K, function(p) { return src[pairs.lit[p] * bands + k]; });
+    sv = groupValues(classOf, K, function(p) { return src[pairs.shadow[p] * bands + k]; });
+    for (s = 0; s < K; s++) {
+      m = lv.start[s + 1] - lv.start[s];
+      g = m > 0 ? Math.max(1, groupMedian(lv, s) / Math.max(1, groupMedian(sv, s))) : gains[k];
+      w = m / (m + CLASS_PRIOR);
+      classLog[s * 3 + k] = w * Math.log(g) + (1 - w) * Math.log(gains[k]);
+    }
+    lv = groupValues(keys, K * nt, function(p) { return src[pairs.lit[p] * bands + k]; });
+    sv = groupValues(keys, K * nt, function(p) { return src[pairs.shadow[p] * bands + k]; });
+    for (t = 0; t < K * nt; t++) {
       m = lv.start[t + 1] - lv.start[t];
-      g = m > 0 ? Math.max(1, groupMedian(lv, t) / Math.max(1, groupMedian(sv, t))) : gains[k];
+      s = Math.floor(t / nt);
+      g = m > 0 ? Math.log(Math.max(1, groupMedian(lv, t) / Math.max(1, groupMedian(sv, t)))) : 0;
       w = m / (m + BARE_TILE_PRIOR);
-      tileLog[t * 3 + k] = w * Math.log(g) + (1 - w) * Math.log(gains[k]);
+      tileLog[t * 3 + k] = w * g + (1 - w) * classLog[s * 3 + k];
     }
   }
   return {tileLog: tileLog, tileSize: tileSize, tw: tw, th: th};
@@ -2589,10 +2646,13 @@ function getPixelShadows(image, nir, valid, predicted, cells, terrain, region, r
     stretch = Math.tan(regions.suns[0].altitude) / Math.tan(maskSun.altitude);
   }
   mask = n > 0 ? getShadowMask(L, nir, valid, lowered || predicted, W, H, pixelSize, band) : null;
+  if (globalThis.__ds) Object.assign(globalThis.__ds, {W: W, H: H, predicted: predicted, lowered: lowered, maskSun: maskSun, n: n, mask0: mask && mask.hard.slice(), threshold: mask && mask.threshold});
   if (mask && mask.count > 0 && mask.count <= n * MAX_MASK_RATIO * stretch) {
     addDemShadows(mask, predicted, valid, W, H);
-    addSignatureShadows(mask, image, valid, predicted, cells, terrain, region, regions.suns, W, H,
+    if (globalThis.__ds) globalThis.__ds.mask1 = mask.hard.slice();
+    if (!globalThis.DSNOSIG) addSignatureShadows(mask, image, valid, predicted, cells, terrain, region, regions.suns, W, H,
       band / pixelSize);
+    if (globalThis.__ds) globalThis.__ds.mask2 = mask.hard.slice();
     for (i = 0; i < N; i++) shadow[i] = mask.hard[i];
     return {shadow: shadow, masked: true, count: mask.count, ratio: mask.count / n, mask: mask,
       sun: maskSun || regions.suns[0]};
