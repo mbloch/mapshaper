@@ -33,10 +33,11 @@ test('HTML labels sit where the SVG labels do', async function({page}) {
     <div style="position:absolute;top:10px;left:10px">${html}</div></body>`);
   var offsets = await page.evaluate(function() {
     // the last <text> of a halo'd SVG label is its text, and the first its halo
-    var svgTexts = Array.from(document.querySelectorAll('#ms-a text')).filter(function(t) {
+    // a map's id is its file name and a hash of its HTML, e.g. ms-a-d440e0
+    var svgTexts = Array.from(document.querySelectorAll('.ms-map[id^="ms-a-"] text')).filter(function(t) {
       return !t.nextElementSibling || t.nextElementSibling.tagName != 'text';
     });
-    var htmlTexts = Array.from(document.querySelectorAll('#ms-b .ms-label-text > span:last-child'));
+    var htmlTexts = Array.from(document.querySelectorAll('.ms-map[id^="ms-b-"] .ms-label-text > span:last-child'));
     return svgTexts.map(function(t, i) {
       var a = t.getBoundingClientRect();
       var range = document.createRange();

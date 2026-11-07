@@ -405,7 +405,8 @@ export function MshpMap(gui) {
     prevViewKey = _viewKey;
     _viewKey = getViewKey();
 
-    if (prevLyr?.gui.tabular || _activeLyr?.gui.tabular) {
+    // prevLyr has no display data if it is a frame whose copy was discarded above
+    if (prevLyr?.gui?.tabular || _activeLyr?.gui.tabular) {
       needReset = true;
     } else if (prevLyr && prevLyr != _activeLyr && prevViewKey !== null &&
         prevViewKey != _viewKey) {
