@@ -2932,6 +2932,12 @@ body.pan.panning .map-layers:not(.drawing) {
 	border-radius: 7px;
 }
 
+/* The mode menu opens over the style panels (21, or 26 with a picker open)
+   and the floating toolbars (25), which share this stacking context */
+.nav-buttons:has(.pointer-btn.open) {
+	z-index: 27;
+}
+
 .nav-btn-wrapper {
 	position: relative;
 }

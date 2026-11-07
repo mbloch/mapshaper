@@ -128,7 +128,6 @@ export function InteractionMode(gui) {
     });
 
     btn.on('mouseenter', function() {
-      if (stylePanelIsActive()) return;
       btn.addClass('hover');
       if (_menuOpen) {
         clearTimeout(_menuTimeout); // prevent timed closing
@@ -264,15 +263,6 @@ export function InteractionMode(gui) {
 
   function active() {
     return _editMode && _editMode != 'off';
-  }
-
-  // A mode with a panel of its own: hovering the button must not open the mode
-  // menu over the panel.
-  function stylePanelIsActive() {
-    return _editMode == 'frame' || _editMode == 'frame_draw' ||
-      _editMode == 'label' || _editMode == 'label_style' || _editMode == 'symbols' ||
-      _editMode == 'point_style' || _editMode == 'line_style' ||
-      _editMode == 'polygon_style' || _editMode == 'tone';
   }
 
   function getAvailableModes() {
