@@ -1201,6 +1201,10 @@ body.sidebar-open .sidebar-panels {
 	color: #eddd98;
 }
 
+.console-progress-mark {
+	white-space: nowrap;
+}
+
 .console-example {
 	color: #b9dffc;
 }

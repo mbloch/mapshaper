@@ -1,3 +1,5 @@
+v0.8.0 (unreleased)
+
 v0.7.101
 * Graticules created in a frame are automatically clipped to the frame extent, with new bleed= option for adding a buffer around the frame.
 * Revert breaking changes to the way auto-fitted projections are fitted to multiple targets and to the way layers are ordered in snapshots.

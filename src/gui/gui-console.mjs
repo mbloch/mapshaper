@@ -920,8 +920,30 @@ export function Console(gui) {
     if (!progressLine) {
       progressLine = El('div').addClass('console-message').appendTo(log);
     }
-    progressLine.node().textContent += msg.glyph;
+    appendProgressGlyphs(progressLine.node(), msg.glyph);
     scrollDown();
+  }
+
+  // The line can wrap after any dot, but not within a percentage (e.g. 50%)
+  function appendProgressGlyphs(node, str) {
+    str.split(/(\d+%)/).forEach(function(part, i) {
+      var span, pieces;
+      if (i % 2 == 1) {
+        span = document.createElement('span');
+        span.className = 'console-progress-mark';
+        span.textContent = part;
+        node.appendChild(span);
+        return;
+      }
+      pieces = part.split('.');
+      pieces.forEach(function(text, j) {
+        if (text) node.appendChild(document.createTextNode(text));
+        if (j < pieces.length - 1) {
+          node.appendChild(document.createTextNode('.'));
+          node.appendChild(document.createElement('wbr'));
+        }
+      });
+    });
   }
 
   function printExample(comment, command) {
