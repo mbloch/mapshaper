@@ -1,4 +1,5 @@
 import { message, stop, warn } from '../utils/mapshaper-logging';
+import { getRequestSignal, stopIfInterrupted } from '../utils/mapshaper-interrupt';
 
 // Sources served by the Microsoft Planetary Computer data API. A mosaic is
 // registered from a search of a collection's items (filtered by year, season
@@ -80,8 +81,9 @@ export function getMosaicTileUrl(source, searchId) {
 
 // Registers the mosaic and returns the source with its tile URL; also reports
 // the dates of the imagery, and stops if none covers the area.
+// @signal optional AbortSignal that stops the requests
 // Returns {source, acquisitions}
-export async function preparePlanetaryComputerSource(source, lonLatBbox) {
+export async function preparePlanetaryComputerSource(source, lonLatBbox, signal) {
   var search = getMosaicSearch(source, lonLatBbox);
   var acquisitions = null;
   var season, json;
@@ -93,12 +95,13 @@ export async function preparePlanetaryComputerSource(source, lonLatBbox) {
     source.title = source.title.replace('{year}', source.year ? source.year + ' ' : '');
   }
   if (source.summary) {
-    acquisitions = await findAcquisitions(source, search, lonLatBbox, season);
+    acquisitions = await findAcquisitions(source, search, lonLatBbox, season, signal);
   }
   try {
-    json = await requestJSON(API + '/data/v1/mosaic/register', search);
+    json = await requestJSON(API + '/data/v1/mosaic/register', search, signal);
     if (!json.searchid) throw new Error(json.detail || 'unexpected response');
   } catch(e) {
+    stopIfInterrupted(signal);
     stop('Unable to set up the Planetary Computer mosaic (' + (e.message || e) + ')');
   }
   source.url = getMosaicTileUrl(source, json.searchid);
@@ -107,7 +110,7 @@ export async function preparePlanetaryComputerSource(source, lonLatBbox) {
 
 // Returns a summary of the items that the mosaic draws, or null if the
 // search failed
-async function findAcquisitions(source, mosaicSearch, lonLatBbox, season) {
+async function findAcquisitions(source, mosaicSearch, lonLatBbox, season, signal) {
   var search = Object.assign({}, mosaicSearch);
   var result, items, years;
   delete search.sortby;
@@ -116,8 +119,9 @@ async function findAcquisitions(source, mosaicSearch, lonLatBbox, season) {
     search = addFilters({collections: search.collections}, source.item_filter ? [source.item_filter] : []);
   }
   try {
-    result = await searchItems(search, lonLatBbox);
+    result = await searchItems(search, lonLatBbox, signal);
   } catch(e) {
+    stopIfInterrupted(signal);
     warn('Unable to look up the dates of the imagery (' + (e.message || e) + ')');
     return null;
   }
@@ -140,7 +144,7 @@ async function findAcquisitions(source, mosaicSearch, lonLatBbox, season) {
 }
 
 // Follows the search's "next" links; returns {items: [properties], complete}
-async function searchItems(search, lonLatBbox) {
+async function searchItems(search, lonLatBbox, signal) {
   var body = Object.assign({}, search, {
     bbox: getSearchBBox(lonLatBbox),
     limit: PAGE_SIZE,
@@ -152,7 +156,7 @@ async function searchItems(search, lonLatBbox) {
   var items = [];
   var json, next;
   for (var i = 0; i < MAX_PAGES; i++) {
-    json = await requestJSON(API + '/stac/v1/search', body);
+    json = await requestJSON(API + '/stac/v1/search', body, signal);
     if (!json || !Array.isArray(json.features)) {
       throw new Error(json && (json.description || json.detail) || 'unexpected response');
     }
@@ -254,23 +258,22 @@ function formatDate(str) {
   return str ? String(str).slice(0, 10) : null;
 }
 
-async function requestJSON(url, body) {
-  var controller = typeof AbortController == 'function' ? new AbortController() : null;
-  var timer = controller ? setTimeout(function() { controller.abort(); }, TIMEOUT) : null;
+async function requestJSON(url, body, signal) {
+  var request = getRequestSignal(signal, TIMEOUT);
   var resp;
   try {
     resp = await fetch(url, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(body),
-      signal: controller ? controller.signal : undefined
+      signal: request.signal
     });
     if (!resp.ok) throw new Error('HTTP status ' + resp.status);
     return await resp.json();
   } catch(e) {
-    if (controller && controller.signal.aborted) throw new Error('no response after ' + TIMEOUT / 1000 + ' seconds');
+    if (request.timedOut()) throw new Error('no response after ' + TIMEOUT / 1000 + ' seconds');
     throw e;
   } finally {
-    if (timer) clearTimeout(timer);
+    request.end();
   }
 }

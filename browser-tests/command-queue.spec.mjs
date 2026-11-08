@@ -38,6 +38,36 @@ test('Undo waits for a running command, then takes it back', async function({pag
   expect(await getUndoState(page)).toEqual({canUndo: true, canRedo: true});
 });
 
+test('the Stop button stops a -fetch that gets no response', async function({page}) {
+  // requests to this server are never answered
+  await page.route('https://tiles.invalid/**', function() {});
+  await loadFixtures(page);
+  await page.locator('.console-tab:visible').click();
+  var run = startCommand(page, '-fetch https://tiles.invalid/{z}/{x}/{y}.png encoding=rgb target=sedona-naip');
+  await page.locator('.console-stop-link').click();
+  expect(await run).toMatch(/Stopped/);
+  await expect(page.locator('.console-stop')).toBeHidden();
+  expect(await getLayerNames(page)).toEqual(['sedona-naip', 'sedona-elev']);
+  expect((await getSessionCommands(page)).join(' ')).not.toContain('-fetch');
+});
+
+test('Ctrl-C stops -deshadow', async function({page}) {
+  await loadFixtures(page);
+  var run = startCommand(page, DESHADOW);
+  await page.keyboard.press('Control+c');
+  expect(await run).toMatch(/Stopped/);
+  expect(await getSessionCommands(page)).not.toContain(DESHADOW);
+  expect((await getUndoState(page)).canUndo).toBe(false);
+});
+
+// Resolves to the command's error message, or 'ok'
+function startCommand(page, cmd) {
+  return page.evaluate(function(cmd) {
+    return window.mapshaper.undoTest.runCommand(cmd).then(function() { return 'ok'; },
+      function(e) { return e.message; });
+  }, cmd);
+}
+
 async function loadFixtures(page) {
   await page.goto('/?undo=on&undo-test=on&files=' + encodeURIComponent(FIXTURES));
   await page.waitForFunction(function() {

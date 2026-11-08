@@ -9,6 +9,7 @@ import { getHillshadeCellSizes } from './mapshaper-hillshade';
 import { getColoredRaster, rasterCanBeToned } from './mapshaper-tone';
 import { endProgress, message, progress, stop, verbose, warn, warnOnce } from '../utils/mapshaper-logging';
 import { startWorkerPool } from '../utils/mapshaper-worker-pool';
+import { stopIfInterrupted, whenInterrupted } from '../utils/mapshaper-interrupt';
 import { getProgressMeter } from '../utils/mapshaper-progress-meter';
 
 var DESHADOW_WORKER_SCRIPT = 'deshadow-worker.js';
@@ -36,9 +37,10 @@ var MAX_DEM_RATIO = 6;
 // @nirSource optional {layer, dataset} of a near-infrared raster (band 1)
 // @resume function called after each wait for the worker and before printing
 //   progress (job.resumeCommand())
+// @signal optional AbortSignal that stops the worker (see mapshaper-interrupt.mjs)
 // Returns a new layer, or no layers if the image couldn't be relit; -deshadow
 // replaces the target unless + is used
-cmd.deshadow = async function(lyr, dataset, dem, nirSource, opts, resume) {
+cmd.deshadow = async function(lyr, dataset, dem, nirSource, opts, resume, signal) {
   var grid, demGrid, crs, cells, pixelW, pixelH, pixelSize, demCells, demPixelSize, demSpacing, coarseDem;
   var terrain, nir, path, result, out;
   resume = resume || function() {};
@@ -93,11 +95,12 @@ cmd.deshadow = async function(lyr, dataset, dem, nirSource, opts, resume) {
         nodata: grid.nodata},
       terrain: terrain, nir: nir, pixelSize: pixelSize, demPixelSize: demPixelSize, path: path,
       options: {balancedThreshold: !!opts.balanced_threshold || coarseDem}
-    }, printer.update);
+    }, printer.update, signal);
   } finally {
     resume();
     printer.end(!!(result && result.samples));
   }
+  stopIfInterrupted(signal);
   if (result.sun && result.sun.score >= MIN_SUN_FIT) {
     verbose(formatSun(result.sun, path));
   }
@@ -138,22 +141,31 @@ cmd.deshadow = async function(lyr, dataset, dem, nirSource, opts, resume) {
 };
 
 // Runs deshadowImage() in a worker, so that the GUI stays responsive, or in
-// this thread if the image is small or a worker can't be started
+// this thread if the image is small or a worker can't be started (where
+// @signal can't stop it)
 // @task {image, terrain, nir, pixelSize, demPixelSize, path, options}: its
 //   arrays other than the image's samples can't be used afterwards
-async function runDeshadowImage(task, onProgress) {
+// Returns deshadowImage()'s result, or null if @signal aborted
+async function runDeshadowImage(task, onProgress, signal) {
   var image = task.image;
   var pool = image.width * image.height >= MIN_WORKER_PIXELS ?
     await startWorkerPool(DESHADOW_WORKER_SCRIPT, 1) : null;
+  if (signal && signal.aborted) {
+    if (pool) pool.close();
+    return null;
+  }
   if (!pool) {
     return deshadowImage(image, task.terrain, task.nir, task.pixelSize, task.demPixelSize, task.path,
       onProgress, task.options);
   }
   try {
     // the worker gets a copy of the samples, which stay with the source layer
-    return await pool.run(0, Object.assign({}, task, {
-      image: Object.assign({}, image, {samples: image.samples.slice()})
-    }), onProgress);
+    return await Promise.race([
+      pool.run(0, Object.assign({}, task, {
+        image: Object.assign({}, image, {samples: image.samples.slice()})
+      }), onProgress),
+      whenInterrupted(signal).then(function() { return null; })
+    ]);
   } finally {
     pool.close();
   }

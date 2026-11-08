@@ -196,6 +196,7 @@ import * as ToneCommand from './commands/mapshaper-tone';
 import * as RasterTiles from './rasters/mapshaper-raster-tiles';
 import * as TerrainSmoothing from './rasters/mapshaper-terrain-smoothing';
 import * as WorkerPool from './utils/mapshaper-worker-pool';
+import * as Interrupt from './utils/mapshaper-interrupt';
 import * as WebPDecoder from './fetch/mapshaper-webp-decoder';
 import * as Fetch from './commands/mapshaper-fetch';
 import * as FetchSources from './fetch/mapshaper-fetch-sources';
@@ -374,6 +375,7 @@ Object.assign(internal,
   RasterTiles,
   TerrainSmoothing,
   WorkerPool,
+  Interrupt,
   WebPDecoder,
   Fetch,
   FetchSources,

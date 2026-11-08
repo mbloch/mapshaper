@@ -38,6 +38,11 @@ export function Console(gui) {
 
   var activeSession = null; // see createCommandSession()
   var runningCommands = null; // see runMapshaperCommands()
+  var interruptibleJob = null; // the job of a running command that can be stopped
+  var stopTimer = null;
+  var stopLine = El('div').addClass('console-stop').appendTo(content).hide();
+  var stopLink = El('span').addClass('console-stop-link').appendTo(stopLine).text('Stop');
+  var stopStatus = El('span').appendTo(stopLine);
 
   // expose this function, so other components can run commands (e.g. box tool)
   this.runMapshaperCommands = runMapshaperCommands;
@@ -60,6 +65,8 @@ export function Console(gui) {
   consoleMessage(PROMPT);
   gui.keyboard.on('keydown', onKeyDown);
   window.addEventListener('beforeunload', saveHistory); // save history if console is open on refresh
+
+  GUI.onClick(stopLink, interruptCommand);
 
   GUI.onClick(el, function(e) {
     var targ = El(e.target);
@@ -198,6 +205,15 @@ export function Console(gui) {
         typingInConsole = inputEl && inputEl == input.node(),
         inputText = readCommandLine(),
         capture = false;
+
+    // Ctrl-C stops a running command, like in a terminal, unless it would
+    // copy selected text (Windows, Linux)
+    if (kc == 67 && e.ctrlKey && !e.metaKey && !e.altKey && interruptibleJob &&
+        !String(window.getSelection() || '')) {
+      interruptCommand();
+      e.preventDefault();
+      return;
+    }
 
     // esc key
     if (kc == 27) {
@@ -686,11 +702,15 @@ export function Console(gui) {
     // Notify listeners (e.g. comparison overlay) before the model is mutated,
     // so they can snapshot the pre-command state of the active layer.
     gui.dispatchEvent('command_start', {commands: commands});
+    if (commands.some(function(cmd) { return internal.commandCanBeInterrupted(cmd.name); })) {
+      startInterruptible(job);
+    }
     try {
       // -quiet is a setting, read and removed by runParsedCommands()
       internal.runParsedCommands(quiet ? [{name: 'quiet', options: {}}].concat(commands) : commands,
         job, onCommandsDone);
     } catch(e) {
+      endInterruptible();
       if (undoTransaction) {
         clearActiveUndoTransaction(undoTransaction);
       }
@@ -698,6 +718,7 @@ export function Console(gui) {
     }
 
     function onCommandsDone(err) {
+      endInterruptible();
       var flags = getCommandFlags(commands),
           historyIds = [],
           active2 = model.getActiveLayer(),
@@ -768,6 +789,31 @@ export function Console(gui) {
         done(err, flags);
       });
     }
+  }
+
+  // The Stop button shows if the command is still running after a moment,
+  // so that it doesn't flash for quick ones
+  function startInterruptible(job) {
+    interruptibleJob = job;
+    stopLink.show();
+    stopStatus.text(' (Ctrl-C)');
+    stopTimer = setTimeout(function() {
+      stopLine.show();
+      scrollDown();
+    }, 1000);
+  }
+
+  function endInterruptible() {
+    interruptibleJob = null;
+    clearTimeout(stopTimer);
+    stopLine.hide();
+  }
+
+  function interruptCommand() {
+    if (!interruptibleJob) return;
+    interruptibleJob.interrupt();
+    stopLink.hide();
+    stopStatus.text('Stopping...');
   }
 
   function createCommandUndoTransaction(commandString) {

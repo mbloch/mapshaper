@@ -1,6 +1,7 @@
 import { runningInBrowser } from '../mapshaper-env';
 import require from '../mapshaper-require';
 import { endProgress, progress, stop } from '../utils/mapshaper-logging';
+import { getRequestSignal, interruptibleDelay, stopIfInterrupted } from '../utils/mapshaper-interrupt';
 import { getProgressMeter } from '../utils/mapshaper-progress-meter';
 import { decodeBsqTile, decodeElevationPixels } from './mapshaper-elevation-decoding';
 import { usesBBoxToken } from './mapshaper-fetch-sources';
@@ -19,8 +20,9 @@ var FETCH_MARKS_TIME = 5000;
 // Fetches the tiles in @range and composites them into one grid in Web
 // Mercator: a Float32 grid of elevations, or for imagery (encoding "rgb") an
 // RGB grid whose coverage mask excludes missing tiles and transparent pixels.
+// @signal optional AbortSignal that stops the fetch
 // Returns {grid, missing, headerValues}
-export async function fetchTileMosaic(source, range) {
+export async function fetchTileMosaic(source, range, signal) {
   var tileSize = source.tile_size;
   var cols = range.x1 - range.x0 + 1;
   var rows = range.y1 - range.y0 + 1;
@@ -44,10 +46,11 @@ export async function fetchTileMosaic(source, range) {
   var meter = getProgressMeter({steps: true, marksTime: FETCH_MARKS_TIME}), t0 = Date.now();
   try {
     await runWithConcurrency(jobs, CONCURRENCY, fetchJob);
-    if (failed < jobs.length) progress(meter.finish(Date.now() - t0));
+    if (failed < jobs.length && !(signal && signal.aborted)) progress(meter.finish(Date.now() - t0));
   } finally {
     endProgress();
   }
+  stopIfInterrupted(signal);
   if (failed == jobs.length) {
     stop('Unable to fetch', failure.url + ' (' + failure.error + ')' +
       (runningInBrowser() ? '. Possible causes include no network connection, or a server that does not allow cross-domain requests (CORS).' : ''));
@@ -78,8 +81,10 @@ export async function fetchTileMosaic(source, range) {
 
   async function fetchJob(job) {
     var url = getTileUrl(source, range.z, wrapTileX(job.x, range.z), job.y);
-    var tile = await fetchTile(url, source);
-    var x0, y0;
+    var tile, x0, y0;
+    if (signal && signal.aborted) return;
+    tile = await fetchTile(url, source, signal);
+    if (signal && signal.aborted) return;
     progress(meter.dot() + meter.update(Date.now() - t0, ++fetched / jobs.length));
     if (!tile) {
       missing++;
@@ -137,19 +142,20 @@ function copyTile(elev, tileSize, dest, destWidth, x0, y0) {
 }
 
 // Returns {rgba, width, height, header} ({elevations, ...} for bsq tiles),
-// null if the tile does not exist, or {url, error} if it could not be fetched
-async function fetchTile(url, source) {
-  var resp, buf, decoded, err, controller, timer;
+// null if the tile does not exist (or @signal aborted), or {url, error} if it
+// could not be fetched
+async function fetchTile(url, source, signal) {
+  var resp, buf, decoded, err, request;
   var retries = source.retries >= 0 ? source.retries : RETRIES;
   if (typeof fetch != 'function') {
     stop('Fetching data requires a JavaScript runtime with fetch() (Node 18 or later)');
   }
   for (var attempt = 0; attempt <= retries; attempt++) {
-    if (attempt > 0) await delay(RETRY_DELAY * Math.pow(2, attempt - 1));
-    controller = typeof AbortController == 'function' ? new AbortController() : null;
-    timer = controller ? setTimeout(function() { controller.abort(); }, TIMEOUT) : null;
+    if (attempt > 0) await interruptibleDelay(RETRY_DELAY * Math.pow(2, attempt - 1), signal);
+    if (signal && signal.aborted) return null;
+    request = getRequestSignal(signal, TIMEOUT);
     try {
-      resp = await fetch(url, controller ? {signal: controller.signal} : undefined);
+      resp = await fetch(url, request.signal ? {signal: request.signal} : undefined);
       // S3 answers 403 for missing keys; the Planetary Computer answers 204 for empty tiles
       if (resp.status == 404 || resp.status == 403 || resp.status == 204) return null;
       if (!resp.ok) throw new Error('HTTP status ' + resp.status);
@@ -161,9 +167,10 @@ async function fetchTile(url, source) {
         resp.headers.get(source.sources_header) : null;
       return decoded;
     } catch(e) {
-      err = controller && controller.signal.aborted ? new Error('no response after ' + TIMEOUT / 1000 + ' seconds') : e;
+      if (signal && signal.aborted) return null;
+      err = request.timedOut() ? new Error('no response after ' + TIMEOUT / 1000 + ' seconds') : e;
     } finally {
-      if (timer) clearTimeout(timer);
+      request.end();
     }
   }
   return {url: url, error: err && err.message || String(err)};
@@ -201,10 +208,6 @@ async function decodeImageInBrowser(buf, type) {
   data = ctx.getImageData(0, 0, w, h).data;
   if (bitmap.close) bitmap.close();
   return {rgba: data, width: w, height: h};
-}
-
-function delay(ms) {
-  return new Promise(function(resolve) { setTimeout(resolve, ms); });
 }
 
 async function runWithConcurrency(items, limit, fn) {

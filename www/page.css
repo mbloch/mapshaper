@@ -1205,6 +1205,19 @@ body.sidebar-open .sidebar-panels {
 	white-space: nowrap;
 }
 
+.console-stop {
+	padding-top: 4px !important;
+	color: #eddd98;
+}
+
+/* more specific than .selectable *, which gives the console a text cursor */
+.console-buffer .console-stop-link {
+	cursor: pointer;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	user-select: none;
+}
+
 .console-example {
 	color: #b9dffc;
 }

@@ -387,7 +387,7 @@ export async function runCommand(command, job) {
       outputLayers = applyCommandToEachLayer(cmd.contours, targetLayers, targetDataset, opts);
 
     } else if (name == 'fetch') {
-      let fetched = await cmd.fetch(job.catalog, targets, opts);
+      let fetched = await cmd.fetch(job.catalog, targets, opts, job.signal);
       job.resumeCommand();
       if (fetched) addFetchedDataset(job.catalog, fetched);
 
@@ -422,7 +422,7 @@ export async function runCommand(command, job) {
       outputLayers = [];
       let relit = [];
       for (let lyr of targetLayers) {
-        let out = await cmd.deshadow(lyr, targetDataset, dem, nir, opts, job.resumeCommand);
+        let out = await cmd.deshadow(lyr, targetDataset, dem, nir, opts, job.resumeCommand, job.signal);
         outputLayers = outputLayers.concat(out);
         if (out.length > 0) relit.push(lyr);
       }

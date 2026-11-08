@@ -7,6 +7,7 @@ import { stashVar, clearStash } from './mapshaper-stash';
 // collisions across batches can be detected by writeFiles().
 export function Job(catalog, seed) {
   var currentCmd;
+  var controller = typeof AbortController == 'function' ? new AbortController() : null;
   seed = seed || {};
 
   var job = {
@@ -18,7 +19,13 @@ export function Job(catalog, seed) {
     // Tracks resolved output paths written so far in this run. We only ever
     // store path strings here, never file content, so the per-write memory
     // cost is negligible. See writeFiles() in mapshaper-file-export.mjs.
-    output_files: seed.output_files || []
+    output_files: seed.output_files || [],
+    // aborted by interrupt(); see mapshaper-interrupt.mjs
+    signal: controller ? controller.signal : null
+  };
+
+  job.interrupt = function() {
+    if (controller) controller.abort();
   };
 
   job.initSettings = function(o) {

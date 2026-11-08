@@ -63,7 +63,8 @@ var METERS_PER_DEGREE = 6371008.8 * Math.PI / 180;
 // Fetches data for the target frame and returns a new dataset; the caller
 // adds it to the catalog (see addFetchedDataset()).
 // "-fetch sources" lists the presets and returns null
-cmd.fetch = async function(catalog, targets, opts) {
+// @signal optional AbortSignal that stops the fetch (see mapshaper-interrupt.mjs)
+cmd.fetch = async function(catalog, targets, opts, signal) {
   if (String(opts.source).toLowerCase() == 'sources') {
     if (runningInBrowser()) {
       message({type: 'mapshaper-console-help', lines: getFetchSourceList()});
@@ -74,7 +75,7 @@ cmd.fetch = async function(catalog, targets, opts) {
   }
   var source = resolveFetchSource(opts);
   var extent = getFetchExtent(catalog, targets, opts);
-  var dataset = await fetchTileDataset(source, extent, opts);
+  var dataset = await fetchTileDataset(source, extent, opts, signal);
   return {dataset: dataset, extent: extent};
 };
 
@@ -181,7 +182,7 @@ export function getExtentLonLatBounds(bbox, crs) {
   ];
 }
 
-async function fetchTileDataset(source, extent, opts) {
+async function fetchTileDataset(source, extent, opts, signal) {
   var lonLatBbox = getExtentLonLatBounds(extent.bbox, extent.crsInfo.crs);
   var centerLat = (lonLatBbox[1] + lonLatBbox[3]) / 2;
   var maxTiles = opts.max_tiles > 0 ? opts.max_tiles : DEFAULT_MAX_TILES;
@@ -206,13 +207,13 @@ async function fetchTileDataset(source, extent, opts) {
       '. Use a lower raster-res= or zoom= value, or raise max-tiles=');
   }
   if (source.adapter == 'planetary-computer') {
-    prepared = await preparePlanetaryComputerSource(source, lonLatBbox);
+    prepared = await preparePlanetaryComputerSource(source, lonLatBbox, signal);
     source = prepared.source;
     acquisitions = prepared.acquisitions;
   }
   message('Fetching ' + tileCount + ' tile' + (tileCount == 1 ? '' : 's') + ' at zoom ' + z +
     ' from ' + (source.title || source.url));
-  mosaic = await fetchTileMosaic(source, range);
+  mosaic = await fetchTileMosaic(source, range, signal);
   if (mosaic.missing == tileCount) {
     stop('No tiles were found for this area');
   }
