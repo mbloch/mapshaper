@@ -88,6 +88,13 @@ var REGION_SHARE = 0.7;
 var SMALL_AREA = 1100; // square meters
 var MIN_BAND = 24;
 var BAND_DEM_PIXELS = 2.4;
+// see getDarkPixels() and getDarkLikelihoods()
+var DARK_TILE = 1000; // meters
+var MAX_DARK_TILES = 400;
+var DARK_BINS = 64;
+var DARK_PRIOR = 100;
+var DARK_ROUNDS = 20;
+var MIN_DARK_SHARE = 0.01;
 // The mask is used if it's at most this many times the size of the DEM's
 // shadows, and of their lengthening by the lower sun the mask is made from
 // (see lowerSunAltitude()); larger means it has taken in other dark areas,
@@ -270,12 +277,13 @@ export function castTerrainShadow(Z, w, h, cellW, cellH, sun, region) {
   var shift = (byRow ? sx : sy) * step;
   var rise = step * Math.tan(sun.altitude);
   var prev = new Float32Array(n).fill(-Infinity), curr = new Float32Array(n);
-  var tmp, line, k, a, b, j0, f, s, z, i, x, y;
+  var di = byRow ? 1 : w, k0 = byRow ? r.x0 : r.y0, k1 = byRow ? r.x1 : r.y1;
+  var tmp, line, k, a, b, j0, f, s, z, i, inRegion;
   for (var m = 0; m < lines; m++) {
     // lines nearest the sun first
     line = lineStep > 0 ? lines - 1 - m : m;
-    for (k = 0; k < n; k++) {
-      i = byRow ? line * w + k : k * w + line;
+    inRegion = byRow ? line >= r.y0 && line < r.y1 : line >= r.x0 && line < r.x1;
+    for (k = 0, i = byRow ? line * w : line; k < n; k++, i += di) {
       f = k + shift;
       j0 = Math.floor(f);
       f -= j0;
@@ -286,11 +294,7 @@ export function castTerrainShadow(Z, w, h, cellW, cellH, sun, region) {
       z = Z[i];
       if (z > -Infinity) {
         // a little above the ground, so interpolation doesn't shade flat ground
-        if (s > z + 0.2) {
-          x = byRow ? k : line;
-          y = byRow ? line : k;
-          if (x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1) out[i] = 1;
-        }
+        if (s > z + 0.2 && inRegion && k >= k0 && k < k1) out[i] = 1;
         curr[k] = s > z ? s : z;
       } else {
         curr[k] = s;
@@ -1015,9 +1019,9 @@ function getPixelLighting(lin, valid, I, W, H, band) {
   var near, r, mLit, wLit, mShade, wShade, mI, i, a, b, s;
   for (i = 0; i < N; i++) {
     isShadow[i] = I[i] === 0 ? 1 : 0;
-    logY[i] = Math.log(0.2126 * lin[0][i] + 0.7152 * lin[1][i] + 0.0722 * lin[2][i] + 1e-4);
+    logY[i] = Math.log(getLinearLuma(lin, i) + 1e-4);
   }
-  near = boxMean(isShadow, W, H, band);
+  near = boxMean(isShadow, W, H, band, isShadow);
   for (i = 0; i < N; i++) {
     if (!valid[i] || out[i] !== out[i]) continue;
     if (near[i] > 0.999) {
@@ -1030,13 +1034,13 @@ function getPixelLighting(lin, valid, I, W, H, band) {
   r = Math.round(band * SHADOW_REFERENCE);
   wLit = boxMean(lit, W, H, r);
   wShade = boxMean(shade, W, H, r);
-  mI = boxMean(litI, W, H, r);
+  mI = boxMean(litI, W, H, r, litI);
   for (i = 0; i < N; i++) {
     lit[i] *= logY[i];
     shade[i] *= logY[i];
   }
-  mLit = boxMean(lit, W, H, r);
-  mShade = boxMean(shade, W, H, r);
+  mLit = boxMean(lit, W, H, r, lit);
+  mShade = boxMean(shade, W, H, r, shade);
   for (i = 0; i < N; i++) {
     if (!(near[i] > 0.001 && near[i] < 0.999 && wLit[i] > 0.01 && wShade[i] > 0.01)) continue;
     a = mLit[i] / wLit[i];
@@ -1067,12 +1071,12 @@ function getPixelLighting(lin, valid, I, W, H, band) {
 export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path) {
   var W = image.width, H = image.height, N = W * H;
   var valid = getValidPixels(image);
-  var lin = getLinearBands(image.samples, image.bands, N);
+  var lin = getLinearImage(image);
   var region = getTerrainRegion(terrain, W, H);
   var cells = getPixelCells(terrain, W, H);
   var result = {samples: null, sun: null, suns: null, diffuse: null, shadowGains: null,
     shadowShare: 0, failure: null};
-  var level = getFitLevel(terrain.Z, getCellMeans(getLinearLuma(lin, N), W, H, terrain, valid),
+  var level = getFitLevel(terrain.Z, getCellMeans(getLinearLumas(lin, N), W, H, terrain, valid),
     terrain.width, terrain.height, terrain.cellWidth, terrain.cellHeight, region, FIT_CELLS, MAX_FIT_CELL);
   var sun = path ? fitSunPath(level, path) : fitFreeSun(level, getFitLevel(level.Z, level.B,
     level.w, level.h, level.cellW, level.cellH, level.region,
@@ -1119,7 +1123,7 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
     return result;
   }
   if (byShadows) {
-    classes = fitGroundClasses(image, lin, valid, hardI, flat, all.c, W, H, margin);
+    classes = fitGroundClasses(lin, valid, hardI, flat, all.c, W, H, margin);
     ratios = classes.ratios;
     litRatios = fitSlopeRatios(lin, valid, hardI, W, H, classes.labels, ratios.length, tile, margin)
       .map(function(o) { return blendDiffuseRatios(o, {c: getNeutralRatios(all.c)}); });
@@ -1171,7 +1175,20 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
 //   (samples is null if the gains fail the color check)
 function relightMaskedImage(image, lin, valid, labels, ratios, litRatios, flat, direct, I, shadows, W, H,
     pixelSize, margin) {
-  var N = W * H, hard = shadows.mask.hard, litI = new Float32Array(N), i, b, gains, lit, relit;
+  var N = W * H, lit, relit;
+  lit = Object.assign({}, image, {samples: correctSunlitPixels(image, lin, valid, labels, ratios, litRatios,
+    flat, direct, shadows.mask.hard, W, H, pixelSize)});
+  relit = relightShadows(lit, getLuma(lit.samples, lit.bands, N), valid, shadows.mask, pixelSize, shadows.sun);
+  if (relit && relit.samples) {
+    relit.samples = rectifySamples(image, lin, relit.samples, valid, I, flat, pixelSize, margin);
+  }
+  return relit;
+}
+
+// A copy of @image's samples with the pixels outside the mask @hard corrected
+// for their lighting (see getPixelGains())
+function correctSunlitPixels(image, lin, valid, labels, ratios, litRatios, flat, direct, hard, W, H, pixelSize) {
+  var N = W * H, litI = new Float32Array(N), i, b, gains;
   // ground outside the mask is sunlit, even where the DEM faces away from the sun
   for (i = 0; i < N; i++) litI[i] = Math.max(direct[i], LIT_FLOOR * flat[i]);
   gains = getPixelGains(lin, labels, ratios, litRatios, flat, litI, litI, valid, W, H, pixelSize);
@@ -1179,14 +1196,7 @@ function relightMaskedImage(image, lin, valid, labels, ratios, litRatios, flat, 
     if (hard[i]) for (b = 0; b < 3; b++) gains[b][i] = NaN;
   }
   limitBrightness(lin, gains, valid, getLitCap(lin, valid, direct, flat, hard));
-  lit = Object.assign({}, image, {samples: writeCorrectedSamples(image, lin, gains, valid)});
-  relit = relightShadows(lit, getLuma(lit.samples, lit.bands, N), valid, shadows.mask, pixelSize, shadows.sun);
-  if (globalThis.__ds) globalThis.__ds.lit = lit.samples;
-  if (relit && relit.samples) {
-    if (globalThis.__ds) globalThis.__ds.relit = relit.samples.slice();
-    relit.samples = rectifySamples(image, lin, relit.samples, valid, I, flat, pixelSize, margin);
-  }
-  return relit;
+  return writeCorrectedSamples(image, lin, gains, valid);
 }
 
 // @samples corrected copy of @image's samples, kept within the colors of
@@ -1195,23 +1205,24 @@ function relightMaskedImage(image, lin, valid, labels, ratios, litRatios, flat, 
 function rectifySamples(image, lin, samples, valid, I, flat, pixelSize, margin) {
   var W = image.width, H = image.height, N = W * H, bands = image.bands, src = image.samples;
   var decode = getDecodeTable(), encode = getEncodeTable(), scale = encode.length - 1;
-  var gains = [0, 1, 2].map(function() { return new Float32Array(N).fill(1); });
-  var before, i, b, j, v, changed;
-  for (i = 0; i < N; i++) {
-    for (b = 0; b < 3; b++) {
-      j = i * bands + b;
-      if (samples[j] != src[j] && lin[b][i] > 0) gains[b][i] = decode[samples[j]] / lin[b][i];
-    }
+  var gains = [0, 1, 2].map(function() { return new Float32Array(N); });
+  var i, b, v, changed;
+  // the gain from @image's sample j to @samples', as a Float32Array keeps it
+  function getSampleGain(j) {
+    var o = decode[src[j]];
+    return samples[j] != src[j] && o > 0 ? Math.fround(decode[samples[j]] / o) : 1;
   }
-  before = gains.map(function(arr) { return arr.slice(); });
-  rectifyColors(lin, gains, valid, I, I, flat, W, H, pixelSize, margin, null);
+  for (i = 0; i < N; i++) {
+    for (b = 0; b < 3; b++) gains[b][i] = getSampleGain(i * bands + b);
+  }
+  rectifyColors(lin, gains, valid, I, I, flat, W, H, pixelSize, margin);
   for (i = 0; i < N; i++) {
     for (b = 0, changed = false; b < 3; b++) {
-      if (gains[b][i] !== before[b][i]) changed = true;
+      if (gains[b][i] !== getSampleGain(i * bands + b)) changed = true;
     }
     if (!changed) continue;
     for (b = 0; b < 3; b++) {
-      v = lin[b][i] * gains[b][i];
+      v = decode[src[i * bands + b]] * gains[b][i];
       samples[i * bands + b] = v >= 1 ? 255 : encode[Math.round(Math.sqrt(v) * scale)];
     }
   }
@@ -1225,7 +1236,7 @@ function getLitCap(lin, valid, I, flat, shadow) {
   var hist = new Float64Array(1024), n = 0, t = 0, i, y, v;
   for (i = 0; i < I.length; i++) {
     if (!valid[i] || (shadow && shadow[i]) || !(Math.abs(I[i] - flat[i]) < FLAT_RANGE)) continue;
-    y = 0.2126 * lin[0][i] + 0.7152 * lin[1][i] + 0.0722 * lin[2][i];
+    y = getLinearLuma(lin, i);
     hist[Math.min(1023, Math.floor(y * 1024))]++;
     n++;
   }
@@ -1242,12 +1253,14 @@ function getLitCap(lin, valid, I, flat, shadow) {
 // than sunlit flat ground is likely lit more than the DEM shows (e.g. a cliff
 // smoothed into a slope)
 function limitBrightness(lin, gains, valid, cap) {
-  var N = lin[0].length, i, b, y, yg, t, g;
+  var N = gains[0].length, src = lin.samples, bands = lin.bands, decode = lin.decode;
+  var i, j, b, y, yg, t, g;
   for (i = 0; i < N; i++) {
     if (!valid[i] || !(gains[0][i] > 1 || gains[1][i] > 1 || gains[2][i] > 1)) continue;
-    y = 0.2126 * lin[0][i] + 0.7152 * lin[1][i] + 0.0722 * lin[2][i];
-    yg = 0.2126 * applyGain(lin[0][i], gains[0][i]) + 0.7152 * applyGain(lin[1][i], gains[1][i]) +
-      0.0722 * applyGain(lin[2][i], gains[2][i]);
+    y = getLinearLuma(lin, i);
+    j = i * bands;
+    yg = 0.2126 * applyGain(decode[src[j]], gains[0][i]) + 0.7152 * applyGain(decode[src[j + 1]], gains[1][i]) +
+      0.0722 * applyGain(decode[src[j + 2]], gains[2][i]);
     if (!(yg > cap && yg > y && y > 0)) continue;
     t = Math.log(Math.max(cap, y) / y) / Math.log(yg / y);
     for (b = 0; b < 3; b++) {
@@ -1275,7 +1288,14 @@ function rectifyColors(lin, gains, valid, hardI, pixelI, flat, W, H, pixelSize, 
   var hist = new Uint32Array(tw * th * size), sum = new Float64Array(size);
   var local = makeEnvelope(), whole = makeEnvelope();
   var counts = new Float64Array(cells), shadow = new Float32Array(N), near, out = [0, 0, 0], f = [0, 0, 0];
+  var src = lin.samples, bands = lin.bands, decode = lin.decode;
   var i, j, b, x, y, tx, ty, l, k, o, y0, y1, cr, cb, u, v, sc, env, x0, x1;
+
+  function getLinearY(i) {
+    var j = i * bands;
+    return LUMA_WEIGHTS[0] * decode[src[j]] + LUMA_WEIGHTS[1] * decode[src[j + 1]] +
+      LUMA_WEIGHTS[2] * decode[src[j + 2]];
+  }
 
   function makeEnvelope() {
     return {hist: new Float64Array(size), total: new Float64Array(LB), min: new Float64Array(LB),
@@ -1299,7 +1319,7 @@ function rectifyColors(lin, gains, valid, hardI, pixelI, flat, W, H, pixelSize, 
 
   // luma bin, color bin and log color ratios of the corrected color of pixel i
   function measure(i) {
-    for (b = 0; b < 3; b++) out[b] = applyGain(lin[b][i], gains[b][i]);
+    for (b = 0; b < 3; b++) out[b] = applyGain(decode[src[i * bands + b]], gains[b][i]);
     y1 = LUMA_WEIGHTS[0] * out[0] + LUMA_WEIGHTS[1] * out[1] + LUMA_WEIGHTS[2] * out[2];
     l = Math.max(0, Math.min(LB - 1, Math.floor(-Math.log(y1 + 1e-6) / COLOR_LUMA_STEP)));
     cr = Math.log((out[0] + 1e-3) / (out[1] + 1e-3));
@@ -1338,10 +1358,10 @@ function rectifyColors(lin, gains, valid, hardI, pixelI, flat, W, H, pixelSize, 
   }
 
   for (i = 0; i < N; i++) shadow[i] = hardI[i] === 0 ? 1 : 0;
-  near = boxMean(shadow, W, H, margin);
+  near = boxMean(shadow, W, H, margin, shadow);
   for (i = 0; i < N; i++) {
     if (!valid[i] || !(hardI[i] > 0) || near[i] > 0.001 || !(pixelI[i] >= LIT_SHARE * flat[i])) continue;
-    y0 = LUMA_WEIGHTS[0] * lin[0][i] + LUMA_WEIGHTS[1] * lin[1][i] + LUMA_WEIGHTS[2] * lin[2][i];
+    y0 = getLinearY(i);
     measure(i);
     if (!(y1 < y0 * BOOSTED_GAIN)) continue;
     hist[(Math.floor(i / W / T) * tw + Math.floor(i % W / T)) * size + k]++;
@@ -1364,7 +1384,7 @@ function rectifyColors(lin, gains, valid, hardI, pixelI, flat, W, H, pixelSize, 
         for (x = x0; x < x1; x++) {
           i = y * W + x;
           if (!valid[i] || !(gains[0][i] === gains[0][i])) continue;
-          y0 = LUMA_WEIGHTS[0] * lin[0][i] + LUMA_WEIGHTS[1] * lin[1][i] + LUMA_WEIGHTS[2] * lin[2][i];
+          y0 = getLinearY(i);
           measure(i);
           if (!(y1 >= y0 * BOOSTED_GAIN)) continue;
           env = local.total[l] >= MIN_COLOR_SAMPLES ? local : whole;
@@ -1383,7 +1403,7 @@ function rectifyColors(lin, gains, valid, hardI, pixelI, flat, W, H, pixelSize, 
           f[2] = Math.exp(Math.max(v, Math.min(v + step, cb)));
           sc = y1 / (LUMA_WEIGHTS[0] * f[0] + LUMA_WEIGHTS[1] + LUMA_WEIGHTS[2] * f[2]);
           for (b = 0; b < 3; b++) {
-            o = lin[b][i];
+            o = decode[src[i * bands + b]];
             if (o > 0) gains[b][i] = Math.min(MAX_GAIN, f[b] * sc / o);
           }
         }
@@ -1448,7 +1468,7 @@ function getTileMedians(image, valid, I, flat, W, H, labels, K, tile, margin) {
   var tw = Math.ceil(W / tile), th = Math.ceil(H / tile), nt = tw * th;
   var inShadow = new Float32Array(N), near, hist, isum, x, y, i, g, o, b, k, n, nl, a, out = [];
   for (i = 0; i < N; i++) inShadow[i] = I[i] === 0 ? 1 : 0;
-  near = boxMean(inShadow, W, H, margin);
+  near = boxMean(inShadow, W, H, margin, inShadow);
   hist = new Uint32Array(K * nt * 2 * 3 * 256);
   isum = new Float64Array(K * nt);
   for (y = 0; y < H; y++) {
@@ -1507,7 +1527,7 @@ function getHistogramMedian(hist, o, n) {
 //   was fitted in, for each band (c is NaN with no tiles)
 export function fitDiffuseRatios(lin, valid, I, W, H, labels, K, tile) {
   var tw = Math.ceil(W / tile), th = Math.ceil(H / tile), nt = tw * th, S = 12;
-  var acc = new Float64Array(K * nt * S);
+  var acc = new Float64Array(K * nt * S), src = lin.samples, bands = lin.bands, decode = lin.decode;
   var x, y, i, a, o, b, v, k, t, n, mx, va, my, vy, cov, slope, icpt, ratios, out = [];
   for (y = 0; y < H; y++) {
     for (x = 0; x < W; x++) {
@@ -1520,7 +1540,7 @@ export function fitDiffuseRatios(lin, valid, I, W, H, labels, K, tile) {
       acc[o + 1] += a;
       acc[o + 2] += a * a;
       for (b = 0; b < 3; b++) {
-        v = lin[b][i];
+        v = decode[src[i * bands + b]];
         acc[o + 3 + b] += v;
         acc[o + 6 + b] += v * v;
         acc[o + 9 + b] += a * v;
@@ -1573,7 +1593,7 @@ function getLogSpread(arr) {
 function fitSlopeRatios(lin, valid, I, W, H, labels, K, tile, margin) {
   var N = W * H, inShadow = new Float32Array(N), lit = new Float32Array(N).fill(NaN), near, i;
   for (i = 0; i < N; i++) inShadow[i] = I[i] === 0 ? 1 : 0;
-  near = boxMean(inShadow, W, H, margin);
+  near = boxMean(inShadow, W, H, margin, inShadow);
   for (i = 0; i < N; i++) {
     if (I[i] > 0 && near[i] < 0.001) lit[i] = I[i];
   }
@@ -1612,13 +1632,16 @@ function blendDiffuseRatios(cls, all) {
 // @I, @flat I and I of flat ground, of each pixel
 // @all c of the whole image
 // Returns {labels, ratios}: ratios has c of each class
-export function fitGroundClasses(image, lin, valid, I, flat, all, W, H, margin) {
-  var N = W * H, src = image.samples, bands = image.bands, decode = getDecodeTable();
+export function fitGroundClasses(lin, valid, I, flat, all, W, H, margin) {
+  var N = W * H, src = lin.samples, bands = lin.bands, decode = lin.decode;
   var group = getRatioGroups(valid, I, flat, W, H, margin);
   var labels = new Uint8Array(N), step = Math.max(1, Math.floor(N / 20000));
   var samples = [], f = new Float64Array(3), centers, K, m, ratios, round, i, k, b, hist, counts;
+  // logs of the linear values of 8-bit values
+  var logTable = new Float64Array(256);
+  for (i = 0; i < 256; i++) logTable[i] = Math.log(Math.max(0, decode[i]) + 1e-4);
   function logColor(i, out) {
-    for (var b = 0; b < 3; b++) out[b] = Math.log(Math.max(0, lin[b][i]) + 1e-4);
+    for (var b = 0; b < 3; b++) out[b] = logTable[src[i * bands + b]];
     return out;
   }
   for (i = 0; i < N; i += step) {
@@ -1704,11 +1727,11 @@ function sortedQuantile(arr, q) {
 function relightShadows(image, L, valid, mask, pixelSize, sun) {
   var W = image.width, H = image.height, N = W * H, bands = image.bands;
   var src = image.samples, hard = mask.hard;
-  var edge = boxMean(toFloat(hard), W, H, toPixels(EDGE_RADIUS, pixelSize));
+  var edge = maskMean(hard, W, H, toPixels(EDGE_RADIUS, pixelSize));
   // samples at least two pixels from the edges: in resampled imagery (e.g.
   // map tiles), pixels next to an edge are partly shadowed
   var edgeR = toPixels(EDGE_RADIUS, pixelSize);
-  var gap = edgeR >= 2 ? edge : boxMean(toFloat(hard), W, H, 2);
+  var gap = edgeR >= 2 ? edge : maskMean(hard, W, H, 2);
   // pixels that may be shadowed are neither sunlit nor shadow samples
   if (mask.uncertain) gap = excludeUncertain(gap, mask.uncertain);
   // shadows the mask has missed, and partly lit pixels, aren't sunlit
@@ -1718,47 +1741,52 @@ function relightShadows(image, L, valid, mask, pixelSize, sun) {
   if (gains[0] < gains[2] * MIN_RED_BLUE_GAIN) return {samples: null, gains: gains};
   var imageCap = getBrightnessCap(L, valid, edge, mask);
   var maxDist = Math.max(8, toPixels(BLOCK_SIZE, pixelSize));
-  var near = boxMean(toFloat(hard), W, H, maxDist);
+  var near = maskMean(hard, W, H, maxDist);
   var pairs = findEdgePairs(valid, hard, edge, gap, near, W, H, maxDist, sun);
-  if (globalThis.__ds) Object.assign(globalThis.__ds, {pairs: pairs, Lrelit: L});
   var classes = measureClassGains(src, bands, L, valid, hard, edge, pairs, W, H, gains, pixelSize);
   var bare = getBareShare(src, bands, valid, hard, gap, near, W, H, pixelSize);
   var bareGains = measureBareGains(src, bands, pairs, classes.cls, classes.lo.length, W, H, gains, pixelSize);
-  var range = getShadowLightnessRange(L, valid, edge, hard, gains);
+  var bareLo = getShadowLightness(L, valid, edge, hard);
+  var rg = measureRankGains(src, bands, L, valid, hard, edge, gap, near, litT, W, H, pixelSize);
+  weighRankGains(rg, pairs, L, W);
+  gap = near = null;
   var cls = classes.cls, alpha = new Float32Array(N), wt = new Float32Array(N);
   var logG = [0, 1, 2].map(function() { return new Float32Array(N); });
   var relit, i, k, s, b, x, y, la, a, g, cap, f;
-  var ring = near;
-  near = null;
   for (i = 0; i < N; i++) {
     s = cls[i];
     if (s < 0) continue;
     x = i % W;
     y = Math.floor(i / W);
     b = bare[i];
-    la = getLightnessAlpha(L[i], classes.lo[s], classes.hi[s]);
-    if (b > 0) la = (1 - b) * la + b * getLightnessAlpha(L[i], range[0], range[1]);
+    for (k = 0, g = 0; k < 3; k++) {
+      logG[k][i] = getTileLogGain(classes, s, x, y, k);
+      if (b > 0) logG[k][i] = (1 - b) * logG[k][i] + b * getTileLogGain(bareGains, s, x, y, k);
+      g += [0.299, 0.587, 0.114][k] * logG[k][i];
+    }
+    // the lightness of partly shadowed pixels is between the shadows' and
+    // the shadows' brightened by the gains of their ground there
+    g = Math.exp(g);
+    la = getLightnessAlpha(L[i], classes.lo[s], Math.max(classes.lo[s] + 1, classes.lo[s] * g));
+    if (b > 0) la = (1 - b) * la + b * getLightnessAlpha(L[i], bareLo, Math.max(bareLo + 1, bareLo * g));
     if (mask.dem && mask.dem[i]) alpha[i] = 1;
     else if (edge[i] > 0 && edge[i] < 1) alpha[i] = la;
     else if (hard[i]) alpha[i] = Math.min(1, la * 1.5);
+    // sunlit ground next to the shadows can look like other ground in shadow
+    if (!hard[i] && mask.posterior && mask.posterior[i] < alpha[i]) alpha[i] = mask.posterior[i];
     wt[i] = 1;
-    for (k = 0; k < 3; k++) {
-      logG[k][i] = getTileLogGain(classes, s, x, y, k);
-      if (b > 0) logG[k][i] = (1 - b) * logG[k][i] + b * getTileLogGain(bareGains, s, x, y, k);
-    }
   }
   // gains are smoothed, as neighboring pixels can be in different classes
-  var r = toPixels(CHROMA_RADIUS, pixelSize), mw = boxMean(wt, W, H, r);
-  logG = logG.map(function(arr) { return boxMean(arr, W, H, r); });
-  var rg = measureRankGains(src, bands, L, valid, hard, edge, gap, ring, litT, W, H, pixelSize);
-  if (!globalThis.DSNOAGREE) weighRankGains(rg, pairs, L, W);
+  var r = toPixels(CHROMA_RADIUS, pixelSize), mw = boxMean(wt, W, H, r, wt);
+  logG.forEach(function(arr) { boxMean(arr, W, H, r, arr); });
   applyRankGains(logG, mw, rg, L, cls, bare, W, H);
-  relit = [0, 1, 2].map(function() { return new Float32Array(N); });
+  // the relit values are written over the log gains
+  relit = logG;
   for (i = 0; i < N; i++) {
     a = alpha[i];
     for (k = 0; k < 3; k++) {
       g = src[i * bands + k];
-      relit[k][i] = a < 0.01 ? g : Math.min(255, g / (1 - a + a / Math.exp(logG[k][i] / mw[i])));
+      relit[k][i] = a < 0.01 ? g : Math.min(255, g / (1 - a + a / Math.exp(relit[k][i] / mw[i])));
     }
     if (a < 0.01) continue;
     cap = Math.min(imageCap, classes.cap[cls[i]]);
@@ -1769,8 +1797,6 @@ function relightShadows(image, L, valid, mask, pixelSize, sun) {
       for (k = 0; k < 3; k++) relit[k][i] *= f;
     }
   }
-  if (globalThis.__ds) Object.assign(globalThis.__ds, {alpha: alpha, bare: bare, cls: cls, logG: logG, mw: mw, gains0: gains, classes: classes, litT: litT, edge: edge});
-  if (globalThis.__ds) globalThis.__ds.relit0 = relit.map(function(a) { return a.slice(); });
   compressContrast(relit, alpha, W, H, toPixels(CONTRAST_RADIUS, pixelSize));
   return {
     samples: writeRelitSamples(src, bands, relit, alpha, edge, W, H, pixelSize),
@@ -1819,15 +1845,15 @@ function findEdgePairs(valid, hard, edge, gap, near, W, H, maxDist, sun) {
 // Classes of shadowed ground by color (k-means of the shadows' cores), each
 // with gains from the @pairs whose shadow pixel is in the class (ratios of
 // medians), blended with the image's @gains; and in tiles, blended with the
-// class's
-// Returns {cls, lo, hi, cap, tileLog, tileSize, tw, th}: cls is the class of
+// class's (see getLocalGains())
+// Returns {cls, lo, cap, tileLog, tileSize, tw, th}: cls is the class of
 //   each shadowed or partly shadowed pixel (or -1); lo is the median luma of
-//   each class's shadows and hi that luma brightened; cap is the 90th
+//   each class's shadows; cap is the 90th
 //   percentile luma of the class's sunlit pixels; tileLog has the log gains
 //   of each class in each tile (tw x th tiles of tileSize pixels)
 function measureClassGains(src, bands, L, valid, hard, edge, pairs, W, H, gains, pixelSize) {
   var N = W * H, feat = new Float64Array(3), samples = [], ncore = 0;
-  var i, j, k, s, p, n, w, g, gl, lo, m, key, lv, sv, stride;
+  var i, j, k, s, p, n, w, g, lv, sv, stride;
   for (i = 0; i < N; i++) if (valid[i] && hard[i] && edge[i] > 0.999) ncore++;
   stride = Math.max(1, Math.floor(ncore / 20000));
   for (i = 0, j = 0; i < N; i++) {
@@ -1851,39 +1877,77 @@ function measureClassGains(src, bands, L, valid, hard, edge, pairs, W, H, gains,
       classGains[s * 3 + k] = Math.exp(w * Math.log(g) + (1 - w) * Math.log(gains[k]));
     }
   }
-  var out = {cls: cls, lo: new Float32Array(K), hi: new Float32Array(K), cap: new Float32Array(K)};
+  var out = {cls: cls, lo: new Float32Array(K), cap: new Float32Array(K)};
   var litL = groupValues(classOf, K, function(p) { return L[pairs.lit[p]]; });
   var shL = groupValues(classOf, K, function(p) { return L[pairs.shadow[p]]; });
   for (s = 0; s < K; s++) {
     n = litL.start[s + 1] - litL.start[s];
-    gl = 0.299 * classGains[s * 3] + 0.587 * classGains[s * 3 + 1] + 0.114 * classGains[s * 3 + 2];
-    lo = n > 0 ? groupMedian(shL, s) : Math.exp(centers[s][2] / CLASS_LUMA_WEIGHT) - 1;
-    out.lo[s] = lo;
-    out.hi[s] = Math.max(lo + 1, lo * gl);
+    out.lo[s] = n > 0 ? groupMedian(shL, s) : Math.exp(centers[s][2] / CLASS_LUMA_WEIGHT) - 1;
     out.cap[s] = n >= CLASS_CAP_PAIRS ? sortedQuantile(litL.values.subarray(litL.start[s], litL.start[s + 1]), 0.9) : 255;
   }
   var tileSize = Math.max(8, Math.round(CLASS_TILE / pixelSize));
-  var tw = Math.ceil(W / tileSize), th = Math.ceil(H / tileSize), nt = tw * th;
-  var tileLog = new Float32Array(K * nt * 3), keys = new Int32Array(np);
-  for (p = 0; p < np; p++) keys[p] = classOf[p] * nt + getTileIndex(pairs.shadow[p], W, tileSize, tw);
-  for (key = 0; key < K * nt; key++) {
-    for (k = 0; k < 3; k++) tileLog[key * 3 + k] = Math.log(classGains[Math.floor(key / nt) * 3 + k]);
-  }
-  for (k = 0; k < 3; k++) {
-    lv = groupValues(keys, K * nt, function(p) { return src[pairs.lit[p] * bands + k]; });
-    sv = groupValues(keys, K * nt, function(p) { return src[pairs.shadow[p] * bands + k]; });
-    for (key = 0; key < K * nt; key++) {
-      m = lv.start[key + 1] - lv.start[key];
-      if (m === 0) continue;
-      g = Math.max(1, groupMedian(lv, key) / Math.max(1, groupMedian(sv, key)));
-      w = m / (m + TILE_PRIOR);
-      tileLog[key * 3 + k] = w * Math.log(g) + (1 - w) * tileLog[key * 3 + k];
-    }
-  }
+  var tw = Math.ceil(W / tileSize), th = Math.ceil(H / tileSize);
+  var classLog = new Float64Array(K * 3);
+  for (k = 0; k < K * 3; k++) classLog[k] = Math.log(classGains[k]);
+  var tileLog = getLocalGains(src, bands, pairs, classOf, K, W, tileSize, tw, th, classLog, TILE_PRIOR);
   out.tileLog = tileLog;
   out.tileSize = tileSize;
   out.tw = tw;
   out.th = th;
+  return out;
+}
+
+// Log gains of each class of shadowed ground in each tile, from the @pairs of
+// the class (by @classOf) in the tile (ratios of medians), blended with those
+// of the tile and the tiles around it (with TILE_PRIOR pairs' weight), which
+// are blended with @classLog: gains vary with the ground across the image
+// (e.g. shadowed forest is paired with forest in a forest and with gravel
+// next to it)
+// @tilePrior pairs' weight of a tile's neighborhood
+// Returns a Float32Array of K x tw x th x 3 log gains
+function getLocalGains(src, bands, pairs, classOf, K, W, tileSize, tw, th, classLog, tilePrior) {
+  var nt = tw * th, np = pairs.lit.length, keys = new Int32Array(np);
+  var out = new Float32Array(K * nt * 3), p, k, s, t, tx, ty, sx, sy, u, j, m, mn, g, gn, w, lv, sv, nb, base;
+  for (p = 0; p < np; p++) {
+    keys[p] = classOf[p] < 0 ? -1 : classOf[p] * nt + getTileIndex(pairs.shadow[p], W, tileSize, tw);
+  }
+  var groups = groupIndexes(keys, K * nt), lit = [], sh = [];
+  for (k = 0; k < 3; k++) {
+    for (s = 0; s < K; s++) {
+      for (t = 0; t < nt; t++) {
+        tx = t % tw;
+        ty = Math.floor(t / tw);
+        lit.length = sh.length = 0;
+        for (sy = Math.max(0, ty - 1); sy <= Math.min(th - 1, ty + 1); sy++) {
+          for (sx = Math.max(0, tx - 1); sx <= Math.min(tw - 1, tx + 1); sx++) {
+            u = s * nt + sy * tw + sx;
+            for (j = groups.start[u]; j < groups.start[u + 1]; j++) {
+              lit.push(src[pairs.lit[groups.values[j]] * bands + k]);
+              sh.push(src[pairs.shadow[groups.values[j]] * bands + k]);
+            }
+          }
+        }
+        mn = lit.length;
+        gn = mn > 0 ? Math.log(Math.max(1, getMedian(lit) / Math.max(1, getMedian(sh)))) : 0;
+        w = mn / (mn + TILE_PRIOR);
+        nb = w * gn + (1 - w) * classLog[s * 3 + k];
+        base = s * nt + t;
+        m = groups.start[base + 1] - groups.start[base];
+        if (m > 0) {
+          lit.length = sh.length = 0;
+          for (j = groups.start[base]; j < groups.start[base + 1]; j++) {
+            lit.push(src[pairs.lit[groups.values[j]] * bands + k]);
+            sh.push(src[pairs.shadow[groups.values[j]] * bands + k]);
+          }
+          g = Math.log(Math.max(1, getMedian(lit) / Math.max(1, getMedian(sh))));
+        } else {
+          g = 0;
+        }
+        w = m / (m + tilePrior);
+        out[base * 3 + k] = w * g + (1 - w) * nb;
+      }
+    }
+  }
   return out;
 }
 
@@ -1974,18 +2038,14 @@ function measureBlockGains(src, bands, L, valid, edge, T, W, H, bs, minCount) {
   return ratios.map(function(arr) { return Math.max(1, getMedian(arr)); });
 }
 
-// Shadow luma: the median of the shadows' cores, and that luma brightened by
-// @gains
-function getShadowLightnessRange(L, valid, edge, hard, gains) {
-  var N = L.length, core = [], lo, hi, i;
+// Shadow luma: the median of the shadows' cores
+function getShadowLightness(L, valid, edge, hard) {
+  var N = L.length, core = [], i;
   for (i = 0; i < N; i += 13) if (edge[i] > 0.999 && valid[i]) core.push(L[i]);
   if (core.length === 0) {
     for (i = 0; i < N; i++) if (hard[i] && edge[i] > 0.999 && valid[i]) core.push(L[i]);
   }
-  lo = getMedian(core);
-  hi = lo * (0.299 * gains[0] + 0.587 * gains[1] + 0.114 * gains[2]);
-  if (!(hi > lo)) hi = lo + 1;
-  return [lo, hi];
+  return getMedian(core);
 }
 
 // How much of a pixel is shadowed (0-1), from its luma: shadows are ground
@@ -2090,14 +2150,17 @@ function isVegetation(src, bands, i) {
 function measureRankGains(src, bands, L, valid, hard, edge, gap, ring, litT, W, H, pixelSize) {
   var tileSize = Math.max(8, Math.round(CLASS_TILE / pixelSize));
   var tw = Math.ceil(W / tileSize), th = Math.ceil(H / tileSize), nt = tw * th, N = W * H, B = RANK_BINS;
-  var shGroup = new Int32Array(N).fill(-1), litGroup = new Int32Array(N).fill(-1), i;
+  var group = new Int32Array(N).fill(-1), sh, lit, i;
   for (i = 0; i < N; i++) {
-    if (!valid[i]) continue;
-    if (hard[i] && edge[i] > 0.999) shGroup[i] = getTileIndex(i, W, tileSize, tw);
-    else if (!hard[i] && gap[i] === 0 && ring[i] > 0 && L[i] > litT) litGroup[i] = getTileIndex(i, W, tileSize, tw);
+    if (valid[i] && hard[i] && edge[i] > 0.999) group[i] = getTileIndex(i, W, tileSize, tw);
   }
-  var byLuma = function(a, b) { return L[a] - L[b]; };
-  var sh = groupIndexes(shGroup, nt), lit = groupIndexes(litGroup, nt);
+  sh = groupIndexes(group, nt);
+  group.fill(-1);
+  for (i = 0; i < N; i++) {
+    if (valid[i] && !hard[i] && gap[i] === 0 && ring[i] > 0 && L[i] > litT) group[i] = getTileIndex(i, W, tileSize, tw);
+  }
+  lit = groupIndexes(group, nt);
+  group = null;
   var out = {centers: new Float32Array(nt * B), logs: new Float32Array(nt * B * 3),
     weights: new Float32Array(nt), litMedians: new Float32Array(nt), tileSize: tileSize, tw: tw, th: th};
   var t, b, k, ns, nl, s, l, m, r, tx, ty;
@@ -2115,7 +2178,7 @@ function measureRankGains(src, bands, L, valid, hard, edge, gap, ring, litT, W, 
         for (j = g.start[u]; j < g.start[u + 1]; j++) ids.push(g.values[j]);
       }
     }
-    return ids.sort(byLuma);
+    return sortByValue(ids, L);
   };
   for (t = 0; t < nt; t++) {
     if (sh.start[t + 1] == sh.start[t]) continue;
@@ -2187,6 +2250,21 @@ function groupIndexes(group, n) {
   return {values: values, start: start};
 }
 
+// @ids in order of their @values (a Float32Array of values >= 0), keeping the
+// order of equal values: non-negative floats are in the order of their bits,
+// which are sorted with the ids' positions as one number
+function sortByValue(ids, values) {
+  var n = ids.length, P = 4194304, keys, bits, out, i;
+  if (n >= P || !(values instanceof Float32Array)) return ids.sort(function(a, b) { return values[a] - values[b]; });
+  bits = new Uint32Array(values.buffer, values.byteOffset, values.length);
+  keys = new Float64Array(n);
+  for (i = 0; i < n; i++) keys[i] = bits[ids[i]] * P + i;
+  keys.sort();
+  out = new Int32Array(n);
+  for (i = 0; i < n; i++) out[i] = ids[keys[i] % P];
+  return out;
+}
+
 function getSliceMean(src, bands, ids, a, b, k) {
   for (var j = a, sum = 0; j < b; j++) sum += src[ids[j] * bands + k];
   return b > a ? sum / (b - a) : 0;
@@ -2237,18 +2315,16 @@ function applyRankGains(logG, mw, rg, L, cls, bare, W, H) {
 // pixel isn't vegetation: ground that isn't vegetation by its color can still
 // be of different kinds (e.g. gravel and forest in imagery with little
 // color). A class's gains are blended with the image's @gains, and a tile's
-// with its class's.
+// with its class's (see getLocalGains()).
 // @cls class of each pixel (see measureClassGains()), of @K classes
 // Returns {tileLog, tileSize, tw, th}, as from measureClassGains()
 function measureBareGains(src, bands, pairs, cls, K, W, H, gains, pixelSize) {
   var tileSize = Math.max(8, Math.round(CLASS_TILE / pixelSize));
-  var tw = Math.ceil(W / tileSize), th = Math.ceil(H / tileSize), nt = tw * th;
-  var np = pairs.lit.length, keys = new Int32Array(np), classOf = new Int32Array(np);
-  var tileLog = new Float32Array(K * nt * 3), classLog = new Float64Array(K * 3);
-  var p, k, s, t, m, g, w, lv, sv;
+  var tw = Math.ceil(W / tileSize), th = Math.ceil(H / tileSize);
+  var np = pairs.lit.length, classOf = new Int32Array(np), classLog = new Float64Array(K * 3);
+  var p, k, s, m, g, w, lv, sv;
   for (p = 0; p < np; p++) {
     classOf[p] = isVegetation(src, bands, pairs.lit[p]) ? -1 : cls[pairs.shadow[p]];
-    keys[p] = classOf[p] < 0 ? -1 : classOf[p] * nt + getTileIndex(pairs.shadow[p], W, tileSize, tw);
   }
   for (k = 0; k < 3; k++) {
     lv = groupValues(classOf, K, function(p) { return src[pairs.lit[p] * bands + k]; });
@@ -2259,17 +2335,9 @@ function measureBareGains(src, bands, pairs, cls, K, W, H, gains, pixelSize) {
       w = m / (m + CLASS_PRIOR);
       classLog[s * 3 + k] = w * Math.log(g) + (1 - w) * Math.log(gains[k]);
     }
-    lv = groupValues(keys, K * nt, function(p) { return src[pairs.lit[p] * bands + k]; });
-    sv = groupValues(keys, K * nt, function(p) { return src[pairs.shadow[p] * bands + k]; });
-    for (t = 0; t < K * nt; t++) {
-      m = lv.start[t + 1] - lv.start[t];
-      s = Math.floor(t / nt);
-      g = m > 0 ? Math.log(Math.max(1, groupMedian(lv, t) / Math.max(1, groupMedian(sv, t)))) : 0;
-      w = m / (m + BARE_TILE_PRIOR);
-      tileLog[t * 3 + k] = w * g + (1 - w) * classLog[s * 3 + k];
-    }
   }
-  return {tileLog: tileLog, tileSize: tileSize, tw: tw, th: th};
+  return {tileLog: getLocalGains(src, bands, pairs, classOf, K, W, tileSize, tw, th, classLog, BARE_TILE_PRIOR),
+    tileSize: tileSize, tw: tw, th: th};
 }
 
 // Brightened pixels are kept below the 90th percentile luma of sunlit pixels
@@ -2295,7 +2363,7 @@ function compressContrast(relit, alpha, W, H, r) {
     Y[i] = 0.299 * relit[0][i] + 0.587 * relit[1][i] + 0.114 * relit[2][i];
     wY[i] = alpha[i] * Y[i];
   }
-  var mY = boxMean(wY, W, H, r), mA = boxMean(alpha, W, H, r);
+  var mY = boxMean(wY, W, H, r, wY), mA = boxMean(alpha, W, H, r);
   for (i = 0; i < N; i++) {
     a = alpha[i];
     if (a < 0.01 || mA[i] < 0.01) continue;
@@ -2313,19 +2381,17 @@ function compressContrast(relit, alpha, W, H, r) {
 function writeRelitSamples(src, bands, relit, alpha, edge, W, H, pixelSize) {
   var N = W * H, r = toPixels(CHROMA_RADIUS, pixelSize), out = src.slice();
   var Y = new Float32Array(N), wsum = boxMean(alpha, W, H, r), t = new Float32Array(N);
-  var chroma = [], i, k, a, c, v, blurred;
+  var blurred = new Float32Array(N), i, k, a, c, v;
   for (i = 0; i < N; i++) Y[i] = 0.299 * relit[0][i] + 0.587 * relit[1][i] + 0.114 * relit[2][i];
   for (k = 0; k < 3; k++) {
     for (i = 0; i < N; i++) t[i] = alpha[i] * relit[k][i] / (Y[i] + 1);
-    chroma.push(boxMean(t, W, H, r));
-  }
-  for (k = 0; k < 3; k++) {
+    boxMean(t, W, H, r, t);
     for (i = 0; i < N; i++) {
       a = alpha[i];
-      c = wsum[i] > 0.01 ? Math.min(255, (Y[i] + 1) * chroma[k][i] / wsum[i]) : relit[k][i];
+      c = wsum[i] > 0.01 ? Math.min(255, (Y[i] + 1) * t[i] / wsum[i]) : relit[k][i];
       t[i] = relit[k][i] * (1 - a) + c * a;
     }
-    blurred = boxMean(t, W, H, toPixels(EDGE_BLUR_RADIUS, pixelSize));
+    boxMean(t, W, H, toPixels(EDGE_BLUR_RADIUS, pixelSize), blurred);
     for (i = 0; i < N; i++) {
       v = edge[i] > 0 && edge[i] < 1 ? blurred[i] : t[i];
       if (alpha[i] > 0 || v != src[i * bands + k]) out[i * bands + k] = Math.round(v);
@@ -2334,11 +2400,11 @@ function writeRelitSamples(src, bands, relit, alpha, edge, W, H, pixelSize) {
   return out;
 }
 
-function toFloat(arr) {
-  return arr instanceof Float32Array ? arr : Float32Array.from(arr);
+// boxMean() of a mask's values
+function maskMean(mask, W, H, r) {
+  var out = Float32Array.from(mask);
+  return boxMean(out, W, H, r, out);
 }
-
-// Mean of a (2r+1)-pixel square around each pixel, clipped at the edges
 
 // Pixels for measuring c: 0 for those at least @margin pixels inside shadows,
 // 1 for those at least @margin pixels outside them and lit within FLAT_RANGE
@@ -2346,7 +2412,7 @@ function toFloat(arr) {
 function getRatioGroups(valid, I, flat, W, H, margin) {
   var N = W * H, inShadow = new Float32Array(N), group = new Int8Array(N).fill(-1), near, i, a;
   for (i = 0; i < N; i++) inShadow[i] = I[i] === 0 ? 1 : 0;
-  near = boxMean(inShadow, W, H, margin);
+  near = boxMean(inShadow, W, H, margin, inShadow);
   for (i = 0; i < N; i++) {
     a = I[i];
     if (!valid[i] || a !== a) continue;
@@ -2398,27 +2464,18 @@ function nearestLitClass(m, ratios, f, I, flat) {
 // pixel unchanged)
 function getPixelGains(lin, labels, ratios, litRatios, flat, direct, pixelI, valid, W, H, pixelSize) {
   var N = W * H, r = toPixels(CLASS_RADIUS, pixelSize), litI = new Float32Array(N), share = new Float32Array(N);
-  var logC = [], logL = [], cy = new Float32Array(N), i, b, d, p, k;
-  for (b = 0; b < 3; b++) {
-    logC[b] = new Float32Array(N);
-    logL[b] = new Float32Array(N);
-    for (i = 0; i < N; i++) {
-      logC[b][i] = Math.log(ratios[labels[i]][b]);
-      logL[b][i] = Math.log(litRatios[labels[i]][b]);
-    }
-    logC[b] = boxMean(logC[b], W, H, r);
-    logL[b] = litRatios == ratios ? logC[b] : boxMean(logL[b], W, H, r);
-  }
+  var logL = getClassLogRatios(litRatios, labels, W, H, r), logC, i, d, p, k;
   for (i = 0; i < N; i++) {
     p = pixelI[i];
     d = Math.max(p, direct[i] > 0 ? direct[i] : LIT_FLOOR * flat[i]);
     litI[i] = d;
     share[i] = d > 0 ? 1 - p / d : 1;
-    for (b = 0, cy[i] = 0; b < 3; b++) cy[i] += LUMA_WEIGHTS[b] * Math.exp(logL[b][i]);
   }
-  k = getLightingResponse(lin, valid, litI, share, flat, cy, W, H, pixelSize);
+  k = getLightingResponse(lin, valid, litI, share, flat, logL, W, H, pixelSize);
+  logC = litRatios == ratios ? logL : getClassLogRatios(ratios, labels, W, H, r);
+  // each band's gains are written over its log c
   return [0, 1, 2].map(function(b) {
-    var out = new Float32Array(N), c, cl, s, g, R;
+    var out = logC[b], c, cl, s, g, R;
     for (i = 0; i < N; i++) {
       p = pixelI[i];
       if (!valid[i] || p !== p) {
@@ -2436,6 +2493,15 @@ function getPixelGains(lin, labels, ratios, litRatios, flat, direct, pixelI, val
   });
 }
 
+// Log of each band of the c of each pixel's class, blended over @r pixels
+function getClassLogRatios(ratios, labels, W, H, r) {
+  return [0, 1, 2].map(function(b) {
+    var out = new Float32Array(W * H);
+    for (var i = 0; i < out.length; i++) out[i] = Math.log(ratios[labels[i]][b]);
+    return boxMean(out, W, H, r, out);
+  });
+}
+
 // Share k of the DEM's lighting of sunlit ground that the image shows, around
 // each pixel (within RESPONSE_RADIUS): the slope of the log luma of sunlit
 // pixels against the log of their predicted lighting, R = (I + c) / (flat +
@@ -2443,25 +2509,30 @@ function getPixelGains(lin, labels, ratios, litRatios, flat, direct, pixelI, val
 // the ground under forest, aren't the image's, and would pull the slope
 // toward 0), blended with 1 (the DEM's lighting, where it varies too little to
 // measure) by the variance (robust) of the log luma of sunlit ground with
-// little variation in R; between 0 and 1. Where the DEM's slopes don't match the
+// little variation in R (k is 1 everywhere with too little such ground to
+// measure it); between 0 and 1. Where the DEM's slopes don't match the
 // image's (e.g. at the rims of cliffs, which it smoothes and may misplace),
 // sunlit ground isn't lit the way the DEM has it.
 // @I, @share I of each pixel if it were sunlit, and its share of shadow
-// @cy c of sunlit ground (luma) of each pixel
-function getLightingResponse(lin, valid, I, share, flat, cy, W, H, pixelSize) {
+// @logL log c of sunlit ground of each pixel, for each band
+function getLightingResponse(lin, valid, I, share, flat, logL, W, H, pixelSize) {
   var N = W * H, r = toPixels(RESPONSE_RADIUS, pixelSize), rs = toPixels(RESPONSE_SMOOTHING, pixelSize);
   var w = new Float32Array(N), x = new Float32Array(N), y = new Float32Array(N), xx, xy, sw, sx, sy;
   var n = (2 * r + 1) * (2 * r + 1) / ((2 * rs + 1) * (2 * rs + 1));
-  var flatY = [], sigma2, lambda, i, m, mw, mx, my, cov, vx, k;
+  var cy = new Float32Array(N), flatY = [], sigma2, lambda, i, b, m, mw, mx, my, cov, vx, k;
+  for (i = 0; i < N; i++) {
+    for (b = 0, cy[i] = 0; b < 3; b++) cy[i] += LUMA_WEIGHTS[b] * Math.exp(logL[b][i]);
+  }
   for (i = 0; i < N; i++) {
     if (!valid[i] || !(share[i] < 0.01) || !(I[i] > 0)) continue;
     w[i] = 1;
     x[i] = Math.log((I[i] + cy[i]) / (flat[i] + cy[i]));
-    y[i] = Math.log(0.2126 * lin[0][i] + 0.7152 * lin[1][i] + 0.0722 * lin[2][i] + 1e-4);
+    y[i] = Math.log(getLinearLuma(lin, i) + 1e-4);
   }
+  cy = null;
   sw = boxMean(w, W, H, rs);
-  sx = boxMean(x, W, H, rs);
-  sy = boxMean(y, W, H, rs);
+  sx = boxMean(x, W, H, rs, x);
+  sy = boxMean(y, W, H, rs, y);
   for (i = 0; i < N; i++) {
     w[i] = w[i] && sw[i] > 0.5 ? 1 : 0;
     x[i] = w[i] ? sx[i] / sw[i] : 0;
@@ -2469,7 +2540,7 @@ function getLightingResponse(lin, valid, I, share, flat, cy, W, H, pixelSize) {
     if (w[i] && Math.abs(x[i]) < 0.05 && i % 7 === 0) flatY.push(y[i]);
   }
   sw = sx = sy = null;
-  if (flatY.length < 100) return null;
+  if (flatY.length < 100) return w.fill(1);
   m = getMedian(flatY);
   sigma2 = Math.pow(1.4826 * getMedian(flatY.map(function(v) { return Math.abs(v - m); })), 2);
   xx = new Float32Array(N);
@@ -2478,15 +2549,18 @@ function getLightingResponse(lin, valid, I, share, flat, cy, W, H, pixelSize) {
     xx[i] = x[i] * x[i];
     xy[i] = x[i] * y[i];
   }
-  mw = boxMean(w, W, H, r);
-  mx = boxMean(x, W, H, r);
-  my = boxMean(y, W, H, r);
-  xx = boxMean(xx, W, H, r);
-  xy = boxMean(xy, W, H, r);
-  k = new Float32Array(N);
+  mw = boxMean(w, W, H, r, w);
+  mx = boxMean(x, W, H, r, x);
+  my = boxMean(y, W, H, r, y);
+  xx = boxMean(xx, W, H, r, xx);
+  xy = boxMean(xy, W, H, r, xy);
+  // k is written over xx
+  k = xx;
   for (i = 0; i < N; i++) {
-    k[i] = 1;
-    if (!(mw[i] > 0)) continue;
+    if (!(mw[i] > 0)) {
+      k[i] = 1;
+      continue;
+    }
     // the means of weighted pixels in the window
     vx = xx[i] / mw[i] - Math.pow(mx[i] / mw[i], 2);
     cov = xy[i] / mw[i] - mx[i] / mw[i] * my[i] / mw[i];
@@ -2511,7 +2585,7 @@ function writeCorrectedSamples(image, lin, gains, valid) {
     if (same) continue;
     for (b = 0; b < 3; b++) {
       g = gains[b][i];
-      v = applyGain(lin[b][i], g);
+      v = applyGain(lin.decode[src[i * bands + b]], g);
       out[i * bands + b] = v >= 1 ? 255 : encode[Math.round(Math.sqrt(v) * scale)];
     }
   }
@@ -2553,18 +2627,21 @@ function linearToSRGB(v) {
   return v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
 }
 
-function getLinearBands(samples, bands, N) {
-  var table = getDecodeTable();
-  return [0, 1, 2].map(function(b) {
-    var out = new Float32Array(N);
-    for (var i = 0; i < N; i++) out[i] = table[samples[i * bands + b]];
-    return out;
-  });
+// Linear values of an image's 8-bit samples, read through a table (band b of
+// pixel i is decode[samples[i * bands + b]]) rather than kept in arrays of
+// their own
+function getLinearImage(image) {
+  return {samples: image.samples, bands: image.bands, decode: getDecodeTable()};
 }
 
-function getLinearLuma(lin, N) {
+function getLinearLuma(lin, i) {
+  var s = lin.samples, d = lin.decode, j = i * lin.bands;
+  return 0.2126 * d[s[j]] + 0.7152 * d[s[j + 1]] + 0.0722 * d[s[j + 2]];
+}
+
+function getLinearLumas(lin, N) {
   var Y = new Float32Array(N);
-  for (var i = 0; i < N; i++) Y[i] = 0.2126 * lin[0][i] + 0.7152 * lin[1][i] + 0.0722 * lin[2][i];
+  for (var i = 0; i < N; i++) Y[i] = getLinearLuma(lin, i);
   return Y;
 }
 
@@ -2645,14 +2722,11 @@ function getPixelShadows(image, nir, valid, predicted, cells, terrain, region, r
       terrain.cellWidth, terrain.cellHeight, maskSun, region), cells, Uint8Array);
     stretch = Math.tan(regions.suns[0].altitude) / Math.tan(maskSun.altitude);
   }
-  mask = n > 0 ? getShadowMask(L, nir, valid, lowered || predicted, W, H, pixelSize, band) : null;
-  if (globalThis.__ds) Object.assign(globalThis.__ds, {W: W, H: H, predicted: predicted, lowered: lowered, maskSun: maskSun, n: n, mask0: mask && mask.hard.slice(), threshold: mask && mask.threshold});
+  mask = n > 0 ? getShadowMask(L, nir, valid, lowered || predicted, W, H, pixelSize, band, predicted) : null;
   if (mask && mask.count > 0 && mask.count <= n * MAX_MASK_RATIO * stretch) {
     addDemShadows(mask, predicted, valid, W, H);
-    if (globalThis.__ds) globalThis.__ds.mask1 = mask.hard.slice();
-    if (!globalThis.DSNOSIG) addSignatureShadows(mask, image, valid, predicted, cells, terrain, region, regions.suns, W, H,
+    addSignatureShadows(mask, image, valid, predicted, cells, terrain, region, regions.suns, W, H,
       band / pixelSize);
-    if (globalThis.__ds) globalThis.__ds.mask2 = mask.hard.slice();
     for (i = 0; i < N; i++) shadow[i] = mask.hard[i];
     return {shadow: shadow, masked: true, count: mask.count, ratio: mask.count / n, mask: mask,
       sun: maskSun || regions.suns[0]};
@@ -2678,19 +2752,19 @@ function getPixelShadows(image, nir, valid, predicted, cells, terrain, region, r
 // @bandPx distance (pixels) around the DEM's shadows that the mask searches
 // Returns the number of pixels added
 export function addSignatureShadows(mask, image, valid, predicted, cells, terrain, region, suns, W, H, bandPx) {
-  var N = W * H, hard = mask.hard, d = 3;
-  var plausible = getPixelValues(getPlausibleShadows(terrain, region, suns), cells, Uint8Array);
+  var N = W * H, hard = mask.hard, d = 3, shadows = getShadowCache(terrain, region);
+  var plausible = getPixelValues(getPlausibleShadows(terrain, region, suns, shadows), cells, Uint8Array);
   var agreed = new Float32Array(N), pred = new Float32Array(N), inMask = new Float32Array(N);
-  var shadowIdx = [], litIdx = [], nValid = 0, added = 0, core, near, nearMask, X, S, L, llr, cand, areas, i;
+  var shadowIdx = [], litIdx = [], nValid = 0, added = 0, core, near, nearMask, features, F, S, L, llr, cand;
+  var areas, i;
   for (i = 0; i < N; i++) {
     agreed[i] = hard[i] && predicted[i] && !(mask.dem && mask.dem[i]) ? 1 : 0;
     pred[i] = predicted[i] ? 1 : 0;
     inMask[i] = hard[i] ? 1 : 0;
   }
-  core = boxMean(agreed, W, H, 1);
-  near = boxMean(pred, W, H, Math.max(1, Math.round(bandPx)));
-  nearMask = boxMean(inMask, W, H, 2);
-  agreed = pred = inMask = null;
+  core = boxMean(agreed, W, H, 1, agreed);
+  near = boxMean(pred, W, H, Math.max(1, Math.round(bandPx)), pred);
+  nearMask = boxMean(inMask, W, H, 2, inMask);
   for (i = 0; i < N; i++) {
     if (!valid[i]) continue;
     nValid++;
@@ -2700,24 +2774,34 @@ export function addSignatureShadows(mask, image, valid, predicted, cells, terrai
   core = near = nearMask = null;
   if (shadowIdx.length < MIN_SIGNATURE_PIXELS || litIdx.length < MIN_SIGNATURE_PIXELS ||
       litIdx.length < nValid * MIN_SUNLIT_SHARE) return 0;
-  X = getSignatureFeatures(image, N, shadowIdx.concat(litIdx));
-  S = fitGaussianMixture(X, d, shadowIdx, SHADOW_COMPONENTS);
-  L = fitGaussianMixture(X, d, litIdx, LIT_COMPONENTS);
+  features = getSignatureFeatures(image, [shadowIdx, litIdx]);
+  S = fitSignature(features, shadowIdx, SHADOW_COMPONENTS);
+  L = fitSignature(features, litIdx, LIT_COMPONENTS);
   if (S.length === 0 || L.length === 0) return 0;
   S = getMixtureScorer(S, d);
   L = getMixtureScorer(L, d);
   llr = new Float32Array(N);
   cand = new Uint8Array(N);
+  // a pixel's features are from its color
+  var src = image.samples, bands = image.bands, byColor = new Map(), key, v;
+  F = new Float32Array(d);
   for (i = 0; i < N; i++) {
     if (!valid[i] || hard[i] || !plausible[i]) continue;
-    llr[i] = S(X, i) - L(X, i);
+    key = src[i * bands] << 16 | src[i * bands + 1] << 8 | src[i * bands + 2];
+    v = byColor.get(key);
+    if (v === undefined) {
+      features(i, F, 0);
+      v = S(F, 0) - L(F, 0);
+      byColor.set(key, v);
+    }
+    llr[i] = v;
     if (llr[i] > 0) cand[i] = 1;
   }
   areas = getCandidateAreas(cand, llr, W, H);
   matchAreaSuns(areas, hard, cells, terrain, region, suns, W, H,
-    Math.max(1, Math.round(bandPx * SHADOW_REFERENCE)));
+    Math.max(1, Math.round(bandPx * SHADOW_REFERENCE)), shadows);
   areas.forEach(function(a) {
-    if (a.match < AREA_SUN_MATCH) return;
+    if (!a.explained) return;
     for (var k = 0; k < a.pixels.length; k++) hard[a.pixels[k]] = 1;
     added += a.pixels.length;
   });
@@ -2759,40 +2843,54 @@ function getCandidateAreas(cand, llr, W, H) {
   return areas;
 }
 
-// Sets each area's match to how well the best single plausible sun (see
-// getPlausibleShadows()) explains it: the smaller of the share of the area
+// Sets each area's explained to true if a single plausible sun (see
+// getPlausibleShadows()) explains it: if the smaller of the share of the area
 // in that sun's shadows and the share of that sun's shadows around the area
-// (within @margin pixels) that are in the area or in @mask; a sun that
-// shadows dark ground (e.g. a lake in a deep valley) also shadows the ground
-// around it, which isn't. Other candidate areas don't count, or dark ground
-// that's all around (e.g. forest) would explain itself.
-function matchAreaSuns(areas, mask, cells, terrain, region, suns, W, H, margin) {
+// (within @margin pixels) that are in the area or in @mask is at least
+// AREA_SUN_MATCH; a sun that shadows dark ground (e.g. a lake in a deep
+// valley) also shadows the ground around it, which isn't. Other candidate
+// areas don't count, or dark ground that's all around (e.g. forest) would
+// explain itself.
+// @shadows see getShadowCache()
+function matchAreaSuns(areas, mask, cells, terrain, region, suns, W, H, margin, shadows) {
   var w = terrain.width, h = terrain.height, deg = Math.PI / 180;
-  var nrm = getNormals(terrain.Z, w, h, terrain.cellWidth, terrain.cellHeight);
   var shade = new Uint8Array(w * h), areaId = new Int32Array(W * H).fill(-1);
+  var left = areas.length;
   areas.forEach(function(a, id) {
-    a.match = 0;
+    a.explained = false;
     for (var k = 0; k < a.pixels.length; k++) areaId[a.pixels[k]] = id;
   });
   if (areas.length === 0) return;
+  // the cells of the areas and around them
+  var used = new Uint8Array(w * h), list = [];
+  areas.forEach(function(a) {
+    var x, y, c;
+    for (y = Math.max(0, a.y0 - margin); y < Math.min(H, a.y1 + margin); y++) {
+      for (x = Math.max(0, a.x0 - margin); x < Math.min(W, a.x1 + margin); x++) {
+        c = cells[y * W + x];
+        if (!used[c]) list.push(c);
+        used[c] = 1;
+      }
+    }
+  });
+  used = Int32Array.from(list);
+  list = null;
   suns.forEach(function(s) {
-    var da, drop, az, alt, P, vx, vy, vz, c;
+    var da, drop, az, alt, S, j, c;
     for (da = -PLAUSIBLE_AZIMUTH; da <= PLAUSIBLE_AZIMUTH; da += PLAUSIBLE_STEP) {
-      for (drop = 0; drop <= PLAUSIBLE_DROP; drop += PLAUSIBLE_STEP / 2) {
+      for (drop = 0; drop <= PLAUSIBLE_DROP && left > 0; drop += PLAUSIBLE_STEP / 2) {
         az = s.azimuth + da * deg;
         alt = Math.max(MIN_ALTITUDE * deg, s.altitude - drop * deg);
-        P = castTerrainShadow(terrain.Z, w, h, terrain.cellWidth, terrain.cellHeight,
-          {azimuth: az, altitude: alt}, region);
-        vx = Math.sin(az) * Math.cos(alt);
-        vy = Math.cos(az) * Math.cos(alt);
-        vz = Math.sin(alt);
-        for (c = 0; c < shade.length; c++) {
-          shade[c] = P[c] || nrm.x[c] * vx + nrm.y[c] * vy + nrm.z[c] * vz <= 0 ? 1 : 0;
+        S = shadows.get(az, alt, used);
+        for (j = 0; j < used.length; j++) {
+          c = used[j];
+          shade[c] = S[c];
         }
         areas.forEach(function(a, id) {
-          var inside = 0, n = 0, dark = 0, k, x, y, i, m;
+          var inside = 0, n = 0, dark = 0, k, x, y, i;
+          if (a.explained) return;
           for (k = 0; k < a.pixels.length; k++) inside += shade[cells[a.pixels[k]]];
-          if (inside < a.pixels.length * a.match) return;
+          if (inside / a.pixels.length < AREA_SUN_MATCH) return;
           for (y = Math.max(0, a.y0 - margin); y < Math.min(H, a.y1 + margin); y++) {
             for (x = Math.max(0, a.x0 - margin); x < Math.min(W, a.x1 + margin); x++) {
               i = y * W + x;
@@ -2801,65 +2899,109 @@ function matchAreaSuns(areas, mask, cells, terrain, region, suns, W, H, margin) 
               if (mask[i] || areaId[i] === id) dark++;
             }
           }
-          m = Math.min(inside / a.pixels.length, n > 0 ? dark / n : 0);
-          if (m > a.match) a.match = m;
+          if (n > 0 && dark / n >= AREA_SUN_MATCH) {
+            a.explained = true;
+            left--;
+          }
         });
       }
     }
   });
 }
 
+// Shadows of @terrain's cells (cast, or facing away) at suns, kept for suns
+// asked for again
+// get(azimuth, altitude, cells) returns a Uint8Array with 1 for shadowed
+//   cells, of all cells, or (optional) of only those in @cells
+function getShadowCache(terrain, region) {
+  var w = terrain.width, h = terrain.height, nrm = getNormals(terrain.Z, w, h, terrain.cellWidth, terrain.cellHeight);
+  var kept = {};
+  return {get: function(az, alt, cells) {
+    var key = az + ',' + alt, out = kept[key], P, vx, vy, vz, j, c, n;
+    if (out) return out;
+    P = castTerrainShadow(terrain.Z, w, h, terrain.cellWidth, terrain.cellHeight, {azimuth: az, altitude: alt}, region);
+    vx = Math.sin(az) * Math.cos(alt);
+    vy = Math.cos(az) * Math.cos(alt);
+    vz = Math.sin(alt);
+    n = cells ? cells.length : P.length;
+    for (j = 0; j < n; j++) {
+      c = cells ? cells[j] : j;
+      P[c] = P[c] || nrm.x[c] * vx + nrm.y[c] * vy + nrm.z[c] * vz <= 0 ? 1 : 0;
+    }
+    if (!cells) kept[key] = P;
+    return P;
+  }};
+}
+
 // Terrain cells that a plausible sun shadows (cast shadow, or facing away):
 // one whose azimuth is within PLAUSIBLE_AZIMUTH degrees of one of @suns', and
 // whose altitude is up to PLAUSIBLE_DROP degrees lower (at the same azimuth,
 // a higher sun shadows only part of what a lower one does)
-export function getPlausibleShadows(terrain, region, suns) {
-  var w = terrain.width, h = terrain.height, deg = Math.PI / 180;
-  var nrm = getNormals(terrain.Z, w, h, terrain.cellWidth, terrain.cellHeight);
-  var out = new Uint8Array(w * h);
+export function getPlausibleShadows(terrain, region, suns, shadows) {
+  var deg = Math.PI / 180, out = new Uint8Array(terrain.width * terrain.height);
+  shadows = shadows || getShadowCache(terrain, region);
   suns.forEach(function(s) {
-    var alt = Math.max(MIN_ALTITUDE * deg, s.altitude - PLAUSIBLE_DROP * deg), da, az, P, vx, vy, vz, i;
+    var alt = Math.max(MIN_ALTITUDE * deg, s.altitude - PLAUSIBLE_DROP * deg), da, P, i;
     for (da = -PLAUSIBLE_AZIMUTH; da <= PLAUSIBLE_AZIMUTH; da += PLAUSIBLE_STEP) {
-      az = s.azimuth + da * deg;
-      P = castTerrainShadow(terrain.Z, w, h, terrain.cellWidth, terrain.cellHeight,
-        {azimuth: az, altitude: alt}, region);
-      vx = Math.sin(az) * Math.cos(alt);
-      vy = Math.cos(az) * Math.cos(alt);
-      vz = Math.sin(alt);
-      for (i = 0; i < out.length; i++) {
-        if (P[i] || nrm.x[i] * vx + nrm.y[i] * vy + nrm.z[i] * vz <= 0) out[i] = 1;
-      }
+      P = shadows.get(s.azimuth + da * deg, alt);
+      for (i = 0; i < out.length; i++) if (P[i]) out[i] = 1;
     }
   });
   return out;
 }
 
-// Log luma, log blue/red and log green/red of each pixel (linear values),
-// standardized over the pixels in @idx; d = 3 values per pixel
-function getSignatureFeatures(image, N, idx) {
-  var lin = getLinearBands(image.samples, image.bands, N), X = new Float32Array(N * 3);
-  var mean = [0, 0, 0], sq = [0, 0, 0], i, k, r, g, b, v, sd;
-  for (i = 0; i < N; i++) {
-    r = lin[0][i] + SIGNATURE_EPSILON;
-    g = lin[1][i] + SIGNATURE_EPSILON;
-    b = lin[2][i] + SIGNATURE_EPSILON;
-    X[i * 3] = Math.log(0.2126 * r + 0.7152 * g + 0.0722 * b);
-    X[i * 3 + 1] = Math.log(b / r);
-    X[i * 3 + 2] = Math.log(g / r);
+// Log luma, log blue/red and log green/red of a pixel (linear values),
+// standardized over the pixels in @sets (arrays of pixel ids); d = 3 values
+// Returns a function of (i, out, row) that writes pixel i's values to row
+//   @row of Float32Array @out
+function getSignatureFeatures(image, sets) {
+  var src = image.samples, bands = image.bands, decode = getDecodeTable();
+  var mean = [0, 0, 0], sq = [0, 0, 0], sd = [0, 0, 0], f = new Float32Array(3), n = 0, k, v;
+  function write(i, out, o) {
+    var j = i * bands, r = decode[src[j]] + SIGNATURE_EPSILON;
+    var g = decode[src[j + 1]] + SIGNATURE_EPSILON, b = decode[src[j + 2]] + SIGNATURE_EPSILON;
+    out[o] = Math.log(0.2126 * r + 0.7152 * g + 0.0722 * b);
+    out[o + 1] = Math.log(b / r);
+    out[o + 2] = Math.log(g / r);
   }
-  for (i = 0; i < idx.length; i++) {
-    for (k = 0; k < 3; k++) {
-      v = X[idx[i] * 3 + k];
-      mean[k] += v;
-      sq[k] += v * v;
+  sets.forEach(function(idx) {
+    for (var i = 0; i < idx.length; i++) {
+      write(idx[i], f, 0);
+      for (k = 0; k < 3; k++) {
+        v = f[k];
+        mean[k] += v;
+        sq[k] += v * v;
+      }
     }
-  }
+    n += idx.length;
+  });
   for (k = 0; k < 3; k++) {
-    mean[k] /= idx.length;
-    sd = Math.sqrt(Math.max(1e-12, sq[k] / idx.length - mean[k] * mean[k]));
-    for (i = 0; i < N; i++) X[i * 3 + k] = (X[i * 3 + k] - mean[k]) / sd;
+    mean[k] /= n;
+    sd[k] = Math.sqrt(Math.max(1e-12, sq[k] / n - mean[k] * mean[k]));
   }
-  return X;
+  return function(i, out, row) {
+    var o = row * 3;
+    write(i, out, o);
+    for (var k = 0; k < 3; k++) out[o + k] = (out[o + k] - mean[k]) / sd[k];
+  };
+}
+
+// fitGaussianMixture() of the features (see getSignatureFeatures()) of the
+// pixels in @idx, computed for the pixels it samples
+function fitSignature(features, idx, K) {
+  var ids = getMixtureSample(idx), X = new Float32Array(ids.length * 3), rows = new Int32Array(ids.length);
+  for (var j = 0; j < ids.length; j++) {
+    features(ids[j], X, j);
+    rows[j] = j;
+  }
+  return fitGaussianMixture(X, 3, rows, K);
+}
+
+// Up to SIGNATURE_SAMPLES of @idx, evenly spaced
+function getMixtureSample(idx) {
+  var n = Math.min(idx.length, SIGNATURE_SAMPLES), step = idx.length / n, out = new Int32Array(n);
+  for (var j = 0; j < n; j++) out[j] = idx[Math.floor(j * step)];
+  return out;
 }
 
 // Gaussian mixture from k-means clusters of up to SIGNATURE_SAMPLES of the
@@ -2867,8 +3009,8 @@ function getSignatureFeatures(image, N, idx) {
 // Returns [{mean, chol, c}]: chol is the Cholesky factor of the covariance;
 //   c is the log of the weight and normalizing constant
 export function fitGaussianMixture(X, d, idx, K) {
-  var n = Math.min(idx.length, SIGNATURE_SAMPLES), step = idx.length / n, seed = 1;
-  var S = new Int32Array(n), centers = [], asg = new Int32Array(n), dist = new Float64Array(n);
+  var S = getMixtureSample(idx), n = S.length, seed = 1;
+  var centers = [], asg = new Int32Array(n), dist = new Float64Array(n);
   var j, c, k, a, b, i, best, bestD, v, total, r, sums, counts, out = [];
   function rand() {
     seed = (seed * 16807) % 2147483647;
@@ -2881,7 +3023,6 @@ export function fitGaussianMixture(X, d, idx, K) {
     }
     return s;
   }
-  for (j = 0; j < n; j++) S[j] = idx[Math.floor(j * step)];
   centers.push(Array.from(X.subarray(S[0] * d, S[0] * d + d)));
   dist.fill(Infinity);
   while (centers.length < Math.min(K, n)) {
@@ -3058,11 +3199,14 @@ export function getLuma(samples, bands, n) {
 
 // @predicted 1 for pixels in the DEM's shadows
 // @band distance (meters) around the DEM's shadows to look for shadows
-// Returns {hard, near, threshold, count}: hard is 1 for shadow pixels; near
-//   is 1 for pixels near the DEM's shadows
-export function getShadowMask(L, nir, valid, predicted, W, H, pixelSize, band) {
+// @fitted optional: 1 for pixels in the DEM's shadows at the fitted sun, if
+//   @predicted are at a lower sun
+// Returns {hard, near, threshold, count, posterior}: hard is 1 for shadow
+//   pixels; near is 1 for pixels near the DEM's shadows; posterior is the
+//   probability that each of those is shadowed (see getDarkPixels())
+export function getShadowMask(L, nir, valid, predicted, W, H, pixelSize, band, fitted) {
   var N = W * H, i;
-  var px = getDarkPixels(L, nir, valid, predicted, W, H, pixelSize, band);
+  var px = getDarkPixels(L, nir, valid, predicted, fitted || predicted, W, H, pixelSize, band);
   var inc = px.near, T = px.threshold, dark = px.dark, darkBoth = px.darkBoth;
   var r = Math.round(MAJORITY_RADIUS / pixelSize);
   var maj = r > 0 ? boxMean(dark, W, H, r) : dark;
@@ -3082,24 +3226,138 @@ export function getShadowMask(L, nir, valid, predicted, W, H, pixelSize, band) {
   dist = maj = null;
   removeUnmatchedAreas(hard, predicted, W, H, SMALL_AREA / (pixelSize * pixelSize));
   for (i = 0; i < N; i++) count += hard[i];
-  return {hard: hard, near: inc, threshold: T, count: count};
+  return {hard: hard, near: inc, threshold: T, count: count, posterior: px.posterior};
 }
 
-// Pixels near the DEM's shadows that are as dark as them
-// Returns {near, threshold, dark, darkBoth}: near is 1 for valid pixels near
-//   the DEM's shadows; dark is 1 for those darker than the luma threshold;
-//   darkBoth for those also dark in near-infrared (or dark, without it)
-function getDarkPixels(L, nir, valid, predicted, W, H, pixelSize, band) {
-  var N = W * H, i;
-  var near = boxMean(Float32Array.from(predicted), W, H, toPixels(band, pixelSize));
-  var inc = new Uint8Array(N);
-  for (i = 0; i < N; i++) inc[i] = valid[i] && near[i] > 0.01 ? 1 : 0;
+// Pixels near the DEM's shadows that are more likely shadowed than sunlit,
+// by their luma (see getDarkLikelihoods()) and the share of shadow in their
+// zone: in the DEM's shadows at the fitted sun (@fitted), only in those at
+// the lower sun (@predicted), and near those. The shares are fitted to the
+// pixels of each zone (expectation-maximization), so that where luma tells
+// shadow from sunlit ground (e.g. rock) the mask follows the image, and where
+// it doesn't (e.g. forest, in coarse imagery) it follows the DEM. Dark pixels
+// are also darker than the luma that best reproduces the DEM's shadows
+// (see getAgreementThreshold()): shadows lit by light reflected from sunlit
+// ground around them (e.g. snow) aren't relit like shadows lit by the sky.
+// Returns {near, threshold, dark, darkBoth, posterior}: near is 1 for valid
+//   pixels near the DEM's shadows; threshold is that luma; dark is 1 for dark
+//   pixels; darkBoth for those also dark in near-infrared (or dark, without
+//   it); posterior is the probability that each pixel near the DEM's shadows
+//   is shadowed, by its luma and zone (NaN for other pixels)
+function getDarkPixels(L, nir, valid, predicted, fitted, W, H, pixelSize, band) {
+  var N = W * H, bandPx = toPixels(band, pixelSize), i;
+  var near = maskMean(predicted, W, H, bandPx);
+  var inc = new Uint8Array(N), zone = new Int8Array(N).fill(-1);
+  for (i = 0; i < N; i++) {
+    inc[i] = valid[i] && near[i] > 0.01 ? 1 : 0;
+    if (inc[i]) zone[i] = fitted[i] ? 0 : predicted[i] ? 1 : 2;
+  }
+  var llr = getDarkLikelihoods(L, valid, fitted, near, W, H, pixelSize, bandPx);
   near = null;
+  var share = [0.5, 0.5, 0.5], odds = [], sum, z, k, j, f, post, dark = new Float32Array(N);
+  // each zone's pixels' likelihood ratios, as 1 / ratio
+  for (z = 0; z < 3; z++) odds.push([]);
+  for (i = 0; i < N; i++) if (zone[i] >= 0) odds[zone[i]].push(Math.exp(-llr[i]));
+  odds = odds.map(function(arr) { return Float64Array.from(arr); });
+  for (k = 0; k < DARK_ROUNDS; k++) {
+    for (z = 0; z < 3; z++) {
+      f = (1 - share[z]) / share[z];
+      for (j = 0, sum = 0; j < odds[z].length; j++) sum += 1 / (1 + odds[z][j] * f);
+      share[z] = odds[z].length > 0 ? Math.max(MIN_DARK_SHARE, Math.min(1 - MIN_DARK_SHARE, sum / odds[z].length)) : 0.5;
+    }
+  }
   var T = getAgreementThreshold(L, predicted, inc);
-  var dark = new Float32Array(N);
-  for (i = 0; i < N; i++) dark[i] = inc[i] && L[i] < T ? 1 : 0;
-  return {near: inc, threshold: T, dark: dark,
+  var posterior = new Float32Array(N).fill(NaN);
+  for (i = 0; i < N; i++) {
+    z = zone[i];
+    if (z < 0) continue;
+    post = llr[i] + logit(share[z]);
+    dark[i] = post > 0 && L[i] < T ? 1 : 0;
+    posterior[i] = 1 / (1 + Math.exp(-post));
+  }
+  return {near: inc, threshold: T, dark: dark, posterior: posterior,
     darkBoth: nir ? getNirDark(dark, nir, predicted) : dark};
+}
+
+function logit(p) {
+  return Math.log(p / (1 - p));
+}
+
+// Log likelihood ratio of each pixel's luma in shadow and in sun, from
+// histograms of log luma in tiles of DARK_TILE meters (with the tiles around
+// them), of pixels inside the DEM's shadows at @fitted (away from their
+// edges) and of pixels beyond the band of @bandPx pixels around the DEM's
+// shadows (within twice that), each blended with the image's histogram
+// (DARK_PRIOR pixels' worth) and interpolated between the tiles' centers
+// @near share of the DEM's shadows within @bandPx of each pixel
+// Returns a Float32Array, 0 for pixels that aren't near the DEM's shadows
+function getDarkLikelihoods(L, valid, fitted, near, W, H, pixelSize, bandPx) {
+  var N = W * H, B = DARK_BINS, scale = B / Math.log(256);
+  var T = Math.max(toPixels(DARK_TILE, pixelSize), Math.ceil(Math.sqrt(N / MAX_DARK_TILES)));
+  var tw = Math.ceil(W / T), th = Math.ceil(H / T), nt = tw * th;
+  var core = maskMean(fitted, W, H, 1);
+  var wide = boxMean(near, W, H, bandPx);
+  var hist = [new Float64Array(nt * B), new Float64Array(nt * B)];
+  var all = [new Float64Array(B), new Float64Array(B)];
+  var table = new Float32Array(nt * B), bin = new Uint8Array(N);
+  var out = new Float32Array(N), i, g, t, b, x, y, tx, ty, k, sx, sy, n, p, q;
+  for (i = 0; i < N; i++) {
+    bin[i] = Math.min(B - 1, Math.floor(Math.log(L[i] + 1) * scale));
+    if (!valid[i]) continue;
+    if (core[i] > 0.999) g = 0;
+    else if (near[i] <= 0.01 && wide[i] > 0.01) g = 1;
+    else continue;
+    t = Math.floor(Math.floor(i / W) / T) * tw + Math.floor((i % W) / T);
+    hist[g][t * B + bin[i]]++;
+    all[g][bin[i]]++;
+  }
+  core = wide = null;
+  var dens = [new Float64Array(B), new Float64Array(B)], pooled = new Float64Array(B), tot;
+  for (g = 0; g < 2; g++) {
+    for (b = 0, tot = 0; b < B; b++) tot += all[g][b];
+    for (b = 0; b < B; b++) all[g][b] = tot > 0 ? all[g][b] / tot : 1 / B;
+  }
+  for (ty = 0; ty < th; ty++) {
+    for (tx = 0; tx < tw; tx++) {
+      for (g = 0; g < 2; g++) {
+        pooled.fill(0);
+        for (sy = Math.max(0, ty - 1); sy <= Math.min(th - 1, ty + 1); sy++) {
+          for (sx = Math.max(0, tx - 1); sx <= Math.min(tw - 1, tx + 1); sx++) {
+            for (b = 0; b < B; b++) pooled[b] += hist[g][(sy * tw + sx) * B + b];
+          }
+        }
+        for (b = 0, n = 0; b < B; b++) n += pooled[b];
+        for (b = 0; b < B; b++) {
+          // smoothed over neighboring bins
+          for (k = -2, p = 0, q = 0; k <= 2; k++) {
+            if (b + k < 0 || b + k >= B) continue;
+            p += (3 - Math.abs(k)) * (pooled[b + k] + DARK_PRIOR * all[g][b + k]);
+            q += 3 - Math.abs(k);
+          }
+          dens[g][b] = p / q / (n + DARK_PRIOR) + 1e-9;
+        }
+      }
+      for (b = 0; b < B; b++) table[(ty * tw + tx) * B + b] = Math.log(dens[0][b] / dens[1][b]);
+    }
+  }
+  var fx, fy, x0, y0, x1, y1, ax, ay;
+  for (i = 0; i < N; i++) {
+    if (!(near[i] > 0.01) || !valid[i]) continue;
+    x = i % W;
+    y = Math.floor(i / W);
+    fx = Math.max(0, Math.min(tw - 1, x / T - 0.5));
+    fy = Math.max(0, Math.min(th - 1, y / T - 0.5));
+    x0 = Math.floor(fx);
+    y0 = Math.floor(fy);
+    x1 = Math.min(tw - 1, x0 + 1);
+    y1 = Math.min(th - 1, y0 + 1);
+    ax = fx - x0;
+    ay = fy - y0;
+    b = bin[i];
+    out[i] = (table[(y0 * tw + x0) * B + b] * (1 - ax) + table[(y0 * tw + x1) * B + b] * ax) * (1 - ay) +
+      (table[(y1 * tw + x0) * B + b] * (1 - ax) + table[(y1 * tw + x1) * B + b] * ax) * ay;
+  }
+  return out;
 }
 
 // Visibly dark pixels that are also dark in near-infrared. The threshold is
@@ -3259,25 +3517,40 @@ function nearestCenter(centers, f) {
 }
 
 // Mean of a (2r+1)-pixel square around each pixel, clipped at the edges
-export function boxMean(src, w, h, r) {
-  var tmp = new Float32Array(w * h), out = new Float32Array(w * h), x, y, s, o;
+// @out optional Float32Array for the means, which may be @src
+export function boxMean(src, w, h, r, out) {
+  var row = new Float32Array(w), x, y, s, o;
+  out = out || new Float32Array(w * h);
+  // means of rows, written over @out a row at a time
   for (y = 0; y < h; y++) {
     o = y * w;
     s = 0;
     for (x = 0; x <= r && x < w; x++) s += src[o + x];
     for (x = 0; x < w; x++) {
-      tmp[o + x] = s / (Math.min(x + r, w - 1) - Math.max(x - r, 0) + 1);
+      row[x] = s / (Math.min(x + r, w - 1) - Math.max(x - r, 0) + 1);
       if (x + r + 1 < w) s += src[o + x + r + 1];
       if (x - r >= 0) s -= src[o + x - r];
     }
+    out.set(row, o);
   }
-  for (x = 0; x < w; x++) {
-    s = 0;
-    for (y = 0; y <= r && y < h; y++) s += tmp[y * w + x];
-    for (y = 0; y < h; y++) {
-      out[y * w + x] = s / (Math.min(y + r, h - 1) - Math.max(y - r, 0) + 1);
-      if (y + r + 1 < h) s += tmp[(y + r + 1) * w + x];
-      if (y - r >= 0) s -= tmp[(y - r) * w + x];
+  // column sums, a row at a time (in order in memory); the rows' means that
+  // are written over are kept in @ring until they leave the window
+  var col = new Float64Array(w), rows = Math.min(r + 1, h), ring = new Float32Array(rows * w);
+  var n, a, b, v;
+  for (y = 0; y <= r && y < h; y++) {
+    for (x = 0, o = y * w; x < w; x++) col[x] += out[o + x];
+  }
+  for (y = 0; y < h; y++) {
+    n = Math.min(y + r, h - 1) - Math.max(y - r, 0) + 1;
+    o = y * w;
+    a = y + r + 1 < h ? (y + r + 1) * w : -1;
+    b = y - r >= 0 ? (y - r) % rows * w : -1;
+    ring.set(out.subarray(o, o + w), y % rows * w);
+    for (x = 0; x < w; x++) {
+      v = col[x] / n;
+      if (a >= 0) col[x] += out[a + x];
+      if (b >= 0) col[x] -= ring[b + x];
+      out[o + x] = v;
     }
   }
   return out;
@@ -3292,13 +3565,13 @@ function boxMeanValid(src, w, h, r) {
       wts[i] = 1;
     }
   }
-  out = boxMean(vals, w, h, r);
-  wsum = boxMean(wts, w, h, r);
+  out = boxMean(vals, w, h, r, vals);
+  wsum = boxMean(wts, w, h, r, wts);
   for (i = 0; i < src.length; i++) out[i] = src[i] === src[i] ? out[i] / wsum[i] : NaN;
   return out;
 }
 
 function getMedian(arr) {
-  var sorted = arr.slice().sort(function(a, b) { return a - b; });
+  var sorted = Float64Array.from(arr).sort();
   return sorted[Math.floor(sorted.length / 2)];
 }
