@@ -3277,6 +3277,10 @@ export function getOptionParser() {
       describe: 'print technical details about the correction',
       type: 'flag'
     })
+    .option('balanced-threshold', {
+      // describe: 'separate shadows from sunlit ground by a threshold that weighs the two equally (for soft or resampled imagery)'
+      type: 'flag'
+    })
     .option('name', nameOpt)
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);

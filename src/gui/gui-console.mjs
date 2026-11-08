@@ -37,6 +37,7 @@ export function Console(gui) {
   var sharedVars = {}; // share -vars / -defaults templating scope between runs
 
   var activeSession = null; // see createCommandSession()
+  var runningCommands = null; // see runMapshaperCommands()
 
   // expose this function, so other components can run commands (e.g. box tool)
   this.runMapshaperCommands = runMapshaperCommands;
@@ -552,13 +553,25 @@ export function Console(gui) {
   //                  the GUI runs for a panel or tool are run as if with -quiet,
   //                  so their messages don't fill the console (errors still
   //                  reach the caller).
+  //
+  // Some commands take a while (e.g. -fetch, or -deshadow in a worker), and
+  // the GUI stays responsive while they run. Commands run one at a time, in
+  // the order they were submitted, so a command submitted meanwhile waits:
+  // otherwise it could finish first, and the session history would list it
+  // first, and the two would share the active undo transaction. Undo and Redo
+  // wait as well (Undo#addPendingCommit()), or they would take back the state
+  // before the running command while the command still uses it.
   function runMapshaperCommands(str, done, runOpts) {
     var session = runOpts && runOpts.session || null;
     var quiet = !(runOpts && runOpts.typed);
     // A command session is a panel's edits to the active layer, so it is
     // taken to change the layer being edited, like a command that says so.
     var changesEditTarget = !!(runOpts && runOpts.changesEditTarget) || !!session;
-    var commands, checkpoint;
+    var commands, checkpoint, release, unregisterRun;
+    if (runningCommands) {
+      runAfter(runningCommands);
+      return;
+    }
     if (activeSession && activeSession != session) {
       // the session's commit clears activeSession before anything in it can
       // fail, so running again after a failure does not loop
@@ -571,6 +584,7 @@ export function Console(gui) {
       runAfter(checkpoint);
       return;
     }
+    startRun();
     try {
       if (session) session.activate();
       commands = internal.parseConsoleCommands(str);
@@ -599,7 +613,17 @@ export function Console(gui) {
       });
     }
 
+    function startRun() {
+      var promise = new Promise(function(resolve) { release = resolve; });
+      runningCommands = promise;
+      unregisterRun = gui.undo && gui.undo.addPendingCommit ?
+        gui.undo.addPendingCommit(function() { return promise; }) : null;
+    }
+
     function finish(err, flags) {
+      runningCommands = null;
+      if (unregisterRun) unregisterRun();
+      if (release) release();
       if (gui.undo && gui.undo.restartEditSession) {
         callSafely(function() { gui.undo.restartEditSession(); });
       }

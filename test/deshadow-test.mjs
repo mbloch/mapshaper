@@ -3,6 +3,7 @@ import assert from 'assert';
 
 var internal = api.internal;
 var deg = Math.PI / 180;
+var TEST_LATITUDE = 40;
 
 // Deterministic noise in [-1, 1]
 function noise(i) {
@@ -86,10 +87,12 @@ function makeLitDataset(w, h, sunFn, cell) {
   return gridDataset(w, h, Z, img, cell);
 }
 
-// A lat-long dataset with an elevation layer and an RGB image of the same grid
+// A lat-long dataset with an elevation layer and an RGB image of the same
+// grid, at TEST_LATITUDE (where the tests' suns can be), with square cells
 function gridDataset(w, h, Z, img, cell) {
-  var bbox = [0, 0, w * cell, h * cell];
-  var transform = [cell, 0, 0, 0, -cell, bbox[3]];
+  var cellX = cell / Math.cos(TEST_LATITUDE * deg);
+  var bbox = [0, TEST_LATITUDE, w * cellX, TEST_LATITUDE + h * cell];
+  var transform = [cellX, 0, 0, 0, -cell, bbox[3]];
   return {
     info: {crs_string: 'wgs84'},
     layers: [{
@@ -532,6 +535,72 @@ describe('mapshaper-deshadow.mjs', function () {
     });
   });
 
+  describe('isPossibleSun()', function () {
+    it('allows the sun only where it can be on some day of the year', function () {
+      assert(internal.isPossibleSun(40, 180 * deg, 50 * deg));
+      assert(internal.isPossibleSun(40, 180 * deg, 74 * deg));
+      assert(!internal.isPossibleSun(40, 180 * deg, 76 * deg));
+      assert(internal.isPossibleSun(40, 90 * deg, 20 * deg));
+      assert(!internal.isPossibleSun(40, 0, 30 * deg));
+      assert(internal.isPossibleSun(-40, 0, 50 * deg));
+    });
+  });
+
+  describe('getAgreementThreshold()', function () {
+    // luma of shadowed pixels spread evenly over @shadow, of sunlit ones over
+    // @lit: [min, max, step]
+    function threshold(shadow, lit, balanced) {
+      var L = [], predicted = [], v;
+      for (v = shadow[0]; v < shadow[1]; v += shadow[2]) { L.push(v); predicted.push(1); }
+      for (v = lit[0]; v < lit[1]; v += lit[2]) { L.push(v); predicted.push(0); }
+      return internal.getAgreementThreshold(Float32Array.from(L), Uint8Array.from(predicted),
+        new Uint8Array(L.length).fill(1), balanced);
+    }
+
+    it('misclassifies the fewest pixels, or with balanced, the smallest shares', function () {
+      // 900 shadowed pixels from 20 to 170, 100 sunlit ones from 150 to 200
+      assert.equal(threshold([20, 170, 1 / 6], [150, 200, 0.5]), 170.5);
+      assert.equal(threshold([20, 170, 1 / 6], [150, 200, 0.5], true), 149.5);
+    });
+
+    it('is balanced if counting would put most sunlit pixels in shadow', function () {
+      assert.equal(threshold([20, 220, 0.2], [150, 200, 0.5]), 149.5);
+    });
+  });
+
+  describe('getDataSpacing()', function () {
+    // terrain with detail at every scale
+    function terrain(x, y) {
+      return [1, 2, 4, 8, 16, 32].reduce(function(z, scale) {
+        return z + 20 * Math.pow(scale, 1.25) *
+          stretch(function(i, j) { return noise(j * 1000 + i + 7 * scale); }, scale, scale)(x, y);
+      }, 0);
+    }
+    function grid(fn) {
+      return {samples: flatGrid(300, 300, fn), bands: 1, width: 300, height: 300, nodata: null};
+    }
+
+    it('is 1 for a grid with detail at its own cells', function () {
+      assert.equal(internal.getDataSpacing(grid(terrain)), 1);
+      assert.equal(internal.getDataSpacing(grid(function() { return 5; })), 1);
+    });
+
+    it('is about the spacing of the data that a grid was interpolated from', function () {
+      [2, 4, 8, 16].forEach(function(f) {
+        var spacing = internal.getDataSpacing(grid(stretch(terrain, f, f)));
+        assert(spacing > f * 0.75 && spacing < f * 1.25, f + ': ' + spacing);
+      });
+    });
+
+    it('skips nodata', function () {
+      var g = grid(stretch(terrain, 8, 8));
+      for (var i = 0; i < g.samples.length; i++) if (i % 300 < 100) g.samples[i] = -9999;
+      g.nodata = -9999;
+      var spacing = internal.getDataSpacing(g);
+      assert(spacing > 6 && spacing < 10, String(spacing));
+    });
+  });
+
   describe('-deshadow', function () {
     var sun = {azimuth: 135 * deg, altitude: 40 * deg};
 
@@ -555,8 +624,7 @@ describe('mapshaper-deshadow.mjs', function () {
     });
 
     it('date= fits the sun along its path that day', async function () {
-      // the test grid is on the equator
-      var pos = internal.getSunPosition(0, internal.getSolarDeclination(172), -40);
+      var pos = internal.getSunPosition(TEST_LATITUDE, internal.getSolarDeclination(172), -40);
       var dataset = makeDataset(150, 150, mesas, {azimuth: pos.azimuth * deg, altitude: pos.altitude * deg});
       var shadow = dataset.shadow;
       var src = dataset.layers[1].raster.grid.samples.slice();
@@ -573,7 +641,7 @@ describe('mapshaper-deshadow.mjs', function () {
     });
 
     it('uses the date of imagery from -fetch', async function () {
-      var pos = internal.getSunPosition(0, internal.getSolarDeclination(172), -40);
+      var pos = internal.getSunPosition(TEST_LATITUDE, internal.getSolarDeclination(172), -40);
       var dataset = makeDataset(150, 150, mesas, {azimuth: pos.azimuth * deg, altitude: pos.altitude * deg});
       dataset.info.raster_sources = [{id: 'naip', acquisitions: {type: 'states', complete: true,
         groups: [{state: 'AZ', year: 2023, start: '2023-06-20', end: '2023-06-22', images: 2}]}}];
@@ -582,7 +650,7 @@ describe('mapshaper-deshadow.mjs', function () {
     });
 
     it('fits the sun to imagery taken over several weeks', async function () {
-      var pos = internal.getSunPosition(0, internal.getSolarDeclination(240), -40);
+      var pos = internal.getSunPosition(TEST_LATITUDE, internal.getSolarDeclination(240), -40);
       var dataset = makeDataset(150, 150, mesas, {azimuth: pos.azimuth * deg, altitude: pos.altitude * deg});
       dataset.info.raster_sources = [{id: 'naip', acquisitions: {type: 'states', complete: true,
         groups: [{state: 'WA', year: 2013, start: '2013-08-06', end: '2013-09-14', images: 30}]}}];
@@ -676,6 +744,29 @@ describe('mapshaper-deshadow.mjs', function () {
       assert.strictEqual(findLayer(catalog, 'img'), img);
       assert(!findLayer(catalog, 'fixed'));
       assert.notEqual(img.raster.derivation && img.raster.derivation.type, 'deshadow');
+    });
+
+    it('leaves black pixels out, and unchanged', async function () {
+      var dataset = makeDataset(150, 150, mesas, sun);
+      var shadow = dataset.shadow;
+      var src = dataset.layers[1].raster.grid.samples;
+      for (var i = 0; i < 150 * 150; i++) if (i % 150 < 25) src.fill(0, i * 3, i * 3 + 3);
+      var lit = meanColor(src, function(i) { return i % 150 >= 25 && !shadow[i]; });
+      var catalog = await run(dataset, '-deshadow elev target=img');
+      var samples = findLayer(catalog, 'img').raster.grid.samples;
+      var after = meanColor(samples, function(i) { return i % 150 >= 25 && shadow[i]; });
+      for (var k = 0; k < 3; k++) {
+        assert(Math.abs(after[k] - lit[k]) < lit[k] * 0.15, 'band ' + k + ': ' + after[k] + ' vs ' + lit[k]);
+      }
+      assert.deepEqual(meanColor(samples, function(i) { return i % 150 < 25; }), [0, 0, 0]);
+    });
+
+    it('leaves an image with no data in place', async function () {
+      var dataset = makeDataset(150, 150, mesas, sun);
+      var img = dataset.layers[1];
+      img.raster.grid.samples.fill(0);
+      var catalog = await run(dataset, '-deshadow elev target=img');
+      assert.strictEqual(findLayer(catalog, 'img'), img);
     });
 
     it('+ adds no layer when the image can\'t be relit', async function () {

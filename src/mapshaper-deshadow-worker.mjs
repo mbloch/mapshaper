@@ -5,5 +5,6 @@ import { deshadowImage } from './rasters/mapshaper-deshadow';
 import { serveWorkerTasks } from './utils/mapshaper-worker-messages';
 
 serveWorkerTasks(function(task, report) {
-  return deshadowImage(task.image, task.terrain, task.nir, task.pixelSize, task.demPixelSize, task.path, report);
+  return deshadowImage(task.image, task.terrain, task.nir, task.pixelSize, task.demPixelSize, task.path, report,
+    task.options);
 });

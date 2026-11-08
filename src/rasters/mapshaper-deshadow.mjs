@@ -29,7 +29,9 @@ var MIN_TILE_CELLS = 50;
 // lowest sun altitude fitted, in degrees
 export var MIN_ALTITUDE = 10;
 var MAX_ALTITUDE = 88;
-export var MIN_SUN_FIT = 0.1;
+// weaker fits (e.g. of composites of imagery taken at many times) give
+// little or no correction, or a harmful one
+export var MIN_SUN_FIT = 0.3;
 // declinations searched in a range of dates, at most this far apart (degrees)
 var DECLINATION_STEP = 2;
 // The sun is fitted on up to this many cells, no larger than MAX_FIT_CELL
@@ -100,6 +102,12 @@ var MIN_DARK_SHARE = 0.01;
 // (see lowerSunAltitude()); larger means it has taken in other dark areas,
 // e.g. forest
 export var MAX_MASK_RATIO = 1.5;
+// see getAgreementThreshold()
+var MAX_DARK_LIT = 0.8;
+// see getDataSpacing()
+var SPACING_LAGS = [1, 2, 4, 8, 16, 32, 64];
+var SMOOTH_GROWTH = 1.7;
+var SPACING_SAMPLES = 1e6;
 // see addDemShadows()
 var DEM_EDGE_AGREEMENT = 0.95;
 var MIN_DEM_AGREEMENT = 0.5;
@@ -326,6 +334,15 @@ export function getSunPosition(latitude, declination, hour) {
   return {azimuth: az / deg, altitude: Math.asin(Math.max(-1, Math.min(1, sinAlt))) / deg};
 }
 
+var MAX_DECLINATION = 23.44 + 1;
+
+// Whether the sun can be at a position (radians) on some day of the year
+export function isPossibleSun(latitude, azimuth, altitude) {
+  var lat = latitude * Math.PI / 180;
+  var sinDec = Math.sin(lat) * Math.sin(altitude) + Math.cos(lat) * Math.cos(altitude) * Math.cos(azimuth);
+  return Math.abs(Math.asin(Math.max(-1, Math.min(1, sinDec)))) <= MAX_DECLINATION * Math.PI / 180;
+}
+
 // Fits the sun position whose lighting of the terrain (I, see above) best
 // matches the image's brightness
 // @brightness one value per cell, linear in the light reaching the ground; NaN
@@ -531,6 +548,10 @@ function fitSunPath(level, path) {
 // (weighted by cells); -1 if no tile has both varying
 // @tileR optional array for each tile's correlation (NaN if not scored)
 function scoreSun(level, azimuth, altitude, tileR) {
+  if (level.latitude != null && !isPossibleSun(level.latitude, azimuth, altitude)) {
+    if (tileR) tileR.fill(NaN);
+    return -1;
+  }
   var r = level.region, w = level.w, B = level.B, T = level.tile;
   var tw = Math.ceil((r.x1 - r.x0) / T), th = Math.ceil((r.y1 - r.y0) / T);
   var nrm = getLevelNormals(level), NX = nrm.x, NY = nrm.y, NZ = nrm.z;
@@ -616,7 +637,7 @@ function cropLevel(level, region, margin) {
   }
   return {Z: Z, B: B, w: w, h: h, cellW: level.cellW, cellH: level.cellH, factor: level.factor,
     tile: level.tile, region: {x0: region.x0 - x0, y0: region.y0 - y0, x1: region.x1 - x0, y1: region.y1 - y0},
-    work: level.work};
+    work: level.work, latitude: level.latitude};
 }
 
 function getLevelNormals(level) {
@@ -1066,10 +1087,12 @@ function getPixelLighting(lin, valid, I, W, H, band) {
   return out;
 }
 
-// @image {samples, bands, width, height}: uint8 RGB or RGBA
-// @terrain {Z, width, height, factor, x0, y0, cellWidth, cellHeight}:
+// @image {samples, bands, width, height, nodata}: uint8 RGB or RGBA; nodata
+//   is optional
+// @terrain {Z, width, height, factor, x0, y0, cellWidth, cellHeight, latitude}:
 //   elevations in meters on a grid aligned with the image; cell
-//   (x0 + floor(x / factor), y0 + floor(y / factor)) contains pixel (x, y)
+//   (x0 + floor(x / factor), y0 + floor(y / factor)) contains pixel (x, y);
+//   latitude (optional) excludes sun positions that never occur there
 // @nir optional near-infrared value of each pixel
 // @pixelSize ground size of a pixel, in meters
 // @demPixelSize ground size of the DEM's own pixels, in meters
@@ -1080,11 +1103,14 @@ function getPixelLighting(lin, valid, I, W, H, band) {
 //   positions of a mosaic's regions (with the image's first), each with the
 //   share of the image it lights; diffuse is c of each band; shadowGains are
 //   the gains of shadows on flat ground, as they apply to 8-bit values;
-//   failure is 'fit' (no sun position matches), 'diffuse' (c couldn't be
-//   fitted) or 'color' (shadows aren't bluer than sunlit ground)
+//   failure is 'empty' (no pixels have data; sun is null), 'fit' (no sun
+//   position matches well enough), 'altitude' (the
+//   best match is at MIN_ALTITUDE), 'diffuse' (c couldn't be fitted) or
+//   'color' (shadows aren't bluer than sunlit ground)
 // @progress optional function receiving the share of the work done (0 to 1)
 //   as it increases (see REST_WORK)
-export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path, progress) {
+// @options optional {balancedThreshold} (see getAgreementThreshold())
+export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path, progress, options) {
   var W = image.width, H = image.height, N = W * H;
   var work = getWorkTracker(progress || function() {}, N);
   var valid = getValidPixels(image);
@@ -1093,21 +1119,36 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
   var cells = getPixelCells(terrain, W, H);
   var result = {samples: null, sun: null, suns: null, diffuse: null, shadowGains: null,
     shadowShare: 0, failure: null};
+  if (valid.indexOf(1) == -1) {
+    result.failure = 'empty';
+    return result;
+  }
   var level = getFitLevel(terrain.Z, getCellMeans(getLinearLumas(lin, N), W, H, terrain, valid),
     terrain.width, terrain.height, terrain.cellWidth, terrain.cellHeight, region, FIT_CELLS, MAX_FIT_CELL);
   var coarse = path ? null : getFitLevel(level.Z, level.B, level.w, level.h, level.cellW, level.cellH,
     level.region, COARSE_FIT_CELLS, MAX_COARSE_FIT_CELL);
   level.work = work;
-  if (coarse) coarse.work = work;
+  level.latitude = terrain.latitude;
+  if (coarse) {
+    coarse.work = work;
+    coarse.latitude = terrain.latitude;
+  }
   work.expect(getFitWork(level, coarse, path));
   work.rest(PROGRESS.setup);
   var sun = path ? fitSunPath(level, path) : fitFreeSun(level, coarse, null);
   if (!path && sun.score > -1) sun = refineAltitude(level, sun);
-  var regions, light, tile, margin, all, classes, ratios, litRatios, pixelI, gains, inShadow, i, byShadows = true;
+  var regions, light, tile, margin, all, classes, ratios, litRatios, pixelI, gains, inShadow, nValid, i;
+  var byShadows = true;
   var flat, direct, hardI, predicted, shadows;
   result.sun = sun;
   if (!(sun.score >= MIN_SUN_FIT)) {
     result.failure = 'fit';
+    return result;
+  }
+  // a fit at the lowest altitude has usually matched dark ground on slopes
+  // facing away from the sun (e.g. forest in valleys), not shadows
+  if (sun.altitude * 180 / Math.PI < MIN_ALTITUDE + 0.5) {
+    result.failure = 'altitude';
     return result;
   }
   regions = fitRegionSuns(level, sun, path);
@@ -1122,7 +1163,7 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
   hardI = getPixelValues(light.I, cells, Float32Array);
   for (i = 0, predicted = new Uint8Array(N); i < N; i++) predicted[i] = hardI[i] === 0 ? 1 : 0;
   shadows = getPixelShadows(image, nir, valid, predicted, cells, terrain, region, regions,
-    W, H, pixelSize, demPixelSize, work.rest);
+    W, H, pixelSize, demPixelSize, work.rest, !!(options && options.balancedThreshold));
   work.rest(PROGRESS.shadows);
   result.masked = shadows.masked;
   result.maskRatio = shadows.ratio;
@@ -1180,10 +1221,12 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
   work.rest(PROGRESS.sunlit);
   limitBrightness(lin, gains, valid, getLitCap(lin, valid, pixelI, flat, null));
   rectifyColors(lin, gains, valid, hardI, pixelI, flat, W, H, pixelSize, margin);
-  for (i = 0, inShadow = 0; i < N; i++) {
-    if (valid[i] && pixelI[i] < flat[i] * 0.5) inShadow++;
+  for (i = 0, inShadow = 0, nValid = 0; i < N; i++) {
+    if (!valid[i]) continue;
+    nValid++;
+    if (pixelI[i] < flat[i] * 0.5) inShadow++;
   }
-  result.shadowShare = inShadow / N;
+  result.shadowShare = inShadow / Math.max(1, nValid);
   result.samples = writeCorrectedSamples(image, lin, gains, valid);
   work.rest(1);
   return result;
@@ -1895,7 +1938,7 @@ function relightShadows(image, L, valid, mask, pixelSize, sun) {
   }
   compressContrast(relit, alpha, W, H, toPixels(CONTRAST_RADIUS, pixelSize));
   return {
-    samples: writeRelitSamples(src, bands, relit, alpha, edge, W, H, pixelSize),
+    samples: writeRelitSamples(src, bands, relit, alpha, edge, valid, W, H, pixelSize),
     gains: gains
   };
 }
@@ -2474,7 +2517,7 @@ function compressContrast(relit, alpha, W, H, r) {
 // Smooths the color (not the lightness) of brightened pixels, which is noisy
 // in shadows, and blurs the shadows' edges, where sharpening in the source
 // leaves a dark rim
-function writeRelitSamples(src, bands, relit, alpha, edge, W, H, pixelSize) {
+function writeRelitSamples(src, bands, relit, alpha, edge, valid, W, H, pixelSize) {
   var N = W * H, r = toPixels(CHROMA_RADIUS, pixelSize), out = src.slice();
   var Y = new Float32Array(N), wsum = boxMean(alpha, W, H, r), t = new Float32Array(N);
   var blurred = new Float32Array(N), i, k, a, c, v;
@@ -2489,6 +2532,7 @@ function writeRelitSamples(src, bands, relit, alpha, edge, W, H, pixelSize) {
     }
     boxMean(t, W, H, toPixels(EDGE_BLUR_RADIUS, pixelSize), blurred);
     for (i = 0; i < N; i++) {
+      if (!valid[i]) continue;
       v = edge[i] > 0 && edge[i] < 1 ? blurred[i] : t[i];
       if (alpha[i] > 0 || v != src[i * bands + k]) out[i * bands + k] = Math.round(v);
     }
@@ -2741,10 +2785,16 @@ function getLinearLumas(lin, N) {
   return Y;
 }
 
+// Pixels that are transparent, nodata in all three colors, or black (e.g. a
+// collar without nodata) are left out: black has no brightness to measure,
+// and can't be brightened
 function getValidPixels(image) {
-  var n = image.width * image.height, valid = new Uint8Array(n).fill(1), i;
-  if (image.bands == 4) {
-    for (i = 0; i < n; i++) valid[i] = image.samples[i * 4 + 3] > 0 ? 1 : 0;
+  var n = image.width * image.height, valid = new Uint8Array(n), s = image.samples, nb = image.bands;
+  var nodata = image.nodata == null ? 0 : image.nodata, i, j;
+  for (i = 0, j = 0; i < n; i++, j += nb) {
+    if (nb == 4 && s[j + 3] === 0) continue;
+    if (s[j] === s[j + 1] && s[j] === s[j + 2] && (s[j] === 0 || s[j] === nodata)) continue;
+    valid[i] = 1;
   }
   return valid;
 }
@@ -2801,11 +2851,12 @@ function softenShadows(shadow, direct, W, H, r) {
 // Each pixel's share of shadow (0 or 1), from a shadow mask made from the
 // image if it can be (see getShadowMask()), or else from the DEM
 // @predicted 1 for pixels in the DEM's shadows
+// @balanced see getAgreementThreshold()
 // Returns {shadow, masked, count, ratio, mask, sun}: masked is true if the
 //   shadows are from the mask (see getShadowMask()), cast by @sun; ratio is
 //   the mask's size over the DEM's shadows'
 function getPixelShadows(image, nir, valid, predicted, cells, terrain, region, regions,
-    W, H, pixelSize, demPixelSize, progress) {
+    W, H, pixelSize, demPixelSize, progress, balanced) {
   var N = W * H, L = getLuma(image.samples, image.bands, N);
   var band = Math.max(MIN_BAND, demPixelSize * BAND_DEM_PIXELS);
   var shadow = new Float32Array(N), stretch = 1, mask, n, i, maskSun, dark, lowered;
@@ -2818,7 +2869,8 @@ function getPixelShadows(image, nir, valid, predicted, cells, terrain, region, r
       terrain.cellWidth, terrain.cellHeight, maskSun, region), cells, Uint8Array);
     stretch = Math.tan(regions.suns[0].altitude) / Math.tan(maskSun.altitude);
   }
-  mask = n > 0 ? getShadowMask(L, nir, valid, lowered || predicted, W, H, pixelSize, band, predicted) : null;
+  mask = n > 0 ? getShadowMask(L, nir, valid, lowered || predicted, W, H, pixelSize, band, predicted,
+    balanced) : null;
   progress(PROGRESS.mask);
   if (mask && mask.count > 0 && mask.count <= n * MAX_MASK_RATIO * stretch) {
     addDemShadows(mask, predicted, valid, W, H);
@@ -3302,12 +3354,13 @@ export function getLuma(samples, bands, n) {
 // @band distance (meters) around the DEM's shadows to look for shadows
 // @fitted optional: 1 for pixels in the DEM's shadows at the fitted sun, if
 //   @predicted are at a lower sun
+// @balanced optional, see getAgreementThreshold()
 // Returns {hard, near, threshold, count, posterior}: hard is 1 for shadow
 //   pixels; near is 1 for pixels near the DEM's shadows; posterior is the
 //   probability that each of those is shadowed (see getDarkPixels())
-export function getShadowMask(L, nir, valid, predicted, W, H, pixelSize, band, fitted) {
+export function getShadowMask(L, nir, valid, predicted, W, H, pixelSize, band, fitted, balanced) {
   var N = W * H, i;
-  var px = getDarkPixels(L, nir, valid, predicted, fitted || predicted, W, H, pixelSize, band);
+  var px = getDarkPixels(L, nir, valid, predicted, fitted || predicted, W, H, pixelSize, band, balanced);
   var inc = px.near, T = px.threshold, dark = px.dark, darkBoth = px.darkBoth;
   var r = Math.round(MAJORITY_RADIUS / pixelSize);
   var maj = r > 0 ? boxMean(dark, W, H, r) : dark;
@@ -3345,7 +3398,7 @@ export function getShadowMask(L, nir, valid, predicted, W, H, pixelSize, band, f
 //   pixels; darkBoth for those also dark in near-infrared (or dark, without
 //   it); posterior is the probability that each pixel near the DEM's shadows
 //   is shadowed, by its luma and zone (NaN for other pixels)
-function getDarkPixels(L, nir, valid, predicted, fitted, W, H, pixelSize, band) {
+function getDarkPixels(L, nir, valid, predicted, fitted, W, H, pixelSize, band, balanced) {
   var N = W * H, bandPx = toPixels(band, pixelSize), i;
   var near = maskMean(predicted, W, H, bandPx);
   var inc = new Uint8Array(N), zone = new Int8Array(N).fill(-1);
@@ -3367,7 +3420,7 @@ function getDarkPixels(L, nir, valid, predicted, fitted, W, H, pixelSize, band) 
       share[z] = odds[z].length > 0 ? Math.max(MIN_DARK_SHARE, Math.min(1 - MIN_DARK_SHARE, sum / odds[z].length)) : 0.5;
     }
   }
-  var T = getAgreementThreshold(L, predicted, inc);
+  var T = getAgreementThreshold(L, predicted, inc, balanced);
   var posterior = new Float32Array(N).fill(NaN);
   for (i = 0; i < N; i++) {
     z = zone[i];
@@ -3477,10 +3530,16 @@ function getNirDark(dark, nir, predicted) {
   return out;
 }
 
-// The luma threshold that best reproduces the DEM's shadows near them
-export function getAgreementThreshold(L, predicted, include) {
-  var hIn = new Float64Array(256), hOut = new Float64Array(256), nIn = 0;
-  var best = Infinity, t = 0, missIn, falseOut = 0, i, v;
+// The luma threshold that best reproduces the DEM's shadows near them: with
+// the fewest pixels misclassified, or with @balanced, the smallest sum of the
+// shares of shadowed and of sunlit pixels misclassified. Counts favor the
+// larger group; in soft imagery, where pixels at the shadows' edges are
+// mixed, they can put nearly all of the pixels in shadow, so the balanced
+// threshold is used if the counted one would darken more than MAX_DARK_LIT
+// of the sunlit pixels.
+export function getAgreementThreshold(L, predicted, include, balanced) {
+  var hIn = new Float64Array(256), hOut = new Float64Array(256), nIn = 0, nOut = 0;
+  var counted, i, v;
   for (i = 0; i < L.length; i++) {
     if (!include[i]) continue;
     v = Math.min(255, Math.round(L[i]));
@@ -3489,18 +3548,72 @@ export function getAgreementThreshold(L, predicted, include) {
       nIn++;
     } else {
       hOut[v]++;
+      nOut++;
     }
   }
-  missIn = nIn;
-  for (v = 0; v < 256; v++) {
-    missIn -= hIn[v];
-    falseOut += hOut[v];
-    if (missIn + falseOut < best) {
-      best = missIn + falseOut;
-      t = v;
+  function threshold(wIn, wOut) {
+    var best = Infinity, t = 0, missIn = nIn, falseOut = 0, dark = 0, err;
+    for (v = 0; v < 256; v++) {
+      missIn -= hIn[v];
+      falseOut += hOut[v];
+      err = missIn * wIn + falseOut * wOut;
+      if (err < best) {
+        best = err;
+        t = v;
+        dark = falseOut;
+      }
+    }
+    return {t: t + 0.5, darkLit: nOut > 0 ? dark / nOut : 0};
+  }
+  counted = balanced ? null : threshold(1, 1);
+  if (counted && counted.darkLit <= MAX_DARK_LIT) return counted.t;
+  return threshold(1 / Math.max(1, nIn), 1 / Math.max(1, nOut)).t;
+}
+
+// The spacing, in cells, of the data that a grid's first band was
+// interpolated from (e.g. elevation fetched at a finer resolution than its
+// source's); 1 if the grid has detail at its own cells. Second differences of
+// a smooth (interpolated) surface grow as the square of their lag, and those
+// of terrain with detail more slowly: the spacing is where the growth from
+// lag k to 2k falls below SMOOTH_GROWTH, as a power of 2, interpolated
+// between the lags.
+// @grid {samples, bands, width, height, nodata}
+export function getDataSpacing(grid) {
+  var e = SPACING_LAGS.map(function(k) { return getMeanSecondDifference(grid, k); });
+  var prev = 2, g, j;
+  for (j = 0; j < e.length - 1; j++) {
+    if (!(e[j] > 0 && e[j + 1] > 0)) return 1;
+    g = Math.log2(e[j + 1] / e[j]);
+    if (g < SMOOTH_GROWTH) {
+      return j === 0 ? 1 : Math.pow(2, j + (prev - SMOOTH_GROWTH) / (prev - g));
+    }
+    prev = g;
+  }
+  return SPACING_LAGS[SPACING_LAGS.length - 1];
+}
+
+// Mean absolute second difference at @lag along rows and columns, sampling
+// up to about SPACING_SAMPLES values in each direction
+function getMeanSecondDifference(grid, lag) {
+  var w = grid.width, h = grid.height, Z = grid.samples, nb = grid.bands, nodata = grid.nodata;
+  var step = Math.max(1, Math.round(Math.sqrt(w * h / SPACING_SAMPLES)));
+  var sum = 0, n = 0, x, y;
+  function add(i, d) {
+    var a = Z[(i - d) * nb], b = Z[i * nb], c = Z[(i + d) * nb];
+    if (a === nodata || b === nodata || c === nodata) return;
+    a = Math.abs(a + c - 2 * b);
+    if (a === a) {
+      sum += a;
+      n++;
     }
   }
-  return t + 0.5;
+  for (y = 0; y < h; y += step) {
+    for (x = lag; x < w - lag; x++) add(y * w + x, lag);
+  }
+  for (x = 0; x < w; x += step) {
+    for (y = lag; y < h - lag; y++) add(y * w + x, lag * w);
+  }
+  return n > 0 ? sum / n : 0;
 }
 
 // Removes connected areas that are mostly outside the DEM's shadows (small

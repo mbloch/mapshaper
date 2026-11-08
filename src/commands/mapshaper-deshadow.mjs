@@ -1,12 +1,13 @@
 import cmd from '../mapshaper-cmd';
 import { crsTransformsDiffer, getDatasetCRS, isLatLngCRS, toLngLat } from '../crs/mapshaper-projections';
 import { layerHasRaster, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
-import { deshadowImage, getSolarDeclination, resampleGridBand, MIN_SUN_FIT } from '../rasters/mapshaper-deshadow';
+import { deshadowImage, getDataSpacing, getSolarDeclination, resampleGridBand, MIN_ALTITUDE, MIN_SUN_FIT }
+  from '../rasters/mapshaper-deshadow';
 import { getRasterGrid, rasterGridIsRotated } from '../rasters/mapshaper-raster-utils';
 import { getVerticalUnitMeters } from '../rasters/mapshaper-vertical-units';
 import { getHillshadeCellSizes } from './mapshaper-hillshade';
 import { getColoredRaster, rasterCanBeToned } from './mapshaper-tone';
-import { endProgress, message, progress, stop, verbose, warnOnce } from '../utils/mapshaper-logging';
+import { endProgress, message, progress, stop, verbose, warn, warnOnce } from '../utils/mapshaper-logging';
 import { startWorkerPool } from '../utils/mapshaper-worker-pool';
 import { getProgressMeter } from '../utils/mapshaper-progress-meter';
 
@@ -25,6 +26,10 @@ var MIN_SHADOW_ALTITUDE = 15;
 var MAX_MARGIN = 2000;
 // longest span of imagery dates (days) that the sun's path is fitted to
 var MAX_DATE_RANGE = 92;
+// Elevation data more than this many times coarser than the image's pixels
+// misses many shadows; the image's shadows are then found with a balanced
+// threshold (see getAgreementThreshold())
+var MAX_DEM_RATIO = 6;
 
 // Brightens terrain shadows in an RGB image (experimental)
 // @dem {layer, dataset} of an elevation raster
@@ -34,12 +39,15 @@ var MAX_DATE_RANGE = 92;
 // Returns a new layer, or no layers if the image couldn't be relit; -deshadow
 // replaces the target unless + is used
 cmd.deshadow = async function(lyr, dataset, dem, nirSource, opts, resume) {
-  var grid, demGrid, crs, cells, pixelW, pixelH, pixelSize, demCells, demPixelSize;
+  var grid, demGrid, crs, cells, pixelW, pixelH, pixelSize, demCells, demPixelSize, demSpacing, coarseDem;
   var terrain, nir, path, result, out;
   resume = resume || function() {};
   var printer = getProgressPrinter(resume);
-  if (!layerHasRaster(lyr) || !rasterCanBeToned(lyr.raster)) {
+  if (!layerHasRaster(lyr) || !(getRasterGrid(lyr.raster).bands >= 3)) {
     stop('-deshadow requires an RGB image layer');
+  }
+  if (!rasterCanBeToned(lyr.raster)) {
+    stop('-deshadow supports 8-bit RGB and RGBA images');
   }
   if (!dem || !layerHasRaster(dem.layer)) {
     stop('dem= should name an elevation raster');
@@ -64,23 +72,33 @@ cmd.deshadow = async function(lyr, dataset, dem, nirSource, opts, resume) {
   pixelSize = Math.sqrt(pixelW * pixelH);
   demCells = getHillshadeCellSizes(demGrid, getDatasetCRS(dem.dataset));
   demPixelSize = Math.sqrt(demCells.median * demCells.heights[Math.floor(demGrid.height / 2)]);
+  demSpacing = demPixelSize * getDataSpacing(demGrid);
+  coarseDem = demSpacing > pixelSize * MAX_DEM_RATIO;
+  if (coarseDem) {
+    warn('The elevation data has a resolution of about ' + formatMeters(demSpacing) + ', much coarser than' +
+      ' the image\'s ' + formatMeters(pixelSize) + ' pixels, so shadows smaller than its cells can\'t be' +
+      ' corrected. Elevation data with a finer resolution (e.g. -fetch 3dep-1m in the US) would work better');
+  }
   terrain = getTerrainGrid(demGrid, grid, pixelW, pixelH);
   if (!terrain) {
     stop('dem= does not cover the image');
   }
   nir = nirSource ? readNirBand(getRasterGrid(nirSource.layer.raster), grid) : null;
   path = getSunPath(grid, crs, dataset, opts);
+  terrain.latitude = getCenterLatitude(grid, crs);
   printer.start();
   try {
     result = await runDeshadowImage({
-      image: {samples: grid.samples, bands: grid.bands, width: grid.width, height: grid.height},
-      terrain: terrain, nir: nir, pixelSize: pixelSize, demPixelSize: demPixelSize, path: path
+      image: {samples: grid.samples, bands: grid.bands, width: grid.width, height: grid.height,
+        nodata: grid.nodata},
+      terrain: terrain, nir: nir, pixelSize: pixelSize, demPixelSize: demPixelSize, path: path,
+      options: {balancedThreshold: !!opts.balanced_threshold || coarseDem}
     }, printer.update);
   } finally {
     resume();
     printer.end(!!(result && result.samples));
   }
-  if (result.sun.score >= MIN_SUN_FIT) {
+  if (result.sun && result.sun.score >= MIN_SUN_FIT) {
     verbose(formatSun(result.sun, path));
   }
   if (result.suns && result.suns.length > 1) {
@@ -90,6 +108,7 @@ cmd.deshadow = async function(lyr, dataset, dem, nirSource, opts, resume) {
     }).join('; '));
   }
   if (!result.samples) {
+    if (getFailureDetails(result)) verbose(getFailureDetails(result));
     message(getFailureMessage(result));
     return [];
   }
@@ -120,15 +139,15 @@ cmd.deshadow = async function(lyr, dataset, dem, nirSource, opts, resume) {
 
 // Runs deshadowImage() in a worker, so that the GUI stays responsive, or in
 // this thread if the image is small or a worker can't be started
-// @task {image, terrain, nir, pixelSize, demPixelSize, path}: its arrays
-//   other than the image's samples can't be used afterwards
+// @task {image, terrain, nir, pixelSize, demPixelSize, path, options}: its
+//   arrays other than the image's samples can't be used afterwards
 async function runDeshadowImage(task, onProgress) {
   var image = task.image;
   var pool = image.width * image.height >= MIN_WORKER_PIXELS ?
     await startWorkerPool(DESHADOW_WORKER_SCRIPT, 1) : null;
   if (!pool) {
     return deshadowImage(image, task.terrain, task.nir, task.pixelSize, task.demPixelSize, task.path,
-      onProgress);
+      onProgress, task.options);
   }
   try {
     // the worker gets a copy of the samples, which stay with the source layer
@@ -252,21 +271,43 @@ function getCenterLatitude(grid, crs) {
 }
 
 function getFailureMessage(result) {
+  if (result.failure == 'empty') {
+    return 'The image has no pixels with data (all are transparent, nodata or black); the image is unchanged';
+  }
   if (result.sun.score <= -1) {
     return 'The terrain is too flat to tell where the sun was; the image is unchanged';
   }
   if (result.sun.score < MIN_SUN_FIT) {
-    return 'The image\'s brightness doesn\'t follow the lighting of the terrain at any sun position (best match ' +
-      result.sun.score.toFixed(2) + '); the image is unchanged';
+    return 'The image\'s light and shade don\'t match the terrain well enough to tell where the sun was' +
+      ' (as in a mosaic of images taken at many times); the image is unchanged';
+  }
+  if (result.failure == 'altitude') {
+    return 'The image\'s dark areas look like dark ground in valleys (e.g. forest), not shadows;' +
+      ' the image is unchanged';
   }
   if (result.failure == 'color') {
-    return 'The slopes facing away from the sun aren\'t colored like shadows (brightening them would take ' +
-      formatGains([result.shadowGains[0]]) + ' red and ' + formatGains([result.shadowGains[2]]) +
-      ' blue; shadows, lit by the blue sky, need more red), so the image\'s dark areas are probably' +
-      ' mostly something else (e.g. forest). The image is unchanged';
+    return 'The image\'s dark areas aren\'t colored like shadows, so they are probably mostly something' +
+      ' else (e.g. forest); the image is unchanged';
   }
-  return 'The image\'s brightness doesn\'t vary enough with the lighting of the terrain to measure the' +
-    ' share of light from the sky; the image is unchanged';
+  return 'The image\'s shaded slopes are too little darker than its sunlit ones to tell how much to' +
+    ' brighten its shadows; the image is unchanged';
+}
+
+// The measurements behind a failure, for verbose
+function getFailureDetails(result) {
+  if (!result.sun || result.sun.score <= -1) return null;
+  if (result.sun.score < MIN_SUN_FIT) {
+    return 'Best match of the image\'s brightness with the lighting of the terrain: ' +
+      result.sun.score.toFixed(2) + ' (' + MIN_SUN_FIT + ' is needed)';
+  }
+  if (result.failure == 'altitude') {
+    return 'The best match is with the sun at the lowest altitude tried (' + MIN_ALTITUDE + '°)';
+  }
+  if (result.failure == 'color') {
+    return 'Brightening the slopes facing away from the sun would take ' + formatGains([result.shadowGains[0]]) +
+      ' red and ' + formatGains([result.shadowGains[2]]) + ' blue; shadows, lit by the blue sky, need more red';
+  }
+  return 'The share of light from the sky couldn\'t be measured';
 }
 
 function formatGains(gains) {
@@ -338,6 +379,10 @@ function readNirBand(nirGrid, grid) {
 
 function formatDegrees(rad) {
   return Math.round(rad * 180 / Math.PI) + '°';
+}
+
+function formatMeters(m) {
+  return (m < 10 ? m.toFixed(1) : String(Math.round(m))) + ' m';
 }
 
 function formatPercent(share) {
