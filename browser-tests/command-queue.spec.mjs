@@ -1,11 +1,9 @@
 import { expect, test } from '@playwright/test';
 
-// A 2-megapixel NAIP image and 3DEP elevation of Sedona, AZ: -deshadow takes
-// a second or two in a worker, while the GUI keeps taking input
+// A NAIP image and 3DEP elevation of Sedona, AZ: the image is large enough
+// for -deshadow to run in a worker, while the GUI keeps taking input
 var FIXTURES = 'test/data/geotiff/sedona-naip.tif,test/data/geotiff/sedona-elev.tif';
 var DESHADOW = '-deshadow dem=sedona-elev target=sedona-naip date=2021-10-14';
-
-test.setTimeout(60000);
 
 test('a command submitted while another runs waits for it', async function({page}) {
   await loadFixtures(page);
