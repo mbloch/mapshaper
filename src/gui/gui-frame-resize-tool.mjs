@@ -16,6 +16,7 @@ export function FrameResizeTool(gui) {
   var on = false;
   var drawing = false;
   var drawingRequested = false;
+  var drawName = '';
   var drawWidth = '800px';
   var drawAspect = '';
   var drawSource = null;
@@ -357,6 +358,12 @@ export function FrameResizeTool(gui) {
     El('p').appendTo(content)
       .text('Sets the size and crop of exported maps.');
 
+    var defaultName = getNewFrameName(gui.model);
+    var nameInput = makeCreateField(content, 'Frame name',
+      'Name of the frame layer.')
+      .addClass('frame-create-name-input');
+    nameInput.node().value = defaultName;
+
     var widthInput = makeCreateField(content, 'Output width',
       'Width of the exported map.\nExamples: 800px, 5in, 10cm.')
       .addClass('frame-create-width-input');
@@ -377,7 +384,7 @@ export function FrameResizeTool(gui) {
       var aspect = getAspect();
       if (aspect === null) return;
       popup.close();
-      createFromVisibleLayers(getWidth(), aspect, getMargin());
+      createFromVisibleLayers(getName(), getWidth(), aspect, getMargin());
     });
     var marginCell = El('label').addClass('frame-create-margin').appendTo(fitRow);
     El('span').appendTo(marginCell).text('Margin');
@@ -395,8 +402,12 @@ export function FrameResizeTool(gui) {
       var aspect = getAspect();
       if (aspect === null) return;
       popup.close();
-      beginFrameDrawing(getWidth(), aspect);
+      beginFrameDrawing(getName(), getWidth(), aspect);
     });
+
+    function getName() {
+      return nameInput.node().value.trim() || defaultName;
+    }
 
     function getWidth() {
       var value = widthInput.node().value.trim();
@@ -436,7 +447,7 @@ export function FrameResizeTool(gui) {
     return input;
   }
 
-  function beginFrameDrawing(width, aspect) {
+  function beginFrameDrawing(name, width, aspect) {
     drawSource = getSourceLayer();
     if (!drawSource) {
       showPopupAlert(
@@ -445,6 +456,7 @@ export function FrameResizeTool(gui) {
       );
       return;
     }
+    drawName = name;
     drawWidth = width;
     drawAspect = aspect || '';
     // Without this the box is drawn freehand and -frame silently pads it out to
@@ -481,7 +493,7 @@ export function FrameResizeTool(gui) {
       '-frame',
       'bbox=' + quoteCommandValue(bbox.join(',')),
       'width=' + quoteCommandValue(drawWidth),
-      getFrameNameOption()
+      getFrameNameOption(drawName)
     ];
     if (drawAspect) parts.push('aspect-ratio=' + drawAspect);
     // The box is in the source layer's CRS, so the source is listed first;
@@ -495,7 +507,7 @@ export function FrameResizeTool(gui) {
     runCreateCommand(parts.join(' '));
   }
 
-  function createFromVisibleLayers(width, aspect, margin) {
+  function createFromVisibleLayers(name, width, aspect, margin) {
     var entries = getCompositionEntries();
     if (!entries.length) {
       showPopupAlert(getNoSourceMessage(), 'Map frame');
@@ -504,15 +516,15 @@ export function FrameResizeTool(gui) {
     var ids = entries.map(function(o) {
       return internal.getLayerTargetId(gui.model, o.layer);
     });
-    var parts = ['-frame', 'width=' + quoteCommandValue(width), getFrameNameOption()];
+    var parts = ['-frame', 'width=' + quoteCommandValue(width), getFrameNameOption(name)];
     if (aspect) parts.push('aspect-ratio=' + aspect);
     if (margin) parts.push('margin=' + quoteCommandValue(margin));
     parts.push('target=' + internal.formatOptionValue(ids.join(',')));
     runCreateCommand(parts.join(' '));
   }
 
-  function getFrameNameOption() {
-    return 'name=' + internal.formatOptionValue(getNewFrameName(gui.model));
+  function getFrameNameOption(name) {
+    return 'name=' + internal.formatOptionValue(name || getNewFrameName(gui.model));
   }
 
   function runCreateCommand(cmd) {

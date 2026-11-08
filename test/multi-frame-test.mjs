@@ -329,6 +329,51 @@ describe('multiple map frames', function() {
       assert.equal(layer.data.getRecords()[0].copy, 1);
       assert.equal(catalog.findLayers('f1:b')[0].layer.data.getRecords()[0].copy, undefined);
     });
+
+    describe('a layer named by an option, like source=', function() {
+      function targetsOf(catalog, pattern) {
+        return I.groupLayersByDataset(catalog.findLayers(pattern));
+      }
+
+      it('a name repeated in other frames resolves to the targets\' frame', async function() {
+        var catalog = await run(twoFrames);
+        var found = catalog.findSingleLayer('b', targetsOf(catalog, 'f2:a'));
+        assert.equal(found.layer, catalog.findLayers('f2:b')[0].layer);
+      });
+
+      it('a name that is unique in the project is found outside the frame', async function() {
+        var catalog = await run(twoFrames);
+        var found = catalog.findSingleLayer('c', targetsOf(catalog, 'f2:a'));
+        assert.equal(found.layer, findLayer(catalog, 'c').layer);
+      });
+
+      it('a name is still ambiguous for targets in different frames', async function() {
+        var catalog = await run(twoFrames);
+        assert.throws(function() {
+          catalog.findSingleLayer('b', targetsOf(catalog, 'f1:a,f2:a'));
+        }, /Ambiguous pattern.*use one of: f1:b, f2:b/);
+      });
+
+      it('a name is still ambiguous without targets', async function() {
+        var catalog = await run(twoFrames);
+        assert.throws(function() {
+          catalog.findSingleLayer('b');
+        }, /Ambiguous pattern/);
+      });
+
+      it('a name is still ambiguous if no match is in the targets\' frame', async function() {
+        var catalog = await run(twoFrames + '-frame target=c width=200 name=f3');
+        assert.throws(function() {
+          catalog.findSingleLayer('b', targetsOf(catalog, 'c'));
+        }, /Ambiguous pattern/);
+      });
+
+      it('source= picks the layer in the target\'s frame', async function() {
+        var catalog = await run(twoFrames + '-each target=f2:b "tag=\'f2\'" ' +
+          '-join target=f2:a source=b fields=tag');
+        assert.equal(catalog.findLayers('f2:a')[0].layer.data.getRecords()[0].tag, 'f2');
+      });
+    });
   });
 
   describe('-o with frames', function() {

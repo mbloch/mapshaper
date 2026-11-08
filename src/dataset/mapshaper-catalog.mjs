@@ -120,10 +120,20 @@ export function Catalog() {
     return frame ? getFrameMemberLayers(this, frame) : null;
   }
 
-  this.findSingleLayer = function(pattern) {
+  // @targets (optional) the command's targets, as [{layers, dataset}]. When
+  //   the pattern matches more than one layer and the targets all belong to
+  //   one frame, the matches in that frame are preferred. A pattern that
+  //   matches a single layer finds it wherever it is.
+  this.findSingleLayer = function(pattern, targets) {
     var matches = findMatchingLayers(this.getLayers(), pattern, false, getQualifiedLayers.bind(this));
+    var frame, inFrame;
+    if (matches.length > 1 && (frame = getSharedTargetFrame(this, targets))) {
+      inFrame = filterFrameMembers(this, frame, matches);
+      if (inFrame.length > 0) matches = inFrame;
+    }
     if (matches.length > 1) {
-      stop('Ambiguous pattern (multiple layers were matched):', pattern);
+      stop('Ambiguous pattern (multiple layers were matched):', pattern +
+        getQualifiedNamesHint(this, matches));
     }
     return matches[0] || null;
   };
@@ -319,6 +329,36 @@ export function Catalog() {
       return d != dataset;
     });
   }
+}
+
+// The frame that all of @targets belong to, or null if they are unframed, in
+// different frames, or there are none
+function getSharedTargetFrame(catalog, targets) {
+  var frames = (targets || []).map(function(target) {
+    return getFrameForDataset(catalog, target.dataset);
+  });
+  if (frames.length === 0 || !frames[0]) return null;
+  return frames.every(function(frame) {
+    return frame && frame.layer == frames[0].layer;
+  }) ? frames[0] : null;
+}
+
+function filterFrameMembers(catalog, frame, matches) {
+  var members = getFrameMemberLayers(catalog, frame).map(function(o) {
+    return o.layer;
+  });
+  return matches.filter(function(o) {
+    return members.includes(o.layer);
+  });
+}
+
+// e.g. " (use one of: frame1:dem, frame2:dem)", if every match has a
+// qualified name
+function getQualifiedNamesHint(catalog, matches) {
+  var names = matches.map(function(o) {
+    return catalog.getQualifiedLayerName(o.layer);
+  });
+  return names.every(Boolean) ? ' (use one of: ' + names.join(', ') + ')' : '';
 }
 
 export function getFormattedLayerList(catalog) {

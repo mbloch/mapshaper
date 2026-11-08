@@ -271,7 +271,7 @@ export async function runCommand(command, job) {
     if (Object.prototype.hasOwnProperty.call(command, '_sourceOverride')) {
       source = command._sourceOverride;
     } else if (opts.source && name != 'fetch') {
-      source = await findCommandSourceAsync(convertSourceName(opts.source, targets), job.catalog, opts);
+      source = await findCommandSourceAsync(convertSourceName(opts.source, targets), job.catalog, opts, targets);
     }
 
     // identify command target/input (for postprocessing)
@@ -854,7 +854,7 @@ async function findRepelPolygons(opts, catalog, targets) {
 // A layer named by an option other than source= (a layer or a file), only read
 async function findLayerOption(name, catalog, targets, opts) {
   if (!name) return null;
-  return await findCommandSourceAsync(convertSourceName(name, targets), catalog, opts);
+  return await findCommandSourceAsync(convertSourceName(name, targets), catalog, opts, targets);
 }
 
 // -blend merges the hillshade into the target, so the hillshade layer is
@@ -871,7 +871,8 @@ async function resolveSourceForTargets(command, job, targets) {
     return await findCommandSourceAsync(
       convertSourceName(command.options.source, targets),
       job.catalog,
-      command.options
+      command.options,
+      targets
     );
   } finally {
     job.endCommand();
