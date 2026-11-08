@@ -6,7 +6,15 @@ import { getRasterGrid, rasterGridIsRotated } from '../rasters/mapshaper-raster-
 import { getVerticalUnitMeters } from '../rasters/mapshaper-vertical-units';
 import { getHillshadeCellSizes } from './mapshaper-hillshade';
 import { getColoredRaster, rasterCanBeToned } from './mapshaper-tone';
-import { message, stop, warnOnce } from '../utils/mapshaper-logging';
+import { endProgress, message, progress, stop, verbose, warnOnce } from '../utils/mapshaper-logging';
+import { startWorkerPool } from '../utils/mapshaper-worker-pool';
+import { getProgressMeter } from '../utils/mapshaper-progress-meter';
+
+var DESHADOW_WORKER_SCRIPT = 'deshadow-worker.js';
+// Smaller images take a fraction of a second, and starting a worker has a cost
+var MIN_WORKER_PIXELS = 250000;
+// how often the progress line is updated while waiting for the worker (ms)
+var PROGRESS_TICK = 100;
 
 // Terrain cells are about this size, or the size of an image pixel if larger
 var TERRAIN_CELL = 1.2;
@@ -21,11 +29,15 @@ var MAX_DATE_RANGE = 92;
 // Brightens terrain shadows in an RGB image (experimental)
 // @dem {layer, dataset} of an elevation raster
 // @nirSource optional {layer, dataset} of a near-infrared raster (band 1)
+// @resume function called after each wait for the worker and before printing
+//   progress (job.resumeCommand())
 // Returns a new layer, or no layers if the image couldn't be relit; -deshadow
 // replaces the target unless + is used
-cmd.deshadow = function(lyr, dataset, dem, nirSource, opts) {
+cmd.deshadow = async function(lyr, dataset, dem, nirSource, opts, resume) {
   var grid, demGrid, crs, cells, pixelW, pixelH, pixelSize, demCells, demPixelSize;
   var terrain, nir, path, result, out;
+  resume = resume || function() {};
+  var printer = getProgressPrinter(resume);
   if (!layerHasRaster(lyr) || !rasterCanBeToned(lyr.raster)) {
     stop('-deshadow requires an RGB image layer');
   }
@@ -58,22 +70,30 @@ cmd.deshadow = function(lyr, dataset, dem, nirSource, opts) {
   }
   nir = nirSource ? readNirBand(getRasterGrid(nirSource.layer.raster), grid) : null;
   path = getSunPath(grid, crs, dataset, opts);
-  result = deshadowImage({samples: grid.samples, bands: grid.bands, width: grid.width, height: grid.height},
-    terrain, nir, pixelSize, demPixelSize, path);
+  printer.start();
+  try {
+    result = await runDeshadowImage({
+      image: {samples: grid.samples, bands: grid.bands, width: grid.width, height: grid.height},
+      terrain: terrain, nir: nir, pixelSize: pixelSize, demPixelSize: demPixelSize, path: path
+    }, printer.update);
+  } finally {
+    resume();
+    printer.end(!!(result && result.samples));
+  }
   if (result.sun.score >= MIN_SUN_FIT) {
-    message(formatSun(result.sun, path));
+    verbose(formatSun(result.sun, path));
   }
   if (result.suns && result.suns.length > 1) {
-    message('The image is a mosaic; its regions are lit by the sun at ' + result.suns.map(function(s) {
+    verbose('The image is a mosaic; its regions are lit by the sun at ' + result.suns.map(function(s) {
       return 'azimuth ' + formatDegrees(s.azimuth) + ', altitude ' + formatDegrees(s.altitude) +
         ' (' + formatPercent(s.share) + ')';
     }).join('; '));
   }
   if (!result.samples) {
-    message(getFailureMessage(result, !!nir));
+    message(getFailureMessage(result));
     return [];
   }
-  message('Shaded areas: ' + formatPercent(result.shadowShare) + ' of the image; shadows on flat ground brightened ' +
+  verbose('Shaded areas: ' + formatPercent(result.shadowShare) + ' of the image; shadows on flat ground brightened ' +
     formatGains(result.shadowGains) + ' (red, green, blue)');
   out = {
     raster_type: 'grid',
@@ -97,6 +117,55 @@ cmd.deshadow = function(lyr, dataset, dem, nirSource, opts) {
   setOutputLayerName(out, lyr, 'deshadow', opts);
   return [out];
 };
+
+// Runs deshadowImage() in a worker, so that the GUI stays responsive, or in
+// this thread if the image is small or a worker can't be started
+// @task {image, terrain, nir, pixelSize, demPixelSize, path}: its arrays
+//   other than the image's samples can't be used afterwards
+async function runDeshadowImage(task, onProgress) {
+  var image = task.image;
+  var pool = image.width * image.height >= MIN_WORKER_PIXELS ?
+    await startWorkerPool(DESHADOW_WORKER_SCRIPT, 1) : null;
+  if (!pool) {
+    return deshadowImage(image, task.terrain, task.nir, task.pixelSize, task.demPixelSize, task.path,
+      onProgress);
+  }
+  try {
+    // the worker gets a copy of the samples, which stay with the source layer
+    return await pool.run(0, Object.assign({}, task, {
+      image: Object.assign({}, image, {samples: image.samples.slice()})
+    }), onProgress);
+  } finally {
+    pool.close();
+  }
+}
+
+// Prints the progress line (see getProgressMeter()), timed from now; dots are
+// only printed on time while this thread waits for the worker
+// Returns {start, update, end}: functions starting the dots' timer, receiving
+//   the share of the work done, and ending the line (with 100% if @done)
+function getProgressPrinter(resume) {
+  var meter = getProgressMeter(), t0 = Date.now(), timer = null;
+  function print(str) {
+    if (!str) return;
+    resume();
+    progress(str);
+  }
+  function update(share) {
+    print(meter.update(Date.now() - t0, share));
+  }
+  return {
+    start: function() {
+      timer = setInterval(update, PROGRESS_TICK);
+    },
+    update: update,
+    end: function(done) {
+      clearInterval(timer);
+      print(done ? meter.finish(Date.now() - t0) : meter.update(Date.now() - t0));
+      endProgress();
+    }
+  };
+}
 
 function formatSun(sun, path) {
   var match = 'match ' + sun.score.toFixed(2);
@@ -182,7 +251,7 @@ function getCenterLatitude(grid, crs) {
   return p && isFinite(p[1]) ? p[1] : null;
 }
 
-function getFailureMessage(result, nirUsed) {
+function getFailureMessage(result) {
   if (result.sun.score <= -1) {
     return 'The terrain is too flat to tell where the sun was; the image is unchanged';
   }
@@ -194,8 +263,7 @@ function getFailureMessage(result, nirUsed) {
     return 'The slopes facing away from the sun aren\'t colored like shadows (brightening them would take ' +
       formatGains([result.shadowGains[0]]) + ' red and ' + formatGains([result.shadowGains[2]]) +
       ' blue; shadows, lit by the blue sky, need more red), so the image\'s dark areas are probably' +
-      ' mostly something else (e.g. forest' + (nirUsed ? ')' : '; nir= can tell them apart)') +
-      '. The image is unchanged';
+      ' mostly something else (e.g. forest). The image is unchanged';
   }
   return 'The image\'s brightness doesn\'t vary enough with the lighting of the terrain to measure the' +
     ' share of light from the sky; the image is unchanged';

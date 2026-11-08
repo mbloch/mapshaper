@@ -420,11 +420,14 @@ export async function runCommand(command, job) {
       if (!dem) stop('-deshadow requires the name of an elevation layer (dem=)');
       // images that couldn't be relit are left in place
       outputLayers = [];
-      targetLayers = targetLayers.filter(function(lyr) {
-        let out = cmd.deshadow(lyr, targetDataset, dem, nir, opts);
+      let relit = [];
+      for (let lyr of targetLayers) {
+        let out = await cmd.deshadow(lyr, targetDataset, dem, nir, opts, job.resumeCommand);
         outputLayers = outputLayers.concat(out);
-        return out.length > 0;
-      });
+        if (out.length > 0) relit.push(lyr);
+      }
+      job.resumeCommand();
+      targetLayers = relit;
       if (outputLayers.length === 0) outputLayers = null;
 
     } else if (name == 'dashlines') {

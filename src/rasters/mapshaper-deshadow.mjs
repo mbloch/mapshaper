@@ -413,6 +413,7 @@ function getHorizonAngles(level, azimuth, lo, hi) {
   for (alt = Math.min(MAX_ALTITUDE, hi); alt >= lo; alt--) {
     P = castTerrainShadow(level.Z, level.w, level.h, level.cellW, level.cellH,
       {azimuth: azimuth, altitude: alt * deg}, level.region);
+    if (level.work) level.work.fit(getRegionCells(level.region));
     for (i = 0; i < P.length; i++) if (P[i] && H[i] === 0) H[i] = alt;
   }
   return H;
@@ -539,6 +540,7 @@ function scoreSun(level, azimuth, altitude, tileR) {
   var sz = Math.sin(altitude);
   var acc = new Float64Array(tw * 6), total = 0, wsum = 0;
   var tx, ty, x, y, y1, i, k, a, b, n, cov, va, vb, rr;
+  if (level.work) level.work.fit(getRegionCells(r));
   B = getLevelLogBrightness(level);
   for (ty = 0; ty < th; ty++) {
     acc.fill(0);
@@ -613,7 +615,8 @@ function cropLevel(level, region, margin) {
     B.set(level.B.subarray((y + y0) * level.w + x0, (y + y0) * level.w + x1), y * w);
   }
   return {Z: Z, B: B, w: w, h: h, cellW: level.cellW, cellH: level.cellH, factor: level.factor,
-    tile: level.tile, region: {x0: region.x0 - x0, y0: region.y0 - y0, x1: region.x1 - x0, y1: region.y1 - y0}};
+    tile: level.tile, region: {x0: region.x0 - x0, y0: region.y0 - y0, x1: region.x1 - x0, y1: region.y1 - y0},
+    work: level.work};
 }
 
 function getLevelNormals(level) {
@@ -672,9 +675,10 @@ export function getNormals(Z, w, h, cellW, cellH) {
 function fitRegionSuns(level, sun, path) {
   var r = level.region, T = level.tile;
   var tw = Math.ceil((r.x1 - r.x0) / T), th = Math.ceil((r.y1 - r.y0) / T);
-  var blocks = Math.min(MAX_BLOCKS, Math.floor(Math.sqrt(tw * th / BLOCK_TILES)));
+  var blocks = getBlockCount(level);
   var margin = Math.ceil(BLOCK_MARGIN / Math.max(level.cellW, level.cellH));
   var suns = [sun], single = {suns: suns, labels: null, tw: tw, th: th};
+  var work = level.work, w = path ? FIT_WORK.path : FIT_WORK.free, cells = getRegionCells(r);
   var bx, by, region, sub, fit, out, iter, prev;
   if (blocks < 2) return single;
   for (by = 0; by < blocks; by++) {
@@ -692,6 +696,7 @@ function fitRegionSuns(level, sun, path) {
     }
   }
   if (suns.length == 1) return single;
+  if (work) work.expect((w.refits + w.areas) * cells);
   out = compactSuns(suns, labelSuns(level, suns, tw, th), tw, th);
   for (iter = 0; iter < MAX_REFITS && out.labels; iter++) {
     suns = out.suns.map(function(s, k) {
@@ -705,8 +710,17 @@ function fitRegionSuns(level, sun, path) {
     out = compactSuns(suns, labelSuns(level, suns, tw, th, 0), tw, th);
     if (out.labels && out.suns.length == suns.length && out.labels.every(function(l, t) { return l == prev[t]; })) break;
   }
+  if (work) work.expect(out.labels ? w.areas * cells : 0);
   if (out.labels) out = fitAreaSuns(level, out, margin, path);
   return out;
+}
+
+// The number of blocks on each side of the grid that a mosaic's suns are
+// first fitted in (see MAX_BLOCKS); none if fewer than 2
+function getBlockCount(level) {
+  var r = level.region, T = level.tile;
+  var tw = Math.ceil((r.x1 - r.x0) / T), th = Math.ceil((r.y1 - r.y0) / T);
+  return Math.min(MAX_BLOCKS, Math.floor(Math.sqrt(tw * th / BLOCK_TILES)));
 }
 
 // Tiles are labeled by how well brightness matches each sun, which tells
@@ -1068,8 +1082,11 @@ function getPixelLighting(lin, valid, I, W, H, band) {
 //   the gains of shadows on flat ground, as they apply to 8-bit values;
 //   failure is 'fit' (no sun position matches), 'diffuse' (c couldn't be
 //   fitted) or 'color' (shadows aren't bluer than sunlit ground)
-export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path) {
+// @progress optional function receiving the share of the work done (0 to 1)
+//   as it increases (see REST_WORK)
+export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path, progress) {
   var W = image.width, H = image.height, N = W * H;
+  var work = getWorkTracker(progress || function() {}, N);
   var valid = getValidPixels(image);
   var lin = getLinearImage(image);
   var region = getTerrainRegion(terrain, W, H);
@@ -1078,9 +1095,13 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
     shadowShare: 0, failure: null};
   var level = getFitLevel(terrain.Z, getCellMeans(getLinearLumas(lin, N), W, H, terrain, valid),
     terrain.width, terrain.height, terrain.cellWidth, terrain.cellHeight, region, FIT_CELLS, MAX_FIT_CELL);
-  var sun = path ? fitSunPath(level, path) : fitFreeSun(level, getFitLevel(level.Z, level.B,
-    level.w, level.h, level.cellW, level.cellH, level.region,
-    COARSE_FIT_CELLS, MAX_COARSE_FIT_CELL), null);
+  var coarse = path ? null : getFitLevel(level.Z, level.B, level.w, level.h, level.cellW, level.cellH,
+    level.region, COARSE_FIT_CELLS, MAX_COARSE_FIT_CELL);
+  level.work = work;
+  if (coarse) coarse.work = work;
+  work.expect(getFitWork(level, coarse, path));
+  work.rest(PROGRESS.setup);
+  var sun = path ? fitSunPath(level, path) : fitFreeSun(level, coarse, null);
   if (!path && sun.score > -1) sun = refineAltitude(level, sun);
   var regions, light, tile, margin, all, classes, ratios, litRatios, pixelI, gains, inShadow, i, byShadows = true;
   var flat, direct, hardI, predicted, shadows;
@@ -1090,8 +1111,10 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
     return result;
   }
   regions = fitRegionSuns(level, sun, path);
+  work.expect(0);
   light = getCellLighting(terrain, region, demPixelSize, regions, level);
   result.suns = getSunShares(regions, level, light, cells, terrain.width, valid, N);
+  work.rest(PROGRESS.lighting);
   tile = Math.max(MIN_C_TILE, Math.round(C_TILE / pixelSize), Math.ceil(Math.sqrt(N / MAX_C_TILES)));
   margin = Math.max(1, Math.round(SHADOW_MARGIN * Math.max(demPixelSize, pixelSize) / pixelSize));
   flat = getPixelValues(light.flat, cells, Float32Array);
@@ -1099,7 +1122,8 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
   hardI = getPixelValues(light.I, cells, Float32Array);
   for (i = 0, predicted = new Uint8Array(N); i < N; i++) predicted[i] = hardI[i] === 0 ? 1 : 0;
   shadows = getPixelShadows(image, nir, valid, predicted, cells, terrain, region, regions,
-    W, H, pixelSize, demPixelSize);
+    W, H, pixelSize, demPixelSize, work.rest);
+  work.rest(PROGRESS.shadows);
   result.masked = shadows.masked;
   result.maskRatio = shadows.ratio;
   if (shadows.masked) {
@@ -1110,6 +1134,7 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
     all = fitDiffuseRatios(lin, valid, hardI, W, H, null, 1, tile)[0];
     byShadows = false;
   }
+  work.rest(PROGRESS.ratios);
   result.diffuse = all.c;
   if (!all.c.every(function(c) { return c > 0; })) {
     result.failure = 'diffuse';
@@ -1132,13 +1157,15 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
     ratios = [all.c];
     litRatios = ratios;
   }
+  work.rest(PROGRESS.classes);
   if (shadows.masked) {
     var relit = relightMaskedImage(image, lin, valid, classes.labels, ratios, litRatios, flat, direct, hardI,
-      shadows, W, H, pixelSize, margin);
+      shadows, W, H, pixelSize, margin, work);
     if (relit && relit.samples) {
       result.samples = relit.samples;
       result.shadowGains = relit.gains;
       result.shadowShare = shadows.count / N;
+      work.rest(1);
       return result;
     }
     if (relit) {
@@ -1150,6 +1177,7 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
   pixelI = shadows.masked ? softenShadows(shadows.shadow, direct, W, H, toPixels(EDGE_BLUR_RADIUS, pixelSize)) :
     getPixelLighting(lin, valid, hardI, W, H, margin);
   gains = getPixelGains(lin, classes.labels, ratios, litRatios, flat, direct, pixelI, valid, W, H, pixelSize);
+  work.rest(PROGRESS.sunlit);
   limitBrightness(lin, gains, valid, getLitCap(lin, valid, pixelI, flat, null));
   rectifyColors(lin, gains, valid, hardI, pixelI, flat, W, H, pixelSize, margin);
   for (i = 0, inShadow = 0; i < N; i++) {
@@ -1157,7 +1185,73 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
   }
   result.shadowShare = inShadow / N;
   result.samples = writeCorrectedSamples(image, lin, gains, valid);
+  work.rest(1);
   return result;
+}
+
+// deshadowImage()'s progress is measured in work, which is roughly time: a
+// unit is a cell scored or cast in fitting the sun's position, and the other
+// stages take REST_WORK units per pixel, of which PROGRESS is the share done
+// at the end of each stage (the setup is before the fit)
+var REST_WORK = 170;
+var PROGRESS = {setup: 0.01, lighting: 0.05, mask: 0.12, casts: 0.17, shadows: 0.35, ratios: 0.36,
+  classes: 0.58, sunlit: 0.74, relit: 0.91};
+// The work of fitting the sun, in units per cell of the fit level, along its
+// path (path) or anywhere (free, where each cell of the coarse level is also
+// scored once per position of fitFreeSun()'s grid, FREE_SEARCH_FITS): the
+// image's fit, and with blocks (see fitRegionSuns()), the blocks' fits, the
+// refits and the fits of a mosaic's areas. An image with blocks is expected
+// to be a mosaic, which is most of the work, until the blocks show it isn't.
+var FIT_WORK = {
+  path: {fit: 30, blocks: 37, refits: 410, areas: 45},
+  free: {fit: 110, blocks: 42, refits: 720, areas: 105}
+};
+var FREE_SEARCH_FITS = 36 * 8;
+var PROGRESS_STEP = 0.005;
+
+// Reports the share of the work done to @progress, in steps of at least
+// PROGRESS_STEP
+// @N pixels in the image
+// Returns {fit, expect, rest}: functions receiving the cells just scored or
+//   cast in fitting the sun, the fitting work still expected, and the share
+//   of the other stages done
+function getWorkTracker(progress, N) {
+  var rest = N * REST_WORK, fit = 0, fitLeft = 0, restShare = 0, reported = 0;
+  function report() {
+    var share = (fit + restShare * rest) / (fit + fitLeft + rest);
+    if (share >= reported + PROGRESS_STEP || share == 1 && reported < 1) {
+      reported = share;
+      progress(share);
+    }
+  }
+  return {
+    fit: function(cells) {
+      fit += cells;
+      fitLeft = Math.max(0, fitLeft - cells);
+      report();
+    },
+    expect: function(cells) {
+      fitLeft = cells;
+      report();
+    },
+    rest: function(share) {
+      restShare = share;
+      report();
+    }
+  };
+}
+
+// The expected work of fitting the sun (see FIT_WORK)
+// @coarse level of the first search of a free fit
+function getFitWork(level, coarse, path) {
+  var w = path ? FIT_WORK.path : FIT_WORK.free, cells = getRegionCells(level.region);
+  var work = w.fit * cells + (coarse ? FREE_SEARCH_FITS * getRegionCells(coarse.region) : 0);
+  if (getBlockCount(level) > 1) work += (w.blocks + w.refits + w.areas) * cells;
+  return work;
+}
+
+function getRegionCells(r) {
+  return (r.x1 - r.x0) * (r.y1 - r.y0);
 }
 
 // With shadows masked from the image, sunlit pixels are corrected for their
@@ -1174,11 +1268,13 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
 // Returns null if the shadows' gains can't be measured, or {samples, gains}
 //   (samples is null if the gains fail the color check)
 function relightMaskedImage(image, lin, valid, labels, ratios, litRatios, flat, direct, I, shadows, W, H,
-    pixelSize, margin) {
+    pixelSize, margin, work) {
   var N = W * H, lit, relit;
   lit = Object.assign({}, image, {samples: correctSunlitPixels(image, lin, valid, labels, ratios, litRatios,
     flat, direct, shadows.mask.hard, W, H, pixelSize)});
+  work.rest(PROGRESS.sunlit);
   relit = relightShadows(lit, getLuma(lit.samples, lit.bands, N), valid, shadows.mask, pixelSize, shadows.sun);
+  work.rest(PROGRESS.relit);
   if (relit && relit.samples) {
     relit.samples = rectifySamples(image, lin, relit.samples, valid, I, flat, pixelSize, margin);
   }
@@ -2709,7 +2805,7 @@ function softenShadows(shadow, direct, W, H, r) {
 //   shadows are from the mask (see getShadowMask()), cast by @sun; ratio is
 //   the mask's size over the DEM's shadows'
 function getPixelShadows(image, nir, valid, predicted, cells, terrain, region, regions,
-    W, H, pixelSize, demPixelSize) {
+    W, H, pixelSize, demPixelSize, progress) {
   var N = W * H, L = getLuma(image.samples, image.bands, N);
   var band = Math.max(MIN_BAND, demPixelSize * BAND_DEM_PIXELS);
   var shadow = new Float32Array(N), stretch = 1, mask, n, i, maskSun, dark, lowered;
@@ -2723,10 +2819,11 @@ function getPixelShadows(image, nir, valid, predicted, cells, terrain, region, r
     stretch = Math.tan(regions.suns[0].altitude) / Math.tan(maskSun.altitude);
   }
   mask = n > 0 ? getShadowMask(L, nir, valid, lowered || predicted, W, H, pixelSize, band, predicted) : null;
+  progress(PROGRESS.mask);
   if (mask && mask.count > 0 && mask.count <= n * MAX_MASK_RATIO * stretch) {
     addDemShadows(mask, predicted, valid, W, H);
     addSignatureShadows(mask, image, valid, predicted, cells, terrain, region, regions.suns, W, H,
-      band / pixelSize);
+      band / pixelSize, progress);
     for (i = 0; i < N; i++) shadow[i] = mask.hard[i];
     return {shadow: shadow, masked: true, count: mask.count, ratio: mask.count / n, mask: mask,
       sun: maskSun || regions.suns[0]};
@@ -2750,10 +2847,14 @@ function getPixelShadows(image, nir, valid, predicted, cells, terrain, region, r
 // kinds of sunlit ground (e.g. forest on slopes facing away from the sun),
 // which can then look like shadow.
 // @bandPx distance (pixels) around the DEM's shadows that the mask searches
+// @progress optional function receiving the share done of the stages after
+//   the sun's fit (see PROGRESS)
 // Returns the number of pixels added
-export function addSignatureShadows(mask, image, valid, predicted, cells, terrain, region, suns, W, H, bandPx) {
+export function addSignatureShadows(mask, image, valid, predicted, cells, terrain, region, suns, W, H, bandPx,
+    progress) {
   var N = W * H, hard = mask.hard, d = 3, shadows = getShadowCache(terrain, region);
   var plausible = getPixelValues(getPlausibleShadows(terrain, region, suns, shadows), cells, Uint8Array);
+  if (progress) progress(PROGRESS.casts);
   var agreed = new Float32Array(N), pred = new Float32Array(N), inMask = new Float32Array(N);
   var shadowIdx = [], litIdx = [], nValid = 0, added = 0, core, near, nearMask, features, F, S, L, llr, cand;
   var areas, i;

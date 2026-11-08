@@ -23,8 +23,9 @@ export async function startWorkerPool(scriptName, n) {
     size: n,
     // Runs @task in worker @i, one task at a time per worker. Typed arrays in
     // @task are transferred, so they can't be used afterwards.
-    run: function(i, task) {
-      return workers[i].run(task);
+    // @onProgress optional function receiving the task's progress reports
+    run: function(i, task, onProgress) {
+      return workers[i].run(task, onProgress);
     },
     close: function() {
       workers.forEach(function(w) { w.terminate(); });
@@ -59,6 +60,10 @@ function createWorker(scriptName) {
       onReady();
       return;
     }
+    if ('progress' in msg) {
+      if (p && p.onProgress) p.onProgress(msg.progress);
+      return;
+    }
     pending = null;
     if (!p) return;
     if (msg.error) p.reject(new Error(msg.error));
@@ -72,9 +77,9 @@ function createWorker(scriptName) {
   return {
     ready: ready,
     terminate: worker.terminate,
-    run: function(task) {
+    run: function(task, onProgress) {
       return new Promise(function(resolve, reject) {
-        pending = {resolve: resolve, reject: reject};
+        pending = {resolve: resolve, reject: reject, onProgress: onProgress};
         worker.post(task, getTransferList(task));
       });
     }

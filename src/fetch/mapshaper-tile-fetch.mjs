@@ -1,6 +1,7 @@
 import { runningInBrowser } from '../mapshaper-env';
 import require from '../mapshaper-require';
 import { endProgress, progress, stop } from '../utils/mapshaper-logging';
+import { getProgressMeter } from '../utils/mapshaper-progress-meter';
 import { decodeBsqTile, decodeElevationPixels } from './mapshaper-elevation-decoding';
 import { usesBBoxToken } from './mapshaper-fetch-sources';
 import { getTileRangeMercatorBBox, wrapTileX } from './mapshaper-tile-math';
@@ -12,6 +13,8 @@ var CONCURRENCY = 6;
 var RETRIES = 3;
 var RETRY_DELAY = 1000; // ms, doubled after each retry
 var TIMEOUT = 60000; // ms per request
+// when the progress line decides which percentages to show (see getProgressMeter())
+var FETCH_MARKS_TIME = 5000;
 
 // Fetches the tiles in @range and composites them into one grid in Web
 // Mercator: a Float32 grid of elevations, or for imagery (encoding "rgb") an
@@ -37,9 +40,11 @@ export async function fetchTileMosaic(source, range) {
       jobs.push({x: x, y: y});
     }
   }
-  var failed = 0, failure = null;
+  var failed = 0, failure = null, fetched = 0;
+  var meter = getProgressMeter({steps: true, marksTime: FETCH_MARKS_TIME}), t0 = Date.now();
   try {
     await runWithConcurrency(jobs, CONCURRENCY, fetchJob);
+    if (failed < jobs.length) progress(meter.finish(Date.now() - t0));
   } finally {
     endProgress();
   }
@@ -75,7 +80,7 @@ export async function fetchTileMosaic(source, range) {
     var url = getTileUrl(source, range.z, wrapTileX(job.x, range.z), job.y);
     var tile = await fetchTile(url, source);
     var x0, y0;
-    progress('.');
+    progress(meter.dot() + meter.update(Date.now() - t0, ++fetched / jobs.length));
     if (!tile) {
       missing++;
       return;

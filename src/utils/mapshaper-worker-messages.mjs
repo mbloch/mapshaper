@@ -2,16 +2,20 @@
 // that worker bundles stay small.
 //
 // A worker posts {ready: true} once it has loaded, then answers each task
-// with {result} or {error}.
+// with {result} or {error}, after any number of {progress} messages.
 
 // Connects a worker script to its parent, in a browser worker or a Node
-// worker thread. @handler receives each task and returns its result.
+// worker thread. @handler receives each task and a function for reporting
+// its progress (any value that can be posted), and returns its result.
 export function serveWorkerTasks(handler) {
   var port = getParentPort();
+  function report(value) {
+    port.post({progress: value});
+  }
   port.listen(function(task) {
     var result;
     try {
-      result = handler(task);
+      result = handler(task, report);
     } catch (e) {
       port.post({error: e && e.message || String(e)});
       return;

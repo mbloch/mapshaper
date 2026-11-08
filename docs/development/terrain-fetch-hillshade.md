@@ -827,6 +827,14 @@ GitHub Pages can't send, so tiles are copied and the results transferred.
 If workers can't be started (the script is missing, or mapshaper's source
 modules are loaded directly), the command runs in the main thread.
 
+`-deshadow` uses the same pool to run the whole correction of an image of at
+least 250,000 pixels in one worker (`www/deshadow-worker.js`, built from
+`src/mapshaper-deshadow-worker.mjs`), so that the GUI stays responsive. The
+worker sends `{progress}` messages (the share of the work done) before its
+result. The command prints a dot each second, and if the work looks long
+after 7 seconds, some percentages as they're reached
+(`src/utils/mapshaper-progress-meter.mjs`).
+
 ## Implementation layout
 
 - `src/fetch/mapshaper-tile-math.mjs` — tile coordinates, ground resolution,

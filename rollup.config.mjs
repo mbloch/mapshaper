@@ -160,6 +160,14 @@ export default [{
   }
 }, {
   treeshake: true,
+  input: 'src/mapshaper-deshadow-worker.mjs',
+  output: {
+    strict: false,
+    format: 'iife',
+    file: 'www/deshadow-worker.js'
+  }
+}, {
+  treeshake: true,
   context: 'null', // prevent a Rollup warning from msgpack
   input: 'src/mapshaper.mjs',
   onwarn: onMainWarn,
