@@ -3,7 +3,8 @@ import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { initProjLibrary } from '../crs/mapshaper-projections';
 import { writeFiles } from '../io/mapshaper-file-export';
 import { exportTargetLayers } from '../io/mapshaper-export';
-import { copyLayerShapes, layerHasPaths } from '../dataset/mapshaper-layer-utils';
+import { copyLayerShapes, layerHasPaths, layerHasRaster } from '../dataset/mapshaper-layer-utils';
+import { getStackedLayers, moveLayersInStack } from '../dataset/mapshaper-layer-stacking';
 import { getOptionParser } from '../cli/mapshaper-options';
 import { convertSourceName, findCommandSourceAsync } from '../dataset/mapshaper-source-utils';
 import { Catalog, getFormattedLayerList } from '../dataset/mapshaper-catalog';
@@ -195,7 +196,7 @@ export async function runCommand(command, job) {
   // multi-dataset command does not leave only its final dataset selected.
   if (!command._targetOverride && commandRunsPerTargetDataset(name, opts)) {
     targets = job.catalog.findCommandTargets(opts.target);
-    if (targets.length > 1) {
+    if (targets.length > 1 && !(name == 'blend' && blendDrawsTargets(targets, opts))) {
       validatePerDatasetTargets(name, targets, opts);
       return runCommandOnEachTarget(command, job, targets);
     }
@@ -253,7 +254,7 @@ export async function runCommand(command, job) {
         // target= option sets default target
         job.catalog.setDefaultTarget(targetLayers, targetDataset);
 
-      } else if (targets.length > 1) {
+      } else if (targets.length > 1 && name != 'blend') {
         stop("This command does not support targetting layers from different datasets");
       }
     }
@@ -403,6 +404,12 @@ export async function runCommand(command, job) {
       for (let lyr of targetLayers) {
         outputLayers = outputLayers.concat(cmd[name](lyr, opts));
       }
+
+    } else if (name == 'blend' && blendDrawsTargets(targets, opts)) {
+      if (!source) stop('-blend requires the name of a hillshade layer');
+      let drawn = getStackedTargetLayers(job.catalog, targets);
+      let out = await cmd.blendDrawnLayers(job.catalog, drawn, source, opts);
+      addDrawnBlendOutput(job.catalog, out, drawn, source, opts);
 
     } else if (name == 'blend') {
       if (!source) stop('-blend requires the name of a hillshade layer');
@@ -863,6 +870,51 @@ async function findLayerOption(name, catalog, targets, opts) {
 function removeBlendSource(catalog, source) {
   var found = catalog.findLayer(source.layer);
   if (found) catalog.deleteLayer(found.layer, found.dataset);
+}
+
+// -blend draws its targets together on the hillshade's grid if any of them is
+// a vector layer, or if it makes an overlay; otherwise it blends each raster
+// on its own grid
+function blendDrawsTargets(targets, opts) {
+  return !!opts.overlay || targets.some(function(target) {
+    return target.layers.some(function(lyr) { return !layerHasRaster(lyr); });
+  });
+}
+
+// The target layers as [{layer, dataset}], bottom to top
+function getStackedTargetLayers(catalog, targets) {
+  var layers = targets.reduce(function(memo, target) {
+    return memo.concat(target.layers);
+  }, []);
+  return getStackedLayers(catalog).filter(function(o) {
+    return layers.includes(o.layer);
+  });
+}
+
+// The output of -blend with drawn targets goes directly above the topmost of
+// them. Without +, it takes the place of the hillshade, and the targets are
+// removed, unless the output is an overlay, which is drawn on them.
+function addDrawnBlendOutput(catalog, out, drawn, source, opts) {
+  var found = catalog.findLayer(source.layer);
+  var dataset = found ? found.dataset : Object.assign({}, source.dataset, {layers: [out]});
+  if (!found) {
+    // a hillshade read from a file
+    inheritFrameRef(dataset, utils.uniq(utils.pluck(drawn, 'dataset')));
+    catalog.addDataset(dataset);
+  } else if (!opts.no_replace) {
+    replaceLayers(dataset, [source.layer], [out]);
+  } else {
+    noteDatasetWillChange(dataset, {operation: 'appendOutputLayers', command: 'blend'});
+    dataset.layers = dataset.layers.concat(out);
+    markDatasetChanged(dataset, {operation: 'appendOutputLayers', command: 'blend'});
+  }
+  moveLayersInStack(catalog, [out], {above: drawn[drawn.length - 1].layer}, {operation: 'blend'});
+  if (!opts.no_replace && !opts.overlay) {
+    drawn.forEach(function(o) {
+      catalog.deleteLayer(o.layer, o.dataset);
+    });
+  }
+  catalog.setDefaultTarget([out], dataset);
 }
 
 async function resolveSourceForTargets(command, job, targets) {

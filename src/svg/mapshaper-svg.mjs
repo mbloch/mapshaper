@@ -93,6 +93,14 @@ export function renderSVGDocument(dataset, frame, layers, opts) {
     // (Mapbox uses 2 as the default in their styles)
     lineProps += ' stroke-miterlimit="2"';
   }
+  // opts.svg_image_size [width, height]: draw the frame at this size, stretched
+  // if its shape is different (e.g. to fit the pixels of a raster grid)
+  if (opts.svg_image_size) {
+    return `<?xml version="1.0"?>
+<svg ${namespace} version="1.2" baseProfile="tiny" width="${opts.svg_image_size[0]}" height="${opts.svg_image_size[1]}" viewBox="0 0 ${frame.width} ${frame.height}" preserveAspectRatio="none" ${lineProps}>${style}
+${svg}
+</svg>`;
+  }
   var template = `<?xml version="1.0"?>
 <svg ${namespace} version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" ${lineProps}>${style}
 ${svg}

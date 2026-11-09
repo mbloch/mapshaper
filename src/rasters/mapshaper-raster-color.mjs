@@ -177,6 +177,49 @@ export function blendShadingPixels(samples, bands, amounts, opts) {
   return out;
 }
 
+// The shading as an RGBA overlay that, stacked on the image (in sRGB, as
+// browsers and resvg composite), gives the image blended with the shading
+// @samples RGBA image
+// @blended blendShadingPixels() output for @samples
+// @amounts, opts  as given to blendShadingPixels()
+// On an opaque image pixel the overlay has the least alpha that gives the
+// blended color exactly. Where the image is partly transparent, what is under
+// it is unknown, so the overlay is the shading color at the amount's opacity,
+// as in plain stacking.
+// Returns a new Uint8Array of RGBA pixels
+export function getShadingOverlayPixels(samples, blended, amounts, opts) {
+  var out = new Uint8Array(samples.length);
+  var i, k, a, K, c, t, r, need, alpha, a8;
+  for (i = 0, k = 0; i < samples.length; i += 4, k++) {
+    a = amounts[k];
+    if (a === 0 || a !== a) continue;
+    if (samples[i + 3] < 255) {
+      K = a < 0 ? opts.shadow : opts.highlight;
+      out[i] = K.r;
+      out[i + 1] = K.g;
+      out[i + 2] = K.b;
+      out[i + 3] = Math.round(Math.min(1, Math.abs(a)) * 255);
+      continue;
+    }
+    alpha = 0;
+    for (c = 0; c < 3; c++) {
+      t = samples[i + c];
+      r = blended[i + c];
+      need = r > t ? (r - t) / (255 - t) : r < t ? (t - r) / t : 0;
+      if (need > alpha) alpha = need;
+    }
+    if (alpha === 0) continue;
+    a8 = Math.ceil(alpha * 255 - 1e-9);
+    alpha = a8 / 255;
+    for (c = 0; c < 3; c++) {
+      t = samples[i + c];
+      out[i + c] = Math.max(0, Math.min(255, Math.round(t + (blended[i + c] - t) / alpha)));
+    }
+    out[i + 3] = a8;
+  }
+  return out;
+}
+
 // Hue rotation (radians) for hue-shift=: hues move toward @pivot (radians) by
 // @shift times half their distance from it, fading out toward the opposite
 // hue and for near-gray colors (whose hue is unstable). From -1 to 1, the

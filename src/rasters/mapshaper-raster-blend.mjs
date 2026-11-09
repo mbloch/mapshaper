@@ -25,6 +25,9 @@ export function getShadingAmounts(raster, baseColor) {
   var hillshade = params.type == 'hillshade';
   var colors = {shadow: BLACK, highlight: WHITE};
   var pixels, transparent, base, amounts;
+  if (params.type == 'blend' && params.overlay) {
+    stop('The source is an overlay made by -blend, whose colors depend on the layers under it; use the hillshade it was made from');
+  }
   if (!hillshade && grid.bands == 1 && !isEightBit(grid.samples)) {
     stop('The source looks like an elevation raster; make a hillshade from it with -hillshade');
   }

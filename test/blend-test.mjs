@@ -177,6 +177,54 @@ describe('mapshaper-blend.mjs', function () {
     });
   });
 
+  describe('getShadingOverlayPixels()', function () {
+    var opts = {shadow: BLACK, highlight: WHITE, shadowChroma: 0, highlightChroma: 1};
+
+    function overlay(samples, amounts, opts2) {
+      var o = Object.assign({}, opts, opts2);
+      var blended = internal.blendShadingPixels(samples, 4, amounts, o);
+      return {blended: blended, overlay: internal.getShadingOverlayPixels(samples, blended, amounts, o)};
+    }
+
+    it('stacked on opaque pixels, gives the blended colors', function () {
+      var n = 2000, samples = new Uint8Array(n * 4), amounts = new Float32Array(n);
+      var seed = 1, rand = function() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+      var i, c, a, o, v;
+      for (i = 0; i < n; i++) {
+        for (c = 0; c < 3; c++) samples[i * 4 + c] = Math.floor(rand() * 256);
+        samples[i * 4 + 3] = 255;
+        amounts[i] = rand() * 2 - 1;
+      }
+      [{}, {shadowChroma: 0.5}, {highlightChroma: 2}].forEach(function(opts2) {
+        o = overlay(samples, amounts, opts2);
+        for (i = 0; i < n; i++) {
+          a = o.overlay[i * 4 + 3] / 255;
+          for (c = 0; c < 3; c++) {
+            v = samples[i * 4 + c] * (1 - a) + o.overlay[i * 4 + c] * a;
+            assert(Math.abs(v - o.blended[i * 4 + c]) <= 1);
+          }
+        }
+      });
+    });
+
+    it('keeps the shadow color and opacity of stacked shadows', function () {
+      var o = overlay(new Uint8Array([40, 160, 60, 255]), new Float32Array([-0.4]));
+      assert.deepEqual(Array.from(o.overlay), [0, 0, 0, 102]);
+    });
+
+    it('colors highlights that keep the image\'s chroma', function () {
+      var o = overlay(new Uint8Array([40, 160, 60, 255]), new Float32Array([0.3])).overlay;
+      assert(o[1] > o[0] + 30 && o[1] > o[2] + 30);
+      assert(o[3] > 0.3 * 255);
+    });
+
+    it('is transparent where there is no shading, and plain shading where the image is not opaque', function () {
+      var o = overlay(new Uint8Array([40, 160, 60, 255, 40, 160, 60, 0, 40, 160, 60, 128]),
+        new Float32Array([0, -0.5, 0.25])).overlay;
+      assert.deepEqual(Array.from(o), [0, 0, 0, 0, 0, 0, 0, 128, 255, 255, 255, 64]);
+    });
+  });
+
   describe('-blend', function () {
     it('chroma=0 matches stacking the hillshade on the image', async function () {
       var catalog = await run(makeDataset(30, 30, ridge, [40, 160, 60]),
@@ -316,6 +364,78 @@ describe('mapshaper-blend.mjs', function () {
       await assert.rejects(run(makeDataset(10, 10, ridge, [40, 160, 60]),
         '-hillshade target=dem name=hs -blend hs target=img base-color=#ccc'),
         /base-color= is for opaque hillshades/);
+    });
+
+    describe('vector targets', function () {
+      // a frame with two CSS pixels per hillshade pixel, so the layers are drawn on
+      // the hillshade's grid, and a polygon of the image's color covering it
+      var SETUP = '-frame width=10 name=map target=img ' +
+        '-rectangle bbox=-1,-1,1,1 name=land -style fill=#28a03c ' +
+        '-hillshade target=dem name=hs';
+
+      function getNames(catalog) {
+        return catalog.getLayers().map(function(o) { return o.layer.name; }).sort();
+      }
+
+      function getStackedNames(catalog) {
+        return internal.getStackedLayers(catalog).map(function(o) { return o.layer.name; });
+      }
+
+      it('blends a polygon like an image of the same color', async function () {
+        var catalog = await run(makeDataset(20, 20, ridge, [40, 160, 60]),
+          SETUP + ' -blend hs target=img + name=ref -blend hs target=land');
+        var ref = findLayer(catalog, 'ref').raster.grid.samples;
+        var grid = findLayer(catalog, 'land').raster.grid;
+        assert.deepEqual([grid.width, grid.height, grid.bands], [20, 20, 4]);
+        for (var i = 0; i < 400; i++) {
+          for (var k = 0; k < 3; k++) {
+            assert(Math.abs(grid.samples[i * 4 + k] - ref[i * 3 + k]) <= 1);
+          }
+          assert.equal(grid.samples[i * 4 + 3], 255);
+        }
+      });
+
+      it('draws several targets together and replaces them and the hillshade', async function () {
+        var catalog = await run(makeDataset(20, 20, ridge, [40, 160, 60]),
+          SETUP + ' -rectangle bbox=0,0,0.01,0.02 name=west -style fill=#c04020 -blend hs target=land,west');
+        var out = findLayer(catalog, 'blend').raster.grid.samples;
+        var west = (10 * 20 + 2) * 4, east = (10 * 20 + 17) * 4;
+        assert.deepEqual(getNames(catalog), ['blend', 'img', 'map']);
+        assert(out[west] > out[west + 1]);
+        assert(out[east + 1] > out[east]);
+      });
+
+      it('+ keeps the targets and the hillshade, with the output above the targets', async function () {
+        var catalog = await run(makeDataset(20, 20, ridge, [40, 160, 60]),
+          SETUP + ' -blend hs target=land +');
+        var stack = getStackedNames(catalog);
+        assert.deepEqual(getNames(catalog), ['blend', 'hs', 'img', 'land', 'map']);
+        assert.equal(stack.indexOf('blend'), stack.indexOf('land') + 1);
+      });
+
+      it('overlay recolors the hillshade to give the blend when stacked on the targets', async function () {
+        var catalog = await run(makeDataset(20, 20, ridge, [40, 160, 60]),
+          SETUP + ' -blend hs target=img + name=ref -blend hs target=land overlay');
+        var ref = findLayer(catalog, 'ref').raster.grid.samples;
+        var hs = findLayer(catalog, 'hs');
+        var px = hs.raster.grid.samples;
+        var stack = getStackedNames(catalog);
+        var i, k, a;
+        assert.deepEqual(getNames(catalog), ['hs', 'img', 'land', 'map', 'ref']);
+        assert.equal(stack.indexOf('hs'), stack.indexOf('land') + 1);
+        assert.equal(hs.raster.derivation.overlay, true);
+        for (i = 0; i < 400; i++) {
+          a = px[i * 4 + 3] / 255;
+          for (k = 0; k < 3; k++) {
+            assert(Math.abs([40, 160, 60][k] * (1 - a) + px[i * 4 + k] * a - ref[i * 3 + k]) <= 2);
+          }
+        }
+      });
+
+      it('refuses an overlay as the hillshade', async function () {
+        await assert.rejects(run(makeDataset(20, 20, ridge, [40, 160, 60]),
+          SETUP + ' -blend hs target=land overlay -blend hs target=img'), /overlay made by -blend/);
+      });
     });
 
     it('rejects more than two values', async function () {

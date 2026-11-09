@@ -3241,7 +3241,7 @@ export function getOptionParser() {
     .option('no-replace', noReplaceOpt);
 
   parser.command('blend')
-    .describe('apply a hillshade\'s shadows and highlights to a raster layer')
+    .describe('apply a hillshade\'s shadows and highlights to a raster layer, or to vector layers drawn as a raster')
     .option('source', {
       DEFAULT: true,
       describe: 'hillshade layer to blend (made by -hillshade); removed unless + is used'
@@ -3256,6 +3256,10 @@ export function getOptionParser() {
     })
     .option('base-color', {
       describe: 'color of flat ground in an opaque hillshade not made by -hillshade (default is its most common color)'
+    })
+    .option('overlay', {
+      describe: 'recolor the hillshade so that, drawn over the targets, it looks like the blend; the targets are kept',
+      type: 'flag'
     })
     .option('name', nameOpt)
     .option('target', targetOpt)

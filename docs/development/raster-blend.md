@@ -5,7 +5,8 @@ description: Design for the -blend command, which applies a hillshade's shadows 
 
 # Blending Hillshades with Other Layers
 
-Status: phase 1 is implemented (see [Phases](#phases)).
+Status: phase 1 and vector targets are implemented, with the `overlay`
+option (see [Phases](#phases)).
 
 Today terrain is combined with other layers by stacking a transparent
 (`style=shadow`) hillshade on top of them. That works, but it has two
@@ -46,7 +47,7 @@ now part of the imagery.
 ## Command shape
 
 ```
--blend <layer> [target=<layer>] [+ name=<name>] [options]
+-blend <layer> [target=<layers>] [overlay] [+ name=<name>] [options]
 ```
 
 - The hillshade layer's name (required) is the default argument, so
@@ -61,17 +62,19 @@ now part of the imagery.
   left in place would be drawn over the blended layer, shading it twice, in
   the GUI and in exported maps. `+` (with optional `name=`) adds a new layer
   and keeps both inputs.
-- To use one hillshade for several layers, blend them in one command
-  (`target=imagery,tint`); the hillshade is removed after the last one. A
-  hillshade read from a file isn't in the catalog, so there's nothing to
-  remove.
+- To use one hillshade for several raster layers, blend them in one command
+  (`target=imagery,tint`); each is blended on its own, and the hillshade is
+  removed after the last one. A hillshade read from a file isn't in the
+  catalog, so there's nothing to remove. If any target is a vector layer,
+  the targets are drawn together instead (see
+  [Vector targets](#vector-targets)).
 - `source=` keeps its name, although the source is consumed: it matches
   `-clip` and `-join`, which also name the second layer `source=`, and it's
   usually typed as the bare argument (`-blend hillshade`).
 - The output is an 8-bit RGB raster (RGBA if the target has alpha or is
-  drawn through a view). The derivation records
-  `{type: 'blend', source, strength, chroma}` so that a later GUI panel can
-  show and edit the settings.
+  drawn through a view, and for drawn targets). The derivation records
+  `{type: 'blend', source, strength, chroma}` (and `overlay: true` for an
+  overlay) so that a later GUI panel can show and edit the settings.
 
 The name is general (`-blend`) rather than hillshade-specific because the
 same mechanism can blend other kinds of shading later, such as an ambient
@@ -251,23 +254,103 @@ lightness, interpolate the color (`chroma=`), then fit to the gamut.
 
 ## Vector targets
 
-A vector target is rendered to pixels first, through the same SVG renderer
-used for PNG output (`rasterizeSVG()`: resvg in Node, a canvas in the
-browser). It is drawn with its styles (fill, stroke, opacity) into a frame
-covering the hillshade's grid, at the hillshade's pixel size; stroke widths
-and label sizes scale the way PNG output scales them with `pixel-ratio=`.
-That needs a variant of `rasterizeSVG()` that returns raw RGBA rather than
-PNG bytes (resvg already renders to RGBA, as does the canvas).
+```
+-blend relief target=landcover,water,roads
+```
 
-- `target=` may name several vector layers, which are rendered together in
-  stack order. That covers the common case of more than two layers: a land
-  cover layer with water bodies and boundaries on top, all shaded together.
-- Vector targets always produce a new raster layer, since replacing a vector
-  layer with pixels would lose its attributes. Open question: where in the
-  stack the new layer goes, and whether the vector layers are hidden.
-- The output grid is the hillshade's grid, since the vector layer has none.
-- Labels and fine lines in the target are rasterized and shaded too. Layers
-  that should stay crisp belong above the blended layer instead.
+If any target is a vector layer, all the targets are drawn together and
+blended as one image:
+
+- **Drawing.** The targets are drawn in stack order, with their styles, the
+  way PNG output draws them: as an SVG document rendered by resvg in Node
+  and by a canvas in the browser (`rasterizeSVGPixels()`, which returns
+  RGBA pixels rather than an image file). Raster targets in the list are
+  drawn too, so imagery with roads on top is shaded as one image. Labels and
+  fine lines are drawn and shaded as well; layers that should stay crisp
+  belong above the output, or use `overlay`.
+- **Grid.** The layers are drawn over the hillshade's extent. Strokes, labels
+  and symbols are sized as in the map's frame (or, without a frame, as in an
+  SVG of the default width of 800 pixels). The resolution is the
+  hillshade's, or finer if the hillshade has fewer than 2 pixels per CSS
+  pixel of the map (like PNG output's default `pixel-ratio=2`), so a coarse
+  hillshade doesn't blur the vectors; the shading amounts are then
+  resampled to the finer grid. A hillshade from `-fetch` for a frame usually
+  has that resolution already. The grid is capped at 40 megapixels.
+- **Layers.** The output, an RGBA raster, takes the hillshade's place in its
+  dataset and goes directly above the topmost target in the stack. As with
+  raster targets, the targets and the hillshade are removed, and `+` keeps
+  them (the output is then named `blend`, or after a single target).
+- Where the drawn layers are transparent, the output shows the shading
+  stacked on nothing, as with transparent raster pixels.
+
+Targets in different datasets are drawn together, so the command doesn't
+run once per dataset, as it does for raster targets.
+
+## Overlay
+
+```
+-blend relief target=landcover,water overlay
+```
+
+`overlay` keeps the targets as they are and recolors the hillshade instead,
+so that drawn over the targets with ordinary alpha compositing it gives the
+blended result. Vector layers stay vectors: sharp at any zoom, editable,
+and exported as paths.
+
+The targets are drawn as for [vector targets](#vector-targets) (always
+together, rasters included). Then, for each pixel with target color \(T\)
+and blended color \(R\), the overlay is the color \(C\) and alpha
+\(\alpha\) that composite to \(R\):
+
+\[
+T (1 - \alpha) + C \alpha = R
+\]
+
+Any \(\alpha\) works if \(C\) stays within 0-255 in every channel; the
+overlay uses the least such alpha, which is
+
+\[
+\alpha = \max_{channels} \begin{cases}
+(R - T) / (255 - T) & R > T \\
+(T - R) / T & R < T
+\end{cases}
+\qquad C = T + (R - T) / \alpha
+\]
+
+(`getShadingOverlayPixels()`). The result is exact after 8-bit rounding.
+
+- **Shadows** at the default `chroma=0` are plain stacking, so the overlay
+  has the hillshade's own shadow color and alpha there.
+- **Highlights** that keep the target's color (`chroma=1`) can't be white:
+  the overlay takes the target's color, lightened, and is more opaque than
+  the hillshade (about 0.2 more alpha on average over random colors).
+- **Flat ground** has no shading and stays fully transparent.
+- Where a target pixel is partly transparent, what's under it isn't known,
+  so the overlay there is the plain shading color at the amount's opacity.
+
+Layers: without `+`, the overlay replaces the hillshade in its dataset (with
+`+`, it's added as `blend`), and goes directly above the topmost target.
+The targets are kept. The derivation records `overlay: true`, and `-blend`
+refuses an overlay as its hillshade, since its colors depend on the layers
+under it.
+
+Limits:
+
+- The overlay only fits the targets as they were drawn. It has to stay
+  directly above them, and editing, restyling or reordering them means
+  running `-blend` again.
+- A boundary pixel is computed for the mix of colors drawn there. Drawn over
+  sharp vectors at a finer resolution, its color spills onto both sides, and
+  a resampled overlay interpolates between neighbors of different colors and
+  alphas. In a test map at 6× zoom this made a 2-pixel line slightly
+  darker than in a blend drawn at that zoom, but the overlay was still
+  closer to that ideal than the blended raster (0.24% of pixels off by more
+  than 8 levels, against 1.27%), whose edges are blurred. Falling back to
+  plain shading at boundary pixels would trade one error for another
+  (hazy highlights), so it isn't done.
+- `-o target=*` exports layers in catalog order, not stack order, so the
+  overlay can end up under the targets; exporting the frame draws them in
+  stack order.
 
 ## More than two layers
 
@@ -276,10 +359,11 @@ chaining:
 
 - Several shading layers (e.g. a broad hillshade and a detailed one) are
   applied one after another, each with its own `-blend`.
-- Several targets (imagery under a semi-transparent tint) are combined
-  first: vector targets by listing several layers in `target=`; rasters by a
-  plain stacking blend of one over the other (a later mode, since `-blend`
-  currently needs a hillshade as its top layer).
+- Several targets are combined by listing them in `target=` with at least
+  one vector layer, or with `overlay`: they are then drawn together. Raster
+  targets alone are blended one at a time; combining rasters (imagery under
+  a semi-transparent tint) without a vector layer would need a plain
+  stacking mode, since `-blend` needs a hillshade as its top layer.
 
 If chains get cumbersome, a later `-composite` command could take a list of
 layers with a mode per layer. Chaining is the first step because each step's
@@ -318,9 +402,15 @@ rounding of the alpha channel.
 - 8-bit RGB(A) targets are blended as they are; other targets are drawn
   through their view first (`renderRasterPreview()`), so one-band data
   rasters blend as they look.
-- Command: `src/commands/mapshaper-blend.mjs`, options in
-  `mapshaper-options.mjs`, dispatch in `mapshaper-run-command.mjs`. The
-  command is async for vector targets (rasterization).
+- Command: `src/commands/mapshaper-blend.mjs` (`cmd.blend()` for raster
+  targets, `cmd.blendDrawnLayers()` for drawn targets), options in
+  `mapshaper-options.mjs`, dispatch in `mapshaper-run-command.mjs`, which
+  also places the output of drawn targets in the stack
+  (`addDrawnBlendOutput()`). Drawn targets are async (rasterization).
+- Drawing: `src/rasters/mapshaper-raster-draw.mjs` (`drawLayersOnGrid()`),
+  which renders the layers with the SVG exporter at the grid's pixel size
+  (`svg_image_size`) and rasterizes them (`rasterizeSVGPixels()`; resvg's
+  premultiplied pixels are converted back).
 - GUI: a later panel modeled on the Image colors panel (shadow and
   highlight sliders for `strength=` and `chroma=`),
   committing a `-blend` command. Because blending in place compounds, the
@@ -331,9 +421,9 @@ rounding of the alpha channel.
 
 1. Raster targets; shadow-style and opaque hillshades read from their
    derivations; same or resampled grids; `strength=` and `chroma=`.
-2. Vector targets; `shadow-tint=` and `highlight-tint=` if the hillshade's
-   own colors aren't enough. (`base-color=` and the guess for hillshades
-   from elsewhere are done.)
+2. Vector targets and `overlay` (done); `shadow-tint=` and
+   `highlight-tint=` if the hillshade's own colors aren't enough.
+   (`base-color=` and the guess for hillshades from elsewhere are done.)
 3. GUI panel; standard modes for opaque hillshades; a `-composite` command
    if chaining isn't enough.
 
@@ -350,7 +440,5 @@ rounding of the alpha channel.
   dark colors (water, dense forest), and highlights can't lighten white. A
   later option could use an absolute lightness change in shadows, or a
   minimum contrast.
-- **Vector output placement.** Where the new raster goes in the stack, and
-  whether the vector target is hidden.
 - **Transparent target areas.** Keep the plain hillshade there (proposed) or
   leave them transparent.

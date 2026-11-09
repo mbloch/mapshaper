@@ -53,6 +53,68 @@ async function rasterizeWithResvg(svg, opts) {
   return content;
 }
 
+// Renders an SVG document whose width and height attributes are @width and
+// @height pixels.
+// Returns RGBA samples (a Uint8Array, not premultiplied by alpha)
+export async function rasterizeSVGPixels(svg, width, height) {
+  var pixels = runningInBrowser() ?
+    await drawSvgPixelsInBrowser(svg, width, height) :
+    await drawSvgPixelsWithResvg(svg, width, height);
+  if (pixels.length != width * height * 4) {
+    stop('Unable to render the layers at the size of the raster');
+  }
+  return pixels;
+}
+
+async function drawSvgPixelsWithResvg(svg, width, height) {
+  var resvg = await loadResvg();
+  var prepared = svgHasText(svg) ? prepareSvgForResvg(svg) :
+    {svg: svg, font: {fontBuffers: []}};
+  var renderer = new resvg.Resvg(prepared.svg, {font: prepared.font});
+  var img = renderer.render();
+  var pixels;
+  try {
+    pixels = img.width == width && img.height == height ?
+      unpremultiplyPixels(new Uint8Array(img.pixels)) : new Uint8Array(0);
+  } finally {
+    img.free();
+    renderer.free();
+  }
+  return pixels;
+}
+
+function unpremultiplyPixels(pixels) {
+  var j, a, k;
+  for (j = 0; j < pixels.length; j += 4) {
+    a = pixels[j + 3];
+    if (a === 0 || a == 255) continue;
+    k = 255 / a;
+    pixels[j] = Math.min(255, Math.round(pixels[j] * k));
+    pixels[j + 1] = Math.min(255, Math.round(pixels[j + 1] * k));
+    pixels[j + 2] = Math.min(255, Math.round(pixels[j + 2] * k));
+  }
+  return pixels;
+}
+
+async function drawSvgPixelsInBrowser(svg, width, height) {
+  var url = URL.createObjectURL(new Blob([svg], {type: 'image/svg+xml'}));
+  var canvas = document.createElement('canvas');
+  var img = new Image();
+  var ctx, data;
+  try {
+    img.src = url;
+    await img.decode();
+    canvas.width = width;
+    canvas.height = height;
+    ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, width, height);
+    data = ctx.getImageData(0, 0, width, height).data;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+  return new Uint8Array(data.buffer, data.byteOffset, data.length);
+}
+
 function loadResvg() {
   var resvg, fs;
   if (!resvgPromise) {
