@@ -135,7 +135,9 @@ cmd.classify = function(lyr, dataset, optsArg) {
     numClasses = 4;
   }
   numValues = opts.continuous ? numClasses + 1 : numClasses;
-  if (numValues > 1 === false && !diverging) {
+  if (method == 'categorical' && numValues > 0 === false) {
+    stop('Missing categories to classify');
+  } else if (method != 'categorical' && numValues > 1 === false && !diverging) {
     stop('Missing a valid number of values');
   }
 

@@ -1,4 +1,17 @@
 v0.8.0 (unreleased)
+* Added `-fetch` command, with presets for importing DEMs and imagery from public sources. Running `-fetch sources` lists the presets. Tile URL sources are also supported.
+* Added `-hillshade` command, with options for controlling level of smoothing and various effects, including ambient light from the sky, texture shading, smoothness and sharpening. Hillshades can use translucent black/white for shadows/highlights or an opaque grayscale with settable base-color. Support for user-defined shadow and highlight colors.
+* Added `-tone` command for adjusting lightness, saturation, contrast, gamma and opacity. A hue-shift option moves hues towards or away from a given hue.
+* [web] Added a panel with sliders for adjusting image tone.
+* Added a `-tint` command for applying hypsometric tints.
+* Added `-blend` command for combining hillshade layers with a raster image.
+* The `-blend chroma=` option gives variable control over how the hillshade's shadow and highlight colors are blended into the image. `chroma=0` reduces color saturation in shadow and highlight areas by blending in the hillshade's (default) black and white shadow and highlight colors. `chroma=1` maintains the color saturation of the target image, only blending in the hillshade's lightness variation. `chroma=0,1.5` mixes in the hillshade's color in the shadow areas and boosts the saturation of the image in highlight areas.
+* The `-blend strength=` option modifies the strength of the hillshade, with variable shadow,highlight control using `strength=[shadow,highlight]`.
+* An experimental `-deshadow` command removes shadows and lightens dark slopes in aerial imagery, e.g. before applying a hillshade.
+* [web] Added place search when the basemap is turned on.
+* [web] Feature selections are persistent when switching between inspection, selection and style/edit modes.
+* Support for importing images that lack any georeferencing (including ordinary JPEGs and PNGs).
+* -classify no longer treats a field containing one unique value as a data error.
 
 v0.7.101
 * Graticules created in a frame are automatically clipped to the frame extent, with new bleed= option for adding a buffer around the frame.

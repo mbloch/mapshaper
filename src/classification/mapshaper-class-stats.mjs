@@ -96,6 +96,9 @@ export function getHybridBreaks(ascending, numBreaks) {
   var innerValues = ascending.filter(function(val) {
     return val >= lowerBreak && val < upperBreak;
   });
+  if (innerValues.length === 0) {
+    innerValues = [lowerBreak, upperBreak];
+  }
   var innerBreaks = getEqualIntervalBreaks(innerValues, numBreaks - 2);
   var breaks = [lowerBreak].concat(innerBreaks).concat(upperBreak);
   return breaks;

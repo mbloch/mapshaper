@@ -97,12 +97,26 @@ export function getSequentialClassifier(classValues, nullValue, dataValues, meth
 //   for quantile are at evenly spaced ranks (see getRankClassifier())
 export function getSequentialBreaks(ascending, method, numBreaks, continuous) {
   if (numBreaks === 0) return [];
+  if (ascending.length > 0 && ascending[0] === ascending[ascending.length - 1]) {
+    return getConstantDataBreaks(ascending[0], numBreaks);
+  }
   if (method == 'quantile' && continuous) return getRankBreaks(ascending, numBreaks);
   if (method == 'equal-interval') return getEqualIntervalBreaks(ascending, numBreaks);
   if (method == 'quantile') return getQuantileBreaks(ascending, numBreaks);
   if (method == 'hybrid') return getHybridBreaks(ascending, numBreaks);
   if (method == 'nice') return getNiceBreaks(ascending, numBreaks);
   stop('Unknown classification method:', method);
+}
+
+// Data with a single value has no range to divide: the breaks are a unit apart
+// and centered on the value, so that it falls in the middle class (the upper
+// of the two middle classes, if the number of classes is even)
+function getConstantDataBreaks(val, numBreaks) {
+  var breaks = [];
+  for (var i=0; i<numBreaks; i++) {
+    breaks.push(val + i + 1 - (numBreaks + 1) / 2);
+  }
+  return breaks;
 }
 
 export function getClassRanges(breaks, ascending) {
@@ -215,11 +229,15 @@ export function getContinuousClassifier(breaks, minVal, maxVal) {
     if (!utils.isValidNumber(val) || val < minVal || val > maxVal){
       return -1;
     }
+    if (n === 0 && minVal === maxVal) {
+      return 0.5; // constant data, two color stops: the middle of the ramp
+    }
     for (var i=0; i<=n; i++) {
       max = i === n ? maxVal : breaks[i];
       if (i === n || val < max) {
         min = i === 0 ? minVal : breaks[i-1];
-        j = (val - min) / (max - min);
+        // the last break can equal the max
+        j = max > min ? (val - min) / (max - min) : 1;
         return i + j;
       }
     }
