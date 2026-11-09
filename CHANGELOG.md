@@ -12,6 +12,8 @@ v0.8.0 (unreleased)
 * [web] Feature selections are persistent when switching between inspection, selection and style/edit modes.
 * Support for importing images that lack any georeferencing (including ordinary JPEGs and PNGs).
 * -classify no longer treats a field containing one unique value as a data error.
+* -clip now clips rasters to exact boundary of vector shapes. Removed areas are transparent by default.
+* Breaking change: when projecting image rasters with unprojectable areas, the nodata areas are transparent by default (instead of white).
 
 v0.7.101
 * Graticules created in a frame are automatically clipped to the frame extent, with new bleed= option for adding a buffer around the frame.
