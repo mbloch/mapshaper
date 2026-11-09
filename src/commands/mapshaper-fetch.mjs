@@ -283,7 +283,9 @@ function getElevationRaster(source, mosaicGrid, extent) {
 // transparent pixels is kept as RGB.
 function getImageryRaster(source, mosaicGrid, extent) {
   var projected = projectMosaic(mosaicGrid, 'image', extent, {nodata_color: 'transparent'});
-  var samples = downsampleRgba(projected.samples, projected.width, projected.height,
+  // an alpha band is only added if some pixels are empty
+  var rgba = projected.bands == 3 ? rgbToRgba(projected.samples) : projected.samples;
+  var samples = downsampleRgba(rgba, projected.width, projected.height,
     extent.width, extent.height, true);
   var bands = 4;
   if (isOpaque(samples)) {
@@ -329,6 +331,18 @@ function isOpaque(rgba) {
     if (rgba[i] < 255) return false;
   }
   return true;
+}
+
+function rgbToRgba(rgb) {
+  var n = rgb.length / 3;
+  var out = new Uint8Array(n * 4);
+  for (var i = 0, j = 0; i < n; i++, j += 3) {
+    out[i * 4] = rgb[j];
+    out[i * 4 + 1] = rgb[j + 1];
+    out[i * 4 + 2] = rgb[j + 2];
+    out[i * 4 + 3] = 255;
+  }
+  return out;
 }
 
 function rgbaToRgb(rgba) {

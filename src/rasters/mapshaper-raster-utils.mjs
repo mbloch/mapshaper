@@ -8,6 +8,7 @@ import utils from '../utils/mapshaper-utils';
 import { formatVerticalUnits } from './mapshaper-vertical-units';
 import { stop, warn } from '../utils/mapshaper-logging';
 import { runningInBrowser } from '../mapshaper-env';
+import { updateRasterViewForGrid } from './mapshaper-raster-fill';
 import {
   markLayerChanged,
   noteLayerWillChange
@@ -511,9 +512,17 @@ export function rasterGridIsRotated(grid) {
 }
 
 export function clipRasterToBBox(lyr, bbox, opts) {
+  return clipRasterLayer(lyr, bbox, opts, {});
+}
+
+// Crops a raster layer to the pixels that @bbox overlaps.
+// @params.pixelCenters: keep only pixels whose centers are inside @bbox
+// @params.editGrid: function(grid) that modifies the cropped grid in place
+export function clipRasterLayer(lyr, bbox, opts, params) {
+  var editGrid = params.editGrid;
   var raster = lyr.raster;
   var grid = getRasterGrid(raster);
-  var clipBbox;
+  var clipBbox, crop, cropped;
   if (rasterGridIsRotated(grid)) {
     stop('Clipping a rotated or skewed raster is not supported');
   }
@@ -522,13 +531,16 @@ export function clipRasterToBBox(lyr, bbox, opts) {
     warn('Raster clipping rectangle does not intersect the raster layer');
     return false;
   }
-  var crop = getRasterCrop(grid, clipBbox);
+  crop = params.pixelCenters ? getRasterCenterCrop(grid, clipBbox) : getRasterCrop(grid, clipBbox);
   if (crop.width === 0 || crop.height === 0) {
     warn('Raster clipping rectangle does not intersect the raster layer');
     return false;
   }
   noteLayerWillChange(lyr, {operation: 'clipRasterToBBox', unit: 'raster'});
-  raster.grid = cropRasterGrid(grid, crop, clipBbox);
+  cropped = cropRasterGrid(grid, crop, getRasterCropBBox(grid, crop));
+  if (editGrid) editGrid(cropped);
+  raster.grid = cropped;
+  updateRasterViewForGrid(raster);
   raster.view = raster.view || {};
   delete raster.view.scalingStats;
   if (runningInBrowser()) {
@@ -563,6 +575,39 @@ export function getRasterCrop(grid, bbox) {
     width: Math.max(0, x1 - x0),
     height: Math.max(0, y1 - y0)
   };
+}
+
+// Selects the pixels whose centers are inside @bbox (on the left or top edge
+// counts as inside), the rule used by polygon clipping.
+function getRasterCenterCrop(grid, bbox) {
+  var rb = grid.bbox;
+  var px0 = (bbox[0] - rb[0]) / (rb[2] - rb[0]) * grid.width;
+  var px1 = (bbox[2] - rb[0]) / (rb[2] - rb[0]) * grid.width;
+  var py0 = (rb[3] - bbox[3]) / (rb[3] - rb[1]) * grid.height;
+  var py1 = (rb[3] - bbox[1]) / (rb[3] - rb[1]) * grid.height;
+  var x0 = Math.max(0, Math.ceil(px0 - 0.5));
+  var x1 = Math.min(grid.width, Math.ceil(px1 - 0.5));
+  var y0 = Math.max(0, Math.ceil(py0 - 0.5));
+  var y1 = Math.min(grid.height, Math.ceil(py1 - 0.5));
+  return {
+    x: x0,
+    y: y0,
+    width: Math.max(0, x1 - x0),
+    height: Math.max(0, y1 - y0)
+  };
+}
+
+// The bbox of the pixels selected by @crop
+export function getRasterCropBBox(grid, crop) {
+  var rb = grid.bbox;
+  var dx = (rb[2] - rb[0]) / grid.width;
+  var dy = (rb[3] - rb[1]) / grid.height;
+  return [
+    crop.x === 0 ? rb[0] : rb[0] + crop.x * dx,
+    crop.y + crop.height == grid.height ? rb[1] : rb[3] - (crop.y + crop.height) * dy,
+    crop.x + crop.width == grid.width ? rb[2] : rb[0] + (crop.x + crop.width) * dx,
+    crop.y === 0 ? rb[3] : rb[3] - crop.y * dy
+  ];
 }
 
 export function cropRasterGrid(grid, crop, bbox) {

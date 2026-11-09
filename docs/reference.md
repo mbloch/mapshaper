@@ -209,7 +209,7 @@ mapshaper -i 'lat,lon,label\n48.86,2.35,Paris\n51.51,-0.13,London' \
 
 `percentile-range=` [Raster] Input percentile range used with `scaling=percentile`. The default is `2,98`.
 
-`raster-type=image|categorical|continuous` [Raster] Semantic raster type. This sets the default resampling method for later raster reprojection, and how uncovered pixels are filled. `image` (the default) uses bilinear resampling and fills with a color. `categorical` uses nearest-neighbor resampling to preserve class/code values, and fills with the source nodata value. `continuous` is for measurement rasters such as elevation models: it uses bilinear resampling like `image` but fills with the source nodata value like `categorical`, so uncovered pixels do not become a color value mixed in with the data.
+`raster-type=image|categorical|continuous` [Raster] Semantic raster type. This sets the default resampling method for later raster reprojection, and how empty pixels are filled after reprojection or clipping. `image` (the default) uses bilinear resampling, and makes empty pixels transparent, using the nodata value or an alpha band. `categorical` uses nearest-neighbor resampling to preserve class/code values, and fills with the nodata value. `continuous` is for measurement rasters such as elevation models: it uses bilinear resampling like `image`, and fills with the nodata value like `categorical`, so empty pixels are never given a color value mixed in with the data.
 
 `rendition=` [GeoTIFF] Import a specific GeoTIFF rendition, using a slug such as `full` or `overview-1`. When a GeoTIFF has internal overviews, Mapshaper lists the available slugs during import. By default, large GeoTIFFs are imported from the best available reduced-resolution overview under Mapshaper's import size limit, or resampled during import if no suitable overview is available. Use `rendition=full` to force full-resolution import.
 
@@ -600,7 +600,11 @@ Remove features or portions of features that fall outside a clipping area.
 
 `remove-slivers` Remove tiny sliver polygons created by clipping.
 
+`nodata-color=` (raster) Color for raster pixels removed by clipping. The default is transparent, as with [`-proj`](#-proj) `nodata-color=`.
+
 Common options: [`name=` `+` `target=`](#common-options)
+
+Raster layers are cropped to the bounding box of the clip polygons, and pixels whose centers are outside the polygons are removed. Clipping to a layer that is not a polygon layer crops a raster to the layer's bounding box.
 
 ```bash
 # Example: Clip a polygon layer using another polygon layer.
@@ -1424,7 +1428,7 @@ Project a dataset using a PROJ string, EPSG code or alias. This command affects 
 
 `init=` Define the pre-projected coordinate system, if unknown. This option is not needed if the source coordinate system is defined by a .prj file, or if the source CRS is WGS84. As with `crs`, you can pass a Proj4 string enclosed in quotes if the selected projection requires extra parameters, for example `init='+proj=utm +zone=33'`.
 
-`nodata-color=` (raster) Color for output pixels that do not receive source raster content after reprojection. The default is white for image rasters and the source nodata value, when available, for categorical and continuous rasters. Use `transparent` for transparent output.
+`nodata-color=` (raster) Color for output pixels that do not receive source raster content after reprojection. By default these pixels are transparent: they get the raster's nodata value, or for an 8-bit image without one, an alpha band is added. A raster that has no nodata value and is not an 8-bit image is given a nodata value that its data does not use, such as -9999.
 
 `background=` (raster) Alias for `nodata-color=`.
 

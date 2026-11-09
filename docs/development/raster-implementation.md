@@ -207,17 +207,19 @@ integer and floating point data.
 `raster-type=image|categorical|continuous` records whether the raster should be
 treated as a display image, a categorical class/code raster, or continuous
 measurements. The default is `image`. The setting affects later command defaults
-such as `-proj` resampling and nodata fill; it does not change the pixel storage
-type.
+such as `-proj` resampling and the fill of empty pixels after `-proj` and
+`-clip`; it does not change the pixel storage type.
 
 Resampling and nodata fill are two independent axes, which is why three values
 are needed rather than a single image/categorical switch:
 
-| `raster-type=` | Default resampling | Uncovered pixels |
+| `raster-type=` | Default resampling | Empty pixels |
 | --- | --- | --- |
-| `image` | bilinear | fill color (white) |
+| `image` | bilinear | `grid.nodata`, or alpha 0 for 8-bit images |
 | `categorical` | nearest | `grid.nodata` |
 | `continuous` | bilinear | `grid.nodata` |
+
+A raster without a nodata value is given one when it needs it.
 
 ## Source Storage
 
@@ -501,18 +503,28 @@ replacing its extension:
 
 ## Raster Clipping
 
-Raster clipping is available through the rectangle tool and the existing
-`-clip bbox=...` command path.
+Raster clipping is available through `-clip <polygon layer>`, `-clip bbox=...`
+and the rectangle tool (which runs `-clip bbox=`).
 
 Current behavior:
 
-- Clip applies only to raster target layers; raster `-erase` is not exposed in
-  the rectangle submenu.
-- The clipped area is the intersection of the drawn rectangle and
-  `raster.grid.bbox`.
+- Clip applies only to raster target layers; raster `-erase` is not supported.
+- A polygon clip layer (including the rectangle that `bbox=` becomes) keeps
+  the pixels whose centers are inside the polygons, using the nonzero winding
+  rule, so holes are removed and overlapping features are kept
+  (`getPolygonPixelMask()` in `mapshaper-raster-mask.mjs`). The raster is
+  cropped to the pixels whose centers are inside the polygons' bounding box,
+  and the other removed pixels are filled as `-proj` fills uncovered pixels
+  (see Raster Reprojection), and marked in the `coverage` mask. A rectangle
+  therefore crops without adding transparency.
+- Any other clip layer (points, lines, a raster) crops the raster to the whole
+  pixels that the layer's bounding box overlaps.
+- The cropped grid's bbox is that of its pixels, so the pixel size does not
+  change.
 - No intersection emits a warning and leaves the raster unchanged.
 - Successful clipping updates `grid.samples`, `grid.width`, `grid.height`,
-  `grid.bbox`, and `grid.transform`.
+  `grid.bbox`, `grid.transform` and `grid.coverage`, and may add an alpha band
+  or set `grid.nodata`.
 - In the browser, `view.preview` is regenerated from the clipped grid. In
   CLI/headless mode, preview caches are omitted.
 - `sourceId` and `derivation` remain as provenance.
@@ -536,9 +548,16 @@ per-pixel inverse projection:
   real value. Nearest sampling copies a nodata sample through unchanged.
 - Interpolated values are rounded only when the destination sample array holds
   integers. Rounding a float array would quantize elevation data to whole units.
-- Fill uncovered output pixels with `nodata-color=`. When the option is omitted,
-  image rasters default to white, and categorical and continuous rasters use
-  `grid.nodata` when available.
+- Fill uncovered output pixels after rasterizing, using the coverage mask
+  (`fillEmptyRasterPixels()` in `mapshaper-raster-fill.mjs`, shared with
+  `-clip`). `nodata-color=<color>` paints them. By default they are made
+  transparent: they get `grid.nodata` if the raster has one; otherwise an 8-bit
+  image gets an alpha band (a one-band image becomes RGBA, since two-band
+  gray + alpha is not displayed), and any other raster gets a nodata value that
+  its data does not use (-9999 for floats if unused, else the end of the
+  integer type's range or an unused 8- or 16-bit value). GUI display
+  previews pass `fill_uncovered: false` and mask the empty pixels with the
+  coverage array instead.
 
 Projected output grids include a `coverage` mask. The mask records which output
 pixels received source content, independently of the nodata fill color. Later

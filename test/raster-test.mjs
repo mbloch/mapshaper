@@ -1076,7 +1076,7 @@ describe('raster layers', function () {
     assert(raster.grid.bbox[2] > 200000);
   });
 
-  it('fills projected image raster gaps with white by default', function () {
+  it('fills projected image raster gaps with the nodata value by default', function () {
     var raster = getRasterDataset().layers[0].raster;
     var src = api.internal.parseCrsString('wgs84');
     var dest = api.internal.parseCrsString('webmercator');
@@ -1087,7 +1087,23 @@ describe('raster layers', function () {
       output_width: 1,
       output_height: 1
     });
-    assert.deepEqual(Array.from(grid.samples), [255, 255, 255]);
+    assert.equal(grid.bands, 3);
+    assert.deepEqual(Array.from(grid.samples), [99, 99, 99]);
+  });
+
+  it('makes projected 8-bit image gaps transparent by default when there is no nodata value', function () {
+    var raster = getRasterDataset().layers[0].raster;
+    var src = api.internal.parseCrsString('wgs84');
+    var dest = api.internal.parseCrsString('webmercator');
+    var grid = api.internal.projectRasterGridForward(raster, src, dest, {
+      raster_mesh_interval: 1,
+      output_bbox: [-1e9, -1e9, -1e9 + 1000, -1e9 + 1000],
+      output_width: 1,
+      output_height: 1
+    });
+    assert.equal(grid.bands, 4);
+    assert.deepEqual(grid.sampleBands, [0, 1, 2, 3]);
+    assert.deepEqual(Array.from(grid.samples), [0, 0, 0, 0]);
   });
 
   it('fills projected categorical raster gaps with the original nodata value', function () {
@@ -1186,7 +1202,7 @@ describe('raster layers', function () {
     assert.deepEqual(Array.from(grid.samples), [-9999]);
   });
 
-  it('still fills uncovered pixels with a color for raster-type=image', function () {
+  it('fills uncovered pixels with nodata for raster-type=image too', function () {
     var crs = api.internal.parseCrsString('wgs84');
     var grid = api.internal.projectRasterGridForward(getFloatDemRaster('image'), crs, crs, {
       raster_mesh_interval: 1,
@@ -1194,7 +1210,21 @@ describe('raster layers', function () {
       output_width: 1,
       output_height: 1
     });
-    assert.deepEqual(Array.from(grid.samples), [255]);
+    assert.deepEqual(Array.from(grid.samples), [-9999]);
+  });
+
+  it('gives a projected raster a nodata value if it needs one and has none', function () {
+    var crs = api.internal.parseCrsString('wgs84');
+    var raster = getFloatDemRaster('continuous');
+    raster.grid.nodata = null;
+    var grid = api.internal.projectRasterGridForward(raster, crs, crs, {
+      raster_mesh_interval: 1,
+      output_bbox: [1e6, 1e6, 1e6 + 1, 1e6 + 1],
+      output_width: 1,
+      output_height: 1
+    });
+    assert.equal(grid.nodata, -9999);
+    assert.deepEqual(Array.from(grid.samples), [-9999]);
   });
 
   it('defaults to bilinear resampling for raster-type=continuous', function () {

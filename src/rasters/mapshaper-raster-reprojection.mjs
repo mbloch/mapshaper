@@ -10,8 +10,8 @@ import {
   rasterPixelIsCovered,
   rasterSamplesAreFloat
 } from './mapshaper-raster-grid';
-import { parseColor } from '../color/color-utils';
-import { stop, warnOnce } from '../utils/mapshaper-logging';
+import { fillEmptyRasterPixels, rasterAppearsCategorical } from './mapshaper-raster-fill';
+import { stop } from '../utils/mapshaper-logging';
 
 var DEFAULT_MESH_INTERVAL = 32;
 var DEFAULT_MAX_EDGE_FACTOR = 20;
@@ -46,6 +46,11 @@ export function projectRasterGridForward(raster, srcCRS, destCRS, optsArg) {
   } else {
     fillIsolatedProjectedRasterHoles(outGrid);
   }
+  // fill_uncovered: false leaves empty pixels at 0, for callers that mask
+  // them using the coverage array
+  if (opts.fill_uncovered !== false) {
+    fillEmptyRasterPixels(outGrid, raster, opts);
+  }
   timeEnd(timing, 'rasterize');
   if (timing) {
     timing.outputWidth = outGrid.width;
@@ -67,28 +72,6 @@ function getRasterProjectionSampleMethod(raster, opts) {
 
 function getDefaultRasterProjectionSampleMethod(raster) {
   return rasterAppearsCategorical(raster) ? 'nearest' : 'bilinear';
-}
-
-function rasterAppearsCategorical(raster) {
-  var grid = getRasterGrid(raster);
-  var recipe = raster && raster.view && raster.view.recipe || {};
-  var derivation = raster && raster.derivation || {};
-  return raster && raster.interpretation == 'categorical' ||
-    grid && grid.colorModel == 'palette' ||
-    recipe.type == 'palette' ||
-    recipe.type == 'categorical' ||
-    derivation.type == 'palette' ||
-    derivation.type == 'categorical';
-}
-
-// Whether uncovered output pixels should get the source's numeric nodata
-// value instead of a fill color. This is a separate question from the
-// resampling method: elevation data (raster-type=continuous) wants numeric
-// nodata AND bilinear resampling, a combination that a single
-// image/categorical switch could not express.
-function rasterUsesNumericNodataFill(raster) {
-  return !!raster && raster.interpretation == 'continuous' ||
-    rasterAppearsCategorical(raster);
 }
 
 export function getProjectedRasterGridBBox(raster, srcCRS, destCRS, optsArg) {
@@ -862,10 +845,9 @@ function getProjectedMeshBBox(mesh) {
 function createProjectedRasterGrid(grid, raster, bbox, widthArg, heightArg, opts) {
   var width = widthArg || grid.width;
   var height = heightArg || grid.height;
-  var bands = getOutputBandCount(grid, raster, opts);
+  var bands = grid.bands;
   var samples = new grid.samples.constructor(width * height * bands);
   var coverage = new Uint8Array(width * height);
-  fillProjectedRasterSamples(samples, bands, grid, raster, opts || {});
   return Object.assign({}, grid, {
     width: width,
     height: height,
@@ -900,68 +882,6 @@ function getOutputGridSize(grid, bbox, opts) {
   width = Math.max(1, Math.round(Math.sqrt(pixels * aspect)));
   height = Math.max(1, Math.round(pixels / width));
   return {width: width, height: height};
-}
-
-function getOutputBandCount(grid, raster, opts) {
-  var color = getNoDataColor(raster, opts);
-  return color && color.a === 0 && grid.bands > 1 && grid.bands < 4 ? 4 : grid.bands;
-}
-
-function fillProjectedRasterSamples(samples, bands, grid, raster, opts) {
-  var color = getNoDataColor(raster, opts);
-  var noData = grid.nodata;
-  if (color) {
-    warnIfPaintingOverContinuousData(samples, grid, raster, opts);
-    fillProjectedRasterColor(samples, bands, color);
-    return;
-  }
-  if (noData === null || noData === undefined || !isFinite(noData)) {
-    if (raster && raster.interpretation == 'continuous') {
-      warnOnce('This raster has no nodata value, so uncovered pixels will be 0');
-    }
-    return;
-  }
-  samples.fill(noData);
-}
-
-// Painting a color into a float grid means writing a color value into what
-// are probably measurements. Flag it, since raster-type=continuous is
-// usually what the user wanted.
-function warnIfPaintingOverContinuousData(samples, grid, raster, opts) {
-  if (opts.nodata_color || opts.nodataColor) return; // explicit user choice
-  if (!rasterSamplesAreFloat(samples)) return;
-  if (grid.nodata === null || grid.nodata === undefined) return;
-  warnOnce('Filling uncovered pixels of a floating-point raster with a color. ' +
-    'Use -i raster-type=continuous to preserve its nodata value instead.');
-}
-
-function getNoDataColor(raster, opts) {
-  var arg = opts.nodata_color || opts.nodataColor;
-  var color;
-  if (arg == null || arg === '') {
-    return rasterUsesNumericNodataFill(raster) ? null : {r: 255, g: 255, b: 255, a: 1};
-  }
-  if (String(arg).toLowerCase() == 'transparent') {
-    return {r: 0, g: 0, b: 0, a: 0};
-  }
-  color = parseColor(arg);
-  if (!color) stop('Unsupported nodata-color:', arg);
-  return color;
-}
-
-function fillProjectedRasterColor(samples, bands, color) {
-  var gray = Math.round(0.299 * color.r + 0.587 * color.g + 0.114 * color.b);
-  var alpha = Math.round((color.a == null ? 1 : color.a) * 255);
-  for (var i = 0; i < samples.length; i += bands) {
-    if (bands == 1) {
-      samples[i] = gray;
-    } else {
-      samples[i] = color.r;
-      samples[i + 1] = color.g;
-      samples[i + 2] = color.b;
-      if (bands > 3) samples[i + 3] = alpha;
-    }
-  }
 }
 
 function rasterizeProjectedMesh(srcGrid, destGrid, mesh, sampleMethodArg) {
@@ -1198,7 +1118,6 @@ function copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrapX) {
   for (var band = 0; band < srcGrid.bands; band++) {
     destGrid.samples[dest + band] = srcGrid.samples[src + band];
   }
-  if (destGrid.bands > srcGrid.bands) destGrid.samples[dest + 3] = 255;
   if (destGrid.coverage) destGrid.coverage[dy * destGrid.width + dx] = 1;
 }
 
@@ -1236,7 +1155,6 @@ function copyBilinearRasterSampleFast(srcGrid, destGrid, src00, src10, src01, sr
   } else {
     copyBilinearGenericSample(srcGrid.samples, destGrid.samples, srcGrid.bands, src00, src10, src01, src11, dest, tx, ty, round);
   }
-  if (destGrid.bands > srcGrid.bands) destGrid.samples[dest + 3] = 255;
 }
 
 function copyBilinearRgbSample(src, destArr, src00, src10, src01, src11, dest, tx, ty, round) {
@@ -1289,7 +1207,6 @@ function copyBilinearRasterSampleChecked(srcGrid, destGrid, validity, srcX, srcY
     val /= total;
     destGrid.samples[dest + band] = round ? Math.round(val) : val;
   }
-  if (destGrid.bands > srcGrid.bands) destGrid.samples[dest + 3] = 255;
   return true;
 }
 

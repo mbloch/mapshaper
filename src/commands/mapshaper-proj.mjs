@@ -26,6 +26,7 @@ import { DataTable } from '../datatable/mapshaper-data-table';
 import { datasetHasGeometry, datasetHasRaster } from '../dataset/mapshaper-dataset-utils';
 import { createRasterPreview } from '../rasters/mapshaper-raster-utils';
 import { projectRasterGridForward } from '../rasters/mapshaper-raster-reprojection';
+import { updateRasterViewForGrid } from '../rasters/mapshaper-raster-fill';
 import { runningInBrowser } from '../mapshaper-env';
 import { stop, message, warn, error } from '../utils/mapshaper-logging';
 import { importFile } from '../io/mapshaper-file-import';
@@ -638,6 +639,7 @@ function scaleProjectionFrameBounds(bounds, crs) {
 function projectRasterLayer(lyr, src, dest, opts) {
   var raster = lyr.raster;
   raster.grid = projectRasterGridForward(raster, src, dest, opts || {});
+  updateRasterViewForGrid(raster);
   raster.view = raster.view || {};
   delete raster.view.scalingStats;
   if (runningInBrowser()) {

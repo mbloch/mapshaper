@@ -183,6 +183,8 @@ import * as RasterBlur from './rasters/mapshaper-raster-blur';
 import * as RasterContourBands from './rasters/mapshaper-raster-contour-bands';
 import * as RasterContours from './rasters/mapshaper-raster-contours';
 import * as RasterGrid from './rasters/mapshaper-raster-grid';
+import * as RasterFill from './rasters/mapshaper-raster-fill';
+import * as RasterMask from './rasters/mapshaper-raster-mask';
 import * as BoxBlur from './rasters/mapshaper-box-blur';
 import * as Hillshade from './rasters/mapshaper-hillshade';
 import * as HillshadeCommand from './commands/mapshaper-hillshade';
@@ -362,6 +364,8 @@ Object.assign(internal,
   RasterContourBands,
   RasterContours,
   RasterGrid,
+  RasterFill,
+  RasterMask,
   BoxBlur,
   Hillshade,
   HillshadeCommand,

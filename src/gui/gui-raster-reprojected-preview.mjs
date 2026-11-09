@@ -35,6 +35,7 @@ export function scheduleRasterReprojectedPreview(layer, ext, onReady) {
         output_width: params.width,
         output_height: params.height,
         sample_method: params.sampleMethod,
+        fill_uncovered: false,
         timing: timing
       });
     } catch(e) {

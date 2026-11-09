@@ -1039,6 +1039,9 @@ export function getOptionParser() {
         type: 'bbox',
         describe: 'experimental fast bbox clipping'
       })
+    .option('nodata-color', {
+      describe: '[raster] color for removed pixels (default is transparent)'
+    })
     .option('name', nameOpt)
     .option('no-snap', noSnapOpt)
     .option('no-cleanup', {
@@ -1899,7 +1902,7 @@ export function getOptionParser() {
       type: 'bbox'
     })
     .option('nodata-color', {
-      describe: '[raster] color for uncovered pixels after reprojection'
+      describe: '[raster] color for uncovered pixels after reprojection (default is transparent)'
     })
     .option('background', {
       describe: '[raster] alias for nodata-color',
