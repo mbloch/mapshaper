@@ -791,16 +791,31 @@ export function Console(gui) {
     }
   }
 
-  // The Stop button shows if the command is still running after a moment,
-  // so that it doesn't flash for quick ones
+  // The Stop link shows only if the command looks like it has a while to go,
+  // so that it doesn't flash on just before a command finishes. Each step is
+  // [ms since the start, share of the work done (from the progress meter)
+  // below which the link shows]
+  var STOP_LINK_STEPS = [[2000, 0.25], [8000, 0.75], [12000, Infinity]];
+
   function startInterruptible(job) {
+    var t0 = Date.now();
     interruptibleJob = job;
     stopLink.show();
     stopStatus.text(' (Ctrl-C)');
-    stopTimer = setTimeout(function() {
-      stopLine.show();
-      scrollDown();
-    }, 1000);
+    internal.resetProgressShare();
+    scheduleStep(0);
+
+    function scheduleStep(i) {
+      var step = STOP_LINK_STEPS[i];
+      stopTimer = setTimeout(function() {
+        if (internal.getProgressShare() < step[1]) {
+          stopLine.show();
+          scrollDown();
+        } else {
+          scheduleStep(i + 1);
+        }
+      }, Math.max(0, step[0] - (Date.now() - t0)));
+    }
   }
 
   function endInterruptible() {

@@ -5,6 +5,16 @@
 // with 100%.
 var DOT_INTERVAL = 1000;
 var MARKS_TIME = 7000;
+// the share done of the task of the latest meter, for the GUI's Stop link
+var latestShare = 0;
+
+export function getProgressShare() {
+  return latestShare;
+}
+
+export function resetProgressShare() {
+  latestShare = 0;
+}
 
 // @opts.steps true if the caller prints the dots, with dot()
 // Returns {update, dot, finish}: functions returning the text to print at the
@@ -32,6 +42,7 @@ export function getProgressMeter(opts) {
       marks = share < 0.25 ? [25, 50, 75] : share < 0.5 ? [50] : [];
     }
     share = Math.max(share, done || 0);
+    latestShare = share;
     while (marks && marks.length > 0 && share >= marks[0] / 100) str += mark(marks.shift());
     return str;
   }
