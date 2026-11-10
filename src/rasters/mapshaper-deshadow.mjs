@@ -178,6 +178,17 @@ var MIN_EDGE_CELLS = 30;
 var EDGE_ALTITUDE_RANGE = [MIN_ALTITUDE, 70];
 var EDGE_Z = 3;
 var EDGE_ALTITUDE_STEP = 2;
+// A free fit's altitude is measured from the edges of cast shadows on up to
+// EDGE_FIT_CELLS cells, as near the DEM's resolution as that allows, where
+// shadows have many more edges than at the fit level (whose scores tend to
+// favor low suns where albedo varies with the terrain, e.g. forest on slopes
+// facing away from the sun). The shadowed cells compared are EDGE_DISTANCE
+// meters before the edges (and at least EDGE_STEP cells), to clear the edges'
+// blur and any misregistration of the image and the DEM. Measuring takes
+// about EDGE_FIT_CASTS casts of the cells.
+var EDGE_FIT_CELLS = 4e6;
+var EDGE_DISTANCE = 15;
+var EDGE_FIT_CASTS = 40;
 var LOG_EPSILON = 0.005;
 // the sun's position is fitted by correlating log(I + FIT_DIFFUSE) with log
 // brightness (plus LOG_EPSILON)
@@ -458,6 +469,33 @@ function refineAltitude(level, sun) {
     score: scoreSun(level, sun.azimuth, best.altitude * deg)};
 }
 
+// @sun's altitude from the edges of cast shadows on @edges (see
+// EDGE_FIT_CELLS and getEdgeAltitude()), with the azimuth fitted again at
+// that altitude, as the edges are compared in the direction of the azimuth;
+// or if the edges don't tell the altitude, refined by refineAltitude()
+function fitEdgeAltitude(level, edges, sun) {
+  var deg = Math.PI / 180, az = sun.azimuth, fit = null, alt, next, k;
+  for (k = 0; k < 2; k++) {
+    alt = getEdgeAltitude(edges, az);
+    if (alt === null) break;
+    next = fitAzimuth(level, az, alt * deg);
+    if (!(next.score > -1)) break;
+    fit = next;
+    if (Math.abs(fit.azimuth - az) < SAME_SUN * deg / 2) break;
+    az = fit.azimuth;
+  }
+  return fit || refineAltitude(level, sun);
+}
+
+// The level that shadow edges are measured on (see EDGE_FIT_CELLS)
+// @brightness one value per terrain cell (see getFitLevel())
+function getEdgeLevel(terrain, brightness, region) {
+  var level = getFitLevel(terrain.Z, brightness, terrain.width, terrain.height, terrain.cellWidth,
+    terrain.cellHeight, region, EDGE_FIT_CELLS, Infinity);
+  level.edgeStep = Math.max(EDGE_STEP, Math.round(EDGE_DISTANCE / Math.sqrt(level.cellW * level.cellH)));
+  return level;
+}
+
 // The highest altitude (whole degrees from @lo to @hi) at which each cell is
 // shadowed by terrain in the direction @azimuth (@hi if higher), or 0
 function getHorizonAngles(level, azimuth, lo, hi) {
@@ -472,16 +510,18 @@ function getHorizonAngles(level, azimuth, lo, hi) {
 }
 
 // How much brighter (mean log brightness) sunlit cells just beyond the edges
-// of cast shadows are than the shadowed cells EDGE_STEP cells before them
-// (toward the sun), with the sun at @altitude. Only cells facing the sun are
-// compared, so that the edges are of cast shadows, which are sharp, and not
-// of slopes facing away from the sun, which darken gradually.
+// of cast shadows are than the shadowed cells EDGE_STEP cells (or the level's
+// edgeStep) before them (toward the sun), with the sun at @altitude. Only
+// cells facing the sun are compared, so that the edges are of cast shadows,
+// which are sharp, and not of slopes facing away from the sun, which darken
+// gradually.
 // @H horizon angles (see getHorizonAngles())
 // Returns {contrast, count}
 function getShadowEdgeContrast(level, H, azimuth, altitude) {
   var r = level.region, w = level.w, LB = getLevelLogBrightness(level), nrm = getLevelNormals(level);
   var a = altitude * Math.PI / 180, sx = Math.sin(azimuth) * Math.cos(a), sy = Math.cos(azimuth) * Math.cos(a);
-  var sz = Math.sin(a), dx = -Math.sin(azimuth) * EDGE_STEP, dy = Math.cos(azimuth) * EDGE_STEP;
+  var step = level.edgeStep || EDGE_STEP;
+  var sz = Math.sin(a), dx = -Math.sin(azimuth) * step, dy = Math.cos(azimuth) * step;
   var sum = 0, sum2 = 0, n = 0, x, y, i, j, px, py, d;
   function facing(i) {
     return nrm.x[i] * sx + nrm.y[i] * sy + nrm.z[i] * sz > EDGE_FACING;
@@ -1162,20 +1202,23 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
     result.failure = 'empty';
     return result;
   }
-  var level = getFitLevel(terrain.Z, getCellMeans(getLinearLumas(lin, N), W, H, terrain, valid),
-    terrain.width, terrain.height, terrain.cellWidth, terrain.cellHeight, region, FIT_CELLS, MAX_FIT_CELL);
+  var brightness = getCellMeans(getLinearLumas(lin, N), W, H, terrain, valid);
+  var level = getFitLevel(terrain.Z, brightness, terrain.width, terrain.height, terrain.cellWidth,
+    terrain.cellHeight, region, FIT_CELLS, MAX_FIT_CELL);
   var coarse = path ? null : getFitLevel(level.Z, level.B, level.w, level.h, level.cellW, level.cellH,
     level.region, COARSE_FIT_CELLS, MAX_COARSE_FIT_CELL);
+  var edges = path ? null : getEdgeLevel(terrain, brightness, region);
   level.work = work;
   level.latitude = terrain.latitude;
   if (coarse) {
     coarse.work = work;
     coarse.latitude = terrain.latitude;
   }
-  work.expect(getFitWork(level, coarse, path));
+  if (edges) edges.work = work;
+  work.expect(getFitWork(level, coarse, path) + (edges ? EDGE_FIT_CASTS * getRegionCells(edges.region) : 0));
   work.rest(PROGRESS.setup);
   var sun = path ? fitSunPath(level, path) : fitFreeSun(level, coarse, null);
-  if (!path && sun.score > -1) sun = refineAltitude(level, sun);
+  if (!path && sun.score > -1) sun = fitEdgeAltitude(level, edges, sun);
   var regions, light, tile, margin, all, classes, ratios, litRatios, pixelI, gains, inShadow, nValid, i;
   var byShadows = true;
   var flat, direct, hardI, predicted, shadows, refined;

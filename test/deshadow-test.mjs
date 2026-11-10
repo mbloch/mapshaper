@@ -87,6 +87,40 @@ function makeLitDataset(w, h, sunFn, cell) {
   return gridDataset(w, h, Z, img, cell);
 }
 
+// Rolling hills on 4 m pixels, with a 30-50 m high block every 160 m, lit by
+// @sun; the ground is darker on slopes facing away from the sun (as forest
+// often is), which brightness scores match better with a lower sun
+function makeAspectDataset(w, h, sun) {
+  var cellM = 4, cell = cellM / (6371008.8 * deg);
+  var Z = flatGrid(w, h, function(x, y) {
+    var z = [8, 16, 32].reduce(function(z, scale) {
+      return z + scale * stretch(function(i, j) { return noise(j * 1000 + i + 7 * scale); }, scale, scale)(x, y);
+    }, 0);
+    var k = Math.floor(y / 40) * 100 + Math.floor(x / 40);
+    var s = 12 + 6 * (1 + noise(k * 5 + 1)), ox = 8 + 5 * (1 + noise(k * 5 + 2)), oy = 8 + 5 * (1 + noise(k * 5 + 3));
+    var block = x % 40 >= ox && x % 40 < ox + s && y % 40 >= oy && y % 40 < oy + s;
+    return block ? z + 40 + 10 * noise(k * 5 + 4) : z;
+  });
+  var nrm = internal.getNormals(Z, w, h, cellM, cellM);
+  var shadow = internal.castTerrainShadow(Z, w, h, cellM, cellM, sun);
+  var sx = Math.sin(sun.azimuth), sy = Math.cos(sun.azimuth);
+  var img = new Uint8Array(w * h * 3), lit = [0.3, 0.25, 0.2], c = [0.35, 0.45, 0.6];
+  for (var i = 0; i < w * h; i++) {
+    var facing = nrm.x[i] * sx + nrm.y[i] * sy;
+    var I = shadow[i] ? 0 : Math.max(0, facing * Math.cos(sun.altitude) + nrm.z[i] * Math.sin(sun.altitude));
+    if (I !== I) {
+      I = Math.sin(sun.altitude);
+      facing = 0;
+    }
+    var albedo = Math.exp(1.2 * Math.max(-1, Math.min(1, facing * 3)));
+    for (var k = 0; k < 3; k++) {
+      var v = albedo * lit[k] * (I + c[k]) / (Math.sin(sun.altitude) + c[k]) * (1 + 0.1 * noise(i * 3 + k));
+      img[i * 3 + k] = Math.round(255 * Math.min(1, Math.pow(v, 1 / 2.2)));
+    }
+  }
+  return gridDataset(w, h, Z, img, cell);
+}
+
 // A lat-long dataset with an elevation layer and an RGB image of the same
 // grid, at TEST_LATITUDE (where the tests' suns can be), with square cells
 function gridDataset(w, h, Z, img, cell) {
@@ -621,6 +655,16 @@ describe('mapshaper-deshadow.mjs', function () {
       assert.equal(out.derivation.type, 'deshadow');
       assert(Math.abs(out.derivation.sun_azimuth - 135) < 6);
       assert(Math.abs(out.derivation.sun_altitude - 40) < 6);
+    });
+
+    it('fits the sun\'s altitude to the edges of cast shadows where the ground varies with the terrain', async function () {
+      // the image is larger than the level that brightness is scored on, so
+      // shadow edges are measured on a finer grid
+      var dataset = makeAspectDataset(400, 400, {azimuth: 150 * deg, altitude: 50 * deg});
+      var catalog = await run(dataset, '-deshadow elev target=img');
+      var out = findLayer(catalog, 'img').raster.derivation;
+      assert(Math.abs(out.sun_azimuth - 150) < 4, 'azimuth ' + out.sun_azimuth);
+      assert(Math.abs(out.sun_altitude - 50) < 3, 'altitude ' + out.sun_altitude);
     });
 
     it('date= fits the sun along its path that day', async function () {
