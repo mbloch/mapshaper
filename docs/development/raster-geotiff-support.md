@@ -17,6 +17,23 @@ decoding. It supports browser and Node usage and already covers many GeoTIFF
 storage variants, including strips, tiles, multiple sample types, compression,
 overviews, windows, and worker pools.
 
+Mapshaper replaces two parts of it:
+
+- LZW decoding (`src/geotiff/mapshaper-geotiff-lzw.mjs`), registered with
+  geotiff.js's `addDecoder()` when the library loads. geotiff.js's own
+  decoder builds each strip in a plain array a byte at a time, and was about
+  eight times slower.
+- Reading at a reduced size (`src/geotiff/mapshaper-geotiff-resample.mjs`).
+  `readRasters()` with a `width` and `height` assembles the whole full-size
+  image before resampling it, so importing a 24795 x 21762 float32 raster at
+  4270 x 3747 peaked at 4.5 GB. Mapshaper instead decodes one row of strips or
+  tiles at a time, skips blocks that no output pixel samples, and picks the
+  pixels that geotiff.js's nearest-neighbor resampling picks. It handles
+  uncompressed, LZW, Deflate, PackBits and Zstandard blocks of whole-byte
+  samples in either planar configuration; other files (JPEG, LERC, WebP,
+  big-endian multibyte samples, bit-packed samples) still go through
+  `readRasters()`.
+
 Mapshaper should treat GeoTIFF import as async in both CLI and browser code.
 The browser should load the GeoTIFF bundle on demand, following the existing
 GeoPackage and GeoParquet lazy bundle pattern.

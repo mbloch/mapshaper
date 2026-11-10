@@ -13,6 +13,8 @@ import { getPixelCoordinatesWarning, getPixelTransform, getWorldFileBBox, getWor
 import { message, stop, warn, warnOnce } from '../utils/mapshaper-logging';
 import { createRasterPreview, getRasterViewRecipe } from '../rasters/mapshaper-raster-utils';
 import { markRasterSamplesAsSource } from '../rasters/mapshaper-raster-source';
+import { registerGeoTIFFLZWDecoder } from './mapshaper-geotiff-lzw';
+import { readResampledGeoTIFFSamples } from './mapshaper-geotiff-resample';
 import utils from '../utils/mapshaper-utils';
 import { FULL_RESOLUTION_HINT, getMaxImportPixels, getRasterImportSize, parseImportResolution, setReducedResolution } from '../rasters/mapshaper-raster-import-size';
 
@@ -82,13 +84,15 @@ async function loadGeoTIFFLib() {
     if (!mod || !mod.fromArrayBuffer) {
       stop('GeoTIFF library is not loaded');
     }
-    return mod;
+  } else {
+    if (!geotiffPromise) {
+      geotiffPromise = dynamicImportModule('geotiff');
+    }
+    mod = await geotiffPromise;
+    mod = mod.default && !mod.fromArrayBuffer ? mod.default : mod;
   }
-  if (!geotiffPromise) {
-    geotiffPromise = dynamicImportModule('geotiff');
-  }
-  mod = await geotiffPromise;
-  return mod.default && !mod.fromArrayBuffer ? mod.default : mod;
+  registerGeoTIFFLZWDecoder(mod);
+  return mod;
 }
 
 async function loadGeoKeysToProj4Lib() {
@@ -421,8 +425,13 @@ async function readGeoTIFFSamples(image, samples, width, height) {
     width: width,
     height: height
   };
+  var data;
   if (useRGBRead(image, samples)) {
     return image.readRGB(opts);
+  }
+  if (width != image.getWidth() || height != image.getHeight()) {
+    data = await readResampledGeoTIFFSamples(await loadGeoTIFFLib(), image, samples, width, height);
+    if (data) return data;
   }
   opts.samples = samples;
   return image.readRasters(opts);
