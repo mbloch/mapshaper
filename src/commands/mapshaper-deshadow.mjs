@@ -57,6 +57,9 @@ cmd.deshadow = async function(lyr, dataset, dem, nirSource, opts, resume, signal
   if (nirSource && !layerHasRaster(nirSource.layer)) {
     stop('nir= should name a near-infrared raster');
   }
+  if (opts.image_shadows && opts.image_shadows != 'on' && opts.image_shadows != 'off') {
+    stop('image-shadows= should be on or off');
+  }
   grid = getRasterGrid(lyr.raster);
   demGrid = getRasterGrid(dem.layer.raster);
   if (rasterGridIsRotated(grid) || rasterGridIsRotated(demGrid)) {
@@ -94,7 +97,7 @@ cmd.deshadow = async function(lyr, dataset, dem, nirSource, opts, resume, signal
       image: {samples: grid.samples, bands: grid.bands, width: grid.width, height: grid.height,
         nodata: grid.nodata},
       terrain: terrain, nir: nir, pixelSize: pixelSize, demPixelSize: demPixelSize, path: path,
-      options: {balancedThreshold: !!opts.balanced_threshold || coarseDem}
+      options: {balancedThreshold: !!opts.balanced_threshold || coarseDem, imageShadows: opts.image_shadows}
     }, printer.update, signal);
   } finally {
     resume();
@@ -110,10 +113,25 @@ cmd.deshadow = async function(lyr, dataset, dem, nirSource, opts, resume, signal
         ' (' + formatPercent(s.share) + ')';
     }).join('; '));
   }
+  if (result.masked) {
+    verbose('Shadows were found in the image');
+  } else if (result.masked === false) {
+    verbose('Shadows are from the elevation data' + (result.maskRatio > 0 ? '; the dark areas found in' +
+      ' the image are ' + formatTimes(result.maskRatio) + ' as large, so they may include other dark' +
+      ' ground (e.g. forest)' : ''));
+  }
   if (!result.samples) {
     if (getFailureDetails(result)) verbose(getFailureDetails(result));
     message(getFailureMessage(result));
     return [];
+  }
+  if (result.typicalDiffuse) {
+    message('The image\'s shadows are too small to measure how much to brighten them, so they were' +
+      ' brightened by typical amounts');
+  }
+  if (result.response > 1) {
+    verbose('Slopes facing away from the sun are darker than the elevation data\'s lighting explains' +
+      ' (as in coarse imagery), so they were brightened more (response ' + result.response.toFixed(2) + ')');
   }
   verbose('Shaded areas: ' + formatPercent(result.shadowShare) + ' of the image; shadows on flat ground brightened ' +
     formatGains(result.shadowGains) + ' (red, green, blue)');
@@ -395,6 +413,10 @@ function formatDegrees(rad) {
 
 function formatMeters(m) {
   return (m < 10 ? m.toFixed(1) : String(Math.round(m))) + ' m';
+}
+
+function formatTimes(ratio) {
+  return (ratio < 10 ? ratio.toFixed(1) : String(Math.round(ratio))) + ' times';
 }
 
 function formatPercent(share) {

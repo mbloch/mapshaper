@@ -125,6 +125,41 @@ var EDGE_BLUR_RADIUS = 1.2;
 var MIN_C_FIT = 0.5;
 var MIN_C_SPREAD = 0.05;
 var MIN_C_PIXELS = 64;
+// Without shadows large enough to measure c (e.g. in imagery with pixels of
+// tens of meters), c is fitted from the slopes; if fewer than this share of
+// the tiles where a band varies with I give a positive c, the ground is
+// darker on slopes facing away from the sun than their lighting explains
+// (e.g. it's more forested), and TYPICAL_DIFFUSE is used: about the median c
+// measured from shadows in NAIP and USGS imagery of western US mountains
+var MIN_SLOPE_FIT_SHARE = 0.5;
+var TYPICAL_DIFFUSE = [0.1, 0.17, 0.31];
+// Without shadows to measure c from (mostly in coarse imagery), the image's
+// shading can be stronger than the DEM's lighting at the image's resolution
+// shows: a coarse pixel on a shaded slope includes small shadows and facets
+// facing away from the sun that the DEM's smoothed slopes miss (and shaded
+// slopes are often more forested). Where sunlit ground's direct light is less
+// than flat ground's, I / flat is raised to the power K that leaves the
+// fewest edges: the one that minimizes the total variation of the corrected
+// log luma between neighboring pixels (see fitShadingResponse()), from 1 to
+// MAX_RESPONSE, to within RESPONSE_TOLERANCE. Only pairs of pixels of similar
+// colors are compared, the RESPONSE_PAIR_SHARE of them whose colors differ
+// least (in steps of PAIR_COLOR_STEP, up to MAX_PAIR_COLOR_DIFF), as changes
+// in ground cover change colors and changes in lighting mostly don't.
+var MAX_RESPONSE = 4;
+var RESPONSE_TOLERANCE = 0.02;
+var RESPONSE_PAIR_SHARE = 0.5;
+var PAIR_COLOR_STEP = 0.0005;
+var MAX_PAIR_COLOR_DIFF = 0.5;
+// The same DEM can't place that shading within a few pixels, so its gains
+// leave a shaded slope's darkest pixels too dark and brighten the lighter
+// pixels beside them too much. The lighting is moved onto the image's own
+// light and dark pixels with a guided filter (He et al.): in the
+// (2 * GUIDE_RADIUS + 1)-pixel square around each pixel, the log of the
+// light is fitted as a linear function of the log luma, where they vary
+// together; GUIDE_EPSILON is the variance of the log luma that counts as
+// noise.
+var GUIDE_RADIUS = 6;
+var GUIDE_EPSILON = 0.001;
 // Classes of ground, by color; a class's own c gets half the weight with this
 // many tiles, and classes are blended over CLASS_RADIUS meters
 var GROUND_CLASSES = 6;
@@ -1098,10 +1133,13 @@ function getPixelLighting(lin, valid, I, W, H, band) {
 // @demPixelSize ground size of the DEM's own pixels, in meters
 // @path optional {latitude, declination}, to fit the sun along its path on
 //   the image's date (see fitSunPosition)
-// Returns {samples, sun, suns, diffuse, shadowGains, shadowShare, failure}:
+// Returns {samples, sun, suns, diffuse, typicalDiffuse, response, shadowGains, shadowShare, failure}:
 //   samples is null if the image couldn't be corrected; suns are the sun
 //   positions of a mosaic's regions (with the image's first), each with the
-//   share of the image it lights; diffuse is c of each band; shadowGains are
+//   share of the image it lights; diffuse is c of each band (typicalDiffuse
+//   is true if it's TYPICAL_DIFFUSE, not measured); response is the power of
+//   the direct light on shaded slopes, if it was fitted (see MAX_RESPONSE);
+//   shadowGains are
 //   the gains of shadows on flat ground, as they apply to 8-bit values;
 //   failure is 'empty' (no pixels have data; sun is null), 'fit' (no sun
 //   position matches well enough), 'altitude' (the
@@ -1109,7 +1147,8 @@ function getPixelLighting(lin, valid, I, W, H, band) {
 //   'color' (shadows aren't bluer than sunlit ground)
 // @progress optional function receiving the share of the work done (0 to 1)
 //   as it increases (see REST_WORK)
-// @options optional {balancedThreshold} (see getAgreementThreshold())
+// @options optional {balancedThreshold, imageShadows} (see
+//   getAgreementThreshold() and getPixelShadows())
 export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path, progress, options) {
   var W = image.width, H = image.height, N = W * H;
   var work = getWorkTracker(progress || function() {}, N);
@@ -1139,7 +1178,7 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
   if (!path && sun.score > -1) sun = refineAltitude(level, sun);
   var regions, light, tile, margin, all, classes, ratios, litRatios, pixelI, gains, inShadow, nValid, i;
   var byShadows = true;
-  var flat, direct, hardI, predicted, shadows;
+  var flat, direct, hardI, predicted, shadows, refined;
   result.sun = sun;
   if (!(sun.score >= MIN_SUN_FIT)) {
     result.failure = 'fit';
@@ -1163,7 +1202,8 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
   hardI = getPixelValues(light.I, cells, Float32Array);
   for (i = 0, predicted = new Uint8Array(N); i < N; i++) predicted[i] = hardI[i] === 0 ? 1 : 0;
   shadows = getPixelShadows(image, nir, valid, predicted, cells, terrain, region, regions,
-    W, H, pixelSize, demPixelSize, work.rest, !!(options && options.balancedThreshold));
+    W, H, pixelSize, demPixelSize, work.rest, !!(options && options.balancedThreshold),
+    options && options.imageShadows);
   work.rest(PROGRESS.shadows);
   result.masked = shadows.masked;
   result.maskRatio = shadows.ratio;
@@ -1174,6 +1214,10 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
   if (!all.c.every(function(c) { return c > 0; })) {
     all = fitDiffuseRatios(lin, valid, hardI, W, H, null, 1, tile)[0];
     byShadows = false;
+    if (slopeFitIsConfounded(all)) {
+      all = {c: TYPICAL_DIFFUSE.concat(), tiles: [0, 0, 0]};
+      result.typicalDiffuse = true;
+    }
   }
   work.rest(PROGRESS.ratios);
   result.diffuse = all.c;
@@ -1197,6 +1241,9 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
     classes = {labels: new Uint8Array(N)};
     ratios = [all.c];
     litRatios = ratios;
+    if (!shadows.masked) {
+      result.response = fitShadingResponse(lin, valid, hardI, flat, all.c, W, H);
+    }
   }
   work.rest(PROGRESS.classes);
   if (shadows.masked) {
@@ -1217,7 +1264,14 @@ export function deshadowImage(image, terrain, nir, pixelSize, demPixelSize, path
   }
   pixelI = shadows.masked ? softenShadows(shadows.shadow, direct, W, H, toPixels(EDGE_BLUR_RADIUS, pixelSize)) :
     getPixelLighting(lin, valid, hardI, W, H, margin);
-  gains = getPixelGains(lin, classes.labels, ratios, litRatios, flat, direct, pixelI, valid, W, H, pixelSize);
+  if (result.response) {
+    refined = refineLighting(lin, valid, pixelI, flat, all.c, result.response, W, H);
+    gains = getPixelGains(lin, classes.labels, ratios, litRatios, flat, refined, refined, valid, W, H,
+      pixelSize);
+  } else {
+    gains = getPixelGains(lin, classes.labels, ratios, litRatios, flat, direct, pixelI, valid, W, H,
+      pixelSize);
+  }
   work.rest(PROGRESS.sunlit);
   limitBrightness(lin, gains, valid, getLitCap(lin, valid, pixelI, flat, null));
   rectifyColors(lin, gains, valid, hardI, pixelI, flat, W, H, pixelSize, margin);
@@ -1658,16 +1712,182 @@ function getHistogramMedian(hist, o, n) {
   return 255;
 }
 
+// I of each pixel, with the light (getResponseLighting() + c) / (flat + c)
+// moved onto the pixels whose luma it explains (see GUIDE_RADIUS)
+// @I I of each pixel
+// @c c of each band
+// @K see MAX_RESPONSE
+function refineLighting(lin, valid, I, flat, c, K, W, H) {
+  var N = W * H, r = GUIDE_RADIUS, cy = LUMA_WEIGHTS[0] * c[0] + LUMA_WEIGHTS[1] * c[1] + LUMA_WEIGHTS[2] * c[2];
+  var ok = new Float32Array(N), G = new Float32Array(N), P = new Float32Array(N), tmp = new Float32Array(N);
+  var out = I.slice(), count, mG, mP, A, B, i, v, a;
+  for (i = 0; i < N; i++) {
+    if (!(valid[i] && I[i] === I[i] && flat[i] > 0)) continue;
+    ok[i] = 1;
+    G[i] = Math.log(getLinearLuma(lin, i) + LOG_EPSILON);
+    P[i] = Math.log((getResponseLighting(I[i], flat[i], K) + cy) / (flat[i] + cy));
+  }
+  count = boxMean(ok, W, H, r);
+  // means of the ok pixels around each pixel (0 if there are none)
+  function mean(src, dest) {
+    dest = boxMean(src, W, H, r, dest);
+    for (var j = 0; j < N; j++) dest[j] = count[j] > 0 ? dest[j] / count[j] : 0;
+    return dest;
+  }
+  mG = mean(G);
+  mP = mean(P);
+  for (i = 0; i < N; i++) tmp[i] = G[i] * G[i];
+  A = mean(tmp);
+  for (i = 0; i < N; i++) tmp[i] = G[i] * P[i];
+  B = mean(tmp, tmp);
+  // each square's fit is written over its means of G * G and G * P
+  for (i = 0; i < N; i++) {
+    v = A[i] - mG[i] * mG[i];
+    a = ok[i] ? Math.max(0, (B[i] - mG[i] * mP[i]) / (v + GUIDE_EPSILON)) : 0;
+    A[i] = a;
+    B[i] = ok[i] ? mP[i] - a * mG[i] : 0;
+  }
+  mean(A, A);
+  mean(B, B);
+  for (i = 0; i < N; i++) {
+    if (ok[i]) out[i] = Math.max(0, (flat[i] + cy) * Math.exp(A[i] * G[i] + B[i]) - cy);
+  }
+  return out;
+}
+
+// I with sunlit ground's direct light relative to flat ground's raised to
+// the power @K (see MAX_RESPONSE) where it's less than flat ground's
+function getResponseLighting(I, flat, K) {
+  return K == 1 || !(I > 0) || I >= flat ? I : flat * Math.pow(I / flat, K);
+}
+
+// The power K of the direct light (see MAX_RESPONSE) that minimizes the total
+// variation of the log luma corrected by (getResponseLighting() + c) / (flat
+// + c) between pixels and their neighbors to the right and below, of the
+// pairs of similar colors (see RESPONSE_PAIR_SHARE) (searched as though the
+// total variation had one minimum)
+// @c c of each band
+export function fitShadingResponse(lin, valid, I, flat, c, W, H) {
+  var N = W * H, L = new Float32Array(N), E = new Float32Array(N), ok = new Uint8Array(N), pairs;
+  var cy = LUMA_WEIGHTS[0] * c[0] + LUMA_WEIGHTS[1] * c[1] + LUMA_WEIGHTS[2] * c[2];
+  var phi = (Math.sqrt(5) - 1) / 2, a = 1, b = MAX_RESPONSE, i, x1, x2, f1, f2;
+  for (i = 0; i < N; i++) {
+    if (!(valid[i] && I[i] === I[i] && flat[i] > 0)) continue;
+    ok[i] = 1;
+    L[i] = Math.log(getLinearLuma(lin, i) + LOG_EPSILON);
+  }
+  pairs = getSimilarColorPairs(lin, ok, W, H);
+  function variation(K) {
+    var sum = 0, n = 0, i, p;
+    for (i = 0; i < N; i++) {
+      if (ok[i]) E[i] = L[i] - Math.log((getResponseLighting(I[i], flat[i], K) + cy) / (flat[i] + cy));
+    }
+    for (i = 0; i < N; i++) {
+      p = pairs[i];
+      if (p & 1) {
+        sum += Math.abs(E[i + 1] - E[i]);
+        n++;
+      }
+      if (p & 2) {
+        sum += Math.abs(E[i + W] - E[i]);
+        n++;
+      }
+    }
+    return n > 0 ? sum / n : 0;
+  }
+  x1 = b - phi * (b - a);
+  x2 = a + phi * (b - a);
+  f1 = variation(x1);
+  f2 = variation(x2);
+  while (b - a > RESPONSE_TOLERANCE) {
+    if (f1 <= f2) {
+      b = x2;
+      x2 = x1;
+      f2 = f1;
+      x1 = b - phi * (b - a);
+      f1 = variation(x1);
+    } else {
+      a = x1;
+      x1 = x2;
+      f1 = f2;
+      x2 = a + phi * (b - a);
+      f2 = variation(x2);
+    }
+  }
+  return b - 1 > RESPONSE_TOLERANCE * 2 ? (a + b) / 2 : 1;
+}
+
+// The pairs of @ok pixels and their neighbors to the right (1) and below (2)
+// whose colors differ least (RESPONSE_PAIR_SHARE of them, by the larger
+// difference of their log red/green and blue/green ratios)
+// Returns a Uint8Array of the pairs of each pixel
+function getSimilarColorPairs(lin, ok, W, H) {
+  var N = W * H, R = new Float32Array(N), B = new Float32Array(N), pairs = new Uint8Array(N);
+  var src = lin.samples, bands = lin.bands, decode = lin.decode;
+  var bins = Math.round(MAX_PAIR_COLOR_DIFF / PAIR_COLOR_STEP), hist = new Float64Array(bins + 1);
+  var n = 0, sum = 0, x, y, i, j, g, k, max;
+  for (i = 0; i < N; i++) {
+    if (!ok[i]) continue;
+    j = i * bands;
+    g = decode[src[j + 1]] + LOG_EPSILON;
+    R[i] = Math.log((decode[src[j]] + LOG_EPSILON) / g);
+    B[i] = Math.log((decode[src[j + 2]] + LOG_EPSILON) / g);
+  }
+  function diff(i, j) {
+    return Math.max(Math.abs(R[i] - R[j]), Math.abs(B[i] - B[j]));
+  }
+  function bin(d) {
+    return Math.min(bins, Math.floor(d / PAIR_COLOR_STEP));
+  }
+  for (y = 0; y < H; y++) {
+    for (x = 0; x < W; x++) {
+      i = y * W + x;
+      if (!ok[i]) continue;
+      if (x + 1 < W && ok[i + 1]) {
+        hist[bin(diff(i, i + 1))]++;
+        n++;
+      }
+      if (y + 1 < H && ok[i + W]) {
+        hist[bin(diff(i, i + W))]++;
+        n++;
+      }
+    }
+  }
+  for (k = 0; k < bins; k++) {
+    sum += hist[k];
+    if (sum >= n * RESPONSE_PAIR_SHARE) break;
+  }
+  max = (k + 1) * PAIR_COLOR_STEP;
+  for (y = 0; y < H; y++) {
+    for (x = 0; x < W; x++) {
+      i = y * W + x;
+      if (!ok[i]) continue;
+      if (x + 1 < W && ok[i + 1] && diff(i, i + 1) < max) pairs[i] |= 1;
+      if (y + 1 < H && ok[i + W] && diff(i, i + W) < max) pairs[i] |= 2;
+    }
+  }
+  return pairs;
+}
+
+// Whether a fit of c from the slopes (see fitDiffuseRatios()) has bands that
+// vary with I in some tiles, but give a positive c in too few of them (see
+// MIN_SLOPE_FIT_SHARE)
+export function slopeFitIsConfounded(fit) {
+  return fit.correlated.some(function(n) { return n > 0; }) &&
+    fit.correlated.some(function(n, b) { return !(fit.tiles[b] >= n * MIN_SLOPE_FIT_SHARE && fit.tiles[b] > 0); });
+}
+
 // c of each band for each class, from regressions of linear values on I in
 // tiles of @tile pixels
 // @I I of each pixel
 // @labels optional class of each pixel (0 to @K - 1)
-// Returns an array of {c, tiles} for each class: c and the number of tiles it
-//   was fitted in, for each band (c is NaN with no tiles)
+// Returns an array of {c, tiles, correlated} for each class: c and the number
+//   of tiles it was fitted in, for each band (c is NaN with no tiles), and the
+//   number of tiles where the band varies with I (including those with c <= 0)
 export function fitDiffuseRatios(lin, valid, I, W, H, labels, K, tile) {
   var tw = Math.ceil(W / tile), th = Math.ceil(H / tile), nt = tw * th, S = 12;
   var acc = new Float64Array(K * nt * S), src = lin.samples, bands = lin.bands, decode = lin.decode;
-  var x, y, i, a, o, b, v, k, t, n, mx, va, my, vy, cov, slope, icpt, ratios, out = [];
+  var x, y, i, a, o, b, v, k, t, n, mx, va, my, vy, cov, slope, icpt, ratios, correlated, out = [];
   for (y = 0; y < H; y++) {
     for (x = 0; x < W; x++) {
       i = y * W + x;
@@ -1688,6 +1908,7 @@ export function fitDiffuseRatios(lin, valid, I, W, H, labels, K, tile) {
   }
   for (k = 0; k < K; k++) {
     ratios = [[], [], []];
+    correlated = [0, 0, 0];
     for (t = 0; t < nt; t++) {
       o = (k * nt + t) * S;
       n = acc[o];
@@ -1702,6 +1923,7 @@ export function fitDiffuseRatios(lin, valid, I, W, H, labels, K, tile) {
         if (!(vy > 0)) continue;
         var rr = cov / Math.sqrt(va * vy);
         if (rr < MIN_C_FIT) continue;
+        correlated[b]++;
         slope = cov / va;
         icpt = my - slope * mx;
         if (icpt > 0) ratios[b].push(icpt / slope);
@@ -1710,6 +1932,7 @@ export function fitDiffuseRatios(lin, valid, I, W, H, labels, K, tile) {
     out.push({
       c: ratios.map(function(arr) { return arr.length > 0 ? getMedian(arr) : NaN; }),
       tiles: ratios.map(function(arr) { return arr.length; }),
+      correlated: correlated,
       spread: ratios.map(getLogSpread)
     });
   }
@@ -2852,15 +3075,22 @@ function softenShadows(shadow, direct, W, H, r) {
 // image if it can be (see getShadowMask()), or else from the DEM
 // @predicted 1 for pixels in the DEM's shadows
 // @balanced see getAgreementThreshold()
+// @imageShadows optional 'on' to use the mask whatever its size (see
+//   MAX_MASK_RATIO), or 'off' to use the DEM's shadows
 // Returns {shadow, masked, count, ratio, mask, sun}: masked is true if the
 //   shadows are from the mask (see getShadowMask()), cast by @sun; ratio is
 //   the mask's size over the DEM's shadows'
 function getPixelShadows(image, nir, valid, predicted, cells, terrain, region, regions,
-    W, H, pixelSize, demPixelSize, progress, balanced) {
+    W, H, pixelSize, demPixelSize, progress, balanced, imageShadows) {
   var N = W * H, L = getLuma(image.samples, image.bands, N);
   var band = Math.max(MIN_BAND, demPixelSize * BAND_DEM_PIXELS);
   var shadow = new Float32Array(N), stretch = 1, mask, n, i, maskSun, dark, lowered;
   for (i = 0, n = 0; i < N; i++) if (predicted[i] && valid[i]) n++;
+  if (imageShadows == 'off') {
+    for (i = 0; i < N; i++) shadow[i] = predicted[i];
+    progress(PROGRESS.mask);
+    return {shadow: shadow, masked: false, count: n, ratio: 0};
+  }
   if (regions.suns.length == 1 && n > 0) {
     dark = thresholdPixels(L, valid, getShadowMidpoint(L, valid, predicted));
     maskSun = lowerSunAltitude(terrain.Z, getCellMeans(dark, W, H, terrain, valid),
@@ -2872,7 +3102,7 @@ function getPixelShadows(image, nir, valid, predicted, cells, terrain, region, r
   mask = n > 0 ? getShadowMask(L, nir, valid, lowered || predicted, W, H, pixelSize, band, predicted,
     balanced) : null;
   progress(PROGRESS.mask);
-  if (mask && mask.count > 0 && mask.count <= n * MAX_MASK_RATIO * stretch) {
+  if (mask && mask.count > 0 && (imageShadows == 'on' || mask.count <= n * MAX_MASK_RATIO * stretch)) {
     addDemShadows(mask, predicted, valid, W, H);
     addSignatureShadows(mask, image, valid, predicted, cells, terrain, region, regions.suns, W, H,
       band / pixelSize, progress);
