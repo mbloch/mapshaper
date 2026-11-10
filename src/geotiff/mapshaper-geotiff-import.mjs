@@ -62,9 +62,18 @@ export async function importGeoTIFF(input, optsArg, aux, world) {
 // full-size image.
 function getGeoTIFFGeoreferencing(image, world) {
   var bbox = readImageBoundingBox(image);
-  var transform;
+  var transform, offset;
   if (bbox) {
-    return {type: 'tags', bbox: bbox, transform: getImageTransform(image)};
+    transform = getImageTransform(image);
+    if (geoTIFFPixelIsPoint(image)) {
+      offset = getHalfPixelOffset(image);
+      bbox = [bbox[0] - offset[0], bbox[1] - offset[1], bbox[2] - offset[0], bbox[3] - offset[1]];
+      if (transform) {
+        transform[2] -= offset[0];
+        transform[5] -= offset[1];
+      }
+    }
+    return {type: 'tags', bbox: bbox, transform: transform};
   }
   transform = world ?
     getWorldTransform(parseWorldFile(world.content)) :
@@ -574,6 +583,30 @@ function getImageTransformForSize(width, height, sourceBbox) {
     (sourceBbox[1] - sourceBbox[3]) / height,
     sourceBbox[3]
   ];
+}
+
+// In a PixelIsPoint file (GTRasterTypeGeoKey 2), the tags place the centers of
+// the pixels, not their corners. geotiff.js ignores the key; GDAL moves the
+// origin back half a pixel, and so does the importer.
+function geoTIFFPixelIsPoint(image) {
+  var keys;
+  try {
+    keys = image.getGeoKeys();
+  } catch(e) {
+    return false;
+  }
+  return !!keys && keys.GTRasterTypeGeoKey === 2;
+}
+
+// The x, y distance from the corner of a pixel to its center
+function getHalfPixelOffset(image) {
+  var m = image.fileDirectory.getValue('ModelTransformation');
+  var res;
+  if (m) {
+    return [(m[0] + m[1]) / 2, (m[4] + m[5]) / 2];
+  }
+  res = image.getResolution();
+  return [res[0] / 2, res[1] / 2];
 }
 
 function getImageTransform(image) {

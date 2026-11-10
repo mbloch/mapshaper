@@ -114,7 +114,10 @@ Import success should mean:
 
 - The file is recognized as GeoTIFF.
 - Raster dimensions and band/sample metadata are extracted.
-- Bounds and transform are extracted when georeferencing is present.
+- Bounds and transform are extracted when georeferencing is present. In a
+  PixelIsPoint file (`GTRasterTypeGeoKey` 2) the tags place pixel centers, so
+  the origin is moved back half a pixel, as GDAL does (geotiff.js's
+  `getBoundingBox()` ignores the key). Export always writes PixelIsArea.
 - CRS metadata is mapped to existing `dataset.info` CRS fields when possible.
 - Selected working bands are decoded into `raster.grid.samples`.
 - In the browser, a bounded RGBA preview is derived from `grid.samples` for GUI

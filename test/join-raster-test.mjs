@@ -3,6 +3,7 @@ import assert from 'assert';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { captureLogCallsAsync } from './helpers';
 
 var internal = api.internal;
 
@@ -625,6 +626,26 @@ describe('-join with a raster source', function () {
       });
       assert.deepEqual(reads, [[32, 64]]);
       assert.deepEqual(shapes.layers[0].data.getRecords(), [{n: 400}]);
+    });
+  });
+
+  describe('lat/long pixel areas', function () {
+    async function getAreaWarnings(calc) {
+      var captured = await captureLogCallsAsync(function() {
+        return join(makeSequenceRaster(), [[square(0, 0, 4, 4)]], "calc='" + calc + "'");
+      });
+      return captured.log.filter(function(str) { return str.includes('shrink toward the poles'); });
+    }
+
+    it('warns that averaging aggregates weight all pixels equally', async function () {
+      var warnings = await getAreaWarnings('avg = mean(band1), m = median(band1), m2 = mean(band1)');
+      assert.equal(warnings.length, 1);
+      assert(warnings[0].includes('but mean(), median() weight all'), warnings[0]);
+    });
+
+    it('says nothing about sums and counts', async function () {
+      var warnings = await getAreaWarnings('total = sum(band1), n = count()');
+      assert.equal(warnings.length, 0);
     });
   });
 });

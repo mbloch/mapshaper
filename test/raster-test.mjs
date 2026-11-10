@@ -299,6 +299,39 @@ describe('raster layers', function () {
     assert(crs.includes('+datum=WGS84'), 'read as ' + crs);
   });
 
+  describe('GeoTIFF raster type', function () {
+    function encodeUTMGrid(rasterType) {
+      return api.internal.encodeGeoTIFF(makeTestGrid([500000, 4000000, 502000, 4002000]), {
+        geoKeys: {GTModelTypeGeoKey: 1, GTRasterTypeGeoKey: rasterType, ProjectedCSTypeGeoKey: 32618}
+      });
+    }
+
+    async function importGrid(bytes) {
+      var dataset = await api.internal.importFileAsync('utm.tif', {
+        input: {'utm.tif': Buffer.from(bytes)}
+      });
+      return dataset.layers[0].raster.grid;
+    }
+
+    it('reads a PixelIsArea file\'s tags as the corner of the first pixel', async function () {
+      var grid = await importGrid(encodeUTMGrid(1));
+      assert.deepEqual(grid.bbox, [500000, 4000000, 502000, 4002000]);
+    });
+
+    // As GDAL does
+    it('reads a PixelIsPoint file\'s tags as the center of the first pixel', async function () {
+      var grid = await importGrid(encodeUTMGrid(2));
+      assert.deepEqual(grid.bbox, [499500, 4000500, 501500, 4002500]);
+      assert.deepEqual(grid.transform, [1000, 0, 499500, 0, -1000, 4002500]);
+    });
+
+    it('exports a PixelIsPoint file as PixelIsArea in the same place', async function () {
+      var output = await api.applyCommands('-i utm.tif -o out.tif', {'utm.tif': Buffer.from(encodeUTMGrid(2))});
+      var grid = await importGrid(output['out.tif']);
+      assert.deepEqual(grid.bbox, [499500, 4000500, 501500, 4002500]);
+    });
+  });
+
   describe('GeoTIFF alpha bands', function () {
     // 1x1 pixel with band values 10, 20, 30...
     function encodeBands(bands, extraSamples) {

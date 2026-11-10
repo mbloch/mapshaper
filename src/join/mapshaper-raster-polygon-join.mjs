@@ -10,6 +10,7 @@ import {
   rasterGridIsRotated
 } from '../rasters/mapshaper-raster-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
+import { isLatLngDataset } from '../crs/mapshaper-projections';
 import { message, warn, stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 
@@ -50,6 +51,9 @@ export async function joinRasterToPolygons(targetLyr, targetDataset, src, opts) 
   validateRasterJoin(targetLyr, raster, grid, opts);
   bandNames = getRasterBandNames(grid);
   validateBandReferences(bandNames, opts);
+  if (isLatLngDataset(src.dataset)) {
+    warnAboutLatLngPixelAreas(opts.calc);
+  }
   usedBands = getRasterJoinBands(opts).map(function(b) {
     return bandNames.indexOf('band' + (b + 1));
   });
@@ -154,6 +158,19 @@ function validateRasterJoin(targetLyr, raster, grid, opts) {
   if (rasterGridIsRotated(grid)) {
     stop('Joining a rotated or skewed raster is not supported');
   }
+}
+
+// The pixels of a lat/long raster cover less ground toward the poles, but the
+// aggregates that average pixels weight them only by their coverage. Pixel
+// areas are deliberately not corrected.
+function warnAboutLatLngPixelAreas(calc) {
+  var names = String(calc).match(/\b(average|mean|median|quantile|iqr|quartile[123]|mode)\s*\(/g);
+  if (!names) return;
+  names = utils.uniq(names.map(function(str) { return str.replace(/[\s(]/g, '') + '()'; }));
+  warn(utils.format('Pixel areas in a lat/long raster shrink toward the poles, but %s %s ' +
+    'all pixels equally. To calculate a density, divide sum() by polygon area, ' +
+    'e.g. -each \'density = pop / (this.area / 1e6)\'.', names.join(', '),
+    names.length > 1 ? 'weight' : 'weights'));
 }
 
 // Band variables are named after the bands of the source file (band1 is the
