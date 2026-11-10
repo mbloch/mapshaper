@@ -759,12 +759,16 @@ good values are known.
   contrast and lowlands fade.
 - `altitude=` (existing) lower values give longer, darker shadows and fewer
   highlights.
-- `sharpening=a` (0-3, default 0.25; 0 is off) applies an unsharp mask after the tone
-  curve, to signed tones (shadow opacity negative, highlight opacity
-  positive, flat ground 0): `tone += a * (tone - blur(tone))`, with a Gaussian
-  of `sharpen-radius=` pixels (default 3). `sharpen-threshold=` (default 0,
-  in opacity units) ignores smaller differences and reduces larger ones by
-  it. Flat ground (a tone of exactly 0) is left alone, so a sea flattened by
+- Sharpening is a separate command, `-sharpen`
+  (`src/rasters/mapshaper-raster-sharpen.mjs`), not a stage of `-hillshade`.
+  For a shadow-style hillshade it decodes the alpha back to signed tones
+  (shadow opacity negative, highlight opacity positive, flat ground 0) and
+  applies an unsharp mask: `tone += a * (tone - blur(tone))`, with
+  `amount=a` (default 0.25) and a Gaussian of `radius=` pixels (default 3).
+  `threshold=` (default 0, in opacity units) ignores smaller differences and
+  reduces larger ones by it. Other images are sharpened by lightness. Because
+  it runs on the finished hillshade, it sharpens texture shading too, and the
+  tones it reads are rounded to 8 bits. Flat ground (a tone of exactly 0) is left alone, so a sea flattened by
   `min-elevation=` gets no halo along the coast; overshoot is clipped only by the 0-1
   range of opacity, not by the shadow and highlight caps. Unlike sharpening
   the elevations before smoothing, which leaves halos that FPS preserves as

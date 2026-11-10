@@ -555,27 +555,6 @@ export function blendAmbientLight(shade, openness, valid, weight) {
 // elevation, so lowland texture recedes and mountains stand out.
 // @strength 0-1; at 1 the lowest terrain gets no shading at all
 // Elevations are normalized between the 2nd and 98th percentiles.
-// Unsharp mask of tones from getHillshadeTones(), in place:
-// tone += amount * (tone - blurred tone). Differences smaller than @threshold
-// (in tone units) are ignored, and larger ones reduced by it (a soft
-// threshold), so faint texture can be left alone. Areas of constant tone are
-// unchanged, so flat ground stays transparent in the shadow style.
-export function sharpenTones(tones, valid, width, height, amount, sigma, threshold) {
-  var blurred = Float32Array.from(tones);
-  var t = threshold > 0 ? threshold : 0;
-  var i, d;
-  blurFloatChannel(blurred, valid, width, height, sigma);
-  for (i = 0; i < tones.length; i++) {
-    // flat ground (e.g. sea, with min-elevation=) would get halos along coasts
-    if (valid && !valid[i] || tones[i] === 0) continue;
-    d = tones[i] - blurred[i];
-    if (d > t) d -= t;
-    else if (d < -t) d += t;
-    else continue;
-    tones[i] += amount * d;
-  }
-}
-
 // @range optional [low, high] elevations from getAerialRange(), for applying
 //   this to part of a grid
 export function applyAerialPerspective(shade, elev, valid, strength, range) {

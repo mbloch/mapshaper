@@ -276,7 +276,7 @@ describe('mapshaper-blend.mjs', function () {
 
     it('opaque hillshades leave flat ground unchanged', async function () {
       var catalog = await run(makeDataset(30, 30, function(x, y) { return x < 15 ? 0 : (x - 15) * 40; }, [40, 160, 60]),
-        '-hillshade opaque target=dem name=hs smoothing=off sharpening=0 ambient=0 -blend source=hs target=img');
+        '-hillshade opaque target=dem name=hs smoothing=off ambient=0 -blend source=hs target=img');
       var out = findLayer(catalog, 'img').raster.grid.samples;
       var i = 15 * 30 + 3;
       assert.deepEqual(Array.from(out.subarray(i * 3, i * 3 + 3)), [40, 160, 60]);

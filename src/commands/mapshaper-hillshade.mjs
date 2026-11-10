@@ -22,7 +22,6 @@ import { formatColor, parseColor } from '../color/color-utils';
 import { getHillshadeColorRamp, getHillshadeRampColors } from '../rasters/mapshaper-raster-color';
 import { runningInBrowser } from '../mapshaper-env';
 import { message, stop, verbose, warnOnce } from '../utils/mapshaper-logging';
-
 // More passes don't generalize much more: beyond three or four, FPS facets
 // slopes instead of removing small landforms. high smooths a 2x downsampled
 // copy instead (see twoLevelSmooth()); its settings are for that level.
@@ -43,8 +42,6 @@ var DEFAULT_SPREAD_MIN_THRESHOLD = 1;
 var AUTO_SMOOTHING = 'low';
 var DEFAULT_LOWPASS_RADIUS = 1;
 var METERS_PER_DEGREE = 6371008.8 * Math.PI / 180;
-var DEFAULT_SHARPEN_RADIUS = 3;
-var DEFAULT_SHARPENING = 0.25;
 var DEFAULT_AMBIENT = 0.5;
 var DEFAULT_TEXTURE_DETAIL = 0.5;
 
@@ -181,7 +178,7 @@ function getSmoothingParams(method, opts) {
 //   (job.resumeCommand())
 cmd.hillshade = async function(lyr, dataset, opts, resume) {
   var grid, cells, elev, valid, altitude, exaggeration, style, out, result;
-  var hasMin, toneOpts, azimuth, colors, smoothing, params, sharpening, ambient, lights, stops = null;
+  var hasMin, toneOpts, azimuth, colors, smoothing, params, ambient, lights, stops = null;
   var unitMeters, minElevation;
   if (!layerHasRaster(lyr)) {
     stop('Command requires a raster layer');
@@ -208,7 +205,6 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
     message('Exaggeration:', formatExaggeration(exaggeration) + ' (automatic)');
   }
   azimuth = opts.azimuth == null ? DEFAULT_AZIMUTH : opts.azimuth;
-  sharpening = opts.sharpening >= 0 ? opts.sharpening : DEFAULT_SHARPENING;
   ambient = opts.ambient >= 0 ? opts.ambient : DEFAULT_AMBIENT;
   lights = getHillshadeLights(azimuth, altitude, opts.single_light);
   toneOpts = {
@@ -242,9 +238,6 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
     texture_detail: opts.texture > 0 ? opts.texture_detail || DEFAULT_TEXTURE_DETAIL : null,
     texture_highlights: opts.texture > 0 ? opts.texture_highlights || 0 : null,
     aerial: opts.aerial || 0,
-    sharpening: sharpening,
-    sharpen_radius: sharpening > 0 ? opts.sharpen_radius || DEFAULT_SHARPEN_RADIUS : null,
-    sharpen_threshold: sharpening > 0 ? opts.sharpen_threshold || 0 : null,
     band: opts.band || 0});
   verbose('Settings:', formatHillshadeSettings(params));
   if (!cells.unknown) {
@@ -276,10 +269,7 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
     textureHighlights: params.texture_highlights,
     minElevation: hasMin ? minElevation : null,
     style: style,
-    toneOpts: toneOpts,
-    sharpening: sharpening,
-    sharpenRadius: opts.sharpen_radius || DEFAULT_SHARPEN_RADIUS,
-    sharpenThreshold: opts.sharpen_threshold || 0
+    toneOpts: toneOpts
   }, {workers: opts.workers, resume: resume});
   if (result.workers > 0) {
     verbose('Workers:', result.workers);
@@ -372,15 +362,6 @@ function validateHillshadeGrid(grid, opts) {
   }
   if (opts.maximum_change != null && !(opts.maximum_change > 0)) {
     stop('maximum-change= should be a positive number');
-  }
-  if (opts.sharpening != null && !(opts.sharpening >= 0 && opts.sharpening <= 3)) {
-    stop('sharpening= should be from 0 to 3');
-  }
-  if (opts.sharpen_threshold != null && !(opts.sharpen_threshold >= 0 && opts.sharpen_threshold <= 1)) {
-    stop('sharpen-threshold= should be from 0 to 1');
-  }
-  if (opts.sharpen_radius != null && !(opts.sharpen_radius > 0 && opts.sharpen_radius <= 20)) {
-    stop('sharpen-radius= should be a number of pixels, up to 20');
   }
   if (opts.texture_detail != null && !(opts.texture_detail > 0 && opts.texture_detail <= 2)) {
     stop('texture-detail= should be from 0 to 2');

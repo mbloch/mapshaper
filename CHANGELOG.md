@@ -1,6 +1,7 @@
 v0.8.0 (unreleased)
 * Added `-fetch` command, with presets for importing DEMs and imagery from public sources. Running `-fetch sources` lists the presets. Tile URL sources are also supported.
-* Added `-hillshade` command, with options for controlling level of smoothing and various effects, including ambient light from the sky, texture shading, smoothness and sharpening. Hillshades can use translucent black/white for shadows/highlights or an opaque grayscale with settable base-color. Support for user-defined shadow and highlight colors.
+* Added `-hillshade` command, with options for controlling level of smoothing and various effects, including ambient light from the sky, texture shading and smoothness. Hillshades can use translucent black/white for shadows/highlights or an opaque grayscale with settable base-color. Support for user-defined shadow and highlight colors.
+* Added `-sharpen` command, for sharpening images and hillshades with an unsharp mask.
 * Added `-tone` command for adjusting lightness, saturation, contrast, gamma and opacity. A hue-shift option moves hues towards or away from a given hue.
 * [web] Added a panel with sliders for adjusting image tone.
 * Added a `-tint` command for applying hypsometric tints.
@@ -12,12 +13,14 @@ v0.8.0 (unreleased)
 * [web] Feature selections are persistent when switching between inspection, selection and style/edit modes.
 * Support for importing images that lack any georeferencing (including ordinary JPEGs and PNGs).
 * -classify no longer treats a field containing one unique value as a data error.
-* -clip now clips rasters to exact boundary of vector shapes. Removed areas are transparent by default.
+* -clip now clips rasters to the exact boundary of vector shapes. Removed areas are transparent by default.
 * Breaking change: when projecting image rasters with unprojectable areas, the nodata areas are transparent by default (instead of white).
-* -join can join a raster to a polygon layer, using calc= expressions to aggregate band values, e.g. `-join population.tif calc='pop = sum(band1)'`. By default, pixels are weighted by the fraction of their area inside each polygon; the point-method flag joins pixels by their centers instead. The join reads the bands its expressions use at full resolution, from a raster file named in -join or from the source file of a raster layer that was imported at reduced resolution or without those bands (unless the layer has been edited since). A GeoTIFF is read a band of rows at a time, skipping rows that no target polygon reaches, so large rasters can be joined without loading them into memory (joining a 24795 x 21762 population raster to 6,000 polygons takes 8 seconds and 0.5 GB).
-* Faster import of LZW-compressed GeoTIFFs, and much less memory used when importing a large GeoTIFF at reduced resolution (a 24795 x 21762 population raster now imports in 3 seconds using 0.4 GB, instead of 24 seconds and 4.5 GB).
-* Fixed a half-pixel offset when importing GeoTIFFs whose pixels are tagged as points (PixelIsPoint, common in DEMs). As in GDAL, the georeferencing tags of these files are read as the centers of the pixels.
-* Fixed GeoTIFF import treating the fourth band of a four-band image (such as the near-infrared band of RGB + NIR aerial imagery) as alpha. As in GDAL, a band is now imported as alpha only if the file's ExtraSamples tag declares it as alpha; other extra bands are left out of the displayed image.
+* -join can join a raster to a polygon layer, using calc= expressions to aggregate band values, e.g. `-join population.tif calc='pop = sum(band1)'`. By default, pixels are weighted by the fraction of their area inside each polygon; the `point-method` flag joins pixels by their centers instead.
+* Faster import of LZW-compressed GeoTIFFs.
+* Fixed a half-pixel offset when importing GeoTIFFs whose pixels are tagged as points (PixelIsPoint, common in DEMs).
+* -add-shape has a new `offsets=` option, for adding vertices relative to the previous vertex.
+* -shape is deprecated in favor of -add-shape.
+* Fixed GeoTIFF import treating the fourth band of a four-band image (such as the near-infrared band of RGB + NIR aerial imagery) as alpha. A band is now imported as alpha only if the file's ExtraSamples tag declares it as alpha.
 
 v0.7.101
 * Graticules created in a frame are automatically clipped to the frame extent, with new bleed= option for adding a buffer around the frame.

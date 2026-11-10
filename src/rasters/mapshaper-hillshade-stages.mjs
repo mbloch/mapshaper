@@ -1,4 +1,3 @@
-import { getBlurReach } from './mapshaper-box-blur';
 import {
   applyAerialPerspective,
   applyTextureTones,
@@ -12,8 +11,7 @@ import {
   getLightAdjustmentReach,
   getOpennessReach,
   getTextureShadingReach,
-  restoreLowElevations,
-  sharpenTones
+  restoreLowElevations
 } from './mapshaper-hillshade';
 import {
   featurePreservingSmooth,
@@ -112,7 +110,6 @@ export function getSmoothingReach(s) {
 // @s.aerialRange from getAerialRange() on the whole grid, if @s.aerial > 0
 // @s.minElevation optional
 // @s.style, @s.toneOpts see getHillshadeTones()
-// @s.sharpening, @s.sharpenRadius, @s.sharpenThreshold
 // @s.textureDetail, @s.textureHighlights
 // Returns signed tones (see getHillshadeTones())
 export function shadeTerrain(grid, s) {
@@ -135,9 +132,6 @@ export function shadeTerrain(grid, s) {
     applyAerialPerspective(shade, elev, valid, s.aerial, s.aerialRange);
   }
   tones = getHillshadeTones(shade, valid, s.style, s.toneOpts);
-  if (s.sharpening > 0) {
-    sharpenTones(tones, valid, w, h, s.sharpening, s.sharpenRadius, s.sharpenThreshold);
-  }
   // after the tone curve, so max-opacity= and gamma= don't affect it
   if (s.texture > 0) {
     applyTextureTones(tones, computeTextureShading(elev, land, w, h, getRowCellSizes(grid),
@@ -154,9 +148,6 @@ export function getShadingReach(s) {
   }
   if (s.ambient > 0) {
     reach = Math.max(reach, getOpennessReach(OPENNESS_RADIUS));
-  }
-  if (s.sharpening > 0) {
-    reach += getBlurReach(s.sharpenRadius);
   }
   if (s.texture > 0) {
     reach = Math.max(reach, getTextureShadingReach(TEXTURE_MAX_SCALE));

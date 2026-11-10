@@ -634,39 +634,6 @@ describe('mapshaper-hillshade.mjs', function () {
     })
   })
 
-  describe('sharpenTones()', function () {
-    var w = 30, h = 5;
-
-    it('increases contrast across a shadow/highlight edge', function () {
-      // signed tones: shadow opacity 0.4 meets highlight opacity 0.2
-      var tones = makeElevation(w, h, function(x) { return x < 15 ? -0.4 : 0.2; });
-      internal.sharpenTones(tones, null, w, h, 1, 2, 0);
-      assert(tones[2 * w + 14] < -0.4);
-      assert(tones[2 * w + 15] > 0.2);
-      assert(Math.abs(tones[2 * w + 1] + 0.4) < 1e-6);
-      assert(Math.abs(tones[2 * w + 28] - 0.2) < 1e-6);
-    })
-
-    it('leaves flat (zero) tones alone and respects the threshold', function () {
-      var tones = makeElevation(w, h, function(x) { return x < 15 ? 0 : -0.01; });
-      internal.sharpenTones(tones, null, w, h, 1, 2, 0.02);
-      assert.equal(tones[2 * w + 14], 0);
-      assert(Math.abs(tones[2 * w + 15] + 0.01) < 1e-6);
-    })
-
-    it('writeHillshadeRgba() clamps sharpened tones to valid opacities', function () {
-      var rgba = internal.writeHillshadeRgba(Float32Array.from([-1.3, 1.2, 0]), null, 'shadow');
-      assert.deepEqual(Array.from(rgba), [0, 0, 0, 255, 255, 255, 255, 255, 0, 0, 0, 0]);
-    })
-
-    it('leaves flat ground alone', function () {
-      var tones = Float32Array.from([0, 0, 0, -1, -1, -1]);
-      internal.sharpenTones(tones, null, 6, 1, 1, 2, 0);
-      assert.deepEqual(Array.from(tones.subarray(0, 3)), [0, 0, 0]);
-      assert(tones[3] < -1);
-    })
-  })
-
   describe('applyAerialPerspective()', function () {
     it('reduces contrast at low elevations only', function () {
       var n = 200;
@@ -950,27 +917,7 @@ describe('mapshaper-hillshade.mjs', function () {
       await assert.rejects(runOnDataset(dem(), '-hillshade texture=0.5 texture-highlights=-1'), /texture-highlights/);
       await assert.rejects(runOnDataset(dem(), '-hillshade texture-highlights=1'), /require texture/);
       await assert.rejects(runOnDataset(dem(), '-hillshade aerial=-1'), /aerial/);
-      await assert.rejects(runOnDataset(dem(), '-hillshade sharpening=5'), /sharpening/);
-      await assert.rejects(runOnDataset(dem(), '-hillshade sharpening=1 sharpen-radius=0'), /sharpen-radius/);
-      await assert.rejects(runOnDataset(dem(), '-hillshade sharpening=1 sharpen-threshold=2'), /sharpen-threshold/);
       await assert.rejects(runOnDataset(dem(), '-hillshade smoothing=bogus'), /smoothing/);
-    })
-
-    it('sharpening= increases alpha contrast across a ridge', async function () {
-      // a north-south ridge: the west face is lit, the east face is shaded
-      var w = 81;
-      function ridge(x) { return 1000 - Math.abs(x - 40) * 20; }
-      function alphaAt(catalog, x) {
-        return catalog.getLayers()[0].layer.raster.grid.samples[(20 * w + x) * 4 + 3];
-      }
-      var plain = await runOnDataset(makeElevationDataset(w, 41, ridge), '-hillshade smoothing=off single-light azimuth=270 sharpening=0');
-      var sharp = await runOnDataset(makeElevationDataset(w, 41, ridge),
-        '-hillshade smoothing=off single-light azimuth=270 sharpening=1');
-      assert(alphaAt(sharp, 41) > alphaAt(plain, 41)); // shadow side, next to the crest
-      assert(alphaAt(sharp, 39) > alphaAt(plain, 39)); // highlight side
-      assert.equal(alphaAt(sharp, 20), alphaAt(plain, 20)); // uniform slope, away from the crest
-      assert.equal(sharp.getLayers()[0].layer.raster.derivation.sharpening, 1);
-      assert.equal(sharp.getLayers()[0].layer.raster.derivation.sharpen_radius, 3);
     })
 
     it('accepts FPS settings and rejects out-of-range values', async function () {
@@ -1051,7 +998,7 @@ describe('mapshaper-hillshade.mjs', function () {
       })
 
       it('pasting the printed settings reproduces the result', async function () {
-        var cmd = '-hillshade smoothing=high fps-passes=2 sharpening=0.5 highlight-color=#fff0b4';
+        var cmd = '-hillshade smoothing=high fps-passes=2 highlight-color=#fff0b4';
         var first = await runOnDataset(dem(), cmd);
         var settings = internal.formatHillshadeSettings(first.getLayers()[0].layer.raster.derivation);
         var second = await runOnDataset(dem(), '-hillshade ' + settings);
@@ -1157,14 +1104,13 @@ describe('mapshaper-hillshade.mjs', function () {
 
     it('formatHillshadeSettings() prints the settings used as command options', async function () {
       var catalog = await runOnDataset(makeElevationDataset(20, 20, slope),
-        '-hillshade verbose single-light sharpening=0.5 highlight-color=#fff0b4');
+        '-hillshade verbose single-light highlight-color=#fff0b4');
       var d = catalog.getLayers()[0].layer.raster.derivation;
       var str = internal.formatHillshadeSettings(d);
       assert.equal(d.exaggeration, 1.5); // automatic, from about 111 m pixels
       assert.equal(str, 'style=shadow azimuth=315 altitude=45 single-light exaggeration=1.5' +
         ' max-opacity=0.55 highlights=0.6 gamma=0.75 highlight-color=#fff0b4 smoothing=low' +
-        ' fps-levels=1 fps-passes=1 fps-radius=4 fps-threshold=15 light-adjust=0 ambient=0.5 texture=0 aerial=0' +
-        ' sharpening=0.5 sharpen-radius=3 sharpen-threshold=0');
+        ' fps-levels=1 fps-passes=1 fps-radius=4 fps-threshold=15 light-adjust=0 ambient=0.5 texture=0 aerial=0');
     })
 
     it('rejects non-raster layers', async function () {

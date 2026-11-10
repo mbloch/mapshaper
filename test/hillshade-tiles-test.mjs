@@ -100,10 +100,7 @@ function shadingSettings(o) {
     textureHighlights: 0,
     minElevation: null,
     style: 'shadow',
-    toneOpts: {maxOpacity: 0.55, highlightRatio: 1, gamma: 0.75, maxShade: Math.SQRT2},
-    sharpening: 0.25,
-    sharpenRadius: 3,
-    sharpenThreshold: 0
+    toneOpts: {maxOpacity: 0.55, highlightRatio: 1, gamma: 0.75, maxShade: Math.SQRT2}
   }, o);
 }
 
@@ -232,10 +229,9 @@ describe('hillshading in tiles', function () {
     });
     [
       {},
-      {ambient: 0, sharpening: 0},
+      {ambient: 0},
       {lightAdjust: 30, lights: internal.getHillshadeLights(315, 45, true)},
       {texture: 0.5, textureHighlights: 0.5},
-      {sharpening: 1, sharpenRadius: 6, sharpenThreshold: 0.02},
       {minElevation: 0, texture: 0.4, style: 'opaque', toneOpts: {maxOpacity: 1}}
     ].forEach(function(o) {
       it(JSON.stringify(o), function () {
@@ -310,10 +306,9 @@ describe('hillshading in tiles', function () {
 
     [
       {},
-      {ambient: 0, sharpening: 0},
+      {ambient: 0},
       {lightAdjust: 30},
       {texture: 0.5, textureHighlights: 0.5},
-      {sharpening: 1, sharpenRadius: 8},
       {minElevation: 0, texture: 0.4}
     ].forEach(function(o) {
       it('shading: ' + JSON.stringify(o), function () {

@@ -107,6 +107,7 @@ import '../commands/mapshaper-rotate';
 import '../commands/mapshaper-run';
 import '../commands/mapshaper-scalebar';
 import '../commands/mapshaper-shape';
+import '../commands/mapshaper-sharpen';
 import '../commands/mapshaper-simplify';
 import '../commands/mapshaper-smooth';
 import '../commands/mapshaper-sort';
@@ -152,7 +153,7 @@ function commandRunsPerTargetDataset(name, opts) {
     'filter-islands2', 'filter-points', 'filter-slivers', 'grid', 'grid2',
     'fuzzy-join', 'hillshade', 'ignore', 'inlay', 'innerlines', 'inspect', 'join',
     'lines', 'mosaic', 'points', 'polygons', 'rectangles', 'rename-fields',
-    'repel', 'shapes', 'simplify', 'slice', 'smooth', 'sort', 'split',
+    'repel', 'shapes', 'sharpen', 'simplify', 'slice', 'smooth', 'sort', 'split',
     'split-on-grid', 'stitch', 'style', 'subdivide', 'symbols', 'tint', 'tone', 'uniq'
   ].indexOf(name) > -1;
 }
@@ -401,7 +402,7 @@ export async function runCommand(command, job) {
       }
       job.resumeCommand();
 
-    } else if (name == 'tint' || name == 'tone') {
+    } else if (name == 'sharpen' || name == 'tint' || name == 'tone') {
       outputLayers = [];
       for (let lyr of targetLayers) {
         outputLayers = outputLayers.concat(cmd[name](lyr, opts));
