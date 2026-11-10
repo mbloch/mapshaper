@@ -185,6 +185,7 @@ import * as RasterContours from './rasters/mapshaper-raster-contours';
 import * as RasterGrid from './rasters/mapshaper-raster-grid';
 import * as RasterFill from './rasters/mapshaper-raster-fill';
 import * as RasterMask from './rasters/mapshaper-raster-mask';
+import * as RasterCoverage from './rasters/mapshaper-raster-coverage';
 import * as BoxBlur from './rasters/mapshaper-box-blur';
 import * as Hillshade from './rasters/mapshaper-hillshade';
 import * as HillshadeCommand from './commands/mapshaper-hillshade';
@@ -227,6 +228,8 @@ import * as PathImport from './paths/mapshaper-path-import';
 import * as PathRepair from './paths/mapshaper-path-repair-utils';
 import * as PathUtils from './paths/mapshaper-path-utils';
 import * as PointPolygonJoin from './join/mapshaper-point-polygon-join';
+import * as RasterCalc from './join/mapshaper-raster-calc';
+import * as RasterPolygonJoin from './join/mapshaper-raster-polygon-join';
 import * as Points from './commands/mapshaper-points';
 import * as PointUtils from './points/mapshaper-point-utils';
 import * as PolygonDissolve from './dissolve/mapshaper-polygon-dissolve';
@@ -367,6 +370,7 @@ Object.assign(internal,
   RasterGrid,
   RasterFill,
   RasterMask,
+  RasterCoverage,
   BoxBlur,
   Hillshade,
   HillshadeCommand,
@@ -409,6 +413,8 @@ Object.assign(internal,
   PathUtils,
   // PixelTransform,
   PointPolygonJoin,
+  RasterCalc,
+  RasterPolygonJoin,
   Points,
   PointToGrid,
   PointUtils,

@@ -272,7 +272,8 @@ export async function runCommand(command, job) {
     if (Object.prototype.hasOwnProperty.call(command, '_sourceOverride')) {
       source = command._sourceOverride;
     } else if (opts.source && name != 'fetch') {
-      source = await findCommandSourceAsync(convertSourceName(opts.source, targets), job.catalog, opts, targets);
+      source = await findCommandSourceAsync(convertSourceName(opts.source, targets), job.catalog,
+          getSourceImportOpts(name, opts), targets);
     }
 
     // identify command target/input (for postprocessing)
@@ -923,12 +924,19 @@ async function resolveSourceForTargets(command, job, targets) {
     return await findCommandSourceAsync(
       convertSourceName(command.options.source, targets),
       job.catalog,
-      command.options,
+      getSourceImportOpts(command.name, command.options),
       targets
     );
   } finally {
     job.endCommand();
   }
+}
+
+// A raster joined to polygons is measured, not displayed, so it is imported
+// at full resolution instead of the reduced size used for large rasters, and
+// with every band instead of the display bands
+function getSourceImportOpts(name, opts) {
+  return name == 'join' ? utils.defaults({resolution: 'full', all_bands: true}, opts) : opts;
 }
 
 function sourceNameIsInterpolated(name) {

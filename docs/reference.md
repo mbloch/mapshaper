@@ -1127,9 +1127,9 @@ mapshaper states.shp -filter 'STATE=="OR" || STATE=="WA"' -innerlines -o out.shp
 
 ### -join
 
-Join attribute data from a source layer or file to a target layer. If the `keys=` option is used, Mapshaper will join records by matching the values of key fields. If the `keys=` option is missing, Mapshaper will perform a polygon-to-polygon, point-to-polygon, polygon-to-point or point-to-point spatial join.
+Join attribute data from a source layer or file to a target layer. If the `keys=` option is used, Mapshaper will join records by matching the values of key fields. If the `keys=` option is missing, Mapshaper will perform a polygon-to-polygon, point-to-polygon, polygon-to-point or point-to-point spatial join. A raster source can be joined to a polygon layer (see [Joining a raster](#joining-a-raster) below).
 
-`<file|layer>` or `source=` File or layer containing data records to join.
+`<file|layer>` or `source=` File or layer containing data records to join, or a raster.
 
 `keys=`  Names of two fields to use as join keys, separated by a comma. The key field from the destination table is followed by the key field from the source table. If the `keys=` option is missing, mapshaper performs a spatial join.
 
@@ -1143,7 +1143,7 @@ Join attribute data from a source layer or file to a target layer. If the `keys=
 
 `interpolate=`  (polygon-to-polygon joins only) A list of fields to interpolate/reaggregate based on area of overlap. Interpolates fields containing count data, such as population counts or vote counts. Treats data as being uniformly distributed within polygon areas. Also interpolates string fields containing categorical data. The value associated with the largest area of overlap between source and target polygons gets copied to the target feature.
 
-`point-method` (polygon-to-polygon joins only) Use an alternate method for joining two polygon layers. The default polygon-polygon join method detects areas of overlap between two polygon layers by compositing the two layers internally. This method is simpler -- it generates a temporary point layer from the source layer with the greater number of features (using the same inner-point method as the `-points inner` command), and then performs a point-to-polygon or polygon-to-point join. This method does not support the `interpolate=` option.
+`point-method` (polygon-to-polygon and raster joins only) When joining a raster, join each pixel to the polygons that contain its center, instead of weighting pixels by area. When joining two polygon layers, use an alternate method. The default polygon-polygon join method detects areas of overlap between two polygon layers by compositing the two layers internally. This method is simpler -- it generates a temporary point layer from the source layer with the greater number of features (using the same inner-point method as the `-points inner` command), and then performs a point-to-polygon or polygon-to-point join. This method does not support the `interpolate=` option.
 
 `largest-overlap` (polygon-to-polygon joins only) selects a single polygon to join when multiple source polygons overlap a target polygon, based on largest area of overlap.
 
@@ -1169,7 +1169,27 @@ Join attribute data from a source layer or file to a target layer. If the `keys=
 
 Other options: `encoding=` `target=`
 
+#### Joining a raster
+
+When the source is a raster layer or file (such as a GeoTIFF) and the target is a polygon layer, `calc=` is required, and it aggregates the values of the pixels that overlap each polygon. Band values are available as `band1`, `band2`, etc., numbered after the bands of the source file. Nodata is tested band by band: a band value equal to the nodata value (or NaN) is ignored by `sum()`, `mean()`, `median()`, `min()`, `max()` and the other numeric functions, and by `mode()`, while `count()` counts every pixel that has a valid value in some band. Pixels that are nodata in every band, or outside the area covered by a projected or clipped raster, are skipped.
+
+By default, each pixel is treated as a rectangle and weighted by the fraction of its area inside the polygon. Aggregate functions use the weights: `sum()` is the weighted sum, which apportions count data like population between polygons; `mean()` is the weighted mean, suitable for measurements like elevation; `count()` is the total weight (the number of pixels covered, which can be fractional); `median()` and `quantile()` are weighted quantiles; and `mode()` returns the value covering the largest area. `min()`, `max()` and `collect()` ignore the weights. The weight is also available as `coverage`, e.g. `where='coverage > 0.5'`. With `point-method`, pixels are joined to the polygons that contain their centers, and every weight is 1.
+
+`where=` filters pixels, and can refer to the target record as `target`. Only the `calc=`, `where=`, `point-method`, `unmatched` and `target=` options apply. The raster and the polygons must use the same coordinate system, and rotated rasters are not supported.
+
+A raster file named in the `-join` command is read at full resolution and with every band. A raster layer imported earlier has only the bands used for display (the first band, or the first three or four bands of a color image), so to join other bands of a multi-band file, name the file in the `-join` command. A raster layer that was imported at reduced resolution (the default for large rasters) gives a warning, since its pixel values are averages of the source pixels.
+
 **Examples**
+
+Sum population counts from a population grid, and find the average elevation and the share of forest (land cover class 41) in each county.
+
+```bash
+mapshaper counties.shp \
+  -join population.tif calc='population = sum(band1)' \
+  -join elevation.tif calc='mean_elev = mean(band1)' \
+  -join landcover.tif calc='forest_pct = sum(band1 == 41) / count() * 100' \
+  -o out.shp
+```
 
 Join a point layer to a polygon layer (spatial join), using the `calc=` option to handle many-to-one matches.
 

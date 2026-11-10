@@ -12,7 +12,7 @@ import { getPixelCoordinatesWarning, getPixelTransform, getWorldFileBBox, getWor
   parseWorldFile, scaleWorldTransform } from '../rasters/mapshaper-world-file';
 import { message, stop, warn, warnOnce } from '../utils/mapshaper-logging';
 import { createRasterPreview, getRasterViewRecipe } from '../rasters/mapshaper-raster-utils';
-import { FULL_RESOLUTION_HINT, getMaxImportPixels, getRasterImportSize, parseImportResolution } from '../rasters/mapshaper-raster-import-size';
+import { FULL_RESOLUTION_HINT, getMaxImportPixels, getRasterImportSize, parseImportResolution, setReducedResolution } from '../rasters/mapshaper-raster-import-size';
 
 var geotiffPromise = null;
 var geoKeysToProj4Promise = null;
@@ -117,14 +117,14 @@ async function importGeoTIFFImage(importImage, input, opts, sourceImage, georef,
   var width = importImage.width;
   var height = importImage.height;
   var samplesPerPixel = image.getSamplesPerPixel();
-  var samples = getDisplaySamples(samplesPerPixel);
+  var samples = opts.all_bands ? getAllSamples(samplesPerPixel) : getDisplaySamples(samplesPerPixel);
   var imageBbox = georef.bbox;
   repairDeferredOffsetArrays(image);
   var data = await readGeoTIFFSamples(image, samples, width, height);
   var noData = getNoDataValue(image);
   var pixelType = getPixelType(image);
   var bandInfo = await readBandValueInfo(sourceImage, samples, aux);
-  var scaled = applyBandScaling(data, samples.length, bandInfo, noData);
+  var scaled = applyBandScaling(data, samples.length, bandInfo, noData, !!opts.all_bands);
   var verticalUnits = parseVerticalUnits(bandInfo[0].units) ||
     await readGeoKeyVerticalUnits(sourceImage);
   var sourceId = getSourceId(input);
@@ -169,8 +169,11 @@ async function importGeoTIFFImage(importImage, input, opts, sourceImage, georef,
   if (georef.type == 'pixels') {
     raster.grid.pixelCoordinates = true;
   }
+  setReducedResolution(raster, sourceImage.getWidth(), sourceImage.getHeight());
   raster.view.recipe = getRasterViewRecipe(raster.grid, raster.view.recipe, opts);
-  if (runningInBrowser()) {
+  // The renderer treats a grid's bands as gray, RGB or RGBA, so a grid holding
+  // every band of the file can't be previewed
+  if (runningInBrowser() && !opts.all_bands) {
     raster.view.preview = createRasterPreview(raster, opts);
   }
   return {
@@ -220,7 +223,10 @@ function readMetadataNumber(str) {
 // band is scaled.
 // Nodata pixels are given the scaled nodata value, rounded to Float32 so that
 // testing samples against it is exact.
-function applyBandScaling(data, bandCount, bandInfo, nodata) {
+// @perBand: give every sample that matches the nodata value the scaled nodata
+//   value, not just the color bands of nodata pixels (for all_bands grids,
+//   whose bands can have different scales)
+function applyBandScaling(data, bandCount, bandInfo, nodata, perBand) {
   var scales = bandInfo.map(function(o) { return o.scale != null ? o.scale : 1; });
   var offsets = bandInfo.map(function(o) { return o.offset != null ? o.offset : 0; });
   var hasNodata = nodata !== null && nodata !== undefined;
@@ -239,7 +245,8 @@ function applyBandScaling(data, bandCount, bandInfo, nodata) {
       j = 0;
     }
     for (; j < bandCount; j++) {
-      out[i + j] = data[i + j] * scales[j] + offsets[j];
+      out[i + j] = perBand && hasNodata && data[i + j] == nodata ? newNodata :
+        data[i + j] * scales[j] + offsets[j];
     }
   }
   return {samples: out, nodata: newNodata};
@@ -424,6 +431,16 @@ function getDisplaySamples(samplesPerPixel) {
   if (samplesPerPixel >= 4) return [0, 1, 2, 3];
   if (samplesPerPixel >= 3) return [0, 1, 2];
   return [0];
+}
+
+// The all_bands import option reads every band, for commands that measure
+// band values (-join) rather than display them. The other raster commands and
+// the renderer expect a grid of 1, 3 or 4 display bands, so a grid like this
+// should not be added to the catalog.
+function getAllSamples(samplesPerPixel) {
+  var samples = [];
+  for (var i = 0; i < samplesPerPixel; i++) samples.push(i);
+  return samples;
 }
 
 function getNoDataValue(image) {

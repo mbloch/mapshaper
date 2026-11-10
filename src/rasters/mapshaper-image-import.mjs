@@ -4,7 +4,7 @@ import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
 import { runningInBrowser } from '../mapshaper-env';
 import { getFileBase } from '../utils/mapshaper-filename-utils';
 import { createRasterPreview, getRasterViewRecipe } from './mapshaper-raster-utils';
-import { FULL_RESOLUTION_HINT, getRasterImportSize, parseImportResolution } from './mapshaper-raster-import-size';
+import { FULL_RESOLUTION_HINT, getRasterImportSize, parseImportResolution, setReducedResolution } from './mapshaper-raster-import-size';
 import { getPixelCoordinatesWarning, getPixelTransform, getWorldFileBBox, getWorldTransform,
   parseWorldFile, scaleWorldTransform } from './mapshaper-world-file';
 import { message, warn, warnOnce } from '../utils/mapshaper-logging';
@@ -51,6 +51,7 @@ export async function importImageRaster(input, optsArg) {
       }
     }
   };
+  setReducedResolution(raster, decoded.sourceWidth, decoded.sourceHeight);
   raster.view.recipe = getRasterViewRecipe(raster.grid, raster.view.recipe, opts);
   if (runningInBrowser()) {
     raster.view.preview = createRasterPreview(raster, opts);

@@ -107,6 +107,10 @@ The `raster` object distinguishes:
   bands.
 - `sourceId`: a link to shared source/provenance metadata in
   `dataset.info.raster_sources`.
+- `reducedResolution`: present when import read the source at less than full
+  resolution (`{width, height, sourceWidth, sourceHeight}`). It lives on the
+  raster, not the grid, so it survives `-clip` and `-proj`, and `-join` uses
+  it to warn that pixel values are averages of the source pixels.
 
 ## CRS Metadata
 
@@ -724,6 +728,48 @@ maximum become interior breaks. A flat valid raster therefore creates one band
 whose bounds are equal, while an all-invalid raster creates an empty polygon
 layer.
 
+## Raster Joins
+
+`-join <raster> calc=...` aggregates the pixels that overlap each polygon of a
+target layer (`src/join/mapshaper-raster-polygon-join.mjs`). Each pixel has a
+weight: by default the fraction of its area inside the polygon, and with
+`point-method` 1 for pixels whose centers are inside it. Polygons are
+processed one at a time, over the window of pixels their bounding box
+overlaps, so a pixel can count toward overlapping polygons.
+
+- Pixel-center weights come from `getShapePixelMask()`, the per-shape form of
+  the clipping mask. Crossings are computed in whole-grid pixel coordinates
+  from each edge's upper endpoint, so two shapes sharing an edge get
+  identical crossings and a pixel center on the edge belongs to exactly one
+  of them, whatever their windows.
+- Area weights come from `getShapePixelCoverage()`
+  (`mapshaper-raster-coverage.mjs`), an exact signed-area accumulation: edges
+  are cut into pieces within single pixels, and each piece adds its partial
+  area to its pixel and its height to a running sum carried to the pixels on
+  its right. Holes cancel by winding direction; overlapping parts of one
+  feature are capped at 1.
+- `calc=` is compiled by `compileRasterCalcExpression()`, which mirrors
+  `compileCalcExpression()`'s two phases but uses one streaming accumulator
+  per aggregate call, so `sum()`, `mean()`, `count()`, `min()` and `max()`
+  don't store per-pixel values. The per-pixel phase evaluates the expression
+  against a single reusable record (`band1`..., `coverage`). Area-weighted
+  quantiles use the standard weighted percentile (each value at the middle
+  of its share of the weight); `point-method` quantiles use
+  `utils.findQuantile()`, matching other joins.
+- Nodata is tested band by band, as in GDAL, not with the shared validity
+  rule (where a pixel is nodata only if all of its color bands are): a nodata
+  or NaN band value is NaN in expressions, which the numeric aggregates and
+  `mode()` skip, and a pixel is skipped when every band is nodata or it is
+  outside `grid.coverage`.
+- A raster file named as the join source is imported with `resolution=full`
+  and `all_bands` (`getSourceImportOpts()` in `mapshaper-run-command.mjs`).
+  `all_bands` is an internal GeoTIFF import option that reads every band
+  instead of the 1, 3 or 4 display bands. The grid it makes is only measured,
+  never added to the catalog or rendered, since the renderer and the other
+  raster commands treat band counts as gray, RGB or RGBA. A catalog layer
+  keeps its display bands; naming a band it lacks stops with a message that
+  points to naming the file in `-join`.
+
 ## Commands And Validation
 
 Most existing commands are vector commands and should reject raster targets
@@ -738,6 +784,7 @@ with clear errors. Early raster-aware commands should be limited to:
   `resampling=nearest|bilinear` support.
 - `-contours` for tracing isolines into a new polyline layer, or closed bands
   into a polygon layer.
+- `-join` with a raster source, for aggregating pixel values by polygon.
 - SVG export.
 - Session snapshot export/import.
 

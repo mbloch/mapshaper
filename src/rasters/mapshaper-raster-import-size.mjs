@@ -26,6 +26,22 @@ export function getMaxImportPixels(opts) {
     DEFAULT_MAX_IMPORT_PIXELS;
 }
 
+// Records that a raster was imported at less than the full resolution of its
+// source, so that commands that measure pixel values (like -join) can warn
+// about it. Kept on the raster rather than its grid, so it survives commands
+// that replace the grid, like -clip and -proj.
+export function setReducedResolution(raster, sourceWidth, sourceHeight) {
+  var grid = raster.grid;
+  if (grid.width < sourceWidth || grid.height < sourceHeight) {
+    raster.reducedResolution = {
+      width: grid.width,
+      height: grid.height,
+      sourceWidth: sourceWidth,
+      sourceHeight: sourceHeight
+    };
+  }
+}
+
 // The size to import a @width x @height raster at, given the resolution=
 // option. A raster is never enlarged. Without the option, rasters larger than
 // the import size limit are reduced to fit it.

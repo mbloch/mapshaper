@@ -1620,10 +1620,10 @@ export function getOptionParser() {
       type: 'strings'
     })
     .option('calc', {
-      describe: 'use a JS expression to assign values (for many-to-one joins)'
+      describe: 'use a JS expression to assign values (many-to-one and raster joins)'
     })
     .option('where', {
-      describe: 'use a JS expression to filter source records'
+      describe: 'use a JS expression to filter source records or pixels'
     })
     .option('fields', {
       describe: 'fields to copy (comma-sep.) (default is all but key field)',
@@ -1637,7 +1637,7 @@ export function getOptionParser() {
       type: 'strings'
     })
     .option('point-method', {
-      describe: '(polygon-polygon join) join polygons via inner points',
+      describe: '(polygon join) join polygons via inner points, pixels via centers',
       type: 'flag'
     })
     .option('largest-overlap', {
@@ -3287,6 +3287,9 @@ export function getOptionParser() {
     .option('balanced-threshold', {
       // describe: 'separate shadows from sunlit ground by a threshold that weighs the two equally (for soft or resampled imagery)'
       type: 'flag'
+    })
+    .option('image-shadows', {
+      // describe: 'on: use the shadows found in the image even if they are much larger than the DEM\'s; off: use the DEM\'s shadows'
     })
     .option('name', nameOpt)
     .option('target', targetOpt)

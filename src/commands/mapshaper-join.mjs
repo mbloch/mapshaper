@@ -8,6 +8,8 @@ import cmd from '../mapshaper-cmd';
 import { joinTableToLayer, validateFieldNames } from '../join/mapshaper-join-tables';
 import { joinPointsToPolygons, joinPolygonsToPoints } from '../join/mapshaper-point-polygon-join';
 import { joinPointsToPoints } from '../join/mapshaper-point-point-join';
+import { joinRasterToPolygons } from '../join/mapshaper-raster-polygon-join';
+import { layerHasRaster } from '../dataset/mapshaper-layer-type-utils';
 import { requireOverlaySourceCRS, getDatasetCRS } from '../crs/mapshaper-projections';
 import { initDataTable } from '../dataset/mapshaper-layer-utils';
 
@@ -19,7 +21,10 @@ cmd.join = function(targetLyr, targetDataset, src, opts) {
   if (!src || !src.dataset) {
     stop("Missing a joinable data source");
   }
-  if (opts.keys) {
+  if (layerHasRaster(src.layer)) {
+    requireOverlaySourceCRS(targetDataset, src.dataset);
+    retn = joinRasterToPolygons(targetLyr, targetDataset, src, opts);
+  } else if (opts.keys) {
     // join using data in attribute fields
     if (opts.keys.length != 2) {
       stop("Expected two key fields: a target field and a source field");
