@@ -14,7 +14,7 @@ v0.8.0 (unreleased)
 * -classify no longer treats a field containing one unique value as a data error.
 * -clip now clips rasters to exact boundary of vector shapes. Removed areas are transparent by default.
 * Breaking change: when projecting image rasters with unprojectable areas, the nodata areas are transparent by default (instead of white).
-* -join can join a raster to a polygon layer, using calc= expressions to aggregate band values, e.g. `-join population.tif calc='pop = sum(band1)'`. By default, pixels are weighted by the fraction of their area inside each polygon; the point-method flag joins pixels by their centers instead. A raster file named in -join is read at full resolution and with every band.
+* -join can join a raster to a polygon layer, using calc= expressions to aggregate band values, e.g. `-join population.tif calc='pop = sum(band1)'`. By default, pixels are weighted by the fraction of their area inside each polygon; the point-method flag joins pixels by their centers instead. The join reads the bands its expressions use at full resolution, from a raster file named in -join or from the source file of a raster layer that was imported at reduced resolution or without those bands (unless the layer has been edited since).
 * Fixed GeoTIFF import treating the fourth band of a four-band image (such as the near-infrared band of RGB + NIR aerial imagery) as alpha. As in GDAL, a band is now imported as alpha only if the file's ExtraSamples tag declares it as alpha; other extra bands are left out of the displayed image.
 
 v0.7.101

@@ -19,7 +19,7 @@ export async function persistRasterSourceForDataset(dataset, group) {
   if (!idb) return;
   var source = getRasterSourceFile(group);
   var sourceKey = source && source.content ?
-      await persistRasterSourceBytes(dataset, source) : null;
+      await persistRasterSourceGroup(dataset, source, group) : null;
   await persistRasterLayerSamples(dataset);
   lifecycle.touch();
   return sourceKey;
@@ -27,6 +27,32 @@ export async function persistRasterSourceForDataset(dataset, group) {
 
 function getRasterSourceFile(group) {
   return group && (group.geotiff || group.png || group.jpeg) || null;
+}
+
+// The raster file and the sidecars that are read with it, as a content group
+// that the importer can read again (e.g. for a -join that needs bands or a
+// resolution that the layer doesn't have)
+var SOURCE_GROUP_TYPES = ['geotiff', 'png', 'jpeg', 'aux', 'world', 'prj'];
+
+function getRasterSourceGroup(group) {
+  var stored = {};
+  SOURCE_GROUP_TYPES.forEach(function(type) {
+    var file = group[type];
+    if (file && file.content) stored[type] = {filename: file.filename, content: file.content};
+  });
+  return stored;
+}
+
+// Lets core code read a raster source stored by this module
+// (see setRasterSourceReader())
+export function registerRasterSourceReader() {
+  internal.setRasterSourceReader(async function(sourceInfo) {
+    if (!idb || !sourceInfo || sourceInfo.storage != 'indexeddb' || !sourceInfo.key) return null;
+    var group = await idb.get(sourceInfo.key);
+    return group && typeof group == 'object' && SOURCE_GROUP_TYPES.some(function(type) {
+      return group[type];
+    }) ? group : null;
+  });
 }
 
 export function startRasterSourceStoreLifecycle() {
@@ -73,9 +99,9 @@ function makeRasterSamplesKey(layerName) {
   return [KEY_PREFIX, sessionId, 'samples', sampleCount, layerName || 'raster'].join(':');
 }
 
-async function persistRasterSourceBytes(dataset, sourceFile) {
+async function persistRasterSourceGroup(dataset, sourceFile, group) {
   var key = makeRasterSourceKey(sourceFile.filename);
-  await idb.set(key, sourceFile.content);
+  await idb.set(key, getRasterSourceGroup(group));
   ownKeys.add(key);
   if (dataset.info && dataset.info.raster_sources) {
     dataset.info.raster_sources.forEach(function(source) {

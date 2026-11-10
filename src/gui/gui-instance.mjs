@@ -29,7 +29,7 @@ import { Basemap } from './gui-basemap-control';
 import { DisplayOptions } from './gui-display-options-menu';
 import { MessageControl } from './gui-messages';
 import { getRuntimeStateContext, stringifyRuntimeStateContext } from './gui-runtime-context';
-import { startRasterSourceStoreLifecycle } from './gui-raster-source-store';
+import { registerRasterSourceReader, startRasterSourceStoreLifecycle } from './gui-raster-source-store';
 import { cleanupStaleUndoPayloads } from './gui-stored-undo-history';
 import { CommandFileStore } from './gui-command-file-store';
 // import { ProjectOptions } from './gui-project-control';
@@ -79,6 +79,7 @@ export function GuiInstance(container, opts) {
   // at startup must not be drawn or exported unmeasured.
   initLabelMeasurement();
   startRasterSourceStoreLifecycle();
+  registerRasterSourceReader();
   cleanupStaleUndoPayloads(gui).catch(function() {});
   gui.map.init();
 

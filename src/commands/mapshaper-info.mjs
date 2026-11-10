@@ -4,6 +4,7 @@ import { getDatasetCRS, getProjInfo, isLatLngCRS } from '../crs/mapshaper-projec
 import { getLayerBounds, getFeatureCount, getLayerSourceFile, layerHasRaster } from '../dataset/mapshaper-layer-utils';
 import { getRasterBandCount, getRasterHeight, getRasterPixelType, getRasterWidth } from '../rasters/mapshaper-raster-utils';
 import { getRasterValidityMask } from '../rasters/mapshaper-raster-grid';
+import { getRasterDisplayBands } from '../rasters/mapshaper-raster-display-bands';
 import { formatVerticalUnits } from '../rasters/mapshaper-vertical-units';
 import { getHillshadeCellSizes } from './mapshaper-hillshade';
 import { getOklchLightnessChroma } from '../rasters/mapshaper-raster-color';
@@ -153,7 +154,8 @@ export function rasterLooksLikeImage(raster) {
   var grid = raster && raster.grid;
   if (!grid || !grid.samples || raster.interpretation == 'categorical' ||
       raster.interpretation == 'continuous' || grid.colorModel == 'palette') return false;
-  return /^uint8$/.test(grid.pixelType || '') && (grid.bands == 1 || grid.bands == 3 || grid.bands == 4);
+  return /^uint8$/.test(grid.pixelType || '') &&
+    (!!grid.displayBands || grid.bands == 1 || grid.bands == 3 || grid.bands == 4);
 }
 
 // OKLCH lightness and chroma of the visible pixels of an 8-bit image, from a
@@ -161,6 +163,12 @@ export function rasterLooksLikeImage(raster) {
 export function getImageInfo(grid) {
   var n = grid.width * grid.height;
   var bands = grid.bands;
+  var display = getRasterDisplayBands(grid);
+  var gray = display.color.length == 1;
+  var r = display.color[0];
+  var g = gray ? r : display.color[1];
+  var b = gray ? r : display.color[2];
+  var alpha = display.alpha;
   var valid = getRasterValidityMask(grid);
   var step = Math.max(1, Math.floor(n / IMAGE_SAMPLES));
   var lightness = [], chroma = [];
@@ -169,16 +177,12 @@ export function getImageInfo(grid) {
   var i, j, o;
   for (i = 0; i < n; i++) {
     j = i * bands;
-    if (valid && !valid[i] || bands == 4 && grid.samples[j + 3] === 0) {
+    if (valid && !valid[i] || alpha > -1 && grid.samples[j + alpha] === 0) {
       transparent++;
       continue;
     }
     if (i % step !== 0) continue;
-    if (bands == 1) {
-      getOklchLightnessChroma(grid.samples[j], grid.samples[j], grid.samples[j], lc);
-    } else {
-      getOklchLightnessChroma(grid.samples[j], grid.samples[j + 1], grid.samples[j + 2], lc);
-    }
+    getOklchLightnessChroma(grid.samples[j + r], grid.samples[j + g], grid.samples[j + b], lc);
     lightness.push(lc[0]);
     chroma.push(lc[1]);
     sum += lc[0];
@@ -186,7 +190,7 @@ export function getImageInfo(grid) {
   o = {
     pixel_count: n,
     transparent_count: transparent,
-    has_alpha: bands == 4 || !!valid,
+    has_alpha: alpha > -1 || !!valid,
     lightness: null,
     chroma: null
   };
@@ -199,7 +203,7 @@ export function getImageInfo(grid) {
       mean: roundImageValue(sum / lightness.length),
       percentiles: getSortedPercentiles(lightness, IMAGE_PERCENTILES, roundImageValue)
     };
-    o.chroma = bands == 1 ? null : getSortedPercentiles(chroma, IMAGE_CHROMA_PERCENTILES, roundImageValue);
+    o.chroma = gray ? null : getSortedPercentiles(chroma, IMAGE_CHROMA_PERCENTILES, roundImageValue);
   }
   return o;
 }

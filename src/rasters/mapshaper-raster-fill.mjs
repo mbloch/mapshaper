@@ -10,6 +10,7 @@
 import { parseColor } from '../color/color-utils';
 import { stop, message, warnOnce } from '../utils/mapshaper-logging';
 import { getSampleArrayRange, rasterSamplesAreFloat } from './mapshaper-raster-grid';
+import { getRasterDisplayBands } from './mapshaper-raster-display-bands';
 
 var FLOAT_NODATA_VALUES = [-9999, -3.4028234663852886e38];
 
@@ -56,7 +57,8 @@ export function updateRasterViewForGrid(raster) {
   var grid = raster.grid;
   var recipe = raster.view && raster.view.recipe;
   var derivation = raster.derivation;
-  if (!grid || grid.bands != 4 || !grid.sampleBands || grid.sampleBands.length != 4) return;
+  if (!grid || grid.displayBands || grid.bands != 4 || !grid.sampleBands ||
+      grid.sampleBands.length != 4) return;
   if (recipe && recipe.bands && recipe.bands.length < 4) {
     if (recipe.type == 'gray') recipe.type = 'rgb';
     recipe.bands = grid.sampleBands.concat();
@@ -107,14 +109,16 @@ function gridIsEightBit(grid) {
 }
 
 // Two-band images are not displayed as gray + alpha, so a one-band image
-// becomes RGBA.
+// becomes RGBA. A grid with displayBands holds bands that aren't displayed, so
+// it gets a nodata value instead.
 function canAddAlphaBand(grid, raster) {
-  return gridIsEightBit(grid) && (grid.bands == 1 || grid.bands == 3) &&
+  return gridIsEightBit(grid) && !grid.displayBands && (grid.bands == 1 || grid.bands == 3) &&
     !rasterUsesNumericNodataFill(raster);
 }
 
 function rasterHasAlphaBand(grid, raster) {
-  return gridIsEightBit(grid) && grid.bands == 4 && !rasterUsesNumericNodataFill(raster);
+  return gridIsEightBit(grid) && !grid.displayBands && grid.bands == 4 &&
+    !rasterUsesNumericNodataFill(raster);
 }
 
 function addAlphaBand(grid) {
@@ -154,21 +158,22 @@ function fillWithColor(grid, raster, color) {
   var alpha = Math.round((color.a == null ? 1 : color.a) * 255);
   var gray = Math.round(0.299 * color.r + 0.587 * color.g + 0.114 * color.b);
   var coverage = grid.coverage;
-  var samples, bands, i, k, n;
+  var samples, bands, display, i, k, n;
   if (alpha < 255 && canAddAlphaBand(grid, raster)) addAlphaBand(grid);
   samples = grid.samples;
   bands = grid.bands;
+  display = getRasterDisplayBands(grid);
   for (i = 0, n = grid.width * grid.height; i < n; i++) {
     if (coverage[i]) continue;
     k = i * bands;
-    if (bands == 1) {
-      samples[k] = gray;
+    if (display.color.length == 1) {
+      samples[k + display.color[0]] = gray;
     } else {
-      samples[k] = color.r;
-      samples[k + 1] = color.g;
-      samples[k + 2] = color.b;
-      if (bands > 3) samples[k + 3] = alpha;
+      samples[k + display.color[0]] = color.r;
+      samples[k + display.color[1]] = color.g;
+      samples[k + display.color[2]] = color.b;
     }
+    if (display.alpha > -1) samples[k + display.alpha] = alpha;
   }
 }
 

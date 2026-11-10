@@ -94,6 +94,20 @@ The `raster` object distinguishes:
   current truth for clipping and future raster operations.
 - `grid.coverage`: optional mask used by projected rasters to distinguish
   covered pixels from nodata fill pixels. This is separate from pixel color.
+- `grid.displayBands`: optional `{color: [gray] or [r, g, b], alpha: index or
+  -1}`, in grid band indexes, naming the bands that are displayed. Without it,
+  the band count decides: one or two bands are gray, three or more are RGB,
+  and the fourth of four is alpha. Everything that displays or exports a grid
+  as an image (the renderer and its scaling stats, the pixel readout, `-info`'s
+  image stats, GeoTIFF photometric and ExtraSamples tags, `nodata-color=`)
+  reads it through `getRasterDisplayBands()`
+  (`src/rasters/mapshaper-raster-display-bands.mjs`). It lives on the grid
+  rather than in `view.recipe` because many of these functions receive only
+  the grid, and because the recipe can lag behind the grid. Code that changes
+  the bands of a grid that has it must update or remove it. The fill that
+  follows `-clip` and `-proj` gives such a grid a nodata value rather than an
+  alpha band, since it holds bands that aren't displayed. The image commands
+  (`-tone`, `-tint`, `-blend`, `-deshadow`, `-blur`) still read bands by count.
 - `interpretation`: semantic raster type, one of `image`, `categorical` or
   `continuous`. Import defaults to `image`. `categorical` marks class/code
   rasters so later reprojection defaults to nearest-neighbor resampling.
@@ -110,7 +124,7 @@ The `raster` object distinguishes:
 - `reducedResolution`: present when import read the source at less than full
   resolution (`{width, height, sourceWidth, sourceHeight}`). It lives on the
   raster, not the grid, so it survives `-clip` and `-proj`, and `-join` uses
-  it to warn that pixel values are averages of the source pixels.
+  it to decide to read the source file at full resolution.
 
 ## CRS Metadata
 
@@ -759,16 +773,33 @@ overlaps, so a pixel can count toward overlapping polygons.
 - Nodata is tested band by band, as in GDAL, not with the shared validity
   rule (where a pixel is nodata only if all of its color bands are): a nodata
   or NaN band value is NaN in expressions, which the numeric aggregates and
-  `mode()` skip, and a pixel is skipped when every band is nodata or it is
-  outside `grid.coverage`.
-- A raster file named as the join source is imported with `resolution=full`
-  and `all_bands` (`getSourceImportOpts()` in `mapshaper-run-command.mjs`).
-  `all_bands` is an internal GeoTIFF import option that reads every band
-  instead of the display bands. The grid it makes is only measured,
-  never added to the catalog or rendered, since the renderer and the other
-  raster commands treat band counts as gray, RGB or RGBA. A catalog layer
-  keeps its display bands; naming a band it lacks stops with a message that
-  points to naming the file in `-join`.
+  `mode()` skip, and a pixel is skipped when every band that the expressions
+  use is nodata or it is outside `grid.coverage`.
+- The join reads the bands its expressions name (`getRasterJoinBands()`, or
+  band1 if they name none) at full resolution. `findSourceForCommand()` in
+  `mapshaper-run-command.mjs` imports a raster file named as the source with
+  `resolution=full` and `source_bands`, an internal GeoTIFF import option that
+  reads those bands instead of the display bands. The grid it makes is only
+  measured, never added to the catalog or rendered, since the renderer and
+  the other raster commands treat band counts as gray, RGB or RGBA.
+- A catalog layer has its display bands, possibly at reduced resolution. If
+  it lacks a band or was reduced, `getRasterSourceBands()`
+  (`mapshaper-raster-source-bands.mjs`) reads the same bands from its source
+  file in its place, and is meant for any command that measures band values
+  (such as a future raster calculator). The CLI reads the file path in
+  `raster_sources`; the web UI stores each raster file and its sidecars in
+  IndexedDB at import and registers a reader with `setRasterSourceReader()`.
+  The layer's dataset keeps its CRS; a re-read file whose bounds or size no
+  longer match the layer is rejected.
+- A layer can only be replaced by its source if it hasn't been edited.
+  `mapshaper-raster-source.mjs` keeps a `WeakSet` of the sample arrays that
+  importers made (copies made by `copyRasterGrid()` are added too). Every
+  command that changes pixel values or georeferencing makes a new grid and
+  sample array, so a layer whose samples are not in the set has been edited,
+  and the join stops with an error instead of losing the edits. Code that
+  writes into an existing sample array must call `markRasterSamplesAsEdited()`
+  first. The check fails safe: a raster restored from a saved session, whose
+  samples are new arrays, is treated as edited.
 
 ## Commands And Validation
 

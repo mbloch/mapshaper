@@ -9,6 +9,8 @@ import { formatVerticalUnits } from './mapshaper-vertical-units';
 import { stop, warn } from '../utils/mapshaper-logging';
 import { runningInBrowser } from '../mapshaper-env';
 import { updateRasterViewForGrid } from './mapshaper-raster-fill';
+import { copyRasterSourceStatus } from './mapshaper-raster-source';
+import { getRasterDisplayBands, getRasterDisplayBandsKey, rasterGridDisplaysColor } from './mapshaper-raster-display-bands';
 import {
   markLayerChanged,
   noteLayerWillChange
@@ -85,7 +87,10 @@ export function copyRasterData(raster) {
 
 export function copyRasterGrid(grid) {
   var copy = utils.extend({}, grid);
-  if (grid.samples) copy.samples = copyTypedArray(grid.samples);
+  if (grid.samples) {
+    copy.samples = copyTypedArray(grid.samples);
+    copyRasterSourceStatus(grid, copy);
+  }
   // The coverage mask is mutated in place by the reprojection code, so an
   // undo snapshot that shared it would track later edits.
   if (grid.coverage) copy.coverage = copyTypedArray(grid.coverage);
@@ -136,7 +141,7 @@ export function getRasterViewRecipe(grid, recipeArg, opts) {
     stop('Unsupported raster scaling method:', scaling);
   }
   return Object.assign(recipe, {
-    type: recipe.type || (grid.bands >= 3 ? 'rgb' : 'gray'),
+    type: recipe.type || (rasterGridDisplaysColor(grid) ? 'rgb' : 'gray'),
     bands: recipe.bands || grid.sampleBands || null,
     scaling: scaling,
     scaleRange: parseRangeOption(scaleRange, [0, 100], 'scale-range'),
@@ -174,7 +179,7 @@ export function renderRasterExportPreview(raster, bbox, width, height, opts) {
 
 export function getRasterScalingStats(grid, recipe) {
   recipe = getRasterViewRecipe(grid, recipe);
-  return getScalingStats(grid.samples, grid.bands, grid.nodata, recipe);
+  return getScalingStats(grid, recipe);
 }
 
 export function getRasterViewScalingStats(raster, recipeArg) {
@@ -214,14 +219,14 @@ export function getRasterPixelAtMapXY(raster, x, y) {
   for (band = 0; band < grid.bands; band++) {
     values.push(grid.samples[offset + band]);
   }
-  // The renderer reads interleaved bands in display order, so three or more
-  // bands are shown as R, G, B and (if present) alpha.
-  isColor = grid.bands >= 3;
+  isColor = rasterGridDisplaysColor(grid);
   valid = rasterPixelIsValid(grid, pixelId);
   return {
     col: col,
     row: row,
     values: values,
+    // 'gray', 'rgb' or 'rgba' if @values are the displayed channels, else null
+    channels: getPixelChannels(grid),
     isColor: isColor,
     isFloat: rasterSamplesAreFloat(grid.samples),
     valid: valid,
@@ -234,6 +239,14 @@ export function getRasterPixelAtMapXY(raster, x, y) {
   };
 }
 
+function getPixelChannels(grid) {
+  if (grid.displayBands) return null;
+  if (grid.bands == 1) return 'gray';
+  if (grid.bands == 3) return 'rgb';
+  if (grid.bands == 4) return 'rgba';
+  return null;
+}
+
 // Returns [r, g, b, a] in the 0-255 range, using the same recipe and scaling as
 // the preview renderer, so that a readout agrees with how the pixel is drawn.
 function getRasterPixelDisplayColor(raster, grid, pixelId) {
@@ -243,11 +256,13 @@ function getRasterPixelDisplayColor(raster, grid, pixelId) {
   var sourceRange = recipe.scaling == 'none' ? getPixelTypeRange(grid.pixelType) : null;
   var displayRange = getDisplayRange(recipe.scaleRange);
   var offset = pixelId * grid.bands;
-  var color = [0, 1, 2].map(function(band) {
+  var display = getRasterDisplayBands(grid);
+  var color = display.color.map(function(band) {
     return scaleSample(grid.samples[offset + band], stats && stats[band], sourceRange, displayRange);
   });
-  color.push(grid.bands >= 4 ?
-    scaleSample(grid.samples[offset + 3], stats && stats[3], sourceRange, [0, 255]) : 255);
+  if (color.length == 1) color.push(color[0], color[0]);
+  color.push(display.alpha > -1 ?
+    scaleSample(grid.samples[offset + display.alpha], stats && stats[display.alpha], sourceRange, [0, 255]) : 255);
   return color;
 }
 
@@ -266,10 +281,12 @@ function renderRasterGridPreview(grid, recipe, width, height, statsArg, sourceBb
   var bands = grid.bands;
   var noData = grid.nodata;
   var pixels = new Uint8ClampedArray(width * height * 4);
-  var stats = statsArg || getScalingStats(samples, bands, noData, recipe);
+  var stats = statsArg || getScalingStats(grid, recipe);
   var sourceRange = recipe.scaling == 'none' ? getPixelTypeRange(grid.pixelType) : null;
   var displayRange = getDisplayRange(recipe.scaleRange);
-  var src, dest, val, isNoData, j, sample;
+  var display = getRasterDisplayBands(grid);
+  var color = display.color, alpha = display.alpha;
+  var src, dest, val, isNoData, j, band, sample;
   for (var y = 0; y < height; y++) {
     for (var x = 0; x < width; x++) {
       dest = (y * width + x) * 4;
@@ -281,18 +298,19 @@ function renderRasterGridPreview(grid, recipe, width, height, statsArg, sourceBb
         sample = null;
         isNoData = noData !== null && noData !== undefined && allSamplesAreNoData(samples, src, bands, noData);
       }
-      if (bands == 1) {
-        val = scaleSample(sample ? sample.values[0] : samples[src], stats && stats[0], sourceRange, displayRange);
+      if (color.length == 1) {
+        band = color[0];
+        val = scaleSample(sample ? sample.values[band] : samples[src + band], stats && stats[band], sourceRange, displayRange);
         pixels[dest] = val;
         pixels[dest + 1] = val;
         pixels[dest + 2] = val;
-        pixels[dest + 3] = isNoData ? 0 : 255;
       } else {
         for (j = 0; j < 3; j++) {
-          pixels[dest + j] = scaleSample(sample ? sample.values[j] : samples[src + j], stats && stats[j], sourceRange, displayRange);
+          band = color[j];
+          pixels[dest + j] = scaleSample(sample ? sample.values[band] : samples[src + band], stats && stats[band], sourceRange, displayRange);
         }
-        pixels[dest + 3] = isNoData ? 0 : bands >= 4 ? scaleSample(sample ? sample.values[3] : samples[src + 3], stats && stats[3], sourceRange, [0, 255]) : 255;
       }
+      pixels[dest + 3] = isNoData ? 0 : alpha > -1 ? scaleSample(sample ? sample.values[alpha] : samples[src + alpha], stats && stats[alpha], sourceRange, [0, 255]) : 255;
     }
   }
   return {
@@ -459,23 +477,21 @@ function renderRawEightBitPreview(grid, width, height, sourceBbox) {
   var samples = grid.samples;
   var bands = grid.bands;
   var pixels = new Uint8ClampedArray(width * height * 4);
-  var src, dest, val;
+  var display = getRasterDisplayBands(grid);
+  var gray = display.color.length == 1;
+  var r = display.color[0];
+  var g = gray ? r : display.color[1];
+  var b = gray ? r : display.color[2];
+  var alpha = display.alpha;
+  var src, dest;
   for (var y = 0; y < height; y++) {
     for (var x = 0; x < width; x++) {
       src = getPreviewSourceOffset(grid, sourceBbox, x, y, width, height, bands);
       dest = (y * width + x) * 4;
-      if (bands == 1) {
-        val = samples[src];
-        pixels[dest] = val;
-        pixels[dest + 1] = val;
-        pixels[dest + 2] = val;
-        pixels[dest + 3] = 255;
-      } else {
-        pixels[dest] = samples[src];
-        pixels[dest + 1] = samples[src + 1];
-        pixels[dest + 2] = samples[src + 2];
-        pixels[dest + 3] = bands >= 4 ? samples[src + 3] : 255;
-      }
+      pixels[dest] = samples[src + r];
+      pixels[dest + 1] = samples[src + g];
+      pixels[dest + 2] = samples[src + b];
+      pixels[dest + 3] = alpha > -1 ? samples[src + alpha] : 255;
     }
   }
   return {
@@ -704,22 +720,27 @@ function getSingleBandStats(data, bands, band, noData) {
   return min < Infinity && max > min ? {min: min, max: max} : {min: 0, max: 255};
 }
 
-function getSharedBandStats(data, bands, noData) {
+// The red, green and blue bands share a scale, so that scaling doesn't shift
+// colors
+function getSharedBandStats(data, bands, noData, colorBands) {
   var stats = getBandStats(data, bands, noData);
-  var min = Math.min(stats[0].min, stats[1].min, stats[2].min);
-  var max = Math.max(stats[0].max, stats[1].max, stats[2].max);
+  var min = Math.min.apply(null, colorBands.map(function(b) { return stats[b].min; }));
+  var max = Math.max.apply(null, colorBands.map(function(b) { return stats[b].max; }));
   var shared = max > min ? {min: min, max: max} : {min: 0, max: 255};
-  stats[0] = stats[1] = stats[2] = shared;
+  colorBands.forEach(function(b) { stats[b] = shared; });
   return stats;
 }
 
-function getScalingStats(data, bands, noData, recipe) {
-  var shared = recipe.type == 'rgb' && bands >= 3;
+// Stats for each grid band, indexed by band
+function getScalingStats(grid, recipe) {
+  var data = grid.samples, bands = grid.bands, noData = grid.nodata;
+  var colorBands = getRasterDisplayBands(grid).color;
+  var shared = recipe.type == 'rgb' && colorBands.length == 3;
   if (recipe.scaling == 'minmax') {
-    return shared ? getSharedBandStats(data, bands, noData) : getBandStats(data, bands, noData);
+    return shared ? getSharedBandStats(data, bands, noData, colorBands) : getBandStats(data, bands, noData);
   }
   if (recipe.scaling == 'percentile') {
-    return shared ? getSharedPercentileStats(data, bands, noData, recipe.percentileRange) :
+    return shared ? getSharedPercentileStats(data, bands, noData, recipe.percentileRange, colorBands) :
       getBandPercentileStats(data, bands, noData, recipe.percentileRange);
   }
   return null;
@@ -778,7 +799,7 @@ function useFastRawEightBitRendering(grid, recipe) {
     recipe.scaling == 'none' &&
     recipe.scaleRange[0] === 0 &&
     recipe.scaleRange[1] === 100 &&
-    (recipe.type == 'gray' && grid.bands == 1 || recipe.type == 'rgb' && grid.bands >= 3) &&
+    (recipe.type == 'gray' && !rasterGridDisplaysColor(grid) || recipe.type == 'rgb' && rasterGridDisplaysColor(grid)) &&
     (grid.nodata === null || grid.nodata === undefined);
 }
 
@@ -790,6 +811,7 @@ export function getRasterScalingStatsKey(grid, recipe) {
     grid.pixelType,
     grid.samples && grid.samples.length,
     grid.nodata,
+    getRasterDisplayBandsKey(grid),
     recipe.type,
     recipe.scaling,
     recipe.scaleRange && recipe.scaleRange.join(','),
@@ -805,10 +827,10 @@ function getBandPercentileStats(data, bands, noData, range) {
   return stats;
 }
 
-function getSharedPercentileStats(data, bands, noData, range) {
+function getSharedPercentileStats(data, bands, noData, range, colorBands) {
   var stats = getBandPercentileStats(data, bands, noData, range);
-  var shared = getPercentileStats(data, bands, [0, 1, 2], noData, range);
-  stats[0] = stats[1] = stats[2] = shared;
+  var shared = getPercentileStats(data, bands, colorBands, noData, range);
+  colorBands.forEach(function(b) { stats[b] = shared; });
   return stats;
 }
 

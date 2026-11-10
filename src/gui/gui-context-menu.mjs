@@ -333,7 +333,7 @@ export function ContextMenu(parentArg) {
         return internal.formatRasterSampleValue(val, info.isFloat);
       });
       var valueStr = values.join(', ');
-      addMenuLabel(getBandLabel(info.values.length) +
+      addMenuLabel(getBandLabel(info.channels) +
         (info.valid ? '' : ' (no data)') +
         (info.valid && info.units ? ' (' + info.units + ')' : ''));
       addCopyItem(valueStr, valueStr);
@@ -380,10 +380,11 @@ function getColorString(rgba) {
   });
 }
 
-function getBandLabel(bands) {
-  if (bands == 1) return 'band value';
-  if (bands == 3) return 'red, green, blue';
-  if (bands == 4) return 'red, green, blue, alpha';
+// @channels: see getRasterPixelAtMapXY()
+function getBandLabel(channels) {
+  if (channels == 'gray') return 'band value';
+  if (channels == 'rgb') return 'red, green, blue';
+  if (channels == 'rgba') return 'red, green, blue, alpha';
   return 'band values';
 }
 

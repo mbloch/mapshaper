@@ -7,6 +7,8 @@ import { copyLayerShapes, layerHasPaths, layerHasRaster } from '../dataset/mapsh
 import { getStackedLayers, moveLayersInStack } from '../dataset/mapshaper-layer-stacking';
 import { getOptionParser } from '../cli/mapshaper-options';
 import { convertSourceName, findCommandSourceAsync } from '../dataset/mapshaper-source-utils';
+import { getRasterJoinBands } from '../join/mapshaper-raster-polygon-join';
+import { getRasterSourceBands } from '../rasters/mapshaper-raster-source-bands';
 import { Catalog, getFormattedLayerList } from '../dataset/mapshaper-catalog';
 import { Job } from '../mapshaper-job';
 import { mergeCommandTargets } from '../dataset/mapshaper-merging';
@@ -272,8 +274,7 @@ export async function runCommand(command, job) {
     if (Object.prototype.hasOwnProperty.call(command, '_sourceOverride')) {
       source = command._sourceOverride;
     } else if (opts.source && name != 'fetch') {
-      source = await findCommandSourceAsync(convertSourceName(opts.source, targets), job.catalog,
-          getSourceImportOpts(name, opts), targets);
+      source = await findSourceForCommand(name, opts, job.catalog, targets);
     }
 
     // identify command target/input (for postprocessing)
@@ -921,22 +922,25 @@ function addDrawnBlendOutput(catalog, out, drawn, source, opts) {
 async function resolveSourceForTargets(command, job, targets) {
   job.startCommand(command);
   try {
-    return await findCommandSourceAsync(
-      convertSourceName(command.options.source, targets),
-      job.catalog,
-      getSourceImportOpts(command.name, command.options),
-      targets
-    );
+    return await findSourceForCommand(command.name, command.options, job.catalog, targets);
   } finally {
     job.endCommand();
   }
 }
 
-// A raster joined to polygons is measured, not displayed, so it is imported
-// at full resolution instead of the reduced size used for large rasters, and
-// with every band instead of the display bands
-function getSourceImportOpts(name, opts) {
-  return name == 'join' ? utils.defaults({resolution: 'full', all_bands: true}, opts) : opts;
+// A raster joined to polygons is measured, not displayed, so it is read at
+// full resolution instead of the reduced size used for large rasters, and with
+// the bands that the join uses instead of the display bands -- from the file
+// named in the command, or from the source file of a raster layer
+async function findSourceForCommand(name, opts, catalog, targets) {
+  var sourceName = convertSourceName(opts.source, targets);
+  var joinBands = name == 'join' ? getRasterJoinBands(opts) : null;
+  var importOpts = joinBands ? utils.defaults({resolution: 'full', source_bands: joinBands}, opts) : opts;
+  var source = await findCommandSourceAsync(sourceName, catalog, importOpts, targets);
+  if (joinBands && !opts.keys) {
+    source = await getRasterSourceBands(source, joinBands);
+  }
+  return source;
 }
 
 function sourceNameIsInterpolated(name) {

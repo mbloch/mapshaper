@@ -27,19 +27,23 @@ var UNSUPPORTED_OPTIONS = ['keys', 'fields', 'prefix', 'interpolate', 'duplicati
 // "coverage", e.g. where='coverage > 0.5'.
 // Nodata is tested band by band: a band value equal to the nodata value is
 // NaN in expressions, so aggregate functions skip it, and a pixel is skipped
-// when every band is nodata.
+// when every band that the expressions use is nodata.
+// The source has the bands the expressions use, at full resolution (see
+// getRasterSourceBands(), called with getRasterJoinBands()).
 export function joinRasterToPolygons(targetLyr, targetDataset, src, opts) {
   var grid = getRasterGrid(src.layer.raster);
   var arcs = targetDataset.arcs;
   var shapes = targetLyr.shapes || [];
-  var bandNames, pixelRec, pixelLyr, calc, filter, used;
+  var bandNames, usedBands, pixelRec, pixelLyr, calc, filter, used;
   var destTable, destRecords, unmatchedRecords = [];
   var matchCount = 0, retn = {};
 
   validateRasterJoin(targetLyr, grid, opts);
   bandNames = getRasterBandNames(grid);
-  validateBandReferences(src, bandNames, opts);
-  warnIfReducedResolution(src.layer);
+  validateBandReferences(bandNames, opts);
+  usedBands = getRasterJoinBands(opts).map(function(b) {
+    return bandNames.indexOf('band' + (b + 1));
+  });
   if (!targetLyr.data) {
     targetLyr.data = new DataTable(shapes.length);
   }
@@ -58,7 +62,7 @@ export function joinRasterToPolygons(targetLyr, targetDataset, src, opts) {
     var destRec = destRecords[i] || (destRecords[i] = {});
     var count = forEachPixelInShape(grid, shp, arcs, !!opts.point_method, function(pixelId, weight) {
       if (!rasterPixelIsCovered(grid, pixelId)) return false;
-      if (!readPixel(grid, pixelId, bandNames, pixelRec)) return false;
+      if (!readPixel(grid, pixelId, bandNames, usedBands, pixelRec)) return false;
       pixelRec.coverage = weight;
       if (filter && !filter(destRec)) return false;
       calc.addPixel(weight);
@@ -75,7 +79,7 @@ export function joinRasterToPolygons(targetLyr, targetDataset, src, opts) {
   destTable.markChanged({operation: 'join', calc: true});
 
   if (opts.show_join_message) {
-    printRasterJoinMessage(matchCount, shapes.length, countUsedPixels(used), countValidPixels(grid), opts);
+    printRasterJoinMessage(matchCount, shapes.length, countUsedPixels(used), countValidPixels(grid, usedBands), opts);
   }
   if (opts.unmatched) {
     retn.unmatched = {
@@ -108,18 +112,6 @@ function validateRasterJoin(targetLyr, grid, opts) {
   }
 }
 
-// A raster read from a file named in the -join command is imported at full
-// resolution, but a layer imported earlier may have been reduced. Its values
-// are then averages (or samples) of the source pixels, and sums of counts
-// like population come out too small.
-function warnIfReducedResolution(rasterLyr) {
-  var info = rasterLyr.raster.reducedResolution;
-  if (!info) return;
-  warn(utils.format('Raster layer [%s] was imported at reduced resolution (%dx%d, source: %dx%d), so joined values may not match the source data. ' +
-    'Import it with resolution=full, or name the file in the -join command.',
-    rasterLyr.name || '', info.width, info.height, info.sourceWidth, info.sourceHeight));
-}
-
 // Band variables are named after the bands of the source file (band1 is the
 // first band), which can differ from their order in the grid.
 export function getRasterBandNames(grid) {
@@ -139,67 +131,47 @@ function initPixelRecord(bandNames) {
   return rec;
 }
 
-// A layer in the catalog holds only the bands used for display (1, 3 or 4),
-// so an expression can name a band that the file has but the layer doesn't.
-function validateBandReferences(src, bandNames, opts) {
-  var refs = findBandReferences(opts.calc).concat(findBandReferences(opts.where));
-  var missing = refs.filter(function(name) { return !bandNames.includes(name); });
-  var fileBands = getSourceBandCount(src);
-  var name, available;
-  if (missing.length === 0) return;
-  name = missing[0];
-  available = 'available: ' + bandNames.join(', ');
-  if (fileBands > 0 && +name.slice(4) > fileBands) {
-    stop(utils.format('The raster has no %s (%s)', name, available));
+// Each band has to have been read (see getRasterSourceBands()), so a missing
+// band is one the file doesn't have
+function validateBandReferences(bandNames, opts) {
+  var missing = getRasterJoinBands(opts).map(function(b) { return 'band' + (b + 1); })
+    .filter(function(name) { return !bandNames.includes(name); });
+  if (missing.length > 0) {
+    stop(utils.format('The raster has no %s (available: %s)', missing[0], bandNames.join(', ')));
   }
-  if (fileBands > bandNames.length) {
-    stop(utils.format('Raster layer [%s] was imported with %d of the file\'s %d bands, so %s is unavailable (%s). ' +
-      'To join every band, name the file in the -join command.',
-      src.layer.name || '', bandNames.length, fileBands, name, available));
-  }
-  stop(utils.format('The raster has no %s (%s)', name, available));
 }
 
-function findBandReferences(exp) {
-  var names = [];
-  String(exp || '').replace(/\bband([1-9][0-9]*)\b/g, function(match) {
-    if (!names.includes(match)) names.push(match);
-    return match;
+// The bands named in the calc= and where= expressions of a raster join, as
+// 0-based indexes, or band1 if they name none (e.g. calc='n = count()'), so
+// that there is a band for testing whether pixels have data.
+export function getRasterJoinBands(opts) {
+  var bands = [];
+  [opts.calc, opts.where].forEach(function(exp) {
+    String(exp || '').replace(/\bband([1-9][0-9]*)\b/g, function(match, num) {
+      if (!bands.includes(num - 1)) bands.push(num - 1);
+      return match;
+    });
   });
-  return names;
-}
-
-// Number of bands in the source file, or 0 if unknown
-function getSourceBandCount(src) {
-  var sourceId = src.layer.raster.sourceId;
-  var sources = src.dataset && src.dataset.info && src.dataset.info.raster_sources || [];
-  var info = sources.find(function(o) { return o.id == sourceId; });
-  return info && info.bands > 0 ? info.bands : 0;
+  return bands.length > 0 ? bands.sort(function(a, b) { return a - b; }) : [0];
 }
 
 // Copies the band values of a pixel into @rec. A value that equals the nodata
 // value or is NaN (which some float rasters use as nodata) is copied as NaN.
-// Returns false if every band is nodata.
-function readPixel(grid, pixelId, bandNames, rec) {
+// Returns false if every band in @usedBands (grid band indexes) is nodata.
+function readPixel(grid, pixelId, bandNames, usedBands, rec) {
   var offset = pixelId * grid.bands;
-  var hasData = false;
   var val;
   for (var i = 0; i < bandNames.length; i++) {
     val = grid.samples[offset + i];
-    if (sampleIsNodata(val, grid.nodata)) {
-      val = NaN;
-    } else {
-      hasData = true;
-    }
-    rec[bandNames[i]] = val;
+    rec[bandNames[i]] = sampleIsNodata(val, grid.nodata) ? NaN : val;
   }
-  return hasData;
+  return pixelHasData(grid, pixelId, usedBands);
 }
 
-function pixelHasData(grid, pixelId) {
+function pixelHasData(grid, pixelId, usedBands) {
   var offset = pixelId * grid.bands;
-  for (var i = 0; i < grid.bands; i++) {
-    if (!sampleIsNodata(grid.samples[offset + i], grid.nodata)) return true;
+  for (var i = 0; i < usedBands.length; i++) {
+    if (!sampleIsNodata(grid.samples[offset + usedBands[i]], grid.nodata)) return true;
   }
   return false;
 }
@@ -256,11 +228,11 @@ function countUsedPixels(used) {
   return countNonzero(used);
 }
 
-function countValidPixels(grid) {
+function countValidPixels(grid, usedBands) {
   var n = grid.width * grid.height;
   var count = 0;
   for (var i = 0; i < n; i++) {
-    if (rasterPixelIsCovered(grid, i) && pixelHasData(grid, i)) count++;
+    if (rasterPixelIsCovered(grid, i) && pixelHasData(grid, i, usedBands)) count++;
   }
   return count;
 }

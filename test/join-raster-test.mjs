@@ -66,6 +66,39 @@ async function join(rasterDataset, shapes, opts) {
   return catalog.getLayers().find(function(o) { return o.layer.name == 'shape'; }).layer.data.getRecords();
 }
 
+var tmpFileCount = 0;
+
+async function withFile(bytes, fn) {
+  var file = path.join(os.tmpdir(), 'mapshaper-join-raster-' + process.pid + '-' + (++tmpFileCount) + '.tif');
+  fs.writeFileSync(file, bytes);
+  try {
+    return await fn(file);
+  } finally {
+    if (fs.existsSync(file)) fs.unlinkSync(file);
+  }
+}
+
+async function importRasterLayer(file, importOpts) {
+  var raster = await internal.importFileAsync(file, importOpts);
+  raster.layers[0].name = 'raster';
+  raster.info.crs_string = 'wgs84';
+  return raster;
+}
+
+// Joins a raster layer imported from @file, after @edit(raster) if given
+async function joinImportedFile(file, shapes, calc, importOpts, edit) {
+  var raster = await importRasterLayer(file, importOpts || {});
+  if (edit) edit(raster.layers[0].raster);
+  return join(raster, shapes, 'calc="' + calc + '"');
+}
+
+// An edit the way raster commands make them, with a new sample array
+function timesTen(raster) {
+  raster.grid = Object.assign({}, raster.grid, {
+    samples: raster.grid.samples.map(function(val) { return val * 10; })
+  });
+}
+
 function ringArea(ring) {
   var sum = 0;
   for (var i = 0; i < ring.length - 1; i++) {
@@ -347,6 +380,21 @@ describe('-join with a raster source', function () {
       assert.deepEqual(shapes.layers[0].data.getRecords(), [{n: 800}]);
     });
 
+    it('reads a layer imported at reduced resolution from its source file', async function () {
+      var records = await withFile(makeGeoTIFF(), function(file) {
+        return joinImportedFile(file, [[square(0, 0, 40, 20)]], 'n = sum(band1)', {resolution: 10});
+      });
+      assert.deepEqual(records, [{n: 800}]);
+    });
+
+    it('rejects an edited layer imported at reduced resolution', async function () {
+      await withFile(makeGeoTIFF(), async function(file) {
+        await assert.rejects(
+          joinImportedFile(file, [[square(0, 0, 40, 20)]], 'n = sum(band1)', {resolution: 10}, timesTen),
+          /\[raster\] was imported at reduced resolution, and it has been edited since then.*resolution=full/);
+      });
+    });
+
     it('records when a raster was imported at reduced resolution', async function () {
       var reduced = await internal.importFileAsync('r.tif', {input: {'r.tif': makeGeoTIFF()}, resolution: 10});
       var full = await internal.importFileAsync('r.tif', {input: {'r.tif': makeGeoTIFF()}});
@@ -357,32 +405,30 @@ describe('-join with a raster source', function () {
   });
 
   describe('bands', function () {
-    // 2x2 pixels; every pixel of band k has the value k
-    function makeGeoTIFF(bands) {
-      var samples = new Uint8Array(4 * bands).map(function(_, i) { return i % bands + 1; });
+    // @size x @size pixels; every pixel of band k has the value k
+    function makeGeoTIFF(bands, size) {
+      size = size || 2;
+      var samples = new Uint8Array(size * size * bands).map(function(_, i) { return i % bands + 1; });
       return Buffer.from(internal.encodeGeoTIFF({
-        width: 2, height: 2, bands: bands, pixelType: 'uint8',
+        width: size, height: size, bands: bands, pixelType: 'uint8',
         samples: samples, nodata: null,
-        bbox: [0, 0, 2, 2], transform: [1, 0, 0, 0, -1, 2]
+        bbox: [0, 0, size, size], transform: [1, 0, 0, 0, -1, size]
       }, {}));
     }
 
     async function joinFile(bands, calc) {
-      var file = path.join(os.tmpdir(), 'mapshaper-join-raster-bands-test.tif');
-      var catalog = new internal.Catalog();
-      var shapes = importPolygons([[square(0, 0, 2, 2)]]);
-      fs.writeFileSync(file, makeGeoTIFF(bands));
-      catalog.addDataset(shapes);
-      try {
+      return withFile(makeGeoTIFF(bands), async function(file) {
+        var catalog = new internal.Catalog();
+        var shapes = importPolygons([[square(0, 0, 2, 2)]]);
+        catalog.addDataset(shapes);
         await internal.runParsedCommands(
           internal.parseCommands('-join "' + file + '" target=shape calc="' + calc + '"'),
           new internal.Job(catalog));
-      } finally {
-        fs.unlinkSync(file);
-      }
-      return shapes.layers[0].data.getRecords();
+        return shapes.layers[0].data.getRecords();
+      });
     }
 
+    // a layer imported without a file to read again
     async function joinLayer(bands, calc) {
       var raster = await internal.importFileAsync('r.tif', {input: {'r.tif': makeGeoTIFF(bands)}});
       raster.layers[0].name = 'raster';
@@ -390,7 +436,7 @@ describe('-join with a raster source', function () {
       return join(raster, [[square(0, 0, 2, 2)]], 'calc="' + calc + '"');
     }
 
-    it('reads every band of a raster file named in -join', async function () {
+    it('reads the bands of a raster file named in -join', async function () {
       assert.deepEqual(await joinFile(2, 'a = sum(band1), b = sum(band2)'), [{a: 4, b: 8}]);
       assert.deepEqual(await joinFile(5, 'b = sum(band2), e = sum(band5)'), [{b: 8, e: 20}]);
     });
@@ -399,14 +445,52 @@ describe('-join with a raster source', function () {
       assert.deepEqual(await joinLayer(5, 'c = sum(band3)'), [{c: 12}]);
     });
 
-    it('explains how to join a band that a raster layer was imported without', async function () {
+    it('reads a band that a raster layer lacks from its source file', async function () {
+      var records = await withFile(makeGeoTIFF(5), function(file) {
+        return joinImportedFile(file, [[square(0, 0, 2, 2)]], 'a = sum(band1), e = sum(band5)');
+      });
+      assert.deepEqual(records, [{a: 4, e: 20}]);
+    });
+
+    it('joins the samples of an edited layer that has the bands', async function () {
+      var records = await withFile(makeGeoTIFF(5), function(file) {
+        return joinImportedFile(file, [[square(0, 0, 2, 2)]], 'a = sum(band1)', {}, timesTen);
+      });
+      assert.deepEqual(records, [{a: 40}]);
+    });
+
+    it('rejects an edited layer that lacks a band', async function () {
+      await withFile(makeGeoTIFF(5), async function(file) {
+        await assert.rejects(joinImportedFile(file, [[square(0, 0, 2, 2)]], 'e = sum(band5)', {}, timesTen),
+          /was imported without band5, and it has been edited since then.*name the raster file in the command/);
+      });
+    });
+
+    it('rejects a source file that changed after the layer was imported', async function () {
+      await withFile(makeGeoTIFF(5), async function(file) {
+        var raster = await importRasterLayer(file, {});
+        fs.writeFileSync(file, makeGeoTIFF(5, 4));
+        await assert.rejects(join(raster, [[square(0, 0, 2, 2)]], 'calc="e = sum(band5)"'),
+          /The source file of raster layer \[raster\] .*has changed since it was imported/);
+      });
+    });
+
+    it('rejects a layer whose source file can\'t be read', async function () {
       await assert.rejects(joinLayer(5, 'e = sum(band5)'),
-        /imported with 3 of the file's 5 bands, so band5 is unavailable .*name the file in the -join command/);
+        /Unable to read the source file of raster layer \[raster\]/);
     });
 
     it('rejects a band that the raster does not have', async function () {
       await assert.rejects(joinLayer(2, 'c = sum(band3)'), /The raster has no band3 \(available: band1\)/);
-      await assert.rejects(joinFile(2, 'c = sum(band3)'), /The raster has no band3 \(available: band1, band2\)/);
+      await assert.rejects(joinFile(2, 'c = sum(band3)'), /The raster has no band3 \(available: band1\)/);
+    });
+
+    it('treats copies of imported samples as unedited', async function () {
+      var raster = await internal.importFileAsync('r.tif', {input: {'r.tif': makeGeoTIFF(1)}});
+      var grid = raster.layers[0].raster.grid;
+      assert.equal(internal.rasterSamplesAreFromSource(grid), true);
+      assert.equal(internal.rasterSamplesAreFromSource(internal.copyRasterGrid(grid)), true);
+      assert.equal(internal.rasterSamplesAreFromSource(Object.assign({}, grid, {samples: grid.samples.slice()})), false);
     });
   });
 

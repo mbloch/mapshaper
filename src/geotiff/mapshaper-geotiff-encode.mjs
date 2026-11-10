@@ -11,6 +11,7 @@
 
 import { deflateSync } from '../io/mapshaper-gzip';
 import { error } from '../utils/mapshaper-logging';
+import { getRasterDisplayBands } from '../rasters/mapshaper-raster-display-bands';
 
 var TIFF_TYPES = {
   ASCII: 2,
@@ -317,7 +318,7 @@ function getTagEntries(grid, strips, rowsPerStrip, compress, geoKeys) {
     long(TAGS.ImageLength, [grid.height]),
     short(TAGS.BitsPerSample, repeat(bytesPerSample * 8, bands)),
     short(TAGS.Compression, [compress ? COMPRESSION_DEFLATE : COMPRESSION_NONE]),
-    short(TAGS.PhotometricInterpretation, [getPhotometricInterpretation(bands)]),
+    short(TAGS.PhotometricInterpretation, [getPhotometricInterpretation(grid)]),
     long(TAGS.StripOffsets, repeat(0, strips.length)), // filled in after layout
     short(TAGS.SamplesPerPixel, [bands]),
     long(TAGS.RowsPerStrip, [rowsPerStrip]),
@@ -328,7 +329,7 @@ function getTagEntries(grid, strips, rowsPerStrip, compress, geoKeys) {
     ascii(TAGS.Software, 'mapshaper'),
     short(TAGS.SampleFormat, repeat(getSampleFormat(grid.samples), bands))
   ];
-  var extraSamples = getExtraSamples(bands);
+  var extraSamples = getExtraSamples(grid);
   if (extraSamples) {
     entries.push(short(TAGS.ExtraSamples, extraSamples));
   }
@@ -343,21 +344,26 @@ function getTagEntries(grid, strips, rowsPerStrip, compress, geoKeys) {
   });
 }
 
-// Three or more bands are rendered as RGB(A) elsewhere in mapshaper, so they
-// are tagged that way here; anything else is a measurement raster whose first
-// band is the one to display.
-function getPhotometricInterpretation(bands) {
-  return bands >= 3 ? PHOTOMETRIC_RGB : PHOTOMETRIC_BLACK_IS_ZERO;
+// A grid whose first three bands are displayed as red, green and blue is
+// tagged as RGB; anything else is tagged as a measurement raster, since TIFF
+// has no way to say that other bands are the color bands.
+function getPhotometricInterpretation(grid) {
+  return gridIsRGB(grid) ? PHOTOMETRIC_RGB : PHOTOMETRIC_BLACK_IS_ZERO;
+}
+
+function gridIsRGB(grid) {
+  return getRasterDisplayBands(grid).color.join(',') == '0,1,2';
 }
 
 // Bands beyond the ones the photometric interpretation accounts for have to be
-// declared as extra samples. A fourth band is treated as alpha, matching the
-// renderer; other extras are left unspecified rather than guessing at them.
-function getExtraSamples(bands) {
-  var colorBands = bands >= 3 ? 3 : 1;
-  var extras = repeat(EXTRA_SAMPLE_UNSPECIFIED, bands - colorBands);
+// declared as extra samples. The displayed alpha band is declared as alpha;
+// other extras are left unspecified rather than guessing at them.
+function getExtraSamples(grid) {
+  var colorBands = gridIsRGB(grid) ? 3 : 1;
+  var alpha = getRasterDisplayBands(grid).alpha;
+  var extras = repeat(EXTRA_SAMPLE_UNSPECIFIED, grid.bands - colorBands);
   if (extras.length === 0) return null;
-  if (bands == 4) extras[0] = EXTRA_SAMPLE_UNASSOCIATED_ALPHA;
+  if (alpha >= colorBands) extras[alpha - colorBands] = EXTRA_SAMPLE_UNASSOCIATED_ALPHA;
   return extras;
 }
 

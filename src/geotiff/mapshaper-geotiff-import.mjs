@@ -12,6 +12,8 @@ import { getPixelCoordinatesWarning, getPixelTransform, getWorldFileBBox, getWor
   parseWorldFile, scaleWorldTransform } from '../rasters/mapshaper-world-file';
 import { message, stop, warn, warnOnce } from '../utils/mapshaper-logging';
 import { createRasterPreview, getRasterViewRecipe } from '../rasters/mapshaper-raster-utils';
+import { markRasterSamplesAsSource } from '../rasters/mapshaper-raster-source';
+import utils from '../utils/mapshaper-utils';
 import { FULL_RESOLUTION_HINT, getMaxImportPixels, getRasterImportSize, parseImportResolution, setReducedResolution } from '../rasters/mapshaper-raster-import-size';
 
 var TAG_EXTRA_SAMPLES = 338;
@@ -120,14 +122,14 @@ async function importGeoTIFFImage(importImage, input, opts, sourceImage, georef,
   var width = importImage.width;
   var height = importImage.height;
   var samplesPerPixel = image.getSamplesPerPixel();
-  var samples = opts.all_bands ? getAllSamples(samplesPerPixel) : getDisplaySamples(image);
+  var samples = opts.source_bands ? getRequestedSamples(image, opts.source_bands) : getDisplaySamples(image);
   var imageBbox = georef.bbox;
   repairDeferredOffsetArrays(image);
   var data = await readGeoTIFFSamples(image, samples, width, height);
   var noData = getNoDataValue(image);
   var pixelType = getPixelType(image);
   var bandInfo = await readBandValueInfo(sourceImage, samples, aux);
-  var scaled = applyBandScaling(data, samples.length, bandInfo, noData, !!opts.all_bands);
+  var scaled = applyBandScaling(data, samples.length, bandInfo, noData, !!opts.source_bands);
   var verticalUnits = parseVerticalUnits(bandInfo[0].units) ||
     await readGeoKeyVerticalUnits(sourceImage);
   var sourceId = getSourceId(input);
@@ -173,10 +175,11 @@ async function importGeoTIFFImage(importImage, input, opts, sourceImage, georef,
     raster.grid.pixelCoordinates = true;
   }
   setReducedResolution(raster, sourceImage.getWidth(), sourceImage.getHeight());
+  markRasterSamplesAsSource(raster.grid);
   raster.view.recipe = getRasterViewRecipe(raster.grid, raster.view.recipe, opts);
   // The renderer treats a grid's bands as gray, RGB or RGBA, so a grid holding
-  // every band of the file can't be previewed
-  if (runningInBrowser() && !opts.all_bands) {
+  // other bands of the file can't be previewed
+  if (runningInBrowser() && !opts.source_bands) {
     raster.view.preview = createRasterPreview(raster, opts);
   }
   return {
@@ -427,7 +430,7 @@ async function readGeoTIFFSamples(image, samples, width, height) {
 }
 
 function useRGBRead(image, samples) {
-  return samples.length == 3 && getPhotometricInterpretation(image) == 6 && image.readRGB;
+  return samples.join(',') == '0,1,2' && getPhotometricInterpretation(image) == 6 && image.readRGB;
 }
 
 // The bands that are displayed: the first band, or the first three as RGB,
@@ -474,14 +477,20 @@ function getColorSampleCount(image) {
   return 1;
 }
 
-// The all_bands import option reads every band, for commands that measure
-// band values (-join) rather than display them. The other raster commands and
-// the renderer expect a grid of 1, 3 or 4 display bands, so a grid like this
-// should not be added to the catalog.
-function getAllSamples(samplesPerPixel) {
-  var samples = [];
-  for (var i = 0; i < samplesPerPixel; i++) samples.push(i);
-  return samples;
+// The source_bands import option (an array of 0-based band indexes) reads the
+// bands a command measures (-join) rather than the ones it would display. The
+// other raster commands and the renderer expect a grid of 1, 3 or 4 display
+// bands, so a grid like this should not be added to the catalog. Bands the file
+// doesn't have are skipped, for the command to report. The bands of a YCbCr
+// image are read together, since they are converted to RGB together.
+function getRequestedSamples(image, bands) {
+  var samplesPerPixel = image.getSamplesPerPixel();
+  var samples = bands.filter(function(i) { return i >= 0 && i < samplesPerPixel; });
+  if (getPhotometricInterpretation(image) == 6) {
+    samples = utils.uniq([0, 1, 2].concat(samples));
+  }
+  samples.sort(function(a, b) { return a - b; });
+  return samples.length > 0 ? samples : [0];
 }
 
 function getNoDataValue(image) {
