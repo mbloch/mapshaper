@@ -747,9 +747,33 @@ layer.
 `-join <raster> calc=...` aggregates the pixels that overlap each polygon of a
 target layer (`src/join/mapshaper-raster-polygon-join.mjs`). Each pixel has a
 weight: by default the fraction of its area inside the polygon, and with
-`point-method` 1 for pixels whose centers are inside it. Polygons are
-processed one at a time, over the window of pixels their bounding box
-overlaps, so a pixel can count toward overlapping polygons.
+`point-method` 1 for pixels whose centers are inside it. Each polygon is
+processed over the window of pixels its bounding box overlaps, so a pixel can
+count toward overlapping polygons.
+
+- The grid is processed in bands of rows (`forEachRowBand()`), and each
+  polygon is processed band by band over the part of its window in the band.
+  The `calc=` accumulators of a polygon whose window spans several bands are
+  saved between them (`getState()`/`setState()` of the compiled expression),
+  and a polygon's record is written after the band containing the last row
+  of its window. A pixel gets the same weight in any window that contains
+  it, so the results don't depend on the band height.
+- A raster imported for a join (a file named in `-join`, or a source file
+  read again) keeps its pixels in the file: with the internal `row_reader`
+  import option, a GeoTIFF read at full size gets a `raster.rowReader`
+  (`{blockHeight, readRows(r0, r1)}`) and a grid without samples. Bands are
+  then about `PIXELS_PER_ROW_BAND` pixels, rounded to whole strips or rows of
+  tiles, and bands that no polygon's window reaches aren't read at all, so a
+  target smaller than the raster reads only the rows under it. The reader
+  decodes strips and tiles itself (`getGeoTIFFRowReader()` in
+  `mapshaper-geotiff-resample.mjs`), falling back to `readRasters()` with a
+  window for the formats it doesn't support; YCbCr files go through
+  `readRGB()`. Band scaling is applied as each band is read. A raster
+  already in memory (a catalog layer joined as it is) is processed as a
+  single band.
+- The used-pixel flags and valid-pixel counts for the join message are per
+  band. When bands were skipped, the message counts the valid pixels only in
+  the rows that were read.
 
 - Pixel-center weights come from `getShapePixelMask()`, the per-shape form of
   the clipping mask. Crossings are computed in whole-grid pixel coordinates

@@ -14,7 +14,7 @@ import { message, stop, warn, warnOnce } from '../utils/mapshaper-logging';
 import { createRasterPreview, getRasterViewRecipe } from '../rasters/mapshaper-raster-utils';
 import { markRasterSamplesAsSource } from '../rasters/mapshaper-raster-source';
 import { registerGeoTIFFLZWDecoder } from './mapshaper-geotiff-lzw';
-import { readResampledGeoTIFFSamples } from './mapshaper-geotiff-resample';
+import { getGeoTIFFRowReader, readResampledGeoTIFFSamples } from './mapshaper-geotiff-resample';
 import utils from '../utils/mapshaper-utils';
 import { FULL_RESOLUTION_HINT, getMaxImportPixels, getRasterImportSize, parseImportResolution, setReducedResolution } from '../rasters/mapshaper-raster-import-size';
 
@@ -129,18 +129,26 @@ async function importGeoTIFFImage(importImage, input, opts, sourceImage, georef,
   var samples = opts.source_bands ? getRequestedSamples(image, opts.source_bands) : getDisplaySamples(image);
   var imageBbox = georef.bbox;
   repairDeferredOffsetArrays(image);
-  var data = await readGeoTIFFSamples(image, samples, width, height);
   var noData = getNoDataValue(image);
   var pixelType = getPixelType(image);
   var bandInfo = await readBandValueInfo(sourceImage, samples, aux);
-  var scaled = applyBandScaling(data, samples.length, bandInfo, noData, !!opts.source_bands);
+  var scaling = getBandScaling(bandInfo);
+  var perBand = !!opts.source_bands;
+  // With opts.row_reader, the pixels are left in the file, to be read a band of
+  // rows at a time (see getRasterRowBlocks())
+  var rowReader = opts.row_reader && width == image.getWidth() && height == image.getHeight() ?
+    await getGeoTIFFRowBlockReader(image, samples, scaling, noData, perBand) : null;
+  var data = rowReader ? null : await readGeoTIFFSamples(image, samples, width, height);
+  var scaled = scaling && data ? applyBandScaling(data, samples.length, scaling, noData, perBand) : null;
   var verticalUnits = parseVerticalUnits(bandInfo[0].units) ||
     await readGeoKeyVerticalUnits(sourceImage);
   var sourceId = getSourceId(input);
   var raster;
   if (scaled) {
     data = scaled.samples;
-    noData = scaled.nodata;
+  }
+  if (scaling) {
+    noData = getScaledNodata(noData, scaling);
     pixelType = 'float32';
   }
   raster = {
@@ -178,12 +186,15 @@ async function importGeoTIFFImage(importImage, input, opts, sourceImage, georef,
   if (georef.type == 'pixels') {
     raster.grid.pixelCoordinates = true;
   }
+  if (rowReader) {
+    raster.rowReader = rowReader;
+  }
   setReducedResolution(raster, sourceImage.getWidth(), sourceImage.getHeight());
   markRasterSamplesAsSource(raster.grid);
   raster.view.recipe = getRasterViewRecipe(raster.grid, raster.view.recipe, opts);
   // The renderer treats a grid's bands as gray, RGB or RGBA, so a grid holding
   // other bands of the file can't be previewed
-  if (runningInBrowser() && !opts.source_bands) {
+  if (runningInBrowser() && !opts.source_bands && data) {
     raster.view.preview = createRasterPreview(raster, opts);
   }
   return {
@@ -226,27 +237,38 @@ function readMetadataNumber(str) {
   return isFinite(val) ? val : null;
 }
 
+// The scale and offset of each band, or null if no band is scaled
+function getBandScaling(bandInfo) {
+  var scales = bandInfo.map(function(o) { return o.scale != null ? o.scale : 1; });
+  var offsets = bandInfo.map(function(o) { return o.offset != null ? o.offset : 0; });
+  if (scales.every(function(s) { return s == 1; }) && offsets.every(function(o) { return o === 0; })) {
+    return null;
+  }
+  return {scales: scales, offsets: offsets};
+}
+
+function getScaledNodata(nodata, scaling) {
+  return nodata !== null && nodata !== undefined ?
+    Math.fround(nodata * scaling.scales[0] + scaling.offsets[0]) : null;
+}
+
 // Stored values are often scaled to fit a smaller integer type, with GDAL's
 // SCALE and OFFSET giving the real value: raw * scale + offset. These are
 // applied here, so that elevation commands, -info and pixel readouts all see
-// real values. Returns {samples, nodata} with Float32 samples, or null if no
-// band is scaled.
+// real values. Returns {samples, nodata} with Float32 samples.
 // Nodata pixels are given the scaled nodata value, rounded to Float32 so that
 // testing samples against it is exact.
 // @perBand: give every sample that matches the nodata value the scaled nodata
 //   value, not just the color bands of nodata pixels (for all_bands grids,
 //   whose bands can have different scales)
-function applyBandScaling(data, bandCount, bandInfo, nodata, perBand) {
-  var scales = bandInfo.map(function(o) { return o.scale != null ? o.scale : 1; });
-  var offsets = bandInfo.map(function(o) { return o.offset != null ? o.offset : 0; });
+function applyBandScaling(data, bandCount, scaling, nodata, perBand) {
+  var scales = scaling.scales;
+  var offsets = scaling.offsets;
   var hasNodata = nodata !== null && nodata !== undefined;
   var colorBands = Math.min(bandCount, 3);
   var out, newNodata, i, j;
-  if (scales.every(function(s) { return s == 1; }) && offsets.every(function(o) { return o === 0; })) {
-    return null;
-  }
   out = new Float32Array(data.length);
-  newNodata = hasNodata ? Math.fround(nodata * scales[0] + offsets[0]) : null;
+  newNodata = getScaledNodata(nodata, scaling);
   for (i = 0; i < data.length; i += bandCount) {
     if (hasNodata && samplesAreNodataAtOffset(data, i, bandCount, nodata)) {
       for (j = 0; j < colorBands; j++) out[i + j] = newNodata;
@@ -417,6 +439,21 @@ function getResizedImportImage(importImage, size) {
     width: size.width,
     height: size.height
   });
+}
+
+// Returns {blockHeight, readRows(r0, r1)}, where readRows() returns the samples
+// of rows [r0, r1) as the importer would store them
+async function getGeoTIFFRowBlockReader(image, samples, scaling, nodata, perBand) {
+  var readRows = useRGBRead(image, samples) ? function(r0, r1) {
+    return image.readRGB({window: [0, r0, image.getWidth(), r1], interleave: true});
+  } : await getGeoTIFFRowReader(await loadGeoTIFFLib(), image, samples);
+  return {
+    blockHeight: image.getTileHeight(),
+    readRows: async function(r0, r1) {
+      var data = await readRows(r0, r1);
+      return scaling ? applyBandScaling(data, samples.length, scaling, nodata, perBand).samples : data;
+    }
+  };
 }
 
 async function readGeoTIFFSamples(image, samples, width, height) {

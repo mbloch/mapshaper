@@ -559,4 +559,72 @@ describe('-join with a raster source', function () {
       assert(find([1, 2, 3], [1, 1, 4], 0.5) > 2);
     });
   });
+
+  describe('reading a band of rows at a time', function () {
+    // 160x100 float32 pixels of 0.01 degrees, in 32-row strips
+    var FILE = 'test/data/geotiff/lzw-float32-predictor-strips.tif';
+    var TARGETS = [
+      [[[0.05, 0.02], [1.5, 0.5], [0.3, 0.97], [0.05, 0.02]]],
+      [square(0.703, 0.401, 0.957, 0.433)],
+      [square(0.1, 0.1, 0.9, 0.9), square(0.3, 0.3, 0.6, 0.6).reverse()],
+      [square(0.5, 0.05, 1.55, 0.95)],
+      [square(2, 2, 3, 3)]
+    ];
+    var CALC = 'n = count(), s = sum(band1), m = mean(band1), med = median(band1), lo = min(band1), hi = max(band1)';
+
+    async function joinFile(cmd) {
+      var catalog = new internal.Catalog();
+      var shapes = importPolygons(TARGETS);
+      shapes.info.crs_string = 'wgs84';
+      catalog.addDataset(shapes);
+      await internal.runParsedCommands(internal.parseCommands('-join "' + FILE + '" target=shape ' + cmd),
+        new internal.Job(catalog));
+      return shapes.layers[0].data.getRecords();
+    }
+
+    async function joinLayer(cmd) {
+      var raster = await importRasterLayer(FILE, {resolution: 'full'});
+      return join(raster, TARGETS, cmd);
+    }
+
+    async function withBandPixels(n, fn) {
+      var prev = internal.setRasterJoinBandPixels(n);
+      try {
+        return await fn();
+      } finally {
+        internal.setRasterJoinBandPixels(prev);
+      }
+    }
+
+    ['calc="' + CALC + '"', 'point-method calc="' + CALC + '"'].forEach(function(cmd) {
+      it('gets the same results in one pass and three rows at a time: ' + cmd.split(' ')[0], async function () {
+        var expected = await joinLayer(cmd);
+        assert.equal(expected[4].n, 0);
+        assert(expected.slice(0, 4).every(function(rec) { return rec.n > 0; }));
+        assert.deepEqual(await joinFile(cmd), expected);
+        assert.deepEqual(await withBandPixels(160 * 3, function() { return joinLayer(cmd); }), expected);
+        assert.deepEqual(await withBandPixels(160 * 3, function() { return joinFile(cmd); }), expected);
+      });
+    });
+
+    it('reads only the blocks of rows under the targets', async function () {
+      var raster = await importRasterLayer(FILE, {resolution: 'full', source_bands: [0], row_reader: true});
+      var lyr = raster.layers[0];
+      var shapes = importPolygons([[square(0.2, 0.4, 0.4, 0.6)]]);
+      var reader = lyr.raster.rowReader;
+      var reads = [];
+      var readRows = reader.readRows;
+      assert.equal(lyr.raster.grid.samples, null);
+      reader.readRows = function(r0, r1) {
+        reads.push([r0, r1]);
+        return readRows(r0, r1);
+      };
+      await withBandPixels(160 * 3, function() {
+        return internal.joinRasterToPolygons(shapes.layers[0], shapes, {layer: lyr, dataset: raster},
+          {calc: 'n = count()'});
+      });
+      assert.deepEqual(reads, [[32, 64]]);
+      assert.deepEqual(shapes.layers[0].data.getRecords(), [{n: 400}]);
+    });
+  });
 });

@@ -63,7 +63,7 @@ function findRasterSourceInfo(dataset, sourceId) {
 // pixels), so import options are only needed for reading the pixels
 async function readRasterSource(info, dataset, bands) {
   var importOpts = dataset && dataset.info && dataset.info.import_options || {};
-  var opts = utils.defaults({resolution: 'full', source_bands: bands, no_topology: true}, importOpts);
+  var opts = utils.defaults({resolution: 'full', source_bands: bands, row_reader: true, no_topology: true}, importOpts);
   var reader = getRasterSourceReader();
   var group, datasets;
   if (reader) {

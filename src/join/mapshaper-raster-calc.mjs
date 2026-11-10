@@ -18,7 +18,10 @@ import utils from '../utils/mapshaper-utils';
 //   the values of each pixel before calling addPixel()
 // @pixelCenters: true if every weight is 1. Quantiles are then calculated
 //   like those of compileCalcExpression().
-// Returns {addPixel(weight), finish(destRec)}
+// Returns {addPixel(weight), finish(destRec), getState(), setState(state)}
+// getState() and setState() let the pixels of several targets be added in
+// turns: the state of the target in progress is saved, and restored when
+// more of its pixels come along (null starts a new target).
 export function compileRasterCalcExpression(exp, pixelLyr, pixelCenters) {
   var weight = 0, rowNo = 0, colNo = 0, colCount = -1, cols = [];
   var QuantileAccumulator = getQuantileAccumulator(!pixelCenters);
@@ -82,6 +85,15 @@ export function compileRasterCalcExpression(exp, pixelLyr, pixelCenters) {
       colCount = -1;
       cols = [];
       return result;
+    },
+    getState: function() {
+      return {cols: cols, rowNo: rowNo, colCount: colCount};
+    },
+    setState: function(state) {
+      cols = state ? state.cols : [];
+      rowNo = state ? state.rowNo : 0;
+      colCount = state ? state.colCount : -1;
+      colNo = 0;
     }
   };
 

@@ -13,7 +13,7 @@ import { layerHasRaster } from '../dataset/mapshaper-layer-type-utils';
 import { requireOverlaySourceCRS, getDatasetCRS } from '../crs/mapshaper-projections';
 import { initDataTable } from '../dataset/mapshaper-layer-utils';
 
-cmd.join = function(targetLyr, targetDataset, src, opts) {
+cmd.join = async function(targetLyr, targetDataset, src, opts) {
   // Opt in to the post-join summary emitted by joinTableToLayer().
   // Other commands can reuse the helper without showing this message.
   opts = Object.assign({}, opts, {show_join_message: true});
@@ -23,7 +23,7 @@ cmd.join = function(targetLyr, targetDataset, src, opts) {
   }
   if (layerHasRaster(src.layer)) {
     requireOverlaySourceCRS(targetDataset, src.dataset);
-    retn = joinRasterToPolygons(targetLyr, targetDataset, src, opts);
+    retn = await joinRasterToPolygons(targetLyr, targetDataset, src, opts);
   } else if (opts.keys) {
     // join using data in attribute fields
     if (opts.keys.length != 2) {

@@ -1,9 +1,9 @@
-// Reads a GeoTIFF image at a reduced size one row of strips or tiles at a time,
-// keeping only the pixels that the reduced grid samples. geotiff.js's
-// readRasters() instead assembles the whole full-size image before resampling
-// it, which took more than 4 GB for a 24795 x 21762 float32 image.
-// Pixels are picked as readRasters() picks them for nearest-neighbor
-// resampling, so the result is the same.
+// Reads a GeoTIFF image one row of strips or tiles at a time: at a reduced
+// size, keeping only the pixels that the reduced grid samples, or a range of
+// rows at full resolution. geotiff.js's readRasters() instead assembles the
+// whole full-size image before resampling it, which took more than 4 GB for a
+// 24795 x 21762 float32 image. Pixels are picked as readRasters() picks them
+// for nearest-neighbor resampling, so the result is the same.
 
 // Compressions whose geotiff.js decoders need only the parameters below
 var SUPPORTED_COMPRESSIONS = [1, 5, 8, 32773, 32946, 50000];
@@ -12,12 +12,43 @@ var SUPPORTED_COMPRESSIONS = [1, 5, 8, 32773, 32946, 50000];
 // that this reader doesn't handle (the caller then uses readRasters())
 // geotiff: the geotiff.js module
 export async function readResampledGeoTIFFSamples(geotiff, image, samples, width, height) {
+  var reader = await getGeoTIFFBlockReader(geotiff, image, samples);
+  if (!reader) return null;
+  return reader.read(getSourceIndexes(image.getHeight(), height), getSourceIndexes(image.getWidth(), width));
+}
+
+// Returns a function for reading full-resolution rows [r0, r1) of an image as
+// pixel-interleaved samples. Reads a file's blocks directly where possible,
+// else through readRasters().
+export async function getGeoTIFFRowReader(geotiff, image, samples) {
+  var reader = await getGeoTIFFBlockReader(geotiff, image, samples);
+  var cols = getIndexRange(0, image.getWidth());
+  return function(r0, r1) {
+    if (reader) return reader.read(getIndexRange(r0, r1), cols);
+    return image.readRasters({window: [0, r0, image.getWidth(), r1], samples: samples, interleave: true});
+  };
+}
+
+// Returns {read(srcRows, srcCols)}, which reads the source pixels at the
+// given rows and columns, or null if the image is stored in a way that this
+// reader doesn't handle
+async function getGeoTIFFBlockReader(geotiff, image, samples) {
   var layout = getSampleLayout(image, samples);
   var compression = image.fileDirectory.getValue('Compression') || 1;
   var decoder;
   if (!layout || SUPPORTED_COMPRESSIONS.indexOf(compression) == -1 || !geotiff.getDecoder) return null;
   decoder = await geotiff.getDecoder(compression, await getDecoderParameters(image));
-  return readBlocks(image, decoder, layout, width, height);
+  return {
+    read: function(srcRows, srcCols) {
+      return readBlocks(image, decoder, layout, srcRows, srcCols);
+    }
+  };
+}
+
+function getIndexRange(start, end) {
+  var idx = new Uint32Array(end - start);
+  for (var i = 0; i < idx.length; i++) idx[i] = start + i;
+  return idx;
 }
 
 // The parameters of geotiff.js's default decoder parameter function
@@ -68,15 +99,14 @@ function platformIsLittleEndian() {
   return new Uint8Array(new Uint16Array([1]).buffer)[0] == 1;
 }
 
-async function readBlocks(image, decoder, layout, width, height) {
-  var srcWidth = image.getWidth(), srcHeight = image.getHeight();
-  var blockWidth = image.getTileWidth(), blockHeight = image.getTileHeight();
+// @srcRows, @srcCols: for each output row and column, the source row or column
+// (both nondecreasing)
+async function readBlocks(image, decoder, layout, srcRows, srcCols) {
+  var width = srcCols.length;
   var bands = layout.samples.length;
-  var out = new layout.ArrayType(width * height * bands);
-  var srcCols = getSourceIndexes(srcWidth, width);
-  var srcRows = getSourceIndexes(srcHeight, height);
-  var colRanges = getBlockRanges(srcCols, blockWidth);
-  var rowRanges = getBlockRanges(srcRows, blockHeight);
+  var out = new layout.ArrayType(width * srcRows.length * bands);
+  var colRanges = getBlockRanges(srcCols, image.getTileWidth());
+  var rowRanges = getBlockRanges(srcRows, image.getTileHeight());
   for (var r = 0; r < rowRanges.length; r++) {
     await Promise.all(colRanges.map(function(cols) {
       return copyBlockSamples(image, decoder, layout, out, rowRanges[r], cols, srcRows, srcCols, width);

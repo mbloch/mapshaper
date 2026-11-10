@@ -562,7 +562,9 @@ export async function runCommand(command, job) {
       outputLayers = applyCommandToEachLayer(cmd.innerlines, targetLayers, arcs, opts);
 
     } else if (name == 'join') {
-      applyCommandToEachLayer(cmd.join, targetLayers, targetDataset, source, opts);
+      for (let lyr of targetLayers) {
+        await cmd.join(lyr, targetDataset, source, opts);
+      }
 
     } else if (name == 'lines') {
       outputLayers = applyCommandToEachLayer(cmd.lines, targetLayers, targetDataset, opts);
@@ -931,11 +933,13 @@ async function resolveSourceForTargets(command, job, targets) {
 // A raster joined to polygons is measured, not displayed, so it is read at
 // full resolution instead of the reduced size used for large rasters, and with
 // the bands that the join uses instead of the display bands -- from the file
-// named in the command, or from the source file of a raster layer
+// named in the command, or from the source file of a raster layer. A GeoTIFF
+// is read during the join, a band of rows at a time (row_reader).
 async function findSourceForCommand(name, opts, catalog, targets) {
   var sourceName = convertSourceName(opts.source, targets);
   var joinBands = name == 'join' ? getRasterJoinBands(opts) : null;
-  var importOpts = joinBands ? utils.defaults({resolution: 'full', source_bands: joinBands}, opts) : opts;
+  var importOpts = joinBands ?
+    utils.defaults({resolution: 'full', source_bands: joinBands, row_reader: true}, opts) : opts;
   var source = await findCommandSourceAsync(sourceName, catalog, importOpts, targets);
   if (joinBands && !opts.keys) {
     source = await getRasterSourceBands(source, joinBands);
