@@ -276,9 +276,8 @@ async function readGeoKeyVerticalUnits(image) {
   }
   if (!result || result.errors && (result.errors.verticalCsNotSupported ||
       result.errors.verticalCsUnitsNotSupported)) return null;
-  z = result.coordinatesConversionParameters && result.coordinatesConversionParameters.z;
-  // a number when read from a vertical CRS, {m: <meters>} from a unit code
-  return getVerticalUnitsFromMeters(typeof z == 'number' ? z : z && z.m);
+  z = result.conversionParameters && result.conversionParameters.z;
+  return getVerticalUnitsFromMeters(z);
 }
 
 function getRasterInterpretation(opts) {
