@@ -79,12 +79,12 @@ export async function importImageRaster(input, optsArg) {
 }
 
 function showResampledImageMessage(decoded, opts) {
-  var msg = 'Using resampled image for import: ' + decoded.width + 'x' + decoded.height +
+  var msg = 'image to ' + decoded.width + 'x' + decoded.height +
     ' (source: ' + decoded.sourceWidth + 'x' + decoded.sourceHeight + ').';
   if (parseImportResolution(opts.resolution)) {
-    message(msg);
+    message('Downsampling ' + msg);
   } else {
-    warnOnce(msg + ' ' + FULL_RESOLUTION_HINT);
+    warnOnce('Automatically downsampling ' + msg + ' ' + FULL_RESOLUTION_HINT);
   }
 }
 

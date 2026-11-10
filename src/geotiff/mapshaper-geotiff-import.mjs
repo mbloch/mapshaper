@@ -340,9 +340,9 @@ async function selectGeoTIFFImportImage(tiff, sourceImage, opts) {
   }
   if (best.slug != 'full' || best.width != source.width || best.height != source.height) {
     if (resolution || opts.rendition) {
-      message(getImportRenditionMessage(best, source));
+      message(getImportRenditionMessage(best, source, !!opts.rendition, false));
     } else {
-      warnOnce(getImportRenditionMessage(best, source) + ' ' + FULL_RESOLUTION_HINT);
+      warnOnce(getImportRenditionMessage(best, source, false, true) + ' ' + FULL_RESOLUTION_HINT);
     }
   }
   return best;
@@ -412,14 +412,18 @@ function getRenditionsMessage(renditions, selected) {
   return lines.join('\n');
 }
 
-function getImportRenditionMessage(importImage, source) {
-  if (importImage.resampled) {
-    return 'Using resampled GeoTIFF ' + (importImage.sourceSlug == 'full' ? 'full-resolution image' : 'rendition ' + importImage.sourceSlug) +
-      ' for import: ' + importImage.width + 'x' + importImage.height +
-      ' (source: ' + source.width + 'x' + source.height + ').';
+// @requested: the rendition= option chose the rendition
+// @automatic: the import size limit chose the size
+function getImportRenditionMessage(importImage, source, requested, automatic) {
+  var readFrom = importImage.resampled ? importImage.sourceSlug : importImage.slug;
+  var size = importImage.width + 'x' + importImage.height;
+  var sourceSize = source.width + 'x' + source.height;
+  if (requested && !importImage.resampled) {
+    return 'Importing GeoTIFF rendition ' + readFrom + ': ' + size + ' (source: ' + sourceSize + ').';
   }
-  return 'Using reduced-resolution GeoTIFF rendition for import: ' + importImage.slug + ' ' +
-    importImage.width + 'x' + importImage.height + ' (source: ' + source.width + 'x' + source.height + ').';
+  return (automatic ? 'Automatically downsampling' : 'Downsampling') +
+    ' GeoTIFF raster to ' + size + ' (source: ' + sourceSize +
+    (readFrom == 'full' ? '' : ', read from ' + readFrom) + ').';
 }
 
 // The smallest rendition at least @width pixels wide, so that resampling to
