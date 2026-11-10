@@ -764,7 +764,7 @@ overlaps, so a pixel can count toward overlapping polygons.
 - A raster file named as the join source is imported with `resolution=full`
   and `all_bands` (`getSourceImportOpts()` in `mapshaper-run-command.mjs`).
   `all_bands` is an internal GeoTIFF import option that reads every band
-  instead of the 1, 3 or 4 display bands. The grid it makes is only measured,
+  instead of the display bands. The grid it makes is only measured,
   never added to the catalog or rendered, since the renderer and the other
   raster commands treat band counts as gray, RGB or RGBA. A catalog layer
   keeps its display bands; naming a band it lacks stops with a message that

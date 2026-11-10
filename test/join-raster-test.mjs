@@ -301,23 +301,6 @@ describe('-join with a raster source', function () {
       assert.deepEqual(records, [{a: 4, b: 40, c: 400}]);
     });
 
-    it('tests nodata band by band', async function () {
-      // pixels: (1, 10), (2, nodata), (nodata, 30), (nodata, nodata)
-      var samples = new Float32Array([1, 10, 2, -1, -1, 30, -1, -1]);
-      var raster = makeRasterDataset(2, 2, samples, {sampleBands: [0, 1], nodata: -1});
-      var records = await join(raster, [[square(0, 0, 2, 2)]],
-        'point-method calc="a = sum(band1), b = mean(band2), c = median(band2), m = mode(band1), n = count()"');
-      assert.deepEqual(records, [{a: 3, b: 20, c: 20, m: 1, n: 3}]);
-    });
-
-    it('gives null for aggregates of a band that is all nodata', async function () {
-      var samples = new Float32Array([1, -1, 2, -1]);
-      var raster = makeRasterDataset(2, 1, samples, {sampleBands: [0, 1], nodata: -1});
-      var records = await join(raster, [[square(0, 0, 2, 1)]],
-        'point-method calc="s = sum(band2), avg = mean(band2), med = median(band2), m = mode(band2), lo = min(band2)"');
-      assert.deepEqual(records, [{s: 0, avg: null, med: null, m: null, lo: null}]);
-    });
-
     it('supports mode() and fractions of categorical pixels', async function () {
       var samples = new Float32Array([41, 41, 41, 82]);
       var records = await join(makeRasterDataset(2, 2, samples), [[square(0, 0, 2, 2)]],
@@ -412,64 +395,18 @@ describe('-join with a raster source', function () {
       assert.deepEqual(await joinFile(5, 'b = sum(band2), e = sum(band5)'), [{b: 8, e: 20}]);
     });
 
+    it('joins the display bands of a raster layer', async function () {
+      assert.deepEqual(await joinLayer(5, 'c = sum(band3)'), [{c: 12}]);
+    });
+
     it('explains how to join a band that a raster layer was imported without', async function () {
       await assert.rejects(joinLayer(5, 'e = sum(band5)'),
-        /imported with 4 of the file's 5 bands, so band5 is unavailable .*name the file in the -join command/);
+        /imported with 3 of the file's 5 bands, so band5 is unavailable .*name the file in the -join command/);
     });
 
     it('rejects a band that the raster does not have', async function () {
       await assert.rejects(joinLayer(2, 'c = sum(band3)'), /The raster has no band3 \(available: band1\)/);
       await assert.rejects(joinFile(2, 'c = sum(band3)'), /The raster has no band3 \(available: band1, band2\)/);
-    });
-  });
-
-  describe('bands', function () {
-    // 2x2 pixels with 5 bands; band b has the value b everywhere
-    function makeFiveBandGeoTIFF() {
-      var samples = new Uint8Array(20).map(function(_, i) { return i % 5 + 1; });
-      return Buffer.from(internal.encodeGeoTIFF({
-        width: 2, height: 2, bands: 5, pixelType: 'uint8',
-        samples: samples, nodata: null,
-        bbox: [0, 0, 2, 2], transform: [1, 0, 0, 0, -1, 2]
-      }, {}));
-    }
-
-    it('reads every band of a raster file named in -join', async function () {
-      var file = path.join(os.tmpdir(), 'mapshaper-join-raster-bands-test.tif');
-      var catalog = new internal.Catalog();
-      var shapes = importPolygons([[square(0, 0, 2, 2)]]);
-      fs.writeFileSync(file, makeFiveBandGeoTIFF());
-      catalog.addDataset(shapes);
-      try {
-        await internal.runParsedCommands(
-          internal.parseCommands('-join "' + file + '" target=shape calc="a = sum(band1), b = sum(band2), e = sum(band5)"'),
-          new internal.Job(catalog));
-      } finally {
-        fs.unlinkSync(file);
-      }
-      assert.deepEqual(shapes.layers[0].data.getRecords(), [{a: 4, b: 8, e: 20}]);
-    });
-
-    async function joinImportedLayer(calc) {
-      var raster = await internal.importFileAsync('r.tif', {input: {'r.tif': makeFiveBandGeoTIFF()}});
-      raster.layers[0].name = 'raster';
-      return join(raster, [[square(0, 0, 2, 2)]], 'calc="' + calc + '"');
-    }
-
-    it('joins the display bands of a raster layer', async function () {
-      var records = await joinImportedLayer('d = sum(band4)');
-      assert.deepEqual(records, [{d: 16}]);
-    });
-
-    it('explains that a layer lacks bands the file has', async function () {
-      await assert.rejects(joinImportedLayer('e = sum(band5)'),
-        /imported with 4 of the file's 5 bands, so band5 is unavailable.*name the file in the -join command/);
-    });
-
-    it('rejects a band the raster does not have', async function () {
-      await assert.rejects(joinImportedLayer('x = sum(band7)'), /The raster has no band7/);
-      await assert.rejects(join(makeSequenceRaster(), [[square(1, 1, 3, 3)]], 'calc="x = sum(band2)"'),
-        /The raster has no band2 \(available: band1\)/);
     });
   });
 

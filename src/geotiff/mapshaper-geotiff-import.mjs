@@ -14,6 +14,9 @@ import { message, stop, warn, warnOnce } from '../utils/mapshaper-logging';
 import { createRasterPreview, getRasterViewRecipe } from '../rasters/mapshaper-raster-utils';
 import { FULL_RESOLUTION_HINT, getMaxImportPixels, getRasterImportSize, parseImportResolution, setReducedResolution } from '../rasters/mapshaper-raster-import-size';
 
+var TAG_EXTRA_SAMPLES = 338;
+var EXTRA_SAMPLE_ASSOCIATED_ALPHA = 1;
+var EXTRA_SAMPLE_UNASSOCIATED_ALPHA = 2;
 var geotiffPromise = null;
 var geoKeysToProj4Promise = null;
 var dynamicImportModule = Function('id', 'return import(id)');
@@ -117,7 +120,7 @@ async function importGeoTIFFImage(importImage, input, opts, sourceImage, georef,
   var width = importImage.width;
   var height = importImage.height;
   var samplesPerPixel = image.getSamplesPerPixel();
-  var samples = opts.all_bands ? getAllSamples(samplesPerPixel) : getDisplaySamples(samplesPerPixel);
+  var samples = opts.all_bands ? getAllSamples(samplesPerPixel) : getDisplaySamples(image);
   var imageBbox = georef.bbox;
   repairDeferredOffsetArrays(image);
   var data = await readGeoTIFFSamples(image, samples, width, height);
@@ -427,10 +430,48 @@ function useRGBRead(image, samples) {
   return samples.length == 3 && getPhotometricInterpretation(image) == 6 && image.readRGB;
 }
 
-function getDisplaySamples(samplesPerPixel) {
-  if (samplesPerPixel >= 4) return [0, 1, 2, 3];
-  if (samplesPerPixel >= 3) return [0, 1, 2];
-  return [0];
+// The bands that are displayed: the first band, or the first three as RGB,
+// plus an alpha band if the file has one. As in GDAL, a band is alpha only if
+// the ExtraSamples tag says so, so the near-infrared band of a four-band aerial
+// image is left out instead of being shown as transparency. (A gray image's
+// alpha band is left out too, since two-band gray + alpha is not displayed.)
+function getDisplaySamples(image) {
+  var samplesPerPixel = image.getSamplesPerPixel();
+  var alpha;
+  if (samplesPerPixel < 3) return [0];
+  alpha = findAlphaSample(image, 3);
+  return alpha > -1 ? [0, 1, 2, alpha] : [0, 1, 2];
+}
+
+// Index of the first alpha sample at or after @minSample, or -1
+function findAlphaSample(image, minSample) {
+  var extras = getExtraSamples(image);
+  var firstExtra = getColorSampleCount(image);
+  var type;
+  for (var i = Math.max(minSample, firstExtra); i < image.getSamplesPerPixel(); i++) {
+    type = extras[i - firstExtra];
+    if (type == EXTRA_SAMPLE_ASSOCIATED_ALPHA || type == EXTRA_SAMPLE_UNASSOCIATED_ALPHA) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function getExtraSamples(image) {
+  var fileDirectory = image && image.fileDirectory;
+  var extras = fileDirectory && fileDirectory.actualizedFields &&
+    fileDirectory.actualizedFields.get(TAG_EXTRA_SAMPLES);
+  if (extras === undefined || extras === null) return [];
+  return typeof extras == 'number' ? [extras] : Array.from(extras);
+}
+
+// Number of samples that the photometric interpretation accounts for; any
+// others are extra samples, described by the ExtraSamples tag
+function getColorSampleCount(image) {
+  var photometric = getPhotometricInterpretation(image);
+  if (photometric == 2 || photometric == 6 || photometric == 8) return 3; // RGB, YCbCr, CIELab
+  if (photometric == 5) return 4; // CMYK
+  return 1;
 }
 
 // The all_bands import option reads every band, for commands that measure

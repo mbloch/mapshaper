@@ -191,8 +191,13 @@ Import currently decodes the selected display bands from the selected import
 rendition into `raster.grid.samples`. This makes the imported layer immediately
 editable without reopening the GeoTIFF. The default band selection is simple:
 
-- Three or more samples per pixel become an RGB(A) image layer.
-- Single-band rasters become a grayscale image layer.
+- Three or more samples per pixel become an RGB image layer, from the first
+  three samples. If the ExtraSamples tag declares a later sample as alpha
+  (associated or unassociated), it is added as a fourth band. Other extra
+  samples, such as a near-infrared band, are left out; a missing ExtraSamples
+  tag means none of them is alpha, as in GDAL.
+- One- and two-sample rasters become a grayscale image layer from the first
+  sample (a gray image's alpha band is left out).
 
 For large GeoTIFFs, Mapshaper applies the same automatic rendition policy in the
 CLI and web UI: if the full-resolution image exceeds the default import size

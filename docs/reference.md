@@ -1177,7 +1177,7 @@ By default, each pixel is treated as a rectangle and weighted by the fraction of
 
 `where=` filters pixels, and can refer to the target record as `target`. Only the `calc=`, `where=`, `point-method`, `unmatched` and `target=` options apply. The raster and the polygons must use the same coordinate system, and rotated rasters are not supported.
 
-A raster file named in the `-join` command is read at full resolution and with every band. A raster layer imported earlier has only the bands used for display (the first band, or the first three or four bands of a color image), so to join other bands of a multi-band file, name the file in the `-join` command. A raster layer that was imported at reduced resolution (the default for large rasters) gives a warning, since its pixel values are averages of the source pixels.
+A raster file named in the `-join` command is read at full resolution and with every band. A raster layer imported earlier has only the bands used for display (the first band, or the first three bands of a color image plus an alpha band if the file has one), so to join other bands of a multi-band file, name the file in the `-join` command. A raster layer that was imported at reduced resolution (the default for large rasters) gives a warning, since its pixel values are averages of the source pixels.
 
 **Examples**
 
