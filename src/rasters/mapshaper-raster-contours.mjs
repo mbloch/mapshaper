@@ -6,7 +6,7 @@
 // vertices therefore span from the first pixel center to the last, half a
 // pixel inside the grid bbox. This matches gdal_contour.
 
-import { getRasterGrid, rasterGridIsRotated } from './mapshaper-raster-utils';
+import { getRasterGrid, getRasterGridBandIndex, rasterGridIsRotated } from './mapshaper-raster-utils';
 import { getRasterValidityMask } from './mapshaper-raster-grid';
 import { D2R, degreesToMeters } from '../geom/mapshaper-basic-geom';
 import { stop } from '../utils/mapshaper-logging';
@@ -141,13 +141,9 @@ export function validateRasterGridForContours(grid) {
   }
 }
 
+// Returns a grid band index
 export function getContourBand(grid, opts) {
-  var band = opts && 'band' in opts ? opts.band : 0;
-  if (!(band >= 0) || band !== Math.floor(band) || band >= grid.bands) {
-    stop('Invalid band=' + band + '; this raster has ' + grid.bands +
-      (grid.bands == 1 ? ' band' : ' bands'));
-  }
-  return band;
+  return getRasterGridBandIndex(grid, opts && opts.band);
 }
 
 export function getContourLevels(grid, band, opts) {

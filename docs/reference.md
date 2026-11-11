@@ -2053,8 +2053,8 @@ divides the raster's value range into roughly fifteen steps.
 `base=` Value to align `interval=` to (the default is 0). For example
 `interval=100 base=50` gives levels at 50, 150, 250 and so on.
 
-`band=` Index of the band to read values from (the default is 0). Elevation
-models normally have a single band.
+`band=` Band to read values from, numbered from 1 as in the source file (the
+default is 1). Elevation models normally have a single band.
 
 `field=` Name of the output field holding each line's contour value. The default
 is `value`. This option applies to line output, not `closed` output.
@@ -2152,7 +2152,7 @@ Convert an elevation raster to shaded relief. By default, the shading is transpa
 
 `gamma=`  Shape of the tone curve; below 1 strengthens faint shading (default is 0.75).
 
-`band=`  Band containing elevation values (default is 0).
+`band=`  Band containing elevation values, numbered from 1 (default is 1).
 
 Common options: `name=` `target=` `+`
 
@@ -2186,7 +2186,7 @@ Color an elevation raster with hypsometric tints.
 
 `background=`  Color to place the result over, making it opaque.
 
-`band=`  Band containing elevation values (default is 0).
+`band=`  Band containing elevation values, numbered from 1 (default is 1).
 
 `verbose`  Print the elevation of each break.
 

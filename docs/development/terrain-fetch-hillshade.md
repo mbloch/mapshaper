@@ -482,7 +482,7 @@ same pattern as other mapshaper commands.
 - `verbose` prints the settings used, including automatic ones such as
   `exaggeration=`, as command options that can be pasted back into a command,
   plus the ground pixel size. The global `-verbose` command prints them too.
-- `band=` band to read elevations from (default 0).
+- `band=` band to read elevations from, numbered from 1 (default 1).
 - `workers=` number of worker threads; 0 runs everything in the main thread.
   By default, rasters of at least 500,000 pixels use one worker per CPU core,
   up to 16, and smaller rasters none. The output is the same either way, so

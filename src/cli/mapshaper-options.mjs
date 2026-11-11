@@ -2671,8 +2671,8 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('band', {
-      describe: '[raster] band to read values from (default is 0)',
-      type: 'number'
+      describe: '[raster] band to read values from, numbered from 1 (default is 1)',
+      type: 'integer'
     })
     .option('field', {
       describe: 'name of field to hold contour values (default is "value")'
@@ -2883,7 +2883,7 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('band', {
-      describe: 'band containing elevation values (default is 0)',
+      describe: 'band containing elevation values, numbered from 1 (default is 1)',
       type: 'integer'
     })
     .option('workers', {
@@ -2926,7 +2926,7 @@ export function getOptionParser() {
     .option('opacity', rasterOpacityOpt)
     .option('background', rasterBackgroundOpt)
     .option('band', {
-      describe: 'band containing elevation values (default is 0)',
+      describe: 'band containing elevation values, numbered from 1 (default is 1)',
       type: 'integer'
     })
     .option('verbose', {

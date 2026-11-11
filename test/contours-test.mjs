@@ -263,6 +263,21 @@ describe('mapshaper-contours.mjs', function () {
       }, /this raster has 1 band/);
     });
 
+    it('numbers bands from 1, as in the source file', function () {
+      var grid = makeGrid(4, 4, function(x) { return x; });
+      assert.equal(internal.getContourBand(grid, {}), 0);
+      assert.equal(internal.getContourBand(grid, {band: 1}), 0);
+      assert.throws(function () {
+        internal.getContourBand(grid, {band: 0});
+      }, /bands are numbered from 1/);
+      grid.bands = 3;
+      grid.sampleBands = [0, 3, 4];
+      assert.equal(internal.getContourBand(grid, {band: 5}), 2);
+      assert.throws(function () {
+        internal.getContourBand(grid, {band: 2});
+      }, /this raster has bands 1, 4 and 5/);
+    });
+
     it('rejects a non-raster layer', function () {
       var dataset = {
         layers: [{name: 'points', geometry_type: 'point', shapes: [[[0, 0]]]}],

@@ -549,6 +549,21 @@ describe('-tint', function () {
     assert(pixel(grid, 0)[0] > pixel(grid, 100)[0]); // Greens goes from light to dark
   })
 
+  it('band= numbers bands from 1, as in the source file', async function () {
+    // file bands 2 and 4 (indexes 1 and 3); band 4 is the elevation ramp
+    var samples = new Float32Array(202);
+    for (var i = 0; i <= 100; i++) samples[i * 2 + 1] = i;
+    var catalog = makeCatalog(samples, 101, 1, 2, {interpretation: 'continuous', name: 'elevation'});
+    findLayer(catalog, 'elevation').raster.grid.sampleBands = [1, 3];
+    await run(catalog, '-tint colors=#000000,#ffffff band=4');
+    var grid = findLayer(catalog, 'elevation').raster.grid;
+    assert.deepEqual(pixel(grid, 0), [0, 0, 0]);
+    assert.deepEqual(pixel(grid, 100), [255, 255, 255]);
+    assert.equal(findLayer(catalog, 'elevation').raster.derivation.band, 4);
+    await assert.rejects(run(makeCatalog(samples, 101, 1, 2, {interpretation: 'continuous'}), '-tint colors=#000000,#ffffff band=3'),
+      /does not have band 3; this raster has 2 bands/);
+  })
+
   it('+ keeps the elevation raster', async function () {
     var catalog = await run(makeElevation(), '-tint + colors=#000000,#ffffff');
     assert.equal(findLayer(catalog, 'elevation').raster.grid.bands, 1);
@@ -561,7 +576,8 @@ describe('-tint', function () {
     await assert.rejects(run(makeElevation(), '-tint colors=#000000,#ffffff breaks=0,50,100'), /one value for each color/);
     await assert.rejects(run(makeElevation(), '-tint colors=#000000,#ffffff breaks=50,10'), /should increase/);
     await assert.rejects(run(makeElevation(), '-tint colors=#000000,#ffffff breaks=0,abc'), /Invalid breaks=/);
-    await assert.rejects(run(makeElevation(), '-tint colors=#000000,#ffffff band=1'), /does not have band 1/);
+    await assert.rejects(run(makeElevation(), '-tint colors=#000000,#ffffff band=2'), /does not have band 2; this raster has 1 band/);
+    await assert.rejects(run(makeElevation(), '-tint colors=#000000,#ffffff band=0'), /bands are numbered from 1/);
     await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tint colors=#000000,#ffffff'), /use -tone/);
   })
 })

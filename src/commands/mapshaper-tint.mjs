@@ -4,7 +4,7 @@ import { getColorRamp, isColorSchemeName } from '../color/color-schemes';
 import { layerHasRaster, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { getRasterValidityMask } from '../rasters/mapshaper-raster-grid';
 import { applyOpacityAndBackground, getColorRampTable, getRampIndex } from '../rasters/mapshaper-raster-color';
-import { getRasterGrid } from '../rasters/mapshaper-raster-utils';
+import { getRasterGrid, getRasterGridBandIndex } from '../rasters/mapshaper-raster-utils';
 import { getColoredRaster, getRasterBackground, getRasterOpacity } from './mapshaper-tone';
 import { stop, verbose } from '../utils/mapshaper-logging';
 
@@ -26,8 +26,8 @@ cmd.tint = function(lyr, opts) {
     stop('Command requires a raster layer');
   }
   grid = getRasterGrid(lyr.raster);
-  band = opts.band || 0;
-  validateTintGrid(lyr.raster, grid, band);
+  validateTintGrid(lyr.raster, grid);
+  band = getRasterGridBandIndex(grid, opts.band);
   opacity = getRasterOpacity(opts);
   background = getRasterBackground(opts);
   breakArgs = opts.breaks ? opts.breaks.map(parseBreak) : null;
@@ -62,22 +62,19 @@ cmd.tint = function(lyr, opts) {
       breaks: formatBreaks(breaks),
       opacity: opacity,
       background: opts.background || null,
-      band: band
+      band: opts.band || null
     })
   };
   setOutputLayerName(out, lyr, 'tint', opts);
   return [out];
 };
 
-function validateTintGrid(raster, grid, band) {
+function validateTintGrid(raster, grid) {
   if (!grid || !grid.samples || !grid.bbox) {
     stop('Raster layer is missing the data needed for tinting');
   }
   if (raster.interpretation == 'image' && grid.bands >= 3) {
     stop('-tint colors elevation rasters. To adjust the colors of an image, use -tone');
-  }
-  if (band < 0 || band >= grid.bands) {
-    stop('Raster layer does not have band', band);
   }
 }
 

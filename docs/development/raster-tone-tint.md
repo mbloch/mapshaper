@@ -346,7 +346,7 @@ imagery:
 | `colors=` | 1 | Color list or scheme name (as in `-classify` and `-colors`), low to high. |
 | `breaks=` | 1 | The elevation of each color: numbers (elevation units), percentages of the elevation range (`40%`), or a mix. Default spreads the colors evenly over the range. |
 | `opacity=`, `background=` | 1 | As in `-tone`. |
-| `band=` | 1 | Band containing elevation values (default 0), as in `-hillshade`. |
+| `band=` | 1 | Band containing elevation values, numbered from 1 (default 1), as in `-hillshade`. |
 | `+`, `name=`, `target=` | 1 | As for other commands. |
 | `verbose` | 1 | Prints the elevation each break resolved to. |
 | `interpolation=` | Later | `oklch` (default) or `rgb`. |

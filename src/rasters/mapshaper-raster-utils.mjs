@@ -24,6 +24,40 @@ export function getRasterGrid(raster) {
   return raster && (raster.grid || raster);
 }
 
+// Grid band index of a band= option. Bands are numbered from 1, as in the
+// source file, so a grid that holds only some of the file's bands
+// (grid.sampleBands) finds the band by its file number. Without @band, the
+// grid's first band.
+export function getRasterGridBandIndex(grid, band) {
+  var fileBands = grid.sampleBands || null;
+  var i;
+  if (band === undefined || band === null) return 0;
+  if (band === 0) {
+    stop('Invalid band=0; bands are numbered from 1');
+  }
+  if (!(band >= 1) || band !== Math.floor(band)) {
+    stop('Invalid band=' + band);
+  }
+  i = fileBands ? fileBands.indexOf(band - 1) : band - 1;
+  if (i < 0 || i >= grid.bands) {
+    stop('Raster layer does not have band ' + band + '; ' + describeGridBands(grid));
+  }
+  return i;
+}
+
+// e.g. "this raster has 1 band", "this raster has bands 1, 4 and 5"
+function describeGridBands(grid) {
+  var nums = utils.range(grid.bands).map(function(i) {
+    return grid.sampleBands && grid.sampleBands[i] >= 0 ? grid.sampleBands[i] + 1 : i + 1;
+  });
+  var contiguous = nums.every(function(n, i) { return n == i + 1; });
+  if (contiguous) {
+    return 'this raster has ' + nums.length + (nums.length == 1 ? ' band' : ' bands');
+  }
+  return 'this raster has bands ' + (nums.length == 1 ? nums[0] :
+    nums.slice(0, -1).join(', ') + ' and ' + nums[nums.length - 1]);
+}
+
 export function getRasterView(raster) {
   return raster && (raster.view || raster);
 }

@@ -2,7 +2,7 @@ import cmd from '../mapshaper-cmd';
 import { getDatasetCRS, getScaleFactorAtXY, isLatLngCRS } from '../crs/mapshaper-projections';
 import { layerHasRaster, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { getRasterValidityMask } from '../rasters/mapshaper-raster-grid';
-import { createRasterPreview, getRasterGrid, getRasterViewRecipe, rasterGridIsRotated } from '../rasters/mapshaper-raster-utils';
+import { createRasterPreview, getRasterGrid, getRasterGridBandIndex, getRasterViewRecipe, rasterGridIsRotated } from '../rasters/mapshaper-raster-utils';
 import {
   getDefaultHighlightRatio,
   getDefaultMaxOpacity,
@@ -179,12 +179,13 @@ function getSmoothingParams(method, opts) {
 cmd.hillshade = async function(lyr, dataset, opts, resume) {
   var grid, cells, elev, valid, altitude, exaggeration, style, out, result;
   var hasMin, toneOpts, azimuth, colors, smoothing, params, ambient, lights, stops = null;
-  var unitMeters, minElevation;
+  var unitMeters, minElevation, band;
   if (!layerHasRaster(lyr)) {
     stop('Command requires a raster layer');
   }
   grid = getRasterGrid(lyr.raster);
   validateHillshadeGrid(grid, opts);
+  band = getRasterGridBandIndex(grid, opts.band);
   style = getHillshadeStyle(opts);
   smoothing = getSmoothingMethod(opts);
   altitude = opts.altitude >= 0 ? opts.altitude : DEFAULT_ALTITUDE;
@@ -218,7 +219,7 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
   // In pixel coordinates, the ratio of a DEM's values to its pixel size is
   // unknown, whatever units the values are in, so the ratio is fitted instead.
   unitMeters = cells.unknown ?
-    getFittedElevationScale(lyr, grid, opts.band || 0, valid, cells) :
+    getFittedElevationScale(lyr, grid, band, valid, cells) :
     getElevationUnitMeters(grid);
   // min-elevation= is in the raster's own units, like the values -info shows
   minElevation = hasMin ? opts.min_elevation * unitMeters : null;
@@ -238,7 +239,7 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
     texture_detail: opts.texture > 0 ? opts.texture_detail || DEFAULT_TEXTURE_DETAIL : null,
     texture_highlights: opts.texture > 0 ? opts.texture_highlights || 0 : null,
     aerial: opts.aerial || 0,
-    band: opts.band || 0});
+    band: opts.band || null});
   verbose('Settings:', formatHillshadeSettings(params));
   if (!cells.unknown) {
     verbose('Ground pixel size:', formatPixelSize(cells.median));
@@ -246,7 +247,7 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
       verbose('Elevation units:', formatVerticalUnits(grid.verticalUnits));
     }
   }
-  elev = readElevationBand(grid, opts.band || 0, unitMeters);
+  elev = readElevationBand(grid, band, unitMeters);
   if (hasMin) {
     raiseLowElevations(elev, valid, minElevation);
   }
@@ -294,8 +295,7 @@ var UNFORMATTED_PARAMS = ['type', 'sourceId'];
 export function formatHillshadeSettings(params) {
   return Object.keys(params).filter(function(key) {
     var val = params[key];
-    return val !== null && val !== false && UNFORMATTED_PARAMS.indexOf(key) == -1 &&
-      !(key == 'band' && val === 0);
+    return val !== null && val !== false && UNFORMATTED_PARAMS.indexOf(key) == -1;
   }).map(function(key) {
     var name = key.replace(/_/g, '-');
     var val = params[key];
@@ -314,15 +314,11 @@ function formatPixelSize(meters) {
 }
 
 function validateHillshadeGrid(grid, opts) {
-  var band = opts.band || 0;
   if (!grid || !grid.samples || !grid.bbox) {
     stop('Raster layer is missing the data needed for hillshading');
   }
   if (rasterGridIsRotated(grid)) {
     stop('Hillshading does not support rotated or skewed rasters');
-  }
-  if (band < 0 || band >= grid.bands) {
-    stop('Raster layer does not have band', band);
   }
   if (opts.max_opacity != null && !(opts.max_opacity >= 0 && opts.max_opacity <= 1)) {
     stop('max-opacity= should be from 0 to 1');
