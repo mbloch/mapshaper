@@ -3,6 +3,7 @@ import { internal } from './gui-core';
 import { getLabelTarget } from './gui-label-commands';
 import { formatLayerNameForDisplay } from './gui-layer-utils';
 import { addEmptyLayer } from './gui-add-layer';
+import { layerHasPaletteRaster } from './gui-raster-band-values';
 
 export function InteractionMode(gui) {
   var self = this;
@@ -43,6 +44,11 @@ export function InteractionMode(gui) {
     raster: ['box', 'ruler'],
     // an RGB image, which -tone can adjust
     image: ['tone', 'box', 'ruler'],
+    // a data raster (a DEM, land cover...), which -classify can color
+    dataRaster: ['palette', 'box', 'ruler'],
+    // a grayscale image, which -tone can adjust (apart from its colors) and
+    // -classify can color
+    grayImage: ['tone', 'palette', 'box', 'ruler'],
     labels: ['info', 'label', 'symbols', 'selection', 'box', 'ruler'],
     // a layer of symbols, which the point tools have no controls for
     symbols: ['info', 'symbols', 'selection', 'box', 'ruler'],
@@ -77,6 +83,7 @@ export function InteractionMode(gui) {
     line_style: 'style/edit lines',
     polygon_style: 'style/edit polygons',
     tone: 'adjust colors',
+    palette: 'color palette',
     edit_points: 'style/edit points',
     edit_lines: 'draw lines',
     edit_polygons: 'draw polygons',
@@ -174,7 +181,7 @@ export function InteractionMode(gui) {
   };
 
   this.modeSupportsUndo = function(mode) {
-    return ['data', 'frame', 'label', 'label_style', 'symbols', 'point_style', 'line_style', 'polygon_style', 'edit_points', 'edit_lines', 'edit_polygons', 'snip_lines', 'vertices', 'rectangles'].includes(mode);
+    return ['data', 'frame', 'label', 'label_style', 'symbols', 'point_style', 'palette', 'line_style', 'polygon_style', 'edit_points', 'edit_lines', 'edit_polygons', 'snip_lines', 'vertices', 'rectangles'].includes(mode);
   };
 
   this.getMode = getInteractionMode;
@@ -271,7 +278,9 @@ export function InteractionMode(gui) {
       return menus.empty; // TODO: more sensible handling of missing layer
     }
     if (internal.layerHasRaster(o.layer)) {
-      return internal.rasterCanBeToned(o.layer.raster) ? menus.image : menus.raster;
+      if (internal.rasterCanBeToned(o.layer.raster)) return menus.image;
+      if (internal.rasterIsGrayImage(o.layer.raster)) return menus.grayImage;
+      return layerHasPaletteRaster(o.layer) ? menus.dataRaster : menus.raster;
     }
     if (!o.layer.geometry_type) {
       return menus.table;

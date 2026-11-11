@@ -11,6 +11,7 @@ import { initLabelMeasurement } from './gui-label-measure';
 import { LayerStyleTool } from './gui-layer-style-tool';
 import { PointStyleTool } from './gui-point-style-tool';
 import { RasterToneTool } from './gui-raster-tone-tool';
+import { RasterPaletteTool } from './gui-raster-palette-tool';
 import { SessionSnapshots } from './gui-session-snapshot-control';
 import { Model } from './gui-model';
 import { MshpMap } from './gui-map';
@@ -97,6 +98,7 @@ export function GuiInstance(container, opts) {
   gui.layerStyleTool = new LayerStyleTool(gui);
   gui.pointStyleTool = new PointStyleTool(gui);
   gui.rasterToneTool = new RasterToneTool(gui);
+  gui.rasterPaletteTool = new RasterPaletteTool(gui);
 
   gui.showProgressMessage = function(msg) {
     if (!gui.progressMessage) {

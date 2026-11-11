@@ -2197,7 +2197,7 @@ mapshaper dem.tif -hillshade -sharpen -o hillshade.png
 
 ### -tone
 
-Adjust the colors of an 8-bit RGB or RGBA image.
+Adjust the colors of an 8-bit RGB or RGBA image, or the tones of an 8-bit grayscale image. A grayscale image stays gray, with one band; `saturation=`, `hue-shift=` and `hue-pivot=` don't apply to it.
 
 `saturation=`  Multiply the colorfulness; 0 is gray (default is 1).
 

@@ -2,8 +2,8 @@ import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { parseColor } from '../color/color-utils';
 import { getDivergingStops } from '../classification/mapshaper-diverging';
-import { getRasterDisplayBands } from './mapshaper-raster-display-bands';
-import { createRasterPreview } from './mapshaper-raster-utils';
+import { getRasterDisplayBands, rasterGridDisplaysColor } from './mapshaper-raster-display-bands';
+import { createRasterPreview, getRasterGrid } from './mapshaper-raster-utils';
 import { runningInBrowser } from '../mapshaper-env';
 
 // Helpers for -classify on raster layers (see
@@ -39,9 +39,36 @@ export function validateRasterClassifyOptions(raster, grid, opts) {
   if (!opts.colors) {
     stop('Classifying a raster requires colors=');
   }
-  if (raster.interpretation == 'image' && getRasterDisplayBands(grid).color.length == 3) {
+  if (rasterIsColorImage(raster, grid)) {
     stop('-classify colors data rasters, not RGB images. To adjust the colors of an image, use -tone');
   }
+}
+
+// Whether -classify can give a raster a palette: any raster with values,
+// except an image displayed in color
+export function rasterCanTakePalette(raster) {
+  var grid = getRasterGrid(raster);
+  return !!(grid && grid.samples) && !rasterIsColorImage(raster, grid);
+}
+
+function rasterIsColorImage(raster, grid) {
+  return raster.interpretation == 'image' && rasterGridDisplaysColor(grid);
+}
+
+// The bands that -classify can color, leaving out an alpha band:
+// [{band, index, description}] (band: the file band number; index: the
+// grid's)
+export function getRasterClassifyBands(grid) {
+  var alpha = getRasterDisplayBands(grid).alpha;
+  var descriptions = grid.bandDescriptions || null;
+  var bands = [];
+  var band;
+  for (var i = 0; i < grid.bands; i++) {
+    if (i == alpha) continue;
+    band = grid.sampleBands && grid.sampleBands[i] >= 0 ? grid.sampleBands[i] + 1 : i + 1;
+    bands.push({band: band, index: i, description: descriptions && descriptions[band] || null});
+  }
+  return bands;
 }
 
 // The file band number (1-based) that -classify colors: from a band field

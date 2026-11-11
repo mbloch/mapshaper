@@ -7,14 +7,15 @@
 // A slider's name is its key in the settings object, which is the parsed
 // name of its -tone option; @option is the option as typed, if different.
 // @value is the default, which leaves the image alone (1 if missing).
+// @color: the slider changes colors, so a grayscale image doesn't have it.
 var LOG_RANGE = 3; // a log slider goes from 1/LOG_RANGE to LOG_RANGE
 
 export var TONE_SLIDERS = [
   {name: 'lightness', label: 'Lightness', scale: 'linear', min: 0, max: 2},
-  {name: 'saturation', label: 'Saturation', scale: 'linear', min: 0, max: 2},
+  {name: 'saturation', label: 'Saturation', scale: 'linear', min: 0, max: 2, color: true},
   {name: 'contrast', label: 'Contrast', scale: 'log'},
   {name: 'gamma', label: 'Gamma', scale: 'log'},
-  {name: 'hue_shift', option: 'hue-shift', label: 'Hue', scale: 'linear', min: -1, max: 1, value: 0},
+  {name: 'hue_shift', option: 'hue-shift', label: 'Hue', scale: 'linear', min: -1, max: 1, value: 0, color: true},
   {name: 'opacity', label: 'Opacity', scale: 'linear', min: 0, max: 1}
 ];
 

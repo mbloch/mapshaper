@@ -9,7 +9,8 @@ import {
   sliderPosToToneValue, toneColorsAreDefault, toneSettingsAreDefault, toneValueToSliderPos
 } from './gui-tone-settings';
 
-// The 'tone' mode: sliders that preview -tone settings on an RGB image. The
+// The 'tone' mode: sliders that preview -tone settings on an RGB or grayscale
+// image (which has no saturation and hue sliders). The
 // map shows a toned copy of the raster's preview, and the raster itself is
 // not changed until Apply runs -tone, which is what goes into the session
 // history and the undo stack. Leaving the mode any other way -- Cancel, the
@@ -21,7 +22,7 @@ export function RasterToneTool(gui) {
   var settings = getDefaultToneSettings();
   var targetLayer = null;
   var pivots; // the image's lightness pivots, once contrast or gamma needs them
-  var applyBtn;
+  var applyBtn, titleEl;
   var pendingFrame = null;
   var pendingExact = false;
   var keepPreview = false;
@@ -50,7 +51,7 @@ export function RasterToneTool(gui) {
   function initPanel() {
     var header = El('div').addClass('label-style-panel-title').appendTo(panel);
     var section, btnRow;
-    El('span').appendTo(header).text('Image colors');
+    titleEl = El('span').appendTo(header).text('Color & tone');
     El('button').addClass('label-style-close').appendTo(header).text('×').on('click', cancel);
     section = El('div').addClass('label-style-section').appendTo(panel);
     TONE_SLIDERS.forEach(function(slider) {
@@ -85,7 +86,7 @@ export function RasterToneTool(gui) {
       schedulePreview(true);
     });
     readout = El('span').addClass('raster-tone-slider-value').appendTo(row);
-    return {input: input, readout: readout};
+    return {row: row, input: input, readout: readout};
   }
 
   function updateSlider(slider) {
@@ -104,10 +105,16 @@ export function RasterToneTool(gui) {
   }
 
   function turnOn() {
+    var gray;
     targetLayer = getActiveLayer();
+    gray = internal.rasterIsGrayImage(targetLayer.raster);
+    titleEl.text(gray ? 'Tone' : 'Color & tone');
     settings = getDefaultToneSettings();
     pivots = undefined;
-    TONE_SLIDERS.forEach(updateSlider);
+    TONE_SLIDERS.forEach(function(slider) {
+      controls[slider.name].row.classed('hidden', gray && !!slider.color);
+      updateSlider(slider);
+    });
     panel.show();
   }
 
@@ -216,6 +223,7 @@ export function RasterToneTool(gui) {
 
   function activeLayerCanBeToned() {
     var lyr = getActiveLayer();
-    return !!(lyr && internal.layerHasRaster(lyr) && internal.rasterCanBeToned(lyr.raster));
+    return !!(lyr && internal.layerHasRaster(lyr) && (internal.rasterCanBeToned(lyr.raster) ||
+      internal.rasterIsGrayImage(lyr.raster)));
   }
 }

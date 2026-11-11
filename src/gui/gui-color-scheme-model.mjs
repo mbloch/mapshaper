@@ -1,5 +1,9 @@
 import { internal } from './gui-core';
 import { quoteCommandValue } from './gui-command-utils';
+import {
+  getRasterBandFields, getRasterBandValues, getRasterBandCounts, getRasterCategoryFields,
+  getRasterBandCategories, rasterHasContinuousValues, getRasterLayerPaletteKey
+} from './gui-raster-band-values';
 
 // The state behind the color scheme panel, as plain objects and functions
 // that return new ones. See docs/development/color-scheme-panel-design.md
@@ -24,6 +28,11 @@ import { quoteCommandValue } from './gui-command-utils';
 // has depends on the data, so the scheme keeps the layout that -classify
 // will find (see updateDivergingLayout()). A custom diverging ramp is pinned
 // at its ends and its center.
+//
+// On a raster layer, the fields are bands (see gui-raster-band-values.mjs),
+// and -classify sets the raster's palette instead of writing fills. A raster's
+// schemes have raster: true; their no-data color is null (transparent) unless
+// one is set, and there is no non-adjacent method.
 //
 // A continuous sequential or diverging scheme gives unclassed colors: its
 // tiles are color stops, at the data's min, the class breaks and its max,
@@ -64,6 +73,8 @@ import { quoteCommandValue } from './gui-command-utils';
 //                                             getDivergingLayout())
 //   nullColor       the color of features with no data (both types; not
 //                   used by non-adjacent schemes)
+//   raster          the scheme is for a raster layer
+//   paletteKey      raster schemes: the palette they gave the layer
 //   colors: [...]   the colors that were applied, for checking a layer later
 //   fillHash        continuous schemes: a fingerprint of the fills they gave
 //                   the layer (interpolated fills aren't the scheme's colors)
@@ -162,11 +173,61 @@ function flattenGroups(groups) {
   return groups.reduce(function(memo, group) { return memo.concat(group.names); }, []);
 }
 
-// The scheme a panel tab starts with on a layer
+// The scheme a panel tab starts with on a layer. A raster of continuous values
+// starts with continuous colors: classes of elevation look like contour
+// bands, which is a choice rather than a default.
 export function getDefaultSchemeOfType(type, lyr) {
-  if (type == 'categorical') return getDefaultCategoricalScheme(lyr);
-  if (type == 'diverging') return getDefaultDivergingScheme(lyr);
-  return getDefaultScheme(getNumericFields(lyr)[0]);
+  var scheme = type == 'categorical' ? getDefaultCategoricalScheme(lyr) :
+    type == 'diverging' ? getDefaultDivergingScheme(lyr) :
+    getDefaultScheme(getNumericFields(lyr)[0]);
+  if (!isRasterLayer(lyr)) return scheme;
+  scheme = setSchemeLayerType(scheme, lyr);
+  if (type != 'categorical' && rasterHasContinuousValues(lyr)) {
+    scheme = updateDivergingLayout(setSchemeContinuous(scheme, true), lyr);
+  }
+  return scheme;
+}
+
+function isRasterLayer(lyr) {
+  return !!(lyr && internal.layerHasRaster(lyr));
+}
+
+// Marks a scheme (e.g. an imported one) as being for a raster layer, or not
+export function setSchemeLayerType(scheme, lyr) {
+  var raster = isRasterLayer(lyr);
+  if (!!scheme.raster == raster) return scheme;
+  return Object.assign({}, scheme, {raster: raster});
+}
+
+// A number of the values that the scheme classifies, e.g. '3 features'. A
+// raster's are pixels of a sample, counted as a share of the sample: '12% of
+// pixels', or with short, '12%'.
+export function formatSchemeCount(scheme, lyr, n, short) {
+  if (!isRasterLayer(lyr)) return short ? String(n) : n + (n == 1 ? ' feature' : ' features');
+  return formatShare(n, getSchemeValueCounts(scheme, lyr).values) + (short ? '' : ' of pixels');
+}
+
+// The number of features with no data, or the share of a raster's pixels
+// that are nodata
+export function formatNoDataCount(scheme, lyr, n) {
+  if (!isRasterLayer(lyr)) return formatSchemeCount(scheme, lyr, n);
+  return formatShare(n, getSchemeValueCounts(scheme, lyr).total) + ' of pixels';
+}
+
+function formatShare(n, total) {
+  var pct = total > 0 ? n / total * 100 : 0;
+  if (pct > 0 && pct < 0.1) return '<0.1%';
+  if (pct < 100 && pct > 99.9) return '>99.9%';
+  return (pct < 10 ? Math.round(pct * 10) / 10 : Math.round(pct)) + '%';
+}
+
+// The number of values that the scheme's counts are out of, and for a
+// raster, the number of pixels (including nodata) and valid pixels:
+// {values, total, valid}
+export function getSchemeValueCounts(scheme, lyr) {
+  var counts = isRasterLayer(lyr) ? getRasterBandCounts(lyr, scheme.field) : null;
+  if (counts) return {values: counts.sampled, total: counts.total, valid: counts.count};
+  return {values: getAscendingValues(lyr, scheme.field).length, total: null, valid: null};
 }
 
 export function getDefaultDivergingScheme(lyr) {
@@ -239,6 +300,7 @@ export function setSchemeContinuous(scheme, continuous) {
 }
 
 function getAscendingValues(lyr, field) {
+  if (isRasterLayer(lyr)) return getRasterBandValues(lyr, field);
   if (!lyr || !lyr.data || !field || !lyr.data.fieldExists(field)) return [];
   return lyr.data.getRecords().map(function(rec) {
     return rec ? rec[field] : undefined;
@@ -573,10 +635,27 @@ export function getBreakClassCounts(scheme, lyr, breaks) {
 }
 
 // the number of values in each class (classes are [low, high), as -classify has them)
+// values: ascending
 function getClassCounts(breaks, values) {
   var counts = [];
-  for (var j=0; j<=breaks.length; j++) counts.push(getClassMembers(breaks, values, j).length);
+  var lo, hi;
+  for (var j=0; j<=breaks.length; j++) {
+    lo = j > 0 ? countValuesBelow(values, breaks[j - 1]) : 0;
+    hi = j < breaks.length ? countValuesBelow(values, breaks[j]) : values.length;
+    counts.push(Math.max(hi - lo, 0));
+  }
   return counts;
+}
+
+// the number of ascending values less than val
+function countValuesBelow(values, val) {
+  var lo = 0, hi = values.length, mid;
+  while (lo < hi) {
+    mid = (lo + hi) >>> 1;
+    if (values[mid] < val) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
 
 function getClassMembers(breaks, values, j) {
@@ -650,11 +729,8 @@ export function getPivotSummary(scheme, lyr) {
   var values = getAscendingValues(lyr, scheme.field);
   var pivot = scheme.layout ? scheme.layout.pivot : null;
   if (pivot === null) return null;
-  return {
-    pivot: pivot,
-    below: values.filter(function(val) { return val < pivot; }).length,
-    above: values.filter(function(val) { return val >= pivot; }).length
-  };
+  var below = countValuesBelow(values, pivot);
+  return {pivot: pivot, below: below, above: values.length - below};
 }
 
 // pivot: 'auto', 'median', 'mean' or a number
@@ -682,7 +758,7 @@ export function setSchemeSplit(scheme, split) {
 export function getDefaultCategoricalScheme(lyr) {
   var fields = getCategoryFields(lyr);
   var records = lyr && lyr.data ? lyr.data.getRecords() : [];
-  var field = fields.find(function(name) {
+  var field = isRasterLayer(lyr) ? fields[0] || null : fields.find(function(name) {
     return internal.getColumnType(name, records) == 'string';
   }) || fields[0] || null;
   var scheme = {
@@ -702,7 +778,10 @@ export function getMinSchemeColors(scheme) {
 }
 
 export function getSchemeMethods(scheme) {
-  return scheme.type == 'categorical' ? categoricalMethods : classifyMethods;
+  if (scheme.type != 'categorical') return classifyMethods;
+  return scheme.raster ? categoricalMethods.filter(function(item) {
+    return item.name != 'non-adjacent';
+  }) : categoricalMethods;
 }
 
 // count: the number of categories, for the categorical method
@@ -748,8 +827,11 @@ export function setSchemeMethod(scheme, method, field, count) {
 
 // Fields that a categorical scheme can classify: text and numbers. The
 // fill field is left out, since the scheme writes over it.
+// On a raster, integer bands with few enough values (see
+// getRasterCategoryFields()).
 export function getCategoryFields(lyr) {
   var records = lyr && lyr.data ? lyr.data.getRecords() : [];
+  if (isRasterLayer(lyr)) return getRasterCategoryFields(lyr);
   if (!lyr || !lyr.data) return [];
   return lyr.data.getFields().filter(function(field) {
     var type = internal.getColumnType(field, records);
@@ -760,6 +842,7 @@ export function getCategoryFields(lyr) {
 // The values of a field, in the order -classify gives them swatches. Empty
 // values are left out, as -classify leaves them out: they are no data.
 export function getCategories(lyr, field) {
+  if (isRasterLayer(lyr)) return getRasterBandCategories(lyr, field);
   if (!lyr || !lyr.data || !field || !lyr.data.fieldExists(field)) return [];
   return internal.getUniqFieldValues(lyr.data.getRecords(), field).filter(isCategoryValue);
 }
@@ -770,9 +853,13 @@ function isCategoryValue(val) {
   return !!val || val === 0;
 }
 
-// How many features the scheme gives the no-data color
+// How many features (or pixels) the scheme gives the no-data color
 export function getNoDataCount(lyr, scheme) {
-  var records, test;
+  var records, test, counts;
+  if (isRasterLayer(lyr)) {
+    counts = getRasterBandCounts(lyr, scheme.field);
+    return counts ? counts.total - counts.count : 0;
+  }
   if (!lyr || !lyr.data || !scheme.field || scheme.method == 'non-adjacent' ||
       !lyr.data.fieldExists(scheme.field)) return 0;
   records = lyr.data.getRecords();
@@ -786,14 +873,17 @@ function isFiniteNumber(val) {
   return typeof val == 'number' && isFinite(val);
 }
 
+// null: transparent (raster schemes only)
 export function getSchemeNullColor(scheme) {
+  if (scheme.raster) return scheme.nullColor || null;
   return scheme.nullColor || defaultNullColor;
 }
 
 // An empty or unreadable color is the default
 export function setSchemeNullColor(scheme, color) {
   var rgb = color ? internal.parseColor(color) : null;
-  return Object.assign({}, scheme, {nullColor: rgb ? internal.formatColor(rgb) : defaultNullColor});
+  var fallback = scheme.raster ? null : defaultNullColor;
+  return Object.assign({}, scheme, {nullColor: rgb ? internal.formatColor(rgb) : fallback});
 }
 
 // The categories each swatch colors, as -classify assigns them
@@ -1182,7 +1272,8 @@ export function formatSchemeCommand(scheme, colors, opts) {
     parts.push('continuous');
   }
   parts.push('colors=' + colors.join(','));
-  if (scheme.method != 'non-adjacent' && getSchemeNullColor(scheme) != defaultNullColor) {
+  if (scheme.raster ? !!getSchemeNullColor(scheme) :
+      scheme.method != 'non-adjacent' && getSchemeNullColor(scheme) != defaultNullColor) {
     parts.push('null-value=' + getSchemeNullColor(scheme));
   }
   if (opts && opts.target) {
@@ -1193,6 +1284,7 @@ export function formatSchemeCommand(scheme, colors, opts) {
 
 export function getNumericFields(lyr) {
   var records = lyr && lyr.data ? lyr.data.getRecords() : [];
+  if (isRasterLayer(lyr)) return getRasterBandFields(lyr);
   if (!lyr || !lyr.data) return [];
   return lyr.data.getFields().filter(function(field) {
     return internal.getColumnType(field, records) == 'number';
@@ -1221,6 +1313,9 @@ export function getLayerScheme(lyr) {
 // an undo past the scheme -- retires it.
 export function schemeMatchesLayer(scheme, lyr) {
   var records, colors, val;
+  if (isRasterLayer(lyr)) {
+    return !!scheme.paletteKey && scheme.paletteKey == getRasterLayerPaletteKey(lyr);
+  }
   if (!lyr || !lyr.data || !scheme.colors) return false;
   if (scheme.method != 'non-adjacent' && !lyr.data.fieldExists(scheme.field)) return false;
   if (isContinuousScheme(scheme)) {
@@ -1241,7 +1336,9 @@ export function schemeMatchesLayer(scheme, lyr) {
 // colors: the colors given to -classify
 export function getAppliedScheme(scheme, colors, lyr) {
   var applied = Object.assign({}, scheme, {colors: colors});
-  if (isContinuousScheme(scheme)) {
+  if (isRasterLayer(lyr)) {
+    applied.paletteKey = getRasterLayerPaletteKey(lyr);
+  } else if (isContinuousScheme(scheme)) {
     applied.fillHash = getFillFingerprint(lyr);
   } else {
     delete applied.fillHash;

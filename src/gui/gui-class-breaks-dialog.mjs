@@ -2,7 +2,7 @@ import { El } from './gui-el';
 import { claimFieldKeys, isTextInput, releasePanelFocus } from './gui-panel-focus';
 import {
   getSchemeBreaks, setSchemeBreak, getSchemeValues, getBreaksScale, getHistogram, getRoundestNumber,
-  getBreakClassSwatches, getBreakClassCounts
+  getBreakClassSwatches, getBreakClassCounts, formatSchemeCount
 } from './gui-color-scheme-model';
 
 // A popup beside the color scheme panel for editing a numeric scheme's class
@@ -147,8 +147,8 @@ export function ClassBreaksDialog(gui, opts) {
     pivotLine.classed('hidden', pivotPos < 0).css('left', pct(Math.max(pivotPos, 0)));
   }
 
-  // The classes from low to high, a color tile and the number of features in
-  // each, stacked; a rule across the boundary between two classes runs out to
+  // The classes from low to high, a color tile and the number of features (or
+  // share of pixels) in each, stacked; a rule across the boundary between two classes runs out to
   // the field with the break's value (see .class-breaks-list in page.css)
   function renderTable() {
     var breaks = info ? info.breaks : [];
@@ -188,7 +188,7 @@ export function ClassBreaksDialog(gui, opts) {
       var neutral = info.neutral && j > 0 && breaks[j - 1] == info.neutral[0];
       row.findChild('.class-breaks-swatch').css('background', swatches[j] || 'transparent');
       // the top row says what the numbers are
-      row.findChild('.class-breaks-count').text((j === 0 ? formatCount(counts[j]) : String(counts[j])) +
+      row.findChild('.class-breaks-count').text(formatSchemeCount(scheme, opts.getLayer(), counts[j], j > 0) +
         (neutral ? ' (pivot class)' : ''));
     });
     breaks.forEach(function(b, i) {
@@ -199,10 +199,6 @@ export function ClassBreaksDialog(gui, opts) {
       rules[i].classed('fixed', info.fixed[i]);
       if (document.activeElement != input || !isTextInput(input)) input.value = formatNumber(b);
     });
-  }
-
-  function formatCount(n) {
-    return n + (n == 1 ? ' feature' : ' features');
   }
 
   function getBreakLabel(i) {

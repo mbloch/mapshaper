@@ -88,13 +88,16 @@ export function getDivergingLayout(ascending, method, opts) {
 export function getDivergingStops(layout) {
   var edges = getSideEdges(layout);
   var below = [], above = [];
+  // the breaks are tidied (see tidyNumber()), so a break at an edge can fall
+  // a little to one side of it, e.g. a pivot taken from float32 data
+  var lo = tidyNumber(edges[0]), hi = tidyNumber(edges[1]);
   if (layout.below > 0) {
     below = [Math.min(layout.extent[0], edges[0])]
-      .concat(layout.breaks.filter(function(b) { return b < edges[0]; }), [edges[0]]);
+      .concat(layout.breaks.filter(function(b) { return b < edges[0] && tidyNumber(b) != lo; }), [edges[0]]);
   }
   if (layout.above > 0) {
     above = [edges[1]]
-      .concat(layout.breaks.filter(function(b) { return b > edges[1]; }),
+      .concat(layout.breaks.filter(function(b) { return b > edges[1] && tidyNumber(b) != hi; }),
         [Math.max(layout.extent[1], edges[1])]);
   }
   return {below: below, above: above};

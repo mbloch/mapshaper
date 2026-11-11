@@ -365,7 +365,11 @@ export function getImageLightnessPercentiles(samples, bands, valid, pcts, maxSam
   for (i = 0; i < n; i += step) {
     j = i * bands;
     if (valid && !valid[i] || bands == 4 && samples[j + 3] === 0) continue;
-    getOklchLightnessChroma(samples[j], samples[j + 1], samples[j + 2], lc);
+    if (bands == 1) {
+      getOklchLightnessChroma(samples[j], samples[j], samples[j], lc);
+    } else {
+      getOklchLightnessChroma(samples[j], samples[j + 1], samples[j + 2], lc);
+    }
     values.push(lc[0]);
   }
   if (values.length === 0) return null;

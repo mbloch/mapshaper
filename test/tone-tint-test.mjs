@@ -432,6 +432,39 @@ describe('-tone', function () {
     assert.equal(grid.samples[3], 128);
   })
 
+  it('grayscale images stay gray, with one band', async function () {
+    var gray = new Uint8Array([20, 80, 140, 200]);
+    var catalog = await run(makeCatalog(gray, 2, 2, 1), '-tone lightness=1.3 contrast=1.5');
+    var raster = findLayer(catalog, 'img').raster;
+    var out = Array.from(raster.grid.samples);
+    var rgb = await run(makeCatalog(colorSamples([[20, 20, 20], [80, 80, 80], [140, 140, 140], [200, 200, 200]]), 2, 2, 3),
+      '-tone lightness=1.3 contrast=1.5');
+    var rgbOut = findLayer(rgb, 'img').raster.grid.samples;
+    assert.equal(raster.grid.bands, 1);
+    assert.equal(raster.view.recipe.type, 'gray');
+    assert.deepEqual(out, [0, 1, 2, 3].map(function(i) { return rgbOut[i * 3]; }));
+    assert.notDeepEqual(out, Array.from(gray));
+  })
+
+  it('grayscale images with opacity= become RGBA, and with background= RGB', async function () {
+    var transparent = await run(makeCatalog(new Uint8Array([100]), 1, 1, 1), '-tone opacity=0.5');
+    var filled = await run(makeCatalog(new Uint8Array([100]), 1, 1, 1), '-tone background=red opacity=0.5');
+    assert.deepEqual(Array.from(findLayer(transparent, 'img').raster.grid.samples), [100, 100, 100, 128]);
+    assert.deepEqual(Array.from(findLayer(filled, 'img').raster.grid.samples), [178, 50, 50]);
+  })
+
+  it('grayscale images have no saturation or hue', async function () {
+    await assert.rejects(run(makeCatalog(new Uint8Array([100]), 1, 1, 1), '-tone saturation=0'),
+      /saturation= does not apply to grayscale images/);
+    await assert.rejects(run(makeCatalog(new Uint8Array([100]), 1, 1, 1), '-tone hue-shift=0.2'),
+      /hue-shift= does not apply/);
+  })
+
+  it('an 8-bit data raster is not a grayscale image', async function () {
+    await assert.rejects(run(makeCatalog(new Uint8Array([1, 2]), 2, 1, 1, {interpretation: 'categorical'}), '-tone lightness=1.2'),
+      /use -classify or -hillshade/);
+  })
+
   it('errors', async function () {
     await assert.rejects(run(makeCatalog(new Float32Array([1, 2]), 2, 1, 1, {interpretation: 'continuous'}), '-tone saturation=0'), /use -classify or -hillshade/);
     await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone opacity=2'), /opacity= should be from 0 to 1/);

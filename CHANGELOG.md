@@ -4,6 +4,7 @@ v0.8.0 (unreleased)
 * Added `-sharpen` command, for sharpening images and hillshades with an unsharp mask.
 * Added `-tone` command for adjusting lightness, saturation, contrast, gamma and opacity. A hue-shift option moves hues towards or away from a given hue.
 * [web] Added a panel with sliders for adjusting image tone.
+* -tone adjusts 8-bit grayscale images (lightness, contrast, gamma and opacity), which stay gray. In the web UI, "adjust colors" opens the Tone panel on grayscale images too, without the saturation and hue sliders.
 * -classify sets a color palette on data rasters (e.g. DEMs and land cover rasters), using the same options as for vector layers. Name the band to color as a field (`-classify band2`) or with the new `band=` option. The palette is a display setting that survives `-clip`, `-proj` and `-blur`; `-style clear` removes it. A new `categorical` flag is a shortcut for `method=categorical`.
 * -style sets `opacity=` on raster layers, and `-style clear` removes a raster's palette and opacity.
 * Added `-blend` command for combining hillshade layers with a raster image.

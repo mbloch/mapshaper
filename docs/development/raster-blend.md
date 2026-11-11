@@ -411,7 +411,7 @@ rounding of the alpha channel.
   which renders the layers with the SVG exporter at the grid's pixel size
   (`svg_image_size`) and rasterizes them (`rasterizeSVGPixels()`; resvg's
   premultiplied pixels are converted back).
-- GUI: a later panel modeled on the Image colors panel (shadow and
+- GUI: a later panel modeled on the Color & tone panel (shadow and
   highlight sliders for `strength=` and `chroma=`),
   committing a `-blend` command. Because blending in place compounds, the
   panel has to re-run from the unblended target (via undo) rather than

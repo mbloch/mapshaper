@@ -250,6 +250,17 @@ describe('mapshaper-diverging.mjs', function () {
       assert.deepEqual(getDivergingStops(layout), {below: [-4, 0], above: [0, 3, 8]});
     });
 
+    it('each side has a stop per class, and one more, with a pivot that has many digits', function () {
+      // e.g. a median of float32 elevations, which the breaks have tidied to 12 digits
+      var data = [1205.87, 1232.1, 1243.7, 1254.75, 1268.7261352539062, 1302.7, 1356.1, 1517.5];
+      [1268.7261352539062, 1268.7261352539, 1268.72613525391].forEach(function(pivot) {
+        var layout = getDivergingLayout(data, 'quantile', {classes: [3, 2], pivot: pivot, continuous: true});
+        var stops = getDivergingStops(layout);
+        assert.equal(stops.below.length, layout.below + 1);
+        assert.equal(stops.above.length, layout.above + 1);
+      });
+    });
+
     it('continuous output has no pivot class unless pivot-class or pivot-range= is given', function () {
       var opts = {classes: 3, pivot: 0, continuous: true};
       assert.equal(getDivergingLayout(data, 'quantile', opts).neutral, null);

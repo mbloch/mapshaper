@@ -88,6 +88,8 @@ export function createUndoTestApi(gui) {
         shapeCount: lyr.shapes ? lyr.shapes.length : 0,
         fields: lyr.data ? lyr.data.getFields() : [],
         records: lyr.data ? lyr.data.getRecords() : [],
+        // a raster's palette (set by -classify), copied
+        rasterPalette: getRasterPalette(lyr),
         geometryTypes: (lyr.shapes || []).map(function(shp) {
           if (!shp) return null;
           return shp.length > 1 ? 'MultiPoint' : 'Point';
@@ -444,6 +446,11 @@ function getArcsSignature(arcs) {
 
 function getLayerName(lyr) {
   return lyr.name || null;
+}
+
+function getRasterPalette(lyr) {
+  var palette = lyr.raster && lyr.raster.view && lyr.raster.view.recipe && lyr.raster.view.recipe.palette;
+  return palette ? JSON.parse(JSON.stringify(palette)) : null;
 }
 
 // The label tool's guide layers, out of everything the overlay last drew.

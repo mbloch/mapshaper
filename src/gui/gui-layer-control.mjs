@@ -21,6 +21,7 @@ import {
   createUndoTransaction
 } from './gui-app-undo';
 import { FrameVisibilityRuns } from './gui-frame-visibility-runs';
+import { layerHasPaletteRaster } from './gui-raster-band-values';
 
 export function LayerControl(gui) {
   var model = gui.model;
@@ -661,12 +662,12 @@ export function LayerControl(gui) {
       var target = findLayerById(id);
       var tool;
       if (!target) return;
-      if (layerCanBeToned(target.layer)) {
+      if (layerCanBeToned(target.layer) || layerHasPaletteRaster(target.layer)) {
         if (!map.isActiveLayer(target.layer)) {
           target.layer.hidden = false;
           model.selectLayer(target.layer, target.dataset);
         }
-        gui.interaction.setMode('tone');
+        gui.interaction.setMode(layerCanBeToned(target.layer) ? 'tone' : 'palette');
         return;
       }
       tool = getLayerAnnotationTool(target.layer);
@@ -725,10 +726,13 @@ export function LayerControl(gui) {
           menuEvent.zoomToLayer = zoomToLayer;
         }
       }
-      if (!isFrame && target && (layerCanBeStyled(target.layer) || layerCanBeToned(target.layer))) {
+      if (!isFrame && target && (layerCanBeStyled(target.layer) || layerCanBeToned(target.layer) ||
+          layerHasPaletteRaster(target.layer))) {
         menuEvent.styleLayer = styleLayer;
         if (layerCanBeToned(target.layer)) {
           menuEvent.styleLayerName = 'adjust colors';
+        } else if (layerHasPaletteRaster(target.layer)) {
+          menuEvent.styleLayerName = 'color palette';
         } else if (getLayerAnnotationTool(target.layer) == 'label') {
           menuEvent.styleLayerName = 'style/edit labels';
         } else if (getLayerAnnotationTool(target.layer) == 'symbols') {
@@ -1133,8 +1137,10 @@ export function LayerControl(gui) {
     return !!(lyr && (lyr.geometry_type == 'point' || lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon'));
   }
 
+  // RGB and grayscale images
   function layerCanBeToned(lyr) {
-    return !!(lyr && internal.layerHasRaster(lyr) && internal.rasterCanBeToned(lyr.raster));
+    return !!(lyr && internal.layerHasRaster(lyr) && (internal.rasterCanBeToned(lyr.raster) ||
+      internal.rasterIsGrayImage(lyr.raster)));
   }
 
 }

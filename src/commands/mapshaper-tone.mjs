@@ -11,15 +11,23 @@ import { stop } from '../utils/mapshaper-logging';
 var PIVOT_PERCENTILES = [1, 99, 50];
 var PIVOT_SAMPLES = 1e6;
 
-// Adjusts the colors of an RGB image (see docs/development/raster-tone-tint.md)
+// Adjusts the colors of an RGB image, or the tones of a grayscale image (see
+// docs/development/raster-tone-tint.md)
 // Returns a new layer; -tone replaces the target unless + is used
 cmd.tone = function(lyr, opts) {
-  var grid, saturation, lightness, gamma, contrast, pivots, hueShift, huePivot, opacity, background, samples, result, out;
+  var grid, gray, saturation, lightness, gamma, contrast, pivots, hueShift, huePivot, opacity, background, samples, result, out;
   if (!layerHasRaster(lyr)) {
     stop('Command requires a raster layer');
   }
+  gray = rasterIsGrayImage(lyr.raster);
   grid = getRasterGrid(lyr.raster);
-  validateToneGrid(grid);
+  if (gray) {
+    validateGrayToneOptions(opts);
+    // toned as RGB, which a gray image stays (see getGrayResult())
+    grid = Object.assign({}, grid, {bands: 3, samples: grayToRgb(grid.samples)});
+  } else {
+    validateToneGrid(grid);
+  }
   saturation = opts.saturation == null ? 1 : opts.saturation;
   lightness = opts.lightness == null ? 1 : opts.lightness;
   if (!(saturation >= 0)) stop('saturation= should be 0 or more');
@@ -38,7 +46,9 @@ cmd.tone = function(lyr, opts) {
     toneRgbPixels(grid.samples, grid.bands, {saturation: saturation, lightness: lightness,
       gamma: gamma, contrast: contrast, pivots: pivots, hueShift: hueShift, huePivot: huePivot});
   result = applyOpacityAndBackground(samples, grid.bands, opacity, background);
-  if (result.samples == grid.samples) {
+  if (gray && !background && result.bands == 3) {
+    result = getGrayResult(result.samples);
+  } else if (result.samples == grid.samples) {
     result.samples = grid.samples.slice();
   }
   out = {
@@ -91,6 +101,46 @@ function roundLightness(L) {
   return Math.round(L * 1000) / 1000;
 }
 
+// Lightness, contrast and gamma leave a gray pixel gray, and saturation and
+// hue have nothing to change
+function validateGrayToneOptions(opts) {
+  var name = ['saturation', 'hue_shift', 'hue_pivot'].find(function(key) {
+    return opts[key] != null;
+  });
+  if (name) {
+    stop(name.replace('_', '-') + '= does not apply to grayscale images');
+  }
+}
+
+function grayToRgb(samples) {
+  var out = new Uint8Array(samples.length * 3);
+  for (var i = 0, j = 0; i < samples.length; i++, j += 3) {
+    out[j] = out[j + 1] = out[j + 2] = samples[i];
+  }
+  return out;
+}
+
+// @samples RGB samples of gray pixels
+function getGrayResult(samples) {
+  var out = new Uint8Array(samples.length / 3);
+  for (var i = 0, j = 0; i < out.length; i++, j += 3) {
+    out[i] = samples[j];
+  }
+  return {samples: out, bands: 1};
+}
+
+// A one-band 8-bit image, which -tone can adjust like an RGB image, apart
+// from its saturation and hue (data rasters such as an 8-bit land cover
+// raster are left out by their interpretation)
+export function rasterIsGrayImage(raster) {
+  var grid = getRasterGrid(raster);
+  return !!(grid && grid.samples && grid.bbox && grid.bands == 1 &&
+    raster.interpretation == 'image' && !grid.displayBands &&
+    (grid.samples instanceof Uint8Array || grid.samples instanceof Uint8ClampedArray) &&
+    grid.colorModel != 'palette');
+}
+
+// RGB images only (see rasterIsGrayImage())
 export function rasterCanBeToned(raster) {
   var grid = getRasterGrid(raster);
   return !!(grid && grid.samples && grid.bbox && grid.bands >= 3 && grid.bands <= 4 &&
@@ -103,7 +153,7 @@ function validateToneGrid(grid) {
     stop('Raster layer is missing image data');
   }
   if (grid.bands < 3 || grid.displayBands) {
-    stop('-tone adjusts RGB images. To color an elevation raster, use -classify or -hillshade');
+    stop('-tone adjusts 8-bit RGB and grayscale images. To color an elevation raster, use -classify or -hillshade');
   }
   if (!(grid.samples instanceof Uint8Array || grid.samples instanceof Uint8ClampedArray) ||
       grid.bands > 4 || grid.colorModel == 'palette') {
@@ -127,10 +177,10 @@ export function getRasterBackground(opts) {
   return color;
 }
 
-// @result {samples, bands}: uint8 RGB or RGBA samples
+// @result {samples, bands}: uint8 RGB or RGBA samples, or gray (one band)
 // @params settings recorded in the raster's derivation
 export function getColoredRaster(src, grid, result, params) {
-  var bands = result.bands == 4 ? [0, 1, 2, 3] : [0, 1, 2];
+  var bands = result.bands == 4 ? [0, 1, 2, 3] : result.bands == 1 ? [0] : [0, 1, 2];
   var raster = {
     sourceId: src.sourceId,
     interpretation: 'image',
@@ -146,7 +196,7 @@ export function getColoredRaster(src, grid, result, params) {
       transform: grid.transform ? grid.transform.concat() : null
     },
     derivation: Object.assign({sourceId: src.sourceId}, params),
-    view: {recipe: {type: 'rgb', bands: bands, scaling: 'none'}}
+    view: {recipe: {type: result.bands == 1 ? 'gray' : 'rgb', bands: bands, scaling: 'none'}}
   };
   raster.view.recipe = getRasterViewRecipe(raster.grid, raster.view.recipe, {});
   if (runningInBrowser()) {

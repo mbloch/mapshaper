@@ -4250,6 +4250,13 @@ body.pan.panning .map-layers:not(.drawing) {
 	background-image: linear-gradient(135deg, #d9d9d9 0 50%, #8c8c8c 50% 100%);
 }
 
+/* A transparent color, e.g. a raster's default no-data color */
+.label-style-panel .label-color-field .label-color-chit.transparent {
+	background-color: white;
+	background-image: conic-gradient(#ccc 25%, white 0 50%, #ccc 0 75%, white 0);
+	background-size: 7px 7px;
+}
+
 .label-style-panel .label-color-field input[type="text"] {
 	flex: 1;
 	width: auto;
@@ -5837,7 +5844,7 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 
 /* Tone panel (gui-raster-tone-tool.mjs): a caption, the slider and its value
    on one line, the captions in a column so the sliders line up */
-.raster-tone-slider-row {
+.raster-tone-slider-row:not(.hidden) {
 	display: flex;
 	align-items: center;
 }

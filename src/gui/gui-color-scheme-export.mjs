@@ -101,8 +101,9 @@ export function getSchemeExportData(scheme, lyr) {
     data.breaks = classes.slice(1).map(function(c) { return c.from; });
     data.colors = classes.map(function(c) { return c.color; });
   }
+  // null: transparent (a raster's default)
   data.nullColor = getSchemeNullColor(scheme);
-  data.expression = getStyleExpression(scheme.field, scheme.type, classes, data.nullColor);
+  data.expression = getStyleExpression(scheme.field, scheme.type, classes, data.nullColor || 'rgba(0,0,0,0)');
   data.command = getSchemeCommand(scheme, lyr);
   return data;
 }
@@ -226,7 +227,10 @@ export function formatSchemeCPT(scheme, lyr) {
     lines.push('B\t' + formatGmtColor(getFirstColor(classes[0])));
     lines.push('F\t' + formatGmtColor(getLastColor(classes[classes.length - 1])));
   }
-  lines.push('N\t' + formatGmtColor(getSchemeNullColor(scheme)));
+  // GMT has no transparent color, so a transparent no-data color is left out
+  if (getSchemeNullColor(scheme)) {
+    lines.push('N\t' + formatGmtColor(getSchemeNullColor(scheme)));
+  }
   return lines.join('\n') + '\n';
 }
 

@@ -23,14 +23,16 @@ import {
   pivotOptions, divergingSplits, updateDivergingLayout, getDivergingTileUse,
   getDivergingClassRanges, getSequentialClassRanges, getPivotSummary, setSchemePivot, setSchemeNeutral, setSchemeSplit,
   getCenterTile, getSchemeNeutral, isContinuousScheme, setSchemeContinuous, getContinuousTileStops,
-  getContinuousSegments, getAppliedScheme,
+  getContinuousSegments, getAppliedScheme, setSchemeLayerType, formatSchemeCount, formatNoDataCount,
   hasSchemeRange, getDisplayRange, setSchemeRangeEnd, resetSchemeRange,
   getRangeStripColors,
   getLayerScheme, setLayerScheme
 } from './gui-color-scheme-model';
+import { getRasterBandLabel } from './gui-raster-band-values';
 
 // A popup beside the polygon style panel for coloring a layer's fills by a
-// data field, with -classify. Edits are applied as they are made, in a command
+// data field, with -classify. On a data raster (see gui-raster-palette-tool.mjs)
+// it sets the raster's palette, coloring a band. Edits are applied as they are made, in a command
 // session, so that the whole time the panel is open on a layer is one undo
 // state and one command in the session history.
 // See docs/development/color-scheme-panel-design.md
@@ -71,7 +73,7 @@ export function ColorSchemePanel(gui, opts) {
   var tabSchemes = {};
   var tabs = {};
   var paletteBtn, paletteMenu, countField, tileRow, gradientEl, tilesEl, picker, fieldRow, fieldSelect, methodSelect,
-      methodRow, methodLabel, customizeCell, customizeBtn, breaksDialog, exportBtns, importBtn, importDialog,
+      fieldLabel, methodRow, methodLabel, customizeCell, customizeBtn, breaksDialog, exportBtns, importBtn, importDialog,
       noFieldsNote, controlsEl, vibranceRow, vibranceInput,
       longHueBtn, continuousBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount, countLabel,
       rangeEl, rangeStrip, rangeShades, rangeHandles,
@@ -169,7 +171,7 @@ export function ColorSchemePanel(gui, opts) {
     controlsEl = El('div').appendTo(panel);
 
     fieldRow = El('div').addClass('label-style-row color-scheme-select-row').appendTo(controlsEl);
-    El('span').appendTo(fieldRow).text('Field');
+    fieldLabel = El('span').appendTo(fieldRow).text('Field');
     fieldSelect = El('select').attr('aria-label', 'Data field').appendTo(fieldRow).on('change', function() {
       var field = fieldSelect.node().value;
       changeScheme(setSchemeField(scheme, field, getCategoryCount(field)));
@@ -380,13 +382,17 @@ export function ColorSchemePanel(gui, opts) {
     }
     summary = getPivotSummary(scheme, targetLayer);
     pivotNote.text(summary ? formatCount(summary.below) + ' below the pivot, ' +
-      summary.above + ' at or above' : 'No numeric data to classify.');
+      formatSchemeCount(scheme, targetLayer, summary.above, true) + ' at or above' : 'No numeric data to classify.');
     neutralToggle.setState(getSchemeNeutral(scheme) ? 'on' : 'off');
     splitSelect.node().value = scheme.split;
   }
 
   function formatCount(n) {
-    return n + (n == 1 ? ' feature' : ' features');
+    return formatSchemeCount(scheme, targetLayer, n);
+  }
+
+  function isRaster() {
+    return !!targetLayer && internal.layerHasRaster(targetLayer);
   }
 
   function formatNumber(val) {
@@ -401,6 +407,9 @@ export function ColorSchemePanel(gui, opts) {
       tabs[type].classed('selected', type == scheme.type)
         .attr('aria-selected', type == scheme.type ? 'true' : 'false');
     });
+    // a raster's categories are the values of an integer band, and there is
+    // no non-adjacent method to fall back on
+    tabs.categorical.classed('hidden', isRaster() && !categorical && getCategoryFields(targetLayer).length === 0);
     fields = categorical ? getCategoryFields(targetLayer) : getNumericFields(targetLayer);
     noFieldsNote.classed('hidden', categorical || fields.length > 0);
     controlsEl.classed('hidden', !categorical && fields.length === 0);
@@ -409,7 +418,7 @@ export function ColorSchemePanel(gui, opts) {
       return;
     }
     renderFieldOptions(fields);
-    fieldRow.classed('hidden', scheme.method == 'non-adjacent');
+    fieldRow.classed('hidden', scheme.method == 'non-adjacent' || isRaster() && fields.length < 2);
     renderMethodOptions(fields);
     renderDivergingControls();
     countLabel.text(scheme.type != 'diverging' ? 'Colors' : scheme.split == 'count' ? 'Per side' : 'Classes');
@@ -459,7 +468,8 @@ export function ColorSchemePanel(gui, opts) {
     nullControl.row.classed('hidden', scheme.method == 'non-adjacent');
     if (scheme.method == 'non-adjacent') nullControl.picker.hide();
     nullControl.showColor(getSchemeNullColor(scheme));
-    nullCount.text(count === 0 ? 'None in this layer' : formatCount(count));
+    nullControl.chit.classed('transparent', !getSchemeNullColor(scheme));
+    nullCount.text(count === 0 ? 'None in this layer' : formatNoDataCount(scheme, targetLayer, count));
   }
 
   function renderMethodOptions(fields) {
@@ -494,7 +504,7 @@ export function ColorSchemePanel(gui, opts) {
     tabSchemes[scheme.type] = scheme;
     next = tabSchemes[type] || getDefaultSchemeOfType(type, targetLayer);
     // one no-data color for both tabs
-    next = updateDivergingLayout(Object.assign({}, next, {nullColor: scheme.nullColor}), targetLayer);
+    next = updateDivergingLayout(setSchemeLayerType(Object.assign({}, next, {nullColor: scheme.nullColor}), targetLayer), targetLayer);
     picker.hide();
     selectedTile = -1;
     scheme = next;
@@ -668,9 +678,13 @@ export function ColorSchemePanel(gui, opts) {
   }
 
   function renderFieldOptions(fields) {
+    var raster = isRaster();
+    fieldLabel.text(raster ? 'Band' : 'Field');
+    fieldSelect.attr('aria-label', raster ? 'Band' : 'Data field');
     fieldSelect.empty();
     fields.forEach(function(field) {
-      El('option').attr('value', field).text(field).appendTo(fieldSelect);
+      El('option').attr('value', field).text(raster ? getRasterBandLabel(targetLayer, field) : field)
+        .appendTo(fieldSelect);
     });
     fieldSelect.node().value = scheme.field || '';
   }
@@ -1008,7 +1022,7 @@ export function ColorSchemePanel(gui, opts) {
 
   function changeScheme(next) {
     var prevSize = getSchemeTiles(scheme).length;
-    scheme = updateDivergingLayout(next, targetLayer);
+    scheme = updateDivergingLayout(setSchemeLayerType(next, targetLayer), targetLayer);
     if (getSchemeTiles(scheme).length != prevSize) {
       picker.hide();
       selectedTile = -1;
