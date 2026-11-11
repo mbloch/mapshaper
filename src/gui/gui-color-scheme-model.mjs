@@ -2,7 +2,8 @@ import { internal } from './gui-core';
 import { quoteCommandValue } from './gui-command-utils';
 import {
   getRasterBandFields, getRasterBandValues, getRasterBandCounts, getRasterCategoryFields,
-  getRasterBandCategories, rasterHasContinuousValues, getRasterLayerPaletteKey
+  getRasterBandCategories, rasterHasContinuousValues, getRasterLayerPaletteKey,
+  rasterBandCouldBeElevation, getRasterUnitMeters
 } from './gui-raster-band-values';
 
 // The state behind the color scheme panel, as plain objects and functions
@@ -34,6 +35,14 @@ import {
 // schemes have raster: true; their no-data color is null (transparent) unless
 // one is set, and there is no non-adjacent method.
 //
+// A sequential scheme on a raster that could hold elevations can have fixed
+// elevations (method 'elevation'): continuous colors at the elevations of a
+// hypsometric preset (see hypsometric-schemes.mjs), in the band's units,
+// whatever the data's range. Its tiles are the preset's stops, which can be
+// recolored and moved (in the class breaks dialog), but not added to or taken
+// away. Choosing a preset gives its own colors and elevations. Another method
+// keeps the colors as a custom ramp.
+//
 // A continuous sequential or diverging scheme gives unclassed colors: its
 // tiles are color stops, at the data's min, the class breaks and its max,
 // with colors interpolated between them. Each side of a diverging scheme is
@@ -58,6 +67,12 @@ import {
 //                                             of the preset's colors, as
 //                                             rearranged)
 //   swatches: [...] or null                   (custom categorical lists)
+//   elevationPreset: name,                    (fixed elevations: the
+//   stopColors: [...] or null                 hypsometric preset, and its
+//   stops: [...] or null                      colors and elevations (in the
+//                                             band's units), once edited;
+//                                             preset is null when the
+//                                             colors are)
 //   continuous: boolean                       (sequential and diverging)
 //   pivot: 'auto', 'median', 'mean' or a number,
 //   neutral, continuousNeutral: boolean       (a pivot class, for classed
@@ -92,6 +107,8 @@ export var classifyMethods = [
   {name: 'hybrid', label: 'Hybrid'},
   {name: 'nice', label: 'Nice breaks'}
 ];
+
+export var elevationMethod = {name: 'elevation', label: 'Fixed elevations'};
 
 export var pivotOptions = [
   {name: 'auto', label: 'Auto (0 or median)'},
@@ -292,7 +309,9 @@ export function isContinuousScheme(scheme) {
 var minContinuousStartColors = 5;
 
 export function setSchemeContinuous(scheme, continuous) {
-  var next = Object.assign({}, !!continuous == !!scheme.continuous ? scheme : resetSchemeBreaks(scheme), {continuous: !!continuous});
+  var next;
+  if (isElevationScheme(scheme)) return scheme;
+  next = Object.assign({}, !!continuous == !!scheme.continuous ? scheme : resetSchemeBreaks(scheme), {continuous: !!continuous});
   if (continuous && next.type == 'sequential' && next.n < minContinuousStartColors) {
     next.n = minContinuousStartColors;
   }
@@ -352,6 +371,11 @@ export function getDivergingTileUse(scheme) {
 // uses are null. Returns null if there are no data.
 export function getContinuousTileStops(scheme, lyr) {
   var values, breaks, layout, stops, k, tiles;
+  if (isElevationScheme(scheme)) {
+    return getElevationSchemeStops(scheme, lyr).map(function(val) {
+      return {value: val, min: false, max: false};
+    });
+  }
   if (scheme.type == 'sequential') {
     values = getAscendingValues(lyr, scheme.field);
     if (values.length === 0) return null;
@@ -485,6 +509,7 @@ export function getSchemeBreaks(scheme, lyr) {
   var layout = scheme.layout;
   var breaks;
   if (values.length === 0 || scheme.type == 'categorical') return null;
+  if (isElevationScheme(scheme)) return getElevationBreaks(scheme, lyr, values);
   if (scheme.type == 'diverging') {
     if (!layout) return null;
     return {
@@ -511,16 +536,39 @@ export function getSchemeBreaks(scheme, lyr) {
   };
 }
 
+// Fixed elevations: every stop is a break, the end stops too. The range runs
+// from the stop at or below the data's min (or the min, if no stop is) to the
+// stop at or above its max, so that stops far from the data may be outside it.
+function getElevationBreaks(scheme, lyr, values) {
+  var breaks = getElevationSchemeStops(scheme, lyr);
+  var lo = values[0], hi = values[values.length - 1];
+  var below = breaks.filter(function(b) { return b <= lo; });
+  var above = breaks.filter(function(b) { return b >= hi; });
+  return {
+    breaks: breaks,
+    fixed: breaks.map(function() { return false; }),
+    pivot: null,
+    neutral: null,
+    min: below.length > 0 ? below[below.length - 1] : lo,
+    max: above.length > 0 ? above[0] : hi
+  };
+}
+
 // Moves break i to a value, as far as it can go: between its neighbors (and
 // the data's min and max), and for an edge of a pivot class, on its own side
 // of the pivot. The pivot itself doesn't move. A scheme that isn't custom
-// yet becomes custom, starting from the breaks its method gives.
+// yet becomes custom, starting from the breaks its method gives. A stop of
+// fixed elevations goes anywhere between its neighbors.
 export function setSchemeBreak(scheme, lyr, i, value) {
   var info = getSchemeBreaks(scheme, lyr);
   var breaks, lo, hi, edge, next;
   if (!info || !(i >= 0 && i < info.breaks.length) || info.fixed[i] || !isFiniteNumber(value)) return scheme;
   breaks = info.breaks.map(tidyNumber);
   value = tidyNumber(value);
+  if (isElevationScheme(scheme)) {
+    breaks[i] = clamp(value, i > 0 ? breaks[i - 1] : -Infinity, i < breaks.length - 1 ? breaks[i + 1] : Infinity);
+    return Object.assign({}, scheme, {stops: breaks});
+  }
   lo = i > 0 ? breaks[i - 1] : Math.min(info.min, breaks[i]);
   hi = i < breaks.length - 1 ? breaks[i + 1] : Math.max(info.max, breaks[i]);
   edge = info.neutral ? info.neutral.indexOf(breaks[i]) : -1;
@@ -603,6 +651,12 @@ export function getBreakClassSwatches(scheme) {
   var layout = scheme.layout;
   var swatches = [];
   var k, stops;
+  if (isElevationScheme(scheme)) {
+    // the end colors go on past the end stops
+    return [colors[0]].concat(colors.slice(1).map(function(color, i) {
+      return gradient(colors[i], color);
+    }), [colors[colors.length - 1]]);
+  }
   if (scheme.type == 'sequential') {
     if (!isContinuousScheme(scheme)) return colors;
     return colors.slice(1).map(function(color, i) { return gradient(colors[i], color); });
@@ -670,20 +724,23 @@ export function getSchemeValues(scheme, lyr) {
 }
 
 // Positions along the class breaks dialog's histogram (0 to 1) for values
-// from min to max, on a linear or log scale (log: min must be above 0)
+// from min to max, on a linear or log scale. A log scale of a range that
+// reaches 0 or below is of the distance above the min, plus a thousandth of
+// the range, so that it spans three powers of ten.
 export function getBreaksScale(min, max, log) {
-  var f = log ? Math.log : function(val) { return val; };
+  var shift = log && !(min > 0) ? (max - min) / 1000 - min : 0;
+  var f = log ? function(val) { return Math.log(val + shift); } : function(val) { return val; };
   var a = f(min), b = f(max);
   return {
     toPos: function(val) {
       if (!(b > a)) return 0.5;
-      if (log && !(val > 0)) return 0;
+      if (log && !(val + shift > 0)) return 0;
       return clamp((f(val) - a) / (b - a), 0, 1);
     },
     toValue: function(pos) {
       var val = a + clamp(pos, 0, 1) * (b - a);
       if (!(b > a)) return min;
-      return log ? Math.exp(val) : val;
+      return log ? Math.exp(val) - shift : val;
     }
   };
 }
@@ -777,7 +834,11 @@ export function getMinSchemeColors(scheme) {
   return scheme.type == 'diverging' && scheme.split == 'count' ? 1 : minSchemeColors;
 }
 
-export function getSchemeMethods(scheme) {
+// lyr: the layer, for the fixed elevations of a raster that could hold them
+export function getSchemeMethods(scheme, lyr) {
+  if (isElevationScheme(scheme) || canUseFixedElevations(scheme, lyr)) {
+    return classifyMethods.concat([elevationMethod]);
+  }
   if (scheme.type != 'categorical') return classifyMethods;
   return scheme.raster ? categoricalMethods.filter(function(item) {
     return item.name != 'non-adjacent';
@@ -814,10 +875,15 @@ export function setSchemeField(scheme, field, count) {
 
 // field, count: the field to use, and its number of categories, when a
 // categorical scheme changes to the categorical method
-export function setSchemeMethod(scheme, method, field, count) {
+// points: [lon, lat] points across the layer, for choosing fixed elevations'
+//   preset
+export function setSchemeMethod(scheme, method, field, count, points) {
   var next;
   if (method == 'breaks') return scheme; // the Custom entry: breaks come from the dialog
-  next = Object.assign({}, resetSchemeBreaks(scheme), {method: method});
+  if (method == 'elevation') {
+    return chooseElevationPreset(resetSchemeBreaks(scheme), scheme.elevationPreset || getDefaultElevationPreset(points));
+  }
+  next = Object.assign({}, isElevationScheme(scheme) ? leaveFixedElevations(scheme) : resetSchemeBreaks(scheme), {method: method});
   if (next.type != 'categorical') return next;
   if (method == 'categorical') {
     return setSchemeField(next, next.field || field, count);
@@ -924,6 +990,12 @@ export function getSchemeTiles(scheme) {
       return {color: color, pinned: false, adjusted: false};
     });
   }
+  if (isElevationScheme(scheme)) {
+    colors = getElevationPresetColors(scheme.elevationPreset);
+    return (scheme.stopColors || colors).map(function(color, i) {
+      return {color: color, pinned: color != colors[i], adjusted: false};
+    });
+  }
   if (scheme.preset) {
     colors = scheme.range ? getPresetSection(scheme, getRampSize(scheme), scheme.range) :
       getPresetColors(scheme.preset, getRampSize(scheme));
@@ -974,7 +1046,7 @@ export function getSchemeRange(scheme) {
 }
 
 export function hasSchemeRange(scheme) {
-  return !!scheme.preset && scheme.type != 'categorical';
+  return !!scheme.preset && scheme.type != 'categorical' && !isElevationScheme(scheme);
 }
 
 // The range as positions along the tiles, left to right: [left, right]
@@ -1051,6 +1123,9 @@ function extendSwatches(colors, n) {
 
 // One boolean per tile: whether the user set its color.
 export function getPinnedTiles(scheme) {
+  if (isElevationScheme(scheme)) {
+    return getSchemeTiles(scheme).map(function(tile) { return tile.pinned; });
+  }
   if (scheme.preset || scheme.type == 'categorical') {
     return new Array(getRampSize(scheme)).fill(false);
   }
@@ -1062,6 +1137,7 @@ export function getPinnedTiles(scheme) {
 // count: the number of categories, for a categorical scheme
 export function choosePreset(scheme, name, count) {
   var next, size;
+  if (isElevationScheme(scheme)) return chooseElevationPreset(scheme, name);
   if (scheme.type == 'categorical') {
     next = Object.assign({}, scheme, {preset: name, order: null, swatches: null});
     next.n = clampColorCount(next, next.n, count);
@@ -1077,6 +1153,67 @@ export function choosePreset(scheme, name, count) {
     next = chooseDivergingSet(next, name, size);
   }
   return next;
+}
+
+export function isElevationScheme(scheme) {
+  return scheme.method == 'elevation';
+}
+
+export function canUseFixedElevations(scheme, lyr) {
+  return scheme.type == 'sequential' && isRasterLayer(lyr) && rasterBandCouldBeElevation(lyr, scheme.field);
+}
+
+// The preset for the climate across a set of [lon, lat] points (see
+// hypsometric-climate.mjs), or Temperate without any on land
+export function getDefaultElevationPreset(points) {
+  return points && internal.getClimatePreset(points) || 'Temperate';
+}
+
+export function getElevationPresetNames() {
+  return internal.getHypsometricSchemeNames();
+}
+
+export function getElevationPresetColors(name) {
+  return internal.getHypsometricStops(name).map(function(stop) { return stop.color; });
+}
+
+// The elevations of a fixed-elevation scheme's stops, in the band's units
+export function getElevationSchemeStops(scheme, lyr) {
+  var meters = getRasterUnitMeters(lyr);
+  if (scheme.stops) return scheme.stops.concat();
+  return internal.getHypsometricStops(scheme.elevationPreset).map(function(stop) {
+    return meters == 1 ? stop.elevation : +(stop.elevation / meters).toPrecision(6);
+  });
+}
+
+function chooseElevationPreset(scheme, name) {
+  return Object.assign({}, scheme, {
+    method: 'elevation',
+    preset: name,
+    elevationPreset: name,
+    stopColors: null,
+    stops: null,
+    reversed: false,
+    pins: null,
+    range: null,
+    continuous: true,
+    n: internal.getHypsometricStops(name).length
+  });
+}
+
+// The colors, spread evenly over the data's range by the method that takes
+// over
+function leaveFixedElevations(scheme) {
+  var colors = getSchemeColors(scheme);
+  return Object.assign({}, scheme, {
+    preset: null,
+    elevationPreset: null,
+    stopColors: null,
+    stops: null,
+    pins: colors.map(function(color, i) {
+      return {t: i / (colors.length - 1), color: color};
+    })
+  });
 }
 
 // A diverging set's classes: its colors on each side, and its center color
@@ -1126,15 +1263,16 @@ export function getCenterTile(scheme) {
 // The color to edit for tile i: a pinned tile's own color, which vibrance
 // may have raised in the ramp, or else the tile's color
 export function getTileEditColor(scheme, i) {
-  var slot = scheme.preset || scheme.type == 'categorical' ? -1 :
+  var slot = scheme.preset || scheme.type == 'categorical' || isElevationScheme(scheme) ? -1 :
     internal.getPinnedSlots(scheme.pins, getRampSize(scheme))[i];
   if (slot > -1) return toHex(scheme.pins[slot].color);
   return getSchemeColors(scheme)[i];
 }
 
 export function setTileColor(scheme, i, color) {
-  var custom = makeSchemeCustom(scheme);
-  var swatches;
+  var custom, swatches;
+  if (isElevationScheme(scheme)) return setElevationStopColor(scheme, i, toHex(color));
+  custom = makeSchemeCustom(scheme);
   if (custom.type == 'categorical') {
     swatches = custom.swatches.concat();
     swatches[i] = toHex(color);
@@ -1146,10 +1284,25 @@ export function setTileColor(scheme, i, color) {
 }
 
 export function clearTileColor(scheme, i) {
+  if (isElevationScheme(scheme)) {
+    return setElevationStopColor(scheme, i, getElevationPresetColors(scheme.elevationPreset)[i]);
+  }
   if (scheme.preset || scheme.type == 'categorical' || i == getCenterTile(scheme)) return scheme;
   return Object.assign({}, scheme, {
     pins: internal.clearRampPin(scheme.pins, getRampSize(scheme), i)
   });
+}
+
+// A stop's color; the scheme is its preset again when every stop has the
+// preset's color
+function setElevationStopColor(scheme, i, color) {
+  var preset = getElevationPresetColors(scheme.elevationPreset);
+  var colors = getSchemeColors(scheme);
+  colors[i] = color;
+  if (colors.join() == preset.join()) {
+    return Object.assign({}, scheme, {preset: scheme.elevationPreset, stopColors: null});
+  }
+  return Object.assign({}, scheme, {preset: null, stopColors: colors});
 }
 
 // A custom categorical list grows to have at least n swatches.
@@ -1158,8 +1311,9 @@ export function clearTileColor(scheme, i) {
 //   merged to fit (see resizeBreaks()); without it, or for a diverging scheme,
 //   the breaks go back to their method's
 export function setTileCount(scheme, n, count, lyr) {
-  var next = Object.assign({}, scheme, {n: clampColorCount(scheme, n, count)});
-  var breaks;
+  var next, breaks;
+  if (isElevationScheme(scheme)) return scheme; // a tile for each of the preset's stops
+  next = Object.assign({}, scheme, {n: clampColorCount(scheme, n, count)});
   if (next.type == 'categorical' && !next.preset && next.swatches.length < next.n) {
     next.swatches = extendSwatches(next.swatches, next.n);
   }
@@ -1222,7 +1376,7 @@ function rearrangeSwatches(scheme, rearrange) {
 }
 
 export function reverseScheme(scheme) {
-  if (scheme.type == 'categorical') return scheme;
+  if (scheme.type == 'categorical' || isElevationScheme(scheme)) return scheme;
   if (scheme.preset) {
     return Object.assign({}, scheme, {reversed: !scheme.reversed});
   }
@@ -1247,13 +1401,22 @@ export function getAppliedColors(scheme, count) {
 }
 
 // opts.target  a -target value, when the layer is not the active one
+// opts.layer   the layer, for the units of a fixed-elevation scheme's stops
+//   (beyond its end stops, values take the end colors)
 export function formatSchemeCommand(scheme, colors, opts) {
   var parts = ['-classify'];
   var custom = scheme.method == 'breaks';
+  var stops;
   if (scheme.method != 'non-adjacent') {
     parts.push('field=' + quoteCommandValue(scheme.field));
   }
-  parts.push('method=' + scheme.method);
+  if (isElevationScheme(scheme)) {
+    stops = getElevationSchemeStops(scheme, opts && opts.layer);
+    parts.push('breaks=' + stops.slice(1, -1).join(','));
+    parts.push('outer-breaks=' + stops[0] + ',' + stops[stops.length - 1]);
+  } else {
+    parts.push('method=' + scheme.method);
+  }
   if (custom) {
     parts.push('breaks=' + scheme.breaks.join(','));
   }
@@ -1264,7 +1427,7 @@ export function formatSchemeCommand(scheme, colors, opts) {
     // continuous output has no pivot class by default, classes have one
     if (!getSchemeNeutral(scheme)) parts.push('no-pivot-class');
     else if (scheme.continuous) parts.push('pivot-class');
-  } else if (isContinuousScheme(scheme) && !custom) {
+  } else if (isContinuousScheme(scheme) && !custom && !isElevationScheme(scheme)) {
     parts.push('classes=' + (scheme.n - 1));
   }
   if (isContinuousScheme(scheme)) {

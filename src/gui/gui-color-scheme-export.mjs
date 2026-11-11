@@ -112,7 +112,7 @@ export function getSchemeExportData(scheme, lyr) {
 // what an import rebuilds the scheme from (see gui-color-scheme-import.mjs)
 function getSchemeCommand(scheme, lyr) {
   var count = scheme.type == 'categorical' ? getCategories(lyr, scheme.field).length : -1;
-  return formatSchemeCommand(scheme, getAppliedColors(scheme, count));
+  return formatSchemeCommand(scheme, getAppliedColors(scheme, count), {layer: lyr});
 }
 
 export function formatSchemeJSON(scheme, lyr) {

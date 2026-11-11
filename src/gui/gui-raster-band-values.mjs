@@ -11,6 +11,9 @@ import { internal } from './gui-core';
 
 // bands with more unique values than this aren't offered as categories
 var MAX_RASTER_CATEGORIES = 300;
+// the range of elevations that a band can have, in meters
+var MIN_ELEVATION = -12000;
+var MAX_ELEVATION = 9000;
 var cache = new WeakMap(); // grid -> {fields, samples: {}, categories: {}}
 
 export function layerHasPaletteRaster(lyr) {
@@ -67,6 +70,29 @@ export function getRasterBandCategories(lyr, field) {
 // continuous colors
 export function rasterHasContinuousValues(lyr) {
   return !!(lyr && lyr.raster && lyr.raster.interpretation != 'categorical');
+}
+
+// Meters per unit of the raster's values. Unknown units are taken for meters,
+// as the elevation commands take them.
+export function getRasterUnitMeters(lyr) {
+  var grid = getGrid(lyr);
+  return grid && internal.getVerticalUnitMeters(grid.verticalUnits) || 1;
+}
+
+// e.g. 'm' or 'ft'
+export function getRasterUnitsLabel(lyr) {
+  var grid = getGrid(lyr);
+  return grid && grid.verticalUnits ? internal.formatVerticalUnits(grid.verticalUnits) : 'm';
+}
+
+// Whether a band's values could be elevations: continuous values, all of them
+// between the depth of the deepest ocean and the height of the highest
+// mountain, with room to spare
+export function rasterBandCouldBeElevation(lyr, field) {
+  var values = getRasterBandValues(lyr, field);
+  var meters = getRasterUnitMeters(lyr);
+  if (!rasterHasContinuousValues(lyr) || values.length === 0) return false;
+  return values[0] * meters >= MIN_ELEVATION && values[values.length - 1] * meters <= MAX_ELEVATION;
 }
 
 // Identifies the palette on a raster layer, for checking later whether a

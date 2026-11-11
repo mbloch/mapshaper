@@ -117,6 +117,8 @@ import * as ClipPoints from './clipping/mapshaper-point-clipping';
 import * as ColorUtils from './color/color-utils';
 import * as ColorRamps from './color/color-ramps';
 import * as ColorSchemes from './color/color-schemes';
+import * as HypsometricSchemes from './color/hypsometric-schemes';
+import * as HypsometricClimate from './color/hypsometric-climate';
 import * as Oklab from './color/oklab';
 import * as Colorizer from './commands/mapshaper-colorizer';
 import * as CustomProjections from './crs/mapshaper-custom-projections';
@@ -216,6 +218,7 @@ import * as RasterReprojection from './rasters/mapshaper-raster-reprojection';
 import * as RasterUtils from './rasters/mapshaper-raster-utils';
 import * as RasterPalette from './rasters/mapshaper-raster-palette';
 import * as RasterClassify from './rasters/mapshaper-raster-classify';
+import * as VerticalUnits from './rasters/mapshaper-vertical-units';
 import * as Merging from './dataset/mapshaper-merging';
 import * as MosaicIndex from './polygons/mapshaper-mosaic-index';
 import * as OptionParsingUtils from './cli/mapshaper-option-parsing-utils';
@@ -310,6 +313,8 @@ Object.assign(internal,
   ColorUtils,
   ColorRamps,
   ColorSchemes,
+  HypsometricSchemes,
+  HypsometricClimate,
   Oklab,
   Colorizer,
   CustomProjections,
@@ -406,6 +411,7 @@ Object.assign(internal,
   RasterUtils,
   RasterPalette,
   RasterClassify,
+  VerticalUnits,
   Merging,
   MosaicIndex,
   OptionParsingUtils,

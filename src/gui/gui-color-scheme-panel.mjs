@@ -25,10 +25,10 @@ import {
   getCenterTile, getSchemeNeutral, isContinuousScheme, setSchemeContinuous, getContinuousTileStops,
   getContinuousSegments, getAppliedScheme, setSchemeLayerType, formatSchemeCount, formatNoDataCount,
   hasSchemeRange, getDisplayRange, setSchemeRangeEnd, resetSchemeRange,
-  getRangeStripColors,
+  getRangeStripColors, isElevationScheme, canUseFixedElevations, getElevationPresetNames, getElevationPresetColors,
   getLayerScheme, setLayerScheme
 } from './gui-color-scheme-model';
-import { getRasterBandLabel } from './gui-raster-band-values';
+import { getRasterBandLabel, getRasterUnitsLabel } from './gui-raster-band-values';
 
 // A popup beside the polygon style panel for coloring a layer's fills by a
 // data field, with -classify. On a data raster (see gui-raster-palette-tool.mjs)
@@ -76,7 +76,7 @@ export function ColorSchemePanel(gui, opts) {
       fieldLabel, methodRow, methodLabel, customizeCell, customizeBtn, breaksDialog, exportBtns, importBtn, importDialog,
       noFieldsNote, controlsEl, vibranceRow, vibranceInput,
       longHueBtn, continuousBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount, countLabel,
-      rangeEl, rangeStrip, rangeShades, rangeHandles,
+      rangeEl, rangeStrip, rangeShades, rangeHandles, clearRow,
       divergingEl, pivotSelect, pivotInput, pivotNote, neutralToggle, splitSelect;
   // set while a tile is being dragged, so that letting go isn't a click
   var tileDrag = null;
@@ -174,7 +174,11 @@ export function ColorSchemePanel(gui, opts) {
     fieldLabel = El('span').appendTo(fieldRow).text('Field');
     fieldSelect = El('select').attr('aria-label', 'Data field').appendTo(fieldRow).on('change', function() {
       var field = fieldSelect.node().value;
-      changeScheme(setSchemeField(scheme, field, getCategoryCount(field)));
+      var next = setSchemeField(scheme, field, getCategoryCount(field));
+      if (isElevationScheme(next) && !canUseFixedElevations(next, targetLayer)) {
+        next = setSchemeMethod(next, 'quantile');
+      }
+      changeScheme(next);
     });
 
     // numeric schemes: the breaks' method on the left, the button for
@@ -185,7 +189,8 @@ export function ColorSchemePanel(gui, opts) {
     methodLabel = El('span').appendTo(methodCell).text('Method');
     methodSelect = El('select').attr('aria-label', 'Classification method').appendTo(methodCell).on('change', function() {
       var field = scheme.field || getCategoryFields(targetLayer)[0];
-      changeScheme(setSchemeMethod(scheme, methodSelect.node().value, field, getCategoryCount(field)));
+      changeScheme(setSchemeMethod(scheme, methodSelect.node().value, field, getCategoryCount(field),
+        getLngLatSamples(targetLayer)));
     });
     customizeBtn = makePanelActionButton(customizeCell, 'Customize', function() {
       if (breaksDialog.isOpen()) {
@@ -306,6 +311,11 @@ export function ColorSchemePanel(gui, opts) {
       makePanelActionButton(exportRow, 'JSON', function() { exportScheme('json'); })
         .attr('title', 'Save the classes and colors as JSON, with a Mapbox GL / MapLibre style expression')
     ];
+    // a raster's palette is all of its style; a polygon layer's style panel
+    // has its own Clear style button
+    clearRow = El('div').addClass('label-style-row label-panel-button-row').appendTo(panel);
+    makePanelActionButton(clearRow, 'Clear style', clearRasterStyle)
+      .attr('title', 'Remove the palette and the opacity (-style clear)');
     document.addEventListener('mousedown', function(e) {
       if (paletteMenu.visible() && !paletteMenu.node().contains(e.target) &&
           !paletteBtn.node().contains(e.target)) {
@@ -391,6 +401,30 @@ export function ColorSchemePanel(gui, opts) {
     return formatSchemeCount(scheme, targetLayer, n);
   }
 
+  // [lon, lat] points on a grid across a raster, for choosing the preset of
+  // fixed elevations; none if its projection is unknown or can't be inverted
+  // (they then default to Temperate)
+  function getLngLatSamples(lyr) {
+    var o = gui.model.findLayer(lyr);
+    var bbox = o ? internal.getRasterBBox(lyr.raster) : null;
+    var n = 9, points = [];
+    var crs, p;
+    try {
+      crs = bbox ? internal.getDatasetCRS(o.dataset) : null;
+      if (!crs) return points;
+      for (var i = 0; i < n; i++) {
+        for (var j = 0; j < n; j++) {
+          p = internal.toLngLat([bbox[0] + (bbox[2] - bbox[0]) * (i + 0.5) / n,
+            bbox[1] + (bbox[3] - bbox[1]) * (j + 0.5) / n], crs);
+          if (p && isFinite(p[0]) && isFinite(p[1]) && Math.abs(p[1]) <= 90) points.push(p);
+        }
+      }
+    } catch(e) {
+      return [];
+    }
+    return points;
+  }
+
   function isRaster() {
     return !!targetLayer && internal.layerHasRaster(targetLayer);
   }
@@ -402,6 +436,7 @@ export function ColorSchemePanel(gui, opts) {
   function render() {
     var categorical, fields, colors, tiles;
     if (!targetLayer || !scheme) return;
+    clearRow.classed('hidden', !isRaster());
     categorical = scheme.type == 'categorical';
     Object.keys(tabs).forEach(function(type) {
       tabs[type].classed('selected', type == scheme.type)
@@ -423,6 +458,8 @@ export function ColorSchemePanel(gui, opts) {
     renderDivergingControls();
     countLabel.text(scheme.type != 'diverging' ? 'Colors' : scheme.split == 'count' ? 'Per side' : 'Classes');
     countField.setValue(String(scheme.n));
+    // fixed elevations have a tile for each of the preset's stops
+    countField.setDisabled(isElevationScheme(scheme));
     tiles = getSchemeTiles(scheme);
     colors = tiles.map(function(tile) { return tile.color; });
     renderPaletteButton(colors);
@@ -474,7 +511,7 @@ export function ColorSchemePanel(gui, opts) {
 
   function renderMethodOptions(fields) {
     methodSelect.empty();
-    getSchemeMethods(scheme).forEach(function(item) {
+    getSchemeMethods(scheme, targetLayer).forEach(function(item) {
       var opt = El('option').attr('value', item.name).text(item.label).appendTo(methodSelect);
       // classifying by category needs a field
       if (item.name == 'categorical' && fields.length === 0) opt.attr('disabled', true);
@@ -648,17 +685,18 @@ export function ColorSchemePanel(gui, opts) {
   function renderVibrance() {
     var vibrance = getSchemeVibrance(scheme);
     setSliderValue(vibranceInput, Math.round(vibrance * 1000));
-    vibranceRow.classed('preset', !!scheme.preset || scheme.type == 'categorical');
+    var elevation = isElevationScheme(scheme);
+    vibranceRow.classed('preset', !!scheme.preset || scheme.type == 'categorical' || elevation);
     vibranceRow.classed('ranged', hasSchemeRange(scheme));
     renderRange();
-    reverseBtn.classed('hidden', scheme.type == 'categorical');
+    reverseBtn.classed('hidden', scheme.type == 'categorical' || elevation);
     shuffleBtn.classed('hidden', scheme.type != 'categorical');
     // each half of a diverging ramp runs from a low-chroma center, where the
     // hue path makes little difference
     longHueBtn.classed('hidden', scheme.type == 'diverging')
       .classed('selected', !!scheme.longHue)
       .attr('aria-pressed', scheme.longHue ? 'true' : 'false');
-    continuousBtn.classed('hidden', scheme.type == 'categorical')
+    continuousBtn.classed('hidden', scheme.type == 'categorical' || elevation)
       .classed('selected', isContinuousScheme(scheme))
       .attr('aria-pressed', isContinuousScheme(scheme) ? 'true' : 'false');
   }
@@ -809,10 +847,11 @@ export function ColorSchemePanel(gui, opts) {
   // pivot class
   function getStopLabels() {
     var stops = getContinuousTileStops(scheme, targetLayer) || [];
+    var units = isElevationScheme(scheme) ? ' ' + getRasterUnitsLabel(targetLayer) : '';
     return stops.map(function(stop) {
       if (!stop) return null;
       if (stop.range) return formatClassRange(stop.range);
-      return formatNumber(stop.value) + (stop.min ? ' (min)' : stop.max ? ' (max)' : '');
+      return formatNumber(stop.value) + units + (stop.min ? ' (min)' : stop.max ? ' (max)' : '');
     });
   }
 
@@ -994,6 +1033,10 @@ export function ColorSchemePanel(gui, opts) {
   function renderPaletteMenu() {
     var categorical = scheme.type == 'categorical';
     paletteMenu.empty();
+    if (isElevationScheme(scheme)) {
+      renderElevationPaletteMenu();
+      return;
+    }
     addPaletteItem('Custom', getSchemeColors(makeSchemeCustom(scheme)), !scheme.preset, function() {
       changeScheme(makeSchemeCustom(scheme));
     });
@@ -1004,6 +1047,19 @@ export function ColorSchemePanel(gui, opts) {
         addPaletteItem(name, colors, scheme.preset == name, function() {
           changeScheme(choosePreset(scheme, name, getCategoryCount()));
         });
+      });
+    });
+  }
+
+  // Only presets have elevations; an edited one is Custom
+  function renderElevationPaletteMenu() {
+    if (!scheme.preset) {
+      addPaletteItem('Custom', getSchemeColors(scheme), true, function() {});
+    }
+    El('div').addClass('color-scheme-palette-heading').appendTo(paletteMenu).text('Elevation');
+    getElevationPresetNames().forEach(function(name) {
+      addPaletteItem(name, getElevationPresetColors(name), scheme.preset == name, function() {
+        changeScheme(choosePreset(scheme, name));
       });
     });
   }
@@ -1042,7 +1098,7 @@ export function ColorSchemePanel(gui, opts) {
       sessionLayer = lyr;
       baseScheme = getLayerScheme(lyr);
     }
-    cmd = formatSchemeCommand(scheme, colors, {target: getTargetOption(lyr)});
+    cmd = formatSchemeCommand(scheme, colors, {target: getTargetOption(lyr), layer: lyr});
     extra = opts.getExtraCommands ? opts.getExtraCommands() : '';
     if (extra) cmd += ' ' + extra;
     runGuiEditCommand(gui, cmd, {
@@ -1053,6 +1109,28 @@ export function ColorSchemePanel(gui, opts) {
         opts.onUpdate();
       }
     });
+  }
+
+  // In the session, so that the panel's edits and the clearing are one undo
+  // state; the panel closes, since it would apply a palette again
+  function clearRasterStyle() {
+    var lyr = targetLayer;
+    var target = lyr ? getTargetOption(lyr) : '';
+    if (!lyr || !gui.console) return;
+    getSession();
+    if (!session || !session.isPending()) {
+      sessionLayer = lyr;
+      baseScheme = getLayerScheme(lyr);
+    }
+    runGuiEditCommand(gui, '-style clear' + (target ? ' target=' + target : ''), {
+      title: 'Clear style',
+      session: session,
+      onDone: function(err) {
+        if (!err) setLayerScheme(lyr, null);
+        opts.onUpdate();
+      }
+    });
+    close();
   }
 
   // The scheme on each side of the session's undo state, to go with the fills

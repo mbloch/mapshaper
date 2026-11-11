@@ -4,7 +4,9 @@ import {
   formatSchemeCommand, getAppliedColors, getAppliedScheme, setLayerScheme, getLayerScheme,
   getSchemeNullColor, setSchemeNullColor, getNoDataCount, formatNoDataCount, formatSchemeCount,
   getSequentialClassRanges, getBreakClassCounts, getPivotSummary, setSchemeContinuous,
-  setSchemeLayerType, setTileCount
+  setSchemeLayerType, setTileCount, setSchemeMethod, choosePreset, getSchemeColors,
+  setTileColor, clearTileColor, getContinuousTileStops, reverseScheme, getPinnedTiles,
+  getSchemeBreaks, setSchemeBreak, getBreakClassSwatches, getDefaultElevationPreset, getBreaksScale
 } from '../src/gui/gui-color-scheme-model';
 import { getRasterBandLabel, layerHasPaletteRaster } from '../src/gui/gui-raster-band-values';
 import api from '../mapshaper.js';
@@ -160,5 +162,118 @@ describe('gui-color-scheme-model.mjs on raster layers', function() {
     assert(!scheme.raster);
     assert.equal(formatSchemeCount(scheme, lyr, 1), '1 feature');
     assert.equal(getSchemeNullColor(scheme), '#eeeeee');
+  });
+});
+
+describe('gui-color-scheme-model.mjs fixed elevations', function() {
+  var arid = ['#efe5cd', '#f8e3c8', '#f6e6c9', '#f7e3cd', '#d2d4b7', '#cecfba', '#c9d1c9', '#d6d8d3',
+    '#dde0e1', '#e4e7ea'];
+  var stops = [0, 50, 200, 600, 1000, 2000, 3000, 4000, 5000, 6000];
+
+  async function importDEM(values) {
+    var catalog = await importRaster(makeGeoTIFF(values || [1200, 1500, 2100, 2600, 3100, 3500]));
+    return {catalog: catalog, lyr: catalog.getActiveLayer().layer};
+  }
+
+  // in Arizona, where the Arid preset applies
+  function useElevations(lyr) {
+    return setSchemeMethod(getDefaultSchemeOfType('sequential', lyr), 'elevation', null, -1, [[-112, 33.5]]);
+  }
+
+  function methodNames(scheme, lyr) {
+    return getSchemeMethods(scheme, lyr).map(function(o) { return o.name; });
+  }
+
+  it('are a method for the sequential schemes of a band that could hold elevations', async function() {
+    var dem = (await importDEM()).lyr;
+    var tooHigh = (await importDEM([0, 5000, 10000, 20000])).lyr;
+    assert(methodNames(getDefaultSchemeOfType('sequential', dem), dem).includes('elevation'));
+    assert(!methodNames(getDefaultSchemeOfType('diverging', dem), dem).includes('elevation'));
+    assert(!methodNames(getDefaultSchemeOfType('sequential', tooHigh), tooHigh).includes('elevation'));
+  });
+
+  it('color the stops of a preset, at its elevations, whatever the data range', async function() {
+    var o = await importDEM();
+    var scheme = useElevations(o.lyr);
+    var cmd = formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr});
+    var palette;
+    assert.equal(scheme.preset, 'Arid');
+    assert.deepEqual(getSchemeColors(scheme), arid);
+    assert.deepEqual(getContinuousTileStops(scheme, o.lyr).map(function(stop) { return stop.value; }), stops);
+    assert.equal(cmd, "-classify field='band1' breaks=50,200,600,1000,2000,3000,4000,5000 outer-breaks=0,6000 continuous colors=" + arid.join(','));
+    await runCommand(o.catalog, cmd);
+    palette = o.lyr.raster.view.recipe.palette;
+    assert.deepEqual(palette.breaks, stops);
+    assert.deepEqual(palette.colors, arid);
+    assert(palette.continuous);
+  });
+
+  it('are converted to the band\'s units', async function() {
+    var lyr = (await importDEM([4000, 6000, 9000])).lyr;
+    var scheme = useElevations(lyr);
+    lyr.raster.grid.verticalUnits = 'ft';
+    assert.deepEqual(getContinuousTileStops(scheme, lyr).map(function(stop) { return stop.value; }),
+      [0, 164.042, 656.168, 1968.5, 3280.84, 6561.68, 9842.52, 13123.4, 16404.2, 19685]);
+  });
+
+  it('have a tile for each stop, which can be recolored and reset', async function() {
+    var lyr = (await importDEM()).lyr;
+    var scheme = useElevations(lyr);
+    var edited = setTileColor(scheme, 2, '#ff0000');
+    assert.equal(edited.preset, null);
+    assert.deepEqual(getSchemeColors(edited), arid.slice(0, 2).concat(['#ff0000'], arid.slice(3)));
+    assert.deepEqual(getPinnedTiles(edited), arid.map(function(c, i) { return i == 2; }));
+    assert.equal(clearTileColor(edited, 2).preset, 'Arid');
+    assert.equal(setTileCount(scheme, 3, -1, lyr), scheme);
+    assert.equal(reverseScheme(scheme), scheme);
+    assert.equal(setSchemeContinuous(scheme, false), scheme);
+    assert.equal(choosePreset(edited, 'Polar').n, 8);
+  });
+
+  it('can be moved, the end stops too, and outside the data', async function() {
+    var lyr = (await importDEM()).lyr;
+    var scheme = useElevations(lyr);
+    var info = getSchemeBreaks(scheme, lyr);
+    var moved;
+    assert.deepEqual(info.breaks, stops);
+    // the data are 1200 to 3500
+    assert.deepEqual([info.min, info.max], [1000, 4000]);
+    assert.equal(getBreakClassSwatches(scheme).length, 11);
+    moved = setSchemeBreak(setSchemeBreak(scheme, lyr, 9, 8000), lyr, 0, -100);
+    // a stop stays between its neighbors
+    moved = setSchemeBreak(moved, lyr, 5, 9000);
+    assert.equal(moved.method, 'elevation');
+    assert.deepEqual(getSchemeBreaks(moved, lyr).breaks, [-100, 50, 200, 600, 1000, 3000, 3000, 4000, 5000, 8000]);
+    assert(/ breaks=50,200,600,1000,3000,3000,4000,5000 outer-breaks=-100,8000 /.test(formatSchemeCommand(moved, getAppliedColors(moved), {layer: lyr})));
+    // a preset brings its own elevations
+    assert.deepEqual(getSchemeBreaks(choosePreset(moved, 'Lush'), lyr).breaks, stops);
+  });
+
+  it('start with the preset for the climate where the layer is, or Temperate', async function() {
+    var lyr = (await importDEM()).lyr;
+    var scheme = getDefaultSchemeOfType('sequential', lyr);
+    var sahara = [10, 24], amazon = [-60, -5], siberia = [90, 62], greenland = [-40, 72], pacific = [-150, 0];
+    assert.equal(setSchemeMethod(scheme, 'elevation', null, -1, []).preset, 'Temperate');
+    assert.equal(setSchemeMethod(scheme, 'elevation', null, -1, [amazon]).preset, 'Lush');
+    assert.deepEqual([[sahara], [amazon], [siberia], [greenland], [pacific], [], null].map(getDefaultElevationPreset),
+      ['Arid', 'Lush', 'Temperate', 'Polar', 'Temperate', 'Temperate', 'Temperate']);
+    // the climate with the most weight across the points
+    assert.equal(getDefaultElevationPreset([sahara, sahara, amazon, pacific]), 'Arid');
+  });
+
+  it('show the data and the stops next to it in the class breaks dialog', async function() {
+    var lyr = (await importDEM([-50, 300, 9000 * 0.99])).lyr;
+    var info = getSchemeBreaks(useElevations(lyr), lyr);
+    // past the top stop, the data's max
+    assert.deepEqual([info.min, info.max], [-50, 8910]);
+  });
+
+  it('leave their colors as a custom ramp for another method', async function() {
+    var lyr = (await importDEM()).lyr;
+    var scheme = setSchemeMethod(useElevations(lyr), 'quantile');
+    assert.equal(scheme.preset, null);
+    assert.equal(scheme.n, 10);
+    assert.deepEqual(getSchemeColors(scheme), arid);
+    assert(!/breaks=/.test(formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: lyr})));
   });
 });

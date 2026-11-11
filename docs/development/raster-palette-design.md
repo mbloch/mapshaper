@@ -375,7 +375,32 @@ tested.
 5. Panel: the value source, the band menu, the raster entry points, defaults,
    undo. A browser test that applies and undoes a palette on a DEM.
 6. Hypsometric tints: the Elevation group, fixed-elevation presets, fit to
-   data, land and sea ramps.
+   data, land and sea ramps. Begun: "Fixed elevations" is a breaks method on
+   the Sequential tab, offered for a band whose values are all between
+   -12,000 and 9,000 m. It shows only the Elevation presets
+   (`hypsometric-schemes.mjs`: Arid, Lush, Temperate, Polar), as continuous
+   colors at their stops, and gives `-classify breaks=... outer-breaks=...
+   continuous`. The presets' colors were measured from Patterson's Equal
+   Earth physical map, at stops of 0, 50, 200 and 600 m and every 1000 m
+   above (to 6000 m, or 4000 m for Polar): a least-squares fit over its land
+   pixels, each pixel a blend of the four ramps by a coarse climate grid
+   fitted to the same map, with the three land ramps sharing their colors
+   from 1000 m up. The preset it starts with is the one with the most
+   weight at a 9 x 9 grid of points across the raster, in a 2° grid of the
+   four presets' weights (`hypsometric-climate.mjs`, about 11 KB of base64),
+   or Temperate if the points are all at sea or the projection is unknown or
+   can't be inverted. The grid was fitted to the same map: each land pixel
+   below 1000 m as a blend of the four ramps, the weights averaged into
+   cells, cells without such pixels (high plateaus, sea) filled from their
+   neighbors and blurred once, and sea cells more than a cell from land left
+   out. High plateaus therefore take their neighbors' climate, which matters
+   little, since the land presets share their colors from 1000 m up. The
+   grid's weights are also what a blended palette would use. Stops can be recolored, and moved in the class breaks dialog
+   (end stops too, and beyond the data), but not added; the dialog's range
+   runs from the stop at or below the data's min to the stop at or above its
+   max, leaving out the stops beyond those; choosing a preset
+   brings back its elevations, and another method keeps the colors as a
+   custom ramp. Still to do: fit to data, and land and sea ramps.
 7. Later: a command that renders a raster's display into RGB pixels (colored
    GeoTIFFs, `-tone` on palette rasters), GeoTIFF `ColorMap` import as a default categorical palette (NLCD
    and other palette TIFFs), category labels from raster attribute tables,

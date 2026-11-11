@@ -23,6 +23,7 @@ export function ClassBreaksDialog(gui, opts) {
   var logScale = false;
   var info = null; // see getSchemeBreaks()
   var scale = null;
+  var range = null; // the scale's [min, max]
   var chartEl, barsEl, linesEl, handlesEl, minLabel, maxLabel, logToggle, tableEl, noteEl, bodyEl;
   var handles = [], lines = [], pivotLine, inputs = [], rules = [], classRows = [];
   var drag = null;
@@ -52,14 +53,17 @@ export function ClassBreaksDialog(gui, opts) {
     noteEl.classed('hidden', !!info);
     bodyEl.classed('hidden', !info);
     if (!info) return;
-    if (!(info.min > 0)) logScale = false;
-    logToggle.node().disabled = !(info.min > 0);
     logToggle.node().checked = logScale;
-    scale = getBreaksScale(info.min, info.max, logScale);
+    // a drag keeps the scale it started with, since moving an end stop of
+    // fixed elevations can change the range
+    if (!drag) {
+      scale = getBreaksScale(info.min, info.max, logScale);
+      range = [info.min, info.max];
+    }
     values = getSchemeValues(scheme, lyr);
     renderHistogram(getHistogram(values, scale, numBins));
-    minLabel.text(formatNumber(info.min));
-    maxLabel.text(formatNumber(info.max));
+    minLabel.text(formatNumber(range[0]));
+    maxLabel.text(formatNumber(range[1]));
     renderHandles();
     renderTable();
   }
@@ -134,13 +138,15 @@ export function ClassBreaksDialog(gui, opts) {
     }
     breaks.forEach(function(b, i) {
       var left = pct(scale.toPos(b));
-      handles[i].css('left', left)
+      // fixed elevations can have stops outside the range (see getSchemeBreaks())
+      var outside = b < range[0] || b > range[1];
+      handles[i].css('left', left).classed('hidden', outside)
         .classed('fixed', info.fixed[i])
         .attr('aria-label', getBreakLabel(i))
         .attr('aria-valuenow', String(b))
         .attr('aria-disabled', info.fixed[i] ? 'true' : null)
         .attr('title', getBreakLabel(i) + ': ' + formatNumber(b));
-      lines[i].css('left', left).classed('fixed', info.fixed[i]);
+      lines[i].css('left', left).classed('fixed', info.fixed[i]).classed('hidden', outside);
     });
     // a pivot inside a pivot class isn't a break, but marks where the class's edges can go
     pivotPos = info.neutral ? scale.toPos(info.pivot) : -1;
@@ -212,7 +218,7 @@ export function ClassBreaksDialog(gui, opts) {
   function setBreak(i, val) {
     var scheme = opts.getScheme();
     var next = setSchemeBreak(scheme, opts.getLayer(), i, val);
-    if (next != scheme && next.breaks[i] !== info.breaks[i]) opts.onChange(next);
+    if (next != scheme && getSchemeBreaks(next, opts.getLayer()).breaks[i] !== info.breaks[i]) opts.onChange(next);
   }
 
   // A dragged break goes to the roundest value under the pointer: the one with
@@ -243,6 +249,7 @@ export function ClassBreaksDialog(gui, opts) {
     document.removeEventListener('pointermove', onDragMove);
     document.removeEventListener('pointerup', stopDrag);
     document.removeEventListener('pointercancel', stopDrag);
+    update(); // the scale, for the range the drag left
   }
 
   // arrow keys move a break by a hundredth of the histogram's width (a
