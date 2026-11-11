@@ -624,7 +624,7 @@ Assign colors or data values to each feature using one of several classification
 
 `pivot-class` Add a pivot class to `continuous` output, which has none by default. The pivot class gets the center color, without interpolation.
 
-`breaks=`       Specify user-defined sequential class breaks (an alternative to automatic classification using `quantile`, `equal-interval`, etc.).
+`breaks=`       Specify user-defined sequential class breaks (an alternative to automatic classification using `quantile`, `equal-interval`, etc.). Breaks can be values or percentages of the data range, or a mix, e.g. `breaks=0,30%,60%`; `30%` is 30% of the way from the lowest value to the highest (or between the `outer-breaks=` values, if given). The values that percentages resolve to are printed.
 
 `outer-breaks=`  A pair of comma-separated numbers setting min and max breakpoints to use when computing class breaks. This setting overrides the default behavior, which is to use the min and max values of the data field being classified. This setting can be used to prevent extreme data values (outliers) from affecting equal-interval classification. Also useful for setting outside breakpoints for continuous color ramps (when using the `continuous` option).
 
@@ -640,11 +640,11 @@ Assign colors or data values to each feature using one of several classification
 
 `continuous`    Output continuously interpolated values, for unclassed/continuous-color maps. Discrete color values are treated as control points, determining the shape of the continuously interpolated color gradient. With `method=quantile`, each value is placed on the gradient by its rank among the data (tied values share their average rank), so the number of colors affects only the shape of the gradient; with a pivot, each side is ranked separately. With other methods, values are interpolated linearly between the class breaks.
 
-`interpolation=`    How intermediate colors are calculated when colors are interpolated. `rgb` (the default) mixes colors in RGB space. `oklch` uses the perceptually uniform OKLCH color space. Lightness, chroma and hue are interpolated separately. This gives evenly spaced steps in lightness and color saturation, avoiding the dull midtones that RGB mixing can produce. Where an `oklch` color falls outside the sRGB gamut, it is fitted as described under `vibrance=`.
+`interpolation=`    How intermediate colors are calculated when colors are interpolated. `oklch` (the default) uses the perceptually uniform OKLCH color space. Lightness, chroma and hue are interpolated separately. This gives evenly spaced steps in lightness and color saturation, avoiding the dull midtones that RGB mixing can produce. Where an `oklch` color falls outside the sRGB gamut, it is fitted as described under `vibrance=`. `rgb` mixes colors in RGB space, which was the default before v0.8.0.
 
-`vibrance=`    Boost the chroma (vividness or saturation) of colors interpolated with `interpolation=oklch`. The sRGB gamut holds little chroma near black and white, so a linear ramp between a dark color and a light one may appear under-saturated. The value of `vibrance`, which varies from `0` to `1`, determines how much OKLCH chroma is added to every color of the interpolation. The default is `0`.
+`vibrance=`    Boost the chroma (vividness or saturation) of colors interpolated in OKLCH (not available with `interpolation=rgb`). The sRGB gamut holds little chroma near black and white, so a linear ramp between a dark color and a light one may appear under-saturated. The value of `vibrance`, which varies from `0` to `1`, determines how much OKLCH chroma is added to every color of the interpolation. The default is `0`.
 
-With `interpolation=oklch`, when a color falls outside the sRGB gamut, its hue is held constant and chroma is reduced to fit. Lightness may be shifted by a small amount.
+With OKLCH interpolation, when a color falls outside the sRGB gamut, its hue is held constant and chroma is reduced to fit. Lightness may be shifted by a small amount.
 
 `index-field=`  Use class ids that have been precalculated and assigned to this field. Values should be integers from `0 ... n-1` (where n is the number of classes). `-1` is the null value.
 

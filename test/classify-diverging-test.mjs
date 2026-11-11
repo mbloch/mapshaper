@@ -200,7 +200,7 @@ describe('mapshaper-diverging.mjs', function () {
     });
 
     it('colors are assigned outward from the pivot', async function () {
-      var classes = await classify([-1, 0, 1, 2, 3], 'pivot=0 pivot-range=-0.5,0.5 classes=1,2 colors=red,white,blue equal-interval');
+      var classes = await classify([-1, 0, 1, 2, 3], 'pivot=0 pivot-range=-0.5,0.5 classes=1,2 colors=red,white,blue equal-interval interpolation=rgb');
       // the lower side's one class gets the color one step out from white
       assert.deepEqual(classes, ['rgb(255, 128, 128)', 'white', 'rgb(128, 128, 255)', 'blue', 'blue']);
     });

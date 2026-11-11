@@ -260,6 +260,8 @@ function importCommand(palette, lyr) {
   }
   o = cmd && cmd.name == 'classify' ? cmd.options : null;
   if (!o || !Array.isArray(o.colors) || o.colors.length < 2 || !o.field) return null;
+  // breaks given as percentages ("30%") depend on the data they were used with
+  if (o.breaks && !o.breaks.every(isFinite)) return null;
   colors = o.colors.map(function(c) { return internal.parseColor(c); });
   if (!colors.every(Boolean)) return null;
   colors = colors.map(internal.formatColor);

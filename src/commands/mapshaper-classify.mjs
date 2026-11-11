@@ -32,6 +32,7 @@ import { getClassifyMethod } from '../classification/mapshaper-classify-methods'
 import { color as d3_color } from 'd3-color';
 import { getBlackiClassifier } from '../classification/mapshaper-blacki';
 import { getInterpolationOptions } from '../classification/mapshaper-interpolation';
+import { hasPercentBreaks, resolvePercentBreaks } from '../classification/mapshaper-percent-breaks';
 
 cmd.classify = function(lyr, dataset, optsArg) {
   if (!lyr.data) {
@@ -67,6 +68,12 @@ cmd.classify = function(lyr, dataset, optsArg) {
   // get classification method
   //
   method = getClassifyMethod(opts, fieldType);
+
+  // (without data, only the number of breaks matters)
+  if (hasPercentBreaks(opts.breaks) && fieldType == 'number') {
+    opts.breaks = resolvePercentBreaks(opts.breaks, getPercentBreaksRange(records, dataField, opts));
+    message('Breaks: breaks=' + opts.breaks.join(','));
+  }
 
   // validate classification method
   if (method == 'non-adjacent') {
@@ -246,6 +253,21 @@ function formatDivergingStops(layout) {
   if (stops.below.length > 0) parts.push('below: ' + stops.below.join(', '));
   if (stops.above.length > 0) parts.push('above: ' + stops.above.join(', '));
   return 'Color stops (' + parts.join('; ') + ')';
+}
+
+// The range that percentage breaks are percentages of: outer-breaks=, or the
+// data's min and max (rounded as the classifiers round values)
+function getPercentBreaksRange(records, field, opts) {
+  var round = opts.precision ? getRoundingFunction(opts.precision) : null;
+  var min = Infinity, max = -Infinity;
+  if (opts.outer_breaks) return opts.outer_breaks;
+  getFieldValues(records, field).forEach(function(val) {
+    if (!utils.isFiniteNumber(val)) return;
+    if (round) val = round(val);
+    if (val < min) min = val;
+    if (val > max) max = val;
+  });
+  return [min, max];
 }
 
 // The data that the classes divide: numbers, rounded and clamped as the

@@ -21,6 +21,63 @@ describe('mapshaper-classify.js', function () {
 
   })
 
+  describe('breaks= with percentages', function() {
+    var data = 'value\n100\n140\n160\n200\n300';
+    async function classify(opts) {
+      var cmd = 'data.csv -classify value save-as=k ' + opts + ' -o format=json';
+      var out = await api.applyCommands(cmd, {'data.csv': data});
+      return JSON.parse(out['data.json']).map(function(d) { return d.k; });
+    }
+
+    it('parses numbers and percentages', function() {
+      var cmd = api.internal.parseCommands('-classify value breaks=0,30%,100.5')[0];
+      assert.deepEqual(cmd.options.breaks, [0, '30%', 100.5]);
+    });
+
+    it('rejects invalid values', function() {
+      assert.throws(function() {
+        api.internal.parseCommands('-classify value breaks=0,abc');
+      }, /Invalid value in list/);
+      assert.throws(function() {
+        api.internal.parseCommands('-classify value breaks=0,%');
+      }, /Invalid value in list/);
+    });
+
+    it('percentages are of the data range', async function() {
+      // 25% of 100-300 is 150
+      assert.deepEqual(await classify('breaks=25% values=a,b'), ['a', 'a', 'b', 'b', 'b']);
+    });
+
+    it('mixes values and percentages', async function() {
+      assert.deepEqual(await classify('breaks=150,75% values=a,b,c'), ['a', 'a', 'b', 'b', 'c']);
+    });
+
+    it('percentages of outer-breaks= when given', async function() {
+      // 50% of 0-400 is 200
+      assert.deepEqual(await classify('breaks=50% outer-breaks=0,400 values=a,b'), ['a', 'a', 'a', 'b', 'b']);
+    });
+
+    it('continuous output', async function() {
+      assert.deepEqual(await classify('breaks=50% continuous values=0,10,20'), [0, 4, 6, 10, 20]);
+    });
+
+    it('resolves breaks for pivot=', async function() {
+      assert.deepEqual(await classify('breaks=25%,75% pivot=200 values=a,b,c'), ['a', 'a', 'b', 'b', 'c']);
+    });
+
+    it('stops if the resolved breaks do not increase', async function() {
+      await assert.rejects(classify('breaks=250,50% values=a,b,c'), /should increase.*250,200/);
+    });
+
+    it('resolution', function() {
+      var resolve = api.internal.resolvePercentBreaks;
+      assert.deepEqual(resolve(['0%', 1.25, '100%'], [0.5, 2]), [0.5, 1.25, 2]);
+      assert.deepEqual(resolve(['33%'], [0, 1000]), [330]);
+      assert.deepEqual(resolve(['33.3333%'], [0, 10]), [3.33]);
+      assert.deepEqual(resolve(['50%'], [0, 0.01]), [0.005]);
+    });
+  })
+
   describe('data with a single value', function() {
     async function classify(data, opts) {
       var cmd = 'data.csv -classify value save-as=k ' + opts + ' -o format=json';

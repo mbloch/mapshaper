@@ -25,8 +25,8 @@ categorical color schemes, with user-editable ramps.
   resolved hex colors, e.g.
   `-classify field=pop quantile classes=5 colors=#344a72,#9a4c64,...`.
   The history is readable and replays exactly, independent of how the ramp
-  was built. CLI users get the same interpolation through
-  `interpolation=oklch`.
+  was built. CLI users get the same interpolation, which is `-classify`'s
+  default.
 - **Editing a preset makes it custom.** Pinning any tile of a preset switches
   the palette menu to "Custom". The preset's two end colors become end pins,
   the edited tile becomes a third pin, and the other tiles are interpolated.
@@ -199,13 +199,14 @@ See `layer-metadata.md` for the limits of the current record (a GUI-only
 
 ## CLI additions
 
-- `interpolation=rgb|oklch` on `-classify` (default `rgb`, so existing
-  outputs don't change). It affects interpolation between user colors in
-  `colors=`, `stops=` and `continuous` output. Numeric `values=` are
-  unaffected.
+- `interpolation=oklch|rgb` on `-classify`. It affects interpolation
+  between user colors in `colors=`, `stops=` and `continuous` output.
+  Numeric `values=` are unaffected. The default was `rgb` at first, so that
+  existing outputs wouldn't change, and became `oklch` in v0.8.0 (see
+  `raster-palette-design.md`); `interpolation=rgb` gives the old colors.
 - `vibrance=` (0-1) on `-classify`, for `oklch`, scaled to OKLCH chroma
-  (1 adds 0.09, the top of the panel's slider); `vibrance=` alone
-  selects `oklch`.
+  (1 adds 0.09, the top of the panel's slider); not available with
+  `interpolation=rgb`.
 - `pivot=`, `pivot-range=`, `no-pivot-class`, `pivot-class` and
   `classes=lo,hi` for diverging schemes (see Diverging schemes).
 - With `continuous`, N colors give N-1 intervals (see Continuous ramps).
@@ -393,8 +394,8 @@ is interpolated between the two around its value.
 - Change: with `continuous`, a list of N colors gives N-1 intervals by
   default, so each color is a control point, used as given. (Before, N
   colors made N classes and N+1 colors, re-interpolated from the list.)
-- The panel passes `continuous interpolation=oklch classes=N-1` and its tile
-  colors. Not `vibrance=`: the tiles already have it, and the interpolation
+- The panel passes `continuous classes=N-1` and its tile colors
+  (interpolated in OKLCH, the default). Not `vibrance=`: the tiles already have it, and the interpolation
   between them would add it again.
 
 ### Panel

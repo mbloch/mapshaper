@@ -14,6 +14,8 @@ v0.8.0 (unreleased)
 * Support for importing images that lack any georeferencing (including ordinary JPEGs and PNGs).
 * -classify no longer treats a field containing one unique value as a data error.
 * -clip now clips rasters to the exact boundary of vector shapes. Removed areas are transparent by default.
+* Breaking change: -classify interpolates colors in OKLCH by default, giving evenly spaced lightness steps and avoiding the dull midtones of RGB mixing. This changes the colors of `continuous` output, of `stops=`, and of `colors=` lists stretched to more classes. Use `interpolation=rgb` for the previous colors.
+* -classify `breaks=` accepts percentages of the data range, alone or mixed with values, e.g. `breaks=0,30%,60%`. With `outer-breaks=`, percentages are of that range. Previously, a value like `30%` was silently read as `30`.
 * Breaking change: raster bands are numbered from 1, as in GDAL and in `-join` expressions (`band1`). The `band=` option of `-contours`, `-hillshade` and `-tint` was 0-based; `band=0` is now an error, and `band=2` means the second band. Band numbers are those of the source file, so they still name the same band when only some bands were imported.
 * Breaking change: when projecting image rasters with unprojectable areas, the nodata areas are transparent by default (instead of white).
 * -join can join a raster to a polygon layer, using calc= expressions to aggregate band values, e.g. `-join population.tif calc='pop = sum(band1)'`. By default, pixels are weighted by the fraction of their area inside each polygon; the `point-method` flag joins pixels by their centers instead.

@@ -34,6 +34,19 @@ export function parseNumberList(token) {
   return token.split(',').map(parseFloat);
 }
 
+// Numbers, or percentages kept as strings ("30%") for the command to resolve
+// e.g. "0,30%,100%" -> [0, "30%", "100%"]
+export function parseNumberOrPercentList(token) {
+  return token.split(',').map(function(str) {
+    var s = str.trim();
+    var val = /%$/.test(s) ? Number(s.slice(0, -1)) : Number(s);
+    if (s === '' || s == '%' || !isFinite(val)) {
+      stop(utils.format('Invalid value in list: %s', str));
+    }
+    return /%$/.test(s) ? s : val;
+  });
+}
+
 // Split comma-delimited list, trim quotes from entire list and
 // individual members
 export function parseStringList(token) {

@@ -1179,7 +1179,7 @@ export function formatSchemeCommand(scheme, colors, opts) {
   }
   if (isContinuousScheme(scheme)) {
     // the tiles already have their vibrance, so no vibrance=
-    parts.push('continuous', 'interpolation=oklch');
+    parts.push('continuous');
   }
   parts.push('colors=' + colors.join(','));
   if (scheme.method != 'non-adjacent' && getSchemeNullColor(scheme) != defaultNullColor) {

@@ -1067,8 +1067,8 @@ export function getOptionParser() {
       assign_to: 'method'
     })
     .option('breaks', {
-      describe: 'user-defined sequential class breaks',
-      type: 'numbers'
+      describe: 'user-defined class breaks: values, or percentages of the data range (e.g. 0,30%)',
+      type: 'numbers_or_percents'
     })
     .option('outer-breaks', {
       describe: 'min,max breakpoints, to limit the effect of outliers',
@@ -1103,7 +1103,7 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('interpolation', {
-      describe: 'color interpolation: rgb (default) or oklch'
+      describe: 'color interpolation: oklch (default) or rgb'
     })
     .option('vibrance', {
       describe: '(oklch) more vivid midtones, 0-1 (default 0)',

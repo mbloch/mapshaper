@@ -437,7 +437,7 @@ test('continuous colors interpolate between the tiles, under a gradient', async 
   var classify = (await getSessionCommands(page)).filter(function(cmd) {
     return /^-classify/.test(cmd);
   });
-  expect(classify).toEqual([expect.stringMatching(/^-classify field='id' method=quantile classes=4 continuous interpolation=oklch colors=\S+$/)]);
+  expect(classify).toEqual([expect.stringMatching(/^-classify field='id' method=quantile classes=4 continuous colors=\S+$/)]);
   expect(errors).toEqual([]);
 });
 
