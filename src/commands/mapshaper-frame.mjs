@@ -70,7 +70,8 @@ cmd.frame = function(catalog, targets, opts) {
 var CREATE_ONLY_OPTIONS = ['replace'];
 var MODIFY_ONLY_OPTIONS = ['fit', 'auto_aspect', 'fix_scale', 'remove', 'add_layers',
   'order_layers', 'remove_layers', 'hide_layers', 'show_layers', 'above', 'below', 'top', 'bottom',
-  'reproject', 'no_replace', 'overlay', 'overlay_position', 'overlay_margin', 'remove_overlay'];
+  'reproject', 'no_replace', 'overlay', 'overlay_position', 'overlay_margin', 'remove_overlay',
+  'before', 'after'];
 var PAGE_OPTIONS = ['bbox', 'fit', 'width', 'height', 'aspect_ratio', 'auto_aspect',
   'fix_scale', 'margin', 'offset', 'offsets'];
 
@@ -156,11 +157,33 @@ function modifyFrame(catalog, frame, opts) {
     overlayFrameOnHost(catalog, frame, findOverlayFrame(catalog, opts.overlay), opts);
   }
 
-  // 4. name (a copy is named when it is made)
+  // 4. place among the frames
+  if (opts.before || opts.after) {
+    moveFrame(catalog, frame, opts);
+  }
+
+  // 5. name (a copy is named when it is made)
   if (opts.name && !opts.no_replace) {
     renameFrame(catalog, frame, opts.name);
   }
   catalog.setDefaultTarget([frame.layer], frame.dataset);
+}
+
+// The order of frames is the catalog order of their datasets; members stay
+// where they are, since their stacking order is kept separately
+function moveFrame(catalog, frame, opts) {
+  var anchor;
+  if (opts.before && opts.after) {
+    stop('before= and after= are mutually exclusive');
+  }
+  anchor = getFrameByName(catalog, opts.before || opts.after);
+  if (!anchor) {
+    stop('Unknown frame:', opts.before || opts.after);
+  }
+  if (anchor.dataset == frame.dataset) {
+    stop((opts.before ? 'before=' : 'after=') + ' names the frame that is being moved');
+  }
+  catalog.moveDataset(frame.dataset, anchor.dataset, !!opts.before);
 }
 
 function findLayers(catalog, pattern) {

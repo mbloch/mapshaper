@@ -1852,6 +1852,15 @@ img.eye-btn {
 	border-bottom: 1px solid black;
 }
 
+/* where a dragged frame will go */
+.frame-section.insert-above {
+	border-top-color: black;
+}
+
+.frame-section.insert-below {
+	box-shadow: 0 1px 0 black;
+}
+
 /* --- Intersection control ----------*/
 
 .intersection-display {

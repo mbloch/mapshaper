@@ -169,6 +169,17 @@ export function Catalog() {
     this.markCatalogChanged({operation: 'insertDataset'});
   };
 
+  // Moves a dataset next to another one (after it, or before it if @before)
+  this.moveDataset = function(dataset, neighbor, before) {
+    var i;
+    if (dataset == neighbor || !datasets.includes(dataset) || !datasets.includes(neighbor)) return;
+    this.captureCatalogBefore({operation: 'moveDataset'});
+    datasets = datasets.filter(function(d) { return d != dataset; });
+    i = datasets.indexOf(neighbor);
+    datasets.splice(before ? i : i + 1, 0, dataset);
+    this.markCatalogChanged({operation: 'moveDataset'});
+  };
+
   // Puts @replacement in the place of the first of @arr and removes the
   // others, e.g. when datasets are merged. Default targets follow.
   this.replaceDatasets = function(arr, replacement) {

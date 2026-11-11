@@ -75,8 +75,10 @@ export function LayerControl(gui) {
   // layer repositioning
   var dragTargetId = null;
   var dragging = false;
+  var draggingFrame = false;
   var layerOrderSlug;
-  var pendingMove = null; // {drag, drop, above}: a drop in another section
+  // {drag, drop, above}: a drop in another section, or of a frame
+  var pendingMove = null;
 
   headerBtn.on('click', function() {
     toggle();
@@ -195,6 +197,7 @@ export function LayerControl(gui) {
     clearClass('insert-above');
     clearClass('insert-below');
     dragTargetId = layerOrderSlug = pendingMove = null;
+    draggingFrame = false;
     if (dragging) {
       renderLayerList(); // in case menu changed...
       dragging = false;
@@ -216,6 +219,16 @@ export function LayerControl(gui) {
     } else {
       insertLayer(drag, drop, above);
     }
+  }
+
+  // A frame is dropped on another frame's section, ahead of that frame or
+  // after it; the frames' order is changed when the mouse button is released
+  function dragFrameOver(dragId, dropId, above) {
+    var drag = findLayerById(dragId);
+    var drop = findLayerById(dropId);
+    pendingMove = null;
+    if (!drag || !drop || drag.dataset == drop.dataset) return;
+    pendingMove = {drag: drag, drop: drop, above: above};
   }
 
   function isFrameEntry(o) {
@@ -243,7 +256,11 @@ export function LayerControl(gui) {
     var fromFrame = internal.getFrameForDataset(model, drag.dataset);
     var toFrame = isFrameEntry(drop) ? drop : internal.getFrameForDataset(model, drop.dataset);
     var position;
-    if (toFrame) {
+    if (isFrameEntry(drag)) {
+      if (frameDropLeavesOrder(move)) return;
+      runFrameCommand(drag, (move.above ? 'before=' : 'after=') +
+        internal.formatOptionValue(drop.layer.name));
+    } else if (toFrame) {
       position = isFrameEntry(drop) ? 'top' :
         (move.above ? 'above=' : 'below=') + getMemberRef(toFrame, drop.layer);
       if (fromFrame && fromFrame.dataset == toFrame.dataset) {
@@ -270,6 +287,12 @@ export function LayerControl(gui) {
     if (isFrameEntry(move.drop)) return i === 0;
     // members are listed top first, so "above" is the previous entry
     return members[move.above ? i + 1 : i - 1] == move.drop.layer;
+  }
+
+  function frameDropLeavesOrder(move) {
+    var frames = internal.getFrames(model).map(function(o) { return o.dataset; });
+    var i = frames.indexOf(move.drag.dataset);
+    return frames[move.above ? i + 1 : i - 1] == move.drop.dataset;
   }
 
   function insertLayer(dragLyr, dropLyr, above) {
@@ -376,6 +399,7 @@ export function LayerControl(gui) {
         .classed('active-section', inView)
         .classed('inactive-section', !inView)
         .appendTo(frameList);
+      section.node().dataset.frameMenuId = g.frame.layer.menu_id;
       var members = El('div').addClass('frame-members');
       section.appendChild(getLayerEntry(g.frame, {
         frame: true,
@@ -418,8 +442,7 @@ export function LayerControl(gui) {
       element = cache.use(html);
     } else {
       element = El('div').html(html).firstChild();
-      // A frame is not in the layer stack, so its entry can't be dragged
-      initMouseEvents(element, o.layer.menu_id, opts.pinnable, !opts.frame);
+      initMouseEvents(element, o.layer.menu_id, opts.pinnable, !!opts.frame);
       cache.add(html, element);
     }
     return element;
@@ -472,33 +495,37 @@ export function LayerControl(gui) {
     return html;
   }
 
-  // A frame is not in the layer stack, so its entry can't be dragged to reorder
-  function initMouseEvents(entry, id, pinnable, draggable) {
+  function initMouseEvents(entry, id, pinnable, isFrameHeading) {
     entry.on('mouseover', init);
     entry.on('focusin', init);
     function init() {
       entry.removeEventListener('mouseover', init);
       entry.removeEventListener('focusin', init);
-      initMouseEvents2(entry, id, pinnable, draggable);
+      initMouseEvents2(entry, id, pinnable, isFrameHeading);
     }
   }
 
-  // A frame's heading can't be dragged, but a layer can be dropped on it,
-  // which puts the layer on top of the frame's layers
+  // A layer dropped on a frame's heading goes on top of the frame's layers.
+  // A frame's heading is dragged to change the order of frames: it is dropped
+  // on another frame's section, and goes ahead of that frame if dropped on
+  // the upper half of the section, after it if on the lower half.
   function initLayerDragging(entry, id, isFrameHeading) {
 
     // support layer drag-drop
-    // A drag starts with a press on a layer row, not with a held button
-    // entering one, so a press elsewhere (e.g. on the frame) can't reorder layers
-    if (!isFrameHeading) {
-      entry.on('mousedown', function(e) {
-        if (e.button !== 0) return;
-        if (pendingMove) stopDragging(); // its mouseup was missed
-        dragTargetId = id;
-      });
-    }
+    // A drag starts with a press on a row, not with a held button entering
+    // one, so a press elsewhere can't reorder layers
+    entry.on('mousedown', function(e) {
+      if (e.button !== 0) return;
+      if (pendingMove) stopDragging(); // its mouseup was missed
+      dragTargetId = id;
+      draggingFrame = isFrameHeading;
+    });
     entry.on('mousemove', function(e) {
       var rect, insertionClass;
+      if (e.buttons && dragTargetId && draggingFrame) {
+        dragFrameOverEntry(e);
+        return;
+      }
       // A move without the button pressed ends a drag whose mouseup was
       // missed. macOS can send one just before the mouseup that ends a drag,
       // so a drop that is ready is left for the mouseup.
@@ -528,11 +555,36 @@ export function LayerControl(gui) {
         dragOver(dragTargetId, id, insertionClass == 'insert-above');
       }
     });
+
+    function dragFrameOverEntry(e) {
+      var section = entry.node().closest('.frame-section');
+      var dropId = section ? section.dataset.frameMenuId : null;
+      var rect, insertionClass;
+      if (dragTargetId == id) entry.addClass('drag-target');
+      if (!dropId || dropId == dragTargetId) {
+        clearFrameDropTarget();
+        return;
+      }
+      dragging = true;
+      rect = section.getBoundingClientRect();
+      insertionClass = e.clientY - rect.top < rect.height / 2 ? 'insert-above' : 'insert-below';
+      if (!section.classList.contains(insertionClass)) {
+        clearFrameDropTarget();
+        section.classList.add(insertionClass);
+        dragFrameOver(dragTargetId, dropId, insertionClass == 'insert-above');
+      }
+    }
   }
 
-  function initMouseEvents2(entry, id, pinnable, draggable) {
+  function clearFrameDropTarget() {
+    clearClass('insert-above');
+    clearClass('insert-below');
+    pendingMove = null;
+  }
+
+  function initMouseEvents2(entry, id, pinnable, isFrameHeading) {
     var moreBtn = entry.findChild('.more-btn');
-    initLayerDragging(entry, id, !draggable);
+    initLayerDragging(entry, id, isFrameHeading);
 
     function deleteLayer() {
       var target = findLayerById(id);

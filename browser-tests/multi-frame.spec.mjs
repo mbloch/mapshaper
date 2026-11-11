@@ -342,6 +342,21 @@ test.describe('frame actions in the layers menu', function() {
     await expect(names).toHaveText(['r3', 'r1']);
   });
 
+  test('dragging a frame\'s heading changes the order of frames', async function({page}) {
+    await runCommand(page, TWO_FRAMES, null);
+    await openLayersPanel(page);
+    var names = page.locator('.frame-section .frame-name');
+    await expect(names).toHaveText(['f1', 'f2']);
+    await dragRow(page, page.locator('.frame-item').filter({hasText: 'f2'}),
+      page.locator('.frame-item').filter({hasText: 'f1'}), 0.25);
+    await expect.poll(async function() {
+      return (await getSessionCommands(page)).pop();
+    }).toBe('-frame target=f2 before=f1');
+    await expect(names).toHaveText(['f2', 'f1']);
+    await page.evaluate(function() { return window.mapshaper.undoTest.undo(); });
+    await expect(names).toHaveText(['f1', 'f2']);
+  });
+
   test('a drop that leaves a frame\'s order as it was runs no command', async function({page}) {
     await runCommand(page, TWO_FRAMES, null);
     await openLayersPanel(page);

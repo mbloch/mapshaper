@@ -206,6 +206,27 @@ describe('multiple map frames', function() {
         '-frame target=f1 order-layers=a,b above=a'), /names a layer that is being moved/);
     });
 
+    it('before= and after= change the order of frames', async function() {
+      var frames = boxes + '-frame target=a width=200 name=f1 -frame target=b width=200 name=f2 ' +
+        '-frame target=c width=200 name=f3 ';
+      var frameNames = function(catalog) {
+        return I.getFrames(catalog).map(function(o) { return o.layer.name; });
+      };
+      var catalog = await run(frames + '-frame target=f3 before=f1');
+      assert.deepEqual(frameNames(catalog), ['f3', 'f1', 'f2']);
+      assert.deepEqual(stackOf(catalog, 'f3'), ['c']);
+      catalog = await run(frames + '-frame target=f1 after=f3');
+      assert.deepEqual(frameNames(catalog), ['f2', 'f3', 'f1']);
+    });
+
+    it('rejects before= or after= naming the frame being moved', async function() {
+      await assert.rejects(run(boxes + '-frame target=a width=200 name=f1 ' +
+        '-frame target=b width=200 name=f2 -frame target=f1 before=f1'),
+        /names the frame that is being moved/);
+      await assert.rejects(run(boxes + '-frame target=a width=200 name=f1 ' +
+        '-frame target=f1 after=f9'), /Unknown frame: f9/);
+    });
+
     it('rejects add-layers= with order-layers=', async function() {
       await assert.rejects(run(boxes + '-frame target=a,b width=200 name=f1 ' +
         '-frame target=f1 add-layers=c order-layers=a'), /cannot be used together/);

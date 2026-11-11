@@ -738,6 +738,13 @@ export function getOptionParser() {
     .option('remove-overlay', {
       describe: 'remove an overlay frame from this frame\'s page'
     })
+    .group('Order of frames (target= names the frame to move)')
+    .option('before', {
+      describe: 'move the frame ahead of this frame in the list of frames'
+    })
+    .option('after', {
+      describe: 'move the frame after this frame in the list of frames'
+    })
     .group('Other')
     .option('no-replace', {
       alias: '+',
