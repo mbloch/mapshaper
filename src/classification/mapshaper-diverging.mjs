@@ -371,15 +371,14 @@ function getQuantileLayout(ascending, pivot, hasNeutral, range, counts, method, 
   } else if (hasNeutral) {
     classCount = counts.total || counts.below + counts.above + 1;
     inNeutral = Math.max(1, Math.round(n / classCount));
-    dists = ascending.map(function(val) { return Math.abs(val - pivot); })
-      .sort(function(a, b) { return a - b; });
+    dists = getNearestDistances(ascending, pivot, inNeutral + 1);
     // halfway to the next value out, so that no value sits on an edge
     d = inNeutral < n ? (dists[inNeutral - 1] + dists[inNeutral]) / 2 : dists[n - 1] * 2 + 1;
     lo = pivot - d;
     hi = pivot + d;
   }
-  belowVals = ascending.filter(function(val) { return val < lo; });
-  aboveVals = ascending.filter(function(val) { return val >= hi; });
+  belowVals = ascending.slice(0, countBelow(ascending, lo));
+  aboveVals = ascending.slice(countBelow(ascending, hi));
   if (counts.total) {
     sideClasses = counts.total - (hasNeutral ? 1 : 0);
     below = splitClasses(sideClasses, belowVals.length, aboveVals.length);
@@ -399,15 +398,57 @@ function getQuantileLayout(ascending, pivot, hasNeutral, range, counts, method, 
     above > 1 ? getBreaks(aboveVals, above - 1) : []);
 }
 
+// The distances of the @k values nearest to @pivot, ascending, found by
+// working outward from the pivot
+function getNearestDistances(ascending, pivot, k) {
+  var n = ascending.length;
+  var dists = [];
+  var j = countBelow(ascending, pivot);
+  var i = j - 1;
+  var below, above;
+  while (dists.length < k && (i >= 0 || j < n)) {
+    below = i >= 0 ? pivot - ascending[i] : Infinity;
+    above = j < n ? ascending[j] - pivot : Infinity;
+    if (below < above) {
+      dists.push(below);
+      i--;
+    } else {
+      dists.push(above);
+      j++;
+    }
+  }
+  return dists;
+}
+
 // The values that each side of a ranked layout ranks: the side's data, with
 // its inner edge (the pivot, or the edge of the pivot class) as the side's
 // innermost value, so that ranks run from the edge out to the side's
 // outermost value. Data at the edge itself rank as the edge.
 function getSideRanks(ascending, edges) {
   return {
-    below: ascending.filter(function(val) { return val < edges[0]; }).concat([edges[0]]),
-    above: [edges[1]].concat(ascending.filter(function(val) { return val > edges[1]; }))
+    below: ascending.slice(0, countBelow(ascending, edges[0])).concat([edges[0]]),
+    above: [edges[1]].concat(ascending.slice(countAtOrBelow(ascending, edges[1])))
   };
+}
+
+// The number of @ascending values that are less than @val
+export function countBelow(ascending, val) {
+  var lo = 0, hi = ascending.length, mid;
+  while (lo < hi) {
+    mid = (lo + hi) >> 1;
+    if (ascending[mid] < val) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+}
+
+// The number of @ascending values that are less than or equal to @val
+export function countAtOrBelow(ascending, val) {
+  var lo = 0, hi = ascending.length, mid;
+  while (lo < hi) {
+    mid = (lo + hi) >> 1;
+    if (ascending[mid] <= val) lo = mid + 1; else hi = mid;
+  }
+  return lo;
 }
 
 // The number of n classes that go below the pivot, in proportion to the

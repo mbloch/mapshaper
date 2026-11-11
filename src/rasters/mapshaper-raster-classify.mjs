@@ -1,7 +1,8 @@
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { parseColor } from '../color/color-utils';
-import { getDivergingStops } from '../classification/mapshaper-diverging';
+import { getDivergingStops, countBelow } from '../classification/mapshaper-diverging';
+import { numbersAreAscending } from '../classification/mapshaper-sequential-classifier';
 import { getRasterDisplayBands, rasterGridDisplaysColor } from './mapshaper-raster-display-bands';
 import { createRasterPreview, getRasterGrid } from './mapshaper-raster-utils';
 import { runningInBrowser } from '../mapshaper-env';
@@ -16,6 +17,9 @@ var MAX_SAMPLE_PIXELS = 1e6;
 var RANK_STOPS = 32;
 // ...or a stop at each value, if there are no more than this many
 var MAX_VALUE_STOPS = 256;
+// Samples and categories, by grid.samples and then by band (see getBandCache()).
+// Editing a palette in the GUI classifies the same pixels again and again.
+var bandCaches = new WeakMap();
 // fraction of the sample at each end of the range that 0% and 100% ignore, so
 // that a spike or an artifact doesn't shift every percentage break
 var RANGE_TRIM = 0.001;
@@ -98,29 +102,57 @@ export function rasterBandIsInteger(grid) {
 
 // A sample of the valid values of a band: not nodata or NaN, inside the
 // grid's coverage, and not masked by an alpha band
-// Returns {values, count, total, sampled}
-//   values: up to MAX_SAMPLE_PIXELS values, as an Array
+// Returns {values, count, total, sampled}, which is cached: don't modify it
+//   values: up to MAX_SAMPLE_PIXELS values, ascending, as an Array (sorted
+//     once here, so that the classifiers' sorts can skip it)
 //   count: the number of valid pixels; total: the number of pixels
 export function getRasterBandSample(grid, band) {
-  var n = grid.width * grid.height;
-  var step = Math.max(1, Math.ceil(n / MAX_SAMPLE_PIXELS));
-  var values = [];
-  var count = 0;
+  var cache = getBandCache(grid, band);
+  var n, step, values, count;
+  if (cache.sample) return cache.sample;
+  n = grid.width * grid.height;
+  step = Math.max(1, Math.ceil(n / MAX_SAMPLE_PIXELS));
+  values = [];
+  count = 0;
   forEachValidBandValue(grid, band, function(val, i) {
     count++;
     if (i % step === 0) values.push(val);
   });
-  return {values: values, count: count, total: n, sampled: step > 1};
+  cache.sample = {values: Array.from(sortAscending(values)), count: count, total: n, sampled: step > 1};
+  return cache.sample;
 }
 
-// The band's unique values, in increasing order. Every pixel is read, so that
-// a category covering a few pixels isn't missed by a sample.
+// The band's unique values, in increasing order (cached: don't modify it).
+// Every pixel is read, so that a category covering a few pixels isn't missed
+// by a sample.
 export function getRasterBandCategories(grid, band) {
-  var index = new Set();
+  var cache = getBandCache(grid, band);
+  var index;
+  if (cache.categories) return cache.categories;
+  index = new Set();
   forEachValidBandValue(grid, band, function(val) {
     index.add(val);
   });
-  return Array.from(index).sort(function(a, b) { return a - b; });
+  cache.categories = Array.from(index).sort(function(a, b) { return a - b; });
+  return cache.categories;
+}
+
+// Commands make a new grid rather than changing a grid's pixels, but a grid's
+// nodata value, coverage or display bands can be replaced, which changes the
+// valid pixels
+function getBandCache(grid, band) {
+  var byBand = bandCaches.get(grid.samples);
+  var key = [band, grid.nodata, getRasterDisplayBands(grid).alpha, grid.bands].join(',');
+  var cache;
+  if (!byBand) {
+    byBand = {};
+    bandCaches.set(grid.samples, byBand);
+  }
+  cache = byBand[key];
+  if (!cache || cache.coverage !== (grid.coverage || null)) {
+    cache = byBand[key] = {coverage: grid.coverage || null, sample: null, categories: null};
+  }
+  return cache;
 }
 
 function forEachValidBandValue(grid, band, cb) {
@@ -153,7 +185,7 @@ export function formatRasterSampleMessage(band, sample) {
 
 // The range of a sample of values, ignoring RANGE_TRIM of them at each end
 export function getTrimmedRange(values) {
-  var sorted = Float64Array.from(values).sort();
+  var sorted = sortAscending(values);
   var lo = Math.floor((sorted.length - 1) * RANGE_TRIM);
   var hi = Math.ceil((sorted.length - 1) * (1 - RANGE_TRIM));
   return [sorted[lo], sorted[hi]];
@@ -210,8 +242,8 @@ function getRankedPalette(classify, sorted) {
 function getRankedDivergingPalette(classify, sorted, layout, classValues) {
   var edges = layout.neutral || [layout.pivot, layout.pivot];
   var nb = getDivergingStops(layout).below.length;
-  var below = getRankStops(classify, sorted.filter(function(v) { return v < edges[0]; }));
-  var above = getRankStops(classify, sorted.filter(function(v) { return v >= edges[1]; }));
+  var below = getRankStops(classify, sorted.slice(0, countBelow(sorted, edges[0])));
+  var above = getRankStops(classify, sorted.slice(countBelow(sorted, edges[1])));
   var breaks = below.breaks.concat();
   var colors = below.colors.concat();
   if (nb > 0) {
@@ -232,13 +264,19 @@ function getRankedDivergingPalette(classify, sorted, layout, classValues) {
 // Values clamped to outer-breaks=, as the classifier ranks them, in
 // increasing order
 function getSortedValues(values, range) {
-  var sorted = Float64Array.from(values);
+  var sorted = sortAscending(values);
   if (range) {
+    if (sorted === values) sorted = Float64Array.from(values);
     for (var i = 0; i < sorted.length; i++) {
       sorted[i] = Math.min(Math.max(sorted[i], range[0]), range[1]);
     }
   }
-  return sorted.sort();
+  return sorted;
+}
+
+// @values, if they are ascending, or else a sorted Float64Array copy
+function sortAscending(values) {
+  return numbersAreAscending(values) ? values : Float64Array.from(values).sort();
 }
 
 // Color stops at each value of @sorted, if it has few of them (as integer

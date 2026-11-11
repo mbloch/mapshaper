@@ -82,8 +82,7 @@ function getBandSample(lyr, field) {
   var sample;
   if (!o) return null;
   if (!entry.samples[field]) {
-    sample = internal.getRasterBandSample(entry.grid, o.index);
-    sample.values = Array.from(Float64Array.from(sample.values).sort());
+    sample = internal.getRasterBandSample(entry.grid, o.index); // values are ascending
     entry.samples[field] = sample;
   }
   return entry.samples[field];

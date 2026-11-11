@@ -270,10 +270,28 @@ export function applyDataRange(values, range) {
   return values2;
 }
 
+// A typed array sorts numbers many times faster than a comparator does, and
+// a sample of raster pixels comes sorted already
 export function getAscendingNumbers(values) {
-  var numbers = values.filter(utils.isFiniteNumber);
-  utils.genericSort(numbers, true);
+  var numbers = allFiniteNumbers(values) ? values.slice() : values.filter(utils.isFiniteNumber);
+  if (!numbersAreAscending(numbers)) {
+    numbers = Array.from(Float64Array.from(numbers).sort());
+  }
   return numbers;
+}
+
+function allFiniteNumbers(values) {
+  for (var i = 0; i < values.length; i++) {
+    if (!utils.isFiniteNumber(values[i])) return false;
+  }
+  return true;
+}
+
+export function numbersAreAscending(values) {
+  for (var i = 1; i < values.length; i++) {
+    if (values[i] < values[i - 1]) return false;
+  }
+  return true;
 }
 
 function arraysAreIdentical(a, b) {
