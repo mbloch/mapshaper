@@ -1130,6 +1130,22 @@ export function getOptionParser() {
     .option('hypsometric', {
       describe: '[raster] elevation colors: arid, lush, temperate, polar, blended (by climate), or none (only the sea)'
     })
+    .option('arid-colors', {
+      describe: '[raster] with hypsometric=blended: Arid\'s colors, one at each elevation (see breaks=)',
+      type: 'colors'
+    })
+    .option('lush-colors', {
+      describe: '[raster] with hypsometric=blended: Lush\'s colors',
+      type: 'colors'
+    })
+    .option('temperate-colors', {
+      describe: '[raster] with hypsometric=blended: Temperate\'s colors',
+      type: 'colors'
+    })
+    .option('polar-colors', {
+      describe: '[raster] with hypsometric=blended: Polar\'s colors',
+      type: 'colors'
+    })
     .option('sea', {
       describe: '[raster] below 0 and open to the edge: transparent (default with hypsometric=), land, or pale, blue, gray (bathymetric tints)'
     })

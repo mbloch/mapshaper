@@ -79,6 +79,34 @@ describe('-classify hypsometric=', function() {
     assert(field.weights[0] > 200); // mostly Arid
   });
 
+  it('blended: a preset can be recolored, and the elevations of all four moved', async function() {
+    var catalog = await importRaster(makeGeoTIFF([0, 500, 1500, 3000], 2, sahara));
+    var colorsOf = function(name) { return internal.getHypsometricStops(name).map(function(o) { return o.color; }); };
+    var arid = colorsOf('Arid').map(function(c, i) { return i == 2 ? '#ff0000' : c; });
+    var breaks = [-10, 10, 200, 600, 1000, 2000, 3000, 4000, 5000, 6500];
+    var palette;
+    await runCommand(catalog, '-proj init=wgs84 -classify hypsometric=blended arid-colors=' + arid.join(',') +
+      ' breaks=' + breaks.slice(1, -1).join(',') + ' outer-breaks=-10,6500');
+    palette = getPalette(catalog);
+    assert.deepEqual(palette.blend.ramps[0].colors, arid);
+    assert.deepEqual(palette.blend.ramps[1].colors, colorsOf('Lush'));
+    palette.blend.ramps.forEach(function(ramp) { assert.deepEqual(ramp.breaks, breaks); });
+    // Arid has the most weight here, so it is the palette's own ramp
+    assert.deepEqual(palette.colors, arid);
+    assert.deepEqual(palette.breaks, breaks);
+  });
+
+  it('blended: its colors need one at each elevation, and only a blend takes them', async function() {
+    var catalog = await importRaster(makeGeoTIFF([0, 500, 1500, 3000], 2, sahara));
+    var lush = internal.getHypsometricStops('Lush').map(function(o) { return o.color; }).join(',');
+    await runCommand(catalog, '-proj init=wgs84');
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=blended lush-colors=red,blue'), /needs 10 colors/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=lush lush-colors=' + lush), /works with hypsometric=blended/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=blended breaks=1,2'), /outer-breaks=/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=blended breaks=1,2 outer-breaks=0,5'), /10 elevations/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=arid breaks=1,2'), /does not work with breaks=/);
+  });
+
   it('blended needs to know where the raster is', async function() {
     var catalog = await importRaster(makeGeoTIFF([0, 500, 1500, 3000], 2, [-150, 1])); // the Pacific
     await assert.rejects(runCommand(catalog, '-proj init=wgs84 -classify hypsometric=blended'), /known projection, on land/);

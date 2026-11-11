@@ -74,7 +74,12 @@ import {
 //                                             preset is null when the
 //                                             colors are)
 //   blended: boolean                          (fixed elevations: blended by
-//                                             climate, with preset 'Blended')
+//                                             climate, with preset 'Blended',
+//                                             or null once recolored; the
+//                                             presets share the stops)
+//   blendColors: {name: [...]} or null        (blended: the colors of the
+//                                             presets that were recolored,
+//                                             see getBlendRampColors())
 //   seaScheme: {elevationPreset, preset,      (fixed elevations: the colors
 //     stopColors, stops, n} or null           of pixels below 0 that are
 //                                             open to the sea, at fixed
@@ -596,7 +601,7 @@ export function setSchemeBreak(scheme, lyr, i, value) {
   value = tidyNumber(value);
   if (isElevationScheme(scheme)) {
     breaks[i] = clamp(value, i > 0 ? breaks[i - 1] : -Infinity, i < breaks.length - 1 ? breaks[i + 1] : Infinity);
-    return Object.assign({}, scheme, {stops: breaks}, scheme.blended ? {preset: null, blended: false} : null);
+    return Object.assign({}, scheme, {stops: breaks});
   }
   lo = i > 0 ? breaks[i - 1] : Math.min(info.min, breaks[i]);
   hi = i < breaks.length - 1 ? breaks[i + 1] : Math.max(info.max, breaks[i]);
@@ -1018,7 +1023,8 @@ export function getSchemeTiles(scheme) {
   }
   if (isElevationScheme(scheme)) {
     colors = getElevationPresetColors(scheme.elevationPreset);
-    return (scheme.stopColors || colors).map(function(color, i) {
+    return (isBlendedScheme(scheme) ? getBlendedColors(scheme, scheme.elevationPreset) :
+        scheme.stopColors || colors).map(function(color, i) {
       return {color: color, pinned: color != colors[i], adjusted: false};
     });
   }
@@ -1295,11 +1301,97 @@ export function isBlendedScheme(scheme) {
   return !!scheme.blended;
 }
 
-// For the Blended item in the palette menu: a color of each preset
-export function getBlendedPresetColors() {
-  return getElevationPresetNames().map(function(name) {
-    return internal.getHypsometricStops(name)[2].color;
+// For the Blended item in the palette menu: a color of each preset (as
+// recolored in @scheme, if given)
+export function getBlendedPresetColors(scheme) {
+  return getBlendRampColors(scheme || {}).map(function(ramp) {
+    return ramp.colors[2];
   });
+}
+
+// The colors of each preset in a blend: [{name, colors}], one at each stop
+export function getBlendRampColors(scheme) {
+  return getElevationPresetNames().map(function(name) {
+    return {name: name, colors: getBlendedColors(scheme, name)};
+  });
+}
+
+function getBlendedColors(scheme, name) {
+  var edited = scheme.blendColors && scheme.blendColors[name];
+  return (edited || getElevationPresetColors(name)).concat();
+}
+
+// Recolors stop i of the presets @names in a blend; a blend whose presets all
+// have their own colors again is Blended
+function setBlendStopColor(scheme, names, i, color) {
+  var edited = Object.assign({}, scheme.blendColors);
+  names.forEach(function(name) {
+    var colors = getBlendedColors(scheme, name);
+    colors[i] = color;
+    if (colors.join() == getElevationPresetColors(name).join()) {
+      delete edited[name];
+    } else {
+      edited[name] = colors;
+    }
+  });
+  var custom = Object.keys(edited).length > 0;
+  return Object.assign({}, scheme, {blendColors: custom ? edited : null, preset: custom ? null : blendedPresetName});
+}
+
+// The color chips at stop i of a fixed-elevation scheme, for the class
+// breaks dialog: [{names, color, edited}]. A blend has a chip for each run of
+// neighboring presets with the same color there (names: the presets); other
+// schemes have one (names: []).
+export function getElevationStopChips(scheme, i) {
+  var tile;
+  if (!isBlendedScheme(scheme)) {
+    tile = getSchemeTiles(scheme)[i];
+    return [{names: [], color: tile.color, edited: tile.pinned}];
+  }
+  return groupColorRuns(getBlendRampColors(scheme), function(colors) { return [colors[i]]; }).map(function(run) {
+    return {names: run.names, color: run.colors[0], edited: run.names.some(function(name) {
+      return getElevationPresetColors(name)[i] != run.colors[0];
+    })};
+  });
+}
+
+// The swatches of a fixed-elevation scheme's classes, from below the first
+// stop to above the last: for each class, lanes [{names, colors: [low, high]}],
+// one for each run of neighboring presets of a blend with the same colors at
+// both ends of the class (or one lane, names: [])
+export function getElevationClassLanes(scheme) {
+  var ramps = isBlendedScheme(scheme) ? getBlendRampColors(scheme) : [{name: null, colors: getSchemeColors(scheme)}];
+  var n = ramps[0].colors.length;
+  var classes = [];
+  for (var j = 0; j <= n; j++) {
+    classes.push(groupColorRuns(ramps, function(colors) {
+      return [colors[Math.max(j - 1, 0)], colors[Math.min(j, n - 1)]];
+    }));
+  }
+  return classes;
+}
+
+function groupColorRuns(ramps, getColors) {
+  var runs = [];
+  ramps.forEach(function(ramp) {
+    var colors = getColors(ramp.colors);
+    var last = runs[runs.length - 1];
+    if (last && last.colors.join() == colors.join()) {
+      last.names.push(ramp.name);
+    } else {
+      runs.push({names: ramp.name ? [ramp.name] : [], colors: colors});
+    }
+  });
+  return runs;
+}
+
+// Recolors (or with a null color, resets) the chip at stop i for the presets
+// @names (see getElevationStopChips())
+export function setElevationChipColor(scheme, names, i, color) {
+  if (!isBlendedScheme(scheme)) return color ? setTileColor(scheme, i, color) : clearTileColor(scheme, i);
+  return names.reduce(function(memo, name) {
+    return setBlendStopColor(memo, [name], i, color ? toHex(color) : getElevationPresetColors(name)[i]);
+  }, scheme);
 }
 
 function chooseElevationPreset(scheme, name) {
@@ -1307,6 +1399,7 @@ function chooseElevationPreset(scheme, name) {
     method: 'elevation',
     preset: name,
     blended: false,
+    blendColors: null,
     elevationPreset: name,
     stopColors: null,
     stops: null,
@@ -1326,6 +1419,7 @@ function leaveFixedElevations(scheme) {
   return Object.assign({}, scheme, {
     preset: null,
     blended: false,
+    blendColors: null,
     elevationPreset: null,
     stopColors: null,
     stops: null,
@@ -1390,6 +1484,7 @@ export function getTileEditColor(scheme, i) {
 
 export function setTileColor(scheme, i, color) {
   var custom, swatches;
+  if (isBlendedScheme(scheme)) return setBlendStopColor(scheme, [scheme.elevationPreset], i, toHex(color));
   if (isElevationScheme(scheme)) return setElevationStopColor(scheme, i, toHex(color));
   custom = makeSchemeCustom(scheme);
   if (custom.type == 'categorical') {
@@ -1403,6 +1498,9 @@ export function setTileColor(scheme, i, color) {
 }
 
 export function clearTileColor(scheme, i) {
+  if (isBlendedScheme(scheme)) {
+    return setBlendStopColor(scheme, [scheme.elevationPreset], i, getElevationPresetColors(scheme.elevationPreset)[i]);
+  }
   if (isElevationScheme(scheme)) {
     return setElevationStopColor(scheme, i, getElevationPresetColors(scheme.elevationPreset)[i]);
   }
@@ -1531,6 +1629,7 @@ export function formatSchemeCommand(scheme, colors, opts) {
   }
   if (isElevationScheme(scheme) && (isBlendedScheme(scheme) || isLandTransparent(scheme))) {
     parts.push(isLandTransparent(scheme) ? 'hypsometric=none' : 'hypsometric=blended');
+    if (!isLandTransparent(scheme)) parts.push.apply(parts, formatBlendOptions(scheme, opts));
     // transparent is hypsometric='s default
     if (scheme.seaScheme) parts.push(formatSeaOptions(scheme, opts));
     if (getSchemeNullColor(scheme)) parts.push('null-value=' + getSchemeNullColor(scheme));
@@ -1574,6 +1673,22 @@ export function formatSchemeCommand(scheme, colors, opts) {
     parts.push('target=' + opts.target);
   }
   return parts.join(' ');
+}
+
+// A blend's moved stops, and the colors of its recolored presets
+function formatBlendOptions(scheme, opts) {
+  var parts = [];
+  var stops;
+  if (scheme.stops) {
+    stops = getElevationSchemeStops(scheme, opts && opts.layer);
+    parts.push('breaks=' + stops.slice(1, -1).join(','), 'outer-breaks=' + stops[0] + ',' + stops[stops.length - 1]);
+  }
+  getBlendRampColors(scheme).forEach(function(ramp) {
+    if (scheme.blendColors && scheme.blendColors[ramp.name]) {
+      parts.push(ramp.name.toLowerCase() + '-colors=' + ramp.colors.join(','));
+    }
+  });
+  return parts;
 }
 
 // sea= for a preset, or its stops and colors once edited

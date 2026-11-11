@@ -72,13 +72,12 @@ export function ColorSchemePanel(gui, opts) {
   var sessionLayer = null; // the layer the session's edits are to
   var baseScheme = null; // its scheme when they began
   var selectedTile = -1;
-  var selectedSeaTile = -1;
   // the scheme last used on each tab while the panel is open, for switching back
   var tabSchemes = {};
   var tabs = {};
   var paletteBtn, paletteMenu, countField, tileRow, gradientEl, tilesEl, picker, fieldRow, fieldSelect, methodSelect,
       fieldLabel, methodRow, methodCell, methodLabel, customizeCell, paletteRow, countCell, paletteLabel,
-      seaRow, seaBtn, seaMenu, seaCustomizeBtn, seaTileRow, seaGradientEl, seaTilesEl, seaPicker, seaBreaksDialog, customizeBtn, breaksDialog, exportBtns, importBtn, importDialog,
+      seaRow, seaBtn, seaMenu, seaCustomizeBtn, seaBreaksDialog, customizeBtn, breaksDialog, exportBtns, importBtn, importDialog,
       noFieldsNote, controlsEl, vibranceRow, vibranceInput,
       longHueBtn, continuousBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount, countLabel,
       rangeEl, rangeStrip, rangeShades, rangeHandles, clearRow,
@@ -105,7 +104,6 @@ export function ColorSchemePanel(gui, opts) {
     if (targetLayer && targetLayer != lyr) close();
     targetLayer = lyr;
     selectedTile = -1;
-    selectedSeaTile = -1;
     tabSchemes = {};
     scheme = getLayerScheme(lyr);
     panel.show();
@@ -129,7 +127,6 @@ export function ColorSchemePanel(gui, opts) {
   function close() {
     var wasOpen = !!targetLayer;
     picker.hide();
-    seaPicker.hide();
     nullControl.picker.hide();
     hidePaletteMenu();
     breaksDialog.close();
@@ -206,7 +203,6 @@ export function ColorSchemePanel(gui, opts) {
         breaksDialog.close();
       } else {
         picker.hide();
-        seaPicker.hide();
         importDialog.close();
         seaBreaksDialog.close();
         breaksDialog.open();
@@ -338,8 +334,8 @@ export function ColorSchemePanel(gui, opts) {
   }
 
   // Elevation schemes: the colors of the pixels below sea level that are open
-  // to the sea, at fixed depths, with their own palette menu, tiles, color
-  // picker and class breaks dialog (see getSeaScheme())
+  // to the sea, at fixed depths, with their own palette menu and class breaks
+  // dialog, which has their colors (see getSeaScheme())
   function initSeaControls() {
     seaRow = El('div').addClass('label-style-row label-split-row sea').appendTo(controlsEl);
     var seaCell = El('div').addClass('label-split-cell color-scheme-palette-cell').appendTo(seaRow);
@@ -356,13 +352,12 @@ export function ColorSchemePanel(gui, opts) {
         seaBreaksDialog.close();
       } else if (getSeaScheme(scheme)) {
         picker.hide();
-        seaPicker.hide();
         importDialog.close();
         breaksDialog.close();
         seaBreaksDialog.open();
       }
       render();
-    }).addClass('color-scheme-customize-btn').attr('title', 'Edit the depths of the sea colors');
+    }).addClass('color-scheme-customize-btn').attr('title', 'Edit the depths and colors of the sea');
     seaBreaksDialog = new ClassBreaksDialog(gui, {
       title: 'Sea depths',
       reversed: true,
@@ -371,87 +366,17 @@ export function ColorSchemePanel(gui, opts) {
       onChange: function(next) { changeScheme(setSeaScheme(scheme, next)); },
       onClose: render
     });
-    seaTileRow = El('div').addClass('color-scheme-tile-row sea').appendTo(controlsEl);
-    seaGradientEl = El('div').addClass('color-scheme-gradient').appendTo(seaTileRow);
-    seaTilesEl = El('div').addClass('color-scheme-tiles continuous').appendTo(seaTileRow);
-    seaPicker = new ColorPicker(seaTileRow, {
-      presetRows: [],
-      onPreview: function(hex) {
-        var tile = seaTilesEl.node().querySelectorAll('.color-scheme-tile')[selectedSeaTile];
-        if (tile) tile.style.backgroundColor = hex;
-      },
-      onChange: function(hex) {
-        var sea = getSeaScheme(scheme);
-        if (sea && selectedSeaTile > -1) changeScheme(setSeaScheme(scheme, setTileColor(sea, selectedSeaTile, hex)));
-      },
-      onHide: function() {
-        selectedSeaTile = -1;
-        render();
-      }
-    });
   }
 
   function renderSeaControls(elevation) {
     var sea = getSeaScheme(scheme);
     seaRow.classed('hidden', !elevation);
-    seaTileRow.classed('hidden', !elevation || !sea);
-    if (!elevation || !sea) {
-      seaPicker.hide();
-      seaBreaksDialog.close();
-    }
+    if (!elevation || !sea) seaBreaksDialog.close();
     if (!elevation) return;
     renderStripButton(seaBtn, sea ? getSchemeColors(sea) : null, getSeaLabel(scheme), sea);
     setPanelButtonDisabled(seaCustomizeBtn, !sea);
     seaCustomizeBtn.classed('selected', seaBreaksDialog.isOpen());
-    if (sea) renderSeaTiles(sea);
     seaBreaksDialog.update();
-  }
-
-  // a tile for each stop, which can be recolored (and reset with its dot),
-  // under the gradient
-  function renderSeaTiles(sea) {
-    var tiles = getSchemeTiles(sea);
-    var stops = getContinuousTileStops(sea, targetLayer) || [];
-    var units = ' ' + getRasterUnitsLabel(targetLayer);
-    var n = tiles.length;
-    seaTilesEl.empty();
-    seaTilesEl.node().style.setProperty('--tiles-per-row', n);
-    tiles.forEach(function(tile, i) {
-      var cell = El('div').addClass('color-scheme-tile-cell').appendTo(seaTilesEl);
-      var tileEl = El('div').addClass('color-scheme-tile').attr('role', 'button')
-        .attr('aria-label', 'Sea color ' + (i + 1) + ': ' + tile.color)
-        .classed('selected', i == selectedSeaTile)
-        .css('background-color', tile.color)
-        .appendTo(cell)
-        .on('click', function() { selectSeaTile(i, tile.color); });
-      if (stops[i]) {
-        tileEl.attr('data-tooltip', formatNumber(stops[i].value) + units)
-          .on('mouseenter', function() { keepTooltipInWindow(tileEl.node()); });
-      }
-      var pin = El('div').addClass('color-scheme-pin').appendTo(cell);
-      if (tile.pinned && i > 0 && i < n - 1) {
-        pin.addClass('pinned').attr('role', 'button').attr('aria-label', 'Unpin this color')
-          .attr('data-tooltip', 'Unpin this color')
-          .on('mouseenter', function() { keepTooltipInWindow(pin.node()); })
-          .on('click', function() {
-            changeScheme(setSeaScheme(scheme, clearTileColor(sea, i)));
-          });
-      }
-    });
-    renderGradient(getContinuousSegments(sea), n, seaTilesEl, seaGradientEl);
-  }
-
-  function selectSeaTile(i, color) {
-    nullControl.picker.hide();
-    picker.hide();
-    if (selectedSeaTile == i && seaPicker.visible()) {
-      seaPicker.hide();
-    } else {
-      selectedSeaTile = i;
-      seaPicker.setColor(getTileEditColor(getSeaScheme(scheme), i) || color);
-      if (!seaPicker.visible()) seaPicker.toggle();
-    }
-    render();
   }
 
   function toggleSeaMenu() {
@@ -627,9 +552,10 @@ export function ColorSchemePanel(gui, opts) {
     tiles = getSchemeTiles(scheme);
     colors = tiles.map(function(tile) { return tile.color; });
     renderPaletteButton(colors);
-    // blended colors are drawn by the command, and transparent land has none
-    tileRow.classed('hidden', isBlendedScheme(scheme) || elevation && isLandTransparent(scheme));
-    if (isBlendedScheme(scheme) || elevation && isLandTransparent(scheme)) picker.hide();
+    // fixed elevations have their colors in the class breaks dialog, by
+    // their stops
+    tileRow.classed('hidden', elevation);
+    if (elevation) picker.hide();
     renderTiles(tiles);
     renderVibrance();
     renderNullColor();
@@ -701,7 +627,8 @@ export function ColorSchemePanel(gui, opts) {
     methodLabel.text(numeric ? 'Breaks' : 'Method');
     methodSelect.attr('aria-label', numeric ? 'Class breaks' : 'Classification method');
     customizeCell.classed('hidden', !numeric);
-    customizeBtn.classed('selected', breaksDialog.isOpen());
+    customizeBtn.classed('selected', breaksDialog.isOpen())
+      .attr('title', elevation ? 'Edit the elevations and colors' : 'Edit the class breaks');
     setPanelButtonDisabled(customizeBtn, elevation && isLandTransparent(scheme));
     if (elevation && isLandTransparent(scheme)) breaksDialog.close();
   }
@@ -910,7 +837,7 @@ export function ColorSchemePanel(gui, opts) {
     }
     // blended colors are drawn by the command, and have no stops of their own
     strip = renderStripButton(paletteBtn, colors, scheme.preset || 'Custom');
-    strip.css('background-image', isBlendedScheme(scheme) ? getStripBackground(getBlendedPresetColors()) :
+    strip.css('background-image', isBlendedScheme(scheme) ? getStripBackground(getBlendedPresetColors(scheme)) :
       isContinuousScheme(scheme) ? getGradientStripBackground(scheme) : getStripBackground(colors));
   }
 
@@ -1199,7 +1126,6 @@ export function ColorSchemePanel(gui, opts) {
 
   function selectTile(i, color) {
     nullControl.picker.hide();
-    seaPicker.hide();
     if (selectedTile == i && picker.visible()) {
       picker.hide();
     } else {
@@ -1253,7 +1179,8 @@ export function ColorSchemePanel(gui, opts) {
       changeScheme(setLandTransparent(scheme, true));
     }).attr('title', 'Color only the sea');
     if (!scheme.preset) {
-      addPaletteItem('Custom', getSchemeColors(scheme), !transparent, function() {
+      addPaletteItem(isBlendedScheme(scheme) ? 'Custom blend' : 'Custom',
+          isBlendedScheme(scheme) ? getBlendedPresetColors(scheme) : getSchemeColors(scheme), !transparent, function() {
         changeScheme(setLandTransparent(scheme, false));
       });
     }
@@ -1266,7 +1193,7 @@ export function ColorSchemePanel(gui, opts) {
     // blending needs to know where the raster is
     var points = getLngLatSamples(targetLayer);
     if (internal.getClimatePreset(points)) {
-      addPaletteItem('Blended', getBlendedPresetColors(), !transparent && isBlendedScheme(scheme), function() {
+      addPaletteItem('Blended', getBlendedPresetColors(), !transparent && scheme.preset == 'Blended', function() {
         changeScheme(chooseBlendedElevations(scheme, points));
       }).attr('title', 'The presets, blended by climate across the map');
     }
@@ -1289,16 +1216,10 @@ export function ColorSchemePanel(gui, opts) {
 
   function changeScheme(next) {
     var prevSize = getSchemeTiles(scheme).length;
-    var prevSea = getSeaScheme(scheme), nextSea;
     scheme = updateDivergingLayout(setSchemeLayerType(next, targetLayer), targetLayer);
-    nextSea = getSeaScheme(scheme);
     if (getSchemeTiles(scheme).length != prevSize) {
       picker.hide();
       selectedTile = -1;
-    }
-    if (!nextSea || !prevSea || nextSea.n != prevSea.n) {
-      seaPicker.hide();
-      selectedSeaTile = -1;
     }
     apply();
     render();

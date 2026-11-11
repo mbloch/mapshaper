@@ -49,7 +49,7 @@ import {
   setRasterPalette,
   validateRasterClassifyOptions
 } from '../rasters/mapshaper-raster-classify';
-import { setRasterPaletteSea } from '../rasters/mapshaper-raster-hypsometric';
+import { setRasterPaletteSea, getBlendColorOptionKeys } from '../rasters/mapshaper-raster-hypsometric';
 
 cmd.classify = function(lyr, dataset, optsArg) {
   var opts = optsArg || {};
@@ -61,8 +61,10 @@ cmd.classify = function(lyr, dataset, optsArg) {
     classifyRasterLayer(lyr, dataset, opts);
     return;
   }
-  if (opts.hypsometric || opts.sea || opts.sea_colors || opts.sea_breaks) {
-    stop((opts.hypsometric ? 'hypsometric=' : 'sea=') + ' works with raster layers');
+  if (opts.hypsometric || opts.sea || opts.sea_colors || opts.sea_breaks ||
+      getBlendColorOptionKeys().some(function(key) { return key in opts; })) {
+    stop((opts.hypsometric ? 'hypsometric=' : opts.sea || opts.sea_colors || opts.sea_breaks ? 'sea=' :
+      'hypsometric=blended') + ' works with raster layers');
   }
   if (!lyr.data) {
     initDataTable(lyr);

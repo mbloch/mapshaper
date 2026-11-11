@@ -416,8 +416,14 @@ tested.
    in the display CRS, so it passes a field for the view, in that CRS
    (`renderRasterPreview()`'s `blendField`). In the panel, Blended is an
    item in the Elevation palette menu, offered where the raster can be
-   placed on land. Its tiles and stops are the main preset's, and editing a
-   color or a stop, or choosing a preset, turns the blend off.
+   placed on land. The four presets have the same ten elevations (Polar's
+   go on in white to 6000 m), which a blend shares: `breaks=` with
+   `outer-breaks=` move them all, and `arid-colors=` (and `lush-`,
+   `temperate-`, `polar-colors=`) recolor a preset, a color at each
+   elevation (`getBlendRamps()`). In the panel, a blend keeps the colors of
+   its recolored presets in `scheme.blendColors` (see
+   `getBlendRampColors()`), and becomes Custom until they are all their
+   presets' again; choosing a preset or another method turns it off.
    Fixed elevations then moved from the Sequential tab's breaks methods to
    an Elevation tab of their own (`getSchemeTab()`: internally they are
    still sequential schemes with `method: 'elevation'`). The tab is offered
@@ -426,8 +432,14 @@ tested.
    them), or a band description or layer name like `dem`, `elev`, `srtm`
    (`rasterBandIsElevation()`), not values in range alone. It starts Blended
    where the raster can be placed on land, otherwise with Temperate. Its rows
-   are Land (the presets and Blended, with Customize for the stops) and Sea.
-   Blended hides the tiles, which aren't what it draws. `-classify sea=`
+   are Land (the presets and Blended) and Sea, each with a palette menu and
+   a Customize button. The colors aren't tiles in the panel: Customize opens
+   the class breaks dialog ("Elevations and colors"), which has a color chip
+   at each stop, on the rule between two classes, whose tiles are gradients
+   from one chip's color to the next (`getElevationStopChips()`,
+   `getElevationClassLanes()`). A blend has a column of chips and tiles for
+   each preset; neighboring presets with the same color share a chip, which
+   recolors all of them, or the ones left checked under the table. `-classify sea=`
    leaves out the sea: with `sea=transparent` (the default with
    `hypsometric=`, and what the panel gives), pixels below 0 that connect,
    through other pixels below 0, to the grid's edge or to a pixel without a
@@ -448,9 +460,9 @@ tested.
    palette's own). In the panel, the sea is a fixed-elevation scheme of its
    own inside the elevation scheme (`scheme.seaScheme`, see
    `getSeaScheme()`): the Sea row has a palette menu (Transparent and the
-   Bathymetry presets), its own tiles and color picker, and a Customize
-   button that opens a second class breaks dialog ("Sea depths", whose range
-   ends at 0). The Land menu has Transparent (`scheme.landTransparent`);
+   Bathymetry presets) and a Customize button that opens a second class
+   breaks dialog ("Sea depths", with its colors, listed from 0 down, whose
+   range ends at 0). The Land menu has Transparent (`scheme.landTransparent`);
    making both transparent brings back the other. Still to do: fit to
    data.
 7. Later: a command that renders a raster's display into RGB pixels (colored

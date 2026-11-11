@@ -8,6 +8,7 @@ import {
   setTileColor, clearTileColor, getContinuousTileStops, reverseScheme, getPinnedTiles,
   getSchemeBreaks, setSchemeBreak, getBreakClassSwatches, getDefaultElevationPreset, getBreaksScale,
   chooseBlendedElevations, isBlendedScheme, getSchemeTab, getElevationFields, layerHasElevations,
+  getElevationStopChips, getElevationClassLanes, setElevationChipColor, getBlendRampColors,
   getSeaScheme, setSeaScheme, chooseSeaPreset, getSeaLabel, isLandTransparent, setLandTransparent
 } from '../src/gui/gui-color-scheme-model';
 import { getRasterBandLabel, layerHasPaletteRaster } from '../src/gui/gui-raster-band-values';
@@ -301,7 +302,7 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     assert.equal(setTileCount(scheme, 3, -1, lyr), scheme);
     assert.equal(reverseScheme(scheme), scheme);
     assert.equal(setSchemeContinuous(scheme, false), scheme);
-    assert.equal(choosePreset(edited, 'Polar').n, 8);
+    assert.equal(choosePreset(edited, 'Polar').n, 10);
   });
 
   it('can be moved, the end stops too, and outside the data', async function() {
@@ -342,7 +343,7 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     assert.deepEqual([info.min, info.max], [-50, 8910]);
   });
 
-  it('can be blended by climate, which -classify does, until they are edited', async function() {
+  it('can be blended by climate, which -classify does, until another palette is chosen', async function() {
     var lyr = (await importDEM()).lyr;
     var scheme = chooseBlendedElevations(useElevations(lyr), [[-60, -5]]);
     assert(isBlendedScheme(scheme));
@@ -350,11 +351,63 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     // the tiles and stops are the Amazon's preset
     assert.equal(scheme.elevationPreset, 'Lush');
     assert.equal(formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: lyr}), "-classify field='band1' hypsometric=blended");
-    [setTileColor(scheme, 2, '#ff0000'), setSchemeBreak(scheme, lyr, 3, 700), choosePreset(scheme, 'Arid'),
-      setSchemeMethod(scheme, 'quantile')].forEach(function(next) {
+    [setTileColor(scheme, 2, '#ff0000'), setSchemeBreak(scheme, lyr, 3, 700)].forEach(function(next) {
+      assert(isBlendedScheme(next));
+    });
+    [choosePreset(scheme, 'Arid'), setSchemeMethod(scheme, 'quantile')].forEach(function(next) {
       assert(!isBlendedScheme(next));
       assert(!/hypsometric=/.test(formatSchemeCommand(next, getAppliedColors(next), {layer: lyr})));
     });
+  });
+
+  it('a blend has a chip for each run of presets with the same color at a stop', async function() {
+    var lyr = (await importDEM()).lyr;
+    var scheme = chooseBlendedElevations(useElevations(lyr), [[-60, -5]]);
+    var names = function(chips) { return chips.map(function(chip) { return chip.names.join('+'); }); };
+    // Lush and Temperate share their colors from 1000 m (stop 4) up, and the
+    // land presets from 3000 m (stop 6) up
+    assert.deepEqual(names(getElevationStopChips(scheme, 0)), ['Arid', 'Lush', 'Temperate', 'Polar']);
+    assert.deepEqual(names(getElevationStopChips(scheme, 4)), ['Arid', 'Lush+Temperate', 'Polar']);
+    assert.deepEqual(names(getElevationStopChips(scheme, 6)), ['Arid+Lush+Temperate', 'Polar']);
+    // a class's lanes need the same colors at both of its ends: the class
+    // from 600 to 1000 m (class 4) has four
+    var lanes = getElevationClassLanes(scheme);
+    assert.equal(lanes.length, 11);
+    assert.deepEqual(names(lanes[4]), ['Arid', 'Lush', 'Temperate', 'Polar']);
+    assert.deepEqual(names(lanes[5]), ['Arid', 'Lush+Temperate', 'Polar']);
+    assert.deepEqual(names(lanes[10]), ['Arid+Lush+Temperate', 'Polar']);
+    // a single preset has one chip and one lane
+    assert.deepEqual(names(getElevationStopChips(useElevations(lyr), 3)), ['']);
+    assert.equal(getElevationClassLanes(useElevations(lyr))[3].length, 1);
+  });
+
+  it('a blend\'s presets can be recolored at a stop, together or one at a time', async function() {
+    var lyr = (await importDEM()).lyr;
+    var scheme = chooseBlendedElevations(useElevations(lyr), [[-60, -5]]);
+    var lush = internal.getHypsometricStops('Lush').map(function(o) { return o.color; });
+    var edited = setElevationChipColor(scheme, ['Lush'], 6, '#ff0000');
+    var cmd;
+    assert(isBlendedScheme(edited));
+    assert.equal(edited.preset, null);
+    // Lush left the shared chip
+    assert.deepEqual(getElevationStopChips(edited, 6).map(function(chip) { return chip.names.join('+'); }),
+      ['Arid', 'Lush', 'Temperate', 'Polar']);
+    assert(getElevationStopChips(edited, 6)[1].edited);
+    edited = setElevationChipColor(setSchemeBreak(edited, lyr, 9, 7000), ['Arid', 'Temperate'], 0, '#00ff00');
+    cmd = formatSchemeCommand(edited, getAppliedColors(edited), {layer: lyr});
+    assert(/ hypsometric=blended breaks=50,200,600,1000,2000,3000,4000,5000 outer-breaks=0,7000 arid-colors=#00ff00,.* lush-colors=#9fc19d,.*,#ff0000,.* temperate-colors=#00ff00,/.test(cmd));
+    assert(!/polar-colors=/.test(cmd));
+    assert.equal(getBlendRampColors(edited)[1].colors[6], '#ff0000');
+    assert.deepEqual(getBlendRampColors(edited)[1].colors.slice(0, 6), lush.slice(0, 6));
+    // resetting every recolored chip makes it Blended again
+    edited = setElevationChipColor(setElevationChipColor(edited, ['Lush'], 6, null), ['Arid', 'Temperate'], 0, null);
+    assert.equal(edited.preset, 'Blended');
+    assert.equal(edited.blendColors, null);
+    // and -classify draws what the panel shows
+    var o = await importDEM();
+    cmd = formatSchemeCommand(setElevationChipColor(scheme, ['Lush'], 6, '#ff0000'), [], {layer: o.lyr});
+    await runCommand(o.catalog, cmd);
+    assert.equal(o.lyr.raster.view.recipe.palette.blend.ramps[1].colors[6], '#ff0000');
   });
 
   it('leave their colors as a custom ramp for another method', async function() {

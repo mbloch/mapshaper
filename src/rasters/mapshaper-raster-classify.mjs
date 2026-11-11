@@ -6,7 +6,7 @@ import { numbersAreAscending } from '../classification/mapshaper-sequential-clas
 import { getRasterDisplayBands, rasterGridDisplaysColor } from './mapshaper-raster-display-bands';
 import { createRasterPreview, getRasterGrid } from './mapshaper-raster-utils';
 import { runningInBrowser } from '../mapshaper-env';
-import { getHypsometricPalette } from './mapshaper-raster-hypsometric';
+import { getHypsometricPalette, getBlendColorOptionKeys } from './mapshaper-raster-hypsometric';
 
 // Helpers for -classify on raster layers (see
 // docs/development/raster-palette-design.md)
@@ -41,6 +41,10 @@ export function validateRasterClassifyOptions(raster, grid, opts) {
   if (opts.method == 'non-adjacent' || opts.method == 'blacki' || opts.method == 'indexed') {
     stop('The', opts.method, 'method does not work with raster layers');
   }
+  name = getBlendColorOptionKeys().find(function(key) { return key in opts; });
+  if (name && String(opts.hypsometric).toLowerCase() != 'blended') {
+    stop(name.replace(/_/g, '-') + '= works with hypsometric=blended');
+  }
   if (opts.hypsometric) {
     validateHypsometricOptions(opts);
   } else if (!opts.colors) {
@@ -51,10 +55,14 @@ export function validateRasterClassifyOptions(raster, grid, opts) {
   }
 }
 
-// hypsometric= gives the colors and their elevations
+// hypsometric= gives the colors and their elevations, though a blend's
+// elevations can be moved
 function validateHypsometricOptions(opts) {
+  var blended = String(opts.hypsometric).toLowerCase() == 'blended';
   var name = ['colors', 'breaks', 'outer_breaks', 'method', 'classes', 'pivot', 'continuous',
-    'stops', 'invert', 'categories'].find(function(key) { return key in opts; });
+    'stops', 'invert', 'categories'].find(function(key) {
+    return key in opts && !(blended && (key == 'breaks' || key == 'outer_breaks'));
+  });
   if (name) {
     stop('hypsometric= sets the colors and breaks; it does not work with ' + name.replace(/_/g, '-') + '=');
   }
@@ -63,7 +71,7 @@ function validateHypsometricOptions(opts) {
 // -classify hypsometric= (see mapshaper-raster-hypsometric.mjs)
 // @crs: the raster's CRS, or null
 export function getRasterHypsometricPalette(raster, band, opts, crs) {
-  var palette = getHypsometricPalette(raster, band, opts.hypsometric, crs);
+  var palette = getHypsometricPalette(raster, band, opts.hypsometric, crs, opts);
   if ('null_value' in opts) palette.nullColor = getPaletteColor(opts.null_value, 'null-value=');
   palette.command = getPaletteCommand(opts);
   return palette;

@@ -11,13 +11,16 @@ import { getRasterGrid } from './mapshaper-raster-utils';
 // elevations (see hypsometric-schemes.mjs), and a blend of them that varies
 // across the map by climate (see hypsometric-climate.mjs).
 //
-// A blended palette is an ordinary continuous palette (the preset with the
-// most weight across the raster, for anything that draws it without a blend)
-// with:
+// A blended palette is an ordinary continuous palette (the ramp of the preset
+// with the most weight across the raster, for anything that draws it without
+// a blend) with:
 // palette.blend = {
 //   ramps,  // [{name, breaks, colors}] for each preset, in the band's units
 //   field   // the presets' weights across the raster (see getClimateWeightField())
 // }
+// The presets have the same elevations. -classify arid-colors= (and lush-,
+// temperate-, polar-colors=) recolor a preset in the blend, a color at each
+// elevation, and breaks= with outer-breaks= move the elevations of all four.
 
 var BLEND_NAME = 'blended';
 var NONE_NAME = 'none';
@@ -33,11 +36,12 @@ export function getHypsometricOptionNames() {
 //   sea (palette.land = 'transparent'), whose colors setRasterPaletteSea()
 //   gives
 // @crs: the raster's CRS, for a blend
-export function getHypsometricPalette(raster, band, name, crs) {
+// @opts: -classify's options, for a blend's colors and elevations
+export function getHypsometricPalette(raster, band, name, crs, opts) {
   var grid = getRasterGrid(raster);
   var key = String(name).toLowerCase();
   var meters = getVerticalUnitMeters(grid.verticalUnits) || 1;
-  var field, preset;
+  var field, preset, ramps, main;
   if (getHypsometricOptionNames().indexOf(key) == -1) {
     stop('Unknown hypsometric= value:', name, '(expected ' + getHypsometricOptionNames().join(', ') + ')');
   }
@@ -53,16 +57,59 @@ export function getHypsometricPalette(raster, band, name, crs) {
   if (!field) {
     stop('hypsometric=blended needs a raster with a known projection, on land');
   }
-  preset = field.preset;
-  return Object.assign({band: band}, getPresetRamp(preset, meters), {
+  ramps = getBlendRamps(meters, opts || {});
+  main = ramps.find(function(ramp) { return ramp.name == field.preset; });
+  return Object.assign({band: band}, getPresetRamp(field.preset, meters), {
+    breaks: main.breaks.concat(),
+    colors: main.colors.concat(),
     hypsometric: BLEND_NAME,
-    blend: {
-      ramps: getHypsometricSchemeNames().map(function(name) {
-        var ramp = getPresetRamp(name, meters);
-        return {name: name, breaks: ramp.breaks, colors: ramp.colors};
-      }),
-      field: field
-    }
+    blend: {ramps: ramps, field: field}
+  });
+}
+
+// -classify's options for the colors of each preset in a blend: arid_colors, ...
+export function getBlendColorOptionKeys() {
+  return getHypsometricSchemeNames().map(function(name) { return name.toLowerCase() + '_colors'; });
+}
+
+function getBlendRamps(meters, opts) {
+  var names = getHypsometricSchemeNames();
+  var n = getHypsometricStops(names[0]).length;
+  var breaks = getBlendBreaks(opts, n);
+  return names.map(function(name) {
+    var ramp = getPresetRamp(name, meters);
+    var key = name.toLowerCase() + '_colors';
+    var colors = opts[key] ? getBlendColors(opts[key], n, key) : ramp.colors;
+    return {name: name, breaks: breaks || ramp.breaks, colors: colors};
+  });
+}
+
+// breaks= are the elevations between the end ones, which are outer-breaks=,
+// as for continuous colors
+function getBlendBreaks(opts, n) {
+  var breaks;
+  if (!opts.breaks && !opts.outer_breaks) return null;
+  if (!opts.breaks || !opts.outer_breaks || opts.outer_breaks.length != 2) {
+    stop('hypsometric=blended moves its elevations with breaks= and outer-breaks= (the two at the ends) together');
+  }
+  breaks = [opts.outer_breaks[0]].concat(opts.breaks, [opts.outer_breaks[1]]);
+  if (breaks.length != n) {
+    stop('hypsometric=blended has ' + n + ' elevations: ' + (n - 2) + ' breaks= and two outer-breaks=');
+  }
+  breaks.forEach(function(b, i) {
+    if (!isFinite(b) || i > 0 && b < breaks[i - 1]) stop('The elevations of hypsometric=blended should be numbers in ascending order');
+  });
+  return breaks.map(Number);
+}
+
+function getBlendColors(colors, n, key) {
+  var name = key.replace(/_/g, '-') + '=';
+  if (!Array.isArray(colors) || colors.length != n) {
+    stop(name, 'needs ' + n + ' colors, one at each elevation of hypsometric=blended');
+  }
+  return colors.map(function(c) {
+    if (!parseColor(c)) stop('Unsupported color in ' + name + ':', c);
+    return String(c);
   });
 }
 
