@@ -12,6 +12,7 @@ import { updateRasterViewForGrid } from './mapshaper-raster-fill';
 import { copyRasterSourceStatus } from './mapshaper-raster-source';
 import { getRasterDisplayBands, getRasterDisplayBandsKey, rasterGridDisplaysColor } from './mapshaper-raster-display-bands';
 import { getRasterPaletteTable, rasterPaletteIsCategorical } from './mapshaper-raster-palette';
+import { getRasterSeaMask } from './mapshaper-raster-sea-mask';
 import {
   markLayerChanged,
   noteLayerWillChange
@@ -192,12 +193,17 @@ export function getRasterViewRecipe(grid, recipeArg, opts) {
   });
 }
 
-export function renderRasterPreview(grid, recipe, width, height, statsArg) {
+// opts.blendField  for a blended palette on a grid in other coordinates than
+//   the raster's (e.g. reprojected for display): a field from
+//   getClimateWeightField() in the grid's coordinates, or null to draw the
+//   palette without blending
+export function renderRasterPreview(grid, recipe, width, height, statsArg, opts) {
   recipe = getRasterViewRecipe(grid, recipe);
   if (useFastRawEightBitRendering(grid, recipe)) {
     return renderRawEightBitPreview(grid, width, height, null);
   }
-  return renderRasterGridPreview(grid, recipe, width, height, statsArg || getRasterScalingStats(grid, recipe), null);
+  return renderRasterGridPreview(grid, recipe, width, height, statsArg || getRasterScalingStats(grid, recipe), null,
+    null, opts && 'blendField' in opts ? opts.blendField : undefined);
 }
 
 export function renderRasterViewportPreview(grid, recipe, bbox, width, height, statsArg) {
@@ -319,8 +325,13 @@ export function formatRasterSampleValue(val, isFloat) {
   return String(+val.toPrecision(7));
 }
 
-function renderRasterGridPreview(grid, recipe, width, height, statsArg, sourceBbox, resamplingMethod) {
+function renderRasterGridPreview(grid, recipe, width, height, statsArg, sourceBbox, resamplingMethod, blendField) {
+  var field;
   if (recipe.palette) {
+    field = !recipe.palette.blend ? null : blendField === undefined ? recipe.palette.blend.field : blendField;
+    if (field) {
+      return renderBlendedPaletteGridPreview(grid, recipe.palette, field, width, height, sourceBbox, resamplingMethod);
+    }
     return renderPaletteGridPreview(grid, recipe.palette, width, height, sourceBbox, resamplingMethod);
   }
   var samples = grid.samples;
@@ -383,12 +394,14 @@ function renderPaletteGridPreview(grid, palette, width, height, sourceBbox, resa
   var alpha = getRasterDisplayBands(grid).alpha;
   var coverage = grid.coverage || null;
   var method = rasterPaletteIsCategorical(palette) ? null : resamplingMethod;
+  var sea = palette.sea == 'transparent' ? getRasterSeaMask(grid, band) : null;
   var pixels = new Uint8ClampedArray(width * height * 4);
   var src, val, i, dest;
   for (var y = 0; y < height; y++) {
     for (var x = 0; x < width; x++) {
       src = getPreviewSourceOffset(grid, sourceBbox, x, y, width, height, bands);
       if (coverage && !coverage[src / bands] || alpha > -1 && samples[src + alpha] === 0) continue;
+      if (sea && sea[src / bands] === 1) continue;
       val = method ? getResampledBandValue(grid, band, alpha, sourceBbox, x, y, width, height, method) :
         samples[src + band];
       if (isValidBandValue(val, grid.nodata)) {
@@ -414,6 +427,104 @@ function renderPaletteGridPreview(grid, palette, width, height, sourceBbox, resa
     colorModel: 'rgba',
     pixels: pixels
   };
+}
+
+// A blended palette (see mapshaper-raster-hypsometric.mjs): each pixel mixes
+// the colors of the palette's ramps by their weights where it is, in @field
+// (bilinear between the field's cells). Otherwise like
+// renderPaletteGridPreview().
+function renderBlendedPaletteGridPreview(grid, palette, field, width, height, sourceBbox, resamplingMethod) {
+  var samples = grid.samples;
+  var bands = grid.bands;
+  var band = getRasterGridBandIndex(grid, palette.band);
+  var nullTable = getRasterPaletteTable(palette);
+  var tables = palette.blend.ramps.map(function(ramp) {
+    return getRasterPaletteTable({type: 'sequential', continuous: true, breaks: ramp.breaks,
+      colors: ramp.colors, interpolation: palette.interpolation});
+  });
+  var alpha = getRasterDisplayBands(grid).alpha;
+  var coverage = grid.coverage || null;
+  var bbox = sourceBbox || grid.bbox;
+  var sea = palette.sea == 'transparent' ? getRasterSeaMask(grid, band) : null;
+  var fb = field.bbox, fw = field.width, fh = field.height, fweights = field.weights;
+  // the field's column (and row) at each column (row) of pixels
+  var fxs = new Float64Array(width), fys = new Float64Array(height);
+  var pixels = new Uint8ClampedArray(width * height * 4);
+  var weights = [0, 0, 0, 0];
+  var src, val, i, k, dest, r, g, b, a;
+  for (var x = 0; x < width; x++) {
+    fxs[x] = (bbox[0] + (x + 0.5) / width * (bbox[2] - bbox[0]) - fb[0]) / (fb[2] - fb[0]) * fw - 0.5;
+  }
+  for (var y = 0; y < height; y++) {
+    fys[y] = (fb[3] - (bbox[3] - (y + 0.5) / height * (bbox[3] - bbox[1]))) / (fb[3] - fb[1]) * fh - 0.5;
+  }
+  for (y = 0; y < height; y++) {
+    for (x = 0; x < width; x++) {
+      src = getPreviewSourceOffset(grid, sourceBbox, x, y, width, height, bands);
+      if (coverage && !coverage[src / bands] || alpha > -1 && samples[src + alpha] === 0) continue;
+      if (sea && sea[src / bands] === 1) continue;
+      val = resamplingMethod ? getResampledBandValue(grid, band, alpha, sourceBbox, x, y, width, height, resamplingMethod) :
+        samples[src + band];
+      dest = (y * width + x) * 4;
+      if (!isValidBandValue(val, grid.nodata)) {
+        i = nullTable.nullIndex;
+        if (i < 0) continue;
+        i *= 4;
+        pixels[dest] = nullTable.rgba[i];
+        pixels[dest + 1] = nullTable.rgba[i + 1];
+        pixels[dest + 2] = nullTable.rgba[i + 2];
+        pixels[dest + 3] = nullTable.rgba[i + 3];
+        continue;
+      }
+      getFieldWeights(fweights, fw, fh, fxs[x], fys[y], weights);
+      r = g = b = a = 0;
+      for (k = 0; k < 4; k++) {
+        if (weights[k] === 0) continue;
+        i = tables[k].getIndex(val) * 4;
+        r += weights[k] * tables[k].rgba[i];
+        g += weights[k] * tables[k].rgba[i + 1];
+        b += weights[k] * tables[k].rgba[i + 2];
+        a += weights[k] * tables[k].rgba[i + 3];
+      }
+      pixels[dest] = r;
+      pixels[dest + 1] = g;
+      pixels[dest + 2] = b;
+      pixels[dest + 3] = a;
+    }
+  }
+  return {
+    width: width,
+    height: height,
+    bands: 4,
+    pixelType: 'uint8',
+    colorModel: 'rgba',
+    pixels: pixels
+  };
+}
+
+// The four weights (0-1) at a position in a weight field, into @out
+function getFieldWeights(weights, width, height, fx, fy, out) {
+  var c0 = Math.floor(fx), r0 = Math.floor(fy);
+  var tx = fx - c0, ty = fy - r0;
+  var c1 = Math.min(width - 1, Math.max(0, c0 + 1)), r1 = Math.min(height - 1, Math.max(0, r0 + 1));
+  var a, b, c, d, w0, w1, w2;
+  c0 = Math.min(width - 1, Math.max(0, c0));
+  r0 = Math.min(height - 1, Math.max(0, r0));
+  a = (r0 * width + c0) * 3;
+  b = (r0 * width + c1) * 3;
+  c = (r1 * width + c0) * 3;
+  d = (r1 * width + c1) * 3;
+  w0 = interpolateFieldValue(weights, a, b, c, d, tx, ty);
+  w1 = interpolateFieldValue(weights, a + 1, b + 1, c + 1, d + 1, tx, ty);
+  w2 = interpolateFieldValue(weights, a + 2, b + 2, c + 2, d + 2, tx, ty);
+  out[0] = w0 / 255;
+  out[1] = w1 / 255;
+  out[2] = w2 / 255;
+  out[3] = Math.max(0, 255 - w0 - w1 - w2) / 255;
+}
+
+function interpolateFieldValue(arr, a, b, c, d, tx, ty) {
+  return (arr[a] * (1 - tx) + arr[b] * tx) * (1 - ty) + (arr[c] * (1 - tx) + arr[d] * tx) * ty;
 }
 
 // A one-band copy of @grid holding the band that @recipe's palette colors,

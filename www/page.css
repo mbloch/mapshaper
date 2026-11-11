@@ -6238,9 +6238,9 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	display: flex;
 	align-items: baseline;
 	gap: 6px;
-	margin-top: 10px;
+	margin-top: 8px;
 	margin-bottom: 0;
-	padding-top: 5px;
+	padding-top: 4px;
 	border-top: 1px solid #e4e4e4;
 }
 

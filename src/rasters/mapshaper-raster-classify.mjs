@@ -6,6 +6,7 @@ import { numbersAreAscending } from '../classification/mapshaper-sequential-clas
 import { getRasterDisplayBands, rasterGridDisplaysColor } from './mapshaper-raster-display-bands';
 import { createRasterPreview, getRasterGrid } from './mapshaper-raster-utils';
 import { runningInBrowser } from '../mapshaper-env';
+import { getHypsometricPalette } from './mapshaper-raster-hypsometric';
 
 // Helpers for -classify on raster layers (see
 // docs/development/raster-palette-design.md)
@@ -40,12 +41,32 @@ export function validateRasterClassifyOptions(raster, grid, opts) {
   if (opts.method == 'non-adjacent' || opts.method == 'blacki' || opts.method == 'indexed') {
     stop('The', opts.method, 'method does not work with raster layers');
   }
-  if (!opts.colors) {
+  if (opts.hypsometric) {
+    validateHypsometricOptions(opts);
+  } else if (!opts.colors) {
     stop('Classifying a raster requires colors=');
   }
   if (rasterIsColorImage(raster, grid)) {
     stop('-classify colors data rasters, not RGB images. To adjust the colors of an image, use -tone');
   }
+}
+
+// hypsometric= gives the colors and their elevations
+function validateHypsometricOptions(opts) {
+  var name = ['colors', 'breaks', 'outer_breaks', 'method', 'classes', 'pivot', 'continuous',
+    'stops', 'invert', 'categories'].find(function(key) { return key in opts; });
+  if (name) {
+    stop('hypsometric= sets the colors and breaks; it does not work with ' + name.replace(/_/g, '-') + '=');
+  }
+}
+
+// -classify hypsometric= (see mapshaper-raster-hypsometric.mjs)
+// @crs: the raster's CRS, or null
+export function getRasterHypsometricPalette(raster, band, opts, crs) {
+  var palette = getHypsometricPalette(raster, band, opts.hypsometric, crs);
+  if ('null_value' in opts) palette.nullColor = getPaletteColor(opts.null_value, 'null-value=');
+  palette.command = getPaletteCommand(opts);
+  return palette;
 }
 
 // Whether -classify can give a raster a palette: any raster with values,

@@ -665,9 +665,13 @@ On a data raster (such as a DEM or a land cover raster), `-classify` sets a colo
 
 A raster with one band is classified without naming a band. Otherwise name the band, e.g. `-classify band2` or `-classify band=2`.
 
-`colors=` is required. These options are not available for rasters: `save-as=`, `values=`, `index-field=`, `non-adjacent`, `method=indexed`, `method=blacki` and the key options.
+`colors=` is required, unless `hypsometric=` gives the colors. These options are not available for rasters: `save-as=`, `values=`, `index-field=`, `non-adjacent`, `method=indexed`, `method=blacki` and the key options.
 
 Breaks are calculated from a sample of up to one million pixels. Percentages in `breaks=` are of the range of the data, ignoring the lowest and highest 0.1% of values (so a few outliers don't stretch the range). Categorical classification requires an integer band; by default the categories are all the band's values. `null-value=` sets the color of nodata pixels, which are transparent by default. `other=` colors values that are not listed in `categories=`. With `continuous quantile`, the gradient is calculated from up to 32 quantiles (or from every value, if the band has few of them).
+
+`hypsometric=`  [raster] Color an elevation raster with hypsometric tints, at fixed elevations, so that an elevation has the same color in every map: `arid`, `lush` (warm and humid), `temperate` (cold and humid) or `polar` (ice and snow). The colors follow Tom Patterson's cross-blended hypsometric tints, as in his Equal Earth physical map. `blended` mixes the four by climate across the map, as his map does: deserts, forests and ice caps each get their own lowland colors, blending into one another between climate regions. It is meant for maps of the world and of large regions, and needs a raster whose projection is known. The elevations are converted to the band's vertical units (meters if unknown). The sea is left out (see `sea=`); other values below 0 take the 0 m color. Not used with `colors=`, `breaks=`, `outer-breaks=` or a classification method.
+
+`sea=`  [raster] What to do with the sea of an elevation raster: pixels below 0 that are connected, through other pixels below 0, to the edge of the raster or to pixels without data. `transparent` leaves them out (the default with `hypsometric=`); `land` colors them like other values (the default otherwise). Basins below sea level that land encloses, such as the Dead Sea, are not sea.
 
 **Options for generating SVG keys**
 
@@ -694,6 +698,9 @@ Breaks are calculated from a sample of up to one million pixels. Percentages in 
 # Color a DEM with a continuous ramp from 0m to 3000m
 mapshaper dem.tif -classify colors=#2b5c3f,#c9b98a,#f4efe6 continuous \
   equal-interval outer-breaks=0,3000 -o out.png
+
+# Color a world DEM with tints that blend between climate regions
+mapshaper world-dem.tif -classify hypsometric=blended -proj +proj=eqearth -o world.png
 
 # Apply a sequential color ramp to a polygon dataset using quantiles.
 mapshaper covid_cases.geojson \

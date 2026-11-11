@@ -192,15 +192,18 @@ function addCellWeights(sums, cell, f) {
 }
 
 // The preset with the most weight at a set of [lon, lat] points (e.g. across
-// a map), or null if they are all at sea
+// a map), or null if they are all at sea. Points are weighted by the area
+// they stand for on a grid of longitudes and latitudes, so that the polar
+// regions don't count for more than their size.
 export function getClimatePreset(points) {
   var sums = {}, found = false, best = null;
   points.forEach(function(p) {
     var w = getClimateWeights(p[0], p[1]);
+    var area = Math.cos(p[1] * Math.PI / 180);
     if (!w) return;
     found = true;
     CLIMATE_NAMES.forEach(function(name) {
-      sums[name] = (sums[name] || 0) + w[name];
+      sums[name] = (sums[name] || 0) + w[name] * area;
     });
   });
   if (!found) return null;

@@ -218,6 +218,8 @@ import * as RasterReprojection from './rasters/mapshaper-raster-reprojection';
 import * as RasterUtils from './rasters/mapshaper-raster-utils';
 import * as RasterPalette from './rasters/mapshaper-raster-palette';
 import * as RasterClassify from './rasters/mapshaper-raster-classify';
+import * as RasterHypsometric from './rasters/mapshaper-raster-hypsometric';
+import * as RasterSeaMask from './rasters/mapshaper-raster-sea-mask';
 import * as VerticalUnits from './rasters/mapshaper-vertical-units';
 import * as Merging from './dataset/mapshaper-merging';
 import * as MosaicIndex from './polygons/mapshaper-mosaic-index';
@@ -410,6 +412,8 @@ Object.assign(internal,
   RasterReprojection,
   RasterUtils,
   RasterPalette,
+  RasterHypsometric,
+  RasterSeaMask,
   RasterClassify,
   VerticalUnits,
   Merging,

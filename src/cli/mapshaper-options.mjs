@@ -1127,6 +1127,12 @@ export function getOptionParser() {
       describe: '(oklch) more vivid midtones, 0-1 (default 0)',
       type: 'number'
     })
+    .option('hypsometric', {
+      describe: '[raster] elevation colors: arid, lush, temperate, polar, or blended (by climate)'
+    })
+    .option('sea', {
+      describe: '[raster] below 0 and open to the edge: transparent (default with hypsometric=) or land'
+    })
     .option('index-field', {
       describe: 'apply pre-calculated classes (0 ... n-1, -1)'
     })

@@ -17,7 +17,13 @@ import { stop } from '../utils/mapshaper-logging';
 //   otherColor,     // categorical: the color of other values (default nullColor)
 //   nullColor,      // the color of nodata pixels; null is transparent
 //   interpolation,  // continuous: 'oklch' (default) or 'rgb'
-//   vibrance        // continuous: 0-1, as -classify vibrance=
+//   vibrance,       // continuous: 0-1, as -classify vibrance=
+//   sea,            // 'transparent': pixels below 0 that reach the grid's edge
+//                   // or its pixels without values are not drawn (see
+//                   // mapshaper-raster-sea-mask.mjs)
+//   hypsometric,    // the preset of -classify hypsometric=, or 'blended'
+//   blend           // hypsometric=blended: the presets' ramps and weights
+//                   // (see mapshaper-raster-hypsometric.mjs)
 // }
 
 var RAMP_SEGMENT_SIZE = 256; // table entries between two continuous breaks
@@ -35,7 +41,9 @@ export function getRasterPaletteKey(palette) {
   return JSON.stringify([palette.band, palette.type, !!palette.continuous, palette.breaks || null,
     palette.colors || null, palette.categories || null, palette.nullColor || null,
     palette.otherColor || null,
-    palette.interpolation || null, palette.vibrance === undefined ? null : palette.vibrance]);
+    palette.interpolation || null, palette.vibrance === undefined ? null : palette.vibrance,
+    palette.blend ? [palette.blend.ramps, palette.blend.field && palette.blend.field.key] : null,
+    palette.sea || null]);
 }
 
 export function rasterPaletteIsCategorical(palette) {

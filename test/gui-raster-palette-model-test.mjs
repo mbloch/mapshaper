@@ -6,7 +6,8 @@ import {
   getSequentialClassRanges, getBreakClassCounts, getPivotSummary, setSchemeContinuous,
   setSchemeLayerType, setTileCount, setSchemeMethod, choosePreset, getSchemeColors,
   setTileColor, clearTileColor, getContinuousTileStops, reverseScheme, getPinnedTiles,
-  getSchemeBreaks, setSchemeBreak, getBreakClassSwatches, getDefaultElevationPreset, getBreaksScale
+  getSchemeBreaks, setSchemeBreak, getBreakClassSwatches, getDefaultElevationPreset, getBreaksScale,
+  chooseBlendedElevations, isBlendedScheme, getSchemeTab, getElevationFields, layerHasElevations, setSchemeSea
 } from '../src/gui/gui-color-scheme-model';
 import { getRasterBandLabel, layerHasPaletteRaster } from '../src/gui/gui-raster-band-values';
 import api from '../mapshaper.js';
@@ -166,8 +167,7 @@ describe('gui-color-scheme-model.mjs on raster layers', function() {
 });
 
 describe('gui-color-scheme-model.mjs fixed elevations', function() {
-  var arid = ['#efe5cd', '#f8e3c8', '#f6e6c9', '#f7e3cd', '#d2d4b7', '#cecfba', '#c9d1c9', '#d6d8d3',
-    '#dde0e1', '#e4e7ea'];
+  var arid = internal.getHypsometricStops('Arid').map(function(o) { return o.color; });
   var stops = [0, 50, 200, 600, 1000, 2000, 3000, 4000, 5000, 6000];
 
   async function importDEM(values) {
@@ -180,16 +180,45 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     return setSchemeMethod(getDefaultSchemeOfType('sequential', lyr), 'elevation', null, -1, [[-112, 33.5]]);
   }
 
-  function methodNames(scheme, lyr) {
-    return getSchemeMethods(scheme, lyr).map(function(o) { return o.name; });
-  }
-
-  it('are a method for the sequential schemes of a band that could hold elevations', async function() {
+  it('have their own tab, for bands that could hold elevations', async function() {
     var dem = (await importDEM()).lyr;
     var tooHigh = (await importDEM([0, 5000, 10000, 20000])).lyr;
-    assert(methodNames(getDefaultSchemeOfType('sequential', dem), dem).includes('elevation'));
-    assert(!methodNames(getDefaultSchemeOfType('diverging', dem), dem).includes('elevation'));
-    assert(!methodNames(getDefaultSchemeOfType('sequential', tooHigh), tooHigh).includes('elevation'));
+    var scheme = getDefaultSchemeOfType('elevation', dem, [[-112, 33.5]]);
+    assert.equal(getSchemeTab(scheme), 'elevation');
+    assert(isBlendedScheme(scheme));
+    assert.equal(scheme.elevationPreset, 'Arid');
+    // without knowing where the raster is
+    assert.equal(getDefaultSchemeOfType('elevation', dem, []).preset, 'Temperate');
+    assert.equal(getSchemeTab(getDefaultSchemeOfType('sequential', dem)), 'sequential');
+    assert(!getSchemeMethods(scheme).some(function(o) { return o.name == 'elevation'; }));
+    assert.deepEqual(getElevationFields(dem), ['band1']);
+    assert.deepEqual(getElevationFields(tooHigh), []);
+  });
+
+  it('are the default when a raster says it holds elevations', async function() {
+    var o = await importDEM();
+    assert(!layerHasElevations(o.lyr));
+    o.lyr.name = 'sedona-elev';
+    assert(layerHasElevations(o.lyr));
+    o.lyr.name = 'grand_canyon_DEM';
+    assert(layerHasElevations(o.lyr));
+    o.lyr.name = 'demographics';
+    assert(!layerHasElevations(o.lyr));
+    o.lyr.raster.grid.verticalUnits = 'm';
+    assert(layerHasElevations(o.lyr));
+  });
+
+  it('leave out the sea, or give it land colors', async function() {
+    var o = await importDEM([-20, -10, 5, 200, -30, 300]);
+    var scheme = useElevations(o.lyr);
+    var cmd = formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr});
+    assert(/ sea=transparent$/.test(cmd));
+    await runCommand(o.catalog, cmd);
+    assert.equal(o.lyr.raster.view.recipe.palette.sea, 'transparent');
+    scheme = setSchemeSea(scheme, 'land');
+    assert(!/sea=/.test(formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr})));
+    scheme = chooseBlendedElevations(scheme, [[-112, 33.5]]);
+    assert(/ sea=land( |$)/.test(formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr})));
   });
 
   it('color the stops of a preset, at its elevations, whatever the data range', async function() {
@@ -200,7 +229,7 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     assert.equal(scheme.preset, 'Arid');
     assert.deepEqual(getSchemeColors(scheme), arid);
     assert.deepEqual(getContinuousTileStops(scheme, o.lyr).map(function(stop) { return stop.value; }), stops);
-    assert.equal(cmd, "-classify field='band1' breaks=50,200,600,1000,2000,3000,4000,5000 outer-breaks=0,6000 continuous colors=" + arid.join(','));
+    assert.equal(cmd, "-classify field='band1' breaks=50,200,600,1000,2000,3000,4000,5000 outer-breaks=0,6000 continuous colors=" + arid.join(',') + ' sea=transparent');
     await runCommand(o.catalog, cmd);
     palette = o.lyr.raster.view.recipe.palette;
     assert.deepEqual(palette.breaks, stops);
@@ -266,6 +295,21 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     var info = getSchemeBreaks(useElevations(lyr), lyr);
     // past the top stop, the data's max
     assert.deepEqual([info.min, info.max], [-50, 8910]);
+  });
+
+  it('can be blended by climate, which -classify does, until they are edited', async function() {
+    var lyr = (await importDEM()).lyr;
+    var scheme = chooseBlendedElevations(useElevations(lyr), [[-60, -5]]);
+    assert(isBlendedScheme(scheme));
+    assert.equal(scheme.preset, 'Blended');
+    // the tiles and stops are the Amazon's preset
+    assert.equal(scheme.elevationPreset, 'Lush');
+    assert.equal(formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: lyr}), "-classify field='band1' hypsometric=blended");
+    [setTileColor(scheme, 2, '#ff0000'), setSchemeBreak(scheme, lyr, 3, 700), choosePreset(scheme, 'Arid'),
+      setSchemeMethod(scheme, 'quantile')].forEach(function(next) {
+      assert(!isBlendedScheme(next));
+      assert(!/hypsometric=/.test(formatSchemeCommand(next, getAppliedColors(next), {layer: lyr})));
+    });
   });
 
   it('leave their colors as a custom ramp for another method', async function() {

@@ -36,12 +36,14 @@ import { hasPercentBreaks, resolvePercentBreaks } from '../classification/mapsha
 import { layerHasRaster } from '../dataset/mapshaper-layer-utils';
 import { getRasterGrid, getRasterGridBandIndex } from '../rasters/mapshaper-raster-utils';
 import { noteLayerWillChange, markLayerChanged } from '../undo/mapshaper-undo-tracking';
+import { getDatasetCRS } from '../crs/mapshaper-projections';
 import {
   formatRasterSampleMessage,
   getRasterBandCategories,
   getRasterBandSample,
   getRasterClassifyBand,
   getRasterPaletteFromClassification,
+  getRasterHypsometricPalette,
   getTrimmedRange,
   rasterBandIsInteger,
   setRasterPalette,
@@ -55,8 +57,11 @@ cmd.classify = function(lyr, dataset, optsArg) {
     stop('color-scheme is not a valid option, use colors instead');
   }
   if (layerHasRaster(lyr)) {
-    classifyRasterLayer(lyr, opts);
+    classifyRasterLayer(lyr, dataset, opts);
     return;
+  }
+  if (opts.hypsometric || opts.sea) {
+    stop((opts.hypsometric ? 'hypsometric=' : 'sea=') + ' works with raster layers');
   }
   if (!lyr.data) {
     initDataTable(lyr);
@@ -282,13 +287,20 @@ function getClassification(data, optsArg) {
 
 // -classify on a raster layer sets a palette, a display setting: the pixels
 // are not changed (see docs/development/raster-palette-design.md)
-function classifyRasterLayer(lyr, opts) {
+function classifyRasterLayer(lyr, dataset, opts) {
   var raster = lyr.raster;
   var grid = getRasterGrid(raster);
   var band, bandIndex, categorical, sample, o, palette;
   validateRasterClassifyOptions(raster, grid, opts);
   band = getRasterClassifyBand(grid, opts);
   bandIndex = getRasterGridBandIndex(grid, band);
+  if (opts.hypsometric) {
+    palette = setRasterPaletteSea(getRasterHypsometricPalette(raster, band, opts, dataset ? getDatasetCRS(dataset) : null), opts);
+    noteLayerWillChange(lyr, {operation: 'classify', unit: 'raster'});
+    setRasterPalette(raster, palette);
+    markLayerChanged(lyr, {operation: 'classify', unit: 'raster'});
+    return;
+  }
   categorical = getClassifyMethod(opts, 'number') == 'categorical';
   if (categorical && !rasterBandIsInteger(grid)) {
     stop('Categories need a band of integer values (band ' + band + ' is ' + grid.pixelType + ')');
@@ -307,10 +319,20 @@ function classifyRasterLayer(lyr, opts) {
       return opts.outer_breaks || getTrimmedRange(sample.values);
     }
   }, Object.assign({}, opts, {count_label: sample.sampled ? 'sampled pixel counts' : 'pixel counts'}));
-  palette = getRasterPaletteFromClassification(o, band, opts, sample.values);
+  palette = setRasterPaletteSea(getRasterPaletteFromClassification(o, band, opts, sample.values), opts);
   noteLayerWillChange(lyr, {operation: 'classify', unit: 'raster'});
   setRasterPalette(raster, palette);
   markLayerChanged(lyr, {operation: 'classify', unit: 'raster'});
+}
+
+// sea=: hypsometric tints leave out the sea by default
+function setRasterPaletteSea(palette, opts) {
+  var sea = opts.sea || (opts.hypsometric ? 'transparent' : 'land');
+  if (sea != 'transparent' && sea != 'land') {
+    stop('Unsupported sea= value:', sea, '(expected transparent or land)');
+  }
+  if (sea == 'transparent') palette.sea = sea;
+  return palette;
 }
 
 function validateDivergingOptions(method, fieldType, opts) {

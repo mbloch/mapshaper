@@ -268,7 +268,7 @@ describe('-classify on raster layers', function () {
     var out = await api.applyCommands('-i in.tif -classify colors=Blues classes=5 -info save-to=info',
       {'in.tif': content});
     assert.deepEqual(JSON.parse(out['info.json'])[0].raster_palette,
-      {band: 1, type: 'sequential', continuous: false, classes: 5, opacity: null});
+      {band: 1, type: 'sequential', continuous: false, classes: 5, hypsometric: null, opacity: null});
   });
 
   describe('commands keep or drop the palette', function () {

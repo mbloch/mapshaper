@@ -22,11 +22,19 @@ test('the color palettes panel colors a DEM, as one undo state and one command',
   await expect(panel).toBeVisible();
   expect(await getMode(page)).toBe('palette');
 
-  // a single band needs no band menu; a DEM starts with continuous colors
+  // a single band needs no band menu; a raster named as a DEM starts with
+  // fixed elevations, without the sea
   await expect(panel.getByLabel('Band')).toBeHidden();
+  await expect(panel.getByRole('tab', {name: 'Elevation'})).toHaveAttribute('aria-selected', 'true');
+  await expect(panel.getByLabel('Sea')).toHaveValue('transparent');
+  await expect.poll(function() { return getPalette(page).then(function(p) { return p && p.sea; }); }).toBe('transparent');
+
+  // other ramps start with continuous colors
+  await panel.getByRole('tab', {name: 'Sequential'}).click();
+  await expect(panel.getByLabel('Sea')).toBeHidden();
   await expect(panel.locator('.continuous-btn')).toHaveClass(/selected/);
   await expect(panel.locator('.color-scheme-null-count')).toHaveText('None in this layer');
-  await expect.poll(function() { return getPalette(page); }).not.toBe(null);
+  await expect.poll(function() { return getPalette(page).then(function(p) { return p && !p.sea; }); }).toBe(true);
   applied = await getPalette(page);
   expect(applied.continuous).toBe(true);
   expect(applied.band).toBe(1);

@@ -125,6 +125,7 @@ function getRasterPaletteInfo(raster) {
     type: palette ? palette.type : null,
     continuous: palette ? !!palette.continuous : false,
     classes: palette && !palette.continuous ? palette.colors.length : null,
+    hypsometric: palette && palette.hypsometric || null,
     opacity: opacity
   };
 }
@@ -136,6 +137,7 @@ function formatRasterPaletteInfo(o) {
       (o.type == 'categorical' ? ' categories' : ' classes')));
   }
   if (o.band) parts.push('band ' + o.band);
+  if (o.hypsometric) parts.push('hypsometric ' + o.hypsometric.toLowerCase());
   if (o.opacity !== null) parts.push('opacity ' + o.opacity);
   return parts.join(', ');
 }

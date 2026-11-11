@@ -3,7 +3,7 @@ import { quoteCommandValue } from './gui-command-utils';
 import {
   getRasterBandFields, getRasterBandValues, getRasterBandCounts, getRasterCategoryFields,
   getRasterBandCategories, rasterHasContinuousValues, getRasterLayerPaletteKey,
-  rasterBandCouldBeElevation, getRasterUnitMeters
+  rasterBandCouldBeElevation, rasterBandIsElevation, getRasterUnitMeters
 } from './gui-raster-band-values';
 
 // The state behind the color scheme panel, as plain objects and functions
@@ -73,6 +73,13 @@ import {
 //                                             band's units), once edited;
 //                                             preset is null when the
 //                                             colors are)
+//   blended: boolean                          (fixed elevations: blended by
+//                                             climate, with preset 'Blended')
+//   sea: 'land' or undefined                  (fixed elevations: whether
+//                                             pixels below 0 that are open
+//                                             to the sea take land colors,
+//                                             or are left out; see
+//                                             -classify sea=)
 //   continuous: boolean                       (sequential and diverging)
 //   pivot: 'auto', 'median', 'mean' or a number,
 //   neutral, continuousNeutral: boolean       (a pivot class, for classed
@@ -95,10 +102,18 @@ import {
 //                   the layer (interpolated fills aren't the scheme's colors)
 // }
 
+// The panel's tabs. Elevation schemes are sequential schemes with fixed
+// elevations (see getSchemeTab()).
 export var schemeTypes = [
   {name: 'sequential', label: 'Sequential'},
   {name: 'diverging', label: 'Diverging'},
+  {name: 'elevation', label: 'Elevation'},
   {name: 'categorical', label: 'Categorical'}
+];
+
+export var seaOptions = [
+  {name: 'transparent', label: 'Transparent'},
+  {name: 'land', label: 'Land colors'}
 ];
 
 export var classifyMethods = [
@@ -107,8 +122,6 @@ export var classifyMethods = [
   {name: 'hybrid', label: 'Hybrid'},
   {name: 'nice', label: 'Nice breaks'}
 ];
-
-export var elevationMethod = {name: 'elevation', label: 'Fixed elevations'};
 
 export var pivotOptions = [
   {name: 'auto', label: 'Auto (0 or median)'},
@@ -136,6 +149,7 @@ export var maxCategoricalColors = 20;
 var defaultCategoricalPreset = 'batlowS';
 var defaultNonAdjacentColors = 5;
 var defaultDivergingPreset = 'RdBu';
+var blendedPresetName = 'Blended';
 var defaultDivergingClasses = 7;
 var defaultDivergingSideClasses = 3;
 var maxDivergingSideClasses = 6;
@@ -193,8 +207,17 @@ function flattenGroups(groups) {
 // The scheme a panel tab starts with on a layer. A raster of continuous values
 // starts with continuous colors: classes of elevation look like contour
 // bands, which is a choice rather than a default.
-export function getDefaultSchemeOfType(type, lyr) {
-  var scheme = type == 'categorical' ? getDefaultCategoricalScheme(lyr) :
+// points: [lon, lat] points across the layer, for the elevation tab, which
+//   starts with the presets blended by climate where it can (they are one
+//   preset across a small area)
+export function getDefaultSchemeOfType(type, lyr, points) {
+  var scheme;
+  if (type == 'elevation') {
+    scheme = getDefaultSchemeOfType('sequential', lyr);
+    scheme = setSchemeMethod(setSchemeField(scheme, getElevationFields(lyr)[0] || scheme.field), 'elevation', null, -1, points);
+    return points && internal.getClimatePreset(points) ? chooseBlendedElevations(scheme, points) : scheme;
+  }
+  scheme = type == 'categorical' ? getDefaultCategoricalScheme(lyr) :
     type == 'diverging' ? getDefaultDivergingScheme(lyr) :
     getDefaultScheme(getNumericFields(lyr)[0]);
   if (!isRasterLayer(lyr)) return scheme;
@@ -567,7 +590,7 @@ export function setSchemeBreak(scheme, lyr, i, value) {
   value = tidyNumber(value);
   if (isElevationScheme(scheme)) {
     breaks[i] = clamp(value, i > 0 ? breaks[i - 1] : -Infinity, i < breaks.length - 1 ? breaks[i + 1] : Infinity);
-    return Object.assign({}, scheme, {stops: breaks});
+    return Object.assign({}, scheme, {stops: breaks}, scheme.blended ? {preset: null, blended: false} : null);
   }
   lo = i > 0 ? breaks[i - 1] : Math.min(info.min, breaks[i]);
   hi = i < breaks.length - 1 ? breaks[i + 1] : Math.max(info.max, breaks[i]);
@@ -835,10 +858,7 @@ export function getMinSchemeColors(scheme) {
 }
 
 // lyr: the layer, for the fixed elevations of a raster that could hold them
-export function getSchemeMethods(scheme, lyr) {
-  if (isElevationScheme(scheme) || canUseFixedElevations(scheme, lyr)) {
-    return classifyMethods.concat([elevationMethod]);
-  }
+export function getSchemeMethods(scheme) {
   if (scheme.type != 'categorical') return classifyMethods;
   return scheme.raster ? categoricalMethods.filter(function(item) {
     return item.name != 'non-adjacent';
@@ -1163,6 +1183,36 @@ export function canUseFixedElevations(scheme, lyr) {
   return scheme.type == 'sequential' && isRasterLayer(lyr) && rasterBandCouldBeElevation(lyr, scheme.field);
 }
 
+// The panel tab of a scheme
+export function getSchemeTab(scheme) {
+  return isElevationScheme(scheme) ? 'elevation' : scheme.type;
+}
+
+// The bands of a raster that could hold elevations, for the elevation tab
+export function getElevationFields(lyr) {
+  if (!isRasterLayer(lyr)) return [];
+  return getNumericFields(lyr).filter(function(field) {
+    return rasterBandCouldBeElevation(lyr, field);
+  });
+}
+
+// Whether a raster says that it holds elevations, so that the panel opens on
+// the elevation tab
+export function layerHasElevations(lyr) {
+  return getElevationFields(lyr).some(function(field) {
+    return rasterBandIsElevation(lyr, field);
+  });
+}
+
+// 'transparent' or 'land'
+export function getSchemeSea(scheme) {
+  return scheme.sea == 'land' ? 'land' : 'transparent';
+}
+
+export function setSchemeSea(scheme, sea) {
+  return Object.assign({}, scheme, {sea: sea == 'land' ? 'land' : undefined});
+}
+
 // The preset for the climate across a set of [lon, lat] points (see
 // hypsometric-climate.mjs), or Temperate without any on land
 export function getDefaultElevationPreset(points) {
@@ -1186,10 +1236,32 @@ export function getElevationSchemeStops(scheme, lyr) {
   });
 }
 
+// Blended colors (-classify hypsometric=blended) mix the presets by climate
+// across the map, which only the command can do. The tiles and stops are
+// those of @points' preset, which the command uses where it can't blend.
+export function chooseBlendedElevations(scheme, points) {
+  return Object.assign(chooseElevationPreset(scheme, getDefaultElevationPreset(points)), {
+    preset: blendedPresetName,
+    blended: true
+  });
+}
+
+export function isBlendedScheme(scheme) {
+  return !!scheme.blended;
+}
+
+// For the Blended item in the palette menu: a color of each preset
+export function getBlendedPresetColors() {
+  return getElevationPresetNames().map(function(name) {
+    return internal.getHypsometricStops(name)[2].color;
+  });
+}
+
 function chooseElevationPreset(scheme, name) {
   return Object.assign({}, scheme, {
     method: 'elevation',
     preset: name,
+    blended: false,
     elevationPreset: name,
     stopColors: null,
     stops: null,
@@ -1207,6 +1279,7 @@ function leaveFixedElevations(scheme) {
   var colors = getSchemeColors(scheme);
   return Object.assign({}, scheme, {
     preset: null,
+    blended: false,
     elevationPreset: null,
     stopColors: null,
     stops: null,
@@ -1300,9 +1373,9 @@ function setElevationStopColor(scheme, i, color) {
   var colors = getSchemeColors(scheme);
   colors[i] = color;
   if (colors.join() == preset.join()) {
-    return Object.assign({}, scheme, {preset: scheme.elevationPreset, stopColors: null});
+    return Object.assign({}, scheme, {preset: scheme.elevationPreset, stopColors: null, blended: false});
   }
-  return Object.assign({}, scheme, {preset: null, stopColors: colors});
+  return Object.assign({}, scheme, {preset: null, stopColors: colors, blended: false});
 }
 
 // A custom categorical list grows to have at least n swatches.
@@ -1410,6 +1483,13 @@ export function formatSchemeCommand(scheme, colors, opts) {
   if (scheme.method != 'non-adjacent') {
     parts.push('field=' + quoteCommandValue(scheme.field));
   }
+  if (isBlendedScheme(scheme)) {
+    parts.push('hypsometric=blended');
+    if (getSchemeSea(scheme) == 'land') parts.push('sea=land');
+    if (getSchemeNullColor(scheme)) parts.push('null-value=' + getSchemeNullColor(scheme));
+    if (opts && opts.target) parts.push('target=' + opts.target);
+    return parts.join(' ');
+  }
   if (isElevationScheme(scheme)) {
     stops = getElevationSchemeStops(scheme, opts && opts.layer);
     parts.push('breaks=' + stops.slice(1, -1).join(','));
@@ -1435,6 +1515,7 @@ export function formatSchemeCommand(scheme, colors, opts) {
     parts.push('continuous');
   }
   parts.push('colors=' + colors.join(','));
+  if (isElevationScheme(scheme) && getSchemeSea(scheme) == 'transparent') parts.push('sea=transparent');
   if (scheme.raster ? !!getSchemeNullColor(scheme) :
       scheme.method != 'non-adjacent' && getSchemeNullColor(scheme) != defaultNullColor) {
     parts.push('null-value=' + getSchemeNullColor(scheme));

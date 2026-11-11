@@ -384,8 +384,9 @@ tested.
    Earth physical map, at stops of 0, 50, 200 and 600 m and every 1000 m
    above (to 6000 m, or 4000 m for Polar): a least-squares fit over its land
    pixels, each pixel a blend of the four ramps by a coarse climate grid
-   fitted to the same map, with the three land ramps sharing their colors
-   from 1000 m up. The preset it starts with is the one with the most
+   fitted to the same map, with Lush and Temperate sharing their colors
+   from 1000 m up and all three land ramps from 3000 m up (Arid's highlands
+   are brown below that, as in the Sahara's). The preset it starts with is the one with the most
    weight at a 9 x 9 grid of points across the raster, in a 2° grid of the
    four presets' weights (`hypsometric-climate.mjs`, about 11 KB of base64),
    or Temperate if the points are all at sea or the projection is unknown or
@@ -394,13 +395,49 @@ tested.
    cells, cells without such pixels (high plateaus, sea) filled from their
    neighbors and blurred once, and sea cells more than a cell from land left
    out. High plateaus therefore take their neighbors' climate, which matters
-   little, since the land presets share their colors from 1000 m up. The
+   little, since the land presets are much alike from 1000 m up. The
    grid's weights are also what a blended palette would use. Stops can be recolored, and moved in the class breaks dialog
    (end stops too, and beyond the data), but not added; the dialog's range
    runs from the stop at or below the data's min to the stop at or above its
    max, leaving out the stops beyond those; choosing a preset
    brings back its elevations, and another method keeps the colors as a
-   custom ramp. Still to do: fit to data, and land and sea ramps.
+   custom ramp. `-classify hypsometric=arid|lush|temperate|polar` gives a
+   preset's palette from the command line, and `hypsometric=blended`
+   (`mapshaper-raster-hypsometric.mjs`) mixes the four by climate: the
+   palette is the preset with the most weight (by area) across the raster,
+   for anything that draws it unblended, plus `palette.blend` with the four
+   ramps (in the band's units) and a field of the presets' weights in the
+   raster's coordinates (up to 180 cells a side, sampled from the climate
+   grid; cells at sea are filled in from their neighbors and smoothed, so
+   that `sea=land` fades between coasts). Each pixel mixes the four ramps' colors (in RGB) by the field's
+   weights, bilinear between its cells (`renderBlendedPaletteGridPreview()`).
+   `-proj` makes the field again in the new CRS; `-clip` keeps it, since
+   its coordinates don't change. The GUI's reprojected preview draws a grid
+   in the display CRS, so it passes a field for the view, in that CRS
+   (`renderRasterPreview()`'s `blendField`). In the panel, Blended is an
+   item in the Elevation palette menu, offered where the raster can be
+   placed on land. Its tiles and stops are the main preset's, and editing a
+   color or a stop, or choosing a preset, turns the blend off.
+   Fixed elevations then moved from the Sequential tab's breaks methods to
+   an Elevation tab of their own (`getSchemeTab()`: internally they are
+   still sequential schemes with `method: 'elevation'`). The tab is offered
+   for bands that could hold elevations, and the panel opens on it when the
+   raster says it holds elevations: known vertical units (fetched DEMs have
+   them), or a band description or layer name like `dem`, `elev`, `srtm`
+   (`rasterBandIsElevation()`), not values in range alone. It starts Blended
+   where the raster can be placed on land, otherwise with Temperate. Its rows
+   are Land (the presets and Blended, with Customize for the stops) and Sea.
+   Blended hides the tiles, which aren't what it draws. `-classify sea=`
+   leaves out the sea: with `sea=transparent` (the default with
+   `hypsometric=`, and what the panel gives), pixels below 0 that connect,
+   through other pixels below 0, to the grid's edge or to a pixel without a
+   value (nodata, outside the coverage, alpha 0) are not drawn
+   (`getRasterSeaMask()`, a flood fill cached by samples and band, made on
+   the reprojected grid for the GUI's preview). Enclosed basins below sea
+   level (the Dead Sea, Death Valley, the Caspian, whose DEM surface is
+   about -28 m) stay land and take the 0 m color; one that the grid's edge
+   cuts through looks like sea. `sea=land` colors them all. Still to do: a
+   Sea menu of bathymetry ramps, and fit to data.
 7. Later: a command that renders a raster's display into RGB pixels (colored
    GeoTIFFs, `-tone` on palette rasters), GeoTIFF `ColorMap` import as a default categorical palette (NLCD
    and other palette TIFFs), category labels from raster attribute tables,

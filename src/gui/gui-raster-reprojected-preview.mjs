@@ -3,6 +3,8 @@ import { GUI } from './gui-lib';
 import { previewHasSourcePixels } from './gui-raster-display-utils';
 
 var MAX_REPROJECTED_PREVIEW_PIXELS = 6e6;
+// cells on the long side of a blended palette's weights, across the view
+var BLEND_FIELD_CELLS = 96;
 var cache = new WeakMap();
 var requestId = 0;
 
@@ -46,7 +48,8 @@ export function scheduleRasterReprojectedPreview(layer, ext, onReady) {
       return;
     }
     timing.renderStart = getTimer();
-    preview = internal.renderRasterPreview(grid, params.recipe, grid.width, grid.height, params.stats);
+    preview = internal.renderRasterPreview(grid, params.recipe, grid.width, grid.height, params.stats,
+      getBlendOptions(params, grid));
     preview.sourcePixels = params.sourcePixels;
     applyCoverageMask(preview, grid.coverage);
     timing.renderMs = getTimer() - timing.renderStart;
@@ -57,6 +60,15 @@ export function scheduleRasterReprojectedPreview(layer, ext, onReady) {
     cache.set(layer, getRasterReprojectedCacheEntry(params, {preview: preview}));
     onReady();
   }, 0);
+}
+
+// A blended palette's weights are in the raster's coordinates; the
+// reprojected grid needs them in the display's (or none, to draw the palette
+// unblended)
+function getBlendOptions(params, grid) {
+  var palette = params.recipe.palette;
+  if (!palette || !palette.blend) return null;
+  return {blendField: internal.getClimateWeightField(grid.bbox, params.displayCRS, BLEND_FIELD_CELLS)};
 }
 
 function getRasterReprojectedPreviewParams(layer, ext) {

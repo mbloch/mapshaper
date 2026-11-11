@@ -14,6 +14,7 @@ var MAX_RASTER_CATEGORIES = 300;
 // the range of elevations that a band can have, in meters
 var MIN_ELEVATION = -12000;
 var MAX_ELEVATION = 9000;
+var ELEVATION_NAME = /(^|[^a-z])(dem|dtm|dsm)([^a-z]|$)|elev|height|altitude|srtm|etopo|gebco|bathy|topo|terrain|relief/i;
 var cache = new WeakMap(); // grid -> {fields, samples: {}, categories: {}}
 
 export function layerHasPaletteRaster(lyr) {
@@ -93,6 +94,17 @@ export function rasterBandCouldBeElevation(lyr, field) {
   var meters = getRasterUnitMeters(lyr);
   if (!rasterHasContinuousValues(lyr) || values.length === 0) return false;
   return values[0] * meters >= MIN_ELEVATION && values[values.length - 1] * meters <= MAX_ELEVATION;
+}
+
+// Whether a band that could hold elevations says that it does: by its units,
+// or by an elevation-like name or description of it or of its layer. Values
+// in the range of elevations aren't enough, since plenty of other data fall in
+// it.
+export function rasterBandIsElevation(lyr, field) {
+  var grid = getGrid(lyr);
+  if (!grid || !rasterBandCouldBeElevation(lyr, field)) return false;
+  return !!grid.verticalUnits || ELEVATION_NAME.test(getRasterBandLabel(lyr, field)) ||
+    ELEVATION_NAME.test(lyr.name || '');
 }
 
 // Identifies the palette on a raster layer, for checking later whether a
