@@ -75,7 +75,8 @@ export function getRasterViewportPreviewParams(layer, ext) {
     recipe.type,
     recipe.scaling,
     recipe.scaleRange && recipe.scaleRange.join(','),
-    recipe.percentileRange && recipe.percentileRange.join(',')
+    recipe.percentileRange && recipe.percentileRange.join(','),
+    internal.getRasterPaletteKey(recipe.palette)
   ].join('|');
   return {
     key: key,

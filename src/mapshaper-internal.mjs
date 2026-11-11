@@ -215,6 +215,7 @@ import * as TileMath from './fetch/mapshaper-tile-math';
 import * as ElevationDecoding from './fetch/mapshaper-elevation-decoding';
 import * as RasterReprojection from './rasters/mapshaper-raster-reprojection';
 import * as RasterUtils from './rasters/mapshaper-raster-utils';
+import * as RasterPalette from './rasters/mapshaper-raster-palette';
 import * as Merging from './dataset/mapshaper-merging';
 import * as MosaicIndex from './polygons/mapshaper-mosaic-index';
 import * as OptionParsingUtils from './cli/mapshaper-option-parsing-utils';
@@ -404,6 +405,7 @@ Object.assign(internal,
   ElevationDecoding,
   RasterReprojection,
   RasterUtils,
+  RasterPalette,
   Merging,
   MosaicIndex,
   OptionParsingUtils,

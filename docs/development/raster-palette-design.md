@@ -351,7 +351,14 @@ tested.
    raster branch will call with its trimmed range.
 3. Palette rendering: the recipe, the color tables, single-band and
    nearest-neighbor resampling, SVG export, `view.recipe.opacity`. Unit tests
-   (mocha) on `renderRasterPreview()` output.
+   (mocha) on `renderRasterPreview()` output. Done: tables are built and cached in
+   `mapshaper-raster-palette.mjs` (continuous colors use `-classify`'s pair
+   interpolators, so they match vector output, including `vibrance`);
+   `renderPaletteGridPreview()` in `mapshaper-raster-utils.mjs` draws them.
+   Pixels outside `grid.coverage` or masked by an alpha band are transparent
+   rather than taking the null color. The GUI's reprojected preview
+   reprojects only the palette's band (`getRasterPaletteBandGrid()`), and
+   both GUI preview caches key on `getRasterPaletteKey()`.
 4. `-classify` on rasters: band fields, pixel sampling, trimmed percentage
   breaks, the recipe, messages; `-style opacity=` and `-style clear` on
   rasters. Remove `-tint`, moving its tests that still apply to `-classify`.
