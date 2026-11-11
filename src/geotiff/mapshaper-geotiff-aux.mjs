@@ -45,13 +45,14 @@ export function parseAuxBandInfo(content, band) {
     num = /\bband\s*=\s*"(\d+)"/i.exec(match[1]);
     if (num && +num[1] == band + 1) {
       return {
+        description: readXmlElement(match[2], 'Description'),
         units: readXmlElement(match[2], 'UnitType'),
         scale: readXmlNumber(match[2], 'Scale'),
         offset: readXmlNumber(match[2], 'Offset')
       };
     }
   }
-  return {units: null, scale: null, offset: null};
+  return {description: null, units: null, scale: null, offset: null};
 }
 
 function getAuxXml(content) {
@@ -80,7 +81,7 @@ function escapeXml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function unescapeXml(str) {
+export function unescapeXml(str) {
   return str.replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 }

@@ -95,14 +95,14 @@ export function rasterCanBeToned(raster) {
   var grid = getRasterGrid(raster);
   return !!(grid && grid.samples && grid.bbox && grid.bands >= 3 && grid.bands <= 4 &&
     (grid.samples instanceof Uint8Array || grid.samples instanceof Uint8ClampedArray) &&
-    grid.colorModel != 'palette');
+    grid.colorModel != 'palette' && !grid.displayBands);
 }
 
 function validateToneGrid(grid) {
   if (!grid || !grid.samples || !grid.bbox) {
     stop('Raster layer is missing image data');
   }
-  if (grid.bands < 3) {
+  if (grid.bands < 3 || grid.displayBands) {
     stop('-tone adjusts RGB images. To color an elevation raster, use -tint or -hillshade');
   }
   if (!(grid.samples instanceof Uint8Array || grid.samples instanceof Uint8ClampedArray) ||

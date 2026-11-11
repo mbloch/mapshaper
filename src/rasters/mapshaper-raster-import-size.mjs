@@ -21,9 +21,19 @@ export function parseImportResolution(val) {
   return {width: +match[1]};
 }
 
+// The import size limit is a number of samples (pixels times bands): a
+// raster of up to this many bands gets the full pixel limit, and one with
+// more bands is reduced further, to keep its memory use the same
+export var MAX_IMPORT_BANDS = 4;
+
 export function getMaxImportPixels(opts) {
   return opts && (opts.maxPixels || opts.raster_max_pixels || opts.rasterMaxPixels) ||
     DEFAULT_MAX_IMPORT_PIXELS;
+}
+
+// The pixel limit for importing @bands bands
+export function getMaxImportPixelsForBands(opts, bands) {
+  return getMaxImportPixels(opts) * Math.min(1, MAX_IMPORT_BANDS / bands);
 }
 
 // Records that a raster was imported at less than the full resolution of its

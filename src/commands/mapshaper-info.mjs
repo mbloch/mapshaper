@@ -69,6 +69,7 @@ export function getLayerInfo(lyr, dataset) {
     o.raster_width = getRasterWidth(lyr.raster);
     o.raster_height = getRasterHeight(lyr.raster);
     o.raster_bands = getRasterBandCount(lyr.raster);
+    o.raster_band_list = getRasterBandList(lyr.raster.grid);
     o.raster_pixel_type = getRasterPixelType(lyr.raster);
     o.raster_pixel_size = getRasterPixelSize(lyr.raster.grid, getDatasetCRS(dataset));
     o.bbox = getLayerBounds(lyr, dataset.arcs).toArray();
@@ -97,6 +98,27 @@ var IMAGE_SAMPLES = 1e6;
 
 // Single-band numeric rasters (e.g. GeoTIFF DEMs) and rasters imported with
 // raster-type=continuous; 8-bit single-band rasters are usually grayscale images
+// The imported bands of a raster, as [{band, description}] with 1-based band
+// numbers from the source file, or null if they are just the file's first
+// bands, without descriptions
+export function getRasterBandList(grid) {
+  var descriptions = grid && grid.bandDescriptions || null;
+  var list, plain;
+  if (!grid || !(grid.bands > 0)) return null;
+  list = utils.range(grid.bands).map(function(i) {
+    var band = grid.sampleBands && grid.sampleBands[i] >= 0 ? grid.sampleBands[i] + 1 : i + 1;
+    return {band: band, description: descriptions && descriptions[band] || null};
+  });
+  plain = list.every(function(o, i) { return o.band == i + 1 && !o.description; });
+  return plain ? null : list;
+}
+
+function formatRasterBandList(list) {
+  return list.map(function(o) {
+    return o.description ? o.band + ' (' + o.description + ')' : String(o.band);
+  }).join(', ');
+}
+
 export function rasterLooksLikeElevation(raster) {
   var grid = raster && raster.grid;
   if (!grid || !grid.samples || raster.interpretation == 'categorical' ||
@@ -352,6 +374,9 @@ export function getLayerInfoRows(info) {
   ];
   if (info.raster_type) {
     rows.push(['Size', utils.format('%,d x %,d x %,d', info.raster_width, info.raster_height, info.raster_bands)]);
+    if (info.raster_band_list) {
+      rows.push(['Bands', formatRasterBandList(info.raster_band_list)]);
+    }
     rows.push(['Data', info.raster_pixel_type || 'unknown']);
     if (info.raster_pixel_size) {
       rows.push(['Pixel size', formatRasterPixelSize(info.raster_pixel_size)]);

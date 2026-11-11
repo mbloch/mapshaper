@@ -68,11 +68,13 @@ describe('raster vertical units', function () {
   });
 
   describe('parseAuxBandInfo()', function () {
-    it('reads the units, scale and offset of a band', function () {
-      var xml = '<PAMDataset>\n<PAMRasterBand band="1">\n<UnitType>ft</UnitType>\n' +
-        '<Offset>5</Offset>\n<Scale>0.1</Scale>\n</PAMRasterBand>\n</PAMDataset>';
-      assert.deepEqual(internal.parseAuxBandInfo(xml, 0), {units: 'ft', scale: 0.1, offset: 5});
-      assert.deepEqual(internal.parseAuxBandInfo(xml, 1), {units: null, scale: null, offset: null});
+    it('reads the description, units, scale and offset of a band', function () {
+      var xml = '<PAMDataset>\n<PAMRasterBand band="1">\n<Description>Elevation &amp; depth</Description>\n' +
+        '<UnitType>ft</UnitType>\n<Offset>5</Offset>\n<Scale>0.1</Scale>\n</PAMRasterBand>\n</PAMDataset>';
+      assert.deepEqual(internal.parseAuxBandInfo(xml, 0),
+        {description: 'Elevation & depth', units: 'ft', scale: 0.1, offset: 5});
+      assert.deepEqual(internal.parseAuxBandInfo(xml, 1),
+        {description: null, units: null, scale: null, offset: null});
     });
   });
 

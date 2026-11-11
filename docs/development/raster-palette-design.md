@@ -339,7 +339,12 @@ tested.
 
 1. 1-based `band=` in `-contours`, `-hillshade` and `-tint`, resolved through
    `grid.sampleBands` (done). Import every band of data rasters, within the
-   sample budget, with `bands=`. Band names in `-info`.
+   sample budget, with `bands=`. Band names in `-info`. Done: the GeoTIFF
+   importer's `getImportBands()` chooses the bands and sets
+   `grid.displayBands` (band 1 in gray) when the default display would be
+   wrong; descriptions are kept in `grid.bandDescriptions`, keyed by file band
+   number. A data raster displaying band 1 still hides a pixel only when every
+   band is nodata; palette rendering (phase 3) tests the displayed band.
 2. `-classify` defaults to `interpolation=oklch`, and `breaks=` takes
    percentages (vector layers). Done; percentages are resolved by
    `resolvePercentBreaks()` in `mapshaper-percent-breaks.mjs`, which the

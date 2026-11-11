@@ -313,6 +313,9 @@ export function getOptionParser() {
     .option('rendition', {
       describe: '[GeoTIFF] import a GeoTIFF rendition: full,overview-1,etc.'
     })
+    .option('bands', {
+      describe: '[GeoTIFF] bands to import: all, or a list numbered from 1, e.g. 1,4,5'
+    })
     .option('resolution', {
       describe: '[raster] import width in pixels, or full (default reduces large rasters)'
     })
