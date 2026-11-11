@@ -75,11 +75,14 @@ import {
 //                                             colors are)
 //   blended: boolean                          (fixed elevations: blended by
 //                                             climate, with preset 'Blended')
-//   sea: 'land' or undefined                  (fixed elevations: whether
-//                                             pixels below 0 that are open
-//                                             to the sea take land colors,
-//                                             or are left out; see
-//                                             -classify sea=)
+//   seaScheme: {elevationPreset, preset,      (fixed elevations: the colors
+//     stopColors, stops, n} or null           of pixels below 0 that are
+//                                             open to the sea, at fixed
+//                                             depths, like the land's; null
+//                                             leaves the sea out. See
+//                                             getSeaScheme(), -classify sea=)
+//   landTransparent: boolean                  (fixed elevations: only the sea
+//                                             is colored)
 //   continuous: boolean                       (sequential and diverging)
 //   pivot: 'auto', 'median', 'mean' or a number,
 //   neutral, continuousNeutral: boolean       (a pivot class, for classed
@@ -111,10 +114,10 @@ export var schemeTypes = [
   {name: 'categorical', label: 'Categorical'}
 ];
 
-export var seaOptions = [
-  {name: 'transparent', label: 'Transparent'},
-  {name: 'land', label: 'Land colors'}
-];
+// For the Sea menu: the bathymetric presets
+export function getBathymetricPresetNames() {
+  return internal.getBathymetricSchemeNames();
+}
 
 export var classifyMethods = [
   {name: 'quantile', label: 'Quantile'},
@@ -562,18 +565,21 @@ export function getSchemeBreaks(scheme, lyr) {
 // Fixed elevations: every stop is a break, the end stops too. The range runs
 // from the stop at or below the data's min (or the min, if no stop is) to the
 // stop at or above its max, so that stops far from the data may be outside it.
+// The sea's range runs from its deepest stop (or the data's min) to its top
+// stop, leaving out the land.
 function getElevationBreaks(scheme, lyr, values) {
   var breaks = getElevationSchemeStops(scheme, lyr);
   var lo = values[0], hi = values[values.length - 1];
   var below = breaks.filter(function(b) { return b <= lo; });
   var above = breaks.filter(function(b) { return b >= hi; });
+  var min = below.length > 0 ? below[below.length - 1] : lo;
   return {
     breaks: breaks,
     fixed: breaks.map(function() { return false; }),
     pivot: null,
     neutral: null,
-    min: below.length > 0 ? below[below.length - 1] : lo,
-    max: above.length > 0 ? above[0] : hi
+    min: scheme.bathymetric ? Math.min(min, breaks[0]) : min,
+    max: above.length > 0 ? above[0] : scheme.bathymetric ? breaks[breaks.length - 1] : hi
   };
 }
 
@@ -1204,13 +1210,47 @@ export function layerHasElevations(lyr) {
   });
 }
 
-// 'transparent' or 'land'
-export function getSchemeSea(scheme) {
-  return scheme.sea == 'land' ? 'land' : 'transparent';
+// The sea of a fixed-elevation scheme, as a fixed-elevation scheme of its
+// own (with a bathymetric preset), for the tiles and the class breaks dialog;
+// or null if the sea is left out
+export function getSeaScheme(scheme) {
+  var sea = scheme.seaScheme;
+  if (!sea) return null;
+  return Object.assign({type: 'sequential', method: 'elevation', continuous: true, nullColor: null}, sea,
+    {field: scheme.field, raster: scheme.raster, bathymetric: true});
 }
 
-export function setSchemeSea(scheme, sea) {
-  return Object.assign({}, scheme, {sea: sea == 'land' ? 'land' : undefined});
+// @sea: an edited sea scheme (see getSeaScheme()), or null to leave out the sea
+export function setSeaScheme(scheme, sea) {
+  var next = Object.assign({}, scheme, {
+    seaScheme: sea ? {elevationPreset: sea.elevationPreset, preset: sea.preset, stopColors: sea.stopColors || null,
+      stops: sea.stops || null, n: sea.n} : null
+  });
+  // something has to be colored
+  if (!sea && scheme.landTransparent) next.landTransparent = false;
+  return next;
+}
+
+// @name: a bathymetric preset, or null to leave out the sea
+export function chooseSeaPreset(scheme, name) {
+  return setSeaScheme(scheme, name ? chooseElevationPreset({}, name) : null);
+}
+
+// The name for the sea's menu: 'Transparent', a preset, or 'Custom'
+export function getSeaLabel(scheme) {
+  var sea = scheme.seaScheme;
+  return !sea ? 'Transparent' : sea.preset || 'Custom';
+}
+
+export function isLandTransparent(scheme) {
+  return !!scheme.landTransparent;
+}
+
+// Land without colors leaves only the sea, which then needs some
+export function setLandTransparent(scheme, transparent) {
+  var next = Object.assign({}, scheme, {landTransparent: !!transparent});
+  if (transparent && !next.seaScheme) next = chooseSeaPreset(next, getBathymetricPresetNames()[0]);
+  return next;
 }
 
 // The preset for the climate across a set of [lon, lat] points (see
@@ -1223,15 +1263,20 @@ export function getElevationPresetNames() {
   return internal.getHypsometricSchemeNames();
 }
 
+// Land (hypsometric) and sea (bathymetric) presets of fixed elevations
+function getFixedPresetStops(name) {
+  return internal.getHypsometricStops(name) || internal.getBathymetricStops(name);
+}
+
 export function getElevationPresetColors(name) {
-  return internal.getHypsometricStops(name).map(function(stop) { return stop.color; });
+  return getFixedPresetStops(name).map(function(stop) { return stop.color; });
 }
 
 // The elevations of a fixed-elevation scheme's stops, in the band's units
 export function getElevationSchemeStops(scheme, lyr) {
   var meters = getRasterUnitMeters(lyr);
   if (scheme.stops) return scheme.stops.concat();
-  return internal.getHypsometricStops(scheme.elevationPreset).map(function(stop) {
+  return getFixedPresetStops(scheme.elevationPreset).map(function(stop) {
     return meters == 1 ? stop.elevation : +(stop.elevation / meters).toPrecision(6);
   });
 }
@@ -1269,7 +1314,8 @@ function chooseElevationPreset(scheme, name) {
     pins: null,
     range: null,
     continuous: true,
-    n: internal.getHypsometricStops(name).length
+    landTransparent: false,
+    n: getFixedPresetStops(name).length
   });
 }
 
@@ -1483,9 +1529,10 @@ export function formatSchemeCommand(scheme, colors, opts) {
   if (scheme.method != 'non-adjacent') {
     parts.push('field=' + quoteCommandValue(scheme.field));
   }
-  if (isBlendedScheme(scheme)) {
-    parts.push('hypsometric=blended');
-    if (getSchemeSea(scheme) == 'land') parts.push('sea=land');
+  if (isElevationScheme(scheme) && (isBlendedScheme(scheme) || isLandTransparent(scheme))) {
+    parts.push(isLandTransparent(scheme) ? 'hypsometric=none' : 'hypsometric=blended');
+    // transparent is hypsometric='s default
+    if (scheme.seaScheme) parts.push(formatSeaOptions(scheme, opts));
     if (getSchemeNullColor(scheme)) parts.push('null-value=' + getSchemeNullColor(scheme));
     if (opts && opts.target) parts.push('target=' + opts.target);
     return parts.join(' ');
@@ -1515,7 +1562,10 @@ export function formatSchemeCommand(scheme, colors, opts) {
     parts.push('continuous');
   }
   parts.push('colors=' + colors.join(','));
-  if (isElevationScheme(scheme) && getSchemeSea(scheme) == 'transparent') parts.push('sea=transparent');
+  // -classify's sea= default for other breaks is land
+  if (isElevationScheme(scheme)) {
+    parts.push(scheme.seaScheme ? formatSeaOptions(scheme, opts) : 'sea=transparent');
+  }
   if (scheme.raster ? !!getSchemeNullColor(scheme) :
       scheme.method != 'non-adjacent' && getSchemeNullColor(scheme) != defaultNullColor) {
     parts.push('null-value=' + getSchemeNullColor(scheme));
@@ -1524,6 +1574,14 @@ export function formatSchemeCommand(scheme, colors, opts) {
     parts.push('target=' + opts.target);
   }
   return parts.join(' ');
+}
+
+// sea= for a preset, or its stops and colors once edited
+function formatSeaOptions(scheme, opts) {
+  var sea = getSeaScheme(scheme);
+  if (sea.preset) return 'sea=' + sea.preset.toLowerCase();
+  return 'sea-breaks=' + getElevationSchemeStops(sea, opts && opts.layer).join(',') +
+    ' sea-colors=' + getSchemeColors(sea).join(',');
 }
 
 export function getNumericFields(lyr) {

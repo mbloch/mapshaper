@@ -1,6 +1,8 @@
 import { stop } from '../utils/mapshaper-logging';
+import { parseColor } from '../color/color-utils';
 import { getHypsometricSchemeNames, getHypsometricStops } from '../color/hypsometric-schemes';
 import { getClimateWeights } from '../color/hypsometric-climate';
+import { getBathymetricSchemeNames, getBathymetricStops } from '../color/bathymetric-schemes';
 import { getProjTransform2, parseCrsString, crsToProj4 } from '../crs/mapshaper-projections';
 import { getVerticalUnitMeters } from './mapshaper-vertical-units';
 import { getRasterGrid } from './mapshaper-raster-utils';
@@ -18,15 +20,18 @@ import { getRasterGrid } from './mapshaper-raster-utils';
 // }
 
 var BLEND_NAME = 'blended';
+var NONE_NAME = 'none';
 // cells on the long side of a weight field; the climate grid has 2-degree
 // cells, so a world raster gets about that resolution
 var FIELD_CELLS = 180;
 
 export function getHypsometricOptionNames() {
-  return getHypsometricSchemeNames().map(function(name) { return name.toLowerCase(); }).concat([BLEND_NAME]);
+  return getHypsometricSchemeNames().map(function(name) { return name.toLowerCase(); }).concat([BLEND_NAME, NONE_NAME]);
 }
 
-// @name: a preset (any case) or 'blended'
+// @name: a preset (any case), 'blended', or 'none', for a palette of only the
+//   sea (palette.land = 'transparent'), whose colors setRasterPaletteSea()
+//   gives
 // @crs: the raster's CRS, for a blend
 export function getHypsometricPalette(raster, band, name, crs) {
   var grid = getRasterGrid(raster);
@@ -35,6 +40,10 @@ export function getHypsometricPalette(raster, band, name, crs) {
   var field, preset;
   if (getHypsometricOptionNames().indexOf(key) == -1) {
     stop('Unknown hypsometric= value:', name, '(expected ' + getHypsometricOptionNames().join(', ') + ')');
+  }
+  if (key == NONE_NAME) {
+    return {band: band, type: 'sequential', continuous: true, interpolation: 'oklch', breaks: [], colors: [],
+      nullColor: null, land: 'transparent', hypsometric: NONE_NAME};
   }
   if (key != BLEND_NAME) {
     preset = getPresetName(key);
@@ -55,6 +64,70 @@ export function getHypsometricPalette(raster, band, name, crs) {
       field: field
     }
   });
+}
+
+export function getSeaOptionNames() {
+  return ['transparent', 'land'].concat(getBathymetricSchemeNames().map(function(name) {
+    return name.toLowerCase();
+  }));
+}
+
+// -classify sea=: what a palette does with the sea of an elevation raster
+// (see mapshaper-raster-sea-mask.mjs). Hypsometric tints leave it out by
+// default.
+//   transparent  palette.sea = 'transparent': the sea is not drawn
+//   land         (no palette.sea) the sea takes the palette's colors
+//   a bathymetric preset (see bathymetric-schemes.mjs): palette.sea is its
+//                name, and palette.seaRamp = {breaks, colors} its depths, in
+//                the band's units, which color the sea continuously
+// sea-breaks= and sea-colors= give a custom seaRamp (palette.sea = 'custom'),
+// in the band's units. A palette of only the sea (hypsometric=none) takes the
+// sea's colors as its own, for anything that draws it without a sea.
+export function setRasterPaletteSea(palette, raster, opts) {
+  var sea = String(opts.sea || (opts.sea_colors ? 'custom' : opts.hypsometric ? 'transparent' : 'land')).toLowerCase();
+  var name, stops, meters;
+  if (opts.sea_colors || opts.sea_breaks) {
+    setCustomSeaRamp(palette, opts);
+  } else if (getSeaOptionNames().indexOf(sea) == -1) {
+    stop('Unsupported sea= value:', opts.sea, '(expected ' + getSeaOptionNames().join(', ') + ')');
+  } else if (sea == 'transparent') {
+    palette.sea = sea;
+  } else if (sea != 'land') {
+    name = getBathymetricSchemeNames().find(function(name) { return name.toLowerCase() == sea; });
+    stops = getBathymetricStops(name);
+    meters = getVerticalUnitMeters(getRasterGrid(raster).verticalUnits) || 1;
+    palette.sea = name;
+    palette.seaRamp = {
+      breaks: stops.map(function(stop) { return +(stop.elevation / meters).toPrecision(6); }),
+      colors: stops.map(function(stop) { return stop.color; })
+    };
+  }
+  if (palette.land == 'transparent') {
+    if (!palette.seaRamp) stop('hypsometric=none needs colors for the sea: a bathymetric sea= or sea-colors=');
+    palette.breaks = palette.seaRamp.breaks.concat();
+    palette.colors = palette.seaRamp.colors.concat();
+  }
+  return palette;
+}
+
+function setCustomSeaRamp(palette, opts) {
+  var breaks = opts.sea_breaks || [], colors = opts.sea_colors || [];
+  if (!Array.isArray(colors) || colors.length < 2 || colors.length != breaks.length) {
+    stop('sea-colors= needs two or more colors, one for each of sea-breaks=');
+  }
+  if (opts.sea && String(opts.sea).toLowerCase() != 'custom') {
+    stop('sea= does not work with sea-colors=');
+  }
+  breaks.forEach(function(b, i) {
+    if (!isFinite(b) || i > 0 && b < breaks[i - 1]) stop('sea-breaks= should be numbers in ascending order');
+  });
+  palette.sea = 'custom';
+  palette.seaRamp = {breaks: breaks.concat(), colors: colors.map(function(c) { return parseSeaColor(c); })};
+}
+
+function parseSeaColor(str) {
+  if (!parseColor(str)) stop('Unsupported color in sea-colors=:', str);
+  return String(str);
 }
 
 function getPresetName(key) {

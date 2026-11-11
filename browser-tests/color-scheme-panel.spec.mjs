@@ -185,7 +185,7 @@ test('removing the scheme unsets the fills', async function({page}) {
 });
 
 async function setPickerColor(panel, str) {
-  var input = panel.locator('.color-scheme-tile-row .label-color-picker-input');
+  var input = panel.locator('.color-scheme-tile-row:not(.sea) .label-color-picker-input');
   await input.fill(str);
   await input.press('Enter');
   await panel.page().waitForTimeout(300);
@@ -329,7 +329,7 @@ test('features with no data get the no-data color, on both tabs', async function
   await expect(row.locator('.label-color-picker')).toBeVisible();
   await panel.locator('.color-scheme-tile').first().click();
   await expect(row.locator('.label-color-picker')).toBeHidden();
-  await expect(panel.locator('.color-scheme-tile-row .label-color-picker')).toBeVisible();
+  await expect(panel.locator('.color-scheme-tile-row:not(.sea) .label-color-picker')).toBeVisible();
 
   await closeSchemePanel(page);
   var classify = (await getSessionCommands(page)).filter(function(cmd) {
@@ -354,7 +354,7 @@ test('the diverging tab colors classes on either side of a pivot', async functio
   await page.waitForTimeout(300);
   await expect(panel.locator('.color-scheme-palette-name')).toHaveText('RdBu');
   // a custom diverging ramp has no hue path button
-  await panel.locator('.color-scheme-palette-btn').click();
+  await panel.getByRole('button', {name: 'Palette', exact: true}).click();
   await panel.locator('.color-scheme-palette-item').filter({hasText: /^Custom$/}).click();
   await page.waitForTimeout(300);
   await expect(panel.locator('.long-hue-btn')).toBeHidden();
@@ -403,16 +403,16 @@ test('continuous colors interpolate between the tiles, under a gradient', async 
   await openSchemePanel(page);
   var panel = schemePanel(page);
   var button = panel.getByLabel('Continuous colors (unclassed)');
-  await expect(panel.locator('.color-scheme-gradient')).toBeHidden();
+  await expect(panel.locator('.color-scheme-tile-row:not(.sea) .color-scheme-gradient')).toBeHidden();
   await button.click();
   await page.waitForTimeout(300);
   await expect(button).toHaveAttribute('aria-pressed', 'true');
-  await expect(panel.locator('.color-scheme-gradient-segment')).toHaveCount(1);
+  await expect(panel.locator('.color-scheme-tile-row:not(.sea) .color-scheme-gradient-segment')).toHaveCount(1);
   var tiles = panel.locator('.color-scheme-tile');
   await expect(tiles).toHaveCount(5);
   expect((await tiles.first().boundingBox()).height).toBe(14);
   // the gradient runs from end to end of the tiles
-  var bar = await panel.locator('.color-scheme-gradient-segment').boundingBox();
+  var bar = await panel.locator('.color-scheme-tile-row:not(.sea) .color-scheme-gradient-segment').boundingBox();
   var first = await tiles.first().boundingBox();
   var last = await tiles.last().boundingBox();
   expect(Math.abs(bar.x - first.x)).toBeLessThan(1);
@@ -452,7 +452,7 @@ test('the class breaks dialog edits the breaks, by value or by dragging', async 
   await expect(panel.locator('.color-scheme-select-row > span').nth(1)).toHaveText('Breaks');
 
   // ids from 1806 to 5434, in four equal intervals
-  await panel.getByText('Customize').click();
+  await panel.locator('.label-split-row:not(.sea)').getByText('Customize').click();
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('.class-breaks-bar')).toHaveCount(40);
   await expect(dialog.locator('.class-breaks-handle')).toHaveCount(3);
@@ -588,7 +588,7 @@ function methodSelect(page) {
 }
 
 function breaksDialog(page) {
-  return page.locator('.class-breaks-dialog');
+  return page.locator('.class-breaks-dialog').filter({hasText: 'Class breaks'});
 }
 
 async function getRecords(page) {

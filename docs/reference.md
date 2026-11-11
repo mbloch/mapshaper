@@ -669,9 +669,11 @@ A raster with one band is classified without naming a band. Otherwise name the b
 
 Breaks are calculated from a sample of up to one million pixels. Percentages in `breaks=` are of the range of the data, ignoring the lowest and highest 0.1% of values (so a few outliers don't stretch the range). Categorical classification requires an integer band; by default the categories are all the band's values. `null-value=` sets the color of nodata pixels, which are transparent by default. `other=` colors values that are not listed in `categories=`. With `continuous quantile`, the gradient is calculated from up to 32 quantiles (or from every value, if the band has few of them).
 
-`hypsometric=`  [raster] Color an elevation raster with hypsometric tints, at fixed elevations, so that an elevation has the same color in every map: `arid`, `lush` (warm and humid), `temperate` (cold and humid) or `polar` (ice and snow). The colors follow Tom Patterson's cross-blended hypsometric tints, as in his Equal Earth physical map. `blended` mixes the four by climate across the map, as his map does: deserts, forests and ice caps each get their own lowland colors, blending into one another between climate regions. It is meant for maps of the world and of large regions, and needs a raster whose projection is known. The elevations are converted to the band's vertical units (meters if unknown). The sea is left out (see `sea=`); other values below 0 take the 0 m color. Not used with `colors=`, `breaks=`, `outer-breaks=` or a classification method.
+`hypsometric=`  [raster] Color an elevation raster with hypsometric tints, at fixed elevations, so that an elevation has the same color in every map: `arid`, `lush` (warm and humid), `temperate` (cold and humid) or `polar` (ice and snow). The colors follow Tom Patterson's cross-blended hypsometric tints, as in his Equal Earth physical map. `none` colors only the sea (see `sea=`, which then needs bathymetric colors). `blended` mixes the four by climate across the map, as his map does: deserts, forests and ice caps each get their own lowland colors, blending into one another between climate regions. It is meant for maps of the world and of large regions, and needs a raster whose projection is known. The elevations are converted to the band's vertical units (meters if unknown). The sea is left out (see `sea=`); other values below 0 take the 0 m color. Not used with `colors=`, `breaks=`, `outer-breaks=` or a classification method.
 
-`sea=`  [raster] What to do with the sea of an elevation raster: pixels below 0 that are connected, through other pixels below 0, to the edge of the raster or to pixels without data. `transparent` leaves them out (the default with `hypsometric=`); `land` colors them like other values (the default otherwise). Basins below sea level that land encloses, such as the Dead Sea, are not sea.
+`sea-breaks=` `sea-colors=`  [raster] Custom sea colors: a list of depths, deepest first, in the band's units, and a color for each, colored continuously, in place of a `sea=` preset.
+
+`sea=`  [raster] What to do with the sea of an elevation raster: pixels below 0 that are connected, through other pixels below 0, to the edge of the raster or to pixels without data. `transparent` leaves them out (the default with `hypsometric=`); `land` colors them like other values (the default otherwise); `pale`, `blue` or `gray` colors them by depth, with bathymetric tints at fixed depths (`pale` follows the ocean of Tom Patterson's Equal Earth physical map), converted to the band's vertical units. Basins below sea level that land encloses, such as the Dead Sea, are not sea.
 
 **Options for generating SVG keys**
 
@@ -701,6 +703,9 @@ mapshaper dem.tif -classify colors=#2b5c3f,#c9b98a,#f4efe6 continuous \
 
 # Color a world DEM with tints that blend between climate regions
 mapshaper world-dem.tif -classify hypsometric=blended -proj +proj=eqearth -o world.png
+
+# The same, with the ocean colored by depth
+mapshaper world-dem.tif -classify hypsometric=blended sea=pale -proj +proj=eqearth -o world.png
 
 # Apply a sequential color ramp to a polygon dataset using quantiles.
 mapshaper covid_cases.geojson \

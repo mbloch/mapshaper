@@ -18,9 +18,13 @@ import { stop } from '../utils/mapshaper-logging';
 //   nullColor,      // the color of nodata pixels; null is transparent
 //   interpolation,  // continuous: 'oklch' (default) or 'rgb'
 //   vibrance,       // continuous: 0-1, as -classify vibrance=
-//   sea,            // 'transparent': pixels below 0 that reach the grid's edge
-//                   // or its pixels without values are not drawn (see
-//                   // mapshaper-raster-sea-mask.mjs)
+//   sea,            // pixels below 0 that reach the grid's edge or its pixels
+//                   // without values (see mapshaper-raster-sea-mask.mjs):
+//                   // 'transparent' leaves them out; the name of a
+//                   // bathymetric preset colors them by seaRamp
+//   seaRamp,        // {breaks, colors}: continuous colors at depths, in the
+//                   // band's units (see setRasterPaletteSea())
+//   land,           // 'transparent': only the sea is drawn (hypsometric=none)
 //   hypsometric,    // the preset of -classify hypsometric=, or 'blended'
 //   blend           // hypsometric=blended: the presets' ramps and weights
 //                   // (see mapshaper-raster-hypsometric.mjs)
@@ -43,7 +47,7 @@ export function getRasterPaletteKey(palette) {
     palette.otherColor || null,
     palette.interpolation || null, palette.vibrance === undefined ? null : palette.vibrance,
     palette.blend ? [palette.blend.ramps, palette.blend.field && palette.blend.field.key] : null,
-    palette.sea || null]);
+    palette.sea || null, palette.seaRamp || null, palette.land || null]);
 }
 
 export function rasterPaletteIsCategorical(palette) {
@@ -67,6 +71,13 @@ export function getRasterPaletteTable(palette) {
     if (tableCache.length > MAX_CACHED_TABLES) tableCache.pop();
   }
   return entry.table;
+}
+
+// The table for the sea of a palette with a bathymetric ramp, or null
+export function getRasterSeaTable(palette) {
+  if (!palette.seaRamp) return null;
+  return getRasterPaletteTable({type: 'sequential', continuous: true, interpolation: 'oklch',
+    breaks: palette.seaRamp.breaks, colors: palette.seaRamp.colors});
 }
 
 function buildRasterPaletteTable(palette) {

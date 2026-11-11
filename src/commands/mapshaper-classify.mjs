@@ -49,6 +49,7 @@ import {
   setRasterPalette,
   validateRasterClassifyOptions
 } from '../rasters/mapshaper-raster-classify';
+import { setRasterPaletteSea } from '../rasters/mapshaper-raster-hypsometric';
 
 cmd.classify = function(lyr, dataset, optsArg) {
   var opts = optsArg || {};
@@ -60,7 +61,7 @@ cmd.classify = function(lyr, dataset, optsArg) {
     classifyRasterLayer(lyr, dataset, opts);
     return;
   }
-  if (opts.hypsometric || opts.sea) {
+  if (opts.hypsometric || opts.sea || opts.sea_colors || opts.sea_breaks) {
     stop((opts.hypsometric ? 'hypsometric=' : 'sea=') + ' works with raster layers');
   }
   if (!lyr.data) {
@@ -295,7 +296,7 @@ function classifyRasterLayer(lyr, dataset, opts) {
   band = getRasterClassifyBand(grid, opts);
   bandIndex = getRasterGridBandIndex(grid, band);
   if (opts.hypsometric) {
-    palette = setRasterPaletteSea(getRasterHypsometricPalette(raster, band, opts, dataset ? getDatasetCRS(dataset) : null), opts);
+    palette = setRasterPaletteSea(getRasterHypsometricPalette(raster, band, opts, dataset ? getDatasetCRS(dataset) : null), raster, opts);
     noteLayerWillChange(lyr, {operation: 'classify', unit: 'raster'});
     setRasterPalette(raster, palette);
     markLayerChanged(lyr, {operation: 'classify', unit: 'raster'});
@@ -319,20 +320,10 @@ function classifyRasterLayer(lyr, dataset, opts) {
       return opts.outer_breaks || getTrimmedRange(sample.values);
     }
   }, Object.assign({}, opts, {count_label: sample.sampled ? 'sampled pixel counts' : 'pixel counts'}));
-  palette = setRasterPaletteSea(getRasterPaletteFromClassification(o, band, opts, sample.values), opts);
+  palette = setRasterPaletteSea(getRasterPaletteFromClassification(o, band, opts, sample.values), raster, opts);
   noteLayerWillChange(lyr, {operation: 'classify', unit: 'raster'});
   setRasterPalette(raster, palette);
   markLayerChanged(lyr, {operation: 'classify', unit: 'raster'});
-}
-
-// sea=: hypsometric tints leave out the sea by default
-function setRasterPaletteSea(palette, opts) {
-  var sea = opts.sea || (opts.hypsometric ? 'transparent' : 'land');
-  if (sea != 'transparent' && sea != 'land') {
-    stop('Unsupported sea= value:', sea, '(expected transparent or land)');
-  }
-  if (sea == 'transparent') palette.sea = sea;
-  return palette;
 }
 
 function validateDivergingOptions(method, fieldType, opts) {

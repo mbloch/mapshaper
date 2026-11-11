@@ -436,8 +436,23 @@ tested.
    the reprojected grid for the GUI's preview). Enclosed basins below sea
    level (the Dead Sea, Death Valley, the Caspian, whose DEM surface is
    about -28 m) stay land and take the 0 m color; one that the grid's edge
-   cuts through looks like sea. `sea=land` colors them all. Still to do: a
-   Sea menu of bathymetry ramps, and fit to data.
+   cuts through looks like sea. `sea=land` colors them all. `sea=pale|blue|gray`
+   colors the sea by depth (`bathymetric-schemes.mjs`; the palette gets
+   `sea: 'Pale'` and `seaRamp: {breaks, colors}` in the band's units, drawn
+   continuously through its own table, `getRasterSeaTable()`), blended or
+   not. Pale is fitted to the ocean of Patterson's map by depth
+   (`__hypsometric/bathy.mjs`); Blue and Gray have its lightness steps,
+   stronger, with more or less chroma. `sea-breaks=` and `sea-colors=` give
+   a custom sea ramp (`sea: 'custom'`), and `hypsometric=none` leaves the
+   land out (`palette.land = 'transparent'`, with the sea's colors as the
+   palette's own). In the panel, the sea is a fixed-elevation scheme of its
+   own inside the elevation scheme (`scheme.seaScheme`, see
+   `getSeaScheme()`): the Sea row has a palette menu (Transparent and the
+   Bathymetry presets), its own tiles and color picker, and a Customize
+   button that opens a second class breaks dialog ("Sea depths", whose range
+   ends at 0). The Land menu has Transparent (`scheme.landTransparent`);
+   making both transparent brings back the other. Still to do: fit to
+   data.
 7. Later: a command that renders a raster's display into RGB pixels (colored
    GeoTIFFs, `-tone` on palette rasters), GeoTIFF `ColorMap` import as a default categorical palette (NLCD
    and other palette TIFFs), category labels from raster attribute tables,

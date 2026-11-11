@@ -118,6 +118,7 @@ import * as ColorUtils from './color/color-utils';
 import * as ColorRamps from './color/color-ramps';
 import * as ColorSchemes from './color/color-schemes';
 import * as HypsometricSchemes from './color/hypsometric-schemes';
+import * as BathymetricSchemes from './color/bathymetric-schemes';
 import * as HypsometricClimate from './color/hypsometric-climate';
 import * as Oklab from './color/oklab';
 import * as Colorizer from './commands/mapshaper-colorizer';
@@ -316,6 +317,7 @@ Object.assign(internal,
   ColorRamps,
   ColorSchemes,
   HypsometricSchemes,
+  BathymetricSchemes,
   HypsometricClimate,
   Oklab,
   Colorizer,

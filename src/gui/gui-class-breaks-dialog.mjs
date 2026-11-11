@@ -14,6 +14,8 @@ import {
 // opts.getScheme(), opts.getLayer()  the scheme and layer being edited
 // opts.onChange(scheme)  a break was moved
 // opts.onClose()         the dialog was closed
+// opts.title             the dialog's title ('Class breaks' by default)
+// opts.reversed          list the classes from high to low
 var numBins = 40;
 
 export function ClassBreaksDialog(gui, opts) {
@@ -82,7 +84,7 @@ export function ClassBreaksDialog(gui, opts) {
       release: function() { releasePanelFocus(panel.node()); }
     });
     var header = El('div').addClass('label-style-panel-title').appendTo(panel);
-    El('span').appendTo(header).text('Class breaks');
+    El('span').appendTo(header).text(opts.title || 'Class breaks');
     El('button').addClass('label-style-close').appendTo(header).text('×').on('click', close);
     noteEl = El('div').addClass('label-style-row color-scheme-note').appendTo(panel)
       .text('There are no breaks to edit.');
@@ -153,7 +155,7 @@ export function ClassBreaksDialog(gui, opts) {
     pivotLine.classed('hidden', pivotPos < 0).css('left', pct(Math.max(pivotPos, 0)));
   }
 
-  // The classes from low to high, a color tile and the number of features (or
+  // The classes from low to high (or high to low), a color tile and the number of features (or
   // share of pixels) in each, stacked; a rule across the boundary between two classes runs out to
   // the field with the break's value (see .class-breaks-list in page.css)
   function renderTable() {
@@ -164,15 +166,21 @@ export function ClassBreaksDialog(gui, opts) {
       tableEl.empty();
       var list = El('div').addClass('class-breaks-list').appendTo(tableEl);
       classRows = breaks.concat([null]).map(function() {
-        var row = El('div').addClass('class-breaks-class').appendTo(list);
+        var row = El('div').addClass('class-breaks-class');
         El('div').addClass('class-breaks-swatch').appendTo(row);
         El('span').addClass('class-breaks-count').appendTo(row);
         return row;
       });
+      inDisplayOrder(classRows).forEach(function(row) { row.appendTo(list); });
       rules = [];
-      inputs = breaks.map(function(b, i) {
-        var mark = El('div').addClass('class-breaks-mark').appendTo(list)
-          .css('top', 'calc((var(--class-breaks-row-height) + var(--class-breaks-gap)) * ' + (i + 1) + ' - 13px)');
+      var marks = breaks.map(function(b, i) {
+        var pos = opts.reversed ? breaks.length - i : i + 1;
+        return El('div').addClass('class-breaks-mark')
+          .css('top', 'calc((var(--class-breaks-row-height) + var(--class-breaks-gap)) * ' + pos + ' - 13px)');
+      });
+      // appended in display order, so that Tab moves down the list
+      inDisplayOrder(marks).forEach(function(mark) { mark.appendTo(list); });
+      inputs = marks.map(function(mark, i) {
         rules.push(El('div').addClass('class-breaks-rule').appendTo(mark));
         return El('input').attr('type', 'text').appendTo(mark)
           .on('change', function() {
@@ -194,7 +202,8 @@ export function ClassBreaksDialog(gui, opts) {
       var neutral = info.neutral && j > 0 && breaks[j - 1] == info.neutral[0];
       row.findChild('.class-breaks-swatch').css('background', swatches[j] || 'transparent');
       // the top row says what the numbers are
-      row.findChild('.class-breaks-count').text(formatSchemeCount(scheme, opts.getLayer(), counts[j], j > 0) +
+      var top = opts.reversed ? j == classRows.length - 1 : j === 0;
+      row.findChild('.class-breaks-count').text(formatSchemeCount(scheme, opts.getLayer(), counts[j], !top) +
         (neutral ? ' (pivot class)' : ''));
     });
     breaks.forEach(function(b, i) {
@@ -205,6 +214,10 @@ export function ClassBreaksDialog(gui, opts) {
       rules[i].classed('fixed', info.fixed[i]);
       if (document.activeElement != input || !isTextInput(input)) input.value = formatNumber(b);
     });
+  }
+
+  function inDisplayOrder(arr) {
+    return opts.reversed ? arr.slice().reverse() : arr;
   }
 
   function getBreakLabel(i) {

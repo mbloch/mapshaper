@@ -27,7 +27,8 @@ import {
   hasSchemeRange, getDisplayRange, setSchemeRangeEnd, resetSchemeRange,
   getRangeStripColors, isElevationScheme, canUseFixedElevations, getElevationPresetNames, getElevationPresetColors,
   chooseBlendedElevations, isBlendedScheme, getBlendedPresetColors,
-  getSchemeTab, getElevationFields, layerHasElevations, seaOptions, getSchemeSea, setSchemeSea,
+  getSchemeTab, getElevationFields, layerHasElevations, getBathymetricPresetNames,
+  getSeaScheme, setSeaScheme, chooseSeaPreset, getSeaLabel, isLandTransparent, setLandTransparent,
   getLayerScheme, setLayerScheme
 } from './gui-color-scheme-model';
 import { getRasterBandLabel, getRasterUnitsLabel } from './gui-raster-band-values';
@@ -71,11 +72,13 @@ export function ColorSchemePanel(gui, opts) {
   var sessionLayer = null; // the layer the session's edits are to
   var baseScheme = null; // its scheme when they began
   var selectedTile = -1;
+  var selectedSeaTile = -1;
   // the scheme last used on each tab while the panel is open, for switching back
   var tabSchemes = {};
   var tabs = {};
   var paletteBtn, paletteMenu, countField, tileRow, gradientEl, tilesEl, picker, fieldRow, fieldSelect, methodSelect,
-      fieldLabel, methodRow, methodCell, methodLabel, customizeCell, paletteRow, countCell, paletteLabel, seaRow, seaSelect, customizeBtn, breaksDialog, exportBtns, importBtn, importDialog,
+      fieldLabel, methodRow, methodCell, methodLabel, customizeCell, paletteRow, countCell, paletteLabel,
+      seaRow, seaBtn, seaMenu, seaCustomizeBtn, seaTileRow, seaGradientEl, seaTilesEl, seaPicker, seaBreaksDialog, customizeBtn, breaksDialog, exportBtns, importBtn, importDialog,
       noFieldsNote, controlsEl, vibranceRow, vibranceInput,
       longHueBtn, continuousBtn, reverseBtn, shuffleBtn, dropMarker, nullControl, nullCount, countLabel,
       rangeEl, rangeStrip, rangeShades, rangeHandles, clearRow,
@@ -102,6 +105,7 @@ export function ColorSchemePanel(gui, opts) {
     if (targetLayer && targetLayer != lyr) close();
     targetLayer = lyr;
     selectedTile = -1;
+    selectedSeaTile = -1;
     tabSchemes = {};
     scheme = getLayerScheme(lyr);
     panel.show();
@@ -125,9 +129,11 @@ export function ColorSchemePanel(gui, opts) {
   function close() {
     var wasOpen = !!targetLayer;
     picker.hide();
+    seaPicker.hide();
     nullControl.picker.hide();
     hidePaletteMenu();
     breaksDialog.close();
+    seaBreaksDialog.close();
     importDialog.close();
     panel.hide();
     targetLayer = null;
@@ -200,7 +206,9 @@ export function ColorSchemePanel(gui, opts) {
         breaksDialog.close();
       } else {
         picker.hide();
+        seaPicker.hide();
         importDialog.close();
+        seaBreaksDialog.close();
         breaksDialog.open();
       }
       renderMethodRow();
@@ -277,18 +285,7 @@ export function ColorSchemePanel(gui, opts) {
     shuffleBtn = addIconButton(vibranceRow, 'Shuffle the colors', shuffleIcon, function() {
       changeScheme(shuffleScheme(scheme));
     });
-    // elevation schemes: the pixels below sea level that are open to the sea
-    seaRow = El('div').addClass('label-style-row color-scheme-select-row').appendTo(controlsEl);
-    var seaLabel = El('span').addClass('color-scheme-hint-label').appendTo(seaRow).text('Sea')
-      .attr('data-tooltip', 'Pixels below 0 that reach the edge of the map or a pixel without data;\n' +
-        'basins enclosed by land take land colors')
-      .on('mouseenter', function() { keepTooltipInWindow(seaLabel.node()); });
-    seaSelect = El('select').attr('aria-label', 'Sea').appendTo(seaRow).on('change', function() {
-      changeScheme(setSchemeSea(scheme, seaSelect.node().value));
-    });
-    seaOptions.forEach(function(item) {
-      El('option').attr('value', item.name).text(item.label).appendTo(seaSelect);
-    });
+    initSeaControls();
     // the color of features with no data, and how many there are
     nullControl = makeColorRow(controlsEl, {
       label: 'No data',
@@ -333,9 +330,155 @@ export function ColorSchemePanel(gui, opts) {
     ];
     document.addEventListener('mousedown', function(e) {
       if (paletteMenu.visible() && !paletteMenu.node().contains(e.target) &&
-          !paletteBtn.node().contains(e.target)) {
+          !paletteBtn.node().contains(e.target) ||
+          seaMenu.visible() && !seaMenu.node().contains(e.target) && !seaBtn.node().contains(e.target)) {
         hidePaletteMenu();
       }
+    });
+  }
+
+  // Elevation schemes: the colors of the pixels below sea level that are open
+  // to the sea, at fixed depths, with their own palette menu, tiles, color
+  // picker and class breaks dialog (see getSeaScheme())
+  function initSeaControls() {
+    seaRow = El('div').addClass('label-style-row label-split-row sea').appendTo(controlsEl);
+    var seaCell = El('div').addClass('label-split-cell color-scheme-palette-cell').appendTo(seaRow);
+    var seaCustomizeCell = El('div').addClass('label-split-cell color-scheme-customize-cell').appendTo(seaRow);
+    var seaLabel = El('span').addClass('color-scheme-hint-label').appendTo(seaCell).text('Sea')
+      .attr('data-tooltip', 'Pixels below 0 that reach the edge of the map or a pixel without data;\n' +
+        'basins enclosed by land take land colors')
+      .on('mouseenter', function() { keepTooltipInWindow(seaLabel.node()); });
+    seaBtn = El('div').addClass('color-scheme-palette-btn').attr('role', 'button')
+      .attr('aria-label', 'Sea palette').appendTo(seaCell).on('click', toggleSeaMenu);
+    seaMenu = El('div').addClass('color-scheme-palette-menu').appendTo(seaCell).hide();
+    seaCustomizeBtn = makePanelActionButton(seaCustomizeCell, 'Customize', function() {
+      if (seaBreaksDialog.isOpen()) {
+        seaBreaksDialog.close();
+      } else if (getSeaScheme(scheme)) {
+        picker.hide();
+        seaPicker.hide();
+        importDialog.close();
+        breaksDialog.close();
+        seaBreaksDialog.open();
+      }
+      render();
+    }).addClass('color-scheme-customize-btn').attr('title', 'Edit the depths of the sea colors');
+    seaBreaksDialog = new ClassBreaksDialog(gui, {
+      title: 'Sea depths',
+      reversed: true,
+      getScheme: function() { return scheme && getSeaScheme(scheme); },
+      getLayer: function() { return targetLayer; },
+      onChange: function(next) { changeScheme(setSeaScheme(scheme, next)); },
+      onClose: render
+    });
+    seaTileRow = El('div').addClass('color-scheme-tile-row sea').appendTo(controlsEl);
+    seaGradientEl = El('div').addClass('color-scheme-gradient').appendTo(seaTileRow);
+    seaTilesEl = El('div').addClass('color-scheme-tiles continuous').appendTo(seaTileRow);
+    seaPicker = new ColorPicker(seaTileRow, {
+      presetRows: [],
+      onPreview: function(hex) {
+        var tile = seaTilesEl.node().querySelectorAll('.color-scheme-tile')[selectedSeaTile];
+        if (tile) tile.style.backgroundColor = hex;
+      },
+      onChange: function(hex) {
+        var sea = getSeaScheme(scheme);
+        if (sea && selectedSeaTile > -1) changeScheme(setSeaScheme(scheme, setTileColor(sea, selectedSeaTile, hex)));
+      },
+      onHide: function() {
+        selectedSeaTile = -1;
+        render();
+      }
+    });
+  }
+
+  function renderSeaControls(elevation) {
+    var sea = getSeaScheme(scheme);
+    seaRow.classed('hidden', !elevation);
+    seaTileRow.classed('hidden', !elevation || !sea);
+    if (!elevation || !sea) {
+      seaPicker.hide();
+      seaBreaksDialog.close();
+    }
+    if (!elevation) return;
+    renderStripButton(seaBtn, sea ? getSchemeColors(sea) : null, getSeaLabel(scheme), sea);
+    setPanelButtonDisabled(seaCustomizeBtn, !sea);
+    seaCustomizeBtn.classed('selected', seaBreaksDialog.isOpen());
+    if (sea) renderSeaTiles(sea);
+    seaBreaksDialog.update();
+  }
+
+  // a tile for each stop, which can be recolored (and reset with its dot),
+  // under the gradient
+  function renderSeaTiles(sea) {
+    var tiles = getSchemeTiles(sea);
+    var stops = getContinuousTileStops(sea, targetLayer) || [];
+    var units = ' ' + getRasterUnitsLabel(targetLayer);
+    var n = tiles.length;
+    seaTilesEl.empty();
+    seaTilesEl.node().style.setProperty('--tiles-per-row', n);
+    tiles.forEach(function(tile, i) {
+      var cell = El('div').addClass('color-scheme-tile-cell').appendTo(seaTilesEl);
+      var tileEl = El('div').addClass('color-scheme-tile').attr('role', 'button')
+        .attr('aria-label', 'Sea color ' + (i + 1) + ': ' + tile.color)
+        .classed('selected', i == selectedSeaTile)
+        .css('background-color', tile.color)
+        .appendTo(cell)
+        .on('click', function() { selectSeaTile(i, tile.color); });
+      if (stops[i]) {
+        tileEl.attr('data-tooltip', formatNumber(stops[i].value) + units)
+          .on('mouseenter', function() { keepTooltipInWindow(tileEl.node()); });
+      }
+      var pin = El('div').addClass('color-scheme-pin').appendTo(cell);
+      if (tile.pinned && i > 0 && i < n - 1) {
+        pin.addClass('pinned').attr('role', 'button').attr('aria-label', 'Unpin this color')
+          .attr('data-tooltip', 'Unpin this color')
+          .on('mouseenter', function() { keepTooltipInWindow(pin.node()); })
+          .on('click', function() {
+            changeScheme(setSeaScheme(scheme, clearTileColor(sea, i)));
+          });
+      }
+    });
+    renderGradient(getContinuousSegments(sea), n, seaTilesEl, seaGradientEl);
+  }
+
+  function selectSeaTile(i, color) {
+    nullControl.picker.hide();
+    picker.hide();
+    if (selectedSeaTile == i && seaPicker.visible()) {
+      seaPicker.hide();
+    } else {
+      selectedSeaTile = i;
+      seaPicker.setColor(getTileEditColor(getSeaScheme(scheme), i) || color);
+      if (!seaPicker.visible()) seaPicker.toggle();
+    }
+    render();
+  }
+
+  function toggleSeaMenu() {
+    if (seaMenu.visible()) {
+      hidePaletteMenu();
+    } else {
+      hidePaletteMenu();
+      renderSeaMenu();
+      seaMenu.show();
+    }
+  }
+
+  // Transparent, and the bathymetric presets; an edited one is Custom
+  function renderSeaMenu() {
+    var sea = getSeaScheme(scheme);
+    seaMenu.empty();
+    addPaletteItem('Transparent', null, !sea, function() {
+      changeScheme(chooseSeaPreset(scheme, null));
+    }, seaMenu);
+    if (sea && !sea.preset) {
+      addPaletteItem('Custom', getSchemeColors(sea), true, function() {}, seaMenu);
+    }
+    El('div').addClass('color-scheme-palette-heading').appendTo(seaMenu).text('Bathymetry');
+    getBathymetricPresetNames().forEach(function(name) {
+      addPaletteItem(name, getElevationPresetColors(name), !!sea && sea.preset == name, function() {
+        changeScheme(chooseSeaPreset(scheme, name));
+      }, seaMenu);
     });
   }
 
@@ -480,13 +623,13 @@ export function ColorSchemePanel(gui, opts) {
     // fixed elevations have a tile for each of the preset's stops
     countCell.classed('hidden', elevation);
     paletteLabel.text(elevation ? 'Land' : 'Palette');
-    seaRow.classed('hidden', !elevation);
-    seaSelect.node().value = getSchemeSea(scheme);
+    renderSeaControls(elevation);
     tiles = getSchemeTiles(scheme);
     colors = tiles.map(function(tile) { return tile.color; });
     renderPaletteButton(colors);
-    tileRow.classed('hidden', isBlendedScheme(scheme));
-    if (isBlendedScheme(scheme)) picker.hide();
+    // blended colors are drawn by the command, and transparent land has none
+    tileRow.classed('hidden', isBlendedScheme(scheme) || elevation && isLandTransparent(scheme));
+    if (isBlendedScheme(scheme) || elevation && isLandTransparent(scheme)) picker.hide();
     renderTiles(tiles);
     renderVibrance();
     renderNullColor();
@@ -559,6 +702,8 @@ export function ColorSchemePanel(gui, opts) {
     methodSelect.attr('aria-label', numeric ? 'Class breaks' : 'Classification method');
     customizeCell.classed('hidden', !numeric);
     customizeBtn.classed('selected', breaksDialog.isOpen());
+    setPanelButtonDisabled(customizeBtn, elevation && isLandTransparent(scheme));
+    if (elevation && isLandTransparent(scheme)) breaksDialog.close();
   }
 
   // Each tab keeps its own scheme while the panel is open, and starts from a
@@ -758,13 +903,28 @@ export function ColorSchemePanel(gui, opts) {
   }
 
   function renderPaletteButton(colors) {
-    paletteBtn.empty();
+    var strip;
+    if (isElevationScheme(scheme) && isLandTransparent(scheme)) {
+      renderStripButton(paletteBtn, null, 'Transparent');
+      return;
+    }
     // blended colors are drawn by the command, and have no stops of their own
-    El('div').addClass('color-scheme-strip').appendTo(paletteBtn)
-      .css('background-image', isBlendedScheme(scheme) ? getStripBackground(getBlendedPresetColors()) :
-        isContinuousScheme(scheme) ? getGradientStripBackground(scheme) : getStripBackground(colors));
-    El('span').addClass('color-scheme-palette-name').appendTo(paletteBtn)
-      .text(scheme.preset || 'Custom');
+    strip = renderStripButton(paletteBtn, colors, scheme.preset || 'Custom');
+    strip.css('background-image', isBlendedScheme(scheme) ? getStripBackground(getBlendedPresetColors()) :
+      isContinuousScheme(scheme) ? getGradientStripBackground(scheme) : getStripBackground(colors));
+  }
+
+  // A palette menu's button: a strip of @colors (a gradient, for the stops of
+  // @continuous; checkered without colors) and a name
+  function renderStripButton(btn, colors, name, continuous) {
+    var strip;
+    btn.empty();
+    strip = El('div').addClass('color-scheme-strip').classed('transparent', !colors).appendTo(btn);
+    if (colors) {
+      strip.css('background-image', continuous ? getGradientStripBackground(continuous) : getStripBackground(colors));
+    }
+    El('span').addClass('color-scheme-palette-name').appendTo(btn).text(name);
+    return strip;
   }
 
   function renderTiles(tiles) {
@@ -847,13 +1007,14 @@ export function ColorSchemePanel(gui, opts) {
   // The gradient over a continuous ramp's tiles, each stop over the center
   // of its tile; one bar per side of a diverging ramp, and one for a pivot
   // class
-  function renderGradient(segments, n) {
-    var width = tilesEl.node().clientWidth;
+  function renderGradient(segments, n, tilesBox, gradient) {
+    var gradientBox = gradient || gradientEl;
+    var width = (tilesBox || tilesEl).node().clientWidth;
     var gap = 3;
     var tileWidth = (width - (n - 1) * gap) / n;
     var center = function(pos) { return pos * (tileWidth + gap) + tileWidth / 2; };
-    gradientEl.empty();
-    gradientEl.classed('hidden', !segments);
+    gradientBox.empty();
+    gradientBox.classed('hidden', !segments);
     if (!segments || !(width > 0)) return;
     segments.forEach(function(seg) {
       var left = seg.flatStart ? center(seg.start) - tileWidth / 2 : center(seg.start);
@@ -862,7 +1023,7 @@ export function ColorSchemePanel(gui, opts) {
         return sample.color + ' ' + round(center(sample.pos) - left) + 'px';
       });
       if (stops.length == 1) stops.push(stops[0]);
-      El('div').addClass('color-scheme-gradient-segment').appendTo(gradientEl).css({
+      El('div').addClass('color-scheme-gradient-segment').appendTo(gradientBox).css({
         left: round(left) + 'px',
         width: round(right - left) + 'px',
         'background-image': 'linear-gradient(to right, ' + stops.join(', ') + ')'
@@ -1038,6 +1199,7 @@ export function ColorSchemePanel(gui, opts) {
 
   function selectTile(i, color) {
     nullControl.picker.hide();
+    seaPicker.hide();
     if (selectedTile == i && picker.visible()) {
       picker.hide();
     } else {
@@ -1052,6 +1214,7 @@ export function ColorSchemePanel(gui, opts) {
     if (paletteMenu.visible()) {
       hidePaletteMenu();
     } else {
+      hidePaletteMenu();
       renderPaletteMenu();
       paletteMenu.show();
     }
@@ -1059,6 +1222,7 @@ export function ColorSchemePanel(gui, opts) {
 
   function hidePaletteMenu() {
     paletteMenu.hide();
+    seaMenu.hide();
   }
 
   function renderPaletteMenu() {
@@ -1084,43 +1248,57 @@ export function ColorSchemePanel(gui, opts) {
 
   // Only presets have elevations; an edited one is Custom
   function renderElevationPaletteMenu() {
+    var transparent = isLandTransparent(scheme);
+    addPaletteItem('Transparent', null, transparent, function() {
+      changeScheme(setLandTransparent(scheme, true));
+    }).attr('title', 'Color only the sea');
     if (!scheme.preset) {
-      addPaletteItem('Custom', getSchemeColors(scheme), true, function() {});
+      addPaletteItem('Custom', getSchemeColors(scheme), !transparent, function() {
+        changeScheme(setLandTransparent(scheme, false));
+      });
     }
     El('div').addClass('color-scheme-palette-heading').appendTo(paletteMenu).text('Elevation');
     getElevationPresetNames().forEach(function(name) {
-      addPaletteItem(name, getElevationPresetColors(name), scheme.preset == name, function() {
+      addPaletteItem(name, getElevationPresetColors(name), !transparent && scheme.preset == name, function() {
         changeScheme(choosePreset(scheme, name));
       });
     });
     // blending needs to know where the raster is
     var points = getLngLatSamples(targetLayer);
     if (internal.getClimatePreset(points)) {
-      addPaletteItem('Blended', getBlendedPresetColors(), isBlendedScheme(scheme), function() {
+      addPaletteItem('Blended', getBlendedPresetColors(), !transparent && isBlendedScheme(scheme), function() {
         changeScheme(chooseBlendedElevations(scheme, points));
       }).attr('title', 'The presets, blended by climate across the map');
     }
   }
 
-  function addPaletteItem(name, colors, selected, onSelect) {
+  // colors: null for a checkered strip (transparent)
+  // menu: the palette menu, by default
+  function addPaletteItem(name, colors, selected, onSelect, menu) {
     var item = El('div').addClass('color-scheme-palette-item').attr('role', 'button')
-      .classed('selected', selected).appendTo(paletteMenu)
+      .classed('selected', selected).appendTo(menu || paletteMenu)
       .on('click', function() {
         hidePaletteMenu();
         onSelect();
       });
-    El('div').addClass('color-scheme-strip').appendTo(item)
-      .css('background-image', getStripBackground(colors));
+    var strip = El('div').addClass('color-scheme-strip').classed('transparent', !colors).appendTo(item);
+    if (colors) strip.css('background-image', getStripBackground(colors));
     El('span').appendTo(item).text(name);
     return item;
   }
 
   function changeScheme(next) {
     var prevSize = getSchemeTiles(scheme).length;
+    var prevSea = getSeaScheme(scheme), nextSea;
     scheme = updateDivergingLayout(setSchemeLayerType(next, targetLayer), targetLayer);
+    nextSea = getSeaScheme(scheme);
     if (getSchemeTiles(scheme).length != prevSize) {
       picker.hide();
       selectedTile = -1;
+    }
+    if (!nextSea || !prevSea || nextSea.n != prevSea.n) {
+      seaPicker.hide();
+      selectedSeaTile = -1;
     }
     apply();
     render();

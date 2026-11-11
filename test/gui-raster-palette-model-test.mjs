@@ -7,7 +7,8 @@ import {
   setSchemeLayerType, setTileCount, setSchemeMethod, choosePreset, getSchemeColors,
   setTileColor, clearTileColor, getContinuousTileStops, reverseScheme, getPinnedTiles,
   getSchemeBreaks, setSchemeBreak, getBreakClassSwatches, getDefaultElevationPreset, getBreaksScale,
-  chooseBlendedElevations, isBlendedScheme, getSchemeTab, getElevationFields, layerHasElevations, setSchemeSea
+  chooseBlendedElevations, isBlendedScheme, getSchemeTab, getElevationFields, layerHasElevations,
+  getSeaScheme, setSeaScheme, chooseSeaPreset, getSeaLabel, isLandTransparent, setLandTransparent
 } from '../src/gui/gui-color-scheme-model';
 import { getRasterBandLabel, layerHasPaletteRaster } from '../src/gui/gui-raster-band-values';
 import api from '../mapshaper.js';
@@ -208,17 +209,61 @@ describe('gui-color-scheme-model.mjs fixed elevations', function() {
     assert(layerHasElevations(o.lyr));
   });
 
-  it('leave out the sea, or give it land colors', async function() {
+  it('leave out the sea, or color it with a bathymetric preset', async function() {
     var o = await importDEM([-20, -10, 5, 200, -30, 300]);
     var scheme = useElevations(o.lyr);
     var cmd = formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr});
     assert(/ sea=transparent$/.test(cmd));
     await runCommand(o.catalog, cmd);
     assert.equal(o.lyr.raster.view.recipe.palette.sea, 'transparent');
-    scheme = setSchemeSea(scheme, 'land');
-    assert(!/sea=/.test(formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr})));
-    scheme = chooseBlendedElevations(scheme, [[-112, 33.5]]);
-    assert(/ sea=land( |$)/.test(formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr})));
+    assert.equal(getSeaLabel(scheme), 'Transparent');
+    scheme = chooseBlendedElevations(chooseSeaPreset(scheme, 'Blue'), [[-112, 33.5]]);
+    assert.equal(getSeaLabel(scheme), 'Blue');
+    assert(/ hypsometric=blended sea=blue( |$)/.test(formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr})));
+    scheme = choosePreset(scheme, 'Arid');
+    cmd = formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr});
+    assert(/ sea=blue$/.test(cmd));
+    await runCommand(o.catalog, cmd);
+    assert.equal(o.lyr.raster.view.recipe.palette.sea, 'Blue');
+  });
+
+  it('the sea has stops of its own, which can be recolored and moved', async function() {
+    var o = await importDEM([-5000, -10, 5, 200, -30, 300]);
+    var scheme = chooseSeaPreset(useElevations(o.lyr), 'Gray');
+    var sea = getSeaScheme(scheme);
+    var gray = internal.getBathymetricStops('Gray');
+    var cmd, palette;
+    assert.deepEqual(getSchemeColors(sea), gray.map(function(o) { return o.color; }));
+    sea = setSchemeBreak(setTileColor(sea, 0, '#000000'), o.lyr, 1, -7000);
+    scheme = setSeaScheme(scheme, sea);
+    assert.equal(getSeaLabel(scheme), 'Custom');
+    cmd = formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr});
+    assert(/ sea-breaks=-11000,-7000,-6000,.*,0 sea-colors=#000000,/.test(cmd));
+    await runCommand(o.catalog, cmd);
+    palette = o.lyr.raster.view.recipe.palette;
+    assert.equal(palette.sea, 'custom');
+    assert.equal(palette.seaRamp.breaks[1], -7000);
+    assert.equal(palette.seaRamp.colors[0], '#000000');
+  });
+
+  it('the sea\'s breaks run from its deepest stop to 0, whatever the data', async function() {
+    var land = await importDEM([5, 200, 300, 1000]);
+    var info = getSchemeBreaks(getSeaScheme(chooseSeaPreset(useElevations(land.lyr), 'Blue')), land.lyr);
+    assert.deepEqual([info.min, info.max], [-11000, 0]);
+  });
+
+  it('transparent land leaves only the sea, which then needs colors', async function() {
+    var o = await importDEM([-20, -10, 5, 200, -30, 300]);
+    var scheme = setLandTransparent(useElevations(o.lyr), true);
+    var cmd = formatSchemeCommand(scheme, getAppliedColors(scheme), {layer: o.lyr});
+    assert(isLandTransparent(scheme));
+    assert.equal(getSeaLabel(scheme), 'Pale');
+    assert.equal(cmd, "-classify field='band1' hypsometric=none sea=pale");
+    await runCommand(o.catalog, cmd);
+    assert.equal(o.lyr.raster.view.recipe.palette.land, 'transparent');
+    // no sea either: the land comes back
+    assert(!isLandTransparent(chooseSeaPreset(scheme, null)));
+    assert(!isLandTransparent(choosePreset(scheme, 'Lush')));
   });
 
   it('color the stops of a preset, at its elevations, whatever the data range', async function() {

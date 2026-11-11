@@ -4259,7 +4259,9 @@ body.pan.panning .map-layers:not(.drawing) {
 	background-image: linear-gradient(135deg, #d9d9d9 0 50%, #8c8c8c 50% 100%);
 }
 
-/* A transparent color, e.g. a raster's default no-data color */
+/* A transparent color, e.g. a raster's default no-data color, or the
+   transparent land or sea of an elevation palette */
+.label-style-panel .color-scheme-strip.transparent,
 .label-style-panel .label-color-field .label-color-chit.transparent {
 	background-color: white;
 	background-image: conic-gradient(#ccc 25%, white 0 50%, #ccc 0 75%, white 0);
@@ -5513,6 +5515,11 @@ body.panning .frame-overlay-box.showing-content .frame-overlay-box-label {
 	height: 12px;
 	border: 1px solid rgba(0,0,0,0.15);
 	background-clip: padding-box;
+}
+
+/* in the button, a swatch, leaving room for the name */
+.color-scheme-palette-btn > .color-scheme-strip.transparent {
+	width: 12px;
 }
 
 .label-style-panel .color-scheme-palette-btn > span,

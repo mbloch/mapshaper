@@ -11,7 +11,7 @@ import { runningInBrowser } from '../mapshaper-env';
 import { updateRasterViewForGrid } from './mapshaper-raster-fill';
 import { copyRasterSourceStatus } from './mapshaper-raster-source';
 import { getRasterDisplayBands, getRasterDisplayBandsKey, rasterGridDisplaysColor } from './mapshaper-raster-display-bands';
-import { getRasterPaletteTable, rasterPaletteIsCategorical } from './mapshaper-raster-palette';
+import { getRasterPaletteTable, getRasterSeaTable, rasterPaletteIsCategorical } from './mapshaper-raster-palette';
 import { getRasterSeaMask } from './mapshaper-raster-sea-mask';
 import {
   markLayerChanged,
@@ -394,17 +394,23 @@ function renderPaletteGridPreview(grid, palette, width, height, sourceBbox, resa
   var alpha = getRasterDisplayBands(grid).alpha;
   var coverage = grid.coverage || null;
   var method = rasterPaletteIsCategorical(palette) ? null : resamplingMethod;
-  var sea = palette.sea == 'transparent' ? getRasterSeaMask(grid, band) : null;
+  var sea = palette.sea ? getRasterSeaMask(grid, band) : null;
+  var seaTable = getRasterSeaTable(palette);
+  var landless = palette.land == 'transparent';
   var pixels = new Uint8ClampedArray(width * height * 4);
   var src, val, i, dest;
   for (var y = 0; y < height; y++) {
     for (var x = 0; x < width; x++) {
       src = getPreviewSourceOffset(grid, sourceBbox, x, y, width, height, bands);
       if (coverage && !coverage[src / bands] || alpha > -1 && samples[src + alpha] === 0) continue;
-      if (sea && sea[src / bands] === 1) continue;
       val = method ? getResampledBandValue(grid, band, alpha, sourceBbox, x, y, width, height, method) :
         samples[src + band];
+      if (sea && sea[src / bands] === 1) {
+        if (seaTable) drawSeaPixel(pixels, (y * width + x) * 4, seaTable, val, grid.nodata);
+        continue;
+      }
       if (isValidBandValue(val, grid.nodata)) {
+        if (landless) continue;
         i = table.getIndex(val);
         if (i < 0) i = table.otherIndex;
       } else {
@@ -429,6 +435,18 @@ function renderPaletteGridPreview(grid, palette, width, height, sourceBbox, resa
   };
 }
 
+// A sea pixel, in a palette's bathymetric colors (resampling near the coast
+// can give values above 0, which take the shallowest color)
+function drawSeaPixel(pixels, dest, table, val, nodata) {
+  var i;
+  if (!isValidBandValue(val, nodata)) return;
+  i = table.getIndex(val) * 4;
+  pixels[dest] = table.rgba[i];
+  pixels[dest + 1] = table.rgba[i + 1];
+  pixels[dest + 2] = table.rgba[i + 2];
+  pixels[dest + 3] = table.rgba[i + 3];
+}
+
 // A blended palette (see mapshaper-raster-hypsometric.mjs): each pixel mixes
 // the colors of the palette's ramps by their weights where it is, in @field
 // (bilinear between the field's cells). Otherwise like
@@ -445,7 +463,8 @@ function renderBlendedPaletteGridPreview(grid, palette, field, width, height, so
   var alpha = getRasterDisplayBands(grid).alpha;
   var coverage = grid.coverage || null;
   var bbox = sourceBbox || grid.bbox;
-  var sea = palette.sea == 'transparent' ? getRasterSeaMask(grid, band) : null;
+  var sea = palette.sea ? getRasterSeaMask(grid, band) : null;
+  var seaTable = getRasterSeaTable(palette);
   var fb = field.bbox, fw = field.width, fh = field.height, fweights = field.weights;
   // the field's column (and row) at each column (row) of pixels
   var fxs = new Float64Array(width), fys = new Float64Array(height);
@@ -462,10 +481,13 @@ function renderBlendedPaletteGridPreview(grid, palette, field, width, height, so
     for (x = 0; x < width; x++) {
       src = getPreviewSourceOffset(grid, sourceBbox, x, y, width, height, bands);
       if (coverage && !coverage[src / bands] || alpha > -1 && samples[src + alpha] === 0) continue;
-      if (sea && sea[src / bands] === 1) continue;
       val = resamplingMethod ? getResampledBandValue(grid, band, alpha, sourceBbox, x, y, width, height, resamplingMethod) :
         samples[src + band];
       dest = (y * width + x) * 4;
+      if (sea && sea[src / bands] === 1) {
+        if (seaTable) drawSeaPixel(pixels, dest, seaTable, val, grid.nodata);
+        continue;
+      }
       if (!isValidBandValue(val, grid.nodata)) {
         i = nullTable.nullIndex;
         if (i < 0) continue;

@@ -1128,10 +1128,18 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('hypsometric', {
-      describe: '[raster] elevation colors: arid, lush, temperate, polar, or blended (by climate)'
+      describe: '[raster] elevation colors: arid, lush, temperate, polar, blended (by climate), or none (only the sea)'
     })
     .option('sea', {
-      describe: '[raster] below 0 and open to the edge: transparent (default with hypsometric=) or land'
+      describe: '[raster] below 0 and open to the edge: transparent (default with hypsometric=), land, or pale, blue, gray (bathymetric tints)'
+    })
+    .option('sea-breaks', {
+      describe: '[raster] depths of custom sea colors, deepest first (with sea-colors=)',
+      type: 'numbers'
+    })
+    .option('sea-colors', {
+      describe: '[raster] custom sea colors, one for each of sea-breaks=',
+      type: 'colors'
     })
     .option('index-field', {
       describe: 'apply pre-calculated classes (0 ... n-1, -1)'

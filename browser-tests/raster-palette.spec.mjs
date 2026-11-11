@@ -26,12 +26,12 @@ test('the color palettes panel colors a DEM, as one undo state and one command',
   // fixed elevations, without the sea
   await expect(panel.getByLabel('Band')).toBeHidden();
   await expect(panel.getByRole('tab', {name: 'Elevation'})).toHaveAttribute('aria-selected', 'true');
-  await expect(panel.getByLabel('Sea')).toHaveValue('transparent');
+  await expect(panel.getByRole('button', {name: 'Sea palette'})).toContainText('Transparent');
   await expect.poll(function() { return getPalette(page).then(function(p) { return p && p.sea; }); }).toBe('transparent');
 
   // other ramps start with continuous colors
   await panel.getByRole('tab', {name: 'Sequential'}).click();
-  await expect(panel.getByLabel('Sea')).toBeHidden();
+  await expect(panel.getByRole('button', {name: 'Sea palette'})).toBeHidden();
   await expect(panel.locator('.continuous-btn')).toHaveClass(/selected/);
   await expect(panel.locator('.color-scheme-null-count')).toHaveText('None in this layer');
   await expect.poll(function() { return getPalette(page).then(function(p) { return p && !p.sea; }); }).toBe(true);

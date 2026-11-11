@@ -164,7 +164,58 @@ describe('sea=', function() {
     assert.equal(getPalette(catalog).sea, 'transparent');
     await runCommand(catalog, '-classify field=band1 colors=greens classes=3');
     assert.equal(getPalette(catalog).sea, undefined);
-    await assert.rejects(runCommand(catalog, '-classify hypsometric=arid sea=blue'), /sea=/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=arid sea=green'), /sea=/);
+  });
+
+  it('a bathymetric preset colors the sea by depth, and not the basins', async function() {
+    var catalog = await importRaster(makeGeoTIFF(values, 5, [5, 24]));
+    var stops = internal.getBathymetricStops('Blue');
+    var palette, preview;
+    await runCommand(catalog, '-proj init=wgs84 -classify hypsometric=arid sea=blue');
+    palette = getPalette(catalog);
+    assert.equal(palette.sea, 'Blue');
+    assert.deepEqual(palette.seaRamp.breaks, stops.map(function(o) { return o.elevation; }));
+    preview = internal.renderRasterPreview(catalog.getActiveLayer().layer.raster.grid, {palette: palette}, 5, 4);
+    assert.equal(preview.pixels[0 * 4 + 3], 255);
+    // -10 m, between the -50 and 0 m stops
+    assert.notEqual(hex(preview.pixels, 0), internal.getHypsometricStops('Arid')[0].color);
+    assert.equal(hex(preview.pixels, 7), internal.getHypsometricStops('Arid')[0].color);
+  });
+
+  it('hypsometric=none colors only the sea', async function() {
+    var catalog = await importRaster(makeGeoTIFF(values, 5, [5, 24]));
+    var palette, preview;
+    await runCommand(catalog, '-classify hypsometric=none sea=pale');
+    palette = getPalette(catalog);
+    assert.equal(palette.land, 'transparent');
+    assert.deepEqual(palette.colors, palette.seaRamp.colors);
+    preview = internal.renderRasterPreview(catalog.getActiveLayer().layer.raster.grid, {palette: palette}, 5, 4);
+    assert.equal(preview.pixels[0 * 4 + 3], 255); // sea
+    assert.equal(preview.pixels[1 * 4 + 3], 0); // land
+    assert.equal(preview.pixels[7 * 4 + 3], 0); // basin
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=none'), /needs colors for the sea/);
+  });
+
+  it('sea-breaks= and sea-colors= give custom sea colors', async function() {
+    var catalog = await importRaster(makeGeoTIFF(values, 5, [5, 24]));
+    var palette, preview;
+    await runCommand(catalog, '-classify hypsometric=arid sea-breaks=-20,0 sea-colors=#000000,#0000ff');
+    palette = getPalette(catalog);
+    assert.equal(palette.sea, 'custom');
+    assert.deepEqual(palette.seaRamp, {breaks: [-20, 0], colors: ['#000000', '#0000ff']});
+    preview = internal.renderRasterPreview(catalog.getActiveLayer().layer.raster.grid, {palette: palette}, 5, 4);
+    // -10 m, between the two colors
+    assert(preview.pixels[2] > 0 && preview.pixels[2] < 255);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=arid sea-breaks=0,-20 sea-colors=red,blue'), /ascending/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=arid sea-breaks=-20,0 sea-colors=red'), /one for each/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=arid sea=pale sea-breaks=-20,0 sea-colors=red,blue'), /sea=/);
+  });
+
+  it('a bathymetric preset is converted to the band\'s units', async function() {
+    var catalog = await importRaster(makeGeoTIFF(values, 5, [5, 24]));
+    catalog.getActiveLayer().layer.raster.grid.verticalUnits = 'ft';
+    await runCommand(catalog, '-classify hypsometric=arid sea=Pale');
+    assert.equal(getPalette(catalog).seaRamp.breaks[0], -36089.2);
   });
 });
 
