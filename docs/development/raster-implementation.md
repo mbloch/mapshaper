@@ -107,7 +107,7 @@ The `raster` object distinguishes:
   the bands of a grid that has it must update or remove it. The fill that
   follows `-clip` and `-proj` gives such a grid a nodata value rather than an
   alpha band, since it holds bands that aren't displayed. The image commands
-  (`-tone`, `-tint`, `-blend`, `-deshadow`, `-blur`) still read bands by count.
+  (`-tone`, `-blend`, `-deshadow`, `-blur`) still read bands by count.
 - `interpretation`: semantic raster type, one of `image`, `categorical` or
   `continuous`. Import defaults to `image`. `categorical` marks class/code
   rasters so later reprojection defaults to nearest-neighbor resampling.

@@ -14,6 +14,7 @@ import { stop } from '../utils/mapshaper-logging';
 //   breaks,         // ascending; classes have one fewer break than colors
 //   colors,         // CSS colors
 //   categories,     // categorical: the value of each color
+//   otherColor,     // categorical: the color of other values (default nullColor)
 //   nullColor,      // the color of nodata pixels; null is transparent
 //   interpolation,  // continuous: 'oklch' (default) or 'rgb'
 //   vibrance        // continuous: 0-1, as -classify vibrance=
@@ -33,6 +34,7 @@ export function getRasterPaletteKey(palette) {
   if (!palette) return '';
   return JSON.stringify([palette.band, palette.type, !!palette.continuous, palette.breaks || null,
     palette.colors || null, palette.categories || null, palette.nullColor || null,
+    palette.otherColor || null,
     palette.interpolation || null, palette.vibrance === undefined ? null : palette.vibrance]);
 }
 
@@ -40,11 +42,12 @@ export function rasterPaletteIsCategorical(palette) {
   return !!palette && palette.type == 'categorical';
 }
 
-// Returns {rgba, getIndex, nullIndex}
+// Returns {rgba, getIndex, nullIndex, otherIndex}
 //   rgba: Uint8Array of colors, 4 bytes each
 //   getIndex(val): the color of a (valid) value, as an index into rgba, or -1
 //     if it has none (a category that isn't in the palette)
 //   nullIndex: the index of the null color, or -1 if nodata is transparent
+//   otherIndex: the index of the color of values without one, or -1
 // Tables are cached by getRasterPaletteKey(), so redrawing a raster while
 // panning and zooming doesn't rebuild them.
 export function getRasterPaletteTable(palette) {
@@ -69,6 +72,7 @@ function buildRasterPaletteTable(palette) {
     table = getClassTable(colors, palette.breaks || []);
   }
   table.nullIndex = palette.nullColor ? addColor(table, palette.nullColor) : -1;
+  table.otherIndex = palette.otherColor ? addColor(table, palette.otherColor) : table.nullIndex;
   return table;
 }
 
@@ -84,7 +88,7 @@ function getRampTable(colors, breaks, palette) {
     stop('A continuous raster palette needs a color for each break');
   }
   if (palette.vibrance > 0) opts.vibrance = getVibranceChroma(palette.vibrance);
-  rgba = new Uint8Array(segments * n * 4 + 4);
+  rgba = new Uint8Array(segments * n * 4 + 8);
   for (seg = 0; seg < segments; seg++) {
     interpolate = getPairInterpolator(colors[seg], colors[seg + 1], opts);
     for (i = 0; i < n; i++) {
@@ -146,15 +150,16 @@ function getCategoryTable(categories, colors) {
 }
 
 function getColorList(colors) {
-  var rgba = new Uint8Array(colors.length * 4 + 4);
+  var rgba = new Uint8Array(colors.length * 4 + 8);
   colors.forEach(function(color, i) { setColor(rgba, i, color); });
   return {rgba: rgba, count: colors.length};
 }
 
-// Adds a color in the spare slot at the end of the table; returns its index
+// Adds a color in one of the two spare slots at the end of the table; returns
+// its index
 function addColor(table, color) {
   setColor(table.rgba, table.count, color);
-  return table.count;
+  return table.count++;
 }
 
 function setColor(rgba, i, color) {

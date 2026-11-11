@@ -128,8 +128,8 @@ a palette, and for removing one:
 
 ```bash
 -classify band1 colors=YlGnBu quantile classes=7
--classify band1 colors=#2b5c3f,#c9b98a,#f4efe6 breaks=0,1500 continuous
--classify band1 colors=#2b5c3f,#c9b98a,#f4efe6 breaks=0,30%,100% continuous
+-classify band1 colors=#2b5c3f,#c9b98a,#f4efe6 outer-breaks=0,3000 breaks=1500 continuous
+-classify band1 colors=#2b5c3f,#c9b98a,#f4efe6 breaks=30% continuous
 -classify band1 colors=BrBG pivot=0 continuous
 -classify band1 categorical colors=#476ba1,#d1defa,#decaca,#d99482
 ```
@@ -144,6 +144,8 @@ a palette, and for removing one:
   `grid.coverage`, not NaN. Classification uses a sample of at most a million
   of them (as `-tint` did), so quantile breaks are approximate on large
   rasters. The message's table of classes gives pixel counts.
+- As for vectors, `continuous` breaks are the inner stops: the end colors go
+  at the data's min and max, or at `outer-breaks=`.
 - `null-value=` defaults to transparent rather than `#eee`. Nodata pixels in
   rasters usually mean "not mapped", not "missing data".
 - Categorical classification needs an integer band; float bands are an error.
@@ -362,6 +364,14 @@ tested.
 4. `-classify` on rasters: band fields, pixel sampling, trimmed percentage
   breaks, the recipe, messages; `-style opacity=` and `-style clear` on
   rasters. Remove `-tint`, moving its tests that still apply to `-classify`.
+   Done: `classifyRasterLayer()` (in `mapshaper-classify.mjs`) runs the
+   vector classifier on the sample, and `mapshaper-raster-classify.mjs`
+   turns the result into a palette. Tests compare rendered pixels with
+   `-classify` on a point layer of the same values. Ranked (`quantile
+   continuous`) colors can't be a table of stops exactly, so the palette has
+   a stop at each value of the sample (if it has at most 256 values, as
+   integer rasters often do) or at 32 quantiles, clamped to `outer-breaks=`.
+   Categorical classification scans every pixel for its categories.
 5. Panel: the value source, the band menu, the raster entry points, defaults,
    undo. A browser test that applies and undoes a palette on a DEM.
 6. Hypsometric tints: the Elevation group, fixed-elevation presets, fit to

@@ -70,6 +70,7 @@ export function getLayerInfo(lyr, dataset) {
     o.raster_height = getRasterHeight(lyr.raster);
     o.raster_bands = getRasterBandCount(lyr.raster);
     o.raster_band_list = getRasterBandList(lyr.raster.grid);
+    o.raster_palette = getRasterPaletteInfo(lyr.raster);
     o.raster_pixel_type = getRasterPixelType(lyr.raster);
     o.raster_pixel_size = getRasterPixelSize(lyr.raster.grid, getDatasetCRS(dataset));
     o.bbox = getLayerBounds(lyr, dataset.arcs).toArray();
@@ -111,6 +112,32 @@ export function getRasterBandList(grid) {
   });
   plain = list.every(function(o, i) { return o.band == i + 1 && !o.description; });
   return plain ? null : list;
+}
+
+// The display settings of -classify and -style on a raster, or null
+function getRasterPaletteInfo(raster) {
+  var recipe = raster.view && raster.view.recipe || {};
+  var palette = recipe.palette;
+  var opacity = recipe.opacity >= 0 && recipe.opacity < 1 ? recipe.opacity : null;
+  if (!palette && opacity === null) return null;
+  return {
+    band: palette ? palette.band || null : null,
+    type: palette ? palette.type : null,
+    continuous: palette ? !!palette.continuous : false,
+    classes: palette && !palette.continuous ? palette.colors.length : null,
+    opacity: opacity
+  };
+}
+
+function formatRasterPaletteInfo(o) {
+  var parts = [];
+  if (o.type) {
+    parts.push(o.type + (o.continuous ? ', continuous' : ', ' + o.classes +
+      (o.type == 'categorical' ? ' categories' : ' classes')));
+  }
+  if (o.band) parts.push('band ' + o.band);
+  if (o.opacity !== null) parts.push('opacity ' + o.opacity);
+  return parts.join(', ');
 }
 
 function formatRasterBandList(list) {
@@ -376,6 +403,9 @@ export function getLayerInfoRows(info) {
     rows.push(['Size', utils.format('%,d x %,d x %,d', info.raster_width, info.raster_height, info.raster_bands)]);
     if (info.raster_band_list) {
       rows.push(['Bands', formatRasterBandList(info.raster_band_list)]);
+    }
+    if (info.raster_palette) {
+      rows.push(['Palette', formatRasterPaletteInfo(info.raster_palette)]);
     }
     rows.push(['Data', info.raster_pixel_type || 'unknown']);
     if (info.raster_pixel_size) {

@@ -5,6 +5,10 @@ description: Design for the -tone (imagery color adjustment) and -tint (hypsomet
 
 # Raster Toning and Tinting
 
+> `-tint` was replaced, before release, by `-classify` on data rasters (see
+> [`raster-palette-design.md`](raster-palette-design.md)). The `-tint`
+> sections below are kept as background.
+
 Two commands for coloring rasters:
 
 - `-tone` adjusts the colors of an RGB image, typically to turn true color

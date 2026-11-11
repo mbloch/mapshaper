@@ -199,7 +199,6 @@ import * as RasterColor from './rasters/mapshaper-raster-color';
 import * as RasterBlend from './rasters/mapshaper-raster-blend';
 import * as RasterSharpen from './rasters/mapshaper-raster-sharpen';
 import * as Deshadow from './rasters/mapshaper-deshadow';
-import * as TintCommand from './commands/mapshaper-tint';
 import * as ToneCommand from './commands/mapshaper-tone';
 import * as RasterTiles from './rasters/mapshaper-raster-tiles';
 import * as TerrainSmoothing from './rasters/mapshaper-terrain-smoothing';
@@ -216,6 +215,7 @@ import * as ElevationDecoding from './fetch/mapshaper-elevation-decoding';
 import * as RasterReprojection from './rasters/mapshaper-raster-reprojection';
 import * as RasterUtils from './rasters/mapshaper-raster-utils';
 import * as RasterPalette from './rasters/mapshaper-raster-palette';
+import * as RasterClassify from './rasters/mapshaper-raster-classify';
 import * as Merging from './dataset/mapshaper-merging';
 import * as MosaicIndex from './polygons/mapshaper-mosaic-index';
 import * as OptionParsingUtils from './cli/mapshaper-option-parsing-utils';
@@ -389,7 +389,6 @@ Object.assign(internal,
   RasterBlend,
   RasterSharpen,
   Deshadow,
-  TintCommand,
   ToneCommand,
   RasterTiles,
   TerrainSmoothing,
@@ -406,6 +405,7 @@ Object.assign(internal,
   RasterReprojection,
   RasterUtils,
   RasterPalette,
+  RasterClassify,
   Merging,
   MosaicIndex,
   OptionParsingUtils,

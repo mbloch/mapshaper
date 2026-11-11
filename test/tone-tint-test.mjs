@@ -216,43 +216,6 @@ describe('mapshaper-raster-color.mjs', function () {
     })
   })
 
-  describe('getColorRampTable()', function () {
-    function colorAt(table, val) {
-      var i = internal.getRampIndex(table, val);
-      return [table.r[i], table.g[i], table.b[i]];
-    }
-
-    it('the ends are the end colors; values outside the breaks are clamped', function () {
-      var table = internal.getColorRampTable(['#204060', '#e0d0b0'], [0, 100]);
-      assert.deepEqual(colorAt(table, 0), [0x20, 0x40, 0x60]);
-      assert.deepEqual(colorAt(table, 100), [0xe0, 0xd0, 0xb0]);
-      assert.deepEqual(colorAt(table, -50), [0x20, 0x40, 0x60]);
-      assert.deepEqual(colorAt(table, 500), [0xe0, 0xd0, 0xb0]);
-    })
-
-    it('a color is at its break', function () {
-      var table = internal.getColorRampTable(['#000000', '#ff0000', '#ffffff'], [0, 10, 100]);
-      assert.deepEqual(colorAt(table, 10), [255, 0, 0]);
-    })
-
-    it('a narrow segment is as smooth as a wide one', function () {
-      var table = internal.getColorRampTable(['#000000', '#ffffff', '#ff0000'], [0, 1, 4000]);
-      var mid = colorAt(table, 0.5);
-      assert(Math.abs(oklabL(mid[0], mid[1], mid[2]) - 0.5) < 0.01);
-    })
-
-    it('interpolates lightness in OKLCH', function () {
-      var table = internal.getColorRampTable(['#000000', '#ffffff'], [0, 1]);
-      var mid = colorAt(table, 0.5);
-      assert(Math.abs(oklabL(mid[0], mid[1], mid[2]) - 0.5) < 0.01);
-    })
-
-    it('a single value gets the first color', function () {
-      var table = internal.getColorRampTable(['#000000', '#ffffff'], [5, 5]);
-      assert.deepEqual(colorAt(table, 5), [0, 0, 0]);
-    })
-  })
-
   describe('getToneColorTable(), applyToneColorTable()', function () {
     // Colors near a random gray, like the colors of imagery. The table is
     // least accurate at the edge of the gamut, where gamut fitting bends the
@@ -333,18 +296,6 @@ describe('mapshaper-raster-color.mjs', function () {
     })
   })
 
-  describe('getTrimmedRange()', function () {
-    it('ignores the extreme 0.1% and invalid pixels', function () {
-      var values = new Float64Array(10000);
-      var valid = new Uint8Array(10000).fill(1);
-      for (var i = 0; i < values.length; i++) values[i] = i % 100;
-      values[0] = -1e6;
-      values[1] = 1e6;
-      values[2] = 5e6;
-      valid[2] = 0;
-      assert.deepEqual(internal.getTrimmedRange(values, valid), [0, 99]);
-    })
-  })
 })
 
 describe('-tone', function () {
@@ -482,7 +433,7 @@ describe('-tone', function () {
   })
 
   it('errors', async function () {
-    await assert.rejects(run(makeCatalog(new Float32Array([1, 2]), 2, 1, 1, {interpretation: 'continuous'}), '-tone saturation=0'), /use -tint or -hillshade/);
+    await assert.rejects(run(makeCatalog(new Float32Array([1, 2]), 2, 1, 1, {interpretation: 'continuous'}), '-tone saturation=0'), /use -classify or -hillshade/);
     await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone opacity=2'), /opacity= should be from 0 to 1/);
     await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone saturation=-1'), /saturation= should be 0 or more/);
     await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone lightness=2.5'), /lightness= should be from 0 to 2/);
@@ -492,92 +443,5 @@ describe('-tone', function () {
     await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone hue-shift=0.5 hue-pivot=gray'), /needs a color with a hue/);
     await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone hue-shift=0.5 hue-pivot=nocolor'), /Unsupported hue-pivot=/);
     await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone background=nocolor'), /background=/);
-  })
-})
-
-describe('-tint', function () {
-  // elevations 0 to 100 in a row, with one nodata pixel
-  function makeElevation(nodata) {
-    var samples = new Float32Array(102);
-    for (var i = 0; i <= 100; i++) samples[i] = i;
-    samples[101] = nodata === undefined ? 50 : nodata;
-    return makeCatalog(samples, 102, 1, 1, {interpretation: 'continuous', nodata: nodata === undefined ? null : nodata, name: 'elevation'});
-  }
-
-  function pixel(grid, i) {
-    return Array.from(grid.samples.subarray(i * grid.bands, i * grid.bands + grid.bands));
-  }
-
-  it('spreads the colors over the elevation range by default', async function () {
-    var catalog = await run(makeElevation(), '-tint colors=#000000,#ff0000,#ffffff');
-    var grid = findLayer(catalog, 'elevation').raster.grid;
-    assert.equal(grid.bands, 3);
-    assert.deepEqual(pixel(grid, 0), [0, 0, 0]);
-    assert.deepEqual(pixel(grid, 50), [255, 0, 0]);
-    assert.deepEqual(pixel(grid, 100), [255, 255, 255]);
-  })
-
-  it('breaks= takes elevations, percentages or both', async function () {
-    var catalog = await run(makeElevation(), '-tint colors=#000000,#ff0000,#ffffff breaks=0,20%,100');
-    var grid = findLayer(catalog, 'elevation').raster.grid;
-    assert.deepEqual(pixel(grid, 20), [255, 0, 0]);
-    assert.equal(findLayer(catalog, 'elevation').raster.derivation.breaks, '0,20,100');
-  })
-
-  it('values beyond the breaks get the end colors', async function () {
-    var catalog = await run(makeElevation(), '-tint colors=#000000,#ffffff breaks=10,90');
-    var grid = findLayer(catalog, 'elevation').raster.grid;
-    assert.deepEqual(pixel(grid, 0), [0, 0, 0]);
-    assert.deepEqual(pixel(grid, 100), [255, 255, 255]);
-  })
-
-  it('nodata pixels are transparent, or take the background color', async function () {
-    var catalog = await run(makeElevation(-9999), '-tint colors=#000000,#ffffff');
-    var catalog2 = await run(makeElevation(-9999), '-tint colors=#000000,#ffffff background=#ff0000');
-    var grid = findLayer(catalog, 'elevation').raster.grid;
-    var grid2 = findLayer(catalog2, 'elevation').raster.grid;
-    assert.equal(grid.bands, 4);
-    assert.equal(pixel(grid, 101)[3], 0);
-    assert.equal(pixel(grid, 100)[3], 255);
-    assert.equal(grid2.bands, 3);
-    assert.deepEqual(pixel(grid2, 101), [255, 0, 0]);
-  })
-
-  it('a color scheme name', async function () {
-    var catalog = await run(makeElevation(), '-tint colors=Greens');
-    var grid = findLayer(catalog, 'elevation').raster.grid;
-    assert(pixel(grid, 0)[0] > pixel(grid, 100)[0]); // Greens goes from light to dark
-  })
-
-  it('band= numbers bands from 1, as in the source file', async function () {
-    // file bands 2 and 4 (indexes 1 and 3); band 4 is the elevation ramp
-    var samples = new Float32Array(202);
-    for (var i = 0; i <= 100; i++) samples[i * 2 + 1] = i;
-    var catalog = makeCatalog(samples, 101, 1, 2, {interpretation: 'continuous', name: 'elevation'});
-    findLayer(catalog, 'elevation').raster.grid.sampleBands = [1, 3];
-    await run(catalog, '-tint colors=#000000,#ffffff band=4');
-    var grid = findLayer(catalog, 'elevation').raster.grid;
-    assert.deepEqual(pixel(grid, 0), [0, 0, 0]);
-    assert.deepEqual(pixel(grid, 100), [255, 255, 255]);
-    assert.equal(findLayer(catalog, 'elevation').raster.derivation.band, 4);
-    await assert.rejects(run(makeCatalog(samples, 101, 1, 2, {interpretation: 'continuous'}), '-tint colors=#000000,#ffffff band=3'),
-      /does not have band 3; this raster has 2 bands/);
-  })
-
-  it('+ keeps the elevation raster', async function () {
-    var catalog = await run(makeElevation(), '-tint + colors=#000000,#ffffff');
-    assert.equal(findLayer(catalog, 'elevation').raster.grid.bands, 1);
-    assert.equal(findLayer(catalog, 'tint').raster.grid.bands, 3);
-  })
-
-  it('errors', async function () {
-    await assert.rejects(run(makeElevation(), '-tint'), /requires colors=/);
-    await assert.rejects(run(makeElevation(), '-tint colors=#000000'), /two or more colors/);
-    await assert.rejects(run(makeElevation(), '-tint colors=#000000,#ffffff breaks=0,50,100'), /one value for each color/);
-    await assert.rejects(run(makeElevation(), '-tint colors=#000000,#ffffff breaks=50,10'), /should increase/);
-    await assert.rejects(run(makeElevation(), '-tint colors=#000000,#ffffff breaks=0,abc'), /Invalid breaks=/);
-    await assert.rejects(run(makeElevation(), '-tint colors=#000000,#ffffff band=2'), /does not have band 2; this raster has 1 band/);
-    await assert.rejects(run(makeElevation(), '-tint colors=#000000,#ffffff band=0'), /bands are numbered from 1/);
-    await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tint colors=#000000,#ffffff'), /use -tone/);
   })
 })

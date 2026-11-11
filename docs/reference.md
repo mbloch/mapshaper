@@ -118,7 +118,6 @@ mapshaper states.geojson \
 [-fetch](#-fetch)
 [-hillshade](#-hillshade)
 [-sharpen](#-sharpen)
-[-tint](#-tint)
 [-tone](#-tone)
 
 **Experimental**
@@ -601,7 +600,11 @@ mapshaper land.shp -buffer 500m fill-gaps -o land_filled.geojson
 
 Assign colors or data values to each feature using one of several classification methods. Methods for sequential data include `quantile`, `equal-interval`, `hybrid` and `nice` or categorical classification to a data field.
 
-`<field>` or `field=` Name of the data field to classify.
+`<field>` or `field=` Name of the data field to classify. On a raster layer, the band to color, e.g. `band2` (see **Classifying rasters**, below).
+
+`band=`  [raster] Band to color, numbered from 1. An alternative to naming the band as a field.
+
+`categorical`  Use categorical classification. Shortcut for `method=categorical`.
 
 `save-as=`      Name of a (new or existing) field to receive the output of classification. The default output field for colors is `fill` or `stroke` (depending on geometry type) and `class` for non-color output.
 
@@ -656,6 +659,16 @@ With OKLCH interpolation, when a color falls outside the sRGB gamut, its hue is 
 
 `other=`  Default value for categorical classification. This value is used when the value of the source data field is not present in the list of values given by `categories=`. Defaults to `null-value=` or null.
 
+**Classifying rasters**
+
+On a data raster (such as a DEM or a land cover raster), `-classify` sets a color palette for displaying the raster in the web UI and in SVG and image output. The palette is a display setting: the raster's values are unchanged, and running `-classify` again replaces it. `-clip`, `-proj` and `-blur` keep the palette; `-hillshade` output does not have one. To remove a palette, use `-style clear`. `-classify` does not color RGB images (use `-tone`).
+
+A raster with one band is classified without naming a band. Otherwise name the band, e.g. `-classify band2` or `-classify band=2`.
+
+`colors=` is required. These options are not available for rasters: `save-as=`, `values=`, `index-field=`, `non-adjacent`, `method=indexed`, `method=blacki` and the key options.
+
+Breaks are calculated from a sample of up to one million pixels. Percentages in `breaks=` are of the range of the data, ignoring the lowest and highest 0.1% of values (so a few outliers don't stretch the range). Categorical classification requires an integer band; by default the categories are all the band's values. `null-value=` sets the color of nodata pixels, which are transparent by default. `other=` colors values that are not listed in `categories=`. With `continuous quantile`, the gradient is calculated from up to 32 quantiles (or from every value, if the band has few of them).
+
 **Options for generating SVG keys**
 
 `key-style=`         One of: simple, gradient, dataviz
@@ -678,6 +691,10 @@ With OKLCH interpolation, when a color falls outside the sRGB gamut, its hue is 
 **Examples**
 
 ```bash
+# Color a DEM with a continuous ramp from 0m to 3000m
+mapshaper dem.tif -classify colors=#2b5c3f,#c9b98a,#f4efe6 continuous \
+  equal-interval outer-breaks=0,3000 -o out.png
+
 # Apply a sequential color ramp to a polygon dataset using quantiles.
 mapshaper covid_cases.geojson \
   -classify save-as=fill quantile color-scheme=Oranges classes=6 \
@@ -1807,7 +1824,9 @@ Add common SVG attributes for SVG export and display in the web UI. Attribute va
 
 `where=`           Boolean JS expression for targetting a subset of features.
 
-`clear` Remove all style properties from a layer.
+`clear` Remove all style properties from a layer. On a raster layer, removes the palette set by `-classify` and the opacity.
+
+On a raster layer, `-style` accepts only `opacity=` (0-1) and `clear`.
 
 `class=`           One or more CSS classes, separated by spaces (e.g. `class="light semi-transparent"`)
 
@@ -2175,24 +2194,6 @@ Common options: `name=` `target=` `+`
 # Shaded relief, lightly sharpened
 mapshaper dem.tif -hillshade -sharpen -o hillshade.png
 ```
-
-### -tint
-
-Color an elevation raster with hypsometric tints.
-
-`colors=`  (required) Colors from low to high elevation, or the name of a color scheme (see `-colors`).
-
-`breaks=`  Elevation of each color, as values or as percentages of the range, e.g. `0,40%,100%` (default spreads them evenly).
-
-`opacity=`  Opacity of the result, 0-1 (default is 1).
-
-`background=`  Color to place the result over, making it opaque.
-
-`band=`  Band containing elevation values, numbered from 1 (default is 1).
-
-`verbose`  Print the elevation of each break.
-
-Common options: `name=` `target=` `+`
 
 ### -tone
 

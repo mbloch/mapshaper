@@ -103,7 +103,7 @@ function validateToneGrid(grid) {
     stop('Raster layer is missing image data');
   }
   if (grid.bands < 3 || grid.displayBands) {
-    stop('-tone adjusts RGB images. To color an elevation raster, use -tint or -hillshade');
+    stop('-tone adjusts RGB images. To color an elevation raster, use -classify or -hillshade');
   }
   if (!(grid.samples instanceof Uint8Array || grid.samples instanceof Uint8ClampedArray) ||
       grid.bands > 4 || grid.colorModel == 'palette') {

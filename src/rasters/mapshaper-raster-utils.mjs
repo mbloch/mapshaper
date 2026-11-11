@@ -391,7 +391,12 @@ function renderPaletteGridPreview(grid, palette, width, height, sourceBbox, resa
       if (coverage && !coverage[src / bands] || alpha > -1 && samples[src + alpha] === 0) continue;
       val = method ? getResampledBandValue(grid, band, alpha, sourceBbox, x, y, width, height, method) :
         samples[src + band];
-      i = isValidBandValue(val, grid.nodata) ? table.getIndex(val) : table.nullIndex;
+      if (isValidBandValue(val, grid.nodata)) {
+        i = table.getIndex(val);
+        if (i < 0) i = table.otherIndex;
+      } else {
+        i = table.nullIndex;
+      }
       if (i < 0) continue;
       dest = (y * width + x) * 4;
       i *= 4;

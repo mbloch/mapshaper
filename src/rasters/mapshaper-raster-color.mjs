@@ -2,11 +2,11 @@ import { getOklchInterpolator, oklabToOklch, oklchToRgb, rgbToOklab } from '../c
 import { parseColor } from '../color/color-utils';
 import { error } from '../utils/mapshaper-logging';
 
-// Pixel operations for -tone and -tint. Colors are adjusted in OKLab
+// Pixel operations for -tone and -hillshade. Colors are adjusted in OKLab
 // (https://bottosson.github.io/posts/oklab/); see
 // docs/development/raster-tone-tint.md
 
-var SEGMENT_SIZE = 256; // color ramp table entries between two breaks
+var SEGMENT_SIZE = 256; // hillshade color ramp entries between two colors
 var ENCODE_SIZE = 65536; // linear-to-sRGB table entries; fine enough to round-trip dark values exactly
 var TONE_TABLE_STEPS = 51; // lattice intervals per channel in getToneColorTable() (divides 255)
 var LIGHTNESS_STEPS = 4096; // lightness curve table intervals, interpolated linearly
@@ -431,32 +431,6 @@ function fitChroma(L, A, B, rgb) {
   oklabToLinear(L, A * lo, B * lo, rgb);
 }
 
-// A lookup table for mapping values onto a color ramp, interpolated in OKLCH
-// between each pair of colors (as in vector color ramps). Each segment
-// between two breaks has its own SEGMENT_SIZE entries, so that a narrow
-// segment (e.g. 0 to 10 m in a ramp to 4000 m) is as smooth as a wide one,
-// and each break's color is exact.
-// @colors CSS colors
-// @breaks the value of each color, increasing (equal values are allowed)
-// Returns {r, g, b, breaks}: channel tables, indexed by getRampIndex()
-export function getColorRampTable(colors, breaks) {
-  var n = SEGMENT_SIZE;
-  var segments = breaks.length - 1;
-  var r = new Uint8Array(segments * n), g = new Uint8Array(segments * n), b = new Uint8Array(segments * n);
-  var seg, interpolate, rgb, i, k;
-  for (seg = 0; seg < segments; seg++) {
-    interpolate = getOklchInterpolator(colors[seg], colors[seg + 1], {steps: n - 1});
-    for (i = 0; i < n; i++) {
-      rgb = parseColor(interpolate(i / (n - 1)).color);
-      k = seg * n + i;
-      r[k] = rgb.r;
-      g[k] = rgb.g;
-      b[k] = rgb.b;
-    }
-  }
-  return {r: r, g: g, b: b, breaks: breaks};
-}
-
 // The colors of opaque shaded relief: a ramp from the shadow color (tone -1,
 // full shadow) through the base color (tone 0, flat ground) to the highlight
 // color (tone 1, the brightest slope), interpolated in OKLCH.
@@ -524,18 +498,6 @@ function toRgb(o) {
 
 function formatRgb(o) {
   return 'rgb(' + Math.round(o.r) + ',' + Math.round(o.g) + ',' + Math.round(o.b) + ')';
-}
-
-// Values below the first break get the first color, values above the last
-// break the last color
-export function getRampIndex(table, val) {
-  var breaks = table.breaks;
-  var last = breaks.length - 1;
-  var seg = 0;
-  if (!(val > breaks[0])) return 0;
-  if (val >= breaks[last]) return last * SEGMENT_SIZE - 1;
-  while (val >= breaks[seg + 1]) seg++;
-  return seg * SEGMENT_SIZE + Math.round((val - breaks[seg]) / (breaks[seg + 1] - breaks[seg]) * (SEGMENT_SIZE - 1));
 }
 
 // Applies opacity= and background= to an RGB or RGBA image.

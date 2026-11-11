@@ -80,7 +80,6 @@ import '../commands/mapshaper-help';
 import '../commands/mapshaper-blend';
 import '../commands/mapshaper-deshadow';
 import '../commands/mapshaper-hillshade';
-import '../commands/mapshaper-tint';
 import '../commands/mapshaper-tone';
 import { skipCommand } from '../commands/mapshaper-if-elif-else-endif';
 import '../commands/mapshaper-ignore';
@@ -154,7 +153,7 @@ function commandRunsPerTargetDataset(name, opts) {
     'fuzzy-join', 'hillshade', 'ignore', 'inlay', 'innerlines', 'inspect', 'join',
     'lines', 'mosaic', 'points', 'polygons', 'rectangles', 'rename-fields',
     'repel', 'shapes', 'sharpen', 'simplify', 'slice', 'smooth', 'sort', 'split',
-    'split-on-grid', 'stitch', 'style', 'subdivide', 'symbols', 'tint', 'tone', 'uniq'
+    'split-on-grid', 'stitch', 'style', 'subdivide', 'symbols', 'tone', 'uniq'
   ].indexOf(name) > -1;
 }
 
@@ -402,7 +401,7 @@ export async function runCommand(command, job) {
       }
       job.resumeCommand();
 
-    } else if (name == 'sharpen' || name == 'tint' || name == 'tone') {
+    } else if (name == 'sharpen' || name == 'tone') {
       outputLayers = [];
       for (let lyr of targetLayers) {
         outputLayers = outputLayers.concat(cmd[name](lyr, opts));

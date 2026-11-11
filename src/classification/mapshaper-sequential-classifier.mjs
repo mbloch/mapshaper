@@ -59,7 +59,7 @@ export function getSequentialClassifier(classValues, nullValue, dataValues, meth
     if (method == 'nice') message('Nice breaks:', breaks);
   }
 
-  printDistributionInfo(ascending, breaks, nullCount);
+  printDistributionInfo(ascending, breaks, nullCount, opts.count_label);
 
   if (opts.continuous && method == 'quantile' && !opts.breaks) {
     dataToClass = getRankClassifier(ascending, numBuckets);
@@ -87,6 +87,9 @@ export function getSequentialClassifier(classValues, nullValue, dataValues, meth
     }
   }
 
+  // for -classify on rasters, which makes a palette from them
+  classifier.breaks = breaks;
+  classifier.range = [minVal, maxVal];
   return classifier;
 }
 
@@ -165,15 +168,17 @@ function getClassRange(ascending, geBound, ltBound, i) {
   return rangeStart > -1 && rangeEnd > -1 ? [rangeStart, rangeEnd] : null;
 }
 
-function printDistributionInfo(ascending, breaks, nulls) {
+// @countLabel: what the counts are of (default 'feature counts'); with a
+//   label, the data has no null values to count (e.g. valid raster pixels)
+function printDistributionInfo(ascending, breaks, nulls, countLabel) {
   var dist = getDistributionData(breaks, ascending);
   var tableRows = getClassRanges(breaks, ascending).map(function(range, i) {
     return [`${range[0]} - ${range[1]}`, `(${dist[i]})`];
   });
-  tableRows.push(['null or non-numeric values', `(${nulls})`]);
+  if (!countLabel) tableRows.push(['null or non-numeric values', `(${nulls})`]);
   // message('Computed breaks:', breaks);
   // message('Distribution:', dist.join(','));
-  message('Data ranges and (feature counts):\n' + formatColumns(tableRows, ['left', 'right']));
+  message('Data ranges and (' + (countLabel || 'feature counts') + '):\n' + formatColumns(tableRows, ['left', 'right']));
   if (nulls) {
     // message('Null values:', nulls);
   }

@@ -1027,6 +1027,10 @@ export function getOptionParser() {
     .option('save-as', {
         describe: 'name of output field (default is fill|stroke|class)'
     })
+    .option('band', {
+      describe: '[raster] band to color, numbered from 1 (or name it, e.g. band2)',
+      type: 'integer'
+    })
     .option('colors', {
       describe: 'list of CSS colors or color scheme name (see -colors)',
       type: 'colors'
@@ -1067,6 +1071,10 @@ export function getOptionParser() {
     })
     .option('nice', {
       //describe: 'short for method=nice (rounded, equal inner breaks)',
+      assign_to: 'method'
+    })
+    .option('categorical', {
+      // describe: 'short for method=categorical',
       assign_to: 'method'
     })
     .option('breaks', {
@@ -2911,30 +2919,6 @@ export function getOptionParser() {
     .option('threshold', {
       describe: 'skip differences in lightness smaller than this, 0-1 (default is 0)',
       type: 'number'
-    })
-    .option('name', nameOpt)
-    .option('target', targetOpt)
-    .option('no-replace', noReplaceOpt);
-
-  parser.command('tint')
-    .describe('color an elevation raster with hypsometric tints')
-    .option('colors', {
-      describe: 'colors from low to high elevation, or a color scheme name (see -colors)',
-      type: 'colors'
-    })
-    .option('breaks', {
-      describe: 'elevation of each color, as values or % of the range (default spreads them evenly)',
-      type: 'strings'
-    })
-    .option('opacity', rasterOpacityOpt)
-    .option('background', rasterBackgroundOpt)
-    .option('band', {
-      describe: 'band containing elevation values, numbered from 1 (default is 1)',
-      type: 'integer'
-    })
-    .option('verbose', {
-      describe: 'print the elevation of each break',
-      type: 'flag'
     })
     .option('name', nameOpt)
     .option('target', targetOpt)
