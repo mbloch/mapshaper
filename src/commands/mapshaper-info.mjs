@@ -2,7 +2,8 @@ import { applyFieldOrder } from '../datatable/mapshaper-data-utils';
 import { editShapes } from '../paths/mapshaper-shape-utils';
 import { getDatasetCRS, getProjInfo, isLatLngCRS } from '../crs/mapshaper-projections';
 import { getLayerBounds, getFeatureCount, getLayerSourceFile, layerHasRaster } from '../dataset/mapshaper-layer-utils';
-import { getRasterBandCount, getRasterHeight, getRasterPixelType, getRasterWidth } from '../rasters/mapshaper-raster-utils';
+import { getGridFileBand, getRasterBandCount, getRasterHeight, getRasterPixelType, getRasterWidth } from '../rasters/mapshaper-raster-utils';
+import { getRasterCategoryNames } from '../rasters/mapshaper-raster-categories';
 import { getRasterValidityMask } from '../rasters/mapshaper-raster-grid';
 import { getRasterDisplayBands } from '../rasters/mapshaper-raster-display-bands';
 import { formatVerticalUnits } from '../rasters/mapshaper-vertical-units';
@@ -80,6 +81,7 @@ export function getLayerInfo(lyr, dataset) {
     } else if (rasterLooksLikeImage(lyr.raster)) {
       o.image = getImageInfo(lyr.raster.grid);
     }
+    o.categories = getRasterCategoryInfo(lyr.raster);
   }
   if (lyr.shapes && lyr.shapes.length > 0) {
     o.null_shape_count = countNullShapes(lyr.shapes);
@@ -96,6 +98,8 @@ var ELEVATION_SAMPLES = 1e6;
 var IMAGE_PERCENTILES = [1, 25, 50, 75, 99];
 var IMAGE_CHROMA_PERCENTILES = [50, 99];
 var IMAGE_SAMPLES = 1e6;
+var MAX_INFO_CATEGORIES = 1000; // a band with more values isn't summarized as categories
+var MAX_LISTED_CATEGORIES = 50; // rows in the text output
 
 // Single-band numeric rasters (e.g. GeoTIFF DEMs) and rasters imported with
 // raster-type=continuous; 8-bit single-band rasters are usually grayscale images
@@ -146,6 +150,66 @@ function formatRasterBandList(list) {
   return list.map(function(o) {
     return o.description ? o.band + ' (' + o.description + ')' : String(o.band);
   }).join(', ');
+}
+
+// The values of a categorical raster's displayed band (or of a band with
+// category names), with their names and pixel counts, ascending:
+// {band, values: [{value, name, pixels}]}, or null if the band isn't
+// categories, or has more than MAX_INFO_CATEGORIES values
+export function getRasterCategoryInfo(raster) {
+  var grid = raster && raster.grid;
+  var index, band, names, counts, valid, val, values;
+  if (!grid || !grid.samples || !/^u?int/.test(grid.pixelType || '')) return null;
+  index = getRasterDisplayBands(grid).color[0];
+  band = getGridFileBand(grid, index);
+  names = getRasterCategoryNames(grid, band);
+  if (raster.interpretation != 'categorical' && !names) return null;
+  counts = new Map();
+  valid = getRasterValidityMask(grid);
+  for (var i = 0, n = grid.width * grid.height; i < n; i++) {
+    if (valid && !valid[i]) continue;
+    val = grid.samples[i * grid.bands + index];
+    counts.set(val, (counts.get(val) || 0) + 1);
+    if (counts.size > MAX_INFO_CATEGORIES) return null;
+  }
+  values = Array.from(counts.keys()).sort(function(a, b) { return a - b; });
+  return {
+    band: band,
+    values: values.map(function(val) {
+      var name = names ? names[val] : null;
+      return {value: val, name: name === undefined ? null : name, pixels: counts.get(val)};
+    })
+  };
+}
+
+// e.g. 'Categories (band 1)' followed by a table of the values, their names
+// and their share of the valid pixels, the most common first
+function formatRasterCategoryInfo(o) {
+  var total = o.values.reduce(function(memo, c) { return memo + c.pixels; }, 0);
+  var rows = o.values.slice().sort(function(a, b) {
+    return b.pixels - a.pixels || a.value - b.value;
+  });
+  var shown = rows.length > MAX_LISTED_CATEGORIES ? rows.slice(0, MAX_LISTED_CATEGORIES - 1) : rows;
+  var named = rows.some(function(c) { return c.name; });
+  var table = [['Value'].concat(named ? ['Name'] : [], ['Share'])].concat(shown.map(function(c) {
+    var pct = total > 0 ? c.pixels / total * 100 : 0;
+    var share = pct > 0 && pct < 0.1 ? '<0.1%' : pct.toFixed(1) + '%';
+    return [String(c.value)].concat(named ? [c.name || ''] : [], [share]);
+  }));
+  var widths = table[0].map(function(h, col) {
+    return Math.max.apply(null, table.map(function(row) { return row[col].length; }));
+  });
+  var str = '\nCategories (band ' + o.band + ', ' + utils.format('%,d', rows.length) +
+    (rows.length == 1 ? ' value' : ' values') + ')\n';
+  str += table.map(function(row) {
+    return '  ' + row.map(function(cell, col) {
+      return col == row.length - 1 ? utils.lpad(cell, widths[col], ' ') : utils.rpad(cell, widths[col], ' ');
+    }).join('  ').trimEnd() + '\n';
+  }).join('');
+  if (shown.length < rows.length) {
+    str += '  ... and ' + (rows.length - shown.length) + ' more\n';
+  }
+  return str;
 }
 
 export function rasterLooksLikeElevation(raster) {
@@ -455,7 +519,9 @@ function formatInfo(arr) {
   var str = '';
   arr.forEach(function(info, i) {
     var title =  'Layer:    ' + (info.layer_name || '[unnamed layer]');
-    var tableStr = info.raster_type ? '' : formatAttributeTableInfo(info.attribute_data);
+    var tableStr = info.raster_type ?
+      (info.categories ? formatRasterCategoryInfo(info.categories) : '') :
+      formatAttributeTableInfo(info.attribute_data);
     var tableWidth = measureLongestLine(tableStr);
     var ruleLen = Math.min(Math.max(title.length, tableWidth), MAX_RULE_LEN);
     str += '\n';

@@ -1,4 +1,4 @@
-import { internal, mapshaper, geom } from './gui-core';
+import { internal, mapshaper, geom, utils } from './gui-core';
 import { El } from './gui-el';
 import { saveFileContentToClipboard } from './gui-export-control';
 import { deleteFeature } from './gui-drawing-utils';
@@ -337,9 +337,22 @@ export function ContextMenu(parentArg) {
         (info.valid ? '' : ' (no data)') +
         (info.valid && info.units ? ' (' + info.units + ')' : ''));
       addCopyItem(valueStr, valueStr);
+      if (info.names && info.names.some(Boolean)) {
+        addCategoryNames(info.names);
+      }
       if (info.color) {
         addColor(getColorString(info.color));
       }
+    }
+
+    // one band's name, or the names of several bands' values (a dash for a
+    // value without one)
+    function addCategoryNames(names) {
+      var str = names.length == 1 ? names[0] : names.map(function(name) {
+        return name || '–';
+      }).join(', ');
+      addMenuLabel(names.length == 1 ? 'category' : 'categories');
+      addCopyItem(utils.htmlEscape(str), str);
     }
 
     function addColor(color) {

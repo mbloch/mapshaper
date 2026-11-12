@@ -3,7 +3,8 @@ import { quoteCommandValue } from './gui-command-utils';
 import {
   getRasterBandFields, getRasterBandValues, getRasterBandCounts, getRasterCategoryFields,
   getRasterBandCategories, rasterHasContinuousValues, getRasterLayerPaletteKey,
-  rasterBandCouldBeElevation, rasterBandIsElevation, getRasterUnitMeters
+  rasterBandCouldBeElevation, rasterBandIsElevation, getRasterUnitMeters, getRasterCategoricalPalette,
+  getRasterCategoryName
 } from './gui-raster-band-values';
 
 // The state behind the color scheme panel, as plain objects and functions
@@ -154,6 +155,9 @@ export var defaultNullColor = '#eeeeee';
 export var minSchemeColors = 2;
 export var maxSchemeColors = 12;
 export var maxCategoricalColors = 20;
+// a palette that gives each category its own color (a raster's file palette,
+// see getRasterPaletteScheme(), or an imported one) can have more than that
+export var maxFilePaletteColors = 40;
 var defaultCategoricalPreset = 'batlowS';
 var defaultNonAdjacentColors = 5;
 var defaultDivergingPreset = 'RdBu';
@@ -881,7 +885,8 @@ export function getMaxSchemeColors(scheme, count) {
   var max = maxSchemeColors;
   if (scheme.type == 'diverging' && scheme.split == 'count') return maxDivergingSideClasses;
   if (scheme.type != 'categorical') return max;
-  max = scheme.preset ? internal.getCategoricalColors(scheme.preset).length : maxCategoricalColors;
+  max = scheme.preset ? internal.getCategoricalColors(scheme.preset).length :
+    Math.max(maxCategoricalColors, scheme.swatches ? scheme.swatches.length : 0);
   if (scheme.method == 'categorical' && count >= 0) {
     max = Math.min(max, Math.max(count, minSchemeColors));
   }
@@ -942,6 +947,22 @@ export function getCategories(lyr, field) {
   if (isRasterLayer(lyr)) return getRasterBandCategories(lyr, field);
   if (!lyr || !lyr.data || !field || !lyr.data.fieldExists(field)) return [];
   return internal.getUniqFieldValues(lyr.data.getRecords(), field).filter(isCategoryValue);
+}
+
+// The name of a category: a raster's, from its file or an imported palette,
+// or null
+export function getCategoryName(scheme, lyr, val) {
+  var names = getSchemeCategoryNames(scheme);
+  var name = names ? names[val] : null;
+  if (!name && isRasterLayer(lyr)) name = getRasterCategoryName(lyr, scheme.field, val);
+  return name || null;
+}
+
+// {<value>: name} that an imported palette gave the scheme's field, or null
+// scheme.categoryNames: {field, names}
+function getSchemeCategoryNames(scheme) {
+  var o = scheme.categoryNames;
+  return o && o.field == scheme.field ? o.names : null;
 }
 
 // The same test as -classify's (0 is a value; null, undefined, '' and NaN
@@ -1661,6 +1682,9 @@ export function formatSchemeCommand(scheme, colors, opts) {
     parts.push('continuous');
   }
   parts.push('colors=' + colors.join(','));
+  if (getSchemeCategoryNames(scheme) && scheme.method == 'categorical' && opts && opts.layer) {
+    parts.push(formatCategoryNamesOption(scheme, opts.layer));
+  }
   // -classify's sea= default for other breaks is land
   if (isElevationScheme(scheme)) {
     parts.push(scheme.seaScheme ? formatSeaOptions(scheme, opts) : 'sea=transparent');
@@ -1673,6 +1697,17 @@ export function formatSchemeCommand(scheme, colors, opts) {
     parts.push('target=' + opts.target);
   }
   return parts.join(' ');
+}
+
+// category-names= for a raster scheme with names (e.g. from an imported
+// palette): a name for each category, in order, quoted where a name has a
+// comma or a quote, and "" for a category without one
+function formatCategoryNamesOption(scheme, lyr) {
+  var names = getCategories(lyr, scheme.field).map(function(val) {
+    var name = getSchemeCategoryNames(scheme)[val] || '';
+    return name && !/[,"']/.test(name) ? name : '"' + name.replace(/"/g, '\\"') + '"';
+  });
+  return 'category-names=' + quoteCommandValue(names.join(','));
 }
 
 // A blend's moved stops, and the colors of its recolored presets
@@ -1723,6 +1758,29 @@ export function getLayerScheme(lyr) {
   var scheme = lyr ? layerSchemes.get(lyr) : null;
   if (!scheme || !schemeMatchesLayer(scheme, lyr)) return null;
   return scheme;
+}
+
+// A categorical scheme for a raster palette that the panel didn't make, such
+// as the colors of a palette image, so that opening the panel keeps them; or
+// null if the palette isn't categories that the panel can color one by one
+export function getRasterPaletteScheme(lyr) {
+  var palette = isRasterLayer(lyr) ? getRasterCategoricalPalette(lyr) : null;
+  var lookup, categories, colors, scheme;
+  if (!palette || !getCategoryFields(lyr).includes(palette.field)) return null;
+  lookup = new Map(palette.categories.map(function(val, i) { return [val, palette.colors[i]]; }));
+  categories = getCategories(lyr, palette.field);
+  colors = categories.map(function(val) { return lookup.has(val) ? toHex(lookup.get(val)) : null; });
+  if (colors.length === 0 || colors.length > maxFilePaletteColors || colors.includes(null)) return null;
+  scheme = setSchemeLayerType({
+    type: 'categorical',
+    field: palette.field,
+    method: 'categorical',
+    n: colors.length,
+    preset: null,
+    order: null,
+    swatches: colors
+  }, lyr);
+  return getAppliedScheme(scheme, colors, lyr);
 }
 
 // Checked from the data rather than kept in step with every edit, so that

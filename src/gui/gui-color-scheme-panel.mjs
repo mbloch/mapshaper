@@ -29,9 +29,9 @@ import {
   chooseBlendedElevations, isBlendedScheme, getBlendedPresetColors,
   getSchemeTab, getElevationFields, layerHasElevations, getBathymetricPresetNames,
   getSeaScheme, setSeaScheme, chooseSeaPreset, getSeaLabel, isLandTransparent, setLandTransparent,
-  getLayerScheme, setLayerScheme
+  getLayerScheme, setLayerScheme, getRasterPaletteScheme, getCategoryName
 } from './gui-color-scheme-model';
-import { getRasterBandLabel, getRasterUnitsLabel } from './gui-raster-band-values';
+import { getRasterBandLabel, getRasterUnitsLabel, getRasterCategoricalPalette } from './gui-raster-band-values';
 
 // A popup beside the polygon style panel for coloring a layer's fills by a
 // data field, with -classify. On a data raster (see gui-raster-palette-tool.mjs)
@@ -105,7 +105,7 @@ export function ColorSchemePanel(gui, opts) {
     targetLayer = lyr;
     selectedTile = -1;
     tabSchemes = {};
-    scheme = getLayerScheme(lyr);
+    scheme = getLayerScheme(lyr) || getRasterPaletteScheme(lyr);
     panel.show();
     if (scheme) {
       scheme = updateDivergingLayout(scheme, lyr);
@@ -113,7 +113,8 @@ export function ColorSchemePanel(gui, opts) {
       fields = getNumericFields(lyr);
       scheme = layerHasElevations(lyr) ? getDefaultSchemeOfType('elevation', lyr, getLngLatSamples(lyr)) :
         getDefaultSchemeOfType(fields.length > 0 ? 'sequential' : 'categorical', lyr);
-      if (canApply(scheme)) apply();
+      // categories colored by their file keep those colors until edited
+      if (canApply(scheme) && !getRasterCategoricalPalette(lyr)) apply();
     }
     render();
   };
@@ -312,7 +313,7 @@ export function ColorSchemePanel(gui, opts) {
         importDialog.open();
       }
       renderImportButton();
-    }).attr('title', 'Use a palette from a GMT (.cpt) or JSON file, or a list of colors');
+    }).attr('title', 'Use a palette from a GMT (.cpt), JSON or legend file, or a list of colors');
     importDialog = new ColorSchemeImportDialog(gui, {
       onImport: importPalette,
       onClose: renderImportButton
@@ -1105,7 +1106,10 @@ export function ColorSchemePanel(gui, opts) {
     // "and 1 more" would take a line that the value itself can have
     var max = values.length == 5 ? 5 : 4;
     var labels = values.slice(0, max).map(function(val) {
-      return val === '' || val === null || val === undefined ? '(no value)' : String(val);
+      var name;
+      if (val === '' || val === null || val === undefined) return '(no value)';
+      name = getCategoryName(scheme, targetLayer, val);
+      return name ? val + ': ' + name : String(val);
     });
     if (values.length > max) labels.push('and ' + (values.length - max) + ' more');
     return labels.join('\n');

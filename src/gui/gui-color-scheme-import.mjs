@@ -1,13 +1,15 @@
 import { internal } from './gui-core';
 import {
-  maxSchemeColors, maxCategoricalColors,
+  maxSchemeColors, maxCategoricalColors, maxFilePaletteColors,
   getDefaultSchemeOfType, getSchemeColors, getSchemeTiles, getSchemeValues, getNumericFields,
   getCategoryFields, getCategories, getCategoricalPresetColors, getContinuousTileStops,
   updateDivergingLayout, resetSchemeBreaks, setTileCount, setSchemeNullColor
 } from './gui-color-scheme-model';
 
 // Color palettes from text: a GMT color palette table (.cpt), the JSON that
-// gui-color-scheme-export.mjs writes, or a list of CSS colors.
+// gui-color-scheme-export.mjs writes, a legend of categories (see
+// parseLegend()), or a list of CSS colors. Names that a palette gives a
+// raster's categories go with its scheme, to -classify category-names=.
 // See docs/development/color-scheme-panel-design.md, "Importing a palette"
 //
 // A file that mapshaper exported has the -classify command that made it,
@@ -31,7 +33,29 @@ export function importColorPalette(text, scheme, lyr) {
     }
   }
   if (palette.nullColor) result.scheme = setSchemeNullColor(result.scheme, palette.nullColor);
+  if (palette.kind == 'categories') result.scheme = addCategoryNames(result.scheme, palette, lyr);
   return result;
+}
+
+// A raster's categories get the names that a palette gives them: the labels
+// of a GMT table (;label), the names of a JSON palette's classes, or a
+// legend's text. A label that is just the category's value isn't a name.
+function addCategoryNames(scheme, palette, lyr) {
+  var byKey = {}, names = {}, found = false;
+  if (!internal.layerHasRaster(lyr) || scheme.type != 'categorical' || scheme.method != 'categorical') {
+    return scheme;
+  }
+  palette.categories.forEach(function(c) {
+    if (c.label && c.label != c.key && !(c.key in byKey)) byKey[c.key] = c.label;
+  });
+  getCategories(lyr, scheme.field).forEach(function(val) {
+    var name = byKey[String(val)];
+    if (name) {
+      names[val] = name;
+      found = true;
+    }
+  });
+  return found ? Object.assign({}, scheme, {categoryNames: {field: scheme.field, names: names}}) : scheme;
 }
 
 // {kind, command, preset, nullColor, ...}
@@ -42,7 +66,49 @@ export function parsePalette(text) {
   var str = String(text || '').trim();
   if (!str) throw new Error('There is no palette to import.');
   if (str[0] == '{' || str[0] == '[') return parseJsonPalette(str);
-  return parseColorList(str) || parseCPT(str);
+  return parseColorList(str) || parseTable(str);
+}
+
+// A GMT table, or else a legend
+function parseTable(str) {
+  var legend;
+  try {
+    return parseCPT(str);
+  } catch(e) {
+    legend = parseLegend(str);
+    if (legend) return legend;
+    throw e;
+  }
+}
+
+// A legend of categories, like the text that comes with a classified raster:
+// lines that start with a value and give a color and a name, e.g.
+// "4: BWh Arid, desert, hot [255 0 0]", "4,#ff0000,Desert", or a line of a
+// QGIS color map export, "4,255,0,0,255,Desert". Other lines (a title, notes,
+// a header row) are skipped. Returns null if no line is a category.
+function parseLegend(str) {
+  var categories = str.split(/\r?\n/).map(parseLegendLine).filter(Boolean);
+  if (categories.length === 0) return null;
+  return {kind: 'categories', command: null, preset: null, nullColor: null, categories: categories};
+}
+
+function parseLegendLine(line) {
+  var m = /^\s*([-+]?\d+)(?:\s*[:=,;\t]\s*|\s+)(\S.*)$/.exec(line);
+  var rest, found, color, label;
+  if (!m) return null;
+  rest = m[2];
+  found = /[[(]\s*(\d{1,3})[\s,]+(\d{1,3})[\s,]+(\d{1,3})\s*[\])]/.exec(rest) ||
+    /^(\d{1,3})[\s,]+(\d{1,3})[\s,]+(\d{1,3})(?:[\s,]+\d{1,3})?(?=[\s,;]|$)/.exec(rest);
+  if (found) {
+    color = fromRGB(found.slice(1, 4).map(Number));
+  } else {
+    found = /rgba?\([^)]*\)|#[0-9a-f]{3,8}\b/i.exec(rest);
+    color = found ? parseGmtColor(found[0]) : null;
+  }
+  if (!color) return null;
+  label = (rest.slice(0, found.index) + ' ' + rest.slice(found.index + found[0].length))
+    .replace(/^[\s,;:"']+|[\s,;:"']+$/g, '').replace(/\s+/g, ' ');
+  return {key: m[1].replace(/^\+/, ''), label: label || m[1], color: color};
 }
 
 function parseJsonPalette(str) {
@@ -67,7 +133,8 @@ function parseJsonPalette(str) {
     if (data.classes.every(function(c) { return c && 'value' in c; })) {
       palette.kind = 'categories';
       palette.categories = data.classes.map(function(c) {
-        return {key: String(c.value), label: String(c.value), color: parseColorValue(c.color)};
+        var name = c.name || c.label;
+        return {key: String(c.value), label: name ? String(name) : String(c.value), color: parseColorValue(c.color)};
       });
     } else {
       palette.kind = 'classes';
@@ -359,7 +426,7 @@ function importCategories(palette, scheme, lyr) {
     var colors = categories.map(function(val) {
       return lookup[String(val)] || lookup[String(val).replace(/\s+/g, '_')];
     });
-    if (categories.length > 0 && categories.length <= maxCategoricalColors && colors.every(Boolean)) {
+    if (categories.length > 0 && categories.length <= maxFilePaletteColors && colors.every(Boolean)) {
       match = {field: field, colors: colors};
     }
     return !!match;

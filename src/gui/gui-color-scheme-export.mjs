@@ -1,7 +1,8 @@
 import { internal } from './gui-core';
 import {
   getSchemeBreaks, getSchemeColors, getAppliedColors, getCategories, getSchemeNullColor,
-  getContinuousTileStops, getCenterTile, getDivergingTileUse, isContinuousScheme, formatSchemeCommand
+  getContinuousTileStops, getCenterTile, getDivergingTileUse, isContinuousScheme, formatSchemeCommand,
+  getCategoryName
 } from './gui-color-scheme-model';
 
 // Text versions of a color scheme as applied to a layer's data: a GMT color
@@ -11,7 +12,8 @@ import {
 // The scheme's classes, the base of both formats: {from, to, color} for
 // classes, {from, to, colors: [low, high]} for a stretch of continuous colors
 // (classes include from and exclude to, but for the last, which includes the
-// max), or {value, color} for a category. Returns null if the scheme has no
+// max), or {value, color} for a category, with the category's name if it has
+// one (a raster's, from its file or a palette). Returns null if the scheme has no
 // classes to export (non-adjacent colors, or no data).
 export function getExportClasses(scheme, lyr) {
   if (scheme.method == 'non-adjacent') return null;
@@ -26,7 +28,10 @@ function getCategoryClasses(scheme, lyr) {
   if (categories.length === 0) return null;
   // as -classify assigns them, repeating the colors if there are more categories
   return categories.map(function(val, i) {
-    return {value: val, color: colors[i % colors.length]};
+    var o = {value: val, color: colors[i % colors.length]};
+    var name = getCategoryName(scheme, lyr, val);
+    if (name) o.name = name;
+    return o;
   });
 }
 
@@ -214,8 +219,8 @@ export function formatSchemeCPT(scheme, lyr) {
   ];
   if (scheme.type == 'categorical') {
     classes.forEach(function(c) {
-      var label = String(c.value);
-      lines.push([label.replace(/\s+/g, '_'), formatGmtColor(c.color), ';' + label].join('\t'));
+      var key = String(c.value);
+      lines.push([key.replace(/\s+/g, '_'), formatGmtColor(c.color), ';' + (c.name || key)].join('\t'));
     });
   } else {
     classes.forEach(function(c) {

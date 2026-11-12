@@ -1168,6 +1168,10 @@ export function getOptionParser() {
       describe: 'list of data values for categorical color scheme',
       type: 'strings'
     })
+    .option('category-names', {
+      describe: '[raster] names of the categories, in the order of their colors',
+      type: 'strings'
+    })
     .option('other', {
       describe: 'default value for categorical scheme'
     })

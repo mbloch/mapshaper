@@ -24,6 +24,9 @@ var bandCaches = new WeakMap();
 // fraction of the sample at each end of the range that 0% and 100% ignore, so
 // that a spike or an artifact doesn't shift every percentage break
 var RANGE_TRIM = 0.001;
+// categorical palettes from a file's own colors are made for at most this many
+// categories (the most that the GUI offers as categories)
+var MAX_FILE_PALETTE_CATEGORIES = 300;
 
 // Options that write or read attributes, or make a key
 var VECTOR_ONLY_OPTIONS = ['save_as', 'values', 'index_field', 'key', 'key_style', 'key_name',
@@ -434,4 +437,25 @@ function updateRasterPreview(raster) {
   if (raster.view.preview || runningInBrowser()) {
     raster.view.preview = createRasterPreview(raster, {});
   }
+}
+
+// A categorical palette for the values of a band, from colors that a file
+// gives its values, or null if any value present has no color (or there are
+// too many values to color one by one)
+// @colors: {<value>: color}
+// @band: band number in the source file; @index: the band's index in the grid
+export function getCategoryColorPalette(grid, band, index, colors) {
+  var categories = getRasterBandCategories(grid, index);
+  var list;
+  if (categories.length === 0 || categories.length > MAX_FILE_PALETTE_CATEGORIES) return null;
+  list = categories.map(function(val) { return colors[val] || null; });
+  if (list.includes(null)) return null;
+  return {
+    band: band,
+    type: 'categorical',
+    categories: categories,
+    colors: list,
+    nullColor: null,
+    command: {categories: categories, colors: list}
+  };
 }

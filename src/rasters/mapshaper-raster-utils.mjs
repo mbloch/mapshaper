@@ -6,6 +6,7 @@ import {
 } from './mapshaper-raster-grid';
 import utils from '../utils/mapshaper-utils';
 import { formatVerticalUnits } from './mapshaper-vertical-units';
+import { getRasterCategoryName } from './mapshaper-raster-categories';
 import { stop, warn } from '../utils/mapshaper-logging';
 import { runningInBrowser } from '../mapshaper-env';
 import { updateRasterViewForGrid } from './mapshaper-raster-fill';
@@ -47,10 +48,15 @@ export function getRasterGridBandIndex(grid, band) {
   return i;
 }
 
+// The band number in the source file (1-based) of the grid's band @i
+export function getGridFileBand(grid, i) {
+  return grid.sampleBands && grid.sampleBands[i] >= 0 ? grid.sampleBands[i] + 1 : i + 1;
+}
+
 // e.g. "this raster has 1 band", "this raster has bands 1, 4 and 5"
 function describeGridBands(grid) {
   var nums = utils.range(grid.bands).map(function(i) {
-    return grid.sampleBands && grid.sampleBands[i] >= 0 ? grid.sampleBands[i] + 1 : i + 1;
+    return getGridFileBand(grid, i);
   });
   var contiguous = nums.every(function(n, i) { return n == i + 1; });
   if (contiguous) {
@@ -281,6 +287,10 @@ export function getRasterPixelAtMapXY(raster, x, y) {
     valid: valid,
     // e.g. 'ft', for the values of an elevation raster
     units: !isColor && grid.verticalUnits ? formatVerticalUnits(grid.verticalUnits) : null,
+    // the category name of each band's value, or null
+    names: values.map(function(val, i) {
+      return valid ? getRasterCategoryName(grid, getGridFileBand(grid, i), val) : null;
+    }),
     // Only color images get a color, so that inspecting a measurement raster
     // does not trigger a scaling-stats scan of the whole grid.
     // [r, g, b, a] in the 0-255 range, for formatColor() or a canvas.

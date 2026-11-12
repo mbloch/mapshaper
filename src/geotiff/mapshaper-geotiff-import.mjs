@@ -12,7 +12,10 @@ import { getPixelCoordinatesWarning, getPixelTransform, getWorldFileBBox, getWor
   parseWorldFile, scaleWorldTransform } from '../rasters/mapshaper-world-file';
 import { message, stop, warn, warnOnce } from '../utils/mapshaper-logging';
 import { createRasterPreview, getRasterViewRecipe } from '../rasters/mapshaper-raster-utils';
-import { getDefaultDisplayBands } from '../rasters/mapshaper-raster-display-bands';
+import { getDefaultDisplayBands, getRasterDisplayBands } from '../rasters/mapshaper-raster-display-bands';
+import { readBandCategories } from './mapshaper-geotiff-categories';
+import { setRasterCategoryNames } from '../rasters/mapshaper-raster-categories';
+import { getCategoryColorPalette } from '../rasters/mapshaper-raster-classify';
 import { markRasterSamplesAsSource } from '../rasters/mapshaper-raster-source';
 import { registerGeoTIFFLZWDecoder } from './mapshaper-geotiff-lzw';
 import { getGeoTIFFRowReader, readResampledGeoTIFFSamples } from './mapshaper-geotiff-resample';
@@ -35,9 +38,15 @@ export async function importGeoTIFF(input, optsArg, aux, world) {
   var tiff = await openGeoTIFF(source, geotiff);
   var sourceImage = await tiff.getImage();
   var georef = getGeoTIFFGeoreferencing(sourceImage, world);
-  var bands = getImportBands(sourceImage, opts);
-  var importImage = await selectGeoTIFFImportImage(tiff, sourceImage, opts, bands.samples.length);
-  var imported = await importGeoTIFFImage(importImage, input, opts, sourceImage, georef, aux, bands);
+  var categories = await readGeoTIFFCategories(sourceImage, aux);
+  var bands, importImage, imported;
+  // a raster whose values are categories is data, not an image
+  if (!opts.interpretation && categories.found) {
+    opts = Object.assign({}, opts, {interpretation: 'categorical'});
+  }
+  bands = getImportBands(sourceImage, opts);
+  importImage = await selectGeoTIFFImportImage(tiff, sourceImage, opts, bands.samples.length);
+  imported = await importGeoTIFFImage(importImage, input, opts, sourceImage, georef, aux, bands, categories);
   var dataset = {
     info: {
       raster_sources: [imported.source]
@@ -133,7 +142,8 @@ function getGeoTIFFSource(input) {
 }
 
 // @bands: from getImportBands()
-async function importGeoTIFFImage(importImage, input, opts, sourceImage, georef, aux, bands) {
+// @categories: from readGeoTIFFCategories()
+async function importGeoTIFFImage(importImage, input, opts, sourceImage, georef, aux, bands, categories) {
   var image = importImage.image;
   var width = importImage.width;
   var height = importImage.height;
@@ -211,6 +221,7 @@ async function importGeoTIFFImage(importImage, input, opts, sourceImage, georef,
   }
   setReducedResolution(raster, sourceImage.getWidth(), sourceImage.getHeight());
   markRasterSamplesAsSource(raster.grid);
+  applyGeoTIFFCategories(raster, categories);
   raster.view.recipe = getRasterViewRecipe(raster.grid, raster.view.recipe, opts);
   // A source_bands grid is only measured, never displayed
   if (runningInBrowser() && !opts.source_bands && data) {
@@ -347,6 +358,74 @@ async function readGeoKeyVerticalUnits(image) {
 
 function getRasterInterpretation(opts) {
   return opts.interpretation || 'image';
+}
+
+// What a GeoTIFF says about the categories of its values: a color table (a
+// palette image's values are indexes into it), and GDAL's names and colors of
+// each band's values (see mapshaper-geotiff-categories.mjs). The table colors
+// the first band, as it does in GDAL.
+// Returns {found, bands}, bands: [{names, colors}] by 0-based band index
+async function readGeoTIFFCategories(image, aux) {
+  var metadata = await readGeoTIFFTagString(image, 'GDAL_METADATA');
+  var table = await readGeoTIFFColorTable(image);
+  var bands = [], found = false, o;
+  for (var i = 0; i < image.getSamplesPerPixel(); i++) {
+    o = readBandCategories(metadata, aux ? aux.content : null, i);
+    if (i === 0 && table) o = {names: o.names, colors: table};
+    if (o.names || o.colors) found = true;
+    bands.push(o);
+  }
+  return {found: found, bands: bands};
+}
+
+// {<index>: '#rrggbb'}, or null if the file is not a palette image
+async function readGeoTIFFColorTable(image) {
+  var dir = image.fileDirectory;
+  var map, n, colors;
+  if (getPhotometricInterpretation(image) != 3 || !dir.hasTag || !dir.hasTag('ColorMap')) return null;
+  try {
+    map = await dir.loadValue('ColorMap');
+  } catch(e) {
+    return null;
+  }
+  n = map ? Math.floor(map.length / 3) : 0;
+  if (n === 0) return null;
+  colors = {};
+  for (var i = 0; i < n; i++) {
+    colors[i] = '#' + [map[i], map[i + n], map[i + n * 2]].map(function(c) {
+      return ((c >> 8) + 0x100).toString(16).slice(1);
+    }).join('');
+  }
+  return colors;
+}
+
+async function readGeoTIFFTagString(image, tag) {
+  var dir = image.fileDirectory;
+  try {
+    return dir.hasTag && dir.hasTag(tag) ? String(await dir.loadValue(tag)) : null;
+  } catch(e) {
+    return null; // an unreadable tag is treated like a missing one
+  }
+}
+
+// Gives the grid the names of its bands' values, and a categorical raster the
+// palette of its file's colors
+function applyGeoTIFFCategories(raster, categories) {
+  var grid = raster.grid;
+  var index, fileBand, colors, palette;
+  if (!categories || !categories.found) return;
+  grid.sampleBands.forEach(function(b) {
+    var o = categories.bands[b];
+    if (o && o.names) setRasterCategoryNames(grid, b + 1, o.names);
+  });
+  if (raster.interpretation != 'categorical' || !grid.samples) return;
+  index = getRasterDisplayBands(grid).color[0];
+  fileBand = grid.sampleBands[index];
+  colors = categories.bands[fileBand] && categories.bands[fileBand].colors;
+  palette = colors ? getCategoryColorPalette(grid, fileBand + 1, index, colors) : null;
+  if (palette) {
+    raster.view.recipe = Object.assign({}, raster.view.recipe, {palette: palette});
+  }
 }
 
 // @bandCount: the number of bands to be imported, which share the import size

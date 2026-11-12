@@ -323,7 +323,8 @@ export function ImportControl(gui, opts) {
     var names = getFileNames(files);
     var expanded = [];
     if (files.length === 0) return;
-    useQuickView = importTotal === 0 && (opts.quick_view ||
+    // quickView is false if the user checked "with advanced options"
+    useQuickView = importTotal === 0 && quickView !== false && (opts.quick_view ||
         quickView);
     try {
       expanded = await expandFiles(files);

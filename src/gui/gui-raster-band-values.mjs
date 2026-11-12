@@ -67,6 +67,20 @@ export function getRasterBandCategories(lyr, field) {
   return entry.categories[field];
 }
 
+// The name of a band's value, from its file or a palette, or null
+export function getRasterCategoryName(lyr, field, value) {
+  var o = findBand(lyr, field);
+  return o ? internal.getRasterCategoryName(getGrid(lyr), o.band, value) : null;
+}
+
+// The raster's categorical palette, if it has one: {field, categories, colors}
+export function getRasterCategoricalPalette(lyr) {
+  var recipe = lyr && lyr.raster && lyr.raster.view && lyr.raster.view.recipe;
+  var palette = recipe && recipe.palette;
+  if (!palette || palette.type != 'categorical' || !palette.categories) return null;
+  return {field: 'band' + palette.band, categories: palette.categories, colors: palette.colors};
+}
+
 // A raster of values that aren't categories (by its interpretation) starts with
 // continuous colors
 export function rasterHasContinuousValues(lyr) {

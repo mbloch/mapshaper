@@ -48,7 +48,7 @@ export function ColorSchemeImportDialog(gui, opts) {
     El('span').appendTo(header).text('Import a palette');
     El('button').addClass('label-style-close').appendTo(header).text('×').on('click', close);
     dropEl = El('div').addClass('color-scheme-import-drop').appendTo(panel)
-      .text('Drop a GMT (.cpt) or JSON palette file here, or paste a palette or a list of colors');
+      .text('Drop a GMT (.cpt), JSON or legend file here, or paste a palette or a list of colors');
     messageEl = El('div').addClass('color-scheme-import-message').appendTo(panel);
 
     ['dragenter', 'dragover'].forEach(function(type) {

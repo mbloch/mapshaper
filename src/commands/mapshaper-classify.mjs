@@ -50,6 +50,7 @@ import {
   validateRasterClassifyOptions
 } from '../rasters/mapshaper-raster-classify';
 import { setRasterPaletteSea, getBlendColorOptionKeys } from '../rasters/mapshaper-raster-hypsometric';
+import { setRasterCategoryNames } from '../rasters/mapshaper-raster-categories';
 
 cmd.classify = function(lyr, dataset, optsArg) {
   var opts = optsArg || {};
@@ -60,6 +61,9 @@ cmd.classify = function(lyr, dataset, optsArg) {
   if (layerHasRaster(lyr)) {
     classifyRasterLayer(lyr, dataset, opts);
     return;
+  }
+  if (opts.category_names) {
+    stop('category-names= works with raster layers');
   }
   if (opts.hypsometric || opts.sea || opts.sea_colors || opts.sea_breaks ||
       getBlendColorOptionKeys().some(function(key) { return key in opts; })) {
@@ -324,8 +328,29 @@ function classifyRasterLayer(lyr, dataset, opts) {
   }, Object.assign({}, opts, {count_label: sample.sampled ? 'sampled pixel counts' : 'pixel counts'}));
   palette = setRasterPaletteSea(getRasterPaletteFromClassification(o, band, opts, sample.values), raster, opts);
   noteLayerWillChange(lyr, {operation: 'classify', unit: 'raster'});
+  if (opts.category_names) {
+    setRasterCategoryNames(grid, band, getCategoryNamesOption(opts.category_names, palette));
+  }
   setRasterPalette(raster, palette);
   markLayerChanged(lyr, {operation: 'classify', unit: 'raster'});
+}
+
+// {<value>: name} from category-names=, a name for each category in the order
+// of their colors ('' for a category without one)
+function getCategoryNamesOption(list, palette) {
+  var names = {};
+  if (palette.type != 'categorical') {
+    stop('category-names= works with method=categorical');
+  }
+  if (list.length != palette.categories.length) {
+    stop(utils.format('category-names= needs a name for each of the %d categories (it has %d)',
+      palette.categories.length, list.length));
+  }
+  palette.categories.forEach(function(val, i) {
+    var name = String(list[i]).trim();
+    if (name) names[val] = name;
+  });
+  return names;
 }
 
 function validateDivergingOptions(method, fieldType, opts) {
