@@ -54,7 +54,7 @@ describe('-classify hypsometric=', function() {
     var catalog = await importRaster(makeGeoTIFF([0, 500, 1500, 3000], 2, sahara));
     catalog.getActiveLayer().layer.raster.grid.verticalUnits = 'ft';
     await runCommand(catalog, '-proj init=wgs84 -classify hypsometric=Polar');
-    assert.equal(getPalette(catalog).breaks[1], 164.042);
+    assert.equal(getPalette(catalog).breaks[1], +(internal.getHypsometricStops('Polar')[1].elevation / 0.3048).toPrecision(6));
   });
 
   it('rejects other values, options that give colors or breaks, and vector layers', async function() {
@@ -83,10 +83,12 @@ describe('-classify hypsometric=', function() {
     var catalog = await importRaster(makeGeoTIFF([0, 500, 1500, 3000], 2, sahara));
     var colorsOf = function(name) { return internal.getHypsometricStops(name).map(function(o) { return o.color; }); };
     var arid = colorsOf('Arid').map(function(c, i) { return i == 2 ? '#ff0000' : c; });
-    var breaks = [-10, 10, 200, 600, 1000, 2000, 3000, 4000, 5000, 6500];
+    var breaks = internal.getHypsometricStops('Arid').map(function(o, i, arr) {
+      return i === 0 ? -10 : i == arr.length - 1 ? 6500 : o.elevation + 5;
+    });
     var palette;
     await runCommand(catalog, '-proj init=wgs84 -classify hypsometric=blended arid-colors=' + arid.join(',') +
-      ' breaks=' + breaks.slice(1, -1).join(',') + ' outer-breaks=-10,6500');
+      ' breaks=' + breaks.slice(1, -1).join(',') + ' outer-breaks=' + breaks[0] + ',' + breaks[breaks.length - 1]);
     palette = getPalette(catalog);
     assert.deepEqual(palette.blend.ramps[0].colors, arid);
     assert.deepEqual(palette.blend.ramps[1].colors, colorsOf('Lush'));
@@ -99,11 +101,13 @@ describe('-classify hypsometric=', function() {
   it('blended: its colors need one at each elevation, and only a blend takes them', async function() {
     var catalog = await importRaster(makeGeoTIFF([0, 500, 1500, 3000], 2, sahara));
     var lush = internal.getHypsometricStops('Lush').map(function(o) { return o.color; }).join(',');
+    var n = internal.getHypsometricStops('Lush').length;
     await runCommand(catalog, '-proj init=wgs84');
-    await assert.rejects(runCommand(catalog, '-classify hypsometric=blended lush-colors=red,blue'), /needs 10 colors/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=blended lush-colors=red,blue'), new RegExp('needs ' + n + ' colors'));
     await assert.rejects(runCommand(catalog, '-classify hypsometric=lush lush-colors=' + lush), /works with hypsometric=blended/);
     await assert.rejects(runCommand(catalog, '-classify hypsometric=blended breaks=1,2'), /outer-breaks=/);
-    await assert.rejects(runCommand(catalog, '-classify hypsometric=blended breaks=1,2 outer-breaks=0,5'), /10 elevations/);
+    await assert.rejects(runCommand(catalog, '-classify hypsometric=blended breaks=1,2,3,4,5,6,7,8,9 outer-breaks=0,10'),
+      new RegExp('has ' + n + ' elevations'));
     await assert.rejects(runCommand(catalog, '-classify hypsometric=arid breaks=1,2'), /does not work with breaks=/);
   });
 
