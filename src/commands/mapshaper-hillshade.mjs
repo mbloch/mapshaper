@@ -22,45 +22,50 @@ import { formatColor, parseColor } from '../color/color-utils';
 import { getHillshadeColorRamp, getHillshadeRampColors } from '../rasters/mapshaper-raster-color';
 import { runningInBrowser } from '../mapshaper-env';
 import { message, stop, verbose, warnOnce } from '../utils/mapshaper-logging';
-// More passes don't generalize much more: beyond three or four, FPS facets
-// slopes instead of removing small landforms. high smooths a 2x downsampled
-// copy instead (see twoLevelSmooth()); its settings are for that level.
+// Smoothing levels 1-4 (smoothing=0 is off). Each uses dynamic smoothing:
+// the FPS threshold rises from DEFAULT_FPS_MIN_THRESHOLD in flat terrain to
+// the preset's threshold on steep slopes, by slopeFactor degrees per degree of
+// mean slope. More passes don't generalize much more: beyond three or four, FPS
+// facets slopes instead of removing small landforms.
 var FPS_PRESETS = {
-  low: {rounds: 1, threshold: 15, radius: 4, levels: 1},
-  medium: {rounds: 3, threshold: 20, radius: 4, levels: 1},
-  high: {rounds: 3, threshold: 20, radius: 4, levels: 2}
+  1: {rounds: 1, threshold: 10, radius: 3, levels: 1, slopeFactor: 0.6},
+  2: {rounds: 2, threshold: 15, radius: 4, levels: 1, slopeFactor: 1},
+  3: {rounds: 3, threshold: 20, radius: 6, levels: 1, slopeFactor: 1.4},
+  4: {rounds: 3, threshold: 25, radius: 8, levels: 1, slopeFactor: 1.9}
 };
-// the full-resolution pass of two-level smoothing
+var DEFAULT_SMOOTHING = 1;
+// the full-resolution pass of two-level smoothing (fps-levels=2)
 var FPS_REFINEMENT = {rounds: 1, threshold: 20, radius: 4};
-// dynamic smoothing (fps-min-threshold=)
-var DEFAULT_FPS_SLOPE_FACTOR = 3;
+// dynamic smoothing
+var DEFAULT_FPS_MIN_THRESHOLD = 1;
+var DEFAULT_FPS_SLOPE_FACTOR = 1;
 var DEFAULT_FPS_SLOPE_RADIUS = 10;
 var DEFAULT_FPS_BLEND = [5, 15];
 // spread-based dynamic smoothing (fps-spread=)
 var DEFAULT_FPS_SPREAD_RADIUS = 3;
-var DEFAULT_SPREAD_MIN_THRESHOLD = 1;
-var AUTO_SMOOTHING = 'low';
-var DEFAULT_LOWPASS_RADIUS = 1;
 var METERS_PER_DEGREE = 6371008.8 * Math.PI / 180;
 var DEFAULT_AMBIENT = 0.5;
 var DEFAULT_TEXTURE_DETAIL = 0.5;
 
-function isFpsSmoothing(method) {
-  return method == 'low' || method == 'medium' || method == 'high';
-}
-
-// Returns none, lowpass or an FPS preset (low, medium, high)
-function getSmoothingMethod(opts) {
-  var method = opts.smoothing || 'auto';
-  if (method == 'auto') method = AUTO_SMOOTHING;
-  if (method == 'off') method = 'none';
-  if (method != 'none' && method != 'lowpass' && !isFpsSmoothing(method)) {
-    stop('Unsupported smoothing method:', method + '. Use off, low, medium, high, lowpass or auto');
+// Returns a smoothing level, from 0 (off) to 4
+function getSmoothingLevel(opts) {
+  var str = opts.smoothing == null ? String(DEFAULT_SMOOTHING) : String(opts.smoothing).toLowerCase();
+  var level;
+  if (str == 'off') str = '0';
+  if (!/^[0-4]$/.test(str)) {
+    stop('smoothing= should be a level from 0 (off) to 4');
   }
-  if (!isFpsSmoothing(method) && (opts.fps_passes != null || opts.fps_radius != null ||
+  level = Number(str);
+  // fps-passes=0 or fps-threshold=0 turns smoothing off, like smoothing=0
+  if (opts.fps_passes === 0 || opts.fps_threshold === 0) {
+    return 0;
+  }
+  if (level === 0 && (opts.fps_passes != null || opts.fps_radius != null ||
       opts.fps_threshold != null || opts.fps_levels != null || opts.maximum_change != null ||
-      opts.fps_min_threshold != null || opts.fps_spread != null)) {
-    stop('FPS settings need smoothing=low, medium, high or auto');
+      opts.fps_min_threshold != null || opts.fps_slope_factor != null ||
+      opts.fps_slope_radius != null || opts.fps_blend != null || opts.fps_spread != null ||
+      opts.fps_spread_radius != null)) {
+    stop('FPS settings do not apply with smoothing=0');
   }
   if (opts.fps_spread != null && (opts.fps_slope_factor != null || opts.fps_slope_radius != null)) {
     stop('fps-slope-factor= and fps-slope-radius= do not apply with fps-spread=');
@@ -68,27 +73,16 @@ function getSmoothingMethod(opts) {
   if (opts.fps_spread_radius != null && opts.fps_spread == null) {
     stop('fps-spread-radius= needs fps-spread=');
   }
-  if (opts.fps_min_threshold == null && (opts.fps_slope_factor != null ||
-      opts.fps_slope_radius != null || opts.fps_blend != null)) {
-    stop('fps-slope-factor=, fps-slope-radius= and fps-blend= need fps-min-threshold=');
-  }
-  if (method != 'lowpass' && opts.lowpass_radius != null) {
-    stop('lowpass-radius= needs smoothing=lowpass');
-  }
-  return method;
+  return level;
 }
 
 // Settings for smoothTerrain(), or null for no smoothing
-// FPS presets: feature-preserving smoothing, with preset settings
-// lowpass: the earlier blur-and-restore method
 // @minElevation: min-elevation= in meters, or null
-function getSmoothingSettings(method, opts, exaggeration, minElevation) {
-  if (method == 'none') return null;
+function getSmoothingSettings(level, opts, exaggeration, minElevation) {
+  if (level === 0) return null;
   return {
-    method: method,
-    fps: isFpsSmoothing(method) ? getFpsOptions(method, opts) : null,
+    fps: getFpsOptions(level, opts),
     refinement: FPS_REFINEMENT,
-    lowpassRadius: getLowpassRadius(opts),
     exaggeration: exaggeration,
     minElevation: minElevation
   };
@@ -108,23 +102,23 @@ function formatThresholdRange(thresholds, valid) {
   }).join(', ') + ' degrees';
 }
 
-function getLowpassRadius(opts) {
-  return opts.lowpass_radius || DEFAULT_LOWPASS_RADIUS;
-}
-
-function getFpsOptions(method, opts) {
-  var preset = FPS_PRESETS[method];
+// A minimum threshold equal to the threshold gives a fixed threshold, without
+// dynamic smoothing
+function getFpsOptions(level, opts) {
+  var preset = FPS_PRESETS[level];
   var levels = opts.fps_levels || preset.levels;
   var threshold = opts.fps_threshold || preset.threshold;
   var spread = opts.fps_spread > 0;
   var minThreshold = opts.fps_min_threshold > 0 ? opts.fps_min_threshold :
-    spread ? Math.min(DEFAULT_SPREAD_MIN_THRESHOLD, threshold) : null;
-  var dynamic = minThreshold > 0;
-  if (dynamic && minThreshold > threshold) {
+    Math.min(DEFAULT_FPS_MIN_THRESHOLD, threshold);
+  var dynamic = minThreshold < threshold;
+  var slopeFactor = opts.fps_slope_factor >= 0 ? opts.fps_slope_factor :
+    preset.slopeFactor >= 0 ? preset.slopeFactor : DEFAULT_FPS_SLOPE_FACTOR;
+  if (minThreshold > threshold) {
     stop('fps-min-threshold= should not be larger than the FPS threshold (' + threshold + ' degrees)');
   }
   if (opts.fps_blend != null && levels != 2) {
-    stop('fps-blend= applies to two-level smoothing (smoothing=high or fps-levels=2)');
+    stop('fps-blend= applies to two-level smoothing (fps-levels=2)');
   }
   return {
     rounds: opts.fps_passes || preset.rounds,
@@ -133,9 +127,9 @@ function getFpsOptions(method, opts) {
     maxChange: opts.maximum_change || null,
     levels: levels,
     minThreshold: dynamic ? minThreshold : null,
-    spread: spread ? opts.fps_spread : null,
-    spreadRadius: spread ? (opts.fps_spread_radius > 0 ? opts.fps_spread_radius : DEFAULT_FPS_SPREAD_RADIUS) : null,
-    slopeFactor: dynamic && !spread ? (opts.fps_slope_factor >= 0 ? opts.fps_slope_factor : DEFAULT_FPS_SLOPE_FACTOR) : null,
+    spread: dynamic && spread ? opts.fps_spread : null,
+    spreadRadius: dynamic && spread ? (opts.fps_spread_radius > 0 ? opts.fps_spread_radius : DEFAULT_FPS_SPREAD_RADIUS) : null,
+    slopeFactor: dynamic && !spread ? slopeFactor : null,
     slopeRadius: dynamic && !spread ? (opts.fps_slope_radius >= 0 ? opts.fps_slope_radius : DEFAULT_FPS_SLOPE_RADIUS) : null,
     blendRange: dynamic && levels == 2 ? parseFpsBlend(opts.fps_blend) : null
   };
@@ -153,23 +147,23 @@ function parseFpsBlend(str) {
   return range;
 }
 
-function getSmoothingParams(method, opts) {
-  var fps = isFpsSmoothing(method) ? getFpsOptions(method, opts) : null;
+function getSmoothingParams(level, opts) {
+  var fps = level > 0 ? getFpsOptions(level, opts) : null;
   var dynamic = fps && fps.minThreshold > 0;
   return {
-    smoothing: method,
+    smoothing: level,
     fps_levels: fps ? fps.levels : null,
     fps_passes: fps ? fps.rounds : null,
     fps_radius: fps ? fps.radius : null,
     fps_threshold: fps ? fps.threshold : null,
-    fps_min_threshold: dynamic ? fps.minThreshold : null,
+    // the threshold itself, for a fixed threshold
+    fps_min_threshold: dynamic ? fps.minThreshold : fps ? fps.threshold : null,
     fps_spread: dynamic ? fps.spread : null,
     fps_spread_radius: dynamic ? fps.spreadRadius : null,
     fps_slope_factor: dynamic ? fps.slopeFactor : null,
     fps_slope_radius: dynamic ? fps.slopeRadius : null,
     fps_blend: dynamic && fps.levels == 2 ? (fps.blendRange ? fps.blendRange.join(',') : 'off') : null,
-    maximum_change: fps ? fps.maxChange : null,
-    lowpass_radius: method == 'lowpass' ? getLowpassRadius(opts) : null
+    maximum_change: fps ? fps.maxChange : null
   };
 }
 
@@ -187,7 +181,7 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
   validateHillshadeGrid(grid, opts);
   band = getRasterGridBandIndex(grid, opts.band);
   style = getHillshadeStyle(opts);
-  smoothing = getSmoothingMethod(opts);
+  smoothing = getSmoothingLevel(opts);
   altitude = opts.altitude >= 0 ? opts.altitude : DEFAULT_ALTITUDE;
   if (altitude > 90) stop('altitude= should be from 0 to 90 degrees');
   colors = {
@@ -332,8 +326,8 @@ function validateHillshadeGrid(grid, opts) {
   if (opts.light_adjust != null && !(opts.light_adjust >= 0 && opts.light_adjust <= 60)) {
     stop('light-adjust= should be from 0 to 60 degrees');
   }
-  if (opts.fps_threshold != null && !(opts.fps_threshold > 0 && opts.fps_threshold < 90)) {
-    stop('fps-threshold= should be an angle between 0 and 90 degrees');
+  if (opts.fps_threshold != null && !(opts.fps_threshold >= 0 && opts.fps_threshold < 90)) {
+    stop('fps-threshold= should be an angle from 0 (off) to 90 degrees');
   }
   if (opts.fps_min_threshold != null && !(opts.fps_min_threshold > 0 && opts.fps_min_threshold < 90)) {
     stop('fps-min-threshold= should be an angle between 0 and 90 degrees');
@@ -344,14 +338,11 @@ function validateHillshadeGrid(grid, opts) {
   if (opts.fps_slope_radius != null && !(opts.fps_slope_radius >= 0 && opts.fps_slope_radius <= 50)) {
     stop('fps-slope-radius= should be from 0 to 50 pixels');
   }
-  if (opts.fps_passes != null && !(opts.fps_passes >= 1 && opts.fps_passes <= 20)) {
-    stop('fps-passes= should be from 1 to 20');
+  if (opts.fps_passes != null && !(opts.fps_passes >= 0 && opts.fps_passes <= 20)) {
+    stop('fps-passes= should be from 0 (off) to 20');
   }
   if (opts.fps_levels != null && opts.fps_levels != 1 && opts.fps_levels != 2) {
     stop('fps-levels= should be 1 or 2');
-  }
-  if (opts.lowpass_radius != null && !(opts.lowpass_radius > 0 && opts.lowpass_radius <= 20)) {
-    stop('lowpass-radius= should be a number of pixels, up to 20');
   }
   if (opts.fps_radius != null && !(opts.fps_radius >= 1 && opts.fps_radius <= 20)) {
     stop('fps-radius= should be from 1 to 20 pixels');

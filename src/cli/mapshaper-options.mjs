@@ -2823,82 +2823,78 @@ export function getOptionParser() {
       describe: 'height of the light above the horizon, in degrees (default is 45)',
       type: 'number'
     })
-    .option('single-light', {
-      describe: 'use one light instead of a blend of lights from several directions',
-      type: 'flag'
-    })
     .option('exaggeration', {
       describe: 'vertical exaggeration (default depends on the map scale)',
       type: 'number'
     })
     .option('smoothing', {
-      describe: 'terrain smoothing: off, low, medium, high, lowpass or auto (default)'
+      describe: 'terrain smoothing level, from 0 (off) to 4 (default is 1)'
+    })
+    .option('ambient', {
+      describe: 'darkening of terrain hidden from the open sky, 0-1 (default is 0.5)',
+      type: 'number'
     })
     .option('fps-passes', {
-      describe: 'passes of feature-preserving smoothing (low 1, medium and high 3)',
+      // describe: 'passes of feature-preserving smoothing (FPS), overriding the level (0 is off)',
       type: 'integer'
     })
     .option('fps-levels', {
-      describe: '1 or 2; if 2, run FPS on a downsampled copy, then once at full resolution',
+      // describe: '1 or 2; if 2, run FPS on a downsampled copy, then once at full resolution',
       type: 'integer'
     })
     .option('fps-threshold', {
-      describe: 'FPS keeps slope changes sharper than this angle (the maximum, with dynamic smoothing)',
+      // describe: 'FPS keeps slope changes sharper than this angle, on steep slopes (0 is off)',
       type: 'number'
     })
     .option('fps-radius', {
-      describe: 'FPS smoothing window radius, in pixels (default is 4)',
+      // describe: 'FPS smoothing window radius, in pixels (overrides the level)',
       type: 'integer'
     })
     .option('fps-min-threshold', {
-      describe: 'turns on dynamic smoothing: FPS threshold in flat terrain (e.g. 1), rising with slope',
+      // describe: 'FPS threshold in flat terrain, rising with slope to fps-threshold (default is 1)',
       type: 'number'
     })
     .option('fps-slope-factor', {
-      describe: 'dynamic smoothing: threshold degrees per degree of mean slope (default is 3)',
+      // describe: 'threshold degrees per degree of mean slope (default depends on the level)',
       type: 'number'
     })
     .option('fps-slope-radius', {
-      describe: 'dynamic smoothing: radius for averaging slope, in pixels (default is 10)',
+      // describe: 'dynamic smoothing: radius for averaging slope, in pixels (default is 10)',
       type: 'number'
     })
     .option('fps-blend', {
-      describe: 'dynamic two-level smoothing: thresholds blending one level into two (default is 5,15)'
+      // describe: 'dynamic two-level smoothing: thresholds blending one level into two (default is 5,15)'
     })
     .option('fps-spread', {
-      describe: '(experimental) FPS threshold as this multiple of the local spread of slope directions',
+      // describe: '(experimental) FPS threshold as this multiple of the local spread of slope directions',
       type: 'number'
     })
     .option('fps-spread-radius', {
-      describe: '(experimental) radius for measuring the spread, in pixels (default is 3)',
+      // describe: '(experimental) radius for measuring the spread, in pixels (default is 3)',
       type: 'number'
     })
     .option('maximum-change', {
       // describe: 'limit how far FPS can move an elevation, in meters (off by default)',
       type: 'number'
     })
-    .option('lowpass-radius', {
-      // describe: 'blur radius of smoothing=lowpass, in pixels (default is 1)',
-      type: 'number'
-    })
     .option('light-adjust', {
       describe: 'turn the light up to this many degrees to suit landform orientation (0-60)',
       type: 'number'
     })
-    .option('ambient', {
-      describe: 'darkening of terrain hidden from the open sky, 0-1 (default is 0.5)',
-      type: 'number'
+    .option('single-light', {
+      describe: 'use one light instead of a blend of lights from several directions',
+      type: 'flag'
     })
     .option('texture', {
       describe: 'max opacity of texture shading (after Leland Brown), 0-1 (default is 0)',
       type: 'number'
     })
     .option('texture-highlights', {
-      describe: 'opacity of texture shading highlights, relative to texture= (default is 0)',
+      // describe: 'opacity of texture shading highlights, relative to texture= (default is 0)',
       type: 'number'
     })
     .option('texture-detail', {
-      describe: 'texture shading exponent; higher values keep more detail (default is 0.5)',
+      // describe: 'texture shading exponent; higher values keep more detail (default is 0.5)',
       type: 'number'
     })
     .option('aerial', {
@@ -2930,17 +2926,17 @@ export function getOptionParser() {
       describe: 'shape of the tone curve; below 1 strengthens faint shading (default is 0.75)',
       type: 'number'
     })
-    .option('verbose', {
-      describe: 'print the settings used, including automatic ones',
-      type: 'flag'
-    })
     .option('band', {
-      describe: 'band containing elevation values, numbered from 1 (default is 1)',
+      describe: 'band containing elevation values (default is 1)',
       type: 'integer'
     })
     .option('workers', {
-      describe: 'number of worker threads (default depends on raster size and CPU; 0 is off)',
+      // describe: 'number of worker threads (default depends on raster size and CPU; 0 is off)',
       type: 'integer'
+    })
+    .option('verbose', {
+      describe: 'print the settings used, including automatic ones',
+      type: 'flag'
     })
     .option('name', nameOpt)
     .option('target', targetOpt)

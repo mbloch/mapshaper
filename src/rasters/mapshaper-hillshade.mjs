@@ -18,9 +18,6 @@ export var DEFAULT_HIGHLIGHT_RATIO = 0.6;
 // plus fainter lights on either side of it.
 var MULTI_LIGHTS = [[-90, 0.15], [-45, 0.2], [0, 0.45], [45, 0.2]];
 
-var RIDGE_WEIGHT = 0.5;
-var VALLEY_WEIGHT = 0.3;
-
 export function getHillshadeLights(azimuth, altitude, singleLight) {
   var az = azimuth == null ? DEFAULT_AZIMUTH : azimuth;
   var alt = altitude == null ? DEFAULT_ALTITUDE : altitude;
@@ -323,85 +320,6 @@ export function restoreLowElevations(elev, before, valid, min) {
     b = before[i];
     elev[i] = b <= min ? min : Math.max(elev[i], min + (b - min) / 2);
   }
-}
-
-// Terrain generalization after Terrain Sculptor (Leonowicz, Jenny & Hurni
-// 2010): a low-pass filter removes small landforms, then ridges and valleys
-// that are large compared with the filter are restored by blending toward
-// local maximum and minimum surfaces, according to curvature measured at a
-// broader scale.
-// @sigma strength, as the standard deviation in pixels of the low-pass filter
-export function generalizeTerrain(elev, valid, width, height, sigma) {
-  var weights = valid ? toWeights(valid) : null;
-  var rankRadius = Math.max(1, Math.round(sigma * 0.6));
-  var low = blurFloatChannel(Float32Array.from(elev), weights, width, height, sigma);
-  var broad = blurFloatChannel(Float32Array.from(elev), weights, width, height, sigma * 2.5);
-  var hi = blurFloatChannel(rankFilter(elev, valid, width, height, rankRadius, true), weights, width, height, sigma);
-  var lo = blurFloatChannel(rankFilter(elev, valid, width, height, rankRadius, false), weights, width, height, sigma);
-  var curv = new Float32Array(width * height);
-  var out = new Float32Array(width * height);
-  var total = 0, count = 0;
-  var x, y, i, scale, t;
-  for (y = 1; y < height - 1; y++) {
-    for (x = 1; x < width - 1; x++) {
-      i = y * width + x;
-      if (valid && !valid[i]) continue;
-      curv[i] = broad[i - 1] + broad[i + 1] + broad[i - width] + broad[i + width] - 4 * broad[i];
-      total += Math.abs(curv[i]);
-      count++;
-    }
-  }
-  scale = count > 0 ? total / count * 2 : 0;
-  for (i = 0; i < out.length; i++) {
-    if (valid && !valid[i]) {
-      out[i] = elev[i];
-      continue;
-    }
-    t = scale > 0 ? Math.max(-1, Math.min(1, curv[i] / scale)) : 0;
-    out[i] = t < 0 ?
-      low[i] - t * RIDGE_WEIGHT * (hi[i] - low[i]) :
-      low[i] - t * VALLEY_WEIGHT * (low[i] - lo[i]);
-  }
-  return out;
-}
-
-// Separable maximum or minimum filter over a square window, ignoring invalid
-// pixels. A pixel with no valid pixel in its window keeps its own value.
-export function rankFilter(src, valid, width, height, radius, isMax) {
-  var tmp = new Float32Array(width * height);
-  var tmpValid = valid ? new Uint8Array(width * height) : null;
-  var out = new Float32Array(width * height);
-  var x, y, i, j, row, v, found, best;
-  for (y = 0; y < height; y++) {
-    row = y * width;
-    for (x = 0; x < width; x++) {
-      found = false;
-      best = 0;
-      for (j = Math.max(0, x - radius); j <= Math.min(width - 1, x + radius); j++) {
-        if (valid && !valid[row + j]) continue;
-        v = src[row + j];
-        if (!found || (isMax ? v > best : v < best)) best = v;
-        found = true;
-      }
-      tmp[row + x] = found ? best : src[row + x];
-      if (tmpValid) tmpValid[row + x] = found ? 1 : 0;
-    }
-  }
-  for (x = 0; x < width; x++) {
-    for (y = 0; y < height; y++) {
-      found = false;
-      best = 0;
-      for (j = Math.max(0, y - radius); j <= Math.min(height - 1, y + radius); j++) {
-        i = j * width + x;
-        if (tmpValid && !tmpValid[i]) continue;
-        v = tmp[i];
-        if (!found || (isMax ? v > best : v < best)) best = v;
-        found = true;
-      }
-      out[y * width + x] = found ? best : tmp[y * width + x];
-    }
-  }
-  return out;
 }
 
 // Local adjustment of the light direction, after the Swiss manual technique:

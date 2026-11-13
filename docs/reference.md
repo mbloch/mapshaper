@@ -2173,7 +2173,7 @@ Convert an elevation raster to shaded relief. By default, the shading is transpa
 
 `exaggeration=`  Vertical exaggeration (default depends on the map scale).
 
-`smoothing=`  Terrain smoothing: off, low, medium, high, lowpass or auto (default).
+`smoothing=`  Terrain smoothing level, from 0 (off) to 4 (default is 1). Higher levels remove larger landforms.
 
 `ambient=`  Darkening of terrain hidden from the open sky, 0-1 (default is 0.5).
 

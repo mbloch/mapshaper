@@ -347,27 +347,37 @@ same pattern as other mapshaper commands.
   the pixel size over 50 m, rounded to a multiple of 0.25 so that it is easy
   to read and adjust, and is printed when it is chosen automatically (e.g.
   `Exaggeration: 4.25 (automatic)`; `-info` shows the pixel size).
-- `smoothing=` terrain smoothing, described under Generalization:
-  - `low`, `medium`, `high`: feature-preserving smoothing (FPS) presets; see
-    Generalization for their settings.
-  - `auto` (default): currently `low` (it was `medium` until manual testing
-    favored keeping more terrain detail); it may later depend on the map
-    scale.
-  - `off` or `none`: no smoothing.
-  - `lowpass` (experimental): the earlier blur-and-restore method.
-- `fps-passes=` (1-20) overrides the preset number of FPS passes.
-- `fps-levels=` 1 (single-level FPS) or 2 (two-level smoothing, as in
-  `high`; see Generalization) overrides the preset. With 2, `fps-passes=`,
-  `fps-threshold=` and `fps-radius=` apply to the downsampled level; the
-  full-resolution pass that follows always uses 1 pass, 20° and radius 4.
+- `smoothing=` terrain smoothing level, from 0 to 4 (default 1), described
+  under Generalization. 0 (or `off`) is no smoothing; levels 1-4 are
+  feature-preserving smoothing (FPS) presets, all using dynamic smoothing:
+
+  | level | `fps-passes=` | `fps-threshold=` | `fps-radius=` | `fps-slope-factor=` |
+  |---|---|---|---|---|
+  | 1 | 1 | 10 | 3 | 0.6 |
+  | 2 | 2 | 15 | 4 | 1 |
+  | 3 | 3 | 20 | 6 | 1.4 |
+  | 4 | 3 | 25 | 8 | 1.9 |
+
+  All levels use `fps-min-threshold=1`, `fps-slope-radius=10` and
+  `fps-levels=1`. They were chosen by comparing test renderings of several
+  example datasets. Earlier names (`low`, `medium`, `high`, `auto`) and the
+  experimental `lowpass` method (with `lowpass-radius=`) were removed.
+- `fps-passes=` (1-20) overrides the level's number of FPS passes.
+- `fps-passes=0` or `fps-threshold=0` turns smoothing off, like
+  `smoothing=0`; other FPS settings are then ignored.
+- `fps-levels=` 1 (single-level FPS, the default) or 2 (two-level smoothing;
+  see Generalization). With 2, `fps-passes=`, `fps-threshold=` and
+  `fps-radius=` apply to the downsampled level; the full-resolution pass that
+  follows always uses 1 pass, 20° and radius 4.
 - `fps-threshold=`, `fps-radius=`, `maximum-change=` (experimental) FPS
-  settings, described under Generalization. They refine any FPS preset.
-- `fps-min-threshold=` (experimental) turns on dynamic smoothing, with
-  `fps-slope-factor=`, `fps-slope-radius=` and, for two-level smoothing,
-  `fps-blend=`; see Dynamic smoothing under Generalization.
-- `lowpass-radius=` blur radius of `smoothing=lowpass`, in pixels (default 1).
-- FPS settings with `smoothing=off` or `lowpass`, and `lowpass-radius=` without
-  `smoothing=lowpass`, are errors rather than being silently ignored.
+  settings, described under Generalization. They refine any level.
+- `fps-min-threshold=` (default 1), `fps-slope-factor=` (default from the
+  level; 1 otherwise), `fps-slope-radius=` and, for two-level smoothing,
+  `fps-blend=` control dynamic smoothing; see Dynamic smoothing under
+  Generalization. `fps-min-threshold=` equal to `fps-threshold=` gives a fixed
+  threshold, and is how the settings record one.
+- FPS settings with `smoothing=0` are errors rather than being silently
+  ignored.
 - `light-adjust=`, `ambient=`, `texture=`, `aerial=` (experimental) lighting refinements,
   described under Lighting experiments. `ambient=` defaults to 0.5, the
   others to 0 (off).
@@ -532,23 +542,25 @@ Each pass (called a round in the code):
 
 Settings:
 
-- `fps-threshold=` (20° in the default preset): lower values preserve more slope changes as
+- `fps-threshold=` (10° at the default level 1): lower values preserve more slope changes as
   features, keeping ridges sharper but also more small-scale texture; higher
   values approach a blur. Normals are measured on the exaggerated surface, so
   higher exaggeration has a similar effect to lowering the threshold.
-- `fps-radius=` (4 in the default preset, a 9x9 window): the size of bumps averaged away.
+- `fps-radius=` (3 at the default level 1, a 7x7 window): the size of bumps averaged away.
   Cost per round grows with the square of the window width.
 - `maximum-change=` (default off): after each round, elevations are clamped
   to within this many meters of their original values, protecting summits and
   narrow gorges from being shaved down.
 
-Presets (`smoothing=low|medium|high`); `fps-passes=`, `fps-threshold=` and
-`fps-radius=` override their values (for `high`, the values of the coarse
-level):
+The current presets are the levels of `smoothing=1` to `4` (see Options);
+`fps-passes=`, `fps-threshold=`, `fps-radius=` and the dynamic smoothing
+options override their values. They replaced the presets below, which the
+notes in this section and under Dynamic smoothing refer to. Those used a fixed
+threshold (`high`: two-level smoothing, with the values of the coarse level):
 
 | Preset | Levels | Passes | Threshold | Radius |
 |---|---|---|---|---|
-| `low` (`auto`) | 1 | 1 | 15° | 4 |
+| `low` | 1 | 1 | 15° | 4 |
 | `medium` | 1 | 3 | 20° | 4 |
 | `high` | 2 | 3 | 20° | 4 |
 
@@ -605,11 +617,11 @@ each pass takes about a second. FPS must run on unblurred data: low-pass
 filtering first turns valleys into worm-like grooves, and sharpening first
 leaves halos that FPS preserves as false ridges.
 
-The earlier method (`smoothing=lowpass`) follows the approach of Terrain
-Sculptor (Leonowicz, Jenny and Hurni, 2010): low-pass filter the terrain, then
+An earlier method, `smoothing=lowpass` (since removed), followed the approach
+of Terrain Sculptor (Leonowicz, Jenny and Hurni, 2010): low-pass filter the terrain, then
 restore major ridges and valleys by blending toward local maximum and minimum
-filters, weighted by curvature measured at a broader scale. It is faster but
-softens ridges. With `lowpass-radius=g` (Gaussian sigma in pixels):
+filters, weighted by curvature measured at a broader scale. It was faster but
+softened ridges. With `lowpass-radius=g` (Gaussian sigma in pixels):
 
 - `low` = blur(elevation, g)
 - `broad` = blur(elevation, 2.5g)
@@ -619,10 +631,8 @@ softens ridges. With `lowpass-radius=g` (Gaussian sigma in pixels):
 - ridges (`k < 0`): `low + 0.5 |k| (hi - low)`
 - valleys (`k > 0`): `low - 0.3 k (low - lo)`
 
-All steps are linear-time filters over the output grid; on a 1600x1200 map they
-take a few hundred milliseconds in plain JavaScript. They are written as small
-pure functions over typed arrays so they can be unit-tested and later moved into
-a Web Worker.
+All steps were linear-time filters over the output grid, taking a few hundred
+milliseconds on a 1600x1200 map in plain JavaScript.
 
 #### Dynamic smoothing
 
@@ -639,8 +649,8 @@ degrees, stay sharp. `fps-min-threshold=` gives each pixel its own threshold
 Slope is in degrees on the exaggerated surface, measured at each pixel and
 averaged with a Gaussian blur of `fps-slope-radius=` pixels (default 10).
 Averaging slope magnitudes, rather than taking the slope of blurred
-elevations, keeps a mountain's opposing slopes from canceling out. The
-default slope factor is 3. With `fps-min-threshold=1`, thresholds in that area
+elevations, keeps a mountain's opposing slopes from canceling out. Each
+smoothing level sets its own slope factor (0.6 to 1.9); these notes used 3. With `fps-min-threshold=1`, thresholds in that area
 range from about 2° (10th percentile) through 3.4° (median) to 11° (90th
 percentile); `-verbose` prints these percentiles.
 
@@ -788,15 +798,15 @@ round trip to the workers, because the reach of the whole pipeline in one
 stage (about 100 pixels with `medium` smoothing and `texture=`) would mean
 much more duplicated work. Margins, including 2 spare pixels:
 
-1. Smoothing (`smoothTerrain()`): 32 pixels for `medium`, 78 for `high`, and
-   29 more with dynamic smoothing. Two-level smoothing works on 2x2 blocks, so
-   its tiles start on even rows and columns.
+1. Smoothing (`smoothTerrain()`): 40 pixels at the default level 1, 51, 67
+   and 73 at levels 2-4 (29 of each for the dynamic thresholds), and more with
+   `fps-levels=2`. Two-level smoothing works on 2x2 blocks, so its tiles start
+   on even rows and columns.
 2. Shading to signed tones (`shadeTerrain()`): 28 pixels by default (openness
    and sharpening), or 68 with `texture=`.
 
 The main thread reads the elevations, computes the two values that need the
-whole grid (the elevation range of `aerial=`; `smoothing=lowpass`, whose
-curvature scale is a mean over the grid, runs as a single tile), and writes
+whole grid (the elevation range of `aerial=`), and writes
 the RGBA output.
 
 The reach of each algorithm is computed from its settings, next to it

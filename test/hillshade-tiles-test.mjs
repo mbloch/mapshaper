@@ -78,10 +78,8 @@ function smoothingSettings(method, fps) {
     high: {rounds: 3, threshold: 20, radius: 4, levels: 2}
   };
   return {
-    method: method,
-    fps: method == 'lowpass' ? null : Object.assign({}, presets[method], fps),
+    fps: Object.assign({}, presets[method], fps),
     refinement: {rounds: 1, threshold: 20, radius: 4},
-    lowpassRadius: 1,
     exaggeration: 2,
     minElevation: null
   };
@@ -216,10 +214,6 @@ describe('hillshading in tiles', function () {
 
     it('dynamic smoothing thresholds', function () {
       assertTilesMatch('smooth', smoothingSettings('medium', DYNAMIC), 'thresholds', gentle);
-    });
-
-    it('lowpass smoothing needs the whole grid', function () {
-      assert.equal(internal.getSmoothingReach(smoothingSettings('lowpass')), Infinity);
     });
   });
 

@@ -6,7 +6,6 @@ import {
   computeLightAdjustment,
   computeOpenness,
   computeTextureShading,
-  generalizeTerrain,
   getHillshadeTones,
   getLightAdjustmentReach,
   getOpennessReach,
@@ -47,56 +46,46 @@ export function runHillshadeStage(task) {
   throw new Error('Unknown hillshade stage: ' + task.stage);
 }
 
-// @s.method lowpass or an FPS preset (low, medium, high)
 // @s.fps FPS options (featurePreservingSmooth() and getSlopeThresholds())
 // @s.refinement options of the full-resolution pass of two-level smoothing
-// @s.lowpassRadius, @s.exaggeration
+// @s.exaggeration
 // @s.minElevation optional; elevations were raised to it before smoothing
 // Returns {elev, thresholds}: thresholds are the per-pixel FPS thresholds of
 //   dynamic smoothing, or null
 export function smoothTerrain(grid, s) {
   var elev = grid.elev, valid = grid.valid, w = grid.width, h = grid.height;
-  var thresholds = null, fps, out;
-  if (s.method == 'lowpass') {
-    out = generalizeTerrain(elev, valid, w, h, s.lowpassRadius);
-  } else {
-    fps = s.fps;
-    if (fps.spread > 0) {
-      thresholds = getSpreadThresholds(elev, valid, w, h, grid.cellWidths, grid.cellHeights,
-        s.exaggeration, {
-          min: fps.minThreshold,
-          max: fps.threshold,
-          factor: fps.spread,
-          spreadRadius: fps.spreadRadius
-        });
-      fps = Object.assign({}, fps, {thresholds: thresholds});
-    } else if (fps.minThreshold > 0) {
-      thresholds = getSlopeThresholds(elev, valid, w, h, grid.cellWidths, grid.cellHeights,
-        s.exaggeration, {
-          min: fps.minThreshold,
-          max: fps.threshold,
-          slopeFactor: fps.slopeFactor,
-          slopeRadius: fps.slopeRadius
-        });
-      fps = Object.assign({}, fps, {thresholds: thresholds});
-    }
-    out = fps.levels == 2 ?
-      twoLevelSmooth(elev, valid, w, h, grid.cellWidths, grid.cellHeights, s.exaggeration, fps, s.refinement) :
-      featurePreservingSmooth(elev, valid, w, h, grid.cellWidths, grid.cellHeights, s.exaggeration, fps);
+  var thresholds = null, fps = s.fps, out;
+  if (fps.spread > 0) {
+    thresholds = getSpreadThresholds(elev, valid, w, h, grid.cellWidths, grid.cellHeights,
+      s.exaggeration, {
+        min: fps.minThreshold,
+        max: fps.threshold,
+        factor: fps.spread,
+        spreadRadius: fps.spreadRadius
+      });
+    fps = Object.assign({}, fps, {thresholds: thresholds});
+  } else if (fps.minThreshold > 0) {
+    thresholds = getSlopeThresholds(elev, valid, w, h, grid.cellWidths, grid.cellHeights,
+      s.exaggeration, {
+        min: fps.minThreshold,
+        max: fps.threshold,
+        slopeFactor: fps.slopeFactor,
+        slopeRadius: fps.slopeRadius
+      });
+    fps = Object.assign({}, fps, {thresholds: thresholds});
   }
+  out = fps.levels == 2 ?
+    twoLevelSmooth(elev, valid, w, h, grid.cellWidths, grid.cellHeights, s.exaggeration, fps, s.refinement) :
+    featurePreservingSmooth(elev, valid, w, h, grid.cellWidths, grid.cellHeights, s.exaggeration, fps);
   if (s.minElevation != null) {
     restoreLowElevations(out, elev, valid, s.minElevation);
   }
   return {elev: out, thresholds: thresholds};
 }
 
-// Infinity for lowpass smoothing, which scales curvature by its mean over the
-// whole grid
 export function getSmoothingReach(s) {
   var fps = s.fps;
-  var reach;
-  if (s.method == 'lowpass') return Infinity;
-  reach = fps.levels == 2 ? getTwoLevelReach(fps, s.refinement) : getFpsReach(fps);
+  var reach = fps.levels == 2 ? getTwoLevelReach(fps, s.refinement) : getFpsReach(fps);
   if (fps.spread > 0) {
     reach += getSpreadThresholdReach(fps.spreadRadius);
   } else if (fps.minThreshold > 0) {
