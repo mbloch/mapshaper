@@ -1,4 +1,5 @@
 import { parseColor } from '../color/color-utils';
+import { isOpaqueHillshade } from './mapshaper-hillshade';
 import { getOklchLightnessChroma } from './mapshaper-raster-color';
 import { getRasterValidityMask } from './mapshaper-raster-grid';
 import { getRasterGrid, renderRasterPreview } from './mapshaper-raster-utils';
@@ -33,7 +34,7 @@ export function getShadingAmounts(raster, baseColor) {
   }
   pixels = getRgbaPixels(raster);
   if (hillshade) {
-    transparent = params.style != 'opaque';
+    transparent = !isOpaqueHillshade(params);
     if (transparent && baseColor) {
       stop('base-color= is for opaque hillshades; the source is a transparent (shadow-style) hillshade');
     }

@@ -224,7 +224,7 @@ describe('hillshading in tiles', function () {
     [
       {},
       {ambient: 0},
-      {lightAdjust: 30, lights: internal.getHillshadeLights(315, 45, true)},
+      {lightAdjust: 30, lights: internal.getHillshadeLights(315, 45, 'hard')},
       {texture: 0.5, textureHighlights: 0.5},
       {minElevation: 0, texture: 0.4, style: 'opaque', toneOpts: {maxOpacity: 1}}
     ].forEach(function(o) {

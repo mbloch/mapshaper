@@ -10,10 +10,12 @@ import {
   DEFAULT_ALTITUDE,
   DEFAULT_AZIMUTH,
   DEFAULT_GAMMA,
+  DEFAULT_LIGHTING,
   getAutoExaggeration,
   getFittedVerticalScale,
   getHillshadeLights,
   getHillshadeMaxShade,
+  getLightingSchemeNames,
   raiseLowElevations
 } from '../rasters/mapshaper-hillshade';
 import { runHillshadeStages } from '../rasters/mapshaper-hillshade-runner';
@@ -172,7 +174,7 @@ function getSmoothingParams(level, opts) {
 //   (job.resumeCommand())
 cmd.hillshade = async function(lyr, dataset, opts, resume) {
   var grid, cells, elev, valid, altitude, exaggeration, style, out, result;
-  var hasMin, toneOpts, azimuth, colors, smoothing, params, ambient, lights, stops = null;
+  var hasMin, toneOpts, azimuth, colors, smoothing, params, ambient, lighting, lights, stops = null;
   var unitMeters, minElevation, band;
   if (!layerHasRaster(lyr)) {
     stop('Command requires a raster layer');
@@ -201,7 +203,11 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
   }
   azimuth = opts.azimuth == null ? DEFAULT_AZIMUTH : opts.azimuth;
   ambient = opts.ambient >= 0 ? opts.ambient : DEFAULT_AMBIENT;
-  lights = getHillshadeLights(azimuth, altitude, opts.single_light);
+  lighting = opts.lighting || DEFAULT_LIGHTING;
+  lights = getHillshadeLights(azimuth, altitude, lighting);
+  if (!lights) {
+    stop('lighting= should be one of: ' + getLightingSchemeNames().join(', '));
+  }
   toneOpts = {
     maxOpacity: opts.max_opacity >= 0 ? opts.max_opacity : getDefaultMaxOpacity(style),
     highlightRatio: opts.highlights >= 0 ? opts.highlights : getDefaultHighlightRatio(),
@@ -217,8 +223,8 @@ cmd.hillshade = async function(lyr, dataset, opts, resume) {
     getElevationUnitMeters(grid);
   // min-elevation= is in the raster's own units, like the values -info shows
   minElevation = hasMin ? opts.min_elevation * unitMeters : null;
-  params = Object.assign({style: style, azimuth: azimuth, altitude: altitude,
-    single_light: !!opts.single_light, exaggeration: exaggeration,
+  params = Object.assign({opaque: style == 'opaque', azimuth: azimuth, altitude: altitude,
+    lighting: lighting, exaggeration: exaggeration,
     max_opacity: stops ? null : toneOpts.maxOpacity,
     highlights: stops ? null : toneOpts.highlightRatio,
     gamma: toneOpts.gamma,
@@ -369,18 +375,11 @@ function validateHillshadeGrid(grid, opts) {
   });
 }
 
-// gray and grey are the earlier name of the opaque style; base-color= implies it
+// Returns 'opaque' or 'shadow' (the default); base-color= implies opaque
 function getHillshadeStyle(opts) {
-  var style = opts.style || (opts.base_color ? 'opaque' : 'shadow');
-  if (style == 'gray' || style == 'grey') style = 'opaque';
-  if (style != 'shadow' && style != 'opaque') {
-    stop('Unsupported style:', style + '. Use shadow or opaque');
-  }
-  if (style == 'shadow' && opts.base_color) {
-    stop('base-color= needs style=opaque');
-  }
+  var style = opts.opaque || opts.base_color ? 'opaque' : 'shadow';
   if (style == 'opaque' && (opts.max_opacity != null || opts.highlights != null)) {
-    stop('max-opacity= and highlights= are for style=shadow. With style=opaque, use shadow-color=, base-color= and highlight-color=');
+    stop('max-opacity= and highlights= are for transparent hillshades. With opaque, use shadow-color=, base-color= and highlight-color=');
   }
   return style;
 }

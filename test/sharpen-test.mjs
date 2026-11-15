@@ -58,7 +58,7 @@ function firstRaster(catalog) {
 // a north-south ridge: the west face is lit, the east face is shaded
 var W = 81;
 function ridge(x) { return 1000 - Math.abs(x - 40) * 20; }
-var HILLSHADE = '-hillshade smoothing=off single-light azimuth=270';
+var HILLSHADE = '-hillshade smoothing=off lighting=hard azimuth=270';
 
 describe('mapshaper-sharpen.mjs', function () {
 

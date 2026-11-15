@@ -458,11 +458,12 @@ export function getHillshadeColorRamp(stops) {
 // Where the base color is on the ramp from the shadow color to the
 // highlight color, when one of them is derived. A slope tilted a little
 // toward the light then gets as much lighter as one tilted away gets darker:
-// with the default lights the brightest slope is 1.25 times as bright as flat
-// ground, so highlight tones are scaled four times as much as shadow tones,
-// and the shadow half of the ramp gets four times the lightness range. (The
-// weight is 1 / getHillshadeMaxShade(); it is fixed rather than following the
-// lights so that altitude= doesn't change the colors.)
+// the brightest slope was 1.25 times as bright as flat ground under the
+// former default lights (1.21 under the current ones), so highlight tones
+// are scaled four times as much as shadow tones, and the shadow half of the
+// ramp gets four times the lightness range. (The weight is fixed rather than
+// following 1 / getHillshadeMaxShade() so that altitude= and lighting= don't
+// change the colors.)
 var HILLSHADE_BASE_WEIGHT = 0.8;
 var DEFAULT_HILLSHADE_BASE = {r: 223, g: 223, b: 223};
 var DEFAULT_HILLSHADE_HIGHLIGHT = {r: 255, g: 255, b: 255};

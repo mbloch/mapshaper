@@ -432,22 +432,6 @@ describe('mapshaper-fetch.mjs', function () {
     })
   })
 
-  describe('averageGridPixels()', function () {
-    it('averages valid pixels in blocks and marks empty blocks as nodata', function () {
-      var grid = {
-        width: 4, height: 2, bands: 1, pixelType: 'float32', nodata: -1,
-        samples: Float32Array.from([1, 3, -1, -1, 5, 7, -1, -1]),
-        bbox: [0, 0, 4, 2], transform: [1, 0, 0, 0, -1, 2]
-      };
-      var out = internal.averageGridPixels(grid, 2);
-      assert.equal(out.width, 2);
-      assert.equal(out.height, 1);
-      assert.deepEqual(Array.from(out.samples), [4, -1]);
-      assert.deepEqual(Array.from(out.coverage), [1, 0]);
-      assert.deepEqual(out.transform, [2, 0, 0, 0, -2, 2]);
-    })
-  })
-
   describe('-fetch command', function () {
     var stub;
     afterEach(function() {

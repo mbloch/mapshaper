@@ -2165,27 +2165,29 @@ Common options: `name=` `target=`
 
 ### -hillshade
 
-Convert an elevation raster to shaded relief. By default, the shading is transparent black and white, for drawing over (or blending with) other layers. To sharpen the result, use [`-sharpen`](#-sharpen). Run `-hillshade verbose` to print the settings used, including automatic ones. See `mapshaper -h hillshade` for the full list of options, including fine-tuning of the smoothing (`fps-` options).
+Convert an elevation raster to shaded relief. By default, the shading is transparent black and white, for overlaying or blending with other layers with [`-blend`](#-blend). Run `-hillshade verbose` to print all the settings used. To sharpen the result, use [`-sharpen`](#-sharpen).
 
-`<style>` or `style=`  shadow (transparent shading, the default) or opaque (grayscale).
+`opaque`  Opaque grayscale shading. By default, shading is transparent black and white.
 
-`azimuth=` `altitude=`  Direction and height of the main light, in degrees (defaults are 315 and 45). By default, a blend of lights from several directions is used; `single-light` uses one light.
+`azimuth=` `altitude=`  Direction and height of the main light, in degrees (defaults are 315 and 45).
+
+`lighting=`  How the main light is supplemented by fainter lights from other directions. `hard` uses the main light alone, for the most contrast. `balanced` (the default) softens shadows by adding fill lights from multiple angles. `soft` adds still more fill light, which brightens slopes facing away from the main light for more midtones and less contrast. `gdal` imitates the multidirectional hillshade of GDAL.
 
 `exaggeration=`  Vertical exaggeration (default depends on the map scale).
 
 `smoothing=`  Terrain smoothing level, from 0 (off) to 4 (default is 1). Higher levels remove larger landforms.
 
-`ambient=`  Darkening of terrain hidden from the open sky, 0-1 (default is 0.5).
+`ambient=`  Darkening of terrain with a partial view of the sky, 0-1 (default is 0.5).
 
 `texture=`  Opacity of texture shading, 0-1 (default is 0).
 
 `aerial=`  Aerial perspective: reduce contrast at low elevations, 0-1 (default is 0).
 
-`max-opacity=` `highlights=`  With style=shadow, opacity of the darkest shadows (default is 0.55), and of the brightest highlights relative to it (default is 0.6).
+`max-opacity=` `highlights=`  For transparent shading, opacity of the darkest shadows (default is 0.55), and of the brightest highlights relative to it (default is 0.6).
 
-`shadow-color=` `highlight-color=` `base-color=`  Colors of shadows, highlights and (with style=opaque) flat ground.
+`shadow-color=` `highlight-color=` `base-color=`  Colors of shadows, highlights and (with `opaque`) flat ground; `base-color=` implies `opaque`.
 
-`gamma=`  Shape of the tone curve; below 1 strengthens faint shading (default is 0.75).
+`gamma=`  Shape of the tone curve; below 1 strengthens faint shading (default is 0.7).
 
 `band=`  Band containing elevation values, numbered from 1 (default is 1).
 
@@ -2193,7 +2195,7 @@ Common options: `name=` `target=` `+`
 
 ### -sharpen
 
-Sharpen an image or a hillshade with an unsharp mask, which increases the contrast of details compared with a blurred copy of the image. A transparent hillshade made by `-hillshade` is sharpened as shading, so that shadows and highlights next to each other are sharpened together. Other images are sharpened by lightness, without shifting their colors. Works on 8-bit grayscale, RGB and RGBA images.
+Sharpen an image or a hillshade with an unsharp mask.
 
 `<amount>` or `amount=`  Strength of the sharpening, 0-3 (default is 0.25).
 
@@ -2211,7 +2213,7 @@ mapshaper dem.tif -hillshade -sharpen -o hillshade.png
 
 ### -tone
 
-Adjust the colors of an 8-bit RGB or RGBA image, or the tones of an 8-bit grayscale image. A grayscale image stays gray, with one band; `saturation=`, `hue-shift=` and `hue-pivot=` don't apply to it.
+Adjust the colors of an 8-bit RGB or RGBA image, or the tone of an 8-bit grayscale image.
 
 `saturation=`  Multiply the colorfulness; 0 is gray (default is 1).
 

@@ -26,7 +26,6 @@ import {
 } from '../furniture/mapshaper-frame-utils';
 import { moveLayersInStack } from '../dataset/mapshaper-layer-stacking';
 import { projectRasterGridForward } from '../rasters/mapshaper-raster-reprojection';
-import { getRasterValidityMask } from '../rasters/mapshaper-raster-grid';
 import { createRasterPreview, getRasterViewRecipe } from '../rasters/mapshaper-raster-utils';
 import {
   findRestrictedTilezenSources,
@@ -37,7 +36,6 @@ import {
 } from '../fetch/mapshaper-fetch-sources';
 import { fetchTileMosaic } from '../fetch/mapshaper-tile-fetch';
 import { preparePlanetaryComputerSource, reportAcquisitions } from '../fetch/mapshaper-planetary-computer';
-import { downsampleRgba } from '../rasters/mapshaper-image-import';
 import {
   chooseTileZoom,
   countTiles,
@@ -53,10 +51,8 @@ var DEFAULT_WIDTH = 800; // nominal width of a map without a frame
 // The GUI on high-density screens and PNG output draw two device pixels per
 // frame pixel; a coarser raster would be blurred by upsampling.
 var DEFAULT_RASTER_RES = 2;
-// tiles are reprojected to a grid this many times finer, then averaged
-var SUPERSAMPLING = 2;
 var DEFAULT_MAX_TILES = 500;
-var MAX_OUTPUT_PIXELS = 12e6; // the supersampled grid is 4x larger
+var MAX_OUTPUT_PIXELS = 48e6;
 var EXTENT_SAMPLES = 20; // samples along each side of the extent, minus one
 var METERS_PER_DEGREE = 6371008.8 * Math.PI / 180;
 
@@ -269,7 +265,7 @@ async function fetchTileDataset(source, extent, opts, signal) {
 }
 
 function getElevationRaster(source, mosaicGrid, extent) {
-  var grid = averageGridPixels(projectMosaic(mosaicGrid, 'continuous', extent, {}), SUPERSAMPLING);
+  var grid = projectMosaic(mosaicGrid, 'continuous', extent, {});
   return {
     sourceId: source.id,
     interpretation: 'continuous',
@@ -282,125 +278,40 @@ function getElevationRaster(source, mosaicGrid, extent) {
 // Pixels outside the tiles' coverage are transparent; an image without any
 // transparent pixels is kept as RGB.
 function getImageryRaster(source, mosaicGrid, extent) {
-  var projected = projectMosaic(mosaicGrid, 'image', extent, {nodata_color: 'transparent'});
   // an alpha band is only added if some pixels are empty
-  var rgba = projected.bands == 3 ? rgbToRgba(projected.samples) : projected.samples;
-  var samples = downsampleRgba(rgba, projected.width, projected.height,
-    extent.width, extent.height, true);
-  var bands = 4;
-  if (isOpaque(samples)) {
-    samples = rgbaToRgb(samples);
-    bands = 3;
-  }
-  var sampleBands = bands == 4 ? [0, 1, 2, 3] : [0, 1, 2];
-  var bbox = projected.bbox;
+  var projected = projectMosaic(mosaicGrid, 'image', extent, {nodata_color: 'transparent'});
+  var sampleBands = projected.bands == 4 ? [0, 1, 2, 3] : [0, 1, 2];
   return {
     sourceId: source.id,
     interpretation: 'image',
     grid: {
-      width: extent.width,
-      height: extent.height,
-      bands: bands,
+      width: projected.width,
+      height: projected.height,
+      bands: projected.bands,
       pixelType: 'uint8',
-      samples: samples,
+      samples: projected.samples,
       sampleBands: sampleBands,
       nodata: null,
-      bbox: bbox,
-      transform: [
-        (bbox[2] - bbox[0]) / extent.width, 0, bbox[0],
-        0, -(bbox[3] - bbox[1]) / extent.height, bbox[3]
-      ]
+      bbox: projected.bbox,
+      transform: projected.transform
     },
     derivation: {type: 'rgb', sourceId: source.id, bands: sampleBands},
     view: {recipe: {type: 'rgb', bands: sampleBands}}
   };
 }
 
+// The source has one to two pixels for each output pixel along each axis (see
+// chooseTileZoom()). Area averaging uses all of them: sampling at the output
+// resolution would skip some (aliasing), while blurring first loses detail
+// that hillshading needs.
 function projectMosaic(grid, interpretation, extent, opts) {
   return projectRasterGridForward({grid: grid, interpretation: interpretation},
     parseCrsString('webmercator'), extent.crsInfo.crs, Object.assign({
       output_bbox: extent.bbox,
-      output_width: extent.width * SUPERSAMPLING,
-      output_height: extent.height * SUPERSAMPLING,
-      sample_method: 'bilinear'
+      output_width: extent.width,
+      output_height: extent.height,
+      sample_method: 'average'
     }, opts));
-}
-
-function isOpaque(rgba) {
-  for (var i = 3; i < rgba.length; i += 4) {
-    if (rgba[i] < 255) return false;
-  }
-  return true;
-}
-
-function rgbToRgba(rgb) {
-  var n = rgb.length / 3;
-  var out = new Uint8Array(n * 4);
-  for (var i = 0, j = 0; i < n; i++, j += 3) {
-    out[i * 4] = rgb[j];
-    out[i * 4 + 1] = rgb[j + 1];
-    out[i * 4 + 2] = rgb[j + 2];
-    out[i * 4 + 3] = 255;
-  }
-  return out;
-}
-
-function rgbaToRgb(rgba) {
-  var n = rgba.length / 4;
-  var out = new Uint8Array(n * 3);
-  for (var i = 0, j = 0; i < n; i++, j += 4) {
-    out[i * 3] = rgba[j];
-    out[i * 3 + 1] = rgba[j + 1];
-    out[i * 3 + 2] = rgba[j + 2];
-  }
-  return out;
-}
-
-// Averages blocks of @f x @f pixels of a one-band grid, skipping invalid
-// pixels. Used after reprojecting to a finer grid: the source can have up to
-// twice the output resolution, and sampling at the output resolution would
-// skip source pixels (aliasing), while blurring first (anti-aliasing) loses
-// detail that hillshading needs.
-export function averageGridPixels(grid, f) {
-  var sw = grid.width;
-  var w = Math.floor(sw / f), h = Math.floor(grid.height / f);
-  var valid = getRasterValidityMask(grid);
-  var src = grid.samples;
-  var nodata = grid.nodata;
-  var samples = new Float32Array(w * h);
-  var coverage = new Uint8Array(w * h);
-  var x, y, i, j, k, sum, count;
-  for (y = 0; y < h; y++) {
-    for (x = 0; x < w; x++) {
-      sum = 0;
-      count = 0;
-      for (j = 0; j < f; j++) {
-        for (i = 0; i < f; i++) {
-          k = (y * f + j) * sw + x * f + i;
-          if (valid && !valid[k]) continue;
-          sum += src[k];
-          count++;
-        }
-      }
-      if (count > 0) {
-        samples[y * w + x] = sum / count;
-        coverage[y * w + x] = 1;
-      } else {
-        samples[y * w + x] = nodata;
-      }
-    }
-  }
-  return Object.assign({}, grid, {
-    width: w,
-    height: h,
-    samples: samples,
-    pixelType: 'float32',
-    coverage: coverage,
-    transform: [
-      (grid.bbox[2] - grid.bbox[0]) / w, 0, grid.bbox[0],
-      0, -(grid.bbox[3] - grid.bbox[1]) / h, grid.bbox[3]
-    ]
-  });
 }
 
 function checkTileLicensing(source, headerValues) {

@@ -1,7 +1,7 @@
 import { parseColor } from '../color/color-utils';
 import { blurFloatChannel } from './mapshaper-box-blur';
 import { decodeShadowStyleShading } from './mapshaper-raster-blend';
-import { writeHillshadeRgba } from './mapshaper-hillshade';
+import { isOpaqueHillshade, writeHillshadeRgba } from './mapshaper-hillshade';
 import { getRasterValidityMask } from './mapshaper-raster-grid';
 
 // Unsharp masking of 8-bit images, for -sharpen.
@@ -24,7 +24,7 @@ export function sharpenImageSamples(grid, derivation, opts) {
 }
 
 export function isShadowStyleHillshade(grid, derivation) {
-  return !!derivation && derivation.type == 'hillshade' && derivation.style != 'opaque' &&
+  return !!derivation && derivation.type == 'hillshade' && !isOpaqueHillshade(derivation) &&
     grid.bands == 4;
 }
 

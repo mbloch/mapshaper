@@ -11,30 +11,78 @@ import { blurFloatChannel, getBlurReach } from './mapshaper-box-blur';
 export var DEFAULT_AZIMUTH = 315;
 export var DEFAULT_ALTITUDE = 45;
 export var DEFAULT_MAX_OPACITY = 0.55;
-export var DEFAULT_GAMMA = 0.75;
+export var DEFAULT_GAMMA = 0.7;
 export var DEFAULT_HIGHLIGHT_RATIO = 0.6;
 
-// Relative azimuths and weights of the default light blend: a main light,
-// plus fainter lights on either side of it.
-var MULTI_LIGHTS = [[-90, 0.15], [-45, 0.2], [0, 0.45], [45, 0.2]];
+export var DEFAULT_LIGHTING = 'balanced';
 
-export function getHillshadeLights(azimuth, altitude, singleLight) {
+// The lights of each lighting= scheme, as [azimuth relative to the main
+// light, weight]
+var LIGHTING_SCHEMES = {
+  // side lights balanced around the main light, so that slopes turned the
+  // same amount either way from it get the same light
+  balanced: [[-90, 0.1], [-45, 0.2], [0, 0.4], [45, 0.2], [90, 0.1]],
+  hard: [[0, 1]],
+  // balanced, plus faint lights on slopes facing away from the main light,
+  // for more midtones and less contrast
+  soft: [[-135, 0.05], [-90, 0.1], [-45, 0.2], [0, 0.3], [45, 0.2], [90, 0.1], [135, 0.05]],
+  // GDAL's -multidirectional (after Mark 1992), whose lights are at 225, 270,
+  // 315 and 360 degrees; weighted per pixel (see ASPECT_WEIGHTED)
+  gdal: [[-90, 1], [-45, 1], [0, 1], [45, 1]]
+};
+
+// Schemes whose lights are weighted at each pixel by cos^2 of the angle
+// between the light and the direction the slope faces, as in GDAL
+var ASPECT_WEIGHTED = {gdal: true};
+
+export function getLightingSchemeNames() {
+  return Object.keys(LIGHTING_SCHEMES);
+}
+
+// @lighting name of a scheme, or a list of lights for experimenting with:
+//   comma-separated azimuth:weight[:altitude] entries, with azimuths relative
+//   to the main light and altitude defaulting to @altitude
+//   (e.g. -45:0.3,0:0.4,45:0.3)
+// Returns null if @lighting is invalid
+export function getHillshadeLights(azimuth, altitude, lighting) {
   var az = azimuth == null ? DEFAULT_AZIMUTH : azimuth;
   var alt = altitude == null ? DEFAULT_ALTITUDE : altitude;
-  if (singleLight) return [{azimuth: az, altitude: alt, weight: 1}];
-  return MULTI_LIGHTS.map(function(o) {
-    return {azimuth: az + o[0], altitude: alt, weight: o[1]};
+  var name = lighting || DEFAULT_LIGHTING;
+  var lights = parseLighting(name);
+  var aspectWeighted = ASPECT_WEIGHTED[name] === true;
+  return lights ? lights.map(function(o) {
+    var light = {azimuth: az + o[0], altitude: o.length > 2 ? o[2] : alt, weight: o[1]};
+    if (aspectWeighted) light.aspectWeighted = true;
+    return light;
+  }) : null;
+}
+
+function parseLighting(str) {
+  var lights;
+  if (Object.prototype.hasOwnProperty.call(LIGHTING_SCHEMES, str)) {
+    return LIGHTING_SCHEMES[str];
+  }
+  lights = String(str).split(',').map(function(entry) {
+    var parts = entry.split(':');
+    var nums = parts.map(function(s) { return s.trim() === '' ? NaN : Number(s); });
+    var ok = (parts.length == 2 || parts.length == 3) && nums.every(isFinite) &&
+      nums[1] > 0 && (parts.length == 2 || nums[2] >= 0 && nums[2] <= 90);
+    return ok ? nums : null;
   });
+  return lights.every(Boolean) ? lights : null;
 }
 
 // Relief flattens out as pixels grow, so small-scale maps need more vertical
 // exaggeration to read: none at 50 m per pixel, about 4.5 at 1 km.
 // The shade of the brightest slope, the one facing the blend of @lights
 // (flat ground is 1): 1 / sin(altitude) for a single light. A blend lights
-// no slope as fully as one light can, so the default blend at 45 degrees
-// tops out at about 1.25 rather than 1.41.
+// no slope as fully as one light can, so at 45 degrees the default lights
+// top out at about 1.21, rather than 1.41.
 export function getHillshadeMaxShade(lights) {
   var vec = [0, 0, 0], flat = 0, len, sum = 0;
+  if (lights.length > 0 && lights[0].aspectWeighted) {
+    return getAspectWeightedMaxShade(lights);
+  }
   var dirs = lights.map(function(light) {
     var alt = light.altitude * Math.PI / 180;
     var az = (360 - light.azimuth + 90) * Math.PI / 180;
@@ -52,6 +100,35 @@ export function getHillshadeMaxShade(lights) {
     sum += Math.max(0, (dir[0] * vec[0] + dir[1] * vec[1] + dir[2] * vec[2]) / len) * lights[i].weight;
   });
   return Math.max(1, sum / flat);
+}
+
+// Aspect weighting has no closed form for the brightest slope, so this
+// searches slopes in 0.5 degree steps and aspects in 1 degree steps
+function getAspectWeightedMaxShade(lights) {
+  var D = Math.PI / 180;
+  var flat = 0, total = 0, max = 1;
+  var slope, aspect, cs, ss, sum, wsum, ca, w, v, j;
+  lights.forEach(function(light) {
+    flat += light.weight * Math.sin(light.altitude * D);
+    total += light.weight;
+  });
+  for (slope = 0.5; slope < 90; slope += 0.5) {
+    cs = Math.cos(slope * D);
+    ss = Math.sin(slope * D);
+    for (aspect = 0; aspect < 360; aspect++) {
+      sum = 0;
+      wsum = 0;
+      for (j = 0; j < lights.length; j++) {
+        ca = Math.cos((lights[j].azimuth - aspect) * D);
+        w = lights[j].weight * ca * ca;
+        v = Math.sin(lights[j].altitude * D) * cs + Math.cos(lights[j].altitude * D) * ss * ca;
+        if (v > 0) sum += w * v;
+        wsum += w;
+      }
+      if (wsum > 0) max = Math.max(max, sum / wsum / (flat / total));
+    }
+  }
+  return max;
 }
 
 // Rounded to a multiple of 0.25, so that the printed value is easy to read
@@ -105,23 +182,27 @@ export function getFittedVerticalScale(elev, valid, width, height, cellWidths, c
 export function computeHillshade(elev, valid, width, height, cellWidths, cellHeights, lights, exaggeration, azimuthOffsets) {
   var out = new Float32Array(width * height);
   var zf = exaggeration > 0 ? exaggeration : 1;
-  var flat = 0;
+  var flat = 0, totalWeight = 0;
+  var aspectWeighted = lights.length > 0 && !!lights[0].aspectWeighted;
   var prepared = lights.map(function(light) {
     var zenith = (90 - light.altitude) * Math.PI / 180;
     // mathematical angle of the direction the light comes from
     var az = (360 - light.azimuth + 90) * Math.PI / 180;
     flat += light.weight * Math.cos(zenith);
+    totalWeight += light.weight;
     return {
+      weight: light.weight,
       cosZ: Math.cos(zenith) * light.weight,
       sinZ: Math.sin(zenith) * light.weight,
       cosAz: Math.cos(az),
       sinAz: Math.sin(az)
     };
   });
+  var flatPerWeight = flat / totalWeight;
   var n = prepared.length;
   var y, x, i, ym, yp, xm, xp, c, a, b, cc, d, f, g, h, k;
   var dzdx, dzdy, slope2, cosSlope, sinSlope, aspectCos, aspectSin, mag, sum, p, j;
-  var cd, sd, rc;
+  var cd, sd, rc, ca, w, wsum;
   for (y = 0; y < height; y++) {
     ym = (y > 0 ? y - 1 : 0) * width;
     yp = (y < height - 1 ? y + 1 : y) * width;
@@ -161,6 +242,22 @@ export function computeHillshade(elev, valid, width, height, cellWidths, cellHei
         aspectSin = aspectSin * cd + aspectCos * sd;
         aspectCos = rc;
       }
+      // on flat ground every light gives the same shade, so the weights
+      // don't matter
+      if (aspectWeighted && mag > 0) {
+        wsum = 0;
+        for (j = 0; j < n; j++) {
+          p = prepared[j];
+          ca = p.cosAz * aspectCos + p.sinAz * aspectSin;
+          w = ca * ca;
+          // p.cosZ and p.sinZ include the light's weight
+          var vw = p.cosZ * cosSlope + p.sinZ * sinSlope * ca;
+          if (vw > 0) sum += w * vw;
+          wsum += w * p.weight;
+        }
+        out[i] = wsum > 0 ? sum / wsum / flatPerWeight : 0;
+        continue;
+      }
       for (j = 0; j < n; j++) {
         p = prepared[j];
         // cos(az - aspect) = cos(az)cos(aspect) + sin(az)sin(aspect)
@@ -185,6 +282,11 @@ export function renderHillshadeRgba(shade, valid, style, opts, colors) {
 
 // Transparent shadows stay translucent, so the map shows through; opaque
 // shading runs the full length of its color ramp.
+// Hillshades made before the opaque flag record style=opaque instead
+export function isOpaqueHillshade(derivation) {
+  return !!derivation && (derivation.opaque === true || derivation.style == 'opaque');
+}
+
 export function getDefaultMaxOpacity(style) {
   return style == 'opaque' ? 1 : DEFAULT_MAX_OPACITY;
 }
@@ -212,7 +314,7 @@ export function getHillshadeTones(shade, valid, style, opts) {
   var tones = new Float32Array(n);
   var opaque = style == 'opaque';
   var maxOpacity = opaque ? 1 : o.maxOpacity >= 0 ? Math.min(1, o.maxOpacity) : getDefaultMaxOpacity(style);
-  var ratio = opaque ? 1 : o.highlightRatio >= 0 ? o.highlightRatio : getDefaultHighlightRatio(style);
+  var ratio = opaque ? 1 : o.highlightRatio >= 0 ? o.highlightRatio : getDefaultHighlightRatio();
   var maxHighlight = Math.min(1, maxOpacity * ratio);
   var gamma = o.gamma > 0 ? o.gamma : DEFAULT_GAMMA;
   var litRange = o.maxShade > 1 ? o.maxShade - 1 : 0;

@@ -2811,9 +2811,9 @@ export function getOptionParser() {
 
   parser.command('hillshade')
     .describe('convert an elevation raster to shaded relief')
-    .option('style', {
-      DEFAULT: true,
-      describe: 'shadow (transparent shading, the default) or opaque'
+    .option('opaque', {
+      describe: 'opaque shading, instead of transparent shadows and highlights',
+      type: 'flag'
     })
     .option('azimuth', {
       describe: 'direction of the main light, in degrees (default is 315)',
@@ -2823,6 +2823,9 @@ export function getOptionParser() {
       describe: 'height of the light above the horizon, in degrees (default is 45)',
       type: 'number'
     })
+    .option('lighting', {
+      describe: 'fill lights around the main light: balanced (default), hard, soft or gdal'
+    })
     .option('exaggeration', {
       describe: 'vertical exaggeration (default depends on the map scale)',
       type: 'number'
@@ -2831,7 +2834,7 @@ export function getOptionParser() {
       describe: 'terrain smoothing level, from 0 (off) to 4 (default is 1)'
     })
     .option('ambient', {
-      describe: 'darkening of terrain hidden from the open sky, 0-1 (default is 0.5)',
+      describe: 'darkening of terrain with a partial view of the sky, 0-1 (default is 0.5)',
       type: 'number'
     })
     .option('fps-passes', {
@@ -2881,10 +2884,6 @@ export function getOptionParser() {
       describe: 'turn the light up to this many degrees to suit landform orientation (0-60)',
       type: 'number'
     })
-    .option('single-light', {
-      describe: 'use one light instead of a blend of lights from several directions',
-      type: 'flag'
-    })
     .option('texture', {
       describe: 'max opacity of texture shading (after Leland Brown), 0-1 (default is 0)',
       type: 'number'
@@ -2906,10 +2905,10 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('base-color', {
-      describe: 'color of flat ground with style=opaque (default is #dfdfdf)'
+      describe: 'color of flat ground, for opaque shading (default is #dfdfdf); implies opaque'
     })
     .option('max-opacity', {
-      describe: 'opacity of the darkest shadows with style=shadow; 0-1 (default is 0.55)',
+      describe: 'opacity of the darkest shadows, if not opaque; 0-1 (default is 0.55)',
       type: 'number'
     })
     .option('highlights', {
@@ -2917,13 +2916,13 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('shadow-color', {
-      describe: 'color of shadows (default is black, or variable if style=opaque)'
+      describe: 'color of shadows (default is black, or variable if opaque)'
     })
     .option('highlight-color', {
       describe: 'color of highlights (default is white)'
     })
     .option('gamma', {
-      describe: 'shape of the tone curve; below 1 strengthens faint shading (default is 0.75)',
+      describe: 'shape of the tone curve; below 1 strengthens faint shading (default is 0.7)',
       type: 'number'
     })
     .option('band', {

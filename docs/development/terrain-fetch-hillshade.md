@@ -136,12 +136,19 @@ than the output. This is evaluated at the latitude of the frame's center; Web
 Mercator tiles get finer on the ground toward the poles, so high-latitude maps
 automatically use higher zooms.
 
-The mosaic is reprojected at twice the output resolution with bilinear
-sampling, then averaged down in 2x2 blocks. This antialiases without the
-detail loss of a blur prefilter (an earlier version blurred the mosaic by the
-source/output resolution ratio, which was the largest avoidable loss of ridge
-detail in the pipeline). Fetching one zoom finer and averaging retained even
-more detail, but at four times the tile count.
+The mosaic is reprojected with area averaging: each output pixel is the
+average of the source pixels under its footprint, weighted by how much of the
+footprint each one covers. This antialiases without the detail loss of a blur
+prefilter (an earlier version blurred the mosaic by the source/output
+resolution ratio, which was the largest avoidable loss of ridge detail in the
+pipeline). Fetching one zoom finer and averaging retained even more detail,
+but at four times the tile count.
+
+Area averaging replaced reprojecting at twice the output resolution with
+bilinear sampling and averaging 2x2 blocks. The results are practically the
+same (area averaging is a little sharper), but the four-times-larger working
+grid is gone: a fetch takes less than half the peak memory and about half the
+time, which let the output limit rise from 12 to 48 million pixels.
 
 ### Pipeline
 
@@ -155,9 +162,8 @@ more detail, but at four times the tile count.
    becomes nodata.
 5. Decode each tile to elevations and composite them into a Web Mercator
    Float32 grid.
-6. Reproject the mosaic onto a grid of twice the output resolution with
-   `projectRasterGridForward()` (bilinear, nodata-aware), then average 2x2
-   blocks of valid pixels (`averageGridPixels()`).
+6. Reproject the mosaic onto the output grid with
+   `projectRasterGridForward()` (`sample_method: 'average'`, nodata-aware).
 7. Add the result as a new `continuous` raster layer in its own dataset, in
    the frame (if the target is in it), at the bottom of the layer stack.
 
@@ -205,11 +211,10 @@ tiles at the same resolution, served from a CDN.
 Presets with `encoding: 'rgb'` keep tile colors instead of decoding
 elevations. Tiles (JPEG, decoded in Node with `jpeg-js`, or PNG) are
 composited into an RGB mosaic with a coverage mask, so missing tiles and
-transparent pixels are excluded from bilinear sampling rather than blended in.
-The mosaic is reprojected at twice the output resolution, with uncovered
-pixels transparent, and averaged down 2x2 with alpha weighting
-(`downsampleRgba()`). The result is an `image` raster with an `rgb` recipe:
-RGB if every pixel is opaque, else RGBA.
+transparent pixels are excluded from resampling rather than blended in.
+The mosaic is reprojected with area averaging, with uncovered pixels
+transparent. The result is an `image` raster with an `rgb` recipe: RGB if
+every pixel is covered, else RGBA.
 
 | Preset | Layer | Zooms | License |
 | --- | --- | --- | --- |
@@ -338,9 +343,35 @@ same pattern as other mapshaper commands.
 - `azimuth=` direction of the main light, in degrees clockwise from north
   (default 315).
 - `altitude=` light angle above the horizon, in degrees (default 45).
-- `single-light` use one light instead of the default blend of four lights
-  around the main azimuth. Multiple lights reduce harsh shadows and keep
-  landforms facing away from the main light legible.
+- `lighting=` the lights around the main azimuth, as relative azimuth and
+  weight. Multiple lights reduce harsh shadows and keep landforms facing away
+  from the main light legible.
+  - `balanced` (default): -90° 0.1, -45° 0.2, 0° 0.4, +45° 0.2, +90° 0.1.
+    Slopes turned equally far either way from the main light get the same
+    light. It replaced a lopsided default (-90° 0.15, -45° 0.2, 0° 0.45,
+    +45° 0.2), whose combined light came from about 12° counterclockwise of
+    the main azimuth, so that west-facing slopes were much brighter than
+    north-facing ones under a 315° light.
+  - `hard`: the main light alone.
+  - `soft`: -135° 0.05, -90° 0.1, -45° 0.2, 0° 0.3, +45° 0.2, +90° 0.1,
+    +135° 0.05. The ±135° lights reach slopes facing away from the main light,
+    which the other schemes leave nearly black. On Denali and Hood it moves
+    2–3% of pixels out of near-black and lowers local contrast by about 12%.
+    Lights added between existing ones (e.g. every 30°) change almost
+    nothing: Lambert shading is linear, so lights only differ from their
+    combined direction where a slope faces away from one of them.
+  - `gdal`: GDAL's `-multidirectional` weighting (Mark 1992): equal lights at
+    -90°, -45°, 0° and +45°, each weighted at every pixel by cos² of the
+    angle between the light and the direction the slope faces. GDAL's lights
+    are fixed at 225–360°; here they follow `azimuth=`, matching GDAL at the
+    default 315°. (Smoothing, `ambient=` and the tone curve still apply, so
+    the output is not GDAL's.) Slopes come out in pairs of equal brightness
+    (e.g. facing W and NW), with a sharp step between the lit and shaded
+    halves. There is no closed form for its brightest slope, so
+    `getHillshadeMaxShade()` searches for it.
+  - Undocumented, for experiments: a list of `azimuth:weight[:altitude]`
+    entries, e.g. `lighting=-45:0.3,0:0.4,45:0.3`. Azimuths are relative to
+    `azimuth=`; altitude defaults to `altitude=`.
 - `exaggeration=` vertical exaggeration. The default increases with the map's
   ground pixel size (1 at 50 m per pixel and below, about 4.5 at 1 km, capped at
   10), because relief flattens out at small scales. It is the square root of
@@ -381,16 +412,18 @@ same pattern as other mapshaper commands.
 - `light-adjust=`, `ambient=`, `texture=`, `aerial=` (experimental) lighting refinements,
   described under Lighting experiments. `ambient=` defaults to 0.5, the
   others to 0 (off).
-- `style=` `shadow` (default) or `opaque` (`gray` and `grey` are accepted as
-  earlier names).
-  - `shadow` is black shadows and white highlights with transparency: flat
+- Two styles: shadow (the default) and opaque (the `opaque` flag). They were
+  chosen with `style=shadow` or `style=opaque` until there were only two;
+  `-blend` and `-sharpen` still read `style=opaque` in the settings of
+  hillshades made then (`isOpaqueHillshade()`).
+  - shadow is black shadows and white highlights with transparency: flat
     ground is fully transparent, shaded slopes get darker and lit slopes
     lighter. It uses ordinary compositing, so it looks the same in the GUI,
     SVG, PNG and graphics editors. By default the brightest highlights get
     the same opacity as the darkest shadows; highlights double the contrast
     across ridgelines, which makes ridges read much more crisply than shadows
     alone.
-  - `opaque` colors every pixel from a ramp that runs from `shadow-color=`
+  - opaque colors every pixel from a ramp that runs from `shadow-color=`
     (full shadow) through `base-color=` (flat ground) to `highlight-color=`
     (the brightest slope), so every pixel is opaque. The tones are the
     shadow style's at full strength: a shadow tone is how far the pixel is
@@ -410,7 +443,7 @@ same pattern as other mapshaper commands.
     sets the middle. The ramp was first blended in sRGB over a `#b4b4b4`
     base (the GDAL/Esri sin(altitude) × 255 at 45°).
 - `base-color=` color of flat ground in the opaque style, e.g. a land tint;
-  it implies `style=opaque` and is an error with `style=shadow`. The three
+  it implies `opaque`. The three
   colors are tied by a weight of 0.8: the base is 80% of the lightness from
   the shadow color to the highlight color (`getHillshadeRampColors()`). The
   highlight color defaults to white. A missing base color is 80% of the way
@@ -423,8 +456,10 @@ same pattern as other mapshaper commands.
   and highlight colors into a strong, unrelated color. With all three
   colors given nothing is derived. The defaults give `#686868` →
   `#dfdfdf` → `#ffffff`; `base-color=#e0d8c0` gives a `#514a36` shadow.
-  The weight 0.8 is 1 / `getHillshadeMaxShade()` with the default lights
-  (the brightest slope is 1.25 times as bright as flat ground), which gives
+  The weight 0.8 is 1 / `getHillshadeMaxShade()` with the former default
+  lights (the brightest slope was 1.25 times as bright as flat ground; 1.21
+  with `lighting=balanced`). It is fixed so that `altitude=` and `lighting=`
+  don't change the colors. This gives
   the shadow half of the ramp four times the lightness range of the
   highlight half, as the highlight tones are scaled four times as much:
   slopes tilted a little toward and away from the light change lightness
@@ -466,8 +501,8 @@ same pattern as other mapshaper commands.
   below), and returned to 0.6 once highlights reached full strength. The highlight
   range is scaled to this maximum, not clipped; the product is capped at 1.
   The brightest highlight goes to the slope facing the blend of lights
-  (`getHillshadeMaxShade()`), which is 1.25 times as bright as flat ground
-  with the default lights at 45°. The range was first scaled to a single
+  (`getHillshadeMaxShade()`), which is 1.21 times as bright as flat ground
+  with the default lights at 45° (1.25 with the former default). The range was first scaled to a single
   light's 1.41, which no slope reaches under the blend: highlights topped out
   at about 0.65 of full strength, and in the opaque style sunny slopes stayed
   near the base color (median 0.37 of the way to the highlight color on
@@ -482,13 +517,14 @@ same pattern as other mapshaper commands.
   scales the opacity of its tones; the opaque style ignores alpha. The
   defaults differ in the opaque style (see `base-color=`).
 - `gamma=` exponent of the tone curve: tone = darkness ^ gamma, where
-  darkness is 0 on flat ground and 1 in full shadow (default 0.75). Values
+  darkness is 0 on flat ground and 1 in full shadow (default 0.7). Values
   below 1 strengthen faint shading and ease off the darkest shadows; values
   above 1 do the opposite. Applies to both styles. 0.5 was first chosen by
   comparing renderings of France (zoom 7) and Mount Rainier (zoom 11), since
   1 left gentle terrain such as the Massif Central nearly invisible; manual
   testing then settled on 0.75 together with default sharpening, which
-  restores local contrast that the lower gamma had flattened.
+  restores local contrast that the lower gamma had flattened, and later on
+  0.7.
 - `verbose` prints the settings used, including automatic ones such as
   `exaggeration=`, as command options that can be pasted back into a command,
   plus the ground pixel size. The global `-verbose` command prints them too.
@@ -702,8 +738,8 @@ good values are known.
   the turn is scaled by the tensor's coherence, so jumbled terrain is left
   alone. Ridges parallel to the light (a 90° difference) are ambiguous, since
   turning either way is equally valid, so the turn fades to 0 there to keep
-  neighboring pixels consistent. Works best with `single-light`, since the
-  four-light blend already reduces the problem.
+  neighboring pixels consistent. Works best with `lighting=hard`, since the
+  multi-light schemes already reduce the problem.
 - `ambient=w` darkens shading where the sky is hidden, with weight `w` (0-1):
   `shade = shade * (1 - w * (1 - openness))`, where openness is
   `1 - mean(sin(horizon angle))` over 8 directions within about 24 pixels.
@@ -896,8 +932,8 @@ Mocha tests never touch the network:
 1. COG adapter (OpenTopography SRTM, any public COG), using windowed and
    overview reads through `geotiff`.
 2. USGS 3DEP ImageServer adapter for high-resolution US data.
-3. Move supersampled or area-averaging resampling into
-   `projectRasterGridForward()`, benefiting `-proj` too.
+3. Offer area-averaging resampling in `-proj` (`resampling=average`); it is
+   already in `projectRasterGridForward()`, used by `-fetch`.
 4. A GUI "Add terrain" action that issues `-fetch` and `-hillshade`, and an
    offer to re-fetch when the frame changes.
 5. A disk cache for tiles in the CLI.

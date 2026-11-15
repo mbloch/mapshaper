@@ -51,6 +51,15 @@ body.map-view {
 	background-color: #fff;
 }
 
+/* LastPass puts a 400x600 frame over the top right of the page, at the top of
+   the stacking order, which blocks clicks when its content fails to load and
+   is left blank. Its shadow root is closed, so only the host can be styled;
+   the frame inherits pointer-events from it. LastPass's inline
+   "display: initial !important" rules out hiding the host. */
+[data-lastpass-root] {
+	pointer-events: none !important;
+}
+
 
 .fade-out {
   animation: fadeOut ease forwards 0.6s;

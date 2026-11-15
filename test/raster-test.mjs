@@ -1131,6 +1131,49 @@ describe('raster layers', function () {
     assert.deepEqual(Array.from(bilinear.samples), [50, 50, 50]);
   });
 
+  describe('area-average resampling', function () {
+    function getRowRaster(values, nodata) {
+      return {
+        interpretation: 'continuous',
+        grid: {
+          width: values.length, height: 1, bands: 1, pixelType: 'float32',
+          samples: Float32Array.from(values), sampleBands: [0],
+          nodata: nodata === undefined ? null : nodata,
+          bbox: [0, 0, values.length, 1], transform: [1, 0, 0, 0, -1, 1]
+        }
+      };
+    }
+
+    function project(raster, width, resampling) {
+      var crs = api.internal.parseCrsString('wgs84');
+      return api.internal.projectRasterGridForward(raster, crs, crs, {
+        raster_mesh_interval: 1,
+        output_bbox: raster.grid.bbox,
+        output_width: width,
+        output_height: 1,
+        resampling: resampling
+      });
+    }
+
+    it('weights source pixels by how much of the output pixel they cover', function () {
+      // output pixels span source x 0-1.5 and 1.5-3
+      var grid = project(getRowRaster([0, 30, 90]), 2, 'average');
+      assert.deepEqual(Array.from(grid.samples), [10, 70]);
+    })
+
+    it('skips nodata pixels and renormalizes the remaining weights', function () {
+      var grid = project(getRowRaster([0, 30, -9999], -9999), 2, 'average');
+      assert.deepEqual(Array.from(grid.samples), [10, 30]);
+    })
+
+    it('matches bilinear sampling where the source is coarser than the output', function () {
+      var average = project(getRowRaster([0, 100]), 4, 'average');
+      var bilinear = project(getRowRaster([0, 100]), 4, 'bilinear');
+      assert.deepEqual(Array.from(average.samples), [0, 25, 75, 100]);
+      assert.deepEqual(Array.from(average.samples), Array.from(bilinear.samples));
+    })
+  });
+
   it('defaults to nearest-neighbor for categorical raster reprojection', function () {
     var raster = getRasterDataset().layers[0].raster;
     var crs = api.internal.parseCrsString('wgs84');
