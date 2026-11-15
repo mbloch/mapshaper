@@ -489,11 +489,13 @@ describe('color-ramps.mjs and oklab.mjs', function () {
       assert.deepEqual(fills, ['#fbe9d9', interpolateOklch('#fbe9d9', '#2f6b1f', {steps: 2})(0.5), '#2f6b1f']);
     });
 
-    it('rgb is the default', async function () {
+    it('oklch is the default; rgb gives the old colors', async function () {
       var a = await classify('colors=#000,#fff classes=3 equal-interval');
-      var b = await classify('colors=#000,#fff classes=3 equal-interval interpolation=rgb');
+      var b = await classify('colors=#000,#fff classes=3 equal-interval interpolation=oklch');
+      var c = await classify('colors=#000,#fff classes=3 equal-interval interpolation=rgb');
       assert.deepEqual(a, b);
-      assert.notEqual(a[1], '#636363');
+      assert.equal(a[1], '#636363');
+      assert.equal(c[1], 'rgb(128, 128, 128)');
     });
 
     it('applies to continuous output', async function () {

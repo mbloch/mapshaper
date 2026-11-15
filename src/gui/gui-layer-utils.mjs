@@ -98,18 +98,31 @@ export function layerIsPinnable(lyr, dataset) {
     internal.layerHasFurniture(lyr);
 }
 
-// Every layer is visible until something says otherwise, so that a layer
-// made or imported next to another does not hide it -- a reference layer used
-// as a guide for drawing or labelling would otherwise vanish the moment the
-// new layer became the active one. Only layers whose visibility has never
+// A layer that arrives without becoming the active one is visible, so that a
+// command that makes several layers does not hide all but one. The active
+// layer is shown by being active, and is left unpinned so that it hides
+// when another layer becomes active. Only layers whose visibility has never
 // been set are touched: a snapshot stores every layer's, and a layer hidden
 // with its eye icon stays hidden.
 //
+// The exception is a new layer with nothing in it, made to be drawn in: the
+// layer that was active stays visible, as a guide for the drawing.
+//
 // layers: [{layer, dataset}], as from model.getLayers()
-export function showNewLayers(layers) {
+// active: the active layer, {layer, dataset}
+// prevActive: (optional) the layer that was active before, if the active
+//   layer is new
+export function showNewLayers(layers, active, prevActive) {
+  var activeLyr = active && active.layer;
+  var prev = prevActive && prevActive.layer;
+  if (prev && prev != activeLyr && !prev.hidden && activeLyr.geometry_type &&
+      !internal.layerHasGeometry(activeLyr) &&
+      layerIsPinnable(prev, prevActive.dataset)) {
+    setLayerPinning(prev, true);
+  }
   layers.forEach(function(o) {
     if (o.layer.pinned === undefined && layerIsPinnable(o.layer, o.dataset)) {
-      setLayerPinning(o.layer, true);
+      setLayerPinning(o.layer, o.layer != activeLyr);
     }
   });
 }

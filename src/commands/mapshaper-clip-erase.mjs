@@ -18,6 +18,7 @@ import { dissolvePolygonLayer2 } from '../dissolve/mapshaper-polygon-dissolve2';
 import { profileStart, profileEnd } from '../utils/mapshaper-profile';
 import { markDatasetChanged, noteDatasetWillChange, noteLayerWillChange, withActiveUndoTransaction } from '../undo/mapshaper-undo-tracking';
 import { clipRasterToBBox } from '../rasters/mapshaper-raster-utils';
+import { clipRasterToPolygons } from '../rasters/mapshaper-raster-clip';
 
 cmd.clipLayers = function(target, src, dataset, opts) {
   return clipLayers(target, src, dataset, "clip", opts);
@@ -136,8 +137,10 @@ function clipLayersByClipDataset(targetLayers, clipDataset, type, opts) {
   return result;
 }
 
+// A polygon source clips rasters to its shapes; other sources (including a
+// bbox) clip to a rectangle.
 function clipRasterLayers(targetLayers, clipSrc, targetDataset, type, opts) {
-  var clipDataset, clipBounds, bbox;
+  var clipDataset, clipLyr, clipBounds, bbox;
   if (type != 'clip') {
     stop('Raster layers only support clipping');
   }
@@ -148,14 +151,19 @@ function clipRasterLayers(targetLayers, clipSrc, targetDataset, type, opts) {
     bbox = opts.bbox2;
   } else {
     clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
-    clipBounds = getLayerBounds(clipDataset.layers[0], clipDataset.arcs);
+    clipLyr = clipDataset.layers[0];
+    clipBounds = getLayerBounds(clipLyr, clipDataset.arcs);
     if (!clipBounds || !clipBounds.hasBounds()) {
       stop('Missing raster clipping bounds');
     }
     bbox = clipBounds.toArray();
   }
   return targetLayers.map(function(lyr) {
-    clipRasterToBBox(lyr, bbox, opts);
+    if (clipLyr && clipLyr.geometry_type == 'polygon') {
+      clipRasterToPolygons(lyr, clipLyr, clipDataset.arcs, bbox, opts);
+    } else {
+      clipRasterToBBox(lyr, bbox, opts);
+    }
     return lyr;
   });
 }

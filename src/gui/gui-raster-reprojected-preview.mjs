@@ -3,6 +3,8 @@ import { GUI } from './gui-lib';
 import { previewHasSourcePixels } from './gui-raster-display-utils';
 
 var MAX_REPROJECTED_PREVIEW_PIXELS = 6e6;
+// cells on the long side of a blended palette's weights, across the view
+var BLEND_FIELD_CELLS = 96;
 var cache = new WeakMap();
 var requestId = 0;
 
@@ -29,12 +31,13 @@ export function scheduleRasterReprojectedPreview(layer, ext, onReady) {
     if (!current || current.pending != id) return;
     timing = {};
     try {
-      grid = internal.projectRasterGridForward({grid: params.grid}, params.sourceCRS, params.displayCRS, {
+      grid = internal.projectRasterGridForward({grid: getPaletteBandGrid(params)}, params.sourceCRS, params.displayCRS, {
         raster_mesh_interval: params.meshInterval,
         output_bbox: params.bbox,
         output_width: params.width,
         output_height: params.height,
         sample_method: params.sampleMethod,
+        fill_uncovered: false,
         timing: timing
       });
     } catch(e) {
@@ -45,7 +48,8 @@ export function scheduleRasterReprojectedPreview(layer, ext, onReady) {
       return;
     }
     timing.renderStart = getTimer();
-    preview = internal.renderRasterPreview(grid, params.recipe, grid.width, grid.height, params.stats);
+    preview = internal.renderRasterPreview(grid, params.recipe, grid.width, grid.height, params.stats,
+      getBlendOptions(params, grid));
     preview.sourcePixels = params.sourcePixels;
     applyCoverageMask(preview, grid.coverage);
     timing.renderMs = getTimer() - timing.renderStart;
@@ -56,6 +60,15 @@ export function scheduleRasterReprojectedPreview(layer, ext, onReady) {
     cache.set(layer, getRasterReprojectedCacheEntry(params, {preview: preview}));
     onReady();
   }, 0);
+}
+
+// A blended palette's weights are in the raster's coordinates; the
+// reprojected grid needs them in the display's (or none, to draw the palette
+// unblended)
+function getBlendOptions(params, grid) {
+  var palette = params.recipe.palette;
+  if (!palette || !palette.blend) return null;
+  return {blendField: internal.getClimateWeightField(grid.bbox, params.displayCRS, BLEND_FIELD_CELLS)};
 }
 
 function getRasterReprojectedPreviewParams(layer, ext) {
@@ -86,9 +99,26 @@ function getRasterReprojectedPreviewParams(layer, ext) {
     recipe: recipe,
     stats: stats,
     sourcePixels: sourcePixels,
-    sampleMethod: getRasterReprojectionSampleMethod(sourcePixels),
+    sampleMethod: getRasterReprojectionSampleMethod(sourcePixels, recipe),
     meshInterval: 32
   };
+}
+
+// Only the band that a palette colors is reprojected. The band is copied once
+// for each grid (and palette band), not for each view.
+var paletteBandGrids = new WeakMap();
+
+function getPaletteBandGrid(params) {
+  var grid = params.grid;
+  var palette = params.recipe.palette;
+  var entry = paletteBandGrids.get(grid);
+  if (!palette) return grid;
+  if (!entry || entry.band != palette.band || entry.samples != grid.samples) {
+    entry = {band: palette.band, samples: grid.samples,
+      grid: internal.getRasterPaletteBandGrid(grid, params.recipe)};
+    paletteBandGrids.set(grid, entry);
+  }
+  return entry.grid;
 }
 
 // True if the reprojected grid has room for every source pixel in view, so that
@@ -154,7 +184,8 @@ function getRasterReprojectedPreviewKey(layer, bbox, size, sourceCRS, displayCRS
     recipe.scaling,
     recipe.scaleRange && recipe.scaleRange.join(','),
     recipe.percentileRange && recipe.percentileRange.join(','),
-    getRasterReprojectionSampleMethod(sourcePixels),
+    internal.getRasterPaletteKey(recipe.palette),
+    getRasterReprojectionSampleMethod(sourcePixels, recipe),
     layer.raster && layer.raster.grid && layer.raster.grid.samples && layer.raster.grid.samples.length
   ].join('|');
 }
@@ -182,10 +213,13 @@ function applyCoverageMask(preview, coverage) {
   }
 }
 
-function getRasterReprojectionSampleMethod(sourcePixels) {
+// Categories are never interpolated, which would give the codes of other
+// categories
+function getRasterReprojectionSampleMethod(sourcePixels, recipe) {
   var vars = GUI.getUrlVars();
   var val = vars['raster-bilinear'] ?? vars.raster_bilinear;
   if (val === false || val == '0') return 'nearest';
+  if (internal.rasterPaletteIsCategorical(recipe && recipe.palette)) return 'nearest';
   // Interpolating between pixels when there is room for all of them would blur
   // the data away for nothing.
   return sourcePixels ? 'nearest' : 'bilinear';

@@ -18,20 +18,20 @@ export function getGradientFunction(stops) {
   };
 }
 
-// Returns the interpolation options of -classify, checked, with
-// interpolation=oklch filled in when vibrance= is given without a method.
-// vibrance= (0-1) is returned as OKLCH chroma, as the interpolators take it.
+// Returns the interpolation options of -classify, checked; the default
+// interpolation is oklch. vibrance= (0-1) is returned as OKLCH chroma, as
+// the interpolators take it.
 export function getInterpolationOptions(opts) {
-  var method = opts.interpolation;
+  var method = opts.interpolation || 'oklch';
   var vibrance = opts.vibrance;
-  if (method && method != 'rgb' && method != 'oklch') {
+  if (method != 'rgb' && method != 'oklch') {
     stop('Unsupported interpolation method:', method, '(expected rgb or oklch)');
   }
   if (vibrance === undefined) {
     return {interpolation: method};
   }
-  if (method && method != 'oklch') {
-    stop('vibrance= requires interpolation=oklch');
+  if (method != 'oklch') {
+    stop('vibrance= does not work with interpolation=rgb');
   }
   if (!(vibrance >= 0 && vibrance <= 1)) {
     stop('vibrance= takes a value from 0 to 1');
@@ -39,8 +39,8 @@ export function getInterpolationOptions(opts) {
   return {interpolation: 'oklch', vibrance: getVibranceChroma(vibrance)};
 }
 
-// opts.interpolation: 'rgb' (default) or 'oklch'; oklch applies only to pairs
-// of colors. opts.vibrance goes with oklch (see
+// opts.interpolation: 'rgb' (default here; -classify defaults to oklch, see
+// getInterpolationOptions()) or 'oklch'; oklch applies only to pairs of colors. opts.vibrance goes with oklch (see
 // interpolateOklch()).
 export function getPairInterpolator(a, b, opts) {
   var method = opts && opts.interpolation;

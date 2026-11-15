@@ -304,7 +304,7 @@ export function getDatasetCrsInfo(dataset) {
   } else if (!info.crs && info.crs_string) {
     info.crs = parseCrsString(info.crs_string);
   }
-  if (!info.crs) {
+  if (!info.crs && !datasetIsInPixelCoordinates(dataset)) {
     if (probablyDecimalDegreeBounds(getDatasetBounds(dataset))) {
       // use wgs84 for probable latlong datasets with unknown datums
       info.crs_string = 'wgs84';
@@ -312,6 +312,14 @@ export function getDatasetCrsInfo(dataset) {
     }
   }
   return info;
+}
+
+// An image imported without georeferencing is placed in pixel coordinates,
+// which can fall in the lat-long range without being lat-long.
+function datasetIsInPixelCoordinates(dataset) {
+  return (dataset.layers || []).some(function(lyr) {
+    return !!(lyr.raster && lyr.raster.grid && lyr.raster.grid.pixelCoordinates);
+  });
 }
 
 export function getDatasetCRS(dataset) {

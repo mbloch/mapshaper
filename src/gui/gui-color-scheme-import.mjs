@@ -1,13 +1,18 @@
 import { internal } from './gui-core';
 import {
-  maxSchemeColors, maxCategoricalColors,
+  maxSchemeColors, maxCategoricalColors, maxFilePaletteColors,
   getDefaultSchemeOfType, getSchemeColors, getSchemeTiles, getSchemeValues, getNumericFields,
   getCategoryFields, getCategories, getCategoricalPresetColors, getContinuousTileStops,
-  updateDivergingLayout, resetSchemeBreaks, setTileCount, setSchemeNullColor
+  updateDivergingLayout, resetSchemeBreaks, setTileCount, setSchemeNullColor,
+  getElevationFields, getElevationPresetNames, getClimatePresetNames, getElevationPresetColors, getBathymetricPresetNames,
+  setSchemeField, getElevationSchemeFromSpec, isElevationScheme, setSchemeMethod
 } from './gui-color-scheme-model';
+import { getRasterUnitMeters } from './gui-raster-band-values';
 
 // Color palettes from text: a GMT color palette table (.cpt), the JSON that
-// gui-color-scheme-export.mjs writes, or a list of CSS colors.
+// gui-color-scheme-export.mjs writes, a legend of categories (see
+// parseLegend()), or a list of CSS colors. Names that a palette gives a
+// raster's categories go with its scheme, to -classify category-names=.
 // See docs/development/color-scheme-panel-design.md, "Importing a palette"
 //
 // A file that mapshaper exported has the -classify command that made it,
@@ -18,20 +23,46 @@ import {
 // null). Throws an Error with a message for the user if the text isn't a
 // palette.
 // scheme: the panel's current scheme, which a palette of colors only goes into
-export function importColorPalette(text, scheme, lyr) {
+// points: [lon, lat] points across the layer, for the preset that a blend of
+//   elevation presets uses where it can't blend (see getDefaultElevationPreset())
+export function importColorPalette(text, scheme, lyr, points) {
   var palette = parsePalette(text);
-  var result = palette.command ? importCommand(palette, lyr) : null;
-  if (!result) {
+  var result = palette.command || palette.elevations ? importCommand(palette, lyr, points) : null;
+  var note;
+  if (!result || !result.scheme) {
+    note = result ? result.note : palette.command ? 'The palette was made for a field this layer doesn\'t have.' : null;
+    if (palette.kind == 'elevations') throw new Error(note);
+    // other colors go into a ramp, which fixed elevations don't have
+    if (isElevationScheme(scheme)) scheme = setSchemeMethod(scheme, 'equal-interval');
     result = palette.kind == 'categories' ? importCategories(palette, scheme, lyr) :
       palette.kind == 'classes' ? importClasses(palette, scheme, lyr) :
       {scheme: importColors(palette.colors, scheme, lyr), note: null};
-    if (palette.command) {
-      result.note = 'The palette was made for a field this layer doesn\'t have.' +
-        (result.note ? ' ' + result.note : '');
-    }
+    if (note) result.note = note + (result.note ? ' ' + result.note : '');
   }
   if (palette.nullColor) result.scheme = setSchemeNullColor(result.scheme, palette.nullColor);
+  if (palette.kind == 'categories') result.scheme = addCategoryNames(result.scheme, palette, lyr);
   return result;
+}
+
+// A raster's categories get the names that a palette gives them: the labels
+// of a GMT table (;label), the names of a JSON palette's classes, or a
+// legend's text. A label that is just the category's value isn't a name.
+function addCategoryNames(scheme, palette, lyr) {
+  var byKey = {}, names = {}, found = false;
+  if (!internal.layerHasRaster(lyr) || scheme.type != 'categorical' || scheme.method != 'categorical') {
+    return scheme;
+  }
+  palette.categories.forEach(function(c) {
+    if (c.label && c.label != c.key && !(c.key in byKey)) byKey[c.key] = c.label;
+  });
+  getCategories(lyr, scheme.field).forEach(function(val) {
+    var name = byKey[String(val)];
+    if (name) {
+      names[val] = name;
+      found = true;
+    }
+  });
+  return found ? Object.assign({}, scheme, {categoryNames: {field: scheme.field, names: names}}) : scheme;
 }
 
 // {kind, command, preset, nullColor, ...}
@@ -42,7 +73,49 @@ export function parsePalette(text) {
   var str = String(text || '').trim();
   if (!str) throw new Error('There is no palette to import.');
   if (str[0] == '{' || str[0] == '[') return parseJsonPalette(str);
-  return parseColorList(str) || parseCPT(str);
+  return parseColorList(str) || parseTable(str);
+}
+
+// A GMT table, or else a legend
+function parseTable(str) {
+  var legend;
+  try {
+    return parseCPT(str);
+  } catch(e) {
+    legend = parseLegend(str);
+    if (legend) return legend;
+    throw e;
+  }
+}
+
+// A legend of categories, like the text that comes with a classified raster:
+// lines that start with a value and give a color and a name, e.g.
+// "4: BWh Arid, desert, hot [255 0 0]", "4,#ff0000,Desert", or a line of a
+// QGIS color map export, "4,255,0,0,255,Desert". Other lines (a title, notes,
+// a header row) are skipped. Returns null if no line is a category.
+function parseLegend(str) {
+  var categories = str.split(/\r?\n/).map(parseLegendLine).filter(Boolean);
+  if (categories.length === 0) return null;
+  return {kind: 'categories', command: null, preset: null, nullColor: null, categories: categories};
+}
+
+function parseLegendLine(line) {
+  var m = /^\s*([-+]?\d+)(?:\s*[:=,;\t]\s*|\s+)(\S.*)$/.exec(line);
+  var rest, found, color, label;
+  if (!m) return null;
+  rest = m[2];
+  found = /[[(]\s*(\d{1,3})[\s,]+(\d{1,3})[\s,]+(\d{1,3})\s*[\])]/.exec(rest) ||
+    /^(\d{1,3})[\s,]+(\d{1,3})[\s,]+(\d{1,3})(?:[\s,]+\d{1,3})?(?=[\s,;]|$)/.exec(rest);
+  if (found) {
+    color = fromRGB(found.slice(1, 4).map(Number));
+  } else {
+    found = /rgba?\([^)]*\)|#[0-9a-f]{3,8}\b/i.exec(rest);
+    color = found ? parseGmtColor(found[0]) : null;
+  }
+  if (!color) return null;
+  label = (rest.slice(0, found.index) + ' ' + rest.slice(found.index + found[0].length))
+    .replace(/^[\s,;:"']+|[\s,;:"']+$/g, '').replace(/\s+/g, ' ');
+  return {key: m[1].replace(/^\+/, ''), label: label || m[1], color: color};
 }
 
 function parseJsonPalette(str) {
@@ -63,11 +136,19 @@ function parseJsonPalette(str) {
     preset: typeof data.palette == 'string' ? data.palette : null,
     nullColor: data.nullColor ? parseColorValue(data.nullColor) : null
   };
-  if (Array.isArray(data.classes) && data.classes.length > 0) {
+  if (data.elevations && typeof data.elevations == 'object') {
+    palette.elevations = parseElevations(data.elevations);
+    palette.elevations.classed = data.continuous === false;
+    palette.field = typeof data.field == 'string' ? data.field : null;
+  }
+  if (palette.elevations && !(Array.isArray(data.classes) && data.classes.length > 0)) {
+    palette.kind = 'elevations';
+  } else if (Array.isArray(data.classes) && data.classes.length > 0) {
     if (data.classes.every(function(c) { return c && 'value' in c; })) {
       palette.kind = 'categories';
       palette.categories = data.classes.map(function(c) {
-        return {key: String(c.value), label: String(c.value), color: parseColorValue(c.color)};
+        var name = c.name || c.label;
+        return {key: String(c.value), label: name ? String(name) : String(c.value), color: parseColorValue(c.color)};
       });
     } else {
       palette.kind = 'classes';
@@ -86,6 +167,44 @@ function parseJsonPalette(str) {
     throw new Error('The JSON has no classes or colors.');
   }
   return palette;
+}
+
+// The elevations of a JSON export of fixed elevations (see
+// getElevationExportData()): {units, stops, colors, blend, sea}
+function parseElevations(o) {
+  var blend = null;
+  if (o.blend && typeof o.blend == 'object') {
+    blend = {};
+    Object.keys(o.blend).forEach(function(name) {
+      blend[name] = parseColorArray(o.blend[name], name);
+    });
+  }
+  return {
+    units: typeof o.units == 'string' ? o.units : null,
+    stops: o.stops ? parseStops(o.stops, 'stops') : null,
+    colors: o.colors ? parseColorArray(o.colors, 'colors') : null,
+    blend: blend,
+    // without sea, the command's
+    sea: !('sea' in o) ? undefined : o.sea && typeof o.sea == 'object' ? {
+      preset: typeof o.sea.palette == 'string' ? o.sea.palette : null,
+      stops: o.sea.stops ? parseStops(o.sea.stops, 'sea stops') : null,
+      colors: o.sea.colors ? parseColorArray(o.sea.colors, 'sea colors') : null
+    } : null
+  };
+}
+
+function parseStops(arr, name) {
+  if (!Array.isArray(arr) || !arr.every(function(val, i) {
+    return isFinite(val) && val !== null && (i === 0 || +val >= +arr[i - 1]);
+  })) {
+    throw new Error('The ' + name + ' should be numbers in ascending order.');
+  }
+  return arr.map(Number);
+}
+
+function parseColorArray(arr, name) {
+  if (!Array.isArray(arr)) throw new Error('The ' + name + ' should be a list of colors.');
+  return arr.map(parseColorValue);
 }
 
 function parseColors(arr) {
@@ -250,16 +369,17 @@ function sortClasses(classes) {
 // The scheme that a mapshaper export was made from, by its -classify command.
 // Presets come back as presets if their colors are the same; other ramps
 // are pinned at every tile. Returns null if the command's field isn't one
-// this layer can use.
-function importCommand(palette, lyr) {
-  var cmd, o, colors, type, scheme;
-  try {
-    cmd = internal.parseCommands(palette.command)[0];
-  } catch(e) {
-    return null;
+// this layer can use, or {scheme: null, note} for fixed elevations that
+// can't be imported (see importElevations()).
+function importCommand(palette, lyr, points) {
+  var o = palette.command ? parseClassifyCommand(palette.command) : null;
+  var colors, type, scheme;
+  if (palette.elevations || o && isElevationCommand(o)) {
+    return importElevations(o || {}, palette, lyr, points);
   }
-  o = cmd && cmd.name == 'classify' ? cmd.options : null;
   if (!o || !Array.isArray(o.colors) || o.colors.length < 2 || !o.field) return null;
+  // breaks given as percentages ("30%") depend on the data they were used with
+  if (o.breaks && !o.breaks.every(isFinite)) return null;
   colors = o.colors.map(function(c) { return internal.parseColor(c); });
   if (!colors.every(Boolean)) return null;
   colors = colors.map(internal.formatColor);
@@ -273,6 +393,124 @@ function importCommand(palette, lyr) {
     if (!scheme) return null;
   }
   return {scheme: findPreset(scheme, palette.preset, colors, lyr), note: null};
+}
+
+function parseClassifyCommand(str) {
+  var cmd;
+  try {
+    cmd = internal.parseCommands(str)[0];
+  } catch(e) {
+    return null;
+  }
+  return cmd && cmd.name == 'classify' ? cmd.options : null;
+}
+
+// Fixed elevations are hypsometric= (see formatSchemeCommand()), or in older
+// commands, stops given as breaks= and outer-breaks=, without a method=
+function isElevationCommand(o) {
+  return !!o.hypsometric || !o.method && !!o.outer_breaks;
+}
+
+// Fixed elevations, from the command, and from a JSON export's elevations
+// (see getElevationExportData()), which take precedence, so that they can be
+// edited. Colors and stops have to be one at each of the presets' stops.
+function importElevations(o, palette, lyr, points) {
+  var elev = palette.elevations || {};
+  var field = o.field || palette.field;
+  var cmd = readElevationCommand(o);
+  var hypsometric = cmd.hypsometric;
+  // land colors, from the elevations or else the command
+  var landTransparent = !elev.blend && !elev.colors && !cmd.colors && (hypsometric == 'none' || !hypsometric);
+  // transparent land keeps the palette it had, for when it has colors again
+  var blended = !!elev.blend || !elev.colors && (hypsometric == 'blended' ||
+    landTransparent && String(palette.preset).toLowerCase() == 'blended');
+  var classed = !blended && !landTransparent && (elev.classed || cmd.classed);
+  var spec, scheme, base;
+  if (!getElevationFields(lyr).includes(field)) {
+    return {scheme: null, note: 'The palette is for elevations, and this layer has no ' +
+      (field ? field + ' band of elevations.' : 'elevations.')};
+  }
+  base = setSchemeField(getDefaultSchemeOfType('elevation', lyr, points), field);
+  spec = {
+    preset: palette.preset || (hypsometric != 'blended' && hypsometric != 'none' ? hypsometric : null),
+    stops: elev.stops ? convertStops(elev.stops, elev.units, lyr) : cmd.stops,
+    classed: classed,
+    landTransparent: landTransparent,
+    sea: elev.sea !== undefined ? getJsonSea(elev.sea, elev.units, lyr) : cmd.sea
+  };
+  if (blended) {
+    spec.blend = {};
+    getClimatePresetNames().forEach(function(name) {
+      var colors = elev.blend ? elev.blend[name] : cmd.named[name.toLowerCase()];
+      if (colors) spec.blend[name] = colors.map(parseColorValue);
+    });
+  } else if (!landTransparent) {
+    spec.colors = elev.colors || (cmd.colors ? cmd.colors.map(parseColorValue) : null) ||
+      (spec.preset ? getPresetColorsByKey(spec.preset) : null);
+  }
+  scheme = getElevationSchemeFromSpec(base, spec, lyr);
+  if (!scheme) {
+    return {scheme: null, note: 'The ' + (blended ? 'blended presets have ' +
+      getElevationPresetColors(getClimatePresetNames()[0]).length : 'elevation presets have ' +
+      getElevationPresetNames().map(function(name) { return getElevationPresetColors(name).length; })
+        .filter(function(n, i, arr) { return arr.indexOf(n) == i; }).join(' or ')) +
+      ' stops, and the sea ' + getElevationPresetColors(getBathymetricPresetNames()[0]).length +
+      ', with a color at each; the palette\'s don\'t match.'};
+  }
+  return {scheme: scheme, note: null};
+}
+
+function getPresetColorsByKey(key) {
+  var name = getElevationPresetNames().find(function(name) { return name.toLowerCase() == key.toLowerCase(); });
+  return name ? getElevationPresetColors(name) : null;
+}
+
+// The fixed elevations of a command: {hypsometric, classed, colors, stops,
+// named, sea}. With hypsometric=, the land's colors and stops (every one) are
+// the unnamed lists of colors= and breaks= (or the preset's, by its name), a
+// blend's colors are by preset (named: {name: colors}), and the sea's are its
+// sea: lists (see splitRampLists()). An older command without hypsometric=
+// gives the stops as breaks= and outer-breaks=; its classes have no
+// continuous flag, and every stop but the first in breaks=.
+function readElevationCommand(o) {
+  var hypsometric = o.hypsometric ? String(o.hypsometric).toLowerCase() : null;
+  var colors = internal.splitRampLists(o.colors) || {};
+  var breaks = internal.splitRampLists(o.breaks) || {};
+  var classed = hypsometric ? !!o.classed : !!o.outer_breaks && !o.continuous;
+  var stops = null;
+  if (hypsometric) {
+    stops = breaks[''] || breaks[hypsometric] || null;
+  } else if (breaks[''] && o.outer_breaks && o.outer_breaks.length == 2) {
+    stops = [o.outer_breaks[0]].concat(breaks[''], classed ? [] : [o.outer_breaks[1]]);
+  }
+  return {
+    hypsometric: hypsometric,
+    classed: classed,
+    colors: colors[''] || hypsometric && colors[hypsometric] || null,
+    stops: stops ? stops.map(Number) : null,
+    named: colors,
+    sea: getCommandSea(o, colors.sea, breaks.sea)
+  };
+}
+
+// A bathymetric sea=, with its colors and depths if they were changed
+function getCommandSea(o, colors, stops) {
+  var sea = o.sea ? String(o.sea).toLowerCase() : null;
+  var preset = sea && sea != 'transparent' && sea != 'land' && sea != 'custom' ? sea : null;
+  if (!preset && !colors) return null;
+  return {preset: preset, stops: stops ? stops.map(Number) : null, colors: colors ? colors.map(parseColorValue) : null};
+}
+
+function getJsonSea(sea, units, lyr) {
+  return sea ? Object.assign({}, sea, {stops: sea.stops ? convertStops(sea.stops, units, lyr) : null}) : null;
+}
+
+// Stops in @units (e.g. 'm' or 'ft') in the band's units
+function convertStops(stops, units, lyr) {
+  var meters = units ? internal.getVerticalUnitMeters(internal.parseVerticalUnits(units)) : null;
+  var bandMeters = getRasterUnitMeters(lyr);
+  if (!meters || meters == bandMeters) return stops;
+  return stops.map(function(val) { return +(val * meters / bandMeters).toPrecision(6); });
 }
 
 function getRampCommandScheme(o, type, colors, lyr) {
@@ -357,7 +595,7 @@ function importCategories(palette, scheme, lyr) {
     var colors = categories.map(function(val) {
       return lookup[String(val)] || lookup[String(val).replace(/\s+/g, '_')];
     });
-    if (categories.length > 0 && categories.length <= maxCategoricalColors && colors.every(Boolean)) {
+    if (categories.length > 0 && categories.length <= maxFilePaletteColors && colors.every(Boolean)) {
       match = {field: field, colors: colors};
     }
     return !!match;

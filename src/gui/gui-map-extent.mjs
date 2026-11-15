@@ -165,14 +165,7 @@ export function MapExtent(_position) {
 
   this.zoomToFrameMagnification = function(targetScale) {
     if (!_frame || !(targetScale > 0)) return;
-    var currentScale = this.getSymbolScale();
-    var frameBounds = new Bounds(_frame.bbox);
-    var p = this.translateCoords(frameBounds.centerX(), frameBounds.centerY());
-    this.zoomByPct(
-      targetScale / currentScale,
-      p[0] / this.width(),
-      p[1] / this.height()
-    );
+    this.zoomByPct(targetScale / this.getSymbolScale());
   };
 
   // convert pixel coords (0,0 is top left corner of map) to display CRS coords

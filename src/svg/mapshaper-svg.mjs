@@ -18,7 +18,8 @@ import { Bounds } from '../geom/mapshaper-bounds';
 import { getDatasetCRS, getDatasetCrsInfo, crsToProj4, parseAuthorityCodeString, parseAuthorityCodeFromWkt } from '../crs/mapshaper-projections';
 import { runningInBrowser } from '../mapshaper-env';
 import require from '../mapshaper-require';
-import { getRasterBBox, intersectBboxes, renderRasterExportPreview } from '../rasters/mapshaper-raster-utils';
+import { getRasterBBox, getRasterViewOpacity, intersectBboxes, renderRasterExportPreview } from '../rasters/mapshaper-raster-utils';
+import { getRasterPalette, rasterPaletteIsCategorical } from '../rasters/mapshaper-raster-palette';
 import { findStylePropertiesBySymbolGeom } from './svg-properties';
 import { applyPolygonGlows } from './svg-glow';
 import { renderLineCasings } from './svg-line-casing';
@@ -92,6 +93,14 @@ export function renderSVGDocument(dataset, frame, layers, opts) {
     // the default limit in Illustrator seems to be 10 -- too large for mapping
     // (Mapbox uses 2 as the default in their styles)
     lineProps += ' stroke-miterlimit="2"';
+  }
+  // opts.svg_image_size [width, height]: draw the frame at this size, stretched
+  // if its shape is different (e.g. to fit the pixels of a raster grid)
+  if (opts.svg_image_size) {
+    return `<?xml version="1.0"?>
+<svg ${namespace} version="1.2" baseProfile="tiny" width="${opts.svg_image_size[0]}" height="${opts.svg_image_size[1]}" viewBox="0 0 ${frame.width} ${frame.height}" preserveAspectRatio="none" ${lineProps}>${style}
+${svg}
+</svg>`;
   }
   var template = `<?xml version="1.0"?>
 <svg ${namespace} version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" ${lineProps}>${style}
@@ -330,16 +339,19 @@ export function exportRasterLayerForSVG(lyr, frame, opts) {
   var raster = lyr.raster;
   var rendered = renderRasterForSVG(raster, frame, opts);
   var bbox = transformRasterBboxForSVG(rendered.bbox, frame);
-  var href;
+  var opacity = getRasterViewOpacity(raster);
+  // JPEG would blur the boundaries between categories
+  var lossless = rasterPaletteIsCategorical(getRasterPalette(raster.view && raster.view.recipe));
+  var href, image;
   var layerObj = getEmptyLayerForSVG(lyr, opts);
   if (!rendered.preview.width || !rendered.preview.height) {
     layerObj.children = [];
     return layerObj;
   }
   href = opts.linked_images ?
-    exportLinkedRasterPreview(rendered.preview, opts) :
-    encodeRasterPreview(rendered.preview, opts);
-  layerObj.children = [{
+    exportLinkedRasterPreview(rendered.preview, opts, lossless) :
+    encodeRasterPreview(rendered.preview, opts, lossless);
+  image = {
     tag: 'image',
     properties: {
       x: bbox[0],
@@ -349,7 +361,9 @@ export function exportRasterLayerForSVG(lyr, frame, opts) {
       href: href,
       preserveAspectRatio: 'none'
     }
-  }];
+  };
+  if (opacity < 1) image.properties.opacity = opacity;
+  layerObj.children = [image];
   return layerObj;
 }
 
@@ -406,14 +420,14 @@ function transformRasterBboxForSVG(bbox, frame) {
   return [p1[0], p1[1], p2[0], p2[1]];
 }
 
-function encodeRasterPreview(preview, opts) {
-  var format = getSvgRasterFormat(preview, opts);
+function encodeRasterPreview(preview, opts, lossless) {
+  var format = getSvgRasterFormat(preview, opts, lossless);
   var data = format == 'png' ? encodePng(preview) : encodeJpeg(preview, opts);
   return 'data:image/' + format + ';base64,' + data;
 }
 
-function exportLinkedRasterPreview(preview, opts) {
-  var format = getSvgRasterFormat(preview, opts);
+function exportLinkedRasterPreview(preview, opts, lossless) {
+  var format = getSvgRasterFormat(preview, opts, lossless);
   var data = format == 'png' ? encodePng(preview) : encodeJpeg(preview, opts);
   var ext = format == 'jpeg' ? 'jpg' : format;
   var filename = opts.svg_file_base + '-image-' + (opts.svg_image_files.length + 1) + '.' + ext;
@@ -436,10 +450,11 @@ function base64ToBytes(str) {
   return bytes;
 }
 
-function getSvgRasterFormat(preview, opts) {
+// @lossless: use PNG unless a format was chosen
+function getSvgRasterFormat(preview, opts, lossless) {
   var fmt = opts.svg_raster_format || opts.raster_format || null;
   if (fmt) return fmt == 'jpg' ? 'jpeg' : fmt;
-  return previewHasTransparency(preview) ? 'png' : 'jpeg';
+  return lossless || previewHasTransparency(preview) ? 'png' : 'jpeg';
 }
 
 function previewHasTransparency(preview) {

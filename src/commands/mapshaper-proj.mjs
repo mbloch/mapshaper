@@ -26,6 +26,7 @@ import { DataTable } from '../datatable/mapshaper-data-table';
 import { datasetHasGeometry, datasetHasRaster } from '../dataset/mapshaper-dataset-utils';
 import { createRasterPreview } from '../rasters/mapshaper-raster-utils';
 import { projectRasterGridForward } from '../rasters/mapshaper-raster-reprojection';
+import { updateRasterViewForGrid } from '../rasters/mapshaper-raster-fill';
 import { runningInBrowser } from '../mapshaper-env';
 import { stop, message, warn, error } from '../utils/mapshaper-logging';
 import { importFile } from '../io/mapshaper-file-import';
@@ -61,6 +62,7 @@ import { getFrameCrsInfo } from '../furniture/mapshaper-frame-members';
 import { isFrameComponentLayer } from '../furniture/mapshaper-frame-utils';
 import { getLayerTargetId } from '../dataset/mapshaper-target-utils';
 import { formatOptionValue } from '../cli/mapshaper-option-parsing-utils';
+import { updateHypsometricBlend } from '../rasters/mapshaper-raster-hypsometric';
 
 // Run -proj over all the targets of a single command.
 // The destination CRS is resolved once for each group of targets that has to
@@ -638,6 +640,8 @@ function scaleProjectionFrameBounds(bounds, crs) {
 function projectRasterLayer(lyr, src, dest, opts) {
   var raster = lyr.raster;
   raster.grid = projectRasterGridForward(raster, src, dest, opts || {});
+  updateRasterViewForGrid(raster);
+  updateHypsometricBlend(raster, dest);
   raster.view = raster.view || {};
   delete raster.view.scalingStats;
   if (runningInBrowser()) {

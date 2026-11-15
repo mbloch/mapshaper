@@ -28,6 +28,7 @@ var RESERVED_OPTIONS = {
   geojson: true,
   name: true,
   no_replace: true,
+  offsets: true,
   properties: true,
   target: true
 };
@@ -178,13 +179,16 @@ function reversePathIds(ids) {
 // geomType: geometry type of the layer the shape is joining, or null
 export function toFeature(opts, geomType) {
   var feature;
+  if (opts.geojson && opts.offsets) {
+    stop('The offsets= option requires coordinates=, not geojson=');
+  }
   if (opts.geojson) {
     feature = toGeoJSONFeature(parseArg(opts.geojson));
   } else {
     feature = {
       type: 'Feature',
       properties: parseProperties(opts.properties),
-      geometry: opts.coordinates && parseCoordsAsGeometry(opts.coordinates) || null
+      geometry: opts.coordinates && parseCoordsAsGeometry(opts.coordinates, opts.offsets) || null
     };
     if (!feature.geometry) {
       stop('Missing required shape coordinates');
@@ -316,7 +320,9 @@ function transposeCoords(arr) {
   return coords;
 }
 
-function parseCoordsAsGeometry(arg) {
+// offsets: optional dx,dy,... list of vertices, each relative to the previous
+// vertex, starting from the last vertex in arg
+function parseCoordsAsGeometry(arg, offsets) {
   if (typeof arg == 'string') {
     arg = arg.trim();
     if (!arg.startsWith('[') && !arg.endsWith(']')) {
@@ -324,6 +330,9 @@ function parseCoordsAsGeometry(arg) {
     }
   }
   var arr = parseArg(arg);
+  if (offsets && offsets.length > 0) {
+    arr = appendOffsets(isPoint(arr) ? [arr] : arr, offsets);
+  }
   if (isPoint(arr)) {
     return {
       type: 'Point',
@@ -350,4 +359,24 @@ function parseCoordsAsGeometry(arg) {
   }
 
   stop('Unable to import coordinates');
+}
+
+function appendOffsets(arr, offsets) {
+  var coords, last;
+  if (isArrayOfNumbers(arr)) {
+    arr = transposeCoords(arr);
+  }
+  if (!isArrayOfPoints(arr)) {
+    stop('The offsets= option requires x,y,... coordinates');
+  }
+  if (offsets.length % 2 !== 0 || !offsets.every(utils.isNumber)) {
+    stop('Unable to parse dx,dy,... offsets');
+  }
+  coords = arr.concat();
+  last = coords[coords.length - 1];
+  for (var i=0; i<offsets.length; i+=2) {
+    last = [last[0] + offsets[i], last[1] + offsets[i+1]];
+    coords.push(last);
+  }
+  return coords;
 }

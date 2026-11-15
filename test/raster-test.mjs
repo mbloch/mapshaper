@@ -15,6 +15,7 @@ var LARGE_YCBCR_FIXTURE = '/Users/matthewbloch/nytweb/2026/mapshaper/rasters/f5a
 var USER_DEFINED_CRS_FIXTURE = '/Users/matthewbloch/nytweb/2026/mapshaper/rasters/usa-relief.tif';
 var WGS84_GEOTIFF_FIXTURE = 'test/data/geotiff/wgs84-geographic-epsg4326.tif';
 var NO_CRS_GEOTIFF_FIXTURE = 'test/data/geotiff/no-crs-rgb-3x3.tif';
+var NO_GEOREF_TIFF_FIXTURE = 'test/data/geotiff/no-georef-gray-3x2.tif';
 
 describe('raster layers', function () {
   it('exports raster previews as embedded SVG images', function () {
@@ -298,6 +299,102 @@ describe('raster layers', function () {
     assert(crs.includes('+datum=WGS84'), 'read as ' + crs);
   });
 
+  describe('GeoTIFF raster type', function () {
+    function encodeUTMGrid(rasterType) {
+      return api.internal.encodeGeoTIFF(makeTestGrid([500000, 4000000, 502000, 4002000]), {
+        geoKeys: {GTModelTypeGeoKey: 1, GTRasterTypeGeoKey: rasterType, ProjectedCSTypeGeoKey: 32618}
+      });
+    }
+
+    async function importGrid(bytes) {
+      var dataset = await api.internal.importFileAsync('utm.tif', {
+        input: {'utm.tif': Buffer.from(bytes)}
+      });
+      return dataset.layers[0].raster.grid;
+    }
+
+    it('reads a PixelIsArea file\'s tags as the corner of the first pixel', async function () {
+      var grid = await importGrid(encodeUTMGrid(1));
+      assert.deepEqual(grid.bbox, [500000, 4000000, 502000, 4002000]);
+    });
+
+    // As GDAL does
+    it('reads a PixelIsPoint file\'s tags as the center of the first pixel', async function () {
+      var grid = await importGrid(encodeUTMGrid(2));
+      assert.deepEqual(grid.bbox, [499500, 4000500, 501500, 4002500]);
+      assert.deepEqual(grid.transform, [1000, 0, 499500, 0, -1000, 4002500]);
+    });
+
+    it('exports a PixelIsPoint file as PixelIsArea in the same place', async function () {
+      var output = await api.applyCommands('-i utm.tif -o out.tif', {'utm.tif': Buffer.from(encodeUTMGrid(2))});
+      var grid = await importGrid(output['out.tif']);
+      assert.deepEqual(grid.bbox, [499500, 4000500, 501500, 4002500]);
+    });
+  });
+
+  describe('GeoTIFF alpha bands', function () {
+    // 1x1 pixel with band values 10, 20, 30...
+    function encodeBands(bands, extraSamples) {
+      var samples = new Uint8Array(bands).map(function(_, i) { return (i + 1) * 10; });
+      var bytes = Buffer.from(api.internal.encodeGeoTIFF({
+        width: 1, height: 1, bands: bands, pixelType: 'uint8', samples: samples,
+        nodata: null, bbox: [0, 0, 1, 1], transform: [1, 0, 0, 0, -1, 1]
+      }, {}));
+      return extraSamples ? setExtraSamples(bytes, extraSamples) : bytes;
+    }
+
+    // Rewrites the ExtraSamples tag of a (little-endian, classic) TIFF made by
+    // encodeGeoTIFF(), which flags only the fourth band of four as alpha
+    function setExtraSamples(bytes, values) {
+      var view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      var ifd = view.getUint32(4, true);
+      var entry, offset;
+      for (var i = 0; i < view.getUint16(ifd, true); i++) {
+        entry = ifd + 2 + i * 12;
+        if (view.getUint16(entry, true) != 338) continue;
+        assert.equal(view.getUint32(entry + 4, true), values.length);
+        offset = values.length <= 2 ? entry + 8 : view.getUint32(entry + 8, true);
+        values.forEach(function(val, j) { view.setUint16(offset + j * 2, val, true); });
+        return bytes;
+      }
+      throw new Error('missing ExtraSamples tag');
+    }
+
+    async function importGrid(bytes) {
+      var dataset = await api.internal.importFileAsync('bands.tif', {input: {'bands.tif': bytes}});
+      return dataset.layers[0].raster.grid;
+    }
+
+    it('imports a fourth band flagged as alpha', async function () {
+      var grid = await importGrid(encodeBands(4));
+      assert.deepEqual(grid.sampleBands, [0, 1, 2, 3]);
+      assert.deepEqual(Array.from(grid.samples), [10, 20, 30, 40]);
+    });
+
+    it('imports a fourth band flagged as associated alpha', async function () {
+      var grid = await importGrid(encodeBands(4, [1]));
+      assert.deepEqual(grid.sampleBands, [0, 1, 2, 3]);
+    });
+
+    it('leaves out a fourth band that is not alpha, like near-infrared', async function () {
+      var grid = await importGrid(encodeBands(4, [0]));
+      assert.equal(grid.bands, 3);
+      assert.deepEqual(grid.sampleBands, [0, 1, 2]);
+      assert.deepEqual(Array.from(grid.samples), [10, 20, 30]);
+    });
+
+    it('finds an alpha band after other extra bands', async function () {
+      var grid = await importGrid(encodeBands(5, [0, 2]));
+      assert.deepEqual(grid.sampleBands, [0, 1, 2, 4]);
+      assert.deepEqual(Array.from(grid.samples), [10, 20, 30, 50]);
+    });
+
+    it('imports the RGB bands of a file whose extra bands are unspecified', async function () {
+      var grid = await importGrid(encodeBands(5));
+      assert.deepEqual(grid.sampleBands, [0, 1, 2]);
+    });
+  });
+
   it('imports geographic GeoTIFF EPSG:4326 CRS metadata', async function () {
     var dataset = await api.internal.importFileAsync(WGS84_GEOTIFF_FIXTURE, {});
     assert.equal(dataset.info.input_formats[0], 'geotiff');
@@ -369,6 +466,70 @@ describe('raster layers', function () {
     assert.equal(lyr.raster.grid.height, 1);
     assert.equal(lyr.raster.grid.bands, 3);
     assert.deepEqual(lyr.raster.grid.bbox, [100, 190, 120, 200]);
+  });
+
+  describe('rasters without georeferencing', function () {
+    it('imports a PNG without a world file in pixel coordinates', async function () {
+      var group = getPngImportGroup();
+      delete group.world;
+      var dataset = await api.internal.importContentAsync(group, {});
+      var grid = dataset.layers[0].raster.grid;
+      assert.deepEqual(grid.bbox, [0, 0, 2, 1]);
+      assert.deepEqual(grid.transform, [1, 0, 0, 0, -1, 1]);
+      // a .prj can't describe pixel coordinates
+      assert.equal(dataset.info.wkt1, undefined);
+    });
+
+    it('imports a JPEG without a world file in pixel coordinates', async function () {
+      var group = getJpegImportGroup();
+      delete group.world;
+      var dataset = await api.internal.importContentAsync(group, {});
+      assert.deepEqual(dataset.layers[0].raster.grid.bbox, [0, 0, 2, 1]);
+    });
+
+    it('imports a TIFF without georeferencing tags in pixel coordinates', async function () {
+      var dataset = await api.internal.importFileAsync(NO_GEOREF_TIFF_FIXTURE, {});
+      var grid = dataset.layers[0].raster.grid;
+      assert.equal(dataset.info.input_formats[0], 'geotiff');
+      assert.deepEqual(grid.bbox, [0, 0, 3, 2]);
+      assert.deepEqual(grid.transform, [1, 0, 0, 0, -1, 2]);
+      assert.deepEqual(Array.from(grid.samples), [7, 7, 7, 7, 7, 7]);
+    });
+
+    it('georeferences a TIFF from a .tfw world file', async function () {
+      var dataset = await api.internal.importFileAsync('plain.tif', {
+        input: {
+          'plain.tif': fs.readFileSync(NO_GEOREF_TIFF_FIXTURE),
+          'plain.tfw': WORLD_FILE
+        }
+      });
+      var lyr = dataset.layers[0];
+      assert.deepEqual(lyr.raster.grid.bbox, [100, 180, 130, 200]);
+      assert.equal(dataset.info.raster_sources[0].worldFile, 'plain.tfw');
+    });
+
+    it('prefers a GeoTIFF\'s own tags to a world file', async function () {
+      var bytes = api.internal.encodeGeoTIFF(makeTestGrid([500000, 4000000, 502000, 4002000]), {});
+      var dataset = await api.internal.importFileAsync('local.tif', {
+        input: {'local.tif': Buffer.from(bytes), 'local.tfw': WORLD_FILE}
+      });
+      assert.deepEqual(dataset.layers[0].raster.grid.bbox, [500000, 4000000, 502000, 4002000]);
+    });
+
+    it('does not import a TIFF\'s world file as a separate layer', async function () {
+      var dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mapshaper-raster-'));
+      try {
+        fs.copyFileSync(NO_GEOREF_TIFF_FIXTURE, path.join(dir, 'plain.tif'));
+        fs.writeFileSync(path.join(dir, 'plain.tfw'), WORLD_FILE);
+        var out = await api.applyCommands('-i combine-files "' + path.join(dir, 'plain.tif') +
+          '" "' + path.join(dir, 'plain.tfw') + '" -info save-to=info.json');
+        var info = JSON.parse(out['info.json']);
+        assert.equal(info.length, 1);
+        assert.deepEqual(info[0].bbox, [100, 180, 130, 200]);
+      } finally {
+        fs.rmSync(dir, {recursive: true, force: true});
+      }
+    });
   });
 
   it('parses resolution= as a pixel width, with or without px, or full', function () {
@@ -970,6 +1131,49 @@ describe('raster layers', function () {
     assert.deepEqual(Array.from(bilinear.samples), [50, 50, 50]);
   });
 
+  describe('area-average resampling', function () {
+    function getRowRaster(values, nodata) {
+      return {
+        interpretation: 'continuous',
+        grid: {
+          width: values.length, height: 1, bands: 1, pixelType: 'float32',
+          samples: Float32Array.from(values), sampleBands: [0],
+          nodata: nodata === undefined ? null : nodata,
+          bbox: [0, 0, values.length, 1], transform: [1, 0, 0, 0, -1, 1]
+        }
+      };
+    }
+
+    function project(raster, width, resampling) {
+      var crs = api.internal.parseCrsString('wgs84');
+      return api.internal.projectRasterGridForward(raster, crs, crs, {
+        raster_mesh_interval: 1,
+        output_bbox: raster.grid.bbox,
+        output_width: width,
+        output_height: 1,
+        resampling: resampling
+      });
+    }
+
+    it('weights source pixels by how much of the output pixel they cover', function () {
+      // output pixels span source x 0-1.5 and 1.5-3
+      var grid = project(getRowRaster([0, 30, 90]), 2, 'average');
+      assert.deepEqual(Array.from(grid.samples), [10, 70]);
+    })
+
+    it('skips nodata pixels and renormalizes the remaining weights', function () {
+      var grid = project(getRowRaster([0, 30, -9999], -9999), 2, 'average');
+      assert.deepEqual(Array.from(grid.samples), [10, 30]);
+    })
+
+    it('matches bilinear sampling where the source is coarser than the output', function () {
+      var average = project(getRowRaster([0, 100]), 4, 'average');
+      var bilinear = project(getRowRaster([0, 100]), 4, 'bilinear');
+      assert.deepEqual(Array.from(average.samples), [0, 25, 75, 100]);
+      assert.deepEqual(Array.from(average.samples), Array.from(bilinear.samples));
+    })
+  });
+
   it('defaults to nearest-neighbor for categorical raster reprojection', function () {
     var raster = getRasterDataset().layers[0].raster;
     var crs = api.internal.parseCrsString('wgs84');
@@ -1011,7 +1215,7 @@ describe('raster layers', function () {
     assert(raster.grid.bbox[2] > 200000);
   });
 
-  it('fills projected image raster gaps with white by default', function () {
+  it('fills projected image raster gaps with the nodata value by default', function () {
     var raster = getRasterDataset().layers[0].raster;
     var src = api.internal.parseCrsString('wgs84');
     var dest = api.internal.parseCrsString('webmercator');
@@ -1022,7 +1226,23 @@ describe('raster layers', function () {
       output_width: 1,
       output_height: 1
     });
-    assert.deepEqual(Array.from(grid.samples), [255, 255, 255]);
+    assert.equal(grid.bands, 3);
+    assert.deepEqual(Array.from(grid.samples), [99, 99, 99]);
+  });
+
+  it('makes projected 8-bit image gaps transparent by default when there is no nodata value', function () {
+    var raster = getRasterDataset().layers[0].raster;
+    var src = api.internal.parseCrsString('wgs84');
+    var dest = api.internal.parseCrsString('webmercator');
+    var grid = api.internal.projectRasterGridForward(raster, src, dest, {
+      raster_mesh_interval: 1,
+      output_bbox: [-1e9, -1e9, -1e9 + 1000, -1e9 + 1000],
+      output_width: 1,
+      output_height: 1
+    });
+    assert.equal(grid.bands, 4);
+    assert.deepEqual(grid.sampleBands, [0, 1, 2, 3]);
+    assert.deepEqual(Array.from(grid.samples), [0, 0, 0, 0]);
   });
 
   it('fills projected categorical raster gaps with the original nodata value', function () {
@@ -1121,7 +1341,7 @@ describe('raster layers', function () {
     assert.deepEqual(Array.from(grid.samples), [-9999]);
   });
 
-  it('still fills uncovered pixels with a color for raster-type=image', function () {
+  it('fills uncovered pixels with nodata for raster-type=image too', function () {
     var crs = api.internal.parseCrsString('wgs84');
     var grid = api.internal.projectRasterGridForward(getFloatDemRaster('image'), crs, crs, {
       raster_mesh_interval: 1,
@@ -1129,7 +1349,21 @@ describe('raster layers', function () {
       output_width: 1,
       output_height: 1
     });
-    assert.deepEqual(Array.from(grid.samples), [255]);
+    assert.deepEqual(Array.from(grid.samples), [-9999]);
+  });
+
+  it('gives a projected raster a nodata value if it needs one and has none', function () {
+    var crs = api.internal.parseCrsString('wgs84');
+    var raster = getFloatDemRaster('continuous');
+    raster.grid.nodata = null;
+    var grid = api.internal.projectRasterGridForward(raster, crs, crs, {
+      raster_mesh_interval: 1,
+      output_bbox: [1e6, 1e6, 1e6 + 1, 1e6 + 1],
+      output_width: 1,
+      output_height: 1
+    });
+    assert.equal(grid.nodata, -9999);
+    assert.deepEqual(Array.from(grid.samples), [-9999]);
   });
 
   it('defaults to bilinear resampling for raster-type=continuous', function () {

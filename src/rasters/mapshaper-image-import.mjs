@@ -4,8 +4,11 @@ import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
 import { runningInBrowser } from '../mapshaper-env';
 import { getFileBase } from '../utils/mapshaper-filename-utils';
 import { createRasterPreview, getRasterViewRecipe } from './mapshaper-raster-utils';
-import { FULL_RESOLUTION_HINT, getRasterImportSize, parseImportResolution } from './mapshaper-raster-import-size';
-import { message, stop, warn, warnOnce } from '../utils/mapshaper-logging';
+import { markRasterSamplesAsSource } from './mapshaper-raster-source';
+import { FULL_RESOLUTION_HINT, getRasterImportSize, parseImportResolution, setReducedResolution } from './mapshaper-raster-import-size';
+import { getPixelCoordinatesWarning, getPixelTransform, getWorldFileBBox, getWorldTransform,
+  parseWorldFile, scaleWorldTransform } from './mapshaper-world-file';
+import { message, warn, warnOnce } from '../utils/mapshaper-logging';
 import require from '../mapshaper-require';
 
 export async function importImageRaster(input, optsArg) {
@@ -15,14 +18,11 @@ export async function importImageRaster(input, optsArg) {
   var world = parseWorldFile(input.world && input.world.content);
   var sourceId = getFileBase(imageInput.filename || imageType);
   var decoded, transform, bbox, raster, dataset;
-  if (!world) {
-    stop('Image raster import requires a world file');
-  }
   decoded = await decodeImage(imageInput, imageType, opts);
   if (decoded.width != decoded.sourceWidth || decoded.height != decoded.sourceHeight) {
     showResampledImageMessage(decoded, opts);
   }
-  transform = getWorldTransform(world);
+  transform = world ? getWorldTransform(world) : getPixelTransform(decoded.sourceHeight);
   bbox = getWorldFileBBox(transform, decoded.sourceWidth, decoded.sourceHeight);
   transform = scaleWorldTransform(transform,
     decoded.sourceWidth / decoded.width, decoded.sourceHeight / decoded.height);
@@ -52,6 +52,8 @@ export async function importImageRaster(input, optsArg) {
       }
     }
   };
+  setReducedResolution(raster, decoded.sourceWidth, decoded.sourceHeight);
+  markRasterSamplesAsSource(raster.grid);
   raster.view.recipe = getRasterViewRecipe(raster.grid, raster.view.recipe, opts);
   if (runningInBrowser()) {
     raster.view.preview = createRasterPreview(raster, opts);
@@ -66,17 +68,23 @@ export async function importImageRaster(input, optsArg) {
       raster: raster
     }]
   };
-  importImageCrs(dataset, input.prj, imageInput.filename);
+  if (world) {
+    importImageCrs(dataset, input.prj, imageInput.filename);
+  } else {
+    raster.grid.pixelCoordinates = true;
+    // A .prj says nothing useful about coordinates that are pixels
+    warn(getPixelCoordinatesWarning(imageInput.filename || 'This image'));
+  }
   return dataset;
 }
 
 function showResampledImageMessage(decoded, opts) {
-  var msg = 'Using resampled image for import: ' + decoded.width + 'x' + decoded.height +
+  var msg = 'image to ' + decoded.width + 'x' + decoded.height +
     ' (source: ' + decoded.sourceWidth + 'x' + decoded.sourceHeight + ').';
   if (parseImportResolution(opts.resolution)) {
-    message(msg);
+    message('Downsampling ' + msg);
   } else {
-    warnOnce(msg + ' ' + FULL_RESOLUTION_HINT);
+    warnOnce('Automatically downsampling ' + msg + ' ' + FULL_RESOLUTION_HINT);
   }
 }
 
@@ -293,57 +301,6 @@ export function downsampleRgba(rgba, srcW, srcH, dstW, dstH, keepAlpha) {
     }
   }
   return out;
-}
-
-function parseWorldFile(content) {
-  if (!content) return null;
-  var vals = String(content).trim().split(/\s+/).map(Number);
-  if (vals.length < 6 || vals.some(function(val) { return !isFinite(val); })) {
-    stop('Invalid world file');
-  }
-  return vals.slice(0, 6);
-}
-
-function getWorldTransform(world) {
-  var a = world[0], d = world[1], b = world[2], e = world[3],
-      c = world[4], f = world[5];
-  return [
-    a,
-    b,
-    c - a / 2 - b / 2,
-    d,
-    e,
-    f - d / 2 - e / 2
-  ];
-}
-
-// @sx, @sy: source pixels per imported pixel, across and down
-function scaleWorldTransform(t, sx, sy) {
-  return [t[0] * sx, t[1] * sy, t[2], t[3] * sx, t[4] * sy, t[5]];
-}
-
-function getWorldFileBBox(transform, width, height) {
-  var corners = [
-    transformPoint(transform, 0, 0),
-    transformPoint(transform, width, 0),
-    transformPoint(transform, width, height),
-    transformPoint(transform, 0, height)
-  ];
-  var xs = corners.map(function(p) { return p[0]; });
-  var ys = corners.map(function(p) { return p[1]; });
-  return [
-    Math.min.apply(null, xs),
-    Math.min.apply(null, ys),
-    Math.max.apply(null, xs),
-    Math.max.apply(null, ys)
-  ];
-}
-
-function transformPoint(t, col, row) {
-  return [
-    t[0] * col + t[1] * row + t[2],
-    t[3] * col + t[4] * row + t[5]
-  ];
 }
 
 function importImageCrs(dataset, prj, filename) {

@@ -17,6 +17,23 @@ decoding. It supports browser and Node usage and already covers many GeoTIFF
 storage variants, including strips, tiles, multiple sample types, compression,
 overviews, windows, and worker pools.
 
+Mapshaper replaces two parts of it:
+
+- LZW decoding (`src/geotiff/mapshaper-geotiff-lzw.mjs`), registered with
+  geotiff.js's `addDecoder()` when the library loads. geotiff.js's own
+  decoder builds each strip in a plain array a byte at a time, and was about
+  eight times slower.
+- Reading at a reduced size (`src/geotiff/mapshaper-geotiff-resample.mjs`).
+  `readRasters()` with a `width` and `height` assembles the whole full-size
+  image before resampling it, so importing a 24795 x 21762 float32 raster at
+  4270 x 3747 peaked at 4.5 GB. Mapshaper instead decodes one row of strips or
+  tiles at a time, skips blocks that no output pixel samples, and picks the
+  pixels that geotiff.js's nearest-neighbor resampling picks. It handles
+  uncompressed, LZW, Deflate, PackBits and Zstandard blocks of whole-byte
+  samples in either planar configuration; other files (JPEG, LERC, WebP,
+  big-endian multibyte samples, bit-packed samples) still go through
+  `readRasters()`.
+
 Mapshaper should treat GeoTIFF import as async in both CLI and browser code.
 The browser should load the GeoTIFF bundle on demand, following the existing
 GeoPackage and GeoParquet lazy bundle pattern.
@@ -97,7 +114,10 @@ Import success should mean:
 
 - The file is recognized as GeoTIFF.
 - Raster dimensions and band/sample metadata are extracted.
-- Bounds and transform are extracted when georeferencing is present.
+- Bounds and transform are extracted when georeferencing is present. In a
+  PixelIsPoint file (`GTRasterTypeGeoKey` 2) the tags place pixel centers, so
+  the origin is moved back half a pixel, as GDAL does (geotiff.js's
+  `getBoundingBox()` ignores the key). Export always writes PixelIsArea.
 - CRS metadata is mapped to existing `dataset.info` CRS fields when possible.
 - Selected working bands are decoded into `raster.grid.samples`.
 - In the browser, a bounded RGBA preview is derived from `grid.samples` for GUI
@@ -191,8 +211,13 @@ Import currently decodes the selected display bands from the selected import
 rendition into `raster.grid.samples`. This makes the imported layer immediately
 editable without reopening the GeoTIFF. The default band selection is simple:
 
-- Three or more samples per pixel become an RGB(A) image layer.
-- Single-band rasters become a grayscale image layer.
+- Three or more samples per pixel become an RGB image layer, from the first
+  three samples. If the ExtraSamples tag declares a later sample as alpha
+  (associated or unassociated), it is added as a fourth band. Other extra
+  samples, such as a near-infrared band, are left out; a missing ExtraSamples
+  tag means none of them is alpha, as in GDAL.
+- One- and two-sample rasters become a grayscale image layer from the first
+  sample (a gray image's alpha band is left out).
 
 For large GeoTIFFs, Mapshaper applies the same automatic rendition policy in the
 CLI and web UI: if the full-resolution image exceeds the default import size

@@ -1,8 +1,11 @@
 import { internal } from './gui-core';
 import {
   getSchemeBreaks, getSchemeColors, getAppliedColors, getCategories, getSchemeNullColor,
-  getContinuousTileStops, getCenterTile, getDivergingTileUse, isContinuousScheme, formatSchemeCommand
+  getContinuousTileStops, getCenterTile, getDivergingTileUse, isContinuousScheme, formatSchemeCommand,
+  getCategoryName, isElevationScheme, isBlendedScheme, isLandTransparent, getBlendRampColors,
+  getElevationSchemeStops, getSeaScheme
 } from './gui-color-scheme-model';
+import { getRasterUnitsLabel } from './gui-raster-band-values';
 
 // Text versions of a color scheme as applied to a layer's data: a GMT color
 // palette table (.cpt) and a JSON format for web maps.
@@ -11,7 +14,8 @@ import {
 // The scheme's classes, the base of both formats: {from, to, color} for
 // classes, {from, to, colors: [low, high]} for a stretch of continuous colors
 // (classes include from and exclude to, but for the last, which includes the
-// max), or {value, color} for a category. Returns null if the scheme has no
+// max), or {value, color} for a category, with the category's name if it has
+// one (a raster's, from its file or a palette). Returns null if the scheme has no
 // classes to export (non-adjacent colors, or no data).
 export function getExportClasses(scheme, lyr) {
   if (scheme.method == 'non-adjacent') return null;
@@ -26,16 +30,25 @@ function getCategoryClasses(scheme, lyr) {
   if (categories.length === 0) return null;
   // as -classify assigns them, repeating the colors if there are more categories
   return categories.map(function(val, i) {
-    return {value: val, color: colors[i % colors.length]};
+    var o = {value: val, color: colors[i % colors.length]};
+    var name = getCategoryName(scheme, lyr, val);
+    if (name) o.name = name;
+    return o;
   });
 }
 
 function getClassedClasses(scheme, lyr) {
   var info = getSchemeBreaks(scheme, lyr);
-  var colors, use, ends;
+  var colors, use, ends, breaks;
   if (!info) return null;
   colors = getSchemeColors(scheme);
-  if (scheme.type == 'diverging') {
+  breaks = info.breaks;
+  if (isElevationScheme(scheme)) {
+    // a class from each stop up to the next, as continuous elevations start
+    // at the first stop
+    breaks = breaks.slice(1);
+    ends = [info.breaks[0], info.max];
+  } else if (scheme.type == 'diverging') {
     use = getDivergingTileUse(scheme);
     colors = colors.filter(function(c, i) { return use[i]; });
     // the outer classes may reach past the data (e.g. equal intervals)
@@ -43,7 +56,6 @@ function getClassedClasses(scheme, lyr) {
   } else {
     ends = [info.min, info.max];
   }
-  var breaks = info.breaks;
   var edges = [Math.min(ends[0], breaks.length ? breaks[0] : ends[0])].concat(breaks,
     [Math.max(ends[1], breaks.length ? breaks[breaks.length - 1] : ends[1])]);
   return colors.map(function(color, i) {
@@ -96,13 +108,17 @@ export function getSchemeExportData(scheme, lyr) {
     // interpolates in RGB approaches between the colors
     data.interpolation = 'oklch';
   }
+  if (isElevationScheme(scheme)) {
+    data.elevations = getElevationExportData(scheme, lyr);
+  }
   data.classes = classes;
   if (scheme.type != 'categorical' && !continuous) {
     data.breaks = classes.slice(1).map(function(c) { return c.from; });
     data.colors = classes.map(function(c) { return c.color; });
   }
+  // null: transparent (a raster's default)
   data.nullColor = getSchemeNullColor(scheme);
-  data.expression = getStyleExpression(scheme.field, scheme.type, classes, data.nullColor);
+  data.expression = getStyleExpression(scheme.field, scheme.type, classes, data.nullColor || 'rgba(0,0,0,0)');
   data.command = getSchemeCommand(scheme, lyr);
   return data;
 }
@@ -111,12 +127,46 @@ export function getSchemeExportData(scheme, lyr) {
 // what an import rebuilds the scheme from (see gui-color-scheme-import.mjs)
 function getSchemeCommand(scheme, lyr) {
   var count = scheme.type == 'categorical' ? getCategories(lyr, scheme.field).length : -1;
-  return formatSchemeCommand(scheme, getAppliedColors(scheme, count));
+  return formatSchemeCommand(scheme, getAppliedColors(scheme, count), {layer: lyr});
+}
+
+// A fixed-elevation scheme's stops (in the band's units) and the colors at
+// them, which an import takes over the command's, so that they can be edited:
+// {units, stops, colors} for one preset, {units, stops, blend: {name: colors}}
+// with every preset's colors for a blend, and sea: {palette, stops, colors}
+// or null. Transparent land has only the sea.
+// A blend's classes are those of the preset it uses where it can't blend.
+function getElevationExportData(scheme, lyr) {
+  var sea = getSeaScheme(scheme);
+  var o = {units: getRasterUnitsLabel(lyr)};
+  if (!isLandTransparent(scheme)) {
+    o.stops = getElevationSchemeStops(scheme, lyr).map(tidy);
+    if (isBlendedScheme(scheme)) {
+      o.blend = {};
+      getBlendRampColors(scheme).forEach(function(ramp) { o.blend[ramp.name] = ramp.colors; });
+    } else {
+      o.colors = getSchemeColors(scheme);
+    }
+  }
+  o.sea = sea ? {
+    palette: sea.preset || null,
+    stops: getElevationSchemeStops(sea, lyr).map(tidy),
+    colors: getSchemeColors(sea)
+  } : null;
+  return o;
 }
 
 export function formatSchemeJSON(scheme, lyr) {
   var data = getSchemeExportData(scheme, lyr);
-  return data ? JSON.stringify(data, null, 2) + '\n' : null;
+  return data ? formatCompactJSON(data) + '\n' : null;
+}
+
+// Indented JSON, with arrays of numbers and strings on one line (e.g. a
+// preset's colors), which makes them easier to read and edit
+function formatCompactJSON(data) {
+  return JSON.stringify(data, null, 2).replace(/\[\n([^[\]{}]*)\n\s*\]/g, function(match, items) {
+    return '[' + items.split('\n').map(function(line) { return line.trim(); }).join(' ') + ']';
+  });
 }
 
 // Features without a number get the null color
@@ -213,8 +263,8 @@ export function formatSchemeCPT(scheme, lyr) {
   ];
   if (scheme.type == 'categorical') {
     classes.forEach(function(c) {
-      var label = String(c.value);
-      lines.push([label.replace(/\s+/g, '_'), formatGmtColor(c.color), ';' + label].join('\t'));
+      var key = String(c.value);
+      lines.push([key.replace(/\s+/g, '_'), formatGmtColor(c.color), ';' + (c.name || key)].join('\t'));
     });
   } else {
     classes.forEach(function(c) {
@@ -226,7 +276,10 @@ export function formatSchemeCPT(scheme, lyr) {
     lines.push('B\t' + formatGmtColor(getFirstColor(classes[0])));
     lines.push('F\t' + formatGmtColor(getLastColor(classes[classes.length - 1])));
   }
-  lines.push('N\t' + formatGmtColor(getSchemeNullColor(scheme)));
+  // GMT has no transparent color, so a transparent no-data color is left out
+  if (getSchemeNullColor(scheme)) {
+    lines.push('N\t' + formatGmtColor(getSchemeNullColor(scheme)));
+  }
   return lines.join('\n') + '\n';
 }
 

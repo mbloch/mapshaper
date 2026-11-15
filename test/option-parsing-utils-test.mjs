@@ -4,10 +4,39 @@ import {
   parseStringList,
   splitListItems,
   splitShellTokens,
-  parsePercent
+  parsePercent,
+  parseNumberOrPercentList,
+  splitRampLists,
+  listHasRampNames
 } from '../src/cli/mapshaper-option-parsing-utils';
 
 describe('mapshaper-option-parsing-utils.js', function () {
+
+  describe('splitRampLists()', function () {
+    it('splits a list into an unnamed list and named lists', function () {
+      assert.deepEqual(splitRampLists(parseColorList('#ccc,#999,sea:#003,#06c')), {'': ['#ccc', '#999'], sea: ['#003', '#06c']});
+      assert.deepEqual(splitRampLists(parseColorList('Desert:red,blue,steppe:green')), {desert: ['red', 'blue'], steppe: ['green']});
+      assert.deepEqual(splitRampLists(parseColorList('rgb(0, 0, 0),sea:rgb(1,2,3)')), {'': ['rgb(0,0,0)'], sea: ['rgb(1,2,3)']});
+      assert.equal(splitRampLists([]), null);
+    });
+
+    it('keeps the numbers of a breaks list', function () {
+      var list = parseNumberOrPercentList('0,50,sea:-6000,0');
+      assert.deepEqual(list, [0, 50, 'sea:-6000', 0]);
+      assert.deepEqual(splitRampLists(list), {'': [0, 50], sea: [-6000, 0]});
+      assert.deepEqual(splitRampLists(parseNumberOrPercentList('sea:50%')), {sea: ['50%']});
+    });
+
+    it('rejects a list given twice', function () {
+      assert.throws(function() { splitRampLists(['sea:red', 'sea:blue']); }, /given twice/);
+    });
+
+    it('listHasRampNames()', function () {
+      assert(listHasRampNames(['red', 'sea:blue']));
+      assert(!listHasRampNames(['red', '#00f', 0]));
+      assert(!listHasRampNames(null));
+    });
+  });
 
   describe('parsePercent()', function () {
     it('correctly parse values with %', function () {

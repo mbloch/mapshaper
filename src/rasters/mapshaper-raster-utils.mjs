@@ -5,8 +5,15 @@ import {
   samplesAreNodataAtOffset
 } from './mapshaper-raster-grid';
 import utils from '../utils/mapshaper-utils';
+import { formatVerticalUnits } from './mapshaper-vertical-units';
+import { getRasterCategoryName } from './mapshaper-raster-categories';
 import { stop, warn } from '../utils/mapshaper-logging';
 import { runningInBrowser } from '../mapshaper-env';
+import { updateRasterViewForGrid } from './mapshaper-raster-fill';
+import { copyRasterSourceStatus } from './mapshaper-raster-source';
+import { getRasterDisplayBands, getRasterDisplayBandsKey, rasterGridDisplaysColor } from './mapshaper-raster-display-bands';
+import { getRasterPaletteTable, getRasterSeaTable, rasterPaletteIsCategorical } from './mapshaper-raster-palette';
+import { getRasterSeaMask } from './mapshaper-raster-sea-mask';
 import {
   markLayerChanged,
   noteLayerWillChange
@@ -20,6 +27,45 @@ export function getRasterGrid(raster) {
   return raster && (raster.grid || raster);
 }
 
+// Grid band index of a band= option. Bands are numbered from 1, as in the
+// source file, so a grid that holds only some of the file's bands
+// (grid.sampleBands) finds the band by its file number. Without @band, the
+// grid's first band.
+export function getRasterGridBandIndex(grid, band) {
+  var fileBands = grid.sampleBands || null;
+  var i;
+  if (band === undefined || band === null) return 0;
+  if (band === 0) {
+    stop('Invalid band=0; bands are numbered from 1');
+  }
+  if (!(band >= 1) || band !== Math.floor(band)) {
+    stop('Invalid band=' + band);
+  }
+  i = fileBands ? fileBands.indexOf(band - 1) : band - 1;
+  if (i < 0 || i >= grid.bands) {
+    stop('Raster layer does not have band ' + band + '; ' + describeGridBands(grid));
+  }
+  return i;
+}
+
+// The band number in the source file (1-based) of the grid's band @i
+export function getGridFileBand(grid, i) {
+  return grid.sampleBands && grid.sampleBands[i] >= 0 ? grid.sampleBands[i] + 1 : i + 1;
+}
+
+// e.g. "this raster has 1 band", "this raster has bands 1, 4 and 5"
+function describeGridBands(grid) {
+  var nums = utils.range(grid.bands).map(function(i) {
+    return getGridFileBand(grid, i);
+  });
+  var contiguous = nums.every(function(n, i) { return n == i + 1; });
+  if (contiguous) {
+    return 'this raster has ' + nums.length + (nums.length == 1 ? ' band' : ' bands');
+  }
+  return 'this raster has bands ' + (nums.length == 1 ? nums[0] :
+    nums.slice(0, -1).join(', ') + ' and ' + nums[nums.length - 1]);
+}
+
 export function getRasterView(raster) {
   return raster && (raster.view || raster);
 }
@@ -27,6 +73,14 @@ export function getRasterView(raster) {
 export function getRasterPreview(raster) {
   var view = getRasterView(raster);
   return view && (view.preview || raster.preview);
+}
+
+// The display opacity of a raster (view.recipe.opacity, set by -style
+// opacity=), 0-1. It is applied when the raster is drawn, not to its pixels.
+export function getRasterViewOpacity(raster) {
+  var recipe = raster && raster.view && raster.view.recipe;
+  var opacity = recipe ? recipe.opacity : null;
+  return opacity >= 0 && opacity < 1 ? opacity : 1;
 }
 
 export function getRasterBBox(raster) {
@@ -83,7 +137,10 @@ export function copyRasterData(raster) {
 
 export function copyRasterGrid(grid) {
   var copy = utils.extend({}, grid);
-  if (grid.samples) copy.samples = copyTypedArray(grid.samples);
+  if (grid.samples) {
+    copy.samples = copyTypedArray(grid.samples);
+    copyRasterSourceStatus(grid, copy);
+  }
   // The coverage mask is mutated in place by the reprojection code, so an
   // undo snapshot that shared it would track later edits.
   if (grid.coverage) copy.coverage = copyTypedArray(grid.coverage);
@@ -134,7 +191,7 @@ export function getRasterViewRecipe(grid, recipeArg, opts) {
     stop('Unsupported raster scaling method:', scaling);
   }
   return Object.assign(recipe, {
-    type: recipe.type || (grid.bands >= 3 ? 'rgb' : 'gray'),
+    type: recipe.type || (rasterGridDisplaysColor(grid) ? 'rgb' : 'gray'),
     bands: recipe.bands || grid.sampleBands || null,
     scaling: scaling,
     scaleRange: parseRangeOption(scaleRange, [0, 100], 'scale-range'),
@@ -142,12 +199,17 @@ export function getRasterViewRecipe(grid, recipeArg, opts) {
   });
 }
 
-export function renderRasterPreview(grid, recipe, width, height, statsArg) {
+// opts.blendField  for a blended palette on a grid in other coordinates than
+//   the raster's (e.g. reprojected for display): a field from
+//   getClimateWeightField() in the grid's coordinates, or null to draw the
+//   palette without blending
+export function renderRasterPreview(grid, recipe, width, height, statsArg, opts) {
   recipe = getRasterViewRecipe(grid, recipe);
   if (useFastRawEightBitRendering(grid, recipe)) {
     return renderRawEightBitPreview(grid, width, height, null);
   }
-  return renderRasterGridPreview(grid, recipe, width, height, statsArg || getRasterScalingStats(grid, recipe), null);
+  return renderRasterGridPreview(grid, recipe, width, height, statsArg || getRasterScalingStats(grid, recipe), null,
+    null, opts && 'blendField' in opts ? opts.blendField : undefined);
 }
 
 export function renderRasterViewportPreview(grid, recipe, bbox, width, height, statsArg) {
@@ -172,7 +234,7 @@ export function renderRasterExportPreview(raster, bbox, width, height, opts) {
 
 export function getRasterScalingStats(grid, recipe) {
   recipe = getRasterViewRecipe(grid, recipe);
-  return getScalingStats(grid.samples, grid.bands, grid.nodata, recipe);
+  return getScalingStats(grid, recipe);
 }
 
 export function getRasterViewScalingStats(raster, recipeArg) {
@@ -180,7 +242,7 @@ export function getRasterViewScalingStats(raster, recipeArg) {
   var view = getRasterView(raster);
   var recipe = getRasterViewRecipe(grid, recipeArg || view && view.recipe);
   var key, cached, stats;
-  if (recipe.scaling == 'none') return null;
+  if (recipe.scaling == 'none' || recipe.palette) return null;
   key = getRasterScalingStatsKey(grid, recipe);
   cached = view && view.scalingStats;
   if (cached && cached.key == key) return cached.stats;
@@ -212,22 +274,36 @@ export function getRasterPixelAtMapXY(raster, x, y) {
   for (band = 0; band < grid.bands; band++) {
     values.push(grid.samples[offset + band]);
   }
-  // The renderer reads interleaved bands in display order, so three or more
-  // bands are shown as R, G, B and (if present) alpha.
-  isColor = grid.bands >= 3;
+  isColor = rasterGridDisplaysColor(grid);
   valid = rasterPixelIsValid(grid, pixelId);
   return {
     col: col,
     row: row,
     values: values,
+    // 'gray', 'rgb' or 'rgba' if @values are the displayed channels, else null
+    channels: getPixelChannels(grid),
     isColor: isColor,
     isFloat: rasterSamplesAreFloat(grid.samples),
     valid: valid,
+    // e.g. 'ft', for the values of an elevation raster
+    units: !isColor && grid.verticalUnits ? formatVerticalUnits(grid.verticalUnits) : null,
+    // the category name of each band's value, or null
+    names: values.map(function(val, i) {
+      return valid ? getRasterCategoryName(grid, getGridFileBand(grid, i), val) : null;
+    }),
     // Only color images get a color, so that inspecting a measurement raster
     // does not trigger a scaling-stats scan of the whole grid.
     // [r, g, b, a] in the 0-255 range, for formatColor() or a canvas.
     color: isColor && valid ? getRasterPixelDisplayColor(raster, grid, pixelId) : null
   };
+}
+
+function getPixelChannels(grid) {
+  if (grid.displayBands) return null;
+  if (grid.bands == 1) return 'gray';
+  if (grid.bands == 3) return 'rgb';
+  if (grid.bands == 4) return 'rgba';
+  return null;
 }
 
 // Returns [r, g, b, a] in the 0-255 range, using the same recipe and scaling as
@@ -239,11 +315,13 @@ function getRasterPixelDisplayColor(raster, grid, pixelId) {
   var sourceRange = recipe.scaling == 'none' ? getPixelTypeRange(grid.pixelType) : null;
   var displayRange = getDisplayRange(recipe.scaleRange);
   var offset = pixelId * grid.bands;
-  var color = [0, 1, 2].map(function(band) {
+  var display = getRasterDisplayBands(grid);
+  var color = display.color.map(function(band) {
     return scaleSample(grid.samples[offset + band], stats && stats[band], sourceRange, displayRange);
   });
-  color.push(grid.bands >= 4 ?
-    scaleSample(grid.samples[offset + 3], stats && stats[3], sourceRange, [0, 255]) : 255);
+  if (color.length == 1) color.push(color[0], color[0]);
+  color.push(display.alpha > -1 ?
+    scaleSample(grid.samples[offset + display.alpha], stats && stats[display.alpha], sourceRange, [0, 255]) : 255);
   return color;
 }
 
@@ -257,15 +335,25 @@ export function formatRasterSampleValue(val, isFloat) {
   return String(+val.toPrecision(7));
 }
 
-function renderRasterGridPreview(grid, recipe, width, height, statsArg, sourceBbox, resamplingMethod) {
+function renderRasterGridPreview(grid, recipe, width, height, statsArg, sourceBbox, resamplingMethod, blendField) {
+  var field;
+  if (recipe.palette) {
+    field = !recipe.palette.blend ? null : blendField === undefined ? recipe.palette.blend.field : blendField;
+    if (field) {
+      return renderBlendedPaletteGridPreview(grid, recipe.palette, field, width, height, sourceBbox, resamplingMethod);
+    }
+    return renderPaletteGridPreview(grid, recipe.palette, width, height, sourceBbox, resamplingMethod);
+  }
   var samples = grid.samples;
   var bands = grid.bands;
   var noData = grid.nodata;
   var pixels = new Uint8ClampedArray(width * height * 4);
-  var stats = statsArg || getScalingStats(samples, bands, noData, recipe);
+  var stats = statsArg || getScalingStats(grid, recipe);
   var sourceRange = recipe.scaling == 'none' ? getPixelTypeRange(grid.pixelType) : null;
   var displayRange = getDisplayRange(recipe.scaleRange);
-  var src, dest, val, isNoData, j, sample;
+  var display = getRasterDisplayBands(grid);
+  var color = display.color, alpha = display.alpha;
+  var src, dest, val, isNoData, j, band, sample;
   for (var y = 0; y < height; y++) {
     for (var x = 0; x < width; x++) {
       dest = (y * width + x) * 4;
@@ -277,18 +365,19 @@ function renderRasterGridPreview(grid, recipe, width, height, statsArg, sourceBb
         sample = null;
         isNoData = noData !== null && noData !== undefined && allSamplesAreNoData(samples, src, bands, noData);
       }
-      if (bands == 1) {
-        val = scaleSample(sample ? sample.values[0] : samples[src], stats && stats[0], sourceRange, displayRange);
+      if (color.length == 1) {
+        band = color[0];
+        val = scaleSample(sample ? sample.values[band] : samples[src + band], stats && stats[band], sourceRange, displayRange);
         pixels[dest] = val;
         pixels[dest + 1] = val;
         pixels[dest + 2] = val;
-        pixels[dest + 3] = isNoData ? 0 : 255;
       } else {
         for (j = 0; j < 3; j++) {
-          pixels[dest + j] = scaleSample(sample ? sample.values[j] : samples[src + j], stats && stats[j], sourceRange, displayRange);
+          band = color[j];
+          pixels[dest + j] = scaleSample(sample ? sample.values[band] : samples[src + band], stats && stats[band], sourceRange, displayRange);
         }
-        pixels[dest + 3] = isNoData ? 0 : bands >= 4 ? scaleSample(sample ? sample.values[3] : samples[src + 3], stats && stats[3], sourceRange, [0, 255]) : 255;
       }
+      pixels[dest + 3] = isNoData ? 0 : alpha > -1 ? scaleSample(sample ? sample.values[alpha] : samples[src + alpha], stats && stats[alpha], sourceRange, [0, 255]) : 255;
     }
   }
   return {
@@ -299,6 +388,289 @@ function renderRasterGridPreview(grid, recipe, width, height, statsArg, sourceBb
     colorModel: 'rgba',
     pixels: pixels
   };
+}
+
+// Draws the palette's band in the palette's colors (see
+// mapshaper-raster-palette.mjs). Pixels outside the grid's coverage or masked
+// by its alpha band are transparent, and nodata pixels take the null color.
+// Only the palette's band is resampled, and categories aren't resampled at
+// all: averaging or interpolating class codes gives the codes of other classes.
+function renderPaletteGridPreview(grid, palette, width, height, sourceBbox, resamplingMethod) {
+  var samples = grid.samples;
+  var bands = grid.bands;
+  var band = getRasterGridBandIndex(grid, palette.band);
+  var table = getRasterPaletteTable(palette);
+  var rgba = table.rgba;
+  var alpha = getRasterDisplayBands(grid).alpha;
+  var coverage = grid.coverage || null;
+  var method = rasterPaletteIsCategorical(palette) ? null : resamplingMethod;
+  var sea = palette.sea ? getRasterSeaMask(grid, band) : null;
+  var seaTable = getRasterSeaTable(palette);
+  var landless = palette.land == 'transparent';
+  var pixels = new Uint8ClampedArray(width * height * 4);
+  var src, val, i, dest;
+  for (var y = 0; y < height; y++) {
+    for (var x = 0; x < width; x++) {
+      src = getPreviewSourceOffset(grid, sourceBbox, x, y, width, height, bands);
+      if (coverage && !coverage[src / bands] || alpha > -1 && samples[src + alpha] === 0) continue;
+      val = method ? getResampledBandValue(grid, band, alpha, sourceBbox, x, y, width, height, method) :
+        samples[src + band];
+      if (sea && sea[src / bands] === 1) {
+        if (seaTable) drawSeaPixel(pixels, (y * width + x) * 4, seaTable, val, grid.nodata);
+        continue;
+      }
+      if (isValidBandValue(val, grid.nodata)) {
+        if (landless) continue;
+        i = table.getIndex(val);
+        if (i < 0) i = table.otherIndex;
+      } else {
+        i = table.nullIndex;
+      }
+      if (i < 0) continue;
+      dest = (y * width + x) * 4;
+      i *= 4;
+      pixels[dest] = rgba[i];
+      pixels[dest + 1] = rgba[i + 1];
+      pixels[dest + 2] = rgba[i + 2];
+      pixels[dest + 3] = rgba[i + 3];
+    }
+  }
+  return {
+    width: width,
+    height: height,
+    bands: 4,
+    pixelType: 'uint8',
+    colorModel: 'rgba',
+    pixels: pixels
+  };
+}
+
+// A sea pixel, in a palette's bathymetric colors (resampling near the coast
+// can give values above 0, which take the shallowest color)
+function drawSeaPixel(pixels, dest, table, val, nodata) {
+  var i;
+  if (!isValidBandValue(val, nodata)) return;
+  i = table.getIndex(val) * 4;
+  pixels[dest] = table.rgba[i];
+  pixels[dest + 1] = table.rgba[i + 1];
+  pixels[dest + 2] = table.rgba[i + 2];
+  pixels[dest + 3] = table.rgba[i + 3];
+}
+
+// A blended palette (see mapshaper-raster-hypsometric.mjs): each pixel mixes
+// the colors of the palette's ramps by their weights where it is, in @field
+// (bilinear between the field's cells). Otherwise like
+// renderPaletteGridPreview().
+function renderBlendedPaletteGridPreview(grid, palette, field, width, height, sourceBbox, resamplingMethod) {
+  var samples = grid.samples;
+  var bands = grid.bands;
+  var band = getRasterGridBandIndex(grid, palette.band);
+  var nullTable = getRasterPaletteTable(palette);
+  var tables = palette.blend.ramps.map(function(ramp) {
+    return getRasterPaletteTable({type: 'sequential', continuous: true, breaks: ramp.breaks,
+      colors: ramp.colors, interpolation: palette.interpolation});
+  });
+  var alpha = getRasterDisplayBands(grid).alpha;
+  var coverage = grid.coverage || null;
+  var bbox = sourceBbox || grid.bbox;
+  var sea = palette.sea ? getRasterSeaMask(grid, band) : null;
+  var seaTable = getRasterSeaTable(palette);
+  var fb = field.bbox, fw = field.width, fh = field.height, fweights = field.weights;
+  // the field's column (and row) at each column (row) of pixels
+  var fxs = new Float64Array(width), fys = new Float64Array(height);
+  var pixels = new Uint8ClampedArray(width * height * 4);
+  var zones = tables.length;
+  var weights = new Float64Array(zones);
+  var src, val, i, k, dest, r, g, b, a;
+  for (var x = 0; x < width; x++) {
+    fxs[x] = (bbox[0] + (x + 0.5) / width * (bbox[2] - bbox[0]) - fb[0]) / (fb[2] - fb[0]) * fw - 0.5;
+  }
+  for (var y = 0; y < height; y++) {
+    fys[y] = (fb[3] - (bbox[3] - (y + 0.5) / height * (bbox[3] - bbox[1]))) / (fb[3] - fb[1]) * fh - 0.5;
+  }
+  for (y = 0; y < height; y++) {
+    for (x = 0; x < width; x++) {
+      src = getPreviewSourceOffset(grid, sourceBbox, x, y, width, height, bands);
+      if (coverage && !coverage[src / bands] || alpha > -1 && samples[src + alpha] === 0) continue;
+      val = resamplingMethod ? getResampledBandValue(grid, band, alpha, sourceBbox, x, y, width, height, resamplingMethod) :
+        samples[src + band];
+      dest = (y * width + x) * 4;
+      if (sea && sea[src / bands] === 1) {
+        if (seaTable) drawSeaPixel(pixels, dest, seaTable, val, grid.nodata);
+        continue;
+      }
+      if (!isValidBandValue(val, grid.nodata)) {
+        i = nullTable.nullIndex;
+        if (i < 0) continue;
+        i *= 4;
+        pixels[dest] = nullTable.rgba[i];
+        pixels[dest + 1] = nullTable.rgba[i + 1];
+        pixels[dest + 2] = nullTable.rgba[i + 2];
+        pixels[dest + 3] = nullTable.rgba[i + 3];
+        continue;
+      }
+      getFieldWeights(fweights, fw, fh, fxs[x], fys[y], weights);
+      r = g = b = a = 0;
+      for (k = 0; k < zones; k++) {
+        if (weights[k] === 0) continue;
+        i = tables[k].getIndex(val) * 4;
+        r += weights[k] * tables[k].rgba[i];
+        g += weights[k] * tables[k].rgba[i + 1];
+        b += weights[k] * tables[k].rgba[i + 2];
+        a += weights[k] * tables[k].rgba[i + 3];
+      }
+      pixels[dest] = r;
+      pixels[dest + 1] = g;
+      pixels[dest + 2] = b;
+      pixels[dest + 3] = a;
+    }
+  }
+  return {
+    width: width,
+    height: height,
+    bands: 4,
+    pixelType: 'uint8',
+    colorModel: 'rgba',
+    pixels: pixels
+  };
+}
+
+// The presets' weights (0-1) at a position in a weight field, into @out
+// @out: a weight for each zone; the field has one fewer for each cell (the
+// last zone's is the rest of 255)
+function getFieldWeights(weights, width, height, fx, fy, out) {
+  var c0 = Math.floor(fx), r0 = Math.floor(fy);
+  var tx = fx - c0, ty = fy - r0;
+  var c1 = Math.min(width - 1, Math.max(0, c0 + 1)), r1 = Math.min(height - 1, Math.max(0, r0 + 1));
+  var k = out.length - 1, rest = 255;
+  var a, b, c, d, w, j;
+  c0 = Math.min(width - 1, Math.max(0, c0));
+  r0 = Math.min(height - 1, Math.max(0, r0));
+  a = (r0 * width + c0) * k;
+  b = (r0 * width + c1) * k;
+  c = (r1 * width + c0) * k;
+  d = (r1 * width + c1) * k;
+  for (j = 0; j < k; j++) {
+    w = interpolateFieldValue(weights, a + j, b + j, c + j, d + j, tx, ty);
+    out[j] = w / 255;
+    rest -= w;
+  }
+  out[k] = Math.max(0, rest) / 255;
+}
+
+function interpolateFieldValue(arr, a, b, c, d, tx, ty) {
+  return (arr[a] * (1 - tx) + arr[b] * tx) * (1 - ty) + (arr[c] * (1 - tx) + arr[d] * tx) * ty;
+}
+
+// A one-band copy of @grid holding the band that @recipe's palette colors,
+// for work that would otherwise process every band (e.g. reprojecting a GUI
+// preview). Pixels masked by an alpha band are left out of its coverage.
+// Returns @grid itself if there is no palette, or the grid has one band.
+export function getRasterPaletteBandGrid(grid, recipe) {
+  var palette = recipe && recipe.palette;
+  var n = grid.width * grid.height;
+  var band, alpha, samples, coverage, copy;
+  if (!palette || grid.bands == 1) return grid;
+  band = getRasterGridBandIndex(grid, palette.band);
+  alpha = getRasterDisplayBands(grid).alpha;
+  samples = new grid.samples.constructor(n);
+  for (var i = 0; i < n; i++) {
+    samples[i] = grid.samples[i * grid.bands + band];
+  }
+  coverage = grid.coverage || null;
+  if (alpha > -1) {
+    coverage = new Uint8Array(n);
+    for (i = 0; i < n; i++) {
+      coverage[i] = (!grid.coverage || grid.coverage[i]) && grid.samples[i * grid.bands + alpha] !== 0 ? 1 : 0;
+    }
+  }
+  copy = Object.assign({}, grid, {
+    bands: 1,
+    samples: samples,
+    sampleBands: [grid.sampleBands ? grid.sampleBands[band] : band]
+  });
+  delete copy.displayBands;
+  if (coverage) copy.coverage = coverage;
+  return copy;
+}
+
+// The value of one band at an output pixel, from the valid source pixels
+// around it (see bandPixelIsValid()); NaN if none are valid
+function getResampledBandValue(grid, band, alpha, bbox, x, y, width, height, method) {
+  var bounds, p, x0, y0, x1, y1, tx, ty;
+  if (method == 'average') {
+    bounds = getRasterSourcePixelBounds(grid, bbox, x, y, width, height);
+    return getSourcePixelBoundsArea(bounds) > MAX_EXACT_AVERAGE_PIXELS ?
+      getApproxAverageBandValue(grid, band, alpha, bounds) :
+      getAverageBandValue(grid, band, alpha, bounds);
+  }
+  p = getRasterSourcePixelCenter(grid, bbox, x, y, width, height);
+  x0 = Math.max(0, Math.min(grid.width - 1, Math.floor(p.x)));
+  y0 = Math.max(0, Math.min(grid.height - 1, Math.floor(p.y)));
+  x1 = Math.min(grid.width - 1, x0 + 1);
+  y1 = Math.min(grid.height - 1, y0 + 1);
+  tx = Math.max(0, Math.min(1, p.x - x0));
+  ty = Math.max(0, Math.min(1, p.y - y0));
+  return getWeightedBandValue(grid, band, alpha,
+    [y0 * grid.width + x0, y0 * grid.width + x1, y1 * grid.width + x0, y1 * grid.width + x1],
+    [(1 - tx) * (1 - ty), tx * (1 - ty), (1 - tx) * ty, tx * ty]);
+}
+
+function getWeightedBandValue(grid, band, alpha, pixelIds, weights) {
+  var sum = 0, total = 0;
+  for (var i = 0; i < pixelIds.length; i++) {
+    if (weights[i] <= 0 || !bandPixelIsValid(grid, pixelIds[i], band, alpha)) continue;
+    sum += grid.samples[pixelIds[i] * grid.bands + band] * weights[i];
+    total += weights[i];
+  }
+  return total > 0 ? sum / total : NaN;
+}
+
+function getAverageBandValue(grid, band, alpha, bounds) {
+  var x0 = Math.max(0, Math.floor(Math.min(bounds.x0, bounds.x1)));
+  var x1 = Math.min(grid.width, Math.ceil(Math.max(bounds.x0, bounds.x1)));
+  var y0 = Math.max(0, Math.floor(Math.min(bounds.y0, bounds.y1)));
+  var y1 = Math.min(grid.height, Math.ceil(Math.max(bounds.y0, bounds.y1)));
+  var sum = 0, total = 0;
+  var weight, id;
+  for (var sy = y0; sy < y1; sy++) {
+    for (var sx = x0; sx < x1; sx++) {
+      weight = getIntervalOverlap(bounds.x0, bounds.x1, sx, sx + 1) *
+        getIntervalOverlap(bounds.y0, bounds.y1, sy, sy + 1);
+      id = sy * grid.width + sx;
+      if (weight <= 0 || !bandPixelIsValid(grid, id, band, alpha)) continue;
+      sum += grid.samples[id * grid.bands + band] * weight;
+      total += weight;
+    }
+  }
+  return total > 0 ? sum / total : NaN;
+}
+
+function getApproxAverageBandValue(grid, band, alpha, bounds) {
+  var xSteps = Math.min(MAX_APPROX_AVERAGE_STEPS, Math.max(1, Math.ceil(Math.abs(bounds.x1 - bounds.x0))));
+  var ySteps = Math.min(MAX_APPROX_AVERAGE_STEPS, Math.max(1, Math.ceil(Math.abs(bounds.y1 - bounds.y0))));
+  var sum = 0, count = 0;
+  var sx, sy, id;
+  for (var y = 0; y < ySteps; y++) {
+    for (var x = 0; x < xSteps; x++) {
+      sx = Math.max(0, Math.min(grid.width - 1, Math.floor(bounds.x0 + (x + 0.5) / xSteps * (bounds.x1 - bounds.x0))));
+      sy = Math.max(0, Math.min(grid.height - 1, Math.floor(bounds.y0 + (y + 0.5) / ySteps * (bounds.y1 - bounds.y0))));
+      id = sy * grid.width + sx;
+      if (!bandPixelIsValid(grid, id, band, alpha)) continue;
+      sum += grid.samples[id * grid.bands + band];
+      count++;
+    }
+  }
+  return count > 0 ? sum / count : NaN;
+}
+
+// A pixel's value in one band is valid if it isn't nodata or NaN, and the
+// pixel is inside the grid's coverage and not masked by its alpha band
+function bandPixelIsValid(grid, pixelId, band, alpha) {
+  var src = pixelId * grid.bands;
+  return isValidBandValue(grid.samples[src + band], grid.nodata) &&
+    !(grid.coverage && !grid.coverage[pixelId]) &&
+    !(alpha > -1 && grid.samples[src + alpha] === 0);
 }
 
 function getRasterExportResamplingMethod(grid, bbox, width, height) {
@@ -455,23 +827,21 @@ function renderRawEightBitPreview(grid, width, height, sourceBbox) {
   var samples = grid.samples;
   var bands = grid.bands;
   var pixels = new Uint8ClampedArray(width * height * 4);
-  var src, dest, val;
+  var display = getRasterDisplayBands(grid);
+  var gray = display.color.length == 1;
+  var r = display.color[0];
+  var g = gray ? r : display.color[1];
+  var b = gray ? r : display.color[2];
+  var alpha = display.alpha;
+  var src, dest;
   for (var y = 0; y < height; y++) {
     for (var x = 0; x < width; x++) {
       src = getPreviewSourceOffset(grid, sourceBbox, x, y, width, height, bands);
       dest = (y * width + x) * 4;
-      if (bands == 1) {
-        val = samples[src];
-        pixels[dest] = val;
-        pixels[dest + 1] = val;
-        pixels[dest + 2] = val;
-        pixels[dest + 3] = 255;
-      } else {
-        pixels[dest] = samples[src];
-        pixels[dest + 1] = samples[src + 1];
-        pixels[dest + 2] = samples[src + 2];
-        pixels[dest + 3] = bands >= 4 ? samples[src + 3] : 255;
-      }
+      pixels[dest] = samples[src + r];
+      pixels[dest + 1] = samples[src + g];
+      pixels[dest + 2] = samples[src + b];
+      pixels[dest + 3] = alpha > -1 ? samples[src + alpha] : 255;
     }
   }
   return {
@@ -508,9 +878,17 @@ export function rasterGridIsRotated(grid) {
 }
 
 export function clipRasterToBBox(lyr, bbox, opts) {
+  return clipRasterLayer(lyr, bbox, opts, {});
+}
+
+// Crops a raster layer to the pixels that @bbox overlaps.
+// @params.pixelCenters: keep only pixels whose centers are inside @bbox
+// @params.editGrid: function(grid) that modifies the cropped grid in place
+export function clipRasterLayer(lyr, bbox, opts, params) {
+  var editGrid = params.editGrid;
   var raster = lyr.raster;
   var grid = getRasterGrid(raster);
-  var clipBbox;
+  var clipBbox, crop, cropped;
   if (rasterGridIsRotated(grid)) {
     stop('Clipping a rotated or skewed raster is not supported');
   }
@@ -519,13 +897,16 @@ export function clipRasterToBBox(lyr, bbox, opts) {
     warn('Raster clipping rectangle does not intersect the raster layer');
     return false;
   }
-  var crop = getRasterCrop(grid, clipBbox);
+  crop = params.pixelCenters ? getRasterCenterCrop(grid, clipBbox) : getRasterCrop(grid, clipBbox);
   if (crop.width === 0 || crop.height === 0) {
     warn('Raster clipping rectangle does not intersect the raster layer');
     return false;
   }
   noteLayerWillChange(lyr, {operation: 'clipRasterToBBox', unit: 'raster'});
-  raster.grid = cropRasterGrid(grid, crop, clipBbox);
+  cropped = cropRasterGrid(grid, crop, getRasterCropBBox(grid, crop));
+  if (editGrid) editGrid(cropped);
+  raster.grid = cropped;
+  updateRasterViewForGrid(raster);
   raster.view = raster.view || {};
   delete raster.view.scalingStats;
   if (runningInBrowser()) {
@@ -560,6 +941,39 @@ export function getRasterCrop(grid, bbox) {
     width: Math.max(0, x1 - x0),
     height: Math.max(0, y1 - y0)
   };
+}
+
+// Selects the pixels whose centers are inside @bbox (on the left or top edge
+// counts as inside), the rule used by polygon clipping.
+function getRasterCenterCrop(grid, bbox) {
+  var rb = grid.bbox;
+  var px0 = (bbox[0] - rb[0]) / (rb[2] - rb[0]) * grid.width;
+  var px1 = (bbox[2] - rb[0]) / (rb[2] - rb[0]) * grid.width;
+  var py0 = (rb[3] - bbox[3]) / (rb[3] - rb[1]) * grid.height;
+  var py1 = (rb[3] - bbox[1]) / (rb[3] - rb[1]) * grid.height;
+  var x0 = Math.max(0, Math.ceil(px0 - 0.5));
+  var x1 = Math.min(grid.width, Math.ceil(px1 - 0.5));
+  var y0 = Math.max(0, Math.ceil(py0 - 0.5));
+  var y1 = Math.min(grid.height, Math.ceil(py1 - 0.5));
+  return {
+    x: x0,
+    y: y0,
+    width: Math.max(0, x1 - x0),
+    height: Math.max(0, y1 - y0)
+  };
+}
+
+// The bbox of the pixels selected by @crop
+export function getRasterCropBBox(grid, crop) {
+  var rb = grid.bbox;
+  var dx = (rb[2] - rb[0]) / grid.width;
+  var dy = (rb[3] - rb[1]) / grid.height;
+  return [
+    crop.x === 0 ? rb[0] : rb[0] + crop.x * dx,
+    crop.y + crop.height == grid.height ? rb[1] : rb[3] - (crop.y + crop.height) * dy,
+    crop.x + crop.width == grid.width ? rb[2] : rb[0] + (crop.x + crop.width) * dx,
+    crop.y === 0 ? rb[3] : rb[3] - crop.y * dy
+  ];
 }
 
 export function cropRasterGrid(grid, crop, bbox) {
@@ -656,22 +1070,29 @@ function getSingleBandStats(data, bands, band, noData) {
   return min < Infinity && max > min ? {min: min, max: max} : {min: 0, max: 255};
 }
 
-function getSharedBandStats(data, bands, noData) {
+// The red, green and blue bands share a scale, so that scaling doesn't shift
+// colors
+function getSharedBandStats(data, bands, noData, colorBands) {
   var stats = getBandStats(data, bands, noData);
-  var min = Math.min(stats[0].min, stats[1].min, stats[2].min);
-  var max = Math.max(stats[0].max, stats[1].max, stats[2].max);
+  var min = Math.min.apply(null, colorBands.map(function(b) { return stats[b].min; }));
+  var max = Math.max.apply(null, colorBands.map(function(b) { return stats[b].max; }));
   var shared = max > min ? {min: min, max: max} : {min: 0, max: 255};
-  stats[0] = stats[1] = stats[2] = shared;
+  colorBands.forEach(function(b) { stats[b] = shared; });
   return stats;
 }
 
-function getScalingStats(data, bands, noData, recipe) {
-  var shared = recipe.type == 'rgb' && bands >= 3;
+// Stats for each grid band, indexed by band (null for a palette, which
+// colors values rather than scaling them)
+function getScalingStats(grid, recipe) {
+  var data = grid.samples, bands = grid.bands, noData = grid.nodata;
+  var colorBands = getRasterDisplayBands(grid).color;
+  var shared = recipe.type == 'rgb' && colorBands.length == 3;
+  if (recipe.palette) return null;
   if (recipe.scaling == 'minmax') {
-    return shared ? getSharedBandStats(data, bands, noData) : getBandStats(data, bands, noData);
+    return shared ? getSharedBandStats(data, bands, noData, colorBands) : getBandStats(data, bands, noData);
   }
   if (recipe.scaling == 'percentile') {
-    return shared ? getSharedPercentileStats(data, bands, noData, recipe.percentileRange) :
+    return shared ? getSharedPercentileStats(data, bands, noData, recipe.percentileRange, colorBands) :
       getBandPercentileStats(data, bands, noData, recipe.percentileRange);
   }
   return null;
@@ -726,11 +1147,11 @@ function isEightBitPixelType(pixelType) {
 }
 
 function useFastRawEightBitRendering(grid, recipe) {
-  return grid.pixelType == 'uint8' &&
+  return !recipe.palette && grid.pixelType == 'uint8' &&
     recipe.scaling == 'none' &&
     recipe.scaleRange[0] === 0 &&
     recipe.scaleRange[1] === 100 &&
-    (recipe.type == 'gray' && grid.bands == 1 || recipe.type == 'rgb' && grid.bands >= 3) &&
+    (recipe.type == 'gray' && !rasterGridDisplaysColor(grid) || recipe.type == 'rgb' && rasterGridDisplaysColor(grid)) &&
     (grid.nodata === null || grid.nodata === undefined);
 }
 
@@ -742,6 +1163,7 @@ export function getRasterScalingStatsKey(grid, recipe) {
     grid.pixelType,
     grid.samples && grid.samples.length,
     grid.nodata,
+    getRasterDisplayBandsKey(grid),
     recipe.type,
     recipe.scaling,
     recipe.scaleRange && recipe.scaleRange.join(','),
@@ -757,10 +1179,10 @@ function getBandPercentileStats(data, bands, noData, range) {
   return stats;
 }
 
-function getSharedPercentileStats(data, bands, noData, range) {
+function getSharedPercentileStats(data, bands, noData, range, colorBands) {
   var stats = getBandPercentileStats(data, bands, noData, range);
-  var shared = getPercentileStats(data, bands, [0, 1, 2], noData, range);
-  stats[0] = stats[1] = stats[2] = shared;
+  var shared = getPercentileStats(data, bands, colorBands, noData, range);
+  colorBands.forEach(function(b) { stats[b] = shared; });
   return stats;
 }
 

@@ -94,6 +94,20 @@ The `raster` object distinguishes:
   current truth for clipping and future raster operations.
 - `grid.coverage`: optional mask used by projected rasters to distinguish
   covered pixels from nodata fill pixels. This is separate from pixel color.
+- `grid.displayBands`: optional `{color: [gray] or [r, g, b], alpha: index or
+  -1}`, in grid band indexes, naming the bands that are displayed. Without it,
+  the band count decides: one or two bands are gray, three or more are RGB,
+  and the fourth of four is alpha. Everything that displays or exports a grid
+  as an image (the renderer and its scaling stats, the pixel readout, `-info`'s
+  image stats, GeoTIFF photometric and ExtraSamples tags, `nodata-color=`)
+  reads it through `getRasterDisplayBands()`
+  (`src/rasters/mapshaper-raster-display-bands.mjs`). It lives on the grid
+  rather than in `view.recipe` because many of these functions receive only
+  the grid, and because the recipe can lag behind the grid. Code that changes
+  the bands of a grid that has it must update or remove it. The fill that
+  follows `-clip` and `-proj` gives such a grid a nodata value rather than an
+  alpha band, since it holds bands that aren't displayed. The image commands
+  (`-tone`, `-blend`, `-deshadow`, `-blur`) still read bands by count.
 - `interpretation`: semantic raster type, one of `image`, `categorical` or
   `continuous`. Import defaults to `image`. `categorical` marks class/code
   rasters so later reprojection defaults to nearest-neighbor resampling.
@@ -107,6 +121,10 @@ The `raster` object distinguishes:
   bands.
 - `sourceId`: a link to shared source/provenance metadata in
   `dataset.info.raster_sources`.
+- `reducedResolution`: present when import read the source at less than full
+  resolution (`{width, height, sourceWidth, sourceHeight}`). It lives on the
+  raster, not the grid, so it survives `-clip` and `-proj`, and `-join` uses
+  it to decide to read the source file at full resolution.
 
 ## CRS Metadata
 
@@ -207,17 +225,19 @@ integer and floating point data.
 `raster-type=image|categorical|continuous` records whether the raster should be
 treated as a display image, a categorical class/code raster, or continuous
 measurements. The default is `image`. The setting affects later command defaults
-such as `-proj` resampling and nodata fill; it does not change the pixel storage
-type.
+such as `-proj` resampling and the fill of empty pixels after `-proj` and
+`-clip`; it does not change the pixel storage type.
 
 Resampling and nodata fill are two independent axes, which is why three values
 are needed rather than a single image/categorical switch:
 
-| `raster-type=` | Default resampling | Uncovered pixels |
+| `raster-type=` | Default resampling | Empty pixels |
 | --- | --- | --- |
-| `image` | bilinear | fill color (white) |
+| `image` | bilinear | `grid.nodata`, or alpha 0 for 8-bit images |
 | `categorical` | nearest | `grid.nodata` |
 | `continuous` | bilinear | `grid.nodata` |
+
+A raster without a nodata value is given one when it needs it.
 
 ## Source Storage
 
@@ -501,18 +521,28 @@ replacing its extension:
 
 ## Raster Clipping
 
-Raster clipping is available through the rectangle tool and the existing
-`-clip bbox=...` command path.
+Raster clipping is available through `-clip <polygon layer>`, `-clip bbox=...`
+and the rectangle tool (which runs `-clip bbox=`).
 
 Current behavior:
 
-- Clip applies only to raster target layers; raster `-erase` is not exposed in
-  the rectangle submenu.
-- The clipped area is the intersection of the drawn rectangle and
-  `raster.grid.bbox`.
+- Clip applies only to raster target layers; raster `-erase` is not supported.
+- A polygon clip layer (including the rectangle that `bbox=` becomes) keeps
+  the pixels whose centers are inside the polygons, using the nonzero winding
+  rule, so holes are removed and overlapping features are kept
+  (`getPolygonPixelMask()` in `mapshaper-raster-mask.mjs`). The raster is
+  cropped to the pixels whose centers are inside the polygons' bounding box,
+  and the other removed pixels are filled as `-proj` fills uncovered pixels
+  (see Raster Reprojection), and marked in the `coverage` mask. A rectangle
+  therefore crops without adding transparency.
+- Any other clip layer (points, lines, a raster) crops the raster to the whole
+  pixels that the layer's bounding box overlaps.
+- The cropped grid's bbox is that of its pixels, so the pixel size does not
+  change.
 - No intersection emits a warning and leaves the raster unchanged.
 - Successful clipping updates `grid.samples`, `grid.width`, `grid.height`,
-  `grid.bbox`, and `grid.transform`.
+  `grid.bbox`, `grid.transform` and `grid.coverage`, and may add an alpha band
+  or set `grid.nodata`.
 - In the browser, `view.preview` is regenerated from the clipped grid. In
   CLI/headless mode, preview caches are omitted.
 - `sourceId` and `derivation` remain as provenance.
@@ -536,9 +566,16 @@ per-pixel inverse projection:
   real value. Nearest sampling copies a nodata sample through unchanged.
 - Interpolated values are rounded only when the destination sample array holds
   integers. Rounding a float array would quantize elevation data to whole units.
-- Fill uncovered output pixels with `nodata-color=`. When the option is omitted,
-  image rasters default to white, and categorical and continuous rasters use
-  `grid.nodata` when available.
+- Fill uncovered output pixels after rasterizing, using the coverage mask
+  (`fillEmptyRasterPixels()` in `mapshaper-raster-fill.mjs`, shared with
+  `-clip`). `nodata-color=<color>` paints them. By default they are made
+  transparent: they get `grid.nodata` if the raster has one; otherwise an 8-bit
+  image gets an alpha band (a one-band image becomes RGBA, since two-band
+  gray + alpha is not displayed), and any other raster gets a nodata value that
+  its data does not use (-9999 for floats if unused, else the end of the
+  integer type's range or an unused 8- or 16-bit value). GUI display
+  previews pass `fill_uncovered: false` and mask the empty pixels with the
+  coverage array instead.
 
 Projected output grids include a `coverage` mask. The mask records which output
 pixels received source content, independently of the nodata fill color. Later
@@ -705,6 +742,89 @@ maximum become interior breaks. A flat valid raster therefore creates one band
 whose bounds are equal, while an all-invalid raster creates an empty polygon
 layer.
 
+## Raster Joins
+
+`-join <raster> calc=...` aggregates the pixels that overlap each polygon of a
+target layer (`src/join/mapshaper-raster-polygon-join.mjs`). Each pixel has a
+weight: by default the fraction of its area inside the polygon, and with
+`point-method` 1 for pixels whose centers are inside it. Each polygon is
+processed over the window of pixels its bounding box overlaps, so a pixel can
+count toward overlapping polygons.
+
+- The grid is processed in bands of rows (`forEachRowBand()`), and each
+  polygon is processed band by band over the part of its window in the band.
+  The `calc=` accumulators of a polygon whose window spans several bands are
+  saved between them (`getState()`/`setState()` of the compiled expression),
+  and a polygon's record is written after the band containing the last row
+  of its window. A pixel gets the same weight in any window that contains
+  it, so the results don't depend on the band height.
+- A raster imported for a join (a file named in `-join`, or a source file
+  read again) keeps its pixels in the file: with the internal `row_reader`
+  import option, a GeoTIFF read at full size gets a `raster.rowReader`
+  (`{blockHeight, readRows(r0, r1)}`) and a grid without samples. Bands are
+  then about `PIXELS_PER_ROW_BAND` pixels, rounded to whole strips or rows of
+  tiles, and bands that no polygon's window reaches aren't read at all, so a
+  target smaller than the raster reads only the rows under it. The reader
+  decodes strips and tiles itself (`getGeoTIFFRowReader()` in
+  `mapshaper-geotiff-resample.mjs`), falling back to `readRasters()` with a
+  window for the formats it doesn't support; YCbCr files go through
+  `readRGB()`. Band scaling is applied as each band is read. A raster
+  already in memory (a catalog layer joined as it is) is processed as a
+  single band.
+- The used-pixel flags and valid-pixel counts for the join message are per
+  band. When bands were skipped, the message counts the valid pixels only in
+  the rows that were read.
+
+- Pixel-center weights come from `getShapePixelMask()`, the per-shape form of
+  the clipping mask. Crossings are computed in whole-grid pixel coordinates
+  from each edge's upper endpoint, so two shapes sharing an edge get
+  identical crossings and a pixel center on the edge belongs to exactly one
+  of them, whatever their windows.
+- Area weights come from `getShapePixelCoverage()`
+  (`mapshaper-raster-coverage.mjs`), an exact signed-area accumulation: edges
+  are cut into pieces within single pixels, and each piece adds its partial
+  area to its pixel and its height to a running sum carried to the pixels on
+  its right. Holes cancel by winding direction; overlapping parts of one
+  feature are capped at 1.
+- `calc=` is compiled by `compileRasterCalcExpression()`, which mirrors
+  `compileCalcExpression()`'s two phases but uses one streaming accumulator
+  per aggregate call, so `sum()`, `mean()`, `count()`, `min()` and `max()`
+  don't store per-pixel values. The per-pixel phase evaluates the expression
+  against a single reusable record (`band1`..., `coverage`). Area-weighted
+  quantiles use the standard weighted percentile (each value at the middle
+  of its share of the weight); `point-method` quantiles use
+  `utils.findQuantile()`, matching other joins.
+- Nodata is tested band by band, as in GDAL, not with the shared validity
+  rule (where a pixel is nodata only if all of its color bands are): a nodata
+  or NaN band value is NaN in expressions, which the numeric aggregates and
+  `mode()` skip, and a pixel is skipped when every band that the expressions
+  use is nodata or it is outside `grid.coverage`.
+- The join reads the bands its expressions name (`getRasterJoinBands()`, or
+  band1 if they name none) at full resolution. `findSourceForCommand()` in
+  `mapshaper-run-command.mjs` imports a raster file named as the source with
+  `resolution=full` and `source_bands`, an internal GeoTIFF import option that
+  reads those bands instead of the display bands. The grid it makes is only
+  measured, never added to the catalog or rendered, since the renderer and
+  the other raster commands treat band counts as gray, RGB or RGBA.
+- A catalog layer has its display bands, possibly at reduced resolution. If
+  it lacks a band or was reduced, `getRasterSourceBands()`
+  (`mapshaper-raster-source-bands.mjs`) reads the same bands from its source
+  file in its place, and is meant for any command that measures band values
+  (such as a future raster calculator). The CLI reads the file path in
+  `raster_sources`; the web UI stores each raster file and its sidecars in
+  IndexedDB at import and registers a reader with `setRasterSourceReader()`.
+  The layer's dataset keeps its CRS; a re-read file whose bounds or size no
+  longer match the layer is rejected.
+- A layer can only be replaced by its source if it hasn't been edited.
+  `mapshaper-raster-source.mjs` keeps a `WeakSet` of the sample arrays that
+  importers made (copies made by `copyRasterGrid()` are added too). Every
+  command that changes pixel values or georeferencing makes a new grid and
+  sample array, so a layer whose samples are not in the set has been edited,
+  and the join stops with an error instead of losing the edits. Code that
+  writes into an existing sample array must call `markRasterSamplesAsEdited()`
+  first. The check fails safe: a raster restored from a saved session, whose
+  samples are new arrays, is treated as edited.
+
 ## Commands And Validation
 
 Most existing commands are vector commands and should reject raster targets
@@ -719,6 +839,7 @@ with clear errors. Early raster-aware commands should be limited to:
   `resampling=nearest|bilinear` support.
 - `-contours` for tracing isolines into a new polyline layer, or closed bands
   into a polygon layer.
+- `-join` with a raster source, for aggregating pixel values by polygon.
 - SVG export.
 - Session snapshot export/import.
 

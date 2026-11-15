@@ -27,8 +27,10 @@ function nameIsInterpolated(name) {
   return /[$][{]/.test(name);
 }
 
-export async function findCommandSourceAsync(sourceName, catalog, opts) {
-  var source = catalog.findSingleLayer(sourceName);
+// @targets (optional) the command's targets; a name that matches layers in
+//   several frames resolves to the one in the targets' frame
+export async function findCommandSourceAsync(sourceName, catalog, opts, targets) {
+  var source = catalog.findSingleLayer(sourceName, targets);
   var sourceDatasets;
   if (!source) {
     // Source-file topology is built later if it is needed by the command.

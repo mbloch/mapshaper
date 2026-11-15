@@ -1,4 +1,6 @@
-import { getLayerDataTable, getFeatureCount } from '../dataset/mapshaper-layer-utils';
+import { getLayerDataTable, getFeatureCount, layerHasRaster } from '../dataset/mapshaper-layer-utils';
+import { clearRasterStyle, setRasterOpacity } from '../rasters/mapshaper-raster-classify';
+import { markLayerChanged, noteLayerWillChange } from '../undo/mapshaper-undo-tracking';
 import {
   getSymbolPropertyAccessor,
   labelPositionDerivedFields,
@@ -22,6 +24,10 @@ cmd.svgStyle = function(lyr, dataset, opts) {
     return field in fieldsBefore;
   }
 
+  if (layerHasRaster(lyr)) {
+    styleRasterLayer(lyr, opts);
+    return;
+  }
   if (getFeatureCount(lyr) === 0) {
     return;
   }
@@ -137,6 +143,29 @@ cmd.svgStyle = function(lyr, dataset, opts) {
 };
 
 // The style properties this command was given, in SVG spelling.
+// A raster's styling is its palette (set by -classify) and its display
+// opacity. clear is applied first, so clear opacity=0.6 removes only the
+// palette.
+function styleRasterLayer(lyr, opts) {
+  var names = Object.keys(opts).filter(function(key) {
+    return key != 'target' && key != 'clear' && key != 'opacity';
+  });
+  var opacity;
+  if (names.length > 0) {
+    stop('Raster layers take only opacity= and clear (not ' + names[0].replace(/_/g, '-') + '=)');
+  }
+  if ('opacity' in opts) {
+    opacity = Number(opts.opacity);
+    if (opts.opacity === '' || !(opacity >= 0 && opacity <= 1)) {
+      stop('opacity= should be a number from 0 to 1');
+    }
+  }
+  noteLayerWillChange(lyr, {operation: 'style', unit: 'raster'});
+  if (opts.clear) clearRasterStyle(lyr.raster);
+  if (opacity !== undefined) setRasterOpacity(lyr.raster, opacity);
+  markLayerChanged(lyr, {operation: 'style', unit: 'raster'});
+}
+
 function getOptionFields(opts) {
   var fields = [];
   Object.keys(opts).forEach(function(optName) {

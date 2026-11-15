@@ -53,10 +53,13 @@ export function SelectionTool(gui, ext, hit) {
     _on = true;
   }
 
+  // Leaves the selection alone: it goes with the user into the next mode (see
+  // HitControl), and this runs after the hit control has handed it over.
   function turnOff() {
     dataBtn.turnOff();
     box.turnOff();
-    reset();
+    hidePopup();
+    setPinning(false);
     _on = false;
     if (gui.interaction.getMode() == 'selection') {
       // mode change was not initiated by interactive menu -- turn off interactivity

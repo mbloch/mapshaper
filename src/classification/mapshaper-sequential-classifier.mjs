@@ -59,7 +59,7 @@ export function getSequentialClassifier(classValues, nullValue, dataValues, meth
     if (method == 'nice') message('Nice breaks:', breaks);
   }
 
-  printDistributionInfo(ascending, breaks, nullCount);
+  printDistributionInfo(ascending, breaks, nullCount, opts.count_label);
 
   if (opts.continuous && method == 'quantile' && !opts.breaks) {
     dataToClass = getRankClassifier(ascending, numBuckets);
@@ -87,6 +87,9 @@ export function getSequentialClassifier(classValues, nullValue, dataValues, meth
     }
   }
 
+  // for -classify on rasters, which makes a palette from them
+  classifier.breaks = breaks;
+  classifier.range = [minVal, maxVal];
   return classifier;
 }
 
@@ -97,12 +100,26 @@ export function getSequentialClassifier(classValues, nullValue, dataValues, meth
 //   for quantile are at evenly spaced ranks (see getRankClassifier())
 export function getSequentialBreaks(ascending, method, numBreaks, continuous) {
   if (numBreaks === 0) return [];
+  if (ascending.length > 0 && ascending[0] === ascending[ascending.length - 1]) {
+    return getConstantDataBreaks(ascending[0], numBreaks);
+  }
   if (method == 'quantile' && continuous) return getRankBreaks(ascending, numBreaks);
   if (method == 'equal-interval') return getEqualIntervalBreaks(ascending, numBreaks);
   if (method == 'quantile') return getQuantileBreaks(ascending, numBreaks);
   if (method == 'hybrid') return getHybridBreaks(ascending, numBreaks);
   if (method == 'nice') return getNiceBreaks(ascending, numBreaks);
   stop('Unknown classification method:', method);
+}
+
+// Data with a single value has no range to divide: the breaks are a unit apart
+// and centered on the value, so that it falls in the middle class (the upper
+// of the two middle classes, if the number of classes is even)
+function getConstantDataBreaks(val, numBreaks) {
+  var breaks = [];
+  for (var i=0; i<numBreaks; i++) {
+    breaks.push(val + i + 1 - (numBreaks + 1) / 2);
+  }
+  return breaks;
 }
 
 export function getClassRanges(breaks, ascending) {
@@ -151,15 +168,17 @@ function getClassRange(ascending, geBound, ltBound, i) {
   return rangeStart > -1 && rangeEnd > -1 ? [rangeStart, rangeEnd] : null;
 }
 
-function printDistributionInfo(ascending, breaks, nulls) {
+// @countLabel: what the counts are of (default 'feature counts'); with a
+//   label, the data has no null values to count (e.g. valid raster pixels)
+function printDistributionInfo(ascending, breaks, nulls, countLabel) {
   var dist = getDistributionData(breaks, ascending);
   var tableRows = getClassRanges(breaks, ascending).map(function(range, i) {
     return [`${range[0]} - ${range[1]}`, `(${dist[i]})`];
   });
-  tableRows.push(['null or non-numeric values', `(${nulls})`]);
+  if (!countLabel) tableRows.push(['null or non-numeric values', `(${nulls})`]);
   // message('Computed breaks:', breaks);
   // message('Distribution:', dist.join(','));
-  message('Data ranges and (feature counts):\n' + formatColumns(tableRows, ['left', 'right']));
+  message('Data ranges and (' + (countLabel || 'feature counts') + '):\n' + formatColumns(tableRows, ['left', 'right']));
   if (nulls) {
     // message('Null values:', nulls);
   }
@@ -215,11 +234,15 @@ export function getContinuousClassifier(breaks, minVal, maxVal) {
     if (!utils.isValidNumber(val) || val < minVal || val > maxVal){
       return -1;
     }
+    if (n === 0 && minVal === maxVal) {
+      return 0.5; // constant data, two color stops: the middle of the ramp
+    }
     for (var i=0; i<=n; i++) {
       max = i === n ? maxVal : breaks[i];
       if (i === n || val < max) {
         min = i === 0 ? minVal : breaks[i-1];
-        j = (val - min) / (max - min);
+        // the last break can equal the max
+        j = max > min ? (val - min) / (max - min) : 1;
         return i + j;
       }
     }
@@ -247,10 +270,28 @@ export function applyDataRange(values, range) {
   return values2;
 }
 
+// A typed array sorts numbers many times faster than a comparator does, and
+// a sample of raster pixels comes sorted already
 export function getAscendingNumbers(values) {
-  var numbers = values.filter(utils.isFiniteNumber);
-  utils.genericSort(numbers, true);
+  var numbers = allFiniteNumbers(values) ? values.slice() : values.filter(utils.isFiniteNumber);
+  if (!numbersAreAscending(numbers)) {
+    numbers = Array.from(Float64Array.from(numbers).sort());
+  }
   return numbers;
+}
+
+function allFiniteNumbers(values) {
+  for (var i = 0; i < values.length; i++) {
+    if (!utils.isFiniteNumber(values[i])) return false;
+  }
+  return true;
+}
+
+export function numbersAreAscending(values) {
+  for (var i = 1; i < values.length; i++) {
+    if (values[i] < values[i - 1]) return false;
+  }
+  return true;
 }
 
 function arraysAreIdentical(a, b) {

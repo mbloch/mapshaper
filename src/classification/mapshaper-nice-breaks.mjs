@@ -1,4 +1,4 @@
-import { getQuantileBreaks, getDistributionData } from '../classification/mapshaper-class-stats';
+import { getQuantileBreaks, getEqualIntervalBreaks, getDistributionData } from '../classification/mapshaper-class-stats';
 import { stop, error } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { getRoundingFunction } from '../geom/mapshaper-rounding';
@@ -21,10 +21,15 @@ function getRoundnessScore(interval, precision) {
 }
 
 export function getNiceBreaks(values, numBreaks) {
-  var quantileBreaks = getQuantileBreaks(values, numBreaks);
-  var lowerBreak = quantileBreaks[0];
-  var upperBreak = quantileBreaks[quantileBreaks.length-1];
-  var data = getCandidateBreaks(lowerBreak, upperBreak, numBreaks);
+  var initialBreaks = getQuantileBreaks(values, numBreaks);
+  if (numBreaks > 1 && initialBreaks[0] == initialBreaks[numBreaks - 1]) {
+    // the quantile breaks fell on a single value, leaving no range to divide
+    initialBreaks = getEqualIntervalBreaks(values, numBreaks);
+  }
+  var lowerBreak = initialBreaks[0];
+  var upperBreak = initialBreaks[initialBreaks.length-1];
+  var dataRange = values[values.length - 1] - values[0];
+  var data = getCandidateBreaks(lowerBreak, upperBreak, numBreaks, dataRange);
   // add distribution data and quality metric to each candidate
   data.forEach(function(o) {
     var distribution = getDistributionData(o.breaks, values);
@@ -61,12 +66,16 @@ function applyScale(normalVal, scale) {
   return normalVal / scale;
 }
 
-function getCandidateBreaks(lowerBreak, upperBreak, numBreaks) {
+function getCandidateBreaks(lowerBreak, upperBreak, numBreaks, dataRange) {
   var cands = [];
   // calculate rounding using equal interval, when possible
   var maxBreak = Math.max(Math.abs(lowerBreak), Math.abs(upperBreak));
   var subRange = numBreaks >= 2 ?
       (upperBreak - lowerBreak) / (numBreaks - 1) : maxBreak;
+  if (subRange > 0 === false) {
+    // a single break at 0
+    subRange = dataRange / (numBreaks + 1);
+  }
   var scale = getRangeScale(subRange);
   var scaledRange = scale * subRange;
   var scaledIntervals = getNiceIntervals(scaledRange);

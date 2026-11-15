@@ -6,6 +6,8 @@ export function Model(gui) {
   var self = new internal.Catalog();
   var deleteLayer = self.deleteLayer;
   var setDefaultTargets = self.setDefaultTargets;
+  var seenLayers = new WeakSet();
+  var prevActive = null;
   utils.extend(self, EventDispatcher.prototype);
 
   // A map frame (and its furniture) is composition state, not editable content. Commands may
@@ -73,7 +75,10 @@ export function Model(gui) {
     }
     // Before anything hears of the update, so that the map draws a layer that
     // has just arrived along with the ones already showing.
-    showNewLayers(self.getLayers());
+    showNewLayers(self.getLayers(), active,
+      active && !seenLayers.has(active.layer) ? prevActive : null);
+    self.getLayers().forEach(function(o) { seenLayers.add(o.layer); });
+    prevActive = active;
     if (flags.select) {
       self.dispatchEvent('select', active);
     }

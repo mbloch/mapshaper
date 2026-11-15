@@ -8,6 +8,15 @@ function cull(commands) {
 }
 
 describe('gui-session-history-cull', function() {
+  it('culls a -target followed by another -target', function() {
+    assert.deepEqual(cull(['-target a', '-target b', '-style fill=red', '-target c']),
+      ['-target b', '-style fill=red', '-target c']);
+  });
+
+  it('keeps a -target that does more than select layers', function() {
+    assert.deepEqual(cull(['-target a name=x', '-target b']), ['-target a name=x', '-target b']);
+  });
+
   it('culls style commands with overwritten properties', function() {
     var commands = [
       '-style fill=red',

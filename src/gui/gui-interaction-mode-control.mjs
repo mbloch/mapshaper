@@ -3,6 +3,7 @@ import { internal } from './gui-core';
 import { getLabelTarget } from './gui-label-commands';
 import { formatLayerNameForDisplay } from './gui-layer-utils';
 import { addEmptyLayer } from './gui-add-layer';
+import { layerHasPaletteRaster } from './gui-raster-band-values';
 
 export function InteractionMode(gui) {
   var self = this;
@@ -41,6 +42,13 @@ export function InteractionMode(gui) {
     lines: ['info', 'line_style', 'snip_lines', 'selection', 'box', 'ruler'],
     table: ['info', 'selection'],
     raster: ['box', 'ruler'],
+    // an RGB image, which -tone can adjust
+    image: ['tone', 'box', 'ruler'],
+    // a data raster (a DEM, land cover...), which -classify can color
+    dataRaster: ['palette', 'box', 'ruler'],
+    // a grayscale image, which -tone can adjust (apart from its colors) and
+    // -classify can color
+    grayImage: ['tone', 'palette', 'box', 'ruler'],
     labels: ['info', 'label', 'symbols', 'selection', 'box', 'ruler'],
     // a layer of symbols, which the point tools have no controls for
     symbols: ['info', 'symbols', 'selection', 'box', 'ruler'],
@@ -74,6 +82,8 @@ export function InteractionMode(gui) {
     point_style: 'style/edit points',
     line_style: 'style/edit lines',
     polygon_style: 'style/edit polygons',
+    tone: 'adjust colors',
+    palette: 'color palette',
     edit_points: 'style/edit points',
     edit_lines: 'draw lines',
     edit_polygons: 'draw polygons',
@@ -125,7 +135,6 @@ export function InteractionMode(gui) {
     });
 
     btn.on('mouseenter', function() {
-      if (stylePanelIsActive()) return;
       btn.addClass('hover');
       if (_menuOpen) {
         clearTimeout(_menuTimeout); // prevent timed closing
@@ -172,7 +181,7 @@ export function InteractionMode(gui) {
   };
 
   this.modeSupportsUndo = function(mode) {
-    return ['data', 'frame', 'label', 'label_style', 'symbols', 'point_style', 'line_style', 'polygon_style', 'edit_points', 'edit_lines', 'edit_polygons', 'snip_lines', 'vertices', 'rectangles'].includes(mode);
+    return ['data', 'frame', 'label', 'label_style', 'symbols', 'point_style', 'palette', 'line_style', 'polygon_style', 'edit_points', 'edit_lines', 'edit_polygons', 'snip_lines', 'vertices', 'rectangles'].includes(mode);
   };
 
   this.getMode = getInteractionMode;
@@ -263,22 +272,15 @@ export function InteractionMode(gui) {
     return _editMode && _editMode != 'off';
   }
 
-  // A mode with a panel of its own: hovering the button must not open the mode
-  // menu over the panel.
-  function stylePanelIsActive() {
-    return _editMode == 'frame' || _editMode == 'frame_draw' ||
-      _editMode == 'label' || _editMode == 'label_style' || _editMode == 'symbols' ||
-      _editMode == 'point_style' || _editMode == 'line_style' ||
-      _editMode == 'polygon_style';
-  }
-
   function getAvailableModes() {
     var o = gui.model.getActiveLayer();
     if (!o || !o.layer) {
       return menus.empty; // TODO: more sensible handling of missing layer
     }
     if (internal.layerHasRaster(o.layer)) {
-      return menus.raster;
+      if (internal.rasterCanBeToned(o.layer.raster)) return menus.image;
+      if (internal.rasterIsGrayImage(o.layer.raster)) return menus.grayImage;
+      return layerHasPaletteRaster(o.layer) ? menus.dataRaster : menus.raster;
     }
     if (!o.layer.geometry_type) {
       return menus.table;

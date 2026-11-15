@@ -24,15 +24,58 @@ export function formatAuxXml(wkt) {
   return '<PAMDataset>\n  <SRS>' + escapeXml(wkt) + '</SRS>\n</PAMDataset>\n';
 }
 
-// The CRS a sidecar carries, or null. Everything else GDAL writes to these
-// files -- statistics, band metadata, overviews -- describes data that
-// mapshaper reads from the raster itself.
+// The CRS a sidecar carries, or null. Of the rest of what GDAL writes to these
+// files, only the band values read by parseAuxBandInfo() are used; statistics
+// and overviews describe data that mapshaper reads from the raster itself
+// (category names are read by mapshaper-geotiff-categories.mjs).
 export function parseAuxCrsString(content) {
-  var xml = typeof content == 'string' ? content :
-    content ? decodeString(content, 'utf8') : '';
+  var xml = getAuxXml(content);
   var match = /<SRS\b[^>]*>([\s\S]*?)<\/SRS>/i.exec(xml);
   var srs = match ? unescapeXml(match[1]).trim() : '';
   return srs || null;
+}
+
+// How to read the values of a band: {units, scale, offset}, with null for
+// anything the sidecar does not say.
+// @band: 0-based band index (GDAL numbers bands from 1)
+export function parseAuxBandInfo(content, band) {
+  var xml = getAuxBandXml(content, band);
+  if (xml === null) return {description: null, units: null, scale: null, offset: null};
+  return {
+    description: readXmlElement(xml, 'Description'),
+    units: readXmlElement(xml, 'UnitType'),
+    scale: readXmlNumber(xml, 'Scale'),
+    offset: readXmlNumber(xml, 'Offset')
+  };
+}
+
+// The contents of a band's element, or null if the sidecar has none
+// @band: 0-based band index
+export function getAuxBandXml(content, band) {
+  var xml = getAuxXml(content);
+  var rx = /<PAMRasterBand\b([^>]*)>([\s\S]*?)<\/PAMRasterBand>/gi;
+  var match, num;
+  while ((match = rx.exec(xml))) {
+    num = /\bband\s*=\s*"(\d+)"/i.exec(match[1]);
+    if (num && +num[1] == band + 1) return match[2];
+  }
+  return null;
+}
+
+function getAuxXml(content) {
+  return typeof content == 'string' ? content :
+    content ? decodeString(content, 'utf8') : '';
+}
+
+function readXmlElement(xml, name) {
+  var match = new RegExp('<' + name + '\\b[^>]*>([\\s\\S]*?)</' + name + '>', 'i').exec(xml);
+  var str = match ? unescapeXml(match[1]).trim() : '';
+  return str || null;
+}
+
+function readXmlNumber(xml, name) {
+  var str = readXmlElement(xml, name);
+  return str !== null && isFinite(+str) ? +str : null;
 }
 
 // GDAL states the SRS in WKT, but a hand-written sidecar may hold an EPSG code
@@ -45,7 +88,7 @@ function escapeXml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function unescapeXml(str) {
+export function unescapeXml(str) {
   return str.replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 }

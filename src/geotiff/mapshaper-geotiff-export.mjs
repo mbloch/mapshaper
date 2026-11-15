@@ -13,6 +13,7 @@ import { AUX_EXT, formatAuxXml, getAuxFilename } from '../geotiff/mapshaper-geot
 import { encodeGeoTIFF } from '../geotiff/mapshaper-geotiff-encode';
 import { getCrsGeoKeys } from '../geotiff/mapshaper-geotiff-geokeys';
 import { getRasterGrid, rasterGridIsRotated } from '../rasters/mapshaper-raster-utils';
+import { getGdalUnitType } from '../rasters/mapshaper-vertical-units';
 import { getFileExtension } from '../utils/mapshaper-filename-utils';
 import { message, stop } from '../utils/mapshaper-logging';
 
@@ -70,8 +71,16 @@ function encodeRasterLayer(lyr, crs, opts) {
   }
   return encodeGeoTIFF(grid, {
     geoKeys: getGeoKeys(crs),
-    compress: getCompressionSetting(opts)
+    compress: getCompressionSetting(opts),
+    gdalMetadata: getGdalBandMetadata(grid)
   });
+}
+
+// GDAL (and QGIS) read a band's units from GDAL's metadata tag. The units
+// describe the elevation band, which is the first band.
+function getGdalBandMetadata(grid) {
+  if (!grid.verticalUnits) return null;
+  return [{band: 0, name: 'UNITTYPE', role: 'unittype', value: getGdalUnitType(grid.verticalUnits)}];
 }
 
 function getCompressionSetting(opts) {

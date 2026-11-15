@@ -83,6 +83,25 @@ describe('GeoTIFF export', function () {
       assert.deepEqual(Array.from(getTag(image, 'ExtraSamples')), [0]); // unspecified
     });
 
+    it('tags a grid by its display bands rather than its band count', async function () {
+      var grid = makeGrid({
+        width: 1,
+        height: 1,
+        bands: 4,
+        samples: new Uint8Array([10, 20, 30, 40]),
+        displayBands: {color: [0], alpha: -1},
+        bbox: [0, 0, 1, 1]
+      });
+      var image = await decode(grid, {});
+      assert.equal(getTag(image, 'PhotometricInterpretation'), 1);
+      assert.deepEqual(Array.from(getTag(image, 'ExtraSamples')), [0, 0, 0]);
+
+      grid.displayBands = {color: [0, 1, 2], alpha: -1};
+      image = await decode(grid, {});
+      assert.equal(getTag(image, 'PhotometricInterpretation'), 2);
+      assert.deepEqual(Array.from(getTag(image, 'ExtraSamples')), [0]);
+    });
+
     // The geotiff package's own writer mistypes signed samples, so these are
     // the types most in need of a check.
     [

@@ -31,10 +31,18 @@ export function Console(gui) {
   var history = [];
   var historyId = 0;
   var _isOpen = false;
+  var _isRunning = false; // a typed command is running (the command line is hidden)
+  var progressLine = null; // log line receiving progress glyphs
   var globals = {}; // share user-defined globals (job.defs) between runs
   var sharedVars = {}; // share -vars / -defaults templating scope between runs
 
   var activeSession = null; // see createCommandSession()
+  var runningCommands = null; // see runMapshaperCommands()
+  var interruptibleJob = null; // the job of a running command that can be stopped
+  var stopTimer = null;
+  var stopLine = El('div').addClass('console-stop').appendTo(content).hide();
+  var stopLink = El('span').addClass('console-stop-link').appendTo(stopLine).text('Stop');
+  var stopStatus = El('span').appendTo(stopLine);
 
   // expose this function, so other components can run commands (e.g. box tool)
   this.runMapshaperCommands = runMapshaperCommands;
@@ -57,6 +65,8 @@ export function Console(gui) {
   consoleMessage(PROMPT);
   gui.keyboard.on('keydown', onKeyDown);
   window.addEventListener('beforeunload', saveHistory); // save history if console is open on refresh
+
+  GUI.onClick(stopLink, interruptCommand);
 
   GUI.onClick(el, function(e) {
     var targ = El(e.target);
@@ -86,6 +96,7 @@ export function Console(gui) {
 
   function toLog(str, cname) {
     var msg = El('div').text(str).appendTo(log);
+    progressLine = null;
     if (cname) {
       msg.addClass(cname);
     }
@@ -94,6 +105,7 @@ export function Console(gui) {
 
   function toLogNode(node, cname) {
     var msg = El('div').appendTo(log);
+    progressLine = null;
     if (cname) {
       msg.addClass(cname);
     }
@@ -194,6 +206,15 @@ export function Console(gui) {
         inputText = readCommandLine(),
         capture = false;
 
+    // Ctrl-C stops a running command, like in a terminal, unless it would
+    // copy selected text (Windows, Linux)
+    if (kc == 67 && e.ctrlKey && !e.metaKey && !e.altKey && interruptibleJob &&
+        !String(window.getSelection() || '')) {
+      interruptCommand();
+      e.preventDefault();
+      return;
+    }
+
     // esc key
     if (kc == 27) {
       if (typing) {
@@ -229,7 +250,9 @@ export function Console(gui) {
       // which is irksome...
       // // gui.clearMode(); // close any panels that  might be open
       //
-      if (kc == 13) { // enter
+      if (_isRunning && (kc == 13 || kc == 9 || kc == 38 || kc == 40)) {
+        // the command line is hidden until the running command finishes
+      } else if (kc == 13) { // enter
         onEnter();
       } else if (kc == 9) { // tab
         tabComplete();
@@ -415,11 +438,13 @@ export function Console(gui) {
         setDisplayProjection(gui, cmd);
       } else {
         line.hide(); // hide cursor while command is being run
+        _isRunning = true;
         // quit certain edit modes
         if (!gui.interaction.modeWorksWithConsole(gui.interaction.getMode())) {
           gui.interaction.turnOff();
         }
         runMapshaperCommands(cmd, function(err, flags) {
+          _isRunning = false;
           if (flags) {
             gui.clearMode();
           }
@@ -544,13 +569,25 @@ export function Console(gui) {
   //                  the GUI runs for a panel or tool are run as if with -quiet,
   //                  so their messages don't fill the console (errors still
   //                  reach the caller).
+  //
+  // Some commands take a while (e.g. -fetch, or -deshadow in a worker), and
+  // the GUI stays responsive while they run. Commands run one at a time, in
+  // the order they were submitted, so a command submitted meanwhile waits:
+  // otherwise it could finish first, and the session history would list it
+  // first, and the two would share the active undo transaction. Undo and Redo
+  // wait as well (Undo#addPendingCommit()), or they would take back the state
+  // before the running command while the command still uses it.
   function runMapshaperCommands(str, done, runOpts) {
     var session = runOpts && runOpts.session || null;
     var quiet = !(runOpts && runOpts.typed);
     // A command session is a panel's edits to the active layer, so it is
     // taken to change the layer being edited, like a command that says so.
     var changesEditTarget = !!(runOpts && runOpts.changesEditTarget) || !!session;
-    var commands, checkpoint;
+    var commands, checkpoint, release, unregisterRun;
+    if (runningCommands) {
+      runAfter(runningCommands);
+      return;
+    }
     if (activeSession && activeSession != session) {
       // the session's commit clears activeSession before anything in it can
       // fail, so running again after a failure does not loop
@@ -563,6 +600,7 @@ export function Console(gui) {
       runAfter(checkpoint);
       return;
     }
+    startRun();
     try {
       if (session) session.activate();
       commands = internal.parseConsoleCommands(str);
@@ -591,7 +629,17 @@ export function Console(gui) {
       });
     }
 
+    function startRun() {
+      var promise = new Promise(function(resolve) { release = resolve; });
+      runningCommands = promise;
+      unregisterRun = gui.undo && gui.undo.addPendingCommit ?
+        gui.undo.addPendingCommit(function() { return promise; }) : null;
+    }
+
     function finish(err, flags) {
+      runningCommands = null;
+      if (unregisterRun) unregisterRun();
+      if (release) release();
       if (gui.undo && gui.undo.restartEditSession) {
         callSafely(function() { gui.undo.restartEditSession(); });
       }
@@ -654,11 +702,15 @@ export function Console(gui) {
     // Notify listeners (e.g. comparison overlay) before the model is mutated,
     // so they can snapshot the pre-command state of the active layer.
     gui.dispatchEvent('command_start', {commands: commands});
+    if (commands.some(function(cmd) { return internal.commandCanBeInterrupted(cmd.name); })) {
+      startInterruptible(job);
+    }
     try {
       // -quiet is a setting, read and removed by runParsedCommands()
       internal.runParsedCommands(quiet ? [{name: 'quiet', options: {}}].concat(commands) : commands,
         job, onCommandsDone);
     } catch(e) {
+      endInterruptible();
       if (undoTransaction) {
         clearActiveUndoTransaction(undoTransaction);
       }
@@ -666,6 +718,7 @@ export function Console(gui) {
     }
 
     function onCommandsDone(err) {
+      endInterruptible();
       var flags = getCommandFlags(commands),
           historyIds = [],
           active2 = model.getActiveLayer(),
@@ -736,6 +789,46 @@ export function Console(gui) {
         done(err, flags);
       });
     }
+  }
+
+  // The Stop link shows only if the command looks like it has a while to go,
+  // so that it doesn't flash on just before a command finishes. Each step is
+  // [ms since the start, share of the work done (from the progress meter)
+  // below which the link shows]
+  var STOP_LINK_STEPS = [[2000, 0.25], [8000, 0.75], [12000, Infinity]];
+
+  function startInterruptible(job) {
+    var t0 = Date.now();
+    interruptibleJob = job;
+    stopLink.show();
+    stopStatus.text(' (Ctrl-C)');
+    internal.resetProgressShare();
+    scheduleStep(0);
+
+    function scheduleStep(i) {
+      var step = STOP_LINK_STEPS[i];
+      stopTimer = setTimeout(function() {
+        if (internal.getProgressShare() < step[1]) {
+          stopLine.show();
+          scrollDown();
+        } else {
+          scheduleStep(i + 1);
+        }
+      }, Math.max(0, step[0] - (Date.now() - t0)));
+    }
+  }
+
+  function endInterruptible() {
+    interruptibleJob = null;
+    clearTimeout(stopTimer);
+    stopLine.hide();
+  }
+
+  function interruptCommand() {
+    if (!interruptibleJob) return;
+    interruptibleJob.interrupt();
+    stopLink.hide();
+    stopStatus.text('Stopping...');
   }
 
   function createCommandUndoTransaction(commandString) {
@@ -886,7 +979,9 @@ export function Console(gui) {
     var msg;
     if (internal.getStashedVar('QUIET')) return;
     if (internal.loggingEnabled()) {
-      if (structured) {
+      if (structured && structured.type == 'mapshaper-console-progress') {
+        showProgress(structured);
+      } else if (structured) {
         toLogNode(renderStructuredConsoleMessage(structured), 'console-message');
       } else {
         msg = GUI.formatMessageArgs(arguments);
@@ -898,6 +993,42 @@ export function Console(gui) {
   function consoleError() {
     var msg = GUI.formatMessageArgs(arguments);
     throw new Error(msg);
+  }
+
+  // Glyphs from internal.progress() accumulate on one line, which ends at the
+  // next message or at internal.endProgress()
+  function showProgress(msg) {
+    if (msg.done) {
+      progressLine = null;
+      return;
+    }
+    if (!progressLine) {
+      progressLine = El('div').addClass('console-message').appendTo(log);
+    }
+    appendProgressGlyphs(progressLine.node(), msg.glyph);
+    scrollDown();
+  }
+
+  // The line can wrap after any dot, but not within a percentage (e.g. 50%)
+  function appendProgressGlyphs(node, str) {
+    str.split(/(\d+%)/).forEach(function(part, i) {
+      var span, pieces;
+      if (i % 2 == 1) {
+        span = document.createElement('span');
+        span.className = 'console-progress-mark';
+        span.textContent = part;
+        node.appendChild(span);
+        return;
+      }
+      pieces = part.split('.');
+      pieces.forEach(function(text, j) {
+        if (text) node.appendChild(document.createTextNode(text));
+        if (j < pieces.length - 1) {
+          node.appendChild(document.createTextNode('.'));
+          node.appendChild(document.createElement('wbr'));
+        }
+      });
+    });
   }
 
   function printExample(comment, command) {
@@ -966,34 +1097,13 @@ export function Console(gui) {
       title.className = 'console-info-title';
       title.textContent = 'Layer: ' + (info.layer_name || '[unnamed layer]');
       section.appendChild(title);
-      section.appendChild(renderKeyValueTable(getInfoRows(info), 'console-info-table'));
+      section.appendChild(renderKeyValueTable(internal.getLayerInfoRows(info), 'console-info-table'));
       if (!info.raster_type) {
         section.appendChild(renderAttributeInfoTable(info.attribute_data));
       }
       container.appendChild(section);
     });
     return container;
-  }
-
-  function getInfoRows(info) {
-    var rows = [
-      ['Type', info.raster_type ? 'raster data' : info.geometry_type || 'tabular data']
-    ];
-    if (info.raster_type) {
-      rows.push(['Size', utils.format('%,d x %,d x %,d', info.raster_width, info.raster_height, info.raster_bands)]);
-      rows.push(['Data', info.raster_pixel_type || 'unknown']);
-    } else {
-      rows.push(['Records', utils.format('%,d', info.feature_count)]);
-    }
-    if (info.null_shape_count > 0) {
-      rows.push(['Nulls', utils.format("%'d", info.null_shape_count)]);
-    }
-    if (info.raster_type || info.geometry_type && info.feature_count > info.null_shape_count) {
-      rows.push(['Bounds', info.bbox.join(',')]);
-      rows.push(['CRS', info.proj4]);
-    }
-    rows.push(['Source', info.source_file || 'n/a']);
-    return rows;
   }
 
   function renderAttributeInfoTable(fields) {

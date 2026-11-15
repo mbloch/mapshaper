@@ -398,8 +398,9 @@ export function ColorPicker(parent, opts) {
     });
   }
 
+  // A hidden picker is drawn when it opens (see toggle())
   function drawColorPicker() {
-    if (!sbCanvas) return;
+    if (!sbCanvas || !colorPicker.visible()) return;
     drawSaturationBrightnessCanvas();
     drawHueCanvas();
     drawAlphaCanvas();

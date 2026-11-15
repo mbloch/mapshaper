@@ -10,8 +10,8 @@ import {
   rasterPixelIsCovered,
   rasterSamplesAreFloat
 } from './mapshaper-raster-grid';
-import { parseColor } from '../color/color-utils';
-import { stop, warnOnce } from '../utils/mapshaper-logging';
+import { fillEmptyRasterPixels, rasterAppearsCategorical } from './mapshaper-raster-fill';
+import { stop } from '../utils/mapshaper-logging';
 
 var DEFAULT_MESH_INTERVAL = 32;
 var DEFAULT_MAX_EDGE_FACTOR = 20;
@@ -22,6 +22,10 @@ var TOPOLOGY_VERTEX_INSET = 1e-7;
 var PIECE_SAMPLE_STEPS = 4;
 var EXPANDED_FACET_MAX_EDGE_DEGREES = 2;
 var EXPANDED_FACET_MAX_CLIP_ERROR = 0.02;
+// Area averaging reads at most this many source pixels along each side of a
+// footprint, so a nearly degenerate mesh triangle can't make it read the
+// whole source grid for one output pixel.
+var MAX_AVERAGE_FOOTPRINT = 16;
 
 export function projectRasterGridForward(raster, srcCRS, destCRS, optsArg) {
   var opts = optsArg || {};
@@ -46,6 +50,11 @@ export function projectRasterGridForward(raster, srcCRS, destCRS, optsArg) {
   } else {
     fillIsolatedProjectedRasterHoles(outGrid);
   }
+  // fill_uncovered: false leaves empty pixels at 0, for callers that mask
+  // them using the coverage array
+  if (opts.fill_uncovered !== false) {
+    fillEmptyRasterPixels(outGrid, raster, opts);
+  }
   timeEnd(timing, 'rasterize');
   if (timing) {
     timing.outputWidth = outGrid.width;
@@ -59,7 +68,7 @@ export function projectRasterGridForward(raster, srcCRS, destCRS, optsArg) {
 
 function getRasterProjectionSampleMethod(raster, opts) {
   var method = opts.resampling || opts.sample_method || opts.sampleMethod || getDefaultRasterProjectionSampleMethod(raster);
-  if (method != 'nearest' && method != 'bilinear') {
+  if (method != 'nearest' && method != 'bilinear' && method != 'average') {
     stop('Unsupported resampling method:', method);
   }
   return method;
@@ -67,28 +76,6 @@ function getRasterProjectionSampleMethod(raster, opts) {
 
 function getDefaultRasterProjectionSampleMethod(raster) {
   return rasterAppearsCategorical(raster) ? 'nearest' : 'bilinear';
-}
-
-function rasterAppearsCategorical(raster) {
-  var grid = getRasterGrid(raster);
-  var recipe = raster && raster.view && raster.view.recipe || {};
-  var derivation = raster && raster.derivation || {};
-  return raster && raster.interpretation == 'categorical' ||
-    grid && grid.colorModel == 'palette' ||
-    recipe.type == 'palette' ||
-    recipe.type == 'categorical' ||
-    derivation.type == 'palette' ||
-    derivation.type == 'categorical';
-}
-
-// Whether uncovered output pixels should get the source's numeric nodata
-// value instead of a fill color. This is a separate question from the
-// resampling method: elevation data (raster-type=continuous) wants numeric
-// nodata AND bilinear resampling, a combination that a single
-// image/categorical switch could not express.
-function rasterUsesNumericNodataFill(raster) {
-  return !!raster && raster.interpretation == 'continuous' ||
-    rasterAppearsCategorical(raster);
 }
 
 export function getProjectedRasterGridBBox(raster, srcCRS, destCRS, optsArg) {
@@ -862,10 +849,9 @@ function getProjectedMeshBBox(mesh) {
 function createProjectedRasterGrid(grid, raster, bbox, widthArg, heightArg, opts) {
   var width = widthArg || grid.width;
   var height = heightArg || grid.height;
-  var bands = getOutputBandCount(grid, raster, opts);
+  var bands = grid.bands;
   var samples = new grid.samples.constructor(width * height * bands);
   var coverage = new Uint8Array(width * height);
-  fillProjectedRasterSamples(samples, bands, grid, raster, opts || {});
   return Object.assign({}, grid, {
     width: width,
     height: height,
@@ -900,68 +886,6 @@ function getOutputGridSize(grid, bbox, opts) {
   width = Math.max(1, Math.round(Math.sqrt(pixels * aspect)));
   height = Math.max(1, Math.round(pixels / width));
   return {width: width, height: height};
-}
-
-function getOutputBandCount(grid, raster, opts) {
-  var color = getNoDataColor(raster, opts);
-  return color && color.a === 0 && grid.bands > 1 && grid.bands < 4 ? 4 : grid.bands;
-}
-
-function fillProjectedRasterSamples(samples, bands, grid, raster, opts) {
-  var color = getNoDataColor(raster, opts);
-  var noData = grid.nodata;
-  if (color) {
-    warnIfPaintingOverContinuousData(samples, grid, raster, opts);
-    fillProjectedRasterColor(samples, bands, color);
-    return;
-  }
-  if (noData === null || noData === undefined || !isFinite(noData)) {
-    if (raster && raster.interpretation == 'continuous') {
-      warnOnce('This raster has no nodata value, so uncovered pixels will be 0');
-    }
-    return;
-  }
-  samples.fill(noData);
-}
-
-// Painting a color into a float grid means writing a color value into what
-// are probably measurements. Flag it, since raster-type=continuous is
-// usually what the user wanted.
-function warnIfPaintingOverContinuousData(samples, grid, raster, opts) {
-  if (opts.nodata_color || opts.nodataColor) return; // explicit user choice
-  if (!rasterSamplesAreFloat(samples)) return;
-  if (grid.nodata === null || grid.nodata === undefined) return;
-  warnOnce('Filling uncovered pixels of a floating-point raster with a color. ' +
-    'Use -i raster-type=continuous to preserve its nodata value instead.');
-}
-
-function getNoDataColor(raster, opts) {
-  var arg = opts.nodata_color || opts.nodataColor;
-  var color;
-  if (arg == null || arg === '') {
-    return rasterUsesNumericNodataFill(raster) ? null : {r: 255, g: 255, b: 255, a: 1};
-  }
-  if (String(arg).toLowerCase() == 'transparent') {
-    return {r: 0, g: 0, b: 0, a: 0};
-  }
-  color = parseColor(arg);
-  if (!color) stop('Unsupported nodata-color:', arg);
-  return color;
-}
-
-function fillProjectedRasterColor(samples, bands, color) {
-  var gray = Math.round(0.299 * color.r + 0.587 * color.g + 0.114 * color.b);
-  var alpha = Math.round((color.a == null ? 1 : color.a) * 255);
-  for (var i = 0; i < samples.length; i += bands) {
-    if (bands == 1) {
-      samples[i] = gray;
-    } else {
-      samples[i] = color.r;
-      samples[i + 1] = color.g;
-      samples[i + 2] = color.b;
-      if (bands > 3) samples[i + 3] = alpha;
-    }
-  }
 }
 
 function rasterizeProjectedMesh(srcGrid, destGrid, mesh, sampleMethodArg) {
@@ -1118,6 +1042,7 @@ function rasterizeProjectedTriangle(srcGrid, destGrid, a, b, c, sampleMethod, re
   cp = vertexToDestPixel(destGrid, c);
   det = triangleDet(ap, bp, cp);
   if (det === 0) return;
+  if (sampleMethod.average) setAverageFootprint(sampleMethod.footprint, ap, bp, cp, det);
   bbox = getTrianglePixelBounds(destGrid, ap, bp, cp);
   x0 = bbox[0]; y0 = bbox[1]; x1 = bbox[2]; y1 = bbox[3];
   for (var y = y0; y <= y1; y++) {
@@ -1165,8 +1090,13 @@ function mapXYToRasterPixel(grid, x, y) {
 // Per-projection sampling context, built once so the inner rasterizing loop
 // does not repeat type or metadata tests for every output pixel.
 function getRasterSamplerContext(srcGrid, destGrid, method) {
+  var average = method == 'average';
   return {
     bilinear: method == 'bilinear',
+    average: average,
+    // set for each mesh triangle by setAverageFootprint()
+    footprint: average ? {} : null,
+    sums: average ? new Float64Array(srcGrid.bands) : null,
     // Integer sample arrays truncate on assignment, so interpolated values
     // have to be rounded explicitly. Float arrays must NOT be rounded, or
     // elevation data loses its sub-unit precision.
@@ -1178,11 +1108,113 @@ function getRasterSamplerContext(srcGrid, destGrid, method) {
 }
 
 function copyRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrapX) {
-  if (sampler.bilinear) {
+  if (sampler.average && sampler.footprint.valid) {
+    copyAverageRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrapX);
+  } else if (sampler.bilinear || sampler.average) {
     copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrapX);
   } else {
     copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrapX);
   }
+}
+
+// Area averaging: an output pixel is the average of the source pixels under
+// its footprint, each weighted by how much of the footprint it covers, so
+// source detail finer than the output is averaged rather than skipped
+// (aliasing). Within a mesh triangle, output pixels map to source pixels by
+// an affine transform, so every pixel of the triangle has the same footprint,
+// a parallelogram.
+//
+// Weights are products of overlaps measured along the footprint's own two
+// axes: exact for footprints aligned with the source grid, and close for
+// rotated ones. A footprint less than one source pixel across is widened to
+// one pixel, which makes the weights bilinear where the source is coarser
+// than the output.
+//
+// Sets the footprint of the output pixels in triangle @a @b @c (output pixel
+// coordinates, with source pixel coordinates in .sx and .sy).
+function setAverageFootprint(fp, a, b, c, det) {
+  var w1x = (c.y - b.y) / det, w1y = (b.x - c.x) / det;
+  var w2x = (a.y - c.y) / det, w2y = (c.x - a.x) / det;
+  // source pixels per output pixel: (j00, j10) along x, (j01, j11) along y
+  var j00 = w1x * (a.sx - c.sx) + w2x * (b.sx - c.sx);
+  var j10 = w1x * (a.sy - c.sy) + w2x * (b.sy - c.sy);
+  var j01 = w1y * (a.sx - c.sx) + w2y * (b.sx - c.sx);
+  var j11 = w1y * (a.sy - c.sy) + w2y * (b.sy - c.sy);
+  var kx = getFootprintScale(Math.sqrt(j00 * j00 + j10 * j10));
+  var ky = getFootprintScale(Math.sqrt(j01 * j01 + j11 * j11));
+  var jdet, i00, i01, i10, i11;
+  j00 *= kx; j10 *= kx;
+  j01 *= ky; j11 *= ky;
+  jdet = j00 * j11 - j01 * j10;
+  fp.valid = Math.abs(jdet) > 1e-12;
+  if (!fp.valid) return;
+  // inverse: source pixel offsets to footprint coordinates (u, v), in which
+  // the footprint is the square [-0.5, 0.5] x [-0.5, 0.5]
+  i00 = j11 / jdet; i01 = -j01 / jdet;
+  i10 = -j10 / jdet; i11 = j00 / jdet;
+  fp.i00 = i00; fp.i01 = i01; fp.i10 = i10; fp.i11 = i11;
+  // half the extent of a source pixel along u and v
+  fp.hu = (Math.abs(i00) + Math.abs(i01)) / 2;
+  fp.hv = (Math.abs(i10) + Math.abs(i11)) / 2;
+  // how far from the footprint's center a source pixel's center can be and
+  // still have a nonzero weight
+  fp.rx = (0.5 + fp.hu) * Math.abs(j00) + (0.5 + fp.hv) * Math.abs(j01);
+  fp.ry = (0.5 + fp.hu) * Math.abs(j10) + (0.5 + fp.hv) * Math.abs(j11);
+}
+
+function getFootprintScale(len) {
+  if (!(len > 0)) return 1;
+  if (len < 1) return 1 / len;
+  if (len > MAX_AVERAGE_FOOTPRINT) return MAX_AVERAGE_FOOTPRINT / len;
+  return 1;
+}
+
+// Source pixels outside the grid, or invalid, are skipped and the remaining
+// weights renormalized, so nodata is never blended into a real value.
+function copyAverageRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampler, wrapX) {
+  var fp = sampler.footprint;
+  var width = srcGrid.width;
+  var bands = srcGrid.bands;
+  var samples = srcGrid.samples;
+  var validity = sampler.validity;
+  var sums = sampler.sums;
+  var i00 = fp.i00, i01 = fp.i01, i10 = fp.i10, i11 = fp.i11, hu = fp.hu, hv = fp.hv;
+  var x0 = Math.ceil(sx - fp.rx - 0.5);
+  var x1 = Math.floor(sx + fp.rx - 0.5);
+  var y0 = Math.max(0, Math.ceil(sy - fp.ry - 0.5));
+  var y1 = Math.min(srcGrid.height - 1, Math.floor(sy + fp.ry - 0.5));
+  var total = 0;
+  var x, y, ox, oy, u, v, wu, wv, w, k, i, band, dest, val;
+  if (!wrapX) {
+    x0 = Math.max(0, x0);
+    x1 = Math.min(width - 1, x1);
+  }
+  for (band = 0; band < bands; band++) sums[band] = 0;
+  for (y = y0; y <= y1; y++) {
+    oy = y + 0.5 - sy;
+    for (x = x0; x <= x1; x++) {
+      ox = x + 0.5 - sx;
+      u = i00 * ox + i01 * oy;
+      wu = Math.min(0.5, u + hu) - Math.max(-0.5, u - hu);
+      if (wu <= 0) continue;
+      v = i10 * ox + i11 * oy;
+      wv = Math.min(0.5, v + hv) - Math.max(-0.5, v - hv);
+      if (wv <= 0) continue;
+      k = y * width + (wrapX ? modulo(x, width) : x);
+      if (validity && !validity[k]) continue;
+      w = wu * wv;
+      i = k * bands;
+      for (band = 0; band < bands; band++) sums[band] += samples[i + band] * w;
+      total += w;
+    }
+  }
+  if (!(total > 0)) return;
+  dest = (dy * destGrid.width + dx) * destGrid.bands;
+  for (band = 0; band < bands; band++) {
+    val = sums[band] / total;
+    destGrid.samples[dest + band] = sampler.round ? Math.round(val) : val;
+  }
+  if (destGrid.coverage) destGrid.coverage[dy * destGrid.width + dx] = 1;
 }
 
 function copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrapX) {
@@ -1198,7 +1230,6 @@ function copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrapX) {
   for (var band = 0; band < srcGrid.bands; band++) {
     destGrid.samples[dest + band] = srcGrid.samples[src + band];
   }
-  if (destGrid.bands > srcGrid.bands) destGrid.samples[dest + 3] = 255;
   if (destGrid.coverage) destGrid.coverage[dy * destGrid.width + dx] = 1;
 }
 
@@ -1236,7 +1267,6 @@ function copyBilinearRasterSampleFast(srcGrid, destGrid, src00, src10, src01, sr
   } else {
     copyBilinearGenericSample(srcGrid.samples, destGrid.samples, srcGrid.bands, src00, src10, src01, src11, dest, tx, ty, round);
   }
-  if (destGrid.bands > srcGrid.bands) destGrid.samples[dest + 3] = 255;
 }
 
 function copyBilinearRgbSample(src, destArr, src00, src10, src01, src11, dest, tx, ty, round) {
@@ -1289,7 +1319,6 @@ function copyBilinearRasterSampleChecked(srcGrid, destGrid, validity, srcX, srcY
     val /= total;
     destGrid.samples[dest + band] = round ? Math.round(val) : val;
   }
-  if (destGrid.bands > srcGrid.bands) destGrid.samples[dest + 3] = 255;
   return true;
 }
 

@@ -313,8 +313,17 @@ export function getOptionParser() {
     .option('rendition', {
       describe: '[GeoTIFF] import a GeoTIFF rendition: full,overview-1,etc.'
     })
+    .option('bands', {
+      describe: '[GeoTIFF] bands to import: all, or a list numbered from 1, e.g. 1,4,5'
+    })
     .option('resolution', {
       describe: '[raster] import width in pixels, or full (default reduces large rasters)'
+    })
+    .option('vertical-units', {
+      describe: '[raster] units of elevation values: m, ft, us-ft, cm, mm or km'
+    })
+    .option('pixel-size', {
+      describe: '[raster] ground size of a pixel, for a raster with no CRS (e.g. 30m)'
     })
     .option('geometry-type', {
       // undocumented; GeoJSON import rejects all but one kind of geometry
@@ -604,7 +613,7 @@ export function getOptionParser() {
     })
     ;
 
-  parser.section('Editing commands');
+  parser.section('Layer commands');
 
   parser.command('add-layer')
     .describe('create an empty layer, to add shapes or labels to')
@@ -618,11 +627,205 @@ export function getOptionParser() {
     // projected coordinate is not read as lat-long
     .option('target', targetOpt);
 
+  parser.command('copy')
+    .describe('copy layer(s), or a frame and its contents')
+    .option('name', {
+      describe: 'name of the copy (default is the original name; required for frames)'
+    })
+    .option('target', targetOpt);
+
+  parser.command('drop')
+    .describe('delete layer(s) or elements within the target layer(s)')
+    .option('geometry', {
+      describe: 'delete all geometry from the target layer(s)',
+      type: 'flag'
+    })
+    .option('holes', {
+      describe: 'delete holes from polygons',
+      type: 'flag'
+    })
+    .option('fields', {
+      type: 'strings',
+      describe: 'delete a list of attribute data fields, e.g. \'id,name\' \'*\''
+    })
+    .option('target', targetOpt);
+
+  parser.command('frame')
+    .describe('create a map frame for some layers, or change a frame')
+    .option('target', {
+      describe: 'layers to frame, or the name of a frame to change'
+    })
+    .option('name', {
+      describe: 'name of a new frame, or a new name for a frame'
+    })
+    .group('Page and extent')
+    .option('width', {
+      describe: 'width of frame (e.g. 5in, 10cm, 600px; default is 800px)'
+    })
+    .option('height', {
+      describe: '(optional) height of frame; similar to width= option'
+    })
+    .option('aspect-ratio', {
+      describe: '(optional) aspect ratio of frame, if height= or width= is omitted',
+      type: 'number'
+    })
+    .option('bbox', {
+      describe: 'frame coordinates (xmin,ymin,xmax,ymax)',
+      type: 'bbox'
+    })
+    .option('fit', {
+      describe: '(changing a frame) layer(s) to fit the frame to'
+    })
+    .option('margin', frameMarginOpt)
+    .option('offset', frameOffsetOpt)
+    .option('offsets', frameOffsetOpt)
+    .option('ignore-symbols', {
+      describe: 'fit to coordinates, not the extent of symbols, labels and strokes',
+      type: 'flag'
+    })
+    .option('auto-aspect', {
+      describe: '(changing a frame) derive page height from the frame extent',
+      type: 'flag'
+    })
+    .option('fix-scale', {
+      describe: '(changing a frame) hold the map scale; derive the size from the new extent',
+      type: 'flag'
+    })
+    .group('Layers in a frame (target= names the frame)')
+    .option('add-layers', {
+      describe: 'move layers from outside into the frame (on top, in list order)'
+    })
+    .option('order-layers', {
+      describe: 'restack layers in the frame, in list order (first at bottom)'
+    })
+    .option('above', {
+      describe: 'with add-layers= or order-layers=, stack the layers above this one'
+    })
+    .option('below', {
+      describe: 'with add-layers= or order-layers=, stack the layers below this one'
+    })
+    .option('top', {
+      describe: 'with add-layers= or order-layers=, stack the layers on top',
+      type: 'flag'
+    })
+    .option('bottom', {
+      describe: 'with add-layers= or order-layers=, stack the layers at the bottom',
+      type: 'flag'
+    })
+    .option('reproject', {
+      describe: 'with add-layers=, reproject layers into the frame\'s coordinate system',
+      type: 'flag'
+    })
+    .option('remove-layers', {
+      describe: 'move layers out of the frame'
+    })
+    .option('hide-layers', {
+      describe: 'keep layers in the frame, but leave them off the map'
+    })
+    .option('show-layers', {
+      describe: 'show hidden layers in the frame'
+    })
+    .group('Overlays (target= names the host frame)')
+    .option('overlay', {
+      describe: 'draw another frame on this frame\'s page (e.g. an inset map)'
+    })
+    .option('overlay-position', {
+      describe: 'with overlay=, corner of the page: top-left, top-right, bottom-left, bottom-right'
+    })
+    .option('overlay-margin', {
+      describe: 'with overlay=, distance from the corner\'s edges (e.g. 10 or 10,20)'
+    })
+    .option('remove-overlay', {
+      describe: 'remove an overlay frame from this frame\'s page'
+    })
+    .group('Order of frames (target= names the frame to move)')
+    .option('before', {
+      describe: 'move the frame ahead of this frame in the list of frames'
+    })
+    .option('after', {
+      describe: 'move the frame after this frame in the list of frames'
+    })
+    .group('Other')
+    .option('no-replace', {
+      alias: '+',
+      type: 'flag',
+      label: '+, no-replace',
+      describe: '(changing a frame) copy the frame and its layers; name= names the copy'
+    })
+    .option('replace', {
+      describe: '(creating a frame) replace the frame of the targets',
+      type: 'flag'
+    })
+    .option('remove', {
+      describe: '(changing a frame) demote the frame to an ordinary rectangle layer',
+      type: 'flag'
+    });
+
+    // .option('height', {
+    //   describe: 'pixel height of output (may be a range)'
+    // })
+    // .option('pixels', {
+    //   describe: 'area of output in pixels (alternative to width and height)',
+    //   type: 'number'
+    // })
+    // .option('source', {
+    //   describe: 'name of layer to enclose'
+    // })
+
+  parser.command('merge-layers')
+    .describe('merge multiple layers into as few layers as possible')
+    .option('force', {
+      type: 'flag',
+      describe: 'merge layers with inconsistent data fields'
+    })
+    .option('flatten', {
+      describe: 'remove polygon overlaps; higher-id polygons take priority',
+      type: 'flag'
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt);
+
+  parser.command('rename-layers')
+    .describe('assign new names to layers')
+    .option('names', {
+      DEFAULT: true,
+      type: 'strings',
+      describe: 'list of replacements (comma-sep.)'
+    })
+    .option('target', targetOpt);
+
+  parser.command('target')
+    .describe('set active layer (or layers)')
+    .option('target', {
+      DEFAULT: true,
+      describe: 'name or index of layer to target'
+    })
+    .option('type', {
+      describe: 'type of layer to target (polygon|polyline|point)'
+    })
+    // .option('combine', {
+    //   type: 'flag',
+    //   describe: 'place all targeted layers in one dataset together with any  associated layers'
+    // })
+    // .option('isolate', {
+    //   type: 'flag',
+    //   describe: 'place all targeted layers in one dataset exclusive of associated layers'
+    // })
+    .option('name', {
+      describe: 'rename the target layer'
+    });
+
+  parser.section('Editing commands');
+
   // Used by GUI - leaving undocumented
   parser.command('add-shape')
     .describe('add a point, line or polygon, optionally with a style')
     .option('coordinates', {
       describe: 'x,y for a point, x,y,x,y,... for a line (a ring makes a polygon)'
+    })
+    .option('offsets', {
+      describe: 'more vertices as dx,dy,..., each offset from the previous vertex',
+      type: 'numbers'
     })
     .option('closed', {
       describe: 'close an open path to make a polygon',
@@ -821,15 +1024,6 @@ export function getOptionParser() {
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
 
-  parser.command('blur')
-    .describe('apply a Gaussian-like blur to a projected raster layer')
-    .option('radius', {
-      DEFAULT: true,
-      type: 'distance',
-      describe: 'blur amount as pixels or a distance (e.g. 5px, 20m)'
-    })
-    .option('target', targetOpt);
-
   parser.command('classify')
     // .describe('apply sequential or categorical classification')
     .describe('assign colors or values using one of several methods')
@@ -839,6 +1033,10 @@ export function getOptionParser() {
     })
     .option('save-as', {
         describe: 'name of output field (default is fill|stroke|class)'
+    })
+    .option('band', {
+      describe: '[raster] band to color, numbered from 1 (or name it, e.g. band2)',
+      type: 'integer'
     })
     .option('colors', {
       describe: 'list of CSS colors or color scheme name (see -colors)',
@@ -882,9 +1080,13 @@ export function getOptionParser() {
       //describe: 'short for method=nice (rounded, equal inner breaks)',
       assign_to: 'method'
     })
+    .option('categorical', {
+      // describe: 'short for method=categorical',
+      assign_to: 'method'
+    })
     .option('breaks', {
-      describe: 'user-defined sequential class breaks',
-      type: 'numbers'
+      describe: 'user-defined class breaks: values, or percentages of the data range (e.g. 0,30%)',
+      type: 'numbers_or_percents'
     })
     .option('outer-breaks', {
       describe: 'min,max breakpoints, to limit the effect of outliers',
@@ -919,11 +1121,21 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('interpolation', {
-      describe: 'color interpolation: rgb (default) or oklch'
+      describe: 'color interpolation: oklch (default) or rgb'
     })
     .option('vibrance', {
       describe: '(oklch) more vivid midtones, 0-1 (default 0)',
       type: 'number'
+    })
+    .option('hypsometric', {
+      describe: '[raster] elevation colors: desert, steppe, tropical, temperate, boreal, polar, blended (by climate), atlas, lowland, highland, or none (only the sea). colors= and breaks= (every elevation) change them; name a blend\'s presets, e.g. colors=desert:...,polar:...'
+    })
+    .option('classed', {
+      describe: '[raster] with hypsometric=: classes from each elevation up to the next, not continuous colors',
+      type: 'flag'
+    })
+    .option('sea', {
+      describe: '[raster] at or below 0 and open to the edge: transparent (default with hypsometric=), land, or pale, blue, gray (bathymetric tints; colors=sea:... and breaks=sea:... change them)'
     })
     .option('index-field', {
       describe: 'apply pre-calculated classes (0 ... n-1, -1)'
@@ -934,6 +1146,10 @@ export function getOptionParser() {
     })
     .option('categories', {
       describe: 'list of data values for categorical color scheme',
+      type: 'strings'
+    })
+    .option('category-names', {
+      describe: '[raster] names of the categories, in the order of their colors',
       type: 'strings'
     })
     .option('other', {
@@ -1033,6 +1249,9 @@ export function getOptionParser() {
         type: 'bbox',
         describe: 'experimental fast bbox clipping'
       })
+    .option('nodata-color', {
+      describe: '[raster] color for removed pixels (default is transparent)'
+    })
     .option('name', nameOpt)
     .option('no-snap', noSnapOpt)
     .option('no-cleanup', {
@@ -1073,39 +1292,6 @@ export function getOptionParser() {
       describe: 'rounding precision to apply before classification (e.g. 0.1)',
       type: 'number'
     });
-
-  parser.command('contours')
-    .describe('convert a raster layer to contour lines or closed bands')
-    .option('interval', {
-      describe: 'spacing between contour levels (default is a round interval)',
-      type: 'number'
-    })
-    .option('levels', {
-      describe: 'explicit contour levels, instead of interval= (e.g. 0,100,500)',
-      type: 'numbers'
-    })
-    .option('base', {
-      describe: 'value to align interval= to (default is 0)',
-      type: 'number'
-    })
-    .option('band', {
-      describe: '[raster] band to read values from (default is 0)',
-      type: 'number'
-    })
-    .option('field', {
-      describe: 'name of field to hold contour values (default is "value")'
-    })
-    .option('closed', {
-      describe: 'create closed contour bands with lower and upper fields',
-      type: 'flag'
-    })
-    .option('no-smoothing', {
-      describe: 'skip smoothing away the one-pixel contour staircase',
-      type: 'flag'
-    })
-    .option('name', nameOpt)
-    .option('target', targetOpt)
-    .option('no-replace', noReplaceOpt);
 
   parser.command('dashlines')
     .describe('split lines into sections, with or without a gap')
@@ -1202,9 +1388,9 @@ export function getOptionParser() {
 
   // -dissolve2 is now an alias for -dissolve (the topology repair behavior of
   // -dissolve2 is now the default behavior of -dissolve). Kept for backward
-  // compatibility; prints a deprecation notice when used.
+  // compatibility; prints a deprecation notice when used. Left out of the
+  // command list (no description).
   parser.command('dissolve2')
-    .describe('alias for -dissolve (deprecated)')
     .option('field', {}) // old arg handled by dissolve function
     .option('fields', dissolveFieldsOpt)
     .option('calc', calcOpt)
@@ -1290,22 +1476,6 @@ export function getOptionParser() {
     .option('target', targetOpt)
     .option('name', nameOpt)
     .option('no-replace', noReplaceOpt);
-
-  parser.command('drop')
-    .describe('delete layer(s) or elements within the target layer(s)')
-    .option('geometry', {
-      describe: 'delete all geometry from the target layer(s)',
-      type: 'flag'
-    })
-    .option('holes', {
-      describe: 'delete holes from polygons',
-      type: 'flag'
-    })
-    .option('fields', {
-      type: 'strings',
-      describe: 'delete a list of attribute data fields, e.g. \'id,name\' \'*\''
-    })
-    .option('target', targetOpt);
 
   parser.command('each')
     .describe('create/update/delete data fields using a JS expression')
@@ -1604,10 +1774,10 @@ export function getOptionParser() {
       type: 'strings'
     })
     .option('calc', {
-      describe: 'use a JS expression to assign values (for many-to-one joins)'
+      describe: 'use a JS expression to assign values (many-to-one and raster joins)'
     })
     .option('where', {
-      describe: 'use a JS expression to filter source records'
+      describe: 'use a JS expression to filter source records or pixels'
     })
     .option('fields', {
       describe: 'fields to copy (comma-sep.) (default is all but key field)',
@@ -1621,7 +1791,7 @@ export function getOptionParser() {
       type: 'strings'
     })
     .option('point-method', {
-      describe: '(polygon-polygon join) join polygons via inner points',
+      describe: '(polygon join) join polygons via inner points, pixels via centers',
       type: 'flag'
     })
     .option('largest-overlap', {
@@ -1726,19 +1896,6 @@ export function getOptionParser() {
     .option('name', nameOpt)
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
-
-  parser.command('merge-layers')
-    .describe('merge multiple layers into as few layers as possible')
-    .option('force', {
-      type: 'flag',
-      describe: 'merge layers with inconsistent data fields'
-    })
-    .option('flatten', {
-      describe: 'remove polygon overlaps; higher-id polygons take priority',
-      type: 'flag'
-    })
-    .option('name', nameOpt)
-    .option('target', targetOpt);
 
   parser.command('mosaic')
     .describe('convert a polygon layer with overlaps into a flat mosaic')
@@ -1886,7 +2043,7 @@ export function getOptionParser() {
       type: 'bbox'
     })
     .option('nodata-color', {
-      describe: '[raster] color for uncovered pixels after reprojection'
+      describe: '[raster] color for uncovered pixels after reprojection (default is transparent)'
     })
     .option('background', {
       describe: '[raster] alias for nodata-color',
@@ -1937,14 +2094,112 @@ export function getOptionParser() {
     })
     .option('target', targetOpt);
 
-  parser.command('rename-layers')
-    .describe('assign new names to layers')
-    .option('names', {
-      DEFAULT: true,
-      type: 'strings',
-      describe: 'list of replacements (comma-sep.)'
+  parser.command('repel')
+    .describe('move overlapping point symbols apart')
+    .option('width', {
+      describe: 'display width of the layer in pixels (required if no frame)',
+      type: 'number'
+    })
+    .option('max-shift', {
+      describe: 'max displacement in pixels; may vary by symbol (default is 20)'
+    })
+    .option('padding', {
+      describe: 'pixels of clearance around each symbol; may vary (default is 0)'
+    })
+    .option('margin', {
+      describe: 'pixels of clearance between two symbols; may vary (default is 0)'
+    })
+    .option('ticks', {
+      describe: 'number of solver passes (default is 100)',
+      type: 'number'
+    })
+    .option('strength', {
+      describe: 'portion of each overlap resolved per pass, 0-1 (default is 0.4)',
+      type: 'number'
+    })
+    .option('radius', {
+      describe: 'field or expression giving symbol radius in pixels',
+    })
+    .option('polygons', {
+      describe: 'layer or file of polygons that symbols must stay inside'
     })
     .option('target', targetOpt);
+
+  parser.command('require')
+    .describe('require a Node module or ES module to use in JS expressions')
+    .option('module', {
+      DEFAULT: true,
+      describe: 'name of installed module or path to module file'
+    })
+    .option('alias', {
+      describe: 'Set the module name to an alias'
+    });
+    // .option('init', {
+    //   describe: 'JS expression to run after the module loads'
+    // });
+
+  parser.command('scalebar')
+    .describe('add a scale bar to the map frame and SVG output')
+    .option('label', {
+      DEFAULT: true,
+      describe: 'distance label, e.g. "35 miles" (default is automatic)'
+    })
+    .option('units', {
+      describe: 'units of a bare-number or automatic label: km, meters, miles or feet (default is miles)'
+    })
+    .option('style', {
+      describe: 'a (bar), b (ticks) or c (segments of alternating fill)'
+    })
+    .option('font-size', {
+      type: 'number'
+    })
+    .option('font-family', {
+      describe: 'font family of labels'
+    })
+    .option('font-style', {
+      describe: 'font style of labels, e.g. italic'
+    })
+    .option('font-weight', {
+      describe: 'font weight of labels, e.g. bold'
+    })
+    .option('color', {
+      describe: 'color of bar and labels (default is black)'
+    })
+    .option('tic-length', {
+      describe: 'length of tic marks (style b)',
+      type: 'number'
+    })
+    .option('bar-width', {
+      describe: 'line width of bar (height of bar in style c)',
+      type: 'number'
+    })
+    .option('label-offset', {
+      type: 'number'
+    })
+    .option('position', {
+      describe: 'top-left (default), top-center, top-right, bottom-left, bottom-center or bottom-right'
+    })
+    .option('label-position', {
+      describe: 'top, bottom, top-center (style a), etc'
+    })
+    .option('dual-units', {
+      describe: 'show both metric and imperial units (default style is b)',
+      type: 'flag'
+    })
+    .option('align', {
+      describe: 'alignment of the two bars of style c: left, center (default) or right'
+    })
+    .option('label-case', {
+      describe: 'case of units in labels: upper or lower (default follows the label)'
+    })
+    .option('margin', {
+      describe: 'offset in pixels from edge of map',
+      type: 'number'
+    })
+    .option('remove', {
+      describe: 'remove the scale bar from the map frame',
+      type: 'flag'
+    });
 
   parser.command('simplify')
     .validate(V.validateSimplifyOpts)
@@ -2181,26 +2436,6 @@ export function getOptionParser() {
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
 
-  parser.command('split-on-grid')
-    .describe('split features into separate layers using a grid')
-    .validate(V.validateGridOpts)
-    .option('_', {
-      DEFAULT: true,
-      label: '<cols,rows>',
-      describe: 'size of the grid, e.g. -split-on-grid 12,10'
-    })
-    .option('cols', {
-      type: 'integer'
-    })
-    .option('rows', {
-      type: 'integer'
-    })
-    .option('id-field', {
-      describe: 'assign each feature a cell id instead of splitting layer'
-    })
-    // .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
-
   parser.command('style')
     .oldAlias('svg-style')
     .describe('set SVG style properties using JS or literal values')
@@ -2216,37 +2451,6 @@ export function getOptionParser() {
     .options(featureStyleOpts)
     // deprecated in favor of -labels; accepted, but left out of the help
     .options(getHiddenLabelStyleOpts())
-    .option('target', targetOpt);
-
-  parser.command('repel')
-    .describe('move overlapping point symbols apart')
-    .option('width', {
-      describe: 'display width of the layer in pixels (required if no frame)',
-      type: 'number'
-    })
-    .option('max-shift', {
-      describe: 'max displacement in pixels; may vary by symbol (default is 20)'
-    })
-    .option('padding', {
-      describe: 'pixels of clearance around each symbol; may vary (default is 0)'
-    })
-    .option('margin', {
-      describe: 'pixels of clearance between two symbols; may vary (default is 0)'
-    })
-    .option('ticks', {
-      describe: 'number of solver passes (default is 100)',
-      type: 'number'
-    })
-    .option('strength', {
-      describe: 'portion of each overlap resolved per pass, 0-1 (default is 0.4)',
-      type: 'number'
-    })
-    .option('radius', {
-      describe: 'field or expression giving symbol radius in pixels',
-    })
-    .option('polygons', {
-      describe: 'layer or file of polygons that symbols must stay inside'
-    })
     .option('target', targetOpt);
 
   parser.command('symbols')
@@ -2403,27 +2607,6 @@ export function getOptionParser() {
     .option('no-replace', noReplaceOpt);
     // .option('name', nameOpt);
 
-  parser.command('target')
-    .describe('set active layer (or layers)')
-    .option('target', {
-      DEFAULT: true,
-      describe: 'name or index of layer to target'
-    })
-    .option('type', {
-      describe: 'type of layer to target (polygon|polyline|point)'
-    })
-    // .option('combine', {
-    //   type: 'flag',
-    //   describe: 'place all targeted layers in one dataset together with any  associated layers'
-    // })
-    // .option('isolate', {
-    //   type: 'flag',
-    //   describe: 'place all targeted layers in one dataset exclusive of associated layers'
-    // })
-    .option('name', {
-      describe: 'rename the target layer'
-    });
-
   parser.command('union')
     .describe('create a flat mosaic from two or more polygon layers')
     // .option('add-fid', {
@@ -2460,6 +2643,333 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('target', targetOpt);
+
+  parser.section('Raster commands (also -join, -proj, -clip, -erase)');
+
+  var rasterOpacityOpt = {
+    describe: 'opacity of the result, 0-1 (default is 1)',
+    type: 'number'
+  };
+  var rasterBackgroundOpt = {
+    describe: 'color to place the result over, making it opaque'
+  };
+
+  parser.command('blend')
+    .describe('apply a hillshade\'s shadows and highlights to a raster layer, or to vector layers drawn as a raster')
+    .option('source', {
+      DEFAULT: true,
+      describe: 'hillshade layer to blend (made by -hillshade); removed unless + is used'
+    })
+    .option('strength', {
+      describe: 'multiply the shading\'s opacity: one value, or shadows,highlights (default is 1)',
+      type: 'numbers'
+    })
+    .option('chroma', {
+      describe: 'share of the layer\'s color kept under the shading: 0 is plain stacking, 1 keeps the color; one value, or shadows,highlights (default is 0,1)',
+      type: 'numbers'
+    })
+    .option('base-color', {
+      describe: 'color of flat ground in an opaque hillshade not made by -hillshade (default is its most common color)'
+    })
+    .option('overlay', {
+      describe: 'recolor the hillshade so that, drawn over the targets, it looks like the blend; the targets are kept',
+      type: 'flag'
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
+
+  parser.command('blur')
+    .describe('apply a Gaussian-like blur to a projected raster layer')
+    .option('radius', {
+      DEFAULT: true,
+      type: 'distance',
+      describe: 'blur amount as pixels or a distance (e.g. 5px, 20m)'
+    })
+    .option('target', targetOpt);
+
+  parser.command('contours')
+    .describe('convert a raster layer to contour lines or closed bands')
+    .option('interval', {
+      describe: 'spacing between contour levels (default is a round interval)',
+      type: 'number'
+    })
+    .option('levels', {
+      describe: 'explicit contour levels, instead of interval= (e.g. 0,100,500)',
+      type: 'numbers'
+    })
+    .option('base', {
+      describe: 'value to align interval= to (default is 0)',
+      type: 'number'
+    })
+    .option('band', {
+      describe: '[raster] band to read values from, numbered from 1 (default is 1)',
+      type: 'integer'
+    })
+    .option('field', {
+      describe: 'name of field to hold contour values (default is "value")'
+    })
+    .option('closed', {
+      describe: 'create closed contour bands with lower and upper fields',
+      type: 'flag'
+    })
+    .option('no-smoothing', {
+      describe: 'skip smoothing away the one-pixel contour staircase',
+      type: 'flag'
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
+
+  parser.command('deshadow')
+    .describe('(experimental) remove shadows and lighten dark slopes in aerial imagery, e.g. before applying a hillshade')
+    .option('dem', {
+      DEFAULT: true,
+      describe: 'elevation layer covering the image (e.g. from -fetch)'
+    })
+    .option('nir', {
+      // describe: 'near-infrared layer on band 1, e.g. from -fetch naip-cir; keeps dark tree canopy from being taken for shadow'
+    })
+    .option('date', {
+      // describe: 'date of the imagery (e.g. 2023-06-15), to fit the sun along its path that day; default is the dates of imagery from -fetch naip (up to three months apart)'
+    })
+    .option('verbose', {
+      describe: 'print technical details about the correction',
+      type: 'flag'
+    })
+    .option('balanced-threshold', {
+      // describe: 'separate shadows from sunlit ground by a threshold that weighs the two equally (for soft or resampled imagery)'
+      type: 'flag'
+    })
+    .option('image-shadows', {
+      // describe: 'on: use the shadows found in the image even if they are much larger than the DEM\'s; off: use the DEM\'s shadows'
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
+
+  parser.command('fetch')
+    .describe('download elevation or imagery tiles for the area of a map frame')
+    .option('source', {
+      DEFAULT: true,
+      describe: 'name of a data source (elevation: tilezen, mapterhorn, copernicus, 3dep, 3dep-1m; imagery: bluemarble, blackmarble, usgs, naip, naip-cir, sentinel2, landsat, eox) or URL template of a tile service; "sources" lists the sources'
+    })
+    .option('year', {
+      describe: 'year of imagery (blackmarble: 2012, 2016; eox: 2016, 2018-2025; naip: 2010-; sentinel2: 2016-; landsat: 1982-; default is the latest, or last year)',
+      type: 'integer'
+    })
+    .option('encoding', {
+      describe: 'how tile images encode their data: terrarium or mapbox (elevation), rgb (imagery), or bsq (float32 elevation from an ArcGIS exportImage URL with format=bsq&pixelType=F32&size=256,256)'
+    })
+    .option('scheme', {
+      describe: 'tile numbering scheme: xyz (default) or tms'
+    })
+    .option('zoom', {
+      describe: 'tile zoom level (default matches the resolution of the output)',
+      type: 'integer'
+    })
+    .option('raster-res', {
+      describe: 'raster pixels per frame pixel (default is 2)',
+      type: 'number'
+    })
+    .option('bleed', {
+      describe: 'extra area around the frame, in frame pixels (default is 10)',
+      type: 'number'
+    })
+    .option('bbox', {
+      describe: 'area to fetch (xmin,ymin,xmax,ymax), instead of the frame',
+      type: 'bbox'
+    })
+    .option('max-tiles', {
+      describe: 'maximum number of tiles to download (default is 500)',
+      type: 'integer'
+    })
+    .option('name', {
+      describe: 'name of the new layer (default is the source name, or for a URL, elevation or imagery)'
+    })
+    .option('target', targetOpt);
+
+  parser.command('hillshade')
+    .describe('convert an elevation raster to shaded relief')
+    .option('opaque', {
+      describe: 'opaque shading, instead of transparent shadows and highlights',
+      type: 'flag'
+    })
+    .option('azimuth', {
+      describe: 'direction of the main light, in degrees (default is 315)',
+      type: 'number'
+    })
+    .option('altitude', {
+      describe: 'height of the light above the horizon, in degrees (default is 45)',
+      type: 'number'
+    })
+    .option('lighting', {
+      describe: 'fill lights around the main light: balanced (default), hard, soft or gdal'
+    })
+    .option('exaggeration', {
+      describe: 'vertical exaggeration (default depends on the map scale)',
+      type: 'number'
+    })
+    .option('smoothing', {
+      describe: 'terrain smoothing level, from 0 (off) to 4 (default is 1)'
+    })
+    .option('ambient', {
+      describe: 'darkening of terrain with a partial view of the sky, 0-1 (default is 0.5)',
+      type: 'number'
+    })
+    .option('fps-passes', {
+      // describe: 'passes of feature-preserving smoothing (FPS), overriding the level (0 is off)',
+      type: 'integer'
+    })
+    .option('fps-levels', {
+      // describe: '1 or 2; if 2, run FPS on a downsampled copy, then once at full resolution',
+      type: 'integer'
+    })
+    .option('fps-threshold', {
+      // describe: 'FPS keeps slope changes sharper than this angle, on steep slopes (0 is off)',
+      type: 'number'
+    })
+    .option('fps-radius', {
+      // describe: 'FPS smoothing window radius, in pixels (overrides the level)',
+      type: 'integer'
+    })
+    .option('fps-min-threshold', {
+      // describe: 'FPS threshold in flat terrain, rising with slope to fps-threshold (default is 1)',
+      type: 'number'
+    })
+    .option('fps-slope-factor', {
+      // describe: 'threshold degrees per degree of mean slope (default depends on the level)',
+      type: 'number'
+    })
+    .option('fps-slope-radius', {
+      // describe: 'dynamic smoothing: radius for averaging slope, in pixels (default is 10)',
+      type: 'number'
+    })
+    .option('fps-blend', {
+      // describe: 'dynamic two-level smoothing: thresholds blending one level into two (default is 5,15)'
+    })
+    .option('fps-spread', {
+      // describe: '(experimental) FPS threshold as this multiple of the local spread of slope directions',
+      type: 'number'
+    })
+    .option('fps-spread-radius', {
+      // describe: '(experimental) radius for measuring the spread, in pixels (default is 3)',
+      type: 'number'
+    })
+    .option('maximum-change', {
+      // describe: 'limit how far FPS can move an elevation, in meters (off by default)',
+      type: 'number'
+    })
+    .option('light-adjust', {
+      describe: 'turn the light up to this many degrees to suit landform orientation (0-60)',
+      type: 'number'
+    })
+    .option('texture', {
+      describe: 'max opacity of texture shading (after Leland Brown), 0-1 (default is 0)',
+      type: 'number'
+    })
+    .option('texture-highlights', {
+      // describe: 'opacity of texture shading highlights, relative to texture= (default is 0)',
+      type: 'number'
+    })
+    .option('texture-detail', {
+      // describe: 'texture shading exponent; higher values keep more detail (default is 0.5)',
+      type: 'number'
+    })
+    .option('aerial', {
+      describe: 'aerial perspective: reduce contrast at low elevations, 0-1 (default is 0)',
+      type: 'number'
+    })
+    .option('min-elevation', {
+      describe: 'raise lower elevations to this value (0 flattens the sea floor)',
+      type: 'number'
+    })
+    .option('base-color', {
+      describe: 'color of flat ground, for opaque shading (default is #dfdfdf); implies opaque'
+    })
+    .option('max-opacity', {
+      describe: 'opacity of the darkest shadows, if not opaque; 0-1 (default is 0.55)',
+      type: 'number'
+    })
+    .option('highlights', {
+      describe: 'opacity of the brightest highlights, relative to max-opacity (default is 0.5)',
+      type: 'number'
+    })
+    .option('shadow-color', {
+      describe: 'color of shadows (default is black, or variable if opaque)'
+    })
+    .option('highlight-color', {
+      describe: 'color of highlights (default is white)'
+    })
+    .option('gamma', {
+      describe: 'shape of the tone curve; below 1 strengthens faint shading (default is 0.7)',
+      type: 'number'
+    })
+    .option('band', {
+      describe: 'band containing elevation values (default is 1)',
+      type: 'integer'
+    })
+    .option('workers', {
+      // describe: 'number of worker threads (default depends on raster size and CPU; 0 is off)',
+      type: 'integer'
+    })
+    .option('verbose', {
+      describe: 'print the settings used, including automatic ones',
+      type: 'flag'
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
+
+  parser.command('sharpen')
+    .describe('sharpen an image or hillshade with an unsharp mask')
+    .option('amount', {
+      DEFAULT: true,
+      describe: 'strength of the sharpening, 0-3 (default is 0.25)',
+      type: 'number'
+    })
+    .option('radius', {
+      describe: 'radius of the blur that details are measured against, in pixels (default is 3)',
+      type: 'number'
+    })
+    .option('threshold', {
+      describe: 'skip differences in lightness smaller than this, 0-1 (default is 0)',
+      type: 'number'
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
+
+  parser.command('tone')
+    .describe('adjust the colors of an RGB image')
+    .option('saturation', {
+      describe: 'multiply the colorfulness (chroma); 0 is gray (default is 1)',
+      type: 'number'
+    })
+    .option('lightness', {
+      describe: '0-2: below 1 darkens toward black, above 1 lightens toward white (default is 1)',
+      type: 'number'
+    })
+    .option('contrast', {
+      describe: 'spread (above 1) or flatten (below 1) lightness around the image\'s median, without clipping; 0 is flat (default is 1)',
+      type: 'number'
+    })
+    .option('gamma', {
+      describe: 'tone curve between the image\'s darks and lights (1st and 99th percentile lightness); above 1 lightens midtones (default is 1)',
+      type: 'number'
+    })
+    .option('hue-shift', {
+      describe: '-1 to 1: move hues toward the pivot hue by up to half their distance from it, or away (e.g. 0.8 turns greens olive)',
+      type: 'number'
+    })
+    .option('hue-pivot', {
+      describe: 'hue that hue-shift= moves toward: a color or an OKLCH hue angle (default is 85, yellow-tan)'
+    })
+    .option('opacity', rasterOpacityOpt)
+    .option('background', rasterBackgroundOpt)
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   // Experimental commands
   parser.section('Experimental commands (may give unexpected results)');
@@ -2653,121 +3163,6 @@ export function getOptionParser() {
       type: 'number'
     });
 
-  parser.command('frame')
-    .describe('create a map frame for some layers, or change a frame')
-    .option('target', {
-      describe: 'layers to frame, or the name of a frame to change'
-    })
-    .option('name', {
-      describe: 'name of a new frame, or a new name for a frame'
-    })
-    .group('Page and extent')
-    .option('width', {
-      describe: 'width of frame (e.g. 5in, 10cm, 600px; default is 800px)'
-    })
-    .option('height', {
-      describe: '(optional) height of frame; similar to width= option'
-    })
-    .option('aspect-ratio', {
-      describe: '(optional) aspect ratio of frame, if height= or width= is omitted',
-      type: 'number'
-    })
-    .option('bbox', {
-      describe: 'frame coordinates (xmin,ymin,xmax,ymax)',
-      type: 'bbox'
-    })
-    .option('fit', {
-      describe: '(changing a frame) layer(s) to fit the frame to'
-    })
-    .option('margin', frameMarginOpt)
-    .option('offset', frameOffsetOpt)
-    .option('offsets', frameOffsetOpt)
-    .option('ignore-symbols', {
-      describe: 'fit to coordinates, not the extent of symbols, labels and strokes',
-      type: 'flag'
-    })
-    .option('auto-aspect', {
-      describe: '(changing a frame) derive page height from the frame extent',
-      type: 'flag'
-    })
-    .option('fix-scale', {
-      describe: '(changing a frame) hold the map scale; derive the size from the new extent',
-      type: 'flag'
-    })
-    .group('Layers in a frame (target= names the frame)')
-    .option('add-layers', {
-      describe: 'move layers from outside into the frame (on top, in list order)'
-    })
-    .option('order-layers', {
-      describe: 'restack layers in the frame, in list order (first at bottom)'
-    })
-    .option('above', {
-      describe: 'with add-layers= or order-layers=, stack the layers above this one'
-    })
-    .option('below', {
-      describe: 'with add-layers= or order-layers=, stack the layers below this one'
-    })
-    .option('top', {
-      describe: 'with add-layers= or order-layers=, stack the layers on top',
-      type: 'flag'
-    })
-    .option('bottom', {
-      describe: 'with add-layers= or order-layers=, stack the layers at the bottom',
-      type: 'flag'
-    })
-    .option('reproject', {
-      describe: 'with add-layers=, reproject layers into the frame\'s coordinate system',
-      type: 'flag'
-    })
-    .option('remove-layers', {
-      describe: 'move layers out of the frame'
-    })
-    .option('hide-layers', {
-      describe: 'keep layers in the frame, but leave them off the map'
-    })
-    .option('show-layers', {
-      describe: 'show hidden layers in the frame'
-    })
-    .group('Overlays (target= names the host frame)')
-    .option('overlay', {
-      describe: 'draw another frame on this frame\'s page (e.g. an inset map)'
-    })
-    .option('overlay-position', {
-      describe: 'with overlay=, corner of the page: top-left, top-right, bottom-left, bottom-right'
-    })
-    .option('overlay-margin', {
-      describe: 'with overlay=, distance from the corner\'s edges (e.g. 10 or 10,20)'
-    })
-    .option('remove-overlay', {
-      describe: 'remove an overlay frame from this frame\'s page'
-    })
-    .group('Other')
-    .option('no-replace', {
-      alias: '+',
-      type: 'flag',
-      label: '+, no-replace',
-      describe: '(changing a frame) copy the frame and its layers; name= names the copy'
-    })
-    .option('replace', {
-      describe: '(creating a frame) replace the frame of the targets',
-      type: 'flag'
-    })
-    .option('remove', {
-      describe: '(changing a frame) demote the frame to an ordinary rectangle layer',
-      type: 'flag'
-    });
-
-    // .option('height', {
-    //   describe: 'pixel height of output (may be a range)'
-    // })
-    // .option('pixels', {
-    //   describe: 'area of output in pixels (alternative to width and height)',
-    //   type: 'number'
-    // })
-    // .option('source', {
-    //   describe: 'name of layer to enclose'
-    // })
-
   parser.command('fuzzy-join')
     .describe('join points to polygons, with data fill and fuzzy match')
     .option('source', {
@@ -2818,19 +3213,6 @@ export function getOptionParser() {
     .option('name', nameOpt)
     .option('no-replace', noReplaceOpt);
 
-  parser.command('require')
-    .describe('require a Node module or ES module to use in JS expressions')
-    .option('module', {
-      DEFAULT: true,
-      describe: 'name of installed module or path to module file'
-    })
-    .option('alias', {
-      describe: 'Set the module name to an alias'
-    });
-    // .option('init', {
-    //   describe: 'JS expression to run after the module loads'
-    // });
-
   parser.command('rotate')
     // .describe('apply d3-style 3-axis rotation to a lat-long dataset')
     .option('rotation', {
@@ -2842,82 +3224,8 @@ export function getOptionParser() {
       type: 'flag'
     });
 
-  parser.command('run')
-    .describe('run commands from a command file or JS expression')
-    .option('expression', {
-      DEFAULT: true,
-      label: '<file|expression>',
-      describe: 'path to a .txt command file, or a JS expression/template'
-    })
-    // deprecated
-    .option('commands', {alias_to: 'expression'})
-    .option('target', targetOpt);
-
-  parser.command('scalebar')
-    .describe('add a scale bar to the map frame and SVG output')
-    .option('label', {
-      DEFAULT: true,
-      describe: 'distance label, e.g. "35 miles" (default is automatic)'
-    })
-    .option('units', {
-      describe: 'units of a bare-number or automatic label: km, meters, miles or feet (default is miles)'
-    })
-    .option('style', {
-      describe: 'a (bar), b (ticks) or c (segments of alternating fill)'
-    })
-    .option('font-size', {
-      type: 'number'
-    })
-    .option('font-family', {
-      describe: 'font family of labels'
-    })
-    .option('font-style', {
-      describe: 'font style of labels, e.g. italic'
-    })
-    .option('font-weight', {
-      describe: 'font weight of labels, e.g. bold'
-    })
-    .option('color', {
-      describe: 'color of bar and labels (default is black)'
-    })
-    .option('tic-length', {
-      describe: 'length of tic marks (style b)',
-      type: 'number'
-    })
-    .option('bar-width', {
-      describe: 'line width of bar (height of bar in style c)',
-      type: 'number'
-    })
-    .option('label-offset', {
-      type: 'number'
-    })
-    .option('position', {
-      describe: 'top-left (default), top-center, top-right, bottom-left, bottom-center or bottom-right'
-    })
-    .option('label-position', {
-      describe: 'top, bottom, top-center (style a), etc'
-    })
-    .option('dual-units', {
-      describe: 'show both metric and imperial units (default style is b)',
-      type: 'flag'
-    })
-    .option('align', {
-      describe: 'alignment of the two bars of style c: left, center (default) or right'
-    })
-    .option('label-case', {
-      describe: 'case of units in labels: upper or lower (default follows the label)'
-    })
-    .option('margin', {
-      describe: 'offset in pixels from edge of map',
-      type: 'number'
-    })
-    .option('remove', {
-      describe: 'remove the scale bar from the map frame',
-      type: 'flag'
-    });
-
   parser.command('shape')
-    .describe('create a polyline or polygon from coordinates')
+    .describe('create a polyline or polygon (deprecated; use -add-shape)')
     .option('coordinates', {
       describe: 'list of vertices as x,y,x,y...',
       type: 'numbers'
@@ -2964,6 +3272,26 @@ export function getOptionParser() {
       label: '+, no-replace',
       describe: 'add the shape as a new layer (the default; never replaces the target)'
     });
+
+  parser.command('split-on-grid')
+    .describe('split features into separate layers using a grid')
+    .validate(V.validateGridOpts)
+    .option('_', {
+      DEFAULT: true,
+      label: '<cols,rows>',
+      describe: 'size of the grid, e.g. -split-on-grid 12,10'
+    })
+    .option('cols', {
+      type: 'integer'
+    })
+    .option('rows', {
+      type: 'integer'
+    })
+    .option('id-field', {
+      describe: 'assign each feature a cell id instead of splitting layer'
+    })
+    // .option('no-replace', noReplaceOpt)
+    .option('target', targetOpt);
 
   parser.command('subdivide')
     .describe('recursively split a layer using a JS expression')
@@ -3015,6 +3343,17 @@ export function getOptionParser() {
       describe: 'ignore empty files',
       type: 'flag'
     })
+    .option('target', targetOpt);
+
+  parser.command('run')
+    .describe('run commands from a command file or JS expression')
+    .option('expression', {
+      DEFAULT: true,
+      label: '<file|expression>',
+      describe: 'path to a .txt command file, or a JS expression/template'
+    })
+    // deprecated
+    .option('commands', {alias_to: 'expression'})
     .option('target', targetOpt);
 
   parser.command('stop')

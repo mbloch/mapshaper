@@ -1,6 +1,7 @@
 import { getShapeHitTest } from './gui-shape-hit';
 import { getSvgHitTest } from './gui-svg-hit';
-import { internal, utils } from './gui-core';
+import { utils } from './gui-core';
+import { featureBelongsToMode, modeHasOwnedFeatures } from './gui-selection-carry';
 
 export function getPointerHitTest(mapLayer, ext, interactionMode, featureFilter) {
   var shapeTest, ownerTest;
@@ -38,14 +39,10 @@ export function getPointerHitTest(mapLayer, ext, interactionMode, featureFilter)
 // what it edits: a numbered marker is a label to the data and a symbol to the
 // GUI (see featureIsMarker()). Null in the other modes, which hit everything.
 function getOwnerTest(mapLayer, interactionMode) {
-  var svg = internal.svg;
-  var test = interactionMode == 'label' ? function(rec) { return !svg.featureIsMarker(rec); } :
-    interactionMode == 'symbols' ? function(rec) { return !svg.featureIsTextLabel(rec); } :
-    null;
-  if (!test) return null;
+  if (!modeHasOwnedFeatures(interactionMode)) return null;
   return function(id) {
     var data = mapLayer.gui.displayLayer.data;
     var records = data ? data.getRecords() : null;
-    return test(records ? records[id] : null);
+    return featureBelongsToMode(interactionMode, records ? records[id] : null);
   };
 }

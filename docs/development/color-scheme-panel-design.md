@@ -25,8 +25,8 @@ categorical color schemes, with user-editable ramps.
   resolved hex colors, e.g.
   `-classify field=pop quantile classes=5 colors=#344a72,#9a4c64,...`.
   The history is readable and replays exactly, independent of how the ramp
-  was built. CLI users get the same interpolation through
-  `interpolation=oklch`.
+  was built. CLI users get the same interpolation, which is `-classify`'s
+  default.
 - **Editing a preset makes it custom.** Pinning any tile of a preset switches
   the palette menu to "Custom". The preset's two end colors become end pins,
   the edited tile becomes a third pin, and the other tiles are interpolated.
@@ -199,13 +199,14 @@ See `layer-metadata.md` for the limits of the current record (a GUI-only
 
 ## CLI additions
 
-- `interpolation=rgb|oklch` on `-classify` (default `rgb`, so existing
-  outputs don't change). It affects interpolation between user colors in
-  `colors=`, `stops=` and `continuous` output. Numeric `values=` are
-  unaffected.
+- `interpolation=oklch|rgb` on `-classify`. It affects interpolation
+  between user colors in `colors=`, `stops=` and `continuous` output.
+  Numeric `values=` are unaffected. The default was `rgb` at first, so that
+  existing outputs wouldn't change, and became `oklch` in v0.8.0 (see
+  `raster-palette-design.md`); `interpolation=rgb` gives the old colors.
 - `vibrance=` (0-1) on `-classify`, for `oklch`, scaled to OKLCH chroma
-  (1 adds 0.09, the top of the panel's slider); `vibrance=` alone
-  selects `oklch`.
+  (1 adds 0.09, the top of the panel's slider); not available with
+  `interpolation=rgb`.
 - `pivot=`, `pivot-range=`, `no-pivot-class`, `pivot-class` and
   `classes=lo,hi` for diverging schemes (see Diverging schemes).
 - With `continuous`, N colors give N-1 intervals (see Continuous ramps).
@@ -393,8 +394,8 @@ is interpolated between the two around its value.
 - Change: with `continuous`, a list of N colors gives N-1 intervals by
   default, so each color is a control point, used as given. (Before, N
   colors made N classes and N+1 colors, re-interpolated from the list.)
-- The panel passes `continuous interpolation=oklch classes=N-1` and its tile
-  colors. Not `vibrance=`: the tiles already have it, and the interpolation
+- The panel passes `continuous classes=N-1` and its tile colors
+  (interpolated in OKLCH, the default). Not `vibrance=`: the tiles already have it, and the interpolation
   between them would add it again.
 
 ### Panel
@@ -558,7 +559,14 @@ apart from the panel, so that a command could use it later.
   `interpolate` for continuous colors (one for each run of stretches that
   meet at the same color, chosen between by `case` where the colors jump),
   `match` for categories, all inside a `case` that gives features without
-  a number the no-data color.
+  a number the no-data color. Arrays of numbers and colors are on one line.
+- Fixed elevations also have `elevations`, for editing the colors by hand:
+  `units` (the band's), `stops` (in those units), the colors at the stops
+  (`colors` for one preset; for a blend, `blend`, with every preset's
+  colors, recolored or not), and `sea` (`palette`, `stops` and `colors`,
+  or null). Transparent land has only `units` and `sea`. A blend's
+  `classes` and `expression` are those of the preset it uses where it can't
+  blend; a web map can't mix the presets by climate.
 - Continuous quantile colors are placed by rank, which stops at values can
   only approach, and the panel interpolates in OKLCH where a web map
   interpolates in RGB, so continuous exports are close to the map rather
@@ -590,6 +598,14 @@ Parsing and conversion are in `gui-color-scheme-import.mjs`.
   baked into the colors: vibrance, the long hue path, part of a preset's
   range. If the layer doesn't have the command's field, the palette is
   imported as one from another program.
+- Fixed elevations come back from their command (`hypsometric=`,
+  `colors=` and `breaks=` with their named lists, `classed`, `sea=`; also
+  the older `breaks=` with `outer-breaks=`), with a JSON file's `elevations` taking precedence,
+  so that colors edited there are the ones imported. Stops in other
+  `units` are converted to the band's. Colors and stops that are a
+  preset's give the preset. They have to be one at each of the presets'
+  stops (and the sea's); a palette with other stops, e.g. from before the
+  presets changed, is imported by its classes, with a note.
 - A GMT table from another program has ranges of values or categories.
   Ranges that cover the data become a sequential scheme: classes as custom
   breaks (leaving out classes the data don't reach), or continuous colors

@@ -325,7 +325,7 @@ function getInterpolatedRamp(interpolate, n) {
   }
   var ramp = [];
   for (var i=0; i<n; i++) {
-    ramp.push(interpolate(i / (n - 1)));
+    ramp.push(interpolate(n > 1 ? i / (n - 1) : 0.5));
   }
   return ramp;
 }

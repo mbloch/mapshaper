@@ -1,0 +1,538 @@
+import { getOklchInterpolator, oklabToOklch, oklchToRgb, rgbToOklab } from '../color/oklab';
+import { parseColor } from '../color/color-utils';
+import { error } from '../utils/mapshaper-logging';
+
+// Pixel operations for -tone and -hillshade. Colors are adjusted in OKLab
+// (https://bottosson.github.io/posts/oklab/); see
+// docs/development/raster-tone-tint.md
+
+var SEGMENT_SIZE = 256; // hillshade color ramp entries between two colors
+var ENCODE_SIZE = 65536; // linear-to-sRGB table entries; fine enough to round-trip dark values exactly
+var TONE_TABLE_STEPS = 51; // lattice intervals per channel in getToneColorTable() (divides 255)
+var LIGHTNESS_STEPS = 4096; // lightness curve table intervals, interpolated linearly
+var CONTRAST_CENTER_MIN = 0.25;
+var CONTRAST_CENTER_MAX = 0.75;
+// Default hue-pivot=: OKLCH yellow-tan (ochre). Pure yellow (about 110°)
+// would shift tan rock and dry grass toward yellow-green.
+export var DEFAULT_HUE_PIVOT_DEGREES = 85;
+var DEFAULT_HUE_PIVOT = DEFAULT_HUE_PIVOT_DEGREES * Math.PI / 180;
+var HUE_SHIFT_MIN_CHROMA = 0.005;
+var HUE_SHIFT_FULL_CHROMA = 0.03;
+var GAMUT_STEPS = 12; // bisection steps when reducing chroma to fit the gamut
+
+var decodeTable = null; // sRGB byte -> linear
+var encodeTable = null; // linear (scaled to ENCODE_SIZE - 1) -> sRGB byte
+
+function initTables() {
+  var i, c;
+  if (decodeTable) return;
+  decodeTable = new Float64Array(256);
+  for (i = 0; i < 256; i++) {
+    c = i / 255;
+    decodeTable[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  }
+  encodeTable = new Uint8Array(ENCODE_SIZE);
+  for (i = 0; i < ENCODE_SIZE; i++) {
+    c = i / (ENCODE_SIZE - 1);
+    encodeTable[i] = Math.round(255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055));
+  }
+}
+
+function encodeChannel(c) {
+  return encodeTable[c <= 0 ? 0 : c >= 1 ? ENCODE_SIZE - 1 : Math.round(c * (ENCODE_SIZE - 1))];
+}
+
+// Adjusts the OKLCH lightness, chroma and hue of each pixel of an RGB or RGBA
+// image. Chroma is multiplied by opts.saturation. opts.pivots are the
+// image's [lo, hi, median] lightness: between lo and hi, lightness follows a
+// gamma curve (opts.gamma above 1 lightens midtones); then opts.contrast
+// spreads or flattens lightness around the median (see applyContrast()),
+// without clipping. Lightness then moves toward black by
+// 1 - opts.lightness (below 1) or toward white by opts.lightness - 1 (above 1,
+// up to 2), so light colors never clip. Colors that end up outside the sRGB
+// gamut lose chroma until they fit, at the same lightness and hue. Hues move
+// toward opts.huePivot (degrees) by opts.hueShift (see getHueShiftRotation()).
+// @samples interleaved uint8 samples with @bands (3 or 4) per pixel; alpha
+//   is copied
+// @out optional array of the same layout to write to (e.g. a canvas's pixels)
+// Returns @out, or a new Uint8Array
+export function toneRgbPixels(samples, bands, opts, out) {
+  var sat = opts.saturation;
+  var hueShift = opts.hueShift || 0;
+  var pivot = opts.huePivot == null ? DEFAULT_HUE_PIVOT : opts.huePivot * Math.PI / 180;
+  var theta, cosT, sinT, A0;
+  var pivots = opts.pivots || [0, 1];
+  var contrast = opts.contrast == null ? 1 : opts.contrast;
+  var curve = getLightnessCurve(opts.lightness, opts.gamma > 0 ? opts.gamma : 1, contrast, pivots);
+  var curveMax = LIGHTNESS_STEPS - 1e-9;
+  var rgb = [0, 0, 0];
+  var i, j, r, g, b, l, m, s, L, A, B;
+  out = out || new Uint8Array(samples.length);
+  initTables();
+  for (i = 0; i < samples.length; i += bands) {
+    r = decodeTable[samples[i]];
+    g = decodeTable[samples[i + 1]];
+    b = decodeTable[samples[i + 2]];
+    l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    L = (0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s) * LIGHTNESS_STEPS;
+    L = L <= 0 ? 0 : L >= curveMax ? curveMax : L;
+    j = L | 0;
+    L = curve[j] + (curve[j + 1] - curve[j]) * (L - j);
+    A = (1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s) * sat;
+    B = (0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s) * sat;
+    if (hueShift !== 0) {
+      theta = getHueShiftRotation(A, B, hueShift, pivot);
+      if (theta !== 0) {
+        cosT = Math.cos(theta);
+        sinT = Math.sin(theta);
+        A0 = A;
+        A = A0 * cosT - B * sinT;
+        B = A0 * sinT + B * cosT;
+      }
+    }
+    if (!oklabToLinear(L, A, B, rgb)) {
+      fitChroma(L, A, B, rgb);
+    }
+    out[i] = encodeChannel(rgb[0]);
+    out[i + 1] = encodeChannel(rgb[1]);
+    out[i + 2] = encodeChannel(rgb[2]);
+    if (bands > 3) out[i + 3] = samples[i + 3];
+  }
+  return out;
+}
+
+// Applies shading to an RGB or RGBA image (see docs/development/raster-blend.md)
+// @amounts one signed amount per pixel: below 0, the opacity of opts.shadow
+//   stacked on the pixel; above 0, the opacity of opts.highlight
+// The result has the lightness of the stacked pixel. Its OKLab a and b move
+// from the stacked pixel's toward the image's by opts.shadowChroma or
+// opts.highlightChroma: 0 is plain stacking, 1 keeps the image's color.
+// opts:
+//   shadow, highlight  {r, g, b} bytes
+//   shadowChroma, highlightChroma  0 or more
+// Where the image is partly or fully transparent, the shading is stacked on
+// nothing, so the output alpha can exceed the image's.
+// Returns a new Uint8Array of @samples' layout
+export function blendShadingPixels(samples, bands, amounts, opts) {
+  var out = new Uint8Array(samples.length);
+  var shadow = opts.shadow, highlight = opts.highlight;
+  var rgb = [0, 0, 0];
+  var lab = [0, 0, 0];
+  var i, k, a, ta, oa, K, q, r, g, b, sr, sg, sb, A, B, w;
+  initTables();
+  for (i = 0, k = 0; i < samples.length; i += bands, k++) {
+    a = amounts[k];
+    r = samples[i];
+    g = samples[i + 1];
+    b = samples[i + 2];
+    ta = bands > 3 ? samples[i + 3] / 255 : 1;
+    if (a === 0 || a !== a) {
+      out[i] = r;
+      out[i + 1] = g;
+      out[i + 2] = b;
+      if (bands > 3) out[i + 3] = samples[i + 3];
+      continue;
+    }
+    K = a < 0 ? shadow : highlight;
+    q = a < 0 ? opts.shadowChroma : opts.highlightChroma;
+    a = a < 0 ? (a < -1 ? 1 : -a) : (a > 1 ? 1 : a);
+    sr = r + (K.r - r) * a;
+    sg = g + (K.g - g) * a;
+    sb = b + (K.b - b) * a;
+    if (q !== 0 && ta > 0) {
+      srgbToOklab(r, g, b, lab);
+      A = lab[1];
+      B = lab[2];
+      srgbToOklab(Math.round(sr), Math.round(sg), Math.round(sb), lab);
+      A = lab[1] + (A - lab[1]) * q;
+      B = lab[2] + (B - lab[2]) * q;
+      if (!oklabToLinear(lab[0], A, B, rgb)) {
+        fitChroma(lab[0], A, B, rgb);
+      }
+      sr = encodeChannel(rgb[0]);
+      sg = encodeChannel(rgb[1]);
+      sb = encodeChannel(rgb[2]);
+    }
+    if (ta == 1) {
+      out[i] = Math.round(sr);
+      out[i + 1] = Math.round(sg);
+      out[i + 2] = Math.round(sb);
+      if (bands > 3) out[i + 3] = 255;
+      continue;
+    }
+    // the blended image over the shading alone (with chroma 0, the same as
+    // the shading stacked on the partly transparent image)
+    oa = ta + (1 - ta) * a;
+    w = ta / oa;
+    sr = sr * w + K.r * (1 - w);
+    sg = sg * w + K.g * (1 - w);
+    sb = sb * w + K.b * (1 - w);
+    out[i] = Math.round(sr);
+    out[i + 1] = Math.round(sg);
+    out[i + 2] = Math.round(sb);
+    out[i + 3] = Math.round(oa * 255);
+  }
+  return out;
+}
+
+// The shading as an RGBA overlay that, stacked on the image (in sRGB, as
+// browsers and resvg composite), gives the image blended with the shading
+// @samples RGBA image
+// @blended blendShadingPixels() output for @samples
+// @amounts, opts  as given to blendShadingPixels()
+// On an opaque image pixel the overlay has the least alpha that gives the
+// blended color exactly. Where the image is partly transparent, what is under
+// it is unknown, so the overlay is the shading color at the amount's opacity,
+// as in plain stacking.
+// Returns a new Uint8Array of RGBA pixels
+export function getShadingOverlayPixels(samples, blended, amounts, opts) {
+  var out = new Uint8Array(samples.length);
+  var i, k, a, K, c, t, r, need, alpha, a8;
+  for (i = 0, k = 0; i < samples.length; i += 4, k++) {
+    a = amounts[k];
+    if (a === 0 || a !== a) continue;
+    if (samples[i + 3] < 255) {
+      K = a < 0 ? opts.shadow : opts.highlight;
+      out[i] = K.r;
+      out[i + 1] = K.g;
+      out[i + 2] = K.b;
+      out[i + 3] = Math.round(Math.min(1, Math.abs(a)) * 255);
+      continue;
+    }
+    alpha = 0;
+    for (c = 0; c < 3; c++) {
+      t = samples[i + c];
+      r = blended[i + c];
+      need = r > t ? (r - t) / (255 - t) : r < t ? (t - r) / t : 0;
+      if (need > alpha) alpha = need;
+    }
+    if (alpha === 0) continue;
+    a8 = Math.ceil(alpha * 255 - 1e-9);
+    alpha = a8 / 255;
+    for (c = 0; c < 3; c++) {
+      t = samples[i + c];
+      out[i + c] = Math.max(0, Math.min(255, Math.round(t + (blended[i + c] - t) / alpha)));
+    }
+    out[i + 3] = a8;
+  }
+  return out;
+}
+
+// Hue rotation (radians) for hue-shift=: hues move toward @pivot (radians) by
+// @shift times half their distance from it, fading out toward the opposite
+// hue and for near-gray colors (whose hue is unstable). From -1 to 1, the
+// rotation never passes the pivot and hues keep their order; below about
+// -1.2, hues pushed away from the pivot would cross near the opposite hue.
+function getHueShiftRotation(A, B, shift, pivot) {
+  var C = Math.sqrt(A * A + B * B);
+  var weight, delta;
+  if (C <= HUE_SHIFT_MIN_CHROMA) return 0;
+  weight = C >= HUE_SHIFT_FULL_CHROMA ? 1 : (C - HUE_SHIFT_MIN_CHROMA) / (HUE_SHIFT_FULL_CHROMA - HUE_SHIFT_MIN_CHROMA);
+  delta = pivot - Math.atan2(B, A);
+  if (delta > Math.PI) delta -= 2 * Math.PI;
+  if (delta < -Math.PI) delta += 2 * Math.PI;
+  return 0.5 * shift * weight * delta * Math.cos(delta / 2);
+}
+
+// OKLCH hue of a color, in degrees, or null for a gray
+export function getOklchHue(r, g, b) {
+  var lab = [0, 0, 0];
+  var h;
+  srgbToOklab(r, g, b, lab);
+  if (Math.sqrt(lab[1] * lab[1] + lab[2] * lab[2]) < 0.01) return null;
+  h = Math.atan2(lab[2], lab[1]) * 180 / Math.PI;
+  return h < 0 ? h + 360 : h;
+}
+
+// Gamma, then contrast, then lightness= (see toneRgbPixels())
+function getLightnessCurve(lightness, gamma, contrast, pivots) {
+  var lighten = Math.max(0, lightness - 1);
+  var scale = Math.min(1, lightness);
+  var lo = pivots[0], hi = pivots[1], span = hi - lo;
+  var center = getContrastCenter(pivots);
+  var curve = new Float64Array(LIGHTNESS_STEPS + 1);
+  var i, L;
+  for (i = 0; i <= LIGHTNESS_STEPS; i++) {
+    L = i / LIGHTNESS_STEPS;
+    if (gamma != 1 && span > 0 && L > lo && L < hi) {
+      L = lo + span * Math.pow((L - lo) / span, 1 / gamma);
+    }
+    if (contrast != 1) L = applyContrast(L, contrast, center);
+    curve[i] = L * scale + (1 - L) * lighten;
+  }
+  return curve;
+}
+
+// The lightness contrast= centers on: the image's median lightness, kept
+// away from black and white so that a mostly dark or mostly snowy image
+// still has room on both sides for its midtones to spread
+// @pivots [lo, hi, median], from getImageLightnessPercentiles()
+export function getContrastCenter(pivots) {
+  var median = pivots && pivots.length > 2 ? pivots[2] : 0.5;
+  return Math.max(CONTRAST_CENTER_MIN, Math.min(CONTRAST_CENTER_MAX, median));
+}
+
+// Lightness @L after contrast @k around @center. Below 1, every lightness
+// moves toward the center in proportion (black and white too, so that dark
+// and light pixels are not left behind as specks); 0 is flat. Above 1, the
+// slope at the center is @k, and each side bends toward black or white
+// (k u / (1 + (k - 1) u) of the distance), so midtones spread by about @k
+// for any image, and the extremes are compressed rather than clipped.
+export function applyContrast(L, k, center) {
+  var u;
+  if (k <= 1) return center + (L - center) * k;
+  if (L >= center) {
+    u = (L - center) / (1 - center);
+    return center + (1 - center) * k * u / (1 + (k - 1) * u);
+  }
+  u = (center - L) / center;
+  return center - center * k * u / (1 + (k - 1) * u);
+}
+
+// A 3D lookup table of toneRgbPixels() results for a lattice of RGB colors,
+// for applying the same settings to many pixels quickly (e.g. a GUI preview).
+// Lattice colors are whole bytes, so the number of steps divides 255.
+// @steps optional lattice intervals per channel (default TONE_TABLE_STEPS);
+//   17 is about 25 times faster to build, but less accurate where colors
+//   are pushed outside the gamut
+// Returns {size, data}, where data has size^3 RGB triplets, blue varying fastest
+export function getToneColorTable(opts, steps) {
+  var size, step;
+  steps = steps || TONE_TABLE_STEPS;
+  if (255 % steps !== 0) error('Tone table steps should divide 255');
+  size = steps + 1;
+  step = 255 / steps;
+  var samples = new Uint8Array(size * size * size * 3);
+  var i = 0, r, g, b;
+  for (r = 0; r < size; r++) {
+    for (g = 0; g < size; g++) {
+      for (b = 0; b < size; b++) {
+        samples[i++] = r * step;
+        samples[i++] = g * step;
+        samples[i++] = b * step;
+      }
+    }
+  }
+  return {size: size, data: toneRgbPixels(samples, 3, opts)};
+}
+
+// Applies a table from getToneColorTable() to RGBA pixels, interpolating
+// between lattice colors (trilinear); alpha is copied
+// @src, @dst arrays of RGBA bytes (may be the same array)
+export function applyToneColorTable(table, src, dst) {
+  var size = table.size, data = table.data;
+  var steps = size - 1;
+  var f = steps / 255;
+  var sb = 3, sg = size * 3, sr = size * size * 3;
+  var i, c, fr, fg, fb, ir, ig, ib, dr, dg, db, k, v00, v01, v10, v11, v0, v1;
+  for (i = 0; i < src.length; i += 4) {
+    fr = src[i] * f;
+    fg = src[i + 1] * f;
+    fb = src[i + 2] * f;
+    ir = fr < steps ? fr | 0 : steps - 1;
+    ig = fg < steps ? fg | 0 : steps - 1;
+    ib = fb < steps ? fb | 0 : steps - 1;
+    dr = fr - ir;
+    dg = fg - ig;
+    db = fb - ib;
+    k = ir * sr + ig * sg + ib * sb;
+    for (c = 0; c < 3; c++) {
+      v00 = data[k + c] + (data[k + c + sb] - data[k + c]) * db;
+      v01 = data[k + c + sg] + (data[k + c + sg + sb] - data[k + c + sg]) * db;
+      v10 = data[k + c + sr] + (data[k + c + sr + sb] - data[k + c + sr]) * db;
+      v11 = data[k + c + sr + sg] + (data[k + c + sr + sg + sb] - data[k + c + sr + sg]) * db;
+      v0 = v00 + (v01 - v00) * dg;
+      v1 = v10 + (v11 - v10) * dg;
+      dst[i + c] = Math.round(v0 + (v1 - v0) * dr);
+    }
+    dst[i + 3] = src[i + 3];
+  }
+  return dst;
+}
+
+// Lightnesses of an RGB or RGBA image at percentiles @pcts (0-100), from a
+// sample of at most @maxSamples visible pixels
+// @valid optional validity mask; pixels with alpha 0 are also skipped
+// Returns an array of values, or null if no pixels are visible
+export function getImageLightnessPercentiles(samples, bands, valid, pcts, maxSamples) {
+  var n = samples.length / bands;
+  var step = Math.max(1, Math.floor(n / maxSamples));
+  var values = [];
+  var lc = [0, 0];
+  var i, j;
+  for (i = 0; i < n; i += step) {
+    j = i * bands;
+    if (valid && !valid[i] || bands == 4 && samples[j + 3] === 0) continue;
+    if (bands == 1) {
+      getOklchLightnessChroma(samples[j], samples[j], samples[j], lc);
+    } else {
+      getOklchLightnessChroma(samples[j], samples[j + 1], samples[j + 2], lc);
+    }
+    values.push(lc[0]);
+  }
+  if (values.length === 0) return null;
+  values = Float64Array.from(values).sort();
+  return pcts.map(function(pct) {
+    return values[Math.round((values.length - 1) * pct / 100)];
+  });
+}
+
+// Writes the OKLCH lightness and chroma of an sRGB color (bytes) to @out
+export function getOklchLightnessChroma(r, g, b, out) {
+  var lab = [0, 0, 0];
+  srgbToOklab(r, g, b, lab);
+  out[0] = Math.min(1, Math.max(0, lab[0]));
+  out[1] = Math.sqrt(lab[1] * lab[1] + lab[2] * lab[2]);
+}
+
+// Writes the OKLab L, a, b of an sRGB color (bytes) to @out
+function srgbToOklab(r, g, b, out) {
+  var l, m, s;
+  initTables();
+  r = decodeTable[r];
+  g = decodeTable[g];
+  b = decodeTable[b];
+  l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  out[0] = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s;
+  out[1] = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s;
+  out[2] = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
+}
+
+// Writes linear RGB to @rgb; returns false if the color is outside the gamut
+function oklabToLinear(L, A, B, rgb) {
+  var l = L + 0.3963377774 * A + 0.2158037573 * B;
+  var m = L - 0.1055613458 * A - 0.0638541728 * B;
+  var s = L - 0.0894841775 * A - 1.2914855480 * B;
+  var r, g, b;
+  l = l * l * l;
+  m = m * m * m;
+  s = s * s * s;
+  r = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+  g = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+  b = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s;
+  rgb[0] = r;
+  rgb[1] = g;
+  rgb[2] = b;
+  return r >= -1e-6 && r <= 1 + 1e-6 && g >= -1e-6 && g <= 1 + 1e-6 && b >= -1e-6 && b <= 1 + 1e-6;
+}
+
+// Finds the largest fraction of the chroma (A, B) that is in gamut at
+// lightness L, and writes that color to @rgb
+function fitChroma(L, A, B, rgb) {
+  var lo = 0, hi = 1, mid;
+  for (var i = 0; i < GAMUT_STEPS; i++) {
+    mid = (lo + hi) / 2;
+    if (oklabToLinear(L, A * mid, B * mid, rgb)) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  oklabToLinear(L, A * lo, B * lo, rgb);
+}
+
+// The colors of opaque shaded relief: a ramp from the shadow color (tone -1,
+// full shadow) through the base color (tone 0, flat ground) to the highlight
+// color (tone 1, the brightest slope), interpolated in OKLCH.
+// @stops from getHillshadeRampColors()
+// Returns {r, g, b, steps}: tone t is at index Math.round((t + 1) * steps)
+export function getHillshadeColorRamp(stops) {
+  var steps = SEGMENT_SIZE;
+  var r = new Uint8Array(steps * 2 + 1), g = new Uint8Array(steps * 2 + 1), b = new Uint8Array(steps * 2 + 1);
+  var toBase = getOklchInterpolator(formatRgb(stops.shadow), formatRgb(stops.base));
+  var toHighlight = getOklchInterpolator(formatRgb(stops.base), formatRgb(stops.highlight));
+  var i, rgb;
+  for (i = 0; i <= steps * 2; i++) {
+    rgb = parseColor(i <= steps ? toBase(i / steps).color : toHighlight(i / steps - 1).color);
+    r[i] = rgb.r;
+    g[i] = rgb.g;
+    b[i] = rgb.b;
+  }
+  return {r: r, g: g, b: b, steps: steps};
+}
+
+// Where the base color is on the ramp from the shadow color to the
+// highlight color, when one of them is derived. A slope tilted a little
+// toward the light then gets as much lighter as one tilted away gets darker:
+// the brightest slope was 1.25 times as bright as flat ground under the
+// former default lights (1.21 under the current ones), so highlight tones
+// are scaled four times as much as shadow tones, and the shadow half of the
+// ramp gets four times the lightness range. (The weight is fixed rather than
+// following 1 / getHillshadeMaxShade() so that altitude= and lighting= don't
+// change the colors.)
+var HILLSHADE_BASE_WEIGHT = 0.8;
+var DEFAULT_HILLSHADE_BASE = {r: 223, g: 223, b: 223};
+var DEFAULT_HILLSHADE_HIGHLIGHT = {r: 255, g: 255, b: 255};
+
+// The three colors of opaque shading. The highlight color defaults to white.
+// A missing base color is HILLSHADE_BASE_WEIGHT of the way from the shadow
+// color to the highlight color, or #dfdfdf if the shadow color is missing
+// too. A missing shadow color is extrapolated from the base and highlight
+// colors (see getDerivedShadowColor()).
+// @shadow, @base, @highlight {r, g, b} or null
+// Returns {shadow, base, highlight}, as {r, g, b} objects
+export function getHillshadeRampColors(shadow, base, highlight) {
+  var light = toRgb(highlight || DEFAULT_HILLSHADE_HIGHLIGHT);
+  var mid = base ? toRgb(base) : shadow ?
+    parseColor(getOklchInterpolator(formatRgb(shadow), formatRgb(light))(HILLSHADE_BASE_WEIGHT).color) :
+    toRgb(DEFAULT_HILLSHADE_BASE);
+  var dark = shadow ? toRgb(shadow) : getDerivedShadowColor(mid, light);
+  return {shadow: dark, base: mid, highlight: light};
+}
+
+// The shadow color that puts @base HILLSHADE_BASE_WEIGHT of the way to
+// @highlight in lightness. It has the base color's hue and chroma (as much
+// as the gamut has room for): extrapolating them as well would multiply
+// small differences between the base and highlight colors into a strong,
+// unrelated color. Black if the base is too dark for the extrapolation.
+function getDerivedShadowColor(base, highlight) {
+  var lch = oklabToOklch(rgbToOklab(base));
+  var w = HILLSHADE_BASE_WEIGHT;
+  var l = (lch.l - w * rgbToOklab(highlight).l) / (1 - w);
+  if (l <= 0) return {r: 0, g: 0, b: 0};
+  return toRgb(oklchToRgb({l: l, c: lch.c, h: lch.h}));
+}
+
+function toRgb(o) {
+  return {r: Math.round(o.r), g: Math.round(o.g), b: Math.round(o.b)};
+}
+
+function formatRgb(o) {
+  return 'rgb(' + Math.round(o.r) + ',' + Math.round(o.g) + ',' + Math.round(o.b) + ')';
+}
+
+// Applies opacity= and background= to an RGB or RGBA image.
+// @background null or {r, g, b}: the image is composited over it, giving an
+//   opaque RGB image (transparent pixels take the background color)
+// Without a background, alpha is multiplied by @opacity, and the result is
+// RGBA if it has any transparency.
+// Returns {samples, bands}
+export function applyOpacityAndBackground(samples, bands, opacity, background) {
+  var n = samples.length / bands;
+  var out, i, j, k, a;
+  if (background) {
+    out = new Uint8Array(n * 3);
+    for (i = 0, j = 0, k = 0; i < n; i++, j += bands, k += 3) {
+      a = (bands > 3 ? samples[j + 3] / 255 : 1) * opacity;
+      out[k] = Math.round(samples[j] * a + background.r * (1 - a));
+      out[k + 1] = Math.round(samples[j + 1] * a + background.g * (1 - a));
+      out[k + 2] = Math.round(samples[j + 2] * a + background.b * (1 - a));
+    }
+    return {samples: out, bands: 3};
+  }
+  if (opacity >= 1) {
+    return {samples: samples, bands: bands};
+  }
+  out = new Uint8Array(n * 4);
+  for (i = 0, j = 0, k = 0; i < n; i++, j += bands, k += 4) {
+    out[k] = samples[j];
+    out[k + 1] = samples[j + 1];
+    out[k + 2] = samples[j + 2];
+    out[k + 3] = Math.round((bands > 3 ? samples[j + 3] : 255) * opacity);
+  }
+  return {samples: out, bands: 4};
+}

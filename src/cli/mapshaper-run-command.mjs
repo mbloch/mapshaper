@@ -3,9 +3,12 @@ import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { initProjLibrary } from '../crs/mapshaper-projections';
 import { writeFiles } from '../io/mapshaper-file-export';
 import { exportTargetLayers } from '../io/mapshaper-export';
-import { copyLayerShapes, layerHasPaths } from '../dataset/mapshaper-layer-utils';
+import { copyLayerShapes, layerHasPaths, layerHasRaster } from '../dataset/mapshaper-layer-utils';
+import { getStackedLayers, moveLayersInStack } from '../dataset/mapshaper-layer-stacking';
 import { getOptionParser } from '../cli/mapshaper-options';
 import { convertSourceName, findCommandSourceAsync } from '../dataset/mapshaper-source-utils';
+import { getRasterJoinBands } from '../join/mapshaper-raster-polygon-join';
+import { getRasterSourceBands } from '../rasters/mapshaper-raster-source-bands';
 import { Catalog, getFormattedLayerList } from '../dataset/mapshaper-catalog';
 import { Job } from '../mapshaper-job';
 import { mergeCommandTargets } from '../dataset/mapshaper-merging';
@@ -46,6 +49,7 @@ import '../commands/mapshaper-cluster';
 import '../commands/mapshaper-colorizer';
 import '../commands/mapshaper-comment';
 import '../commands/mapshaper-contours';
+import '../commands/mapshaper-copy';
 import '../commands/mapshaper-dashlines';
 import '../commands/mapshaper-data-fill';
 import '../commands/mapshaper-define';
@@ -58,6 +62,7 @@ import '../commands/mapshaper-dots';
 import '../commands/mapshaper-drop';
 import '../commands/mapshaper-each';
 import '../commands/mapshaper-explode';
+import { addFetchedDataset } from '../commands/mapshaper-fetch';
 import '../io/mapshaper-export';
 import '../commands/mapshaper-external';
 import '../commands/mapshaper-frame';
@@ -72,6 +77,10 @@ import '../commands/mapshaper-filter-slivers';
 import '../commands/mapshaper-fuzzy-join';
 import '../commands/mapshaper-graticule';
 import '../commands/mapshaper-help';
+import '../commands/mapshaper-blend';
+import '../commands/mapshaper-deshadow';
+import '../commands/mapshaper-hillshade';
+import '../commands/mapshaper-tone';
 import { skipCommand } from '../commands/mapshaper-if-elif-else-endif';
 import '../commands/mapshaper-ignore';
 import '../commands/mapshaper-include';
@@ -97,6 +106,7 @@ import '../commands/mapshaper-rotate';
 import '../commands/mapshaper-run';
 import '../commands/mapshaper-scalebar';
 import '../commands/mapshaper-shape';
+import '../commands/mapshaper-sharpen';
 import '../commands/mapshaper-simplify';
 import '../commands/mapshaper-smooth';
 import '../commands/mapshaper-sort';
@@ -119,7 +129,7 @@ function commandAcceptsMultipleTargetDatasets(name) {
     name == 'require' || name == 'drop' || name == 'target' ||
     name == 'if' || name == 'elif' || name == 'else' || name == 'endif' ||
     name == 'run' || name == 'i' || name == 'snap' || name == 'frame' ||
-    name == 'comment' || name == 'rename-layers';
+    name == 'comment' || name == 'rename-layers' || name == 'fetch';
 }
 
 // Commands in this group keep datasets separate and run once for each grouped
@@ -134,16 +144,16 @@ function commandRunsPerTargetDataset(name, opts) {
     return !('coordinates' in opts);
   }
   return [
-    'affine', 'alpha-shapes', 'blur', 'buffer', 'calc', 'check-geometry',
-    'classify', 'clean', 'clip', 'cluster', 'contours', 'dashlines', 'data-fill',
-    'densify', 'dissolve', 'dissolve2', 'divide', 'dots', 'each', 'erase',
+    'affine', 'alpha-shapes', 'blend', 'blur', 'buffer', 'calc', 'check-geometry',
+    'classify', 'clean', 'clip', 'cluster', 'contours', 'copy', 'dashlines', 'data-fill',
+    'densify', 'deshadow', 'dissolve', 'dissolve2', 'divide', 'dots', 'each', 'erase',
     'explode', 'filter',
     'filter-detail', 'filter-fields', 'filter-geom', 'filter-islands',
     'filter-islands2', 'filter-points', 'filter-slivers', 'grid', 'grid2',
-    'fuzzy-join', 'ignore', 'inlay', 'innerlines', 'inspect', 'join',
+    'fuzzy-join', 'hillshade', 'ignore', 'inlay', 'innerlines', 'inspect', 'join',
     'lines', 'mosaic', 'points', 'polygons', 'rectangles', 'rename-fields',
-    'repel', 'shapes', 'simplify', 'slice', 'smooth', 'sort', 'split',
-    'split-on-grid', 'stitch', 'style', 'subdivide', 'symbols', 'uniq'
+    'repel', 'shapes', 'sharpen', 'simplify', 'slice', 'smooth', 'sort', 'split',
+    'split-on-grid', 'stitch', 'style', 'subdivide', 'symbols', 'tone', 'uniq'
   ].indexOf(name) > -1;
 }
 
@@ -157,7 +167,7 @@ function commandAcceptsEmptyTarget(name, opts) {
     name == 'include' || name == 'print' || name == 'comment' || name == 'if' || name == 'elif' ||
     name == 'else' || name == 'endif' || name == 'stop' || name == 'add-shape' ||
     name == 'add-label' || name == 'add-layer' ||
-    name == 'scalebar' || name == 'vars' || name == 'defaults';
+    name == 'scalebar' || name == 'vars' || name == 'defaults' || name == 'fetch';
 }
 
 export async function runCommand(command, job) {
@@ -188,7 +198,7 @@ export async function runCommand(command, job) {
   // multi-dataset command does not leave only its final dataset selected.
   if (!command._targetOverride && commandRunsPerTargetDataset(name, opts)) {
     targets = job.catalog.findCommandTargets(opts.target);
-    if (targets.length > 1) {
+    if (targets.length > 1 && !(name == 'blend' && blendDrawsTargets(targets, opts))) {
       validatePerDatasetTargets(name, targets, opts);
       return runCommandOnEachTarget(command, job, targets);
     }
@@ -246,7 +256,7 @@ export async function runCommand(command, job) {
         // target= option sets default target
         job.catalog.setDefaultTarget(targetLayers, targetDataset);
 
-      } else if (targets.length > 1) {
+      } else if (targets.length > 1 && name != 'blend') {
         stop("This command does not support targetting layers from different datasets");
       }
     }
@@ -263,8 +273,8 @@ export async function runCommand(command, job) {
 
     if (Object.prototype.hasOwnProperty.call(command, '_sourceOverride')) {
       source = command._sourceOverride;
-    } else if (opts.source) {
-      source = await findCommandSourceAsync(convertSourceName(opts.source, targets), job.catalog, opts);
+    } else if (opts.source && name != 'fetch') {
+      source = await findSourceForCommand(name, opts, job.catalog, targets);
     }
 
     // identify command target/input (for postprocessing)
@@ -364,11 +374,70 @@ export async function runCommand(command, job) {
     } else if (name == 'colorizer') {
       outputLayers = cmd.colorizer(opts);
 
+    } else if (name == 'copy') {
+      if (opts.name && targetLayers.length > 1) {
+        stop('name= can only be used when copying a single layer');
+      }
+      if (!cmd.copyFrame(job.catalog, targetLayers, targetDataset, opts)) {
+        opts = Object.assign({}, opts, {no_replace: true});
+        outputLayers = cmd.copyLayers(targetLayers);
+      }
+
     // } else if (name == 'comment') {
     //   // no-op
 
     } else if (name == 'contours') {
       outputLayers = applyCommandToEachLayer(cmd.contours, targetLayers, targetDataset, opts);
+
+    } else if (name == 'fetch') {
+      let fetched = await cmd.fetch(job.catalog, targets, opts, job.signal);
+      job.resumeCommand();
+      if (fetched) addFetchedDataset(job.catalog, fetched);
+
+    } else if (name == 'hillshade') {
+      outputLayers = [];
+      for (let lyr of targetLayers) {
+        outputLayers = outputLayers.concat(await cmd.hillshade(lyr, targetDataset, opts, job.resumeCommand));
+      }
+      job.resumeCommand();
+
+    } else if (name == 'sharpen' || name == 'tone') {
+      outputLayers = [];
+      for (let lyr of targetLayers) {
+        outputLayers = outputLayers.concat(cmd[name](lyr, opts));
+      }
+
+    } else if (name == 'blend' && blendDrawsTargets(targets, opts)) {
+      if (!source) stop('-blend requires the name of a hillshade layer');
+      let drawn = getStackedTargetLayers(job.catalog, targets);
+      let out = await cmd.blendDrawnLayers(job.catalog, drawn, source, opts);
+      addDrawnBlendOutput(job.catalog, out, drawn, source, opts);
+
+    } else if (name == 'blend') {
+      if (!source) stop('-blend requires the name of a hillshade layer');
+      outputLayers = [];
+      for (let lyr of targetLayers) {
+        outputLayers = outputLayers.concat(cmd.blend(lyr, targetDataset, source, opts));
+      }
+      if (!opts.no_replace) {
+        removeBlendSource(job.catalog, source);
+      }
+
+    } else if (name == 'deshadow') {
+      let dem = await findLayerOption(opts.dem, job.catalog, targets, opts);
+      let nir = await findLayerOption(opts.nir, job.catalog, targets, opts);
+      if (!dem) stop('-deshadow requires the name of an elevation layer (dem=)');
+      // images that couldn't be relit are left in place
+      outputLayers = [];
+      let relit = [];
+      for (let lyr of targetLayers) {
+        let out = await cmd.deshadow(lyr, targetDataset, dem, nir, opts, job.resumeCommand, job.signal);
+        outputLayers = outputLayers.concat(out);
+        if (out.length > 0) relit.push(lyr);
+      }
+      job.resumeCommand();
+      targetLayers = relit;
+      if (outputLayers.length === 0) outputLayers = null;
 
     } else if (name == 'dashlines') {
       applyCommandToEachLayer(cmd.dashlines, targetLayers, targetDataset, opts);
@@ -493,7 +562,9 @@ export async function runCommand(command, job) {
       outputLayers = applyCommandToEachLayer(cmd.innerlines, targetLayers, arcs, opts);
 
     } else if (name == 'join') {
-      applyCommandToEachLayer(cmd.join, targetLayers, targetDataset, source, opts);
+      for (let lyr of targetLayers) {
+        await cmd.join(lyr, targetDataset, source, opts);
+      }
 
     } else if (name == 'lines') {
       outputLayers = applyCommandToEachLayer(cmd.lines, targetLayers, targetDataset, opts);
@@ -788,21 +859,92 @@ async function runCommandOnEachTarget(command, job, targets) {
 // only read (never merged into the target's topology), so it needs neither a
 // topology merge nor the per-target copies that clip and erase require.
 async function findRepelPolygons(opts, catalog, targets) {
-  if (!opts.polygons) return null;
-  return await findCommandSourceAsync(convertSourceName(opts.polygons, targets), catalog, opts);
+  return await findLayerOption(opts.polygons, catalog, targets, opts);
+}
+
+// A layer named by an option other than source= (a layer or a file), only read
+async function findLayerOption(name, catalog, targets, opts) {
+  if (!name) return null;
+  return await findCommandSourceAsync(convertSourceName(name, targets), catalog, opts, targets);
+}
+
+// -blend merges the hillshade into the target, so the hillshade layer is
+// removed (unless + is used). A source read from a file isn't in the catalog,
+// and with targets in several datasets the layer is gone after the first.
+function removeBlendSource(catalog, source) {
+  var found = catalog.findLayer(source.layer);
+  if (found) catalog.deleteLayer(found.layer, found.dataset);
+}
+
+// -blend draws its targets together on the hillshade's grid if any of them is
+// a vector layer, or if it makes an overlay; otherwise it blends each raster
+// on its own grid
+function blendDrawsTargets(targets, opts) {
+  return !!opts.overlay || targets.some(function(target) {
+    return target.layers.some(function(lyr) { return !layerHasRaster(lyr); });
+  });
+}
+
+// The target layers as [{layer, dataset}], bottom to top
+function getStackedTargetLayers(catalog, targets) {
+  var layers = targets.reduce(function(memo, target) {
+    return memo.concat(target.layers);
+  }, []);
+  return getStackedLayers(catalog).filter(function(o) {
+    return layers.includes(o.layer);
+  });
+}
+
+// The output of -blend with drawn targets goes directly above the topmost of
+// them. Without +, it takes the place of the hillshade, and the targets are
+// removed, unless the output is an overlay, which is drawn on them.
+function addDrawnBlendOutput(catalog, out, drawn, source, opts) {
+  var found = catalog.findLayer(source.layer);
+  var dataset = found ? found.dataset : Object.assign({}, source.dataset, {layers: [out]});
+  if (!found) {
+    // a hillshade read from a file
+    inheritFrameRef(dataset, utils.uniq(utils.pluck(drawn, 'dataset')));
+    catalog.addDataset(dataset);
+  } else if (!opts.no_replace) {
+    replaceLayers(dataset, [source.layer], [out]);
+  } else {
+    noteDatasetWillChange(dataset, {operation: 'appendOutputLayers', command: 'blend'});
+    dataset.layers = dataset.layers.concat(out);
+    markDatasetChanged(dataset, {operation: 'appendOutputLayers', command: 'blend'});
+  }
+  moveLayersInStack(catalog, [out], {above: drawn[drawn.length - 1].layer}, {operation: 'blend'});
+  if (!opts.no_replace && !opts.overlay) {
+    drawn.forEach(function(o) {
+      catalog.deleteLayer(o.layer, o.dataset);
+    });
+  }
+  catalog.setDefaultTarget([out], dataset);
 }
 
 async function resolveSourceForTargets(command, job, targets) {
   job.startCommand(command);
   try {
-    return await findCommandSourceAsync(
-      convertSourceName(command.options.source, targets),
-      job.catalog,
-      command.options
-    );
+    return await findSourceForCommand(command.name, command.options, job.catalog, targets);
   } finally {
     job.endCommand();
   }
+}
+
+// A raster joined to polygons is measured, not displayed, so it is read at
+// full resolution instead of the reduced size used for large rasters, and with
+// the bands that the join uses instead of the display bands -- from the file
+// named in the command, or from the source file of a raster layer. A GeoTIFF
+// is read during the join, a band of rows at a time (row_reader).
+async function findSourceForCommand(name, opts, catalog, targets) {
+  var sourceName = convertSourceName(opts.source, targets);
+  var joinBands = name == 'join' ? getRasterJoinBands(opts) : null;
+  var importOpts = joinBands ?
+    utils.defaults({resolution: 'full', source_bands: joinBands, row_reader: true}, opts) : opts;
+  var source = await findCommandSourceAsync(sourceName, catalog, importOpts, targets);
+  if (joinBands && !opts.keys) {
+    source = await getRasterSourceBands(source, joinBands);
+  }
+  return source;
 }
 
 function sourceNameIsInterpolated(name) {
@@ -870,6 +1012,9 @@ function validatePerDatasetTargets(name, targets, opts) {
     return target.layers.length != 1;
   })) {
     stop('Interpolated names are not compatible with multiple targets.');
+  }
+  if (name == 'copy' && opts.name) {
+    stop('name= can only be used when copying a single layer');
   }
   if (name == 'mosaic' && targets.some(function(target) {
     return target.layers.length != 1;

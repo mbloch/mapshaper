@@ -2,6 +2,7 @@ import {
   parseStringList,
   parseColorList,
   parseNumberList,
+  parseNumberOrPercentList,
   cleanArgv,
   isAssignment,
   splitAssignment
@@ -147,11 +148,10 @@ export function CommandParser() {
         _: []
       };
 
-      while (argv.length > 0 && !tokenLooksLikeCommand(argv[0])) {
-        readOption(cmd, argv, cmdDef);
-      }
-
       try {
+        while (argv.length > 0 && !tokenLooksLikeCommand(argv[0])) {
+          readOption(cmd, argv, cmdDef);
+        }
         if (cmd._.length > 0 && !deferValidate) {
           readDefaultOptionValue(cmd, cmdDef);
         }
@@ -160,7 +160,11 @@ export function CommandParser() {
         }
         delete cmd.options._; // kludge to remove -o placeholder option
       } catch(e) {
-        stop("[" + cmdName + "] " + e.message);
+        // A UserError came from stop(), which the GUI has already logged, so
+        // calling stop() again would print the message twice
+        if (e.name != 'UserError') stop("[" + cmdName + "] " + e.message);
+        e.message = "[" + cmdName + "] " + e.message;
+        throw e;
       }
       return cmd;
     }
@@ -293,6 +297,8 @@ export function CommandParser() {
         val = parseStringList(token);
       } else if (type == 'bbox' || type == 'numbers') {
         val = parseNumberList(token);
+      } else if (type == 'numbers_or_percents') {
+        val = parseNumberOrPercentList(token);
       } else if (type == 'percent') {
         val = token; // string value is parsed by command function
       } else if (type == 'distance' || type == 'area') {

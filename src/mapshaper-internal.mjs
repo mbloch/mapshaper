@@ -117,6 +117,9 @@ import * as ClipPoints from './clipping/mapshaper-point-clipping';
 import * as ColorUtils from './color/color-utils';
 import * as ColorRamps from './color/color-ramps';
 import * as ColorSchemes from './color/color-schemes';
+import * as HypsometricSchemes from './color/hypsometric-schemes';
+import * as BathymetricSchemes from './color/bathymetric-schemes';
+import * as HypsometricClimate from './color/hypsometric-climate';
 import * as Oklab from './color/oklab';
 import * as Colorizer from './commands/mapshaper-colorizer';
 import * as CustomProjections from './crs/mapshaper-custom-projections';
@@ -127,6 +130,7 @@ import * as DataAggregation from './dissolve/mapshaper-data-aggregation';
 import * as Diverging from './classification/mapshaper-diverging';
 import { getSequentialBreaks } from './classification/mapshaper-sequential-classifier';
 import { getInterpolatedValueGetter } from './classification/mapshaper-interpolation';
+import { resolvePercentBreaks } from './classification/mapshaper-percent-breaks';
 import * as DatasetUtils from './dataset/mapshaper-dataset-utils';
 import * as DataUtils from './datatable/mapshaper-data-utils';
 import * as DbfImport from './shapefile/dbf-import';
@@ -183,8 +187,42 @@ import * as RasterBlur from './rasters/mapshaper-raster-blur';
 import * as RasterContourBands from './rasters/mapshaper-raster-contour-bands';
 import * as RasterContours from './rasters/mapshaper-raster-contours';
 import * as RasterGrid from './rasters/mapshaper-raster-grid';
+import * as RasterFill from './rasters/mapshaper-raster-fill';
+import * as RasterMask from './rasters/mapshaper-raster-mask';
+import * as RasterCoverage from './rasters/mapshaper-raster-coverage';
+import * as RasterDisplayBands from './rasters/mapshaper-raster-display-bands';
+import * as RasterSource from './rasters/mapshaper-raster-source';
+import * as RasterSourceBands from './rasters/mapshaper-raster-source-bands';
+import * as BoxBlur from './rasters/mapshaper-box-blur';
+import * as Hillshade from './rasters/mapshaper-hillshade';
+import * as HillshadeCommand from './commands/mapshaper-hillshade';
+import * as HillshadeRunner from './rasters/mapshaper-hillshade-runner';
+import * as HillshadeStages from './rasters/mapshaper-hillshade-stages';
+import * as RasterColor from './rasters/mapshaper-raster-color';
+import * as RasterBlend from './rasters/mapshaper-raster-blend';
+import * as RasterSharpen from './rasters/mapshaper-raster-sharpen';
+import * as Deshadow from './rasters/mapshaper-deshadow';
+import * as ToneCommand from './commands/mapshaper-tone';
+import * as RasterTiles from './rasters/mapshaper-raster-tiles';
+import * as TerrainSmoothing from './rasters/mapshaper-terrain-smoothing';
+import * as WorkerPool from './utils/mapshaper-worker-pool';
+import * as Interrupt from './utils/mapshaper-interrupt';
+import * as ProgressMeter from './utils/mapshaper-progress-meter';
+import * as WebPDecoder from './fetch/mapshaper-webp-decoder';
+import * as Fetch from './commands/mapshaper-fetch';
+import * as FetchSources from './fetch/mapshaper-fetch-sources';
+import * as TileFetch from './fetch/mapshaper-tile-fetch';
+import * as PlanetaryComputer from './fetch/mapshaper-planetary-computer';
+import * as TileMath from './fetch/mapshaper-tile-math';
+import * as ElevationDecoding from './fetch/mapshaper-elevation-decoding';
 import * as RasterReprojection from './rasters/mapshaper-raster-reprojection';
 import * as RasterUtils from './rasters/mapshaper-raster-utils';
+import * as RasterPalette from './rasters/mapshaper-raster-palette';
+import * as RasterClassify from './rasters/mapshaper-raster-classify';
+import * as RasterCategories from './rasters/mapshaper-raster-categories';
+import * as RasterHypsometric from './rasters/mapshaper-raster-hypsometric';
+import * as RasterSeaMask from './rasters/mapshaper-raster-sea-mask';
+import * as VerticalUnits from './rasters/mapshaper-vertical-units';
 import * as Merging from './dataset/mapshaper-merging';
 import * as MosaicIndex from './polygons/mapshaper-mosaic-index';
 import * as OptionParsingUtils from './cli/mapshaper-option-parsing-utils';
@@ -203,6 +241,8 @@ import * as PathImport from './paths/mapshaper-path-import';
 import * as PathRepair from './paths/mapshaper-path-repair-utils';
 import * as PathUtils from './paths/mapshaper-path-utils';
 import * as PointPolygonJoin from './join/mapshaper-point-polygon-join';
+import * as RasterCalc from './join/mapshaper-raster-calc';
+import * as RasterPolygonJoin from './join/mapshaper-raster-polygon-join';
 import * as Points from './commands/mapshaper-points';
 import * as PointUtils from './points/mapshaper-point-utils';
 import * as PolygonDissolve from './dissolve/mapshaper-polygon-dissolve';
@@ -277,6 +317,9 @@ Object.assign(internal,
   ColorUtils,
   ColorRamps,
   ColorSchemes,
+  HypsometricSchemes,
+  BathymetricSchemes,
+  HypsometricClimate,
   Oklab,
   Colorizer,
   CustomProjections,
@@ -285,7 +328,7 @@ Object.assign(internal,
   Narukawa2022,
   DataAggregation,
   Diverging,
-  {getSequentialBreaks, getInterpolatedValueGetter},
+  {getSequentialBreaks, getInterpolatedValueGetter, resolvePercentBreaks},
   DatasetUtils,
   DataUtils,
   DbfImport,
@@ -341,8 +384,42 @@ Object.assign(internal,
   RasterContourBands,
   RasterContours,
   RasterGrid,
+  RasterFill,
+  RasterMask,
+  RasterCoverage,
+  RasterDisplayBands,
+  RasterSource,
+  RasterSourceBands,
+  BoxBlur,
+  Hillshade,
+  HillshadeCommand,
+  HillshadeRunner,
+  HillshadeStages,
+  RasterColor,
+  RasterBlend,
+  RasterSharpen,
+  Deshadow,
+  ToneCommand,
+  RasterTiles,
+  TerrainSmoothing,
+  WorkerPool,
+  Interrupt,
+  ProgressMeter,
+  WebPDecoder,
+  Fetch,
+  FetchSources,
+  TileFetch,
+  PlanetaryComputer,
+  TileMath,
+  ElevationDecoding,
   RasterReprojection,
   RasterUtils,
+  RasterPalette,
+  RasterHypsometric,
+  RasterSeaMask,
+  RasterClassify,
+  RasterCategories,
+  VerticalUnits,
   Merging,
   MosaicIndex,
   OptionParsingUtils,
@@ -361,6 +438,8 @@ Object.assign(internal,
   PathUtils,
   // PixelTransform,
   PointPolygonJoin,
+  RasterCalc,
+  RasterPolygonJoin,
   Points,
   PointToGrid,
   PointUtils,

@@ -17,6 +17,35 @@ describe('mapshaper-add-shape.js', function () {
     });
   })
 
+  it('offsets= adds vertices relative to the previous vertex', async function() {
+    var output = await api.applyCommands('-add-shape coordinates=10,10 offsets=0,10,10,0 -o out.json');
+    assert.deepEqual(JSON.parse(output['out.json']).geometries[0], {
+      type: 'LineString',
+      coordinates: [[10, 10], [10, 20], [20, 20]]
+    });
+  })
+
+  it('offsets= with closed makes a polygon', async function() {
+    var output = await api.applyCommands('-add-shape coordinates=10,10 offsets=0,10,10,0,0,-10 closed -o out.json gj2008');
+    assert.deepEqual(JSON.parse(output['out.json']).geometries[0], {
+      type: 'Polygon',
+      coordinates: [[[10, 10], [10, 20], [20, 20], [20, 10], [10, 10]]]
+    });
+  })
+
+  it('offsets= that return to the start make a polygon', async function() {
+    var output = await api.applyCommands('-add-shape coordinates=10,10,10,20 offsets=10,0,0,-10,-10,0 -o out.json gj2008');
+    assert.deepEqual(JSON.parse(output['out.json']).geometries[0], {
+      type: 'Polygon',
+      coordinates: [[[10, 10], [10, 20], [20, 20], [20, 10], [10, 10]]]
+    });
+  })
+
+  it('offsets= with geojson= is an error', async function() {
+    await assert.rejects(api.applyCommands('-add-shape geojson=\'{"type":"Point","coordinates":[0,0]}\' offsets=1,1 -o out.json'),
+      /offsets= option requires coordinates=/);
+  })
+
   it('Also creates a new layer without + when run as first command', async function() {
     var cmd = '-add-shape coordinates=3.4,-5 -o point.json';
     var output = await api.applyCommands(cmd);

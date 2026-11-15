@@ -137,24 +137,56 @@ test.describe('layers menu with frames', function() {
     await expect(heading).not.toHaveClass(/pinned/);
     await heading.hover();
     await heading.locator('img.black-eye').click();
+    // showing them again takes back the change, so neither is in the history
+    await expect(memberRow(page, 'r1')).toHaveClass(/pinned/);
     await expect.poll(async function() {
-      return (await getSessionCommands(page)).pop();
-    }).toBe('-frame target=f1 show-layers=*');
+      return getVisibilityCommands(page);
+    }).toEqual([]);
     await expect(memberRow(page, 'r3')).toHaveClass(/pinned/);
   });
 
-  test('the selected layer\'s eye hides it from the map without changing the frame', async function({page}) {
+  test('the selected layer\'s eye hides it in the frame, so it stays hidden when deselected', async function({page}) {
     var row = memberRow(page, 'r1');
-    var count;
     await selectLayer(page, 'r1');
-    count = (await getSessionCommands(page)).length;
     await row.hover();
     await row.locator('img.black-eye').click();
     await expect(row).toHaveClass(/invisible/);
-    await expect(row).toHaveClass(/pinned/); // still shown in the frame
-    expect((await getSessionCommands(page)).length).toBe(count);
+    await expect.poll(async function() {
+      return (await getSessionCommands(page)).pop();
+    }).toBe('-frame target=f1 hide-layers=r1');
+    await selectLayer(page, 'r3');
+    expect(await getView(page)).toEqual({frame: 'f1', layers: ['r3']});
+    await expect(row).toHaveClass(/invisible/);
+    await selectLayer(page, 'r1');
+    await row.hover();
     await row.locator('img.black-eye').click();
     await expect(row).not.toHaveClass(/invisible/);
+    await expect.poll(async function() {
+      return getVisibilityCommands(page);
+    }).toEqual([]);
+  });
+
+  test('a run of visibility changes is one command and one undo state, with selection in between',
+      async function({page}) {
+    var before = await getSignature(page);
+    await selectLayer(page, 'r1');
+    await memberRow(page, 'r3').hover();
+    await memberRow(page, 'r3').locator('img.black-eye').click();
+    await expect(memberRow(page, 'r3')).toHaveClass(/invisible/);
+    await selectLayer(page, 'r3');
+    await selectLayer(page, 'r1');
+    await memberRow(page, 'r1').hover();
+    await memberRow(page, 'r1').locator('img.black-eye').click();
+    await expect.poll(async function() {
+      return getVisibilityCommands(page);
+    }).toEqual(['-frame target=f1 hide-layers=*']);
+    await page.evaluate(function() { return window.mapshaper.undoTest.undo(); });
+    await expect.poll(function() { return getSignature(page); }).toBe(before);
+    expect(await getVisibilityCommands(page)).toEqual([]);
+    await page.evaluate(function() { return window.mapshaper.undoTest.redo(); });
+    await expect.poll(async function() {
+      return getVisibilityCommands(page);
+    }).toEqual(['-frame target=f1 hide-layers=*']);
   });
 
   test('clicking a frame\'s heading selects its top layer', async function({page}) {
@@ -164,6 +196,23 @@ test.describe('layers menu with frames', function() {
       return window.mapshaper.undoTest.getState().model.activeLayer;
     })).toBe('r3');
     await expect(page.locator('.frame-properties-popup')).toHaveCount(0);
+  });
+
+  test('clicking a frame\'s heading selects a map layer before a data layer', async function({page}) {
+    // a copy of r3 is in r3's frame; d1 has no geometry, and is on top
+    await runCommand(page, '-copy target=r3 name=d1 -drop geometry target=d1',
+      await getSignature(page));
+    await expect(page.locator('.map-frame-list .frame-section').nth(0)
+      .locator('.frame-members .layer-name').first()).toHaveText('d1');
+    await selectLayer(page, 'r2');
+    await page.locator('.frame-item').filter({hasText: 'f1'}).click();
+    expect(await getActiveLayerName(page)).toBe('r3');
+
+    // with every layer hidden, still a map layer rather than d1's table
+    await runCommand(page, '-frame target=f1 hide-layers=*', await getSignature(page));
+    await selectLayer(page, 'r2');
+    await page.locator('.frame-item').filter({hasText: 'f1'}).click();
+    expect(await getActiveLayerName(page)).toBe('r3');
   });
 
   test('clicking the Layers heading switches to the unframed view', async function({page}) {
@@ -293,6 +342,21 @@ test.describe('frame actions in the layers menu', function() {
     await expect(names).toHaveText(['r3', 'r1']);
   });
 
+  test('dragging a frame\'s heading changes the order of frames', async function({page}) {
+    await runCommand(page, TWO_FRAMES, null);
+    await openLayersPanel(page);
+    var names = page.locator('.frame-section .frame-name');
+    await expect(names).toHaveText(['f1', 'f2']);
+    await dragRow(page, page.locator('.frame-item').filter({hasText: 'f2'}),
+      page.locator('.frame-item').filter({hasText: 'f1'}), 0.25);
+    await expect.poll(async function() {
+      return (await getSessionCommands(page)).pop();
+    }).toBe('-frame target=f2 before=f1');
+    await expect(names).toHaveText(['f2', 'f1']);
+    await page.evaluate(function() { return window.mapshaper.undoTest.undo(); });
+    await expect(names).toHaveText(['f1', 'f2']);
+  });
+
   test('a drop that leaves a frame\'s order as it was runs no command', async function({page}) {
     await runCommand(page, TWO_FRAMES, null);
     await openLayersPanel(page);
@@ -309,7 +373,7 @@ test.describe('frame actions in the layers menu', function() {
     await page.locator('.contextmenu-item').filter({hasText: 'copy frame'}).click();
     await expect.poll(async function() {
       return (await getSessionCommands(page)).pop();
-    }).toBe('-frame target=f1 + name="f1 copy"');
+    }).toBe('-copy target=f1 name="f1 copy"');
     await expect(page.locator('.map-frame-list .frame-section')).toHaveCount(3);
   });
 
@@ -320,7 +384,7 @@ test.describe('frame actions in the layers menu', function() {
     await page.locator('.contextmenu-item').filter({hasText: 'copy frame'}).click();
     await expect.poll(async function() {
       return (await getSessionCommands(page)).pop();
-    }).toBe('-frame target="Frame 1" + name="Frame 2"');
+    }).toBe('-copy target="Frame 1" name="Frame 2"');
   });
 
   test('a new frame is made from the unframed layers, even in frame view', async function({page}) {
@@ -586,10 +650,22 @@ async function getSessionCommands(page) {
   });
 }
 
+async function getVisibilityCommands(page) {
+  return (await getSessionCommands(page)).filter(function(cmd) {
+    return /(hide|show)-layers=/.test(cmd);
+  });
+}
+
 async function selectLayer(page, name) {
   await page.evaluate(function(name) {
     window.mapshaper.undoTest.selectLayer(name);
   }, name);
+}
+
+async function getActiveLayerName(page) {
+  return page.evaluate(function() {
+    return window.mapshaper.undoTest.getState().model.activeLayer;
+  });
 }
 
 async function getView(page) {

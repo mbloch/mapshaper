@@ -12,6 +12,7 @@ import {
 import { getCanvasFillPattern, getCanvasFillEffect } from './gui-canvas-patterns';
 import { compositeGlows, getGlowMargin, getGlowSourceCanvas, MAX_GLOW_MARGIN } from './gui-canvas-glow';
 import { getHighlightWidth, getHandleRadius } from './gui-highlight-width';
+import { getRasterTonePreview, getTonedRasterCanvas } from './gui-raster-tone-preview';
 import {
   previewHasSourcePixels,
   rasterPreviewIsSmoothed
@@ -191,6 +192,8 @@ export function DisplayCanvas() {
     var raster = layer.raster;
     var options = opts || {};
     var preview = null;
+    var tone = getRasterTonePreview(layer);
+    var opacity = internal.getRasterViewOpacity(raster) * (tone && tone.opacity >= 0 ? tone.opacity : 1);
     var bbox, grid, sourcePixels;
     if (layer.gui && layer.gui.dynamic_crs) {
       preview = getCachedRasterReprojectedPreview(layer, _ext);
@@ -202,7 +205,7 @@ export function DisplayCanvas() {
       }
       bbox = preview.bbox;
       if (!preview.pixels || !bbox) return;
-      drawRasterPreview(preview, bbox, preview.sourcePixels);
+      drawRasterPreview(preview, bbox, preview.sourcePixels, tone, opacity);
       if (options.action != 'nav' && options.onViewportPreviewReady) {
         scheduleRasterReprojectedPreview(layer, _ext, options.onViewportPreviewReady);
       }
@@ -224,7 +227,7 @@ export function DisplayCanvas() {
       }
     }
     if (!preview || !preview.pixels || !bbox) return;
-    drawRasterPreview(preview, bbox, sourcePixels);
+    drawRasterPreview(preview, bbox, sourcePixels, tone, opacity);
   };
 
   /*
@@ -593,14 +596,21 @@ export function DisplayCanvas() {
   // sourcePixels: true if one pixel of the preview is one pixel of the raster,
   // so that drawing it as squares shows the data rather than an artifact of
   // whatever it was scaled down to.
-  function drawRasterPreview(preview, bbox, sourcePixels) {
-    var img = getRasterCanvas(preview);
+  // tone: settings previewed by the tone panel (see gui-raster-tone-preview)
+  // opacity: the raster's display opacity, times any being previewed
+  function drawRasterPreview(preview, bbox, sourcePixels, tone, opacity) {
+    var img = tone && tone.opts ? getTonedRasterCanvas(preview, tone) :
+      {canvas: getRasterCanvas(preview), width: preview.width, height: preview.height};
     var t = _ext.getTransform(GUI.getPixelRatio());
+    if (img.width < preview.width) sourcePixels = false; // a reduced copy, while dragging
     var p1 = t.transform(bbox[0], bbox[3]);
     var p2 = t.transform(bbox[2], bbox[1]);
     var magnification = Math.abs(p2[0] - p1[0]) / img.width / GUI.getPixelRatio();
     _ctx.imageSmoothingEnabled = rasterPreviewIsSmoothed(sourcePixels, magnification);
-    _ctx.drawImage(img, p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
+    if (opacity < 1) _ctx.globalAlpha = opacity;
+    _ctx.drawImage(img.canvas, 0, 0, img.width, img.height,
+      p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
+    _ctx.globalAlpha = 1;
   }
 
   // TODO: consider using drawStyledPaths(), which draws paths in batches

@@ -22,6 +22,10 @@ function addCommand(commands, cmd, parseCommand, isStyleProperty) {
 }
 
 function commandCanCull(curr, prev) {
+  // a -target that only selects layers is superseded by the next -target
+  if (curr.type == 'target' || prev.type == 'target') {
+    return curr.type == prev.type && prev.plain;
+  }
   if (curr.type != prev.type || curr.target != prev.target || curr.ids != prev.ids) {
     return false;
   }
@@ -42,6 +46,9 @@ function getCullableCommand(str, parseCommand, isStyleProperty) {
   if (!parsed || parsed.length != 1) return null;
   cmd = parsed[0];
   opts = cmd.options || {};
+  if (cmd.name == 'target') {
+    return {type: 'target', plain: Object.keys(opts).every(function(k) { return k == 'target'; })};
+  }
   if (cmd.name == 'style' || cmd.name == 'svg-style') {
     return getStyleCullInfo(opts, isStyleProperty);
   }

@@ -1,0 +1,480 @@
+import api from '../mapshaper.js';
+import assert from 'assert';
+
+var internal = api.internal;
+
+// A raster layer in a catalog of its own
+// @samples interleaved samples; @bands per pixel
+function makeCatalog(samples, width, height, bands, opts) {
+  var catalog = new internal.Catalog();
+  var o = opts || {};
+  var lyr = {
+    name: o.name || 'img',
+    raster_type: 'grid',
+    raster: {
+      sourceId: 'test',
+      interpretation: o.interpretation || 'image',
+      grid: {
+        width: width,
+        height: height,
+        bands: bands,
+        pixelType: samples instanceof Float32Array ? 'float32' : 'uint8',
+        samples: samples,
+        sampleBands: Array.from({length: bands}, function(v, i) { return i; }),
+        nodata: o.nodata === undefined ? null : o.nodata,
+        bbox: [0, 0, width, height],
+        transform: [1, 0, 0, 0, -1, height]
+      }
+    }
+  };
+  catalog.addDataset({info: {}, layers: [lyr]});
+  return catalog;
+}
+
+async function run(catalog, commands) {
+  var job = new internal.Job(catalog);
+  await internal.runParsedCommands(internal.parseCommands(commands), job);
+  return catalog;
+}
+
+function findLayer(catalog, name) {
+  return catalog.getLayers().find(function(o) { return o.layer.name == name; }).layer;
+}
+
+function oklabL(r, g, b) {
+  return internal.rgbToOklab({r: r, g: g, b: b}).l;
+}
+
+function oklabHue(r, g, b) {
+  var o = internal.rgbToOklab({r: r, g: g, b: b});
+  var h = Math.atan2(o.b, o.a) * 180 / Math.PI;
+  return h < 0 ? h + 360 : h;
+}
+
+var COLORS = [
+  [0, 0, 0], [255, 255, 255], [128, 128, 128], [255, 0, 0], [0, 255, 0], [0, 0, 255],
+  [60, 90, 40], [200, 180, 120], [20, 40, 90], [250, 240, 10], [3, 2, 1]
+];
+
+function colorSamples(colors) {
+  var out = new Uint8Array(colors.length * 3);
+  colors.forEach(function(c, i) { out.set(c, i * 3); });
+  return out;
+}
+
+// @n colors around the hue circle (HSV, moderately saturated), in order of
+// OKLab hue
+function hueCircle(n) {
+  var colors = [];
+  for (var i = 0; i < n; i++) {
+    var h = i * 6 / n, x = 1 - Math.abs(h % 2 - 1), rgb;
+    rgb = h < 1 ? [1, x, 0] : h < 2 ? [x, 1, 0] : h < 3 ? [0, 1, x] :
+      h < 4 ? [0, x, 1] : h < 5 ? [x, 0, 1] : [1, 0, x];
+    colors.push(rgb.map(function(c) { return Math.round(255 * (0.25 + 0.6 * c)); }));
+  }
+  return colors.sort(function(a, b) { return oklabHue(a[0], a[1], a[2]) - oklabHue(b[0], b[1], b[2]); });
+}
+
+describe('mapshaper-raster-color.mjs', function () {
+
+  describe('toneRgbPixels()', function () {
+    it('saturation=1 lightness=1 leaves colors unchanged', function () {
+      var src = colorSamples(COLORS);
+      var out = internal.toneRgbPixels(src, 3, {saturation: 1, lightness: 1});
+      assert.deepEqual(Array.from(out), Array.from(src));
+    })
+
+    it('saturation=0 gives grays of the same OKLCH lightness', function () {
+      var out = internal.toneRgbPixels(colorSamples(COLORS), 3, {saturation: 0, lightness: 1});
+      COLORS.forEach(function(c, i) {
+        var r = out[i * 3], g = out[i * 3 + 1], b = out[i * 3 + 2];
+        assert(Math.abs(r - g) <= 1 && Math.abs(g - b) <= 1, 'gray: ' + [r, g, b]);
+        assert(Math.abs(oklabL(r, g, b) - oklabL(c[0], c[1], c[2])) < 0.005);
+      });
+    })
+
+    it('saturation= keeps hue and lightness', function () {
+      var c = [60, 90, 40];
+      var out = internal.toneRgbPixels(colorSamples([c]), 3, {saturation: 0.5, lightness: 1});
+      var lab1 = internal.rgbToOklab({r: c[0], g: c[1], b: c[2]});
+      var lab2 = internal.rgbToOklab({r: out[0], g: out[1], b: out[2]});
+      assert(Math.abs(lab1.l - lab2.l) < 0.005);
+      assert(Math.abs(lab2.a / lab1.a - 0.5) < 0.05);
+      assert(Math.abs(lab2.b / lab1.b - 0.5) < 0.05);
+    })
+
+    it('lightness= below 1 moves lightness toward black', function () {
+      var out = internal.toneRgbPixels(colorSamples([[200, 180, 120], [255, 255, 255]]), 3,
+        {saturation: 1, lightness: 0.5});
+      assert(Math.abs(oklabL(out[0], out[1], out[2]) - oklabL(200, 180, 120) * 0.5) < 0.005);
+      assert(Math.abs(oklabL(out[3], out[4], out[5]) - 0.5) < 0.005);
+    })
+
+    it('lightness= above 1 moves lightness toward white, without clipping', function () {
+      var src = [[0, 0, 0], [200, 180, 120], [230, 230, 230], [255, 255, 255]];
+      var out = internal.toneRgbPixels(colorSamples(src), 3, {saturation: 1, lightness: 1.5});
+      var white = internal.toneRgbPixels(colorSamples(src), 3, {saturation: 1, lightness: 2});
+      src.forEach(function (c, i) {
+        var L = oklabL(c[0], c[1], c[2]);
+        var L2 = oklabL(out[i * 3], out[i * 3 + 1], out[i * 3 + 2]);
+        assert(Math.abs(L2 - (L + (1 - L) * 0.5)) < 0.005);
+      });
+      assert(oklabL(out[6], out[7], out[8]) < 0.99);
+      assert.deepEqual(Array.from(white), new Array(12).fill(255));
+    })
+
+    it('gamma= bends lightness, keeping black and white', function () {
+      var src = [[0, 0, 0], [90, 110, 70], [255, 255, 255]];
+      var out = internal.toneRgbPixels(colorSamples(src), 3, {saturation: 1, lightness: 1, gamma: 2});
+      var L = oklabL(90, 110, 70);
+      assert.deepEqual(Array.from(out.subarray(0, 3)), [0, 0, 0]);
+      assert.deepEqual(Array.from(out.subarray(6, 9)), [255, 255, 255]);
+      assert(Math.abs(oklabL(out[3], out[4], out[5]) - Math.sqrt(L)) < 0.005);
+    })
+
+    it('the gamma curve runs between the pivots', function () {
+      var src = [[40, 40, 40], [90, 110, 70], [180, 180, 180], [240, 240, 240]];
+      var lo = oklabL(40, 40, 40), hi = oklabL(180, 180, 180);
+      var out = internal.toneRgbPixels(colorSamples(src), 3, {saturation: 1, lightness: 1, gamma: 2, pivots: [lo, hi]});
+      var L = oklabL(90, 110, 70);
+      var expected = lo + (hi - lo) * Math.sqrt((L - lo) / (hi - lo));
+      assert.deepEqual(Array.from(out.subarray(0, 3)), [40, 40, 40]);
+      assert(Math.abs(oklabL(out[3], out[4], out[5]) - expected) < 0.005);
+      assert.deepEqual(Array.from(out.subarray(6, 12)), [180, 180, 180, 240, 240, 240]);
+    })
+
+    it('hue-shift= moves greens toward the default pivot, keeping grays and blues', function () {
+      var src = [[60, 120, 50], [128, 128, 128], [40, 70, 160]];
+      var out = internal.toneRgbPixels(colorSamples(src), 3, {saturation: 1, lightness: 1, hueShift: 1});
+      var hueBefore = oklabHue(60, 120, 50), hueAfter = oklabHue(out[0], out[1], out[2]);
+      assert(hueBefore - hueAfter > 15 && hueAfter > 85);
+      assert(Math.abs(oklabL(out[0], out[1], out[2]) - oklabL(60, 120, 50)) < 0.005);
+      assert.deepEqual(Array.from(out.subarray(3, 6)), [128, 128, 128]);
+      assert(Math.abs(oklabHue(out[6], out[7], out[8]) - oklabHue(40, 70, 160)) < 5);
+    })
+
+    it('hue-shift= keeps hues in order, from -1 to 1', function () {
+      var colors = hueCircle(72);
+      [-1, 1].forEach(function(shift) {
+        var out = internal.toneRgbPixels(colorSamples(colors), 3, {saturation: 1, lightness: 1, hueShift: shift});
+        var hues = [];
+        for (var j = 0; j < out.length; j += 3) hues.push(oklabHue(out[j], out[j + 1], out[j + 2]));
+        var turn = 0;
+        for (j = 0; j < hues.length; j++) {
+          turn += ((hues[(j + 1) % hues.length] - hues[j]) % 360 + 360) % 360;
+        }
+        assert(Math.abs(turn - 360) < 1e-6, 'hues wrap around once at hue-shift=' + shift);
+      });
+    })
+
+    it('gamma= is applied before lightness=', function () {
+      var out = internal.toneRgbPixels(colorSamples([[90, 110, 70]]), 3, {saturation: 1, lightness: 1.5, gamma: 2});
+      var L = Math.sqrt(oklabL(90, 110, 70));
+      assert(Math.abs(oklabL(out[0], out[1], out[2]) - (L + (1 - L) * 0.5)) < 0.005);
+    })
+
+    it('colors outside the gamut lose chroma, keeping lightness', function () {
+      var out = internal.toneRgbPixels(colorSamples([[255, 0, 0], [0, 0, 255]]), 3,
+        {saturation: 3, lightness: 1});
+      assert(Math.abs(oklabL(out[0], out[1], out[2]) - oklabL(255, 0, 0)) < 0.01);
+      assert(out[0] > out[1] && out[0] > out[2]); // still red
+      assert(Math.abs(oklabL(out[3], out[4], out[5]) - oklabL(0, 0, 255)) < 0.01);
+      assert(out[5] > out[3] && out[5] > out[4]); // still blue
+    })
+
+    it('copies alpha', function () {
+      var out = internal.toneRgbPixels(new Uint8Array([60, 90, 40, 77]), 4, {saturation: 0, lightness: 1});
+      assert.equal(out[3], 77);
+    })
+
+    it('writes to an output array, if given one', function () {
+      var src = new Uint8Array([60, 90, 40, 77, 200, 30, 90, 255]);
+      var opts = {saturation: 0.5, lightness: 1.2};
+      var dst = new Uint8ClampedArray(src.length);
+      assert.strictEqual(internal.toneRgbPixels(src, 4, opts, dst), dst);
+      assert.deepEqual(Array.from(dst), Array.from(internal.toneRgbPixels(src, 4, opts)));
+    })
+  })
+
+  describe('applyOpacityAndBackground()', function () {
+    it('opacity= alone gives RGBA', function () {
+      var out = internal.applyOpacityAndBackground(new Uint8Array([10, 20, 30]), 3, 0.4, null);
+      assert.equal(out.bands, 4);
+      assert.deepEqual(Array.from(out.samples), [10, 20, 30, 102]);
+    })
+
+    it('opacity=1 without a background changes nothing', function () {
+      var src = new Uint8Array([10, 20, 30]);
+      assert.equal(internal.applyOpacityAndBackground(src, 3, 1, null).samples, src);
+    })
+
+    it('background= composites, and fills transparent pixels', function () {
+      var src = new Uint8Array([0, 100, 200, 255, 50, 50, 50, 0]);
+      var out = internal.applyOpacityAndBackground(src, 4, 0.4, {r: 255, g: 255, b: 255});
+      assert.equal(out.bands, 3);
+      assert.deepEqual(Array.from(out.samples), [153, 193, 233, 255, 255, 255]);
+    })
+  })
+
+  describe('getToneColorTable(), applyToneColorTable()', function () {
+    // Colors near a random gray, like the colors of imagery. The table is
+    // least accurate at the edge of the gamut, where gamut fitting bends the
+    // mapping between lattice colors.
+    function randomRgba(n, seed) {
+      var out = new Uint8ClampedArray(n * 4);
+      var x = seed;
+      var i, c, base;
+      function rand() {
+        x = (x * 1103515245 + 12345) % 2147483648;
+        return x >> 16 & 255;
+      }
+      for (i = 0; i < out.length; i += 4) {
+        base = rand();
+        for (c = 0; c < 3; c++) out[i + c] = base + rand() % 81 - 40;
+        out[i + 3] = rand();
+      }
+      return out;
+    }
+
+    function rgbOnly(rgba) {
+      var out = new Uint8Array(rgba.length / 4 * 3);
+      for (var i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
+        out[j] = rgba[i]; out[j + 1] = rgba[i + 1]; out[j + 2] = rgba[i + 2];
+      }
+      return out;
+    }
+
+    [
+      {saturation: 1.4, lightness: 1},
+      {saturation: 0.6, lightness: 1.4, contrast: 1.5, gamma: 1.3, pivots: [0.2, 0.8]},
+      {saturation: 1, lightness: 0.7, contrast: 0.6, gamma: 0.7, pivots: [0.3, 0.6]}
+    ].forEach(function(opts) {
+      it('matches toneRgbPixels() ' + JSON.stringify(opts), function () {
+        var src = randomRgba(20000, 7);
+        var table = internal.getToneColorTable(opts);
+        var out = internal.applyToneColorTable(table, src, new Uint8ClampedArray(src.length));
+        var exact = internal.toneRgbPixels(rgbOnly(src), 3, opts);
+        var far = 0, sumErr = 0, err;
+        for (var i = 0, j = 0; i < src.length; i += 4, j += 3) {
+          for (var c = 0; c < 3; c++) {
+            err = Math.abs(out[i + c] - exact[j + c]);
+            if (err > 2) far++;
+            sumErr += err;
+          }
+          assert.equal(out[i + 3], src[i + 3]);
+        }
+        assert(sumErr / exact.length < 0.3, 'mean error ' + sumErr / exact.length);
+        assert(far / exact.length < 0.01, 'more than 2 levels off: ' + far);
+      })
+    })
+
+    it('lattice colors are exact', function () {
+      var opts = {saturation: 1.3, lightness: 1.2};
+      var src = new Uint8ClampedArray([0, 0, 0, 255, 255, 255, 255, 255, 5, 100, 250, 9]);
+      var out = internal.applyToneColorTable(internal.getToneColorTable(opts), src, new Uint8ClampedArray(src.length));
+      var exact = internal.toneRgbPixels(rgbOnly(src), 3, opts);
+      assert.deepEqual(Array.from(rgbOnly(out)), Array.from(exact));
+    })
+
+    it('a coarser table (steps=17) is exact at its lattice and close between', function () {
+      var opts = {saturation: 0.6, lightness: 1.4, contrast: 1.5, gamma: 1.3, pivots: [0.2, 0.8]};
+      var table = internal.getToneColorTable(opts, 17);
+      var lattice = new Uint8ClampedArray([0, 15, 255, 255, 120, 240, 45, 255]);
+      var src = randomRgba(20000, 7);
+      var out = internal.applyToneColorTable(table, lattice, new Uint8ClampedArray(lattice.length));
+      var exact = internal.toneRgbPixels(rgbOnly(lattice), 3, opts);
+      var sumErr = 0;
+      assert.equal(table.size, 18);
+      assert.deepEqual(Array.from(rgbOnly(out)), Array.from(exact));
+      out = internal.applyToneColorTable(table, src, new Uint8ClampedArray(src.length));
+      exact = internal.toneRgbPixels(rgbOnly(src), 3, opts);
+      for (var i = 0, j = 0; i < src.length; i += 4, j += 3) {
+        for (var c = 0; c < 3; c++) sumErr += Math.abs(out[i + c] - exact[j + c]);
+      }
+      assert(sumErr / exact.length < 0.6, 'mean error ' + sumErr / exact.length);
+      assert.throws(function() { internal.getToneColorTable(opts, 16); });
+    })
+  })
+
+})
+
+describe('-tone', function () {
+  it('saturation=0 makes a gray image, in place', async function () {
+    var catalog = await run(makeCatalog(colorSamples([[60, 90, 40], [200, 100, 50]]), 2, 1, 3), '-tone saturation=0');
+    var lyr = findLayer(catalog, 'img');
+    var s = lyr.raster.grid.samples;
+    assert.equal(catalog.getLayers().length, 1);
+    assert.equal(lyr.raster.grid.bands, 3);
+    assert(Math.abs(s[0] - s[1]) <= 1 && Math.abs(s[1] - s[2]) <= 1);
+    assert.equal(lyr.raster.derivation.type, 'tone');
+    assert.equal(lyr.raster.view.recipe.type, 'rgb');
+  })
+
+  it('+ and name= keep the original', async function () {
+    var src = colorSamples([[60, 90, 40]]);
+    var catalog = await run(makeCatalog(src, 1, 1, 3), '-tone + saturation=0 name=gray');
+    assert.deepEqual(Array.from(findLayer(catalog, 'img').raster.grid.samples), [60, 90, 40]);
+    assert(findLayer(catalog, 'gray'));
+  })
+
+  it('gamma= keeps the darkest and lightest grays of the image', async function () {
+    var grays = [];
+    for (var v = 40; v <= 200; v += 2) grays.push([v, v, v]);
+    var catalog = await run(makeCatalog(colorSamples(grays), grays.length, 1, 3), '-tone gamma=1.8');
+    var lyr = findLayer(catalog, 'img');
+    var s = lyr.raster.grid.samples;
+    var mid = grays.length >> 1;
+    assert.deepEqual(Array.from(s.subarray(0, 3)), [40, 40, 40]);
+    assert.deepEqual(Array.from(s.subarray(s.length - 3)), [200, 200, 200]);
+    assert(s[mid * 3] > grays[mid][0] + 10);
+    assert.equal(lyr.raster.derivation.pivots.length, 3);
+  })
+
+  function grayRamp() {
+    var grays = [];
+    for (var v = 40; v <= 200; v += 2) grays.push([v, v, v]);
+    return makeCatalog(colorSamples(grays), grays.length, 1, 3);
+  }
+
+  // grays from @from to @to by @step, with @nBlack black and @nWhite white pixels
+  function grayImage(from, to, step, nBlack, nWhite) {
+    var grays = [];
+    for (var i = 0; i < nBlack; i++) grays.push([0, 0, 0]);
+    for (var v = from; v <= to; v += step) grays.push([v, v, v]);
+    for (i = 0; i < nWhite; i++) grays.push([255, 255, 255]);
+    return makeCatalog(colorSamples(grays), grays.length, 1, 3);
+  }
+
+  it('applyContrast() keeps the center, has slope k there, and stays in 0-1', function () {
+    [0.3, 0.5, 0.75].forEach(function(c) {
+      [0, 0.33, 1, 2, 5].forEach(function(k) {
+        var d = 1e-6, prev = -1;
+        assert(Math.abs(internal.applyContrast(c, k, c) - c) < 1e-12);
+        assert(Math.abs((internal.applyContrast(c + d, k, c) - internal.applyContrast(c - d, k, c)) / (2 * d) - k) < 1e-4);
+        for (var L = 0; L <= 1; L += 0.01) {
+          var L2 = internal.applyContrast(L, k, c);
+          assert(L2 >= 0 && L2 <= 1 + 1e-12 && L2 >= prev - 1e-12);
+          prev = L2;
+        }
+        if (k > 1) {
+          assert(Math.abs(internal.applyContrast(0, k, c)) < 1e-12);
+          assert(Math.abs(internal.applyContrast(1, k, c) - 1) < 1e-12);
+        }
+      });
+    });
+  })
+
+  it('contrast= centers on the median, kept within 0.25-0.75', function () {
+    assert.equal(internal.getContrastCenter([0.1, 0.9, 0.4]), 0.4);
+    assert.equal(internal.getContrastCenter([0.1, 0.99, 0.95]), 0.75);
+    assert.equal(internal.getContrastCenter([0.01, 0.6, 0.05]), 0.25);
+    assert.equal(internal.getContrastCenter([0.2, 0.8]), 0.5);
+  })
+
+  it('contrast= below 1 moves black and white toward the center too', async function () {
+    var catalog = await run(grayImage(40, 200, 2, 3, 3), '-tone contrast=0.5');
+    var lyr = findLayer(catalog, 'img');
+    var d = lyr.raster.derivation, s = lyr.raster.grid.samples;
+    var c = d.contrast_center;
+    assert.equal(d.pivots.length, 3);
+    assert.equal(c, internal.getContrastCenter(d.pivots));
+    assert(Math.abs(oklabL(s[0], s[1], s[2]) - c * 0.5) < 0.005); // black
+    assert(Math.abs(oklabL(s[s.length - 3], s[s.length - 2], s[s.length - 1]) - (c + (1 - c) * 0.5)) < 0.005); // white
+    for (var i = 3; i < s.length; i += 3) assert(s[i] >= s[i - 3]);
+  })
+
+  it('contrast= above 1 spreads midtones when the pivots are at black and white', async function () {
+    // like a snow scene: the 1st and 99th percentiles are black and white
+    var src = grayImage(100, 140, 2, 30, 30);
+    var s0 = findLayer(src, 'img').raster.grid.samples.slice();
+    var catalog = await run(src, '-tone contrast=2');
+    var lyr = findLayer(catalog, 'img');
+    var s = lyr.raster.grid.samples;
+    var first = 30 * 3, last = s.length - 31 * 3;
+    var before = oklabL(s0[last], s0[last], s0[last]) - oklabL(s0[first], s0[first], s0[first]);
+    var after = oklabL(s[last], s[last], s[last]) - oklabL(s[first], s[first], s[first]);
+    assert.deepEqual(lyr.raster.derivation.pivots.slice(0, 2), [0, 1]);
+    // 2x at the center, easing off toward the ends of the ramp
+    assert(after > before * 1.6, before + ' -> ' + after);
+    assert.deepEqual(Array.from(s.subarray(0, 3)), [0, 0, 0]);
+    assert.deepEqual(Array.from(s.subarray(s.length - 3)), [255, 255, 255]);
+    for (var i = 3; i < s.length; i += 3) assert(s[i] >= s[i - 3]);
+  })
+
+  it('contrast=0 is flat at the center', async function () {
+    var lyr = findLayer(await run(grayImage(40, 200, 2, 3, 3), '-tone contrast=0'), 'img');
+    var s = lyr.raster.grid.samples;
+    for (var i = 3; i < s.length; i++) assert(Math.abs(s[i] - s[0]) <= 1);
+  })
+  it('hue-pivot= takes a color or a hue angle', async function () {
+    var green = [[60, 120, 50]];
+    var byColor = await run(makeCatalog(colorSamples(green), 1, 1, 3), '-tone hue-shift=1 hue-pivot=#4a6fa5');
+    var byAngle = await run(makeCatalog(colorSamples(green), 1, 1, 3), '-tone hue-shift=1 hue-pivot=200');
+    var lyr = findLayer(byColor, 'img');
+    var s = lyr.raster.grid.samples;
+    var s2 = findLayer(byAngle, 'img').raster.grid.samples;
+    assert(oklabHue(s[0], s[1], s[2]) > oklabHue(60, 120, 50) + 15);
+    assert(oklabHue(s2[0], s2[1], s2[2]) > oklabHue(60, 120, 50) + 15);
+    assert(Math.abs(lyr.raster.derivation.hue_pivot - oklabHue(0x4a, 0x6f, 0xa5)) < 0.1);
+  })
+
+  it('opacity= and background=', async function () {
+    var catalog = await run(makeCatalog(colorSamples([[0, 100, 200]]), 1, 1, 3), '-tone opacity=0.4 background=white');
+    var grid = findLayer(catalog, 'img').raster.grid;
+    assert.equal(grid.bands, 3);
+    assert.deepEqual(Array.from(grid.samples), [153, 193, 233]);
+  })
+
+  it('opacity= without a background makes the image transparent', async function () {
+    var catalog = await run(makeCatalog(colorSamples([[0, 100, 200]]), 1, 1, 3), '-tone opacity=0.5');
+    var grid = findLayer(catalog, 'img').raster.grid;
+    assert.equal(grid.bands, 4);
+    assert.equal(grid.samples[3], 128);
+  })
+
+  it('grayscale images stay gray, with one band', async function () {
+    var gray = new Uint8Array([20, 80, 140, 200]);
+    var catalog = await run(makeCatalog(gray, 2, 2, 1), '-tone lightness=1.3 contrast=1.5');
+    var raster = findLayer(catalog, 'img').raster;
+    var out = Array.from(raster.grid.samples);
+    var rgb = await run(makeCatalog(colorSamples([[20, 20, 20], [80, 80, 80], [140, 140, 140], [200, 200, 200]]), 2, 2, 3),
+      '-tone lightness=1.3 contrast=1.5');
+    var rgbOut = findLayer(rgb, 'img').raster.grid.samples;
+    assert.equal(raster.grid.bands, 1);
+    assert.equal(raster.view.recipe.type, 'gray');
+    assert.deepEqual(out, [0, 1, 2, 3].map(function(i) { return rgbOut[i * 3]; }));
+    assert.notDeepEqual(out, Array.from(gray));
+  })
+
+  it('grayscale images with opacity= become RGBA, and with background= RGB', async function () {
+    var transparent = await run(makeCatalog(new Uint8Array([100]), 1, 1, 1), '-tone opacity=0.5');
+    var filled = await run(makeCatalog(new Uint8Array([100]), 1, 1, 1), '-tone background=red opacity=0.5');
+    assert.deepEqual(Array.from(findLayer(transparent, 'img').raster.grid.samples), [100, 100, 100, 128]);
+    assert.deepEqual(Array.from(findLayer(filled, 'img').raster.grid.samples), [178, 50, 50]);
+  })
+
+  it('grayscale images have no saturation or hue', async function () {
+    await assert.rejects(run(makeCatalog(new Uint8Array([100]), 1, 1, 1), '-tone saturation=0'),
+      /saturation= does not apply to grayscale images/);
+    await assert.rejects(run(makeCatalog(new Uint8Array([100]), 1, 1, 1), '-tone hue-shift=0.2'),
+      /hue-shift= does not apply/);
+  })
+
+  it('an 8-bit data raster is not a grayscale image', async function () {
+    await assert.rejects(run(makeCatalog(new Uint8Array([1, 2]), 2, 1, 1, {interpretation: 'categorical'}), '-tone lightness=1.2'),
+      /use -classify or -hillshade/);
+  })
+
+  it('errors', async function () {
+    await assert.rejects(run(makeCatalog(new Float32Array([1, 2]), 2, 1, 1, {interpretation: 'continuous'}), '-tone saturation=0'), /use -classify or -hillshade/);
+    await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone opacity=2'), /opacity= should be from 0 to 1/);
+    await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone saturation=-1'), /saturation= should be 0 or more/);
+    await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone lightness=2.5'), /lightness= should be from 0 to 2/);
+    await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone gamma=0'), /gamma= should be a positive number/);
+    await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone contrast=-1'), /contrast= should be 0 or more/);
+    await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone hue-shift=2'), /hue-shift= should be from -1 to 1/);
+    await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone hue-shift=0.5 hue-pivot=gray'), /needs a color with a hue/);
+    await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone hue-shift=0.5 hue-pivot=nocolor'), /Unsupported hue-pivot=/);
+    await assert.rejects(run(makeCatalog(colorSamples([[1, 2, 3]]), 1, 1, 3), '-tone background=nocolor'), /background=/);
+  })
+})

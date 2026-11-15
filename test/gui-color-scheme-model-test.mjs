@@ -837,11 +837,11 @@ describe('gui-color-scheme-model.mjs', function() {
       var lyr = makeTestLayer();
       var seq = setSchemeContinuous(getDefaultScheme('change'), true);
       assert.equal(formatSchemeCommand(seq, ['#000000', '#ffffff']),
-        "-classify field='change' method=quantile classes=4 continuous interpolation=oklch colors=#000000,#ffffff");
+        "-classify field='change' method=quantile classes=4 continuous colors=#000000,#ffffff");
       assert.equal(formatSchemeCommand(diverging(lyr), ['#000000']),
-        "-classify field='change' method=quantile pivot=auto classes=7 no-pivot-class continuous interpolation=oklch colors=#000000");
+        "-classify field='change' method=quantile pivot=auto classes=7 no-pivot-class continuous colors=#000000");
       assert.equal(formatSchemeCommand(setSchemeNeutral(diverging(lyr), true), ['#000000']),
-        "-classify field='change' method=quantile pivot=auto classes=7 pivot-class continuous interpolation=oklch colors=#000000");
+        "-classify field='change' method=quantile pivot=auto classes=7 pivot-class continuous colors=#000000");
     });
 
     it('the command colors the features as the tiles show them', async function() {
@@ -940,7 +940,7 @@ describe('gui-color-scheme-model.mjs', function() {
         "-classify field='change' method=breaks breaks=-12.5,20,42.5 colors=#000000");
       scheme = setSchemeBreak(setSchemeContinuous(sequential(), true), lyr, 1, 20);
       assert.equal(formatSchemeCommand(scheme, ['#000000']),
-        "-classify field='change' method=breaks breaks=-12.5,20,42.5 continuous interpolation=oklch colors=#000000");
+        "-classify field='change' method=breaks breaks=-12.5,20,42.5 continuous colors=#000000");
     });
 
     it('a continuous scheme edits the stops between the min and the max', function() {
@@ -1075,6 +1075,12 @@ describe('gui-color-scheme-model.mjs', function() {
       assert.equal(round3(log.toValue(0.5)), 10);
       assert.equal(log.toPos(-1), 0);
       assert.equal(getBreaksScale(5, 5, false).toPos(5), 0.5);
+      // a range from 0: three powers of ten above a thousandth of it
+      var log0 = getBreaksScale(0, 1000, true);
+      assert.equal(log0.toPos(0), 0);
+      assert.equal(round3(log0.toPos(9)), round3(1 / 3));
+      assert.equal(round3(log0.toValue(1)), 1000);
+      assert.equal(round3(getBreaksScale(-100, 900, true).toPos(-91)), round3(1 / 3));
       assert.deepEqual(getHistogram([0, 10, 49, 50, 100], linear, 2), [3, 2]);
     });
   });

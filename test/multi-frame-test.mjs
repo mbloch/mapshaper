@@ -206,6 +206,27 @@ describe('multiple map frames', function() {
         '-frame target=f1 order-layers=a,b above=a'), /names a layer that is being moved/);
     });
 
+    it('before= and after= change the order of frames', async function() {
+      var frames = boxes + '-frame target=a width=200 name=f1 -frame target=b width=200 name=f2 ' +
+        '-frame target=c width=200 name=f3 ';
+      var frameNames = function(catalog) {
+        return I.getFrames(catalog).map(function(o) { return o.layer.name; });
+      };
+      var catalog = await run(frames + '-frame target=f3 before=f1');
+      assert.deepEqual(frameNames(catalog), ['f3', 'f1', 'f2']);
+      assert.deepEqual(stackOf(catalog, 'f3'), ['c']);
+      catalog = await run(frames + '-frame target=f1 after=f3');
+      assert.deepEqual(frameNames(catalog), ['f2', 'f3', 'f1']);
+    });
+
+    it('rejects before= or after= naming the frame being moved', async function() {
+      await assert.rejects(run(boxes + '-frame target=a width=200 name=f1 ' +
+        '-frame target=b width=200 name=f2 -frame target=f1 before=f1'),
+        /names the frame that is being moved/);
+      await assert.rejects(run(boxes + '-frame target=a width=200 name=f1 ' +
+        '-frame target=f1 after=f9'), /Unknown frame: f9/);
+    });
+
     it('rejects add-layers= with order-layers=', async function() {
       await assert.rejects(run(boxes + '-frame target=a,b width=200 name=f1 ' +
         '-frame target=f1 add-layers=c order-layers=a'), /cannot be used together/);
@@ -328,6 +349,51 @@ describe('multiple map frames', function() {
       var layer = catalog.findLayers('f2:b')[0].layer;
       assert.equal(layer.data.getRecords()[0].copy, 1);
       assert.equal(catalog.findLayers('f1:b')[0].layer.data.getRecords()[0].copy, undefined);
+    });
+
+    describe('a layer named by an option, like source=', function() {
+      function targetsOf(catalog, pattern) {
+        return I.groupLayersByDataset(catalog.findLayers(pattern));
+      }
+
+      it('a name repeated in other frames resolves to the targets\' frame', async function() {
+        var catalog = await run(twoFrames);
+        var found = catalog.findSingleLayer('b', targetsOf(catalog, 'f2:a'));
+        assert.equal(found.layer, catalog.findLayers('f2:b')[0].layer);
+      });
+
+      it('a name that is unique in the project is found outside the frame', async function() {
+        var catalog = await run(twoFrames);
+        var found = catalog.findSingleLayer('c', targetsOf(catalog, 'f2:a'));
+        assert.equal(found.layer, findLayer(catalog, 'c').layer);
+      });
+
+      it('a name is still ambiguous for targets in different frames', async function() {
+        var catalog = await run(twoFrames);
+        assert.throws(function() {
+          catalog.findSingleLayer('b', targetsOf(catalog, 'f1:a,f2:a'));
+        }, /Ambiguous pattern.*use one of: f1:b, f2:b/);
+      });
+
+      it('a name is still ambiguous without targets', async function() {
+        var catalog = await run(twoFrames);
+        assert.throws(function() {
+          catalog.findSingleLayer('b');
+        }, /Ambiguous pattern/);
+      });
+
+      it('a name is still ambiguous if no match is in the targets\' frame', async function() {
+        var catalog = await run(twoFrames + '-frame target=c width=200 name=f3');
+        assert.throws(function() {
+          catalog.findSingleLayer('b', targetsOf(catalog, 'c'));
+        }, /Ambiguous pattern/);
+      });
+
+      it('source= picks the layer in the target\'s frame', async function() {
+        var catalog = await run(twoFrames + '-each target=f2:b "tag=\'f2\'" ' +
+          '-join target=f2:a source=b fields=tag');
+        assert.equal(catalog.findLayers('f2:a')[0].layer.data.getRecords()[0].tag, 'f2');
+      });
     });
   });
 

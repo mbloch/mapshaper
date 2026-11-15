@@ -20,10 +20,13 @@ import {
   addUndoTransactionToHistory,
   createUndoTransaction
 } from './gui-app-undo';
+import { FrameVisibilityRuns } from './gui-frame-visibility-runs';
+import { layerHasPaletteRaster } from './gui-raster-band-values';
 
 export function LayerControl(gui) {
   var model = gui.model;
   var map = gui.map;
+  var frameVisibility = new FrameVisibilityRuns(gui);
   var el = gui.container.findChild(".layer-control").hide();
   var btn = gui.container.findChild('.layer-control-btn');
   var headerBtn = btn.findChild('.active-layer-label');
@@ -72,8 +75,10 @@ export function LayerControl(gui) {
   // layer repositioning
   var dragTargetId = null;
   var dragging = false;
+  var draggingFrame = false;
   var layerOrderSlug;
-  var pendingMove = null; // {drag, drop, above}: a drop in another section
+  // {drag, drop, above}: a drop in another section, or of a frame
+  var pendingMove = null;
 
   headerBtn.on('click', function() {
     toggle();
@@ -116,8 +121,19 @@ export function LayerControl(gui) {
     // re-render is wasteful and makes the panel's icons flicker.
     var flags = e.flags || {};
     if (flags.simplify_amount || flags.redraw_only) return;
+    showSelectedLayerIfShownInFrame();
     if (isOpen) render();
   });
+
+  // Hiding the selected layer in a frame also hides it in the frame; if the
+  // frame shows it again (e.g. after undo), so does the map
+  function showSelectedLayerIfShownInFrame() {
+    var active = model.getActiveLayer();
+    if (!active || !active.layer.hidden || active.layer.frame_hidden) return;
+    if (!internal.getFrameForDataset(model, active.dataset)) return;
+    active.layer.hidden = false;
+    map.redraw();
+  }
 
   el.on('mouseup', function() {
     var move = pendingMove;
@@ -181,6 +197,7 @@ export function LayerControl(gui) {
     clearClass('insert-above');
     clearClass('insert-below');
     dragTargetId = layerOrderSlug = pendingMove = null;
+    draggingFrame = false;
     if (dragging) {
       renderLayerList(); // in case menu changed...
       dragging = false;
@@ -202,6 +219,16 @@ export function LayerControl(gui) {
     } else {
       insertLayer(drag, drop, above);
     }
+  }
+
+  // A frame is dropped on another frame's section, ahead of that frame or
+  // after it; the frames' order is changed when the mouse button is released
+  function dragFrameOver(dragId, dropId, above) {
+    var drag = findLayerById(dragId);
+    var drop = findLayerById(dropId);
+    pendingMove = null;
+    if (!drag || !drop || drag.dataset == drop.dataset) return;
+    pendingMove = {drag: drag, drop: drop, above: above};
   }
 
   function isFrameEntry(o) {
@@ -229,7 +256,11 @@ export function LayerControl(gui) {
     var fromFrame = internal.getFrameForDataset(model, drag.dataset);
     var toFrame = isFrameEntry(drop) ? drop : internal.getFrameForDataset(model, drop.dataset);
     var position;
-    if (toFrame) {
+    if (isFrameEntry(drag)) {
+      if (frameDropLeavesOrder(move)) return;
+      runFrameCommand(drag, (move.above ? 'before=' : 'after=') +
+        internal.formatOptionValue(drop.layer.name));
+    } else if (toFrame) {
       position = isFrameEntry(drop) ? 'top' :
         (move.above ? 'above=' : 'below=') + getMemberRef(toFrame, drop.layer);
       if (fromFrame && fromFrame.dataset == toFrame.dataset) {
@@ -256,6 +287,12 @@ export function LayerControl(gui) {
     if (isFrameEntry(move.drop)) return i === 0;
     // members are listed top first, so "above" is the previous entry
     return members[move.above ? i + 1 : i - 1] == move.drop.layer;
+  }
+
+  function frameDropLeavesOrder(move) {
+    var frames = internal.getFrames(model).map(function(o) { return o.dataset; });
+    var i = frames.indexOf(move.drag.dataset);
+    return frames[move.above ? i + 1 : i - 1] == move.drop.dataset;
   }
 
   function insertLayer(dragLyr, dropLyr, above) {
@@ -362,6 +399,7 @@ export function LayerControl(gui) {
         .classed('active-section', inView)
         .classed('inactive-section', !inView)
         .appendTo(frameList);
+      section.node().dataset.frameMenuId = g.frame.layer.menu_id;
       var members = El('div').addClass('frame-members');
       section.appendChild(getLayerEntry(g.frame, {
         frame: true,
@@ -404,8 +442,7 @@ export function LayerControl(gui) {
       element = cache.use(html);
     } else {
       element = El('div').html(html).firstChild();
-      // A frame is not in the layer stack, so its entry can't be dragged
-      initMouseEvents(element, o.layer.menu_id, opts.pinnable, !opts.frame);
+      initMouseEvents(element, o.layer.menu_id, opts.pinnable, !!opts.frame);
       cache.add(html, element);
     }
     return element;
@@ -458,33 +495,37 @@ export function LayerControl(gui) {
     return html;
   }
 
-  // A frame is not in the layer stack, so its entry can't be dragged to reorder
-  function initMouseEvents(entry, id, pinnable, draggable) {
+  function initMouseEvents(entry, id, pinnable, isFrameHeading) {
     entry.on('mouseover', init);
     entry.on('focusin', init);
     function init() {
       entry.removeEventListener('mouseover', init);
       entry.removeEventListener('focusin', init);
-      initMouseEvents2(entry, id, pinnable, draggable);
+      initMouseEvents2(entry, id, pinnable, isFrameHeading);
     }
   }
 
-  // A frame's heading can't be dragged, but a layer can be dropped on it,
-  // which puts the layer on top of the frame's layers
+  // A layer dropped on a frame's heading goes on top of the frame's layers.
+  // A frame's heading is dragged to change the order of frames: it is dropped
+  // on another frame's section, and goes ahead of that frame if dropped on
+  // the upper half of the section, after it if on the lower half.
   function initLayerDragging(entry, id, isFrameHeading) {
 
     // support layer drag-drop
-    // A drag starts with a press on a layer row, not with a held button
-    // entering one, so a press elsewhere (e.g. on the frame) can't reorder layers
-    if (!isFrameHeading) {
-      entry.on('mousedown', function(e) {
-        if (e.button !== 0) return;
-        if (pendingMove) stopDragging(); // its mouseup was missed
-        dragTargetId = id;
-      });
-    }
+    // A drag starts with a press on a row, not with a held button entering
+    // one, so a press elsewhere can't reorder layers
+    entry.on('mousedown', function(e) {
+      if (e.button !== 0) return;
+      if (pendingMove) stopDragging(); // its mouseup was missed
+      dragTargetId = id;
+      draggingFrame = isFrameHeading;
+    });
     entry.on('mousemove', function(e) {
       var rect, insertionClass;
+      if (e.buttons && dragTargetId && draggingFrame) {
+        dragFrameOverEntry(e);
+        return;
+      }
       // A move without the button pressed ends a drag whose mouseup was
       // missed. macOS can send one just before the mouseup that ends a drag,
       // so a drop that is ready is left for the mouseup.
@@ -514,11 +555,36 @@ export function LayerControl(gui) {
         dragOver(dragTargetId, id, insertionClass == 'insert-above');
       }
     });
+
+    function dragFrameOverEntry(e) {
+      var section = entry.node().closest('.frame-section');
+      var dropId = section ? section.dataset.frameMenuId : null;
+      var rect, insertionClass;
+      if (dragTargetId == id) entry.addClass('drag-target');
+      if (!dropId || dropId == dragTargetId) {
+        clearFrameDropTarget();
+        return;
+      }
+      dragging = true;
+      rect = section.getBoundingClientRect();
+      insertionClass = e.clientY - rect.top < rect.height / 2 ? 'insert-above' : 'insert-below';
+      if (!section.classList.contains(insertionClass)) {
+        clearFrameDropTarget();
+        section.classList.add(insertionClass);
+        dragFrameOver(dragTargetId, dropId, insertionClass == 'insert-above');
+      }
+    }
   }
 
-  function initMouseEvents2(entry, id, pinnable, draggable) {
+  function clearFrameDropTarget() {
+    clearClass('insert-above');
+    clearClass('insert-below');
+    pendingMove = null;
+  }
+
+  function initMouseEvents2(entry, id, pinnable, isFrameHeading) {
     var moreBtn = entry.findChild('.more-btn');
-    initLayerDragging(entry, id, !draggable);
+    initLayerDragging(entry, id, isFrameHeading);
 
     function deleteLayer() {
       var target = findLayerById(id);
@@ -552,18 +618,14 @@ export function LayerControl(gui) {
     }
 
     // Duplicate a layer by running an equivalent command, so the copy is
-    // recorded in session history and can be undone. Uses '-filter true +'
-    // to append a copy without replacing the source, keeps the same name
-    // (if any), and targets the source layer explicitly so the menu works on
-    // layers that aren't currently active. The '+' output becomes the new
-    // default target, which selects the copy as the active layer.
+    // recorded in session history and can be undone. Targets the source layer
+    // explicitly so the menu works on layers that aren't currently active.
+    // The copy becomes the new default target, which selects it as the
+    // active layer.
     function duplicateLayer() {
       var target = findLayerById(id);
-      var parts = ['-filter true +'];
+      var parts = ['-copy'];
       if (!target) return;
-      if (target.layer.name) {
-        parts.push('name=' + internal.formatOptionValue(target.layer.name));
-      }
       if (!map.isActiveLayer(target.layer)) {
         parts.push('target=' +
           internal.formatOptionValue(internal.getLayerTargetId(model, target.layer)));
@@ -600,7 +662,7 @@ export function LayerControl(gui) {
       } else if (map.isActiveLayer(lyr)) {
         lyr.hidden = false;
       } else if (frame && lyr.frame_hidden) {
-        runFrameCommand(frame, 'show-layers=' + getMemberRef(frame, lyr), function() {
+        frameVisibility.setLayersHidden(frame, [lyr], false, function() {
           map.zoomToLayer(lyr);
         });
         return;
@@ -652,6 +714,14 @@ export function LayerControl(gui) {
       var target = findLayerById(id);
       var tool;
       if (!target) return;
+      if (layerCanBeToned(target.layer) || layerHasPaletteRaster(target.layer)) {
+        if (!map.isActiveLayer(target.layer)) {
+          target.layer.hidden = false;
+          model.selectLayer(target.layer, target.dataset);
+        }
+        gui.interaction.setMode(layerCanBeToned(target.layer) ? 'tone' : 'palette');
+        return;
+      }
       tool = getLayerAnnotationTool(target.layer);
       if (tool == 'label') {
         // The point style panel can only restyle a label layer; the label tool
@@ -708,9 +778,14 @@ export function LayerControl(gui) {
           menuEvent.zoomToLayer = zoomToLayer;
         }
       }
-      if (!isFrame && target && layerCanBeStyled(target.layer)) {
+      if (!isFrame && target && (layerCanBeStyled(target.layer) || layerCanBeToned(target.layer) ||
+          layerHasPaletteRaster(target.layer))) {
         menuEvent.styleLayer = styleLayer;
-        if (getLayerAnnotationTool(target.layer) == 'label') {
+        if (layerCanBeToned(target.layer)) {
+          menuEvent.styleLayerName = 'adjust colors';
+        } else if (layerHasPaletteRaster(target.layer)) {
+          menuEvent.styleLayerName = 'color palette';
+        } else if (getLayerAnnotationTool(target.layer) == 'label') {
           menuEvent.styleLayerName = 'style/edit labels';
         } else if (getLayerAnnotationTool(target.layer) == 'symbols') {
           menuEvent.styleLayerName = 'style/edit symbols';
@@ -744,11 +819,14 @@ export function LayerControl(gui) {
           return;
         }
         if (frame && active) {
-          // as in the Layers section, the selected layer is hidden from the
-          // map for the moment, without changing the frame
+          // The selected layer is always drawn, so it is hidden from the map
+          // with lyr.hidden; it is also hidden in the frame, so it stays hidden
+          // after another layer is selected (like unpinning in the Layers
+          // section)
           lyr.hidden = !lyr.hidden;
           entry.classed('invisible', lyr.hidden);
           map.redraw();
+          if (lyr.hidden != !!lyr.frame_hidden) toggleFrameVisibility(target, frame);
           return;
         }
         if (frame) {
@@ -827,17 +905,17 @@ export function LayerControl(gui) {
   // them all. As with the Layers section's eye, the selected layer stays on
   // the map either way.
   function toggleAllFrameLayers(frame) {
-    var anyHidden = internal.getFrameMemberLayers(model, frame).some(function(o) {
+    var members = internal.getFrameMemberLayers(model, frame);
+    var anyHidden = members.some(function(o) {
       return o.layer.frame_hidden;
     });
-    runFrameCommand(frame, (anyHidden ? 'show-layers=' : 'hide-layers=') + '*');
+    frameVisibility.setLayersHidden(frame, members.map(function(o) { return o.layer; }), !anyHidden);
   }
 
   // Hiding a frame's layer is part of the map, so it is a command, recorded
-  // in the session and undoable, unlike pinning
+  // in the session and undoable, unlike pinning (see FrameVisibilityRuns)
   function toggleFrameVisibility(target, frame) {
-    var option = target.layer.frame_hidden ? 'show-layers=' : 'hide-layers=';
-    runFrameCommand(frame, option + getMemberRef(frame, target.layer));
+    frameVisibility.setLayersHidden(frame, [target.layer], !target.layer.frame_hidden);
   }
 
   // Items for a frame's menu: copy the frame; and for a frame without
@@ -849,8 +927,10 @@ export function LayerControl(gui) {
     });
     var visible = getVisibleUnframedLayers();
     var actions = [{label: 'copy frame', run: function() {
-      runFrameCommand(frame, '+ name=' +
-        internal.formatOptionValue(getFrameCopyName(model, frame.layer.name)));
+      runGuiEditCommand(gui, '-copy target=' +
+        internal.formatOptionValue(internal.getLayerTargetId(model, frame.layer)) +
+        ' name=' + internal.formatOptionValue(getFrameCopyName(model, frame.layer.name)),
+        {title: 'Copy frame'});
     }}];
     if (group && group.members.length === 0 && visible.length > 0) {
       actions.push({label: 'move visible layers into frame', run: function() {
@@ -947,7 +1027,9 @@ export function LayerControl(gui) {
   }
 
   // The active frame follows the selected layer, so a frame is shown by
-  // selecting one of its layers: the top one that is not hidden
+  // selecting one of its layers: the top one that is on the map, or else one
+  // that could be. A data-only layer is picked last, since selecting it shows
+  // its table instead of the frame.
   function activateFrame(frame) {
     var active = model.getActiveFrame();
     var members, pick;
@@ -955,7 +1037,9 @@ export function LayerControl(gui) {
     members = getLayerMenuGroups(model).frames.find(function(g) {
       return g.frame.dataset == frame.dataset;
     }).members;
-    pick = members.find(function(o) { return !o.layer.frame_hidden; }) || members[0];
+    pick = members.find(function(o) { return layerHasViewableContent(o.layer) && !o.layer.frame_hidden; }) ||
+      members.find(function(o) { return layerHasViewableContent(o.layer); }) ||
+      members.find(function(o) { return !o.layer.frame_hidden; }) || members[0];
     if (pick) model.selectLayer(pick.layer, pick.dataset);
   }
 
@@ -996,32 +1080,11 @@ export function LayerControl(gui) {
     title.className = 'console-info-title';
     title.textContent = 'Layer: ' + (info.layer_name || '[unnamed layer]');
     container.appendChild(title);
-    container.appendChild(renderKeyValueTable(getInfoRows(info), 'console-info-table'));
+    container.appendChild(renderKeyValueTable(internal.getLayerInfoRows(info), 'console-info-table'));
     if (!info.raster_type) {
       container.appendChild(renderAttributeInfoTable(info.attribute_data));
     }
     return container;
-  }
-
-  function getInfoRows(info) {
-    var rows = [
-      ['Type', info.raster_type ? 'raster data' : info.geometry_type || 'tabular data']
-    ];
-    if (info.raster_type) {
-      rows.push(['Size', utils.format('%,d x %,d x %,d', info.raster_width, info.raster_height, info.raster_bands)]);
-      rows.push(['Data', info.raster_pixel_type || 'unknown']);
-    } else {
-      rows.push(['Records', utils.format('%,d', info.feature_count)]);
-    }
-    if (info.null_shape_count > 0) {
-      rows.push(['Nulls', utils.format("%'d", info.null_shape_count)]);
-    }
-    if (info.raster_type || info.geometry_type && info.feature_count > info.null_shape_count) {
-      rows.push(['Bounds', info.bbox.join(',')]);
-      rows.push(['CRS', info.proj4]);
-    }
-    rows.push(['Source', info.source_file || 'n/a']);
-    return rows;
   }
 
   function renderAttributeInfoTable(fields) {
@@ -1124,6 +1187,12 @@ export function LayerControl(gui) {
 
   function layerCanBeStyled(lyr) {
     return !!(lyr && (lyr.geometry_type == 'point' || lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon'));
+  }
+
+  // RGB and grayscale images
+  function layerCanBeToned(lyr) {
+    return !!(lyr && internal.layerHasRaster(lyr) && (internal.rasterCanBeToned(lyr.raster) ||
+      internal.rasterIsGrayImage(lyr.raster)));
   }
 
 }

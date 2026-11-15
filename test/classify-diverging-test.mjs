@@ -200,7 +200,7 @@ describe('mapshaper-diverging.mjs', function () {
     });
 
     it('colors are assigned outward from the pivot', async function () {
-      var classes = await classify([-1, 0, 1, 2, 3], 'pivot=0 pivot-range=-0.5,0.5 classes=1,2 colors=red,white,blue equal-interval');
+      var classes = await classify([-1, 0, 1, 2, 3], 'pivot=0 pivot-range=-0.5,0.5 classes=1,2 colors=red,white,blue equal-interval interpolation=rgb');
       // the lower side's one class gets the color one step out from white
       assert.deepEqual(classes, ['rgb(255, 128, 128)', 'white', 'rgb(128, 128, 255)', 'blue', 'blue']);
     });
@@ -248,6 +248,17 @@ describe('mapshaper-diverging.mjs', function () {
       // above the pivot, 0 (the pivot) ranks with 2, 4 and 8; the stop is halfway, between 2 and 4
       var layout = getDivergingLayout([-4, -2, 0, 2, 4, 8], 'quantile', {classes: [1, 2], pivot: 0, continuous: true});
       assert.deepEqual(getDivergingStops(layout), {below: [-4, 0], above: [0, 3, 8]});
+    });
+
+    it('each side has a stop per class, and one more, with a pivot that has many digits', function () {
+      // e.g. a median of float32 elevations, which the breaks have tidied to 12 digits
+      var data = [1205.87, 1232.1, 1243.7, 1254.75, 1268.7261352539062, 1302.7, 1356.1, 1517.5];
+      [1268.7261352539062, 1268.7261352539, 1268.72613525391].forEach(function(pivot) {
+        var layout = getDivergingLayout(data, 'quantile', {classes: [3, 2], pivot: pivot, continuous: true});
+        var stops = getDivergingStops(layout);
+        assert.equal(stops.below.length, layout.below + 1);
+        assert.equal(stops.above.length, layout.above + 1);
+      });
     });
 
     it('continuous output has no pivot class unless pivot-class or pivot-range= is given', function () {

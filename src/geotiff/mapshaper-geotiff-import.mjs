@@ -1,28 +1,52 @@
 import { initProjLibrary, setDatasetCrsInfo, tryParseCrsString, tryParseWktToProj } from '../crs/mapshaper-projections';
-import { AUX_EXT, auxCrsIsWkt, parseAuxCrsString } from '../geotiff/mapshaper-geotiff-aux';
+import { AUX_EXT, auxCrsIsWkt, parseAuxBandInfo, parseAuxCrsString, unescapeXml } from '../geotiff/mapshaper-geotiff-aux';
+import { samplesAreNodataAtOffset } from '../rasters/mapshaper-raster-grid';
+import { getVerticalUnitsFromMeters, parseVerticalUnits } from '../rasters/mapshaper-vertical-units';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
 import { getGeoKeyProjection, replaceProj4Projection } from '../geotiff/mapshaper-geotiff-geokeys';
 import { runningInBrowser } from '../mapshaper-env';
 import { getFileBase } from '../utils/mapshaper-filename-utils';
 import require from '../mapshaper-require';
-import { message, stop, warnOnce } from '../utils/mapshaper-logging';
+import { getPixelCoordinatesWarning, getPixelTransform, getWorldFileBBox, getWorldTransform,
+  parseWorldFile, scaleWorldTransform } from '../rasters/mapshaper-world-file';
+import { message, stop, warn, warnOnce } from '../utils/mapshaper-logging';
 import { createRasterPreview, getRasterViewRecipe } from '../rasters/mapshaper-raster-utils';
-import { FULL_RESOLUTION_HINT, getMaxImportPixels, getRasterImportSize, parseImportResolution } from '../rasters/mapshaper-raster-import-size';
+import { getDefaultDisplayBands, getRasterDisplayBands } from '../rasters/mapshaper-raster-display-bands';
+import { readBandCategories } from './mapshaper-geotiff-categories';
+import { setRasterCategoryNames } from '../rasters/mapshaper-raster-categories';
+import { getCategoryColorPalette } from '../rasters/mapshaper-raster-classify';
+import { markRasterSamplesAsSource } from '../rasters/mapshaper-raster-source';
+import { registerGeoTIFFLZWDecoder } from './mapshaper-geotiff-lzw';
+import { getGeoTIFFRowReader, readResampledGeoTIFFSamples } from './mapshaper-geotiff-resample';
+import utils from '../utils/mapshaper-utils';
+import { FULL_RESOLUTION_HINT, MAX_IMPORT_BANDS, getMaxImportPixelsForBands, getRasterImportSize, parseImportResolution, setReducedResolution } from '../rasters/mapshaper-raster-import-size';
 
+var TAG_EXTRA_SAMPLES = 338;
+var EXTRA_SAMPLE_ASSOCIATED_ALPHA = 1;
+var EXTRA_SAMPLE_UNASSOCIATED_ALPHA = 2;
 var geotiffPromise = null;
 var geoKeysToProj4Promise = null;
 var dynamicImportModule = Function('id', 'return import(id)');
 
 // aux: contents of the file's .aux.xml sidecar, if it has one
-export async function importGeoTIFF(input, optsArg, aux) {
+// world: contents of the file's world file (e.g. .tfw), if it has one
+export async function importGeoTIFF(input, optsArg, aux, world) {
   var opts = optsArg || {};
   var geotiff = await loadGeoTIFFLib();
   var source = getGeoTIFFSource(input);
   var tiff = await openGeoTIFF(source, geotiff);
   var sourceImage = await tiff.getImage();
-  var importImage = await selectGeoTIFFImportImage(tiff, sourceImage, opts);
-  var imported = await importGeoTIFFImage(importImage, input, opts, sourceImage);
+  var georef = getGeoTIFFGeoreferencing(sourceImage, world);
+  var categories = await readGeoTIFFCategories(sourceImage, aux);
+  var bands, importImage, imported;
+  // a raster whose values are categories is data, not an image
+  if (!opts.interpretation && categories.found) {
+    opts = Object.assign({}, opts, {interpretation: 'categorical'});
+  }
+  bands = getImportBands(sourceImage, opts);
+  importImage = await selectGeoTIFFImportImage(tiff, sourceImage, opts, bands.samples.length);
+  imported = await importGeoTIFFImage(importImage, input, opts, sourceImage, georef, aux, bands, categories);
   var dataset = {
     info: {
       raster_sources: [imported.source]
@@ -33,8 +57,44 @@ export async function importGeoTIFF(input, optsArg, aux) {
       raster: imported.raster
     }]
   };
-  await importGeoTIFFCrs(dataset, sourceImage, aux);
+  if (georef.type == 'pixels') {
+    // A CRS says nothing useful about coordinates that are pixels
+    warn(getPixelCoordinatesWarning(input && input.filename || 'This GeoTIFF'));
+  } else {
+    await importGeoTIFFCrs(dataset, sourceImage, aux);
+  }
   return dataset;
+}
+
+// Where the image sits on the map, read the way GDAL reads it: from the file's
+// own tags, else from a world file, else (like a plain TIFF from an image
+// editor) in pixel coordinates.
+// Returns {type, bbox, transform, worldFile}, where the transform is for the
+// full-size image.
+function getGeoTIFFGeoreferencing(image, world) {
+  var bbox = readImageBoundingBox(image);
+  var transform, offset;
+  if (bbox) {
+    transform = getImageTransform(image);
+    if (geoTIFFPixelIsPoint(image)) {
+      offset = getHalfPixelOffset(image);
+      bbox = [bbox[0] - offset[0], bbox[1] - offset[1], bbox[2] - offset[0], bbox[3] - offset[1]];
+      if (transform) {
+        transform[2] -= offset[0];
+        transform[5] -= offset[1];
+      }
+    }
+    return {type: 'tags', bbox: bbox, transform: transform};
+  }
+  transform = world ?
+    getWorldTransform(parseWorldFile(world.content)) :
+    getPixelTransform(image.getHeight());
+  return {
+    type: world ? 'world' : 'pixels',
+    worldFile: world && world.filename || null,
+    bbox: getWorldFileBBox(transform, image.getWidth(), image.getHeight()),
+    transform: transform
+  };
 }
 
 async function loadGeoTIFFLib() {
@@ -44,13 +104,15 @@ async function loadGeoTIFFLib() {
     if (!mod || !mod.fromArrayBuffer) {
       stop('GeoTIFF library is not loaded');
     }
-    return mod;
+  } else {
+    if (!geotiffPromise) {
+      geotiffPromise = dynamicImportModule('geotiff');
+    }
+    mod = await geotiffPromise;
+    mod = mod.default && !mod.fromArrayBuffer ? mod.default : mod;
   }
-  if (!geotiffPromise) {
-    geotiffPromise = dynamicImportModule('geotiff');
-  }
-  mod = await geotiffPromise;
-  return mod.default && !mod.fromArrayBuffer ? mod.default : mod;
+  registerGeoTIFFLZWDecoder(mod);
+  return mod;
 }
 
 async function loadGeoKeysToProj4Lib() {
@@ -79,59 +141,298 @@ function getGeoTIFFSource(input) {
   return content.buffer.slice(content.byteOffset || 0, (content.byteOffset || 0) + content.byteLength);
 }
 
-async function importGeoTIFFImage(importImage, input, opts, sourceImage) {
+// @bands: from getImportBands()
+// @categories: from readGeoTIFFCategories()
+async function importGeoTIFFImage(importImage, input, opts, sourceImage, georef, aux, bands, categories) {
   var image = importImage.image;
   var width = importImage.width;
   var height = importImage.height;
-  var samplesPerPixel = image.getSamplesPerPixel();
-  var samples = getDisplaySamples(samplesPerPixel);
-  var imageBbox = getImageBoundingBox(sourceImage);
+  var samples = bands.samples;
+  var displayType = bands.displayBands && bands.displayBands.color.length == 1 ? 'gray' :
+    samples.length >= 3 ? 'rgb' : 'gray';
+  var imageBbox = georef.bbox;
   repairDeferredOffsetArrays(image);
-  var data = await readGeoTIFFSamples(image, samples, width, height);
   var noData = getNoDataValue(image);
+  var pixelType = getPixelType(image);
+  var bandInfo = await readBandValueInfo(sourceImage, samples, aux);
+  var bandDescriptions = getBandDescriptions(bandInfo, samples);
+  var scaling = getBandScaling(bandInfo);
+  var perBand = bands.perBand;
+  // With opts.row_reader, the pixels are left in the file, to be read a band of
+  // rows at a time (see getRasterRowBlocks())
+  var rowReader = opts.row_reader && width == image.getWidth() && height == image.getHeight() ?
+    await getGeoTIFFRowBlockReader(image, samples, scaling, noData, perBand) : null;
+  var data = rowReader ? null : await readGeoTIFFSamples(image, samples, width, height);
+  var scaled = scaling && data ? applyBandScaling(data, samples.length, scaling, noData, perBand) : null;
+  var verticalUnits = parseVerticalUnits(bandInfo[0].units) ||
+    await readGeoKeyVerticalUnits(sourceImage);
   var sourceId = getSourceId(input);
-  var raster = {
+  var raster;
+  if (scaled) {
+    data = scaled.samples;
+  }
+  if (scaling) {
+    noData = getScaledNodata(noData, scaling);
+    pixelType = 'float32';
+  }
+  raster = {
     sourceId: sourceId,
     interpretation: getRasterInterpretation(opts),
     grid: {
       width: width,
       height: height,
       bands: samples.length,
-      pixelType: getPixelType(image),
+      pixelType: pixelType,
       samples: data,
       sampleBands: samples,
       nodata: noData,
       bbox: imageBbox,
-      transform: getImageTransformForSize(sourceImage, width, height, imageBbox)
+      transform: georef.type == 'tags' ?
+        getImageTransformForSize(width, height, imageBbox) :
+        scaleWorldTransform(georef.transform,
+          sourceImage.getWidth() / width, sourceImage.getHeight() / height)
     },
     derivation: {
-      type: samples.length >= 3 ? 'rgb' : 'gray',
+      type: displayType,
       sourceId: sourceId,
       bands: samples
     },
     view: {
       recipe: {
-        type: samples.length >= 3 ? 'rgb' : 'gray',
+        type: displayType,
         bands: samples
       }
     }
   };
+  if (bands.displayBands) {
+    raster.grid.displayBands = bands.displayBands;
+  }
+  if (bandDescriptions) {
+    raster.grid.bandDescriptions = bandDescriptions;
+  }
+  if (verticalUnits) {
+    raster.grid.verticalUnits = verticalUnits;
+  }
+  if (georef.type == 'pixels') {
+    raster.grid.pixelCoordinates = true;
+  }
+  if (rowReader) {
+    raster.rowReader = rowReader;
+  }
+  setReducedResolution(raster, sourceImage.getWidth(), sourceImage.getHeight());
+  markRasterSamplesAsSource(raster.grid);
+  applyGeoTIFFCategories(raster, categories);
   raster.view.recipe = getRasterViewRecipe(raster.grid, raster.view.recipe, opts);
-  if (runningInBrowser()) {
+  // A source_bands grid is only measured, never displayed
+  if (runningInBrowser() && !opts.source_bands && data) {
     raster.view.preview = createRasterPreview(raster, opts);
   }
   return {
     raster: raster,
-    source: getSourceInfo(input, sourceId, sourceImage)
+    source: getSourceInfo(input, sourceId, sourceImage, georef)
   };
+}
+
+// How to read the values of each imported band: [{units, scale, offset}].
+// GDAL keeps these in its metadata tag, or in a .aux.xml sidecar, which
+// takes precedence, as it does in GDAL.
+// @bands: source band indexes
+async function readBandValueInfo(image, bands, aux) {
+  var info = [];
+  var fromAux, md;
+  for (var i = 0; i < bands.length; i++) {
+    fromAux = aux ? parseAuxBandInfo(aux.content, bands[i]) : {};
+    md = await readGDALBandMetadata(image, bands[i]);
+    info.push({
+      description: fromAux.description || readMetadataString(md.DESCRIPTION),
+      units: fromAux.units || md.UNITTYPE || null,
+      scale: fromAux.scale != null ? fromAux.scale : readMetadataNumber(md.SCALE),
+      offset: fromAux.offset != null ? fromAux.offset : readMetadataNumber(md.OFFSET)
+    });
+  }
+  return info;
+}
+
+async function readGDALBandMetadata(image, band) {
+  var md = null;
+  try {
+    md = image.getGDALMetadata ? await image.getGDALMetadata(band) : null;
+  } catch(e) {
+    // an unreadable metadata tag is treated like a missing one
+  }
+  return md || {};
+}
+
+// geotiff.js returns metadata items as they are in the XML
+function readMetadataString(str) {
+  var s = str == null ? '' : unescapeXml(String(str)).trim();
+  return s || null;
+}
+
+// Descriptions of the imported bands, keyed by band number (1-based, as in
+// the file), or null if none of them has one
+function getBandDescriptions(bandInfo, samples) {
+  var out = {};
+  var found = false;
+  bandInfo.forEach(function(o, i) {
+    if (!o.description) return;
+    out[samples[i] + 1] = o.description;
+    found = true;
+  });
+  return found ? out : null;
+}
+
+function readMetadataNumber(str) {
+  var val = str == null ? NaN : parseFloat(str);
+  return isFinite(val) ? val : null;
+}
+
+// The scale and offset of each band, or null if no band is scaled
+function getBandScaling(bandInfo) {
+  var scales = bandInfo.map(function(o) { return o.scale != null ? o.scale : 1; });
+  var offsets = bandInfo.map(function(o) { return o.offset != null ? o.offset : 0; });
+  if (scales.every(function(s) { return s == 1; }) && offsets.every(function(o) { return o === 0; })) {
+    return null;
+  }
+  return {scales: scales, offsets: offsets};
+}
+
+function getScaledNodata(nodata, scaling) {
+  return nodata !== null && nodata !== undefined ?
+    Math.fround(nodata * scaling.scales[0] + scaling.offsets[0]) : null;
+}
+
+// Stored values are often scaled to fit a smaller integer type, with GDAL's
+// SCALE and OFFSET giving the real value: raw * scale + offset. These are
+// applied here, so that elevation commands, -info and pixel readouts all see
+// real values. Returns {samples, nodata} with Float32 samples.
+// Nodata pixels are given the scaled nodata value, rounded to Float32 so that
+// testing samples against it is exact.
+// @perBand: give every sample that matches the nodata value the scaled nodata
+//   value, not just the color bands of nodata pixels (for all_bands grids,
+//   whose bands can have different scales)
+function applyBandScaling(data, bandCount, scaling, nodata, perBand) {
+  var scales = scaling.scales;
+  var offsets = scaling.offsets;
+  var hasNodata = nodata !== null && nodata !== undefined;
+  var colorBands = Math.min(bandCount, 3);
+  var out, newNodata, i, j;
+  out = new Float32Array(data.length);
+  newNodata = getScaledNodata(nodata, scaling);
+  for (i = 0; i < data.length; i += bandCount) {
+    if (hasNodata && samplesAreNodataAtOffset(data, i, bandCount, nodata)) {
+      for (j = 0; j < colorBands; j++) out[i + j] = newNodata;
+      j = colorBands;
+    } else {
+      j = 0;
+    }
+    for (; j < bandCount; j++) {
+      out[i + j] = perBand && hasNodata && data[i + j] == nodata ? newNodata :
+        data[i + j] * scales[j] + offsets[j];
+    }
+  }
+  return {samples: out, nodata: newNodata};
+}
+
+// Units from the vertical CRS in the file's geo keys, or null. A vertical CRS
+// is named by an EPSG code, which the geokeys-to-proj4 library can look up.
+async function readGeoKeyVerticalUnits(image) {
+  var keys = image.getGeoKeys && image.getGeoKeys() || {};
+  var vertical = {};
+  var lib, result, z;
+  ['VerticalGeoKey', 'VerticalCSTypeGeoKey', 'VerticalUnitsGeoKey'].forEach(function(name) {
+    if (keys[name] > 0) vertical[name] = keys[name];
+  });
+  if (Object.keys(vertical).length === 0) return null;
+  try {
+    lib = await loadGeoKeysToProj4Lib();
+    result = lib.toProj4(vertical);
+  } catch(e) {
+    return null;
+  }
+  if (!result || result.errors && (result.errors.verticalCsNotSupported ||
+      result.errors.verticalCsUnitsNotSupported)) return null;
+  z = result.conversionParameters && result.conversionParameters.z;
+  return getVerticalUnitsFromMeters(z);
 }
 
 function getRasterInterpretation(opts) {
   return opts.interpretation || 'image';
 }
 
-async function selectGeoTIFFImportImage(tiff, sourceImage, opts) {
-  var maxPixels = getMaxImportPixels(opts);
+// What a GeoTIFF says about the categories of its values: a color table (a
+// palette image's values are indexes into it), and GDAL's names and colors of
+// each band's values (see mapshaper-geotiff-categories.mjs). The table colors
+// the first band, as it does in GDAL.
+// Returns {found, bands}, bands: [{names, colors}] by 0-based band index
+async function readGeoTIFFCategories(image, aux) {
+  var metadata = await readGeoTIFFTagString(image, 'GDAL_METADATA');
+  var table = await readGeoTIFFColorTable(image);
+  var bands = [], found = false, o;
+  for (var i = 0; i < image.getSamplesPerPixel(); i++) {
+    o = readBandCategories(metadata, aux ? aux.content : null, i);
+    if (i === 0 && table) o = {names: o.names, colors: table};
+    if (o.names || o.colors) found = true;
+    bands.push(o);
+  }
+  return {found: found, bands: bands};
+}
+
+// {<index>: '#rrggbb'}, or null if the file is not a palette image
+async function readGeoTIFFColorTable(image) {
+  var dir = image.fileDirectory;
+  var map, n, colors;
+  if (getPhotometricInterpretation(image) != 3 || !dir.hasTag || !dir.hasTag('ColorMap')) return null;
+  try {
+    map = await dir.loadValue('ColorMap');
+  } catch(e) {
+    return null;
+  }
+  n = map ? Math.floor(map.length / 3) : 0;
+  if (n === 0) return null;
+  colors = {};
+  for (var i = 0; i < n; i++) {
+    colors[i] = '#' + [map[i], map[i + n], map[i + n * 2]].map(function(c) {
+      return ((c >> 8) + 0x100).toString(16).slice(1);
+    }).join('');
+  }
+  return colors;
+}
+
+async function readGeoTIFFTagString(image, tag) {
+  var dir = image.fileDirectory;
+  try {
+    return dir.hasTag && dir.hasTag(tag) ? String(await dir.loadValue(tag)) : null;
+  } catch(e) {
+    return null; // an unreadable tag is treated like a missing one
+  }
+}
+
+// Gives the grid the names of its bands' values, and a categorical raster the
+// palette of its file's colors
+function applyGeoTIFFCategories(raster, categories) {
+  var grid = raster.grid;
+  var index, fileBand, colors, palette;
+  if (!categories || !categories.found) return;
+  grid.sampleBands.forEach(function(b) {
+    var o = categories.bands[b];
+    if (o && o.names) setRasterCategoryNames(grid, b + 1, o.names);
+  });
+  if (raster.interpretation != 'categorical' || !grid.samples) return;
+  index = getRasterDisplayBands(grid).color[0];
+  fileBand = grid.sampleBands[index];
+  colors = categories.bands[fileBand] && categories.bands[fileBand].colors;
+  palette = colors ? getCategoryColorPalette(grid, fileBand + 1, index, colors) : null;
+  if (palette) {
+    raster.view.recipe = Object.assign({}, raster.view.recipe, {palette: palette});
+  }
+}
+
+// @bandCount: the number of bands to be imported, which share the import size
+//   limit (see getMaxImportPixelsForBands())
+async function selectGeoTIFFImportImage(tiff, sourceImage, opts, bandCount) {
+  var maxPixels = getMaxImportPixelsForBands(opts, bandCount);
+  var sizeOpts = Object.assign({}, opts, {maxPixels: maxPixels});
   var resolution = parseImportResolution(opts.resolution);
   var renditions = await getGeoTIFFRenditions(tiff, sourceImage);
   var source = renditions[0];
@@ -151,7 +452,7 @@ async function selectGeoTIFFImportImage(tiff, sourceImage, opts) {
       best = getAutomaticRendition(renditions, maxPixels);
       bestPixels = best.width * best.height;
       if (bestPixels > maxPixels) {
-        best = getResizedImportImage(best, getRasterImportSize(best.width, best.height, opts));
+        best = getResizedImportImage(best, getRasterImportSize(best.width, best.height, sizeOpts));
       }
     }
   }
@@ -160,9 +461,11 @@ async function selectGeoTIFFImportImage(tiff, sourceImage, opts) {
   }
   if (best.slug != 'full' || best.width != source.width || best.height != source.height) {
     if (resolution || opts.rendition) {
-      message(getImportRenditionMessage(best, source));
+      message(getImportRenditionMessage(best, source, !!opts.rendition, false));
     } else {
-      warnOnce(getImportRenditionMessage(best, source) + ' ' + FULL_RESOLUTION_HINT);
+      warnOnce(getImportRenditionMessage(best, source, false, true) +
+        (bandCount > MAX_IMPORT_BANDS ? ' The import size limit is shared by the ' + bandCount +
+          ' bands; use bands= to import fewer of them.' : '') + ' ' + FULL_RESOLUTION_HINT);
     }
   }
   return best;
@@ -232,14 +535,18 @@ function getRenditionsMessage(renditions, selected) {
   return lines.join('\n');
 }
 
-function getImportRenditionMessage(importImage, source) {
-  if (importImage.resampled) {
-    return 'Using resampled GeoTIFF ' + (importImage.sourceSlug == 'full' ? 'full-resolution image' : 'rendition ' + importImage.sourceSlug) +
-      ' for import: ' + importImage.width + 'x' + importImage.height +
-      ' (source: ' + source.width + 'x' + source.height + ').';
+// @requested: the rendition= option chose the rendition
+// @automatic: the import size limit chose the size
+function getImportRenditionMessage(importImage, source, requested, automatic) {
+  var readFrom = importImage.resampled ? importImage.sourceSlug : importImage.slug;
+  var size = importImage.width + 'x' + importImage.height;
+  var sourceSize = source.width + 'x' + source.height;
+  if (requested && !importImage.resampled) {
+    return 'Importing GeoTIFF rendition ' + readFrom + ': ' + size + ' (source: ' + sourceSize + ').';
   }
-  return 'Using reduced-resolution GeoTIFF rendition for import: ' + importImage.slug + ' ' +
-    importImage.width + 'x' + importImage.height + ' (source: ' + source.width + 'x' + source.height + ').';
+  return (automatic ? 'Automatically downsampling' : 'Downsampling') +
+    ' GeoTIFF raster to ' + size + ' (source: ' + sourceSize +
+    (readFrom == 'full' ? '' : ', read from ' + readFrom) + ').';
 }
 
 // The smallest rendition at least @width pixels wide, so that resampling to
@@ -261,27 +568,182 @@ function getResizedImportImage(importImage, size) {
   });
 }
 
+// Returns {blockHeight, readRows(r0, r1)}, where readRows() returns the samples
+// of rows [r0, r1) as the importer would store them
+async function getGeoTIFFRowBlockReader(image, samples, scaling, nodata, perBand) {
+  var readRows = useRGBRead(image, samples) ? function(r0, r1) {
+    return image.readRGB({window: [0, r0, image.getWidth(), r1], interleave: true});
+  } : await getGeoTIFFRowReader(await loadGeoTIFFLib(), image, samples);
+  return {
+    blockHeight: image.getTileHeight(),
+    readRows: async function(r0, r1) {
+      var data = await readRows(r0, r1);
+      return scaling ? applyBandScaling(data, samples.length, scaling, nodata, perBand).samples : data;
+    }
+  };
+}
+
 async function readGeoTIFFSamples(image, samples, width, height) {
   var opts = {
     interleave: true,
     width: width,
     height: height
   };
+  var data;
   if (useRGBRead(image, samples)) {
     return image.readRGB(opts);
+  }
+  if (width != image.getWidth() || height != image.getHeight()) {
+    data = await readResampledGeoTIFFSamples(await loadGeoTIFFLib(), image, samples, width, height);
+    if (data) return data;
   }
   opts.samples = samples;
   return image.readRasters(opts);
 }
 
 function useRGBRead(image, samples) {
-  return samples.length == 3 && getPhotometricInterpretation(image) == 6 && image.readRGB;
+  return samples.join(',') == '0,1,2' && getPhotometricInterpretation(image) == 6 && image.readRGB;
 }
 
-function getDisplaySamples(samplesPerPixel) {
-  if (samplesPerPixel >= 4) return [0, 1, 2, 3];
-  if (samplesPerPixel >= 3) return [0, 1, 2];
-  return [0];
+// The bands to import, and how to display them:
+// {samples, displayBands, perBand}
+//   samples: 0-based band indexes in the file
+//   displayBands: grid.displayBands for the imported grid, or null if the
+//     default display for the number of bands (getDefaultDisplayBands()) is
+//     right
+//   perBand: the bands are separate measurements, so nodata is tested band by
+//     band (see applyBandScaling())
+// Images import the bands they display. Data rasters (raster-type=continuous
+// or categorical, or a type wider than 8 bits that isn't color) import every
+// band, and display the first. bands= chooses the bands.
+function getImportBands(image, opts) {
+  var data = isDataRasterImport(image, opts);
+  var samples;
+  if (opts.source_bands) {
+    return {samples: getRequestedSamples(image, opts.source_bands), displayBands: null, perBand: true};
+  }
+  if (opts.bands !== undefined && opts.bands !== null) {
+    samples = parseImportBands(opts.bands, image.getSamplesPerPixel());
+    if (getPhotometricInterpretation(image) == 6) {
+      samples = getRequestedSamples(image, samples);
+    }
+  } else if (data) {
+    samples = utils.range(image.getSamplesPerPixel());
+  } else {
+    samples = getDisplaySamples(image);
+  }
+  return {
+    samples: samples,
+    displayBands: getImportDisplayBands(image, samples, data),
+    perBand: data
+  };
+}
+
+function isDataRasterImport(image, opts) {
+  var interpretation = opts.interpretation;
+  if (interpretation == 'continuous' || interpretation == 'categorical') return true;
+  if (interpretation == 'image') return false;
+  return !/^u?int8$/.test(getPixelType(image)) && getColorSampleCount(image) == 1;
+}
+
+// Parses the bands= import option: "all", or a list of band numbers
+// (1-based, e.g. "1,4,5"). Returns sorted 0-based band indexes.
+export function parseImportBands(val, bandCount) {
+  var str = String(val).trim().toLowerCase();
+  var list;
+  if (str == 'all') return utils.range(bandCount);
+  list = str.split(',').map(function(s) {
+    var num = Number(s.trim());
+    if (s.trim() === '' || !utils.isInteger(num) || num < 1) {
+      stop('Invalid bands= value:', val + '.', 'Use all, or band numbers starting from 1, e.g. bands=1,4,5');
+    }
+    if (num > bandCount) {
+      stop(utils.format('This raster does not have band %d (it has %d %s)', num, bandCount,
+        bandCount == 1 ? 'band' : 'bands'));
+    }
+    return num - 1;
+  });
+  return utils.uniq(list).sort(function(a, b) { return a - b; });
+}
+
+// grid.displayBands for a grid of the file's bands @samples, or null if the
+// default display for the number of bands is right. A data raster shows its
+// first band as gray. An image shows the bands it would display if all of
+// them were imported; if some are missing, its first band as gray.
+function getImportDisplayBands(image, samples, data) {
+  var alphaSample = findAlphaSample(image, data ? 1 : 3);
+  var alpha = samples.indexOf(alphaSample);
+  var wanted = data ? [] : getDisplaySamples(image).slice(0, image.getSamplesPerPixel() < 3 ? 1 : 3);
+  var color = wanted.map(function(b) { return samples.indexOf(b); });
+  var defaults = getDefaultDisplayBands(samples.length);
+  if (color.length === 0 || color.includes(-1)) {
+    color = [samples.findIndex(function(b) { return b != alphaSample; })];
+    if (color[0] == -1) color = [0];
+  }
+  if (color.join(',') == defaults.color.join(',') && alpha == defaults.alpha) {
+    return null;
+  }
+  return {color: color, alpha: alpha};
+}
+
+// The bands that are displayed: the first band, or the first three as RGB,
+// plus an alpha band if the file has one. As in GDAL, a band is alpha only if
+// the ExtraSamples tag says so, so the near-infrared band of a four-band aerial
+// image is left out instead of being shown as transparency. (A gray image's
+// alpha band is left out too, since two-band gray + alpha is not displayed.)
+function getDisplaySamples(image) {
+  var samplesPerPixel = image.getSamplesPerPixel();
+  var alpha;
+  if (samplesPerPixel < 3) return [0];
+  alpha = findAlphaSample(image, 3);
+  return alpha > -1 ? [0, 1, 2, alpha] : [0, 1, 2];
+}
+
+// Index of the first alpha sample at or after @minSample, or -1
+function findAlphaSample(image, minSample) {
+  var extras = getExtraSamples(image);
+  var firstExtra = getColorSampleCount(image);
+  var type;
+  for (var i = Math.max(minSample, firstExtra); i < image.getSamplesPerPixel(); i++) {
+    type = extras[i - firstExtra];
+    if (type == EXTRA_SAMPLE_ASSOCIATED_ALPHA || type == EXTRA_SAMPLE_UNASSOCIATED_ALPHA) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function getExtraSamples(image) {
+  var fileDirectory = image && image.fileDirectory;
+  var extras = fileDirectory && fileDirectory.actualizedFields &&
+    fileDirectory.actualizedFields.get(TAG_EXTRA_SAMPLES);
+  if (extras === undefined || extras === null) return [];
+  return typeof extras == 'number' ? [extras] : Array.from(extras);
+}
+
+// Number of samples that the photometric interpretation accounts for; any
+// others are extra samples, described by the ExtraSamples tag
+function getColorSampleCount(image) {
+  var photometric = getPhotometricInterpretation(image);
+  if (photometric == 2 || photometric == 6 || photometric == 8) return 3; // RGB, YCbCr, CIELab
+  if (photometric == 5) return 4; // CMYK
+  return 1;
+}
+
+// The source_bands import option (an array of 0-based band indexes) reads the
+// bands a command measures (-join) rather than the ones it would display. The
+// other raster commands and the renderer expect a grid of 1, 3 or 4 display
+// bands, so a grid like this should not be added to the catalog. Bands the file
+// doesn't have are skipped, for the command to report. The bands of a YCbCr
+// image are read together, since they are converted to RGB together.
+function getRequestedSamples(image, bands) {
+  var samplesPerPixel = image.getSamplesPerPixel();
+  var samples = bands.filter(function(i) { return i >= 0 && i < samplesPerPixel; });
+  if (getPhotometricInterpretation(image) == 6) {
+    samples = utils.uniq([0, 1, 2].concat(samples));
+  }
+  samples.sort(function(a, b) { return a - b; });
+  return samples.length > 0 ? samples : [0];
 }
 
 function getNoDataValue(image) {
@@ -298,16 +760,16 @@ function getPixelType(image) {
   return bits ? type + bits : type;
 }
 
-function getImageBoundingBox(image) {
+// Returns null if the file has no tiepoint, pixel scale or transformation tags
+function readImageBoundingBox(image) {
   try {
     return image.getBoundingBox().map(Number);
   } catch(e) {
-    stop('GeoTIFF is missing georeferencing metadata');
+    return null;
   }
 }
 
-function getImageTransformForSize(image, width, height, bbox) {
-  var sourceBbox = bbox || getImageBoundingBox(image);
+function getImageTransformForSize(width, height, sourceBbox) {
   return [
     (sourceBbox[2] - sourceBbox[0]) / width,
     0,
@@ -316,6 +778,30 @@ function getImageTransformForSize(image, width, height, bbox) {
     (sourceBbox[1] - sourceBbox[3]) / height,
     sourceBbox[3]
   ];
+}
+
+// In a PixelIsPoint file (GTRasterTypeGeoKey 2), the tags place the centers of
+// the pixels, not their corners. geotiff.js ignores the key; GDAL moves the
+// origin back half a pixel, and so does the importer.
+function geoTIFFPixelIsPoint(image) {
+  var keys;
+  try {
+    keys = image.getGeoKeys();
+  } catch(e) {
+    return false;
+  }
+  return !!keys && keys.GTRasterTypeGeoKey === 2;
+}
+
+// The x, y distance from the corner of a pixel to its center
+function getHalfPixelOffset(image) {
+  var m = image.fileDirectory.getValue('ModelTransformation');
+  var res;
+  if (m) {
+    return [(m[0] + m[1]) / 2, (m[4] + m[5]) / 2];
+  }
+  res = image.getResolution();
+  return [res[0] / 2, res[1] / 2];
 }
 
 function getImageTransform(image) {
@@ -376,7 +862,7 @@ function getSourceId(input) {
   return input && input.filename ? getFileBase(input.filename) : 'geotiff-source';
 }
 
-function getSourceInfo(input, sourceId, image) {
+function getSourceInfo(input, sourceId, image, georef) {
   var content = input && input.content;
   return {
     id: sourceId,
@@ -387,8 +873,9 @@ function getSourceInfo(input, sourceId, image) {
     height: image.getHeight(),
     bands: image.getSamplesPerPixel(),
     pixelType: getPixelType(image),
-    bbox: getImageBoundingBox(image),
-    transform: getImageTransform(image)
+    worldFile: georef.worldFile || null,
+    bbox: georef.bbox,
+    transform: georef.transform
   };
 }
 

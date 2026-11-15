@@ -32,24 +32,50 @@ import { getClassifyMethod } from '../classification/mapshaper-classify-methods'
 import { color as d3_color } from 'd3-color';
 import { getBlackiClassifier } from '../classification/mapshaper-blacki';
 import { getInterpolationOptions } from '../classification/mapshaper-interpolation';
+import { hasPercentBreaks, resolvePercentBreaks } from '../classification/mapshaper-percent-breaks';
+import { layerHasRaster } from '../dataset/mapshaper-layer-utils';
+import { getRasterGrid, getRasterGridBandIndex } from '../rasters/mapshaper-raster-utils';
+import { noteLayerWillChange, markLayerChanged } from '../undo/mapshaper-undo-tracking';
+import { getDatasetCRS } from '../crs/mapshaper-projections';
+import {
+  formatRasterSampleMessage,
+  getRasterBandCategories,
+  getRasterBandSample,
+  getRasterClassifyBand,
+  getRasterPaletteFromClassification,
+  getRasterHypsometricPalette,
+  getTrimmedRange,
+  rasterBandIsInteger,
+  setRasterPalette,
+  validateRasterClassifyOptions
+} from '../rasters/mapshaper-raster-classify';
+import { setRasterPaletteSea, splitRampOptions } from '../rasters/mapshaper-raster-hypsometric';
+import { listHasRampNames } from '../cli/mapshaper-option-parsing-utils';
+import { setRasterCategoryNames } from '../rasters/mapshaper-raster-categories';
 
 cmd.classify = function(lyr, dataset, optsArg) {
-  if (!lyr.data) {
-    initDataTable(lyr);
-  }
   var opts = optsArg || {};
-  var records = lyr.data && lyr.data.getRecords();
-  var valuesAreColors = !!opts.colors;
-  var dataField, fieldType, outputField;
-  var values, nullValue;
-  var classifyByValue, classifyByRecordId;
-  var numClasses, numValues;
-  var method, diverging, divergingLayout, divergingData;
-
+  var records, dataField, fieldType, outputField, o, classifyByRecordId;
   if (opts.color_scheme) {
     stop('color-scheme is not a valid option, use colors instead');
   }
-  opts = Object.assign({}, opts, getInterpolationOptions(opts));
+  if (layerHasRaster(lyr)) {
+    classifyRasterLayer(lyr, dataset, opts);
+    return;
+  }
+  if (opts.category_names) {
+    stop('category-names= works with raster layers');
+  }
+  if (opts.hypsometric || opts.sea || opts.classed) {
+    stop((opts.hypsometric ? 'hypsometric=' : opts.sea ? 'sea=' : 'classed') + ' works with raster layers');
+  }
+  if (listHasRampNames(opts.colors) || listHasRampNames(opts.breaks)) {
+    stop('Named lists in colors= and breaks= (e.g. sea:...) work with raster layers');
+  }
+  if (!lyr.data) {
+    initDataTable(lyr);
+  }
+  records = lyr.data.getRecords();
 
   // get data field to use for classification
   //
@@ -64,13 +90,78 @@ cmd.classify = function(lyr, dataset, optsArg) {
     requireDataField(lyr.data, dataField);
   }
 
+  o = getClassification({
+    field: dataField,
+    type: fieldType,
+    values: dataField ? getFieldValues(records, dataField) : [],
+    getCategories: function() { return getUniqFieldValues(records, dataField); },
+    records: records,
+    lyr: lyr,
+    dataset: dataset
+  }, opts);
+
+  classifyByRecordId = o.classifyByRecordId || function(id) {
+    var d = records[id] || {};
+    return o.classifyByValue(d[dataField]);
+  };
+
+  // get the name of the output field
+  //
+  if (o.valuesAreColors) {
+    outputField = lyr.geometry_type == 'polyline' ? 'stroke' : 'fill';
+  } else {
+    outputField = 'class';
+  }
+  if (opts.save_as) {
+    outputField = opts.save_as; // override the default field name
+  } else {
+    message(`Output was saved to "${outputField}" field (use save-as= to change)`);
+    // message('Use save-as=<field> to save to a different field');
+  }
+
+  lyr.data.captureSchemaBefore({operation: 'classify', field: outputField});
+  records.forEach(function(d, i) {
+    d[outputField] = classifyByRecordId(i);
+  });
+  lyr.data.markSchemaChanged({operation: 'classify', field: outputField});
+};
+
+// Resolves the classes of -classify, for a layer's records or a raster's
+// pixel values
+// @data {field, type, values, getCategories, getPercentRange, records, lyr, dataset}
+//   values: the field's values (one per record, or a sample of pixel values)
+//   getCategories(): the default categories
+//   getPercentRange(): optional; the range that percentage breaks are of
+//   records, lyr, dataset: for the methods that classify features rather than
+//     values (blacki, non-adjacent, indexed)
+// Returns {method, values, valuesAreColors, nullValue, diverging,
+//   divergingLayout, classifyByValue, classifyByRecordId, sequential}
+//   sequential: the sequential classifier, with its breaks and range (see
+//     getSequentialClassifier())
+function getClassification(data, optsArg) {
+  var opts = Object.assign({}, optsArg, getInterpolationOptions(optsArg));
+  var dataField = data.field;
+  var fieldType = data.type;
+  var valuesAreColors = !!opts.colors;
+  var values, nullValue, sequential;
+  var classifyByValue, classifyByRecordId;
+  var numClasses, numValues;
+  var method, diverging, divergingLayout, divergingData;
+
   // get classification method
   //
   method = getClassifyMethod(opts, fieldType);
 
+  // (without data, only the number of breaks matters)
+  if (hasPercentBreaks(opts.breaks) && fieldType == 'number') {
+    opts.breaks = resolvePercentBreaks(opts.breaks, data.getPercentRange ?
+      data.getPercentRange(opts) : getPercentBreaksRange(data.values, opts));
+    message('Breaks: breaks=' + opts.breaks.join(','));
+  }
+
   // validate classification method
   if (method == 'non-adjacent') {
-    if (lyr.geometry_type != 'polygon') {
+    if (!data.lyr || data.lyr.geometry_type != 'polygon') {
       stop('The non-adjacent option requires a polygon layer');
     }
     if (dataField) {
@@ -87,7 +178,7 @@ cmd.classify = function(lyr, dataset, optsArg) {
   // (empty values are not categories: they get the null value)
   if (method == 'categorical') {
     if ((!opts.categories || opts.categories.includes('*')) && dataField) {
-      opts.categories = getUniqFieldValues(records, dataField).filter(isCategoryValue);
+      opts.categories = data.getCategories().filter(isCategoryValue);
     }
     if (opts.categories && fieldType == 'number') {
       opts.categories = opts.categories.map(str => +str);
@@ -119,7 +210,7 @@ cmd.classify = function(lyr, dataset, optsArg) {
   } else if (method == 'blacki') {
     numClasses = 999; // dummy value
   } else if (method == 'indexed' && dataField) {
-    numClasses = getIndexedClassCount(records, dataField);
+    numClasses = getIndexedClassCount(data.records, dataField);
   } else if (opts.breaks) {
     numClasses = opts.breaks.length + 1;
   } else if (method == 'categorical' && opts.categories) {
@@ -135,7 +226,9 @@ cmd.classify = function(lyr, dataset, optsArg) {
     numClasses = 4;
   }
   numValues = opts.continuous ? numClasses + 1 : numClasses;
-  if (numValues > 1 === false && !diverging) {
+  if (method == 'categorical' && numValues > 0 === false) {
+    stop('Missing categories to classify');
+  } else if (method != 'categorical' && numValues > 1 === false && !diverging) {
     stop('Missing a valid number of values');
   }
 
@@ -144,7 +237,7 @@ cmd.classify = function(lyr, dataset, optsArg) {
   if (diverging && fieldType === null) {
     values = []; // no data: every feature gets the null value
   } else if (diverging) {
-    divergingData = getDivergingData(records, dataField, opts);
+    divergingData = getDivergingData(data.values, opts);
     divergingLayout = getDivergingLayout(divergingData, method,
       Object.assign({}, opts, {classes: getDivergingClassCount(opts)}));
     message(formatDivergingLayout(divergingLayout));
@@ -170,9 +263,9 @@ cmd.classify = function(lyr, dataset, optsArg) {
     // no valid data -- always return null value
     classifyByRecordId = function() {return nullValue;};
   } else if (method == 'blacki') {
-    classifyByRecordId = getBlackiClassifier(lyr, dataField);
+    classifyByRecordId = getBlackiClassifier(data.lyr, dataField);
   } else if (method == 'non-adjacent') {
-    classifyByRecordId = getNonAdjacentClassifier(lyr, dataset, values);
+    classifyByRecordId = getNonAdjacentClassifier(data.lyr, data.dataset, values);
   } else if (method == 'indexed') {
     // data is pre-classified... just read the index from a field
     classifyByValue = getIndexedClassifier(values, nullValue, opts);
@@ -181,39 +274,87 @@ cmd.classify = function(lyr, dataset, optsArg) {
   } else if (diverging && opts.continuous) {
     classifyByValue = getContinuousDivergingDataClassifier(divergingLayout, values, nullValue, opts, divergingData);
   } else if (diverging) {
-    classifyByValue = getSequentialClassifier(values, nullValue, getFieldValues(records, dataField), method,
+    sequential = classifyByValue = getSequentialClassifier(values, nullValue, data.values, method,
       Object.assign({}, opts, {breaks: divergingLayout.breaks}));
   } else {
-    classifyByValue = getSequentialClassifier(values, nullValue, getFieldValues(records, dataField), method, opts);
+    sequential = classifyByValue = getSequentialClassifier(values, nullValue, data.values, method, opts);
   }
 
-  if (classifyByValue) {
-    classifyByRecordId = function(id) {
-      var d = records[id] || {};
-      return classifyByValue(d[dataField]);
-    };
-  }
+  return {
+    opts: opts,
+    method: method,
+    values: values,
+    valuesAreColors: valuesAreColors,
+    nullValue: nullValue,
+    diverging: diverging,
+    divergingLayout: divergingLayout || null,
+    classifyByValue: classifyByValue || null,
+    classifyByRecordId: classifyByRecordId || null,
+    sequential: sequential || null
+  };
+}
 
-  // get the name of the output field
-  //
-  if (valuesAreColors) {
-    outputField = lyr.geometry_type == 'polyline' ? 'stroke' : 'fill';
-  } else {
-    outputField = 'class';
+// -classify on a raster layer sets a palette, a display setting: the pixels
+// are not changed (see docs/development/raster-palette-design.md)
+function classifyRasterLayer(lyr, dataset, optsArg) {
+  var raster = lyr.raster;
+  var grid = getRasterGrid(raster);
+  var opts = splitRampOptions(optsArg);
+  var band, bandIndex, categorical, sample, o, palette;
+  validateRasterClassifyOptions(raster, grid, opts);
+  band = getRasterClassifyBand(grid, opts);
+  bandIndex = getRasterGridBandIndex(grid, band);
+  if (opts.hypsometric) {
+    palette = setRasterPaletteSea(getRasterHypsometricPalette(raster, band, opts, dataset ? getDatasetCRS(dataset) : null), raster, opts);
+    noteLayerWillChange(lyr, {operation: 'classify', unit: 'raster'});
+    setRasterPalette(raster, palette);
+    markLayerChanged(lyr, {operation: 'classify', unit: 'raster'});
+    return;
   }
-  if (opts.save_as) {
-    outputField = opts.save_as; // override the default field name
-  } else {
-    message(`Output was saved to "${outputField}" field (use save-as= to change)`);
-    // message('Use save-as=<field> to save to a different field');
+  categorical = getClassifyMethod(opts, 'number') == 'categorical';
+  if (categorical && !rasterBandIsInteger(grid)) {
+    stop('Categories need a band of integer values (band ' + band + ' is ' + grid.pixelType + ')');
   }
+  sample = getRasterBandSample(grid, bandIndex);
+  if (sample.values.length === 0) {
+    stop('Band ' + band + ' has no valid values to classify');
+  }
+  message(formatRasterSampleMessage(band, sample));
+  o = getClassification({
+    field: 'band' + band,
+    type: 'number',
+    values: sample.values,
+    getCategories: function() { return getRasterBandCategories(grid, bandIndex); },
+    getPercentRange: function(opts) {
+      return opts.outer_breaks || getTrimmedRange(sample.values);
+    }
+  }, Object.assign({}, opts, {count_label: sample.sampled ? 'sampled pixel counts' : 'pixel counts'}));
+  palette = setRasterPaletteSea(getRasterPaletteFromClassification(o, band, opts, sample.values), raster, opts);
+  noteLayerWillChange(lyr, {operation: 'classify', unit: 'raster'});
+  if (opts.category_names) {
+    setRasterCategoryNames(grid, band, getCategoryNamesOption(opts.category_names, palette));
+  }
+  setRasterPalette(raster, palette);
+  markLayerChanged(lyr, {operation: 'classify', unit: 'raster'});
+}
 
-  lyr.data.captureSchemaBefore({operation: 'classify', field: outputField});
-  records.forEach(function(d, i) {
-    d[outputField] = classifyByRecordId(i);
+// {<value>: name} from category-names=, a name for each category in the order
+// of their colors ('' for a category without one)
+function getCategoryNamesOption(list, palette) {
+  var names = {};
+  if (palette.type != 'categorical') {
+    stop('category-names= works with method=categorical');
+  }
+  if (list.length != palette.categories.length) {
+    stop(utils.format('category-names= needs a name for each of the %d categories (it has %d)',
+      palette.categories.length, list.length));
+  }
+  palette.categories.forEach(function(val, i) {
+    var name = String(list[i]).trim();
+    if (name) names[val] = name;
   });
-  lyr.data.markSchemaChanged({operation: 'classify', field: outputField});
-};
+  return names;
+}
 
 function validateDivergingOptions(method, fieldType, opts) {
   if (fieldType === null) return; // no data
@@ -246,10 +387,24 @@ function formatDivergingStops(layout) {
   return 'Color stops (' + parts.join('; ') + ')';
 }
 
+// The range that percentage breaks are percentages of: outer-breaks=, or the
+// data's min and max (rounded as the classifiers round values)
+function getPercentBreaksRange(values, opts) {
+  var round = opts.precision ? getRoundingFunction(opts.precision) : null;
+  var min = Infinity, max = -Infinity;
+  if (opts.outer_breaks) return opts.outer_breaks;
+  values.forEach(function(val) {
+    if (!utils.isFiniteNumber(val)) return;
+    if (round) val = round(val);
+    if (val < min) min = val;
+    if (val > max) max = val;
+  });
+  return [min, max];
+}
+
 // The data that the classes divide: numbers, rounded and clamped as the
 // sequential classifier does
-function getDivergingData(records, field, opts) {
-  var values = getFieldValues(records, field);
+function getDivergingData(values, opts) {
   var ascending;
   if (opts.precision) {
     values = values.map(getRoundingFunction(opts.precision));

@@ -49,8 +49,19 @@ mapshaper states.geojson \
 [-i (input)](#-i-input)
 [-o (output)](#-o-output)
 
+**Layers**
+
+[-add-layer](#-add-layer)
+[-copy](#-copy)
+[-drop](#-drop)
+[-frame](#-frame)
+[-merge-layers](#-merge-layers)
+[-rename-layers](#-rename-layers)
+[-target](#-target)
+
 **Editing**
 
+[-add-shape](#-add-shape)
 [-affine](#-affine)
 [-buffer](#-buffer)
 [-classify](#-classify)
@@ -60,10 +71,8 @@ mapshaper states.geojson \
 [-dashlines](#-dashlines)
 [-densify](#-densify)
 [-dissolve](#-dissolve)
-[-dissolve2](#-dissolve2)
 [-divide](#-divide)
 [-dots](#-dots)
-[-drop](#-drop)
 [-each](#-each)
 [-erase](#-erase)
 [-explode](#-explode)
@@ -71,7 +80,6 @@ mapshaper states.geojson \
 [-filter-fields](#-filter-fields)
 [-filter-islands](#-filter-islands)
 [-filter-slivers](#-filter-slivers)
-[-frame](#-frame)
 [-graticule](#-graticule)
 [-grid](#-grid)
 [-include](#-include)
@@ -80,7 +88,6 @@ mapshaper states.geojson \
 [-join](#-join)
 [-labels](#-labels)
 [-lines](#-lines)
-[-merge-layers](#-merge-layers)
 [-mosaic](#-mosaic)
 [-point-grid](#-point-grid)
 [-points](#-points)
@@ -89,23 +96,38 @@ mapshaper states.geojson \
 [-rectangle](#-rectangle)
 [-rectangles](#-rectangles)
 [-rename-fields](#-rename-fields)
-[-rename-layers](#-rename-layers)
 [-repel](#-repel)
 [-require](#-require)
-[-run](#-run)
 [-scalebar](#-scalebar)
-[-shape](#-shape)
 [-simplify](#-simplify)
 [-smooth](#-smooth)
 [-snap](#-snap)
 [-sort](#-sort)
 [-split](#-split)
-[-split-on-grid](#-split-on-grid)
-[-subdivide](#-subdivide)
 [-style](#-style)
 [-symbols](#-symbols)
 [-union](#-union)
 [-uniq](#-uniq)
+
+**Raster**
+
+[-blend](#-blend)
+[-blur](#-blur)
+[-contours](#-contours)
+[-deshadow](#-deshadow)
+[-fetch](#-fetch)
+[-hillshade](#-hillshade)
+[-sharpen](#-sharpen)
+[-tone](#-tone)
+
+**Experimental**
+
+[-cluster](#-cluster)
+[-data-fill](#-data-fill)
+[-fuzzy-join](#-fuzzy-join)
+[-shape](#-shape)
+[-split-on-grid](#-split-on-grid)
+[-subdivide](#-subdivide)
 
 **Control Flow**
 
@@ -113,8 +135,8 @@ mapshaper states.geojson \
 [-elif](#-elif)
 [-else](#-else)
 [-endif](#-endif)
+[-run](#-run)
 [-stop](#-stop)
-[-target](#-target)
 
 **Information**
 
@@ -208,11 +230,17 @@ mapshaper -i 'lat,lon,label\n48.86,2.35,Paris\n51.51,-0.13,London' \
 
 `percentile-range=` [Raster] Input percentile range used with `scaling=percentile`. The default is `2,98`.
 
-`raster-type=image|categorical|continuous` [Raster] Semantic raster type. This sets the default resampling method for later raster reprojection, and how uncovered pixels are filled. `image` (the default) uses bilinear resampling and fills with a color. `categorical` uses nearest-neighbor resampling to preserve class/code values, and fills with the source nodata value. `continuous` is for measurement rasters such as elevation models: it uses bilinear resampling like `image` but fills with the source nodata value like `categorical`, so uncovered pixels do not become a color value mixed in with the data.
+`raster-type=image|categorical|continuous` [Raster] Semantic raster type. This sets the default resampling method for later raster reprojection, and how empty pixels are filled after reprojection or clipping. `image` (the default) uses bilinear resampling, and makes empty pixels transparent, using the nodata value or an alpha band. `categorical` uses nearest-neighbor resampling to preserve class/code values, and fills with the nodata value. `continuous` is for measurement rasters such as elevation models: it uses bilinear resampling like `image`, and fills with the nodata value like `categorical`, so empty pixels are never given a color value mixed in with the data.
 
 `rendition=` [GeoTIFF] Import a specific GeoTIFF rendition, using a slug such as `full` or `overview-1`. When a GeoTIFF has internal overviews, Mapshaper lists the available slugs during import. By default, large GeoTIFFs are imported from the best available reduced-resolution overview under Mapshaper's import size limit, or resampled during import if no suitable overview is available. Use `rendition=full` to force full-resolution import.
 
-`resolution=` [Raster] Width in pixels to import a GeoTIFF, PNG or JPEG raster at (e.g. `resolution=2000` or `resolution=2000px`), or `full` to import at full resolution. The height follows from the raster's aspect ratio, and a raster is never enlarged. By default, rasters larger than 16 million pixels are reduced to fit that size. A GeoTIFF is read from the smallest internal overview that is at least as wide as the requested width.
+`bands=` [GeoTIFF] Bands to import: `all`, or a comma-separated list of band numbers, starting from 1 (e.g. `bands=1,4,5`). By default, an image imports the bands it displays (gray, RGB or RGBA), and a data raster imports every band. A raster is treated as data if it is imported with `raster-type=continuous` or `raster-type=categorical`, or if its values are wider than 8 bits and it isn't a color image. A data raster displays its first imported band in gray. Commands that read a band, such as `-hillshade band=`, refer to bands by their number in the file. The import size limit is shared by the bands, so a raster with more than four bands is reduced further than one with fewer; `-info` lists the imported bands, with any band descriptions in the file.
+
+`resolution=` [Raster] Width in pixels to import a GeoTIFF, PNG or JPEG raster at (e.g. `resolution=2000` or `resolution=2000px`), or `full` to import at full resolution. The height follows from the raster's aspect ratio, and a raster is never enlarged. By default, rasters larger than 16 million pixels are reduced to fit that size (rasters with more than four bands are reduced to 64 million samples, i.e. pixels times bands). A GeoTIFF is read from the smallest internal overview that is at least as wide as the requested width.
+
+`vertical-units=` [Raster] Units of an elevation raster's values: `m`, `ft`, `us-ft`, `cm`, `mm` or `km`. This overrides any units given in a GeoTIFF's metadata. Without either, elevations are taken to be in meters.
+
+`pixel-size=` [Raster] Ground size of a pixel, for a raster with no CRS (e.g. `pixel-size=30m` or `pixel-size=100ft`; a number without units is in meters). This lets `-hillshade` shade a DEM to scale when it was saved without georeferencing, for example from an image editor. Without it, `-hillshade` scales the relief of such a DEM to a typical steepness.
 
 `name=`  Rename the imported layer (or layers).
 
@@ -232,7 +260,7 @@ Save content of the target layer(s) to a file or files.
 
 `<file>|<directory>|-`  Name of output file or directory. Use `-` to export text-based formats to `/dev/stdout`.
 
-`format=shapefile|geojson|topojson|flatgeobuf|geopackage|geoparquet|geotiff|json|dbf|csv|tsv|svg|html` Specify output format. If the `format=` option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper exports to the same format as the input format.
+`format=shapefile|geojson|topojson|flatgeobuf|geopackage|geoparquet|geotiff|json|dbf|csv|tsv|svg|html` Specify output format. If the `format=` option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper exports to the same format as the input format. A frame, which has no input format, is exported as SVG.
 
 The `json` format is an array of objects containing data properties for each feature.
 
@@ -353,8 +381,140 @@ PNG and JPEG output (`-o map.png`, `-o map.jpg`, or `format=png|jpg`) is an imag
 mapshaper -i shapefiles/*.shp batch-mode -o geojson/ format=geojson
 ```
 
+## Layer Commands
+
+### -add-layer
+
+Create an empty layer, for adding shapes (with `-add-shape`) or labels to. If there is a target layer, the new layer uses its coordinate system.
+
+`geometry-type=`  (required) Type of geometry: point, polygon or polyline.
+
+`name=`  Name of the new layer.
+
+Common options: `target=`
+
+### -copy
+
+Copy the target layer or layers, of any kind: vector, raster or data-only. Each copy is added to the same dataset as its original, and the copies become the target of the next command. Copying a frame copies the layers in the frame as well.
+
+`name=`  Name of the copy. By default, a copy has the same name as its original. Can only be used when copying a single layer. Required when copying a frame, because frames have unique names.
+
+[`target=`](#common-options)
+
+```bash
+# Keep the states, and make a layer of the borders between them
+mapshaper states.json -copy name=borders -innerlines -o output.svg
+
+# Make a second map from the same layers, at a smaller size
+mapshaper -i states.json -frame width=800 name=main \
+  -copy target=main name=small \
+  -frame target=small width=300 \
+  -o maps/ target=main,small
+```
+
+### -drop
+
+Delete the target layer(s) or elements within the target layer(s).
+
+`fields=`  Delete a (comma-separated) list of attribute data fields. To delete all fields, use `fields=*`.
+
+`geometry`  Delete all geometry.
+
+`holes`  Delete any holes from a polygon layer.
+
+`target=`  Layer(s) to target.
+
+### -frame
+
+Create a rectangular frame layer at a given display width. Frame size is used for scaling symbols and for setting the display size of SVG output. The geographical extent of the frame is based on the `bbox=` option or the bounding box of the target layer or layers, if `bbox=` is omitted. When fitting to target layers, the extent includes room for the point symbols and labels in those layers, and for the strokes and outer glows of their lines and polygons, as drawn at the frame's display size. With no margin, everything drawn falls inside the frame.
+
+`width=`  Width of frame (e.g. 5in, 10cm, 600px; default is 800px)
+
+`height=`  Height of frame (in addition to or instead of width= option)
+
+`aspect-ratio=`  Aspect ratio of frame (optional)
+
+`bbox=` Bounding coordinates of frame contents in projected map coordinates (xmin,ymin,xmax,ymax). If omitted, the bounding box of the target layer(s) is used.
+
+`margin=` Padding around the frame's `bbox` in display units or as a percentage of the frame's width, e.g. 5cm 20px 5%. As in CSS, a percentage is of the width on every side (top and bottom included), so a single value gives an even margin. Takes one to four values in CSS order: all sides (`5%`); vertical and horizontal (`margin=10%,2%`); top, horizontal and bottom; or top, right, bottom and left (`margin='40px 2% 2% 2%'`). When the frame has a fixed width and height, the content is centered and the padding is a minimum on two sides. (The older `offset=` and `offsets=` options still work; they take a single value or a list in l,b,r,t order.)
+
+`ignore-symbols`  Fit the frame to the coordinates of the target layers, without making room for symbols, labels and strokes
+
+Other options: `name=` `target=`
+
+### -merge-layers
+
+Merge features from several layers into a single layer. Layers can only be merged if they have compatible geometry types. Target layers should also have compatible data fields, unless the `force` option is used.
+
+`force`  Allow merging layers with inconsistent fields. When a layer is missing a particular field, the field will be added, with the values set to `undefined`. Using this option, you are still prevented from merging fields with different data types (e.g. a field containing numbers in one layer and strings in another). You are also still prevented from merging layers containing different geometry types.
+
+`flatten` (polygon layers) Remove polygon overlaps by assigning overlapping areas to the last overlapping polygon (the topmost feature if features are rendered in sequence).
+
+Common options: `name=` `target=`
+
+```bash
+# Example: Combine features from several Shapefiles into a single Shapefile.
+# -i combine-files is used because files are processed separately by default.
+mapshaper -i OR.shp WA.shp CA.shp AK.shp combine-files \
+	-merge-layers \
+	-o pacific_states.shp
+```
+
+### -rename-layers
+
+Assign new names to layers. If fewer names are given than there are layers, the last name in the list is repeated with numbers appended (e.g. layer1, layer2).
+
+`<names>` or `names=`  One or more layer names (comma-separated).
+
+`target=`  Rename a subset of all layers.
+
+```bash
+# Example: Create a TopoJSON file with sensible object names.
+mapshaper ne_50m_rivers_lake_centerlines.shp ne_50m_land.shp combine-files \
+  -rename-layers water,land -o target=* layers.topojson 
+```
+
+### -target
+
+Set the target layer or layers for the following command.
+
+`<target>` or `target=`  Name or id of a layer (first layer is 1).
+
+`type=`  Type of layer(s) to match (polygon, polyline or point). This is useful when importing GeoJSON files containing several types of geometry.
+
+`name=`   Rename the target layer.
+
 ## Editing Commands
 
+
+### -add-shape
+
+Add a point, polyline or polygon to the target layer, or create a new layer containing the shape. Coordinates are in the target layer's coordinate system. When there is no target layer (e.g. when `-add-shape` is the first command), a new layer is created.
+
+`coordinates=`  Vertices as a comma-separated list: `x,y` for a point, `x,y,x,y,...` for a polyline. A path that ends where it starts makes a polygon. Also accepts JSON arrays, e.g. `[[0,0],[1,1]]`.
+
+`offsets=`  Additional vertices given as `dx,dy,...`, each one offset from the previous vertex, starting from the last vertex in `coordinates=`.
+
+`closed`  Close an open path to make a polygon.
+
+`extend`  Join a polyline to the polyline in the target layer that ends where the new line starts or ends, instead of adding a new feature.
+
+`geojson=`  A GeoJSON Feature, FeatureCollection or geometry, as an alternative to `coordinates=`.
+
+`properties=`  Attributes as a JSON object, e.g. `properties='{"name":"Route 1"}'`.
+
+`+`  Add the shape to a new layer instead of the target layer.
+
+Style options: any of the literal style properties accepted by [`-style`](#-style), such as `fill=`, `stroke=` and `stroke-width=`, are added to the new feature.
+
+Common options: `name=` `target=`
+
+#### Example
+```bash
+# Add a square to a new layer, using offsets
+mapshaper -add-shape coordinates=0,0 offsets=0,10,10,0,0,-10 closed \
+  fill=pink name=square -o square.json
+```
 
 ### -affine
 
@@ -369,21 +529,6 @@ Transform coordinates by shifting, scaling and rotating. Not recommended for unp
 `anchor=`  Center of rotation/scaling (default is center of the bounding box of the selected content)
 
 `where=`  Use a JS expression to select a subset of features.
-
-Common options: `target=`
-
-### -blur
-
-Apply a Gaussian-like blur to raster layers. The command only works on projected
-rasters; unprojected lat-long rasters should be reprojected first with `-proj`.
-
-`<radius>` Blur amount, given either in pixels or as a real-world distance. This
-value corresponds to `2 * sigma` of a Gaussian curve. Pixels can be written as
-plain numbers or with a `px` suffix (`radius=10`, `radius=10px`); distances carry
-units (`radius=500m`, `radius=2km`) and are converted using the size of a pixel
-on the ground, so the same command gives a comparable amount of blur on rasters
-of differing resolution. The radius can be given without the `radius=` prefix,
-for example `-blur 5px` or `-blur 500m`.
 
 Common options: `target=`
 
@@ -455,7 +600,11 @@ mapshaper land.shp -buffer 500m fill-gaps -o land_filled.geojson
 
 Assign colors or data values to each feature using one of several classification methods. Methods for sequential data include `quantile`, `equal-interval`, `hybrid` and `nice` or categorical classification to a data field.
 
-`<field>` or `field=` Name of the data field to classify.
+`<field>` or `field=` Name of the data field to classify. On a raster layer, the band to color, e.g. `band2` (see **Classifying rasters**, below).
+
+`band=`  [raster] Band to color, numbered from 1. An alternative to naming the band as a field.
+
+`categorical`  Use categorical classification. Shortcut for `method=categorical`.
 
 `save-as=`      Name of a (new or existing) field to receive the output of classification. The default output field for colors is `fill` or `stroke` (depending on geometry type) and `class` for non-color output.
 
@@ -480,7 +629,7 @@ Assign colors or data values to each feature using one of several classification
 
 `pivot-class` Add a pivot class to `continuous` output, which has none by default. The pivot class gets the center color, without interpolation.
 
-`breaks=`       Specify user-defined sequential class breaks (an alternative to automatic classification using `quantile`, `equal-interval`, etc.).
+`breaks=`       Specify user-defined sequential class breaks (an alternative to automatic classification using `quantile`, `equal-interval`, etc.). Breaks can be values or percentages of the data range, or a mix, e.g. `breaks=0,30%,60%`; `30%` is 30% of the way from the lowest value to the highest (or between the `outer-breaks=` values, if given). The values that percentages resolve to are printed.
 
 `outer-breaks=`  A pair of comma-separated numbers setting min and max breakpoints to use when computing class breaks. This setting overrides the default behavior, which is to use the min and max values of the data field being classified. This setting can be used to prevent extreme data values (outliers) from affecting equal-interval classification. Also useful for setting outside breakpoints for continuous color ramps (when using the `continuous` option).
 
@@ -496,11 +645,11 @@ Assign colors or data values to each feature using one of several classification
 
 `continuous`    Output continuously interpolated values, for unclassed/continuous-color maps. Discrete color values are treated as control points, determining the shape of the continuously interpolated color gradient. With `method=quantile`, each value is placed on the gradient by its rank among the data (tied values share their average rank), so the number of colors affects only the shape of the gradient; with a pivot, each side is ranked separately. With other methods, values are interpolated linearly between the class breaks.
 
-`interpolation=`    How intermediate colors are calculated when colors are interpolated. `rgb` (the default) mixes colors in RGB space. `oklch` uses the perceptually uniform OKLCH color space. Lightness, chroma and hue are interpolated separately. This gives evenly spaced steps in lightness and color saturation, avoiding the dull midtones that RGB mixing can produce. Where an `oklch` color falls outside the sRGB gamut, it is fitted as described under `vibrance=`.
+`interpolation=`    How intermediate colors are calculated when colors are interpolated. `oklch` (the default) uses the perceptually uniform OKLCH color space. Lightness, chroma and hue are interpolated separately. This gives evenly spaced steps in lightness and color saturation, avoiding the dull midtones that RGB mixing can produce. Where an `oklch` color falls outside the sRGB gamut, it is fitted as described under `vibrance=`. `rgb` mixes colors in RGB space, which was the default before v0.8.0.
 
-`vibrance=`    Boost the chroma (vividness or saturation) of colors interpolated with `interpolation=oklch`. The sRGB gamut holds little chroma near black and white, so a linear ramp between a dark color and a light one may appear under-saturated. The value of `vibrance`, which varies from `0` to `1`, determines how much OKLCH chroma is added to every color of the interpolation. The default is `0`.
+`vibrance=`    Boost the chroma (vividness or saturation) of colors interpolated in OKLCH (not available with `interpolation=rgb`). The sRGB gamut holds little chroma near black and white, so a linear ramp between a dark color and a light one may appear under-saturated. The value of `vibrance`, which varies from `0` to `1`, determines how much OKLCH chroma is added to every color of the interpolation. The default is `0`.
 
-With `interpolation=oklch`, when a color falls outside the sRGB gamut, its hue is held constant and chroma is reduced to fit. Lightness may be shifted by a small amount.
+With OKLCH interpolation, when a color falls outside the sRGB gamut, its hue is held constant and chroma is reduced to fit. Lightness may be shifted by a small amount.
 
 `index-field=`  Use class ids that have been precalculated and assigned to this field. Values should be integers from `0 ... n-1` (where n is the number of classes). `-1` is the null value.
 
@@ -509,6 +658,26 @@ With `interpolation=oklch`, when a color falls outside the sRGB gamut, its hue i
 `categories=`   List of values in the source data field. Using this option triggers categorical classification. If `colors=` lists fewer colors than there are categories, the colors are repeated in order. Without `categories=` (or with `categories=*`), the categories are the field's values, except empty ones (null, undefined, empty strings and NaN), which get `null-value=`.
 
 `other=`  Default value for categorical classification. This value is used when the value of the source data field is not present in the list of values given by `categories=`. Defaults to `null-value=` or null.
+
+**Classifying rasters**
+
+On a data raster (such as a DEM or a land cover raster), `-classify` sets a color palette for displaying the raster in the web UI and in SVG and image output. To remove a palette, use `-style clear`.
+
+A raster with one band is classified without naming a band. Otherwise name the band, e.g. `-classify band2` or `-classify band=2`.
+
+Some options are not available for rasters: `save-as=`, `values=`, `index-field=`, `non-adjacent`, `method=indexed`, `method=blacki` and the key options.
+
+Breaks are calculated from a sample of up to one million pixels. Categorical classification requires an integer band; by default the categories are all the band's values. `null-value=` sets the color of nodata pixels, which are transparent by default. `other=` colors values that are not listed in `categories=`. With `continuous quantile`, the gradient is calculated from up to 32 quantiles (or from every value, if the band has few of them).
+
+`hypsometric=`  [raster] Color an elevation raster with hypsometric tints, at fixed elevations. There are six climate zone presets (`desert`, `steppe`, `tropical`, `temperate`, `boreal` and `polar`) and three miscellaneous presets (`atlas`, `lowland` and `highland`). `none` colors only the sea (see `sea=`, which then needs bathymetric colors). `blended` mixes the six climate presets by climate zone/ The zones are derived from the Köppen-Geiger classification for 1991-2020 (Beck et al. 2023, Scientific Data 10, 724, CC BY 4.0). It is meant for maps of the world and of large regions.
+
+With `hypsometric=`, `colors=` recolors the preset, with a color for each of its elevations, and `breaks=` moves its elevations, in the band's units, giving every one of them, lowest first. With `blended`, `breaks=` moves the elevations of all six presets, which they share, and a preset is recolored by giving its name before its colors, e.g. `colors=desert:#c9b98a,...,polar:#f4efe6,...`; presets that aren't named keep their own colors.
+
+Several lists can be given in one `colors=` or `breaks=` option: a name and a colon start a named list, which runs to the next name, e.g. `colors=#b2c9ba,...,sea:#003366,...`. The sea's list is named `sea:` (see `sea=`). Named lists work only with rasters.
+
+`classed`  [raster] With `hypsometric=` and a single preset, color in classes rather than continuously: each class runs from one elevation up to the next, and the first one also takes everything below its elevation.
+
+`sea=`  [raster] What to do with the sea area of an elevation raster. `transparent` leaves sea areas uncolored (the default with `hypsometric=`); `land` colors them like other values; `pale`, `blue` or `gray` colors them by depth, with bathymetric tints at fixed depths. Basins below sea level enclosed by land, such as the Dead Sea, are not treated as sea. `colors=sea:...` and `breaks=sea:...` recolor a bathymetric preset and move its depths (deepest first, in the band's units).
 
 **Options for generating SVG keys**
 
@@ -532,6 +701,16 @@ With `interpolation=oklch`, when a color falls outside the sRGB gamut, its hue i
 **Examples**
 
 ```bash
+# Color a DEM with a continuous ramp from 0m to 3000m
+mapshaper dem.tif -classify colors=#2b5c3f,#c9b98a,#f4efe6 continuous \
+  equal-interval outer-breaks=0,3000 -o out.png
+
+# Color a world DEM with tints that blend between climate regions
+mapshaper world-dem.tif -classify hypsometric=blended -proj +proj=eqearth -o world.png
+
+# The same, with the ocean colored by depth
+mapshaper world-dem.tif -classify hypsometric=blended sea=pale -proj +proj=eqearth -o world.png
+
 # Apply a sequential color ramp to a polygon dataset using quantiles.
 mapshaper covid_cases.geojson \
   -classify save-as=fill quantile color-scheme=Oranges classes=6 \
@@ -595,7 +774,11 @@ Remove features or portions of features that fall outside a clipping area.
 
 `remove-slivers` Remove tiny sliver polygons created by clipping.
 
+`nodata-color=` (raster) Color for raster pixels removed by clipping. The default is transparent, as with [`-proj`](#-proj) `nodata-color=`.
+
 Common options: [`name=` `+` `target=`](#common-options)
+
+Raster layers are cropped to the bounding box of the clip polygons, and pixels whose centers are outside the polygons are removed. Clipping to a layer that is not a polygon layer crops a raster to the layer's bounding box.
 
 ```bash
 # Example: Clip a polygon layer using another polygon layer.
@@ -638,80 +821,6 @@ mapshaper data.json \
     categories='Republican,Democrat,Other' \
   -style fill='calcFill(PARTY)' \
   -o output.svg
-```
-
-### -contours
-
-Convert a raster layer to a polyline layer of contour lines (isolines). Add
-`closed` to create polygon bands between the contour lines instead. This is most
-often used with a digital elevation model, but it works on any continuous
-raster.
-
-Running `-blur` before `-contours` produces smoother lines than contouring the raw data.
-
-Values are read at pixel centers, so ordinary contour lines span from the center
-of the first pixel to the center of the last, half a pixel inside the raster's
-bounds. Closed bands extend lines that reach this outer lattice to the raster
-bounds and use the bounds as a fixed outer frame.
-
-`-contours` finishes by smoothing the lines, using an interval of a quarter of a
-pixel. Where smoothing causes lines to cross, the intersecting lines are left unsmoothed. Use `no-smoothing` to
-skip the step and keep the raw traced geometry, which you can then smooth
-yourself with `-smooth`.
-
-By default the contour layer replaces the raster layer. Use `+` to keep the
-raster as well.
-
-`interval=` Spacing between contour levels. Levels are multiples of this value,
-so `interval=100` gives levels at 100, 200, 300 and so on. If neither
-`interval=` nor `levels=` is given, mapshaper picks a round interval that
-divides the raster's value range into roughly fifteen steps.
-
-`levels=` Explicit comma-separated list of contour levels, for example
-`levels=0,100,500,1000`. Overrides `interval=`.
-
-`base=` Value to align `interval=` to (the default is 0). For example
-`interval=100 base=50` gives levels at 50, 150, 250 and so on.
-
-`band=` Index of the band to read values from (the default is 0). Elevation
-models normally have a single band.
-
-`field=` Name of the output field holding each line's contour value. The default
-is `value`. This option applies to line output, not `closed` output.
-
-`closed` Create polygon bands instead of contour lines. Each feature has
-`lower` and `upper` fields. Interior bands are lower-inclusive and
-upper-exclusive; the highest band includes the raster maximum. The lowest and
-highest bounds are the minimum and maximum valid raster values, while interior
-bounds come from `interval=` or `levels=`.
-
-`no-smoothing` Skip contour smoothing. With `closed`, the contour boundaries are
-smoothed by default but the raster and nodata closure boundaries are not.
-
-Common options: `name=`, `no-replace`, `target=`
-
-```bash
-# Trace 100-meter contours from an elevation model
-mapshaper dem.tif -contours interval=100 -o contours.json
-
-# Blur the data first, then label the output field ELEV
-mapshaper dem.tif raster-type=continuous \
-  -proj webmercator \
-  -blur radius=3 \
-  -contours interval=50 field=ELEV \
-  -o contours.json
-
-# Keep the raster and draw specific contours over it
-mapshaper dem.tif -contours levels=500,1000,1500 + name=contours \
-  -o output.svg
-
-# Create smoothed, closed elevation bands
-mapshaper dem.tif -contours interval=100 closed -o bands.json
-
-# Trace raw lines, then smooth them by hand
-mapshaper dem.tif -contours interval=100 no-smoothing \
-  -smooth 40 no-corners no-prefilter \
-  -o contours.json
 ```
 
 ### -dashlines
@@ -837,19 +946,6 @@ Fill polygons with random points, for making dot density maps. This command shou
 `multipart` Combine groups of same-color dots into multi-part features.
 
 Other options: `name=` `+` `target=`
-
-
-### -drop
-
-Delete the target layer(s) or elements within the target layer(s).
-
-`fields=`  Delete a (comma-separated) list of attribute data fields. To delete all fields, use `fields=*`.
-
-`geometry`  Delete all geometry.
-
-`holes`  Delete any holes from a polygon layer.
-
-`target=`  Layer(s) to target.
 
 
 ### -each
@@ -1016,24 +1112,6 @@ Remove small polygon rings.
 
 [`target=`](#common-options)
 
-### -frame
-
-Create a rectangular frame layer at a given display width. Frame size is used for scaling symbols and for setting the display size of SVG output. The geographical extent of the frame is based on the `bbox=` option or the bounding box of the target layer or layers, if `bbox=` is omitted. When fitting to target layers, the extent includes room for the point symbols and labels in those layers, and for the strokes and outer glows of their lines and polygons, as drawn at the frame's display size. With no margin, everything drawn falls inside the frame.
-
-`width=`  Width of frame (e.g. 5in, 10cm, 600px; default is 800px)
-
-`height=`  Height of frame (in addition to or instead of width= option)
-
-`aspect-ratio=`  Aspect ratio of frame (optional)
-
-`bbox=` Bounding coordinates of frame contents in projected map coordinates (xmin,ymin,xmax,ymax). If omitted, the bounding box of the target layer(s) is used.
-
-`margin=` Padding around the frame's `bbox` in display units or as a percentage of the frame's width, e.g. 5cm 20px 5%. As in CSS, a percentage is of the width on every side (top and bottom included), so a single value gives an even margin. Takes one to four values in CSS order: all sides (`5%`); vertical and horizontal (`margin=10%,2%`); top, horizontal and bottom; or top, right, bottom and left (`margin='40px 2% 2% 2%'`). When the frame has a fixed width and height, the content is centered and the padding is a minimum on two sides. (The older `offset=` and `offsets=` options still work; they take a single value or a list in l,b,r,t order.)
-
-`ignore-symbols`  Fit the frame to the coordinates of the target layers, without making room for symbols, labels and strokes
-
-Other options: `name=` `target=`
-
 ### -graticule
 
 Create a graticule layer appropriate for the target dataset's projection. Bounded and interrupted projections include matching outline paths.
@@ -1099,9 +1177,9 @@ mapshaper states.shp -filter 'STATE=="OR" || STATE=="WA"' -innerlines -o out.shp
 
 ### -join
 
-Join attribute data from a source layer or file to a target layer. If the `keys=` option is used, Mapshaper will join records by matching the values of key fields. If the `keys=` option is missing, Mapshaper will perform a polygon-to-polygon, point-to-polygon, polygon-to-point or point-to-point spatial join.
+Join attribute data from a source layer or file to a target layer. If the `keys=` option is used, Mapshaper will join records by matching the values of key fields. If the `keys=` option is missing, Mapshaper will perform a polygon-to-polygon, point-to-polygon, polygon-to-point or point-to-point spatial join. A raster source can be joined to a polygon layer (see [Joining a raster](#joining-a-raster) below).
 
-`<file|layer>` or `source=` File or layer containing data records to join.
+`<file|layer>` or `source=` File or layer containing data records to join, or a raster.
 
 `keys=`  Names of two fields to use as join keys, separated by a comma. The key field from the destination table is followed by the key field from the source table. If the `keys=` option is missing, mapshaper performs a spatial join.
 
@@ -1115,7 +1193,7 @@ Join attribute data from a source layer or file to a target layer. If the `keys=
 
 `interpolate=`  (polygon-to-polygon joins only) A list of fields to interpolate/reaggregate based on area of overlap. Interpolates fields containing count data, such as population counts or vote counts. Treats data as being uniformly distributed within polygon areas. Also interpolates string fields containing categorical data. The value associated with the largest area of overlap between source and target polygons gets copied to the target feature.
 
-`point-method` (polygon-to-polygon joins only) Use an alternate method for joining two polygon layers. The default polygon-polygon join method detects areas of overlap between two polygon layers by compositing the two layers internally. This method is simpler -- it generates a temporary point layer from the source layer with the greater number of features (using the same inner-point method as the `-points inner` command), and then performs a point-to-polygon or polygon-to-point join. This method does not support the `interpolate=` option.
+`point-method` (polygon-to-polygon and raster joins only) When joining a raster, join each pixel to the polygons that contain its center, instead of weighting pixels by area. When joining two polygon layers, use an alternate method. The default polygon-polygon join method detects areas of overlap between two polygon layers by compositing the two layers internally. This method is simpler -- it generates a temporary point layer from the source layer with the greater number of features (using the same inner-point method as the `-points inner` command), and then performs a point-to-polygon or polygon-to-point join. This method does not support the `interpolate=` option.
 
 `largest-overlap` (polygon-to-polygon joins only) selects a single polygon to join when multiple source polygons overlap a target polygon, based on largest area of overlap.
 
@@ -1141,7 +1219,23 @@ Join attribute data from a source layer or file to a target layer. If the `keys=
 
 Other options: `encoding=` `target=`
 
+#### Joining a raster
+
+When the source is a raster layer or file (such as a GeoTIFF) and the target is a polygon layer, `calc=` is required, and it aggregates the values of the pixels that overlap each polygon. Band values are available as `band1`, `band2`, etc., numbered after the bands of the source file. Nodata is tested band by band: a band value equal to the nodata value (or NaN) is ignored by `sum()`, `mean()`, `median()`, `min()`, `max()` and the other numeric functions, and by `mode()`, while `count()` counts every pixel that has a valid value in some band. Pixels that are nodata in every band, or outside the area covered by a projected or clipped raster, are skipped.
+
+By default, each pixel is treated as a rectangle and weighted by the fraction of its area inside the polygon. Aggregate functions use the weights: `sum()` is the weighted sum, which apportions count data like population between polygons; `mean()` is the weighted mean, suitable for measurements like elevation; `count()` is the total weight (the number of pixels covered, which can be fractional); `median()` and `quantile()` are weighted quantiles; and `mode()` returns the value covering the largest area. `min()`, `max()` and `collect()` ignore the weights. The weight is also available as `coverage`, e.g. `where='coverage > 0.5'`. With `point-method`, pixels are joined to the polygons that contain their centers, and every weight is 1.
+
+`where=` filters pixels, and can refer to the target record as `target`. Only the `calc=`, `where=`, `point-method`, `unmatched` and `target=` options apply. The raster and the polygons must use the same coordinate system, and rotated rasters are not supported.
+
 **Examples**
+
+Sum population counts from a population grid.
+
+```bash
+mapshaper counties.shp \
+  -join population.tif calc='population = sum(band1)' \
+  -o out.shp
+```
 
 Join a point layer to a polygon layer (spatial join), using the `calc=` option to handle many-to-one matches.
 
@@ -1302,24 +1396,6 @@ mapshaper countries.geojson \
 ```
 
 
-### -merge-layers
-
-Merge features from several layers into a single layer. Layers can only be merged if they have compatible geometry types. Target layers should also have compatible data fields, unless the `force` option is used.
-
-`force`  Allow merging layers with inconsistent fields. When a layer is missing a particular field, the field will be added, with the values set to `undefined`. Using this option, you are still prevented from merging fields with different data types (e.g. a field containing numbers in one layer and strings in another). You are also still prevented from merging layers containing different geometry types.
-
-`flatten` (polygon layers) Remove polygon overlaps by assigning overlapping areas to the last overlapping polygon (the topmost feature if features are rendered in sequence).
-
-Common options: `name=` `target=`
-
-```bash
-# Example: Combine features from several Shapefiles into a single Shapefile.
-# -i combine-files is used because files are processed separately by default.
-mapshaper -i OR.shp WA.shp CA.shp AK.shp combine-files \
-	-merge-layers \
-	-o pacific_states.shp
-```
-
 ### -mosaic
 
 Flatten a polygon layer by converting overlapping areas to separate polygons.
@@ -1400,7 +1476,7 @@ Project a dataset using a PROJ string, EPSG code or alias. This command affects 
 
 `init=` Define the pre-projected coordinate system, if unknown. This option is not needed if the source coordinate system is defined by a .prj file, or if the source CRS is WGS84. As with `crs`, you can pass a Proj4 string enclosed in quotes if the selected projection requires extra parameters, for example `init='+proj=utm +zone=33'`.
 
-`nodata-color=` (raster) Color for output pixels that do not receive source raster content after reprojection. The default is white for image rasters and the source nodata value, when available, for categorical and continuous rasters. Use `transparent` for transparent output.
+`nodata-color=` (raster) Color for output pixels that do not receive source raster content after reprojection. By default these pixels are transparent: they get the raster's nodata value, or for an 8-bit image without one, an alpha band is added. A raster that has no nodata value and is not an 8-bit image is given a nodata value that its data does not use, such as -9999.
 
 `background=` (raster) Alias for `nodata-color=`.
 
@@ -1522,20 +1598,6 @@ mapshaper states.shp -rename-fields FIPS=STATE_FIPS,NAME=STATE_NAME -o out.shp
 ```
 
 
-### -rename-layers
-
-Assign new names to layers. If fewer names are given than there are layers, the last name in the list is repeated with numbers appended (e.g. layer1, layer2).
-
-`<names>` or `names=`  One or more layer names (comma-separated).
-
-`target=`  Rename a subset of all layers.
-
-```bash
-# Example: Create a TopoJSON file with sensible object names.
-mapshaper ne_50m_rivers_lake_centerlines.shp ne_50m_land.shp combine-files \
-  -rename-layers water,land -o target=* layers.topojson 
-```
-
 ### -repel
 
 Move colliding point symbols apart. The target must be a projected point layer containing symbols from [`-symbols`](#-symbols), from [`-style`](#-style) or from the `radius=` option. All targeted layers are laid out together, so symbols in different layers are moved apart from each other as well.
@@ -1599,87 +1661,6 @@ $ mapshaper data.json \
   -o data2.json
 ```
 
-### -run
-
-Run mapshaper commands from a [command file](/docs/essentials/command-line.html#command-files) or generated on-the-fly from a JS expression.
-
-`<file|expression>`  Either:
-- A path to a mapshaper [command file](/docs/essentials/command-line.html#command-files).
-- A JS expression or template containing embedded expressions, for generating one or more mapshaper commands.
-
-* Embedded expressions are enclosed in curly braces (see below).
-* Expressions can access `target` and `io` objects.
-* Expressions can also access functions and data loaded with the `-require` command.
-* Functions can be async.
-
-Expression context:
-
-If command has a single target layer:
-`target` object provides data and information about the command's target layer
-- `target.layer_name`  Name of layer
-- `target.geojson`  (getter/setter) Returns a GeoJSON FeatureCollection for the layer (getter) or replaces the layer with the contents of a GeoJSON object (setter).
-- `target.geometry_type` One of: polygon, polyline, point, `undefined`
-- `target.feature_count` Number of features in the layer
-- `target.null_shape_count` Number of features with null geometry
-- `target.null_data_count` Number of features with no attribute data
-- `target.bbox` GeoJSON-style bounding box
-- `target.proj4` PROJ-formatted string giving the CRS (coordinate reference system) of the layer
-
-`targets` object gives access to all layers targetted by the run command.
-- by numerical index, like an array (`targets[0]` refers to the first target layer)
-- by layer name (`targets.states` refers to a layer named "states")
-
-`io` object has a method for passing data to the `-i` command.
-- `io.ifile(<filename>, <data>)` Create a temp file to use as input in a `-run` command (see example 2 below)
-
-**Example 1:** Apply a custom projection based on the layer extent.
-
-```bash
-$ mapshaper -i country.shp \
-    -require projection.js \
-    -run '-proj {tmerc(target.bbox)}' \
-    -o
-```
-
-```javascript
-// contents of projection.js file
-module.exports.tmerc = function(bbox) {
-  var lon0 = (bbox[0] + bbox[2]) / 2,
-      lat0 = (bbox[1] + bbox[3]) / 2;
-  return `+proj=tmerc lat_0=${lat0} lon_0=${lon0}`;
-};
-```
-
-**Example 2:** Convert points to a Voronoi diagram using a template expression
-together with an external script.
-
-```bash
-$ mapshaper points.geojson \
-  -require script.js \
-  -run '-i {io.ifile("voronoi.json", voronoi(target.geojson, target.bbox))}' \
-  -o
-```
-
-```javascript
-// contents of script.js file
-module.exports.voronoi = async function(points, bbox) {
-  const d3 = await import('d3-delaunay'); // installed locally
-  const coords = points.features.map(feat => feat.geometry.coordinates);
-  const voronoi = d3.Delaunay.from(coords).voronoi(bbox);
-  const features = Array.from(voronoi.cellPolygons()).map(function(ring, i) {
-    return {
-      type: 'Feature',
-      properties: points.features[i].properties,
-      geometry: {
-        type: 'Polygon',
-        coordinates: [ring]
-      }
-    };
-  });
-  return {type: 'FeatureCollection', features: features};
-};
-```
-
 ### -scalebar
 
 Add a scale bar to a map. The scale bar's settings are stored in a data-only layer.
@@ -1715,19 +1696,6 @@ Scale bars appear only in SVG output; they are skipped when exporting other form
 `margin=` Offset in pixels from edge of map.
 
 `remove` Remove the map frame's scale bar.
-
-
-### -shape
-
-Create a new layer containing a single polyline or polygon shape.
-
-`coordinates=<x,y,...>`  Specify vertex coordinates as a comma-separated list.
-
-`offsets=<dx,dy,...>`   Specify vertex coordinates as a list of offsets from the previous vertex. The first vertex in the list is offset from the last coordinate in the `coordinates=` list.
-
-`closed`  Close an open path to form a polygon shape.
-
-`name=` Assign a name to the newly created layer.
 
 
 ### -simplify
@@ -1866,42 +1834,15 @@ mapshaper states.shp name='' -split STATE -o format=geojson
 mapshaper states.shp -split -o format=geojson
 ```
 
-### -split-on-grid
-
-Split features into separate layers using a grid of cols,rows cells. Useful for dividing a large dataset into smaller files that can be loaded dynamically into an interactive map. Use `-o bbox-index` to export a file containing the name and bounding box of the shapes in each file. Empty cells are removed from the output.
-
-`<cols,rows>`  Size of the grid, e.g. `-split-on-grid 12,10`
-
-Common options: `target=` 
-
-### -subdivide
-
-Recursively divide a layer using a boolean JS expression. The expression is first evaluated against all features in the layer. If true, the features are spatially partitioned either vertically or horizontally, according to whether the aggregate bounding box is relatively tall or wide. See example below.
-
-Subdivide expressions can call several functions that operate on a group of features. The `sum()` function takes a feature-level expression as an argument and returns the summed result after applying the expression to each feature in the group. Similar functions include `min()` `max()` `average()` and `median()`.
-
-`<expression>` or `expression=` Boolean JavaScript expression
-
-Common options:  `target=`
-
-**Example**
-```bash
-# Aggregate census tracts into groups of less than 1,000,000 population
-# and less than 100 sq km in area.
-mapshaper tracts.shp
-  -subdivide "sum('POPULATION') >= 1000000 && sum('this.area') > 1e8" \
-  -dissolve sum-fields=POPULATION \
-  -merge-layers \
-  -o tract_groups.shp
-```
-
 ### -style
 
 Add common SVG attributes for SVG export and display in the web UI. Attribute values take either a literal value or a JS expression. See [JavaScript expressions](/docs/guides/expressions.html) for the available context. This command was named `-svg-style` in earlier versions of mapshaper.
 
 `where=`           Boolean JS expression for targetting a subset of features.
 
-`clear` Remove all style properties from a layer.
+`clear` Remove all style properties from a layer. On a raster layer, removes the palette set by `-classify` and the opacity.
+
+On a raster layer, `-style` accepts only `opacity=` (0-1) and `clear`.
 
 `class=`           One or more CSS classes, separated by spaces (e.g. `class="light semi-transparent"`)
 
@@ -2081,6 +2022,306 @@ mapshaper polygons.shp \
 	-o out.shp
 ```
 
+## Raster Commands
+
+`-join`, `-proj`, `-clip` and `-erase` also work with raster layers.
+
+### -blend
+
+Apply the shadows and highlights of a hillshade layer (made by `-hillshade`) to a raster layer, or to vector layers drawn as a raster. The hillshade layer is removed unless `+` is used.
+
+`<source>` or `source=`  Name of the hillshade layer.
+
+`strength=`  Multiply the opacity of the shading: one value, or two values for shadows and highlights (default is 1).
+
+`chroma=`  Share of the target's color kept under the shading, from 0 (plain stacking) to 1 (color kept); one value, or two values for shadows and highlights (default is 0,1).
+
+`base-color=`  Color of flat ground in an opaque hillshade not made by `-hillshade` (default is its most common color).
+
+`overlay`  Keep the targets and recolor the hillshade, so that drawn over the targets it looks like the blend.
+
+Common options: `name=` `target=` `+`
+
+### -blur
+
+Apply a Gaussian-like blur to raster layers. The command only works on projected
+rasters; unprojected lat-long rasters should be reprojected first with `-proj`.
+
+`<radius>` Blur amount, given either in pixels or as a real-world distance. This
+value corresponds to `2 * sigma` of a Gaussian curve. Pixels can be written as
+plain numbers or with a `px` suffix (`radius=10`, `radius=10px`); distances carry
+units (`radius=500m`, `radius=2km`) and are converted using the size of a pixel
+on the ground, so the same command gives a comparable amount of blur on rasters
+of differing resolution. The radius can be given without the `radius=` prefix,
+for example `-blur 5px` or `-blur 500m`.
+
+Common options: `target=`
+
+### -contours
+
+Convert a raster layer to a polyline layer of contour lines (isolines). Add
+`closed` to create polygon bands between the contour lines instead. This is most
+often used with a digital elevation model, but it works on any continuous
+raster.
+
+Running `-blur` before `-contours` produces smoother lines than contouring the raw data.
+
+Values are read at pixel centers, so ordinary contour lines span from the center
+of the first pixel to the center of the last, half a pixel inside the raster's
+bounds. Closed bands extend lines that reach this outer lattice to the raster
+bounds and use the bounds as a fixed outer frame.
+
+`-contours` finishes by smoothing the lines, using an interval of a quarter of a
+pixel. Where smoothing causes lines to cross, the intersecting lines are left unsmoothed. Use `no-smoothing` to
+skip the step and keep the raw traced geometry, which you can then smooth
+yourself with `-smooth`.
+
+By default the contour layer replaces the raster layer. Use `+` to keep the
+raster as well.
+
+`interval=` Spacing between contour levels. Levels are multiples of this value,
+so `interval=100` gives levels at 100, 200, 300 and so on. If neither
+`interval=` nor `levels=` is given, mapshaper picks a round interval that
+divides the raster's value range into roughly fifteen steps.
+
+`levels=` Explicit comma-separated list of contour levels, for example
+`levels=0,100,500,1000`. Overrides `interval=`.
+
+`base=` Value to align `interval=` to (the default is 0). For example
+`interval=100 base=50` gives levels at 50, 150, 250 and so on.
+
+`band=` Band to read values from, numbered from 1 as in the source file (the
+default is 1). Elevation models normally have a single band.
+
+`field=` Name of the output field holding each line's contour value. The default
+is `value`. This option applies to line output, not `closed` output.
+
+`closed` Create polygon bands instead of contour lines. Each feature has
+`lower` and `upper` fields. Interior bands are lower-inclusive and
+upper-exclusive; the highest band includes the raster maximum. The lowest and
+highest bounds are the minimum and maximum valid raster values, while interior
+bounds come from `interval=` or `levels=`.
+
+`no-smoothing` Skip contour smoothing. With `closed`, the contour boundaries are
+smoothed by default but the raster and nodata closure boundaries are not.
+
+Common options: `name=`, `no-replace`, `target=`
+
+```bash
+# Trace 100-meter contours from an elevation model
+mapshaper dem.tif -contours interval=100 -o contours.json
+
+# Blur the data first, then label the output field ELEV
+mapshaper dem.tif raster-type=continuous \
+  -proj webmercator \
+  -blur radius=3 \
+  -contours interval=50 field=ELEV \
+  -o contours.json
+
+# Keep the raster and draw specific contours over it
+mapshaper dem.tif -contours levels=500,1000,1500 + name=contours \
+  -o output.svg
+
+# Create smoothed, closed elevation bands
+mapshaper dem.tif -contours interval=100 closed -o bands.json
+
+# Trace raw lines, then smooth them by hand
+mapshaper dem.tif -contours interval=100 no-smoothing \
+  -smooth 40 no-corners no-prefilter \
+  -o contours.json
+```
+
+### -deshadow
+
+(Experimental) Remove terrain shadows and lighten dark slopes in an RGB aerial image, using an elevation layer to find them. Useful before applying a hillshade with `-blend`.
+
+`<dem>` or `dem=`  Elevation layer covering the image (e.g. from `-fetch`).
+
+`verbose`  Print technical details about the correction.
+
+Common options: `name=` `target=` `+`
+
+### -fetch
+
+Download elevation or imagery tiles and import them as a new raster layer. The area and coordinate system come from the map frame, or else from the target layer, or else from `bbox=` (in lat-long, when there is no target layer). Run `-fetch sources` to list the data sources.
+
+`<source>` or `source=`  Name of a data source (elevation: tilezen, mapterhorn, copernicus, 3dep, 3dep-1m; imagery: bluemarble, blackmarble, usgs, naip, naip-cir, sentinel2, landsat, eox), or the URL template of a tile service.
+
+`year=`  Year of imagery, for sources with more than one (default is the latest).
+
+`encoding=`  How a tile service's images encode their data: terrarium or mapbox (elevation), rgb (imagery) or bsq (float32 elevation from an ArcGIS exportImage URL).
+
+`scheme=`  Tile numbering scheme of a tile service: xyz (default) or tms.
+
+`zoom=`  Tile zoom level (default matches the resolution of the output).
+
+`raster-res=`  Raster pixels per frame pixel (default is 2).
+
+`bleed=`  Extra area around the frame, in frame pixels (default is 10).
+
+`bbox=`  Area to fetch (xmin,ymin,xmax,ymax), instead of the frame.
+
+`max-tiles=`  Maximum number of tiles to download (default is 500).
+
+Common options: `name=` `target=`
+
+### -hillshade
+
+Convert an elevation raster to shaded relief. By default, the shading is transparent black and white, for overlaying or blending with other layers with [`-blend`](#-blend). Run `-hillshade verbose` to print all the settings used. To sharpen the result, use [`-sharpen`](#-sharpen).
+
+`opaque`  Opaque grayscale shading. By default, shading is transparent black and white.
+
+`azimuth=` `altitude=`  Direction and height of the main light, in degrees (defaults are 315 and 45).
+
+`lighting=`  How the main light is supplemented by fainter lights from other directions. `hard` uses the main light alone, for the most contrast. `balanced` (the default) softens shadows by adding fill lights from multiple angles. `soft` adds still more fill light, which brightens slopes facing away from the main light for more midtones and less contrast. `gdal` imitates the multidirectional hillshade of GDAL.
+
+`exaggeration=`  Vertical exaggeration (default depends on the map scale).
+
+`smoothing=`  Terrain smoothing level, from 0 (off) to 4 (default is 1). Higher levels remove larger landforms.
+
+`ambient=`  Darkening of terrain with a partial view of the sky, 0-1 (default is 0.5).
+
+`texture=`  Opacity of texture shading, 0-1 (default is 0).
+
+`aerial=`  Aerial perspective: reduce contrast at low elevations, 0-1 (default is 0).
+
+`max-opacity=` `highlights=`  For transparent shading, opacity of the darkest shadows (default is 0.55), and of the brightest highlights relative to it (default is 0.5).
+
+`shadow-color=` `highlight-color=` `base-color=`  Colors of shadows, highlights and (with `opaque`) flat ground; `base-color=` implies `opaque`.
+
+`gamma=`  Shape of the tone curve; below 1 strengthens faint shading (default is 0.7).
+
+`band=`  Band containing elevation values, numbered from 1 (default is 1).
+
+Common options: `name=` `target=` `+`
+
+### -sharpen
+
+Sharpen an image or a hillshade with an unsharp mask.
+
+`<amount>` or `amount=`  Strength of the sharpening, 0-3 (default is 0.25).
+
+`radius=`  Radius of the blur that details are measured against, in pixels (default is 3).
+
+`threshold=`  Skip differences in lightness smaller than this, 0-1 (default is 0), to leave faint texture alone.
+
+Common options: `name=` `target=` `+`
+
+#### Example
+```bash
+# Shaded relief, lightly sharpened
+mapshaper dem.tif -hillshade -sharpen -o hillshade.png
+```
+
+### -tone
+
+Adjust the colors of an 8-bit RGB or RGBA image, or the tone of an 8-bit grayscale image.
+
+`saturation=`  Multiply the colorfulness; 0 is gray (default is 1).
+
+`lightness=`  0-2: below 1 darkens toward black, above 1 lightens toward white (default is 1).
+
+`contrast=`  Spread (above 1) or flatten (below 1) lightness around the image's median, without clipping (default is 1).
+
+`gamma=`  Tone curve between the image's darks and lights; above 1 lightens midtones (default is 1).
+
+`hue-shift=`  -1 to 1: move hues toward the pivot hue (positive) or away from it (negative).
+
+`hue-pivot=`  Hue that `hue-shift=` moves toward: a color or an OKLCH hue angle (default is 85, yellow-tan).
+
+`opacity=`  Opacity of the result, 0-1 (default is 1).
+
+`background=`  Color to place the result over, making it opaque.
+
+Common options: `name=` `target=` `+`
+
+## Experimental Commands
+
+These commands may give unexpected results.
+
+### -cluster
+
+Assign a cluster id to each polygon, grouping nearby polygons into compact clusters that can be merged with `-dissolve`. Results are approximate, e.g. for creating levels of detail on interactive maps.
+
+`id-field=`  Name of the field for cluster ids (default is "cluster").
+
+`pct=`  Percentage of shapes to retain, e.g. 50%.
+
+`max-width=` `max-height=` `max-area=`  Maximum size of a cluster.
+
+`group-by=`  Only group polygons with the same value in this field.
+
+Common options: `target=`
+
+### -data-fill
+
+Fill in missing values in a field of a polygon layer, using the values of neighboring polygons.
+
+`field=`  Name of the field to fill in.
+
+`contiguous`  Remove non-contiguous islands of data values.
+
+`weight-field=`  Use this field's values to weight data islands.
+
+### -fuzzy-join
+
+Copy a field from a point layer to a polygon layer using a spatial join, filling in polygons that contain no points to create a continuous mosaic of values. Point locations are treated as potentially unreliable (e.g. geocoded addresses).
+
+`<source>` or `source=`  File or layer containing the points.
+
+`field=`  Field to join.
+
+`dedup-points`  Remove points with the same location and field value.
+
+`no-dropouts`  Try to retain all values from the point layer.
+
+`contiguous`  Remove non-contiguous islands of data values.
+
+Common options: `target=`
+
+### -shape
+
+Deprecated: use [`-add-shape`](#-add-shape), which accepts the same `coordinates=`, `offsets=` and `closed` options. Use `-add-shape +` to always create a new layer, as `-shape` does. Existing scripts that use `-shape` will continue to work but print a deprecation notice.
+
+Create a new layer containing a single polyline or polygon shape.
+
+`coordinates=<x,y,...>`  Specify vertex coordinates as a comma-separated list.
+
+`offsets=<dx,dy,...>`   Specify vertex coordinates as a list of offsets from the previous vertex. The first vertex in the list is offset from the last coordinate in the `coordinates=` list.
+
+`closed`  Close an open path to form a polygon shape.
+
+`name=` Assign a name to the newly created layer.
+
+### -split-on-grid
+
+Split features into separate layers using a grid of cols,rows cells. Useful for dividing a large dataset into smaller files that can be loaded dynamically into an interactive map. Use `-o bbox-index` to export a file containing the name and bounding box of the shapes in each file. Empty cells are removed from the output.
+
+`<cols,rows>`  Size of the grid, e.g. `-split-on-grid 12,10`
+
+Common options: `target=` 
+
+### -subdivide
+
+Recursively divide a layer using a boolean JS expression. The expression is first evaluated against all features in the layer. If true, the features are spatially partitioned either vertically or horizontally, according to whether the aggregate bounding box is relatively tall or wide. See example below.
+
+Subdivide expressions can call several functions that operate on a group of features. The `sum()` function takes a feature-level expression as an argument and returns the summed result after applying the expression to each feature in the group. Similar functions include `min()` `max()` `average()` and `median()`.
+
+`<expression>` or `expression=` Boolean JavaScript expression
+
+Common options:  `target=`
+
+**Example**
+```bash
+# Aggregate census tracts into groups of less than 1,000,000 population
+# and less than 100 sq km in area.
+mapshaper tracts.shp
+  -subdivide "sum('POPULATION') >= 1000000 && sum('this.area') > 1e8" \
+  -dissolve sum-fields=POPULATION \
+  -merge-layers \
+  -o tract_groups.shp
+```
+
 ## Control Flow Commands
 
 ### -if
@@ -2129,6 +2370,87 @@ Run the following commands if all preceding -if/-elif conditions are false.
 
 Mark the end of an -if/-elif/-else sequence.
 
+### -run
+
+Run mapshaper commands from a [command file](/docs/essentials/command-line.html#command-files) or generated on-the-fly from a JS expression.
+
+`<file|expression>`  Either:
+- A path to a mapshaper [command file](/docs/essentials/command-line.html#command-files).
+- A JS expression or template containing embedded expressions, for generating one or more mapshaper commands.
+
+* Embedded expressions are enclosed in curly braces (see below).
+* Expressions can access `target` and `io` objects.
+* Expressions can also access functions and data loaded with the `-require` command.
+* Functions can be async.
+
+Expression context:
+
+If command has a single target layer:
+`target` object provides data and information about the command's target layer
+- `target.layer_name`  Name of layer
+- `target.geojson`  (getter/setter) Returns a GeoJSON FeatureCollection for the layer (getter) or replaces the layer with the contents of a GeoJSON object (setter).
+- `target.geometry_type` One of: polygon, polyline, point, `undefined`
+- `target.feature_count` Number of features in the layer
+- `target.null_shape_count` Number of features with null geometry
+- `target.null_data_count` Number of features with no attribute data
+- `target.bbox` GeoJSON-style bounding box
+- `target.proj4` PROJ-formatted string giving the CRS (coordinate reference system) of the layer
+
+`targets` object gives access to all layers targetted by the run command.
+- by numerical index, like an array (`targets[0]` refers to the first target layer)
+- by layer name (`targets.states` refers to a layer named "states")
+
+`io` object has a method for passing data to the `-i` command.
+- `io.ifile(<filename>, <data>)` Create a temp file to use as input in a `-run` command (see example 2 below)
+
+**Example 1:** Apply a custom projection based on the layer extent.
+
+```bash
+$ mapshaper -i country.shp \
+    -require projection.js \
+    -run '-proj {tmerc(target.bbox)}' \
+    -o
+```
+
+```javascript
+// contents of projection.js file
+module.exports.tmerc = function(bbox) {
+  var lon0 = (bbox[0] + bbox[2]) / 2,
+      lat0 = (bbox[1] + bbox[3]) / 2;
+  return `+proj=tmerc lat_0=${lat0} lon_0=${lon0}`;
+};
+```
+
+**Example 2:** Convert points to a Voronoi diagram using a template expression
+together with an external script.
+
+```bash
+$ mapshaper points.geojson \
+  -require script.js \
+  -run '-i {io.ifile("voronoi.json", voronoi(target.geojson, target.bbox))}' \
+  -o
+```
+
+```javascript
+// contents of script.js file
+module.exports.voronoi = async function(points, bbox) {
+  const d3 = await import('d3-delaunay'); // installed locally
+  const coords = points.features.map(feat => feat.geometry.coordinates);
+  const voronoi = d3.Delaunay.from(coords).voronoi(bbox);
+  const features = Array.from(voronoi.cellPolygons()).map(function(ring, i) {
+    return {
+      type: 'Feature',
+      properties: points.features[i].properties,
+      geometry: {
+        type: 'Polygon',
+        coordinates: [ring]
+      }
+    };
+  });
+  return {type: 'FeatureCollection', features: features};
+};
+```
+
 ### -stop
 
 Stop processing (skip remaining commands). Useful when writing scripts, in combination with -if/-elif/-else.
@@ -2140,17 +2462,6 @@ Stop processing (skip remaining commands). Useful when writing scripts, in combi
 mapshaper -if '!file_exists("boundaries.geojson")' -stop -endif \
   -i boundaries.geojson -proj robin -o output/boundaries.shp
 ```
-
-### -target
-
-Set the target layer or layers for the following command.
-
-`<target>` or `target=`  Name or id of a layer (first layer is 1).
-
-`type=`  Type of layer(s) to match (polygon, polyline or point). This is useful when importing GeoJSON files containing several types of geometry.
-
-`name=`   Rename the target layer.
-
 
 ## Informational Commands
 
@@ -2242,6 +2553,8 @@ Print usage tips and a list of commands.
 ### -info
 
 Print information about a dataset. Useful for seeing the fields in a layer's attribute data table. Also useful for summarizing the result of a series of commands, or for debugging unexpected output.
+
+For elevation rasters (single-band numeric rasters, and rasters imported with `raster-type=continuous`), `-info` also shows the nodata value and the number of nodata pixels, the range, mean and percentiles of the valid values, and the ground size of a pixel in meters.
 
 ```bash
 # Example: Get information about an unknown GeoJSON or TopoJSON dataset

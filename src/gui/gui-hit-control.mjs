@@ -5,6 +5,7 @@ import { GUI } from './gui-lib';
 import { El } from './gui-el';
 import { internal } from './gui-core';
 import { translateDisplayPoint } from './gui-display-utils';
+import { filterSelectionForMode } from './gui-selection-carry';
 
 export function HitControl(gui, ext, mouse) {
   var self = new EventDispatcher();
@@ -23,6 +24,7 @@ export function HitControl(gui, ext, mouse) {
   var suppressChangeEvent = false;
   // set while a panel that acts on the whole layer is open (e.g. color palettes)
   var selectionDisabled = false;
+  var carriedSelection = null; // {ids, layer} while the interaction mode changes
 
   // event priority is higher than navigation, so stopping propagation disables
   // pan navigation
@@ -330,6 +332,20 @@ export function HitControl(gui, ext, mouse) {
     triggerChangeEvent();
   }
 
+  // A selection made in one mode is carried into the next, as far as the next
+  // mode can select those features (see filterSelectionForMode()). It is taken
+  // here, before the tools hear of the change -- leaving a tool clears the
+  // selection -- and put back below, when hit detection turns on.
+  gui.on('interaction_mode_change', function(e) {
+    var ids = selectionIds.length > 0 ? selectionIds : pinnedId() > -1 ? [pinnedId()] : [];
+    carriedSelection = ids.length > 0 ? {ids: ids.concat(), layer: targetLayer} : null;
+  }, null, 20);
+
+  // A command or an undo while the mode changes can renumber the features.
+  gui.model.on('update', function() {
+    carriedSelection = null;
+  }, null, 20);
+
   // make sure popup is unpinned and turned off when switching editing modes
   // (some modes do not support pinning)
   gui.on('interaction_mode_change', function(e) {
@@ -337,11 +353,29 @@ export function HitControl(gui, ext, mouse) {
     clearSelectionSilently();
     if (gui.interaction.modeUsesHitDetection(e.mode)) {
       turnOn(e.mode);
+      restoreCarriedSelection();
     } else {
       turnOff();
     }
+    carriedSelection = null;
     gui.dispatchEvent('map-needs-refresh');
   });
+
+  // Tools that turn on after this hear of the selection from 'change' events
+  // or read it as they turn on.
+  function restoreCarriedSelection() {
+    var carried = carriedSelection;
+    var ids;
+    if (!carried || carried.layer != targetLayer) return;
+    ids = filterSelectionForMode(carried.ids, interactionMode(), targetLayer);
+    if (ids.length === 0) return;
+    if (pinnable()) {
+      // inspect mode pins one feature; the popup steps through the rest
+      updateSelectionState({ids: ids, id: ids[0], pinned: true});
+    } else {
+      self.setSelectionIds(ids);
+    }
+  }
 
   // Arming a tool changes what a click means, so the selection made for
   // styling goes, and the hit test is remade for the tool.

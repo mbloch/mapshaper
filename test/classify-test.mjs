@@ -21,6 +21,105 @@ describe('mapshaper-classify.js', function () {
 
   })
 
+  describe('breaks= with percentages', function() {
+    var data = 'value\n100\n140\n160\n200\n300';
+    async function classify(opts) {
+      var cmd = 'data.csv -classify value save-as=k ' + opts + ' -o format=json';
+      var out = await api.applyCommands(cmd, {'data.csv': data});
+      return JSON.parse(out['data.json']).map(function(d) { return d.k; });
+    }
+
+    it('parses numbers and percentages', function() {
+      var cmd = api.internal.parseCommands('-classify value breaks=0,30%,100.5')[0];
+      assert.deepEqual(cmd.options.breaks, [0, '30%', 100.5]);
+    });
+
+    it('rejects invalid values', function() {
+      assert.throws(function() {
+        api.internal.parseCommands('-classify value breaks=0,abc');
+      }, /Invalid value in list/);
+      assert.throws(function() {
+        api.internal.parseCommands('-classify value breaks=0,%');
+      }, /Invalid value in list/);
+    });
+
+    it('percentages are of the data range', async function() {
+      // 25% of 100-300 is 150
+      assert.deepEqual(await classify('breaks=25% values=a,b'), ['a', 'a', 'b', 'b', 'b']);
+    });
+
+    it('mixes values and percentages', async function() {
+      assert.deepEqual(await classify('breaks=150,75% values=a,b,c'), ['a', 'a', 'b', 'b', 'c']);
+    });
+
+    it('percentages of outer-breaks= when given', async function() {
+      // 50% of 0-400 is 200
+      assert.deepEqual(await classify('breaks=50% outer-breaks=0,400 values=a,b'), ['a', 'a', 'a', 'b', 'b']);
+    });
+
+    it('continuous output', async function() {
+      assert.deepEqual(await classify('breaks=50% continuous values=0,10,20'), [0, 4, 6, 10, 20]);
+    });
+
+    it('resolves breaks for pivot=', async function() {
+      assert.deepEqual(await classify('breaks=25%,75% pivot=200 values=a,b,c'), ['a', 'a', 'b', 'b', 'c']);
+    });
+
+    it('stops if the resolved breaks do not increase', async function() {
+      await assert.rejects(classify('breaks=250,50% values=a,b,c'), /should increase.*250,200/);
+    });
+
+    it('resolution', function() {
+      var resolve = api.internal.resolvePercentBreaks;
+      assert.deepEqual(resolve(['0%', 1.25, '100%'], [0.5, 2]), [0.5, 1.25, 2]);
+      assert.deepEqual(resolve(['33%'], [0, 1000]), [330]);
+      assert.deepEqual(resolve(['33.3333%'], [0, 10]), [3.33]);
+      assert.deepEqual(resolve(['50%'], [0, 0.01]), [0.005]);
+    });
+  })
+
+  describe('data with a single value', function() {
+    async function classify(data, opts) {
+      var cmd = 'data.csv -classify value save-as=k ' + opts + ' -o format=json';
+      var out = await api.applyCommands(cmd, {'data.csv': data});
+      return JSON.parse(out['data.json']).map(function(d) { return d.k; });
+    }
+
+    ['quantile', 'equal-interval', 'nice', 'hybrid'].forEach(function(method) {
+      it(method + ': puts the value in the middle class', async function() {
+        assert.deepEqual(await classify('value\n5\n5\n\n5', method + ' classes=5'), [2, 2, -1, 2]);
+        // the upper of the two middle classes
+        assert.deepEqual(await classify('value\n5\n5', method + ' classes=4'), [2, 2]);
+      });
+
+      it(method + ': continuous output uses the middle of the ramp', async function() {
+        assert.deepEqual(await classify('value\n5\n5', method + ' continuous values=0,10'), [5, 5]);
+        assert.deepEqual(await classify('value\n5\n5', method + ' continuous classes=1 values=0,10'), [5, 5]);
+      });
+    });
+
+    it('the class breaks are centered on the value', function() {
+      assert.deepEqual(api.internal.getSequentialBreaks([5, 5], 'nice', 3), [4, 5, 6]);
+      assert.deepEqual(api.internal.getSequentialBreaks([5, 5], 'quantile', 4), [3.5, 4.5, 5.5, 6.5]);
+    });
+  })
+
+  describe('data with many tied values', function() {
+    it('nice breaks when the quantile breaks fall on a single value', async function() {
+      var data = 'value\n0\n0\n0\n0\n10\n10\n10\n10';
+      var breaks = api.internal.getSequentialBreaks([0, 0, 0, 0, 10, 10, 10, 10], 'nice', 3);
+      assert(breaks[0] > 0 && breaks[2] < 10, String(breaks));
+      var out = await api.applyCommands('data.csv -classify value nice save-as=k -o format=json', {'data.csv': data});
+      assert.deepEqual(JSON.parse(out['data.json']).map(d => d.k), [0, 0, 0, 0, 3, 3, 3, 3]);
+    });
+
+    it('hybrid breaks with no values between the outer breaks', async function() {
+      var data = 'value\n1\n5\n5\n5\n5\n5\n5\n5\n9';
+      var out = await api.applyCommands('data.csv -classify value hybrid continuous values=0,4 save-as=k -o format=json', {'data.csv': data});
+      assert.deepEqual(JSON.parse(out['data.json']).map(d => d.k), [0, 2, 2, 2, 2, 2, 2, 2, 4]);
+    });
+  })
+
   describe('categorical colors', function () {
     it('options use lists of quoted strings', function (done) {
       var data='plu\nAsian Indian\n"Chinese, except Taiwanese"\nFilipino';
@@ -56,6 +155,29 @@ describe('mapshaper-classify.js', function () {
       var out = await api.applyCommands(cmd, {'data.csv': data});
       var data = JSON.parse(out['data.json']);
       assert.deepEqual(data, [{code: 0, opacity: 0.3}, {code: 1, opacity: 0.5}, {code: 2, opacity: 0.7}, {code: 3, opacity: 0}]);
+    });
+
+    it('accept a field with a single category', async function() {
+      var data = 'name\ncar\n\ncar';
+      var cmd = '-i data.csv -classify name colors=Tableau10 -o format=json';
+      var out = await api.applyCommands(cmd, {'data.csv': data});
+      assert.deepEqual(JSON.parse(out['data.json']).map(function(d) { return d.fill; }),
+        ['#4e79a7', '#eee', '#4e79a7']);
+    });
+
+    it('accept a single category with a single color', async function() {
+      var data = 'name\ncar\ntruck';
+      var cmd = '-i data.csv -classify name categories=car colors=red -o format=json';
+      var out = await api.applyCommands(cmd, {'data.csv': data});
+      assert.deepEqual(JSON.parse(out['data.json']).map(function(d) { return d.fill; }),
+        ['red', '#eee']);
+    });
+
+    it('use the middle of a sequential scheme for a single category', async function() {
+      var data = 'name\ncar';
+      var cmd = '-i data.csv -classify name method=categorical colors=Blues -o format=json';
+      var out = await api.applyCommands(cmd, {'data.csv': data});
+      assert.equal(JSON.parse(out['data.json'])[0].fill, 'rgb(109, 174, 213)');
     });
 
     it('repeat a list of colors that is shorter than the list of categories', async function() {

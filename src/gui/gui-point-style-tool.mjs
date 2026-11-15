@@ -69,7 +69,9 @@ export function PointStyleTool(gui) {
   if (hit) {
     hit.on('change', function(e) {
       if (!selectionChanged(getSelectionIds())) return;
-      if (e.mode == 'point_style') {
+      // a selection carried into this mode arrives before turnOn(), and
+      // updateControls() would drop it as belonging to another layer
+      if (active && e.mode == 'point_style') {
         updateControls();
       }
     });

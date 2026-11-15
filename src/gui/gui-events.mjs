@@ -63,10 +63,15 @@ EventDispatcher.prototype.on = function(type, callback, context, priority) {
   priority = priority || 0;
   var handler = new Handler(type, this, callback, context, priority);
   // Insert the new event in the array of handlers according to its priority.
-  var handlers = this._handlers || (this._handlers = []);
+  // The array is replaced rather than spliced, as removeEventListeners() does:
+  // a dispatch in progress loops over the array it started with, and an insert
+  // into it would shift later handlers past the end of the loop or back onto
+  // the one running.
+  var handlers = this._handlers ? this._handlers.concat() : [];
   var i = handlers.length;
   while (--i >= 0 && handlers[i].priority < handler.priority) {}
   handlers.splice(i+1, 0, handler);
+  this._handlers = handlers;
   return this;
 };
 

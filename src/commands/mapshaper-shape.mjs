@@ -1,14 +1,22 @@
 import { importGeoJSON } from '../geojson/geojson-import';
 import GeoJSON from '../geojson/geojson-common';
-import { stop } from '../utils/mapshaper-logging';
+import { stop, message } from '../utils/mapshaper-logging';
 import cmd from '../mapshaper-cmd';
 import { parseCrsString } from '../crs/mapshaper-projections';
 import { getCircleGeoJSON } from '../buffer/mapshaper-point-buffer';
 import { getCircleRadiusFromAngle } from '../crs/mapshaper-proj-utils';
 import { rotateDatasetCoords } from '../crs/mapshaper-spherical-rotation';
 
+// -shape is deprecated in favor of -add-shape, which accepts the same
+// coordinates=, offsets= and closed options.
+var deprecationWarned = false;
+
 cmd.shape = function(targetDataset, opts) {
   var geojson, dataset;
+  if (!deprecationWarned) {
+    message('-shape is deprecated. Use -add-shape instead (with + to always create a new layer).');
+    deprecationWarned = true;
+  }
   if (opts.coordinates) {
     geojson = makeShapeFromCoords(opts);
   } else if (opts.type == 'circle') {

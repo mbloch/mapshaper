@@ -323,7 +323,8 @@ export function ImportControl(gui, opts) {
     var names = getFileNames(files);
     var expanded = [];
     if (files.length === 0) return;
-    useQuickView = importTotal === 0 && (opts.quick_view ||
+    // quickView is false if the user checked "with advanced options"
+    useQuickView = importTotal === 0 && quickView !== false && (opts.quick_view ||
         quickView);
     try {
       expanded = await expandFiles(files);
@@ -528,7 +529,7 @@ export function ImportControl(gui, opts) {
   }
 
   function isRasterImagePart(name) {
-    return /\.(png|jpg|jpeg|tfw|pgw|pngw|jgw|jpw|jpgw|jpegw|wld|prj)$/i.test(name);
+    return /\.(png|jpg|jpeg|tfw|tifw|tiffw|pgw|pngw|jgw|jpw|jpgw|jpegw|wld|prj)$/i.test(name);
   }
 
   function readImportOpts() {
@@ -856,6 +857,10 @@ export function ImportControl(gui, opts) {
       });
     }
 
+    function hasGeoTIFF(basename) {
+      return data.some(d => fileType(d) == 'geotiff' && fileBase(d) == basename);
+    }
+
     // A .aux.xml sidecar is named after the whole raster file
     // (world.tif.aux.xml), so it joins that file's group rather than one of its
     // own. Returns null if the raster it names was not loaded with it.
@@ -881,6 +886,8 @@ export function ImportControl(gui, opts) {
       } else if ((type == 'png' || type == 'jpeg') || isRasterImagePart(d.name) && hasRasterImage(basename)) {
         d.group = key(basename, type == 'png' || type == 'jpeg' ? type : getRasterImageGroupType(data, basename));
         if (type == 'png' || type == 'jpeg') d.filename = d.name;
+      } else if (type == 'world' && hasGeoTIFF(basename)) {
+        d.group = key(basename, 'geotiff');
       } else if (!isShapefilePart(d.name)) {
         d.group = key(basename, type);
         d.filename = d.name;
